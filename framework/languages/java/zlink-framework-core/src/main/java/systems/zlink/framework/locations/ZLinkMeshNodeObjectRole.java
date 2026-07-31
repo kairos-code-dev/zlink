@@ -1,5 +1,7 @@
 package systems.zlink.framework.locations;
 
+import systems.zlink.framework.runtime.internal.locations.*;
+
 public enum ZLinkMeshNodeObjectRole {
     NONE(0),
     CLIENT(1),

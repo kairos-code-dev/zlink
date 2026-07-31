@@ -236,9 +236,11 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("SupportChannel", session, StringComparison.Ordinal);
         Assert.Contains("ZLinkActorJoinCompletion.Accepted accepted", supportActor, StringComparison.Ordinal);
         Assert.Contains("CurrentRef = accepted.Actor", supportActor, StringComparison.Ordinal);
-        Assert.Contains("acceptedReply.Decode<JoinConversationRes>()", supportActor, StringComparison.Ordinal);
+        Assert.Contains("reply.Decode<JoinConversationRes>()", supportActor, StringComparison.Ordinal);
+        Assert.Contains("JoinConversationFailedNotify", supportActor, StringComparison.Ordinal);
         Assert.Contains(".Defer()", joinConversationHandler, StringComparison.Ordinal);
-        Assert.DoesNotContain(".Async(cancellationToken)", joinConversationHandler, StringComparison.Ordinal);
+        Assert.Contains("Context.BoundSession", joinConversationHandler, StringComparison.Ordinal);
+        Assert.Contains(".Async(cancellationToken)", joinConversationHandler, StringComparison.Ordinal);
         Assert.Contains("public sealed record SupportUserActorCreateReq", serverContracts, StringComparison.Ordinal);
         Assert.Contains("CompletedJoinOperations", relocationAdapter, StringComparison.Ordinal);
         AssertLocationStoreHost(apiHost);

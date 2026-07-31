@@ -22,6 +22,8 @@ final class ZLinkAutoConnectReconciler {
     private final Map<String, ZLinkAutoConnectPlanner.Target> notRequired = new HashMap<>();
     private Map<String, ZLinkAutoConnectPlanner.Target> lastDesired = Map.of();
     private final Map<String, ZLinkAutoConnectPlanner.Target> observedManual = new HashMap<>();
+    private final Map<String, ZLinkAutoConnectPlanner.Target>
+        admissionExpectations = new HashMap<>();
     private boolean storeFailed;
     private long storeFailureStartedNanos = -1;
     private long recoveryDeferUntilNanos;
@@ -72,8 +74,11 @@ final class ZLinkAutoConnectReconciler {
     CompletionStage<Void> shutdown() {
         active.values().forEach(executor::disconnect);
         notRequired.values().forEach(executor::clearNotRequired);
+        admissionExpectations.values().forEach(
+            executor::forgetAdmissionExpectation);
         active.clear();
         notRequired.clear();
+        admissionExpectations.clear();
         return CompletableFuture.completedFuture(null);
     }
 
@@ -92,6 +97,28 @@ final class ZLinkAutoConnectReconciler {
             ZLinkAutoConnectPlanner.computeDesired(local, rows);
         Map<String, ZLinkAutoConnectPlanner.Target> nextNotRequired =
             ZLinkAutoConnectPlanner.computeNotRequired(local, rows);
+        Map<String, ZLinkAutoConnectPlanner.Target> nextExpectations =
+            new HashMap<>();
+        for (ZLinkAutoConnectPeer row : rows) {
+            ZLinkAutoConnectPlanner.Target target =
+                ZLinkAutoConnectPlanner.trackableTarget(local, row);
+            if (target != null
+                && ZLinkAutoConnectPlanner.hasRid(target.nodeRid())) {
+                nextExpectations.put(target.nodeRid().toHex(), target);
+            }
+        }
+        admissionExpectations.forEach((key, target) -> {
+            if (!nextExpectations.containsKey(key)) {
+                executor.forgetAdmissionExpectation(target);
+            }
+        });
+        nextExpectations.forEach((key, target) -> {
+            if (!target.equals(admissionExpectations.get(key))) {
+                executor.observeAdmissionExpectation(target);
+            }
+        });
+        admissionExpectations.clear();
+        admissionExpectations.putAll(nextExpectations);
         lastDesired = Map.copyOf(desired);
         notRequired.keySet().stream()
             .filter(key -> !nextNotRequired.containsKey(key))
@@ -135,6 +162,8 @@ final class ZLinkAutoConnectReconciler {
                 || !Objects.equals(current.ownerId(), target.ownerId()))
                 && executor.replace(current, target)) {
                 active.put(entry.getKey(), target);
+            } else {
+                executor.ensureConnected(target);
             }
         }
         if (nanoTime.getAsLong() >= recoveryDeferUntilNanos) {

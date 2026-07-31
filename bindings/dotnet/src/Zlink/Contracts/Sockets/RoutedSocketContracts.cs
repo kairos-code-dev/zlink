@@ -3,6 +3,18 @@
 namespace Systems.Zlink;
 
 /// <summary>
+///     Receives an opaque bounded control record from a peer's existing
+///     completion connection.
+/// </summary>
+/// <remarks>
+///     The callback owns every message in <paramref name="parts" /> and must
+///     dispose each message exactly once.
+/// </remarks>
+public delegate void CompletionControlHandler(
+    RoutingId sourceRoutingId,
+    IReadOnlyList<Message> parts);
+
+/// <summary>
 ///     Socket contract for routed message sockets.
 /// </summary>
 public interface IRoutedMessageSocket : ISocket
@@ -66,4 +78,23 @@ public interface IRouterSocket : IConnectableRoutedMessageSocket
     ///     Start a reply operation addressed to a peer request.
     /// </summary>
     ReplyOperation Reply(RoutingId rid, ulong requestSeq);
+
+    /// <summary>
+    ///     Tries to submit an opaque multipart record on the peer's existing
+    ///     completion connection.
+    /// </summary>
+    /// <remarks>
+    ///     The method does not consume <paramref name="parts" />. Core assigns no
+    ///     command meaning to the payload. A false result means completion-lane
+    ///     back-pressure; other failures throw <see cref="ZlinkSubmitException" />.
+    /// </remarks>
+    bool TrySendCompletionControl(
+        RoutingId peerRid,
+        IReadOnlyList<Message> parts);
+
+    /// <summary>
+    ///     Installs or replaces the callback for opaque completion-control
+    ///     records. The callback is independent from application receive.
+    /// </summary>
+    void OnCompletionControl(CompletionControlHandler handler);
 }

@@ -79,9 +79,9 @@ final class ZLinkJavaSocketSupport {
                 Optional.empty(),
                 replyParts.stream().map(Message::from).toList())));
         } catch (ZlinkSubmitException ex) {
-            throw new IllegalStateException(
-                "zlink request submit failed: result=" + ex.getResult()
-                    + ", errno=" + ex.getNativeErrno(), ex);
+            // Preserve the typed submission result so Framework control-plane
+            // callers can distinguish an expected admission race from a bug.
+            throw ex;
         }
     }
 

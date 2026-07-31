@@ -1,6 +1,5 @@
 import type { MoveRejectReason, NodeAlertKind } from './spec';
 
-type ActorRefWire = { nodeRid: string; actorId: string; generation: string };
 type PlayerView = { playerId: string; x: number; y: number; zoneId: string; isBot: boolean };
 type NodeView = {
   nodeId: string;
@@ -77,8 +76,7 @@ class NodeMaintenanceChangedEvent { constructor(readonly nodeId: string, readonl
 class DeliverAnnounceMsg { constructor(readonly announcementId: string, readonly text: string) {} }
 class BotTickReq {}
 class BotTickRes {}
-class EnsurePlayerActorReq { constructor(readonly playerId: string) {} }
-class EnsurePlayerActorRes { constructor(readonly playerId: string, readonly actor: ActorRefWire) {} }
+class PlayerActorCreateReq { constructor(readonly playerId: string) {} }
 class EnterWorldReq {
   constructor(readonly x: number, readonly y: number, readonly isBot: boolean, readonly dirX = 0, readonly dirY = 0) {}
 }
@@ -142,7 +140,6 @@ const PacketNames = {
   worldAnnounceEvent: 'WorldAnnounceEvent',
   nodeMaintenanceChangedEvent: 'NodeMaintenanceChangedEvent', deliverAnnounceMsg: 'DeliverAnnounceMsg',
   botTickReq: 'BotTickReq', botTickRes: 'BotTickRes',
-  ensurePlayerActorReq: 'EnsurePlayerActorReq', ensurePlayerActorRes: 'EnsurePlayerActorRes',
   enterWorldReq: 'EnterWorldReq', enterWorldRes: 'EnterWorldRes',
   applyNodeMaintenanceReq: 'ApplyNodeMaintenanceReq', applyNodeMaintenanceRes: 'ApplyNodeMaintenanceRes',
   getNodeDiagnosticsReq: 'GetNodeDiagnosticsReq', getNodeDiagnosticsRes: 'GetNodeDiagnosticsRes',
@@ -152,11 +149,11 @@ const PacketNames = {
 
 export {
   AnnounceWorldReq, AnnounceWorldRes, ApplyNodeMaintenanceReq, ApplyNodeMaintenanceRes, BotTickReq, BotTickRes,
-  DeliverAnnounceMsg, EnsurePlayerActorReq, EnsurePlayerActorRes, EnterWorldReq, EnterWorldRes,
+  DeliverAnnounceMsg, PlayerActorCreateReq, EnterWorldReq, EnterWorldRes,
   EnterZoneMsg, EnterZoneRes, GetNodeDiagnosticsReq, GetNodeDiagnosticsRes, JoinWorldReq, JoinWorldRes,
   MoveMsg, MoveRejectedNotify, NodeAlertNotify, NodeDiagnosticsReq, NodeDiagnosticsRes,
   NodeMaintenanceChangedEvent, NodeStatusNotify, PacketNames, ReportNodeStatusMsg, ReportSpotEventMsg,
   SetMaintenanceReq, SetMaintenanceRes, WatchNodesReq, WatchNodesRes, WorldAnnounceEvent,
   WorldAnnounceNotify, ZoneBorderEvent, ZoneChangedNotify, ZoneStateNotify
 };
-export type { ActorRefWire, NodeView, PlayerView };
+export type { NodeView, PlayerView };

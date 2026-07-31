@@ -5,7 +5,7 @@
 ## 10.0.0 목표 판정
 
 Java E2E는 각 host의 public runtime snapshot과 상태 변경 stream을 검증한다. 복구할 수 없는
-runtime 오류는 `ZLinkRuntimeErrorSink`로만 전달한다. Client는 HTTP driver이고 framework
+runtime 오류는 application callback이 아니라 structured log로 기록한다. Client는 HTTP driver이고 framework
 operation은 Trigger와 Service role이 실행한다.
 
 | 시나리오 | 상태 | 현재 증거 | 남은 gap |

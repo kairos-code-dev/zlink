@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 
+using Zlink.Framework.Runtime.Dispatch;
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkChannelApplicationDispatchQueue : IAsyncDisposable
@@ -37,15 +38,40 @@ internal sealed class ZLinkChannelApplicationDispatchQueue : IAsyncDisposable
             CancellationToken.None);
     }
 
-    internal bool TryPost(
+    internal async ValueTask<bool> PostAsync(
         Func<CancellationToken, ValueTask> dispatch,
-        Action reject)
+        Action reject,
+        ZLinkInboundDispatchBudget budget,
+        ulong payloadBytes,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(dispatch);
         ArgumentNullException.ThrowIfNull(reject);
-        var work = new DispatchWork(dispatch, reject);
-        if (Volatile.Read(ref _stopped) == 0 && _queue.Writer.TryWrite(work))
+        ArgumentNullException.ThrowIfNull(budget);
+        var work = new DispatchWork(
+            dispatch,
+            reject,
+            budget,
+            payloadBytes);
+        if (Volatile.Read(ref _stopped) != 0)
+        {
+            Reject(work);
+            return false;
+        }
+
+        try
+        {
+            await _queue.Writer.WriteAsync(work, cancellationToken)
+                .ConfigureAwait(false);
             return true;
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (ChannelClosedException)
+        {
+        }
 
         Reject(work);
         return false;
@@ -58,7 +84,6 @@ internal sealed class ZLinkChannelApplicationDispatchQueue : IAsyncDisposable
 
         ReplyGate.Close();
         _queue.Writer.TryComplete();
-        while (_queue.Reader.TryRead(out var pending)) Reject(pending);
         await _stop.CancelAsync().ConfigureAwait(false);
 
         var completed = await Task.WhenAny(
@@ -87,8 +112,19 @@ internal sealed class ZLinkChannelApplicationDispatchQueue : IAsyncDisposable
         {
             await foreach (var work in _queue.Reader.ReadAllAsync(cancellationToken)
                                .ConfigureAwait(false))
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    Reject(work);
+                    while (_queue.Reader.TryRead(out var pending))
+                        Reject(pending);
+                    break;
+                }
+                var handlerStarted = false;
                 try
                 {
+                    work.Budget.HandlerStarted(work.PayloadBytes);
+                    handlerStarted = true;
                     await work.Dispatch(cancellationToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
@@ -99,6 +135,13 @@ internal sealed class ZLinkChannelApplicationDispatchQueue : IAsyncDisposable
                 {
                     Report(exception);
                 }
+                finally
+                {
+                    work.Budget.Completed(
+                        work.PayloadBytes,
+                        handlerStarted);
+                }
+        }
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -122,6 +165,10 @@ internal sealed class ZLinkChannelApplicationDispatchQueue : IAsyncDisposable
         {
             Report(exception);
         }
+        finally
+        {
+            work.Budget.Completed(work.PayloadBytes, handlerStarted: false);
+        }
     }
 
     private void Report(Exception exception)
@@ -137,7 +184,9 @@ internal sealed class ZLinkChannelApplicationDispatchQueue : IAsyncDisposable
 
     private sealed record DispatchWork(
         Func<CancellationToken, ValueTask> Dispatch,
-        Action Reject);
+        Action Reject,
+        ZLinkInboundDispatchBudget Budget,
+        ulong PayloadBytes);
 }
 
 internal sealed class ZLinkChannelReplyGate

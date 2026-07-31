@@ -6,21 +6,19 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class KotlinCompletionStageAwaitIntegrationTest {
     @Test
-    fun `cancelling coroutine waiter does not cancel framework stage`() = runBlocking {
+    fun `cancelling coroutine waiter cancels framework stage`() = runBlocking {
         val stage = CompletableFuture<String>()
         val waiter = async { stage.await() }
         yield()
 
         waiter.cancelAndJoin()
 
-        assertFalse(stage.isCancelled)
-        stage.complete("runtime-completed")
-        assertEquals("runtime-completed", stage.join())
+        assertTrue(stage.isCancelled)
     }
 
     @Test

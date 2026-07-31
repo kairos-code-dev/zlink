@@ -123,7 +123,7 @@ class customer_entry_spot_t : public entry_spot_t<customer_actor_t>
 
     task_t<spot_actor_join_response_t>
     on_actor_join (std::string_view,
-                   const zlink::message_t &) override
+                   const zlink::framework::message_t &) override
     {
         co_return spot_actor_join_response_t::accept ();
     }

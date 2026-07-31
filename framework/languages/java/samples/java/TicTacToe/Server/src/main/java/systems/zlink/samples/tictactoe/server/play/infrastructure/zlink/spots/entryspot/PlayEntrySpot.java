@@ -5,7 +5,7 @@ import org.slf4j.LoggerFactory;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkActorCreateResponse;
 import systems.zlink.samples.tictactoe.server.configuration.PlaySettings;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.actors.PlayActor;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.entryspot.handlers.PlayActorJoinGameHandler;
@@ -35,28 +35,16 @@ public final class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
     }
 
     @Override
-    public void configure() {
-        context.handlers().addHandler(PlayActorJoinGameHandler.class);
-        context.handlers().addHandler(PlayActorObserveMilestoneHandler.class);
-        context.handlers().addHandler(PlayerWinMilestoneMsgHandler.class);
-    }
-
-    @Override
-    public java.util.concurrent.CompletionStage<Void> onCreateActor(
+    public java.util.concurrent.CompletionStage<ZLinkActorCreateResponse> onCreateActor(
         PlayActor actor,
         ZLinkMessage createRequest) {
         if (createRequest.isEmpty()) {
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
+            return java.util.concurrent.CompletableFuture.completedFuture(
+                ZLinkActorCreateResponse.accept());
         }
         actor.applyPlayer(createRequest.decode(PlayerInfo.class));
-        return java.util.concurrent.CompletableFuture.completedFuture(null);
-    }
-
-    @Override
-    public java.util.concurrent.CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
-        String actorId,
-        ZLinkMessage request) {
-        return java.util.concurrent.CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept());
+        return java.util.concurrent.CompletableFuture.completedFuture(
+            ZLinkActorCreateResponse.accept());
     }
 
     @Override

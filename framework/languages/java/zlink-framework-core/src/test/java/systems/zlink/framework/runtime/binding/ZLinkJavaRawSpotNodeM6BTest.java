@@ -636,6 +636,67 @@ final class ZLinkJavaRawSpotNodeM6BTest {
     }
 
     @Test
+    void acceptedActorRequestCanReplyAfterSourceOwnershipMoves()
+        throws Exception {
+        try (var context = Zlink.createContext();
+             var node = new ZLinkJavaRawMeshNode(context, "mesh")) {
+            RoutingId nodeRid =
+                RoutingId.from("jvm-m6b-actor-reply-after-move");
+            node.setRoutingId(nodeRid);
+            CompletableFuture<
+                systems.zlink.framework.runtime.internal.backend
+                    .ZLinkBackendActorReceived> accepted =
+                new CompletableFuture<>();
+            ZLinkBackendSpot entry = node.spotNode().entrySpot();
+            entry.onDispatchEvent(info -> {
+                if (info.event()
+                    != ZLinkBackendSpotDispatchEvent.ACTOR_READABLE) {
+                    return;
+                }
+                accepted.complete(info.actorMessages().getFirst());
+            });
+            systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef
+                actor;
+            try (Message create = Message.from("create")) {
+                actor = node.spotNode().createActor(
+                    "actor-reply-after-move", create);
+            }
+
+            CompletionStage<List<Message>> request;
+            try (Message payload = Message.from("actor-request")) {
+                request = node.spotNode().requestToActor(
+                    actor,
+                    List.of(payload),
+                    SendFlags.DONT_WAIT,
+                    Duration.ofSeconds(2));
+            }
+            var received = accepted.get(1, TimeUnit.SECONDS);
+            node.spotNode().destroyActor(actor, Duration.ofSeconds(1))
+                .toCompletableFuture().get(1, TimeUnit.SECONDS);
+            try (received;
+                 Message reply = Message.from("reply-after-move")) {
+                node.spotNode().replyActorNoBind(
+                    received.actor(),
+                    received.sourceNodeRid(),
+                    received.sourceSessionRid(),
+                    received.requestId(),
+                    received.flags(),
+                    List.of(reply));
+            }
+
+            List<Message> reply =
+                request.toCompletableFuture().get(1, TimeUnit.SECONDS);
+            try {
+                assertEquals(
+                    "reply-after-move",
+                    reply.getFirst().toUtf8String());
+            } finally {
+                reply.forEach(Message::close);
+            }
+        }
+    }
+
+    @Test
     void remoteActorRequestRunsOnTheCurrentOwningSpot() throws Exception {
         String endpoint = "inproc://jvm-m6b-actor-remote-"
             + System.nanoTime();
@@ -728,8 +789,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             left.setRoutingId(leftRid);
             left.setBind(endpoint);
             left.setObjectRole(
-                systems.zlink.framework.locations
-                    .ZLinkMeshNodeObjectRole.SERVER);
+                systems.zlink.framework.locations.ZLinkMeshNodeObjectRole.SERVER);
             left.addChannel("events");
             left.setChannelWeight("events", 10_000);
             right.setRoutingId(rightRid);
@@ -863,6 +923,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                  Message payload = Message.from("activate")) {
                 assertTrue(right.sendInstanceSpot(
                     route,
+                    "orders",
                     null,
                     new byte[] {3},
                     List.of(packet, payload)));
@@ -899,7 +960,8 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             try (Message packet = Message.from("Packet");
                  Message payload = Message.from("stale")) {
                 assertTrue(right.sendInstanceSpot(
-                    stale, null, new byte[0], List.of(packet, payload)));
+                    stale, "orders", null, new byte[0],
+                    List.of(packet, payload)));
             }
             Thread.sleep(20);
             assertEquals(

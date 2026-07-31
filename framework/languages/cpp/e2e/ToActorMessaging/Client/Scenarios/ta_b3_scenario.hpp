@@ -22,7 +22,7 @@ inline void run_ta_b3_scenario (zlink::http_client::client_t &actor,
     assert_captured_call (caller, "TA-B3-route-restored", "ta-b3", "restored",
                           "reply:restored");
 
-    const auto evidence = actor.get ("/evidence").async<std::vector<e2e::actor_evidence_t>> ().result ().value ().body;
+    const auto evidence = actor.get ("/evidence").submit<std::vector<e2e::actor_evidence_t>> ().result ().value ().body;
     require_no_evidence (evidence, "TA-B3-route-not-connected");
     require_evidence (evidence, "TA-B3-route-restored", "request");
 }

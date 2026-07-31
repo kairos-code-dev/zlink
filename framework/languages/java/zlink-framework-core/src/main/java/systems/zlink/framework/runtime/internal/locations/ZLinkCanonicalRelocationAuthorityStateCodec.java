@@ -8,7 +8,6 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.zip.CRC32C;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.locations.ZLinkRelocationStored;
 
 /** Reads and replaces the canonical relocation slot in authority-payload-v1. */
 public final class ZLinkCanonicalRelocationAuthorityStateCodec {
@@ -90,6 +89,8 @@ public final class ZLinkCanonicalRelocationAuthorityStateCodec {
                 current.sourceOwnerLeaseGeneration(),
                 current.sourceNodeRid(),
                 current.sourceNodeGeneration(),
+                current.targetNodeRid(),
+                current.targetNodeGeneration(),
                 current.targetOwnerId(), current.targetOwnerLeaseGeneration(),
                 replace(authorityPayload, EMPTY),
                 current.sourceCleanupCompleted());
@@ -270,6 +271,8 @@ public final class ZLinkCanonicalRelocationAuthorityStateCodec {
         long sourceOwnerLeaseGeneration,
         RoutingId sourceNodeRid,
         long sourceNodeGeneration,
+        RoutingId targetNodeRid,
+        long targetNodeGeneration,
         String targetOwnerId,
         long targetOwnerLeaseGeneration,
         byte[] applicationPayload,

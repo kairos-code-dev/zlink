@@ -429,7 +429,9 @@
       "route-mesh-11.0.0-contract-amendment-impact.json",
       "route-mesh-11.0.0-execution-ledger.ko.md"
     ],
-    "temporary_review_documents": [],
+    "temporary_review_documents": [
+      "framework-public-contract-source-layout-audit.ko.md"
+    ],
     "ledger_required_fragments": [
       "진행 문서는 이 ledger 하나만 유지한다",
       "public declaration owner를 member 단위 trace에 연결한다",

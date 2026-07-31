@@ -7,7 +7,7 @@ import type {
   ZLinkAuthorityKey,
   ZLinkLocationOwnerToken,
   ZLinkObjectCreationTarget
-} from '../../packages/framework/src/contracts';
+} from '../../packages/framework/src/contracts/Locations';
 import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
@@ -1125,22 +1125,56 @@ test('aggregate prepare reserves one typed bundle until aggregate commit or abor
     'mesh:node-b:2:owner-b:2'
   ]);
   const store = authority(live);
-  const current = await createActive(store, 'aggregate', target('node-a', 'owner-a'));
+  const first = await createActive(store, 'aggregate-a', target('node-a', 'owner-a'));
+  const second = await createActive(store, 'aggregate-b', target('node-a', 'owner-a'));
   const aggregateId = { value: '33333333-3333-4333-8333-333333333333' } as ZLinkAggregateId;
+  const capacity = {
+    actors: 0,
+    spots: 2,
+    spotType: {
+      objectKind: 'user_spot' as const,
+      stableType: 'room',
+      count: 2
+    }
+  };
+  const capacityReservation = await store.reserveRelocationCapacity({
+    reservationId: aggregateId.value,
+    authorityKey: authorityKey('aggregate-a'),
+    expectedStoreVersion: first.storeVersion,
+    objectKind: 'user_spot',
+    stableType: 'room',
+    sourceDescriptor: { meshName: 'mesh', rid: 'node-a' },
+    sourceNodeLifecycleGeneration: 1n,
+    sourceOwner: owner('owner-a', 1n),
+    targetDescriptor: { meshName: 'mesh', rid: 'node-b' },
+    targetNodeLifecycleGeneration: 2n,
+    targetOwner: owner('owner-b', 2n),
+    capacity
+  });
+  assert.equal(capacityReservation.kind, 'reserved');
   const prepared = await store.prepareAggregate({
     aggregateId,
     aggregateGeneration: 1n,
-    participants: [{
-      authorityKey: authorityKey('aggregate'),
-      expectedStoreVersion: current.storeVersion,
-      ownerTransition: 'newOwner',
-      authorityPayload: Buffer.from('aggregate-ready'),
-      membershipMutation: Buffer.from('membership')
-    }],
+    participants: [
+      {
+        authorityKey: authorityKey('aggregate-a'),
+        expectedStoreVersion: first.storeVersion,
+        ownerTransition: 'newOwner',
+        authorityPayload: Buffer.from('aggregate-ready-a'),
+        membershipMutation: Buffer.from('membership-a')
+      },
+      {
+        authorityKey: authorityKey('aggregate-b'),
+        expectedStoreVersion: second.storeVersion,
+        ownerTransition: 'newOwner',
+        authorityPayload: Buffer.from('aggregate-ready-b'),
+        membershipMutation: Buffer.from('membership-b')
+      }
+    ],
     inventoryDigest: Buffer.alloc(32, 7),
     targetDescriptor: { meshName: 'mesh', rid: 'node-b' },
     targetDescriptorLifecycleGeneration: 2n,
-    capacity: userSpotCapacity('room'),
+    capacity,
     targetOwner: owner('owner-b', 2n)
   });
   assert.equal(prepared.kind, 'prepared');

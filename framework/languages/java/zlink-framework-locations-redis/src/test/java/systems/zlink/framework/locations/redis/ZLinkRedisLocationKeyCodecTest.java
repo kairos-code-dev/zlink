@@ -4,10 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.locations.ZLinkClientServerServerDescriptorKey;
-import systems.zlink.framework.locations.ZLinkCreationOperationIdentity;
-import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptorKey;
-import systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey;
+import systems.zlink.framework.runtime.internal.locations.ZLinkClientServerServerDescriptorKey;
+import systems.zlink.framework.runtime.internal.locations.ZLinkCreationOperationIdentity;
+import systems.zlink.framework.runtime.internal.locations.ZLinkFanoutPublisherDescriptorKey;
+import systems.zlink.framework.runtime.internal.locations.ZLinkMeshNodeDescriptorKey;
 
 class ZLinkRedisLocationKeyCodecTest {
     @Test

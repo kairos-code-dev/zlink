@@ -52,19 +52,28 @@ public sealed class ActorHandoffTests
     }
 
     [Fact]
-    public void BoundSessionFrameDuringCapture_IsRejectedBeforeDurableJournalAdmission()
+    public void BoundSessionOneWayDuringDeferredJoin_IsCapturedWithExactBindingFence()
     {
-        var state = new ZLinkActorRuntimeState("actor-bound-session");
-        state.Handoff.BeginCapture();
+        var state = new ZLinkActorRuntimeState("actor-1");
+        state.Handoff.BeginDeferredJoinCapture();
         using var body = Message.From("one-way");
+        var sourceNode = RoutingId.From("session-node");
+        var sourceSession = RoutingId.From("session-1");
+        var source = new ZLinkServiceWireCodec.RequestSourceFence(
+            "session-owner", 11, sourceNode, 13);
+        var binding = new ZLinkActorBoundSessionHandoffFence(
+            "actor-1", 1, sourceSession,
+            "binding-token", 17, 19);
         using var frame = new ZLinkSpotActorFrame(
             ActorRef("node-a", 1),
             ActorRef("node-a", 1),
-            RoutingId.From("session-node"),
-            RoutingId.From("session-1"),
+            sourceNode,
+            sourceSession,
             requestId: 0,
-            flags: 1,
-            routeContext: default,
+            flags: 0,
+            routeContext: new ZLinkBackendActorRouteContext(
+                new MeshOperationId(13, 19), 0, 23, 29, 31,
+                IsBoundSessionRoute: true),
             new ZlinkStreamHeader(
                 ZlinkStreamMessageKind.Send,
                 ZlinkStreamCodec.Raw,
@@ -72,12 +81,21 @@ public sealed class ActorHandoffTests
                 null,
                 "Packet",
                 ZlinkStreamMetadata.Empty),
-            Message.From(body.AsReadOnlySpan()));
+            Message.From(body.AsReadOnlySpan()),
+            sourceNodeGeneration: source.NodeGeneration,
+            requestSource: source,
+            applicationMetadata:
+                ZLinkActorBoundSessionHandoffMetadata.Encode(binding));
 
         Assert.Equal(
-            ZLinkActorHandoffCaptureResult.NotSealed,
+            ZLinkActorHandoffCaptureResult.Captured,
             state.Handoff.TryCapture(frame));
-        Assert.Empty(state.Handoff.SnapshotFrames());
+        state.Handoff.BeginCapture();
+        var captured = Assert.Single(state.Handoff.SnapshotFrames());
+        Assert.Equal(binding, captured.BoundSessionSource);
+        Assert.Equal(source, captured.RequestSource);
+        Assert.Equal("one-way", DecodeBody(captured));
+        _ = state.Handoff.AbortCapture();
     }
 
     [Fact]

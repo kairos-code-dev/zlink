@@ -226,8 +226,7 @@ bool redesigned_cpp_contract_symbols_do_not_regress (const std::filesystem::path
       std::string ("leave") + "Actor",
       std::string ("route_location_") + "resolver_t",
       std::string ("use_registry_") + "spot_resolver",
-      std::string ("registry_spot_") + "resolver",
-      std::string ("location_write_status_t::store_") + "unavailable"};
+      std::string ("registry_spot_") + "resolver"};
 
     for (const auto &scan_root : scan_roots) {
         if (!std::filesystem::exists (scan_root)) {
@@ -260,36 +259,6 @@ bool redesigned_cpp_contract_symbols_do_not_regress (const std::filesystem::path
         }
     }
     return ok;
-}
-
-/* location_write_status_t dropped its store_unavailable enumerator when the location store
- * design was unified: a configured store either works or the runtime does not start it, so a
- * partial-availability write status no longer exists. `termination_reason_t::store_unavailable`
- * (54-graceful-drain-handoff.ko.md §5) and `target_preflight_status_t::store_unavailable` are a
- * separate, still-required public contract, so the scan above only re-checks the qualified old
- * spelling. This function re-checks the enum body itself so the enumerator cannot come back
- * unqualified either. */
-bool location_write_status_does_not_regain_store_unavailable (const std::filesystem::path &root)
-{
-    const auto path = root / "framework/include/zlink/framework/contracts/locations/writes.hpp";
-    std::ifstream input (path);
-    const std::string content ((std::istreambuf_iterator<char> (input)),
-                               std::istreambuf_iterator<char> ());
-    const auto enum_at = content.find ("enum class location_write_status_t");
-    if (enum_at == std::string::npos) {
-        std::cerr << "location_write_status_t enum definition is missing: " << path << '\n';
-        return false;
-    }
-    const auto body_start = content.find ('{', enum_at);
-    const auto body_end = content.find ('}', body_start);
-    const auto body = content.substr (body_start, body_end - body_start);
-    if (body.find ("store_unavailable") != std::string::npos) {
-        std::cerr << "location_write_status_t regressed its removed store_unavailable "
-                     "enumerator: "
-                  << path << '\n';
-        return false;
-    }
-    return true;
 }
 
 std::size_t count_occurrences (const std::string &text, const std::string &needle)
@@ -1071,6 +1040,52 @@ bool http_hosting_public_surface_excludes_non_goal_features (const std::filesyst
     return ok;
 }
 
+bool location_store_public_surface_hides_domain_repositories (
+  const std::filesystem::path &root)
+{
+    bool ok = true;
+    const std::filesystem::path include_roots[] = {
+      root / "framework/include",
+      root / "extensions/framework-locations-redis/include"};
+    const std::string forbidden[] = {
+      "maintenance_stores.hpp",
+      "location_repository_t",
+      "relocation_repository_t",
+      "authority_key_t",
+      "aggregate_prepare_request_t",
+      "location_owner_token_t",
+      "redis_location_repository_t",
+      "redis_relocation_repository_t"};
+
+    for (const auto &include_root : include_roots) {
+        for (const auto &entry : std::filesystem::recursive_directory_iterator (include_root)) {
+            if (!entry.is_regular_file ()) {
+                continue;
+            }
+            const auto ext = entry.path ().extension ();
+            if (ext != ".hpp" && ext != ".h") {
+                continue;
+            }
+
+            std::ifstream input (entry.path ());
+            std::string line;
+            std::size_t line_no = 0;
+            while (std::getline (input, line)) {
+                ++line_no;
+                for (const auto &needle : forbidden) {
+                    if (line.find (needle) != std::string::npos) {
+                        std::cerr << "Store public surface exposes private domain repository: "
+                                  << entry.path () << ':' << line_no << " contains " << needle
+                                  << '\n';
+                        ok = false;
+                    }
+                }
+            }
+        }
+    }
+    return ok;
+}
+
 } // namespace
 
 int main ()
@@ -1093,6 +1108,17 @@ int main ()
       root / "framework/include/zlink/framework/contracts/locations/resolvers.hpp",
       std::string ("route_") + "location_resolver_t",
       "route resolver is internal-only and must not return to the public location surface");
+    const auto redis_store_header =
+      root / "extensions/framework-locations-redis/include/zlink/locations/redis.hpp";
+    ok &= file_does_not_contain (
+      redis_store_header, "options () const",
+      "Redis Store concrete classes must not add a public options query");
+    ok &= file_does_not_contain (
+      redis_store_header, "options = {}",
+      "Redis Store constructors require explicit provider options");
+    ok &= file_does_not_contain (
+      redis_store_header, "127.0.0.1",
+      "Redis provider options must not publish a default endpoint");
     const std::string removed_framework_facades[] = {
       "actors.hpp", "app.hpp",           "assembly.hpp",  "call.hpp",       "channels.hpp",
       "config.hpp", "error.hpp",         "execution.hpp", "handlers.hpp",   "health.hpp",
@@ -1250,7 +1276,15 @@ int main ()
     ok &= require_exists (root / "samples/Bingo/Server/Play/Domain/Bingo/bingo_game.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Play/Domain/Bingo/bingo_room_game.hpp");
     ok &= require_exists (
-      root / "samples/Bingo/Server/Play/Application/RoomAllocation/bingo_room_allocator.hpp");
+      root
+      / "samples/Bingo/Server/Matchmaking/Application/"
+        "bingo_match_reservation_store.hpp");
+    ok &= require_exists (
+      root / "samples/Bingo/Server/Matchmaking/matchmaking_server_host_factory.hpp");
+    ok &= require_exists (
+      root
+      / "samples/Bingo/Server/Matchmaking/Infrastructure/Redis/"
+        "redis_bingo_match_reservation_store.hpp");
     ok &= require_exists (
       root / "samples/Bingo/Server/Play/Infrastructure/ZLink/Actors/player_actor.hpp");
     ok &= require_exists (
@@ -1273,9 +1307,11 @@ int main ()
                             / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/Handlers/"
                               "match_bingo_actor_handler.hpp",
                           "SPOT actor packets must be registered as spot member functions");
-    ok &= require_exists (
+    ok &= require_absent (
       root
-      / "samples/Bingo/Server/Play/Infrastructure/ZLink/Handlers/allocate_bingo_room_handler.hpp");
+      / "samples/Bingo/Server/Play/Infrastructure/ZLink/Handlers/"
+        "allocate_bingo_room_handler.hpp",
+      "Matchmaker Instance Spot owns Redis reservation and Play does not allocate rooms");
     ok &= require_absent (
       root
         / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/"
@@ -1351,8 +1387,9 @@ int main ()
       "SPOT actor packets must be registered as spot member functions");
     ok &=
       require_exists (root / "samples/TicTacToe/Server/Play/Domain/TicTacToe/tictactoe_match.hpp");
-    ok &= require_exists (
-      root / "samples/TicTacToe/Server/Play/Application/GameCreation/tictactoe_game_creator.hpp");
+    ok &= require_absent (
+      root / "samples/TicTacToe/Server/Play/Application/GameCreation/tictactoe_game_creator.hpp",
+      "TicTacToe room creation belongs to the public Spot manager used by the API role");
     ok &= require_exists (
       root / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Actors/player_actor.hpp");
     ok &= require_exists (
@@ -1709,7 +1746,7 @@ int main ()
                          "-DZLINK_STREAM_CONNECTOR_BUILD_GODOT=OFF");
     ok &= file_contains (root / "connector/core/packaging/vcpkg/portfile.cmake",
                          "-DZLINK_STREAM_CONNECTOR_BUILD_AXMOL=OFF");
-    ok &= file_contains (root / "../../doc/stream-connector/cpp/guide/01-overview.ko.md",
+    ok &= file_contains (root / "../../doc/framework/cpp/guide/stream-connector/01-overview.ko.md",
                          "TypeScript connector 사용");
     ok &=
       file_does_not_contain (root / "CMakeLists.txt", "cocos-connector",
@@ -1771,6 +1808,7 @@ int main ()
       public_headers_do_not_expose_runtime_dependencies (root / "connector/engines/godot/include");
     ok &=
       public_headers_do_not_expose_runtime_dependencies (root / "connector/engines/axmol/include");
+    ok &= location_store_public_surface_hides_domain_repositories (root);
     ok &= sample_application_code_uses_message_codec (root);
     ok &= sample_server_code_does_not_block_on_task_result (root);
     ok &= sample_and_e2e_code_does_not_read_the_environment (root);
@@ -1789,7 +1827,6 @@ int main ()
       root / "e2e/RuntimeMonitoring/Client/Support/client_options.hpp", "--log-dir=",
       "RuntimeMonitoring client file paths and topology must come from typed config");
     ok &= redesigned_cpp_contract_symbols_do_not_regress (root);
-    ok &= location_write_status_does_not_regain_store_unavailable (root);
     ok &= contract_headers_have_compile_coverage (root, "framework/include", "");
     ok &= contract_headers_have_compile_coverage (root, "connector/core/include", "");
     ok &= contract_headers_have_compile_coverage (root, "http-client/include", "");

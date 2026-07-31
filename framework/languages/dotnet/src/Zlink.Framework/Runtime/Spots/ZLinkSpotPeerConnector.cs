@@ -27,7 +27,7 @@ internal sealed class ZLinkSpotPeerConnector(
         lock (_gate)
         {
             if (!connections.TryAddPeerManual(endpoint)) return ValueTask.FromResult(false);
-            try { ConnectPeer(peerRid, endpoint); }
+            try { ConnectPeer(peerRid, endpoint, "none"); }
             catch { connections.RollbackPeerManual(endpoint); throw; }
             return ValueTask.FromResult(true);
         }
@@ -48,7 +48,10 @@ internal sealed class ZLinkSpotPeerConnector(
         }
     }
 
-    public bool ConnectPeerAuto(RoutingId? peerRid, string endpoint)
+    public bool ConnectPeerAuto(
+        RoutingId? peerRid,
+        string endpoint,
+        string expectedSecurityIdentity)
     {
         lock (_gate)
         {
@@ -58,7 +61,8 @@ internal sealed class ZLinkSpotPeerConnector(
                 connections.RollbackPeerAuto,
                 () =>
                 {
-                    if (peerRid is { Size: > 0 } rid) ConnectPeer(rid, endpoint);
+                    if (peerRid is { Size: > 0 } rid)
+                        ConnectPeer(rid, endpoint, expectedSecurityIdentity);
                     else ConnectPeer(endpoint);
                 });
         }
@@ -114,8 +118,11 @@ internal sealed class ZLinkSpotPeerConnector(
         node.ConnectPeer(endpoint);
     }
 
-    private void ConnectPeer(RoutingId peerRid, string endpoint)
+    private void ConnectPeer(
+        RoutingId peerRid,
+        string endpoint,
+        string expectedSecurityIdentity)
     {
-        node.ConnectPeer(peerRid, endpoint);
+        node.ConnectPeer(peerRid, endpoint, expectedSecurityIdentity);
     }
 }

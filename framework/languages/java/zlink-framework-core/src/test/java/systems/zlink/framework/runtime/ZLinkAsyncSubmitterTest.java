@@ -37,7 +37,7 @@ final class ZLinkAsyncSubmitterTest {
         options.addClientServerChannel("profile").client().connect("inproc://profile");
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, new BackpressuredBackend())) {
+                 ZLinkFrameworkRuntimeTestAccess.start(options, new BackpressuredBackend())) {
             var result = runtime.client()
                 .sendToChannel("profile", "hello")
                 .submit();
@@ -54,7 +54,7 @@ final class ZLinkAsyncSubmitterTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var channel = options.addFanoutChannel("events").enablePublisher("inproc://events"); };
 
-        try (ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, backend)) {
+        try (ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntimeTestAccess.start(options, backend)) {
             var submission = runtime.fanout()
                 .publish("events", "payload")
                 .submit();
@@ -72,7 +72,7 @@ final class ZLinkAsyncSubmitterTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addFanoutChannel("events").enablePublisher("inproc://events");
 
-        try (ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, backend)) {
+        try (ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntimeTestAccess.start(options, backend)) {
             var call = runtime.fanout().publish("events", "payload");
 
             assertEquals(
@@ -98,7 +98,7 @@ final class ZLinkAsyncSubmitterTest {
         options.setDefaultRequestTimeout(Duration.ofMillis(20));
         options.addClientServerChannel("profile").client().connect("inproc://profile");
 
-        try (ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, new NoReplyBackend())) {
+        try (ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntimeTestAccess.start(options, new NoReplyBackend())) {
             CompletionException error = org.junit.jupiter.api.Assertions.assertThrows(
                 CompletionException.class,
                 () -> runtime.client()
@@ -117,7 +117,7 @@ final class ZLinkAsyncSubmitterTest {
         options.setDefaultRequestTimeout(Duration.ofSeconds(5));
         options.addClientServerChannel("profile").client().connect("inproc://profile");
 
-        ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, new NoReplyBackend());
+        ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntimeTestAccess.start(options, new NoReplyBackend());
         var pending = runtime.client()
             .requestToChannel("profile", "hello")
             .submit(String.class)
@@ -138,7 +138,7 @@ final class ZLinkAsyncSubmitterTest {
         options.setDefaultRequestTimeout(Duration.ofSeconds(2));
         options.addClientServerChannel("profile").client().connect("inproc://profile");
 
-        try (ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, backend)) {
+        try (ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntimeTestAccess.start(options, backend)) {
             var pending = runtime.client()
                 .requestToChannel("profile", "hello")
                 .submit(String.class)
@@ -155,7 +155,7 @@ final class ZLinkAsyncSubmitterTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addClientServerChannel("profile").client().connect("inproc://profile");
 
-        ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(
+        ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntimeTestAccess.start(
             options,
             new CloseFailureBackend());
 

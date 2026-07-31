@@ -24,7 +24,8 @@ int main (int argc, char **argv)
         rc_server::add_custom_codecs (options.codecs ());
         options.add_client_server_channel (
                  zlink::framework::e2e::registration_codec::api_channel)
-          .enable_client (api_endpoint);
+          .client ()
+          .connect (api_endpoint);
         options.http ()
           .listen (http_endpoint)
           .map_health ("/health")

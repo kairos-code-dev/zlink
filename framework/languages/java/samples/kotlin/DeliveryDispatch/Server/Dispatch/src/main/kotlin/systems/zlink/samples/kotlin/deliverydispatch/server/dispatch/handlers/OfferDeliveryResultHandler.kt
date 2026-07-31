@@ -1,6 +1,6 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.dispatch.handlers
 
-import systems.zlink.framework.channels.ZLinkSendContext
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.kotlin.ZLinkSuspendingSendHandler
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
@@ -19,7 +19,7 @@ class OfferDeliveryResultHandler(
     private val offers: DeliveryOfferStore,
     private val worker: DispatchWorker,
 ) : ZLinkSuspendingSendHandler<OfferDeliveryResultMsg> {
-    override suspend fun handle(message: OfferDeliveryResultMsg, context: ZLinkSendContext) {
+    override suspend fun handle(message: OfferDeliveryResultMsg, context: ZLinkMessageContext) {
         val offer = offers.settle(message.deliveryId, message.attempt)
         if (offer == null) {
             println(

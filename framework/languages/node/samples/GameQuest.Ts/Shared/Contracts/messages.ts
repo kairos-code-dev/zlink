@@ -29,6 +29,10 @@ type DeleteQuestProjectionRes = { deleted: boolean };
 class RebuildQuestProjectionReq {
   constructor(readonly playerId: string, readonly questId: string) {}
 }
+class DeactivatePlayerQuestSpotReq {
+  constructor(readonly playerId: string) {}
+}
+type DeactivatePlayerQuestSpotRes = { closed: boolean };
 type GetGameplaySnapshotReq = { playerId: string };
 type GetGameplaySnapshotRes = {
   playerId: string;
@@ -228,6 +232,7 @@ export {
   SyncQuestProgressReq,
   DeleteQuestProjectionReq,
   RebuildQuestProjectionReq,
+  DeactivatePlayerQuestSpotReq,
   GameplayMsg,
   PacketNames,
   QuestIds,
@@ -255,6 +260,7 @@ export type {
   GetQuestProgressRes,
   SyncQuestProgressRes,
   DeleteQuestProjectionRes,
+  DeactivatePlayerQuestSpotRes,
   GetGameplaySnapshotReq,
   GetGameplaySnapshotRes,
   KillCountSnapshot,

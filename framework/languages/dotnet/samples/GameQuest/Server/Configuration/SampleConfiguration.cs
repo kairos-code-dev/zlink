@@ -6,8 +6,6 @@ namespace GameQuest.Server.Configuration;
 public static class SampleNames
 {
     public const string MeshName = "gamequest";
-    public const string GameApiChannel = "gamequest.session.api";
-    public const string GameApiHandlerGroup = "game-api";
     public const string SessionActorType = "gamequest.session.actor";
     public const string PlayerQuestSpotType = "gamequest.player-quest";
     public const string StreamNode = "gamequest.stream";

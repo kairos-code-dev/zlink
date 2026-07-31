@@ -90,6 +90,15 @@ public readonly record struct ZLinkFrameworkTerminationResult(
     ZLinkFrameworkTerminationOutcome Outcome,
     ZLinkFrameworkTerminationReason Reason);
 
+public readonly record struct ZLinkInboundDispatchStatus(
+    ulong ApplicationHwmBytes,
+    ulong PendingPayloadBytes,
+    ulong QueuedPayloadBytes,
+    ulong ActivePayloadBytes,
+    bool ApplicationReceivePaused,
+    ulong PendingCompletionSends,
+    ulong CompletionSendLimit);
+
 public sealed record ZLinkFrameworkRuntimeStatus(
     ZLinkFrameworkRuntimeState State,
     bool IsReady,
@@ -98,7 +107,8 @@ public sealed record ZLinkFrameworkRuntimeStatus(
     ZLinkFrameworkRelocationResult? RelocationResult,
     ZLinkFrameworkTerminationResult? TerminationResult,
     ulong Sequence,
-    DateTimeOffset ObservedAt);
+    DateTimeOffset ObservedAt,
+    ZLinkInboundDispatchStatus InboundDispatch = default);
 
 public interface IZLinkFrameworkRuntime
 {

@@ -1,6 +1,6 @@
 package systems.zlink.samples.kotlin.bingo.server.api.handlers
 
-import systems.zlink.framework.channels.ZLinkRequestContext
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
@@ -12,7 +12,7 @@ class AuthenticatePlayerHandler(
 ) : ZLinkSuspendingRequestHandler<AuthenticatePlayerReq, AuthenticatePlayerRes> {
     override suspend fun handle(
         request: AuthenticatePlayerReq,
-        context: ZLinkRequestContext,
+        context: ZLinkMessageContext,
     ) = run {
         AuthenticatePlayerRes(
             accepted = true,

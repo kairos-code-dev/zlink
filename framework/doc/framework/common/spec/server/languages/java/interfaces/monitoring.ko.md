@@ -20,6 +20,15 @@ import systems.zlink.framework.runtime.host.ZLinkFrameworkRelocationResult;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkTerminationResult;
 
+public record ZLinkInboundDispatchStatus(
+    long applicationHwmBytes,
+    long pendingPayloadBytes,
+    long queuedPayloadBytes,
+    long activePayloadBytes,
+    boolean applicationReceivePaused,
+    long pendingCompletionSends,
+    long completionSendLimit) {}
+
 public record ZLinkFrameworkRuntimeStatus(
     ZLinkFrameworkRuntimeState state,
     boolean isReady,
@@ -27,6 +36,7 @@ public record ZLinkFrameworkRuntimeStatus(
     Optional<Instant> deadline,
     Optional<ZLinkFrameworkRelocationResult> relocationResult,
     Optional<ZLinkFrameworkTerminationResult> terminationResult,
+    ZLinkInboundDispatchStatus inboundDispatch,
     long sequence,
     Instant observedAt) {}
 ```

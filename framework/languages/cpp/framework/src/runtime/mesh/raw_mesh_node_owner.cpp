@@ -19,6 +19,47 @@ namespace zlink::framework::runtime::mesh
 namespace
 {
 
+constexpr std::size_t max_completion_control_parts = 64;
+constexpr std::size_t max_completion_control_bytes = 256u * 1024u;
+constexpr std::size_t max_pending_completion_controls = 1024;
+
+bool completion_control_command (protocol::command kind) noexcept
+{
+    switch (kind) {
+        case protocol::command::hello:
+        case protocol::command::admit:
+        case protocol::command::update:
+        case protocol::command::reject:
+        case protocol::command::livenessProbe:
+        case protocol::command::livenessAck:
+        case protocol::command::relocationPrepare:
+        case protocol::command::relocationReady:
+        case protocol::command::relocationReserved:
+        case protocol::command::relocationAck:
+        case protocol::command::relocationSeal:
+        case protocol::command::relocationComplete:
+        case protocol::command::replyRelay:
+        case protocol::command::replyRelayAck:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool completion_control_size_is_bounded (
+  const detail::backend::raw_message_t &parts) noexcept
+{
+    if (parts.empty () || parts.size () > max_completion_control_parts)
+        return false;
+    std::size_t total = 0;
+    for (const auto &part : parts) {
+        if (part.size () > max_completion_control_bytes - total)
+            return false;
+        total += part.size ();
+    }
+    return true;
+}
+
 std::string advertised_endpoint (
   std::string bound_endpoint,
   const std::optional<std::string> &advertise_host)
@@ -75,6 +116,78 @@ bool raw_mesh_byte_vector_less_t::operator() (
       left.begin (), left.end (), right.begin (), right.end ());
 }
 
+void raw_mesh_connection_candidates_t::ready (
+  const std::vector<std::uint8_t> &node_routing_id,
+  std::vector<std::uint8_t> connection_id,
+  service_connection_direction_t direction)
+{
+    if (node_routing_id.empty () || connection_id.empty ())
+        return;
+    auto &physical = _candidates[node_routing_id];
+    auto key = connection_id;
+    physical.insert_or_assign (
+      std::move (key),
+      raw_mesh_connection_candidate_t{
+        std::move (connection_id), direction,
+        _next_ready_sequence++});
+    if (_next_ready_sequence == 0)
+        _next_ready_sequence = 1;
+}
+
+std::optional<raw_mesh_connection_candidate_t>
+raw_mesh_connection_candidates_t::for_handshake (
+  const std::vector<std::uint8_t> &node_routing_id,
+  service_connection_direction_t preferred_direction) const
+{
+    const auto found = _candidates.find (node_routing_id);
+    if (found == _candidates.end ())
+        return std::nullopt;
+    const raw_mesh_connection_candidate_t *preferred = nullptr;
+    const raw_mesh_connection_candidate_t *newest = nullptr;
+    for (const auto &[_, candidate] : found->second) {
+        if (newest == nullptr
+            || newest->ready_sequence < candidate.ready_sequence)
+            newest = &candidate;
+        if (candidate.direction == preferred_direction
+            && (preferred == nullptr
+                || preferred->ready_sequence
+                     < candidate.ready_sequence))
+            preferred = &candidate;
+    }
+    /* The public routed receive contract exposes the peer RID but not the
+     * physical connection ID. The admission command supplies the connection
+     * direction: hello selects the inbound candidate and admit/update selects
+     * the outbound candidate. A unilateral connection has only the opposite
+     * local direction for one half of the exchange, so it falls back to that
+     * sole direction. Within one direction, ROUTER handover makes the most
+     * recently ready physical candidate the active route. */
+    return preferred != nullptr
+      ? std::optional<raw_mesh_connection_candidate_t> (*preferred)
+      : newest != nullptr
+          ? std::optional<raw_mesh_connection_candidate_t> (*newest)
+          : std::nullopt;
+}
+
+bool raw_mesh_connection_candidates_t::disconnect (
+  const std::vector<std::uint8_t> &node_routing_id,
+  const std::vector<std::uint8_t> &connection_id)
+{
+    const auto found = _candidates.find (node_routing_id);
+    if (found == _candidates.end ())
+        return false;
+    const auto removed = found->second.erase (connection_id) != 0;
+    if (found->second.empty ())
+        _candidates.erase (found);
+    return removed;
+}
+
+std::size_t raw_mesh_connection_candidates_t::size (
+  const std::vector<std::uint8_t> &node_routing_id) const
+{
+    const auto found = _candidates.find (node_routing_id);
+    return found == _candidates.end () ? 0 : found->second.size ();
+}
+
 raw_mesh_node_owner_t::raw_mesh_node_owner_t (raw_mesh_node_options_t options) :
     _options (std::move (options)),
     _topology (_options.descriptor),
@@ -102,14 +215,17 @@ void raw_mesh_node_owner_t::start ()
         throw std::logic_error ("raw mesh node owner cannot restart after close");
     }
     auto context = std::make_unique<zlink::context_t> ();
+    context->options ().auto_hwm_enabled (true);
+    context->options ().auto_hwm_profile (
+      _options.auto_hwm_profile);
     auto router = std::make_unique<zlink::router_socket_t> (*context);
     router->options ().handover (true);
     router->options ().mandatory (true);
     router->options ().linger (std::chrono::milliseconds (0));
     router->options ().send_hwm (
-      zlink::message_count_t::value (_options.send_high_water_mark));
+      zlink::byte_count_t::bytes (_options.send_high_water_mark));
     router->options ().recv_hwm (
-      zlink::message_count_t::value (_options.receive_high_water_mark));
+      zlink::byte_count_t::bytes (_options.receive_high_water_mark));
     router->set_send_ready_handler ([this] {
         std::function<void ()> handler;
         {
@@ -140,6 +256,23 @@ void raw_mesh_node_owner_t::start ()
 
     _port = std::make_shared<detail::backend::raw_route_port_t> (
       *router, &_socket_mutex);
+    {
+        std::lock_guard control_lock (_completion_control_mutex);
+        _accept_completion_controls = true;
+    }
+    _port->set_completion_control_handler (
+      [this] (detail::backend::raw_bytes_t source,
+              detail::backend::raw_message_t parts) {
+          accept_completion_control (
+            std::move (source), std::move (parts));
+      });
+    auto poller = std::make_unique<zlink::poller_t> ();
+    poller->add (
+      *router,
+      zlink::poll_event_flag_t::pollin
+        | zlink::poll_event_flag_t::pollcompletion,
+      1);
+    _poller = std::move (poller);
     _monitor = std::move (monitor);
     _router = std::move (router);
     _context = std::move (context);
@@ -149,13 +282,20 @@ void raw_mesh_node_owner_t::close () noexcept
 {
     std::shared_ptr<detail::backend::raw_route_port_t> port;
     std::unique_ptr<zlink::router_socket_t> router;
+    std::unique_ptr<zlink::poller_t> poller;
     std::unique_ptr<zlink::socket_monitor_t> monitor;
     std::unique_ptr<zlink::context_t> context;
+    {
+        std::lock_guard control_lock (_completion_control_mutex);
+        _accept_completion_controls = false;
+        _completion_controls.clear ();
+    }
     {
         std::lock_guard lifecycle_lock (_lifecycle_mutex);
         _closed = true;
         port = std::move (_port);
         monitor = std::move (_monitor);
+        poller = std::move (_poller);
         router = std::move (_router);
         context = std::move (_context);
     }
@@ -167,6 +307,13 @@ void raw_mesh_node_owner_t::close () noexcept
     if (monitor) {
         try {
             monitor->close ();
+        }
+        catch (...) {
+        }
+    }
+    if (poller) {
+        try {
+            poller->close ();
         }
         catch (...) {
         }
@@ -233,6 +380,7 @@ bool raw_mesh_node_owner_t::connect_peer (const std::string &endpoint)
     try {
         std::lock_guard socket_lock (_socket_mutex);
         _router->connect (endpoint);
+        _outbound_endpoints.insert (endpoint);
         return true;
     }
     catch (...) {
@@ -253,11 +401,35 @@ bool raw_mesh_node_owner_t::connect_peer (
     try {
         std::lock_guard socket_lock (_socket_mutex);
         _router->connect (endpoint);
+        _outbound_endpoints.insert (endpoint);
         return true;
     }
     catch (...) {
         return false;
     }
+}
+
+void raw_mesh_node_owner_t::expect_peer (
+  service_node_descriptor_t expected_descriptor)
+{
+    if (expected_descriptor.node_routing_id.empty ()
+        || expected_descriptor.advertised_endpoint.empty ())
+        return;
+    std::lock_guard lifecycle_lock (_lifecycle_mutex);
+    _expected_peers.insert_or_assign (
+      expected_descriptor.node_routing_id,
+      std::move (expected_descriptor));
+}
+
+void raw_mesh_node_owner_t::forget_peer (
+  const std::vector<std::uint8_t> &node_routing_id,
+  const std::string &endpoint)
+{
+    std::lock_guard lifecycle_lock (_lifecycle_mutex);
+    const auto found = _expected_peers.find (node_routing_id);
+    if (found != _expected_peers.end ()
+        && found->second.advertised_endpoint == endpoint)
+        _expected_peers.erase (found);
 }
 
 peer_admission_result_t raw_mesh_node_owner_t::admit_peer (
@@ -457,12 +629,45 @@ bool raw_mesh_node_owner_t::send_header_only (
   const std::vector<std::uint8_t> &target_routing_id,
   std::vector<std::uint8_t> header)
 {
+    bool use_completion = false;
+    try {
+        const auto decoded = protocol::decode_header (header);
+        const auto admission =
+          decoded.kind == protocol::command::hello
+          || decoded.kind == protocol::command::admit
+          || decoded.kind == protocol::command::update
+          || decoded.kind == protocol::command::reject;
+        use_completion =
+          completion_control_command (decoded.kind)
+          && (admission || _topology.peer (target_routing_id));
+    }
+    catch (const protocol::service_wire_error_t &) {
+    }
+    if (use_completion)
+        return send_completion_control (
+          target_routing_id, {std::move (header)});
     std::shared_ptr<detail::backend::raw_route_port_t> port;
     {
         std::lock_guard lifecycle_lock (_lifecycle_mutex);
         port = _port;
     }
     return port && port->send (target_routing_id, {std::move (header)});
+}
+
+bool raw_mesh_node_owner_t::send_completion_control (
+  const std::vector<std::uint8_t> &target_routing_id,
+  detail::backend::raw_message_t parts)
+{
+    if (!completion_control_size_is_bounded (parts))
+        return false;
+    std::shared_ptr<detail::backend::raw_route_port_t> port;
+    {
+        std::lock_guard lifecycle_lock (_lifecycle_mutex);
+        port = _port;
+    }
+    return port
+           && port->send_completion_control (
+             target_routing_id, parts);
 }
 
 bool raw_mesh_node_owner_t::send_session_relocation_route (
@@ -571,7 +776,13 @@ bool raw_mesh_node_owner_t::send_reply_relay (
         parts.emplace_back (
           protocol::encode_application_payload (*application_reply));
     }
-    return port->send (target_routing_id, std::move (parts));
+    if (!application_reply
+        && _topology.peer (target_routing_id)
+        && completion_control_size_is_bounded (parts)) {
+        return port->send_completion_control (
+          target_routing_id, parts);
+    }
+    return port->send (target_routing_id, parts);
 }
 
 bool raw_mesh_node_owner_t::send_reply_relay_ack (
@@ -791,6 +1002,42 @@ bool raw_mesh_node_owner_t::request_user_spot_create (
           return pack_infrastructure_reply (parts);
       },
       timeout, std::move (callback));
+}
+
+bool raw_mesh_node_owner_t::request_actor_create (
+  const std::vector<std::uint8_t> &target_routing_id,
+  protocol::actor_create_header_t request,
+  std::chrono::milliseconds timeout,
+  foundation::operation_registry_t::callback_t callback)
+{
+    const auto local = _topology.local_descriptor ();
+    if (request.source_node_routing_id != local.node_routing_id
+        || request.source_node_generation != local.lifecycle_generation
+        || request.reservation.target_node_routing_id
+             != target_routing_id)
+        throw std::invalid_argument (
+          "Actor create source or target fence is inconsistent");
+    return request_infrastructure (
+      target_routing_id,
+      [request = std::move (request)] (
+        std::uint64_t correlation) mutable {
+          request.correlation = correlation;
+          return protocol::encode_actor_create_header (request);
+      },
+      [] (const detail::backend::raw_message_t &parts) {
+          if (parts.empty () || parts.size () > 2)
+              throw protocol::service_wire_error_t (
+                "Actor create reply has an invalid part count");
+          const auto reply =
+            protocol::decode_actor_create_reply (parts.front ());
+          if (reply.header.terminal_result != 0
+              && parts.size () != 1)
+              throw protocol::service_wire_error_t (
+                "failed Actor create reply carries a payload");
+          if (parts.size () == 2)
+              (void) protocol::decode_application_payload (parts[1]);
+          return pack_infrastructure_reply (parts);
+      }, timeout, std::move (callback));
 }
 
 bool raw_mesh_node_owner_t::send_instance_spot_activation (
@@ -1148,6 +1395,50 @@ bool raw_mesh_node_owner_t::reply_user_spot_create (
               protocol::encode_application_payload (*application_reply)});
 }
 
+bool raw_mesh_node_owner_t::reply_actor_create (
+  const service_mailbox_record_t &request,
+  const protocol::actor_create_reply_t &reply,
+  std::optional<protocol::application_payload_t> application_reply)
+{
+    if (!request.correlation
+        || reply.header.correlation != *request.correlation)
+        throw std::invalid_argument (
+          "Actor create reply correlation does not match");
+    if (reply.header.terminal_result != 0 && application_reply)
+        throw std::invalid_argument (
+          "failed Actor create reply cannot carry a payload");
+    detail::backend::raw_message_t parts{
+      protocol::encode_actor_create_reply (
+        reply.header.correlation,
+        reply.header.terminal_result,
+        reply.header.failure_code,
+        reply.result,
+        reply.node_routing_id,
+        reply.actor_id,
+        reply.object_generation)};
+    if (application_reply)
+        parts.push_back (protocol::encode_application_payload (
+          *application_reply));
+    const auto local = _topology.local_descriptor ();
+    if (request.source_routing_id == local.node_routing_id)
+        return _operations->complete (
+          operation_id (local.lifecycle_generation,
+                        *request.correlation),
+          pack_infrastructure_reply (parts));
+    if (parts.size () == 1)
+        return reply_infrastructure (
+          request, std::move (parts.front ()));
+    std::shared_ptr<detail::backend::raw_route_port_t> port;
+    {
+        std::lock_guard lifecycle_lock (_lifecycle_mutex);
+        port = _port;
+    }
+    return port && port->reply (
+      detail::backend::raw_received_t{
+        request.source_routing_id, request.request_sequence, {}},
+      std::move (parts));
+}
+
 bool raw_mesh_node_owner_t::reply_instance_spot_activation (
   const service_mailbox_record_t &request,
   std::uint32_t terminal_result,
@@ -1222,18 +1513,84 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::enqueue_received_or_retain (
     return raw_mesh_pump_result_t::backpressured;
 }
 
+void raw_mesh_node_owner_t::accept_completion_control (
+  detail::backend::raw_bytes_t source_routing_id,
+  detail::backend::raw_message_t parts)
+{
+    if (!completion_control_size_is_bounded (parts))
+        return;
+    try {
+        const auto header = protocol::decode_header (parts.front ());
+        if (!completion_control_command (header.kind))
+            return;
+        if (parts.size () != 1)
+            return;
+
+        std::optional<std::uint64_t> admitted_generation;
+        if (header.kind != protocol::command::hello
+            && header.kind != protocol::command::admit
+            && header.kind != protocol::command::update
+            && header.kind != protocol::command::reject) {
+            const auto peer = _topology.peer (source_routing_id);
+            if (!peer)
+                return;
+            admitted_generation =
+              peer->descriptor.lifecycle_generation;
+        }
+
+        std::lock_guard lock (_completion_control_mutex);
+        if (!_accept_completion_controls
+            || _completion_controls.size ()
+                 >= max_pending_completion_controls)
+            return;
+        _completion_controls.push_back (
+          pending_completion_control_t{
+            detail::backend::raw_received_t{
+              std::move (source_routing_id),
+              std::nullopt,
+              std::move (parts)},
+            admitted_generation});
+    }
+    catch (const protocol::service_wire_error_t &) {
+    }
+}
+
 raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
-  service_liveness_registry_t::clock_t::time_point now)
+  service_liveness_registry_t::clock_t::time_point now,
+  bool accept_application_receive)
 {
     std::shared_ptr<detail::backend::raw_route_port_t> port;
     {
         std::lock_guard lifecycle_lock (_lifecycle_mutex);
         port = _port;
+        if (_poller) {
+            try {
+                zlink::poll_event_t event;
+                (void) _poller->wait (
+                  &event, 1, std::chrono::milliseconds::zero ());
+            }
+            catch (...) {
+                return raw_mesh_pump_result_t::protocol_error;
+            }
+        }
     }
     if (!port) {
         return raw_mesh_pump_result_t::no_data;
     }
-    if (_pending_received) {
+    std::optional<detail::backend::raw_received_t> received;
+    std::optional<std::uint64_t> completion_peer_generation;
+    {
+        std::lock_guard lock (_completion_control_mutex);
+        if (!_completion_controls.empty ()) {
+            auto control = std::move (_completion_controls.front ());
+            _completion_controls.pop_front ();
+            received.emplace (std::move (control.received));
+            completion_peer_generation =
+              control.admitted_peer_generation;
+        }
+    }
+    if (!received && _pending_received
+        && accept_application_receive) {
         const auto accepted_result =
           _pending_received->accepted_result;
         if (!_mailbox.try_enqueue (
@@ -1243,7 +1600,8 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
         _pending_received.reset ();
         return accepted_result;
     }
-    auto received = port->try_receive ();
+    if (!received && accept_application_receive)
+        received = port->try_receive ();
     if (!received) {
         return raw_mesh_pump_result_t::no_data;
     }
@@ -1261,32 +1619,58 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
             const auto descriptor = protocol::decode_route_mesh_admission (
               received->parts.front (), header.kind,
               received->source_routing_id);
+            const auto preferred_direction =
+              header.kind == protocol::command::hello
+                ? service_connection_direction_t::inbound
+                : service_connection_direction_t::outbound;
             std::vector<std::uint8_t> connection_id;
+            service_connection_direction_t direction =
+              preferred_direction;
+            std::optional<service_node_descriptor_t>
+              expected_descriptor;
             {
                 std::lock_guard lifecycle_lock (_lifecycle_mutex);
                 const auto connection =
-                  _connections.find (received->source_routing_id);
-                if (connection == _connections.end ()) {
+                  _connections.for_handshake (
+                    received->source_routing_id,
+                    preferred_direction);
+                if (!connection) {
                     return raw_mesh_pump_result_t::protocol_error;
                 }
-                connection_id = connection->second;
+                connection_id = connection->connection_id;
+                direction = connection->direction;
                 const auto expected =
                   _expected_peers.find (received->source_routing_id);
                 if (expected != _expected_peers.end ()
                     && (expected->second.mesh_name != descriptor.mesh_name
                         || expected->second.node_routing_id
-                             != descriptor.node_routing_id)) {
-                    (void) port->send (
+                             != descriptor.node_routing_id
+                        || expected->second.advertised_endpoint
+                             != descriptor.advertised_endpoint
+                        || expected->second.security_identity
+                             != descriptor.security_identity
+                        || (expected->second.lifecycle_generation != 0
+                            && expected->second.lifecycle_generation
+                                 != descriptor.lifecycle_generation))) {
+                    (void) port->send_completion_control (
                       received->source_routing_id,
                       {protocol::encode_reject (3)});
                     return raw_mesh_pump_result_t::infrastructure;
                 }
+                if (expected != _expected_peers.end ()
+                    && expected->second.lifecycle_generation != 0)
+                    expected_descriptor = expected->second;
             }
             const auto admission =
-              _topology.admit (descriptor, connection_id);
+              expected_descriptor
+                ? _topology.admit (
+                    descriptor, connection_id, direction,
+                    *expected_descriptor)
+                : _topology.admit (
+                    descriptor, connection_id, direction);
             if (admission == peer_admission_result_t::not_required) {
                 if (header.kind == protocol::command::hello) {
-                    (void) port->send (
+                    (void) send_completion_control (
                       received->source_routing_id,
                       {protocol::encode_route_mesh_admission (
                         protocol::command::admit,
@@ -1300,8 +1684,20 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
                     }
                     catch (...) {
                     }
-                    _connections.erase (
-                      received->source_routing_id);
+                    (void) _connections.disconnect (
+                      received->source_routing_id,
+                      connection_id);
+                }
+                return raw_mesh_pump_result_t::infrastructure;
+            }
+            if (admission
+                == peer_admission_result_t::duplicate_connection) {
+                if (header.kind == protocol::command::hello) {
+                    (void) send_completion_control (
+                      received->source_routing_id,
+                      {protocol::encode_route_mesh_admission (
+                        protocol::command::admit,
+                        _topology.local_descriptor ())});
                 }
                 return raw_mesh_pump_result_t::infrastructure;
             }
@@ -1311,7 +1707,7 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
                   : admission == peer_admission_result_t::stale_descriptor
                     ? 7u
                     : 11u;
-                (void) port->send (
+                (void) send_completion_control (
                   received->source_routing_id,
                   {protocol::encode_reject (reason)});
                 return raw_mesh_pump_result_t::infrastructure;
@@ -1319,7 +1715,7 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
             _liveness.admit (
               descriptor.node_routing_id, connection_id, now);
             if (header.kind == protocol::command::hello) {
-                (void) port->send (
+                (void) send_completion_control (
                   received->source_routing_id,
                   {protocol::encode_route_mesh_admission (
                     protocol::command::admit,
@@ -1345,6 +1741,11 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
         if (!admitted) {
             return raw_mesh_pump_result_t::protocol_error;
         }
+        if (completion_peer_generation
+            && admitted->descriptor.lifecycle_generation
+                 != *completion_peer_generation) {
+            return raw_mesh_pump_result_t::protocol_error;
+        }
         if (header.kind == protocol::command::livenessProbe
             || header.kind == protocol::command::livenessAck) {
             if (received->parts.size () != 1) {
@@ -1357,7 +1758,7 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
                   received->source_routing_id, admitted->connection_id,
                   record.probe_id);
                 if (!ack
-                    || !port->send (
+                    || !send_completion_control (
                       received->source_routing_id,
                       {protocol::encode_liveness (
                         protocol::command::livenessAck, record.probe_id)})) {
@@ -1413,7 +1814,8 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
                   : std::nullopt},
               raw_mesh_pump_result_t::infrastructure);
         }
-        if (header.kind == protocol::command::userSpotCreate
+        if (header.kind == protocol::command::actorCreate
+            || header.kind == protocol::command::userSpotCreate
             || header.kind == protocol::command::userSpotClose) {
             if (header.flags != 0 || received->parts.size () != 1
                 || !received->request_sequence) {
@@ -1425,8 +1827,19 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
             std::vector<std::uint8_t> target_node_routing_id;
             std::uint64_t target_node_generation = 0;
             std::uint64_t correlation = 0;
-            if (header.kind
-                == protocol::command::userSpotCreate) {
+            if (header.kind == protocol::command::actorCreate) {
+                const auto create =
+                  protocol::decode_actor_create_header (
+                    received->parts.front ());
+                source_node_routing_id = create.source_node_routing_id;
+                source_node_generation = create.source_node_generation;
+                target_node_routing_id =
+                  create.reservation.target_node_routing_id;
+                target_node_generation =
+                  create.reservation.target_node_generation;
+                correlation = create.correlation;
+            } else if (header.kind
+                       == protocol::command::userSpotCreate) {
                 const auto create =
                   protocol::decode_user_spot_create_header (
                     received->parts.front ());
@@ -1505,25 +1918,28 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
                     return std::pair{value.coordinator.node_routing_id,
                                      value.coordinator.node_generation};
                 }
-                else if constexpr (std::is_same_v<record_t,
-                                                  protocol::relocation_ready_t>
-                                   || std::is_same_v<record_t,
-                                                  protocol::relocation_reserved_t>) {
+                else if constexpr (std::is_same_v<
+                                     record_t,
+                                     protocol::relocation_ready_t>) {
                     return std::pair{value.candidate.node_routing_id,
                                      value.candidate.node_generation};
                 }
+                else if constexpr (std::is_same_v<
+                                     record_t,
+                                     protocol::relocation_reserved_t>) {
+                    return std::pair{
+                      value.coordinator.node_routing_id,
+                      value.coordinator.node_generation};
+                }
                 else if constexpr (std::is_same_v<record_t,
-                                                  protocol::relocation_data_t>
-                                   || std::is_same_v<record_t,
+                                                  protocol::relocation_data_t>) {
+                    // The record source is the original request source, not
+                    // the relocation transport peer. The registered target
+                    // validates the exact relocation source peer.
+                    return std::nullopt;
+                }
+                else if constexpr (std::is_same_v<record_t,
                                                   protocol::relocation_complete_t>) {
-                    if constexpr (std::is_same_v<record_t,
-                                                 protocol::relocation_data_t>) {
-                        if (value.sender_role
-                            == protocol::relocation_role_t::coordinator)
-                            return std::pair{
-                              value.coordinator.node_routing_id,
-                              value.coordinator.node_generation};
-                    }
                     return std::pair{value.source.node_routing_id,
                                      value.source.node_generation};
                 }
@@ -1886,14 +2302,25 @@ std::size_t raw_mesh_node_owner_t::drain_monitor_events (
             std::shared_ptr<detail::backend::raw_route_port_t> port;
             {
                 std::lock_guard lifecycle_lock (_lifecycle_mutex);
-                _connections.insert_or_assign (
-                  node_routing_id, connection_id);
+                const auto outbound =
+                  _outbound_endpoints.contains (
+                    event->remote_addr);
+                /* connect_peer records every locally initiated endpoint.
+                 * A ready event whose remote endpoint is in that set is the
+                 * outbound physical candidate; accepted connections retain
+                 * inbound direction. dispatch_ready drains these monitor
+                 * events before it pumps admission messages. */
+                _connections.ready (
+                  node_routing_id, connection_id,
+                  outbound
+                    ? service_connection_direction_t::outbound
+                    : service_connection_direction_t::inbound);
                 port = _port;
             }
             if (port) {
                 bool hello_sent = false;
                 try {
-                    hello_sent = port->send (
+                    hello_sent = send_completion_control (
                       node_routing_id,
                       {protocol::encode_route_mesh_admission (
                         protocol::command::hello,
@@ -1904,26 +2331,18 @@ std::size_t raw_mesh_node_owner_t::drain_monitor_events (
                 if (!hello_sent) {
                     std::lock_guard lifecycle_lock (
                       _lifecycle_mutex);
-                    const auto found =
-                      _connections.find (
-                        node_routing_id);
-                    if (found != _connections.end ()
-                        && found->second == connection_id)
-                        _connections.erase (found);
+                    (void) _connections.disconnect (
+                      node_routing_id, connection_id);
                 }
             }
         } else if (event->event == zlink::monitor_event::disconnected) {
-            bool current = false;
+            bool known = false;
             {
                 std::lock_guard lifecycle_lock (_lifecycle_mutex);
-                const auto found = _connections.find (node_routing_id);
-                current = found != _connections.end ()
-                          && found->second == connection_id;
-                if (current) {
-                    _connections.erase (found);
-                }
+                known = _connections.disconnect (
+                  node_routing_id, connection_id);
             }
-            if (current) {
+            if (known) {
                 (void) _topology.disconnect (
                   node_routing_id, connection_id);
                 (void) _liveness.disconnect (
@@ -1947,7 +2366,7 @@ service_liveness_tick_t raw_mesh_node_owner_t::tick_liveness (
         return result;
     }
     for (const auto &probe : result.probes) {
-        (void) port->send (
+        (void) send_completion_control (
           probe.node_routing_id,
           {protocol::encode_liveness (
             protocol::command::livenessProbe, probe.probe_id)});

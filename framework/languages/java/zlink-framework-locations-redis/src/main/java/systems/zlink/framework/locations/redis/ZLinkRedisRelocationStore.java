@@ -2,7 +2,6 @@ package systems.zlink.framework.locations.redis;
 
 import io.lettuce.core.ScriptOutputType;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
@@ -10,17 +9,19 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.zip.CRC32C;
-import systems.zlink.framework.locations.ZLinkRelocationDeleteResult;
-import systems.zlink.framework.locations.ZLinkRelocationFound;
-import systems.zlink.framework.locations.ZLinkRelocationMissing;
-import systems.zlink.framework.locations.ZLinkRelocationReadResult;
-import systems.zlink.framework.locations.ZLinkRelocationRenewMissing;
-import systems.zlink.framework.locations.ZLinkRelocationRenewResult;
-import systems.zlink.framework.locations.ZLinkRelocationRenewed;
-import systems.zlink.framework.locations.ZLinkRelocationStore;
-import systems.zlink.framework.locations.ZLinkRelocationStored;
-import systems.zlink.framework.locations.ZLinkStoreCancellation;
+import systems.zlink.framework.locationprovider.ZLinkBlobAlreadyStored;
+import systems.zlink.framework.locationprovider.ZLinkBlobConflict;
+import systems.zlink.framework.locationprovider.ZLinkBlobFound;
+import systems.zlink.framework.locationprovider.ZLinkBlobMissing;
+import systems.zlink.framework.locationprovider.ZLinkBlobPutResult;
+import systems.zlink.framework.locationprovider.ZLinkBlobReadResult;
+import systems.zlink.framework.locationprovider.ZLinkBlobReference;
+import systems.zlink.framework.locationprovider.ZLinkBlobRenewMissing;
+import systems.zlink.framework.locationprovider.ZLinkBlobRenewResult;
+import systems.zlink.framework.locationprovider.ZLinkBlobRenewed;
+import systems.zlink.framework.locationprovider.ZLinkBlobStored;
+import systems.zlink.framework.locationprovider.ZLinkRelocationStore;
+import systems.zlink.framework.locationprovider.ZLinkStoreCancellation;
 
 public final class ZLinkRedisRelocationStore
     implements ZLinkRelocationStore, AutoCloseable {
@@ -30,11 +31,21 @@ public final class ZLinkRedisRelocationStore
         local time = redis.call('TIME')
         local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
         local current = redis.call('GET', KEYS[1])
-        if current and current ~= ARGV[1] then
+        if current == ARGV[1] then
+            local ttl = redis.call('PTTL', KEYS[1])
+            return {'already', nowMs, ttl}
+        elseif current then
             return {'collision', nowMs}
         end
         redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2])
-        return {'stored', nowMs}
+        return {'stored', nowMs, tonumber(ARGV[2])}
+        """;
+    private static final String READ = """
+        local time = redis.call('TIME')
+        local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+        local value = redis.call('GET', KEYS[1])
+        if not value then return {'missing', nowMs} end
+        return {'found', nowMs, redis.call('PTTL', KEYS[1]), value}
         """;
     private static final String RENEW = """
         if redis.replicate_commands then redis.replicate_commands() end
@@ -58,58 +69,67 @@ public final class ZLinkRedisRelocationStore
     }
 
     @Override
-    public CompletionStage<ZLinkRelocationStored> put(
+    public CompletionStage<ZLinkBlobPutResult> put(
+        ZLinkBlobReference reference,
         byte[] payload,
         Duration retention,
         ZLinkStoreCancellation cancellation) {
+        String normalized = requireReference(reference);
         byte[] snapshot = requirePayload(payload);
         long retentionMs = retentionMillis(retention);
         if (cancelled(cancellation)) {
             return cancelledStage();
         }
-        String reference = sha256Hex(snapshot);
-        long checksum = crc32c(snapshot);
         String encoded = Base64.getEncoder().encodeToString(snapshot);
         return connection.commands()
             .thenCompose(redis -> redis.<List<Object>>eval(
                 PUT,
                 ScriptOutputType.MULTI,
-                new String[] {key(reference)},
+                new String[] {key(normalized)},
                 encoded,
                 Long.toString(retentionMs)))
             .thenApply(raw -> {
                 String status = string(raw.getFirst());
-                if (!"stored".equals(status)) {
-                    throw new IllegalStateException(
-                        "relocation content reference collision: " + reference);
-                }
                 Instant storeNow = Instant.ofEpochMilli(number(raw.get(1)));
-                return new ZLinkRelocationStored(
-                    reference,
-                    checksum,
-                    storeNow.plusMillis(retentionMs),
-                    storeNow);
+                if ("collision".equals(status)) {
+                    return new ZLinkBlobConflict(storeNow);
+                }
+                Instant expiresAt =
+                    storeNow.plusMillis(number(raw.get(2)));
+                return "already".equals(status)
+                    ? new ZLinkBlobAlreadyStored(expiresAt, storeNow)
+                    : new ZLinkBlobStored(expiresAt, storeNow);
             });
     }
 
     @Override
-    public CompletionStage<ZLinkRelocationReadResult> get(
-        String reference,
+    public CompletionStage<ZLinkBlobReadResult> read(
+        ZLinkBlobReference reference,
         ZLinkStoreCancellation cancellation) {
         String normalized = requireReference(reference);
         if (cancelled(cancellation)) {
             return cancelledStage();
         }
         return connection.commands()
-            .thenCompose(redis -> redis.get(key(normalized)))
-            .thenApply(value -> value == null
-                ? new ZLinkRelocationMissing()
-                : new ZLinkRelocationFound(Base64.getDecoder().decode(value)));
+            .thenCompose(redis -> redis.<List<Object>>eval(
+                READ,
+                ScriptOutputType.MULTI,
+                new String[] {key(normalized)}))
+            .thenApply(raw -> {
+                Instant now = Instant.ofEpochMilli(number(raw.get(1)));
+                if ("missing".equals(string(raw.getFirst()))) {
+                    return new ZLinkBlobMissing(now);
+                }
+                return new ZLinkBlobFound(
+                    Base64.getDecoder().decode(string(raw.get(3))),
+                    now.plusMillis(number(raw.get(2))),
+                    now);
+            });
     }
 
     @Override
-    public CompletionStage<ZLinkRelocationRenewResult> renew(
-        String reference,
+    public CompletionStage<ZLinkBlobRenewResult> renew(
+        ZLinkBlobReference reference,
         Duration retention,
         ZLinkStoreCancellation cancellation) {
         String normalized = requireReference(reference);
@@ -126,16 +146,16 @@ public final class ZLinkRedisRelocationStore
             .thenApply(raw -> {
                 Instant storeNow = Instant.ofEpochMilli(number(raw.get(1)));
                 return "missing".equals(string(raw.getFirst()))
-                    ? new ZLinkRelocationRenewMissing()
-                    : new ZLinkRelocationRenewed(
+                    ? new ZLinkBlobRenewMissing(storeNow)
+                    : new ZLinkBlobRenewed(
                         storeNow.plusMillis(retentionMs),
                         storeNow);
             });
     }
 
     @Override
-    public CompletionStage<ZLinkRelocationDeleteResult> delete(
-        String reference,
+    public CompletionStage<Void> delete(
+        ZLinkBlobReference reference,
         ZLinkStoreCancellation cancellation) {
         String normalized = requireReference(reference);
         if (cancelled(cancellation)) {
@@ -143,9 +163,7 @@ public final class ZLinkRedisRelocationStore
         }
         return connection.commands()
             .thenCompose(redis -> redis.del(key(normalized)))
-            .thenApply(count -> count != null && count > 0
-                ? ZLinkRelocationDeleteResult.DELETED
-                : ZLinkRelocationDeleteResult.MISSING);
+            .thenApply(count -> null);
     }
 
     @Override
@@ -166,12 +184,12 @@ public final class ZLinkRedisRelocationStore
         return snapshot;
     }
 
-    private static String requireReference(String value) {
-        Objects.requireNonNull(value, "reference");
-        if (value.length() != 64
-            || !value.chars().allMatch(character ->
-                character >= '0' && character <= '9'
-                    || character >= 'a' && character <= 'f')) {
+    private static String requireReference(ZLinkBlobReference reference) {
+        String value = Objects.requireNonNull(
+            Objects.requireNonNull(reference, "reference").value(),
+            "reference.value");
+        int bytes = value.getBytes(StandardCharsets.UTF_8).length;
+        if (bytes < 1 || bytes > 4096 || value.indexOf('\0') >= 0) {
             throw new IllegalArgumentException("invalid relocation reference");
         }
         return value;
@@ -198,26 +216,6 @@ public final class ZLinkRedisRelocationStore
         return CompletableFuture.failedFuture(
             new java.util.concurrent.CancellationException(
                 "store operation was cancelled before I/O"));
-    }
-
-    private static String sha256Hex(byte[] payload) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(payload);
-            StringBuilder encoded = new StringBuilder(digest.length * 2);
-            for (byte value : digest) {
-                encoded.append(Character.forDigit((value >>> 4) & 0x0f, 16));
-                encoded.append(Character.forDigit(value & 0x0f, 16));
-            }
-            return encoded.toString();
-        } catch (java.security.NoSuchAlgorithmException error) {
-            throw new IllegalStateException("SHA-256 is unavailable", error);
-        }
-    }
-
-    private static long crc32c(byte[] payload) {
-        CRC32C checksum = new CRC32C();
-        checksum.update(payload, 0, payload.length);
-        return checksum.getValue();
     }
 
     private static long number(Object value) {

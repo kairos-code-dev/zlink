@@ -118,9 +118,7 @@ public sealed record DeliverAnnounceMsg(string AnnouncementId, string Text);
 /// Zone spot -> bot actor. Drives one patrol step (§2.7). This is a request so the periodic
 /// producer cannot build an unbounded movement backlog while the actor is relocating.
 /// </summary>
-public sealed record BotTickReq();
-
-public sealed record BotTickRes();
+public sealed record BotTickMsg();
 
 /// <summary>
 /// Ensure handler -> the freshly created player actor, while it still sits in the entry

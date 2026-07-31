@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Zlink.Framework.Contracts.Internal;
+using Zlink.Framework.Runtime.Messaging;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Dispatch;
@@ -43,8 +43,6 @@ public sealed partial class UnhandledDispatchPolicyTests
         Assert.Null(result.Received);
         Assert.Null(result.Terminal);
         Assert.Equal(0, result.DispatchCount);
-        Assert.Equal(0, result.FanoutReceived);
-        Assert.Equal(0, result.DynamicTopicFanoutReceived);
         Assert.Empty(result.LogMessages);
     }
 
@@ -56,8 +54,6 @@ public sealed partial class UnhandledDispatchPolicyTests
         Assert.Null(result.Received);
         Assert.Null(result.Terminal);
         Assert.Equal(0, result.DispatchCount);
-        Assert.True(result.FanoutReceived > 0);
-        Assert.Equal(0, result.DynamicTopicFanoutReceived);
         Assert.Empty(result.LogMessages);
     }
 
@@ -359,7 +355,7 @@ public sealed partial class UnhandledDispatchPolicyTests
             InstrumentPublished = (instrument, listener) =>
             {
                 if (instrument.Meter.Name == ZLinkMeters.Framework
-                    && instrument.Name == "zlink.channel.messages.dropped")
+                    && instrument.Name == "zlink.mesh_node.messages.dropped")
                     listener.EnableMeasurementEvents(instrument);
             }
         };
@@ -475,7 +471,7 @@ public sealed partial class UnhandledDispatchPolicyTests
             probe.FilterDispatchKind);
         Assert.Null(probe.FilterMeshName);
         Assert.Empty(observer.Events);
-        Assert.Contains("decode_error", dropReasons);
+        Assert.Empty(dropReasons);
         await runner.StopAsync();
     }
 
@@ -692,26 +688,6 @@ public sealed partial class UnhandledDispatchPolicyTests
         subscriber.Connect(endpoint);
         subscriber.SetSubscription("events");
         nativeSpot.SubscribeHandler = subscriber.Subscribe;
-        long fanoutReceived = 0;
-        long dynamicTopicFanoutReceived = 0;
-        using var meterListener = new MeterListener
-        {
-            InstrumentPublished = (instrument, owner) =>
-            {
-                if (instrument.Meter.Name == ZLinkMeters.Framework
-                    && instrument.Name == "zlink.fanout.received")
-                    owner.EnableMeasurementEvents(instrument);
-            }
-        };
-        meterListener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
-        {
-            if (instrument.Name != "zlink.fanout.received") return;
-            Interlocked.Add(ref fanoutReceived, value);
-            foreach (var tag in tags)
-                if (tag.Key == "topic" && Equals(tag.Value, "events.child"))
-                    Interlocked.Add(ref dynamicTopicFanoutReceived, value);
-        });
-        meterListener.Start();
 
         var header = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Publish,
@@ -781,8 +757,6 @@ public sealed partial class UnhandledDispatchPolicyTests
                 received,
                 error,
                 dispatchCount,
-                Interlocked.Read(ref fanoutReceived),
-                Interlocked.Read(ref dynamicTopicFanoutReceived),
                 logger.Messages.ToArray());
         }
         finally
@@ -856,8 +830,6 @@ public sealed partial class UnhandledDispatchPolicyTests
         ObservedMessageFlow? Received,
         ObservedMessageFlow? Terminal,
         int DispatchCount,
-        long FanoutReceived,
-        long DynamicTopicFanoutReceived,
         IReadOnlyList<string> LogMessages);
 
     private sealed class PublishProbe

@@ -2,8 +2,19 @@ import type {
   ZLinkSpotTimerHandler,
   ZLinkTimerTick
 } from '@zlink-systems/framework';
-import type { TicTacToeGameSpot } from '../tictactoe-game-spot';
+import { zlinkSpotTimerHandler } from '@zlink-systems/nestjs';
+import { ZLinkTimerOverrunPolicy } from '@zlink-systems/framework';
+import { TicTacToeGameSpot } from '../tictactoe-game-spot';
 
+@zlinkSpotTimerHandler({
+  spot: () => TicTacToeGameSpot,
+  name: 'game-tick',
+  periodMs: 1000,
+  options: {
+    overrunPolicy: ZLinkTimerOverrunPolicy.DelayNextTick,
+    stopOnUnhandledException: true
+  }
+})
 class TicTacToeGameTimerHandler implements ZLinkSpotTimerHandler<TicTacToeGameSpot> {
   async handle(spot: TicTacToeGameSpot, tick: ZLinkTimerTick): Promise<void> {
     void tick;

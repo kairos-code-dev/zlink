@@ -1,6 +1,6 @@
 package systems.zlink.framework.runtime.host;
 
-public enum ZLinkTerminationOutcome {
+enum ZLinkTerminationOutcome {
     STOPPED(0),
     BLOCKED(1),
     FORCE_STOPPED(2);

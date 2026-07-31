@@ -67,12 +67,6 @@ write_role_config "$mission_a_config" mission-a channelEndpoint "$mission_a_chan
 write_role_config "$mission_b_config" mission-b channelEndpoint "$mission_b_channel" "$mission_b_http"
 write_role_config "$api_a_config" api-a streamEndpoint "$api_a_stream" "$api_a_http"
 write_role_config "$api_b_config" api-b streamEndpoint "$api_b_stream" "$api_b_http"
-for config in "$api_a_config" "$api_b_config"; do
-  cat >>"$config" <<EOF
-sample.missionAChannelEndpoint=${mission_a_channel}
-sample.missionBChannelEndpoint=${mission_b_channel}
-EOF
-done
 cat >"$client_config" <<EOF
 sample.apiAStreamEndpoint=${api_a_stream}
 sample.apiBStreamEndpoint=${api_b_stream}

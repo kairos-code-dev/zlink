@@ -18,7 +18,7 @@ import type {
   ZLinkMeshNodeSocketConfig,
   ZLinkMeshPeerConnections,
   ZLinkMetricsOptions,
-  ZLinkMonitoringOptions,
+  ZLinkNetworkOptions,
   ZLinkMessageContext,
   ZLinkPublishMessageContext,
   ZLinkRouteMessageContext,
@@ -47,9 +47,9 @@ export type MutableCodecRegistryOptions = {
   streamCodecs: NonNullable<ZLinkCodecRegistryOptions['streamCodecs']>[number][];
 };
 
-export interface ZLinkModuleFactoryOptions {
-  readonly useFactory: (...args: unknown[]) => ZLinkModuleOptions | Promise<ZLinkModuleOptions>;
-  readonly inject?: readonly InjectionToken[];
+export interface ZLinkModuleFactoryOptions<TArgs extends unknown[] = unknown[]> {
+  readonly useFactory: (...args: TArgs) => ZLinkModuleOptions | Promise<ZLinkModuleOptions>;
+  readonly inject?: { readonly [TIndex in keyof TArgs]: InjectionToken };
   readonly imports?: ModuleMetadata['imports'];
 }
 
@@ -120,7 +120,7 @@ export interface ZLinkNestSpotActorSendHandlerOptions<TSpot extends ZLinkSpot, T
   readonly methodName?: string;
 }
 
-export interface ZLinkNestSpotPacketHandlerOptions<TSpot extends ZLinkSpot> {
+export interface ZLinkNestSpotPacketHandlerOptions<TSpot extends ZLinkSpot | ZLinkInstanceSpot> {
   readonly spot: ZLinkNestTypeResolver<TSpot>;
   readonly packetName?: string;
 }
@@ -201,6 +201,7 @@ export interface ZLinkNestFrameworkOptionsBuilder {
   setMessageFollowDuration(timeoutMs: number): this;
   configureStreamCompression(): ZLinkStreamCompressionBuilder;
   configureLocations(): ZLinkLocationOptions;
+  configureNetwork(): ZLinkNetworkOptions;
   addClientServerChannel(name: string): ZLinkNestClientServerChannelRoleBuilder;
   addFanoutChannel(name: string): ZLinkNestFanoutChannelBuilder;
   addRouteMesh(name: string): ZLinkNestMeshNodeBuilder;
@@ -213,7 +214,6 @@ export interface ZLinkNestFrameworkAdditionalOptions {
   readonly filters?: readonly Type<ZLinkHandlerFilter>[];
   readonly worker?: ZLinkWorkerOptions;
   readonly dispatch?: ZLinkDispatchOptions;
-  readonly monitoring?: ZLinkMonitoringOptions;
   readonly metrics?: ZLinkMetricsOptions;
 }
 
@@ -223,6 +223,9 @@ export interface ZLinkNestCodecRegistryBuilder extends ZLinkNestFrameworkOptions
 
 export interface ZLinkNestFanoutChannelBuilder extends ZLinkNestFrameworkOptionsBuilder {
   enablePublisher(bind: string | undefined): this;
+  enablePublisher(port?: number): this;
+  setBindHost(bindHost: string): this;
+  setAdvertiseHost(advertiseHost: string): this;
   routingId(routingId: string | undefined): this;
   setRoutingIdPrefix(prefix: string): this;
   enableSubscriber(endpoint?: string | readonly string[]): this;
@@ -251,7 +254,10 @@ export interface ZLinkNestClientServerChannelServerBuilder extends ZLinkNestFram
 
 export interface ZLinkNestStreamNodeBuilder extends ZLinkNestFrameworkOptionsBuilder {
   bind(endpoint: string | undefined): this;
-  enableActorDispatch(meshName: string): this;
+  bind(port?: number): this;
+  setBindHost(bindHost: string): this;
+  setAdvertiseHost(advertiseHost: string): this;
+  enableActorDispatch(): this;
   setTlsServer(certificatePath: string, keyPath: string, requireClientCertificate?: boolean): this;
   registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession> | Type<ZLinkSessionFactory<TSession>>): this;
 }
@@ -259,8 +265,12 @@ export interface ZLinkNestStreamNodeBuilder extends ZLinkNestFrameworkOptionsBui
 export interface ZLinkNestMeshNodeBuilder extends ZLinkNestFrameworkOptionsBuilder {
   channel(name: string): ZLinkNestMeshChannelBuilder;
   listen(endpoint: string): this;
+  listen(port?: number): this;
+  setBindHost(bindHost: string): this;
+  setAdvertiseHost(advertiseHost: string): this;
   routingId(routingId: string | undefined): this;
   setRoutingIdPrefix(prefix: string): this;
+  setPlacementWeight(weight: number): this;
   configureRouterSocket(): ZLinkMeshNodeSocketConfig;
   configureSpotPublisher(): ZLinkSpotPublisherConfig;
   peerConnections(): ZLinkMeshPeerConnections;

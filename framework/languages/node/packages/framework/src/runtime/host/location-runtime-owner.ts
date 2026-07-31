@@ -86,10 +86,21 @@ export class ZLinkLocationRuntimeOwner {
       events: this.ensureEvents(),
       leaseTracker: this.leaseTracker(stores),
       metrics: this.options.metrics,
-      meshNames: [...this.options.registration.spotNodes.keys()]
+      meshNames: [...this.options.registration.spotNodes.keys()],
+      leaseScopes: [
+        ...[...this.options.registration.spotNodes.keys()]
+          .map(name => ({ kind: 'mesh' as const, name })),
+        ...[...this.options.registration.channels.keys()]
+          .map(name => ({ kind: 'channel' as const, name }))
+      ]
     });
     this.runtime = runtime;
-    this.lifecycle = new ZLinkLocationLifecycle(runtime, stores.actorStore, primaryMeshName ?? '');
+    this.lifecycle = new ZLinkLocationLifecycle(
+      runtime,
+      stores.actorStore,
+      primaryMeshName ?? '',
+      stores.authorityStore
+    );
     return runtime;
   }
 

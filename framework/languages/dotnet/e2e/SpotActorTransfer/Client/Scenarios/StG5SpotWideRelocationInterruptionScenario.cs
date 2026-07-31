@@ -284,6 +284,15 @@ internal static class StG5SpotWideRelocationInterruptionScenario
             + $" restore_callback_ms={phaseTiming.RestoreCallbacksMilliseconds}"
             + $" max_concurrent_store_io={phaseTiming.MaxConcurrentStoreIo}"
             + $" store_operations={phaseTiming.StoreOperations}"
+            + $" encoded_store_bytes={phaseTiming.EncodedStoreBytes}"
+            + $" largest_encoded_blob_bytes={phaseTiming.LargestEncodedBlobBytes}"
+            + $" application_state_bytes="
+            + $"{(long)(actorCount + 1) * ActorStateBytes}"
+            + $" opaque_store_overhead_bytes="
+            + $"{Math.Max(
+                0,
+                phaseTiming.EncodedStoreBytes
+                - (long)(actorCount + 1) * ActorStateBytes)}"
             + " source_last_handler_to_target_first_handler_or_reply_gap_ms="
             + gapMilliseconds
             + " loss=0 duplicate=0 actor_fifo=preserved"
@@ -365,11 +374,25 @@ internal static class StG5SpotWideRelocationInterruptionScenario
                 context.GetRelocationBlobMeasurementsAsync(context.NodeC)))
             .SelectMany(static items => items)
             .ToArray();
+        var puts = store
+            .Where(static item => item.Operation == "put")
+            .ToArray();
+        var reads = store
+            .Where(static item => item.Operation == "read")
+            .ToArray();
         ZlinkStreamAssert.Ensure(
             store.Length > participantIds.Count
             && store.Any(static item =>
                 item.ActiveOperationCount >= 2),
             $"{selector} did not observe participant-parallel Store I/O.");
+        ZlinkStreamAssert.Ensure(
+            puts.Length > 0
+            && puts.All(put => reads.Any(read =>
+                read.OpaqueReferenceSha256 == put.OpaqueReferenceSha256
+                && read.EncodedBytes == put.EncodedBytes
+                && read.PayloadSha256 == put.PayloadSha256)),
+            $"{selector} did not read every opaque Store blob back with "
+            + "the same encoded size and checksum.");
 
         return new RelocationPhaseTiming(
             captureCompletions.Max() - captureStarts.Min(),
@@ -377,7 +400,9 @@ internal static class StG5SpotWideRelocationInterruptionScenario
             - store.Min(static item => item.StartedUnixTimeMilliseconds),
             restoreCompletions.Max() - restoreStarts.Min(),
             store.Max(static item => item.ActiveOperationCount),
-            store.Length);
+            store.Length,
+            puts.Sum(static item => (long)item.EncodedBytes),
+            puts.Max(static item => item.EncodedBytes));
     }
 
     private static async Task VerifyApplicationStateSizesAsync(
@@ -470,5 +495,7 @@ internal static class StG5SpotWideRelocationInterruptionScenario
         long StoreIoMilliseconds,
         long RestoreCallbacksMilliseconds,
         int MaxConcurrentStoreIo,
-        int StoreOperations);
+        int StoreOperations,
+        long EncodedStoreBytes,
+        int LargestEncodedBlobBytes);
 }

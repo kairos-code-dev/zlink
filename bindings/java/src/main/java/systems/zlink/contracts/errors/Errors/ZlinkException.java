@@ -5,8 +5,8 @@ package systems.zlink.contracts.errors;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.runtime.nativeapi.ContractAccess;
-import systems.zlink.runtime.nativeapi.NativeErrno;
+import systems.zlink.internal.ContractAccess;
+import systems.zlink.internal.NativeErrorCodes;
 import java.util.Locale;
 
 /** Base class for all exceptions thrown by the zlink bindings. */
@@ -117,66 +117,66 @@ public abstract sealed class ZlinkException extends RuntimeException
 
     private static SubmitResult mapSubmitResult(int errno) {
         return switch (errno) {
-            case NativeErrno.EFAULT, NativeErrno.EBADF ->
+            case NativeErrorCodes.EFAULT, NativeErrorCodes.EBADF ->
                 SubmitResult.INVALID_HANDLE;
-            case NativeErrno.EAGAIN, NativeErrno.EWOULDBLOCK_WIN ->
+            case NativeErrorCodes.EAGAIN, NativeErrorCodes.EWOULDBLOCK_WIN ->
                 SubmitResult.BACKPRESSURED;
-            case NativeErrno.ENOTCONN, NativeErrno.ENOTCONN_WIN ->
+            case NativeErrorCodes.ENOTCONN, NativeErrorCodes.ENOTCONN_WIN ->
                 SubmitResult.NOT_CONNECTED;
-            case NativeErrno.EHOSTUNREACH, NativeErrno.EHOSTUNREACH_WIN ->
+            case NativeErrorCodes.EHOSTUNREACH, NativeErrorCodes.EHOSTUNREACH_WIN ->
                 SubmitResult.NOT_FOUND;
-            case NativeErrno.ECONNREFUSED, NativeErrno.ECONNREFUSED_WIN ->
+            case NativeErrorCodes.ECONNREFUSED, NativeErrorCodes.ECONNREFUSED_WIN ->
                 SubmitResult.NOT_ADMITTED;
-            case NativeErrno.EINVAL -> SubmitResult.INVALID_ARGUMENT;
-            case NativeErrno.ENOTSUP -> SubmitResult.NOT_SUPPORTED;
-            case NativeErrno.ENOMEM -> SubmitResult.OUT_OF_MEMORY;
+            case NativeErrorCodes.EINVAL -> SubmitResult.INVALID_ARGUMENT;
+            case NativeErrorCodes.ENOTSUP -> SubmitResult.NOT_SUPPORTED;
+            case NativeErrorCodes.ENOMEM -> SubmitResult.OUT_OF_MEMORY;
             default -> SubmitResult.INTERNAL_ERROR;
         };
     }
 
     private static RecvResult mapRecvResult(int errno) {
         return switch (errno) {
-            case NativeErrno.EFAULT, NativeErrno.EBADF ->
+            case NativeErrorCodes.EFAULT, NativeErrorCodes.EBADF ->
                 RecvResult.INVALID_HANDLE;
-            case NativeErrno.EAGAIN, NativeErrno.EWOULDBLOCK_WIN ->
+            case NativeErrorCodes.EAGAIN, NativeErrorCodes.EWOULDBLOCK_WIN ->
                 RecvResult.NO_DATA;
-            case NativeErrno.EINTR -> RecvResult.BUSY;
-            case NativeErrno.ENOTCONN, NativeErrno.ENOTCONN_WIN ->
+            case NativeErrorCodes.EINTR -> RecvResult.BUSY;
+            case NativeErrorCodes.ENOTCONN, NativeErrorCodes.ENOTCONN_WIN ->
                 RecvResult.TERMINATED;
-            case NativeErrno.ENOTSUP -> RecvResult.NOT_SUPPORTED;
+            case NativeErrorCodes.ENOTSUP -> RecvResult.NOT_SUPPORTED;
             default -> RecvResult.INTERNAL_ERROR;
         };
     }
 
     private static BindResult mapBindResult(int errno) {
         return switch (errno) {
-            case NativeErrno.EFAULT, NativeErrno.EBADF ->
+            case NativeErrorCodes.EFAULT, NativeErrorCodes.EBADF ->
                 BindResult.INVALID_HANDLE;
-            case NativeErrno.EINVAL -> BindResult.INVALID_ARGUMENT;
-            case NativeErrno.EADDRINUSE -> BindResult.ADDR_IN_USE;
-            case NativeErrno.ENOTSUP -> BindResult.NOT_SUPPORTED;
+            case NativeErrorCodes.EINVAL -> BindResult.INVALID_ARGUMENT;
+            case NativeErrorCodes.EADDRINUSE -> BindResult.ADDR_IN_USE;
+            case NativeErrorCodes.ENOTSUP -> BindResult.NOT_SUPPORTED;
             default -> BindResult.INVALID_ARGUMENT;
         };
     }
 
     private static ConnectResult mapConnectResult(int errno) {
         return switch (errno) {
-            case NativeErrno.EFAULT, NativeErrno.EBADF ->
+            case NativeErrorCodes.EFAULT, NativeErrorCodes.EBADF ->
                 ConnectResult.INVALID_HANDLE;
-            case NativeErrno.EINVAL -> ConnectResult.INVALID_ARGUMENT;
-            case NativeErrno.ENOTSUP -> ConnectResult.NOT_SUPPORTED;
-            case NativeErrno.EBUSY -> ConnectResult.BUSY;
+            case NativeErrorCodes.EINVAL -> ConnectResult.INVALID_ARGUMENT;
+            case NativeErrorCodes.ENOTSUP -> ConnectResult.NOT_SUPPORTED;
+            case NativeErrorCodes.EBUSY -> ConnectResult.BUSY;
             default -> ConnectResult.INVALID_ARGUMENT;
         };
     }
 
     private static CloseResult mapCloseResult(int errno) {
         return switch (errno) {
-            case NativeErrno.EFAULT, NativeErrno.EBADF ->
+            case NativeErrorCodes.EFAULT, NativeErrorCodes.EBADF ->
                 CloseResult.INVALID_HANDLE;
-            case NativeErrno.EAGAIN, NativeErrno.EWOULDBLOCK_WIN ->
+            case NativeErrorCodes.EAGAIN, NativeErrorCodes.EWOULDBLOCK_WIN ->
                 CloseResult.BUSY;
-            case NativeErrno.ENOTCONN, NativeErrno.ENOTCONN_WIN ->
+            case NativeErrorCodes.ENOTCONN, NativeErrorCodes.ENOTCONN_WIN ->
                 CloseResult.SHUTDOWN;
             default -> CloseResult.BUSY;
         };
@@ -184,35 +184,35 @@ public abstract sealed class ZlinkException extends RuntimeException
 
     private static HandlerResult mapHandlerResult(int errno) {
         return switch (errno) {
-            case NativeErrno.EFAULT, NativeErrno.EBADF ->
+            case NativeErrorCodes.EFAULT, NativeErrorCodes.EBADF ->
                 HandlerResult.INVALID_HANDLE;
-            case NativeErrno.EINVAL -> HandlerResult.INVALID_ARGUMENT;
-            case NativeErrno.EAGAIN, NativeErrno.EWOULDBLOCK_WIN ->
+            case NativeErrorCodes.EINVAL -> HandlerResult.INVALID_ARGUMENT;
+            case NativeErrorCodes.EAGAIN, NativeErrorCodes.EWOULDBLOCK_WIN ->
                 HandlerResult.BUSY;
-            case NativeErrno.ENOTSUP -> HandlerResult.NOT_SUPPORTED;
-            case NativeErrno.EBUSY -> HandlerResult.DEADLOCK;
+            case NativeErrorCodes.ENOTSUP -> HandlerResult.NOT_SUPPORTED;
+            case NativeErrorCodes.EBUSY -> HandlerResult.DEADLOCK;
             default -> HandlerResult.BUSY;
         };
     }
 
     private static ConfigResult mapConfigResult(int errno) {
         return switch (errno) {
-            case NativeErrno.EFAULT, NativeErrno.EBADF ->
+            case NativeErrorCodes.EFAULT, NativeErrorCodes.EBADF ->
                 ConfigResult.INVALID_HANDLE;
-            case NativeErrno.EINVAL -> ConfigResult.INVALID_ARGUMENT;
-            case NativeErrno.ENOTSUP -> ConfigResult.NOT_SUPPORTED;
+            case NativeErrorCodes.EINVAL -> ConfigResult.INVALID_ARGUMENT;
+            case NativeErrorCodes.ENOTSUP -> ConfigResult.NOT_SUPPORTED;
             default -> ConfigResult.INTERNAL_ERROR;
         };
     }
 
     private static RequestResult mapRequestResult(int errno) {
         return switch (errno) {
-            case NativeErrno.EAGAIN, NativeErrno.EWOULDBLOCK_WIN ->
+            case NativeErrorCodes.EAGAIN, NativeErrorCodes.EWOULDBLOCK_WIN ->
                 RequestResult.TIMED_OUT;
-            case NativeErrno.ENOTCONN, NativeErrno.ENOTCONN_WIN,
-                 NativeErrno.EHOSTUNREACH, NativeErrno.EHOSTUNREACH_WIN ->
+            case NativeErrorCodes.ENOTCONN, NativeErrorCodes.ENOTCONN_WIN,
+                 NativeErrorCodes.EHOSTUNREACH, NativeErrorCodes.EHOSTUNREACH_WIN ->
                 RequestResult.NOT_FOUND;
-            case NativeErrno.EINTR -> RequestResult.PROTOCOL_ERROR;
+            case NativeErrorCodes.EINTR -> RequestResult.PROTOCOL_ERROR;
             default -> RequestResult.PROTOCOL_ERROR;
         };
     }

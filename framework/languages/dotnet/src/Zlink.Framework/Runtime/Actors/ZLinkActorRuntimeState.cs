@@ -33,6 +33,7 @@ internal sealed class ZLinkActorRuntimeState(
         _sessionBindingTombstones = new(StringComparer.Ordinal);
     private Task<IZLinkActor>? _actorCreationTask;
     private int _actorMetricActive;
+    private string? _actorMetricMeshName;
     private ZLinkActorBoundSession? _boundSession;
     private SessionBindingReplacement? _sessionReplacement;
     private ZLinkPendingActorSessionRoute? _pendingSessionRoute;
@@ -239,6 +240,7 @@ internal sealed class ZLinkActorRuntimeState(
     {
         Context?.UpdateSameNodeSpot(activation.SpotId);
         Activation = activation;
+        EnsureActorMetric();
     }
 
     public void LeaveSpotIfCurrent(ZLinkSpotActivation activation)
@@ -272,8 +274,7 @@ internal sealed class ZLinkActorRuntimeState(
         if (ReferenceEquals(Actor, actor)) return false;
 
         Actor = actor;
-        if (Interlocked.Exchange(ref _actorMetricActive, 1) == 0)
-            ZLinkRuntimeMetrics.RecordActorCreated();
+        EnsureActorMetric();
         IsConfigured = false;
         return true;
     }
@@ -284,7 +285,9 @@ internal sealed class ZLinkActorRuntimeState(
         if (Context is not null) return Context;
 
         Interlocked.Exchange(ref _contextInvalidated, 0);
-        return Context = createContext();
+        Context = createContext();
+        EnsureActorMetric();
+        return Context;
     }
 
     public bool TryBeginActorConfiguration()
@@ -1034,7 +1037,18 @@ internal sealed class ZLinkActorRuntimeState(
     private void ClearActorMetric()
     {
         if (Interlocked.Exchange(ref _actorMetricActive, 0) != 0)
-            ZLinkRuntimeMetrics.RecordActorClosed();
+            ZLinkRuntimeMetrics.RecordActorClosed(
+                Interlocked.Exchange(ref _actorMetricMeshName, null)!);
+    }
+
+    private void EnsureActorMetric()
+    {
+        if (Actor is null || Volatile.Read(ref _actorMetricActive) != 0) return;
+        var meshName = Activation?.MeshName ?? Context?.MeshName;
+        if (string.IsNullOrWhiteSpace(meshName)) return;
+        if (Interlocked.CompareExchange(ref _actorMetricActive, 1, 0) != 0) return;
+        _actorMetricMeshName = meshName;
+        ZLinkRuntimeMetrics.RecordActorCreated(meshName);
     }
 
     private enum ZLinkActorTerminalTransition

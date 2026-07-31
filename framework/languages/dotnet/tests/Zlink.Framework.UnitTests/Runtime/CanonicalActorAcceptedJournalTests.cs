@@ -98,6 +98,54 @@ public sealed class CanonicalActorAcceptedJournalTests
     }
 
     [Fact]
+    public void Bound_session_one_way_round_trip_preserves_same_generation_and_sequence()
+    {
+        var source = SourceFence("session-owner", 41);
+        var target = new ZLinkBackendActorRef(
+            RoutingId.From("target-node"), "actor-1", 17);
+        var bound = new ZLinkActorBoundSessionHandoffFence(
+            target.ActorId,
+            target.Generation,
+            RoutingId.From("session-1"),
+            "binding-token",
+            43,
+            47);
+        var header = ZLinkStreamProtocolDefaults.EncodeHeader(
+            new ZlinkStreamHeader(
+                ZlinkStreamMessageKind.Send,
+                ZlinkStreamCodec.Raw,
+                ZlinkStreamHeaderFlags.None,
+                null,
+                "move",
+                ZlinkStreamMetadata.Empty));
+        var frame = new ZLinkActorHandoffFrame(
+            [], 0,
+            source.NodeRid.ToBytes().ToArray(),
+            bound.SessionRid.ToBytes().ToArray(),
+            0, 0, header.ToArray(), [1, 2, 3], 1,
+            new ZLinkBackendActorRouteContext(
+                new MeshOperationId(53, 59), 0, 61, 67, 71,
+                IsBoundSessionRoute: true),
+            source.NodeGeneration,
+            source,
+            BoundSessionSource: bound);
+
+        var encoded = ZLinkCanonicalActorAcceptedJournal.Encode(
+            new ZLinkActorAcceptedRecord(frame, source, target), target);
+        var decoded = ZLinkCanonicalActorAcceptedJournal.Decode(encoded, 1);
+
+        Assert.True(ZLinkRelocationEnvelopeCodec
+            .TryValidateCanonicalFrozenRecord(encoded));
+        Assert.Equal(bound, decoded.Frame.BoundSessionSource);
+        Assert.Equal(target.Generation, decoded.TargetActor.Generation);
+        Assert.Equal(new MeshOperationId(53, 59),
+            decoded.Frame.RouteContext.OperationId);
+        Assert.True(decoded.Frame.RouteContext.IsBoundSessionRoute);
+        Assert.False(decoded.Frame.RouteContext.IsDirectRoute);
+        Assert.Equal(frame.Body, decoded.Frame.Body);
+    }
+
+    [Fact]
     public void Encode_rejects_missing_source_fence()
     {
         var source = SourceFence("source-owner", 41);

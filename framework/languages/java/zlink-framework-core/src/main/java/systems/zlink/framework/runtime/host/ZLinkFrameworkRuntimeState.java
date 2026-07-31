@@ -3,10 +3,11 @@ package systems.zlink.framework.runtime.host;
 public enum ZLinkFrameworkRuntimeState {
     PREPARING(0),
     SERVING(1),
-    RETIRING(2),
-    DRAINING(3),
-    STOPPED(4),
-    ERROR(5);
+    RELOCATING(2),
+    RELOCATED(3),
+    DRAINING(4),
+    STOPPED(5),
+    ERROR(6);
 
     private final int wireValue;
 

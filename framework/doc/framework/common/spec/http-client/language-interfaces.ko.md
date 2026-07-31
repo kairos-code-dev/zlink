@@ -57,7 +57,8 @@ Awaitable을 쓰지 않는 호출자를 위한 callback
 | 개념 | cpp | dotnet | java | kotlin | node |
 | --- | --- | --- | --- | --- | --- |
 | **비동기 완료** (raw) | `submit_raw()` → `task_t<raw_http_response_t>` | `AsyncRaw(ct?)` → `ValueTask<RawHttpResponse>` | `submitRaw()` → `CompletionStage<RawHttpResponse>` | `awaitRaw()` (suspend) | `submitRaw()` → `Promise<RawHttpResponse>` |
-| **비동기 완료** (typed) | `submit<T>()` → `task_t<http_response_t<T>>` | `Async<T>(ct?)` | `submit(Class<T>)` | `await(type)` / `await<T>()` (reified) | `async<T>()` |
+| **비동기 완료** (typed response) | `submit<T>()` → `task_t<http_response_t<T>>` | `Async<T>(ct?)` | `submit(Class<T>)` | `await(type)` / `await<T>()` (reified) | `async<T>()` |
+| **비동기 완료** (typed body) | `fetch<T>()` | `Fetch<T>(ct?)` → `ValueTask<T>` | `fetch(Class<T>)` | `fetch<T>()` (suspend) | `fetch<T>()` → `Promise<T>` |
 | **비동기 완료** (download) | `download(sink)` | `DownloadAsync(sink, ct?)` | `download(Consumer<byte[]>)` | `awaitDownload(sink)` | `download(sink)` |
 | **one-way** | `submit()` → `task_t<void>` | `Async(ct?)` → `ValueTask` | `submit()` → `CompletionStage<Void>` | `await()` → `Unit` (suspend) | `submit()` → `Promise<void>` |
 | **callback** | `submit<T>(callback)` | `Async<T>(callback)` | `submit(Class<T>, callback)` | (suspend로 대체) | `async<T>(callback)` |
@@ -68,7 +69,9 @@ Awaitable을 쓰지 않는 호출자를 위한 callback
 - one-way 완료 값은 전송 결과나 admission status를 포함하지 않는다. 반환형은 비동기 완료와 실패만 전달한다.
 - `.NET`의 비동기 종결자는 `Async`, Kotlin wrapper는 `await`, C++·Java는 `submit`을 사용한다.
   Node는 raw response에 `submitRaw`, typed response와 callback에 `async`, one-way에 `submit`을 사용한다.
-- kotlin의 `fetch<T>()`는 suspend 함수이며 blocking이 아니다. body만 돌려주는 편의 확장이다.
+- `fetch` 계열은 status·header가 필요 없는 호출자에게 decoded body를 직접 반환한다.
+  C++를 제외한 언어에서는 비동기로 완료된다. C++ `fetch<T>()`는 blocking client
+  시나리오에서만 사용한다.
 
 ### 1.5 응답/보조 타입
 

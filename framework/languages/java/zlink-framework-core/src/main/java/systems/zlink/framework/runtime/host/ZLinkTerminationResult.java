@@ -2,7 +2,7 @@ package systems.zlink.framework.runtime.host;
 
 import java.util.Objects;
 
-public record ZLinkTerminationResult(
+record ZLinkTerminationResult(
     ZLinkTerminationIntent effectiveIntent,
     ZLinkTerminationOutcome outcome,
     ZLinkTerminationReason reason) {

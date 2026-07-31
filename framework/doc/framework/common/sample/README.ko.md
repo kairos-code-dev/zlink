@@ -26,7 +26,7 @@ TypeScript 브라우저 client를 공유한다. 지원 언어는 같은 역할 �
 | 샘플 | 목적 | 서버 구성 | 연결 방식 | Handler 등록 방식 | 기본 payload codec |
 |------|------|-----------|-----------|-------------------|--------------------|
 | [Bingo](bingo/README.ko.md) | 레벨별 matchmaking Instance Spot, session gateway, actor binding, room User Spot, timer와 bound push를 한 흐름으로 보여 준다. | `Session`, `Api`, `Matchmaking`, `Play` 분리 | location store 기반 자동 연결 | **자동 등록** | Protobuf |
-| [TicTacToe](tictactoe/README.ko.md) | 2개 API와 2개 Play로 수동 endpoint scale-out, 공식 Redis Location Store 기반 room routing과 실시간 게임 흐름을 보여 준다. | `Api` 2개, `Play` 2개, 별도 `Session` 서버 없이 `Play`가 stream session을 함께 소유 | **수동 endpoint 연결** | **수동 등록** — annotation/attribute로 선언한 handler를 구성 코드에서 직접 등록한다(자동 스캔 없음) | JSON |
+| [TicTacToe](tictactoe/README.ko.md) | 2개 API와 2개 Play로 수동 endpoint scale-out, 공식 Redis Location Store 기반 room routing과 실시간 게임 흐름을 보여 준다. | `Api` 2개, `Play` 2개, 별도 `Session` 서버 없이 `Play`가 stream session을 함께 소유 | **수동 endpoint 연결** | **자동 등록** | JSON |
 | [SupportChat](supportchat/README.ko.md) | 고객과 상담원이 같은 conversation Spot에서 대화하고, reconnect, idle timer, close, bound push를 확인한다. | `Session`, `Api`, `Support` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
 | [DeliveryDispatch](deliverydispatch/README.ko.md) | 배송 배차, timeout 재배정, 상태 push, 고객 stream push를 확인한다. | `Dispatch`, `CourierSession`, `CourierMeshNode` 2개, `Tracking`, `CustomerGateway` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
 | [ShoppingMall](event/shoppingmall.ko.md) | `CommerceApi`(HTTP edge)와 `OrderWorkflow`(주문 owner)를 분리해 event-sourced 주문 처리와 조회 모델을 구성한다. | `CommerceApi`, `OrderWorkflow` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
@@ -271,6 +271,11 @@ request로 호출하는 메시지는 업무 이름이 `Changed`, `Accepted`, `Cr
 DB 드라이버·외부 SDK처럼 자체 terminator가 없는 비동기 대기는 `RunIoWorker(...)`로 감싼다. CPU
 작업은 `RunCpuWorker(...)`로 넘긴다.
 
+HTTP 응답에서 decoded body만 사용하는 sample은 언어별 `Fetch`/`fetch` terminal로
+DTO를 직접 받는다. Status나 header를 검증해야 할 때만 typed response envelope를
+반환하는 `Async`/`submit`/`await` terminal을 사용한다. DTO를 받기 위해 response의
+`.Body`/`.body()`를 즉시 꺼내는 코드는 sample에 두지 않는다.
+
 ## 샘플 포팅 기준
 
 Bingo와 TicTacToe는 각자 맡은 기능을 보여 주는 예외 샘플이다. Bingo는 Protobuf
@@ -308,10 +313,9 @@ scale-out 흐름을 보여 준다.
   호출 없이 handler를 자동 등록한다([05 §8](../spec/06-framework-api.ko.md#8-handler-등록과-dispatch)). 샘플마다 handler
   목록을 반복해서 적으면 public 사용 예시가 장황해지고, handler 추가 누락을 client 시나리오가
   늦게 발견하게 된다.
-- **절대 규칙: TicTacToe만 수동 등록을 사용한다.** TicTacToe는 수동 연결과 수동 등록을 함께
-  보여 주는 대조 샘플이다. handler 자체는 다른 샘플과 같이 **annotation·attribute·decorator로
-  선언**하되, **assembly·module 스캔에 의한 자동 등록을 쓰지 않고** 구성 코드에서 그 handler를
-  직접 등록한다. 나머지 정본 샘플은 어떤 이유로도 수동 등록으로 대체하지 않는다.
+- **수동 topology와 handler 등록은 별개다.** TicTacToe도 handler를
+  annotation·attribute·decorator로 선언하고 assembly·module scan으로 자동 등록한다. 수동 endpoint
+  연결을 보여 주기 위해 handler 목록까지 구성 코드에 반복해서 적지 않는다.
 - C++은 runtime reflection scanner를 사용하지 않으므로 compile-time 타입으로 handler를 명시
   등록한다. 정확한 표면은 [C++ handler 공개 계약](../spec/server/languages/cpp/interfaces/03-channel-messaging.ko.md)을
   따른다. 등록 방법만 다르며 메시지·역할·codec·검증 기준은 바꾸지 않는다.

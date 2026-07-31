@@ -35,6 +35,7 @@ import {
   type ServiceAsyncInstanceActivationAuthority,
   type ServiceInstanceApplicationLifecycle,
   type ServicePendingInstanceActivation,
+  type ServiceSpotMessageFollowSeal,
   type ServiceUserSpotOperationHandler,
   type ServiceUserSpotOperationResult,
   type ServiceStatefulMailboxData,
@@ -46,6 +47,8 @@ import type {
   ServiceSpotState
 } from '../../foundation/service-stateful-registry';
 import type {
+  ServiceActorCreateRecord,
+  ServiceDirectSpotRouteFence,
   ServiceInstanceActivationTarget,
   ServiceInstanceRouteFence,
   ServiceSpotRouteFence,
@@ -87,7 +90,8 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
   private readonly channels = new Map<string, number>();
   private readonly peerIntents = new Map<bigint, {
     readonly endpoint: string;
-    readonly nodeRoutingId: string;
+    readonly nodeRoutingId?: string;
+    readonly lifecycleGeneration?: bigint;
   }>();
   private readonly completions: PendingCompletion[] = [];
   private readonly routingId: string;
@@ -103,6 +107,11 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
   private activeCapacityLimit = 10_000;
   private pendingCapacityLimit = 128;
   private objectCapabilities: readonly string[] = [];
+  private inboundMessageDropped?: (
+    surface: 'node' | 'channel',
+    messageKind: 'send',
+    reason: 'backpressure'
+  ) => void;
 
   constructor(
     private readonly meshName: string,
@@ -139,6 +148,14 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     this.objectCapabilities = [...new Set(options.objectCapabilities)].sort();
   }
 
+  setInboundMessageDroppedHandler(handler: (
+    surface: 'node' | 'channel',
+    messageKind: 'send',
+    reason: 'backpressure'
+  ) => void): void {
+    this.inboundMessageDropped = handler;
+  }
+
   selectObjectPlacement(stableType: string) {
     const descriptor = this.requireRuntime().topology.selectObjectPlacement(stableType);
     return descriptor === undefined
@@ -148,6 +165,10 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
           targetNodeGeneration: descriptor.lifecycleGeneration,
           descriptorVersion: descriptor.descriptorRevision.toString()
         };
+  }
+
+  instanceSpotPlacementTypes(): readonly string[] {
+    return this.requireRuntime().topology.instanceSpotPlacementTypes();
   }
 
   sendToMissingInstanceSpot(
@@ -205,10 +226,15 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     const descriptor = this.createDescriptor();
     const runtime = new RawServiceMeshRuntime({
       descriptor,
+      onInboundMessageDropped: (surface, messageKind, reason) =>
+        this.inboundMessageDropped?.(surface, messageKind, reason),
       onPeerNotRequired: (nodeRoutingId, endpoint) => {
         for (const [intent, peer] of this.peerIntents) {
           if (
-            peer.nodeRoutingId === nodeRoutingId
+            (
+              peer.nodeRoutingId === undefined
+              || peer.nodeRoutingId === nodeRoutingId
+            )
             && peer.endpoint === endpoint
           ) {
             this.peerIntents.delete(intent);
@@ -267,16 +293,36 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     this.runtime?.updateLocalWeights({ placementWeight: validated });
   }
 
-  connectPeer(options: { readonly endpoint: string; readonly expectedRid?: unknown }): bigint {
+  connectPeer(options: {
+    readonly endpoint: string;
+    readonly expectedRid?: unknown;
+    readonly expectedSecurityIdentity?: string;
+    readonly expectedLifecycleGeneration?: bigint;
+  }): bigint {
     const runtime = this.requireRuntime();
-    if (options.expectedRid === undefined) {
-      throw new Error('M6A raw manual peer connection requires expectedRid.');
+    const nodeRoutingId = options.expectedRid === undefined
+      ? undefined
+      : String(options.expectedRid);
+    if (nodeRoutingId === undefined) {
+      runtime.connectPeerEndpoint(options.endpoint);
+    } else {
+      runtime.connectPeerByRoutingId(
+        options.endpoint,
+        nodeRoutingId,
+        options.expectedSecurityIdentity
+          ?? runtime.topology.localDescriptor().securityIdentity,
+        options.expectedLifecycleGeneration
+      );
     }
-    const nodeRoutingId = String(options.expectedRid);
-    runtime.connectPeerByRoutingId(options.endpoint, nodeRoutingId);
     const intent = this.nextPeerIntent++;
-    this.peerIntents.set(intent, { endpoint: options.endpoint, nodeRoutingId });
-    runtime.announcePeer(nodeRoutingId);
+    this.peerIntents.set(intent, {
+      endpoint: options.endpoint,
+      ...(nodeRoutingId === undefined ? {} : {
+        nodeRoutingId,
+        lifecycleGeneration: options.expectedLifecycleGeneration
+      })
+    });
+    if (nodeRoutingId !== undefined) runtime.announcePeer(nodeRoutingId);
     return intent;
   }
 
@@ -284,13 +330,41 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     const intent = this.peerIntents.get(intentId);
     if (intent === undefined) return;
     this.peerIntents.delete(intentId);
-    this.runtime?.disconnectPeer(intent.endpoint, intent.nodeRoutingId);
+    if (intent.nodeRoutingId === undefined) {
+      this.runtime?.disconnectPeerEndpoint(intent.endpoint);
+    } else {
+      this.runtime?.disconnectPeer(
+        intent.endpoint,
+        intent.nodeRoutingId,
+        intent.lifecycleGeneration
+      );
+    }
   }
 
-  disconnectPeer(peerRid: unknown, _lifecycleGeneration: bigint): void {
+  disconnectPeer(peerRid: unknown, lifecycleGeneration: bigint): void {
     const nodeRoutingId = String(peerRid);
+    const admitted = this.runtime?.topology.peer(nodeRoutingId);
+    if (
+      admitted !== undefined
+      && admitted.descriptor.lifecycleGeneration !== lifecycleGeneration
+    ) {
+      return;
+    }
+    const admittedEndpoint = admitted?.descriptor.advertisedEndpoint;
     const found = [...this.peerIntents.entries()]
-      .find(([, intent]) => intent.nodeRoutingId === nodeRoutingId);
+      .find(([, intent]) =>
+        (
+          intent.nodeRoutingId === nodeRoutingId
+          && (
+            intent.lifecycleGeneration === undefined
+            || intent.lifecycleGeneration === lifecycleGeneration
+          )
+        )
+        || (
+          intent.nodeRoutingId === undefined
+          && admittedEndpoint !== undefined
+          && intent.endpoint === admittedEndpoint
+        ));
     if (found === undefined) return;
     this.removePeerConnection(found[0]);
   }
@@ -394,16 +468,26 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
   }
 
   peers(): MeshPeerEntry[] {
-    const intents = new Map(
-      [...this.peerIntents.entries()].map(([id, intent]) => [
-        intent.nodeRoutingId,
-        { id, ...intent }
-      ])
-    );
+    const intents = [...this.peerIntents.entries()].map(([id, intent]) => ({
+      id,
+      ...intent
+    }));
+    const findIntent = (nodeRoutingId: string, endpoint: string) =>
+      intents.find(intent =>
+        intent.nodeRoutingId === nodeRoutingId
+        || (
+          intent.nodeRoutingId === undefined
+          && intent.endpoint === endpoint
+        ));
     const admitted = (this.runtime?.topology.peers() ?? []).map(peer => ({
-      connectionIntentId: intents.get(peer.descriptor.nodeRoutingId)?.id ?? 0n,
+      connectionIntentId: findIntent(
+        peer.descriptor.nodeRoutingId,
+        peer.descriptor.advertisedEndpoint
+      )?.id ?? 0n,
       source: 1,
-      state: peerStateCode(peer.descriptor.state),
+      state: this.runtime?.isPeerRouteReady(peer.descriptor.nodeRoutingId) === false
+        ? 1
+        : peerStateCode(peer.descriptor.state),
       routingId: peer.descriptor.nodeRoutingId as RoutingId,
       lifecycleGeneration: peer.descriptor.lifecycleGeneration,
       descriptorRevision: peer.descriptor.descriptorRevision,
@@ -413,7 +497,10 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
       lastChangedMs: BigInt(Math.trunc(performance.now()))
     }));
     const notRequired = (this.runtime?.topology.notRequiredPeers() ?? []).map(descriptor => ({
-      connectionIntentId: intents.get(descriptor.nodeRoutingId)?.id ?? 0n,
+      connectionIntentId: findIntent(
+        descriptor.nodeRoutingId,
+        descriptor.advertisedEndpoint
+      )?.id ?? 0n,
       source: 1,
       state: 6,
       routingId: descriptor.nodeRoutingId as RoutingId,
@@ -425,20 +512,22 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
       lastChangedMs: BigInt(Math.trunc(performance.now()))
     }));
     const projected = new Set([
-      ...admitted.map(peer => String(peer.routingId)),
-      ...notRequired.map(peer => String(peer.routingId))
+      ...admitted.map(peer => peer.connectionIntentId),
+      ...notRequired.map(peer => peer.connectionIntentId)
     ]);
-    const disconnected = [...intents.values()]
-      .filter(intent => !projected.has(intent.nodeRoutingId))
+    const disconnected = intents
+      .filter(intent =>
+        intent.nodeRoutingId !== undefined
+        && !projected.has(intent.id))
       .map(intent => {
-        const descriptor = this.runtime?.topology.knownDescriptor(intent.nodeRoutingId);
+        const descriptor = this.runtime?.topology.knownDescriptor(intent.nodeRoutingId!);
         return {
           connectionIntentId: intent.id,
           source: 1,
           // A new manual intent is Connecting until its first descriptor is
           // observed. A previously admitted required peer is NotConnected.
           state: descriptor === undefined ? 1 : 0,
-          routingId: intent.nodeRoutingId as RoutingId,
+          routingId: intent.nodeRoutingId! as RoutingId,
           lifecycleGeneration: descriptor?.lifecycleGeneration ?? 0n,
           descriptorRevision: descriptor?.descriptorRevision ?? 0n,
           endpoint: descriptor?.advertisedEndpoint ?? intent.endpoint,
@@ -665,6 +754,14 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     return this.requireStateful().requestUserSpotClose(targetNodeRid, request, timeoutMs);
   }
 
+  requestActorCreate(
+    targetNodeRid: string,
+    request: Omit<ServiceActorCreateRecord, 'kind' | 'correlation' | 'operation'>,
+    timeoutMs: number
+  ): Promise<ServiceUserSpotOperationResult> {
+    return this.requireStateful().requestActorCreate(targetNodeRid, request, timeoutMs);
+  }
+
   recoverInstanceActivation(
     envelope: ServiceInstanceActivationRecoveryEnvelope,
     route: ServiceInstanceRouteFence
@@ -698,8 +795,45 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     );
   }
 
-  rememberSpotRoute(route: ServiceSpotRouteFence, storeVersion?: string): void {
-    this.requireStateful().rememberSpotRoute(route, storeVersion);
+  rememberSpotRoute(route: ServiceDirectSpotRouteFence): void {
+    this.requireStateful().rememberSpotRoute(route);
+  }
+
+  entrySpotRouteFence(
+    targetNodeRid: string,
+    targetSpotId: string
+  ): ServiceDirectSpotRouteFence {
+    const generation = this.peerGeneration(targetNodeRid);
+    return {
+      spot: { spotId: targetSpotId, generation },
+      targetNodeRid,
+      targetNodeGeneration: generation,
+      authorityOwnerGeneration: generation,
+      ownerLeaseGeneration: generation,
+      storeVersion: entrySpotFenceVersion(generation)
+    };
+  }
+
+  sealSpotMessageFollowIngress(
+    source: ServiceDirectSpotRouteFence
+  ): ServiceSpotMessageFollowSeal | undefined {
+    return this.requireStateful().sealSpotMessageFollowIngress(source);
+  }
+
+  abortSpotMessageFollowIngress(seal: ServiceSpotMessageFollowSeal): boolean {
+    return this.requireStateful().abortSpotMessageFollowIngress(seal);
+  }
+
+  commitSpotMessageFollowIngress(
+    seal: ServiceSpotMessageFollowSeal,
+    target: ServiceDirectSpotRouteFence,
+    durationMs: number
+  ): Promise<boolean> {
+    return this.requireStateful().commitSpotMessageFollowIngress(
+      seal,
+      target,
+      durationMs
+    );
   }
 
   forgetSpotRoute(
@@ -910,26 +1044,19 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
 
   sendFromSpot(
     source: ServiceSpotState,
-    targetNodeRid: string,
-    targetSpotId: string,
-    targetSpotGeneration: bigint,
+    target: ServiceDirectSpotRouteFence,
     parts: MessageLike | readonly MessageLike[]
   ): SubmitResultValue {
     return this.requireStateful().sendToSpot(
       source.ref.spotId,
-      targetNodeRid,
-      { spotId: targetSpotId, generation: targetSpotGeneration },
-      this.peerGeneration(targetNodeRid),
-      targetSpotGeneration,
+      target,
       encodeMultipart(parts)
     ) as SubmitResultValue;
   }
 
   requestFromSpot(
     source: ServiceSpotState,
-    targetNodeRid: string,
-    targetSpotId: string,
-    targetSpotGeneration: bigint,
+    target: ServiceDirectSpotRouteFence,
     parts: MessageLike | readonly MessageLike[],
     timeoutMs: number
   ): MeshOperationId {
@@ -937,10 +1064,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
       OperationKind.SpotRequest,
       this.requireStateful().requestToSpot(
         source.ref.spotId,
-        targetNodeRid,
-        { spotId: targetSpotId, generation: targetSpotGeneration },
-        this.peerGeneration(targetNodeRid),
-        targetSpotGeneration,
+        target,
         encodeMultipart(parts),
         timeoutMs
       )
@@ -1030,6 +1154,9 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     const runtime = this.runtime;
     if (runtime === undefined) return;
     runtime.drainMonitorEvents();
+    // Completion progress is independent from Application receive. A future
+    // Application HWM pause may skip pumpOne(), but must keep this call.
+    runtime.progressCompletion();
     for (let index = 0; index < MAX_DRAIN_RECORDS; index++) {
       const result = runtime.pumpOne();
       if (result === 'noData') break;
@@ -1213,14 +1340,28 @@ class RawServiceSpot implements ServiceSpot {
     targetNodeRid: unknown,
     targetSpotId: unknown,
     targetSpotGeneration: bigint,
-    parts: MessageLike | readonly MessageLike[]
+    parts: MessageLike | readonly MessageLike[],
+    options?: {
+      readonly routeFence?: ServiceDirectSpotRouteFence;
+      readonly entrySpot?: boolean;
+    }
   ): SubmitResultValue {
     this.requireOpen();
-    return this.backend.sendFromSpot(
-      this.state,
+    const routeFence = requireDirectSpotRouteFence(
+      options?.routeFence,
       String(targetNodeRid),
       String(targetSpotId),
       targetSpotGeneration,
+      options?.entrySpot === true
+        ? this.backend.entrySpotRouteFence(
+            String(targetNodeRid),
+            String(targetSpotId)
+          )
+        : undefined
+    );
+    return this.backend.sendFromSpot(
+      this.state,
+      routeFence,
       parts
     );
   }
@@ -1230,14 +1371,28 @@ class RawServiceSpot implements ServiceSpot {
     targetSpotId: unknown,
     targetSpotGeneration: bigint,
     parts: MessageLike | readonly MessageLike[],
-    options?: { readonly timeoutMs?: number }
+    options?: {
+      readonly timeoutMs?: number;
+      readonly routeFence?: ServiceDirectSpotRouteFence;
+      readonly entrySpot?: boolean;
+    }
   ): MeshOperationId {
     this.requireOpen();
-    return this.backend.requestFromSpot(
-      this.state,
+    const routeFence = requireDirectSpotRouteFence(
+      options?.routeFence,
       String(targetNodeRid),
       String(targetSpotId),
       targetSpotGeneration,
+      options?.entrySpot === true
+        ? this.backend.entrySpotRouteFence(
+            String(targetNodeRid),
+            String(targetSpotId)
+          )
+        : undefined
+    );
+    return this.backend.requestFromSpot(
+      this.state,
+      routeFence,
       parts,
       options?.timeoutMs ?? 30_000
     );
@@ -1285,6 +1440,31 @@ class RawServiceSpot implements ServiceSpot {
   private requireOpen(): void {
     if (this.closed) throw new Error(`Spot '${this.routingId}' is closed.`);
   }
+}
+
+function requireDirectSpotRouteFence(
+  route: ServiceDirectSpotRouteFence | undefined,
+  targetNodeRid: string,
+  targetSpotId: string,
+  targetSpotGeneration: bigint,
+  entryRoute: ServiceDirectSpotRouteFence | undefined
+): ServiceDirectSpotRouteFence {
+  if (route === undefined && entryRoute !== undefined) {
+    return entryRoute;
+  }
+  if (
+    route === undefined
+    || route.targetNodeRid !== targetNodeRid
+    || route.spot.spotId !== targetSpotId
+    || route.spot.generation !== targetSpotGeneration
+  ) {
+    throw new TypeError('Direct Spot submission requires the exact resolved authority fence.');
+  }
+  return route;
+}
+
+function entrySpotFenceVersion(generation: bigint): string {
+  return `entry:${generation}`;
 }
 
 class RawStreamSessionService implements StreamSessionService {

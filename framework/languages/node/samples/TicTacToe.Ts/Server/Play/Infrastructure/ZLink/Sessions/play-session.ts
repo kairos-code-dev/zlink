@@ -1,4 +1,3 @@
-import { AuthenticatePlaySessionHandler } from './Handlers/authenticate-play-session-handler';
 import type {
   ZLinkMessage,
   ZLinkSession,
@@ -7,9 +6,7 @@ import type {
 } from '@zlink-systems/framework';
 
 class PlaySession implements ZLinkSession {
-  constructor(readonly context: ZLinkSessionContext) {
-    context.handlers.addHandler(AuthenticatePlaySessionHandler);
-  }
+  constructor(readonly context: ZLinkSessionContext) {}
 
   async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
     if (await this.context.handlers.tryHandle(dispatch, payload)) return;

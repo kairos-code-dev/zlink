@@ -22,12 +22,10 @@ public sealed partial class RegressionTests
             Assert.Contains("AddHandlersFromAssemblyOf", source, StringComparison.Ordinal);
             Assert.DoesNotContain("AddRequestHandler<", source, StringComparison.Ordinal);
             Assert.DoesNotContain("AddSendHandler<", source, StringComparison.Ordinal);
-            Assert.Contains("Channel(SampleNames.GameApiChannel)", source, StringComparison.Ordinal);
-            Assert.DoesNotContain("Channel(SampleNames.MeshName)", source, StringComparison.Ordinal);
+            Assert.DoesNotContain(".Channel(", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("AddClientServerChannel(", source, StringComparison.Ordinal);
         }
 
-        Assert.Contains("AddHandlerGroup(SampleNames.GameApiHandlerGroup)", File.ReadAllText(hosts[0]),
-            StringComparison.Ordinal);
         Assert.Contains("AddInstanceSpotFactory<PlayerQuestSpot>", File.ReadAllText(hosts[1]),
             StringComparison.Ordinal);
     }
@@ -67,6 +65,8 @@ public sealed partial class RegressionTests
             "ZLink", "GameplayEventOwnerDispatcher.cs"));
         var progressSynchronizer = File.ReadAllText(Path.Combine(sampleRoot, "Server", "GameApi",
             "Infrastructure", "Http", "HttpQuestProgressSynchronizer.cs"));
+        var progressNotifier = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission",
+            "Infrastructure", "ZLink", "GameApiQuestClients.cs"));
         var readme = File.ReadAllText(Path.Combine(sampleRoot, "README.ko.md"));
 
         Assert.Contains("RUN_ID=\"$(basename \"${RUN_DIR}\")-$$-${RANDOM}\"", shellRunner, StringComparison.Ordinal);
@@ -197,6 +197,9 @@ public sealed partial class RegressionTests
         Assert.Contains("RequestToSpot(playerId", progressSynchronizer, StringComparison.Ordinal);
         Assert.Contains(".InstanceSpot(SampleNames.PlayerQuestSpotType)", progressSynchronizer,
             StringComparison.Ordinal);
+        Assert.Contains("IZLinkActorClient", progressNotifier, StringComparison.Ordinal);
+        Assert.Contains("SendToActor(playerId", progressNotifier, StringComparison.Ordinal);
+        Assert.DoesNotContain("SendToChannel", progressNotifier, StringComparison.Ordinal);
         Assert.Contains("IZLinkInstanceSpot", playerQuestSpot, StringComparison.Ordinal);
         Assert.Contains("IZLinkInstanceSpotContext", playerQuestSpot, StringComparison.Ordinal);
         Assert.DoesNotContain("OnCreateAsync", playerQuestSpot, StringComparison.Ordinal);

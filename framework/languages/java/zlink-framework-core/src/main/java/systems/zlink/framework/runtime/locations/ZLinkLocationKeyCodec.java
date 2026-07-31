@@ -2,7 +2,7 @@ package systems.zlink.framework.runtime.locations;
 
 import java.util.HexFormat;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptorKey;
+import systems.zlink.framework.runtime.internal.locations.ZLinkFanoutPublisherDescriptorKey;
 
 /*
  * Framework-internal row key codec for in-memory bookkeeping and runtime

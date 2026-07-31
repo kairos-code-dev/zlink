@@ -1,5 +1,4 @@
 // Verifies SM-D4B stored route dispatch without Location Store reads.
-using System.Net.Http.Json;
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
@@ -336,13 +335,12 @@ internal static class SmD4BStoredRouteWithoutStoreScenario
         string gateId,
         string marker)
     {
-        using var client = new HttpClient();
         foreach (var admin in admins)
         {
-            using var response = await client.PostAsJsonAsync(
-                $"{admin}/arm",
-                new TransportGateArm(gateId, marker));
-            response.EnsureSuccessStatusCode();
+            using var client = CreateAdminClient(admin);
+            await client.Post("/arm")
+                .Body(new TransportGateArm(gateId, marker))
+                .AsyncRaw();
         }
     }
 
@@ -370,13 +368,12 @@ internal static class SmD4BStoredRouteWithoutStoreScenario
         IEnumerable<string> admins,
         string gateId)
     {
-        using var client = new HttpClient();
         foreach (var admin in admins)
         {
-            using var response = await client.PostAsync(
-                $"{admin}/release?gateId={Uri.EscapeDataString(gateId)}",
-                null);
-            response.EnsureSuccessStatusCode();
+            using var client = CreateAdminClient(admin);
+            await client.Post("/release")
+                .Query("gateId", gateId)
+                .AsyncRaw();
         }
     }
 
@@ -384,20 +381,25 @@ internal static class SmD4BStoredRouteWithoutStoreScenario
         IEnumerable<string> admins,
         string gateId)
     {
-        using var client = new HttpClient();
         var captured = 0;
         var released = 0;
         foreach (var admin in admins)
         {
-            var snapshot = await client.GetFromJsonAsync<TransportGateSnapshot>(
-                $"{admin}/snapshot?gateId={Uri.EscapeDataString(gateId)}")
-                ?? throw new InvalidOperationException(
-                    $"SM-D4B gate '{gateId}' returned no snapshot.");
+            using var client = CreateAdminClient(admin);
+            var snapshot = (await client.Get("/snapshot")
+                    .Query("gateId", gateId)
+                    .Async<TransportGateSnapshot>())
+                .Body;
             captured += snapshot.CapturedCount;
             released += snapshot.ReleasedCount;
         }
         return new TransportGateSnapshot(gateId, captured, released);
     }
+
+    private static ZLinkHttpClient CreateAdminClient(string endpoint) =>
+        ZLinkHttpClient.Create(endpoint)
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
 
     private static IZlinkStreamConnector CreateConnector(string endpoint) =>
         ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions

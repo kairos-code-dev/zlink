@@ -70,6 +70,31 @@ test('backend adapter factory exposes the supported backend adapters', () => {
   assert.equal(factory.createRegistryAdapter, undefined);
 });
 
+test('backend raw STREAM does not expose the removed bindings Session Actor service API', async () => {
+  const factory = new backend.ZLinkNodeBackendAdapterFactory();
+  const channel = factory.createChannelAdapter();
+  const streamAdapter = factory.createStreamAdapter();
+  const context = channel.createContext();
+  const stream = streamAdapter.createStreamSocket(context);
+
+  try {
+    assert.equal(typeof stream.nativeInstance.bindActor, 'undefined');
+    assert.equal(typeof stream.nativeInstance.unbindActor, 'undefined');
+    assert.equal(typeof stream.nativeInstance.sendBoundActor, 'undefined');
+    await assert.rejects(
+      () => stream.bindActor(
+        'session-rid',
+        { nodeRid: 'node-rid', actorId: 'actor-id', generation: 1n },
+        1000
+      ),
+      /requires enableActorDispatch\(\) and a Framework MeshNode service route/
+    );
+  } finally {
+    await stream.dispose();
+    await context.dispose();
+  }
+});
+
 test('backend mesh adapter creates a named MeshNode through the public binding API', async () => {
   const factory = new backend.ZLinkNodeBackendAdapterFactory();
   const context = factory.createChannelAdapter().createContext();

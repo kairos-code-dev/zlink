@@ -251,13 +251,16 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
     private CompletionStage<Void> executeDeferred(
         ZLinkActorJoinOperationId operationId,
         long deadlineNanos) {
-        if (System.nanoTime() >= deadlineNanos) {
+        Duration remaining = remainingTimeout(deadlineNanos);
+        if (remaining == null) {
             return notifyCompletion(new ZLinkActorJoinCompletion.Failed(
                 operationId,
                 ZLinkFrameworkErrorKind.DEADLINE_EXCEEDED,
                 false));
         }
-        return execute(operationId).handle((result, error) -> {
+        ZLinkActorSpotJoinCall bounded =
+            (ZLinkActorSpotJoinCall) timeout(remaining);
+        return bounded.execute(operationId).handle((result, error) -> {
                 if (error != null) {
                     Throwable cause = unwrap(error);
                     ZLinkFrameworkErrorKind kind = cause instanceof ZLinkFrameworkException framework
@@ -285,9 +288,16 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
             })
             .thenCompose(completion ->
                 completion instanceof ZLinkActorJoinCompletion.Accepted
-                    && acceptedCompletionDeliveredOnTarget.get()
+                    && bounded.acceptedCompletionDeliveredOnTarget.get()
                     ? CompletableFuture.completedFuture(null)
                     : notifyCompletion(completion));
+    }
+
+    static Duration remainingTimeout(long deadlineNanos) {
+        long remainingNanos = deadlineNanos - System.nanoTime();
+        return remainingNanos <= 0
+            ? null
+            : Duration.ofNanos(remainingNanos);
     }
 
     private CompletionStage<Void> notifyCompletion(
@@ -470,7 +480,14 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                         acceptedCompletionManifest.get(),
                         result.actor());
             });
-        if (retainMessageFollowSource && services.actors().isActorDispatchActive(context.actor())) {
+        if (retainMessageFollowSource
+            && !deferred.get()
+            && services.actors().isActorDispatchActive(context.actor())) {
+            // A synchronous Join may complete inside the Actor turn that
+            // started it, so source cleanup must follow that turn. A deferred
+            // Join completes after its starting turn has returned. Queuing its
+            // cleanup behind whichever later Actor request happens to be active
+            // can deadlock that request while it waits for the move to finish.
             services.actors().continueAfterActorDispatch(context.actor(), cleanup);
             return CompletableFuture.completedFuture(null);
         }
@@ -911,7 +928,8 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
             packet.header(),
             packet.payload(),
             packet.replyRoute(),
-            packet.arrivalIndex());
+            packet.arrivalIndex(),
+            packet.acceptedJournalRecord());
         CompletionStage<Void> forwarded;
         try {
             forwarded = requestTransfer(address, parts)

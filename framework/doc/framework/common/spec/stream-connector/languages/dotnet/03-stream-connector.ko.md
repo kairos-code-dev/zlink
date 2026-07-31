@@ -139,6 +139,18 @@ builder를 반환한다.
 codec 표면은 `IZlinkStreamPayloadCodec`과 `IZlinkStreamCompressionCodec`이다. `ZlinkStreamJsonCodec`이
 기본 payload codec이며, `CompressionCodec`을 지정하면 built-in 대신 그 구현을 사용한다.
 
+Framework codec extension이 STREAM header 값을 함께 제공해야 하면 Stream Connector package의
+`IZlinkStreamCodecRegistration`을 구현한다. 이 descriptor는 STREAM 전용 정보만 소유한다. 공통 serializer
+registry는 STREAM enum이나 compression package를 참조하지 않는다.
+
+```csharp
+public interface IZlinkStreamCodecRegistration
+{
+    string ContentType { get; }
+    ZlinkStreamCodec Codec { get; }
+}
+```
+
 ## 6. Lifecycle과 완료 의미
 
 **`.NET` 고유 계약이다.** 상태 전이 자체는 [공통 스펙 §6](../../32-stream-connector.ko.md)이 소유한다.

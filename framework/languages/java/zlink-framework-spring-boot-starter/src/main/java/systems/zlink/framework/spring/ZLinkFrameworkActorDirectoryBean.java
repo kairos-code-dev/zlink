@@ -5,7 +5,7 @@ import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ZLinkActorDirectory;
 import systems.zlink.framework.messaging.ZLinkMessage;
-import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle;
 
 final class ZLinkFrameworkActorDirectoryBean implements ZLinkActorDirectory {
     private final ZLinkFrameworkLifecycle lifecycle;

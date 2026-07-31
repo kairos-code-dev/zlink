@@ -1,17 +1,19 @@
 package systems.zlink.samples.tictactoe.server.api.handlers;
 
-import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
+import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerReq;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerRes;
 import systems.zlink.samples.tictactoe.shared.contracts.PlayerInfo;
 
+@ZLinkHandlerGroup("api")
 public final class AuthenticatePlayerHandler
     implements ZLinkRequestHandler<AuthenticatePlayerReq, AuthenticatePlayerRes> {
     @Override
     public java.util.concurrent.CompletionStage<AuthenticatePlayerRes> handle(
         AuthenticatePlayerReq request,
-        ZLinkRequestContext context) {
+        ZLinkMessageContext context) {
         String actorId = request.accessToken().trim();
         if (actorId.isBlank()) {
             throw new IllegalArgumentException("authentication token is empty");

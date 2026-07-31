@@ -9,7 +9,6 @@
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
 #include <zlink/framework/contracts/detail/message_name.hpp>
 #include <zlink/framework/contracts/dispatch/execution.hpp>
-#include <zlink/framework/contracts/eventing/events.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 #include <zlink/framework/contracts/http/http.hpp>
 #include <zlink/framework/contracts/locations/options.hpp>
@@ -32,6 +31,14 @@
 
 namespace zlink::framework
 {
+
+enum class application_hwm_profile_t
+{
+    compact = 0,
+    low_latency = 1,
+    balanced = 2,
+    throughput = 3
+};
 
 namespace detail
 {
@@ -341,13 +348,16 @@ struct framework_options_state_t
     std::set<std::string> stream_nodes_with_session;
     std::set<std::string> stream_session_names;
     std::map<std::string, stream_session_factory_t> stream_session_factories;
-    bool use_in_memory_location_stores = false;
     bool has_location_store_instance = false;
     bool has_relocation_store_instance = false;
     location_options_t locations;
     http_options_builder_t http;
     message_metadata_policy_t metadata_policy;
     dispatch_options_t dispatch;
+    std::optional<std::uint64_t> application_hwm_bytes;
+    application_hwm_profile_t application_hwm_profile =
+      application_hwm_profile_t::balanced;
+    std::optional<std::uint64_t> process_memory_limit_bytes;
     bool applied = false;
 
     void add_zlink_action (std::function<void (zlink_builder_t &)> action)

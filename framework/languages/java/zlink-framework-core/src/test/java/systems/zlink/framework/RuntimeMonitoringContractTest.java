@@ -7,24 +7,23 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.Flow;
 import org.junit.jupiter.api.Test;
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkMeshChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkMeshNodeRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions;
-import systems.zlink.framework.monitoring.ZLinkLocationRuntimeSnapshot;
-import systems.zlink.framework.locations.ZLinkActivationConcurrency;
-import systems.zlink.framework.monitoring.ZLinkInstanceSpotTypeSnapshot;
 import systems.zlink.framework.monitoring.ZLinkMeshChannelSnapshot;
-import systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot;
 import systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot;
-import systems.zlink.framework.monitoring.ZLinkMeshNodeState;
+import systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot;
+import systems.zlink.framework.monitoring.ZLinkPlacementSnapshot;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
-import systems.zlink.framework.locations.ZLinkCapacityUsage;
-import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole;
-import systems.zlink.framework.locations.ZLinkPlacementCapacity;
+import systems.zlink.framework.monitoring.ZLinkClientServerRuntime;
+import systems.zlink.framework.monitoring.ZLinkClientServerStatus;
+import systems.zlink.framework.monitoring.ZLinkFanoutRuntime;
+import systems.zlink.framework.monitoring.ZLinkFanoutStatus;
+import systems.zlink.framework.monitoring.ZLinkFrameworkRuntimeStatus;
+import systems.zlink.framework.monitoring.ZLinkTopologyState;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 
 final class RuntimeMonitoringContractTest {
     @Test
@@ -47,6 +46,54 @@ final class RuntimeMonitoringContractTest {
     }
 
     @Test
+    void hostAndTopologyRuntimeMatchMinimalPublicContract() throws Exception {
+        assertEquals(
+            ZLinkFrameworkRuntimeStatus.class,
+            ZLinkFrameworkRuntime.class.getMethod("status").getReturnType());
+        assertEquals(
+            Flow.Publisher.class,
+            ZLinkFrameworkRuntime.class.getMethod("observe").getReturnType());
+        assertEquals(
+            ZLinkClientServerStatus.class,
+            ZLinkClientServerRuntime.class
+                .getMethod("snapshot", String.class)
+                .getReturnType());
+        assertEquals(
+            ZLinkFanoutStatus.class,
+            ZLinkFanoutRuntime.class
+                .getMethod("snapshot", String.class)
+                .getReturnType());
+        assertThrows(
+            ClassNotFoundException.class,
+            () -> Class.forName(
+                "systems.zlink.framework.monitoring.ZLinkRuntimeQuery"));
+        assertThrows(
+            ClassNotFoundException.class,
+            () -> Class.forName(
+                "systems.zlink.framework.monitoring.ZLinkSocketEvent"));
+        assertThrows(
+            ClassNotFoundException.class,
+            () -> Class.forName(
+                "systems.zlink.framework.monitoring.ZLinkFrameworkRuntimeSnapshot"));
+        assertThrows(
+            ClassNotFoundException.class,
+            () -> Class.forName(
+                "systems.zlink.framework.monitoring.ZLinkMeshNodeState"));
+        assertThrows(
+            ClassNotFoundException.class,
+            () -> Class.forName(
+                "systems.zlink.framework.monitoring.ZLinkRuntimeErrorSink"));
+        assertThrows(
+            ClassNotFoundException.class,
+            () -> Class.forName(
+                "systems.zlink.framework.monitoring.ZLinkRuntimeErrorEvent"));
+        assertThrows(
+            ClassNotFoundException.class,
+            () -> Class.forName(
+                "systems.zlink.framework.monitoring.ZLinkRuntimeErrorEventKind"));
+    }
+
+    @Test
     void routeMeshRuntimeOptionsMatchExactPublicMethodShape() throws Exception {
         assertEquals(
             ZLinkMeshNodeRuntimeOptions.class,
@@ -62,50 +109,46 @@ final class RuntimeMonitoringContractTest {
 
     @Test
     void meshNodeSnapshotDefensivelyCopiesCollectionInputs() {
-        ArrayList<String> sources = new ArrayList<>(List.of("manual"));
         ArrayList<ZLinkMeshChannelSnapshot> channels = new ArrayList<>(
-            List.of(new ZLinkMeshChannelSnapshot("channel", 100, 1, true)));
-        ArrayList<ZLinkInstanceSpotTypeSnapshot> instanceSpots = new ArrayList<>(
-            List.of(new ZLinkInstanceSpotTypeSnapshot(
-                "room", 2, 1, 0, 3, 64, Optional.of("activated"))));
+            List.of(new ZLinkMeshChannelSnapshot("channel", true, 1)));
         ZLinkMeshNodeSnapshot snapshot = new ZLinkMeshNodeSnapshot(
             "mesh",
-            RoutingId.from("node"),
-            1,
-            1,
-            "inproc://mesh",
-            ZLinkMeshNodeState.SERVING,
-            1,
-            Instant.now(),
-            sources,
-            List.of(),
-            channels,
-            instanceSpots,
-            new ZLinkMeshClaimSnapshot(true, 0, true, 0),
-            new ZLinkLocationRuntimeSnapshot(
-                "ready", Optional.empty(), Optional.empty()),
-            ZLinkMeshNodeObjectRole.SERVER,
-            100,
-            new ZLinkPlacementCapacity(
-                new ZLinkCapacityUsage(2, 1, 0),
-                new ZLinkCapacityUsage(3, 1, 8),
-                List.of()),
-            new ZLinkActivationConcurrency(1, 4),
-            List.of(),
+            ZLinkTopologyState.READY,
+            true,
             0,
-            Optional.empty());
+            channels,
+            List.of(),
+            new ZLinkPlacementSnapshot(true, 2, 3, java.util.Optional.empty()),
+            1,
+            Instant.now());
 
-        sources.clear();
         channels.clear();
-        instanceSpots.clear();
 
-        assertEquals(List.of("manual"), snapshot.descriptorSources());
         assertEquals(1, snapshot.channels().size());
-        assertEquals(1, snapshot.instanceSpots().size());
-        assertEquals(0, snapshot.objectCapacity().actors().limit());
-        assertEquals(new ZLinkActivationConcurrency(1, 4), snapshot.activationConcurrency());
+        assertEquals(2, snapshot.placement().activeActorCount());
+        assertEquals(3, snapshot.placement().activeSpotCount());
         assertThrows(
             UnsupportedOperationException.class,
-            () -> snapshot.descriptorSources().add("redis"));
+            () -> snapshot.channels().add(
+                new ZLinkMeshChannelSnapshot("other", false, 0)));
+    }
+
+    @Test
+    void publicTopologyStatusDoesNotExposeDiscoveryInternals() {
+        assertThrows(
+            NoSuchMethodException.class,
+            () -> ZLinkMeshNodeSnapshot.class.getMethod("descriptorRevision"));
+        assertThrows(
+            NoSuchMethodException.class,
+            () -> ZLinkMeshNodeSnapshot.class.getMethod("endpoint"));
+        assertThrows(
+            NoSuchMethodException.class,
+            () -> ZLinkMeshPeerSnapshot.class.getMethod("descriptorRevision"));
+        assertThrows(
+            NoSuchMethodException.class,
+            () -> ZLinkMeshPeerSnapshot.class.getMethod("endpoint"));
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> ZLinkTopologyState.valueOf("DRAINED"));
     }
 }

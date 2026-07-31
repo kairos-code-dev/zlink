@@ -41,7 +41,13 @@ class BingoGame {
     }
     this.drawnNumbers.push(number);
     for (const player of players) {
-      const lines = player.card.mark(number);
+      const card = player.card;
+      if (card === null) {
+        throw new Error(
+          `Actor '${player.actorId}' has no Bingo card for the current round.`
+        );
+      }
+      const lines = card.mark(number);
       if (lines > 0 && !this.winners.includes(player.actorId)) {
         this.winners.push(player.actorId);
       }

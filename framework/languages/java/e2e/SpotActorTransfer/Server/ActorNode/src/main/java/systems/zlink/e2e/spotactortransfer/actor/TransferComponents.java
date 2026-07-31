@@ -145,6 +145,15 @@ public final class TransferComponents {
                 return transferGates.waitFor(actor.actorId()).thenApply(ignored ->
                     transferState(actor));
             }
+            if (actor.actorId().startsWith("actor-retire-accepted-")) {
+                evidence.add(
+                    "ST-R1",
+                    actor.actorId(),
+                    "retire_capture_gate",
+                    Integer.toString(actor.stateVersion()));
+                return transferGates.waitFor(actor.actorId()).thenApply(ignored ->
+                    transferState(actor));
+            }
             return CompletableFuture.completedFuture(transferState(actor));
         }
 
@@ -421,9 +430,11 @@ public final class TransferComponents {
         Contracts.ProbeReq,
         Contracts.ProbeRes> {
         private final EvidenceStore evidence;
+        private final GateStore gates;
 
-        public EntryProbeHandler(EvidenceStore evidence) {
+        public EntryProbeHandler(EvidenceStore evidence, GateStore gates) {
             this.evidence = evidence;
+            this.gates = gates;
         }
 
         @Override
@@ -433,9 +444,10 @@ public final class TransferComponents {
             ZLinkMessageContext context,
             Contracts.ProbeReq request) {
             evidence.add(request.scenario(), actor.actorId(), "entry_packet_handler", request.marker());
-            return CompletableFuture.completedFuture(new Contracts.ProbeRes(
-                request.scenario(), actor.actorId(), spot.context().spotId(),
-                evidence.nodeRid(), actor.stateVersion(), request.marker()));
+            return awaitProbeGate(request, actor.actorId(), evidence, gates)
+                .thenApply(ignored -> new Contracts.ProbeRes(
+                    request.scenario(), actor.actorId(), spot.context().spotId(),
+                    evidence.nodeRid(), actor.stateVersion(), request.marker()));
         }
     }
 
@@ -445,9 +457,11 @@ public final class TransferComponents {
         Contracts.ProbeReq,
         Contracts.ProbeRes> {
         private final EvidenceStore evidence;
+        private final GateStore gates;
 
-        public ProbeHandler(EvidenceStore evidence) {
+        public ProbeHandler(EvidenceStore evidence, GateStore gates) {
             this.evidence = evidence;
+            this.gates = gates;
         }
 
         @Override
@@ -457,10 +471,27 @@ public final class TransferComponents {
             ZLinkMessageContext context,
             Contracts.ProbeReq request) {
             evidence.add(request.scenario(), actor.actorId(), "packet_handler", request.marker());
-            return CompletableFuture.completedFuture(new Contracts.ProbeRes(
-                request.scenario(), actor.actorId(), spot.context().spotId(),
-                evidence.nodeRid(), actor.stateVersion(), request.marker()));
+            return awaitProbeGate(request, actor.actorId(), evidence, gates)
+                .thenApply(ignored -> new Contracts.ProbeRes(
+                    request.scenario(), actor.actorId(), spot.context().spotId(),
+                    evidence.nodeRid(), actor.stateVersion(), request.marker()));
         }
+    }
+
+    private static CompletionStage<Void> awaitProbeGate(
+        Contracts.ProbeReq request,
+        String actorId,
+        EvidenceStore evidence,
+        GateStore gates) {
+        String prefix = "gate:";
+        if (!request.marker().startsWith(prefix)) {
+            return CompletableFuture.completedFuture(null);
+        }
+        String gate = request.marker().substring(prefix.length());
+        evidence.add(request.scenario(), actorId, "probe_gate_wait", gate);
+        return gates.waitFor(gate).thenRun(() ->
+            evidence.add(
+                request.scenario(), actorId, "probe_gate_released", gate));
     }
 
     public static final class MessageFollowSendHandler implements systems.zlink.framework.spots.ZLinkSpotActorSendHandler<
@@ -624,12 +655,12 @@ public final class TransferComponents {
         Contracts.BoundPushNotify notify = new Contracts.BoundPushNotify(
             request.scenario(), actor.actorId(), spotRid, evidence.nodeRid(),
             request.marker(), actor.stateVersion());
-        actor.context().boundSession()
+        CompletionStage<Void> submitted = actor.context().boundSession()
             .send(notify)
             .submit();
         evidence.add(request.scenario(), actor.actorId(), "bound_push", request.marker());
-        return CompletableFuture.completedFuture(new Contracts.BoundPushRes(
-            request.scenario(), actor.actorId(), spotRid, evidence.nodeRid(),
-            request.marker(), actor.stateVersion()));
+        return submitted.thenApply(ignored -> new Contracts.BoundPushRes(
+                request.scenario(), actor.actorId(), spotRid, evidence.nodeRid(),
+                request.marker(), actor.stateVersion()));
     }
 }

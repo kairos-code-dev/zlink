@@ -5,14 +5,6 @@ import type { ZoneWorldConfiguration } from '../Configuration/configuration';
 import { createZoneWorldLocationStore, zoneWorldLocationOptions } from '../Configuration/location-store';
 import { NodeIds, ZoneWorldNames } from '../../Shared/spec';
 import { NodeRegistry } from './node-registry';
-import {
-  AnnounceWorldHandler,
-  NodeDiagnosticsHandler,
-  ReportNodeStatusHandler,
-  ReportSpotEventHandler,
-  SetMaintenanceHandler,
-  WatchNodesHandler
-} from './ops-handlers';
 import { OpsSessionFactory } from './ops-session';
 import { OpsConsoleRegistry } from './ops-console-registry';
 import { MaintenanceStore } from '../Configuration/maintenance-store';
@@ -38,13 +30,12 @@ function createOpsModule() {
         builder.addFanoutChannel(ZoneWorldNames.broadcastChannel).enablePublisher(ops.broadcastEndpoint);
         const mesh = builder.addRouteMesh(ZoneWorldNames.zoneMesh)
           .listen(ops.reportEndpoint);
-        mesh.channelName(ZoneWorldNames.reportChannel).addHandlerGroup('ops');
-        mesh.channelName(ZoneWorldNames.zoneMesh).setWeight(0);
-        mesh.channelName(ZoneWorldNames.bridgeMesh).setWeight(0);
-        mesh.channelName(ZoneWorldNames.actorsChannel).setWeight(0);
+        mesh.channel(ZoneWorldNames.reportChannel).server().addHandlerGroup('ops');
+        mesh.channel(ZoneWorldNames.zoneMesh).client();
+        mesh.channel(ZoneWorldNames.bridgeMesh).client();
         for (const nodeId of [NodeIds.west, NodeIds.east]) {
           const channelName = ZoneWorldNames.opsChannel(nodeId);
-          mesh.channelName(channelName).setWeight(0);
+          mesh.channel(channelName).client();
         }
         return builder.build();
       }
@@ -53,13 +44,7 @@ function createOpsModule() {
       NodeRegistry,
       MaintenanceStore,
       OpsConsoleRegistry,
-      OpsSessionFactory,
-      AnnounceWorldHandler,
-      NodeDiagnosticsHandler,
-      ReportNodeStatusHandler,
-      ReportSpotEventHandler,
-      SetMaintenanceHandler,
-      WatchNodesHandler
+      OpsSessionFactory
     ]
   })(OpsModule);
   return OpsModule;

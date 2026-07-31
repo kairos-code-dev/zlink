@@ -105,9 +105,10 @@ internal readonly record struct ZLinkBackendActorRouteContext(
     ulong ReplyRequestId = 0,
     uint ReplyFlags = 0,
     string? ReplyCapability = null,
-    ulong DeadlineUnixMs = 0)
+    ulong DeadlineUnixMs = 0,
+    bool IsBoundSessionRoute = false)
 {
-    internal bool IsDirectRoute => OperationId != default;
+    internal bool IsDirectRoute => OperationId != default && !IsBoundSessionRoute;
 }
 
 internal sealed record ZLinkBackendActorPart(

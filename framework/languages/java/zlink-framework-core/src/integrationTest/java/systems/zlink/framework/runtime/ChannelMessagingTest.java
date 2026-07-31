@@ -15,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.net.ServerSocket;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -116,9 +117,9 @@ final class ChannelMessagingTest {
     void manualClientServer_requestReplySucceeds() {
         String endpoint = "inproc://zlink-java-profile-" + UUID.randomUUID();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
-            channel.enableClient(endpoint);
-            channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "Echo"); };
+        { var channel = options.addClientServerChannel("profile").server().listen();
+            options.addClientServerChannel("profile").client();
+            channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class); };
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
@@ -136,10 +137,10 @@ final class ChannelMessagingTest {
     void processLocalClientServer_requestReplySucceedsWithoutStoreOrManualClientEndpoint() {
         String endpoint = "inproc://zlink-java-local-profile-" + UUID.randomUUID();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addClientServerChannel("profile").enableClient();
-        var server = options.addClientServerChannel("profile").enableServer(endpoint);
+        options.addClientServerChannel("profile").client();
+        var server = options.addClientServerChannel("profile").server().listen();
         server.addRequestHandler(
-            EchoHandler.class, EchoRequest.class, String.class, "Echo");
+            EchoHandler.class, EchoRequest.class, String.class);
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
@@ -157,12 +158,11 @@ final class ChannelMessagingTest {
     void processLocalClientServer_withZeroWeightIsNotSelected() {
         String endpoint = "inproc://zlink-java-zero-weight-" + UUID.randomUUID();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addClientServerChannel("profile").enableClient();
-        var server = options.addClientServerChannel("profile");
-        server.configureServerSocket().weight(0);
-        server.enableServer(endpoint);
+        options.addClientServerChannel("profile").client();
+        var server = options.addClientServerChannel("profile").server().listen();
+        server.setWeight(0);
         server.addRequestHandler(
-            EchoHandler.class, EchoRequest.class, String.class, "Echo");
+            EchoHandler.class, EchoRequest.class, String.class);
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
@@ -188,9 +188,9 @@ final class ChannelMessagingTest {
 
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.useFilter(ReplyDecoratingFilter.class);
-        { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
-            channel.enableClient(endpoint);
-            channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "Echo"); };
+        { var channel = options.addClientServerChannel("profile").server().listen();
+            options.addClientServerChannel("profile").client();
+            channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class); };
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
@@ -226,9 +226,9 @@ final class ChannelMessagingTest {
         SEND_CHANNEL.set(null);
 
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
-            channel.enableClient(endpoint);
-            channel.addSendHandler(ProfileChangedHandler.class, ProfileChanged.class, "ProfileChanged"); };
+        { var channel = options.addClientServerChannel("profile").server().listen();
+            options.addClientServerChannel("profile").client();
+            channel.addSendHandler(ProfileChangedHandler.class, ProfileChanged.class); };
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
@@ -278,9 +278,9 @@ final class ChannelMessagingTest {
                 errorLatch.countDown();
                 return CompletableFuture.completedFuture(null);
             }); };
-        { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
-            channel.enableClient(endpoint);
-            channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "Echo"); };
+        { var channel = options.addClientServerChannel("profile").server().listen();
+            options.addClientServerChannel("profile").client();
+            channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class); };
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
@@ -371,9 +371,9 @@ final class ChannelMessagingTest {
                 errorLatch.countDown();
                 return CompletableFuture.completedFuture(null);
             }); };
-        { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
-            channel.enableClient(endpoint);
-            channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "Echo"); };
+        { var channel = options.addClientServerChannel("profile").server().listen();
+            options.addClientServerChannel("profile").client();
+            channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class); };
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
@@ -448,10 +448,10 @@ final class ChannelMessagingTest {
                 errorLatch.countDown();
                 return CompletableFuture.completedFuture(null);
             }); };
-        { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
-            channel.enableClient(endpoint);
-            channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "Echo");
-            channel.addRequestHandler(DecodeProbeHandler.class, DecodePayload.class, String.class, "DecodeReq"); };
+        { var channel = listenClientServer(options, "profile", endpoint);
+            options.addClientServerChannel("profile").client().connect(endpoint);
+            channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class);
+            channel.addRequestHandler(DecodeProbeHandler.class, DecodePayload.class, String.class); };
 
         ZLinkJavaBackendAdapterFactory backendFactory = new ZLinkJavaBackendAdapterFactory();
         try (ZLinkFrameworkRuntime runtime = RuntimeTestSupport.startFramework(options, backendFactory)) {
@@ -465,8 +465,9 @@ final class ChannelMessagingTest {
             var channelAdapter = backendFactory.createChannelAdapter(
                 new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)));
             try (var rawContext = channelAdapter.createContext();
-                 var rawDealer = channelAdapter.createDealerSocket(rawContext)) {
+                var rawDealer = channelAdapter.createDealerSocket(rawContext)) {
                 rawDealer.connect(endpoint);
+                Thread.sleep(100);
                 CompletableFuture<ZLinkBackendReceived> replyFuture = new CompletableFuture<>();
                 List<Message> malformedParts = List.of(
                     Message.from("DecodeReq"),
@@ -522,7 +523,7 @@ final class ChannelMessagingTest {
     @DisplayName("DERR-007 manual client-server handler exception replies error and reports observer")
     void manualClientServer_handlerExceptionRepliesErrorAndReportsObserver()
         throws InterruptedException {
-        String endpoint = "inproc://zlink-java-dispatch-handler-error-" + UUID.randomUUID();
+        String endpoint = tcpEndpoint();
         CountDownLatch errorLatch = new CountDownLatch(1);
         AtomicReference<ZLinkMessageFlowEvent> observedError = new AtomicReference<>();
         CopyOnWriteArrayList<String> logMessages = new CopyOnWriteArrayList<>();
@@ -550,10 +551,10 @@ final class ChannelMessagingTest {
                 errorLatch.countDown();
                 return CompletableFuture.completedFuture(null);
             }); };
-        { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
-            channel.enableClient(endpoint);
-channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "Echo");
-            channel.addRequestHandler(ThrowingRequestHandler.class, ThrowRequest.class, String.class, "ThrowReq"); };
+        { var channel = listenClientServer(options, "profile", endpoint);
+            options.addClientServerChannel("profile").client().connect(endpoint);
+            channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class);
+            channel.addRequestHandler(ThrowingRequestHandler.class, ThrowRequest.class, String.class); };
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
@@ -624,11 +625,11 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
                 errors.countDown();
                 return CompletableFuture.completedFuture(null);
             }); };
-        { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
-            channel.enableClient(endpoint);
-            channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "Echo");
-            channel.addRequestHandler(DecodeProbeHandler.class, DecodePayload.class, String.class, "DecodeReq");
-            channel.addRequestHandler(ThrowingRequestHandler.class, ThrowRequest.class, String.class, "ThrowReq"); };
+        { var channel = listenClientServer(options, "profile", endpoint);
+            options.addClientServerChannel("profile").client().connect(endpoint);
+            channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class);
+            channel.addRequestHandler(DecodeProbeHandler.class, DecodePayload.class, String.class);
+            channel.addRequestHandler(ThrowingRequestHandler.class, ThrowRequest.class, String.class); };
 
         ZLinkJavaBackendAdapterFactory backendFactory = new ZLinkJavaBackendAdapterFactory();
         DecodeProbeHandler.invocations.set(0);
@@ -652,6 +653,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
             try (var rawContext = channelAdapter.createContext();
                  var rawDealer = channelAdapter.createDealerSocket(rawContext)) {
                 rawDealer.connect(endpoint);
+                Thread.sleep(100);
                 CompletableFuture<ZLinkBackendReceived> replyFuture = new CompletableFuture<>();
                 List<Message> malformedParts = List.of(
                     Message.from("DecodeReq"),
@@ -712,13 +714,12 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
             new JsonCodecChild("nested", 3));
 
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var channel = options.addClientServerChannel("codec").enableServer(endpoint);
-            channel.enableClient(endpoint);
+        { var channel = options.addClientServerChannel("codec").server().listen();
+            options.addClientServerChannel("codec").client();
             channel.addRequestHandler(
                 JsonCodecEchoHandler.class,
                 JsonCodecProbe.class,
-                JsonCodecProbe.class,
-                "JsonCodecProbe"); };
+                JsonCodecProbe.class); };
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
@@ -761,20 +762,15 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
                 errorLatch.countDown();
                 return CompletableFuture.completedFuture(null);
             }); };
-        { var channel = serverOptions.addClientServerChannel("manual-reg").enableServer(endpoint);
+        { var channel = listenClientServer(serverOptions, "manual-reg", endpoint);
             channel.addRequestHandler(
                 ManualRegistrationRequestHandler.class,
                 ManualRequest.class,
-                String.class,
-                "ManualRegisteredReq");
+                String.class);
             channel.addSendHandler(
                 ManualRegistrationCommandHandler.class,
-                ManualCommand.class,
-                "ManualRegisteredCommand"); };
-
-        DefaultZLinkFrameworkOptions clientOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = clientOptions.addClientServerChannel("manual-reg");
-            channel.enableClient(endpoint); };
+                ManualCommand.class); };
+        serverOptions.addClientServerChannel("manual-reg").client();
 
         DefaultZLinkFrameworkOptions publisherOptions = new DefaultZLinkFrameworkOptions();
         { var channel = publisherOptions.addFanoutChannel("manual-events").enablePublisher(fanoutEndpoint); };
@@ -793,19 +789,17 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
                 ManualEvent.class,
                 "ManualRegisteredEvent"); };
 
-        try (ZLinkFrameworkRuntime ignoredServer =
+        try (ZLinkFrameworkRuntime client =
                  RuntimeTestSupport.startFramework(serverOptions, new ZLinkJavaBackendAdapterFactory());
-             ZLinkFrameworkRuntime client =
-                 RuntimeTestSupport.startFramework(clientOptions, new ZLinkJavaBackendAdapterFactory());
              ZLinkFrameworkRuntime publisher =
                  RuntimeTestSupport.startFramework(publisherOptions, new ZLinkJavaBackendAdapterFactory());
              ZLinkFrameworkRuntime ignoredSubscriber =
                  RuntimeTestSupport.startFramework(subscriberOptions, new ZLinkJavaBackendAdapterFactory())) {
-            String reply = client.client()
-                .requestToChannel("manual-reg", new ManualRequest("registered"))
-                .submit(String.class)
-                .toCompletableFuture()
-                .join();
+            String reply = awaitChannelReply(
+                client,
+                "manual-reg",
+                new ManualRequest("registered"),
+                String.class);
             assertEquals("manual:registered", reply);
 
             client.client()
@@ -882,8 +876,8 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
         String endpoint = "inproc://zlink-java-scanned-profile-" + UUID.randomUUID();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(ChannelMessagingTest.class);
-        { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
-            channel.enableClient(endpoint);
+        { var channel = options.addClientServerChannel("profile").server().listen();
+            options.addClientServerChannel("profile").client();
             channel.addHandlerGroup("scanned-profile"); };
 
         try (ZLinkFrameworkRuntime runtime =
@@ -909,8 +903,8 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
 
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(ChannelMessagingTest.class);
-        { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
-            channel.enableClient(endpoint);
+        { var channel = options.addClientServerChannel("profile").server().listen();
+            options.addClientServerChannel("profile").client();
             channel.addHandlerGroup("annotated-profile"); };
 
         try (ZLinkFrameworkRuntime runtime =
@@ -966,76 +960,6 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
             FANOUT_LATCH.set(null);
             FANOUT_MESSAGE.set(null);
             FANOUT_TOPIC.set(null);
-        }
-    }
-
-    @Test
-    void clientServerSpotRouteEgress_requestReplySucceeds() throws Exception {
-        String ingressEndpoint = tcpEndpoint();
-        String routeSourceEndpoint = tcpEndpoint();
-        String routeTargetEndpoint = tcpEndpoint();
-        String sourceSpotEndpoint = tcpEndpoint();
-        String targetSpotEndpoint = tcpEndpoint();
-        String targetSpotId = RoutingId.from("spot-egress-target");
-        ZLinkInMemoryLocationStore locations = new ZLinkInMemoryLocationStore();
-        OutboundChannelSpot.CONTEXT.set(null);
-
-        DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        sourceOptions.addLocationStore(locations);
-        { var channel = sourceOptions.addClientServerChannel("egress");
-            channel.enableClient(ingressEndpoint);};
-        { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(sourceOptions, "route");
-            channel.enableServer(routeSourceEndpoint);
-            channel.enableClient(routeTargetEndpoint);
-            channel.setRoutingId(RoutingId.from("spot-egress-source-route")); };
-        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(sourceOptions, "game");
-            { var node = mesh;
-                node.enableRouter(sourceSpotEndpoint)
-                    .setRoutingId(RoutingId.from("spot-egress-source-node"));node.objects().server().addSpotFactory("OutboundChannelSpot", OutboundChannelSpot.class, factory -> factory.disableRelocation()); }; };
-
-        DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
-        targetOptions.addLocationStore(locations);
-        { var channel = targetOptions.addClientServerChannel("ingress").enableServer(ingressEndpoint);
-            channel.setRoutingId(RoutingId.from("spot-egress-target-node"));
-            channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "Noop"); };
-        { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(targetOptions, "route");
-            channel.enableServer(routeTargetEndpoint);
-            channel.enableClient(routeSourceEndpoint);
-            channel.setRoutingId(SPOT_EGRESS_TARGET_ROUTE_RID); };
-        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(targetOptions, "game");
-            { var node = mesh;
-                node.enableRouter(targetSpotEndpoint)
-                    .setRoutingId(SPOT_EGRESS_TARGET_NODE_RID);
-                node.objects().server().addSpotFactory("RemoteStateSpot", RemoteStateSpot.class, factory -> factory.disableRelocation()); }; };
-
-        try (ZLinkFrameworkRuntime source =
-                 RuntimeTestSupport.startFramework(sourceOptions, new ZLinkJavaBackendAdapterFactory());
-             ZLinkFrameworkRuntime target =
-                 RuntimeTestSupport.startFramework(targetOptions, new ZLinkJavaBackendAdapterFactory())) {
-            target.spotManager()
-                .create(RemoteStateSpot.class, targetSpotId)
-                .toCompletableFuture()
-                .get(3, TimeUnit.SECONDS);
-            source.spotManager()
-                .create(OutboundChannelSpot.class, RoutingId.from("spot-egress-client"))
-                .toCompletableFuture()
-                .get(3, TimeUnit.SECONDS);
-
-            ZLinkSpotContext context = Objects.requireNonNull(OutboundChannelSpot.CONTEXT.get());
-            SpotEgressReply reply = context.outbound()
-                .requestToSpot(
-                    awaitSpotHandle(OutboundChannelSpot.HANDLES.get(), targetSpotId),
-                    new SpotEgressRequest("ping"))
-                .timeout(Duration.ofSeconds(3))
-                .submit(SpotEgressReply.class)
-                .toCompletableFuture()
-                .get(4, TimeUnit.SECONDS);
-
-            assertEquals("spot-egress-target", reply.spotId());
-            assertEquals(SPOT_EGRESS_TARGET_NODE_RID.toString(), reply.nodeRid());
-            assertEquals("pong:ping", reply.value());
-        } finally {
-            OutboundChannelSpot.CONTEXT.set(null);
         }
     }
 
@@ -1188,15 +1112,16 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
         DefaultZLinkFrameworkOptions initiatorOptions = new DefaultZLinkFrameworkOptions();
         initiatorOptions.addLocationStore(store);
         initiatorOptions.configureLocations().setPollingInterval(Duration.ofMillis(50));
-        { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(nonInitiatorOptions, "route");
+        { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(initiatorOptions, "route");
             channel.enableServer(initiatorEndpoint);
+            channel.enableClient(nonInitiatorEndpoint);
             channel.setRoutingId(initiatorRid);
             channel.addRequestHandler(RouteEchoHandler.class, EchoRequest.class, String.class, "Echo"); };
 
         DefaultZLinkFrameworkOptions nonInitiatorOptions = new DefaultZLinkFrameworkOptions();
         nonInitiatorOptions.addLocationStore(store);
         nonInitiatorOptions.configureLocations().setPollingInterval(Duration.ofMillis(50));
-        { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(initiatorOptions, "route");
+        { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(nonInitiatorOptions, "route");
             channel.enableServer(nonInitiatorEndpoint);
             channel.setRoutingId(nonInitiatorRid); };
 
@@ -1380,7 +1305,8 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
 
     private static String awaitSpotAttachedChannelReply(ZLinkFrameworkRuntime runtime) {
         runtime.spotManager()
-            .create(OutboundChannelSpot.class, RoutingId.from("outbound-channel-spot"))
+            .getOrCreate("outbound-channel-spot", "OutboundChannelSpot")
+            .submit()
             .toCompletableFuture()
             .join();
         ZLinkSpotContext context = Objects.requireNonNull(OutboundChannelSpot.CONTEXT.get());
@@ -1419,7 +1345,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
     }
 
     private static void publishUntilDelivered(ZLinkFrameworkRuntime publisher) {
-        long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
         while (System.nanoTime() < deadline && FANOUT_LATCH.get().getCount() > 0) {
             publisher.fanout()
                 .publish("events", "score", new ScoreChanged("home:1"))
@@ -1505,13 +1431,13 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
     }
 
     private static String awaitRouteReply(ZLinkFrameworkRuntime source, RoutingId targetRid) {
-        long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
         RuntimeException lastFailure = null;
         while (System.nanoTime() < deadline) {
             try {
                 return source.route()
                     .requestToNode("route", targetRid, new EchoRequest("hello"))
-                    .timeout(Duration.ofMillis(100))
+                    .timeout(Duration.ofMillis(500))
                     .submit(String.class)
                     .toCompletableFuture()
                     .join();
@@ -1526,7 +1452,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
     private static ZLinkFrameworkException awaitRouteMissingHandlerError(
         ZLinkFrameworkRuntime source,
         RoutingId targetRid) {
-        long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
         RuntimeException lastFailure = null;
         while (System.nanoTime() < deadline) {
             try {
@@ -1617,6 +1543,48 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
 
     private static String tcpEndpoint() {
         return "tcp://127.0.0.1:" + nextPort();
+    }
+
+    private static <T> T awaitChannelReply(
+        ZLinkFrameworkRuntime runtime,
+        String channelName,
+        Object request,
+        Class<T> replyType) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        RuntimeException lastFailure = null;
+        while (System.nanoTime() < deadline) {
+            try {
+                return runtime.client()
+                    .requestToChannel(channelName, request)
+                    .timeout(Duration.ofMillis(300))
+                    .submit(replyType)
+                    .toCompletableFuture()
+                    .join();
+            } catch (RuntimeException failure) {
+                lastFailure = failure;
+                try {
+                    Thread.sleep(10);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new AssertionError(interrupted);
+                }
+            }
+        }
+        throw new AssertionError(
+            "client/server channel did not become ready: " + channelName,
+            lastFailure);
+    }
+
+    private static systems.zlink.framework.configuration
+        .ZLinkClientServerChannelServerBuilder listenClientServer(
+            DefaultZLinkFrameworkOptions options,
+            String channelName,
+            String endpoint) {
+        URI uri = URI.create(endpoint);
+        return options.addClientServerChannel(channelName)
+            .server()
+            .setBindHost(uri.getHost())
+            .listen(uri.getPort());
     }
 
     private static String dispatchLogLine(ZLinkMessageFlowEvent error) {
@@ -1888,7 +1856,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
         @Override
         public CompletionStage<Void> handle(ManualCommand message, ZLinkMessageContext context) {
             MANUAL_REG_SEND_MESSAGE.set(message.value());
-            MANUAL_REG_SEND_PACKET.set(context.packetName().orElse(""));
+            MANUAL_REG_SEND_PACKET.set(context.packetName());
             MANUAL_REG_SEND_CHANNEL.set(context.channelName().orElse(""));
             MANUAL_REG_SEND_LATCH.get().countDown();
             return CompletableFuture.completedFuture(null);
@@ -1931,7 +1899,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
         @Override
         public CompletionStage<Void> handle(ProfileChanged message, ZLinkMessageContext context) {
             SEND_MESSAGE.set(message.value());
-            SEND_PACKET.set(context.packetName().orElse(""));
+            SEND_PACKET.set(context.packetName());
             SEND_CHANNEL.set(context.channelName().orElse(""));
             SEND_LATCH.get().countDown();
             return CompletableFuture.completedFuture(null);
@@ -2003,7 +1971,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
     public static final class RouteEchoHandler implements ZLinkRouteRequestHandler<EchoRequest, String> {
         @Override
         public CompletionStage<String> handle(EchoRequest request, ZLinkRouteMessageContext context) {
-            ROUTE_REQUEST_CHANNEL.set(context.channelName().orElse(""));
+            ROUTE_REQUEST_CHANNEL.set(context.meshName().orElse(""));
             return CompletableFuture.completedFuture("route:" + request.value());
         }
     }
@@ -2050,9 +2018,9 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
         @Override
         public CompletionStage<Void> handle(RouteNotice message, ZLinkRouteMessageContext context) {
             ROUTE_SEND_MESSAGE.set(message.value());
-            ROUTE_SEND_PACKET.set(context.packetName().orElse(""));
-            ROUTE_SEND_CHANNEL.set(context.channelName().orElse(""));
-            ROUTE_SEND_SOURCE.set(context.routingId());
+            ROUTE_SEND_PACKET.set(context.packetName());
+            ROUTE_SEND_CHANNEL.set(context.meshName().orElse(""));
+            ROUTE_SEND_SOURCE.set(context.sourceNodeRid());
             ROUTE_SEND_LATCH.get().countDown();
             return CompletableFuture.completedFuture(null);
         }

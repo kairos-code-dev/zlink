@@ -242,8 +242,13 @@ wait_http api-b "${GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL}"
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/GameQuest.Client.csproj" -- \
   --config "${CLIENT_CONFIG_FILE}" >"${LOG_DIR}/client.log" 2>&1
 
-grep -q "gamequest api event routed" "${LOG_DIR}/api-a.log"
-grep -q "gamequest api event routed" "${LOG_DIR}/api-b.log"
+# Each client connection terminates on its configured Session Server. The
+# Actor handler may execute on either server because Actor placement is owned
+# by the Framework, so a specific API process must not be asserted as the
+# gameplay owner.
+grep -q "surface=StreamSession kind=Request packet=JoinSessionReq" "${LOG_DIR}/api-a.log"
+grep -q "surface=StreamSession kind=Request packet=JoinSessionReq" "${LOG_DIR}/api-b.log"
+grep -q "gamequest api event routed" "${LOG_DIR}/api-a.log" "${LOG_DIR}/api-b.log"
 grep -q "gamequest mission processed" "${LOG_DIR}/mission-a.log"
 grep -q "gamequest mission processed" "${LOG_DIR}/mission-b.log"
 grep -q "gamequest player quest spot ready" "${LOG_DIR}/mission-a.log"

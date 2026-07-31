@@ -1320,3 +1320,92 @@ runner를 다른 host 또는 여러 host에 분산한다.
 - 실패와 timeout이 0이 아니면 summary에 원인별 count가 나온다.
 - `run_perf.sh`가 모든 표준 시나리오를 실행할 수 있다.
 - Codex 에이전트 리뷰를 반복해서 남은 이슈가 없음을 확인한다.
+
+## 23. Application HWM을 production workload로 결정하는 방법
+
+이 절은 host 전체에서 수신 후 handler가 완료되지 않은 application payload의 HWM을 production
+workload로 결정하는 공통 측정 규격이다. HWM의 설정 mode와 Auto 계산 계약은
+[`inbound-dispatch-lane-design.ko.md`](../../../plan/inbound-dispatch-lane-design.ko.md#46-application은-어떤-기준으로-값을-선택하는가)를
+기준으로 한다. 이 절은 application별 양수 HWM을 선택하고 Auto HWM profile을 검증하는 실행
+방법만 정한다.
+
+### 23.1 먼저 고정할 조건
+
+Production과 같은 CPU quota, process memory limit, connection 수, dispatch concurrency,
+runtime·GC option을 사용한다. Job workload는 다음 특성을 함께 고정한다.
+
+- Request와 one-way job의 비율
+- Application payload 크기 분포
+- CPU-bound와 I/O-bound handler의 비율
+- Handler가 만드는 reply 크기와 nested request 비율
+- Burst ingress rate와 지속 시간
+
+HWM은 CPU 사용률을 제한하지 않는다. 목표가 할당된 CPU quota의 `50%`라면 dispatch
+concurrency나 별도 rate limit을 먼저 조정한다. Backlog가 지속되는 동안 정규화한 process CPU가
+`45~55%` 범위에 있는 실행만 목표 capacity 측정값으로 사용한다.
+
+### 23.2 처리량 측정
+
+최소 `30초` warm-up 뒤 `60초` measured phase를 `5회` 반복한다. 다섯 실행의 처리량
+변동계수가 `5%`를 넘으면 measured phase를 늘린다. Measurement 동안 dispatch를 기다리는 job이
+계속 존재해야 한다. 유입량이 부족해 handler가 대기한 실행은 처리 capacity 결과에서 제외한다.
+
+각 실행의 처리량은 다음처럼 계산한다.
+
+```text
+runDrainBytesPerSecond =
+    terminalPayloadBytes / measuredWallClockSeconds
+
+measuredSustainableDrainBytesPerSecond =
+    minimum(runDrainBytesPerSecond across five valid runs)
+```
+
+`terminalPayloadBytes`에는 measured phase 동안 handler terminal에 도달한 원본 job의
+application payload byte를 정확히 한 번 포함한다. Reply byte, ingress byte와 순간 peak
+throughput은 포함하지 않는다.
+
+### 23.3 HWM 후보 계산
+
+운영에서 허용할 최대 queue 지연을 정하고 처리량 기준 후보를 계산한다.
+
+```text
+queueDelayCandidateBytes =
+    measuredSustainableDrainBytesPerSecond
+    * maximumQueueDelaySeconds
+
+candidateApplicationHwmBytes =
+    measuredPeakActiveHandlerPayloadBytes
+    + queueDelayCandidateBytes
+```
+
+`measuredPeakActiveHandlerPayloadBytes`는 measured phase에서 실행 중인 handler context가 보유한
+payload byte 합계의 최대값이다. Application HWM은 실행 중인 handler payload도 포함하므로 이
+값을 queue 지연 후보에 더한다.
+
+`autoProfileHwmBytes`는 할당된 application memory에 선택한 profile 비율을 곱한 값이다.
+`COMPACT`는 `2%`, `LOW_LATENCY`는 `5%`, `BALANCED`는 `10%`, `THROUGHPUT`은 `20%`를
+사용한다. 네 Auto profile을 비교할 때는 같은 workload로 각각 실행한다. Memory와 queue 지연
+조건을 만족하는 가장 큰 profile을 선택하며, 별도 선택이 없으면 `BALANCED`를 사용한다.
+
+Application별 production 값을 고정하려면 `candidateApplicationHwmBytes`를 양수
+`ApplicationHwmBytes`로 설정한 뒤 다시 측정한다. Backlog를 HWM까지 채우고 다음 조건을 모두
+확인한다.
+
+- Peak process memory가 process limit을 넘지 않는다.
+- Queue 지연 p99와 최대값이 application의 목표를 만족한다.
+- 처리량과 CPU가 HWM을 끈 capacity test에서 허용한 범위 안에 있다.
+- Message drop 없이 pause와 source backpressure가 발생한다.
+- HWM보다 큰 최대 message 한 건도 처리 중인 application job이 없을 때 수신된다.
+
+조건을 만족하지 않으면 HWM을 낮추고 같은 test를 반복한다. 조건을 만족한 가장 큰 값을
+production 값으로 사용한다.
+
+### 23.4 결과에 반드시 기록할 값
+
+- CPU quota·core 수, process memory limit, runtime·GC 설정과 Framework version
+- Connection 수, dispatch concurrency, request·one-way 비율과 job 크기 분포
+- 실행별 terminal job count, terminal payload bytes, wall-clock 처리량과 process CPU
+- Peak RSS, peak pending application payload bytes와 active handler payload bytes
+- Queue 지연 p50·p95·p99·최대값, pause count·duration과 backpressure 횟수
+- 선택한 Auto HWM profile과 계산에 사용한 memory 값
+- Auto profile HWM, queue 지연 후보, active handler payload, production HWM과 선택 근거

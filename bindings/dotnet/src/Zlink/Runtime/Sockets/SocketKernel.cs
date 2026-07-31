@@ -9,6 +9,7 @@ internal sealed partial class SocketKernel : IDisposable
     private const int TopicBufferSize = 4096;
     private const int DontWaitFlag = 1;
     private readonly SocketCallbackRegistry _callbacks = new();
+    private readonly object _completionControlRegistrationSync = new();
 
     private readonly SocketHandle _handle;
     private readonly SocketOptionAccessor _options;

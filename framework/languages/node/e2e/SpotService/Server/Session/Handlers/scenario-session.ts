@@ -48,24 +48,16 @@ class ScenarioSession implements ZLinkSession {
   async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage, signal?: AbortSignal): Promise<void> {
     if (dispatch.packetName === 'AuthReq') {
       const request = payload.decode<AuthReq>(Object as never);
+      const meshName = request.meshName ?? SpotServiceNames.spotChannel;
       this.evidence.add(`session-auth|rid=${this.evidence.rid}|actor=${request.actorId}|step=received`);
       try {
-        const ensured = request.nodeRid === this.evidence.rid
-          ? await this.ensureLocalActor(request, signal)
-          : await this.route
-            .requestToNode(SpotServiceNames.controlChannel, request.nodeRid,
-              spotServicePacket(EnsureActorReq, {
-              actorId: request.actorId,
-              displayName: request.displayName,
-              nodeRid: request.nodeRid
-              }))
-            .timeout(5000)
-            .submit<EnsureActorRes>(signal);
+        const ensured = await this.ensureActorInMesh(request, meshName, signal);
         this.evidence.add(`session-auth|rid=${this.evidence.rid}|actor=${request.actorId}|step=ensured`);
         await this.context.actors.bindOrGet({
           actorId: ensured.actorId,
           nodeRid: ensured.nodeRid,
-          generation: BigInt(ensured.generation)
+          objectGeneration: BigInt(ensured.generation),
+          meshName
         }, signal);
         this.evidence.add(`session-auth|rid=${this.evidence.rid}|actor=${request.actorId}|step=bound`);
         this.context.client.reply({
@@ -94,7 +86,8 @@ class ScenarioSession implements ZLinkSession {
       await this.context.actors.bindOrGet({
         actorId: ensured.actorId,
         nodeRid: ensured.nodeRid,
-        generation: BigInt(ensured.generation)
+        objectGeneration: BigInt(ensured.generation),
+        meshName: SpotServiceNames.spotChannel
       }, signal);
       this.context.client.reply({
         actorId: ensured.actorId,
@@ -115,7 +108,8 @@ class ScenarioSession implements ZLinkSession {
         await this.context.actors.bindOrGet({
           actorId: ensured.actorId,
           nodeRid: ensured.nodeRid,
-          generation: BigInt(ensured.generation)
+          objectGeneration: BigInt(ensured.generation),
+          meshName: SpotServiceNames.spotChannel
         }, signal);
       }
       this.context.client.reply({
@@ -149,19 +143,47 @@ class ScenarioSession implements ZLinkSession {
   }
 
   private async ensureLocalActor(request: AuthReq, signal?: AbortSignal): Promise<EnsureActorRes> {
-    const actorRef = await this.actors.getOrCreate(
-      SpotServiceNames.spotChannel,
-      request.actorId,
-      SpotServiceNames.actorType,
-      request,
-      signal
-    );
+    const meshName = request.meshName ?? SpotServiceNames.spotChannel;
+    const created = await this.actors
+      .getOrCreate(request.actorId, SpotServiceNames.actorType)
+      .inMesh(meshName)
+      .request(request)
+      .submit(signal);
+    if (created.status === 'rejected') {
+      throw new Error(`Actor '${request.actorId}' creation was rejected.`);
+    }
+    const actorRef = created.actor;
     this.evidence.add(`ensure-actor|rid=${this.evidence.rid}|actor=${request.actorId}`);
     this.evidence.add(`entry-joined|rid=${this.evidence.rid}|actor=${request.actorId}`);
     return {
       actorId: actorRef.actorId,
       nodeRid: String(actorRef.nodeRid),
-      generation: actorRef.generation.toString()
+      generation: actorRef.objectGeneration.toString()
+    };
+  }
+
+  private async ensureActorInMesh(
+    request: AuthReq,
+    meshName: string,
+    signal?: AbortSignal
+  ): Promise<EnsureActorRes> {
+    const created = await this.actors
+      .getOrCreate(
+        request.actorId,
+        meshName === SpotServiceNames.spotChannel
+          ? SpotServiceNames.actorType
+          : SpotServiceNames.alternateActorType
+      )
+      .inMesh(meshName)
+      .request(request)
+      .submit(signal);
+    if (created.status === 'rejected') {
+      throw new Error(`Actor '${request.actorId}' creation was rejected.`);
+    }
+    return {
+      actorId: created.actor.actorId,
+      nodeRid: String(created.actor.nodeRid),
+      generation: created.actor.objectGeneration.toString()
     };
   }
 
@@ -179,7 +201,8 @@ class ScenarioSession implements ZLinkSession {
         spotServicePacket(EnsureActorReq, {
         actorId: request.actorId,
         displayName: request.displayName,
-        nodeRid: request.nodeRid
+        nodeRid: request.nodeRid,
+        ...(request.meshName === undefined ? {} : { meshName: request.meshName })
         }))
       .timeout(5000)
       .submit<EnsureActorRes>(signal);

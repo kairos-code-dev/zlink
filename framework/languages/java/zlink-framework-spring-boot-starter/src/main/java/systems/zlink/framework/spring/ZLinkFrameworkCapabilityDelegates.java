@@ -26,28 +26,31 @@ final class ZLinkFrameworkCapabilityDelegates {
         BeanDefinitionRegistry registry,
         ConfigurableListableBeanFactory beanFactory,
         DefaultZLinkFrameworkOptions options) {
-        boolean hasSpotNode = !options.registration().spotNodes().isEmpty()
+        boolean hasSpotRuntime = !options.registration().spotNodes().isEmpty()
             || options.registration().meshNodes().stream().anyMatch(node ->
-                !node.spotFactories().isEmpty()
+                node.objectRoleEnabled()
+                    || !node.spotFactories().isEmpty()
                     || !node.entrySpots().isEmpty()
                     || !node.actorFactories().isEmpty());
         boolean hasActorFactory = options.registration().spotNodes().stream()
             .anyMatch(node -> !node.actorFactories().isEmpty())
             || options.registration().meshNodes().stream()
                 .anyMatch(node -> !node.actorFactories().isEmpty());
+        boolean hasObjectRole = options.registration().meshNodes().stream()
+            .anyMatch(node -> node.objectRoleEnabled());
         boolean hasSpotPublisherClient = options.registration().spotNodes().stream()
             .anyMatch(node -> node.pubSubEnabled())
             || options.registration().meshNodes().stream()
                 .anyMatch(node -> !node.channelNames().isEmpty());
         boolean hasLocationStore = options.registration().locations().enabled();
 
-        if (hasSpotNode && !ZLinkSpringBeanDefinitions.hasBean(beanFactory, ZLinkSpotManager.class)) {
+        if (hasSpotRuntime && !ZLinkSpringBeanDefinitions.hasBean(beanFactory, ZLinkSpotManager.class)) {
             ZLinkSpringBeanDefinitions.registerDelegate(
                 registry,
                 SPOT_MANAGER_BEAN_NAME,
                 ZLinkFrameworkSpotManagerBean.class);
         }
-        if (hasSpotNode && !ZLinkSpringBeanDefinitions.hasBean(beanFactory, ZLinkSpotOutbound.class)) {
+        if (hasSpotRuntime && !ZLinkSpringBeanDefinitions.hasBean(beanFactory, ZLinkSpotOutbound.class)) {
             ZLinkSpringBeanDefinitions.registerDelegate(
                 registry,
                 SPOT_OUTBOUND_BEAN_NAME,
@@ -60,15 +63,15 @@ final class ZLinkFrameworkCapabilityDelegates {
                 SPOT_PUBLISHER_CLIENT_BEAN_NAME,
                 ZLinkFrameworkSpotPublisherClientBean.class);
         }
-        if (hasSpotNode
-            && hasActorFactory
+        if (hasSpotRuntime
+            && (hasActorFactory || hasObjectRole)
             && !ZLinkSpringBeanDefinitions.hasBean(beanFactory, ZLinkActorManager.class)) {
             ZLinkSpringBeanDefinitions.registerDelegate(
                 registry,
                 ACTOR_MANAGER_BEAN_NAME,
                 ZLinkFrameworkActorManagerBean.class);
         }
-        if (hasSpotNode
+        if (hasSpotRuntime
             && (hasActorFactory || hasLocationStore)
             && !ZLinkSpringBeanDefinitions.hasBean(beanFactory, ZLinkActorDirectory.class)) {
             ZLinkSpringBeanDefinitions.registerDelegate(
@@ -76,7 +79,7 @@ final class ZLinkFrameworkCapabilityDelegates {
                 ACTOR_DIRECTORY_BEAN_NAME,
                 ZLinkFrameworkActorDirectoryBean.class);
         }
-        if (hasSpotNode
+        if (hasSpotRuntime
             && hasLocationStore
             && !ZLinkSpringBeanDefinitions.hasBean(beanFactory, ZLinkActorClient.class)) {
             ZLinkSpringBeanDefinitions.registerDelegate(

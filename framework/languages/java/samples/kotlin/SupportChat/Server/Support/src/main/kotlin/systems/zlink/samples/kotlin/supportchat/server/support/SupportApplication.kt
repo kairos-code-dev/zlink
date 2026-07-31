@@ -1,6 +1,7 @@
 package systems.zlink.samples.kotlin.supportchat.server.support
 
 import java.nio.file.Path
+import java.net.URI
 import kotlinx.coroutines.Dispatchers
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
@@ -44,6 +45,7 @@ class SupportApplication {
     fun supportFramework(topology: SampleTopology): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             val support = topology.support()
+            val channelEndpoint = URI.create(support.channelEndpoint)
             options.addHandlersFromPackageOf(SupportApplication::class.java)
             options.useCoroutineHandlers(Dispatchers.Default)
             options.configureDispatch {
@@ -52,13 +54,16 @@ class SupportApplication {
                 traceLabel("support")
             }
             options.addClientServerChannel(SampleNames.SupportChannel)
-                .enableServer(support.channelEndpoint)
+                .server()
+                .setBindHost(channelEndpoint.host)
+                .setAdvertiseHost(channelEndpoint.host)
+                .listen(channelEndpoint.port)
                 .addHandlerGroup(SampleNames.SupportChannel)
             options.addClientServerChannel(SampleNames.ApiChannel)
-                .enableClient()
+                .client()
             val node = options.addRouteMesh(SampleNames.SupportSpotDiscovery)
             node.listen(support.entryRouterEndpoint)
-                .useAllocatedRoutingId(16, "support-owner")
+                .setRoutingIdPrefix("support-owner")
             node.objects().server()
                 .addEntrySpot(SupportEntrySpot::class.java)
                 .addActorFactory(
@@ -69,7 +74,7 @@ class SupportApplication {
                     factory.preserveStateWith(SupportUserActorRelocationAdapter::class.java)
                 }
                 .addSpotFactory(
-                    "supportchat.conversation",
+                    SampleNames.ConversationSpotType,
                     ConversationSpot::class.java,
                 ) { factory -> factory.disableRelocation() }
         }

@@ -29,13 +29,19 @@ final class SampleReleaseGateContractTest {
 
     private static final Set<String> REQUIRED_RUNTIME_PACKAGES = Set.of(
         "actors",
-        "backend",
         "binding",
         "channels",
         "configuration",
+        "diagnostics",
+        "handlers",
         "host",
+        "internal",
+        "locations",
+        "mesh",
         "messaging",
+        "metrics",
         "monitoring",
+        "service",
         "spots",
         "streams");
 
@@ -47,6 +53,7 @@ final class SampleReleaseGateContractTest {
     private static final List<String> DOTNET_BINGO_SAMPLE_PROJECTS = List.of(
         "Client",
         "Server/Api",
+        "Server/Matchmaking",
         "Server/Play",
         "Server/Session",
         "Shared");
@@ -91,16 +98,10 @@ final class SampleReleaseGateContractTest {
         assertTrue(aggregateRunner.contains("ZLINK_LIBRARY_PATH")
                 && aggregateRunner.contains("core/build/lib/libzlink.so"),
             "aggregate sample runner must use the local core runtime when it is available");
-        assertTrue(aggregateRunner.contains("ActorRuntimeFakeBackendTest.entrySpotDestroyActorRemovesEntryOwnedActorWithoutLeftCallback")
-                && aggregateRunner.contains("java actor lifecycle sample gate completed"),
-            "aggregate sample runner must run the actor lifecycle runtime gate");
         String aggregatePowerShellRunner = Files.readString(samplesRoot.resolve("run_samples.ps1"));
         assertTrue(aggregatePowerShellRunner.contains("ZLINK_LIBRARY_PATH")
                 && aggregatePowerShellRunner.contains("core/build/lib/libzlink.so"),
             "aggregate PowerShell sample runner must use the local core runtime when it is available");
-        assertTrue(aggregatePowerShellRunner.contains("ActorRuntimeFakeBackendTest.entrySpotDestroyActorRemovesEntryOwnedActorWithoutLeftCallback")
-                && aggregatePowerShellRunner.contains("java actor lifecycle sample gate completed"),
-            "aggregate PowerShell sample runner must run the actor lifecycle runtime gate");
 
         for (String language : REQUIRED_LANGUAGES) {
             Path languageRoot = samplesRoot.resolve(language);
@@ -393,47 +394,43 @@ final class SampleReleaseGateContractTest {
     }
 
     @Test
-    void javaSamplesUseManualSpotHandlerRegistrationOnlyInTicTacToe() throws IOException {
+    void javaSamplesUseAutomaticSpotHandlerRegistration() throws IOException {
         Map<Path, List<String>> offenders = new java.util.LinkedHashMap<>();
         try (Stream<Path> files = Files.walk(samplesRoot().resolve("java"))) {
             files
                 .filter(Files::isRegularFile)
                 .filter(path -> path.toString().endsWith(".java"))
                 .filter(SampleReleaseGateContractTest::isSampleSource)
-                .filter(path -> !path.toString().replace('\\', '/').contains("/java/TicTacToe/"))
                 .map(path -> Map.entry(path, javaManualSpotHandlerRegistrations(path)))
                 .filter(entry -> !entry.getValue().isEmpty())
                 .forEach(entry -> offenders.put(entry.getKey(), entry.getValue()));
         }
 
         assertTrue(offenders.isEmpty(),
-            "Only Java TicTacToe may show manual Spot handler registration; "
-                + "other Java samples must use addHandlersFromPackageOf automatic registration: "
+            "Java samples must use addHandlersFromPackageOf automatic registration: "
                 + offenders);
     }
 
     @Test
-    void kotlinSamplesUseManualSpotHandlerRegistrationOnlyInTicTacToe() throws IOException {
+    void kotlinSamplesUseAutomaticSpotHandlerRegistration() throws IOException {
         Map<Path, List<String>> offenders = new java.util.LinkedHashMap<>();
         try (Stream<Path> files = Files.walk(samplesRoot().resolve("kotlin"))) {
             files
                 .filter(Files::isRegularFile)
                 .filter(path -> path.toString().endsWith(".kt"))
                 .filter(SampleReleaseGateContractTest::isSampleSource)
-                .filter(path -> !path.toString().replace('\\', '/').contains("/kotlin/TicTacToe/"))
                 .map(path -> Map.entry(path, kotlinManualSpotHandlerRegistrations(path)))
                 .filter(entry -> !entry.getValue().isEmpty())
                 .forEach(entry -> offenders.put(entry.getKey(), entry.getValue()));
         }
 
         assertTrue(offenders.isEmpty(),
-            "Only Kotlin TicTacToe may show manual Spot handler registration; "
-                + "other Kotlin samples must use addHandlersFromPackageOf automatic registration: "
+            "Kotlin samples must use addHandlersFromPackageOf automatic registration: "
                 + offenders);
     }
 
     @Test
-    void kotlinTicTacToeUsesManualHandlerRegistration() throws IOException {
+    void kotlinTicTacToeUsesAutomaticHandlerRegistration() throws IOException {
         String apiSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
@@ -457,15 +454,13 @@ final class SampleReleaseGateContractTest {
         String createHandlerSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/handlers/CreateGameHandler.kt");
+            "systems/zlink/samples/kotlin/tictactoe/server/api/handlers/CreateGameHttpHandler.kt");
 
         assertAll(
-            () -> assertFalse(apiSource.contains("addHandlersFromPackageOf")),
-            () -> assertTrue(apiSource.contains("AuthenticatePlayerHandler::class.java")),
-            () -> assertTrue(apiSource.contains("addRequestHandler(")),
-            () -> assertFalse(playSource.contains("addHandlersFromPackageOf")),
-            () -> assertTrue(playSource.contains("CreateGameHandler::class.java")),
-            () -> assertTrue(playSource.contains("addRequestHandler(")),
+            () -> assertTrue(apiSource.contains("addHandlersFromPackageOf")),
+            () -> assertFalse(apiSource.contains("addRequestHandler(")),
+            () -> assertTrue(playSource.contains("addHandlersFromPackageOf")),
+            () -> assertFalse(playSource.contains("addRequestHandler(")),
             () -> assertTrue(playSource.contains("addRouteMesh(SampleNames.SpotMesh)")),
             () -> assertFalse(playSource.contains("addSpotMesh(")),
             () -> assertTrue(playSource.contains("node.listen(routeEndpoint)")),
@@ -473,15 +468,12 @@ final class SampleReleaseGateContractTest {
             () -> assertTrue(playSource.contains("node.peerConnections().connect(")),
             () -> assertFalse(playSource.contains("configureEntrySpot()")),
             () -> assertTrue(playSource.contains(".enableActorDispatch(SampleNames.SpotMesh)")),
-            () -> assertTrue(entrySpotSource.contains("addHandler<PlayActorJoinGameHandler>()")),
-            () -> assertTrue(entrySpotSource.contains("addHandler<PlayActorObserveMilestoneHandler>()")),
-            () -> assertTrue(entrySpotSource.contains("addHandler<PlayerWinMilestoneMsgHandler>()")),
-            () -> assertTrue(gameSpotSource.contains("addHandler<PlayActorLeaveGameHandler>()")),
-            () -> assertTrue(gameSpotSource.contains("addHandler<PlayActorPlaceMarkHandler>()")),
+            () -> assertFalse(entrySpotSource.contains("handlers().add")),
+            () -> assertFalse(gameSpotSource.contains("handlers().add")),
             () -> assertTrue(authHandlerSource.contains(
                 "ZLinkSuspendingRequestHandler<AuthenticatePlayerReq, AuthenticatePlayerRes>")),
-            () -> assertTrue(createHandlerSource.contains(
-                "ZLinkSuspendingRequestHandler<CreateGameReq, CreateGameRes>")));
+            () -> assertTrue(createHandlerSource.contains("ZLinkSpotManager")),
+            () -> assertTrue(createHandlerSource.contains(".create(\"tictactoe.game\")")));
     }
 
 
@@ -515,15 +507,14 @@ final class SampleReleaseGateContractTest {
             }
         }
 
-        String handlerSpec = Files.readString(frameworkJavaRoot()
-            .resolve("../../doc/framework/common/spec/server/languages/java/02-handler-interfaces.ko.md"));
-        assertTrue(handlerSpec.contains("`destroyActor(actor)`는 Entry Spot context 전용 API이다"),
-            "handler spec must keep destroyActor on Entry Spot context");
-        assertTrue(handlerSpec.contains("user Spot context에는"),
-            "handler spec must say user Spot context has no destroy API");
-        assertTrue(handlerSpec.contains("`onLeaveActor(...)`를 다시 호출하지 않고")
-                && handlerSpec.contains("native actor ref와 framework registry를 정리한다"),
-            "handler spec must document destroy callback isolation");
+        String actorExact = Files.readString(frameworkJavaRoot().resolve(
+            "../../doc/framework/common/spec/server/languages/java/interfaces/actors.ko.md"));
+        assertTrue(actorExact.contains(
+                "destroy(systems.zlink.framework.actors.ActorRef)"),
+            "Java exact contract must keep Actor Manager destroy on exact ActorRef");
+        assertTrue(actorExact.contains(
+                "Destroy와 session bind만 exact ref를 받는다"),
+            "Java exact contract must keep the exact-ref boundary explicit");
         assertTrue(offenders.isEmpty(), "actor destroy documentation offenders: " + offenders);
     }
 
@@ -625,7 +616,6 @@ final class SampleReleaseGateContractTest {
             paths.playSpot("tictactoegamespot", "TicTacToeGame"),
             paths.playSpotHandler("tictactoegamespot", "PlayActorPlaceMarkHandler"),
             paths.playSpotHandler("tictactoegamespot", "TicTacToeGameTimerHandler"),
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/handlers/CreateGameHandler.java",
             "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/sessions/PlaySession.java"));
         assertSampleFilesExist("java", "TicTacToe", "Shared/src/main/java", List.of(
             "systems/zlink/samples/tictactoe/shared/contracts/GameState.java",
@@ -636,8 +626,6 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/tictactoe/shared/contracts/AuthenticateRes.java",
             "systems/zlink/samples/tictactoe/shared/contracts/CreateGameHttpReq.java",
             "systems/zlink/samples/tictactoe/shared/contracts/CreateGameHttpRes.java",
-            "systems/zlink/samples/tictactoe/shared/contracts/CreateGameReq.java",
-            "systems/zlink/samples/tictactoe/shared/contracts/CreateGameRes.java",
             "systems/zlink/samples/tictactoe/shared/contracts/JoinGameReq.java",
             "systems/zlink/samples/tictactoe/shared/contracts/JoinGameRes.java",
             "systems/zlink/samples/tictactoe/shared/contracts/PlaceMarkReq.java",
@@ -786,14 +774,15 @@ final class SampleReleaseGateContractTest {
                 && createGameHandlerSource.contains("CompletionStage<CreateGameHttpRes> handle")
                 && createGameHandlerSource.contains("CreateGameHttpReq")
                 && createGameHandlerSource.contains("CreateGameHttpRes")
-                && createGameHandlerSource.contains("new CreateGameReq")
-                && createGameHandlerSource.contains(".requestToChannel(")
+                && createGameHandlerSource.contains("ZLinkSpotManager")
+                && createGameHandlerSource.contains(".create(\"tictactoe.game\")")
+                && createGameHandlerSource.contains(".inMesh(SampleNames.SpotMesh)")
                 && createGameHandlerSource.contains(".timeout(SampleNames.RequestTimeout)")
-                && createGameHandlerSource.contains(".submit(CreateGameRes.class)")
-                && !createGameHandlerSource.contains(".packetName(\"CreateGameReq\")")
+                && createGameHandlerSource.contains(".submit()")
+                && !createGameHandlerSource.contains(".requestToChannel(")
                 && !createGameHandlerSource.contains("HttpExchange")
                 && !createGameHandlerSource.contains("HttpServer"),
-            "TicTacToe HTTP create-game endpoint must run as a Spring controller and translate to the typed Play channel request");
+            "TicTacToe HTTP create-game endpoint must create the game Spot through the object manager");
         assertTrue(clientSource.contains("ZLinkStreamConnectorFactory.create"),
             "TicTacToe Client role must use the public stream connector for play requests");
         assertTrue(clientSource.contains("new AuthenticateReq(options.xActorId())")
@@ -845,45 +834,31 @@ final class SampleReleaseGateContractTest {
             "TicTacToe Client role must not access server game storage directly");
         assertTrue(apiSource.contains(".addClientServerChannel(")
                 && apiSource.contains("settings.apiChannelEndpoint()")
-                && apiSource.contains("settings.playChannelEndpoint()")
-                && apiSource.contains("apiChannel.addRequestHandler(")
-                && apiSource.contains("AuthenticatePlayerHandler.class")
-                && !apiSource.contains("addHandlersFromPackageOf"),
-            "TicTacToe Api role must register its request handler explicitly");
+                && apiSource.contains("addRouteMesh(SampleNames.SpotMesh)")
+                && apiSource.contains("mesh.objects().client()")
+                && apiSource.contains("mesh.peerConnections().connect(endpoint)")
+                && apiSource.contains("addHandlersFromPackageOf(ApiServer.class)")
+                && apiSource.contains(".addHandlerGroup(\"api\")")
+                && !apiSource.contains("addRequestHandler("),
+            "TicTacToe Api role must discover handlers and create Spots through an Object Client RouteMesh");
         assertTrue(authHandlerSource.contains("implements ZLinkRequestHandler<")
-                && !authHandlerSource.contains("@ZLinkHandlerGroup")
+                && authHandlerSource.contains("@ZLinkHandlerGroup(\"api\")")
                 && !authHandlerSource.contains("@ZLinkRequest")
                 && createGameHandlerSource.contains("@RequestBody")
                 && createGameHandlerSource.contains("CreateGameHttpReq")
                 && createGameHandlerSource.contains("CreateGameHttpRes"),
-            "TicTacToe direct Api handlers must use explicit framework registration and HTTP create-game mapping");
+            "TicTacToe direct Api handlers must use framework discovery and HTTP create-game mapping");
         assertTrue(playSource.contains(".addRouteMesh(")
                 && !playSource.contains(".addSpotMesh("),
             "TicTacToe direct sample must expose the Play Spot role through RouteMesh");
-        assertTrue(playSource.contains("playChannel.addRequestHandler(")
-                && playSource.contains("CreateGameHandler.class")
+        assertTrue(playSource.contains("addHandlersFromPackageOf(PlayServer.class)")
+                && !playSource.contains("addRequestHandler(")
                 && playSource.contains("settings.apiChannelEndpoint()")
-                && playSource.contains("settings.playChannelEndpoint()")
                 && playSource.contains("settings.routeEndpoint()")
                 && playSource.contains("settings.spotEndpoint()")
                 && playSource.contains("settings.playEndpoint()")
-                && !playSource.contains("addHandlersFromPackageOf")
                 && !playSource.contains("addHandlerGroup("),
-            "TicTacToe Play role must register its channel, Spot, actor, and session handlers explicitly");
-        String playCreateGameHandlerSource = sampleJavaSource(
-            "TicTacToe",
-            "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/handlers/CreateGameHandler.java");
-        assertTrue(playCreateGameHandlerSource.contains("CompletionStage<CreateGameRes> handle")
-                && playCreateGameHandlerSource.contains("ZLinkSpotManager")
-                && playCreateGameHandlerSource.contains("PlaySettings settings")
-                && !playCreateGameHandlerSource.contains("@ZLinkHandlerGroup")
-                && playCreateGameHandlerSource.contains("CreateGameReq request")
-                && playCreateGameHandlerSource.contains("gameCreator.nextRoom(request.gameName())")
-                && playCreateGameHandlerSource.contains("RoutingId.from(room.roomId())")
-                && playCreateGameHandlerSource.contains("gameCreator.created(room)")
-                && !playCreateGameHandlerSource.contains("SampleSettings.current()"),
-            "TicTacToe Play CreateGame handler must be created by Spring DI, registered explicitly, create a Spot, and reply with typed contracts");
+            "TicTacToe Play role must discover channel, Spot, actor, and session handlers automatically");
         String gameJoinReqSource = sampleJavaSource(
             "TicTacToe",
             "Shared/src/main/java",
@@ -914,7 +889,7 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/tictactoe/server/play/domain/tictactoe/TicTacToeMatch.java");
         assertTrue(playAuthHandlerSource.contains("ZLinkTypedSessionPacketHandler<ZLinkSessionContext, AuthenticateReq>")
                 && playAuthHandlerSource.contains("new AuthenticatePlayerReq(request.accessToken())")
-                && playAuthHandlerSource.contains("context.actors().bind(playActor)")
+                && playAuthHandlerSource.contains("context.actors().bind(requireActor(result))")
                 && playSessionSource.contains("handlers.tryHandle(context, header, payload)")
                 && playSessionSource.contains("requireActor(header.packetName()).relay(header, payload)")
                 && !playSessionSource.contains("joinEntrySpot(")
@@ -932,12 +907,16 @@ final class SampleReleaseGateContractTest {
                 && gameSpotSource.contains("TicTacToeGameJoinRes")
                 && playActorJoinHandlerSource.contains("new TicTacToeGameJoinReq")
                 && playActorJoinHandlerSource.contains("PlayEntrySpot entrySpot")
-                && playActorJoinHandlerSource.contains("ZLinkSpotActorRequestContext context")
-                && playActorJoinHandlerSource.contains("new JoinGameRes")
+                && playActorJoinHandlerSource.contains("@ZLinkSpotActorSend")
+                && playActorJoinHandlerSource.contains("ZLinkMessageContext context")
+                && playActorJoinHandlerSource.contains("trackDeferredJoin")
+                && playActorJoinHandlerSource.contains(".defer()")
+                && playActorSource.contains("onJoinCompleted(")
+                && playActorSource.contains("new JoinGameRes")
                 && playPlaceMarkHandlerSource.contains("TicTacToeGame spot")
-                && playPlaceMarkHandlerSource.contains("ZLinkSpotActorRequestContext context")
+                && playPlaceMarkHandlerSource.contains("ZLinkMessageContext context")
                 && playPlaceMarkHandlerSource.contains("PlaceMarkReq request"),
-            "TicTacToe Play actor join admission must use a framework message Spot member callback while game packets stay typed");
+            "TicTacToe Play actor join must defer the framework operation and publish its completion while game packets stay typed");
         assertTrue(gameSpotSource.contains("actor.joinGame")
                 && gameSpotSource.contains("boundSession()")
                 && gameSpotSource.contains(".send(new GameStateNotify")
@@ -963,11 +942,11 @@ final class SampleReleaseGateContractTest {
             "TicTacToe game Spot must mirror the .NET lifecycle, timer, and turn-timeout API usage");
         assertTrue(gameSpotSource.contains("onJoinedActor(")
                 && gameSpotSource.contains("onLeaveActor(")
-                && entrySpotSource.contains("onActorJoin(")
-                && entrySpotSource.contains("ZLinkMessage request")
-                && entrySpotSource.contains("ZLinkSpotActorJoinResponse.accept")
+                && entrySpotSource.contains("onCreateActor(")
+                && entrySpotSource.contains("ZLinkMessage createRequest")
+                && entrySpotSource.contains("ZLinkActorCreateResponse.accept")
                 && !gameSpotSource.contains("ZLinkSpotActorChange" + "Result"),
-            "TicTacToe EntrySpot and GameSpot lifecycle must use member callbacks and Entry Spot admission without change-result arguments");
+            "TicTacToe EntrySpot and GameSpot lifecycle must use Actor creation and member callbacks without change-result arguments");
         assertTrue(playActorJoinHandlerSource.contains("request.roomId()"),
             "TicTacToe join handler must store the requested room id");
         assertTrue(playPlaceMarkHandlerSource.contains("actor.requireJoinedGame()"),
@@ -1023,12 +1002,10 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/tictactoe/server/play/PlayServerApplication.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/actors/PlayActor.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/actors/PlayActorFactory.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/application/gamecreation/TicTacToeGameCreator.kt",
             paths.playSpot("entryspot", "PlayEntrySpot"),
             paths.playSpot("tictactoegamespot", "TicTacToeGame"),
             paths.playSpotHandler("tictactoegamespot", "PlayActorPlaceMarkHandler"),
             paths.playSpotHandler("tictactoegamespot", "TicTacToeGameTimerHandler"),
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/handlers/CreateGameHandler.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/sessions/PlaySession.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/sessions/handlers/AuthenticatePlaySessionHandler.kt"));
         assertSampleFilesExist("kotlin", "TicTacToe", "Shared/src/main/kotlin", List.of(
@@ -1119,10 +1096,12 @@ final class SampleReleaseGateContractTest {
                 || playProgramSource.contains("ZLinkFramework.start"),
             "Kotlin TicTacToe Server roles must rely on Spring lifecycle keep-alive instead of direct framework execution");
         assertTrue(apiSource.contains("ZLinkFrameworkConfigurer")
-                && apiSource.contains("options.codecs().use(ZLinkMessagePackCodec.defaultCodec())")
+                && apiSource.contains("addHandlersFromPackageOf(ApiServer::class.java)")
+                && !apiSource.contains("ZLinkMessagePackCodec")
                 && playSource.contains("ZLinkFrameworkConfigurer")
-                && playSource.contains("options.codecs().use(ZLinkMessagePackCodec.defaultCodec())")
-                && serverBuildSource.contains("zlink-framework-codec-msgpack")
+                && playSource.contains("addHandlersFromPackageOf(PlayServer::class.java)")
+                && !playSource.contains("ZLinkMessagePackCodec")
+                && !serverBuildSource.contains("zlink-framework-codec-msgpack")
                 && apiHostFactorySource.contains("@SpringBootApplication")
                 && apiHostFactorySource.contains("SpringApplicationBuilder")
                 && apiHostFactorySource.contains(".web(WebApplicationType.SERVLET)")
@@ -1133,7 +1112,7 @@ final class SampleReleaseGateContractTest {
                 && playHostFactorySource.contains(".web(WebApplicationType.NONE)")
                 && playHostFactorySource.contains("setKeepAlive(true)")
                 && playHostFactorySource.contains("PlayServer.configure(settings)"),
-            "Kotlin TicTacToe direct Api and Play framework hosts must enable MessagePack codecs and expose HTTP create-game with shared settings");
+            "Kotlin TicTacToe Api and Play hosts must use automatic handler discovery and the default JSON codec");
         assertTrue(settingsSource.contains("@ConfigurationProperties(\"sample\")")
                 && settingsSource.contains("--config")
                 && settingsSource.contains("sample.apiBindUrl")
@@ -1171,14 +1150,15 @@ final class SampleReleaseGateContractTest {
                 && createGameHandlerSource.contains("suspend fun handle(@RequestBody request: CreateGameHttpReq): CreateGameHttpRes")
                 && createGameHandlerSource.contains("CreateGameHttpReq")
                 && createGameHandlerSource.contains("CreateGameHttpRes")
-                && createGameHandlerSource.contains("CreateGameReq")
-                && createGameHandlerSource.contains(".requestToChannel(")
+                && createGameHandlerSource.contains("ZLinkSpotManager")
+                && createGameHandlerSource.contains(".create(\"tictactoe.game\")")
+                && createGameHandlerSource.contains(".inMesh(SampleNames.SpotMesh)")
                 && createGameHandlerSource.contains(".timeout(SampleNames.RequestTimeout)")
-                && createGameHandlerSource.contains(".submit(CreateGameRes::class.java)")
-                && !createGameHandlerSource.contains(".packetName(\"CreateGameReq\")")
+                && createGameHandlerSource.contains(".submit()")
+                && !createGameHandlerSource.contains(".requestToChannel(")
                 && !createGameHandlerSource.contains("HttpExchange")
                 && !createGameHandlerSource.contains("HttpServer"),
-            "Kotlin TicTacToe HTTP create-game endpoint must run as a Spring controller and translate to the typed Play channel request");
+            "Kotlin TicTacToe HTTP create-game endpoint must create the game Spot through the object manager");
         assertTrue(clientSource.contains("ZLinkStreamConnectorFactory.create"),
             "Kotlin TicTacToe Client role must use the public stream connector for play requests");
         assertTrue(clientSource.contains("ZLinkKotlinStreamConnector")
@@ -1198,7 +1178,7 @@ final class SampleReleaseGateContractTest {
                 && clientSource.contains("URI.create(endpoint)")
                 && clientSource.contains("ensure(hostWin.state.status == \"Won\")")
                 && clientSource.contains("ensure(hostWin.state.winner == options.xActorId)")
-                && clientSource.contains("ZLinkMessagePackCodec.defaultCodec()")
+                && clientSource.contains("ZLinkStreamJson.codec()")
                 && !clientSource.contains("ZLinkMessagePackCodec.request")
                 && !clientSource.contains(FORBIDDEN_TICTACTOE_RESULT)
                 && !clientSource.contains("game.gameId"),
@@ -1226,14 +1206,14 @@ final class SampleReleaseGateContractTest {
             "Kotlin TicTacToe Client role must not access server game storage directly");
         assertTrue(apiSource.contains(".addClientServerChannel(")
                 && apiSource.contains("settings.apiChannelEndpoint")
-                && apiSource.contains("settings.playChannelEndpoint")
-                && apiSource.contains("addRequestHandler(")
-                && apiSource.contains("AuthenticatePlayerHandler::class.java")
-                && !apiSource.contains("addHandlersFromPackageOf")
-                && !apiSource.contains("addHandlerGroup(\"api\")"),
-            "Kotlin TicTacToe direct sample must register its Api request handler explicitly");
+                && apiSource.contains("addRouteMesh(SampleNames.SpotMesh)")
+                && apiSource.contains("mesh.objects().client()")
+                && apiSource.contains("mesh.peerConnections().connect(endpoint)")
+                && apiSource.contains("addHandlersFromPackageOf(ApiServer::class.java)")
+                && apiSource.contains("addHandlerGroup(\"api\")")
+                && !apiSource.contains("addRequestHandler("),
+            "Kotlin TicTacToe Api must discover handlers and create Spots through an Object Client RouteMesh");
         assertTrue(authHandlerSource.contains("@ZLinkHandlerGroup(\"api\")")
-                && authHandlerSource.contains("@ZLinkRequest")
                 && !authHandlerSource.contains("@ZLinkRequest(packetName = \"AuthenticatePlayerReq\")")
                 && createGameHandlerSource.contains("@RequestBody")
                 && createGameHandlerSource.contains("CreateGameHttpReq")
@@ -1242,32 +1222,16 @@ final class SampleReleaseGateContractTest {
         assertTrue(playSource.contains(".addRouteMesh(")
                 && !playSource.contains(".addSpotMesh("),
             "Kotlin TicTacToe direct sample must expose the Play Spot role through RouteMesh");
-        assertTrue(playSource.contains("addRequestHandler(")
-                && playSource.contains("CreateGameHandler::class.java")
-                && !playSource.contains("addHandlersFromPackageOf")
+        assertTrue(playSource.contains("addHandlersFromPackageOf(PlayServer::class.java)")
+                && !playSource.contains("addRequestHandler(")
                 && playSource.contains("settings.apiChannelEndpoint")
-                && playSource.contains("settings.playChannelEndpoint")
                 && playSource.contains("settings.routeEndpoint")
                 && playSource.contains("settings.playEndpoint")
                 && playSource.contains("node.listen(routeEndpoint)")
                 && playSource.contains("node.channelName(SampleNames.PlayNode)")
                 && playSource.contains("node.peerConnections().connect(")
                 && !playSource.contains("addHandlerGroup(SampleNames.PlayHandlerGroup)"),
-            "Kotlin TicTacToe Play role must register its channel handler explicitly");
-        String playCreateGameHandlerSource = sampleKotlinSource(
-            "TicTacToe",
-            "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/handlers/CreateGameHandler.kt");
-        assertTrue(playCreateGameHandlerSource.contains("override suspend fun handle(")
-                && playCreateGameHandlerSource.contains("ZLinkSpotManager")
-                && playCreateGameHandlerSource.contains("settings: SampleSettings")
-                && playCreateGameHandlerSource.contains("@ZLinkHandlerGroup(SampleNames.PlayHandlerGroup)")
-                && playCreateGameHandlerSource.contains("request: CreateGameReq")
-                && playCreateGameHandlerSource.contains("gameCreator.nextRoom(request.gameName)")
-                && playCreateGameHandlerSource.contains("RoutingId.from(room.roomId)")
-                && playCreateGameHandlerSource.contains("CreateGameRes(")
-                && !playCreateGameHandlerSource.contains("SampleSettings.current()"),
-            "Kotlin TicTacToe Play CreateGame handler must be created by Spring DI, create a Spot, and reply with typed contracts");
+            "Kotlin TicTacToe Play role must discover Spot, actor, and session handlers automatically");
         assertTrue(clientSource.contains("JoinGameReq(game.roomId)")
                 && !clientSource.contains("TicTacToeGameJoinReq"),
             "Kotlin TicTacToe client must use client-facing JoinGame contracts only");
@@ -1289,7 +1253,7 @@ final class SampleReleaseGateContractTest {
             paths.playSpotHandler("tictactoegamespot", "TicTacToeGameTimerHandler"));
         assertTrue(playAuthHandlerSource.contains("ZLinkSuspendingTypedSessionPacketHandler<ZLinkSessionContext, AuthenticateReq>")
                 && playAuthHandlerSource.contains("AuthenticatePlayerReq(request.accessToken)")
-                && playAuthHandlerSource.contains("context.actors().bind(playActor).await()")
+                && playAuthHandlerSource.contains("context.actors().bind(requireActor(playActor)).await()")
                 && playSessionSource.contains("handlers.tryHandle(context, header, payload)")
                 && playSessionSource.contains("requireActor(header.packetName()).relay(header, payload)")
                 && !playSessionSource.contains("joinEntrySpot(")
@@ -1303,14 +1267,17 @@ final class SampleReleaseGateContractTest {
                 && gameSpotSource.contains("TicTacToeGameJoinRes")
                 && playActorJoinHandlerSource.contains("TicTacToeGameJoinReq")
                 && playActorJoinHandlerSource.contains("entrySpot: PlayEntrySpot")
-                && playActorJoinHandlerSource.contains("context: ZLinkSpotActorRequestContext")
-                && !playActorJoinHandlerSource.contains("CancellationToken")
-                && playActorJoinHandlerSource.contains("JoinGameRes(result.reply().state)")
+                && playActorJoinHandlerSource.contains("@ZLinkSpotActorSend")
+                && playActorJoinHandlerSource.contains("context: ZLinkMessageContext")
+                && playActorJoinHandlerSource.contains("trackDeferredJoin")
+                && playActorJoinHandlerSource.contains(".defer()")
+                && playActorSource.contains("override fun onJoinCompleted(")
+                && playActorSource.contains("send(JoinGameRes(reply.state))")
                 && playPlaceMarkHandlerSource.contains("spot: TicTacToeGame")
-                && playPlaceMarkHandlerSource.contains("context: ZLinkSpotActorRequestContext")
+                && playPlaceMarkHandlerSource.contains("context: ZLinkMessageContext")
                 && playPlaceMarkHandlerSource.contains("request: PlaceMarkReq")
                 && !playPlaceMarkHandlerSource.contains("CancellationToken"),
-            "Kotlin TicTacToe Play actor join admission must use a framework message Spot member callback while game packets stay typed");
+            "Kotlin TicTacToe Play actor join must defer the framework operation and publish its completion while game packets stay typed");
         assertTrue(gameSpotSource.contains("actor.joinGame")
                 && gameSpotSource.contains("boundSession()")
                 && gameSpotSource.contains(".send(GameStateNotify")
@@ -1319,7 +1286,7 @@ final class SampleReleaseGateContractTest {
         assertTrue(gameSpotSource.contains("override suspend fun onInitializeSuspending()")
                 && gameSpotSource.contains("context.addTimer(")
                 && gameSpotSource.contains("TicTacToeGameTimerHandler::class.java")
-                && gameSpotSource.contains("override suspend fun onClosingSuspending()")
+                && gameSpotSource.contains("override suspend fun onClosingSuspending(context: ZLinkSpotClosingContext)")
                 && gameSpotSource.contains("gameTick?.cancel()")
                 && gameMatchSource.contains("TurnTimedOut")
                 && gameMatchSource.contains("resetTurnDeadline")
@@ -1335,11 +1302,11 @@ final class SampleReleaseGateContractTest {
             "Kotlin TicTacToe game Spot must mirror the .NET lifecycle, timer, and turn-timeout API usage");
         assertTrue(gameSpotSource.contains("override suspend fun onJoinedActorSuspending(")
                 && gameSpotSource.contains("override suspend fun onLeaveActorSuspending(")
-                && entrySpotSource.contains("override suspend fun onActorJoinSuspending(")
-                && entrySpotSource.contains("request: ZLinkMessage")
-                && entrySpotSource.contains("ZLinkSpotActorJoinResponse.accept")
+                && entrySpotSource.contains("override suspend fun onCreateActorSuspending(")
+                && entrySpotSource.contains("createRequest: ZLinkMessage")
+                && entrySpotSource.contains("ZLinkActorCreateResponse.accept")
                 && !gameSpotSource.contains("ZLinkSpotActorChange" + "Result"),
-            "Kotlin TicTacToe EntrySpot and GameSpot lifecycle must use member callbacks and Entry Spot admission without change-result arguments");
+            "Kotlin TicTacToe EntrySpot and GameSpot lifecycle must use Actor creation and member callbacks without change-result arguments");
         assertTrue(playActorJoinHandlerSource.contains("request.roomId"),
             "Kotlin TicTacToe join handler must store the requested room id");
         assertTrue(playPlaceMarkHandlerSource.contains("actor.requireJoinedGame()"),
@@ -1350,9 +1317,9 @@ final class SampleReleaseGateContractTest {
             "Kotlin TicTacToe PlayActor must expose joinGame state transition");
         assertTrue(playActorSource.contains("fun requireJoinedGame"),
             "Kotlin TicTacToe PlayActor must validate joined game state");
-        assertTrue(entrySpotSource.contains("context: ZLinkEntrySpotContext")
+        assertTrue(entrySpotSource.contains("override val context: ZLinkEntrySpotContext")
                 && !entrySpotSource.contains("ZLinkEntrySpotContext? = null")
-                && gameSpotSource.contains("private val context: ZLinkSpotContext")
+                && gameSpotSource.contains("override val context: ZLinkSpotContext")
                 && gameSpotSource.contains("private val createdHandler: TicTacToeGameCreatedHandler")
                 && !gameSpotSource.contains("constructor()")
                 && !gameSpotSource.contains("SampleSpotContext")
@@ -1391,10 +1358,14 @@ final class SampleReleaseGateContractTest {
             paths.playSpotHandler("bingoroomspot", "BingoRoomSettingsInitializer"),
             paths.playSpotHandler("bingoroomspot", "BingoRoomTimerHandler"),
             paths.playSpotHandler("bingoroomspot", "SubmitBingoCardHandler"),
+            paths.playSpot("bingoroomspot", "BingoRoomRelocationAdapter"),
             paths.playSpot("entryspot", "BingoEntrySpot"),
-            paths.playSpotHandler("entryspot", "MatchBingoActorHandler"),
-            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/handlers/AllocateBingoRoomHandler.java",
-            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/handlers/EnsurePlayerActorHandler.java"));
+            paths.playSpotHandler("entryspot", "MatchBingoActorHandler")));
+        assertSampleFilesExist("java", "Bingo", "Server/Matchmaking/src/main/java", List.of(
+            "systems/zlink/samples/bingo/server/matchmaking/MatchmakingServerApplication.java",
+            "systems/zlink/samples/bingo/server/matchmaking/BingoMatchmaker.java",
+            "systems/zlink/samples/bingo/server/matchmaking/BingoMatchmakerIdleTimerHandler.java",
+            "systems/zlink/samples/bingo/server/matchmaking/ReserveBingoRoomHandler.java"));
         assertSampleFilesExist("java", "Bingo", "Server/Session/src/main/java", List.of(
             "systems/zlink/samples/bingo/server/session/Program.java",
             "systems/zlink/samples/bingo/server/session/SessionServerApplication.java",
@@ -1469,18 +1440,22 @@ final class SampleReleaseGateContractTest {
             "Bingo",
             "Server/Play/src/main/java",
             "systems/zlink/samples/bingo/server/play/Program.java");
+        String entrySpotSource = sampleJavaSource(
+            "Bingo",
+            "Server/Play/src/main/java",
+            paths.playSpot("entryspot", "BingoEntrySpot"));
         String sessionProgramSource = sampleJavaSource(
             "Bingo",
             "Server/Session/src/main/java",
             "systems/zlink/samples/bingo/server/session/Program.java");
+        String sessionAuthenticationSource = sampleJavaSource(
+            "Bingo",
+            "Server/Session/src/main/java",
+            "systems/zlink/samples/bingo/server/session/sessions/handlers/AuthenticateSessionHandler.java");
         String apiHandlerSource = sampleJavaSource(
             "Bingo",
             "Server/Api/src/main/java",
             "systems/zlink/samples/bingo/server/api/handlers/AuthenticatePlayerHandler.java");
-        String playHandlerSource = sampleJavaSource(
-            "Bingo",
-            "Server/Play/src/main/java",
-            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/handlers/EnsurePlayerActorHandler.java");
 
         assertTrue(rootBuildSource.contains("plugins {\n    base\n}")
                 && !rootBuildSource.contains("application"),
@@ -1539,14 +1514,21 @@ final class SampleReleaseGateContractTest {
                 && !roomSource.contains("BingoWinnerSink"),
             "Bingo sample must not couple client notification handling to server implementation types");
         assertTrue(apiHostSource.contains("addHandlersFromPackageOf")
-                && apiHostSource.contains("addHandlerGroup(\"api\")")
+                && apiHostSource.contains("addClientServerChannel(SampleNames.ApiChannel)")
+                && apiHostSource.contains("selectedApiChannelEndpoint()")
+                && apiHostSource.contains("selectedApiMeshEndpoint()")
                 && !apiHostSource.contains("addRequestHandler")
                 && playHostSource.contains("addHandlersFromPackageOf")
+                && playHostSource.contains("addClientServerChannel(SampleNames.ApiChannel).client()")
+                && playHostSource.contains("ZLinkRedisRelocationStore")
+                && playHostSource.contains("ZLinkUserSpotExecutionMode.SPOT_WIDE")
+                && playHostSource.contains("ZLinkSpotRelocationReadinessMode.APPLICATION_SIGNALED")
+                && playHostSource.contains("preserveStateWith(BingoRoomRelocationAdapter.class)")
                 && !playHostSource.contains("addRequestHandler"),
-            "Bingo Api/Play roles must use annotation-discovered handler groups");
-        assertTrue(apiHostSource.contains("useAllocatedRoutingId(2, \"api\")")
-                && playHostSource.contains("useAllocatedRoutingId(2, \"play\")")
-                && sessionHostSource.contains("useAllocatedRoutingId(2, \"session\")")
+            "Bingo Api/Play roles must separate ClientServer from RouteMesh and configure relocatable rooms");
+        assertTrue(apiHostSource.contains("setRoutingIdPrefix(\"api\")")
+                && playHostSource.contains("setRoutingIdPrefix(\"play\")")
+                && sessionHostSource.contains("setRoutingIdPrefix(\"session\")")
                 && !apiHostSource.contains("setRoutingId(")
                 && !playHostSource.contains("setRoutingId(")
                 && !sessionHostSource.contains("setRoutingId(")
@@ -1582,13 +1564,17 @@ final class SampleReleaseGateContractTest {
                 && !playHostSource.contains("ZLinkEmbeddedRegistryOptions")
                 && !sessionHostSource.contains("ZLinkEmbeddedRegistryOptions"),
             "Java Bingo roles must use the Redis location store extension instead of a Registry role");
-        assertTrue(apiHandlerSource.contains("@ZLinkHandlerGroup(\"api\")")
+        assertTrue(apiHandlerSource.contains("@ZLinkHandlerGroup(SampleNames.ApiChannel)")
                 && apiHandlerSource.contains("implements ZLinkRequestHandler<")
                 && apiHandlerSource.contains("Messages.AuthenticatePlayerReq")
-                && playHandlerSource.contains("implements ZLinkSpotRequestHandler<")
-                && playHandlerSource.contains("BingoEntrySpot")
-                && playHandlerSource.contains("Messages.EnsurePlayerActorReq"),
-            "Bingo Api/Play handlers must use interface-based request mapping");
+                && sessionAuthenticationSource.contains("actors.getOrCreate(")
+                && sessionAuthenticationSource.contains("BingoMessages.ensurePlayerActorReq(")
+                && sessionAuthenticationSource.contains(".request(")
+                && sessionAuthenticationSource.contains(".submit()")
+                && entrySpotSource.contains("onCreateActor(")
+                && entrySpotSource.contains("createRequest.decode(Messages.EnsurePlayerActorReq.class)")
+                && entrySpotSource.contains("actor.setDisplayName("),
+            "Bingo authentication must create the Actor through ActorManager and initialize it in the Entry Spot lifecycle");
         assertTrue(sampleFileContains("java", "Bingo", "Server/Api/src/main/java",
                 "systems/zlink/samples/bingo/server/api/Program.java", "ApiServerApplication.run"),
             "Java Bingo Api role must have its own executable Program");
@@ -1625,10 +1611,14 @@ final class SampleReleaseGateContractTest {
             paths.playSpotHandler("bingoroomspot", "BingoRoomSettingsInitializer"),
             paths.playSpotHandler("bingoroomspot", "BingoRoomTimerHandler"),
             paths.playSpotHandler("bingoroomspot", "SubmitBingoCardHandler"),
+            paths.playSpot("bingoroomspot", "BingoRoomRelocationAdapter"),
             paths.playSpot("entryspot", "BingoEntrySpot"),
-            paths.playSpotHandler("entryspot", "MatchBingoActorHandler"),
-            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/handlers/AllocateBingoRoomHandler.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/handlers/EnsurePlayerActorHandler.kt"));
+            paths.playSpotHandler("entryspot", "MatchBingoActorHandler")));
+        assertSampleFilesExist("kotlin", "Bingo", "Server/Matchmaking/src/main/kotlin", List.of(
+            "systems/zlink/samples/kotlin/bingo/server/matchmaking/MatchmakingServerApplication.kt",
+            "systems/zlink/samples/kotlin/bingo/server/matchmaking/BingoMatchmaker.kt",
+            "systems/zlink/samples/kotlin/bingo/server/matchmaking/BingoMatchmakerIdleTimerHandler.kt",
+            "systems/zlink/samples/kotlin/bingo/server/matchmaking/ReserveBingoRoomHandler.kt"));
         assertSampleFilesExist("kotlin", "Bingo", "Server/Session/src/main/kotlin", List.of(
             "systems/zlink/samples/kotlin/bingo/server/session/Program.kt",
             "systems/zlink/samples/kotlin/bingo/server/session/SessionServerApplication.kt",
@@ -1703,18 +1693,22 @@ final class SampleReleaseGateContractTest {
             "Bingo",
             "Server/Play/src/main/kotlin",
             "systems/zlink/samples/kotlin/bingo/server/play/Program.kt");
+        String entrySpotSource = sampleKotlinSource(
+            "Bingo",
+            "Server/Play/src/main/kotlin",
+            paths.playSpot("entryspot", "BingoEntrySpot"));
         String sessionProgramSource = sampleKotlinSource(
             "Bingo",
             "Server/Session/src/main/kotlin",
             "systems/zlink/samples/kotlin/bingo/server/session/Program.kt");
+        String sessionAuthenticationSource = sampleKotlinSource(
+            "Bingo",
+            "Server/Session/src/main/kotlin",
+            "systems/zlink/samples/kotlin/bingo/server/session/sessions/handlers/AuthenticateSessionHandler.kt");
         String apiHandlerSource = sampleKotlinSource(
             "Bingo",
             "Server/Api/src/main/kotlin",
             "systems/zlink/samples/kotlin/bingo/server/api/handlers/AuthenticatePlayerHandler.kt");
-        String playHandlerSource = sampleKotlinSource(
-            "Bingo",
-            "Server/Play/src/main/kotlin",
-            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/handlers/EnsurePlayerActorHandler.kt");
 
         assertTrue(rootBuildSource.contains("plugins {\n    base\n}")
                 && !rootBuildSource.contains("application"),
@@ -1777,14 +1771,21 @@ final class SampleReleaseGateContractTest {
                 && !roomSource.contains("BingoWinnerSink"),
             "Kotlin Bingo sample must not couple client notification handling to server implementation types");
         assertTrue(apiHostSource.contains("addHandlersFromPackageOf")
-                && apiHostSource.contains("addHandlerGroup(\"api\")")
+                && apiHostSource.contains("addClientServerChannel(SampleNames.ApiChannel)")
+                && apiHostSource.contains("selectedApiChannelEndpoint()")
+                && apiHostSource.contains("selectedApiMeshEndpoint()")
                 && !apiHostSource.contains("addRequestHandler")
                 && playHostSource.contains("addHandlersFromPackageOf")
+                && playHostSource.contains("addClientServerChannel(SampleNames.ApiChannel).client()")
+                && playHostSource.contains("ZLinkRedisRelocationStore")
+                && playHostSource.contains("ZLinkUserSpotExecutionMode.SPOT_WIDE")
+                && playHostSource.contains("ZLinkSpotRelocationReadinessMode.APPLICATION_SIGNALED")
+                && playHostSource.contains("preserveStateWith(BingoRoomRelocationAdapter::class.java)")
                 && !playHostSource.contains("addRequestHandler"),
-            "Kotlin Bingo Api/Play roles must use annotation-discovered handler groups");
-        assertTrue(apiHostSource.contains("useAllocatedRoutingId(2, \"api\")")
-                && playHostSource.contains("useAllocatedRoutingId(2, \"play\")")
-                && sessionHostSource.contains("useAllocatedRoutingId(2, \"session\")")
+            "Kotlin Bingo Api/Play roles must separate ClientServer from RouteMesh and configure relocatable rooms");
+        assertTrue(apiHostSource.contains("setRoutingIdPrefix(\"api\")")
+                && playHostSource.contains("setRoutingIdPrefix(\"play\")")
+                && sessionHostSource.contains("setRoutingIdPrefix(\"session\")")
                 && !apiHostSource.contains("setRoutingId(")
                 && !playHostSource.contains("setRoutingId(")
                 && !sessionHostSource.contains("setRoutingId(")
@@ -1821,10 +1822,16 @@ final class SampleReleaseGateContractTest {
                 && !playHostSource.contains("ZLinkEmbeddedRegistryOptions")
                 && !sessionHostSource.contains("ZLinkEmbeddedRegistryOptions"),
             "Kotlin Bingo roles must use the Redis location store extension instead of a Registry role");
-        assertTrue(apiHandlerSource.contains("@ZLinkHandlerGroup(\"api\")")
+        assertTrue(apiHandlerSource.contains("@ZLinkHandlerGroup(SampleNames.ApiChannel)")
                 && apiHandlerSource.contains(": ZLinkSuspendingRequestHandler<AuthenticatePlayerReq, AuthenticatePlayerRes>")
-                && playHandlerSource.contains(": ZLinkSuspendingSpotRequestHandler<BingoEntrySpot, EnsurePlayerActorReq, EnsurePlayerActorRes>"),
-            "Kotlin Bingo Api/Play handlers must use interface-based request mapping");
+                && sessionAuthenticationSource.contains("actors.kotlin().getOrCreate(")
+                && sessionAuthenticationSource.contains("EnsurePlayerActorReq(")
+                && sessionAuthenticationSource.contains(".request(")
+                && sessionAuthenticationSource.contains(".await()")
+                && entrySpotSource.contains("onCreateActorSuspending(")
+                && entrySpotSource.contains("createRequest.decode(EnsurePlayerActorReq::class.java)")
+                && entrySpotSource.contains("actor.setDisplayName("),
+            "Kotlin Bingo authentication must create the Actor through ActorManager and initialize it in the Entry Spot lifecycle");
         assertTrue(sampleFileContains("kotlin", "Bingo", "Server/Api/src/main/kotlin",
                 "systems/zlink/samples/kotlin/bingo/server/api/Program.kt", "ApiServerApplication.run"),
             "Kotlin Bingo Api role must have its own executable Program");

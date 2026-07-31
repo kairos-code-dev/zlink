@@ -43,9 +43,6 @@ builder.Services.AddSingleton<IWorldOperationsPort, WorldOperationsAdapter>();
 builder.Services.AddSingleton<AnnouncementService>();
 builder.Services.AddSingleton<MaintenanceService>();
 builder.Services.AddSingleton<NodeDiagnosticsService>();
-builder.Services.AddHostedService<NodeStatusBroadcaster>();
-builder.Services.AddHostedService<SocketEventHandler>();
-
 builder.Services.AddZLinkFramework(options =>
 {
     options.AddLocationStore(new ZLinkRedisLocationStore(redis =>
@@ -80,5 +77,10 @@ builder.Services.AddZLinkFramework(options =>
     mesh.Channel(ZoneWorldNames.ReportChannel).Server()
         .AddHandlerGroup(HandlerGroups.Ops);
 });
+
+// Hosted services start in registration order. Observe the RouteMesh only after
+// the framework has started and published its initial runtime state.
+builder.Services.AddHostedService<NodeStatusBroadcaster>();
+builder.Services.AddHostedService<SocketEventHandler>();
 
 await builder.Build().RunAsync();

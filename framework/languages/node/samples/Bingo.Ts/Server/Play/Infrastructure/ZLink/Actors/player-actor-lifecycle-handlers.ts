@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { ZLinkSpotActorSend } from '@zlink-systems/framework';
-import type { ZLinkSpotActorSendContext } from '@zlink-systems/framework';
-import type { PlayerActor } from './player-actor';
+import { zlinkSpotActorSendHandler } from '@zlink-systems/nestjs';
+import type { ZLinkMessageContext } from '@zlink-systems/framework';
+import { PlayerActor } from './player-actor';
+import { BingoRoomSpot } from '../Spots/BingoRoomSpot/bingo-room-spot';
 import { LeaveFinishedBingoRoom } from '../../../../../Shared/Contracts/bingo-messages.generated';
 
 @Injectable()
@@ -18,17 +19,22 @@ class PendingBingoActorDestroyRegistry {
 }
 
 @Injectable()
+@zlinkSpotActorSendHandler({
+  spot: () => BingoRoomSpot,
+  actor: () => PlayerActor,
+  packetName: 'LeaveFinishedBingoRoom'
+})
 class LeaveFinishedBingoRoomHandler {
   constructor(private readonly pendingDestroys: PendingBingoActorDestroyRegistry) {}
 
-  @ZLinkSpotActorSend('LeaveFinishedBingoRoom')
   async handle(
+    spot: BingoRoomSpot,
     actor: PlayerActor,
-    _context: ZLinkSpotActorSendContext,
+    _context: ZLinkMessageContext,
     _message: LeaveFinishedBingoRoom
   ): Promise<void> {
     this.pendingDestroys.mark(actor.actorId);
-    await actor.context.leaveSpot();
+    await spot.context.leaveActor(actor);
   }
 }
 

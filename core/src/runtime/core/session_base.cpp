@@ -69,6 +69,7 @@ zlink::session_base_t::session_base_t (class io_thread_t *io_thread_,
     io_object_t (io_thread_),
     _active (active_),
     _pipe (NULL),
+    _socket_pipe (NULL),
     _incomplete_in (false),
     _dropping_stale_transport_message (false),
     _pending (false),
@@ -97,17 +98,16 @@ void zlink::session_base_t::set_peer_routing_id (const unsigned char *data_, siz
 {
     if (_pipe) {
         _pipe->set_peer_routing_id (data_, size_);
-        pipe_t *socket_pipe = _pipe->get_peer ();
-        if (socket_pipe) {
-            if (socket_pipe->get_transport_pair_id () != 0)
-                socket_pipe->set_transport_peer_identity (data_, size_);
+        if (_socket_pipe) {
+            if (_socket_pipe->get_transport_pair_id () != 0)
+                _socket_pipe->set_transport_peer_identity (data_, size_);
             const bool preserve_connect_routing_id =
-              socket_pipe->is_locally_initiated ()
-              && socket_pipe->get_transport_lane ()
+              _socket_pipe->is_locally_initiated ()
+              && _socket_pipe->get_transport_lane ()
                    == transport_lane_application
-              && socket_pipe->get_routing_id ().size () != 0;
+              && _socket_pipe->get_routing_id ().size () != 0;
             if (!preserve_connect_routing_id)
-                socket_pipe->set_peer_routing_id (data_, size_);
+                _socket_pipe->set_peer_routing_id (data_, size_);
         }
         return;
     }
@@ -124,8 +124,8 @@ void zlink::session_base_t::set_peer_routing_id (const unsigned char *data_, siz
 void zlink::session_base_t::set_peer_max_message_bytes (uint64_t max_message_bytes_)
 {
     _peer_max_message_bytes = max_message_bytes_;
-    if (_pipe && _pipe->get_peer ())
-        _pipe->get_peer ()->set_max_message_bytes (max_message_bytes_);
+    if (_socket_pipe)
+        _socket_pipe->set_max_message_bytes (max_message_bytes_);
 }
 
 const zlink::blob_t &zlink::session_base_t::peer_routing_id () const
@@ -134,9 +134,8 @@ const zlink::blob_t &zlink::session_base_t::peer_routing_id () const
         const blob_t &routing_id = _pipe->get_routing_id ();
         if (routing_id.size () > 0)
             return routing_id;
-        const pipe_t *peer = _pipe->get_peer ();
-        if (peer)
-            return peer->get_routing_id ();
+        if (_socket_pipe)
+            return _socket_pipe->get_routing_id ();
     }
     static const blob_t empty_routing_id;
     return empty_routing_id;
@@ -172,6 +171,7 @@ int zlink::session_base_t::set_peer_transport_pair (transport_lane_t lane_,
 zlink::session_base_t::~session_base_t ()
 {
     zlink_assert (!_pipe);
+    zlink_assert (!_socket_pipe);
 
     //  If there's still a pending linger timer, remove it.
     if (_has_linger_timer) {
@@ -193,6 +193,7 @@ void zlink::session_base_t::attach_pipe (pipe_t *pipe_)
     zlink_assert (pipe_);
     _pipe = pipe_;
     _pipe->set_event_sink (this);
+    retain_socket_pipe (_pipe->get_peer ());
     // Non-paired transports attach the socket-side end before the session is
     // started. Paired DEALER/ROUTER transports defer that bind until both
     // lanes have completed and validated their handshake.
@@ -206,6 +207,7 @@ void zlink::session_base_t::pipe_terminated (pipe_t *pipe_)
 
     if (pipe_ == _pipe) {
         // If this is our current pipe, remove it
+        release_socket_pipe ();
         _pipe = NULL;
         if (_has_linger_timer) {
             cancel_timer (linger_timer_id);
@@ -350,6 +352,7 @@ void zlink::session_base_t::engine_ready ()
         //  Remember the local end of the pipe.
         zlink_assert (!_pipe);
         _pipe = pipes[0];
+        retain_socket_pipe (pipes[1]);
 
         //  The endpoints strings are not set on bind, set them here so that
         //  events can use them.
@@ -372,8 +375,8 @@ void zlink::session_base_t::engine_ready ()
         send_bind (_socket, pipes[1]);
         _socket_pipe_bound = true;
     }
-    if (_pipe && !_socket_pipe_bound && _pipe->get_peer ()) {
-        send_bind (_socket, _pipe->get_peer ());
+    if (_pipe && !_socket_pipe_bound && _socket_pipe) {
+        send_bind (_socket, _socket_pipe);
         _socket_pipe_bound = true;
     }
     if (_pipe)
@@ -513,6 +516,7 @@ void zlink::session_base_t::reconnect ()
         _pipe->hiccup ();
         _pipe->terminate (false);
         _terminating_pipes.insert (_pipe);
+        release_socket_pipe ();
         _pipe = NULL;
 
         if (_has_linger_timer) {
@@ -561,6 +565,7 @@ void zlink::session_base_t::start_transport_pair_reconnect (bool force_)
         pipe_t *old_pipe = _pipe;
         old_pipe->terminate (false);
         _terminating_pipes.insert (old_pipe);
+        release_socket_pipe ();
         _pipe = NULL;
     }
 
@@ -572,6 +577,25 @@ void zlink::session_base_t::start_transport_pair_reconnect (bool force_)
         _addr->to_string (*ep);
         send_term_endpoint (_socket, ep);
     }
+}
+
+void zlink::session_base_t::retain_socket_pipe (pipe_t *pipe_)
+{
+    zlink_assert (!_socket_pipe);
+    if (!pipe_)
+        return;
+    if (!pipe_->retain_lifetime_ref ())
+        return;
+    _socket_pipe = pipe_;
+}
+
+void zlink::session_base_t::release_socket_pipe ()
+{
+    if (!_socket_pipe)
+        return;
+    pipe_t *pipe = _socket_pipe;
+    _socket_pipe = NULL;
+    pipe->release_lifetime_ref ();
 }
 
 void zlink::session_base_t::start_connecting (bool wait_)

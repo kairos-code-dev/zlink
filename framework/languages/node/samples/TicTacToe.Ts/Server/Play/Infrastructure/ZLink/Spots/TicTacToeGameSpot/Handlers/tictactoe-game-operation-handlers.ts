@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { ZLinkPacket } from '@zlink-systems/framework';
+import { zlinkSpotPacketHandler } from '@zlink-systems/nestjs';
 import type {
-  ZLinkHandlerContext,
+  ZLinkMessageContext,
   ZLinkSpotRequestHandler
 } from '@zlink-systems/framework';
 import type { PlaceMarkRes } from '../../../../../../../Shared/Contracts/messages';
-import type { TicTacToeGameSpot } from '../tictactoe-game-spot';
+import { TicTacToeGameSpot } from '../tictactoe-game-spot';
 
 class PlaceMarkAtGameSpotReq {
   constructor(readonly actorId: string, readonly cell: number) {}
@@ -16,26 +16,26 @@ class VerifyLeaveGameAtSpotReq {
 }
 
 @Injectable()
-@ZLinkPacket('PlaceMarkAtGameSpotReq')
+@zlinkSpotPacketHandler({ spot: () => TicTacToeGameSpot, packetName: 'PlaceMarkAtGameSpotReq' })
 class PlaceMarkAtGameSpotHandler
   implements ZLinkSpotRequestHandler<TicTacToeGameSpot, PlaceMarkAtGameSpotReq, PlaceMarkRes> {
   async handle(
     spot: TicTacToeGameSpot,
     request: PlaceMarkAtGameSpotReq,
-    _context: ZLinkHandlerContext
+    _context: ZLinkMessageContext
   ): Promise<PlaceMarkRes> {
     return spot.placeMark(request.actorId, request.cell);
   }
 }
 
 @Injectable()
-@ZLinkPacket('VerifyLeaveGameAtSpotReq')
+@zlinkSpotPacketHandler({ spot: () => TicTacToeGameSpot, packetName: 'VerifyLeaveGameAtSpotReq' })
 class VerifyLeaveGameAtSpotHandler
   implements ZLinkSpotRequestHandler<TicTacToeGameSpot, VerifyLeaveGameAtSpotReq, { readonly allowed: true }> {
   async handle(
     spot: TicTacToeGameSpot,
     request: VerifyLeaveGameAtSpotReq,
-    _context: ZLinkHandlerContext
+    _context: ZLinkMessageContext
   ): Promise<{ readonly allowed: true }> {
     spot.verifyLeave(request.actorId, request.roomId);
     return { allowed: true };

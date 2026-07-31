@@ -25,10 +25,4 @@ public interface IZLinkCodecRegistrar
         IZLinkMessageSerializer serializer,
         Func<Type, bool> canSerialize);
 
-    /// <summary>
-    ///     Maps a registered serializer content type to the stream packet codec value
-    ///     used on the wire. Framework codec extensions call this when the same codec
-    ///     must be shared by framework actors, stream connectors, and HTTP clients.
-    /// </summary>
-    void AddStreamCodec(string contentType, ZlinkStreamCodec codec);
 }

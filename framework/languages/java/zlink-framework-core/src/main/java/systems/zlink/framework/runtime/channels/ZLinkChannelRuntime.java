@@ -32,6 +32,7 @@ import java.util.concurrent.locks.LockSupport;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.errors.ZlinkCloseException;
 import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.errors.ZlinkRequestException;
@@ -68,7 +69,7 @@ import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
-import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
+import systems.zlink.framework.runtime.internal.locations.ZLinkClientServerServerDescriptor;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
 import systems.zlink.framework.spots.SpotHandle;
 import systems.zlink.framework.runtime.internal.spots.SpotTransportAddressResolver;
@@ -132,6 +133,18 @@ public final class ZLinkChannelRuntime
     private final ZLinkChannelDispatchReporter dispatchReporter;
     private final ZLinkChannelMessageDispatcher messageDispatcher;
     private final ZLinkChannelRouteDispatcher routeDispatcher;
+    private ZLinkFanoutLocationRuntime fanoutLocationRuntime;
+    private volatile Supplier<ZLinkFrameworkRuntimeState> hostState =
+        () -> ZLinkFrameworkRuntimeState.SERVING;
+    private final systems.zlink.framework.monitoring.ZLinkClientServerRuntime
+        clientServerRuntime = new ZLinkClientServerRuntimeView(
+            sockets,
+            () -> hostState.get());
+    private final systems.zlink.framework.monitoring.ZLinkFanoutRuntime
+        fanoutRuntime = new ZLinkFanoutRuntimeView(
+            sockets,
+            () -> fanoutLocationRuntime,
+            () -> hostState.get());
     private Supplier<ZLinkInternalSpotNode> spotRouteBridgeOwner;
     private final ExecutorService spotRouteBridgeExecutor = Executors.newSingleThreadExecutor(task -> {
         Thread thread = new Thread(task, "zlink-java-spot-route-bridge");
@@ -150,7 +163,6 @@ public final class ZLinkChannelRuntime
         return thread;
     });
     private volatile boolean running = true;
-    private ZLinkFanoutLocationRuntime fanoutLocationRuntime;
 
     public record AutoConnectSurface(
         ZLinkAutoConnectType type,
@@ -173,6 +185,21 @@ public final class ZLinkChannelRuntime
     public ZLinkRouteMeshChannelRuntimeOptions routeMeshChannel(String channelName) {
         ChannelRegistration registration = requireChannel(channelName, ChannelKind.ROUTE_MESH);
         return new DefaultRouteMeshChannelRuntimeOptions(this, registration.name());
+    }
+
+    public systems.zlink.framework.monitoring.ZLinkClientServerRuntime
+        clientServerRuntime() {
+        return clientServerRuntime;
+    }
+
+    public systems.zlink.framework.monitoring.ZLinkFanoutRuntime
+        fanoutRuntime() {
+        return fanoutRuntime;
+    }
+
+    public void setHostStateSupplier(
+        Supplier<ZLinkFrameworkRuntimeState> hostState) {
+        this.hostState = Objects.requireNonNull(hostState, "hostState");
     }
 
     private ChannelRegistration requireChannel(String channelName, ChannelKind kind) {
@@ -786,6 +813,11 @@ public final class ZLinkChannelRuntime
             if (!submitted) {
                 sockets.reconnectClientServerConnection(connectionId);
             }
+        } catch (ZlinkSubmitException ignored) {
+            // A monitor callback may race with draining or socket teardown.
+            // Treat the failed admission request as a terminated candidate;
+            // reconnect policy decides whether a later attempt is required.
+            sockets.clientServerTransportTerminated(connectionId, dealer);
         }
     }
 
@@ -855,6 +887,7 @@ public final class ZLinkChannelRuntime
 
     @Override
     public ZLinkSendCall sendToChannel(String channelName, Object message) {
+        rejectAfterRelocationReady("Channel send");
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
         ZLinkBackendDealerSocket client = sockets.clientForOutbound(channelName);
@@ -887,6 +920,7 @@ public final class ZLinkChannelRuntime
 
     @Override
     public ZLinkRequestCall requestToChannel(String channelName, Object message) {
+        rejectAfterRelocationReady("Channel request");
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
         ZLinkBackendDealerSocket client = sockets.clientForOutbound(channelName);
@@ -945,6 +979,7 @@ public final class ZLinkChannelRuntime
 
     @Override
     public ZLinkFanoutPublishCall publish(String channelName, Object message) {
+        rejectAfterRelocationReady("Channel publish");
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
         return new PublishCall(
@@ -960,6 +995,7 @@ public final class ZLinkChannelRuntime
         String channelName,
         String topic,
         Object message) {
+        rejectAfterRelocationReady("Channel publish");
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
         return new PublishCall(
@@ -968,6 +1004,12 @@ public final class ZLinkChannelRuntime
             topic,
             encoded.payload(),
             Optional.of(encoded.packetName()));
+    }
+
+    private static void rejectAfterRelocationReady(String operation) {
+        systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.rejectAfterRelocationReady(
+                operation);
     }
 
     @Override
@@ -1007,6 +1049,7 @@ public final class ZLinkChannelRuntime
             callRuntime,
             null,
             spotAddressResolver,
+            () -> instanceSpotCallRuntime,
             spotId,
             encoded.payload(),
             Optional.of(encoded.packetName()));
@@ -1053,10 +1096,21 @@ public final class ZLinkChannelRuntime
             callRuntime,
             null,
             spotAddressResolver,
+            () -> instanceSpotCallRuntime,
             spotId,
             encoded.payload(),
             Optional.of(encoded.packetName()),
             Duration.ofSeconds(1));
+    }
+
+    private volatile systems.zlink.framework.runtime.internal.spots
+        .ZLinkInstanceSpotCallRuntime instanceSpotCallRuntime;
+
+    public void registerInstanceSpotCallRuntime(
+        systems.zlink.framework.runtime.internal.spots
+            .ZLinkInstanceSpotCallRuntime runtime) {
+        instanceSpotCallRuntime = java.util.Objects.requireNonNull(
+            runtime, "runtime");
     }
 
     private static SpotTransportAddressResolver resolveSpotAddressResolver(
@@ -1116,10 +1170,6 @@ public final class ZLinkChannelRuntime
         return timeout == null || timeout.isZero()
             ? defaultRequestTimeout
             : timeout;
-    }
-
-    public Map<String, ZLinkBackendSocket> monitoringSocketSources() {
-        return sockets.monitoringSocketSources();
     }
 
     public void registerRouteInternalRequestHandler(

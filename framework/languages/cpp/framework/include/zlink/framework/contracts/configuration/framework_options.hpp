@@ -8,10 +8,8 @@
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
 #include <zlink/framework/contracts/detail/message_name.hpp>
 #include <zlink/framework/contracts/dispatch/execution.hpp>
-#include <zlink/framework/contracts/eventing/events.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 #include <zlink/framework/contracts/http/http.hpp>
-#include <zlink/framework/contracts/locations/maintenance_stores.hpp>
 #include <zlink/framework/contracts/locations/stores.hpp>
 
 #include <algorithm>
@@ -36,6 +34,45 @@ namespace zlink::framework
 {
 
 class client_server_channel_server_builder_t;
+
+class inbound_dispatch_options_t
+{
+  public:
+    explicit inbound_dispatch_options_t (
+      std::shared_ptr<detail::framework_options_state_t> options) :
+        _options (std::move (options))
+    {
+    }
+
+    inbound_dispatch_options_t &
+    set_application_hwm_bytes (std::optional<std::uint64_t> value)
+    {
+        _options->application_hwm_bytes = value;
+        return *this;
+    }
+
+    inbound_dispatch_options_t &
+    set_application_hwm_profile (application_hwm_profile_t value)
+    {
+        _options->application_hwm_profile = value;
+        return *this;
+    }
+
+    inbound_dispatch_options_t &
+    set_process_memory_limit_bytes (std::optional<std::uint64_t> value)
+    {
+        if (value && *value == 0) {
+            throw framework_exception_t (
+              framework_error_kind_t::request_protocol_error,
+              "process memory limit must be positive when specified");
+        }
+        _options->process_memory_limit_bytes = value;
+        return *this;
+    }
+
+  private:
+    std::shared_ptr<detail::framework_options_state_t> _options;
+};
 
 class handler_options_builder_t
 {
@@ -1098,16 +1135,15 @@ class zlink_framework_options_t
     zlink_framework_options_t (service_collection_t &services,
                                handler_registry_t &handlers,
                                serializer_registry_t &serializers,
-                               zlink_builder_t &zlink,
-                               monitoring_builder_t &monitoring) :
+                               zlink_builder_t &zlink) :
         _services (&services),
         _handlers (&handlers),
         _serializers (&serializers),
         _zlink (&zlink),
-        _monitoring (&monitoring),
         _handler_groups (std::make_shared<detail::handler_group_options_state_t> ()),
         _options (std::make_shared<detail::framework_options_state_t> ())
     {
+        _inbound_dispatch.emplace (_options);
         _options->http.bind_services (services, serializers);
         if (!services.contains (std::type_index (typeid (message_metadata_policy_t)))) {
             auto options = _options;
@@ -1131,6 +1167,26 @@ class zlink_framework_options_t
     dispatch_options_t &configure_dispatch () { return _options->dispatch; }
 
     dispatch_options_t dispatch_options () const { return _options->dispatch; }
+
+    inbound_dispatch_options_t &configure_inbound_dispatch ()
+    {
+        return *_inbound_dispatch;
+    }
+
+    std::optional<std::uint64_t> application_hwm_bytes () const noexcept
+    {
+        return _options->application_hwm_bytes;
+    }
+
+    application_hwm_profile_t application_hwm_profile () const noexcept
+    {
+        return _options->application_hwm_profile;
+    }
+
+    std::optional<std::uint64_t> process_memory_limit_bytes () const noexcept
+    {
+        return _options->process_memory_limit_bytes;
+    }
 
     location_options_t &configure_locations () { return _options->locations; }
 
@@ -1166,17 +1222,16 @@ class zlink_framework_options_t
 
     service_collection_t &services () noexcept { return *_services; }
 
-    zlink_framework_options_t &use_in_memory_location_stores ()
-    {
-        _options->use_in_memory_location_stores = true;
-        return *this;
-    }
-
     zlink_framework_options_t &add_location_store (std::shared_ptr<location_store_t> store)
     {
         if (!store) {
             throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                          "location store instance must not be null");
+        }
+        if (_options->has_location_store_instance) {
+            throw framework_exception_t (
+              framework_error_kind_t::request_protocol_error,
+              "location store must be registered exactly once");
         }
         _options->has_location_store_instance = true;
         register_location_store_instance (std::move (store));
@@ -1226,8 +1281,6 @@ class zlink_framework_options_t
     {
         return stream_compression_options_builder_t (_options);
     }
-
-    monitoring_builder_t &monitoring () noexcept { return *_monitoring; }
 
     http_options_builder_t &http () noexcept { return _options->http; }
 
@@ -1309,9 +1362,9 @@ class zlink_framework_options_t
     handler_registry_t *_handlers;
     serializer_registry_t *_serializers;
     zlink_builder_t *_zlink;
-    monitoring_builder_t *_monitoring;
     std::shared_ptr<detail::handler_group_options_state_t> _handler_groups;
     std::shared_ptr<detail::framework_options_state_t> _options;
+    std::optional<inbound_dispatch_options_t> _inbound_dispatch;
     std::size_t _handler_coroutine_workers = 0;
 };
 

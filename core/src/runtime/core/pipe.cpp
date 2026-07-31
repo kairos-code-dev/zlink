@@ -205,8 +205,7 @@ zlink::pipe_t::pipe_t (object_t *parent_,
     _server_socket_routing_id (0),
     _stream_connect_event_emitted (false),
     _connection_ready_event_emitted (false),
-    _command_refs (0),
-    _release_after_command_refs (false),
+    _lifetime (),
     _conflate (conflate_),
     _session_pipe (session_pipe_),
     _transport_lifetime (transport_lifetime_),
@@ -236,17 +235,81 @@ void zlink::pipe_t::detach_peer_backref ()
         _peer->_peer = NULL;
 }
 
-void zlink::pipe_t::retain_command_ref ()
+zlink::pipe_t::lifetime_state_t::lifetime_state_t () : _state (0)
 {
-    _command_refs.fetch_add (1, std::memory_order_acq_rel);
 }
 
-void zlink::pipe_t::release_command_ref ()
+bool zlink::pipe_t::lifetime_state_t::retain ()
 {
-    const int refs = _command_refs.fetch_sub (1, std::memory_order_acq_rel);
-    zlink_assert (refs > 0);
-    if (refs == 1 && _release_after_command_refs.load (std::memory_order_acquire))
+    uint32_t state = _state.load (std::memory_order_acquire);
+    for (;;) {
+        if ((state & terminal_bit) != 0 || (state & refs_mask) == refs_mask)
+            return false;
+        if (_state.compare_exchange_weak (state, state + 1U,
+                                          std::memory_order_acq_rel,
+                                          std::memory_order_acquire))
+            return true;
+    }
+}
+
+zlink::pipe_t::lifetime_state_t::transition_t
+zlink::pipe_t::lifetime_state_t::release ()
+{
+    uint32_t state = _state.load (std::memory_order_acquire);
+    for (;;) {
+        const uint32_t refs = state & refs_mask;
+        if (refs == 0)
+            return transition_invalid;
+        const uint32_t next = state - 1U;
+        if (_state.compare_exchange_weak (state, next, std::memory_order_acq_rel,
+                                          std::memory_order_acquire))
+            return (state & terminal_bit) != 0 && refs == 1
+                     ? transition_delete_owner
+                     : transition_complete;
+    }
+}
+
+zlink::pipe_t::lifetime_state_t::transition_t
+zlink::pipe_t::lifetime_state_t::complete_termination ()
+{
+    uint32_t state = _state.load (std::memory_order_acquire);
+    for (;;) {
+        if ((state & terminal_bit) != 0)
+            return transition_invalid;
+        const uint32_t next = state | terminal_bit;
+        if (_state.compare_exchange_weak (state, next, std::memory_order_acq_rel,
+                                          std::memory_order_acquire))
+            return (state & refs_mask) == 0 ? transition_delete_owner
+                                            : transition_complete;
+    }
+}
+
+bool zlink::pipe_t::lifetime_state_t::terminal () const
+{
+    return (_state.load (std::memory_order_acquire) & terminal_bit) != 0;
+}
+
+uint32_t zlink::pipe_t::lifetime_state_t::refs () const
+{
+    return _state.load (std::memory_order_acquire) & refs_mask;
+}
+
+bool zlink::pipe_t::retain_lifetime_ref ()
+{
+    return _lifetime.retain ();
+}
+
+void zlink::pipe_t::release_lifetime_ref ()
+{
+    const lifetime_state_t::transition_t transition = _lifetime.release ();
+    zlink_assert (transition != lifetime_state_t::transition_invalid);
+    if (transition == lifetime_state_t::transition_delete_owner)
         zlink::release_heap_owned (this);
+}
+
+bool zlink::pipe_t::has_completed_termination () const
+{
+    return _lifetime.terminal ();
 }
 
 void zlink::pipe_t::set_event_sink (i_pipe_events *sink_)
@@ -617,6 +680,26 @@ bool zlink::pipe_t::write_routing_id_and_flush (const msg_t *msg_)
     return true;
 }
 
+bool zlink::pipe_t::write_transport_probe_and_flush (const msg_t *msg_)
+{
+    if (!msg_ || msg_->size () != 0 || (msg_->flags () & msg_t::more) != 0) {
+        errno = EINVAL;
+        return false;
+    }
+
+    scoped_fast_lock_t lock (_out_sync);
+    // Application writes remain blocked until both transport lanes pass
+    // admission. A ROUTER probe is queued early so a same-thread peer does not
+    // need another API call to process the later lane-ready mailbox command.
+    // The peer socket still withholds reads until its own pair is ready.
+    if (!_transport_pair_write_held || _state != active)
+        return false;
+    if (!write_message_unlocked (msg_, false))
+        return false;
+    flush_unlocked ();
+    return true;
+}
+
 bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
 {
     scoped_fast_lock_t lock (_out_sync);
@@ -904,8 +987,10 @@ void zlink::pipe_t::process_pipe_term_ack ()
 
     //  Pipe objects are always heap-allocated and reference-counted by protocol
     //  state transitions, so termination ack is the canonical final release.
-    _release_after_command_refs.store (true, std::memory_order_release);
-    if (_command_refs.load (std::memory_order_acquire) == 0)
+    const lifetime_state_t::transition_t transition =
+      _lifetime.complete_termination ();
+    zlink_assert (transition != lifetime_state_t::transition_invalid);
+    if (transition == lifetime_state_t::transition_delete_owner)
         zlink::release_heap_owned (this);
 }
 

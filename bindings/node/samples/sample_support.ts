@@ -4,44 +4,6 @@
 
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('@zlink-systems/zlink');
-
-// The ready-domain mask that drains both the application and infrastructure
-// domains in one pass (ZLINK_MESH_READY_APPLICATION | _INFRASTRUCTURE). The
-// binding surfaces the mask as a plain number, so samples spell it out here.
-const READY_ALL = 3;
-
-// A received record's `kind` and `operationKind` are the raw core enum values
-// (zlink_mesh_record_kind_t / zlink_mesh_operation_kind_t). The public contract
-// enums map one-to-one to those values, so the samples reuse them directly.
-const MeshRecordKind = zlink.ReceiveKind;
-const MeshOperationKind = zlink.OperationKind;
-
-// A request record carries a reply token, so it is the shape a responder replies
-// to (as opposed to sends, completions, or controls).
-function isRequestRecord(record): boolean {
-  return record.kind === MeshRecordKind.NodeRequest
-    || record.kind === MeshRecordKind.ChannelRequest
-    || record.kind === MeshRecordKind.SpotRequest
-    || record.kind === MeshRecordKind.ActorRequest;
-}
-
-// An actor-join arrives as a SPOT_CONTROL record whose operation kind is
-// ACTOR_JOIN; it is answered with replyActorJoin().
-function isActorJoinRequest(record): boolean {
-  return record.kind === MeshRecordKind.SpotControl
-    && record.operationKind === MeshOperationKind.ActorJoin;
-}
-
-// Build a record handler that appends the string payloads of every actor-send
-// record into `sink`, ignoring completions, controls, and other record kinds.
-function collectActorPayloads(sink: string[]): (record) => void {
-  return (record) => {
-    if (record != null && record.kind === MeshRecordKind.ActorSend) {
-      for (const part of record.parts) sink.push(part.data().toString());
-    }
-  };
-}
 
 async function reservePort(): Promise<number> {
   const server = net.createServer();
@@ -66,14 +28,6 @@ async function waitUntil(predicate, timeoutMs: number, message: string): Promise
   throw new Error(message);
 }
 
-// A RouteMesh peer is usable once the far node has been admitted into the mesh.
-async function waitPeerAdmitted(node, timeoutMs = 5000): Promise<void> {
-  await waitUntil(
-    () => node.status().admittedPeerCount > 0,
-    timeoutMs,
-    'mesh peer was not admitted');
-}
-
 function frame(payload) {
   const framed = Buffer.allocUnsafe(payload.length + 6);
   framed.writeUInt16BE(0, 0);
@@ -82,156 +36,9 @@ function frame(payload) {
   return framed;
 }
 
-function operationIdEquals(a, b): boolean {
-  return a != null && b != null && a.high === b.high && a.low === b.low;
-}
-
-// Pull-based dispatch driver for one MeshNode.
-//
-// RouteMesh 10.0.0 replaces push callbacks with a ready index: the node marks
-// owners (node/spot/actor) readable, the consumer drains those owners into a
-// reusable ready batch, claims each ready record, and materializes its messages
-// into a reusable receive batch. `MeshPump` wraps that loop so a sample can just
-// pass a per-record callback and forget the batch bookkeeping.
-class MeshPump {
-  private readonly node;
-  private readonly ready;
-  private readonly receive;
-
-  constructor(node, sizes: {
-    readyCapacity?: number;
-    messageCapacity?: number;
-    partCapacity?: number;
-    byteCapacity?: number;
-  } = {}) {
-    this.node = node;
-    this.ready = node.createReadyBatch(sizes.readyCapacity ?? 16);
-    this.receive = node.createReceiveBatch(
-      sizes.messageCapacity ?? 32,
-      sizes.partCapacity ?? 128,
-      sizes.byteCapacity ?? (1 << 20));
-  }
-
-  // Drain everything currently ready, invoking `onRecord` for each materialized
-  // receive record. Non-blocking: returns as soon as the ready index is empty.
-  drain(onRecord: (record) => void): void {
-    for (;;) {
-      // A batch must be empty (new or reset) before each drain pass.
-      this.ready.reset();
-      const drained = this.node.drainReady(READY_ALL, this.ready, zlink.RecvFlags.DontWait);
-      if (!drained.ok || drained.records.length === 0) return;
-      for (let i = 0; i < drained.records.length; i += 1) {
-        const claim = this.ready.takeClaim(i);
-        try {
-          this.receive.reset();
-          const received = claim.recvBatch(this.receive, zlink.RecvFlags.DontWait);
-          if (received.ok) {
-            for (const record of received.records) onRecord(record);
-          }
-        } finally {
-          claim.release();
-        }
-      }
-      if (!drained.hasResidue) return;
-    }
-  }
-
-  // Drain repeatedly until `predicate` holds or the deadline passes.
-  async pumpUntil(
-    predicate: () => boolean,
-    timeoutMs: number,
-    onRecord: (record) => void,
-    message = 'mesh dispatch timed out'
-  ): Promise<void> {
-    const deadline = Date.now() + timeoutMs;
-    for (;;) {
-      this.drain(onRecord);
-      if (predicate()) return;
-      if (Date.now() >= deadline) throw new Error(message);
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    }
-  }
-
-  // Drive dispatch until the completion for `operationId` is observed, returning
-  // the completion record (it carries terminalResult and any reply parts). Any
-  // other record drained along the way is forwarded to `onRecord`.
-  async awaitCompletion(operationId, timeoutMs: number, onRecord: (record) => void = () => {}) {
-    let completion = null;
-    await this.pumpUntil(
-      () => completion !== null,
-      timeoutMs,
-      (record) => {
-        if (record.kind === MeshRecordKind.Completion
-            && operationIdEquals(record.operationId, operationId)) {
-          completion = record;
-        } else {
-          onRecord(record);
-        }
-      },
-      'mesh operation did not complete');
-    return completion;
-  }
-
-  close(): void {
-    this.receive.close();
-    this.ready.close();
-  }
-}
-
-// Options shared by the actor lifecycle helpers below. `onMessage` receives any
-// record drained while awaiting the lifecycle completion (e.g. actor messages
-// that arrive during a leave/rejoin) so a caller's collector never misses one.
-type ActorLifecycleOptions = { onMessage?: (record) => void; timeoutMs?: number };
-
-// Join `actor` into `spot` on its own node and accept the join. On a single node
-// the SPOT_CONTROL join request and its COMPLETION both surface on one pump, so
-// the accept happens inside awaitCompletion. Returns the join completion record.
-async function joinActorToSpot(pump, node, actor, spot, payload, options: ActorLifecycleOptions = {}) {
-  const timeoutMs = options.timeoutMs ?? 2000;
-  const nodeRid = node.status().routingId;
-  const spotRid = spot.routingId;
-  const spotGeneration = spot.status().lifecycleGeneration;
-  const operationId = node.joinActorSpot(
-    actor, nodeRid, spotRid, spotGeneration, Buffer.from(payload), timeoutMs);
-  return pump.awaitCompletion(operationId, timeoutMs, (record) => {
-    if (isActorJoinRequest(record)) {
-      record.replyActorJoin(0, Buffer.from('accepted'));
-    } else if (options.onMessage) {
-      options.onMessage(record);
-    }
-  });
-}
-
-// Leave `actor` from whatever spot it currently occupies.
-async function leaveActorFromSpot(pump, node, actor, options: ActorLifecycleOptions = {}) {
-  const timeoutMs = options.timeoutMs ?? 2000;
-  const location = node.actorLookup(actor.actorId);
-  const operationId = node.leaveActor(actor, location.membershipEpoch, timeoutMs);
-  return pump.awaitCompletion(operationId, timeoutMs, options.onMessage);
-}
-
-// Destroy `actor`, draining until the destroy completion arrives.
-async function destroyMeshActor(pump, node, actor, options: ActorLifecycleOptions = {}) {
-  const timeoutMs = options.timeoutMs ?? 2000;
-  const operationId = node.destroyActor(actor, timeoutMs);
-  return pump.awaitCompletion(operationId, timeoutMs, options.onMessage);
-}
-
 module.exports = {
-  MeshPump,
-  MeshOperationKind,
-  MeshRecordKind,
-  READY_ALL,
-  collectActorPayloads,
-  destroyMeshActor,
   frame,
-  isActorJoinRequest,
-  isRequestRecord,
-  joinActorToSpot,
-  leaveActorFromSpot,
-  operationIdEquals,
   reservePort,
   tcpEndpoint,
-  waitPeerAdmitted,
   waitUntil
 };

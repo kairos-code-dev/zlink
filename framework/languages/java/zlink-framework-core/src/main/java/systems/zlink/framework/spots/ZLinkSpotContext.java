@@ -19,6 +19,8 @@ public interface ZLinkSpotContext {
 
     ZLinkSpotOutbound outbound();
 
+    ZLinkSpotRelocationReadyCall relocationReady();
+
     default <T> ZLinkWorkerCall<T> runCpuWorker(ZLinkWorkerTask<T> work) {
         throw new UnsupportedOperationException(
             "worker offload is only available on runtime-created contexts");

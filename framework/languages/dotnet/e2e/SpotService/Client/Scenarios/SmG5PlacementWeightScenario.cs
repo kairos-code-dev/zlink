@@ -1,3 +1,4 @@
+// Verifies runtime placement weight, zero-weight exclusion, and capacity-first selection.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;

@@ -1,7 +1,7 @@
 package systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.spots.conversationspot.handlers
 
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpotActorSendHandler
-import systems.zlink.framework.spots.ZLinkSpotActorSendContext
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.actors.SupportUserActor
 import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.spots.conversationspot.ConversationSpot
 import systems.zlink.samples.kotlin.supportchat.shared.contracts.SetTypingReq
@@ -14,7 +14,7 @@ class SetTypingHandler : ZLinkSuspendingSpotActorSendHandler<
     override suspend fun handle(
         spot: ConversationSpot,
         actor: SupportUserActor,
-        context: ZLinkSpotActorSendContext,
+        context: ZLinkMessageContext,
         message: SetTypingReq,
     ) {
         spot.setTyping(actor, message)

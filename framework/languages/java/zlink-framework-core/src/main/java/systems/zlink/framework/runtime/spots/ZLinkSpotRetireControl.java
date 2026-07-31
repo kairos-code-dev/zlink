@@ -59,14 +59,15 @@ final class ZLinkSpotRetireControl {
         return target;
     }
 
-    static final class Client {
+    static final class Client implements ZLinkRelocationTransitionClient {
         private final ZLinkInternalMeshNode node;
 
         private Client(ZLinkInternalMeshNode node) {
             this.node = Objects.requireNonNull(node, "node");
         }
 
-        CompletionStage<Void> stage(
+        @Override
+        public CompletionStage<Void> stage(
             RoutingId targetNodeRid,
             StageRequest request,
             Duration timeout) {
@@ -77,7 +78,8 @@ final class ZLinkSpotRetireControl {
                 timeout);
         }
 
-        CompletionStage<Void> publish(
+        @Override
+        public CompletionStage<Void> publish(
             RoutingId targetNodeRid,
             Fence fence,
             Duration timeout) {
@@ -88,7 +90,8 @@ final class ZLinkSpotRetireControl {
                 timeout);
         }
 
-        CompletionStage<Void> abort(
+        @Override
+        public CompletionStage<Void> abort(
             RoutingId targetNodeRid,
             Fence fence,
             Duration timeout) {
@@ -99,7 +102,8 @@ final class ZLinkSpotRetireControl {
                 timeout);
         }
 
-        CompletionStage<Void> finalizeAfterCompletion(
+        @Override
+        public CompletionStage<Void> finalizeAfterCompletion(
             RoutingId targetNodeRid,
             Fence fence,
             Duration timeout) {

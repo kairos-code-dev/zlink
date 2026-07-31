@@ -6,10 +6,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 data class SampleTopology(
     val apiAChannelEndpoint: String = "",
     val apiBChannelEndpoint: String = "",
+    val apiAMeshEndpoint: String = "",
+    val apiBMeshEndpoint: String = "",
     val sessionARouterEndpoint: String = "",
     val sessionBRouterEndpoint: String = "",
     val playASpotRouterEndpoint: String = "",
     val playBSpotRouterEndpoint: String = "",
+    val apiMatchmakingRouterEndpoint: String = "tcp://127.0.0.1:47227",
+    val matchmakingRouterEndpoint: String = "tcp://127.0.0.1:47228",
     val sessionAStreamEndpoint: String = "",
     val sessionBStreamEndpoint: String = "",
     val redisEndpoint: String = "",
@@ -23,10 +27,14 @@ data class SampleTopology(
         listOf(
             "apiAChannelEndpoint" to apiAChannelEndpoint,
             "apiBChannelEndpoint" to apiBChannelEndpoint,
+            "apiAMeshEndpoint" to apiAMeshEndpoint,
+            "apiBMeshEndpoint" to apiBMeshEndpoint,
             "sessionARouterEndpoint" to sessionARouterEndpoint,
             "sessionBRouterEndpoint" to sessionBRouterEndpoint,
             "playASpotRouterEndpoint" to playASpotRouterEndpoint,
             "playBSpotRouterEndpoint" to playBSpotRouterEndpoint,
+            "apiMatchmakingRouterEndpoint" to apiMatchmakingRouterEndpoint,
+            "matchmakingRouterEndpoint" to matchmakingRouterEndpoint,
             "sessionAStreamEndpoint" to sessionAStreamEndpoint,
             "sessionBStreamEndpoint" to sessionBStreamEndpoint,
             "redisEndpoint" to redisEndpoint,
@@ -39,6 +47,7 @@ data class SampleTopology(
     }
 
     fun selectedApiChannelEndpoint() = if (apiNode == "b") apiBChannelEndpoint else apiAChannelEndpoint
+    fun selectedApiMeshEndpoint() = if (apiNode == "b") apiBMeshEndpoint else apiAMeshEndpoint
     fun selectedPlaySpotRouterEndpoint() = if (playNode == "b") playBSpotRouterEndpoint else playASpotRouterEndpoint
     fun selectedSessionRouterEndpoint() = if (sessionNode == "b") sessionBRouterEndpoint else sessionARouterEndpoint
     fun selectedStreamEndpoint() = if (sessionNode == "b") sessionBStreamEndpoint else sessionAStreamEndpoint

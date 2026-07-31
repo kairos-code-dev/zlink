@@ -1,4 +1,3 @@
-import { SessionAuthenticator } from './Handlers/authenticate-session-handler';
 import type {
   ZLinkMessage,
   ZLinkSession,
@@ -10,9 +9,7 @@ import type {
 class BingoSession implements ZLinkSession {
   constructor(
     readonly context: ZLinkSessionContext
-  ) {
-    context.handlers.addHandler(SessionAuthenticator);
-  }
+  ) {}
 
   async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage, signal?: AbortSignal): Promise<void> {
     if (await this.context.handlers.tryHandle(dispatch, payload)) {

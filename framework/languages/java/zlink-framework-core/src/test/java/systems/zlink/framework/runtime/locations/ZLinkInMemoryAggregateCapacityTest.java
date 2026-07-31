@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.*;
 
 final class ZLinkInMemoryAggregateCapacityTest {
     private static final Instant NOW =

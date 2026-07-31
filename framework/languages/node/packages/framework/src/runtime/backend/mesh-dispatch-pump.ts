@@ -2,11 +2,13 @@ import {
   RecvFlags
 } from '@zlink-systems/zlink';
 import {
+  operationRequiresReply,
   ReadyDomain,
   type ReadyRecord,
   type ReceiveRecord
 } from '../foundation/service-runtime-contracts';
 import type { ZLinkBackendMeshNode } from './contracts';
+import type { ZLinkInboundDispatchBudget } from '../dispatch/inbound-dispatch-budget';
 
 export interface ZLinkMeshDispatchPumpOptions {
   readonly readyCapacity?: number;
@@ -14,6 +16,7 @@ export interface ZLinkMeshDispatchPumpOptions {
   readonly partCapacity?: number;
   readonly byteCapacity?: number;
   readonly dispatch: (owner: ReadyRecord, record: ReceiveRecord) => void | Promise<void>;
+  readonly inboundDispatchBudget?: ZLinkInboundDispatchBudget;
   readonly reportError?: (error: unknown) => void;
 }
 
@@ -22,11 +25,17 @@ export class ZLinkMeshDispatchPump {
   private scheduled = false;
   private disposed = false;
   private drainPromise?: Promise<void>;
+  private readonly removeResumeListener?: () => void;
 
   constructor(
     private readonly node: ZLinkBackendMeshNode,
     private readonly options: ZLinkMeshDispatchPumpOptions
   ) {
+    this.removeResumeListener = options.inboundDispatchBudget?.onResume(() => {
+      if (this.disposed) return;
+      this.pendingDomains |= ReadyDomain.Application;
+      this.schedule();
+    });
   }
 
   start(): void {
@@ -46,6 +55,7 @@ export class ZLinkMeshDispatchPump {
     }
     this.disposed = true;
     this.pendingDomains = ReadyDomain.None;
+    this.removeResumeListener?.();
     await this.drainPromise;
   }
 
@@ -90,9 +100,13 @@ export class ZLinkMeshDispatchPump {
   }
 
   private async drainDomain(domain: number): Promise<void> {
+    const applicationBudget = domain === ReadyDomain.Application
+      ? this.options.inboundDispatchBudget
+      : undefined;
+    if (applicationBudget?.receivePaused) return;
     const readyBatch = this.node.createReadyBatch(this.options.readyCapacity ?? 32);
     const receiveBatch = this.node.createReceiveBatch(
-      this.options.messageCapacity ?? 64,
+      applicationBudget === undefined ? (this.options.messageCapacity ?? 64) : 1,
       this.options.partCapacity ?? 256,
       this.options.byteCapacity ?? (1 << 20)
     );
@@ -108,12 +122,22 @@ export class ZLinkMeshDispatchPump {
           try {
             receiveBatch.reset();
             for (;;) {
+              if (applicationBudget?.receivePaused) return;
               const received = claim.recvBatch(receiveBatch, RecvFlags.DontWait);
               if (!received.ok) {
                 break;
               }
               for (const record of received.records) {
+                const payloadBytes = BigInt(
+                  record.parts.reduce((sum, part) => sum + part.size(), 0)
+                );
+                applicationBudget?.enqueue(payloadBytes);
+                let started = false;
+                let releaseCompletion: (() => void) | undefined;
                 try {
+                  releaseCompletion = operationRequiresReply(record.operationKind)
+                    ? await applicationBudget?.acquireCompletionSend()
+                    : undefined;
                   // A handler may synchronously submit an operation whose
                   // control/completion is owned by this same MeshNode.
                   this.scheduled = false;
@@ -121,9 +145,17 @@ export class ZLinkMeshDispatchPump {
                   if (this.pendingDomains !== ReadyDomain.None) {
                     this.schedule();
                   }
+                  applicationBudget?.start(payloadBytes);
+                  started = true;
                   await this.options.dispatch(drained.records[index], record);
                   await record.onTerminalCompletion?.();
                 } finally {
+                  releaseCompletion?.();
+                  if (started) {
+                    applicationBudget?.complete(payloadBytes);
+                  } else {
+                    applicationBudget?.cancelQueued(payloadBytes);
+                  }
                   for (const part of record.parts) {
                     part.close();
                   }

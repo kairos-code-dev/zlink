@@ -75,15 +75,15 @@ message MatchBingoApiRes {
   reserved 2;
 }
 
-message AllocateBingoRoomReq {
+message ReserveBingoRoomReq {
   string mode = 1;
   string actor_id = 2;
-  reserved 3;
+  string level_bucket = 3;
 }
 
-message AllocateBingoRoomRes {
+message ReserveBingoRoomRes {
   string room_id = 1;
-  reserved 2;
+  BingoRoomSettingsPayload settings = 2;
 }
 
 message GetPlayerRecordReq {

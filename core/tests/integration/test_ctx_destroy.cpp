@@ -89,9 +89,77 @@ class session_termination_test_access_t
         pipe_->process_pipe_term_ack ();
     }
 
-    static int command_refs (pipe_t *pipe_)
+    static int lifetime_refs (pipe_t *pipe_)
     {
-        return pipe_->_command_refs.load (std::memory_order_acquire);
+        return static_cast<int> (pipe_->_lifetime.refs ());
+    }
+
+    static bool lifetime_underflow_rejected ()
+    {
+        pipe_t::lifetime_state_t state;
+        return state.release ()
+               == pipe_t::lifetime_state_t::transition_invalid;
+    }
+
+    static bool lifetime_overflow_rejected ()
+    {
+        pipe_t::lifetime_state_t state;
+        state._state.store (pipe_t::lifetime_state_t::refs_mask,
+                            std::memory_order_release);
+        return !state.retain ();
+    }
+
+    static bool lifetime_retain_after_terminal_rejected ()
+    {
+        pipe_t::lifetime_state_t state;
+        if (!state.retain ())
+            return false;
+        if (state.complete_termination ()
+            != pipe_t::lifetime_state_t::transition_complete)
+            return false;
+        const bool rejected = !state.retain ();
+        return rejected
+               && state.release ()
+                    == pipe_t::lifetime_state_t::transition_delete_owner;
+    }
+
+    static bool lifetime_concurrent_completion_has_one_delete_owner ()
+    {
+        for (size_t attempt = 0; attempt < 200; ++attempt) {
+            pipe_t::lifetime_state_t state;
+            if (!state.retain ())
+                return false;
+            pipe_t::lifetime_state_t::transition_t release_result =
+              pipe_t::lifetime_state_t::transition_invalid;
+            pipe_t::lifetime_state_t::transition_t terminal_result =
+              pipe_t::lifetime_state_t::transition_invalid;
+            std::atomic<bool> start (false);
+            std::thread release_thread ([&] {
+                while (!start.load (std::memory_order_acquire))
+                    std::this_thread::yield ();
+                release_result = state.release ();
+            });
+            std::thread terminal_thread ([&] {
+                while (!start.load (std::memory_order_acquire))
+                    std::this_thread::yield ();
+                terminal_result = state.complete_termination ();
+            });
+            start.store (true, std::memory_order_release);
+            release_thread.join ();
+            terminal_thread.join ();
+            const int delete_owners =
+              (release_result
+                 == pipe_t::lifetime_state_t::transition_delete_owner
+                 ? 1
+                 : 0)
+              + (terminal_result
+                   == pipe_t::lifetime_state_t::transition_delete_owner
+                   ? 1
+                   : 0);
+            if (delete_owners != 1 || !state.terminal () || state.refs () != 0)
+                return false;
+        }
+        return true;
     }
 
     static bool socket_destroyed (socket_base_t *socket_)
@@ -103,12 +171,28 @@ class session_termination_test_access_t
 
 namespace
 {
+void test_pipe_lifetime_state_rejects_invalid_transitions ()
+{
+    TEST_ASSERT_TRUE (
+      zlink::session_termination_test_access_t::lifetime_underflow_rejected ());
+    TEST_ASSERT_TRUE (
+      zlink::session_termination_test_access_t::lifetime_overflow_rejected ());
+    TEST_ASSERT_TRUE (zlink::session_termination_test_access_t::
+                        lifetime_retain_after_terminal_rejected ());
+}
+
+void test_pipe_lifetime_state_assigns_one_delete_owner ()
+{
+    TEST_ASSERT_TRUE (zlink::session_termination_test_access_t::
+                        lifetime_concurrent_completion_has_one_delete_owner ());
+}
+
 class pipe_completion_order_sink_t : public zlink::i_pipe_events
 {
   public:
     explicit pipe_completion_order_sink_t (zlink::pipe_t *peer_) :
         _peer (peer_),
-        peer_command_refs_at_completion (-1)
+        peer_lifetime_refs_at_completion (-1)
     {
     }
 
@@ -119,11 +203,11 @@ class pipe_completion_order_sink_t : public zlink::i_pipe_events
 
     void pipe_terminated (zlink::pipe_t *) ZLINK_OVERRIDE
     {
-        peer_command_refs_at_completion =
-          zlink::session_termination_test_access_t::command_refs (_peer);
+        peer_lifetime_refs_at_completion =
+          zlink::session_termination_test_access_t::lifetime_refs (_peer);
     }
 
-    int peer_command_refs_at_completion;
+    int peer_lifetime_refs_at_completion;
 
   private:
     zlink::pipe_t *_peer;
@@ -385,7 +469,7 @@ void test_reciprocal_pipe_ack_is_queued_before_local_completion ()
     //  reported, because that callback may cascade into owner teardown.
     zlink::session_termination_test_access_t::process_pipe_term_ack (pipes[0]);
     const int refs_at_completion =
-      completion_sink.peer_command_refs_at_completion;
+      completion_sink.peer_lifetime_refs_at_completion;
     zlink::session_termination_test_access_t::process_socket_commands (socket);
     TEST_ASSERT_EQUAL_INT (1, refs_at_completion);
     TEST_ASSERT_EQUAL_INT (1, passive_sink.completion_count);
@@ -420,6 +504,8 @@ int main (void)
     setup_test_environment ();
 
     UNITY_BEGIN ();
+    RUN_TEST (test_pipe_lifetime_state_rejects_invalid_transitions);
+    RUN_TEST (test_pipe_lifetime_state_assigns_one_delete_owner);
     RUN_TEST (test_ctx_destroy);
     RUN_TEST (test_ctx_shutdown);
     RUN_TEST (test_ctx_shutdown_socket_opened_after);

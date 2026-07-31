@@ -3,8 +3,8 @@
 package systems.zlink.contracts.core;
 
 import systems.zlink.contracts.sockets.AutoHwmProfile;
-import systems.zlink.runtime.nativeapi.ContractAccess;
-import systems.zlink.runtime.nativeapi.DurationConversions;
+import systems.zlink.internal.ContractAccess;
+import systems.zlink.internal.DurationConversions;
 import java.time.Duration;
 import java.util.Objects;
 

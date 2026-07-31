@@ -61,6 +61,21 @@ typedef void (*zlink_reply_handler_fn) (zlink_request_result_t result_,
                                         size_t part_count_,
                                         void *userdata_);
 
+/**
+ * @brief Callback for a bounded raw control record received on a ROUTER's
+ * paired completion connection.
+ *
+ * The callback runs on the socket completion owner. Ownership of every payload
+ * part is transferred to the callback; each part must be closed or consumed
+ * exactly once before the callback returns. The source routing id is valid only
+ * for the duration of the callback.
+ */
+typedef void (*zlink_completion_control_handler_fn) (
+  const zlink_routing_id_t *source_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  void *userdata_);
+
 typedef enum zlink_part_flag_t
 {
     ZLINK_PART_FINAL = 0,
@@ -115,6 +130,20 @@ ZLINK_EXPORT zlink_handler_result_t zlink_stream_packet_handler (
 ZLINK_EXPORT zlink_handler_result_t zlink_send_ready_handler (void *s_,
                                                               zlink_send_ready_handler_fn handler_,
                                                               void *userdata_);
+
+/**
+ * @brief Install or replace the ROUTER completion-control callback.
+ *
+ * Completion-control records are opaque multipart payloads. Core does not
+ * assign command meaning or inspect the payload. They are not returned by the
+ * application receive APIs. A later registration replaces the current
+ * handler. Passing NULL returns ZLINK_HANDLER_INVALID_ARGUMENT with EINVAL;
+ * a non-ROUTER socket returns ZLINK_HANDLER_NOT_SUPPORTED with ENOTSUP. Closing
+ * the socket while this callback is running returns ZLINK_CLOSE_BUSY with
+ * EBUSY; close may be retried after the callback returns.
+ */
+ZLINK_EXPORT zlink_handler_result_t zlink_router_completion_control_handler (
+  void *router_, zlink_completion_control_handler_fn handler_, void *userdata_);
 
 /**
  * @brief Close a socket and release its resources.
@@ -288,6 +317,21 @@ ZLINK_EXPORT zlink_submit_result_t zlink_router_reply_part (void *router_,
                                                             uint64_t request_seq_,
                                                             zlink_msg_t *part_,
                                                             zlink_part_flag_t part_flag_);
+
+/**
+ * @brief Submit one opaque completion-control part to a ROUTER peer.
+ *
+ * The record uses the peer's existing completion connection. A failed final
+ * submit aborts the multipart record. Every call consumes the supplied part on
+ * every result. Keep independent copies and retry the complete record from its
+ * first part after send-ready notification when the result is
+ * ZLINK_SUBMIT_BACKPRESSURED.
+ */
+ZLINK_EXPORT zlink_submit_result_t zlink_router_completion_control_part (
+  void *router_,
+  const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *part_,
+  zlink_part_flag_t part_flag_);
 
 ZLINK_EXPORT zlink_recv_result_t
 zlink_router_recv_part (void *router_,

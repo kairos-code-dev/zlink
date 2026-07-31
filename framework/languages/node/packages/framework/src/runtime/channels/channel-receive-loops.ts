@@ -13,6 +13,7 @@ import {
   closeMessages
 } from './channel-envelope';
 import { isChannelEnvelope } from './channel-envelope-inspection';
+import type { ZLinkInboundDispatchBudget } from '../dispatch/inbound-dispatch-budget';
 
 interface ZLinkMultipartOperation<TNext> {
   message(message: MessageLike): TNext;
@@ -85,7 +86,8 @@ export class ZLinkChannelReceiveLoop {
     },
     private readonly dispatcher: ZLinkChannelRequestDispatchLoop,
     private readonly spotRouteBridge?: ZLinkBackendSpotRouteBridge,
-    private readonly infrastructureHandler?: ZLinkChannelInfrastructureHandler
+    private readonly infrastructureHandler?: ZLinkChannelInfrastructureHandler,
+    private readonly inboundDispatchBudget?: ZLinkInboundDispatchBudget
   ) {}
 
   async run(signal?: AbortSignal): Promise<void> {
@@ -105,6 +107,8 @@ export class ZLinkChannelReceiveLoop {
 
   private async runLoop(signal?: AbortSignal): Promise<void> {
     while (!this.stopped && signal?.aborted !== true) {
+      await this.inboundDispatchBudget?.waitUntilResumed(signal);
+      if (this.stopped || signal?.aborted) break;
       const received = this.router.recv(1);
       if (received == null) {
         await waitReceiveLoopIdle();
@@ -147,9 +151,27 @@ export class ZLinkChannelReceiveLoop {
         closeReceived = false;
         return;
       }
-      const consumed = await this.dispatcher.dispatch(received, this.router, signal);
-      if (consumed === true) {
-        closeReceived = false;
+      const payloadBytes = channelPayloadBytes(received.parts);
+      this.inboundDispatchBudget?.enqueue(payloadBytes);
+      let started = false;
+      let releaseCompletion: (() => void) | undefined;
+      try {
+        releaseCompletion = received.requestSeq !== null
+          ? await this.inboundDispatchBudget?.acquireCompletionSend(signal)
+          : undefined;
+        this.inboundDispatchBudget?.start(payloadBytes);
+        started = true;
+        const consumed = await this.dispatcher.dispatch(received, this.router, signal);
+        if (consumed === true) {
+          closeReceived = false;
+        }
+      } finally {
+        releaseCompletion?.();
+        if (started) {
+          this.inboundDispatchBudget?.complete(payloadBytes);
+        } else {
+          this.inboundDispatchBudget?.cancelQueued(payloadBytes);
+        }
       }
     } finally {
       if (closeReceived) {
@@ -170,7 +192,8 @@ export class ZLinkSubscriberReceiveLoop {
     private readonly dispatcher: ZLinkChannelPublishDispatchLoop,
     private readonly infrastructureHandler?: (
       topicMessage: ReturnType<ZLinkChannelBackendAdapter['createTopicMessage']>
-    ) => boolean
+    ) => boolean,
+    private readonly inboundDispatchBudget?: ZLinkInboundDispatchBudget
   ) {
     this.poller = adapter.createReadablePoller(subscriber);
   }
@@ -194,6 +217,8 @@ export class ZLinkSubscriberReceiveLoop {
 
   private async runLoop(signal?: AbortSignal): Promise<void> {
     while (!this.stopped && signal?.aborted !== true) {
+      await this.inboundDispatchBudget?.waitUntilResumed(signal);
+      if (this.stopped || signal?.aborted) break;
       if (!this.poller.wait(0)) {
         await waitReceiveLoopIdle();
         continue;
@@ -225,7 +250,14 @@ export class ZLinkSubscriberReceiveLoop {
       if (this.infrastructureHandler?.(topicMessage) === true) {
         return;
       }
-      await this.dispatcher.dispatch(topicMessage, signal);
+      const payloadBytes = channelPayloadBytes(topicMessage.parts);
+      this.inboundDispatchBudget?.enqueue(payloadBytes);
+      try {
+        this.inboundDispatchBudget?.start(payloadBytes);
+        await this.dispatcher.dispatch(topicMessage, signal);
+      } finally {
+        this.inboundDispatchBudget?.complete(payloadBytes);
+      }
     } finally {
       closeMessages(topicMessage.parts as readonly Message[]);
     }
@@ -241,7 +273,8 @@ export class ZLinkRouteReceiveLoop {
     private readonly router: ZLinkBackendRouterSocket & {
       reply(routingId: unknown, requestSeq: bigint): ZLinkMultipartReplyOperation;
     },
-    private readonly dispatcher: ZLinkRoutePacketDispatchLoop
+    private readonly dispatcher: ZLinkRoutePacketDispatchLoop,
+    private readonly inboundDispatchBudget?: ZLinkInboundDispatchBudget
   ) {}
 
   async run(signal?: AbortSignal): Promise<void> {
@@ -261,6 +294,8 @@ export class ZLinkRouteReceiveLoop {
 
   private async runLoop(signal?: AbortSignal): Promise<void> {
     while (!this.stopped && signal?.aborted !== true) {
+      await this.inboundDispatchBudget?.waitUntilResumed(signal);
+      if (this.stopped || signal?.aborted) break;
       const received = this.router.recv(1);
       if (received == null) {
         await waitReceiveLoopIdle();
@@ -287,12 +322,27 @@ export class ZLinkRouteReceiveLoop {
     close(): void;
   }, signal?: AbortSignal): Promise<void> {
     let closeReceived = true;
+    const payloadBytes = messageBytes(received.parts);
+    this.inboundDispatchBudget?.enqueue(payloadBytes);
+    let started = false;
+    let releaseCompletion: (() => void) | undefined;
     try {
+      releaseCompletion = received.requestSeq !== null
+        ? await this.inboundDispatchBudget?.acquireCompletionSend(signal)
+        : undefined;
+      this.inboundDispatchBudget?.start(payloadBytes);
+      started = true;
       const consumed = await this.dispatcher.dispatch(received, this.router, signal);
       if (consumed === true) {
         closeReceived = false;
       }
     } finally {
+      releaseCompletion?.();
+      if (started) {
+        this.inboundDispatchBudget?.complete(payloadBytes);
+      } else {
+        this.inboundDispatchBudget?.cancelQueued(payloadBytes);
+      }
       if (closeReceived) {
         received.close();
       }
@@ -302,4 +352,12 @@ export class ZLinkRouteReceiveLoop {
 
 function waitReceiveLoopIdle(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 5));
+}
+
+function messageBytes(parts: readonly Message[]): bigint {
+  return BigInt(parts.reduce((sum, part) => sum + part.size(), 0));
+}
+
+function channelPayloadBytes(parts: readonly Message[]): bigint {
+  return BigInt(parts[1]?.size() ?? 0);
 }

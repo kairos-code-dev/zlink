@@ -145,6 +145,9 @@ int queue_reply_completion (const std::shared_ptr<socket_request_reply_state_t> 
                             size_t part_count_);
 int drain_reply_completions (const std::shared_ptr<socket_request_reply_state_t> &state_,
                              void *owner_handle_);
+int drain_reply_completions_while_closing (
+  const std::shared_ptr<socket_request_reply_state_t> &state_,
+  void *owner_handle_);
 bool has_pending_reply_completions (const std::shared_ptr<socket_request_reply_state_t> &state_);
 void claim_completion_owner (const std::shared_ptr<socket_request_reply_state_t> &state_);
 bool current_thread_is_completion_owner (

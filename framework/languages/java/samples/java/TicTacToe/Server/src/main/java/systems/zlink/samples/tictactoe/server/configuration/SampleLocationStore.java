@@ -9,10 +9,20 @@ public final class SampleLocationStore {
     }
 
     public static ZLinkRedisLocationStore create(PlaySettings settings) {
+        return create(settings.redisEndpoint(), settings.redisKeyPrefix());
+    }
+
+    public static ZLinkRedisLocationStore create(ApiSettings settings) {
+        return create(settings.redisEndpoint(), settings.redisKeyPrefix());
+    }
+
+    private static ZLinkRedisLocationStore create(
+        String redisEndpoint,
+        String redisKeyPrefix) {
         return new ZLinkRedisLocationStore(
             new ZLinkRedisLocationOptions()
-                .setConnectionString(settings.redisEndpoint())
-                .setKeyPrefix(settings.redisKeyPrefix() + "locations:")
+                .setConnectionString(redisEndpoint)
+                .setKeyPrefix(redisKeyPrefix + "locations:")
                 .setCommandTimeout(Duration.ofMillis(500)));
     }
 }

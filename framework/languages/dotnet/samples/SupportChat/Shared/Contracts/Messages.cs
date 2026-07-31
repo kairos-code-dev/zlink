@@ -48,7 +48,9 @@ public sealed record JoinConversationReq(
     string Role = "",
     string DisplayName = "");
 
-public sealed record JoinConversationRes(ConversationState State);
+public sealed record JoinConversationRes(
+    bool Scheduled,
+    ConversationState State);
 
 public sealed record JoinConversationFailedNotify(
     string ConversationId,

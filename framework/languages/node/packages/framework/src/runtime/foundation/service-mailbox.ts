@@ -7,6 +7,7 @@ export interface ServiceMailboxRecord {
   readonly sourceRoutingId?: string;
   readonly sourceRoute?: Uint8Array;
   readonly requestSequence?: bigint;
+  readonly reply?: (parts: readonly Uint8Array[]) => void;
   readonly correlation?: bigint;
   readonly localReply?: (
     terminalResult: number,
@@ -57,6 +58,9 @@ export interface ServiceMailboxLimits {
   readonly infrastructureBytes: number;
 }
 
+const RELOCATION_HOLD_MESSAGE_LIMIT = 1024;
+const RELOCATION_HOLD_BYTE_LIMIT = 16 * 1024 * 1024;
+
 /** Bounded level-triggered queues with one active application claim per owner. */
 export class ServiceMailbox {
   private readonly application: DomainState;
@@ -65,6 +69,7 @@ export class ServiceMailbox {
     readonly serial: bigint;
     readonly captured: ServiceMailboxRecord[];
     readonly held: ServiceMailboxRecord[];
+    heldBytes: number;
   }>();
   private readonly relocatedOwners = new Set<string>();
   private nextClaimSerial = 1n;
@@ -93,7 +98,12 @@ export class ServiceMailbox {
       if (this.relocatedOwners.has(record.owner)) return false;
       const relocation = this.relocationSeals.get(record.owner);
       if (relocation !== undefined) {
+        if (relocation.held.length >= RELOCATION_HOLD_MESSAGE_LIMIT
+          || bytes > RELOCATION_HOLD_BYTE_LIMIT - relocation.heldBytes) {
+          return false;
+        }
         relocation.held.push(retainRecord(record));
+        relocation.heldBytes += bytes;
         target.messages++;
         target.bytes += bytes;
         return true;
@@ -178,7 +188,7 @@ export class ServiceMailbox {
       this.application.indexed.delete(owner);
     }
     const serial = this.nextRelocationSerial++;
-    this.relocationSeals.set(owner, { serial, captured, held: [] });
+    this.relocationSeals.set(owner, { serial, captured, held: [], heldBytes: 0 });
     return { owner, serial, captured };
   }
 

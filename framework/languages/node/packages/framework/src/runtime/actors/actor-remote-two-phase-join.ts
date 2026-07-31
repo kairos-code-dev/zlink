@@ -160,9 +160,11 @@ export class ZLinkRemoteTwoPhaseActorJoin {
       phase: REMOTE_ACTOR_JOIN_COMMIT,
       transferId,
       transferAdapterKey: transfer.adapterKey,
-      transferState: Buffer.from(
-        transfer.state.toEncodedPayload().data()
-      ),
+      transferState: transfer.stateReference === undefined
+        ? Buffer.from(transfer.state.toEncodedPayload().data())
+        : undefined,
+      transferStateReference: transfer.stateReference,
+      transferStateChecksumCrc32c: transfer.stateChecksumCrc32c,
       handoffBacklog: transfer.handoffBacklog
     });
     try {
@@ -219,12 +221,13 @@ export class ZLinkRemoteTwoPhaseActorJoin {
     if (reply.accepted) {
       state.endMove();
       state.setNativeActorRef(resultActor as unknown as ZLinkBackendActorRef);
-      state.setJoinedSpot(target.spotId);
+      state.setJoinedSpot(target.spotId, undefined, 0n, target.targetSpotGeneration);
       state.setRemoteActorPacketTarget({
         routerChannelId: target.routerChannelId,
         targetNodeRid: target.targetNodeRid,
         spotId: target.spotId,
-        spotKind: target.spotKind
+        spotKind: target.spotKind,
+        targetSpotGeneration: target.targetSpotGeneration
       });
       if (state.actorType !== undefined && state.ownsLocation) {
         const actorType = state.actorType;

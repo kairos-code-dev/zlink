@@ -6,7 +6,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
-import systems.zlink.framework.locations.ZLinkStoreCancellation;
+import systems.zlink.framework.runtime.internal.locations.ZLinkStoreCancellation;
 
 /**
  * Executes one Entry Spot Actor relocation through the same fenced control
@@ -15,7 +15,7 @@ import systems.zlink.framework.locations.ZLinkStoreCancellation;
 final class ZLinkStandaloneActorRelocationScheduler {
     CompletionStage<Void> executeRemote(
         ZLinkStandaloneActorRelocationSourceBuilder.PreparedSource source,
-        ZLinkSpotRetireControl.Client client,
+        ZLinkRelocationTransitionClient client,
         Duration timeout,
         ZLinkStoreCancellation cancellation) {
         Objects.requireNonNull(source, "source");

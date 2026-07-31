@@ -29,10 +29,8 @@ final class EvidenceVerifierTest {
     void highCardinalityMetricTagFailsScenario() throws IOException {
         Files.writeString(temporaryDirectory.resolve("OBS-B3.json"), """
             {"scenario":"OBS-B3","dropObservable":false,"metrics":[
-              {"name":"zlink.fanout.published","kind":"counter","unit":"{message}","value":1,
-               "tags":{"flow_id":"forbidden"}},
-              {"name":"zlink.fanout.received","kind":"counter","unit":"{message}","value":2,"tags":{}},
-              {"name":"zlink.location.owner_lease.renew.lateness","kind":"histogram","unit":"s","value":1,"tags":{}}
+              {"name":"zlink.location.owner_lease.renew.lateness","kind":"histogram","unit":"s","value":1,
+               "tags":{"flow_id":"forbidden"}}
             ]}
             """);
         assertThrows(IllegalStateException.class,

@@ -27,9 +27,9 @@ public interface IZLinkMeshNodeSocketConfig
 {
     long MaxMessageSize { get; set; }
 
-    int SendHighWaterMark { get; set; }
+    ulong SendHighWaterMark { get; set; }
 
-    int ReceiveHighWaterMark { get; set; }
+    ulong ReceiveHighWaterMark { get; set; }
 
     ulong MailboxMessageBudget { get; set; }
 

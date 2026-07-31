@@ -1,10 +1,4 @@
 import type { ActorRef, RoutingId } from '../Common';
-import type {
-  ZLinkObjectCapability,
-  ZLinkObjectRole,
-  ZLinkPopulationCapacity,
-  ZLinkSpotTypeCapacity
-} from '../Locations';
 
 export interface ZLinkActorMembership {
   readonly actor: ActorRef;
@@ -91,16 +85,20 @@ export enum ZLinkPeerState {
   NotRequired = 4
 }
 
-export interface ZLinkMeshPeerSnapshot {
-  readonly rid: RoutingId;
-  readonly lifecycleGeneration: bigint;
-  readonly descriptorRevision: bigint;
-  readonly endpoint: string;
+export enum ZLinkTopologyReason {
+  RuntimeNotReady = 0,
+  NoReadyPeer = 1,
+  NoReadyTarget = 2,
+  LocationUnavailable = 3,
+  CapacityExceeded = 4,
+  Draining = 5,
+  InternalFailure = 6
+}
+
+export interface ZLinkPeerStatus {
+  readonly nodeRid: RoutingId;
   readonly state: ZLinkPeerState;
-  readonly ready: boolean;
-  readonly drainState: string;
-  readonly channelNames: readonly string[];
-  readonly lastFailure?: string;
+  readonly unavailableReason?: ZLinkTopologyReason;
 }
 
 export enum ZLinkTopologyState {
@@ -112,88 +110,33 @@ export enum ZLinkTopologyState {
   Failed = 5
 }
 
-export interface ZLinkMeshChannelSnapshot {
+export interface ZLinkChannelStatus {
   readonly channelName: string;
-  readonly localWeight: number;
-  readonly readyMemberCount: bigint;
-  readonly selectable: boolean;
+  readonly isReady: boolean;
+  readonly readyTargetCount: number;
 }
 
-export interface ZLinkMeshClaimSnapshot {
-  readonly applicationActive: boolean;
-  readonly pendingApplicationWork: bigint;
-  readonly infrastructureActive: boolean;
-  readonly pendingInfrastructureWork: bigint;
+export interface ZLinkPlacementStatus {
+  readonly isAvailable: boolean;
+  readonly activeActorCount: number;
+  readonly activeSpotCount: number;
+  readonly unavailableReason?: ZLinkTopologyReason;
 }
 
-export interface ZLinkLocationRuntimeSnapshot {
-  readonly state: string;
-  readonly lastSuccessAt?: Date;
-  readonly lastFailureAt?: Date;
-}
-
-export interface ZLinkMeshNodeSnapshot {
+export interface ZLinkRouteMeshStatus {
   readonly meshName: string;
-  readonly rid: RoutingId;
-  readonly lifecycleGeneration: bigint;
-  readonly descriptorRevision: bigint;
-  readonly endpoint: string;
-  readonly objectRole: ZLinkObjectRole;
-  readonly placementWeight: number;
-  readonly populationCapacity: {
-    readonly actors: ZLinkPopulationCapacity;
-    readonly spots: ZLinkPopulationCapacity;
-    readonly spotTypes: readonly ZLinkSpotTypeCapacity[];
-  };
-  readonly activationConcurrency: {
-    readonly active: number;
-    readonly limit: number;
-  };
-  readonly applicationVersion: bigint;
-  readonly placementReservationFailureCount: bigint;
-  readonly lastPlacementReservationFailure?: string;
-  readonly objectCapabilities: readonly ZLinkObjectCapability[];
   readonly state: ZLinkTopologyState;
+  readonly isReady: boolean;
+  readonly readyPeerCount: number;
+  readonly channels: readonly ZLinkChannelStatus[];
+  readonly peers: readonly ZLinkPeerStatus[];
+  readonly placement: ZLinkPlacementStatus;
   readonly sequence: bigint;
   readonly observedAt: Date;
-  readonly descriptorSources: readonly string[];
-  readonly peers: readonly ZLinkMeshPeerSnapshot[];
-  readonly channels: readonly ZLinkMeshChannelSnapshot[];
-  readonly instanceSpots: readonly import('./RuntimeTopology').ZLinkInstanceSpotTypeSnapshot[];
-  readonly claims: ZLinkMeshClaimSnapshot;
-  readonly location: ZLinkLocationRuntimeSnapshot;
-}
-
-export interface ZLinkMeshRuntimeEvent {
-  readonly identifier: string;
-  readonly sequence: bigint;
-  readonly timestamp: Date;
-  readonly meshName: string;
-  readonly sourceRid: RoutingId;
-  readonly peerRid?: RoutingId;
-  readonly lifecycleGeneration?: bigint;
-  readonly descriptorRevision?: bigint;
-  readonly channelName?: string;
-  readonly claimDomain?: string;
-  readonly messageKind?: string;
-  readonly placementOutcome?: string;
-  readonly capacity?: {
-    readonly actorSlots: number;
-    readonly spotSlots: number;
-    readonly spotTypes: readonly {
-      readonly objectKind: 'user_spot' | 'instance_spot';
-      readonly stableType: string;
-      readonly slots: number;
-    }[];
-  };
-  readonly populationCapacity?: ZLinkMeshNodeSnapshot['populationCapacity'];
-  readonly activationConcurrency?: ZLinkMeshNodeSnapshot['activationConcurrency'];
-  readonly reason?: string;
-  readonly state?: ZLinkTopologyState;
 }
 
 export interface ZLinkRouteMeshRuntime {
-  snapshot(meshName: string): ZLinkMeshNodeSnapshot;
-  observe(meshName: string, capacity?: number, signal?: AbortSignal): AsyncIterable<ZLinkMeshRuntimeEvent>;
+  snapshot(meshName: string): ZLinkRouteMeshStatus;
+  observe(meshName: string, capacity?: number, signal?: AbortSignal): AsyncIterable<ZLinkRouteMeshStatus>;
   isReady(meshName: string): boolean;
 }

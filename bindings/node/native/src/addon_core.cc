@@ -16,6 +16,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace
@@ -43,6 +44,12 @@ struct stream_js_payload_t
 struct socket_monitor_handler_js_payload_t
 {
     zlink_monitor_event_t event;
+};
+
+struct completion_control_js_payload_t
+{
+    std::vector<unsigned char> routing_id;
+    std::vector<std::vector<unsigned char>> parts;
 };
 
 struct stream_js_state_t
@@ -82,8 +89,24 @@ struct socket_monitor_handler_js_state_t
     napi_threadsafe_function tsfn;
 };
 
+struct completion_control_handler_js_state_t
+{
+    completion_control_handler_js_state_t ()
+        : socket (NULL), env (NULL), tsfn (NULL)
+    {
+    }
+
+    void *socket;
+    napi_env env;
+    napi_threadsafe_function tsfn;
+};
+
 static std::mutex g_send_ready_handler_slots_mu;
 static send_ready_handler_js_state_t g_send_ready_handler_slots[k_send_ready_handler_slot_count];
+static std::mutex g_completion_control_handler_slots_mu;
+static std::mutex g_completion_control_handler_registration_mu;
+static std::unordered_map<void *, std::vector<completion_control_handler_js_state_t *> >
+  g_completion_control_handler_states;
 static std::mutex g_socket_monitor_handler_slots_mu;
 static socket_monitor_handler_js_state_t
   g_socket_monitor_handler_slots[k_socket_monitor_handler_slot_count];
@@ -568,6 +591,37 @@ void send_ready_handler_tsfn_finalize (napi_env env, void *finalize_data, void *
     reset_send_ready_handler_slot_unsafe (state);
 }
 
+void completion_control_handler_tsfn_finalize (
+  napi_env env, void *finalize_data, void *finalize_hint)
+{
+    (void) env;
+    (void) finalize_hint;
+    completion_control_handler_js_state_t *state =
+      static_cast<completion_control_handler_js_state_t *> (finalize_data);
+    if (!state)
+        return;
+    {
+        std::lock_guard<std::mutex> lock (
+          g_completion_control_handler_slots_mu);
+        if (state->socket) {
+            std::unordered_map<
+              void *,
+              std::vector<completion_control_handler_js_state_t *> >::iterator
+              entry = g_completion_control_handler_states.find (state->socket);
+            if (entry != g_completion_control_handler_states.end ()) {
+                std::vector<completion_control_handler_js_state_t *> &states =
+                  entry->second;
+                states.erase (
+                  std::remove (states.begin (), states.end (), state),
+                  states.end ());
+                if (states.empty ())
+                    g_completion_control_handler_states.erase (entry);
+            }
+        }
+    }
+    delete state;
+}
+
 void socket_monitor_handler_tsfn_finalize (napi_env env, void *finalize_data, void *finalize_hint)
 {
     (void) env;
@@ -631,6 +685,42 @@ void send_ready_handler_tsfn_call_js (napi_env env, napi_value js_cb, void *cont
     napi_value this_arg;
     napi_get_undefined (env, &this_arg);
     (void) napi_call_function (env, this_arg, js_cb, 0, NULL, &recv);
+}
+
+void completion_control_handler_tsfn_call_js (
+  napi_env env, napi_value js_cb, void *context, void *data)
+{
+    std::unique_ptr<completion_control_js_payload_t> payload (
+      static_cast<completion_control_js_payload_t *> (data));
+    (void) context;
+    if (!env || !js_cb || !payload)
+        return;
+
+    napi_value argv[2];
+    if (napi_create_buffer_copy (
+          env, payload->routing_id.size (),
+          payload->routing_id.empty () ? NULL : payload->routing_id.data (),
+          NULL, &argv[0])
+        != napi_ok)
+        return;
+    if (napi_create_array_with_length (env, payload->parts.size (), &argv[1])
+        != napi_ok)
+        return;
+    for (size_t i = 0; i < payload->parts.size (); ++i) {
+        napi_value part;
+        const std::vector<unsigned char> &bytes = payload->parts[i];
+        if (napi_create_buffer_copy (
+              env, bytes.size (), bytes.empty () ? NULL : bytes.data (), NULL,
+              &part)
+            != napi_ok)
+            return;
+        napi_set_element (env, argv[1], static_cast<uint32_t> (i), part);
+    }
+
+    napi_value recv;
+    napi_value this_arg;
+    napi_get_undefined (env, &this_arg);
+    (void) napi_call_function (env, this_arg, js_cb, 2, argv, &recv);
 }
 
 void socket_monitor_handler_tsfn_call_js (napi_env env, napi_value js_cb, void *context, void *data)
@@ -785,6 +875,45 @@ template <size_t Slot> void send_ready_handler_slot_callback (void *subject_, vo
     }
 }
 
+void completion_control_handler_callback (
+  const zlink_routing_id_t *source_rid_, zlink_msg_t *parts_,
+  size_t part_count_, void *userdata_)
+{
+    completion_control_handler_js_state_t *state =
+      static_cast<completion_control_handler_js_state_t *> (userdata_);
+    napi_threadsafe_function tsfn = NULL;
+    {
+        std::lock_guard<std::mutex> lock (g_completion_control_handler_slots_mu);
+        if (state && state->tsfn)
+            tsfn = state->tsfn;
+    }
+
+    std::unique_ptr<completion_control_js_payload_t> payload;
+    if (tsfn && source_rid_ && parts_ && part_count_ > 0) {
+        payload.reset (new completion_control_js_payload_t ());
+        payload->routing_id.assign (
+          source_rid_->data, source_rid_->data + source_rid_->size);
+        payload->parts.reserve (part_count_);
+        for (size_t i = 0; i < part_count_; ++i) {
+            const size_t size = zlink_msg_size (&parts_[i]);
+            const unsigned char *data = static_cast<const unsigned char *> (
+              zlink_msg_data (&parts_[i]));
+            if (size == 0)
+                payload->parts.emplace_back ();
+            else
+                payload->parts.emplace_back (data, data + size);
+        }
+    }
+    if (parts_)
+        zlink_multipart_close (parts_, part_count_);
+
+    if (payload
+        && napi_call_threadsafe_function (
+             tsfn, payload.get (), napi_tsfn_nonblocking)
+             == napi_ok)
+        payload.release ();
+}
+
 #define SOCKET_MONITOR_HANDLER_SLOT_CALLBACK(N) &socket_monitor_handler_slot_callback<N>
 typedef void (*socket_monitor_handler_slot_callback_t) (const zlink_monitor_event_t *, void *);
 template <size_t Slot>
@@ -861,6 +990,53 @@ bool attach_send_ready_handler (napi_env env, void *socket, napi_value handler)
     return true;
 }
 
+bool attach_completion_control_handler (
+  napi_env env, void *socket, napi_value handler)
+{
+    completion_control_handler_js_state_t *state =
+      new completion_control_handler_js_state_t ();
+
+    napi_threadsafe_function tsfn = NULL;
+    if (!create_tsfn_slot_queue (
+          env, handler, state, "zlink-completion-control-handler",
+          completion_control_handler_tsfn_finalize,
+          completion_control_handler_tsfn_call_js,
+          "completionControlHandler failed to create callback queue", true,
+          &tsfn)) {
+        delete state;
+        return false;
+    }
+
+    state->socket = socket;
+    state->env = env;
+    state->tsfn = tsfn;
+
+    zlink_handler_result_t rc;
+    {
+        // Serialize replacement for one socket. The previous TSFN remains
+        // available until socket close so a Core callback already in flight
+        // can still enqueue the payload it accepted.
+        std::lock_guard<std::mutex> registration_lock (
+          g_completion_control_handler_registration_mu);
+        rc = zlink_router_completion_control_handler (
+          socket, completion_control_handler_callback, state);
+        if (rc == ZLINK_HANDLER_OK) {
+            std::lock_guard<std::mutex> state_lock (
+              g_completion_control_handler_slots_mu);
+            std::vector<completion_control_handler_js_state_t *> &states =
+              g_completion_control_handler_states[socket];
+            states.push_back (state);
+        }
+    }
+    if (rc != ZLINK_HANDLER_OK) {
+        state->socket = NULL;
+        (void) napi_release_threadsafe_function (tsfn, napi_tsfn_abort);
+        throw_last_error (env, "completionControlHandler failed");
+        return false;
+    }
+    return true;
+}
+
 bool attach_socket_monitor_handler (napi_env env, void *monitor, napi_value handler)
 {
     size_t slot_index = 0;
@@ -910,6 +1086,29 @@ void release_socket_send_ready_handler_slot (void *socket)
     }
     if (tsfn)
         (void) napi_release_threadsafe_function (tsfn, napi_tsfn_abort);
+}
+
+void release_socket_completion_control_handler_slot (void *socket)
+{
+    std::vector<completion_control_handler_js_state_t *> states;
+    {
+        std::lock_guard<std::mutex> lock (
+          g_completion_control_handler_slots_mu);
+        std::unordered_map<
+          void *, std::vector<completion_control_handler_js_state_t *> >::iterator
+          entry = g_completion_control_handler_states.find (socket);
+        if (entry == g_completion_control_handler_states.end ())
+            return;
+        states.swap (entry->second);
+        g_completion_control_handler_states.erase (entry);
+        for (size_t i = 0; i < states.size (); ++i)
+            states[i]->socket = NULL;
+    }
+    for (size_t i = 0; i < states.size (); ++i) {
+        if (states[i]->tsfn)
+            (void) napi_release_threadsafe_function (
+              states[i]->tsfn, napi_tsfn_release);
+    }
 }
 
 void release_socket_monitor_handler_slot (void *monitor)
@@ -1374,6 +1573,7 @@ napi_value socket_close (napi_env env, napi_callback_info info)
         return throw_last_error (env, "close failed");
     stream_release_slot (sock);
     release_socket_send_ready_handler_slot (sock);
+    release_socket_completion_control_handler_slot (sock);
     napi_value ok;
     napi_get_undefined (env, &ok);
     return ok;
@@ -2379,6 +2579,75 @@ napi_value router_reply (napi_env env, napi_callback_info info)
     if (rc != ZLINK_SUBMIT_OK) {
         return throw_last_error (env, "routerReply failed");
     }
+    napi_value ok;
+    napi_get_undefined (env, &ok);
+    return ok;
+}
+
+napi_value router_try_send_completion_control (
+  napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    if (argc < 3) {
+        napi_throw_type_error (
+          env, NULL,
+          "routerTrySendCompletionControl requires (socket, routingId, parts)");
+        return NULL;
+    }
+    void *router = NULL;
+    napi_get_value_external (env, argv[0], &router);
+    zlink_routing_id_t peer_rid;
+    if (!parse_routing_id_value (env, argv[1], &peer_rid))
+        return NULL;
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector_or_single (env, argv[2], &parts))
+        return NULL;
+    if (parts.empty ()) {
+        napi_throw_range_error (env, NULL, "parts must not be empty");
+        return NULL;
+    }
+
+    int rc = submit_msg_parts (
+      parts.data (), parts.size (),
+      [&] (zlink_msg_t *part_, zlink_part_flag_t part_flag_, bool) {
+          return zlink_router_completion_control_part (
+            router, &peer_rid, part_, part_flag_);
+      });
+    parts.clear ();
+    if (rc != ZLINK_SUBMIT_OK && rc != ZLINK_SUBMIT_BACKPRESSURED)
+        return throw_last_error (env, "routerTrySendCompletionControl failed");
+
+    napi_value result;
+    napi_get_boolean (env, rc == ZLINK_SUBMIT_OK, &result);
+    return result;
+}
+
+napi_value router_completion_control_handler (
+  napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    if (argc < 2) {
+        napi_throw_type_error (
+          env, NULL,
+          "routerCompletionControlHandler requires (socket, handler)");
+        return NULL;
+    }
+    void *router = NULL;
+    napi_get_value_external (env, argv[0], &router);
+    napi_valuetype handler_type = napi_undefined;
+    napi_typeof (env, argv[1], &handler_type);
+    if (handler_type != napi_function) {
+        napi_throw_type_error (
+          env, NULL,
+          "routerCompletionControlHandler handler must be a function");
+        return NULL;
+    }
+    if (!attach_completion_control_handler (env, router, argv[1]))
+        return NULL;
     napi_value ok;
     napi_get_undefined (env, &ok);
     return ok;

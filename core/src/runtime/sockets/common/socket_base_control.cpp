@@ -62,17 +62,32 @@ uint32_t zlink::socket_base_t::local_peer_weight () const
 
 int zlink::socket_base_t::close ()
 {
-    return close (2000);
+    return close (-1);
 }
 
 int zlink::socket_base_t::close (int handoff_timeout_ms_)
+{
+    const int admission = begin_close_handoff ();
+    if (admission < 0)
+        return -1;
+    if (admission > 0)
+        return 0;
+
+    finish_close_handoff (handoff_timeout_ms_);
+    return 0;
+}
+
+int zlink::socket_base_t::begin_close_handoff ()
 {
     const bool from_self_callback = socket_send_ready_dispatch_scope_t::dispatching_socket (this);
     if (!lifecycle_coordinator ().begin_close_or_fail_busy (from_self_callback))
         return -1;
     if (from_self_callback)
-        return 0;
-
-    finish_close_handoff (handoff_timeout_ms_);
+        return 1;
     return 0;
+}
+
+void zlink::socket_base_t::complete_close_handoff ()
+{
+    finish_close_handoff ();
 }

@@ -17,6 +17,11 @@ namespace zlink::samples::bingo
 class bingo_game_t
 {
   public:
+    explicit bingo_game_t (int next_draw = 1) :
+        _next_draw (std::max (1, next_draw))
+    {
+    }
+
     void submit_card (std::vector<bingo_player_state_t> &players,
                       const std::string &actor_id,
                       const std::vector<int> &numbers)

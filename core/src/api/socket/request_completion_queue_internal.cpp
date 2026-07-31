@@ -114,14 +114,17 @@ void zlink::request_completion::invoke_callback (void *owner_handle_,
       handler_, errnum_, parts_, part_count_, userdata_);
 }
 
-int zlink::request_completion::drain (queue_state_t *state_, void *owner_handle_)
+namespace
+{
+int drain_controls (zlink::request_completion::queue_state_t *state_,
+                    void *owner_handle_)
 {
     if (!state_ || !owner_handle_) {
         errno = EFAULT;
         return -1;
     }
 
-    std::deque<control_t> controls;
+    std::deque<zlink::request_completion::control_t> controls;
     {
         std::lock_guard<std::mutex> lock (state_->mutex);
         state_->owner_thread = std::this_thread::get_id ();
@@ -129,13 +132,33 @@ int zlink::request_completion::drain (queue_state_t *state_, void *owner_handle_
         controls.swap (state_->controls);
     }
 
-    for (std::deque<control_t>::iterator it = controls.begin (); it != controls.end (); ++it) {
-        invoke_callback (owner_handle_, it->handler, it->errnum, NULL, 0, it->userdata);
-        release_reservation (state_);
+    for (std::deque<zlink::request_completion::control_t>::iterator it = controls.begin ();
+         it != controls.end (); ++it) {
+        zlink::request_completion::invoke_callback (
+          owner_handle_, it->handler, it->errnum, NULL, 0, it->userdata);
+        zlink::request_completion::release_reservation (state_);
     }
 
     errno = 0;
     return static_cast<int> (controls.size ());
+}
+}
+
+int zlink::request_completion::drain (queue_state_t *state_, void *owner_handle_)
+{
+    socket_callback_scope_t callback_scope (
+      static_cast<socket_base_t *> (owner_handle_));
+    if (!callback_scope.acquired ()) {
+        errno = ESHUTDOWN;
+        return -1;
+    }
+    return drain_controls (state_, owner_handle_);
+}
+
+int zlink::request_completion::drain_while_closing (queue_state_t *state_,
+                                                     void *owner_handle_)
+{
+    return drain_controls (state_, owner_handle_);
 }
 
 void zlink::request_completion::close (queue_state_t *state_)

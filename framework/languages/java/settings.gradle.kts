@@ -18,6 +18,8 @@ if (gradle.parent == null) {
 }
 
 include(
+    "zlink-framework-provider-abstractions",
+    "zlink-framework-binding-internal",
     "zlink-framework-core",
     "zlink-framework-codec-protobuf",
     "zlink-framework-codec-msgpack",

@@ -1,7 +1,6 @@
 import type {
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
-  ZLinkActorMembership,
   ZLinkMessage,
   ZLinkSpotActorJoinResponse
 } from '@zlink-systems/framework';
@@ -14,11 +13,11 @@ class ZoneEntrySpot implements ZLinkEntrySpot<PlayerActor> {
     return { accepted: true };
   }
 
-  async onJoinedActor(_actor: ZLinkActorMembership): Promise<void> {}
+  async onJoinedActor(_actor: PlayerActor): Promise<void> {}
 
-  async onLeaveActor(_actor: ZLinkActorMembership): Promise<void> {}
+  async onLeaveActor(_actor: PlayerActor): Promise<void> {}
 
-  async onDisconnectActor(_actor: ZLinkActorMembership): Promise<void> {}
+  async onDisconnectActor(_actor: PlayerActor): Promise<void> {}
 }
 
 

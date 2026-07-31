@@ -13,7 +13,8 @@ inline task_t<void> tictactoe_game_spot_t::handle_game_tick (const timer_tick_t 
     }
     const auto &state = match ().snapshot ();
     const auto notify = game_state_notify_t{state.room_id, state.next_turn, state};
-    publisher.publish (notify);
+    co_await publisher.publish (notify);
+    co_return;
 }
 
 inline task_t<void>

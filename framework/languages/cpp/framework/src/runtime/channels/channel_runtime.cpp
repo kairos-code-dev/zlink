@@ -362,13 +362,14 @@ void drain_zlink_builder_runtime (zlink_builder_t &builder) noexcept
     drain_zlink_builder_state_runtime (*builder._state);
 }
 
-void bind_zlink_monitoring (zlink_builder_t &builder, const monitoring_builder_t &monitoring)
+void bind_zlink_monitoring (
+  zlink_builder_t &builder,
+  std::shared_ptr<monitoring_runtime_state_t> monitoring)
 {
     if (!builder._state) {
         return;
     }
-    auto state = monitoring_runtime_t::from (monitoring).state ();
-    builder._state->runtime->monitoring = state;
+    builder._state->runtime->monitoring = std::move (monitoring);
 }
 
 void channel_runtime_t::add_client_manual_connection (const std::string &channel_name,
@@ -650,28 +651,19 @@ void channel_runtime_t::drain () noexcept
     outbound_request_controller_t (*_state).drain ();
 }
 
-void channel_runtime_t::record_fanout_received (const std::string &topic) const
-{
-    if (!_state->monitoring) {
-        return;
-    }
-    runtime::runtime_metrics_t metrics (_state->monitoring);
-    if (metrics.enabled ()) {
-        metrics.counter ("zlink.fanout.received", "{message}", 1, {{"topic", topic}});
-    }
-}
-
 void channel_runtime_t::publish_socket_event (const std::string &channel_name,
                                               socket_event_kind_t event,
                                               std::string local_address,
                                               std::string remote_address) const
 {
+    (void) local_address;
+    (void) remote_address;
     if (!_state->monitoring) {
         return;
     }
     monitoring_runtime_t (_state->monitoring)
-      .publish_socket (socket_event_payload_t{runtime_event_base_t{channel_name}, event,
-                                              std::move (local_address), std::move (remote_address)});
+      .publish_socket (
+        socket_event_payload_t{channel_name, event});
 }
 
 void channel_runtime_t::set_server_weight (const std::string &channel_name,
@@ -684,7 +676,6 @@ void channel_runtime_t::set_server_weight (const std::string &channel_name,
         std::lock_guard lock (_state->mutex);
         _state->server_peer_weight_overrides.insert_or_assign (channel_name, value);
     }
-    publish_socket_event (channel_name, socket_event_kind_t::peer_admission_changed);
 }
 
 std::optional<int>
@@ -783,7 +774,7 @@ capability_builder_t &capability_builder_t::set_routing_id (zlink::routing_id_t 
     return *this;
 }
 
-capability_builder_t &capability_builder_t::send_high_water_mark (zlink::message_count_t value)
+capability_builder_t &capability_builder_t::send_high_water_mark (zlink::byte_count_t value)
 {
     auto &snapshot = capability_snapshot (*_state);
     snapshot.enabled = true;
@@ -791,7 +782,7 @@ capability_builder_t &capability_builder_t::send_high_water_mark (zlink::message
     return *this;
 }
 
-capability_builder_t &capability_builder_t::receive_high_water_mark (zlink::message_count_t value)
+capability_builder_t &capability_builder_t::receive_high_water_mark (zlink::byte_count_t value)
 {
     auto &snapshot = capability_snapshot (*_state);
     snapshot.enabled = true;
@@ -988,6 +979,13 @@ message_bus_t::message_bus_t () : _state (std::make_shared<detail::channel_runti
 
 message_bus_t::message_bus_t (std::shared_ptr<detail::channel_runtime_state_t> state) :
     _state (std::move (state))
+{
+}
+
+message_bus_t::message_bus_t (
+  std::shared_ptr<detail::channel_runtime_state_t> state,
+  std::function<result_t<void> ()> preflight) :
+    _state (std::move (state)), _preflight (std::move (preflight))
 {
 }
 

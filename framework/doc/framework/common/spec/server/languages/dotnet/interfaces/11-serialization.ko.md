@@ -15,6 +15,10 @@ JSON만 사용하는 application은 codec API를 호출하지 않는다. 선택 
 
 ## 2. Codec 등록 API와 provider SPI
 
+`IZLinkCodecRegistrar`는 business payload serializer만 등록한다. STREAM header의 codec 값은
+Stream Connector가 소유하는 `IZlinkStreamCodecRegistration`으로 선언한다. 이 분리로 HTTP client가
+STREAM runtime이나 compression package에 의존하지 않는다.
+
 ```csharp
 public interface IZLinkCodecExtension
 {
@@ -35,9 +39,6 @@ public interface IZLinkCodecRegistrar
         string contentType,
         IZLinkMessageSerializer serializer,
         Func<Type, bool> canSerialize);
-    void AddStreamCodec(
-        string contentType,
-        ZlinkStreamCodec codec);
 }
 
 public interface IZLinkMessageSerializer
@@ -71,7 +72,8 @@ extension과 Stream Connector의 typed payload codec을 함께 구현한다.
 ```csharp
 public sealed class ZLinkMessagePackCodec :
     IZLinkCodecExtension,
-    IZlinkStreamPayloadCodec
+    IZlinkStreamPayloadCodec,
+    IZlinkStreamCodecRegistration
 {
     public static ZLinkMessagePackCodec Default { get; }
 
@@ -82,7 +84,8 @@ public sealed class ZLinkMessagePackCodec :
 
 public sealed class ZLinkProtobufCodec :
     IZLinkCodecExtension,
-    IZlinkStreamPayloadCodec
+    IZlinkStreamPayloadCodec,
+    IZlinkStreamCodecRegistration
 {
     public static ZLinkProtobufCodec Default { get; }
 

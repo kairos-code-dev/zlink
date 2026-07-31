@@ -25,6 +25,26 @@ public final class ZLinkCanonicalActorRelocationEnvelope {
         boolean restoreSnapshot,
         byte[] state,
         List<ZLinkAsyncSerialQueue.QueuedRecord> journal) {
+        return encode(
+            relocationId,
+            actorId,
+            objectGeneration,
+            expectedAuthorityOwnerGeneration,
+            restoreSnapshot,
+            state,
+            journal,
+            ZLinkSpotTimerRelocationEnvelope.encodeCanonical(List.of()));
+    }
+
+    static byte[] encode(
+        UUID relocationId,
+        String actorId,
+        long objectGeneration,
+        long expectedAuthorityOwnerGeneration,
+        boolean restoreSnapshot,
+        byte[] state,
+        List<ZLinkAsyncSerialQueue.QueuedRecord> journal,
+        byte[] timerEnvelope) {
         Objects.requireNonNull(relocationId, "relocationId");
         Objects.requireNonNull(actorId, "actorId");
         byte[] applicationState = Objects.requireNonNull(state, "state").clone();
@@ -39,6 +59,22 @@ public final class ZLinkCanonicalActorRelocationEnvelope {
                     "Actor journal sequence is not canonical");
             }
             previous = record.sequence();
+        }
+        List<ZLinkSpotTimerRelocationEnvelope.CanonicalTimer> timers =
+            new ArrayList<>(
+                ZLinkSpotTimerRelocationEnvelope.canonicalize(
+                    timerEnvelope));
+        timers.sort(Comparator.comparing(
+            ZLinkSpotTimerRelocationEnvelope.CanonicalTimer::name));
+        long acceptedBoundary = records.isEmpty()
+            ? 0 : records.getLast().sequence();
+        List<PendingTimer> pendingTimers = new ArrayList<>();
+        for (var timer : timers) {
+            if (timer.pending() != null) {
+                acceptedBoundary = Math.incrementExact(acceptedBoundary);
+                pendingTimers.add(new PendingTimer(
+                    acceptedBoundary, timer));
+            }
         }
 
         Writer writer = new Writer();
@@ -61,7 +97,7 @@ public final class ZLinkCanonicalActorRelocationEnvelope {
         writer.body64(stateBody);
         writer.u32(1);
         writer.u64(1);
-        writer.u64(records.isEmpty() ? 0 : records.getLast().sequence());
+        writer.u64(acceptedBoundary);
         writer.u64(0);
         writer.u32(records.size());
         for (var record : records) {
@@ -69,8 +105,31 @@ public final class ZLinkCanonicalActorRelocationEnvelope {
             writer.u64(record.sequence());
             writer.raw(record.payload());
         }
-        writer.u32(0);
-        writer.u32(0);
+        writer.u32(timers.size());
+        for (var timer : timers) {
+            writer.u64(1);
+            writer.text8(timer.name());
+            writer.text8(timer.handlerType());
+            writer.u64(timer.periodMilliseconds());
+            writer.u8(timer.overrunPolicy());
+            writer.u64(timer.maxCatchUpTicks());
+            writer.u8(timer.stopOnUnhandledException() ? 1 : 0);
+            writer.u64(timer.lastCompletedDeliveryIndex());
+            writer.u64(timer.lastCompletedScheduledIndex());
+            writer.u64(timer.nextScheduledAtUnixMilliseconds());
+        }
+        writer.u32(pendingTimers.size());
+        for (PendingTimer pending : pendingTimers) {
+            var timer = pending.timer();
+            var tick = timer.pending();
+            writer.u64(1);
+            writer.u64(pending.sequence());
+            writer.text8(timer.name());
+            writer.u64(tick.deliveryIndex());
+            writer.u64(tick.scheduledIndex());
+            writer.u64(tick.scheduledAtUnixMilliseconds());
+            writer.u64(tick.skippedTicks());
+        }
         writer.u32(0);
         byte[] encoded = writer.bytes();
         ZLinkServiceRelocationEnvelopeCodec.decode(encoded);
@@ -88,9 +147,7 @@ public final class ZLinkCanonicalActorRelocationEnvelope {
             || root.object().kind() != 1
             || !root.object().objectId().equals(actorId)
             || root.applicationStates().size() != 1
-            || root.participantProgress().size() != 1
-            || !root.timerRegistrations().isEmpty()
-            || !root.pendingTimerTicks().isEmpty()) {
+            || root.participantProgress().size() != 1) {
             throw new IllegalArgumentException(
                 "canonical Actor relocation identity or inventory differs");
         }
@@ -110,29 +167,72 @@ public final class ZLinkCanonicalActorRelocationEnvelope {
                             "Actor journal references another participant");
                     }
                     return new ZLinkAsyncSerialQueue.QueuedRecord(
-                        value.sequence(), value.rawEntry());
+                        value.sequence(), value.frozenRecord());
                 })
                 .toList();
         return new Decoded(
             root.object().objectGeneration(),
             root.object().expectedAuthorityOwnerGeneration(),
             state.payload(),
-            journal);
+            journal,
+            ZLinkSpotTimerRelocationEnvelope.encodeCanonical(
+                root.timerRegistrations().stream()
+                    .map(registration -> {
+                        var pending = root.pendingTimerTicks().stream()
+                            .filter(value ->
+                                value.participantId() == 1
+                                    && value.timerName().equals(
+                                        registration.name()))
+                            .findFirst()
+                            .map(value ->
+                                new ZLinkSpotTimerRelocationEnvelope
+                                    .CanonicalPending(
+                                        value.deliveryIndex(),
+                                        value.scheduledIndex(),
+                                        value.scheduledAtUnixMilliseconds(),
+                                        value.skippedTicks()))
+                            .orElse(null);
+                        return new ZLinkSpotTimerRelocationEnvelope
+                            .CanonicalTimer(
+                                registration.name(),
+                                registration.handlerType(),
+                                registration.periodMilliseconds(),
+                                registration.overrunPolicy(),
+                                registration.maxCatchUpTicks(),
+                                registration.stopOnUnhandledException(),
+                                registration.lastCompletedDeliveryIndex(),
+                                registration.lastCompletedScheduledIndex(),
+                                registration
+                                    .nextScheduledAtUnixMilliseconds(),
+                                pending);
+                    })
+                    .toList()));
     }
 
     record Decoded(
         long objectGeneration,
         long expectedAuthorityOwnerGeneration,
         byte[] state,
-        List<ZLinkAsyncSerialQueue.QueuedRecord> journal) {
+        List<ZLinkAsyncSerialQueue.QueuedRecord> journal,
+        byte[] timerEnvelope) {
         Decoded {
             state = state.clone();
             journal = List.copyOf(journal);
+            timerEnvelope = timerEnvelope.clone();
         }
 
         @Override public byte[] state() {
             return state.clone();
         }
+
+        @Override public byte[] timerEnvelope() {
+            return timerEnvelope.clone();
+        }
+    }
+
+    private record PendingTimer(
+        long sequence,
+        ZLinkSpotTimerRelocationEnvelope.CanonicalTimer timer) {
     }
 
     private static final class Writer {

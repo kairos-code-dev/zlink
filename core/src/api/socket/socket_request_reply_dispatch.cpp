@@ -83,6 +83,12 @@ void complete_reply_from_transport (
         return;
     }
 
+    zlink::socket_callback_scope_t callback_scope (state_->socket);
+    if (!callback_scope.acquired ()) {
+        zlink::request_reply::close_request_reply_parts (parts_, part_count_);
+        return;
+    }
+
     pending_key_t key;
     key.request_seq = envelope.request_seq;
     if (state_->socket_type == ZLINK_CORE_SOCKET_ROUTER
@@ -158,10 +164,15 @@ void process_completion_pipe (zlink::socket_base_t *socket_, zlink::pipe_t *pipe
 
         zlink_routing_id_t source_rid;
         memset (&source_rid, 0, sizeof (source_rid));
-        const blob_t &rid = pipe_->get_routing_id ();
-        if (rid.size () > 0 && rid.size () <= sizeof (source_rid.data)) {
-            source_rid.size = static_cast<uint8_t> (rid.size ());
-            memcpy (source_rid.data, rid.data (), rid.size ());
+        const blob_t *rid = &pipe_->get_routing_id ();
+        if (rid->size () == 0) {
+            pipe_t *application = socket_->application_pipe_for_completion (pipe_);
+            if (application)
+                rid = &application->get_routing_id ();
+        }
+        if (rid->size () > 0 && rid->size () <= sizeof (source_rid.data)) {
+            source_rid.size = static_cast<uint8_t> (rid->size ());
+            memcpy (source_rid.data, rid->data (), rid->size ());
         }
         complete_reply_from_transport (
           state.get (), source_rid.size > 0 ? &source_rid : NULL,
@@ -263,7 +274,7 @@ int drain_close_request_reply_socket (socket_handle_t handle_)
         }
     }
 
-    return drain_reply_completions (state, handle_.socket);
+    return drain_reply_completions_while_closing (state, handle_.socket);
 }
 
 void cleanup_request_reply_socket (socket_handle_t handle_)

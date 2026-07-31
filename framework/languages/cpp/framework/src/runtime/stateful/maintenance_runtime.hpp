@@ -5,7 +5,7 @@
 #include "runtime/stateful/stateful_object_runtime.hpp"
 #include "runtime/stateful/stream_session_registry.hpp"
 
-#include <zlink/framework/contracts/locations/maintenance_stores.hpp>
+#include <runtime/locations/location_repository.hpp>
 
 #include <array>
 #include <chrono>
@@ -267,8 +267,16 @@ struct eligible_relocation_unit_t
         std::vector<std::uint64_t> participant_ids;
         std::function<bool (
           const std::vector<frozen_object_state_t> &,
-          const std::vector<protocol::relocation_data_t> &)> prepare_target;
+          const std::vector<protocol::relocation_data_t> &,
+          const relocation_stored_t &)> prepare_target;
         std::function<void (std::uint64_t, std::uint64_t)> acknowledged;
+        std::function<bool (
+          std::uint64_t,
+          std::uint64_t,
+          const protocol::reply_relay_t &,
+          const std::optional<protocol::application_payload_t> &)>
+          complete_source_terminal;
+        std::function<bool ()> complete_target;
         std::function<void ()> abort_target;
     };
     std::optional<canonical_wire_context_t> canonical_wire;
@@ -380,7 +388,9 @@ class maintenance_runtime_t
       std::shared_ptr<authority_relocation_port_t> authority,
       std::shared_ptr<relocation_store_port_t> relocations,
       relocation_limits_t limits = {},
-      observer_t observer = {});
+      observer_t observer = {},
+      std::shared_ptr<aggregate_authority_port_t>
+        aggregate_authority = {});
     maintenance_runtime_t (
       stateful_object_runtime_t &objects,
       maintenance_provider_set_t providers,
@@ -402,9 +412,22 @@ class maintenance_runtime_t
       const std::string &key,
       stateful_object_runtime_t &target,
       std::stop_token cancellation = {});
+    relocation_result_t recover (
+      object_kind_t kind,
+      const std::string &key,
+      stateful_object_runtime_t &target,
+      const eligible_relocation_unit_t::canonical_wire_context_t
+        &recovery_callbacks,
+      std::stop_token cancellation = {});
     aggregate_relocation_result_t recover_aggregate (
       const std::vector<object_ref_t> &sources,
       stateful_object_runtime_t &target,
+      std::stop_token cancellation = {});
+    aggregate_relocation_result_t recover_aggregate (
+      const std::vector<object_ref_t> &sources,
+      stateful_object_runtime_t &target,
+      const eligible_relocation_unit_t::canonical_wire_context_t
+        &recovery_callbacks,
       std::stop_token cancellation = {});
     aggregate_relocation_result_t relocate_aggregate (
       const std::vector<object_ref_t> &sources,
@@ -459,6 +482,19 @@ class maintenance_runtime_t
     permit_t try_acquire (std::size_t payload);
     void release (std::size_t payload) noexcept;
     relocation_result_t finish (relocation_result_t result);
+    relocation_result_t recover_impl (
+      object_kind_t kind,
+      const std::string &key,
+      stateful_object_runtime_t &target,
+      const eligible_relocation_unit_t::canonical_wire_context_t
+        *recovery_callbacks,
+      std::stop_token cancellation);
+    aggregate_relocation_result_t recover_aggregate_impl (
+      const std::vector<object_ref_t> &sources,
+      stateful_object_runtime_t &target,
+      const eligible_relocation_unit_t::canonical_wire_context_t
+        *recovery_callbacks,
+      std::stop_token cancellation);
 
     std::optional<std::vector<protocol::relocation_data_t>>
     build_replay_records (
@@ -468,7 +504,8 @@ class maintenance_runtime_t
     bool prepare_replay_source (
       const eligible_relocation_unit_t::canonical_wire_context_t &context,
       const std::vector<frozen_object_state_t> &participants,
-      const std::vector<protocol::relocation_data_t> &records);
+      const std::vector<protocol::relocation_data_t> &records,
+      const relocation_stored_t &stored);
     bool arm_replay_source (
       const eligible_relocation_unit_t::canonical_wire_context_t &context,
       const std::vector<protocol::relocation_data_t> &records);

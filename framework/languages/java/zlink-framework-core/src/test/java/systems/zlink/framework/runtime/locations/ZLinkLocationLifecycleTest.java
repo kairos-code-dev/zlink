@@ -6,7 +6,7 @@ import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ActorRef;
-import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationWriteStatus;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 
 final class ZLinkLocationLifecycleTest {

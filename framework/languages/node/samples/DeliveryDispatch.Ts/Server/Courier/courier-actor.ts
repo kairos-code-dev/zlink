@@ -2,11 +2,10 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
 import { OfferDeliveryNotify, OfferDeliveryResultMsg } from '../../Shared/Contracts/messages';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
-import type { BindCourierReq, BindCourierRes, BindCourierSessionReq, BindCourierSessionRes, CourierDecisionMsg, DeliveryDispatchActorRef, OfferDeliveryMsg } from '../../Shared/Contracts/messages';
+import type { BindCourierReq, BindCourierRes, BindCourierSessionReq, BindCourierSessionRes, CourierDecisionMsg, OfferDeliveryMsg } from '../../Shared/Contracts/messages';
 import type { ZLinkActor, ZLinkActorContext, ZLinkActorFactory, ZLinkChannelClient } from '@zlink-systems/framework';
 
 class CourierActor implements ZLinkActor {
-  private actorRef: DeliveryDispatchActorRef | undefined;
   private sessionRoute: string | undefined;
 
   constructor(
@@ -15,31 +14,19 @@ class CourierActor implements ZLinkActor {
     private readonly channels: ZLinkChannelClient
   ) {}
 
-  setActorRef(actorRef: DeliveryDispatchActorRef): void {
-    this.actorRef = actorRef;
-  }
-
-  actorReference(): DeliveryDispatchActorRef {
-    return this.requireActorRef();
-  }
-
   bindSession(request: BindCourierReq): BindCourierRes {
     this.sessionRoute = request.sessionRoute;
     return {
       courierId: request.courierId,
-      actor: this.requireActorRef(),
       sessionRoute: request.sessionRoute
     };
   }
 
   bindRelayedSession(request: BindCourierSessionReq): BindCourierSessionRes {
-    const actor = request.actor ?? this.requireActorRef();
     const sessionRoute = request.sessionRoute ?? this.sessionRoute;
     if (sessionRoute === undefined) throw new Error(`Courier actor '${this.actorId}' has no bound session route.`);
-    this.setActorRef(actor);
     return {
       courierId: request.courierId,
-      actor,
       sessionRoute
     };
   }
@@ -56,7 +43,6 @@ class CourierActor implements ZLinkActor {
 
   async decide(decision: CourierDecisionMsg): Promise<void> {
     await this.channels.sendToChannel(
-      SampleNames.routeMesh,
       SampleNames.dispatchChannel,
       new OfferDeliveryResultMsg(
         decision.deliveryId,
@@ -68,12 +54,6 @@ class CourierActor implements ZLinkActor {
     ).submit();
   }
 
-  private requireActorRef(): DeliveryDispatchActorRef {
-    if (this.actorRef === undefined) {
-      throw new Error(`Courier actor '${this.actorId}' has not joined its entry spot.`);
-    }
-    return this.actorRef;
-  }
 }
 
 class CourierActorDirectory {
@@ -93,8 +73,8 @@ class CourierActorFactory implements ZLinkActorFactory {
     @Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient
   ) {}
 
-  async create(actorId: string, context: ZLinkActorContext): Promise<CourierActor> {
-    const actor = new CourierActor(actorId, context, this.channels);
+  async create(context: ZLinkActorContext): Promise<CourierActor> {
+    const actor = new CourierActor(context.actorId, context, this.channels);
     this.directory.add(actor);
     return actor;
   }

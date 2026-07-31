@@ -4,9 +4,9 @@ public interface IZLinkSocketConfig
 {
     long MaxMessageSize { get; set; }
 
-    int SendHighWaterMark { get; set; }
+    ulong SendHighWaterMark { get; set; }
 
-    int ReceiveHighWaterMark { get; set; }
+    ulong ReceiveHighWaterMark { get; set; }
 
     int SendBufferSize { get; set; }
 
@@ -57,7 +57,7 @@ public interface IZLinkOutboundRouteConfig
 
 public interface IZLinkSpotPublisherConfig
 {
-    int SendHighWaterMark { get; set; }
+    ulong SendHighWaterMark { get; set; }
 
     TimeSpan? SendTimeout { get; set; }
 
@@ -66,7 +66,7 @@ public interface IZLinkSpotPublisherConfig
 
 public interface IZLinkSpotSubscriberConfig
 {
-    int ReceiveHighWaterMark { get; set; }
+    ulong ReceiveHighWaterMark { get; set; }
 
     TimeSpan? ReceiveTimeout { get; set; }
 

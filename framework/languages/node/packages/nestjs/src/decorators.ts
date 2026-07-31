@@ -4,6 +4,7 @@ import type {
   Type,
   ZLinkActor,
   ZLinkEntrySpot,
+  ZLinkInstanceSpot,
   ZLinkSpot
 } from '@zlink-systems/framework';
 import type {
@@ -24,7 +25,6 @@ import {
   appendNestSpotActorHandlerMetadata,
   appendNestSpotHandlerMetadata,
   appendNestSpotTimerHandlerMetadata,
-  markNestRuntimeEventHandler,
   markNestSpotTimerHandler,
   type ZLinkNestHandlerKind
 } from './handler-metadata';
@@ -54,13 +54,6 @@ export function zlinkPublishHandler(
   return zlinkHandler(groupName, 'publish', packetName, options);
 }
 
-export function zlinkRuntimeEventHandler(): ClassDecorator {
-  return (target: Function) => {
-    Injectable()(target as Type);
-    markNestRuntimeEventHandler(target as Type);
-  };
-}
-
 export function zlinkSpotActorRequestHandler<TSpot extends ZLinkSpot, TActor extends ZLinkActor>(
   options: ZLinkNestSpotActorRequestHandlerOptions<TSpot, TActor>
 ): ClassDecorator {
@@ -77,7 +70,7 @@ export function zlinkSpotActorRequestHandler<TSpot extends ZLinkSpot, TActor ext
   };
 }
 
-export function zlinkSpotPacketHandler<TSpot extends ZLinkSpot>(
+export function zlinkSpotPacketHandler<TSpot extends ZLinkSpot | ZLinkInstanceSpot>(
   options: ZLinkNestSpotPacketHandlerOptions<TSpot>
 ): ClassDecorator {
   return (target: Function) => {

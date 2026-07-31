@@ -16,17 +16,10 @@ import org.springframework.context.SmartLifecycle;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.e2e.runtimemonitoring.shared.Contracts;
-import systems.zlink.e2e.runtimemonitoring.trigger.validation.BadIntervalConfig;
-import systems.zlink.e2e.runtimemonitoring.trigger.validation.MissingSocketSourceConfig;
-import systems.zlink.e2e.runtimemonitoring.trigger.validation.MissingSpotSourceConfig;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler;
-import systems.zlink.framework.monitoring.ZLinkSocketEvent;
-import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
-import systems.zlink.framework.spring.ZLinkMonitoringOptionsCustomizer;
 
 @EnableZLinkFramework
 @EnableConfigurationProperties(TriggerOptions.class)
@@ -70,20 +63,8 @@ public final class Program {
     }
 
     @Bean
-    ZLinkMonitoringOptionsCustomizer triggerMonitoring() {
-        return options -> options.addSocketEvents(
-            Contracts.CHANNEL,
-            ZLinkSocketEventKind.PEER_ADMISSION_CHANGED);
-    }
-
-    @Bean
     TriggerEvidence triggerEvidence() {
         return new TriggerEvidence();
-    }
-
-    @Bean
-    TriggerSocketRecorder triggerSocketRecorder(TriggerEvidence evidence) {
-        return new TriggerSocketRecorder(evidence);
     }
 
     @Bean
@@ -140,11 +121,6 @@ public final class Program {
                         writeJson(exchange, 500, new OperationFailure(cause.toString()));
                     }
                 });
-                server.createContext("/validation/", exchange -> {
-                    String name = exchange.getRequestURI().getPath()
-                        .substring("/validation/".length());
-                    writeJson(exchange, 200, validation(name));
-                });
                 server.start();
                 running = true;
             } catch (Exception error) {
@@ -180,34 +156,6 @@ public final class Program {
             exchange.close();
         }
 
-        private static ValidationResult validation(String name) {
-            Class<?> configClass = switch (name) {
-                case "bad-interval" -> BadIntervalConfig.class;
-                case "missing-socket" -> MissingSocketSourceConfig.class;
-                case "missing-spot" -> MissingSpotSourceConfig.class;
-                default -> throw new IllegalArgumentException(
-                    "unknown monitoring validation case: " + name);
-            };
-            try (var context = new SpringApplicationBuilder(configClass)
-                     .web(WebApplicationType.NONE)
-                     .run()) {
-                return new ValidationResult(false, "configuration unexpectedly started");
-            } catch (Throwable error) {
-                StringBuilder messages = new StringBuilder();
-                Throwable current = error;
-                while (current != null) {
-                    if (current.getMessage() != null) {
-                        if (!messages.isEmpty()) {
-                            messages.append(" | ");
-                        }
-                        messages.append(current.getMessage());
-                    }
-                    current = current.getCause();
-                }
-                return new ValidationResult(true, messages.toString());
-            }
-        }
-
         @Override
         public void stop() {
             if (server != null) {
@@ -225,8 +173,6 @@ public final class Program {
         private record OperationFailure(String error) {
         }
 
-        private record ValidationResult(boolean rejected, String message) {
-        }
     }
 
     public static final class TriggerEvidence {
@@ -242,23 +188,6 @@ public final class Program {
 
         public synchronized Contracts.EvidenceSnapshot snapshot() {
             return new Contracts.EvidenceSnapshot(java.util.List.copyOf(entries));
-        }
-    }
-
-    public static final class TriggerSocketRecorder implements ZLinkRuntimeEventHandler<ZLinkSocketEvent> {
-        private final TriggerEvidence evidence;
-
-        public TriggerSocketRecorder(TriggerEvidence evidence) {
-            this.evidence = evidence;
-        }
-
-        @Override
-        public void handle(ZLinkSocketEvent event) {
-            evidence.record(
-                "socket",
-                event.sourceName(),
-                event.event().name(),
-                event.localAddr() + "|" + event.remoteAddr());
         }
     }
 

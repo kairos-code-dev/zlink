@@ -1,5 +1,23 @@
 package systems.zlink.framework.runtime.spots;
 
+import systems.zlink.framework.runtime.internal.locations.ZLinkRelocationStore;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationDeleteResult;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationFound;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationMissing;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationReadResult;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationRenewMissing;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationRenewResult;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationRenewed;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationStored;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.time.Duration;
@@ -17,6 +35,7 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActorJoinOperationId;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.*;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.internal.locations
     .ZLinkAggregateRelocationCoordinator;

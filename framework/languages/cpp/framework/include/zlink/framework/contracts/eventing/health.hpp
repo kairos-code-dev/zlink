@@ -1,14 +1,19 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
-#include <zlink/framework/contracts/eventing/events.hpp>
-
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace zlink::framework
 {
+
+enum class health_status_t
+{
+    healthy = 0,
+    degraded = 1,
+    unhealthy = 2
+};
 
 namespace detail
 {

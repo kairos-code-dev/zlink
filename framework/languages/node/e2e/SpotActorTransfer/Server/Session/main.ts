@@ -3,6 +3,7 @@ import { Injectable, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import {
   ZLinkMessageFlowLogMode,
+  ZLinkPeerState,
   type ActorRef,
   type ZLinkMessage,
   type ZLinkLocationRuntimeQuery,
@@ -152,17 +153,18 @@ async function main(): Promise<void> {
           { pageSize: 100 }
         );
         return {
-          rid: String(snapshot.rid),
+          rid: options.rid,
           ready: routeMeshRuntime.isReady(SpotActorTransferNames.mesh),
           readyPeerRids: snapshot.peers
-            .filter(peer => peer.ready)
-            .map(peer => String(peer.rid)),
+            .filter(peer => peer.state === ZLinkPeerState.Ready)
+            .map(peer => String(peer.nodeRid)),
           peers: snapshot.peers.map(peer => ({
-            rid: String(peer.rid),
-            endpoint: peer.endpoint,
+            rid: String(peer.nodeRid),
             state: String(peer.state),
-            ready: peer.ready,
-            lastFailure: peer.lastFailure
+            ready: peer.state === ZLinkPeerState.Ready,
+            lastFailure: peer.unavailableReason === undefined
+              ? undefined
+              : String(peer.unavailableReason)
           })),
           topologyRids: topology.items.map(entry => String(entry.nodeRid)),
           topology: topology.items.map(entry => ({

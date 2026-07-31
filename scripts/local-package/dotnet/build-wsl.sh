@@ -77,9 +77,20 @@ for link in libzlink.so libzlink.so.11; do
 done
 
 package_version="$(sed -n 's:.*<Version>\([^<]*\)</Version>.*:\1:p' "$repo_root/bindings/dotnet/src/Zlink/Zlink.csproj" | head -1)"
-[[ "$package_version" = "$core_version" ]] || {
-  echo ".NET package version $package_version must exactly match Core $core_version" >&2; exit 1;
+node - "$package_version" "$core_version" <<'NODE'
+const [pkg, core] = process.argv.slice(2);
+const parse = value => {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(value);
+  if (!match) throw new Error(`invalid numeric version: ${value}`);
+  return match.slice(1).map(Number);
+};
+const [packageMajor, packageMinor, packagePatch] = parse(pkg);
+const [coreMajor, coreMinor, corePatch] = parse(core);
+if (packageMajor !== coreMajor || packageMinor !== coreMinor || packagePatch < corePatch) {
+  console.error(`.NET package ${pkg} must use Core ${core} major.minor and an equal or newer patch`);
+  process.exit(1);
 }
+NODE
 
 out_dir="$artifact_root/nuget"
 mkdir -p "$out_dir"

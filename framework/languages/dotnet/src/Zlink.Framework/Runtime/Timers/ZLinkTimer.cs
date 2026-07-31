@@ -25,6 +25,7 @@ internal sealed class ZLinkTimer : IZLinkTimer
     private DateTimeOffset? _nextScheduledAt;
     private ZLinkTimerTick? _pendingTick;
     private TaskCompletionSource? _resume;
+    private TaskCompletionSource? _activeDispatch;
     private Task? _finalization;
     private int _disposed;
 
@@ -102,6 +103,17 @@ internal sealed class ZLinkTimer : IZLinkTimer
     {
         lock (_scheduleGate)
             return SnapshotUnderLock();
+    }
+
+    internal Task WaitForFrozenDispatchAsync()
+    {
+        lock (_scheduleGate)
+        {
+            if (_resume is null)
+                throw new InvalidOperationException(
+                    "A logical timer dispatch can be drained only while frozen.");
+            return _activeDispatch?.Task ?? Task.CompletedTask;
+        }
     }
 
     internal void RestoreFrozen(ZLinkTimerLogicalSnapshot snapshot)
@@ -259,6 +271,8 @@ internal sealed class ZLinkTimer : IZLinkTimer
             await WaitUntilResumedAsync(cancellationToken).ConfigureAwait(false);
             lock (_scheduleGate)
             {
+                if (_resume is not null)
+                    continue;
                 if (_pendingTick is { } existing)
                 {
                     tick = existing;
@@ -293,21 +307,40 @@ internal sealed class ZLinkTimer : IZLinkTimer
         ZLinkTimerTick tick,
         CancellationToken cancellationToken)
     {
-        var outcome = await _callbacks
-            .DispatchTickAsync(tick, cancellationToken)
-            .ConfigureAwait(false);
+        TaskCompletionSource dispatch;
         lock (_scheduleGate)
         {
-            if (_pendingTick != tick) return outcome.KeepRunning;
-            if (!outcome.Delivered) return outcome.KeepRunning;
-            if (outcome.KeepRunning)
-            {
-                _deliveryIndex = tick.DeliveryIndex;
-                _lastScheduledIndex = tick.ScheduledIndex;
-            }
-            _pendingTick = null;
+            dispatch = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            _activeDispatch = dispatch;
         }
-        return outcome.KeepRunning;
+        try
+        {
+            var outcome = await _callbacks
+                .DispatchTickAsync(tick, cancellationToken)
+                .ConfigureAwait(false);
+            lock (_scheduleGate)
+            {
+                if (_pendingTick != tick) return outcome.KeepRunning;
+                if (!outcome.Delivered) return outcome.KeepRunning;
+                if (outcome.KeepRunning)
+                {
+                    _deliveryIndex = tick.DeliveryIndex;
+                    _lastScheduledIndex = tick.ScheduledIndex;
+                }
+                _pendingTick = null;
+            }
+            return outcome.KeepRunning;
+        }
+        finally
+        {
+            lock (_scheduleGate)
+            {
+                if (ReferenceEquals(_activeDispatch, dispatch))
+                    _activeDispatch = null;
+            }
+            dispatch.TrySetResult();
+        }
     }
 
     private async ValueTask WaitUntilResumedAsync(
@@ -407,7 +440,6 @@ internal sealed class ZLinkTimer : IZLinkTimer
             ZLinkTimerTick tick,
             CancellationToken cancellationToken)
         {
-            ZLinkRuntimeMetrics.RecordTimerLateness(tick.Delay);
             using var tickScope = enterTickScope?.Invoke();
             try
             {

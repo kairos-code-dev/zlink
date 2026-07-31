@@ -80,6 +80,8 @@ assembly Zlink.HttpClient
     method virtual Zlink.HttpClient.ZLinkHttpRequestBuilder Body<T>(T? value [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
       generic T variance=invariant nullable=nullable
     method System.Threading.Tasks.ValueTask<Zlink.HttpClient.RawHttpResponse> DownloadAsync(System.Action<System.ReadOnlyMemory<System.Byte>> sink [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method System.Threading.Tasks.ValueTask<T> Fetch<T>(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+      generic T variance=invariant nullable=unspecified
     method virtual Zlink.HttpClient.ZLinkHttpRequestBuilder Form(System.String name [nullability=read:not-null,write:not-null], System.String value [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method virtual Zlink.HttpClient.ZLinkHttpRequestBuilder Header(System.String name [nullability=read:not-null,write:not-null], System.String value [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method virtual Zlink.HttpClient.ZLinkHttpRequestBuilder MultipartFile(System.String name [nullability=read:not-null,write:not-null], System.String filename [nullability=read:not-null,write:not-null], System.String content [nullability=read:not-null,write:not-null], System.String contentType [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]

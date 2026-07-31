@@ -39,7 +39,6 @@ if rg -n 'runScaffold|waitNotifications|readNotifications|--stream-runtime' \
   exit 1
 fi
 coroutine_hosts=(
-  Server/CourierGateway/src/main/kotlin
   Server/CourierSession/src/main/kotlin
   Server/CourierSpotNode/src/main/kotlin
   Server/CustomerGateway/src/main/kotlin
@@ -84,9 +83,9 @@ print_logs() {
 trap cleanup EXIT
 
 reserve_ports() {
-  local base=$((20000 + ((RANDOM + $$) % 1000) * 15 % 9000))
+  local base=$((20000 + ((RANDOM + $$) % 1000) * 14 % 9000))
   local endpoints=()
-  for offset in $(seq 0 14); do
+  for offset in $(seq 0 13); do
     endpoints+=("127.0.0.1:$((base + offset))")
   done
   echo "${endpoints[*]}"
@@ -104,7 +103,7 @@ build_framework_jars() {
   )
 }
 
-read -r tracking tracking_spot customer_stream courier_stream courier_gateway dispatch_http dispatch_channel customer_spot customer_router courier_node1_spot courier_node2_spot courier_node1_router courier_node2_router courier_session_router courier_session_spot < <(reserve_ports)
+read -r tracking tracking_spot customer_stream courier_stream dispatch_http dispatch_channel customer_spot customer_router courier_node1_spot courier_node2_spot courier_node1_router courier_node2_router courier_session_router courier_session_spot < <(reserve_ports)
 
 endpoint_host() { echo "${1%:*}"; }
 endpoint_port() { echo "${1##*:}"; }
@@ -121,7 +120,6 @@ trackingChannelEndpoint=tcp://$(endpoint_host "${tracking}"):$(endpoint_port "${
 trackingSpotEndpoint=tcp://$(endpoint_host "${tracking_spot}"):$(endpoint_port "${tracking_spot}")
 customerStreamEndpoint=tcp://$(endpoint_host "${customer_stream}"):$(endpoint_port "${customer_stream}")
 courierStreamEndpoint=tcp://$(endpoint_host "${courier_stream}"):$(endpoint_port "${courier_stream}")
-courierGatewayChannelEndpoint=tcp://$(endpoint_host "${courier_gateway}"):$(endpoint_port "${courier_gateway}")
 dispatchHttpEndpoint=http://$(endpoint_host "${dispatch_http}"):$(endpoint_port "${dispatch_http}")
 dispatchChannelEndpoint=tcp://$(endpoint_host "${dispatch_channel}"):$(endpoint_port "${dispatch_channel}")
 customerSpotEndpoint=tcp://$(endpoint_host "${customer_spot}"):$(endpoint_port "${customer_spot}")
@@ -145,7 +143,6 @@ customer_gateway_config="${config_dir}/customer-gateway.properties"
 courier_session_config="${config_dir}/courier-session.properties"
 courier_node1_config="${config_dir}/courier-node1.properties"
 courier_node2_config="${config_dir}/courier-node2.properties"
-courier_gateway_config="${config_dir}/courier-gateway.properties"
 dispatch_config="${config_dir}/dispatch.properties"
 client_config="${config_dir}/client.properties"
 write_config "$tracking_config" node1
@@ -153,7 +150,6 @@ write_config "$customer_gateway_config" node1
 write_config "$courier_session_config" node1
 write_config "$courier_node1_config" node1
 write_config "$courier_node2_config" node2
-write_config "$courier_gateway_config" node1
 write_config "$dispatch_config" node1
 write_config "$client_config" node1
 
@@ -163,7 +159,6 @@ gradle_run \
   :Server:CustomerGateway:installDist \
   :Server:CourierSession:installDist \
   :Server:CourierSpotNode:installDist \
-  :Server:CourierGateway:installDist \
   :Server:Dispatch:installDist \
   :Client:installDist
 
@@ -191,10 +186,6 @@ wait_port "$(endpoint_host "${courier_node1_spot}")" "$(endpoint_port "${courier
 wait_port "$(endpoint_host "${courier_node2_spot}")" "$(endpoint_port "${courier_node2_spot}")"
 wait_port "$(endpoint_host "${courier_node1_router}")" "$(endpoint_port "${courier_node1_router}")"
 wait_port "$(endpoint_host "${courier_node2_router}")" "$(endpoint_port "${courier_node2_router}")"
-
-"$(app_bin Server/CourierGateway CourierGateway)" --config "$courier_gateway_config" >"${log_dir}/courier-gateway.log" 2>&1 &
-pids+=("$!")
-wait_port "$(endpoint_host "${courier_gateway}")" "$(endpoint_port "${courier_gateway}")"
 
 "$(app_bin Server/Dispatch Dispatch)" --config "$dispatch_config" >"${log_dir}/dispatch.log" 2>&1 &
 pids+=("$!")

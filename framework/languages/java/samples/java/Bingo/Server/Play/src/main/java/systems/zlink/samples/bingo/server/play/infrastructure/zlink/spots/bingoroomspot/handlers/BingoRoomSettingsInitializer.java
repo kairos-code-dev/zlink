@@ -5,6 +5,7 @@ import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.BingoRoomSpot;
 import systems.zlink.samples.bingo.server.play.domain.bingo.BingoRoomModels;
+import systems.zlink.samples.bingo.shared.contracts.Messages;
 
 public final class BingoRoomSettingsInitializer {
     public ZLinkSpotCreateResponse handle(
@@ -21,6 +22,15 @@ public final class BingoRoomSettingsInitializer {
                 0,
                 SampleTimings.DrawPeriod.toMillis());
         }
-        return request.decode(BingoRoomModels.BingoRoomSettings.class);
+        Messages.BingoRoomSettingsPayload settings =
+            request.decode(Messages.BingoRoomSettingsPayload.class);
+        return new BingoRoomModels.BingoRoomSettings(
+            settings.getRoomName(),
+            settings.getMode(),
+            settings.getRequiredPlayers(),
+            settings.getMaxDrawNumber(),
+            SampleTimings.DrawPeriod.toMillis(),
+            settings.getPurpose(),
+            settings.hasObservedRoomId() ? settings.getObservedRoomId() : null);
     }
 }

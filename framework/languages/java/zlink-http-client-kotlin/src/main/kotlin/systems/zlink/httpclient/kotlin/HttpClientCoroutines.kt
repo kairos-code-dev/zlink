@@ -40,7 +40,7 @@ suspend inline fun <reified T> ZLinkHttpRequestBuilder.await(): HttpResponse<T> 
 /** Reified convenience for [fetch]. */
 @JacocoGenerated
 suspend inline fun <reified T> ZLinkHttpRequestBuilder.fetch(): T =
-    await<T>().body()
+    fetch(T::class.java).await()
 
 /** Suspends until the streaming download completes, delivering chunks to [sink]. */
 suspend fun ZLinkHttpRequestBuilder.awaitDownload(sink: (ByteArray) -> Unit): RawHttpResponse =

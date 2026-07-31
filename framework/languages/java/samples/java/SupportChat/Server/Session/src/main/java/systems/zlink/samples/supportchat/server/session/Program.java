@@ -55,12 +55,12 @@ public final class Program {
                 .traceLabel("session");
             options.configureLocations();
             options.addClientServerChannel(SampleNames.ApiChannel)
-                .enableClient();
+                .client();
             options.addClientServerChannel(SampleNames.SupportChannel)
-                .enableClient();
+                .client();
             ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.SupportActorMesh);
             node.listen(session.routerEndpoint())
-                .useAllocatedRoutingId(16, "support-session");
+                .setRoutingIdPrefix("support-session");
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(session.streamEndpoint())
                 .enableActorDispatch(SampleNames.SupportActorMesh)

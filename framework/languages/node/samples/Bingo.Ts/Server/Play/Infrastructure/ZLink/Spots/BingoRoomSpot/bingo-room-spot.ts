@@ -20,16 +20,10 @@ import { BingoRoomStatus } from '../../../../Domain/Bingo/bingo-room-game';
 import { createRoomSettings, roomSettingsFromPayload } from '../../../../Domain/Bingo/bingo-room-models';
 import { SampleNames } from '../../../../../Configuration/sample-names';
 import { BingoRoomTimerHandler } from './Handlers/bingo-room-timer-handler';
-import {
-  SubmitBingoCardAtSpotHandler,
-  VerifyStopObservingAtSpotHandler
-} from './Handlers/bingo-room-operation-handlers';
 import { PlayerActor } from '../../Actors/player-actor';
 import { LeaveFinishedBingoRoom } from '../../../../../../Shared/Contracts/bingo-messages.generated';
 import type {
-  ActorRef,
   ZLinkActorClient,
-  ZLinkActorMembership,
   ZLinkMessage,
   ZLinkChannelClient,
   ZLinkSpot,
@@ -42,7 +36,10 @@ import type {
   BingoRoomGame as BingoRoomGameType,
   BingoRoomSnapshot
 } from '../../../../Domain/Bingo/bingo-room-game';
-import type { BingoRoomSettings as BingoRoomRuntimeSettings } from '../../../../Domain/Bingo/bingo-room-models';
+import type {
+  BingoRoomSettings as BingoRoomRuntimeSettings,
+  BingoRoomSettingsInput
+} from '../../../../Domain/Bingo/bingo-room-models';
 import type {
   BingoRoomJoinReq,
   GetPlayerRecordRes,
@@ -62,8 +59,8 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
   private roomId: string;
   private game: BingoRoomGameType;
   private settings: BingoRoomRuntimeSettings;
-  private readonly observerActors = new Map<string, ActorRef>();
-  private readonly playerRefs = new Map<string, ActorRef>();
+  private readonly observerActors = new Set<string>();
+  private readonly playerIds = new Set<string>();
   private readonly pendingJoins = new Map<string, BingoRoomJoinReq>();
   private readonly pendingPlayerJoins = new Map<string, {
     readonly joined: boolean;
@@ -83,22 +80,15 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     this.game = new BingoRoomGame(this.roomId, this.settings);
   }
 
-  configure(): void {
-    this.context.handlers.addPacket(SubmitBingoCardAtSpotHandler);
-    this.context.handlers.addPacket(VerifyStopObservingAtSpotHandler);
-  }
-
   async onCreate(request: ZLinkMessage): Promise<ZLinkSpotCreateResponse> {
-    this.roomId = this.context.spotRid;
-    const settings = request.decode<unknown>(Object as never);
-    if (settings !== undefined) {
-      this.initializeRoom(roomSettingsFromPayload(settings));
-    }
+    this.roomId = this.context.spotId;
+    const settings = request.decode<BingoRoomSettingsInput>(Object as never);
+    this.initializeRoom(roomSettingsFromPayload(settings));
     return { accepted: true };
   }
 
   async onInitialize(): Promise<void> {
-    this.roomId = this.context.spotRid;
+    this.roomId = this.context.spotId;
   }
 
   async onClosing(): Promise<void> {
@@ -152,22 +142,22 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     this.cleanupStarted = false;
   }
 
-  async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
-    const actorId = actor.actor.actorId;
+  async onJoinedActor(actor: PlayerActor): Promise<void> {
+    const actorId = actor.actorId;
     const request = this.pendingJoins.get(actorId);
     if (request === undefined) {
       return;
     }
     this.pendingJoins.delete(actorId);
     if (request.observeOnly) {
-      this.observerActors.set(actorId, actor.actor);
-      console.error(`bingo observer joined spot=${this.context.spotRid} actor=${actorId} room=${request.roomId}`);
+      this.observerActors.add(actorId);
+      console.error(`bingo observer joined spot=${this.context.spotId} actor=${actorId} room=${request.roomId}`);
       return;
     }
     // The membership callback is the first place the room holds the joining
     // Actor's reference, so player pushes are wired here rather than during
     // admission, which observes identity only.
-    this.playerRefs.set(actorId, actor.actor);
+    this.playerIds.add(actorId);
     const joined = this.pendingPlayerJoins.get(actorId);
     this.pendingPlayerJoins.delete(actorId);
     const player = this.game.players.find((candidate) => candidate.actor.actorId === actorId);
@@ -176,7 +166,6 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     }
     const record = await this.channels
       .requestToChannel(
-        SampleNames.roomSpotNode,
         SampleNames.apiChannel,
         new GetPlayerRecordReq({ actorId })
       )
@@ -192,36 +181,36 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     }
   }
 
-  async onLeaveActor(actor: ZLinkActorMembership): Promise<void> {
-    const actorId = actor.actor.actorId;
+  async onLeaveActor(actor: PlayerActor): Promise<void> {
+    const actorId = actor.actorId;
     if (this.observerActors.delete(actorId)) {
-      console.error(`bingo-lifecycle room-leave actor=${actorId} spot=${this.context.spotRid}`);
+      console.error(`bingo-lifecycle room-leave actor=${actorId} spot=${this.context.spotId}`);
       return;
     }
     const state = this.snapshot();
     const record = await this.channels
-      .requestToChannel(SampleNames.roomSpotNode, SampleNames.apiChannel, new ReportBingoResultReq({
+      .requestToChannel(SampleNames.apiChannel, new ReportBingoResultReq({
         roomId: this.roomId,
         actorId,
         won: state.winners.includes(actorId),
         finalDrawSeq: state.drawSeq
       }))
       .submit<ReportBingoResultRes>();
-    this.playerRefs.delete(actorId);
+    this.playerIds.delete(actorId);
     console.error(`bingo-record reported actor=${actorId} wins=${record.wins} losses=${record.losses}`);
-    console.error(`bingo-lifecycle room-leave actor=${actorId} spot=${this.context.spotRid}`);
-    if (this.cleanupStarted && this.playerRefs.size === 0) {
+    console.error(`bingo-lifecycle room-leave actor=${actorId} spot=${this.context.spotId}`);
+    if (this.cleanupStarted && this.playerIds.size === 0) {
       await this.context.close();
     }
   }
 
-  async onDisconnectActor(_actor: ZLinkActorMembership): Promise<void> {}
+  async onDisconnectActor(_actor: PlayerActor): Promise<void> {}
 
   async submitCard(actorId: string, request: SubmitBingoCardReq): Promise<SubmitBingoCardRes> {
     this.game.submitCard(actorId, request.card);
     if (this.drawTimer === undefined && this.game.canDraw()) {
       this.drawTimer = await this.context.addTimer('bingo-draw', 200, BingoRoomTimerHandler);
-      console.error(`bingo-lifecycle timer-started spot=${this.context.spotRid}`);
+      console.error(`bingo-lifecycle timer-started spot=${this.context.spotId}`);
     }
     return new SubmitBingoCardRes({ state: this.snapshot() });
   }
@@ -256,11 +245,11 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
       this.observerActors.size === 0
     ) {
       console.error(
-        `bingo reward ignored spot=${this.context.spotRid} observer=${this.isObserverRoom()} observed=${this.settings.observedRoomId ?? '-'} event=${event.roomId} observers=${this.observerActors.size}`
+        `bingo reward ignored spot=${this.context.spotId} observer=${this.isObserverRoom()} observed=${this.settings.observedRoomId ?? '-'} event=${event.roomId} observers=${this.observerActors.size}`
       );
       return;
     }
-    console.error(`bingo reward announcing spot=${this.context.spotRid} observers=${this.observerActors.size}`);
+    console.error(`bingo reward announcing spot=${this.context.spotId} observers=${this.observerActors.size}`);
     await Promise.all([...this.observerActors.values()].map((observer) =>
       this.notifyActor(
         observer,
@@ -286,10 +275,10 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     }
     this.cleanupStarted = true;
     for (const player of [...this.game.players]) {
-      const actor = this.playerRefs.get(player.actor.actorId);
-      if (actor !== undefined) {
+      const actorId = player.actor.actorId;
+      if (this.playerIds.has(actorId)) {
         await this.actorClient
-          .sendToActor(actor.actorId, new LeaveFinishedBingoRoom({}))
+          .sendToActor(actorId, new LeaveFinishedBingoRoom({}))
           .submit();
       }
     }
@@ -299,13 +288,13 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     return this.game.snapshot();
   }
 
-  private playerActors(): ActorRef[] {
+  private playerActors(): string[] {
     return this.game.players
-      .map((player) => this.playerRefs.get(player.actor.actorId))
-      .filter((actor): actor is ActorRef => actor !== undefined);
+      .map((player) => player.actor.actorId)
+      .filter((actorId) => this.playerIds.has(actorId));
   }
 
-  private async pushPlayers(players: ActorRef[], payload: unknown): Promise<void> {
+  private async pushPlayers(players: string[], payload: unknown): Promise<void> {
     await Promise.all(players.map((player) => this.notifyActor(player, payload)));
   }
 
@@ -317,7 +306,7 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     state: BingoRoomSnapshot
   ): Promise<void> {
     await this.pushPlayers(
-      this.playerActors().filter((entry) => entry.actorId !== actorId),
+      this.playerActors().filter((entry) => entry !== actorId),
       new PlayerJoinedNotify({
         roomId: this.roomId,
         actorId,
@@ -374,9 +363,9 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
       .submit();
   }
 
-  private async notifyActor(actor: ActorRef, payload: unknown): Promise<void> {
+  private async notifyActor(actorId: string, payload: unknown): Promise<void> {
     await this.actorClient
-      .sendToActor(actor.actorId, payload)
+      .sendToActor(actorId, payload)
       .submit();
   }
 

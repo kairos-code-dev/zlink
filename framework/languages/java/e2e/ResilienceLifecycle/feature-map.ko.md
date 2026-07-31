@@ -57,7 +57,7 @@ snapshot을 사용한다. 10.0.0에서는 `ZLinkRouteMeshRuntimeOptions.channel(
   유지하는지 확인한다.
 - `RL-D2`: dispatch-error observer가 예외를 던지도록 fault를 켠 뒤 handler 없는 request를 보내고,
   observer failure가 provider process와 messaging 경로를 멈추지 않는지 후속 request와 evidence로
-  확인한다. 또한 `ZLinkRuntimeErrorSink`가 `zlink.runtime_error`/`observer_failed`/
+  확인한다. 또한 structured logger가 `zlink.runtime_error`/`observer_failed`/
   `message_flow_observer` event를 한 번 받는지 확인해야 한다.
 - `RL-D3`: 명시 `ZLinkMessageFlowObserver`가 미등록 request의 `outcome=failed`,
   `reason=no_handler`, `action=reply_error`, `packet_name` marker를 evidence에 남기고, 이후

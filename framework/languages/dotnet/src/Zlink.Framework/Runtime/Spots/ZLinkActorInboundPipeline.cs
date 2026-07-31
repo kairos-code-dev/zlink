@@ -108,6 +108,32 @@ internal sealed class ZLinkActorInboundPipeline(
             .ConfigureAwait(false);
     }
 
+    internal async ValueTask DispatchSourceRestoreAsync(
+        ZLinkSpotActorFrameBatch frames,
+        Action acknowledgeFrame,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(acknowledgeFrame);
+        try
+        {
+            for (var i = 0; i < frames.Count; i++)
+            {
+                using var frame = frames[i];
+                await DispatchFrameAsync(
+                        frame,
+                        cancellationToken,
+                        allowCapture: false,
+                        acknowledgeHandledFrame: acknowledgeFrame,
+                        relocationReplay: false)
+                    .ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            frames.Dispose();
+        }
+    }
+
     internal async ValueTask DispatchReplayAsync(
         ZLinkSpotActorFrameBatch frames,
         Action acknowledgeFrame,
@@ -244,7 +270,8 @@ internal sealed class ZLinkActorInboundPipeline(
         bool allowCapture,
         Action? acknowledgeHandledFrame = null,
         Func<ZLinkSpotActorFrame, ZLinkActorReply?, CancellationToken, ValueTask>?
-            completeCanonicalReplay = null)
+            completeCanonicalReplay = null,
+        bool? relocationReplay = null)
     {
         using var flow = ZLinkFlowContext.Enter(
             frame.Header.FlowId,
@@ -335,6 +362,7 @@ internal sealed class ZLinkActorInboundPipeline(
                     frame,
                     acknowledgeHandledFrame,
                     completeCanonicalReplay,
+                    relocationReplay,
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -480,6 +508,7 @@ internal sealed class ZLinkActorInboundPipeline(
         Action? acknowledgeHandledFrame,
         Func<ZLinkSpotActorFrame, ZLinkActorReply?, CancellationToken, ValueTask>?
             completeCanonicalReplay,
+        bool? relocationReplay,
         CancellationToken cancellationToken)
     {
         if (ZLinkActorBoundSessionRelay.IsSessionDisconnectedPacket(frame.Header))
@@ -537,8 +566,9 @@ internal sealed class ZLinkActorInboundPipeline(
                         state,
                         frame.Header,
                         frame.Body,
-                        relocationReplay: acknowledgeHandledFrame is not null
-                            || completeCanonicalReplay is not null,
+                        relocationReplay: relocationReplay
+                            ?? (acknowledgeHandledFrame is not null
+                                || completeCanonicalReplay is not null),
                         cancellationToken)
                     .ConfigureAwait(false);
                 if (completeCanonicalReplay is not null)
@@ -603,8 +633,9 @@ internal sealed class ZLinkActorInboundPipeline(
                     state,
                     frame.Header,
                     frame.Body,
-                    relocationReplay: acknowledgeHandledFrame is not null
-                        || completeCanonicalReplay is not null,
+                    relocationReplay: relocationReplay
+                        ?? (acknowledgeHandledFrame is not null
+                            || completeCanonicalReplay is not null),
                     cancellationToken)
                 .ConfigureAwait(false);
             if (completeCanonicalReplay is not null)

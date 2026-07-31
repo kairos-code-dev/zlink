@@ -14,8 +14,8 @@ typealias MatchBingoReq = Messages.MatchBingoReq
 typealias MatchBingoRes = Messages.MatchBingoRes
 typealias MatchBingoApiReq = Messages.MatchBingoApiReq
 typealias MatchBingoApiRes = Messages.MatchBingoApiRes
-typealias AllocateBingoRoomReq = Messages.AllocateBingoRoomReq
-typealias AllocateBingoRoomRes = Messages.AllocateBingoRoomRes
+typealias ReserveBingoRoomReq = Messages.ReserveBingoRoomReq
+typealias ReserveBingoRoomRes = Messages.ReserveBingoRoomRes
 typealias BingoRoomSettingsPayload = Messages.BingoRoomSettingsPayload
 typealias BingoRoomJoinReq = Messages.BingoRoomJoinReq
 typealias BingoRoomJoinRes = Messages.BingoRoomJoinRes
@@ -158,18 +158,24 @@ fun MatchBingoApiRes(roomId: String): MatchBingoApiRes =
         .setRoomId(roomId)
         .build()
 
-fun AllocateBingoRoomReq(
+fun ReserveBingoRoomReq(
     actorId: String,
     mode: String,
-): AllocateBingoRoomReq =
-    Messages.AllocateBingoRoomReq.newBuilder()
+    levelBucket: String,
+): ReserveBingoRoomReq =
+    Messages.ReserveBingoRoomReq.newBuilder()
         .setActorId(actorId)
         .setMode(mode)
+        .setLevelBucket(levelBucket)
         .build()
 
-fun AllocateBingoRoomRes(roomId: String): AllocateBingoRoomRes =
-    Messages.AllocateBingoRoomRes.newBuilder()
+fun ReserveBingoRoomRes(
+    roomId: String,
+    settings: BingoRoomSettingsPayload,
+): ReserveBingoRoomRes =
+    Messages.ReserveBingoRoomRes.newBuilder()
         .setRoomId(roomId)
+        .setSettings(settings)
         .build()
 
 fun BingoRoomSettingsPayload(
@@ -177,7 +183,7 @@ fun BingoRoomSettingsPayload(
     roomName: String,
     requiredPlayers: Int,
     maxDrawNumber: Int,
-    drawPeriodMillis: Long,
+    purpose: String,
     observedRoomId: String,
 ): BingoRoomSettingsPayload =
     Messages.BingoRoomSettingsPayload.newBuilder()
@@ -185,8 +191,8 @@ fun BingoRoomSettingsPayload(
         .setRoomName(roomName)
         .setRequiredPlayers(requiredPlayers)
         .setMaxDrawNumber(maxDrawNumber)
-        .setDrawPeriodMillis(drawPeriodMillis)
-        .setObservedRoomId(observedRoomId)
+        .setPurpose(purpose)
+        .apply { if (observedRoomId.isNotBlank()) setObservedRoomId(observedRoomId) }
         .build()
 
 fun BingoRoomJoinReq(

@@ -23,6 +23,35 @@ using framework::message_t;
 
 class bingo_room_spot_t;
 
+struct bingo_room_relocation_state_t
+{
+    bingo_room_state_t game;
+    bool is_observer = false;
+    std::string observed_room_id;
+    bool cleanup_started = false;
+};
+
+inline void to_json (
+  nlohmann::json &json,
+  const bingo_room_relocation_state_t &value)
+{
+    json = {{"game", value.game},
+            {"isObserver", value.is_observer},
+            {"observedRoomId", value.observed_room_id},
+            {"cleanupStarted", value.cleanup_started}};
+}
+
+inline void from_json (
+  const nlohmann::json &json,
+  bingo_room_relocation_state_t &value)
+{
+    value.game = json.value ("game", bingo_room_state_t{});
+    value.is_observer = json.value ("isObserver", false);
+    value.observed_room_id =
+      json.value ("observedRoomId", std::string{});
+    value.cleanup_started = json.value ("cleanupStarted", false);
+}
+
 class bingo_room_draw_timer_handler_t
 {
   public:
@@ -80,6 +109,20 @@ class bingo_room_spot_t : public spot_t<player_actor_t>
         co_return;
     }
 
+    task_t<void> on_relocation_ready_completed (
+      const spot_relocation_ready_completion_t &completion) override
+    {
+        std::cout << "bingo room relocation-ready completed room="
+                  << _context->spot_id ()
+                  << " outcome="
+                  << (completion.outcome
+                            == spot_relocation_ready_outcome_t::relocated
+                          ? "relocated"
+                          : "continued")
+                  << '\n';
+        co_return;
+    }
+
     task_t<spot_actor_join_response_t>
     on_actor_join (std::string_view actor_id,
                    const message_t &request_message) override
@@ -123,7 +166,7 @@ class bingo_room_spot_t : public spot_t<player_actor_t>
 
     task_t<void> on_actor_joined (player_actor_t &actor) override
     {
-        const auto pending = _pending_joins.find (actor.actor.actor_id);
+        const auto pending = _pending_joins.find (actor.actor_id);
         if (pending == _pending_joins.end ()) {
             throw std::runtime_error ("accepted bingo actor admission is missing");
         }
@@ -131,23 +174,26 @@ class bingo_room_spot_t : public spot_t<player_actor_t>
         _game.set_room_id_if_empty (request.room_id);
         if (request.observe_only) {
             _pending_joins.erase (pending);
-            observers[actor.actor.actor_id] = &actor;
+            observers[actor.actor_id] = &actor;
+            // Observer membership is complete, so this turn is a safe
+            // application-signaled relocation boundary.
+            _context->relocation_ready ().defer ();
         } else {
             get_player_record_res_t record;
             try {
                 record = co_await _context->outbound ()
                            .request (sample_names_t::api_channel,
-                                     get_player_record_req_t{actor.actor.actor_id})
+                                     get_player_record_req_t{actor.actor_id})
                            .yield<get_player_record_res_t> ();
             }
             catch (...) {
-                _pending_joins.erase (actor.actor.actor_id);
+                _pending_joins.erase (actor.actor_id);
                 throw;
             }
-            const auto resumed = _pending_joins.find (actor.actor.actor_id);
+            const auto resumed = _pending_joins.find (actor.actor_id);
             if (resumed == _pending_joins.end () || resumed->second.room_id != request.room_id
                 || !_game.can_accept_player ()) {
-                _pending_joins.erase (actor.actor.actor_id);
+                _pending_joins.erase (actor.actor_id);
                 (void) co_await _context->leave_actor (
                   actor_ref_for (actor), actor);
                 co_return;
@@ -155,12 +201,12 @@ class bingo_room_spot_t : public spot_t<player_actor_t>
             _pending_joins.erase (resumed);
             const auto display_name = actor.display_name.empty () ? request.display_name
                                                                   : actor.display_name;
-            actors[actor.actor.actor_id] = &actor;
-            const auto joined = _game.join (actor.actor.actor_id, display_name,
+            actors[actor.actor_id] = &actor;
+            const auto joined = _game.join (actor.actor_id, display_name,
                                             record.wins, record.losses);
-            send_to_players (joined.player_joined, actor.actor.actor_id);
+            send_to_players (joined.player_joined, actor.actor_id);
             if (joined.game_started) {
-                send_to_players (*joined.game_started, actor.actor.actor_id);
+                send_to_players (*joined.game_started, actor.actor_id);
                 actor.push (*joined.game_started);
             }
             std::cout << "bingo player record loaded actor=" << record.actor_id
@@ -171,17 +217,17 @@ class bingo_room_spot_t : public spot_t<player_actor_t>
 
     task_t<void> on_leave_actor (player_actor_t &actor) override
     {
-        const auto player = actors.find (actor.actor.actor_id);
+        const auto player = actors.find (actor.actor_id);
         if (player != actors.end ()) {
             const auto final_state = _game.snapshot ();
             const auto won = std::find (final_state.winners.begin (), final_state.winners.end (),
-                                        actor.actor.actor_id)
+                                        actor.actor_id)
                              != final_state.winners.end ();
             auto report_pending =
               _context->outbound ()
                 .request (sample_names_t::api_channel,
                           report_bingo_result_req_t{final_state.room_id,
-                                                    actor.actor.actor_id,
+                                                    actor.actor_id,
                                                     won,
                                                     final_state.draw_seq})
                 .yield<report_bingo_result_res_t> ();
@@ -190,9 +236,9 @@ class bingo_room_spot_t : public spot_t<player_actor_t>
                       << " actor=" << record.actor_id << " won=" << (won ? "true" : "false")
                       << " wins=" << record.wins << " losses=" << record.losses << '\n';
         }
-        actors.erase (actor.actor.actor_id);
-        observers.erase (actor.actor.actor_id);
-        _game.leave (actor.actor.actor_id);
+        actors.erase (actor.actor_id);
+        observers.erase (actor.actor_id);
+        _game.leave (actor.actor_id);
         if (actors.empty () && observers.empty ()) {
             (void) co_await _context->close ();
         }
@@ -207,9 +253,24 @@ class bingo_room_spot_t : public spot_t<player_actor_t>
 
     const bingo_room_state_t &snapshot () const noexcept { return _game.snapshot (); }
 
+    bingo_room_relocation_state_t relocation_state () const
+    {
+        return {_game.snapshot (), _is_observer, _observed_room_id,
+                cleanup_started};
+    }
+
+    void restore_relocation_state (
+      bingo_room_relocation_state_t state)
+    {
+        _game.restore (std::move (state.game));
+        _is_observer = state.is_observer;
+        _observed_room_id = std::move (state.observed_room_id);
+        cleanup_started = state.cleanup_started;
+    }
+
     void record_observer_returned_to_entry_spot (const player_actor_t &actor) const
     {
-        std::cout << "observer returned to entry spot actor=" << actor.actor.actor_id << '\n';
+        std::cout << "observer returned to entry spot actor=" << actor.actor_id << '\n';
     }
 
   private:
@@ -266,9 +327,7 @@ class bingo_room_spot_t : public spot_t<player_actor_t>
 
     static actor_ref_t actor_ref_for (const player_actor_t &actor)
     {
-        return actor_ref_t (actor.actor.node_rid,
-                            sample_names_t::player_actor_type, actor.actor.actor_id,
-                            actor.actor.generation);
+        return actor.context ().actor_ref ();
     }
 
     std::optional<spot_context_t> _context;

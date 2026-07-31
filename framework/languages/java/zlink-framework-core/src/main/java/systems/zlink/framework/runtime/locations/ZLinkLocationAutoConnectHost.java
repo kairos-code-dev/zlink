@@ -81,7 +81,7 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
             return CompletableFuture.failedFuture(
                 new systems.zlink.framework.errors.ZLinkConfigurationException(
                     "automatic ClientServer channels require "
-                        + "ZLinkLocationStore with ClientServer descriptors"));
+                        + "ZLinkLocationRepository with ClientServer descriptors"));
         }
         boolean hasAutomaticFanoutSubscriber = surfaces.stream().anyMatch(
             surface -> surface.type() == ZLinkAutoConnectType.FANOUT
@@ -98,7 +98,7 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
             return CompletableFuture.failedFuture(
                 new systems.zlink.framework.errors.ZLinkConfigurationException(
                     "automatic classic fanout requires "
-                        + "ZLinkLocationStore with fanout descriptors"));
+                        + "ZLinkLocationRepository with fanout descriptors"));
         }
         for (ZLinkChannelRuntime.AutoConnectSurface surface : surfaces) {
             if (surface.type() == ZLinkAutoConnectType.CLIENT_SERVER
@@ -417,6 +417,10 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
         private final ZLinkSpotRuntime spots;
         private final Map<String, Long> connectionIntents =
             new java.util.concurrent.ConcurrentHashMap<>();
+        private final Map<String, Long> connectionAttemptNanos =
+            new java.util.concurrent.ConcurrentHashMap<>();
+        private static final long ADMISSION_RETRY_NANOS =
+            java.time.Duration.ofSeconds(1).toNanos();
 
         MeshNodeExecutor(
             ZLinkInternalMeshNode node,
@@ -433,15 +437,44 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
         }
 
         @Override
+        public void observeAdmissionExpectation(
+            ZLinkAutoConnectPlanner.Target target) {
+            node.observePeerAdmissionExpectation(
+                target.nodeRid(),
+                target.endpoint(),
+                target.lifecycleGeneration(),
+                target.metadata().getOrDefault(
+                    ZLinkAutoConnectPlanner
+                        .SECURITY_IDENTITY_METADATA_KEY,
+                    target.nodeRid().toString()));
+        }
+
+        @Override
+        public void forgetAdmissionExpectation(
+            ZLinkAutoConnectPlanner.Target target) {
+            node.forgetPeerAdmissionExpectation(target.nodeRid());
+        }
+
+        @Override
         public boolean connect(ZLinkAutoConnectPlanner.Target target) {
             if (manualEndpoints.contains(target.endpoint())) {
                 return true;
             }
             try {
                 long intent = ZLinkAutoConnectPlanner.hasRid(target.nodeRid())
-                    ? node.connectPeer(target.endpoint(), target.nodeRid())
+                    ? node.connectPeer(
+                        target.endpoint(),
+                        target.nodeRid(),
+                        target.lifecycleGeneration(),
+                        target.metadata().getOrDefault(
+                            ZLinkAutoConnectPlanner
+                                .SECURITY_IDENTITY_METADATA_KEY,
+                            target.nodeRid().toString()))
                     : node.connectPeer(target.endpoint());
                 connectionIntents.put(target.key(), intent);
+                connectionAttemptNanos.put(
+                    target.key(),
+                    System.nanoTime());
                 if (spots != null && ZLinkAutoConnectPlanner.hasRid(target.nodeRid())) {
                     spots.markAutoConnectedRouterPeer(target.nodeRid());
                 }
@@ -452,11 +485,42 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
         }
 
         @Override
+        public void ensureConnected(ZLinkAutoConnectPlanner.Target target) {
+            boolean admitted = node.peers().stream().anyMatch(peer ->
+                peer.routingId().equals(target.nodeRid())
+                    && peer.lifecycleGeneration()
+                        == target.lifecycleGeneration()
+                    && peer.state()
+                        == systems.zlink.framework.runtime.internal.binding
+                            .spot.MeshPeerState.ADMITTED);
+            if (admitted) {
+                return;
+            }
+            long attemptedAt = connectionAttemptNanos.getOrDefault(
+                target.key(),
+                0L);
+            if (System.nanoTime() - attemptedAt < ADMISSION_RETRY_NANOS) {
+                return;
+            }
+            Long previous = connectionIntents.remove(target.key());
+            if (previous != null) {
+                try {
+                    node.removePeerConnection(previous);
+                } catch (RuntimeException ignored) {
+                    connectionIntents.putIfAbsent(target.key(), previous);
+                    return;
+                }
+            }
+            connect(target);
+        }
+
+        @Override
         public boolean disconnect(ZLinkAutoConnectPlanner.Target target) {
             if (manualEndpoints.contains(target.endpoint())) {
                 return true;
             }
             Long intent = connectionIntents.remove(target.key());
+            connectionAttemptNanos.remove(target.key());
             if (intent == null) {
                 return true;
             }

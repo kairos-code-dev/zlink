@@ -32,6 +32,125 @@ public sealed class RouteMeshRuntimeServiceTests
     }
 
     [Fact]
+    public async Task Zero_Placement_Weight_Disables_Placement()
+    {
+        await using var fixture = await RuntimeFixture.StartAsync(
+            ZLinkMeshNodeObjectRole.Server,
+            placementWeight: 0);
+
+        var status = fixture.Runtime.GetStatus(RuntimeFixture.MeshName);
+
+        Assert.False(status.Placement.IsAvailable);
+        Assert.Equal(
+            ZLinkTopologyReason.CapacityExceeded,
+            status.Placement.UnavailableReason);
+    }
+
+    [Theory]
+    [InlineData(0, 0, 0, true)]
+    [InlineData(4, 5, 10, true)]
+    [InlineData(5, 5, 10, false)]
+    [InlineData(10, 1, 10, false)]
+    public void Population_Capacity_Uses_Active_And_Reserved_Counts(
+        int active,
+        int reserved,
+        int limit,
+        bool expected)
+    {
+        var capacity = new ZLinkPopulationCapacity(active, reserved, limit);
+
+        Assert.Equal(
+            expected,
+            ZLinkRouteMeshRuntimeService.HasRemainingCapacity(capacity));
+    }
+
+    [Theory]
+    [InlineData(0, 0, true)]
+    [InlineData(3, 4, true)]
+    [InlineData(4, 4, false)]
+    public void Placement_Uses_Activation_Concurrency(
+        int active,
+        int limit,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            ZLinkRouteMeshRuntimeService.HasRemainingCapacity(
+                new ZLinkActivationConcurrency(active, limit)));
+    }
+
+    [Fact]
+    public async Task Host_Relocation_Disables_Public_Readiness_But_Keeps_Physical_Counts()
+    {
+        await using var fixture = await RuntimeFixture.StartAsync(
+            ZLinkMeshNodeObjectRole.Server);
+        var serving = fixture.Runtime.GetStatus(RuntimeFixture.MeshName);
+
+        fixture.SetHostState(ZLinkFrameworkRuntimeState.Relocating);
+        var relocating = fixture.Runtime.GetStatus(RuntimeFixture.MeshName);
+
+        Assert.False(relocating.IsReady);
+        Assert.Equal(ZLinkTopologyState.Stopping, relocating.State);
+        Assert.Equal(serving.ReadyPeerCount, relocating.ReadyPeerCount);
+        Assert.Equal(
+            serving.Channels.Select(static channel => channel.ReadyTargetCount),
+            relocating.Channels.Select(static channel => channel.ReadyTargetCount));
+        Assert.False(relocating.Placement.IsAvailable);
+
+        fixture.SetHostState(ZLinkFrameworkRuntimeState.Relocated);
+        Assert.Equal(
+            ZLinkTopologyState.Stopping,
+            fixture.Runtime.GetStatus(RuntimeFixture.MeshName).State);
+    }
+
+    [Fact]
+    public async Task Stop_Preserves_Terminal_Status_Without_Waiting_For_Slow_Observer()
+    {
+        await using var fixture = await RuntimeFixture.StartAsync(
+            ZLinkMeshNodeObjectRole.Server);
+        await using var observer = fixture.Runtime
+            .ObserveAsync(RuntimeFixture.MeshName)
+            .GetAsyncEnumerator();
+        Assert.True(await observer.MoveNextAsync());
+
+        for (var index = 0; index < 1100; index++)
+            fixture.SetHostState(index % 2 == 0
+                ? ZLinkFrameworkRuntimeState.Relocating
+                : ZLinkFrameworkRuntimeState.Serving);
+
+        await Task.Run(fixture.StopMonitoring)
+            .WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True(await observer.MoveNextAsync());
+        Assert.Equal(ZLinkTopologyState.Stopped, observer.Current.State);
+        Assert.False(observer.Current.IsReady);
+        Assert.False(await observer.MoveNextAsync());
+    }
+
+    [Fact]
+    public async Task Concurrent_Change_And_Stop_Converge_To_Preserved_Terminal()
+    {
+        await using var fixture = await RuntimeFixture.StartAsync(
+            ZLinkMeshNodeObjectRole.Server);
+        await using var observer = fixture.Runtime
+            .ObserveAsync(RuntimeFixture.MeshName)
+            .GetAsyncEnumerator();
+        Assert.True(await observer.MoveNextAsync());
+
+        fixture.SetHostState(ZLinkFrameworkRuntimeState.Relocating);
+        var pending = observer.MoveNextAsync().AsTask();
+        await Task.Run(fixture.StopMonitoring)
+            .WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True(await pending);
+        while (observer.Current.State != ZLinkTopologyState.Stopped)
+            Assert.True(await observer.MoveNextAsync());
+        Assert.Equal(ZLinkTopologyState.Stopped, observer.Current.State);
+        Assert.False(observer.Current.IsReady);
+        Assert.False(await observer.MoveNextAsync());
+    }
+
+    [Fact]
     public async Task Missing_ObjectClient_Descriptor_Is_NotRequired_And_Remains_Ready()
     {
         await using var fixture = await RuntimeFixture.StartAsync(
@@ -221,6 +340,61 @@ public sealed class RouteMeshRuntimeServiceTests
         Assert.DoesNotContain(removed.Peers, peer => peer.NodeRid == remoteRid);
     }
 
+    [Fact]
+    public async Task Location_Health_Degrades_And_Recovers_Status_Stream()
+    {
+        await using var fixture = await RuntimeFixture.StartAsync(
+            ZLinkMeshNodeObjectRole.Server);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await using var observer = fixture.Runtime
+            .ObserveAsync(RuntimeFixture.MeshName, timeout.Token)
+            .GetAsyncEnumerator(timeout.Token);
+
+        Assert.True(await observer.MoveNextAsync());
+        fixture.ReportLocationFailure();
+        var degraded = await MoveUntilAsync(
+            observer,
+            status => status.State == ZLinkTopologyState.Degraded);
+        Assert.False(degraded.IsReady);
+        Assert.False(degraded.Placement.IsAvailable);
+        Assert.Equal(
+            ZLinkTopologyReason.LocationUnavailable,
+            degraded.Placement.UnavailableReason);
+
+        fixture.ReportLocationSuccess();
+        var recovered = await MoveUntilAsync(
+            observer,
+            status => status.State == ZLinkTopologyState.Ready);
+        Assert.True(recovered.IsReady);
+        Assert.True(recovered.Placement.IsAvailable);
+    }
+
+    [Fact]
+    public async Task Placement_Weight_Change_And_Recovery_Wake_Status_Stream()
+    {
+        await using var fixture = await RuntimeFixture.StartAsync(
+            ZLinkMeshNodeObjectRole.Server);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await using var observer = fixture.Runtime
+            .ObserveAsync(RuntimeFixture.MeshName, timeout.Token)
+            .GetAsyncEnumerator(timeout.Token);
+
+        Assert.True(await observer.MoveNextAsync());
+        fixture.RuntimeOptions.Mesh(RuntimeFixture.MeshName).PlacementWeight = 0;
+        var unavailable = await MoveUntilAsync(
+            observer,
+            status => !status.Placement.IsAvailable);
+        Assert.Equal(
+            ZLinkTopologyReason.CapacityExceeded,
+            unavailable.Placement.UnavailableReason);
+
+        fixture.RuntimeOptions.Mesh(RuntimeFixture.MeshName).PlacementWeight = 100;
+        var recovered = await MoveUntilAsync(
+            observer,
+            status => status.Placement.IsAvailable);
+        Assert.True(recovered.Placement.IsAvailable);
+    }
+
     private static async Task<ZLinkRouteMeshStatus> WaitForStatusAsync(
         IZLinkRouteMeshRuntime runtime,
         Func<ZLinkRouteMeshStatus, bool> predicate)
@@ -262,12 +436,20 @@ public sealed class RouteMeshRuntimeServiceTests
         private readonly ServiceProvider _provider;
         private readonly IHostedService _hosted;
         private readonly ZLinkLocationRuntime _locations;
+        private readonly ZLinkLocationStoreHealth _locationHealth;
+        private readonly ZLinkFrameworkHostLifecycleState _hostLifecycle;
+        private readonly ZLinkRouteMeshRuntimeService _monitoring;
+        private bool _stopped;
 
         private RuntimeFixture(
             ServiceProvider provider,
             IHostedService hosted,
             ZLinkLocationRuntime locations,
+            ZLinkLocationStoreHealth locationHealth,
+            ZLinkFrameworkHostLifecycleState hostLifecycle,
+            ZLinkRouteMeshRuntimeService monitoring,
             IZLinkRouteMeshRuntime runtime,
+            IZLinkRouteMeshRuntimeOptions runtimeOptions,
             IZLinkRouteClient routeClient,
             RoutingId localNodeRid,
             string listenEndpoint)
@@ -275,13 +457,19 @@ public sealed class RouteMeshRuntimeServiceTests
             _provider = provider;
             _hosted = hosted;
             _locations = locations;
+            _locationHealth = locationHealth;
+            _hostLifecycle = hostLifecycle;
+            _monitoring = monitoring;
             Runtime = runtime;
+            RuntimeOptions = runtimeOptions;
             RouteClient = routeClient;
             LocalNodeRid = localNodeRid;
             ListenEndpoint = listenEndpoint;
         }
 
         internal IZLinkRouteMeshRuntime Runtime { get; }
+
+        internal IZLinkRouteMeshRuntimeOptions RuntimeOptions { get; }
 
         internal IZLinkRouteClient RouteClient { get; }
 
@@ -292,16 +480,19 @@ public sealed class RouteMeshRuntimeServiceTests
         internal static async Task<RuntimeFixture> StartAsync(
             ZLinkMeshNodeObjectRole objectRole,
             string routingIdPrefix = "zz-runtime",
-            string? listenEndpoint = null)
+            string? listenEndpoint = null,
+            int placementWeight = 100)
         {
             listenEndpoint ??= $"inproc://route-runtime-{Guid.NewGuid():N}";
             var services = new ServiceCollection();
             services.AddZLinkFramework(options =>
             {
+                options.ConfigureInboundDispatch().ApplicationHwmBytes = 0;
                 options.UseTestLocationStore();
                 var node = options.AddRouteMesh(MeshName)
                     .Listen(listenEndpoint)
-                    .SetRoutingIdPrefix(routingIdPrefix);
+                    .SetRoutingIdPrefix(routingIdPrefix)
+                    .SetPlacementWeight(placementWeight);
                 if (objectRole == ZLinkMeshNodeObjectRole.Client)
                     node.Objects().Client();
                 else
@@ -319,6 +510,7 @@ public sealed class RouteMeshRuntimeServiceTests
             var services = new ServiceCollection();
             services.AddZLinkFramework(options =>
             {
+                options.ConfigureInboundDispatch().ApplicationHwmBytes = 0;
                 options.UseTestLocationStore();
                 var node = options.AddRouteMesh(MeshName)
                     .Listen(listenEndpoint);
@@ -356,7 +548,11 @@ public sealed class RouteMeshRuntimeServiceTests
                     provider,
                     hosted,
                     provider.GetRequiredService<ZLinkLocationRuntime>(),
+                    provider.GetRequiredService<ZLinkLocationStoreHealth>(),
+                    provider.GetRequiredService<ZLinkFrameworkHostLifecycleState>(),
+                    provider.GetRequiredService<ZLinkRouteMeshRuntimeService>(),
                     provider.GetRequiredService<IZLinkRouteMeshRuntime>(),
+                    provider.GetRequiredService<IZLinkRouteMeshRuntimeOptions>(),
                     provider.GetRequiredService<IZLinkRouteClient>(),
                     frameworkRuntime.GetMeshNodeRuntime(MeshName).Node.RoutingId,
                     listenEndpoint);
@@ -380,7 +576,7 @@ public sealed class RouteMeshRuntimeServiceTests
                     DescriptorRevision: 1,
                     $"inproc://missing-{Guid.NewGuid():N}",
                     new Dictionary<string, int>(StringComparer.Ordinal),
-                    SecurityIdentity: string.Empty,
+                    SecurityIdentity: ZLinkTransportSecurityIdentity.Plaintext,
                     OwnerId: string.Empty,
                     LeaseGeneration: 0,
                     UpdatedAt: default)
@@ -402,11 +598,32 @@ public sealed class RouteMeshRuntimeServiceTests
             Assert.Equal(ZLinkLocationWriteStatus.Stored, result.Status);
         }
 
+        internal void ReportLocationFailure() =>
+            _locationHealth.ReportFailure(
+                "route-mesh-runtime-test",
+                new InvalidOperationException("location unavailable"));
+
+        internal void ReportLocationSuccess() =>
+            _locationHealth.ReportSuccess("route-mesh-runtime-test");
+
+        internal void SetHostState(ZLinkFrameworkRuntimeState state) =>
+            _hostLifecycle.TransitionTo(state);
+
+        internal void StopMonitoring() => _monitoring.Stop();
+
+        internal async Task StopAsync()
+        {
+            if (_stopped)
+                return;
+            _stopped = true;
+            await _hosted.StopAsync(CancellationToken.None);
+        }
+
         public async ValueTask DisposeAsync()
         {
             try
             {
-                await _hosted.StopAsync(CancellationToken.None);
+                await StopAsync();
             }
             finally
             {

@@ -296,12 +296,6 @@ struct rebuild_order_projection_res_t
     order_state_t state;
 };
 
-struct ensure_order_workflow_spot_req_t
-{
-    static constexpr const char *packet_name = "EnsureOrderWorkflowSpotReq";
-    std::string order_id;
-};
-
 struct pending_mapping_req_t
 {
     static constexpr const char *packet_name = "PendingMappingReq";
@@ -589,16 +583,6 @@ inline void to_json (nlohmann::json &json, const rebuild_order_projection_res_t 
 inline void from_json (const nlohmann::json &json, rebuild_order_projection_res_t &value)
 {
     value.state = json.value ("state", order_state_t{});
-}
-
-inline void to_json (nlohmann::json &json, const ensure_order_workflow_spot_req_t &value)
-{
-    json = {{"orderId", value.order_id}};
-}
-
-inline void from_json (const nlohmann::json &json, ensure_order_workflow_spot_req_t &value)
-{
-    value.order_id = json_string (json, "orderId", "order_id");
 }
 
 inline void to_json (nlohmann::json &json, const pending_mapping_req_t &value)

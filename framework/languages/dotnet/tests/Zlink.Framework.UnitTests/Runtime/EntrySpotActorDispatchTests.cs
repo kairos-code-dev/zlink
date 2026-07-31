@@ -8,7 +8,7 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Runtime.Protocol;
-using Zlink.Framework.Contracts.Internal;
+using Zlink.Framework.Runtime.Messaging;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Runtime;
 using Zlink.Framework.Runtime.Backend.Contracts;
@@ -29,6 +29,7 @@ public sealed partial class EntrySpotActorDispatchTests
         var services = new ServiceCollection().BuildServiceProvider();
         var node = new CapturingSpotNode();
         var registration = new ZLinkFrameworkRegistration();
+        registration.InboundDispatchOptions.ApplicationHwmBytes = 0;
         registration.SpotNodes["entry"] = new ZLinkSpotNodeRegistration
         {
             SpotNodeName = "entry",
@@ -86,6 +87,7 @@ public sealed partial class EntrySpotActorDispatchTests
         var services = new ServiceCollection().BuildServiceProvider();
         var node = new CapturingSpotNode();
         var registration = new ZLinkFrameworkRegistration();
+        registration.InboundDispatchOptions.ApplicationHwmBytes = 0;
         registration.SpotNodes["publisher"] = new ZLinkSpotNodeRegistration
         {
             SpotNodeName = "publisher",
@@ -116,7 +118,7 @@ public sealed partial class EntrySpotActorDispatchTests
         await runtime.StartAsync(CancellationToken.None);
         try
         {
-            Assert.Equal(17, node.RouterHighWaterMark);
+            Assert.Equal(17UL, node.RouterHighWaterMark);
             Assert.Equal(TimeSpan.FromMilliseconds(21), node.RouterSendTimeout);
         }
         finally
@@ -201,6 +203,7 @@ public sealed partial class EntrySpotActorDispatchTests
         {
             ImplicitHandlerAutoRegistrationEnabled = false
         };
+        registration.InboundDispatchOptions.ApplicationHwmBytes = 0;
         registration.SpotNodes["entry"] = new ZLinkSpotNodeRegistration
         {
             SpotNodeName = "entry",
@@ -1378,41 +1381,42 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
-    public void NonDirectOneWayRelay_HasNoSyntheticRequestSourceFence()
+    public void BoundSessionRelay_RequiresAnExactRequestSourceFence()
     {
-        ZLinkFrameworkRuntime.ValidateRemoteActorFrameSource(
-            "actor-session-send",
-            routeContext: default,
-            RoutingId.From("session-node"),
-            sourceNodeGeneration: 0,
-            requestSource: null);
-
-        var synthetic = Assert.Throws<ZLinkFrameworkException>(() =>
+        var missing = Assert.Throws<ZLinkFrameworkException>(() =>
             ZLinkFrameworkRuntime.ValidateRemoteActorFrameSource(
                 "actor-session-send",
                 routeContext: default,
                 RoutingId.From("session-node"),
-                sourceNodeGeneration: 7,
-                new ZLinkServiceWireCodec.RequestSourceFence(
-                    "session-owner",
-                    8,
-                    RoutingId.From("session-node"),
-                    7)));
-        Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, synthetic.Kind);
+                sourceNodeGeneration: 0,
+                requestSource: null));
+        Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, missing.Kind);
+
+        ZLinkFrameworkRuntime.ValidateRemoteActorFrameSource(
+            "actor-session-send",
+            routeContext: default,
+            RoutingId.From("session-node"),
+            sourceNodeGeneration: 7,
+            new ZLinkServiceWireCodec.RequestSourceFence(
+                "session-owner",
+                8,
+                RoutingId.From("session-node"),
+                7));
     }
 
     [Fact]
     public async Task SessionActorFullFrameRetryDoesNotDuplicateTheHeaderAfterTerminalBackpressure()
     {
         var node = new CapturingSpotNode();
-        node.NodeSendResults.Enqueue(SubmitResult.Backpressured);
-        node.NodeSendResults.Enqueue(SubmitResult.Ok);
         var (runtime, _) = await CreateStartedRuntimeAsync(
             node,
             includeActorFactory: false);
         try
         {
             node.NodeSendAttempts.Clear();
+            node.NodeSendResults.Clear();
+            node.NodeSendResults.Enqueue(SubmitResult.Backpressured);
+            node.NodeSendResults.Enqueue(SubmitResult.Ok);
             var sessionRid = RoutingId.From("session-relay-retry");
             var context = new ZLinkSessionContext(
                 runtime,
@@ -1472,11 +1476,20 @@ public sealed partial class EntrySpotActorDispatchTests
                 Assert.Equal(expectedBody, relay.Body);
                 Assert.Equal("entry-node", RoutingId.FromHex(relay.RelayNodeRid).ToString());
                 Assert.Equal<ulong>(1, relay.RelayNodeGeneration);
-                Assert.Equal<ulong>(0, relay.SourceNodeGeneration);
-                Assert.Null(relay.RequestSourceOwnerId);
-                Assert.Equal<ulong>(0, relay.RequestSourceLeaseGeneration);
-                Assert.Null(relay.RequestSourceNodeRid);
-                Assert.Equal<ulong>(0, relay.RequestSourceNodeGeneration);
+                Assert.Equal<ulong>(1, relay.SourceNodeGeneration);
+                Assert.False(string.IsNullOrWhiteSpace(relay.RequestSourceOwnerId));
+                Assert.True(relay.RequestSourceLeaseGeneration > 0);
+                Assert.Equal("entry-node", RoutingId.FromHex(
+                    Assert.IsType<string>(relay.RequestSourceNodeRid)).ToString());
+                Assert.Equal<ulong>(1, relay.RequestSourceNodeGeneration);
+                Assert.True(ZLinkActorBoundSessionHandoffMetadata.TryDecode(
+                    relay.ApplicationMetadata,
+                    out var binding));
+                Assert.Equal(actorId, binding.ActorId);
+                Assert.Equal(sessionRid, binding.SessionRid);
+                Assert.Equal(bindingToken, binding.BindingToken);
+                Assert.Equal<ulong>(1, binding.BindingGeneration);
+                Assert.Equal<ulong>(1, binding.SessionSequence);
             }
         }
         finally
@@ -2005,6 +2018,58 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
+    public async Task Application_signaled_turn_installs_its_seal_before_the_next_turn_and_completes_before_abort()
+    {
+        var services = new ServiceCollection().BuildServiceProvider();
+        var registration = new ZLinkFrameworkRegistration();
+        var runtime = new ZLinkFrameworkRuntime(
+            services,
+            new ThrowingBackendAdapterFactory(),
+            registration,
+            new ZLinkHandlerRegistry([]),
+            new ZLinkHandlerDispatcher(
+                services.GetRequiredService<IServiceScopeFactory>(),
+                registration));
+        var activation = new ZLinkSpotActivation(
+            runtime,
+            services.CreateAsyncScope(),
+            new CapturingSpot(),
+            "application-signaled-cut",
+            RoutingId.From("node"),
+            "node",
+            "channel",
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(1),
+            ZLinkUserSpotExecutionMode.SpotWide,
+            ZLinkSpotRelocationReadinessMode.ApplicationSignaled);
+        var spot = new RelocationReadyProbeSpot(activation);
+        activation.AttachSpot(spot);
+        await using var cleanup = activation.ConfigureAwait(false);
+
+        var pendingSeal = activation.WaitForRelocationReadyTurnAsync(
+            CancellationToken.None);
+        using (var handler =
+               ZLinkSpotRelocationReadyHandlerScope.Open(activation))
+        {
+            activation.RelocationReady().Defer();
+            handler.Complete();
+        }
+
+        var seal = await pendingSeal.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(activation.IsRelocationReady);
+        await activation.CompleteRelocationReadyBeforeAbortAsync(
+            seal,
+            CancellationToken.None);
+        Assert.False(activation.IsRelocationReady);
+        Assert.Equal(
+            ZLinkSpotRelocationReadyOutcome.Continued,
+            (await spot.NextCompletion.Task.WaitAsync(
+                TimeSpan.FromSeconds(5))).Outcome);
+        Assert.True(activation.AbortRelocation(seal));
+        Assert.True(activation.IsRelocationReady);
+    }
+
+    [Fact]
     public async Task Application_signaled_target_callback_retries_before_admission_opens()
     {
         var services = new ServiceCollection().BuildServiceProvider();
@@ -2136,6 +2201,280 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
+    public async Task PerActor_source_closing_waits_for_message_follow_and_last_member()
+    {
+        var services = new ServiceCollection().BuildServiceProvider();
+        var registration = new ZLinkFrameworkRegistration();
+        var runtime = new ZLinkFrameworkRuntime(
+            services,
+            new ThrowingBackendAdapterFactory(),
+            registration,
+            new ZLinkHandlerRegistry([]),
+            new ZLinkHandlerDispatcher(
+                services.GetRequiredService<IServiceScopeFactory>(),
+                registration));
+        var activation = new ZLinkSpotActivation(
+            runtime,
+            services.CreateAsyncScope(),
+            new CapturingSpot(),
+            "per-actor-closing",
+            RoutingId.From("source-node"),
+            "source-node",
+            "channel",
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(1),
+            ZLinkUserSpotExecutionMode.PerActor);
+        var spot = new PerActorClosingProbeSpot(activation);
+        activation.AttachSpot(spot);
+        var actorRef = new ZLinkBackendActorRef(
+            RoutingId.From("source-node"),
+            "actor-a",
+            1);
+        var actor = RegisterProbeActor(runtime, actorRef);
+        var actorState = runtime.GetOrCreateActorState(actorRef.ActorId);
+        activation.StageRelocatedPerActorMember(actor, actorState);
+        activation.PublishRelocatedPerActorMember(actor, actorState);
+        await activation.PublishPerActorShellRelocationPlanAsync(
+            new ZLinkPerActorShellRelocationPlan(
+                RoutingId.From("target-node"),
+                2,
+                new ZLinkLocationOwnerToken("target-owner", 2),
+                3,
+                DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5)));
+        Assert.True(activation.TrySealPerActorShellRelocation(
+            out var shellSeal));
+        Assert.True(activation.CommitRelocation(
+            shellSeal,
+            out var held,
+            preserveActorExecution: true));
+        Assert.Empty(held);
+        var messageFollowDrained = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var closing = activation
+            .InvokePerActorRelocationClosingAfterDrainAsync(
+                messageFollowDrained.Task,
+                CancellationToken.None)
+            .AsTask();
+        Assert.False(spot.ClosingInvoked.Task.IsCompleted);
+
+        messageFollowDrained.TrySetResult();
+        var early = await Task.WhenAny(
+            spot.ClosingInvoked.Task,
+            Task.Delay(TimeSpan.FromMilliseconds(50)));
+        Assert.NotSame(spot.ClosingInvoked.Task, early);
+
+        await activation.NotifyActorLeftAfterCommittedMembershipAsync(
+            actor,
+            CancellationToken.None);
+        await closing.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(
+            ZLinkSpotCloseReason.RelocationOut,
+            await spot.ClosingInvoked.Task);
+        await activation.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task PerActor_published_shell_fences_deferred_join_commit_racing_last_detach()
+    {
+        var services = new ServiceCollection().BuildServiceProvider();
+        var registration = new ZLinkFrameworkRegistration();
+        var runtime = new ZLinkFrameworkRuntime(
+            services,
+            new ThrowingBackendAdapterFactory(),
+            registration,
+            new ZLinkHandlerRegistry([]),
+            new ZLinkHandlerDispatcher(
+                services.GetRequiredService<IServiceScopeFactory>(),
+                registration));
+        var activation = new ZLinkSpotActivation(
+            runtime,
+            services.CreateAsyncScope(),
+            new CapturingSpot(),
+            "per-actor-membership-fence",
+            RoutingId.From("source-node"),
+            "source-node",
+            "channel",
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(1),
+            ZLinkUserSpotExecutionMode.PerActor);
+        activation.AttachSpot(new EmptyUserSpot(activation));
+        var memberRef = new ZLinkBackendActorRef(
+            RoutingId.From("source-node"),
+            "existing-member",
+            1);
+        var member = RegisterProbeActor(runtime, memberRef);
+        var memberState = runtime.GetOrCreateActorState(memberRef.ActorId);
+        activation.StageRelocatedPerActorMember(member, memberState);
+        activation.PublishRelocatedPerActorMember(member, memberState);
+        await activation.PublishPerActorShellRelocationPlanAsync(
+            new ZLinkPerActorShellRelocationPlan(
+                RoutingId.From("target-node"),
+                2,
+                new ZLinkLocationOwnerToken("target-owner", 2),
+                3,
+                DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5)));
+        var candidateRef = new ZLinkBackendActorRef(
+            RoutingId.From("source-node"),
+            "deferred-candidate",
+            1);
+        var candidate = RegisterProbeActor(runtime, candidateRef);
+
+        var commit = Task.Run(async () =>
+            await activation.CommitActorJoinFromCallerTurnAsync(
+                candidate,
+                CancellationToken.None));
+        var detach = Task.Run(() =>
+            activation.DetachRelocatedPerActorMember(member, memberState));
+
+        var failure = await Assert.ThrowsAsync<ZLinkFrameworkException>(
+            () => commit);
+        await detach;
+        await activation.WaitForPerActorMembersDrainedAsync(
+            CancellationToken.None);
+        Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, failure.Kind);
+        Assert.Equal(ZLinkRetryAdvice.RetryAfterStateChange, failure.RetryAdvice);
+        Assert.False(activation.TryGetJoinedActor(
+            candidateRef.ActorId,
+            out _));
+        Assert.Equal(0, activation.JoinedActorCount);
+        await activation.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task PerActor_detached_cleanup_cancellation_invokes_closing_before_scope_teardown()
+    {
+        var order = new ClosingTeardownOrderProbe();
+        var services = new ServiceCollection()
+            .AddSingleton(order)
+            .AddScoped<ClosingTeardownDependency>()
+            .BuildServiceProvider();
+        var scope = services.CreateAsyncScope();
+        _ = scope.ServiceProvider.GetRequiredService<
+            ClosingTeardownDependency>();
+        var registration = new ZLinkFrameworkRegistration();
+        var runtime = new ZLinkFrameworkRuntime(
+            services,
+            new ThrowingBackendAdapterFactory(),
+            registration,
+            new ZLinkHandlerRegistry([]),
+            new ZLinkHandlerDispatcher(
+                services.GetRequiredService<IServiceScopeFactory>(),
+                registration));
+        var activation = new ZLinkSpotActivation(
+            runtime,
+            scope,
+            new CapturingSpot(),
+            "per-actor-cancelled-cleanup",
+            RoutingId.From("source-node"),
+            "source-node",
+            "channel",
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(1),
+            ZLinkUserSpotExecutionMode.PerActor);
+        activation.AttachSpot(
+            new ClosingTeardownProbeSpot(activation, order));
+        var actorRef = new ZLinkBackendActorRef(
+            RoutingId.From("source-node"),
+            "member",
+            1);
+        var actor = RegisterProbeActor(runtime, actorRef);
+        var actorState = runtime.GetOrCreateActorState(actorRef.ActorId);
+        activation.StageRelocatedPerActorMember(actor, actorState);
+        activation.PublishRelocatedPerActorMember(actor, actorState);
+        await activation.PublishPerActorShellRelocationPlanAsync(
+            new ZLinkPerActorShellRelocationPlan(
+                RoutingId.From("target-node"),
+                2,
+                new ZLinkLocationOwnerToken("target-owner", 2),
+                3,
+                DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5)));
+        var messageFollow = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var cancellation = new CancellationTokenSource();
+
+        var closing = activation
+            .InvokePerActorRelocationClosingAfterDrainAsync(
+                messageFollow.Task,
+                cancellation.Token)
+            .AsTask();
+        cancellation.Cancel();
+        await closing.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(order.ClosingInvoked);
+        Assert.False(order.ScopeDisposed);
+
+        await activation.DisposeAsync();
+        Assert.True(order.ScopeDisposed);
+        Assert.True(order.ClosingPrecededScopeDisposal);
+    }
+
+    [Fact]
+    public async Task PerActor_rejected_detached_cleanup_uses_shutdown_cancellation_and_finishes_bounded()
+    {
+        var order = new ClosingTeardownOrderProbe();
+        var services = new ServiceCollection()
+            .AddSingleton(order)
+            .AddScoped<ClosingTeardownDependency>()
+            .BuildServiceProvider();
+        var scope = services.CreateAsyncScope();
+        _ = scope.ServiceProvider.GetRequiredService<
+            ClosingTeardownDependency>();
+        var registration = new ZLinkFrameworkRegistration();
+        var runtime = new ZLinkFrameworkRuntime(
+            services,
+            new ThrowingBackendAdapterFactory(),
+            registration,
+            new ZLinkHandlerRegistry([]),
+            new ZLinkHandlerDispatcher(
+                services.GetRequiredService<IServiceScopeFactory>(),
+                registration));
+        var activation = new ZLinkSpotActivation(
+            runtime,
+            scope,
+            new CapturingSpot(),
+            "per-actor-rejected-detached-cleanup",
+            RoutingId.From("source-node"),
+            "source-node",
+            "channel",
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(30),
+            ZLinkUserSpotExecutionMode.PerActor);
+        activation.AttachSpot(
+            new ClosingTeardownProbeSpot(activation, order));
+        var actorRef = new ZLinkBackendActorRef(
+            RoutingId.From("source-node"),
+            "remaining-member",
+            1);
+        var actor = RegisterProbeActor(runtime, actorRef);
+        var actorState = runtime.GetOrCreateActorState(actorRef.ActorId);
+        activation.StageRelocatedPerActorMember(actor, actorState);
+        activation.PublishRelocatedPerActorMember(actor, actorState);
+        await activation.PublishPerActorShellRelocationPlanAsync(
+            new ZLinkPerActorShellRelocationPlan(
+                RoutingId.From("target-node"),
+                2,
+                new ZLinkLocationOwnerToken("target-owner", 2),
+                3,
+                DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5)));
+
+        Assert.True(runtime.ShutdownToken.IsCancellationRequested);
+        Assert.False(runtime.TryRunDetached(
+            "prove-rejection",
+            _ => ValueTask.CompletedTask));
+
+        await ZLinkSpotNodeCatalog.ScheduleRelocatedSourceCleanupAsync(
+                runtime,
+                activation)
+            .AsTask()
+            .WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True(order.ClosingInvoked);
+        Assert.True(order.ScopeDisposed);
+        Assert.True(order.ClosingPrecededScopeDisposal);
+        Assert.True(activation.IsDisposed);
+    }
+
+    [Fact]
     public async Task Entry_spot_concurrent_dispose_callers_wait_for_scope_cleanup_failure()
     {
         var cleanup = new BlockingScopeCleanup();
@@ -2186,8 +2525,16 @@ public sealed partial class EntrySpotActorDispatchTests
         Assert.False(second.IsCompleted);
 
         probe.Release.TrySetResult();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => dispatch.WaitAsync(TimeSpan.FromSeconds(5)));
+        try
+        {
+            await dispatch.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        catch (OperationCanceledException)
+        {
+            // Disposal may cancel the active handler before its released
+            // continuation completes. Both terminal outcomes are valid; the
+            // contract under test is that finalization waits for that outcome.
+        }
         await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
     }
 
@@ -2286,7 +2633,7 @@ public sealed partial class EntrySpotActorDispatchTests
         listener.SetMeasurementEventCallback<long>((_, value, tags, _) =>
         {
             foreach (var tag in tags)
-                if (tag.Key == "kind" && Equals(tag.Value, "user"))
+                if (tag.Key == "spot_kind" && Equals(tag.Value, "user"))
                     deltas.Add(value);
         });
         listener.Start();
@@ -2361,12 +2708,13 @@ public sealed partial class EntrySpotActorDispatchTests
             activation.PublishRelocatedPerActorMember(actor, actorState);
             activation.PublishRelocatedPerActorMember(actor, actorState);
             Assert.Equal(1, activation.JoinedActorCount);
-            activation.PublishPerActorShellRelocationPlan(
+            await activation.PublishPerActorShellRelocationPlanAsync(
                 new ZLinkPerActorShellRelocationPlan(
                     spotNode.Node.RoutingId,
                     spotNode.Node.MeshStatus().LifecycleGeneration,
                     owner,
-                    1));
+                    1,
+                    DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5)));
             var membersDrained =
                 activation.WaitForPerActorMembersDrainedAsync(
                     CancellationToken.None);
@@ -2808,7 +3156,7 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
-    public async Task BoundSessionOneWayDuringRelocation_IsDroppedWithoutTerminalOrJournalEntry()
+    public async Task BoundSessionOneWayWithoutExactFence_IsRejectedDuringRelocation()
     {
         var node = new CapturingSpotNode();
         var (runtime, actorRef) = await CreateStartedRuntimeAsync(node);
@@ -2818,16 +3166,17 @@ public sealed partial class EntrySpotActorDispatchTests
             var state = runtime.GetOrCreateActorState(actorRef.ActorId);
             state.Handoff.BeginCapture();
 
-            await DispatchEntryActorPartsAsync(
-                runtime,
-                CreateActorRequestParts(
-                    actorRef,
-                    "request",
-                    "must-not-run",
-                    requestId: 0,
-                    flags: 0,
-                    kind: ZlinkStreamMessageKind.Send),
-                CancellationToken.None);
+            await Assert.ThrowsAsync<ZLinkActorHandoffRejectedException>(() =>
+                DispatchEntryActorPartsAsync(
+                    runtime,
+                    CreateActorRequestParts(
+                        actorRef,
+                        "request",
+                        "must-not-run",
+                        requestId: 0,
+                        flags: 0,
+                        kind: ZlinkStreamMessageKind.Send),
+                    CancellationToken.None).AsTask());
 
             Assert.Empty(state.Handoff.SnapshotFrames());
             Assert.Empty(node.NoBindReplies);
@@ -4203,6 +4552,43 @@ public sealed partial class EntrySpotActorDispatchTests
         }
     }
 
+    [Fact]
+    public async Task DeferredJoin_FromBoundSessionRequest_IsScheduledAfterReplyBoundary()
+    {
+        var node = new CapturingSpotNode();
+        var (runtime, actorRef) = await CreateStartedRuntimeAsync(node);
+        try
+        {
+            var actor = RegisterProbeActor(runtime, actorRef);
+            var sourceState = runtime.GetOrCreateActorState(actor.ActorId);
+            var join = actor.Context.JoinSpot(
+                "missing-bound-session-target",
+                ZLinkMessage.Empty);
+
+            await using var boundSession =
+                ZLinkBoundSessionDispatchScope.Enter(actor.ActorId);
+            using (var handler = ZLinkDeferredActorJoinHandlerScope.Open())
+            {
+                join.Defer();
+                handler.Complete();
+            }
+
+            // Handler completion only registers work at this point. The
+            // bound-session reply boundary drains before relocation starts.
+            Assert.True(sourceState.Handoff.CapturesSourceIngress);
+
+            await boundSession.DrainAsync(CancellationToken.None);
+
+            Assert.True(SpinWait.SpinUntil(
+                () => !sourceState.Handoff.CapturesSourceIngress,
+                TimeSpan.FromSeconds(5)));
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
     private static T GetPrivateField<T>(object instance, string name)
     {
         var field = instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
@@ -5088,6 +5474,7 @@ public sealed partial class EntrySpotActorDispatchTests
                 defaultRequestTimeout ?? TimeSpan.FromSeconds(1),
             ImplicitHandlerAutoRegistrationEnabled = false
         };
+        registration.InboundDispatchOptions.ApplicationHwmBytes = 0;
         registration.Locations.SetTestRepository(runtimeLocationStore);
         if (messageFlowMode is { } mode)
             registration.DispatchOptions.Diagnostics.SetLevel(mode);
@@ -5739,6 +6126,61 @@ public sealed partial class EntrySpotActorDispatchTests
     private sealed class EmptyUserSpot(IZLinkSpotContext context) : IZLinkSpot
     {
         public IZLinkSpotContext Context { get; } = context;
+    }
+
+    private sealed class PerActorClosingProbeSpot(
+        IZLinkSpotContext context) : IZLinkSpot
+    {
+        public IZLinkSpotContext Context { get; } = context;
+
+        internal TaskCompletionSource<ZLinkSpotCloseReason> ClosingInvoked
+        {
+            get;
+        } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public ValueTask OnClosingAsync(
+            ZLinkSpotClosingContext closing,
+            CancellationToken cleanupCancellationToken)
+        {
+            cleanupCancellationToken.ThrowIfCancellationRequested();
+            ClosingInvoked.TrySetResult(closing.Reason);
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class ClosingTeardownOrderProbe
+    {
+        internal bool ClosingInvoked { get; set; }
+        internal bool ScopeDisposed { get; set; }
+        internal bool ClosingPrecededScopeDisposal { get; set; }
+    }
+
+    private sealed class ClosingTeardownDependency(
+        ClosingTeardownOrderProbe order) : IAsyncDisposable
+    {
+        public ValueTask DisposeAsync()
+        {
+            order.ScopeDisposed = true;
+            order.ClosingPrecededScopeDisposal = order.ClosingInvoked;
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class ClosingTeardownProbeSpot(
+        IZLinkSpotContext context,
+        ClosingTeardownOrderProbe order) : IZLinkSpot
+    {
+        public IZLinkSpotContext Context { get; } = context;
+
+        public ValueTask OnClosingAsync(
+            ZLinkSpotClosingContext closing,
+            CancellationToken cleanupCancellationToken)
+        {
+            cleanupCancellationToken.ThrowIfCancellationRequested();
+            Assert.Equal(ZLinkSpotCloseReason.RelocationOut, closing.Reason);
+            order.ClosingInvoked = true;
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class RelocationReadyProbeSpot(
@@ -6711,7 +7153,7 @@ public sealed partial class EntrySpotActorDispatchTests
 
         public IZLinkSpotSubscriberConfig? SubscriberConfig { get; private set; }
 
-        public int RouterHighWaterMark { get; private set; }
+        public ulong RouterHighWaterMark { get; private set; }
 
         public TimeSpan? RouterSendTimeout { get; private set; }
 
@@ -6921,11 +7363,13 @@ public sealed partial class EntrySpotActorDispatchTests
             InitializationEvents.Enqueue($"router-bind:{endpoint}");
         }
 
+        public void SetRouterAdvertisedEndpoint(string endpoint) { }
+
         public void SetPubBind(string endpoint) { }
 
         public void SetMailboxBudgets(ulong messageBudget, ulong byteBudget) { }
 
-        public void SetRouterHighWaterMark(int value)
+        public void SetRouterHighWaterMark(ulong value)
         {
             RouterHighWaterMark = value;
         }
@@ -6947,7 +7391,18 @@ public sealed partial class EntrySpotActorDispatchTests
 
         public void ConnectPeer(string endpoint) { }
 
-        public void ConnectPeer(RoutingId peerRid, string endpoint) { }
+        public void ConnectPeer(
+            RoutingId peerRid,
+            string endpoint,
+            string expectedSecurityIdentity) { }
+
+        public void SetPeerExpectation(
+            RoutingId peerRid,
+            string endpoint,
+            string expectedSecurityIdentity,
+            ulong expectedLifecycleGeneration) { }
+
+        public void RemovePeerExpectation(RoutingId peerRid, string endpoint) { }
 
         public void DisconnectPeer(string endpoint) { }
 

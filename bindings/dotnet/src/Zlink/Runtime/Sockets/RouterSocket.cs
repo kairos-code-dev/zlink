@@ -70,6 +70,45 @@ internal sealed class RouterSocket : RoutedMessageSocketBase, IRouterSocket
         return new RouterPeerReplyOperation(this, rid, requestSeq);
     }
 
+    public bool TrySendCompletionControl(
+        RoutingId peerRid,
+        IReadOnlyList<Message> parts)
+    {
+        RequestReplySupport.EnsureParts(parts, nameof(parts));
+        var nativeRoutingId = peerRid.ToNative();
+        var cloned = RequestReplySupport.CloneParts(parts);
+        try
+        {
+            for (var i = 0; i < cloned.Length; i++)
+            {
+                ZlinkMsg nativePart = default;
+                cloned[i].MoveTo(ref nativePart);
+                var rc = NativeMethods.zlink_router_completion_control_part(
+                    Handle, ref nativeRoutingId, ref nativePart,
+                    i + 1 < cloned.Length
+                        ? NativeMethods.ZlinkPartFlag.More
+                        : NativeMethods.ZlinkPartFlag.Final);
+                if (rc == (int)SubmitResult.Ok)
+                    continue;
+                if (rc == (int)SubmitResult.Backpressured)
+                    return false;
+                throw ZlinkException.CreateSubmitException(
+                    NativeMethods.zlink_errno());
+            }
+
+            return true;
+        }
+        finally
+        {
+            RequestReplySupport.DisposeParts(cloned);
+        }
+    }
+
+    public void OnCompletionControl(CompletionControlHandler handler)
+    {
+        Kernel.CompletionControlHandler(handler);
+    }
+
     internal async Task<IReadOnlyList<Message>> RequestCore(RoutingId peerRid,
         IReadOnlyList<Message> parts, TimeSpan timeout, CancellationToken ct)
     {
@@ -142,14 +181,22 @@ internal sealed class RouterSocket : RoutedMessageSocketBase, IRouterSocket
     {
         RequestReplySupport.EnsureParts(parts, nameof(parts));
         var nativeRoutingId = peerRid.ToNative();
+        var cloned = RequestReplySupport.CloneParts(parts);
         lock (SubmitGate)
         {
-            RequestReplySupport.SubmitOwnedParts(parts,
-                (ref ZlinkMsg nativePart,
-                        NativeMethods.ZlinkPartFlag partFlag) =>
-                    NativeMethods.zlink_router_reply_part(Handle,
-                        ref nativeRoutingId, requestSeq, ref nativePart,
-                        partFlag));
+            try
+            {
+                RequestReplySupport.SubmitClonedParts(cloned,
+                    (ref ZlinkMsg nativePart,
+                            NativeMethods.ZlinkPartFlag partFlag) =>
+                        NativeMethods.zlink_router_reply_part(Handle,
+                            ref nativeRoutingId, requestSeq, ref nativePart,
+                            partFlag));
+            }
+            finally
+            {
+                RequestReplySupport.DisposeParts(cloned);
+            }
         }
     }
 

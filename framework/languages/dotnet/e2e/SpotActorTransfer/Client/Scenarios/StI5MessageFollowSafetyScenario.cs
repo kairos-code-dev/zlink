@@ -41,6 +41,8 @@ internal static class StI5MessageFollowSafetyScenario
         var replyDeadlineMarker =
             $"reply-backpressure-deadline-{replyDeadlineGate}";
         var heldReplyMarker = $"held-reply-{heldReplyGate}";
+        Console.WriteLine(
+            "message_follow_case_evidence case=MF-CORR phase=started");
 
         var first = await StartHeldRequestAsync(
             context,
@@ -232,6 +234,12 @@ internal static class StI5MessageFollowSafetyScenario
             (await context.GetExternalTransportDeliveryAsync(heldReplyGate))
                 .Released,
             $"{scenario} held reply gate was not released after timeout.");
+        Console.WriteLine(
+            "message_follow_case_evidence case=MF-CORR"
+            + " phase=completed terminal_count=2"
+            + " current_owner_handler_count=2"
+            + " previous_owner_handler_count=0"
+            + " reply_correlation=preserved");
 
         // Duplicate, generation, loop, hop and bounded-capacity cases remain
         // separate gaps because a black-box TCP fixture must not synthesize

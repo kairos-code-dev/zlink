@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/stateful/raw_stateful_dispatch.hpp"
+#include <runtime/locations/location_repository.hpp>
 #include "runtime/locations/sha256.hpp"
 
 #include <algorithm>
@@ -64,7 +65,8 @@ std::size_t retained_bytes (
         total += protocol::encode_application_payload (
                    *registration.application_reply).size ();
     total += registration.request_source.owner_id.size ()
-             + registration.request_source.node_routing_id.size ();
+             + registration.request_source.node_routing_id.size ()
+             + registration.relay_destination_node_routing_id.size ();
     return total;
 }
 
@@ -72,7 +74,7 @@ bool frozen_matches_registration (
   const protocol::frozen_record_t &frozen,
   const raw_relocation_target_registration_t &registration)
 {
-    if (!frozen.target || frozen.source != registration.source)
+    if (!frozen.target)
         return false;
     const auto &target = *frozen.target;
     return target.kind == registration.object.kind
@@ -87,7 +89,7 @@ bool frozen_matches_registration (
 
 accepted_record_authority_resolver_t
 make_location_store_authority_resolver (
-  zlink::framework::location_store_t &store)
+  zlink::framework::location_repository_t &store)
 {
     return [&store] (const accepted_record_authority_query_t &query)
       -> std::optional<accepted_record_authority_t> {
@@ -115,8 +117,9 @@ make_location_store_authority_resolver (
                 || snapshot->allocation.target.node_rid.value ()
                      != target_rid.value ()
                 || snapshot->allocation.target.node_lifecycle_generation
-                     != query.target_node_generation)
+                     != query.target_node_generation) {
                 return std::nullopt;
+            }
 
             const auto nodes = store.list_mesh_nodes (
               query.target.mesh_name).result ().value ();
@@ -130,15 +133,17 @@ make_location_store_authority_resolver (
                               == query.source_node_generation;
               });
             if (source == nodes.items.end () || source->owner_id.empty ()
-                || source->lease_generation <= 0)
+                || source->lease_generation <= 0) {
                 return std::nullopt;
+            }
             const auto lease = store.read_owner_lease (
               source->owner_id).result ().value ();
             const auto *live = std::get_if<owner_lease_found_t> (&lease);
             if (!live || live->token.lease_generation
                            != source->lease_generation
-                || live->lease_expires_at <= live->store_now)
+                || live->lease_expires_at <= live->store_now) {
                 return std::nullopt;
+            }
             return accepted_record_authority_t{
               {source->owner_id,
                static_cast<std::uint64_t> (source->lease_generation),
@@ -312,8 +317,9 @@ stateful_error_t raw_stateful_dispatch_t::ingest (
             (void) _transport->reply_failure (
               record,
               validation == stateful_error_t::generation_stale
-                || validation == stateful_error_t::conflict
                 ? terminal_conflict
+                : validation == stateful_error_t::conflict
+                    ? terminal_rejected
                 : terminal_protocol_error,
               validation == stateful_error_t::generation_stale
                 ? static_cast<std::uint32_t> (
@@ -356,7 +362,8 @@ stateful_error_t raw_stateful_dispatch_t::ingest (
         _pending.emplace (
           delivery_key (owner, sequence),
           pending_delivery_t{
-            std::move (payload), std::move (record)});
+            std::move (payload), std::move (record),
+            frozen.reply_route_id.has_value (), {}});
     }
     (void) _transport->mailbox ().release (*claim);
     return stateful_error_t::none;
@@ -381,7 +388,7 @@ raw_stateful_dispatch_t::try_claim (const object_ref_t &owner)
       stateful_error_t::none,
       stateful_delivery_t{
         owner, *turn, pending->second.payload,
-        pending->second.transport.request_sequence.has_value ()}};
+        pending->second.request}};
 }
 
 stateful_error_t raw_stateful_dispatch_t::complete (
@@ -399,6 +406,12 @@ stateful_error_t raw_stateful_dispatch_t::complete (
         pending = std::move (found->second);
         _pending.erase (found);
     }
+    if (pending.relocated_terminal) {
+        const auto completed = pending.relocated_terminal (reply);
+        const auto claim_error = _objects->complete_claim (
+          delivery.owner, turn_domain_t::application);
+        return completed ? claim_error : stateful_error_t::conflict;
+    }
     if (delivery.request) {
         if (!reply) {
             (void) _transport->reply_failure (
@@ -413,6 +426,65 @@ stateful_error_t raw_stateful_dispatch_t::complete (
     }
     return _objects->complete_claim (
       delivery.owner, turn_domain_t::application);
+}
+
+stateful_error_t raw_stateful_dispatch_t::stage_relocated (
+  const object_ref_t &owner,
+  turn_record_t turn,
+  std::function<bool (
+    const std::optional<protocol::application_payload_t> &)> terminal)
+{
+    protocol::frozen_record_t frozen;
+    protocol::application_payload_t payload;
+    try {
+        frozen = protocol::decode_frozen_record (turn.payload);
+        if (!frozen.application)
+            return stateful_error_t::invalid;
+        payload = *frozen.application;
+    }
+    catch (...) {
+        return stateful_error_t::invalid;
+    }
+    const auto enqueued = _objects->enqueue (
+      owner, turn_domain_t::application, turn);
+    if (enqueued != stateful_error_t::none)
+        return enqueued;
+    std::lock_guard lock (_mutex);
+    const auto [_, inserted] = _pending.emplace (
+      delivery_key (owner, turn.sequence),
+      pending_delivery_t{
+        std::move (payload), {},
+        frozen.reply_route_id.has_value (), std::move (terminal)});
+    return inserted ? stateful_error_t::none
+                    : stateful_error_t::already_exists;
+}
+
+bool raw_stateful_dispatch_t::complete_relocated_source (
+  const object_ref_t &owner,
+  std::uint64_t sequence,
+  const protocol::reply_relay_t &relay,
+  const std::optional<protocol::application_payload_t> &reply)
+{
+    pending_delivery_t pending;
+    {
+        std::lock_guard lock (_mutex);
+        const auto found = _pending.find (
+          delivery_key (owner, sequence));
+        if (found == _pending.end ()
+            || !found->second.request
+            || !found->second.transport.request_sequence
+            || !found->second.transport.correlation)
+            return false;
+        pending = std::move (found->second);
+        _pending.erase (found);
+    }
+    if (relay.terminal_result == 0 && reply)
+        return _transport->reply (pending.transport, *reply);
+    return _transport->reply_failure (
+      pending.transport,
+      relay.terminal_result == 0 ? terminal_internal_error
+                                 : relay.terminal_result,
+      static_cast<std::uint32_t> (relay.failure_code));
 }
 
 bool raw_stateful_dispatch_t::delivery_key_t::operator< (
@@ -535,7 +607,8 @@ bool raw_relocation_replay_coordinator_t::register_target (
         || registration.target_attempt_generation == 0
         || !valid_coordinator (registration.coordinator)
         || registration.participant_id == 0
-        || !valid_source (registration.source)
+        || registration.relocation_source_node_routing_id.empty ()
+        || registration.relocation_source_node_generation == 0
         || registration.object.object_id.empty ()
         || registration.object.object_generation == 0
         || registration.object.expected_authority_owner_generation == 0
@@ -547,6 +620,18 @@ bool raw_relocation_replay_coordinator_t::register_target (
            registration.target_attempt_generation,
            registration.participant_id),
       target_state_t{std::move (registration)}).second;
+}
+
+bool raw_relocation_replay_coordinator_t::unregister_target (
+  const protocol::relocation_id_t &relocation,
+  std::uint64_t target_attempt_generation,
+  std::uint64_t participant_id)
+{
+    std::lock_guard lock (_gate);
+    return _targets.erase (
+             key (relocation, target_attempt_generation,
+                  participant_id))
+           != 0;
 }
 
 bool raw_relocation_replay_coordinator_t::register_source (
@@ -736,10 +821,10 @@ raw_relocation_replay_coordinator_t::process_data (
                  != data.target_attempt_generation
             || registration.coordinator != data.coordinator
             || registration.participant_id != data.participant_id
-            || registration.source != data.source
-            || record.source_routing_id != registration.source.node_routing_id
+            || record.source_routing_id
+                 != registration.relocation_source_node_routing_id
             || record.source_node_generation
-                 != registration.source.node_generation
+                 != registration.relocation_source_node_generation
             || !frozen_matches_registration (
                  *data.frozen_record, registration))
             return raw_relocation_replay_result_t::stale_fence;
@@ -749,7 +834,7 @@ raw_relocation_replay_coordinator_t::process_data (
             if (accepted->second != digest)
                 return raw_relocation_replay_result_t::conflicting_duplicate;
             const auto source_node =
-              registration.source.node_routing_id;
+              registration.relocation_source_node_routing_id;
             const protocol::relocation_ack_t duplicate_ack{
               data.relocation,
               data.target_attempt_generation,
@@ -778,8 +863,6 @@ raw_relocation_replay_coordinator_t::process_data (
         if (!nonzero (data.frozen_record->operation))
             return raw_relocation_replay_result_t::invalid;
         for (const auto &[candidate_key, candidate] : _targets) {
-            if (candidate.registration.source != registration.source)
-                continue;
             const auto duplicate =
               candidate.accepted_operations.find (operation_key);
             if (duplicate != candidate.accepted_operations.end ()
@@ -821,7 +904,8 @@ raw_relocation_replay_coordinator_t::process_data (
                     data.frozen_record->operation.low},
           data.sequence);
         state.high_water = data.sequence;
-        source_node = state.registration.source.node_routing_id;
+        source_node =
+          state.registration.relocation_source_node_routing_id;
         high_water = state.high_water;
     }
     try {
@@ -950,12 +1034,6 @@ bool raw_relocation_replay_coordinator_t::register_terminal_source (
         || registration.reply_route_id == 0
         || !registration.complete)
         return false;
-    const auto local = _transport->topology ().local_descriptor ();
-    if (registration.request_source.node_routing_id
-          != local.node_routing_id
-        || registration.request_source.node_generation
-             != local.lifecycle_generation)
-        return false;
     std::lock_guard lock (_gate);
     if (_terminal_sources.size () >= _terminal_record_limit)
         return false;
@@ -963,6 +1041,16 @@ bool raw_relocation_replay_coordinator_t::register_terminal_source (
       terminal_key (registration.relocation,
                     registration.operation),
       terminal_source_state_t{std::move (registration)}).second;
+}
+
+bool raw_relocation_replay_coordinator_t::unregister_terminal_source (
+  const protocol::relocation_id_t &relocation,
+  const protocol::wire_operation_id_t &operation)
+{
+    std::lock_guard lock (_gate);
+    return _terminal_sources.erase (
+             terminal_key (relocation, operation))
+           != 0;
 }
 
 bool raw_relocation_replay_coordinator_t::register_terminal_target (
@@ -1024,7 +1112,9 @@ std::size_t raw_relocation_replay_coordinator_t::retry_terminal_relays (
                 continue;
             pending.push_back ({
               item_key,
-              state.registration.request_source.node_routing_id,
+              state.registration.relay_destination_node_routing_id.empty ()
+                ? state.registration.request_source.node_routing_id
+                : state.registration.relay_destination_node_routing_id,
               state.registration.relay,
               state.registration.application_reply});
             state.next_retry = now + _relay_retry_interval;

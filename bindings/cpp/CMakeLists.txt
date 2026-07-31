@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(zlink_cpp VERSION 11.0.0 LANGUAGES CXX)
+project(zlink_cpp VERSION 11.0.2 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -324,6 +324,7 @@ if(ZLINK_CPP_BUILD_TESTS)
     test_cpp_contract_monitor.cpp
     test_cpp_contract_raw_capability.cpp
     test_cpp_contract_layout_headers.cpp
+    test_cpp_contract_source_layout.cpp
     test_cpp_contract_behavior.cpp
     test_cpp_contract_optimization_guard.cpp
   )

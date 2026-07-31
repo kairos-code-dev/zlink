@@ -259,8 +259,8 @@ internal sealed partial class ZLinkFrameworkRuntime
         try
         {
             using var operation = EnterOperation(countAsRequest: true);
-            var metricStarted = ZLinkRuntimeMetrics.StartChannelRequest();
-            var timedOut = false;
+            var metric = ZLinkRuntimeMetrics.StartRequest(routerChannelId, "spot");
+            var outcome = "completed";
             try
             {
                 EnsureKnownRouteMeshPeer(routerChannelId, targetNodeRid, $"SPOT '{targetSpotId}'");
@@ -281,12 +281,22 @@ internal sealed partial class ZLinkFrameworkRuntime
             }
             catch (TimeoutException)
             {
-                timedOut = true;
+                outcome = "timed_out";
+                throw;
+            }
+            catch (OperationCanceledException)
+            {
+                outcome = "cancelled";
+                throw;
+            }
+            catch
+            {
+                outcome = "failed";
                 throw;
             }
             finally
             {
-                ZLinkRuntimeMetrics.CompleteChannelRequest(metricStarted, timedOut);
+                metric.Complete(outcome);
             }
         }
         finally

@@ -55,9 +55,9 @@ test('RL-D4 channel replies preserve the canonical Error and Response wire heade
   assert.equal(Object.hasOwn(responseHeader, 'status'), false);
 });
 
-test('RL-D4 checks decoded error code and message before a successful follow-up', () => {
+test('RL-D4 checks the decoded failure and message before a successful follow-up', () => {
   const scenario = read('Client/Scenarios/rl-d4-missing-request-handler-scenario.ts');
-  assert.match(scenario, /failed\.failureType === 'Error'/);
+  assert.match(scenario, /ensure\(failed\.failed/);
   assert.match(scenario, /failed\.failureMessage\.includes\(/);
   assert.match(scenario, /followUp\.value === 'profile:fast'/);
 });

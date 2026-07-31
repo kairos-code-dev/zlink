@@ -22,7 +22,7 @@ import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
-import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorJoinEntrySpotResult;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorJoinResult;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
@@ -40,7 +40,7 @@ import systems.zlink.framework.spots.ZLinkSpotKind;
 final class ZLinkActorClientRuntimeTest {
     @Test
     void sendAndRequestResolveGlobalActorIdAndUseBackendNoBindOperations() {
-        systems.zlink.framework.locations.ZLinkLocationStore store =
+        systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository store =
             storeWithActor("actor-1");
         RecordingSpotNode node = new RecordingSpotNode(reply("pong"));
         ZLinkActorClientRuntime client = new ZLinkActorClientRuntime(
@@ -122,7 +122,7 @@ final class ZLinkActorClientRuntimeTest {
 
     @Test
     void explicitActorSendReturnsRouteNotConnectedWithoutPolling() {
-        systems.zlink.framework.locations.ZLinkLocationStore store =
+        systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository store =
             storeWithActor("actor-1");
         RecordingSpotNode node = new RecordingSpotNode();
         node.sendFailure = SubmitResult.NOT_CONNECTED;
@@ -215,16 +215,16 @@ final class ZLinkActorClientRuntimeTest {
         assertEquals(ZLinkFrameworkErrorKind.ACTOR_ROUTE_NOT_FOUND, frameworkError.kind());
     }
 
-    private static systems.zlink.framework.locations.ZLinkLocationStore
+    private static systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository
         storeWithActor(String actorId) {
         return storeWithActor(actorId, 7);
     }
 
-    private static systems.zlink.framework.locations.ZLinkLocationStore
+    private static systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository
         storeWithActor(String actorId, long generation) {
         var codec = new systems.zlink.framework.runtime.locations
             .ZLinkActorAuthorityPayloadCodec();
-        var snapshot = new systems.zlink.framework.locations.ZLinkAuthoritySnapshot(
+        var snapshot = new systems.zlink.framework.runtime.internal.locations.ZLinkAuthoritySnapshot(
             "v1",
             codec.encode(
                 systems.zlink.framework.runtime.locations
@@ -243,29 +243,28 @@ final class ZLinkActorClientRuntimeTest {
             5,
             "owner",
             1,
-            new systems.zlink.framework.locations.ZLinkPlacementAllocation(
-                systems.zlink.framework.locations.ZLinkPlacementAllocationState.ACTIVE,
+            new systems.zlink.framework.runtime.internal.locations.ZLinkPlacementAllocation(
+                systems.zlink.framework.runtime.internal.locations.ZLinkPlacementAllocationState.ACTIVE,
                 systems.zlink.framework.locations.ZLinkPlacementObjectKind.ACTOR,
                 "test",
-                new systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey(
+                new systems.zlink.framework.runtime.internal.locations.ZLinkMeshNodeDescriptorKey(
                     "mesh", RoutingId.from("actor-node")),
                 3,
-                systems.zlink.framework.locations.ZLinkPlacementCapacityBundle.actor(1)),
+                systems.zlink.framework.runtime.internal.locations.ZLinkPlacementCapacityBundle.actor(1)),
             Instant.now());
-        return (systems.zlink.framework.locations.ZLinkLocationStore)
+        return (systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository)
             java.lang.reflect.Proxy.newProxyInstance(
                 ZLinkActorClientRuntimeTest.class.getClassLoader(),
                 new Class<?>[] {
-                    systems.zlink.framework.locations.ZLinkLocationStore.class
+                    systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository.class
                 },
                 (proxy, method, arguments) -> switch (method.getName()) {
                     case "read" -> java.util.concurrent.CompletableFuture
                         .completedFuture(snapshot);
                     case "readOwnerLease" -> java.util.concurrent.CompletableFuture
                         .completedFuture(
-                            new systems.zlink.framework.locations.ZLinkOwnerLeaseFound(
-                                new systems.zlink.framework.locations
-                                    .ZLinkLocationOwnerToken("owner", 1),
+                            new systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseFound(
+                                new systems.zlink.framework.runtime.internal.locations.ZLinkLocationOwnerToken("owner", 1),
                                 Instant.now().plusSeconds(60),
                                 Instant.now()));
                     default -> throw new UnsupportedOperationException(

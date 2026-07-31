@@ -18,7 +18,7 @@ test('Bingo retrieves and reports player records through yielded API requests', 
   const room = read(
     'samples/Bingo.Ts/Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/bingo-room-spot.ts'
   );
-  assert.match(room, /requestToChannel\(SampleNames\.apiChannel, new GetPlayerRecordReq/);
+  assert.match(room, /requestToChannel\(\s*SampleNames\.apiChannel,\s*new GetPlayerRecordReq/);
   assert.match(room, /requestToChannel\(SampleNames\.apiChannel, new ReportBingoResultReq/);
   assert.match(room, /bingo-record fetched/);
   assert.match(room, /bingo-record reported/);

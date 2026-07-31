@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ZLINK_ACTOR_MANAGER, ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
+import { ZLINK_ACTOR_MANAGER, ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
 import { SampleNames } from '../../../../../Configuration/sample-settings';
 import {
   PacketNames,
@@ -9,7 +9,7 @@ import {
 import {
   ZLinkPacket,
   type ZLinkActorManager,
-  type ZLinkChannelClient,
+  type ZLinkRouteClient,
   type ZLinkMessage,
   type ZLinkSessionContext,
   type ZLinkSessionDispatchContext
@@ -21,24 +21,26 @@ import type { AuthenticatePlayerRes, AuthenticateReq } from '../../../../../../S
 class AuthenticatePlaySessionHandler {
   constructor(
     @Inject(ZLINK_ACTOR_MANAGER) private readonly actors: ZLinkActorManager,
-    @Inject(ZLINK_CHANNEL_CLIENT) private readonly api: ZLinkChannelClient
+    @Inject(ZLINK_ROUTE_CLIENT) private readonly api: ZLinkRouteClient
   ) {}
 
   async handle(context: ZLinkSessionContext, _dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
     const request = payload.decode<AuthenticateReq>(Object as never);
     const authenticated = await this.api
       .requestToChannel(
-        SampleNames.playSpotNode,
         SampleNames.apiChannel,
         authenticatePlayerReq(request.accessToken)
       )
       .submit<AuthenticatePlayerRes>();
-    const actorRef = await this.actors.getOrCreate(
-      SampleNames.playSpotNode,
-      authenticated.player.actorId,
-      SampleNames.playerActorType,
-      authenticated.player
-    );
+    const created = await this.actors
+      .getOrCreate(authenticated.player.actorId, SampleNames.playerActorType)
+      .inMesh(SampleNames.playSpotNode)
+      .request(authenticated.player)
+      .submit();
+    if (created.status === 'rejected') {
+      throw new Error(`Player actor '${authenticated.player.actorId}' creation was rejected.`);
+    }
+    const actorRef = created.actor;
     await context.actors.bindOrGet(actorRef);
     context.client.reply(authenticateRes(authenticated.player)).submit();
   }

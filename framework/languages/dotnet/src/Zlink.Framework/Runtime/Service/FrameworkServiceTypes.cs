@@ -234,7 +234,8 @@ internal readonly record struct InstanceSpotActivationOperation(
 internal sealed record InstanceSpotActivationTerminal(
     RequestResult Result,
     ServiceWireConstants.FrameworkErrorCode FailureCode,
-    IReadOnlyList<ReadOnlyMemory<byte>> ReplyParts);
+    IReadOnlyList<ReadOnlyMemory<byte>> ReplyParts,
+    bool Forwarded = false);
 
 internal interface IInstanceSpotActivationTarget
 {
@@ -523,15 +524,25 @@ internal interface IMeshNode : IDisposable, IAsyncDisposable
     RoutingId RoutingId { get; }
     MeshOperationId AllocateOperationId();
     long MaxMessageSize { get; set; }
-    int RouterHighWaterMark { get; set; }
+    ulong RouterHighWaterMark { get; set; }
     ulong MailboxMessageBudget { get; set; }
     ulong MailboxByteBudget { get; set; }
     TimeSpan? SendTimeout { get; set; }
     void SetRoutingId(RoutingId routingId);
     void SetObjectRole(ZLinkMeshNodeObjectRole objectRole);
     void SetBind(string endpoint);
+    void SetAdvertisedEndpoint(string endpoint);
     void Start();
-    ulong ConnectPeer(string endpoint, RoutingId? expectedRid = null);
+    ulong ConnectPeer(
+        string endpoint,
+        RoutingId? expectedRid = null,
+        string expectedSecurityIdentity = "none");
+    void SetPeerExpectation(
+        RoutingId peerRid,
+        string endpoint,
+        string expectedSecurityIdentity,
+        ulong expectedLifecycleGeneration);
+    void RemovePeerExpectation(RoutingId peerRid, string endpoint);
     void RemovePeerConnection(ulong connectionIntentId);
     void DisconnectPeer(RoutingId peerRid, ulong lifecycleGeneration = 0);
     void AddChannel(string channelName);
@@ -570,6 +581,9 @@ internal interface IMeshNode : IDisposable, IAsyncDisposable
         SendFlags flags = SendFlags.None, ReadOnlyMemory<byte> metadata = default);
     SubmitResult RequestToNode(RoutingId targetRid, IReadOnlyList<Message> parts,
         out MeshOperationId operationId, TimeSpan timeout = default,
+        SendFlags flags = SendFlags.None, ReadOnlyMemory<byte> metadata = default);
+    SubmitResult RequestToNode(RoutingId targetRid, IReadOnlyList<Message> parts,
+        RequestCallback callback, TimeSpan timeout = default,
         SendFlags flags = SendFlags.None, ReadOnlyMemory<byte> metadata = default);
     SubmitResult SendToActor(ActorRef actor, IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
     SubmitResult RequestToActor(ActorRef actor, IReadOnlyList<Message> parts,
@@ -660,6 +674,9 @@ internal interface ISpot : IDisposable, IAsyncDisposable
         SendFlags flags = SendFlags.None, ReadOnlyMemory<byte> metadata = default);
     SubmitResult RequestToChannel(string channelName, IReadOnlyList<Message> parts,
         out MeshOperationId operationId, TimeSpan timeout = default,
+        SendFlags flags = SendFlags.None, ReadOnlyMemory<byte> metadata = default);
+    SubmitResult RequestToChannel(string channelName, IReadOnlyList<Message> parts,
+        RequestCallback callback, TimeSpan timeout = default,
         SendFlags flags = SendFlags.None, ReadOnlyMemory<byte> metadata = default);
     void Publish(string channelName, string topic,
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None,

@@ -85,6 +85,10 @@ export interface ZLinkLocationRuntimeOptions {
   readonly clearTimer?: (handle: unknown) => void;
   readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
   readonly meshNames?: readonly string[];
+  readonly leaseScopes?: readonly {
+    readonly kind: 'mesh' | 'channel';
+    readonly name: string;
+  }[];
 }
 
 export interface ZLinkLocationEventSink {
@@ -133,7 +137,7 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
   private ownerCleanupComplete = true;
   private readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
   private readonly meshNames: readonly string[];
-  private peerMetricCount = 0;
+  private readonly leaseScopes: readonly { readonly kind: 'mesh' | 'channel'; readonly name: string }[];
   private nextLeaseRenewAtMs?: number;
   private ownerToken?: ZLinkLocationOwnerToken;
 
@@ -148,6 +152,7 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     this.events = runtimeOptions.events;
     this.metrics = runtimeOptions.metrics;
     this.meshNames = [...new Set(runtimeOptions.meshNames ?? [])];
+    this.leaseScopes = runtimeOptions.leaseScopes ?? this.meshNames.map(name => ({ kind: 'mesh', name }));
     this.monotonicNowMs = runtimeOptions.monotonicNowMs ?? (() => performance.now());
     this.setTimer = runtimeOptions.setTimer ?? ((callback, delayMs) => setTimeout(callback, delayMs));
     this.clearTimer = runtimeOptions.clearTimer ?? ((handle) => clearTimeout(handle as NodeJS.Timeout));
@@ -286,8 +291,8 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
       return true;
     } catch (error) {
       if (signal?.aborted === true) throw error;
-      this.metrics?.count('zlink.location.owner_lease.renew.failures');
-      this.recordFailure(errorMessage(error));
+      this.recordOwnerLeaseRenewFailure();
+      this.recordFailure(errorMessage(error), 'lease_renew');
       for (const handler of this.ownerLeaseRenewalFailedHandlers) handler();
       return false;
     }
@@ -475,15 +480,12 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
   }
 
   reportDiscoveryFailure(error: unknown): void {
-    this.metrics?.count('zlink.location.discovery.failures');
-    this.recordFailure(errorMessage(error));
+    this.recordFailure(errorMessage(error), 'read');
   }
 
   async listPeerLocations(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]> {
     const rows = await this.stores.peerStore.listPeers(filter, signal);
     const live = await this.filterLive(rows, (row) => row.ownerId, signal);
-    this.metrics?.change('zlink.location.peers', live.length - this.peerMetricCount);
-    this.peerMetricCount = live.length;
     return live;
   }
 
@@ -663,10 +665,10 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     const delayMs = Math.max(0, scheduledAt - this.monotonicNowMs());
     this.heartbeatTimer = this.setTimer(() => {
       this.heartbeatTimer = undefined;
-      this.metrics?.duration(
-        'zlink.location.owner_lease.renew.lateness',
-        Math.max(0, this.monotonicNowMs() - scheduledAt) / 1000
-      );
+      const lateness = Math.max(0, this.monotonicNowMs() - scheduledAt) / 1000;
+      for (const scope of this.leaseScopes) {
+        this.metrics?.recordOwnerLeaseRenewLateness(lateness, scope.kind, scope.name);
+      }
       this.nextLeaseRenewAtMs = scheduledAt + this.options.heartbeatIntervalMs;
       const renewal = this.renewOwnerLeaseOnce().then(
         () => undefined,
@@ -686,7 +688,7 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     try {
       return await write();
     } catch (error) {
-      this.recordFailure(errorMessage(error));
+      this.recordFailure(errorMessage(error), 'compare_exchange');
       throw error;
     }
   }
@@ -697,14 +699,14 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     try {
       return await write();
     } catch (error) {
-      this.recordFailure(errorMessage(error));
+      this.recordFailure(errorMessage(error), 'compare_exchange');
       throw error;
     }
   }
 
   private notifyIfStale(result: ZLinkLocationWriteResult, kind: ZLinkLocationKind, key: string): void {
     if (result.status === ZLinkLocationWriteStatus.IgnoredStale || result.status === ZLinkLocationWriteStatus.RejectedConflict) {
-      this.metrics?.count('zlink.location.write.conflicts');
+      this.metrics?.recordLocationStoreError('compare_exchange');
     }
     if (result.status !== ZLinkLocationWriteStatus.IgnoredStale) {
       return;
@@ -716,7 +718,7 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
 
   private notifyIfStaleStatus(status: ZLinkLocationWriteStatus, kind: ZLinkLocationKind, key: string): void {
     if (status === ZLinkLocationWriteStatus.IgnoredStale || status === ZLinkLocationWriteStatus.RejectedConflict) {
-      this.metrics?.count('zlink.location.write.conflicts');
+      this.metrics?.recordLocationStoreError('compare_exchange');
     }
     if (status !== ZLinkLocationWriteStatus.IgnoredStale) {
       return;
@@ -726,10 +728,16 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     }
   }
 
-  private recordFailure(message: string): void {
-    this.metrics?.count('zlink.location.store.errors');
+  private recordFailure(message: string, operation = 'read'): void {
+    this.metrics?.recordLocationStoreError(operation);
     this.ownerLeaseHealthy = false;
     this.lastError = message;
+  }
+
+  private recordOwnerLeaseRenewFailure(): void {
+    for (const scope of this.leaseScopes) {
+      this.metrics?.recordOwnerLeaseRenewFailure(scope.kind, scope.name);
+    }
   }
 }
 

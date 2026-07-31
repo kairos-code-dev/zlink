@@ -101,7 +101,10 @@ export class ZLinkFanoutLocationRuntime {
     for (const [channelName, channel] of this.registration.channels) {
       if (channel.publisher === undefined) continue;
       const publisher = this.sockets.publisher(channelName);
-      const endpoint = publisher.lastEndpoint ?? channel.publisher.bind ?? '';
+      const endpoint = advertisedEndpoint(
+        publisher.lastEndpoint ?? channel.publisher.bind ?? '',
+        channel.publisher.advertiseHost
+      );
       if (endpoint.length === 0) {
         throw new ZLinkConfigurationException(
           `Fanout publisher '${channelName}' did not report a bound endpoint.`
@@ -347,6 +350,20 @@ export class ZLinkFanoutLocationRuntime {
     }, this.options.pollingIntervalMs);
     this.timer.unref();
   }
+}
+
+function advertisedEndpoint(boundEndpoint: string, advertiseHost: string | undefined): string {
+  if (advertiseHost === undefined) return boundEndpoint;
+  const match = /^([a-z][a-z0-9+.-]*):\/\/(?:\[[^\]]+\]|[^:]+):(\d+)$/i.exec(boundEndpoint);
+  if (match === null) {
+    throw new ZLinkConfigurationException(
+      `Fanout publisher bound endpoint '${boundEndpoint}' cannot be advertised.`
+    );
+  }
+  const host = advertiseHost.includes(':') && !advertiseHost.startsWith('[')
+    ? `[${advertiseHost}]`
+    : advertiseHost;
+  return `${match[1]}://${host}:${match[2]}`;
 }
 
 function fanoutConnectionId(

@@ -1125,7 +1125,11 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     {
         var store = DispatchProxy.Create<ITrackedLocationStore, TrackedLocationStoreProxy>();
         var builder = Host.CreateApplicationBuilder();
-        builder.Services.AddZLinkFramework(options => options.AddLocationStore(store));
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.ConfigureInboundDispatch().ApplicationHwmBytes = 0;
+            options.AddLocationStore(store);
+        });
         using var host = builder.Build();
 
         await host.StartAsync();
@@ -1138,6 +1142,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddZLinkFramework(options =>
         {
+            options.ConfigureInboundDispatch().ApplicationHwmBytes = 0;
             options.UseTestLocationStore();
             options.DisableImplicitHandlerAutoRegistration();
             var node = options.AddRouteMesh("duplicate-packet")
@@ -1162,6 +1167,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddZLinkFramework(options =>
         {
+            options.ConfigureInboundDispatch().ApplicationHwmBytes = 0;
             options.UseTestLocationStore();
             options.DisableImplicitHandlerAutoRegistration();
             var node = options.AddRouteMesh("duplicate-subscription")
@@ -1184,6 +1190,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddZLinkFramework(options =>
         {
+            options.ConfigureInboundDispatch().ApplicationHwmBytes = 0;
             options.UseTestLocationStore();
             options.DisableImplicitHandlerAutoRegistration();
             var node = options.AddRouteMesh("duplicate-actor")
@@ -1206,6 +1213,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddZLinkFramework(options =>
         {
+            options.ConfigureInboundDispatch().ApplicationHwmBytes = 0;
             options.UseTestLocationStore();
             var node = options.AddRouteMesh("invalid-timer")
                 .Listen($"inproc://invalid-timer-{Guid.NewGuid():N}");

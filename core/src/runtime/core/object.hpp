@@ -36,7 +36,7 @@ class object_t
     ctx_t *get_ctx () const;
     void process_command (const zlink::command_t &cmd_);
     void send_inproc_connected (zlink::socket_base_t *socket_);
-    void send_bind (zlink::own_t *destination_, zlink::pipe_t *pipe_, bool inc_seqnum_ = true);
+    bool send_bind (zlink::own_t *destination_, zlink::pipe_t *pipe_, bool inc_seqnum_ = true);
 
   protected:
     //  Using following function, socket is able to access global

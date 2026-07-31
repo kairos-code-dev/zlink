@@ -71,6 +71,8 @@ internal static partial class NativeMethods
         "zlink_publish_part",
         "zlink_recv_handler",
         "zlink_recv_part",
+        "zlink_router_completion_control_handler",
+        "zlink_router_completion_control_part",
         "zlink_router_recv_part",
         "zlink_router_reply_part",
         "zlink_router_request_part",

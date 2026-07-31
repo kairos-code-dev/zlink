@@ -27,6 +27,30 @@ admission을 열지 않으며 같은 Session의 다른 Actor route와 physical S
 ## Kotlin source signature
 
 ```kotlin
+interface ZLinkSuspendingTypedSessionPacketHandler<
+    TSessionContext : ZLinkSessionContext,
+    TMessage : Any,
+> {
+    fun packetName(): String
+    fun messageType(): Class<TMessage>
+    suspend fun handle(
+        context: TSessionContext,
+        dispatch: ZLinkSessionMessageContext,
+        message: TMessage,
+    )
+}
+
+abstract class ZLinkSuspendingSession : ZLinkSession {
+    abstract override fun context(): ZLinkSessionContext
+    protected open suspend fun onConnectedSuspending()
+    protected open suspend fun onDisconnectedSuspending()
+    protected open suspend fun onErrorSuspending(error: ZLinkStreamError)
+    protected open suspend fun onDispatchSuspending(
+        dispatch: ZLinkSessionMessageContext,
+        payload: ZLinkMessage,
+    )
+}
+
 suspend fun ZLinkSessionActors.bindOrGetActor(
     actor: ActorRef,
 ): ZLinkSessionActor
@@ -63,6 +87,19 @@ interface ZLinkKotlinBoundSession {
 ## Exact generated JVM signature
 
 ```java
+public interface systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler<TSessionContext extends systems.zlink.framework.streams.ZLinkSessionContext, TMessage> {
+  public abstract java.lang.String packetName();
+  public abstract java.lang.Class<TMessage> messageType();
+  public abstract java.lang.Object handle(TSessionContext, systems.zlink.framework.streams.ZLinkSessionMessageContext, TMessage, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+}
+public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingSession implements systems.zlink.framework.streams.ZLinkSession {
+  public systems.zlink.framework.kotlin.ZLinkSuspendingSession();
+  public abstract systems.zlink.framework.streams.ZLinkSessionContext context();
+  public final java.util.concurrent.CompletionStage<java.lang.Void> onConnected();
+  public final java.util.concurrent.CompletionStage<java.lang.Void> onDisconnected();
+  public final java.util.concurrent.CompletionStage<java.lang.Void> onError(systems.zlink.framework.streams.ZLinkStreamError);
+  public final java.util.concurrent.CompletionStage<java.lang.Void> onDispatch(systems.zlink.framework.streams.ZLinkSessionMessageContext, systems.zlink.framework.messaging.ZLinkMessage);
+}
 public final class systems.zlink.framework.kotlin.ZLinkFrameworkExtensionsKt {
   public static final java.lang.Object bindOrGetActor(systems.zlink.framework.streams.ZLinkSessionActors, systems.zlink.framework.actors.ActorRef, kotlin.coroutines.Continuation<? super systems.zlink.framework.streams.ZLinkSessionActor>);
 }

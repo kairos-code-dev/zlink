@@ -5,13 +5,13 @@ import { NestFactory } from '@nestjs/core';
 import {
   ZLINK_ACTOR_CLIENT,
   ZLINK_ACTOR_MANAGER,
-  ZLINK_CHANNEL_CLIENT,
+  ZLINK_ROUTE_CLIENT,
   ZLINK_SPOT_MANAGER
 } from '@zlink-systems/nestjs';
 import type {
   ZLinkActorClient,
   ZLinkActorManager,
-  ZLinkChannelClient,
+  ZLinkRouteClient,
   ZLinkSpotManager
 } from '@zlink-systems/framework';
 import { ZONEWORLD_CONFIG } from '../Configuration/configuration';
@@ -44,7 +44,10 @@ async function bootstrap(): Promise<void> {
     console.log(`maintenance restored node=${node.nodeId} enabled=${state.ownMaintenance()}`);
     const spots = app.get<ZLinkSpotManager>(ZLINK_SPOT_MANAGER, { strict: false });
     for (const zoneId of zones) {
-      await spots.getOrCreate(ZoneWorldNames.zoneMesh, ZoneSpot, zoneId);
+      await spots
+        .getOrCreate(zoneId, ZoneSpot.name)
+        .inMesh(ZoneWorldNames.zoneMesh)
+        .submit();
     }
     if (node.disableBots !== true) {
       await spawnBots(app, zones);
@@ -52,11 +55,10 @@ async function bootstrap(): Promise<void> {
       await waitForBotStart(node.botStartSignalPath);
     }
     state.enableBotTicks();
-    const channels = app.get<ZLinkChannelClient>(ZLINK_CHANNEL_CLIENT, { strict: false });
+    const channels = app.get<ZLinkRouteClient>(ZLINK_ROUTE_CLIENT, { strict: false });
     const report = async () => {
       try {
         await channels.sendToChannel(
-          ZoneWorldNames.zoneMesh,
           ZoneWorldNames.reportChannel,
           new ReportNodeStatusMsg(
             node.nodeId,
@@ -98,12 +100,15 @@ async function spawnBots(app: { get<T>(token: unknown, options?: { strict: boole
   const manager = app.get<ZLinkActorManager>(ZLINK_ACTOR_MANAGER, { strict: false });
   const client = app.get<ZLinkActorClient>(ZLINK_ACTOR_CLIENT, { strict: false });
   for (const route of botRoutes.filter((candidate) => zones.includes(candidate.zoneId))) {
-    if (await manager.find(ZoneWorldNames.zoneMesh, route.playerId) !== undefined) continue;
-    const actor = await manager.getOrCreate(
-      ZoneWorldNames.zoneMesh,
-      route.playerId,
-      ZoneWorldNames.playerActorType
-    );
+    if (await manager.find(route.playerId) !== undefined) continue;
+    const result = await manager
+      .getOrCreate(route.playerId, ZoneWorldNames.playerActorType)
+      .inMesh(ZoneWorldNames.zoneMesh)
+      .submit();
+    if (result.status === 'rejected') {
+      throw new Error(`Bot actor '${route.playerId}' creation was rejected.`);
+    }
+    const actor = result.actor;
     const entered = await client.requestToActor(
       actor.actorId,
       new EnterWorldReq(route.x, route.y, true, route.dirX, route.dirY)

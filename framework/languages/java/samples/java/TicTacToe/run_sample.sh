@@ -11,8 +11,8 @@ if grep -n 'leaveFinishedActors' "${game_source}"; then
   echo "TicTacToe actor cleanup must be driven by LeaveGameReq, not by the timer." >&2
   exit 1
 fi
-if rg -n 'addHandlersFromPackageOf' Server/src/main/java --glob '*.java'; then
-  echo "TicTacToe must register handlers explicitly" >&2
+if ! rg -q 'addHandlersFromPackageOf' Server/src/main/java --glob '*.java'; then
+  echo "TicTacToe must discover handlers automatically" >&2
   exit 1
 fi
 if rg -n 'ZLinkMessagePackCodec|zlink-framework-codec-msgpack' \
@@ -123,6 +123,7 @@ wait_endpoint redis "${redis_endpoint}"
 
 common_play_channels="tcp://127.0.0.1:${play_a_channel_port},tcp://127.0.0.1:${play_b_channel_port}"
 common_play_streams="tcp://127.0.0.1:${play_a_stream_port},tcp://127.0.0.1:${play_b_stream_port}"
+common_spots="tcp://127.0.0.1:${play_a_spot_port},tcp://127.0.0.1:${play_b_spot_port}"
 api_a_config="${run_dir}/api-a.properties"
 api_b_config="${run_dir}/api-b.properties"
 play_a_config="${run_dir}/play-a.properties"
@@ -131,8 +132,11 @@ play_b_config="${run_dir}/play-b.properties"
 cat >"${api_a_config}" <<EOF
 sample.apiBindUrl=http://127.0.0.1:${api_a_http_port}
 sample.apiChannelEndpoint=tcp://127.0.0.1:${api_a_channel_port}
-sample.playChannelEndpoint=tcp://127.0.0.1:${play_a_channel_port}
-sample.playChannelEndpoints=${common_play_channels}
+sample.playEndpoints=${common_play_streams}
+sample.routeEndpoint=tcp://127.0.0.1:${unused_port1}
+sample.spotEndpoints=${common_spots}
+sample.redisEndpoint=${redis_endpoint}
+sample.redisKeyPrefix=${redis_key_prefix}
 sample.logDirectory=${log_dir}
 EOF
 
@@ -140,11 +144,11 @@ cp "${api_a_config}" "${api_b_config}"
 sed -i \
   -e "s#sample.apiBindUrl=.*#sample.apiBindUrl=http://127.0.0.1:${api_b_http_port}#" \
   -e "s#sample.apiChannelEndpoint=.*#sample.apiChannelEndpoint=tcp://127.0.0.1:${api_b_channel_port}#" \
+  -e "s#sample.routeEndpoint=.*#sample.routeEndpoint=tcp://127.0.0.1:${unused_port2}#" \
   "${api_b_config}"
 
 cat >"${play_a_config}" <<EOF
 sample.apiChannelEndpoint=tcp://127.0.0.1:${api_a_channel_port}
-sample.playChannelEndpoint=tcp://127.0.0.1:${play_a_channel_port}
 sample.playEndpoint=tcp://127.0.0.1:${play_a_stream_port}
 sample.playEndpoints=${common_play_streams}
 sample.spotEndpoint=tcp://127.0.0.1:${play_a_spot_port}
@@ -158,7 +162,6 @@ EOF
 
 cat >"${play_b_config}" <<EOF
 sample.apiChannelEndpoint=tcp://127.0.0.1:${api_a_channel_port}
-sample.playChannelEndpoint=tcp://127.0.0.1:${play_b_channel_port}
 sample.playEndpoint=tcp://127.0.0.1:${play_b_stream_port}
 sample.playEndpoints=${common_play_streams}
 sample.spotEndpoint=tcp://127.0.0.1:${play_b_spot_port}
@@ -207,7 +210,20 @@ done
 grep -Eq "stream-inbound sample=TicTacToe role=.* kind=RESPONSE " "${log_dir}/client.log"
 grep -Eq "stream-inbound sample=TicTacToe role=.* kind=SEND " "${log_dir}/client.log"
 grep -Eq "tictactoe(=| )completed" "${log_dir}/client.log"
-wait_log_contains "${log_dir}/play-a.log" "tictactoe actor destroy completed actor=player-x"
-wait_log_contains "${log_dir}/play-a.log" "tictactoe actor destroy completed actor=player-o"
+for actor_id in player-x player-o; do
+  actor_destroyed=0
+  for _ in $(seq 1 100); do
+    if grep -q "tictactoe actor destroy completed actor=${actor_id}" \
+        "${log_dir}"/play-*.log; then
+      actor_destroyed=1
+      break
+    fi
+    sleep 0.1
+  done
+  if [[ "${actor_destroyed}" != "1" ]]; then
+    echo "Timed out waiting for ${actor_id} destroy on any Play node" >&2
+    exit 1
+  fi
+done
 grep -Rq "message flow" "${log_dir}"
 echo "PASS TicTacToe.Java"

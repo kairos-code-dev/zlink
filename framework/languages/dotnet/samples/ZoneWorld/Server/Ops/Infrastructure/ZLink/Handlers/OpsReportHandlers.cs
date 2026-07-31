@@ -13,11 +13,11 @@ namespace ZoneWorld.Server.Ops.Infrastructure.ZLink.Handlers;
 internal sealed class ReportSpotEventHandler(
     OpsConsoleRegistry consoles,
     ILogger<ReportSpotEventHandler> logger)
-    : IZLinkRouteSendHandler<ReportSpotEventMsg>
+    : IZLinkSendHandler<ReportSpotEventMsg>
 {
     public async ValueTask HandleAsync(
         ReportSpotEventMsg message,
-        ZLinkRouteMessageContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         logger.LogInformation(
@@ -43,17 +43,20 @@ internal sealed class ReportSpotEventHandler(
 internal sealed class ReportNodeStatusHandler(
     NodeRegistry nodes,
     ILogger<ReportNodeStatusHandler> logger)
-    : IZLinkRouteSendHandler<ReportNodeStatusMsg>
+    : IZLinkSendHandler<ReportNodeStatusMsg>
 {
     public async ValueTask HandleAsync(
         ReportNodeStatusMsg message,
-        ZLinkRouteMessageContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
-        await nodes.ApplyReportAsync(message, context.SourceNodeRid, cancellationToken);
+        var route = context as ZLinkRouteMessageContext
+                    ?? throw new InvalidOperationException(
+                        "Zone reports require RouteMesh source identity.");
+        await nodes.ApplyReportAsync(message, route.SourceNodeRid, cancellationToken);
         logger.LogInformation(
             "node status observed. node={NodeId}, rid={NodeRid}",
             message.NodeId,
-            context.SourceNodeRid);
+            route.SourceNodeRid);
     }
 }

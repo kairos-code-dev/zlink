@@ -1,7 +1,7 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.courierspotnode.spots.handlers
 
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.samples.kotlin.deliverydispatch.server.courierspotnode.CourierActor
 import systems.zlink.samples.kotlin.deliverydispatch.server.courierspotnode.spots.CourierEntrySpot
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.BindCourierSessionReq
@@ -16,7 +16,7 @@ class BindCourierSessionActorHandler : ZLinkSuspendingEntrySpotActorRequestHandl
     override suspend fun handle(
         entrySpot: CourierEntrySpot,
         actor: CourierActor,
-        context: ZLinkSpotActorRequestContext,
+        context: ZLinkMessageContext,
         request: BindCourierSessionReq,
     ): BindCourierSessionRes =
         BindCourierSessionRes(

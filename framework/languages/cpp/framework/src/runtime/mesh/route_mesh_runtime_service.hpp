@@ -2,6 +2,7 @@
 #pragma once
 
 #include "runtime/mesh/mesh_node_runtime.hpp"
+#include <runtime/locations/location_repository.hpp>
 
 #include <zlink/framework/contracts/configuration/module.hpp>
 #include <zlink/framework/contracts/locations/runtime_query.hpp>
@@ -27,14 +28,14 @@ class route_mesh_runtime_service_t final : public route_mesh_runtime_t
     route_mesh_runtime_service_t (
       std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> nodes,
       location_runtime_query_t *location_runtime,
-      location_store_t *location_store = nullptr);
+      location_repository_t *location_store = nullptr);
     ~route_mesh_runtime_service_t ();
 
     mesh_node_snapshot_t snapshot (std::string mesh_name) const override;
     std::unique_ptr<mesh_runtime_observation_t>
     observe (std::string mesh_name,
              std::size_t capacity,
-             std::function<void (const mesh_runtime_event_t &)> observer) override;
+             std::function<void (const mesh_node_snapshot_t &)> observer) override;
     bool is_ready (std::string mesh_name) const override;
 
     void start ();

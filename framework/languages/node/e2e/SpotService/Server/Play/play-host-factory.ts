@@ -90,12 +90,13 @@ export async function startPlayHost(): Promise<void> {
             .listen(options.controlRouterEndpoint)
             .routingId(options.rid);
           control
-            .channel(SpotServiceNames.controlChannel)
-            .server()
             .addRequestHandler('ControlPingReq', ControlPingHandler)
             .addRequestHandler('EnsureActorReq', EnsureActorHandler)
             .addRequestHandler('CrossRoleActorPushReq', CrossRoleActorPushHandler)
             .addRequestHandler('CreateSpotReq', CreateSpotHandler);
+          control
+            .channel(SpotServiceNames.controlChannel)
+            .server();
           const externalSpotChannel = options.rid === 'play-b'
             ? SpotServiceNames.externalSpotChannelB
             : SpotServiceNames.externalSpotChannel;

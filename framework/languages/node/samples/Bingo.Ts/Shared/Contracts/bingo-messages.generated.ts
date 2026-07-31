@@ -4,23 +4,6 @@ import type { BingoMode, BingoRoomStatus } from './messages';
 
 type MessageValues<T> = { [K in keyof T as T[K] extends Function ? never : K]: T[K] };
 
-export class AllocateBingoRoomReq {
-  mode!: BingoMode;
-  actorId!: string;
-
-  constructor(values: MessageValues<AllocateBingoRoomReq>) {
-    Object.assign(this, values);
-  }
-}
-
-export class AllocateBingoRoomRes {
-  roomId!: string;
-
-  constructor(values: MessageValues<AllocateBingoRoomRes>) {
-    Object.assign(this, values);
-  }
-}
-
 export class AuthenticatePlayerReq {
   accessToken!: string;
 
@@ -328,6 +311,25 @@ export class ReportBingoResultRes {
   }
 }
 
+export class ReserveBingoRoomReq {
+  mode!: BingoMode;
+  actorId!: string;
+  levelBucket!: string;
+
+  constructor(values: MessageValues<ReserveBingoRoomReq>) {
+    Object.assign(this, values);
+  }
+}
+
+export class ReserveBingoRoomRes {
+  roomId!: string;
+  settings!: BingoRoomSettingsPayload;
+
+  constructor(values: MessageValues<ReserveBingoRoomRes>) {
+    Object.assign(this, values);
+  }
+}
+
 export class StopObservingBingoEventsReq {
   roomId!: string;
 
@@ -362,8 +364,6 @@ export class SubmitBingoCardRes {
 }
 
 export const BingoGeneratedMessageConstructors = {
-  AllocateBingoRoomReq,
-  AllocateBingoRoomRes,
   AuthenticatePlayerReq,
   AuthenticatePlayerRes,
   AuthenticateReq,
@@ -395,6 +395,8 @@ export const BingoGeneratedMessageConstructors = {
   PlayerJoinedNotify,
   ReportBingoResultReq,
   ReportBingoResultRes,
+  ReserveBingoRoomReq,
+  ReserveBingoRoomRes,
   StopObservingBingoEventsReq,
   StopObservingBingoEventsRes,
   SubmitBingoCardReq,
@@ -410,31 +412,6 @@ type BingoFieldDescriptor = {
 };
 
 const bingoDescriptors: Readonly<Partial<Record<string, readonly BingoFieldDescriptor[]>>> = {
-  "AllocateBingoRoomReq": [
-    {
-      "number": 1,
-      "name": "mode",
-      "kind": "string",
-      "repeated": false,
-      "optional": false
-    },
-    {
-      "number": 2,
-      "name": "actorId",
-      "kind": "string",
-      "repeated": false,
-      "optional": false
-    }
-  ],
-  "AllocateBingoRoomRes": [
-    {
-      "number": 1,
-      "name": "roomId",
-      "kind": "string",
-      "repeated": false,
-      "optional": false
-    }
-  ],
   "AuthenticatePlayerReq": [
     {
       "number": 1,
@@ -1121,6 +1098,45 @@ const bingoDescriptors: Readonly<Partial<Record<string, readonly BingoFieldDescr
       "number": 3,
       "name": "losses",
       "kind": "int32",
+      "repeated": false,
+      "optional": false
+    }
+  ],
+  "ReserveBingoRoomReq": [
+    {
+      "number": 1,
+      "name": "mode",
+      "kind": "string",
+      "repeated": false,
+      "optional": false
+    },
+    {
+      "number": 2,
+      "name": "actorId",
+      "kind": "string",
+      "repeated": false,
+      "optional": false
+    },
+    {
+      "number": 3,
+      "name": "levelBucket",
+      "kind": "string",
+      "repeated": false,
+      "optional": false
+    }
+  ],
+  "ReserveBingoRoomRes": [
+    {
+      "number": 1,
+      "name": "roomId",
+      "kind": "string",
+      "repeated": false,
+      "optional": false
+    },
+    {
+      "number": 2,
+      "name": "settings",
+      "kind": "message:BingoRoomSettingsPayload",
       "repeated": false,
       "optional": false
     }

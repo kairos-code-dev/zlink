@@ -4,27 +4,27 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
-import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
-import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationOwnerToken;
 
 /**
  * Internal host-to-channel dependency for classic fanout location runtime.
  */
 public final class ZLinkFanoutRuntimeConfiguration {
-    private final ZLinkLocationStore store;
+    private final ZLinkLocationRepository store;
     private final ZLinkLocationOptions options;
     private volatile ZLinkLocationOwnerToken owner;
     private Lifecycle lifecycle;
 
     public ZLinkFanoutRuntimeConfiguration(
-        ZLinkLocationStore store,
+        ZLinkLocationRepository store,
         ZLinkLocationOptions options) {
         this.store = store;
         this.options = Objects.requireNonNull(options, "options");
     }
 
-    public ZLinkLocationStore store() {
+    public ZLinkLocationRepository store() {
         return store;
     }
 

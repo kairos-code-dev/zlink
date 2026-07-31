@@ -21,6 +21,7 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.*;
 import systems.zlink.framework.runtime.locations.ZLinkActorAuthorityPayloadCodec;
 import systems.zlink.framework.runtime.locations.ZLinkServiceAuthorityPayloadCodec;
 import systems.zlink.framework.testing.ZLinkLocationStoreTestAdapter;
@@ -186,6 +187,36 @@ final class ZLinkAggregateRelocationCoordinatorTest {
         assertEquals(new UUID(0, 9), decoded.aggregateId());
         assertEquals(7, decoded.aggregateGeneration());
         assertEquals("owner-b", decoded.targetOwnerId());
+    }
+
+    @Test
+    void startupScannerFindsAndVerifiesPublishedAggregateOnce() {
+        FakeAuthorityStore authority = new FakeAuthorityStore();
+        FakeRelocationStore relocation = new FakeRelocationStore();
+        var coordinator = new ZLinkAggregateRelocationCoordinator(
+            authority, relocation);
+        coordinator.commit(
+                coordinator.prepare(request(), NEVER)
+                    .toCompletableFuture().join(),
+                NEVER)
+            .toCompletableFuture().join();
+
+        var candidates = new ZLinkRelocationStartupScanner(
+            authority, relocation).scan(NEVER).toCompletableFuture().join();
+
+        assertEquals(1, candidates.size());
+        var candidate = candidates.getFirst();
+        assertEquals(new UUID(0, 9), candidate.fence().aggregateId());
+        assertEquals("owner-a", candidate.sourceOwnerId());
+        assertEquals(6, candidate.sourceOwnerLeaseGeneration());
+        assertEquals(RoutingId.from("node-a"), candidate.sourceNodeRid());
+        assertEquals(3, candidate.sourceNodeGeneration());
+        assertEquals("owner-b", candidate.targetOwner().ownerId());
+        assertEquals(RoutingId.from("node-b"), candidate.targetNodeRid());
+        assertEquals(4, candidate.targetNodeGeneration());
+        assertEquals(2, candidate.authorities().size());
+        assertFalse(candidate.sourceCleanupCompleted());
+        assertArrayEquals(goldenRoot(), candidate.root().payload());
     }
 
     @Test
@@ -638,6 +669,27 @@ final class ZLinkAggregateRelocationCoordinatorTest {
         }
 
         @Override
+        public CompletionStage<ZLinkAuthorityScanResult> list(
+            String prefix,
+            Optional<ZLinkAuthorityScanCursor> cursor,
+            int limit,
+            ZLinkStoreCancellation cancellation) {
+            ZLinkPlacementObjectKind expected = prefix.endsWith("a:")
+                ? ZLinkPlacementObjectKind.ACTOR
+                : ZLinkPlacementObjectKind.USER_SPOT;
+            List<ZLinkAuthorityEntry> entries = rows.entrySet().stream()
+                .filter(value -> value.getValue().allocation().objectKind()
+                    == expected)
+                .map(value -> new ZLinkAuthorityEntry(
+                    value.getKey(), value.getValue()))
+                .sorted(java.util.Comparator.comparing(
+                    ZLinkAuthorityEntry::key))
+                .toList();
+            return CompletableFuture.completedFuture(
+                new ZLinkAuthorityPage(entries, Optional.empty()));
+        }
+
+        @Override
         public CompletionStage<ZLinkAuthorityWriteResult> compareExchange(
             String key, ZLinkAuthorityExpectation expectation,
             ZLinkAuthorityMutation mutation, ZLinkStoreCancellation cancellation) {
@@ -672,13 +724,6 @@ final class ZLinkAggregateRelocationCoordinatorTest {
                 stored.ownerLeaseGeneration(),
                 stored.allocation(),
                 stored.storeNow()));
-        }
-
-        @Override
-        public CompletionStage<ZLinkAuthorityScanResult> list(
-            String prefix, Optional<ZLinkAuthorityScanCursor> cursor, int limit,
-            ZLinkStoreCancellation cancellation) {
-            return unsupported();
         }
 
         @Override

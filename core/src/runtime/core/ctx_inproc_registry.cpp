@@ -193,7 +193,6 @@ void zlink::ctx_inproc_registry_t::connect_inproc_sockets (
   const pending_connection_t &pending_connection_,
   side side_)
 {
-    bind_socket_->inc_seqnum ();
     pending_connection_.bind_pipe->set_tid (bind_socket_->get_tid ());
 
     if (!bind_options_.recv_routing_id) {
@@ -248,6 +247,10 @@ void zlink::ctx_inproc_registry_t::connect_inproc_sockets (
         command_t cmd;
         cmd.type = command_t::bind;
         cmd.args.bind.pipe = pending_connection_.bind_pipe;
+        // process_command releases every pipe reference carried by a command.
+        if (!pending_connection_.bind_pipe->retain_lifetime_ref ())
+            return;
+        bind_socket_->inc_seqnum ();
         bind_socket_->process_command (cmd);
         pending_connection_.endpoint.socket->validate_inproc_connection (
           pending_connection_.connect_pipe);
@@ -256,8 +259,9 @@ void zlink::ctx_inproc_registry_t::connect_inproc_sockets (
           pending_connection_.connect_pipe);
         bind_socket_->send_inproc_connected (pending_connection_.endpoint.socket);
     } else {
-        pending_connection_.connect_pipe->send_bind (bind_socket_, pending_connection_.bind_pipe,
-                                                     false);
+        if (!pending_connection_.connect_pipe->send_bind (
+              bind_socket_, pending_connection_.bind_pipe, true))
+            return;
         bind_socket_->emit_inproc_connection_ready (pending_connection_.bind_pipe);
     }
 

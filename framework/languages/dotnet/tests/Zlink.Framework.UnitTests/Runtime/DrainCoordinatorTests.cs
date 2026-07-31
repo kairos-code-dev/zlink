@@ -605,7 +605,8 @@ public sealed class DrainCoordinatorTests
     {
         var executor = new FakeDrainExecutor();
         var builder = Host.CreateApplicationBuilder();
-        builder.Services.AddZLinkFramework(_ => { });
+        builder.Services.AddZLinkFramework(options =>
+            options.ConfigureInboundDispatch().ApplicationHwmBytes = 0);
         builder.Services.AddSingleton<IZLinkDrainExecutor>(executor);
         using var host = builder.Build();
         await host.StartAsync();
@@ -792,9 +793,12 @@ public sealed class DrainCoordinatorTests
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton(sessionProbe);
         builder.Services.AddZLinkFramework(options =>
+        {
+            options.ConfigureInboundDispatch().ApplicationHwmBytes = 0;
             options.AddStreamNode("drain-stream")
                 .Bind($"tcp://127.0.0.1:{port}")
-                .AddSession<DrainSession>());
+                .AddSession<DrainSession>();
+        });
         using var host = builder.Build();
         await host.StartAsync();
 
@@ -844,9 +848,12 @@ public sealed class DrainCoordinatorTests
         var port = FindFreeTcpPort();
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddZLinkFramework(options =>
+        {
+            options.ConfigureInboundDispatch().ApplicationHwmBytes = 0;
             options.AddStreamNode("drain-stream")
                 .Bind($"tcp://127.0.0.1:{port}")
-                .AddSession<DrainSession>());
+                .AddSession<DrainSession>();
+        });
         using var host = builder.Build();
         await host.StartAsync();
 

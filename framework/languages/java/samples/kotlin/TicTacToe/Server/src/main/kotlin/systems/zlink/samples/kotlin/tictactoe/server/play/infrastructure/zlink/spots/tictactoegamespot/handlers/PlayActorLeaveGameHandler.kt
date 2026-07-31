@@ -2,7 +2,7 @@ package systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.
 
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.handlers.ZLinkSpotActorSend
-import systems.zlink.framework.spots.ZLinkSpotActorSendContext
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.actors.PlayActor
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.TicTacToeGame
@@ -14,7 +14,7 @@ class PlayActorLeaveGameHandler {
     suspend fun leaveGame(
         spot: TicTacToeGame,
         actor: PlayActor,
-        context: ZLinkSpotActorSendContext,
+        context: ZLinkMessageContext,
         request: LeaveGameReq,
     ) {
         spot.leaveGame(actor, request.roomId)

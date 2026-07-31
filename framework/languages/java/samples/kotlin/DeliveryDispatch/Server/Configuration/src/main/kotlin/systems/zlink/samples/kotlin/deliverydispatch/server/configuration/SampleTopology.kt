@@ -11,7 +11,6 @@ data class SampleTopology(
     val courierSessionUrl: String,
     val courierSpotNode1Url: String,
     val courierSpotNode2Url: String,
-    val courierGatewayUrl: String,
     val dispatchUrl: String,
 ) {
     fun roleUrls(): Map<String, String> =
@@ -22,7 +21,6 @@ data class SampleTopology(
             SampleNames.CourierSessionRole to courierSessionUrl,
             "${SampleNames.CourierSpotNodeRolePrefix}1" to courierSpotNode1Url,
             "${SampleNames.CourierSpotNodeRolePrefix}2" to courierSpotNode2Url,
-            SampleNames.CourierGatewayRole to courierGatewayUrl,
             SampleNames.DispatchRole to dispatchUrl,
         )
 
@@ -33,7 +31,6 @@ data class SampleTopology(
         lateinit var TrackingSpotEndpoint: String
         lateinit var CustomerStreamEndpoint: String
         lateinit var CourierStreamEndpoint: String
-        lateinit var CourierGatewayChannelEndpoint: String
         lateinit var DispatchHttpEndpoint: String
         lateinit var DispatchChannelEndpoint: String
         lateinit var CustomerSpotEndpoint: String
@@ -63,7 +60,6 @@ data class SampleTopology(
             TrackingSpotEndpoint = value(properties, "trackingSpotEndpoint", "tcp://127.0.0.1:49118")
             CustomerStreamEndpoint = value(properties, "customerStreamEndpoint", "tcp://127.0.0.1:49104")
             CourierStreamEndpoint = value(properties, "courierStreamEndpoint", "tcp://127.0.0.1:49105")
-            CourierGatewayChannelEndpoint = value(properties, "courierGatewayChannelEndpoint", "tcp://127.0.0.1:49106")
             DispatchHttpEndpoint = value(properties, "dispatchHttpEndpoint", "http://127.0.0.1:49107")
             DispatchChannelEndpoint = value(properties, "dispatchChannelEndpoint", "tcp://127.0.0.1:49121")
             CustomerSpotEndpoint = value(properties, "customerSpotEndpoint", "tcp://127.0.0.1:49109")

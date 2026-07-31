@@ -5,6 +5,7 @@
 #include <Runtime/Messaging/request_submitter.hpp>
 
 #include <cerrno>
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <optional>
@@ -296,6 +297,120 @@ void test_received_reply_rejects_non_none_flags ()
     router_done.get ();
 }
 
+void test_router_completion_control_uses_existing_completion_connection ()
+{
+    zlink::context_t ctx;
+    zlink::router_socket_t server (ctx);
+    zlink::router_socket_t client (ctx);
+    const zlink::routing_id_t server_rid = zlink::routing_id_t::from ("control-server");
+    const zlink::routing_id_t client_rid = zlink::routing_id_t::from ("control-client");
+    server.set_routing_id (server_rid);
+    client.set_routing_id (client_rid);
+    client.options ().connect_routing_id (server_rid);
+
+    std::optional<zlink::routing_id_t> delivered_source;
+    std::vector<zlink::message_t> delivered_parts;
+    server.set_completion_control_handler (
+      [&] (const zlink::routing_id_t &source_, std::vector<zlink::message_t> parts_) {
+          delivered_source = source_;
+          delivered_parts = std::move (parts_);
+      });
+
+    zlink::poller_t poller;
+    poller.add (server, zlink::poll_event_flag_t::pollcompletion, 1);
+    const std::string endpoint = zlink_cpp_contract::unique_inproc ("completion-control");
+    server.bind (endpoint);
+    client.connect (endpoint);
+    std::this_thread::sleep_for (std::chrono::milliseconds (50));
+
+    zlink::message_t application = make_request_message ("application-unread");
+    assert (client.send (server_rid).message (application).submit ());
+
+    const std::vector<zlink::message_t> control = {
+      make_request_message ("opaque-command"),
+      make_request_message ("generation-1")};
+    assert (client.try_send_completion_control (server_rid, control));
+    assert (control[0].valid ());
+    assert (control[1].valid ());
+
+    zlink::poll_event_t event;
+    assert (poller.wait (&event, 1, std::chrono::seconds (2)) == 1);
+    assert (delivered_source.has_value ());
+    assert (*delivered_source == client_rid);
+    assert (delivered_parts.size () == 2);
+    assert (delivered_parts[0].to_string () == "opaque-command");
+    assert (delivered_parts[1].to_string () == "generation-1");
+
+    zlink::received_t application_received;
+    assert (server.recv (application_received) == 0);
+    assert (application_received.parts ().size () == 1);
+    assert (application_received.parts ()[0].to_string () == "application-unread");
+
+    std::mutex callback_mutex;
+    std::condition_variable callback_cv;
+    bool callback_entered = false;
+    bool callback_release = false;
+    server.set_completion_control_handler (
+      [&] (const zlink::routing_id_t &, std::vector<zlink::message_t>) {
+          std::unique_lock<std::mutex> lock (callback_mutex);
+          callback_entered = true;
+          callback_cv.notify_all ();
+          callback_cv.wait (lock, [&] { return callback_release; });
+      });
+
+    std::atomic<size_t> wait_result{0};
+    std::thread poll_thread ([&] {
+        zlink::poll_event_t close_event;
+        wait_result.store (
+          poller.wait (&close_event, 1, std::chrono::seconds (2)),
+          std::memory_order_release);
+    });
+    const std::vector<zlink::message_t> close_control = {
+      make_request_message ("close-race")};
+    assert (client.try_send_completion_control (server_rid, close_control));
+
+    {
+        std::unique_lock<std::mutex> lock (callback_mutex);
+        assert (callback_cv.wait_for (
+          lock, std::chrono::seconds (2), [&] { return callback_entered; }));
+    }
+    try {
+        server.close ();
+        assert (false && "close during completion callback must be busy");
+    }
+    catch (const zlink::close_error_t &error) {
+        assert (error.result () == zlink::close_result_t::busy);
+        assert (error.internal_errno () == EBUSY);
+    }
+
+    std::atomic<bool> replacement_called{false};
+    server.set_completion_control_handler (
+      [&] (const zlink::routing_id_t &, std::vector<zlink::message_t>) {
+          replacement_called.store (true, std::memory_order_release);
+      });
+
+    {
+        std::lock_guard<std::mutex> lock (callback_mutex);
+        callback_release = true;
+    }
+    callback_cv.notify_all ();
+    poll_thread.join ();
+    assert (wait_result.load (std::memory_order_acquire) == 1);
+
+    const std::vector<zlink::message_t> replacement_control = {
+      make_request_message ("replacement")};
+    assert (client.try_send_completion_control (server_rid,
+                                                replacement_control));
+    zlink::poll_event_t replacement_event;
+    assert (poller.wait (&replacement_event, 1, std::chrono::seconds (2)) == 1);
+    assert (replacement_called.load (std::memory_order_acquire));
+
+    assert (poller.remove (server));
+    poller.close ();
+    server.close ();
+    client.close ();
+}
+
 } // namespace
 
 int main ()
@@ -306,5 +421,6 @@ int main ()
     test_request_wait_for_zero_pumps_progress ();
     test_request_router_preserves_data_recv_surface ();
     test_received_reply_rejects_non_none_flags ();
+    test_router_completion_control_uses_existing_completion_connection ();
     std::quick_exit (0);
 }

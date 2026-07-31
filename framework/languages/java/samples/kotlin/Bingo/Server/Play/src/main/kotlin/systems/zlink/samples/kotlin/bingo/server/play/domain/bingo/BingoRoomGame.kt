@@ -2,6 +2,11 @@ package systems.zlink.samples.kotlin.bingo.server.play.domain.bingo
 
 import java.util.ArrayDeque
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomState
+import systems.zlink.samples.kotlin.bingo.shared.contracts.card
+import systems.zlink.samples.kotlin.bingo.shared.contracts.drawnNumbers
+import systems.zlink.samples.kotlin.bingo.shared.contracts.marks
+import systems.zlink.samples.kotlin.bingo.shared.contracts.players
+import systems.zlink.samples.kotlin.bingo.shared.contracts.winners
 
 class BingoRoomGame(
     private val roomId: String,
@@ -213,5 +218,27 @@ class BingoRoomGame(
         const val WaitingForPlayers = "WaitingForPlayers"
         const val Running = "Running"
         const val Finished = "Finished"
+
+        fun restore(
+            roomId: String,
+            settings: BingoRoomSettings,
+            state: BingoRoomState,
+        ): BingoRoomGame = BingoRoomGame(roomId, settings).also { game ->
+            game.status = state.status
+            game.drawnNumbers += state.drawnNumbers
+            game.drawDeck.removeAll(state.drawnNumbers.toSet())
+            game.winners += state.winners
+            state.players.forEach { player ->
+                game.players += BingoRoomPlayer(
+                    actorId = player.actorId,
+                    displayName = player.displayName,
+                    seat = player.seat,
+                    card = player.card.takeIf { it.isNotEmpty() }
+                        ?.let { BingoCard.restore(it, player.marks) },
+                    wins = player.wins,
+                    losses = player.losses,
+                )
+            }
+        }
     }
 }

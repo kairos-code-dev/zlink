@@ -5,6 +5,7 @@ import systems.zlink.framework.actors.ActorRefSnapshot
 import systems.zlink.framework.actors.ZLinkActorCreateResult
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.kotlin.await
+import systems.zlink.framework.kotlin.kotlin
 import systems.zlink.framework.kotlin.ZLinkSuspendingSession
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.streams.ZLinkSessionContext
@@ -71,11 +72,10 @@ class CourierSession(
     }
 
     private suspend fun findOrEnsureActor(courierId: String): ActorRef =
-        when (val result = actors.getOrCreate(
+        when (val result = actors.kotlin().getOrCreate(
             courierId,
             SampleNames.CourierActorType,
-            EnsureCourierActorReq(courierId),
-        ).await()) {
+        ).request(EnsureCourierActorReq(courierId)).await()) {
             is ZLinkActorCreateResult.Existing -> result.actor
             is ZLinkActorCreateResult.Created -> result.actor
             is ZLinkActorCreateResult.Rejected ->

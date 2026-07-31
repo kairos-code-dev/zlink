@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import type { ZLinkRouteClient } from '@zlink-systems/framework';
+import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
 import { ZLINK_ROUTE_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SpotServiceNames } from '../../Shared/messages';
 import { createSpotServiceConfigurationModule } from '../../configuration';
@@ -11,7 +12,6 @@ import type { SessionOptions } from './Configuration/session-options';
 import { createSessionEndpoints } from './Endpoints/session-endpoints';
 import { ScenarioSessionFactory } from './Handlers/scenario-session';
 import { EvidenceStore } from './Infrastructure/evidence-store';
-import { ScenarioActorFactory, ScenarioEntrySpot } from './Spots/scenario-actors';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
 
 const SESSION_OPTIONS = Symbol.for('SPOT_SERVICE_SESSION_OPTIONS');
@@ -20,9 +20,7 @@ export async function startSessionHost(): Promise<void> {
   const configuration = createSpotServiceConfigurationModule(SESSION_OPTIONS, validateSessionOptions);
   const createEvidence = (options: SessionOptions): EvidenceStore => {
     fs.mkdirSync(options.logDir, { recursive: true });
-    const evidence = new EvidenceStore(options.rid, options.evidenceFile);
-    ScenarioEntrySpot.useEvidence(evidence);
-    return evidence;
+    return new EvidenceStore(options.rid, options.evidenceFile);
   };
   let stopping = false;
 
@@ -36,6 +34,10 @@ export async function startSessionHost(): Promise<void> {
         useFactory: (value: unknown) => {
           const options = value as SessionOptions;
           const builder = zlinkFramework();
+          builder.addLocationStore(new ZLinkRedisLocationStore({
+            url: `redis://${options.redisEndpoint}`,
+            keyPrefix: options.redisKeyPrefix
+          }));
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
@@ -44,24 +46,30 @@ export async function startSessionHost(): Promise<void> {
           const controlMesh = builder.addRouteMesh(SpotServiceNames.controlChannel)
             .listen(options.controlRouterEndpoint)
             .routingId(options.rid);
-          controlMesh.channelName(SpotServiceNames.controlChannel);
-          for (const endpoint of options.playControlEndpoints) controlMesh.peerConnections().connect(endpoint);
+          controlMesh.channel(SpotServiceNames.controlChannel).client();
+          for (const [peerRid, endpoint] of options.playControlEndpoints) {
+            controlMesh.peerConnections().connect(peerRid, endpoint);
+          }
           const spotMesh = builder.addRouteMesh(SpotServiceNames.spotChannel)
             .listen(options.spotRouterEndpoint)
             .routingId(options.rid);
-          const objectServer = spotMesh.objects().server();
-          objectServer.addEntrySpot(ScenarioEntrySpot);
-          objectServer.addActorFactory(
-            SpotServiceNames.actorType,
-            ScenarioActorFactory,
-            (factory) => factory.disableRelocation()
-          );
-          spotMesh.channelName(SpotServiceNames.spotChannel);
+          spotMesh.objects().client();
+          spotMesh.channel(SpotServiceNames.spotChannel).client();
           for (const [peerRid, endpoint] of options.playSpotRouterEndpoints) {
             spotMesh.peerConnections().connect(peerRid, endpoint);
           }
+          const alternateObjectMesh = builder
+            .addRouteMesh(SpotServiceNames.spotOnlyMesh)
+            .listen(options.alternateObjectRouterEndpoint)
+            .routingId(options.rid);
+          alternateObjectMesh.objects().client();
+          alternateObjectMesh.channel(SpotServiceNames.spotOnlyMesh).client();
+          for (const [peerRid, endpoint] of options.playAlternateObjectRouterEndpoints) {
+            alternateObjectMesh.peerConnections().connect(peerRid, endpoint);
+          }
           builder.addStreamNode(SpotServiceNames.streamNode)
             .bind(options.streamEndpoint)
+            .enableActorDispatch()
             .registerSession(ScenarioSessionFactory);
           if (options.tlsStreamEndpoint !== undefined) {
             if (options.tlsCertPath === undefined || options.tlsKeyPath === undefined) {
@@ -69,6 +77,7 @@ export async function startSessionHost(): Promise<void> {
             }
             builder.addStreamNode(SpotServiceNames.tlsStreamNode)
               .bind(options.tlsStreamEndpoint)
+              .enableActorDispatch()
               .setTlsServer(options.tlsCertPath, options.tlsKeyPath)
               .registerSession(ScenarioSessionFactory);
           }
@@ -79,8 +88,6 @@ export async function startSessionHost(): Promise<void> {
     ],
     providers: [
       { provide: EvidenceStore, inject: [SESSION_OPTIONS], useFactory: createEvidence },
-      ScenarioActorFactory,
-      ScenarioEntrySpot,
       ScenarioSessionFactory
     ]
   })(SessionModule);

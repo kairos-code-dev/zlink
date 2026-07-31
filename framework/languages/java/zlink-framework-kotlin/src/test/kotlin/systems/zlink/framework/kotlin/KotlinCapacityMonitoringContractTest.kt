@@ -3,61 +3,40 @@ package systems.zlink.framework.kotlin
 import java.time.Instant
 import java.util.Optional
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
-import systems.zlink.contracts.core.RoutingId
-import systems.zlink.framework.locations.ZLinkCapacityUsage
-import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole
-import systems.zlink.framework.locations.ZLinkPlacementCapacity
-import systems.zlink.framework.locations.ZLinkPlacementObjectKind
-import systems.zlink.framework.locations.ZLinkSpotTypeCapacity
-import systems.zlink.framework.locations.ZLinkActivationConcurrency
-import systems.zlink.framework.monitoring.ZLinkLocationRuntimeSnapshot
-import systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot
 import systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot
-import systems.zlink.framework.monitoring.ZLinkMeshNodeState
+import systems.zlink.framework.monitoring.ZLinkPlacementSnapshot
+import systems.zlink.framework.monitoring.ZLinkTopologyReason
+import systems.zlink.framework.monitoring.ZLinkTopologyState
 
 class KotlinCapacityMonitoringContractTest {
     @Test
-    fun `Java capacity projection keeps the exact Kotlin-visible shape`() {
-        val capacity = ZLinkPlacementCapacity(
-            ZLinkCapacityUsage(3, 1, 0),
-            ZLinkCapacityUsage(2, 1, 12),
-            listOf(
-                ZLinkSpotTypeCapacity(
-                    ZLinkPlacementObjectKind.INSTANCE_SPOT,
-                    "room",
-                    ZLinkCapacityUsage(2, 1, 5),
-                ),
-            ),
+    fun `Java placement status keeps the exact Kotlin-visible shape`() {
+        val placement = ZLinkPlacementSnapshot(
+            false,
+            3,
+            2,
+            Optional.of(ZLinkTopologyReason.CAPACITY_EXCEEDED),
         )
         val snapshot = ZLinkMeshNodeSnapshot(
             "mesh",
-            RoutingId.from("node"),
-            1,
-            2,
-            "inproc://mesh",
-            ZLinkMeshNodeState.SERVING,
+            ZLinkTopologyState.READY,
+            true,
+            0,
+            emptyList(),
+            emptyList(),
+            placement,
             1,
             Instant.now(),
-            emptyList(),
-            emptyList(),
-            emptyList(),
-            emptyList(),
-            ZLinkMeshClaimSnapshot(true, 0, true, 0),
-            ZLinkLocationRuntimeSnapshot("ready", Optional.empty(), Optional.empty()),
-            ZLinkMeshNodeObjectRole.SERVER,
-            100,
-            capacity,
-            ZLinkActivationConcurrency(2, 8),
-            emptyList(),
-            0,
-            Optional.empty(),
         )
 
-        assertEquals(3, snapshot.objectCapacity().actors().active())
-        assertEquals(0, snapshot.objectCapacity().actors().limit())
-        assertEquals(5, snapshot.objectCapacity().spotTypes().first().usage().limit())
-        assertEquals(2, snapshot.activationConcurrency().active())
-        assertEquals(8, snapshot.activationConcurrency().limit())
+        assertFalse(snapshot.placement().isAvailable)
+        assertEquals(3, snapshot.placement().activeActorCount())
+        assertEquals(2, snapshot.placement().activeSpotCount())
+        assertEquals(
+            ZLinkTopologyReason.CAPACITY_EXCEEDED,
+            snapshot.placement().unavailableReason().orElseThrow(),
+        )
     }
 }

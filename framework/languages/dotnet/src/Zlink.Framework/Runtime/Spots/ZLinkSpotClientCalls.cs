@@ -240,46 +240,89 @@ internal sealed class ZLinkInstanceSpotRequestCall<TRequest>(
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.InvalidOperation,
                 "InMesh is valid only for an Instance Spot intent.");
+        var operationTimeout = _timeout ?? runtime.Registration.DefaultRequestTimeout;
+        var deadline = DateTimeOffset.UtcNow + operationTimeout;
         var handle = _exactSpotIdCall
             ? await runtime.ResolveSpotHandleAsync(target.SpotId, cancellationToken)
                 .ConfigureAwait(false)
             : await runtime.ResolveInstanceSpotHandleAsync(target, cancellationToken)
             .ConfigureAwait(false);
-        if (handle is null)
+        while (handle is not null)
         {
-            if (!_instanceIntent)
-                throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.NotFound,
-                    $"Spot '{target.SpotId}' was not found.");
-            target = runtime.ResolveInstanceSpotIntent(target);
-            var activationTimeout = _timeout ?? runtime.Registration.DefaultRequestTimeout;
-            var header = ZLinkClientCallCodec.CreateEnvelope(
-                ZLinkMessageKind.Request,
-                target.MeshName,
-                ZLinkMessageNameResolver.ResolveFromMessage(request),
-                activationTimeout);
-            var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(
-                header,
-                request,
-                runtime.Registration.Codecs);
-            var reply = await runtime.ActivateInstanceSpotAsync(
-                    target,
-                    parts,
-                    request: true,
-                    activationTimeout,
-                    _metadata.Encode(),
-                    cancellationToken)
-                .ConfigureAwait(false);
-            return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<TReply>(
-                reply,
-                "Instance Spot request reply is empty.",
-                "Instance Spot request failed.",
-                runtime.Registration.Codecs);
+            try
+            {
+                return await RequestExistingAsync<TReply>(
+                        handle,
+                        Remaining(deadline),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (ZLinkFrameworkException error)
+                when (_instanceIntent && IsAuthorityTransitionConflict(error))
+            {
+                handle.InvalidateRoute();
+                handle = await runtime.WaitForInstanceSpotRouteOrMissingAsync(
+                        target,
+                        deadline,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
+
+        if (!_instanceIntent)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.NotFound,
+                $"Spot '{target.SpotId}' was not found.");
+        target = runtime.ResolveInstanceSpotIntent(target);
+        var activationTimeout = Remaining(deadline);
+        var header = ZLinkClientCallCodec.CreateEnvelope(
+            ZLinkMessageKind.Request,
+            target.MeshName,
+            ZLinkMessageNameResolver.ResolveFromMessage(request),
+            activationTimeout);
+        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(
+            header,
+            request,
+            runtime.Registration.Codecs);
+        var reply = await runtime.ActivateInstanceSpotAsync(
+                target,
+                parts,
+                request: true,
+                activationTimeout,
+                _metadata.Encode(),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<TReply>(
+            reply,
+            "Instance Spot request reply is empty.",
+            "Instance Spot request failed.",
+            runtime.Registration.Codecs);
+    }
+
+    private async ValueTask<TReply> RequestExistingAsync<TReply>(
+        ZLinkResolvedSpotHandle handle,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
         var call = new ZLinkRouteSpotRequestCall<TRequest>(runtime, handle, request);
-        if (_timeout is { } timeout) call.Timeout(timeout);
+        call.Timeout(timeout);
         call.Metadata(new ZLinkMessageMetadata(_metadata.Snapshot()));
         return await call.Async<TReply>(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static bool IsAuthorityTransitionConflict(
+        ZLinkFrameworkException error) =>
+        error.InnerException is ZlinkRequestException
+        {
+            Result: ZlinkRequestException.ErrorCode.Conflict
+        };
+
+    private static TimeSpan Remaining(DateTimeOffset deadline)
+    {
+        var remaining = deadline - DateTimeOffset.UtcNow;
+        if (remaining <= TimeSpan.Zero)
+            throw new TimeoutException("Instance Spot request deadline elapsed.");
+        return remaining;
     }
 }
 
@@ -463,17 +506,10 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
             channelName,
             ZLinkMessageNameResolver.ResolveFromMessage(message));
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message, activation.Codecs);
-        try
-        {
-            var result = await activation.OutboundEndpoint
-                .SendToChannelAsync(channelName, parts, cancellationToken, _metadata.Encode())
-                .ConfigureAwait(false);
-            ZLinkOneWaySubmitOutcome.EnsureAccepted(result, "Channel send");
-        }
-        catch
-        {
-            throw;
-        }
+        var result = await activation.OutboundEndpoint
+            .SendToChannelAsync(channelName, parts, cancellationToken, _metadata.Encode())
+            .ConfigureAwait(false);
+        ZLinkOneWaySubmitOutcome.EnsureAccepted(result, "Channel send");
     }
 }
 

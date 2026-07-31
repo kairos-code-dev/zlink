@@ -11,18 +11,22 @@
 `Zlink.HttpClient`는 .NET에서 HTTP request를 보내기 위한 별도 client-side 산출물이다.
 JSON 전용 client가 아니라 일반 HTTP client이며 zlink fluent builder 스타일로
 `System.Net.Http`의 낮은 수준 설정을 흡수한다. typed 경로
-(`Body(dto)`/`Async<T>()`)는 그 위에 얹은 편의 계층이다.
+(`Body(dto)`/`Async<T>()`/`Fetch<T>()`)는 그 위에 얹은 편의 계층이다.
 
-이 client는 `Zlink.Framework.Contracts`의 에러 모델(`ZLinkFrameworkException`)과 codec 계약에
+이 client는 package-neutral 공유 artifact인 `Zlink.Framework.Contracts`의 에러 모델(`ZLinkFrameworkException`)과 codec 계약에
 의존하지만 `Zlink.Framework` server runtime에는 의존하지 않는다. 따라서 standalone client가
 server runtime assembly를 함께 배포하지 않아도 같은 오류·codec 계약을 사용한다.
+
+HTTP codec registry는 serializer 등록만 처리한다. 같은 extension이
+`IZlinkStreamCodecRegistration`도 구현하더라도 STREAM descriptor는 무시한다. HTTP client package는
+Stream Connector runtime이나 compression package에 의존하지 않는다.
 
 ## 2. 산출물 경계
 
 | 역할 | 위치 | 공개 여부 |
 |------|------|-----------|
 | 공개 contract | `src/Zlink.HttpClient/*.cs`, `Contracts/*` | public |
-| 공유 오류·codec contract | `src/Zlink.Framework.Contracts/*` | public dependency |
+| 공유 오류·codec contract | `src/Zlink.Framework.Contracts/Codecs`, `Errors` | public dependency |
 | runtime 구현 | `src/Zlink.HttpClient/Runtime/*` | internal |
 | 회귀 테스트 | `tests/Zlink.HttpClient.UnitTests/*` | private |
 | 프로젝트 | `Zlink.HttpClient` | public package |
@@ -44,7 +48,8 @@ server runtime assembly를 함께 배포하지 않아도 같은 오류·codec �
   [공통 spec 2.3장](../../02-client-builder.ko.md) 언어 편차)
 - `ZLinkHttpRequestBuilder` — standalone 표면. `Header`, `Query`, `Timeout`, `Body<T>`,
   `Body(content, contentType)`, `BodyStream`, `Form`, `Multipart`, `MultipartFile`,
-  `AsyncRaw`, `DownloadAsync`, `Async<T>`와 callback overload를 제공한다.
+  `AsyncRaw`, `DownloadAsync`, `Async<T>`, decoded body를 직접 반환하는
+  `Fetch<T>`와 callback overload를 제공한다.
 - `ZLinkHttpServerRequestBuilder` — standalone 표면을 포함하고 one-way
   `ValueTask Async(CancellationToken cancellationToken = default)`를 추가한다. 반환된
   `ValueTask`는 비동기 완료와 실패만 전달하며 전송 결과나 admission status를 포함하지 않는다.
@@ -66,6 +71,13 @@ public delegate void ZLinkHttpCallback<T>(
 ## 4. 실행 모델
 
 - `Async<T>`는 `ValueTask<HttpResponse<T>>`를 반환하며 Spot turn을 유지한다.
+- `Fetch<T>`는 `ValueTask<T>`를 반환한다. status와 header가 필요 없는 application
+  sample은 response를 받은 뒤 `.Body`를 꺼내지 않고 이 terminal을 사용한다.
+
+```csharp
+public ValueTask<T> Fetch<T>(
+    CancellationToken cancellationToken = default);
+```
 - HTTP request builder에는 `Yield<T>`를 제공하지 않는다. Shared Spot gate를 반납하려면
   `RunIoWorker(...)` 안에서 `Async<T>`를 호출하고 Worker call의 `Yield`로 기다린다.
 - callback overload는 awaitable을 반환하지 않는다. 완료 callback은 요청을 만든 Spot turn의

@@ -14,7 +14,9 @@ namespace ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Spots.Handlers;
 /// A human's move request, relayed from the client's session to its actor (§2.1).
 /// </summary>
 [ZLinkSpotActorSendHandler(nameof(MoveMsg))]
-internal sealed class PlayerMoveHandler(PlayerMovement movement)
+internal sealed class PlayerMoveHandler(
+    PlayerMovement movement,
+    ILogger<PlayerMoveHandler> logger)
     : IZLinkSpotActorSendHandler<ZoneSpot, PlayerActor, MoveMsg>
 {
     public ValueTask HandleAsync(
@@ -22,8 +24,16 @@ internal sealed class PlayerMoveHandler(PlayerMovement movement)
         PlayerActor actor,
         IZLinkMessageContext context,
         MoveMsg message,
-        CancellationToken cancellationToken) =>
-        movement.MoveAsync(spot, actor, message.X, message.Y, cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        logger.LogInformation(
+            "player move handler entered. player={PlayerId}, zone={ZoneId}, target=({X},{Y})",
+            actor.ActorId,
+            spot.ZoneId,
+            message.X,
+            message.Y);
+        return movement.MoveAsync(spot, actor, message.X, message.Y, cancellationToken);
+    }
 }
 
 /// <summary>
@@ -31,22 +41,23 @@ internal sealed class PlayerMoveHandler(PlayerMovement movement)
 /// movement path — validation, zone change and relocation are identical. The only
 /// difference is that a rejection turns it around instead of being pushed to a client.
 /// </summary>
-[ZLinkSpotActorRequestHandler(nameof(BotTickReq))]
+[ZLinkSpotActorSendHandler(nameof(BotTickMsg))]
 internal sealed class PlayerBotTickHandler(PlayerMovement movement)
-    : IZLinkSpotActorRequestHandler<ZoneSpot, PlayerActor, BotTickReq, BotTickRes>
+    : IZLinkSpotActorSendHandler<ZoneSpot, PlayerActor, BotTickMsg>
 {
-    public async ValueTask<BotTickRes> HandleAsync(
+    public async ValueTask HandleAsync(
         ZoneSpot spot,
         PlayerActor actor,
         IZLinkMessageContext context,
-        BotTickReq request,
+        BotTickMsg message,
         CancellationToken cancellationToken)
     {
-        if (!actor.IsBot) return new BotTickRes();
+        _ = context;
+        _ = message;
+        if (!actor.IsBot) return;
 
         var target = BotPatrolPolicy.NextStep(actor.Position, actor.DirX, actor.DirY);
         await movement.MoveAsync(spot, actor, target.X, target.Y, cancellationToken);
-        return new BotTickRes();
     }
 }
 
@@ -55,7 +66,7 @@ internal sealed class PlayerBotTickHandler(PlayerMovement movement)
 /// the session currently bound to that Actor.
 /// </summary>
 [ZLinkSpotActorSendHandler(nameof(DeliverZoneStateMsg))]
-internal sealed class PlayerZoneStateDeliveryHandler
+internal sealed class PlayerZoneStateDeliveryHandler(ILogger<PlayerZoneStateDeliveryHandler> logger)
     : IZLinkSpotActorSendHandler<ZoneSpot, PlayerActor, DeliverZoneStateMsg>
 {
     public async ValueTask HandleAsync(
@@ -66,9 +77,17 @@ internal sealed class PlayerZoneStateDeliveryHandler
         CancellationToken cancellationToken)
     {
         if (actor.IsBot) return;
+        logger.LogInformation(
+            "zone state delivery handler entered. player={PlayerId}, zone={ZoneId}",
+            actor.ActorId,
+            message.ZoneId);
         await actor.Context.BoundSession
             .Send(new ZoneStateNotify(message.ZoneId, message.Tick, message.Players))
             .Async(cancellationToken);
+        logger.LogInformation(
+            "zone state delivery handler completed. player={PlayerId}, zone={ZoneId}",
+            actor.ActorId,
+            message.ZoneId);
     }
 }
 

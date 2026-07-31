@@ -1124,7 +1124,7 @@ TEST (ZLinkHttpClient, SupportsCommonMethodsAndCallbackSubmit)
     loopback_http_server_t server;
     auto client = make_json_client (server.base_url ());
 
-    EXPECT_EQ (client.get ("/games").submit<create_game_reply_t> ().result ().value ().body.method,
+    EXPECT_EQ (client.get ("/games").fetch<create_game_reply_t> ().method,
                "GET");
     EXPECT_EQ (client.put ("/games")
                  .body (create_game_request_t{.name = "put"})
@@ -1134,7 +1134,7 @@ TEST (ZLinkHttpClient, SupportsCommonMethodsAndCallbackSubmit)
                  .body.method,
                "PUT");
     EXPECT_EQ (
-      client.delete_ ("/games").submit<create_game_reply_t> ().result ().value ().body.method,
+      client.delete_ ("/games").fetch<create_game_reply_t> ().method,
       "DELETE");
 
     std::promise<zlink::framework::result_t<
@@ -1249,10 +1249,10 @@ TEST (ZLinkHttpClient, SupportsPatchHeadAndOptionsMethods)
     auto client = make_json_client (server.base_url ());
 
     EXPECT_EQ (
-      client.patch ("/games").submit<create_game_reply_t> ().result ().value ().body.method,
+      client.patch ("/games").fetch<create_game_reply_t> ().method,
       "PATCH");
     EXPECT_EQ (
-      client.options ("/games").submit<create_game_reply_t> ().result ().value ().body.method,
+      client.options ("/games").fetch<create_game_reply_t> ().method,
       "OPTIONS");
 
     const auto head = client.head ("/games").submit_raw ().result ();

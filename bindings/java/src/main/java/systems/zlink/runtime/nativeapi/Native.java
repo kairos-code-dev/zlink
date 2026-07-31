@@ -353,6 +353,14 @@ public final class Native {
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
         ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_ROUTER_COMPLETION_CONTROL_PART = downcall(
+      "zlink_router_completion_control_part",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_ROUTER_COMPLETION_CONTROL_HANDLER = downcall(
+      "zlink_router_completion_control_handler",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
 
     private Native() {}
@@ -1382,6 +1390,31 @@ public final class Native {
                 requestSeq, part, partFlag);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_router_reply_part failed", t);
+        }
+    }
+
+    public static int routerCompletionControlPart(MemorySegment router,
+                                                  MemorySegment peerRid,
+                                                  MemorySegment part,
+                                                  int partFlag) {
+        try {
+            return (int) MH_ROUTER_COMPLETION_CONTROL_PART.invokeExact(
+                router, peerRid, part, partFlag);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+                "zlink_router_completion_control_part failed", t);
+        }
+    }
+
+    public static int routerCompletionControlHandler(MemorySegment router,
+                                                     MemorySegment handler,
+                                                     MemorySegment userData) {
+        try {
+            return (int) MH_ROUTER_COMPLETION_CONTROL_HANDLER.invokeExact(
+                router, handler, userData);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+                "zlink_router_completion_control_handler failed", t);
         }
     }
 

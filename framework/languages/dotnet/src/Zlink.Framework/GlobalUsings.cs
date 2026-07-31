@@ -10,7 +10,6 @@ global using Zlink.Framework.Contracts.Configuration;
 global using Zlink.Framework.Contracts.Dispatch;
 global using Zlink.Framework.Contracts.Errors;
 global using Zlink.Framework.Contracts.Handlers;
-global using Zlink.Framework.Contracts.Internal;
 global using Zlink.Framework.Contracts.Locations;
 global using Zlink.Framework.Contracts.Messaging;
 global using Zlink.Framework.Contracts.Spots;

@@ -223,7 +223,6 @@ internal sealed class ZLinkSpotSubscriptionRegistry
         _descriptorsByTarget.TryGetValue(
             new ZLinkSpotSubscriptionKey(message.ChannelName, message.Topic),
             out var descriptors);
-        ZLinkRuntimeMetrics.RecordFanoutReceived(descriptors is null ? null : message.Topic);
         var scope = CreateScope(
             header.MessageName,
             message.Topic,

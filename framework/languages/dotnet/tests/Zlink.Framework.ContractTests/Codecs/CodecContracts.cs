@@ -1,5 +1,4 @@
 using System.Text;
-using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.ContractTests.Support;
 
 namespace Zlink.Framework.ContractTests.Codecs;
@@ -70,11 +69,6 @@ public sealed class CodecContracts
             _enabledCodecs.Add(contentType);
         }
 
-        public void AddStreamCodec(
-            string contentType,
-            ZlinkStreamCodec codec)
-        {
-        }
     }
 
     private sealed class ExampleCodecExtension : IZLinkCodecExtension
@@ -84,4 +78,5 @@ public sealed class CodecContracts
             codecs.AddSerializer("application/example", new ExampleMessageSerializer());
         }
     }
+
 }

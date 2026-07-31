@@ -112,9 +112,17 @@ final class ZLinkJavaStreamSocket implements ZLinkBackendStreamSocket, ZLinkJava
         RoutingId routingId,
         List<Message> parts,
         SendFlags flags) {
-        return boundSessionSink == null
-            ? send(routingId, parts, flags)
-            : boundSessionSink.send(routingId, parts, flags);
+        if (boundSessionSink != null) {
+            return boundSessionSink.send(routingId, parts, flags);
+        }
+        if (parts == null || parts.size() != 1) {
+            throw new IllegalArgumentException(
+                "bound Session push requires one encoded STREAM frame");
+        }
+        return socket.send(routingId)
+            .message(parts.getFirst())
+            .flags(flags)
+            .submit();
     }
     @Override public boolean send(RoutingId routingId, String packetName, List<Message> parts, SendFlags flags) {
         return ZLinkJavaStreamFraming.submit(socket.send(routingId), 1, null, packetName, parts, flags);
@@ -195,6 +203,7 @@ final class ZLinkJavaStreamSocket implements ZLinkBackendStreamSocket, ZLinkJava
                 binding.generation(),
                 allocateBoundSessionSequence(),
                 this,
+                streamHeader,
                 prepend(header, parts));
         } finally {
             header.close();

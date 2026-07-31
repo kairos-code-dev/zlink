@@ -27,8 +27,7 @@ internal sealed class ZLinkChannelBundleFactory(
                     channel.Client.SocketConfig.SendTimeout
                     ?? registration.DefaultSocketSendTimeout,
                     state.StopTokenSource.Token,
-                    ZLinkAsyncSubmitter.ResolvePendingCapacity(
-                        channel.Client.SocketConfig.SendHighWaterMark)),
+                    ZLinkAsyncSubmitter.ResolvePendingCapacity()),
                 socketRole: "client");
 
             bundle.OwnManualConnectionAttachment(channel.Client.ManualConnections.Attach(

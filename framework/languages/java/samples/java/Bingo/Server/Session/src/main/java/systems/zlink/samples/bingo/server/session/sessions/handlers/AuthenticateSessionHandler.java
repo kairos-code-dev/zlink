@@ -48,10 +48,11 @@ public final class AuthenticateSessionHandler
                 requireAuthenticated(authenticated);
                 return actors.getOrCreate(
                         authenticated.getActorId(),
-                        SampleNames.PlayerActorType,
-                        BingoMessages.ensurePlayerActorReq(
+                        SampleNames.PlayerActorType)
+                    .request(BingoMessages.ensurePlayerActorReq(
                             authenticated.getActorId(),
                             authenticated.getDisplayName()))
+                    .submit()
                     .thenCompose(result -> context.actors().bind(requireActor(result))
                         .thenRun(() -> context.client().reply(BingoMessages.authenticateRes(
                             authenticated.getActorId(),

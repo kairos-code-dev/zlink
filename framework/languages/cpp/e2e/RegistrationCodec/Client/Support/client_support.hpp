@@ -112,7 +112,7 @@ inline TReply post_empty (const std::string &base_url,
 {
     auto client =
       zlink::http_client::client_t::create ().base_url (base_url).timeout (timeout).build ();
-    return client.post (path).template async<TReply> ().result ().value ().body;
+    return client.post (path).template submit<TReply> ().result ().value ().body;
 }
 
 } // namespace zlink::framework::e2e::registration_codec::client

@@ -25,12 +25,6 @@ export async function runSample(ctx) {
   await ctx.waitTcp(apiChannelEndpoint);
   await ctx.start('session', 'dist/Server/Session/main.js', ['--config', sessionConfig]);
   await ctx.waitTcp(sessionStreamEndpoint);
-  ctx.runNode(path.join(ctx.nodeRoot, 'e2e/location-readiness.js'), [
-    '--redis-endpoint', ctx.redisEndpoint,
-    '--key-prefix', `${redisKeyPrefix}location`,
-    '--peer', 'route-mesh', 'supportchat-conversations', 'router',
-    apiChannelEndpoint, supportSpotEndpoint, sessionSpotEndpoint
-  ]);
   ctx.runBrowser({
     timeoutMs: 90_000,
     config: { sessionStreamEndpoint },

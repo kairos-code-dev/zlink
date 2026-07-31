@@ -2,7 +2,7 @@
 
 package systems.zlink.runtime.sockets;
 
-import systems.zlink.runtime.nativeapi.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;

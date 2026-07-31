@@ -270,10 +270,10 @@ class quest_event_store_t
     std::map<std::string, int> _rehydrate_count;
 };
 
-class player_quest_spot_t : public spot_t<actor_t>
+class player_quest_spot_t : public instance_spot_t
 {
   public:
-    player_quest_spot_t (spot_context_t context,
+    player_quest_spot_t (instance_spot_context_t context,
                          quest_event_store_t &store,
                          actor_directory_t &directory,
                          actor_client_t &actors) :
@@ -282,8 +282,11 @@ class player_quest_spot_t : public spot_t<actor_t>
     {
     }
 
-    spot_context_t &context () noexcept override { return _context; }
-    const spot_context_t &context () const noexcept override { return _context; }
+    instance_spot_context_t &context () noexcept override { return _context; }
+    const instance_spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
 
     void configure () override
     {
@@ -294,26 +297,19 @@ class player_quest_spot_t : public spot_t<actor_t>
           .add_handler<&player_quest_spot_t::admin> (projection_admin_req_t::packet_name);
     }
 
-    task_t<spot_create_response_t>
-    on_create (const zlink::framework::message_t &request) override
+    task_t<void> on_initialize () override
     {
-        auto create = request.decode<player_quest_spot_create_req_t> ();
-        _player_id = create.player_id;
+        const auto spot_id = _context.spot_id ();
+        constexpr std::string_view prefix = "player:";
+        _player_id =
+          spot_id.starts_with (prefix)
+            ? spot_id.substr (prefix.size ())
+            : spot_id;
         _store.rehydrate_owner (_player_id);
         std::cerr << "gamequest player quest spot ready player=" << _player_id
                   << " spot=" << _player_id << "\n";
-        co_return spot_create_response_t::accept ();
+        co_return;
     }
-
-    task_t<spot_actor_join_response_t>
-    on_actor_join (std::string_view,
-                   const zlink::framework::message_t &) override
-    {
-        co_return spot_actor_join_response_t::accept ();
-    }
-
-    task_t<void> on_actor_joined (actor_t &) override { co_return; }
-    task_t<void> on_leave_actor (actor_t &) override { co_return; }
 
     /* 공통 sample spec §11.2: gameplay event는 응답 없는 one-way다. 진행 notify는 player의 현재
      * session binding이 가리키는 노드의 entry spot으로 route한다 — binding이 없으면 생략(§12). */
@@ -377,30 +373,7 @@ class player_quest_spot_t : public spot_t<actor_t>
     actor_directory_t &_directory;
     actor_client_t &_actors;
     std::string _player_id;
-    spot_context_t _context;
-};
-
-class ensure_player_quest_spot_handler_t
-{
-  public:
-    using dependency_types = dependency_list_t<spot_node_manager_t>;
-    using request_type = ensure_player_quest_spot_req_t;
-    using reply_type = ensure_player_quest_spot_res_t;
-    static constexpr const char *topic_name = ensure_player_quest_spot_req_t::packet_name;
-
-    explicit ensure_player_quest_spot_handler_t (spot_node_manager_t &spots) : _spots (spots) {}
-
-    ensure_player_quest_spot_res_t handle (const ensure_player_quest_spot_req_t &request)
-    {
-        (void) _spots.get_or_create_spot (
-          sample_names_t::player_quest_spot,
-          player_spot_rid (request.player_id),
-          player_quest_spot_create_req_t{request.player_id});
-        return {true};
-    }
-
-  private:
-    spot_node_manager_t &_spots;
+    instance_spot_context_t _context;
 };
 
 } // namespace zlink::samples::gamequest
@@ -425,10 +398,6 @@ int main (int argc, char **argv)
           std::make_unique<sample_topology_t> (topology));
         add_gamequest_json_codecs (options.codecs ());
         add_gamequest_location_store (options, topology);
-        options.add_client_server_channel (sample_names_t::quest_owner_channel)
-          .enable_server (topology.selected_mission_route_endpoint ())
-          .set_routing_id (topology.selected_mission_rid ())
-          .use_handler_group ("quest-owner");
         /* 같은 spot route mesh를 양방향으로 쓴다. API 노드의 entry spot으로 notify를 보내려면 그
          * 노드의 spot mesh 이름에 이 route 채널을 매핑해야 한다. */
         auto quest_spot_route = options.add_route_mesh (sample_names_t::quest_spot_route);
@@ -442,9 +411,10 @@ int main (int argc, char **argv)
         auto quest_spot = options.add_route_mesh (sample_names_t::quest_spot_discovery);
         quest_spot.channel_name (sample_names_t::quest_spot_route);
         quest_spot.listen (topology.selected_mission_spot_router_endpoint ())
-          .add_spot_factory<player_quest_spot_t> (
+          .add_instance_spot_factory<player_quest_spot_t> (
             sample_names_t::player_quest_spot,
-            [quest_store_ptr, spot_services] (spot_context_t context) mutable {
+            [quest_store_ptr, spot_services] (
+              instance_spot_context_t context) mutable {
                 return std::make_shared<player_quest_spot_t> (
                   std::move (context),
                   *quest_store_ptr,
@@ -454,9 +424,6 @@ int main (int argc, char **argv)
             [] (auto &factory) {
                 factory.disable_relocation ();
             });
-        options.handlers ()
-          .group ("quest-owner")
-          .add<ensure_player_quest_spot_handler_t> ();
     });
     return app.run (argc, argv);
 }

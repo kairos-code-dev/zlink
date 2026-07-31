@@ -1,76 +1,16 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { PlayActor } from '../../Actors/play-actor';
 import {
-  ZLINK_ACTOR_CLIENT,
-  zlinkEntrySpotActorSendHandler
-} from '@zlink-systems/nestjs';
-import { winMilestoneNotify } from '../../../../../../Shared/Contracts/messages';
-import { PlayerWinMilestoneEventHandler } from './Handlers/player-win-milestone-event-handler';
-import { SampleNames } from '../../../../../Configuration/sample-settings';
-import {
-  DeliverPlayNotification,
-  InitializePlayActor,
-  PlayActor
-} from '../../Actors/play-actor';
+  MilestoneObserverRegistry,
+  PendingActorDestroyRegistry
+} from './entry-spot-registries';
 import type {
-  ActorRef,
-  ZLinkActorClient,
-  ZLinkActorMembership,
+  ZLinkActorCreateResponse,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
   ZLinkMessage
 } from '@zlink-systems/framework';
-import type {
-  PlayerWinMilestoneEvent,
-  TicTacToeActor
-} from '../../../../../../Shared/Contracts/messages';
-
-@Injectable()
-class MilestoneObserverRegistry {
-  private readonly actors = new Map<string, ActorRef>();
-  private readonly subscriptions = new Set<string>();
-
-  constructor(@Inject(ZLINK_ACTOR_CLIENT) private readonly actorClient: ZLinkActorClient) {}
-
-  track(actor: ZLinkActorMembership): void {
-    this.actors.set(actor.actor.actorId, actor.actor);
-  }
-
-  subscribe(actorId: string): void {
-    this.subscriptions.add(actorId);
-  }
-
-  remove(actorId: string): void {
-    this.actors.delete(actorId);
-    this.subscriptions.delete(actorId);
-  }
-
-  async notify(event: PlayerWinMilestoneEvent): Promise<void> {
-    const payload = winMilestoneNotify(event);
-    for (const actorId of this.subscriptions) {
-      const actor = this.actors.get(actorId);
-      if (actor !== undefined) {
-        await this.actorClient
-          .sendToActor(actor.actorId, new DeliverPlayNotification(payload))
-          .submit();
-      }
-    }
-  }
-}
-
-@Injectable()
-class PendingActorDestroyRegistry {
-  private readonly actors = new Set<string>();
-
-  mark(actorId: string): void {
-    this.actors.add(actorId);
-  }
-
-  consume(actorId: string): boolean {
-    return this.actors.delete(actorId);
-  }
-}
-
-class DestroyPlayActor {}
+import type { PlayerWinMilestoneEvent, TicTacToeActor } from '../../../../../../Shared/Contracts/messages';
 
 @Injectable()
 class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
@@ -78,17 +18,8 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
 
   constructor(
     private readonly milestoneObservers: MilestoneObserverRegistry,
-    private readonly pendingDestroys: PendingActorDestroyRegistry,
-    @Inject(ZLINK_ACTOR_CLIENT) private readonly actorClient: ZLinkActorClient
+    private readonly pendingDestroys: PendingActorDestroyRegistry
   ) {}
-
-  configure(): void {
-    this.context.handlers.addSubscribe(
-      PlayerWinMilestoneEventHandler,
-      SampleNames.playerMilestoneChannel,
-      SampleNames.playerMilestoneTopic
-    );
-  }
 
   async onActorJoin(_actorId: string, _request: ZLinkMessage): Promise<{ accepted: boolean }> {
     return { accepted: true };
@@ -98,40 +29,31 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
     await this.milestoneObservers.notify(event);
   }
 
-  async onDisconnectActor(actor: ZLinkActorMembership): Promise<void> {
-    this.milestoneObservers.remove(actor.actor.actorId);
+  async onDisconnectActor(actor: PlayActor): Promise<void> {
+    this.milestoneObservers.remove(actor.actorId);
   }
 
-  async onCreateActor(actor: ZLinkActorMembership, createRequest: ZLinkMessage): Promise<void> {
+  async onCreateActor(actor: PlayActor, createRequest: ZLinkMessage): Promise<ZLinkActorCreateResponse> {
     const player = createRequest.decode<Partial<TicTacToeActor>>(Object as never);
-    await this.actorClient.sendToActor(
-      actor.actor.actorId,
-      new InitializePlayActor(
-        typeof player.displayName === 'string' ? player.displayName : actor.actor.actorId,
-        typeof player.level === 'number' ? player.level : 0,
-        typeof player.wins === 'number' ? player.wins : 0
-      )
-    ).submit();
+    actor.displayName = typeof player.displayName === 'string'
+      ? player.displayName
+      : actor.actorId;
+    actor.level = typeof player.level === 'number' ? player.level : 0;
+    actor.wins = typeof player.wins === 'number' ? player.wins : 0;
     this.milestoneObservers.track(actor);
+    return { accepted: true };
   }
 
-  async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
+  async onJoinedActor(actor: PlayActor): Promise<void> {
     this.milestoneObservers.track(actor);
-    if (this.pendingDestroys.consume(actor.actor.actorId)) {
-      const submitted = await this.actorClient
-        .sendToActor(actor.actor.actorId, new DestroyPlayActor())
-        .submit();
-      if (submitted.status !== 'submitted') {
-        throw new Error(
-          `Actor '${actor.actor.actorId}' destroy command was not submitted: ${submitted.status}.`
-        );
-      }
+    if (this.pendingDestroys.consume(actor.actorId)) {
+      this.scheduleDestroy(actor);
     }
   }
 
-  async onLeaveActor(actor: ZLinkActorMembership): Promise<void> {
-    console.log(`entry spot: actor left. actor=${actor.actor.actorId}`);
-    this.milestoneObservers.remove(actor.actor.actorId);
+  async onLeaveActor(actor: PlayActor): Promise<void> {
+    console.log(`entry spot: actor left. actor=${actor.actorId}`);
+    this.milestoneObservers.remove(actor.actorId);
   }
 
   scheduleDestroy(actor: PlayActor): void {
@@ -143,22 +65,6 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
   }
 }
 
-@zlinkEntrySpotActorSendHandler({
-  entrySpot: () => PlayEntrySpot,
-  actor: () => PlayActor,
-  packetName: 'DestroyPlayActor'
-})
-class DestroyPlayActorHandler {
-  constructor(private readonly entrySpot: PlayEntrySpot) {}
-
-  async handle(actor: PlayActor): Promise<void> {
-    this.entrySpot.scheduleDestroy(actor);
-  }
-}
-
 export {
-  DestroyPlayActorHandler,
-  MilestoneObserverRegistry,
-  PendingActorDestroyRegistry,
   PlayEntrySpot
 };

@@ -14,9 +14,11 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
+import systems.zlink.framework.actors.ZLinkActorCreateResult;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
+import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 
@@ -25,19 +27,31 @@ final class ActorManagerTest {
     void actorManager_createGetOrCreateFind_work() {
         Zlink.version();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");
-                node.objects().server().addSpotFactory("GameSpot", GameSpot.class, factory -> factory.disableRelocation()); node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
+        options.addLocationStore(new ZLinkInMemoryLocationStore());
+        { var node = options.addRouteMesh("game");
+            node.listen("inproc://play-router-" + System.nanoTime());
+            node.objects().server().addSpotFactory(
+                "GameSpot", GameSpot.class, factory -> factory.disableRelocation());
+            node.objects().server().addActorFactory(
+                "player", PlayerActor.class, PlayerActorFactory.class,
+                factory -> factory.disableRelocation()); }
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
-            ActorRef created = runtime.actorManager()
+            ZLinkActorCreateResult.Created createdResult =
+                (ZLinkActorCreateResult.Created) runtime.actorManager()
                 .create("player-1", "player")
+                .submit()
                 .toCompletableFuture()
                 .join();
-            ActorRef reused = runtime.actorManager()
+            ZLinkActorCreateResult.Existing reusedResult =
+                (ZLinkActorCreateResult.Existing) runtime.actorManager()
                 .getOrCreate("player-1", "player")
+                .submit()
                 .toCompletableFuture()
                 .join();
+            ActorRef created = createdResult.actor();
+            ActorRef reused = reusedResult.actor();
             Optional<ActorRef> found = runtime.actorManager()
                 .find("player-1")
                 .toCompletableFuture()
@@ -50,17 +64,10 @@ final class ActorManagerTest {
     }
 
     public static final class PlayerActor implements ZLinkActor {
-        private final String actorId;
         private final ZLinkActorContext context;
 
-        PlayerActor(String actorId, ZLinkActorContext context) {
-            this.actorId = actorId;
+        PlayerActor(ZLinkActorContext context) {
             this.context = context;
-        }
-
-        @Override
-        public String actorId() {
-            return actorId;
         }
 
         @Override
@@ -71,10 +78,8 @@ final class ActorManagerTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public CompletionStage<ZLinkActor> create(
-            String actorId,
-            ZLinkActorContext context) {
-            return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
+        public CompletionStage<ZLinkActor> create(ZLinkActorContext context) {
+            return CompletableFuture.completedFuture(new PlayerActor(context));
         }
     }
 

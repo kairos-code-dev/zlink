@@ -10,15 +10,12 @@ import systems.zlink.e2e.kotlin.runtimemonitoring.Contracts
 import systems.zlink.e2e.kotlin.runtimemonitoring.Env
 import systems.zlink.e2e.kotlin.runtimemonitoring.service.EvidenceHttpServer
 import systems.zlink.e2e.kotlin.runtimemonitoring.service.EvidenceState
-import systems.zlink.e2e.kotlin.runtimemonitoring.service.MonitoringEventHandlers
 import systems.zlink.e2e.kotlin.runtimemonitoring.service.WorkRequestHandler
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
-import systems.zlink.framework.monitoring.ZLinkSocketEventKind
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
-import systems.zlink.framework.spring.ZLinkMonitoringOptionsCustomizer
 import java.time.Duration
 
 @EnableZLinkFramework
@@ -46,25 +43,15 @@ class FilteredServiceApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/filtered-service-flow.log")
                 .traceLabel("kotlin-mon-filtered-service")
-            options.addClientServerChannel(Contracts.CHANNEL)
-                .enableServer(Env.get("ZLINK_KOTLIN_E2E_API_ENDPOINT"))
-                .setRoutingId(RoutingId.from("svc-b"))
-                .addRequestHandler(
-                    WorkRequestHandler::class.java,
-                    Contracts.WorkReq::class.java,
-                    Contracts.WorkRes::class.java,
-                    "WorkReq",
-                )
-        }
-    }
-
-    @Bean
-    fun monitoringOptions(): ZLinkMonitoringOptionsCustomizer {
-        return ZLinkMonitoringOptionsCustomizer { options ->
-            options.addSocketEvents(
-                Contracts.CHANNEL,
-                ZLinkSocketEventKind.CONNECTION_READY,
+            options.addHandlersFromPackageOf(WorkRequestHandler::class.java)
+            val apiEndpoint = java.net.URI.create(
+                Env.get("ZLINK_KOTLIN_E2E_API_ENDPOINT"),
             )
+            options.addClientServerChannel(Contracts.CHANNEL)
+                .server()
+                .setAdvertiseHost(apiEndpoint.host)
+                .listen(apiEndpoint.port)
+                .addHandlerGroup(Contracts.HANDLER_GROUP)
         }
     }
 
@@ -79,11 +66,6 @@ class FilteredServiceApplication {
                 .setKeyPrefix(Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX"))
                 .setCommandTimeout(Duration.ofMillis(500)),
         )
-    }
-
-    @Bean
-    fun socketRecorder(state: EvidenceState): MonitoringEventHandlers.SocketRecorder {
-        return MonitoringEventHandlers.SocketRecorder(state)
     }
 
     companion object {

@@ -1629,18 +1629,9 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
         var root = prepare.Root
             ?? throw new InvalidDataException(
                 "Canonical SPOT relocation requires an immutable root.");
-        var relocationStore = registration.Locations.ResolveRelocationStore()
-            ?? throw new ZLinkConfigurationException(
-                "Relocation Store is not registered.");
-        var tree = await ZLinkRelocationTreeStore.ReadAsync(
-                relocationStore,
-                root.Reference,
-                root.ChecksumCrc32c,
-                cancellationToken)
-            .ConfigureAwait(false);
         var fence = new ZLinkAggregateFence(
-            tree.Envelope.AggregateId,
-            tree.Envelope.AggregateGeneration);
+            DecodeRelocationId(prepare.RelocationId),
+            prepare.TargetAttemptGeneration);
         if (!_staged.TryGetValue(fence, out var entry))
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.Unavailable,
@@ -1669,6 +1660,13 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
             .ConfigureAwait(false);
         try
         {
+            if (!await IsAuthorityNormalizedAsync(stage, cancellationToken)
+                    .ConfigureAwait(false))
+                await ValidateDurableCompletionRootAsync(
+                        stage,
+                        cancellationToken,
+                        root)
+                    .ConfigureAwait(false);
             await CompleteInboundThenNormalizeCoreAsync(
                     stage,
                     cancellationToken)
@@ -1680,6 +1678,19 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
         {
             stage.PublishGate.Release();
         }
+    }
+
+    private static Guid DecodeRelocationId(
+        ZLinkServiceWireCodec.RelocationWireId relocationId)
+    {
+        Span<byte> bytes = stackalloc byte[16];
+        BinaryPrimitives.WriteUInt64BigEndian(
+            bytes[..8],
+            relocationId.High);
+        BinaryPrimitives.WriteUInt64BigEndian(
+            bytes[8..],
+            relocationId.Low);
+        return new Guid(bytes, bigEndian: true);
     }
 
     private async ValueTask CompleteInboundThenNormalizeAsync(
@@ -1707,6 +1718,8 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
     {
         ZLinkFrameworkDebugLog.SpotDiscovery(
             $"aggregate_target_complete_gate aggregate={stage.Envelope.AggregateId:N}");
+        if (stage.AdmissionDrainTask is { } existingDrain)
+            await existingDrain.ConfigureAwait(false);
         if (Volatile.Read(
                 ref PostPublicationBeforeNormalizationTestHook) is { } hook)
             await hook(cancellationToken).ConfigureAwait(false);
@@ -1723,11 +1736,12 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                 cancellationToken,
                 releaseFinalRoot: false)
             .ConfigureAwait(false);
-        ZLinkFrameworkRuntime.OpenInboundSpotAggregateAdmission(stage);
+        await runtime.OpenInboundSpotAggregateAdmissionAsync(stage)
+            .ConfigureAwait(false);
         var root = stage.GetFinalRoot()
                    ?? throw new ZLinkRelocationDataLostException(
                        "Completed SPOT relocation lost its final root reference.");
-        await DeleteFinalRootAsync(root.Reference, cancellationToken)
+        await DeleteFinalRootBestEffortAsync(root.Reference, cancellationToken)
             .ConfigureAwait(false);
         CompleteStage(stage, TargetStageTerminalOutcome.Completed);
     }
@@ -2115,7 +2129,8 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
 
     private async ValueTask ValidateDurableCompletionRootAsync(
         TargetStage stage,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ZLinkServiceWireCodec.RelocationRootRecord? expectedRoot = null)
     {
         var authorityStore = registration.Locations.ResolveStore()
                              ?? throw new ZLinkConfigurationException(
@@ -2128,6 +2143,14 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
             static participant => participant.ObjectKind
                 is ZLinkPlacementObjectKind.UserSpot
                 or ZLinkPlacementObjectKind.InstanceSpot);
+        if (expectedRoot is { } commandRoot
+            && (!StringComparer.Ordinal.Equals(
+                    commandRoot.Reference,
+                    stage.RelocationReference)
+                || commandRoot.ChecksumCrc32c
+                   != stage.RelocationChecksum))
+            throw new ZLinkRelocationDataLostException(
+                "Canonical relocation completion changed its initial root.");
         var read = await authorityStore.ReadAuthorityAsync(
                 stagedSpot.AuthorityKey,
                 cancellationToken)
@@ -2152,19 +2175,50 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
             // the authority-linked manifest without rewriting that stream.
             // Bind the generation from the exact published reference before
             // comparing it with the recovered staging state.
-            var publishedDurable = durable.AggregateGeneration
-                                   == publication.AggregateGeneration
-                ? durable
-                : durable with
+            var stagedByParticipantId = stage.Envelope.Participants
+                .ToDictionary(
+                    static participant =>
+                        participant.CanonicalParticipantId);
+            var publishedDurable = durable with
+            {
+                AggregateGeneration = publication.AggregateGeneration,
+                Participants = durable.Participants.Select(participant =>
                 {
-                    AggregateGeneration = publication.AggregateGeneration
-                };
+                    if (!stagedByParticipantId.TryGetValue(
+                            participant.CanonicalParticipantId,
+                            out var stagedIdentity))
+                        throw new ZLinkRelocationDataLostException(
+                            "Canonical relocation completion contains an unknown participant.");
+                    return participant with
+                    {
+                        AuthorityKey = stagedIdentity.AuthorityKey,
+                        ObjectKind = stagedIdentity.ObjectKind,
+                        ObjectGeneration = stagedIdentity.ObjectGeneration,
+                        AuthorityOwnerGeneration =
+                            stage.TargetAuthorityOwnerGenerationFor(
+                                stagedIdentity),
+                        CompletionPayload =
+                            stagedIdentity.ObjectKind is
+                                ZLinkPlacementObjectKind.UserSpot
+                                or ZLinkPlacementObjectKind.InstanceSpot
+                                ? publication.SourceCleanupState == 0
+                                    ? ZLinkSpotRetireCompletionMarker
+                                        .CreatePending()
+                                    : ZLinkSpotRetireCompletionMarker
+                                        .CreateCompleted()
+                                : ReadOnlyMemory<byte>.Empty
+                    };
+                }).ToArray()
+            };
             if (!CanonicalCompletionMatchesTargetStaging(
                     stage.Envelope,
                     publishedDurable,
-                    publication))
+                    publication,
+                    stage.TargetAuthorityOwnerGenerationFor))
+            {
                 throw new ZLinkRelocationDataLostException(
                     "Canonical relocation completion does not match target staging.");
+            }
             stage.RememberFinalRoot(
                 publication.Reference,
                 publication.ChecksumCrc32c);
@@ -2211,7 +2265,9 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
     internal static bool CanonicalCompletionMatchesTargetStaging(
         ZLinkRelocationEnvelope staged,
         ZLinkRelocationEnvelope durable,
-        ZLinkRelocationAuthorityPayload publication)
+        ZLinkRelocationAuthorityPayload publication,
+        Func<ZLinkRelocationParticipantEnvelope, ulong>?
+            targetAuthorityOwnerGeneration = null)
     {
         var terminalCompletionCount = checked((uint)durable.Participants.Sum(
             static participant => participant.TerminalCompletions.Count));
@@ -2230,16 +2286,42 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
         if (!common)
             return false;
 
-        // Target publication precedes source cleanup. At that boundary the
-        // accepted root must still extend the exact target staging prefix.
-        // A target-attempt takeover can re-issue the signed manifest at a
-        // newer aggregate generation without changing accepted work.
-        if (publication.SourceCleanupState == 0)
-            return IsStagingPrefix(staged, durable);
+        var normalizedStaged = targetAuthorityOwnerGeneration is null
+            ? staged
+            : staged with
+            {
+                Participants = staged.Participants.Select(participant =>
+                    participant with
+                    {
+                        AuthorityOwnerGeneration =
+                            targetAuthorityOwnerGeneration(participant)
+                }).ToArray()
+            };
+        var primaryKind = normalizedStaged.Participants
+            .Single(participant =>
+                participant.ObjectKind is
+                    ZLinkPlacementObjectKind.UserSpot
+                    or ZLinkPlacementObjectKind.InstanceSpot)
+            .ObjectKind;
+        var isSuccessor =
+            ZLinkCanonicalRelocationReservationOwner.IsCanonicalSuccessor(
+            checked((byte)primaryKind),
+            normalizedStaged,
+            durable);
+        if (!isSuccessor)
+            return false;
 
-        // A recovery retry can observe the later source-cleanup root.
-        return publication.SourceCleanupState == 1
-               && pendingRelayCount == 0;
+        // Target publication can contain replayed requests whose jobs were
+        // removed from the remaining journal and replaced by terminal
+        // completions. Canonical successor validation proves that transition
+        // against the immutable staged journal. Source cleanup additionally
+        // requires every reply relay to have reached a terminal state.
+        return publication.SourceCleanupState switch
+        {
+            0 => true,
+            1 => pendingRelayCount == 0,
+            _ => false
+        };
     }
 
     private async ValueTask AbortTargetStageAsync(TargetStage stage)
@@ -2407,7 +2489,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                     || !TerminalCompletionsExtend(
                         expected,
                         actual,
-                        authoritative.Participants)))
+                        staging.Participants)))
                 return false;
             for (var index = 0;
                  index < expected.AcceptedJobs.Count;
@@ -2558,12 +2640,16 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
         var localOwner = runtime.LocationLifecycle?.OwnerToken;
         if (authorityStore is null || localOwner is not { } exactLocalOwner)
             return false;
-        foreach (var participant in stage.Envelope.Participants)
+        var reads = await Task.WhenAll(stage.Envelope.Participants.Select(
+                async participant => (
+                    Participant: participant,
+                    Read: await authorityStore.ReadAuthorityAsync(
+                            participant.AuthorityKey,
+                            cancellationToken)
+                        .ConfigureAwait(false))))
+            .ConfigureAwait(false);
+        foreach (var (participant, read) in reads)
         {
-            var read = await authorityStore.ReadAuthorityAsync(
-                    participant.AuthorityKey,
-                    cancellationToken)
-                .ConfigureAwait(false);
             if (read is not ZLinkAuthorityReadResult.Found found
                 || found.Snapshot.ObjectGeneration
                    != participant.ObjectGeneration
@@ -2606,7 +2692,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                         stage,
                         authorityAlreadyNormalized: true,
                         commitNormalization: null,
-                        reference => DeleteFinalRootAsync(
+                        reference => DeleteFinalRootBestEffortAsync(
                             reference,
                             cancellationToken))
                     .ConfigureAwait(false);
@@ -2636,12 +2722,17 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
         uint publicationChecksum = 0;
         ReadOnlyMemory<byte> publicationInventoryDigest = default;
         bool? canonicalPublication = null;
-        foreach (var participant in stage.Envelope.Participants)
+        var authorityReads = await Task.WhenAll(
+                stage.Envelope.Participants.Select(
+                    async participant => (
+                        Participant: participant,
+                        Read: await authorityStore.ReadAuthorityAsync(
+                                participant.AuthorityKey,
+                                cancellationToken)
+                            .ConfigureAwait(false))))
+            .ConfigureAwait(false);
+        foreach (var (participant, read) in authorityReads)
         {
-            var read = await authorityStore.ReadAuthorityAsync(
-                    participant.AuthorityKey,
-                    cancellationToken)
-                .ConfigureAwait(false);
             if (read is not ZLinkAuthorityReadResult.Found found
                 || !ZLinkRelocationAuthorityPayloadCodec.TryDecode(
                     found.Snapshot.Payload.Span,
@@ -2755,7 +2846,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                     () => authorityStore.CommitAggregateForRecoveryAsync(
                         fence,
                         cancellationToken),
-                    reference => DeleteFinalRootAsync(
+                    reference => DeleteFinalRootBestEffortAsync(
                         reference,
                         cancellationToken))
                 .ConfigureAwait(false);
@@ -2830,6 +2921,23 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                 reference,
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private async ValueTask DeleteFinalRootBestEffortAsync(
+        string reference,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await DeleteFinalRootAsync(reference, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            runtime.ErrorSink.ReportRuntimeTaskException(
+                "spot-relocation-root-cleanup",
+                exception);
+        }
     }
 
     private static ReadOnlyMemory<byte> BuildTargetReadyPayload(
@@ -3317,6 +3425,7 @@ internal sealed record TargetStage(
     public int AuthorityPublished;
     public int Published;
     public int AdmissionOpened;
+    public Task? AdmissionDrainTask;
     public int ReplayedJobCount;
     public int LocalCatalogPublished;
     public int RelocationReadyCompletionDelivered;
@@ -3405,11 +3514,10 @@ internal sealed record TargetStage(
         ArgumentException.ThrowIfNullOrWhiteSpace(reference);
         lock (_finalRootGate)
         {
-            if (_finalRootReference is not null
-                && (_finalRootReference != reference
-                    || _finalRootChecksum != checksum))
-                throw new ZLinkRelocationDataLostException(
-                    "SPOT relocation final root changed after publication.");
+            // Accepted replay and reply ACKs publish successor immutable roots
+            // before steady normalization. Every caller validates the
+            // relocation/attempt and authority fence before recording the
+            // pointer, so cleanup must retain the latest verified root.
             _finalRootReference = reference;
             _finalRootChecksum = checksum;
         }

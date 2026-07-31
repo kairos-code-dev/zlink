@@ -23,22 +23,11 @@ dependencies {
 }
 
 def sampleMainClasses = [
-    runActorRoomServer: 'systems.zlink.samples.ActorRoomServerSampleKt',
-    runActorGatewayRelay: 'systems.zlink.samples.ActorGatewayRelaySampleKt',
-    runActorSinglePlayerQueue: 'systems.zlink.samples.ActorSinglePlayerQueueSampleKt',
-    runActorQueueExample: 'systems.zlink.samples.ActorQueueExampleKt',
-    runActorRoomExample: 'systems.zlink.samples.ActorRoomExampleKt',
-    runActorSequentialExample: 'systems.zlink.samples.ActorSequentialExampleKt',
-    runSpotPubSubExample: 'systems.zlink.samples.SpotPubSubExampleKt',
-    runSpotRpcExample: 'systems.zlink.samples.SpotRpcExampleKt',
-    runSpotTimerExample: 'systems.zlink.samples.SpotTimerExampleKt',
     runDealerRouterRecvSample: 'systems.zlink.samples.DealerRouterRecvSampleKt',
     runMonitorRecvSample: 'systems.zlink.samples.MonitorRecvSampleKt',
     runPairRecvSample: 'systems.zlink.samples.PairRecvSampleKt',
     runPubSubRecvSample: 'systems.zlink.samples.PubSubRecvSampleKt',
     runRequestReplyAsyncSample: 'systems.zlink.samples.RequestReplyAsyncSampleKt',
-    runSpotRecvSample: 'systems.zlink.samples.SpotRecvSampleKt',
-    runSpotRequestAsyncSample: 'systems.zlink.samples.SpotRequestAsyncSampleKt',
     runStreamPacketCallbackSample: 'systems.zlink.samples.StreamPacketCallbackSampleKt',
     runStreamRecvSample: 'systems.zlink.samples.StreamRecvSampleKt'
 ]

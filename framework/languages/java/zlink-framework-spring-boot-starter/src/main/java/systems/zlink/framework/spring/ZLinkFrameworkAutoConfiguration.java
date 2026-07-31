@@ -13,17 +13,14 @@ import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
-import systems.zlink.framework.locations.ZLinkLocationStore;
-import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler;
+import systems.zlink.framework.locationprovider.ZLinkLocationStore;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
 import systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
-import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
-import systems.zlink.framework.runtime.monitoring.DefaultZLinkMonitoringOptions;
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle;
 import systems.zlink.httpclient.ZLinkFrameworkHttpExecutionTurn;
 import systems.zlink.httpclient.ZLinkHttpExecutionTurn;
 
@@ -72,23 +69,6 @@ public class ZLinkFrameworkAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnMissingBean
-    public ZLinkRuntimeEventDispatcher zlinkRuntimeEventDispatcher() {
-        return new ZLinkRuntimeEventDispatcher();
-    }
-
-    @Bean
-    @ConditionalOnMissingBean
-    public DefaultZLinkMonitoringOptions zlinkMonitoringOptions(
-        List<ZLinkMonitoringOptionsCustomizer> customizers) {
-        DefaultZLinkMonitoringOptions options = new DefaultZLinkMonitoringOptions();
-        for (ZLinkMonitoringOptionsCustomizer customizer : customizers) {
-            customizer.customize(options);
-        }
-        return options;
-    }
-
-    @Bean
     @ConditionalOnBean(DefaultZLinkFrameworkOptions.class)
     @ConditionalOnMissingBean
     public ZLinkHandlerActivator zlinkHandlerFactory(AutowireCapableBeanFactory beanFactory) {
@@ -101,30 +81,11 @@ public class ZLinkFrameworkAutoConfiguration {
     public ZLinkFrameworkLifecycle zlinkFrameworkLifecycle(
         DefaultZLinkFrameworkOptions options,
         ZLinkBackendAdapterProvider backendAdapterFactory,
-        ZLinkHandlerActivator handlerFactory,
-        ZLinkRuntimeEventDispatcher dispatcher) {
+        ZLinkHandlerActivator handlerFactory) {
         return new ZLinkFrameworkLifecycle(
             options,
             backendAdapterFactory,
-            handlerFactory,
-            dispatcher);
-    }
-
-    @Bean
-    @ConditionalOnBean(DefaultZLinkMonitoringOptions.class)
-    @ConditionalOnMissingBean
-    public ZLinkMonitoringLifecycle zlinkMonitoringLifecycle(
-        DefaultZLinkMonitoringOptions options,
-        ZLinkBackendAdapterProvider backendAdapterFactory,
-        ZLinkRuntimeEventDispatcher dispatcher,
-        ObjectProvider<ZLinkFrameworkLifecycle> frameworkLifecycle,
-        ObjectProvider<ZLinkRuntimeEventHandler<?>> eventHandlers) {
-        return new ZLinkMonitoringLifecycle(
-            options,
-            backendAdapterFactory,
-            dispatcher,
-            frameworkLifecycle,
-            eventHandlers.orderedStream().toList());
+            handlerFactory);
     }
 
     @Bean
@@ -156,12 +117,28 @@ public class ZLinkFrameworkAutoConfiguration {
         return lifecycle;
     }
 
-    @Bean(destroyMethod = "close")
+    @Bean
     @ConditionalOnBean(ZLinkFrameworkLifecycle.class)
     @ConditionalOnMissingBean
     public ZLinkRouteMeshRuntime zlinkRouteMeshRuntime(
         ZLinkFrameworkLifecycle lifecycle) {
-        return new systems.zlink.framework.runtime.host.ZLinkRouteMeshRuntimeService(lifecycle);
+        return lifecycle.routeMeshRuntime();
+    }
+
+    @Bean
+    @ConditionalOnBean(ZLinkFrameworkLifecycle.class)
+    @ConditionalOnMissingBean
+    public systems.zlink.framework.monitoring.ZLinkClientServerRuntime
+        zlinkClientServerRuntime(ZLinkFrameworkLifecycle lifecycle) {
+        return lifecycle.clientServerRuntime();
+    }
+
+    @Bean
+    @ConditionalOnBean(ZLinkFrameworkLifecycle.class)
+    @ConditionalOnMissingBean
+    public systems.zlink.framework.monitoring.ZLinkFanoutRuntime
+        zlinkFanoutRuntime(ZLinkFrameworkLifecycle lifecycle) {
+        return lifecycle.fanoutRuntime();
     }
 
     @Bean
@@ -169,7 +146,7 @@ public class ZLinkFrameworkAutoConfiguration {
     @ConditionalOnMissingBean
     public ZLinkRouteMeshRuntimeOptions zlinkRouteMeshRuntimeOptions(
         ZLinkFrameworkLifecycle lifecycle) {
-        return new systems.zlink.framework.runtime.host.ZLinkRouteMeshRuntimeOptionsService(
+        return new systems.zlink.framework.spring.internal.runtime.ZLinkRouteMeshRuntimeOptionsService(
             lifecycle);
     }
 

@@ -297,7 +297,6 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
         CancellationToken cancellationToken)
     {
         _ = reason;
-        var forcedSessions = _operations.GetRemainderCounts().Sessions;
         using var notificationBound = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         notificationBound.CancelAfter(TimeSpan.FromSeconds(2));
         try
@@ -307,12 +306,6 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
         catch (OperationCanceledException) when (notificationBound.IsCancellationRequested)
         {
         }
-
-        var remaining = _operations.GetRemainderCounts();
-        ZLinkRuntimeMetrics.RecordDrainForced("actor", remaining.Actors);
-        ZLinkRuntimeMetrics.RecordDrainForced("spot", remaining.Spots);
-        ZLinkRuntimeMetrics.RecordDrainForced("request", remaining.Requests);
-        ZLinkRuntimeMetrics.RecordDrainForced("session", forcedSessions);
 
         var failures = new List<Exception>();
         Capture(_stopMeshMonitoring, failures);

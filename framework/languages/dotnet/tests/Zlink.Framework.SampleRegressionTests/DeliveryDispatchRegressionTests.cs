@@ -34,8 +34,12 @@ public sealed partial class RegressionTests
         Assert.Contains("AddHandlerGroup(SampleNames.TrackingRouteChannel)", tracking, StringComparison.Ordinal);
         Assert.Contains("mesh.Objects().Client()", dispatch, StringComparison.Ordinal);
         Assert.Contains("mesh.Objects().Client()", tracking, StringComparison.Ordinal);
-        Assert.Contains("AddClientServerChannel(SampleNames.DispatchChannel).Server()", dispatch,
+        Assert.Contains(
+            "var dispatchChannel = options.AddClientServerChannel(SampleNames.DispatchChannel)",
+            dispatch,
             StringComparison.Ordinal);
+        Assert.Contains("dispatchChannel.Client()", dispatch, StringComparison.Ordinal);
+        Assert.Contains("dispatchChannel.Server()", dispatch, StringComparison.Ordinal);
         Assert.Contains("AddClientServerChannel(SampleNames.TrackingRouteChannel).Server()", tracking,
             StringComparison.Ordinal);
     }

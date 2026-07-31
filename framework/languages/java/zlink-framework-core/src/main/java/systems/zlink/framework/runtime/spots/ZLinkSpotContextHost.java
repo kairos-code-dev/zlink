@@ -45,4 +45,8 @@ abstract class ZLinkSpotContextHost {
     abstract CompletionStage<Void> runEntryDispatch(
         Object entryContext,
         Supplier<CompletionStage<Void>> operation);
+
+    abstract CompletionStage<Void> runActorTimerDispatch(
+        String actorId,
+        Supplier<CompletionStage<Void>> operation);
 }

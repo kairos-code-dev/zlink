@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using Zlink.Framework.Runtime.Locations;
@@ -40,6 +41,9 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
     IZLinkRelocationRepository relocationStore)
 {
     private static readonly TimeSpan Retention = TimeSpan.FromHours(24);
+    private readonly ConcurrentDictionary<
+        (string Reference, uint Checksum),
+        Lazy<Task<ZLinkRelocationEnvelope>>> _rootReads = new();
 
     internal async ValueTask<ZLinkDeferredJoinCompletionRoot> PrepareAsync(
         string actorId,
@@ -412,10 +416,22 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
                 StringComparison.Ordinal)
             || publication.TargetOwnerLeaseGeneration
             != snapshot.OwnerLeaseGeneration)
+        {
+            if (publication.IsCanonical
+                && ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+                    snapshot.Payload.Span,
+                    out var canonical)
+                && canonical.Phase is >= 1 and <= 3
+                && StringComparer.Ordinal.Equals(
+                    canonical.State.SourceOwnerId,
+                    snapshot.OwnerId)
+                && canonical.State.SourceOwnerLeaseGeneration
+                   == checked((ulong)snapshot.OwnerLeaseGeneration))
+                return null;
             throw new ZLinkRelocationDataLostException(
                 "Deferred Join completion authority owner fence is invalid.");
-        var envelope = await ZLinkRelocationTreeStore.GetAsync(
-                relocationStore,
+        }
+        var envelope = await ReadRootAsync(
                 publication.Reference,
                 publication.ChecksumCrc32c,
                 cancellationToken)
@@ -423,6 +439,12 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
         ZLinkRelocationParticipantEnvelope? participant = null;
         foreach (var candidate in envelope.Participants)
         {
+            // A SpotWide relocation root can be referenced by every Actor in
+            // the aggregate. Only an Actor participant carrying a completion
+            // record can represent deferred Join completion state.
+            if (candidate.ObjectKind != ZLinkPlacementObjectKind.Actor
+                || candidate.CompletionPayload.IsEmpty)
+                continue;
             var actualKey = ResolveParticipantAuthorityKey(candidate);
             if (actualKey != key)
                 continue;
@@ -432,8 +454,7 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
             participant = candidate;
         }
         if (participant is null)
-            throw new ZLinkRelocationDataLostException(
-                "Deferred Join completion manifest does not match Actor authority.");
+            return null;
         if (participant.ObjectKind != ZLinkPlacementObjectKind.Actor
             || participant.ObjectGeneration != snapshot.ObjectGeneration)
             throw new ZLinkRelocationDataLostException(
@@ -477,6 +498,57 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
             snapshot.StoreVersion,
             envelope,
             completion);
+    }
+
+    private async ValueTask<ZLinkRelocationEnvelope> ReadRootAsync(
+        string reference,
+        uint checksum,
+        CancellationToken cancellationToken)
+    {
+        var key = (reference, checksum);
+        var created = new Lazy<Task<ZLinkRelocationEnvelope>>(
+            () => ZLinkRelocationTreeStore.GetAsync(
+                    relocationStore,
+                    reference,
+                    checksum,
+                    CancellationToken.None)
+                .AsTask(),
+            LazyThreadSafetyMode.ExecutionAndPublication);
+        var read = _rootReads.GetOrAdd(key, created);
+        if (ReferenceEquals(read, created))
+            _ = EvictRootReadAsync(key, read);
+        try
+        {
+            return await read.Value.WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            _rootReads.TryRemove(
+                new KeyValuePair<
+                    (string Reference, uint Checksum),
+                    Lazy<Task<ZLinkRelocationEnvelope>>>(key, read));
+            throw;
+        }
+    }
+
+    private async Task EvictRootReadAsync(
+        (string Reference, uint Checksum) key,
+        Lazy<Task<ZLinkRelocationEnvelope>> read)
+    {
+        try
+        {
+            await read.Value.ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Failed immutable root reads are immediately eligible for retry.
+        }
+        _rootReads.TryRemove(
+            new KeyValuePair<
+                (string Reference, uint Checksum),
+                Lazy<Task<ZLinkRelocationEnvelope>>>(key, read));
     }
 
     internal static ZLinkAuthorityKey ResolveParticipantAuthorityKey(

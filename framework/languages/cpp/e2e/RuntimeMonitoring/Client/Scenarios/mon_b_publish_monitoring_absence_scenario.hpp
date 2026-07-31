@@ -19,19 +19,7 @@ concept has_multicast_member = requires (const T &value) {
     value.multicast;
 };
 
-template <typename T>
-concept has_publish_target_count_member = requires (const T &value) {
-    value.remote_snapshot_count;
-    value.remote_admitted_count;
-    value.remote_dropped_count;
-    value.remote_unreachable_count;
-    value.local_snapshot_count;
-    value.local_admitted_count;
-    value.local_dropped_count;
-};
-
 static_assert (!has_multicast_member<zlink::framework::mesh_node_snapshot_t>);
-static_assert (!has_publish_target_count_member<zlink::framework::mesh_runtime_event_t>);
 
 inline nlohmann::json publish_monitoring_runtime_snapshot (
   const std::string &base_url)

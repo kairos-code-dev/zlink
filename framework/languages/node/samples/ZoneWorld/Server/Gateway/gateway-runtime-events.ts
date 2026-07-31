@@ -18,9 +18,11 @@ class GatewaySpotEventHandler implements OnApplicationBootstrap, OnApplicationSh
   }
 
   private async observeReadiness(): Promise<void> {
-    for await (const event of this.runtime.observe(ZoneWorldNames.zoneMesh, 64, this.stop.signal)) {
-      if (event.identifier !== 'zlink.runtime.mesh_node.peer_changed') continue;
-      console.log(`gateway mesh peer changed mesh=${event.meshName} peer=${event.peerRid ?? '-'} reason=${event.reason ?? '-'}`);
+    for await (const status of this.runtime.observe(ZoneWorldNames.zoneMesh, 64, this.stop.signal)) {
+      console.log(
+        `gateway mesh status mesh=${status.meshName} state=${status.state}`
+        + ` readyPeers=${status.readyPeerCount}`
+      );
     }
   }
 }

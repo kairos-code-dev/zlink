@@ -40,46 +40,30 @@ public final class Contracts {
     }
 
     public record RuntimePeer(
-        String rid,
-        long lifecycleGeneration,
-        long descriptorRevision,
-        String endpoint,
-        String admissionState,
-        boolean ready,
-        List<String> channelNames,
-        String lastFailure) {
+        String nodeRid,
+        String state,
+        String unavailableReason) {
     }
 
     public record RuntimeChannel(
         String channelName,
-        int localWeight,
-        long readyMemberCount,
-        boolean selectable) {
+        boolean ready,
+        int readyTargetCount) {
     }
 
     public record RuntimeSnapshot(
         String meshName,
-        String rid,
-        long lifecycleGeneration,
-        long descriptorRevision,
-        String endpoint,
         String state,
+        boolean ready,
+        int readyPeerCount,
         long sequence,
         String observedAt,
-        List<String> descriptorSources,
         List<RuntimePeer> peers,
         List<RuntimeChannel> channels,
-        boolean applicationClaimActive,
-        long applicationClaimPending,
-        boolean infrastructureClaimActive,
-        long infrastructureClaimPending,
-        String locationState,
-        String locationLastSuccess,
-        String locationLastFailure,
-        String drainState,
-        boolean workSealed,
-        long pendingApplication,
-        long pendingTransfers,
-        long pendingStreamBarriers) {
+        boolean placementAvailable,
+        int activeActorCount,
+        int activeSpotCount,
+        String placementUnavailableReason,
+        String hostState) {
     }
 }

@@ -4,7 +4,7 @@ import { ZONEWORLD_CONFIG, createZoneWorldConfigurationModule } from '../Configu
 import type { ZoneWorldConfiguration } from '../Configuration/configuration';
 import { createZoneWorldLocationStore, zoneWorldLocationOptions } from '../Configuration/location-store';
 import { ZoneWorldNames } from '../../Shared/spec';
-import { JoinWorldSessionHandler, PlayerSessionFactory } from './player-session';
+import { PlayerSessionFactory } from './player-session';
 import { GatewaySpotEventHandler } from './gateway-runtime-events';
 
 function createGatewayModule() {
@@ -28,14 +28,15 @@ function createGatewayModule() {
           .addRouteMesh(ZoneWorldNames.zoneMesh)
             .setRoutingIdPrefix('gw0')
             .listen(gateway.spotRouterEndpoint);
-        zoneMesh.channelName(ZoneWorldNames.zoneMesh).setWeight(0);
-        zoneMesh.channelName(ZoneWorldNames.bridgeMesh).setWeight(0);
-        zoneMesh.channelName(ZoneWorldNames.actorsChannel).setWeight(0);
-        zoneMesh.channelName(ZoneWorldNames.reportChannel).setWeight(0);
+        zoneMesh.channel(ZoneWorldNames.zoneMesh).client();
+        zoneMesh.channel(ZoneWorldNames.bridgeMesh).client();
+        zoneMesh.objects().client();
+        zoneMesh.channel(ZoneWorldNames.reportChannel).client();
         for (const nodeId of ['zone-node-1', 'zone-node-2']) {
-          zoneMesh.channelName(ZoneWorldNames.opsChannel(nodeId)).setWeight(0);
+          zoneMesh.channel(ZoneWorldNames.opsChannel(nodeId)).client();
         }
         builder.addStreamNode(ZoneWorldNames.gatewayStreamNode)
+          .enableActorDispatch()
           .bind(gateway.streamEndpoint)
           .registerSession(PlayerSessionFactory);
         const registration = builder.build();
@@ -45,7 +46,7 @@ function createGatewayModule() {
         };
       }
     })],
-    providers: [GatewaySpotEventHandler, JoinWorldSessionHandler, PlayerSessionFactory]
+    providers: [GatewaySpotEventHandler, PlayerSessionFactory]
   })(GatewayModule);
   return GatewayModule;
 }

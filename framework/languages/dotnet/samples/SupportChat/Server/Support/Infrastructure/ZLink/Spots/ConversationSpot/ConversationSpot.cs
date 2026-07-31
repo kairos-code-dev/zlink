@@ -88,10 +88,14 @@ internal sealed class ConversationSpot(
             var change = conversation.JoinAgent(participantId, displayName, NowUnixMs());
             _pendingJoinChanges[actorId] = change;
             await ValueTask.CompletedTask;
-            return ZLinkSpotActorJoinResult.Accept(new JoinConversationRes(ConversationContracts.ToState(change.State)));
+            return ZLinkSpotActorJoinResult.Accept(new JoinConversationRes(
+                false,
+                ConversationContracts.ToState(change.State)));
         }
 
-        return ZLinkSpotActorJoinResult.Accept(new JoinConversationRes(ConversationContracts.ToState(conversation.Snapshot())));
+        return ZLinkSpotActorJoinResult.Accept(new JoinConversationRes(
+            false,
+            ConversationContracts.ToState(conversation.Snapshot())));
     }
 
     public async ValueTask OnJoinedActorAsync(
@@ -162,7 +166,9 @@ internal sealed class ConversationSpot(
             "support conversation: membership refreshed. conversation={ConversationId}, participant={ParticipantId}",
             conversation.ConversationId,
             actor.ParticipantId);
-        return new JoinConversationRes(ConversationContracts.ToState(conversation.Snapshot()));
+        return new JoinConversationRes(
+            false,
+            ConversationContracts.ToState(conversation.Snapshot()));
     }
 
     public async ValueTask<SendChatMessageRes> SendMessageAsync(

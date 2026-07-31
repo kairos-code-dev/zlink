@@ -406,7 +406,6 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                 (failures ??= []).Add(exception);
             }
         }
-        foreach (var reconciler in reconcilers) reconciler.RemovePeerMetric();
 
         if (failures is { Count: 1 })
             System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
@@ -488,7 +487,6 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
             retainRemovedMembers,
             initiallyPublished: startupState is not null,
             initialStoreGeneration: startupState?.StoreGeneration ?? 0);
-        reconciler.RegisterPeerMetric();
         _reconcilers.Add(reconciler);
         _localReconcilers[(type, meshName, role)] = reconciler;
         if (type is ZLinkLocationAutoConnectType.RouteMesh
@@ -651,8 +649,13 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         public bool Connect(ZLinkAutoConnectTarget target)
         {
             node.ObserveRequestSourceFence(target);
-            if (!connectRouter || !target.InitiatesSpotRouterLink) return true;
-            return node.ConnectPeerAuto(target.NodeRid, target.Endpoint);
+            node.ObservePeerExpectation(target);
+            if (!connectRouter || !target.InitiatesConnection) return true;
+            return node.ConnectPeerAuto(
+                target.NodeRid,
+                target.Endpoint,
+                ZLinkTransportSecurityIdentity.ToAdmissionIdentity(
+                    target.SecurityIdentity));
         }
 
         public bool Disconnect(ZLinkAutoConnectTarget target)
@@ -661,7 +664,8 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
             // (store outages and lease expiry windows ride established
             // connections, SF-B2); only the dialing side retires its own
             // connect intent here.
-            if (!connectRouter || !target.InitiatesSpotRouterLink) return true;
+            node.ForgetPeerExpectation(target);
+            if (!connectRouter || !target.InitiatesConnection) return true;
             return node.DisconnectPeerAuto(target.Endpoint);
         }
     }

@@ -1,8 +1,10 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
-#include <string>
+#include <deque>
 #include <memory>
+#include <set>
+#include <string>
 #include <utility>
 
 #include <zlink/framework.hpp>
@@ -25,6 +27,9 @@ struct player_actor_t : framework::actor_t
     mutable bool destroy_after_entry_spot_join = false;
     mutable bool disconnected = false;
     mutable player_info_t player;
+    mutable std::deque<std::string> pending_join_rooms;
+    mutable std::set<std::pair<std::uint64_t, std::uint64_t>>
+      processed_join_operations;
     mutable std::unique_ptr<actor_context_t> actor_context;
 
     player_actor_t () = default;
@@ -32,7 +37,9 @@ struct player_actor_t : framework::actor_t
     player_actor_t (const player_actor_t &other) :
         actor_id (other.actor_id), node_rid (other.node_rid), generation (other.generation),
         destroy_after_entry_spot_join (other.destroy_after_entry_spot_join),
-        disconnected (other.disconnected), player (other.player)
+        disconnected (other.disconnected), player (other.player),
+        pending_join_rooms (other.pending_join_rooms),
+        processed_join_operations (other.processed_join_operations)
     {
     }
     player_actor_t &operator= (const player_actor_t &other)
@@ -44,6 +51,8 @@ struct player_actor_t : framework::actor_t
             destroy_after_entry_spot_join = other.destroy_after_entry_spot_join;
             disconnected = other.disconnected;
             player = other.player;
+            pending_join_rooms = other.pending_join_rooms;
+            processed_join_operations = other.processed_join_operations;
             actor_context.reset ();
         }
         return *this;
@@ -71,6 +80,38 @@ struct player_actor_t : framework::actor_t
     void mark_disconnected () const { disconnected = true; }
 
     void apply_player (player_info_t value) const { player = std::move (value); }
+
+    void track_deferred_join (std::string room_id) const
+    {
+        pending_join_rooms.push_back (std::move (room_id));
+    }
+
+    task_t<void>
+    on_join_completed (const actor_join_completion_t &completion) override
+    {
+        const auto operation = std::visit (
+          [] (const auto &value) {
+              return std::pair{value.operation_id_high,
+                               value.operation_id_low};
+          },
+          completion);
+        if (processed_join_operations.contains (operation))
+            co_return;
+
+        if (const auto *accepted =
+              std::get_if<actor_join_accepted_t> (&completion);
+            accepted != nullptr && accepted->reply) {
+            const auto joined =
+              accepted->reply->decode<tictactoe_game_join_res_t> ();
+            actor_context->bound_session ()
+              .send (join_game_res_t{joined.state})
+              .submit ();
+        }
+        processed_join_operations.emplace (operation);
+        if (!pending_join_rooms.empty ())
+            pending_join_rooms.pop_front ();
+        co_return;
+    }
 
     template <typename TNotify> void push (const TNotify &notify) const
     {

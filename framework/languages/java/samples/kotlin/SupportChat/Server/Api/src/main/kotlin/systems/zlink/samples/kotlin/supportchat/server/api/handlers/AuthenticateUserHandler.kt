@@ -1,6 +1,6 @@
 package systems.zlink.samples.kotlin.supportchat.server.api.handlers
 
-import systems.zlink.framework.channels.ZLinkRequestContext
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleNames
@@ -12,7 +12,7 @@ import systems.zlink.samples.kotlin.supportchat.shared.contracts.AuthenticateUse
 class AuthenticateUserHandler : ZLinkSuspendingRequestHandler<AuthenticateUserReq, AuthenticateUserRes> {
     override suspend fun handle(
         request: AuthenticateUserReq,
-        context: ZLinkRequestContext,
+        context: ZLinkMessageContext,
     ): AuthenticateUserRes =
         when (request.accessToken) {
             "customer-1" -> accepted("customer-1", "Customer 1", SupportChatRoles.Customer)

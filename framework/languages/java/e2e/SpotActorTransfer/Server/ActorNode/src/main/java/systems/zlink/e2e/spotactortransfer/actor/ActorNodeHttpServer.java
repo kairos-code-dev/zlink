@@ -28,6 +28,8 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
     private final ZLinkSpotManager spots;
     private final ZLinkActorManager actors;
     private final ZLinkActorClient actorClient;
+    private final systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle
+        lifecycle;
     private HttpServer server;
     private java.util.concurrent.ExecutorService executor;
     private boolean running;
@@ -39,7 +41,8 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
         GateStore gates,
         ZLinkSpotManager spots,
         ZLinkActorManager actors,
-        ZLinkActorClient actorClient) {
+        ZLinkActorClient actorClient,
+        systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle lifecycle) {
         this.endpoint = endpoint;
         this.json = json;
         this.evidence = evidence;
@@ -47,6 +50,7 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
         this.spots = spots;
         this.actors = actors;
         this.actorClient = actorClient;
+        this.lifecycle = lifecycle;
     }
 
     @Override
@@ -56,18 +60,59 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
             server = HttpServer.create(new InetSocketAddress(uri.getHost(), uri.getPort()), 0);
             executor = java.util.concurrent.Executors.newCachedThreadPool();
             server.setExecutor(executor);
-            server.createContext("/health", exchange -> handle(exchange, () ->
-                writeJson(exchange, java.util.Map.of("status", "ready", "nodeRid", evidence.nodeRid()))));
+            server.createContext("/health", exchange -> handle(exchange, () -> {
+                if (!lifecycle.isReady()) {
+                    writeText(
+                        exchange,
+                        503,
+                        "Framework runtime state="
+                            + lifecycle.status().state().name());
+                    return;
+                }
+                writeJson(exchange, java.util.Map.of(
+                    "status", "ready",
+                    "nodeRid", evidence.nodeRid()));
+            }));
             server.createContext("/evidence", exchange -> handle(exchange, () ->
                 writeJson(exchange, evidence.snapshot())));
             server.createContext("/spots", exchange -> handle(exchange, () -> createSpot(exchange)));
             server.createContext("/gates", exchange -> handle(exchange, () -> releaseGate(exchange)));
             server.createContext("/actors", exchange -> handle(exchange, () -> actors(exchange)));
+            server.createContext("/runtime/retire", exchange -> handle(
+                exchange, () -> retire(exchange)));
             server.start();
             running = true;
         } catch (Exception error) {
             throw new IllegalStateException("failed to start actor node HTTP endpoint " + endpoint, error);
         }
+    }
+
+    private void retire(HttpExchange exchange) throws Exception {
+        var relocation = lifecycle.relocate(
+                new systems.zlink.framework.runtime.host
+                    .ZLinkFrameworkRelocationOptions(
+                        systems.zlink.framework.runtime.host
+                            .ZLinkFrameworkRelocationMode.PLANNED_MAINTENANCE,
+                        null,
+                        Duration.ofSeconds(30)))
+            .toCompletableFuture()
+            .get(35, TimeUnit.SECONDS);
+        if (relocation.outcome()
+            != systems.zlink.framework.runtime.host
+                .ZLinkFrameworkRelocationOutcome.RELOCATED) {
+            writeJson(exchange, new Contracts.RetireRes(
+                "RELOCATE_THEN_SHUTDOWN",
+                relocation.outcome().name(),
+                relocation.reason().name()));
+            return;
+        }
+        var termination = lifecycle.shutdown(Duration.ofSeconds(30))
+            .toCompletableFuture()
+            .get(35, TimeUnit.SECONDS);
+        writeJson(exchange, new Contracts.RetireRes(
+            "RELOCATE_THEN_SHUTDOWN",
+            termination.outcome().name(),
+            termination.reason().name()));
     }
 
     private void createSpot(HttpExchange exchange) throws Exception {
@@ -120,8 +165,9 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
             exchange.getRequestBody(), Contracts.ActorCreateReq.class);
         ZLinkActorCreateResult result = actors.getOrCreate(
                 request.actorId(),
-                request.actorType(),
-                request)
+                request.actorType())
+            .request(request)
+            .submit()
             .toCompletableFuture()
             .get(12, TimeUnit.SECONDS);
         ActorRef actor = switch (result) {
@@ -150,12 +196,24 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
                     .orElseThrow(() -> new IllegalStateException(
                         "target Spot was not found: "
                             + request.targetSpotRid()));
-                ActorRef resolved =
-                    awaitActorOwner(actorId, target.nodeRid());
-                evidence.add(
-                    request.scenario(), actorId, "location_visible",
-                    resolved.nodeRid() + ":"
-                        + Long.toUnsignedString(resolved.objectGeneration()));
+                Optional<ActorRef> resolved =
+                    awaitActorJoinOutcome(actorId, target.nodeRid());
+                if (resolved.isEmpty()) {
+                    result = new Contracts.JoinTargetRes(
+                        result.scenario(),
+                        result.actorId(),
+                        false,
+                        result.sourceNodeRid(),
+                        result.targetSpotRid(),
+                        result.stateVersion());
+                } else {
+                    ActorRef committed = resolved.orElseThrow();
+                    evidence.add(
+                        request.scenario(), actorId, "location_visible",
+                        committed.nodeRid() + ":"
+                            + Long.toUnsignedString(
+                                committed.objectGeneration()));
+                }
             }
             evidence.add(request.scenario(), actorId,
                 result.accepted() ? "success_reply" : "reject_reply", request.targetSpotRid());
@@ -168,7 +226,7 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
         }
     }
 
-    private ActorRef awaitActorOwner(
+    private Optional<ActorRef> awaitActorJoinOutcome(
         String actorId,
         RoutingId expectedOwner) throws Exception {
         long deadline = System.nanoTime()
@@ -179,7 +237,14 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
                 .get(2, TimeUnit.SECONDS);
             if (actor.isPresent()
                 && actor.orElseThrow().nodeRid().equals(expectedOwner)) {
-                return actor.orElseThrow();
+                return actor;
+            }
+            boolean failed = evidence.snapshot().entries().stream()
+                .anyMatch(entry -> actorId.equals(entry.actorId())
+                    && ("join_failed".equals(entry.kind())
+                        || "join_rejected".equals(entry.kind())));
+            if (failed) {
+                return Optional.empty();
             }
             Thread.sleep(20);
         }

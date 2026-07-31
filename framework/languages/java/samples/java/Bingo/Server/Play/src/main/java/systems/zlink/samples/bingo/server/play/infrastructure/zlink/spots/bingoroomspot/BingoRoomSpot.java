@@ -10,6 +10,7 @@ import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
+import systems.zlink.framework.spots.ZLinkSpotRelocationReadyCompletion;
 import systems.zlink.framework.spots.ZLinkTimer;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.configuration.SampleTimings;
@@ -138,6 +139,12 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
             : timer.cancel();
     }
 
+    @Override
+    public java.util.concurrent.CompletionStage<Void> onRelocationReadyCompleted(
+        ZLinkSpotRelocationReadyCompletion completion) {
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
+    }
+
     public Messages.BingoRoomJoinRes join(
         PlayerActor actor,
         Messages.BingoRoomJoinReq request,
@@ -148,6 +155,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
         actor.joinRoom(request.getRoomId());
         if (request.getObserveOnly()) {
             observers.put(actor.actorId(), actor);
+            context.relocationReady().defer();
             return BingoMessages.bingoRoomJoinRes(observerJoinState(request));
         }
         actors.put(actor.actorId(), actor);
@@ -200,7 +208,11 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
         BingoRoomGame.Change change = game.drawNext();
         publishEvents(change.events(), actors::get);
         publishWinner(change);
-        return leaveFinishedActors(change);
+        return leaveFinishedActors(change).thenRun(() -> {
+            if (change.state().getStatus().equals("Finished")) {
+                context.relocationReady().defer();
+            }
+        });
     }
 
     public void announceReward(Messages.BingoRewardAcquiredEvent event) {
@@ -218,6 +230,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
                     event.getItemName(),
                     event.getRarity()));
         }
+        context.relocationReady().defer();
     }
 
     public Messages.StopObservingBingoEventsRes stopObserving(
@@ -246,6 +259,28 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
         this.settings = settings;
         this.game = settings.observerMode() ? null : BingoGame.room(context.spotId(), settings);
         this.cleanupStarted = false;
+    }
+
+    RelocationState captureRelocationState() {
+        Messages.BingoRoomState state = game == null
+            ? BingoMessages.bingoRoomState(
+                context.spotId(), "Running", "", false, 0, null,
+                List.of(), List.of(), List.of())
+            : game.snapshot();
+        return new RelocationState(settings, state);
+    }
+
+    void restoreRelocationState(RelocationState state) {
+        settings = state.settings();
+        game = settings.observerMode()
+            ? null
+            : BingoRoomGame.restore(context.spotId(), settings, state.state());
+        cleanupStarted = false;
+    }
+
+    record RelocationState(
+        BingoRoomModels.BingoRoomSettings settings,
+        Messages.BingoRoomState state) {
     }
 
     private java.util.concurrent.CompletionStage<Void> leaveFinishedActors(BingoRoomGame.Change change) {

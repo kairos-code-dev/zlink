@@ -171,6 +171,11 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         return _registration.Locations.Options;
     }
 
+    public IZLinkInboundDispatchOptions ConfigureInboundDispatch()
+    {
+        return _registration.InboundDispatchOptions;
+    }
+
     public IZLinkNetworkOptions ConfigureNetwork()
     {
         return _registration.NetworkOptions;

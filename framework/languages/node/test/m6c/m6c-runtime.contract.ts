@@ -17,7 +17,7 @@ import type {
   ZLinkAuthoritySnapshot,
   ZLinkLocationOwnerToken,
   ZLinkObjectCreationTarget
-} from '../../packages/framework/src/contracts';
+} from '../../packages/framework/src/contracts/Locations';
 import {
   ServiceDurableRelocationRuntime,
   ServiceRelocationAuthorityPayloadCodec,
@@ -53,8 +53,14 @@ import { encodeActorAuthorityIdentity } from '../../packages/framework/src/runti
 import { ZLinkDeferredJoinAcceptedJournal } from '../../packages/framework/src/runtime/actors/deferred-join-accepted-journal';
 import { ZLinkActorTransferRuntime } from '../../packages/framework/src/runtime/host/actor-transfer-runtime';
 import {
+  ZLinkFrameworkErrorKind,
+  ZLinkFrameworkException,
+  ZLinkSpotRelocationReadinessMode,
+  ZLinkSpotRelocationReadyOutcome,
   ZLinkTimerOverrunPolicy
 } from '../../packages/framework/src/contracts';
+import { ZLinkSpotActivation } from '../../packages/framework/src/runtime/spots/spot-activation-state';
+import { ZLinkSpotSerialExecutor } from '../../packages/framework/src/runtime/spots/spot-serial-executor';
 import {
   decodeServiceWireRelocationEnvelope,
   encodeServiceWireRelocationEnvelope
@@ -127,6 +133,129 @@ const relocationControlFixtureValues = (): readonly ServiceMaintenanceRelocation
       reservationGeneration: 13n, participants }
   ];
 };
+
+test('ApplicationSignaled relocation consumes one deferred boundary and reports exact completion', async () => {
+  const completions: ZLinkSpotRelocationReadyOutcome[] = [];
+  const serial = new ZLinkSpotSerialExecutor(true);
+  const activation = new ZLinkSpotActivation({
+    meshName: 'mesh-a',
+    spotId: 'spot-a',
+    spotType: class {} as never,
+    spot: {
+      async onRelocationReadyCompleted(completion: { outcome: ZLinkSpotRelocationReadyOutcome }) {
+        completions.push(completion.outcome);
+      }
+    } as never,
+    serial,
+    relocationReadiness: ZLinkSpotRelocationReadinessMode.ApplicationSignaled,
+    timers: {} as never,
+    actorHandlers: {} as never,
+    handlers: {} as never
+  });
+
+  const boundary = activation.waitForRelocationBoundary();
+  await serial.execute(() => activation.relocationReadyCall().defer());
+  assert.equal(await boundary, true);
+  assert.deepEqual(completions, []);
+  await activation.completeConsumedRelocationBoundary(
+    ZLinkSpotRelocationReadyOutcome.Continued
+  );
+  assert.deepEqual(completions, [ZLinkSpotRelocationReadyOutcome.Continued]);
+  await activation.notifyRelocatedBoundary();
+  assert.deepEqual(completions, [
+    ZLinkSpotRelocationReadyOutcome.Continued,
+    ZLinkSpotRelocationReadyOutcome.Relocated
+  ]);
+  assert.throws(
+    () => activation.relocationReadyCall().defer(),
+    (error: unknown) =>
+      error instanceof ZLinkFrameworkException
+      && error.kind === ZLinkFrameworkErrorKind.InvalidOperation
+  );
+
+  const duplicateBoundary = activation.waitForRelocationBoundary();
+  await serial.execute(() => {
+    const call = activation.relocationReadyCall();
+    call.defer();
+    assert.throws(
+      () => activation.ensureContextOperationAllowed(),
+      (error: unknown) =>
+        error instanceof ZLinkFrameworkException
+        && error.kind === ZLinkFrameworkErrorKind.InvalidOperation
+    );
+    assert.throws(
+      () => call.defer(),
+      (error: unknown) =>
+        error instanceof ZLinkFrameworkException
+        && error.kind === ZLinkFrameworkErrorKind.InvalidOperation
+    );
+  });
+  assert.equal(await duplicateBoundary, true);
+  await activation.completeConsumedRelocationBoundary(
+    ZLinkSpotRelocationReadyOutcome.Continued
+  );
+
+  const anyTurn = new ZLinkSpotActivation({
+    meshName: 'mesh-a',
+    spotId: 'spot-b',
+    spotType: class {} as never,
+    spot: {} as never,
+    serial: new ZLinkSpotSerialExecutor(true),
+    relocationReadiness: ZLinkSpotRelocationReadinessMode.AnyTurnBoundary,
+    timers: {} as never,
+    actorHandlers: {} as never,
+    handlers: {} as never
+  });
+  assert.throws(
+    () => anyTurn.relocationReadyCall().defer(),
+    /requires ApplicationSignaled/
+  );
+});
+
+test('ApplicationSignaled defer without active relocation completes before the next application turn', async () => {
+  const events: string[] = [];
+  const serial = new ZLinkSpotSerialExecutor(true);
+  const activation = new ZLinkSpotActivation({
+    meshName: 'mesh-a',
+    spotId: 'spot-ready-without-relocation',
+    spotType: class {} as never,
+    spot: {
+      async onRelocationReadyCompleted(
+        completion: { outcome: ZLinkSpotRelocationReadyOutcome }
+      ) {
+        events.push(`completion:${completion.outcome}`);
+      }
+    } as never,
+    serial,
+    relocationReadiness: ZLinkSpotRelocationReadinessMode.ApplicationSignaled,
+    timers: {} as never,
+    actorHandlers: {} as never,
+    handlers: {} as never
+  });
+
+  let nextTurn!: Promise<void>;
+  await serial.execute(() => {
+    events.push('handler');
+    const call = activation.relocationReadyCall();
+    call.defer();
+    assert.throws(
+      () => call.defer(),
+      (error: unknown) =>
+        error instanceof ZLinkFrameworkException
+        && error.kind === ZLinkFrameworkErrorKind.InvalidOperation
+    );
+    nextTurn = serial.post(() => {
+      events.push('next-application-turn');
+    });
+  });
+  await nextTurn;
+
+  assert.deepEqual(events, [
+    'handler',
+    `completion:${ZLinkSpotRelocationReadyOutcome.Continued}`,
+    'next-application-turn'
+  ]);
+});
 
 function frozenU16(value: number): Buffer {
   const bytes = Buffer.alloc(2);
@@ -707,6 +836,54 @@ test('startup authority scan submits published Actor roots before admission', as
   assert.equal(recovered[0]?.allocation.objectKind, 'actor');
 });
 
+test('startup authority scan submits committed ZLAR roots for production relocation recovery', async () => {
+  const authority = authorityStore();
+  const key = authorityKey('spot:room');
+  const initial = await createAuthority(authority, 'spot:room');
+  const relocationStore = new MemoryRelocationStore([]);
+  const durable = new ServiceDurableRelocationRuntime(
+    authority,
+    relocationStore,
+    authorityCodec
+  );
+  const published = await durable.captureAndPublish(
+    key,
+    initial,
+    owner('owner-b', 2n),
+    relocationEnvelope()
+  );
+  const fence = await reserveTarget(
+    authority,
+    key,
+    published.authority,
+    'target-restore'
+  );
+  const committed = await durable.commitOwner(
+    key,
+    published.authority,
+    owner('owner-b', 2n),
+    fence
+  );
+  const recovered: ZLinkAuthoritySnapshot[] = [];
+  const runtime = new ZLinkStatefulAuthorityRouteRuntime({
+    store: authority,
+    meshNodes: new Map(),
+    pollingIntervalMs: 60_000,
+    pageSize: 32,
+    reportError: error => { throw error; },
+    recoverRelocation: async snapshot => {
+      recovered.push(snapshot);
+    }
+  });
+
+  await runtime.start();
+  await runtime.stop();
+
+  assert.equal(recovered.length, 1);
+  assert.equal(recovered[0]?.storeVersion.value, committed.storeVersion.value);
+  assert.equal(authorityCodec.read(recovered[0]!.payload)?.reference, published.publication.reference);
+});
+
 test('restart recovery atomically takes over expired PerActor Spot and Actor authorities', async () => {
   let oldLifecycleLive = true;
   const authority = new ZLinkInMemoryAuthorityStore({
@@ -1007,6 +1184,49 @@ test('relocation envelope rejects duplicate participant queue and timer identiti
   );
 });
 
+test('relocation inventory preserves 10,100 participants without a Spot member count ceiling', () => {
+  const base = relocationEnvelope();
+  const spot = {
+    ...base.participants[0]!,
+    queuedMessages: [],
+    timers: []
+  };
+  const actors = Array.from({ length: 10_099 }, (_, index) => ({
+    key: `actor:profile:${index.toString().padStart(5, '0')}`,
+    objectKind: 'actor' as const,
+    stableType: 'ProfileActor',
+    objectGeneration: 1n,
+    authorityOwnerGeneration: 1n,
+    applicationState: Buffer.alloc(0),
+    acceptedJournal: Buffer.alloc(0),
+    replayCursor: 0n,
+    terminalReplies: Buffer.alloc(0),
+    pendingRelayCount: 0,
+    queuedMessages: [],
+    timers: []
+  }));
+  const envelope: ServiceRelocationEnvelope = {
+    aggregateId: '66666666-6666-4666-8666-666666666666',
+    aggregateGeneration: 1n,
+    sourceCleanup: 'pending',
+    participants: [spot, ...actors],
+    memberships: actors.map((actor, index) => ({
+      actorKey: actor.key,
+      spotKey: spot.key,
+      spotObjectGeneration: spot.objectGeneration,
+      membershipEpoch: BigInt(index + 1)
+    }))
+  };
+
+  const decoded = decodeServiceRelocationEnvelope(
+    encodeServiceRelocationEnvelope(envelope)
+  );
+  assert.equal(decoded.participants.length, 10_100);
+  assert.equal(decoded.memberships.length, 10_099);
+  assert.equal(decoded.participants[0]?.key, 'actor:profile:00000');
+  assert.equal(decoded.participants.at(-1)?.key, spot.key);
+});
+
 test('mailbox seal captures queued work, holds new ingress, and restores or relays in order', () => {
   const mailbox = new ServiceMailbox({
     applicationMessages: 16,
@@ -1042,6 +1262,54 @@ test('mailbox seal captures queued work, holds new ingress, and restores or rela
   assert.equal(mailbox.pendingMessages('application'), 0);
   assert.equal(mailbox.tryEnqueue(mailboxRecord('spot:room', 'application', 'six')), false);
   mailbox.close();
+});
+
+test('relocation ingress hold applies the per-owner 1024 message and 16 MiB bounds', () => {
+  const byCount = new ServiceMailbox({
+    applicationMessages: 2048,
+    applicationBytes: 32 * 1024 * 1024,
+    infrastructureMessages: 4,
+    infrastructureBytes: 256
+  });
+  const countSeal = byCount.trySealApplicationOwner('spot:count');
+  assert.ok(countSeal);
+  for (let index = 0; index < 1024; index++) {
+    assert.equal(
+      byCount.tryEnqueue(mailboxRecord('spot:count', 'application', 'x')),
+      true
+    );
+  }
+  assert.equal(
+    byCount.tryEnqueue(mailboxRecord('spot:count', 'application', 'overflow')),
+    false
+  );
+  assert.equal(byCount.abortRelocation(countSeal), true);
+  const restored = byCount.tryClaim('application', 2048, 32 * 1024 * 1024);
+  assert.equal(restored?.records.length, 1024);
+  assert.ok(restored);
+  assert.equal(byCount.release(restored), true);
+  byCount.close();
+
+  const byBytes = new ServiceMailbox({
+    applicationMessages: 8,
+    applicationBytes: 32 * 1024 * 1024,
+    infrastructureMessages: 4,
+    infrastructureBytes: 256
+  });
+  const byteSeal = byBytes.trySealApplicationOwner('spot:bytes');
+  assert.ok(byteSeal);
+  assert.equal(byBytes.tryEnqueue({
+    owner: 'spot:bytes',
+    domain: 'application',
+    parts: [Buffer.alloc(16 * 1024 * 1024)]
+  }), true);
+  assert.equal(byBytes.tryEnqueue({
+    owner: 'spot:bytes',
+    domain: 'application',
+    parts: [Buffer.alloc(1)]
+  }), false);
+  assert.equal(byBytes.commitRelocation(byteSeal)?.length, 1);
+  byBytes.close();
 });
 
 test('managed timer pauses and restores its logical schedule without native handles', async () => {
@@ -1593,6 +1861,94 @@ test('concrete User Spot aggregate restores hidden membership and sealed work be
   assert.ok(events.indexOf('target-admission:actor:a') < events.indexOf('recovery-releasable'));
 });
 
+test('SpotWide Capture and Restore callbacks run eight at a time and preserve participant order', async () => {
+  let captureActive = 0;
+  let capturePeak = 0;
+  const captureReleases: Array<() => void> = [];
+  const makeUnit = (
+    index: number,
+    objectKind: 'user_spot' | 'actor'
+  ): ServiceRelocationCaptureUnit => ({
+    authorityKey: objectKind === 'user_spot' ? 'spot:bounded' : `actor:${index}`,
+    objectKind,
+    stableType: objectKind === 'user_spot' ? 'room' : 'player',
+    objectGeneration: 1n,
+    authorityOwnerGeneration: 1n,
+    async seal() {
+      return { acceptedJournal: Buffer.alloc(0), queuedMessages: [], timers: [] };
+    },
+    async captureApplicationState() {
+      captureActive++;
+      capturePeak = Math.max(capturePeak, captureActive);
+      await new Promise<void>(resolve => captureReleases.push(resolve));
+      captureActive--;
+      return Buffer.from(String(index));
+    },
+    commitSeal() {},
+    abortSeal() {}
+  });
+  const spot = makeUnit(0, 'user_spot');
+  const actors = Array.from({ length: 16 }, (_, index) => makeUnit(index + 1, 'actor'));
+  const memberships = actors.map((actor, index) => ({
+    actorKey: actor.authorityKey,
+    spotKey: spot.authorityKey,
+    spotObjectGeneration: 1n,
+    membershipEpoch: BigInt(index + 1)
+  }));
+  const capturing = new ServiceRelocationObjectCaptureOwner(8).captureUserSpotAggregate(
+    '55555555-5555-4555-8555-555555555555',
+    1n,
+    spot,
+    actors,
+    memberships
+  );
+  await waitUntil(() => captureReleases.length === 8);
+  assert.equal(capturePeak, 8);
+  while (captureReleases.length > 0) {
+    captureReleases.splice(0).forEach(resolve => resolve());
+    await new Promise(resolve => setImmediate(resolve));
+  }
+  const captured = await capturing;
+  assert.deepEqual(
+    captured.envelope.participants.map(value => Buffer.from(value.applicationState).toString()),
+    Array.from({ length: 17 }, (_, index) => String(index))
+  );
+
+  let restoreActive = 0;
+  let restorePeak = 0;
+  const restoreReleases: Array<() => void> = [];
+  const restored: string[] = [];
+  const restoreOwner = new ServiceRelocationObjectRestoreOwner({
+    async createHidden(participant) {
+      return { authorityKey: participant.key };
+    },
+    async restoreApplicationState(_hidden, payload) {
+      restoreActive++;
+      restorePeak = Math.max(restorePeak, restoreActive);
+      await new Promise<void>(resolve => restoreReleases.push(resolve));
+      restored.push(Buffer.from(payload).toString());
+      restoreActive--;
+    },
+    async restoreMemberships() {},
+    async publish() {},
+    async replayAcceptedJournal() {},
+    async replayQueuedMessage() {},
+    async restoreTimer() {},
+    async normalize() {},
+    async openAdmission() {},
+    abort() {}
+  }, authorityKey, 8);
+  const restoring = restoreOwner.prepare(captured.envelope);
+  await waitUntil(() => restoreReleases.length === 8);
+  assert.equal(restorePeak, 8);
+  while (restoreReleases.length > 0) {
+    restoreReleases.splice(0).forEach(resolve => resolve());
+    await new Promise(resolve => setImmediate(resolve));
+  }
+  await restoring;
+  assert.equal(restored.length, 17);
+});
+
 test('concrete standalone Actor owner preserves external membership and exact generation', async () => {
   const events: string[] = [];
   const captureOwner = new ServiceRelocationObjectCaptureOwner();
@@ -1756,7 +2112,10 @@ test('concrete target Restore failure leaves authority and Relocation Store unpu
   assert.deepEqual(events, [
     'payload-put',
     'factory:spot:room',
+    'factory:actor:a',
     'restore:spot:room',
+    'restore:actor:a',
+    'abort:actor:a',
     'abort:spot:room',
     'payload-delete'
   ]);
@@ -1857,8 +2216,8 @@ test('target restore replays and completes before route replacement normalizatio
   assert.deepEqual(events, [
     'target-prepare',
     'authority-cas',
-    'target-publish',
     'accepted-journal-replay',
+    'target-publish',
     'source-cleanup-completed',
     'terminal-reply-relay',
     'session-route-replace',
@@ -2008,6 +2367,14 @@ function captureUnit(
       events.push(`source-abort:${options.authorityKey}`);
     }
   };
+}
+
+async function waitUntil(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 1000; attempt++) {
+    if (predicate()) return;
+    await new Promise(resolve => setImmediate(resolve));
+  }
+  throw new Error('Timed out waiting for the relocation callback gate.');
 }
 
 function authorityStore(): ZLinkInMemoryAuthorityStore {

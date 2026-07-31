@@ -64,6 +64,11 @@ internal static class ActorNodeHostFactory
         builder.Services.AddZLinkFramework(framework =>
         {
             framework.DefaultRequestTimeout = TimeSpan.FromMilliseconds(options.RequestTimeoutMilliseconds);
+            // This E2E host is not started inside a memory-limited container.
+            // Supply a deterministic finite limit so the default Auto HWM
+            // contract does not depend on the developer or CI host.
+            framework.ConfigureInboundDispatch().ProcessMemoryLimitBytes =
+                1UL * 1024 * 1024 * 1024;
             // Normal diagnostics emits the received/replied Activity pairs used
             // by the relocation workload's public correlation assertion.
             framework.ConfigureDispatch().Diagnostics
@@ -134,6 +139,24 @@ internal static class ActorNodeHostFactory
                         .RelocationPayloadPerActorUserSpotType,
                     factory => factory
                         .ExecutionMode(ZLinkUserSpotExecutionMode.PerActor)
+                        .RecreateOnRelocation())
+                .AddSpotFactory<RelocationReadyUserSpot>(
+                    SpotActorTransferNames.RelocationReadyUserSpotType,
+                    factory => factory
+                        .ExecutionMode(ZLinkUserSpotExecutionMode.SpotWide)
+                        .RelocationReadiness(
+                            ZLinkSpotRelocationReadinessMode
+                                .ApplicationSignaled)
+                        .PreserveStateWith<
+                            RelocationReadyUserSpotAdapter>())
+                .AddSpotFactory<RelocationReadyDefaultUserSpot>(
+                    SpotActorTransferNames
+                        .RelocationReadyDefaultUserSpotType,
+                    factory => factory
+                        .ExecutionMode(ZLinkUserSpotExecutionMode.SpotWide)
+                        .RelocationReadiness(
+                            ZLinkSpotRelocationReadinessMode
+                                .ApplicationSignaled)
                         .RecreateOnRelocation())
                 .AddInstanceSpotFactory<RelocationPayloadInstanceSpot>(
                     SpotActorTransferNames.RelocationPayloadInstanceSpotType, factory => factory.PreserveStateWith<RelocationPayloadInstanceSpotAdapter>());

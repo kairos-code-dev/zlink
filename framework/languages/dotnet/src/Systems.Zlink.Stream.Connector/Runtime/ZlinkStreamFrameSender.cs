@@ -139,10 +139,6 @@ internal sealed class ZlinkStreamFrameSender(
             {
                 sendGate.Release();
             }
-
-            ZlinkStreamRuntimeMetrics.RecordOutboundBytes(
-                ZlinkStreamFrameCodec.GetFrameSize(header.Length, payload.Length),
-                ZlinkStreamRuntimeMetrics.TransportLabel(options));
         }
         catch (Exception ex) when (ex is not ZlinkStreamException)
         {

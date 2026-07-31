@@ -720,8 +720,8 @@ const javaExactDirectory =
 const javaMonitoringRelative = path.posix.join(javaExactDirectory, 'monitoring.ko.md');
 const javaMonitoringSource = fs.readFileSync(path.join(root, javaMonitoringRelative), 'utf8');
 const javaSourceHeadings = [
-  'Host runtime observation exact source signature',
-  'Topology runtime observation exact source signature',
+  '2. Host 상태',
+  '3. RouteMesh 상태',
 ];
 const javaSourceBlocks = new Map();
 for (const heading of javaSourceHeadings) {
@@ -743,7 +743,7 @@ for (const heading of javaSourceHeadings) {
   }
 }
 const javaHostObservation = javaSourceBlocks.get(
-  'Host runtime observation exact source signature');
+  '2. Host 상태');
 if (javaHostObservation) {
   for (const message of frameworkStatusFailures(javaHostObservation.source)) {
     fail(`Java host runtime status contract: ${javaMonitoringRelative}:${javaHostObservation.startLine}: ${message}`);

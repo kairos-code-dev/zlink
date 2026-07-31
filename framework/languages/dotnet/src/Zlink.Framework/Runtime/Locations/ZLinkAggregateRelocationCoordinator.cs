@@ -57,6 +57,10 @@ internal sealed class ZLinkAggregateRelocationCoordinator(
     private static readonly TimeSpan Retention = TimeSpan.FromHours(24);
     private static readonly TimeSpan ReconciliationTimeout =
         TimeSpan.FromSeconds(5);
+    private readonly object canonicalRootCacheGate = new();
+    private string? canonicalRootCacheReference;
+    private uint canonicalRootCacheChecksum;
+    private ZLinkRelocationEnvelope? canonicalRootCache;
 
     internal async ValueTask<ZLinkAggregateRelocationPublished> PublishAsync(
         ZLinkAggregateRelocationRequest request,
@@ -590,7 +594,10 @@ internal sealed class ZLinkAggregateRelocationCoordinator(
                 .ConfigureAwait(false);
             if (commit is ZLinkAggregateCommitResult.Committed
                 or ZLinkAggregateCommitResult.AlreadyCommitted)
+            {
+                CacheCanonicalRoot(stored, successor);
                 return successor;
+            }
             if (commit == ZLinkAggregateCommitResult.GenerationExhausted)
                 throw new ZLinkAuthorityGenerationExhaustedException(
                     "committing canonical relocation progress");
@@ -618,14 +625,20 @@ internal sealed class ZLinkAggregateRelocationCoordinator(
             (ZLinkAuthorityKey Key,
                 ZLinkCanonicalRelocationAuthorityProjection Projection)?
                 mismatch = null;
-            foreach (var participant in identity.Participants.OrderBy(
-                         static participant =>
-                             participant.CanonicalParticipantId))
+            var orderedParticipants = identity.Participants.OrderBy(
+                    static participant =>
+                        participant.CanonicalParticipantId)
+                .ToArray();
+            var participantReads = await Task.WhenAll(
+                    orderedParticipants.Select(async participant => (
+                        Participant: participant,
+                        Read: await authorityStore.ReadAuthorityAsync(
+                                participant.AuthorityKey,
+                                cancellationToken)
+                            .ConfigureAwait(false))))
+                .ConfigureAwait(false);
+            foreach (var (participant, read) in participantReads)
             {
-                var read = await authorityStore.ReadAuthorityAsync(
-                        participant.AuthorityKey,
-                        cancellationToken)
-                    .ConfigureAwait(false);
                 if (read is not ZLinkAuthorityReadResult.Found found
                     || !ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
                         found.Snapshot.Payload.Span,
@@ -688,12 +701,15 @@ internal sealed class ZLinkAggregateRelocationCoordinator(
                     + $"pending {currentProjection.PendingRelayCount}/{different.Projection.PendingRelayCount}, "
                     + $"cleanup {currentProjection.SourceCleanupState}/{different.Projection.SourceCleanupState}).");
 
-            var root = await ZLinkRelocationTreeStore.GetAsync(
-                    relocationStore,
-                    currentProjection.RelocationReference,
-                    currentProjection.RelocationChecksumCrc32c,
-                    cancellationToken)
-                .ConfigureAwait(false);
+            var root = TryGetCachedCanonicalRoot(
+                currentProjection.RelocationReference,
+                currentProjection.RelocationChecksumCrc32c);
+            root ??= await ZLinkRelocationTreeStore.GetAsync(
+                        relocationStore,
+                        currentProjection.RelocationReference,
+                        currentProjection.RelocationChecksumCrc32c,
+                        cancellationToken)
+                    .ConfigureAwait(false);
             if (root.CanonicalRelocationHigh
                     != identity.CanonicalRelocationHigh
                 || root.CanonicalRelocationLow
@@ -742,6 +758,29 @@ internal sealed class ZLinkAggregateRelocationCoordinator(
         && left.TerminalCompletionCount == right.TerminalCompletionCount
         && left.PendingRelayCount == right.PendingRelayCount
         && left.SourceCleanupState == right.SourceCleanupState;
+
+    private ZLinkRelocationEnvelope? TryGetCachedCanonicalRoot(
+        string reference,
+        uint checksum)
+    {
+        lock (canonicalRootCacheGate)
+            return canonicalRootCacheReference == reference
+                   && canonicalRootCacheChecksum == checksum
+                ? canonicalRootCache
+                : null;
+    }
+
+    private void CacheCanonicalRoot(
+        ZLinkRelocationStored stored,
+        ZLinkRelocationEnvelope root)
+    {
+        lock (canonicalRootCacheGate)
+        {
+            canonicalRootCacheReference = stored.Reference;
+            canonicalRootCacheChecksum = stored.ChecksumCrc32c;
+            canonicalRootCache = root;
+        }
+    }
 
     private static ulong CanonicalMutationGeneration(
         ReadOnlySpan<byte> logicalRoot,

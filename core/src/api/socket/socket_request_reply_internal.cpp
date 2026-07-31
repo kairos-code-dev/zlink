@@ -93,6 +93,18 @@ int drain_reply_completions (const std::shared_ptr<socket_request_reply_state_t>
     return zlink::request_completion::drain (&state_->completion, owner_handle_);
 }
 
+int drain_reply_completions_while_closing (
+  const std::shared_ptr<socket_request_reply_state_t> &state_,
+  void *owner_handle_)
+{
+    if (!state_) {
+        errno = EFAULT;
+        return -1;
+    }
+    return zlink::request_completion::drain_while_closing (
+      &state_->completion, owner_handle_);
+}
+
 bool has_pending_reply_completions (const std::shared_ptr<socket_request_reply_state_t> &state_)
 {
     return state_ ? zlink::request_completion::has_pending (&state_->completion) : false;

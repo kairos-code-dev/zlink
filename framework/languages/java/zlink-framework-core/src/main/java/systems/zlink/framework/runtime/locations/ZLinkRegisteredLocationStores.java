@@ -1,33 +1,33 @@
 package systems.zlink.framework.runtime.locations;
 
 import java.util.Objects;
-import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 
 /** Internal holder for the single complete Location Store capability. */
 public final class ZLinkRegisteredLocationStores {
-    private final ZLinkLocationStore store;
+    private final ZLinkLocationRepository store;
 
-    private ZLinkRegisteredLocationStores(ZLinkLocationStore store) {
+    private ZLinkRegisteredLocationStores(ZLinkLocationRepository store) {
         this.store = Objects.requireNonNull(store, "store");
     }
 
     public static ZLinkRegisteredLocationStores fromUnified(
-        ZLinkLocationStore store) {
+        ZLinkLocationRepository store) {
         return new ZLinkRegisteredLocationStores(store);
     }
 
     public void addTo(ZLinkHandlerActivator.MutableServices services) {
-        services.add(ZLinkLocationStore.class, store);
+        services.add(ZLinkLocationRepository.class, store);
     }
 
-    public ZLinkLocationStore unifiedStore() { return store; }
-    public ZLinkLocationStore peerStore() { return store; }
-    public ZLinkLocationStore spotStore() { return store; }
-    public ZLinkLocationStore actorStore() { return store; }
-    public ZLinkLocationStore routeStore() { return store; }
-    public ZLinkLocationStore ownerLeaseStore() { return store; }
-    public ZLinkLocationStore authorityStore() { return store; }
-    public ZLinkLocationStore clientServerStore() { return store; }
-    public ZLinkLocationStore fanoutStore() { return store; }
+    public ZLinkLocationRepository unifiedStore() { return store; }
+    public ZLinkLocationRepository peerStore() { return store; }
+    public ZLinkLocationRepository spotStore() { return store; }
+    public ZLinkLocationRepository actorStore() { return store; }
+    public ZLinkLocationRepository routeStore() { return store; }
+    public ZLinkLocationRepository ownerLeaseStore() { return store; }
+    public ZLinkLocationRepository authorityStore() { return store; }
+    public ZLinkLocationRepository clientServerStore() { return store; }
+    public ZLinkLocationRepository fanoutStore() { return store; }
 }

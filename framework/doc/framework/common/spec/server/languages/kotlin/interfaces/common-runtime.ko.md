@@ -8,6 +8,11 @@ outcome·reason·result와 `ZLinkFrameworkRuntime`을 그대로 사용한다. �
 runtime facade를 추가하지 않는다. 별도 drain facade와 MeshName을 받는 partial termination member는 없으며,
 Kotlin은 Java host의 `Relocate`와 `Shutdown`을 그대로 사용한다.
 
+Kotlin artifact가 직접 선언하는 call, handler와 coroutine lifecycle adapter의 source owner는
+`systems/zlink/framework/kotlin/contracts/`다. Source를 이 경계로 옮겨도 package 선언은
+`systems.zlink.framework.kotlin`을 유지하므로 이 문서의 public FQN은 바뀌지 않는다. Java contract를
+Kotlin source에 다시 선언하지 않는다.
+
 Handler filter도 Java의 `ZLinkHandlerFilter`, `ZLinkHandlerFilterContext`,
 `ZLinkHandlerFilterNext<T>`와 `ZLinkHandlerDispatchKind`를 그대로 사용한다. Kotlin
 전용 filter context나 dispatch enum을 추가하지 않는다. 기존 Kotlin filter 구현은
@@ -36,9 +41,12 @@ Core peer table에서 descriptor와 같은 RID·lifecycle generation이 admitted
 
 `PLANNED_MAINTENANCE(0)`는 `targetApplicationVersion == null`이어야 하며 source와 같은 version만
 target 후보로 사용한다. `ROLLING_UPDATE(1)`는 source보다 큰 target version을 반드시 지정하고 그 값과
-정확히 같은 version만 후보로 사용한다. Framework는 version filter와 같은 maintenance wave 제외를
-stable type·adapter capability, capacity와 placement weight보다 먼저 적용한다. 다른 version으로
-fallback하지 않으며 후보가 없으면 `BLOCKED/TARGET_UNAVAILABLE`이다.
+정확히 같은 version만 후보로 사용한다. Framework는 version, source가 아닌 `SERVING` Object Server,
+stable type·factory·adapter capability, capacity와 다른 maintenance wave, RID·lifecycle generation이
+일치하는 `ADMITTED` Core peer, placement weight 순서로 target을 선택한다. 다른 version으로 fallback하지
+않는다. Version·wave·capacity 또는 exact-ready target이 없으면 deadline까지 다시 확인한 뒤
+`BLOCKED/TARGET_UNAVAILABLE`이다. Factory·policy·adapter가 맞지 않으면
+`BLOCKED/STATE_INCOMPATIBLE`, Store 조회 실패는 `BLOCKED/STORE_UNAVAILABLE`이다.
 
 같은 mode와 effective target version의 동시 호출은 첫 호출이 시작한 shared operation에 참여하고 같은
 terminal result를 받는다. 첫 options의 deadline이 shared operation deadline을 고정한다. Mode 또는 target

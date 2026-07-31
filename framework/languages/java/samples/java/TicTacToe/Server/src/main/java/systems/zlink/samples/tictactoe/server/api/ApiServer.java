@@ -1,14 +1,11 @@
 package systems.zlink.samples.tictactoe.server.api;
 
-import systems.zlink.framework.configuration.ClientServerChannelBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
-import systems.zlink.samples.tictactoe.server.api.handlers.AuthenticatePlayerHandler;
 import systems.zlink.samples.tictactoe.server.configuration.SampleLogging;
 import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.server.configuration.ApiSettings;
-import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerReq;
-import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerRes;
 
 public final class ApiServer {
     private ApiServer() {
@@ -21,18 +18,20 @@ public final class ApiServer {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(SampleLogging.flowLogPath(settings, "api-" + settings.apiHttpPort()))
                 .traceLabel("api-" + settings.apiHttpPort());
-            ClientServerChannelBuilder apiChannel = options.addClientServerChannel(SampleNames.ApiChannel)
-                .enableServer(settings.apiChannelEndpoint());
-            apiChannel.addRequestHandler(
-                AuthenticatePlayerHandler.class,
-                AuthenticatePlayerReq.class,
-                AuthenticatePlayerRes.class);
-            for (int index = 0; index < settings.playChannelEndpoints().size(); index++) {
-                String endpoint = index == settings.playIndex()
-                    ? settings.playChannelEndpoint()
-                    : settings.playChannelEndpoints().get(index);
-                options.addClientServerChannel(SampleNames.PlayChannel)
-                    .enableClient(endpoint);
+            options.configureLocations();
+            options.addHandlersFromPackageOf(ApiServer.class);
+            java.net.URI apiEndpoint = java.net.URI.create(settings.apiChannelEndpoint());
+            options.addClientServerChannel(SampleNames.ApiChannel)
+                .server()
+                .setBindHost(apiEndpoint.getHost())
+                .listen(apiEndpoint.getPort())
+                .addHandlerGroup("api");
+            ZLinkMeshNodeBuilder mesh = options.addRouteMesh(SampleNames.SpotMesh);
+            mesh.listen(settings.routeEndpoint())
+                .setRoutingIdPrefix("tictactoe-api");
+            mesh.objects().client();
+            for (String endpoint : settings.spotEndpoints()) {
+                mesh.peerConnections().connect(endpoint);
             }
         };
     }

@@ -14,9 +14,10 @@ import org.springframework.context.annotation.Bean;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions;
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationStore;
 import systems.zlink.samples.tictactoe.server.configuration.SampleLocationStore;
 import systems.zlink.samples.tictactoe.server.configuration.PlaySettings;
-import systems.zlink.samples.tictactoe.server.play.application.gamecreation.TicTacToeGameCreator;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.handlers.TicTacToeGameCreatedHandler;
 
 
@@ -44,18 +45,21 @@ public final class PlayServerApplication {
 
     @Bean
     ZLinkFrameworkConfigurer playFramework(PlaySettings settings) {
-        return PlayServer.configure(settings);
+        ZLinkFrameworkConfigurer server = PlayServer.configure(settings);
+        return options -> {
+            options.configureLocations();
+            options.addLocationStore(SampleLocationStore.create(settings));
+            options.addRelocationStore(new ZLinkRedisRelocationStore(
+                new ZLinkRedisRelocationOptions()
+                    .setConnectionString(settings.redisEndpoint())
+                    .setKeyPrefix(settings.redisKeyPrefix() + "relocation:")));
+            server.configure(options);
+        };
     }
 
     @Bean
     TicTacToeGameCreatedHandler ticTacToeGameCreatedHandler() {
         return new TicTacToeGameCreatedHandler();
-    }
-
-    @Bean
-    TicTacToeGameCreator ticTacToeGameCreator(
-        PlaySettings settings) {
-        return new TicTacToeGameCreator(settings);
     }
 
     @Bean(destroyMethod = "close")

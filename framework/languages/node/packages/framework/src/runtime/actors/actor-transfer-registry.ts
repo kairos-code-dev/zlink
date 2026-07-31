@@ -67,6 +67,10 @@ export class ZLinkActorTransferRegistry {
     };
   }
 
+  policy(actorType: string | undefined): 'recreate' | 'snapshot' {
+    return actorType !== undefined && this.byKey.has(actorType) ? 'snapshot' : 'recreate';
+  }
+
   async restore(
     adapterKey: string,
     actor: ZLinkActor,

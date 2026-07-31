@@ -168,6 +168,11 @@ public final class ZLinkHttpRequestBuilder {
         return decode(submitRaw(), type);
     }
 
+    /** Submits the request and returns only the decoded JSON body. */
+    public <T> CompletionStage<T> fetch(Class<T> type) {
+        return submit(type).thenApply(HttpResponse::body);
+    }
+
     public <T> void submit(Class<T> type, ZLinkHttpCallback<T> callback) {
         java.util.Objects.requireNonNull(callback, "callback");
         submit(type).whenComplete((response, error) ->

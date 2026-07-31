@@ -753,16 +753,19 @@ internal sealed class ZLinkActorRemoteJoiner(
         relocationMetric.RecordJournalMessages(
             checked(committedFrames.Count + trailingFrames.Count));
         markSourceLeft();
+        runtime.LogActorHandoff($"source_leave_started actor={actor.Context.ActorId}");
         await ReconcileCommittedSourceLeaveAsync(
                 actor,
                 actorState,
                 CancellationToken.None)
             .ConfigureAwait(false);
+        runtime.LogActorHandoff($"source_leave_completed actor={actor.Context.ActorId}");
         await progress.PublishAdmissionReadyAuthorityAsync(
                 prepared.Envelope,
                 targetOwner,
                 CancellationToken.None)
             .ConfigureAwait(false);
+        runtime.LogActorHandoff($"admission_ready_published actor={actor.Context.ActorId}");
         actorState.Handoff.CommitMessageFollow(
             registration.Locations.Options.MessageFollowDuration);
         await ReconcileCommittedSourceHandoffAsync(
@@ -771,6 +774,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                 resultActorRef,
                 CancellationToken.None)
             .ConfigureAwait(false);
+        runtime.LogActorHandoff($"source_handoff_completed actor={actor.Context.ActorId}");
         await progress.AdvancePhaseAsync(
                 prepared.Envelope,
                 ZLinkActorRelocationAuthorityPhase.Cleaning,
@@ -778,6 +782,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                 targetOwner,
                 CancellationToken.None)
             .ConfigureAwait(false);
+        runtime.LogActorHandoff($"completed_published actor={actor.Context.ActorId}");
         await ReconcileTargetHandoffCompletionAsync(
                     actor.Context.ActorId,
                     handoffId,
@@ -796,6 +801,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                     routerChannelId,
                 CancellationToken.None)
                 .ConfigureAwait(false);
+        runtime.LogActorHandoff($"target_completion_completed actor={actor.Context.ActorId}");
         return new ZLinkActorJoinResult.Accepted(
             resultActorRef.ToNative(sourceAuthority.MeshName),
             admissionReplyMessage);

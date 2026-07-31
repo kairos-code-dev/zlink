@@ -14,7 +14,12 @@ export const SpotActorTransferNames = {
   packetBindActor: 'BindActorSessionReq'
 } as const;
 
-export interface ActorCreateReq { actorId: string; actorType: string; stateVersion: number }
+export interface ActorCreateReq {
+  actorId: string;
+  actorType: string;
+  stateVersion: number;
+  applicationStateBytes?: number;
+}
 export interface ActorCreateRes {
   actorId: string;
   actorType: string;
@@ -95,7 +100,12 @@ export interface ActorRefRes {
   meshName: string;
   nodeRid: string;
 }
-export interface TransferStateDto { actorId: string; actorType: string; stateVersion: number }
+export interface TransferStateDto {
+  actorId: string;
+  actorType: string;
+  stateVersion: number;
+  applicationStateBytes?: number;
+}
 export interface ActorEvidence {
   scenario: string;
   actorId: string;

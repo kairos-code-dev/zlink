@@ -110,6 +110,7 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetServices<ZLinkHandlerEndpointDescriptor>()));
         services.TryAddSingleton<ZLinkHandlerDispatcher>();
         services.TryAddSingleton<ZLinkDrainAdmissionGate>();
+        services.TryAddSingleton<ZLinkFrameworkHostLifecycleState>();
         services.AddSingleton(static provider => new ZLinkAutoConnectLifecycleCoordinator(
             provider.GetService<ZLinkLocationAutoConnectHost>()));
         services.AddSingleton(static provider =>
@@ -141,9 +142,12 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.TryAddSingleton<ZLinkFrameworkMaintenanceRuntime>(provider =>
             new ZLinkFrameworkMaintenanceRuntime(
                 provider.GetRequiredService<ZLinkDrainCoordinator>(),
+                provider.GetRequiredService<ZLinkFrameworkHostLifecycleState>(),
                 provider.GetRequiredService<ZLinkFrameworkRuntime>().PreflightRetireAsync,
                 provider.GetRequiredService<ZLinkFrameworkRuntime>().PublishRetiringAsync,
-                registration.ApplicationVersion));
+                registration.ApplicationVersion,
+                inboundDispatchSnapshot: provider.GetRequiredService<
+                    ZLinkFrameworkRuntime>().SnapshotInboundDispatch));
         services.TryAddSingleton<IZLinkFrameworkRuntime>(static provider =>
             provider.GetRequiredService<ZLinkFrameworkMaintenanceRuntime>());
         services.TryAddSingleton<IZLinkRuntimeTerminalFailureSink>(static provider =>
@@ -170,6 +174,7 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton(static provider =>
             new ZLinkRouteMeshRuntimeService(
                 provider.GetRequiredService<ZLinkFrameworkRuntime>(),
+                provider.GetRequiredService<ZLinkFrameworkHostLifecycleState>(),
                 provider.GetService<ZLinkLocationStoreHealth>(),
                 provider.GetService<IZLinkLocationDescriptorQuery>()));
         services.AddSingleton<IZLinkRouteMeshRuntime>(static provider =>
@@ -177,6 +182,7 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton(static provider =>
             new ZLinkClientServerRuntimeService(
                 provider.GetRequiredService<ZLinkFrameworkRuntime>(),
+                provider.GetRequiredService<ZLinkFrameworkHostLifecycleState>(),
                 provider.GetService<ZLinkLocationStoreHealth>()));
         services.AddSingleton<IZLinkClientServerRuntime>(static provider =>
             provider.GetRequiredService<ZLinkClientServerRuntimeService>());
@@ -193,7 +199,8 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton<IZLinkFanoutClient>(static provider => provider.GetRequiredService<ZLinkFanoutClient>());
         services.AddSingleton(static provider =>
             new ZLinkFanoutRuntimeService(
-                provider.GetRequiredService<ZLinkFrameworkRegistration>()));
+                provider.GetRequiredService<ZLinkFrameworkRegistration>(),
+                provider.GetRequiredService<ZLinkFrameworkHostLifecycleState>()));
         services.AddSingleton<IZLinkFanoutRuntime>(static provider =>
             provider.GetRequiredService<ZLinkFanoutRuntimeService>());
 
@@ -366,10 +373,16 @@ internal static class ZLinkFrameworkServiceRegistrar
             options: provider.GetRequiredService<ZLinkLocationOptions>()));
         services.AddSingleton<IHostedService>(static provider =>
             provider.GetRequiredService<ZLinkSpotHandleWatchHost>());
-        services.AddSingleton(static provider => new ZLinkLocationRuntime(
+        services.AddSingleton(provider => new ZLinkLocationRuntime(
             provider.GetRequiredService<ZLinkLocationOptions>(),
             provider.GetRequiredService<IZLinkLocationRepository>(),
-            observed: provider.GetRequiredService<ZLinkObservedLocationGenerations>()));
+            observed: provider.GetRequiredService<ZLinkObservedLocationGenerations>(),
+            metricScopes: registration.SpotNodes.Keys
+                .Select(static name => new KeyValuePair<string, string>("mesh", name))
+                .Concat(registration.Channels.Keys.Select(static name =>
+                    new KeyValuePair<string, string>("channel", name)))
+                .Distinct()
+                .ToArray()));
         // Every mesh namespace this host can advertise or dial under; the
         // operational query enumerates these when no mesh filter is given.
         var registeredMeshNames = registration.Channels.Values

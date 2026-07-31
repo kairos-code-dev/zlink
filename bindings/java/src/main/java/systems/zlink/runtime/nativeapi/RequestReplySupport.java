@@ -2,6 +2,8 @@
 
 package systems.zlink.runtime.nativeapi;
 
+import systems.zlink.internal.DurationConversions;
+
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.errors.ZlinkRecvException;

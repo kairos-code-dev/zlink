@@ -1,7 +1,7 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.spots.handlers
 
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorSendHandler
-import systems.zlink.framework.spots.ZLinkSpotActorSendContext
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.CustomerActor
 import systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.spots.CustomerEntrySpot
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusNotify
@@ -15,7 +15,7 @@ class DeliveryStatusUpdatedHandler : ZLinkSuspendingEntrySpotActorSendHandler<
     override suspend fun handle(
         entrySpot: CustomerEntrySpot,
         actor: CustomerActor,
-        context: ZLinkSpotActorSendContext,
+        context: ZLinkMessageContext,
         message: DeliveryStatusUpdatedMsg,
     ) {
         actor.push(

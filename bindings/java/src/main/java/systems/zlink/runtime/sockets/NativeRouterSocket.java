@@ -11,7 +11,8 @@ import systems.zlink.contracts.messaging.ReplyOperation;
 import systems.zlink.contracts.messaging.RequestOperation;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.SendOperation;
-import systems.zlink.runtime.nativeapi.ContractAccess;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
+import systems.zlink.internal.ContractAccess;
 import systems.zlink.runtime.messaging.MessageOperations;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import java.nio.file.Files;
@@ -19,6 +20,13 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.List;
+import java.util.Objects;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
+import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.NativeLayouts;
+import systems.zlink.runtime.nativeapi.MessagePartsBuffer;
+import systems.zlink.runtime.nativeapi.NativeRoutingIds;
 import java.util.concurrent.CompletableFuture;
 
 final class NativeRouterSocket extends NativeSocketBase implements RouterSocket {
@@ -112,6 +120,51 @@ final class NativeRouterSocket extends NativeSocketBase implements RouterSocket 
     public ReplyOperation reply(RoutingId rid, long requestSequence) {
         return MessageOperations.reply(parts ->
             InternalAccess.routerReply(this, rid, requestSequence, parts));
+    }
+
+    public boolean trySendCompletionControl(RoutingId peerRid,
+                                            List<Message> parts) {
+        Objects.requireNonNull(peerRid, "peerRid");
+        Objects.requireNonNull(parts, "parts");
+        if (parts.isEmpty())
+            throw new IllegalArgumentException("parts must not be empty");
+
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeRid = NativeRoutingIds.allocate(arena, peerRid);
+            MessagePartsBuffer validated = new MessagePartsBuffer();
+            for (int i = 0; i < parts.size(); i++) {
+                validated.add(Objects.requireNonNull(parts.get(i),
+                    "parts[" + i + "]"));
+            }
+            MemorySegment nativeParts = validated.copyToNativeArray(arena);
+            long stride = NativeLayouts.MESSAGE_LAYOUT.byteSize();
+            try {
+                for (int i = 0; i < parts.size(); i++) {
+                    MemorySegment nativePart = nativeParts.asSlice(
+                        i * stride, stride);
+                    int partFlag = i + 1 < parts.size()
+                        ? Native.PART_MORE : Native.PART_FINAL;
+                    int rc = Native.routerCompletionControlPart(
+                        InternalAccess.socketHandle(this), nativeRid,
+                        nativePart, partFlag);
+                    int nativeErrno = rc == SubmitResult.OK.value()
+                        ? 0 : Native.errno();
+                    if (rc == SubmitResult.OK.value())
+                        continue;
+                    if (rc == SubmitResult.BACKPRESSURED.value())
+                        return false;
+                    throw new ZlinkSubmitException(SubmitResult.fromValue(rc),
+                        nativeErrno);
+                }
+                return true;
+            } finally {
+                MessagePartsBuffer.closeNativeArray(nativeParts, parts.size());
+            }
+        }
+    }
+
+    public void setCompletionControlHandler(CompletionControlHandler handler) {
+        runtime().setCompletionControlHandler(handler);
     }
 
     @Override

@@ -1,12 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
+import { ZLINK_ACTOR_MANAGER } from '@zlink-systems/nestjs';
 import { ZLinkPacket } from '@zlink-systems/framework';
-import { PacketNames, EnsurePlayerActorReq } from '../../Shared/contracts';
+import { PacketNames, PlayerActorCreateReq } from '../../Shared/contracts';
 import { ZoneWorldNames } from '../../Shared/spec';
-import type { EnsurePlayerActorRes, JoinWorldReq } from '../../Shared/contracts';
+import type { JoinWorldReq } from '../../Shared/contracts';
 import type {
-  RoutingId,
-  ZLinkChannelClient,
+  ZLinkActorManager,
   ZLinkMessage,
   ZLinkSession,
   ZLinkSessionContext,
@@ -15,9 +14,7 @@ import type {
 } from '@zlink-systems/framework';
 
 class PlayerSession implements ZLinkSession {
-  constructor(readonly context: ZLinkSessionContext) {
-    context.handlers.addHandler(JoinWorldSessionHandler);
-  }
+  constructor(readonly context: ZLinkSessionContext) {}
 
   async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
     if (await this.context.handlers.tryHandle(dispatch, payload)) return;
@@ -36,7 +33,7 @@ class PlayerSession implements ZLinkSession {
 @Injectable()
 @ZLinkPacket(PacketNames.joinWorldReq)
 class JoinWorldSessionHandler {
-  constructor(@Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient) {}
+  constructor(@Inject(ZLINK_ACTOR_MANAGER) private readonly actors: ZLinkActorManager) {}
 
   async handle(
     context: ZLinkSessionContext,
@@ -45,19 +42,14 @@ class JoinWorldSessionHandler {
   ): Promise<void> {
     if (context.actors.bound.length !== 0) throw new Error('Session already joined the world.');
     const request = payload.decode<JoinWorldReq>(Object as never);
-    const ensured = await this.channels
-      .requestToChannel(
-        ZoneWorldNames.zoneMesh,
-        ZoneWorldNames.actorsChannel,
-        new EnsurePlayerActorReq(request.playerId)
-      )
+    const ensured = await this.actors
+      .getOrCreate(request.playerId, ZoneWorldNames.playerActorType)
+      .inMesh(ZoneWorldNames.zoneMesh)
+      .request(new PlayerActorCreateReq(request.playerId))
       .timeout(5_000)
-      .submit<EnsurePlayerActorRes>();
-    const actor = await context.actors.bindOrGet({
-      nodeRid: ensured.actor.nodeRid as RoutingId,
-      actorId: ensured.actor.actorId,
-      generation: BigInt(ensured.actor.generation)
-    });
+      .submit();
+    if (ensured.status === 'rejected') throw new Error(`Player actor '${request.playerId}' creation was rejected.`);
+    const actor = await context.actors.bindOrGet(ensured.actor);
     await actor.relay(payload);
     console.log(`session bound to player actor player=${request.playerId}`);
   }

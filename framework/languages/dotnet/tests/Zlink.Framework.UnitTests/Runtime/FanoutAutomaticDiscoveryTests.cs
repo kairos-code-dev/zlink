@@ -131,7 +131,9 @@ public sealed class FanoutAutomaticDiscoveryTests
                 AutoConnectType = ZLinkLocationAutoConnectType.Fanout,
                 Subscriber = new ZLinkChannelSubscriberCapabilityRegistration()
             });
-        var runtime = new ZLinkFanoutRuntimeService(registration);
+        var hostLifecycle = new ZLinkFrameworkHostLifecycleState();
+        hostLifecycle.TransitionTo(ZLinkFrameworkRuntimeState.Serving);
+        var runtime = new ZLinkFanoutRuntimeService(registration, hostLifecycle);
         var entry = new ZLinkFanoutPublisherConnectionSnapshot(
             RoutingId.From("publisher-a"),
             9,
@@ -157,6 +159,11 @@ public sealed class FanoutAutomaticDiscoveryTests
             Assert.Single(snapshot.Publishers).State);
         Assert.Throws<ZLinkConfigurationException>(() =>
             runtime.GetStatus("manual"));
+
+        hostLifecycle.TransitionTo(ZLinkFrameworkRuntimeState.Relocating);
+        var relocating = runtime.GetStatus("automatic");
+        Assert.False(relocating.IsReady);
+        Assert.Equal(ZLinkTopologyState.Stopping, relocating.State);
     }
 
     [Fact]
@@ -202,7 +209,11 @@ public sealed class FanoutAutomaticDiscoveryTests
                     AutomaticDiscoveryEnabled = true
                 }
             });
-        var monitoring = new ZLinkFanoutRuntimeService(registration);
+        var hostLifecycle = new ZLinkFrameworkHostLifecycleState();
+        hostLifecycle.TransitionTo(ZLinkFrameworkRuntimeState.Serving);
+        var monitoring = new ZLinkFanoutRuntimeService(
+            registration,
+            hostLifecycle);
         var factory = new RecordingBackendFactory();
         using var failureSink = new ZLinkRuntimeErrorSink();
         await using var context = new TestBackendContext();
@@ -350,8 +361,8 @@ public sealed class FanoutAutomaticDiscoveryTests
         public void SetChannelName(string channelName) { }
         public void ApplySocketConfig(IZLinkSocketConfig config) { }
         public void SetMaxMessageSize(long value) { }
-        public void SetSendHighWaterMark(int value) { }
-        public void SetReceiveHighWaterMark(int value) { }
+        public void SetSendHighWaterMark(ulong value) { }
+        public void SetReceiveHighWaterMark(ulong value) { }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 

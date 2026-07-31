@@ -1,10 +1,8 @@
 package systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.spots.entryspot.handlers
 
-import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.kotlin.await
-import systems.zlink.framework.kotlin.awaitJoin
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SupportChatRoles
@@ -26,7 +24,7 @@ class OpenConversationActorHandler : ZLinkSuspendingEntrySpotActorRequestHandler
     override suspend fun handle(
         entrySpot: SupportEntrySpot,
         actor: SupportUserActor,
-        context: ZLinkSpotActorRequestContext,
+        context: ZLinkMessageContext,
         request: OpenConversationReq,
     ): OpenConversationRes {
         if (actor.role != SupportChatRoles.Customer) {
@@ -45,13 +43,11 @@ class OpenConversationActorHandler : ZLinkSuspendingEntrySpotActorRequestHandler
             .timeout(SampleTimings.RequestTimeout)
             .submit(OpenConversationApiRes::class.java).await()
 
-        val joined = actor.context()
-            .joinSpot(
-                RoutingId.from(opened.conversationId),
+        val joined = actor
+            .scheduleConversationJoin(
+                opened.conversationId,
                 JoinConversationReq(actor.participantId, actor.role, actor.displayName),
             )
-            .timeout(SampleTimings.RequestTimeout)
-            .awaitJoin(JoinConversationRes::class.java)
-        return OpenConversationRes(opened.conversationId, joined.reply().state)
+        return OpenConversationRes(opened.conversationId, joined.state)
     }
 }

@@ -1,20 +1,14 @@
 import { CustomerActor } from './customer-actor';
 import type {
-  ZLinkActorMembership,
   ZLinkEntrySpot,
-  ZLinkEntrySpotContext,
-  ZLinkMessage,
-  ZLinkSpotActorJoinResponse
+  ZLinkEntrySpotContext
 } from '@zlink-systems/framework';
 
 class CustomerEntrySpot implements ZLinkEntrySpot<CustomerActor> {
   readonly context!: ZLinkEntrySpotContext<CustomerActor>;
-  async onActorJoin(_actorId: string, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
-    return { accepted: true };
-  }
-  async onJoinedActor(_actor: ZLinkActorMembership): Promise<void> {}
-  async onLeaveActor(_actor: ZLinkActorMembership): Promise<void> {}
-  async onDisconnectActor(_actor: ZLinkActorMembership): Promise<void> {}
+  async onJoinedActor(_actor: CustomerActor): Promise<void> {}
+  async onLeaveActor(_actor: CustomerActor): Promise<void> {}
+  async onDisconnectActor(_actor: CustomerActor): Promise<void> {}
 }
 
 export { CustomerEntrySpot };

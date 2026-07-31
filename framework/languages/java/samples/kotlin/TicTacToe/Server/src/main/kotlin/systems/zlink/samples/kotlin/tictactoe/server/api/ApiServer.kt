@@ -1,7 +1,6 @@
 package systems.zlink.samples.kotlin.tictactoe.server.api
 
 import kotlinx.coroutines.Dispatchers
-import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.kotlin.configureDispatch
 import systems.zlink.framework.kotlin.useCoroutineHandlers
@@ -18,22 +17,25 @@ object ApiServer {
         ZLinkFrameworkConfigurer { options ->
             SampleLogging.configure(settings, "api")
             options.useCoroutineHandlers(Dispatchers.Default)
-            options.codecs().use(ZLinkMessagePackCodec.defaultCodec())
+            options.addHandlersFromPackageOf(ApiServer::class.java)
             options.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 traceLogFile(SampleLogging.flowLogPath(settings, "api-${settings.apiHttpPort}"))
                 traceLabel("api-${settings.apiHttpPort}")
             }
-            val apiChannel = options.addClientServerChannel(SampleNames.ApiChannel)
-                .enableServer(settings.apiChannelEndpoint)
-            apiChannel.addRequestHandler(
-                AuthenticatePlayerHandler::class.java,
-                AuthenticatePlayerReq::class.java,
-                AuthenticatePlayerRes::class.java,
-            )
-            settings.playChannelEndpoints.forEach { endpoint ->
-                options.addClientServerChannel(SampleNames.PlayChannel)
-                    .enableClient(endpoint)
+            options.configureLocations()
+            val apiEndpoint = java.net.URI.create(settings.apiChannelEndpoint)
+            options.addClientServerChannel(SampleNames.ApiChannel)
+                .server()
+                .setBindHost(apiEndpoint.host)
+                .listen(apiEndpoint.port)
+                .addHandlerGroup("api")
+            val mesh = options.addRouteMesh(SampleNames.SpotMesh)
+            mesh.listen(settings.routeEndpoint)
+                .setRoutingIdPrefix("tictactoe-api")
+            mesh.objects().client()
+            settings.spotEndpoints.forEach { endpoint ->
+                mesh.peerConnections().connect(endpoint)
             }
         }
 }

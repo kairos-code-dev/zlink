@@ -28,10 +28,12 @@ final class FakeMeshDispatchIntegrationTest {
             .listen("inproc://formal-mesh-dispatch")
             .addRouteSendHandler(NodeHandler.class, String.class);
         mesh.channelName("play")
+            .server()
             .addSendHandler(ChannelHandler.class, String.class);
         FakeZLinkBackendAdapterFactory backend = new FakeZLinkBackendAdapterFactory();
 
-        try (ZLinkFrameworkRuntime ignored = ZLinkFrameworkRuntime.start(options, backend)) {
+        try (ZLinkFrameworkRuntime ignored =
+                 ZLinkFrameworkRuntimeTestAccess.start(options, backend)) {
             backend.dispatchMeshNodeSend("String", "\"node-value\"");
             backend.dispatchMeshChannelSend("play", "String", "\"channel-value\"");
 

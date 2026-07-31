@@ -6,7 +6,6 @@ import type {
   ZLinkEntrySpot,
   ZLinkHandlerFilter,
   ZLinkInstanceSpot,
-  ZLinkMonitoringOptions,
   ZLinkMetricsOptions,
   ZLinkMessageContext,
   ZLinkPublishMessageContext,
@@ -18,6 +17,8 @@ import type {
 import type { ZLinkMessageSerializer } from '../Codecs';
 import type { ZLinkDispatchOptions } from '../Dispatch';
 import type { ZLinkLocationStore, ZLinkRelocationStore } from '../Locations';
+import type { ZLinkNetworkOptions } from './Builders';
+import type { ZLinkInboundDispatchOptionValues } from './InboundDispatch';
 import type { ZLinkLocationOptionValues } from '../RouteMesh';
 import {
   ZLinkSpotRelocationReadinessMode,
@@ -45,6 +46,7 @@ export interface ZLinkInstanceSpotFactoryConfiguration {
 }
 
 export interface ZLinkFrameworkRegistration {
+  readonly network: ZLinkNetworkOptions;
   readonly applicationVersion: bigint;
   readonly maintenanceWave?: string;
   readonly messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer>;
@@ -65,8 +67,8 @@ export interface ZLinkFrameworkRegistration {
   readonly spotPublisherClients: ReadonlySet<string>;
   readonly filterTypes: readonly Type<ZLinkHandlerFilter>[];
   readonly worker?: ZLinkWorkerOptions;
+  readonly inboundDispatch: ZLinkInboundDispatchOptionValues;
   readonly dispatch?: ZLinkDispatchOptions;
-  readonly monitoring?: ZLinkMonitoringOptions;
   readonly metrics?: ZLinkMetricsOptions;
   readonly locations: ZLinkLocationRegistration;
 }
@@ -110,6 +112,7 @@ export interface ZLinkCodecRegistryOptions {
 }
 
 export interface ZLinkFrameworkRegistrationOptions {
+  readonly network?: Partial<ZLinkNetworkOptions>;
   readonly applicationVersion?: bigint;
   readonly maintenanceWave?: string;
   readonly codecs?: ZLinkCodecRegistryOptions;
@@ -127,8 +130,8 @@ export interface ZLinkFrameworkRegistrationOptions {
   readonly spotPublisherClients?: readonly string[];
   readonly filters?: readonly Type<ZLinkHandlerFilter>[];
   readonly worker?: ZLinkWorkerOptions;
+  readonly inboundDispatch?: Partial<ZLinkInboundDispatchOptionValues>;
   readonly dispatch?: ZLinkDispatchOptions;
-  readonly monitoring?: ZLinkMonitoringOptions;
   readonly metrics?: ZLinkMetricsOptions;
   readonly locations?: {
     readonly useInMemoryStores?: boolean;
@@ -173,6 +176,9 @@ export interface ZLinkClientCapabilityOptions {
 
 export interface ZLinkPublisherCapabilityOptions {
   readonly bind?: string;
+  readonly bindHost?: string;
+  readonly advertiseHost?: string;
+  readonly port?: number;
 }
 
 export interface ZLinkRouteMeshChannelOptions {
@@ -210,7 +216,10 @@ export interface ZLinkRouteChannelOptions {
 
 export interface ZLinkStreamNodeOptions {
   readonly bind?: string;
-  readonly actorDispatchMeshName?: string;
+  readonly bindHost?: string;
+  readonly advertiseHost?: string;
+  readonly port?: number;
+  readonly actorDispatchEnabled?: boolean;
   readonly tlsServer?: ZLinkStreamTlsServerOptions;
   readonly session?: Type;
 }

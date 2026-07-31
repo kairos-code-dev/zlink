@@ -1,6 +1,6 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.tracking.handlers
 
-import systems.zlink.framework.channels.ZLinkRequestContext
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.DeliveryEvidenceStore
@@ -13,7 +13,7 @@ class ServerAssertionHandler(
 ) : ZLinkSuspendingRequestHandler<ServerAssertionReq, ServerAssertionRes> {
     override suspend fun handle(
         request: ServerAssertionReq,
-        context: ZLinkRequestContext,
+        context: ZLinkMessageContext,
     ): ServerAssertionRes =
         evidenceStore.assertSequences(
             request.successfulDeliveryId,

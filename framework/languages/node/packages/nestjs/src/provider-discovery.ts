@@ -2,6 +2,7 @@ import type { InjectionToken } from '@nestjs/common';
 import type { DiscoveryService, ModuleRef } from '@nestjs/core';
 import type { Type } from '@zlink-systems/framework';
 import { framework } from './framework-loader';
+import { isAutoDiscoveredProvider } from './auto-discovery-marker';
 import {
   nestHandlerMetadataEntries,
   nestSpotActorHandlerMetadataEntries,
@@ -43,6 +44,39 @@ export interface DiscoveredNestSpotTimerProvider {
   readonly handlerName: string;
   readonly token: InjectionToken;
   readonly metadata: ZLinkNestSpotTimerHandlerMetadata;
+}
+
+export interface DiscoveredNestSessionProvider {
+  readonly handlerKey: Type;
+}
+
+export function discoverSessionProviderRefs(
+  discovery: DiscoveryService,
+  moduleRef: ModuleRef
+): DiscoveredNestSessionProvider[] {
+  const refs: DiscoveredNestSessionProvider[] = [];
+  const seen = new Set<Type>();
+  const metadataSymbol = Symbol.for('@zlink-systems/framework:decorator');
+  for (const wrapper of discovery.getProviders()) {
+    const handlerType = wrapper.metatype as Type | undefined;
+    if (
+      typeof handlerType !== 'function'
+      || seen.has(handlerType)
+      || !isAutoDiscoveredProvider(handlerType)
+    ) {
+      continue;
+    }
+    const metadata = (handlerType as unknown as Record<symbol, readonly { readonly kind?: string }[]>)[metadataSymbol] ?? [];
+    if (
+      metadata.some((entry) => entry.kind === 'packet')
+      && typeof (handlerType as { prototype?: { handle?: unknown } }).prototype?.handle === 'function'
+      && tryGetProviderInstance(moduleRef, handlerType) !== undefined
+    ) {
+      seen.add(handlerType);
+      refs.push({ handlerKey: handlerType });
+    }
+  }
+  return refs;
 }
 
 export function discoverProviderRefs(discovery: DiscoveryService, moduleRef: ModuleRef): DiscoveredNestProvider[] {

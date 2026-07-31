@@ -2,110 +2,209 @@
 #pragma once
 
 #include <zlink/framework/contracts/dispatch/task.hpp>
-#include <zlink/framework/contracts/locations/diagnostics.hpp>
-#include <zlink/framework/contracts/locations/maintenance_stores.hpp>
-#include <zlink/framework/contracts/locations/writes.hpp>
+
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <span>
+#include <string>
+#include <variant>
+#include <vector>
 
 namespace zlink::framework
 {
+
+struct store_key_t
+{
+    std::string value;
+};
+
+struct store_version_t
+{
+    std::string value;
+};
+
+struct store_value_t
+{
+    std::vector<std::byte> bytes;
+    store_version_t version;
+    std::optional<std::chrono::system_clock::time_point> expires_at;
+    std::chrono::system_clock::time_point store_now{};
+};
+
+struct store_missing_t
+{
+    std::chrono::system_clock::time_point store_now{};
+};
+
+struct store_found_t
+{
+    store_value_t value;
+};
+
+using store_read_result_t = std::variant<store_missing_t, store_found_t>;
+
+struct store_missing_condition_t
+{
+    store_key_t key;
+};
+
+struct store_version_condition_t
+{
+    store_key_t key;
+    store_version_t expected;
+};
+
+using store_condition_t =
+  std::variant<store_missing_condition_t, store_version_condition_t>;
+
+struct store_put_t
+{
+    store_key_t key;
+    std::vector<std::byte> bytes;
+    std::optional<std::chrono::milliseconds> retention;
+};
+
+struct store_delete_t
+{
+    store_key_t key;
+};
+
+using store_mutation_t = std::variant<store_put_t, store_delete_t>;
+
+struct store_write_request_t
+{
+    std::vector<store_condition_t> conditions;
+    std::vector<store_mutation_t> mutations;
+};
+
+struct store_put_version_t
+{
+    store_key_t key;
+    store_version_t version;
+};
+
+struct store_write_applied_t
+{
+    std::vector<store_put_version_t> put_versions;
+    std::chrono::system_clock::time_point store_now{};
+};
+
+struct store_write_conflict_t
+{
+    std::chrono::system_clock::time_point store_now{};
+};
+
+using store_write_result_t =
+  std::variant<store_write_applied_t, store_write_conflict_t>;
+
+struct store_scan_cursor_t
+{
+    std::string value;
+};
+
+struct store_scan_request_t
+{
+    std::string prefix;
+    std::optional<store_scan_cursor_t> cursor;
+    std::uint32_t limit = 100;
+};
+
+struct store_scan_item_t
+{
+    store_key_t key;
+    store_value_t value;
+};
+
+struct store_scan_page_t
+{
+    std::vector<store_scan_item_t> items;
+    std::optional<store_scan_cursor_t> next_cursor;
+    std::chrono::system_clock::time_point store_now{};
+};
+
+struct store_scan_expired_t
+{
+};
+
+using store_scan_result_t =
+  std::variant<store_scan_page_t, store_scan_expired_t>;
 
 class location_store_t
 {
   public:
     virtual ~location_store_t () = default;
-    virtual task_t<location_write_result_t> update_mesh_node (
-      mesh_node_descriptor_t descriptor,
-      location_write_intent_t intent) = 0;
-    virtual task_t<location_write_status_t> remove_mesh_node (
-      mesh_node_descriptor_key_t key,
-      location_owner_token_t owner) = 0;
-    virtual task_t<location_page_t<mesh_node_descriptor_t>>
-    list_mesh_nodes (std::string mesh_name,
-                     location_page_request_t page = {}) = 0;
-    virtual task_t<location_write_result_t> update_client_server (
-      client_server_server_descriptor_t descriptor,
-      location_write_intent_t intent) = 0;
-    virtual task_t<location_write_status_t> remove_client_server (
-      client_server_server_descriptor_key_t key,
-      location_owner_token_t owner) = 0;
-    virtual task_t<location_page_t<client_server_server_descriptor_t>>
-    list_client_servers (std::string channel_name,
-                         location_page_request_t page = {}) = 0;
-    virtual task_t<location_write_result_t> update_fanout_publisher (
-      fanout_publisher_descriptor_t descriptor,
-      location_write_intent_t intent) = 0;
-    virtual task_t<location_write_status_t> remove_fanout_publisher (
-      fanout_publisher_descriptor_key_t key,
-      location_owner_token_t owner) = 0;
-    virtual task_t<location_page_t<fanout_publisher_descriptor_t>>
-    list_fanout_publishers (std::string channel_name,
-                            location_page_request_t page = {}) = 0;
-    virtual task_t<owner_lease_claim_result_t> claim_owner_lease (
-      std::string owner_id,
-      std::chrono::milliseconds lease_ttl) = 0;
-    virtual task_t<owner_lease_read_result_t> read_owner_lease (
-      std::string owner_id) = 0;
-    virtual task_t<owner_lease_renew_result_t> renew_owner_lease (
-      location_owner_token_t token,
-      std::chrono::milliseconds lease_ttl) = 0;
-    virtual task_t<owner_lease_release_result_t> release_owner_lease (
-      location_owner_token_t token) = 0;
-    virtual task_t<authority_read_result_t> read_authority (
-      authority_key_t key,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<authority_compare_exchange_result_t>
-    compare_exchange_authority (
-      authority_key_t key,
-      std::string expected_store_version,
-      authority_mutation_t mutation,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<authority_scan_result_t> list_authorities (
-      std::string prefix,
-      std::optional<authority_scan_cursor_t> cursor,
-      std::size_t limit,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<std::optional<creation_terminal_record_t>>
-    read_creation_terminal (
-      creation_operation_identity_t operation,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<object_reserve_result_t> reserve (
-      object_reserve_request_t request,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<object_complete_creation_result_t> complete_creation (
-      object_complete_creation_request_t request,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<object_commit_result_t> commit (
-      object_commit_request_t request,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<object_abort_result_t> abort (
-      object_abort_request_t request,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<relocation_capacity_reserve_result_t>
-    reserve_relocation_capacity (
-      relocation_capacity_reserve_request_t request,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<relocation_capacity_abort_result_t>
-    abort_relocation_capacity (
-      relocation_capacity_fence_t fence,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<aggregate_prepare_result_t> prepare_aggregate (
-      aggregate_prepare_request_t request,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<aggregate_commit_result_t> commit_aggregate (
-      aggregate_fence_t fence,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<aggregate_abort_result_t> abort_aggregate (
-      aggregate_fence_t fence,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<std::int64_t> remove_all_by_owner (
-      location_owner_token_t owner) = 0;
-    virtual task_t<std::optional<std::uint64_t>> get_mesh_node_change_stamp (
-      std::string mesh_name)
-    {
-        (void) mesh_name;
-        return task_t<std::optional<std::uint64_t>> (
-          result_t<std::optional<std::uint64_t>>::success (std::nullopt));
-    }
+
+    virtual task_t<store_read_result_t> read (store_key_t key) = 0;
+    virtual task_t<store_write_result_t> write (
+      store_write_request_t request) = 0;
+    virtual task_t<store_scan_result_t> scan (
+      store_scan_request_t request) = 0;
+};
+
+struct blob_reference_t
+{
+    std::string value;
+};
+
+struct blob_stored_t
+{
+    std::chrono::system_clock::time_point expires_at{};
+    std::chrono::system_clock::time_point store_now{};
+};
+
+struct blob_already_stored_t
+{
+    std::chrono::system_clock::time_point expires_at{};
+    std::chrono::system_clock::time_point store_now{};
+};
+
+struct blob_conflict_t
+{
+    std::chrono::system_clock::time_point store_now{};
+};
+
+using blob_put_result_t =
+  std::variant<blob_stored_t, blob_already_stored_t, blob_conflict_t>;
+
+struct blob_missing_t
+{
+    std::chrono::system_clock::time_point store_now{};
+};
+
+struct blob_found_t
+{
+    std::vector<std::byte> bytes;
+    std::chrono::system_clock::time_point expires_at{};
+    std::chrono::system_clock::time_point store_now{};
+};
+
+using blob_read_result_t = std::variant<blob_missing_t, blob_found_t>;
+
+struct blob_renewed_t
+{
+    std::chrono::system_clock::time_point expires_at{};
+    std::chrono::system_clock::time_point store_now{};
+};
+
+using blob_renew_result_t = std::variant<blob_missing_t, blob_renewed_t>;
+
+class relocation_store_t
+{
+  public:
+    virtual ~relocation_store_t () = default;
+
+    virtual task_t<blob_put_result_t> put (
+      blob_reference_t reference,
+      std::span<const std::byte> payload,
+      std::chrono::milliseconds retention) = 0;
+    virtual task_t<blob_read_result_t> read (
+      blob_reference_t reference) = 0;
+    virtual task_t<blob_renew_result_t> renew (
+      blob_reference_t reference,
+      std::chrono::milliseconds retention) = 0;
+    virtual task_t<void> erase (blob_reference_t reference) = 0;
 };
 
 } // namespace zlink::framework

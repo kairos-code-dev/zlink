@@ -18,6 +18,7 @@ import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode;
+import systems.zlink.framework.configuration.ZLinkSpotRelocationReadinessMode;
 
 final class ZLinkSpotActivationFactory {
     private final ZLinkSpotRuntime host;
@@ -27,6 +28,9 @@ final class ZLinkSpotActivationFactory {
     private final ZLinkHandlerActivator handlerFactory;
     private final java.util.Map<
         Class<? extends ZLinkSpot<?>>, ZLinkUserSpotExecutionMode> executionModes;
+    private final java.util.Map<
+        Class<? extends ZLinkSpot<?>>, ZLinkSpotRelocationReadinessMode>
+            relocationReadinessModes;
 
     ZLinkSpotActivationFactory(
         ZLinkSpotRuntime host,
@@ -35,13 +39,18 @@ final class ZLinkSpotActivationFactory {
         ZLinkSpotHandlerInvoker handlerInvoker,
         ZLinkHandlerActivator handlerFactory,
         java.util.Map<
-            Class<? extends ZLinkSpot<?>>, ZLinkUserSpotExecutionMode> executionModes) {
+            Class<? extends ZLinkSpot<?>>, ZLinkUserSpotExecutionMode> executionModes,
+        java.util.Map<
+            Class<? extends ZLinkSpot<?>>, ZLinkSpotRelocationReadinessMode>
+                relocationReadinessModes) {
         this.host = host;
         this.workerPool = workerPool;
         this.handlerLoader = handlerLoader;
         this.handlerInvoker = handlerInvoker;
         this.handlerFactory = handlerFactory;
         this.executionModes = java.util.Map.copyOf(executionModes);
+        this.relocationReadinessModes =
+            java.util.Map.copyOf(relocationReadinessModes);
     }
 
     CompletionStage<SpotActivationCreateResult> activate(
@@ -59,7 +68,11 @@ final class ZLinkSpotActivationFactory {
             executionModes.getOrDefault(
                 spotType,
                 ZLinkUserSpotExecutionMode.SPOT_WIDE),
-            ZLinkInstanceSpot.class.isAssignableFrom(spotType));
+            ZLinkInstanceSpot.class.isAssignableFrom(spotType),
+            null,
+            relocationReadinessModes.getOrDefault(
+                spotType,
+                ZLinkSpotRelocationReadinessMode.ANY_TURN_BOUNDARY));
         ZLinkSpot<?> spot;
         try {
             spot = createSpot(spotType, context);
@@ -163,6 +176,58 @@ final class ZLinkSpotActivationFactory {
             context);
         registerDispatchHandler(backendSpot, activation::handleDispatchEvent);
         return activation;
+    }
+
+    CompletionStage<ZLinkInstanceSpotActivation> activateInstance(
+        String meshName,
+        Class<? extends ZLinkInstanceSpot> spotType,
+        ZLinkBackendSpot backendSpot) {
+        DefaultInstanceSpotContext context = new DefaultInstanceSpotContext(
+            host,
+            workerPool,
+            handlerLoader,
+            meshName,
+            host.primaryNode().routingId(),
+            backendSpot);
+        ZLinkInstanceSpot spot;
+        try {
+            spot = (ZLinkInstanceSpot) ZLinkHandlerActivator
+                .services(handlerFactory)
+                .add(systems.zlink.framework.spots.ZLinkInstanceSpotContext.class, context)
+                .create(spotType);
+        } catch (RuntimeException error) {
+            context.closeResources();
+            throw new ZLinkConfigurationException(
+                "failed to create Instance Spot: " + spotType.getName(),
+                error);
+        }
+        if (spot == null || spot.context() != context) {
+            context.closeResources();
+            throw new ZLinkConfigurationException(
+                "Instance Spot must expose the context provided by the runtime: "
+                    + spotType.getName());
+        }
+        try {
+            context.bind(spot);
+            spot.configure();
+            context.closeRegistration(spotType);
+        } catch (RuntimeException failure) {
+            context.closeResources();
+            throw failure;
+        }
+        return context.runLifecycle(spot::onInitialize)
+            .thenApply(ignored -> {
+                var activation = new ZLinkInstanceSpotActivation(
+                    host, handlerInvoker, spot, backendSpot, context);
+                registerDispatchHandler(
+                    backendSpot, activation::handleDispatchEvent);
+                return activation;
+            })
+            .whenComplete((ignored, failure) -> {
+                if (failure != null) {
+                    context.closeResources();
+                }
+            });
     }
 
     private CompletionStage<SpotActivationCreateResult> initializeAcceptedSpot(

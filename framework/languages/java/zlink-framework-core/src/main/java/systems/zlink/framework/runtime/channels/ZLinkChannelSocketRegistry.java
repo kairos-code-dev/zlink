@@ -12,10 +12,11 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.time.Duration;
 import java.time.Instant;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
+import systems.zlink.framework.runtime.internal.locations.ZLinkClientServerServerDescriptor;
 import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendDealerSocket;
@@ -379,6 +380,34 @@ final class ZLinkChannelSocketRegistry {
         return physical.size();
     }
 
+    synchronized List<ClientServerTargetSnapshot>
+        clientServerTargetSnapshots(String channelName) {
+        Map<String, ClientServerTargetSnapshot> targets =
+            new java.util.LinkedHashMap<>();
+        Set<ClientServerConnection> physical =
+            java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+        physical.addAll(clientServerConnections.values());
+        for (ClientServerConnection connection : physical) {
+            ZLinkClientServerServerDescriptor descriptor =
+                connection.descriptor();
+            if (!descriptor.channelName().equals(channelName)) {
+                continue;
+            }
+            String key = descriptor.serverRid().toHex()
+                + '\0' + descriptor.lifecycleGeneration();
+            targets.put(
+                key,
+                new ClientServerTargetSnapshot(
+                    descriptor.serverRid(),
+                    descriptor.weight(),
+                    connection.ready()
+                        && descriptor.state()
+                            == systems.zlink.framework.runtime.host
+                                .ZLinkFrameworkRuntimeState.SERVING));
+        }
+        return List.copyOf(targets.values());
+    }
+
     synchronized boolean hasClientRegistration(String channelName) {
         ChannelRegistration registration = registrations.get(channelName);
         return registration != null
@@ -583,10 +612,16 @@ final class ZLinkChannelSocketRegistry {
             }
             try (Message message = Message.from(
                 ZLinkClientServerServiceWire.encodeLivenessProbe(probeId))) {
-                peer.router.send(
-                    peer.routingId,
-                    List.of(message),
-                    SendFlags.DONT_WAIT);
+                try {
+                    peer.router.send(
+                        peer.routingId,
+                        List.of(message),
+                        SendFlags.DONT_WAIT);
+                } catch (ZlinkSubmitException ignored) {
+                    // The peer may lose admission between the liveness
+                    // schedule check and the non-blocking send. Its existing
+                    // deadline and connection lifecycle perform cleanup.
+                }
             }
         }
     }
@@ -794,10 +829,17 @@ final class ZLinkChannelSocketRegistry {
                     descriptor,
                     normalizedMessageLimit(
                         peer.router.maxMessageSize())))) {
-                peer.router.send(
-                    peer.routingId,
-                    List.of(message),
-                    SendFlags.DONT_WAIT);
+                try {
+                    peer.router.send(
+                        peer.routingId,
+                        List.of(message),
+                        SendFlags.DONT_WAIT);
+                } catch (ZlinkSubmitException ignored) {
+                    // The Location Store update remains authoritative. A peer
+                    // that has already lost admission cannot receive this
+                    // best-effort descriptor projection and is removed by the
+                    // normal connection lifecycle.
+                }
             }
         }
     }
@@ -1101,6 +1143,12 @@ final class ZLinkChannelSocketRegistry {
         long physicalGeneration,
         long admissionGeneration,
         ZLinkBackendDealerSocket dealer) {
+    }
+
+    record ClientServerTargetSnapshot(
+        RoutingId nodeRid,
+        int weight,
+        boolean ready) {
     }
 
     private static final class ClientServerConnection {

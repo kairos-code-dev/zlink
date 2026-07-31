@@ -1,18 +1,16 @@
 package systems.zlink.samples.supportchat.server.support.handlers;
 
 import java.util.concurrent.CompletionStage;
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ActorRefSnapshot;
 import systems.zlink.framework.actors.ZLinkActorClient;
-import systems.zlink.framework.actors.ZLinkActorJoinResult;
+import systems.zlink.framework.actors.ZLinkActorCreateResult;
 import systems.zlink.framework.actors.ZLinkActorManager;
-import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.samples.supportchat.server.configuration.SampleNames;
 import systems.zlink.samples.supportchat.server.configuration.SampleTimings;
-import systems.zlink.samples.supportchat.server.support.actors.SupportActorDirectory;
 import systems.zlink.samples.supportchat.shared.contracts.Messages;
 
 @ZLinkHandlerGroup(SampleNames.SupportChannel)
@@ -21,21 +19,18 @@ public final class EnsureAgentConversationHandler
         Messages.EnsureAgentConversationRes> {
     private final ZLinkActorClient actorClient;
     private final ZLinkActorManager actors;
-    private final SupportActorDirectory directory;
 
     public EnsureAgentConversationHandler(
         ZLinkActorClient actorClient,
-        ZLinkActorManager actors,
-        SupportActorDirectory directory) {
+        ZLinkActorManager actors) {
         this.actorClient = actorClient;
         this.actors = actors;
-        this.directory = directory;
     }
 
     @Override
     public CompletionStage<Messages.EnsureAgentConversationRes> handle(
         Messages.EnsureAgentConversationReq request,
-        ZLinkRequestContext context) {
+        ZLinkMessageContext context) {
         String conversationActorId = request.rosterActorId() + "@" + request.conversationId();
         return actors.find(conversationActorId).thenCompose(existing -> {
             if (existing.isPresent()) {
@@ -47,22 +42,35 @@ public final class EnsureAgentConversationHandler
                 request.displayName(),
                 SampleNames.Roles.Agent,
                 request.rosterActorId());
-            return actors.getOrCreate(conversationActorId, SampleNames.SupportActorType, create)
-                .thenCompose(actorRef -> directory.require(conversationActorId).context()
-                    .joinSpot(
-                        RoutingId.from(request.conversationId()),
-                        new Messages.JoinConversationReq(
-                            request.rosterActorId(), SampleNames.Roles.Agent, request.displayName()))
-                    .timeout(SampleTimings.RequestTimeout)
-                    .submit(Messages.JoinConversationRes.class)
-                    .thenCompose(result -> {
-                        if (!(result instanceof ZLinkActorJoinResult.Accepted<?> accepted)) {
-                            throw new IllegalStateException("Agent conversation join was rejected");
-                        }
-                        return refresh(accepted.actor())
-                            .thenApply(joined -> response(actorRef, joined));
-                    }));
+            return actors.getOrCreate(conversationActorId, SampleNames.SupportActorType)
+                .request(create)
+                .submit()
+                .thenCompose(result -> {
+                    ActorRef actorRef = actorRef(result);
+                    return actorClient.requestToActor(
+                            actorRef.actorId(),
+                            new Messages.JoinConversationReq(
+                                request.rosterActorId(),
+                                SampleNames.Roles.Agent,
+                                request.displayName()))
+                        .metadata(
+                            SampleNames.ConversationIdMetadataKey,
+                            request.conversationId())
+                        .timeout(SampleTimings.RequestTimeout)
+                        .submit(Messages.JoinConversationRes.class)
+                        .thenApply(joined -> response(actorRef, joined));
+                });
         });
+    }
+
+    private static ActorRef actorRef(ZLinkActorCreateResult result) {
+        if (result instanceof ZLinkActorCreateResult.Created created) {
+            return created.actor();
+        }
+        if (result instanceof ZLinkActorCreateResult.Existing existing) {
+            return existing.actor();
+        }
+        throw new IllegalStateException("Agent conversation actor creation was rejected");
     }
 
     private CompletionStage<Messages.JoinConversationRes> refresh(ActorRef actorRef) {
@@ -75,6 +83,6 @@ public final class EnsureAgentConversationHandler
         ActorRef actorRef,
         Messages.JoinConversationRes joined) {
         return new Messages.EnsureAgentConversationRes(
-            ActorRefSnapshot.from(actorRef), joined.state());
+            ActorRefSnapshot.from(actorRef), joined.scheduled(), joined.state());
     }
 }

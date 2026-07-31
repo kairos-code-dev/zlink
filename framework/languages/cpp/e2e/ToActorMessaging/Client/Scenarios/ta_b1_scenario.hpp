@@ -17,7 +17,7 @@ inline void run_ta_b1_scenario (zlink::http_client::client_t &actor,
     assert_failure (caller, "TA-B1-missing-request", "missing-actor", "actor_route_not_found",
                     false);
 
-    const auto evidence = actor.get ("/evidence").async<std::vector<e2e::actor_evidence_t>> ().result ().value ().body;
+    const auto evidence = actor.get ("/evidence").submit<std::vector<e2e::actor_evidence_t>> ().result ().value ().body;
     require_no_evidence (evidence, "TA-B1-send-submit");
     require_no_evidence (evidence, "TA-B1-missing-request");
 }

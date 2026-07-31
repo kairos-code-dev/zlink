@@ -1,6 +1,5 @@
 package systems.zlink.framework;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -22,21 +21,15 @@ import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.configuration.ZLinkMeshObjectRoleBuilder;
 import systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotRelocationReadinessMode;
-import systems.zlink.framework.locations.ZLinkLocationStore;
-import systems.zlink.framework.locations.ZLinkRelocationDeleteResult;
-import systems.zlink.framework.locations.ZLinkRelocationFound;
-import systems.zlink.framework.locations.ZLinkRelocationMissing;
-import systems.zlink.framework.locations.ZLinkRelocationReadResult;
-import systems.zlink.framework.locations.ZLinkRelocationRenewed;
-import systems.zlink.framework.locations.ZLinkRelocationRenewMissing;
-import systems.zlink.framework.locations.ZLinkRelocationRenewResult;
-import systems.zlink.framework.locations.ZLinkRelocationStore;
-import systems.zlink.framework.locations.ZLinkRelocationStored;
-import systems.zlink.framework.locations.ZLinkStoreCancellation;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
+import systems.zlink.framework.runtime.internal.locations.ZLinkStoreCancellation;
 import systems.zlink.framework.spots.ZLinkInstanceSpot;
 import systems.zlink.framework.spots.ZLinkSpotCloseReason;
 import systems.zlink.framework.spots.ZLinkSpotClosingContext;
 import systems.zlink.framework.spots.ZLinkSpotRelocationAdapter;
+import systems.zlink.framework.spots.ZLinkSpotRelocationReadyCall;
+import systems.zlink.framework.spots.ZLinkSpotRelocationReadyCompletion;
+import systems.zlink.framework.spots.ZLinkSpotRelocationReadyOutcome;
 
 final class RelocationPublicContractTest {
     @Test
@@ -44,59 +37,65 @@ final class RelocationPublicContractTest {
         assertEquals(
             void.class,
             ZLinkFrameworkOptions.class
-                .getMethod("addRelocationStore", ZLinkRelocationStore.class)
+                .getMethod(
+                    "addRelocationStore",
+                    systems.zlink.framework.locationprovider
+                        .ZLinkRelocationStore.class)
                 .getReturnType());
         assertEquals(
             CompletionStage.class,
-            ZLinkRelocationStore.class
+            systems.zlink.framework.locationprovider.ZLinkRelocationStore.class
                 .getMethod(
                     "put",
+                    systems.zlink.framework.locationprovider
+                        .ZLinkBlobReference.class,
                     byte[].class,
                     Duration.class,
-                    ZLinkStoreCancellation.class)
+                    systems.zlink.framework.locationprovider
+                        .ZLinkStoreCancellation.class)
                 .getReturnType());
         assertEquals(
             CompletionStage.class,
-            ZLinkRelocationStore.class
+            systems.zlink.framework.locationprovider.ZLinkRelocationStore.class
                 .getMethod(
-                    "get",
-                    String.class,
-                    ZLinkStoreCancellation.class)
+                    "read",
+                    systems.zlink.framework.locationprovider
+                        .ZLinkBlobReference.class,
+                    systems.zlink.framework.locationprovider
+                        .ZLinkStoreCancellation.class)
                 .getReturnType());
         assertEquals(
             CompletionStage.class,
-            ZLinkRelocationStore.class
+            systems.zlink.framework.locationprovider.ZLinkRelocationStore.class
                 .getMethod(
                     "renew",
-                    String.class,
+                    systems.zlink.framework.locationprovider
+                        .ZLinkBlobReference.class,
                     Duration.class,
-                    ZLinkStoreCancellation.class)
+                    systems.zlink.framework.locationprovider
+                        .ZLinkStoreCancellation.class)
                 .getReturnType());
         assertEquals(
             CompletionStage.class,
-            ZLinkRelocationStore.class
+            systems.zlink.framework.locationprovider.ZLinkRelocationStore.class
                 .getMethod(
                     "delete",
-                    String.class,
-                    ZLinkStoreCancellation.class)
+                    systems.zlink.framework.locationprovider
+                        .ZLinkBlobReference.class,
+                    systems.zlink.framework.locationprovider
+                        .ZLinkStoreCancellation.class)
                 .getReturnType());
-        assertEquals(
-            List.of("reference", "checksumCrc32c", "expiresAt", "storeNow"),
-            Arrays.stream(ZLinkRelocationStored.class.getRecordComponents())
-                .map(component -> component.getName())
-                .toList());
-        assertTrue(ZLinkRelocationReadResult.class.isSealed());
-        assertEquals(
-            Set.of(
-                ZLinkRelocationFound.class,
-                ZLinkRelocationMissing.class),
-            Set.of(ZLinkRelocationReadResult.class.getPermittedSubclasses()));
-        assertEquals(2, ZLinkRelocationDeleteResult.values().length);
-        assertEquals(
-            Set.of(
-                ZLinkRelocationRenewed.class,
-                ZLinkRelocationRenewMissing.class),
-            Set.of(ZLinkRelocationRenewResult.class.getPermittedSubclasses()));
+        for (String removedType : List.of(
+            "systems.zlink.framework.locations.ZLinkLocationStore",
+            "systems.zlink.framework.locations.ZLinkRelocationStore",
+            "systems.zlink.framework.locations.ZLinkRelocationStored",
+            "systems.zlink.framework.locations.ZLinkRelocationReadResult",
+            "systems.zlink.framework.locations.ZLinkRelocationRenewResult",
+            "systems.zlink.framework.locations.ZLinkRelocationDeleteResult")) {
+            assertThrows(
+                ClassNotFoundException.class,
+                () -> Class.forName(removedType));
+        }
     }
 
     @Test
@@ -152,6 +151,16 @@ final class RelocationPublicContractTest {
                 .getReturnType());
         assertEquals(0, ZLinkSpotRelocationReadinessMode.ANY_TURN_BOUNDARY.value());
         assertEquals(1, ZLinkSpotRelocationReadinessMode.APPLICATION_SIGNALED.value());
+        assertEquals(0, ZLinkSpotRelocationReadyOutcome.CONTINUED.value());
+        assertEquals(1, ZLinkSpotRelocationReadyOutcome.RELOCATED.value());
+        assertEquals(
+            ZLinkSpotRelocationReadyOutcome.RELOCATED,
+            new ZLinkSpotRelocationReadyCompletion(
+                ZLinkSpotRelocationReadyOutcome.RELOCATED).outcome());
+        assertEquals(
+            void.class,
+            ZLinkSpotRelocationReadyCall.class
+                .getMethod("defer").getReturnType());
         assertThrows(
             ClassNotFoundException.class,
             () -> Class.forName(
@@ -174,16 +183,11 @@ final class RelocationPublicContractTest {
         assertEquals(
             ZLinkMeshObjectServerBuilder.class,
             ZLinkMeshObjectRoleBuilder.class.getMethod("server").getReturnType());
-        assertEquals(ZLinkLocationStore.class, ZLinkLocationStore.class);
-    }
-
-    @Test
-    void relocationPayloadReadResultKeepsItsOwnSnapshot() {
-        byte[] source = new byte[] {1, 2, 3};
-        ZLinkRelocationFound found = new ZLinkRelocationFound(source);
-        source[0] = 9;
-        byte[] first = found.payload();
-        first[1] = 8;
-        assertArrayEquals(new byte[] {1, 2, 3}, found.payload());
+        assertEquals(
+            void.class,
+            ZLinkFrameworkOptions.class.getMethod(
+                "addLocationStore",
+                systems.zlink.framework.locationprovider
+                    .ZLinkLocationStore.class).getReturnType());
     }
 }

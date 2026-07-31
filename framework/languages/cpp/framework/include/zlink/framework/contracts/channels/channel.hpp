@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
+#include <zlink/Contracts/Core/byte_count.hpp>
 #include <zlink/Contracts/Core/routing_id.hpp>
 #include <zlink/framework/contracts/channels/call.hpp>
 #include <zlink/framework/contracts/codecs/serializer.hpp>
@@ -61,9 +62,10 @@ struct channel_capability_snapshot_t
     bool enabled = false;
     bool discovery = false;
     std::optional<zlink::routing_id_t> routing_id;
-    std::optional<zlink::message_count_t> send_high_water_mark;
-    std::optional<zlink::message_count_t> receive_high_water_mark;
-    std::optional<zlink::byte_size_t> max_message_size;
+    std::optional<zlink::byte_count_t> send_high_water_mark;
+    std::optional<zlink::byte_count_t> receive_high_water_mark;
+    std::optional<zlink::byte_size_t> max_message_size =
+      zlink::byte_size_t::bytes (16 * 1024 * 1024);
     std::optional<zlink::peer_weight_t> peer_weight;
     int service_weight = 100;
     std::vector<std::string> bind_endpoints;
@@ -114,8 +116,8 @@ class capability_builder_t
     capability_builder_t &bind (std::string endpoint);
     capability_builder_t &connect (std::string endpoint);
     capability_builder_t &set_routing_id (zlink::routing_id_t routing_id);
-    capability_builder_t &send_high_water_mark (zlink::message_count_t value);
-    capability_builder_t &receive_high_water_mark (zlink::message_count_t value);
+    capability_builder_t &send_high_water_mark (zlink::byte_count_t value);
+    capability_builder_t &receive_high_water_mark (zlink::byte_count_t value);
     capability_builder_t &max_message_size (zlink::byte_size_t value);
     capability_builder_t &peer_weight (zlink::peer_weight_t value);
     capability_builder_t &service_weight (int value);
@@ -390,12 +392,25 @@ class message_bus_t
     channel_request_call_t request (std::string channel_name, TRequest request)
     {
         auto state = _state;
+        auto preflight = _preflight;
         auto request_value = std::make_shared<TRequest> (std::move (request));
         return channel_request_call_t (
           detail::message_name<TRequest> (), serializers (),
-          [state, channel_name = std::move (channel_name),
+          [state, preflight = std::move (preflight),
+           channel_name = std::move (channel_name),
            request_value] (const std::string &packet_name, std::chrono::milliseconds timeout,
                            const channel_request_call_t::metadata_map_t &metadata) {
+              if (preflight) {
+                  const auto admitted = preflight ();
+                  if (!admitted) {
+                      return task_t<zlink::message_t> (
+                        result_t<zlink::message_t>::failure (
+                          admitted.error_kind (),
+                          admitted.error ()
+                            ? admitted.error ()->what ()
+                            : "channel request preflight failed"));
+                  }
+              }
               auto bus = message_bus_t (state);
               const auto effective_timeout = timeout > std::chrono::milliseconds::zero ()
                                                ? timeout
@@ -412,12 +427,19 @@ class message_bus_t
     template <typename TMessage> send_call_t send (std::string channel_name, TMessage message)
     {
         auto state = _state;
+        auto preflight = _preflight;
         auto message_value = std::make_shared<TMessage> (std::move (message));
         return send_call_t (
           detail::message_name<TMessage> (),
-          [state, channel_name = std::move (channel_name),
+          [state, preflight = std::move (preflight),
+           channel_name = std::move (channel_name),
            message_value] (const std::string &packet_name,
                            const send_call_t::metadata_map_t &metadata) {
+              if (preflight) {
+                  const auto admitted = preflight ();
+                  if (!admitted)
+                      return admitted;
+              }
               return message_bus_t (state).submit_send (
                 channel_name, packet_name, std::type_index (typeid (TMessage)),
                 [message_value] (serializer_registry_t &serializers) {
@@ -430,12 +452,19 @@ class message_bus_t
     template <typename TEvent>
     send_call_t publish (std::string channel_name, std::string topic, TEvent event)
     {
+        auto preflight = _preflight;
         auto event_value = std::make_shared<TEvent> (std::move (event));
         return send_call_t (
           detail::message_name<TEvent> (),
-          [state = _state, channel_name = std::move (channel_name), topic = std::move (topic),
+          [state = _state, preflight = std::move (preflight),
+           channel_name = std::move (channel_name), topic = std::move (topic),
            event_value] (const std::string &packet_name,
                          const send_call_t::metadata_map_t &metadata) {
+              if (preflight) {
+                  const auto admitted = preflight ();
+                  if (!admitted)
+                      return admitted;
+              }
               return message_bus_t (state).submit_publish (
                 channel_name, topic, packet_name, std::type_index (typeid (TEvent)),
                 [event_value] (serializer_registry_t &serializers) {
@@ -497,6 +526,9 @@ class message_bus_t
     };
 
     explicit message_bus_t (std::shared_ptr<detail::channel_runtime_state_t> state);
+    message_bus_t (
+      std::shared_ptr<detail::channel_runtime_state_t> state,
+      std::function<result_t<void> ()> preflight);
 
     erased_request_result_t submit_request (std::string channel_name,
                                             std::string packet_name,
@@ -527,6 +559,7 @@ class message_bus_t
                                    const send_call_t::metadata_map_t &metadata);
 
     std::shared_ptr<detail::channel_runtime_state_t> _state;
+    std::function<result_t<void> ()> _preflight;
 };
 
 class channel_server_socket_runtime_options_t

@@ -12,7 +12,6 @@ internal static class ZLinkStreamFrameWriter
         var frame = ZLinkStreamFrameCodec.Encode(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span, payload);
         using var payloadMessage = Message.From(frame);
         if (!write(payloadMessage)) throw new InvalidOperationException(failureMessage);
-        ZLinkRuntimeMetrics.RecordStreamBytes(inbound: false, frame.Length, transport);
     }
 
     public static void Write(

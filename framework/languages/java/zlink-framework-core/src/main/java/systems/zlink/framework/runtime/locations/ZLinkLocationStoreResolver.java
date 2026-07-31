@@ -1,7 +1,9 @@
 package systems.zlink.framework.runtime.locations;
 
-import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.locationprovider.ZLinkLocationStore;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkProviderLocationRepository;
 
 public final class ZLinkLocationStoreResolver {
     private ZLinkLocationStoreResolver() {
@@ -18,7 +20,8 @@ public final class ZLinkLocationStoreResolver {
     }
 
     private static ZLinkRegisteredLocationStores fromUnified(ZLinkLocationStore store) {
-        return ZLinkRegisteredLocationStores.fromUnified(store);
+        return ZLinkRegisteredLocationStores.fromUnified(
+            new ZLinkProviderLocationRepository(store));
     }
 
 }

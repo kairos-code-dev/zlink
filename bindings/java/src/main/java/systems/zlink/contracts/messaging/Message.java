@@ -3,7 +3,7 @@
 package systems.zlink.contracts.messaging;
 
 import systems.zlink.contracts.errors.ZlinkException;
-import systems.zlink.runtime.nativeapi.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 import io.netty.buffer.ByteBuf;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;

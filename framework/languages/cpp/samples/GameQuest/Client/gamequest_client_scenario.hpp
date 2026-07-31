@@ -356,7 +356,7 @@ class gamequest_client_scenario_t
                            .build ()
                            .post ("/self-check/assert")
                            .body (server_assertion_req_t{})
-                           .submit<server_assertion_res_t> ().result ().value ().body;
+                           .fetch<server_assertion_res_t> ();
         ensure (assertion.passed, "server assertion failed");
     }
 

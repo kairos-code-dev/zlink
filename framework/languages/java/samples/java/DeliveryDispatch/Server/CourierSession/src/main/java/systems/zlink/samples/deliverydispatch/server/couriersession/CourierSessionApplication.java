@@ -3,7 +3,6 @@ package systems.zlink.samples.deliverydispatch.server.couriersession;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
@@ -37,10 +36,10 @@ public final class CourierSessionApplication {
                 .traceLogFile(topology.logDirectory() + "/flow-courier-session.log")
                 .traceLabel("courier-session");
             options.addClientServerChannel(SampleNames.CourierChannel)
-                .enableClient();
+                .client();
             ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.CourierSpotDiscovery);
             node.listen(topology.courierSessionSpotRouterEndpoint())
-                .useAllocatedRoutingId(16, "delivery-session");
+                .setRoutingIdPrefix("delivery-session");
             options.addStreamNode(SampleNames.CourierStreamNode)
                 .bind(topology.courierStreamEndpoint())
                 .enableActorDispatch(SampleNames.CourierSpotDiscovery)

@@ -2,6 +2,9 @@
 #pragma once
 
 #include "runtime/dispatch/offload_executor.hpp"
+#include "runtime/dispatch/inbound_dispatch_budget.hpp"
+#include "runtime/dispatch/completion_admission_owner.hpp"
+#include <runtime/locations/location_repository.hpp>
 #include "runtime/mesh/mesh_node_runtime.hpp"
 
 #include <zlink/framework/contracts/configuration/module.hpp>
@@ -30,12 +33,16 @@ class mesh_node_host_service_t final : public hosted_service_t
     mesh_node_host_service_t (
       std::vector<std::shared_ptr<detail::mesh_node_builder_state_t>> registrations,
       serializer_registry_t &serializers,
-      dispatch_options_t dispatch_options = {});
+      dispatch_options_t dispatch_options = {},
+      std::shared_ptr<inbound_dispatch_budget_t> inbound_budget = {},
+      std::shared_ptr<completion_admission_owner_t> completion_admission = {});
     mesh_node_host_service_t (
       std::vector<std::shared_ptr<detail::mesh_node_builder_state_t>> registrations,
       serializer_registry_t &serializers,
       handler_registry_t &filters,
-      dispatch_options_t dispatch_options = {});
+      dispatch_options_t dispatch_options = {},
+      std::shared_ptr<inbound_dispatch_budget_t> inbound_budget = {},
+      std::shared_ptr<completion_admission_owner_t> completion_admission = {});
     ~mesh_node_host_service_t () override;
 
     void start (service_provider_t &services) override;
@@ -51,6 +58,7 @@ class mesh_node_host_service_t final : public hosted_service_t
       std::chrono::steady_clock::time_point deadline) noexcept;
     bool publish_descriptor_state (framework_runtime_state_t state) noexcept;
     bool republish_after_store_recovery () noexcept;
+    inbound_dispatch_snapshot_t inbound_dispatch_snapshot () const noexcept;
 
   private:
     task_t<spot_create_result_t> create_user_spot (
@@ -85,7 +93,7 @@ class mesh_node_host_service_t final : public hosted_service_t
     handler_registry_t *_filters;
     dispatch_options_t _dispatch_options;
     service_provider_t *_services = nullptr;
-    std::shared_ptr<location_store_t> _location_store;
+    std::shared_ptr<location_repository_t> _location_store;
     std::optional<location_owner_token_t> _location_owner;
     std::vector<mesh_node_descriptor_key_t> _published_mesh_nodes;
     std::vector<mesh_node_descriptor_t> _published_mesh_descriptors;
@@ -96,6 +104,8 @@ class mesh_node_host_service_t final : public hosted_service_t
     std::condition_variable _dispatch_gate_changed;
     std::uint64_t _active_direct_dispatch = 0;
     std::unique_ptr<offload_executor_t> _application_dispatch;
+    std::shared_ptr<inbound_dispatch_budget_t> _inbound_budget;
+    std::shared_ptr<completion_admission_owner_t> _completion_admission;
     std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> _nodes;
     std::vector<std::thread> _threads;
 };

@@ -1,6 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ZLINK_SPOT_MANAGER, ZLINK_SPOT_OUTBOUND } from '@zlink-systems/nestjs';
-import { ZLinkSpotActorRequest, ZLinkSpotActorSend } from '@zlink-systems/framework';
+import {
+  ZLINK_SPOT_OUTBOUND,
+  zlinkEntrySpotActorRequestHandler,
+  zlinkSpotActorRequestHandler,
+  zlinkSpotActorSendHandler
+} from '@zlink-systems/nestjs';
 import {
   EnterWorldRes,
   EnterZoneMsg,
@@ -9,90 +13,84 @@ import {
   MoveRejectedNotify,
   PacketNames,
 } from '../../../../../Shared/contracts';
-import { MoveRejectReasons, nodeOf, ZoneIds, ZoneWorldNames, zoneOf } from '../../../../../Shared/spec';
+import { MoveRejectReasons, nodeOf, ZoneIds, zoneOf } from '../../../../../Shared/spec';
 import type { ZoneId } from '../../../../../Shared/spec';
 import { nextBotStep } from '../../../Domain/bot-patrol';
 import { validateMove } from '../../../Domain/move-policy';
 import { NodeRuntimeState } from '../../../Domain/node-runtime-state';
 import type { BotTickReq, EnterWorldReq, JoinWorldReq, MoveMsg } from '../../../../../Shared/contracts';
 import type {
-  ZLinkSpotActorRequestContext,
-  ZLinkSpotActorSendContext,
-  ZLinkSpotManager,
+  ZLinkMessageContext,
   ZLinkSpotOutbound
 } from '@zlink-systems/framework';
-import type { PlayerActor } from '../Actors/player-actor';
+import { PlayerActor } from '../Actors/player-actor';
+import { ZoneEntrySpot } from '../Spots/zone-entry-spot';
+import { ZoneSpot } from '../Spots/zone-spot';
 import { UpdateZonePositionMsg } from './zone-runtime-handlers';
 
 @Injectable()
+@zlinkEntrySpotActorRequestHandler({
+  entrySpot: () => ZoneEntrySpot,
+  actor: () => PlayerActor,
+  packetName: PacketNames.enterWorldReq
+})
 class EntryEnterWorldHandler {
-  @ZLinkSpotActorRequest(PacketNames.enterWorldReq)
   async handle(
     actor: PlayerActor,
-    _context: ZLinkSpotActorRequestContext,
+    _context: ZLinkMessageContext,
     request: EnterWorldReq
   ): Promise<EnterWorldRes> {
     actor.dirX = request.dirX;
     actor.dirY = request.dirY;
     const targetZone = zoneOf(request.x, request.y);
-    const joined = await actor.context.joinSpot(
+    actor.context.joinSpot(
       targetZone,
       new EnterZoneMsg(actor.actorId, request.x, request.y, request.isBot, null)
-    ).timeout(10_000).submit();
-    if (joined.status === 'accepted') {
-      actor.x = request.x;
-      actor.y = request.y;
-      actor.zoneId = targetZone;
-      actor.isBot = request.isBot;
-    }
+    ).timeout(10_000).defer();
+    actor.x = request.x;
+    actor.y = request.y;
+    actor.zoneId = targetZone;
+    actor.isBot = request.isBot;
     return new EnterWorldRes(
       targetZone,
       nodeOf(targetZone),
       request.x,
       request.y,
-      joined.status === 'accepted' ? null : MoveRejectReasons.zoneMaintenance
+      null
     );
   }
 }
 
 @Injectable()
+@zlinkEntrySpotActorRequestHandler({
+  entrySpot: () => ZoneEntrySpot,
+  actor: () => PlayerActor,
+  packetName: PacketNames.joinWorldReq
+})
 class EntryJoinWorldHandler {
-  @ZLinkSpotActorRequest(PacketNames.joinWorldReq)
   async handle(
     actor: PlayerActor,
-    _context: ZLinkSpotActorRequestContext,
+    _context: ZLinkMessageContext,
     request: JoinWorldReq
   ): Promise<JoinWorldRes> {
     assertPlayerId(request.playerId, actor.actorId);
-    if (Object.values(ZoneIds).includes(actor.context.spotRid as ZoneId)) {
+    if (Object.values(ZoneIds).includes(actor.context.spotId as ZoneId)) {
       return new JoinWorldRes(actor.actorId, actor.zoneId, nodeOf(actor.zoneId), actor.x, actor.y);
     }
     const targetZone = zoneOf(actor.x, actor.y);
-    const joined = await actor.context.joinSpot(
+    actor.context.joinSpot(
       targetZone,
       new EnterZoneMsg(actor.actorId, actor.x, actor.y, false, null)
-    ).timeout(10_000).submit();
-    if (joined.status !== 'accepted') {
-      return new JoinWorldRes(
-        actor.actorId,
-        targetZone,
-        nodeOf(targetZone),
-        actor.x,
-        actor.y,
-        MoveRejectReasons.zoneMaintenance
-      );
-    }
+    ).timeout(10_000).defer();
     actor.zoneId = targetZone;
     return new JoinWorldRes(actor.actorId, targetZone, nodeOf(targetZone), actor.x, actor.y);
   }
 }
 
 @Injectable()
-@Injectable()
 class PlayerMovement {
   constructor(
     private readonly nodeState: NodeRuntimeState,
-    @Inject(ZLINK_SPOT_MANAGER) private readonly spotHandles: ZLinkSpotManager,
     @Inject(ZLINK_SPOT_OUTBOUND) private readonly spotOutbound: ZLinkSpotOutbound
   ) {}
 
@@ -107,22 +105,18 @@ class PlayerMovement {
     if (!decision.zoneChanged) {
       actor.x = x;
       actor.y = y;
-      const spotRid = actor.context.spotRid;
+      const spotRid = actor.context.spotId;
       if (spotRid === undefined) throw new Error(`Player '${actor.actorId}' is not joined to a zone.`);
-      const spot = await this.spotHandles.find(spotRid);
-      if (spot === undefined) throw new Error(`Zone '${String(spotRid)}' could not be resolved.`);
-      await this.spotOutbound.sendToSpot(spot, new UpdateZonePositionMsg(actor.actorId, x, y)).submit();
+      await this.spotOutbound
+        .sendToSpot(spotRid, new UpdateZonePositionMsg(actor.actorId, x, y))
+        .submit();
       return;
     }
-    const joined = await actor.context.joinSpot(
+    actor.context.joinSpot(
       targetZone,
       new EnterZoneMsg(actor.actorId, x, y, actor.isBot, nodeOf(previousZone))
-    ).timeout(10_000).submit();
-    console.log(`zone change result player=${actor.actorId} from=${previousZone} to=${targetZone} status=${joined.status}`);
-    if (joined.status !== 'accepted') {
-      await this.reject(actor, MoveRejectReasons.zoneMaintenance);
-      return;
-    }
+    ).timeout(10_000).defer();
+    console.log(`zone change scheduled player=${actor.actorId} from=${previousZone} to=${targetZone}`);
     actor.x = x;
     actor.y = y;
     actor.zoneId = targetZone;
@@ -140,13 +134,17 @@ class PlayerMovement {
 }
 
 @Injectable()
+@zlinkSpotActorSendHandler({
+  spot: () => ZoneSpot,
+  actor: () => PlayerActor,
+  packetName: PacketNames.moveMsg
+})
 class PlayerMoveHandler {
   constructor(private readonly movement: PlayerMovement) {}
 
-  @ZLinkSpotActorSend(PacketNames.moveMsg)
   async handle(
     actor: PlayerActor,
-    _context: ZLinkSpotActorSendContext,
+    _context: ZLinkMessageContext,
     message: MoveMsg
   ): Promise<void> {
     await this.movement.move(actor, message.x, message.y);
@@ -154,13 +152,17 @@ class PlayerMoveHandler {
 }
 
 @Injectable()
+@zlinkSpotActorRequestHandler({
+  spot: () => ZoneSpot,
+  actor: () => PlayerActor,
+  packetName: PacketNames.botTickReq
+})
 class PlayerBotTickHandler {
   constructor(private readonly movement: PlayerMovement) {}
 
-  @ZLinkSpotActorRequest(PacketNames.botTickReq)
   async handle(
     actor: PlayerActor,
-    _context: ZLinkSpotActorRequestContext,
+    _context: ZLinkMessageContext,
     _message: BotTickReq
   ): Promise<BotTickRes> {
     if (!actor.isBot) return new BotTickRes();

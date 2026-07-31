@@ -16,7 +16,7 @@ using framework::message_t;
 
 struct player_actor_t : framework::actor_t
 {
-    mutable actor_ref_snapshot_t actor;
+    mutable std::string actor_id;
     mutable std::unique_ptr<actor_context_t> actor_context;
     std::string display_name;
     mutable bool destroy_after_entry_spot_join = false;
@@ -24,7 +24,7 @@ struct player_actor_t : framework::actor_t
 
     player_actor_t () = default;
     player_actor_t (const player_actor_t &other) :
-        actor (other.actor), display_name (other.display_name),
+        actor_id (other.actor_id), display_name (other.display_name),
         destroy_after_entry_spot_join (other.destroy_after_entry_spot_join),
         disconnected (other.disconnected)
     {
@@ -32,7 +32,7 @@ struct player_actor_t : framework::actor_t
     player_actor_t &operator= (const player_actor_t &other)
     {
         if (this != &other) {
-            actor = other.actor;
+            actor_id = other.actor_id;
             display_name = other.display_name;
             destroy_after_entry_spot_join = other.destroy_after_entry_spot_join;
             disconnected = other.disconnected;
@@ -45,9 +45,7 @@ struct player_actor_t : framework::actor_t
 
     void set_actor_ref (const actor_ref_t &actor_ref) const
     {
-        actor.node_rid = actor_ref.node_rid ();
-        actor.actor_id = std::string (actor_ref.actor_id ());
-        actor.generation = actor_ref.generation ();
+        actor_id = std::string (actor_ref.actor_id ());
     }
 
     void set_actor_context (actor_context_t actor_context) const
@@ -68,21 +66,5 @@ struct player_actor_t : framework::actor_t
         actor_context->bound_session ().send (notify).submit ();
     }
 };
-
-inline void to_json (nlohmann::json &json, const player_actor_t &value)
-{
-    json = {{"actor", value.actor},
-            {"displayName", value.display_name},
-            {"destroyAfterEntrySpotJoin", value.destroy_after_entry_spot_join},
-            {"disconnected", value.disconnected}};
-}
-
-inline void from_json (const nlohmann::json &json, player_actor_t &value)
-{
-    value.actor = json.value ("actor", actor_ref_snapshot_t{});
-    value.display_name = json.value ("displayName", std::string{});
-    value.destroy_after_entry_spot_join = json.value ("destroyAfterEntrySpotJoin", false);
-    value.disconnected = json.value ("disconnected", false);
-}
 
 } // namespace zlink::samples::bingo

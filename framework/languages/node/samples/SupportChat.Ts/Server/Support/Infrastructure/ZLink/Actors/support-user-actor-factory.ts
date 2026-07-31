@@ -4,8 +4,8 @@ import type { ZLinkActorContext, ZLinkActorFactory } from '@zlink-systems/framew
 
 @Injectable()
 class SupportUserActorFactory implements ZLinkActorFactory {
-  async create(actorId: string, context: ZLinkActorContext): Promise<SupportUserActor> {
-    return new SupportUserActor(actorId, context);
+  async create(context: ZLinkActorContext): Promise<SupportUserActor> {
+    return new SupportUserActor(context.actorId, context);
   }
 }
 

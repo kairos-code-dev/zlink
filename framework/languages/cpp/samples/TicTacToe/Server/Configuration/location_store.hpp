@@ -22,8 +22,8 @@ inline void add_sample_location_store (framework::zlink_framework_options_t &opt
         throw std::runtime_error ("TicTacToe sample requires redisKeyPrefix");
     }
     options.add_location_store (
-      std::make_shared<framework::locations::redis::redis_location_store_t> (
-        framework::locations::redis::redis_location_options_t{
+      std::make_shared<framework::redis::redis_location_store_t> (
+        framework::redis::redis_location_options_t{
           .connection_string = topology.redis_endpoint,
           .key_prefix = topology.redis_key_prefix + "location:"}));
 }

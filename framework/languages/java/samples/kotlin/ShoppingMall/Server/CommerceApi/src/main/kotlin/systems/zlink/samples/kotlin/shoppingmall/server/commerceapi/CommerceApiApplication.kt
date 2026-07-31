@@ -1,6 +1,7 @@
 package systems.zlink.samples.kotlin.shoppingmall.server.commerceapi
 
 import java.nio.file.Path
+import java.net.URI
 import kotlinx.coroutines.Dispatchers
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
@@ -30,12 +31,12 @@ class CommerceApiApplication {
     fun commerceStore(topology: SampleTopology): CommerceStore = CommerceStore(topology)
 
     @Bean
-    fun locationStore(topology: SampleTopology): ZLinkRedisLocationStore = SampleLocationStore.create(topology)
-
-    @Bean
     fun commerceApiFramework(topology: SampleTopology): ZLinkFrameworkConfigurer {
         val role = topology.role()
+        val channelEndpoint = URI.create(role.channelEndpoint)
         return ZLinkFrameworkConfigurer { configurer ->
+            configurer.configureLocations()
+            configurer.addLocationStore(SampleLocationStore.create(topology))
             configurer.useCoroutineHandlers(Dispatchers.Default)
             configurer.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
@@ -45,15 +46,20 @@ class CommerceApiApplication {
             configurer.addHandlersFromPackageOf(CommerceApiApplication::class.java)
 
             configurer.addClientServerChannel(SampleNames.commerceApiChannel(role.instanceId))
-                .enableServer(role.channelEndpoint)
+                .server()
+                .setBindHost(channelEndpoint.host)
+                .setAdvertiseHost(channelEndpoint.host)
+                .listen(channelEndpoint.port)
                 .addHandlerGroup("commerce")
 
             val peer = if (role.instanceId == SampleNames.ApiInstanceB) SampleNames.ApiInstanceA else SampleNames.ApiInstanceB
             configurer.addClientServerChannel(SampleNames.commerceApiChannel(peer))
-                .enableClient()
+                .client()
 
-            configurer.addClientServerChannel(SampleNames.OrderWorkflowChannel)
-                .enableClient()
+            configurer.addRouteMesh(SampleNames.OrderWorkflowMesh)
+                .setRoutingIdPrefix("shoppingmall-api")
+                .listen()
+                .objects().client()
         }
     }
 

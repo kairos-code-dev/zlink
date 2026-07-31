@@ -4,7 +4,6 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 
 type SupportChatServerConfig = {
   apiChannelEndpoint: string;
-  supportChannelEndpoint: string;
   supportSpotEndpoint: string;
   sessionSpotEndpoint: string;
   sessionStreamEndpoint: string;

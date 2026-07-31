@@ -170,7 +170,6 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
               runtime::messaging::message_parts_t{});
         }
         if (inbound_kind == dispatch_message_kind_t::publish) {
-            _runtime.record_fanout_received (header.value ().topic.value_or (""));
         }
         if (inbound_kind != dispatch_message_kind_t::publish) {
             flow.trace (message_flow_outcome_t::dispatched, [&] {

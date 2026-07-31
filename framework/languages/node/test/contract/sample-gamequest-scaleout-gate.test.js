@@ -9,16 +9,13 @@ function read(relativePath) {
   return fs.readFileSync(path.join(nodeRoot, relativePath), 'utf8');
 }
 
-test('GameQuest proves concurrent players execute on different owners', () => {
+test('GameQuest proves concurrent players use framework-selected owner nodes', () => {
   const client = read('samples/GameQuest.Ts/Client/gamequest-client-scenario.ts');
   const store = read('samples/GameQuest.Ts/Server/Shared/Store/quest-progress-store.ts');
 
   assert.match(client, /await Promise\.all\(\[/);
-  for (const evidence of [
-    'owner:mission-a:player-alice',
-    'owner:mission-b:player-bob'
-  ]) {
-    assert.match(store, new RegExp(`'${evidence}'`));
-    assert.match(client, new RegExp(`assertion\\.evidence\\.includes\\('${evidence}'\\)`));
-  }
+  assert.match(store, /`owner:\$\{owner\}:\$\{playerId\}`/);
+  assert.match(client, /\/\^owner:mission-\[ab\]:player-alice\$\/\.test\(entry\)/);
+  assert.match(client, /\/\^owner:mission-\[ab\]:player-bob\$\/\.test\(entry\)/);
+  assert.doesNotMatch(client, /NodeRid|routingId|mission-a:player-alice|mission-b:player-bob/);
 });

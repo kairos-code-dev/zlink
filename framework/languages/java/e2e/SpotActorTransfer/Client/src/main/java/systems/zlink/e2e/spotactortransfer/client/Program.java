@@ -56,7 +56,7 @@ public final class Program implements AutoCloseable {
         List<String> implemented = List.of(
             "ST-A1", "ST-A2", "ST-A3", "ST-B1", "ST-B2", "ST-B3", "ST-B4",
             "ST-C1", "ST-C2", "ST-C3", "ST-D1", "ST-D2", "ST-E1", "ST-E2",
-            "ST-F1", "ST-F2", "ST-F3", "ST-F4", "ST-F5", "ST-F6");
+            "ST-F1", "ST-F2", "ST-F3", "ST-F4", "ST-F5", "ST-F6", "ST-R1");
         if ("all".equalsIgnoreCase(selected)) {
             return implemented;
         }
@@ -89,22 +89,155 @@ public final class Program implements AutoCloseable {
             case "ST-F4" -> messageFollowDuration();
             case "ST-F5" -> messageFollowRouteRemoval();
             case "ST-F6" -> inFlightRequestReplyCorrelationAndTimeout();
+            case "ST-R1" -> retireAcceptedRequestAndBoundSession();
             default -> throw new IllegalArgumentException("unsupported scenario: " + scenario);
         }
     }
 
+    private void retireAcceptedRequestAndBoundSession() throws Exception {
+        Contracts.ActorCreateRes created = null;
+        String actorId = null;
+        for (int attempt = 0; attempt < 40; attempt++) {
+            String candidateId = id("actor-retire-accepted");
+            try {
+                Contracts.ActorCreateRes candidate =
+                    createActor(nodeA, candidateId, Contracts.STATEFUL, 101);
+                if ("actor-a".equals(candidate.nodeRid())) {
+                    created = candidate;
+                    actorId = candidateId;
+                    break;
+                }
+            } catch (Exception notReady) {
+                Thread.sleep(200);
+            }
+        }
+        require(created != null,
+            "ST-R1 could not allocate an Actor on the retiring node");
+        final String selectedActorId = actorId;
+        ZLinkStreamConnector connector = connector(options.streamCEndpoint());
+        try {
+            connector.connect().submit().toCompletableFuture().join();
+            Contracts.BindSessionRes bound = bindSessionEventually(
+                connector,
+                selectedActorId,
+                Duration.ofSeconds(15));
+            require("actor-a".equals(bound.nodeRid()),
+                "ST-R1 Session did not bind the source Actor");
+
+            CompletableFuture<Contracts.RetireRes> retire =
+                postAsyncWithTimeout(
+                    nodeA + "/runtime/retire",
+                    java.util.Map.of(),
+                    Contracts.RetireRes.class,
+                    Duration.ofSeconds(40));
+            waitForRetireCapture(
+                selectedActorId,
+                retire,
+                Duration.ofSeconds(15));
+
+            CompletableFuture<Contracts.ProbeRes> accepted =
+                probeAsync(
+                    nodeA,
+                    selectedActorId,
+                    "ST-R1",
+                    "accepted-during-retire");
+            Thread.sleep(250);
+            release(nodeA, selectedActorId);
+
+            Contracts.ProbeRes reply = accepted.get(20, TimeUnit.SECONDS);
+            require(!"actor-a".equals(reply.nodeRid()),
+                "ST-R1 accepted request executed on the retired source");
+            Contracts.RetireRes terminal = retire.get(40, TimeUnit.SECONDS);
+            require("RELOCATE_THEN_SHUTDOWN".equals(terminal.intent()),
+                "ST-R1 returned a different termination intent");
+            require("STOPPED".equals(terminal.outcome())
+                    && "NONE".equals(terminal.reason()),
+                "ST-R1 retire failed: " + terminal);
+
+            assertBoundPush(
+                connector,
+                selectedActorId,
+                "ST-R1",
+                "after-retire-route-ack",
+                reply.nodeRid());
+        } finally {
+            connector.close().submit().toCompletableFuture().join();
+        }
+    }
+
+    private void waitForRetireCapture(
+        String actorId,
+        CompletableFuture<Contracts.RetireRes> retire,
+        Duration timeout) throws Exception {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (System.nanoTime() < deadline) {
+            if (hasKind(evidence(), actorId, "retire_capture_gate")) {
+                return;
+            }
+            if (retire.isDone()) {
+                Contracts.RetireRes terminal = retire.get();
+                throw new AssertionError(
+                    "ST-R1 retire completed before Actor capture: "
+                        + terminal);
+            }
+            Thread.sleep(50);
+        }
+        throw new AssertionError(
+            "timed out waiting for retire_capture_gate actor=" + actorId);
+    }
+
+    private Contracts.BindSessionRes bindSessionEventually(
+        ZLinkStreamConnector connector,
+        String actorId,
+        Duration timeout) throws Exception {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        Throwable lastFailure = null;
+        while (System.nanoTime() < deadline) {
+            try {
+                return connector
+                    .request(new Contracts.BindSessionReq("ST-R1", actorId))
+                    .submit(Contracts.BindSessionRes.class)
+                    .toCompletableFuture()
+                    .get(3, TimeUnit.SECONDS);
+            } catch (Exception failure) {
+                lastFailure = failure;
+                Thread.sleep(100);
+            }
+        }
+        throw new AssertionError(
+            "ST-R1 Session could not bind after topology convergence",
+            lastFailure);
+    }
+
     private void localAccept() throws Exception {
-        String actorId = id("actor-local-ok");
         String spotRid = id("spot-local-ok");
-        createSpot(nodeA, spotRid, "accept");
-        createActor(nodeA, actorId, Contracts.STATEFUL, 11);
+        Contracts.CreateSpotRes createdSpot =
+            createSpot(nodeA, spotRid, "accept");
+        String actorId = null;
+        for (int attempt = 0; attempt < 40; attempt++) {
+            String candidateId = id("actor-local-ok");
+            Contracts.ActorCreateRes candidate =
+                createActor(nodeA, candidateId, Contracts.STATEFUL, 11);
+            if (createdSpot.nodeRid().equals(candidate.nodeRid())) {
+                actorId = candidateId;
+                break;
+            }
+        }
+        require(actorId != null,
+            "ST-A1 could not allocate an Actor on the target Spot node");
         Contracts.JoinTargetRes join = join(nodeA, actorId, "ST-A1", spotRid, "accept");
         require(join.accepted(), "ST-A1 join was rejected");
         Contracts.ProbeRes probe = probe(nodeA, actorId, "ST-A1", "after-joined");
-        require("actor-a".equals(probe.nodeRid()), "ST-A1 packet did not stay on actor-a");
+        require(createdSpot.nodeRid().equals(probe.nodeRid()),
+            "ST-A1 packet did not stay on the target Spot node");
         require(spotRid.equals(probe.spotRid()), "ST-A1 packet did not reach target spot");
-        assertNodeOrder(actorId, "actor-a", List.of(
-            "admission", "leave", "joined", "location_visible", "success_reply"));
+        List<Contracts.Evidence> entries = evidence();
+        require(hasKind(entries, actorId, "admission"),
+            "ST-A1 target admission was not observed");
+        require(hasKind(entries, actorId, "joined"),
+            "ST-A1 target membership callback was not observed");
+        require(hasKind(entries, actorId, "packet_handler"),
+            "ST-A1 post-join request was not dispatched");
     }
 
     private void localReject() throws Exception {
@@ -490,18 +623,39 @@ public final class Program implements AutoCloseable {
 
     private void failedTransferKeepsBoundSession() throws Exception {
         String actorId = id("actor-bound-failed-transfer");
-        String spotRid = id("spot-bound-failed-transfer");
-        createSpot(nodeB, spotRid, "accept");
-        createActor(nodeA, actorId, Contracts.FAIL_OUT, 82);
+        Contracts.ActorCreateRes created =
+            createActor(nodeA, actorId, Contracts.FAIL_OUT, 82);
+        Contracts.CreateSpotRes target = null;
+        String spotRid = null;
+        for (int attempt = 0; attempt < 8; attempt++) {
+            spotRid = id("spot-bound-failed-transfer");
+            Contracts.CreateSpotRes candidate =
+                createSpot(nodeB, spotRid, "accept");
+            if (!candidate.nodeRid().equals(created.nodeRid())) {
+                target = candidate;
+                break;
+            }
+        }
+        require(target != null, "ST-E2 could not allocate a remote target Spot");
         ZLinkStreamConnector connector = connector(
-            options.streamAEndpoint());
+            streamEndpoint(created.nodeRid()));
         try {
             connector.connect().submit().toCompletableFuture().join();
             connector.request(new Contracts.BindSessionReq("ST-E2", actorId))
                 .submit(Contracts.BindSessionRes.class).toCompletableFuture().join();
-            require(!join(nodeA, actorId, "ST-E2", spotRid, "accept").accepted(),
+            require(!join(
+                    httpEndpoint(created.nodeRid()),
+                    actorId,
+                    "ST-E2",
+                    spotRid,
+                    "accept").accepted(),
                 "ST-E2 injected transfer failure returned success");
-            assertBoundPush(connector, actorId, "ST-E2", "after-failed-transfer", "actor-a");
+            assertBoundPush(
+                connector,
+                actorId,
+                "ST-E2",
+                "after-failed-transfer",
+                created.nodeRid());
         } finally {
             connector.close().submit().toCompletableFuture().join();
         }
@@ -824,9 +978,18 @@ public final class Program implements AutoCloseable {
 
     private <T> CompletableFuture<T> postAsync(String uri, Object body, Class<T> type)
         throws Exception {
+        return postAsyncWithTimeout(
+            uri, body, type, Duration.ofSeconds(14));
+    }
+
+    private <T> CompletableFuture<T> postAsyncWithTimeout(
+        String uri,
+        Object body,
+        Class<T> type,
+        Duration timeout) throws Exception {
         RequestTarget target = requestTarget(uri);
         return target.client().post(target.path())
-            .timeout(Duration.ofSeconds(14))
+            .timeout(timeout)
             .body(body)
             .submit(type)
             .thenApply(response -> response.body())

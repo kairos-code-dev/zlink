@@ -25,12 +25,12 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
         nativeSocket.Options.MaxMessageSize = value;
     }
 
-    public void SetSendHighWaterMark(int value)
+    public void SetSendHighWaterMark(ulong value)
     {
         nativeSocket.Options.SendHighWaterMark = value;
     }
 
-    public void SetReceiveHighWaterMark(int value)
+    public void SetReceiveHighWaterMark(ulong value)
     {
         nativeSocket.Options.ReceiveHighWaterMark = value;
     }

@@ -22,15 +22,16 @@ inline void configure_consumer_host (zlink::framework::zlink_framework_options_t
     server::add_redis_location_store (framework, options.redis_endpoint, options.redis_key_prefix);
     framework.services ().add_singleton<consumer_options_t> (
       std::make_unique<consumer_options_t> (options));
-    auto channel = framework.add_client_server_channel (api_channel);
-    channel.enable_client ();
+    framework.add_client_server_channel (api_channel).client ();
     if (!options.provider_endpoints.empty ()) {
         framework.add_client_server_channel ("resilience.lifecycle.api.manual")
-          .enable_client (options.provider_endpoints.front ());
+          .client ()
+          .connect (options.provider_endpoints.front ());
     }
     if (options.provider_endpoints.size () > 1) {
         framework.add_client_server_channel ("resilience.lifecycle.api.manual.b")
-          .enable_client (options.provider_endpoints[1]);
+          .client ()
+          .connect (options.provider_endpoints[1]);
     }
     framework.http ()
       .listen (options.http_endpoint)

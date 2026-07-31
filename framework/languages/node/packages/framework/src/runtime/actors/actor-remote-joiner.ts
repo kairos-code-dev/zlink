@@ -161,6 +161,8 @@ function installResolvedSpotRoute(
     target?.targetSpotGeneration === undefined
     || target.targetNodeGeneration === undefined
     || target.authorityOwnerGeneration === undefined
+    || target.ownerLeaseGeneration === undefined
+    || target.authorityStoreVersion === undefined
   ) {
     return;
   }
@@ -171,6 +173,8 @@ function installResolvedSpotRoute(
     },
     targetNodeRid: String(target.targetNodeRid),
     targetNodeGeneration: target.targetNodeGeneration,
-    authorityOwnerGeneration: target.authorityOwnerGeneration
-  }, target.authorityStoreVersion);
+    authorityOwnerGeneration: target.authorityOwnerGeneration,
+    ownerLeaseGeneration: target.ownerLeaseGeneration,
+    storeVersion: target.authorityStoreVersion
+  });
 }

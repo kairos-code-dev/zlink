@@ -5,10 +5,6 @@ import java.util.concurrent.CompletionStage;
 public interface ZLinkLocationRuntimeQuery {
     CompletionStage<ZLinkLocationRuntimeStatus> getStatus();
 
-    CompletionStage<ZLinkLocationPage<ZLinkMeshNodeDescriptor>> listMeshNodes(
-        String meshName,
-        ZLinkPageRequest page);
-
     CompletionStage<ZLinkLocationPage<ZLinkLocationTopologyEntry>> listTopology(
         ZLinkLocationTopologyFilter filter,
         ZLinkPageRequest page);

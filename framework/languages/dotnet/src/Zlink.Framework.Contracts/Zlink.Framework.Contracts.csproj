@@ -3,26 +3,8 @@
         <TargetFrameworks>$(ZLinkFrameworkTargetFrameworks)</TargetFrameworks>
         <AssemblyName>Zlink.Framework.Contracts</AssemblyName>
         <RootNamespace>Zlink.Framework.Contracts</RootNamespace>
-        <Description>Public handler, context, call, error, and payload contracts for ZLink framework packages.</Description>
+        <Description>Package-neutral codec and error contracts shared by ZLink framework packages.</Description>
         <IsPackable>true</IsPackable>
     </PropertyGroup>
 
-    <ItemGroup>
-        <PackageReference Include="Systems.Zlink"/>
-    </ItemGroup>
-
-    <ItemGroup>
-        <ProjectReference Include="../Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj"/>
-    </ItemGroup>
-
-    <Target Name="PinStreamConnectorPackageDependency"
-            AfterTargets="_GetProjectReferenceVersions">
-        <ItemGroup>
-            <_ProjectReferencesWithVersions
-                Update="@(_ProjectReferencesWithVersions)"
-                Condition="'%(_ProjectReferencesWithVersions.Filename)' == 'Systems.Zlink.Stream.Connector'">
-                <ProjectVersion>[%(_ProjectReferencesWithVersions.ProjectVersion)]</ProjectVersion>
-            </_ProjectReferencesWithVersions>
-        </ItemGroup>
-    </Target>
 </Project>

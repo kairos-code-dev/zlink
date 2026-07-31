@@ -1,6 +1,7 @@
 using System.Collections;
 using Zlink.Framework.Runtime.Configuration;
 using Zlink.Framework.Runtime.Diagnostics;
+using Zlink.Framework.Runtime.Dispatch;
 
 namespace Zlink.Framework.Runtime.Messaging;
 
@@ -21,6 +22,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
     private readonly CancellationTokenSource _admissionClosed = new();
     private readonly object _submitGate = new();
     private readonly Func<bool>? _failFastNotConnected;
+    private readonly ZLinkCompletionAdmissionOwner? _completionAdmission;
     private TaskCompletionSource? _activeDrainCompletion;
     private Task? _disposeTask;
     private Timer? _routeRetryTimer;
@@ -42,8 +44,10 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         TimeSpan? sendTimeout,
         CancellationToken stopToken,
         int capacity = DefaultCapacity,
-        Func<bool>? failFastNotConnected = null)
+        Func<bool>? failFastNotConnected = null,
+        ZLinkCompletionAdmissionOwner? completionAdmission = null)
     {
+        _completionAdmission = completionAdmission;
         _failFastNotConnected = failFastNotConnected;
         _pending = new ZLinkSubmitQueue(capacity);
         _pendingSlots = new SemaphoreSlim(capacity, capacity);
@@ -55,8 +59,15 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         registerReadyHandler(OnSendReady);
     }
 
-    internal static int ResolvePendingCapacity(int sendHighWaterMark) =>
-        sendHighWaterMark > 0 ? sendHighWaterMark : DefaultCapacity;
+    private static ulong MeasureParts(IReadOnlyList<Message> parts)
+    {
+        ulong bytes = 0;
+        foreach (var part in parts)
+            bytes = checked(bytes + (ulong)Math.Max(part.Size, 1));
+        return bytes;
+    }
+
+    internal static int ResolvePendingCapacity() => DefaultCapacity;
 
     internal int PendingAdmissionWaiterCount =>
         _pendingWaiterCapacity - _pendingWaiterSlots.CurrentCount;
@@ -308,6 +319,11 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
             cancellationToken.ThrowIfCancellationRequested();
             if (_stopToken.IsCancellationRequested)
                 throw new ZLinkSubmitShutdownException();
+            using var requesterLease = _completionAdmission is null
+                ? null
+                : await _completionAdmission.AcquireRequesterAsync(
+                        MeasureParts(parts), cancellationToken)
+                    .ConfigureAwait(false);
 
             bool Submit(IReadOnlyList<Message> pending)
             {

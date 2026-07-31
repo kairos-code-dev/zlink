@@ -1,5 +1,3 @@
-import type { ActorRef, RoutingId } from '@zlink-systems/framework';
-
 type DeliveryStatus = 'Created' | 'Assigned' | 'Accepted' | 'Reassigned' | 'PickedUp' | 'Delivered' | 'Failed';
 
 type CreateDeliveryReq = {
@@ -13,20 +11,6 @@ type CreateDeliveryRes = {
   deliveryId: string;
 };
 
-class FindCustomerActorReq { constructor(readonly customerId: string) {} }
-
-type FindCustomerActorRes = {
-  customerId: string;
-  actorRef?: DeliveryDispatchActorRef;
-};
-
-class EnsureCustomerActorReq { constructor(readonly customerId: string) {} }
-
-type EnsureCustomerActorRes = {
-  customerId: string;
-  actorRef: DeliveryDispatchActorRef;
-};
-
 class SubscribeDeliveryReq { constructor(readonly deliveryId: string) {} }
 
 class SubscribeDeliveryRes { constructor(readonly deliveryId: string) {} }
@@ -35,43 +19,23 @@ class BindCourierReq { constructor(readonly courierId: string, readonly sessionR
 
 type BindCourierRes = {
   courierId: string;
-  actor: DeliveryDispatchActorRef;
   sessionRoute: string;
 };
 
 class BindCourierSessionReq {
   constructor(
     readonly courierId: string,
-    readonly actor?: DeliveryDispatchActorRef,
     readonly sessionRoute?: string
   ) {}
 }
 
 type BindCourierSessionRes = {
   courierId: string;
-  actor: DeliveryDispatchActorRef;
   sessionRoute: string;
-};
-
-class FindCourierActorReq { constructor(readonly courierId: string) {} }
-
-type FindCourierActorRes = {
-  courierId: string;
-  actor?: DeliveryDispatchActorRef;
 };
 
 class EnsureCourierActorReq { constructor(readonly courierId: string) {} }
 
-type EnsureCourierActorRes = {
-  courierId: string;
-  actor: DeliveryDispatchActorRef;
-};
-
-type DeliveryDispatchActorRef = {
-  nodeRid: string;
-  actorId: string;
-  generation: number;
-};
 
 class AssignDeliveryMsg {
   constructor(
@@ -213,22 +177,6 @@ function bindCourierSession(courierId: string): BindCourierSessionReq {
   return new BindCourierSessionReq(courierId);
 }
 
-function actorRefForMessage(actor: ActorRef): DeliveryDispatchActorRef {
-  return {
-    nodeRid: String(actor.nodeRid),
-    actorId: actor.actorId,
-    generation: Number(actor.generation)
-  };
-}
-
-function actorRefFromMessage(actor: DeliveryDispatchActorRef): ActorRef {
-  return {
-    nodeRid: actor.nodeRid as unknown as RoutingId,
-    actorId: actor.actorId,
-    generation: BigInt(actor.generation)
-  };
-}
-
 function deliveryStatusChanged(
   deliveryId: string,
   customerId: string,
@@ -240,18 +188,6 @@ function deliveryStatusChanged(
 
 function ensureCourierActor(courierId: string): EnsureCourierActorReq {
   return new EnsureCourierActorReq(courierId);
-}
-
-function findCourierActor(courierId: string): FindCourierActorReq {
-  return new FindCourierActorReq(courierId);
-}
-
-function findCustomerActor(customerId: string): FindCustomerActorReq {
-  return new FindCustomerActorReq(customerId);
-}
-
-function ensureCustomerActor(customerId: string): EnsureCustomerActorReq {
-  return new EnsureCustomerActorReq(customerId);
 }
 
 function offerDelivery(
@@ -272,13 +208,10 @@ export {
   DeliveryStatusNotify,
   OfferDeliveryNotify,
   DeliveryStatusUpdatedMsg,
-  FindCustomerActorReq,
-  EnsureCustomerActorReq,
   SubscribeDeliveryReq,
   SubscribeDeliveryRes,
   BindCourierReq,
   BindCourierSessionReq,
-  FindCourierActorReq,
   EnsureCourierActorReq,
   AssignDeliveryMsg,
   OfferDeliveryMsg,
@@ -286,16 +219,11 @@ export {
   DeliveryStatusChangedReq,
   CourierDecisionMsg,
   PacketNames,
-  actorRefForMessage,
-  actorRefFromMessage,
   assignDelivery,
   bindCourier,
   bindCourierSession,
   deliveryStatusChanged,
   ensureCourierActor,
-  ensureCustomerActor,
-  findCourierActor,
-  findCustomerActor,
   offerDelivery,
   subscribeDelivery
 };
@@ -304,14 +232,9 @@ export type {
   BindCourierRes,
   BindCourierSessionRes,
   CreateDeliveryReq,
-  DeliveryDispatchActorRef,
-  EnsureCustomerActorRes,
-  FindCustomerActorRes,
   CreateDeliveryRes,
   DeliveryStatus,
   DeliveryStatusChangedRes,
-  EnsureCourierActorRes,
-  FindCourierActorRes,
   ServerAssertionReq,
   ServerAssertionRes
 };

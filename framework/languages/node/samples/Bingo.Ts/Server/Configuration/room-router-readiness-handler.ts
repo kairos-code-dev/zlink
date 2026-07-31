@@ -18,11 +18,9 @@ class RoomRouterReadinessHandler implements OnApplicationBootstrap, OnApplicatio
   }
 
   private async observeReadiness(): Promise<void> {
-    for await (const event of this.runtime.observe(SampleNames.roomSpotNode, 64, this.stop.signal)) {
-      if (event.identifier !== 'zlink.runtime.mesh_node.peer_changed') continue;
+    for await (const status of this.runtime.observe(SampleNames.roomSpotNode, 64, this.stop.signal)) {
       console.log(
-        `bingo-room-peer-state rid=${event.peerRid ?? '-'} generation=${event.lifecycleGeneration ?? 0n} `
-        + `reason=${event.reason ?? '-'}`
+        `bingo-room-status state=${status.state} readyPeers=${status.readyPeerCount}`
       );
     }
   }

@@ -77,6 +77,7 @@ declaration의 세부 차이는 `server/languages/<lang>/`의 exact spec이 소�
 | §12.54 | `.NET`, Java/Kotlin, Node.js E2E | 여러 fixture가 제거된 handler context, Spot handle resolver, 이전 builder와 rich Store 표면을 사용해 현재 framework source와 compile되지 않는다 |
 | §12.57 | Java/Kotlin | Global Actor ID request가 remote owner route를 resolve한 뒤에도 local-only dispatch에서 실패한다 |
 | §12.58 | Java/Kotlin, Node.js, C++ | `.NET`은 양쪽 모두 Object Client이고 RouteMesh Channel Server membership도 없는 pair의 connection만 생략하고 `NotConnected`와 `NotRequired`를 구분한다. Object Client와 Channel Server의 동시 등록, weight `0` Server capability, public Node direct 분류, connecting expected RID와 backend Object role 설정을 함께 검증해야 한다. 다른 runtime의 같은 동작이 남아 있다 |
+| §12.59 | 전 언어 | Byte 기반 Core HWM은 bindings까지 적용됐지만 Framework host 전체 Application HWM, Auto memory 계산, application receive 중단·재개, completion send permit과 public monitoring은 구현되지 않았다. Socket HWM exact type도 새 64-bit byte 계약으로 수렴해야 한다. |
 
 ## 10. Stream Connector wire·검증 계약 차이
 
@@ -1295,6 +1296,21 @@ Object Client pair의 Ready 연결과 weight `0` 대조군은 다시 실행해�
 Object Client를 Node-direct target으로 지정했을 때 Send·Request가 `NotFound`이고
 peer 수가 변하지 않음을 확인했다. Java/Kotlin, Node.js와 C++ runtime에는 같은 연결
 생략, manual terminal과 public 상태 투영을 구현해야 한다.
+
+### 12.59 Framework inbound dispatch backpressure 미구현
+
+[Framework API](06-framework-api.ko.md#21-수신-payload가-memory를-계속-늘리지-않게-한다)는 host 전체에서
+handler가 아직 끝나지 않은 application payload byte를 계산하고, HWM에 도달하면 새 application receive만
+중단하도록 요구한다. 이미 받은 job, 별도 Completion connection의 request reply·bounded Framework service
+control과 Core send-ready callback은 계속 처리해야 한다. 현재 Completion API는 request reply만 전달하므로
+liveness·admission·relocation·reply recovery command를 같은 physical connection에서 전달하는 Core·bindings
+capability가 남아 있다.
+
+Core와 네 bindings는 connection별 64-bit byte HWM과 Application·Completion connection pair를 제공한다.
+현재 다섯 Framework runtime에는 host 전체 byte accounting, Auto HWM 계산, receive pause·resume와
+completion send permit 연결이 없다. Configuration과 host status의 새 exact interface도 구현 source와
+package export에 아직 없다. `.NET` 기준 구현과 회귀 test를 먼저 완료하고, 나머지 언어는 같은
+accounting·ordering·startup error를 이식한다.
 
 ## 13. 샘플 계약 차이
 

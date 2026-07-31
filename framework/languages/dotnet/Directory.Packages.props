@@ -2,10 +2,10 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
-    <ZLinkBindingsPackageVersion Condition="'$(ZLinkBindingsPackageVersion)' == ''">11.0.0</ZLinkBindingsPackageVersion>
+    <ZLinkBindingsPackageVersion Condition="'$(ZLinkBindingsPackageVersion)' == ''">11.0.2</ZLinkBindingsPackageVersion>
     <!-- e2e/sample consumers pin the local http-client snapshot; bump deliberately after
          republishing (framework/doc/http-client/http-client-unification-plan.ko.md Phase 2). -->
-    <ZLinkHttpClientPackageVersion Condition="'$(ZLinkHttpClientPackageVersion)' == ''">0.5.1</ZLinkHttpClientPackageVersion>
+    <ZLinkHttpClientPackageVersion Condition="'$(ZLinkHttpClientPackageVersion)' == ''">0.5.2</ZLinkHttpClientPackageVersion>
   </PropertyGroup>
 
   <ItemGroup>

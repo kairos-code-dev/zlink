@@ -150,7 +150,8 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
                     targetActor,
                     timeout))
             .thenRun(() -> relocationTrace("bind-complete", targetActor))
-            .thenRun(() -> rebindNativeActor(targetActor));
+            .thenRun(() -> rebindNativeActor(targetActor))
+            .thenCompose(ignored -> notifyRemoteBoundSession());
     }
 
     private static void relocationTrace(

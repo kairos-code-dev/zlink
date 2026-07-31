@@ -10,7 +10,7 @@ test('SpotActorTransfer sends the first request immediately after spot creation'
     root,
     'e2e/SpotActorTransfer/Client/Support/scenario-support.ts'
   ), 'utf8');
-  const createSpot = client.match(/async function createSpot[\s\S]*?\n}/);
+  const createSpot = client.match(/export async function createSpot\([^]*?\n}/);
 
   assert.ok(createSpot, 'SpotActorTransfer createSpot helper is missing.');
   assert.doesNotMatch(createSpot[0], /delay\(|setTimeout|retry/i);

@@ -7,7 +7,6 @@ import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
-import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
@@ -37,20 +36,22 @@ class DispatchServerApplication {
                 )
                 .traceLabel("dispatch")
             options.addClientServerChannel(SampleNames.CourierChannel)
-                .enableClient()
+                .client()
             // The courier's decision comes back here as its own one-way message, so dispatch has
             // to be a channel server (common sample spec section 7.4).
+            val dispatchEndpoint = java.net.URI.create(SampleTopology.DispatchChannelEndpoint)
             options.addClientServerChannel(SampleNames.DispatchChannel)
-                .enableServer(SampleTopology.DispatchChannelEndpoint)
-                .setRoutingId(RoutingId.from("delivery-dispatch-channel"))
+                .server()
+                .setBindHost(dispatchEndpoint.host)
+                .setAdvertiseHost(dispatchEndpoint.host)
+                .listen(dispatchEndpoint.port)
                 .addHandlerGroup(SampleNames.DispatchChannel)
             options.addClientServerChannel(SampleNames.TrackingChannel)
-                .enableClient()
-                .setRoutingId(RoutingId.from("delivery-dispatch-tracking-client"))
+                .client()
             val courierRoutes = options.addRouteMesh(SampleNames.CourierSpotMesh)
             courierRoutes
                 .listen("inproc://deliverydispatch-dispatch-courier-client")
-                .useAllocatedRoutingId(16, "delivery-dispatch")
+                .setRoutingIdPrefix("delivery-dispatch")
         }
 
     @Bean

@@ -7,6 +7,7 @@ import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
+import systems.zlink.framework.spots.ZLinkSpotClosingContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
 import systems.zlink.framework.spots.ZLinkTimer
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleTimings
@@ -30,7 +31,7 @@ import systems.zlink.samples.kotlin.supportchat.shared.contracts.SendChatMessage
 import systems.zlink.samples.kotlin.supportchat.shared.contracts.SetTypingReq
 
 class ConversationSpot(
-    private val context: ZLinkSpotContext,
+    override val context: ZLinkSpotContext,
     private val notifications: ConversationNotificationPublisher,
     private val assignment: AgentAssignmentService,
     private val directory: SupportActorDirectory,
@@ -40,11 +41,9 @@ class ConversationSpot(
     private var conversation: Conversation? = null
     private var idleTimer: ZLinkTimer? = null
 
-    override fun context(): ZLinkSpotContext = context
-
     override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse {
         val create = request.decode(ConversationCreateReq::class.java)
-        val conversationId = context.spotRid().toString()
+        val conversationId = context.spotId()
         conversation = Conversation(
             conversationId = conversationId,
             subject = create.subject,
@@ -74,7 +73,7 @@ class ConversationSpot(
         ).await()
     }
 
-    override suspend fun onClosingSuspending() {
+    override suspend fun onClosingSuspending(context: ZLinkSpotClosingContext) {
         idleTimer?.cancel()?.await()
     }
 
@@ -86,12 +85,15 @@ class ConversationSpot(
         request.decode(JoinConversationReq::class.java)
         pendingJoins += actorId
         return ZLinkSpotActorJoinResponse.accept(
-            JoinConversationRes(ConversationContracts.toState(conversation.snapshot())),
+            JoinConversationRes(
+                scheduled = false,
+                state = ConversationContracts.toState(conversation.snapshot()),
+            ),
         )
     }
 
     override suspend fun onJoinedActorSuspending(actor: SupportUserActor) {
-        check(pendingJoins.remove(actor.actorId())) {
+        check(pendingJoins.remove(actor.actorId)) {
             "joined actor does not have a pending admission"
         }
         val conversation = requireConversation()
@@ -113,7 +115,7 @@ class ConversationSpot(
     }
 
     override suspend fun onLeaveActorSuspending(actor: SupportUserActor) {
-        pendingJoins.remove(actor.actorId())
+        pendingJoins.remove(actor.actorId)
         actors.remove(actor.participantId)
     }
 
@@ -130,7 +132,10 @@ class ConversationSpot(
             conversation.conversationId,
             actor.participantId,
         )
-        return JoinConversationRes(ConversationContracts.toState(conversation.snapshot()))
+        return JoinConversationRes(
+            scheduled = false,
+            state = ConversationContracts.toState(conversation.snapshot()),
+        )
     }
 
     suspend fun sendMessage(actor: SupportUserActor, request: SendChatMessageReq): SendChatMessageRes {

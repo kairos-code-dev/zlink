@@ -14,11 +14,11 @@ import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.testing.ZLinkLocationStoreTestAdapter;
-import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor;
-import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
+import systems.zlink.framework.runtime.internal.locations.ZLinkFanoutPublisherDescriptor;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationOwnerToken;
 import systems.zlink.framework.locations.ZLinkLocationPage;
-import systems.zlink.framework.locations.ZLinkLocationWriteResult;
-import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationWriteResult;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationWriteStatus;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendContext;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendDealerSocket;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendPublisherSocket;
@@ -112,7 +112,7 @@ final class ZLinkFanoutLocationRuntimeTest {
         public java.util.concurrent.CompletionStage<ZLinkLocationWriteResult>
             updateFanoutPublisher(
                 ZLinkFanoutPublisherDescriptor descriptor,
-                systems.zlink.framework.locations.ZLinkLocationWriteIntent
+                systems.zlink.framework.runtime.internal.locations.ZLinkLocationWriteIntent
                     intent) {
             return CompletableFuture.completedFuture(
                 ZLinkLocationWriteResult.stored(1, Instant.now()));
@@ -121,8 +121,7 @@ final class ZLinkFanoutLocationRuntimeTest {
         @Override
         public java.util.concurrent.CompletionStage<ZLinkLocationWriteStatus>
             removeFanoutPublisher(
-                systems.zlink.framework.locations
-                    .ZLinkFanoutPublisherDescriptorKey key,
+                systems.zlink.framework.runtime.internal.locations.ZLinkFanoutPublisherDescriptorKey key,
                 ZLinkLocationOwnerToken owner) {
             return CompletableFuture.completedFuture(
                 ZLinkLocationWriteStatus.STORED);

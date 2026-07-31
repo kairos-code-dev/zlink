@@ -12,41 +12,41 @@ import java.util.UUID;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.locations.ZLinkAggregateAbortResult;
-import systems.zlink.framework.locations.ZLinkAggregateCommitResult;
-import systems.zlink.framework.locations.ZLinkAggregateFence;
-import systems.zlink.framework.locations.ZLinkAggregatePrepareRequest;
-import systems.zlink.framework.locations.ZLinkAggregatePrepareResult;
-import systems.zlink.framework.locations.ZLinkAuthorityExpectation;
-import systems.zlink.framework.locations.ZLinkAuthorityExpectFound;
-import systems.zlink.framework.locations.ZLinkAuthorityGenerationTransition;
-import systems.zlink.framework.locations.ZLinkAuthorityMutation;
-import systems.zlink.framework.locations.ZLinkAuthorityPut;
-import systems.zlink.framework.locations.ZLinkAuthorityRestore;
-import systems.zlink.framework.locations.ZLinkAuthorityReadResult;
-import systems.zlink.framework.locations.ZLinkAuthorityScanCursor;
-import systems.zlink.framework.locations.ZLinkAuthorityScanResult;
-import systems.zlink.framework.locations.ZLinkAuthoritySnapshot;
-import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAggregateAbortResult;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAggregateCommitResult;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAggregateFence;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAggregatePrepareRequest;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAggregatePrepareResult;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityExpectation;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityExpectFound;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityGenerationTransition;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityMutation;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityPut;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityRestore;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityReadResult;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityScanCursor;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityScanResult;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthoritySnapshot;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
 import systems.zlink.framework.testing.ZLinkLocationStoreTestAdapter;
-import systems.zlink.framework.locations.ZLinkAuthorityStored;
-import systems.zlink.framework.locations.ZLinkAuthorityWriteResult;
-import systems.zlink.framework.locations.ZLinkObjectAbortResult;
-import systems.zlink.framework.locations.ZLinkObjectCommitResult;
-import systems.zlink.framework.locations.ZLinkObjectReservation;
-import systems.zlink.framework.locations.ZLinkObjectReservationRequest;
-import systems.zlink.framework.locations.ZLinkObjectReserveResult;
-import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
-import systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityStored;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityWriteResult;
+import systems.zlink.framework.runtime.internal.locations.ZLinkObjectAbortResult;
+import systems.zlink.framework.runtime.internal.locations.ZLinkObjectCommitResult;
+import systems.zlink.framework.runtime.internal.locations.ZLinkObjectReservation;
+import systems.zlink.framework.runtime.internal.locations.ZLinkObjectReservationRequest;
+import systems.zlink.framework.runtime.internal.locations.ZLinkObjectReserveResult;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationOwnerToken;
+import systems.zlink.framework.runtime.internal.locations.ZLinkMeshNodeDescriptorKey;
 import systems.zlink.framework.locations.ZLinkPlacementObjectKind;
-import systems.zlink.framework.locations.ZLinkPlacementAllocation;
-import systems.zlink.framework.locations.ZLinkPlacementAllocationState;
-import systems.zlink.framework.locations.ZLinkPlacementCapacityBundle;
-import systems.zlink.framework.locations.ZLinkRelocationCapacityAbortResult;
-import systems.zlink.framework.locations.ZLinkRelocationCapacityFence;
-import systems.zlink.framework.locations.ZLinkRelocationCapacityReservationRequest;
-import systems.zlink.framework.locations.ZLinkRelocationCapacityReserveResult;
-import systems.zlink.framework.locations.ZLinkStoreCancellation;
+import systems.zlink.framework.runtime.internal.locations.ZLinkPlacementAllocation;
+import systems.zlink.framework.runtime.internal.locations.ZLinkPlacementAllocationState;
+import systems.zlink.framework.runtime.internal.locations.ZLinkPlacementCapacityBundle;
+import systems.zlink.framework.runtime.internal.locations.ZLinkRelocationCapacityAbortResult;
+import systems.zlink.framework.runtime.internal.locations.ZLinkRelocationCapacityFence;
+import systems.zlink.framework.runtime.internal.locations.ZLinkRelocationCapacityReservationRequest;
+import systems.zlink.framework.runtime.internal.locations.ZLinkRelocationCapacityReserveResult;
+import systems.zlink.framework.runtime.internal.locations.ZLinkStoreCancellation;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 
 final class ZLinkAuthorityContractTest {
@@ -54,13 +54,13 @@ final class ZLinkAuthorityContractTest {
     void exactAuthorityStoreMethodsArePublic() throws Exception {
         assertEquals(
             CompletionStage.class,
-            ZLinkLocationStore.class.getMethod(
+            ZLinkLocationRepository.class.getMethod(
                 "read",
                 String.class,
                 ZLinkStoreCancellation.class).getReturnType());
         assertEquals(
             CompletionStage.class,
-            ZLinkLocationStore.class.getMethod(
+            ZLinkLocationRepository.class.getMethod(
                 "compareExchange",
                 String.class,
                 ZLinkAuthorityExpectation.class,
@@ -68,7 +68,7 @@ final class ZLinkAuthorityContractTest {
                 ZLinkStoreCancellation.class).getReturnType());
         assertEquals(
             CompletionStage.class,
-            ZLinkLocationStore.class.getMethod(
+            ZLinkLocationRepository.class.getMethod(
                 "list",
                 String.class,
                 Optional.class,
@@ -76,25 +76,25 @@ final class ZLinkAuthorityContractTest {
                 ZLinkStoreCancellation.class).getReturnType());
         assertEquals(
             CompletionStage.class,
-            ZLinkLocationStore.class.getMethod(
+            ZLinkLocationRepository.class.getMethod(
                 "prepareAggregate",
                 ZLinkAggregatePrepareRequest.class,
                 ZLinkStoreCancellation.class).getReturnType());
         assertEquals(
             CompletionStage.class,
-            ZLinkLocationStore.class.getMethod(
+            ZLinkLocationRepository.class.getMethod(
                 "reserveRelocationCapacity",
                 ZLinkRelocationCapacityReservationRequest.class,
                 ZLinkStoreCancellation.class).getReturnType());
         assertEquals(
             CompletionStage.class,
-            ZLinkLocationStore.class.getMethod(
+            ZLinkLocationRepository.class.getMethod(
                 "abortRelocationCapacity",
                 ZLinkRelocationCapacityFence.class,
                 ZLinkStoreCancellation.class).getReturnType());
         assertEquals(
             CompletionStage.class,
-            ZLinkLocationStore.class.getMethod(
+            ZLinkLocationRepository.class.getMethod(
                 "getMeshNodeChangeStamp",
                 String.class).getReturnType());
     }
@@ -133,7 +133,7 @@ final class ZLinkAuthorityContractTest {
             Set.of(
                 ZLinkAuthorityPut.class,
                 ZLinkAuthorityRestore.class,
-                systems.zlink.framework.locations.ZLinkAuthorityDelete.class),
+                systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityDelete.class),
             Set.of(ZLinkAuthorityMutation.class.getPermittedSubclasses()));
     }
 
@@ -215,8 +215,7 @@ final class ZLinkAuthorityContractTest {
             Instant.EPOCH);
         ZLinkAuthorityPut put = new ZLinkAuthorityPut(
             payload,
-            systems.zlink.framework.locations
-                .ZLinkAuthorityGenerationTransition.PRESERVE,
+            systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityGenerationTransition.PRESERVE,
             Optional.empty(),
             Optional.empty());
         ZLinkAuthorityStored stored = new ZLinkAuthorityStored(
@@ -239,7 +238,7 @@ final class ZLinkAuthorityContractTest {
 
     @Test
     void registeredLocationCapabilityExposesTheSameAuthorityProvider() {
-        ZLinkLocationStore authority = new ContractAuthorityStore();
+        ZLinkLocationRepository authority = new ContractAuthorityStore();
         ZLinkRegisteredLocationStores stores =
             ZLinkRegisteredLocationStores.fromUnified(authority);
         ZLinkHandlerActivator.MutableServices services =
@@ -247,7 +246,7 @@ final class ZLinkAuthorityContractTest {
 
         stores.addTo(services);
 
-        assertSame(authority, services.create(ZLinkLocationStore.class));
+        assertSame(authority, services.create(ZLinkLocationRepository.class));
     }
 
     private static final class ContractAuthorityStore
@@ -296,15 +295,15 @@ final class ZLinkAuthorityContractTest {
         public CompletionStage<ZLinkObjectCommitResult> commit(
             ZLinkObjectReservation reservation,
             byte[] readyPayload,
-            systems.zlink.framework.locations.ZLinkCreationOperationTerminal terminal,
+            systems.zlink.framework.runtime.internal.locations.ZLinkCreationOperationTerminal terminal,
             ZLinkStoreCancellation cancellation) {
             throw new AssertionError();
         }
 
         @Override
-        public CompletionStage<systems.zlink.framework.locations.ZLinkObjectRejectResult> reject(
+        public CompletionStage<systems.zlink.framework.runtime.internal.locations.ZLinkObjectRejectResult> reject(
             ZLinkObjectReservation reservation,
-            systems.zlink.framework.locations.ZLinkCreationOperationTerminal terminal,
+            systems.zlink.framework.runtime.internal.locations.ZLinkCreationOperationTerminal terminal,
             ZLinkStoreCancellation cancellation) {
             throw new AssertionError();
         }
@@ -319,15 +318,15 @@ final class ZLinkAuthorityContractTest {
         @Override
         public CompletionStage<ZLinkObjectAbortResult> abort(
             ZLinkObjectReservation reservation,
-            systems.zlink.framework.locations.ZLinkCreationOperationTerminal terminal,
+            systems.zlink.framework.runtime.internal.locations.ZLinkCreationOperationTerminal terminal,
             ZLinkStoreCancellation cancellation) {
             throw new AssertionError();
         }
 
         @Override
-        public CompletionStage<systems.zlink.framework.locations.ZLinkCreationTerminalReadResult>
+        public CompletionStage<systems.zlink.framework.runtime.internal.locations.ZLinkCreationTerminalReadResult>
             readCreationTerminal(
-                systems.zlink.framework.locations.ZLinkCreationOperationIdentity operation,
+                systems.zlink.framework.runtime.internal.locations.ZLinkCreationOperationIdentity operation,
                 ZLinkStoreCancellation cancellation) {
             throw new AssertionError();
         }

@@ -1,10 +1,5 @@
 package systems.zlink.samples.shoppingmall.client;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -13,6 +8,7 @@ import systems.zlink.samples.shoppingmall.client.configuration.SampleTimings;
 import systems.zlink.samples.shoppingmall.client.configuration.SampleTopology;
 import systems.zlink.samples.shoppingmall.server.configuration.SampleNames;
 import systems.zlink.samples.shoppingmall.shared.contracts.Messages;
+import systems.zlink.httpclient.ZLinkHttpClient;
 
 public final class Program {
     private Program() {
@@ -24,8 +20,6 @@ public final class Program {
     }
 
     private static final class ShoppingMallClientScenario {
-        private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
-        private final HttpClient http = HttpClient.newHttpClient();
         private final SampleTopology topology;
 
         ShoppingMallClientScenario(SampleTopology topology) {
@@ -189,40 +183,28 @@ public final class Program {
         }
 
         private boolean postRaw(String base, String path) throws Exception {
-            HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(base + path))
-                .POST(HttpRequest.BodyPublishers.ofString(""))
-                .build();
-            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-            return response.statusCode() >= 200 && response.statusCode() < 300;
+            var response = ZLinkHttpClient.create(base)
+                .post(path)
+                .submitRaw()
+                .toCompletableFuture()
+                .join();
+            return response.status() >= 200 && response.status() < 300;
         }
 
         private <T> T get(String base, String path, Class<T> type) throws Exception {
-            HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(base + path))
-                .GET()
-                .build();
-            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-            return read(path, response, type);
+            return ZLinkHttpClient.create(base)
+                .get(path)
+                .fetch(type)
+                .toCompletableFuture()
+                .join();
         }
 
         private <T> T post(String base, String path, Object body, Class<T> type) throws Exception {
-            String content = body instanceof String value ? value : json.writeValueAsString(body);
-            HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(base + path))
-                .header("content-type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(content))
-                .build();
-            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-            return read(path, response, type);
-        }
-
-        private <T> T read(String path, HttpResponse<String> response, Class<T> type) throws Exception {
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException("HTTP " + response.statusCode() + " for " + path + ": "
-                    + response.body());
+            var request = ZLinkHttpClient.create(base).post(path);
+            if (!(body instanceof String value) || !value.isEmpty()) {
+                request.body(body);
             }
-            return json.readValue(response.body(), type);
+            return request.fetch(type).toCompletableFuture().join();
         }
 
         private static void ensure(boolean condition) {

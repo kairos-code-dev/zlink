@@ -274,42 +274,36 @@ class counting_relocation_store_t final : public fw::relocation_store_t
     {
     }
 
-    fw::task_t<fw::relocation_stored_t> put_relocation (
-      std::vector<std::byte> payload,
-      std::chrono::hours retention,
-      std::stop_token cancellation = {}) override
+    fw::task_t<fw::blob_put_result_t> put (
+      fw::blob_reference_t reference,
+      std::span<const std::byte> payload,
+      std::chrono::milliseconds retention) override
     {
         _activity.record_write ();
-        return _inner->put_relocation (
-          std::move (payload), retention, cancellation);
+        return _inner->put (
+          std::move (reference), payload, retention);
     }
 
-    fw::task_t<fw::relocation_read_result_t> get_relocation (
-      std::string reference,
-      std::stop_token cancellation = {}) override
+    fw::task_t<fw::blob_read_result_t> read (
+      fw::blob_reference_t reference) override
     {
         _activity.record_read ();
-        return _inner->get_relocation (
-          std::move (reference), cancellation);
+        return _inner->read (std::move (reference));
     }
 
-    fw::task_t<fw::relocation_renew_result_t> renew_relocation (
-      std::string reference,
-      std::chrono::hours retention,
-      std::stop_token cancellation = {}) override
+    fw::task_t<fw::blob_renew_result_t> renew (
+      fw::blob_reference_t reference,
+      std::chrono::milliseconds retention) override
     {
         _activity.record_write ();
-        return _inner->renew_relocation (
-          std::move (reference), retention, cancellation);
+        return _inner->renew (std::move (reference), retention);
     }
 
-    fw::task_t<fw::relocation_delete_result_t> delete_relocation (
-      std::string reference,
-      std::stop_token cancellation = {}) override
+    fw::task_t<void> erase (
+      fw::blob_reference_t reference) override
     {
         _activity.record_write ();
-        return _inner->delete_relocation (
-          std::move (reference), cancellation);
+        return _inner->erase (std::move (reference));
     }
 
   private:
@@ -1382,14 +1376,14 @@ int run_host_impl (transfer_host_role_t host_role, int argc, char **argv)
 
         framework.set_message_follow_duration (std::chrono::seconds (5));
         framework.add_location_store (
-          std::make_shared<fw::locations::redis::redis_location_store_t> (
-            fw::locations::redis::redis_location_options_t{.connection_string = redis_endpoint,
+          std::make_shared<fw::redis::redis_location_store_t> (
+            fw::redis::redis_location_options_t{.connection_string = redis_endpoint,
                                                            .key_prefix = key_prefix}));
         framework.add_relocation_store (
           std::make_shared<counting_relocation_store_t> (
             std::make_shared<
-              fw::locations::redis::redis_relocation_store_t> (
-              fw::locations::redis::redis_relocation_options_t{
+              fw::redis::redis_relocation_store_t> (
+              fw::redis::redis_relocation_options_t{
                 .connection_string = redis_endpoint,
                 .key_prefix = key_prefix + ":relocation"}),
             *relocation_activity_ptr));

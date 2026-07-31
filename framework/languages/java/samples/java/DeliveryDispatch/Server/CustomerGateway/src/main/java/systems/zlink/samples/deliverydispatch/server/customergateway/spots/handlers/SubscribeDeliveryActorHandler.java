@@ -1,7 +1,7 @@
 package systems.zlink.samples.deliverydispatch.server.customergateway.spots.handlers;
 
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.samples.deliverydispatch.server.customergateway.CustomerActor;
 import systems.zlink.samples.deliverydispatch.server.customergateway.spots.CustomerEntrySpot;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
@@ -18,7 +18,7 @@ public final class SubscribeDeliveryActorHandler
     public CompletionStage<Messages.SubscribeDeliveryRes> handle(
         CustomerEntrySpot entrySpot,
         CustomerActor actor,
-        ZLinkSpotActorRequestContext context,
+        ZLinkMessageContext context,
         Messages.SubscribeDeliveryReq request) {
         return CompletableFuture.completedFuture(entrySpot.subscribe(actor, request));
     }

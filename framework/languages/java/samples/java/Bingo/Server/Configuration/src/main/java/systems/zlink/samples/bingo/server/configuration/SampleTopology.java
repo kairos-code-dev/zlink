@@ -6,10 +6,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record SampleTopology(
     String apiAChannelEndpoint,
     String apiBChannelEndpoint,
+    String apiAMeshEndpoint,
+    String apiBMeshEndpoint,
     String sessionARouterEndpoint,
     String sessionBRouterEndpoint,
     String playASpotRouterEndpoint,
     String playBSpotRouterEndpoint,
+    String apiMatchmakingRouterEndpoint,
+    String matchmakingRouterEndpoint,
     String sessionAStreamEndpoint,
     String sessionBStreamEndpoint,
     String redisEndpoint,
@@ -22,10 +26,16 @@ public record SampleTopology(
     public SampleTopology {
         apiAChannelEndpoint = value(apiAChannelEndpoint, "tcp://127.0.0.1:47103");
         apiBChannelEndpoint = value(apiBChannelEndpoint, "tcp://127.0.0.1:47117");
+        apiAMeshEndpoint = value(apiAMeshEndpoint, "tcp://127.0.0.1:47104");
+        apiBMeshEndpoint = value(apiBMeshEndpoint, "tcp://127.0.0.1:47118");
         sessionARouterEndpoint = value(sessionARouterEndpoint, "tcp://127.0.0.1:47106");
         sessionBRouterEndpoint = value(sessionBRouterEndpoint, "tcp://127.0.0.1:47120");
         playASpotRouterEndpoint = value(playASpotRouterEndpoint, "tcp://127.0.0.1:47111");
         playBSpotRouterEndpoint = value(playBSpotRouterEndpoint, "tcp://127.0.0.1:47122");
+        apiMatchmakingRouterEndpoint = value(
+            apiMatchmakingRouterEndpoint, "tcp://127.0.0.1:47127");
+        matchmakingRouterEndpoint = value(
+            matchmakingRouterEndpoint, "tcp://127.0.0.1:47128");
         sessionAStreamEndpoint = value(sessionAStreamEndpoint, "tcp://127.0.0.1:47114");
         sessionBStreamEndpoint = value(sessionBStreamEndpoint, "tcp://127.0.0.1:47125");
         redisEndpoint = required(redisEndpoint, "redisEndpoint");
@@ -38,6 +48,10 @@ public record SampleTopology(
 
     public String selectedApiChannelEndpoint() {
         return "b".equals(apiNode) ? apiBChannelEndpoint : apiAChannelEndpoint;
+    }
+
+    public String selectedApiMeshEndpoint() {
+        return "b".equals(apiNode) ? apiBMeshEndpoint : apiAMeshEndpoint;
     }
 
     public String selectedPlaySpotRouterEndpoint() {

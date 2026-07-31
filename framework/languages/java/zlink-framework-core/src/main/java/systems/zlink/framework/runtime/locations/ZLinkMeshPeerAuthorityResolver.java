@@ -9,8 +9,8 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.locations.ZLinkLocationStore;
-import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
+import systems.zlink.framework.runtime.internal.locations.ZLinkMeshNodeDescriptor;
 import systems.zlink.framework.locations.ZLinkPageRequest;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 
@@ -19,7 +19,7 @@ public final class ZLinkMeshPeerAuthorityResolver
     implements ZLinkInternalMeshNode.PeerAuthorityResolver {
     private static final int PAGE_SIZE = 128;
 
-    private final ZLinkLocationStore store;
+    private final ZLinkLocationRepository store;
     private final ZLinkOwnerLeaseTracker leases;
     private final long cacheNanos;
     private final LongSupplier nanoTime;
@@ -27,13 +27,13 @@ public final class ZLinkMeshPeerAuthorityResolver
         new ConcurrentHashMap<>();
 
     public ZLinkMeshPeerAuthorityResolver(
-        ZLinkLocationStore store,
+        ZLinkLocationRepository store,
         Duration pollingInterval) {
         this(store, pollingInterval, System::nanoTime);
     }
 
     ZLinkMeshPeerAuthorityResolver(
-        ZLinkLocationStore store,
+        ZLinkLocationRepository store,
         Duration pollingInterval,
         LongSupplier nanoTime) {
         this.store = Objects.requireNonNull(store, "store");

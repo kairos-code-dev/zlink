@@ -120,8 +120,8 @@ public sealed class RouteCodecTests
         ZLinkChannelBundleFactory.ApplySocketConfig(socket, config);
 
         Assert.Equal(4096, socket.MaxMessageSize);
-        Assert.Equal(12, socket.SendHighWaterMark);
-        Assert.Equal(34, socket.ReceiveHighWaterMark);
+        Assert.Equal(12UL, socket.SendHighWaterMark);
+        Assert.Equal(34UL, socket.ReceiveHighWaterMark);
     }
 
     [Fact]
@@ -346,9 +346,9 @@ public sealed class RouteCodecTests
     {
         public long MaxMessageSize { get; private set; }
 
-        public int SendHighWaterMark { get; private set; }
+        public ulong SendHighWaterMark { get; private set; }
 
-        public int ReceiveHighWaterMark { get; private set; }
+        public ulong ReceiveHighWaterMark { get; private set; }
 
         public void ApplySocketConfig(IZLinkSocketConfig config)
         {
@@ -377,12 +377,12 @@ public sealed class RouteCodecTests
             MaxMessageSize = value;
         }
 
-        public void SetSendHighWaterMark(int value)
+        public void SetSendHighWaterMark(ulong value)
         {
             SendHighWaterMark = value;
         }
 
-        public void SetReceiveHighWaterMark(int value)
+        public void SetReceiveHighWaterMark(ulong value)
         {
             ReceiveHighWaterMark = value;
         }
@@ -407,9 +407,9 @@ public sealed class RouteCodecTests
 
         public void SetMaxMessageSize(long value) => throw new NotSupportedException();
 
-        public void SetSendHighWaterMark(int value) => throw new NotSupportedException();
+        public void SetSendHighWaterMark(ulong value) => throw new NotSupportedException();
 
-        public void SetReceiveHighWaterMark(int value) => throw new NotSupportedException();
+        public void SetReceiveHighWaterMark(ulong value) => throw new NotSupportedException();
 
         public void Connect(string endpoint) => throw new NotSupportedException();
 
@@ -526,12 +526,12 @@ public sealed class RouteCodecTests
             _ = handler;
         }
 
-        public void SetSendHighWaterMark(int value)
+        public void SetSendHighWaterMark(ulong value)
         {
             throw new NotSupportedException();
         }
 
-        public void SetReceiveHighWaterMark(int value)
+        public void SetReceiveHighWaterMark(ulong value)
         {
             throw new NotSupportedException();
         }

@@ -18,7 +18,7 @@ inline void run_ta_a2_scenario (zlink::http_client::client_t &actor,
     assert_call (caller, "TA-A2-unbound-send", "ta-a2", "a2-send", "sent", true);
     assert_call (caller, "TA-A2-unbound-request", "ta-a2", "a2-request", "reply:a2-request", false);
 
-    const auto evidence = actor.get ("/evidence").async<std::vector<e2e::actor_evidence_t>> ().result ().value ().body;
+    const auto evidence = actor.get ("/evidence").submit<std::vector<e2e::actor_evidence_t>> ().result ().value ().body;
     require_evidence (evidence, "TA-A2-unbound-send", "send");
     require_evidence (evidence, "TA-A2-unbound-request", "request");
     require (count_session_evidence (session_evidence (session_a), "ta-a2", "bind") == before_a

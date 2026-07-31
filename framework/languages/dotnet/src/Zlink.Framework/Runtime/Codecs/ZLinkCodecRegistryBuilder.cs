@@ -27,6 +27,8 @@ internal sealed class ZLinkCodecRegistryBuilder :
     {
         ArgumentNullException.ThrowIfNull(extension);
         extension.Register(this);
+        if (extension is IZlinkStreamCodecRegistration streamCodec)
+            RegisterStreamCodec(streamCodec.ContentType, streamCodec.Codec);
     }
 
     public void AddSerializer(string contentType, IZLinkMessageSerializer serializer)
@@ -42,7 +44,7 @@ internal sealed class ZLinkCodecRegistryBuilder :
         AddSerializer(contentType, serializer, canSerialize, false);
     }
 
-    public void AddStreamCodec(
+    internal void RegisterStreamCodec(
         string contentType,
         ZlinkStreamCodec codec)
     {

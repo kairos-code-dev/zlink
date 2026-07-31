@@ -94,6 +94,41 @@ internal sealed class EntryWorkloadRequestHandler(EvidenceStore evidence)
     }
 }
 
+internal sealed class EntryRelocationQueueBlockHandler(
+    EvidenceStore evidence,
+    TransferGateStore gates)
+    : IZLinkEntrySpotActorRequestHandler<
+        TransferEntrySpot,
+        TransferActor,
+        RelocationQueueBlockReq,
+        RelocationQueueBlockRes>
+{
+    public async ValueTask<RelocationQueueBlockRes> HandleAsync(
+        TransferEntrySpot spot,
+        TransferActor actor,
+        IZLinkMessageContext context,
+        RelocationQueueBlockReq request,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        evidence.Add(
+            request.Scenario,
+            actor.ActorId,
+            "queue_block_started",
+            spot.Context.NodeRid.ToString());
+        await gates.WaitAsync(request.TargetId, cancellationToken)
+            .ConfigureAwait(false);
+        evidence.Add(
+            request.Scenario,
+            actor.ActorId,
+            "queue_block_released",
+            spot.Context.NodeRid.ToString());
+        return new RelocationQueueBlockRes(
+            actor.ActorId,
+            spot.Context.NodeRid.ToString());
+    }
+}
+
 internal sealed class EntryWorkloadSendHandler(EvidenceStore evidence)
     : IZLinkEntrySpotActorSendHandler<
         TransferEntrySpot,
@@ -325,6 +360,37 @@ internal sealed class PayloadUserSpotWorkloadRequestHandler(EvidenceStore eviden
     }
 }
 
+internal sealed class PayloadUserSpotRelocationQueueBlockHandler(
+    EvidenceStore evidence,
+    TransferGateStore gates)
+    : IZLinkSpotRequestHandler<
+        RelocationPayloadUserSpot,
+        RelocationQueueBlockReq,
+        RelocationQueueBlockRes>
+{
+    public async ValueTask<RelocationQueueBlockRes> HandleAsync(
+        RelocationPayloadUserSpot spot,
+        RelocationQueueBlockReq request,
+        CancellationToken cancellationToken)
+    {
+        evidence.Add(
+            request.Scenario,
+            spot.Context.SpotId,
+            "queue_block_started",
+            spot.Context.NodeRid.ToString());
+        await gates.WaitAsync(request.TargetId, cancellationToken)
+            .ConfigureAwait(false);
+        evidence.Add(
+            request.Scenario,
+            spot.Context.SpotId,
+            "queue_block_released",
+            spot.Context.NodeRid.ToString());
+        return new RelocationQueueBlockRes(
+            spot.Context.SpotId,
+            spot.Context.NodeRid.ToString());
+    }
+}
+
 internal sealed class PayloadUserSpotWorkloadSendHandler(EvidenceStore evidence)
     : SpotWorkloadHandler(evidence),
         IZLinkSpotPacketHandler<
@@ -441,5 +507,55 @@ internal sealed class PayloadInstanceSpotWorkloadSendHandler(EvidenceStore evide
             Evidence,
             observedOperationId: null);
         return ValueTask.CompletedTask;
+    }
+}
+
+internal sealed class RelocationReadyUserSpotWorkloadRequestHandler(
+    EvidenceStore evidence)
+    : SpotWorkloadHandler(evidence),
+        IZLinkSpotRequestHandler<
+            RelocationReadyUserSpot,
+            RelocationWorkloadRequest,
+            RelocationWorkloadReply>
+{
+    public ValueTask<RelocationWorkloadReply> HandleAsync(
+        RelocationReadyUserSpot spot,
+        RelocationWorkloadRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(RelocationWorkloadHandlers.Reply(
+            spot.Context.SpotId,
+            spot.Context.NodeRid.ToString(),
+            spot.Context.ObjectGeneration,
+            request,
+            Evidence,
+            observedOperationId: null,
+            correlationId: null));
+    }
+}
+
+internal sealed class RelocationReadyDefaultUserSpotWorkloadRequestHandler(
+    EvidenceStore evidence)
+    : SpotWorkloadHandler(evidence),
+        IZLinkSpotRequestHandler<
+            RelocationReadyDefaultUserSpot,
+            RelocationWorkloadRequest,
+            RelocationWorkloadReply>
+{
+    public ValueTask<RelocationWorkloadReply> HandleAsync(
+        RelocationReadyDefaultUserSpot spot,
+        RelocationWorkloadRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(RelocationWorkloadHandlers.Reply(
+            spot.Context.SpotId,
+            spot.Context.NodeRid.ToString(),
+            spot.Context.ObjectGeneration,
+            request,
+            Evidence,
+            observedOperationId: null,
+            correlationId: null));
     }
 }

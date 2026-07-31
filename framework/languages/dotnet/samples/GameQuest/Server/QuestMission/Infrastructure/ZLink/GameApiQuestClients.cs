@@ -4,7 +4,7 @@ using GameQuest.QuestMission.Infrastructure.Store;
 using GameQuest.Server.Configuration;
 using GameQuest.Shared;
 using System.Net.Http.Json;
-using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Errors;
 
 namespace GameQuest.QuestMission.Infrastructure.ZLink;
@@ -30,7 +30,7 @@ internal sealed class HttpGameApiSnapshotClient(GameQuestTopology topology) : IG
     private sealed record GameplaySnapshotResponse(string PlayerId, int KillCount, long SnapshotVersion);
 }
 
-internal sealed class ZLinkQuestProgressNotifier(IZLinkRouteClient channels) : IQuestProgressNotifier
+internal sealed class ZLinkQuestProgressNotifier(IZLinkActorClient actors) : IQuestProgressNotifier
 {
     public async ValueTask<QuestProgressNotifyResult> NotifyAsync(
         string playerId,
@@ -42,15 +42,13 @@ internal sealed class ZLinkQuestProgressNotifier(IZLinkRouteClient channels) : I
         {
             var contracts = projection.Select(QuestContractMapper.ToContract).ToArray();
             foreach (var progress in contracts)
-                await channels.SendToChannel(SampleNames.GameApiChannel,
-                        new QuestProgressNotify(playerId, progress))
+                await actors.SendToActor(playerId, new QuestProgressNotify(playerId, progress))
                     .Async(cancellationToken);
 
             if (!string.IsNullOrWhiteSpace(completedQuestId))
             {
                 var completed = contracts.First(progress => progress.QuestId == completedQuestId);
-                await channels.SendToChannel(SampleNames.GameApiChannel,
-                        new QuestCompletedNotify(playerId, completed, true))
+                await actors.SendToActor(playerId, new QuestCompletedNotify(playerId, completed, true))
                     .Async(cancellationToken);
             }
 

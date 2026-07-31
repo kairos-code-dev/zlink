@@ -1,3 +1,4 @@
+// Verifies Actor Manager create, get-or-create, find, and destroy lifecycle behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;

@@ -139,6 +139,7 @@ find_package(zlink_stream_connector_cpp CONFIG REQUIRED)
 
 add_executable(consumer main.cpp)
 target_link_libraries(consumer PRIVATE
+  zlink::framework_provider_abstractions
   zlink::framework
   zlink::framework_locations_redis
   zlink::http_client
@@ -177,13 +178,17 @@ main ()
   auto app = zlink::framework::app_t::create ();
   (void) app;
   auto redis_options =
-    zlink::framework::locations::redis::redis_location_options_t{};
+    zlink::framework::redis::redis_location_options_t{
+      .connection_string = "tcp://127.0.0.1:6379",
+      .key_prefix = "zlink:package-test:location"};
   auto relocation_options =
-    zlink::framework::locations::redis::redis_relocation_options_t{};
+    zlink::framework::redis::redis_relocation_options_t{
+      .connection_string = "tcp://127.0.0.1:6379",
+      .key_prefix = "zlink:package-test:relocation"};
   auto location_store =
-    zlink::framework::locations::redis::redis_location_store_t(redis_options);
+    zlink::framework::redis::redis_location_store_t(redis_options);
   auto relocation_store =
-    zlink::framework::locations::redis::redis_relocation_store_t(relocation_options);
+    zlink::framework::redis::redis_relocation_store_t(relocation_options);
   (void) location_store;
   (void) relocation_store;
   auto client = zlink::http_client::client_t::create ()

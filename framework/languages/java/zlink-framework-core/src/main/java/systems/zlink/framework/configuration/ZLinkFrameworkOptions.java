@@ -4,8 +4,8 @@ import java.time.Duration;
 import java.util.concurrent.Executor;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
-import systems.zlink.framework.locations.ZLinkLocationStore;
-import systems.zlink.framework.locations.ZLinkRelocationStore;
+import systems.zlink.framework.locationprovider.ZLinkLocationStore;
+import systems.zlink.framework.locationprovider.ZLinkRelocationStore;
 
 public interface ZLinkFrameworkOptions {
     Duration defaultRequestTimeout();

@@ -574,8 +574,7 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
                 Socket.OnSendReady,
                 requestTimeout,
                 stopToken,
-                ZLinkAsyncSubmitter.ResolvePendingCapacity(
-                    socketConfig.SendHighWaterMark));
+                ZLinkAsyncSubmitter.ResolvePendingCapacity());
             _monitor = monitoring.OpenSocketMonitor(Socket);
             _monitor.OnEvent(OnMonitorEvent);
         }

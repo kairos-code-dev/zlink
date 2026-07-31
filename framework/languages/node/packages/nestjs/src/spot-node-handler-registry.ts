@@ -13,6 +13,7 @@ import type {
   ZLinkSpotTimerHandlerRegistration
 } from './framework-integration-contracts';
 import type { Mutable } from './contracts';
+import type { Type, ZLinkInstanceSpot, ZLinkSpot } from '@zlink-systems/framework';
 import { framework } from './framework-loader';
 
 type MutableSpotNode = Mutable<ZLinkSpotNodeOptions>;
@@ -57,11 +58,12 @@ export class SpotNodeHandlerRegistry {
   }
 
   spotTargets(
-    spotType: NonNullable<ZLinkSpotNodeOptions['spotFactories']>[number],
+    spotType: Type<ZLinkSpot | ZLinkInstanceSpot>,
     missingMessage: string
   ): readonly MutableSpotNode[] {
     return this.requireTargets(
-      (node) => (node.spotFactories ?? []).includes(spotType),
+      (node) => (node.spotFactories ?? []).includes(spotType as Type<ZLinkSpot>)
+        || Object.values(node.instanceSpotFactories ?? {}).includes(spotType as Type<ZLinkInstanceSpot>),
       missingMessage
     );
   }

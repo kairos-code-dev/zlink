@@ -846,7 +846,12 @@ test('stream session cleanup removes actor bindings without closing the stream a
       return {
         context,
         async onConnected(ctx) {
-          await ctx.actors.bind({ nodeRid: 'node-a', actorId: 'actor-a', generation: 1 });
+          await ctx.actors.bind({
+            nodeRid: 'node-a',
+            actorId: 'actor-a',
+            objectGeneration: 1n,
+            meshName: 'session-test'
+          });
         },
         async onDisconnected() {}
       };
@@ -914,8 +919,18 @@ test('physical stream disconnect automatically notifies every captured actor and
       return {
         context,
         async onConnected(ctx) {
-          await ctx.actors.bind({ nodeRid: 'node-a', actorId: 'actor-a', generation: 1 });
-          await ctx.actors.bind({ nodeRid: 'node-b', actorId: 'actor-b', generation: 1 });
+          await ctx.actors.bind({
+            nodeRid: 'node-a',
+            actorId: 'actor-a',
+            objectGeneration: 1n,
+            meshName: 'session-test'
+          });
+          await ctx.actors.bind({
+            nodeRid: 'node-b',
+            actorId: 'actor-b',
+            objectGeneration: 1n,
+            meshName: 'session-test'
+          });
         },
         async onDisconnected() {}
       };
@@ -946,7 +961,12 @@ test('physical stream disconnect bounds a stalled actor callback by the lifecycl
       return {
         context,
         async onConnected(ctx) {
-          await ctx.actors.bind({ nodeRid: 'node-a', actorId: 'actor-stalled', generation: 1 });
+          await ctx.actors.bind({
+            nodeRid: 'node-a',
+            actorId: 'actor-stalled',
+            objectGeneration: 1n,
+            meshName: 'session-test'
+          });
         },
         async onDisconnected() {}
       };

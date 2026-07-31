@@ -7,6 +7,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.time.Duration;
 import java.util.function.BiConsumer;
+import java.util.function.Predicate;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.core.Zlink;
@@ -18,6 +19,9 @@ import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.eventing.MonitorEventType;
+import systems.zlink.contracts.eventing.PollEventFlags;
+import systems.zlink.contracts.eventing.PollEvents;
+import systems.zlink.contracts.eventing.Poller;
 import systems.zlink.contracts.eventing.SocketMonitor;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceWireCodec;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceWireFrame;
@@ -32,20 +36,33 @@ import systems.zlink.framework.runtime.internal.service.ZLinkServiceWireFrame;
 final class ZLinkJavaRawServicePort implements AutoCloseable {
     private final Context context;
     private final boolean ownsContext;
+    private final Predicate<List<byte[]>> completionControlSelector;
     private final List<RouterSocket> routers = new ArrayList<>();
     private final AtomicBoolean closed = new AtomicBoolean();
+    private Poller completionPoller;
 
     ZLinkJavaRawServicePort() {
-        this(Zlink.createContext(), true);
+        this(Zlink.createContext(), true, ignored -> false);
     }
 
     ZLinkJavaRawServicePort(Context context) {
-        this(context, false);
+        this(context, false, ignored -> false);
     }
 
-    private ZLinkJavaRawServicePort(Context context, boolean ownsContext) {
+    ZLinkJavaRawServicePort(
+        Context context,
+        Predicate<List<byte[]>> completionControlSelector) {
+        this(context, false, completionControlSelector);
+    }
+
+    private ZLinkJavaRawServicePort(
+        Context context,
+        boolean ownsContext,
+        Predicate<List<byte[]>> completionControlSelector) {
         this.context = Objects.requireNonNull(context, "context");
         this.ownsContext = ownsContext;
+        this.completionControlSelector = Objects.requireNonNull(
+            completionControlSelector, "completionControlSelector");
     }
 
     synchronized RouterSocket openRouter(RoutingId routingId) {
@@ -64,11 +81,45 @@ final class ZLinkJavaRawServicePort implements AutoCloseable {
         }
     }
 
+    synchronized void startCompletionControl(RouterSocket router) {
+        ensureOwned(router);
+        if (completionPoller != null) {
+            throw new IllegalStateException(
+                "completion control pump is already started");
+        }
+        Poller poller = Zlink.createPoller();
+        boolean accepted = false;
+        try {
+            poller.add(router, 1L, PollEventFlags.POLLCOMPLETION);
+            completionPoller = poller;
+            accepted = true;
+        } finally {
+            if (!accepted) {
+                poller.close();
+                completionPoller = null;
+            }
+        }
+    }
+
+    void pollCompletionControl() {
+        Poller poller;
+        synchronized (this) {
+            ensureOpen();
+            poller = completionPoller;
+        }
+        if (poller != null) {
+            poller.wait(new PollEvents(1), Duration.ZERO);
+        }
+    }
+
     boolean send(RouterSocket router, RoutingId target, List<byte[]> frames) {
         ensureOwned(router);
         Objects.requireNonNull(target, "target");
         if (frames.isEmpty()) {
             throw new IllegalArgumentException("service multipart must not be empty");
+        }
+        if (completionControlSelector.test(frames)) {
+            return sendCompletionControl(router, target, frames);
         }
         List<Message> messages = frames.stream()
             .map(frame -> Message.from(Objects.requireNonNull(frame, "frame")))
@@ -85,6 +136,26 @@ final class ZLinkJavaRawServicePort implements AutoCloseable {
             if (!submitted) {
                 messages.forEach(Message::close);
             }
+        }
+    }
+
+    boolean sendCompletionControl(
+        RouterSocket router,
+        RoutingId target,
+        List<byte[]> frames) {
+        ensureOwned(router);
+        Objects.requireNonNull(target, "target");
+        if (frames.isEmpty()) {
+            throw new IllegalArgumentException(
+                "completion control multipart must not be empty");
+        }
+        List<Message> messages = frames.stream()
+            .map(frame -> Message.from(Objects.requireNonNull(frame, "frame")))
+            .toList();
+        try {
+            return router.trySendCompletionControl(target, messages);
+        } finally {
+            messages.forEach(Message::close);
         }
     }
 
@@ -196,6 +267,11 @@ final class ZLinkJavaRawServicePort implements AutoCloseable {
         if (!closed.compareAndSet(false, true)) {
             return;
         }
+        Poller currentCompletionPoller = completionPoller;
+        if (currentCompletionPoller != null) {
+            currentCompletionPoller.close();
+        }
+        completionPoller = null;
         for (int index = routers.size() - 1; index >= 0; index--) {
             routers.get(index).close();
         }

@@ -5,6 +5,10 @@ import java.util.concurrent.CompletionStage
 import kotlin.reflect.KClass
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.actors.ZLinkActorClient
+import systems.zlink.framework.actors.ZLinkActorCreateCall
+import systems.zlink.framework.actors.ZLinkActorCreateResult
+import systems.zlink.framework.actors.ZLinkActorGetOrCreateCall
+import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.actors.ZLinkBoundSession
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkFanoutClient
@@ -12,135 +16,14 @@ import systems.zlink.framework.channels.ZLinkRequestCall
 import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.channels.ZLinkSendCall
 import systems.zlink.framework.spots.ZLinkWorkerCall
+import systems.zlink.framework.spots.ZLinkSpotCreateCall
+import systems.zlink.framework.spots.ZLinkSpotCreateResult
+import systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall
+import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.framework.spots.ZLinkSpotRequestCall
 import systems.zlink.framework.spots.ZLinkSpotSendCall
 import systems.zlink.framework.streams.ZLinkSessionActor
 import systems.zlink.framework.streams.ZLinkSessionClient
-
-/**
- * Kotlin one-way terminal. Successful completion means local queue admission;
- * delivery and handler completion are outside this result boundary.
- */
-interface ZLinkKotlinMessageSendCall {
-    fun metadata(key: String, value: String): ZLinkKotlinMessageSendCall
-    suspend fun await()
-}
-
-interface ZLinkKotlinSubmissionCall {
-    suspend fun await()
-}
-
-interface ZLinkKotlinRequestCall<TReply : Any> {
-    fun metadata(key: String, value: String): ZLinkKotlinRequestCall<TReply>
-    fun timeout(timeout: Duration): ZLinkKotlinRequestCall<TReply>
-    suspend fun await(): TReply
-    suspend fun yield(): TReply
-}
-
-interface ZLinkKotlinClient {
-    fun sendToChannel(channelName: String, message: Any): ZLinkKotlinMessageSendCall
-
-    fun <TReply : Any> requestToChannel(
-        channelName: String,
-        request: Any,
-        replyType: KClass<TReply>,
-    ): ZLinkKotlinRequestCall<TReply>
-}
-
-interface ZLinkKotlinFanoutClient {
-    fun publish(
-        channelName: String,
-        topic: String,
-        event: Any,
-    ): ZLinkKotlinSubmissionCall
-
-    fun publish(channelName: String, event: Any): ZLinkKotlinSubmissionCall
-}
-
-interface ZLinkKotlinRouteClient {
-    fun sendToNode(
-        meshName: String,
-        target: RoutingId,
-        message: Any,
-    ): ZLinkKotlinMessageSendCall
-
-    fun <TReply : Any> requestToNode(
-        meshName: String,
-        target: RoutingId,
-        request: Any,
-        replyType: KClass<TReply>,
-    ): ZLinkKotlinRequestCall<TReply>
-
-    fun sendToChannel(channelName: String, message: Any): ZLinkKotlinMessageSendCall
-
-    fun <TReply : Any> requestToChannel(
-        channelName: String,
-        request: Any,
-        replyType: KClass<TReply>,
-    ): ZLinkKotlinRequestCall<TReply>
-}
-
-interface ZLinkKotlinActorClient {
-    fun sendToActor(actorId: String, message: Any): ZLinkKotlinMessageSendCall
-
-    fun <TReply : Any> requestToActor(
-        actorId: String,
-        request: Any,
-        replyType: KClass<TReply>,
-    ): ZLinkKotlinRequestCall<TReply>
-}
-
-interface ZLinkKotlinSpotSendCall {
-    fun metadata(key: String, value: String): ZLinkKotlinSpotSendCall
-    fun instanceSpot(): ZLinkKotlinSpotSendCall
-    fun instanceSpot(stableType: String): ZLinkKotlinSpotSendCall
-    fun inMesh(meshName: String): ZLinkKotlinSpotSendCall
-    suspend fun await()
-}
-
-interface ZLinkKotlinSpotRequestCall<TReply : Any> {
-    fun metadata(key: String, value: String): ZLinkKotlinSpotRequestCall<TReply>
-    fun instanceSpot(): ZLinkKotlinSpotRequestCall<TReply>
-    fun instanceSpot(stableType: String): ZLinkKotlinSpotRequestCall<TReply>
-    fun inMesh(meshName: String): ZLinkKotlinSpotRequestCall<TReply>
-    fun timeout(timeout: Duration): ZLinkKotlinSpotRequestCall<TReply>
-    suspend fun await(): TReply
-    suspend fun yield(): TReply
-}
-
-interface ZLinkKotlinSessionSendCall {
-    fun metadata(key: String, value: String): ZLinkKotlinSessionSendCall
-    fun compress(): ZLinkKotlinSessionSendCall
-    suspend fun await()
-}
-
-interface ZLinkKotlinSessionReplyCall {
-    fun compress(): ZLinkKotlinSessionReplyCall
-    suspend fun await()
-}
-
-interface ZLinkKotlinSessionClient {
-    fun send(message: Any): ZLinkKotlinSessionSendCall
-    fun reply(message: Any): ZLinkKotlinSessionReplyCall
-}
-
-interface ZLinkKotlinSessionActor {
-    fun relay(message: systems.zlink.framework.messaging.ZLinkMessage):
-        ZLinkKotlinSubmissionCall
-    fun relay(
-        dispatch: systems.zlink.framework.streams.ZLinkSessionMessageContext,
-        message: systems.zlink.framework.messaging.ZLinkMessage,
-    ): ZLinkKotlinSubmissionCall
-}
-
-interface ZLinkKotlinBoundSession {
-    fun send(message: Any): ZLinkKotlinMessageSendCall
-}
-
-interface ZLinkKotlinWorkerCall<T> {
-    suspend fun await(): T
-    suspend fun yield(): T
-}
 
 private class JavaMessageSendCall(
     private val call: ZLinkSendCall,
@@ -366,6 +249,111 @@ private class JavaActorClient(
     }
 }
 
+private class JavaActorCreateCall(
+    private var call: ZLinkActorCreateCall,
+) : ZLinkKotlinActorCreateCall {
+    override fun inMesh(meshName: String): ZLinkKotlinActorCreateCall =
+        apply { call = call.inMesh(meshName) }
+
+    override fun request(request: Any): ZLinkKotlinActorCreateCall =
+        apply { call = call.request(request) }
+
+    override fun timeout(timeout: Duration): ZLinkKotlinActorCreateCall =
+        apply { call = call.timeout(timeout) }
+
+    override suspend fun await(): ZLinkActorCreateResult =
+        awaitFrameworkStage(call.submit())
+
+    override suspend fun yield(): ZLinkActorCreateResult =
+        awaitFrameworkStage(call.yield())
+}
+
+private class JavaActorGetOrCreateCall(
+    private var call: ZLinkActorGetOrCreateCall,
+) : ZLinkKotlinActorCreateCall {
+    override fun inMesh(meshName: String): ZLinkKotlinActorCreateCall =
+        apply { call = call.inMesh(meshName) }
+
+    override fun request(request: Any): ZLinkKotlinActorCreateCall =
+        apply { call = call.request(request) }
+
+    override fun timeout(timeout: Duration): ZLinkKotlinActorCreateCall =
+        apply { call = call.timeout(timeout) }
+
+    override suspend fun await(): ZLinkActorCreateResult =
+        awaitFrameworkStage(call.submit())
+
+    override suspend fun yield(): ZLinkActorCreateResult =
+        awaitFrameworkStage(call.yield())
+}
+
+private class JavaActorManager(
+    private val manager: ZLinkActorManager,
+) : ZLinkKotlinActorManager {
+    override fun create(
+        actorId: String,
+        actorType: String,
+    ): ZLinkKotlinActorCreateCall =
+        JavaActorCreateCall(manager.create(actorId, actorType))
+
+    override fun getOrCreate(
+        actorId: String,
+        actorType: String,
+    ): ZLinkKotlinActorCreateCall =
+        JavaActorGetOrCreateCall(manager.getOrCreate(actorId, actorType))
+}
+
+private class JavaSpotCreateCall(
+    private var call: ZLinkSpotCreateCall,
+) : ZLinkKotlinSpotCreateCall {
+    override fun inMesh(meshName: String): ZLinkKotlinSpotCreateCall =
+        apply { call = call.inMesh(meshName) }
+
+    override fun request(request: Any): ZLinkKotlinSpotCreateCall =
+        apply { call = call.request(request) }
+
+    override fun timeout(timeout: Duration): ZLinkKotlinSpotCreateCall =
+        apply { call = call.timeout(timeout) }
+
+    override suspend fun await(): ZLinkSpotCreateResult =
+        awaitFrameworkStage(call.submit())
+
+    override suspend fun yield(): ZLinkSpotCreateResult =
+        awaitFrameworkStage(call.yield())
+}
+
+private class JavaSpotGetOrCreateCall(
+    private var call: ZLinkSpotGetOrCreateCall,
+) : ZLinkKotlinSpotCreateCall {
+    override fun inMesh(meshName: String): ZLinkKotlinSpotCreateCall =
+        apply { call = call.inMesh(meshName) }
+
+    override fun request(request: Any): ZLinkKotlinSpotCreateCall =
+        apply { call = call.request(request) }
+
+    override fun timeout(timeout: Duration): ZLinkKotlinSpotCreateCall =
+        apply { call = call.timeout(timeout) }
+
+    override suspend fun await(): ZLinkSpotCreateResult =
+        awaitFrameworkStage(call.submit())
+
+    override suspend fun yield(): ZLinkSpotCreateResult =
+        awaitFrameworkStage(call.yield())
+}
+
+private class JavaSpotManager(
+    private val manager: ZLinkSpotManager,
+) : ZLinkKotlinSpotManager {
+    override fun create(stableType: String): ZLinkKotlinSpotCreateCall =
+        JavaSpotCreateCall(manager.create(stableType))
+
+    override fun getOrCreate(
+        spotId: String,
+        stableType: String,
+    ): ZLinkKotlinSpotCreateCall =
+        JavaSpotGetOrCreateCall(manager.getOrCreate(spotId, stableType))
+}
+
 private class JavaSessionClient(
     private val client: ZLinkSessionClient,
 ) : ZLinkKotlinSessionClient {
@@ -404,6 +392,10 @@ fun ZLinkFanoutClient.kotlin(): ZLinkKotlinFanoutClient = JavaFanoutClient(this)
 fun ZLinkRouteClient.kotlin(): ZLinkKotlinRouteClient = JavaRouteClient(this)
 
 fun ZLinkActorClient.kotlin(): ZLinkKotlinActorClient = JavaActorClient(this)
+
+fun ZLinkActorManager.kotlin(): ZLinkKotlinActorManager = JavaActorManager(this)
+
+fun ZLinkSpotManager.kotlin(): ZLinkKotlinSpotManager = JavaSpotManager(this)
 
 fun ZLinkSessionClient.kotlin(): ZLinkKotlinSessionClient = JavaSessionClient(this)
 

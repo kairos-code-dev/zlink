@@ -9,6 +9,8 @@ type BingoSampleConfig = {
   playSpotEndpoint: string;
   playSpotPubSubEndpoint: string;
   apiEndpoint: string;
+  apiMatchmakingEndpoint: string;
+  matchmakingEndpoint: string;
   redisEndpoint: string;
   redisKeyPrefix: string;
   logDir: string;

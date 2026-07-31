@@ -2460,7 +2460,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                     [frame]);
                 try
                 {
-                    queued.Add(pipeline.DispatchReplayAsync(
+                    queued.Add(pipeline.DispatchSourceRestoreAsync(
                             batch,
                             static () => { },
                             CancellationToken.None)

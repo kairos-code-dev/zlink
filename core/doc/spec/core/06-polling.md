@@ -123,7 +123,9 @@ application stack buffers; it is not a readiness bit. `ZLINK_HAVE_POLLER == 1`
 means this public poller API is present in the build.
 
 `ZLINK_POLLCOMPLETION` is valid only when adding a raw DEALER or ROUTER with
-`zlink_poller_add()`. Register it alone, without OR-ing another bit. A request
+`zlink_poller_add()`. It may be registered alone or OR-ed with `ZLINK_POLLIN`
+and `ZLINK_POLLOUT` so one poller owns receive, send, and completion progress
+for the socket. A request
 completion signal is not a public receive record. When `zlink_poller_wait()`
 observes the signal, Core receives reply payload from the paired Completion
 transport and dispatches the registered reply callback on the thread executing

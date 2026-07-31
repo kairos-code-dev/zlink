@@ -1,43 +1,29 @@
-import { Inject, Injectable } from '@nestjs/common';
-import {
-  ZLINK_SPOT_MANAGER,
-  ZLINK_SPOT_OUTBOUND
-} from '@zlink-systems/nestjs';
-import { ZLinkSpotActorRequest } from '@zlink-systems/framework';
-import { SampleNames } from '../../../../../../Configuration/sample-settings';
+import { zlinkSpotActorRequestHandler } from '@zlink-systems/nestjs';
 import type {
-  ZLinkSpotActorRequestContext,
-  ZLinkSpotManager,
-  ZLinkSpotOutbound
+  ZLinkMessageContext,
+  ZLinkSpotActorRequestHandler
 } from '@zlink-systems/framework';
-import type { PlayActor } from '../../../Actors/play-actor';
+import { PlayActor } from '../../../Actors/play-actor';
 import type { PlaceMarkReq, PlaceMarkRes } from '../../../../../../../Shared/Contracts/messages';
-import { PlaceMarkAtGameSpotReq } from './tictactoe-game-operation-handlers';
+import { TicTacToeGameSpot } from '../tictactoe-game-spot';
 
-@Injectable()
-class PlayActorPlaceMarkHandler {
-  constructor(
-    @Inject(ZLINK_SPOT_MANAGER) private readonly spotHandles: ZLinkSpotManager,
-    @Inject(ZLINK_SPOT_OUTBOUND) private readonly spotOutbound: ZLinkSpotOutbound
-  ) {}
-
-  @ZLinkSpotActorRequest('PlaceMarkReq')
+@zlinkSpotActorRequestHandler({
+  actor: () => PlayActor,
+  packetName: 'PlaceMarkReq',
+  spot: () => TicTacToeGameSpot
+})
+class PlayActorPlaceMarkHandler
+  implements ZLinkSpotActorRequestHandler<TicTacToeGameSpot, PlayActor, PlaceMarkReq, PlaceMarkRes> {
   async handle(
+    spot: TicTacToeGameSpot,
     actor: PlayActor,
-    _context: ZLinkSpotActorRequestContext,
+    _context: ZLinkMessageContext,
     request: PlaceMarkReq
   ): Promise<PlaceMarkRes> {
-    const spotRid = actor.context.spotRid;
-    if (spotRid === undefined) {
+    if (actor.context.spotId === undefined) {
       throw new Error(`Actor '${actor.actorId}' is not joined to a game.`);
     }
-    const spot = await this.spotHandles.find(spotRid);
-    if (spot === undefined) {
-      throw new Error(`Game spot '${String(spotRid)}' could not be resolved.`);
-    }
-    return this.spotOutbound
-      .requestToSpot(spot, new PlaceMarkAtGameSpotReq(actor.actorId, request.cell))
-      .yield<PlaceMarkRes>();
+    return spot.placeMark(actor.actorId, request.cell);
   }
 }
 

@@ -50,6 +50,10 @@ public sealed class PlayerSession(
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
+        logger.LogInformation(
+            "session packet received. session={SessionId}, packet={PacketName}",
+            Context.SessionId,
+            dispatch.PacketName);
         if (dispatch.PacketName == nameof(RelocationPairReq))
         {
             await Context.Client

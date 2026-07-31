@@ -36,12 +36,18 @@ import { ZLinkAsyncSubmitter } from '../messaging';
 
 const ZLINK_SEND_DONT_WAIT = 1;
 
+export interface ZLinkNativeSessionRoute {
+  readonly service: StreamSessionService;
+  readonly completions: ZLinkMeshCompletionTable;
+}
+
 export class ZLinkManagedStream implements ZLinkStream {
   private currentLocalAddr: string | undefined;
   private currentRemoteAddr: string | undefined;
   private readonly nativeActorBindings = new Map<string, {
     readonly actor: ZLinkBackendActorRef;
     readonly bindingGeneration: bigint;
+    readonly route?: ZLinkNativeSessionRoute;
   }>();
   private readonly submitter: ZLinkAsyncSubmitter;
 
@@ -52,7 +58,10 @@ export class ZLinkManagedStream implements ZLinkStream {
     private readonly nativeSessionService?: StreamSessionService,
     private readonly meshCompletions?: ZLinkMeshCompletionTable,
     submitter?: ZLinkAsyncSubmitter,
-    private readonly publicSessionId = streamSessionIdFromRoutingId(backendSessionRoutingId)
+    private readonly publicSessionId = streamSessionIdFromRoutingId(backendSessionRoutingId),
+    private readonly nativeSessionRouteForMesh?: (
+      meshName: string
+    ) => ZLinkNativeSessionRoute | undefined
   ) {
     this.submitter = submitter ?? new ZLinkAsyncSubmitter(
       (handler) => socket.onSendReady(handler),
@@ -174,15 +183,21 @@ export class ZLinkManagedStream implements ZLinkStream {
 
   async bindActor(actor: ActorRef, timeoutMs: number, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
-    if (this.nativeSessionService !== undefined && this.meshCompletions !== undefined) {
-      if (this.nativeSessionService.status().state === 1) {
-        this.nativeSessionService.start();
+    const route = this.nativeRoute(actor.meshName);
+    if (route !== undefined) {
+      if (route.service.status().state === 1) {
+        route.service.start();
       }
       const nativeActor = toNativeActorRef(actor);
-      await this.ensureNativeActorRoute(actor, timeoutMs, signal);
-      const operation = await this.submitNativeSessionBind(nativeActor, timeoutMs, signal);
-      await this.requireSuccessfulCompletion(operation, `Actor '${actor.actorId}' native session bind`, signal);
-      const binding = this.nativeSessionService.bindings(this.backendRoutingId())
+      await this.ensureNativeActorRoute(route, actor, timeoutMs, signal);
+      const operation = await this.submitNativeSessionBind(route.service, nativeActor, timeoutMs, signal);
+      await this.requireSuccessfulCompletion(
+        route.completions,
+        operation,
+        `Actor '${actor.actorId}' native session bind`,
+        signal
+      );
+      const binding = route.service.bindings(this.backendRoutingId())
         .find((candidate) =>
           candidate.actor.actorId === nativeActor.actorId
           && candidate.actor.generation === nativeActor.generation);
@@ -194,7 +209,8 @@ export class ZLinkManagedStream implements ZLinkStream {
       }
       this.nativeActorBindings.set(actor.actorId, {
         actor: nativeActor,
-        bindingGeneration: binding.bindingGeneration
+        bindingGeneration: binding.bindingGeneration,
+        route
       });
       return;
     }
@@ -202,16 +218,17 @@ export class ZLinkManagedStream implements ZLinkStream {
   }
 
   private async ensureNativeActorRoute(
+    route: ZLinkNativeSessionRoute,
     actor: ActorRef,
     timeoutMs: number,
     signal?: AbortSignal
   ): Promise<void> {
-    const operation = this.nativeSessionService!.lookupActor(
+    const operation = route.service.lookupActor(
       actor.nodeRid,
       actor.actorId,
       timeoutMs
     );
-    const completion = await this.meshCompletions!.wait(operation, signal);
+    const completion = await route.completions.wait(operation, signal);
     try {
       const resolved = completion.kindData?.kind === 'actorLookupCompletion'
         ? completion.kindData.location.actor
@@ -236,18 +253,21 @@ export class ZLinkManagedStream implements ZLinkStream {
 
   async unbindActor(actorId: string, timeoutMs: number, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
-    if (this.nativeSessionService !== undefined && this.meshCompletions !== undefined) {
-      const binding = this.nativeActorBindings.get(actorId);
-      if (binding === undefined) {
-        return;
-      }
-      const operation = this.nativeSessionService.unbindActor(
+    const binding = this.nativeActorBindings.get(actorId);
+    if (binding?.route !== undefined) {
+      const operation = binding.route.service.unbindActor(
         this.backendRoutingId(),
         binding.actor as never,
         binding.bindingGeneration,
         timeoutMs
       );
-      await this.requireSuccessfulCompletion(operation, `Actor '${actorId}' native session unbind`, signal);
+      await this.requireSuccessfulCompletion(
+        binding.route.completions,
+        operation,
+        `Actor '${actorId}' native session unbind`,
+        signal,
+        new Set([109])
+      );
       this.nativeActorBindings.delete(actorId);
       return;
     }
@@ -256,10 +276,10 @@ export class ZLinkManagedStream implements ZLinkStream {
 
   sendBoundActor(actorId: string, parts: readonly Message[], flags?: ZLinkBackendSendFlags): boolean {
     const binding = this.nativeActorBindings.get(actorId);
-    if (binding !== undefined && this.nativeSessionService !== undefined) {
+    if (binding?.route !== undefined) {
       const nativeParts = parts.map((part) => NativeMessage.from(Buffer.from(part.data())));
       try {
-        return this.nativeSessionService.sendToActor(
+        return binding.route.service.sendToActor(
           this.backendRoutingId(),
           binding.actor as never,
           nativeParts,
@@ -284,13 +304,18 @@ export class ZLinkManagedStream implements ZLinkStream {
   }
 
   private async requireSuccessfulCompletion(
+    completions: ZLinkMeshCompletionTable,
     operation: { readonly high: bigint; readonly low: bigint },
     operationName: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    acceptedTerminalResults: ReadonlySet<number> = new Set()
   ): Promise<void> {
-    const completion = await this.meshCompletions!.wait(operation, signal);
+    const completion = await completions.wait(operation, signal);
     try {
-      if (completion.terminalResult !== 0) {
+      if (
+        completion.terminalResult !== 0
+        && !acceptedTerminalResults.has(completion.terminalResult)
+      ) {
         throw new ZLinkFrameworkException(
           ZLinkFrameworkErrorKind.RouteNotConnected,
           `${operationName} failed with result ${completion.terminalResult} (errno ${completion.failureErrno}).`
@@ -302,6 +327,7 @@ export class ZLinkManagedStream implements ZLinkStream {
   }
 
   private async submitNativeSessionBind(
+    service: StreamSessionService,
     actor: ZLinkBackendActorRef,
     timeoutMs: number,
     signal?: AbortSignal
@@ -310,7 +336,7 @@ export class ZLinkManagedStream implements ZLinkStream {
     for (;;) {
       throwIfAborted(signal);
       try {
-        return this.nativeSessionService!.bindActor(
+        return service.bindActor(
           this.backendRoutingId(),
           actor,
           Math.max(0, deadline - Date.now())
@@ -323,7 +349,7 @@ export class ZLinkManagedStream implements ZLinkStream {
           throw error;
         }
         if (Date.now() >= deadline) {
-          const status = this.nativeSessionService!.status();
+          const status = service.status();
           throw new ZLinkFrameworkException(
             ZLinkFrameworkErrorKind.RouteNotConnected,
             `STREAM session '${this.sessionId}' was not admitted before the actor bind deadline `
@@ -333,6 +359,18 @@ export class ZLinkManagedStream implements ZLinkStream {
         await waitForSessionAdmission(signal);
       }
     }
+  }
+
+  private nativeRoute(meshName: string): ZLinkNativeSessionRoute | undefined {
+    return this.nativeSessionRouteForMesh?.(meshName)
+      ?? (
+        this.nativeSessionService !== undefined && this.meshCompletions !== undefined
+          ? {
+              service: this.nativeSessionService,
+              completions: this.meshCompletions
+            }
+          : undefined
+      );
   }
 }
 

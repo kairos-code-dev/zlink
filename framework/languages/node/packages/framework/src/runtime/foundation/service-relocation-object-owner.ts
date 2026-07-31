@@ -60,6 +60,10 @@ export class ServiceCapturedObjectRelocation {
 
 /** Captures the two valid relocation units: User Spot aggregate or one Actor. */
 export class ServiceRelocationObjectCaptureOwner {
+  constructor(private readonly maxConcurrentCallbacks = 8) {
+    requireCallbackConcurrency(maxConcurrentCallbacks);
+  }
+
   async captureUserSpotAggregate(
     aggregateId: string,
     aggregateGeneration: bigint,
@@ -147,9 +151,10 @@ export class ServiceRelocationObjectCaptureOwner {
         const work = await unit.seal(signal);
         captured.push({ unit, work });
       }
-      const participants: ServiceRelocationParticipant[] = [];
-      for (const { unit, work } of captured) {
-        participants.push({
+      const participants = await mapConcurrentOrdered(
+        captured,
+        this.maxConcurrentCallbacks,
+        async ({ unit, work }) => ({
           key: unit.authorityKey,
           objectKind: unit.objectKind,
           stableType: unit.stableType,
@@ -165,8 +170,9 @@ export class ServiceRelocationObjectCaptureOwner {
             payload: Buffer.from(message.payload)
           })),
           timers: work.timers.map(timer => ({ ...timer }))
-        });
-      }
+        }),
+        signal
+      );
       return new ServiceCapturedObjectRelocation({
         aggregateId,
         aggregateGeneration,
@@ -246,8 +252,11 @@ export class ServiceRelocationObjectRestoreOwner<
 > implements ServiceRelocationRestoreOwner<ServiceObjectRelocationStaging<THidden>> {
   constructor(
     private readonly target: ServiceRelocationTargetObjectPort<THidden>,
-    private readonly authorityKey: (value: string) => ZLinkAuthorityKey
-  ) {}
+    private readonly authorityKey: (value: string) => ZLinkAuthorityKey,
+    private readonly maxConcurrentCallbacks = 8
+  ) {
+    requireCallbackConcurrency(maxConcurrentCallbacks);
+  }
 
   async prepare(
     envelope: ServiceRelocationEnvelope,
@@ -269,12 +278,17 @@ export class ServiceRelocationObjectRestoreOwner<
           throw new Error('Target factory returned a different relocation authority identity.');
         }
         hidden.set(created.authorityKey, created);
-        await this.target.restoreApplicationState(
-          created,
+      }
+      await mapConcurrentOrdered(
+        participants,
+        this.maxConcurrentCallbacks,
+        participant => this.target.restoreApplicationState(
+          hidden.get(participant.key)!,
           participant.applicationState,
           signal
-        );
-      }
+        ),
+        signal
+      );
       await this.target.restoreMemberships(hidden, envelope.memberships, signal);
       const spot = envelope.participants.find(({ objectKind }) =>
         objectKind === 'user_spot' || objectKind === 'instance_spot');
@@ -383,4 +397,38 @@ function validateRelocationShape(envelope: ServiceRelocationEnvelope): void {
   if (spots.length > 1 || envelope.memberships.length !== actors.length) {
     throw new TypeError('Relocation membership inventory does not cover its Actor participants.');
   }
+}
+
+function requireCallbackConcurrency(value: number): void {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new RangeError('Relocation callback concurrency must be a positive safe integer.');
+  }
+}
+
+async function mapConcurrentOrdered<TInput, TResult>(
+  values: readonly TInput[],
+  concurrency: number,
+  callback: (value: TInput, index: number) => Promise<TResult>,
+  signal?: AbortSignal
+): Promise<TResult[]> {
+  const results = new Array<TResult>(values.length);
+  let next = 0;
+  let failure: unknown;
+  const worker = async (): Promise<void> => {
+    while (failure === undefined) {
+      signal?.throwIfAborted();
+      const index = next++;
+      if (index >= values.length) return;
+      try {
+        results[index] = await callback(values[index]!, index);
+      } catch (error) {
+        failure = error;
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, values.length) }, () => worker())
+  );
+  if (failure !== undefined) throw failure;
+  return results;
 }

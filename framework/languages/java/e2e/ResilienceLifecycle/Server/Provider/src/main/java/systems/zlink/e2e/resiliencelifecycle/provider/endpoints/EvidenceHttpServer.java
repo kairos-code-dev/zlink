@@ -10,7 +10,7 @@ import org.springframework.context.SmartLifecycle;
 import systems.zlink.e2e.resiliencelifecycle.provider.infrastructure.ScenarioState;
 import systems.zlink.e2e.resiliencelifecycle.shared.Contracts;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
-import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle;
 
 public final class EvidenceHttpServer implements SmartLifecycle {
     private final ScenarioState state;

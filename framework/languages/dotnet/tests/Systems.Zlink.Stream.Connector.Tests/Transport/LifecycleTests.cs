@@ -964,6 +964,37 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
+    public async Task Dispose_Drains_Accepted_OneWay_Send_Before_Closing_Transport()
+    {
+        var connection = new OrderedDisposeConnection();
+        var connector = new ZlinkStreamConnector(
+            new ZlinkStreamConnectorOptions
+            {
+                Endpoint = new Uri("tcp://127.0.0.1:1"),
+                Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+                Reconnect = new ZlinkStreamReconnectOptions { Enabled = false }
+            },
+            _ => ValueTask.FromResult<IZlinkStreamConnection>(connection));
+        await connector.Connect.Async();
+
+        await connector.Send(new ZlinkStreamEncodedPayload(
+                ZlinkStreamCodec.Raw,
+                new byte[] { 1 }))
+            .PacketName("dispose.drain")
+            .Async();
+        await connection.WriteStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var dispose = connector.DisposeAsync().AsTask();
+        await Task.Yield();
+        Assert.False(connection.CloseStarted.Task.IsCompleted);
+        Assert.False(dispose.IsCompleted);
+
+        connection.ReleaseWrite.TrySetResult();
+        await dispose.WaitAsync(TimeSpan.FromSeconds(5));
+        await connection.CloseStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
     public async Task RequestQueueWaitsForEarlierAcceptedOneWaySend()
     {
         using var shutdown = new CancellationTokenSource();
@@ -1678,6 +1709,38 @@ public sealed partial class StreamConnectorTests
         public ValueTask CloseAsync(CancellationToken cancellationToken)
         {
             ReleaseWrite.TrySetResult();
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class OrderedDisposeConnection : IZlinkStreamConnection
+    {
+        public TaskCompletionSource WriteStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleaseWrite { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource CloseStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public bool CanWriteSegments => true;
+
+        public async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return 0;
+        }
+
+        public async ValueTask WriteAsync(
+            ReadOnlyMemory<byte> buffer,
+            CancellationToken cancellationToken)
+        {
+            WriteStarted.TrySetResult();
+            await ReleaseWrite.Task.WaitAsync(cancellationToken);
+        }
+
+        public ValueTask CloseAsync(CancellationToken cancellationToken)
+        {
+            CloseStarted.TrySetResult();
             return ValueTask.CompletedTask;
         }
     }

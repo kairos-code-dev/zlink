@@ -17,6 +17,8 @@ export {
 } from './actor-location-claims';
 import { ZLinkActorSessionRouteClaims } from './actor-session-route-claims';
 import { ZLinkSpotLocationClaims } from './spot-location-claims';
+import type { ZLinkTrackedInstanceAuthority } from './spot-location-claims';
+import type { ZLinkAuthorityStore } from './internal-store-contracts';
 import type {
   IZLinkLocationLifecycleRuntime,
   ZLinkOwnershipLostEvent
@@ -37,10 +39,11 @@ export class ZLinkLocationLifecycle {
   constructor(
     private readonly runtime: IZLinkLocationLifecycleRuntime,
     actorStore: ZLinkActorLocationStore,
-    entryMeshName = ''
+    entryMeshName = '',
+    authorityStore?: ZLinkAuthorityStore
   ) {
     this.actorClaims = new ZLinkActorLocationClaims(runtime, actorStore, entryMeshName);
-    this.spotClaims = new ZLinkSpotLocationClaims(runtime);
+    this.spotClaims = new ZLinkSpotLocationClaims(runtime, authorityStore);
     this.actorSessionRoutes = new ZLinkActorSessionRouteClaims(runtime);
     this.runtime.addOwnershipLostHandler(this.ownershipLostHandler);
   }
@@ -201,6 +204,10 @@ export class ZLinkLocationLifecycle {
 
   async releaseSpot(meshName: string, spotId: RoutingId): Promise<void> {
     await this.spotClaims.release(meshName, spotId);
+  }
+
+  trackInstanceSpot(input: ZLinkTrackedInstanceAuthority): void {
+    this.spotClaims.trackInstanceAuthority(input);
   }
 
   async bindActorSessionRoute(sessionRid: RoutingId, actorId: string, ownerNodeRid: RoutingId): Promise<void> {

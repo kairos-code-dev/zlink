@@ -201,8 +201,19 @@ export interface ZLinkFrameworkRuntimeStatus {
   readonly deadline?: Date;
   readonly relocationResult?: ZLinkFrameworkRelocationResult;
   readonly terminationResult?: ZLinkFrameworkTerminationResult;
+  readonly inboundDispatch: ZLinkInboundDispatchStatus;
   readonly sequence: bigint;
   readonly observedAt: Date;
+}
+
+export interface ZLinkInboundDispatchStatus {
+  readonly applicationHwmBytes: bigint;
+  readonly pendingPayloadBytes: bigint;
+  readonly queuedPayloadBytes: bigint;
+  readonly activePayloadBytes: bigint;
+  readonly applicationReceivePaused: boolean;
+  readonly pendingCompletionSends: bigint;
+  readonly completionSendLimit: bigint;
 }
 
 export interface ZLinkFrameworkRuntime {

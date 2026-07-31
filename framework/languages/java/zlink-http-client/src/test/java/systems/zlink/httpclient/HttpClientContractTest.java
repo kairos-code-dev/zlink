@@ -38,9 +38,9 @@ final class HttpClientContractTest {
     }
 
     @Test
-    void serverClientUsesSelectedExecutionTerminatorAndHasNoBlockingFetch() throws Exception {
-        assertThrows(NoSuchMethodException.class,
-            () -> ZLinkHttpRequestBuilder.class.getMethod("fetch", Class.class));
+    void serverClientUsesSelectedExecutionTerminatorAndFetchIsAsynchronous() throws Exception {
+        assertEquals(CompletionStage.class,
+            ZLinkHttpRequestBuilder.class.getMethod("fetch", Class.class).getReturnType());
         assertThrows(NoSuchMethodException.class,
             () -> ZLinkHttpRequestBuilder.class.getMethod("async", Class.class));
         assertThrows(NoSuchMethodException.class,
@@ -201,8 +201,8 @@ final class HttpClientContractTest {
         TestSupport.Server server = TestSupport.httpServer(exchange ->
             TestSupport.respond(exchange, 200, "{\"id\":7,\"name\":\"Aria\"}"));
         try (ZLinkHttpClient client = ZLinkHttpClient.create(server.baseUrl()).build()) {
-            Player player = client.get("/players/7").submit(Player.class)
-                .toCompletableFuture().join().body();
+            Player player = client.get("/players/7").fetch(Player.class)
+                .toCompletableFuture().join();
             assertEquals(7, player.id());
             assertEquals("Aria", player.name());
         } finally {

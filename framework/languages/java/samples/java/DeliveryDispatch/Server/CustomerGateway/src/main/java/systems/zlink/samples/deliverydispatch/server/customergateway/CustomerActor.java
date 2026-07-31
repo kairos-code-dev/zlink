@@ -12,7 +12,6 @@ public final class CustomerActor implements ZLinkActor {
         this.context = context;
     }
 
-    @Override
     public String actorId() {
         return actorId;
     }

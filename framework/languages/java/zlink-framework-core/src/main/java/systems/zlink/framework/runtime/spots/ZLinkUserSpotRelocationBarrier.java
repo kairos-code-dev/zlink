@@ -109,6 +109,23 @@ final class ZLinkUserSpotRelocationBarrier {
                 cancelled));
     }
 
+    CompletionStage<Optional<Seal>> sealForRelocation(
+        Predicate<Preview> admission,
+        BooleanSupplier cancelled) {
+        if (context.relocationReadiness()
+            != systems.zlink.framework.configuration
+                .ZLinkSpotRelocationReadinessMode.APPLICATION_SIGNALED) {
+            return sealAtTurnBoundary(admission, cancelled);
+        }
+        return context.awaitRelocationReadySignal(
+            () -> trySeal(admission),
+            cancelled)
+            .thenApply(sealed -> {
+                sealed.ifPresent(Seal::markApplicationSignaled);
+                return sealed;
+            });
+    }
+
     private synchronized Optional<Seal> finishTurnBoundarySeal(
         Optional<ZLinkCompositeRelocationBarrier.Seal> sealed,
         List<String> participantActorIds,
@@ -165,12 +182,27 @@ final class ZLinkUserSpotRelocationBarrier {
         if (seal == null || seal != active) {
             return false;
         }
+        RuntimeException completionFailure = null;
+        if (seal.applicationSignaled()
+            && seal.markCompletionScheduled()) {
+            try {
+                context.runRelocationReadyCompletion(
+                    systems.zlink.framework.spots
+                        .ZLinkSpotRelocationReadyOutcome.CONTINUED)
+                    .toCompletableFuture().join();
+            } catch (RuntimeException failure) {
+                completionFailure = failure;
+            }
+        }
         if (!barrier.abort(seal.composite)) {
             throw new IllegalStateException(
                 "User Spot barrier abort lost local lane");
         }
         active = null;
         context.resumeTimersAfterRelocationAbort();
+        if (completionFailure != null) {
+            throw completionFailure;
+        }
         return true;
     }
 
@@ -247,6 +279,8 @@ final class ZLinkUserSpotRelocationBarrier {
         private final List<String> participantActorIds;
         private final Map<String, List<ZLinkAsyncSerialQueue.QueuedRecord>>
             capturedRecords;
+        private boolean applicationSignaled;
+        private boolean completionScheduled;
 
         private Seal(
             ZLinkCompositeRelocationBarrier.Seal composite,
@@ -276,6 +310,22 @@ final class ZLinkUserSpotRelocationBarrier {
         Map<String, List<ZLinkAsyncSerialQueue.QueuedRecord>>
             capturedRecords() {
             return capturedRecords;
+        }
+
+        synchronized void markApplicationSignaled() {
+            applicationSignaled = true;
+        }
+
+        synchronized boolean applicationSignaled() {
+            return applicationSignaled;
+        }
+
+        synchronized boolean markCompletionScheduled() {
+            if (completionScheduled) {
+                return false;
+            }
+            completionScheduled = true;
+            return true;
         }
     }
 

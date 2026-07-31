@@ -5,7 +5,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties("e2e")
 public record ActorNodeOptions(
     String nodeRid, String meshEndpoint, String meshPeers, String streamEndpoint,
-    String httpEndpoint, String redisLocationEndpoint, String locationKeyPrefix, String logDirectory) {
+    String httpEndpoint, String redisLocationEndpoint, String locationKeyPrefix,
+    String logDirectory, boolean automaticTopology) {
     public ActorNodeOptions {
         required(nodeRid, "node-rid"); required(meshEndpoint, "mesh-endpoint");
         required(meshPeers, "mesh-peers"); required(streamEndpoint, "stream-endpoint");

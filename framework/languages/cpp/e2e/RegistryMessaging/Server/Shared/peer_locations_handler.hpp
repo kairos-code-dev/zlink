@@ -11,13 +11,10 @@ namespace zlink::framework::e2e::registry_messaging
 class peer_locations_handler_t
 {
   public:
-    using dependency_types =
-      dependency_list_t<location_runtime_query_t, location_readiness_t>;
+    using dependency_types = dependency_list_t<location_runtime_query_t>;
 
-    peer_locations_handler_t (location_runtime_query_t &locations,
-                              location_readiness_t &readiness) :
-        _locations (locations),
-        _readiness (readiness)
+    explicit peer_locations_handler_t (location_runtime_query_t &locations) :
+        _locations (locations)
     {
     }
 
@@ -28,20 +25,21 @@ class peer_locations_handler_t
         if (requested_mesh != request.query_values.end () && !requested_mesh->second.empty ()) {
             mesh_name = requested_mesh->second;
         }
-        const auto peers = _locations.list_mesh_node_descriptors (mesh_name).result ().value ();
+        const auto peers =
+          _locations
+            .list_topology (
+              location_topology_filter_t{.mesh_name = mesh_name},
+              location_page_request_t{.page_size = 1000})
+            .result ()
+            .value ();
         auto payload = nlohmann::json::array ();
         for (const auto &peer : peers.items) {
-            const auto ready =
-              _readiness
-                .is_peer_ready (mesh_name, location_role_t::router, peer.rid)
-                .result ()
-                .value ();
             payload.push_back (nlohmann::json{
               {"mesh_name", peer.mesh_name},
               {"role", "router"},
-              {"node_rid", peer.rid.to_string ()},
+              {"node_rid", peer.node_rid.to_string ()},
               {"endpoint", peer.endpoint},
-              {"ready", ready}});
+              {"ready", peer.state == location_topology_state_t::ready}});
         }
         http_response_t response;
         response.body = payload.dump ();
@@ -50,7 +48,6 @@ class peer_locations_handler_t
 
   private:
     location_runtime_query_t &_locations;
-    location_readiness_t &_readiness;
 };
 
 } // namespace zlink::framework::e2e::registry_messaging

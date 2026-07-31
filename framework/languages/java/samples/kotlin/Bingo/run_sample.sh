@@ -48,7 +48,7 @@ trap cleanup EXIT
 reserve_ports() {
   local base=$((48000 + ((RANDOM + $$) % 1000) * 15 % 12000))
   local endpoints=()
-  for offset in $(seq 0 7); do
+  for offset in $(seq 0 12); do
     endpoints+=("127.0.0.1:$((base + offset))")
   done
   echo "${endpoints[*]}"
@@ -68,7 +68,7 @@ build_framework_jars() {
   )
 }
 
-read -r api_a_channel session_a_router play_a_router session_a_stream api_b_channel session_b_router play_b_router session_b_stream < <(reserve_ports)
+read -r api_a_channel api_a_mesh session_a_router play_a_router session_a_stream api_b_channel api_b_mesh session_b_router play_b_router session_b_stream api_a_matchmaking api_b_matchmaking matchmaking_router < <(reserve_ports)
 api_a_host="${api_a_channel%:*}"
 api_a_port="${api_a_channel##*:}"
 api_b_host="${api_b_channel%:*}"
@@ -85,6 +85,12 @@ stream_a_host="${session_a_stream%:*}"
 stream_a_port="${session_a_stream##*:}"
 stream_b_host="${session_b_stream%:*}"
 stream_b_port="${session_b_stream##*:}"
+api_a_matchmaking_host="${api_a_matchmaking%:*}"
+api_a_matchmaking_port="${api_a_matchmaking##*:}"
+api_b_matchmaking_host="${api_b_matchmaking%:*}"
+api_b_matchmaking_port="${api_b_matchmaking##*:}"
+matchmaking_router_host="${matchmaking_router%:*}"
+matchmaking_router_port="${matchmaking_router##*:}"
 bingo_redis_key_prefix="${BINGO_REDIS_KEY_PREFIX:-bingo:kotlin:${RANDOM}:$$:}"
 zlink_redis_start_scoped_assign redis_container_id redis_port \
   "zlink-redis-kotlin-sample-bingo" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
@@ -97,10 +103,14 @@ write_config() {
   cat >"$path" <<EOF
 sample.api-a-channel-endpoint=tcp://${api_a_host}:${api_a_port}
 sample.api-b-channel-endpoint=tcp://${api_b_host}:${api_b_port}
+sample.api-a-mesh-endpoint=tcp://${api_a_mesh}
+sample.api-b-mesh-endpoint=tcp://${api_b_mesh}
 sample.session-a-router-endpoint=tcp://${session_a_router_host}:${session_a_router_port}
 sample.session-b-router-endpoint=tcp://${session_b_router_host}:${session_b_router_port}
 sample.play-a-spot-router-endpoint=tcp://${play_a_router_host}:${play_a_router_port}
 sample.play-b-spot-router-endpoint=tcp://${play_b_router_host}:${play_b_router_port}
+sample.api-matchmaking-router-endpoint=tcp://$([[ "${role_value}" == "b" ]] && echo "${api_b_matchmaking_host}:${api_b_matchmaking_port}" || echo "${api_a_matchmaking_host}:${api_a_matchmaking_port}")
+sample.matchmaking-router-endpoint=tcp://${matchmaking_router_host}:${matchmaking_router_port}
 sample.session-a-stream-endpoint=tcp://${stream_a_host}:${stream_a_port}
 sample.session-b-stream-endpoint=tcp://${stream_b_host}:${stream_b_port}
 sample.redis-endpoint=${BINGO_REDIS_ENDPOINT}
@@ -116,6 +126,7 @@ api_a_config="${config_dir}/api-a.properties"
 api_b_config="${config_dir}/api-b.properties"
 play_a_config="${config_dir}/play-a.properties"
 play_b_config="${config_dir}/play-b.properties"
+matchmaking_config="${config_dir}/matchmaking.properties"
 client_config="${config_dir}/client.properties"
 write_config "$session_a_config" sessionNode a
 write_config "$session_b_config" sessionNode b
@@ -123,6 +134,7 @@ write_config "$api_a_config" apiNode a
 write_config "$api_b_config" apiNode b
 write_config "$play_a_config" playNode a
 write_config "$play_b_config" playNode b
+write_config "$matchmaking_config" matchmakingNode matchmaking
 write_config "$client_config" clientNode client
 
 build_framework_jars
@@ -130,8 +142,11 @@ gradle_run \
   :Server:Session:installDist \
   :Server:Api:installDist \
   :Server:Play:installDist \
+  :Server:Matchmaking:installDist \
   :Client:installDist
 "$(app_bin Server/Session Session)" --config "$session_a_config" >"${log_dir}/session-a.log" 2>&1 &
+pids+=("$!")
+"$(app_bin Server/Matchmaking Matchmaking)" --config "$matchmaking_config" >"${log_dir}/matchmaking.log" 2>&1 &
 pids+=("$!")
 "$(app_bin Server/Session Session)" --config "$session_b_config" >"${log_dir}/session-b.log" 2>&1 &
 pids+=("$!")
@@ -149,6 +164,7 @@ wait_port "${session_b_router_host}" "${session_b_router_port}"
 wait_port "${stream_b_host}" "${stream_b_port}"
 wait_port "${api_a_host}" "${api_a_port}"
 wait_port "${api_b_host}" "${api_b_port}"
+wait_port "${matchmaking_router_host}" "${matchmaking_router_port}"
 wait_port "${play_a_router_host}" "${play_a_router_port}"
 wait_port "${play_b_router_host}" "${play_b_router_port}"
 

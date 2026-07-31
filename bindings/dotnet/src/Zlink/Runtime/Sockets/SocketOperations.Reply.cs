@@ -18,8 +18,8 @@ internal abstract class RouterReplyOperation : ReplyOperation,
     public void Submit()
     {
         EnsureReady();
-        _submission.MarkSubmittedAfterValidation();
         SubmitCore(_parts.Parts);
+        _submission.MarkSubmittedAfterValidation();
     }
 
     private void EnsureReady()
@@ -61,13 +61,13 @@ internal sealed class RouterPeerReplyOperation : RouterReplyOperation
 internal sealed class ReceivedReplyOperationImpl : ReplyOperation,
     ReplySubmitOperation
 {
-    private readonly Received _received;
+    private readonly ReceivedReplyHandler _replyHandler;
     private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
 
-    internal ReceivedReplyOperationImpl(Received received)
+    internal ReceivedReplyOperationImpl(ReceivedReplyHandler replyHandler)
     {
-        _received = received;
+        _replyHandler = replyHandler;
     }
 
     public ReplySubmitOperation Message(Message message)
@@ -80,8 +80,8 @@ internal sealed class ReceivedReplyOperationImpl : ReplyOperation,
     public void Submit()
     {
         EnsureReady();
+        _replyHandler(_parts.Parts);
         _submission.MarkSubmittedAfterValidation();
-        _received.ReplyCore(_parts.Parts);
     }
 
     private void EnsureReady()

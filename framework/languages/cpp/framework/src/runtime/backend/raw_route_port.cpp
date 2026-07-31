@@ -77,9 +77,55 @@ bool raw_route_port_t::send (const raw_bytes_t &target_routing_id,
     for (std::size_t index = 1; index < messages.size (); ++index) {
         operation = std::move (operation).message (messages[index]);
     }
-    return std::move (operation)
-      .flags (static_cast<int> (zlink::send_flags_t::dontwait))
-      .submit ();
+    try {
+        return std::move (operation)
+          .flags (static_cast<int> (zlink::send_flags_t::dontwait))
+          .submit ();
+    }
+    catch (const zlink::submit_error_t &) {
+        return false;
+    }
+}
+
+bool raw_route_port_t::send_completion_control (
+  const raw_bytes_t &target_routing_id,
+  const raw_message_t &parts)
+{
+    if (target_routing_id.empty () || parts.empty ()) {
+        throw std::invalid_argument (
+          "completion control send requires a target and message parts");
+    }
+    std::lock_guard lock (*_socket_mutex);
+    if (_socket == nullptr) {
+        return false;
+    }
+    const auto messages = materialize_parts (parts);
+    try {
+        return _socket->try_send_completion_control (
+          zlink::routing_id_t::from (target_routing_id), messages);
+    }
+    catch (const zlink::submit_error_t &) {
+        return false;
+    }
+}
+
+void raw_route_port_t::set_completion_control_handler (
+  completion_control_handler_t handler)
+{
+    if (!handler) {
+        throw std::invalid_argument (
+          "completion control handler is required");
+    }
+    std::lock_guard lock (*_socket_mutex);
+    if (_socket == nullptr) {
+        throw std::logic_error ("raw route port is closed");
+    }
+    _socket->set_completion_control_handler (
+      [handler = std::move (handler)] (
+        const zlink::routing_id_t &source,
+        std::vector<zlink::message_t> parts) mutable {
+          handler (source.to_bytes (), copy_parts (parts));
+      });
 }
 
 bool raw_route_port_t::request (const raw_bytes_t &target_routing_id,
@@ -100,11 +146,16 @@ bool raw_route_port_t::request (const raw_bytes_t &target_routing_id,
     for (std::size_t index = 1; index < messages.size (); ++index) {
         operation = std::move (operation).message (messages[index]);
     }
-    return std::move (operation).timeout (timeout).submit (
-      [callback = std::move (callback)] (zlink::request_result_t result,
-                                         std::vector<zlink::message_t> reply) mutable {
-          callback (map_request_result (result), copy_parts (reply));
-      });
+    try {
+        return std::move (operation).timeout (timeout).submit (
+          [callback = std::move (callback)] (zlink::request_result_t result,
+                                             std::vector<zlink::message_t> reply) mutable {
+              callback (map_request_result (result), copy_parts (reply));
+          });
+    }
+    catch (const zlink::submit_error_t &) {
+        return false;
+    }
 }
 
 std::optional<raw_received_t> raw_route_port_t::try_receive ()
@@ -151,8 +202,13 @@ bool raw_route_port_t::reply (const raw_received_t &request, const raw_message_t
     for (std::size_t index = 1; index < messages.size (); ++index) {
         operation = std::move (operation).message (messages[index]);
     }
-    std::move (operation).submit ();
-    return true;
+    try {
+        std::move (operation).submit ();
+        return true;
+    }
+    catch (const zlink::submit_error_t &) {
+        return false;
+    }
 }
 
 void raw_route_port_t::close () noexcept

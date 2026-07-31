@@ -308,13 +308,39 @@ public sealed class MaintenanceRuntimeTests
             result.Reason);
     }
 
+    [Fact]
+    public void Status_Reads_Current_Inbound_Dispatch_Snapshot()
+    {
+        var inbound = new ZLinkInboundDispatchStatus(
+            4096,
+            1024,
+            768,
+            256,
+            true,
+            4,
+            64);
+        using var fixture = Create(inboundDispatchSnapshot: () => inbound);
+
+        Assert.Equal(inbound, fixture.Runtime.Status.InboundDispatch);
+
+        inbound = inbound with
+        {
+            PendingPayloadBytes = 0,
+            QueuedPayloadBytes = 0,
+            ActivePayloadBytes = 0,
+            ApplicationReceivePaused = false
+        };
+        Assert.Equal(inbound, fixture.Runtime.Status.InboundDispatch);
+    }
+
     private static Fixture Create(
         Func<
             ZLinkFrameworkRelocationMode,
             long,
             CancellationToken,
             ValueTask<ZLinkFrameworkRelocationReason?>>? preflight = null,
-        long sourceApplicationVersion = 0)
+        long sourceApplicationVersion = 0,
+        Func<ZLinkInboundDispatchStatus>? inboundDispatchSnapshot = null)
     {
         var executor = new MaintenanceExecutor();
         var drain = new ZLinkDrainCoordinator(
@@ -322,10 +348,12 @@ public sealed class MaintenanceRuntimeTests
             executor);
         var runtime = new ZLinkFrameworkMaintenanceRuntime(
             drain,
+            new ZLinkFrameworkHostLifecycleState(),
             preflight ?? (static (_, _, _) =>
                 ValueTask.FromResult<ZLinkFrameworkRelocationReason?>(null)),
             static _ => ValueTask.FromResult(true),
-            sourceApplicationVersion);
+            sourceApplicationVersion,
+            inboundDispatchSnapshot);
         return new Fixture(runtime, drain, executor);
     }
 

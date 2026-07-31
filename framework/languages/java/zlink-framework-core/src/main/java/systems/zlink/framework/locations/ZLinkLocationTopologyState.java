@@ -1,5 +1,7 @@
 package systems.zlink.framework.locations;
 
+import systems.zlink.framework.runtime.internal.locations.*;
+
 public enum ZLinkLocationTopologyState {
     DISCOVERED(1),
     CONNECTING(2),

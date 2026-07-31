@@ -16,7 +16,7 @@ class PlayerActor(
     var disconnected: Boolean = false
         private set
 
-    override fun actorId(): String = actorId
+    fun actorId(): String = actorId
 
     override fun context(): ZLinkActorContext = context
 

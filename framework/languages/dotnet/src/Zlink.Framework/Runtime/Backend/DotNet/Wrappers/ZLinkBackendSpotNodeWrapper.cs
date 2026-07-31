@@ -141,6 +141,11 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         BindOnce(endpoint);
     }
 
+    public void SetRouterAdvertisedEndpoint(string endpoint)
+    {
+        _node.SetAdvertisedEndpoint(endpoint);
+    }
+
     public void SetPubBind(string endpoint)
     {
         BindOnce(endpoint);
@@ -174,7 +179,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         _node.MaxMessageSize = value == 0 ? -1 : value;
     }
 
-    public void SetRouterHighWaterMark(int value)
+    public void SetRouterHighWaterMark(ulong value)
     {
         _node.RouterHighWaterMark = value;
     }
@@ -366,6 +371,20 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
                          () => terminal.TrySetCanceled(cancellationToken))
                      .ConfigureAwait(false))
             return await terminal.Task.ConfigureAwait(false);
+    }
+
+    public ValueTask<InstanceSpotActivationTerminal> ForwardInstanceSpotActivationAsync(
+        InstanceSpotActivationOperation operation,
+        IReadOnlyList<ReadOnlyMemory<byte>> parts,
+        ReadOnlyMemory<byte>? metadata,
+        CancellationToken cancellationToken)
+    {
+        EnsureStarted();
+        return RequireManagedNode().ForwardInstanceSpotActivationAsync(
+            operation,
+            parts,
+            metadata,
+            cancellationToken);
     }
 
     public async ValueTask<(
@@ -560,10 +579,30 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         _peerIntents[endpoint] = _node.ConnectPeer(endpoint);
     }
 
-    public void ConnectPeer(RoutingId peerRid, string endpoint)
+    public void ConnectPeer(
+        RoutingId peerRid,
+        string endpoint,
+        string expectedSecurityIdentity)
     {
-        _peerIntents[endpoint] = _node.ConnectPeer(endpoint, peerRid);
+        _peerIntents[endpoint] = _node.ConnectPeer(
+            endpoint,
+            peerRid,
+            expectedSecurityIdentity);
     }
+
+    public void SetPeerExpectation(
+        RoutingId peerRid,
+        string endpoint,
+        string expectedSecurityIdentity,
+        ulong expectedLifecycleGeneration) =>
+        _node.SetPeerExpectation(
+            peerRid,
+            endpoint,
+            expectedSecurityIdentity,
+            expectedLifecycleGeneration);
+
+    public void RemovePeerExpectation(RoutingId peerRid, string endpoint) =>
+        _node.RemovePeerExpectation(peerRid, endpoint);
 
     public void DisconnectPeer(string endpoint)
     {
@@ -910,7 +949,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         var submit = _node.RequestToNode(
             targetNodeRid,
             parts,
-            out var operationId,
+            callback,
             timeout,
             flags,
             metadata);
@@ -918,8 +957,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
             return ZLinkSubmitFailureMapper.AcceptOrThrow(
                 submit,
                 $"node '{targetNodeRid}'");
-
-        return _completions.RegisterRequest(operationId, callback);
+        return true;
     }
 
     public SubmitResult SendToActor(

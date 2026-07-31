@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include <zlink/framework/contracts/configuration/app.hpp>
+#include <runtime/locations/location_repository.hpp>
 
 #include "runtime/actors/actor_client.hpp"
 #include "runtime/actors/actor_gateway_runtime.hpp"
@@ -8,6 +9,7 @@
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
 #include "runtime/diagnostics/monitoring_runtime.hpp"
+#include "runtime/dispatch/completion_admission_owner.hpp"
 #include "runtime/dispatch/coroutine_executor.hpp"
 #include "runtime/host/framework_runtime.hpp"
 #include "runtime/http/http_host_service.hpp"
@@ -16,13 +18,15 @@
 #include "runtime/locations/location_auto_connect_host_service.hpp"
 #include "runtime/locations/location_host_service.hpp"
 #include "runtime/locations/location_lifecycle.hpp"
-#include "runtime/locations/location_monitoring_host_service.hpp"
+#include "runtime/locations/provider_location_repository.hpp"
+#include "runtime/locations/provider_relocation_repository.hpp"
 #include "runtime/mesh/mesh_node_host_service.hpp"
 #include "runtime/mesh/mesh_metadata_codec.hpp"
 #include "runtime/mesh/route_mesh_runtime_service.hpp"
 #include "runtime/mesh/route_mesh_runtime_options_service.hpp"
 #include "runtime/locations/location_runtime.hpp"
 #include "runtime/locations/actor_authority_payload.hpp"
+#include "runtime/locations/sha256.hpp"
 #include "runtime/configuration/endpoint_connections.hpp"
 #include "runtime/diagnostics/runtime_metrics.hpp"
 #include "runtime/locations/store_location_resolvers.hpp"
@@ -33,12 +37,17 @@
 #include <atomic>
 #include <csignal>
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
+#include <deque>
 #include <functional>
+#include <fstream>
 #include <iostream>
 #include <iterator>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <shared_mutex>
 #include <set>
 #include <string>
 #include <string_view>
@@ -48,6 +57,9 @@
 #include <utility>
 #include <variant>
 #include <vector>
+#if defined(__unix__) || defined(__APPLE__)
+#include <sys/resource.h>
+#endif
 
 namespace zlink::framework::detail
 {
@@ -125,54 +137,23 @@ zlink::routing_id_t location_owner_node_rid (
     return zlink::routing_id_t::from ("framework");
 }
 
-bool monitoring_socket_source_exists (const std::vector<channel_snapshot_t> &channels,
-                                      const std::string &source_name)
-{
-    const auto channel_name_exists =
-      std::any_of (channels.begin (), channels.end (),
-                   [&] (const channel_snapshot_t &channel) { return channel.name == source_name; });
-    if (channel_name_exists) {
-        return true;
-    }
-    const auto separator = source_name.rfind ('.');
-    if (separator == std::string::npos) {
-        return false;
-    }
-    if (separator == 0 || separator + 1 == source_name.size ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                     "socket monitoring source must use '<channel>.<capability>'");
-    }
-    const auto channel_name = source_name.substr (0, separator);
-    const auto capability = source_name.substr (separator + 1);
-    return std::any_of (channels.begin (), channels.end (),
-                        [&] (const channel_snapshot_t &channel) {
-                            if (channel.name != channel_name) {
-                                return false;
-                            }
-                            return (capability == "server" && channel.server.enabled)
-                                   || (capability == "client" && channel.client.enabled)
-                                   || (capability == "publisher" && channel.publisher.enabled)
-                                   || (capability == "subscriber" && channel.subscriber.enabled);
-                        });
-}
+class app_state_t;
 
-void validate_monitoring_sources (const monitoring_builder_t &monitoring,
-                                  const std::vector<channel_snapshot_t> &channels)
+struct app_state_access_t
 {
-    const auto state = monitoring_runtime_t::from (monitoring).state ();
-    for (const auto &source : state->socket_sources) {
-        if (!monitoring_socket_source_exists (channels, source.source_name)) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "socket monitoring source '" + source.source_name
-                                           + "' is not registered");
-        }
-    }
-}
+    mutable std::shared_mutex mutex;
+    app_state_t *state = nullptr;
+};
 
 class app_state_t
 {
   public:
-    app_state_t () : metrics (monitoring) {}
+    app_state_t () :
+        status_access (std::make_shared<app_state_access_t> ()),
+        monitoring (std::make_shared<monitoring_runtime_state_t> ())
+    {
+        status_access->state = this;
+    }
     ~app_state_t ()
     {
         const char *trace_value = std::getenv ("ZLINK_CPP_HOST_STOP_TRACE");
@@ -183,6 +164,10 @@ class app_state_t
                       << std::endl;
         }
         hosted_services.clear ();
+        {
+            std::unique_lock lock (status_access->mutex);
+            status_access->state = nullptr;
+        }
         if (trace_enabled) {
             std::cerr << "zlink-cpp-host-stop stage=after-app-state-destroy-services"
                       << std::endl;
@@ -309,6 +294,7 @@ class app_state_t
         relocation_options_t options{};
         relocation_result_t result{};
         std::chrono::milliseconds deadline{30000};
+        std::optional<std::chrono::system_clock::time_point> deadline_at;
         std::vector<std::shared_ptr<relocation_waiter_t>> waiters;
         std::thread worker;
 
@@ -326,6 +312,7 @@ class app_state_t
         bool terminal = false;
         termination_result_t result{};
         std::chrono::milliseconds deadline{30000};
+        std::optional<std::chrono::system_clock::time_point> deadline_at;
         std::vector<std::shared_ptr<termination_waiter_t>> waiters;
         std::thread worker;
 
@@ -340,6 +327,11 @@ class app_state_t
     std::shared_ptr<std::atomic_bool> draining = std::make_shared<std::atomic_bool> (false);
     std::atomic<framework_runtime_state_t> runtime_state =
       framework_runtime_state_t::preparing;
+    std::shared_ptr<app_state_access_t> status_access;
+    std::shared_ptr<runtime::inbound_dispatch_budget_t>
+      inbound_dispatch_budget;
+    std::shared_ptr<runtime::completion_admission_owner_t>
+      completion_admission;
     relocation_operation_t relocation_operation;
     termination_operation_t termination_operation;
     std::mutex termination_teardown_mutex;
@@ -351,8 +343,7 @@ class app_state_t
     handler_registry_t handlers;
     config_builder_t config;
     logging_builder_t logging;
-    monitoring_builder_t monitoring;
-    metrics_builder_t metrics;
+    std::shared_ptr<monitoring_runtime_state_t> monitoring;
     health_builder_t health;
     zlink_builder_t zlink;
     serializer_registry_t serializers;
@@ -367,6 +358,329 @@ class app_state_t
     std::shared_ptr<std::atomic<message_flow_log_mode_t>> message_flow_mode =
       std::make_shared<std::atomic<message_flow_log_mode_t>> (message_flow_log_mode_t::errors_only);
 };
+
+namespace
+{
+
+bool same_runtime_status (
+  const framework_runtime_status_t &left,
+  const framework_runtime_status_t &right)
+{
+    return left.state == right.state
+           && left.is_ready == right.is_ready
+           && left.accepting_work == right.accepting_work
+           && left.operation_deadline == right.operation_deadline
+           && left.relocation_result == right.relocation_result
+           && left.termination_result == right.termination_result
+           && left.inbound_dispatch == right.inbound_dispatch;
+}
+
+class framework_runtime_status_source_t
+{
+  public:
+    explicit framework_runtime_status_source_t (
+      std::shared_ptr<app_state_access_t> access) :
+        _access (std::move (access)), _worker ([this] { run (); })
+    {
+    }
+
+    ~framework_runtime_status_source_t () { close (); }
+
+    framework_runtime_status_t snapshot () const
+    {
+        std::shared_lock state_lock (_access->mutex);
+        auto *state = _access->state;
+        if (!state) {
+            std::lock_guard lock (_mutex);
+            return _last.value_or (framework_runtime_status_t{});
+        }
+        framework_runtime_status_t result;
+        result.state =
+          state->runtime_state.load (std::memory_order_acquire);
+        result.is_ready =
+          result.state == framework_runtime_state_t::serving;
+        result.accepting_work =
+          result.state == framework_runtime_state_t::serving
+          || result.state == framework_runtime_state_t::relocating;
+        {
+            std::lock_guard lock (
+              state->relocation_operation.mutex);
+            const auto &operation = state->relocation_operation;
+            if (operation.started && !operation.terminal)
+                result.operation_deadline = operation.deadline_at;
+            if (operation.terminal)
+                result.relocation_result = operation.result;
+        }
+        {
+            std::lock_guard lock (
+              state->termination_operation.mutex);
+            const auto &operation = state->termination_operation;
+            if (operation.started && !operation.terminal)
+                result.operation_deadline = operation.deadline_at;
+            if (operation.terminal)
+                result.termination_result = operation.result;
+        }
+        if (state->inbound_dispatch_budget) {
+            const auto inbound =
+              state->inbound_dispatch_budget->snapshot ();
+            result.inbound_dispatch.application_hwm_bytes =
+              inbound.application_hwm_bytes;
+            result.inbound_dispatch.pending_payload_bytes =
+              inbound.pending_payload_bytes;
+            result.inbound_dispatch.queued_payload_bytes =
+              inbound.queued_payload_bytes;
+            result.inbound_dispatch.active_payload_bytes =
+              inbound.active_payload_bytes;
+            result.inbound_dispatch.application_receive_paused =
+              inbound.application_receive_paused;
+        }
+        if (state->completion_admission) {
+            const auto completion =
+              state->completion_admission->snapshot ();
+            result.inbound_dispatch.pending_completion_sends =
+              completion.pending_completion_sends;
+            result.inbound_dispatch.completion_send_limit =
+              completion.completion_send_limit;
+        }
+        result.observed_at = std::chrono::system_clock::now ();
+        {
+            std::lock_guard lock (_mutex);
+            if (!_last || !same_runtime_status (*_last, result))
+                ++_sequence;
+            result.sequence = _sequence;
+            _last = result;
+        }
+        return result;
+    }
+
+    bool closed () const noexcept
+    {
+        return _closed.load (std::memory_order_acquire);
+    }
+
+    void close () noexcept
+    {
+        if (_closed.exchange (true, std::memory_order_acq_rel))
+            return;
+        _changed.notify_all ();
+        if (_worker.joinable ())
+            _worker.join ();
+    }
+
+    std::shared_ptr<class framework_runtime_observer_state_t>
+    observe (
+      std::size_t capacity,
+      std::function<void (const framework_runtime_status_t &)> observer);
+
+  private:
+    void run () noexcept;
+
+    std::shared_ptr<app_state_access_t> _access;
+    mutable std::mutex _mutex;
+    mutable std::optional<framework_runtime_status_t> _last;
+    mutable std::uint64_t _sequence = 0;
+    std::atomic_bool _closed{false};
+    std::condition_variable _changed;
+    std::mutex _observers_mutex;
+    std::vector<std::weak_ptr<class framework_runtime_observer_state_t>>
+      _observers;
+    std::thread _worker;
+};
+
+class framework_runtime_observer_state_t final :
+    public std::enable_shared_from_this<framework_runtime_observer_state_t>
+{
+  public:
+    framework_runtime_observer_state_t (
+      std::size_t capacity,
+      std::function<void (const framework_runtime_status_t &)> observer) :
+        _capacity (capacity), _observer (std::move (observer))
+    {
+    }
+
+    void start ()
+    {
+        auto self = shared_from_this ();
+        std::thread ([self] { self->run (); }).detach ();
+    }
+
+    void enqueue (framework_runtime_status_t status)
+    {
+        {
+        std::lock_guard lock (_mutex);
+        if (_closed)
+            return;
+        if (_last_enqueued_sequence == status.sequence)
+            return;
+        _last_enqueued_sequence = status.sequence;
+        if (_pending.size () == _capacity)
+            _pending.pop_front ();
+            _pending.push_back (std::move (status));
+        }
+        _changed.notify_one ();
+    }
+
+    void close () noexcept
+    {
+        {
+            std::lock_guard lock (_mutex);
+            _closed = true;
+            _pending.clear ();
+        }
+        _changed.notify_all ();
+    }
+
+  private:
+    void run () noexcept
+    {
+        for (;;) {
+            std::optional<framework_runtime_status_t> status;
+            {
+                std::unique_lock lock (_mutex);
+                _changed.wait (
+                  lock, [&] { return _closed || !_pending.empty (); });
+                if (_closed)
+                    return;
+                status.emplace (std::move (_pending.front ()));
+                _pending.pop_front ();
+            }
+            try {
+                _observer (*status);
+            }
+            catch (...) {
+                close ();
+                return;
+            }
+        }
+    }
+
+    std::size_t _capacity;
+    std::function<void (const framework_runtime_status_t &)> _observer;
+    std::mutex _mutex;
+    std::condition_variable _changed;
+    std::deque<framework_runtime_status_t> _pending;
+    std::uint64_t _last_enqueued_sequence = 0;
+    bool _closed = false;
+};
+
+std::shared_ptr<framework_runtime_observer_state_t>
+framework_runtime_status_source_t::observe (
+  std::size_t capacity,
+  std::function<void (const framework_runtime_status_t &)> observer)
+{
+    auto state = std::make_shared<framework_runtime_observer_state_t> (
+      capacity, std::move (observer));
+    {
+        std::lock_guard lock (_observers_mutex);
+        _observers.erase (
+          std::remove_if (
+            _observers.begin (), _observers.end (),
+            [] (const auto &item) { return item.expired (); }),
+          _observers.end ());
+        _observers.emplace_back (state);
+    }
+    state->start ();
+    state->enqueue (snapshot ());
+    return state;
+}
+
+void framework_runtime_status_source_t::run () noexcept
+{
+    std::uint64_t last_sequence = 0;
+    while (!_closed.load (std::memory_order_acquire)) {
+        auto status = snapshot ();
+        if (status.sequence != last_sequence) {
+            last_sequence = status.sequence;
+            std::vector<std::shared_ptr<framework_runtime_observer_state_t>>
+              observers;
+            {
+                std::lock_guard lock (_observers_mutex);
+                for (auto iterator = _observers.begin ();
+                     iterator != _observers.end ();) {
+                    if (auto observer = iterator->lock ()) {
+                        observers.push_back (std::move (observer));
+                        ++iterator;
+                    }
+                    else {
+                        iterator = _observers.erase (iterator);
+                    }
+                }
+            }
+            for (const auto &observer : observers)
+                observer->enqueue (status);
+        }
+        std::unique_lock lock (_observers_mutex);
+        _changed.wait_for (
+          lock, std::chrono::milliseconds (10),
+          [&] { return _closed.load (std::memory_order_acquire); });
+    }
+}
+
+class framework_runtime_observation_t final :
+    public runtime_observation_t
+{
+  public:
+    explicit framework_runtime_observation_t (
+      std::shared_ptr<framework_runtime_observer_state_t> state) :
+        _state (std::move (state))
+    {
+    }
+
+    ~framework_runtime_observation_t () override { close (); }
+
+    void close () noexcept override
+    {
+        if (_state) {
+            _state->close ();
+            _state.reset ();
+        }
+    }
+
+  private:
+    std::shared_ptr<framework_runtime_observer_state_t> _state;
+};
+
+class public_framework_runtime_t final :
+    public framework_runtime_t
+{
+  public:
+    explicit public_framework_runtime_t (app_state_t &state) :
+        _source (
+          std::make_shared<framework_runtime_status_source_t> (
+            state.status_access))
+    {
+    }
+
+    ~public_framework_runtime_t () override
+    {
+        _source->close ();
+    }
+
+    framework_runtime_status_t status () const override
+    {
+        return _source->snapshot ();
+    }
+
+    std::unique_ptr<runtime_observation_t> observe (
+      std::size_t capacity,
+      std::function<void (const framework_runtime_status_t &)> observer)
+      override
+    {
+        if (capacity == 0)
+            throw std::invalid_argument (
+              "runtime observation capacity must be positive");
+        if (!observer)
+            throw std::invalid_argument (
+              "runtime observation callback is required");
+        return std::make_unique<framework_runtime_observation_t> (
+          _source->observe (capacity, std::move (observer)));
+    }
+
+  private:
+    std::shared_ptr<framework_runtime_status_source_t> _source;
+};
+
+} // namespace
 
 } // namespace zlink::framework::detail
 
@@ -384,6 +698,81 @@ bool host_stop_trace_enabled ()
 {
     const char *value = std::getenv ("ZLINK_CPP_HOST_STOP_TRACE");
     return value != nullptr && std::string_view (value) != "0" && std::string_view (value) != "";
+}
+
+std::optional<std::uint64_t> read_finite_memory_limit (
+  const char *path)
+{
+    std::ifstream input (path);
+    std::string value;
+    if (!(input >> value) || value.empty () || value == "max")
+        return std::nullopt;
+    try {
+        const auto parsed = std::stoull (value);
+        return parsed == 0 ? std::nullopt
+                           : std::optional<std::uint64_t> (parsed);
+    }
+    catch (...) {
+        return std::nullopt;
+    }
+}
+
+std::optional<std::uint64_t> read_process_address_space_limit ()
+{
+#if defined(__unix__) || defined(__APPLE__)
+    rlimit limit{};
+    if (::getrlimit (RLIMIT_AS, &limit) == 0
+        && limit.rlim_cur != RLIM_INFINITY
+        && limit.rlim_cur > 0)
+        return static_cast<std::uint64_t> (limit.rlim_cur);
+#endif
+    return std::nullopt;
+}
+
+std::uint64_t resolve_application_hwm (
+  std::optional<std::uint64_t> configured,
+  zlink::framework::application_hwm_profile_t profile,
+  std::optional<std::uint64_t> process_memory_limit)
+{
+    using namespace zlink::framework;
+    if (configured)
+        return *configured;
+    auto limit = process_memory_limit;
+    if (!limit)
+        limit = read_finite_memory_limit (
+          "/sys/fs/cgroup/memory.max");
+    if (!limit)
+        limit = read_finite_memory_limit (
+          "/sys/fs/cgroup/memory/memory.limit_in_bytes");
+    if (!limit)
+        limit = read_process_address_space_limit ();
+    if (!limit)
+        throw framework_exception_t (
+          framework_error_kind_t::invalid_configuration,
+          "Auto Application HWM requires a finite process memory limit");
+    std::uint64_t percent = 0;
+    switch (profile) {
+        case application_hwm_profile_t::compact:
+            percent = 2;
+            break;
+        case application_hwm_profile_t::low_latency:
+            percent = 5;
+            break;
+        case application_hwm_profile_t::balanced:
+            percent = 10;
+            break;
+        case application_hwm_profile_t::throughput:
+            percent = 20;
+            break;
+    }
+    const auto result =
+      (*limit / 100) * percent
+      + ((*limit % 100) * percent) / 100;
+    if (result == 0)
+        throw framework_exception_t (
+          framework_error_kind_t::invalid_configuration,
+          "Auto Application HWM must resolve to a positive byte value");
+    return result;
 }
 
 zlink::framework::result_t<void>
@@ -474,11 +863,6 @@ logging_builder_t &app_t::logging () noexcept
     return _state->logging;
 }
 
-monitoring_builder_t &app_t::monitoring () noexcept
-{
-    return _state->monitoring;
-}
-
 app_t &app_t::set_message_flow_mode (message_flow_log_mode_t mode) noexcept
 {
     // Note: before apply() this is overwritten by the configured mode (config seeds
@@ -490,11 +874,6 @@ app_t &app_t::set_message_flow_mode (message_flow_log_mode_t mode) noexcept
 message_flow_log_mode_t app_t::message_flow_mode () const noexcept
 {
     return _state->message_flow_mode->load (std::memory_order_relaxed);
-}
-
-metrics_builder_t &app_t::metrics () noexcept
-{
-    return _state->metrics;
 }
 
 health_builder_t &app_t::health () noexcept
@@ -531,6 +910,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
 {
     detail::channel_runtime_t::from (_state->zlink.message_bus ())
       .bind_serializers (_state->serializers);
+    _state->monitoring->diagnostics_logger =
+      _state->logging.create_logger ("zlink.framework.runtime");
     if (!_state->services.contains (std::type_index (typeid (logger_factory_t)))) {
         _state->services.add_singleton<logger_factory_t> (
           std::make_unique<logger_factory_t> (_state->logging.factory ()));
@@ -567,7 +948,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           service_lifetime_t::singleton);
     }
     zlink_framework_options_t options (_state->services, _state->handlers, _state->serializers,
-                                       _state->zlink, _state->monitoring);
+                                       _state->zlink);
     if (configure) {
         configure (options);
     }
@@ -599,9 +980,75 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           _state->logging.factory ().create ("zlink.framework.dispatch");
     }
     const auto http_snapshot = options.http ().snapshot ();
+    const auto application_hwm_bytes = resolve_application_hwm (
+      options.application_hwm_bytes (),
+      options.application_hwm_profile (),
+      options.process_memory_limit_bytes ());
+    const auto inbound_dispatch_budget =
+      std::make_shared<runtime::inbound_dispatch_budget_t> (
+        application_hwm_bytes);
+    const auto completion_admission =
+      std::make_shared<runtime::completion_admission_owner_t> (
+        65'536);
+    _state->inbound_dispatch_budget = inbound_dispatch_budget;
+    _state->completion_admission = completion_admission;
+    if (!_state->services.contains (
+          std::type_index (typeid (framework_runtime_t)))) {
+        auto *state = _state.get ();
+        _state->services.add_factory<framework_runtime_t> (
+          [state] (service_provider_t &) {
+              return std::unique_ptr<framework_runtime_t> (
+                std::make_unique<detail::public_framework_runtime_t> (
+                  *state));
+          },
+          service_lifetime_t::singleton);
+    }
+    const auto core_hwm_profile = [&] {
+        switch (options.application_hwm_profile ()) {
+            case application_hwm_profile_t::compact:
+                return zlink::auto_hwm_profile::compact;
+            case application_hwm_profile_t::low_latency:
+                return zlink::auto_hwm_profile::low_latency;
+            case application_hwm_profile_t::throughput:
+                return zlink::auto_hwm_profile::throughput;
+            case application_hwm_profile_t::balanced:
+            default:
+                return zlink::auto_hwm_profile::balanced;
+        }
+    } ();
     options.apply ();
     if (_state->services.contains (
           std::type_index (typeid (relocation_store_t)))
+        && !_state->services.contains (
+          std::type_index (typeid (relocation_repository_t)))) {
+        _state->services.add_factory<relocation_repository_t> (
+          [] (service_provider_t &provider) {
+              return std::static_pointer_cast<
+                relocation_repository_t> (
+                std::make_shared<
+                  runtime::provider_relocation_repository_t> (
+                  provider.get_required<
+                    relocation_store_t> ()));
+          },
+          service_lifetime_t::singleton);
+    }
+    if (_state->services.contains (
+          std::type_index (typeid (location_store_t)))
+        && !_state->services.contains (
+          std::type_index (typeid (location_repository_t)))) {
+        _state->services.add_factory<location_repository_t> (
+          [] (service_provider_t &provider) {
+              return std::static_pointer_cast<
+                location_repository_t> (
+                std::make_shared<
+                  runtime::provider_location_repository_t> (
+                  provider.get_required<
+                    location_store_t> ()));
+          },
+          service_lifetime_t::singleton);
+    }
+    if (_state->services.contains (
+          std::type_index (typeid (relocation_repository_t)))
         && !_state->services.contains (
           std::type_index (
             typeid (runtime::stateful::relocation_store_port_t)))) {
@@ -612,12 +1059,12 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                 runtime::stateful::relocation_store_port_t> (
                 std::make_unique<
                   runtime::stateful::public_relocation_store_adapter_t> (
-                  provider.get_required<relocation_store_t> ()));
+                  provider.get_required<relocation_repository_t> ()));
           },
           service_lifetime_t::singleton);
     }
     if (_state->services.contains (
-          std::type_index (typeid (location_store_t)))
+          std::type_index (typeid (location_repository_t)))
         && !_state->services.contains (
           std::type_index (
             typeid (runtime::stateful::authority_relocation_port_t)))) {
@@ -628,15 +1075,15 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                 runtime::stateful::authority_relocation_port_t> (
                 std::make_unique<
                   runtime::stateful::public_authority_store_adapter_t> (
-                  provider.get_required<location_store_t> ()));
+                  provider.get_required<location_repository_t> ()));
           },
           service_lifetime_t::singleton);
     }
-    if (!_state->services.contains (std::type_index (typeid (location_store_t)))) {
-        auto store = std::make_shared<runtime::in_memory_location_store_t> ();
-        _state->services.add_factory<location_store_t> (
+    if (!_state->services.contains (std::type_index (typeid (location_repository_t)))) {
+        auto store = std::make_shared<runtime::in_memory_location_repository_t> ();
+        _state->services.add_factory<location_repository_t> (
           [store] (service_provider_t &) {
-              return std::static_pointer_cast<location_store_t> (store);
+              return std::static_pointer_cast<location_repository_t> (store);
           },
           service_lifetime_t::singleton);
     }
@@ -645,7 +1092,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         _state->services.add_factory<runtime::location_runtime_t> (
           [location_options] (service_provider_t &provider) {
               return std::make_unique<runtime::location_runtime_t> (
-                provider.get_required<location_store_t> (), location_options);
+                provider.get_required<location_repository_t> (), location_options);
           },
           service_lifetime_t::singleton);
     }
@@ -654,7 +1101,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         _state->services.add_factory<runtime::live_location_reader_t> (
           [location_options] (service_provider_t &provider) {
               return std::make_unique<runtime::live_location_reader_t> (
-                provider.get_required<location_store_t> (), location_options);
+                provider.get_required<location_repository_t> (), location_options);
           },
           service_lifetime_t::singleton);
     }
@@ -735,7 +1182,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
       _state->services.build_provider ().get_required<detail::actor_gateway_runtime_t> ();
     _state->services.build_provider ()
       .get_required<runtime::location_runtime_t> ()
-      .bind_monitoring (detail::monitoring_runtime_t::from (_state->monitoring).state ());
+      .bind_monitoring (_state->monitoring);
     actor_gateway_runtime.bind_serializers (_state->serializers);
     actor_gateway_runtime.set_dispatch (options.configure_dispatch ());
     auto channel_runtime = detail::channel_runtime_t::from (_state->zlink.message_bus ());
@@ -744,6 +1191,37 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     channel_runtime_manager.initialize_route_channels (_state->zlink);
     auto mesh_node_registrations =
       detail::mesh_node_runtime_t::registrations (_state->zlink);
+    const auto application_hwm_is_bounded =
+      !options.application_hwm_bytes ()
+      || *options.application_hwm_bytes () > 0;
+    if (application_hwm_is_bounded) {
+        for (const auto &registration : mesh_node_registrations) {
+            if (registration && registration->socket.max_message_size <= 0) {
+                throw framework_exception_t (
+                  framework_error_kind_t::invalid_configuration,
+                  "MeshNode MaxMessageSize must be positive when Application HWM is Auto or positive");
+            }
+        }
+        const auto validate_listener =
+          [] (const channel_capability_snapshot_t &capability,
+              std::string_view capability_name) {
+              if (!capability.enabled)
+                  return;
+              if (!capability.max_message_size
+                  || capability.max_message_size->bytes () <= 0) {
+                  throw framework_exception_t (
+                    framework_error_kind_t::invalid_configuration,
+                    std::string (capability_name)
+                      + " MaxMessageSize must be positive when Application HWM is Auto or positive");
+              }
+          };
+        for (const auto &channel : channel_snapshot) {
+            validate_listener (channel.server, "Channel server");
+            validate_listener (channel.subscriber, "Channel subscriber");
+        }
+    }
+    for (const auto &registration : mesh_node_registrations)
+        registration->auto_hwm_profile = core_hwm_profile;
     _state->has_manual_service_topology =
       [options, mesh_node_registrations,
        channel_runtime_manager] () mutable {
@@ -767,7 +1245,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           }
           return false;
       };
-    auto monitoring_state = detail::monitoring_runtime_t::from (_state->monitoring).state ();
+    auto monitoring_state = _state->monitoring;
     const auto application_mesh_registration =
       std::find_if (mesh_node_registrations.begin (),
                     mesh_node_registrations.end (),
@@ -866,7 +1344,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     if (!mesh_node_registrations.empty ()) {
         auto mesh_service = std::make_unique<runtime::mesh_node_host_service_t> (
           std::move (mesh_node_registrations), _state->serializers, _state->handlers,
-          options.dispatch_options ());
+          options.dispatch_options (), inbound_dispatch_budget,
+          completion_admission);
         mesh_node_service = mesh_service.get ();
         mesh_nodes = mesh_service->nodes ();
         _state->route_mesh_nodes = mesh_nodes;
@@ -891,7 +1370,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           std::type_index (typeid (route_mesh_runtime_t)))) {
         auto provider = _state->services.build_provider ();
         auto location_runtime = provider.get<location_runtime_query_t> ();
-        auto location_store = provider.get<location_store_t> ();
+        auto location_store = provider.get<location_repository_t> ();
         auto mesh_runtime =
           std::make_shared<runtime::route_mesh_runtime_service_t> (
             mesh_nodes,
@@ -915,7 +1394,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     }
     if (!mesh_nodes.empty ()) {
         auto provider = _state->services.build_provider ();
-        auto &location_store = provider.get_required<location_store_t> ();
+        auto &location_store = provider.get_required<location_repository_t> ();
         auto operation_sequence =
           std::make_shared<std::atomic<std::uint64_t>> (1);
         struct selected_instance_target_t
@@ -1415,6 +1894,11 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                   : std::nullopt,
                 bound_session ? bound_session->session_rid : std::nullopt);
           });
+        actor_gateway_runtime.on_join_barrier (
+          [application_mesh] (const actor_ref_t &actor) {
+              return application_mesh
+                ->reserve_application_actor_join_barrier (actor);
+          });
         actor_gateway_runtime.on_relay (
           [application_mesh, request_timeout] (
             const actor_ref_t &actor,
@@ -1515,12 +1999,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               });
         }
     }
-    if (!monitoring_state->location_sources.empty ()) {
-        add_hosted_service (
-          std::make_unique<runtime::location_monitoring_host_service_t> (monitoring_state));
-    }
     const auto stream_snapshot = detail::stream_runtime_t::from (_state->zlink).snapshots ();
-    detail::validate_monitoring_sources (_state->monitoring, channel_snapshot);
     add_hosted_service (std::make_unique<runtime::location_auto_connect_host_service_t> (
       _state->zlink.message_bus (), channel_snapshot, _state->handlers,
       _state->serializers,
@@ -1532,7 +2011,9 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
       }));
     if (detail::has_inbound_channel (channel_snapshot)) {
         add_hosted_service (std::make_unique<runtime::channel_host_service_t> (
-          _state->zlink.message_bus (), channel_snapshot, _state->handlers, _state->serializers));
+          _state->zlink.message_bus (), channel_snapshot, _state->handlers,
+          _state->serializers, inbound_dispatch_budget,
+          completion_admission));
     }
     if (!stream_snapshot.empty ()) {
         detail::configure_stream_dispatch_executor ();
@@ -1542,7 +2023,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           mesh_nodes.empty () ? nullptr : mesh_nodes.front ());
         stream_service->bind_drain_flag (_state->draining);
         stream_service->bind_monitoring (
-          detail::monitoring_runtime_t::from (_state->monitoring).state ());
+          _state->monitoring);
         add_hosted_service (std::move (stream_service));
     }
     if (!http_snapshot.endpoints.empty ()) {
@@ -1559,7 +2040,6 @@ app_t &app_t::add_module (module_t &module)
     module.configure_services (_state->services);
     module.configure_zlink (_state->zlink);
     module.configure_handlers (_state->handlers);
-    module.configure_monitoring (_state->monitoring);
     return *this;
 }
 
@@ -1599,7 +2079,7 @@ int app_t::run (int argc, char **argv)
           std::memory_order_acq_rel);
         try {
             runtime::runtime_metrics_t drain_metrics (
-              detail::monitoring_runtime_t::from (_state->monitoring).state ());
+              _state->monitoring);
             if (drain_metrics.enabled ()) {
                 drain_metrics.observable ("zlink.drain.state", "{state}", 1,
                                           {{"state", "serving"}});
@@ -1702,16 +2182,16 @@ struct shutdown_forced_t
 using shutdown_progress_t =
   std::variant<shutdown_completed_t, shutdown_forced_t>;
 
-const char *drain_state_name (drain_state_t state) noexcept
+const char *drain_state_name (detail::drain_state_t state) noexcept
 {
     switch (state) {
-        case drain_state_t::serving:
+        case detail::drain_state_t::serving:
             return "serving";
-        case drain_state_t::draining:
+        case detail::drain_state_t::draining:
             return "draining";
-        case drain_state_t::drained:
-            return "drained";
-        case drain_state_t::force_stopping:
+        case detail::drain_state_t::stopped:
+            return "stopped";
+        case detail::drain_state_t::force_stopping:
             return "force_stopping";
     }
     return "unknown";
@@ -1794,7 +2274,7 @@ relocation_topology_preflight (
 
     try {
         auto provider = state.services.build_provider ();
-        auto &store = provider.get_required<location_store_t> ();
+        auto &store = provider.get_required<location_repository_t> ();
         auto &live = provider.get_required<runtime::live_location_reader_t> ();
 
         std::set<std::string> local_rids;
@@ -1946,9 +2426,9 @@ task_t<relocation_result_t> app_t::relocate (
         preflight = relocation_topology_preflight (*_state, options);
         if (!preflight.blocker
             && (!_state->services.contains (
-                  std::type_index (typeid (relocation_store_t)))
+                  std::type_index (typeid (relocation_repository_t)))
                 || !_state->services.contains (
-                  std::type_index (typeid (location_store_t))))) {
+                  std::type_index (typeid (location_repository_t))))) {
             preflight.blocker = relocation_reason_t::store_unavailable;
         }
     }
@@ -1997,6 +2477,8 @@ task_t<relocation_result_t> app_t::relocate (
             operation.started = true;
             operation.options = options;
             operation.deadline = deadline;
+            operation.deadline_at =
+              std::chrono::system_clock::now () + deadline;
             operation.result.mode = options.mode;
             operation.result.effective_target_application_version =
               preflight.effective_target_application_version;
@@ -2027,12 +2509,27 @@ void app_t::run_shared_relocation (
       operation.result.effective_target_application_version,
       relocation_outcome_t::blocked,
       relocation_reason_t::relocation_failed};
+    std::vector<std::string> readiness_meshes;
+    std::map<std::string, std::vector<spot_id_t>>
+      relocated_ready_spots;
 
     auto shutdown_requested = [&] {
         std::lock_guard lock (operation.mutex);
         return operation.shutdown_requested;
     };
     auto complete = [&] (relocation_result_t result) {
+        for (const auto &mesh_name : readiness_meshes) {
+            auto runtime = detail::spot_node_runtime_t::from (
+              state.zlink, mesh_name);
+            if (runtime) {
+                const auto found =
+                  relocated_ready_spots.find (mesh_name);
+                runtime->end_relocation_readiness (
+                  found != relocated_ready_spots.end ()
+                    ? found->second
+                    : std::vector<spot_id_t>{});
+            }
+        }
         std::unique_lock lock (operation.mutex);
         const bool interrupted = operation.shutdown_requested;
         if (interrupted) {
@@ -2074,7 +2571,9 @@ void app_t::run_shared_relocation (
         auto provider = state.services.build_provider ();
         auto peers =
           provider.get<runtime::store_location_resolvers_t> ();
-        if (!peers) {
+        auto location_store =
+          provider.get<location_repository_t> ();
+        if (!peers || !location_store) {
             terminal.reason = relocation_reason_t::store_unavailable;
             complete (terminal);
             return;
@@ -2095,16 +2594,270 @@ void app_t::run_shared_relocation (
                   state.zlink, node->mesh_name ());
                 if (!spot_runtime)
                     continue;
-                const auto actors = spot_runtime->local_actor_refs ();
-                if (actors.empty ())
-                    continue;
-
+                if (std::find (
+                      readiness_meshes.begin (),
+                      readiness_meshes.end (),
+                      node->mesh_name ())
+                    == readiness_meshes.end ()) {
+                    spot_runtime->begin_relocation_readiness ();
+                    readiness_meshes.push_back (
+                      node->mesh_name ());
+                }
                 auto live = peers->get ()
                               .list_live_mesh_nodes (node->mesh_name ())
                               .result ()
                               .value ();
                 const auto local_rid = node->routing_id ();
+                auto application_units =
+                  spot_runtime->application_relocation_units ();
+                while (std::any_of (
+                         application_units.begin (),
+                         application_units.end (),
+                         [] (const auto &unit) {
+                             return !unit.ready;
+                         })) {
+                    if (shutdown_requested ()
+                        || std::chrono::steady_clock::now ()
+                             >= deadline_at) {
+                        terminal.reason = shutdown_requested ()
+                          ? relocation_reason_t::shutdown_requested
+                          : relocation_reason_t::deadline_exceeded;
+                        complete (terminal);
+                        return;
+                    }
+                    std::this_thread::sleep_for (
+                      std::chrono::milliseconds (1));
+                    application_units =
+                      spot_runtime
+                        ->application_relocation_units ();
+                }
+
+                std::set<std::string> aggregate_actor_ids;
+                for (const auto &unit : application_units) {
+                    const auto target = std::find_if (
+                      live.begin (), live.end (),
+                      [&] (const auto &peer) {
+                          if (peer.state
+                                != framework_runtime_state_t::serving
+                              || peer.application_version
+                                   != terminal.effective_target_application_version
+                              || (local_rid
+                                  && peer.rid.to_hex ()
+                                       == local_rid->to_hex ()))
+                              return false;
+                          const auto supports =
+                            [&] (
+                              placement_object_kind_t kind,
+                              std::string_view stable_type) {
+                                return std::any_of (
+                                  peer.object_capabilities.begin (),
+                                  peer.object_capabilities.end (),
+                                  [&] (const auto &capability) {
+                                      return capability.object_kind
+                                               == kind
+                                             && capability.stable_type
+                                                  == stable_type;
+                                  });
+                            };
+                          if (!supports (
+                                placement_object_kind_t::user_spot,
+                                unit.spot_type))
+                              return false;
+                          return std::all_of (
+                            unit.actors.begin (), unit.actors.end (),
+                            [&] (const auto &actor) {
+                                return supports (
+                                  placement_object_kind_t::actor,
+                                  actor.actor_type ());
+                            });
+                      });
+                    if (target == live.end ()) {
+                        terminal.reason =
+                          relocation_reason_t::target_unavailable;
+                        complete (terminal);
+                        return;
+                    }
+
+                    std::vector<
+                      runtime::stateful::object_ref_t> sources;
+                    std::vector<std::string> stable_types;
+                    const auto spot_source =
+                      node->native_node ().resolve_spot (
+                        std::string (unit.spot_id));
+                    if (!spot_source) {
+                        terminal.reason =
+                          relocation_reason_t::state_incompatible;
+                        complete (terminal);
+                        return;
+                    }
+                    sources.push_back (*spot_source);
+                    stable_types.push_back (unit.spot_type);
+                    for (const auto &actor : unit.actors) {
+                        const auto source =
+                          node->native_node ().resolve_actor (actor);
+                        if (!source) {
+                            terminal.reason =
+                              relocation_reason_t::state_incompatible;
+                            complete (terminal);
+                            return;
+                        }
+                        sources.push_back (*source);
+                        stable_types.emplace_back (
+                          actor.actor_type ());
+                        aggregate_actor_ids.insert (
+                          std::string (actor.actor_id ()));
+                    }
+
+                    std::vector<authority_snapshot_t> authorities;
+                    std::vector<relocation_capacity_fence_t>
+                      capacity_fences;
+                    const auto abort_capacity_fences = [&] {
+                        for (const auto &fence : capacity_fences) {
+                            try {
+                                (void) location_store->get ()
+                                  .abort_relocation_capacity (fence)
+                                  .result ().value ();
+                            }
+                            catch (...) {
+                            }
+                        }
+                    };
+                    static std::atomic<std::uint64_t>
+                      next_aggregate_reservation{1};
+                    for (std::size_t index = 0;
+                         index != sources.size (); ++index) {
+                        const auto &source = sources[index];
+                        const authority_key_t authority_key{
+                          std::string (
+                            source.kind
+                                == runtime::stateful::object_kind_t::
+                                     actor
+                              ? "1:"
+                              : "2:")
+                          + source.key};
+                        const auto authority_read =
+                          location_store->get ()
+                            .read_authority (authority_key)
+                            .result ().value ();
+                        const auto *authority =
+                          std::get_if<authority_snapshot_t> (
+                            &authority_read);
+                        if (!authority
+                            || authority->allocation.state
+                                 != placement_allocation_state_t::
+                                      active
+                            || authority->allocation.stable_type
+                                 != stable_types[index]
+                            || authority->object_generation
+                                 != source.object_generation
+                            || authority
+                                 ->authority_owner_generation
+                                 != source
+                                      .authority_owner_generation) {
+                            abort_capacity_fences ();
+                            terminal.reason =
+                              relocation_reason_t::
+                                state_incompatible;
+                            complete (terminal);
+                            return;
+                        }
+                        authorities.push_back (*authority);
+
+                        const auto reservation_sequence =
+                          next_aggregate_reservation.fetch_add (
+                            1, std::memory_order_relaxed);
+                        const auto seed =
+                          source.key + ":"
+                          + std::to_string (
+                            source.object_generation)
+                          + ":"
+                          + std::to_string (
+                            reservation_sequence);
+                        std::vector<std::byte> seed_bytes;
+                        for (const auto value : seed)
+                            seed_bytes.push_back (
+                              static_cast<std::byte> (
+                                static_cast<unsigned char> (
+                                  value)));
+                        const auto reservation_digest =
+                          runtime::sha256 (seed_bytes);
+                        std::array<std::byte, 16>
+                          reservation_id{};
+                        std::copy_n (
+                          reservation_digest.begin (),
+                          reservation_id.size (),
+                          reservation_id.begin ());
+                        const auto reserved =
+                          location_store->get ()
+                            .reserve_relocation_capacity (
+                              relocation_capacity_reserve_request_t{
+                                reservation_id,
+                                authority_key,
+                                authority->store_version,
+                                authority
+                                  ->allocation.object_kind,
+                                stable_types[index],
+                                authority
+                                  ->allocation.target,
+                                object_creation_target_t{
+                                  target->mesh_name,
+                                  node_rid_t::from_string (
+                                    target->rid.to_string ()),
+                                  target
+                                    ->lifecycle_generation,
+                                  {target->owner_id,
+                                   target->lease_generation}},
+                                authority->allocation
+                                  .capacity_bundle})
+                            .result ().value ();
+                        if (const auto *created =
+                              std::get_if<
+                                relocation_capacity_reserved_t> (
+                                &reserved))
+                            capacity_fences.push_back (
+                              created->fence);
+                        else if (const auto *existing =
+                                   std::get_if<
+                                     relocation_capacity_already_reserved_t> (
+                                     &reserved))
+                            capacity_fences.push_back (
+                              existing->fence);
+                        else {
+                            abort_capacity_fences ();
+                            terminal.reason =
+                              relocation_reason_t::
+                                target_unavailable;
+                            complete (terminal);
+                            return;
+                        }
+                    }
+
+                    const auto moved =
+                      node->relocate_application_unit (
+                        std::move (sources),
+                        std::move (stable_types), *target,
+                        authorities,
+                        capacity_fences);
+                    if (moved.terminal
+                          != runtime::stateful::
+                            relocation_terminal_t::completed) {
+                        abort_capacity_fences ();
+                        terminal.reason =
+                          relocation_reason_t::relocation_failed;
+                        complete (terminal);
+                        return;
+                    }
+                    relocated_ready_spots[node->mesh_name ()]
+                      .push_back (unit.spot_id);
+                }
+
+                const auto actors = spot_runtime->local_actor_refs ();
+                if (actors.empty ())
+                    continue;
                 for (const auto &actor : actors) {
+                    if (aggregate_actor_ids.contains (
+                          std::string (actor.actor_id ())))
+                        continue;
                     if (shutdown_requested ()) {
                         terminal.reason =
                           relocation_reason_t::shutdown_requested;
@@ -2143,18 +2896,113 @@ void app_t::run_shared_relocation (
                         complete (terminal);
                         return;
                     }
-                    const auto remaining =
-                      std::max (
-                        std::chrono::milliseconds (1),
-                        std::chrono::duration_cast<std::chrono::milliseconds> (
-                          deadline_at - now));
-                    auto moved =
-                      node->join_application_actor_to_entry_spot (
-                        actor,
-                        node_rid_t::from_string (
-                          target->rid.to_string ()),
-                        zlink::message_t{}, remaining);
-                    if (!moved || moved.value ().result_code != 0) {
+
+                    const auto authority_key =
+                      authority_key_t{
+                        "1:" + std::string (actor.actor_id ())};
+                    const auto authority_read =
+                      location_store->get ()
+                        .read_authority (authority_key)
+                        .result ().value ();
+                    const auto *authority =
+                      std::get_if<authority_snapshot_t> (
+                        &authority_read);
+                    if (!authority
+                        || authority->allocation.state
+                             != placement_allocation_state_t::active
+                        || authority->allocation.object_kind
+                             != placement_object_kind_t::actor
+                        || authority->allocation.stable_type
+                             != actor.actor_type ()
+                        || authority->object_generation
+                             != actor.generation ()
+                        || authority->allocation.target.node_rid.value ()
+                             != local_rid->to_string ()) {
+                        terminal.reason =
+                          relocation_reason_t::state_incompatible;
+                        complete (terminal);
+                        return;
+                    }
+
+                    static std::atomic<std::uint64_t>
+                      next_reservation{1};
+                    const auto reservation_sequence =
+                      next_reservation.fetch_add (
+                        1, std::memory_order_relaxed);
+                    std::vector<std::byte> reservation_seed;
+                    const auto seed =
+                      std::string (actor.actor_id ())
+                      + ":" + std::to_string (
+                        authority->object_generation)
+                      + ":" + std::to_string (
+                        reservation_sequence);
+                    reservation_seed.reserve (seed.size ());
+                    for (const auto value : seed)
+                        reservation_seed.push_back (
+                          static_cast<std::byte> (
+                            static_cast<unsigned char> (value)));
+                    const auto reservation_digest =
+                      runtime::sha256 (reservation_seed);
+                    std::array<std::byte, 16> reservation_id{};
+                    std::copy_n (
+                      reservation_digest.begin (),
+                      reservation_id.size (),
+                      reservation_id.begin ());
+
+                    const object_creation_target_t target_owner{
+                      target->mesh_name,
+                      node_rid_t::from_string (
+                        target->rid.to_string ()),
+                      target->lifecycle_generation,
+                      {target->owner_id,
+                       target->lease_generation}};
+                    const auto reserved =
+                      location_store->get ()
+                        .reserve_relocation_capacity (
+                          relocation_capacity_reserve_request_t{
+                            reservation_id,
+                            authority_key,
+                            authority->store_version,
+                            placement_object_kind_t::actor,
+                            std::string (actor.actor_type ()),
+                            authority->allocation.target,
+                            target_owner,
+                            authority->allocation.capacity_bundle})
+                        .result ().value ();
+                    std::optional<relocation_capacity_fence_t>
+                      capacity_fence;
+                    if (const auto *created =
+                          std::get_if<
+                            relocation_capacity_reserved_t> (
+                            &reserved))
+                        capacity_fence = created->fence;
+                    else if (const auto *existing =
+                               std::get_if<
+                                 relocation_capacity_already_reserved_t> (
+                                 &reserved))
+                        capacity_fence = existing->fence;
+                    if (!capacity_fence) {
+                        terminal.reason =
+                          relocation_reason_t::target_unavailable;
+                        complete (terminal);
+                        return;
+                    }
+
+                    const auto moved =
+                      node->relocate_application_actor (
+                        actor, *target, *authority,
+                        *capacity_fence);
+                    if (moved.terminal
+                          != runtime::stateful::
+                            relocation_terminal_t::completed) {
+                        try {
+                            (void) location_store->get ()
+                              .abort_relocation_capacity (
+                                *capacity_fence)
+                              .result ().value ();
+                        }
+                        catch (...) {
+                        }
                         terminal.reason =
                           relocation_reason_t::relocation_failed;
                         complete (terminal);
@@ -2200,6 +3048,8 @@ task_t<termination_result_t> app_t::shutdown (
         if (!operation.started) {
             operation.started = true;
             operation.deadline = deadline;
+            operation.deadline_at =
+              std::chrono::system_clock::now () + deadline;
             _state->draining->store (true, std::memory_order_release);
             _state->runtime_state.store (
               framework_runtime_state_t::draining,
@@ -2223,13 +3073,13 @@ void app_t::run_shared_shutdown (
     const auto started_at = std::chrono::steady_clock::now ();
     const auto deadline_at =
       started_at + state.termination_operation.deadline;
-    auto monitoring = detail::monitoring_runtime_t::from (state.monitoring);
-    auto emit_state = [&] (drain_state_t drain_state) {
+    auto monitoring = detail::monitoring_runtime_t (state.monitoring);
+    auto emit_state = [&] (detail::drain_state_t drain_state) {
         try {
             monitoring.publish_drain (
-              drain_event_t{runtime_event_base_t{"drain"}, drain_state});
+              detail::drain_event_t{drain_state});
             runtime::runtime_metrics_t drain_metrics (
-              detail::monitoring_runtime_t::from (state.monitoring).state ());
+              state.monitoring);
             if (drain_metrics.enabled ()) {
                 drain_metrics.observable ("zlink.drain.state", "{state}", 1,
                                           {{"state", drain_state_name (drain_state)}});
@@ -2239,7 +3089,7 @@ void app_t::run_shared_shutdown (
         }
     };
 
-    emit_state (drain_state_t::draining);
+    emit_state (detail::drain_state_t::draining);
 
     shutdown_progress_t result = shutdown_completed_t{};
     bool force_state_emitted = false;
@@ -2249,7 +3099,7 @@ void app_t::run_shared_shutdown (
         result = shutdown_forced_t{reason};
         if (!force_state_emitted) {
             force_state_emitted = true;
-            emit_state (drain_state_t::force_stopping);
+            emit_state (detail::drain_state_t::force_stopping);
         }
     };
 
@@ -2456,7 +3306,7 @@ void app_t::run_shared_shutdown (
                     stream_service->force_close_sessions (
                       stream_close_reason_t::server_drain, "drain force stop");
                     runtime::runtime_metrics_t metrics (
-                      detail::monitoring_runtime_t::from (state.monitoring).state ());
+                      state.monitoring);
                     if (metrics.enabled ()) {
                         metrics.counter ("zlink.drain.forced", "{event}", 1,
                                          {{"kind", "session"}});
@@ -2468,10 +3318,10 @@ void app_t::run_shared_shutdown (
         }
     }
     if (!force_stopped)
-        emit_state (drain_state_t::drained);
+        emit_state (detail::drain_state_t::stopped);
     try {
         runtime::runtime_metrics_t drain_metrics (
-          detail::monitoring_runtime_t::from (state.monitoring).state ());
+          state.monitoring);
         if (drain_metrics.enabled ()) {
             const auto elapsed = std::chrono::duration<double> (
                                    std::chrono::steady_clock::now () - started_at)
@@ -2525,6 +3375,8 @@ void app_t::run_shared_shutdown (
     for (auto &waiter : waiters) {
         waiter->complete (terminal);
     }
+    if (state.completion_admission)
+        state.completion_admission->stop ();
     state.runtime_state.store (
       framework_runtime_state_t::stopped, std::memory_order_release);
 }

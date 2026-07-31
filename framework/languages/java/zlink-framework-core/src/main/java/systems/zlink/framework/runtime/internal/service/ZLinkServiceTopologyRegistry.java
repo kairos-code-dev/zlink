@@ -37,12 +37,29 @@ public final class ZLinkServiceTopologyRegistry {
             throw new IllegalArgumentException(
                 "published descriptor revision must increase");
         }
+        if (!immutableFieldsMatch(local, descriptor)) {
+            throw new IllegalArgumentException(
+                "published descriptor changes immutable fields");
+        }
         local = descriptor;
     }
 
     public synchronized AdmissionResult admit(
         ZLinkServiceNodeDescriptor descriptor,
         String connectionId) {
+        return admit(
+            descriptor,
+            new Connection(
+                connectionId,
+                ZLinkServiceAdmissionGuard.ConnectionDirection.OUTBOUND,
+                connectionId));
+    }
+
+    public synchronized AdmissionResult admit(
+        ZLinkServiceNodeDescriptor descriptor,
+        Connection connection) {
+        String connectionId =
+            connection == null ? null : connection.connectionId();
         if (descriptor == null || connectionId == null || connectionId.isBlank()) {
             return AdmissionResult.INVALID_DESCRIPTOR;
         }
@@ -54,24 +71,109 @@ public final class ZLinkServiceTopologyRegistry {
         }
         Peer current = peers.get(descriptor.nodeRoutingId());
         if (current != null
+            && current.connection().connectionId().equals(connectionId)) {
+            return admitDescriptorUpdate(current, descriptor);
+        }
+        if (current != null
+            && current.descriptor().lifecycleGeneration()
+                == descriptor.lifecycleGeneration()
+            && descriptor.descriptorRevision()
+                > current.descriptor().descriptorRevision()
+            && !immutableFieldsMatch(current.descriptor(), descriptor)) {
+            return AdmissionResult.INVALID_DESCRIPTOR;
+        }
+        if (current != null
             && current.descriptor().lifecycleGeneration()
                 == descriptor.lifecycleGeneration()
             && (current.descriptor().descriptorRevision()
                     > descriptor.descriptorRevision()
-                || (current.descriptor().descriptorRevision()
+                || current.descriptor().descriptorRevision()
                         == descriptor.descriptorRevision()
-                    && !current.descriptor().equals(descriptor)))) {
+                    && !current.descriptor().equals(descriptor))) {
             return AdmissionResult.STALE_DESCRIPTOR;
         }
-        peers.put(descriptor.nodeRoutingId(), new Peer(descriptor, connectionId));
+        if (current != null
+            && current.descriptor().lifecycleGeneration()
+                == descriptor.lifecycleGeneration()) {
+            var duplicate =
+                ZLinkServiceAdmissionGuard.selectConnection(
+                    local.nodeRoutingId(),
+                    descriptor.nodeRoutingId(),
+                    current.descriptor().lifecycleGeneration(),
+                    current.connection().direction(),
+                    current.connection().discriminator(),
+                    descriptor.lifecycleGeneration(),
+                    connection.direction(),
+                    connection.discriminator());
+            if (duplicate
+                == ZLinkServiceAdmissionGuard
+                    .DuplicateConnectionDecision.KEEP_CURRENT) {
+                return AdmissionResult.DUPLICATE_REJECTED;
+            }
+        }
+        peers.put(
+            descriptor.nodeRoutingId(),
+            new Peer(descriptor, connection));
         return AdmissionResult.ADMITTED;
+    }
+
+    private AdmissionResult admitDescriptorUpdate(
+        Peer current,
+        ZLinkServiceNodeDescriptor descriptor) {
+        if (current.descriptor().lifecycleGeneration()
+                != descriptor.lifecycleGeneration()
+            || current.descriptor().descriptorRevision()
+                > descriptor.descriptorRevision()
+            || current.descriptor().descriptorRevision()
+                    == descriptor.descriptorRevision()
+                && !current.descriptor().equals(descriptor)) {
+            return AdmissionResult.STALE_DESCRIPTOR;
+        }
+        if (!immutableFieldsMatch(current.descriptor(), descriptor)) {
+            return AdmissionResult.INVALID_DESCRIPTOR;
+        }
+        peers.put(
+            descriptor.nodeRoutingId(),
+            new Peer(descriptor, current.connection()));
+        return AdmissionResult.ADMITTED;
+    }
+
+    private static boolean immutableFieldsMatch(
+        ZLinkServiceNodeDescriptor current,
+        ZLinkServiceNodeDescriptor incoming) {
+        if (!current.meshName().equals(incoming.meshName())
+            || !current.nodeRoutingId().equals(incoming.nodeRoutingId())
+            || current.lifecycleGeneration() != incoming.lifecycleGeneration()
+            || !current.advertisedEndpoint().equals(
+                incoming.advertisedEndpoint())
+            || !current.securityIdentity().equals(incoming.securityIdentity())
+            || current.effectiveMaxMessageBytes()
+                != incoming.effectiveMaxMessageBytes()
+            || current.applicationVersion() != incoming.applicationVersion()
+            || !current.protocolCapabilities().equals(
+                incoming.protocolCapabilities())
+            || current.objectRole() != incoming.objectRole()
+            || current.activeCapacityLimit() != incoming.activeCapacityLimit()
+            || current.pendingCapacityLimit()
+                != incoming.pendingCapacityLimit()
+            || current.channels().size() != incoming.channels().size()) {
+            return false;
+        }
+        for (int index = 0; index < current.channels().size(); index++) {
+            if (!current.channels().get(index).name().equals(
+                    incoming.channels().get(index).name())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public synchronized boolean disconnect(
         RoutingId nodeRoutingId,
         String connectionId) {
         Peer current = peers.get(nodeRoutingId);
-        if (current == null || !current.connectionId().equals(connectionId)) {
+        if (current == null
+            || !current.connection().connectionId().equals(connectionId)) {
             return false;
         }
         peers.remove(nodeRoutingId);
@@ -142,11 +244,29 @@ public final class ZLinkServiceTopologyRegistry {
 
     public record Peer(
         ZLinkServiceNodeDescriptor descriptor,
-        String connectionId) {
+        Connection connection) {
         public Peer {
             Objects.requireNonNull(descriptor, "descriptor");
+            Objects.requireNonNull(connection, "connection");
+        }
+
+        public String connectionId() {
+            return connection.connectionId();
+        }
+    }
+
+    public record Connection(
+        String connectionId,
+        ZLinkServiceAdmissionGuard.ConnectionDirection direction,
+        String discriminator) {
+        public Connection {
+            Objects.requireNonNull(direction, "direction");
             if (connectionId == null || connectionId.isBlank()) {
                 throw new IllegalArgumentException("connectionId is required");
+            }
+            if (discriminator == null || discriminator.isBlank()) {
+                throw new IllegalArgumentException(
+                    "connection discriminator is required");
             }
         }
     }
@@ -155,7 +275,8 @@ public final class ZLinkServiceTopologyRegistry {
         ADMITTED,
         MESH_MISMATCH,
         INVALID_DESCRIPTOR,
-        STALE_DESCRIPTOR
+        STALE_DESCRIPTOR,
+        DUPLICATE_REJECTED
     }
 
     private record WeightedPeer(Peer peer, int weight) {

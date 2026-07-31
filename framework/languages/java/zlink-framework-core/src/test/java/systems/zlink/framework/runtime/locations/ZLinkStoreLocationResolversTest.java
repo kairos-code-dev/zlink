@@ -12,6 +12,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.*;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkLocationRepository;
 
 final class ZLinkStoreLocationResolversTest {
     private static final Instant NOW =
@@ -23,10 +26,10 @@ final class ZLinkStoreLocationResolversTest {
         AtomicInteger reads = new AtomicInteger();
         AtomicReference<Object> current = new AtomicReference<>(
             readySpotSnapshot());
-        ZLinkLocationStore store = (ZLinkLocationStore)
+        ZLinkLocationRepository store = (ZLinkLocationRepository)
             Proxy.newProxyInstance(
                 getClass().getClassLoader(),
-                new Class<?>[] {ZLinkLocationStore.class},
+                new Class<?>[] {ZLinkLocationRepository.class},
                 (proxy, method, arguments) -> switch (method.getName()) {
                     case "read" -> {
                         reads.incrementAndGet();
@@ -66,10 +69,10 @@ final class ZLinkStoreLocationResolversTest {
 
     @Test
     void expiredExactOwnerLeaseRejectsAnOtherwiseReadyRoute() {
-        ZLinkLocationStore store = (ZLinkLocationStore)
+        ZLinkLocationRepository store = (ZLinkLocationRepository)
             Proxy.newProxyInstance(
                 getClass().getClassLoader(),
-                new Class<?>[] {ZLinkLocationStore.class},
+                new Class<?>[] {ZLinkLocationRepository.class},
                 (proxy, method, arguments) -> switch (method.getName()) {
                     case "read" -> CompletableFuture.completedFuture(
                         readySpotSnapshot());

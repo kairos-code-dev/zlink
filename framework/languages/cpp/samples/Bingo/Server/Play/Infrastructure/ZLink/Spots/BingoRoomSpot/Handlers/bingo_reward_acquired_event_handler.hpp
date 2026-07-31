@@ -18,6 +18,9 @@ bingo_room_spot_t::on_reward_acquired (const bingo_reward_acquired_event_t &even
           event.item_name, event.rarity};
         actor->push (notify);
     }
+    // The observer event has been submitted to every current participant.
+    // This turn can be used as an application-signaled relocation boundary.
+    _context->relocation_ready ().defer ();
     co_return;
 }
 

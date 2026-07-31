@@ -363,6 +363,108 @@ public sealed class UserSpotExecutionSchedulerTests
     }
 
     [Fact]
+    public async Task SpotWide_RelocationSeal_StopsNewIngressAfterCurrentTurn()
+    {
+        using var errorSink = new ZLinkRuntimeErrorSink();
+        await using var executor = CreateExecutor(
+            errorSink,
+            ZLinkUserSpotExecutionMode.SpotWide);
+        var started = NewSignal();
+        var release = NewSignal();
+        var current = executor.ExecuteActorAsync(
+            "actor-1",
+            async static (_, state, _) =>
+            {
+                state.Started.TrySetResult();
+                await state.Release.Task.ConfigureAwait(false);
+            },
+            new BlockState(started, release),
+            CancellationToken.None).AsTask();
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var sealTask = executor.SealRelocationAsync(
+            CancellationToken.None).AsTask();
+        var rejected = await Assert.ThrowsAsync<ZLinkFrameworkException>(() =>
+            executor.ExecuteActorAsync(
+                    "actor-2",
+                    static (_, _, _) => ValueTask.CompletedTask,
+                    0,
+                    CancellationToken.None)
+                .AsTask());
+        Assert.Equal(ZLinkFrameworkErrorKind.Rejected, rejected.Kind);
+        Assert.False(sealTask.IsCompleted);
+
+        release.TrySetResult();
+        await current.WaitAsync(TimeSpan.FromSeconds(5));
+        var seal = await sealTask.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(executor.TryAbortRelocation(seal));
+    }
+
+    [Fact]
+    public async Task SpotWide_RelocationSeal_ContinuousIngressCannotStarveBoundary()
+    {
+        using var errorSink = new ZLinkRuntimeErrorSink();
+        await using var executor = CreateExecutor(
+            errorSink,
+            ZLinkUserSpotExecutionMode.SpotWide);
+        var currentStarted = NewSignal();
+        var releaseCurrent = NewSignal();
+        var current = executor.ExecuteActorAsync(
+            "actor-current",
+            async static (_, state, _) =>
+            {
+                state.Started.TrySetResult();
+                await state.Release.Task.ConfigureAwait(false);
+            },
+            new BlockState(currentStarted, releaseCurrent),
+            CancellationToken.None).AsTask();
+        await currentStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var sealTask = executor.SealRelocationAsync(
+            CancellationToken.None).AsTask();
+        var unexpectedExecutions = 0;
+        var rejectedAdmissions = 0;
+        var producers = Enumerable.Range(0, 4)
+            .Select(producer => Task.Run(async () =>
+            {
+                for (var attempt = 0; attempt < 128; attempt++)
+                {
+                    try
+                    {
+                        await executor.ExecuteActorAsync(
+                            $"actor-{producer}-{attempt}",
+                            (_, _, _) =>
+                            {
+                                Interlocked.Increment(
+                                    ref unexpectedExecutions);
+                                return ValueTask.CompletedTask;
+                            },
+                            0,
+                            CancellationToken.None);
+                    }
+                    catch (ZLinkFrameworkException exception)
+                        when (exception.Kind
+                              == ZLinkFrameworkErrorKind.Rejected)
+                    {
+                        Interlocked.Increment(ref rejectedAdmissions);
+                    }
+
+                    await Task.Yield();
+                }
+            }))
+            .ToArray();
+
+        releaseCurrent.TrySetResult();
+        await current.WaitAsync(TimeSpan.FromSeconds(5));
+        var seal = await sealTask.WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.WhenAll(producers).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(0, Volatile.Read(ref unexpectedExecutions));
+        Assert.Equal(512, Volatile.Read(ref rejectedAdmissions));
+        Assert.True(executor.TryAbortRelocation(seal));
+    }
+
+    [Fact]
     public async Task RelocationAbort_OnlyReopensItsOwnBarrierGeneration()
     {
         using var errorSink = new ZLinkRuntimeErrorSink();
@@ -421,6 +523,32 @@ public sealed class UserSpotExecutionSchedulerTests
             .WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(ran.Task.IsCompleted);
         Assert.True(executor.TryAbortRelocation(current));
+    }
+
+    [Fact]
+    public async Task RelocationAdmissionOpenRetriesItsReservationCallback()
+    {
+        using var errorSink = new ZLinkRuntimeErrorSink();
+        await using var executor = CreateExecutor(
+            errorSink,
+            ZLinkUserSpotExecutionMode.SpotWide);
+        var seal = await executor.SealRelocationAsync(
+            CancellationToken.None);
+        var attempts = 0;
+
+        Assert.Throws<InvalidOperationException>(() =>
+            executor.TryOpenRelocationAfterMessageFollow(
+                seal,
+                () =>
+                {
+                    attempts++;
+                    throw new InvalidOperationException("retry");
+                }));
+        Assert.True(executor.TryOpenRelocationAfterMessageFollow(
+            seal,
+            () => attempts++));
+
+        Assert.Equal(2, attempts);
     }
 
     [Fact]
@@ -678,6 +806,51 @@ public sealed class UserSpotExecutionSchedulerTests
         Assert.True(executor.TryAbortRelocation(seal));
         releaseActor.TrySetResult();
         await Task.WhenAll(actor, nextActor);
+    }
+
+    [Fact]
+    public async Task PerActor_Shell_Commit_Keeps_Existing_Actor_Lanes_Runnable()
+    {
+        using var errorSink = new ZLinkRuntimeErrorSink();
+        await using var executor = CreateExecutor(
+            errorSink,
+            ZLinkUserSpotExecutionMode.PerActor);
+        var firstActorStarted = NewSignal();
+        var releaseFirstActor = NewSignal();
+        var firstActor = executor.ExecuteActorAsync(
+                "actor-a",
+                async (_, _, _) =>
+                {
+                    firstActorStarted.TrySetResult();
+                    await releaseFirstActor.Task.ConfigureAwait(false);
+                },
+                state: 0,
+                CancellationToken.None)
+            .AsTask();
+        await firstActorStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(executor.TrySealPerActorShellRelocation(out var seal));
+        Assert.True(executor.TryCommitRelocation(
+            seal,
+            out var held,
+            preserveActorExecution: true));
+        Assert.Empty(held);
+
+        var nextActorRan = NewSignal();
+        var nextActor = RecordActor(
+            executor,
+            "actor-a",
+            order: null,
+            marker: null,
+            nextActorRan);
+        Assert.False(nextActorRan.Task.IsCompleted);
+        Assert.False(executor.Queue(
+            static (_, _) => ValueTask.CompletedTask));
+
+        releaseFirstActor.TrySetResult();
+        await Task.WhenAll(firstActor, nextActor)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(nextActorRan.Task.IsCompleted);
     }
 
     private static ZLinkSpotSerialExecutor CreateExecutor(

@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <deque>
 #include <filesystem>
 #include <fstream>
@@ -248,7 +249,17 @@ class local_handler_t
         return {request.value + 100};
     }
 
-    void handle_send (const event_t &event) { last_event = event.value; }
+    void handle_send (const event_t &event)
+    {
+        if (event.value == 300) {
+            std::unique_lock lock (send_gate_mutex);
+            blocking_send_entered = true;
+            send_gate_changed.notify_all ();
+            send_gate_changed.wait (
+              lock, [this] { return release_blocking_send; });
+        }
+        last_event = event.value;
+    }
 
     reply_t handle_route_request (const request_t &request,
                                   const zlink::framework::route_message_context_t &context)
@@ -271,6 +282,10 @@ class local_handler_t
     int last_route_event = 0;
     int internal_dispatch_provider_seen = 0;
     std::string last_route_source;
+    std::mutex send_gate_mutex;
+    std::condition_variable send_gate_changed;
+    bool blocking_send_entered = false;
+    bool release_blocking_send = false;
 };
 
 class route_filter_t
@@ -766,8 +781,8 @@ int main ()
     auto standalone_server = standalone_channel.enable_server ()
                                .bind ("tcp://127.0.0.1:7001")
                                .set_routing_id (zlink::routing_id_t::from ("standalone-server"))
-                               .send_high_water_mark (zlink::message_count_t::value (11))
-                               .receive_high_water_mark (zlink::message_count_t::value (12))
+                               .send_high_water_mark (zlink::byte_count_t::bytes (11))
+                               .receive_high_water_mark (zlink::byte_count_t::bytes (12))
                                .max_message_size (zlink::byte_size_t::bytes (4096))
                                .peer_weight (zlink::peer_weight_t::value (3))
                                .snapshot ();
@@ -780,9 +795,9 @@ int main ()
         || !standalone_server.routing_id
         || standalone_server.routing_id->to_string () != "standalone-server"
         || !standalone_server.send_high_water_mark
-        || standalone_server.send_high_water_mark->value () != 11
+        || standalone_server.send_high_water_mark->bytes () != 11
         || !standalone_server.receive_high_water_mark
-        || standalone_server.receive_high_water_mark->value () != 12
+        || standalone_server.receive_high_water_mark->bytes () != 12
         || !standalone_server.max_message_size
         || standalone_server.max_message_size->bytes () != 4096
         || !standalone_server.peer_weight || standalone_server.peer_weight->value () != 3
@@ -806,8 +821,8 @@ int main ()
     loose_capability.bind ("tcp://127.0.0.1:7051")
       .connect ("tcp://127.0.0.1:7052")
       .set_routing_id (zlink::routing_id_t::from ("loose-capability"))
-      .send_high_water_mark (zlink::message_count_t::value (4))
-      .receive_high_water_mark (zlink::message_count_t::value (5))
+      .send_high_water_mark (zlink::byte_count_t::bytes (4))
+      .receive_high_water_mark (zlink::byte_count_t::bytes (5))
       .max_message_size (zlink::byte_size_t::bytes (2048))
       .peer_weight (zlink::peer_weight_t::value (6));
     zlink::framework::capability_builder_t moved_capability (std::move (loose_capability));
@@ -1681,11 +1696,14 @@ int main ()
     hosted_channel.enable_client ().connect (hosted_endpoint);
     zlink::framework::detail::channel_runtime_t::from (hosted_builder.message_bus ())
       .bind_serializers (serializers);
+    auto hosted_completion_admission =
+      std::make_shared<
+        zlink::framework::runtime::completion_admission_owner_t> (1);
     zlink::framework::runtime::channel_host_service_t hosted_service (
       hosted_builder.message_bus (),
       zlink::framework::detail::channel_runtime_t::from (hosted_builder.message_bus ())
         .channel_snapshots (),
-      handlers, serializers);
+      handlers, serializers, nullptr, hosted_completion_admission);
     hosted_service.start (provider);
     auto hosted_reply = hosted_builder.request_client ("hosted")
                           .request (request_t{28})
@@ -1714,6 +1732,35 @@ int main ()
         hosted_service.stop ();
         return 87;
     }
+    auto &hosted_handler = provider.get_required<local_handler_t> ();
+    hosted_builder.message_bus ().send ("hosted", event_t{300}).submit ();
+    bool blocking_send_started = false;
+    {
+        std::unique_lock lock (hosted_handler.send_gate_mutex);
+        blocking_send_started =
+          hosted_handler.send_gate_changed.wait_for (
+            lock, std::chrono::seconds (1),
+            [&] { return hosted_handler.blocking_send_entered; });
+    }
+    if (!blocking_send_started) {
+        hosted_service.stop ();
+        return 247;
+    }
+    if (hosted_completion_admission->snapshot ().pending_completion_sends
+        != 0) {
+        {
+            std::lock_guard lock (hosted_handler.send_gate_mutex);
+            hosted_handler.release_blocking_send = true;
+        }
+        hosted_handler.send_gate_changed.notify_all ();
+        hosted_service.stop ();
+        return 248;
+    }
+    {
+        std::lock_guard lock (hosted_handler.send_gate_mutex);
+        hosted_handler.release_blocking_send = true;
+    }
+    hosted_handler.send_gate_changed.notify_all ();
     zlink::context_t peer_context;
     zlink::router_socket_t peer_router (peer_context);
     peer_router.connect (hosted_endpoint);

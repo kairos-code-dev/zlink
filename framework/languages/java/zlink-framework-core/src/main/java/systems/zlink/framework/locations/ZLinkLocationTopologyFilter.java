@@ -1,5 +1,7 @@
 package systems.zlink.framework.locations;
 
+import systems.zlink.framework.runtime.internal.locations.*;
+
 import systems.zlink.contracts.core.RoutingId;
 
 public record ZLinkLocationTopologyFilter(

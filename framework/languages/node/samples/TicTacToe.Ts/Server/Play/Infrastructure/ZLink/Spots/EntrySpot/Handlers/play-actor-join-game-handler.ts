@@ -1,23 +1,28 @@
-import { Injectable } from '@nestjs/common';
+import { zlinkEntrySpotActorRequestHandler } from '@zlink-systems/nestjs';
 import type {
-  ZLinkSpotActorRequestContext
+  ZLinkEntrySpotActorRequestHandler,
+  ZLinkMessageContext
 } from '@zlink-systems/framework';
-import { ZLinkSpotActorRequest } from '@zlink-systems/framework';
-import type { PlayActor } from '../../../Actors/play-actor';
+import { PlayActor } from '../../../Actors/play-actor';
+import { PlayEntrySpot } from '../play-entry-spot';
 import type {
   JoinGameReq,
   JoinGameRes,
-  TicTacToeGameJoinReq,
-  TicTacToeGameJoinRes
+  TicTacToeGameJoinReq
 } from '../../../../../../../Shared/Contracts/messages';
-import { joinGameRes } from '../../../../../../../Shared/Contracts/messages';
+import { GameStatus, joinGameRes } from '../../../../../../../Shared/Contracts/messages';
 
-@Injectable()
-class PlayActorJoinGameHandler {
-  @ZLinkSpotActorRequest('JoinGameReq')
+@zlinkEntrySpotActorRequestHandler({
+  actor: () => PlayActor,
+  entrySpot: () => PlayEntrySpot,
+  packetName: 'JoinGameReq'
+})
+class PlayActorJoinGameHandler
+  implements ZLinkEntrySpotActorRequestHandler<PlayEntrySpot, PlayActor, JoinGameReq, JoinGameRes> {
   async handle(
+    _spot: PlayEntrySpot,
     actor: PlayActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: JoinGameReq
   ): Promise<JoinGameRes> {
     void context;
@@ -30,21 +35,21 @@ class PlayActorJoinGameHandler {
         wins: actor.wins
       }
     };
-    const joined = await actor.context
+    actor.context
       .joinSpot(request.roomId, joinRequest)
-      .submit<Partial<TicTacToeGameJoinRes & { error: string }>>();
-    if (joined.status === 'rejected') {
-      throw new Error(
-        joined.rejection.error ?? `Room '${request.roomId}' rejected actor '${actor.actorId}'.`
-      );
-    }
-    if (joined.reply.state === undefined) {
-      throw new Error(
-        `Room '${request.roomId}' accepted actor '${actor.actorId}' without game state.`
-      );
-    }
+      .defer();
     actor.roomId = request.roomId;
-    return joinGameRes(joined.reply.state);
+    return joinGameRes({
+      roomId: request.roomId,
+      board: '.........',
+      status: GameStatus.WaitingForPlayers,
+      winner: null,
+      nextTurn: '',
+      xActorId: null,
+      oActorId: null,
+      lastMoveActorId: null,
+      lastMoveCell: null
+    });
   }
 }
 

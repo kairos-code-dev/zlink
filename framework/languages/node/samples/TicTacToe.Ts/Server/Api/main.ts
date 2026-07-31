@@ -5,6 +5,7 @@ import { closeNestRuntime, waitForShutdown } from '../runtime-support';
 import { TICTACTOE_SAMPLE_CONFIG } from '../Configuration/sample-config';
 import type { TicTacToeSampleConfig } from '../Configuration/sample-config';
 import { createTicTacToeApiModule, getCreateGameEndpoint } from './tictactoe-api-module';
+import { CreateGameHttpReq } from '../../Shared/Contracts/messages';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 
 type HttpEndpoint = {
@@ -27,7 +28,7 @@ async function main(): Promise<void> {
       return;
     }
     try {
-      const body = await readJson(request);
+      const body = parseCreateGameRequest(await readJson(request));
       const result = await createGameReq.handle(body);
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(JSON.stringify(result));
@@ -45,6 +46,17 @@ async function main(): Promise<void> {
   await waitForShutdown();
   await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
   await closeNestRuntime(apiApp);
+}
+
+function parseCreateGameRequest(value: unknown): CreateGameHttpReq {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('The request body must be a JSON object.');
+  }
+  const gameName: unknown = 'gameName' in value ? value.gameName : undefined;
+  if (gameName !== undefined && typeof gameName !== 'string') {
+    throw new Error('gameName must be a string.');
+  }
+  return new CreateGameHttpReq(gameName as string | undefined);
 }
 
 function readJson(request: IncomingMessage): Promise<unknown> {

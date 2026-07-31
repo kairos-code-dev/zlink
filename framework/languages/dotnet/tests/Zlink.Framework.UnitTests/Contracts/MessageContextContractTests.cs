@@ -306,8 +306,16 @@ public sealed class MessageContextContractTests
                 "channel-a",
                 parts,
                 header,
-                (_, _, _) => normalReply = true,
-                reply => errorReply = reply,
+                (_, _, _) =>
+                {
+                    normalReply = true;
+                    return ValueTask.CompletedTask;
+                },
+                reply =>
+                {
+                    errorReply = reply;
+                    return ValueTask.CompletedTask;
+                },
                 CancellationToken.None);
         }
         finally

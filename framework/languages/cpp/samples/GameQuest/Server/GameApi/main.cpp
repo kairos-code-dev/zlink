@@ -204,7 +204,8 @@ class player_entry_spot_t : public entry_spot_t<player_actor_t>
     }
 
     task_t<spot_actor_join_response_t>
-    on_actor_join (std::string_view, const zlink::message_t &) override
+    on_actor_join (std::string_view,
+                   const zlink::framework::message_t &) override
     {
         co_return spot_actor_join_response_t::accept ();
     }
@@ -257,25 +258,19 @@ class player_entry_spot_t : public entry_spot_t<player_actor_t>
 class gamequest_session_t final : public packet_stream_session_t
 {
   public:
-    using dependency_types = dependency_list_t<channel_client_t,
-                                               route_client_t,
+    using dependency_types = dependency_list_t<route_client_t,
                                                game_api_store_t,
                                                sample_topology_t,
-                                               session_actor_manager_t,
-                                               spot_handle_resolver_t>;
+                                               session_actor_manager_t>;
 
-    gamequest_session_t (channel_client_t &channels,
-                         route_client_t &routes,
+    gamequest_session_t (route_client_t &routes,
                          game_api_store_t &store,
                          sample_topology_t &topology,
-                         session_actor_manager_t &actors,
-                         spot_handle_resolver_t &spot_handles) :
-        _channels (channels),
+                         session_actor_manager_t &actors) :
         _routes (routes),
         _store (store),
         _topology (topology),
-        _actors (actors),
-        _spot_handles (spot_handles)
+        _actors (actors)
     {
     }
 
@@ -306,9 +301,6 @@ class gamequest_session_t final : public packet_stream_session_t
                   actor.error () ? actor.error ()->what () : "gamequest session actor bind failed");
             }
             auto bound = co_await _actors.bind_or_get (actor.value ().ref ()).submit ();
-            (void) co_await bound.context ()
-              .join_entry_spot (request)
-              .async ();
             _player_id = request.player_id;
             _store.bind (request.player_id, _topology.api_name, stream);
             auto synced = co_await sync_projection (request.player_id);
@@ -345,10 +337,11 @@ class gamequest_session_t final : public packet_stream_session_t
         }
         if (packet == projection_admin_req_t::packet_name) {
             const auto request = payload.parse_json<projection_admin_req_t> ();
-            co_await ensure_player_spot (request.player_id);
-            auto target = co_await resolve_player_spot (request.player_id);
             auto result = co_await _routes
-                            .request_to_spot (std::move (target), request)
+                            .request_to_spot (
+                              player_spot_id (request.player_id), request)
+                            .instance_spot (
+                              sample_names_t::player_quest_spot)
                             .template submit<projection_admin_res_t> ();
             stream.reply_packet (zlink::message_t::from_json (result)).submit ();
             co_return;
@@ -425,26 +418,15 @@ class gamequest_session_t final : public packet_stream_session_t
                 static_cast<long long> (std::time (nullptr)) * 1000LL};
     }
 
-    task_t<spot_handle_t> resolve_player_spot (const std::string &player_id)
-    {
-        auto handle = co_await _spot_handles.resolve_spot_handle (player_spot_rid (player_id));
-        if (!handle) {
-            throw framework_exception_t (framework_error_kind_t::spot_route_not_found,
-                                         "GameQuest player quest spot for '" + player_id
-                                           + "' has no live location row");
-        }
-        co_return *handle;
-    }
-
     task_t<sync_quest_progress_res_t> sync_projection (const std::string &player_id)
     {
-        co_await ensure_player_spot (player_id);
-        auto target = co_await resolve_player_spot (player_id);
         auto synced = co_await _routes
                         .request_to_spot (
-                          std::move (target),
+                          player_spot_id (player_id),
                           sync_quest_progress_req_t{player_id,
                                                     _store.snapshot_kill_count (player_id)})
+                        .instance_spot (
+                          sample_names_t::player_quest_spot)
                         .template submit<sync_quest_progress_res_t> ();
         co_return synced;
     }
@@ -453,35 +435,20 @@ class gamequest_session_t final : public packet_stream_session_t
      * client에는 event id만 즉시 돌려주고, 진행은 notify로 돌아온다. */
     task_t<void> apply_event (const gameplay_msg_t &event)
     {
-        co_await ensure_player_spot (event.player_id);
-        auto target = co_await resolve_player_spot (event.player_id);
-        _routes.send_to_spot (std::move (target), event).submit ();
+        co_await _routes
+          .send_to_spot (player_spot_id (event.player_id), event)
+          .instance_spot (sample_names_t::player_quest_spot)
+          .submit ();
         _store.record_event (event);
         std::cerr << "gamequest api event routed player=" << event.player_id
                   << " type=" << event.type << "\n";
         co_return;
     }
 
-    task_t<void> ensure_player_spot (const std::string &player_id)
-    {
-        auto ensured =
-          co_await _channels
-            .request (sample_names_t::quest_owner_channel,
-                      ensure_player_quest_spot_req_t{player_id})
-            .template submit<ensure_player_quest_spot_res_t> ();
-        if (!ensured.ok) {
-            throw framework_exception_t (framework_error_kind_t::request_failed,
-                                         "GameQuest player quest spot ensure failed");
-        }
-        co_return;
-    }
-
-    channel_client_t &_channels;
     route_client_t &_routes;
     game_api_store_t &_store;
     sample_topology_t &_topology;
     session_actor_manager_t &_actors;
-    spot_handle_resolver_t &_spot_handles;
     std::optional<std::string> _player_id;
 };
 
@@ -526,7 +493,6 @@ int main (int argc, char **argv)
         options.services ().add_singleton<game_api_store_t> (std::move (api_store));
         add_gamequest_json_codecs (options.codecs ());
         add_gamequest_location_store (options, topology);
-        options.add_client_server_channel (sample_names_t::quest_owner_channel).enable_client ();
         /* 같은 spot route mesh를 양방향으로 쓴다: API는 owner spot으로 gameplay를 보내고, owner
          * spot은 같은 mesh로 이 노드의 entry spot에 notify를 보낸다. */
         auto quest_spot_route = options.add_route_mesh (sample_names_t::quest_spot_route);

@@ -218,4 +218,14 @@ internal abstract record ZLinkFanoutRuntimeEvent
             Sequence,
             Timestamp,
             ChannelName);
+
+    internal sealed record RuntimeChanged(
+        ulong Sequence,
+        DateTimeOffset Timestamp,
+        string ChannelName)
+        : ZLinkFanoutRuntimeEvent(
+            "zlink.runtime.framework.state_changed",
+            Sequence,
+            Timestamp,
+            ChannelName);
 }

@@ -62,7 +62,7 @@ PORT_ALLOCATION_OUTPUT="$(python3 - <<'PY'
 import socket
 sockets = []
 try:
-    for _ in range(11):
+    for _ in range(12):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.bind(("127.0.0.1", 0))
         sockets.append(sock)
@@ -79,6 +79,7 @@ try:
         f"http://127.0.0.1:{ports[8]} "
         f"tcp://127.0.0.1:{ports[9]} "
         f"tcp://127.0.0.1:{ports[10]}"
+        f" tcp://127.0.0.1:{ports[11]}"
     )
 except OSError as error:
     print(f"SOCKETLESS {error.errno}:{error.strerror}")
@@ -91,7 +92,7 @@ if [[ "$PORT_ALLOCATION_OUTPUT" == SOCKETLESS* ]]; then
   echo "Failed to allocate local TCP ports for the SupportChat sample: ${PORT_ALLOCATION_OUTPUT#SOCKETLESS }" >&2
   exit 1
 fi
-read -r SUPPORTCHAT_RESERVED_PORT SUPPORTCHAT_API_ROUTE SUPPORTCHAT_SUPPORT_ROUTE SUPPORTCHAT_SUPPORT_SPOT_ROUTER SUPPORTCHAT_SUPPORT_SPOT SUPPORTCHAT_SESSION_STREAM SUPPORTCHAT_SESSION_SPOT_ROUTER SUPPORTCHAT_SESSION_SPOT SUPPORTCHAT_SUPPORT_HTTP_URL SUPPORTCHAT_SESSION_ACTOR_ROUTE SUPPORTCHAT_SUPPORT_ACTOR_ROUTE <<<"$PORT_ALLOCATION_OUTPUT"
+read -r SUPPORTCHAT_RESERVED_PORT SUPPORTCHAT_API_ROUTE SUPPORTCHAT_SUPPORT_ROUTE SUPPORTCHAT_SUPPORT_SPOT_ROUTER SUPPORTCHAT_SUPPORT_SPOT SUPPORTCHAT_SESSION_STREAM SUPPORTCHAT_SESSION_SPOT_ROUTER SUPPORTCHAT_SESSION_SPOT SUPPORTCHAT_SUPPORT_HTTP_URL SUPPORTCHAT_SESSION_ACTOR_ROUTE SUPPORTCHAT_SUPPORT_ACTOR_ROUTE SUPPORTCHAT_API_SPOT_ROUTE <<<"$PORT_ALLOCATION_OUTPUT"
 if [[ -z "$SUPPORTCHAT_RESERVED_PORT" || -z "$SUPPORTCHAT_SESSION_SPOT" ]]; then
   echo "Failed to allocate local TCP ports for the SupportChat sample." >&2
   exit 1
@@ -115,7 +116,7 @@ mkdir -p "$CONFIG_DIR"
 # 각 role은 자기 설정 파일 하나만 받는다(공통 정책 sample-e2e-configuration-policy.ko.md §2.1).
 write_role_config() {
   python3 - "$CONFIG_DIR/$1.json" "$1" "$FLOW_LOG_DIR" "$SUPPORTCHAT_REDIS_ENDPOINT" \
-    "$SUPPORTCHAT_REDIS_KEY_PREFIX" "$SUPPORTCHAT_API_ROUTE" "$SUPPORTCHAT_SUPPORT_ROUTE" \
+    "$SUPPORTCHAT_REDIS_KEY_PREFIX" "$SUPPORTCHAT_API_ROUTE" "$SUPPORTCHAT_API_SPOT_ROUTE" "$SUPPORTCHAT_SUPPORT_ROUTE" \
     "$SUPPORTCHAT_SUPPORT_SPOT_ROUTER" "$SUPPORTCHAT_SUPPORT_SPOT" \
     "$SUPPORTCHAT_SUPPORT_HTTP_URL" "$SUPPORTCHAT_SUPPORT_ACTOR_ROUTE" \
     "$SUPPORTCHAT_SESSION_STREAM" "$SUPPORTCHAT_SESSION_SPOT_ROUTER" \
@@ -125,7 +126,7 @@ import os
 import stat
 import sys
 
-(path, role_name, flow_log_dir, redis_endpoint, redis_key_prefix, api_route,
+(path, role_name, flow_log_dir, redis_endpoint, redis_key_prefix, api_route, api_spot_route,
  support_route, support_spot_router, support_spot, support_http_url,
  support_actor_route, session_stream, session_spot_router, session_spot,
  session_actor_route) = sys.argv[1:]
@@ -137,6 +138,7 @@ document = {
             "redisEndpoint": redis_endpoint,
             "redisKeyPrefix": redis_key_prefix,
             "apiRouteEndpoint": api_route,
+            "apiSpotRouteEndpoint": api_spot_route,
             "supportRouteEndpoint": support_route,
             "supportSpotRouterEndpoint": support_spot_router,
             "supportSpotEndpoint": support_spot,
@@ -203,8 +205,8 @@ start_role api "$BIN_DIR/sample_cpp_framework_supportchat_api" --config="$CONFIG
 start_role session "$BIN_DIR/sample_cpp_framework_supportchat_session" --config="$CONFIG_DIR/session.json"
 start_role support "$BIN_DIR/sample_cpp_framework_supportchat_support" --config="$CONFIG_DIR/support.json"
 
-wait_port session-actor-route "$(port_of "$SUPPORTCHAT_SESSION_ACTOR_ROUTE")"
-wait_port support-actor-route "$(port_of "$SUPPORTCHAT_SUPPORT_ACTOR_ROUTE")"
+wait_port session-object-route "$(port_of "$SUPPORTCHAT_SESSION_SPOT_ROUTER")"
+wait_port support-object-route "$(port_of "$SUPPORTCHAT_SUPPORT_SPOT_ROUTER")"
 wait_port support-http "$(port_of "$SUPPORTCHAT_SUPPORT_HTTP_URL")"
 
 "$BIN_DIR/sample_cpp_framework_supportchat_client" --stream-endpoint "$SUPPORTCHAT_SESSION_STREAM" >"$LOG_DIR/client.log" 2>&1 || {

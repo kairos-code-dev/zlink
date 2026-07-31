@@ -21,6 +21,12 @@ export async function runSmD5A(options: ClientOptions): Promise<void> {
   try {
     await bindActor(client, selectedActorId, 'play-a');
     await bindActor(client, otherActorId, 'play-b');
+    const disconnectEvidence =
+      `session-disconnected|rid=session-a|`;
+    const disconnectCountBefore = countEvidence(
+      await getEvidence(options.sessionAUrl),
+      disconnectEvidence
+    );
     const result = await client
       .request({ actorId: selectedActorId } satisfies LogicalDisconnectReq)
       .packetName('LogicalDisconnectReq')
@@ -42,8 +48,8 @@ export async function runSmD5A(options: ClientOptions): Promise<void> {
     ensure(
       countEvidence(
         await getEvidence(options.sessionAUrl),
-        'session-disconnected|rid=session-a|'
-      ) === 0,
+        disconnectEvidence
+      ) === disconnectCountBefore,
       'SM-D5A logical notification closed the physical Session.'
     );
   } finally {

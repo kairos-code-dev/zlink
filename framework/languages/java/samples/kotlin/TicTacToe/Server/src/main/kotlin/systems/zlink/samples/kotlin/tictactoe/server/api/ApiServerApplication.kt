@@ -12,6 +12,8 @@ import org.springframework.context.ConfigurableApplicationContext
 import org.springframework.context.annotation.Bean
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
+import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleLocationStore
 import systems.zlink.samples.kotlin.tictactoe.server.api.handlers.AuthenticatePlayerHandler
 import systems.zlink.samples.kotlin.tictactoe.server.api.handlers.CreateGameHttpHandler
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
@@ -32,6 +34,10 @@ class ApiServerApplication {
     @Bean
     fun apiFramework(settings: SampleSettings): ZLinkFrameworkConfigurer =
         ApiServer.configure(settings)
+
+    @Bean(destroyMethod = "close")
+    fun locationStore(settings: SampleSettings): ZLinkRedisLocationStore =
+        SampleLocationStore.create(settings)
 
     companion object {
         fun run(configPath: String): ConfigurableApplicationContext {

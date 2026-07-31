@@ -13,18 +13,6 @@ data class CreateGameHttpReq(val gameName: String?)
 data class CreateGameHttpRes(
     val roomId: String,
     val gameName: String,
-    val ownerPlayEndpoint: String,
-    val playEndpoints: List<String>,
-    val playNodes: List<PlayNodeInfo>,
-    val requiredLevel: Int,
-)
-
-data class CreateGameReq(val gameName: String)
-
-data class CreateGameRes(
-    val roomId: String,
-    val gameName: String,
-    val ownerPlayEndpoint: String,
     val playEndpoints: List<String>,
     val playNodes: List<PlayNodeInfo>,
     val requiredLevel: Int,
@@ -58,6 +46,12 @@ data class GameStateNotify(val state: GameState)
 data class JoinGameRes(val state: GameState)
 
 data class JoinGameReq(val roomId: String)
+
+data class JoinGameFailedNotify(
+    val roomId: String,
+    val reason: String,
+    val retriable: Boolean,
+)
 
 data class TicTacToeGameJoinReq(val roomId: String, val player: PlayerInfo)
 

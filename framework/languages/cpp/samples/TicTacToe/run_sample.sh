@@ -47,7 +47,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 15:
+    while len(sockets) < 17:
         port = random.randint(48000, 60999)
         if port in chosen:
             continue
@@ -66,8 +66,8 @@ finally:
 PY
   )"
 
-if [[ ${#PORTS[@]} -lt 15 ]]; then
-  echo "Failed to allocate 15 local TCP ports for the TicTacToe sample." >&2
+if [[ ${#PORTS[@]} -lt 17 ]]; then
+  echo "Failed to allocate 17 local TCP ports for the TicTacToe sample." >&2
   echo "This environment may block local socket creation." >&2
   exit 1
 fi
@@ -86,6 +86,8 @@ PLAY_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[10]}"
 PLAY_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[11]}"
 PLAY_A_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[12]}"
 PLAY_B_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[13]}"
+API_A_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[15]}"
+API_B_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[16]}"
 
 endpoint_host() {
   local endpoint="$1"
@@ -165,6 +167,13 @@ cleanup() {
   if [[ -n "$REDIS_CONTAINER" ]]; then
     docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   fi
+  if [[ "$code" -ne 0 || "$cleanup_failed" -ne 0 ]]; then
+    rm -f "$FLOW_LOG_DIR"/last-failure-*.log
+    for log in "$LOG_DIR"/*.log; do
+      [[ -f "$log" ]] || continue
+      cp "$log" "$FLOW_LOG_DIR/last-failure-$(basename "$log")"
+    done
+  fi
   rm -rf "$RUN_DIR"
   if [[ "$cleanup_failed" -ne 0 && "$code" -eq 0 ]]; then
     code=1
@@ -190,6 +199,7 @@ write_role_config() {
   python3 - "$CONFIG_DIR/$1.json" "$2" "$3" "$FLOW_LOG_DIR" "$API_A_ENDPOINT" \
     "$API_B_ENDPOINT" "$API_A_HTTP_ENDPOINT" "$API_B_HTTP_ENDPOINT" "$PLAY_A_ENDPOINT" \
     "$PLAY_B_ENDPOINT" "$PLAY_A_ROUTE_ENDPOINT" "$PLAY_B_ROUTE_ENDPOINT" \
+    "$API_A_ROUTE_ENDPOINT" "$API_B_ROUTE_ENDPOINT" \
     "$PLAY_A_SPOT_ENDPOINT" "$PLAY_B_SPOT_ENDPOINT" "$PLAY_A_SPOT_ROUTER_ENDPOINT" \
     "$PLAY_B_SPOT_ROUTER_ENDPOINT" "$PLAY_A_STREAM_ENDPOINT" "$PLAY_B_STREAM_ENDPOINT" \
     "$TICTACTOE_CPP_REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" <<'CONFIG_PY'
@@ -200,7 +210,7 @@ import sys
 
 (path, api_node, play_node, flow_log_dir, api_a_endpoint, api_b_endpoint,
  api_a_http, api_b_http, play_a_endpoint, play_b_endpoint, play_a_route,
- play_b_route, play_a_spot, play_b_spot, play_a_spot_router,
+ play_b_route, api_a_route, api_b_route, play_a_spot, play_b_spot, play_a_spot_router,
  play_b_spot_router, play_a_stream, play_b_stream, redis_endpoint,
  redis_key_prefix) = sys.argv[1:]
 
@@ -222,6 +232,8 @@ document = {
             "playBEndpoint": play_b_endpoint,
             "playARouteEndpoint": play_a_route,
             "playBRouteEndpoint": play_b_route,
+            "apiARouteEndpoint": api_a_route,
+            "apiBRouteEndpoint": api_b_route,
             "playASpotEndpoint": play_a_spot,
             "playBSpotEndpoint": play_b_spot,
             "playASpotRouterEndpoint": play_a_spot_router,
@@ -258,18 +270,16 @@ start_server play-b "$PLAY_BIN" --config="$CONFIG_DIR/play-b.json"
 start_server api-a "$API_BIN" --config="$CONFIG_DIR/api-a.json"
 start_server api-b "$API_BIN" --config="$CONFIG_DIR/api-b.json"
 
-wait_port play-a-channel "$PLAY_A_ENDPOINT"
+wait_port play-a-object-route "$PLAY_A_ROUTE_ENDPOINT"
 wait_port play-a-stream "$PLAY_A_STREAM_ENDPOINT"
-wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER_ENDPOINT"
-wait_port play-a-spot-pub "$PLAY_A_SPOT_ENDPOINT"
-wait_port play-b-channel "$PLAY_B_ENDPOINT"
+wait_port play-b-object-route "$PLAY_B_ROUTE_ENDPOINT"
 wait_port play-b-stream "$PLAY_B_STREAM_ENDPOINT"
-wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER_ENDPOINT"
-wait_port play-b-spot-pub "$PLAY_B_SPOT_ENDPOINT"
 wait_port api-a-channel "$API_A_ENDPOINT"
 wait_port api-a-http "$API_A_HTTP_ENDPOINT"
+wait_port api-a-object-route "$API_A_ROUTE_ENDPOINT"
 wait_port api-b-channel "$API_B_ENDPOINT"
 wait_port api-b-http "$API_B_HTTP_ENDPOINT"
+wait_port api-b-object-route "$API_B_ROUTE_ENDPOINT"
 
 "$CLIENT_BIN" --api-http-endpoint "$API_A_HTTP_ENDPOINT" >"$LOG_DIR/client.log" 2>&1 || {
   cat "$LOG_DIR/client.log" >&2

@@ -261,14 +261,6 @@ internal sealed class ZLinkSpotRetireScheduler(
             activation,
             actorIds);
         var requiresCapture = snapshotParticipantCount > 0;
-        if (!(perActorShell
-                ? activation.IsPerActorShellRelocationReady
-                : activation.IsRelocationReady))
-        {
-            ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"relocation_waiting_for_turn spot={activation.SpotId}");
-            return false;
-        }
         var inventory = CreateInventory(
             activation,
             instanceSpot,
@@ -288,16 +280,18 @@ internal sealed class ZLinkSpotRetireScheduler(
         ZLinkFrameworkDebugLog.SpotDiscovery(
             $"relocation_reserved spot={activation.SpotId} target={reservation.TargetDescriptor.Rid}");
 
+        ZLinkSpotRelocationSeal admittedSeal;
         try
         {
-            await activation.WaitForRelocationReadyTurnAsync(cancellationToken)
-                .ConfigureAwait(false);
-            while (!(perActorShell
-                       ? activation.IsPerActorShellRelocationReady
-                       : activation.IsRelocationReady))
-            {
-                await Task.Delay(1, cancellationToken).ConfigureAwait(false);
-            }
+            admittedSeal = activation.RelocationReadiness
+                           == ZLinkSpotRelocationReadinessMode.ApplicationSignaled
+                ? await activation
+                    .WaitForRelocationReadyTurnAsync(cancellationToken)
+                    .ConfigureAwait(false)
+                : await activation.SealRelocationAsync(
+                        allowActorClaims: perActorShell,
+                        cancellationToken)
+                    .ConfigureAwait(false);
         }
         catch
         {
@@ -307,38 +301,58 @@ internal sealed class ZLinkSpotRetireScheduler(
             throw;
         }
 
+        async ValueTask ReleaseUncommittedSealAsync(
+            ZLinkSpotRelocationSeal currentSeal)
+        {
+            try
+            {
+                await activation
+                    .CompleteRelocationReadyBeforeAbortAsync(
+                        currentSeal,
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                try
+                {
+                    if (!activation.AbortRelocation(currentSeal))
+                        throw new ZLinkRelocationDataLostException(
+                            $"SPOT '{activation.SpotId}' could not restore its source admission seal.");
+                }
+                finally
+                {
+                    await target.AbortAsync(reservation, fence: null)
+                        .ConfigureAwait(false);
+                }
+            }
+        }
+
         ZLinkRelocationPermitPool.ZLinkRelocationPermitLease permit = default;
-        bool Admit(
-            IReadOnlyList<ZLinkAcceptedWorkRecord> captured,
-            IReadOnlyList<ZLinkRelocationLogicalTimer> timers) =>
-            permits.TryAcquire(
+        bool permitAcquired;
+        try
+        {
+            permitAcquired = permits.TryAcquire(
                 ZLinkRelocationPermitRequest.Outbound(
                     CalculatePayloadReservation(
                         snapshotParticipantCount,
                         participantKeys,
-                        captured,
-                        timers),
+                        admittedSeal.QueueSeal.QueueSeal.Captured,
+                        admittedSeal.LogicalTimers),
                     requiresCapture,
                     allowOversizedPayload: !instanceSpot),
                 out permit);
-        ZLinkSpotRelocationSeal admittedSeal;
-        var sealedForRelocation = perActorShell
-            ? activation.TrySealPerActorShellRelocation(
-                Admit,
-                out admittedSeal)
-            : activation.TrySealRelocation(
-                Admit,
-                out admittedSeal);
-        if (!sealedForRelocation)
+        }
+        catch
         {
-            ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"relocation_waiting_for_seal spot={activation.SpotId}");
             permit.Dispose();
-            await target.AbortAsync(reservation, fence: null)
+            await ReleaseUncommittedSealAsync(admittedSeal)
                 .ConfigureAwait(false);
-            await activation.CompleteRelocationReadyAsync(
-                    ZLinkSpotRelocationReadyOutcome.Continued,
-                    CancellationToken.None)
+            throw;
+        }
+        if (!permitAcquired)
+        {
+            await ReleaseUncommittedSealAsync(admittedSeal)
                 .ConfigureAwait(false);
             return false;
         }
@@ -360,6 +374,8 @@ internal sealed class ZLinkSpotRetireScheduler(
             var messageFollowStarted = false;
             var sourceCommitted = false;
             var committedHeldValidated = false;
+            var sourceCleanupCompleted = false;
+            var targetCompletionDelivered = false;
             var sourceCompleted = false;
             var aggregateId = Guid.NewGuid();
             var actorCaptures =
@@ -572,19 +588,22 @@ internal sealed class ZLinkSpotRetireScheduler(
                             new ZLinkAggregateFence(aggregateId, 1)),
                         async () =>
                         {
-                            if (seal is not null
-                                && !activation.AbortRelocation(seal))
-                                throw new ZLinkRelocationDataLostException(
-                                    $"SPOT '{activation.SpotId}' could not restore its source admission seal.");
+                            if (seal is not null)
+                            {
+                                await activation
+                                    .CompleteRelocationReadyBeforeAbortAsync(
+                                        seal,
+                                        CancellationToken.None)
+                                    .ConfigureAwait(false);
+                                if (!activation.AbortRelocation(seal))
+                                    throw new ZLinkRelocationDataLostException(
+                                        $"SPOT '{activation.SpotId}' could not restore its source admission seal.");
+                            }
                             await RestoreSourceActorsAsync()
                                 .ConfigureAwait(false);
                         })
                     .ConfigureAwait(false);
                 await DiscardStagingAsync().ConfigureAwait(false);
-                await activation.CompleteRelocationReadyAsync(
-                        ZLinkSpotRelocationReadyOutcome.Continued,
-                        CancellationToken.None)
-                    .ConfigureAwait(false);
                 throw;
             }
             catch
@@ -620,19 +639,22 @@ internal sealed class ZLinkSpotRetireScheduler(
                                 new ZLinkAggregateFence(aggregateId, 1)),
                             async () =>
                             {
-                                if (seal is not null
-                                    && !activation.AbortRelocation(seal))
-                                    throw new ZLinkRelocationDataLostException(
-                                        $"SPOT '{activation.SpotId}' could not restore its source admission seal.");
+                                if (seal is not null)
+                                {
+                                    await activation
+                                        .CompleteRelocationReadyBeforeAbortAsync(
+                                            seal,
+                                            CancellationToken.None)
+                                        .ConfigureAwait(false);
+                                    if (!activation.AbortRelocation(seal))
+                                        throw new ZLinkRelocationDataLostException(
+                                            $"SPOT '{activation.SpotId}' could not restore its source admission seal.");
+                                }
                                 await RestoreSourceActorsAsync()
                                     .ConfigureAwait(false);
                             })
                         .ConfigureAwait(false);
                     await DiscardStagingAsync().ConfigureAwait(false);
-                    await activation.CompleteRelocationReadyAsync(
-                            ZLinkSpotRelocationReadyOutcome.Continued,
-                            CancellationToken.None)
-                        .ConfigureAwait(false);
                 }
                 throw;
             }
@@ -655,12 +677,15 @@ internal sealed class ZLinkSpotRetireScheduler(
                 }
                 committed = true;
                 if (perActorShell)
-                    activation.PublishPerActorShellRelocationPlan(
-                        new ZLinkPerActorShellRelocationPlan(
-                            reservation.TargetDescriptor.Rid,
-                            reservation.TargetDescriptorLifecycleGeneration,
-                            reservation.TargetOwner,
-                            targetAuthorityOwnerGeneration));
+                    await activation.PublishPerActorShellRelocationPlanAsync(
+                            new ZLinkPerActorShellRelocationPlan(
+                                reservation.TargetDescriptor.Rid,
+                                reservation.TargetDescriptorLifecycleGeneration,
+                                reservation.TargetOwner,
+                                targetAuthorityOwnerGeneration,
+                                deadline),
+                            CancellationToken.None)
+                        .ConfigureAwait(false);
                 if (!messageFollowStarted)
                 {
                     var spotParticipant = published.Envelope.Participants.Single(
@@ -681,7 +706,8 @@ internal sealed class ZLinkSpotRetireScheduler(
                 {
                     if (!activation.CommitRelocation(
                             seal,
-                            out var releasedHeld)
+                            out var releasedHeld,
+                            preserveActorExecution: perActorShell)
                         || !SameAcceptedWork(
                             heldAtCutoff,
                             releasedHeld))
@@ -701,60 +727,62 @@ internal sealed class ZLinkSpotRetireScheduler(
                             .ToArray());
                     committedHeldValidated = true;
                 }
-                ZLinkFrameworkDebugLog.SpotDiscovery(
-                    $"aggregate_source_cleanup_begin spot={activation.SpotId} aggregate={aggregateId:N}");
-                var cleanup = new ZLinkAggregateRelocationCoordinator(
-                    authorityStore,
-                    relocationStore);
-                var cleanupReconciliationDelay =
-                    TimeSpan.FromMilliseconds(1);
-                while (!await cleanup.TryCompleteSourceCleanupAsync(
-                           published,
-                           reservation.TargetDescriptor,
-                           reservation.TargetDescriptorLifecycleGeneration,
-                           reservation.TargetOwner,
-                           completionToken).ConfigureAwait(false))
+                if (!sourceCleanupCompleted)
                 {
-                    var remaining = deadline - DateTimeOffset.UtcNow;
-                    if (remaining <= TimeSpan.Zero)
-                        throw new ZLinkFrameworkException(
-                            ZLinkFrameworkErrorKind.DeadlineExceeded,
-                            $"SPOT '{activation.SpotId}' relocation reply delivery did not complete before its fixed deadline.",
-                            ZLinkRetryAdvice.RetryAfterBackoff);
-                    await Task.Delay(
-                            cleanupReconciliationDelay < remaining
-                                ? cleanupReconciliationDelay
-                                : remaining,
+                    var cleanup = new ZLinkAggregateRelocationCoordinator(
+                        authorityStore,
+                        relocationStore);
+                    var cleanupReconciliationDelay =
+                        TimeSpan.FromMilliseconds(1);
+                    while (!await cleanup.TryCompleteSourceCleanupAsync(
+                               published,
+                               reservation.TargetDescriptor,
+                               reservation.TargetDescriptorLifecycleGeneration,
+                               reservation.TargetOwner,
+                               completionToken).ConfigureAwait(false))
+                    {
+                        var remaining = deadline - DateTimeOffset.UtcNow;
+                        if (remaining <= TimeSpan.Zero)
+                            throw new ZLinkFrameworkException(
+                                ZLinkFrameworkErrorKind.DeadlineExceeded,
+                                $"SPOT '{activation.SpotId}' relocation reply delivery did not complete before its fixed deadline.",
+                                ZLinkRetryAdvice.RetryAfterBackoff);
+                        await Task.Delay(
+                                cleanupReconciliationDelay < remaining
+                                    ? cleanupReconciliationDelay
+                                    : remaining,
+                                completionToken)
+                            .ConfigureAwait(false);
+                        cleanupReconciliationDelay = TimeSpan.FromMilliseconds(
+                            Math.Min(
+                                cleanupReconciliationDelay.TotalMilliseconds
+                                * 2,
+                                100));
+                    }
+                    sourceCleanupCompleted = true;
+                }
+                if (!targetCompletionDelivered)
+                {
+                    if (actorMessageFollowBacklog.Count != 0
+                        && (await Task.WhenAll(actorMessageFollowBacklog)
+                                .ConfigureAwait(false))
+                            .Any(static delivered => !delivered))
+                        throw new ZLinkRelocationDataLostException(
+                            $"SPOT '{activation.SpotId}' could not deliver every pre-cutover Actor Message Follow frame.");
+                    await target.RelayCommittedAsync(
+                            reservation,
+                            published,
+                            committedHeld,
                             completionToken)
                         .ConfigureAwait(false);
-                    cleanupReconciliationDelay = TimeSpan.FromMilliseconds(
-                        Math.Min(
-                            cleanupReconciliationDelay.TotalMilliseconds * 2,
-                            100));
+                    targetCompletionDelivered = true;
                 }
-                ZLinkFrameworkDebugLog.SpotDiscovery(
-                    $"aggregate_source_cleanup_end spot={activation.SpotId} aggregate={aggregateId:N}");
-                ZLinkFrameworkDebugLog.SpotDiscovery(
-                    $"aggregate_complete_command_begin spot={activation.SpotId} aggregate={aggregateId:N}");
-                if (actorMessageFollowBacklog.Count != 0
-                    && (await Task.WhenAll(actorMessageFollowBacklog)
-                            .ConfigureAwait(false))
-                        .Any(static delivered => !delivered))
-                    throw new ZLinkRelocationDataLostException(
-                        $"SPOT '{activation.SpotId}' could not deliver every pre-cutover Actor Message Follow frame.");
-                await target.RelayCommittedAsync(
-                        reservation,
-                        published,
-                        committedHeld,
-                        completionToken)
-                    .ConfigureAwait(false);
-                ZLinkFrameworkDebugLog.SpotDiscovery(
-                    $"aggregate_complete_command_end spot={activation.SpotId} aggregate={aggregateId:N}");
                 if (!sourceCompleted)
                 {
-                    await activation.InvokeRelocationClosingAfterCommitAsync(
-                            deadline)
-                        .ConfigureAwait(false);
+                    if (!perActorShell)
+                        await activation.InvokeRelocationClosingAfterCommitAsync(
+                                deadline)
+                            .ConfigureAwait(false);
                     foreach (var capture in actorCaptures.Values)
                         capture.State.Handoff.CompleteSourceMigration();
                     await completeSource(activation, CancellationToken.None)
@@ -766,50 +794,59 @@ internal sealed class ZLinkSpotRetireScheduler(
             async ValueTask StartActorMessageFollowAsync(
                 CancellationToken completionToken)
             {
-                foreach (var capture in actorCaptures.Values.OrderBy(
-                             static capture => capture.State.ActorId,
-                             StringComparer.Ordinal))
-                {
-                    var key = ZLinkActorAuthorityPayloadCodec.AuthorityKey(
-                        capture.State.ActorId);
-                    var participant = published!.Envelope.Participants.Single(
-                        candidate =>
-                            candidate.ObjectKind
-                            == ZLinkPlacementObjectKind.Actor
-                            && candidate.AuthorityKey == key);
-                    var targetRead = await authorityStore.ReadAuthorityAsync(
-                            key,
-                            completionToken)
-                        .ConfigureAwait(false);
-                    if (targetRead is not ZLinkAuthorityReadResult.Found targetFound)
-                        throw new ZLinkRelocationDataLostException(
-                            $"Actor '{capture.State.ActorId}' target authority is unavailable after aggregate commit.");
-                    var targetActor = new ZLinkBackendActorRef(
-                        reservation.TargetDescriptor.Rid,
-                        capture.State.ActorId,
-                        capture.SourceActor.Generation);
-                    var trailing = capture.State.Handoff
-                        .CutoverCaptureToMessageFollow(
-                            capture.CommitBoundary.Frames.Count,
-                            capture.SourceActor,
-                            targetActor,
-                            activation.MeshName,
-                            inventory.SourceNodeLifecycleGeneration,
-                            reservation.TargetDescriptorLifecycleGeneration,
-                            participant.AuthorityOwnerGeneration,
-                            targetFound.Snapshot.AuthorityOwnerGeneration,
-                            checked((ulong)inventory.SourceOwner.LeaseGeneration),
-                            checked((ulong)reservation.TargetOwner
-                                .LeaseGeneration));
-                    actorMessageFollowBacklog.AddRange(
-                        runtime.RelayStandaloneActorRelocationTrailing(
-                            capture.State,
-                            capture.SourceActor,
-                            trailing));
-                    capture.State.Handoff.CommitMessageFollow(
-                        runtime.Registration.Locations.Options
-                            .MessageFollowDuration);
-                }
+                var followTasks = actorCaptures.Values.Select(
+                    async capture =>
+                    {
+                        var key =
+                            ZLinkActorAuthorityPayloadCodec.AuthorityKey(
+                                capture.State.ActorId);
+                        var participant =
+                            published!.Envelope.Participants.Single(
+                                candidate =>
+                                    candidate.ObjectKind
+                                    == ZLinkPlacementObjectKind.Actor
+                                    && candidate.AuthorityKey == key);
+                        var targetRead =
+                            await authorityStore.ReadAuthorityAsync(
+                                    key,
+                                    completionToken)
+                                .ConfigureAwait(false);
+                        if (targetRead
+                            is not ZLinkAuthorityReadResult.Found targetFound)
+                            throw new ZLinkRelocationDataLostException(
+                                $"Actor '{capture.State.ActorId}' target authority is unavailable after aggregate commit.");
+                        var targetActor = new ZLinkBackendActorRef(
+                            reservation.TargetDescriptor.Rid,
+                            capture.State.ActorId,
+                            capture.SourceActor.Generation);
+                        var trailing = capture.State.Handoff
+                            .CutoverCaptureToMessageFollow(
+                                capture.CommitBoundary.Frames.Count,
+                                capture.SourceActor,
+                                targetActor,
+                                activation.MeshName,
+                                inventory.SourceNodeLifecycleGeneration,
+                                reservation.TargetDescriptorLifecycleGeneration,
+                                participant.AuthorityOwnerGeneration,
+                                targetFound.Snapshot
+                                    .AuthorityOwnerGeneration,
+                                checked((ulong)inventory.SourceOwner
+                                    .LeaseGeneration),
+                                checked((ulong)reservation.TargetOwner
+                                    .LeaseGeneration));
+                        var backlog = runtime
+                            .RelayStandaloneActorRelocationTrailing(
+                                capture.State,
+                                capture.SourceActor,
+                                trailing);
+                        capture.State.Handoff.CommitMessageFollow(
+                            runtime.Registration.Locations.Options
+                                .MessageFollowDuration);
+                        return backlog;
+                    });
+                foreach (var backlog in await Task.WhenAll(followTasks)
+                             .ConfigureAwait(false))
+                    actorMessageFollowBacklog.AddRange(backlog);
             }
 
             async ValueTask RestoreSourceActorsAsync()
@@ -838,6 +875,7 @@ internal sealed class ZLinkSpotRetireScheduler(
                     .DiscardPreparedAsync(discard.Root)
                     .ConfigureAwait(false);
             }
+
         }
     }
 

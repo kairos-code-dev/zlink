@@ -14,8 +14,14 @@ public sealed class SpotPeerConnectorTests
         var proxy = (BusyOnceSpotNode)(object)node;
         var connector = new ZLinkSpotPeerConnector(node, new ZLinkSpotPeerConnectionSet());
 
-        Assert.False(connector.ConnectPeerAuto(RoutingId.From("peer"), "tcp://peer:1"));
-        Assert.True(connector.ConnectPeerAuto(RoutingId.From("peer"), "tcp://peer:1"));
+        Assert.False(connector.ConnectPeerAuto(
+            RoutingId.From("peer"),
+            "tcp://peer:1",
+            "none"));
+        Assert.True(connector.ConnectPeerAuto(
+            RoutingId.From("peer"),
+            "tcp://peer:1",
+            "none"));
         Assert.Equal(2, proxy.ConnectAttempts);
     }
 

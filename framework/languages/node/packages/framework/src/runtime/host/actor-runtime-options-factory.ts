@@ -148,24 +148,46 @@ export class ZLinkActorRuntimeOptionsFactory {
         routedTransport: this.options.routeTransport,
         actorRefProvider: () => {
           const state = this.options.actorManager()?.getState(actorId);
-          const actorRef = state?.nativeActorRef as ActorRef | undefined;
-          return actorRef === undefined
+          const actorRef = state?.nativeActorRef;
+          const meshName = state?.meshName
+            ?? (state?.actorType === undefined
+              ? undefined
+              : this.options.actorMeshName(state.actorType));
+          const objectGeneration = actorRef?.generation
+            ?? (actorRef as unknown as { readonly objectGeneration?: bigint } | undefined)
+              ?.objectGeneration;
+          return actorRef === undefined || objectGeneration === undefined
             ? undefined
             : {
-                ...actorRef,
+                actorId: actorRef.actorId,
+                objectGeneration,
+                meshName: meshName ?? this.options.primaryMeshName() ?? '',
+                nodeRid: actorRef.nodeRid,
                 ownershipGeneration: state?.locationGeneration,
                 bindingGeneration: state?.boundSessionBindingGeneration
               } as ActorRef;
         },
         nativeActorNodeProvider: () => {
-          const node = this.options.primaryMeshNodeOrUndefined();
-          const completions = this.options.primaryMeshCompletions();
+          const state = this.options.actorManager()?.getState(actorId);
+          const meshName = state?.meshName
+            ?? (state?.actorType === undefined
+              ? undefined
+              : this.options.actorMeshName(state.actorType));
+          const node = meshName === undefined
+            ? this.options.primaryMeshNodeOrUndefined()
+            : this.options.meshNode(meshName);
+          const completions = meshName === undefined
+            ? this.options.primaryMeshCompletions()
+            : this.options.meshCompletions(meshName);
           return node === undefined
             ? undefined
             : meshActorSessionNodeAdapter(node, completions);
         },
         localActorProvider: () => this.options.actorManager()?.getState(actorId)?.actor !== undefined,
-        remoteBoundSessionTargetProvider: () => this.options.actorManager()?.getState(actorId)?.remoteBoundSessionTarget,
+        remoteBoundSessionTargetProvider: () => {
+          const state = this.options.actorManager()?.getState(actorId);
+          return state?.remoteBoundSessionTarget ?? state?.boundSessionTransferTarget;
+        },
         remoteActorPacketTargetProvider: () => this.options.actorPacketTargetForState(actorId),
         requestTimeoutMs: this.options.registration.requestTimeoutMs,
         actorId,

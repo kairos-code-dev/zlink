@@ -4,7 +4,7 @@ import kotlinx.coroutines.future.await
 import systems.zlink.framework.actors.ActorRef
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SupportChatRoles
 import systems.zlink.samples.kotlin.supportchat.server.support.application.AgentAssignmentService
 import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.actors.SupportActorDirectory
@@ -26,7 +26,7 @@ class SetAgentAvailableHandler(
     override suspend fun handle(
         entrySpot: SupportEntrySpot,
         actor: SupportUserActor,
-        context: ZLinkSpotActorRequestContext,
+        context: ZLinkMessageContext,
         request: SetAgentAvailableReq,
     ): SetAgentAvailableRes {
         if (actor.role != SupportChatRoles.Agent) {

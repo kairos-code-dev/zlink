@@ -35,6 +35,7 @@ class ApiApplication {
     fun apiFramework(topology: SampleTopology): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             val api = topology.api()
+            val channelEndpoint = URI.create(api.channelEndpoint)
             options.addHandlersFromPackageOf(ApiApplication::class.java)
             options.useCoroutineHandlers(Dispatchers.Default)
             options.configureDispatch {
@@ -43,10 +44,13 @@ class ApiApplication {
                 traceLabel("api")
             }
             options.addClientServerChannel(SampleNames.ApiChannel)
-                .enableServer(api.channelEndpoint)
+                .server()
+                .setBindHost(channelEndpoint.host)
+                .setAdvertiseHost(channelEndpoint.host)
+                .listen(channelEndpoint.port)
                 .addHandlerGroup(SampleNames.ApiChannel)
             options.addClientServerChannel(SampleNames.SupportChannel)
-                .enableClient()
+                .client()
         }
 
     @Bean

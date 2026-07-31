@@ -70,24 +70,24 @@ message MatchBingoApiRes {
   reserved 2;
 }
 
-message AllocateBingoRoomReq {
-  string actor_id = 1;
-  string mode = 2;
-  reserved 3;
+message ReserveBingoRoomReq {
+  string mode = 1;
+  string actor_id = 2;
+  string level_bucket = 3;
 }
 
-message AllocateBingoRoomRes {
+message ReserveBingoRoomRes {
   string room_id = 1;
-  reserved 2;
+  BingoRoomSettingsPayload settings = 2;
 }
 
 message BingoRoomSettingsPayload {
-  string mode = 1;
-  string room_name = 2;
+  string room_name = 1;
+  string mode = 2;
   int32 required_players = 3;
   int32 max_draw_number = 4;
-  int64 draw_period_millis = 5;
-  string observed_room_id = 6;
+  string purpose = 5;
+  optional string observed_room_id = 6;
 }
 
 message BingoRoomJoinReq {

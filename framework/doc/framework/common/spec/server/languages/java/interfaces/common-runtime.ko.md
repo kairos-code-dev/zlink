@@ -6,6 +6,12 @@
 고정한다. 공통 문서가 동작을 정의하며, 아래 선언은 Java에서 사용하는 타입과 member의 정확한 형태를
 보여 준다.
 
+공개 계약은 `systems.zlink.framework` Java module이 소유한다. 이 module은 이 exact interface에 기록한
+application package와 `runtime.host`만 일반 consumer에게 export한다. Raw binding 구현은 별도 internal
+artifact에 있으며 application compile classpath에는 포함되지 않는다. Named module에서도 Framework
+companion module에 필요한 package만 export한다. 따라서 raw binding type은 public API inventory에
+포함되지 않는다.
+
 ```java
 public enum ZLinkFrameworkRuntimeState {
     PREPARING(0), SERVING(1), RELOCATING(2), RELOCATED(3),
@@ -134,17 +140,19 @@ bounded cleanup을 계속한다.
 Mode와 target version 조합이 위 조건에 맞지 않으면 Framework는 admission이나 placement 상태를 변경하지
 않고 `IllegalArgumentException`으로 호출을 거부한다. 유효한 호출의 후보 선택 순서는 다음과 같다.
 
-1. 같은 Mesh에서 `Serving` 상태인 Object Server를 찾는다.
-2. `PLANNED_MAINTENANCE`는 source version과 같은 node만, `ROLLING_UPDATE`는 지정한 target version과
+1. `PLANNED_MAINTENANCE`는 source version과 같은 node만, `ROLLING_UPDATE`는 지정한 target version과
    정확히 같은 node만 남긴다.
-3. Source와 같은 maintenance wave에 속한 node를 제외한다.
-4. stable type, factory에서 선택한 relocation 동작과 adapter capability가 맞는지 확인한다.
-5. population capacity와 reservation 가능 여부를 확인한다.
+2. 같은 Mesh에서 source가 아니며 `SERVING` 상태인 Object Server만 남긴다.
+3. stable type, factory에서 선택한 relocation 동작과 adapter capability가 맞는지 확인한다.
+4. population capacity와 reservation 가능 여부를 확인하고 source와 같은 maintenance wave를 제외한다.
+5. 같은 descriptor snapshot에서 RID와 lifecycle generation이 일치하는 Core peer가 `ADMITTED`인
+   node만 남긴다.
 6. 남은 후보에 node-wide placement weight를 적용한다.
 
 Version 조건을 먼저 적용하므로 capability나 capacity가 충분하더라도 다른 version node로 fallback하지
-않는다. 조건을 모두 통과한 후보가 없으면 `Blocked/TargetUnavailable`이며, rolling update에서는 새 version
-node가 아직 등록되지 않았거나 Ready가 아닌 경우도 여기에 포함한다.
+않는다. Version·wave·capacity 또는 exact-ready target이 없으면 deadline까지 다시 확인한 뒤
+`Blocked/TargetUnavailable`이다. Stable type, factory, relocation policy 또는 adapter가 맞지 않으면
+`Blocked/StateIncompatible`이다. Store 조회 실패는 `Blocked/StoreUnavailable`이다.
 
 같은 shared relocation이 실행 중일 때 mode와 effective target version이 같은 호출은 기존 operation에
 참여하고 같은 terminal result를 받는다. 첫 호출의 deadline이 shared operation deadline을 고정하며 뒤에
@@ -166,6 +174,10 @@ Spring starter가 제공하는 topology runtime bean도 이 accessor가 반환�
 Spring starter는 `ZLinkFrameworkRuntime` bean을 제공한다. 운영 maintenance endpoint는
 `relocate(options)` 결과가 `RELOCATED`일 때 `shutdown()`을 호출한다. Relocation 없이 종료하려면
 `shutdown()`만 호출한다. 별도 drain facade와 MeshName을 받는 partial operation은 없다.
+
+Application은 `ZLinkFrameworkRuntime`을 직접 시작하지 않는다. Runtime 생성과 시작은 Spring starter가
+소유한다. 따라서 `start(...)` factory는 public contract에 포함하지 않는다. Core의 internal bootstrap은
+starter module에만 qualified export한다. Testkit은 test source에만 같은 package access helper를 둔다.
 
 ## Exact public member `javap` inventory
 

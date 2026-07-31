@@ -864,6 +864,9 @@ class stream_host_service_t::listener_t
                     "Framework rejected STREAM actor binding");
               }
               (void) binding;
+              _services->get_required<detail::actor_gateway_runtime_t> ()
+                .record_bound_session_route (
+                  actor, *local_node, std::nullopt);
               return result_t<void>::success ();
           });
         _runtime.attach_transport_writer (

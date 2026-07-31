@@ -4,8 +4,6 @@ import java.time.Duration
 
 object SampleNames {
     const val ApiChannel: String = "tictactoe-api"
-    const val PlayChannel: String = "tictactoe-play"
-    const val PlayHandlerGroup: String = "play"
     const val SpotMesh: String = "tictactoe"
     const val PlayNode: String = "play"
     const val PlayStream: String = "play-stream"

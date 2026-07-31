@@ -29,9 +29,9 @@ class ClientApplication {
     fun clientFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             options.addClientServerChannel(SampleNames.commerceApiChannel(SampleNames.ApiInstanceA))
-                .enableClient()
+                .client()
             options.addClientServerChannel(SampleNames.commerceApiChannel(SampleNames.ApiInstanceB))
-                .enableClient()
+                .client()
         }
 
     companion object {

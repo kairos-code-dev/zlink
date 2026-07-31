@@ -43,7 +43,6 @@ const ZoneWorldNames = {
   bridgeMesh: 'zoneworld.bridge',
   broadcastChannel: 'zoneworld.broadcast',
   reportChannel: 'zoneworld.report',
-  actorsChannel: 'zoneworld.actors',
   announceTopic: 'world.announce',
   maintenanceTopic: 'world.maintenance',
   playerActorType: 'zoneworld.player',

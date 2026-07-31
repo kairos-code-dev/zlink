@@ -14,11 +14,15 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkRelocationCancellation;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.*;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkLocationRepository;
 import systems.zlink.framework.runtime.InMemoryRelocationStore;
 import systems.zlink.framework.runtime.actors.ZLinkSessionRelocationPeerClient;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
@@ -84,7 +88,7 @@ final class ZLinkUserSpotRetireTargetEndpointTest {
         String authorityKey = ZLinkAuthorityKeyCodec.spot(spotId);
         String actorAuthorityKey = ZLinkAuthorityKeyCodec.actor(actorId);
         AuthorityState authority = new AuthorityState();
-        ZLinkLocationStore authorityStore = authority.proxy();
+        ZLinkLocationRepository authorityStore = authority.proxy();
         var coordinator = new ZLinkAggregateRelocationCoordinator(
             authorityStore,
             new InMemoryRelocationStore());
@@ -94,7 +98,7 @@ final class ZLinkUserSpotRetireTargetEndpointTest {
             spotId,
             3,
             new byte[] {1},
-            false,
+            true,
             new byte[0],
             List.of(new ZLinkUserSpotAggregateStagingOwner.ActorParticipant(
                 actorId,
@@ -120,7 +124,7 @@ final class ZLinkUserSpotRetireTargetEndpointTest {
                 2,
                 spotId,
                 "room",
-                false,
+                true,
                 3,
                 5));
         var prepared = coordinator.stageRoot(
@@ -198,7 +202,7 @@ final class ZLinkUserSpotRetireTargetEndpointTest {
             spotId,
             "room",
             false,
-            false,
+            true,
             prepared.stored().reference(),
             prepared.stored().checksumCrc32c(),
             participants,
@@ -229,7 +233,7 @@ final class ZLinkUserSpotRetireTargetEndpointTest {
             spotId,
             3,
             new byte[] {1},
-            false,
+            true,
             new byte[0],
             List.of(new ZLinkUserSpotAggregateStagingOwner.ActorParticipant(
                 actorId,
@@ -241,7 +245,7 @@ final class ZLinkUserSpotRetireTargetEndpointTest {
                 new ZLinkAsyncSerialQueue.QueuedRecord(
                     1, acceptedSpotRecord(spotId, 1)),
                 new ZLinkAsyncSerialQueue.QueuedRecord(
-                    2, acceptedSpotRecord(spotId, 2)))));
+                    2, acceptedSpotRequest(spotId, 2)))));
         var finalPrepared = coordinator.prepare(
                 new ZLinkAggregateRelocationCoordinator.Request(
                     aggregateId,
@@ -281,20 +285,57 @@ final class ZLinkUserSpotRetireTargetEndpointTest {
             .toCompletableFuture().join();
         var activated = coordinator.commit(finalPrepared, OPEN)
             .toCompletableFuture().join();
-        endpoint.publish(request).toCompletableFuture().join();
+        AtomicInteger relays = new AtomicInteger();
+        FakeStagingBackend recoveredBackend = new FakeStagingBackend();
+        var recoveredStaging =
+            new ZLinkUserSpotAggregateStagingOwner(recoveredBackend);
+        ZLinkInternalMeshNode recoveryPeer = recoveryNode(
+            wire, recoveredBackend.operations, relays);
+        var inboundPermits = new ZLinkRelocationPermitPool(
+            new ZLinkLocationOptions());
+        var recoveredEndpoint = new ZLinkUserSpotRetireTargetEndpoint(
+            targetRid,
+            targetNodeGeneration,
+            coordinator,
+            recoveredStaging,
+            ignored -> TestSpot.class,
+            (lane, record) -> CompletableFuture.failedFuture(
+                new AssertionError(
+                    "restart recovery must use the production replayer")),
+            new ZLinkSessionRelocationPeerClient(recoveryPeer),
+            Duration.ofSeconds(1),
+            ignored -> {
+                recoveredBackend.operations.add("normalize");
+                return CompletableFuture.completedFuture(null);
+            },
+            null,
+            ZLinkSpotRetireControl.client(recoveryPeer),
+            authorityStore,
+            null,
+            inboundPermits);
+        recoveredEndpoint.stage(request).toCompletableFuture().join();
+        assertEquals(1, inboundPermits.snapshot().inboundUnits());
+        assertEquals(1, inboundPermits.snapshot().restoreCallbacks());
+        assertTrue(inboundPermits.snapshot().payloadBytes() > 0);
+        recoveredEndpoint.publish(request).toCompletableFuture().join();
 
-        assertEquals(List.of(actorId, "spot"), backend.live);
+        assertEquals(List.of(actorId, "spot"), recoveredBackend.live);
         assertEquals(List.of(
-            "prepare", "restore", "prepare-actor", "replay:1", "replay:2",
+            "prepare", "restore", "prepare-actor", "replay-send:1",
+            "replay-request:2",
             "publish-actor", "publish"),
-            backend.operations);
+            recoveredBackend.operations);
+        assertEquals(2, relays.get(),
+            "command 33 is retried until command 46 reports terminal");
         assertThrows(java.util.concurrent.CompletionException.class, () ->
-            endpoint.finalizeAfterCompletion(request).toCompletableFuture()
+            recoveredEndpoint.finalizeAfterCompletion(request)
+                .toCompletableFuture()
                 .join());
-        assertTrue(backend.operations.stream().noneMatch("command44"::equals),
+        assertTrue(recoveredBackend.operations.stream()
+                .noneMatch("command44"::equals),
             "command 44 must not run before Completed authority CAS");
         assertThrows(IllegalStateException.class, () ->
-            endpoint.releaseRecoveryPointer(
+            recoveredEndpoint.releaseRecoveryPointer(
                 request,
                 ZLinkUserSpotRetireTargetEndpoint.RecoveryReleaseEvidence
                     .REPLY_RELAY_ACK));
@@ -303,20 +344,31 @@ final class ZLinkUserSpotRetireTargetEndpointTest {
             finalEnvelope, aggregateId, 5, participants);
         coordinator.completeSourceCleanup(activated, completedRoot, OPEN)
             .toCompletableFuture().join();
-        endpoint.finalizeAfterCompletion(request).toCompletableFuture().join();
+        recoveredEndpoint.finalizeAfterCompletion(request)
+            .toCompletableFuture().join();
+        assertEquals(0, inboundPermits.snapshot().inboundUnits());
+        assertEquals(0, inboundPermits.snapshot().restoreCallbacks());
+        assertEquals(0, inboundPermits.snapshot().payloadBytes());
 
         assertEquals(List.of(
-            "prepare", "restore", "prepare-actor", "replay:1", "replay:2",
+            "prepare", "restore", "prepare-actor", "replay-send:1",
+            "replay-request:2",
             "publish-actor", "publish", "command44", "normalize",
             "complete-actor", "timers"),
-            backend.operations);
-        assertEquals(0, endpoint.activeRecoveryPointerCount(),
+            recoveredBackend.operations);
+        assertEquals(0, recoveredEndpoint.activeRecoveryPointerCount(),
             "completed root with no pending relay releases the target slot");
     }
 
     private static byte[] acceptedSpotRecord(String spotId, int value) {
         return ZLinkAcceptedJournalTestRecords.spot(
             "source", spotId, 0, "packet-" + value, Map.of(),
+            new byte[] {(byte) value});
+    }
+
+    private static byte[] acceptedSpotRequest(String spotId, int value) {
+        return ZLinkAcceptedJournalTestRecords.spot(
+            "source", spotId, 40 + value, "packet-" + value, Map.of(),
             new byte[] {(byte) value});
     }
 
@@ -355,15 +407,72 @@ final class ZLinkUserSpotRetireTargetEndpointTest {
             });
     }
 
+    private static ZLinkInternalMeshNode recoveryNode(
+        ZLinkServiceM6BWireCodec wire,
+        List<String> operations,
+        AtomicInteger relays) {
+        var relocationWire =
+            new systems.zlink.framework.runtime.internal.service
+                .ZLinkServiceRelocationWireCodec();
+        return (ZLinkInternalMeshNode) Proxy.newProxyInstance(
+            ZLinkInternalMeshNode.class.getClassLoader(),
+            new Class<?>[] {ZLinkInternalMeshNode.class},
+            (proxy, method, arguments) -> {
+                if (method.getName().equals(
+                    "requestSessionRelocationRoute")) {
+                    var command = wire.decodeSessionRelocationRoute(
+                        (byte[]) arguments[1]);
+                    operations.add("command44");
+                    return CompletableFuture.completedFuture(
+                        wire.encodeSessionRelocationRouted(
+                            new ZLinkServiceM6BWireCodec
+                                .SessionRelocationRouted(
+                                    command.relocation(),
+                                    command.coordinator(),
+                                    command.actor(),
+                                    command.session(),
+                                    command.action(),
+                                    command
+                                        .currentAuthorityOwnerGeneration(),
+                                    command
+                                        .lastAcceptedSessionSequence())));
+                }
+                if (method.getName().equals(
+                    "requestRelocationReplyRelay")) {
+                    var expected = (systems.zlink.framework.runtime.internal
+                        .service.ZLinkServiceRelocationWireCodec
+                            .RequestSourceFence) arguments[1];
+                    var relay = relocationWire.decodeReplyRelay(
+                        (byte[]) arguments[2]);
+                    int status = relays.incrementAndGet() == 1 ? 1 : 2;
+                    return CompletableFuture.completedFuture(
+                        relocationWire.encodeReplyRelayAck(
+                            new systems.zlink.framework.runtime.internal
+                                .service.ZLinkServiceRelocationWireCodec
+                                    .ReplyRelayAck(
+                                        relay.relocation(),
+                                        relay.coordinator(),
+                                        relay.operation(),
+                                        relay.replyRouteId(),
+                                        expected,
+                                        status)));
+                }
+                if (method.getDeclaringClass() == Object.class) {
+                    return method.invoke(proxy, arguments);
+                }
+                throw new UnsupportedOperationException(method.getName());
+            });
+    }
+
     private static final class AuthorityState {
         private final Map<String, ZLinkAuthoritySnapshot> rows =
             new ConcurrentHashMap<>();
         private ZLinkAggregatePrepareRequest prepared;
 
-        ZLinkLocationStore proxy() {
-            return (ZLinkLocationStore) Proxy.newProxyInstance(
-                ZLinkLocationStore.class.getClassLoader(),
-                new Class<?>[] {ZLinkLocationStore.class},
+        ZLinkLocationRepository proxy() {
+            return (ZLinkLocationRepository) Proxy.newProxyInstance(
+                ZLinkLocationRepository.class.getClassLoader(),
+                new Class<?>[] {ZLinkLocationRepository.class},
                 (proxy, method, arguments) -> switch (method.getName()) {
                     case "prepareAggregate" -> prepare(
                         (ZLinkAggregatePrepareRequest) arguments[0]);
@@ -429,6 +538,7 @@ final class ZLinkUserSpotRetireTargetEndpointTest {
             new java.util.ArrayList<>();
         private final java.util.ArrayList<String> live =
             new java.util.ArrayList<>();
+        private int replaySequence;
 
         @Override public CompletionStage<Object> prepareSpot(
             ZLinkUserSpotAggregateStagingOwner.Request request) {
@@ -465,6 +575,18 @@ final class ZLinkUserSpotRetireTargetEndpointTest {
         }
         @Override public void publishTimers(Object prepared) {
             operations.add("timers");
+        }
+        @Override public CompletionStage<List<byte[]>> replaySpot(
+            Object prepared,
+            ZLinkSpotAcceptedJournal.Record record) {
+            int sequence = ++replaySequence;
+            if (record.requestSequence().isPresent()) {
+                operations.add("replay-request:" + sequence);
+                return CompletableFuture.completedFuture(
+                    List.of(new byte[] {9}));
+            }
+            operations.add("replay-send:" + sequence);
+            return CompletableFuture.completedFuture(List.of());
         }
         @Override public CompletionStage<Void> discardActor(Object prepared) {
             return CompletableFuture.completedFuture(null);

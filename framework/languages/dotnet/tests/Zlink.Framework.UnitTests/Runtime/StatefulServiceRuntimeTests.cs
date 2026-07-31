@@ -385,7 +385,7 @@ public sealed class StatefulServiceRuntimeTests
         Assert.Contains(
             Enumerable.Range(0, ready.Count),
             index => ready[index].OwnerKind == MeshOwnerKind.Spot
-                     && ready[index].Domain == MeshReadyDomains.Infrastructure);
+                     && ready[index].Domain == MeshReadyDomains.Application);
 
         var actorIndex = Enumerable.Range(0, ready.Count)
             .Single(index => ready[index].OwnerKind == MeshOwnerKind.Actor);
@@ -1106,7 +1106,6 @@ public sealed class StatefulServiceRuntimeTests
         source.SetBind(sourceEndpoint);
         target.SetBind(targetEndpoint);
         source.ConnectPeer(targetEndpoint, target.RoutingId);
-        target.ConnectPeer(sourceEndpoint, source.RoutingId);
         source.Start();
         target.Start();
         await WaitUntilAsync(
@@ -1762,6 +1761,7 @@ public sealed class StatefulServiceRuntimeTests
         var services = new ServiceCollection();
         services.AddZLinkFramework(options =>
         {
+            options.ConfigureInboundDispatch().ApplicationHwmBytes = 0;
             options.UseTestLocationStore();
             options.AddRelocationStore(relocationStore);
             var node = options.AddRouteMesh("objects")
@@ -2097,6 +2097,7 @@ public sealed class StatefulServiceRuntimeTests
             var services = new ServiceCollection();
             services.AddZLinkFramework(options =>
             {
+                options.ConfigureInboundDispatch().ApplicationHwmBytes = 0;
                 options.AddLocationStore(locationStore);
                 var node = options.AddRouteMesh("objects")
                     .Listen(endpoint)
@@ -2269,7 +2270,6 @@ public sealed class StatefulServiceRuntimeTests
         source.SetBind(sourceEndpoint);
         target.SetBind(targetEndpoint);
         source.ConnectPeer(targetEndpoint, target.RoutingId);
-        target.ConnectPeer(sourceEndpoint, source.RoutingId);
         var operationTarget = new RecordingUserSpotOperationTarget();
         target.SetUserSpotOperationTarget(operationTarget);
         source.Start();
@@ -2570,7 +2570,6 @@ public sealed class StatefulServiceRuntimeTests
         source.SetBind(sourceEndpoint);
         target.SetBind(targetEndpoint);
         source.ConnectPeer(targetEndpoint, target.RoutingId);
-        target.ConnectPeer(sourceEndpoint, source.RoutingId);
         var activationTarget = new RecordingInstanceSpotActivationTarget();
         target.SetInstanceSpotActivationTarget(activationTarget);
         source.Start();
@@ -2618,8 +2617,82 @@ public sealed class StatefulServiceRuntimeTests
 
         Assert.Equal(1, activationTarget.Count);
         Assert.Equal(activation, activationTarget.LastOperation.Target);
+        Assert.Equal(operationId, activationTarget.LastOperation.OperationId);
+        Assert.Equal(operationId.Low, activationTarget.LastOperation.ReplyRouteId);
+        Assert.Equal(source.RoutingId, activationTarget.LastOperation.SourceNodeRid);
         Assert.Equal([9, 8], activationTarget.LastMetadata.ToArray());
         Assert.Equal([1, 2, 3], activationTarget.LastPayload.Single().ToArray());
+    }
+
+    [Fact]
+    public async Task InstanceSpotActivationLoserForwardsOriginalOperationToWinner()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var source = NewNode(context, "instance-forward-source");
+        await using var loser = NewNode(context, "instance-forward-loser");
+        await using var winner = NewNode(context, "instance-forward-winner");
+        var suffix = Guid.NewGuid().ToString("N");
+        var sourceEndpoint = $"inproc://instance-forward-source-{suffix}";
+        var loserEndpoint = $"inproc://instance-forward-loser-{suffix}";
+        var winnerEndpoint = $"inproc://instance-forward-winner-{suffix}";
+        source.SetBind(sourceEndpoint);
+        loser.SetBind(loserEndpoint);
+        winner.SetBind(winnerEndpoint);
+        source.ConnectPeer(loserEndpoint, loser.RoutingId);
+        source.ConnectPeer(winnerEndpoint, winner.RoutingId);
+        loser.ConnectPeer(winnerEndpoint, winner.RoutingId);
+        var winnerTarget = new RecordingInstanceSpotActivationTarget();
+        winner.SetInstanceSpotActivationTarget(winnerTarget);
+        loser.SetInstanceSpotActivationTarget(
+            new ForwardingInstanceSpotActivationTarget(loser, winner));
+        source.Start();
+        loser.Start();
+        winner.Start();
+        await WaitUntilAsync(() => source.Status().AdmittedPeerCount == 2
+                                  && loser.Status().AdmittedPeerCount == 2
+                                  && winner.Status().AdmittedPeerCount == 2);
+
+        using var firstMessage = Message.From([4, 5, 6]);
+        var activation = new InstanceSpotActivationTarget(
+            "objects",
+            loser.RoutingId,
+            loser.Status().LifecycleGeneration,
+            "forwarded-instance",
+            "Sample.InstanceSpot",
+            "descriptor-loser");
+        var deadline = checked(
+            (ulong)DateTimeOffset.UtcNow.AddSeconds(5).ToUnixTimeMilliseconds());
+        Assert.Equal(
+            SubmitResult.Ok,
+            source.ActivateInstanceSpot(
+                activation,
+                "caller-spot",
+                [firstMessage],
+                request: true,
+                out var operationId,
+                deadline,
+                TimeSpan.FromSeconds(3),
+                metadata: new byte[] { 7, 8 }));
+
+        await WaitUntilAsync(() => source.Status().PendingInfrastructureMessages > 0);
+        var completion = DrainCompletion(source, operationId);
+        try
+        {
+            Assert.Equal((int)RequestResult.Ok, completion.Record.TerminalResult);
+            Assert.Equal([7, 6], completion.Parts.Single().ToArray());
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(completion.Parts);
+        }
+
+        Assert.Equal(1, winnerTarget.Count);
+        Assert.Equal(operationId, winnerTarget.LastOperation.OperationId);
+        Assert.Equal(operationId.Low, winnerTarget.LastOperation.ReplyRouteId);
+        Assert.Equal(source.RoutingId, winnerTarget.LastOperation.SourceNodeRid);
+        Assert.Equal("descriptor-winner", winnerTarget.LastOperation.Target.DescriptorVersion);
+        Assert.Equal([7, 8], winnerTarget.LastMetadata.ToArray());
+        Assert.Equal([4, 5, 6], winnerTarget.LastPayload.Single().ToArray());
     }
 
     [Fact]
@@ -2940,27 +3013,34 @@ public sealed class StatefulServiceRuntimeTests
             ZLinkManagedMeshNode node,
             MeshOperationId operationId)
     {
-        using var ready = new MeshReadyBatch();
-        node.DrainReady(MeshReadyDomains.All, ready, RecvFlags.DontWait);
-        for (var index = 0; index < ready.Count; index++)
+        var deadline = Stopwatch.GetTimestamp() + 5 * Stopwatch.Frequency;
+        while (true)
         {
-            using var claim = ready.TakeClaim(index);
-            using var received = new MeshReceiveBatch();
-            while (claim.Receive(received, RecvFlags.DontWait))
+            using var ready = new MeshReadyBatch();
+            node.DrainReady(MeshReadyDomains.All, ready, RecvFlags.DontWait);
+            for (var index = 0; index < ready.Count; index++)
             {
-                for (var record = 0; record < received.Count; record++)
+                using var claim = ready.TakeClaim(index);
+                using var received = new MeshReceiveBatch();
+                while (claim.Receive(received, RecvFlags.DontWait))
                 {
-                    var value = received[record];
-                    if (value.Kind != MeshRecordKind.Completion
-                        || value.OperationId != operationId)
-                        continue;
-                    return (value, received.RetainMessage(record));
+                    for (var record = 0; record < received.Count; record++)
+                    {
+                        var value = received[record];
+                        if (value.Kind != MeshRecordKind.Completion
+                            || value.OperationId != operationId)
+                            continue;
+                        return (value, received.RetainMessage(record));
+                    }
+                    received.Reset();
                 }
-                received.Reset();
             }
+
+            if (Stopwatch.GetTimestamp() >= deadline)
+                throw new InvalidOperationException(
+                    $"Completion '{operationId}' was not queued.");
+            Thread.Sleep(10);
         }
-        throw new InvalidOperationException(
-            $"Completion '{operationId}' was not queued.");
     }
 
     private static void DrainAndDispose(ZLinkManagedMeshNode node) =>
@@ -3056,6 +3136,35 @@ public sealed class StatefulServiceRuntimeTests
                 RequestResult.Ok,
                 ServiceWireConstants.FrameworkErrorCode.None,
                 [new byte[] { 7, 6 }]));
+        }
+    }
+
+    private sealed class ForwardingInstanceSpotActivationTarget(
+        ZLinkManagedMeshNode relay,
+        ZLinkManagedMeshNode winner) : IInstanceSpotActivationTarget
+    {
+        public async ValueTask<InstanceSpotActivationTerminal> ActivateAsync(
+            InstanceSpotActivationOperation operation,
+            ReadOnlyMemory<byte>? metadata,
+            IReadOnlyList<ReadOnlyMemory<byte>> payload,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var forwarded = operation with
+            {
+                Target = operation.Target with
+                {
+                    TargetNodeRid = winner.RoutingId,
+                    TargetNodeGeneration = winner.Status().LifecycleGeneration,
+                    DescriptorVersion = "descriptor-winner"
+                }
+            };
+            return await relay.ForwardInstanceSpotActivationAsync(
+                    forwarded,
+                    payload,
+                    metadata,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 

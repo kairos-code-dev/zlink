@@ -291,9 +291,10 @@ final class NodesAndServicesTest {
         DefaultZLinkFrameworkOptions options = optionsWithSpotNodeAndActorFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
+                 ZLinkFrameworkRuntimeTestAccess.start(options, new ZLinkJavaBackendAdapterFactory())) {
             systems.zlink.framework.actors.ZLinkActorCreateResult result = runtime.actorManager()
                 .create("player-1", "player")
+                .submit()
                 .toCompletableFuture()
                 .join();
             ActorRef actor = ((systems.zlink.framework.actors.ZLinkActorCreateResult.Created) result)
@@ -303,6 +304,7 @@ final class NodesAndServicesTest {
             assertTrue(
                 runtime.actorManager()
                     .getOrCreate("player-1", "player")
+                    .submit()
                     .toCompletableFuture()
                     .join()
                     instanceof systems.zlink.framework.actors.ZLinkActorCreateResult.Existing);
@@ -327,17 +329,17 @@ final class NodesAndServicesTest {
                 factory -> factory.disableRelocation());
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(
+                 ZLinkFrameworkRuntimeTestAccess.start(
                      options,
                      new ZLinkJavaBackendAdapterFactory())) {
             CompletionStage<systems.zlink.framework.actors.ZLinkActorCreateResult>
                 first = runtime.actorManager().getOrCreate(
                     "player-serial",
-                    "blocking-player");
+                    "blocking-player").submit();
             CompletionStage<systems.zlink.framework.actors.ZLinkActorCreateResult>
                 second = runtime.actorManager().getOrCreate(
                     "player-serial",
-                    "blocking-player");
+                    "blocking-player").submit();
 
             assertEquals(1, BlockingPlayerActorFactory.invocations.get());
             assertTrue(!second.toCompletableFuture().isDone());
@@ -402,7 +404,7 @@ final class NodesAndServicesTest {
                 factory -> factory.disableRelocation());
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
+                 ZLinkFrameworkRuntimeTestAccess.start(options, new ZLinkJavaBackendAdapterFactory())) {
             runtime.spotManager()
                 .getOrCreate(roomRid.toString(), "room")
                 .submit()

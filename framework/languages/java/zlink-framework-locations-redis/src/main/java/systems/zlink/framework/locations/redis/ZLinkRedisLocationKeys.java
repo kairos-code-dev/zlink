@@ -5,7 +5,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 import java.util.HexFormat;
-import systems.zlink.framework.locations.ZLinkCreationOperationIdentity;
+import systems.zlink.framework.runtime.internal.locations.ZLinkCreationOperationIdentity;
 
 final class ZLinkRedisLocationKeys {
     private final String prefix;
@@ -226,14 +226,14 @@ final class ZLinkRedisLocationKeys {
     }
 
     String meshNodeDescriptorRowKey(
-        systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey key) {
+        systems.zlink.framework.runtime.internal.locations.ZLinkMeshNodeDescriptorKey key) {
         return domainBase() + ":descriptor:mesh:"
             + sha256Hex(
                 ZLinkRedisLocationKeyCodec.encodeMeshNodeKey(key));
     }
 
     String meshNodeDescriptorMetadataKey(
-        systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey key) {
+        systems.zlink.framework.runtime.internal.locations.ZLinkMeshNodeDescriptorKey key) {
         return meshNodeDescriptorMetadataKeyPrefix()
             + sha256Hex(
                 ZLinkRedisLocationKeyCodec.encodeMeshNodeKey(key));
@@ -412,6 +412,40 @@ final class ZLinkRedisLocationKeys {
 
     String scansWatermarkKey() {
         return domainBase() + ":scans:watermark";
+    }
+
+    String opaqueRecordKey(String key) {
+        return domainBase() + ":opaque:" + sha256Hex(key);
+    }
+
+    String opaqueIndexKey() {
+        return domainBase() + ":opaque:index";
+    }
+
+    String opaqueMapKey() {
+        return domainBase() + ":opaque:map";
+    }
+
+    String opaqueCleanupKey() {
+        return domainBase() + ":opaque:cleanup";
+    }
+
+    String opaqueSequenceKey() {
+        return domainBase() + ":opaque:sequence";
+    }
+
+    String opaqueSnapshotExpiryKey() {
+        return domainBase() + ":opaque:snapshot-expiry";
+    }
+
+    String opaqueSnapshotBoundaryKey() {
+        return domainBase() + ":opaque:snapshot-boundary";
+    }
+
+    String opaqueScanKey(String scanId) {
+        return domainBase() + ":opaque:scan:"
+            + scanId.replace("-", "")
+                .toLowerCase(java.util.Locale.ROOT);
     }
 
     private String domainBase() {

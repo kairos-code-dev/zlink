@@ -10,6 +10,8 @@ internal sealed class ZLinkFrameworkComponentStateFactory(
 {
     public async ValueTask<ZLinkFrameworkComponentState> CreateAsync()
     {
+        // Resolve all memory-limited ingress settings before any socket is bound.
+        ZLinkFrameworkRegistrationValidator.ValidateInboundDispatch(registration);
         await ZLinkSpotStartupValidator.ValidateAsync(
                 frameworkRuntime.Services,
                 registration)
@@ -22,6 +24,9 @@ internal sealed class ZLinkFrameworkComponentStateFactory(
         try
         {
             context = channelAdapter.CreateContext();
+            channelAdapter.ConfigureAutoHwm(
+                context,
+                registration.InboundDispatchOptions.ApplicationHwmProfile);
             state = new ZLinkFrameworkComponentState(
                 context,
                 registration,

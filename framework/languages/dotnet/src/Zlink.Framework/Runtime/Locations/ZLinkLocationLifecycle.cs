@@ -43,6 +43,11 @@ internal sealed class ZLinkLocationLifecycle : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         _runtime.RemoveDescriptorAsync(key, cancellationToken);
 
+    internal ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListMeshNodesAsync(
+        string meshName,
+        CancellationToken cancellationToken = default) =>
+        _runtime.Store.ListAllMeshNodesAsync(meshName, cancellationToken);
+
     internal async ValueTask<ZLinkFrameworkErrorKind> ClassifyMeshNodeClaimConflictAsync(
         string meshName,
         RoutingId routingId,

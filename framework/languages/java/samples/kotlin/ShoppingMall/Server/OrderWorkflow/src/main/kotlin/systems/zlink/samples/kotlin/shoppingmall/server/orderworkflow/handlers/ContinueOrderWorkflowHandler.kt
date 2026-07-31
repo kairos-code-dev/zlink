@@ -1,20 +1,23 @@
 package systems.zlink.samples.kotlin.shoppingmall.server.orderworkflow.handlers
 
-import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
-import systems.zlink.framework.handlers.ZLinkHandlerGroup
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionStage
+import systems.zlink.framework.spots.ZLinkSpotRequestHandler
+import systems.zlink.samples.kotlin.shoppingmall.server.orderworkflow.OrderWorkflowSpot
 import systems.zlink.samples.kotlin.shoppingmall.server.orderworkflow.OrderWorkflowService
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.ContinueOrderWorkflowReq
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.ContinueOrderWorkflowRes
 
-@ZLinkHandlerGroup("workflow")
 class ContinueOrderWorkflowHandler(
     private val workflow: OrderWorkflowService,
-) : ZLinkSuspendingRequestHandler<ContinueOrderWorkflowReq, ContinueOrderWorkflowRes> {
-    override suspend fun handle(
+) : ZLinkSpotRequestHandler<OrderWorkflowSpot, ContinueOrderWorkflowReq, ContinueOrderWorkflowRes> {
+    override fun handle(
+        spot: OrderWorkflowSpot,
         request: ContinueOrderWorkflowReq,
-        context: ZLinkRequestContext,
-    ) = run {
-        ContinueOrderWorkflowRes(workflow.continueWorkflow(request.orderId))
+    ): CompletionStage<ContinueOrderWorkflowRes> {
+        spot.requireOrder(request.orderId)
+        return CompletableFuture.completedFuture(
+            ContinueOrderWorkflowRes(workflow.continueWorkflow(request.orderId)),
+        )
     }
 }

@@ -578,12 +578,12 @@ int send_completion_frames (zlink::socket_base_t *socket_,
         ? socket_->completion_pipe_for_application (application_pipe_)
         : socket_->completion_pipe_for_peer (peer_rid_);
     if (!completion) {
+        socket_->arm_send_ready_after_backpressure ();
         zlink::request_reply::consume_send_frames_from (
           parts_, 0, part_count_);
         errno = EAGAIN;
         return -1;
     }
-
     for (size_t i = 0; i < part_count_; ++i) {
         zlink::msg_t *msg = reinterpret_cast<zlink::msg_t *> (&parts_[i]);
         if (i + 1 < part_count_)
@@ -597,6 +597,7 @@ int send_completion_frames (zlink::socket_base_t *socket_,
         if (!written) {
             const int saved_errno = errno ? errno : EAGAIN;
             completion->rollback ();
+            socket_->arm_send_ready_after_backpressure ();
             zlink::request_reply::consume_send_frames_from (
               parts_, i, part_count_);
             errno = saved_errno;

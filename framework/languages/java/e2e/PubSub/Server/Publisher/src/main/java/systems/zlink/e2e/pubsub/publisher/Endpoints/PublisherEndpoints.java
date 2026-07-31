@@ -15,7 +15,7 @@ import systems.zlink.e2e.pubsub.publisher.Configuration.PublisherOptions;
 import systems.zlink.e2e.pubsub.publisher.Infrastructure.EvidenceStore;
 import systems.zlink.e2e.pubsub.shared.Contracts;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
-import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle;
 
 public final class PublisherEndpoints implements SmartLifecycle {
     private final PublisherOptions options;

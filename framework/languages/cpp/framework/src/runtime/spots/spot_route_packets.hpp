@@ -14,6 +14,14 @@
 namespace zlink::framework::detail
 {
 
+struct spot_multicast_route_send_t
+{
+    static constexpr const char *packet_name = "__zlink.spot.multicast";
+
+    std::string topic;
+    std::vector<std::uint8_t> frame;
+};
+
 struct spot_actor_admission_route_request_t
 {
     static constexpr const char *packet_name = "__zlink.spot.actor.join.admission";
@@ -112,6 +120,7 @@ struct spot_actor_packet_route_request_t
     std::string spot_id;
     std::string packet_name_value;
     std::string content_type = "application/json";
+    std::uint8_t message_follow_hop_count = 0;
     std::map<std::string, std::string> metadata;
     std::vector<std::uint8_t> payload;
 };

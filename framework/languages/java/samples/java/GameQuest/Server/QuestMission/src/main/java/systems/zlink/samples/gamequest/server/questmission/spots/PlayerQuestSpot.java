@@ -2,40 +2,37 @@ package systems.zlink.samples.gamequest.server.questmission.spots;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.actors.ZLinkActor;
-import systems.zlink.framework.messaging.ZLinkMessage;
-import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
-import systems.zlink.framework.spots.ZLinkSpotContext;
-import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
+import systems.zlink.framework.spots.ZLinkInstanceSpot;
+import systems.zlink.framework.spots.ZLinkInstanceSpotContext;
+import systems.zlink.samples.gamequest.server.questmission.spots.handlers.ApplyGameplaySpotHandler;
+import systems.zlink.samples.gamequest.server.questmission.spots.handlers.DeleteQuestProjectionSpotHandler;
+import systems.zlink.samples.gamequest.server.questmission.spots.handlers.ClosePlayerQuestSpotHandler;
+import systems.zlink.samples.gamequest.server.questmission.spots.handlers.GetQuestProgressSpotHandler;
+import systems.zlink.samples.gamequest.server.questmission.spots.handlers.RebuildQuestProjectionSpotHandler;
+import systems.zlink.samples.gamequest.server.questmission.spots.handlers.SyncQuestProgressSpotHandler;
 import systems.zlink.samples.gamequest.server.questmission.store.QuestStore;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
-public final class PlayerQuestSpot implements ZLinkSpot<ZLinkActor> {
-    private final ZLinkSpotContext context;
+public final class PlayerQuestSpot implements ZLinkInstanceSpot {
+    private final ZLinkInstanceSpotContext context;
     private final QuestStore store;
     private String playerId;
 
-    public PlayerQuestSpot(ZLinkSpotContext context, QuestStore store) {
+    public PlayerQuestSpot(ZLinkInstanceSpotContext context, QuestStore store) {
         this.context = context;
         this.store = store;
+        this.playerId = context.spotId();
     }
 
     @Override
-    public ZLinkSpotContext context() {
+    public ZLinkInstanceSpotContext context() {
         return context;
     }
 
     @Override
-    public CompletionStage<ZLinkSpotCreateResponse> onCreate(ZLinkMessage request) {
-        PlayerQuestCreateReq create = request.decode(PlayerQuestCreateReq.class);
-        if (!RoutingId.from(create.playerId()).equals(context.spotRid())) {
-            return CompletableFuture.completedFuture(ZLinkSpotCreateResponse.reject());
-        }
-        playerId = create.playerId();
+    public CompletionStage<Void> onInitialize() {
         store.activate(playerId);
-        return CompletableFuture.completedFuture(ZLinkSpotCreateResponse.accept());
+        return CompletableFuture.completedFuture(null);
     }
 
     private void requirePlayer(String requestedPlayerId) {
@@ -70,18 +67,4 @@ public final class PlayerQuestSpot implements ZLinkSpot<ZLinkActor> {
         return store.rebuildProjection(playerId, request.questId(), request.count());
     }
 
-    @Override
-    public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(String actorId, ZLinkMessage request) {
-        return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.reject());
-    }
-
-    @Override
-    public CompletionStage<Void> onJoinedActor(ZLinkActor actor) {
-        return CompletableFuture.completedFuture(null);
-    }
-
-    @Override
-    public CompletionStage<Void> onLeaveActor(ZLinkActor actor) {
-        return CompletableFuture.completedFuture(null);
-    }
 }

@@ -409,7 +409,7 @@ public sealed partial class RegressionTests
     public void Config_9_And_10_Keep_One_Client_Scenario_Per_File()
     {
         var root = ResolveE2eRoot();
-        AssertScenarioFiles(root, "SpotActorTransfer", "St", 32);
+        AssertScenarioFiles(root, "SpotActorTransfer", "St", 36);
         AssertScenarioFiles(root, "ToActorMessaging", "Ta", 7);
     }
 
@@ -425,7 +425,7 @@ public sealed partial class RegressionTests
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(54, scenarioIds.Length);
+        Assert.Equal(58, scenarioIds.Length);
         foreach (var scenarioId in scenarioIds)
             Assert.Contains($"\"{scenarioId}\" =>", program, StringComparison.Ordinal);
     }

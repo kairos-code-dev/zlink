@@ -4,7 +4,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
-import java.time.Instant;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -18,8 +17,6 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowObserver;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.monitoring.ZLinkFlowOrigin;
 import systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext;
-import systems.zlink.framework.monitoring.ZLinkRuntimeErrorEvent;
-import systems.zlink.framework.monitoring.ZLinkRuntimeErrorEventKind;
 import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.configuration.ZLinkDispatchOptionsRegistration;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
@@ -168,13 +165,10 @@ public final class ZLinkMessageFlowTracer {
             return;
         }
         Throwable actual = unwrap(error);
-        eventDispatcher.publish(new ZLinkRuntimeErrorEvent(
+        eventDispatcher.publishObserverFailure(
             "message-flow",
-            Instant.now(),
-            ZLinkRuntimeErrorEventKind.MESSAGE_FLOW_OBSERVER_FAILED,
             "message-flow-observer",
-            actual.getClass().getName(),
-            java.util.Optional.ofNullable(actual.getMessage())));
+            actual);
     }
 
     private static Throwable unwrap(Throwable error) {

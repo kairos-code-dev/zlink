@@ -53,6 +53,148 @@ final class ZLinkM6ARuntimeContractTest {
     }
 
     @Test
+    void initialAdmissionRequiresExactEndpointSecurityAndLifecycle() {
+        var peer = descriptor(
+            "mesh",
+            "peer",
+            7,
+            1,
+            List.of(),
+            100);
+
+        assertTrue(ZLinkServiceAdmissionGuard.matchesExpectedRoute(
+            "inproc://peer", "default", 7, peer));
+        assertFalse(ZLinkServiceAdmissionGuard.matchesExpectedRoute(
+            "inproc://other", "default", 7, peer));
+        assertFalse(ZLinkServiceAdmissionGuard.matchesExpectedRoute(
+            "inproc://peer", "other-identity", 7, peer));
+        assertFalse(ZLinkServiceAdmissionGuard.matchesExpectedRoute(
+            "inproc://peer", "default", 8, peer));
+    }
+
+    @Test
+    void higherRevisionRejectsEveryImmutableDescriptorMutation() {
+        var peer = descriptor(
+            "mesh",
+            "peer",
+            7,
+            1,
+            List.of(new ZLinkServiceNodeDescriptor.Channel("orders", 100)),
+            100);
+
+        for (String field : List.of(
+                "endpoint",
+                "securityIdentity",
+                "channelSet",
+                "objectRole",
+                "effectiveMaxMessageBytes",
+                "applicationVersion",
+                "protocolCapabilities",
+                "activeCapacityLimit",
+                "pendingCapacityLimit")) {
+            var topology = new ZLinkServiceTopologyRegistry(
+                descriptor("mesh", "local", 1, 1, List.of(), 100));
+            assertEquals(
+                ZLinkServiceTopologyRegistry.AdmissionResult.ADMITTED,
+                topology.admit(peer, "pipe"));
+            assertEquals(
+                ZLinkServiceTopologyRegistry.AdmissionResult.INVALID_DESCRIPTOR,
+                topology.admit(
+                    immutableMutation(peer, field),
+                    "pipe"),
+                field);
+            assertEquals(
+                peer,
+                topology.peer(RoutingId.from("peer"))
+                    .orElseThrow()
+                    .descriptor(),
+                field);
+        }
+    }
+
+    @Test
+    void duplicateAdmissionKeepsCanonicalDirectionAndLateCloseCannotRemoveIt() {
+        RoutingId lower = RoutingId.from("a");
+        RoutingId higher = RoutingId.from("z");
+        var topology = new ZLinkServiceTopologyRegistry(
+            descriptor("mesh", "a", 1, 1, List.of(), 100));
+        var peer = descriptor(
+            "mesh",
+            "z",
+            9,
+            1,
+            List.of(new ZLinkServiceNodeDescriptor.Channel("orders", 1)),
+            100);
+
+        assertEquals(
+            ZLinkServiceTopologyRegistry.AdmissionResult.ADMITTED,
+            topology.admit(
+                peer,
+                connection(
+                    "outbound-current",
+                    ZLinkServiceAdmissionGuard.ConnectionDirection.OUTBOUND)));
+        assertEquals(
+            ZLinkServiceTopologyRegistry.AdmissionResult.DUPLICATE_REJECTED,
+            topology.admit(
+                peer,
+                connection(
+                    "inbound-duplicate",
+                    ZLinkServiceAdmissionGuard.ConnectionDirection.INBOUND)));
+        assertEquals(
+            "outbound-current",
+            topology.peer(higher).orElseThrow().connectionId());
+
+        assertFalse(topology.disconnect(higher, "inbound-duplicate"));
+        assertEquals(
+            "outbound-current",
+            topology.peer(higher).orElseThrow().connectionId());
+
+        assertEquals(
+            ZLinkServiceAdmissionGuard.DuplicateConnectionDecision.KEEP_CURRENT,
+            ZLinkServiceAdmissionGuard.selectConnection(
+                lower,
+                higher,
+                9,
+                ZLinkServiceAdmissionGuard.ConnectionDirection.OUTBOUND,
+                "outbound-current",
+                9,
+                ZLinkServiceAdmissionGuard.ConnectionDirection.INBOUND,
+                "inbound-duplicate"));
+        assertEquals(
+            ZLinkServiceAdmissionGuard.DuplicateConnectionDecision.KEEP_CURRENT,
+            ZLinkServiceAdmissionGuard.selectConnection(
+                higher,
+                lower,
+                9,
+                ZLinkServiceAdmissionGuard.ConnectionDirection.INBOUND,
+                "inbound-current",
+                9,
+                ZLinkServiceAdmissionGuard.ConnectionDirection.OUTBOUND,
+                "outbound-duplicate"));
+
+        var replacement = new ZLinkServiceTopologyRegistry(
+            descriptor("mesh", "a", 1, 1, List.of(), 100));
+        assertEquals(
+            ZLinkServiceTopologyRegistry.AdmissionResult.ADMITTED,
+            replacement.admit(
+                peer,
+                connection(
+                    "inbound-old",
+                    ZLinkServiceAdmissionGuard.ConnectionDirection.INBOUND)));
+        assertEquals(
+            ZLinkServiceTopologyRegistry.AdmissionResult.ADMITTED,
+            replacement.admit(
+                peer,
+                connection(
+                    "outbound-replacement",
+                    ZLinkServiceAdmissionGuard.ConnectionDirection.OUTBOUND)));
+        assertFalse(replacement.disconnect(higher, "inbound-old"));
+        assertEquals(
+            "outbound-replacement",
+            replacement.peer(higher).orElseThrow().connectionId());
+    }
+
+    @Test
     void commonWeightsUseExactRangeRatioRevisionAndCapacityEligibility() {
         assertEquals(
             10_000,
@@ -271,6 +413,15 @@ final class ZLinkM6ARuntimeContractTest {
             null);
     }
 
+    private static ZLinkServiceTopologyRegistry.Connection connection(
+        String id,
+        ZLinkServiceAdmissionGuard.ConnectionDirection direction) {
+        return new ZLinkServiceTopologyRegistry.Connection(
+            id,
+            direction,
+            direction.name() + ":" + id);
+    }
+
     private static ZLinkServiceNodeDescriptor descriptor(
         String meshName,
         String rid,
@@ -323,5 +474,49 @@ final class ZLinkM6ARuntimeContractTest {
             pendingLimit,
             activeUsed,
             pendingUsed);
+    }
+
+    private static ZLinkServiceNodeDescriptor immutableMutation(
+        ZLinkServiceNodeDescriptor current,
+        String field) {
+        return new ZLinkServiceNodeDescriptor(
+            current.meshName(),
+            current.nodeRoutingId(),
+            current.lifecycleGeneration(),
+            current.descriptorRevision() + 1,
+            field.equals("endpoint")
+                ? current.advertisedEndpoint() + "-changed"
+                : current.advertisedEndpoint(),
+            field.equals("channelSet")
+                ? List.of(new ZLinkServiceNodeDescriptor.Channel(
+                    "payments", 100))
+                : current.channels(),
+            current.state(),
+            field.equals("securityIdentity")
+                ? current.securityIdentity() + "-changed"
+                : current.securityIdentity(),
+            field.equals("effectiveMaxMessageBytes")
+                ? current.effectiveMaxMessageBytes() + 1
+                : current.effectiveMaxMessageBytes(),
+            field.equals("applicationVersion")
+                ? current.applicationVersion() + 1
+                : current.applicationVersion(),
+            field.equals("protocolCapabilities")
+                ? List.of(
+                    ZLinkServiceNodeDescriptor.REQUIRED_CAPABILITY,
+                    "optional-v1")
+                : current.protocolCapabilities(),
+            field.equals("objectRole")
+                ? ZLinkServiceNodeDescriptor.ObjectRole.CLIENT
+                : current.objectRole(),
+            current.placementWeight(),
+            field.equals("activeCapacityLimit")
+                ? current.activeCapacityLimit() + 1
+                : current.activeCapacityLimit(),
+            field.equals("pendingCapacityLimit")
+                ? current.pendingCapacityLimit() + 1
+                : current.pendingCapacityLimit(),
+            current.activeCapacityUsed(),
+            current.pendingCapacityUsed());
     }
 }

@@ -3,41 +3,32 @@ package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spot
 import com.fasterxml.jackson.databind.ObjectMapper
 import kotlinx.coroutines.future.await
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpot
-import systems.zlink.framework.kotlin.awaitJoin
 import systems.zlink.framework.messaging.ZLinkMessage
+import systems.zlink.framework.spots.ZLinkActorCreateResponse
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomSettings
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.BingoRoomSpot
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors.PlayerActor
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinReq
-import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.ObserveBingoEventsReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.ObserveBingoEventsRes
 
 class BingoEntrySpot(
-    private val context: ZLinkEntrySpotContext,
+    override val context: ZLinkEntrySpotContext,
     private val spots: ZLinkSpotManager,
     private val json: ObjectMapper,
 ) : ZLinkSuspendingEntrySpot<PlayerActor>() {
-    override fun context(): ZLinkEntrySpotContext = context
-
     override suspend fun onCreateActorSuspending(
         actor: PlayerActor,
         createRequest: ZLinkMessage,
-    ) {
+    ): ZLinkActorCreateResponse {
         val request = createRequest.decode(EnsurePlayerActorReq::class.java)
         actor.setDisplayName(request.displayName)
+        return ZLinkActorCreateResponse.accept()
     }
-
-    override suspend fun onActorJoinSuspending(
-        actorId: String,
-        request: ZLinkMessage,
-    ): ZLinkSpotActorJoinResponse =
-        ZLinkSpotActorJoinResponse.accept()
 
     override suspend fun onJoinedActorSuspending(actor: PlayerActor) {
         if (actor.destroyAfterEntrySpotJoin) {
@@ -65,7 +56,7 @@ class BingoEntrySpot(
             .request(settings)
             .submit()
             .await()
-        val joined = actor.context().joinSpot(
+        actor.context().joinSpot(
             observerSpotId,
             BingoRoomJoinReq(
                 request.roomId,
@@ -73,11 +64,7 @@ class BingoEntrySpot(
                 actor.displayName,
                 true,
             ),
-        ).awaitJoin(BingoRoomJoinRes::class.java)
-        val accepted = joined as? systems.zlink.framework.actors.ZLinkActorJoinResult.Accepted
-            ?: error("observer actor join was rejected")
-        return ObserveBingoEventsRes(
-            accepted.reply().state.status == "Running",
-        )
+        ).defer()
+        return ObserveBingoEventsRes(true)
     }
 }

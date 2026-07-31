@@ -41,6 +41,7 @@ import { ZLinkChannelDispatchServices } from './channel-dispatch-services';
 import { ZLinkChannelOutboundOperations } from './channel-outbound-operations';
 import { ZLinkChannelRuntimeLifecycle } from './channel-runtime-lifecycle';
 import { ZLinkSpotRouteDispatchStrategy } from './spot-route-dispatch-strategy';
+import type { ZLinkInboundDispatchBudget } from '../dispatch/inbound-dispatch-budget';
 
 export class ZLinkChannelRuntimeManager {
   private readonly registration: ZLinkFrameworkRegistration;
@@ -96,7 +97,8 @@ export class ZLinkChannelRuntimeManager {
       spotRouteBridges,
       spotRouteBridgeRawReplies,
       internalRouteSendHandlers: options.internalRouteSendHandlers,
-      internalRouteRequestHandlers: options.internalRouteRequestHandlers
+      internalRouteRequestHandlers: options.internalRouteRequestHandlers,
+      inboundDispatchBudget: options.inboundDispatchBudget
     });
   }
 
@@ -433,4 +435,5 @@ export interface ZLinkChannelRuntimeManagerOptions {
   };
   readonly messageFlowModeCell?: ZLinkMessageFlowModeCell;
   readonly oneWayFailureSink?: (error: unknown) => void;
+  readonly inboundDispatchBudget?: ZLinkInboundDispatchBudget;
 }

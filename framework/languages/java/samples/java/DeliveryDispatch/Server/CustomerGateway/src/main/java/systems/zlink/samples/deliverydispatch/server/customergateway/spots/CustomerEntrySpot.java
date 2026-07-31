@@ -3,7 +3,7 @@ package systems.zlink.samples.deliverydispatch.server.customergateway.spots;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkActorCreateResponse;
 import systems.zlink.samples.deliverydispatch.server.customergateway.CustomerActor;
 import systems.zlink.samples.deliverydispatch.server.customergateway.CustomerActorDirectory;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
@@ -27,18 +27,11 @@ public final class CustomerEntrySpot implements ZLinkEntrySpot<CustomerActor> {
     }
 
     @Override
-    public CompletionStage<Void> onCreateActor(
+    public CompletionStage<ZLinkActorCreateResponse> onCreateActor(
         CustomerActor actor,
         ZLinkMessage createRequest) {
         customers.register(actor);
-        return CompletableFuture.completedFuture(null);
-    }
-
-    @Override
-    public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
-        String actorId,
-        ZLinkMessage request) {
-        return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept());
+        return CompletableFuture.completedFuture(ZLinkActorCreateResponse.accept());
     }
 
     @Override

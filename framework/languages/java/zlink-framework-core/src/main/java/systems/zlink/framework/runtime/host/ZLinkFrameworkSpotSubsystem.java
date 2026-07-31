@@ -37,8 +37,8 @@ final class ZLinkFrameworkSpotSubsystem {
         ZLinkChannelRuntime channels,
         ZLinkBackendContext backendContext,
         ZLinkLocationLifecycle locationLifecycle,
-        systems.zlink.framework.locations.ZLinkLocationStore authorityStore,
-        systems.zlink.framework.locations.ZLinkLocationStore locationStore,
+        systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository authorityStore,
+        systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository locationStore,
         systems.zlink.framework.runtime.locations.ZLinkLocationRuntime
             locationRuntime,
         SpotTransportAddressResolver locationTransportResolver,
@@ -46,7 +46,8 @@ final class ZLinkFrameworkSpotSubsystem {
             meshNodes) {
         SpotTransportAddressResolver remoteAddressResolver = locationTransportResolver;
         boolean hasMeshServices = options.registration().meshNodes().stream()
-            .anyMatch(node -> !node.spotFactories().isEmpty()
+            .anyMatch(node -> node.objectRoleEnabled()
+                || !node.spotFactories().isEmpty()
                 || !node.entrySpots().isEmpty()
                 || !node.actorFactories().isEmpty()
                 || !node.channelNames().isEmpty());
@@ -68,6 +69,10 @@ final class ZLinkFrameworkSpotSubsystem {
             meshNodes,
             ZLinkAdmissionRuntime.factory(backendFactory));
         spots.setLocationLifecycle(locationLifecycle);
+        if (channels != null) {
+            channels.registerInstanceSpotCallRuntime(
+                spots.instanceSpotCalls());
+        }
         if (authorityStore != null
             && locationStore != null
             && locationRuntime != null) {

@@ -214,9 +214,7 @@ internal sealed partial class ZLinkSpotActivation
         ArgumentNullException.ThrowIfNull(actorState);
         _actors.RemoveIfCurrent(actor);
         actorState.LeaveSpotIfCurrent(this);
-        if (PerActorShellRelocationPlan is not null
-            && JoinedActorCount == 0)
-            _perActorMembersDrained.TrySetResult();
+        SignalPerActorMembersDrainedIfNeeded();
     }
 
     public ValueTask PrepareTransferredActorJoinAndReplayAsync(
@@ -324,6 +322,8 @@ internal sealed partial class ZLinkSpotActivation
         while (true)
         {
             var frames = actorState.Handoff.SnapshotFinalReplay();
+            _runtime.LogActorHandoff(
+                $"handoff_final_replay_snapshot actor={actorState.ActorId} frames={frames.Count}");
             if (frames.Count == 0) return;
 
             await _dispatcher.DispatchActorReplayFramesAsync(
@@ -331,6 +331,8 @@ internal sealed partial class ZLinkSpotActivation
                     actorState.Handoff.AcknowledgeReplayedFrame,
                     cancellationToken)
                 .ConfigureAwait(false);
+            _runtime.LogActorHandoff(
+                $"handoff_final_replay_dispatched actor={actorState.ActorId} frames={frames.Count}");
         }
     }
 
@@ -433,6 +435,16 @@ internal sealed partial class ZLinkSpotActivation
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(actor);
+        if (ExecutionMode == ZLinkUserSpotExecutionMode.PerActor
+            && PerActorShellRelocationPlan is not null)
+            return _serial.ExecuteActorAsync(
+                actor.Context.ActorId,
+                static (activation, state, ct) =>
+                    activation.NotifyActorLeftAfterCommittedMembershipCoreAsync(
+                        state,
+                        ct),
+                actor,
+                cancellationToken);
         return ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this)
             ? NotifyActorLeftAfterCommittedMembershipCoreAsync(actor, cancellationToken)
             : ExecuteSerializedAsync(
@@ -446,9 +458,16 @@ internal sealed partial class ZLinkSpotActivation
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
+        await _membershipPublicationGate.WaitAsync(cancellationToken)
+            .ConfigureAwait(false);
         ZLinkSpotActivation? previousActivation;
         try
         {
+            if (PerActorShellRelocationPlan is not null)
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.Unavailable,
+                    $"SPOT '{SpotId}' no longer accepts Actor membership after relocation publication.",
+                    ZLinkRetryAdvice.RetryAfterStateChange);
             previousActivation = await _runtime.CommitActorToSpotAsync(
                     this,
                     actor,
@@ -476,9 +495,9 @@ internal sealed partial class ZLinkSpotActivation
                     cancellationToken)
                 .ConfigureAwait(false);
         }
-        catch
+        finally
         {
-            throw;
+            _membershipPublicationGate.Release();
         }
 
         if (ReferenceEquals(previousActivation, this)) return;
@@ -575,6 +594,7 @@ internal sealed partial class ZLinkSpotActivation
         _actors.RemoveIfCurrent(actor);
         var actorState = _runtime.GetOrCreateActorState(actor.Context.ActorId);
         actorState.LeaveSpotIfCurrent(this);
+        SignalPerActorMembersDrainedIfNeeded();
 
         if (_runtime.LocationLifecycle is { } locations)
         {
@@ -598,6 +618,13 @@ internal sealed partial class ZLinkSpotActivation
                 .ConfigureAwait(false);
     }
 
+    private void SignalPerActorMembersDrainedIfNeeded()
+    {
+        if (PerActorShellRelocationPlan is not null
+            && JoinedActorCount == 0)
+            _perActorMembersDrained.TrySetResult();
+    }
+
     private async ValueTask NotifyActorLeftAfterCommittedMembershipCoreAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken)
@@ -605,6 +632,7 @@ internal sealed partial class ZLinkSpotActivation
         _actors.RemoveIfCurrent(actor);
         var actorState = _runtime.GetOrCreateActorState(actor.Context.ActorId);
         actorState.LeaveSpotIfCurrent(this);
+        SignalPerActorMembersDrainedIfNeeded();
 
         if (_actorHandlers is not null
             && _actorHandlers.TryResolveLeft(actor.GetType(), out var descriptor)

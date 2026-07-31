@@ -12,7 +12,7 @@ inline observe_bingo_events_res_t bingo_room_spot_t::observe_events (
   const observe_bingo_events_req_t &request)
 {
     _game.set_room_id_if_empty (request.room_id);
-    observers[actor.actor.actor_id] = const_cast<player_actor_t *> (&actor);
+    observers[actor.actor_id] = const_cast<player_actor_t *> (&actor);
     return {true};
 }
 

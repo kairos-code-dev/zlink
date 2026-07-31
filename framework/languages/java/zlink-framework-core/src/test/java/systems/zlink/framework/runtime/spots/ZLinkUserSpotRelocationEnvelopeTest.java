@@ -42,6 +42,13 @@ final class ZLinkUserSpotRelocationEnvelopeTest {
             List.of(new ZLinkSpotTimerRelocationEnvelope.CanonicalTimer(
                 "heartbeat", TestSpot.class.getName(), 1000, 1, 1, true,
                 5, 6, 1_700_000_000_000L, null)));
+        byte[] actorTimerEnvelope =
+            ZLinkSpotTimerRelocationEnvelope.encodeCanonical(
+                List.of(new ZLinkSpotTimerRelocationEnvelope.CanonicalTimer(
+                    "actor-heartbeat", TestSpot.class.getName(),
+                    250, 2, 3, false, 8, 9, 1_700_000_000_250L,
+                    new ZLinkSpotTimerRelocationEnvelope.CanonicalPending(
+                        10, 11, 1_700_000_000_200L, 2))));
         var request = new ZLinkUserSpotAggregateStagingOwner.Request(
             TestSpot.class,
             "room",
@@ -55,7 +62,8 @@ final class ZLinkUserSpotRelocationEnvelopeTest {
                 "player",
                 new byte[] {6},
                 true,
-                new ZLinkBackendActorRef(source, "actor-a", 11))),
+                new ZLinkBackendActorRef(source, "actor-a", 11),
+                actorTimerEnvelope)),
             journal);
 
         UUID relocationId = UUID.randomUUID();
@@ -82,6 +90,10 @@ final class ZLinkUserSpotRelocationEnvelopeTest {
             .preparedActorRef().nodeRid());
         assertEquals(11, decoded.actors().getFirst()
             .preparedActorRef().generation());
+        var actorTimer = ZLinkSpotTimerRelocationEnvelope.canonicalize(
+            decoded.actors().getFirst().timerEnvelope()).getFirst();
+        assertEquals("actor-heartbeat", actorTimer.name());
+        assertEquals(10, actorTimer.pending().deliveryIndex());
         assertEquals(7, decoded.acceptedJournal()
             .get("actor:actor-a").getFirst().sequence());
     }

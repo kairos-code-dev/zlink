@@ -1,13 +1,13 @@
 package systems.zlink.framework.spring;
 
-import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle;
 
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.actors.ActorRef;
-import systems.zlink.framework.actors.ZLinkActorCreateResult;
+import systems.zlink.framework.actors.ZLinkActorCreateCall;
+import systems.zlink.framework.actors.ZLinkActorGetOrCreateCall;
 import systems.zlink.framework.actors.ZLinkActorManager;
-import systems.zlink.framework.messaging.ZLinkMessage;
 
 final class ZLinkFrameworkActorManagerBean implements ZLinkActorManager {
     private final ZLinkFrameworkLifecycle lifecycle;
@@ -17,16 +17,8 @@ final class ZLinkFrameworkActorManagerBean implements ZLinkActorManager {
     }
 
     @Override
-    public CompletionStage<ZLinkActorCreateResult> create(String actorId, String actorType) {
+    public ZLinkActorCreateCall create(String actorId, String actorType) {
         return lifecycle.actorManager().create(actorId, actorType);
-    }
-
-    @Override
-    public CompletionStage<ZLinkActorCreateResult> create(
-        String actorId,
-        String actorType,
-        ZLinkMessage createRequest) {
-        return lifecycle.actorManager().create(actorId, actorType, createRequest);
     }
 
     @Override
@@ -35,15 +27,9 @@ final class ZLinkFrameworkActorManagerBean implements ZLinkActorManager {
     }
 
     @Override
-    public CompletionStage<ZLinkActorCreateResult> getOrCreate(String actorId, String actorType) {
-        return lifecycle.actorManager().getOrCreate(actorId, actorType);
-    }
-
-    @Override
-    public CompletionStage<ZLinkActorCreateResult> getOrCreate(
+    public ZLinkActorGetOrCreateCall getOrCreate(
         String actorId,
-        String actorType,
-        ZLinkMessage createRequest) {
-        return lifecycle.actorManager().getOrCreate(actorId, actorType, createRequest);
+        String actorType) {
+        return lifecycle.actorManager().getOrCreate(actorId, actorType);
     }
 }

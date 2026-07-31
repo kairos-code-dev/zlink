@@ -1,8 +1,9 @@
 package systems.zlink.framework.spring;
 
-import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -61,17 +62,13 @@ import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
 import systems.zlink.framework.locations.ZLinkLocationRuntimeStatus;
 import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
-import systems.zlink.framework.monitoring.ZLinkSocketEvent;
-import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerInstanceOwner;
 import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
-import systems.zlink.framework.runtime.monitoring.DefaultZLinkMonitoringOptions;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
@@ -123,14 +120,21 @@ final class ZLinkFrameworkAutoConfigurationTest {
             assertInstanceOf(ZLinkFrameworkLifecycle.class, runtimeOptions);
             assertInstanceOf(ZLinkFrameworkLifecycle.class, fanout);
             assertInstanceOf(ZLinkFrameworkLifecycle.class, route);
-            assertInstanceOf(
-                systems.zlink.framework.runtime.host.ZLinkRouteMeshRuntimeService.class,
-                routeMeshRuntime);
+            assertSame(lifecycle.routeMeshRuntime(), routeMeshRuntime);
+            assertSame(
+                lifecycle.clientServerRuntime(),
+                context.getBean(
+                    systems.zlink.framework.monitoring
+                        .ZLinkClientServerRuntime.class));
+            assertSame(
+                lifecycle.fanoutRuntime(),
+                context.getBean(
+                    systems.zlink.framework.monitoring.ZLinkFanoutRuntime.class));
             assertThrows(
                 ZLinkConfigurationException.class,
                 () -> routeMeshRuntime.snapshot("missing"));
             assertInstanceOf(
-                systems.zlink.framework.runtime.host.ZLinkRouteMeshRuntimeOptionsService.class,
+                systems.zlink.framework.spring.internal.runtime.ZLinkRouteMeshRuntimeOptionsService.class,
                 routeMeshRuntimeOptions);
         }
     }
@@ -254,6 +258,31 @@ final class ZLinkFrameworkAutoConfigurationTest {
             ZLinkSpotOutbound outbound = context.getBean(ZLinkSpotOutbound.class);
             assertThrows(ZLinkConfigurationException.class, () ->
                 outbound.sendToChannel("events", "hello"));
+        }
+    }
+
+    @Test
+    void spotManagerIsBeanWhenObjectClientExists() {
+        try (AnnotationConfigApplicationContext context =
+                 new AnnotationConfigApplicationContext()) {
+            context.registerBean(
+                ZLinkBackendAdapterProvider.class,
+                FakeZLinkBackendAdapterFactory::new);
+            context.register(
+                ObjectClientConfig.class,
+                LocationStoreBeanConfig.class,
+                ZLinkFrameworkAutoConfiguration.class);
+            context.refresh();
+
+            assertInstanceOf(
+                ZLinkSpotManager.class,
+                context.getBean(ZLinkSpotManager.class));
+            assertInstanceOf(
+                ZLinkSpotOutbound.class,
+                context.getBean(ZLinkSpotOutbound.class));
+            assertInstanceOf(
+                ZLinkActorManager.class,
+                context.getBean(ZLinkActorManager.class));
         }
     }
 
@@ -612,7 +641,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Test
-    void runtimeEventDispatcherIsAlwaysRegistered() {
+    void runtimeEventDispatcherIsNotExposedAsSpringBean() {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
             context.registerBean(
@@ -621,62 +650,12 @@ final class ZLinkFrameworkAutoConfigurationTest {
             context.register(TestConfig.class, ZLinkFrameworkAutoConfiguration.class);
             context.refresh();
 
-            assertInstanceOf(
-                ZLinkRuntimeEventDispatcher.class,
-                context.getBean(ZLinkRuntimeEventDispatcher.class));
+            assertTrue(context.getBeansOfType(ZLinkRuntimeEventDispatcher.class).isEmpty());
         }
     }
 
     @Test
-    void autoConfigurationKeepsUserRuntimeEventDispatcher() {
-        ZLinkRuntimeEventDispatcher dispatcher = new ZLinkRuntimeEventDispatcher();
-        try (AnnotationConfigApplicationContext context =
-                 new AnnotationConfigApplicationContext()) {
-            context.registerBean(
-                ZLinkBackendAdapterProvider.class,
-                FakeZLinkBackendAdapterFactory::new);
-            context.registerBean(ZLinkRuntimeEventDispatcher.class, () -> dispatcher);
-            context.register(TestConfig.class, ZLinkFrameworkAutoConfiguration.class);
-            context.refresh();
-
-            assertEquals(dispatcher, context.getBean(ZLinkRuntimeEventDispatcher.class));
-        }
-    }
-
-    @Test
-    void monitoringCustomizerStartsLifecycleAndRegistersRuntimeEventHandlers() {
-        FakeZLinkBackendAdapterFactory backendFactory =
-            new FakeZLinkBackendAdapterFactory();
-        try (AnnotationConfigApplicationContext context =
-                 new AnnotationConfigApplicationContext()) {
-            context.registerBean(ZLinkBackendAdapterProvider.class, () -> backendFactory);
-            context.register(MonitoringConfig.class, ZLinkFrameworkAutoConfiguration.class);
-            context.refresh();
-
-            assertTrue(context.getBean(ZLinkMonitoringLifecycle.class).isRunning());
-            assertTrue(backendFactory.calls().contains("factory.monitoring"));
-            assertTrue(backendFactory.calls().contains("monitoring.open.router"));
-            assertTrue(backendFactory.calls().contains("socketMonitor.onEvent"));
-
-            context.getBean(ZLinkRuntimeEventDispatcher.class).publish(new ZLinkSocketEvent(
-                "profile",
-                Instant.EPOCH,
-                ZLinkSocketEventKind.CONNECTED,
-                Optional.empty(),
-                "local",
-                "remote",
-                Optional.empty()));
-
-            assertEquals(1, context.getBean(AtomicInteger.class).get());
-        }
-
-        List<String> calls = backendFactory.calls();
-        assertTrue(calls.indexOf("close.socketMonitor") < calls.indexOf("close.router"));
-        assertTrue(calls.indexOf("close.socketMonitor") < calls.indexOf("close.context"));
-    }
-
-    @Test
-    void monitoringOptionsBeanExistsWithoutCustomizerAndOpensNoRuntimeMonitoringSocketMonitor() {
+    void noRuntimeErrorSinkStillOpensNoRawMonitoringSocketMonitor() {
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
         try (AnnotationConfigApplicationContext context =
@@ -685,10 +664,6 @@ final class ZLinkFrameworkAutoConfigurationTest {
             context.register(TestConfig.class, ZLinkFrameworkAutoConfiguration.class);
             context.refresh();
 
-            assertTrue(context.getBean(ZLinkMonitoringLifecycle.class).isRunning());
-            assertTrue(context.getBean(DefaultZLinkMonitoringOptions.class)
-                .socketSourceNames()
-                .isEmpty());
             // Runtime monitoring registers no socket source, so it opens nothing.
             // The single remaining monitor belongs to the ClientServer client
             // DEALER: spec 12 section 4.4 makes even a manual connection verify
@@ -819,33 +794,6 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
     @Configuration
     @EnableZLinkFramework
-    static class MonitoringConfig {
-        @Bean
-        AtomicInteger socketEventCount() {
-            return new AtomicInteger();
-        }
-
-        @Bean
-        SocketEventCounter socketEventCounter(AtomicInteger socketEventCount) {
-            return new SocketEventCounter(socketEventCount);
-        }
-
-        @Bean
-        ZLinkFrameworkConfigurer monitoredServerChannelConfigurer() {
-            return options -> { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "profile"); channel.enableServer("inproc://profile-monitor");
-                channel.enableClient("inproc://profile-monitor"); };
-        }
-
-        @Bean
-        ZLinkMonitoringOptionsCustomizer socketMonitoringCustomizer() {
-            return options -> options.addSocketEvents(
-                "profile",
-                ZLinkSocketEventKind.CONNECTED);
-        }
-    }
-
-    @Configuration
-    @EnableZLinkFramework
     static class AutoDiscoveredSessionPacketConfig {
         @Bean
         AtomicInteger sessionPacketCount() {
@@ -904,6 +852,19 @@ final class ZLinkFrameworkAutoConfigurationTest {
         ZLinkFrameworkConfigurer spotNodeConfigurer() {
             return options -> { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");
                     node.objects().server().addSpotFactory("GameSpot", GameSpot.class, factory -> factory.disableRelocation()); }; };
+        }
+    }
+
+    @Configuration
+    @EnableZLinkFramework
+    static class ObjectClientConfig {
+        @Bean
+        ZLinkFrameworkConfigurer objectClientConfigurer() {
+            return options -> {
+                var mesh = options.addRouteMesh("game");
+                mesh.listen("inproc://object-client");
+                mesh.objects().client();
+            };
         }
     }
 
@@ -1258,20 +1219,6 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 context.actorId(),
                 context,
                 dependency.format(context.actorId())));
-        }
-    }
-
-    public static final class SocketEventCounter
-        implements ZLinkRuntimeEventHandler<ZLinkSocketEvent> {
-        private final AtomicInteger count;
-
-        SocketEventCounter(AtomicInteger count) {
-            this.count = count;
-        }
-
-        @Override
-        public void handle(ZLinkSocketEvent event) {
-            count.incrementAndGet();
         }
     }
 

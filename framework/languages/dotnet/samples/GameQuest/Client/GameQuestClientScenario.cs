@@ -74,8 +74,8 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         ZlinkStreamAssert.Ensure(ruins.EventId == "player-alice-enter-ruins", "Assertion failed: ruins.EventId == \"player-alice-enter-ruins\"");
 
         // Simulate an authoritative server event while Bob has no bound session.
-        var offlineItem = (await apiA.Post("/self-check/gameplay/collect/player-bob/healing-herb/1/herb-1")
-            .Async<CollectItemRes>(cancellationToken)).Body;
+        var offlineItem = await apiA.Post("/self-check/gameplay/collect/player-bob/healing-herb/1/herb-1")
+            .Fetch<CollectItemRes>(cancellationToken);
         ZlinkStreamAssert.Ensure(offlineItem.EventId == "player-bob-herb-1", "Assertion failed: offlineItem.EventId == \"player-bob-herb-1\"");
 
         await apiBStream.Connect.Async(cancellationToken);
@@ -106,8 +106,8 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         ZlinkStreamAssert.Ensure(deleteBobProjection.Status is >= 200 and < 300, "Assertion failed: deleteBobProjection.Status is >= 200 and < 300");
         var missingProjection = await GetStreamProjectionAsync(apiBStream, "player-bob", cancellationToken);
         ZlinkStreamAssert.Ensure(missingProjection.All(progress => progress.QuestId != QuestIds.HerbGathering), "Assertion failed: missingProjection.All(progress => progress.QuestId != QuestIds.HerbGathering)");
-        var rebuilt = (await apiA.Post($"/self-check/projection/player-bob/{QuestIds.HerbGathering}/rebuild")
-            .Async<QuestProgress>(cancellationToken)).Body;
+        var rebuilt = await apiA.Post($"/self-check/projection/player-bob/{QuestIds.HerbGathering}/rebuild")
+            .Fetch<QuestProgress>(cancellationToken);
         ZlinkStreamAssert.Ensure(rebuilt is { QuestId: QuestIds.HerbGathering, Status: QuestStatuses.RewardGranted }, "Assertion failed: rebuilt is { QuestId: QuestIds.HerbGathering, Status: QuestStatuses.RewardGranted }");
         var rebuiltProjection = await GetStreamProjectionAsync(apiBStream, "player-bob", cancellationToken);
         ZlinkStreamAssert.Ensure(rebuiltProjection.Any(progress =>
@@ -141,8 +141,8 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         ServerAssertionResponse? last = null;
         while (DateTimeOffset.UtcNow < deadline)
         {
-            last = (await api.Post("/self-check/assert")
-                .Async<ServerAssertionResponse>(cancellationToken)).Body;
+            last = await api.Post("/self-check/assert")
+                .Fetch<ServerAssertionResponse>(cancellationToken);
             if (last.Passed) return last;
 
             await Task.Delay(50, cancellationToken);
@@ -160,15 +160,15 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         var deadline = DateTimeOffset.UtcNow + SampleNames.RequestTimeout;
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var response = (await api.Get($"/quest/progress/{playerId}")
-                .Async<GetQuestProgressRes>(cancellationToken)).Body;
+            var response = await api.Get($"/quest/progress/{playerId}")
+                .Fetch<GetQuestProgressRes>(cancellationToken);
             if (response.ActiveQuests.Any(predicate)) return response.ActiveQuests;
 
             await Task.Delay(50, cancellationToken);
         }
 
         return (await api.Get($"/quest/progress/{playerId}")
-            .Async<GetQuestProgressRes>(cancellationToken)).Body.ActiveQuests;
+            .Fetch<GetQuestProgressRes>(cancellationToken)).ActiveQuests;
     }
 
     private static async ValueTask<QuestProgress[]> WaitForStreamProjectionAsync(

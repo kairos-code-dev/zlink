@@ -17,6 +17,7 @@ final class ZLinkJavaInstanceSpotRegistry {
     private final Map<String, BiFunction<String, Long, ZLinkBackendSpot>>
         factories =
         new ConcurrentHashMap<>();
+    private final Map<String, ActivationHook> hooks = new ConcurrentHashMap<>();
     private final Map<String, String> stableTypes =
         new ConcurrentHashMap<>();
     private final Map<String, CompletableFuture<Activation>> activations =
@@ -25,6 +26,17 @@ final class ZLinkJavaInstanceSpotRegistry {
     void register(
         String stableType,
         BiFunction<String, Long, ZLinkBackendSpot> factory) {
+        register(
+            stableType,
+            factory,
+            (type, spotId, generation, spot) ->
+                CompletableFuture.completedFuture(null));
+    }
+
+    void register(
+        String stableType,
+        BiFunction<String, Long, ZLinkBackendSpot> factory,
+        ActivationHook hook) {
         requireType(stableType);
         if (factories.putIfAbsent(
             stableType,
@@ -32,6 +44,7 @@ final class ZLinkJavaInstanceSpotRegistry {
             throw new IllegalStateException(
                 "Instance Spot type is already registered: " + stableType);
         }
+        hooks.put(stableType, Objects.requireNonNull(hook, "hook"));
     }
 
     CompletionStage<Activation> activate(
@@ -81,7 +94,17 @@ final class ZLinkJavaInstanceSpotRegistry {
                 throw new IllegalStateException(
                     "Instance Spot factory returned a stale generation");
             }
-            candidate.complete(new Activation(selected, spot));
+            hooks.get(selected).activate(
+                    selected, spotId, objectGeneration, spot)
+                .whenComplete((ignored, failure) -> {
+                    if (failure == null) {
+                        candidate.complete(new Activation(selected, spot));
+                    } else {
+                        spot.close();
+                        candidate.completeExceptionally(failure);
+                        activations.remove(spotId, candidate);
+                    }
+                });
         } catch (Throwable failure) {
             candidate.completeExceptionally(failure);
             activations.remove(spotId, candidate);
@@ -118,6 +141,7 @@ final class ZLinkJavaInstanceSpotRegistry {
         activations.clear();
         stableTypes.clear();
         factories.clear();
+        hooks.clear();
     }
 
     private String selectType(
@@ -158,5 +182,14 @@ final class ZLinkJavaInstanceSpotRegistry {
     }
 
     record Activation(String stableType, ZLinkBackendSpot spot) {
+    }
+
+    @FunctionalInterface
+    interface ActivationHook {
+        CompletionStage<Void> activate(
+            String stableType,
+            String spotId,
+            long generation,
+            ZLinkBackendSpot spot);
     }
 }

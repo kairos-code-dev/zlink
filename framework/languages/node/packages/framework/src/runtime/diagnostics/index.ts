@@ -1,16 +1,8 @@
 import type {
   ZLinkLocationRuntimeQuery,
-  ZLinkLocationRuntimeEvent,
-  ZLinkLocationRuntimeEventKind,
   ZLinkLocationRuntimeStatus,
   ZLinkLocationTopologyEntry,
-  ZLinkLocationServiceSummary,
-  ZLinkPollingMonitoringRegistration,
-  ZLinkRuntimeEvent,
-  ZLinkRuntimeEventHandler,
-  ZLinkSocketEvent,
-  ZLinkSocketEventKind,
-  ZLinkSocketMonitoringRegistration,
+  ZLinkLocationServiceSummary
 } from '../../contracts';
 import type {
   ZLinkActorLocation,
@@ -26,21 +18,27 @@ import type {
 } from '../../contracts/Locations/Keys';
 import {
   ZLinkLocationRuntimeEventKind as LocationRuntimeEventKind,
-  ZLinkSocketEventKind as SocketEventKind
-} from '../../contracts';
-import {
   ZLinkLocationActorEventKind as ActorLocationEventKind,
   ZLinkLocationPeerEventKind as PeerLocationEventKind,
   ZLinkLocationRouteEventKind as RouteLocationEventKind,
   ZLinkLocationSpotEventKind as SpotLocationEventKind,
+  ZLinkSocketEventKind as SocketEventKind,
   ZLinkSocketNativeEventType,
   ZLinkSocketNativeEventType as SocketNativeEventType,
   type ZLinkAutoConnectDesiredSetChange,
   type ZLinkLocationActorEvent,
   type ZLinkLocationMonitoringRegistration,
   type ZLinkLocationPeerEvent,
+  type ZLinkLocationRuntimeEvent,
+  type ZLinkLocationRuntimeEventKind,
   type ZLinkLocationRouteEvent,
-  type ZLinkLocationSpotEvent
+  type ZLinkLocationSpotEvent,
+  type ZLinkPollingMonitoringRegistration,
+  type ZLinkRuntimeEvent,
+  type ZLinkRuntimeEventHandler,
+  type ZLinkSocketEvent,
+  type ZLinkSocketEventKind,
+  type ZLinkSocketMonitoringRegistration
 } from './internal-event-contracts';
 export {
   ZLinkLocationActorEventKind,

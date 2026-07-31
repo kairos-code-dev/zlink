@@ -125,10 +125,8 @@ public final class EvidenceVerifier {
 
     private static void verifyB3(JsonNode root) {
         JsonNode metrics = metrics(root);
-        JsonNode published = metric(metrics, "zlink.fanout.published", "counter", "{message}", 1);
-        JsonNode received = metric(metrics, "zlink.fanout.received", "counter", "{message}", 2);
-        ensure(received.path("value").asDouble() > published.path("value").asDouble(),
-            "OBS-B3 fan-out must record a 1:N delta");
+        ensure(findMetric(metrics, "zlink.fanout.published") == null,
+            "OBS-B3 publish-specific metrics must not be registered");
         metric(metrics, "zlink.location.owner_lease.renew.lateness", "histogram", "s", 1);
         assertNoHighCardinalityTags(metrics);
         if (!root.path("dropObservable").asBoolean(false)) {

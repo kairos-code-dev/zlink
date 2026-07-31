@@ -5,18 +5,24 @@ using Zlink.Framework.Contracts.Spots;
 
 namespace SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot.Handlers;
 
-// Handles a client-sent JoinConversationReq from an actor that is already a
-// member (for example after a reconnect) and returns the current state.
+// Handles the one-way JoinConversationReq from an actor that is already a
+// member (for example after a reconnect) and pushes the current state to the
+// actor's newly bound session.
 internal sealed class JoinConversationHandler
-    : IZLinkSpotActorRequestHandler<ConversationSpot, SupportUserActor, JoinConversationReq, JoinConversationRes>
+    : IZLinkSpotActorSendHandler<ConversationSpot, SupportUserActor, JoinConversationReq>
 {
-    public ValueTask<JoinConversationRes> HandleAsync(
+    public async ValueTask HandleAsync(
         ConversationSpot spot,
         SupportUserActor actor,
         IZLinkMessageContext context,
         JoinConversationReq message,
         CancellationToken cancellationToken)
     {
-        return ValueTask.FromResult(spot.RefreshMembership(actor));
+        _ = context;
+        _ = message;
+        var result = spot.RefreshMembership(actor);
+        await actor.Context.BoundSession
+            .Send(result)
+            .Async(cancellationToken);
     }
 }

@@ -17,7 +17,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.StandardEnvironment;
-import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
@@ -63,18 +63,17 @@ public final class Program {
     ZLinkFrameworkConfigurer commerceApiFramework(SampleTopology topology) {
         SampleTopology.Api api = topology.api();
         return options -> {
+            options.configureLocations();
+            options.addLocationStore(SampleLocationStore.create(topology));
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(SampleFlowLog.path(api.logDirectory(), api.instanceName()))
                 .traceLabel(api.instanceName());
-            options.addClientServerChannel(SampleNames.OrderWorkflowChannel)
-                .enableClient();
+            options.addRouteMesh(SampleNames.OrderSpotDiscovery)
+                .setRoutingIdPrefix("shoppingmall-api")
+                .listen()
+                .objects().client();
         };
-    }
-
-    @Bean(destroyMethod = "close")
-    ZLinkRedisLocationStore locationStore(SampleTopology topology) {
-        return SampleLocationStore.create(topology);
     }
 
     @Bean(destroyMethod = "close")
@@ -87,9 +86,9 @@ public final class Program {
     @Bean
     CommerceApiService commerceApiService(
         RedisCommerceStore store,
-        ZLinkClient channels,
+        ZLinkRouteClient routes,
         SampleTopology topology) {
-        return new CommerceApiService(store, channels, topology);
+        return new CommerceApiService(store, routes, topology);
     }
 
     private static HttpServer startHttp(CommerceApiService api, SampleTopology topology) throws IOException {

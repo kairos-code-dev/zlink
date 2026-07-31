@@ -40,7 +40,9 @@ JSON 전용 client가 아니라 일반 HTTP client이며 zlink fluent builder �
   `build`, `buildServer(executionTurn)`, 그리고 단발 verb shortcut.
 - `ZLinkHttpRequestBuilder` — `header`, `query`, `timeout`, `body(Object)`(JSON),
   `body(String, String)`(raw), `bodyStream(Supplier<byte[]>, String)`, `form`, `multipart`,
-  `multipartFile`, `submitRaw`, `download(Consumer<byte[]>)`, `submit(Class<T>)`, callback.
+  `multipartFile`, `submitRaw`, `download(Consumer<byte[]>)`, `submit(Class<T>)`,
+  `fetch(Class<T>)`, callback. `fetch(Class<T>)`는 status와 header를 제외하고 decoded body를
+  `CompletionStage<T>`로 직접 반환한다.
 - `ZLinkHttpServerRequestBuilder` — standalone 표면과 one-way
   `CompletionStage<Void> submit()`을 제공한다. One-way 완료에는 전송 결과나 admission status가
   없으며, 완료 값을 동기로 꺼내는 method도 없다.
@@ -51,7 +53,7 @@ JSON 전용 client가 아니라 일반 HTTP client이며 zlink fluent builder �
 
 ## 4. 실행 모델
 
-- `submitRaw`/`submit`/`download`는 `CompletionStage`를 돌려준다. `java.net.http`의 NIO
+- `submitRaw`/`submit`/`fetch`/`download`는 `CompletionStage`를 돌려준다. `java.net.http`의 NIO
   비동기 I/O로 네트워크 대기 중 호출 스레드는 점유되지 않는다. redirect/retry 루프도
   `CompletionStage` 체인으로 합성된다.
 - 서버 request의 응답을 기다리는 `submit`은 현재 Spot turn을 유지하고 callback은 새 turn으로 실행 queue에

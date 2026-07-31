@@ -9,8 +9,12 @@ import type { DefaultZLinkSessionContext } from './session-context';
 export async function createStreamSessionInstance(
   type: Type<ZLinkSession> | Type<ZLinkSessionFactory>,
   resolver: ZLinkProviderResolver | undefined,
-  context: DefaultZLinkSessionContext
+  context: DefaultZLinkSessionContext,
+  handlerTypes: readonly Type[] = []
 ): Promise<ZLinkSession> {
+  for (const handlerType of handlerTypes) {
+    context.handlers.addHandler(handlerType);
+  }
   const created = await createProviderInstance<ZLinkSession | ZLinkSessionFactory>(
     type as Type<ZLinkSession | ZLinkSessionFactory>,
     resolver,

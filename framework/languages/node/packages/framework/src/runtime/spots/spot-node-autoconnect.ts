@@ -132,7 +132,8 @@ function meshDescriptorPeerResolver(
             objectRole: descriptor.objectRole,
             hasRouteMeshServerChannel:
               String(Object.keys(descriptor.channelWeights).length > 0),
-            descriptorRevision: descriptor.descriptorRevision.toString()
+            descriptorRevision: descriptor.descriptorRevision.toString(),
+            securityIdentity: descriptor.securityIdentity
           }
         }))
         .filter(peer =>
@@ -202,7 +203,9 @@ class ZLinkSpotNodeAutoConnectExecutor implements IZLinkAutoConnectExecutor {
       endpoint: target.endpoint,
       expectedRid: target.nodeRid === undefined
         ? undefined
-        : toBindingRoutingId(target.nodeRid)
+        : toBindingRoutingId(target.nodeRid),
+      expectedSecurityIdentity: target.metadata?.securityIdentity,
+      expectedLifecycleGeneration: target.lifecycleGeneration
     });
     this.connectionIntents.set(key, connectionIntentId);
   }

@@ -1,56 +1,35 @@
 package systems.zlink.framework.runtime.internal.monitoring;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEvent;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler;
+import java.util.Objects;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import systems.zlink.framework.monitoring.ZLinkFrameworkRuntimeStatus;
 
 public final class ZLinkRuntimeEventDispatcher {
-    private final List<Registration<?>> registrations = new ArrayList<>();
-    private final AtomicInteger handlerFailureCount = new AtomicInteger();
+    private static final Logger LOGGER =
+        LoggerFactory.getLogger("systems.zlink.framework.runtime");
 
-    public synchronized <TEvent extends ZLinkRuntimeEvent> AutoCloseable register(
-        Class<TEvent> eventType,
-        ZLinkRuntimeEventHandler<TEvent> handler) {
-        Registration<TEvent> registration = new Registration<>(eventType, handler);
-        registrations.add(registration);
-        return () -> remove(registration);
+    public void publishObserverFailure(
+        String sourceName,
+        String callbackName,
+        Throwable failure) {
+        Throwable actual = Objects.requireNonNull(failure, "failure");
+        LOGGER.atError()
+            .setCause(actual)
+            .addKeyValue("event", "zlink.runtime_error")
+            .addKeyValue("kind", "message_flow_observer_failed")
+            .addKeyValue("source", sourceName)
+            .addKeyValue("callback", callbackName)
+            .addKeyValue("exception_type", actual.getClass().getName())
+            .log("ZLink runtime callback failed");
     }
 
-    public void publish(ZLinkRuntimeEvent event) {
-        List<Registration<?>> snapshot;
-        synchronized (this) {
-            snapshot = List.copyOf(registrations);
-        }
-        for (Registration<?> registration : snapshot) {
-            dispatch(registration, event);
-        }
-    }
-
-    public int handlerFailureCount() {
-        return handlerFailureCount.get();
-    }
-
-    private synchronized void remove(Registration<?> registration) {
-        registrations.remove(registration);
-    }
-
-    private <TEvent extends ZLinkRuntimeEvent> void dispatch(
-        Registration<TEvent> registration,
-        ZLinkRuntimeEvent event) {
-        if (!registration.eventType().isInstance(event)) {
-            return;
-        }
-        try {
-            registration.handler().handle(registration.eventType().cast(event));
-        } catch (RuntimeException ex) {
-            handlerFailureCount.incrementAndGet();
-        }
-    }
-
-    private record Registration<TEvent extends ZLinkRuntimeEvent>(
-        Class<TEvent> eventType,
-        ZLinkRuntimeEventHandler<TEvent> handler) {
+    public void publishHostStatus(ZLinkFrameworkRuntimeStatus status) {
+        Objects.requireNonNull(status, "status");
+        LOGGER.atInfo()
+            .addKeyValue("event", "zlink.runtime_status_changed")
+            .addKeyValue("state", status.state())
+            .addKeyValue("sequence", status.sequence())
+            .log("ZLink runtime status changed");
     }
 }

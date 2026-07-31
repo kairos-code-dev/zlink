@@ -12,7 +12,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
 import systems.zlink.framework.locations.ZLinkLocationRole;
-import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor;
+import systems.zlink.framework.runtime.internal.locations.ZLinkMeshNodeDescriptor;
 import systems.zlink.framework.locations.ZLinkPageRequest;
 import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectPeer;
 import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectPeerResolver;
@@ -75,8 +75,7 @@ public final class ZLinkStoreLocationResolvers
         return stores.unifiedStore()
             .read(ZLinkAuthorityKeyCodec.actor(actorId), () -> false)
             .thenCompose(read -> {
-                if (!(read instanceof systems.zlink.framework.locations
-                    .ZLinkAuthoritySnapshot snapshot)) {
+                if (!(read instanceof systems.zlink.framework.runtime.internal.locations.ZLinkAuthoritySnapshot snapshot)) {
                     return CompletableFuture.failedFuture(
                         new IllegalStateException(
                             "Actor authority is unavailable: " + actorId));
@@ -123,7 +122,9 @@ public final class ZLinkStoreLocationResolvers
                 node.placementWeight(),
                 node.state() != systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState.SERVING,
                 node.lifecycleGeneration(),
-                Map.of(),
+                Map.of(
+                    ZLinkAutoConnectPlanner.SECURITY_IDENTITY_METADATA_KEY,
+                    node.securityIdentity()),
                 node.objectCapabilities().stream()
                     .filter(capability -> capability.objectKind()
                         == systems.zlink.framework.locations.ZLinkPlacementObjectKind.ACTOR)
@@ -149,6 +150,11 @@ public final class ZLinkStoreLocationResolvers
             });
     }
 
+    public CompletionStage<List<ZLinkMeshNodeDescriptor>> listMeshNodes(
+        String meshName) {
+        return listMeshNodes(meshName, null, new java.util.ArrayList<>());
+    }
+
     public void invalidateActorRoute(String actorId) {
         actorRoutes.remove(Objects.requireNonNull(actorId, "actorId"));
     }
@@ -163,9 +169,9 @@ public final class ZLinkStoreLocationResolvers
     }
 
     private CompletionStage<SpotRoute> resolveReadySpot(String spotId, Object read) {
-        if (!(read instanceof systems.zlink.framework.locations.ZLinkAuthoritySnapshot snapshot)
+        if (!(read instanceof systems.zlink.framework.runtime.internal.locations.ZLinkAuthoritySnapshot snapshot)
             || snapshot.allocation().state()
-                != systems.zlink.framework.locations.ZLinkPlacementAllocationState.ACTIVE) {
+                != systems.zlink.framework.runtime.internal.locations.ZLinkPlacementAllocationState.ACTIVE) {
             spotRoutes.remove(spotId);
             return CompletableFuture.completedFuture(null);
         }
@@ -193,9 +199,9 @@ public final class ZLinkStoreLocationResolvers
     }
 
     private CompletionStage<ActorRoute> resolveReadyActor(String actorId, Object read) {
-        if (!(read instanceof systems.zlink.framework.locations.ZLinkAuthoritySnapshot snapshot)
+        if (!(read instanceof systems.zlink.framework.runtime.internal.locations.ZLinkAuthoritySnapshot snapshot)
             || snapshot.allocation().state()
-                != systems.zlink.framework.locations.ZLinkPlacementAllocationState.ACTIVE
+                != systems.zlink.framework.runtime.internal.locations.ZLinkPlacementAllocationState.ACTIVE
             || snapshot.allocation().objectKind()
                 != systems.zlink.framework.locations.ZLinkPlacementObjectKind.ACTOR) {
             actorRoutes.remove(actorId);

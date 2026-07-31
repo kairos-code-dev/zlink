@@ -13,8 +13,8 @@ ChannelName membership, manual peer와 runtime option의 정확한 시그니처�
 
 | package | 책임 |
 |---|---|
-| `Zlink.Framework.Contracts` | handler, context, call과 공통 오류 타입 |
-| `Zlink.Framework` | [RouteMesh](../../../../01-glossary.ko.md#routemesh), Spot, Actor, STREAM session과 location runtime |
+| `Zlink.Framework` | handler, context, call을 포함한 Server application contract와 [RouteMesh](../../../../01-glossary.ko.md#routemesh), Spot, Actor, STREAM session, location runtime |
+| `Zlink.Framework.Contracts` | Server와 HTTP client가 함께 사용하는 codec·오류 contract |
 | `Zlink.Framework.AspNetCore` | `IServiceCollection` 등록과 host lifecycle 연결 |
 | `Zlink.Framework.Codecs.Protobuf` | 선택 Protobuf codec extension |
 | `Zlink.Framework.Codecs.MessagePack` | 선택 MessagePack codec extension |

@@ -14,24 +14,89 @@ internal static class ZLinkRuntimeMetrics
         Meter.CreateCounter<long>("zlink.stream.connections.opened", "{connection}");
     private static readonly Counter<long> StreamConnectionsClosed =
         Meter.CreateCounter<long>("zlink.stream.connections.closed", "{connection}");
-    private static readonly Histogram<double> StreamSessionBindDuration =
-        Meter.CreateHistogram<double>("zlink.stream.session.bind.duration", "s");
-    private static readonly Counter<long> StreamInboundBytes =
-        Meter.CreateCounter<long>("zlink.stream.inbound.bytes", "By");
-    private static readonly Counter<long> StreamOutboundBytes =
-        Meter.CreateCounter<long>("zlink.stream.outbound.bytes", "By");
-
     private static readonly UpDownCounter<long> SpotCount =
         Meter.CreateUpDownCounter<long>("zlink.spot.count", "{spot}");
-    private static readonly Histogram<double> SpotTimerTickLateness =
-        Meter.CreateHistogram<double>("zlink.spot.timer.tick.lateness", "s");
-    private static readonly Counter<long> SpotCreated =
-        Meter.CreateCounter<long>("zlink.spot.created", "{spot}");
-    private static readonly Counter<long> SpotClosed =
-        Meter.CreateCounter<long>("zlink.spot.closed", "{spot}");
-
     private static readonly UpDownCounter<long> ActorCount =
         Meter.CreateUpDownCounter<long>("zlink.actor.count", "{actor}");
+
+    private static readonly ConcurrentDictionary<
+        object,
+        Func<IReadOnlyList<ZLinkRuntimeMetricMeshSnapshot>>> MeshSnapshotProviders = new();
+    private static readonly ObservableGauge<long> MeshPeersConfigured =
+        Meter.CreateObservableGauge(
+            "zlink.mesh_node.peers.configured",
+            () => ObserveMeshPeerCount(static snapshot => snapshot.ConfiguredPeers),
+            "{peer}");
+    private static readonly ObservableGauge<long> MeshPeersConnected =
+        Meter.CreateObservableGauge(
+            "zlink.mesh_node.peers.connected",
+            () => ObserveMeshPeerCount(static snapshot => snapshot.ConnectedPeers),
+            "{peer}");
+    private static readonly ObservableGauge<long> MeshPeersReady =
+        Meter.CreateObservableGauge(
+            "zlink.mesh_node.peers.ready",
+            () => ObserveMeshPeerCount(static snapshot => snapshot.ReadyPeers),
+            "{peer}");
+    private static readonly ObservableGauge<long> MeshChannelsReadyMembers =
+        Meter.CreateObservableGauge(
+            "zlink.mesh_node.channels.ready_members",
+            ObserveReadyMembers,
+            "{member}");
+    private static readonly Counter<long> MeshChannelSelectionFailures =
+        Meter.CreateCounter<long>(
+            "zlink.mesh_node.channel.selection_failures",
+            "{failure}");
+    private static readonly UpDownCounter<long> MeshRequestsInflight =
+        Meter.CreateUpDownCounter<long>(
+            "zlink.mesh_node.requests.inflight",
+            "{request}");
+    private static readonly Histogram<double> MeshRequestDuration =
+        Meter.CreateHistogram<double>("zlink.mesh_node.request.duration", "s");
+    private static readonly Counter<long> MeshRequestTimeouts =
+        Meter.CreateCounter<long>("zlink.mesh_node.request.timeouts", "{request}");
+    private static readonly Counter<long> MeshMessagesDropped =
+        Meter.CreateCounter<long>("zlink.mesh_node.messages.dropped", "{message}");
+
+    private static readonly ObservableGauge<long> ObjectCapacityActive =
+        Meter.CreateObservableGauge(
+            "zlink.object.capacity.active",
+            () => ObservePopulationCapacity(static capacity => capacity.Active),
+            "{object}");
+    private static readonly ObservableGauge<long> ObjectCapacityReserved =
+        Meter.CreateObservableGauge(
+            "zlink.object.capacity.reserved",
+            () => ObservePopulationCapacity(static capacity => capacity.Reserved),
+            "{object}");
+    private static readonly ObservableGauge<long> ObjectCapacityLimit =
+        Meter.CreateObservableGauge(
+            "zlink.object.capacity.limit",
+            () => ObservePopulationCapacity(static capacity => capacity.Limit),
+            "{object}");
+    private static readonly ObservableGauge<long> SpotTypeCapacityActive =
+        Meter.CreateObservableGauge(
+            "zlink.spot.type.capacity.active",
+            () => ObserveSpotTypeCapacity(static capacity => capacity.Active),
+            "{spot}");
+    private static readonly ObservableGauge<long> SpotTypeCapacityReserved =
+        Meter.CreateObservableGauge(
+            "zlink.spot.type.capacity.reserved",
+            () => ObserveSpotTypeCapacity(static capacity => capacity.Reserved),
+            "{spot}");
+    private static readonly ObservableGauge<long> SpotTypeCapacityLimit =
+        Meter.CreateObservableGauge(
+            "zlink.spot.type.capacity.limit",
+            () => ObserveSpotTypeCapacity(static capacity => capacity.Limit),
+            "{spot}");
+    private static readonly ObservableGauge<long> ObjectActivationActive =
+        Meter.CreateObservableGauge(
+            "zlink.object.activation.active",
+            () => ObserveActivation(static activation => activation.Active),
+            "{activation}");
+    private static readonly ObservableGauge<long> ObjectActivationLimit =
+        Meter.CreateObservableGauge(
+            "zlink.object.activation.limit",
+            () => ObserveActivation(static activation => activation.Limit),
+            "{activation}");
     private static readonly Counter<long> RelocationStarted =
         Meter.CreateCounter<long>("zlink.relocation.started", "{relocation}");
     private static readonly Counter<long> RelocationCompleted =
@@ -49,107 +114,118 @@ internal static class ZLinkRuntimeMetrics
             "zlink.relocation.interruption",
             "s");
 
-    private static readonly Histogram<double> ChannelRequestDuration =
-        Meter.CreateHistogram<double>("zlink.channel.request.duration", "s");
-    private static readonly UpDownCounter<long> ChannelRequestInflight =
-        Meter.CreateUpDownCounter<long>("zlink.channel.request.inflight", "{request}");
-    private static readonly Counter<long> ChannelRequestTimeouts =
-        Meter.CreateCounter<long>("zlink.channel.request.timeouts", "{request}");
-    private static readonly Counter<long> ChannelMessagesDropped =
-        Meter.CreateCounter<long>("zlink.channel.messages.dropped", "{message}");
-
-    private static readonly Counter<long> FanoutPublished =
-        Meter.CreateCounter<long>("zlink.fanout.published", "{message}");
-    private static readonly Counter<long> FanoutReceived =
-        Meter.CreateCounter<long>("zlink.fanout.received", "{message}");
-
-    private static readonly ConcurrentDictionary<object, Func<long>> LocationPeerProviders = new();
-    private static readonly ObservableGauge<long> LocationPeers =
+    private static readonly Counter<long> InstanceSpotActivations =
+        Meter.CreateCounter<long>("zlink.instance_spot.activations", "{activation}");
+    private static readonly Histogram<double> InstanceSpotActivationDuration =
+        Meter.CreateHistogram<double>("zlink.instance_spot.activation.duration", "s");
+    private static readonly ObservableGauge<long> InstanceSpotPendingMessages =
         Meter.CreateObservableGauge(
-            "zlink.location.peers",
-            ObserveLocationPeers,
-            "{peer}");
+            "zlink.instance_spot.pending.messages",
+            () => ObserveInstanceSpot(static instance => checked((long)instance.PendingMessages)),
+            "{message}");
+    private static readonly ObservableGauge<long> InstanceSpotPendingBytes =
+        Meter.CreateObservableGauge(
+            "zlink.instance_spot.pending.bytes",
+            () => ObserveInstanceSpot(static instance => checked((long)instance.PendingBytes)),
+            "By");
+    private static readonly Counter<long> InstanceSpotClaimConflicts =
+        Meter.CreateCounter<long>("zlink.instance_spot.claim.conflicts", "{claim}");
+    private static readonly Counter<long> InstanceSpotTakeovers =
+        Meter.CreateCounter<long>("zlink.instance_spot.takeovers", "{takeover}");
+
     private static readonly Counter<long> LocationStoreErrors =
         Meter.CreateCounter<long>("zlink.location.store.errors", "{error}");
     private static readonly Counter<long> LocationOwnerLeaseRenewFailures =
         Meter.CreateCounter<long>("zlink.location.owner_lease.renew.failures", "{failure}");
     private static readonly Histogram<double> LocationOwnerLeaseRenewLateness =
         Meter.CreateHistogram<double>("zlink.location.owner_lease.renew.lateness", "s");
-    private static readonly Counter<long> LocationWriteConflicts =
-        Meter.CreateCounter<long>("zlink.location.write.conflicts", "{write}");
-
     private static readonly Counter<long> ObserverOverflow =
-        Meter.CreateCounter<long>("zlink.observability.observer.overflow", "{event}");
+        Meter.CreateCounter<long>("zlink.observability.events.overflow", "{event}");
 
-    private static readonly ConcurrentDictionary<object, Func<string>> DrainStateProviders = new();
-    private static readonly ObservableGauge<long> DrainState =
+    private static readonly ConcurrentDictionary<object, Func<string>> HostStateProviders = new();
+    private static readonly ObservableGauge<long> HostState =
+        Meter.CreateObservableGauge("zlink.host.state", ObserveHostStates, "{runtime}");
+    private static readonly ConcurrentDictionary<
+        object,
+        Func<ZLinkInboundDispatchStatus>> HostInboundDispatchProviders = new();
+    private static readonly ObservableGauge<long> HostInboundApplicationHwm =
         Meter.CreateObservableGauge(
-            "zlink.drain.state",
-            ObserveDrainStates);
-    private static readonly Histogram<double> DrainDuration =
-        Meter.CreateHistogram<double>("zlink.drain.duration", "s");
-    private static readonly Counter<long> DrainActorsHandedOff =
-        Meter.CreateCounter<long>("zlink.drain.actors.handed_off", "{actor}");
-    private static readonly Counter<long> DrainForced =
-        Meter.CreateCounter<long>("zlink.drain.forced", "{item}");
-    private static readonly ConcurrentDictionary<object, Func<string>> TerminationStateProviders =
-        new();
-    private static readonly ObservableGauge<long> TerminationState =
+            "zlink.host.inbound.application_hwm",
+            () => ObserveHostInbound(static status => status.ApplicationHwmBytes),
+            "By");
+    private static readonly ObservableGauge<long> HostInboundPendingPayload =
         Meter.CreateObservableGauge(
-            "zlink.termination.state",
-            ObserveTerminationStates);
-    private static readonly Histogram<double> TerminationDuration =
-        Meter.CreateHistogram<double>("zlink.termination.duration", "s");
-    private static readonly Counter<long> TerminationBlocked =
-        Meter.CreateCounter<long>("zlink.termination.blocked", "{operation}");
-    private static readonly Counter<long> TerminationForced =
-        Meter.CreateCounter<long>("zlink.termination.forced", "{operation}");
+            "zlink.host.inbound.pending_payload",
+            ObserveHostInboundPendingPayload,
+            "By");
+    private static readonly ObservableGauge<long> HostInboundReceivePaused =
+        Meter.CreateObservableGauge(
+            "zlink.host.inbound.receive_paused",
+            () => ObserveHostInbound(
+                static status => status.ApplicationReceivePaused ? 1UL : 0UL),
+            "{state}");
+    private static readonly ObservableGauge<long> HostCompletionPendingSends =
+        Meter.CreateObservableGauge(
+            "zlink.host.completion.pending_sends",
+            () => ObserveHostInbound(static status => status.PendingCompletionSends),
+            "{request}");
+    private static readonly ObservableGauge<long> HostCompletionSendLimit =
+        Meter.CreateObservableGauge(
+            "zlink.host.completion.send_limit",
+            () => ObserveHostInbound(static status => status.CompletionSendLimit),
+            "{request}");
+    private static readonly Histogram<double> HostRelocationDuration =
+        Meter.CreateHistogram<double>("zlink.host.relocation.duration", "s");
+    private static readonly Counter<long> HostRelocationBlocked =
+        Meter.CreateCounter<long>("zlink.host.relocation.blocked", "{operation}");
+    private static readonly Histogram<double> HostShutdownDuration =
+        Meter.CreateHistogram<double>("zlink.host.shutdown.duration", "s");
+    private static readonly Counter<long> HostShutdownForced =
+        Meter.CreateCounter<long>("zlink.host.shutdown.forced", "{operation}");
 
-    public static void RecordStreamOpened()
+    public static void RecordStreamOpened(string transport)
     {
-        SafeAdd(StreamConnectionsActive, 1);
-        SafeAdd(StreamConnectionsOpened, 1);
+        SafeAdd(StreamConnectionsActive, 1, "transport", transport);
+        SafeAdd(StreamConnectionsOpened, 1, "transport", transport);
     }
 
-    public static void RecordStreamClosed(string closeReason)
+    public static void RecordStreamClosed(string transport, string closeReason)
     {
-        SafeAdd(StreamConnectionsActive, -1);
-        SafeAdd(StreamConnectionsClosed, 1, "close_reason", closeReason);
+        SafeAdd(StreamConnectionsActive, -1, "transport", transport);
+        SafeAdd(
+            StreamConnectionsClosed,
+            1,
+            "transport",
+            transport,
+            "close_reason",
+            NormalizeStreamCloseReason(closeReason));
     }
 
-    public static void RecordStreamBytes(bool inbound, long bytes, string transport)
+    public static void RecordSpotCreated(string meshName, string kind)
     {
-        if (bytes <= 0) return;
-        var counter = inbound ? StreamInboundBytes : StreamOutboundBytes;
-        if (!counter.Enabled) return;
-        SafeAdd(counter, bytes, "transport", transport);
+        SafeAdd(
+            SpotCount,
+            1,
+            new TagList { { "mesh_name", meshName }, { "spot_kind", kind } });
     }
 
-    public static long StartStreamSessionBind() => StartTimestamp(StreamSessionBindDuration);
-
-    public static void CompleteStreamSessionBind(long startedTimestamp) =>
-        RecordElapsed(StreamSessionBindDuration, startedTimestamp);
-
-    public static void RecordSpotCreated(string kind)
+    public static void RecordSpotClosed(string meshName, string kind)
     {
-        SafeAdd(SpotCount, 1, "kind", kind);
-        SafeAdd(SpotCreated, 1, "kind", kind);
+        SafeAdd(
+            SpotCount,
+            -1,
+            new TagList { { "mesh_name", meshName }, { "spot_kind", kind } });
     }
 
-    public static void RecordSpotClosed(string kind)
+    public static void RecordActorCreated(string meshName)
     {
-        SafeAdd(SpotCount, -1, "kind", kind);
-        SafeAdd(SpotClosed, 1, "kind", kind);
+        SafeAdd(ActorCount, 1, "mesh_name", meshName);
     }
 
-    public static void RecordTimerLateness(TimeSpan lateness)
+    public static void RecordActorClosed(string meshName)
     {
-        if (!SpotTimerTickLateness.Enabled) return;
-        SafeRecord(SpotTimerTickLateness, Math.Max(0, lateness.TotalSeconds));
+        SafeAdd(ActorCount, -1, "mesh_name", meshName);
     }
-
-    public static void RecordActorCreated() => SafeAdd(ActorCount, 1);
-    public static void RecordActorClosed() => SafeAdd(ActorCount, -1);
     internal static bool RelocationInterruptionEnabled =>
         RelocationInterruption.Enabled;
 
@@ -203,28 +279,46 @@ internal static class ZLinkRuntimeMetrics
         return operation;
     }
 
-    public static long StartChannelRequest()
+    public static ZLinkRequestMetricOperation StartRequest(
+        string meshName,
+        string surface)
     {
-        SafeAdd(ChannelRequestInflight, 1);
-        return StartTimestamp(ChannelRequestDuration);
+        ArgumentException.ThrowIfNullOrWhiteSpace(meshName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(surface);
+        var operation = new ZLinkRequestMetricOperation(meshName, surface);
+        operation.Start();
+        return operation;
     }
 
-    public static void CompleteChannelRequest(long startedTimestamp, bool timedOut)
+    public static void RecordChannelSelectionFailure(
+        string meshName,
+        string channelName,
+        string reason)
     {
-        SafeAdd(ChannelRequestInflight, -1);
-        RecordElapsed(ChannelRequestDuration, startedTimestamp);
-        if (timedOut) SafeAdd(ChannelRequestTimeouts, 1);
+        if (!MeshChannelSelectionFailures.Enabled) return;
+        var tags = new TagList
+        {
+            { "mesh_name", meshName },
+            { "channel_name", channelName },
+            { "reason", reason }
+        };
+        SafeAdd(MeshChannelSelectionFailures, 1, tags);
     }
 
-    public static void RecordChannelDropped(string surface, string kind, string reason)
+    public static void RecordMessageDropped(
+        string meshName,
+        string surface,
+        string messageKind,
+        string reason)
     {
-        if (!ChannelMessagesDropped.Enabled) return;
+        if (!MeshMessagesDropped.Enabled) return;
         try
         {
-            ChannelMessagesDropped.Add(
+            MeshMessagesDropped.Add(
                 1,
+                new KeyValuePair<string, object?>("mesh_name", meshName),
                 new KeyValuePair<string, object?>("surface", surface),
-                new KeyValuePair<string, object?>("kind", kind),
+                new KeyValuePair<string, object?>("message_kind", messageKind),
                 new KeyValuePair<string, object?>("reason", reason));
         }
         catch
@@ -232,126 +326,254 @@ internal static class ZLinkRuntimeMetrics
         }
     }
 
-    public static void RecordFanoutPublished(string? topic) => RecordTopic(FanoutPublished, topic);
-    public static void RecordFanoutReceived(string? topic) => RecordTopic(FanoutReceived, topic);
-
-    public static IDisposable RegisterLocationPeers(Func<long> snapshot)
+    public static IDisposable RegisterMeshSnapshots(
+        Func<IReadOnlyList<ZLinkRuntimeMetricMeshSnapshot>> snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         var owner = new object();
-        LocationPeerProviders[owner] = snapshot;
-        return new ProviderRegistration(() => LocationPeerProviders.TryRemove(owner, out _));
+        MeshSnapshotProviders[owner] = snapshot;
+        return new ProviderRegistration(() => MeshSnapshotProviders.TryRemove(owner, out _));
     }
 
-    public static IDisposable RegisterDrainState(Func<string> snapshot)
+    public static IDisposable RegisterHostState(Func<string> snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         var owner = new object();
-        DrainStateProviders[owner] = snapshot;
-        return new ProviderRegistration(() => DrainStateProviders.TryRemove(owner, out _));
+        HostStateProviders[owner] = snapshot;
+        return new ProviderRegistration(() => HostStateProviders.TryRemove(owner, out _));
     }
 
-    public static IDisposable RegisterTerminationState(Func<string> snapshot)
+    public static IDisposable RegisterHostInboundDispatch(
+        Func<ZLinkInboundDispatchStatus> snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         var owner = new object();
-        TerminationStateProviders[owner] = snapshot;
-        return new ProviderRegistration(() => TerminationStateProviders.TryRemove(owner, out _));
+        HostInboundDispatchProviders[owner] = snapshot;
+        return new ProviderRegistration(
+            () => HostInboundDispatchProviders.TryRemove(owner, out _));
     }
 
-    public static void RecordLocationStoreError() => SafeAdd(LocationStoreErrors, 1);
+    public static void RecordLocationStoreError(string operation) =>
+        SafeAdd(LocationStoreErrors, 1, "operation", operation);
 
-    public static void RecordOwnerLeaseRenewFailure() =>
-        SafeAdd(LocationOwnerLeaseRenewFailures, 1);
+    public static void RecordOwnerLeaseRenewFailure(
+        string scopeKind,
+        string scopeName) =>
+        SafeAdd(
+            LocationOwnerLeaseRenewFailures,
+            1,
+            "scope_kind",
+            scopeKind,
+            "scope_name",
+            scopeName);
 
-    public static void RecordOwnerLeaseRenewLateness(TimeSpan lateness)
+    public static void RecordOwnerLeaseRenewLateness(
+        TimeSpan lateness,
+        string scopeKind,
+        string scopeName)
     {
         if (!LocationOwnerLeaseRenewLateness.Enabled) return;
-        SafeRecord(LocationOwnerLeaseRenewLateness, Math.Max(0, lateness.TotalSeconds));
+        SafeRecord(
+            LocationOwnerLeaseRenewLateness,
+            Math.Max(0, lateness.TotalSeconds),
+            "scope_kind",
+            scopeKind,
+            "scope_name",
+            scopeName);
     }
 
-    public static void RecordLocationWriteConflict() => SafeAdd(LocationWriteConflicts, 1);
-
-    public static void RecordOwnerLeaseRenewAttempt(TimeProvider timeProvider, long scheduledTimestamp)
+    public static void RecordOwnerLeaseRenewAttempt(
+        TimeProvider timeProvider,
+        long scheduledTimestamp,
+        string scopeKind,
+        string scopeName)
     {
         if (scheduledTimestamp == 0 || !LocationOwnerLeaseRenewLateness.Enabled) return;
         var elapsedTicks = timeProvider.GetTimestamp() - scheduledTimestamp;
         if (elapsedTicks <= 0) return;
         SafeRecord(
             LocationOwnerLeaseRenewLateness,
-            elapsedTicks / (double)timeProvider.TimestampFrequency);
+            elapsedTicks / (double)timeProvider.TimestampFrequency,
+            "scope_kind",
+            scopeKind,
+            "scope_name",
+            scopeName);
     }
 
     public static void RecordObserverOverflow(string eventName)
     {
         if (!ObserverOverflow.Enabled) return;
-        SafeAdd(ObserverOverflow, 1, "event", eventName);
+        SafeAdd(ObserverOverflow, 1, "source", eventName);
     }
 
-    public static long StartDrain() => StartTimestamp(DrainDuration);
-
-    public static void CompleteDrain(long startedTimestamp, string outcome)
+    public static ZLinkInstanceSpotMetricOperation StartInstanceSpotActivation(
+        string meshName,
+        string instanceSpotType)
     {
-        if (startedTimestamp == 0 || !DrainDuration.Enabled) return;
-        SafeRecord(
-            DrainDuration,
-            Stopwatch.GetElapsedTime(startedTimestamp).TotalSeconds,
-            "outcome",
-            outcome);
+        var operation = new ZLinkInstanceSpotMetricOperation(
+            meshName,
+            instanceSpotType);
+        operation.Start();
+        return operation;
     }
 
-    public static void RecordDrainActorHandedOff() => SafeAdd(DrainActorsHandedOff, 1);
-
-    public static void RecordDrainForced(string kind, long count = 1)
+    public static void RecordInstanceSpotClaimConflict(
+        string meshName,
+        string instanceSpotType,
+        string reason)
     {
-        if (count > 0) SafeAdd(DrainForced, count, "kind", kind);
+        var tags = new TagList
+        {
+            { "mesh_name", meshName },
+            { "instance_spot_type", instanceSpotType },
+            { "reason", reason }
+        };
+        SafeAdd(InstanceSpotClaimConflicts, 1, tags);
     }
 
-    public static long StartTermination() => StartTimestamp(TerminationDuration);
+    public static void RecordInstanceSpotTakeover(
+        string meshName,
+        string instanceSpotType,
+        string outcome)
+    {
+        var tags = new TagList
+        {
+            { "mesh_name", meshName },
+            { "instance_spot_type", instanceSpotType },
+            { "outcome", outcome }
+        };
+        SafeAdd(InstanceSpotTakeovers, 1, tags);
+    }
 
-    public static void CompleteTermination(
-        long startedTimestamp,
-        string intent,
+    public static ZLinkHostMetricOperation StartHostRelocation(string mode) =>
+        new(HostRelocationDuration, mode, isRelocation: true);
+
+    public static ZLinkHostMetricOperation StartHostShutdown() =>
+        new(HostShutdownDuration, string.Empty, isRelocation: false);
+
+    private static void CompleteHostOperation(
+        ZLinkHostMetricOperation operation,
         string outcome,
         string reason)
     {
-        if (startedTimestamp != 0 && TerminationDuration.Enabled)
-            SafeRecord(
-                TerminationDuration,
-                Stopwatch.GetElapsedTime(startedTimestamp).TotalSeconds,
-                "intent",
-                intent,
-                "outcome",
-                outcome);
-        if (string.Equals(outcome, "blocked", StringComparison.Ordinal))
-            SafeAdd(TerminationBlocked, 1, "reason", reason);
-        else if (string.Equals(outcome, "force_stopped", StringComparison.Ordinal))
+        if (operation.StartedTimestamp != 0 && operation.Histogram.Enabled)
+        {
+            var seconds = Stopwatch.GetElapsedTime(operation.StartedTimestamp).TotalSeconds;
+            if (operation.IsRelocation)
+                SafeRecord(
+                    operation.Histogram,
+                    seconds,
+                    "mode",
+                    operation.Mode,
+                    "outcome",
+                    outcome);
+            else
+                SafeRecord(operation.Histogram, seconds, "outcome", outcome);
+        }
+        if (operation.IsRelocation
+            && string.Equals(outcome, "blocked", StringComparison.Ordinal))
             SafeAdd(
-                TerminationForced,
+                HostRelocationBlocked,
                 1,
-                "intent",
-                intent,
+                "mode",
+                operation.Mode,
                 "reason",
                 reason);
+        else if (!operation.IsRelocation
+                 && string.Equals(outcome, "force_stopped", StringComparison.Ordinal))
+            SafeAdd(HostShutdownForced, 1, "reason", reason);
     }
 
-    private static long ObserveLocationPeers()
+    private static IEnumerable<Measurement<long>> ObserveMeshPeerCount(
+        Func<ZLinkRuntimeMetricMeshSnapshot, long> select)
     {
-        long total = 0;
-        foreach (var snapshot in LocationPeerProviders.Values)
+        foreach (var snapshot in MeshSnapshots())
+            yield return new Measurement<long>(
+                Math.Max(0, select(snapshot)),
+                new KeyValuePair<string, object?>("mesh_name", snapshot.MeshName),
+                new KeyValuePair<string, object?>("source", snapshot.Source));
+    }
+
+    private static IEnumerable<Measurement<long>> ObserveReadyMembers()
+    {
+        foreach (var snapshot in MeshSnapshots())
+        foreach (var channel in snapshot.Channels)
+            yield return new Measurement<long>(
+                Math.Max(0, channel.ReadyMembers),
+                new KeyValuePair<string, object?>("mesh_name", snapshot.MeshName),
+                new KeyValuePair<string, object?>("channel_name", channel.ChannelName));
+    }
+
+    private static IEnumerable<Measurement<long>> ObservePopulationCapacity(
+        Func<ZLinkRuntimeMetricCapacity, long> select)
+    {
+        foreach (var snapshot in MeshSnapshots())
+        foreach (var (scope, capacity) in new[]
+                 {
+                     ("actor", snapshot.ActorCapacity),
+                     ("spot", snapshot.SpotCapacity)
+                 })
+            yield return new Measurement<long>(
+                Math.Max(0, select(capacity)),
+                new KeyValuePair<string, object?>("mesh_name", snapshot.MeshName),
+                new KeyValuePair<string, object?>("capacity_scope", scope));
+    }
+
+    private static IEnumerable<Measurement<long>> ObserveSpotTypeCapacity(
+        Func<ZLinkRuntimeMetricSpotTypeCapacity, long> select)
+    {
+        foreach (var snapshot in MeshSnapshots())
+        foreach (var capacity in snapshot.SpotTypeCapacities)
+            yield return new Measurement<long>(
+                Math.Max(0, select(capacity)),
+                new KeyValuePair<string, object?>("mesh_name", snapshot.MeshName),
+                new KeyValuePair<string, object?>("spot_kind", capacity.SpotKind),
+                new KeyValuePair<string, object?>("stable_type", capacity.StableType));
+    }
+
+    private static IEnumerable<Measurement<long>> ObserveActivation(
+        Func<ZLinkRuntimeMetricActivation, long> select)
+    {
+        foreach (var snapshot in MeshSnapshots())
+            yield return new Measurement<long>(
+                Math.Max(0, select(snapshot.Activation)),
+                new KeyValuePair<string, object?>("mesh_name", snapshot.MeshName));
+    }
+
+    private static IEnumerable<Measurement<long>> ObserveInstanceSpot(
+        Func<ZLinkRuntimeMetricInstanceSpot, long> select)
+    {
+        foreach (var snapshot in MeshSnapshots())
+        foreach (var instance in snapshot.InstanceSpots)
+            yield return new Measurement<long>(
+                Math.Max(0, select(instance)),
+                new KeyValuePair<string, object?>("mesh_name", snapshot.MeshName),
+                new KeyValuePair<string, object?>(
+                    "instance_spot_type",
+                    instance.InstanceSpotType));
+    }
+
+    private static IEnumerable<ZLinkRuntimeMetricMeshSnapshot> MeshSnapshots()
+    {
+        foreach (var provider in MeshSnapshotProviders.Values)
+        {
+            IReadOnlyList<ZLinkRuntimeMetricMeshSnapshot> snapshots;
             try
             {
-                total += Math.Max(0, snapshot());
+                snapshots = provider();
             }
             catch
             {
+                continue;
             }
-        return total;
+            foreach (var snapshot in snapshots)
+                yield return snapshot;
+        }
     }
 
-    private static IEnumerable<Measurement<long>> ObserveDrainStates()
+    private static IEnumerable<Measurement<long>> ObserveHostStates()
     {
-        foreach (var snapshot in DrainStateProviders.Values)
+        foreach (var snapshot in HostStateProviders.Values)
         {
             string state;
             try
@@ -368,24 +590,45 @@ internal static class ZLinkRuntimeMetrics
         }
     }
 
-    private static IEnumerable<Measurement<long>> ObserveTerminationStates()
+    private static IEnumerable<Measurement<long>> ObserveHostInbound(
+        Func<ZLinkInboundDispatchStatus, ulong> select)
     {
-        foreach (var snapshot in TerminationStateProviders.Values)
+        foreach (var status in HostInboundDispatchSnapshots())
+            yield return new Measurement<long>(ToMetricValue(select(status)));
+    }
+
+    private static IEnumerable<Measurement<long>> ObserveHostInboundPendingPayload()
+    {
+        foreach (var status in HostInboundDispatchSnapshots())
         {
-            string state;
+            yield return new Measurement<long>(
+                ToMetricValue(status.QueuedPayloadBytes),
+                new KeyValuePair<string, object?>("state", "queued"));
+            yield return new Measurement<long>(
+                ToMetricValue(status.ActivePayloadBytes),
+                new KeyValuePair<string, object?>("state", "active"));
+        }
+    }
+
+    private static IEnumerable<ZLinkInboundDispatchStatus> HostInboundDispatchSnapshots()
+    {
+        foreach (var provider in HostInboundDispatchProviders.Values)
+        {
+            ZLinkInboundDispatchStatus status;
             try
             {
-                state = snapshot();
+                status = provider();
             }
             catch
             {
                 continue;
             }
-            yield return new Measurement<long>(
-                1,
-                new KeyValuePair<string, object?>("state", state));
+            yield return status;
         }
     }
+
+    private static long ToMetricValue(ulong value) =>
+        value > long.MaxValue ? long.MaxValue : (long)value;
 
     private sealed class ProviderRegistration(Action unregister) : IDisposable
     {
@@ -394,18 +637,16 @@ internal static class ZLinkRuntimeMetrics
         public void Dispose() => Interlocked.Exchange(ref _unregister, null)?.Invoke();
     }
 
-    private static void RecordTopic(Counter<long> counter, string? topic)
-    {
-        if (!counter.Enabled) return;
-        try
+    private static string NormalizeStreamCloseReason(string closeReason) =>
+        closeReason switch
         {
-            if (topic is null) counter.Add(1);
-            else counter.Add(1, new KeyValuePair<string, object?>("topic", topic));
-        }
-        catch
-        {
-        }
-    }
+            "client_close" => "client_close",
+            "idle_timeout" => "idle_timeout",
+            "heartbeat_timeout" => "heartbeat_timeout",
+            "server_shutdown" or "server_drain" => "server_shutdown",
+            "protocol_error" => "protocol_error",
+            _ => "transport_error"
+        };
 
     private static long StartTimestamp(Histogram<double> histogram) =>
         histogram.Enabled ? Stopwatch.GetTimestamp() : 0;
@@ -492,6 +733,21 @@ internal static class ZLinkRuntimeMetrics
         try
         {
             counter.Add(value, new KeyValuePair<string, object?>(tagName, tagValue));
+        }
+        catch
+        {
+        }
+    }
+
+    private static void SafeAdd(
+        UpDownCounter<long> counter,
+        long value,
+        in TagList tags)
+    {
+        if (!counter.Enabled) return;
+        try
+        {
+            counter.Add(value, tags);
         }
         catch
         {
@@ -612,6 +868,135 @@ internal static class ZLinkRuntimeMetrics
 
         if (outcome == ZLinkRelocationMetricOutcome.Recovered)
             SafeAdd(RelocationRecovered, 1, operation.ObjectTags);
+    }
+
+    internal sealed class ZLinkRequestMetricOperation
+    {
+        private readonly string _meshName;
+        private readonly string _surface;
+        private long _startedTimestamp;
+        private int _completed;
+
+        internal ZLinkRequestMetricOperation(string meshName, string surface)
+        {
+            _meshName = meshName;
+            _surface = surface;
+        }
+
+        internal void Start()
+        {
+            var tags = new TagList
+            {
+                { "mesh_name", _meshName },
+                { "surface", _surface }
+            };
+            SafeAdd(MeshRequestsInflight, 1, tags);
+            _startedTimestamp = MeshRequestDuration.Enabled
+                ? Stopwatch.GetTimestamp()
+                : 0;
+        }
+
+        internal void Complete(string outcome)
+        {
+            if (Interlocked.Exchange(ref _completed, 1) != 0) return;
+            var tags = new TagList
+            {
+                { "mesh_name", _meshName },
+                { "surface", _surface }
+            };
+            SafeAdd(MeshRequestsInflight, -1, tags);
+            if (_startedTimestamp != 0 && MeshRequestDuration.Enabled)
+            {
+                tags.Add("outcome", outcome);
+                try
+                {
+                    MeshRequestDuration.Record(
+                        Stopwatch.GetElapsedTime(_startedTimestamp).TotalSeconds,
+                        tags);
+                }
+                catch
+                {
+                }
+            }
+            if (string.Equals(outcome, "timed_out", StringComparison.Ordinal))
+                SafeAdd(MeshRequestTimeouts, 1, new TagList
+                {
+                    { "mesh_name", _meshName },
+                    { "surface", _surface }
+                });
+        }
+    }
+
+    internal sealed class ZLinkHostMetricOperation
+    {
+        private int _completed;
+
+        internal ZLinkHostMetricOperation(
+            Histogram<double> histogram,
+            string mode,
+            bool isRelocation)
+        {
+            Histogram = histogram;
+            Mode = mode;
+            IsRelocation = isRelocation;
+            StartedTimestamp = histogram.Enabled ? Stopwatch.GetTimestamp() : 0;
+        }
+
+        internal Histogram<double> Histogram { get; }
+        internal string Mode { get; }
+        internal bool IsRelocation { get; }
+        internal long StartedTimestamp { get; }
+
+        internal void Complete(string outcome, string reason)
+        {
+            if (Interlocked.Exchange(ref _completed, 1) != 0) return;
+            CompleteHostOperation(this, outcome, reason);
+        }
+    }
+
+    internal sealed class ZLinkInstanceSpotMetricOperation
+    {
+        private readonly string _meshName;
+        private readonly string _instanceSpotType;
+        private long _startedTimestamp;
+        private int _completed;
+
+        internal ZLinkInstanceSpotMetricOperation(
+            string meshName,
+            string instanceSpotType)
+        {
+            _meshName = meshName;
+            _instanceSpotType = instanceSpotType;
+        }
+
+        internal void Start()
+        {
+            _startedTimestamp = InstanceSpotActivationDuration.Enabled
+                ? Stopwatch.GetTimestamp()
+                : 0;
+        }
+
+        internal void Complete(string outcome)
+        {
+            if (Interlocked.Exchange(ref _completed, 1) != 0) return;
+            var tags = new TagList
+            {
+                { "mesh_name", _meshName },
+                { "instance_spot_type", _instanceSpotType },
+                { "outcome", outcome }
+            };
+            SafeAdd(InstanceSpotActivations, 1, tags);
+            if (_startedTimestamp != 0 && InstanceSpotActivationDuration.Enabled)
+                try
+                {
+                    InstanceSpotActivationDuration.Record(
+                        Stopwatch.GetElapsedTime(_startedTimestamp).TotalSeconds,
+                        tags);
+                }
+                catch
+                {
+                }
+        }
     }
 
     private static string RelocationObjectKind(ZLinkRelocationMetricObjectKind objectKind) =>
@@ -766,3 +1151,41 @@ internal enum ZLinkRelocationMetricOutcome
     Failed,
     Shutdown
 }
+
+internal sealed record ZLinkRuntimeMetricMeshSnapshot(
+    string MeshName,
+    string Source,
+    long ConfiguredPeers,
+    long ConnectedPeers,
+    long ReadyPeers,
+    IReadOnlyList<ZLinkRuntimeMetricChannel> Channels,
+    ZLinkRuntimeMetricCapacity ActorCapacity,
+    ZLinkRuntimeMetricCapacity SpotCapacity,
+    IReadOnlyList<ZLinkRuntimeMetricSpotTypeCapacity> SpotTypeCapacities,
+    ZLinkRuntimeMetricActivation Activation,
+    IReadOnlyList<ZLinkRuntimeMetricInstanceSpot> InstanceSpots);
+
+internal sealed record ZLinkRuntimeMetricChannel(
+    string ChannelName,
+    long ReadyMembers);
+
+internal sealed record ZLinkRuntimeMetricCapacity(
+    long Active,
+    long Reserved,
+    long Limit);
+
+internal sealed record ZLinkRuntimeMetricSpotTypeCapacity(
+    string SpotKind,
+    string StableType,
+    long Active,
+    long Reserved,
+    long Limit);
+
+internal sealed record ZLinkRuntimeMetricActivation(
+    long Active,
+    long Limit);
+
+internal sealed record ZLinkRuntimeMetricInstanceSpot(
+    string InstanceSpotType,
+    ulong PendingMessages,
+    ulong PendingBytes);

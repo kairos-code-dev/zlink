@@ -10,8 +10,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
-import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationOwnerToken;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
 
 public final class ZLinkLocationRuntime implements AutoCloseable {
     private final ZLinkRegisteredLocationStores stores;
@@ -32,14 +32,14 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
     private volatile long nextOwnerLeaseRenewalNanos;
 
     ZLinkLocationRuntime(
-        ZLinkLocationStore store,
+        ZLinkLocationRepository store,
         Duration ownerLeaseTtl,
         Duration heartbeatInterval) {
         this(ZLinkRegisteredLocationStores.fromUnified(store), UUID.randomUUID().toString().replace("-", ""), ownerLeaseTtl, heartbeatInterval);
     }
 
     ZLinkLocationRuntime(
-        ZLinkLocationStore store,
+        ZLinkLocationRepository store,
         String ownerId,
         Duration ownerLeaseTtl,
         Duration heartbeatInterval) {
@@ -165,8 +165,7 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
                     recordFailure(failure.getMessage());
                     return false;
                 }
-                if (!(result instanceof systems.zlink.framework.locations
-                    .ZLinkOwnerLeaseRenewed renewed)) {
+                if (!(result instanceof systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseRenewed renewed)) {
                     recordFailure("owner lease renewal was stale");
                     return false;
                 }
@@ -180,8 +179,7 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
         return stores.ownerLeaseStore()
             .claimOwnerLease(ownerId, ownerLeaseTtl)
             .thenCompose(result -> {
-                if (result instanceof systems.zlink.framework.locations
-                    .ZLinkOwnerLeaseClaimed claimed) {
+                if (result instanceof systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseClaimed claimed) {
                     ownerToken = claimed.token();
                     recordSuccessfulRenewal(claimed.storeNow());
                     nextOwnerLeaseRenewalNanos =
@@ -190,8 +188,7 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
                 }
                 return CompletableFuture.failedFuture(
                     new IllegalStateException(
-                        result instanceof systems.zlink.framework.locations
-                            .ZLinkOwnerLeaseGenerationExhausted
+                        result instanceof systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseGenerationExhausted
                             ? "owner lease generation is exhausted"
                             : "owner lease is already claimed"));
             });

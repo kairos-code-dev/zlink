@@ -25,7 +25,7 @@ Usage:
     --maven-repository ABSOLUTE_DIR --evidence ABSOLUTE_JSON
 
 Self-test validates the package gate without publishing. Actual mode publishes
-11.0.0 to an empty local Maven repository, then resolves, compiles, and runs an
+11.0.2 to an empty local Maven repository, then resolves, compiles, and runs an
 isolated public-only Gradle consumer.
 EOF
 }
@@ -68,14 +68,14 @@ has_no_match() { ! grep -Eq -- "$1" "$2"; }
 
 static_checks() {
   check package-coordinate has_literal "group = 'systems.zlink'" "$project"
-  check package-version has_literal "version = '11.0.0'" "$project"
+  check package-version has_literal "version = '11.0.2'" "$project"
   check exact-core-version has_literal "metadata.version != '11.0.0'" "$project"
   check exact-provenance has_literal 'zlink.core.provenance-sha256' "$project"
   check exact-candidate has_literal 'zlink.core.candidate-manifest-sha256' "$project"
   check exact-soname has_literal "approved.runtime.soname != 'libzlink.so.11'" "$project"
   check no-core-source-include has_no_match 'core/(src|include|external/boost)|ZLINK_CORE_BUILD_DIR' "$project"
   check approved-core-evidence has_literal '--core-package-evidence' "$build_script"
-  check package-dependency has_literal "implementation 'systems.zlink:zlink:11.0.0'" "$fixture_project"
+  check package-dependency has_literal "implementation 'systems.zlink:zlink:11.0.2'" "$fixture_project"
   check local-maven-resolver has_literal 'ZLINK_LOCAL_MAVEN_REPOSITORY' "$fixture_project"
   check no-project-reference has_no_match 'project\(|bindings/java|sourceSets' "$fixture_project"
   check public-only-source has_no_match 'systems\.zlink\.(runtime|internal)|java\.lang\.foreign|Native[A-Z]|System\.load' "$fixture_source"
@@ -204,7 +204,7 @@ NODE
 const fs = require('node:fs');
 const file = process.argv[2];
 const value = JSON.parse(fs.readFileSync(file, 'utf8'));
-value.version = '11.0.1';
+value.version = '11.0.2';
 fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 NODE
   if node "$validator" --prefix "$prefix" --core-package-evidence "$fixture_evidence" >/dev/null 2>&1; then
@@ -257,10 +257,10 @@ node "$validator" --prefix "$core_prefix" \
   --core-package-evidence "$core_package_evidence" \
   --maven-repository "$maven_repository"
 
-coordinate_dir="$maven_repository/systems/zlink/zlink/11.0.0"
-jar="$coordinate_dir/zlink-11.0.0.jar"
-pom="$coordinate_dir/zlink-11.0.0.pom"
-module="$coordinate_dir/zlink-11.0.0.module"
+coordinate_dir="$maven_repository/systems/zlink/zlink/11.0.2"
+jar="$coordinate_dir/zlink-11.0.2.jar"
+pom="$coordinate_dir/zlink-11.0.2.pom"
+module="$coordinate_dir/zlink-11.0.2.module"
 for artifact in "$jar" "$pom" "$module"; do
   [[ -f "$artifact" ]] || { echo "Published Maven metadata is missing: $artifact" >&2; exit 1; }
 done
@@ -279,7 +279,7 @@ unzip -p "$jar" native/linux-x86_64/libzlink.so >"$packaged_runtime"
 }
 grep -Fq '<zlink.core.version>11.0.0</zlink.core.version>' "$pom"
 grep -Fq "<zlink.core.provenance-sha256>$expected_provenance_sha</zlink.core.provenance-sha256>" "$pom"
-grep -Fq 'zlink-11.0.0.jar' "$module"
+grep -Fq 'zlink-11.0.2.jar' "$module"
 grep -Fq "\"systems.zlink.core.provenance-sha256\": \"$expected_provenance_sha\"" "$module"
 grep -Fq '"systems.zlink.core.soname": "libzlink.so.11"' "$module"
 
@@ -312,7 +312,7 @@ process.stdout.write(`${JSON.stringify({
   core,
   maven: {
     repository: process.env.MAVEN_REPOSITORY,
-    coordinate: 'systems.zlink:zlink:11.0.0',
+    coordinate: 'systems.zlink:zlink:11.0.2',
     jar: {path: process.env.JAR, sha256: digest(process.env.JAR)},
     pom: {path: process.env.POM, sha256: digest(process.env.POM)},
     module: {path: process.env.MODULE, sha256: digest(process.env.MODULE)},

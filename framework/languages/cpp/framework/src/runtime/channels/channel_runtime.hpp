@@ -4,13 +4,13 @@
 #include <zlink/framework/contracts/channels/channel.hpp>
 #include <zlink/framework/contracts/codecs/serializer.hpp>
 #include <zlink/framework/contracts/configuration/services.hpp>
-#include <zlink/framework/contracts/eventing/events.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 
 #include "runtime/channels/channel_pending_requests.hpp"
 #include "runtime/channels/channel_runtime_bundle.hpp"
 #include "runtime/channels/route_channel_registration.hpp"
 #include "runtime/channels/route_channel_runtime.hpp"
+#include "runtime/diagnostics/monitoring_runtime.hpp"
 #include "runtime/locations/spot_address_resolvers.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
 #include "runtime/streams/stream_runtime.hpp"
@@ -310,7 +310,6 @@ class channel_runtime_t
       const std::string &channel_name) noexcept;
     dispatch_options_t dispatch_options () const;
     const dispatch_options_t &dispatch_options_ref () const noexcept { return _state->dispatch; }
-    void record_fanout_received (const std::string &topic) const;
     void mark_auto_connect_active ();
     bool auto_connect_active () const;
     void drain () noexcept;

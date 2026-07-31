@@ -287,7 +287,7 @@ backend gate 와 별도로 유지한다.
 [^ci-gate]: CI gate 는 새 변경을 머지하거나 배포하기 전에 통과해야 하는 자동 검증 단계(빌드, 테스트 등)의 묶음을 가리킨다.
 [^di]: DI(Dependency Injection) 는 객체가 필요한 의존성을 직접 만들지 않고 외부 컨테이너에서 주입받도록 하는 패턴이다. `.NET` 에서는 `IServiceCollection`/`IServiceProvider` 기반 컨테이너가 표준이다.
 [^backpressure]: backpressure 는 송신 측이 수신 측의 처리 속도를 넘어 메시지를 밀어 넣지 못하도록 흐름을 조절하는 메커니즘이다.
-[^hwm]: HWM(High Water Mark) 은 송신 큐에 쌓을 수 있는 최대 메시지 수를 가리키며, 이 한계에 도달하면 backpressure 가 발동한다.
+[^hwm]: HWM(High Water Mark) 은 송신 큐가 보관할 수 있는 최대 byte 를 가리키며, 이 한계에 도달하면 backpressure 가 발동한다.
 [^wire-multipart]: wire multipart 는 한 논리 메시지를 header, payload 등 여러 message part 로 나누어 전송하는 방식이다. 한쪽만 떼어 살펴봐도 라우팅이 가능해진다.
 [^entry-spot]: Entry Spot은 Object Server process가 시작할 때 만드는 stateless 진입 Spot이다. 아직 User Spot에 속하지 않은 Actor를 actor별 mailbox로 처리한다.
 [^spot]: `SPOT`은 동적으로 생성·소멸되는 논리적 실행 단위다. room, stage와 zone이 대표 예다.

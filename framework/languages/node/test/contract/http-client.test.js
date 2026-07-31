@@ -27,6 +27,7 @@ test('standalone HTTP request exposes async response terminators but no server t
   try {
     const call = client.get('/terminators');
     assert.equal(typeof call.async, 'function');
+    assert.equal(typeof call.fetch, 'function');
     assert.equal(typeof call.submitRaw, 'function');
     assert.equal(typeof call.submit, 'undefined');
     assert.equal(typeof call.yield, 'undefined');
@@ -288,10 +289,10 @@ test('typed JSON round trip', async () => {
   });
   const client = ZLinkHttpClient.create(server.baseUrl).build();
   try {
-    const r = await client.post('/games').body({ name: 'ranked-0611' }).async();
+    const body = await client.post('/games').body({ name: 'ranked-0611' }).fetch();
     assert.equal(received.name, 'ranked-0611');
-    assert.equal(r.body.id, 'game-7');
-    assert.equal(r.body.ranked, true);
+    assert.equal(body.id, 'game-7');
+    assert.equal(body.ranked, true);
   } finally {
     await client.close();
     await server.close();

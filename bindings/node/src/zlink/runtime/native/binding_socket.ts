@@ -2,6 +2,7 @@
 
 import type {
   NativeHandle,
+  NativeCompletionControlHandler,
   NativeReceivedRaw,
   NativeRequestCallback,
   NativeTopicMessageRaw,
@@ -27,6 +28,15 @@ export interface SocketNativeBinding {
     requestSeq: bigint,
     parts: unknown
   ) => void;
+  routerCompletionControlHandler: (
+    socket: NativeHandle,
+    handler: NativeCompletionControlHandler
+  ) => void;
+  routerTrySendCompletionControl: (
+    socket: NativeHandle,
+    peerRid: Buffer,
+    parts: unknown
+  ) => boolean;
   routerRequest: (
     socket: NativeHandle,
     peerRid: Buffer,

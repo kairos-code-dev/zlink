@@ -1,11 +1,7 @@
-import { Module } from '@nestjs/common';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
 import { EvidenceStore } from '../Configuration/evidence-store';
-import {
-  DeliveryStatusChangedHandler
-} from './Handlers/tracking-handlers';
 import { createDeliveryDispatchLocationStore, deliveryDispatchLocationOptions } from '../Configuration/location-store';
 import {
   DELIVERYDISPATCH_SAMPLE_CONFIG,
@@ -24,7 +20,7 @@ function createTrackingModule() {
     'workDir'
   ]);
 
-  Module({
+  zlinkModule(__dirname, {
     imports: [
       configuration,
       ZLinkModule.forRootFactory({
@@ -38,11 +34,14 @@ function createTrackingModule() {
             .traceLabel('tracking');
           builder.addLocationStore(createDeliveryDispatchLocationStore(config));
           deliveryDispatchLocationOptions(builder.configureLocations());
-          const mesh = builder.addRouteMesh(SampleNames.routeMesh)
+          const mesh = builder.addRouteMesh(SampleNames.customerMeshName)
             .listen(config.trackingSpotEndpoint)
             .setRoutingIdPrefix('delivery-tracking');
-          mesh.channelName(SampleNames.trackingChannel).addHandlerGroup('tracking');
-          mesh.channelName(SampleNames.routeMesh).setWeight(0);
+          mesh.objects().client();
+          builder.addClientServerChannel(SampleNames.trackingChannel)
+            .server()
+            .listen()
+            .addHandlerGroup('tracking');
           return builder.build();
         }
       })
@@ -57,8 +56,7 @@ function createTrackingModule() {
         provide: 'DELIVERYDISPATCH_LOCATION_STORE',
         inject: [DELIVERYDISPATCH_SAMPLE_CONFIG],
         useFactory: (config: DeliveryDispatchServerConfig) => createDeliveryDispatchLocationStore(config)
-      },
-      DeliveryStatusChangedHandler
+      }
     ]
   })(TrackingModule);
 

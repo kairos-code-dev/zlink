@@ -7,6 +7,7 @@ import {
   actorFactoriesFromSpotNodes,
   channelNamesWith,
   normalizeLocationRegistration,
+  normalizeNetworkOptions,
   normalizeOptionalPositiveInteger,
   normalizeStreamCompression,
   toChannelMap,
@@ -26,6 +27,7 @@ import type {
   ZLinkFrameworkRegistration,
   ZLinkFrameworkRegistrationOptions
 } from './RegistrationTypes';
+import { ZLinkApplicationHwmProfile } from './InboundDispatch';
 export * from './RegistrationTypes';
 import { validateFrameworkRegistration } from './RegistrationValidators';
 export { validateFrameworkRegistration };
@@ -36,9 +38,11 @@ export function createFrameworkRegistration(
   options: ZLinkFrameworkRegistrationOptions = {}
 ): ZLinkFrameworkRegistration {
   const codecRegistry = createCodecRegistry(options.codecs);
+  const network = normalizeNetworkOptions(options.network);
   const routeChannelOptions = toRouteChannelOptions(options);
-  const spotNodes = toSpotNodeMap(options.spotNodes);
+  const spotNodes = toSpotNodeMap(options.spotNodes, network);
   const registration: ZLinkFrameworkRegistration = {
+    network,
     applicationVersion: normalizeApplicationVersion(options.applicationVersion),
     maintenanceWave: normalizeMaintenanceWave(options.maintenanceWave),
     messageSerializers: codecRegistry.registeredSerializers,
@@ -55,19 +59,26 @@ export function createFrameworkRegistration(
       DEFAULT_MESSAGE_FOLLOW_DURATION_MS
     ),
     spotFactories: toSpotFactorySet(options.spotFactories, spotNodes),
-    channels: toChannelMap(options.channels),
+    channels: toChannelMap(options.channels, network),
     channelClients: channelNamesWith(options.channels, (channel) => channel.client !== undefined),
     fanoutPublishers: channelNamesWith(options.channels, (channel) => channel.publisher !== undefined),
     routeChannels: new Set(routeChannelOptions.keys()),
     routeChannelOptions,
-    streamNodes: toStreamNodeMap(options.streamNodes),
+    streamNodes: toStreamNodeMap(options.streamNodes, network),
     streamCompression: normalizeStreamCompression(options.streamCompression),
     spotNodes,
     spotPublisherClients: toSpotPublisherClientSet(options.spotPublisherClients, spotNodes),
     filterTypes: [...(options.filters ?? [])],
     worker: options.worker === undefined ? undefined : { ...options.worker },
+    inboundDispatch: {
+      applicationHwmBytes: options.inboundDispatch?.applicationHwmBytes,
+      applicationHwmProfile:
+        options.inboundDispatch?.applicationHwmProfile
+        ?? ZLinkApplicationHwmProfile.Balanced,
+      processMemoryLimitBytes:
+        options.inboundDispatch?.processMemoryLimitBytes
+    },
     dispatch: options.dispatch,
-    monitoring: options.monitoring === undefined ? undefined : { ...options.monitoring },
     metrics: options.metrics,
     locations: normalizeLocationRegistration(options.locations)
   };

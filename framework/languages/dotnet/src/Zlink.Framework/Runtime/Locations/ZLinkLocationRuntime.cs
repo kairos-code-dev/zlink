@@ -24,6 +24,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
     private readonly IZLinkLocationRepository _store;
     private readonly ZLinkObservedLocationGenerations? _observed;
     private readonly TimeProvider _time;
+    private readonly IReadOnlyList<KeyValuePair<string, string>> _metricScopes;
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly object _disposeStartGate = new();
     private ZLinkLocationRuntimeHealth _health = new(false, null, null, null);
@@ -42,12 +43,14 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
         ZLinkLocationOptions options,
         IZLinkLocationRepository store,
         TimeProvider? timeProvider = null,
-        ZLinkObservedLocationGenerations? observed = null)
+        ZLinkObservedLocationGenerations? observed = null,
+        IReadOnlyList<KeyValuePair<string, string>>? metricScopes = null)
     {
         _options = options;
         _store = store;
         _observed = observed;
         _time = timeProvider ?? TimeProvider.System;
+        _metricScopes = metricScopes ?? [];
     }
 
     /// <summary>Stable owner id for the current runtime generation. Each
@@ -99,7 +102,6 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
         ZLinkLocationKind kind,
         ZLinkAuthorityKey key)
     {
-        ZLinkRuntimeMetrics.RecordLocationWriteConflict();
         OwnershipLost?.Invoke(kind, key.Value);
     }
 
@@ -204,7 +206,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
                 // A store outage during shutdown is not fatal: the expired
                 // lease makes the leftover rows stale and background cleanup
                 // removes them later.
-                RecordStoreFailure(exception.Message);
+                RecordStoreFailure(exception.Message, "release");
             }
         }
         finally
@@ -254,8 +256,9 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
                 _ownerToken = null;
                 Volatile.Write(ref _ownerAdmissionDeadline, null);
             }
-            catch
+            catch (Exception exception)
             {
+                RecordStoreFailure(exception.Message, "release");
                 StartHeartbeatAfterCleanupFailure();
                 throw;
             }
@@ -507,7 +510,12 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
                 return;
             }
 
-            ZLinkRuntimeMetrics.RecordOwnerLeaseRenewAttempt(_time, scheduledRenew);
+            foreach (var scope in _metricScopes)
+                ZLinkRuntimeMetrics.RecordOwnerLeaseRenewAttempt(
+                    _time,
+                    scheduledRenew,
+                    scope.Key,
+                    scope.Value);
             await RenewOwnerLeaseOnceAsync(cancellationToken).ConfigureAwait(false);
             scheduledRenew += intervalTicks;
         }
@@ -524,7 +532,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
         }
         catch (Exception exception)
         {
-            RecordStoreFailure(exception.Message);
+            RecordStoreFailure(exception.Message, "compare_exchange");
             throw;
         }
     }
@@ -542,7 +550,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
         }
         catch (Exception exception)
         {
-            RecordStoreFailure(exception.Message);
+            RecordStoreFailure(exception.Message, "compare_exchange");
             throw;
         }
 
@@ -570,20 +578,19 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
         {
             OwnershipLost?.Invoke(kind, canonicalKey);
         }
-        if (result.Status is ZLinkLocationWriteStatus.IgnoredStale
-            or ZLinkLocationWriteStatus.RejectedConflict)
-            ZLinkRuntimeMetrics.RecordLocationWriteConflict();
     }
 
     private void RecordLeaseFailure(string message)
     {
-        ZLinkRuntimeMetrics.RecordOwnerLeaseRenewFailure();
+        foreach (var scope in _metricScopes)
+            ZLinkRuntimeMetrics.RecordOwnerLeaseRenewFailure(scope.Key, scope.Value);
+        ZLinkRuntimeMetrics.RecordLocationStoreError("lease_renew");
         UpdateHealth(health => health with { Healthy = false, LeaseError = message });
     }
 
-    private void RecordStoreFailure(string message)
+    private void RecordStoreFailure(string message, string operation)
     {
-        ZLinkRuntimeMetrics.RecordLocationStoreError();
+        ZLinkRuntimeMetrics.RecordLocationStoreError(operation);
         UpdateHealth(health => health with { StoreError = message });
     }
 

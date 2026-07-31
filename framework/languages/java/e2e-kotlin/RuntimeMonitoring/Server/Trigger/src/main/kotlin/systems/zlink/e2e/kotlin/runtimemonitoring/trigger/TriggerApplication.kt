@@ -9,12 +9,10 @@ import org.springframework.context.annotation.Bean
 import systems.zlink.e2e.kotlin.runtimemonitoring.Contracts
 import systems.zlink.e2e.kotlin.runtimemonitoring.Env
 import systems.zlink.e2e.kotlin.runtimemonitoring.service.EvidenceState
-import systems.zlink.e2e.kotlin.runtimemonitoring.service.MonitoringEventHandlers
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
-import systems.zlink.framework.spring.ZLinkMonitoringOptionsCustomizer
 
 @EnableZLinkFramework
 @SpringBootConfiguration(proxyBeanMethods = false)
@@ -49,20 +47,9 @@ class TriggerApplication {
                 .traceLogFile("$logDir/trigger-flow.log")
                 .traceLabel("kotlin-mon-trigger")
             options.addClientServerChannel(Contracts.CHANNEL)
-                .enableClient(Env.get("ZLINK_KOTLIN_E2E_SERVICE_API_ENDPOINT"))
+                .client()
+                .connect(Env.get("ZLINK_KOTLIN_E2E_SERVICE_API_ENDPOINT"))
         }
-    }
-
-    @Bean
-    fun monitoringOptions(): ZLinkMonitoringOptionsCustomizer {
-        return ZLinkMonitoringOptionsCustomizer { options ->
-            options.addSocketEvents(Contracts.CHANNEL)
-        }
-    }
-
-    @Bean
-    fun socketRecorder(state: EvidenceState): MonitoringEventHandlers.SocketRecorder {
-        return MonitoringEventHandlers.SocketRecorder(state)
     }
 
     companion object {

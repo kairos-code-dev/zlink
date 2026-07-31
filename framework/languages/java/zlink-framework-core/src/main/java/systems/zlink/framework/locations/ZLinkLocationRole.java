@@ -1,5 +1,7 @@
 package systems.zlink.framework.locations;
 
+import systems.zlink.framework.runtime.internal.locations.*;
+
 public enum ZLinkLocationRole {
     INVALID(0),
     // Value 1 is reserved for the removed gateway role.

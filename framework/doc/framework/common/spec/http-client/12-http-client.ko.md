@@ -89,7 +89,7 @@ HTTP client call 자체는 shared Spot gate를 반납하지 않는다. Actor 입
 ```csharp
 var profile = await Context
     .RunIoWorker(async workerCancellation =>
-        await http.Get($"/players/{id}").Async<Profile>(workerCancellation))
+        await http.Get($"/players/{id}").Fetch<Profile>(workerCancellation))
     .Yield(ct);
 ```
 

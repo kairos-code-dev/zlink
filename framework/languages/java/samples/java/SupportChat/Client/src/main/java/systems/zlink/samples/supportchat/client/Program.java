@@ -105,9 +105,8 @@ final class SupportChatClientScenario {
         CompletionStage<ZLinkStreamMessage<Messages.ParticipantJoinedNotify>> joined1 =
             waitFor(customer1, Messages.ParticipantJoinedNotify.class);
         Messages.JoinConversationRes agentJoined1 = agentRoom1.join();
-        ensure(SampleNames.Statuses.Active.equals(agentJoined1.state().status()));
-        ensure("agent-1".equals(agentJoined1.state().agentActorId()));
-        ensure("checkout payment failed".equals(agentJoined1.state().subject()));
+        ensure(agentJoined1.scheduled());
+        ensure(SampleNames.Statuses.WaitingForAgent.equals(agentJoined1.state().status()));
         ensure(join(joined1).payload().conversationId().equals(conversation1));
 
         CompletionStage<ZLinkStreamMessage<Messages.ChatMessageNotify>> greeting1 =
@@ -135,7 +134,9 @@ final class SupportChatClientScenario {
         ConversationClient customerRoom2 = new ConversationClient(customer2, conversation2);
         CompletionStage<ZLinkStreamMessage<Messages.ParticipantJoinedNotify>> joined2 =
             waitFor(customer2, Messages.ParticipantJoinedNotify.class);
-        ensure("cannot log in".equals(agentRoom2.join().state().subject()));
+        Messages.JoinConversationRes agentJoined2 = agentRoom2.join();
+        ensure(agentJoined2.scheduled());
+        ensure(SampleNames.Statuses.WaitingForAgent.equals(agentJoined2.state().status()));
         ensure(join(joined2).payload().conversationId().equals(conversation2));
         CompletionStage<ZLinkStreamMessage<Messages.ChatMessageNotify>> greeting2 =
             waitFor(customer2, Messages.ChatMessageNotify.class);
@@ -152,7 +153,9 @@ final class SupportChatClientScenario {
         close(customer1);
         connectAndAuthenticate(reconnectingCustomer, "customer-1", SampleNames.Roles.Customer);
         customerRoom1 = new ConversationClient(reconnectingCustomer, conversation1);
-        Messages.ConversationState customerRejoin = customerRoom1.join().state();
+        Messages.JoinConversationRes customerRejoined = customerRoom1.join();
+        ensure(!customerRejoined.scheduled());
+        Messages.ConversationState customerRejoin = customerRejoined.state();
         ensure(SampleNames.Statuses.Active.equals(customerRejoin.status()));
         ensure(customerRejoin.lastMessageSeq() == 2);
 
@@ -161,8 +164,12 @@ final class SupportChatClientScenario {
         ensure(setAvailability(reconnectingAgent, true).isAvailable());
         agentRoom1 = new ConversationClient(reconnectingAgent, conversation1);
         agentRoom2 = new ConversationClient(reconnectingAgent, conversation2);
-        ensure("checkout payment failed".equals(agentRoom1.join().state().subject()));
-        ensure("cannot log in".equals(agentRoom2.join().state().subject()));
+        Messages.JoinConversationRes agentRejoined1 = agentRoom1.join();
+        Messages.JoinConversationRes agentRejoined2 = agentRoom2.join();
+        ensure(!agentRejoined1.scheduled());
+        ensure(!agentRejoined2.scheduled());
+        ensure("checkout payment failed".equals(agentRejoined1.state().subject()));
+        ensure("cannot log in".equals(agentRejoined2.state().subject()));
 
         Duration lifecycleTimeout = SampleTimings.IdleTimeout
             .plus(SampleTimings.CloseGraceTimeout)

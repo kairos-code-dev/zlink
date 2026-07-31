@@ -2,9 +2,9 @@
 
 package systems.zlink.contracts.sockets;
 
-import systems.zlink.runtime.nativeapi.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 import java.time.Duration;
-import systems.zlink.runtime.nativeapi.DurationConversions;
+import systems.zlink.internal.DurationConversions;
 import java.util.Objects;
 
 /** The typed facade over DEALER-specific socket options. */

@@ -80,10 +80,8 @@ test('node topology samples implement the common sample role layout', () => {
       'Server/Api/main.ts',
       'Server/Play/Domain/TicTacToe/tictactoe-board.ts',
       'Server/Play/Domain/TicTacToe/tictactoe-match.ts',
-      'Server/Play/Application/GameCreation/tictactoe-game-creator.ts',
       'Server/Play/Infrastructure/ZLink/Actors/play-actor.ts',
       'Server/Play/Infrastructure/ZLink/Actors/play-actor-factory.ts',
-      'Server/Play/Infrastructure/ZLink/Handlers/create-game-handler.ts',
       'Server/Play/Infrastructure/ZLink/Sessions/play-session.ts',
       'Server/Play/Infrastructure/ZLink/Sessions/play-session-factory.ts',
       'Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/play-actor-join-game-handler.ts',
@@ -104,10 +102,11 @@ test('node topology samples implement the common sample role layout', () => {
       'Server/Play/Domain/Bingo/bingo-game.ts',
       'Server/Play/Domain/Bingo/bingo-room-game.ts',
       'Server/Play/Domain/Bingo/bingo-room-models.ts',
-      'Server/Play/Application/RoomAllocation/bingo-room-allocator.ts',
+      'Server/Matchmaking/bingo-matchmaking-module.ts',
+      'Server/Matchmaking/bingo-matchmaker.ts',
+      'Server/Matchmaking/bingo-match-reservation-store.ts',
       'Server/Play/Infrastructure/ZLink/Actors/player-actor.ts',
       'Server/Play/Infrastructure/ZLink/Actors/player-actor-factory.ts',
-      'Server/Play/Infrastructure/ZLink/Handlers/allocate-bingo-room-handler.ts',
       'Server/Play/Infrastructure/ZLink/Handlers/ensure-player-actor-handler.ts',
       'Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/Handlers/bingo-room-timer-handler.ts',
       'Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/match-bingo-actor-handler.ts',
@@ -144,9 +143,6 @@ test('node topology samples implement the common sample role layout', () => {
       'Server/Support/Application/ConversationAssignment/agent-assignment-service.ts',
       'Server/Support/Infrastructure/ZLink/Actors/support-user-actor.ts',
       'Server/Support/Infrastructure/ZLink/Actors/support-user-actor-factory.ts',
-      'Server/Support/Infrastructure/ZLink/Handlers/allocate-conversation-handler.ts',
-      'Server/Support/Infrastructure/ZLink/Handlers/ensure-agent-conversation-handler.ts',
-      'Server/Support/Infrastructure/ZLink/Handlers/ensure-support-user-actor-handler.ts',
       'Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/Notifications/conversation-event-mapper.ts',
       'Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/Notifications/support-notification-publisher.ts',
       'Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/conversation-create-request.ts',
@@ -199,8 +195,6 @@ test('node topology samples implement the common sample role layout', () => {
       'Server/GameApi/game-api-server.ts',
       'Server/GameApi/Application/gameplay-action-service.ts',
       'Server/GameApi/Infrastructure/ZLink/gameplay-event-publisher.ts',
-      'Server/QuestMission/Application/quest-owner-router.ts',
-      'Server/QuestMission/Infrastructure/ZLink/gameplay-event-route-handler.ts',
       'Server/QuestMission/Infrastructure/ZLink/player-quest-spot-provisioner.ts',
       'Server/QuestMission/Infrastructure/ZLink/Spots/PlayerQuestSpot/player-quest-spot.ts',
       'Server/Shared/Store/quest-progress-store.ts',
@@ -257,13 +251,15 @@ test('GameQuest TypeScript sample registers required sample and provisions playe
   const missing = [];
 
   for (const [content, text] of [
-    [names, 'questMissionRouteRid(playerId: string)'],
-    [names, 'ownerIndex(playerId) === 0 ? \'mission-a\' : \'mission-b\''],
-    [publisher, '.sendToChannel(SampleNames.playerQuestSpotMesh, questMissionRouteChannel(event.playerId), message)'],
+    [names, 'questMissionSpotId(playerId: string)'],
+    [publisher, '.sendToSpot(questMissionSpotId(event.playerId), message)'],
+    [publisher, '.instanceSpot(SampleNames.playerQuestSpotType)'],
+    [publisher, '.inMesh(SampleNames.playerQuestSpotMesh)'],
     [sessionModule, '.addRouteMesh(SampleNames.playerQuestSpotMesh)'],
-    [questModule, '.addSpotFactory(\n            PlayerQuestSpot.name,\n            PlayerQuestSpot,'],
-    [provisioner, 'ZLINK_SPOT_MANAGER'],
-    [provisioner, 'this.spots.getOrCreate(SampleNames.playerQuestSpotMesh, PlayerQuestSpot, spotId, { playerId })'],
+    [questModule, '.addInstanceSpotFactory(\n            SampleNames.playerQuestSpotType,\n            PlayerQuestSpot,'],
+    [provisioner, 'ZLINK_SPOT_OUTBOUND'],
+    [provisioner, '.requestToSpot(questMissionSpotId(playerId), request)'],
+    [provisioner, '.instanceSpot(SampleNames.playerQuestSpotType)'],
     [spot, 'private aggregate: PlayerQuestAggregate | undefined'],
     [spot, 'ensureAggregate(load: () => PlayerQuestAggregate)'],
     [spotHandlers, 'this.processor.rehydrate(message.playerId)'],
@@ -283,8 +279,8 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
     bingoModule: readSample('Bingo.Ts', 'Server/Play/bingo-play-module.ts'),
     bingoEntry: readSample('Bingo.Ts', 'Server/Play/Infrastructure/ZLink/Spots/EntrySpot/bingo-entry-spot.ts'),
     bingoRoom: readSample('Bingo.Ts', 'Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/bingo-room-spot.ts'),
-    bingoAllocator: readSample('Bingo.Ts', 'Server/Play/Application/RoomAllocation/bingo-room-allocator.ts'),
-    bingoAllocate: readSample('Bingo.Ts', 'Server/Play/Infrastructure/ZLink/Handlers/allocate-bingo-room-handler.ts'),
+    bingoAllocator: readSample('Bingo.Ts', 'Server/Matchmaking/bingo-match-reservation-store.ts'),
+    bingoAllocate: readSample('Bingo.Ts', 'Server/Matchmaking/bingo-matchmaker.ts'),
     bingoEnsureActor: readSample('Bingo.Ts', 'Server/Play/Infrastructure/ZLink/Handlers/ensure-player-actor-handler.ts'),
     bingoApiMatch: readSample('Bingo.Ts', 'Server/Api/Handlers/match-bingo-handler.ts'),
     bingoActorMatch: readSample('Bingo.Ts', 'Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/match-bingo-actor-handler.ts'),
@@ -292,7 +288,7 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
     ticTacToeModule: readSample('TicTacToe.Ts', 'Server/Play/tictactoe-play-module.ts'),
     ticTacToeEntry: readSample('TicTacToe.Ts', 'Server/Play/Infrastructure/ZLink/Spots/EntrySpot/play-entry-spot.ts'),
     ticTacToeGame: readSample('TicTacToe.Ts', 'Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/tictactoe-game-spot.ts'),
-    ticTacToeCreate: readSample('TicTacToe.Ts', 'Server/Play/Application/GameCreation/tictactoe-game-creator.ts'),
+    ticTacToeCreate: readSample('TicTacToe.Ts', 'Server/Api/Handlers/create-game-http-handler.ts'),
     ticTacToeSession: readSample('TicTacToe.Ts', 'Server/Play/Infrastructure/ZLink/Sessions/play-session.ts'),
     ticTacToeAuthenticate: readSample(
       'TicTacToe.Ts',
@@ -305,8 +301,9 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
   const violations = [];
   for (const [name, content, text] of [
     ['Bingo module', files.bingoModule, '.addSpotFactory(\n            BingoRoomSpot.name,\n            BingoRoomSpot,'],
-    ['Bingo API match', files.bingoApiMatch, 'ZLINK_CHANNEL_CLIENT'],
-    ['Bingo allocate', files.bingoAllocate, 'ZLINK_SPOT_MANAGER'],
+    ['Bingo API match', files.bingoApiMatch, 'ZLINK_SPOT_OUTBOUND'],
+    ['Bingo API match', files.bingoApiMatch, '.instanceSpot(SampleNames.matchmakerSpotType)'],
+    ['Bingo allocate', files.bingoAllocate, 'ReserveBingoRoomHandler'],
     ['Bingo ensure actor', files.bingoEnsureActor, 'ZLINK_ACTOR_MANAGER'],
     ['Bingo actor match', files.bingoActorMatch, '.joinSpot(matched.roomId'],
     ['Bingo entry', files.bingoEntry, 'onCreateActor'],
@@ -314,17 +311,17 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
     ['Bingo entry', files.bingoEntry, 'destroyActor(actor'],
     ['Bingo room', files.bingoRoom, 'onActorJoin'],
     ['Bingo room', files.bingoRoom, 'onLeaveActor'],
-    ['Bingo actor lifecycle', files.bingoActorLifecycle, 'actor.context.leaveSpot()'],
-    ['TicTacToe module', files.ticTacToeModule, '.addSpotFactory(\n            TicTacToeGameSpot.name,\n            TicTacToeGameSpot,'],
-    ['TicTacToe create', files.ticTacToeCreate, 'TICTACTOE_GAME_ROOM_PROVISIONER'],
-    ['TicTacToe create', files.ticTacToeCreate, 'this.rooms.provision(roomId)'],
+    ['Bingo actor lifecycle', files.bingoActorLifecycle, 'spot.context.leaveActor(actor)'],
+    ['TicTacToe module', files.ticTacToeModule, '.addSpotFactory(\n            SampleNames.gameSpotType,\n            TicTacToeGameSpot,'],
+    ['TicTacToe create', files.ticTacToeCreate, '.create(SampleNames.gameSpotType)'],
+    ['TicTacToe create', files.ticTacToeCreate, '.inMesh(SampleNames.playSpotNode)'],
     ['TicTacToe actor join', files.ticTacToeActorJoin, '.joinSpot(request.roomId, joinRequest)'],
     ['TicTacToe entry', files.ticTacToeEntry, 'onCreateActor'],
     ['TicTacToe entry', files.ticTacToeEntry, 'onJoinedActor'],
     ['TicTacToe entry', files.ticTacToeEntry, 'destroyActor(actor'],
     ['TicTacToe game', files.ticTacToeGame, 'onActorJoin'],
     ['TicTacToe game', files.ticTacToeGame, 'onLeaveActor'],
-    ['TicTacToe actor leave', files.ticTacToeActorLeave, 'actor.context.leaveSpot()'],
+    ['TicTacToe actor leave', files.ticTacToeActorLeave, 'spot.context.leaveActor(actor)'],
     ['TicTacToe authentication', files.ticTacToeAuthenticate, 'context.actors.bindOrGet(actorRef)'],
     ['TicTacToe session', files.ticTacToeSession, 'await actor.relay(payload)']
   ]) {
@@ -357,8 +354,7 @@ test('node Bingo stop observing request is owned by the observer room Spot', () 
   assert.match(handler, /actor:\s*\(\)\s*=>\s*PlayerActor/);
   assert.match(handler, /packetName:\s*PacketNames\.stopObservingBingoEventsReq/);
   assert.match(room, /verifyStopObserving\(/);
-  assert.match(handler, /\.requestToSpot\(/);
-  assert.match(handler, /actor\.context\.leaveSpot\(\)/);
+  assert.match(handler, /spot\.context\.leaveActor\(actor\)/);
   assert.doesNotMatch(room, /actorRequest\(PacketNames\.stopObservingBingoEventsReq/);
   assert.doesNotMatch(entry, /actorRequest\(PacketNames\.stopObservingBingoEventsReq/);
 });
@@ -472,7 +468,7 @@ test('node common-spec samples expose buildable scenario entrypoints', () => {
   assert.deepEqual(missing, []);
 });
 
-test('SupportChat TypeScript Entry Spot uses API channel orchestration', () => {
+test('SupportChat uses managers for object creation and keeps API authentication on a channel', () => {
   const allocator = readSample(
     'SupportChat.Ts',
     'Server/Support/Application/ConversationAssignment/support-conversation-allocator.ts'
@@ -494,18 +490,23 @@ test('SupportChat TypeScript Entry Spot uses API channel orchestration', () => {
   assert.match(assignment, /assignNextAgent\(\)/);
   assert.doesNotMatch(assignment, /ZLink|requestToChannel|actors\.get/);
 
-  assert.match(apiHandler, /SampleNames\.supportChannel/);
-  assert.match(apiHandler, /allocateConversation\(/);
-  assert.match(apiHandler, /submit<AllocateConversationRes>/);
+  assert.match(apiHandler, /ZLINK_SPOT_MANAGER/);
+  assert.match(apiHandler, /\.create\(SampleNames\.conversationSpotType\)/);
+  assert.match(apiHandler, /\.inMesh\(SampleNames\.meshName\)/);
+  assert.doesNotMatch(apiHandler, /requestToChannel|supportChannel|nodeRid/);
   for (const module of [apiModule, supportModule, sessionModule]) {
     assert.equal((module.match(/\.addRouteMesh\(/g) ?? []).length, 1);
     assert.match(module, /\.addRouteMesh\(SampleNames\.conversationSpotMesh\)/);
   }
-  assert.match(apiModule, /\.listen\(config\.apiChannelEndpoint\)[\s\S]*\.routingId\('api-channel-node'\)/);
-  assert.match(supportModule, /\.listen\(config\.supportSpotEndpoint\)\.routingId\('support-node'\)/);
-  assert.match(sessionModule, /\.listen\(config\.sessionSpotEndpoint\)\.routingId\('session-node'\)/);
-  assert.match(apiModule, /channelName\(SampleNames\.apiChannel\)\.addHandlerGroup\('api'\)/);
-  assert.match(supportModule, /channelName\(SampleNames\.supportChannel\)\.addHandlerGroup\('support'\)/);
+  assert.match(apiModule, /\.listen\(config\.apiChannelEndpoint\)[\s\S]*\.setRoutingIdPrefix\('support-api'\)/);
+  assert.match(supportModule, /\.listen\(config\.supportSpotEndpoint\)\.setRoutingIdPrefix\('support-owner'\)/);
+  assert.match(sessionModule, /\.listen\(config\.sessionSpotEndpoint\)\.setRoutingIdPrefix\('support-session'\)/);
+  assert.match(apiModule, /addClientServerChannel\(SampleNames\.apiChannel\)[\s\S]*\.server\(\)[\s\S]*\.addHandlerGroup\('api'\)/);
+  assert.match(supportModule, /addClientServerChannel\(SampleNames\.apiChannel\)\.client\(\)/);
+  assert.match(sessionModule, /addClientServerChannel\(SampleNames\.apiChannel\)\.client\(\)/);
+  assert.match(apiModule, /mesh\.objects\(\)\.client\(\)/);
+  assert.match(sessionModule, /mesh\.objects\(\)\.client\(\)/);
+  assert.doesNotMatch(supportModule, /supportChannel|ensureSupportUserActor|allocateConversation/);
 });
 
 test('DeliveryDispatch TypeScript sample uses framework channel topology', () => {
@@ -542,14 +543,24 @@ test('DeliveryDispatch TypeScript sample uses framework channel topology', () =>
   assert.doesNotMatch(dispatchMain, /createDispatchApiModule|const api = await NestFactory/);
   for (const module of [dispatchCenterModule, courierModule, courierSessionModule, trackingModule, sessionModule]) {
     assert.equal((module.match(/\.addRouteMesh\(/g) ?? []).length, 1);
-    assert.match(module, /\.addRouteMesh\(SampleNames\.routeMesh\)/);
   }
+  for (const module of [dispatchCenterModule, courierModule, courierSessionModule]) {
+    assert.match(module, /\.addRouteMesh\(SampleNames\.courierMeshName\)/);
+  }
+  for (const module of [trackingModule, sessionModule]) {
+    assert.match(module, /\.addRouteMesh\(SampleNames\.customerMeshName\)/);
+  }
+  assert.match(dispatchCenterModule, /addClientServerChannel\(SampleNames\.dispatchChannel\)[\s\S]*\.server\(\)/);
+  assert.match(dispatchCenterModule, /addClientServerChannel\(SampleNames\.trackingChannel\)\.client\(\)/);
+  assert.match(courierModule, /addClientServerChannel\(SampleNames\.dispatchChannel\)\.client\(\)/);
+  assert.match(trackingModule, /addClientServerChannel\(SampleNames\.trackingChannel\)[\s\S]*\.server\(\)/);
   assert.match(dispatchCenterModule, /\.listen\(config\.dispatchSpotEndpoint\)/);
   assert.match(sessionModule, /\.addStreamNode\(SampleNames\.customerStreamNode\)/);
-  assert.match(courierSession, /resolveActor\(\{ meshName: SampleNames\.routeMesh, actorId: courierId \}\)/);
+  assert.match(courierSession, /\.getOrCreate\(courierId, SampleNames\.courierActorType\)/);
   assert.match(courierSession, /bindOrGet\(actorRef\)/);
-  assert.match(customerSession, /resolveActor\(\{ meshName: SampleNames\.routeMesh, actorId: CustomerId \}\)/);
-  assert.match(names, /routeMesh: 'deliverydispatch\.mesh'/);
+  assert.match(customerSession, /\.getOrCreate\(CustomerId, SampleNames\.customerActorType\)/);
+  assert.match(names, /courierMeshName: 'deliverydispatch\.courier'/);
+  assert.match(names, /customerMeshName: 'deliverydispatch\.customer'/);
   assert.match(serverEntries, /NestFactory\.createApplicationContext/);
   assert.match(messages, /class OfferDeliveryMsg/);
   assert.match(messages, /class OfferDeliveryResultMsg/);
@@ -558,7 +569,7 @@ test('DeliveryDispatch TypeScript sample uses framework channel topology', () =>
   assert.match(dispatchWorker, /sweepExpiredOffers/);
   assert.match(dispatchWorker, /current\.attempt !== result\.attempt/);
   assert.match(offerHandler, /@zlinkEntrySpotActorSendHandler\(\{[\s\S]*packetName: PacketNames\.offerDelivery[\s\S]*\}\)/);
-  assert.match(dispatchWorker, /this\.actors\.sendToActor\([\s\S]*SampleNames\.routeMesh/);
+  assert.match(dispatchWorker, /this\.actors\.sendToActor\(/);
   assert.doesNotMatch(offerHandler, /class OfferDeliveryEntrySpotHandler/);
   assert.match(runSample, /Runner\/sample-runner\.mjs/);
   assert.match(sampleRunner, /dispatchEndpoint/);
@@ -566,7 +577,6 @@ test('DeliveryDispatch TypeScript sample uses framework channel topology', () =>
   assert.match(sampleRunner, /'--config', configPath/);
   assert.doesNotMatch(clientScenario, /requestToChannel|SAMPLE_ENDPOINT|support::request_line/);
   assert.doesNotMatch(serverEntries, /--role|process\.env|courier-gateway/);
-  assert.doesNotMatch(names, /deliverydispatch\.courier/);
   assert.doesNotMatch(serverEntries, /SAMPLE_ENDPOINT/);
 });
 
@@ -580,7 +590,6 @@ test('GameQuest TypeScript sample uses framework channel topology', () => {
   const gameplayDomain = readSample('GameQuest.Ts', 'Server/GameApi/Domain/gameplay-domain.ts');
   const gameplayPublisher = readSample('GameQuest.Ts', 'Server/GameApi/Infrastructure/ZLink/gameplay-event-publisher.ts');
   const questProcessor = readSample('GameQuest.Ts', 'Server/QuestMission/Application/quest-event-processor.ts');
-  const questOwnerRouter = readSample('GameQuest.Ts', 'Server/QuestMission/Application/quest-owner-router.ts');
   const questDomain = readSample('GameQuest.Ts', 'Server/QuestMission/Domain/quest-domain.ts');
   const playerQuestProvisioner = readSample(
     'GameQuest.Ts',
@@ -593,14 +602,6 @@ test('GameQuest TypeScript sample uses framework channel topology', () => {
   const playerQuestSpotHandlers = readSample(
     'GameQuest.Ts',
     'Server/QuestMission/Infrastructure/ZLink/Spots/PlayerQuestSpot/player-quest-spot-handlers.ts'
-  );
-  const gameplayRouteHandler = readSample(
-    'GameQuest.Ts',
-    'Server/QuestMission/Infrastructure/ZLink/gameplay-event-route-handler.ts'
-  );
-  const ownerRouteHandlers = readSample(
-    'GameQuest.Ts',
-    'Server/QuestMission/Infrastructure/ZLink/quest-owner-route-handlers.ts'
   );
   const questStore = readSample('GameQuest.Ts', 'Server/Shared/Store/quest-progress-store.ts');
   const serverMain = readSample('GameQuest.Ts', 'Server/bootstrap.ts');
@@ -618,7 +619,7 @@ test('GameQuest TypeScript sample uses framework channel topology', () => {
   assert.doesNotMatch(clientScenario, /requestToChannel|SampleNames\.questMissionRouteChannel|SAMPLE_ENDPOINT|support::request_line/);
   assert.equal((apiModule.match(/\.addRouteMesh\(/g) ?? []).length, 1);
   assert.equal((questModule.match(/\.addRouteMesh\(/g) ?? []).length, 1);
-  assert.match(apiModule, /mesh\.channelName\(SampleNames\.questMissionRouteChannel\)\.setWeight\(0\)/);
+  assert.doesNotMatch(apiModule, /questMissionRouteChannel|\.channel\(/);
   assert.doesNotMatch(apiModule, /\.peerConnections\(\)/);
   assert.match(apiModule, /\.addStreamNode\(SampleNames\.playerStreamNode\)/);
   assert.match(apiServer, /http\.createServer/);
@@ -629,34 +630,28 @@ test('GameQuest TypeScript sample uses framework channel topology', () => {
   assert.match(gameplayDomain, /monsterKilled/);
   assert.match(
     gameplayPublisher,
-    /\.sendToChannel\(SampleNames\.playerQuestSpotMesh, questMissionRouteChannel\(event\.playerId\), message\)/
+    /\.sendToSpot\(questMissionSpotId\(event\.playerId\), message\)[\s\S]*?\.instanceSpot\(SampleNames\.playerQuestSpotType\)[\s\S]*?\.inMesh\(SampleNames\.playerQuestSpotMesh\)/
   );
   assert.match(gameplayPublisher, /\.submit\(\)/);
   assert.match(apiModule, /zlinkFramework\(\)/);
-  assert.match(apiModule, /\.listen\(config\[actorSpotEndpointKey\]\)[\s\S]*\.routingId\(apiRid\)/);
+  assert.match(apiModule, /\.listen\(config\[actorSpotEndpointKey\]\)[\s\S]*\.setRoutingIdPrefix\('gamequest-api'\)/);
   assert.match(questModule, /QuestEventProcessor/);
   assert.match(apiModule, /\.addRouteMesh\(SampleNames\.playerQuestSpotMesh\)/);
   assert.match(apiModule, /\.addEntrySpot\(GameQuestEntrySpot\)/);
-  assert.match(questModule, /\.addSpotFactory\(\s*PlayerQuestSpot\.name,\s*PlayerQuestSpot,/);
-  assert.match(questModule, /channelName\(questMissionInstanceChannel\(instanceId\)\)\.addHandlerGroup\('quest-owner'\)/);
+  assert.match(questModule, /\.addInstanceSpotFactory\(\s*SampleNames\.playerQuestSpotType,\s*PlayerQuestSpot,/);
+  assert.doesNotMatch(questModule, /questMissionInstanceChannel|addHandlerGroup\('quest-owner'\)/);
   assert.doesNotMatch(questModule, /\.add(?:Send|Request)Handler\(/);
   assert.match(questDomain, /decide\(event: GameplayEventEnvelope/);
-  assert.match(playerQuestProvisioner, /this\.spots\.getOrCreate\(SampleNames\.playerQuestSpotMesh, PlayerQuestSpot/);
-  assert.match(playerQuestProvisioner, /\.requestToSpot\(spot, request\)/);
-  assert.match(gameplayRouteHandler, /@zlinkSendHandler\('quest-owner', PacketNames\.gameplayMsg\)/);
-  assert.match(gameplayRouteHandler, /playerQuests\.send\(/);
-  assert.doesNotMatch(gameplayRouteHandler, /processor\.process/);
-  assert.match(ownerRouteHandlers, /playerQuests\.request/);
-  assert.doesNotMatch(ownerRouteHandlers, /store\.(readProjection|syncProgress|deleteProjection|rebuildProjection)/);
-  assert.match(playerQuestSpotHandlers, /zlinkSpotPacketHandler/);
+  assert.match(playerQuestProvisioner, /\.requestToSpot\(questMissionSpotId\(playerId\), request\)/);
+  assert.match(playerQuestProvisioner, /\.instanceSpot\(SampleNames\.playerQuestSpotType\)/);
+  assert.match(playerQuestSpotHandlers, /implements ZLinkSpotPacketHandler<PlayerQuestSpot, GameplayMsg>/);
   assert.match(playerQuestSpotHandlers, /processor\.process\(decodeGameplayPayload\(message\.payload\), aggregate\)/);
   assert.match(playerQuestSpotHandlers, /processor\.rehydrate\(request\.playerId\)/);
   assert.match(playerQuestSpotHandlers, /processor\.syncProgress\(request, aggregate\)/);
   assert.match(playerQuestSpotHandlers, /store\.rebuildProjection\(request\.playerId, request\.questId, this\.events\.read\(request\.playerId\)\)/);
   assert.match(questProcessor, /syncProgress\(request: SyncQuestProgressReq, aggregate: PlayerQuestAggregate\)/);
-  assert.match(questOwnerRouter, /routeRid\(playerId: string\)/);
   assert.match(playerQuestProvisioner, /questMissionSpotId\(playerId\)/);
-  assert.match(playerQuestProvisioner, /ZLINK_SPOT_MANAGER/);
+  assert.match(playerQuestProvisioner, /ZLINK_SPOT_OUTBOUND/);
   assert.match(playerQuestSpot, /private aggregate: PlayerQuestAggregate \| undefined/);
   assert.match(playerQuestSpot, /ensureAggregate\(load: \(\) => PlayerQuestAggregate\)/);
   assert.match(playerQuestSpotHandlers, /processor\.rehydrate\(message\.playerId\)/);
@@ -756,18 +751,19 @@ test('ShoppingMall TypeScript sample uses framework channel topology', () => {
   assert.match(messageContracts, /@ZLinkPacket\(PacketNames\.startOrderWorkflowReq\)/);
   assert.match(
     workflowRouter,
-    /requestToChannel\(SampleNames\.orderWorkflowSpotMesh, SampleNames\.orderWorkflowChannel, payload\)/
+    /requestToSpot\(orderId, payload\)[\s\S]*?\.instanceSpot\(SampleNames\.orderWorkflowSpotType\)[\s\S]*?\.inMesh\(SampleNames\.orderWorkflowSpotMesh\)/
   );
   assert.match(workflowModule, /zlinkFramework\(\)/);
   assert.equal((workflowModule.match(/\.addRouteMesh\(/g) ?? []).length, 1);
   assert.doesNotMatch(workflowModule, /workflowChannelEndpointForRole/);
   assert.match(workflowModule, /\.addRouteMesh\(SampleNames\.orderWorkflowSpotMesh\)/);
-  assert.match(workflowModule, /\.addSpotFactory\(\s*OrderWorkflowSpot\.name,\s*OrderWorkflowSpot,/);
+  assert.match(workflowModule, /\.addInstanceSpotFactory\(\s*SampleNames\.orderWorkflowSpotType,\s*OrderWorkflowSpot,/);
   assert.match(workflowModule, /OrderWorkflowService/);
-  assert.match(workflowModule, /\.addHandlerGroup\('workflow'\)/);
-  assert.match(orderWorkflowSpot, /class OrderWorkflowSpot implements ZLinkSpot/);
+  assert.doesNotMatch(workflowModule, /orderWorkflowChannel|addHandlerGroup\('workflow'\)/);
+  assert.match(orderWorkflowSpot, /class OrderWorkflowSpot implements ZLinkInstanceSpot/);
   assert.match(startOrderSpotHandler, /ZLinkSpotRequestHandler<OrderWorkflowSpot/);
-  assert.match(startOrderSpotHandler, /PacketNames\.startOrderWorkflowReq/);
+  assert.doesNotMatch(orderWorkflowSpot, /context\.handlers\.add/);
+  assert.match(startOrderSpotHandler, /@zlinkSpotPacketHandler\(\{ spot: \(\) => OrderWorkflowSpot/);
   assert.match(workflowService, /start\(request: StartOrderWorkflowReq/);
   assert.match(workflowService, /continue\(request: \{ orderId: string \}/);
   assert.match(orderDomain, /class OrderAggregate/);
@@ -946,7 +942,7 @@ test('TicTacToe TypeScript sample implements the common game state contract', ()
     [match, 'this.status = GameStatus.Won'],
     [match, 'this.status = GameStatus.TurnTimedOut'],
     [joinHandler, '.joinSpot(request.roomId, joinRequest)'],
-    [moveHandler, '.requestToSpot(spot, new PlaceMarkAtGameSpotReq(actor.actorId, request.cell))'],
+    [moveHandler, 'spot.placeMark(actor.actorId, request.cell)'],
     [gameSpot, 'gameStateNotify(state)'],
     [playActor, 'this.context.boundSession'],
     [authenticateHandler, 'context.actors.bindOrGet(actorRef)'],
@@ -1031,7 +1027,8 @@ test('Bingo TypeScript sample uses channel peers and location store registration
     [locationStore, 'redisKeyPrefix'],
     [apiModule, '.addLocationStore(createBingoLocationStore(config))'],
     [apiModule, 'bingoLocationOptions(builder.configureLocations())'],
-    [apiModule, '.addRouteMesh(SampleNames.roomSpotNode'],
+    [apiModule, '.addRouteMesh(SampleNames.playMeshName'],
+    [apiModule, '.addRouteMesh(SampleNames.matchmakingMeshName'],
     [apiModule, '.listen(config.apiEndpoint)'],
     [playModule, '.addLocationStore(createBingoLocationStore(config))'],
     [playModule, 'bingoLocationOptions(builder.configureLocations())'],
@@ -1068,9 +1065,9 @@ test('Bingo TypeScript sample uses channel peers and location store registration
 
   assert.deepEqual(missing, []);
   assert.deepEqual(violations, []);
-  for (const module of [apiModule, playModule, sessionModule]) {
-    assert.equal((module.match(/\.addRouteMesh\(/g) ?? []).length, 1);
-  }
+  assert.equal((apiModule.match(/\.addRouteMesh\(/g) ?? []).length, 2);
+  assert.equal((playModule.match(/\.addRouteMesh\(/g) ?? []).length, 1);
+  assert.equal((sessionModule.match(/\.addRouteMesh\(/g) ?? []).length, 1);
 });
 
 test('Bingo TypeScript sample publishes drawn number before finished notify', () => {
@@ -1264,8 +1261,8 @@ test('node client scenarios follow the common sample document order', () => {
     '1. Create the room through API',
     ".body(createGameHttpReq('match-ready'))",
     'game.roomId.length > 0',
-    'game.ownerPlayEndpoint.length > 0',
-    'createPlayerClient(game.ownerPlayEndpoint',
+    'const hostPlayEndpoint = game.playEndpoints[0]',
+    'createPlayerClient(hostPlayEndpoint',
     'createPlayerClient(observerPlayEndpoint',
     '2. Host, guest, and observer connect directly',
     "client1.request(authenticateReq('player-x'))",
@@ -1273,11 +1270,11 @@ test('node client scenarios follow the common sample document order', () => {
     '3. Host joins by explicit RoomId',
     'client1.request(joinGameReq(game.roomId))',
     "stateOf(client1Join).roomId === game.roomId",
-    'stateOf(client1Join).xActorId === client1Auth.player.actorId',
+    'client1State.payload.state.xActorId === client1Auth.player.actorId',
     'client1SawClient2Join',
     '4-6. Guest joins by the same RoomId',
     'client2.request(joinGameReq(game.roomId))',
-    'stateOf(client2Join).oActorId === client2Auth.player.actorId',
+    'client2State.payload.state.oActorId === client2Auth.player.actorId',
     'client1Running.payload.state.nextTurn === GameMarks.x',
     '7. Each move response is matched with the opponent notify',
     'client1.request(placeMarkStreamReq(0))',
@@ -1433,8 +1430,8 @@ test('TicTacToe server uses framework stream session instead of connector framin
     '.addStreamNode(SampleNames.playStream',
     '.registerSession(PlaySessionFactory)',
     'context.client.reply',
-    'this.actors.getOrCreate',
-    'new DeliverPlayNotification(payload)'
+    '.getOrCreate(',
+    'await actor.push(payload)'
   ]) {
     if (!`${playModule}\n${playSession}\n${authenticateHandler}\n${playActor}\n${playJoinHandler}\n${gameSpot}`.includes(text)) {
       missing.push(text);
@@ -1452,25 +1449,22 @@ test('node samples keep contracts separate from sample configuration and applica
     samplesRoot,
     'TicTacToe.Ts',
     'Server',
-    'Play',
-    'Application',
-    'GameCreation',
-    'tictactoe-game-creator.ts'
+    'Api',
+    'Handlers',
+    'create-game-http-handler.ts'
   ), 'utf8');
   const bingoAllocator = fs.readFileSync(path.join(
     samplesRoot,
     'Bingo.Ts',
     'Server',
-    'Play',
-    'Application',
-    'RoomAllocation',
-    'bingo-room-allocator.ts'
+    'Matchmaking',
+    'bingo-match-reservation-store.ts'
   ), 'utf8');
   const required = [
     [ticTacToeSettings, 'SampleNames'],
     [ticTacToeSettings, 'SampleTimings'],
-    [ticTacToeCreator, 'class TicTacToeGameCreator'],
-    [bingoAllocator, 'class BingoRoomAllocator']
+    [ticTacToeCreator, '.create(SampleNames.gameSpotType)'],
+    [bingoAllocator, 'class BingoMatchReservationStore']
   ];
   const missing = required
     .filter(([content, text]) => !content.includes(text))
@@ -1491,7 +1485,7 @@ test('node samples keep contracts separate from sample configuration and applica
   assert.deepEqual(violations, []);
 });
 
-test('TicTacToe uses manual handler registration and other samples keep automatic registration', () => {
+test('all Node samples use automatic handler registration', () => {
   const apiMain = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Api', 'main.ts'), 'utf8');
   const playMain = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'main.ts'), 'utf8');
   const apiModule = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Api', 'tictactoe-api-module.ts'), 'utf8');
@@ -1511,8 +1505,10 @@ test('TicTacToe uses manual handler registration and other samples keep automati
     'Play',
     'Infrastructure',
     'ZLink',
+    'Spots',
+    'EntrySpot',
     'Handlers',
-    'create-game-handler.ts'
+    'play-actor-join-game-handler.ts'
   ), 'utf8');
   const ticTacToeTimerHandler = fs.readFileSync(path.join(
     samplesRoot,
@@ -1545,20 +1541,19 @@ test('TicTacToe uses manual handler registration and other samples keep automati
   const required = [
     [nestPackage, 'export function zlinkRequestHandler'],
     [nestPackage, 'export function zlinkSpotTimerHandler'],
-    [apiModule, '.addRequestHandler(PacketNames.authenticatePlayerReq, AuthenticatePlayerHandler)'],
-    [playModule, '.addRequestHandler(PacketNames.createGameReq, CreateGameHandler)'],
-    [playModule, 'CreateGameHandler'],
-    [playModule, 'PlayActorJoinGameHandler'],
-    [playModule, 'PlayActorPlaceMarkHandler'],
-    [fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Infrastructure', 'ZLink', 'Actors', 'play-actor.ts'), 'utf8'),
-      'this.context.handlers.addHandler(PlayActorJoinGameHandler)'],
-    [fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Infrastructure', 'ZLink', 'Actors', 'play-actor.ts'), 'utf8'),
-      'this.context.handlers.addHandler(PlayActorPlaceMarkHandler)'],
+    [apiModule, 'zlinkModule(__dirname'],
+    [apiModule, ".addHandlerGroup('api')"],
+    [apiHandler, "@zlinkRequestHandler('api', PacketNames.authenticatePlayerReq)"],
+    [playModule, 'objectServer.addSpotFactory('],
+    [playModule, 'zlinkModule(__dirname'],
+    [playHandler, '@zlinkEntrySpotActorRequestHandler({'],
     [ticTacToeTimerHandler, 'class TicTacToeGameTimerHandler'],
+    [ticTacToeTimerHandler, '@zlinkSpotTimerHandler({'],
     [bingoTimerHandler, 'class BingoRoomTimerHandler'],
     [bingoTimerHandler, '@zlinkSpotTimerHandler({'],
     [fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Api', 'bingo-api-module.ts'), 'utf8'), '.addHandlerGroup(\'api\')'],
-    [bingoPlayModule, '.addHandlerGroup(\'play\')'],
+    [fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Matchmaking', 'bingo-matchmaking-module.ts'), 'utf8'),
+      '.addInstanceSpotFactory('],
     [fs.readFileSync(path.join(samplesRoot, 'DeliveryDispatch.Ts', 'Server', 'Session', 'customer-status-handler.ts'), 'utf8'),
       '@zlinkEntrySpotActorSendHandler({'],
     [fs.readFileSync(path.join(samplesRoot, 'DeliveryDispatch.Ts', 'Server', 'Session', 'customer-status-handler.ts'), 'utf8'),
@@ -1575,7 +1570,7 @@ test('TicTacToe uses manual handler registration and other samples keep automati
   }
   for (const [name, content] of [
     ['TicTacToe.Ts/Server/Api/Handlers/authenticate-player-handler.ts', apiHandler],
-    ['TicTacToe.Ts/Server/Play/Infrastructure/ZLink/Handlers/create-game-handler.ts', playHandler],
+    ['TicTacToe.Ts/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/play-actor-join-game-handler.ts', playHandler],
     ['TicTacToe.Ts/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/tictactoe-game-timer-handler.ts', ticTacToeTimerHandler],
     ['Bingo.Ts/Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/Handlers/bingo-room-timer-handler.ts', bingoTimerHandler]
   ]) {
@@ -1598,7 +1593,6 @@ test('TicTacToe uses manual handler registration and other samples keep automati
     'providers: [',
     "require('@nestjs/common')",
     'ZLinkModule.forRoot',
-    'CreateGameHandler',
     'AuthenticatePlayerHandler',
     'PlayActorJoinGameHandler',
     'PlayActorPlaceMarkHandler'
@@ -1612,30 +1606,51 @@ test('TicTacToe uses manual handler registration and other samples keep automati
       }
     }
   }
-  for (const text of [
-    'zlinkDiscoverProviders',
-    ".addHandlerGroup('play')",
-    "@zlinkRequestHandler('play', PacketNames.createGame)",
-    '@zlinkSpotTimerHandler({'
-  ]) {
-    if (playModule.includes(text) || playHandler.includes(text) || ticTacToeTimerHandler.includes(text)) {
-      violations.push(`TicTacToe.manual:${text}`);
-    }
-  }
-  for (const sample of requiredSamples.filter((name) => name !== 'TicTacToe.Ts')) {
+  for (const sample of requiredSamples) {
     for (const file of sampleSourceFiles(path.join(samplesRoot, sample))) {
       const content = fs.readFileSync(file, 'utf8');
       if (/\.add(?:Request|Send|Publish)Handler\(/.test(content)
         || /\.addSubscribe\(/.test(content)
+        || /\.handlers\.add(?:Handler|Packet|Subscribe|ActorPacket)\(/.test(content)
         || /\.actor(?:Request|Send)\(/.test(content)
         || /\.packet\(/.test(content)) {
         violations.push(`${relativePath(samplesRoot, file)}:manual-handler-registration`);
+      }
+      if (/@ZLink(?:Request|Send|Publish|SpotRequest|SpotSubscription|SpotActorSend|SpotActorRequest|StreamPacket|StreamRaw)\(/.test(content)) {
+        violations.push(`${relativePath(samplesRoot, file)}:handler-missing-nest-discovery-metadata`);
+      }
+      if (
+        file.endsWith('-module.ts')
+        && content.includes('ZLinkModule.forRoot')
+        && !content.includes('zlinkModule(__dirname')
+      ) {
+        violations.push(`${relativePath(samplesRoot, file)}:automatic-discovery-disabled`);
       }
     }
   }
 
   assert.deepEqual(missing, []);
   assert.deepEqual(violations, []);
+});
+
+test('session samples that bind actors enable Framework actor dispatch', () => {
+  const modules = [
+    ['Bingo.Ts', 'Server', 'Session', 'bingo-session-module.ts'],
+    ['TicTacToe.Ts', 'Server', 'Play', 'tictactoe-play-module.ts'],
+    ['SupportChat.Ts', 'Server', 'Session', 'supportchat-session-module.ts'],
+    ['DeliveryDispatch.Ts', 'Server', 'Session', 'session-module.ts'],
+    ['DeliveryDispatch.Ts', 'Server', 'CourierSession', 'courier-session-module.ts'],
+    ['GameQuest.Ts', 'Server', 'GameApi', 'game-api-module.ts'],
+    ['ZoneWorld', 'Server', 'Gateway', 'gateway-module.ts']
+  ];
+  const missing = modules
+    .filter((segments) => {
+      const source = fs.readFileSync(path.join(samplesRoot, ...segments), 'utf8');
+      return !source.includes('.enableActorDispatch()');
+    })
+    .map((segments) => segments.join('/'));
+
+  assert.deepEqual(missing, []);
 });
 
 test('TicTacToe keeps manual topology on one physical MeshNode per process', () => {
@@ -1676,21 +1691,21 @@ test('TicTacToe keeps manual topology on one physical MeshNode per process', () 
   for (const module of [apiModule, playModule]) {
     assert.equal((module.match(/\.addRouteMesh\(/g) ?? []).length, 1);
     assert.match(module, /addRouteMesh\(SampleNames\.playSpotNode\)/);
-    assert.match(module, /channelName\(SampleNames\.apiChannel\)/);
-    assert.match(module, /channelName\(SampleNames\.playChannel\)/);
+    assert.match(module, /channel\(SampleNames\.apiChannel\)/);
     assert.match(module, /peerConnections\(\)\.connect\(/);
   }
-  assert.match(apiModule, /addRequestHandler\(PacketNames\.authenticatePlayerReq, AuthenticatePlayerHandler\)/);
-  assert.match(playModule, /addRequestHandler\(PacketNames\.createGameReq, CreateGameHandler\)/);
-  assert.match(createGame, /requestToChannel\(\s*SampleNames\.playSpotNode,\s*SampleNames\.playChannel/);
-  assert.match(authenticate, /requestToChannel\(\s*SampleNames\.playSpotNode,\s*SampleNames\.apiChannel/);
+  assert.match(apiModule, /\.addHandlerGroup\('api'\)/);
+  assert.match(apiModule, /mesh\.objects\(\)\.client\(\)/);
+  assert.match(playModule, /objectServer\.addSpotFactory\(/);
+  assert.match(createGame, /\.create\(SampleNames\.gameSpotType\)/);
+  assert.doesNotMatch(createGame, /requestToChannel|ownerPlayEndpoint|NodeRid/);
+  assert.match(authenticate, /requestToChannel\(\s*SampleNames\.apiChannel/);
 });
 
 test('only TicTacToe uses manual server-to-server connections', () => {
   const ticTacToeServer = sampleSourceFiles(path.join(samplesRoot, 'TicTacToe.Ts', 'Server'))
     .map((file) => fs.readFileSync(file, 'utf8'))
     .join('\n');
-  assert.match(ticTacToeServer, /\.addRequestHandler\(/);
   assert.match(ticTacToeServer, /\.peerConnections\(\)\.connect\(/);
 
   const violations = [];
@@ -1778,7 +1793,7 @@ test('Bingo TypeScript sample normalizes wire room settings before creating room
   ), 'utf8');
 
   assert.match(roomModels, /function roomSettingsFromPayload/);
-  assert.match(roomSpot, /const settings = request\.decode<unknown>/);
+  assert.match(roomSpot, /const settings = request\.decode<BingoRoomSettingsInput>/);
   assert.match(roomSpot, /roomSettingsFromPayload\(settings\)/);
   assert.doesNotMatch(roomSpot, /protobufSerializer\.deserialize/);
 });
@@ -1850,23 +1865,23 @@ test('Bingo TypeScript sample exposes spot actor contracts explicitly', () => {
     [roomSpot, 'implements ZLinkSpot<PlayerActor>'],
     // node spec `04-spots.ko.md:65` declares onActorJoin(actorId: string, request).
     [roomSpot, 'onActorJoin(actorId: string'],
-    [roomSpot, 'onJoinedActor(actor: ZLinkActorMembership'],
-    [roomSpot, 'onLeaveActor(actor: ZLinkActorMembership'],
-    [roomSpot, 'onDisconnectActor(_actor: ZLinkActorMembership'],
+    [roomSpot, 'onJoinedActor(actor: PlayerActor'],
+    [roomSpot, 'onLeaveActor(actor: PlayerActor'],
+    [roomSpot, 'onDisconnectActor(_actor: PlayerActor'],
     [entrySpot, 'implements ZLinkEntrySpot<PlayerActor>'],
-    [entrySpot, 'onJoinedActor(actor: ZLinkActorMembership'],
-    [entrySpot, 'onLeaveActor(actor: ZLinkActorMembership'],
-    [entrySpot, 'onDisconnectActor(_actor: ZLinkActorMembership'],
+    [entrySpot, 'onJoinedActor(actor: PlayerActor'],
+    [entrySpot, 'onLeaveActor(actor: PlayerActor'],
+    [entrySpot, 'onDisconnectActor(_actor: PlayerActor'],
     [matchHandler, 'zlinkEntrySpotActorRequestHandler'],
     [matchHandler, 'entrySpot: () => BingoEntrySpot'],
     [matchHandler, 'actor: () => PlayerActor'],
     [matchHandler, 'packetName: PacketNames.matchBingoReq'],
-    [matchHandler, 'implements ZLinkEntrySpotActorRequestHandler<PlayerActorType, MatchBingoReq, MatchBingoRes>'],
+    [matchHandler, 'implements ZLinkEntrySpotActorRequestHandler<BingoEntrySpot, PlayerActorType, MatchBingoReq, MatchBingoRes>'],
     [submitHandler, 'zlinkSpotActorRequestHandler'],
     [submitHandler, 'spot: () => BingoRoomSpot'],
     [submitHandler, 'actor: () => PlayerActor'],
     [submitHandler, 'packetName: PacketNames.submitBingoCardReq'],
-    [submitHandler, 'implements ZLinkSpotActorRequestHandler<PlayerActor, SubmitBingoCardReq, SubmitBingoCardRes>']
+    [submitHandler, 'implements ZLinkSpotActorRequestHandler<BingoRoomSpot, PlayerActor, SubmitBingoCardReq, SubmitBingoCardRes>']
   ];
   const missing = required
     .filter(([content, text]) => !content.includes(text))
@@ -1880,7 +1895,7 @@ test('Bingo TypeScript sample exposes spot actor contracts explicitly', () => {
     if (content.includes('addActorPacket')) {
       violations.push(name);
     }
-    for (const forbidden of ['Map<string, PlayerActor>', 'onJoinedActor(actor: PlayerActor', 'actor.attachRoom(']) {
+    for (const forbidden of ['Map<string, PlayerActor>', 'actor.attachRoom(']) {
       if (content.includes(forbidden)) violations.push(`${name}:${forbidden}`);
     }
   }
@@ -1929,9 +1944,8 @@ test('node TypeScript samples schedule actor destroy in Entry Spot without mutab
     for (const forbidden of ['destroyAfterEntrySpotJoin', 'markForDestroyAfterRoomLeave', 'markDisconnected']) {
       if (actor.includes(forbidden)) missing.push(`${sample.sample}:actor:${forbidden}`);
     }
-    for (const forbidden of ['onJoinedActor(actor: PlayerActor', 'onLeaveActor(actor: PlayerActor']) {
-      if (userSpot.includes(forbidden)) missing.push(`${sample.sample}:userSpot:${forbidden}`);
-    }
+    assert.match(userSpot, /onJoinedActor\(actor: [A-Za-z]+Actor/);
+    assert.match(userSpot, /onLeaveActor\(actor: [A-Za-z]+Actor/);
   }
 
   assert.deepEqual(missing, []);
@@ -2218,11 +2232,7 @@ function addDiscoveredProviderFiles(file, content, add, files) {
 }
 
 function defaultZLinkProviderDiscoveryRoots(roleRoot) {
-  return [
-    path.join(roleRoot, 'Handlers'),
-    path.join(roleRoot, 'Infrastructure', 'ZLink', 'Handlers'),
-    path.join(roleRoot, 'Infrastructure', 'ZLink', 'Spots', 'Handlers')
-  ].filter((rootDir) => fs.existsSync(rootDir));
+  return fs.existsSync(roleRoot) ? [roleRoot] : [];
 }
 
 function importSpecifiers(content) {

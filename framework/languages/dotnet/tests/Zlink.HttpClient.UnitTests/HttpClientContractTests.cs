@@ -182,13 +182,13 @@ public sealed class HttpClientContractTests
     }
 
     [Fact]
-    public async Task Caller_can_unwrap_typed_body()
+    public async Task Fetch_returns_typed_body_directly()
     {
         using var server = new TestHttpServer(async ctx =>
             await ctx.Response.WriteAsync(200, """{"id":7,"name":"Aria"}"""));
         using var client = ZLinkHttpClient.Create(server.BaseUrl).Build();
 
-        var player = await Task.Run(() => client.Get("/players/7").Async<Player>().AsTask().GetAwaiter().GetResult().Body);
+        var player = await client.Get("/players/7").Fetch<Player>();
 
         Assert.Equal(7, player.Id);
         Assert.Equal("Aria", player.Name);
@@ -669,12 +669,12 @@ public sealed class HttpClientContractTests
     }
 
     [Fact]
-    public void Codec_extension_rejects_stream_codec_without_http_serializer()
+    public void Codec_extension_ignores_stream_registration_without_http_serializer()
     {
-        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
-            ZLinkHttpClient.Create("http://h").Codecs(codecs => codecs.Use(StreamOnlyCodecExtension.Instance)));
+        var builder = ZLinkHttpClient.Create("http://h")
+            .Codecs(codecs => codecs.Use(StreamOnlyCodecExtension.Instance));
 
-        Assert.Contains("must be paired with an HTTP payload serializer", exception.Message);
+        Assert.NotNull(builder);
     }
 
     [Fact]
@@ -977,14 +977,19 @@ public sealed class HttpClientContractTests
         }
     }
 
-    private sealed class StreamOnlyCodecExtension : IZLinkCodecExtension
+    private sealed class StreamOnlyCodecExtension :
+        IZLinkCodecExtension,
+        IZlinkStreamCodecRegistration
     {
         public static StreamOnlyCodecExtension Instance { get; } = new();
 
         public void Register(IZLinkCodecRegistrar codecs)
         {
-            codecs.AddStreamCodec("application/x-stream-only", ZlinkStreamCodec.Protobuf);
         }
+
+        public string ContentType => "application/x-stream-only";
+
+        public ZlinkStreamCodec Codec => ZlinkStreamCodec.Protobuf;
     }
 
     [MessagePackObject]

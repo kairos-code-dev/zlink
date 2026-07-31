@@ -7,15 +7,8 @@ public record SampleTopology(
     String instanceName,
     String logDirectory,
     String streamEndpoint,
-    String channelEndpoint,
-    String spotEndpoint,
     String spotRouterEndpoint,
-    String notificationChannelEndpoint,
-    String apiANotificationChannelEndpoint,
-    String apiBNotificationChannelEndpoint,
     String httpEndpoint,
-    String missionAChannelEndpoint,
-    String missionBChannelEndpoint,
     String redisEndpoint,
     String redisKeyPrefix) {
 
@@ -25,21 +18,15 @@ public record SampleTopology(
             required(logDirectory, "logDirectory"),
             required(streamEndpoint, "streamEndpoint"),
             required(httpEndpoint, "httpEndpoint"),
-            required(missionAChannelEndpoint, "missionAChannelEndpoint"),
-            required(missionBChannelEndpoint, "missionBChannelEndpoint"),
-            required(notificationChannelEndpoint, "notificationChannelEndpoint"));
+            required(spotRouterEndpoint, "spotRouterEndpoint"));
     }
 
     public QuestMission questMission() {
         return new QuestMission(
             required(instanceName, "instanceName"),
             required(logDirectory, "logDirectory"),
-            required(channelEndpoint, "channelEndpoint"),
             required(httpEndpoint, "httpEndpoint"),
-            required(spotEndpoint, "spotEndpoint"),
-            required(spotRouterEndpoint, "spotRouterEndpoint"),
-            required(apiANotificationChannelEndpoint, "apiANotificationChannelEndpoint"),
-            required(apiBNotificationChannelEndpoint, "apiBNotificationChannelEndpoint"));
+            required(spotRouterEndpoint, "spotRouterEndpoint"));
     }
 
     public Location location() {
@@ -67,20 +54,14 @@ public record SampleTopology(
         String logDirectory,
         String streamEndpoint,
         String httpEndpoint,
-        String missionAChannelEndpoint,
-        String missionBChannelEndpoint,
-        String notificationChannelEndpoint) {
+        String spotRouterEndpoint) {
     }
 
     public record QuestMission(
         String instanceName,
         String logDirectory,
-        String channelEndpoint,
         String httpEndpoint,
-        String spotEndpoint,
-        String spotRouterEndpoint,
-        String apiANotificationChannelEndpoint,
-        String apiBNotificationChannelEndpoint) {
+        String spotRouterEndpoint) {
     }
 
     public record Location(String redisEndpoint, String redisKeyPrefix) {

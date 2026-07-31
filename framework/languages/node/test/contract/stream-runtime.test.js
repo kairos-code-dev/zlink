@@ -26,6 +26,92 @@ test('stream runtime is exported from framework root surface', () => {
   assert.equal(typeof framework.DefaultZLinkSessionContext, 'function');
 });
 
+test('managed stream binds Session Actors through the Framework service without binding service APIs', async () => {
+  const actor = {
+    actorId: 'actor-framework-service',
+    generation: 7n,
+    nodeRid: 'node-play'
+  };
+  const operations = new Map();
+  const bindings = [];
+  let nextOperation = 1n;
+  const operation = (kind) => {
+    const id = { high: 0n, low: nextOperation++ };
+    operations.set(id.low, kind);
+    return id;
+  };
+  const service = {
+    start() {},
+    shutdown() { return 0; },
+    close() {},
+    status() {
+      return {
+        state: 2,
+        lifecycleGeneration: 1n,
+        sessionCount: 1n,
+        bindingCount: BigInt(bindings.length),
+        pendingMessageCount: 0n,
+        pendingByteCount: 0n,
+        lastError: 0
+      };
+    },
+    lookupActor() { return operation('lookup'); },
+    bindActor(sessionRid, value) {
+      bindings.push({
+        sessionRid,
+        actor: value,
+        bindingGeneration: 1n,
+        membershipEpoch: 1n
+      });
+      return operation('bind');
+    },
+    unbindActor() { return operation('unbind'); },
+    bindings() { return bindings; },
+    sendToActor() { return 0; }
+  };
+  const completions = {
+    async wait(id) {
+      const kind = operations.get(id.low);
+      return {
+        terminalResult: 0,
+        failureErrno: 0,
+        operationKind: 0,
+        kindData: kind === 'lookup'
+          ? { kind: 'actorLookupCompletion', location: { actor } }
+          : null,
+        parts: []
+      };
+    }
+  };
+  const rawStreamSocket = {
+    sendTimeoutMs: 1000,
+    sendHighWaterMark: 16,
+    onSendReady() {},
+    send() { return true; },
+    disconnectPeer() {},
+    onFramedPacket() {}
+  };
+  const stream = new framework.ZLinkManagedStream(
+    rawStreamSocket,
+    'session-rid',
+    undefined,
+    service,
+    completions
+  );
+
+  await stream.bindActor({
+    actorId: actor.actorId,
+    objectGeneration: actor.generation,
+    meshName: 'play',
+    nodeRid: actor.nodeRid
+  }, 1000);
+
+  assert.equal(bindings.length, 1);
+  assert.equal(typeof rawStreamSocket.bindActor, 'undefined');
+  assert.equal(typeof rawStreamSocket.unbindActor, 'undefined');
+  assert.equal(typeof rawStreamSocket.sendBoundActor, 'undefined');
+});
+
 test('ZLinkStreamBindingRuntime creates dotnet-shaped session context and closes through stream', async () => {
   let closed = 0;
   const runtime = new framework.ZLinkStreamBindingRuntime();
@@ -134,8 +220,13 @@ test('managed stream remote binding keeps the opaque backend session routing id'
   assert.equal(confirmedSessionRids[0], backendSessionRid);
 });
 
-test('remote actor session binding uses a non-correlated command inside the routed acknowledgement', async () => {
-  const actorRef = { nodeRid: 'actor-node', actorId: 'actor-bind-command', generation: 3n };
+test('remote actor session binding uses a non-correlated command over the actor mesh node route', async () => {
+  const actorRef = {
+    nodeRid: 'actor-node',
+    actorId: 'actor-bind-command',
+    objectGeneration: 3n,
+    meshName: 'actor.route'
+  };
   const routed = [];
   const host = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration({
@@ -155,9 +246,9 @@ test('remote actor session binding uses a non-correlated command inside the rout
       };
     }
   });
-  host.routeTransport.requestRawToSpot = async (_remoteAddress, request) => {
-    routed.push(JSON.parse(request.getString('utf8')));
-    return [zlink.Message.from(JSON.stringify({ ok: true, response: { acknowledged: true } }))];
+  host.routeTransport.request = async (meshName, targetNodeRid, packetName, request) => {
+    routed.push({ meshName, targetNodeRid, packetName, request });
+    return { ok: true, response: { acknowledged: true } };
   };
 
   await host.boundSessionRelay.actorPackets.confirmRemoteSessionBinding(
@@ -167,13 +258,16 @@ test('remote actor session binding uses a non-correlated command inside the rout
   );
 
   assert.equal(routed.length, 1);
-  const header = streamProtocol.decodeStreamHeader(Buffer.from(routed[0].header, 'base64'));
+  assert.equal(routed[0].meshName, 'actor.route');
+  assert.equal(routed[0].targetNodeRid, 'actor-node');
+  assert.equal(routed[0].packetName, framework.ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET);
+  const header = streamProtocol.decodeStreamHeader(Buffer.from(routed[0].request.header, 'base64'));
   assert.equal(header.name, 'framework.internal.actor-session-bind');
   assert.equal(header.kind, streamProtocol.ZLinkStreamMessageKind.Send);
   assert.equal(header.flags, streamProtocol.ZLinkStreamHeaderFlags.None);
   assert.equal(header.requestSeq, undefined);
-  assert.equal(routed[0].boundSessionTargetNodeRid, 'session-node');
-  assert.equal(routed[0].boundSessionSpotId, 'session-node');
+  assert.equal(routed[0].request.boundSessionTargetNodeRid, 'session-node');
+  assert.equal(routed[0].request.boundSessionSpotId, 'session-node');
 });
 
 test('remote actor session binding keeps its declared return route before peer discovery catches up', async () => {
@@ -554,14 +648,13 @@ test('runtime host bound session uses routed Session target before native Sessio
   const host = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration()
   });
-  host.routeTransport.sendToSpot = async (remoteAddress, message, options) => {
+  host.routeTransport.submit = async (routerChannelId, targetNodeRid, packetName, message, signal) => {
     routeCalls.push({
-      routerChannelId: remoteAddress.routerChannelId,
-      targetNodeRid: remoteAddress.targetNodeRid,
-      spotId: remoteAddress.spotId,
-      packetName: message.packetName,
+      routerChannelId,
+      targetNodeRid,
+      packetName,
       message,
-      signal: options.signal
+      signal
     });
     return { ok: true };
   };
@@ -601,7 +694,6 @@ test('runtime host bound session uses routed Session target before native Sessio
   assert.equal(routeCalls.length, 1);
   assert.equal(routeCalls[0].routerChannelId, 'room.route');
   assert.equal(String(routeCalls[0].targetNodeRid), 'session-node');
-  assert.equal(String(routeCalls[0].spotId), 'session-entry');
   assert.equal(routeCalls[0].packetName, '__zlink.actor.bound_session.send');
   assert.equal(routeCalls[0].message.boundPacketName, 'Notify');
 });
@@ -675,12 +767,11 @@ test('runtime host bound session uses routed Session target before stale local r
   const host = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration()
   });
-  host.routeTransport.sendToSpot = async (remoteAddress, message, options) => {
+  host.routeTransport.submit = async (routerChannelId, targetNodeRid, packetName, message, signal) => {
     routeCalls.push({
-      routerChannelId: remoteAddress.routerChannelId,
-      targetNodeRid: remoteAddress.targetNodeRid,
-      spotId: remoteAddress.spotId,
-      packetName: message.packetName,
+      routerChannelId,
+      targetNodeRid,
+      packetName,
       message
     });
     return { ok: true };
@@ -769,11 +860,13 @@ test('runtime host bound session uses Spot route target even when route channel 
     routeSends.push({ routerChannelId, targetNodeRid, packetName, message, signal });
     return Promise.resolve();
   };
-  host.routeTransport.sendToSpot = async (remoteAddress, request, options) => {
+  host.routeTransport.submit = async (routerChannelId, targetNodeRid, packetName, request, signal) => {
     spotSends.push({
-      remoteAddress,
+      routerChannelId,
+      targetNodeRid,
+      packetName,
       message: request,
-      options
+      signal
     });
     return { ok: true };
   };
@@ -801,10 +894,9 @@ test('runtime host bound session uses Spot route target even when route channel 
   assert.equal(routeSends.length, 0);
   await waitForCondition(() => spotSends.length === 1, 'Spot bound session submit');
   assert.equal(spotSends.length, 1);
-  assert.equal(spotSends[0].remoteAddress.routerChannelId, 'room.route');
-  assert.equal(String(spotSends[0].remoteAddress.targetNodeRid), 'session-node');
-  assert.equal(String(spotSends[0].remoteAddress.spotId), 'session-entry');
-  assert.equal(spotSends[0].options.packetName, '__zlink.actor.bound_session.send');
+  assert.equal(spotSends[0].routerChannelId, 'room.route');
+  assert.equal(String(spotSends[0].targetNodeRid), 'session-node');
+  assert.equal(spotSends[0].packetName, '__zlink.actor.bound_session.send');
 });
 
 test('runtime host local spot join preserves routed Session target for stream-bound actor', async () => {
@@ -863,8 +955,8 @@ test('runtime host local actor uses its current routed session target', async ()
   const host = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration()
   });
-  host.routeTransport.sendToSpot = async (target, payload) => {
-    routed.push({ target, payload });
+  host.routeTransport.submit = async (routerChannelId, targetNodeRid, packetName, payload) => {
+    routed.push({ routerChannelId, targetNodeRid, packetName, payload });
     return { ok: true };
   };
   host.streamBindingRuntime = new framework.ZLinkStreamBindingRuntime({ actorBindTimeoutMs: 100 });
@@ -898,8 +990,9 @@ test('runtime host local actor uses its current routed session target', async ()
     .submit();
 
   await waitForCondition(() => routed.length === 1, 'routed bound session send');
-  assert.equal(routed[0].target.routerChannelId, 'room.route');
-  assert.equal(routed[0].target.targetNodeRid, 'session-node');
+  assert.equal(routed[0].routerChannelId, 'room.route');
+  assert.equal(routed[0].targetNodeRid, 'session-node');
+  assert.equal(routed[0].packetName, '__zlink.actor.bound_session.send');
   assert.equal(routed[0].payload.boundPacketName, 'Notify');
   assert.deepEqual(routed[0].payload.message, { ok: true });
 });
@@ -958,10 +1051,10 @@ test('actor response compression reaches local, native, and remote bound-session
   };
   const relay = new ZLinkRemoteBoundSessionRelay({
     routeTransport: {
-      async requestRawToSpot(target, payload) {
-        remoteTargets.push(target);
-        remotePayloads.push(JSON.parse(payload.data().toString()));
-        return [];
+      async submit(routerChannelId, targetNodeRid, packetName, payload) {
+        remoteTargets.push({ routerChannelId, targetNodeRid, packetName });
+        remotePayloads.push(payload);
+        return { status: 'submitted' };
       }
     },
     streamBindingRuntime: () => streamRuntime,
@@ -969,12 +1062,14 @@ test('actor response compression reaches local, native, and remote bound-session
       getState() {
         if (!actorStateAvailable) return undefined;
         return {
-          nativeActorRef: { nodeRid: 'node-a', actorId: 'actor-compress', generation: 1n },
+          nativeActorRef: { nodeRid: 'node-a', actorId: 'actor-compress', objectGeneration: 1n },
+          meshName: 'route-main',
+          boundSessionBindingGeneration: 1n,
           remoteBoundSessionTarget
         };
       }
     }),
-    primarySpotNode: () => ({}),
+    actorSessionNode: () => ({}),
     destroyedActorRefs: new Map(),
     boundSessionFactory() {
       throw new Error('bound session factory must not be used by response delivery');
@@ -1015,7 +1110,12 @@ test('actor response compression reaches local, native, and remote bound-session
     { accepted: 'after-transfer' },
     replyOptions,
     remoteBoundSessionTarget,
-    { nodeRid: 'node-a', actorId: 'actor-compress', generation: 1n }
+    {
+      nodeRid: 'node-a',
+      actorId: 'actor-compress',
+      objectGeneration: 1n,
+      meshName: 'route-main'
+    }
   );
   assert.equal(remotePayloads.length, 2);
   assert.deepEqual(remotePayloads[1].message, { accepted: 'after-transfer' });
@@ -1036,7 +1136,7 @@ test('actor response compression reaches local, native, and remote bound-session
   );
   assert.equal(remoteTargets.at(-1).routerChannelId, requestBoundSessionTarget.routerChannelId);
   assert.equal(remoteTargets.at(-1).targetNodeRid, requestBoundSessionTarget.targetNodeRid);
-  assert.equal(remoteTargets.at(-1).spotId, requestBoundSessionTarget.spotId);
+  assert.equal(remoteTargets.at(-1).packetName, framework.ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET);
 
   localAccepted = true;
   await relay.receiveRemoteBoundSessionResponse({
@@ -1061,14 +1161,13 @@ test('runtime host remote bound session send submits a routed Session command', 
   host.routeTransport.requestToSpot = async () => {
     throw new Error('bound session send must not wait for a routed reply');
   };
-  host.routeTransport.sendToSpot = async (remoteAddress, message, options) => {
+  host.routeTransport.submit = async (routerChannelId, targetNodeRid, packetName, message, signal) => {
     routeCalls.push({
-      routerChannelId: remoteAddress.routerChannelId,
-      targetNodeRid: remoteAddress.targetNodeRid,
-      spotId: remoteAddress.spotId,
-      packetName: message.packetName,
+      routerChannelId,
+      targetNodeRid,
+      packetName,
       packet: message,
-      signal: options.signal
+      signal
     });
     return { status: ZLinkSubmitStatus.Submitted };
   };
@@ -1096,7 +1195,6 @@ test('runtime host remote bound session send submits a routed Session command', 
   assert.equal(routeCalls.length, 1);
   assert.equal(routeCalls[0].routerChannelId, 'room.route');
   assert.equal(routeCalls[0].targetNodeRid, 'session-node');
-  assert.equal(routeCalls[0].spotId, 'session-entry');
   assert.equal(routeCalls[0].packetName, '__zlink.actor.bound_session.send');
   assert.equal(routeCalls[0].packet.packetName, '__zlink.actor.bound_session.send');
   assert.equal(routeCalls[0].packet.actorId, 'actor-remote');
@@ -1112,14 +1210,13 @@ test('runtime host remote bound session receiver forwards through actor remote t
   const routeReleased = new Promise((resolve) => {
     resolveRoute = resolve;
   });
-  host.routeTransport.sendToSpot = async (remoteAddress, message, options) => {
+  host.routeTransport.submit = async (routerChannelId, targetNodeRid, packetName, message, signal) => {
     routeCalls.push({
-      routerChannelId: remoteAddress.routerChannelId,
-      targetNodeRid: remoteAddress.targetNodeRid,
-      spotId: remoteAddress.spotId,
-      packetName: message.packetName,
+      routerChannelId,
+      targetNodeRid,
+      packetName,
       packet: message,
-      signal: options.signal
+      signal
     });
     await routeReleased;
     return { ok: true };
@@ -1156,7 +1253,6 @@ test('runtime host remote bound session receiver forwards through actor remote t
   assert.equal(routeCalls.length, 1);
   assert.equal(routeCalls[0].routerChannelId, 'room.route');
   assert.equal(routeCalls[0].targetNodeRid, 'session-node');
-  assert.equal(routeCalls[0].spotId, 'session-entry');
   assert.equal(routeCalls[0].packetName, '__zlink.actor.bound_session.send');
   assert.equal(routeCalls[0].packet.actorId, 'actor-hop');
   assert.equal(routeCalls[0].packet.boundPacketName, 'Notify');
@@ -1392,14 +1488,16 @@ test('internal route refresh preserves object generation while explicit bind can
   const original = await context.actors.bind({
     nodeRid: 'actor-a',
     actorId: 'actor-generation-fence',
-    generation: 1n
+    objectGeneration: 1n,
+    meshName: 'session-test'
   });
 
   await assert.rejects(
     bindingRuntime.refreshActor({
       nodeRid: 'actor-b',
       actorId: 'actor-generation-fence',
-      generation: 2n
+      objectGeneration: 2n,
+      meshName: 'session-test'
     }),
     /cannot replace object generation/
   );
@@ -1408,10 +1506,11 @@ test('internal route refresh preserves object generation while explicit bind can
   const replacement = await context.actors.bind({
     nodeRid: 'actor-b',
     actorId: 'actor-generation-fence',
-    generation: 2n
+    objectGeneration: 2n,
+    meshName: 'session-test'
   });
   assert.notEqual(replacement, original);
-  assert.equal(replacement.ref.generation, 2n);
+  assert.equal(replacement.ref.objectGeneration, 2n);
 });
 
 test('transferred actor ownership ACK waits until the session route replacement completes', async () => {
@@ -1666,14 +1765,13 @@ test('runtime host routed bound session receiver forwards through actor remote t
   const routeReleased = new Promise((resolve) => {
     resolveRoute = resolve;
   });
-  host.routeTransport.sendToSpot = async (remoteAddress, message, options) => {
+  host.routeTransport.submit = async (routerChannelId, targetNodeRid, packetName, message, signal) => {
     routeCalls.push({
-      routerChannelId: remoteAddress.routerChannelId,
-      targetNodeRid: remoteAddress.targetNodeRid,
-      spotId: remoteAddress.spotId,
-      packetName: message.packetName,
+      routerChannelId,
+      targetNodeRid,
+      packetName,
       packet: message,
-      signal: options.signal
+      signal
     });
     await routeReleased;
     return { ok: true };
@@ -1709,7 +1807,6 @@ test('runtime host routed bound session receiver forwards through actor remote t
   assert.equal(routeCalls.length, 1);
   assert.equal(routeCalls[0].routerChannelId, 'room.route');
   assert.equal(routeCalls[0].targetNodeRid, 'session-node');
-  assert.equal(routeCalls[0].spotId, 'session-entry');
   assert.equal(routeCalls[0].packetName, '__zlink.actor.bound_session.send');
   assert.equal(routeCalls[0].packet.actorId, 'actor-routed-hop');
   assert.equal(routeCalls[0].packet.boundPacketName, 'Notify');
@@ -2501,17 +2598,24 @@ test('session A to B rebind fences stale relay and late disconnect without touch
   });
   const sessionA = runtime.createSessionContext(fakeStream('session-a', 'rid-a'));
   const sessionB = runtime.createSessionContext(fakeStream('session-b', 'rid-b'));
-  const actorRef = { nodeRid: 'node-a', actorId: 'actor-x', generation: 7n };
+  const actorRef = {
+    nodeRid: 'node-a',
+    actorId: 'actor-x',
+    objectGeneration: 7n,
+    meshName: 'session-test'
+  };
   const stale = await sessionA.actors.bind(actorRef);
   const actorA = await sessionA.actors.bind({
     nodeRid: 'node-a',
     actorId: 'actor-a',
-    generation: 1n
+    objectGeneration: 1n,
+    meshName: 'session-test'
   });
   const actorB = await sessionB.actors.bind({
     nodeRid: 'node-b',
     actorId: 'actor-b',
-    generation: 1n
+    objectGeneration: 1n,
+    meshName: 'session-test'
   });
   const current = await sessionB.actors.bind(actorRef);
   sessionA.enterDispatch({
@@ -2544,7 +2648,7 @@ test('session A to B rebind fences stale relay and late disconnect without touch
   assert.equal(sessionB.actors.find(actorB.actorId), actorB);
   assert.equal(sessionB.actors.find(actorRef.actorId), current);
   assert.equal(runtime.find(actorRef.actorId), current);
-  assert.equal(current.ref.generation, 7n);
+  assert.equal(current.ref.objectGeneration, 7n);
 });
 
 test('stored actor route relays once without actor ref lookup or hidden retry', async () => {
@@ -2566,7 +2670,8 @@ test('stored actor route relays once without actor ref lookup or hidden retry', 
   const actor = await context.actors.bind({
     nodeRid: 'node-a',
     actorId: 'actor-route',
-    generation: 1n
+    objectGeneration: 1n,
+    meshName: 'session-test'
   });
   context.enterDispatch({
     kind: connector.ZlinkStreamMessageKind.Send,
@@ -2619,12 +2724,14 @@ test('logical actor disconnect waits for one callback and keeps the physical con
   const selected = await context.actors.bind({
     nodeRid: 'node-a',
     actorId: 'actor-selected',
-    generation: 1n
+    objectGeneration: 1n,
+    meshName: 'session-test'
   });
   const other = await context.actors.bind({
     nodeRid: 'node-a',
     actorId: 'actor-other',
-    generation: 1n
+    objectGeneration: 1n,
+    meshName: 'session-test'
   });
 
   let completed = false;
@@ -2785,7 +2892,7 @@ test('runtime host awaits routed actor disconnect notification before session cl
       routeChannels: ['spot.service']
     })
   });
-  runtime.routeTransport.requestToSpot = async () => {
+  runtime.routeTransport.request = async () => {
     sendStarted = true;
     await new Promise((resolve) => {
       releaseSend = resolve;

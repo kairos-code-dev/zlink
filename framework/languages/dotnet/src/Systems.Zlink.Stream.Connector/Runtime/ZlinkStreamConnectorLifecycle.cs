@@ -254,6 +254,7 @@ internal sealed class ZlinkStreamConnectorLifecycle(
             : reconnect.MaxDelay;
         var attempt = 0;
         ZlinkStreamError? lastError = null;
+        var transport = ZlinkStreamRuntimeMetrics.TransportLabel(options);
 
         try
         {
@@ -261,12 +262,15 @@ internal sealed class ZlinkStreamConnectorLifecycle(
             {
                 await Task.Delay(delay, _closeCts.Token).ConfigureAwait(false);
                 attempt++;
-                ZlinkStreamRuntimeMetrics.RecordReconnectAttempt();
 
                 try
                 {
                     var connection = await OpenConnectionAsync(_closeCts.Token).ConfigureAwait(false);
                     await AttachConnectionAsync(connection, _closeCts.Token).ConfigureAwait(false);
+                    ZlinkStreamRuntimeMetrics.RecordReconnect(
+                        transport,
+                        "connected",
+                        "transport_closed");
                     return;
                 }
                 catch (Exception ex) when (!_closeCts.IsCancellationRequested)
@@ -274,6 +278,10 @@ internal sealed class ZlinkStreamConnectorLifecycle(
                     lastError = ex is ZlinkStreamException streamException
                         ? streamException.Error
                         : MapConnectException(ex, _closeCts.Token);
+                    ZlinkStreamRuntimeMetrics.RecordReconnect(
+                        transport,
+                        "failed",
+                        ReconnectFailureReason(lastError));
                     await callbacks.PublishErrorAsync(lastError, CancellationToken.None)
                         .ConfigureAwait(false);
 
@@ -289,6 +297,10 @@ internal sealed class ZlinkStreamConnectorLifecycle(
         }
         catch (OperationCanceledException) when (_closeCts.IsCancellationRequested)
         {
+            ZlinkStreamRuntimeMetrics.RecordReconnect(
+                transport,
+                "shutdown",
+                "requested");
         }
         catch (ObjectDisposedException) when (_closeCts.IsCancellationRequested)
         {
@@ -297,6 +309,14 @@ internal sealed class ZlinkStreamConnectorLifecycle(
             // closed that transport; the background reconnect is complete.
         }
     }
+
+    private static string ReconnectFailureReason(ZlinkStreamError error) =>
+        error.Code switch
+        {
+            ZlinkStreamErrorCode.ConnectTimeout => "timeout",
+            ZlinkStreamErrorCode.TlsValidationFailed => "tls_failed",
+            _ => "connect_failed"
+        };
 
     private async ValueTask<IZlinkStreamConnection> OpenConnectionAsync(CancellationToken cancellationToken)
     {

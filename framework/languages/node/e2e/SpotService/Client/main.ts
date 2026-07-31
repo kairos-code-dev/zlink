@@ -38,6 +38,7 @@ import { runSmD12 } from './Scenarios/sm-d12-scenario';
 import { runSmD13 } from './Scenarios/sm-d13-scenario';
 import { runSmD14 } from './Scenarios/sm-d14-scenario';
 import { runSmD15 } from './Scenarios/sm-d15-scenario';
+import { runSmD16 } from './Scenarios/sm-d16-scenario';
 import { runSmE1 } from './Scenarios/sm-e1-scenario';
 import { runSmE2 } from './Scenarios/sm-e2-scenario';
 import { runSmE3 } from './Scenarios/sm-e3-scenario';
@@ -99,6 +100,7 @@ async function main(): Promise<void> {
     'SM-D13': () => runSmD13(options),
     'SM-D14': () => runSmD14(options),
     'SM-D15': () => runSmD15(options),
+    'SM-D16': () => runSmD16(options),
     'SM-E1': () => runSmE1(options),
     'SM-E2': () => runSmE2(options),
     'SM-E3': () => runSmE3(options),
@@ -127,6 +129,7 @@ async function main(): Promise<void> {
     'sm-d4': ['SM-D4'],
     'session-binding-e2e': ['SM-D4A', 'SM-D4B', 'SM-D5', 'SM-D5A'],
     'session-binding-regression': ['SM-D4A', 'SM-D4B', 'SM-D5A'],
+    'cross-mesh-actor-dispatch': ['SM-D16'],
     'sm-d5': ['SM-D5'],
     'sm-d7': ['SM-D7'],
     'sm-d8': ['SM-D8'],

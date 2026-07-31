@@ -19,6 +19,23 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
         }
     }
 
+    public void ConfigureAutoHwm(
+        IZLinkBackendContext context,
+        ZLinkApplicationHwmProfile profile)
+    {
+        var nativeContext = RequireContext(context).NativeContext;
+        nativeContext.Options.AutoHwmProfile = profile switch
+        {
+            ZLinkApplicationHwmProfile.Compact => AutoHwmProfile.Compact,
+            ZLinkApplicationHwmProfile.LowLatency => AutoHwmProfile.LowLatency,
+            ZLinkApplicationHwmProfile.Balanced => AutoHwmProfile.Balanced,
+            ZLinkApplicationHwmProfile.Throughput => AutoHwmProfile.Throughput,
+            _ => throw new ZLinkConfigurationException(
+                $"Unknown ApplicationHwmProfile value '{(int)profile}'.")
+        };
+        nativeContext.Options.AutoHwmEnabled = true;
+    }
+
     public IZLinkBackendDealerSocket CreateDealerSocket(IZLinkBackendContext context)
     {
         var socket = RequireContext(context).NativeContext.CreateDealerSocket();

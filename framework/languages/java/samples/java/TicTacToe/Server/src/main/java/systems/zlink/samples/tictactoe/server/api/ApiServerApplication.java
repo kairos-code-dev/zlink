@@ -12,6 +12,8 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
+import systems.zlink.samples.tictactoe.server.configuration.SampleLocationStore;
 import systems.zlink.samples.tictactoe.server.api.handlers.AuthenticatePlayerHandler;
 import systems.zlink.samples.tictactoe.server.api.handlers.CreateGameHttpHandler;
 import systems.zlink.samples.tictactoe.server.configuration.ApiSettings;
@@ -46,6 +48,11 @@ public final class ApiServerApplication {
     @Bean
     ZLinkFrameworkConfigurer apiFramework(ApiSettings settings) {
         return ApiServer.configure(settings);
+    }
+
+    @Bean(destroyMethod = "close")
+    ZLinkRedisLocationStore locationStore(ApiSettings settings) {
+        return SampleLocationStore.create(settings);
     }
 
     @Bean

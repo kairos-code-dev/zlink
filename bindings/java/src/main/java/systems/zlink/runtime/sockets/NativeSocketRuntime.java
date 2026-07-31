@@ -1,8 +1,11 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 package systems.zlink.runtime.sockets;
+import systems.zlink.internal.sockets.SocketOptionKey;
+import systems.zlink.internal.sockets.SocketOptions;
+import systems.zlink.internal.sockets.SocketOptionValueType;
 
-import systems.zlink.runtime.nativeapi.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.messaging.Message;
@@ -490,6 +493,10 @@ final class NativeSocketRuntime implements AutoCloseable {
 
     public void setSendReadyHandler(SendReadyHandler handler) {
         socketCore.setSendReadyHandler(handler);
+    }
+
+    public void setCompletionControlHandler(CompletionControlHandler handler) {
+        socketCore.setCompletionControlHandler(handler);
     }
 
     int send(byte[] data, int offset, int length, int sendFlags) {

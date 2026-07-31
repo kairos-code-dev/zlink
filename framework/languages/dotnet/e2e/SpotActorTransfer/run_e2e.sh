@@ -257,7 +257,12 @@ wait_health "$NODE_D_PROXY_ADMIN" actor-d-proxy
 
 start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" 127.0.0.1
 NODE_A_PID="${pids[${#pids[@]}-1]}"
-start_node actor-b "$NODE_B_URL" "$NODE_B_ROUTER" 127.0.0.1 false true
+TARGET_CRASH_AT_COMPLETE_GATE=false
+if [[ "$SCENARIO" == "ST-B5" ]]; then
+  TARGET_CRASH_AT_COMPLETE_GATE=true
+fi
+start_node actor-b "$NODE_B_URL" "$NODE_B_ROUTER" 127.0.0.1 \
+  false "$TARGET_CRASH_AT_COMPLETE_GATE"
 NODE_B_PID="${pids[${#pids[@]}-1]}"
 start_node actor-c "$NODE_C_URL" "$NODE_C_ROUTER" 127.0.0.1
 start_node actor-d "$NODE_D_URL" "$NODE_D_ROUTER" 127.0.0.1 true

@@ -14,11 +14,13 @@ import type {
 import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import type { ZLinkRuntimeEventPublisher } from '../diagnostics';
 import {
+  ZLinkLocationWriteIntent,
+  ZLinkLocationWriteStatus
+} from '../../contracts/Locations';
+import {
   ZLinkFrameworkRuntimeState,
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
-  ZLinkLocationWriteIntent,
-  ZLinkLocationWriteStatus,
   ZLinkObjectRole
 } from '../../contracts';
 import {
@@ -87,6 +89,7 @@ import type {
   ZLinkSpotBoundSessionRuntime
 } from './spot-runtime-ports';
 import { createAbortError } from '../abort';
+import type { ZLinkInboundDispatchBudget } from '../dispatch/inbound-dispatch-budget';
 
 const ZLINK_SEND_DONT_WAIT = 1;
 
@@ -116,6 +119,7 @@ export interface ZLinkSpotNodeRuntimeManagerOptions {
     owner: ReadyRecord,
     record: ReceiveRecord
   ) => void | Promise<void>;
+  readonly inboundDispatchBudget?: ZLinkInboundDispatchBudget;
 }
 
 interface ZLinkPublishSlotWaiter {
@@ -229,6 +233,9 @@ export class ZLinkSpotNodeRuntimeManager {
           ...Object.keys(spotNode.instanceSpotFactoryRegistrations ?? {}),
           ...Object.keys(spotNode.actorFactoryRegistrations ?? {})
         ];
+        const instanceSpotTypes = Object.keys(
+          spotNode.instanceSpotFactoryRegistrations ?? {}
+        );
         const hasLegacyObjectFactories =
           (spotNode.spotFactories?.length ?? 0) > 0
           || Object.keys(spotNode.instanceSpotFactories ?? {}).length > 0
@@ -244,7 +251,10 @@ export class ZLinkSpotNodeRuntimeManager {
           activeCapacityLimit:
             (spotNode.actorLimit ?? 10_000) + (spotNode.spotLimit ?? 128),
           pendingCapacityLimit: spotNode.activationConcurrencyLimit ?? 128,
-          objectCapabilities: stableTypes.map(type => `object-type:${type}`)
+          objectCapabilities: [
+            ...stableTypes.map(type => `object-type:${type}`),
+            ...instanceSpotTypes.map(type => `instance-spot-type:${type}`)
+          ]
         });
         for (const [channelName, channel] of Object.entries(spotNode.meshChannels ?? {})) {
           if (channel.server !== true) {
@@ -267,6 +277,7 @@ export class ZLinkSpotNodeRuntimeManager {
           });
         }
         pump = new ZLinkMeshDispatchPump(node, {
+          inboundDispatchBudget: this.options.inboundDispatchBudget,
           dispatch: (owner, record) => this.dispatchMeshRecord(spotNodeName, owner, record),
           reportError: (error) => this.options.dispatchErrors?.report({
             surface: ZLinkDispatchErrorSurface.RouteMeshChannel,
@@ -629,6 +640,15 @@ export class ZLinkSpotNodeRuntimeManager {
   ): Promise<void> {
     const activation = this.primaryEntryActivation();
     return activation?.notifyDisconnectActor(actor, signal) ?? Promise.resolve();
+  }
+
+  async notifyEntrySpotActorDisconnected(
+    meshName: string,
+    actor: ZLinkActor,
+    signal?: AbortSignal
+  ): Promise<void> {
+    await this.ensureEntryActivation(meshName);
+    await this.entryActivations.get(meshName)?.notifyDisconnectActor(actor, signal);
   }
 
   async dispose(signal?: AbortSignal): Promise<void> {

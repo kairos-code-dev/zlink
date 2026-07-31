@@ -1,47 +1,34 @@
-import { Inject, Injectable } from '@nestjs/common';
-import {
-  ZLINK_SPOT_MANAGER,
-  ZLINK_SPOT_OUTBOUND
-} from '@zlink-systems/nestjs';
-import { ZLinkSpotActorSend } from '@zlink-systems/framework';
-import { SampleNames } from '../../../../../../Configuration/sample-settings';
+import { zlinkSpotActorSendHandler } from '@zlink-systems/nestjs';
 import type {
-  ZLinkSpotActorSendContext,
-  ZLinkSpotManager,
-  ZLinkSpotOutbound
+  ZLinkMessageContext,
+  ZLinkSpotActorSendHandler
 } from '@zlink-systems/framework';
-import type { PlayActor } from '../../../Actors/play-actor';
+import { PlayActor } from '../../../Actors/play-actor';
 import type { LeaveGameReq } from '../../../../../../../Shared/Contracts/messages';
-import { PendingActorDestroyRegistry } from '../../EntrySpot/play-entry-spot';
-import { VerifyLeaveGameAtSpotReq } from './tictactoe-game-operation-handlers';
+import { PendingActorDestroyRegistry } from '../../EntrySpot/entry-spot-registries';
+import { TicTacToeGameSpot } from '../tictactoe-game-spot';
 
-@Injectable()
-class PlayActorLeaveGameHandler {
-  constructor(
-    @Inject(ZLINK_SPOT_MANAGER) private readonly spotHandles: ZLinkSpotManager,
-    @Inject(ZLINK_SPOT_OUTBOUND) private readonly spotOutbound: ZLinkSpotOutbound,
-    private readonly pendingDestroys: PendingActorDestroyRegistry
-  ) {}
+@zlinkSpotActorSendHandler({
+  actor: () => PlayActor,
+  packetName: 'LeaveGameReq',
+  spot: () => TicTacToeGameSpot
+})
+class PlayActorLeaveGameHandler
+  implements ZLinkSpotActorSendHandler<TicTacToeGameSpot, PlayActor, LeaveGameReq> {
+  constructor(private readonly pendingDestroys: PendingActorDestroyRegistry) {}
 
-  @ZLinkSpotActorSend('LeaveGameReq')
   async handle(
+    spot: TicTacToeGameSpot,
     actor: PlayActor,
-    _context: ZLinkSpotActorSendContext,
+    _context: ZLinkMessageContext,
     request: LeaveGameReq
   ): Promise<void> {
-    const spotRid = actor.context.spotRid;
-    if (spotRid === undefined || String(spotRid) !== request.roomId) {
+    if (actor.context.spotId !== request.roomId) {
       throw new Error(`Actor requested leave for a different room. roomId=${request.roomId}`);
     }
-    const spot = await this.spotHandles.find(spotRid);
-    if (spot === undefined) {
-      throw new Error(`Game spot '${String(spotRid)}' could not be resolved.`);
-    }
-    await this.spotOutbound
-      .requestToSpot(spot, new VerifyLeaveGameAtSpotReq(actor.actorId, request.roomId))
-      .yield<{ readonly allowed: true }>();
+    spot.verifyLeave(actor.actorId, request.roomId);
     this.pendingDestroys.mark(actor.actorId);
-    await actor.context.leaveSpot();
+    await spot.context.leaveActor(actor);
     actor.roomId = undefined;
     console.log(`actor: LeaveGameReq completed. actor=${actor.actorId}`);
   }

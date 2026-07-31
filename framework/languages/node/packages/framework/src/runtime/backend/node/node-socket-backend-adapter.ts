@@ -1,20 +1,15 @@
 import type { ZLinkBackendObject } from '../contracts';
 import {
-  closeBindingMessages,
   closeWithBusyRetry,
   disableSocketLinger,
   isBindingNotFound,
   isContextTerminatedError,
   isRouteRecvRetryable,
-  submitBindingRequest,
   submitBindingRequestCallback,
   submitBindingSend,
-  toNativeActorRef,
   toNativeRoutingId,
-  waitForBindingOperation,
   withNativeFallback,
   zlink,
-  type ZLinkBindingPromiseRequestSubmitOperation,
   type ZLinkBindingRequestOperation,
   type ZLinkBindingSendOperation
 } from './node-backend-adapter-support';
@@ -214,33 +209,18 @@ export function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & 
     onFramedPacket(handler: unknown): void {
       (nativeInstance as T & { setPacketHandler(value: unknown): void }).setPacketHandler(handler);
     },
-    async bindActor(sessionRid: unknown, actor: unknown, timeoutMs: number, signal?: AbortSignal): Promise<void> {
-      const operation = (nativeInstance as T & {
-        bindActor(sessionRid: unknown, actor: unknown): {
-          timeout(value: number): ZLinkBindingPromiseRequestSubmitOperation<Array<{ close(): void }>>;
-        };
-      }).bindActor(toNativeRoutingId(sessionRid), toNativeActorRef(actor)).timeout(timeoutMs);
-      const replies = await waitForBindingOperation(submitBindingRequest(operation), signal, closeBindingMessages);
-      closeBindingMessages(replies);
+    async bindActor(_sessionRid: unknown, _actor: unknown, _timeoutMs: number, _signal?: AbortSignal): Promise<void> {
+      throw new Error(
+        'Session Actor dispatch requires enableActorDispatch() and a Framework MeshNode service route.'
+      );
     },
-    async unbindActor(sessionRid: unknown, actorId: string, timeoutMs: number, signal?: AbortSignal): Promise<void> {
-      const operation = (nativeInstance as T & {
-        unbindActor(sessionRid: unknown, actorId: string): {
-          timeout(value: number): ZLinkBindingPromiseRequestSubmitOperation<Array<{ close(): void }>>;
-        };
-      }).unbindActor(toNativeRoutingId(sessionRid), actorId).timeout(timeoutMs);
-      const replies = await waitForBindingOperation(submitBindingRequest(operation), signal, closeBindingMessages);
-      closeBindingMessages(replies);
+    async unbindActor(_sessionRid: unknown, _actorId: string, _timeoutMs: number, _signal?: AbortSignal): Promise<void> {
+      throw new Error(
+        'Session Actor dispatch requires enableActorDispatch() and a Framework MeshNode service route.'
+      );
     },
-    sendBoundActor(sessionRid: unknown, actorId: string, parts: readonly unknown[], flags: number): boolean {
-      const operation = (nativeInstance as T & {
-        sendBoundActor(sessionRid: unknown, actorId: string): ZLinkBindingSendOperation;
-      }).sendBoundActor(toNativeRoutingId(sessionRid), actorId);
-      let submitter = operation;
-      for (const part of parts) {
-        submitter = submitter.message(part);
-      }
-      return submitter.flags(flags).submit();
+    sendBoundActor(_sessionRid: unknown, _actorId: string, _parts: readonly unknown[], _flags: number): boolean {
+      return false;
     }
   };
   return withNativeFallback(adapter, nativeInstance) as unknown as T & ZLinkBackendObject;

@@ -1,14 +1,20 @@
+using Zlink.Framework.Runtime.Dispatch;
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotOutboundTransport(
     IZLinkBackendSpot nativeSpot,
     TimeSpan? sendTimeout,
-    CancellationToken stopToken) : IAsyncDisposable
+    CancellationToken stopToken,
+    ZLinkCompletionAdmissionOwner? completionAdmission = null) : IAsyncDisposable
 {
     private readonly ZLinkAsyncSubmitter _submitter = new(
         nativeSpot.OnSendReady,
         sendTimeout,
-        stopToken);
+        stopToken,
+
+        completionAdmission: completionAdmission);
+    internal ZLinkAsyncSubmitter Submitter => _submitter;
+
 
     public ValueTask DisposeAsync()
     {

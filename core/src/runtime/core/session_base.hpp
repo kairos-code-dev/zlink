@@ -78,6 +78,8 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
     void start_connecting (bool wait_);
 
     void reconnect ();
+    void retain_socket_pipe (zlink::pipe_t *pipe_);
+    void release_socket_pipe ();
     bool is_active_transport_pair () const;
     void start_transport_pair_reconnect (bool force_);
 
@@ -100,6 +102,11 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
 
     //  Pipe connecting the session to its socket.
     zlink::pipe_t *_pipe;
+
+    //  Socket-side peer retained while the session engine can read or update
+    //  handshake metadata. The reference prevents endpoint teardown from
+    //  freeing the peer on another thread.
+    zlink::pipe_t *_socket_pipe;
 
     //  This set is added to with pipes we are disconnecting, but haven't yet completed
     std::set<pipe_t *> _terminating_pipes;

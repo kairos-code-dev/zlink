@@ -194,6 +194,15 @@ public class ZLinkHttpRequestBuilder
         return ExecuteTypedAsync<T>(cancellationToken);
     }
 
+    /// <summary>Submits the request and returns the decoded response body.</summary>
+    public async ValueTask<T> Fetch<T>(
+        CancellationToken cancellationToken = default)
+    {
+        var response = await ExecuteTypedAsync<T>(cancellationToken)
+            .ConfigureAwait(false);
+        return response.Body;
+    }
+
     /// <summary>
     ///     Starts the request and reports completion through a callback. Exactly one of
     ///     <c>error</c> and <c>response</c> is non-null. A server callback is queued as a new turn on

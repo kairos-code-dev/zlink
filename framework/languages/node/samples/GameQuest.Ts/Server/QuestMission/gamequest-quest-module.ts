@@ -1,6 +1,5 @@
-import { Module } from '@nestjs/common';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
 import { createGameQuestLocationStore, gameQuestLocationOptions } from '../Configuration/location-store';
 import { GAMEQUEST_INSTANCE_ID, GAMEQUEST_LOCATION_STORE } from '../Configuration/tokens';
 import { GAMEQUEST_SAMPLE_CONFIG, createGameQuestConfigurationModule } from '../Configuration/sample-config';
@@ -9,25 +8,11 @@ import {
   QuestEventStore,
   QuestReadModelStore
 } from '../Shared/Store/quest-progress-store';
-import { questMissionInstanceChannel, SampleNames } from '../../Shared/Configuration/sample-names';
+import { SampleNames } from '../../Shared/Configuration/sample-names';
 import { QuestEventProcessor } from './Application/quest-event-processor';
-import { GameplayEventRouteHandler } from './Infrastructure/ZLink/gameplay-event-route-handler';
 import { PlayerQuestNotifier } from './Infrastructure/ZLink/player-quest-notifier';
 import { PlayerQuestSpotProvisioner } from './Infrastructure/ZLink/player-quest-spot-provisioner';
 import { PlayerQuestSpot } from './Infrastructure/ZLink/Spots/PlayerQuestSpot/player-quest-spot';
-import {
-  ApplyGameplayEventSpotHandler,
-  DeleteQuestProjectionSpotHandler,
-  GetQuestProgressSpotHandler,
-  RebuildQuestProjectionSpotHandler,
-  SyncQuestProgressSpotHandler
-} from './Infrastructure/ZLink/Spots/PlayerQuestSpot/player-quest-spot-handlers';
-import {
-  DeleteQuestProjectionRouteHandler,
-  GetQuestProgressRouteHandler,
-  RebuildQuestProjectionRouteHandler,
-  SyncQuestProgressRouteHandler
-} from './Infrastructure/ZLink/quest-owner-route-handlers';
 import type { GameQuestServerConfig } from '../Configuration/sample-config';
 
 function createQuestMissionModule(instanceId: 'mission-a' | 'mission-b') {
@@ -44,7 +29,7 @@ function createQuestMissionModule(instanceId: 'mission-a' | 'mission-b') {
     'workDir'
   ]);
 
-  Module({
+  zlinkModule(__dirname, {
     imports: [
       configuration,
       ZLinkModule.forRootFactory({
@@ -61,13 +46,11 @@ function createQuestMissionModule(instanceId: 'mission-a' | 'mission-b') {
           const spotMesh = builder.addRouteMesh(SampleNames.playerQuestSpotMesh)
             .listen(config[spotRouterEndpointKey])
             .setRoutingIdPrefix('gamequest-mission');
-          spotMesh.objects().server().addSpotFactory(
-            PlayerQuestSpot.name,
+          spotMesh.objects().server().addInstanceSpotFactory(
+            SampleNames.playerQuestSpotType,
             PlayerQuestSpot,
             (factory) => factory.disableRelocation()
           );
-          spotMesh.channelName(questMissionInstanceChannel(instanceId)).addHandlerGroup('quest-owner');
-          spotMesh.channelName(SampleNames.playerQuestSpotMesh);
           return builder.build();
         }
       })
@@ -96,17 +79,7 @@ function createQuestMissionModule(instanceId: 'mission-a' | 'mission-b') {
       },
       QuestEventProcessor,
       PlayerQuestNotifier,
-      PlayerQuestSpotProvisioner,
-      GameplayEventRouteHandler,
-      GetQuestProgressRouteHandler,
-      SyncQuestProgressRouteHandler,
-      DeleteQuestProjectionRouteHandler,
-      RebuildQuestProjectionRouteHandler,
-      ApplyGameplayEventSpotHandler,
-      GetQuestProgressSpotHandler,
-      SyncQuestProgressSpotHandler,
-      DeleteQuestProjectionSpotHandler,
-      RebuildQuestProjectionSpotHandler
+      PlayerQuestSpotProvisioner
     ]
   })(GameQuestQuestModule);
 

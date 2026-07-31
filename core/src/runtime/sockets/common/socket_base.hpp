@@ -187,6 +187,7 @@ class socket_base_t : public own_t,
                      uint64_t *connection_id_out_ = NULL,
                      zlink::pipe_t **source_pipe_out_ = NULL);
     pipe_t *completion_pipe_for_application (pipe_t *application_pipe_) const;
+    pipe_t *application_pipe_for_completion (pipe_t *completion_pipe_) const;
     pipe_t *completion_pipe_for_peer (const zlink_routing_id_t *peer_rid_) const;
     //  Request/reply submit entries write to transport pipes directly instead
     //  of going through send()/recv(). They still have to drain pending socket
@@ -196,6 +197,10 @@ class socket_base_t : public own_t,
     int process_submit_commands ();
     int close ();
     int close (int handoff_timeout_ms_);
+    // Reserve close before the public wrapper tears down handlers or request
+    // state. Returns 1 when close was deferred from a send-ready callback.
+    int begin_close_handoff ();
+    void complete_close_handoff ();
     int socket_msg_dispatch_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     int peer_command_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     int socket_set_msg_handler (zlink_socket_msg_handler_fn handler_);
@@ -468,6 +473,7 @@ class socket_base_t : public own_t,
     void clear_last_recv_source_rid ();
     bool copy_last_recv_source_rid (zlink_routing_id_t *out_) const;
     socket_base_t *detach_monitor_socket (bool send_monitor_stopped_event_ = true);
+    void arm_send_ready_after_backpressure ();
 
   protected:
     typedef std::unique_lock<std::recursive_mutex> socket_msg_dispatch_lock_t;
@@ -616,6 +622,9 @@ class socket_base_t : public own_t,
     static void reaper_mailbox_pre_post (void *arg_);
     static void async_mailbox_handler (void *arg_);
     static void async_mailbox_pre_post (void *arg_);
+    static socket_base_t *current_async_mailbox_dispatch_socket ();
+    void defer_close_handoff_from_async_owner ();
+    void finish_deferred_close_after_async_quiesced ();
 
     //  Handlers for incoming commands.
     void process_stop () ZLINK_FINAL;
@@ -627,7 +636,10 @@ class socket_base_t : public own_t,
     void update_pipe_options (int option_);
 
     std::string resolve_tcp_addr (std::string endpoint_uri_, const char *tcp_address_);
-    void finish_close_handoff (int handoff_timeout_ms_ = 2000);
+    // A normal public close cannot reap the socket while its asynchronous
+    // mailbox owner still holds a scheduled callback. Callback-initiated
+    // close uses the separate deferred handoff path and does not wait here.
+    void finish_close_handoff (int handoff_timeout_ms_ = -1);
 
     //  Socket's mailbox object.
     i_mailbox *_mailbox;

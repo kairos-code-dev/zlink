@@ -24,9 +24,10 @@ internal sealed record ZLinkAutoConnectTarget(
     string TargetKey,
     RoutingId NodeRid,
     string Endpoint,
+    string SecurityIdentity,
     bool Draining = false,
     string? OwnerId = null,
-    bool InitiatesSpotRouterLink = true,
+    bool InitiatesConnection = true,
     ulong LifecycleGeneration = 0,
     long OwnerLeaseGeneration = 0);
 
@@ -56,9 +57,13 @@ internal static class ZLinkAutoConnectPlanner
                 descriptor.Rid.ToHex(),
                 descriptor.Rid,
                 descriptor.Endpoint,
+                descriptor.SecurityIdentity,
                 descriptor.State == ZLinkFrameworkRuntimeState.Draining,
                 descriptor.OwnerId,
-                local.AutoConnectType != ZLinkLocationAutoConnectType.SpotMesh
+                local.AutoConnectType is not (
+                    ZLinkLocationAutoConnectType.RouteMesh
+                    or ZLinkLocationAutoConnectType.DealerMesh
+                    or ZLinkLocationAutoConnectType.SpotMesh)
                 || LocalIsInitiator(local, descriptor),
                 descriptor.LifecycleGeneration,
                 descriptor.LeaseGeneration);
@@ -105,11 +110,10 @@ internal static class ZLinkAutoConnectPlanner
                     local.ObjectRole,
                     local.HasServerChannel,
                     descriptor.ObjectRole,
-                    descriptor.ChannelWeights.Count != 0)
-                && LocalIsInitiator(local, descriptor),
+                    descriptor.ChannelWeights.Count != 0),
             ZLinkLocationAutoConnectType.ClientServer => local.Role == ZLinkLocationRole.Dealer,
             ZLinkLocationAutoConnectType.DealerMesh =>
-                local.Role == ZLinkLocationRole.Dealer && LocalIsInitiator(local, descriptor),
+                local.Role == ZLinkLocationRole.Dealer,
             ZLinkLocationAutoConnectType.Fanout => local.Role == ZLinkLocationRole.Sub,
             ZLinkLocationAutoConnectType.SpotMesh => local.Role == ZLinkLocationRole.Spot,
             _ => false

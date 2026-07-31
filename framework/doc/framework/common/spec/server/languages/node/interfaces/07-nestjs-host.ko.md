@@ -176,6 +176,7 @@ export interface ZLinkNestFrameworkOptionsBuilder {
     setMaintenanceWave(waveId: string): this;
     configureStreamCompression(): ZLinkStreamCompressionBuilder;
     configureLocations(): ZLinkLocationOptions;
+    configureInboundDispatch(): ZLinkInboundDispatchOptions;
     configureNetwork(): ZLinkNetworkOptions;
     addRouteMesh(name: string): ZLinkNestMeshNodeBuilder;
     addClientServerChannel(name: string): ZLinkNestClientServerChannelRoleBuilder;
@@ -396,6 +397,12 @@ export declare class ZLinkHttpClientModule {
     static forRoot(options: ZLinkHttpClientModuleOptions): DynamicModule;
 }
 ```
+
+`applicationHwmBytes(undefined)`는 Auto mode, `0n`은 제한 없음, 양수는 정확한 host 전체 byte 상한이다.
+`applicationHwmProfile` 기본값은 `Balanced`다. `processMemoryLimitBytes(undefined)`이면 process에 적용된
+유한한 container·cgroup 상한을 사용한다. Auto mode에서 유한한 memory 상한을 확인할 수 없으면 socket
+bind 전에 configuration error로 startup이 실패한다.
+Application listener의 `maxMessageSize` 기본값은 `16_777_216` bytes다.
 
 NestJS builder도 Entry Spot 구현 type만 등록한다. Entry Spot의 `SpotId`는 Framework가
 `<prefix>-entry-<lowercase-canonical-uuid-v4>` 형식으로 발급하며 caller 지정 identity option은 없다.

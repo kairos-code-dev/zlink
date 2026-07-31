@@ -124,8 +124,6 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
     private readonly object _gate = new();
     private readonly TaskCompletionSource<ZLinkDrainResult> _terminal =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly IDisposable _metricRegistration;
-    private string _state = "serving";
     private Task<ZLinkDrainResult>? _operation;
     private Task<ZLinkDrainResult>? _forceStopOperation;
 
@@ -139,8 +137,6 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
         _executor = executor;
         _flowCaptureEnabled = flowCaptureEnabled ?? AlwaysDisabled;
         _logger = logger;
-        _metricRegistration = ZLinkRuntimeMetrics.RegisterDrainState(
-            () => Volatile.Read(ref _state));
     }
 
     public bool IsReady => !_admission.IsDraining;
@@ -150,7 +146,6 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
         if (deadline <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(deadline));
         _admission.BeginDrain();
-        Volatile.Write(ref _state, "draining");
         _executor.RequestShutdown(deadline);
     }
 
@@ -191,14 +186,12 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
                 if (intent == ZLinkFrameworkLifecycleIntent.Shutdown)
                 {
                     _admission.BeginDrain();
-                    Volatile.Write(ref _state, "draining");
                 }
                 else
                 {
                     effectiveRelocationDetached = () =>
                     {
                         _admission.BeginDrain();
-                        Volatile.Write(ref _state, "draining");
                         relocationDetached?.Invoke();
                     };
                 }
@@ -236,7 +229,6 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
         if (deadline <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(deadline));
         _admission.BeginDrain();
-        Volatile.Write(ref _state, "draining");
         var forced = await ForceStopAsync(
                 reason,
                 deadline,
@@ -257,7 +249,6 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
             null,
             _flowCaptureEnabled(),
             ZLinkFlowOrigin.Lifecycle);
-        var metricStarted = ZLinkRuntimeMetrics.StartDrain();
         ZLinkDrainResult result;
         try
         {
@@ -325,27 +316,13 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
 
         if (result is DrainBlocked)
         {
-            Volatile.Write(
-                ref _state,
-                result is DrainBlocked
-                {
-                    Reason: ZLinkFrameworkRelocationReason.ShutdownRequested
-                }
-                    ? "draining"
-                    : "serving");
             lock (_gate)
                 _operation = null;
-            ZLinkRuntimeMetrics.CompleteDrain(metricStarted, "blocked");
             return result;
         }
 
         if (result is Drained)
         {
-            Volatile.Write(
-                ref _state,
-                intent == ZLinkFrameworkLifecycleIntent.Relocate
-                    ? "relocated"
-                    : "drained");
             try
             {
                 if (intent == ZLinkFrameworkLifecycleIntent.Shutdown)
@@ -355,15 +332,6 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
             {
                 _logger?.LogError(error, "ZLink drained terminal event publication failed.");
             }
-            ZLinkRuntimeMetrics.CompleteDrain(
-                metricStarted,
-                intent == ZLinkFrameworkLifecycleIntent.Relocate
-                    ? "relocated"
-                    : "drained");
-        }
-        else
-        {
-            ZLinkRuntimeMetrics.CompleteDrain(metricStarted, "force_stopped");
         }
 
         if (intent != ZLinkFrameworkLifecycleIntent.Relocate
@@ -395,7 +363,6 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
         bool hasCommitted,
         ulong committedUnitCount)
     {
-        Volatile.Write(ref _state, "force_stopping");
         try
         {
             await PublishStateAsync(ZLinkDrainState.ForceStopping).ConfigureAwait(false);
@@ -437,5 +404,7 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
 
     private static bool AlwaysDisabled() => false;
 
-    public void Dispose() => _metricRegistration.Dispose();
+    public void Dispose()
+    {
+    }
 }

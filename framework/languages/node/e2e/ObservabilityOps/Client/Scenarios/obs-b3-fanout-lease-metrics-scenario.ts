@@ -6,22 +6,16 @@ import type { WorkflowApplyRes } from '../../Shared/messages.js';
 export async function runObsB3(): Promise<void> {
   const orderId = unique('obs-b3-order');
   await post<WorkflowApplyRes>(workflowA, '/workflows', { orderId, value: 1 });
-  const published = await waitFor(async () => await metrics(workflowA),
-    (values) => values.some((value) => value.name === 'zlink.fanout.published' && value.value >= 1),
-    'OBS-B3 fanout publish metric missing');
-  metric(published, 'zlink.fanout.published');
-  const received = await waitFor(async () => await metrics(workflowB),
-    (values) => values.some((value) => value.name === 'zlink.fanout.received' && value.value >= 1),
-    'OBS-B3 fanout receive metric missing');
-  metric(received, 'zlink.fanout.received');
   const lease = await waitFor(async () => [...await metrics(workflowA), ...await metrics(workflowB)],
     (values) => values.some((value) => value.name === 'zlink.location.owner_lease.renew.lateness'),
     'OBS-B3 owner lease lateness metric missing');
-  const all = [...published, ...received, ...lease];
+  const all = lease;
   const forbidden = ['correlation_id', 'flow_id', 'actor_id', 'spot_id'];
   require(all.every((value) => forbidden.every((label) => !(label in value.tags))),
     'OBS-B3 emitted a high-cardinality metric label.');
   require(!all.some((value) => value.name === 'zlink.fanout.dropped' && value.value === 0),
     'OBS-B3 emitted an unsupported zero fanout.dropped instrument.');
+  require(!all.some((value) => value.name.startsWith('zlink.fanout.')),
+    'OBS-B3 emitted a publish-specific fanout metric.');
   metric(all, 'zlink.location.owner_lease.renew.lateness');
 }

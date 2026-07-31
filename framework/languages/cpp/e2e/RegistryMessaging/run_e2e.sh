@@ -439,11 +439,11 @@ while time.monotonic() < deadline:
             last = json.load(response)
         matching = [
             peer for peer in last["peers"]
-            if peer["rid"] == peer_rid
+            if peer["nodeRid"] == peer_rid
         ]
         if (len(matching) == 1
                 and matching[0]["state"] == expected_state
-                and matching[0]["ready"] is expected_ready):
+                and (matching[0]["state"] == "ready") is expected_ready):
             print(json.dumps(last, sort_keys=True))
             raise SystemExit(0)
     except (OSError, ValueError, KeyError):
@@ -471,7 +471,7 @@ while time.monotonic() < deadline:
         with urllib.request.urlopen(
                 base_url + "/rm-a3/status", timeout=1) as response:
             last = json.load(response)
-        if last.get("locationState") == "ready":
+        if last.get("isReady") is True:
             print(json.dumps(last, sort_keys=True))
             raise SystemExit(0)
     except (OSError, ValueError):
@@ -500,14 +500,14 @@ while time.monotonic() < deadline:
         status = json.load(response)
     matching = [
         peer for peer in status["peers"]
-        if peer["rid"] == peer_rid
+        if peer["nodeRid"] == peer_rid
     ]
     if len(matching) != 1:
         raise SystemExit(
             f"expected one monitored peer {peer_rid}: {status!r}")
     peer = matching[0]
-    if (peer["state"] != "not_required" or peer["ready"]
-            or peer["lastFailure"] != ""
+    if (peer["state"] != "not_required"
+            or peer["unavailableReason"] != ""
             or status["readyPeerCount"] != 0):
         raise SystemExit(
             f"NotRequired peer entered reconnect/liveness accounting: "

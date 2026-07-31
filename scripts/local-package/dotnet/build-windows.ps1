@@ -40,7 +40,13 @@ if ((Get-FileHash -LiteralPath $ExactRuntime -Algorithm SHA256).Hash.ToLowerInva
 
 $Project = Join-Path $RepoRoot "bindings/dotnet/src/Zlink/Zlink.csproj"
 $ProjectVersion = ([xml](Get-Content -LiteralPath $Project -Raw)).Project.PropertyGroup.Version | Select-Object -First 1
-if ($ProjectVersion -ne $Version) { throw ".NET package version $ProjectVersion must exactly match Core $Version" }
+$PackageSemVer = [version]$ProjectVersion
+$CoreSemVer = [version]$Version
+if ($PackageSemVer.Major -ne $CoreSemVer.Major -or
+    $PackageSemVer.Minor -ne $CoreSemVer.Minor -or
+    $PackageSemVer.Build -lt $CoreSemVer.Build) {
+    throw ".NET package $ProjectVersion must use Core $Version major.minor and an equal or newer patch"
+}
 $OutDir = Join-Path $ArtifactRoot "nuget"
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 

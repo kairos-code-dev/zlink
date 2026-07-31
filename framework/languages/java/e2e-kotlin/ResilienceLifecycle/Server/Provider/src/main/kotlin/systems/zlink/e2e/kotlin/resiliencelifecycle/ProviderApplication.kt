@@ -80,10 +80,6 @@ open class ProviderApplication {
     open fun workCommandHandler(state: ScenarioState): WorkCommandHandler =
         WorkCommandHandler(state)
 
-    @Bean
-    open fun runtimeErrorEvidenceHandler(state: ScenarioState): RuntimeErrorEvidenceHandler =
-        RuntimeErrorEvidenceHandler(state)
-
     companion object {
         @JvmStatic
         fun run(vararg args: String): AutoCloseable {

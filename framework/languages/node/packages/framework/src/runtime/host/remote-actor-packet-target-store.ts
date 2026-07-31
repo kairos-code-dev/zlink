@@ -23,6 +23,7 @@ export interface ZLinkRemoteActorPacketTargetStoreOptions {
   readonly streamBindingRuntime: () => ZLinkStreamActorLookupPort;
   readonly meshRouters: MeshRouterResolver;
   readonly primaryNodeRid: () => RoutingId | undefined;
+  readonly spotRouterChannelIdForMesh: (meshName: string) => string;
 }
 
 export class ZLinkRemoteActorPacketTargetStore {
@@ -100,7 +101,8 @@ export class ZLinkRemoteActorPacketTargetStore {
         routerChannelId: state.remoteActorPacketTarget.routerChannelId,
         targetNodeRid: state.remoteActorPacketTarget.targetNodeRid,
         spotId: validateSpotId(spotId),
-        spotKind: ZLinkSpotKind.User
+        spotKind: ZLinkSpotKind.User,
+        targetSpotGeneration: state.spotGeneration
       };
     }
     const actorRef = state?.nativeActorRef as ActorRef | undefined;
@@ -125,7 +127,8 @@ export class ZLinkRemoteActorPacketTargetStore {
       routerChannelId,
       targetNodeRid: normalizeRuntimeRoutingId(targetNodeRid),
       spotId: validateSpotId(spotId),
-      spotKind: ZLinkSpotKind.User
+      spotKind: ZLinkSpotKind.User,
+      targetSpotGeneration: state?.spotGeneration
     };
   }
 
@@ -135,8 +138,11 @@ export class ZLinkRemoteActorPacketTargetStore {
     if (localNodeRid !== undefined && routingIdsEqual(localNodeRid, targetNodeRid)) {
       return undefined;
     }
-    const routerChannelId = this.options.meshRouters.defaultSpotRouterChannelId()
-      ?? this.options.meshRouters.defaultRouterChannelId();
+    const meshName = actorRef.meshName;
+    const routerChannelId = meshName.trim().length === 0
+      ? this.options.meshRouters.defaultSpotRouterChannelId()
+        ?? this.options.meshRouters.defaultRouterChannelId()
+      : this.options.spotRouterChannelIdForMesh(meshName);
     if (routerChannelId === undefined) {
       return undefined;
     }

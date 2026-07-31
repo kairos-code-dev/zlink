@@ -45,6 +45,42 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         registration.ActorCatalog.Build(registration.SpotNodes.Values);
     }
 
+    internal static void ValidateInboundDispatch(ZLinkFrameworkRegistration registration)
+    {
+        var options = registration.InboundDispatchOptions;
+        if (!Enum.IsDefined(options.ApplicationHwmProfile))
+            throw new ZLinkConfigurationException(
+                $"Unknown ApplicationHwmProfile value '{(int)options.ApplicationHwmProfile}'.");
+
+        options.EffectiveApplicationHwmBytes = ZLinkApplicationHwmResolver.Resolve(options);
+        if (options.EffectiveApplicationHwmBytes == 0)
+            return;
+
+        foreach (var (name, maximumMessageBytes) in EnumerateApplicationListenerLimits(registration))
+            if (maximumMessageBytes <= 0)
+                throw new ZLinkConfigurationException(
+                    $"Application listener '{name}' must set a finite positive MaxMessageSize when ApplicationHwmBytes is Auto or positive.");
+    }
+
+    private static IEnumerable<(string Name, long MaximumMessageBytes)>
+        EnumerateApplicationListenerLimits(ZLinkFrameworkRegistration registration)
+    {
+        foreach (var channel in registration.Channels.Values)
+        {
+            if (channel.Server is not null)
+                yield return ($"ClientServer:{channel.ChannelName}",
+                    channel.Server.SocketConfig.MaxMessageSize);
+            if (channel.Subscriber is not null)
+                yield return ($"Fanout:{channel.ChannelName}",
+                    channel.Subscriber.SocketConfig.MaxMessageSize);
+        }
+
+        foreach (var node in registration.SpotNodes.Values)
+            if (node.Router is not null)
+                yield return ($"RouteMesh:{node.SpotNodeName}",
+                    node.Router.SocketConfig.MaxMessageSize);
+    }
+
     private static void ValidateRelocationStoreRequirement(
         ZLinkFrameworkRegistration registration)
     {

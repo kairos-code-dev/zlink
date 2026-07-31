@@ -11,14 +11,14 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
-import systems.zlink.framework.locations.ZLinkAuthorityPage;
-import systems.zlink.framework.locations.ZLinkAuthorityScanCursor;
-import systems.zlink.framework.locations.ZLinkAuthorityScanExpired;
-import systems.zlink.framework.locations.ZLinkAuthoritySnapshot;
-import systems.zlink.framework.locations.ZLinkLocationStore;
-import systems.zlink.framework.locations.ZLinkPlacementAllocationState;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityPage;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityScanCursor;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityScanExpired;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthoritySnapshot;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
+import systems.zlink.framework.runtime.internal.locations.ZLinkPlacementAllocationState;
 import systems.zlink.framework.locations.ZLinkPlacementObjectKind;
-import systems.zlink.framework.locations.ZLinkStoreCancellation;
+import systems.zlink.framework.runtime.internal.locations.ZLinkStoreCancellation;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
 
@@ -30,7 +30,7 @@ public final class ZLinkStatefulAuthorityRouteRuntime
     implements AutoCloseable {
     private static final ZLinkStoreCancellation OPEN = () -> false;
 
-    private final ZLinkLocationStore store;
+    private final ZLinkLocationRepository store;
     private final Map<String, ZLinkInternalMeshNode> meshNodes;
     private final Duration pollingInterval;
     private final Consumer<Throwable> reportFailure;
@@ -47,7 +47,7 @@ public final class ZLinkStatefulAuthorityRouteRuntime
     private volatile boolean closed;
 
     public ZLinkStatefulAuthorityRouteRuntime(
-        ZLinkLocationStore store,
+        ZLinkLocationRepository store,
         Map<String, ZLinkInternalMeshNode> meshNodes,
         Duration pollingInterval,
         Consumer<Throwable> reportFailure) {

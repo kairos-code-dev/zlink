@@ -32,7 +32,7 @@ import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
 import io.micrometer.core.instrument.MeterRegistry;
 import systems.zlink.e2e.automaticturn.shared.DrainEvidence;
-import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle;
 
 @EnableZLinkFramework
 @EnableConfigurationProperties(PlayOptions.class)
@@ -73,6 +73,7 @@ public final class Program {
         ZLinkSpotManager spots,
         systems.zlink.framework.channels.ZLinkRouteClient routes,
         PlayOptions config) {
+        drainEvidence.observe(lifecycle.observe());
         return new EvidenceHttpServer(
             evidence, json, config.httpEndpoint(), metrics,
             lifecycle, lifecycle::monitoringLocationRuntimeQuery, drainEvidence, spots::close,

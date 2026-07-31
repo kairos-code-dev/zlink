@@ -2,7 +2,10 @@ import type {
   ActorRef
 } from '../../contracts';
 import type { ZLinkRuntimeEventPublisher } from '../diagnostics';
-import { ZLinkUserSpotExecutionMode } from '../../contracts';
+import {
+  ZLinkSpotRelocationReadinessMode,
+  ZLinkUserSpotExecutionMode
+} from '../../contracts';
 import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import type {
   DefaultZLinkActorManager,
@@ -48,6 +51,10 @@ export interface ZLinkSpotRuntimeOptionsFactoryOptions {
   readonly spotNodeRuntime: () => ZLinkSpotNodeRuntimeManager | undefined;
   readonly actorManager: () => DefaultZLinkActorManager | undefined;
   readonly locationLifecycle: () => ZLinkLocationLifecycle | undefined;
+  readonly releaseInstanceAuthority: (
+    meshName: string,
+    spotId: string
+  ) => Promise<void>;
   readonly createLocationSpotRouteResolver: () => ZLinkSpotRouteResolver | undefined;
   readonly boundSessionRelay: ZLinkBoundSessionRelay;
   readonly actorHandoff: ZLinkActorHandoffCoordinator;
@@ -120,6 +127,8 @@ export class ZLinkSpotRuntimeOptionsFactory {
       runtimeEventPublisher: this.options.runtimeEventPublisher,
       detachedTaskRunner: this.options.detachedTaskRunner,
       locationLifecycle: this.options.locationLifecycle(),
+      releaseInstanceAuthority: (meshName, spotId) =>
+        this.options.releaseInstanceAuthority(meshName, String(spotId)),
       createNativeSpot: (meshName, spotId, authority) => {
         const node = this.options.spotNodeRuntime()?.meshNode(meshName);
         if (node === undefined) {
@@ -188,6 +197,15 @@ export class ZLinkSpotRuntimeOptionsFactory {
           .find(candidate => candidate.implementation === spotType);
         return registration?.options?.executionMode
           ?? ZLinkUserSpotExecutionMode.SpotWide;
+      },
+      userSpotRelocationReadiness: (meshName, spotType) => {
+        const registrations =
+          this.options.registration.spotNodes.get(meshName)
+            ?.spotFactoryRegistrations ?? {};
+        const registration = Object.values(registrations)
+          .find(candidate => candidate.implementation === spotType);
+        return registration?.options?.relocationReadiness
+          ?? ZLinkSpotRelocationReadinessMode.AnyTurnBoundary;
       },
       actorBindingGenerationObserver: (actorId, generation) =>
         this.options.actorManager()?.getState(actorId)?.setBoundSessionBindingGeneration(generation),

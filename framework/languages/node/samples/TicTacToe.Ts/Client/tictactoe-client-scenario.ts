@@ -40,24 +40,21 @@ class TicTacToeClientScenario {
 
     connector.zlinkStreamAssert.ensure(game.gameName === 'match-ready', 'Sample scenario assertion failed.');
     connector.zlinkStreamAssert.ensure(game.roomId.length > 0, 'Sample scenario assertion failed.');
-    connector.zlinkStreamAssert.ensure(game.ownerPlayEndpoint.length > 0, 'Sample scenario assertion failed.');
     connector.zlinkStreamAssert.ensure(game.playEndpoints.length >= 2, 'Sample scenario assertion failed.');
     connector.zlinkStreamAssert.ensure(new Set(game.playEndpoints).size === game.playEndpoints.length, 'Sample scenario assertion failed.');
-    connector.zlinkStreamAssert.ensure(game.playEndpoints.includes(game.ownerPlayEndpoint), 'Sample scenario assertion failed.');
     connector.zlinkStreamAssert.ensure(game.playNodes.length === game.playEndpoints.length, 'Sample scenario assertion failed.');
     connector.zlinkStreamAssert.ensure(game.playNodes.every((node) => game.playEndpoints.includes(node.streamEndpoint)), 'Sample scenario assertion failed.');
     connector.zlinkStreamAssert.ensure(game.requiredLevel === 3, 'Sample scenario assertion failed.');
-    const ownerPlayNode = game.playNodes.find((node) => node.streamEndpoint === game.ownerPlayEndpoint);
-    connector.zlinkStreamAssert.ensure(ownerPlayNode !== undefined, 'Sample scenario assertion failed.');
-
-    const guestPlayEndpoint = game.playEndpoints.find((endpoint) => endpoint !== game.ownerPlayEndpoint);
+    const hostPlayEndpoint = game.playEndpoints[0];
+    connector.zlinkStreamAssert.ensure(hostPlayEndpoint !== undefined, 'Sample scenario assertion failed.');
+    const guestPlayEndpoint = game.playEndpoints.find((endpoint) => endpoint !== hostPlayEndpoint);
     connector.zlinkStreamAssert.ensure(guestPlayEndpoint !== undefined, 'Sample scenario assertion failed.');
     const observerPlayEndpoint = guestPlayEndpoint as string;
     const observerPlayNode = game.playNodes.find((node) => node.streamEndpoint === observerPlayEndpoint);
     connector.zlinkStreamAssert.ensure(observerPlayNode !== undefined, 'Sample scenario assertion failed.');
 
     const observedClients = new Set<string>();
-    const client1 = createPlayerClient(game.ownerPlayEndpoint, 'host', observedClients);
+    const client1 = createPlayerClient(hostPlayEndpoint, 'host', observedClients);
     const client2 = createPlayerClient(observerPlayEndpoint, 'guest', observedClients);
     const observer = createPlayerClient(observerPlayEndpoint, 'observer', observedClients);
 
@@ -90,44 +87,46 @@ class TicTacToeClientScenario {
       console.log('observer-subscription=verified');
 
       // 3. Host joins by explicit RoomId
-      const [client1Join] = await Promise.all([
+      const client1JoinedState = client1
+        .waitFor<GameStateNotify>(PacketNames.gameStateNotify)
+        .where((message) =>
+          message.payload.state.roomId === game.roomId &&
+          message.payload.state.xActorId === client1Auth.player.actorId)
+        .submit(signal);
+      const [client1Join, client1State] = await Promise.all([
         client1.request(joinGameReq(game.roomId)).submit<JoinGameRes>(signal),
+        client1JoinedState,
         client1.expectNone<PlayerJoinedNotify>(PacketNames.playerJoinedNotify).within(250).run(signal)
       ]);
       connector.zlinkStreamAssert.ensure(stateOf(client1Join).roomId === game.roomId, 'Sample scenario assertion failed.');
-      connector.zlinkStreamAssert.ensure(stateOf(client1Join).status === GameStatus.WaitingForPlayers, 'Sample scenario assertion failed.');
-      connector.zlinkStreamAssert.ensure(stateOf(client1Join).xActorId === client1Auth.player.actorId, 'Sample scenario assertion failed.');
-      connector.zlinkStreamAssert.ensure(stateOf(client1Join).oActorId === null, 'Sample scenario assertion failed.');
-      connector.zlinkStreamAssert.ensure(stateOf(client1Join).board === '.........', 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(client1State.payload.state.status === GameStatus.WaitingForPlayers, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(client1State.payload.state.xActorId === client1Auth.player.actorId, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(client1State.payload.state.oActorId === null, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(client1State.payload.state.board === '.........', 'Sample scenario assertion failed.');
       const client1SawClient2Join = client1
         .waitFor<PlayerJoinedNotify>(PacketNames.playerJoinedNotify)
-        .where((message) => message.payload.actorId === client2Auth.player.actorId)
+        .where((message) =>
+          message.payload.roomId === game.roomId
+          && message.payload.actorId === client2Auth.player.actorId)
         .submit(signal);
-      const client1RunningState = client1
-        .waitFor<GameStateNotify>(PacketNames.gameStateNotify)
-        .where((message) => message.payload.state.status === GameStatus.InProgress)
-        .submit(signal);
-
       // 4-6. Guest joins by the same RoomId.
-      const [client2Join] = await Promise.all([
+      const client2JoinedState = client2
+        .waitFor<GameStateNotify>(PacketNames.gameStateNotify)
+        .where((message) =>
+          message.payload.state.roomId === game.roomId &&
+          message.payload.state.oActorId === client2Auth.player.actorId)
+        .submit(signal);
+      const [client2Join, client2State, client1Running] = await Promise.all([
         client2.request(joinGameReq(game.roomId)).submit<JoinGameRes>(signal),
+        client2JoinedState,
+        client1SawClient2Join,
         client2.expectNone<PlayerJoinedNotify>(PacketNames.playerJoinedNotify).within(250).run(signal)
       ]);
       connector.zlinkStreamAssert.ensure(stateOf(client2Join).roomId === game.roomId, 'Sample scenario assertion failed.');
-      connector.zlinkStreamAssert.ensure(stateOf(client2Join).status === GameStatus.InProgress, 'Sample scenario assertion failed.');
-      connector.zlinkStreamAssert.ensure(stateOf(client2Join).oActorId === client2Auth.player.actorId, 'Sample scenario assertion failed.');
-      connector.zlinkStreamAssert.ensure(stateOf(client2Join).xActorId === client1Auth.player.actorId, 'Sample scenario assertion failed.');
-      connector.zlinkStreamAssert.ensure(stateOf(client2Join).nextTurn === GameMarks.x, 'Sample scenario assertion failed.');
-      const [client1Joined, client1Running] = await Promise.all([
-        client1SawClient2Join,
-        client1RunningState
-      ]);
-      connector.zlinkStreamAssert.ensure(client1Joined.payload.roomId === game.roomId, 'Sample scenario assertion failed.');
-      connector.zlinkStreamAssert.ensure(client1Joined.payload.actorId === client2Auth.player.actorId, 'Sample scenario assertion failed.');
-      connector.zlinkStreamAssert.ensure(client1Joined.payload.displayName === client2Auth.player.displayName, 'Sample scenario assertion failed.');
-      connector.zlinkStreamAssert.ensure(client1Joined.payload.level === client2Auth.player.level, 'Sample scenario assertion failed.');
-      connector.zlinkStreamAssert.ensure(client1Joined.payload.mark === GameMarks.o, 'Sample scenario assertion failed.');
-      connector.zlinkStreamAssert.ensure(stateOf(client1Joined.payload).status === GameStatus.InProgress, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(client2State.payload.state.status === GameStatus.InProgress, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(client2State.payload.state.oActorId === client2Auth.player.actorId, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(client2State.payload.state.xActorId === client1Auth.player.actorId, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(client2State.payload.state.nextTurn === GameMarks.x, 'Sample scenario assertion failed.');
       connector.zlinkStreamAssert.ensure(client1Running.payload.state.nextTurn === GameMarks.x, 'Sample scenario assertion failed.');
       // 7. Each move response is matched with the opponent notify.
       const client2SawMove1 = waitState(client2, 0, signal);

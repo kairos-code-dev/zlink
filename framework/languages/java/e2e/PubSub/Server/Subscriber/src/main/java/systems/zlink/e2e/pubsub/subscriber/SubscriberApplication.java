@@ -52,7 +52,7 @@ public final class SubscriberApplication {
         SubscriberOptions options,
         EvidenceStore evidence,
         ObjectMapper json,
-        systems.zlink.framework.locations.ZLinkLocationStore locations) {
+        systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository locations) {
         return new OperationalEndpoints(options, evidence, json, locations);
     }
 

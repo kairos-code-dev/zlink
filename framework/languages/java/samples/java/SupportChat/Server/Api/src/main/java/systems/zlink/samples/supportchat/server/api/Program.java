@@ -51,6 +51,7 @@ public final class Program {
     @Bean
     ZLinkFrameworkConfigurer apiFramework(SampleTopology topology) {
         SampleTopology.Api api = topology.api();
+        URI channelEndpoint = URI.create(api.channelEndpoint());
         return options -> {
             options.addHandlersFromPackageOf(Program.class);
             options.configureDispatch()
@@ -58,10 +59,13 @@ public final class Program {
                 .traceLogFile(SampleFlowLog.path(topology, "api"))
                 .traceLabel("api");
             options.addClientServerChannel(SampleNames.ApiChannel)
-                .enableServer(api.channelEndpoint())
+                .server()
+                .setBindHost(channelEndpoint.getHost())
+                .setAdvertiseHost(channelEndpoint.getHost())
+                .listen(channelEndpoint.getPort())
                 .addHandlerGroup(SampleNames.ApiChannel);
             options.addClientServerChannel(SampleNames.SupportChannel)
-                .enableClient();
+                .client();
         };
     }
 

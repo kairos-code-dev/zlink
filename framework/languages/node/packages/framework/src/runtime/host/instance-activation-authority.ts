@@ -59,6 +59,11 @@ export interface ZLinkInstanceActivationAuthorityOptions {
   readonly relocationStore?: ZLinkRelocationStore;
   readonly meshName: string;
   readonly owner: () => ZLinkLocationOwnerToken | undefined;
+  readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
+  readonly onReady?: (
+    target: ServiceInstanceActivationTarget,
+    route: ServiceInstanceRouteFence
+  ) => void;
 }
 
 export class ZLinkInstanceActivationAuthority
@@ -148,6 +153,11 @@ implements ServiceAsyncInstanceActivationAuthority {
       throw error;
     }
     if (reserved.kind === 'alreadyExists') {
+      this.options.metrics?.recordInstanceSpotClaimConflict(
+        this.options.meshName,
+        target.stableType,
+        'already_exists'
+      );
       await this.deleteOrphan(stored.reference);
       return readyExisting(reserved.current, target);
     }
@@ -158,15 +168,26 @@ implements ServiceAsyncInstanceActivationAuthority {
       && reserved.current.allocation.stableType === target.stableType
       && reserved.current.allocation.state === 'reserved'
     ) {
+      this.options.metrics?.recordInstanceSpotClaimConflict(
+        this.options.meshName,
+        target.stableType,
+        'activation_in_progress'
+      );
       await this.deleteOrphan(stored.reference);
       return await this.awaitConcurrentActivation(target, activation.deadlineUnixMs);
     }
     if (reserved.kind !== 'reserved') {
+      this.options.metrics?.recordInstanceSpotClaimConflict(
+        this.options.meshName,
+        target.stableType,
+        reserved.kind
+      );
       await this.deleteOrphan(stored.reference);
       throw new Error(`Instance activation reservation failed: ${reserved.kind}.`);
     }
     const reservation: ServiceInstanceActivationReservation = {
       attempt: reserved.creating.objectGeneration,
+      authorityOwnerGeneration: reserved.creating.authorityOwnerGeneration,
       token: reserved.reservationId
     };
     this.pending.set(reservation.token, {
@@ -208,6 +229,7 @@ implements ServiceAsyncInstanceActivationAuthority {
     }
     const reservation = {
       attempt: current.objectGeneration,
+      authorityOwnerGeneration: current.authorityOwnerGeneration,
       token: projection.reservationId
     };
     this.pending.set(reservation.token, {
@@ -280,7 +302,9 @@ implements ServiceAsyncInstanceActivationAuthority {
     }
     if (result.kind === 'committed' || result.kind === 'alreadyCommitted') {
       this.pending.delete(reservation.token);
-      return { kind: 'committed', route: routeFromSnapshot(result.ready) };
+      const route = routeFromSnapshot(result.ready);
+      this.options.onReady?.(target, route);
+      return { kind: 'committed', route };
     }
     const current = await this.options.store.readAuthority(authorityKey(target.targetSpotId));
     if (current.kind === 'snapshot') {

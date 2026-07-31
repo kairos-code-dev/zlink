@@ -279,6 +279,72 @@ internal static class ZLinkCanonicalRelocationAuthorityStateCodec
         return result.ToArray();
     }
 
+    internal static byte[] ReplaceSteadyAuthorityPayload(
+        ReadOnlySpan<byte> authorityPayload,
+        ReadOnlySpan<byte> steadyAuthorityPayload)
+    {
+        var original = ReadEnvelope(authorityPayload);
+        var steady = ReadEnvelope(steadyAuthorityPayload);
+        var originalSlot = ReadSlot(original.Body);
+        var steadySlot = ReadSlot(steady.Body);
+        if (steadySlot.End - steadySlot.Start != 5
+            || steady.Body[steadySlot.Start] != 0)
+            throw new InvalidDataException(
+                "The replacement steady authority contains relocation state.");
+
+        using var body = new MemoryStream();
+        body.Write(steady.Body.AsSpan(0, steadySlot.Start));
+        body.Write(original.Body.AsSpan(
+            originalSlot.Start,
+            originalSlot.End - originalSlot.Start));
+        body.Write(steady.Body.AsSpan(steadySlot.End));
+        using var result = new MemoryStream();
+        result.Write(Magic);
+        result.WriteByte(1);
+        WriteU16(result, steady.Flags);
+        WriteU32(result, checked((uint)body.Length));
+        body.Position = 0;
+        body.CopyTo(result);
+        WriteU32(result, ZLinkCrc32C.Compute(result.ToArray()));
+        return result.ToArray();
+    }
+
+    private static (ushort Flags, byte[] Body) ReadEnvelope(
+        ReadOnlySpan<byte> payload)
+    {
+        var reader = new Reader(payload);
+        if (!reader.Bytes(4).SequenceEqual(Magic) || reader.U8() != 1)
+            throw new InvalidDataException(
+                "The authority payload is not canonical ZLAU v1.");
+        var flags = reader.U16();
+        var body = reader.Bytes(reader.U32AsInt()).ToArray();
+        var checksumOffset = reader.Offset;
+        if (reader.U32() != ZLinkCrc32C.Compute(payload[..checksumOffset])
+            || !reader.End)
+            throw new InvalidDataException(
+                "The canonical authority checksum is invalid.");
+        return (flags, body);
+    }
+
+    private static (int Start, int End) ReadSlot(ReadOnlySpan<byte> body)
+    {
+        var reader = new Reader(body);
+        _ = reader.U8();
+        _ = reader.U8();
+        _ = reader.Bytes(reader.U16());
+        _ = reader.Text8();
+        _ = reader.U64();
+        _ = reader.Text8();
+        _ = reader.Text8();
+        _ = reader.U64();
+        var start = reader.Offset;
+        if (reader.U8() > 1)
+            throw new InvalidDataException(
+                "The authority relocation presence flag is invalid.");
+        _ = reader.Bytes(reader.U32AsInt());
+        return (start, reader.Offset);
+    }
+
     private static byte[] EncodeSlot(
         ZLinkCanonicalRelocationAuthorityState value,
         ZLinkRelocationEnvelope? root)

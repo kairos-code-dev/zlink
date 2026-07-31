@@ -23,6 +23,7 @@ import type {
 import {
   ZLinkSpotCloseReason,
   ZLinkSpotCreateState,
+  ZLinkSpotRelocationReadinessMode,
   ZLinkUserSpotExecutionMode
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
@@ -86,6 +87,10 @@ export interface ZLinkSpotActivationLifecycleOptions {
     meshName: string,
     spotType: Type<ZLinkSpot>
   ) => ZLinkUserSpotExecutionMode;
+  readonly userSpotRelocationReadiness?: (
+    meshName: string,
+    spotType: Type<ZLinkSpot>
+  ) => ZLinkSpotRelocationReadinessMode;
   readonly channelClient?: ZLinkChannelClient;
   readonly fanoutClient?: ZLinkFanoutClient;
   readonly spotPublisherClient?: ZLinkSpotPublisherClient;
@@ -118,6 +123,11 @@ export interface ZLinkSpotActivationLifecycleOptions {
     reason?: ZLinkSpotCloseReason
   ) => Promise<boolean>;
   readonly registerActivation: (activation: ZLinkSpotActivation) => void;
+  readonly releaseLocation: (
+    activation: ZLinkSpotActivation,
+    meshName: string,
+    spotId: RoutingId
+  ) => Promise<void>;
   readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
 }
 
@@ -163,7 +173,14 @@ export class ZLinkSpotActivationLifecycle {
     applySpotHandlerRegistrations(
       handlers,
       implementation as unknown as Type<ZLinkSpot>,
-      { packetHandlers: this.options.spotPacketHandlers }
+      objectKind === 'user_spot'
+        ? {
+            actorSendHandlers: this.options.spotActorSendHandlers,
+            actorRequestHandlers: this.options.spotActorRequestHandlers,
+            packetHandlers: this.options.spotPacketHandlers,
+            subscriptionHandlers: this.options.spotSubscriptionHandlers
+          }
+        : { packetHandlers: this.options.spotPacketHandlers }
     );
     const timers = new ZLinkSpotTimerRegistry(
       this.options.metrics,
@@ -188,6 +205,7 @@ export class ZLinkSpotActivationLifecycle {
       authorityOwnerGeneration
     });
     let instance: TSpot | undefined;
+    let activation: ZLinkSpotActivation | undefined;
     const common = {
       meshName,
       spotId,
@@ -208,6 +226,15 @@ export class ZLinkSpotActivationLifecycle {
       ? createSpotContext({
           ...common,
           handlers,
+          relocationReady: () => {
+            if (activation === undefined) {
+              throw new ZLinkConfigurationException(
+                'Spot relocation readiness is unavailable before activation.'
+              );
+            }
+            return activation.relocationReadyCall();
+          },
+          ensureOperationAllowed: () => activation?.ensureContextOperationAllowed(),
           leaveActor: (actor, contextSignal) =>
             this.options.leaveActor(spotId, actor, contextSignal)
         })
@@ -240,12 +267,18 @@ export class ZLinkSpotActivationLifecycle {
           signal
         }
       );
-      const activation = new ZLinkSpotActivation({
+      activation = new ZLinkSpotActivation({
         meshName,
         spotId,
         spotType: implementation as unknown as Type<ZLinkSpot>,
         spot: instance as unknown as ZLinkSpot,
         serial,
+        relocationReadiness: objectKind === 'user_spot'
+          ? this.options.userSpotRelocationReadiness?.(
+              meshName,
+              implementation as unknown as Type<ZLinkSpot>
+            )
+          : ZLinkSpotRelocationReadinessMode.AnyTurnBoundary,
         timers,
         actorHandlers,
         handlers,
@@ -505,6 +538,15 @@ export class ZLinkSpotActivationLifecycle {
       providerResolver: this.options.providerResolver,
       runtimeEventPublisher: this.options.runtimeEventPublisher,
       workerRuntime: this.options.workerRuntime,
+      relocationReady: () => {
+        if (activation === undefined) {
+          throw new ZLinkConfigurationException(
+            'Spot relocation readiness is unavailable before activation.'
+          );
+        }
+        return activation.relocationReadyCall();
+      },
+      ensureOperationAllowed: () => activation?.ensureContextOperationAllowed(),
       leaveActor: (actor, contextSignal) => this.options.leaveActor(spotId, actor, contextSignal),
       close: async (contextSignal) => {
         // Native callbacks can cross a promise boundary that does not retain
@@ -537,6 +579,7 @@ export class ZLinkSpotActivationLifecycle {
         spot,
         serial,
         executionMode,
+        relocationReadiness: this.options.userSpotRelocationReadiness?.(meshName, spotType),
         timers,
         actorHandlers,
         handlers,
@@ -595,6 +638,7 @@ export class ZLinkSpotActivationLifecycle {
     signal?: AbortSignal
   ): Promise<ZLinkLocalSpotCreateResult> {
     let spot: ZLinkSpot | undefined;
+    let activation: ZLinkSpotActivation | undefined;
     const context = createSpotContext({
       meshName,
       spotId,
@@ -609,18 +653,28 @@ export class ZLinkSpotActivationLifecycle {
       providerResolver: this.options.providerResolver,
       runtimeEventPublisher: this.options.runtimeEventPublisher,
       workerRuntime: this.options.workerRuntime,
+      relocationReady: () => {
+        if (activation === undefined) {
+          throw new ZLinkConfigurationException(
+            'Spot relocation readiness is unavailable before activation.'
+          );
+        }
+        return activation.relocationReadyCall();
+      },
+      ensureOperationAllowed: () => activation?.ensureContextOperationAllowed(),
       leaveActor: (actor, contextSignal) => this.options.leaveActor(spotId, actor, contextSignal),
       close: (contextSignal) => this.options.closeSpot(meshName, spotId, contextSignal)
     });
     spot = await createFreshProviderInstance(spotType, this.options.providerResolver, context);
     Object.defineProperty(spot, 'context', { configurable: true, enumerable: false, value: context });
-    const activation = new ZLinkSpotActivation({
+    activation = new ZLinkSpotActivation({
       meshName,
       spotId,
       spotType,
       spot,
       serial,
       executionMode,
+      relocationReadiness: this.options.userSpotRelocationReadiness?.(meshName, spotType),
       timers,
       actorHandlers,
       handlers,
@@ -831,7 +885,7 @@ export class ZLinkSpotActivationLifecycle {
     }
     if (!state.locationReleased) {
       await cleanup(
-        () => this.options.locationClaim.release(locationMeshName, activation.spotId),
+        () => this.options.releaseLocation(activation, locationMeshName, activation.spotId),
         () => { state.locationReleased = true; }
       );
     }

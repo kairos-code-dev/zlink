@@ -2,7 +2,7 @@
 
 package systems.zlink.runtime.messaging;
 
-import systems.zlink.runtime.nativeapi.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.runtime.nativeapi.NativeLayouts;

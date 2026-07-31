@@ -39,7 +39,6 @@ class SessionAuthenticator {
     console.log(`session-auth request api actor=${request.accessToken}`);
     const authenticated = await this.zlinkClient
         .requestToChannel(
-          SampleNames.roomSpotNode,
           SampleNames.apiChannel,
           new AuthenticatePlayerReq({ accessToken: request.accessToken })
         )

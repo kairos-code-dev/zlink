@@ -9,6 +9,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
 import java.util.zip.CRC32C;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.*;
 
 /**
  * Publishes an immutable relocation root through one Location authority CAS.
@@ -16,11 +17,11 @@ import systems.zlink.framework.locations.*;
 public final class ZLinkRelocationPublicationCoordinator {
     private static final Duration RETENTION = Duration.ofHours(24);
 
-    private final ZLinkLocationStore authority;
+    private final ZLinkLocationRepository authority;
     private final ZLinkRelocationStore relocation;
 
     public ZLinkRelocationPublicationCoordinator(
-        ZLinkLocationStore authority,
+        ZLinkLocationRepository authority,
         ZLinkRelocationStore relocation) {
         this.authority = Objects.requireNonNull(authority, "authority");
         this.relocation = Objects.requireNonNull(relocation, "relocation");

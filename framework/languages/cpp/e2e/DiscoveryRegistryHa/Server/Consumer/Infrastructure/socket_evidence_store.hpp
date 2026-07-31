@@ -15,24 +15,27 @@ namespace zlink::framework::e2e::store_failure::consumer
 class socket_evidence_store_t
 {
   public:
-    void record (const zlink::framework::socket_event_payload_t &event)
+    void record (const zlink::framework::log_record_t &record)
     {
-        std::string kind;
-        switch (event.event) {
-            case zlink::framework::socket_event_kind_t::connected:
-                kind = "Connected";
-                break;
-            case zlink::framework::socket_event_kind_t::connection_ready:
-                kind = "ConnectionReady";
-                break;
-            case zlink::framework::socket_event_kind_t::disconnected:
-                kind = "Disconnected";
-                break;
-            default:
-                return;
+        if (record.message != "zlink.runtime.transport.connection_changed") {
+            return;
         }
+        std::string kind;
+        for (const auto &field : record.fields) {
+            if (field.key != "state") {
+                continue;
+            }
+            if (field.value == "connected")
+                kind = "Connected";
+            else if (field.value == "ready")
+                kind = "ConnectionReady";
+            else if (field.value == "disconnected")
+                kind = "Disconnected";
+        }
+        if (kind.empty ())
+            return;
         std::lock_guard lock (_gate);
-        _entries.push_back ({std::move (kind), event.remote_address});
+        _entries.push_back ({std::move (kind), {}});
     }
 
     std::vector<socket_evidence_entry_t> snapshot () const

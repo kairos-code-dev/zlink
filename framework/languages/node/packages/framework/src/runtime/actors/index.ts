@@ -319,6 +319,15 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     }
     requireActorMeshName(meshName);
     this.ensureActorTypeBelongsToMesh(meshName, actorType);
+    if (this.options.placementCreate !== undefined) {
+      return await this.options.placementCreate(
+        actorId,
+        actorType,
+        failIfExists,
+        options,
+        signal
+      );
+    }
     const localState = this.states.get(actorId);
     if (localState?.actorType !== undefined && localState.actorType !== actorType) {
       throw new ZLinkFrameworkException(
@@ -528,6 +537,37 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     return await this.createOrGet(actorId, actorType, false, createRequest, signal);
   }
 
+  async createReservedActorResult(
+    actorId: string,
+    actorType: string,
+    createRequest: unknown,
+    signal?: AbortSignal
+  ): Promise<ZLinkActorLocalCreateResult> {
+    this.rememberActorMeshFromType(actorId, actorType);
+    return await this.createOrGet(
+      actorId,
+      actorType,
+      false,
+      createRequest,
+      signal,
+      false
+    );
+  }
+
+  adoptCreatedAuthority(
+    actorId: string,
+    authorityOwnerGeneration: bigint,
+    ownerLeaseGeneration: bigint
+  ): void {
+    const state = this.states.get(actorId);
+    if (state === undefined) {
+      throw new Error(`Actor '${actorId}' is not materialized.`);
+    }
+    state.setLocationGeneration(authorityOwnerGeneration);
+    state.setOwnerLeaseGeneration(ownerLeaseGeneration);
+    state.markLocationOwned();
+  }
+
   getState(actorId: string): ZLinkActorRuntimeState | undefined {
     return this.states.get(actorId);
   }
@@ -712,27 +752,17 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
   private actorRefForState(state: ZLinkActorRuntimeState): ActorRef {
     const nativeActorRef = state.nativeActorRef;
     if (nativeActorRef !== undefined) {
-      return toFrameworkActorRef(nativeActorRef, requireStateMeshName(state));
+      return toFrameworkActorRef(nativeActorRef, state.meshName ?? '');
     }
     return {
       actorId: state.actorId,
       objectGeneration: 1n,
-      meshName: requireStateMeshName(state),
+      meshName: state.meshName ?? '',
       nodeRid: this.options.actorCreatedNodeRidProvider?.()
         ?? BindingRoutingId.from('local') as unknown as RoutingId
     };
   }
 
-}
-
-function requireStateMeshName(state: ZLinkActorRuntimeState): string {
-  const meshName = state.meshName;
-  if (meshName === undefined || meshName.length === 0) {
-    throw new ZLinkConfigurationException(
-      `Actor '${state.actorId}' has no RouteMesh identity.`
-    );
-  }
-  return meshName;
 }
 
 interface ZLinkActorCreateCallOptions {

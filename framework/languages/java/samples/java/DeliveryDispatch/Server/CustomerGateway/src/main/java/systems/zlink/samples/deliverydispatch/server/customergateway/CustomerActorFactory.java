@@ -8,7 +8,7 @@ import java.util.concurrent.CompletionStage;
 
 public final class CustomerActorFactory implements ZLinkActorFactory {
     @Override
-    public CompletionStage<ZLinkActor> create(String actorId, ZLinkActorContext context) {
-        return CompletableFuture.completedFuture(new CustomerActor(actorId, context));
+    public CompletionStage<ZLinkActor> create(ZLinkActorContext context) {
+        return CompletableFuture.completedFuture(new CustomerActor(context.actorId(), context));
     }
 }

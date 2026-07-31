@@ -28,6 +28,25 @@ public sealed class BackendAdapterFactoryTests
         await AssertStreamBackendAsync(channelAdapter, streamAdapter);
     }
 
+    [Theory]
+    [InlineData(ZLinkApplicationHwmProfile.Compact, AutoHwmProfile.Compact)]
+    [InlineData(ZLinkApplicationHwmProfile.LowLatency, AutoHwmProfile.LowLatency)]
+    [InlineData(ZLinkApplicationHwmProfile.Balanced, AutoHwmProfile.Balanced)]
+    [InlineData(ZLinkApplicationHwmProfile.Throughput, AutoHwmProfile.Throughput)]
+    public async Task Framework_Profile_Is_Applied_To_The_Binding_Context(
+        ZLinkApplicationHwmProfile frameworkProfile,
+        AutoHwmProfile bindingProfile)
+    {
+        var adapter = new ZLinkDotNetBackendAdapterFactory().CreateChannelAdapter();
+        await using var context = adapter.CreateContext();
+
+        adapter.ConfigureAutoHwm(context, frameworkProfile);
+
+        var native = Assert.IsType<ZLinkBackendContextWrapper>(context).NativeContext;
+        Assert.True(native.Options.AutoHwmEnabled);
+        Assert.Equal(bindingProfile, native.Options.AutoHwmProfile);
+    }
+
     [Fact]
     public async Task Dealer_Request_Completes_Through_Binding_Progress_Without_Framework_Poll_Worker()
     {
@@ -98,10 +117,11 @@ public sealed class BackendAdapterFactoryTests
         await using var backend = spotAdapter.CreateSpotNode(context, "router-config-mesh");
         var spotNode = Assert.IsType<ZLinkBackendSpotNodeWrapper>(backend);
 
-        spotNode.SetRouterHighWaterMark(1);
+        var byteHwm = (ulong)int.MaxValue + 1UL;
+        spotNode.SetRouterHighWaterMark(byteHwm);
         spotNode.SetRouterSendTimeout(TimeSpan.FromMilliseconds(37));
 
-        Assert.Equal(1, spotNode.NativeNode.RouterHighWaterMark);
+        Assert.Equal(byteHwm, spotNode.NativeNode.RouterHighWaterMark);
         Assert.Equal(TimeSpan.FromMilliseconds(37), spotNode.NativeNode.SendTimeout);
     }
 

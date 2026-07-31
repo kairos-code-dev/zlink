@@ -15,7 +15,7 @@ import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
-import systems.zlink.framework.monitoring.ZLinkRuntimeQuery;
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
 
@@ -26,7 +26,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
     private final ZLinkRouteMeshRuntimeOptions meshRuntimeOptions;
     private final ZLinkRouteClient routeClient;
     private final ObjectProvider<ZLinkRouteMeshRuntime> meshRuntime;
-    private final ObjectProvider<ZLinkRuntimeQuery> runtimeQuery;
+    private final ObjectProvider<ZLinkFrameworkLifecycle> runtimeQuery;
     private final ObserverIsolationProbe observerIsolation;
     private final ObjectProvider<ZLinkSpotManager> spots;
     private final ZLinkSpotPublisherClient publisher;
@@ -42,7 +42,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         ZLinkRouteMeshRuntimeOptions meshRuntimeOptions,
         ZLinkRouteClient routeClient,
         ObjectProvider<ZLinkRouteMeshRuntime> meshRuntime,
-        ObjectProvider<ZLinkRuntimeQuery> runtimeQuery,
+        ObjectProvider<ZLinkFrameworkLifecycle> runtimeQuery,
         ObserverIsolationProbe observerIsolation,
         ObjectProvider<ZLinkSpotManager> spots,
         ZLinkSpotPublisherClient publisher,
@@ -184,43 +184,27 @@ public final class EvidenceHttpServer implements SmartLifecycle {
     private Contracts.RuntimeSnapshot runtimeSnapshot() {
         ZLinkRouteMeshRuntime runtime = requireMeshRuntime();
         ZLinkMeshNodeSnapshot snapshot = runtime.snapshot(Contracts.SPOT_MESH);
-        var host = runtimeQuery.getObject().snapshot();
+        var host = runtimeQuery.getObject().status();
         return new Contracts.RuntimeSnapshot(
             snapshot.meshName(),
-            snapshot.rid().toHex(),
-            snapshot.lifecycleGeneration(),
-            snapshot.descriptorRevision(),
-            snapshot.endpoint(),
             snapshot.state().name(),
+            snapshot.isReady(),
+            snapshot.readyPeerCount(),
             snapshot.sequence(),
             snapshot.observedAt().toString(),
-            snapshot.descriptorSources(),
             snapshot.peers().stream().map(peer -> new Contracts.RuntimePeer(
-                peer.rid().toHex(),
-                peer.lifecycleGeneration(),
-                peer.descriptorRevision(),
-                peer.endpoint(),
-                peer.admissionState(),
-                peer.ready(),
-                peer.channelNames(),
-                peer.lastFailure().orElse(""))).toList(),
+                peer.nodeRid().toHex(),
+                peer.state().name(),
+                peer.unavailableReason().map(Enum::name).orElse(""))).toList(),
             snapshot.channels().stream().map(channel -> new Contracts.RuntimeChannel(
                 channel.channelName(),
-                channel.localWeight(),
-                channel.readyMemberCount(),
-                channel.selectable())).toList(),
-            snapshot.claims().applicationActive(),
-            snapshot.claims().pendingApplicationWork(),
-            snapshot.claims().infrastructureActive(),
-            snapshot.claims().pendingInfrastructureWork(),
-            snapshot.location().state(),
-            snapshot.location().lastSuccessAt().map(Object::toString).orElse(""),
-            snapshot.location().lastFailureAt().map(Object::toString).orElse(""),
-            host.state().name(),
-            host.workSealed(),
-            host.pendingRequestCount(),
-            host.pendingRelocationCount(),
-            host.pendingStreamBarrierCount());
+                channel.isReady(),
+                channel.readyTargetCount())).toList(),
+            snapshot.placement().isAvailable(),
+            snapshot.placement().activeActorCount(),
+            snapshot.placement().activeSpotCount(),
+            snapshot.placement().unavailableReason().map(Enum::name).orElse(""),
+            host.state().name());
     }
 
     private record AdminResult(String status, int weight) {

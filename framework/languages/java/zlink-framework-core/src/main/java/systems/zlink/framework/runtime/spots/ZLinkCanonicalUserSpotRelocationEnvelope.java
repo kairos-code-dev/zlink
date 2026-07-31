@@ -36,9 +36,7 @@ final class ZLinkCanonicalUserSpotRelocationEnvelope {
         Map<String, ZLinkUserSpotAggregateStagingOwner.ActorParticipant> actors =
             new java.util.HashMap<>();
         request.actors().forEach(actor -> actors.put(actor.actorId(), actor));
-        List<ZLinkSpotTimerRelocationEnvelope.CanonicalTimer> timers =
-            ZLinkSpotTimerRelocationEnvelope.canonicalize(
-                request.timerEnvelope());
+        List<ParticipantTimer> timers = new ArrayList<>();
         List<Journal> journal = new ArrayList<>();
         Map<Long, Long> boundaries = new java.util.HashMap<>();
         for (var lane : request.acceptedJournal().entrySet()) {
@@ -54,16 +52,33 @@ final class ZLinkCanonicalUserSpotRelocationEnvelope {
             .comparingLong(Journal::participantId)
             .thenComparingLong(Journal::sequence));
         long spotParticipant = participantId(inventory, "spot");
+        ZLinkSpotTimerRelocationEnvelope.canonicalize(request.timerEnvelope())
+            .forEach(timer -> timers.add(
+                new ParticipantTimer(spotParticipant, timer)));
+        for (var actor : request.actors()) {
+            long actorParticipant = participantId(
+                inventory, "actor:" + actor.actorId());
+            ZLinkSpotTimerRelocationEnvelope
+                .canonicalize(actor.timerEnvelope())
+                .forEach(timer -> timers.add(
+                    new ParticipantTimer(actorParticipant, timer)));
+        }
+        timers.sort(Comparator
+            .comparingLong(ParticipantTimer::participantId)
+            .thenComparing(value -> value.timer().name()));
         List<PendingTimer> pendingTimers = new ArrayList<>();
-        long nextSequence = boundaries.getOrDefault(spotParticipant, 0L);
-        for (var timer : timers) {
+        for (ParticipantTimer value : timers) {
+            long participant = value.participantId();
+            var timer = value.timer();
             if (timer.pending() == null) {
                 continue;
             }
+            long nextSequence = boundaries.getOrDefault(participant, 0L);
             nextSequence = Math.incrementExact(nextSequence);
-            pendingTimers.add(new PendingTimer(nextSequence, timer));
+            pendingTimers.add(new PendingTimer(
+                participant, nextSequence, timer));
+            boundaries.put(participant, nextSequence);
         }
-        boundaries.put(spotParticipant, nextSequence);
 
         Writer writer = new Writer();
         writer.u64(relocationId.getMostSignificantBits());
@@ -112,8 +127,9 @@ final class ZLinkCanonicalUserSpotRelocationEnvelope {
             writer.raw(entry.record());
         }
         writer.u32(timers.size());
-        for (var timer : timers) {
-            writer.u64(spotParticipant);
+        for (ParticipantTimer value : timers) {
+            var timer = value.timer();
+            writer.u64(value.participantId());
             writer.text8(timer.name());
             writer.text8(timer.handlerType());
             writer.u64(timer.periodMilliseconds());
@@ -128,7 +144,7 @@ final class ZLinkCanonicalUserSpotRelocationEnvelope {
         for (PendingTimer pending : pendingTimers) {
             var timer = pending.timer();
             var tick = timer.pending();
-            writer.u64(spotParticipant);
+            writer.u64(pending.participantId());
             writer.u64(pending.sequence());
             writer.text8(timer.name());
             writer.u64(tick.deliveryIndex());
@@ -172,6 +188,7 @@ final class ZLinkCanonicalUserSpotRelocationEnvelope {
         long spotGeneration = 0;
         long spotParticipant = 0;
         Map<Long, String> lanes = new java.util.HashMap<>();
+        Map<Long, Integer> actorIndexes = new java.util.HashMap<>();
         for (int index = 0; index < inventory.size(); index++) {
             long id = index + 1L;
             var participant = inventory.get(index);
@@ -189,6 +206,7 @@ final class ZLinkCanonicalUserSpotRelocationEnvelope {
                 spotParticipant = id;
                 lanes.put(id, "spot");
             } else {
+                actorIndexes.put(id, actors.size());
                 actors.add(new ZLinkUserSpotAggregateStagingOwner.ActorParticipant(
                     participant.objectId(),
                     participant.stableType(),
@@ -213,36 +231,65 @@ final class ZLinkCanonicalUserSpotRelocationEnvelope {
             }
             journal.computeIfAbsent(lane, ignored -> new ArrayList<>())
                 .add(new ZLinkAsyncSerialQueue.QueuedRecord(
-                    entry.sequence(), entry.rawEntry()));
+                    entry.sequence(), entry.frozenRecord()));
         }
-        Map<String, ZLinkServiceRelocationEnvelopeCodec.PendingTimerTick>
+        Map<TimerKey, ZLinkServiceRelocationEnvelopeCodec.PendingTimerTick>
             pendingByName = new java.util.HashMap<>();
         for (var pending : root.pendingTimerTicks()) {
-            if (pending.participantId() != spotParticipant) {
-                throw invalid("Actor timer is not supported");
+            if (!lanes.containsKey(pending.participantId())) {
+                throw invalid("canonical timer participant is unknown");
             }
-            pendingByName.put(pending.timerName(), pending);
+            TimerKey key = new TimerKey(
+                pending.participantId(), pending.timerName());
+            if (pendingByName.putIfAbsent(key, pending) != null) {
+                throw invalid("canonical pending timer is duplicated");
+            }
         }
-        final long canonicalSpotParticipant = spotParticipant;
+        Map<Long, List<ZLinkSpotTimerRelocationEnvelope.CanonicalTimer>>
+            timersByParticipant = new java.util.HashMap<>();
+        for (var value : root.timerRegistrations()) {
+            if (!lanes.containsKey(value.participantId())) {
+                throw invalid("canonical timer participant is unknown");
+            }
+            TimerKey key = new TimerKey(
+                value.participantId(), value.name());
+            var pending = pendingByName.remove(key);
+            var timer = new ZLinkSpotTimerRelocationEnvelope.CanonicalTimer(
+                value.name(), value.handlerType(),
+                value.periodMilliseconds(), value.overrunPolicy(),
+                value.maxCatchUpTicks(), value.stopOnUnhandledException(),
+                value.lastCompletedDeliveryIndex(),
+                value.lastCompletedScheduledIndex(),
+                value.nextScheduledAtUnixMilliseconds(),
+                pending == null ? null
+                    : new ZLinkSpotTimerRelocationEnvelope.CanonicalPending(
+                        pending.deliveryIndex(), pending.scheduledIndex(),
+                        pending.scheduledAtUnixMilliseconds(),
+                        pending.skippedTicks()));
+            timersByParticipant.computeIfAbsent(
+                value.participantId(), ignored -> new ArrayList<>()).add(timer);
+        }
+        if (!pendingByName.isEmpty()) {
+            throw invalid(
+                "canonical pending timer has no logical registration");
+        }
+        for (var entry : actorIndexes.entrySet()) {
+            int index = entry.getValue();
+            var actor = actors.get(index);
+            actors.set(
+                index,
+                new ZLinkUserSpotAggregateStagingOwner.ActorParticipant(
+                    actor.actorId(),
+                    actor.actorType(),
+                    actor.state(),
+                    actor.restoreSnapshot(),
+                    actor.preparedActorRef(),
+                    ZLinkSpotTimerRelocationEnvelope.encodeCanonical(
+                        timersByParticipant.getOrDefault(
+                            entry.getKey(), List.of()))));
+        }
         List<ZLinkSpotTimerRelocationEnvelope.CanonicalTimer> timers =
-            root.timerRegistrations().stream().map(value -> {
-                if (value.participantId() != canonicalSpotParticipant) {
-                    throw invalid("Actor timer is not supported");
-                }
-                var pending = pendingByName.get(value.name());
-                return new ZLinkSpotTimerRelocationEnvelope.CanonicalTimer(
-                    value.name(), value.handlerType(),
-                    value.periodMilliseconds(), value.overrunPolicy(),
-                    value.maxCatchUpTicks(), value.stopOnUnhandledException(),
-                    value.lastCompletedDeliveryIndex(),
-                    value.lastCompletedScheduledIndex(),
-                    value.nextScheduledAtUnixMilliseconds(),
-                    pending == null ? null
-                        : new ZLinkSpotTimerRelocationEnvelope.CanonicalPending(
-                            pending.deliveryIndex(), pending.scheduledIndex(),
-                            pending.scheduledAtUnixMilliseconds(),
-                            pending.skippedTicks()));
-            }).toList();
+            timersByParticipant.getOrDefault(spotParticipant, List.of());
         Class<? extends ZLinkSpot<?>> spotType = spotTypes.apply(
             stage.stableType());
         if (spotType == null) {
@@ -281,8 +328,17 @@ final class ZLinkCanonicalUserSpotRelocationEnvelope {
         private Journal { record = record.clone(); }
     }
     private record PendingTimer(
+        long participantId,
         long sequence,
         ZLinkSpotTimerRelocationEnvelope.CanonicalTimer timer) {
+    }
+
+    private record ParticipantTimer(
+        long participantId,
+        ZLinkSpotTimerRelocationEnvelope.CanonicalTimer timer) {
+    }
+
+    private record TimerKey(long participantId, String timerName) {
     }
 
     private static final class Writer {

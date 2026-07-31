@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/locations/in_memory_location_store.hpp"
+#include <runtime/locations/location_repository.hpp>
 #include "runtime/locations/live_location_reader.hpp"
 
 #include <gtest/gtest.h>
@@ -18,7 +19,7 @@ using zlink::framework::location_page_request_t;
 using zlink::framework::location_write_intent_t;
 using zlink::framework::location_write_status_t;
 using zlink::framework::owner_lease_found_t;
-using zlink::framework::runtime::in_memory_location_store_t;
+using zlink::framework::runtime::in_memory_location_repository_t;
 using zlink::framework::runtime::live_location_reader_t;
 
 location_owner_token_t owner_token (std::string owner_id, std::int64_t generation)
@@ -27,7 +28,7 @@ location_owner_token_t owner_token (std::string owner_id, std::int64_t generatio
 }
 
 location_owner_token_t claim_owner (
-  in_memory_location_store_t &store,
+  in_memory_location_repository_t &store,
   std::string owner_id,
   std::chrono::milliseconds ttl = std::chrono::seconds (15))
 {
@@ -76,7 +77,7 @@ zlink::framework::mesh_node_descriptor_t make_mesh_node (
 }
 
 void publish_mesh_node (
-  in_memory_location_store_t &store,
+  in_memory_location_repository_t &store,
   std::string rid,
   location_owner_token_t owner,
   std::int32_t actor_limit = 10000)
@@ -99,7 +100,7 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
       AuthorityAndReservationPreserveExactOwnerFence)
 {
     using namespace zlink::framework;
-    in_memory_location_store_t store;
+    in_memory_location_repository_t store;
     const auto owner_a = claim_owner (store, "owner-a");
     const auto owner_b = claim_owner (store, "owner-b");
     publish_mesh_node (store, "node-a", owner_a);
@@ -247,7 +248,7 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
       DescriptorFencesCapabilityProfileAndPendingCapacity)
 {
     using namespace zlink::framework;
-    in_memory_location_store_t store;
+    in_memory_location_repository_t store;
     const auto owner =
       std::get<owner_lease_claimed_t> (
         store
@@ -306,7 +307,7 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
       AuthorityRestorePreservesIdentityWithoutLiveOwnerLease)
 {
     using namespace zlink::framework;
-    in_memory_location_store_t store;
+    in_memory_location_repository_t store;
     const auto owner = claim_owner (store, "restore-owner");
     publish_mesh_node (store, "restore-node", owner);
 
@@ -369,7 +370,7 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
     const auto max_revision =
       static_cast<std::uint64_t> (
         std::numeric_limits<std::int64_t>::max ());
-    in_memory_location_store_t store{max_revision - 2};
+    in_memory_location_repository_t store{max_revision - 2};
     const auto owner =
       std::get<owner_lease_claimed_t> (
         store
@@ -430,7 +431,7 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
       CreationTerminalDedupesOnlyTheSameOperation)
 {
     using namespace zlink::framework;
-    in_memory_location_store_t store;
+    in_memory_location_repository_t store;
     const auto owner = claim_owner (store, "creation-owner");
     publish_mesh_node (store, "creation-node", owner);
 
@@ -487,7 +488,7 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
       AggregateRequiresExactCapacityBundle)
 {
     using namespace zlink::framework;
-    in_memory_location_store_t store;
+    in_memory_location_repository_t store;
     const auto owner_a = claim_owner (store, "owner-a");
     const auto owner_b = claim_owner (store, "owner-b");
     publish_mesh_node (store, "node-a", owner_a);
@@ -626,7 +627,7 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
 
 TEST (ZLinkFrameworkInMemoryLocationStore, MaintainsOwnerLeasesAndUsesPollingWithoutStampHint)
 {
-    in_memory_location_store_t store;
+    in_memory_location_repository_t store;
     const auto owner = claim_owner (store, "owner-a");
     const auto lease =
       store.read_owner_lease ("owner-a").result ().value ();
@@ -659,7 +660,7 @@ TEST (ZLinkFrameworkInMemoryLocationStore, MaintainsOwnerLeasesAndUsesPollingWit
 TEST (ZLinkFrameworkInMemoryLocationStore,
       FanoutPublisherRowsFenceIdentityRevisionAndCleanup)
 {
-    in_memory_location_store_t store;
+    in_memory_location_repository_t store;
     const auto owner_a = claim_owner (store, "fanout-owner-a");
     const auto owner_b = claim_owner (store, "fanout-owner-b");
     const auto owner_c = claim_owner (store, "fanout-owner-c");
@@ -826,7 +827,7 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
 TEST (ZLinkFrameworkInMemoryLocationStore,
       FanoutPublisherPageStopsAtFourMiB)
 {
-    in_memory_location_store_t store;
+    in_memory_location_repository_t store;
     const std::string maximal_escaped_text (
       255, '\x01');
     const auto owner =
@@ -913,7 +914,7 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
 TEST (ZLinkFrameworkInMemoryLocationStore,
       SignedWeightBoundariesAreValidatedWithoutNarrowing)
 {
-    in_memory_location_store_t store;
+    in_memory_location_repository_t store;
     const auto owner = claim_owner (
       store, "weight-owner");
 

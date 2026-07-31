@@ -1,6 +1,4 @@
 import {
-  AllocateBingoRoomReq,
-  AllocateBingoRoomRes,
   AuthenticatePlayerReq,
   AuthenticatePlayerRes,
   AuthenticateReq,
@@ -29,6 +27,8 @@ import {
   PlayerJoinedNotify,
   ReportBingoResultReq,
   ReportBingoResultRes,
+  ReserveBingoRoomReq,
+  ReserveBingoRoomRes,
   StopObservingBingoEventsReq,
   StopObservingBingoEventsRes,
   SubmitBingoCardReq,
@@ -43,7 +43,6 @@ const PacketNames = Object.freeze({
   reportBingoResultReq: 'ReportBingoResultReq',
   matchBingoReq: 'MatchBingoReq',
   matchBingoApiReq: 'MatchBingoApiReq',
-  allocateBingoRoom: 'AllocateBingoRoomReq',
   bingoRoomJoinReq: 'BingoRoomJoinReq',
   submitBingoCardReq: 'SubmitBingoCardReq',
   observeBingoEventsReq: 'ObserveBingoEventsReq',
@@ -88,8 +87,6 @@ function deterministicCard(actorId: string): number[] {
 }
 
 export {
-  AllocateBingoRoomReq,
-  AllocateBingoRoomRes,
   AuthenticatePlayerReq,
   AuthenticatePlayerRes,
   AuthenticateReq,
@@ -122,6 +119,8 @@ export {
   PlayerJoinedNotify,
   ReportBingoResultReq,
   ReportBingoResultRes,
+  ReserveBingoRoomReq,
+  ReserveBingoRoomRes,
   StopObservingBingoEventsReq,
   StopObservingBingoEventsRes,
   SubmitBingoCardReq,

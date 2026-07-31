@@ -1,6 +1,6 @@
 package systems.zlink.samples.kotlin.shoppingmall.server.commerceapi.handlers
 
-import systems.zlink.framework.channels.ZLinkRequestContext
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.samples.kotlin.shoppingmall.server.commerceapi.StartOrderUseCase
@@ -17,7 +17,7 @@ class PrepareInventoryReservedHandler(
 ) : ZLinkSuspendingRequestHandler<PrepareInventoryReservedApiReq, PrepareInventoryReservedApiRes> {
     override suspend fun handle(
         request: PrepareInventoryReservedApiReq,
-        context: ZLinkRequestContext,
+        context: ZLinkMessageContext,
     ): PrepareInventoryReservedApiRes =
         PrepareInventoryReservedApiRes(useCase.prepareInventoryReserved(request.request))
 }

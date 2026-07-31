@@ -1130,6 +1130,61 @@ test('ZLinkSpotManager does not bind formal Mesh actor packets as remote session
   }
 });
 
+test('relocation materialization restores inherited User Spot handler registrations', async () => {
+  class BaseSpot {}
+  class RecoverySpot extends BaseSpot {}
+  class ProbeActor {}
+  class ActorSendHandler {}
+  class ActorRequestHandler {}
+  class PacketHandler {}
+  class SubscriptionHandler {}
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [RecoverySpot],
+    spotActorSendHandlers: [{
+      spotType: BaseSpot,
+      actorType: ProbeActor,
+      handlerType: ActorSendHandler,
+      packetName: 'ActorSend'
+    }],
+    spotActorRequestHandlers: [{
+      spotType: BaseSpot,
+      actorType: ProbeActor,
+      handlerType: ActorRequestHandler,
+      packetName: 'ActorRequest'
+    }],
+    spotPacketHandlers: [{
+      spotType: BaseSpot,
+      handlerType: PacketHandler,
+      packetName: 'Packet'
+    }],
+    spotSubscriptionHandlers: [{
+      spotType: BaseSpot,
+      handlerType: SubscriptionHandler,
+      channelName: 'events',
+      topic: 'stage.*'
+    }]
+  });
+
+  const activation = await manager.prepareRelocationSpot(
+    'test.mesh',
+    'user_spot',
+    'RecoverySpot',
+    RecoverySpot,
+    'recovery-spot',
+    1n,
+    1n
+  );
+
+  try {
+    assert.deepEqual(
+      activation.handlers.snapshot().map((entry) => entry.kind),
+      ['actorSend', 'actorRequest', 'packet', 'subscribe']
+    );
+  } finally {
+    await manager.abortRelocationSpot(activation);
+  }
+});
+
 test('ZLinkSpotManager replies formal Mesh actor handler exceptions as HandlerException errors', async () => {
   const dispatchEvents = [];
   const replies = [];

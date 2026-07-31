@@ -19,6 +19,7 @@ import type {
   ZLinkMeshPeerConnection,
   ZLinkMeshPeerConnections,
   ZLinkMessageSerializer,
+  ZLinkNetworkOptions,
   ZLinkSession,
   ZLinkSessionFactory,
   ZLinkSpot,
@@ -31,6 +32,7 @@ import type {
   ZLinkActorFactoryConfiguration,
   ZLinkInstanceSpotFactoryConfiguration,
   ZLinkRelocationConfiguration,
+  ZLinkPublisherCapabilityOptions,
   ZLinkSpotNodeOptions,
   ZLinkStreamNodeOptions,
   ZLinkUserSpotFactoryConfiguration
@@ -201,6 +203,18 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
     );
   }
 
+  configureNetwork(): ZLinkNetworkOptions {
+    const network = {
+      bindHost: '127.0.0.1',
+      ...(this.state.additionalOptions.network ?? {})
+    };
+    this.state.additionalOptions = {
+      ...this.state.additionalOptions,
+      network
+    };
+    return network;
+  }
+
   protected addSerializer(contentType: string, serializer: ZLinkMessageSerializer): void {
     this.state.codecRegistry.addSerializer(contentType, serializer);
   }
@@ -232,7 +246,7 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
     if (Object.prototype.hasOwnProperty.call(this.state.spotNodes, name)) {
       throw new framework.ZLinkConfigurationException(`Duplicate RouteMesh '${name}'.`);
     }
-    this.state.spotNodes[name] = {};
+    this.state.spotNodes[name] = { router: { port: 0 } };
     return new DefaultZLinkNestMeshNodeBuilder(this.state, name, this.state.spotNodes[name]);
   }
 
@@ -320,8 +334,22 @@ class DefaultZLinkNestFanoutChannelBuilder extends ZLinkNestOptionsBuilder imple
     super(state);
   }
 
-  enablePublisher(bind: string | undefined): this {
-    this.channelOptions.publisher = { bind };
+  enablePublisher(endpointOrPort?: string | number): this {
+    this.channelOptions.publisher = typeof endpointOrPort === 'string'
+      ? { bind: endpointOrPort }
+      : { port: requireListenerPort(endpointOrPort, `Fanout channel '${this.name}' publisher`) };
+    return this;
+  }
+
+  setBindHost(bindHost: string): this {
+    requireClientServerText(bindHost, `Fanout channel '${this.name}' publisher bind host`);
+    this.updatePublisher({ bindHost });
+    return this;
+  }
+
+  setAdvertiseHost(advertiseHost: string): this {
+    requireClientServerText(advertiseHost, `Fanout channel '${this.name}' publisher advertise host`);
+    this.updatePublisher({ advertiseHost });
     return this;
   }
 
@@ -357,6 +385,15 @@ class DefaultZLinkNestFanoutChannelBuilder extends ZLinkNestOptionsBuilder imple
   addPublishHandler(packetName: string, handlerType: Type): this {
     this.channelOptions.publishHandlerTypes = [...(this.channelOptions.publishHandlerTypes ?? []), { packetName, handlerType }];
     return this;
+  }
+
+  private updatePublisher(values: Partial<ZLinkPublisherCapabilityOptions>): void {
+    if (this.channelOptions.publisher === undefined) {
+      throw new framework.ZLinkConfigurationException(
+        `Fanout channel '${this.name}' publisher must be enabled before configuring its listener.`
+      );
+    }
+    this.channelOptions.publisher = { ...this.channelOptions.publisher, ...values };
   }
 }
 
@@ -500,6 +537,14 @@ function requireClientServerText(value: string, label: string): void {
   }
 }
 
+function requireListenerPort(port: number | undefined, label: string): number {
+  const normalized = port ?? 0;
+  if (!Number.isInteger(normalized) || normalized < 0 || normalized > 65_535) {
+    throw new framework.ZLinkConfigurationException(`${label} port must be between 0 and 65535.`);
+  }
+  return normalized;
+}
+
 function rejectFixedRoutingId(routingId: string | undefined, memberName: string): void {
   if (routingId !== undefined) {
     throw new framework.ZLinkConfigurationException(
@@ -521,23 +566,36 @@ class DefaultZLinkNestStreamNodeBuilder extends ZLinkNestOptionsBuilder implemen
     super(state);
   }
 
-  bind(endpoint: string | undefined): this {
-    this.streamOptions.bind = endpoint;
+  bind(endpointOrPort?: string | number): this {
+    if (typeof endpointOrPort === 'string') {
+      this.streamOptions.bind = endpointOrPort;
+      delete this.streamOptions.port;
+    } else {
+      this.streamOptions.port = requireListenerPort(endpointOrPort, 'STREAM listener');
+      delete this.streamOptions.bind;
+    }
     return this;
   }
 
-  enableActorDispatch(meshName: string): this {
-    if (meshName.trim().length === 0 || meshName.trim() !== meshName) {
+  setBindHost(bindHost: string): this {
+    requireClientServerText(bindHost, 'STREAM bind host');
+    this.streamOptions.bindHost = bindHost;
+    return this;
+  }
+
+  setAdvertiseHost(advertiseHost: string): this {
+    requireClientServerText(advertiseHost, 'STREAM advertise host');
+    this.streamOptions.advertiseHost = advertiseHost;
+    return this;
+  }
+
+  enableActorDispatch(): this {
+    if (this.streamOptions.actorDispatchEnabled === true) {
       throw new framework.ZLinkConfigurationException(
-        'STREAM actor dispatch MeshName must not be empty or padded.'
+        'STREAM node actor dispatch is already enabled.'
       );
     }
-    if (this.streamOptions.actorDispatchMeshName !== undefined) {
-      throw new framework.ZLinkConfigurationException(
-        'STREAM node actor dispatch MeshName is already configured.'
-      );
-    }
-    this.streamOptions.actorDispatchMeshName = meshName;
+    this.streamOptions.actorDispatchEnabled = true;
     return this;
   }
 
@@ -587,8 +645,26 @@ class DefaultZLinkNestMeshNodeBuilder extends ZLinkNestOptionsBuilder implements
     return this.channel(name).server();
   }
 
-  listen(endpoint: string): this {
-    this.spotOptions.router = { ...(this.spotOptions.router ?? {}), bind: endpoint };
+  listen(endpointOrPort?: string | number): this {
+    this.spotOptions.router = typeof endpointOrPort === 'string'
+      ? { ...(this.spotOptions.router ?? {}), bind: endpointOrPort, port: undefined }
+      : {
+          ...(this.spotOptions.router ?? {}),
+          bind: undefined,
+          port: requireListenerPort(endpointOrPort, `RouteMesh '${this.name}' listener`)
+        };
+    return this;
+  }
+
+  setBindHost(bindHost: string): this {
+    requireClientServerText(bindHost, `RouteMesh '${this.name}' bind host`);
+    this.spotOptions.router = { ...(this.spotOptions.router ?? {}), bindHost };
+    return this;
+  }
+
+  setAdvertiseHost(advertiseHost: string): this {
+    requireClientServerText(advertiseHost, `RouteMesh '${this.name}' advertise host`);
+    this.spotOptions.router = { ...(this.spotOptions.router ?? {}), advertiseHost };
     return this;
   }
 
@@ -607,6 +683,16 @@ class DefaultZLinkNestMeshNodeBuilder extends ZLinkNestOptionsBuilder implements
   setRoutingIdPrefix(prefix: string): this {
     rejectFixedRoutingId(this.spotOptions.routingId, this.name);
     this.spotOptions.routingIdPrefix = framework.validateRoutingIdPrefix(prefix);
+    return this;
+  }
+
+  setPlacementWeight(weight: number): this {
+    if (!Number.isInteger(weight) || weight < 0 || weight > 10_000) {
+      throw new framework.ZLinkConfigurationException(
+        'Placement weight must be an integer in 0..10000.'
+      );
+    }
+    this.spotOptions.placementWeight = weight;
     return this;
   }
 
@@ -901,7 +987,7 @@ class DefaultZLinkNestMeshObjectServerBuilder
       implementation,
       options: {
         ...options,
-        executionMode: options?.executionMode ?? ZLinkUserSpotExecutionMode.SpotWide
+        executionMode: options.executionMode
       },
       relocation
     };
@@ -928,7 +1014,7 @@ class DefaultZLinkNestMeshObjectServerBuilder
       factory.seal();
     }
     const { options, relocation } = built;
-    validateStableTypeLimit(options?.stableTypeLimit);
+    validateStableTypeLimit(options.stableTypeLimit);
     const factories = {
       ...(this.node.instanceSpotFactories ?? {})
     };
@@ -1008,17 +1094,19 @@ function validateUserSpotFactoryConfiguration(
   options: ZLinkUserSpotFactoryConfiguration
 ): void {
   validateStableTypeLimit(options.stableTypeLimit);
+  const executionMode: unknown = options.executionMode;
+  const relocationReadiness: unknown = options.relocationReadiness;
   if (
-    options.executionMode !== ZLinkUserSpotExecutionMode.SpotWide
-    && options.executionMode !== ZLinkUserSpotExecutionMode.PerActor
+    executionMode !== ZLinkUserSpotExecutionMode.SpotWide
+    && executionMode !== ZLinkUserSpotExecutionMode.PerActor
   ) {
     throw new framework.ZLinkConfigurationException(
       'User Spot executionMode is invalid.'
     );
   }
   if (
-    options.relocationReadiness !== ZLinkSpotRelocationReadinessMode.AnyTurnBoundary
-    && options.relocationReadiness !== ZLinkSpotRelocationReadinessMode.ApplicationSignaled
+    relocationReadiness !== ZLinkSpotRelocationReadinessMode.AnyTurnBoundary
+    && relocationReadiness !== ZLinkSpotRelocationReadinessMode.ApplicationSignaled
   ) {
     throw new framework.ZLinkConfigurationException(
       'User Spot relocationReadiness is invalid.'

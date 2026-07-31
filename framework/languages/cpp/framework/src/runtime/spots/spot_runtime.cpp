@@ -1070,6 +1070,90 @@ bool spot_context_state_t::owns_current_serial_turn () const
     return turn && serial_queue && turn->belongs_to (serial_queue.get ());
 }
 
+void spot_context_state_t::defer_relocation_ready ()
+{
+    if (execution_mode != user_spot_execution_mode_t::spot_wide
+        || relocation_readiness
+             != spot_relocation_readiness_mode_t::application_signaled
+        || entry_spot || instance_spot
+        || !owns_current_serial_turn ()) {
+        throw framework_exception_t (
+          framework_error_kind_t::invalid_configuration,
+          "relocation readiness can be deferred only from an "
+          "application-signaled SpotWide User Spot turn");
+    }
+    bool complete_without_relocation = false;
+    {
+        std::lock_guard lock (callback_mutex);
+        if (relocation_ready_deferred) {
+            throw framework_exception_t (
+              framework_error_kind_t::invalid_configuration,
+              "relocation readiness is already deferred");
+        }
+        relocation_ready_deferred = true;
+        complete_without_relocation =
+          !relocation_boundary_active;
+    }
+    if (complete_without_relocation
+        && !try_post_serial (
+          "relocation-ready-continued", [this] {
+              complete_relocation_ready (
+                spot_relocation_ready_outcome_t::continued);
+          })) {
+        std::lock_guard lock (callback_mutex);
+        relocation_ready_deferred = false;
+        throw framework_exception_t (
+          framework_error_kind_t::request_rejected,
+          "relocation readiness completion queue is full");
+    }
+}
+
+void spot_context_state_t::ensure_relocation_turn_open () const
+{
+    if (!owns_current_serial_turn ())
+        return;
+    std::lock_guard lock (callback_mutex);
+    if (relocation_ready_deferred) {
+        throw framework_exception_t (
+          framework_error_kind_t::invalid_configuration,
+          "Framework operations are not allowed after relocation "
+          "readiness is deferred in the current Spot turn");
+    }
+}
+
+void spot_context_state_t::complete_relocation_ready (
+  spot_relocation_ready_outcome_t outcome)
+{
+    bool pending = false;
+    {
+        std::lock_guard lock (callback_mutex);
+        pending = relocation_ready_deferred;
+    }
+    if (!pending)
+        return;
+    (void) run_serial_sync (
+      "relocation-ready-completed", [this, outcome] {
+          std::shared_ptr<void> instance;
+          std::function<void (
+            void *, const spot_relocation_ready_completion_t &)>
+            callback;
+          {
+              std::lock_guard lock (callback_mutex);
+              if (!relocation_ready_deferred)
+                  return;
+              relocation_ready_deferred = false;
+              instance = spot_instance;
+              callback =
+                lifecycle.on_relocation_ready_completed;
+          }
+          if (instance && callback) {
+              callback (
+                instance.get (),
+                spot_relocation_ready_completion_t{outcome});
+          }
+      });
+}
+
 void spot_context_state_t::drain_serial ()
 {
     if (serial_queue) {
@@ -1130,6 +1214,26 @@ spot_context_t::spot_context_t (std::shared_ptr<detail::spot_context_state_t> st
 
 spot_context_t::~spot_context_t () = default;
 spot_context_t::spot_context_t (spot_context_t &&) noexcept = default;
+
+spot_relocation_ready_call_t::spot_relocation_ready_call_t (
+  std::shared_ptr<detail::spot_context_state_t> state) :
+    _state (std::move (state))
+{
+}
+
+spot_relocation_ready_call_t::~spot_relocation_ready_call_t () = default;
+spot_relocation_ready_call_t::spot_relocation_ready_call_t (
+  spot_relocation_ready_call_t &&) noexcept = default;
+
+void spot_relocation_ready_call_t::defer ()
+{
+    if (!_state) {
+        throw framework_exception_t (
+          framework_error_kind_t::invalid_configuration,
+          "relocation readiness call is not bound to a Spot");
+    }
+    _state->defer_relocation_ready ();
+}
 
 entry_spot_context_t::entry_spot_context_t () = default;
 
@@ -1197,9 +1301,14 @@ spot_handler_registry_t spot_context_t::handlers ()
     return spot_handler_registry_t (_state);
 }
 
+spot_relocation_ready_call_t spot_context_t::relocation_ready ()
+{
+    return spot_relocation_ready_call_t (_state);
+}
+
 spot_manager_t spot_context_t::manager () const
 {
-    return spot_manager_t (_state->node);
+    return spot_manager_t (_state->node, _state);
 }
 
 channel_client_t spot_context_t::outbound () const
@@ -1208,7 +1317,57 @@ channel_client_t spot_context_t::outbound () const
         throw framework_exception_t (framework_error_kind_t::request_failed,
                                      "SPOT channel outbound runtime is not configured");
     }
-    return channel_client_t (message_bus_t (_state->channel_runtime));
+    auto state = std::weak_ptr<detail::spot_context_state_t> (_state);
+    return channel_client_t (message_bus_t (
+      _state->channel_runtime,
+      [state] {
+          const auto locked = state.lock ();
+          if (!locked)
+              return result_t<void>::failure (
+                framework_error_kind_t::invalid_configuration,
+                "Spot execution context is no longer available");
+          try {
+              locked->ensure_relocation_turn_open ();
+              return result_t<void>::success ();
+          }
+          catch (const framework_exception_t &error) {
+              return detail::result_access_t::failure<void> (
+                error);
+          }
+      }));
+}
+
+void spot_context_t::ensure_submission_open () const
+{
+    if (!_state) {
+        throw framework_exception_t (
+          framework_error_kind_t::invalid_configuration,
+          "Spot execution context is not configured");
+    }
+    _state->ensure_relocation_turn_open ();
+}
+
+std::function<result_t<void> ()>
+spot_context_t::submission_preflight () const
+{
+    auto state =
+      std::weak_ptr<detail::spot_context_state_t> (_state);
+    return [state] {
+        const auto locked = state.lock ();
+        if (!locked) {
+            return result_t<void>::failure (
+              framework_error_kind_t::invalid_configuration,
+              "Spot execution context is no longer available");
+        }
+        try {
+            locked->ensure_relocation_turn_open ();
+            return result_t<void>::success ();
+        }
+        catch (const framework_exception_t &error) {
+            return detail::result_access_t::failure<void> (
+              error);
+        }
+    };
 }
 
 task_t<bool> spot_context_t::close ()
@@ -1218,6 +1377,7 @@ task_t<bool> spot_context_t::close ()
 
 task_t<bool> spot_context_t::close_erased ()
 {
+    _state->ensure_relocation_turn_open ();
     if (!_state || !_state->node) {
         co_return result_t<bool>::success (false);
     }
@@ -1241,6 +1401,7 @@ task_t<actor_ref_t> spot_context_t::leave_actor_erased (
   void *actor,
   std::function<void (void *, const actor_ref_t &)> update_actor_ref)
 {
+    ensure_submission_open ();
     if (!_state || !_state->node || actor_ref.empty ()) {
         return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
           framework_error_kind_t::actor_route_not_found, "actor ref is empty"));
@@ -1558,6 +1719,13 @@ send_call_t spot_context_t::publish_erased (std::string topic,
               return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
                                               "spot context is not configured");
           }
+          try {
+              state->ensure_relocation_turn_open ();
+          }
+          catch (const framework_exception_t &error) {
+              return detail::result_access_t::failure<void> (
+                error);
+          }
           state->ordering_log.push_back ("publish:" + topic + ":" + submitted_packet_name + ":"
                                          + payload.to_string ());
           auto native = state->native_spot.lock ();
@@ -1583,11 +1751,26 @@ send_call_t spot_context_t::publish_erased (std::string topic,
                   auto frame_part = encode_spot_publish_frame (
                     state->node ? state->node->snapshot.name : std::string{},
                     submitted_packet_name, topic, payload);
-                  const std::vector<zlink::message_t> parts{std::move (frame_part)};
+                  if (!state->node || !state->node->channel_runtime
+                      || !state->node->channel_runtime->serializers) {
+                      return result_t<void>::failure (
+                        framework_error_kind_t::request_failed,
+                        "spot publish serializer registry is unavailable");
+                  }
+                  runtime::messaging::client_call_codec_t route_codec;
+                  auto route_header = route_codec.create_envelope (
+                    runtime::messaging::message_kind_t::command, "spot",
+                    detail::spot_multicast_route_send_t::packet_name,
+                    std::chrono::seconds (30));
+                  const auto route = detail::spot_multicast_route_send_t{
+                    topic, frame_part.to_bytes ()};
+                  const auto encoded = route_codec.encode_envelope_parts (
+                    route_header, route,
+                    *state->node->channel_runtime->serializers);
                   if (native->publish (
                         state->node->snapshot.discovery_channel_name.value_or (
                           state->node->snapshot.name),
-                        topic, parts)
+                        topic, encoded.items ())
                       != zlink::submit_result_t::ok) {
                       return result_t<void>::failure (framework_error_kind_t::request_failed,
                                                       "spot publish failed");
@@ -1612,15 +1795,6 @@ send_call_t spot_context_t::publish_erased (std::string topic,
                                                     std::nullopt,
                                                     std::nullopt};
                     });
-                  if (state->node->monitoring) {
-                      runtime::runtime_metrics_t metrics (state->node->monitoring);
-                      if (metrics.enabled ()) {
-                          /* Declared topics are a closed set (runtime-metrics
-                           * §4.4b/§5); dynamic topics would drop the label. */
-                          metrics.counter ("zlink.fanout.published", "{message}", 1,
-                                           {{"topic", topic}});
-                      }
-                  }
               }
           }
           return result_t<void>::success ();
@@ -1654,6 +1828,13 @@ send_call_t spot_context_t::send_to_erased (node_rid_t node_rid,
           if (!state) {
               return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
                                               "SPOT context is not configured");
+          }
+          try {
+              state->ensure_relocation_turn_open ();
+          }
+          catch (const framework_exception_t &error) {
+              return detail::result_access_t::failure<void> (
+                error);
           }
           if (auto route_channel_name = optional_spot_route_channel_name (state)) {
               detail::channel_runtime_manager_t manager (state->channel_runtime);
@@ -1798,6 +1979,15 @@ spot_context_t::erased_request_call_t spot_context_t::request_to_erased (node_ri
           }
       },
       [state, target_spot_id] (bool release_turn) {
+          if (state) {
+              try {
+                  state->ensure_relocation_turn_open ();
+              }
+              catch (const framework_exception_t &error) {
+                  return detail::result_access_t::failure<void> (
+                    error);
+              }
+          }
           if (!release_turn && state
               && state->spot_id == target_spot_id
               && state->owns_current_serial_turn ()) {
@@ -2455,6 +2645,13 @@ spot_manager_t::spot_manager_t (
 {
 }
 
+spot_manager_t::spot_manager_t (
+  std::shared_ptr<detail::spot_node_builder_state_t> state,
+  std::weak_ptr<detail::spot_context_state_t> source) :
+    _state (std::move (state)), _source (std::move (source))
+{
+}
+
 spot_manager_t::~spot_manager_t () = default;
 spot_manager_t::spot_manager_t (spot_manager_t &&) noexcept = default;
 spot_manager_t &spot_manager_t::operator= (spot_manager_t &&) noexcept = default;
@@ -2509,6 +2706,16 @@ task_t<spot_create_result_t> spot_create_call_t::submit ()
             framework_error_kind_t::already_submitted,
             "Spot create call was already submitted"));
     _state->submitted = true;
+    if (const auto source = _state->source.lock ()) {
+        try {
+            source->ensure_relocation_turn_open ();
+        }
+        catch (const framework_exception_t &error) {
+            return task_t<spot_create_result_t> (
+              detail::result_access_t::failure<
+                spot_create_result_t> (error));
+        }
+    }
     if (!_state->node || !_state->node->create_user_spot)
         return task_t<spot_create_result_t> (
           result_t<spot_create_result_t>::failure (
@@ -2524,6 +2731,7 @@ spot_create_call_t spot_manager_t::create (std::string stable_type)
 {
     auto state = std::make_shared<detail::spot_create_call_state_t> ();
     state->node = _state;
+    state->source = _source;
     state->exclusive = true;
     state->stable_type = std::move (stable_type);
     return spot_create_call_t (std::move (state));
@@ -2535,6 +2743,7 @@ spot_create_call_t spot_manager_t::get_or_create (
 {
     auto state = std::make_shared<detail::spot_create_call_state_t> ();
     state->node = _state;
+    state->source = _source;
     state->spot_id = std::move (spot_id);
     state->stable_type = std::move (stable_type);
     return spot_create_call_t (std::move (state));
@@ -2543,6 +2752,16 @@ spot_create_call_t spot_manager_t::get_or_create (
 task_t<std::optional<spot_ref_t>>
 spot_manager_t::find (spot_id_t spot_id) const
 {
+    if (const auto source = _source.lock ()) {
+        try {
+            source->ensure_relocation_turn_open ();
+        }
+        catch (const framework_exception_t &error) {
+            return task_t<std::optional<spot_ref_t>> (
+              detail::result_access_t::failure<
+                std::optional<spot_ref_t>> (error));
+        }
+    }
     if (!_state || !_state->find_user_spot)
         return task_t<std::optional<spot_ref_t>> (
           result_t<std::optional<spot_ref_t>>::failure (
@@ -2553,6 +2772,15 @@ spot_manager_t::find (spot_id_t spot_id) const
 
 task_t<bool> spot_manager_t::close (spot_ref_t spot)
 {
+    if (const auto source = _source.lock ()) {
+        try {
+            source->ensure_relocation_turn_open ();
+        }
+        catch (const framework_exception_t &error) {
+            return task_t<bool> (
+              detail::result_access_t::failure<bool> (error));
+        }
+    }
     if (!_state || !_state->close_user_spot)
         return task_t<bool> (result_t<bool>::failure (
           framework_error_kind_t::invalid_configuration,
@@ -4946,9 +5174,15 @@ local_spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (
     context_state->entry_spot =
       _state->snapshot.entry_spot_name
       && *_state->snapshot.entry_spot_name == spot_name;
+    context_state->instance_spot = instance_spot;
     if (const auto mode = _state->snapshot.spot_execution_modes.find (spot_name);
         mode != _state->snapshot.spot_execution_modes.end ()) {
         context_state->execution_mode = mode->second;
+    }
+    if (const auto readiness =
+          _state->spot_relocation_readiness.find (spot_name);
+        readiness != _state->spot_relocation_readiness.end ()) {
+        context_state->relocation_readiness = readiness->second;
     }
     context_state->lifecycle = lifecycle;
     if (_state->root_services) {
@@ -5419,6 +5653,25 @@ spot_node_runtime_t::actor_message_follow_target (const actor_ref_t &actor_ref) 
       actor_key (actor_ref), actor_ref.generation ());
 }
 
+std::optional<actor_message_follow_target_t>
+spot_node_runtime_t::try_acquire_actor_message_follow (
+  const actor_ref_t &actor_ref,
+  std::size_t payload_bytes,
+  std::size_t hop_count)
+{
+    return _state->actor_transfer_coordinator.try_acquire_message_follow (
+      actor_key (actor_ref), actor_ref.generation (), payload_bytes,
+      hop_count);
+}
+
+void spot_node_runtime_t::release_actor_message_follow (
+  const actor_ref_t &actor_ref,
+  std::size_t payload_bytes) noexcept
+{
+    _state->actor_transfer_coordinator.release_message_follow (
+      actor_key (actor_ref), actor_ref.generation (), payload_bytes);
+}
+
 void spot_node_runtime_t::record_actor_route (const actor_ref_t &actor_ref, spot_route_t route)
 {
     std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
@@ -5713,6 +5966,14 @@ result_t<void> spot_node_runtime_t::send_spot_mesh_parts (
     }
 }
 
+std::optional<std::uint64_t> spot_node_runtime_t::resolve_spot_generation (
+  const zlink::routing_id_t &target_node_rid,
+  const spot_id_t &target_spot_id) const
+{
+    return resolve_target_spot_generation (
+      _state, target_node_rid, target_spot_id);
+}
+
 result_t<runtime::messaging::message_parts_t> spot_node_runtime_t::request_spot_mesh_parts (
   const zlink::routing_id_t &target_node_rid,
   const spot_id_t &target_spot_id,
@@ -5785,6 +6046,145 @@ std::vector<spot_context_t> spot_node_runtime_t::active_contexts () const
         }
     }
     return contexts;
+}
+
+std::vector<spot_id_t>
+spot_node_runtime_t::deferred_relocation_ready_spots () const
+{
+    std::vector<spot_id_t> result;
+    std::lock_guard<std::recursive_mutex> node_lock (
+      _state->mutex);
+    for (const auto &[_, context] :
+         _state->spot_contexts_by_id) {
+        const auto state = context._state;
+        if (!state || state->entry_spot || state->instance_spot)
+            continue;
+        std::lock_guard callback_lock (state->callback_mutex);
+        if (state->relocation_ready_deferred)
+            result.push_back (state->spot_id);
+    }
+    return result;
+}
+
+std::vector<spot_node_runtime_t::application_relocation_unit_t>
+spot_node_runtime_t::application_relocation_units () const
+{
+    std::vector<application_relocation_unit_t> result;
+    std::lock_guard<std::recursive_mutex> node_lock (
+      _state->mutex);
+    const auto node_rid =
+      detail::effective_spot_node_rid (_state->snapshot);
+    for (const auto &[_, context] :
+         _state->spot_contexts_by_id) {
+        const auto state = context._state;
+        if (!state || state->entry_spot || state->instance_spot
+            || state->execution_mode
+                 != user_spot_execution_mode_t::spot_wide
+            || state->relocation_readiness
+                 != spot_relocation_readiness_mode_t::
+                   application_signaled)
+            continue;
+        application_relocation_unit_t unit{
+          state->spot_id, state->spot_name, false, {}};
+        {
+            std::lock_guard callback_lock (
+              state->callback_mutex);
+            unit.ready = state->relocation_ready_deferred;
+        }
+        for (const auto &[key, actor_spot_id] :
+             _state->actor_spot_ids) {
+            if (actor_spot_id != state->spot_id)
+                continue;
+            const auto split = key.find (':');
+            if (split == std::string::npos)
+                continue;
+            const auto generation =
+              _state->actor_generations.find (key);
+            unit.actors.emplace_back (
+              node_rid_t::from_string (node_rid),
+              key.substr (0, split), key.substr (split + 1),
+              generation != _state->actor_generations.end ()
+                ? generation->second
+                : 0);
+        }
+        result.push_back (std::move (unit));
+    }
+    return result;
+}
+
+void spot_node_runtime_t::begin_relocation_readiness ()
+{
+    std::lock_guard<std::recursive_mutex> node_lock (
+      _state->mutex);
+    for (const auto &[_, context] :
+         _state->spot_contexts_by_id) {
+        const auto state = context._state;
+        if (!state || state->entry_spot || state->instance_spot
+            || state->execution_mode
+                 != user_spot_execution_mode_t::spot_wide
+            || state->relocation_readiness
+                 != spot_relocation_readiness_mode_t::
+                   application_signaled)
+            continue;
+        std::lock_guard callback_lock (state->callback_mutex);
+        state->relocation_boundary_active = true;
+    }
+}
+
+void spot_node_runtime_t::end_relocation_readiness (
+  const std::vector<spot_id_t> &relocated_spots)
+{
+    std::vector<std::shared_ptr<spot_context_state_t>> states;
+    {
+        std::lock_guard<std::recursive_mutex> node_lock (
+          _state->mutex);
+        for (const auto &[_, context] :
+             _state->spot_contexts_by_id) {
+            const auto state = context._state;
+            if (!state)
+                continue;
+            {
+                std::lock_guard callback_lock (
+                  state->callback_mutex);
+                if (!state->relocation_boundary_active)
+                    continue;
+                state->relocation_boundary_active = false;
+            }
+            states.push_back (state);
+        }
+    }
+    for (const auto &state : states) {
+        const auto relocated =
+          std::find (
+            relocated_spots.begin (), relocated_spots.end (),
+            state->spot_id)
+          != relocated_spots.end ();
+        state->complete_relocation_ready (
+          relocated
+            ? spot_relocation_ready_outcome_t::relocated
+            : spot_relocation_ready_outcome_t::continued);
+    }
+}
+
+bool spot_node_runtime_t::complete_relocation_ready (
+  const spot_id_t &spot_id,
+  spot_relocation_ready_outcome_t outcome)
+{
+    std::shared_ptr<spot_context_state_t> state;
+    {
+        std::lock_guard<std::recursive_mutex> node_lock (
+          _state->mutex);
+        const auto found =
+          _state->spot_contexts_by_id.find (
+            std::string (spot_id));
+        if (found == _state->spot_contexts_by_id.end ())
+            return false;
+        state = found->second._state;
+    }
+    if (!state)
+        return false;
+    state->complete_relocation_ready (outcome);
+    return true;
 }
 
 std::size_t spot_node_runtime_t::active_user_spot_count () const
@@ -6722,13 +7122,30 @@ spot_node_runtime_t::dispatch_subscription (const spot_context_t &context,
     report_spot_dispatch_trace (
       _state, message_flow_outcome_t::dispatched, dispatch_error_surface_t::spot_subscription,
       dispatch_message_kind_t::publish, *packet_name, topic, context._state->spot_id);
-    if (_state->monitoring) {
-        runtime::runtime_metrics_t metrics (_state->monitoring);
-        if (metrics.enabled ()) {
-            metrics.counter ("zlink.fanout.received", "{message}", 1, {{"topic", topic}});
-        }
-    }
     return result_t<void>::success ();
+}
+
+std::size_t spot_node_runtime_t::dispatch_multicast (
+  std::string topic,
+  const std::vector<zlink::message_t> &parts,
+  service_provider_t &services,
+  serializer_registry_t &serializers) const
+{
+    std::size_t dispatched = 0;
+    for (const auto &context : active_contexts ()) {
+        const auto subscribed = std::any_of (
+          context._state->handlers.begin (), context._state->handlers.end (),
+          [&topic] (const spot_handler_descriptor_t &handler) {
+              return handler.kind == spot_handler_kind_t::subscription
+                     && handler.topic == topic;
+          });
+        if (!subscribed)
+            continue;
+        (void) dispatch_subscription (
+          context, topic, parts, services, serializers);
+        ++dispatched;
+    }
+    return dispatched;
 }
 
 #if 0

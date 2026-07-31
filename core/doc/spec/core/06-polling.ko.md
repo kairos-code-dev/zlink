@@ -129,8 +129,9 @@ poller 하나의 add, modify, remove와 wait는 caller가 직렬화한다. 서�
 `ZLINK_POLLITEMS_DFLT`는 내부·application stack buffer의 권장 초기 item 수이며 readiness bit가 아니다.
 `ZLINK_HAVE_POLLER == 1`은 이 public poller API가 build에 포함되었음을 뜻한다.
 
-`ZLINK_POLLCOMPLETION`은 raw DEALER 또는 ROUTER를 `zlink_poller_add()`로 등록할 때만 사용할 수 있다. 다른
-bit와 OR하지 않고 단독으로 등록한다. request completion signal은 public receive record가 아니다.
+`ZLINK_POLLCOMPLETION`은 raw DEALER 또는 ROUTER를 `zlink_poller_add()`로 등록할 때만 사용할 수 있다. 단독으로
+등록하거나 `ZLINK_POLLIN`, `ZLINK_POLLOUT`과 OR할 수 있다. 이 조합을 사용하면 poller 하나가 같은 socket의
+receive, send와 completion 진행을 함께 담당한다. Request completion signal은 public receive record가 아니다.
 `zlink_poller_wait()`가 signal을 관측하면 paired Completion transport에서 reply payload를
 수신하고 등록된 reply callback을 그 wait 호출의 thread에서 dispatch한다. Reply payload를
 두 번째 내부 payload queue로 복사하지 않는다. Timeout, shutdown과 같이 payload가 없는

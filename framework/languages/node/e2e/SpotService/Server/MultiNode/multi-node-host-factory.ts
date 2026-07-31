@@ -32,6 +32,7 @@ import { EvidenceStore } from './Infrastructure/evidence-store';
 import {
   MultiNodeCreateSpotAHandler,
   MultiNodeCreateSpotBHandler,
+  MultiNodeEntryActorPingHandler,
   MultiNodeEntrySpot,
   MultiNodeScenarioActorRelocationAdapter,
   MultiNodeScenarioActorFactory,
@@ -81,7 +82,7 @@ export async function startMultiNodeHost(): Promise<void> {
           if (options.redisEndpoint !== undefined && options.redisKeyPrefix !== undefined) {
             builder.addLocationStore(new ZLinkRedisLocationStore({
               url: `redis://${options.redisEndpoint}`,
-              keyPrefix: `${options.redisKeyPrefix}:location`
+              keyPrefix: options.redisKeyPrefix
             }));
             builder.addRelocationStore(new ZLinkRedisRelocationStore({
               url: `redis://${options.redisEndpoint}`,
@@ -100,14 +101,15 @@ export async function startMultiNodeHost(): Promise<void> {
               .listen(options.routeEndpoint)
               .routingId(options.rid);
           route?.channel(routeChannel).server();
-          route?.peerConnections().connect(options.routeEndpoint);
           const spot = builder.addRouteMesh(options.spotOnly ? SpotServiceNames.spotOnlyMesh : options.rid)
             .routingId(options.rid)
             .listen(options.spotRouterEndpoint);
           const objects = spot.objects().server();
           objects.addEntrySpot(MultiNodeEntrySpot);
           objects.addActorFactory(
-            SpotServiceNames.actorType,
+            options.spotOnly
+              ? SpotServiceNames.alternateActorType
+              : SpotServiceNames.actorType,
             MultiNodeScenarioActorFactory,
             (factory) => factory.preserveStateWith(
               MultiNodeScenarioActorRelocationAdapter
@@ -148,6 +150,7 @@ export async function startMultiNodeHost(): Promise<void> {
       { provide: EvidenceStore, inject: [MULTI_NODE_OPTIONS], useFactory: createEvidence },
       MultiNodeCreateSpotAHandler,
       MultiNodeCreateSpotBHandler,
+      MultiNodeEntryActorPingHandler,
       MultiNodeEntrySpot,
       MultiNodeScenarioActorRelocationAdapter,
       MultiNodeScenarioActorFactory,

@@ -1,19 +1,18 @@
-import { Module } from '@nestjs/common';
-import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import { AuthenticatePlayerHandler } from './Handlers/authenticate-player-handler';
 import { CreateGameEndpoint } from './Handlers/create-game-http-handler';
-import { PacketNames } from '../../Shared/Contracts/messages';
 import { SampleNames } from '../Configuration/sample-settings';
 import { TICTACTOE_SAMPLE_CONFIG, createTicTacToeConfigurationModule } from '../Configuration/sample-config';
 import type { TicTacToeSampleConfig } from '../Configuration/sample-config';
+import { createTicTacToeLocationStore } from '../Configuration/location-store';
 function createTicTacToeApiModule() {
   class TicTacToeApiModule {}
   const configuration = createTicTacToeConfigurationModule([
-    'apiHttpEndpoint', 'apiEndpoints', 'apiIndex', 'playSpotEndpoints', 'logDir'
+    'apiHttpEndpoint', 'apiEndpoints', 'apiIndex', 'playSpotEndpoints', 'playEndpoints',
+    'redisEndpoint', 'redisKeyPrefix', 'logDir'
   ]);
 
-  Module({
+  zlinkModule(__dirname, {
     imports: [
       configuration,
       ZLinkModule.forRootFactory({
@@ -25,13 +24,13 @@ function createTicTacToeApiModule() {
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${config.logDir}/flow-api-${config.apiIndex}.log`)
             .traceLabel(`api-${config.apiIndex}`);
+          builder.addLocationStore(createTicTacToeLocationStore(config));
           const mesh = builder.addRouteMesh(SampleNames.playSpotNode)
             .listen(config.apiEndpoints[config.apiIndex])
             .setRoutingIdPrefix('tictactoe-api');
-          mesh.channelName(SampleNames.apiChannel)
-            .addRequestHandler(PacketNames.authenticatePlayerReq, AuthenticatePlayerHandler);
-          mesh.channelName(SampleNames.playChannel).setWeight(0);
-          mesh.channelName(SampleNames.playSpotNode).setWeight(0);
+          mesh.channel(SampleNames.apiChannel).server()
+            .addHandlerGroup('api');
+          mesh.objects().client();
           for (const endpoint of config.playSpotEndpoints) {
             mesh.peerConnections().connect(endpoint);
           }
@@ -40,8 +39,7 @@ function createTicTacToeApiModule() {
       })
     ],
     providers: [
-      CreateGameEndpoint,
-      AuthenticatePlayerHandler
+      CreateGameEndpoint
     ]
   })(TicTacToeApiModule);
 

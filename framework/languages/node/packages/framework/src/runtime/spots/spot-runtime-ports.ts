@@ -38,6 +38,11 @@ export interface ZLinkEntryActorRuntime {
 }
 
 export interface ZLinkSpotActorTransferRuntime {
+  readPreparedTransferState(
+    reference: string,
+    checksumCrc32c: number,
+    signal?: AbortSignal
+  ): Promise<Buffer>;
   prepareDeferredJoinAccepted(
     actorId: string,
     operationId: ZLinkActorJoinOperationId,
@@ -82,14 +87,14 @@ export interface ZLinkSpotActorTransferRuntime {
       readonly spotId: string;
       readonly spotGeneration: bigint;
       readonly membershipEpoch: bigint;
-      readonly spotAuthority: import('../../contracts').ZLinkAuthoritySnapshot;
+      readonly spotAuthority: import('../../contracts/Locations').ZLinkAuthoritySnapshot;
       readonly spotAuthorityPayload: Uint8Array;
     },
     signal?: AbortSignal
   ): Promise<{
     readonly root: ZLinkDeferredJoinAcceptedRoot;
-    readonly actorAuthority: import('../../contracts').ZLinkAuthoritySnapshot;
-    readonly spotAuthority: import('../../contracts').ZLinkAuthoritySnapshot;
+    readonly actorAuthority: import('../../contracts/Locations').ZLinkAuthoritySnapshot;
+    readonly spotAuthority: import('../../contracts/Locations').ZLinkAuthoritySnapshot;
   } | undefined>;
   commitAndDeliverDeferredJoinAccepted(
     root: ZLinkDeferredJoinAcceptedRoot,
@@ -141,12 +146,13 @@ export interface ZLinkSpotActorTransferRuntime {
     }
   ): Promise<void>;
   publishRoutedActorOwnership(actor: ZLinkActor): Promise<void>;
+  publishRecoveryRoutedActor(actor: ZLinkActor): void;
   openRoutedActorSession(actor: ZLinkActor): Promise<void>;
   bindRoutedActorRef(actor: ZLinkActor, actorRef: ActorRef): void;
   currentRoutedActorRef(actor: ZLinkActor): ActorRef | undefined;
   adoptRoutedActorAuthority(
     actor: ZLinkActor,
-    authority: import('../../contracts').ZLinkAuthoritySnapshot,
+    authority: import('../../contracts/Locations').ZLinkAuthoritySnapshot,
     spotId: RoutingId,
     spot: ZLinkSpot,
     membershipEpoch: bigint

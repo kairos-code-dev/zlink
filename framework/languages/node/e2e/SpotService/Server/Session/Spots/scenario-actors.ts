@@ -1,13 +1,11 @@
 import type {
   ZLinkActor,
+  ZLinkActorCreateResponse,
   ZLinkActorContext,
   ZLinkActorFactory,
-  ZLinkActorJoinRequest,
-  ZLinkActorMembership,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
-  ZLinkMessage,
-  ZLinkSpotActorJoinResponse
+  ZLinkMessage
 } from '@zlink-systems/framework';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 
@@ -20,8 +18,8 @@ export class ScenarioActor implements ZLinkActor {
 }
 
 export class ScenarioActorFactory implements ZLinkActorFactory {
-  async create(actorId: string, context: ZLinkActorContext): Promise<ScenarioActor> {
-    return new ScenarioActor(actorId, context);
+  async create(context: ZLinkActorContext): Promise<ScenarioActor> {
+    return new ScenarioActor(context.actorId, context);
   }
 }
 
@@ -33,31 +31,27 @@ export class ScenarioEntrySpot implements ZLinkEntrySpot<ScenarioActor> {
     this.evidence = evidence;
   }
 
-  async onCreateActor(actor: ZLinkActorMembership, createRequest: ZLinkMessage): Promise<void> {
+  async onCreateActor(actor: ScenarioActor, createRequest: ZLinkMessage): Promise<ZLinkActorCreateResponse> {
     void createRequest;
     const evidence = ScenarioEntrySpot.requireEvidence();
-    evidence.add(`entry-created|rid=${evidence.rid}|actor=${actor.actor.actorId}`);
+    evidence.add(`entry-created|rid=${evidence.rid}|actor=${actor.actorId}`);
+    return { accepted: true };
   }
 
-  async onActorJoin(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
-    void actor;
-    return { accepted: true, reply: request.decode() };
-  }
-
-  async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
+  async onJoinedActor(actor: ScenarioActor): Promise<void> {
     const evidence = ScenarioEntrySpot.requireEvidence();
-    evidence.add(`entry-joined|rid=${evidence.rid}|actor=${actor.actor.actorId}`);
+    evidence.add(`entry-joined|rid=${evidence.rid}|actor=${actor.actorId}`);
   }
 
-  async onLeaveActor(actor: ZLinkActorMembership): Promise<void> {
+  async onLeaveActor(actor: ScenarioActor): Promise<void> {
     const evidence = ScenarioEntrySpot.requireEvidence();
-    evidence.add(`entry-left|rid=${evidence.rid}|actor=${actor.actor.actorId}`);
+    evidence.add(`entry-left|rid=${evidence.rid}|actor=${actor.actorId}`);
   }
 
-  async onDisconnectActor(actor: ZLinkActorMembership): Promise<void> {
+  async onDisconnectActor(actor: ScenarioActor): Promise<void> {
     const evidence = ScenarioEntrySpot.requireEvidence();
-    evidence.add(`entry-disconnected|rid=${evidence.rid}|actor=${actor.actor.actorId}`);
-    if (actor.actor.actorId.startsWith('actor-sm-d5-fail-')) {
+    evidence.add(`entry-disconnected|rid=${evidence.rid}|actor=${actor.actorId}`);
+    if (actor.actorId.startsWith('actor-sm-d5-fail-')) {
       throw new Error('SM-D5 injected disconnect callback failure.');
     }
   }

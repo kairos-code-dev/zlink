@@ -45,6 +45,20 @@ state를 추가로 저장한다. Same-node Actor join은 Relocation payload를 �
 다음 Java builder member는 Kotlin에서 property 변환 없이 같은 JVM signature로 직접 호출한다.
 
 ```java
+public enum systems.zlink.framework.configuration.ZLinkApplicationHwmProfile {
+  COMPACT,
+  LOW_LATENCY,
+  BALANCED,
+  THROUGHPUT
+}
+public interface systems.zlink.framework.configuration.ZLinkInboundDispatchOptions {
+  public abstract java.util.OptionalLong applicationHwmBytes();
+  public abstract void setApplicationHwmBytes(long);
+  public abstract systems.zlink.framework.configuration.ZLinkApplicationHwmProfile applicationHwmProfile();
+  public abstract void setApplicationHwmProfile(systems.zlink.framework.configuration.ZLinkApplicationHwmProfile);
+  public abstract java.util.OptionalLong processMemoryLimitBytes();
+  public abstract void setProcessMemoryLimitBytes(long);
+}
 public interface systems.zlink.framework.locations.ZLinkLocationOptions {
   public abstract java.time.Duration ownerLeaseRenewInterval();
   public abstract void setOwnerLeaseRenewInterval(java.time.Duration);

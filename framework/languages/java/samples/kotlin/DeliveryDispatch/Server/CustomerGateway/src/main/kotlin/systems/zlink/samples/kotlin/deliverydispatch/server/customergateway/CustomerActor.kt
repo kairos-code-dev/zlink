@@ -7,7 +7,7 @@ class CustomerActor(
     private val id: String,
     private val actorContext: ZLinkActorContext,
 ) : ZLinkActor {
-    override fun actorId(): String = id
+    fun actorId(): String = id
 
     override fun context(): ZLinkActorContext = actorContext
 

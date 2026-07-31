@@ -3,6 +3,7 @@
 
 #include <zlink/framework/contracts/configuration/configuration.hpp>
 
+#include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -11,6 +12,29 @@ namespace zlink::samples::tictactoe
 {
 
 using namespace framework;
+
+inline std::string host_from_tcp_endpoint (const std::string &endpoint)
+{
+    const auto start = endpoint.rfind ("tcp://", 0) == 0 ? 6U : 0U;
+    const auto colon = endpoint.rfind (':');
+    if (colon == std::string::npos || colon <= start) {
+        throw std::runtime_error ("TCP endpoint must use tcp://host:port");
+    }
+    return endpoint.substr (start, colon - start);
+}
+
+inline std::uint16_t port_from_tcp_endpoint (const std::string &endpoint)
+{
+    const auto colon = endpoint.rfind (':');
+    if (colon == std::string::npos || colon + 1 >= endpoint.size ()) {
+        throw std::runtime_error ("TCP endpoint must use tcp://host:port");
+    }
+    const auto port = std::stoul (endpoint.substr (colon + 1));
+    if (port > 65535U) {
+        throw std::runtime_error ("TCP endpoint port exceeds 65535");
+    }
+    return static_cast<std::uint16_t> (port);
+}
 
 struct sample_topology_t
 {
@@ -35,6 +59,10 @@ struct sample_topology_t
           section.get ("playARouteEndpoint").value_or (topology.play_a_route_endpoint);
         topology.play_b_route_endpoint =
           section.get ("playBRouteEndpoint").value_or (topology.play_b_route_endpoint);
+        topology.api_a_route_endpoint =
+          section.get ("apiARouteEndpoint").value_or (topology.api_a_route_endpoint);
+        topology.api_b_route_endpoint =
+          section.get ("apiBRouteEndpoint").value_or (topology.api_b_route_endpoint);
         topology.play_spot_endpoint =
           section.get ("playSpotEndpoint").value_or (topology.play_spot_endpoint);
         topology.play_a_spot_endpoint =
@@ -82,6 +110,8 @@ struct sample_topology_t
     std::string play_b_endpoint = "tcp://127.0.0.1:48114";
     std::string play_a_route_endpoint = "tcp://127.0.0.1:48115";
     std::string play_b_route_endpoint = "tcp://127.0.0.1:48116";
+    std::string api_a_route_endpoint = "tcp://127.0.0.1:48117";
+    std::string api_b_route_endpoint = "tcp://127.0.0.1:48118";
     std::string play_spot_endpoint = "tcp://127.0.0.1:48110";
     std::string play_a_spot_endpoint = "tcp://127.0.0.1:48110";
     std::string play_b_spot_endpoint = "tcp://127.0.0.1:48120";
@@ -132,6 +162,16 @@ struct sample_topology_t
     std::string selected_play_route_endpoint () const
     {
         return play_node == "b" ? play_b_route_endpoint : play_a_route_endpoint;
+    }
+
+    std::string selected_api_route_endpoint () const
+    {
+        return api_node == "b" ? api_b_route_endpoint : api_a_route_endpoint;
+    }
+
+    std::vector<std::string> all_play_route_endpoints () const
+    {
+        return {play_a_route_endpoint, play_b_route_endpoint};
     }
 
     std::string peer_play_route_endpoint () const

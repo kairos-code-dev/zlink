@@ -102,6 +102,9 @@ public final class Contracts {
     public record GateReleaseRes(String key, boolean released) {
     }
 
+    public record RetireRes(String intent, String outcome, String reason) {
+    }
+
     public record TransferState(String actorId, int stateVersion, String actorType) {
     }
 

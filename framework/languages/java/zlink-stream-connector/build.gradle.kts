@@ -5,6 +5,10 @@ plugins {
 
 description = "ZLink Java STREAM connector core"
 
+java {
+    modularity.inferModulePath.set(true)
+}
+
 dependencies {
     api(zlinkLibs.zlink.bindings)
     api("com.fasterxml.jackson.core:jackson-databind:2.17.2")

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
-#include <zlink/framework/contracts/locations/maintenance_stores.hpp>
+#include <runtime/locations/location_repository.hpp>
 
 namespace zlink::framework::runtime
 {
@@ -18,7 +18,7 @@ enum class source_creation_cleanup_t
 
 inline source_creation_cleanup_t
 cleanup_source_created_reservation (
-  const std::shared_ptr<location_store_t> &store,
+  const std::shared_ptr<location_repository_t> &store,
   const object_creation_key_t &key,
   const object_reservation_fence_t &fence,
   bool source_created) noexcept

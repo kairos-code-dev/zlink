@@ -4,7 +4,10 @@ using Zlink.Framework.Contracts.Codecs;
 
 namespace Zlink.Framework.Codecs.MessagePack;
 
-public sealed class ZLinkMessagePackCodec : IZLinkCodecExtension, IZlinkStreamPayloadCodec
+public sealed class ZLinkMessagePackCodec :
+    IZLinkCodecExtension,
+    IZlinkStreamPayloadCodec,
+    IZlinkStreamCodecRegistration
 {
     private ZLinkMessagePackCodec()
     {
@@ -19,8 +22,11 @@ public sealed class ZLinkMessagePackCodec : IZLinkCodecExtension, IZlinkStreamPa
             "application/x-msgpack",
             MessagePackSerializerAdapter.Instance,
             type => type.GetCustomAttributes(typeof(MessagePackObjectAttribute), true).Length > 0);
-        codecs.AddStreamCodec("application/x-msgpack", ZlinkStreamCodec.MessagePack);
     }
+
+    string IZlinkStreamCodecRegistration.ContentType => "application/x-msgpack";
+
+    ZlinkStreamCodec IZlinkStreamCodecRegistration.Codec => ZlinkStreamCodec.MessagePack;
 
     public ZlinkStreamEncodedPayload Encode<TPayload>(TPayload payload)
     {

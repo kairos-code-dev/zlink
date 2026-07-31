@@ -203,34 +203,6 @@ class ClientScenarioContext(
         throw IllegalStateException("dispatch error marker for $packetName was not observed")
     }
 
-    fun waitForRuntimeObserverFailureAny(vararg baseUrls: String) {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
-        while (System.nanoTime() < deadline) {
-            for (baseUrl in baseUrls) {
-                try {
-                    val entries: JsonNode = json.readTree(get("$baseUrl/evidence")).path("entries")
-                    if (entries.isArray) {
-                        for (entry in entries) {
-                            val marker = entry.path("marker").asText()
-                            val value = entry.path("value").asText()
-                            if (
-                                marker == "RuntimeError" &&
-                                value.contains("MESSAGE_FLOW_OBSERVER_FAILED") &&
-                                value.contains("message-flow-observer") &&
-                                value.contains("dispatch observer failure")
-                            ) {
-                                return
-                            }
-                        }
-                    }
-                } catch (_: Exception) {
-                }
-            }
-            sleep(100)
-        }
-        throw IllegalStateException("runtime observer failure event was not observed")
-    }
-
     fun expectSingleProviderDownFailure(scenario: String, value: String) {
         try {
             requestWork(value, Duration.ofMillis(700))

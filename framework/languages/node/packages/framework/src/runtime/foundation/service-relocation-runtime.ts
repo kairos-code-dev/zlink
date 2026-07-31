@@ -12,7 +12,6 @@ import type {
 } from '../../contracts/Locations';
 
 const RELOCATION_RETENTION_MS = 24 * 60 * 60 * 1_000;
-const MAX_RELOCATION_PARTICIPANTS = 1_024;
 const MAX_RELOCATION_ITEMS_PER_PARTICIPANT = 65_536;
 
 type Awaitable<T> = T | Promise<T>;
@@ -767,7 +766,6 @@ function storedSnapshot(
 export function encodeServiceRelocationEnvelope(envelope: ServiceRelocationEnvelope): Buffer {
   if (
     envelope.participants.length < 1
-    || envelope.participants.length > MAX_RELOCATION_PARTICIPANTS
   ) {
     throw new TypeError('Relocation participant count is outside its bound.');
   }
@@ -819,9 +817,7 @@ export function decodeServiceRelocationEnvelope(payload: Uint8Array): ServiceRel
     || (parsed.sourceCleanup !== 'pending' && parsed.sourceCleanup !== 'completed')
     || !Array.isArray(parsed.participants)
     || !Array.isArray(parsed.memberships)
-    || parsed.memberships.length > MAX_RELOCATION_ITEMS_PER_PARTICIPANT
     || parsed.participants.length < 1
-    || parsed.participants.length > MAX_RELOCATION_PARTICIPANTS
   ) {
     throw new TypeError('Invalid relocation envelope.');
   }

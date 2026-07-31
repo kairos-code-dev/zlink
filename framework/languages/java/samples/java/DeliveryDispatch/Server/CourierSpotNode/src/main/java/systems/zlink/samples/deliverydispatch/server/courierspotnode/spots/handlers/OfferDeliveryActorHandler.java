@@ -3,7 +3,7 @@ package systems.zlink.samples.deliverydispatch.server.courierspotnode.spots.hand
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler;
-import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.samples.deliverydispatch.server.courierspotnode.CourierActor;
 import systems.zlink.samples.deliverydispatch.server.courierspotnode.spots.CourierEntrySpot;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
@@ -21,7 +21,7 @@ public final class OfferDeliveryActorHandler
     public CompletionStage<Void> handle(
         CourierEntrySpot entrySpot,
         CourierActor actor,
-        ZLinkSpotActorSendContext context,
+        ZLinkMessageContext context,
         Messages.OfferDeliveryMsg message) {
         actor.offer(message);
         System.out.println("deliverydispatch courier-actor: offer pushed delivery="

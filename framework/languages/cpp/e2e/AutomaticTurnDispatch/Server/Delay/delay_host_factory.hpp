@@ -8,11 +8,24 @@
 
 #include <zlink/framework.hpp>
 
+#include <cstdint>
 #include <memory>
+#include <stdexcept>
 
 namespace zlink::framework::e2e::automatic_turn_dispatch::server::delay {
 
 namespace yd = zlink::framework::e2e::automatic_turn_dispatch;
+
+inline std::uint16_t delay_port_from_endpoint (const std::string &endpoint)
+{
+    const auto separator = endpoint.rfind (':');
+    if (separator == std::string::npos || separator + 1 >= endpoint.size ())
+        throw std::invalid_argument ("delay endpoint must include a port");
+    const auto value = std::stoul (endpoint.substr (separator + 1));
+    if (value == 0 || value > 65535)
+        throw std::invalid_argument ("delay endpoint port is out of range");
+    return static_cast<std::uint16_t> (value);
+}
 
 inline void configure_delay_host (zlink::framework::app_t &app,
                                   const delay_options_t &delay_options)
@@ -31,9 +44,9 @@ inline void configure_delay_host (zlink::framework::app_t &app,
         options.services ().add_singleton<delay_state_t> (std::move (state));
         server::configure_codecs (options.codecs ());
         options.add_client_server_channel (yd::delay_channel)
-          .enable_server (delay_options.delay_endpoint)
-          .set_routing_id (zlink::routing_id_t::from (delay_options.node_rid))
-          .use_handler_group (yd::handler_group);
+          .server ()
+          .listen (delay_port_from_endpoint (delay_options.delay_endpoint))
+          .add_handler_group (yd::handler_group);
         options.handlers ().group (yd::handler_group).add<delay_handler_t> ();
         options.http ().listen (delay_options.http_endpoint).map_health ("/health");
     });

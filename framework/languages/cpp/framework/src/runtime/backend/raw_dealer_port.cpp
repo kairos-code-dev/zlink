@@ -78,7 +78,12 @@ bool raw_dealer_port_t::send (const raw_message_t &parts)
     for (std::size_t index = 1; index < messages.size (); ++index) {
         operation = std::move (operation).message (messages[index]);
     }
-    return std::move (operation).submit ();
+    try {
+        return std::move (operation).submit ();
+    }
+    catch (const zlink::submit_error_t &) {
+        return false;
+    }
 }
 
 bool raw_dealer_port_t::request (
@@ -100,12 +105,17 @@ bool raw_dealer_port_t::request (
     for (std::size_t index = 1; index < messages.size (); ++index) {
         operation = std::move (operation).message (messages[index]);
     }
-    return std::move (operation).timeout (timeout).submit (
-      [callback = std::move (callback)] (
-        zlink::request_result_t result,
-        std::vector<zlink::message_t> reply) mutable {
-          callback (map_request_result (result), copy_parts (reply));
-      });
+    try {
+        return std::move (operation).timeout (timeout).submit (
+          [callback = std::move (callback)] (
+            zlink::request_result_t result,
+            std::vector<zlink::message_t> reply) mutable {
+              callback (map_request_result (result), copy_parts (reply));
+          });
+    }
+    catch (const zlink::submit_error_t &) {
+        return false;
+    }
 }
 
 std::optional<raw_message_t> raw_dealer_port_t::try_receive ()

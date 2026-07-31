@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 package systems.zlink.runtime.sockets;
+import systems.zlink.internal.sockets.SocketOptionKey;
+import systems.zlink.internal.sockets.SocketOptions;
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;

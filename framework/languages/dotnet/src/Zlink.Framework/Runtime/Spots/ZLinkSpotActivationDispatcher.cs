@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Zlink.Framework.Runtime.Dispatch;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -30,7 +31,9 @@ internal sealed class ZLinkSpotActivationDispatcher
         ZLinkSpotSubscriptionRegistry subscriptions,
         Func<ZLinkSpotActorHandlerRegistry?> actorHandlers,
         Func<ZLinkSpotHandlerInvoker> handlerInvoker,
-        Func<IZLinkActor, CancellationToken, ValueTask>? commitAcceptedActorJoin = null)
+        Func<IZLinkActor, CancellationToken, ValueTask>? commitAcceptedActorJoin = null,
+        ZLinkAsyncSubmitter? replySubmitter = null,
+        ZLinkCompletionAdmissionOwner? completionAdmission = null)
     {
         this.runtime = runtime;
         this.nativeSpot = nativeSpot;
@@ -73,7 +76,9 @@ internal sealed class ZLinkSpotActivationDispatcher
             runtime.Registration.Codecs,
             _dispatchErrors,
             DispatchInternalRoutePacketAsync,
-            runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkSpotRouteDispatcher>());
+            runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkSpotRouteDispatcher>(),
+            replySubmitter,
+            completionAdmission);
     }
 
     public ZLinkSpotActorPacketDispatcher ActorPackets => _actorPacketDispatcher;

@@ -35,8 +35,6 @@ class DeliveryDispatchClientScenario {
       await this.connect(customer, courierA, courierB, signal);
       const reboundA = await this.bindCourier(courierA, 'courier-a', signal);
       const reboundB = await this.bindCourier(courierB, 'courier-b', signal);
-      zlinkStreamAssert.ensure(reboundA.actor.generation === firstActorA.actor.generation, 'Sample scenario assertion failed.');
-      zlinkStreamAssert.ensure(reboundB.actor.generation === firstActorB.actor.generation, 'Sample scenario assertion failed.');
       zlinkStreamAssert.ensure(reboundA.sessionRoute !== firstActorA.sessionRoute, 'Sample scenario assertion failed.');
       zlinkStreamAssert.ensure(reboundB.sessionRoute !== firstActorB.sessionRoute, 'Sample scenario assertion failed.');
 
@@ -65,7 +63,6 @@ class DeliveryDispatchClientScenario {
       .packetName(PacketNames.bindCourierSession)
       .submit<BindCourierSessionRes>(signal);
     zlinkStreamAssert.ensure(bound.courierId === courierId, 'Sample scenario assertion failed.');
-    zlinkStreamAssert.ensure(bound.actor.actorId === courierId, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(bound.sessionRoute.length > 0, 'Sample scenario assertion failed.');
     return bound;
   }

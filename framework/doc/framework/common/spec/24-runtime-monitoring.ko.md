@@ -51,7 +51,7 @@ Application은 startup에 등록한 이름으로 기능별 status를 읽는다. 
 
 | 상태 범위 | 한 status에서 확인하는 값 |
 |---|---|
-| Host | Runtime state, ready 여부, 새 작업 수락 여부, deadline, relocation 결과와 shutdown 결과 |
+| Host | Runtime state, ready 여부, 새 작업 수락 여부, deadline, relocation·shutdown 결과와 inbound dispatch 상태 |
 | RouteMesh | `MeshName`, 전체 state, ready peer 수, Channel별 ready target 수, peer별 운영 상태와 현재 process의 Actor·Spot 수 |
 | ClientServer | `ChannelName`, local role, 전체 state, ready target 수와 target별 운영 상태·weight |
 | Automatic fanout | `ChannelName`, 전체 state, 연결을 시도하는 publisher 수와 ready publisher 수 |
@@ -99,6 +99,23 @@ Host runtime state는 다음 값으로 닫혀 있다. 표에 없는 값을 추�
 application operation을 수락하는지를 나타낸다. 두 값을 별개의 조건처럼 재해석하지
 않는다. Relocation option, deadline과 result의 정확한 의미는
 [Host relocation와 shutdown](28-graceful-drain-handoff.ko.md)이 정한다.
+
+Host status의 inbound dispatch 항목은 Framework가 수신한 application payload가 현재 얼마나 처리 중인지
+보여 준다. 값은 queue를 조회할 때마다 순회해서 만들지 않고 dispatch accounting에서 유지한 누계를 읽는다.
+
+| 값 | 의미 |
+|---|---|
+| Applied HWM bytes | startup에서 확정한 [Application HWM](01-glossary.ko.md#application-hwm)이다. `0`은 제한하지 않는다는 뜻이다. |
+| Pending payload bytes | Queue 대기와 handler 실행 중 payload byte의 합계다. |
+| Queued payload bytes | 아직 handler를 시작하지 않은 payload byte다. |
+| Active payload bytes | Handler가 실행 중인 payload byte다. |
+| Application receive paused | HWM 때문에 새 application receive를 시작하지 않는지를 나타낸다. |
+| Pending completion sends | Reply permit을 기다리거나 확보한 request 수다. |
+| Completion send limit | Host가 동시에 보유할 수 있는 completion send permit 상한이다. |
+
+`PendingPayloadBytes = QueuedPayloadBytes + ActivePayloadBytes`를 만족해야 한다. 이 status는 payload,
+Actor ID, Spot ID, message type이나 owner별 목록을 포함하지 않는다. Owner별 top-N은 public contract로
+제공하지 않는다. 일반 status 갱신과 message hot path에 owner별 label이나 event를 추가하지 않는다.
 
 ### 2.2 Topology 상태
 

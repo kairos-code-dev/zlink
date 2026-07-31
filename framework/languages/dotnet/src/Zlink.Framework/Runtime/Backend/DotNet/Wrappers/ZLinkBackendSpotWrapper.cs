@@ -136,10 +136,9 @@ internal sealed class ZLinkBackendSpotWrapper :
         ReadOnlyMemory<byte> metadata)
     {
         var submit = _spot.RequestToChannel(
-            channelName, parts, out var operationId, timeout ?? default, flags,
+            channelName, parts, callback, timeout ?? default, flags,
             metadata);
-        return AcceptRequestSubmit(submit, $"channel '{channelName}'")
-               && _completions.RegisterRequest(operationId, callback);
+        return AcceptRequestSubmit(submit, $"channel '{channelName}'");
     }
 
     public SubmitResult SendToChannel(

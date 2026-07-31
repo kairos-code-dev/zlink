@@ -3,7 +3,7 @@ const SampleNames = {
   apiB: 'api-b',
   workflowA: 'workflow-a',
   workflowB: 'workflow-b',
-  orderWorkflowChannel: 'shoppingmall.order-workflow',
+  orderWorkflowSpotType: 'shoppingmall.order-workflow',
   orderWorkflowSpotMesh: 'shoppingmall.order-workflow.spot',
   clientTimeout: 15000,
   requestTimeout: 5000,

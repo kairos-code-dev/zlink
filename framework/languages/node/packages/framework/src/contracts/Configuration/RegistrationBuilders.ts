@@ -14,6 +14,7 @@ import type {
   ZLinkMeshObjectRoleBuilder,
   ZLinkMeshObjectServerBuilder,
   ZLinkMeshNodeSocketConfig,
+  ZLinkNetworkOptions,
   ZLinkMeshPeerConnection,
   ZLinkMeshPeerConnections,
   ZLinkLocationOptionValues,
@@ -84,6 +85,11 @@ import type {
   ZLinkWorkerOptions
 } from './RegistrationTypes';
 import {
+  ZLinkApplicationHwmProfile,
+  type ZLinkInboundDispatchOptions,
+  type ZLinkInboundDispatchOptionValues
+} from './InboundDispatch';
+import {
   validateRoutingIdPrefix,
   registerActorFactory,
   registerEntrySpot,
@@ -103,6 +109,7 @@ export function createFrameworkOptions(
 class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   private readonly spotMeshes = new Set<string>();
   private readonly options: MutableFrameworkRegistrationOptions = {
+    network: { bindHost: '127.0.0.1' },
     channels: {},
     streamNodes: {},
     spotNodes: {},
@@ -114,9 +121,22 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
     return new RegistrationCodecRegistryBuilder(this.options.codecs);
   }
 
+  configureNetwork(): ZLinkNetworkOptions {
+    return this.options.network;
+  }
+
   configureWorker(options: ZLinkWorkerOptions): this {
     this.options.worker = { ...this.options.worker, ...options };
     return this;
+  }
+
+  configureInboundDispatch(): ZLinkInboundDispatchOptions {
+    this.options.inboundDispatch ??= {
+      applicationHwmProfile: ZLinkApplicationHwmProfile.Balanced
+    };
+    return new DefaultInboundDispatchOptionsBuilder(
+      this.options.inboundDispatch
+    );
   }
 
   configureDispatch(): ZLinkDispatchOptionsBuilder {
@@ -173,9 +193,11 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
       throw new ZLinkConfigurationException(`Duplicate RouteMesh '${meshName}'.`);
     }
     this.spotMeshes.add(meshName);
+    const node = this.spotNodeOptions(meshName);
+    node.router ??= { port: 0 };
     return new DefaultMeshNodeBuilder(
       meshName,
-      this.spotNodeOptions(meshName)
+      node
     );
   }
 
@@ -201,6 +223,7 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
 
   build(): ZLinkFrameworkRegistrationOptions {
     return {
+      network: { ...this.options.network },
       codecs: this.options.codecs,
       applicationVersion: this.options.applicationVersion,
       maintenanceWave: this.options.maintenanceWave,
@@ -249,6 +272,28 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   private spotNodeOptions(name: string): MutableSpotNodeOptions {
     this.options.spotNodes[name] ??= {};
     return this.options.spotNodes[name];
+  }
+}
+
+class DefaultInboundDispatchOptionsBuilder
+implements ZLinkInboundDispatchOptions {
+  constructor(
+    private readonly values: Partial<ZLinkInboundDispatchOptionValues>
+  ) {}
+
+  applicationHwmBytes(value: bigint | undefined): this {
+    this.values.applicationHwmBytes = value;
+    return this;
+  }
+
+  applicationHwmProfile(value: ZLinkApplicationHwmProfile): this {
+    this.values.applicationHwmProfile = value;
+    return this;
+  }
+
+  processMemoryLimitBytes(value: bigint | undefined): this {
+    this.values.processMemoryLimitBytes = value;
+    return this;
   }
 }
 
@@ -383,9 +428,34 @@ class DefaultFanoutChannelBuilder implements ZLinkFanoutChannelBuilder {
     private readonly channel: MutableChannelOptions
   ) {}
 
-  enablePublisher(endpoint: string): this {
+  enablePublisher(endpointOrPort: string | number = 0): this {
     this.channel.publisher ??= {};
-    this.channel.publisher.bind = endpoint;
+    if (typeof endpointOrPort === 'string') {
+      requireRegistrationName(endpointOrPort, `Fanout channel '${this.name}' publisher endpoint`);
+      this.channel.publisher.bind = endpointOrPort;
+      this.channel.publisher.port = undefined;
+      return this;
+    }
+    this.channel.publisher.port = requireListenerPort(
+      endpointOrPort,
+      `Fanout channel '${this.name}' publisher port`
+    );
+    this.updateBind();
+    return this;
+  }
+
+  setBindHost(bindHost: string): this {
+    requireRegistrationName(bindHost, `Fanout channel '${this.name}' bind host`);
+    this.channel.publisher ??= {};
+    this.channel.publisher.bindHost = bindHost;
+    if (this.channel.publisher.port !== undefined) this.updateBind();
+    return this;
+  }
+
+  setAdvertiseHost(advertiseHost: string): this {
+    requireRegistrationName(advertiseHost, `Fanout channel '${this.name}' advertise host`);
+    this.channel.publisher ??= {};
+    this.channel.publisher.advertiseHost = advertiseHost;
     return this;
   }
 
@@ -425,6 +495,12 @@ class DefaultFanoutChannelBuilder implements ZLinkFanoutChannelBuilder {
       );
     }
     this.subscriberMode = mode;
+  }
+
+  private updateBind(): void {
+    const publisher = this.channel.publisher;
+    if (publisher?.port === undefined) return;
+    publisher.bind = tcpEndpoint(publisher.bindHost ?? '127.0.0.1', publisher.port);
   }
 }
 
@@ -546,19 +622,36 @@ class DefaultClientServerChannelServerBuilder implements ZLinkClientServerChanne
 class DefaultStreamNodeBuilder implements ZLinkStreamNodeBuilder {
   constructor(private readonly streamNode: MutableStreamNodeOptions) {}
 
-  bind(endpoint: string): this {
-    this.streamNode.bind = endpoint;
+  bind(endpointOrPort: string | number = 0): this {
+    if (typeof endpointOrPort === 'string') {
+      requireRegistrationName(endpointOrPort, 'STREAM bind endpoint');
+      this.streamNode.bind = endpointOrPort;
+      this.streamNode.port = undefined;
+      return this;
+    }
+    this.streamNode.port = requireListenerPort(endpointOrPort, 'STREAM bind port');
+    this.updateBind();
     return this;
   }
 
-  enableActorDispatch(meshName: string): this {
-    if (meshName.trim().length === 0 || meshName.trim() !== meshName) {
-      throw new ZLinkConfigurationException('STREAM actor dispatch MeshName must not be empty or padded.');
+  setBindHost(bindHost: string): this {
+    requireRegistrationName(bindHost, 'STREAM bind host');
+    this.streamNode.bindHost = bindHost;
+    if (this.streamNode.port !== undefined) this.updateBind();
+    return this;
+  }
+
+  setAdvertiseHost(advertiseHost: string): this {
+    requireRegistrationName(advertiseHost, 'STREAM advertise host');
+    this.streamNode.advertiseHost = advertiseHost;
+    return this;
+  }
+
+  enableActorDispatch(): this {
+    if (this.streamNode.actorDispatchEnabled === true) {
+      throw new ZLinkConfigurationException('STREAM node actor dispatch is already enabled.');
     }
-    if (this.streamNode.actorDispatchMeshName !== undefined) {
-      throw new ZLinkConfigurationException('STREAM node actor dispatch MeshName is already configured.');
-    }
-    this.streamNode.actorDispatchMeshName = meshName;
+    this.streamNode.actorDispatchEnabled = true;
     return this;
   }
 
@@ -577,6 +670,14 @@ class DefaultStreamNodeBuilder implements ZLinkStreamNodeBuilder {
     }
     this.streamNode.session = sessionType;
     return this;
+  }
+
+  private updateBind(): void {
+    if (this.streamNode.port === undefined) return;
+    this.streamNode.bind = tcpEndpoint(
+      this.streamNode.bindHost ?? '127.0.0.1',
+      this.streamNode.port
+    );
   }
 }
 
@@ -1057,7 +1158,7 @@ class DefaultMeshObjectServerBuilder implements ZLinkMeshObjectServerBuilder {
       implementation,
       options: {
         ...options,
-        executionMode: options?.executionMode ?? ZLinkUserSpotExecutionMode.SpotWide
+        executionMode: options.executionMode
       },
       relocation
     };
@@ -1081,7 +1182,7 @@ class DefaultMeshObjectServerBuilder implements ZLinkMeshObjectServerBuilder {
       factory.seal();
     }
     const { options, relocation } = built;
-    validateStableTypeLimit(options?.stableTypeLimit);
+    validateStableTypeLimit(options.stableTypeLimit);
     this.node.instanceSpotFactories ??= {};
     if (Object.hasOwn(this.node.instanceSpotFactories, stableType)) {
       throw new ZLinkConfigurationException(
@@ -1303,6 +1404,7 @@ function rejectDuplicateObjectType(
 }
 
 interface MutableFrameworkRegistrationOptions {
+  network: ZLinkNetworkOptions;
   applicationVersion?: bigint;
   maintenanceWave?: string;
   actorTransferTimeoutMs?: number;
@@ -1315,6 +1417,7 @@ interface MutableFrameworkRegistrationOptions {
   spotFactories: Type<ZLinkSpot>[];
   filters?: Type<ZLinkHandlerFilter>[];
   worker?: ZLinkWorkerOptions;
+  inboundDispatch?: Partial<ZLinkInboundDispatchOptionValues>;
   dispatch?: ZLinkDispatchOptions;
   requestTimeoutMs?: number;
   locations?: MutableLocationRegistrationOptions;
@@ -1367,11 +1470,17 @@ interface MutableClientCapabilityOptions {
 
 interface MutablePublisherCapabilityOptions {
   bind?: string;
+  bindHost?: string;
+  advertiseHost?: string;
+  port?: number;
 }
 
 interface MutableStreamNodeOptions {
   bind?: string;
-  actorDispatchMeshName?: string;
+  bindHost?: string;
+  advertiseHost?: string;
+  port?: number;
+  actorDispatchEnabled?: boolean;
   tlsServer?: ZLinkStreamTlsServerOptions;
   session?: Type;
 }
@@ -1473,6 +1582,18 @@ function requireRegistrationName(value: string, label: string): void {
   if (value.trim().length === 0 || value.trim() !== value) {
     throw new ZLinkConfigurationException(`${label} must not be empty or padded.`);
   }
+}
+
+function requireListenerPort(value: number, label: string): number {
+  if (!Number.isInteger(value) || value < 0 || value > 65_535) {
+    throw new ZLinkConfigurationException(`${label} must be between 0 and 65535.`);
+  }
+  return value;
+}
+
+function tcpEndpoint(host: string, port: number): string {
+  const endpointHost = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+  return `tcp://${endpointHost}:${port}`;
 }
 
 function rejectFixedRoutingId(routingId: string | undefined, memberName: string): void {

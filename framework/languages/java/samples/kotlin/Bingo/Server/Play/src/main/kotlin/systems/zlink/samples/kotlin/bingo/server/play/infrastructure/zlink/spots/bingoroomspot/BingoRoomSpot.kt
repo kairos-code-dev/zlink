@@ -6,8 +6,10 @@ import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
 import systems.zlink.framework.kotlin.yieldReply
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
+import systems.zlink.framework.spots.ZLinkSpotClosingContext
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
+import systems.zlink.framework.spots.ZLinkSpotRelocationReadyCompletion
 import systems.zlink.framework.spots.ZLinkTimer
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
@@ -41,7 +43,7 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.card
 import systems.zlink.samples.kotlin.bingo.shared.contracts.winners
 
 class BingoRoomSpot(
-    private val context: ZLinkSpotContext,
+    override val context: ZLinkSpotContext,
     private val settingsInitializer: BingoRoomSettingsInitializer,
 ) : ZLinkSuspendingSpot<PlayerActor>() {
     private val actors = mutableMapOf<String, PlayerActor>()
@@ -52,11 +54,9 @@ class BingoRoomSpot(
         0,
         SampleTimings.DrawPeriod.toMillis(),
     )
-    private var game: BingoRoomGame? = BingoGame.room(context.spotRid().toString(), settings)
+    private var game: BingoRoomGame? = BingoGame.room(context.spotId(), settings)
     private var timer: ZLinkTimer? = null
     private var cleanupStarted = false
-
-    override fun context(): ZLinkSpotContext = context
 
     override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse {
         settingsInitializer.handle(this, request)
@@ -133,9 +133,13 @@ class BingoRoomSpot(
         ).await()
     }
 
-    override suspend fun onClosingSuspending() {
+    override suspend fun onClosingSuspending(context: ZLinkSpotClosingContext) {
         timer?.cancel()?.await()
     }
+
+    override suspend fun onRelocationReadyCompletedSuspending(
+        completion: ZLinkSpotRelocationReadyCompletion,
+    ) = Unit
 
     fun join(
         actor: PlayerActor,
@@ -148,6 +152,7 @@ class BingoRoomSpot(
         actor.joinRoom(request.roomId)
         if (request.observeOnly) {
             observers[actor.actorId()] = actor
+            context.relocationReady().defer()
             return BingoRoomJoinRes(observerJoinState(request))
         }
         val change = requireGame().join(actor.actorId(), request.displayName, wins, losses)
@@ -163,7 +168,7 @@ class BingoRoomSpot(
         if (request.actorId != actorId) {
             throw IllegalStateException("Join request actor id does not match bound actor.")
         }
-        if (!request.observeOnly && request.roomId != context.spotRid().toString()) {
+        if (!request.observeOnly && request.roomId != context.spotId()) {
             throw IllegalStateException("Join request room id does not match bingo room.")
         }
         if (request.observeOnly) {
@@ -181,7 +186,7 @@ class BingoRoomSpot(
         actor: PlayerActor,
         request: SubmitBingoCardReq,
     ): SubmitBingoCardRes {
-        if (request.roomId != context.spotRid().toString()) {
+        if (request.roomId != context.spotId()) {
             throw IllegalStateException("Submit request room id does not match bingo room.")
         }
         val change = requireGame().submitCard(actor.actorId(), request.card)
@@ -198,6 +203,9 @@ class BingoRoomSpot(
         publishEvents(change.events, actors::get)
         publishWinner(change)
         leaveFinishedActors(change)
+        if (change.state.status == BingoRoomGame.Finished) {
+            context.relocationReady().defer()
+        }
     }
 
     suspend fun announceReward(event: BingoRewardAcquiredEvent) {
@@ -219,6 +227,7 @@ class BingoRoomSpot(
                 )
             )
         }
+        context.relocationReady().defer()
     }
 
     suspend fun stopObserving(
@@ -254,9 +263,40 @@ class BingoRoomSpot(
             "Bingo room draw period must be positive."
         }
         this.settings = settings
-        game = if (settings.observerMode()) null else BingoGame.room(context.spotRid().toString(), settings)
+        game = if (settings.observerMode()) null else BingoGame.room(context.spotId(), settings)
         cleanupStarted = false
     }
+
+    internal fun captureRelocationState(): RelocationState =
+        RelocationState(
+            settings,
+            game?.snapshot() ?: BingoRoomState(
+                context.spotId(),
+                BingoRoomGame.Running,
+                "",
+                false,
+                0,
+                null,
+                emptyList(),
+                emptyList(),
+                emptyList(),
+            ),
+        )
+
+    internal fun restoreRelocationState(state: RelocationState) {
+        settings = state.settings
+        game = if (settings.observerMode()) {
+            null
+        } else {
+            BingoRoomGame.restore(context.spotId(), settings, state.state)
+        }
+        cleanupStarted = false
+    }
+
+    internal data class RelocationState(
+        val settings: BingoRoomSettings,
+        val state: BingoRoomState,
+    )
 
     private suspend fun publishWinner(change: BingoRoomGame.Change) {
         val state = change.state

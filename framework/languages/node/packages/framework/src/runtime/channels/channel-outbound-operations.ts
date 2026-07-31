@@ -251,7 +251,6 @@ export class ZLinkChannelOutboundOperations {
     if (!accepted) {
       return publishResult(ZLinkSubmitStatus.Backpressured);
     }
-    this.recordPublishMetric(topic);
     return publishResult(ZLinkSubmitStatus.Submitted);
   }
 
@@ -291,12 +290,7 @@ export class ZLinkChannelOutboundOperations {
       }
       throw error;
     }
-    this.recordPublishMetric(topic);
     return publishResult(ZLinkSubmitStatus.Submitted);
-  }
-
-  private recordPublishMetric(topic: string): void {
-    this.dispatchServices.metrics().count('zlink.fanout.published', 1, { topic });
   }
 
   tryRouteSubmit(
@@ -501,25 +495,13 @@ export class ZLinkChannelOutboundOperations {
   }
 
   private async measureRequest<T>(channel: string, operation: () => Promise<T>): Promise<T> {
-    const metrics = this.dispatchServices.metrics();
     this.pendingRequests.set(channel, this.pendingRequestCount(channel) + 1);
-    const started = process.hrtime.bigint();
-    if (metrics.enabled()) metrics.change('zlink.channel.request.inflight', 1, { channel });
     try {
       return await operation();
-    } catch (error) {
-      if (error instanceof Error && /timed out/i.test(error.message)) {
-        metrics.count('zlink.channel.request.timeouts', 1, { channel });
-      }
-      throw error;
     } finally {
       const remaining = this.pendingRequestCount(channel) - 1;
       if (remaining === 0) this.pendingRequests.delete(channel);
       else this.pendingRequests.set(channel, remaining);
-      if (metrics.enabled()) {
-        metrics.change('zlink.channel.request.inflight', -1, { channel });
-        metrics.duration('zlink.channel.request.duration', Number(process.hrtime.bigint() - started) / 1e9, { channel });
-      }
     }
   }
 }

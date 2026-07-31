@@ -42,11 +42,11 @@ class session_server_host_factory_t
               std::make_unique<sample_topology_t> (topology));
             use_default_bingo_codecs (options.codecs ());
             add_sample_location_store (options, topology);
-            options.add_client_server_channel (sample_names_t::api_channel)
-              .enable_client ();
+            options.add_client_server_channel (sample_names_t::api_channel).client ();
             auto room_mesh = options.add_route_mesh (sample_names_t::room_spot_mesh);
+            room_mesh.set_object_role (object_role_t::client);
             room_mesh.channel_name (sample_names_t::room_spot_mesh);
-            room_mesh.listen (topology.session_router_endpoint);
+            room_mesh.listen (topology.selected_session_route_endpoint ());
             options.add_stream_node (sample_names_t::stream_node)
               .bind (topology.selected_stream_endpoint ())
               .register_session<bingo_session_t> ();

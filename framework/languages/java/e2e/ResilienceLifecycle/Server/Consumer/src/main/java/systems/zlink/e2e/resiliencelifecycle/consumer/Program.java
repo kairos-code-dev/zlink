@@ -14,7 +14,7 @@ import systems.zlink.e2e.resiliencelifecycle.shared.Contracts;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
-import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
@@ -48,7 +48,7 @@ public final class Program {
         ObjectMapper json,
         systems.zlink.framework.channels.ZLinkClient client,
         ZLinkFrameworkLifecycle lifecycle,
-        systems.zlink.framework.locations.ZLinkLocationStore locations,
+        systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository locations,
         ConsumerOptions options) {
         return new ConsumerEndpoints(
             json,

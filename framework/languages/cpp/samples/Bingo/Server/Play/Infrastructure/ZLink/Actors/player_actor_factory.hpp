@@ -13,16 +13,17 @@ struct player_actor_factory_t final
 {
     player_actor_t create (std::string actor_id) const
     {
-        return create (actor_ref_snapshot_t{node_rid_t{}, std::move (actor_id), 0});
+        return create (std::move (actor_id), {});
     }
 
-    player_actor_t create (actor_ref_snapshot_t actor, std::string display_name = {}) const
+    player_actor_t create (std::string actor_id,
+                           std::string display_name) const
     {
         if (display_name.empty ()) {
-            display_name = actor.actor_id;
+            display_name = actor_id;
         }
         player_actor_t player;
-        player.actor = std::move (actor);
+        player.actor_id = std::move (actor_id);
         player.display_name = std::move (display_name);
         return player;
     }
@@ -32,10 +33,7 @@ struct player_actor_factory_t final
             std::stop_token) override
     {
         auto actor = std::make_shared<player_actor_t> (
-          create (actor_ref_snapshot_t{
-            context.actor_ref ().node_rid (),
-            std::string (context.actor_ref ().actor_id ()),
-            context.actor_ref ().generation ()}));
+          create (std::string (context.actor_ref ().actor_id ()), {}));
         actor->set_actor_context (std::move (context));
         co_return actor;
     }

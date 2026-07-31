@@ -359,6 +359,36 @@ public sealed class RedisOpaqueProviderTests(RedisTestFixture fixture)
     }
 
     [SkippableFact]
+    public async Task Hot_key_without_snapshot_accepts_rapid_updates()
+    {
+        Skip.IfNot(fixture.RedisAvailable, fixture.SkipReason);
+        await using var store = fixture.CreateStore();
+        var key = new ZLinkStoreKey("hot:capacity");
+
+        var current = Assert.IsType<ZLinkStoreWriteResult.Applied>(
+            await store.WriteAsync(new ZLinkStoreWriteRequest(
+                [new ZLinkStoreCondition.Missing(key)],
+                [new ZLinkStoreMutation.Put(key, new byte[] { 0 }, null)])));
+        var version = current.PutVersions[key];
+
+        for (var index = 1; index <= 256; index++)
+        {
+            current = Assert.IsType<ZLinkStoreWriteResult.Applied>(
+                await store.WriteAsync(new ZLinkStoreWriteRequest(
+                    [new ZLinkStoreCondition.Version(key, version)],
+                    [new ZLinkStoreMutation.Put(
+                        key,
+                        new[] { (byte)index },
+                        null)])));
+            version = current.PutVersions[key];
+        }
+
+        var found = Assert.IsType<ZLinkStoreReadResult.Found>(
+            await store.ReadAsync(key));
+        Assert.Equal(new byte[] { 0 }, found.Value.Bytes.ToArray());
+    }
+
+    [SkippableFact]
     public async Task Conflict_does_not_apply_any_mutation_or_issue_a_version()
     {
         Skip.IfNot(fixture.RedisAvailable, fixture.SkipReason);

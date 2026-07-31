@@ -368,19 +368,63 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
                     return DecodeRemoteResult(local.Completion, local.Reply);
                 }
 
-                var remaining = deadlineAt - DateTimeOffset.UtcNow;
-                if (remaining <= TimeSpan.Zero)
-                    throw new TimeoutException("The Actor create deadline elapsed.");
-                var remote = await source.Node.CreateActorRemoteAsync(
-                        target.Rid,
-                        actorId,
-                        actorType,
-                        fence,
-                        deadlineUnixMs,
-                        remaining,
-                        deadline.Token)
+                var remote = await CreateRemoteAfterAdmissionAsync()
                     .ConfigureAwait(false);
                 return DecodeRemoteResult(remote.Completion, remote.Reply);
+
+                async ValueTask<(
+                    ActorCreateCompletion Completion,
+                    IReadOnlyList<Message> Reply)> CreateRemoteAfterAdmissionAsync()
+                {
+                    while (true)
+                    {
+                        var remaining = deadlineAt - DateTimeOffset.UtcNow;
+                        if (remaining <= TimeSpan.Zero)
+                        {
+                            await store.AbortAsync(
+                                    reservation,
+                                    CancellationToken.None)
+                                .ConfigureAwait(false);
+                            throw new TimeoutException(
+                                "The Actor create deadline elapsed.");
+                        }
+                        try
+                        {
+                            return await source.Node.CreateActorRemoteAsync(
+                                    target.Rid,
+                                    actorId,
+                                    actorType,
+                                    fence,
+                                    deadlineUnixMs,
+                                    remaining,
+                                    deadline.Token)
+                                .ConfigureAwait(false);
+                        }
+                        catch (ZlinkSubmitException error)
+                            when (error.Result is
+                                      ZlinkSubmitException.ErrorCode.NotConnected
+                                  or ZlinkSubmitException.ErrorCode.Backpressured)
+                        {
+                            // Retry only source-local admission against the
+                            // exact reservation target and generation.
+                            try
+                            {
+                                await Task.Delay(
+                                        TimeSpan.FromMilliseconds(2),
+                                        deadline.Token)
+                                    .ConfigureAwait(false);
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                await store.AbortAsync(
+                                        reservation,
+                                        CancellationToken.None)
+                                    .ConfigureAwait(false);
+                                throw;
+                            }
+                        }
+                    }
+                }
             }
             catch (ZlinkSubmitException)
             {

@@ -147,6 +147,9 @@ public sealed partial class ZLinkRedisLocationStore
         local checkArg = arg
         for i = 1, mutationCount do
             local keyIndex = tonumber(ARGV[checkArg])
+            if not minimumBoundary then
+                redis.call('ZREMRANGEBYRANK', KEYS[keyIndex], 0, -2)
+            end
             if redis.call('ZCARD', KEYS[keyIndex]) >= 128 then
                 return { 'backlog', nowMs }
             end

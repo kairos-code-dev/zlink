@@ -19,12 +19,12 @@ import java.util.concurrent.TimeUnit;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.framework.locations.ZLinkLocationStore;
-import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
-import systems.zlink.framework.locations.ZLinkClientServerServerDescriptorKey;
-import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
-import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
-import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
+import systems.zlink.framework.runtime.internal.locations.ZLinkClientServerServerDescriptor;
+import systems.zlink.framework.runtime.internal.locations.ZLinkClientServerServerDescriptorKey;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationOwnerToken;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationWriteIntent;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationWriteStatus;
 import systems.zlink.framework.locations.ZLinkPageRequest;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterOptions;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendContext;
@@ -38,7 +38,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvi
 final class ZLinkClientServerLocationRuntime implements AutoCloseable {
     private static final String SECURITY_IDENTITY = "default";
 
-    private final ZLinkLocationStore store;
+    private final ZLinkLocationRepository store;
     private final Supplier<ZLinkLocationOwnerToken> owner;
     private final ZLinkChannelBackendAdapter backend;
     private final ZLinkBackendAdapterProvider backendFactory;
@@ -60,7 +60,7 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
     private volatile boolean running;
 
     ZLinkClientServerLocationRuntime(
-        ZLinkLocationStore store,
+        ZLinkLocationRepository store,
         Supplier<ZLinkLocationOwnerToken> owner,
         ZLinkBackendAdapterProvider backendFactory,
         ZLinkBackendContext context,
@@ -94,8 +94,7 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
                     surface.type()
                         == systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectType.CLIENT_SERVER
                     && surface.role()
-                        == systems.zlink.framework.locations
-                            .ZLinkLocationRole.DEALER)
+                        == systems.zlink.framework.locations.ZLinkLocationRole.DEALER)
                 && monitoring == null) {
                 monitoring = backendFactory.createMonitoringAdapter(
                     adapterOptions);

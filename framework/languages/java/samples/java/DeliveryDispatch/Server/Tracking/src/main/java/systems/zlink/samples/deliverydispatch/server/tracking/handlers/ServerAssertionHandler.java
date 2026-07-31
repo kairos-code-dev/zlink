@@ -1,6 +1,6 @@
 package systems.zlink.samples.deliverydispatch.server.tracking.handlers;
 
-import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.samples.deliverydispatch.server.configuration.EvidenceStore;
@@ -20,7 +20,7 @@ public final class ServerAssertionHandler
     @Override
     public CompletionStage<Messages.ServerAssertionResponse> handle(
         Messages.ServerAssertionRequest request,
-        ZLinkRequestContext context) {
+        ZLinkMessageContext context) {
         return CompletableFuture.completedFuture(evidenceStore.assertSequences(
             request.successfulDeliveryId(),
             request.reassignedDeliveryId()));

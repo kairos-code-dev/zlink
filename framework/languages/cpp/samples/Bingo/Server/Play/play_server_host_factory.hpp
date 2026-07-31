@@ -9,13 +9,11 @@
 #include "../sample_log_dir.hpp"
 #include "../../Shared/Contracts/messages.hpp"
 #include "../host_support.hpp"
-#include "Infrastructure/ZLink/Handlers/allocate_bingo_room_handler.hpp"
-#include "Infrastructure/Redis/redis_bingo_match_queue.hpp"
 #include "Infrastructure/ZLink/Actors/player_actor_factory.hpp"
 #include "Infrastructure/ZLink/Actors/player_actor_relocation_adapter.hpp"
 #include "Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp"
 #include "Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_spot.hpp"
-#include "Application/RoomAllocation/bingo_room_allocator.hpp"
+#include "Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_relocation_adapter.hpp"
 
 #include <memory>
 
@@ -47,21 +45,14 @@ class play_server_host_factory_t
               .trace_log_file (flow_log_path (topology.log_dir, "play-" + topology.play_node))
               .trace_label ("play-" + topology.play_node);
             options.services ()
-              .add_singleton<sample_topology_t> (std::make_unique<sample_topology_t> (topology))
-              .add_singleton<bingo_match_queue_t> (
-                std::make_unique<redis_bingo_match_queue_t> (topology))
-              .add_singleton<bingo_room_allocator_t, bingo_match_queue_t> ();
+              .add_singleton<sample_topology_t> (
+                std::make_unique<sample_topology_t> (topology));
             use_default_bingo_codecs (options.codecs ());
             add_sample_location_store (options, topology);
-            options.add_client_server_channel (sample_names_t::room_spot_discovery)
-              .enable_server (topology.selected_play_route_endpoint ())
-              .enable_client ()
-              .use_handler_group ("play");
-            options.add_client_server_channel (sample_names_t::api_channel).enable_client ();
+            options.add_client_server_channel (sample_names_t::api_channel).client ();
             auto room_mesh = options.add_route_mesh (sample_names_t::room_spot_mesh);
+            room_mesh.set_object_role (object_role_t::server);
             room_mesh.channel_name (sample_names_t::room_spot_mesh);
-            room_mesh.peer_connections ().connect (
-              topology.peer_play_spot_router_endpoint ());
             room_mesh.listen (topology.selected_play_spot_router_endpoint ())
               .add_entry_spot<bingo_entry_spot_t> (
                 [topology] (entry_spot_context_t context) {
@@ -75,7 +66,13 @@ class play_server_host_factory_t
                       std::move (context));
                 },
                 [] (auto &factory) {
-                    factory.disable_relocation ();
+                    factory
+                      .set_execution_mode (
+                        user_spot_execution_mode_t::spot_wide)
+                      .set_relocation_readiness (
+                        spot_relocation_readiness_mode_t::application_signaled)
+                      .template preserve_state_with<
+                        bingo_room_relocation_adapter_t> ();
                 })
               .add_actor_factory<player_actor_t, player_actor_factory_t> (
                 sample_names_t::player_actor_type,
@@ -85,9 +82,6 @@ class play_server_host_factory_t
                       .template preserve_state_with<
                         player_actor_relocation_adapter_t> ();
                 });
-            options.handlers ()
-              .group ("play")
-              .add<allocate_bingo_room_handler_t> ();
         });
         return app;
     }

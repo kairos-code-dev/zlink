@@ -1,12 +1,9 @@
-import { Module } from '@nestjs/common';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
 import { SampleNames } from '../Configuration/sample-names';
 import { createSupportChatLocationStore, supportChatLocationOptions } from '../Configuration/location-store';
 import { SUPPORT_CHAT_CONFIG, createSupportChatConfigurationModule } from '../Configuration/sample-config';
 import type { SupportChatServerConfig } from '../Configuration/sample-config';
-import { AuthenticateUserHandler } from './Handlers/authenticate-user-handler';
-import { OpenConversationHandler } from './Handlers/open-conversation-handler';
 
 function createSupportChatApiModule() {
   class SupportChatApiModule {}
@@ -14,7 +11,7 @@ function createSupportChatApiModule() {
     'apiChannelEndpoint', 'redisEndpoint', 'redisKeyPrefix', 'logDir'
   ]);
 
-  Module({
+  zlinkModule(__dirname, {
     imports: [
       configuration,
       ZLinkModule.forRootFactory({
@@ -31,14 +28,16 @@ function createSupportChatApiModule() {
           const mesh = builder.addRouteMesh(SampleNames.conversationSpotMesh)
             .listen(config.apiChannelEndpoint)
             .setRoutingIdPrefix('support-api');
-          mesh.channelName(SampleNames.apiChannel).addHandlerGroup('api');
-          mesh.channelName(SampleNames.supportChannel).setWeight(0);
-          mesh.channelName(SampleNames.conversationSpotMesh).setWeight(0);
+          mesh.objects().client();
+          builder.addClientServerChannel(SampleNames.apiChannel)
+            .server()
+            .listen()
+            .addHandlerGroup('api');
           return builder.build();
         }
       })
     ],
-    providers: [AuthenticateUserHandler, OpenConversationHandler]
+    providers: []
   })(SupportChatApiModule);
 
   return SupportChatApiModule;

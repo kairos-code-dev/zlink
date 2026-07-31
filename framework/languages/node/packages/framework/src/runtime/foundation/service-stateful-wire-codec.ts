@@ -3,6 +3,7 @@ import type {
   ServiceSessionBinding,
   ServiceSpotRef
 } from './service-stateful-registry';
+import { operationRequiresReply } from './service-runtime-contracts';
 import { ServiceWireProtocolError } from './service-wire-m6a-codec';
 
 const PREFIX_SIZE = 5;
@@ -38,7 +39,8 @@ export const M6bServiceWireCommand = Object.freeze({
   sessionRelocationRouted: 45,
   replyRelayAck: 46,
   userSpotCreate: 47,
-  userSpotClose: 48
+  userSpotClose: 48,
+  actorCreate: 49
 });
 
 export interface ServiceWireOperationId {
@@ -270,6 +272,11 @@ export interface ServiceSpotRouteFence {
   readonly authorityOwnerGeneration: bigint;
 }
 
+export interface ServiceDirectSpotRouteFence extends ServiceSpotRouteFence {
+  readonly ownerLeaseGeneration: bigint;
+  readonly storeVersion: string;
+}
+
 export interface ServiceActorRouteFence {
   readonly actor: ServiceActorRef;
   readonly targetNodeGeneration: bigint;
@@ -325,6 +332,18 @@ export interface ServiceUserSpotCreateRecord {
   readonly deadlineUnixMs: bigint;
 }
 
+export interface ServiceActorCreateRecord {
+  readonly kind: 'actorCreate';
+  readonly correlation: bigint;
+  readonly operation: { readonly high: bigint; readonly low: bigint };
+  readonly sourceNodeRid: string;
+  readonly sourceNodeGeneration: bigint;
+  readonly actorId: string;
+  readonly stableType: string;
+  readonly reservation: ServiceUserSpotReservationFence;
+  readonly deadlineUnixMs: bigint;
+}
+
 export interface ServiceUserSpotCloseRecord {
   readonly kind: 'userSpotClose';
   readonly correlation: bigint;
@@ -351,7 +370,7 @@ export type ServiceStatefulWireRecord =
       readonly kind: 'spotSend' | 'spotRequest';
       readonly correlation?: bigint;
       readonly sourceSpotId: string;
-      readonly target: ServiceSpotRouteFence;
+      readonly target: ServiceDirectSpotRouteFence;
     }
   | {
       readonly kind: 'logicalMulticast';
@@ -419,7 +438,8 @@ export type ServiceStatefulWireRecord =
       readonly replyRouteId?: bigint;
     }
   | ServiceUserSpotCreateRecord
-  | ServiceUserSpotCloseRecord;
+  | ServiceUserSpotCloseRecord
+  | ServiceActorCreateRecord;
 
 export type ServiceStatefulReplyTail =
   | {
@@ -449,6 +469,11 @@ export type ServiceStatefulReplyTail =
   | {
       readonly kind: 'userSpotClose';
       readonly closed: boolean;
+    }
+  | {
+      readonly kind: 'actorCreate';
+      readonly createResult: 'existing' | 'created' | 'rejected';
+      readonly actor?: ServiceActorRef & { readonly nodeRid: string };
     };
 
 export interface ServiceStatefulReply {
@@ -461,7 +486,7 @@ export interface ServiceStatefulReply {
 export function encodeSpotHeader(
   kind: 'spotSend' | 'spotRequest',
   sourceSpotId: string,
-  target: ServiceSpotRouteFence,
+  target: ServiceDirectSpotRouteFence,
   correlation?: bigint
 ): Buffer {
   return concat(
@@ -470,7 +495,7 @@ export function encodeSpotHeader(
       : M6bServiceWireCommand.spotRequest),
     ...(kind === 'spotRequest' ? [u64(requirePositive(correlation, 'correlation'))] : []),
     rid(sourceSpotId, 'sourceSpotId'),
-    spotFence(target)
+    directSpotFence(target)
   );
 }
 
@@ -705,6 +730,36 @@ export function encodeUserSpotCreateHeader(record: Omit<ServiceUserSpotCreateRec
   );
 }
 
+export function encodeActorCreateHeader(record: Omit<ServiceActorCreateRecord, 'kind'>): Buffer {
+  if (record.operation.high === 0n && record.operation.low === 0n) {
+    throw new RangeError('Actor create requires a non-zero operation identity.');
+  }
+  const fence = record.reservation;
+  if (fence.pendingCapacityDelta !== 1) {
+    throw new RangeError('Actor create requires a pending capacity delta of one.');
+  }
+  return concat(
+    prefix(M6bServiceWireCommand.actorCreate),
+    u64(record.correlation),
+    u64Any(record.operation.high),
+    u64Any(record.operation.low),
+    rid(record.sourceNodeRid, 'sourceNodeRid'),
+    u64(record.sourceNodeGeneration),
+    text8(record.actorId, 'actorId'),
+    text8(record.stableType, 'stableType'),
+    text8(fence.reservationId, 'reservationId'),
+    text16(fence.expectedStoreVersion, 'expectedStoreVersion'),
+    u64(fence.objectGeneration),
+    u64(fence.authorityOwnerGeneration),
+    rid(fence.targetNodeRid, 'targetNodeRid'),
+    u64(fence.targetNodeGeneration),
+    text8(fence.targetOwnerId, 'targetOwnerId'),
+    u64(fence.targetOwnerLeaseGeneration),
+    u32(fence.pendingCapacityDelta, 'pendingCapacityDelta'),
+    u64(record.deadlineUnixMs)
+  );
+}
+
 export function encodeUserSpotCloseHeader(record: Omit<ServiceUserSpotCloseRecord, 'kind'>): Buffer {
   if (record.operation.high === 0n && record.operation.low === 0n) {
     throw new RangeError('User Spot close requires a non-zero operation identity.');
@@ -741,7 +796,7 @@ export function decodeStatefulHeader(frame: Uint8Array): ServiceStatefulWireReco
       const request = command.command === M6bServiceWireCommand.spotRequest;
       const correlation = request ? reader.nonZeroU64('correlation') : undefined;
       const sourceSpotId = reader.rid('sourceSpotId');
-      const target = reader.spotFence();
+      const target = reader.directSpotFence();
       reader.end();
       return {
         kind: request ? 'spotRequest' : 'spotSend',
@@ -955,6 +1010,43 @@ export function decodeStatefulHeader(frame: Uint8Array): ServiceStatefulWireReco
       };
       if (record.reservation.pendingCapacityDelta === 0) {
         fail('User Spot create requires a positive pending capacity delta.');
+      }
+      reader.end();
+      return record;
+    }
+    case M6bServiceWireCommand.actorCreate: {
+      requireFlags(command.flags, 0);
+      const correlation = reader.nonZeroU64('correlation');
+      const operation = {
+        high: reader.u64('operation.high'),
+        low: reader.u64('operation.low')
+      };
+      if (operation.high === 0n && operation.low === 0n) {
+        fail('Actor create requires a non-zero operation identity.');
+      }
+      const record: ServiceActorCreateRecord = {
+        kind: 'actorCreate',
+        correlation,
+        operation,
+        sourceNodeRid: reader.rid('sourceNodeRid'),
+        sourceNodeGeneration: reader.nonZeroU64('sourceNodeGeneration'),
+        actorId: reader.text8('actorId'),
+        stableType: reader.text8('stableType'),
+        reservation: {
+          reservationId: reader.text8('reservationId'),
+          expectedStoreVersion: reader.text16('expectedStoreVersion'),
+          objectGeneration: reader.nonZeroU64('objectGeneration'),
+          authorityOwnerGeneration: reader.nonZeroU64('authorityOwnerGeneration'),
+          targetNodeRid: reader.rid('targetNodeRid'),
+          targetNodeGeneration: reader.nonZeroU64('targetNodeGeneration'),
+          targetOwnerId: reader.text8('targetOwnerId'),
+          targetOwnerLeaseGeneration: reader.nonZeroU64('targetOwnerLeaseGeneration'),
+          pendingCapacityDelta: reader.u32('pendingCapacityDelta')
+        },
+        deadlineUnixMs: reader.nonZeroU64('deadlineUnixMs')
+      };
+      if (record.reservation.pendingCapacityDelta !== 1) {
+        fail('Actor create requires a pending capacity delta of one.');
       }
       reader.end();
       return record;
@@ -1326,7 +1418,7 @@ export function decodeStatefulReply(
   frame: Uint8Array,
   expectedCorrelation: bigint,
   operationKind: 'spotRequest' | 'actorRequest' | 'actorLookup' | 'actorDestroy' | 'actorJoin' | 'streamBind'
-    | 'instanceSpotRequest' | 'userSpotCreate' | 'userSpotClose'
+    | 'instanceSpotRequest' | 'userSpotCreate' | 'userSpotClose' | 'actorCreate'
 ): ServiceStatefulReply {
   const reader = new Reader(frame);
   const command = reader.prefix();
@@ -1387,6 +1479,26 @@ export function decodeStatefulReply(
       tail = {
         kind: 'userSpotClose',
         closed: reader.bool8('closed')
+      };
+    } else if (operationKind === 'actorCreate') {
+      const createResult = reader.u8('createResult');
+      if (createResult < 1 || createResult > 3) fail('Invalid Actor create result.');
+      const length = reader.u16('creationLength');
+      const end = reader.offset + length;
+      if (end > reader.bytes.byteLength) fail('Truncated Actor create terminal.');
+      const result = (['existing', 'created', 'rejected'] as const)[createResult - 1]!;
+      const actor = result === 'rejected'
+        ? undefined
+        : {
+            nodeRid: reader.rid('actor.nodeRid'),
+            actorId: reader.text8('actor.actorId'),
+            generation: reader.nonZeroU64('actor.objectGeneration')
+          };
+      if (reader.offset !== end) fail('Invalid Actor create terminal length.');
+      tail = {
+        kind: 'actorCreate',
+        createResult: result,
+        ...(actor === undefined ? {} : { actor })
       };
     }
   }
@@ -1452,6 +1564,20 @@ function encodeReplyTail(tail: ServiceStatefulReplyTail): Buffer {
       );
     case 'userSpotClose':
       return Buffer.of(tail.closed ? 1 : 0);
+    case 'actorCreate': {
+      const selected = tail.actor === undefined
+        ? Buffer.alloc(0)
+        : concat(
+            rid(tail.actor.nodeRid, 'actor.nodeRid'),
+            text8(tail.actor.actorId, 'actor.actorId'),
+            u64(tail.actor.generation)
+          );
+      return concat(
+        Buffer.of((['existing', 'created', 'rejected'] as const).indexOf(tail.createResult) + 1),
+        u16(selected.byteLength),
+        selected
+      );
+    }
   }
 }
 
@@ -1728,6 +1854,14 @@ function spotFence(value: ServiceSpotRouteFence): Buffer {
     rid(value.targetNodeRid, 'targetNodeRid'),
     u64(value.targetNodeGeneration),
     u64(value.authorityOwnerGeneration)
+  );
+}
+
+function directSpotFence(value: ServiceDirectSpotRouteFence): Buffer {
+  return concat(
+    spotFence(value),
+    u64(value.ownerLeaseGeneration),
+    text16(value.storeVersion, 'storeVersion')
   );
 }
 
@@ -2268,6 +2402,14 @@ class Reader {
     };
   }
 
+  directSpotFence(): ServiceDirectSpotRouteFence {
+    return {
+      ...this.spotFence(),
+      ownerLeaseGeneration: this.nonZeroU64('ownerLeaseGeneration'),
+      storeVersion: this.text16('storeVersion')
+    };
+  }
+
   end(): void {
     if (this.remaining !== 0) fail('Service wire record has trailing bytes.');
   }
@@ -2337,7 +2479,7 @@ export function decodeServiceWireFrozenRecord(bytes: Uint8Array): ServiceWireFro
   const operationKind = reader.u32('operationKind');
   if (operationKind > 15) fail('Invalid frozen operation kind.');
   const replyReader = reader.body16('frozen reply route');
-  const requiresReply = [1, 2, 3, 4, 12].includes(operationKind);
+  const requiresReply = operationRequiresReply(operationKind);
   const replyRouteId = requiresReply
     ? replyReader.nonZeroU64('replyRouteId')
     : undefined;
@@ -2460,7 +2602,7 @@ function validateFrozenOperationMatrix(
       : operationKind === 12 && !zero;
   }
   if (!valid) fail('Frozen record kind, operation kind, and operation ID do not match.');
-  if ([1, 2, 3, 4, 12].includes(operationKind) !== (replyRouteId !== undefined)) {
+  if (operationRequiresReply(operationKind) !== (replyRouteId !== undefined)) {
     fail('Frozen reply route does not match the operation kind.');
   }
 }

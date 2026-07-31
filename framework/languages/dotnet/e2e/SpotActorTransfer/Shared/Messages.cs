@@ -16,6 +16,10 @@ public static class SpotActorTransferNames
         "relocation-payload-per-actor-user-spot";
     public const string RelocationPayloadInstanceSpotType =
         "relocation-payload-instance-spot";
+    public const string RelocationReadyUserSpotType =
+        "relocation-ready-user-spot";
+    public const string RelocationReadyDefaultUserSpotType =
+        "relocation-ready-default-user-spot";
 
 }
 
@@ -191,6 +195,7 @@ public sealed record RelocationPayloadSpotReq(
 public sealed record RelocationPayloadSpotRes(
     string SpotId,
     string NodeRid,
+    long ObjectGeneration,
     int ApplicationStateBytes,
     string ApplicationStateSha256);
 
@@ -302,9 +307,37 @@ public sealed record RelocationBulkSpotCreateReq(
     int MaxConcurrency = 64,
     int ActorsPerSpot = 0,
     bool PerActor = false,
-    int ActorApplicationStateBytes = 0);
+    int ActorApplicationStateBytes = 0,
+    string? SpotType = null);
 
 public sealed record RelocationBulkSpotCreateRes(
     string[] SpotIds,
     string[] NodeRids,
+    long[] SpotObjectGenerations,
     string[] ActorIds);
+
+public sealed record RelocationReadySignalReq(
+    string Scenario,
+    bool DeferTwice = false,
+    bool StartFrameworkOperationAfterDefer = false);
+
+public sealed record RelocationReadySignalRes(
+    string SpotId,
+    string NodeRid,
+    bool Deferred,
+    bool SecondDeferRejected,
+    bool FrameworkOperationRejected);
+
+public sealed record RelocationWorkloadReadyCallReq(
+    string SpotId,
+    string Scenario,
+    bool DeferTwice = false,
+    bool StartFrameworkOperationAfterDefer = false);
+
+public sealed record RelocationQueueBlockReq(
+    string Scenario,
+    string TargetId);
+
+public sealed record RelocationQueueBlockRes(
+    string TargetId,
+    string NodeRid);

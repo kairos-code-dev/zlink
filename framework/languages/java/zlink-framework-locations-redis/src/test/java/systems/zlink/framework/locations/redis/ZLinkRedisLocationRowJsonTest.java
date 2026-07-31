@@ -1,5 +1,7 @@
 package systems.zlink.framework.locations.redis;
 
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationDescriptorCodec;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -15,8 +17,8 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.ZLinkActivationConcurrency;
-import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor;
-import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor;
+import systems.zlink.framework.runtime.internal.locations.ZLinkFanoutPublisherDescriptor;
+import systems.zlink.framework.runtime.internal.locations.ZLinkMeshNodeDescriptor;
 import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole;
 import systems.zlink.framework.locations.ZLinkPlacementCapacity;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
@@ -41,16 +43,16 @@ class ZLinkRedisLocationRowJsonTest {
                 UPDATED_AT);
 
         ZLinkFanoutPublisherDescriptor decoded =
-            ZLinkRedisLocationRowJson.deserializeFanoutPublisher(
-                ZLinkRedisLocationRowJson.serializeFanoutPublisher(original),
+            ZLinkLocationDescriptorCodec.deserializeFanoutPublisher(
+                ZLinkLocationDescriptorCodec.serializeFanoutPublisher(original),
                 3,
                 UPDATED_AT);
 
         assertEquals(original, decoded);
         assertEquals(
-            ZLinkRedisLocationRowJson
+            ZLinkLocationDescriptorCodec
                 .fanoutPublisherImmutableFingerprint(original),
-            ZLinkRedisLocationRowJson
+            ZLinkLocationDescriptorCodec
                 .fanoutPublisherImmutableFingerprint(decoded));
     }
 
@@ -130,10 +132,8 @@ class ZLinkRedisLocationRowJsonTest {
                 Optional.empty(),
                 100,
                 new ZLinkPlacementCapacity(
-                    new systems.zlink.framework.locations
-                        .ZLinkCapacityUsage(0, 0, 10_000),
-                    new systems.zlink.framework.locations
-                        .ZLinkCapacityUsage(0, 0, 128),
+                    new systems.zlink.framework.locations.ZLinkCapacityUsage(0, 0, 10_000),
+                    new systems.zlink.framework.locations.ZLinkCapacityUsage(0, 0, 128),
                     List.of()),
                 new ZLinkActivationConcurrency(0, 128),
                 Optional.empty(),
@@ -145,15 +145,15 @@ class ZLinkRedisLocationRowJsonTest {
 
         assertEquals(
             hash.path("json").asText(),
-            ZLinkRedisLocationRowJson.serializeMeshNode(descriptor));
+            ZLinkLocationDescriptorCodec.serializeMeshNode(descriptor));
         JsonNode immutableDigest = root.path("immutableDigest");
         assertEquals(
             immutableDigest.path("preimage").asText(),
-            ZLinkRedisLocationRowJson.meshNodeImmutablePreimage(
+            ZLinkLocationDescriptorCodec.meshNodeImmutablePreimage(
                 descriptor));
         assertEquals(
             immutableDigest.path("sha256LowerHex").asText(),
-            ZLinkRedisLocationRowJson.meshNodeImmutableFingerprint(
+            ZLinkLocationDescriptorCodec.meshNodeImmutableFingerprint(
                 descriptor));
         assertEquals(
             Long.toString(descriptor.lifecycleGeneration()),

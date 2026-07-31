@@ -8,36 +8,15 @@ import type { ZoneWorldConfiguration } from '../Configuration/configuration';
 import { createZoneWorldLocationStore, zoneWorldLocationOptions } from '../Configuration/location-store';
 import { ZoneWorldNames, zonesOf } from '../../Shared/spec';
 import { PlayerActorFactory } from './Infrastructure/ZLink/Actors/player-actor-factory';
-import { DeliverZoneNotificationHandler } from './Infrastructure/ZLink/Actors/player-actor';
 import { PlayerActorRelocationAdapter } from './Infrastructure/ZLink/Actors/player-actor-relocation-adapter';
 import { ZoneEntrySpot } from './Infrastructure/ZLink/Spots/zone-entry-spot';
 import { ZoneSpot } from './Infrastructure/ZLink/Spots/zone-spot';
 import {
-  ApplyNodeMaintenanceHandler,
-  EnsurePlayerActorHandler,
-  GetNodeDiagnosticsHandler,
-  MaintenanceChangedSubscriber,
-  WorldAnnounceSubscriber
-} from './Infrastructure/ZLink/Handlers/node-channel-handlers';
-import { PacketNames } from '../../Shared/contracts';
-import {
-  EntryEnterWorldHandler,
-  EntryJoinWorldHandler,
-  PlayerBotTickHandler,
-  PlayerMoveHandler,
   PlayerMovement
 } from './Infrastructure/ZLink/Handlers/player-handlers';
-import {
-  BotTickHandler,
-  FirstBorderSubscriptionHandler,
-  DeliverAnnounceHandler,
-  SecondBorderSubscriptionHandler,
-  UpdateZonePositionHandler,
-  ZoneTickHandler
-} from './Infrastructure/ZLink/Handlers/zone-runtime-handlers';
 import { MaintenanceStore } from '../Configuration/maintenance-store';
 import { NodeRuntimeState } from './Domain/node-runtime-state';
-import { SpotRuntimeEventHandler } from './Infrastructure/ZLink/Handlers/spot-runtime-event-handler';
+import { SpotRuntimeStatusObserver } from './Infrastructure/ZLink/Handlers/spot-runtime-event-handler';
 
 
 function createZoneNodeModule() {
@@ -63,8 +42,7 @@ function createZoneNodeModule() {
           if (zonesOf(node.nodeId).length === 0) {
             builder.addFanoutChannel(ZoneWorldNames.broadcastChannel)
               .enableSubscriber()
-              .addPublishHandler(PacketNames.worldAnnounceEvent, WorldAnnounceSubscriber)
-              .addPublishHandler(PacketNames.nodeMaintenanceChangedEvent, MaintenanceChangedSubscriber);
+              .addHandlerGroup('zone-broadcast');
             return builder.build();
           }
 
@@ -83,23 +61,19 @@ function createZoneNodeModule() {
             PlayerActorFactory,
             (factory) => factory.preserveStateWith(PlayerActorRelocationAdapter)
           );
-          zoneMesh.channelName(ZoneWorldNames.zoneMesh);
-          zoneMesh.channelName(ZoneWorldNames.bridgeMesh);
-          zoneMesh.channelName(ZoneWorldNames.reportChannel).setWeight(0);
+          zoneMesh.channel(ZoneWorldNames.zoneMesh).server();
+          zoneMesh.channel(ZoneWorldNames.bridgeMesh).server();
+          zoneMesh.channel(ZoneWorldNames.reportChannel).client();
           const opsChannelName = ZoneWorldNames.opsChannel(node.nodeId);
           for (const configuredNodeId of ['zone-node-1', 'zone-node-2']) {
             const configuredChannel = ZoneWorldNames.opsChannel(configuredNodeId);
-            const membership = zoneMesh.channelName(configuredChannel);
+            const membership = zoneMesh.channel(configuredChannel).server();
             if (configuredChannel === opsChannelName) membership.addHandlerGroup('zone-ops');
             else membership.setWeight(0);
           }
-          if (node.nodeId === 'zone-node-1') {
-            zoneMesh.channelName(ZoneWorldNames.actorsChannel).addHandlerGroup('zone-actors');
-          } else zoneMesh.channelName(ZoneWorldNames.actorsChannel).setWeight(0);
           builder.addFanoutChannel(ZoneWorldNames.broadcastChannel)
             .enableSubscriber()
-            .addPublishHandler(PacketNames.worldAnnounceEvent, WorldAnnounceSubscriber)
-            .addPublishHandler(PacketNames.nodeMaintenanceChangedEvent, MaintenanceChangedSubscriber);
+            .addHandlerGroup('zone-broadcast');
           return {
             ...builder.build(),
             monitoring: {}
@@ -109,29 +83,13 @@ function createZoneNodeModule() {
     ],
     providers: [
       PlayerActorFactory,
-      DeliverZoneNotificationHandler,
       MaintenanceStore,
       NodeRuntimeState,
       PlayerActorRelocationAdapter,
       ZoneEntrySpot,
       ZoneSpot,
-      ApplyNodeMaintenanceHandler,
-      EnsurePlayerActorHandler,
-      GetNodeDiagnosticsHandler,
-      MaintenanceChangedSubscriber,
-      WorldAnnounceSubscriber,
-      EntryEnterWorldHandler,
-      EntryJoinWorldHandler,
-      PlayerBotTickHandler,
-      PlayerMoveHandler,
       PlayerMovement,
-      FirstBorderSubscriptionHandler,
-      DeliverAnnounceHandler,
-      SecondBorderSubscriptionHandler,
-      UpdateZonePositionHandler,
-      ZoneTickHandler,
-      BotTickHandler,
-      SpotRuntimeEventHandler
+      SpotRuntimeStatusObserver
     ]
   })(ZoneNodeModule);
   return ZoneNodeModule;

@@ -2,6 +2,7 @@
 #pragma once
 
 #include "runtime/channels/channel_runtime.hpp"
+#include <runtime/locations/location_repository.hpp>
 #include "runtime/channels/channel_runtime_manager.hpp"
 #include "runtime/client_server/client_server_location_runtime.hpp"
 #include "runtime/fanout/fanout_location_runtime.hpp"
@@ -56,7 +57,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
     void start (service_provider_t &services) override
     {
         _runtime = &services.get_required<location_runtime_t> ();
-        _store = &services.get_required<location_store_t> ();
+        _store = &services.get_required<location_repository_t> ();
         _live_store = &services.get_required<live_location_reader_t> ();
         if (auto route_cache = services.get<store_location_resolvers_t> ())
             _route_cache = &route_cache->get ();
@@ -69,7 +70,8 @@ class location_auto_connect_host_service_t final : public hosted_service_t
 
         const auto needs_client_server =
           std::any_of (_channels.begin (), _channels.end (), [] (const auto &channel) {
-              return (channel.server.enabled && channel.server.discovery)
+              return (channel.server.enabled
+                      && !channel.server.bind_endpoints.empty ())
                      || (channel.client.enabled
                          && (channel.client.discovery
                              || !channel.client.connect_endpoints.empty ()));
@@ -105,23 +107,38 @@ class location_auto_connect_host_service_t final : public hosted_service_t
                   if (std::find (manual.begin (), manual.end (), target.endpoint)
                       != manual.end ())
                       return;
-                  (void) route.connect (target.node_rid, target.endpoint);
                   for (const auto &mesh_node : _mesh_nodes) {
                       if (mesh_node
-                          && mesh_node->mesh_name () == route.router_channel_id ())
-                          mesh_node->connect_peer (target.node_rid, target.endpoint);
+                          && mesh_node->mesh_name () == route.router_channel_id ()) {
+                          mesh_node->expect_peer (
+                            target.node_rid, target.endpoint,
+                            target.lifecycle_generation,
+                            target.security_identity);
+                          if (target.initiates_connection)
+                              mesh_node->connect_peer (
+                                target.node_rid, target.endpoint,
+                                target.lifecycle_generation,
+                                target.security_identity);
+                      }
                   }
+                  if (target.initiates_connection)
+                      (void) route.connect (target.node_rid, target.endpoint);
               },
               [this, &route, manual] (const target_t &target) {
                   if (std::find (manual.begin (), manual.end (), target.endpoint)
                       != manual.end ())
                       return;
-                  (void) route.disconnect (target.endpoint);
                   for (const auto &mesh_node : _mesh_nodes) {
                       if (mesh_node
-                          && mesh_node->mesh_name () == route.router_channel_id ())
-                          mesh_node->disconnect_peer (target.endpoint);
+                          && mesh_node->mesh_name () == route.router_channel_id ()) {
+                          mesh_node->forget_peer (
+                            target.node_rid, target.endpoint);
+                          if (target.initiates_connection)
+                              mesh_node->disconnect_peer (target.endpoint);
+                      }
                   }
+                  if (target.initiates_connection)
+                      (void) route.disconnect (target.endpoint);
               });
         }
 
@@ -132,10 +149,21 @@ class location_auto_connect_host_service_t final : public hosted_service_t
               mesh_node->mesh_name (), mesh_node->routing_id (),
               mesh_node->listen_endpoint (),
               [mesh_node] (const target_t &target) {
-                  mesh_node->connect_peer (target.node_rid, target.endpoint);
+                  mesh_node->expect_peer (
+                    target.node_rid, target.endpoint,
+                    target.lifecycle_generation,
+                    target.security_identity);
+                  if (target.initiates_connection)
+                      mesh_node->connect_peer (
+                        target.node_rid, target.endpoint,
+                        target.lifecycle_generation,
+                        target.security_identity);
               },
               [mesh_node] (const target_t &target) {
-                  mesh_node->disconnect_peer (target.endpoint);
+                  mesh_node->forget_peer (
+                    target.node_rid, target.endpoint);
+                  if (target.initiates_connection)
+                      mesh_node->disconnect_peer (target.endpoint);
               });
         }
 
@@ -174,6 +202,8 @@ class location_auto_connect_host_service_t final : public hosted_service_t
         std::string endpoint;
         std::string owner_id;
         std::uint64_t lifecycle_generation = 0;
+        std::string security_identity;
+        bool initiates_connection = true;
     };
 
     struct loop_t
@@ -308,15 +338,17 @@ class location_auto_connect_host_service_t final : public hosted_service_t
                 && mesh::route_mesh_connection_not_required (
                   *local, descriptor))
                 continue;
-            /* Automatic RouteMesh has one deterministic initiator. Admission
-             * still resolves races and stale discovery candidates. */
-            if (!loop.local_endpoint.empty () && loop.local_rid
-                && loop.local_rid->to_hex () >= descriptor.rid.to_hex ())
-                continue;
+            /* Both sides retain the discovery expectation so inbound
+             * admission can validate endpoint and security. Only the lower
+             * RID starts the physical connection. */
+            const auto initiates_connection =
+              loop.local_endpoint.empty () || !loop.local_rid
+              || loop.local_rid->to_hex () < descriptor.rid.to_hex ();
             const auto key = descriptor.rid.to_hex ();
             desired.emplace (
               key, target_t{key, descriptor.rid, descriptor.endpoint,
-                            descriptor.owner_id, descriptor.lifecycle_generation});
+                            descriptor.owner_id, descriptor.lifecycle_generation,
+                            descriptor.security_identity, initiates_connection});
         }
         return desired;
     }
@@ -355,7 +387,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
     std::set<std::string> _route_mesh_client_channels;
     std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> _mesh_nodes;
     location_runtime_t *_runtime = nullptr;
-    location_store_t *_store = nullptr;
+    location_repository_t *_store = nullptr;
     live_location_reader_t *_live_store = nullptr;
     store_location_resolvers_t *_route_cache = nullptr;
     std::atomic_bool _stop{false};

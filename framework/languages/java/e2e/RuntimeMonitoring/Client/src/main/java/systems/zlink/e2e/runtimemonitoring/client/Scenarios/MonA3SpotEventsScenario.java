@@ -12,18 +12,14 @@ public final class MonA3SpotEventsScenario {
     public static void run(MonitoringScenarioContext context) {
         context.awaitRuntimeSnapshot(
             context.serviceEndpoint(),
-            snapshot -> channel(snapshot).readyMemberCount() >= 2,
+            snapshot -> channel(snapshot).readyTargetCount() >= 2,
             "MON-A3 initial ready member count did not reach two");
         int evidenceBaseline = context.evidenceEntryCount(context.serviceEndpoint());
 
         context.post(context.serviceBEndpoint(), "/runtime/weight/zero");
         context.awaitRuntimeSnapshot(
-            context.serviceBEndpoint(),
-            snapshot -> channel(snapshot).localWeight() == 0,
-            "MON-A3 service-b local weight did not become zero");
-        context.awaitRuntimeSnapshot(
             context.serviceEndpoint(),
-            snapshot -> channel(snapshot).readyMemberCount() == 1,
+            snapshot -> channel(snapshot).readyTargetCount() == 1,
             "MON-A3 zero-weight peer remained selectable");
         Contracts.WorkRes zeroWeightReply =
             context.runtimeRequest(context.serviceEndpoint(), "zero-weight");
@@ -34,7 +30,7 @@ public final class MonA3SpotEventsScenario {
         context.post(context.serviceBEndpoint(), "/runtime/weight/restore");
         context.awaitRuntimeSnapshot(
             context.serviceEndpoint(),
-            snapshot -> channel(snapshot).readyMemberCount() >= 2,
+            snapshot -> channel(snapshot).readyTargetCount() >= 2,
             "MON-A3 restored peer did not become selectable");
 
         boolean reachedServiceB = false;
@@ -52,7 +48,7 @@ public final class MonA3SpotEventsScenario {
             context.serviceEndpoint(),
             evidenceBaseline,
             "route-mesh-runtime",
-            "zlink.runtime.mesh_node.channel_changed");
+            "status-changed");
 
         System.out.println("scenario MON-A3 passed");
     }

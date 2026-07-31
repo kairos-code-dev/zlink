@@ -3,7 +3,7 @@ package systems.zlink.framework.spring;
 import systems.zlink.framework.actors.ZLinkActorClient;
 import systems.zlink.framework.actors.ZLinkActorRequestCall;
 import systems.zlink.framework.actors.ZLinkActorSendCall;
-import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle;
 
 final class ZLinkFrameworkActorClientBean implements ZLinkActorClient {
     private final ZLinkFrameworkLifecycle lifecycle;

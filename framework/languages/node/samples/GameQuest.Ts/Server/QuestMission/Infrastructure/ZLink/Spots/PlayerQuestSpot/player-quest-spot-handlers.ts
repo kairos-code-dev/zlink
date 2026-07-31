@@ -1,8 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { zlinkSpotPacketHandler } from '@zlink-systems/nestjs';
 import {
-  PacketNames,
-  decodeGameplayPayload
+  decodeGameplayPayload,
+  DeactivatePlayerQuestSpotReq
 } from '../../../../../../Shared/Contracts/messages';
 import { QuestEventStore, QuestReadModelStore } from '../../../../../Shared/Store/quest-progress-store';
 import { QuestEventProcessor } from '../../../../Application/quest-event-processor';
@@ -13,6 +13,7 @@ import type {
   GameplayMsg,
   DeleteQuestProjectionReq,
   DeleteQuestProjectionRes,
+  DeactivatePlayerQuestSpotRes,
   GetQuestProgressReq,
   GetQuestProgressRes,
   QuestProgress,
@@ -22,7 +23,7 @@ import type {
 } from '../../../../../../Shared/Contracts/messages';
 
 @Injectable()
-@zlinkSpotPacketHandler({ packetName: PacketNames.gameplayMsg, spot: () => PlayerQuestSpot })
+@zlinkSpotPacketHandler({ spot: () => PlayerQuestSpot, packetName: 'GameplayMsg' })
 class ApplyGameplayEventSpotHandler
   implements ZLinkSpotPacketHandler<PlayerQuestSpot, GameplayMsg> {
   constructor(
@@ -40,7 +41,7 @@ class ApplyGameplayEventSpotHandler
 }
 
 @Injectable()
-@zlinkSpotPacketHandler({ packetName: PacketNames.getQuestProgressReq, spot: () => PlayerQuestSpot })
+@zlinkSpotPacketHandler({ spot: () => PlayerQuestSpot, packetName: 'GetQuestProgressReq' })
 class GetQuestProgressSpotHandler
   implements ZLinkSpotRequestHandler<PlayerQuestSpot, GetQuestProgressReq, GetQuestProgressRes> {
   constructor(private readonly processor: QuestEventProcessor) {}
@@ -57,7 +58,7 @@ class GetQuestProgressSpotHandler
 }
 
 @Injectable()
-@zlinkSpotPacketHandler({ packetName: PacketNames.syncQuestProgressReq, spot: () => PlayerQuestSpot })
+@zlinkSpotPacketHandler({ spot: () => PlayerQuestSpot, packetName: 'SyncQuestProgressReq' })
 class SyncQuestProgressSpotHandler
   implements ZLinkSpotRequestHandler<PlayerQuestSpot, SyncQuestProgressReq, SyncQuestProgressRes> {
   constructor(private readonly processor: QuestEventProcessor, private readonly notifier: PlayerQuestNotifier) {}
@@ -73,7 +74,7 @@ class SyncQuestProgressSpotHandler
 }
 
 @Injectable()
-@zlinkSpotPacketHandler({ packetName: PacketNames.deleteQuestProjectionReq, spot: () => PlayerQuestSpot })
+@zlinkSpotPacketHandler({ spot: () => PlayerQuestSpot, packetName: 'DeleteQuestProjectionReq' })
 class DeleteQuestProjectionSpotHandler
   implements ZLinkSpotRequestHandler<PlayerQuestSpot, DeleteQuestProjectionReq, DeleteQuestProjectionRes> {
   constructor(@Inject(QuestReadModelStore) private readonly store: QuestReadModelStore) {}
@@ -86,7 +87,7 @@ class DeleteQuestProjectionSpotHandler
 }
 
 @Injectable()
-@zlinkSpotPacketHandler({ packetName: PacketNames.rebuildQuestProjectionReq, spot: () => PlayerQuestSpot })
+@zlinkSpotPacketHandler({ spot: () => PlayerQuestSpot, packetName: 'RebuildQuestProjectionReq' })
 class RebuildQuestProjectionSpotHandler
   implements ZLinkSpotRequestHandler<PlayerQuestSpot, RebuildQuestProjectionReq, QuestProgress> {
   constructor(
@@ -101,14 +102,23 @@ class RebuildQuestProjectionSpotHandler
   }
 }
 
-function requirePlayer(spot: PlayerQuestSpot, playerId: string): void {
-  if (spot.playerId !== playerId) {
-    throw new Error(`Player quest spot '${spot.playerId}' cannot process player '${playerId}'.`);
+@Injectable()
+@zlinkSpotPacketHandler({ spot: () => PlayerQuestSpot, packetName: 'DeactivatePlayerQuestSpotReq' })
+class DeactivatePlayerQuestSpotHandler
+  implements ZLinkSpotRequestHandler<PlayerQuestSpot, DeactivatePlayerQuestSpotReq, DeactivatePlayerQuestSpotRes> {
+  async handle(spot: PlayerQuestSpot, request: DeactivatePlayerQuestSpotReq): Promise<DeactivatePlayerQuestSpotRes> {
+    requirePlayer(spot, request.playerId);
+    return { closed: await spot.context.close() };
   }
+}
+
+function requirePlayer(spot: PlayerQuestSpot, playerId: string): void {
+  spot.bindPlayer(playerId);
 }
 
 export {
   ApplyGameplayEventSpotHandler,
+  DeactivatePlayerQuestSpotHandler,
   DeleteQuestProjectionSpotHandler,
   GetQuestProgressSpotHandler,
   RebuildQuestProjectionSpotHandler,

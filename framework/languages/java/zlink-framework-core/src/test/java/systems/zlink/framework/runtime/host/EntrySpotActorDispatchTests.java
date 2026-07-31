@@ -78,7 +78,8 @@ final class EntrySpotActorDispatchTests {
     void entrySpotActorDispatchNoBindRequestRepliesViaNoBindAndDoesNotBindSession() throws Exception {
         TestBackend backend = startBackend();
         try (ZLinkFrameworkRuntime runtime = startRuntime(backend)) {
-            runtime.actorManager().create("actor-a", "probe").toCompletableFuture().get(5, TimeUnit.SECONDS);
+            runtime.actorManager().create("actor-a", "probe").submit()
+                .toCompletableFuture().get(5, TimeUnit.SECONDS);
 
             backend.entrySpot.raiseActorReadable(actorRequestParts(
                 "actor-a",
@@ -100,6 +101,8 @@ final class EntrySpotActorDispatchTests {
 
             DecodedFrame frame = decodeFrame(reply.parts().get(0));
             assertEquals(ZLinkStreamMessageKind.RESPONSE, frame.header().kind());
+            assertEquals("ProbeReply", frame.header().packetName());
+            assertEquals(ZLinkStreamCodec.JSON, frame.header().codec());
             assertEquals(Map.of(), frame.header().metadata());
             assertFalse(frame.header().flags().contains(ZLinkStreamHeaderFlag.PAYLOAD_COMPRESSED));
             assertEquals("ok:actor-a", deserializeReply(frame).value());
@@ -110,7 +113,8 @@ final class EntrySpotActorDispatchTests {
     void entrySpotActorDispatchBoundRequestUsesBoundSessionAndBindsSession() throws Exception {
         TestBackend backend = startBackend();
         try (ZLinkFrameworkRuntime runtime = startRuntime(backend)) {
-            runtime.actorManager().create("actor-a", "probe").toCompletableFuture().get(5, TimeUnit.SECONDS);
+            runtime.actorManager().create("actor-a", "probe").submit()
+                .toCompletableFuture().get(5, TimeUnit.SECONDS);
 
             backend.entrySpot.raiseActorReadable(actorRequestParts("actor-a", "request", "bound", 0, 0));
 
@@ -121,6 +125,8 @@ final class EntrySpotActorDispatchTests {
 
             DecodedFrame frame = decodeFrame(reply.parts().get(0));
             assertEquals(ZLinkStreamMessageKind.RESPONSE, frame.header().kind());
+            assertEquals("ProbeReply", frame.header().packetName());
+            assertEquals(ZLinkStreamCodec.JSON, frame.header().codec());
             assertEquals("bound:actor-a", deserializeReply(frame).value());
         }
     }
@@ -130,7 +136,8 @@ final class EntrySpotActorDispatchTests {
         CapturingFlowObserver.clear();
         TestBackend backend = startBackend();
         try (ZLinkFrameworkRuntime runtime = startRuntime(backend)) {
-            runtime.actorManager().create("actor-a", "probe").toCompletableFuture().get(5, TimeUnit.SECONDS);
+            runtime.actorManager().create("actor-a", "probe").submit()
+                .toCompletableFuture().get(5, TimeUnit.SECONDS);
 
             backend.entrySpot.raiseActorReadable(actorRequestParts("actor-a", "throw", "boom", 43, NO_BIND));
 
@@ -189,7 +196,7 @@ final class EntrySpotActorDispatchTests {
                 ProbeActor.class,
                 ProbeActorFactory.class,
                 factory -> factory.disableRelocation());
-        return ZLinkFrameworkRuntime.start(options, backend);
+        return ZLinkFrameworkRuntimeTestAccess.start(options, backend);
     }
 
     private static List<ZLinkBackendActorReceived> actorRequestParts(

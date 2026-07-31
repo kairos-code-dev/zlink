@@ -8,7 +8,7 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import systems.zlink.contracts.core.RoutingId;
+import java.util.concurrent.CompletableFuture;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -19,8 +19,6 @@ import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.channels.ZLinkRouteClient;
-import systems.zlink.framework.spots.SpotHandleResolver;
-import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -29,7 +27,9 @@ import systems.zlink.samples.gamequest.server.configuration.SampleNames;
 import systems.zlink.samples.gamequest.server.configuration.SampleTopology;
 import systems.zlink.samples.gamequest.server.questmission.store.QuestStore;
 import systems.zlink.samples.gamequest.server.questmission.spots.PlayerQuestSpot;
-import systems.zlink.samples.gamequest.server.questmission.spots.PlayerQuestRouter;
+import systems.zlink.samples.gamequest.server.questmission.spots.ClosePlayerQuestMsg;
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions;
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationStore;
 
 @EnableZLinkFramework
 @EnableConfigurationProperties(SampleTopology.class)
@@ -40,9 +40,9 @@ public class Program {
     public static void main(String[] args) throws Exception {
         ConfigurableApplicationContext app = run(SampleTopology.configPath(args));
         QuestStore store = app.getBean(QuestStore.class);
-        ZLinkSpotManager spots = app.getBean(ZLinkSpotManager.class);
+        ZLinkRouteClient routes = app.getBean(ZLinkRouteClient.class);
         SampleTopology topology = app.getBean(SampleTopology.class);
-        HttpServer http = startHttp(store, spots, topology);
+        HttpServer http = startHttp(store, routes, topology);
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             http.stop(0);
             try {
@@ -69,33 +69,27 @@ public class Program {
     ZLinkFrameworkConfigurer questMissionFramework(SampleTopology topology) {
         SampleTopology.QuestMission mission = topology.questMission();
         return options -> {
+            options.configureLocations();
+            options.addLocationStore(SampleLocationStore.create(topology));
+            options.addRelocationStore(new ZLinkRedisRelocationStore(
+                new ZLinkRedisRelocationOptions()
+                    .setConnectionString(topology.location().redisEndpoint())
+                    .setKeyPrefix(topology.location().redisKeyPrefix() + "relocation:")));
             options.addHandlersFromPackageOf(Program.class);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(mission.logDirectory() + "/flow-" + mission.instanceName() + ".log")
                 .traceLabel(mission.instanceName());
-            options.addClientServerChannel(SampleNames.QuestOwnerChannel)
-                .enableServer(mission.channelEndpoint())
-                .addHandlerGroup("quest-owner");
-            options.addClientServerChannel(SampleNames.questNotificationChannelFor("api-a"))
-                .enableClient();
-            options.addClientServerChannel(SampleNames.questNotificationChannelFor("api-b"))
-                .enableClient();
             ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.PlayerQuestSpotDiscovery);
             node.listen(mission.spotRouterEndpoint())
-                .useAllocatedRoutingId(16, "gamequest-mission-owner");
+                .setRoutingIdPrefix("gamequest-mission-owner");
             node.objects()
                 .server()
-                .addSpotFactory(
-                    "gamequest.player-quest",
+                .addInstanceSpotFactory(
+                    SampleNames.PlayerQuestSpotType,
                     PlayerQuestSpot.class,
-                    factory -> factory.disableRelocation());
+                    factory -> factory.recreateOnRelocation());
         };
-    }
-
-    @Bean(destroyMethod = "close")
-    ZLinkRedisLocationStore locationStore(SampleTopology topology) {
-        return SampleLocationStore.create(topology);
     }
 
     @Bean(destroyMethod = "close")
@@ -105,17 +99,9 @@ public class Program {
         return store;
     }
 
-    @Bean
-    PlayerQuestRouter playerQuestRouter(
-        ZLinkSpotManager spots,
-        ZLinkRouteClient routes,
-        SpotHandleResolver handles) {
-        return new PlayerQuestRouter(spots, routes, handles);
-    }
-
     private static HttpServer startHttp(
         QuestStore store,
-        ZLinkSpotManager spots,
+        ZLinkRouteClient routes,
         SampleTopology topology) throws IOException {
         ObjectMapper json = new ObjectMapper();
         URI uri = URI.create(topology.questMission().httpEndpoint());
@@ -130,13 +116,8 @@ public class Program {
                 writeJson(exchange, json, 404, new ErrorBody("unknown owner operation"));
                 return;
             }
-            spots.close(RoutingId.from(parts[0])).whenComplete((closed, error) -> {
-                if (error != null) {
-                    writeJsonUnchecked(exchange, json, 500, new ErrorBody(error.getMessage()));
-                    return;
-                }
-                writeJsonUnchecked(exchange, json, closed ? 200 : 404, new OwnerClosed(closed));
-            });
+            routes.sendToSpot(parts[0], new ClosePlayerQuestMsg()).submit();
+            writeJson(exchange, json, 202, new OwnerClosed(true));
         });
         server.start();
         return server;

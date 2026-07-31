@@ -8,7 +8,7 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
+import systems.zlink.framework.runtime.internal.locations.ZLinkClientServerServerDescriptor;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
 
 final class ZLinkClientServerServiceWire {
@@ -238,7 +238,7 @@ final class ZLinkClientServerServiceWire {
         return switch (state) {
             case PREPARING -> 0;
             case SERVING -> 1;
-            case RETIRING, DRAINING -> 2;
+            case RELOCATING, RELOCATED, DRAINING -> 2;
             case STOPPED -> 3;
             case ERROR -> 4;
         };

@@ -54,9 +54,9 @@ export class ZLinkDispatchErrorReporter {
     this.reportedEvents += 1;
     const dropReason = channelDropReason(event);
     if (dropReason !== undefined) {
-      this.metrics?.count('zlink.channel.messages.dropped', 1, {
+      this.metrics?.count('zlink.mesh_node.messages.dropped', 1, {
         surface: event.surface,
-        kind: event.messageKind,
+        message_kind: event.messageKind,
         reason: dropReason
       });
     }

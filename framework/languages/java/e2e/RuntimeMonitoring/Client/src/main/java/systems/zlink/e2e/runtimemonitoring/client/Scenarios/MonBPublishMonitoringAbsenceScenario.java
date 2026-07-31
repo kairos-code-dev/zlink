@@ -8,7 +8,6 @@ import java.util.Arrays;
 import java.util.List;
 import systems.zlink.e2e.runtimemonitoring.client.Support.MonitoringScenarioContext;
 import systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot;
-import systems.zlink.framework.monitoring.ZLinkMeshRuntimeEvent;
 import systems.zlink.httpclient.ZLinkHttpClient;
 
 public final class MonBPublishMonitoringAbsenceScenario {
@@ -70,8 +69,7 @@ public final class MonBPublishMonitoringAbsenceScenario {
     }
 
     private static void assertPublicContractShape() {
-        String members = recordComponents(ZLinkMeshNodeSnapshot.class)
-            + "\n" + recordComponents(ZLinkMeshRuntimeEvent.class);
+        String members = recordComponents(ZLinkMeshNodeSnapshot.class);
         assertForbiddenTextAbsent(members, "public monitoring contract");
         MonitoringScenarioContext.ensure(
             Arrays.stream(ZLinkMeshNodeSnapshot.class.getRecordComponents())

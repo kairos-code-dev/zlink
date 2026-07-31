@@ -2,11 +2,11 @@
 
 package systems.zlink.contracts.sockets;
 
-import systems.zlink.runtime.sockets.SocketOptions;
+import systems.zlink.internal.sockets.SocketOptions;
 
-import systems.zlink.runtime.sockets.SocketOptionKey;
+import systems.zlink.internal.sockets.SocketOptionKey;
 
-import systems.zlink.runtime.nativeapi.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.core.RoutingId;

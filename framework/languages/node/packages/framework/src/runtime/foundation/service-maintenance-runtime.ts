@@ -6,6 +6,8 @@ export type ServiceMaintenanceState =
 export interface ServiceRelocationUnit {
   readonly id: string;
   readonly encodedUpperBound: number;
+  /** Allows one aggregate larger than the shared byte budget to run alone. */
+  readonly allowOversizedExclusive?: boolean;
   readonly ready: () => boolean;
   readonly relocate: (signal: AbortSignal) => Promise<void>;
 }
@@ -119,10 +121,14 @@ export class ServiceMaintenanceRuntime {
       let admitted = false;
       for (let index = 0; index < this.units.length && this.activeOutbound < maxOutbound;) {
         const unit = this.units[index]!;
+        const oversizedExclusive = unit.allowOversizedExclusive === true
+          && unit.encodedUpperBound > maxBytes
+          && this.activeOutbound === 0
+          && this.inFlightBytes === 0;
         if (
           !unit.ready()
-          || unit.encodedUpperBound > maxBytes
-          || this.inFlightBytes + unit.encodedUpperBound > maxBytes
+          || unit.encodedUpperBound > maxBytes && !oversizedExclusive
+          || this.inFlightBytes + unit.encodedUpperBound > maxBytes && !oversizedExclusive
         ) {
           index++;
           continue;

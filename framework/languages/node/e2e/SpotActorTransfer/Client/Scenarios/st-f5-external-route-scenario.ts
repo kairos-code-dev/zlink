@@ -21,7 +21,7 @@ import {
   waitTransportDelivery
 } from '../Support/scenario-support';
 
-export async function runStF5(): Promise<void> {
+export async function runStF5(scenario = 'ST-F5'): Promise<void> {
   const actorId = unique('actor-message-follow-chain');
   const actor = await createActor(
     nodeA,
@@ -44,19 +44,19 @@ export async function runStF5(): Promise<void> {
   const chained = sendHandoffWithTransportGate(
     sourceNode,
     actorId,
-    'ST-F5',
+    scenario,
     'chain-to-final'
   );
   const positiveRequest = probeActorWithTransportGate(
     sourceNode,
     actorId,
-    'ST-F5',
+    scenario,
     'chain-request-to-final'
   );
   const expired = probeActorWithTransportGate(
     sourceNode,
     actorId,
-    'ST-F5',
+    scenario,
     'after-route-removal'
   );
   await waitTransportDelivery(sourceNode, chainOperation);
@@ -65,34 +65,34 @@ export async function runStF5(): Promise<void> {
 
   require(
     (await joinActor(sourceNode, actorId, {
-      scenario: 'ST-F5',
+      scenario,
       targetSpotId: firstSpot.spotId
     })).accepted,
     'ST-F5 first join failed.'
   );
   await waitEvidence(sourceNode, [
-    `ST-F5|${actorId}|message_follow_registered|6000`
+    `${scenario}|${actorId}|message_follow_registered|6000`
   ]);
   require(
     (await joinActor(firstTarget, actorId, {
-      scenario: 'ST-F5',
+      scenario,
       targetSpotId: finalSpot.spotId
     })).accepted,
     'ST-F5 second join failed.'
   );
   await waitEvidence(firstTarget, [
-    `ST-F5|${actorId}|message_follow_registered|6000`
+    `${scenario}|${actorId}|message_follow_registered|6000`
   ]);
 
   await releaseTransportDelivery(sourceNode, chainOperation);
   await chained;
   await waitEvidence(finalTarget, [
-    `ST-F5|${actorId}|packet_handler|chain-to-final`
+    `${scenario}|${actorId}|packet_handler|chain-to-final`
   ]);
   const finalEvidence = await getEvidence(finalTarget);
   require(
     finalEvidence.filter((entry) =>
-      entry.scenario === 'ST-F5'
+      entry.scenario === scenario
       && entry.actorId === actorId
       && entry.kind === 'packet_handler'
       && entry.value === 'chain-to-final'
@@ -102,7 +102,7 @@ export async function runStF5(): Promise<void> {
   for (const previousOwner of [sourceNode, firstTarget]) {
     require(
       !(await getEvidence(previousOwner)).some((entry) =>
-        entry.scenario === 'ST-F5'
+        entry.scenario === scenario
         && entry.actorId === actorId
         && entry.kind === 'packet_handler'
         && entry.value === 'chain-to-final'
@@ -120,12 +120,12 @@ export async function runStF5(): Promise<void> {
     `ST-F5 positive chained request failed with '${positive.errorKind ?? 'invalid response'}'.`
   );
   await waitEvidence(finalTarget, [
-    `ST-F5|${actorId}|packet_handler|chain-request-to-final`,
-    `ST-F5|${actorId}|request_reply|chain-request-to-final`
+    `${scenario}|${actorId}|packet_handler|chain-request-to-final`,
+    `${scenario}|${actorId}|request_reply|chain-request-to-final`
   ]);
   require(
     (await getEvidence(finalTarget)).filter((entry) =>
-      entry.scenario === 'ST-F5'
+      entry.scenario === scenario
       && entry.actorId === actorId
       && entry.kind === 'packet_handler'
       && entry.value === 'chain-request-to-final'
@@ -134,7 +134,7 @@ export async function runStF5(): Promise<void> {
   );
   require(
     (await getEvidence(finalTarget)).filter((entry) =>
-      entry.scenario === 'ST-F5'
+      entry.scenario === scenario
       && entry.actorId === actorId
       && entry.kind === 'request_reply'
       && entry.value === 'chain-request-to-final'
@@ -144,7 +144,7 @@ export async function runStF5(): Promise<void> {
   for (const previousOwner of [sourceNode, firstTarget]) {
     require(
       !(await getEvidence(previousOwner)).some((entry) =>
-        entry.scenario === 'ST-F5'
+        entry.scenario === scenario
         && entry.actorId === actorId
         && entry.kind === 'packet_handler'
         && entry.value === 'chain-request-to-final'
@@ -155,12 +155,12 @@ export async function runStF5(): Promise<void> {
 
   const firstHopContexts = messageFollowRelayEvidence(
     await getEvidence(sourceNode),
-    'ST-F5',
+    scenario,
     actorId
   );
   const secondHopContexts = messageFollowRelayEvidence(
     await getEvidence(firstTarget),
-    'ST-F5',
+    scenario,
     actorId
   );
   require(
@@ -220,7 +220,7 @@ export async function runStF5(): Promise<void> {
   for (const node of [sourceNode, firstTarget, finalTarget]) {
     require(
       !(await getEvidence(node)).some((entry) =>
-        entry.scenario === 'ST-F5'
+        entry.scenario === scenario
         && entry.actorId === actorId
         && entry.kind === 'packet_handler'
         && entry.value === 'after-route-removal'

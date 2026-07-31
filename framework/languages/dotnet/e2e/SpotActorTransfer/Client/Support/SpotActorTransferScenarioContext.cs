@@ -546,6 +546,17 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
             .AsyncRaw()
             .AsTask();
 
+    public async Task<RelocationQueueBlockRes> BlockActorQueueAsync(
+        ZLinkHttpClient submittingNode,
+        RelocationQueueBlockReq request) =>
+        (await submittingNode.Post("/workload/actors/block")
+                .Body(request)
+                .Timeout(TimeSpan.FromSeconds(35))
+                .Async<RelocationQueueBlockRes>())
+            .Body
+        ?? throw new InvalidOperationException(
+            "Actor queue blocker response was null.");
+
     public async Task<RelocationWorkloadReply> RequestSpotWorkloadAsync(
         ZLinkHttpClient submittingNode,
         RelocationWorkloadCallReq request) =>
@@ -565,6 +576,28 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
             .Body(request)
             .AsyncRaw()
             .AsTask();
+
+    public async Task<RelocationQueueBlockRes> BlockSpotQueueAsync(
+        ZLinkHttpClient submittingNode,
+        RelocationQueueBlockReq request) =>
+        (await submittingNode.Post("/workload/spots/block")
+                .Body(request)
+                .Timeout(TimeSpan.FromSeconds(35))
+                .Async<RelocationQueueBlockRes>())
+            .Body
+        ?? throw new InvalidOperationException(
+            "Spot queue blocker response was null.");
+
+    public async Task<RelocationReadySignalRes> SignalRelocationReadyAsync(
+        ZLinkHttpClient submittingNode,
+        RelocationWorkloadReadyCallReq request) =>
+        (await submittingNode.Post("/workload/spots/relocation-ready")
+                .Body(request)
+                .Timeout(TimeSpan.FromSeconds(15))
+                .Async<RelocationReadySignalRes>())
+            .Body
+        ?? throw new InvalidOperationException(
+            "Relocation readiness response was null.");
 
     public async Task<IReadOnlyList<RelocationLocationSnapshot>>
         GetRelocationLocationsAsync(

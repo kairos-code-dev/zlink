@@ -92,6 +92,8 @@ export interface ZLinkResolvedActorRoute {
   readonly authorityStoreVersion: string;
   readonly spotId?: string;
   readonly spotGeneration?: bigint;
+  /** Exact enclosing User Spot authority used by remote Actor packet relay. */
+  readonly enclosingSpotRoute?: ZLinkSpotRouteTarget;
 }
 
 export class ZLinkStoreLocationResolvers implements
@@ -103,11 +105,20 @@ export class ZLinkStoreLocationResolvers implements
   private readonly actorRoutes = new Map<string, CachedReadyRoute<ZLinkActorLocation>>();
   private readonly directActorRoutes = new Map<string, CachedReadyRoute<ZLinkResolvedActorRoute>>();
   private readonly spotRoutes = new Map<string, CachedReadyRoute<ZLinkSpotLocation>>();
+  private readonly authoritySpotResolver: ZLinkAuthoritySpotRouteResolver;
   private nextActorPlacement = 0n;
 
   constructor(private readonly options: ZLinkStoreLocationResolversOptions) {
     this.liveRows = new ZLinkLiveRowFilter(options.leaseTracker);
     this.monotonicNowMs = options.monotonicNowMs ?? (() => performance.now());
+    this.authoritySpotResolver = new ZLinkAuthoritySpotRouteResolver(
+      options.stores.authorityStore,
+      (meshName) => meshName,
+      undefined,
+      options.leaseTracker,
+      options.routeCacheMaxAgeMs,
+      this.monotonicNowMs
+    );
   }
 
   async listLivePeers(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]> {
@@ -274,6 +285,16 @@ export class ZLinkStoreLocationResolvers implements
         acceptedHighWater: 0n
       } as ActorRef;
     }
+    // An authority row is the canonical Actor location. If it exists but its
+    // owner lease is expired or its payload is invalid, the legacy location
+    // projection must not resurrect a stale route while recovery is pending.
+    const authority = await this.options.stores.authorityStore.readAuthority(
+      encodeAuthorityKey('actor', actorId),
+      signal
+    );
+    if (authority.kind === 'snapshot') {
+      return undefined;
+    }
     return (await this.resolveActorRow({ meshName: '', actorId }, signal))?.actorRef;
   }
 
@@ -303,6 +324,27 @@ export class ZLinkStoreLocationResolvers implements
       signal
     );
     if (remainingLeaseMs <= 0) return undefined;
+    let enclosingSpotRoute: ZLinkSpotRouteTarget | undefined;
+    if (decoded.spotId !== undefined) {
+      try {
+        enclosingSpotRoute = await this.authoritySpotResolver.resolve(decoded.spotId, signal);
+      } catch (error) {
+        if (
+          error instanceof ZLinkFrameworkException
+          && error.kind === ZLinkFrameworkErrorKind.SpotRouteNotFound
+        ) {
+          return undefined;
+        }
+        throw error;
+      }
+      if (
+        decoded.spotGeneration === undefined
+        || enclosingSpotRoute.targetSpotGeneration !== decoded.spotGeneration
+        || !routingIdsEqual(enclosingSpotRoute.targetNodeRid, decoded.actor.nodeRid)
+      ) {
+        return undefined;
+      }
+    }
     const route: ZLinkResolvedActorRoute = {
       meshName: current.allocation.descriptor.meshName,
       actorRef: {
@@ -317,7 +359,8 @@ export class ZLinkStoreLocationResolvers implements
       authorityOwnerGeneration: current.authorityOwnerGeneration,
       authorityStoreVersion: current.storeVersion.value,
       spotId: decoded.spotId,
-      spotGeneration: decoded.spotGeneration
+      spotGeneration: decoded.spotGeneration,
+      enclosingSpotRoute
     };
     const maxAgeMs = this.options.routeCacheMaxAgeMs ?? 15000;
     if (maxAgeMs > 0) {

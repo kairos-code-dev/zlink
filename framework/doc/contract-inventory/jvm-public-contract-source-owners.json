@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "serverArtifacts": {
+    "java": {
+      "artifact": "systems.zlink:zlink-framework-core",
+      "module": "systems.zlink.framework",
+      "publicOwners": [
+        "systems.zlink.framework",
+        "systems.zlink.framework.actors",
+        "systems.zlink.framework.channels",
+        "systems.zlink.framework.configuration",
+        "systems.zlink.framework.errors",
+        "systems.zlink.framework.execution",
+        "systems.zlink.framework.handlers",
+        "systems.zlink.framework.locations",
+        "systems.zlink.framework.messaging",
+        "systems.zlink.framework.monitoring",
+        "systems.zlink.framework.spots",
+        "systems.zlink.framework.streams",
+        "systems.zlink.framework.runtime.host"
+      ],
+      "providerSpiOwner": "systems.zlink:zlink-framework-provider-abstractions",
+      "runtimeInternalPrefix": "systems.zlink.framework.runtime.internal",
+      "runtimeInternalPolicy": {
+        "applicationExported": false,
+        "rawBindingArtifact": "systems.zlink:zlink-framework-binding-internal",
+        "rawBindingModule": "zlink.framework.binding.internal",
+        "applicationCompileClasspath": false,
+        "companionQualifiedExports": [
+          "systems.zlink.framework",
+          "zlink.framework.spring.boot.starter",
+          "zlink.framework.testkit"
+        ],
+        "languageLevelNonPublicDeclarations": [
+          "ActorTransferControl",
+          "ActorTransferPhase",
+          "FrameworkReadyBatch",
+          "FrameworkReceiveBatch",
+          "MeshMonitorEventMask",
+          "MeshNodeOptions",
+          "MeshRecordPayload",
+          "MessageBuilderStage",
+          "ReplySubmitOperation",
+          "RequestCallbackSubmitOperation",
+          "RequestSubmitOperation",
+          "SpotKind",
+          "StreamSessionBinding",
+          "StreamSessionService",
+          "StreamSessionState",
+          "StreamSessionStatus",
+          "TimeoutSubmitOperation"
+        ]
+      },
+      "boundaryGate": ":zlink-framework-core:verifyPublicContractModuleBoundary"
+    },
+    "kotlin": {
+      "artifact": "systems.zlink:zlink-framework-kotlin",
+      "publicPackage": "systems.zlink.framework.kotlin",
+      "contractSourceOwners": [
+        "src/main/kotlin/systems/zlink/framework/kotlin/contracts/ZLinkOneWayContracts.kt",
+        "src/main/kotlin/systems/zlink/framework/kotlin/contracts/ZLinkSuspendingHandlers.kt"
+      ],
+      "fqnPolicy": "preserve",
+      "boundaryGate": ":zlink-framework-kotlin:contractTest"
+    }
+  }
+}

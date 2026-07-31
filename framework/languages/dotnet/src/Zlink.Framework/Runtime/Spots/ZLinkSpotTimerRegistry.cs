@@ -122,6 +122,49 @@ internal sealed class ZLinkSpotTimerRegistry(
             .ToArray();
     }
 
+    internal async ValueTask<IReadOnlyList<ZLinkRelocationLogicalTimer>>
+        SnapshotFrozenRelocationAfterDispatchesAsync(
+            CancellationToken cancellationToken)
+    {
+        ZLinkSpotTimerRegistration[] registrations;
+        lock (_lifecycleGate)
+        {
+            ObjectDisposedException.ThrowIf(_closed, this);
+            if (!_frozen)
+                throw new InvalidOperationException(
+                    "SPOT logical timers must be frozen before relocation snapshot.");
+            registrations = _timers
+                .Where(static registration => !registration.Timer.IsDisposed)
+                .ToArray();
+        }
+
+        await Task.WhenAll(registrations.Select(
+                static registration =>
+                    registration.Timer.WaitForFrozenDispatchAsync()))
+            .WaitAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        lock (_lifecycleGate)
+        {
+            ObjectDisposedException.ThrowIf(_closed, this);
+            if (!_frozen)
+                throw new InvalidOperationException(
+                    "SPOT logical timers resumed before relocation snapshot.");
+            return registrations
+                .Where(static registration => !registration.Timer.IsDisposed)
+                .Select(static registration =>
+                    new ZLinkSpotLogicalTimerSnapshot(
+                        registration.HandlerType,
+                        registration.SpotType,
+                        registration.Timer.Snapshot()))
+                .OrderBy(
+                    static snapshot => snapshot.Timer.Name,
+                    StringComparer.Ordinal)
+                .Select(ZLinkSpotTimerRelocationCodec.Encode)
+                .ToArray();
+        }
+    }
+
     internal void FreezeForApplicationAdmissionSeal()
     {
         lock (_lifecycleGate)

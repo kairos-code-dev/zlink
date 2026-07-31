@@ -19,6 +19,7 @@ import type {
 } from '../backend/contracts';
 import {
   closeMeshCompletion,
+  type ZLinkMeshCompletion,
   type ZLinkMeshCompletionTable
 } from '../backend/mesh-completion-table';
 import { createAbortError, throwIfAborted } from '../abort';
@@ -78,6 +79,7 @@ export class ZLinkLocalNativeActorJoin {
     if (signal?.aborted === true) throw createAbortError();
     const completions = this.requireCompletions();
     const target = requireUserSpotRoute(spotRouteTarget, spotId);
+    const actorMeshName = runtimeActorMeshName(actor, state, target.routerChannelId);
     const remote = !routingIdsEqual(
       toFrameworkRoutingId(node.status().routingId),
       target.targetNodeRid
@@ -111,28 +113,41 @@ export class ZLinkLocalNativeActorJoin {
         phase: REMOTE_ACTOR_JOIN_COMMIT,
         transferId,
         transferAdapterKey: prepared.adapterKey,
-        transferState: Buffer.from(
-          prepared.state.toEncodedPayload().data()
-        ),
+        transferState: prepared.stateReference === undefined
+          ? Buffer.from(prepared.state.toEncodedPayload().data())
+          : undefined,
+        transferStateReference: prepared.stateReference,
+        transferStateChecksumCrc32c: prepared.stateChecksumCrc32c,
         handoffBacklog: prepared.handoffBacklog,
         completionOperationId
       })));
     }
-    let completion;
+    let completion: ZLinkMeshCompletion;
     try {
-      const operationId = await submitJoinWhenConnected(
-        () => node.joinActorSpot(
-          actorRef,
-          toBindingRoutingId(target.targetNodeRid),
-          toBindingRoutingId(target.spotId),
-          target.targetSpotGeneration,
-          requestPayload,
-          timeoutMs
-        ),
-        timeoutMs,
-        signal
-      );
-      completion = await completions.wait(operationId, signal);
+      const connectDeadline = Date.now() + Math.min(timeoutMs ?? 5_000, 5_000);
+      for (;;) {
+        const operationId = await submitJoinWhenConnected(
+          () => node.joinActorSpot(
+            actorRef,
+            toBindingRoutingId(target.targetNodeRid),
+            toBindingRoutingId(target.spotId),
+            target.targetSpotGeneration,
+            requestPayload,
+            timeoutMs
+          ),
+          timeoutMs,
+          signal
+        );
+        completion = await completions.wait(operationId, signal);
+        if (
+          completion.terminalResult !== RequestResult.NotConnected
+          || Date.now() >= connectDeadline
+        ) {
+          break;
+        }
+        closeMeshCompletion(completion);
+        await new Promise<void>((resolve) => setTimeout(resolve, 10));
+      }
     } catch (error) {
       await prepared?.rollback();
       throw error;
@@ -154,7 +169,7 @@ export class ZLinkLocalNativeActorJoin {
         await prepared?.rollback();
         return {
           accepted: false,
-          actor: toFrameworkActorRef(control.actor as never, actor.context.meshName),
+          actor: toFrameworkActorRef(control.actor as never, actorMeshName),
           reply: completion.parts[0]
         };
       } finally {
@@ -174,13 +189,14 @@ export class ZLinkLocalNativeActorJoin {
     state.setJoinedSpot(
       toFrameworkRoutingId(control.location.spotId ?? target.spotId),
       undefined,
-      control.location.membershipEpoch
+      control.location.membershipEpoch,
+      control.location.spotGeneration
     );
     state.setRemoteActorPacketTarget(undefined);
     if (remote) {
       const nativeTargetActorRef = toFrameworkActorRef(
         control.actor as never,
-        actor.context.meshName
+        actorMeshName
       );
       try {
         await prepared?.sourceLeaveCompletion;
@@ -198,7 +214,7 @@ export class ZLinkLocalNativeActorJoin {
         );
         prepared?.commit(
           target,
-          toFrameworkActorRef(control.actor as never, actor.context.meshName),
+          toFrameworkActorRef(control.actor as never, actorMeshName),
           []
         );
         throw error;
@@ -227,7 +243,7 @@ export class ZLinkLocalNativeActorJoin {
     } else {
       prepared?.commit(
         target,
-        toFrameworkActorRef(control.actor as never, actor.context.meshName),
+        toFrameworkActorRef(control.actor as never, actorMeshName),
         []
       );
     }
@@ -243,12 +259,15 @@ export class ZLinkLocalNativeActorJoin {
       );
     }
     await this.options.postCommitBinder?.bind(
-      toFrameworkActorRef(control.actor as never, actor.context.meshName)
+      toFrameworkActorRef(control.actor as never, actorMeshName)
     );
     try {
       return {
         accepted: true,
-        actor: toFrameworkActorRef(control.actor as never, actor.context.meshName),
+        actor: toFrameworkActorRef(
+          control.actor as never,
+          actorMeshName
+        ),
         reply: completion.parts[0]
       };
     } finally {
@@ -266,6 +285,7 @@ export class ZLinkLocalNativeActorJoin {
     timeoutMs: number | undefined
   ): Promise<ZLinkActorJoinRuntimeResult<Message>> {
     const completions = this.requireCompletions();
+    const actorMeshName = runtimeActorMeshName(actor, state, '');
     if (state.spotId !== undefined) {
       const leaveOperationId = node.leaveActor(
         actorRef,
@@ -319,7 +339,10 @@ export class ZLinkLocalNativeActorJoin {
     try {
       return {
         accepted: true,
-        actor: toFrameworkActorRef(control.actor as never, actor.context.meshName),
+        actor: toFrameworkActorRef(
+          control.actor as never,
+          actorMeshName
+        ),
         reply: completion.parts[0]
       };
     } finally {
@@ -389,6 +412,22 @@ export class ZLinkLocalNativeActorJoin {
       await new Promise<void>((resolve) => setTimeout(resolve, 10));
     }
   }
+}
+
+function runtimeActorMeshName(
+  actor: ZLinkActor,
+  state: ZLinkActorRuntimeState,
+  fallback: string
+): string {
+  const context = (
+    actor as unknown as {
+      readonly context?: { readonly meshName?: string };
+    }
+  ).context;
+  const stateMeshName = (
+    state as unknown as { readonly meshName?: string } | undefined
+  )?.meshName;
+  return context?.meshName ?? stateMeshName ?? fallback;
 }
 
 function enrichBoundSessionTransferTarget(state: ZLinkActorRuntimeState): ZLinkRemoteBoundSessionTarget | undefined {

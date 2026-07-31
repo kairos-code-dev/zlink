@@ -653,7 +653,7 @@ runtime 스캔이 없으므로 compile-time 타입과 명시 builder 호출로 �
 ([05 §8](../../spec/06-framework-api.ko.md#8-handler-등록과-dispatch)). 등록 방식이 달라도 handler 역할과 메시지 이름은
 같다.
 
-수동 연결 + 수동 등록을 보여 주는 것은 **TicTacToe** 하나뿐이다([샘플 규약](../README.ko.md)).
+수동 endpoint topology를 사용하는 **TicTacToe**도 handler는 자동 등록한다([샘플 규약](../README.ko.md)).
 
 ## 9. 게임 규칙
 

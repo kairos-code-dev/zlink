@@ -71,24 +71,18 @@ internal sealed class SupportUserActor(
             case ZLinkActorJoinCompletion.Accepted accepted:
                 CurrentRef = accepted.Actor;
                 JoinConversation(pending.ConversationId);
-                if (pending.NotifyBoundSession && accepted.Reply is { } acceptedReply)
-                {
-                    await Context.BoundSession
-                        .Send(acceptedReply.Decode<JoinConversationRes>())
-                        .Metadata(
-                            SampleNames.ConversationIdMetadataKey,
-                            pending.ConversationId)
-                        .Async(cancellationToken);
-                }
                 if (hasPendingIntent) _pendingJoins.Dequeue();
                 _completedJoinOperations.Add(operationKey);
                 return;
 
-            case ZLinkActorJoinCompletion.Rejected rejected:
-                if (pending.NotifyBoundSession && rejected.Reply is { } rejectedReply)
+            case ZLinkActorJoinCompletion.Rejected:
+                if (pending.NotifyBoundSession)
                 {
                     await Context.BoundSession
-                        .Send(rejectedReply.Decode<JoinConversationRes>())
+                        .Send(new JoinConversationFailedNotify(
+                            pending.ConversationId,
+                            "Rejected",
+                            false))
                         .Metadata(
                             SampleNames.ConversationIdMetadataKey,
                             pending.ConversationId)

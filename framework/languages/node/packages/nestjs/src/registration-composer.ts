@@ -13,6 +13,7 @@ import {
 } from './contracts';
 import {
   discoverProviderRefs,
+  discoverSessionProviderRefs,
   discoverSpotActorProviderRefs,
   discoverSpotProviderRefs,
   discoverSpotTimerProviderRefs,
@@ -65,6 +66,7 @@ export function createDiscoveredOptions(
   const spotActorProviderRefs = discoverSpotActorProviderRefs(discovery, moduleRef);
   const spotProviderRefs = discoverSpotProviderRefs(discovery, moduleRef);
   const spotTimerProviderRefs = discoverSpotTimerProviderRefs(discovery, moduleRef);
+  const sessionProviderRefs = discoverSessionProviderRefs(discovery, moduleRef);
   const spotNodes = createDiscoveredMeshChannelOptions(createDiscoveredSpotNodeOptions(
     registrationOptions.spotNodes,
     spotActorProviderRefs,
@@ -105,8 +107,28 @@ export function createDiscoveredOptions(
   return {
     ...registrationOptions,
     channels,
-    spotNodes
+    spotNodes,
+    streamNodes: attachDiscoveredSessionHandlers(
+      registrationOptions.streamNodes,
+      sessionProviderRefs.map((ref) => ref.handlerKey)
+    )
   };
+}
+
+const ZLINK_SESSION_HANDLER_TYPES = Symbol.for('@zlink-systems/framework:session-handler-types');
+
+function attachDiscoveredSessionHandlers(
+  streamNodes: ZLinkFrameworkRegistrationOptions['streamNodes'],
+  handlerTypes: readonly Type[]
+): ZLinkFrameworkRegistrationOptions['streamNodes'] {
+  if (streamNodes === undefined || handlerTypes.length === 0) {
+    return streamNodes;
+  }
+  return Object.fromEntries(Object.entries(streamNodes).map(([name, stream]) => {
+    const configured = { ...stream } as typeof stream & Record<symbol, readonly Type[]>;
+    configured[ZLINK_SESSION_HANDLER_TYPES] = handlerTypes;
+    return [name, configured];
+  }));
 }
 
 function createDiscoveredMeshChannelOptions(
@@ -234,13 +256,13 @@ function addDiscoveredSpotHandlers(
         registry.addSpotPacket(spotNode, {
           handlerType: ref.handlerKey,
           packetName: ref.metadata.packetName,
-          spotType
+          spotType: spotType as Type<import('@zlink-systems/framework').ZLinkSpot>
         });
       } else {
         registry.addSpotSubscription(spotNode, {
           channelName: requireSpotSubscriptionChannelName(ref),
           handlerType: ref.handlerKey,
-          spotType,
+          spotType: spotType as Type<import('@zlink-systems/framework').ZLinkSpot>,
           topic: requireSpotSubscriptionTopic(ref)
         });
       }
@@ -358,6 +380,9 @@ export function createRegistrationOptions(options: ZLinkNestModuleRegistrationOp
   }
 
   return {
+    network: options.network,
+    applicationVersion: options.applicationVersion,
+    maintenanceWave: options.maintenanceWave,
     actorTransferTimeoutMs: options.actorTransferTimeoutMs,
     messageFollowDurationMs: options.messageFollowDurationMs,
     channels,
@@ -366,7 +391,6 @@ export function createRegistrationOptions(options: ZLinkNestModuleRegistrationOp
     filters: options.filters,
     locations: options.locations,
     metrics: options.metrics,
-    monitoring: options.monitoring,
     requestTimeoutMs: options.requestTimeoutMs,
     spotFactories: options.spotFactories,
     spotNodes: options.spotNodes,

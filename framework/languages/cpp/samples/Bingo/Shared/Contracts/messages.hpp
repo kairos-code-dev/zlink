@@ -2,39 +2,14 @@
 #pragma once
 
 #include <zlink/framework/codecs/json.hpp>
-#include <zlink/framework/contracts/actors/actor.hpp>
 #include <nlohmann/json.hpp>
 #include <map>
 #include <string>
 #include <vector>
 #include <array>
 
-#ifndef ZLINK_CPP_FRAMEWORK_ACTOR_REF_SNAPSHOT_JSON_HPP
-#define ZLINK_CPP_FRAMEWORK_ACTOR_REF_SNAPSHOT_JSON_HPP
-namespace zlink::framework
-{
-inline void to_json (nlohmann::json &json, const actor_ref_snapshot_t &value)
-{
-    json = {{"nodeRid", std::string (value.node_rid.value ())},
-            {"actorId", value.actor_id},
-            {"generation", value.generation}};
-}
-inline void from_json (const nlohmann::json &json, actor_ref_snapshot_t &value)
-{
-    const auto node_rid = json.contains ("nodeRid") ? json.value ("nodeRid", std::string{})
-                                                    : json.value ("node_rid", std::string{});
-    value.node_rid = node_rid_t::from_string (node_rid);
-    value.actor_id = json.contains ("actorId") ? json.value ("actorId", std::string{})
-                                               : json.value ("actor_id", std::string{});
-    value.generation = json.value ("generation", std::uint64_t{0});
-}
-} // namespace zlink::framework
-#endif
-
 namespace zlink::samples::bingo
 {
-
-using actor_ref_snapshot_t = zlink::framework::actor_ref_snapshot_t;
 
 inline std::string json_string (const nlohmann::json &json,
                                 const char *camel,
@@ -153,7 +128,6 @@ struct ensure_player_actor_res_t
     static constexpr const char *packet_name = "EnsurePlayerActorRes";
     std::string actor_id;
     std::string actor_type;
-    actor_ref_snapshot_t actor;
 };
 
 struct match_bingo_req_t
@@ -176,17 +150,12 @@ struct match_bingo_api_res_t
     std::string room_id;
 };
 
-struct allocate_bingo_room_req_t
+struct reserve_bingo_room_req_t
 {
-    static constexpr const char *packet_name = "AllocateBingoRoomReq";
+    static constexpr const char *packet_name = "ReserveBingoRoomReq";
     std::string mode;
     std::string actor_id;
-};
-
-struct allocate_bingo_room_res_t
-{
-    static constexpr const char *packet_name = "AllocateBingoRoomRes";
-    std::string room_id;
+    std::string level_bucket;
 };
 
 struct bingo_room_settings_payload_t
@@ -198,6 +167,13 @@ struct bingo_room_settings_payload_t
     int max_draw_number = 75;
     std::string purpose = "Game";
     std::string observed_room_id;
+};
+
+struct reserve_bingo_room_res_t
+{
+    static constexpr const char *packet_name = "ReserveBingoRoomRes";
+    std::string room_id;
+    bingo_room_settings_payload_t settings;
 };
 
 struct bingo_player_state_t
@@ -439,14 +415,13 @@ inline void from_json (const nlohmann::json &json, ensure_player_actor_req_t &va
 
 inline void to_json (nlohmann::json &json, const ensure_player_actor_res_t &value)
 {
-    json = {{"actorId", value.actor_id}, {"actorType", value.actor_type}, {"actor", value.actor}};
+    json = {{"actorId", value.actor_id}, {"actorType", value.actor_type}};
 }
 
 inline void from_json (const nlohmann::json &json, ensure_player_actor_res_t &value)
 {
     value.actor_id = json_string (json, "actorId", "actor_id");
     value.actor_type = json_string (json, "actorType", "actor_type");
-    value.actor = json.value ("actor", actor_ref_snapshot_t{});
 }
 
 inline void to_json (nlohmann::json &json, const match_bingo_req_t &value)
@@ -483,26 +458,18 @@ inline void from_json (const nlohmann::json &json, match_bingo_api_res_t &value)
     value.room_id = json_string (json, "roomId", "room_id");
 }
 
-inline void to_json (nlohmann::json &json, const allocate_bingo_room_req_t &value)
+inline void to_json (nlohmann::json &json, const reserve_bingo_room_req_t &value)
 {
     json = {{"mode", value.mode},
-            {"actorId", value.actor_id}};
+            {"actorId", value.actor_id},
+            {"levelBucket", value.level_bucket}};
 }
 
-inline void from_json (const nlohmann::json &json, allocate_bingo_room_req_t &value)
+inline void from_json (const nlohmann::json &json, reserve_bingo_room_req_t &value)
 {
     value.mode = json.value ("mode", "");
     value.actor_id = json_string (json, "actorId", "actor_id");
-}
-
-inline void to_json (nlohmann::json &json, const allocate_bingo_room_res_t &value)
-{
-    json = {{"roomId", value.room_id}};
-}
-
-inline void from_json (const nlohmann::json &json, allocate_bingo_room_res_t &value)
-{
-    value.room_id = json_string (json, "roomId", "room_id");
+    value.level_bucket = json_string (json, "levelBucket", "level_bucket");
 }
 
 inline void to_json (nlohmann::json &json, const bingo_room_settings_payload_t &value)
@@ -525,6 +492,17 @@ inline void from_json (const nlohmann::json &json, bingo_room_settings_payload_t
     value.max_draw_number = json_value (json, "maxDrawNumber", "max_draw_number", 75);
     value.purpose = json.value ("purpose", "Game");
     value.observed_room_id = json_string (json, "observedRoomId", "observed_room_id");
+}
+
+inline void to_json (nlohmann::json &json, const reserve_bingo_room_res_t &value)
+{
+    json = {{"roomId", value.room_id}, {"settings", value.settings}};
+}
+
+inline void from_json (const nlohmann::json &json, reserve_bingo_room_res_t &value)
+{
+    value.room_id = json_string (json, "roomId", "room_id");
+    value.settings = json.value ("settings", bingo_room_settings_payload_t{});
 }
 
 inline void to_json (nlohmann::json &json, const bingo_room_join_req_t &value)

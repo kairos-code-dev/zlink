@@ -85,8 +85,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
             _receiveDispatcher,
             () => _lifecycle.Connection,
             _lifecycle.RecordInbound,
-            options.MaxReceivePayloadSize,
-            ZlinkStreamRuntimeMetrics.TransportLabel(options));
+            options.MaxReceivePayloadSize);
         Connect = new ZlinkStreamLifecycleCall(ConnectCoreAsync);
         Close = new ZlinkStreamLifecycleCall(CloseCoreAsync);
         Dispatch = new ZlinkStreamLifecycleCall(DispatchCoreAsync);
@@ -315,11 +314,14 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         _oneWaySubmits.Complete();
         try
         {
+            // A successful one-way terminal means the frame entered this bounded
+            // queue. Dispose must let every accepted frame finish writing before
+            // it closes the transport that owns those writes.
+            await _oneWaySubmits.WaitForCompletionAsync().ConfigureAwait(false);
             await _lifecycle.CloseAsync(CancellationToken.None).ConfigureAwait(false);
         }
         finally
         {
-            await _oneWaySubmits.WaitForCompletionAsync().ConfigureAwait(false);
             await _lifetimeCts.CancelAsync().ConfigureAwait(false);
             await _taskRunner.StopAndDrainAsync().ConfigureAwait(false);
             _callbacks.Complete();

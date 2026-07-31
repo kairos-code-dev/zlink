@@ -23,8 +23,8 @@ inline void add_deliverydispatch_location_store (
         throw std::runtime_error ("sample.topology.redisKeyPrefix is required");
     }
     framework.add_location_store (
-      std::make_shared<zlink::framework::locations::redis::redis_location_store_t> (
-        zlink::framework::locations::redis::redis_location_options_t{
+      std::make_shared<zlink::framework::redis::redis_location_store_t> (
+        zlink::framework::redis::redis_location_options_t{
           .connection_string = topology.redis_endpoint,
           .key_prefix = topology.redis_key_prefix}));
 }

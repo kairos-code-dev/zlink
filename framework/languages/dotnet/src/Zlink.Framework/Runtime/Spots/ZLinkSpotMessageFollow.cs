@@ -79,6 +79,16 @@ internal sealed class ZLinkSpotMessageFollow(
     internal (int Records, long Bytes) AdmissionSnapshot() =>
         _admission.Snapshot();
 
+    internal async ValueTask WaitForExpiryAndDrainAsync(
+        CancellationToken cancellationToken)
+    {
+        var remaining = ExpiresAt - DateTimeOffset.UtcNow;
+        if (remaining > TimeSpan.Zero)
+            await Task.Delay(remaining, cancellationToken).ConfigureAwait(false);
+        await _admission.CloseAndWaitForEmptyAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     internal sealed class AdmissionLease(
         ZLinkBoundedIngressAdmission admission,
         long bytes) : IDisposable

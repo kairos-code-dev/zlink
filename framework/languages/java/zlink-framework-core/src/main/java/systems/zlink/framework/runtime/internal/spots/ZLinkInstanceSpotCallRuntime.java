@@ -1,0 +1,28 @@
+package systems.zlink.framework.runtime.internal.spots;
+
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletionStage;
+import systems.zlink.contracts.messaging.Message;
+
+/** Internal bridge from the public fluent call to Instance Spot activation. */
+public interface ZLinkInstanceSpotCallRuntime {
+    CompletionStage<Void> send(
+        String spotId,
+        String stableType,
+        String meshName,
+        Message payload,
+        Optional<String> packetName,
+        Map<String, String> metadata);
+
+    CompletionStage<List<Message>> request(
+        String spotId,
+        String stableType,
+        String meshName,
+        Message payload,
+        Optional<String> packetName,
+        Map<String, String> metadata,
+        Duration timeout);
+}

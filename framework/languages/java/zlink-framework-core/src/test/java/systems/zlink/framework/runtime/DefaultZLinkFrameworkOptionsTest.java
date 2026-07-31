@@ -44,7 +44,7 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowObserver;
 import systems.zlink.framework.configuration.ZLinkUnhandledDispatchAction;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
 import systems.zlink.framework.spots.ZLinkSpot;
@@ -266,7 +266,8 @@ final class DefaultZLinkFrameworkOptionsTest {
     @Test
     void locationStoreConfigurationMutatesRegistrationModel() {
         DefaultZLinkFrameworkOptions instance = new DefaultZLinkFrameworkOptions();
-        ZLinkLocationStore store = new ZLinkInMemoryLocationStore();
+        systems.zlink.framework.locationprovider.ZLinkLocationStore store =
+            new ZLinkInMemoryLocationStore();
         instance.addLocationStore(store);
         assertEquals(store, instance.registration().locations().storeInstance());
     }
@@ -1166,7 +1167,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     abstract static class TestLocationStore implements
-        ZLinkLocationStore {
+        ZLinkLocationRepository {
     }
 
 

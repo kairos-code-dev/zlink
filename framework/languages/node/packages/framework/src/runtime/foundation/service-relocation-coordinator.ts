@@ -256,8 +256,11 @@ export class ServiceRelocationCoordinator<TStaging extends ServiceRelocationStag
     const { staging } = committed;
     let authority = committed.authority;
     try {
-      await this.owner.publish(staging, authority, signal);
       await this.owner.replayAcceptedJournal(staging, signal);
+      // Target objects remain hidden until state, queued work, timers, and
+      // Session barriers have been restored. Registry visibility is the last
+      // step before source completion and admission opening.
+      await this.owner.publish(staging, authority, signal);
       authority = await this.source.complete(staging, authority, signal);
       authority = await this.terminalRelay.relayCaptured(staging, authority, signal) ?? authority;
       await this.routes.replace(staging, authority, signal);

@@ -40,10 +40,9 @@ build_java() {
   out_dir="$(cd "$out_dir" && pwd -P)"
   (
     cd "$repo_root/framework/languages/java"
-    # zlink-http-client-kotlin is excluded: its POM generation trips a Gradle 9 /
-    # Kotlin 2.1.0 plugin incompatibility (removed ProjectDependency.getDependencyProject),
-    # and the kotlin client has no e2e/sample consumers to isolate.
-    MAVEN_REPOSITORY_URL="file://$out_dir" ./gradlew :zlink-http-client:publish
+    MAVEN_REPOSITORY_URL="file://$out_dir" ./gradlew \
+      :zlink-http-client:publish \
+      :zlink-http-client-kotlin:publish
   )
   echo "-- http-client Java/Kotlin Maven output: $out_dir"
 }

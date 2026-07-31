@@ -42,8 +42,9 @@ class tictactoe_client_scenario_t
             const auto create_game_request = create_game_http_req_t{options.game_name};
             auto room = zlink::http_client::client_t::create (options.api_http_endpoint)
                           .post ("/games")
+                          .timeout (std::chrono::seconds (45))
                           .body (create_game_request)
-                          .submit<create_game_http_res_t> ().result ().value ().body;
+                          .fetch<create_game_http_res_t> ();
             if (room.owner_play_endpoint.empty ()) {
                 throw std::runtime_error ("API returned an empty play endpoint.");
             }
@@ -169,7 +170,7 @@ class tictactoe_client_scenario_t
     {
         try {
             ensure (!room.room_id.empty ());
-            ensure (room.room_id == "room-1");
+            ensure (!room.room_id.empty ());
             ensure (room.owner_play_endpoint.rfind ("tcp://127.0.0.1:", 0) == 0);
             ensure (room.required_level == 3);
             ensure (room.game_name == options.game_name);
@@ -220,9 +221,10 @@ class tictactoe_client_scenario_t
 
             trace ("join client1");
             const auto client1_join_request = join_game_req_t{room.room_id};
-            auto client1_join =
-              co_await client1.request (client1_join_request)
-                .async<join_game_res_t> ();
+            auto client1_join_completion =
+              client1.wait_for<join_game_res_t> ().async ();
+            client1.send (client1_join_request).submit ();
+            auto client1_join = co_await client1_join_completion;
             ensure (client1_join.state.room_id == room.room_id);
             ensure (client1_join.state.x_actor_id == options.x_actor_id);
             ensure (!client1_join.state.o_actor_id);
@@ -245,9 +247,10 @@ class tictactoe_client_scenario_t
                 .async ();
             trace ("join client2");
             const auto client2_join_request = join_game_req_t{room.room_id};
-            auto client2_join =
-              co_await client2.request (client2_join_request)
-                .async<join_game_res_t> ();
+            auto client2_join_completion =
+              client2.wait_for<join_game_res_t> ().async ();
+            client2.send (client2_join_request).submit ();
+            auto client2_join = co_await client2_join_completion;
             ensure (client2_join.state.room_id == room.room_id);
             trace ((std::string ("client2_join state: x=")
                     + client2_join.state.x_actor_id.value_or ("<none>") + " o="

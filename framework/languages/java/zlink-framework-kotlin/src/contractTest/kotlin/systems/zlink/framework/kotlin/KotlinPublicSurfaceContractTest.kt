@@ -1,6 +1,8 @@
 package systems.zlink.framework.kotlin
 
 import java.lang.reflect.Modifier
+import java.nio.file.Files
+import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.concurrent.CompletionStage
 import kotlin.coroutines.Continuation
@@ -34,6 +36,10 @@ class KotlinPublicSurfaceContractTest {
             ZLinkKotlinFanoutClient::class.java,
             ZLinkKotlinRouteClient::class.java,
             ZLinkKotlinActorClient::class.java,
+            ZLinkKotlinActorCreateCall::class.java,
+            ZLinkKotlinActorManager::class.java,
+            ZLinkKotlinSpotCreateCall::class.java,
+            ZLinkKotlinSpotManager::class.java,
             ZLinkKotlinSessionClient::class.java,
             ZLinkKotlinSessionSendCall::class.java,
             ZLinkKotlinSessionReplyCall::class.java,
@@ -74,6 +80,38 @@ class KotlinPublicSurfaceContractTest {
                 "await" to 1,
                 "yield" to 1,
             ),
+        )
+        assertPublicMethodCounts(
+            "ZLinkKotlinSpotCreateCall",
+            mapOf(
+                "inMesh" to 1,
+                "request" to 1,
+                "timeout" to 1,
+                "await" to 1,
+                "yield" to 1,
+            ),
+        )
+        assertPublicMethodCounts(
+            "ZLinkKotlinSpotManager",
+            mapOf("create" to 1, "getOrCreate" to 1),
+        )
+    }
+
+    @Test
+    fun actorManagerWrapperExposesCanonicalFluentState() {
+        assertPublicMethodCounts(
+            "ZLinkKotlinActorCreateCall",
+            mapOf(
+                "inMesh" to 1,
+                "request" to 1,
+                "timeout" to 1,
+                "await" to 1,
+                "yield" to 1,
+            ),
+        )
+        assertPublicMethodCounts(
+            "ZLinkKotlinActorManager",
+            mapOf("create" to 1, "getOrCreate" to 1),
         )
     }
 
@@ -174,10 +212,15 @@ class KotlinPublicSurfaceContractTest {
             "ZLinkSuspendingActorFactory",
             "ZLinkSuspendingSpot",
             "ZLinkSuspendingEntrySpot",
+            "ZLinkSuspendingInstanceSpot",
             "ZLinkSuspendingSession",
             "ZLinkCoroutineSuspendHandlerInvoker",
             "ZLinkKotlinLifecycleCall",
             "ZLinkKotlinSendCall",
+            "ZLinkKotlinActorCreateCall",
+            "ZLinkKotlinActorManager",
+            "ZLinkKotlinSpotCreateCall",
+            "ZLinkKotlinSpotManager",
             "ZLinkKotlinStreamConnector",
             "ZLinkStreamTypedWaitCall",
         )
@@ -188,10 +231,6 @@ class KotlinPublicSurfaceContractTest {
             .filter { Modifier.isPublic(it.modifiers) }
             .map { it.name }
             .toSet()
-        // This set only covers the top-level *Kt facades listed in facadeClasses. The spec puts
-        // create/getOrCreate on the ZLinkKotlinActorManager and ZLinkKotlinSpotManager
-        // interfaces (actors.ko.md:213-216, spots.ko.md:345-348), which the Kotlin module does
-        // not declare yet, so they are tracked as a contract gap rather than asserted here.
         val expectedFunctionNames = setOf(
             "actorFactory", "actorRef", "addHandler", "asFlow", "await", "awaitReply",
             "bindOrGetActor",
@@ -208,6 +247,94 @@ class KotlinPublicSurfaceContractTest {
             publicFunctionNames.containsAll(expectedFunctionNames),
             "missing Kotlin public functions: ${expectedFunctionNames - publicFunctionNames}",
         )
+    }
+
+    @Test
+    fun `Kotlin application contracts have one source owner without changing FQNs`() {
+        val sourceRoot = Path.of("src/main/kotlin/systems/zlink/framework/kotlin")
+        val contractRoot = sourceRoot.resolve("contracts")
+        assertTrue(Files.isRegularFile(contractRoot.resolve("ZLinkOneWayContracts.kt")))
+        assertTrue(Files.isRegularFile(contractRoot.resolve("ZLinkSuspendingHandlers.kt")))
+        assertFalse(Files.exists(sourceRoot.resolve("ZLinkSuspendingHandlers.kt")))
+
+        val runtimeSource = Files.readString(sourceRoot.resolve("ZLinkOneWayCalls.kt"))
+        assertFalse(
+            Regex("(?m)^interface\\s+ZLinkKotlin").containsMatchIn(runtimeSource),
+            "Kotlin call contracts must be declared under the contracts source owner",
+        )
+
+        // Moving source ownership must not rename the public package.
+        assertEquals(
+            "systems.zlink.framework.kotlin",
+            ZLinkKotlinMessageSendCall::class.java.packageName,
+        )
+        assertEquals(
+            "systems.zlink.framework.kotlin",
+            ZLinkSuspendingInstanceSpot::class.java.packageName,
+        )
+    }
+
+    @Test
+    fun `suspending Spot exposes relocation readiness completion bridge`() {
+        val type = ZLinkSuspendingSpot::class.java
+        val suspending = type.declaredMethods.single {
+            it.name == "onRelocationReadyCompletedSuspending"
+        }
+        assertTrue(Modifier.isProtected(suspending.modifiers))
+        assertEquals(
+            systems.zlink.framework.spots
+                .ZLinkSpotRelocationReadyCompletion::class.java,
+            suspending.parameterTypes.first(),
+        )
+        val bridge = type.getMethod(
+            "onRelocationReadyCompleted",
+            systems.zlink.framework.spots
+                .ZLinkSpotRelocationReadyCompletion::class.java,
+        )
+        assertEquals(CompletionStage::class.java, bridge.returnType)
+    }
+
+    @Test
+    fun `suspending Spot lifecycle matches the exact interface`() {
+        assertSuspendingSpotLifecycle(
+            ZLinkSuspendingSpot::class.java,
+            systems.zlink.framework.spots.ZLinkSpotContext::class.java,
+        )
+        assertSuspendingSpotLifecycle(
+            ZLinkSuspendingEntrySpot::class.java,
+            systems.zlink.framework.spots.ZLinkEntrySpotContext::class.java,
+        )
+
+        val timerSpotBound = ZLinkSuspendingSpotTimerHandler::class.java
+            .typeParameters.single().bounds.single()
+        assertEquals(Any::class.java, timerSpotBound)
+    }
+
+    private fun assertSuspendingSpotLifecycle(type: Class<*>, contextType: Class<*>) {
+        val contextGetter = type.getDeclaredMethod("getContext")
+        assertTrue(Modifier.isAbstract(contextGetter.modifiers))
+        assertEquals(contextType, contextGetter.returnType)
+
+        val contextBridge = type.getDeclaredMethod("context")
+        assertTrue(Modifier.isFinal(contextBridge.modifiers))
+        assertEquals(contextType, contextBridge.returnType)
+
+        val closingBridge = type.getDeclaredMethod(
+            "onClosing",
+            systems.zlink.framework.spots.ZLinkSpotClosingContext::class.java,
+        )
+        assertTrue(Modifier.isFinal(closingBridge.modifiers))
+        assertEquals(CompletionStage::class.java, closingBridge.returnType)
+        assertFalse(type.declaredMethods.any {
+            it.name == "onClosing" && it.parameterCount == 0
+        })
+
+        val suspending = type.getDeclaredMethod(
+            "onClosingSuspending",
+            systems.zlink.framework.spots.ZLinkSpotClosingContext::class.java,
+            Continuation::class.java,
+        )
+        assertTrue(Modifier.isProtected(suspending.modifiers))
     }
 
     @Test

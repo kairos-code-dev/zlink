@@ -165,17 +165,12 @@ contracts_snapshot="$WORK_DIR/package-snapshots/Zlink.Framework.Contracts.packag
 redis_snapshot="$WORK_DIR/package-snapshots/Zlink.Framework.Locations.Redis.package.txt"
 http_client_snapshot="$WORK_DIR/package-snapshots/Zlink.HttpClient.package.txt"
 exact_connector_dependency="dependency targetFramework=net8.0 exclude=Build,Analyzers id=Systems.Zlink.Stream.Connector version=[{VERSION}]"
-exact_contracts_connector_dependency="dependency targetFramework=net8.0 exclude=Build,Analyzers id=Systems.Zlink.Stream.Connector version=[{VERSION}]"
 exact_framework_contracts_dependency="dependency targetFramework=net8.0 exclude=Build,Analyzers id=Zlink.Framework.Contracts version=[{VERSION}]"
 exact_framework_provider_dependency="dependency targetFramework=net8.0 exclude=Build,Analyzers id=Zlink.Framework.Provider.Abstractions version=[{VERSION}]"
 exact_redis_provider_dependency="dependency targetFramework=net8.0 exclude=Build,Analyzers id=Zlink.Framework.Provider.Abstractions version=[{VERSION}]"
 exact_http_contracts_dependency="dependency targetFramework=net8.0 exclude=Build,Analyzers id=Zlink.Framework.Contracts version={VERSION}"
 grep -Fxq "$exact_connector_dependency" "$framework_snapshot" || {
   echo "Zlink.Framework must pin the connector package to the exact framework package version." >&2
-  exit 1
-}
-grep -Fxq "$exact_contracts_connector_dependency" "$contracts_snapshot" || {
-  echo "Zlink.Framework.Contracts must pin the connector package to the exact contracts package version." >&2
   exit 1
 }
 grep -Fxq "$exact_framework_contracts_dependency" "$framework_snapshot" || {
@@ -198,6 +193,23 @@ grep -Fxq "$exact_http_contracts_dependency" "$http_client_snapshot" || {
   echo "Zlink.HttpClient must declare its Zlink.Framework.Contracts package dependency." >&2
   exit 1
 }
+for forbidden_dependency in \
+  "Systems.Zlink.Stream.Connector" \
+  "Systems.Zlink" \
+  "K4os.Compression.LZ4"; do
+  if grep -Fq "id=$forbidden_dependency version=" "$contracts_snapshot"; then
+    echo "Zlink.Framework.Contracts must not depend on $forbidden_dependency." >&2
+    exit 1
+  fi
+  if grep -Fq "id=$forbidden_dependency version=" "$http_client_snapshot"; then
+    echo "Zlink.HttpClient must not depend on $forbidden_dependency." >&2
+    exit 1
+  fi
+done
+if grep -Fq "id=Zlink.Framework version=" "$http_client_snapshot"; then
+  echo "Zlink.HttpClient must not depend on the Framework runtime package." >&2
+  exit 1
+fi
 
 if [[ -n "$SNAPSHOT_OUTPUT" ]]; then
   mkdir -p "$SNAPSHOT_OUTPUT/packages"

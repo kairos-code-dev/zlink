@@ -19,7 +19,6 @@ object SampleNames {
 
     const val RegistryRole: String = "registry"
     const val DispatchRole: String = "dispatch"
-    const val CourierGatewayRole: String = "couriergateway"
     const val CourierSessionRole: String = "couriersession"
     const val CourierSpotNodeRolePrefix: String = "courierspotnode"
     const val TrackingRole: String = "tracking"

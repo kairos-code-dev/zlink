@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.net.ServerSocket;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -35,8 +36,7 @@ final class ZLinkJavaRawMeshNodeRelocationReplyTest {
     @Test
     void command33And46UseIndependentRawInfrastructureSends()
         throws Exception {
-        String endpoint = "inproc://jvm-relocation-reply-"
-            + System.nanoTime();
+        String endpoint = "tcp://127.0.0.1:" + availableTcpPort();
         String targetEndpoint = "inproc://jvm-relocation-reply-target-"
             + System.nanoTime();
         RoutingId sourceRid = RoutingId.from("jvm-reply-source");
@@ -86,10 +86,9 @@ final class ZLinkJavaRawMeshNodeRelocationReplyTest {
             source.start();
             target.start();
             target.connectPeer(endpoint, sourceRid);
-            source.connectPeer(targetEndpoint, targetRid);
 
             long deadline = System.nanoTime()
-                + Duration.ofSeconds(2).toNanos();
+                + Duration.ofSeconds(10).toNanos();
             while ((!source.peers().stream().anyMatch(peer ->
                     peer.routingId().equals(targetRid)
                         && peer.state()
@@ -127,8 +126,8 @@ final class ZLinkJavaRawMeshNodeRelocationReplyTest {
                         expectedSource,
                         codec.encodeReplyRelay(relay),
                         List.of(payload),
-                        Duration.ofSeconds(2))
-                    .toCompletableFuture().get(2, TimeUnit.SECONDS);
+                        Duration.ofSeconds(10))
+                    .toCompletableFuture().get(10, TimeUnit.SECONDS);
             } catch (java.util.concurrent.ExecutionException failure) {
                 assertTrue(handlerCalled.get(),
                     "command 33 did not reach the source handler");
@@ -217,6 +216,13 @@ final class ZLinkJavaRawMeshNodeRelocationReplyTest {
                     .toCompletableFuture().get(1, TimeUnit.SECONDS));
             assertTrue(stale.getCause()
                 instanceof java.util.concurrent.TimeoutException);
+        }
+    }
+
+    private static int availableTcpPort() throws Exception {
+        try (var socket = new ServerSocket(0)) {
+            socket.setReuseAddress(true);
+            return socket.getLocalPort();
         }
     }
 

@@ -30,10 +30,9 @@ int main (int argc, char **argv)
           .trace_label ("cpp-store-failure-" + options.rid);
         sf::server::add_redis_location_store (framework, options);
         framework.add_client_server_channel (sf::api_channel).client ();
-        framework.monitoring ().add_socket_events (sf::api_channel);
-        framework.monitoring ().on<zlink::framework::socket_event_payload_t> (
-          [socket_evidence_ptr] (const zlink::framework::socket_event_payload_t &event) {
-              socket_evidence_ptr->record (event);
+        app.logging ().use_callback_sink (
+          [socket_evidence_ptr] (const zlink::framework::log_record_t &record) {
+              socket_evidence_ptr->record (record);
           });
         framework.http ()
           .listen (options.http_endpoint)

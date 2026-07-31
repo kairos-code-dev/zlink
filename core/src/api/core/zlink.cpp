@@ -138,7 +138,31 @@ zlink_close_result_t zlink_close (void *s_)
                 }
             }
         }
+    }
 
+    if (handle.socket->socket_msg_dispatch_active ()
+        && zlink::socket_base_t::current_socket_msg_dispatch_socket ()
+             == handle.socket) {
+        errno = EBUSY;
+        return ZLINK_CLOSE_BUSY;
+    }
+    if (handle.socket->stream_dispatch_in_callback ()) {
+        errno = EBUSY;
+        return ZLINK_CLOSE_BUSY;
+    }
+
+    // Reserve close before unregistering handlers, stopping the socket or
+    // clearing multipart/request state. This atomically rejects an active
+    // completion-control callback and prevents a new callback from starting.
+    const int close_admission = handle.socket->begin_close_handoff ();
+    if (close_admission < 0)
+        return zlink::close_result_internal::from_rc (-1);
+    const bool deferred_close = close_admission > 0;
+
+    {
+        monitor_state_pin_t monitor_pin (handle.socket);
+        monitor_handler_state_t *monitor_state = monitor_pin.get ();
+        raw_monitor_source = raw_monitor_snapshot_subject (monitor_state);
         if (raw_monitor_source && raw_monitor_source != handle.socket) {
             monitor_state->snapshot_subject.store (NULL, std::memory_order_release);
             (void) raw_monitor_source->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
@@ -152,43 +176,41 @@ zlink_close_result_t zlink_close (void *s_)
 
     if (handle.socket->api_sync_mutex ()) {
         if (handle.socket->socket_msg_dispatch_active ()) {
-            if (zlink::socket_base_t::current_socket_msg_dispatch_socket () == handle.socket) {
-                errno = EBUSY;
-                return ZLINK_CLOSE_BUSY;
-            }
             (void) handle.socket->socket_msg_dispatch_stop ();
-        }
-        if (handle.socket->stream_dispatch_in_callback ()) {
-            errno = EBUSY;
-            return ZLINK_CLOSE_BUSY;
         }
 
         handle.socket->stop ();
         stream_api_lock_t api_lock (handle);
         (void) handle.socket->stream_dispatch_stop ();
-        if (zlink::socket_reqrep_internal::drain_close_request_reply_socket (handle) != 0) {
+        const int drain_rc =
+          zlink::socket_reqrep_internal::drain_close_request_reply_socket (handle);
+        const int drain_errno = errno;
+        zlink_socket_request_reply_cleanup (s_);
+        if (!deferred_close)
+            handle.socket->complete_close_handoff ();
+        if (drain_rc != 0) {
+            errno = drain_errno;
             return zlink::close_result_internal::from_rc (-1);
         }
-        zlink_socket_request_reply_cleanup (s_);
-        const int rc = handle.socket->close ();
-        return zlink::close_result_internal::from_rc (rc);
+        return ZLINK_CLOSE_OK;
     }
 
     if (handle.socket->socket_msg_dispatch_active ()) {
-        if (zlink::socket_base_t::current_socket_msg_dispatch_socket () == handle.socket) {
-            errno = EBUSY;
-            return ZLINK_CLOSE_BUSY;
-        }
         (void) handle.socket->socket_msg_dispatch_stop ();
     }
 
     (void) handle.socket->stream_dispatch_stop ();
-    if (zlink::socket_reqrep_internal::drain_close_request_reply_socket (handle) != 0) {
+    const int drain_rc =
+      zlink::socket_reqrep_internal::drain_close_request_reply_socket (handle);
+    const int drain_errno = errno;
+    zlink_socket_request_reply_cleanup (s_);
+    if (!deferred_close)
+        handle.socket->complete_close_handoff ();
+    if (drain_rc != 0) {
+        errno = drain_errno;
         return zlink::close_result_internal::from_rc (-1);
     }
-    zlink_socket_request_reply_cleanup (s_);
-    const int rc = handle.socket->close ();
-    return zlink::close_result_internal::from_rc (rc);
+    return ZLINK_CLOSE_OK;
 }
 
 zlink_config_result_t
@@ -197,10 +219,6 @@ zlink_poller_add (void *poller_, void *socket_, void *user_data_, short events_)
     poller_handle_t *poller = as_poller_handle (poller_);
     if (!poller)
         return ZLINK_CONFIG_INVALID_HANDLE;
-    if ((events_ & ZLINK_POLLCOMPLETION) != 0 && events_ != ZLINK_POLLCOMPLETION) {
-        errno = EINVAL;
-        return ZLINK_CONFIG_INVALID_ARGUMENT;
-    }
     const zlink::option_target_t target = zlink::resolve_option_target (socket_);
     if (target.kind != zlink::option_target_socket) {
         errno = EFAULT;
@@ -208,19 +226,11 @@ zlink_poller_add (void *poller_, void *socket_, void *user_data_, short events_)
     }
     socket_handle_t handle = make_socket_handle (target.socket);
     const int type = socket_type (handle);
-    if (events_ == ZLINK_POLLCOMPLETION) {
+    if ((events_ & ZLINK_POLLCOMPLETION) != 0) {
         if (type != ZLINK_CORE_SOCKET_DEALER && type != ZLINK_CORE_SOCKET_ROUTER) {
             errno = EINVAL;
             return ZLINK_CONFIG_INVALID_ARGUMENT;
         }
-        if (poller_add_registration (
-              poller, handle.socket, user_data_, events_, socket_, poller_subject_none)
-            != 0) {
-            return zlink::config_result_internal::from_errno (errno);
-        }
-        handle.socket->acquire_completion_poller ();
-        poller->registrations.back ().owns_completion_processing = true;
-        return ZLINK_CONFIG_OK;
     }
     if (validate_socket_callback_poller_events (handle, events_) != 0)
         return ZLINK_CONFIG_INVALID_ARGUMENT;
@@ -229,7 +239,9 @@ zlink_poller_add (void *poller_, void *socket_, void *user_data_, short events_)
         != 0) {
         return zlink::config_result_internal::from_errno (errno);
     }
-    if (type == ZLINK_CORE_SOCKET_DEALER || type == ZLINK_CORE_SOCKET_ROUTER) {
+    if ((events_ & ZLINK_POLLCOMPLETION) != 0
+        && (type == ZLINK_CORE_SOCKET_DEALER
+            || type == ZLINK_CORE_SOCKET_ROUTER)) {
         handle.socket->acquire_completion_poller ();
         poller->registrations.back ().owns_completion_processing = true;
     }

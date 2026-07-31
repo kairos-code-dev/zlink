@@ -1,16 +1,13 @@
 package systems.zlink.samples.kotlin.deliverydispatch.client
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import java.time.Duration
 import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
+import systems.zlink.httpclient.ZLinkHttpClient
+import systems.zlink.httpclient.kotlin.fetch
 import systems.zlink.framework.kotlin.ZLinkKotlinStreamAssert
 import systems.zlink.framework.kotlin.await
 import systems.zlink.framework.kotlin.kotlin
@@ -42,9 +39,6 @@ fun main(args: Array<String>) {
 }
 
 class DeliveryDispatchClientScenario {
-    private val json = ObjectMapper().registerModule(KotlinModule.Builder().build())
-    private val http = HttpClient.newHttpClient()
-
     suspend fun run() {
         println(SampleNames.TopologyReadyMarker)
         runStreamRuntime()
@@ -232,7 +226,7 @@ class DeliveryDispatchClientScenario {
         return message.payload().deliveryId == deliveryId && message.payload().status == status
     }
 
-    private fun assertServerEvidence() {
+    private suspend fun assertServerEvidence() {
         val response = post(
             path = "/self-check/assert",
             body = ServerAssertionReq("delivery-success", "delivery-reassign"),
@@ -242,21 +236,16 @@ class DeliveryDispatchClientScenario {
         println(SampleNames.ServerEvidenceMarker)
     }
 
-    private fun <TResponse> post(
+    private suspend fun <TResponse> post(
         path: String,
         body: Any,
         responseType: Class<TResponse>,
     ): TResponse {
-        val request = HttpRequest.newBuilder()
-            .uri(URI.create(SampleTopology.DispatchHttpEndpoint + path))
-            .header("content-type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)))
-            .build()
-        val response = http.send(request, HttpResponse.BodyHandlers.ofString())
-        check(response.statusCode() in 200..299) {
-            "HTTP ${response.statusCode()} for $path: ${response.body()}"
-        }
-        return json.readValue(response.body(), responseType)
+        return ZLinkHttpClient.create(SampleTopology.DispatchHttpEndpoint)
+            .post(path)
+            .body(body)
+            .fetch(responseType)
+            .await()
     }
 
     private fun createClient(endpoint: String): ZLinkStreamConnector =

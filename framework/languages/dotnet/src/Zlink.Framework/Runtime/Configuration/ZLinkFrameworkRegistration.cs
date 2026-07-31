@@ -26,6 +26,8 @@ internal sealed class ZLinkFrameworkRegistration
 
     public ZLinkWorkerOptionsModel WorkerOptions { get; } = new();
 
+    public ZLinkInboundDispatchOptionsModel InboundDispatchOptions { get; } = new();
+
     public ZLinkNetworkOptionsModel NetworkOptions { get; } = new();
 
     public List<Type> Filters { get; } = [];

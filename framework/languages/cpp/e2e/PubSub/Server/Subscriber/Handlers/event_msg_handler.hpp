@@ -18,7 +18,9 @@ template <const char *Topic> class event_handler_t
 
     explicit event_handler_t (evidence_store_t &state) : _state (state) {}
 
-    void handle (const event_msg_t &event, const zlink::framework::publish_context_t &context)
+    void handle (
+      const event_msg_t &event,
+      const zlink::framework::publish_message_context_t &context)
     {
         if (_state.handler_delay_ms > 0) {
             std::this_thread::sleep_for (std::chrono::milliseconds (_state.handler_delay_ms));

@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/locations/in_memory_location_store.hpp"
+#include "runtime/locations/in_memory_store_providers.hpp"
+#include <runtime/locations/location_repository.hpp>
 #include "runtime/locations/location_auto_connect_host_service.hpp"
-#include "runtime/locations/location_monitoring_host_service.hpp"
 #include "runtime/locations/location_runtime.hpp"
 #include "runtime/locations/store_location_resolvers.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
@@ -44,8 +45,6 @@ namespace
 
 using zlink::framework::actor_location_t;
 using zlink::framework::location_kind_t;
-using zlink::framework::location_event_kind_t;
-using zlink::framework::location_event_payload_t;
 using zlink::framework::location_options_t;
 using zlink::framework::location_owner_token_t;
 using zlink::framework::location_page_t;
@@ -63,15 +62,15 @@ using zlink::framework::location_write_status_t;
 using zlink::framework::route_kind_t;
 using zlink::framework::route_location_key_t;
 using zlink::framework::spot_location_t;
+using zlink::framework::runtime::in_memory_location_repository_t;
 using zlink::framework::runtime::in_memory_location_store_t;
 using zlink::framework::runtime::location_auto_connect_host_service_t;
-using zlink::framework::runtime::location_monitoring_host_service_t;
 using zlink::framework::runtime::location_runtime_t;
 using zlink::framework::runtime::store_location_runtime_query_t;
 using zlink::framework::runtime::store_location_resolvers_t;
 
 location_owner_token_t live_owner_token (
-  zlink::framework::location_store_t &store,
+  zlink::framework::location_repository_t &store,
   const std::string &owner_id)
 {
     const auto lease =
@@ -101,7 +100,7 @@ std::vector<std::byte> user_spot_authority_payload (
 }
 
 void seed_mesh_node (
-  in_memory_location_store_t &store,
+  in_memory_location_repository_t &store,
   std::string owner_id,
   std::string mesh_name,
   std::string rid,
@@ -134,7 +133,7 @@ void seed_mesh_node (
         throw std::runtime_error ("mesh descriptor seed failed");
 }
 
-class test_location_store_t : public zlink::framework::location_store_t
+class test_location_repository_t : public zlink::framework::location_repository_t
 {
   public:
     void set_authority (std::string key, zlink::framework::authority_snapshot_t snapshot)
@@ -399,14 +398,14 @@ class test_location_store_t : public zlink::framework::location_store_t
 
   private:
     std::map<std::string, zlink::framework::authority_snapshot_t> authorities;
-    in_memory_location_store_t _inner;
+    in_memory_location_repository_t _inner;
 };
 
-class other_test_location_store_t : public test_location_store_t
+class other_test_location_repository_t : public test_location_repository_t
 {
 };
 
-class failing_owner_lease_store_t final : public test_location_store_t
+class failing_owner_lease_store_t final : public test_location_repository_t
 {
   public:
     zlink::framework::task_t<
@@ -439,13 +438,6 @@ class fake_location_runtime_query_t final : public location_runtime_query_t
                                                     .polling_interval =
                                                       std::chrono::milliseconds (10),
                                                     .owner_lease_healthy = true});
-    }
-
-    zlink::framework::task_t<location_page_t<zlink::framework::mesh_node_descriptor_t>>
-    list_mesh_node_descriptors (std::string,
-                                location_page_request_t = {}) override
-    {
-        return completed (location_page_t<zlink::framework::mesh_node_descriptor_t>{});
     }
 
     zlink::framework::task_t<location_page_t<location_topology_entry_t>>
@@ -733,12 +725,10 @@ struct options_fixture_t
     zlink::framework::handler_registry_t handlers;
     zlink::framework::serializer_registry_t serializers;
     zlink::framework::zlink_builder_t zlink;
-    zlink::framework::monitoring_builder_t monitoring;
-
     zlink::framework::zlink_framework_options_t make_options ()
     {
         return zlink::framework::zlink_framework_options_t (
-          services, handlers, serializers, zlink, monitoring);
+          services, handlers, serializers, zlink);
     }
 };
 
@@ -1248,7 +1238,7 @@ class generated_user_spot_collision_client_t final
   public:
     explicit generated_user_spot_collision_client_t (
       zlink::framework::app_t &app,
-      std::shared_ptr<test_location_store_t> store) :
+      std::shared_ptr<test_location_repository_t> store) :
         _app (&app),
         _store (std::move (store))
     {
@@ -1342,7 +1332,7 @@ class generated_user_spot_collision_client_t final
 
   private:
     zlink::framework::app_t *_app;
-    std::shared_ptr<test_location_store_t> _store;
+    std::shared_ptr<test_location_repository_t> _store;
 };
 
 class source_cleanup_client_t final
@@ -1514,7 +1504,7 @@ std::uint16_t bindable_loopback_port (std::uint16_t base_port)
 
 TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesSpotAddressFromStore)
 {
-    test_location_store_t store;
+    test_location_repository_t store;
     (void) claim_test_owner (store, "owner-a");
     const auto owner = live_owner_token (store, "owner-a");
     store.set_authority (
@@ -1547,7 +1537,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesSpotAddressFromStore)
 
 TEST (ZLinkFrameworkStoreLocationResolvers, DirectReadyRouteUsesPositiveCacheOnly)
 {
-    test_location_store_t store;
+    test_location_repository_t store;
     (void) claim_test_owner (store, "owner-cache");
     const auto owner = live_owner_token (store, "owner-cache");
     auto authority = zlink::framework::authority_snapshot_t{
@@ -1590,23 +1580,26 @@ TEST (ZLinkFrameworkStoreLocationResolvers, DirectReadyRouteUsesPositiveCacheOnl
     EXPECT_EQ (0u, store.resolve_spot_count.load ());
 }
 
-TEST (ZLinkFrameworkStoreLocationResolvers, AddLocationStoreRegistersUnifiedInstance)
+TEST (ZLinkFrameworkStoreLocationResolvers, AddLocationStoreRegistersOpaqueProvider)
 {
     options_fixture_t fixture;
     auto options = fixture.make_options ();
-    auto store = std::make_shared<test_location_store_t> ();
+    auto store = std::make_shared<in_memory_location_store_t> ();
 
     options.add_location_store (store);
     options.apply ();
 
     auto provider = fixture.services.build_provider ();
-    EXPECT_EQ (store.get (), &provider.get_required<zlink::framework::location_store_t> ());
+    EXPECT_EQ (
+      store.get (),
+      &provider.get_required<
+        zlink::framework::location_store_t> ());
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers, AppFrameworkUsesConfiguredLocationStore)
 {
     auto app = zlink::framework::app_t::create ();
-    auto store = std::make_shared<test_location_store_t> ();
+    auto store = std::make_shared<in_memory_location_store_t> ();
 
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
         options.add_location_store (store);
@@ -1614,22 +1607,28 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AppFrameworkUsesConfiguredLocationSt
     });
 
     auto provider = app.advanced ().services ().build_provider ();
-    EXPECT_EQ (store.get (), &provider.get_required<zlink::framework::location_store_t> ());
+    EXPECT_EQ (
+      store.get (),
+      &provider.get_required<
+        zlink::framework::location_store_t> ());
     EXPECT_EQ (std::chrono::milliseconds (25),
                provider.get_required<zlink::framework::runtime::location_runtime_t> ()
                  .options ()
                  .owner_lease_renew_interval);
 }
 
-TEST (ZLinkFrameworkStoreLocationResolvers, InMemoryLocationStoresCannotMixWithExplicitStores)
+TEST (ZLinkFrameworkStoreLocationResolvers, DuplicateLocationStoreRegistrationIsRejected)
 {
     options_fixture_t fixture;
     auto options = fixture.make_options ();
-    auto store = std::make_shared<test_location_store_t> ();
+    auto first = std::make_shared<in_memory_location_store_t> ();
+    auto second = std::make_shared<in_memory_location_store_t> ();
 
-    options.use_in_memory_location_stores ().add_location_store (store);
+    options.add_location_store (first);
 
-    EXPECT_THROW (options.apply (), zlink::framework::framework_exception_t);
+    EXPECT_THROW (
+      options.add_location_store (second),
+      zlink::framework::framework_exception_t);
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers, RejectsInvalidRoutingAndRelocationLimitsBeforeApply)
@@ -1680,7 +1679,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
 
 TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesSpotAddressByGlobalIdAcrossMeshes)
 {
-    test_location_store_t store;
+    test_location_repository_t store;
     (void) claim_test_owner (store, "owner-a");
     const auto owner = live_owner_token (store, "owner-a");
     auto authority = zlink::framework::authority_snapshot_t{
@@ -1722,7 +1721,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesSpotAddressByGlobalIdAcrossM
 
 TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesActorAddress)
 {
-    test_location_store_t store;
+    test_location_repository_t store;
     (void) claim_test_owner (store, "owner-a");
     const auto owner = live_owner_token (store, "owner-a");
     store.set_authority (
@@ -1757,7 +1756,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesActorAddress)
 
 TEST (ZLinkFrameworkStoreLocationResolvers, RejectsMalformedActorAuthorityPayload)
 {
-    test_location_store_t store;
+    test_location_repository_t store;
     location_options_t options;
     options.route_cache_max_age = std::chrono::milliseconds::zero ();
     store_location_resolvers_t resolvers (store, options);
@@ -1792,7 +1791,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, RejectsMalformedActorAuthorityPayloa
 
 TEST (ZLinkFrameworkStoreLocationResolvers, ResolverFiltersExpiredMeshNodeDescriptors)
 {
-    in_memory_location_store_t store;
+    in_memory_location_repository_t store;
     seed_mesh_node (store, "owner-live", "mesh-a", "node-live",
                     "tcp://127.0.0.1:7001");
     const auto expired = claim_test_owner (
@@ -1835,14 +1834,19 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolverFiltersExpiredMeshNodeDescri
 
     location_runtime_t runtime (store, options, "owner-query");
     store_location_runtime_query_t query (live_reader, runtime, options);
-    const auto query_rows = query.list_mesh_node_descriptors ("mesh-a").result ().value ();
+    const auto query_rows =
+      query
+        .list_topology (
+          location_topology_filter_t{.mesh_name = "mesh-a"})
+        .result ()
+        .value ();
 
     ASSERT_EQ (1u, query_rows.items.size ());
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers, RuntimeQueryReportsHealthyStoreStatus)
 {
-    in_memory_location_store_t store;
+    in_memory_location_repository_t store;
     location_options_t options;
     options.polling_interval = std::chrono::milliseconds (125);
     location_runtime_t runtime (store, options, "owner-a");
@@ -1881,7 +1885,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, RuntimeQueryReportsStoreFailureAsSta
 
 TEST (ZLinkFrameworkStoreLocationResolvers, RuntimeQueryProjectsMeshNodeDescriptors)
 {
-    in_memory_location_store_t store;
+    in_memory_location_repository_t store;
     const auto owner = claim_test_owner (store, "owner-a");
     for (const auto &[rid, state] :
          std::vector<std::pair<std::string, zlink::framework::framework_runtime_state_t>>{
@@ -1923,7 +1927,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, RuntimeQueryProjectsMeshNodeDescript
 
 TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostPublishesAndCleansLocalPeers)
 {
-    auto store = std::make_shared<in_memory_location_store_t> ();
+    auto store = std::make_shared<in_memory_location_repository_t> ();
     location_options_t options;
     options.owner_lease_renew_interval = std::chrono::milliseconds (50);
     auto runtime = std::make_shared<location_runtime_t> (*store, options, "owner-auto");
@@ -1939,13 +1943,13 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostPublishesAndCleansLoc
     auto events = zlink.channel ("events");
     events.enable_publisher ()
       .set_routing_id (zlink::routing_id_t::from ("events-pub"))
-      .bind ("inproc://events-pub");
+      .bind ("tcp://127.0.0.1:0");
     events.enable_subscriber ();
 
     zlink::framework::service_collection_t services;
-    services.add_factory<zlink::framework::location_store_t> (
+    services.add_factory<zlink::framework::location_repository_t> (
       [store] (zlink::framework::service_provider_t &) {
-          return std::static_pointer_cast<zlink::framework::location_store_t> (store);
+          return std::static_pointer_cast<zlink::framework::location_repository_t> (store);
       },
       zlink::framework::service_lifetime_t::singleton);
     services.add_factory<zlink::framework::runtime::live_location_reader_t> (
@@ -1986,14 +1990,26 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostPublishesAndCleansLoc
                fanout_publishers.items.front ().channel_name);
     EXPECT_EQ ("events-pub",
                fanout_publishers.items.front ().publisher_rid.to_string ());
-    EXPECT_EQ ("inproc://events-pub",
+    EXPECT_TRUE (
+      fanout_publishers.items.front ().endpoint.starts_with (
+        "tcp://127.0.0.1:"));
+    EXPECT_NE ("tcp://127.0.0.1:0",
                fanout_publishers.items.front ().endpoint);
     EXPECT_EQ (zlink::framework::framework_runtime_state_t::serving,
                fanout_publishers.items.front ().state);
 
     service.stop ();
-    EXPECT_TRUE (
-      store->list_client_servers ("orders").result ().value ().items.empty ());
+    const auto remaining_client_servers =
+      store->list_client_servers ("orders").result ().value ();
+    EXPECT_TRUE (remaining_client_servers.items.empty ())
+      << "remaining owner="
+      << (remaining_client_servers.items.empty ()
+            ? std::string ("<none>")
+            : remaining_client_servers.items.front ().owner_id)
+      << " generation="
+      << (remaining_client_servers.items.empty ()
+            ? 0
+            : remaining_client_servers.items.front ().lease_generation);
     EXPECT_TRUE (
       store->list_fanout_publishers ("events").result ().value ().items.empty ());
     runtime->stop ();
@@ -2262,16 +2278,23 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
 TEST (ZLinkFrameworkStoreLocationResolvers,
       GeneratedUserSpotFirstAuthorityConflictFailsWithoutRetry)
 {
-    auto store = std::make_shared<test_location_store_t> ();
+    auto store = std::make_shared<test_location_repository_t> ();
     auto app = zlink::framework::app_t::create ();
     generated_user_spot_collision_client_t *client = nullptr;
     const auto endpoint =
       std::string ("tcp://127.0.0.1:")
       + std::to_string (bindable_loopback_port (29703));
 
+    app.advanced ().services ().add_factory<
+      zlink::framework::location_repository_t> (
+      [store] (zlink::framework::service_provider_t &) {
+          return std::static_pointer_cast<
+            zlink::framework::location_repository_t> (
+              store);
+      },
+      zlink::framework::service_lifetime_t::singleton);
     app.add_zlink_framework ([&] (
                                zlink::framework::zlink_framework_options_t &options) {
-        options.add_location_store (store);
         auto node = options.add_route_mesh ("spot-collision-mesh");
         node.set_routing_id (
               zlink::routing_id_t::from (
@@ -2307,16 +2330,23 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
 TEST (ZLinkFrameworkStoreLocationResolvers,
       SourceCreatedReservationIsReconciledAfterExactCreateFailure)
 {
-    auto store = std::make_shared<test_location_store_t> ();
+    auto store = std::make_shared<test_location_repository_t> ();
     auto app = zlink::framework::app_t::create ();
     source_cleanup_client_t *client = nullptr;
     const auto endpoint =
       std::string ("tcp://127.0.0.1:")
       + std::to_string (bindable_loopback_port (29704));
 
+    app.advanced ().services ().add_factory<
+      zlink::framework::location_repository_t> (
+      [store] (zlink::framework::service_provider_t &) {
+          return std::static_pointer_cast<
+            zlink::framework::location_repository_t> (
+              store);
+      },
+      zlink::framework::service_lifetime_t::singleton);
     app.add_zlink_framework ([&] (
                                zlink::framework::zlink_framework_options_t &options) {
-        options.add_location_store (store);
         auto node =
           options.add_route_mesh ("source-cleanup-mesh");
         node.set_routing_id (
@@ -2621,7 +2651,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AppFanoutPublishUsesLocationAutoConn
 
 TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostReconcilesRouteMeshConnections)
 {
-    auto store = std::make_shared<in_memory_location_store_t> ();
+    auto store = std::make_shared<in_memory_location_repository_t> ();
     location_options_t options;
     options.owner_lease_renew_interval = std::chrono::milliseconds (50);
     auto runtime = std::make_shared<location_runtime_t> (*store, options, "owner-route-local");
@@ -2642,9 +2672,9 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostReconcilesRouteMeshCo
     auto &route = manager.get_route_channel ("route.mesh");
 
     zlink::framework::service_collection_t services;
-    services.add_factory<zlink::framework::location_store_t> (
+    services.add_factory<zlink::framework::location_repository_t> (
       [store] (zlink::framework::service_provider_t &) {
-          return std::static_pointer_cast<zlink::framework::location_store_t> (store);
+          return std::static_pointer_cast<zlink::framework::location_repository_t> (store);
       },
       zlink::framework::service_lifetime_t::singleton);
     services.add_factory<zlink::framework::runtime::live_location_reader_t> (
@@ -2709,7 +2739,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostReconcilesRouteMeshCo
 
 TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostUsesRouteMeshInitiatorOrdering)
 {
-    auto store = std::make_shared<in_memory_location_store_t> ();
+    auto store = std::make_shared<in_memory_location_repository_t> ();
     location_options_t options;
     options.owner_lease_renew_interval = std::chrono::milliseconds (50);
 
@@ -2729,9 +2759,9 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostUsesRouteMeshInitiato
     auto &lower_route = lower_manager.get_route_channel ("route.lower");
 
     zlink::framework::service_collection_t lower_services;
-    lower_services.add_factory<zlink::framework::location_store_t> (
+    lower_services.add_factory<zlink::framework::location_repository_t> (
       [store] (zlink::framework::service_provider_t &) {
-          return std::static_pointer_cast<zlink::framework::location_store_t> (store);
+          return std::static_pointer_cast<zlink::framework::location_repository_t> (store);
       },
       zlink::framework::service_lifetime_t::singleton);
     lower_services.add_factory<zlink::framework::runtime::live_location_reader_t> (
@@ -2794,9 +2824,9 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostUsesRouteMeshInitiato
     auto &higher_route = higher_manager.get_route_channel ("route.higher");
 
     zlink::framework::service_collection_t higher_services;
-    higher_services.add_factory<zlink::framework::location_store_t> (
+    higher_services.add_factory<zlink::framework::location_repository_t> (
       [store] (zlink::framework::service_provider_t &) {
-          return std::static_pointer_cast<zlink::framework::location_store_t> (store);
+          return std::static_pointer_cast<zlink::framework::location_repository_t> (store);
       },
       zlink::framework::service_lifetime_t::singleton);
     higher_services.add_factory<zlink::framework::runtime::live_location_reader_t> (
@@ -2837,130 +2867,6 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostUsesRouteMeshInitiato
             "owner-route-lower-remote"))
         .result ()
         .value ());
-}
-
-TEST (ZLinkFrameworkStoreLocationResolvers, LocationMonitoringHostPublishesSnapshots)
-{
-    zlink::framework::monitoring_builder_t monitoring;
-    std::atomic_int status_events{0};
-    std::atomic_int topology_events{0};
-    std::atomic_int summary_events{0};
-    monitoring.add_location_events ("location", std::chrono::milliseconds (10))
-      .on<location_event_payload_t> ([&] (const location_event_payload_t &event) {
-          if (event.event == location_event_kind_t::status_changed && event.status) {
-              ++status_events;
-          }
-          if (event.event == location_event_kind_t::topology_changed
-              && !event.topology.empty ()) {
-              ++topology_events;
-          }
-          if (event.event == location_event_kind_t::service_summary_changed
-              && !event.service_summary.empty ()) {
-              ++summary_events;
-          }
-      });
-    auto runtime = zlink::framework::detail::monitoring_runtime_t::from (monitoring);
-    auto query = std::make_shared<fake_location_runtime_query_t> ();
-
-    zlink::framework::service_collection_t services;
-    services.add_factory<location_runtime_query_t> (
-      [query] (zlink::framework::service_provider_t &) {
-          return std::static_pointer_cast<location_runtime_query_t> (query);
-      },
-      zlink::framework::service_lifetime_t::singleton);
-    auto provider = services.build_provider ();
-
-    location_monitoring_host_service_t service (runtime.state ());
-    service.start (provider);
-    EXPECT_TRUE (wait_until ([&] {
-        return status_events.load () > 0 && topology_events.load () > 0
-               && summary_events.load () > 0;
-    }));
-    std::this_thread::sleep_for (std::chrono::milliseconds (50));
-    EXPECT_EQ (1, status_events.load ());
-    EXPECT_EQ (1, topology_events.load ());
-    EXPECT_EQ (1, summary_events.load ());
-
-    query->store_healthy.store (false);
-    EXPECT_TRUE (wait_until ([&] { return status_events.load () == 2; }));
-    service.stop ();
-    EXPECT_EQ (1, topology_events.load ());
-    EXPECT_EQ (1, summary_events.load ());
-}
-
-TEST (ZLinkFrameworkStoreLocationResolvers, LocationMonitoringHostFallsBackToStatusOnly)
-{
-    zlink::framework::monitoring_builder_t monitoring;
-    std::atomic_int status_events{0};
-    std::atomic_int topology_events{0};
-    std::atomic_int summary_events{0};
-    monitoring.add_location_events ("location", std::chrono::milliseconds (10))
-      .on<location_event_payload_t> ([&] (const location_event_payload_t &event) {
-          if (event.event == location_event_kind_t::status_changed && event.status) {
-              ++status_events;
-          }
-          if (event.event == location_event_kind_t::topology_changed) {
-              ++topology_events;
-          }
-          if (event.event == location_event_kind_t::service_summary_changed) {
-              ++summary_events;
-          }
-      });
-    auto runtime = zlink::framework::detail::monitoring_runtime_t::from (monitoring);
-    auto query = std::make_shared<fake_location_runtime_query_t> ();
-    query->fail_lists = true;
-
-    zlink::framework::service_collection_t services;
-    services.add_factory<location_runtime_query_t> (
-      [query] (zlink::framework::service_provider_t &) {
-          return std::static_pointer_cast<location_runtime_query_t> (query);
-      },
-      zlink::framework::service_lifetime_t::singleton);
-    auto provider = services.build_provider ();
-
-    location_monitoring_host_service_t service (runtime.state ());
-    service.start (provider);
-    EXPECT_TRUE (wait_until ([&] { return status_events.load () > 0; }));
-    service.stop ();
-    EXPECT_EQ (0, topology_events.load ());
-    EXPECT_EQ (0, summary_events.load ());
-}
-
-TEST (ZLinkFrameworkStoreLocationResolvers, LocationMonitoringHonorsIntervalsAboveOneSecond)
-{
-    zlink::framework::monitoring_builder_t monitoring;
-    monitoring.add_location_events ("location", std::chrono::milliseconds (1300));
-    auto runtime = zlink::framework::detail::monitoring_runtime_t::from (monitoring);
-    auto query = std::make_shared<fake_location_runtime_query_t> ();
-
-    zlink::framework::service_collection_t services;
-    services.add_factory<location_runtime_query_t> (
-      [query] (zlink::framework::service_provider_t &) {
-          return std::static_pointer_cast<location_runtime_query_t> (query);
-      },
-      zlink::framework::service_lifetime_t::singleton);
-    auto provider = services.build_provider ();
-
-    location_monitoring_host_service_t service (runtime.state ());
-    service.start (provider);
-    ASSERT_TRUE (wait_until ([&] { return query->status_calls.load () == 1; }));
-    std::this_thread::sleep_for (std::chrono::milliseconds (1100));
-    service.stop ();
-
-    EXPECT_EQ (1, query->status_calls.load ());
-}
-
-TEST (ZLinkFrameworkStoreLocationResolvers, LocationMonitoringHostIgnoresMissingSources)
-{
-    auto state =
-      std::make_shared<zlink::framework::detail::monitoring_runtime_state_t> ();
-    zlink::framework::service_collection_t services;
-    auto provider = services.build_provider ();
-
-    location_monitoring_host_service_t service (state);
-
-    EXPECT_NO_THROW (service.start (provider));
-    service.stop ();
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers, AppStreamHostStartsAndStopsTcpListener)

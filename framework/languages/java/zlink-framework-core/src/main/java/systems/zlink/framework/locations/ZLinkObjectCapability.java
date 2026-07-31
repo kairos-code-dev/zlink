@@ -1,5 +1,7 @@
 package systems.zlink.framework.locations;
 
+import systems.zlink.framework.runtime.internal.locations.*;
+
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 

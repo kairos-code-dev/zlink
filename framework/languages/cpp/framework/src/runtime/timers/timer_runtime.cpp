@@ -54,6 +54,7 @@ timer_t spot_context_t::add_timer_erased (std::string name,
                                             service_provider_t *)> handler_factory,
                                           detail::timer_state_t::handler_invoker_t handler_invoker)
 {
+    ensure_submission_open ();
     if (name.empty ()) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                      "SPOT timer name must not be empty");

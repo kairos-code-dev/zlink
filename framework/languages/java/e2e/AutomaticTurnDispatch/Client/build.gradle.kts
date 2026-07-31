@@ -4,7 +4,7 @@ plugins {
 
 dependencies {
     implementation(project(":Shared"))
-    implementation("systems.zlink:zlink-http-client:0.3.0-SNAPSHOT")
+    implementation("systems.zlink:zlink-http-client:0.3.1")
 }
 
 application {

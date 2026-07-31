@@ -144,8 +144,13 @@ final class ZLinkActorSessionCoordinator {
     }
 
     void publishRelocatedActor(
-        ZLinkActorRuntime.PreparedTransferredActor actor) {
-        requireActors().publishPreparedTransferredActor(actor);
+        ZLinkActorRuntime.PreparedTransferredActor actor,
+        String targetSpotId,
+        long authorityOwnerGeneration) {
+        requireActors().publishPreparedTransferredActor(
+            actor,
+            targetSpotId,
+            authorityOwnerGeneration);
     }
 
     void openRelocatedActorAdmission(
@@ -229,10 +234,45 @@ final class ZLinkActorSessionCoordinator {
         ZLinkBackendActorRef actorRef,
         ZLinkStreamHeader header,
         Message payload,
+        byte[] acceptedJournalRecord,
         Predicate<String> isLocalSpot,
         Function<LocalDispatch, CompletionStage<Optional<Message>>> localDispatch) {
-        return dispatchLocalSession(
-            actorRef, header, payload, isLocalSpot, localDispatch, false);
+        ZLinkActorAcceptedJournal.Record accepted =
+            ZLinkActorAcceptedJournal.decode(acceptedJournalRecord);
+        if (!accepted.actorId().equals(actorRef.actorId())
+            || accepted.objectGeneration() != actorRef.generation()
+            || !accepted.header().packetName().equals(header.packetName())
+            || accepted.header().requestSequence().isPresent()
+            || !java.util.Arrays.equals(accepted.payload(), payload.toByteArray())) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "Actor handoff record does not match its frozen target and payload"));
+        }
+        ZLinkActorRuntime runtime = requireActors();
+        Optional<ZLinkActor> localActor = runtime.localActor(actorRef.actorId());
+        if (localActor.isEmpty()) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "local actor is not available: " + actorRef.actorId()));
+        }
+        ZLinkActor actor = localActor.get();
+        Optional<String> joinedSpotId = runtime.spotId(actor);
+        CompletableFuture<Optional<Message>> result = new CompletableFuture<>();
+        return runtime.submitActorDispatch(
+                actor.context().actorId(),
+                acceptedJournalRecord,
+                () -> {
+                    if (!runtime.claimAcceptedHandoffOperation(
+                            actor,
+                            accepted.operationHigh(),
+                            accepted.operationLow())) {
+                        result.complete(Optional.empty());
+                        return CompletableFuture.completedFuture(null);
+                    }
+                    return invokeLocalDispatch(
+                        localDispatch,
+                        new LocalDispatch(actor, joinedSpotId),
+                        result);
+                })
+            .thenCompose(ignored -> result);
     }
 
     private CompletionStage<Optional<Message>> dispatchLocalSession(

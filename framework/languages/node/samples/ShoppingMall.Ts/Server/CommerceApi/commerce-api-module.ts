@@ -1,6 +1,5 @@
-import { Module } from '@nestjs/common';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
 import { createShoppingMallLocationStore, shoppingMallLocationOptions } from '../Configuration/location-store';
 import { SHOPPINGMALL_SAMPLE_CONFIG, createShoppingMallConfigurationModule } from '../Configuration/sample-config';
 import type { ShoppingMallServerConfig } from '../Configuration/sample-config';
@@ -20,7 +19,7 @@ function createShoppingMallCommerceApiModule(role: string): Function {
     'workDir'
   ]);
 
-  Module({
+  zlinkModule(__dirname, {
     imports: [
       configuration,
       ZLinkModule.forRootFactory({
@@ -34,10 +33,9 @@ function createShoppingMallCommerceApiModule(role: string): Function {
             .traceLabel(role);
           builder.addLocationStore(createShoppingMallLocationStore(config));
           shoppingMallLocationOptions(builder.configureLocations());
-          const workflowMesh = builder.addRouteMesh(SampleNames.orderWorkflowSpotMesh)
-            .listen('tcp://127.0.0.1:0');
-          workflowMesh.channelName(SampleNames.orderWorkflowChannel).setWeight(0);
-          workflowMesh.channelName(SampleNames.orderWorkflowSpotMesh).setWeight(0);
+          builder.addRouteMesh(SampleNames.orderWorkflowSpotMesh)
+            .listen('tcp://127.0.0.1:0')
+            .objects().client();
           return builder.build();
         }
       })

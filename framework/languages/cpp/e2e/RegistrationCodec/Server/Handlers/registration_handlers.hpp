@@ -53,12 +53,12 @@ class attribute_request_handler_t
     explicit attribute_request_handler_t (scenario_state_t &state) : _state (state) {}
 
     echo_attr_res_t handle (const echo_attr_req_t &request,
-                            const zlink::framework::request_context_t &context)
+                            const zlink::framework::message_context_t &context)
     {
         _state.record ("RC-A2-request", context.packet_name + ":" + request.value);
         return {.value = "attr:" + request.value,
                 .packet_name = context.packet_name,
-                .content_type = context.content_type};
+                .content_type = context.content_type.value_or ("")};
     }
 
   private:
@@ -72,7 +72,8 @@ class attribute_send_handler_t
     using message_type = echo_attr_msg_t;
     explicit attribute_send_handler_t (scenario_state_t &state) : _state (state) {}
 
-    void handle (const echo_attr_msg_t &message, const zlink::framework::send_context_t &context)
+    void handle (const echo_attr_msg_t &message,
+                 const zlink::framework::message_context_t &context)
     {
         _state.record ("RC-A2-send", context.packet_name + ":" + message.value);
     }
@@ -88,11 +89,11 @@ class manual_channel_request_handler_t
     using reply_type = echo_manual_res_t;
 
     echo_manual_res_t handle (const echo_manual_req_t &request,
-                              const zlink::framework::request_context_t &context)
+                              const zlink::framework::message_context_t &context)
     {
         return {.value = "manual:" + request.value,
                 .packet_name = context.packet_name,
-                .content_type = context.content_type};
+                .content_type = context.content_type.value_or ("")};
     }
 };
 
@@ -105,9 +106,10 @@ class manual_channel_send_handler_t
     explicit manual_channel_send_handler_t (scenario_state_t &state) : _state (state) {}
 
     void handle (const echo_manual_msg_t &message,
-                 const zlink::framework::send_context_t &context)
+                 const zlink::framework::message_context_t &context)
     {
-        _state.record ("RC-A3-send", context.content_type + ":" + message.value);
+        _state.record ("RC-A3-send",
+                       context.content_type.value_or ("") + ":" + message.value);
     }
 
   private:

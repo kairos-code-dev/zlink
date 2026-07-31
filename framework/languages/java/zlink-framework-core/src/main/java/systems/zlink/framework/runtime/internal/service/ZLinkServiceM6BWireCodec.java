@@ -399,6 +399,7 @@ public final class ZLinkServiceM6BWireCodec {
         route.nonzero(
             message.route().leaseGeneration(), "leaseGeneration");
         route.text16(message.route().storeVersion(), "storeVersion");
+        route.text8(message.stableType(), "stableType");
         byte[] routeBody = route.toByteArray();
 
         Writer writer = prefix(
@@ -412,8 +413,8 @@ public final class ZLinkServiceM6BWireCodec {
         writer.rid(message.sourceNodeRid(), "sourceNodeRid");
         writer.optionalText8(message.sourceSpotId(), "sourceSpotId");
         writer.u8(message.request() ? 2 : 1);
-        writer.u64(message.operationHigh());
-        writer.u64(message.operationLow());
+        writer.bits64(message.operationHigh());
+        writer.bits64(message.operationLow());
         if (message.replyRouteId() != null) {
             writer.nonzero(message.replyRouteId(), "replyRouteId");
         }
@@ -439,6 +440,7 @@ public final class ZLinkServiceM6BWireCodec {
             reader.nonzeroU64("authorityOwnerGeneration"),
             reader.nonzeroU64("leaseGeneration"),
             reader.text16("storeVersion"));
+        String stableType = reader.text8("stableType");
         if (reader.position() != routeEnd) {
             throw protocol("invalid Instance route body length");
         }
@@ -450,8 +452,8 @@ public final class ZLinkServiceM6BWireCodec {
         if (operationKind != 1 && operationKind != 2) {
             throw protocol("unknown Instance operation kind");
         }
-        long operationHigh = reader.u64("operation.high");
-        long operationLow = reader.u64("operation.low");
+        long operationHigh = reader.bits64("operation.high");
+        long operationLow = reader.bits64("operation.low");
         boolean request = operationKind == 2;
         if ((!request && (operationHigh != 0 || operationLow != 0))
             || (request && operationHigh == 0 && operationLow == 0)) {
@@ -464,6 +466,7 @@ public final class ZLinkServiceM6BWireCodec {
         return new InstanceSpotMessage(
             header.flags(),
             route,
+            stableType,
             sourceNodeGeneration,
             sourceNodeRid,
             sourceSpotId,
@@ -1360,6 +1363,7 @@ public final class ZLinkServiceM6BWireCodec {
     public record InstanceSpotMessage(
         int flags,
         InstanceRouteFence route,
+        String stableType,
         long sourceNodeGeneration,
         RoutingId sourceNodeRid,
         String sourceSpotId,
@@ -1370,6 +1374,9 @@ public final class ZLinkServiceM6BWireCodec {
         public InstanceSpotMessage {
             Objects.requireNonNull(route, "route");
             Objects.requireNonNull(sourceNodeRid, "sourceNodeRid");
+            if (stableType == null || stableType.isBlank()) {
+                throw protocol("Instance Spot stable type is required");
+            }
         }
     }
 

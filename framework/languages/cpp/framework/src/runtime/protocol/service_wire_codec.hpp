@@ -632,6 +632,23 @@ struct user_spot_create_header_t
                             const user_spot_create_header_t &) = default;
 };
 
+using object_reservation_fence_t = user_spot_reservation_fence_t;
+
+struct actor_create_header_t
+{
+    std::uint64_t correlation = 0;
+    wire_operation_id_t operation;
+    std::vector<std::uint8_t> source_node_routing_id;
+    std::uint64_t source_node_generation = 0;
+    std::string actor_id;
+    std::string stable_type;
+    object_reservation_fence_t reservation;
+    std::uint64_t deadline_unix_ms = 0;
+
+    friend bool operator== (const actor_create_header_t &,
+                            const actor_create_header_t &) = default;
+};
+
 struct instance_spot_activation_target_t
 {
     std::vector<std::uint8_t> target_node_routing_id;
@@ -710,6 +727,22 @@ struct user_spot_create_reply_t
     user_spot_create_result_t result =
       user_spot_create_result_t::rejected;
     std::string spot_id;
+    std::uint64_t object_generation = 0;
+};
+
+enum class actor_create_result_t : std::uint8_t
+{
+    existing = 1,
+    created = 2,
+    rejected = 3
+};
+
+struct actor_create_reply_t
+{
+    reply_header_t header;
+    actor_create_result_t result = actor_create_result_t::rejected;
+    std::vector<std::uint8_t> node_routing_id;
+    std::string actor_id;
     std::uint64_t object_generation = 0;
 };
 
@@ -819,6 +852,10 @@ std::vector<std::uint8_t> encode_user_spot_create_header (
   const user_spot_create_header_t &record);
 user_spot_create_header_t decode_user_spot_create_header (
   std::span<const std::uint8_t> bytes);
+std::vector<std::uint8_t> encode_actor_create_header (
+  const actor_create_header_t &record);
+actor_create_header_t decode_actor_create_header (
+  std::span<const std::uint8_t> bytes);
 std::vector<std::uint8_t> encode_instance_spot_activation_header (
   const instance_spot_activation_header_t &record);
 instance_spot_activation_header_t decode_instance_spot_activation_header (
@@ -872,6 +909,16 @@ std::vector<std::uint8_t> encode_user_spot_create_reply (
   const std::string &spot_id,
   std::uint64_t object_generation);
 user_spot_create_reply_t decode_user_spot_create_reply (
+  std::span<const std::uint8_t> bytes);
+std::vector<std::uint8_t> encode_actor_create_reply (
+  std::uint64_t correlation,
+  std::uint32_t terminal_result,
+  std::uint32_t failure_code,
+  actor_create_result_t result,
+  const std::vector<std::uint8_t> &node_routing_id,
+  const std::string &actor_id,
+  std::uint64_t object_generation);
+actor_create_reply_t decode_actor_create_reply (
   std::span<const std::uint8_t> bytes);
 std::vector<std::uint8_t> encode_user_spot_close_reply (
   std::uint64_t correlation,

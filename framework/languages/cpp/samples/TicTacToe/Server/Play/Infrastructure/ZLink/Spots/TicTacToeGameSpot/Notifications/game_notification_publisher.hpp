@@ -20,14 +20,17 @@ class game_notification_publisher_t
     }
 
     template <typename TNotify>
-    void publish (const TNotify &notify, std::string_view excluded_actor_id = {}) const
+    task_t<void>
+    publish (const TNotify &notify,
+             std::string_view excluded_actor_id = {}) const
     {
         for (const auto &[actor_id, actor] : _actors) {
             if (actor_id == excluded_actor_id || actor == nullptr) {
                 continue;
             }
-            actor->context ().bound_session ().send (notify).submit ();
+            co_await actor->context ().bound_session ().send (notify).submit ();
         }
+        co_return;
     }
 
   private:

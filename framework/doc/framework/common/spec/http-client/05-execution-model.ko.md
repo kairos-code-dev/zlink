@@ -49,7 +49,7 @@ API를 기다리면서 같은 Spot의 다른 작업과 timer를 진행해야 하
 ```csharp
 var profile = await Context
     .RunIoWorker(async workerCancellation =>
-        await http.Get($"/players/{id}").Async<Profile>(workerCancellation))
+        await http.Get($"/players/{id}").Fetch<Profile>(workerCancellation))
     .Yield(ct);
 ```
 
@@ -79,15 +79,18 @@ cpp의 `coroutines(resume_scheduler)` / `framework_resume_scheduler_t`가 이 se
 요청이 직렬화되며, 재개된 continuation에서 같은 스케줄러의 다른 task를 blocking 대기하면 데드락이
 가능하다.
 
-## 5.4 blocking terminator를 두지 않는다
+## 5.4 server runtime에는 blocking terminator를 두지 않는다
 
-**완료 값을 동기로 언래핑하는 public terminator를 만들지 않는다.** 같은 의미의 blocking 대안
-terminator는 계약 위반이다([04 §2](../05-async-execution-policy.ko.md)).
+`.NET`, Java, Kotlin과 Node의 `Fetch` 계열은 decoded body를 직접 반환하지만
+비동기로 완료된다. 이름이 `Fetch`라는 이유로 현재 thread를 점유하며 기다리면 안 된다.
 
-- 금지 대상: cpp `fetch()`/`.result()`, dotnet `Fetch<T>()`, java `fetch()`/`.join()`/`.get()`.
+- 금지 대상: `.result()`, `.join()`, `.get()`처럼 비동기 결과를 현재 thread에서 기다리는 API.
 - 테스트나 CLI에서 동기로 기다려야 하면 **호출자가** 언어 관용으로 감싼다
   (`GetAwaiter().GetResult()`, `runBlocking`, `.join()`).
 - 합성은 `co_await` / `await` / `thenCompose` / suspend로 한다.
+
+C++ `fetch<T>()`는 blocking client 시나리오를 위한 별도 편의 API다. Framework server
+handler에서는 사용하지 않는다.
 
 ## 5.5 서버 표면과 client 수명
 

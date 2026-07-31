@@ -176,8 +176,7 @@ public sealed class CustomSerializerEnvelopeTests
     public void Session_CustomSerializer_RoundTrips_Through_Framework_Message()
     {
         var codecs = new ZLinkCodecRegistryBuilder();
-        codecs.AddSerializer("application/avro", new MarkerSerializer());
-        codecs.AddStreamCodec("application/avro", ZlinkStreamCodec.Protobuf);
+        codecs.Use(AvroStreamCodecExtension.Instance);
 
         AssertStreamRoundTrip(
             codecs,
@@ -294,8 +293,7 @@ public sealed class CustomSerializerEnvelopeTests
     public void StreamPayload_CustomSerializer_RoundTrips_Through_Framework_Message()
     {
         var codecs = new ZLinkCodecRegistryBuilder();
-        codecs.AddSerializer("application/avro", new MarkerSerializer());
-        codecs.AddStreamCodec("application/avro", ZlinkStreamCodec.Protobuf);
+        codecs.Use(AvroStreamCodecExtension.Instance);
 
         var encoded = ZLinkStreamPacketPayloadCodec.Encode(new Probe("hello"), typeof(Probe), codecs);
 
@@ -483,6 +481,22 @@ public sealed class CustomSerializerEnvelopeTests
 
     private sealed class MarkerCodecExtension : IZLinkCodecExtension
     {
+        public void Register(IZLinkCodecRegistrar codecs)
+        {
+            codecs.AddSerializer("application/avro", new MarkerSerializer());
+        }
+    }
+
+    private sealed class AvroStreamCodecExtension :
+        IZLinkCodecExtension,
+        IZlinkStreamCodecRegistration
+    {
+        public static AvroStreamCodecExtension Instance { get; } = new();
+
+        public string ContentType => "application/avro";
+
+        public ZlinkStreamCodec Codec => ZlinkStreamCodec.Protobuf;
+
         public void Register(IZLinkCodecRegistrar codecs)
         {
             codecs.AddSerializer("application/avro", new MarkerSerializer());

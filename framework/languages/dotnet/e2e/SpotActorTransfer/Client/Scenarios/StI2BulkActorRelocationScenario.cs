@@ -7,11 +7,11 @@ namespace SpotActorTransfer.Client.Scenarios;
 
 internal static class StI2BulkActorRelocationScenario
 {
-    internal static Task RunRecreateAsync(
+    internal static Task RunRecreateOnRelocationAsync(
         SpotActorTransferScenarioContext context) =>
         RunAsync(context, recreate: true);
 
-    internal static Task RunSnapshotAsync(
+    internal static Task RunPreserveStateWithAsync(
         SpotActorTransferScenarioContext context) =>
         RunAsync(context, recreate: false);
 
@@ -20,14 +20,14 @@ internal static class StI2BulkActorRelocationScenario
         bool recreate)
     {
         const int canonicalRecreateCount = 10_000;
-        const int canonicalSnapshotCount = 1_000;
+        const int canonicalPreserveStateCount = 1_000;
         var count = RelocationWorkloadEnvironment.Count(
             recreate
                 ? "ZLINK_E2E_ST_I2_RECREATE_COUNT"
                 : "ZLINK_E2E_ST_I2_SNAPSHOT_COUNT",
             recreate
                 ? canonicalRecreateCount
-                : canonicalSnapshotCount);
+                : canonicalPreserveStateCount);
         var baselineDuration =
             RelocationWorkloadEnvironment.Duration(
                 "ZLINK_E2E_RELOCATION_BASELINE_SECONDS",
@@ -47,7 +47,9 @@ internal static class StI2BulkActorRelocationScenario
             RelocationWorkloadEnvironment.Enabled(
                 "ZLINK_E2E_RELOCATION_MOVING_TRAFFIC",
                 true);
-        var profile = recreate ? "recreate" : "snapshot";
+        var profile = recreate
+            ? "recreate_on_relocation"
+            : "preserve_state_with";
         var runId = Guid.NewGuid().ToString("N");
 
         var controlSpotId = $"st-i2-control-spot-{runId}";
@@ -253,7 +255,7 @@ internal static class StI2BulkActorRelocationScenario
         var canonicalShape =
             count == (recreate
                 ? canonicalRecreateCount
-                : canonicalSnapshotCount)
+                : canonicalPreserveStateCount)
             && baselineDuration == TimeSpan.FromSeconds(60)
             && rate == 200;
         ZlinkStreamAssert.Ensure(

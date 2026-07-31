@@ -3,18 +3,10 @@ import { SampleTimings } from '../../../../../Configuration/sample-names';
 import { SupportChatRoles } from '../../../../../../Shared/Contracts/messages';
 import { Conversation } from '../../../../Domain/SupportChat/conversation';
 import { ConversationIdleTimerHandler } from './Handlers/conversation-idle-timer-handler';
-import {
-  CloseConversationAtSpotHandler,
-  JoinConversationAtSpotHandler,
-  SendChatMessageAtSpotHandler,
-  SetTypingAtSpotHandler
-} from './Handlers/conversation-operation-handlers';
 import { SupportNotificationPublisher } from './Notifications/support-notification-publisher';
 import { AgentAssignmentService } from '../../../../Application/ConversationAssignment/agent-assignment-service';
 import { SupportActorDirectory } from '../../Actors/support-actor-directory';
 import type {
-  ActorRef,
-  ZLinkActorMembership,
   ZLinkMessage,
   ZLinkSpot,
   ZLinkSpotActorJoinResponse,
@@ -39,9 +31,7 @@ interface ConversationJoinIntent {
   readonly displayName: string;
 }
 
-interface ConversationParticipant extends ConversationJoinIntent {
-  readonly actor: ActorRef;
-}
+interface ConversationParticipant extends ConversationJoinIntent {}
 
 @Injectable({ scope: Scope.TRANSIENT })
 class ConversationSpot implements ZLinkSpot<SupportUserActor> {
@@ -57,17 +47,10 @@ class ConversationSpot implements ZLinkSpot<SupportUserActor> {
     private readonly notifications: SupportNotificationPublisher
   ) {}
 
-  configure(): void {
-    this.context.handlers.addPacket(JoinConversationAtSpotHandler);
-    this.context.handlers.addPacket(SendChatMessageAtSpotHandler);
-    this.context.handlers.addPacket(SetTypingAtSpotHandler);
-    this.context.handlers.addPacket(CloseConversationAtSpotHandler);
-  }
-
   async onCreate(request: ZLinkMessage): Promise<ZLinkSpotCreateResponse> {
     const value = request.decode<ConversationCreateRequest>(Object as never);
     this.conversation = new Conversation(
-      value.conversationId,
+      String(this.context.spotId),
       value.customerActorId,
       value.customerDisplayName,
       value.subject
@@ -97,14 +80,12 @@ class ConversationSpot implements ZLinkSpot<SupportUserActor> {
     return { accepted: true, reply: { state: this.snapshot() } };
   }
 
-  async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
-    const intent = this.pendingJoins.get(actor.actor.actorId);
+  async onJoinedActor(actor: SupportUserActor): Promise<void> {
+    const intent = this.pendingJoins.get(actor.actorId);
     if (intent === undefined) return;
-    this.pendingJoins.delete(actor.actor.actorId);
-    // Admission decides on identity alone, so the participant record is completed
-    // with the Actor reference here, where membership publishes it.
-    const participant: ConversationParticipant = { ...intent, actor: actor.actor };
-    this.actors.set(actor.actor.actorId, participant);
+    this.pendingJoins.delete(actor.actorId);
+    const participant: ConversationParticipant = { ...intent };
+    this.actors.set(actor.actorId, participant);
     if (participant.role === SupportChatRoles.Agent) {
       const joined = this.requireConversation().join(
         participant.participantId,
@@ -112,7 +93,7 @@ class ConversationSpot implements ZLinkSpot<SupportUserActor> {
         participant.displayName
       );
       const customer = this.findParticipant(joined.state.customerActorId);
-      await this.notifications.publish(joined.event, customer === undefined ? [] : [customer.actor]);
+      await this.notifications.publish(joined.event, customer === undefined ? [] : [customer.actorId]);
       return;
     }
     const agentActorId = this.assignments.assignNextAgent();
@@ -122,14 +103,14 @@ class ConversationSpot implements ZLinkSpot<SupportUserActor> {
       throw new Error(`Assigned roster actor '${agentActorId}' was not found.`);
     }
     const assigned = this.assignAgent(agentActorId, roster.displayName);
-    await this.notifications.publish(assigned.event, [roster.actor]);
+    await this.notifications.publish(assigned.event, [roster.actorId]);
   }
 
-  async onLeaveActor(actor: ZLinkActorMembership): Promise<void> {
-    this.actors.delete(actor.actor.actorId);
+  async onLeaveActor(actor: SupportUserActor): Promise<void> {
+    this.actors.delete(actor.actorId);
   }
 
-  async onDisconnectActor(_actor: ZLinkActorMembership): Promise<void> {}
+  async onDisconnectActor(_actor: SupportUserActor): Promise<void> {}
 
   snapshot(): ConversationState {
     return this.requireConversation().snapshot();
@@ -189,14 +170,14 @@ class ConversationSpot implements ZLinkSpot<SupportUserActor> {
     }
   }
 
-  private otherActorRefs(sourceActorId: string): ActorRef[] {
+  private otherActorRefs(sourceActorId: string): string[] {
     return [...this.actors.values()]
       .filter((actor) => actor.actorId !== sourceActorId)
-      .map((actor) => actor.actor);
+      .map((actor) => actor.actorId);
   }
 
-  private actorRefs(): ActorRef[] {
-    return [...this.actors.values()].map((actor) => actor.actor);
+  private actorRefs(): string[] {
+    return [...this.actors.values()].map((actor) => actor.actorId);
   }
 
   private findParticipant(participantId: string): ConversationParticipant | undefined {

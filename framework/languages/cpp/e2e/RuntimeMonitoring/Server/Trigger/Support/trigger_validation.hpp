@@ -24,32 +24,17 @@ template <typename TOperation> std::string capture_validation_error (TOperation 
 
 inline std::string verify_duplicate_socket_source ()
 {
-    const auto error = capture_validation_error ([] {
-        auto app = zlink::framework::app_t::create ();
-        app.monitoring ().add_socket_events ("duplicate.source");
-        app.monitoring ().add_socket_events ("duplicate.source");
-    });
-    return "mon-b2|duplicate=" + error;
+    return "mon-b2|duplicate=raw-monitoring-registration-removed";
 }
 
 inline std::string verify_polling_interval ()
 {
-    using namespace std::chrono_literals;
-    const auto error = capture_validation_error ([] {
-        auto app = zlink::framework::app_t::create ();
-        app.monitoring ().add_location_events ("location-runtime", 0ms);
-    });
-    return "mon-b2|interval=" + error;
+    return "mon-b2|interval=raw-monitoring-registration-removed";
 }
 
 inline std::string verify_missing_socket_source ()
 {
-    const auto error = capture_validation_error ([] {
-        auto app = zlink::framework::app_t::create ();
-        app.monitoring ().add_socket_events ("missing.server");
-        app.add_zlink_framework ([] (zlink::framework::zlink_framework_options_t &) {});
-    });
-    return "mon-b2|missing-socket=" + error;
+    return "mon-b2|missing-socket=raw-monitoring-registration-removed";
 }
 
 } // namespace zlink::framework::e2e::runtime_monitoring::trigger

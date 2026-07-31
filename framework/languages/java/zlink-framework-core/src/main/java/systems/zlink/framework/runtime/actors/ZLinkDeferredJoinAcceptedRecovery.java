@@ -22,13 +22,13 @@ import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorJoinCompletion;
 import systems.zlink.framework.actors.ZLinkActorJoinOperationId;
-import systems.zlink.framework.locations.ZLinkRelocationFound;
-import systems.zlink.framework.locations.ZLinkRelocationStore;
-import systems.zlink.framework.locations.ZLinkStoreCancellation;
+import systems.zlink.framework.runtime.internal.locations.ZLinkRelocationFound;
+import systems.zlink.framework.runtime.internal.locations.ZLinkRelocationStore;
+import systems.zlink.framework.runtime.internal.locations.ZLinkStoreCancellation;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
-import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
 import systems.zlink.framework.runtime.internal.locations
     .ZLinkDeferredJoinCompletionAuthority;
 
@@ -57,7 +57,7 @@ final class ZLinkDeferredJoinAcceptedRecovery {
     }
 
     ZLinkDeferredJoinAcceptedRecovery(
-        ZLinkLocationStore authority,
+        ZLinkLocationRepository authority,
         ZLinkRelocationStore store,
         ZLinkMessageSerializer serializer) {
         this.store = Objects.requireNonNull(store, "store");

@@ -88,16 +88,20 @@ internal sealed class ConversationNotificationPublisher
         if (conversationEvent.ActorId is null || conversationEvent.Role is null)
             throw new InvalidOperationException("Participant joined event requires actor id and role.");
 
-        // Tell the customer that the agent joined (the joining participant is excluded).
-        if (actors.TryGetValue(state.CustomerActorId, out var customer)
-            && !string.Equals(customer.ParticipantId, conversationEvent.ActorId, StringComparison.Ordinal))
-            await customer.Context.BoundSession
-                .Send(new ParticipantJoinedNotify(
-                    state.ConversationId,
-                    conversationEvent.ActorId,
-                    ConversationContracts.ToRole(conversationEvent.Role.Value),
-                    state))
-                .Async(cancellationToken);
+        // Membership commit is observable by every participant, including the
+        // joining agent. The deferred Join reply only reports scheduling.
+        await PublishAllAsync(
+            actors,
+            async actor =>
+            {
+                await actor.Context.BoundSession
+                    .Send(new ParticipantJoinedNotify(
+                        state.ConversationId,
+                        conversationEvent.ActorId,
+                        ConversationContracts.ToRole(conversationEvent.Role.Value),
+                        state))
+                    .Async(cancellationToken);
+            });
     }
 
     private static async ValueTask PublishMessageAsync(

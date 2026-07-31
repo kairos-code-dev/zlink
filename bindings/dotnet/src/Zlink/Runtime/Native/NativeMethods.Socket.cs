@@ -59,6 +59,15 @@ internal static partial class NativeMethods
         out IntPtr sourceNodeRoutingId, out ulong requestSeq,
         ref ZlinkMsg part, out int hasMore, int flags);
 
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_router_completion_control_part(
+        IntPtr router, ref ZlinkRoutingId peerRoutingId,
+        ref ZlinkMsg part, ZlinkPartFlag partFlag);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_router_completion_control_handler(
+        IntPtr router, ZlinkSocketMsgHandlerDelegate handler, IntPtr userData);
+
     // DONT_WAIT-only fast variant.
     [DllImport(LibraryName, EntryPoint = "zlink_router_recv_part",
         CallingConvention = CallingConvention.Cdecl)]

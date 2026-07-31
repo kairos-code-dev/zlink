@@ -1,5 +1,4 @@
 import type { ActorRef, RoutingId, ZLinkActor } from '../../contracts';
-import { ZLinkSpotKind } from '../../contracts';
 import type { ZLinkBackendActorSessionNode } from '../backend';
 import {
   type ZLinkActorRoutedJoinTransport,
@@ -11,6 +10,7 @@ import type {
   ZLinkRemoteBoundSessionPort,
   ZLinkStreamActorLookupPort
 } from '../streams/stream-binding-runtime-ports';
+import { ZLinkSubmitStatus } from '../messaging/submission-result';
 import type { DefaultZLinkBoundSession } from '../streams/session-context';
 import type { ZLinkActorResponseOptions } from '../spots/spot-actor-packet-dispatch';
 import {
@@ -24,7 +24,6 @@ import {
   encodeRemoteBoundSessionResponsePayload
 } from '../actors/bound-session-wire';
 import { encodeRemoteActorPacketTarget } from '../actors/actor-packet-relay-wire';
-import { requestRoutedJson } from '../actors/actor-routed-json-request';
 import {
   decodeRoutingId as decodeWireRoutingId,
   routingIdsEqual
@@ -37,7 +36,7 @@ export interface ZLinkRemoteBoundSessionRelayOptions {
   readonly streamBindingRuntime: () => ZLinkRemoteBoundSessionPort & ZLinkStreamActorLookupPort;
   readonly actorManager: () => DefaultZLinkActorManager | undefined;
   readonly meshRouters: MeshRouterResolver;
-  readonly primarySpotNode?: () => ZLinkBackendActorSessionNode;
+  readonly actorSessionNode?: (actorId: string) => ZLinkBackendActorSessionNode | undefined;
   readonly destroyedActorRefs: ReadonlyMap<string, ActorRef>;
   readonly boundSessionFactory: (actorId: string) => DefaultZLinkBoundSession;
   readonly updateRemoteActorPacketTarget: (actorId: string, value: unknown) => void;
@@ -226,17 +225,22 @@ export class ZLinkRemoteBoundSessionRelay {
     if (!activeSeal && !releasedSeal) {
       throw new Error(`Actor '${value.actorId}' command 44 did not match its command 42 Session seal.`);
     }
+    const current = this.options.streamBindingRuntime().find(value.actorId)?.ref;
     const actorRef = {
       actorId: value.actorId,
       objectGeneration: BigInt(value.actorGeneration),
-      meshName: value.meshName,
+      meshName: value.meshName.length > 0 ? value.meshName : current?.meshName ?? '',
       nodeRid: decodeWireRoutingId(value.actorNodeRid, value.actorNodeRidHex),
       bindingGeneration,
       ownershipGeneration,
       ownerLeaseGeneration: targetOwnerLeaseGeneration,
       acceptedHighWater
     } as ActorRef;
-    const current = this.options.streamBindingRuntime().find(value.actorId)?.ref;
+    Object.defineProperty(actorRef, 'generation', {
+      configurable: false,
+      enumerable: false,
+      value: actorRef.objectGeneration
+    });
     if (
       current === undefined
       || current.objectGeneration !== actorRef.objectGeneration
@@ -370,13 +374,7 @@ export class ZLinkRemoteBoundSessionRelay {
     )) {
       return;
     }
-    const stateActorRef = state?.nativeActorRef as ActorRef | undefined;
-    const actorRef = stateActorRef === undefined
-      ? fallbackActorRef
-      : {
-          ...stateActorRef,
-          bindingGeneration: state!.boundSessionBindingGeneration
-        } as ActorRef;
+    const actorRef = currentActorRef(state, fallbackActorRef);
     const remoteTarget = fallbackBoundSessionTarget ?? state?.remoteBoundSessionTarget;
     if (remoteTarget !== undefined) {
       await this.sendRemoteBoundSessionResponse(
@@ -393,12 +391,12 @@ export class ZLinkRemoteBoundSessionRelay {
     if (actorRef === undefined) {
       throw new Error(`Actor '${actor.context.actorId}' does not have a native actor ref.`);
     }
-    const primarySpotNode = this.options.primarySpotNode?.();
-    if (primarySpotNode === undefined) {
+    const actorSessionNode = this.options.actorSessionNode?.(actor.context.actorId);
+    if (actorSessionNode === undefined) {
       throw new Error('Native bound-session response requires the RouteMesh stream-session service.');
     }
     await this.options.streamBindingRuntime().sendNativeBoundSessionResponse(
-      primarySpotNode,
+      actorSessionNode,
       actorRef,
       packetName,
       requestSeq,
@@ -429,13 +427,7 @@ export class ZLinkRemoteBoundSessionRelay {
       return;
     }
     const state = this.options.actorManager()?.getState(actorId);
-    const stateActorRef = state?.nativeActorRef as ActorRef | undefined;
-    const actorRef = (stateActorRef === undefined
-      ? fallbackActorRef
-      : {
-          ...stateActorRef,
-          bindingGeneration: state!.boundSessionBindingGeneration
-        } as ActorRef)
+    const actorRef = currentActorRef(state, fallbackActorRef)
       ?? this.options.destroyedActorRefs.get(actorId);
     const remoteTarget = fallbackBoundSessionTarget ?? state?.remoteBoundSessionTarget;
     if (remoteTarget !== undefined) {
@@ -453,12 +445,12 @@ export class ZLinkRemoteBoundSessionRelay {
     if (actorRef === undefined) {
       throw new Error(`Actor '${actorId}' does not have a native actor ref.`);
     }
-    const primarySpotNode = this.options.primarySpotNode?.();
-    if (primarySpotNode === undefined) {
+    const actorSessionNode = this.options.actorSessionNode?.(actorId);
+    if (actorSessionNode === undefined) {
       throw new Error('Native bound-session error response requires the RouteMesh stream-session service.');
     }
     await this.options.streamBindingRuntime().sendNativeBoundSessionError(
-      primarySpotNode,
+      actorSessionNode,
       actorRef,
       packetName,
       requestSeq,
@@ -517,17 +509,60 @@ export class ZLinkRemoteBoundSessionRelay {
     payload: Record<string, unknown>,
     signal?: AbortSignal
   ): Promise<void> {
-    await requestRoutedJson(
+    const packetName = payload.packetName;
+    if (typeof packetName !== 'string') {
+      throw new Error('Remote bound session control payload does not declare a packet name.');
+    }
+    const submit = this.options.routeTransport.submitInfrastructure
+      ?? this.options.routeTransport.submit;
+    if (submit === undefined) {
+      throw new Error('Remote bound session node-direct transport is not available.');
+    }
+    const result = await submit.call(
       this.options.routeTransport,
-      {
-        routerChannelId: target.routerChannelId,
-        targetNodeRid: target.targetNodeRid,
-        spotId: target.spotId,
-        spotKind: ZLinkSpotKind.Entry
-      },
+      target.routerChannelId,
+      String(target.targetNodeRid),
+      packetName,
       payload,
-      { timeoutMs: this.options.requestTimeoutMs, signal },
-      'Remote bound session raw request transport is not available.'
+      signal
     );
+    if (result.status !== ZLinkSubmitStatus.Submitted) {
+      throw new Error(
+        `Remote bound session control '${packetName}' was not admitted`
+        + ` on '${target.routerChannelId}' for '${String(target.targetNodeRid)}'`
+        + ` (status ${result.status}).`
+      );
+    }
   }
+}
+
+function currentActorRef(
+  state: {
+    readonly nativeActorRef?: {
+      readonly actorId: string;
+      readonly nodeRid: ActorRef['nodeRid'];
+      readonly generation?: bigint;
+      readonly objectGeneration?: bigint;
+    };
+    readonly meshName?: string;
+    readonly boundSessionBindingGeneration: bigint;
+    readonly locationGeneration?: bigint;
+  } | undefined,
+  fallback: ActorRef | undefined
+): ActorRef | undefined {
+  const native = state?.nativeActorRef;
+  if (native === undefined) return fallback;
+  const objectGeneration = native.generation
+    ?? native.objectGeneration
+    ?? fallback?.objectGeneration;
+  const meshName = state?.meshName ?? fallback?.meshName;
+  if (objectGeneration === undefined || meshName === undefined) return fallback;
+  return {
+    actorId: native.actorId,
+    objectGeneration,
+    meshName,
+    nodeRid: native.nodeRid,
+    ownershipGeneration: state?.locationGeneration,
+    bindingGeneration: state?.boundSessionBindingGeneration
+  } as ActorRef;
 }

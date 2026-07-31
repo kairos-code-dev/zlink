@@ -8,8 +8,6 @@ data class SampleSettings(
     val apiBindUrl: String,
     val apiPublicUrl: String,
     val apiChannelEndpoint: String,
-    val playChannelEndpoint: String,
-    val playChannelEndpoints: List<String>,
     val playEndpoint: String,
     val playEndpoints: List<String>,
     val routeEndpoint: String,
@@ -27,7 +25,6 @@ data class SampleSettings(
         require(apiBindUrl.isNotBlank()) { "sample.apiBindUrl is required" }
         require(apiPublicUrl.isNotBlank()) { "sample.apiPublicUrl is required" }
         require(apiChannelEndpoint.isNotBlank()) { "sample.apiChannelEndpoint is required" }
-        require(playChannelEndpoint.isNotBlank()) { "sample.playChannelEndpoint is required" }
         require(playEndpoint.isNotBlank()) { "sample.playEndpoint is required" }
         require(spotEndpoint.isNotBlank()) { "sample.spotEndpoint is required" }
         require(spotPubSubEndpoint.isNotBlank()) { "sample.spotPubSubEndpoint is required" }
@@ -40,7 +37,7 @@ data class SampleSettings(
         get() = URI.create(apiBindUrl).port
 
     val playIndex: Int
-        get() = playChannelEndpoints.indexOf(playChannelEndpoint).takeIf { it >= 0 } ?: 0
+        get() = playEndpoints.indexOf(playEndpoint).takeIf { it >= 0 } ?: 0
 
     companion object {
         fun configPath(args: Array<String>): String {

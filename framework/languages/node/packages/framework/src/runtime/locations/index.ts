@@ -1,4 +1,5 @@
 export * from './auto-connect';
+export * from './aggregate-inventory-store';
 export * from './domain-store-contract';
 export * from './in-memory-location-store';
 export * from './in-memory-provider-location-store';

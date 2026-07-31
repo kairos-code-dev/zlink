@@ -3,7 +3,7 @@ package systems.zlink.samples.deliverydispatch.server.courierspotnode.spots;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkActorCreateResponse;
 import systems.zlink.samples.deliverydispatch.server.courierspotnode.ActorDirectory;
 import systems.zlink.samples.deliverydispatch.server.courierspotnode.CourierActor;
 import java.util.concurrent.CompletableFuture;
@@ -26,18 +26,11 @@ public final class CourierEntrySpot implements ZLinkEntrySpot<CourierActor> {
     }
 
     @Override
-    public CompletionStage<Void> onCreateActor(
+    public CompletionStage<ZLinkActorCreateResponse> onCreateActor(
         CourierActor actor,
         ZLinkMessage createRequest) {
         actors.register(actor);
-        return CompletableFuture.completedFuture(null);
-    }
-
-    @Override
-    public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
-        String actorId,
-        ZLinkMessage request) {
-        return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept());
+        return CompletableFuture.completedFuture(ZLinkActorCreateResponse.accept());
     }
 
     @Override

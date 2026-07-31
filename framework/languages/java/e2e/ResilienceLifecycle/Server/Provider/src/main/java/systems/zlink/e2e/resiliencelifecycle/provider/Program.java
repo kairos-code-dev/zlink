@@ -13,7 +13,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.resiliencelifecycle.provider.endpoints.EvidenceHttpServer;
-import systems.zlink.e2e.resiliencelifecycle.provider.handlers.RuntimeErrorEvidenceHandler;
 import systems.zlink.e2e.resiliencelifecycle.provider.handlers.WorkMsgHandler;
 import systems.zlink.e2e.resiliencelifecycle.provider.handlers.WorkReqHandler;
 import systems.zlink.e2e.resiliencelifecycle.provider.infrastructure.ScenarioState;
@@ -62,7 +61,7 @@ public final class Program {
         ObjectMapper json,
         ZLinkChannelRuntimeOptions runtimeOptions,
         ConfigurableApplicationContext applicationContext,
-        systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle drain,
+        systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle drain,
         ProviderOptions options) {
         return new EvidenceHttpServer(
             state,
@@ -118,11 +117,6 @@ public final class Program {
     @Bean
     WorkMsgHandler workCommandHandler(ScenarioState state) {
         return new WorkMsgHandler(state);
-    }
-
-    @Bean
-    RuntimeErrorEvidenceHandler runtimeErrorEvidenceHandler(ScenarioState state) {
-        return new RuntimeErrorEvidenceHandler(state);
     }
 
     private static String configPath(String[] args) {

@@ -24,7 +24,7 @@ import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerEntry;
 import systems.zlink.framework.runtime.internal.binding.spot.ActorTransferPrepare;
 import systems.zlink.framework.runtime.internal.binding.spot.ActorTransferPrepareResult;
 import systems.zlink.framework.runtime.internal.binding.spot.ActorTransferToken;
-import systems.zlink.framework.runtime.internal.binding.spot.ActorTransferTokenFixture;
+import systems.zlink.framework.testkit.internal.ActorTransferTokenFixture;
 import systems.zlink.framework.runtime.internal.binding.spot.PrepareActorTransferResult;
 import systems.zlink.framework.runtime.internal.binding.spot.OwnerKind;
 import systems.zlink.framework.runtime.internal.binding.spot.ReadyRecord;
@@ -432,7 +432,8 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     public ZLinkMeshBackendAdapter createMeshAdapter(ZLinkBackendAdapterOptions options) {
         calls.add("factory.mesh");
         return (context, meshName) -> {
-            FakeMeshNode node = new FakeMeshNode(calls, meshName);
+            FakeMeshNode node =
+                new FakeMeshNode(calls, meshName, spots, this);
             meshNodes.add(node);
             return node;
         };
@@ -624,10 +625,16 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         private MeshNodeState state = MeshNodeState.CREATED;
         private Consumer<ZLinkMeshDispatchRecord> receiver = ZLinkMeshDispatchRecord::close;
         private final List<Long> connectionIntents = new ArrayList<>();
+        private final ZLinkInternalSpotNode spotNode;
 
-        FakeMeshNode(List<String> calls, String name) {
+        FakeMeshNode(
+            List<String> calls,
+            String name,
+            List<FakeSpot> spots,
+            FakeZLinkBackendAdapterFactory owner) {
             super(calls, "mesh." + name);
             meshName = name;
+            spotNode = new FakeSpotNode(calls, spots, owner);
         }
 
         @Override public String name() { return meshName; }
@@ -675,6 +682,9 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void startDispatch(Consumer<ZLinkMeshDispatchRecord> value) {
             receiver = value;
             record("dispatch");
+        }
+        @Override public ZLinkInternalSpotNode spotNode() {
+            return spotNode;
         }
 
         void dispatch(ZLinkMeshDispatchRecord record) {

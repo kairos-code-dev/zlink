@@ -2,6 +2,7 @@ package systems.zlink.framework.runtime.internal.locations;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
 
@@ -60,5 +61,27 @@ final class ZLinkRelocationPermitPoolTest {
         assertFalse(lease.tryShrinkPayload(41));
         assertEquals(40, pool.snapshot().payloadBytes());
         lease.close();
+    }
+
+    @Test
+    void asynchronousAcquisitionWaitsForTheActiveUnitToRelease()
+        throws Exception {
+        ZLinkLocationOptions options = new ZLinkLocationOptions();
+        options.setMaxActiveOutboundRelocations(1);
+        ZLinkRelocationPermitPool pool = new ZLinkRelocationPermitPool(options);
+        var request =
+            ZLinkRelocationPermitPool.Request.outbound(1, false);
+        var first = pool.tryAcquire(request);
+        assertNotNull(first);
+
+        var waiting = pool.acquire(request, () -> false)
+            .toCompletableFuture();
+        assertFalse(waiting.isDone());
+
+        first.close();
+        var second = waiting.get(1, TimeUnit.SECONDS);
+        assertNotNull(second);
+        assertEquals(1, pool.snapshot().outboundUnits());
+        second.close();
     }
 }

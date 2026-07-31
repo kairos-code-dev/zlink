@@ -17,6 +17,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     private readonly AsyncServiceScope _scope;
     private readonly ZLinkStreamSessionSerialExecutor _serial;
     private readonly IZLinkBackendStreamSocket _socket;
+    private readonly string _transport;
     private readonly object _disposeGate = new();
     private readonly object _terminalGate = new();
     private readonly object _transportCloseGate = new();
@@ -97,6 +98,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     {
         _scope = scope;
         _socket = socket;
+        _transport = transport;
         _removeSession = removeSession;
         _runtime = scope.ServiceProvider.GetRequiredService<ZLinkFrameworkRuntime>();
         _requireConnectionReady = requireConnectionReady;
@@ -843,13 +845,13 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     private void RecordStreamOpenedMetric()
     {
         if (Interlocked.Exchange(ref _streamMetricActive, 1) == 0)
-            ZLinkRuntimeMetrics.RecordStreamOpened();
+            ZLinkRuntimeMetrics.RecordStreamOpened(_transport);
     }
 
     private void RecordStreamClosedMetric(string reason)
     {
         if (Interlocked.Exchange(ref _streamMetricActive, 0) != 0)
-            ZLinkRuntimeMetrics.RecordStreamClosed(reason);
+            ZLinkRuntimeMetrics.RecordStreamClosed(_transport, reason);
     }
 
     private static bool IsClosedReplyFailure(Exception exception)

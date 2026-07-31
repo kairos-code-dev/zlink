@@ -9,10 +9,20 @@ namespace Systems.Zlink.Tests;
 
 public sealed class test_optimization_guard
 {
-    private static readonly Regex PublicTypeDeclaration = new(
-        @"^\s*public\s+(?:readonly\s+|sealed\s+|abstract\s+|static\s+|partial\s+|ref\s+)*" +
-        @"(?:class|struct|record|interface|enum|delegate)\s+([A-Za-z_][A-Za-z0-9_]*)",
-        RegexOptions.Multiline | RegexOptions.Compiled);
+    // Match modifier words structurally instead of maintaining a modifier
+    // allow-list. This keeps valid forms such as `public unsafe class` and a
+    // nested `public new class` visible to the source-boundary gate.
+    private static readonly Regex PublicNamedTypeDeclaration = new(
+        @"\bpublic\b(?<Modifiers>(?:\s+[A-Za-z_][A-Za-z0-9_]*)*)\s+" +
+        @"(?<Kind>class|struct|record|interface|enum)\b" +
+        @"(?:\s+(?:class|struct))?\s+(?<Name>[A-Za-z_][A-Za-z0-9_]*)",
+        RegexOptions.Compiled);
+
+    private static readonly Regex PublicDelegateDeclaration = new(
+        @"\bpublic\b(?<Modifiers>(?:\s+[A-Za-z_][A-Za-z0-9_]*)*)\s+" +
+        @"delegate\b[^;{}=]*?\b(?<Name>[A-Za-z_][A-Za-z0-9_]*)" +
+        @"\s*(?:<[^;{}()]*>)?\s*\(",
+        RegexOptions.Compiled);
 
     [Fact]
     public void runtime_source_does_not_use_dynamic_interop_workarounds()
@@ -100,28 +110,49 @@ public sealed class test_optimization_guard
     }
 
     [Fact]
-    public void runtime_public_declarations_extend_contract_types_only()
+    public void public_contract_source_does_not_depend_on_runtime_namespaces()
+    {
+        string source = ReadSourceTree(Path.Combine(
+            BindingRoot(), "src", "Zlink", "Contracts"));
+
+        Assert.DoesNotContain("using Systems.Zlink.Runtime", source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("Systems.Zlink.Runtime.", source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void runtime_public_declarations_are_partial_implementations_of_contract_types()
     {
         string bindingRoot = BindingRoot();
         var contractTypes = ReadPublicTypeDeclarations(
             Path.Combine(bindingRoot, "src", "Zlink", "Contracts"));
-        var runtimeTypes = ReadPublicTypeDeclarationLocations(
-            Path.Combine(bindingRoot, "src", "Zlink", "Runtime"));
-        var nativeResourceContracts = new HashSet<string>(
-            StringComparer.Ordinal)
-        {
-            nameof(SubmitResult)
-        };
-
-        var violations = new List<string>();
-        foreach ((string TypeName, string Path) runtimeType in runtimeTypes)
-        {
-            if (!contractTypes.Contains(runtimeType.TypeName)
-                && !nativeResourceContracts.Contains(runtimeType.TypeName))
-                violations.Add($"{runtimeType.Path}:{runtimeType.TypeName}");
-        }
+        string runtimeRoot = Path.Combine(bindingRoot, "src", "Zlink", "Runtime");
+        var runtimeTypes = ReadPublicTypeDeclarationLocations(runtimeRoot);
+        var violations = FindRuntimePublicDeclarationViolations(
+            contractTypes, runtimeTypes);
 
         Assert.Empty(violations);
+    }
+
+    [Theory]
+    [InlineData("", "public unsafe class RuntimeLeak { }")]
+    [InlineData("", "public class Owner { public new class RuntimeLeak { } }")]
+    [InlineData("public enum RuntimeLeak { Value = 0 }",
+        "public enum RuntimeLeak { Value = 0 }")]
+    public void runtime_public_declaration_scanner_rejects_modifier_and_nested_loopholes(
+        string contractSource, string runtimeSource)
+    {
+        var declarations = ReadPublicTypeDeclarations(runtimeSource,
+            "mutation.cs").ToList();
+        var contractTypes = ReadPublicTypeDeclarations(contractSource,
+                "contract.cs")
+            .Select(declaration => declaration.TypeName)
+            .ToHashSet(StringComparer.Ordinal);
+        var violations = FindRuntimePublicDeclarationViolations(
+            contractTypes, declarations);
+
+        Assert.Contains("mutation.cs:RuntimeLeak", violations);
     }
 
     private static string ReadZlinkSource([CallerFilePath] string file = "")
@@ -179,22 +210,72 @@ public sealed class test_optimization_guard
     private static HashSet<string> ReadPublicTypeDeclarations(string root)
     {
         var declarations = new HashSet<string>(StringComparer.Ordinal);
-        foreach ((string TypeName, _) in ReadPublicTypeDeclarationLocations(root))
-            declarations.Add(TypeName);
-        return declarations;
-    }
-
-    private static List<(string TypeName, string Path)> ReadPublicTypeDeclarationLocations(
-        string root)
-    {
-        var declarations = new List<(string TypeName, string Path)>();
         foreach (string path in Directory.EnumerateFiles(root, "*.cs",
                      SearchOption.AllDirectories))
         {
             string source = File.ReadAllText(path);
-            foreach (Match match in PublicTypeDeclaration.Matches(source))
-                declarations.Add((match.Groups[1].Value, path));
+            foreach (var declaration in ReadPublicTypeDeclarations(source, path))
+                declarations.Add(declaration.TypeName);
         }
         return declarations;
+    }
+
+    private static string ReadSourceTree(string root)
+    {
+        var chunks = new List<string>();
+        foreach (string path in Directory.EnumerateFiles(root, "*.cs",
+                     SearchOption.AllDirectories))
+            chunks.Add(File.ReadAllText(path));
+        return string.Join('\n', chunks);
+    }
+
+    private static List<(string TypeName, string Path, bool IsPartial)>
+        ReadPublicTypeDeclarationLocations(
+        string root)
+    {
+        var declarations = new List<(string TypeName, string Path, bool IsPartial)>();
+        foreach (string path in Directory.EnumerateFiles(root, "*.cs",
+                     SearchOption.AllDirectories))
+        {
+            string source = File.ReadAllText(path);
+            declarations.AddRange(ReadPublicTypeDeclarations(source, path));
+        }
+        return declarations;
+    }
+
+    private static IEnumerable<(string TypeName, string Path, bool IsPartial)>
+        ReadPublicTypeDeclarations(string source, string path)
+    {
+        foreach (Match match in PublicNamedTypeDeclaration.Matches(source))
+            yield return (match.Groups["Name"].Value, path,
+                HasModifier(match.Groups["Modifiers"].Value, "partial"));
+
+        foreach (Match match in PublicDelegateDeclaration.Matches(source))
+            yield return (match.Groups["Name"].Value, path, false);
+    }
+
+    private static bool HasModifier(string modifiers, string expected)
+    {
+        foreach (string modifier in modifiers.Split((char[]?)null,
+                     StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (string.Equals(modifier, expected, StringComparison.Ordinal))
+                return true;
+        }
+        return false;
+    }
+
+    private static List<string> FindRuntimePublicDeclarationViolations(
+        HashSet<string> contractTypes,
+        IEnumerable<(string TypeName, string Path, bool IsPartial)> runtimeTypes)
+    {
+        var violations = new List<string>();
+        foreach (var runtimeType in runtimeTypes)
+        {
+            if (!contractTypes.Contains(runtimeType.TypeName)
+                || !runtimeType.IsPartial)
+                violations.Add($"{runtimeType.Path}:{runtimeType.TypeName}");
+        }
+        return violations;
     }
 }

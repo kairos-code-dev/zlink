@@ -15,6 +15,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.zip.CRC32C;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.*;
 
 /** Stores a logical relocation root as canonical ZLTC chunks and a ZLTM manifest. */
 final class ZLinkRelocationTreeStore {

@@ -211,7 +211,7 @@ class stateful_object_runtime_t
     void replace_placement_candidates (
       std::vector<placement_candidate_t> candidates);
     create_result_t begin_create (const create_request_t &request);
-    create_result_t begin_reserved_user_spot (
+    create_result_t begin_reserved_object (
       const object_ref_t &reserved,
       const std::string &stable_type,
       std::vector<std::uint8_t> creation_request);
@@ -292,6 +292,18 @@ class stateful_object_runtime_t
       std::vector<object_ref_t> targets,
       relocation_restore_identity_t identity,
       std::stop_token cancellation = {});
+    stateful_error_t commit_relocation_restore (
+      const object_ref_t &target,
+      const relocation_restore_identity_t &identity);
+    stateful_error_t commit_relocation_restore_aggregate (
+      const std::vector<object_ref_t> &targets,
+      const relocation_restore_identity_t &identity);
+    stateful_error_t abort_relocation_restore (
+      const object_ref_t &target,
+      const relocation_restore_identity_t &identity);
+    stateful_error_t abort_relocation_restore_aggregate (
+      const std::vector<object_ref_t> &targets,
+      const relocation_restore_identity_t &identity);
 
   private:
     struct object_key_t

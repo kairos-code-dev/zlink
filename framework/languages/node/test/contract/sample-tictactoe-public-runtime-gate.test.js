@@ -15,7 +15,7 @@ test('TicTacToe observes peer readiness only through the public RouteMesh runtim
 
   assert.match(playMain, /ZLINK_ROUTE_MESH_RUNTIME/);
   assert.match(playMain, /ZLinkRouteMeshRuntime/);
-  assert.match(playMain, /\.snapshot\(meshName\)\.peers\.some\(\(peer\) => peer\.ready\)/);
+  assert.match(playMain, /peer\.state === ZLinkPeerState\.Ready/);
   assert.doesNotMatch(playMain, /\bspotNodeRuntime\b/);
   assert.doesNotMatch(playMain, /\bprimaryMeshNode\b/);
   assert.doesNotMatch(playMain, /admittedPeerCount/);

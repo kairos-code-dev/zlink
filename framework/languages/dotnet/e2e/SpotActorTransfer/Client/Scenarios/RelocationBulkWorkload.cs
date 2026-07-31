@@ -13,7 +13,8 @@ internal sealed class RelocationBulkWorkload(
     IReadOnlyList<string> targetIds,
     int operationsPerSecond,
     ZLinkHttpClient? submittingNode = null,
-    bool preservePerKindSubmissionOrder = false)
+    bool preservePerKindSubmissionOrder = false,
+    bool resolveExpectedOwner = true)
 {
     private readonly ConcurrentQueue<double> _requestLatencyMs = new();
     private readonly ConcurrentDictionary<string, ConcurrentQueue<long>>
@@ -27,6 +28,8 @@ internal sealed class RelocationBulkWorkload(
     private readonly ConcurrentDictionary<string, string>
         _actorRequestCorrelationByOperation =
             new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, RelocationObservedLocation>
+        _latestRequestLocations = new(StringComparer.Ordinal);
     private long _requestOffered;
     private long _requestSubmitted;
     private long _requestSucceeded;
@@ -64,17 +67,21 @@ internal sealed class RelocationBulkWorkload(
             ref _requestOffered);
         var oneWaySequenceExclusive = Interlocked.Read(
             ref _oneWayOffered);
-        var locations = await context.GetRelocationLocationsAsync(
-            context.NodeB,
-            targetKind == "actor" ? targetIds : [],
-            targetKind == "spot" ? targetIds : []);
-        var expectedOwners = locations.ToDictionary(
-            static item => item.ObjectId,
-            static item => item.NodeRid,
-            StringComparer.Ordinal);
-        ZlinkStreamAssert.Ensure(
-            expectedOwners.Count == targetIds.Count,
-            $"{scenario} final owner snapshot was incomplete.");
+        IReadOnlyDictionary<string, string>? expectedOwners = null;
+        if (resolveExpectedOwner)
+        {
+            var locations = await context.GetRelocationLocationsAsync(
+                context.NodeB,
+                targetKind == "actor" ? targetIds : [],
+                targetKind == "spot" ? targetIds : []);
+            expectedOwners = locations.ToDictionary(
+                static item => item.ObjectId,
+                static item => item.NodeRid,
+                StringComparer.Ordinal);
+            ZlinkStreamAssert.Ensure(
+                expectedOwners.Count == targetIds.Count,
+                $"{scenario} final owner snapshot was incomplete.");
+        }
 
         await WaitForEvidenceAsync(
             new HashSet<string>(StringComparer.Ordinal),
@@ -361,6 +368,9 @@ internal sealed class RelocationBulkWorkload(
                 StringComparer.Ordinal),
             new Dictionary<string, string>(
                 _actorRequestCorrelationByOperation,
+                StringComparer.Ordinal),
+            new Dictionary<string, RelocationObservedLocation>(
+                _latestRequestLocations,
                 StringComparer.Ordinal));
     }
 
@@ -470,6 +480,18 @@ internal sealed class RelocationBulkWorkload(
                     return;
                 }
             }
+            _latestRequestLocations.AddOrUpdate(
+                targetId,
+                _ => new RelocationObservedLocation(
+                    sequence,
+                    reply.NodeRid,
+                    reply.ObjectGeneration),
+                (_, current) => sequence > current.Sequence
+                    ? new RelocationObservedLocation(
+                        sequence,
+                        reply.NodeRid,
+                        reply.ObjectGeneration)
+                    : current);
 
             _requestLatencyMs.Enqueue(
                 requestWatch.Elapsed.TotalMilliseconds);
@@ -606,13 +628,20 @@ internal sealed record RelocationBulkWorkloadResult(
     IReadOnlyDictionary<string, string> RequestOperationIds,
     IReadOnlyDictionary<string, string> OneWayOperationIds,
     IReadOnlyDictionary<string, string>
-        ActorRequestCorrelationByOperation)
+        ActorRequestCorrelationByOperation,
+    IReadOnlyDictionary<string, RelocationObservedLocation>
+        LatestRequestLocations)
 {
     public double RequestsPerSecond =>
         RequestSucceeded / Math.Max(
             Elapsed.TotalSeconds,
             double.Epsilon);
 }
+
+internal sealed record RelocationObservedLocation(
+    long Sequence,
+    string NodeRid,
+    long ObjectGeneration);
 
 internal sealed record RelocationTerminalSummary(
     int CompletedUnits,
@@ -840,12 +869,14 @@ internal static class RelocationBulkWorkloadVerification
         IReadOnlyCollection<string> spotIds,
         IReadOnlyCollection<RelocationBulkWorkloadResult> traffic,
         bool requireSpotWideAggregatePublication,
-        SpotFlowWatermark? spotFlowWatermark = null)
+        SpotFlowWatermark? spotFlowWatermark = null,
+        IReadOnlyList<RelocationLocationSnapshot>? finalOverride = null)
     {
-        var final = await context.GetRelocationLocationsAsync(
-            context.NodeB,
-            actorIds,
-            spotIds);
+        var final = finalOverride
+                    ?? await context.GetRelocationLocationsAsync(
+                        context.NodeB,
+                        actorIds,
+                        spotIds);
         var initialByKey = initial.ToDictionary(LocationKey);
         var finalByKey = final.ToDictionary(LocationKey);
         ZlinkStreamAssert.Ensure(

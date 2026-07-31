@@ -21,33 +21,20 @@ struct order_workflow_continue_timer_handler_t
     void handle (order_workflow_spot_t &spot, const timer_tick_t &) const;
 };
 
-struct order_workflow_spot_create_req_t
-{
-    static constexpr const char *packet_name = "OrderWorkflowSpotCreateReq";
-    std::string order_id;
-};
-
-inline void to_json (nlohmann::json &json, const order_workflow_spot_create_req_t &value)
-{
-    json = {{"orderId", value.order_id}};
-}
-
-inline void from_json (const nlohmann::json &json, order_workflow_spot_create_req_t &value)
-{
-    value.order_id = json_string (json, "orderId", "order_id");
-}
-
-class order_workflow_spot_t : public spot_t<actor_t>
+class order_workflow_spot_t : public instance_spot_t
 {
   public:
-    order_workflow_spot_t (spot_context_t context,
+    order_workflow_spot_t (instance_spot_context_t context,
                            sample_topology_t topology) :
         _store (std::move (topology)), _context (std::move (context))
     {
     }
 
-    spot_context_t &context () noexcept override { return _context; }
-    const spot_context_t &context () const noexcept override { return _context; }
+    instance_spot_context_t &context () noexcept override { return _context; }
+    const instance_spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
 
     void configure () override
     {
@@ -61,12 +48,10 @@ class order_workflow_spot_t : public spot_t<actor_t>
             rebuild_order_projection_req_t::packet_name);
     }
 
-    task_t<spot_create_response_t>
-    on_create (const zlink::framework::message_t &request) override
+    task_t<void> on_initialize () override
     {
-        auto create = request.decode<order_workflow_spot_create_req_t> ();
-        _order_id = create.order_id;
-        co_return spot_create_response_t::accept ();
+        _order_id = _context.spot_id ();
+        co_return;
     }
 
     task_t<void> on_closing (const spot_closing_context_t &,
@@ -75,16 +60,6 @@ class order_workflow_spot_t : public spot_t<actor_t>
         _continue_timer.cancel ();
         co_return;
     }
-
-    task_t<spot_actor_join_response_t>
-    on_actor_join (std::string_view,
-                   const zlink::framework::message_t &) override
-    {
-        co_return spot_actor_join_response_t::accept ();
-    }
-
-    task_t<void> on_actor_joined (actor_t &) override { co_return; }
-    task_t<void> on_leave_actor (actor_t &) override { co_return; }
 
     /* 공통 sample spec §9.3: 시작은 루프를 Created까지만 돌리고 즉시 응답하며, 나머지 단계를
      * 진행할 재개 호출을 기다리지 않고 예약한다. 결제 지연을 HTTP 응답에 묶지 않기 위해서다. */
@@ -158,7 +133,7 @@ class order_workflow_spot_t : public spot_t<actor_t>
     }
 
     redis_state_store_t _store;
-    spot_context_t _context;
+    instance_spot_context_t _context;
     zlink::framework::timer_t _continue_timer;
     std::string _scheduled_order_id;
     std::string _order_id;
@@ -169,40 +144,6 @@ void order_workflow_continue_timer_handler_t::handle (order_workflow_spot_t &spo
 {
     spot.run_scheduled_continue ();
 }
-
-class workflow_route_handlers_t
-{
-  public:
-    using dependency_types = dependency_list_t<spot_node_manager_t>;
-
-    explicit workflow_route_handlers_t (spot_node_manager_t &spots) :
-        _spots (spots)
-    {
-    }
-
-    ok_res_t handle (const ensure_order_workflow_spot_req_t &request,
-                     const route_handler_context_t &)
-    {
-        ensure_spot (request.order_id);
-        return {};
-    }
-
-  private:
-    static spot_rid_t spot_rid_for (const std::string &order_id)
-    {
-        return spot_rid_t::from_string (order_id);
-    }
-
-    void ensure_spot (const std::string &order_id)
-    {
-        (void) _spots.get_or_create_spot (
-          sample_names_t::order_workflow_spot,
-          spot_rid_for (order_id),
-          order_workflow_spot_create_req_t{order_id});
-    }
-
-    spot_node_manager_t &_spots;
-};
 
 } // namespace zlink::samples::shoppingmall
 
@@ -222,8 +163,7 @@ int main (int argc, char **argv)
           .add_singleton<sample_topology_t> (std::make_unique<sample_topology_t> (topology))
           .add_singleton<workflow_instance_topology_t> (
             std::make_unique<workflow_instance_topology_t> (instance))
-          .add_singleton<redis_state_store_t, sample_topology_t> ()
-          .add_singleton<workflow_route_handlers_t, spot_node_manager_t> ();
+          .add_singleton<redis_state_store_t, sample_topology_t> ();
         add_shoppingmall_location_store (options, topology);
         options.configure_dispatch ()
           .message_flow (message_flow_log_mode_t::key_transitions)
@@ -233,20 +173,15 @@ int main (int argc, char **argv)
         auto workflow_route = options.add_route_mesh (workflow_channel);
         workflow_route.listen (instance.route_endpoint)
           .channel_name (workflow_channel);
-        workflow_route
-          .add_route_request_handler<workflow_route_handlers_t,
-                                      ensure_order_workflow_spot_req_t,
-                                      ok_res_t> (
-            ensure_order_workflow_spot_req_t::packet_name);
         auto spot_route = options.add_route_mesh (sample_names_t::order_spot_route);
         spot_route.listen (instance.spot_route_endpoint)
           .channel_name (sample_names_t::order_spot_route);
         auto order_spot = options.add_route_mesh (sample_names_t::order_spot_discovery);
         order_spot.channel_name (sample_names_t::order_spot_route);
         order_spot.listen (instance.spot_router_endpoint)
-          .add_spot_factory<order_workflow_spot_t> (
+          .add_instance_spot_factory<order_workflow_spot_t> (
             sample_names_t::order_workflow_spot,
-            [topology] (spot_context_t context) {
+            [topology] (instance_spot_context_t context) {
                 return std::make_shared<order_workflow_spot_t> (
                   std::move (context), topology);
             },

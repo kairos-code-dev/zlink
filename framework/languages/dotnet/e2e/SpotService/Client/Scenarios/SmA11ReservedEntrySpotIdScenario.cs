@@ -1,3 +1,4 @@
+// Verifies reserved Entry Spot IDs fail before factory or Store access.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.Framework.Contracts.Errors;

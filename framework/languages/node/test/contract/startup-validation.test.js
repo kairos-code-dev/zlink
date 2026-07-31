@@ -6,6 +6,27 @@ const { NestFactory } = require('@nestjs/core');
 const framework = require('../../packages/framework/dist/internal');
 const nestjs = require('../../packages/nestjs/dist');
 
+test('Application HWM rejects an unbounded Application listener', () => {
+  assert.throws(
+    () => framework.createFrameworkRegistration({
+      inboundDispatch: { applicationHwmBytes: 1024n },
+      channels: {
+        api: {
+          server: {
+            bind: 'tcp://127.0.0.1:0',
+            maxMessageSize: 0
+          },
+          requestHandlers: [{
+            packetName: 'Ping',
+            handler: { handle() { return { value: 'pong' }; } }
+          }]
+        }
+      }
+    }),
+    /maxMessageSize must be bounded when Application HWM is enabled/
+  );
+});
+
 test('Node registration rejects subscriber capability without matching handlers', () => {
   assert.throws(
     () => framework.createFrameworkRegistration(framework.createFrameworkOptions((builder) => {
@@ -53,21 +74,14 @@ test('Node module registration rejects subscriber capability without matching ha
   );
 });
 
-test('Node registration rejects incomplete MeshNode capabilities before startup', async () => {
-  await assertNestStartupRejects(
-    nestjs.zlinkFramework()
-      .addRouteMesh('empty')
-      .build(),
-    /must enable router or pubSub capability/
+test('Node registration assigns an omitted RouteMesh listener to process-default port zero', () => {
+  const registration = framework.createFrameworkRegistration(
+    framework.createFrameworkOptions((builder) => {
+      builder.addRouteMesh('automatic');
+    })
   );
-
-  const missingBind = nestjs.zlinkFramework();
-  missingBind.addRouteMesh('missing-bind').peerConnections();
-  await assertNestStartupRejects(
-    missingBind.build(),
-    /router must define a bind endpoint/
-  );
-
+  assert.equal(registration.spotNodes.get('automatic').router.bind, 'tcp://127.0.0.1:0');
+  assert.equal(registration.spotNodes.get('automatic').router.port, 0);
 });
 
 test('RouteMesh listener uses separate bind and advertised hosts with Core-resolved port zero', () => {
@@ -139,6 +153,77 @@ test('ClientServer listener applies the same wildcard advertise-host validation'
     })
   );
   assert.equal(registration.channels.get('orders').server.bind, 'tcp://127.0.0.1:9401');
+});
+
+test('process network defaults apply to every listener and listener overrides remain local', () => {
+  class NoticeHandler {}
+  class Session {}
+  const registration = framework.createFrameworkRegistration(
+    framework.createFrameworkOptions((builder) => {
+      const network = builder.configureNetwork();
+      network.bindHost = '0.0.0.0';
+      network.advertiseHost = 'node.internal';
+
+      builder.addRouteMesh('game');
+      builder.addRouteMesh('admin')
+        .setBindHost('127.0.0.2')
+        .setAdvertiseHost('admin.internal');
+      builder.addClientServerChannel('orders')
+        .server()
+        .addSendHandler(NoticeHandler);
+      builder.addFanoutChannel('events').enablePublisher();
+      builder.addStreamNode('gateway').bind().registerSession(Session);
+    })
+  );
+
+  assert.equal(registration.spotNodes.get('game').router.bind, 'tcp://0.0.0.0:0');
+  assert.equal(registration.spotNodes.get('game').router.advertiseHost, 'node.internal');
+  assert.equal(registration.spotNodes.get('admin').router.bind, 'tcp://127.0.0.2:0');
+  assert.equal(registration.spotNodes.get('admin').router.advertiseHost, 'admin.internal');
+  assert.equal(registration.channels.get('orders').server.bind, 'tcp://0.0.0.0:0');
+  assert.equal(registration.channels.get('orders').server.advertiseHost, 'node.internal');
+  assert.equal(registration.channels.get('events').publisher.bind, 'tcp://0.0.0.0:0');
+  assert.equal(registration.channels.get('events').publisher.advertiseHost, 'node.internal');
+  assert.equal(registration.streamNodes.get('gateway').bind, 'tcp://0.0.0.0:0');
+  assert.equal(registration.streamNodes.get('gateway').advertiseHost, 'node.internal');
+});
+
+test('STREAM Actor dispatch is opt-in and requires global authority prerequisites', () => {
+  class Session {}
+
+  const streamOnly = framework.createFrameworkRegistration(
+    framework.createFrameworkOptions((builder) => {
+      builder.addStreamNode('gateway').registerSession(Session);
+    })
+  );
+  assert.equal(streamOnly.streamNodes.get('gateway').actorDispatchEnabled, undefined);
+
+  assert.throws(
+    () => framework.createFrameworkRegistration(framework.createFrameworkOptions((builder) => {
+      builder.addRouteMesh('objects').objects().client();
+      builder.addStreamNode('gateway').registerSession(Session).enableActorDispatch();
+    })),
+    /no Location Store is registered/
+  );
+
+  assert.throws(
+    () => framework.createFrameworkRegistration(framework.createFrameworkOptions((builder) => {
+      builder.addLocationStore(new framework.ZLinkInMemoryProviderLocationStore());
+      builder.addStreamNode('gateway').registerSession(Session).enableActorDispatch();
+    })),
+    /at least one local Object Client or Server MeshNode/
+  );
+
+  const registration = framework.createFrameworkRegistration(
+    framework.createFrameworkOptions((builder) => {
+      builder.addLocationStore(new framework.ZLinkInMemoryProviderLocationStore());
+      builder.addRouteMesh('players').objects().client();
+      builder.addRouteMesh('parties').objects().client();
+      builder.addStreamNode('gateway').registerSession(Session).enableActorDispatch();
+    })
+  );
+  assert.equal(registration.streamNodes.get('gateway').actorDispatchEnabled, true);
+  assert.equal(registration.spotNodes.size, 2);
 });
 
 test('Object Client RouteMesh rejects application Node-direct handlers', () => {

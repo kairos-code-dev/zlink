@@ -279,6 +279,7 @@ class socket_lifecycle_coordinator_t
     bool is_async_quiesce_pending () const;
     void complete_deferred_close_handoff (mailbox_t *mailbox_, int timeout_ms_);
     void clear_deferred_close ();
+    bool take_deferred_close ();
     void set_monitor_async_mailbox_owned (bool owned_);
     bool is_monitor_async_mailbox_owned () const;
     void mark_destroy_pending ();

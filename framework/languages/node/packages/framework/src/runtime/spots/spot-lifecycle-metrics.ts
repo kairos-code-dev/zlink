@@ -7,11 +7,9 @@ export class ZLinkSpotLifecycleMetrics {
 
   opened(kind: ZLinkSpotMetricKind): void {
     this.metrics?.change('zlink.spot.count', 1, { kind });
-    this.metrics?.count('zlink.spot.created', 1, { kind });
   }
 
   closed(kind: ZLinkSpotMetricKind): void {
     this.metrics?.change('zlink.spot.count', -1, { kind });
-    this.metrics?.count('zlink.spot.closed', 1, { kind });
   }
 }

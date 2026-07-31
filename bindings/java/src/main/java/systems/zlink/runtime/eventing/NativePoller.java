@@ -7,7 +7,7 @@ import systems.zlink.contracts.eventing.PollEvents;
 import systems.zlink.contracts.eventing.PollSourceKind;
 import systems.zlink.contracts.eventing.Poller;
 import systems.zlink.contracts.eventing.ZlinkTimer;
-import systems.zlink.runtime.nativeapi.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.errors.ZlinkException;
@@ -22,7 +22,7 @@ import java.util.Map;
 import java.util.Objects;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
-import systems.zlink.runtime.nativeapi.DurationConversions;
+import systems.zlink.internal.DurationConversions;
 
 public final class NativePoller implements Poller {
     private final List<PollItem> items = new ArrayList<>();

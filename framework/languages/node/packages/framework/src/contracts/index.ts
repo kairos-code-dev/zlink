@@ -20,6 +20,7 @@ export type {
   ZLinkMessageFlowObserver,
   ZLinkMessageFlowOutcome,
   ZLinkMessageFlowReason,
+  ZLinkFlowOrigin,
   ZLinkUnhandledDispatchOptions
 } from './Dispatch';
 export * from './Errors';
@@ -62,12 +63,10 @@ export type {
   ZLinkMeshNodeDescriptorKey,
   ZLinkPageRequest
 } from './Locations/Keys';
-export * from './Locations/Writes';
 export * from './Locations/Diagnostics';
 export * from './Locations/RuntimeQuery';
 export * from './Locations/Readiness';
 export * from './Locations/RelocationStore';
-export * from './Locations/Authority';
 export * from './RouteMesh';
 export * from './Spots';
 export * from './Streams';

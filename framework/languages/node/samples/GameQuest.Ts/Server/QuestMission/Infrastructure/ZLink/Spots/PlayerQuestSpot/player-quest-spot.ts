@@ -1,16 +1,19 @@
 import type { PlayerQuestAggregate } from '../../../../Domain/quest-domain';
-import type { ZLinkMessage, ZLinkSpot, ZLinkSpotContext, ZLinkSpotCreateResponse } from '@zlink-systems/framework';
+import type { ZLinkInstanceSpot, ZLinkInstanceSpotContext } from '@zlink-systems/framework';
 
-class PlayerQuestSpot implements ZLinkSpot {
-  readonly context!: ZLinkSpotContext;
+class PlayerQuestSpot implements ZLinkInstanceSpot {
+  readonly context!: ZLinkInstanceSpotContext;
   playerId = '';
   private aggregate: PlayerQuestAggregate | undefined;
 
-  async onCreate(request: ZLinkMessage): Promise<ZLinkSpotCreateResponse> {
-    const decoded = request.decode<{ playerId: string }>(Object as never);
-    this.playerId = decoded.playerId;
-    this.aggregate = undefined;
-    return { accepted: true };
+  bindPlayer(playerId: string): void {
+    if (this.playerId === '') {
+      this.playerId = playerId;
+      return;
+    }
+    if (this.playerId !== playerId) {
+      throw new Error(`Player quest spot '${this.playerId}' cannot process player '${playerId}'.`);
+    }
   }
 
   ensureAggregate(load: () => PlayerQuestAggregate): PlayerQuestAggregate {
@@ -21,11 +24,6 @@ class PlayerQuestSpot implements ZLinkSpot {
   replaceAggregate(aggregate: PlayerQuestAggregate): void {
     this.aggregate = aggregate;
   }
-
-  async onActorJoin(): Promise<{ accepted: boolean }> { return { accepted: true }; }
-  async onJoinedActor(): Promise<void> {}
-  async onLeaveActor(): Promise<void> {}
-  async onDisconnectActor(): Promise<void> {}
 }
 
 export { PlayerQuestSpot };

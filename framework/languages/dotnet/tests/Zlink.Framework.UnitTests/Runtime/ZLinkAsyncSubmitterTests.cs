@@ -3,13 +3,19 @@ using System.Diagnostics;
 
 namespace Zlink.Framework.UnitTests;
 
-public sealed class ZLinkAsyncSubmitterTests
+[Collection(DiagnosticsIsolationCollection.Name)]
+public sealed class ZLinkAsyncSubmitterTests : IDisposable
 {
+    public ZLinkAsyncSubmitterTests() =>
+        ZLinkTelemetry.SetDiagnosticsLevel(ZLinkDiagnosticsLevel.Normal);
+
+    public void Dispose() =>
+        ZLinkTelemetry.SetDiagnosticsLevel(ZLinkDiagnosticsLevel.Off);
+
     [Fact]
-    public void Explicit_SendHwm_Defines_Pending_Admission_Capacity()
+    public void Transport_Byte_Hwm_Does_Not_Define_Operation_Count_Capacity()
     {
-        Assert.Equal(1, ZLinkAsyncSubmitter.ResolvePendingCapacity(1));
-        Assert.True(ZLinkAsyncSubmitter.ResolvePendingCapacity(0) > 1);
+        Assert.True(ZLinkAsyncSubmitter.ResolvePendingCapacity() > 1);
     }
 
     [Fact]

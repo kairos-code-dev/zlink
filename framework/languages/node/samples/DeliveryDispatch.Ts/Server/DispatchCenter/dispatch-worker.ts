@@ -143,7 +143,6 @@ class DispatchWorker implements OnModuleInit, OnModuleDestroy {
 
   private async publishStatus(status: DeliveryStatusChangedReq): Promise<void> {
     await this.channels.requestToChannel(
-      SampleNames.routeMesh,
       SampleNames.trackingChannel,
       status
     ).submit();

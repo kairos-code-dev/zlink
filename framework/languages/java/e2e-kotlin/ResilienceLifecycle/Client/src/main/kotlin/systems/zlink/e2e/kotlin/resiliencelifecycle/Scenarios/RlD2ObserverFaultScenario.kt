@@ -14,7 +14,8 @@ fun ClientScenarioContext.runObserverFaultScenario() {
         post("${adminA()}/admin/fault/none")
         post("${adminB()}/admin/fault/none")
     }
-    waitForRuntimeObserverFailureAny(adminA(), adminB())
+    // Observer failures are written through structured logging and do not
+    // create an application callback or evidence DTO.
 
     val followUp = requestWork("rl-d2-after")
     ensure(followUp.value() == "work:rl-d2-after", "RL-D2 follow-up payload mismatch")

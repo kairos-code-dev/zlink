@@ -64,6 +64,7 @@ interface ZLinkSpotContextOptions {
   readonly close: (signal?: AbortSignal) => Promise<boolean>;
   readonly leaveActor: (actor: ZLinkActor, signal?: AbortSignal) => Promise<void>;
   readonly relocationReady?: () => ZLinkSpotRelocationReadyCall;
+  readonly ensureOperationAllowed?: () => void;
 }
 
 export function createEntrySpotContext(options: ZLinkEntrySpotContextOptions): ZLinkEntrySpotContext {
@@ -124,16 +125,28 @@ export function createSpotContext(options: ZLinkSpotContextOptions): ZLinkSpotCo
     objectGeneration: options.objectGeneration,
     nodeRid: contextNodeRid(options.nodeRidProvider?.() ?? options.nodeRid),
     handlers: options.handlers,
-    outbound: options.outbound,
-    relocationReady: options.relocationReady ?? (() => ({
-      defer() {
-        throw new ZLinkConfigurationException(
-          'Spot relocation readiness is not configured for application signaling.'
-        );
-      }
-    })),
-    leaveActor: options.leaveActor,
-    close: options.close,
+    get outbound() {
+      options.ensureOperationAllowed?.();
+      return options.outbound;
+    },
+    relocationReady: () => {
+      options.ensureOperationAllowed?.();
+      return options.relocationReady?.() ?? {
+        defer() {
+          throw new ZLinkConfigurationException(
+            'Spot relocation readiness is not configured for application signaling.'
+          );
+        }
+      };
+    },
+    leaveActor: (actor: ZLinkActor, signal?: AbortSignal) => {
+      options.ensureOperationAllowed?.();
+      return options.leaveActor(actor, signal);
+    },
+    close: (signal?: AbortSignal) => {
+      options.ensureOperationAllowed?.();
+      return options.close(signal);
+    },
     addTimer: <THandler extends ZLinkSpotTimerHandler<ZLinkSpot>>(
       name: string,
       periodMs: number,
@@ -141,6 +154,7 @@ export function createSpotContext(options: ZLinkSpotContextOptions): ZLinkSpotCo
       timerOptions?: ZLinkTimerOptions,
       signal?: AbortSignal
     ) => {
+      options.ensureOperationAllowed?.();
       const spot = options.getSpot();
       if (spot === undefined) {
         throw new ZLinkConfigurationException('Spot timer cannot be registered before spot activation.');
@@ -157,12 +171,16 @@ export function createSpotContext(options: ZLinkSpotContextOptions): ZLinkSpotCo
         createTimerDiagnostics(String(options.spotId), options.spotId, false, name, handlerType, options.runtimeEventPublisher)
       );
     },
-    runCpuWorker: <T>(work: (signal: AbortSignal) => T): ZLinkWorkerCall<T> =>
-      new DefaultZLinkWorkerCall(options.serial, (timeoutMs, signal) =>
-        options.workerRuntime.scheduleCpu(work, timeoutMs, signal)),
-    runIoWorker: <T>(work: (signal: AbortSignal) => Promise<T>): ZLinkWorkerCall<T> =>
-      new DefaultZLinkWorkerCall(options.serial, (timeoutMs, signal) =>
-        options.workerRuntime.scheduleIo(work, timeoutMs, signal))
+    runCpuWorker: <T>(work: (signal: AbortSignal) => T): ZLinkWorkerCall<T> => {
+      options.ensureOperationAllowed?.();
+      return new DefaultZLinkWorkerCall(options.serial, (timeoutMs, signal) =>
+        options.workerRuntime.scheduleCpu(work, timeoutMs, signal));
+    },
+    runIoWorker: <T>(work: (signal: AbortSignal) => Promise<T>): ZLinkWorkerCall<T> => {
+      options.ensureOperationAllowed?.();
+      return new DefaultZLinkWorkerCall(options.serial, (timeoutMs, signal) =>
+        options.workerRuntime.scheduleIo(work, timeoutMs, signal));
+    }
   });
 }
 

@@ -9,6 +9,9 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.*;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkLocationRepository;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkUserSpotOperationException;
@@ -31,7 +34,7 @@ final class ZLinkUserSpotOperationHandler
     private static final ZLinkStoreCancellation OPEN = () -> false;
     private final String meshName;
     private final ZLinkInternalMeshNode node;
-    private final ZLinkLocationStore authorityStore;
+    private final ZLinkLocationRepository authorityStore;
     private final ZLinkSpotLifecycle lifecycle;
     private final ZLinkMessageSerializer serializer;
     private final Map<String, RelocatableSpotFactory<?>> factories;
@@ -43,7 +46,7 @@ final class ZLinkUserSpotOperationHandler
     ZLinkUserSpotOperationHandler(
         String meshName,
         ZLinkInternalMeshNode node,
-        ZLinkLocationStore authorityStore,
+        ZLinkLocationRepository authorityStore,
         ZLinkSpotLifecycle lifecycle,
         ZLinkMessageSerializer serializer,
         Map<String, RelocatableSpotFactory<?>> factories) {
@@ -303,10 +306,8 @@ final class ZLinkUserSpotOperationHandler
                 && fence.targetNodeGeneration()
                     == node.status().lifecycleGeneration()
                 && allocation.capacityBundle().equals(
-                    systems.zlink.framework.locations
-                        .ZLinkPlacementCapacityBundle.spot(
-                            systems.zlink.framework.locations
-                                .ZLinkPlacementObjectKind.USER_SPOT,
+                    systems.zlink.framework.runtime.internal.locations.ZLinkPlacementCapacityBundle.spot(
+                            systems.zlink.framework.locations.ZLinkPlacementObjectKind.USER_SPOT,
                             request.intent().stableType(),
                             Math.toIntExact(
                                 fence.pendingCapacityDelta()))),

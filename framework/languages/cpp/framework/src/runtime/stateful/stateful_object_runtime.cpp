@@ -181,13 +181,14 @@ create_result_t stateful_object_runtime_t::begin_create (
             true};
 }
 
-create_result_t stateful_object_runtime_t::begin_reserved_user_spot (
+create_result_t stateful_object_runtime_t::begin_reserved_object (
   const object_ref_t &reserved,
   const std::string &stable_type,
   std::vector<std::uint8_t> creation_request)
 {
     std::lock_guard lock (_mutex);
-    if (reserved.kind != object_kind_t::user_spot
+    if ((reserved.kind != object_kind_t::actor
+         && reserved.kind != object_kind_t::user_spot)
         || !valid_text (reserved.key) || !valid_text (stable_type)
         || reserved.object_generation == 0
         || reserved.authority_owner_generation == 0
@@ -1265,6 +1266,125 @@ try
 catch (...)
 {
     return stateful_error_t::backpressured;
+}
+
+stateful_error_t stateful_object_runtime_t::commit_relocation_restore (
+  const object_ref_t &target,
+  const relocation_restore_identity_t &identity)
+{
+    std::lock_guard lock (_mutex);
+    stateful_error_t error = stateful_error_t::none;
+    auto *record = find_record_locked (target, error);
+    if (!record)
+        return error;
+    if (record->state == object_state_t::ready
+        && !record->restore_identity)
+        return stateful_error_t::already_exists;
+    if (record->state != object_state_t::recovering
+        || record->restore_identity
+             != std::optional<relocation_restore_identity_t>{
+               identity})
+        return stateful_error_t::conflict;
+    while (!record->queue.held_application.empty ()) {
+        record->queue.application.push_back (
+          std::move (record->queue.held_application.front ()));
+        record->queue.held_application.pop_front ();
+    }
+    record->state = object_state_t::ready;
+    record->restore_identity.reset ();
+    _quiescence.notify_all ();
+    return stateful_error_t::none;
+}
+
+stateful_error_t
+stateful_object_runtime_t::commit_relocation_restore_aggregate (
+  const std::vector<object_ref_t> &targets,
+  const relocation_restore_identity_t &identity)
+{
+    if (targets.size () < 2)
+        return stateful_error_t::invalid;
+    std::lock_guard lock (_mutex);
+    std::vector<object_record_t *> records;
+    records.reserve (targets.size ());
+    for (const auto &target : targets) {
+        stateful_error_t error = stateful_error_t::none;
+        auto *record = find_record_locked (target, error);
+        if (!record)
+            return error;
+        if (record->state != object_state_t::recovering
+            || record->restore_identity
+                 != std::optional<relocation_restore_identity_t>{
+                   identity})
+            return stateful_error_t::conflict;
+        records.push_back (record);
+    }
+    for (auto *record : records) {
+        while (!record->queue.held_application.empty ()) {
+            record->queue.application.push_back (
+              std::move (record->queue.held_application.front ()));
+            record->queue.held_application.pop_front ();
+        }
+        record->state = object_state_t::ready;
+        record->restore_identity.reset ();
+    }
+    _quiescence.notify_all ();
+    return stateful_error_t::none;
+}
+
+stateful_error_t stateful_object_runtime_t::abort_relocation_restore (
+  const object_ref_t &target,
+  const relocation_restore_identity_t &identity)
+{
+    std::lock_guard lock (_mutex);
+    const auto key = key_for (target);
+    const auto found = _objects.find (key);
+    if (found == _objects.end ())
+        return stateful_error_t::already_exists;
+    if (!same_exact_ref (found->second.reference, target)
+        || found->second.state != object_state_t::recovering
+        || found->second.restore_identity
+             != std::optional<relocation_restore_identity_t>{
+               identity})
+        return stateful_error_t::conflict;
+    _objects.erase (found);
+    const auto generation = _last_generation.find (key);
+    if (generation != _last_generation.end ()
+        && generation->second == target.object_generation)
+        _last_generation.erase (generation);
+    _quiescence.notify_all ();
+    return stateful_error_t::none;
+}
+
+stateful_error_t
+stateful_object_runtime_t::abort_relocation_restore_aggregate (
+  const std::vector<object_ref_t> &targets,
+  const relocation_restore_identity_t &identity)
+{
+    if (targets.size () < 2)
+        return stateful_error_t::invalid;
+    std::lock_guard lock (_mutex);
+    std::vector<object_key_t> keys;
+    keys.reserve (targets.size ());
+    for (const auto &target : targets) {
+        const auto key = key_for (target);
+        const auto found = _objects.find (key);
+        if (found == _objects.end ()
+            || !same_exact_ref (found->second.reference, target)
+            || found->second.state != object_state_t::recovering
+            || found->second.restore_identity
+                 != std::optional<relocation_restore_identity_t>{
+                   identity})
+            return stateful_error_t::conflict;
+        keys.push_back (key);
+    }
+    for (const auto &key : keys) {
+        const auto generation = _last_generation.find (key);
+        if (generation != _last_generation.end ())
+            _last_generation.erase (generation);
+        _objects.erase (key);
+    }
+    _quiescence.notify_all ();
+    return stateful_error_t::none;
 }
 
 stateful_error_t stateful_object_runtime_t::restore_relocation_aggregate (

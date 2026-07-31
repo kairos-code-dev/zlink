@@ -30,6 +30,15 @@ import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerInstanceOwn
 
 final class ZLinkSpotTimerRegistryTest {
     @Test
+    void emptyCanonicalTimerEnvelopeRestoresAsNoTimers() {
+        var decoded = ZLinkSpotTimerRelocationEnvelope.decode(
+            ZLinkSpotTimerRelocationEnvelope.encodeCanonical(List.of()),
+            ignored -> TimerHandler.class);
+
+        assertEquals(List.of(), decoded.timers());
+    }
+
+    @Test
     void reusesTimerHandlerForTheSpotActivation() throws Exception {
         ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
         CountDownLatch handled = new CountDownLatch(2);

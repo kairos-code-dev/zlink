@@ -16,9 +16,7 @@ import {
 import type { BindCourierRes, BindCourierSessionReq } from '../../Shared/Contracts/messages';
 
 class CourierSession implements ZLinkSession {
-  constructor(readonly context: ZLinkSessionContext) {
-    context.handlers.addHandler(BindCourierSessionHandler);
-  }
+  constructor(readonly context: ZLinkSessionContext) {}
 
   async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
     if (await this.context.handlers.tryHandle(dispatch, payload)) return;
@@ -53,6 +51,7 @@ class BindCourierSessionHandler {
   private async findOrEnsureActor(courierId: string): Promise<ActorRef> {
     const result = await this.actorManager
       .getOrCreate(courierId, SampleNames.courierActorType)
+      .inMesh(SampleNames.courierMeshName)
       .request(ensureCourierActor(courierId))
       .timeout(SampleTimings.requestTimeout)
       .submit();

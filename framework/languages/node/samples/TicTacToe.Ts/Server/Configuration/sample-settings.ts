@@ -1,9 +1,9 @@
 const SampleNames = Object.freeze({
   apiChannel: 'tictactoe.api',
-  playChannel: 'tictactoe.play',
   playStream: 'tictactoe.play.stream',
   clientStreamNode: 'client.stream',
-  playSpotNode: 'play-node',
+  playSpotNode: 'tictactoe',
+  gameSpotType: 'tictactoe-game',
   playerActorType: 'player',
   playerMilestoneChannel: 'tictactoe.player.milestone.channel',
   playerMilestoneTopic: 'tictactoe.player.milestone'

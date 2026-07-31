@@ -14,7 +14,7 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.locations.ZLinkLocationStore
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
-import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 

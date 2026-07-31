@@ -6,6 +6,7 @@ import {
 import { ZLinkConfigurationException } from '../configuration';
 
 const MAX_DEFERRED_JOINS = 64;
+const MAX_DEFERRED_JOIN_REQUEST_BYTES = 1024 * 1024;
 const MAX_DEFERRED_JOIN_BYTES = 8 * 1024 * 1024;
 
 interface DeferredActorJoin {
@@ -35,6 +36,13 @@ class ActorJoinRegistrationScope {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.InvalidConfiguration,
         `An actor handler may defer at most ${MAX_DEFERRED_JOINS} joins.`
+      );
+    }
+    if (intent.requestBytes > MAX_DEFERRED_JOIN_REQUEST_BYTES) {
+      intent.discard();
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.InvalidConfiguration,
+        `A deferred actor join request may use at most ${MAX_DEFERRED_JOIN_REQUEST_BYTES} bytes.`
       );
     }
     if (this.totalBytes + intent.requestBytes > MAX_DEFERRED_JOIN_BYTES) {

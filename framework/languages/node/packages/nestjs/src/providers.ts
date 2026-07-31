@@ -7,15 +7,10 @@ import {
   SELF_DECLARED_DEPS_METADATA
 } from '@nestjs/common/constants';
 import { ContextIdFactory, DiscoveryService, ModuleRef } from '@nestjs/core';
-import type {
-  Type,
-  ZLinkRuntimeEvent,
-  ZLinkRuntimeEventHandler
-} from '@zlink-systems/framework';
+import type { Type } from '@zlink-systems/framework';
 import type {
   ZLinkFrameworkRegistration,
-  ZLinkProviderResolver,
-  ZLinkRuntimeEventPublisher
+  ZLinkProviderResolver
 } from './framework-integration-contracts';
 import {
   ZLINK_ACTOR_CLIENT,
@@ -39,13 +34,8 @@ import {
 } from './tokens';
 import {
   ZLINK_ACTOR_SPOT_HANDLE_RESOLVER,
-  ZLINK_RUNTIME_EVENT_PUBLISHER,
   ZLINK_SPOT_HANDLE_RESOLVER
 } from './internal-tokens';
-import {
-  claimRuntimeEventHandler,
-  isNestRuntimeEventHandler
-} from './handler-metadata';
 import { framework, type FrameworkRuntimeHost } from './framework-loader';
 import {
   currentNestDispatchContext,
@@ -79,10 +69,6 @@ const ALWAYS_AVAILABLE_CLIENT_PROVIDER_SPECS: readonly AlwaysAvailableClientProv
   {
     token: ZLINK_BOUND_SESSION_FACTORY,
     create: (_registration, runtime) => runtime.boundSessionFactory
-  },
-  {
-    token: ZLINK_RUNTIME_EVENT_PUBLISHER,
-    create: (_registration, runtime) => runtime.eventPublisher
   }
 ];
 
@@ -325,6 +311,10 @@ function requireRuntime(runtime: FrameworkRuntimeHost | undefined): FrameworkRun
 
 export function conditionalClientTokens(): InjectionToken[] {
   return [
+    ZLINK_CLIENT_SERVER_RUNTIME,
+    ZLINK_FANOUT_RUNTIME,
+    ZLINK_ROUTE_MESH_RUNTIME_OPTIONS,
+    ZLINK_ROUTE_MESH_RUNTIME,
     ZLINK_SPOT_MANAGER,
     ZLINK_SPOT_OUTBOUND,
     ZLINK_SPOT_PUBLISHER_CLIENT,
@@ -349,44 +339,16 @@ export function createRuntimeHost(
     createProviderResolver(moduleRef, discovery)
   ) as RuntimeHostWithNestLifecycle;
   runtime.onModuleInit = async () => {
-    registerDiscoveredRuntimeEventHandlers(runtime.eventPublisher, discovery);
     await runtime.start();
   };
   runtime.onModuleDestroy = async () => {
-    // Application shutdown owns the ordered drain; stop remains idempotent for
-    // explicit test/module teardown where Nest does not run shutdown hooks.
+    // Nest application-context teardown does not necessarily run OS-signal
+    // shutdown hooks. Close the runtime here as well; stop is idempotent after
+    // an ordered shutdown has already completed.
+    await runtime.stop();
   };
   runtime.onApplicationBootstrap = async () => {};
   return runtime;
-}
-
-function registerDiscoveredRuntimeEventHandlers(
-  publisher: ZLinkRuntimeEventPublisher,
-  discovery: DiscoveryService
-): void {
-  for (const handler of discoverRuntimeEventHandlers(discovery)) {
-    if (!claimRuntimeEventHandler(publisher, handler)) {
-      continue;
-    }
-    publisher.register(handler);
-  }
-}
-
-function discoverRuntimeEventHandlers(discovery: DiscoveryService): ZLinkRuntimeEventHandler<ZLinkRuntimeEvent>[] {
-  const handlers: ZLinkRuntimeEventHandler<ZLinkRuntimeEvent>[] = [];
-  for (const wrapper of discovery.getProviders()) {
-    const token = wrapper.metatype;
-    const instance = wrapper.instance;
-    if (
-      instance !== undefined
-      && instance !== null
-      && isNestRuntimeEventHandler(token)
-      && typeof (instance as { handle?: unknown }).handle === 'function'
-    ) {
-      handlers.push(instance as ZLinkRuntimeEventHandler<ZLinkRuntimeEvent>);
-    }
-  }
-  return handlers;
 }
 
 function createProviderResolver(moduleRef: ModuleRef, discovery?: DiscoveryService): ZLinkProviderResolver {

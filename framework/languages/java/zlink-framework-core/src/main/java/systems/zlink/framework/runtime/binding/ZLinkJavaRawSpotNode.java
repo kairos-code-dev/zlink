@@ -30,6 +30,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshApplicationReceiver;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 
 /**
  * Framework-owned service runtime projected over the raw MeshNode transport.
@@ -336,11 +337,23 @@ final class ZLinkJavaRawSpotNode
     public ZLinkBackendActorRef createActor(
         String actorId,
         Message createRequest) {
+        return createActor(actorId, 1, createRequest);
+    }
+
+    @Override
+    public ZLinkBackendActorRef createActor(
+        String actorId,
+        long objectGeneration,
+        Message createRequest) {
         if (actorId == null || actorId.isBlank()) {
             throw new IllegalArgumentException("actorId is required");
         }
+        if (objectGeneration <= 0) {
+            throw new IllegalArgumentException(
+                "Actor object generation must be positive");
+        }
         ZLinkBackendActorRef created = new ZLinkBackendActorRef(
-            routingId(), actorId, 1);
+            routingId(), actorId, objectGeneration);
         if (actors.putIfAbsent(actorId, created) != null) {
             throw new IllegalStateException("actor already exists: " + actorId);
         }
@@ -353,6 +366,11 @@ final class ZLinkJavaRawSpotNode
     @Override
     public ZLinkBackendActorRef actorLookup(String actorId) {
         return actors.get(actorId);
+    }
+
+    @Override
+    public boolean hasPendingActorRequests() {
+        return !actorRequests.isEmpty();
     }
 
     @Override
@@ -570,32 +588,14 @@ final class ZLinkJavaRawSpotNode
         SendFlags flags) {
         StreamBinding binding = streamBindings.get(actor.actorId());
         if (binding != null && binding.actor().equals(actor)) {
-            boolean sent = binding.stream().send(
+            return binding.stream().sendBoundSessionPush(
                 binding.sessionRid(), parts, flags);
-            if ("1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"))) {
-                java.util.logging.Logger.getLogger(
-                        ZLinkJavaRawSpotNode.class.getName())
-                    .warning("[zlink-java-stream-trace] local bound-session send"
-                        + " actor=" + actor
-                        + " binding=" + binding
-                        + " sent=" + sent);
-            }
-            return sent;
         }
         RemoteStreamBinding remote =
             remoteStreamBindings.get(actor.actorId());
-        boolean sent = remote != null
+        return remote != null
             && remote.actor().equals(actor)
             && owner.sendBoundSession(remote, parts);
-        if ("1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"))) {
-            java.util.logging.Logger.getLogger(
-                    ZLinkJavaRawSpotNode.class.getName())
-                .warning("[zlink-java-stream-trace] bound-session send"
-                    + " actor=" + actor
-                    + " remote=" + remote
-                    + " sent=" + sent);
-        }
-        return sent;
     }
 
     @Override
@@ -606,9 +606,6 @@ final class ZLinkJavaRawSpotNode
         long requestId,
         int flags,
         List<Message> parts) {
-        if (!isCurrentActor(actor)) {
-            throw new IllegalStateException("actor is not local");
-        }
         CompletableFuture<List<Message>> pending =
             actorRequests.remove(requestId);
         if (pending != null) {
@@ -618,6 +615,10 @@ final class ZLinkJavaRawSpotNode
         Consumer<List<Message>> remote = actorRemoteReplies.remove(requestId);
         if (remote != null) {
             remote.accept(parts);
+            return;
+        }
+        if (!isCurrentActor(actor)) {
+            throw new IllegalStateException("actor is not local");
         }
     }
 
@@ -715,6 +716,24 @@ final class ZLinkJavaRawSpotNode
         long sourceSessionSequence,
         ZLinkJavaStreamSocket stream,
         List<Message> parts) {
+        return forwardBoundStreamSession(
+            actor,
+            sourceSessionRid,
+            sourceBindingGeneration,
+            sourceSessionSequence,
+            stream,
+            null,
+            parts);
+    }
+
+    synchronized boolean forwardBoundStreamSession(
+        ZLinkBackendActorRef actor,
+        RoutingId sourceSessionRid,
+        long sourceBindingGeneration,
+        long sourceSessionSequence,
+        ZLinkJavaStreamSocket stream,
+        ZLinkStreamHeader streamHeader,
+        List<Message> parts) {
         StreamBinding binding = streamBindings.get(actor.actorId());
         if (binding == null
             || !binding.actor().equals(actor)
@@ -726,12 +745,40 @@ final class ZLinkJavaRawSpotNode
             return false;
         }
         if (!routingId().equals(actor.nodeRid())) {
+            if (streamHeader != null
+                && streamHeader.requestSequence().isPresent()) {
+                return owner.requestBoundActor(
+                    actor,
+                    sourceSessionRid,
+                    sourceBindingGeneration,
+                    sourceSessionSequence,
+                    streamHeader.requestSequence().orElseThrow(),
+                    parts,
+                    reply -> replyBoundStreamSession(
+                        stream,
+                        sourceSessionRid,
+                        reply));
+            }
             return owner.sendBoundActor(
                 actor,
                 sourceSessionRid,
                 sourceBindingGeneration,
                 sourceSessionSequence,
                 parts);
+        }
+        if (streamHeader != null
+            && streamHeader.requestSequence().isPresent()) {
+            requestToActor(actor, parts, SendFlags.DONT_WAIT,
+                    Duration.ofSeconds(30))
+                .whenComplete((reply, failure) -> {
+                    if (failure == null) {
+                        replyBoundStreamSession(
+                            stream,
+                            sourceSessionRid,
+                            reply);
+                    }
+                });
+            return true;
         }
         return dispatchLocalActor(
             actor,
@@ -744,6 +791,20 @@ final class ZLinkJavaRawSpotNode
             sourceSessionSequence);
     }
 
+    private static void replyBoundStreamSession(
+        ZLinkJavaStreamSocket stream,
+        RoutingId sessionRid,
+        List<Message> reply) {
+        try {
+            stream.sendBoundSessionPush(
+                sessionRid,
+                reply,
+                SendFlags.DONT_WAIT);
+        } finally {
+            reply.forEach(Message::close);
+        }
+    }
+
     @Override
     public void bindRemoteActorBoundSession(
         ZLinkBackendActorRef actor,
@@ -752,6 +813,22 @@ final class ZLinkJavaRawSpotNode
         if (!isCurrentActor(actor)) {
             throw new IllegalStateException("actor is not local");
         }
+    }
+
+    @Override
+    public java.util.Optional<ZLinkInternalSpotNode.BoundSessionRoute>
+        boundSessionRoute(ZLinkBackendActorRef actor) {
+        RemoteStreamBinding remote = remoteStreamBindings.get(actor.actorId());
+        if (remote == null || !remote.actor().equals(actor)) {
+            return java.util.Optional.empty();
+        }
+        return java.util.Optional.of(
+            new ZLinkInternalSpotNode.BoundSessionRoute(
+                remote.sessionOwnerNodeRid(),
+                remote.sessionOwnerNodeGeneration(),
+                remote.sessionRid(),
+                remote.bindingGeneration(),
+                remoteStreamSequences.getOrDefault(actor.actorId(), 0L)));
     }
 
     @Override
@@ -1264,6 +1341,25 @@ final class ZLinkJavaRawSpotNode
         instanceSpots.register(stableType, this::createSpot);
     }
 
+    void registerInstanceSpotType(
+        String stableType,
+        ZLinkInternalMeshNode.InstanceSpotActivationHandler handler) {
+        instanceSpots.register(
+            stableType,
+            this::createSpot,
+            (selectedType, spotId, generation, backendSpot) -> {
+                InstanceAuthority authority = instanceAuthorities.get(spotId);
+                if (authority == null
+                    || authority.route().objectGeneration() != generation) {
+                    return CompletableFuture.failedFuture(
+                        new IllegalStateException(
+                            "Instance Spot authority is missing or stale"));
+                }
+                return handler.activate(
+                    selectedType, authority.route(), backendSpot);
+            });
+    }
+
     CompletionStage<ZLinkJavaInstanceSpotRegistry.Activation>
         activateInstanceSpot(
             String spotId,
@@ -1331,7 +1427,16 @@ final class ZLinkJavaRawSpotNode
         Consumer<List<Message>> reply) {
         InstanceAuthority authority =
             instanceAuthorities.get(header.route().targetSpotId());
-        if (authority == null || !authority.route().equals(header.route())) {
+        if (authority == null) {
+            reconcileInstanceSpotAuthority(
+                header.stableType(), header.route());
+            authority = instanceAuthorities.get(
+                header.route().targetSpotId());
+        }
+        if (authority == null
+            || !authority.stableType().equals(header.stableType())
+            || !sameInstanceAuthorityFence(
+                authority.route(), header.route())) {
             return false;
         }
         ZLinkJavaInstanceSpotRegistry.Activation activation;
@@ -1360,6 +1465,20 @@ final class ZLinkJavaRawSpotNode
                 header.request() ? reply : null,
                 () -> { }));
         return true;
+    }
+
+    private static boolean sameInstanceAuthorityFence(
+        ZLinkServiceM6BWireCodec.InstanceRouteFence left,
+        ZLinkServiceM6BWireCodec.InstanceRouteFence right) {
+        return left.targetNodeRid().equals(right.targetNodeRid())
+            && left.targetNodeGeneration()
+                == right.targetNodeGeneration()
+            && left.targetSpotId().equals(right.targetSpotId())
+            && left.objectGeneration() == right.objectGeneration()
+            && left.ownerId().equals(right.ownerId())
+            && left.authorityOwnerGeneration()
+                == right.authorityOwnerGeneration()
+            && left.leaseGeneration() == right.leaseGeneration();
     }
 
     private boolean dispatchLocalActor(

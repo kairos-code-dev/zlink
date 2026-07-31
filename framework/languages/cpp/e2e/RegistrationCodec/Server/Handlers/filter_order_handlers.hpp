@@ -37,21 +37,22 @@ class first_filter_t
     {
     }
 
-    zlink::framework::task_t<zlink::message_t>
-    invoke (const zlink::framework::handler_invocation_context_t &context,
+    zlink::framework::task_t<void>
+    invoke (const zlink::framework::handler_filter_context_t &context,
             zlink::framework::handler_next_t next)
     {
-        if (context.descriptor.packet_name != filter_order_req_t::packet_name) {
-            co_return co_await next ();
+        if (context.packet_name != filter_order_req_t::packet_name) {
+            co_await next ();
+            co_return;
         }
 
         _state.reset ();
         _state.add ("first-before");
-        auto reply = co_await next ();
+        co_await next ();
         _state.add ("first-after");
         const auto order = _state.snapshot ();
         _scenario_state.record ("RC-A5", nlohmann::json (order).dump ());
-        co_return reply;
+        co_return;
     }
 
   private:
@@ -66,18 +67,19 @@ class second_filter_t
 
     explicit second_filter_t (filter_order_state_t &state) : _state (state) {}
 
-    zlink::framework::task_t<zlink::message_t>
-    invoke (const zlink::framework::handler_invocation_context_t &context,
+    zlink::framework::task_t<void>
+    invoke (const zlink::framework::handler_filter_context_t &context,
             zlink::framework::handler_next_t next)
     {
-        if (context.descriptor.packet_name != filter_order_req_t::packet_name) {
-            co_return co_await next ();
+        if (context.packet_name != filter_order_req_t::packet_name) {
+            co_await next ();
+            co_return;
         }
 
         _state.add ("second-before");
-        auto reply = co_await next ();
+        co_await next ();
         _state.add ("second-after");
-        co_return reply;
+        co_return;
     }
 
   private:

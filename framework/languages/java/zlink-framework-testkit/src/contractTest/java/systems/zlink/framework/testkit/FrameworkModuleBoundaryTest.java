@@ -149,6 +149,8 @@ final class FrameworkModuleBoundaryTest {
                 .filter(Files::isRegularFile)
                 .filter(path -> path.toString().endsWith(".java"))
                 .filter(path -> !path.toString().contains("/systems/zlink/framework/runtime/binding/"))
+                .filter(path -> !path.toString().contains(
+                    "/systems/zlink/framework/runtime/internal/binding/"))
                 .flatMap(path -> bindingContractImports(path).stream())
                 .filter(line -> !allowedImports.contains(line))
                 .toList();

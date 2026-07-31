@@ -93,12 +93,21 @@ export class ZLinkBoundActorRelaySender {
   }
 
   async notifyDisconnected(actor: DefaultZLinkSessionActor, signal?: AbortSignal): Promise<void> {
+    await this.notifyDisconnectedCore(actor, true, signal);
+  }
+
+  private async notifyDisconnectedCore(
+    actor: DefaultZLinkSessionActor,
+    unbindNative: boolean,
+    signal?: AbortSignal
+  ): Promise<void> {
     await this.lifecycle.run(actor.actorId, async () => {
       this.routes.requireCurrentToken(actor.actorId, actor.bindingToken);
       const route = this.routes.requireRoute(actor.actorId);
       try {
-        await this.options.notifyDisconnected?.(actor, signal);
         if (
+          unbindNative
+          &&
           route.bindingToken === actor.bindingToken
           && route.context.stream instanceof ZLinkManagedStream
         ) {
@@ -108,6 +117,7 @@ export class ZLinkBoundActorRelaySender {
             signal
           );
         }
+        await this.options.notifyDisconnected?.(actor, signal);
       } finally {
         this.routes.unbind(actor.actorId, route.context, actor.bindingToken);
       }
@@ -132,7 +142,7 @@ export class ZLinkBoundActorRelaySender {
         const timer = setTimeout(() => controller.abort(), timeoutMs);
         try {
           await Promise.race([
-            this.notifyDisconnected(actor, controller.signal),
+            this.notifyDisconnectedCore(actor, false, controller.signal),
             new Promise<never>((_, reject) => {
               controller.signal.addEventListener(
                 'abort',
@@ -152,13 +162,7 @@ export class ZLinkBoundActorRelaySender {
             && current.actor === actor
             && current.bindingToken === actor.bindingToken
           ) {
-            try {
-              if (context.stream instanceof ZLinkManagedStream) {
-                await context.stream.unbindActor(actor.actorId, timeoutMs);
-              }
-            } finally {
-              this.routes.unbind(actor.actorId, context, actor.bindingToken);
-            }
+            this.routes.unbind(actor.actorId, context, actor.bindingToken);
           }
         }
       })

@@ -2,6 +2,8 @@
 
 package systems.zlink.runtime.nativeapi;
 
+import systems.zlink.internal.ContractAccess;
+
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.ContextOption;
 import systems.zlink.contracts.core.RoutingId;
@@ -18,7 +20,7 @@ import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.Socket;
-import systems.zlink.runtime.sockets.SocketOptionKey;
+import systems.zlink.internal.sockets.SocketOptionKey;
 import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.runtime.eventing.NativeTimer;
 import systems.zlink.runtime.sockets.SocketMessageHandler;

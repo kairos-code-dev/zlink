@@ -10,6 +10,9 @@ import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole;
 import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectPeer;
 
 final class ZLinkAutoConnectPlanner {
+    static final String SECURITY_IDENTITY_METADATA_KEY =
+        "zlink.security-identity";
+
     private ZLinkAutoConnectPlanner() {
     }
 

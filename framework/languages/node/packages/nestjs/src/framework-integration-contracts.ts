@@ -15,21 +15,14 @@ import type {
   ZLinkInstanceSpot,
   ZLinkMessageSerializer,
   ZLinkMetricsOptions,
-  ZLinkMonitoringOptions,
+  ZLinkNetworkOptions,
   ZLinkMessageContext,
   ZLinkPublishMessageContext,
   ZLinkRouteMessageContext,
-  ZLinkRuntimeEvent,
-  ZLinkRuntimeEventHandler,
   ZLinkSpot,
   ZLinkStreamCompressionOptions,
   ZLinkTimerOptions
 } from '@zlink-systems/framework';
-
-export interface ZLinkRuntimeEventPublisher {
-  register<TEvent extends ZLinkRuntimeEvent>(handler: ZLinkRuntimeEventHandler<TEvent>): void;
-  publish<TEvent extends ZLinkRuntimeEvent>(event: TEvent): Promise<void>;
-}
 
 /** Private composition bridge used only by the Nest companion package. */
 export interface ZLinkProviderResolver {
@@ -49,7 +42,6 @@ export interface ZLinkNestIntegrationRuntimeHost {
   readonly routeMeshRuntimeOptions:
     import('@zlink-systems/framework').ZLinkRouteMeshRuntimeOptions;
   readonly boundSessionFactory: unknown;
-  readonly eventPublisher: ZLinkRuntimeEventPublisher;
   readonly locationRuntimeQuery?: unknown;
   readonly routeMeshRuntime: import('@zlink-systems/framework').ZLinkRouteMeshRuntime;
   readonly clientServerRuntime: import('@zlink-systems/framework').ZLinkClientServerRuntime;
@@ -73,6 +65,7 @@ export interface ZLinkRouteChannelRequestHandler {
 // adapter and the framework runtime. They intentionally remain owned by the
 // Nest package instead of becoming a framework package subpath.
 export interface ZLinkFrameworkRegistration {
+  readonly network: ZLinkNetworkOptions;
   readonly messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly codecs: ZLinkCodecRegistration;
   readonly requestTimeoutMs?: number;
@@ -92,7 +85,6 @@ export interface ZLinkFrameworkRegistration {
   readonly filterTypes: readonly Type<ZLinkHandlerFilter>[];
   readonly worker?: ZLinkWorkerOptions;
   readonly dispatch?: ZLinkDispatchOptions;
-  readonly monitoring?: ZLinkMonitoringOptions;
   readonly metrics?: ZLinkMetricsOptions;
   readonly locations: ZLinkLocationRegistration;
 }
@@ -125,6 +117,7 @@ export interface ZLinkCodecRegistryOptions {
 }
 
 export interface ZLinkFrameworkRegistrationOptions {
+  readonly network?: Partial<ZLinkNetworkOptions>;
   readonly codecs?: ZLinkCodecRegistryOptions;
   readonly applicationVersion?: bigint;
   readonly maintenanceWave?: string;
@@ -142,7 +135,6 @@ export interface ZLinkFrameworkRegistrationOptions {
   readonly filters?: readonly Type<ZLinkHandlerFilter>[];
   readonly worker?: ZLinkWorkerOptions;
   readonly dispatch?: ZLinkDispatchOptions;
-  readonly monitoring?: ZLinkMonitoringOptions;
   readonly metrics?: ZLinkMetricsOptions;
   readonly locations?: {
     readonly useInMemoryStores?: boolean;
@@ -187,6 +179,9 @@ export interface ZLinkClientCapabilityOptions {
 
 export interface ZLinkPublisherCapabilityOptions {
   readonly bind?: string;
+  readonly bindHost?: string;
+  readonly advertiseHost?: string;
+  readonly port?: number;
 }
 
 export interface ZLinkRouteMeshChannelOptions {
@@ -211,7 +206,10 @@ export interface ZLinkRouteChannelOptions extends ZLinkRouteMeshChannelOptions {
 
 export interface ZLinkStreamNodeOptions {
   readonly bind?: string;
-  readonly actorDispatchMeshName?: string;
+  readonly bindHost?: string;
+  readonly advertiseHost?: string;
+  readonly port?: number;
+  readonly actorDispatchEnabled?: boolean;
   readonly tlsServer?: {
     readonly certificatePath: string;
     readonly keyPath: string;
@@ -226,6 +224,7 @@ export interface ZLinkSpotNodeRegistrationOptions extends ZLinkSpotNodeOptions {
 
 export interface ZLinkSpotNodeOptions {
   readonly objectRole?: 'client' | 'server';
+  readonly placementWeight?: number;
   readonly routingId?: string;
   readonly routingIdPrefix?: string;
   readonly router?: ZLinkSpotRouterCapabilityOptions;
@@ -333,6 +332,9 @@ export interface ZLinkRouteMeshRequestHandlerRegistration {
 
 export interface ZLinkSpotRouterCapabilityOptions {
   readonly bind?: string;
+  readonly bindHost?: string;
+  readonly advertiseHost?: string;
+  readonly port?: number;
   readonly manualConnections?: readonly string[];
   readonly manualPeerConnections?: readonly { readonly peerRid: RoutingId; readonly endpoint: string }[];
   readonly routingId?: string;

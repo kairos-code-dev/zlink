@@ -7,7 +7,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import systems.zlink.e2e.storefailure.shared.Contracts;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
@@ -57,7 +57,7 @@ public final class ConsumerApplication {
     ConsumerEndpoints consumerEndpoints(
         ConsumerOptions options,
         systems.zlink.framework.channels.ZLinkClient client,
-        systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle lifecycle,
+        systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle lifecycle,
         ZLinkLocationStore locationStore,
         LocationStoreDelayState delayState,
         ObjectMapper json) {

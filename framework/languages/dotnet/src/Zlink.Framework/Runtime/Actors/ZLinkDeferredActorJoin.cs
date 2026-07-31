@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using Zlink.Framework.Runtime.Diagnostics;
 using Zlink.Framework.Runtime.Spots;
+using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.Runtime.Actors;
 
@@ -136,6 +137,22 @@ internal sealed class ZLinkDeferredActorJoin(
     }
 
     public void Activate()
+    {
+        if (ZLinkBoundSessionDispatchScope.TryDefer(
+                actorState.ActorId,
+                ScheduleAfterBoundSessionTerminalAsync)) return;
+        Schedule();
+    }
+
+    private ValueTask ScheduleAfterBoundSessionTerminalAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Schedule();
+        return ValueTask.CompletedTask;
+    }
+
+    private void Schedule()
     {
         if (_turn is { } turn && turn.TryPost(RunOnSubmittingSpotAsync)) return;
         if (!runtime.TryRunDetached("actor-deferred-join", RunAsync))

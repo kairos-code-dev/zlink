@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../Configuration/location_store.hpp"
+#include "../Configuration/sample_names.hpp"
 #include "../Configuration/sample_configuration.hpp"
 #include "../../Shared/Contracts/messages.hpp"
 
@@ -73,9 +74,6 @@ class supportchat_session_t final : public packet_stream_session_t
             _identity_actor_id = std::string (bound.actor_id ());
             _identity_display_name = authenticated.display_name;
             _identity_role = authenticated.role;
-            co_await bound.context ()
-              .join_entry_spot (ensure)
-              .async ();
             stream.reply_packet (zlink::message_t::from_json (authenticated)).submit ();
             co_return;
         }
@@ -83,7 +81,8 @@ class supportchat_session_t final : public packet_stream_session_t
             && _identity_role == role_t::agent) {
             auto joined = co_await ensure_agent_conversation_actor (stream, dispatch);
             stream.reply_packet (
-                    zlink::message_t::from_json (join_conversation_res_t{joined.state}))
+                    zlink::message_t::from_json (
+                      join_conversation_res_t{joined.scheduled, joined.state}))
               .submit ();
             co_return;
         }
@@ -123,6 +122,7 @@ class supportchat_session_t final : public packet_stream_session_t
                 .submit ();
             co_return ensure_agent_conversation_res_t{
               actor_ref_snapshot_t::from (actor.ref ()),
+              false,
               refreshed.parse_json<join_conversation_res_t> ().state};
         }
 
@@ -189,14 +189,13 @@ int main (int argc, char **argv)
           .trace_log_file (configuration.flow_log_path ())
           .trace_label ("supportchat-session");
         add_supportchat_location_store (options, topology);
-        options.add_client_server_channel ("supportchat.support").enable_client ();
-        options.add_client_server_channel ("supportchat.api").enable_client ();
-        auto actor_route = options.add_route_mesh ("supportchat.session.actor.route");
-        actor_route.listen (topology.session_actor_route_endpoint)
-          .channel_name ("supportchat.session.actor.route");
-        auto support_spot = options.add_route_mesh ("supportchat.support.spot");
-        support_spot.channel_name ("supportchat.session.actor.route");
-        support_spot.listen (topology.session_spot_router_endpoint);
+        options.add_client_server_channel ("supportchat.support").client ();
+        options.add_client_server_channel ("supportchat.api").client ();
+        auto support_spot = options.add_route_mesh (sample_names_t::mesh);
+        support_spot.set_routing_id (
+          zlink::routing_id_t::from ("supportchat-session"));
+        support_spot.set_object_role (object_role_t::client)
+          .listen (topology.session_spot_router_endpoint);
         options.add_stream_node ("supportchat-session-stream")
           .bind (topology.session_stream_endpoint)
           .register_session<supportchat_session_t> ();

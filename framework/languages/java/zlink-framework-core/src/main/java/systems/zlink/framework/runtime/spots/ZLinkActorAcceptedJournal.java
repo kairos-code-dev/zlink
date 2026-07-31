@@ -53,6 +53,9 @@ final class ZLinkActorAcceptedJournal {
                 decoded.sourceNodeGeneration(),
                 decoded.sourceOwnerId(),
                 decoded.sourceOwnerLeaseGeneration(),
+                decoded.sourceSessionRid(),
+                decoded.sourceBindingGeneration(),
+                decoded.sourceSessionSequence(),
                 decoded.operationHigh(),
                 decoded.operationLow(),
                 decoded.replyRouteId(),
@@ -91,6 +94,9 @@ final class ZLinkActorAcceptedJournal {
         long sourceNodeGeneration,
         String sourceOwnerId,
         long sourceOwnerLeaseGeneration,
+        systems.zlink.contracts.core.RoutingId sourceSessionRid,
+        long sourceBindingGeneration,
+        long sourceSessionSequence,
         long operationHigh,
         long operationLow,
         java.util.Optional<Long> replyRouteId,
@@ -100,6 +106,10 @@ final class ZLinkActorAcceptedJournal {
                 || sourceOwnerId == null || sourceOwnerId.isBlank()
                 || sourceNodeGeneration <= 0
                 || sourceOwnerLeaseGeneration <= 0
+                || sourceSessionRid == null
+                    != (sourceBindingGeneration == 0)
+                || sourceSessionRid == null
+                    != (sourceSessionSequence == 0)
                 || objectGeneration <= 0
                 || operationHigh == 0 && operationLow == 0) {
                 throw new IllegalArgumentException(

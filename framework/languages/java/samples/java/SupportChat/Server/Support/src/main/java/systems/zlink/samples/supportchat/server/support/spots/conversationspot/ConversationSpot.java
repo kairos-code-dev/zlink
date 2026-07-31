@@ -54,7 +54,7 @@ public final class ConversationSpot implements ZLinkSpot<SupportUserActor> {
     public CompletionStage<ZLinkSpotCreateResponse> onCreate(ZLinkMessage request) {
         ConversationCreateReq create = request.decode(ConversationCreateReq.class);
         conversation = new Conversation(
-            context.spotRid().toString(),
+            context.spotId(),
             create.subject(),
             create.customerActorId(),
             create.customerDisplayName(),
@@ -65,7 +65,7 @@ public final class ConversationSpot implements ZLinkSpot<SupportUserActor> {
                 500));
         logger.info(
             "support conversation: created. conversation={}, customer={}",
-            context.spotRid(), create.customerActorId());
+            context.spotId(), create.customerActorId());
         return CompletableFuture.completedFuture(ZLinkSpotCreateResponse.accept());
     }
 
@@ -93,7 +93,9 @@ public final class ConversationSpot implements ZLinkSpot<SupportUserActor> {
         request.decode(Messages.JoinConversationReq.class);
         pendingJoins.add(actorId);
         return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept(
-            new Messages.JoinConversationRes(ConversationContracts.state(requireConversation().snapshot()))));
+            new Messages.JoinConversationRes(
+                false,
+                ConversationContracts.state(requireConversation().snapshot()))));
     }
 
     @Override
@@ -113,7 +115,7 @@ public final class ConversationSpot implements ZLinkSpot<SupportUserActor> {
         }
         logger.info(
             "support conversation: actor joined. conversation={}, participant={}, role={}",
-            context.spotRid(), actor.participantId(), actor.role());
+            context.spotId(), actor.participantId(), actor.role());
         return CompletableFuture.completedFuture(null);
     }
 
@@ -129,6 +131,7 @@ public final class ConversationSpot implements ZLinkSpot<SupportUserActor> {
             ? directory.require(actor.participantId()) : actor;
         actors.put(actor.participantId(), participant);
         return new Messages.JoinConversationRes(
+            false,
             ConversationContracts.state(requireConversation().snapshot()));
     }
 
@@ -172,7 +175,7 @@ public final class ConversationSpot implements ZLinkSpot<SupportUserActor> {
         notifications.assigned(assigned, requireConversation().snapshot(), directory);
         logger.info(
             "support conversation: assigned. conversation={}, roster={}",
-            context.spotRid(), assigned.rosterActorId());
+            context.spotId(), assigned.rosterActorId());
     }
 
     private void publish(Conversation.Change change) {

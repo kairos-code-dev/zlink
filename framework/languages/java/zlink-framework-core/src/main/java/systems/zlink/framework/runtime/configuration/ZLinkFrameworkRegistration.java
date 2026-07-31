@@ -9,8 +9,8 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.locations.ZLinkLocationStore;
-import systems.zlink.framework.locations.ZLinkRelocationStore;
+import systems.zlink.framework.locationprovider.ZLinkLocationStore;
+import systems.zlink.framework.runtime.internal.locations.ZLinkRelocationStore;
 import systems.zlink.framework.runtime.channels.ChannelRegistration;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
@@ -172,12 +172,15 @@ public final class ZLinkFrameworkRegistration {
         return relocationStore;
     }
 
-    void setRelocationStore(ZLinkRelocationStore store) {
+    void setRelocationStore(
+        systems.zlink.framework.locationprovider.ZLinkRelocationStore store) {
         if (relocationStore != null) {
             throw new ZLinkConfigurationException(
                 "relocation store is already registered");
         }
-        relocationStore = store;
+        relocationStore =
+            new systems.zlink.framework.runtime.internal.locations
+                .ZLinkProviderRelocationRepository(store);
     }
 
     void useVirtualThreadHandlers() {

@@ -5,7 +5,6 @@ import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
-import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.kotlin.useCoroutineHandlers
@@ -38,7 +37,7 @@ class CourierSpotNodeApplication {
                 .traceLabel("courier-$node")
             val spotNode = options.addRouteMesh(SampleNames.CourierSpotMesh)
             spotNode.listen(selected.routerEndpoint)
-                .useAllocatedRoutingId(16, "delivery-courier")
+                .setRoutingIdPrefix("delivery-courier")
             spotNode.objects().server()
                 .addEntrySpot(CourierEntrySpot::class.java)
                 .addActorFactory(
@@ -49,8 +48,7 @@ class CourierSpotNodeApplication {
             // The courier's decision goes back to dispatch as its own one-way message, so this
             // node needs a way to speak to the dispatch channel (common sample spec section 7.4).
             options.addClientServerChannel(SampleNames.DispatchChannel)
-                .enableClient()
-                .setRoutingId(RoutingId.from("delivery-courier-$node-dispatch"))
+                .client()
         }
 
     @Bean

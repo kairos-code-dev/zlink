@@ -18,7 +18,7 @@ class CourierActor(
 ) : ZLinkActor {
     private val offeredAttempts = mutableMapOf<String, Int>()
 
-    override fun actorId(): String = id
+    fun actorId(): String = id
 
     override fun context(): ZLinkActorContext = actorContext
 

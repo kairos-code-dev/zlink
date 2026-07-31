@@ -55,7 +55,7 @@ class bingo_entry_spot_t : public entry_spot_t<player_actor_t>
         const auto request = create_request.decode<ensure_player_actor_req_t> ();
         actor.display_name =
           request.display_name.empty () ? request.actor_id : request.display_name;
-        created_actor_ids.push_back (actor.actor.actor_id);
+        created_actor_ids.push_back (actor.actor_id);
         co_return actor_create_response_t::accept ();
     }
 
@@ -68,11 +68,11 @@ class bingo_entry_spot_t : public entry_spot_t<player_actor_t>
 
     task_t<void> on_actor_joined (player_actor_t &actor) override
     {
-        joined_actor_ids.push_back (actor.actor.actor_id);
+        joined_actor_ids.push_back (actor.actor_id);
         if (!actor.destroy_after_entry_spot_join) {
             co_return;
         }
-        const auto actor_id = actor.actor.actor_id;
+        const auto actor_id = actor.actor_id;
         std::cout << "entry spot: actor destroy requested. actor=" << actor_id << std::endl;
         co_await _context.destroy_actor (actor);
         std::cout << "entry spot: actor destroy completed. actor=" << actor_id << std::endl;
@@ -81,7 +81,7 @@ class bingo_entry_spot_t : public entry_spot_t<player_actor_t>
     task_t<void> on_leave_actor (player_actor_t &actor) override
     {
         joined_actor_ids.erase (
-          std::remove (joined_actor_ids.begin (), joined_actor_ids.end (), actor.actor.actor_id),
+          std::remove (joined_actor_ids.begin (), joined_actor_ids.end (), actor.actor_id),
           joined_actor_ids.end ());
         co_return;
     }
@@ -104,9 +104,7 @@ class bingo_entry_spot_t : public entry_spot_t<player_actor_t>
 
     static actor_ref_t actor_ref_for (const player_actor_t &actor)
     {
-        return actor_ref_t (actor.actor.node_rid,
-                            sample_names_t::player_actor_type, actor.actor.actor_id,
-                            actor.actor.generation);
+        return actor.context ().actor_ref ();
     }
 
     entry_spot_context_t _context;

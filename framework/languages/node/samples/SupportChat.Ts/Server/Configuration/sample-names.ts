@@ -1,8 +1,10 @@
 const SampleNames = {
   apiChannel: 'supportchat.api',
-  supportChannel: 'supportchat.support',
   sessionStreamNode: 'supportchat-session-stream',
   conversationSpotMesh: 'supportchat-conversations',
+  meshName: 'supportchat-conversations',
+  conversationSpotType: 'supportchat.conversation',
+  supportActorType: 'support.user',
   conversationIdMetadataKey: 'conversation-id'
 } as const;
 

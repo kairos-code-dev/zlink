@@ -10,6 +10,9 @@ namespace zlink
 class router_socket_t : public routed_message_socket_t
 {
   public:
+    using completion_control_handler_t =
+      std::function<void (const routing_id_t &, std::vector<message_t>)>;
+
     explicit router_socket_t (context_t &ctx_);
 
     send_operation_t send (const routing_id_t &target_rid_);
@@ -31,6 +34,16 @@ class router_socket_t : public routed_message_socket_t
 
     request_operation_t request (const routing_id_t &routing_id_);
     reply_operation_t reply (const routing_id_t &routing_id_, uint64_t request_seq_);
+
+    /// @brief Tries to submit an opaque multipart record on the peer's existing
+    /// Completion connection without consuming @p parts_.
+    /// @return false only when the Completion connection is backpressured.
+    bool try_send_completion_control (const routing_id_t &peer_rid_,
+                                      const std::vector<message_t> &parts_);
+
+    /// @brief Installs or replaces the opaque Completion control callback.
+    /// The callback owns the received message vector.
+    void set_completion_control_handler (completion_control_handler_t handler_);
 
     void set_routing_id (const routing_id_t &routing_id_);
 

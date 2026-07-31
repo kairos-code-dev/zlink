@@ -91,6 +91,7 @@ internal static class ActorNodeEndpoints
             return Results.Ok(new RelocationPayloadSpotRes(
                 created.Spot.SpotId,
                 created.Spot.NodeRid.ToString(),
+                checked((long)created.Spot.ObjectGeneration),
                 state.Length,
                 TransferActorStateCodec.Sha256(state)));
         });
@@ -177,6 +178,7 @@ internal static class ActorNodeEndpoints
                     $"{request.SpotIdPrefix}-{index:D6}")
                 .ToArray();
             var nodeRids = new string[spotIds.Length];
+            var spotObjectGenerations = new long[spotIds.Length];
             var actorIds = new ConcurrentBag<string>();
             await Parallel.ForEachAsync(
                 Enumerable.Range(0, spotIds.Length),
@@ -204,22 +206,27 @@ internal static class ActorNodeEndpoints
                             .Timeout(TimeSpan.FromSeconds(30))
                             .Async<RelocationPayloadSpotRes>(token);
                         nodeRids[index] = result.NodeRid;
+                        spotObjectGenerations[index] =
+                            result.ObjectGeneration;
                         return;
                     }
 
                     var created = await spotManager
                         .GetOrCreate(
                             spotIds[index],
-                            request.PerActor
+                            request.SpotType
+                            ?? (request.PerActor
                                 ? SpotActorTransferNames
                                     .RelocationPayloadPerActorUserSpotType
                                 : SpotActorTransferNames
-                                    .RelocationPayloadUserSpotType)
+                                    .RelocationPayloadUserSpotType))
                         .InMesh(SpotActorTransferNames.Mesh)
                         .Request(payload)
                         .Async(token);
                     nodeRids[index] =
                         created.Spot.NodeRid.ToString();
+                    spotObjectGenerations[index] =
+                        checked((long)created.Spot.ObjectGeneration);
                     // Membership commits for one Spot share one authority
                     // aggregate. Set up that aggregate in order; the outer
                     // Spot loop still creates independent Spots in parallel.
@@ -260,6 +267,7 @@ internal static class ActorNodeEndpoints
             return Results.Ok(new RelocationBulkSpotCreateRes(
                 spotIds,
                 nodeRids,
+                spotObjectGenerations,
                 actorIds.Order(StringComparer.Ordinal).ToArray()));
         });
         app.MapGet("/workload/message-flow", (
@@ -559,6 +567,17 @@ internal static class ActorNodeEndpoints
                 .Async(cancellationToken);
             return Results.Ok();
         });
+        app.MapPost("/workload/actors/block", async (
+            RelocationQueueBlockReq request,
+            IZLinkActorClient actors,
+            CancellationToken cancellationToken) =>
+        {
+            var reply = await actors
+                .RequestToActor(request.TargetId, request)
+                .Timeout(TimeSpan.FromSeconds(30))
+                .Async<RelocationQueueBlockRes>(cancellationToken);
+            return Results.Ok(reply);
+        });
         app.MapPost("/workload/spots/request", async (
             RelocationWorkloadCallReq request,
             IZLinkSpotClient spots,
@@ -599,6 +618,33 @@ internal static class ActorNodeEndpoints
                     request.OperationId)
                 .Async(cancellationToken);
             return Results.Ok();
+        });
+        app.MapPost("/workload/spots/block", async (
+            RelocationQueueBlockReq request,
+            IZLinkSpotClient spots,
+            CancellationToken cancellationToken) =>
+        {
+            var reply = await spots
+                .RequestToSpot(request.TargetId, request)
+                .Timeout(TimeSpan.FromSeconds(30))
+                .Async<RelocationQueueBlockRes>(cancellationToken);
+            return Results.Ok(reply);
+        });
+        app.MapPost("/workload/spots/relocation-ready", async (
+            RelocationWorkloadReadyCallReq request,
+            IZLinkSpotClient spots,
+            CancellationToken cancellationToken) =>
+        {
+            var reply = await spots
+                .RequestToSpot(
+                    request.SpotId,
+                    new RelocationReadySignalReq(
+                        request.Scenario,
+                        request.DeferTwice,
+                        request.StartFrameworkOperationAfterDefer))
+                .Timeout(TimeSpan.FromSeconds(10))
+                .Async<RelocationReadySignalRes>(cancellationToken);
+            return Results.Ok(reply);
         });
         app.MapPost("/actors/{actorId}/bound-push", async (string actorId, BoundPushReq request,
             IZLinkActorManager actors, IZLinkActorClient actorClient, CancellationToken cancellationToken) =>

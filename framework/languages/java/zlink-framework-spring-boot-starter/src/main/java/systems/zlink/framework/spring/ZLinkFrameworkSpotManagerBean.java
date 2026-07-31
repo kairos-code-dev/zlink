@@ -1,6 +1,6 @@
 package systems.zlink.framework.spring;
 
-import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle;
 
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;

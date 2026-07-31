@@ -22,8 +22,8 @@ class CustomerActorFactory implements ZLinkActorFactory {
     CustomerActorFactory.directory = directory;
   }
 
-  async create(actorId: string, context: ZLinkActorContext): Promise<CustomerActor> {
-    const actor = new CustomerActor(actorId, context);
+  async create(context: ZLinkActorContext): Promise<CustomerActor> {
+    const actor = new CustomerActor(context.actorId, context);
     CustomerActorFactory.directory?.set(actor);
     return actor;
   }

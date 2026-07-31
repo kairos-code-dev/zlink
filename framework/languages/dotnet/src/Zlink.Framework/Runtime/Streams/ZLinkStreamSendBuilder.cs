@@ -31,7 +31,6 @@ internal sealed class ZLinkStreamSendBuilder<TMessage>(
     {
         using var frame = Build(createHeader, out var header);
         if (!write(frame)) throw new InvalidOperationException(errorMessage);
-        ZLinkRuntimeMetrics.RecordStreamBytes(inbound: false, frame.Size, "tcp");
         return header;
     }
 

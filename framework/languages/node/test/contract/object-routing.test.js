@@ -11,7 +11,7 @@ function actorRow(actorId, nodeRid = 'node-a') {
     meshName: 'play',
     actorId,
     actorType: 'Player',
-    actorRef: { nodeRid, actorId, generation: 1n },
+    actorRef: { nodeRid, actorId, objectGeneration: 1n },
     ownerNodeRid: nodeRid,
     ownerNodeGeneration: 1n,
     spotKind: framework.ZLinkSpotKind.Entry,
@@ -143,7 +143,7 @@ test('authority Actor route carries every fence and a changed StoreVersion inval
         storeVersion: { value: storeVersion },
         payload: internal.encodeActorAuthorityIdentity({
           actorType: 'Player',
-          actor: { actorId: 'actor-1', nodeRid: 'node-a', generation: 7n },
+          actor: { actorId: 'actor-1', nodeRid: 'node-a', objectGeneration: 7n },
           meshName: 'play',
           ownerNodeGeneration: 11n,
           owner: { ownerId: 'owner-a', leaseGeneration: 13n }
@@ -156,7 +156,7 @@ test('authority Actor route carries every fence and a changed StoreVersion inval
           state: 'active',
           objectKind: 'actor',
           stableType: 'Player',
-          descriptor: { meshName: 'play', rid: 'node-a' },
+          descriptor: { meshName: 'play', nodeRid: 'node-a' },
           descriptorLifecycleGeneration: 11n,
           capacity: { actors: 1, spots: 0 }
         },

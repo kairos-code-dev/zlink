@@ -57,6 +57,55 @@ public sealed class ServiceRuntimeFoundationTests
     }
 
     [Fact]
+    public void CompletionControl_AllowsOnlyBoundedInfrastructureCommands()
+    {
+        using var liveness = Message.From(
+            ZLinkServiceWireCodec.EncodeLiveness(
+                ServiceWireConstants.Command.LivenessProbe,
+                1));
+        Assert.True(ZLinkManagedMeshNode.IsAllowedCompletionControl(
+            [liveness],
+            out var command));
+        Assert.Equal(ServiceWireConstants.Command.LivenessProbe, command);
+
+        using var application = Message.From(
+            ZLinkServiceWireCodec.EncodeApplication(
+                ServiceWireConstants.Command.NodeSend,
+                0,
+                null,
+                false));
+        Assert.False(ZLinkManagedMeshNode.IsAllowedCompletionControl(
+            [application],
+            out _));
+
+        using var applicationReply = Message.From(
+            ZLinkServiceWireCodec.EncodeReply(1, 0, 0));
+        Assert.False(ZLinkManagedMeshNode.IsAllowedCompletionControl(
+            [applicationReply],
+            out _));
+
+        using var oversized = Message.From(new byte[(256 * 1024) + 1]);
+        Assert.False(ZLinkManagedMeshNode.IsAllowedCompletionControl(
+            [oversized],
+            out _));
+
+        var tooMany = Enumerable.Range(0, 65)
+            .Select(_ => Message.From(ReadOnlySpan<byte>.Empty))
+            .ToArray();
+        try
+        {
+            Assert.False(ZLinkManagedMeshNode.IsAllowedCompletionControl(
+                tooMany,
+                out _));
+        }
+        finally
+        {
+            foreach (var part in tooMany)
+                part.Dispose();
+        }
+    }
+
+    [Fact]
     public void RouteAdmission_RoundTripsDeterministicDescriptor()
     {
         var channels = new Dictionary<string, uint>(StringComparer.Ordinal)
@@ -218,6 +267,26 @@ public sealed class ServiceRuntimeFoundationTests
                 current,
                 ServiceWireConstants.Command.Update,
                 immutableMutation));
+        Assert.True(ZLinkServiceAdmissionGuard.MatchesExpectedRoute(
+            "tcp://127.0.0.1:7070",
+            "none",
+            current.LifecycleGeneration,
+            current));
+        Assert.False(ZLinkServiceAdmissionGuard.MatchesExpectedRoute(
+            "tcp://127.0.0.1:7071",
+            "none",
+            current.LifecycleGeneration,
+            current));
+        Assert.False(ZLinkServiceAdmissionGuard.MatchesExpectedRoute(
+            "tcp://127.0.0.1:7070",
+            "different-security",
+            current.LifecycleGeneration,
+            current));
+        Assert.False(ZLinkServiceAdmissionGuard.MatchesExpectedRoute(
+            "tcp://127.0.0.1:7070",
+            "none",
+            current.LifecycleGeneration + 1,
+            current));
 
         Assert.Equal(
             ZLinkServiceAdmissionDecision.Reject,
@@ -385,6 +454,48 @@ public sealed class ServiceRuntimeFoundationTests
         Assert.False(endpoint.EndsWith(":0", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, true)]
+    public async Task ManagedNode_RejectsAdmissionThatDoesNotMatchDiscovery(
+        bool mismatchEndpoint,
+        bool mismatchSecurityIdentity,
+        bool mismatchLifecycleGeneration)
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var source = new ZLinkManagedMeshNode(context, "orders");
+        await using var target = new ZLinkManagedMeshNode(context, "orders");
+        var suffix = Guid.NewGuid().ToString("N");
+        var sourceRid = RoutingId.From($"source-{suffix}");
+        var targetRid = RoutingId.From($"target-{suffix}");
+        var sourceEndpoint = $"inproc://source-{suffix}";
+        var targetEndpoint = $"inproc://target-{suffix}";
+
+        source.SetRoutingId(sourceRid);
+        source.SetBind(sourceEndpoint);
+        source.ConnectPeer(targetEndpoint, targetRid);
+        target.SetRoutingId(targetRid);
+        target.SetBind(targetEndpoint);
+        var sourceLifecycleGeneration = source.Status().LifecycleGeneration;
+        target.SetPeerExpectation(
+            sourceRid,
+            mismatchEndpoint ? $"inproc://unexpected-{suffix}" : sourceEndpoint,
+            mismatchSecurityIdentity ? "tls:unexpected" : "none",
+            mismatchLifecycleGeneration
+                ? sourceLifecycleGeneration == ulong.MaxValue
+                    ? sourceLifecycleGeneration - 1
+                    : sourceLifecycleGeneration + 1
+                : sourceLifecycleGeneration);
+        using var monitor = target.OpenMonitor();
+
+        target.Start();
+        source.Start();
+
+        await WaitUntilAsync(() => monitor.Status().PeerRejected != 0);
+        Assert.Equal(0u, target.Status().AdmittedPeerCount);
+    }
+
     [Fact]
     public async Task ManagedNode_LocalAndTransportOperationsShareOneIdNamespace()
     {
@@ -457,6 +568,222 @@ public sealed class ServiceRuntimeFoundationTests
         Assert.Equal((int)RequestResult.Ok, received[0].TerminalResult);
         Assert.False(completionClaim.Receive(received, RecvFlags.DontWait));
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ManagedNodes_RemoteNodeAndChannelRequestsUseNativeReplyCompletion(bool channelRequest)
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var source = new ZLinkManagedMeshNode(context, "orders");
+        await using var target = new ZLinkManagedMeshNode(context, "orders");
+        var suffix = Guid.NewGuid().ToString("N");
+        var sourceRid = RoutingId.From($"request-source-{suffix}");
+        var targetRid = RoutingId.From($"request-target-{suffix}");
+        var sourceEndpoint = $"inproc://request-source-{suffix}";
+        var targetEndpoint = $"inproc://request-target-{suffix}";
+
+        source.SetRoutingId(sourceRid);
+        source.SetBind(sourceEndpoint);
+        source.ConnectPeer(targetEndpoint, targetRid);
+        target.SetRoutingId(targetRid);
+        target.SetBind(targetEndpoint);
+        if (channelRequest)
+            target.AddChannel("worker");
+        target.Start();
+        source.Start();
+
+        await WaitUntilAsync(() => source.Status().AdmittedPeerCount == 1
+                                   && target.Status().AdmittedPeerCount == 1);
+
+        using var requestPart = Message.From(new byte[] { 1, 2, 3, 4 });
+        MeshOperationId operationId;
+        var submit = channelRequest
+            ? source.EntrySpot().RequestToChannel("worker", [requestPart], out operationId, TimeSpan.FromSeconds(3))
+            : source.RequestToNode(targetRid, [requestPart], out operationId, TimeSpan.FromSeconds(3));
+        Assert.Equal(SubmitResult.Ok, submit);
+
+        using var targetReady = new MeshReadyBatch();
+        await WaitUntilAsync(() =>
+        {
+            targetReady.Reset();
+            target.DrainReady(MeshReadyDomains.Application, targetReady, RecvFlags.DontWait);
+            return targetReady.Count == 1;
+        });
+        using var targetClaim = targetReady.TakeClaim(0);
+        using var targetBatch = new MeshReceiveBatch();
+        Assert.True(targetClaim.Receive(targetBatch, RecvFlags.DontWait));
+        Assert.Equal(1, targetBatch.Count);
+        var request = targetBatch[0];
+        Assert.Equal(channelRequest ? MeshRecordKind.ChannelRequest : MeshRecordKind.NodeRequest, request.Kind);
+        Assert.Equal(channelRequest ? MeshOperationKind.ChannelRequest : MeshOperationKind.NodeRequest, request.OperationKind);
+        Assert.Equal(sourceRid, request.SourceNodeRid);
+        Assert.Equal(operationId.Low, request.OperationId.Low);
+        Assert.Equal(channelRequest ? "worker" : null, request.ChannelName);
+        var receivedRequestParts = targetBatch.RetainMessage(0);
+        try
+        {
+            Assert.Single(receivedRequestParts);
+            Assert.Equal(new byte[] { 1, 2, 3, 4 }, receivedRequestParts[0].ToArray());
+        }
+        finally
+        {
+            foreach (var part in receivedRequestParts)
+                part.Dispose();
+        }
+
+        using var replyPart = Message.From(new byte[] { 9, 8, 7 });
+        Assert.Equal(SubmitResult.Ok, request.Reply([replyPart]));
+        Assert.Equal(SubmitResult.InvalidState, request.Reply([replyPart]));
+
+        using var sourceReady = new MeshReadyBatch();
+        await WaitUntilAsync(() =>
+        {
+            sourceReady.Reset();
+            source.DrainReady(MeshReadyDomains.Infrastructure, sourceReady, RecvFlags.DontWait);
+            return sourceReady.Count == 1;
+        });
+        using var sourceClaim = sourceReady.TakeClaim(0);
+        using var sourceBatch = new MeshReceiveBatch();
+        Assert.True(sourceClaim.Receive(sourceBatch, RecvFlags.DontWait));
+        Assert.Equal(1, sourceBatch.Count);
+        var completion = sourceBatch[0];
+        Assert.Equal(MeshRecordKind.Completion, completion.Kind);
+        Assert.Equal(operationId, completion.OperationId);
+        Assert.Equal(channelRequest ? MeshOperationKind.ChannelRequest : MeshOperationKind.NodeRequest, completion.OperationKind);
+        Assert.Equal((int)RequestResult.Ok, completion.TerminalResult);
+        Assert.Equal(0, completion.FailureErrno);
+        var receivedReplyParts = sourceBatch.RetainMessage(0);
+        try
+        {
+            Assert.Single(receivedReplyParts);
+            Assert.Equal(new byte[] { 9, 8, 7 }, receivedReplyParts[0].ToArray());
+        }
+        finally
+        {
+            foreach (var part in receivedReplyParts)
+                part.Dispose();
+        }
+        sourceBatch.Reset();
+        Assert.False(sourceClaim.Receive(sourceBatch, RecvFlags.DontWait));
+    }
+
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ManagedNodes_RemoteSpotAndActorRequestsRequireOneNativeReplyCompletion(
+        bool actorRequest)
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var source = new ZLinkManagedMeshNode(context, "objects");
+        await using var target = new ZLinkManagedMeshNode(context, "objects");
+        var suffix = Guid.NewGuid().ToString("N");
+        var sourceRid = RoutingId.From($"stateful-source-{suffix}");
+        var targetRid = RoutingId.From($"stateful-target-{suffix}");
+        var sourceEndpoint = $"inproc://stateful-source-{suffix}";
+        var targetEndpoint = $"inproc://stateful-target-{suffix}";
+        source.SetRoutingId(sourceRid);
+        source.ConnectPeer(targetEndpoint, targetRid);
+        source.SetBind(sourceEndpoint);
+        target.SetRoutingId(targetRid);
+        target.SetBind(targetEndpoint);
+        source.SetLocalOwnerLeaseGeneration(17);
+        target.SetLocalOwnerLeaseGeneration(17);
+
+        var actor = target.CreateActor($"actor-{suffix}");
+        var spot = (ZLinkManagedSpot)target.GetOrCreateSpot($"spot-{suffix}", out _);
+        Assert.True(target.TryGetActorAuthority(
+            actor, out var actorAuthority, out var actorLease));
+        source.ObserveActorAuthority(
+            actor, target.Status().LifecycleGeneration, actorAuthority, actorLease);
+        source.ObserveSpotAuthority(
+            targetRid, spot.SpotId, spot.LifecycleGeneration,
+            target.Status().LifecycleGeneration, spot.AuthorityOwnerGeneration, 17);
+        target.Start();
+        source.Start();
+        await WaitUntilAsync(
+            () => source.Status().AdmittedPeerCount == 1
+                  && target.Status().AdmittedPeerCount == 1);
+
+        using var requestPart = Message.From(new byte[] { 3, 1, 4, 1, 5 });
+        MeshOperationId operationId;
+        var submit = actorRequest
+            ? source.RequestToActor(
+                actor, [requestPart], out operationId, TimeSpan.FromSeconds(3))
+            : source.EntrySpot().RequestToSpot(
+                targetRid, spot.SpotId, spot.LifecycleGeneration,
+                [requestPart], out operationId, TimeSpan.FromSeconds(3));
+        Assert.Equal(SubmitResult.Ok, submit);
+
+        using var targetReady = new MeshReadyBatch();
+        var requestReadyIndex = -1;
+        await WaitUntilAsync(() =>
+        {
+            targetReady.Reset();
+            target.DrainReady(
+                MeshReadyDomains.Application, targetReady, RecvFlags.DontWait);
+            requestReadyIndex = Enumerable.Range(0, targetReady.Count)
+                .FirstOrDefault(
+                    index => actorRequest
+                        ? targetReady[index].OwnerKind == MeshOwnerKind.Actor
+                        : targetReady[index].OwnerKind == MeshOwnerKind.Spot
+                          && targetReady[index].SpotId == spot.SpotId,
+                    -1);
+            return requestReadyIndex >= 0;
+        });
+        using var targetClaim = targetReady.TakeClaim(requestReadyIndex);
+        using var targetBatch = new MeshReceiveBatch();
+        Assert.True(targetClaim.Receive(targetBatch, RecvFlags.DontWait));
+        var request = Assert.Single(
+            Enumerable.Range(0, targetBatch.Count)
+                .Select(index => targetBatch[index]));
+        Assert.Equal(
+            actorRequest ? MeshRecordKind.ActorRequest : MeshRecordKind.SpotRequest,
+            request.Kind);
+        Assert.Equal(operationId, request.OperationId);
+        Assert.Equal(operationId.Low, request.ReplyRouteId);
+
+        using var replyPart = Message.From(new byte[] { 9, 2, 6, 5 });
+        Assert.Equal(SubmitResult.Ok, request.Reply([replyPart]));
+        // A native request window accepts one terminal reply only.
+        Assert.Equal(SubmitResult.InvalidState, request.Reply([replyPart]));
+
+        using var sourceReady = new MeshReadyBatch();
+        await WaitUntilAsync(() =>
+        {
+            sourceReady.Reset();
+            source.DrainReady(
+                MeshReadyDomains.Infrastructure, sourceReady, RecvFlags.DontWait);
+            return sourceReady.Count == 1;
+        });
+        using var sourceClaim = sourceReady.TakeClaim(0);
+        using var sourceBatch = new MeshReceiveBatch();
+        Assert.True(sourceClaim.Receive(sourceBatch, RecvFlags.DontWait));
+        var completion = Assert.Single(
+            Enumerable.Range(0, sourceBatch.Count)
+                .Select(index => sourceBatch[index]));
+        Assert.Equal(MeshRecordKind.Completion, completion.Kind);
+        Assert.Equal(operationId, completion.OperationId);
+        Assert.Equal(
+            actorRequest ? MeshOperationKind.ActorRequest : MeshOperationKind.SpotRequest,
+            completion.OperationKind);
+        Assert.Equal((int)RequestResult.Ok, completion.TerminalResult);
+        Assert.Equal(0, completion.FailureErrno);
+        var retainedReply = sourceBatch.RetainMessage(0);
+        try
+        {
+            Assert.Equal(
+                new byte[] { 9, 2, 6, 5 },
+                Assert.Single(retainedReply).ToArray());
+        }
+        finally
+        {
+            foreach (var part in retainedReply)
+                part.Dispose();
+        }
+        sourceBatch.Reset();
+        Assert.False(sourceClaim.Receive(sourceBatch, RecvFlags.DontWait));
+    }
 
     [Fact]
     public async Task ManagedNodes_AdmitAndRouteChannelOverRawRouter()
@@ -476,9 +803,8 @@ public sealed class ServiceRuntimeFoundationTests
         target.SetRoutingId(targetRid);
         target.SetBind(targetEndpoint);
         target.AddChannel("worker");
-        target.ConnectPeer(sourceEndpoint, sourceRid);
-        source.Start();
         target.Start();
+        source.Start();
 
         await WaitUntilAsync(
             () => source.Status().AdmittedPeerCount == 1

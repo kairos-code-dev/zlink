@@ -85,4 +85,24 @@ final class ZLinkActorRetrySchedulerTest {
 
         assertInstanceOf(ZlinkSubmitException.class, failure.getCause());
     }
+
+    @Test
+    void storedRelayRetriesTransientNotConnectedResult() {
+        AtomicInteger attempts = new AtomicInteger();
+
+        ZLinkActorRetryScheduler.submitStoredRelayUntilAccepted(
+                Duration.ofMillis(100),
+                () -> {
+                    if (attempts.incrementAndGet() == 1) {
+                        throw new ZlinkSubmitException(
+                            SubmitResult.NOT_CONNECTED);
+                    }
+                    return true;
+                },
+                IllegalStateException::new)
+            .toCompletableFuture()
+            .join();
+
+        assertTrue(attempts.get() >= 2);
+    }
 }

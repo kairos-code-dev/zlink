@@ -1,6 +1,5 @@
 using System.Text;
 using System.Text.Json;
-using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Codecs;
 
 namespace Zlink.HttpClient.Runtime;
@@ -44,19 +43,6 @@ internal sealed class HttpClientCodecRegistry : IZLinkCodecRegistryBuilder, IZLi
         Func<Type, bool> canSerialize)
     {
         AddSerializer(contentType, serializer, canSerialize, false);
-    }
-
-    public void AddStreamCodec(
-        string contentType,
-        ZlinkStreamCodec codec)
-    {
-        if (string.IsNullOrWhiteSpace(contentType))
-            throw new ArgumentException("HTTP stream codec content type must not be blank.", nameof(contentType));
-
-        var normalizedContentType = NormalizeContentType(contentType);
-        if (!_serializers.ContainsKey(normalizedContentType))
-            throw new ZLinkConfigurationException(
-                $"HTTP client stream codec '{normalizedContentType}' must be paired with an HTTP payload serializer.");
     }
 
     public HttpClientCodecRegistry Snapshot()

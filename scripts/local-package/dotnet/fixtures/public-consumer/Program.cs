@@ -31,13 +31,14 @@ Action<IStreamSocket, StreamPacketHandler> streamDispatch =
 Action<IContext> shutdown = static context => context.Shutdown();
 Action<ISocket> socketClose = static socket => socket.Close();
 Action<ISocketMonitor> monitorClose = static monitor => monitor.Close();
+Func<SubmitResult, bool> submitSucceeded = static result => result == SubmitResult.Ok;
 
 _ = new Delegate[]
 {
     multipartSend, appendPart, multipartReceive,
     monitorOpen, monitorStatus, monitorReady,
     streamSend, streamReceive, streamDispatch,
-    shutdown, socketClose, monitorClose
+    shutdown, socketClose, monitorClose, submitSucceeded
 };
 
 Console.WriteLine(JsonSerializer.Serialize(new

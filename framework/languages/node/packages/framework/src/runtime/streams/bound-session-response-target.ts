@@ -68,9 +68,9 @@ export class DefaultZLinkBoundSessionResponseTarget implements ZLinkBoundSession
   }
 }
 
-export function boundSessionErrorPayload(error: unknown): { readonly code?: string; readonly message: string } {
+export function boundSessionErrorPayload(error: unknown): { readonly code: string; readonly message: string } {
   return {
-    code: error instanceof Error ? error.constructor.name : undefined,
+    code: error instanceof Error ? error.constructor.name : 'RemoteError',
     message: error instanceof Error ? error.message : String(error)
   };
 }

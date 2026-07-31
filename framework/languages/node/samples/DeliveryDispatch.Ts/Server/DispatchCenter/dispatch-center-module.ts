@@ -1,8 +1,6 @@
-import { Module } from '@nestjs/common';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
-import { AssignDeliveryHandler, OfferDeliveryResultHandler } from './Handlers/assign-delivery-handler';
 import { DispatchWorker } from './dispatch-worker';
 import { DeliveryOfferStore } from './delivery-offer-store';
 import { createDeliveryDispatchLocationStore, deliveryDispatchLocationOptions } from '../Configuration/location-store';
@@ -23,7 +21,7 @@ function createDispatchCenterModule() {
     'workDir'
   ]);
 
-  Module({
+  zlinkModule(__dirname, {
     imports: [
       configuration,
       ZLinkModule.forRootFactory({
@@ -37,11 +35,14 @@ function createDispatchCenterModule() {
             .traceLabel('dispatch-center');
           builder.addLocationStore(createDeliveryDispatchLocationStore(config));
           deliveryDispatchLocationOptions(builder.configureLocations());
-          const mesh = builder.addRouteMesh(SampleNames.routeMesh)
+          const mesh = builder.addRouteMesh(SampleNames.courierMeshName)
             .listen(config.dispatchSpotEndpoint).setRoutingIdPrefix('delivery-dispatch');
-          mesh.channelName(SampleNames.dispatchChannel).addHandlerGroup('dispatch');
-          mesh.channelName(SampleNames.trackingChannel).setWeight(0);
-          mesh.channelName(SampleNames.routeMesh);
+          mesh.objects().client();
+          builder.addClientServerChannel(SampleNames.dispatchChannel)
+            .server()
+            .listen()
+            .addHandlerGroup('dispatch');
+          builder.addClientServerChannel(SampleNames.trackingChannel).client();
           return builder.build();
         }
       })
@@ -57,9 +58,7 @@ function createDispatchCenterModule() {
         inject: [DELIVERYDISPATCH_SAMPLE_CONFIG],
         useFactory: (config: DeliveryDispatchServerConfig) => new DeliveryOfferStore(config.workDir)
       },
-      DispatchWorker,
-      AssignDeliveryHandler,
-      OfferDeliveryResultHandler
+      DispatchWorker
     ]
   })(DispatchCenterModule);
 

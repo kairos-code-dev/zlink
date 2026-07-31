@@ -6,7 +6,7 @@ import systems.zlink.framework.kotlin.addHandler
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpot
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
+import systems.zlink.framework.spots.ZLinkActorCreateResponse
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.actors.PlayActor
@@ -19,34 +19,21 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerWinMileston
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.WinMilestoneNotify
 
 class PlayEntrySpot(
-    private val context: ZLinkEntrySpotContext,
+    override val context: ZLinkEntrySpotContext,
     private val settings: SampleSettings,
 ) : ZLinkSuspendingEntrySpot<PlayActor>() {
     private val milestoneObservers = mutableListOf<PlayActor>()
 
-    override fun context(): ZLinkEntrySpotContext = context
-
-    override fun configure() {
-        context.handlers().addHandler<PlayActorJoinGameHandler>()
-        context.handlers().addHandler<PlayActorObserveMilestoneHandler>()
-        context.handlers().addHandler<PlayerWinMilestoneMsgHandler>()
-    }
-
     override suspend fun onCreateActorSuspending(
         actor: PlayActor,
         createRequest: ZLinkMessage,
-    ) {
+    ): ZLinkActorCreateResponse {
         if (createRequest.isEmpty) {
-            return
+            return ZLinkActorCreateResponse.accept()
         }
         actor.applyPlayer(createRequest.decode(PlayerInfo::class.java))
+        return ZLinkActorCreateResponse.accept()
     }
-
-    override suspend fun onActorJoinSuspending(
-        actorId: String,
-        request: ZLinkMessage,
-    ): ZLinkSpotActorJoinResponse =
-        ZLinkSpotActorJoinResponse.accept()
 
     override suspend fun onJoinedActorSuspending(actor: PlayActor) {
         if (actor.destroyAfterEntrySpotJoin) {

@@ -24,6 +24,8 @@ import {
 } from '@zlink-systems/nestjs';
 import { ZLinkMessage, ZLinkPacket, ZLinkSpotActorRequest } from '@zlink-systems/framework';
 import type {
+  ActorPingReq,
+  ActorPingRes,
   MultiNodeCreateSpotRes,
   MultiNodeCreateSpotReq,
   ScaleOutActorProbeReq,
@@ -178,6 +180,36 @@ export class MultiNodeEntrySpot implements ZLinkEntrySpot<MultiNodeScenarioActor
       throw new Error('MultiNodeEntrySpot evidence store is not configured.');
     }
     return this.evidence;
+  }
+}
+
+@Injectable()
+@zlinkEntrySpotActorRequestHandler({
+  actor: () => MultiNodeScenarioActor,
+  entrySpot: () => MultiNodeEntrySpot,
+  packetName: 'ActorPingReq'
+})
+export class MultiNodeEntryActorPingHandler {
+  constructor(private readonly evidence: EvidenceStore) {}
+
+  @ZLinkSpotActorRequest('ActorPingReq')
+  async handle(
+    _spot: MultiNodeEntrySpot,
+    actor: MultiNodeScenarioActor,
+    _context: ZLinkMessageContext,
+    request: ActorPingReq
+  ): Promise<ActorPingRes> {
+    this.evidence.add(
+      `actor-pingMsg|rid=${this.evidence.rid}|actor=${actor.actorId}`
+      + `|spot=${actor.context.spotId ?? this.evidence.rid}|value=${request.value}`
+    );
+    return {
+      actorId: actor.actorId,
+      nodeRid: this.evidence.rid,
+      spotId: String(actor.context.spotId ?? this.evidence.rid),
+      value: request.value,
+      seen: 1
+    };
   }
 }
 

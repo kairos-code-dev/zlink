@@ -37,14 +37,26 @@ final class ActorPacketFrames {
     }
 
     static Message encodeReply(Header packetHeader, Message payload) {
+        return encodeReply(
+            packetHeader,
+            payload,
+            packetHeader.packetName(),
+            ZLinkStreamCodec.fromValue(packetHeader.codec()));
+    }
+
+    static Message encodeReply(
+        Header packetHeader,
+        Message payload,
+        String replyPacketName,
+        ZLinkStreamCodec replyCodec) {
         if (!packetHeader.streamHeader() || packetHeader.requestSeq().isEmpty()) {
             return Message.from(payload);
         }
         ZLinkStreamHeader replyHeader = ZLinkStreamHeader.createResponse(
             packetHeader.toRequestHeader(),
-            ZLinkStreamCodec.fromValue(packetHeader.codec()),
+            replyCodec,
             EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
-            packetHeader.packetName(),
+            replyPacketName,
             Map.of());
         return Message.from(ZLinkStreamFrameCodec.encode(replyHeader, payload.toByteArray()));
     }

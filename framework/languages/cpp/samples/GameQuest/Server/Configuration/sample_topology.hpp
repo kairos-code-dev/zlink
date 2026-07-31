@@ -10,9 +10,9 @@
 namespace zlink::samples::gamequest
 {
 
-inline zlink::framework::spot_rid_t player_spot_rid (const std::string &player_id)
+inline zlink::framework::spot_id_t player_spot_id (const std::string &player_id)
 {
-    return zlink::framework::spot_rid_t::from_string ("player:" + player_id);
+    return "player:" + player_id;
 }
 
 struct sample_topology_t
@@ -96,17 +96,6 @@ struct sample_topology_t
     {
         return mission_name == "mission-b" ? mission_b_spot_endpoint : mission_a_spot_endpoint;
     }
-
-
-
-    zlink::routing_id_t selected_mission_rid () const
-    {
-        return zlink::routing_id_t::from (mission_name == "mission-b"
-                                            ? sample_names_t::mission_b_rid
-                                            : sample_names_t::mission_a_rid);
-    }
-
-
     std::string selected_api_spot_router_endpoint () const
     {
         return api_name == "api-b" ? api_b_spot_router_endpoint : api_a_spot_router_endpoint;

@@ -7,6 +7,8 @@ internal sealed partial class ZLinkFrameworkRuntime
     private readonly ZLinkActorMessageFollower _actorMessageFollower;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<
         Guid, byte> _publishedActorRecoveryWatches = new();
+    private ZLinkDeferredActorJoinCompletionJournal?
+        _deferredJoinCompletionJournal;
 
     internal ZLinkActorMessageFollower ActorMessageFollower
         => _actorMessageFollower;
@@ -872,6 +874,9 @@ internal sealed partial class ZLinkFrameworkRuntime
                         request.HandoffId,
                         cancellationToken)
                     .ConfigureAwait(false);
+            LogActorHandoff(
+                $"session_route_commit_{(sessionRouteCommit is null ? "not_required" : "acknowledged")} "
+                + $"actor={request.ActorId}");
             if (completionRoot is
                 {
                     Completion.Cursor: ZLinkDeferredJoinCompletionCursor.Delivered
@@ -1158,12 +1163,21 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     private ZLinkDeferredActorJoinCompletionJournal? CreateDeferredJoinCompletionJournal()
     {
-        return Registration.Locations.ResolveStore() is { } locationStore
-               && Registration.Locations.ResolveRelocationStore() is { } relocationStore
-            ? new ZLinkDeferredActorJoinCompletionJournal(
-                locationStore,
-                relocationStore)
-            : null;
+        var current = Volatile.Read(ref _deferredJoinCompletionJournal);
+        if (current is not null)
+            return current;
+        if (Registration.Locations.ResolveStore() is not { } locationStore
+            || Registration.Locations.ResolveRelocationStore()
+            is not { } relocationStore)
+            return null;
+        var created = new ZLinkDeferredActorJoinCompletionJournal(
+            locationStore,
+            relocationStore);
+        return Interlocked.CompareExchange(
+                   ref _deferredJoinCompletionJournal,
+                   created,
+                   null)
+               ?? created;
     }
 
     private void SchedulePublishedActorRelocationRecovery(
@@ -3415,6 +3429,10 @@ internal sealed partial class ZLinkFrameworkRuntime
             targetNodeRid,
             actorId,
             actorGeneration);
+        var hasBoundSessionFence =
+            ZLinkActorBoundSessionHandoffMetadata.TryDecode(
+                applicationMetadata,
+                out var boundSessionFence);
         var routeContext = new ZLinkBackendActorRouteContext(
             operationId,
             messageFollowHopCount,
@@ -3424,7 +3442,8 @@ internal sealed partial class ZLinkFrameworkRuntime
             replyRequestId,
             replyFlags,
             replyCapability,
-            deadlineUnixMs);
+            deadlineUnixMs,
+            IsBoundSessionRoute: hasBoundSessionFence);
         ValidateRemoteActorFrameSource(
             actorId,
             routeContext,
@@ -3445,12 +3464,22 @@ internal sealed partial class ZLinkFrameworkRuntime
                     ZLinkFrameworkErrorKind.Unavailable,
                     $"Actor '{actorId}' direct relay authority identity is stale.");
         }
-        else if (messageFollowHopCount != 0
+        else if (!hasBoundSessionFence
+                 || boundSessionFence.ActorId != actorId
+                 || boundSessionFence.ActorGeneration != actorGeneration
+                 || boundSessionFence.SessionRid != sourceSessionRid
+                 || messageFollowHopCount != 0
                  || ((replyRequestId != 0 || replyFlags != 0)
                      && !ZLinkActorBoundSessionRelay.IsNoBindRequest(
                          replyRequestId,
                          replyFlags))
                  || !state.TryGetBoundSession(out var session)
+                 || !string.Equals(
+                     session.BindingToken,
+                     boundSessionFence.BindingToken,
+                     StringComparison.Ordinal)
+                 || session.BindingGeneration
+                    != boundSessionFence.BindingGeneration
                  || !ZLinkActorBoundSessionRelay.MatchesRelaySource(
                      session,
                      sourceNodeRid,
@@ -3484,7 +3513,10 @@ internal sealed partial class ZLinkFrameworkRuntime
                 ApplicationMetadata: applicationMetadata)
         };
         var batch = ZLinkActorHandoffIngress.CaptureMovingFrames(this, parts);
-        if (batch.Count == 0) return;
+        if (batch.Count == 0)
+        {
+            return;
+        }
         if (!routeContext.IsDirectRoute)
             state.RecordRelocatedSessionAccepted(sourceSessionRid);
         // Per-actor FIFO across concurrently handled relay records: sibling
@@ -3652,13 +3684,17 @@ internal sealed partial class ZLinkFrameworkRuntime
     {
         if (!routeContext.IsDirectRoute)
         {
-            // Bound-session frames are authenticated by their session binding,
-            // not by a node-owner lease. They must never synthesize a durable
-            // request-source identity for relocation capture.
-            if (sourceNodeGeneration == 0 && requestSource is null) return;
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.Unavailable,
-                $"Actor '{actorId}' non-direct relay carried a request-source fence.");
+            if (sourceNodeRid.IsEmpty
+                || sourceNodeGeneration == 0
+                || requestSource is not { } boundSource
+                || boundSource.NodeRid != sourceNodeRid
+                || boundSource.NodeGeneration != sourceNodeGeneration
+                || string.IsNullOrWhiteSpace(boundSource.OwnerId)
+                || boundSource.LeaseGeneration == 0)
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.Unavailable,
+                    $"Actor '{actorId}' bound-session relay source identity is stale.");
+            return;
         }
 
         if (sourceNodeRid.IsEmpty

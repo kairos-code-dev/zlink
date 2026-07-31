@@ -18,7 +18,7 @@ bingo_room_spot_t::stop_observing_events (
     if (request.room_id != _observed_room_id) {
         throw std::runtime_error ("stop observing room id does not match the subscription");
     }
-    const auto observer = observers.find (actor.actor.actor_id);
+    const auto observer = observers.find (actor.actor_id);
     if (observer == observers.end ()) {
         throw std::runtime_error ("actor has no observer subscription in this room");
     }

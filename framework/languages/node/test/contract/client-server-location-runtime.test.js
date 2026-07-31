@@ -54,21 +54,21 @@ test('dedicated ClientServer descriptor store fences immutable identity and muta
 
   const claimed = await store.updateClientServer(
     descriptor(owner),
-    framework.ZLinkLocationWriteIntent.NewClaim
+    internal.ZLinkLocationWriteIntent.NewClaim
   );
-  assert.equal(claimed.status, framework.ZLinkLocationWriteStatus.Stored);
+  assert.equal(claimed.status, internal.ZLinkLocationWriteStatus.Stored);
 
   const stale = await store.updateClientServer(
     descriptor(owner, { descriptorRevision: 1n, weight: 50 }),
-    framework.ZLinkLocationWriteIntent.Renew
+    internal.ZLinkLocationWriteIntent.Renew
   );
-  assert.equal(stale.status, framework.ZLinkLocationWriteStatus.IgnoredStale);
+  assert.equal(stale.status, internal.ZLinkLocationWriteStatus.IgnoredStale);
 
   const renewed = await store.updateClientServer(
     descriptor(owner, { descriptorRevision: 2n, weight: 50 }),
-    framework.ZLinkLocationWriteIntent.Renew
+    internal.ZLinkLocationWriteIntent.Renew
   );
-  assert.equal(renewed.status, framework.ZLinkLocationWriteStatus.Stored);
+  assert.equal(renewed.status, internal.ZLinkLocationWriteStatus.Stored);
   const page = await store.listClientServers('orders', { pageSize: 1 });
   assert.equal(page.items.length, 1);
   assert.equal(page.items[0].weight, 50);
@@ -79,7 +79,7 @@ test('dedicated ClientServer descriptor store fences immutable identity and muta
       { channelName: 'orders', serverRid: 'server-a' },
       owner.token
     ),
-    framework.ZLinkLocationWriteStatus.Stored
+    internal.ZLinkLocationWriteStatus.Stored
   );
   assert.equal((await store.listClientServers('orders')).items.length, 0);
 });
@@ -876,7 +876,7 @@ test('automatic ClientServer client reconciles dedicated server descriptors by R
   assert.equal(remoteOwner.kind, 'claimed');
   await store.updateClientServer(
     descriptor(remoteOwner),
-    framework.ZLinkLocationWriteIntent.NewClaim
+    internal.ZLinkLocationWriteIntent.NewClaim
   );
 
   const registration = internal.createFrameworkRegistration({
@@ -903,7 +903,7 @@ test('automatic ClientServer client reconciles dedicated server descriptors by R
       descriptorRevision: 2n,
       endpoint: 'tcp://10.0.0.2:9401'
     }),
-    framework.ZLinkLocationWriteIntent.Renew
+    internal.ZLinkLocationWriteIntent.Renew
   );
   // Endpoint is immutable in one lifecycle, so the store fences the mutation.
   await discovery.tick();
@@ -935,7 +935,7 @@ test('same ClientServer RID and endpoint reset transport readiness on a new life
   assert.equal(oldOwner.kind, 'claimed');
   await store.updateClientServer(
     descriptor(oldOwner),
-    framework.ZLinkLocationWriteIntent.NewClaim
+    internal.ZLinkLocationWriteIntent.NewClaim
   );
   const registration = internal.createFrameworkRegistration({
     channels: { orders: { client: { manualConnections: [] } } },
@@ -957,9 +957,9 @@ test('same ClientServer RID and endpoint reset transport readiness on a new life
   assert.equal(newOwner.kind, 'claimed');
   const takeover = await store.updateClientServer(
     descriptor(newOwner, { lifecycleGeneration: 8n }),
-    framework.ZLinkLocationWriteIntent.Takeover
+    internal.ZLinkLocationWriteIntent.Takeover
   );
-  assert.equal(takeover.status, framework.ZLinkLocationWriteStatus.Stored);
+  assert.equal(takeover.status, internal.ZLinkLocationWriteStatus.Stored);
   await discovery.tick();
 
   assert.deepEqual(sockets.calls, [
@@ -991,7 +991,7 @@ test('ClientServer target remains unavailable when service admission mismatches 
   const remoteOwner = await store.claimOwnerLease('remote-owner', 30_000);
   assert.equal(remoteOwner.kind, 'claimed');
   const expected = descriptor(remoteOwner);
-  await store.updateClientServer(expected, framework.ZLinkLocationWriteIntent.NewClaim);
+  await store.updateClientServer(expected, internal.ZLinkLocationWriteIntent.NewClaim);
   const registration = internal.createFrameworkRegistration({
     channels: { orders: { client: { manualConnections: [] } } },
     locations: { useInMemoryStores: true }

@@ -8,23 +8,24 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.configuration.ZLinkSpotRelocationReadinessMode;
+import systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions;
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationStore;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.PlayerActorFactory;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.PlayerActorRelocationAdapter;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.PlayerActor;
-import systems.zlink.samples.bingo.server.play.infrastructure.zlink.matchmaking.RedisBingoMatchQueue;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.BingoRoomSpot;
+import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.BingoRoomRelocationAdapter;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomSettingsInitializer;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.entryspot.BingoEntrySpot;
-import systems.zlink.samples.bingo.server.play.application.roomallocation.BingoMatchQueue;
-import systems.zlink.samples.bingo.server.play.application.roomallocation.BingoRoomAllocator;
 import systems.zlink.samples.bingo.server.configuration.SampleLocationStore;
 import systems.zlink.samples.bingo.server.configuration.SampleApplication;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
-import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.server.configuration.SampleTopology;
 import systems.zlink.samples.bingo.server.configuration.BingoMetricsReporter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -53,20 +54,27 @@ public final class PlayServerApplication {
                 .traceLabel("play");
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
             options.configureLocations();
+            options.addRelocationStore(new ZLinkRedisRelocationStore(
+                new ZLinkRedisRelocationOptions()
+                    .setConnectionString(topology.redisEndpoint())
+                    .setKeyPrefix(topology.redisKeyPrefix() + "relocation:")));
             options.addHandlersFromPackageOf(PlayServerApplication.class);
             ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.Mesh);
             node.listen(topology.selectedPlaySpotRouterEndpoint())
-                .useAllocatedRoutingId(2, "play")
-                .setRoutingIdAllocationGroup(SampleNames.PlayAllocationGroup);
-            node.channelName(SampleNames.ApiChannel).setWeight(0);
-            node.channelName(SampleNames.RoomSpotDiscovery);
+                .setRoutingIdPrefix("play");
+            options.addClientServerChannel(SampleNames.ApiChannel).client();
             node.objects()
                 .server()
                 .addEntrySpot(BingoEntrySpot.class)
                 .addSpotFactory(
-                    "bingo.room",
+                    SampleNames.RoomSpotType,
                     BingoRoomSpot.class,
-                    factory -> factory.disableRelocation())
+                    factory -> {
+                        factory.executionMode(ZLinkUserSpotExecutionMode.SPOT_WIDE);
+                        factory.relocationReadiness(
+                            ZLinkSpotRelocationReadinessMode.APPLICATION_SIGNALED);
+                        factory.preserveStateWith(BingoRoomRelocationAdapter.class);
+                    })
                 .addActorFactory(
                     SampleNames.PlayerActorType,
                     PlayerActor.class,
@@ -79,16 +87,6 @@ public final class PlayServerApplication {
     @Bean
     ZLinkRedisLocationStore locationStore(SampleTopology topology) {
         return SampleLocationStore.create(topology);
-    }
-
-    @Bean
-    BingoRoomAllocator bingoRoomAllocator(BingoMatchQueue matchQueue) {
-        return new BingoRoomAllocator(matchQueue, SampleTimings.DrawPeriod.toMillis());
-    }
-
-    @Bean
-    BingoMatchQueue redisBingoMatchQueue(SampleTopology topology) {
-        return new RedisBingoMatchQueue(topology);
     }
 
     @Bean

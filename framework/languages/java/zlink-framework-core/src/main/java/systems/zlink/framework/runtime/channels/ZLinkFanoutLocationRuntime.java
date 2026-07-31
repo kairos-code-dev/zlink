@@ -21,11 +21,11 @@ import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.framework.locations.ZLinkLocationStore;
-import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor;
-import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptorKey;
-import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
-import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
+import systems.zlink.framework.runtime.internal.locations.ZLinkFanoutPublisherDescriptor;
+import systems.zlink.framework.runtime.internal.locations.ZLinkFanoutPublisherDescriptorKey;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationOwnerToken;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.locations.ZLinkPageRequest;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendContext;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendPublisherSocket;
@@ -46,7 +46,7 @@ final class ZLinkFanoutLocationRuntime implements AutoCloseable {
     private static final int MAX_DESCRIPTORS_PER_CHANNEL = 1024;
     private static final int MAX_RECEIVES_PER_TICK = 64;
 
-    private final ZLinkLocationStore store;
+    private final ZLinkLocationRepository store;
     private final Supplier<ZLinkLocationOwnerToken> owner;
     private final ZLinkChannelBackendAdapter backend;
     private final ZLinkMonitoringBackendAdapter monitoring;
@@ -56,7 +56,8 @@ final class ZLinkFanoutLocationRuntime implements AutoCloseable {
     private final int pageSize;
     private final BiConsumer<String, ZLinkBackendTopicMessage> dispatch;
     private final Map<String, Published> published = new LinkedHashMap<>();
-    private final Map<String, Connection> connections = new HashMap<>();
+    private final Map<String, Connection> connections =
+        new java.util.concurrent.ConcurrentHashMap<>();
     private final Set<String> automaticChannels = new HashSet<>();
     private final ScheduledExecutorService executor =
         Executors.newSingleThreadScheduledExecutor(task -> {
@@ -72,7 +73,7 @@ final class ZLinkFanoutLocationRuntime implements AutoCloseable {
     private volatile boolean reconciling;
 
     ZLinkFanoutLocationRuntime(
-        ZLinkLocationStore store,
+        ZLinkLocationRepository store,
         Supplier<ZLinkLocationOwnerToken> owner,
         ZLinkChannelBackendAdapter backend,
         ZLinkMonitoringBackendAdapter monitoring,
@@ -146,8 +147,7 @@ final class ZLinkFanoutLocationRuntime implements AutoCloseable {
                 continue;
             }
             if (surface.role()
-                == systems.zlink.framework.locations
-                    .ZLinkLocationRole.PUB) {
+                == systems.zlink.framework.locations.ZLinkLocationRole.PUB) {
                 if (published.putIfAbsent(
                         surface.meshName(),
                         new Published(
@@ -165,8 +165,7 @@ final class ZLinkFanoutLocationRuntime implements AutoCloseable {
                                 + surface.meshName());
                 }
             } else if (surface.role()
-                == systems.zlink.framework.locations
-                    .ZLinkLocationRole.SUB) {
+                == systems.zlink.framework.locations.ZLinkLocationRole.SUB) {
                 automaticChannels.add(surface.meshName());
             }
         }
@@ -200,8 +199,7 @@ final class ZLinkFanoutLocationRuntime implements AutoCloseable {
                     : ZLinkLocationWriteIntent.NEW_CLAIM)
                 .thenAccept(result -> {
                     if (result.status()
-                        != systems.zlink.framework.locations
-                            .ZLinkLocationWriteStatus.STORED) {
+                        != systems.zlink.framework.runtime.internal.locations.ZLinkLocationWriteStatus.STORED) {
                         throw new IllegalStateException(
                             "fanout publisher descriptor write was fenced");
                     }
@@ -527,6 +525,23 @@ final class ZLinkFanoutLocationRuntime implements AutoCloseable {
         lifecycleEpoch = Math.addExact(lifecycleEpoch, 1);
         closeConnections();
         executor.shutdown();
+    }
+
+    List<FanoutPublisherSnapshot> publisherSnapshots(String channelName) {
+        return connections.values().stream()
+            .filter(connection ->
+                connection.descriptor.channelName().equals(channelName))
+            .map(connection -> new FanoutPublisherSnapshot(
+                connection.descriptor.publisherRid(),
+                connection.ready))
+            .sorted(java.util.Comparator.comparing(
+                snapshot -> snapshot.nodeRid().toHex()))
+            .toList();
+    }
+
+    record FanoutPublisherSnapshot(
+        RoutingId nodeRid,
+        boolean ready) {
     }
 
     private static final class Published {

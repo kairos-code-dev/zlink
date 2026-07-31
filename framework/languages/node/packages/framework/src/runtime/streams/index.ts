@@ -104,6 +104,13 @@ export interface ZLinkStreamBindingRuntimeOptions {
   readonly meshSubmitters?: ZLinkMeshSubmitterRegistry;
   readonly nativeActorMeshNameProvider?: () => string | undefined;
   readonly actorRefResolver?: (actor: ZLinkActor) => ActorRef;
+  readonly actorAuthorityFenceResolver?: (
+    actorId: string,
+    signal?: AbortSignal
+  ) => Promise<{
+    readonly authorityOwnerGeneration: bigint;
+    readonly ownerLeaseGeneration: bigint;
+  } | undefined>;
   readonly nativeActorNodeProvider?: () => {
     status(): { readonly routingId: unknown };
   } | undefined;
@@ -161,6 +168,7 @@ interface ZLinkStartedStreamNode {
   readonly socket: ZLinkBackendStreamSocket;
   readonly monitor: ZLinkBackendSocketMonitor;
   readonly nativeSessionService?: StreamSessionService;
+  readonly nativeSessionServices?: readonly StreamSessionService[];
 }
 
 export class ZLinkStreamRuntimeManager {
@@ -175,14 +183,10 @@ export class ZLinkStreamRuntimeManager {
     const streamAdapter = this.options.backendAdapterFactory.createStreamAdapter();
     const monitoringAdapter = this.options.backendAdapterFactory.createMonitoringAdapter();
     for (const [nodeName, streamNode] of this.options.registration.streamNodes.entries()) {
-      const actorDispatchMeshName = streamNode.actorDispatchMeshName;
-      const applicationMeshName = actorDispatchMeshName ?? this.options.primaryMeshName;
-      const nativeMeshNode = actorDispatchMeshName === undefined
-        ? this.options.nativeMeshNode
-        : this.options.nativeMeshNodeForName?.(actorDispatchMeshName);
-      const meshCompletions = actorDispatchMeshName === undefined
-        ? this.options.meshCompletions
-        : this.options.meshCompletionsForName?.(actorDispatchMeshName);
+      const actorDispatchEnabled = streamNode.actorDispatchEnabled === true;
+      const applicationMeshName = actorDispatchEnabled ? this.options.primaryMeshName : undefined;
+      const nativeMeshNode = actorDispatchEnabled ? this.options.nativeMeshNode : undefined;
+      const meshCompletions = actorDispatchEnabled ? this.options.meshCompletions : undefined;
       const socket = streamAdapter.createStreamSocket(this.options.context);
       const tlsServer = streamNode.tlsServer;
       if (tlsServer !== undefined) {
@@ -193,21 +197,45 @@ export class ZLinkStreamRuntimeManager {
         );
       }
       socket.bind(streamNode.bind!);
-      const createNativeSessionService = nativeMeshNode?.createStreamSessionService;
-      const nativeSessionService = typeof createNativeSessionService === 'function'
-        ? createNativeSessionService.call(
-          nativeMeshNode,
-          socket.nativeInstance as never
-        )
-        : undefined;
+      const nativeSessionRoutes = new Map<string, {
+        readonly service: StreamSessionService;
+        readonly completions: ZLinkMeshCompletionTable;
+      }>();
+      if (actorDispatchEnabled) {
+        for (const [meshName, mesh] of this.options.registration.spotNodes) {
+          const isPrimaryMesh = meshName === applicationMeshName;
+          if (
+            !isPrimaryMesh
+            && mesh.objectRole !== 'client'
+            && mesh.objectRole !== 'server'
+          ) continue;
+          const meshNode = this.options.nativeMeshNodeForName?.(meshName)
+            ?? (isPrimaryMesh ? nativeMeshNode : undefined);
+          const completions = this.options.meshCompletionsForName?.(meshName)
+            ?? (isPrimaryMesh ? meshCompletions : undefined);
+          const createService = meshNode?.createStreamSessionService;
+          if (typeof createService !== 'function' || completions === undefined) continue;
+          nativeSessionRoutes.set(meshName, {
+            service: createService.call(meshNode, socket.nativeInstance as never),
+            completions
+          });
+        }
+      }
+      const nativeSessionService = applicationMeshName === undefined
+        ? undefined
+        : nativeSessionRoutes.get(applicationMeshName)?.service;
       const monitor = monitoringAdapter.openSocketMonitor(socket);
       const sessionType = streamNode.session!;
+      const sessionHandlerTypes = (
+        streamNode as unknown as Record<symbol, readonly Type[] | undefined>
+      )[Symbol.for('@zlink-systems/framework:session-handler-types')] ?? [];
       const claimApplicationWork = this.options.claimApplicationWork;
       const runtime = new ZLinkStreamSessionNodeRuntimeCore({
         nodeName,
         socket,
         nativeSessionService,
         meshCompletions,
+        nativeSessionRouteForMesh: meshName => nativeSessionRoutes.get(meshName),
         monitor,
         bindingRuntime: this.options.bindingRuntime,
         acceptNewSession: () => this.options.acceptNewSession?.(applicationMeshName) !== false,
@@ -222,7 +250,8 @@ export class ZLinkStreamRuntimeManager {
         sessionFactory: (context) => createStreamSessionInstance(
           sessionType as Type<ZLinkSession> | Type<ZLinkSessionFactory>,
           this.options.providerResolver,
-          context
+          context,
+          sessionHandlerTypes
         )
       });
       runtime.start();
@@ -231,7 +260,8 @@ export class ZLinkStreamRuntimeManager {
         runtime,
         socket,
         monitor,
-        nativeSessionService
+        nativeSessionService,
+        nativeSessionServices: [...nativeSessionRoutes.values()].map(route => route.service)
       });
     }
   }
@@ -241,8 +271,12 @@ export class ZLinkStreamRuntimeManager {
     this.nodes.clear();
     for (const node of nodes.reverse()) {
       await node.runtime.dispose();
-      node.nativeSessionService?.shutdown(1000);
-      node.nativeSessionService?.close();
+      const nativeServices = node.nativeSessionServices
+        ?? (node.nativeSessionService === undefined ? [] : [node.nativeSessionService]);
+      for (const service of nativeServices) {
+        service.shutdown(1000);
+        service.close();
+      }
       await node.monitor.dispose();
       await node.socket.dispose();
     }

@@ -4,25 +4,26 @@ package systems.zlink.runtime.nativeapi;
 
 import java.util.function.IntPredicate;
 import java.util.function.IntSupplier;
+import systems.zlink.internal.NativeErrorCodes;
 
 public final class NativeErrno {
-    public static final int ENOENT = 2;
-    public static final int EINTR = 4;
-    public static final int EBADF = 9;
-    public static final int EAGAIN = 11;
-    public static final int ENOMEM = 12;
-    public static final int EFAULT = 14;
-    public static final int EBUSY = 16;
-    public static final int EINVAL = 22;
-    public static final int EADDRINUSE = 98;
-    public static final int ECONNREFUSED = 111;
-    public static final int ENOTSUP = 95;
-    public static final int ENOTCONN = 107;
-    public static final int EHOSTUNREACH = 113;
-    public static final int EWOULDBLOCK_WIN = 10035;
-    public static final int ECONNREFUSED_WIN = 10061;
-    public static final int ENOTCONN_WIN = 10057;
-    public static final int EHOSTUNREACH_WIN = 10065;
+    public static final int ENOENT = NativeErrorCodes.ENOENT;
+    public static final int EINTR = NativeErrorCodes.EINTR;
+    public static final int EBADF = NativeErrorCodes.EBADF;
+    public static final int EAGAIN = NativeErrorCodes.EAGAIN;
+    public static final int ENOMEM = NativeErrorCodes.ENOMEM;
+    public static final int EFAULT = NativeErrorCodes.EFAULT;
+    public static final int EBUSY = NativeErrorCodes.EBUSY;
+    public static final int EINVAL = NativeErrorCodes.EINVAL;
+    public static final int EADDRINUSE = NativeErrorCodes.EADDRINUSE;
+    public static final int ECONNREFUSED = NativeErrorCodes.ECONNREFUSED;
+    public static final int ENOTSUP = NativeErrorCodes.ENOTSUP;
+    public static final int ENOTCONN = NativeErrorCodes.ENOTCONN;
+    public static final int EHOSTUNREACH = NativeErrorCodes.EHOSTUNREACH;
+    public static final int EWOULDBLOCK_WIN = NativeErrorCodes.EWOULDBLOCK_WIN;
+    public static final int ECONNREFUSED_WIN = NativeErrorCodes.ECONNREFUSED_WIN;
+    public static final int ENOTCONN_WIN = NativeErrorCodes.ENOTCONN_WIN;
+    public static final int EHOSTUNREACH_WIN = NativeErrorCodes.EHOSTUNREACH_WIN;
 
     private NativeErrno() {
     }

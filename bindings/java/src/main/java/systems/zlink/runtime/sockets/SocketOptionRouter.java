@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 package systems.zlink.runtime.sockets;
+import systems.zlink.internal.sockets.SocketOptions;
 
 import systems.zlink.contracts.sockets.SocketType;
 

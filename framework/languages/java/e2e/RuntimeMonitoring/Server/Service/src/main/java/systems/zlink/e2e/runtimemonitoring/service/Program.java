@@ -12,7 +12,6 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.e2e.runtimemonitoring.service.handlers.MonitoringEventHandlers;
 import systems.zlink.e2e.runtimemonitoring.service.handlers.MonitoringSpot;
 import systems.zlink.e2e.runtimemonitoring.service.handlers.TriggeredMonitoringSpot;
 import systems.zlink.e2e.runtimemonitoring.service.handlers.WorkReqHandler;
@@ -25,14 +24,11 @@ import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.messaging.ZLinkMessage;
-import systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind;
-import systems.zlink.framework.monitoring.ZLinkMeshRuntimeEvent;
+import systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
-import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
-import systems.zlink.framework.spring.ZLinkMonitoringLifecycle;
-import systems.zlink.framework.spring.ZLinkMonitoringOptionsCustomizer;
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
 
@@ -77,7 +73,7 @@ public final class Program {
         systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions meshRuntimeOptions,
         systems.zlink.framework.channels.ZLinkRouteClient routeClient,
         ObjectProvider<ZLinkRouteMeshRuntime> meshRuntime,
-        ObjectProvider<systems.zlink.framework.monitoring.ZLinkRuntimeQuery> runtimeQuery,
+        ObjectProvider<ZLinkFrameworkLifecycle> runtimeQuery,
         ObserverIsolationProbe observerIsolation,
         ObjectProvider<ZLinkSpotManager> spots,
         ZLinkSpotPublisherClient publisher,
@@ -101,7 +97,7 @@ public final class Program {
     @Bean
     ZLinkFrameworkConfigurer frameworkConfigurer(ServiceOptions config) {
         return options -> {
-            options.configureLocations().setHeartbeatInterval(Duration.ofMillis(500));
+            options.configureLocations().setOwnerLeaseRenewInterval(Duration.ofMillis(500));
             options.configureLocations().setOwnerLeaseTtl(Duration.ofSeconds(3));
             options.configureLocations().setPollingInterval(Duration.ofMillis(250));
             options.configureDispatch()
@@ -135,6 +131,7 @@ public final class Program {
                     .setRoutingId(RoutingId.from(config.routingId() + "-spot"));
                 node.configureRouterSocket().setReceiveHighWaterMark(1);
                 node.channelName(Contracts.SPOT_CHANNEL)
+                    .server()
                     .addRequestHandler(
                         WorkReqHandler.class,
                         Contracts.WorkReq.class,
@@ -153,20 +150,6 @@ public final class Program {
                     Contracts.TRIGGERED_MONITORING_SPOT_TYPE,
                     TriggeredMonitoringSpot.class,
                     factory -> factory.disableRelocation());
-            }
-        };
-    }
-
-    @Bean
-    ZLinkMonitoringOptionsCustomizer monitoringOptions(ServiceOptions config) {
-        return options -> {
-            options.addSocketEvents(
-                Contracts.CHANNEL,
-                ZLinkSocketEventKind.CONNECTION_READY,
-                ZLinkSocketEventKind.PEER_ADMISSION_CHANGED);
-            options.addLocationRuntimeEvents(Contracts.LOCATION_SOURCE, Duration.ofMillis(100));
-            if (config.enableHandshake()) {
-                options.addSocketEvents(Contracts.HANDSHAKE_CHANNEL);
             }
         };
     }
@@ -209,13 +192,13 @@ public final class Program {
 
     @Bean
     ApplicationRunner recordMonitoringLifecycle(
-        org.springframework.beans.factory.ObjectProvider<ZLinkMonitoringLifecycle> lifecycle,
+        org.springframework.beans.factory.ObjectProvider<ZLinkFrameworkLifecycle> lifecycle,
         EvidenceState state) {
         return ignored -> state.record(
             "system",
             "service",
-            "MonitoringLifecycle",
-            "running=" + lifecycle.stream().anyMatch(ZLinkMonitoringLifecycle::isRunning));
+            "FrameworkLifecycle",
+            "running=" + lifecycle.stream().anyMatch(ZLinkFrameworkLifecycle::isRunning));
     }
 
     @Bean
@@ -232,24 +215,21 @@ public final class Program {
                 throw new IllegalStateException("RouteMesh runtime is required");
             }
             runtime.observe(Contracts.SPOT_MESH, 32).subscribe(
-                new java.util.concurrent.Flow.Subscriber<ZLinkMeshRuntimeEvent>() {
+                new java.util.concurrent.Flow.Subscriber<ZLinkMeshNodeSnapshot>() {
                     @Override
                     public void onSubscribe(java.util.concurrent.Flow.Subscription subscription) {
                         subscription.request(Long.MAX_VALUE);
                     }
 
                     @Override
-                    public void onNext(ZLinkMeshRuntimeEvent event) {
+                    public void onNext(ZLinkMeshNodeSnapshot status) {
                         state.record(
                             "route-mesh-runtime",
-                            event.meshName(),
-                            event.identifier(),
-                            "sequence=" + event.sequence()
-                                + "|sourceRid=" + event.sourceRid().toHex()
-                                + "|peerRid=" + event.peerRid()
-                                    .map(RoutingId::toHex).orElse("")
-                                + "|channel=" + event.channelName().orElse("")
-                                + "|reason=" + event.reason().orElse(""));
+                            status.meshName(),
+                            "status-changed",
+                            "sequence=" + status.sequence()
+                                + "|state=" + status.state()
+                                + "|readyPeers=" + status.readyPeerCount());
                     }
 
                     @Override
@@ -269,28 +249,8 @@ public final class Program {
     }
 
     @Bean
-    MonitoringEventHandlers.SocketRecorder socketRecorder(EvidenceState state) {
-        return new MonitoringEventHandlers.SocketRecorder(state);
-    }
-
-    @Bean
     ObserverIsolationProbe observerIsolationProbe() {
         return new ObserverIsolationProbe();
-    }
-
-    @Bean
-    MonitoringEventHandlers.FailingSocketRecorder failingSocketRecorder(EvidenceState state) {
-        return new MonitoringEventHandlers.FailingSocketRecorder(state);
-    }
-
-    @Bean
-    MonitoringEventHandlers.SpotRecorder spotRecorder(EvidenceState state) {
-        return new MonitoringEventHandlers.SpotRecorder(state);
-    }
-
-    @Bean
-    MonitoringEventHandlers.LocationRuntimeRecorder locationRuntimeRecorder(EvidenceState state) {
-        return new MonitoringEventHandlers.LocationRuntimeRecorder(state);
     }
 
     private static String configPath(String[] args) {

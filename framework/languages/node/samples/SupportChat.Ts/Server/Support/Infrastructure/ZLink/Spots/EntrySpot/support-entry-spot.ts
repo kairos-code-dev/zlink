@@ -2,9 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { AgentAvailabilityDirectory } from '../../../../Application/ConversationAssignment/agent-availability-directory';
 import { SupportActorDirectory } from '../../Actors/support-actor-directory';
 import { SupportUserActor } from '../../Actors/support-user-actor';
-import type { EnsureSupportUserActorReq } from '../../../../../../Shared/Contracts/messages';
+import type { SupportUserActorCreateReq } from '../../../../../../Shared/Contracts/messages';
 import type {
-  ZLinkActorMembership,
+  ZLinkActorCreateResponse,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
   ZLinkMessage,
@@ -27,20 +27,21 @@ class SupportEntrySpot implements ZLinkEntrySpot<SupportUserActor> {
     return { accepted: true };
   }
 
-  async onCreateActor(actor: ZLinkActorMembership, request: ZLinkMessage): Promise<void> {
-    const value = request.decode<EnsureSupportUserActorReq>(Object as never);
-    this.directory.bind(actor, {
+  async onCreateActor(actor: SupportUserActor, request: ZLinkMessage): Promise<ZLinkActorCreateResponse> {
+    const value = request.decode<SupportUserActorCreateReq>(Object as never);
+    this.directory.bind(actor.actorId, {
       displayName: value.displayName,
       role: value.role,
       participantId: value.participantId
     });
+    return { accepted: true };
   }
 
-  async onJoinedActor(_actor: ZLinkActorMembership): Promise<void> {}
-  async onLeaveActor(_actor: ZLinkActorMembership): Promise<void> {}
+  async onJoinedActor(_actor: SupportUserActor): Promise<void> {}
+  async onLeaveActor(_actor: SupportUserActor): Promise<void> {}
 
-  async onDisconnectActor(actor: ZLinkActorMembership): Promise<void> {
-    const identity = this.directory.get(actor.actor.actorId);
+  async onDisconnectActor(actor: SupportUserActor): Promise<void> {
+    const identity = this.directory.get(actor.actorId);
     if (identity?.role === 'Agent' && identity.actorId === identity.participantId) {
       this.availability.setAvailable(identity.actorId, false);
     }

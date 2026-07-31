@@ -82,6 +82,7 @@ internal sealed class ZLinkChannelRuntimeManager(
                         ?? throw new InvalidOperationException(
                             "ClientServer server identity is not initialized."),
                         state.ErrorSink,
+                        state.InboundDispatchBudget,
                         ct))));
             }
 
@@ -100,7 +101,8 @@ internal sealed class ZLinkChannelRuntimeManager(
                             receiveLoop,
                             fanoutRuntime,
                             state.ErrorSink,
-                            state.StopTokenSource.Token));
+                            state.StopTokenSource.Token,
+                            inboundDispatchBudget: state.InboundDispatchBudget));
                     continue;
                 }
 
@@ -113,6 +115,7 @@ internal sealed class ZLinkChannelRuntimeManager(
                         channelName,
                         (IZLinkBackendSubscriberSocket)bundle.Socket,
                         state.ErrorSink,
+                        state.InboundDispatchBudget,
                         ct))));
             }
         }

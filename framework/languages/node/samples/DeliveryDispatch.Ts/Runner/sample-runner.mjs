@@ -43,15 +43,6 @@ export async function runSample(ctx) {
     await ctx.waitTcp(ready);
   }
   await ctx.waitHttp(sample.dispatchApiHttpUrl);
-  ctx.runNode(path.join(ctx.nodeRoot, 'e2e/location-readiness.js'), [
-    '--redis-endpoint', ctx.redisEndpoint,
-    '--key-prefix', `${sample.redisKeyPrefix}location`,
-    '--peer', 'route-mesh', 'deliverydispatch.mesh', 'router',
-      sample.dispatchSpotEndpoint, sample.trackingSpotEndpoint,
-      sample.sessionSpotRouterEndpoint, sample.courierSessionSpotEndpoint,
-      sample.courierActorNode1SpotEndpoint, sample.courierActorNode2SpotEndpoint
-  ]);
-  console.log('topology=ready');
   ctx.runBrowser({
     timeoutMs: 90_000,
     config: {

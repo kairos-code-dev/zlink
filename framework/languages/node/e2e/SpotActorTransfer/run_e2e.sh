@@ -8,7 +8,7 @@ source "$NODE_ROOT/e2e/redis-container.sh"
 SCENARIO="${1:-all}"
 CHILD_RUN="${2:-}"
 if [[ "$CHILD_RUN" != "--child-run" && "$SCENARIO" == "all" ]]; then
-  for child_scenario in all-core ST-F3 ST-F5; do
+  for child_scenario in all-core ST-F3 ST-F5 ST-H1 ST-H2 ST-H3 ST-H4 ST-H5 ST-I1 ST-I2 ST-I3 ST-I4 ST-I5 ST-I6; do
     "$ROOT_DIR/run_e2e.sh" "$child_scenario" --child-run
   done
   echo "spot-actor-transfer e2e result=passed"
@@ -150,11 +150,24 @@ start_node_a() {
 run_client() {
   local scenario="$1"
   local client_config="$CONFIG_DIR/client-${scenario//,/_}.config.json"
+  local -a restart_fixture_args=()
+  if [[ "$scenario" == "ST-H2-PREPARE" || "$scenario" == "ST-H2-VERIFY" ]]; then
+    restart_fixture_args+=(--fixture-id "$ST_H2_FIXTURE_ID")
+  fi
+  if [[ "$scenario" == "ST-H2-VERIFY" ]]; then
+    restart_fixture_args+=(
+      --actor-id "$ST_H2_ACTOR_ID"
+      --target-node-rid "$ST_H2_TARGET_NODE_RID"
+      --expected-object-generation "$ST_H2_OBJECT_GENERATION"
+      --expected-operation-id "$ST_H2_OPERATION_ID"
+    )
+  fi
   node "$ROOT_DIR/write-config.mjs" "$client_config" \
     --node-a-url "$NODE_A_URL" --node-b-url "$NODE_B_URL" \
     --node-c-url "$NODE_C_URL" \
     --session-a-stream-endpoint "$SESSION_A_STREAM" --session-b-stream-endpoint "$SESSION_B_STREAM" \
-    --scenario "$scenario"
+    --scenario "$scenario" \
+    "${restart_fixture_args[@]}"
   node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$ROOT_DIR/Client/main.ts" -- \
     --config "$client_config" \
     >>"$LOG_DIR/client.stdout.log" 2>>"$LOG_DIR/client.stderr.log"
@@ -187,6 +200,28 @@ restart_node_a() {
     wait "$NODE_A_PID" || true
   fi
   start_node_a
+}
+
+crash_and_restart_actor_node() {
+  local rid="$1" pid
+  case "$rid" in
+    actor-a) pid="$NODE_A_PID" ;;
+    actor-b) pid="$NODE_B_PID" ;;
+    *) echo "ST-H2 target '$rid' is not a restartable Actor node." >&2; return 1 ;;
+  esac
+  kill -KILL "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  # Recovery may take over the durable authority only after the crashed
+  # process owner lease expires.
+  sleep 4
+  if [[ "$rid" == "actor-a" ]]; then
+    start_node_a
+    return
+  fi
+  start_node actor-b "$NODE_B_URL" "$NODE_B_ROUTER" "$NODE_B_PUBSUB"
+  NODE_B_PID="${pids[-1]}"
+  wait_health "$NODE_B_URL" actor-b "$NODE_B_PID"
+  sleep 2
 }
 
 echo "log_dir=$LOG_DIR"
@@ -267,10 +302,11 @@ ACTOR_NODE_MAIN="$ROOT_DIR/Server/ActorNode/dist/Server/ActorNode/main.js"
 SESSION_MAIN="$ROOT_DIR/Server/Session/dist/Server/Session/main.js"
 
 start_node actor-b "$NODE_B_URL" "$NODE_B_ROUTER" "$NODE_B_PUBSUB"
-wait_health "$NODE_B_URL" actor-b "${pids[-1]}"
+NODE_B_PID="${pids[-1]}"
+wait_health "$NODE_B_URL" actor-b "$NODE_B_PID"
 start_node_a
 ENABLE_NODE_C=0
-if [[ "$SCENARIO" == "ST-F5" ]]; then
+if [[ "$SCENARIO" == "ST-F5" || "$SCENARIO" == "ST-I6" ]]; then
   ENABLE_NODE_C=1
   start_node actor-c "$NODE_C_URL" "$NODE_C_ROUTER" "$NODE_C_PUBSUB"
   wait_health "$NODE_C_URL" actor-c "${pids[-1]}"
@@ -281,6 +317,7 @@ wait_topology
 
 : >"$LOG_DIR/client.stdout.log"
 : >"$LOG_DIR/client.stderr.log"
+ST_H2_FIXTURE_ID="${RUN_ID//[^a-zA-Z0-9]/}"
 
 if [[ "$SCENARIO" == "all-core" ]]; then
   run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-C3,ST-D1,ST-D2,ST-E1,ST-E2,ST-F1,ST-F2,ST-F4,ST-F6"
@@ -289,6 +326,24 @@ if [[ "$SCENARIO" == "all-core" ]]; then
   run_client "ST-B2"
   restart_node_a
   run_client "ST-C1"
+elif [[ "$SCENARIO" == "ST-H2" ]]; then
+  run_client "ST-H2-PREPARE"
+  ST_H2_FIXTURE_LINE="$(grep 'st-h2-restart-fixture ' "$LOG_DIR/client.stdout.log" | tail -n 1)"
+  [[ -n "$ST_H2_FIXTURE_LINE" ]] || {
+    echo "ST-H2 prepare did not publish its restart fixture." >&2
+    exit 1
+  }
+  ST_H2_TARGET_NODE_RID="$(sed -n 's/.* targetNodeRid=\([^ ]*\).*/\1/p' <<<"$ST_H2_FIXTURE_LINE")"
+  ST_H2_ACTOR_ID="$(sed -n 's/.* actorId=\([^ ]*\).*/\1/p' <<<"$ST_H2_FIXTURE_LINE")"
+  ST_H2_OBJECT_GENERATION="$(sed -n 's/.* objectGeneration=\([^ ]*\).*/\1/p' <<<"$ST_H2_FIXTURE_LINE")"
+  ST_H2_OPERATION_ID="$(sed -n 's/.* operationId=\([^ ]*\).*/\1/p' <<<"$ST_H2_FIXTURE_LINE")"
+  [[ -n "$ST_H2_ACTOR_ID" && -n "$ST_H2_TARGET_NODE_RID" && -n "$ST_H2_OBJECT_GENERATION" && -n "$ST_H2_OPERATION_ID" ]] || {
+    echo "ST-H2 prepare published an incomplete restart fixture." >&2
+    exit 1
+  }
+  crash_and_restart_actor_node "$ST_H2_TARGET_NODE_RID"
+  wait_topology
+  run_client "ST-H2-VERIFY"
 else
   run_client "$SCENARIO"
 fi

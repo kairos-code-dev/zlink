@@ -1,17 +1,15 @@
 package systems.zlink.samples.kotlin.gamequest.client
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.fasterxml.jackson.module.kotlin.readValue
 import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import systems.zlink.httpclient.ZLinkHttpClient
+import systems.zlink.httpclient.kotlin.awaitRaw
+import systems.zlink.httpclient.kotlin.fetch
 import systems.zlink.framework.kotlin.ZLinkKotlinStreamConnector
 import systems.zlink.framework.kotlin.await
 import systems.zlink.framework.kotlin.awaitReply
@@ -88,9 +86,6 @@ private fun createClient(endpoint: String): ZLinkKotlinStreamConnector =
     ).kotlin()
 
 class GameQuestClientScenario(private val options: GameQuestClientOptions) {
-    private val json = jacksonObjectMapper()
-    private val http = HttpClient.newHttpClient()
-
     suspend fun run(apiAStream: ZLinkKotlinStreamConnector, apiBStream: ZLinkKotlinStreamConnector) = coroutineScope {
         apiAStream.connect().await()
         val joined = apiAStream.request(JoinSessionReq("player-alice")).awaitReply<JoinSessionRes>()
@@ -185,7 +180,7 @@ class GameQuestClientScenario(private val options: GameQuestClientOptions) {
         println(SampleNames.ServerEvidenceMarker)
     }
 
-    private fun waitForServerAssertion(): GameQuestServerAssertRes {
+    private suspend fun waitForServerAssertion(): GameQuestServerAssertRes {
         val deadline = Instant.now().plus(Duration.ofSeconds(10))
         var last: GameQuestServerAssertRes? = null
         while (Instant.now().isBefore(deadline)) {
@@ -201,26 +196,19 @@ class GameQuestClientScenario(private val options: GameQuestClientOptions) {
     private fun hasProgress(progress: List<QuestProgress>, questId: String, currentCount: Int): Boolean =
         progress.any { it.questId == questId && it.currentCount == currentCount }
 
-    private fun postRaw(base: String, path: String): Boolean {
-        val request = HttpRequest.newBuilder()
-            .uri(URI.create(base + path))
-            .POST(HttpRequest.BodyPublishers.ofString(""))
-            .build()
-        val response = http.send(request, HttpResponse.BodyHandlers.ofString())
-        return response.statusCode() in 200..299
+    private suspend fun postRaw(base: String, path: String): Boolean {
+        val response = ZLinkHttpClient.create(base)
+            .post(path)
+            .awaitRaw()
+        return response.status() in 200..299
     }
 
-    private inline fun <reified T> post(base: String, path: String, body: Any): T {
-        val request = HttpRequest.newBuilder()
-            .uri(URI.create(base + path))
-            .header("content-type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(if (body is String) body else json.writeValueAsString(body)))
-            .build()
-        val response = http.send(request, HttpResponse.BodyHandlers.ofString())
-        if (response.statusCode() !in 200..299) {
-            error("HTTP ${response.statusCode()} for $path: ${response.body()}")
+    private suspend inline fun <reified T> post(base: String, path: String, body: Any): T {
+        val request = ZLinkHttpClient.create(base).post(path)
+        if (body !is String || body.isNotEmpty()) {
+            request.body(body)
         }
-        return json.readValue(response.body())
+        return request.fetch()
     }
 }
 

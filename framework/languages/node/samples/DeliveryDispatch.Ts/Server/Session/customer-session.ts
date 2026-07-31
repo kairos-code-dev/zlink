@@ -10,7 +10,6 @@ import {
   ZLinkPacket,
   type ZLinkActorManager,
   type ZLinkMessage,
-  type ZLinkLocationStore,
   type ZLinkSession,
   type ZLinkSessionContext,
   type ZLinkSessionDispatchContext,
@@ -23,9 +22,7 @@ import type {
 const CustomerId = 'customer-1';
 
 class CustomerSession implements ZLinkSession {
-  constructor(readonly context: ZLinkSessionContext) {
-    context.handlers.addHandler(SubscribeDeliverySessionHandler);
-  }
+  constructor(readonly context: ZLinkSessionContext) {}
 
   async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
     if (await this.context.handlers.tryHandle(dispatch, payload)) return;
@@ -40,33 +37,24 @@ class CustomerSession implements ZLinkSession {
 class SubscribeDeliverySessionHandler {
   constructor(
     @Inject(ZLINK_ACTOR_MANAGER) private readonly actors: ZLinkActorManager,
-    private readonly directory: CustomerActorDirectory,
-    @Inject('DELIVERYDISPATCH_LOCATION_STORE') private readonly locations: ZLinkLocationStore
+    private readonly directory: CustomerActorDirectory
   ) {}
 
   async handle(context: ZLinkSessionContext, _dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
     const request = payload.decode<SubscribeDeliveryReq>(Object as never);
     console.error(`deliverydispatch session: find customer delivery=${request.deliveryId}`);
-    let resolved = await this.locations.resolveActor({ meshName: SampleNames.routeMesh, actorId: CustomerId });
-    if (resolved === undefined) {
-      await this.actors.getOrCreate(
-        SampleNames.routeMesh,
-        CustomerId,
-        SampleNames.customerActorType,
-        { customerId: CustomerId }
-      );
-      this.directory.require(CustomerId);
-      resolved = await this.locations.resolveActor({ meshName: SampleNames.routeMesh, actorId: CustomerId });
-    } else {
-      console.error(`deliverydispatch session: found existing customer=${CustomerId}`);
-    }
-    if (resolved?.actorRef === undefined) {
-      throw new Error(`Customer actor '${CustomerId}' was not registered in the location store.`);
+    const ensured = await this.actors
+      .getOrCreate(CustomerId, SampleNames.customerActorType)
+      .inMesh(SampleNames.customerMeshName)
+      .request({ customerId: CustomerId })
+      .submit();
+    if (ensured.status === 'rejected') {
+      throw new Error(`Customer actor '${CustomerId}' creation was rejected.`);
     }
     const active = this.directory.require(CustomerId);
     active.subscribe(request.deliveryId);
-    await context.actors.bindOrGet(resolved.actorRef);
-    console.error(`deliverydispatch session: bound customer actor=${resolved.actorRef.actorId}`);
+    await context.actors.bindOrGet(ensured.actor);
+    console.error(`deliverydispatch session: bound customer actor=${ensured.actor.actorId}`);
     context.client.reply(new SubscribeDeliveryRes(request.deliveryId)).submit();
   }
 }

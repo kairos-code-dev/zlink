@@ -5,7 +5,6 @@ import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
-import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.kotlin.useCoroutineHandlers
@@ -36,10 +35,13 @@ class TrackingServerApplication {
             options.addHandlersFromPackageOf(TrackingServerApplication::class.java)
             options.addRouteMesh(SampleNames.CustomerSpotMesh)
                 .listen(SampleTopology.TrackingSpotEndpoint)
-                .useAllocatedRoutingId(16, "delivery-tracking")
+                .setRoutingIdPrefix("delivery-tracking")
+            val trackingEndpoint = java.net.URI.create(SampleTopology.TrackingChannelEndpoint)
             options.addClientServerChannel(SampleNames.TrackingChannel)
-                .enableServer(SampleTopology.TrackingChannelEndpoint)
-                .setRoutingId(RoutingId.from("delivery-tracking-server"))
+                .server()
+                .setBindHost(trackingEndpoint.host)
+                .setAdvertiseHost(trackingEndpoint.host)
+                .listen(trackingEndpoint.port)
                 .addHandlerGroup("tracking")
         }
 

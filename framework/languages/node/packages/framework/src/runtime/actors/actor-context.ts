@@ -35,9 +35,9 @@ import {
   type ZLinkActorLifecycleSnapshotSource
 } from './actor-lifecycle-snapshot';
 import { randomBytes } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import { deferActorJoin } from './actor-join-deferred-scope';
 
-const pendingDeferredJoinStates = new WeakSet<ZLinkActorRuntimeState>();
 export const ZLINK_ACTOR_JOIN_ENTRY_SPOT_RUNTIME = Symbol('zlink.actor.join-entry-spot-runtime');
 
 export class DefaultZLinkActorContext implements ZLinkActorContext {
@@ -187,7 +187,7 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
       );
     }
     this.deferred = true;
-    const deadline = Date.now() + this.timeoutMs;
+    const deadline = performance.now() + this.timeoutMs;
     const sourceNodeRid = this.state.nativeActorRef?.nodeRid;
     const requestMessage = encodeJoinRequest(this.request, this.messageSerializers);
     try {
@@ -200,10 +200,14 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
     deferActorJoin({
       requestBytes: requestMessage.data().byteLength,
       discard: () => {
-        pendingDeferredJoinStates.delete(this.state);
+        this.state.endDeferredJoin();
         requestMessage.close();
       },
       execute: async () => {
+        // Registration owns the pending fence only until the deferred work
+        // starts. A remote Join then transfers that fence to the relocation
+        // move before its first asynchronous source operation.
+        this.state.endDeferredJoin();
         let result: import('./actor-runtime-contracts').ZLinkActorJoinRuntimeResult<Message>;
         try {
           result = await this.coordinator.joinSpot(
@@ -219,7 +223,6 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
           await notifyJoinFailure(this.actor, operationId, error);
           return;
         } finally {
-          pendingDeferredJoinStates.delete(this.state);
           requestMessage.close();
         }
         if (
@@ -263,7 +266,7 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
       );
     }
     this.deferred = true;
-    const deadline = Date.now() + this.timeoutMs;
+    const deadline = performance.now() + this.timeoutMs;
     const sourceNodeRid = this.state.nativeActorRef?.nodeRid;
     const requestMessage = encodeJoinRequest(this.request, this.messageSerializers);
     try {
@@ -276,10 +279,11 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
     deferActorJoin({
       requestBytes: requestMessage.data().byteLength,
       discard: () => {
-        pendingDeferredJoinStates.delete(this.state);
+        this.state.endDeferredJoin();
         requestMessage.close();
       },
       execute: async () => {
+        this.state.endDeferredJoin();
         let result: import('./actor-runtime-contracts').ZLinkActorJoinRuntimeResult<Message>;
         try {
           result = await this.coordinator.joinEntrySpot(
@@ -295,7 +299,6 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
           await notifyJoinFailure(this.actor, operationId, error);
           return;
         } finally {
-          pendingDeferredJoinStates.delete(this.state);
           requestMessage.close();
         }
         if (
@@ -351,18 +354,17 @@ function validateJoinTimeout(timeoutMs: number): number {
 }
 
 function claimDeferredJoin(state: ZLinkActorRuntimeState): void {
-  if (pendingDeferredJoinStates.has(state) || state.isMoving) {
+  if (!state.tryBeginDeferredJoin()) {
     throw new ZLinkFrameworkException(
       ZLinkFrameworkErrorKind.ActorMoving,
       `Actor '${state.actorId}' already has a pending membership transition.`,
       true
     );
   }
-  pendingDeferredJoinStates.add(state);
 }
 
 function remainingJoinTimeout(deadline: number): number {
-  const remaining = deadline - Date.now();
+  const remaining = deadline - performance.now();
   if (remaining <= 0) {
     throw new ZLinkFrameworkException(
       ZLinkFrameworkErrorKind.DeadlineExceeded,
@@ -370,7 +372,7 @@ function remainingJoinTimeout(deadline: number): number {
       true
     );
   }
-  return remaining;
+  return Math.ceil(remaining);
 }
 
 function createJoinOperationId(): { readonly high: bigint; readonly low: bigint } {

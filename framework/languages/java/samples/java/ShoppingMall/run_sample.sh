@@ -102,10 +102,6 @@ start_role() {
 }
 start_role workflow-a "$(app_bin Server/OrderWorkflow OrderWorkflow)" "$workflow_a_config"
 start_role workflow-b "$(app_bin Server/OrderWorkflow OrderWorkflow)" "$workflow_b_config"
-wait_port "$workflow_a_channel"
-wait_port "$workflow_b_channel"
-wait_port "$workflow_a_spot"
-wait_port "$workflow_b_spot"
 wait_port "$workflow_a_router"
 wait_port "$workflow_b_router"
 wait_http "$workflow_a_http"

@@ -88,7 +88,9 @@ inline profile_res_t request_with_transient_host (const trigger_options_t &optio
                                                                   trace_label);
     auto *service_result = service.get ();
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &framework) {
-        framework.add_client_server_channel (profile_channel).enable_client (channel_endpoint);
+        framework.add_client_server_channel (profile_channel)
+          .client ()
+          .connect (channel_endpoint);
         if (!options.log_dir.empty ()) {
             framework.configure_dispatch ()
               .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)

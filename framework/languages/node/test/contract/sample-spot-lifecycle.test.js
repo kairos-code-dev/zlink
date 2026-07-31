@@ -122,17 +122,16 @@ test('TicTacToe closes a terminal room Spot after every actor leaves', async () 
       await spot.placeMark(player2.actorId, 4);
       await spot.placeMark(player1.actorId, 2);
 
-      await spot.onLeaveActor(membership(player1.actorId));
+      await spot.onLeaveActor(player1);
       assert.equal(closeCalls, 0);
-      await spot.onLeaveActor(membership(player2.actorId));
+      await spot.onLeaveActor(player2);
       assert.equal(closeCalls, 1);
     }
   );
 });
 
 async function joinPlayer(spot, actor) {
-  const actorMembership = membership(actor.actorId);
-  const response = await spot.onActorJoin(actorMembership.actor.actorId, {
+  const response = await spot.onActorJoin(actor.actorId, {
     decode: () => ({
       roomId: 'room-1',
       player: {
@@ -144,12 +143,11 @@ async function joinPlayer(spot, actor) {
     })
   });
   assert.equal(response.accepted, true);
-  await spot.onJoinedActor(actorMembership);
+  await spot.onJoinedActor(actor);
 }
 
 async function joinConversationActor(spot, actor) {
-  const actorMembership = membership(actor.actorId);
-  const response = await spot.onActorJoin(actorMembership.actor.actorId, {
+  const response = await spot.onActorJoin(actor.actorId, {
     decode: () => ({
       participantId: actor.participantId,
       role: actor.role,
@@ -157,15 +155,7 @@ async function joinConversationActor(spot, actor) {
     })
   });
   assert.equal(response.accepted, true);
-  await spot.onJoinedActor(actorMembership);
-}
-
-function membership(actorId) {
-  return {
-    actor: { nodeRid: 'node-1', actorId, generation: 1n },
-    actorType: 'sample.actor',
-    membershipEpoch: 1n
-  };
+  await spot.onJoinedActor(actor);
 }
 
 function player(actorId, displayName) {

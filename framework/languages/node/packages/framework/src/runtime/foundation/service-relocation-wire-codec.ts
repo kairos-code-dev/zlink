@@ -1,3 +1,5 @@
+import { operationRequiresReply } from './service-runtime-contracts';
+
 const MAX_PARTICIPANTS = 1_024;
 const MAX_RECORDS = 65_536;
 
@@ -243,7 +245,7 @@ function readFrozenRecord(reader: Reader): void {
   reader.u64();
   const operationKind = reader.u32();
   const reply = reader.body16();
-  if ([1, 2, 3, 4, 12].includes(operationKind)) {
+  if (operationRequiresReply(operationKind)) {
     reply.nonzeroU64('reply route id');
   }
   reply.end('journal reply route');

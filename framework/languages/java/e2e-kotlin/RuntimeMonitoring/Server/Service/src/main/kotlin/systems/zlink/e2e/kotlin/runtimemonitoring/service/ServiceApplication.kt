@@ -1,7 +1,6 @@
 package systems.zlink.e2e.kotlin.runtimemonitoring.service
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
@@ -14,13 +13,9 @@ import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
-import systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind
-import systems.zlink.framework.monitoring.ZLinkSocketEventKind
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
-import systems.zlink.framework.spring.ZLinkMonitoringLifecycle
-import systems.zlink.framework.spring.ZLinkMonitoringOptionsCustomizer
 import systems.zlink.framework.spots.ZLinkSpotManager
 import java.time.Duration
 
@@ -51,31 +46,30 @@ class ServiceApplication {
     fun frameworkConfigurer(): ZLinkFrameworkConfigurer {
         return ZLinkFrameworkConfigurer { options ->
             val logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs")
-            options.configureLocations().setHeartbeatInterval(Duration.ofMillis(500))
+            options.configureLocations().setOwnerLeaseRenewInterval(Duration.ofMillis(500))
             options.configureLocations().setOwnerLeaseTtl(Duration.ofSeconds(3))
             options.configureLocations().setPollingInterval(Duration.ofMillis(250))
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/service-flow.log")
                 .traceLabel("kotlin-mon-service")
+            options.addHandlersFromPackageOf(WorkRequestHandler::class.java)
+            val apiEndpoint = java.net.URI.create(
+                Env.get("ZLINK_KOTLIN_E2E_API_ENDPOINT"),
+            )
             options.addClientServerChannel(Contracts.CHANNEL)
-                .enableServer(Env.get("ZLINK_KOTLIN_E2E_API_ENDPOINT"))
-                .setRoutingId(RoutingId.from("svc-a"))
-                .addRequestHandler(
-                    WorkRequestHandler::class.java,
-                    Contracts.WorkReq::class.java,
-                    Contracts.WorkRes::class.java,
-                    "WorkReq",
-                )
+                .server()
+                .setAdvertiseHost(apiEndpoint.host)
+                .listen(apiEndpoint.port)
+                .addHandlerGroup(Contracts.HANDLER_GROUP)
+            val handshakeEndpoint = java.net.URI.create(
+                Env.get("ZLINK_KOTLIN_E2E_HANDSHAKE_ENDPOINT"),
+            )
             options.addClientServerChannel(Contracts.HANDSHAKE_CHANNEL)
-                .enableServer(Env.get("ZLINK_KOTLIN_E2E_HANDSHAKE_ENDPOINT"))
-                .setRoutingId(RoutingId.from("svc-a-handshake"))
-                .addRequestHandler(
-                    WorkRequestHandler::class.java,
-                    Contracts.WorkReq::class.java,
-                    Contracts.WorkRes::class.java,
-                    "HandshakeWorkReq",
-                )
+                .server()
+                .setAdvertiseHost(handshakeEndpoint.host)
+                .listen(handshakeEndpoint.port)
+                .addHandlerGroup(Contracts.HANDLER_GROUP)
             val node = options.addRouteMesh(Contracts.SPOT_MESH)
             node.listen(Env.get("ZLINK_KOTLIN_E2E_MESH_ENDPOINT"))
                 .setRoutingId(RoutingId.from("svc-a-spot"))
@@ -85,16 +79,6 @@ class ServiceApplication {
                     "monitoring",
                     MonitoringSpot::class.java,
                 ) { factory -> factory.disableRelocation() }
-        }
-    }
-
-    @Bean
-    fun monitoringOptions(): ZLinkMonitoringOptionsCustomizer {
-        return ZLinkMonitoringOptionsCustomizer { options ->
-            options.addSocketEvents(Contracts.CHANNEL, ZLinkSocketEventKind.CONNECTION_READY)
-            options.addLocationRuntimeEvents(Contracts.LOCATION_SOURCE, Duration.ofMillis(100))
-            options.addSocketEvents(Contracts.HANDSHAKE_CHANNEL)
-            options.addSpotEvents(Contracts.SPOT_MESH, Duration.ofMillis(100))
         }
     }
 
@@ -115,41 +99,13 @@ class ServiceApplication {
     fun createSpot(spots: ZLinkSpotManager): ApplicationRunner {
         return ApplicationRunner {
             spots.getOrCreate(
-                MonitoringSpot::class.java,
-                RoutingId.from("monitoring-room"),
-                ZLinkMessage.empty(),
-            ).toCompletableFuture().join()
+                "monitoring-room",
+                "monitoring",
+            ).request(ZLinkMessage.empty())
+                .submit()
+                .toCompletableFuture()
+                .join()
         }
-    }
-
-    @Bean
-    fun recordMonitoringLifecycle(
-        lifecycle: ObjectProvider<ZLinkMonitoringLifecycle>,
-        state: EvidenceState,
-    ): ApplicationRunner {
-        return ApplicationRunner {
-            state.record(
-                "system",
-                "service",
-                "MonitoringLifecycle",
-                "running=${lifecycle.stream().anyMatch { it.isRunning }}",
-            )
-        }
-    }
-
-    @Bean
-    fun socketRecorder(state: EvidenceState): MonitoringEventHandlers.SocketRecorder {
-        return MonitoringEventHandlers.SocketRecorder(state)
-    }
-
-    @Bean
-    fun spotRecorder(state: EvidenceState): MonitoringEventHandlers.SpotRecorder {
-        return MonitoringEventHandlers.SpotRecorder(state)
-    }
-
-    @Bean
-    fun locationRuntimeRecorder(state: EvidenceState): MonitoringEventHandlers.LocationRuntimeRecorder {
-        return MonitoringEventHandlers.LocationRuntimeRecorder(state)
     }
 
     companion object {

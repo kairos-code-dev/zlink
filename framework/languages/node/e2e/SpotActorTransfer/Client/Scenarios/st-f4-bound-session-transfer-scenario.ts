@@ -22,7 +22,7 @@ import {
   waitTransportDelivery
 } from '../Support/scenario-support';
 
-export async function runStF4(): Promise<void> {
+export async function runStF4(scenario = 'ST-F4'): Promise<void> {
   const actorId = unique('actor-message-follow');
   const actor = await createActor(
     nodeA,
@@ -43,19 +43,19 @@ export async function runStF4(): Promise<void> {
   const g1Delivery = sendHandoffWithTransportGate(
     sourceNode,
     actorId,
-    'ST-F4',
+    scenario,
     'G1'
   );
   const g3Delivery = probeActorWithTransportGate(
     sourceNode,
     actorId,
-    'ST-F4',
+    scenario,
     'G3-positive-request'
   );
   const g2Delivery = probeActorWithTransportGate(
     sourceNode,
     actorId,
-    'ST-F4',
+    scenario,
     'G2'
   );
   await waitTransportDelivery(sourceNode, g1);
@@ -64,24 +64,24 @@ export async function runStF4(): Promise<void> {
 
   require(
     (await joinActor(sourceNode, actorId, {
-      scenario: 'ST-F4',
+      scenario,
       targetSpotId: targetSpot.spotId
     })).accepted,
     'ST-F4 join failed.'
   );
   await waitEvidence(sourceNode, [
-    `ST-F4|${actorId}|message_follow_registered|6000`
+    `${scenario}|${actorId}|message_follow_registered|6000`
   ]);
 
   await releaseTransportDelivery(sourceNode, g1, 2);
   await g1Delivery;
   await waitEvidence(targetNode, [
-    `ST-F4|${actorId}|packet_handler|G1`
+    `${scenario}|${actorId}|packet_handler|G1`
   ]);
   const delivered = await getEvidence(targetNode);
   require(
     delivered.filter((entry) =>
-      entry.scenario === 'ST-F4'
+      entry.scenario === scenario
       && entry.actorId === actorId
       && entry.kind === 'packet_handler'
       && entry.value === 'G1'
@@ -98,12 +98,12 @@ export async function runStF4(): Promise<void> {
     `ST-F4 positive Message Follow request failed with '${positive.errorKind ?? 'invalid response'}'.`
   );
   await waitEvidence(targetNode, [
-    `ST-F4|${actorId}|packet_handler|G3-positive-request`,
-    `ST-F4|${actorId}|request_reply|G3-positive-request`
+    `${scenario}|${actorId}|packet_handler|G3-positive-request`,
+    `${scenario}|${actorId}|request_reply|G3-positive-request`
   ]);
   require(
     (await getEvidence(targetNode)).filter((entry) =>
-      entry.scenario === 'ST-F4'
+      entry.scenario === scenario
       && entry.actorId === actorId
       && entry.kind === 'packet_handler'
       && entry.value === 'G3-positive-request'
@@ -112,7 +112,7 @@ export async function runStF4(): Promise<void> {
   );
   require(
     (await getEvidence(targetNode)).filter((entry) =>
-      entry.scenario === 'ST-F4'
+      entry.scenario === scenario
       && entry.actorId === actorId
       && entry.kind === 'request_reply'
       && entry.value === 'G3-positive-request'
@@ -122,7 +122,7 @@ export async function runStF4(): Promise<void> {
 
   const relayContexts = messageFollowRelayEvidence(
     await getEvidence(sourceNode),
-    'ST-F4',
+    scenario,
     actorId
   );
   require(relayContexts.length === 2, 'ST-F4 did not record exactly one relay for each duplicated operation.');
@@ -163,7 +163,7 @@ export async function runStF4(): Promise<void> {
   ];
   require(
     !after.some((entry) =>
-      entry.scenario === 'ST-F4'
+      entry.scenario === scenario
       && entry.actorId === actorId
       && entry.kind === 'packet_handler'
       && entry.value === 'G2'

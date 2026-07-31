@@ -2,11 +2,13 @@ import { createHash } from 'node:crypto';
 import type {
   RoutingId,
   SpotRef,
-  ZLinkAuthoritySnapshot,
-  ZLinkLocationOwnerToken,
-  ZLinkObjectReserveResult,
   ZLinkSpotCreateResult
 } from '../../contracts';
+import type {
+  ZLinkAuthoritySnapshot,
+  ZLinkLocationOwnerToken,
+  ZLinkObjectReserveResult
+} from '../../contracts/Locations';
 import type { ZLinkAuthorityStore, ZLinkObjectCreationStore } from '../locations/internal-store-contracts';
 import {
   ZLinkFrameworkErrorKind,
@@ -957,11 +959,18 @@ function localCreationRecord(
   };
 }
 
-function encodeLocationCreationContent(payload: Uint8Array, checksum: number): string {
+export function encodeLocationCreationContent(
+  payload: Uint8Array,
+  checksum = crc32c(payload)
+): string {
   return `inline-v1:${checksum.toString(16).padStart(8, '0')}:${Buffer.from(payload).toString('base64url')}`;
 }
 
-function decodeLocationCreationContent(reference: string): Buffer {
+export function decodeLocationCreationContent(
+  reference: string,
+  expectedSha256?: Uint8Array,
+  expectedEncodedSize?: bigint
+): Buffer {
   const match = /^inline-v1:([0-9a-f]{8}):([A-Za-z0-9_-]+)$/.exec(reference);
   if (match === null) {
     throw new ZLinkFrameworkException(
@@ -974,6 +983,24 @@ function decodeLocationCreationContent(reference: string): Buffer {
     throw new ZLinkFrameworkException(
       ZLinkFrameworkErrorKind.RequestFailed,
       'User Spot creation content checksum does not match.'
+    );
+  }
+  if (
+    expectedEncodedSize !== undefined
+    && BigInt(payload.byteLength) !== expectedEncodedSize
+  ) {
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.RequestFailed,
+      'Creation content encoded size does not match its Pending reservation.'
+    );
+  }
+  if (
+    expectedSha256 !== undefined
+    && !createHash('sha256').update(payload).digest().equals(Buffer.from(expectedSha256))
+  ) {
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.RequestFailed,
+      'Creation content SHA-256 does not match its Pending reservation.'
     );
   }
   return payload;

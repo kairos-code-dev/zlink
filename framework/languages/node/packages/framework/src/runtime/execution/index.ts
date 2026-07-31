@@ -24,6 +24,7 @@ export class ZLinkSpotSerialTurn {
   private suspendedPromise: Promise<void> | undefined;
   private suspendSignaled = false;
   private owner: Promise<unknown> | undefined;
+  private frameworkOperationsBlocked = false;
 
   constructor(
     private readonly postResume: (turn: ZLinkSpotSerialTurn, resume: () => void) => boolean,
@@ -42,6 +43,18 @@ export class ZLinkSpotSerialTurn {
 
   bindOwner(owner: Promise<unknown>): void {
     this.owner = owner;
+  }
+
+  blockFrameworkOperations(): void {
+    this.frameworkOperationsBlocked = true;
+  }
+
+  ensureFrameworkOperationAllowed(): void {
+    if (this.frameworkOperationsBlocked) {
+      throw new Error(
+        'A Spot handler cannot start another Framework operation after relocationReady().defer().'
+      );
+    }
   }
 
   resetSuspension(): void {

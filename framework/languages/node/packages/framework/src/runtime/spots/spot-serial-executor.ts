@@ -63,6 +63,15 @@ export class ZLinkSpotSerialExecutor {
     return this.enqueue(operation, false);
   }
 
+  /**
+   * Enqueues the framework-owned turn that completes a boundary while normal
+   * application admission remains sealed. Callers must release the matching
+   * barrier seal after this turn finishes.
+   */
+  postBarrierTurn<T>(operation: () => Promise<T> | T): Promise<T> {
+    return this.enqueue(operation, true);
+  }
+
   private enqueue<T>(
     operation: () => Promise<T> | T,
     resumeExistingClaim: boolean

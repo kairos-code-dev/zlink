@@ -16,6 +16,7 @@ import type {
 import type { RoutingId, Type } from '../Common';
 import type { ZLinkWorkerOptions } from './RegistrationTypes';
 import type { ZLinkSpotPublisherConfig } from './Configs';
+import type { ZLinkInboundDispatchOptions } from './InboundDispatch';
 import type {
   ZLinkActorFactoryBuilder,
   ZLinkInstanceSpotFactoryBuilder,
@@ -30,11 +31,13 @@ import type {
 
 export interface ZLinkFrameworkOptions {
   codecs(): ZLinkCodecRegistryBuilder;
+  configureNetwork(): ZLinkNetworkOptions;
   /**
    * Configures the bounded worker-thread pool used by `runCpuWorker(...)`.
    * I/O workers do not consume these threads.
    */
   configureWorker(options: ZLinkWorkerOptions): this;
+  configureInboundDispatch(): ZLinkInboundDispatchOptions;
   configureDispatch(): ZLinkDispatchOptionsBuilder;
   addLocationStore(store: ZLinkLocationStore): this;
   addRelocationStore(store: ZLinkRelocationStore): this;
@@ -169,7 +172,9 @@ export interface ZLinkStreamCompressionBuilder {
 }
 
 export interface ZLinkFanoutChannelBuilder {
-  enablePublisher(endpoint: string): this;
+  enablePublisher(endpointOrPort?: string | number): this;
+  setBindHost(bindHost: string): this;
+  setAdvertiseHost(advertiseHost: string): this;
   routingId(routingId: string): this;
   setRoutingIdPrefix(prefix: string): this;
   enableSubscriber(): this;
@@ -178,8 +183,10 @@ export interface ZLinkFanoutChannelBuilder {
 }
 
 export interface ZLinkStreamNodeBuilder {
-  bind(endpoint: string): this;
-  enableActorDispatch(meshName: string): this;
+  bind(endpointOrPort?: string | number): this;
+  setBindHost(bindHost: string): this;
+  setAdvertiseHost(advertiseHost: string): this;
+  enableActorDispatch(): this;
   setTlsServer(certificatePath: string, keyPath: string, requireClientCertificate?: boolean): this;
   registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession> | Type<ZLinkSessionFactory<TSession>>): this;
 }

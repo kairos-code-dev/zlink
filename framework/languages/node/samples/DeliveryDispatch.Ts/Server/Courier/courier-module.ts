@@ -1,10 +1,8 @@
-import { Module } from '@nestjs/common';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
 import { CourierActorDirectory, CourierActorFactory } from './courier-actor';
 import { CourierEntrySpot } from './courier-entry-spot';
-import { CourierActorBindHandler, CourierActorDecisionHandler, CourierActorOfferHandler, CourierActorSessionBindHandler, EnsureCourierActorHandler } from './offer-delivery-handler';
 import { createDeliveryDispatchLocationStore, deliveryDispatchLocationOptions } from '../Configuration/location-store';
 import {
   DELIVERYDISPATCH_SAMPLE_CONFIG,
@@ -30,7 +28,7 @@ function createCourierActorNodeModule(options: CourierOptions) {
     'logDir'
   ]);
 
-  Module({
+  zlinkModule(__dirname, {
     imports: [
       configuration,
       ZLinkModule.forRootFactory({
@@ -45,7 +43,7 @@ function createCourierActorNodeModule(options: CourierOptions) {
             .traceLabel(nodeLabel);
           builder.addLocationStore(createDeliveryDispatchLocationStore(config));
           deliveryDispatchLocationOptions(builder.configureLocations());
-          const mesh = builder.addRouteMesh(SampleNames.routeMesh)
+          const mesh = builder.addRouteMesh(SampleNames.courierMeshName)
               .listen(spotEndpoint).setRoutingIdPrefix('delivery-courier');
           const objectServer = mesh.objects().server();
           objectServer.addEntrySpot(CourierEntrySpot);
@@ -54,8 +52,7 @@ function createCourierActorNodeModule(options: CourierOptions) {
             CourierActorFactory,
             (factory) => factory.disableRelocation()
           );
-          mesh.channelName(SampleNames.dispatchChannel).setWeight(0);
-          mesh.channelName(SampleNames.routeMesh);
+          builder.addClientServerChannel(SampleNames.dispatchChannel).client();
           return builder.build();
         }
       })
@@ -63,12 +60,7 @@ function createCourierActorNodeModule(options: CourierOptions) {
     providers: [
       { provide: CourierActorDirectory, useValue: directory },
       CourierActorFactory,
-      CourierEntrySpot,
-      EnsureCourierActorHandler,
-      CourierActorBindHandler,
-      CourierActorSessionBindHandler,
-      CourierActorOfferHandler,
-      CourierActorDecisionHandler
+      CourierEntrySpot
     ]
   })(CourierActorNodeModule);
 

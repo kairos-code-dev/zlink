@@ -2,7 +2,7 @@ package systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.
 
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.actors.PlayActor
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.TicTacToeGame
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlaceMarkReq
@@ -14,7 +14,7 @@ class PlayActorPlaceMarkHandler {
     suspend fun placeMark(
         spot: TicTacToeGame,
         actor: PlayActor,
-        context: ZLinkSpotActorRequestContext,
+        context: ZLinkMessageContext,
         request: PlaceMarkReq,
     ): PlaceMarkRes {
         actor.requireJoinedGame()

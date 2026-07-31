@@ -309,10 +309,50 @@ int actor_context_identity_and_source_fence_are_exact ()
     return 0;
 }
 
+int bound_session_route_preserves_private_fences ()
+{
+    using namespace zlink::framework;
+    using namespace zlink::framework::detail;
+
+    actor_gateway_runtime_t gateway;
+    const actor_ref_t actor (
+      node_rid_t::from_string ("actor-node"), "player", "actor-fenced", 7);
+    gateway.bind_session_sink (
+      actor,
+      [] (std::string, const zlink::message_t &) {
+          return task_t<void> (result_t<void>::success ());
+      });
+    gateway.record_bound_session_route (
+      actor, zlink::routing_id_t::from (std::string ("session-node")), std::nullopt,
+      11, 13, 17, 19, 23, 29);
+
+    const auto route = gateway.bound_session_route (actor);
+    if (!route || route->object_generation != 7
+        || route->node_generation != 11
+        || route->authority_owner_generation != 13
+        || route->owner_lease_generation != 17
+        || route->binding_generation != 19
+        || route->binding_token != 23
+        || route->session_sequence != 29) {
+        return 1;
+    }
+    if (!gateway.dispatch_bound_session_send (
+          actor, "push", zlink::message_t{})) {
+        return 2;
+    }
+    const auto advanced = gateway.bound_session_route (actor);
+    return advanced && advanced->session_sequence == 30 ? 0 : 3;
+}
+
 } // namespace
 
 int main ()
 {
+    if (const auto route_fence =
+          bound_session_route_preserves_private_fences ();
+        route_fence != 0) {
+        return 100 + route_fence;
+    }
     if (const auto context_fence = actor_context_identity_and_source_fence_are_exact ();
         context_fence != 0) {
         return 90 + context_fence;

@@ -3,27 +3,21 @@ package systems.zlink.samples.kotlin.deliverydispatch.server.courierspotnode.spo
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpot
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
+import systems.zlink.framework.spots.ZLinkActorCreateResponse
 import systems.zlink.samples.kotlin.deliverydispatch.server.courierspotnode.ActorDirectory
 import systems.zlink.samples.kotlin.deliverydispatch.server.courierspotnode.CourierActor
 
 class CourierEntrySpot(
-    private val entryContext: ZLinkEntrySpotContext,
+    override val context: ZLinkEntrySpotContext,
     private val actors: ActorDirectory,
 ) : ZLinkSuspendingEntrySpot<CourierActor>() {
-    override fun context(): ZLinkEntrySpotContext = entryContext
-
     override suspend fun onCreateActorSuspending(
         actor: CourierActor,
         createRequest: ZLinkMessage,
-    ) {
+    ): ZLinkActorCreateResponse {
         actors.register(actor)
+        return ZLinkActorCreateResponse.accept()
     }
-
-    override suspend fun onActorJoinSuspending(
-        actorId: String,
-        request: ZLinkMessage,
-    ): ZLinkSpotActorJoinResponse = ZLinkSpotActorJoinResponse.accept()
 
     override suspend fun onJoinedActorSuspending(actor: CourierActor) {
         actors.register(actor)

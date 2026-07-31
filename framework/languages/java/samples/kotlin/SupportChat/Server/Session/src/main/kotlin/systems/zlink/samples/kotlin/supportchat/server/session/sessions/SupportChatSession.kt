@@ -129,7 +129,7 @@ class SupportChatSession(
             identityActorId,
             conversationId,
         )
-        context.client().reply(JoinConversationRes(ensured.state)).submit()
+        context.client().reply(JoinConversationRes(ensured.scheduled, ensured.state)).submit()
     }
 
     private suspend fun relayConversationPacket(

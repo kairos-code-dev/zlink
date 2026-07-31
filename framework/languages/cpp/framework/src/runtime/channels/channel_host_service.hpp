@@ -4,6 +4,8 @@
 #include <zlink/framework/contracts/channels/channel.hpp>
 #include <zlink/framework/contracts/configuration/module.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
+#include "runtime/dispatch/inbound_dispatch_budget.hpp"
+#include "runtime/dispatch/completion_admission_owner.hpp"
 
 #include <atomic>
 #include <memory>
@@ -19,7 +21,9 @@ class channel_host_service_t final : public hosted_service_t
     channel_host_service_t (message_bus_t bus,
                             std::vector<channel_snapshot_t> channels,
                             handler_registry_t &handlers,
-                            serializer_registry_t &serializers);
+                            serializer_registry_t &serializers,
+                            std::shared_ptr<inbound_dispatch_budget_t> inbound_budget = {},
+                            std::shared_ptr<completion_admission_owner_t> completion_admission = {});
     ~channel_host_service_t () override;
 
     void start (service_provider_t &services) override;
@@ -34,6 +38,8 @@ class channel_host_service_t final : public hosted_service_t
     std::vector<channel_snapshot_t> _channels;
     handler_registry_t *_handlers;
     serializer_registry_t *_serializers;
+    std::shared_ptr<inbound_dispatch_budget_t> _inbound_budget;
+    std::shared_ptr<completion_admission_owner_t> _completion_admission;
     service_provider_t *_services = nullptr;
     std::atomic_bool _stop{false};
     std::vector<std::unique_ptr<server_loop_t>> _loops;

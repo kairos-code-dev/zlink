@@ -15,10 +15,11 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
         string channelName,
         IReadOnlyList<Message> parts,
         ZLinkEnvelopeHeader header,
-        Action<ZLinkEnvelopeHeader, object?, Type?> reply,
-        Action<ZLinkEnvelopeHeader> replyError,
+        Func<ZLinkEnvelopeHeader, object?, Type?, ValueTask> reply,
+        Func<ZLinkEnvelopeHeader, ValueTask> replyError,
         CancellationToken cancellationToken,
-        ZLinkMessageMetadata? metadata = null)
+        ZLinkMessageMetadata? metadata = null,
+        RoutingId? sourceNodeRid = null)
     {
         var scope = new ZLinkDispatchFlowScope(
             ZLinkDispatchErrorSurface.Channel,
@@ -45,7 +46,8 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
                 LogLevel.Error,
                 ZLinkDispatchErrorAction.ReplyError,
                 error);
-            replyError(ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, error));
+            await replyError(ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, error))
+                .ConfigureAwait(false);
             return;
         }
 
@@ -64,17 +66,27 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
                     $"PayloadDecodeFailed: failed to decode request payload for '{channelName}:{header.MessageName}'.",
                     innerException: ex)))
         {
-            replyError(ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, decodeError!));
+            await replyError(ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, decodeError!))
+                .ConfigureAwait(false);
             return;
         }
 
-        var context = new ZLinkMessageContext(
-            meshName,
-            channelName,
-            scope.PacketName!,
-            scope.ContentType,
-            metadata,
-            header.CorrelationId);
+        IZLinkMessageContext context = sourceNodeRid is { } source
+            ? new ZLinkRouteMessageContext(
+                meshName,
+                channelName,
+                source,
+                scope.PacketName!,
+                scope.ContentType,
+                metadata,
+                header.CorrelationId)
+            : new ZLinkMessageContext(
+                meshName,
+                channelName,
+                scope.PacketName!,
+                scope.ContentType,
+                metadata,
+                header.CorrelationId);
 
         try
         {
@@ -90,16 +102,18 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
                     ZLinkFrameworkErrorKind.Rejected,
                     $"A handler filter rejected '{channelName}:{header.MessageName}'.");
 
-            reply(
-                ZLinkChannelReplyWriter.CreateReplyHeader(ZLinkMessageKind.Response, channelName, header),
-                dispatch.Value,
-                endpoint.ReplyType);
+            await reply(
+                    ZLinkChannelReplyWriter.CreateReplyHeader(ZLinkMessageKind.Response, channelName, header),
+                    dispatch.Value,
+                    endpoint.ReplyType)
+                .ConfigureAwait(false);
 
             scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Replied);
         }
         catch (Exception ex)
         {
-            replyError(ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, ex));
+            await replyError(ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, ex))
+                .ConfigureAwait(false);
             scope.HandlerException(
                 logger,
                 dispatchErrors,

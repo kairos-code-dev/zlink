@@ -3,7 +3,7 @@ package systems.zlink.samples.supportchat.server.support.spots.entryspot;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkActorCreateResponse;
 import systems.zlink.samples.supportchat.server.support.actors.SupportUserActor;
 import systems.zlink.samples.supportchat.server.support.actors.SupportActorDirectory;
 import systems.zlink.samples.supportchat.server.support.application.AgentAssignmentService;
@@ -30,21 +30,15 @@ public final class SupportEntrySpot implements ZLinkEntrySpot<SupportUserActor> 
     }
 
     @Override
-    public java.util.concurrent.CompletionStage<Void> onCreateActor(
+    public java.util.concurrent.CompletionStage<ZLinkActorCreateResponse> onCreateActor(
         SupportUserActor actor,
         ZLinkMessage createRequest) {
         Messages.EnsureSupportUserActorReq request =
             createRequest.decode(Messages.EnsureSupportUserActorReq.class);
         actor.setIdentity(request.displayName(), request.role(), request.participantId());
         directory.remember(actor);
-        return java.util.concurrent.CompletableFuture.completedFuture(null);
-    }
-
-    @Override
-    public java.util.concurrent.CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
-        String actorId,
-        ZLinkMessage request) {
-        return java.util.concurrent.CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept());
+        return java.util.concurrent.CompletableFuture.completedFuture(
+            ZLinkActorCreateResponse.accept());
     }
 
     @Override

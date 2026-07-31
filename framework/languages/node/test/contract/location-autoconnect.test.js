@@ -26,7 +26,7 @@ test('binding routing-id conversion preserves opaque ids from another package in
   );
 });
 
-test('spot auto-connect removes a pending intent without disconnecting a peer that has no routing identity', () => {
+test('spot auto-connect carries the expected lifecycle and removes an unresolved pending intent', () => {
   const calls = [];
   const node = {
     status() {
@@ -35,8 +35,13 @@ test('spot auto-connect removes a pending intent without disconnecting a peer th
         localEndpoint: 'tcp://local'
       };
     },
-    connectPeer() {
-      calls.push('connect');
+    connectPeer(options) {
+      calls.push({
+        endpoint: options.endpoint,
+        expectedRid: String(options.expectedRid),
+        expectedSecurityIdentity: options.expectedSecurityIdentity,
+        expectedLifecycleGeneration: options.expectedLifecycleGeneration
+      });
       return 7n;
     },
     removePeerConnection(intentId) {
@@ -61,16 +66,23 @@ test('spot auto-connect removes a pending intent without disconnecting a peer th
   );
   const target = {
     targetKey: 'remote',
-    lifecycleGeneration: 0n,
+    nodeRid: zlink.RoutingId.from('node-remote'),
+    lifecycleGeneration: 17n,
     endpoint: 'tcp://remote',
     role: internal.ZLinkLocationRole.Router,
-    connectionKind: 'route-mesh'
+    connectionKind: 'route-mesh',
+    metadata: { securityIdentity: 'remote-security' }
   };
 
   assert.equal(capability.executor.connect(target), true);
   capability.executor.disconnect(target);
 
-  assert.deepEqual(calls, ['connect', 'remove:7']);
+  assert.deepEqual(calls, [{
+    endpoint: 'tcp://remote',
+    expectedRid: 'node-remote',
+    expectedSecurityIdentity: 'remote-security',
+    expectedLifecycleGeneration: 17n
+  }, 'remove:7']);
   assert.equal(capability.executor.isDisconnected(target), true);
 });
 

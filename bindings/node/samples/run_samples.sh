@@ -12,18 +12,8 @@ samples=(
   "dist-tools/samples/pair_recv_sample.js"
   "dist-tools/samples/pubsub_recv_sample.js"
   "dist-tools/samples/dealer_router_recv_sample.js"
-  "dist-tools/samples/spot_request_sample.js"
-  "dist-tools/samples/spot_pubsub_example.js"
-  "dist-tools/samples/spot_rpc_example.js"
-  "dist-tools/samples/spot_timer_example.js"
   "dist-tools/samples/stream_recv_sample.js"
   "dist-tools/samples/stream_packet_callback_sample.js"
-  "dist-tools/samples/actor_room_server_sample.js"
-  "dist-tools/samples/actor_gateway_relay_sample.js"
-  "dist-tools/samples/actor_single_player_queue_sample.js"
-  "dist-tools/samples/actor_queue_example.js"
-  "dist-tools/samples/actor_room_example.js"
-  "dist-tools/samples/actor_sequential_example.js"
   "dist-tools/samples/monitor_recv_sample.js"
 )
 

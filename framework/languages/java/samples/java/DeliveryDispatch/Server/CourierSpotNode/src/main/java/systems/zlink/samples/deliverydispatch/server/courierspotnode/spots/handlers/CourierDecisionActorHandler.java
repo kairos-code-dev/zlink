@@ -5,7 +5,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler;
-import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.courierspotnode.CourierActor;
 import systems.zlink.samples.deliverydispatch.server.courierspotnode.spots.CourierEntrySpot;
@@ -31,7 +31,7 @@ public final class CourierDecisionActorHandler
     public CompletionStage<Void> handle(
         CourierEntrySpot entrySpot,
         CourierActor actor,
-        ZLinkSpotActorSendContext context,
+        ZLinkMessageContext context,
         Messages.CourierDecision message) {
         Optional<Integer> attempt = actor.takeOfferedAttempt(message.deliveryId());
         if (attempt.isEmpty()) {

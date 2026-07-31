@@ -17,6 +17,7 @@
 #include <nlohmann/json.hpp>
 
 #include <chrono>
+#include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -31,6 +32,26 @@ namespace fw = zlink::framework;
 
 namespace
 {
+
+std::string host_from_tcp_endpoint (const std::string &endpoint)
+{
+    const auto start = endpoint.rfind ("tcp://", 0) == 0 ? 6U : 0U;
+    const auto separator = endpoint.rfind (':');
+    if (separator == std::string::npos || separator <= start)
+        throw std::invalid_argument ("ClientServer endpoint must use tcp://host:port");
+    return endpoint.substr (start, separator - start);
+}
+
+std::uint16_t port_from_tcp_endpoint (const std::string &endpoint)
+{
+    const auto separator = endpoint.rfind (':');
+    if (separator == std::string::npos || separator + 1 >= endpoint.size ())
+        throw std::invalid_argument ("ClientServer endpoint must use tcp://host:port");
+    const auto value = std::stoul (endpoint.substr (separator + 1));
+    if (value == 0 || value > 65535)
+        throw std::invalid_argument ("ClientServer endpoint port is out of range");
+    return static_cast<std::uint16_t> (value);
+}
 
 /* Cross-language DTOs. The names match the .NET TestHost records and the Node
  * classes: both languages derive the packet name from the type name. */
@@ -200,7 +221,9 @@ class published_event_handler_t
 
     explicit published_event_handler_t (event_sink_t &sink) : _sink (sink) {}
 
-    void handle (const test_host_published_event_t &event, const fw::publish_context_t &context)
+    void handle (
+      const test_host_published_event_t &event,
+      const fw::publish_message_context_t &context)
     {
         _sink.append (std::string (context.topic) + ":" + event.value);
     }
@@ -408,9 +431,13 @@ int main (int argc, char **argv)
               std::make_unique<event_sink_t> (option ("event-file")));
 
             if (mode == "channel-server") {
-                auto channel = options.add_client_server_channel (require ("channel-name"));
-                channel.enable_server (require ("server-endpoint"));
-                channel.use_handler_group ("cross-language");
+                const auto endpoint = require ("server-endpoint");
+                options.add_client_server_channel (require ("channel-name"))
+                  .server ()
+                  .set_bind_host (host_from_tcp_endpoint (endpoint))
+                  .set_advertise_host (host_from_tcp_endpoint (endpoint))
+                  .listen (port_from_tcp_endpoint (endpoint))
+                  .add_handler_group ("cross-language");
                 options.handlers ()
                   .group ("cross-language")
                   .add<profile_request_handler_t> ()
@@ -419,7 +446,8 @@ int main (int argc, char **argv)
             }
             if (mode == "channel-client") {
                 options.add_client_server_channel (require ("channel-name"))
-                  .enable_client (require ("server-endpoint"));
+                  .client ()
+                  .connect (require ("server-endpoint"));
                 return;
             }
             if (mode == "channel-publisher") {

@@ -5,7 +5,7 @@ package systems.zlink.contracts.messaging;
 import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.runtime.nativeapi.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;

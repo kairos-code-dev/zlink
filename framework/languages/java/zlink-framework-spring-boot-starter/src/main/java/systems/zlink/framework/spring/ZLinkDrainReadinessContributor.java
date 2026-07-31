@@ -2,7 +2,7 @@ package systems.zlink.framework.spring;
 
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
-import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle;
 
 public final class ZLinkDrainReadinessContributor implements HealthIndicator {
     private final ZLinkFrameworkLifecycle lifecycle;

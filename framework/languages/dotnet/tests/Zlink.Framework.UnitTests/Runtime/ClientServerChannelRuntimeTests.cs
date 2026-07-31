@@ -364,6 +364,9 @@ public sealed class ClientServerChannelRuntimeTests
         var runtime = provider.GetRequiredService<ZLinkFrameworkRuntime>();
         var monitoring =
             provider.GetRequiredService<IZLinkClientServerRuntime>();
+        var hostLifecycle =
+            provider.GetRequiredService<ZLinkFrameworkHostLifecycleState>();
+        hostLifecycle.TransitionTo(ZLinkFrameworkRuntimeState.Serving);
 
         await runtime.StartAsync(CancellationToken.None);
         try
@@ -383,6 +386,13 @@ public sealed class ClientServerChannelRuntimeTests
             Assert.Equal(
                 ZLinkPeerState.Ready,
                 readyServer.State);
+
+            hostLifecycle.TransitionTo(ZLinkFrameworkRuntimeState.Relocating);
+            var relocating = monitoring.GetStatus("work");
+            Assert.False(relocating.IsReady);
+            Assert.Equal(ZLinkTopologyState.Stopping, relocating.State);
+            Assert.Equal(1, relocating.ReadyTargetCount);
+            hostLifecycle.TransitionTo(ZLinkFrameworkRuntimeState.Serving);
 
             using var timeout = new CancellationTokenSource(
                 TimeSpan.FromSeconds(8));
@@ -1287,11 +1297,14 @@ public sealed class ClientServerChannelRuntimeTests
         services.AddSingleton<EchoProbe>();
         services.AddSingleton(new ServerIdentity(string.Empty));
         services.AddZLinkFramework(options =>
+        {
+            options.ConfigureInboundDispatch().ApplicationHwmBytes = 0;
             options.AddClientServerChannel("work")
                 .Server()
                 .Listen(port)
                 .AddSendHandler<EchoSendHandler, EchoSend>()
-                .AddRequestHandler<EchoHandler, EchoRequest, EchoReply>());
+                .AddRequestHandler<EchoHandler, EchoRequest, EchoReply>();
+        });
         return services.BuildServiceProvider();
     }
 
@@ -1301,10 +1314,13 @@ public sealed class ClientServerChannelRuntimeTests
         services.AddSingleton<BlockingRequestProbe>();
         services.AddSingleton(new ServerIdentity(string.Empty));
         services.AddZLinkFramework(options =>
+        {
+            options.ConfigureInboundDispatch().ApplicationHwmBytes = 0;
             options.AddClientServerChannel("work")
                 .Server()
                 .Listen(port)
-                .AddRequestHandler<BlockingRequestHandler, BlockingRequest, EchoReply>());
+                .AddRequestHandler<BlockingRequestHandler, BlockingRequest, EchoReply>();
+        });
         return services.BuildServiceProvider();
     }
 
@@ -1312,9 +1328,12 @@ public sealed class ClientServerChannelRuntimeTests
     {
         var services = new ServiceCollection();
         services.AddZLinkFramework(options =>
+        {
+            options.ConfigureInboundDispatch().ApplicationHwmBytes = 0;
             options.AddClientServerChannel("work")
                 .Client()
-                .Connect($"tcp://127.0.0.1:{port}"));
+                .Connect($"tcp://127.0.0.1:{port}");
+        });
         return services.BuildServiceProvider();
     }
 
@@ -1329,6 +1348,7 @@ public sealed class ClientServerChannelRuntimeTests
         services.AddSingleton(new ServerIdentity(name));
         services.AddZLinkFramework(options =>
         {
+            options.ConfigureInboundDispatch().ApplicationHwmBytes = 0;
             options.AddLocationStore(store);
             options.AddClientServerChannel("work")
                 .Server()
@@ -1346,6 +1366,7 @@ public sealed class ClientServerChannelRuntimeTests
         var services = new ServiceCollection();
         services.AddZLinkFramework(options =>
         {
+            options.ConfigureInboundDispatch().ApplicationHwmBytes = 0;
             options.AddLocationStore(store);
             options.AddClientServerChannel("work").Client();
         });
@@ -1362,6 +1383,7 @@ public sealed class ClientServerChannelRuntimeTests
         services.AddSingleton(new ServerIdentity(name));
         services.AddZLinkFramework(options =>
         {
+            options.ConfigureInboundDispatch().ApplicationHwmBytes = 0;
             options.AddLocationStore(store);
             options.AddClientServerChannel("work").Client();
             options.AddClientServerChannel("work")
@@ -1381,6 +1403,7 @@ public sealed class ClientServerChannelRuntimeTests
         services.AddSingleton(new ServerIdentity("local"));
         services.AddZLinkFramework(options =>
         {
+            options.ConfigureInboundDispatch().ApplicationHwmBytes = 0;
             options.AddClientServerChannel("work").Client();
             options.AddClientServerChannel("work")
                 .Server()

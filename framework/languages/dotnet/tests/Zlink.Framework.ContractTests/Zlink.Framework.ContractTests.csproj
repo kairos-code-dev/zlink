@@ -52,6 +52,7 @@
         <Compile Include="Configuration/ObjectAndChannelRoleBuilderContracts.cs"/>
         <Compile Include="Configuration/RouteMeshRuntimeContracts.cs"/>
         <Compile Include="Coverage/ContractSurfaceCoverage.cs"/>
+        <Compile Include="Coverage/SourceLayoutContracts.cs"/>
         <Compile Include="Locations/AuthorityStoreContracts.cs"/>
         <Compile Include="Locations/LocationContracts.cs"/>
         <Compile Include="Locations/ProviderStoreContracts.cs"/>

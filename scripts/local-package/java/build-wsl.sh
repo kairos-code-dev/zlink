@@ -14,8 +14,9 @@ usage() {
 Usage: build-wsl.sh --core-prefix ABSOLUTE_DIR \
   --core-package-evidence ABSOLUTE_JSON [--maven-repository ABSOLUTE_DIR]
 
-Publishes systems.zlink:zlink:11.0.0 only to the selected local Maven
-repository after matching the exact approved Core 11 package identity.
+Publishes the version declared by bindings/java/build.gradle only to the
+selected local Maven repository after matching the exact approved Core 11
+package identity.
 EOF
 }
 

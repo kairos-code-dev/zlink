@@ -59,6 +59,17 @@ export interface ZLinkActorManagerOptions {
   readonly shutdownSignal?: AbortSignal;
   readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
   readonly admission?: ZLinkRuntimeAdmissionGate;
+  readonly placementCreate?: (
+    actorId: string,
+    actorType: string,
+    createOnly: boolean,
+    options: {
+      readonly meshName?: string;
+      readonly request?: unknown;
+      readonly timeoutMs: number;
+    },
+    signal?: AbortSignal
+  ) => Promise<import('../../contracts').ZLinkActorCreateResult>;
 }
 
 export interface ZLinkActorRuntimeLocationLookup {

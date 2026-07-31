@@ -2,7 +2,7 @@ package systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.
 
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.actors.PlayActor
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.entryspot.PlayEntrySpot
@@ -15,7 +15,7 @@ class PlayActorObserveMilestoneHandler {
     suspend fun observe(
         entrySpot: PlayEntrySpot,
         actor: PlayActor,
-        context: ZLinkSpotActorRequestContext,
+        context: ZLinkMessageContext,
         request: ObserveMilestoneReq,
     ): ObserveMilestoneRes = entrySpot.observeMilestone(actor)
 }

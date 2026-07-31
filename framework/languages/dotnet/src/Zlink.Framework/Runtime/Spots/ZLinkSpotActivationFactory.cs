@@ -8,7 +8,8 @@ internal sealed class ZLinkSpotActivationFactory(
     ZLinkFrameworkRegistration frameworkRegistration,
     ZLinkSpotNodeRegistration registration,
     IZLinkBackendSpotNode node,
-    string spotChannelName)
+    string spotChannelName,
+    ZLinkCompletionAdmissionOwner completionAdmission)
 {
     public async ValueTask<ZLinkSpotActivationCreateResult> CreateAsync(
         Type spotType,
@@ -74,7 +75,8 @@ internal sealed class ZLinkSpotActivationFactory(
                     : ZLinkUserSpotExecutionMode.SpotWide,
                 userSpotOptions?.RelocationReadiness
                 ?? ZLinkSpotRelocationReadinessMode.AnyTurnBoundary,
-                restoreLogicalTimers: !invokeCreate);
+                restoreLogicalTimers: !invokeCreate,
+                completionAdmission: completionAdmission);
 
             var spot = (IZLinkSpot)ActivatorUtilities.CreateInstance(
                 spotScope.ServiceProvider,
@@ -140,7 +142,8 @@ internal sealed class ZLinkSpotActivationFactory(
                 frameworkRegistration.DefaultRequestTimeout,
                 registration.Router?.SocketConfig.SendTimeout
                 ?? frameworkRegistration.DefaultSocketSendTimeout,
-                restoreLogicalTimers: restoreLogicalTimers);
+                restoreLogicalTimers: restoreLogicalTimers,
+                completionAdmission: completionAdmission);
             var spot = (IZLinkInstanceSpot)ActivatorUtilities.CreateInstance(
                 spotScope.ServiceProvider,
                 spotType,

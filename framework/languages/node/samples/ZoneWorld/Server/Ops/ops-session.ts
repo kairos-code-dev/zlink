@@ -6,20 +6,10 @@ import type {
   ZLinkSessionDispatchContext,
   ZLinkSessionFactory
 } from '@zlink-systems/framework';
-import {
-  AnnounceWorldHandler,
-  NodeDiagnosticsHandler,
-  SetMaintenanceHandler,
-  WatchNodesHandler
-} from './ops-handlers';
 import { OpsConsoleRegistry } from './ops-console-registry';
 
 class OpsSession implements ZLinkSession {
   constructor(readonly context: ZLinkSessionContext, private readonly consoles: OpsConsoleRegistry) {
-    context.handlers.addHandler(WatchNodesHandler);
-    context.handlers.addHandler(AnnounceWorldHandler);
-    context.handlers.addHandler(SetMaintenanceHandler);
-    context.handlers.addHandler(NodeDiagnosticsHandler);
   }
 
   async onConnected(): Promise<void> {

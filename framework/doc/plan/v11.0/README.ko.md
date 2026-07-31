@@ -12,6 +12,7 @@
 | [Framework 공통 internals](../../framework/common/internals/README.ko.md) | Protocol, queue, ownership, fencing, recovery와 resource 불변 조건의 단일 기준 |
 | [Core service migration inventory](../../contract-inventory/route-mesh-v11-core-service-migration-inventory.json) | Core 10 service 공개 의미와 구현 입력을 정식 Framework spec·internals owner에 연결하는 machine-readable 대조 자료 |
 | [다섯 언어 exact interface](../../framework/common/spec/server/languages/README.ko.md) | C++·.NET·Java·Kotlin·Node.js public signature의 정식 계약. 각 언어의 `interfaces/`가 정확한 선언을 소유한다. |
+| [언어별 public contract source 경계 감사](framework-public-contract-source-layout-audit.ko.md) | Server, HTTP client와 Stream Connector의 `Contracts/contracts` 이탈 현황, 이동 근거와 복구 조건 |
 | [통합 execution ledger](route-mesh-11.0.0-execution-ledger.ko.md) | 선행 조건, 병렬 lane, 상태, 구현 차이와 완료 증거의 단일 기준 |
 | [blocked issue log](blocked-issue-log.md) | 자율 실행 중 발생한 blocker의 원인, 수정 내용과 재검증 결과 기록. 진행 상태는 소유하지 않는다 |
 

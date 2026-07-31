@@ -12,11 +12,12 @@ import org.springframework.core.env.StandardEnvironment
 import org.springframework.context.ConfigurableApplicationContext
 import org.springframework.context.annotation.Bean
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleLocationStore
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
-import systems.zlink.samples.kotlin.tictactoe.server.play.application.gamecreation.TicTacToeGameCreator
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.handlers.TicTacToeGameCreatedHandler
 
 
@@ -29,16 +30,25 @@ import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.s
 )
 class PlayServerApplication {
     @Bean
-    fun playFramework(settings: SampleSettings): ZLinkFrameworkConfigurer =
-        PlayServer.configure(settings)
+    fun playFramework(settings: SampleSettings): ZLinkFrameworkConfigurer {
+        val server = PlayServer.configure(settings)
+        return ZLinkFrameworkConfigurer { options ->
+            options.configureLocations()
+            options.addLocationStore(SampleLocationStore.create(settings))
+            options.addRelocationStore(
+                ZLinkRedisRelocationStore(
+                    ZLinkRedisRelocationOptions()
+                        .setConnectionString(settings.redisEndpoint)
+                        .setKeyPrefix(settings.redisKeyPrefix + "relocation:"),
+                ),
+            )
+            server.configure(options)
+        }
+    }
 
     @Bean
     fun ticTacToeGameCreatedHandler(): TicTacToeGameCreatedHandler =
         TicTacToeGameCreatedHandler()
-
-    @Bean
-    fun ticTacToeGameCreator(settings: SampleSettings): TicTacToeGameCreator =
-        TicTacToeGameCreator(settings)
 
     @Bean(destroyMethod = "close")
     fun locationStore(settings: SampleSettings): ZLinkRedisLocationStore =

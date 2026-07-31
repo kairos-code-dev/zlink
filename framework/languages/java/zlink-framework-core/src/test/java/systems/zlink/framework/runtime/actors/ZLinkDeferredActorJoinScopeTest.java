@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -15,6 +16,19 @@ import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 
 final class ZLinkDeferredActorJoinScopeTest {
+    @Test
+    void deferredJoinUsesOnlyTheTimeLeftAfterItsHandlerBarrier() {
+        long deadline = System.nanoTime() + Duration.ofSeconds(1).toNanos();
+
+        Duration remaining =
+            ZLinkActorSpotJoinCall.remainingTimeout(deadline);
+
+        assertTrue(remaining != null);
+        assertTrue(remaining.compareTo(Duration.ofSeconds(1)) <= 0);
+        assertTrue(ZLinkActorSpotJoinCall.remainingTimeout(
+            System.nanoTime() - 1) == null);
+    }
+
     @Test
     void actorScopeDoesNotCrossRuntimeOrActorIncarnation() {
         Object runtime = new Object();
@@ -378,14 +392,9 @@ final class ZLinkDeferredActorJoinScopeTest {
                 return CompletableFuture.completedFuture(null);
             });
 
-        // The dispatch stage still settles only after every registered
-        // barrier has run (same ordering as Node's await before returning
-        // the captured handler result), but it settles normally: join-a's
-        // own failure never reaches it or replaces its outcome.
+        // The handler terminal is independent from deferred membership work:
+        // join-a's own failure never reaches it or replaces its outcome.
         handler.toCompletableFuture().join();
-        assertEquals(
-            List.of("handler-terminal", "join-a", "join-b"),
-            order);
 
         // If join-a's failure had short-circuited the registration-order
         // chain, actor-b's activation latch would never fire and its queue
@@ -399,6 +408,9 @@ final class ZLinkDeferredActorJoinScopeTest {
             .toCompletableFuture()
             .join();
 
+        assertEquals(
+            List.of("handler-terminal", "join-a", "join-b"),
+            order);
         assertEquals(List.of("actor-b-next-turn"), followUp);
     }
 

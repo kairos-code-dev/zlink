@@ -16,6 +16,7 @@ class TransientTriggerApplication {
     fun frameworkConfigurer(environment: Environment): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             options.addClientServerChannel(Contracts.CHANNEL)
-                .enableClient(environment.getRequiredProperty("zlink.e2e.transient-endpoint"))
+                .client()
+                .connect(environment.getRequiredProperty("zlink.e2e.transient-endpoint"))
         }
 }

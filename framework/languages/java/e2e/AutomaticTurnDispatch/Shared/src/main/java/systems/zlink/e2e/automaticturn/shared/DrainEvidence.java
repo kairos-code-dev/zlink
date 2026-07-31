@@ -1,19 +1,40 @@
 package systems.zlink.e2e.automaticturn.shared;
 
 import java.util.List;
+import java.util.concurrent.Flow;
 import java.util.concurrent.CopyOnWriteArrayList;
-import systems.zlink.framework.monitoring.ZLinkFrameworkRuntimeEvent;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler;
+import systems.zlink.framework.monitoring.ZLinkFrameworkRuntimeStatus;
 import java.time.Instant;
 
-public final class DrainEvidence implements ZLinkRuntimeEventHandler<ZLinkFrameworkRuntimeEvent> {
+public final class DrainEvidence implements Flow.Subscriber<ZLinkFrameworkRuntimeStatus> {
     public record Event(String state, Instant timestamp) {}
 
     private final List<Event> events = new CopyOnWriteArrayList<>();
+    private Flow.Subscription subscription;
 
     @Override
-    public void handle(ZLinkFrameworkRuntimeEvent event) {
-        events.add(new Event(event.runtime().state().name(), event.timestamp()));
+    public void onSubscribe(Flow.Subscription subscription) {
+        this.subscription = subscription;
+        subscription.request(Long.MAX_VALUE);
+    }
+
+    @Override
+    public void onNext(ZLinkFrameworkRuntimeStatus status) {
+        events.add(new Event(status.state().name(), status.observedAt()));
+    }
+
+    @Override
+    public void onError(Throwable error) {
+        events.add(new Event("ERROR", Instant.now()));
+    }
+
+    @Override
+    public void onComplete() {
+        subscription = null;
+    }
+
+    public void observe(Flow.Publisher<ZLinkFrameworkRuntimeStatus> statuses) {
+        statuses.subscribe(this);
     }
 
     public List<Event> events() {

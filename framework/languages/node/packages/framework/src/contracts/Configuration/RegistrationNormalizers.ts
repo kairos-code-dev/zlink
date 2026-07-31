@@ -18,18 +18,45 @@ import type {
   ZLinkSpotNodeOptions,
   ZLinkStreamNodeOptions
 } from './RegistrationTypes';
+import type { ZLinkNetworkOptions } from './Builders';
 
-export function toChannelMap(channels: ZLinkFrameworkRegistrationOptions['channels']): Map<string, ZLinkChannelOptions> {
-  return new Map(Object.entries(channels ?? {}).map(([name, channel]) => [name, {
-    ...channel,
-    requestTimeoutMs: normalizeOptionalPositiveInteger(channel.requestTimeoutMs, `${name}.requestTimeoutMs`)
-  }]));
+export function normalizeNetworkOptions(
+  value: ZLinkFrameworkRegistrationOptions['network']
+): ZLinkNetworkOptions {
+  return {
+    bindHost: value?.bindHost ?? '127.0.0.1',
+    ...(value?.advertiseHost === undefined ? {} : { advertiseHost: value.advertiseHost })
+  };
+}
+
+export function toChannelMap(
+  channels: ZLinkFrameworkRegistrationOptions['channels'],
+  network: ZLinkNetworkOptions
+): Map<string, ZLinkChannelOptions> {
+  return new Map(Object.entries(channels ?? {}).map(([name, channel]) => {
+    const server = channel.server === undefined
+      ? undefined
+      : normalizeListener(channel.server, network);
+    const publisher = channel.publisher === undefined
+      ? undefined
+      : normalizeListener(channel.publisher, network);
+    return [name, {
+      ...channel,
+      ...(server === undefined ? {} : { server }),
+      ...(publisher === undefined ? {} : { publisher }),
+      requestTimeoutMs: normalizeOptionalPositiveInteger(channel.requestTimeoutMs, `${name}.requestTimeoutMs`)
+    }];
+  }));
 }
 
 export function toStreamNodeMap(
-  streamNodes: ZLinkFrameworkRegistrationOptions['streamNodes']
+  streamNodes: ZLinkFrameworkRegistrationOptions['streamNodes'],
+  network: ZLinkNetworkOptions
 ): Map<string, ZLinkStreamNodeOptions> {
-  return new Map(Object.entries(streamNodes ?? {}).map(([name, streamNode]) => [name, { ...streamNode }]));
+  return new Map(Object.entries(streamNodes ?? {}).map(([name, streamNode]) => [
+    name,
+    normalizeListener(streamNode, network)
+  ]));
 }
 
 export function toRouteChannelOptions(
@@ -92,7 +119,20 @@ export function hasSpotNode(registration: ZLinkFrameworkRegistration): boolean {
 }
 
 export function hasActorManager(registration: ZLinkFrameworkRegistration): boolean {
-  return hasSpotNode(registration) && registration.actorFactories.size > 0;
+  const hasObjectCapability = [...registration.spotNodes.values()].some(node =>
+    node.objectRole === 'client'
+    || node.objectRole === 'server'
+    || (
+      node.actorFactories instanceof Map
+        ? node.actorFactories.size > 0
+        : Object.keys(node.actorFactories ?? {}).length > 0
+    )
+    || Object.keys(node.actorFactoryRegistrations ?? {}).length > 0
+  );
+  return hasObjectCapability && (
+    registration.locations.useInMemoryStores
+    || registration.locations.storeInstance !== undefined
+  );
 }
 
 export function hasSpotPublisherClient(registration: ZLinkFrameworkRegistration): boolean {
@@ -131,35 +171,100 @@ export function actorFactoriesFromSpotNodes(spotNodes: ReadonlyMap<string, ZLink
   return toTypeMap(actorCapableNodes[0].actorFactories);
 }
 
-export function toSpotNodeMap(value: ZLinkFrameworkRegistrationOptions['spotNodes']): Map<string, ZLinkSpotNodeOptions> {
+export function toSpotNodeMap(
+  value: ZLinkFrameworkRegistrationOptions['spotNodes'],
+  network: ZLinkNetworkOptions
+): Map<string, ZLinkSpotNodeOptions> {
   if (value === undefined) {
     return new Map();
   }
   if (!Array.isArray(value)) {
-    return new Map(Object.entries(value).map(([name, spotNode]) => [name, normalizeSpotNodeOptions(spotNode)]));
+    return new Map(Object.entries(value).map(([name, spotNode]) => [
+      name,
+      normalizeSpotNodeOptions(spotNode, network)
+    ]));
   }
   return new Map(value.map((spotNode) => {
     if (typeof spotNode === 'string') {
-      return [spotNode, {}];
+      return [spotNode, normalizeSpotNodeOptions({}, network)];
     }
     const { name, ...options } = spotNode;
-    return [name, normalizeSpotNodeOptions(options)];
+    return [name, normalizeSpotNodeOptions(options, network)];
   }));
 }
 
-function normalizeSpotNodeOptions(spotNode: ZLinkSpotNodeOptions): ZLinkSpotNodeOptions {
-  if (spotNode.routingId === undefined) {
-    return { ...spotNode };
-  }
+function normalizeSpotNodeOptions(
+  spotNode: ZLinkSpotNodeOptions,
+  network: ZLinkNetworkOptions
+): ZLinkSpotNodeOptions {
+  const router = spotNode.router === undefined
+    ? undefined
+    : normalizeListener(spotNode.router, network);
   return {
     ...spotNode,
-    router: spotNode.router === undefined
+    router: router === undefined
       ? undefined
-      : { ...spotNode.router, routingId: spotNode.router.routingId ?? spotNode.routingId },
+      : {
+          ...router,
+          routingId: router.routingId ?? spotNode.routingId
+        },
     pubSub: spotNode.pubSub === undefined
       ? undefined
       : { ...spotNode.pubSub, routingId: spotNode.pubSub.routingId ?? spotNode.routingId }
   };
+}
+
+function normalizeListener<
+  T extends {
+    readonly bind?: string;
+    readonly bindHost?: string;
+    readonly advertiseHost?: string;
+    readonly port?: number;
+  }
+>(listener: T, network: ZLinkNetworkOptions): T & {
+  readonly bind: string;
+  readonly bindHost: string;
+  readonly port: number;
+} {
+  const usesConfiguredEndpoint = listener.bind !== undefined && listener.port === undefined;
+  const port = listener.port ?? (usesConfiguredEndpoint ? endpointPort(listener.bind!) : 0);
+  const bindHost = listener.bindHost
+    ?? (usesConfiguredEndpoint ? endpointHost(listener.bind!) : network.bindHost);
+  const bind = usesConfiguredEndpoint ? listener.bind! : tcpEndpoint(bindHost, port);
+  return {
+    ...listener,
+    bind,
+    bindHost,
+    port,
+    ...(listener.advertiseHost !== undefined
+      ? { advertiseHost: listener.advertiseHost }
+      : network.advertiseHost === undefined
+        ? {}
+        : { advertiseHost: network.advertiseHost })
+  };
+}
+
+function tcpEndpoint(host: string, port: number): string {
+  const endpointHost = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+  return `tcp://${endpointHost}:${port}`;
+}
+
+function endpointHost(endpoint: string): string {
+  try {
+    return new URL(endpoint).hostname.replace(/^\[|\]$/g, '');
+  } catch {
+    return '';
+  }
+}
+
+function endpointPort(endpoint: string): number {
+  try {
+    const parsed = new URL(endpoint);
+    if (parsed.port.length === 0) return 0;
+    return Number(parsed.port);
+  } catch {
+    return 0;
+  }
 }
 
 export function toSpotFactorySet(

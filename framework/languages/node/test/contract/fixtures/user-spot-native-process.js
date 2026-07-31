@@ -26,7 +26,18 @@ class RemoteRoomSpot {
 
   async onInitialize() {}
 
-  async onClosing() {}
+  async onClosing() {
+    closeExecutions++;
+    if (
+      process.env.ZLINK_TEST_PAUSE_FIRST_CLOSE === '1'
+      && closeExecutions === 1
+    ) {
+      send({ type: 'close-entered', executions: closeExecutions });
+      await new Promise((resolve) => {
+        releaseFirstClose = resolve;
+      });
+    }
+  }
 }
 
 let app;
@@ -34,6 +45,8 @@ let store;
 let spotManager;
 let currentSpot;
 let stopping = false;
+let closeExecutions = 0;
+let releaseFirstClose;
 
 void start().catch((error) => {
   send({
@@ -64,6 +77,10 @@ async function start() {
     );
   } else if (role === 'source') {
     mesh.objects().client();
+    const targetEndpoint = process.env.ZLINK_TEST_TARGET_ENDPOINT;
+    if (typeof targetEndpoint === 'string' && targetEndpoint.length > 0) {
+      mesh.peerConnections().connect(targetRoutingId, targetEndpoint);
+    }
   } else {
     throw new Error(`Unsupported ZLINK_TEST_ROLE '${role}'.`);
   }
@@ -80,44 +97,10 @@ async function start() {
   if (spotManager === undefined || spotManager === null) {
     throw new Error('ZLINK_SPOT_MANAGER was not registered.');
   }
-  await waitForPublishedTarget();
   process.on('message', onMessage);
   process.once('SIGTERM', () => void stop(0));
   process.once('SIGINT', () => void stop(0));
   send({ type: 'ready', role, pid: process.pid });
-}
-
-async function waitForPublishedTarget() {
-  const deadline = Date.now() + 5_000;
-  let observed = [];
-  do {
-    const descriptors = await store.listMeshNodes(meshName);
-    observed = descriptors;
-    if (descriptors.some((descriptor) =>
-      String(descriptor.rid) === targetRoutingId
-      && (
-        role !== 'target'
-        || (
-          descriptor.state === 1
-          && descriptor.objectRole === 'server'
-          && descriptor.objectCapabilities.some((capability) =>
-            capability.objectKind === 'user_spot'
-            && capability.stableType === 'RemoteRoom'
-          )
-        )
-      )
-    )) {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  } while (Date.now() < deadline);
-  throw new Error(
-    (role === 'target'
-      ? 'Target MeshNode descriptor was not published.'
-      : 'No MeshNode descriptor was visible to the source.')
-      + ` Observed=${JSON.stringify(observed, (_, value) =>
-        typeof value === 'bigint' ? String(value) : value)}`
-  );
 }
 
 async function onMessage(message) {
@@ -125,7 +108,19 @@ async function onMessage(message) {
     await stop(0);
     return;
   }
-  if (role !== 'source' || typeof message?.id !== 'number') return;
+  if (typeof message?.id !== 'number') return;
+  if (role === 'target') {
+    if (message.action === 'releaseFirstClose') {
+      const release = releaseFirstClose;
+      releaseFirstClose = undefined;
+      release?.();
+      send({ type: 'result', id: message.id, value: true });
+    } else if (message.action === 'closeExecutions') {
+      send({ type: 'result', id: message.id, value: closeExecutions });
+    }
+    return;
+  }
+  if (role !== 'source') return;
   try {
     const value = await execute(message.action);
     send({ type: 'result', id: message.id, value });

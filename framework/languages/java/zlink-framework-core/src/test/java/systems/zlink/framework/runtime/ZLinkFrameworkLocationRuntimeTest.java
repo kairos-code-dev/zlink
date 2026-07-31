@@ -23,13 +23,15 @@ import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.locations.ZLinkAuthorityMissing;
-import systems.zlink.framework.locations.ZLinkAuthoritySnapshot;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityMissing;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthoritySnapshot;
 import systems.zlink.framework.locations.ZLinkLocationPage;
 import systems.zlink.framework.locations.ZLinkLocationRole;
-import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationWriteIntent;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
+import systems.zlink.framework.runtime.internal.locations.ZLinkProviderLocationRepository;
 import systems.zlink.framework.locations.ZLinkPageRequest;
-import systems.zlink.framework.locations.ZLinkStoreCancellation;
+import systems.zlink.framework.runtime.internal.locations.ZLinkStoreCancellation;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterOptions;
@@ -52,12 +54,17 @@ import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 
 class ZLinkFrameworkLocationRuntimeTest {
+    private static ZLinkLocationRepository repository(
+        ZLinkInMemoryLocationStore store) {
+        return new ZLinkProviderLocationRepository(store);
+    }
+
     @Test
     void userSpotGetOrCreateRejectsReservedEntrySpotIdBeforeSubmit() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, new MinimalBackend())) {
+                 ZLinkFrameworkRuntimeTestAccess.start(options, new MinimalBackend())) {
             assertThrows(
                 ZLinkConfigurationException.class,
                 () -> runtime.spotManager().getOrCreate(
@@ -73,12 +80,12 @@ class ZLinkFrameworkLocationRuntimeTest {
         options.addLocationStore(store);
         options.addRelocationStore(new InMemoryRelocationStore());
 
-        ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, new MinimalBackend());
+        ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntimeTestAccess.start(options, new MinimalBackend());
         runtime.closeAsync().toCompletableFuture().get();
 
         assertEquals(
             List.of(),
-            store.listMeshNodes("unused", ZLinkPageRequest.firstPage())
+            repository(store).listMeshNodes("unused", ZLinkPageRequest.firstPage())
                 .toCompletableFuture().get().items());
     }
 
@@ -99,7 +106,7 @@ class ZLinkFrameworkLocationRuntimeTest {
             factory -> factory.disableRelocation());
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
+                 ZLinkFrameworkRuntimeTestAccess.start(options, new ZLinkJavaBackendAdapterFactory())) {
             var created = runtime.spotManager()
                 .getOrCreate(spotId, "location-spot")
                 .submit()
@@ -108,7 +115,7 @@ class ZLinkFrameworkLocationRuntimeTest {
 
             assertInstanceOf(
                 ZLinkAuthoritySnapshot.class,
-                store.read(
+                repository(store).read(
                         ZLinkAuthorityKeyCodec.spot(spotId),
                         () -> false)
                     .toCompletableFuture()
@@ -117,7 +124,7 @@ class ZLinkFrameworkLocationRuntimeTest {
                 .toCompletableFuture().get());
             assertInstanceOf(
                 ZLinkAuthorityMissing.class,
-                store.read(
+                repository(store).read(
                         ZLinkAuthorityKeyCodec.spot(spotId),
                         () -> false)
                     .toCompletableFuture()
@@ -142,7 +149,7 @@ class ZLinkFrameworkLocationRuntimeTest {
             factory -> factory.disableRelocation());
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(
+                 ZLinkFrameworkRuntimeTestAccess.start(
                      options, new ZLinkJavaBackendAdapterFactory())) {
             var created = runtime.spotManager()
                 .getOrCreate(spotId, "location-spot")
@@ -152,7 +159,7 @@ class ZLinkFrameworkLocationRuntimeTest {
             String key = ZLinkAuthorityKeyCodec.spot(spotId);
             var snapshot = assertInstanceOf(
                 ZLinkAuthoritySnapshot.class,
-                store.read(key, () -> false).toCompletableFuture().get());
+                repository(store).read(key, () -> false).toCompletableFuture().get());
             var authority = new systems.zlink.framework.runtime.locations
                 .ZLinkServiceAuthorityPayloadCodec()
                 .decode(snapshot.payload())
@@ -169,14 +176,12 @@ class ZLinkFrameworkLocationRuntimeTest {
                     authority.meshName(),
                     authority.nodeRid(),
                     authority.nodeGeneration());
-            store.compareExchange(
+            repository(store).compareExchange(
                     key,
-                    new systems.zlink.framework.locations
-                        .ZLinkAuthorityExpectFound(snapshot.storeVersion()),
-                    new systems.zlink.framework.locations.ZLinkAuthorityPut(
+                    new systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityExpectFound(snapshot.storeVersion()),
+                    new systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityPut(
                         closing,
-                        systems.zlink.framework.locations
-                            .ZLinkAuthorityGenerationTransition.PRESERVE,
+                        systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityGenerationTransition.PRESERVE,
                         Optional.empty(),
                         Optional.empty()),
                     () -> false)
@@ -210,11 +215,12 @@ class ZLinkFrameworkLocationRuntimeTest {
             factory -> factory.disableRelocation());
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(
+                 ZLinkFrameworkRuntimeTestAccess.start(
                      options,
                      new ZLinkJavaBackendAdapterFactory())) {
             var created = runtime.actorManager()
                 .create("durable-player", "player")
+                .submit()
                 .toCompletableFuture()
                 .get();
 
@@ -223,9 +229,8 @@ class ZLinkFrameworkLocationRuntimeTest {
                     .ZLinkActorCreateResult.Created.class,
                 created);
             var authority = assertInstanceOf(
-                systems.zlink.framework.locations
-                    .ZLinkAuthoritySnapshot.class,
-                store.read(
+                systems.zlink.framework.runtime.internal.locations.ZLinkAuthoritySnapshot.class,
+                repository(store).read(
                         systems.zlink.framework.runtime.locations
                             .ZLinkAuthorityKeyCodec.actor(
                                 "durable-player"),
@@ -233,8 +238,7 @@ class ZLinkFrameworkLocationRuntimeTest {
                     .toCompletableFuture()
                     .get());
             assertEquals(
-                systems.zlink.framework.locations
-                    .ZLinkPlacementAllocationState.ACTIVE,
+                systems.zlink.framework.runtime.internal.locations.ZLinkPlacementAllocationState.ACTIVE,
                 authority.allocation().state());
             assertTrue(authority.pendingCreation().isEmpty());
         }
@@ -260,11 +264,11 @@ class ZLinkFrameworkLocationRuntimeTest {
             factory -> factory.disableRelocation());
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(
+                 ZLinkFrameworkRuntimeTestAccess.start(
                      options,
                      new ZLinkJavaBackendAdapterFactory())) {
             var first = runtime.actorManager().getOrCreate(
-                "durable-concurrent-player", "player");
+                "durable-concurrent-player", "player").submit();
             long waitUntil = System.nanoTime()
                 + Duration.ofSeconds(5).toNanos();
             while (BlockingLocationActorFactory.invocations.get() == 0
@@ -272,7 +276,7 @@ class ZLinkFrameworkLocationRuntimeTest {
                 Thread.onSpinWait();
             }
             var second = runtime.actorManager().getOrCreate(
-                "durable-concurrent-player", "player");
+                "durable-concurrent-player", "player").submit();
 
             assertEquals(
                 1,
@@ -320,9 +324,10 @@ class ZLinkFrameworkLocationRuntimeTest {
         RoutingId actualNodeRid = options.registration().meshNodes().getFirst().routingId();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
+                 ZLinkFrameworkRuntimeTestAccess.start(options, new ZLinkJavaBackendAdapterFactory())) {
             runtime.actorManager()
                 .create("player-join", "player")
+                .submit()
                 .toCompletableFuture()
                 .get();
             runtime.spotManager()
@@ -345,7 +350,7 @@ class ZLinkFrameworkLocationRuntimeTest {
 
             var snapshot = assertInstanceOf(
                 ZLinkAuthoritySnapshot.class,
-                store.read(
+                repository(store).read(
                     ZLinkAuthorityKeyCodec.actor("player-join"),
                     () -> false).toCompletableFuture().get());
             var authority = new systems.zlink.framework.runtime.locations
@@ -478,6 +483,6 @@ class ZLinkFrameworkLocationRuntimeTest {
         }
     }
 
-    public record LocationActor(String actorId, ZLinkActorContext context) implements ZLinkActor {
+public record LocationActor(String actorId, ZLinkActorContext context) implements ZLinkActor {
     }
 }

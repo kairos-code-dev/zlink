@@ -8,7 +8,7 @@ import { GameQuestEntrySpot } from './gamequest-entry-spot';
 import { GameQuestPlayerActor } from './gamequest-player-actor';
 import type {
   ZLinkEntrySpotActorSendHandler,
-  ZLinkSpotActorSendContext
+  ZLinkMessageContext
 } from '@zlink-systems/framework';
 
 @zlinkEntrySpotActorSendHandler({
@@ -17,10 +17,11 @@ import type {
   packetName: PacketNames.questProgressNotify
 })
 class QuestProgressNotificationHandler
-  implements ZLinkEntrySpotActorSendHandler<GameQuestPlayerActor, QuestProgressNotify> {
+  implements ZLinkEntrySpotActorSendHandler<GameQuestEntrySpot, GameQuestPlayerActor, QuestProgressNotify> {
   async handle(
+    _spot: GameQuestEntrySpot,
     actor: GameQuestPlayerActor,
-    _context: ZLinkSpotActorSendContext,
+    _context: ZLinkMessageContext,
     message: QuestProgressNotify
   ): Promise<void> {
     await actor.push(new QuestProgressNotify(message.playerId, message.progress));
@@ -33,10 +34,11 @@ class QuestProgressNotificationHandler
   packetName: PacketNames.questCompletedNotify
 })
 class QuestCompletedNotificationHandler
-  implements ZLinkEntrySpotActorSendHandler<GameQuestPlayerActor, QuestCompletedNotify> {
+  implements ZLinkEntrySpotActorSendHandler<GameQuestEntrySpot, GameQuestPlayerActor, QuestCompletedNotify> {
   async handle(
+    _spot: GameQuestEntrySpot,
     actor: GameQuestPlayerActor,
-    _context: ZLinkSpotActorSendContext,
+    _context: ZLinkMessageContext,
     message: QuestCompletedNotify
   ): Promise<void> {
     await actor.push(new QuestCompletedNotify(message.playerId, message.progress, message.rewardGranted));

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Zlink.Framework.Runtime.Diagnostics;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -11,13 +12,18 @@ internal sealed class ZLinkInstanceSpotMonitoring
 
     internal async Task<InstanceSpotActivationTerminal> ObserveAsync(
         string operationKey,
+        string meshName,
         string stableType,
         ulong pendingBytes,
         Func<Task<InstanceSpotActivationTerminal>> operation)
     {
         var selected = _operations.GetOrAdd(
             operationKey,
-            _ => new Operation(stableType));
+            _ => new Operation(
+                stableType,
+                ZLinkRuntimeMetrics.StartInstanceSpotActivation(
+                    meshName,
+                    stableType)));
         if (!StringComparer.Ordinal.Equals(selected.StableType, stableType))
             throw new InvalidOperationException(
                 $"Instance operation '{operationKey}' changed stable type.");
@@ -34,11 +40,15 @@ internal sealed class ZLinkInstanceSpotMonitoring
                     new KeyValuePair<string, Operation>(
                         operationKey,
                         selected)))
+            {
+                var outcome = terminal.Result == RequestResult.Ok
+                    ? "ready"
+                    : "rejected";
                 aggregate.Complete(
                     pendingBytes,
-                    terminal.Result == RequestResult.Ok
-                        ? "ready"
-                        : "rejected");
+                    outcome);
+                selected.Metrics.Complete(outcome);
+            }
             return terminal;
         }
         catch (Exception exception)
@@ -47,9 +57,13 @@ internal sealed class ZLinkInstanceSpotMonitoring
                     new KeyValuePair<string, Operation>(
                         operationKey,
                         selected)))
+            {
+                var outcome = Outcome(exception);
                 aggregate.Complete(
                     pendingBytes,
-                    Outcome(exception));
+                    outcome);
+                selected.Metrics.Complete(outcome);
+            }
             throw;
         }
     }
@@ -88,11 +102,14 @@ internal sealed class ZLinkInstanceSpotMonitoring
             _ => "rejected"
         };
 
-    private sealed class Operation(string stableType)
+    private sealed class Operation(
+        string stableType,
+        ZLinkRuntimeMetrics.ZLinkInstanceSpotMetricOperation metrics)
     {
         private int _accepted;
 
         internal string StableType { get; } = stableType;
+        internal ZLinkRuntimeMetrics.ZLinkInstanceSpotMetricOperation Metrics { get; } = metrics;
 
         internal bool TryAccept() =>
             Interlocked.Exchange(ref _accepted, 1) == 0;

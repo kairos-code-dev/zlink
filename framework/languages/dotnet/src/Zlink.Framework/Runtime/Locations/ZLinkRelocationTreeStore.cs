@@ -190,6 +190,7 @@ internal static partial class ZLinkRelocationTreeStore
         }
     }
 
+
     internal static int CalculateChunkCount(ulong logicalLength)
     {
         if (logicalLength is 0 or > MaxLogicalBytes)

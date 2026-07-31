@@ -14,6 +14,10 @@ if rg -n 'fun ([^ (]+ )?(expectFailure|expectTimeout|expectNoPush|awaitPush)\(' 
   echo "SupportChat must not rebuild connector test helpers locally." >&2
   exit 1
 fi
+if rg -n 'CompletableFuture<JoinConversationRes>|awaitJoin' Server; then
+  echo "SupportChat handlers must return after scheduling a deferred actor Spot join." >&2
+  exit 1
+fi
 
 RUN_DIR="$(mktemp -d)"
 RUN_ID="$(basename "${RUN_DIR}")-$$-${RANDOM}"

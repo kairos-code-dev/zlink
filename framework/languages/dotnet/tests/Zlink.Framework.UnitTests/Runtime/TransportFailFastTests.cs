@@ -103,11 +103,10 @@ public sealed class TransportFailFastTests
     }
 
     [Theory]
-    [InlineData("timeout", "backpressure")]
-    [InlineData("stale", "stale_route")]
-    public async Task Unawaited_Channel_Submit_Records_Closed_Drop_Reason(
-        string failure,
-        string expectedReason)
+    [InlineData("timeout")]
+    [InlineData("stale")]
+    public async Task Unawaited_Channel_Submit_Without_Mesh_Context_Does_Not_Emit_Drop_Metric(
+        string failure)
     {
         var reasons = new List<string>();
         using var listener = new MeterListener
@@ -115,7 +114,7 @@ public sealed class TransportFailFastTests
             InstrumentPublished = (instrument, meterListener) =>
             {
                 if (instrument.Meter.Name == ZLinkMeters.Framework
-                    && instrument.Name == "zlink.channel.messages.dropped")
+                    && instrument.Name == "zlink.mesh_node.messages.dropped")
                     meterListener.EnableMeasurementEvents(instrument);
             }
         };
@@ -144,7 +143,7 @@ public sealed class TransportFailFastTests
         for (var attempt = 0; attempt < 100 && reasons.Count == 0; attempt++)
             await Task.Delay(10);
 
-        Assert.Equal([expectedReason], reasons);
+        Assert.Empty(reasons);
     }
 
     [Fact]
@@ -181,7 +180,9 @@ public sealed class TransportFailFastTests
     private static ServiceProvider CreateServices()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(new ZLinkFrameworkRegistration());
+        var registration = new ZLinkFrameworkRegistration();
+        registration.InboundDispatchOptions.ApplicationHwmBytes = 0;
+        services.AddSingleton(registration);
         return services.BuildServiceProvider();
     }
 

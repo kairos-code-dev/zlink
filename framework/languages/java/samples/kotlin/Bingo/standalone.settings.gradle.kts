@@ -24,6 +24,7 @@ if (gradle.parent == null) {
 include("Client")
 include("Server:Api")
 include("Server:Configuration")
+include("Server:Matchmaking")
 include("Server:Play")
 include("Server:Session")
 include("Shared")

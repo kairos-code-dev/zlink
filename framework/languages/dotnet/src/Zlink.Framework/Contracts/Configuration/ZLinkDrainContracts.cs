@@ -76,6 +76,27 @@ public readonly record struct ZLinkFrameworkTerminationResult(
     ZLinkFrameworkTerminationOutcome Outcome,
     ZLinkFrameworkTerminationReason Reason);
 
+/// <summary>Reports the host-wide byte budget for inbound application dispatch.</summary>
+/// <param name="ApplicationHwmBytes">Applied byte limit. Zero means unlimited.</param>
+/// <param name="PendingPayloadBytes">Payload bytes that have not reached terminal completion.</param>
+/// <param name="QueuedPayloadBytes">Pending payload bytes waiting to enter a handler.</param>
+/// <param name="ActivePayloadBytes">Pending payload bytes currently owned by handlers.</param>
+/// <param name="ApplicationReceivePaused">Whether the byte limit has paused new application receives.</param>
+/// <param name="PendingCompletionSends">Replies waiting for or holding a completion send permit.</param>
+/// <param name="CompletionSendLimit">Host-wide completion send permit limit.</param>
+/// <remarks>
+/// <paramref name="PendingPayloadBytes"/> equals the sum of
+/// <paramref name="QueuedPayloadBytes"/> and <paramref name="ActivePayloadBytes"/>.
+/// </remarks>
+public readonly record struct ZLinkInboundDispatchStatus(
+    ulong ApplicationHwmBytes,
+    ulong PendingPayloadBytes,
+    ulong QueuedPayloadBytes,
+    ulong ActivePayloadBytes,
+    bool ApplicationReceivePaused,
+    ulong PendingCompletionSends,
+    ulong CompletionSendLimit);
+
 public sealed record ZLinkFrameworkRuntimeStatus(
     ZLinkFrameworkRuntimeState State,
     bool IsReady,
@@ -84,7 +105,8 @@ public sealed record ZLinkFrameworkRuntimeStatus(
     ZLinkFrameworkRelocationResult? RelocationResult,
     ZLinkFrameworkTerminationResult? TerminationResult,
     ulong Sequence,
-    DateTimeOffset ObservedAt);
+    DateTimeOffset ObservedAt,
+    ZLinkInboundDispatchStatus InboundDispatch = default);
 
 public interface IZLinkFrameworkRuntime
 {

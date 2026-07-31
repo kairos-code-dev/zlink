@@ -2,17 +2,20 @@ import { createHash, randomUUID } from 'node:crypto';
 import type {
   ActorRef,
   RoutingId,
-  ZLinkAggregateId,
   ZLinkActor,
-  ZLinkAuthoritySnapshot,
   ZLinkActorJoinOperationId,
+  ZLinkBlobReference,
   ZLinkMessage,
   ZLinkMessageSerializer,
   ZLinkRelocationStore,
-  ZLinkRelocationCapacityFence,
-  ZLinkLocationOwnerToken,
   ZLinkSpot
 } from '../../contracts';
+import type {
+  ZLinkAggregateId,
+  ZLinkAuthoritySnapshot,
+  ZLinkLocationOwnerToken,
+  ZLinkRelocationCapacityFence
+} from '../../contracts/Locations';
 import type {
   ZLinkAuthorityStore,
   ZLinkObjectCreationStore,
@@ -20,6 +23,8 @@ import type {
   ZLinkRelocationCapacityStore
 } from '../locations/internal-store-contracts';
 import { encodeAuthorityKey } from '../locations/authority-key-codec';
+import { putNewRelocationBlob, relocationBlobReference } from '../locations/relocation-blob';
+import { crc32c } from '../foundation/service-relocation-runtime';
 import { ZLinkSpotKind } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkBackendActorRef, ZLinkBackendMeshNode } from '../backend';
@@ -97,6 +102,7 @@ export interface ZLinkActorTransferRuntimeActorManager {
       readonly state: ZLinkMessage;
     }
   ): Promise<ZLinkActor>;
+  publishRelocationActor(actorId: string): void;
   rollbackTransferredActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
   completeCoreRelocationSource(actorId: string): Promise<void>;
 }
@@ -333,7 +339,15 @@ export class ZLinkActorTransferRuntime {
       capacity,
       targetOwner: target.owner
     }, signal);
-    if (prepared.kind !== 'prepared' && prepared.kind !== 'alreadyPrepared') {
+    if (prepared.kind === 'conflict' || prepared.kind === 'stale') {
+      // Startup publishes the local descriptor as Preparing before it opens
+      // application admission. Aggregate placement accepts only Serving
+      // targets, so the periodic authority reconciliation retries after the
+      // runtime publishes Serving. A concurrent replacement can produce the
+      // same outcomes and is handled by that same retry.
+      return undefined;
+    }
+    if (prepared.kind === 'generationExhausted') {
       throw new Error(
         `Actor '${root.actor.actorId}' recovery aggregate prepare failed with '${prepared.kind}'.`
       );
@@ -507,8 +521,14 @@ export class ZLinkActorTransferRuntime {
     signal?: AbortSignal,
     lifecycleAuthority: 'framework' | 'core' = 'framework'
   ) {
-    const transferStarted = process.hrtime.bigint();
     await this.beginSourceActorMove(actor, state);
+    const relocationMetric = state.meshName === undefined
+      ? undefined
+      : this.options.metrics?.startRelocation(
+          state.meshName,
+          'actor',
+          this.options.actorTransferRegistry.policy(state.actorType)
+        );
     const sourceSpotId = state.spotId;
     let sourceLeaveStarted = false;
     let sealId: string | undefined;
@@ -524,11 +544,23 @@ export class ZLinkActorTransferRuntime {
         state.actorType,
         signal
       );
-      this.options.metrics?.histogram(
-        'zlink.actor.transfer.pending_requests.count',
-        this.options.actorHandoff.pendingCount(actor.context.actorId),
-        '{request}'
-      );
+      const transferBytes = transfer.state.toEncodedPayload().toBytes();
+      let transferStateReference: ZLinkBlobReference | undefined;
+      let transferStateChecksumCrc32c: number | undefined;
+      if (transfer.adapterKey !== undefined) {
+        const relocationStore = this.options.relocationStore();
+        if (relocationStore === undefined) {
+          throw new Error('Cross-node Actor relocation requires a Relocation Store.');
+        }
+        transferStateReference = (await putNewRelocationBlob(
+          relocationStore,
+          transferBytes,
+          24 * 60 * 60 * 1_000,
+          signal
+        )).reference;
+        transferStateChecksumCrc32c = crc32c(transferBytes);
+      }
+      relocationMetric?.recordBytes(transfer.state.toEncodedPayload().toBytes().byteLength);
       if (lifecycleAuthority === 'framework') {
         sourceLeaveStarted = true;
         await this.prepareSourceActorLeave(actor, sourceSpotId, signal);
@@ -539,6 +571,7 @@ export class ZLinkActorTransferRuntime {
       const handoffBacklog = lifecycleAuthority === 'core'
         ? this.options.actorHandoff.snapshotCoreBacklog(actor.context.actorId)
         : this.options.actorHandoff.snapshot(actor.context.actorId);
+      relocationMetric?.recordJournalMessages(handoffBacklog.length);
       if (sealId !== undefined) {
         acceptedRoot = await this.prepareBoundSessionAcceptedJournal(actor, state, sealId, handoffBacklog, signal);
         state.setRemoteBoundSessionTarget({
@@ -557,6 +590,8 @@ export class ZLinkActorTransferRuntime {
         ZLinkActorMessageFollowOwnerFence | undefined;
       return {
         ...transfer,
+        stateReference: transferStateReference?.value,
+        stateChecksumCrc32c: transferStateChecksumCrc32c,
         handoffBacklog,
         sourceLeaveCompletion,
         reserveTarget: async (target: ZLinkSpotRouteTarget, reserveSignal?: AbortSignal) => {
@@ -683,11 +718,7 @@ export class ZLinkActorTransferRuntime {
         ) => {
           if (phase !== 'prepared') return;
           phase = 'committed';
-          this.options.metrics?.count('zlink.actor.transfers');
-          this.options.metrics?.duration(
-            'zlink.actor.transfer.duration',
-            Number(process.hrtime.bigint() - transferStarted) / 1e9
-          );
+          relocationMetric?.complete('completed');
           try {
             this.options.actorHandoff.complete(
               actor.context.actorId,
@@ -712,6 +743,7 @@ export class ZLinkActorTransferRuntime {
         rollback: async () => {
           if (phase !== 'prepared') return;
           phase = 'rolledBack';
+          relocationMetric?.complete('aborted');
           this.coreSourceLeaves.delete(actor.context.actorId);
           if (sealId !== undefined) {
             await this.abortBoundSessionRouteSeal(actor, state, sealId);
@@ -725,11 +757,15 @@ export class ZLinkActorTransferRuntime {
               signal
             );
           }
+          if (transferStateReference !== undefined) {
+            await this.options.relocationStore()?.delete(transferStateReference, signal);
+          }
           await this.cancelSourceActorMove(actor, state);
           await this.restoreSourceActor(actor, sourceSpotId);
         }
       };
     } catch (error) {
+      relocationMetric?.complete('failed');
       try {
         if (sealId !== undefined) {
           await this.abortBoundSessionRouteSeal(actor, state, sealId);
@@ -744,6 +780,22 @@ export class ZLinkActorTransferRuntime {
       }
       throw error;
     }
+  }
+
+  async readPreparedTransferState(
+    reference: string,
+    checksumCrc32c: number,
+    signal?: AbortSignal
+  ): Promise<Buffer> {
+    const store = this.options.relocationStore();
+    if (store === undefined) {
+      throw new Error('Cross-node Actor relocation requires a Relocation Store.');
+    }
+    const read = await store.read(relocationBlobReference(reference), signal);
+    if (read.kind !== 'found' || crc32c(read.bytes) !== checksumCrc32c) {
+      throw new Error('Actor relocation state reference is missing or corrupt.');
+    }
+    return Buffer.from(read.bytes);
   }
 
   async prepareMaintenanceSession(
@@ -955,7 +1007,7 @@ export class ZLinkActorTransferRuntime {
     state: ZLinkActorRuntimeState,
     sealId: string
   ): Promise<void> {
-    const target = state.remoteBoundSessionTarget;
+    const target = state.remoteBoundSessionTarget ?? state.boundSessionTransferTarget;
     const actorRef = state.nativeActorRef;
     if (target === undefined || actorRef === undefined || target.bindingGeneration === undefined ||
       target.previousAuthorityOwnerGeneration === undefined || target.previousOwnerLeaseGeneration === undefined) {
@@ -1205,15 +1257,17 @@ export class ZLinkActorTransferRuntime {
     const node = this.options.primaryMeshNode();
     const localActorRef = node.actorLookup(actor.context.actorId).actor;
     const targetActorRef = {
-      ...actorRef,
+      actorId: actorRef.actorId,
       nodeRid: node.status().routingId,
-      objectGeneration: localActorRef.generation > 0n
+      generation: localActorRef.generation > 0n
         ? localActorRef.generation
         : actorRef.objectGeneration
     };
-    this.options.actorManager()?.getState(actor.context.actorId)?.setNativeActorRef(
-      targetActorRef as unknown as ZLinkBackendActorRef
-    );
+    this.options.actorManager()?.getState(actor.context.actorId)?.setNativeActorRef(targetActorRef);
+  }
+
+  publishRecoveryRoutedActor(actor: ZLinkActor): void {
+    this.options.actorManager()?.publishRelocationActor(actor.context.actorId);
   }
 
   currentRoutedActorRef(actor: ZLinkActor): ActorRef | undefined {
@@ -1296,7 +1350,7 @@ export class ZLinkActorTransferRuntime {
     ) {
       state.setLocationGeneration(authority.authorityOwnerGeneration);
       state.setOwnerLeaseGeneration(authority.ownerLeaseGeneration);
-      state.setJoinedSpot(spotId, state.spot, membershipEpoch);
+      state.setJoinedSpot(spotId, state.spot, membershipEpoch, spotGeneration);
       return;
     }
     let claim;
@@ -1329,7 +1383,7 @@ export class ZLinkActorTransferRuntime {
     if (claim.claimed !== undefined) {
       state.setOwnerLeaseGeneration(claim.claimed.leaseGeneration);
     }
-    state.setJoinedSpot(spotId, state.spot, membershipEpoch);
+    state.setJoinedSpot(spotId, state.spot, membershipEpoch, spotGeneration);
     state.markLocationOwned();
   }
 
@@ -1359,15 +1413,16 @@ export class ZLinkActorTransferRuntime {
     const actorRef = state?.nativeActorRef;
     const generation = state?.locationGeneration;
     if (state === undefined || actorRef === undefined || generation === undefined) return;
+    const boundSessionTarget = state.remoteBoundSessionTarget ?? state.boundSessionTransferTarget;
     await this.verifyBoundSessionAcceptedJournal(actor, state);
     await this.publishBoundSessionOwnership(
       actor.context.actorId,
       actorRef,
       generation,
-      state.remoteBoundSessionTarget,
+      boundSessionTarget,
       state.ownerLeaseGeneration,
-      state.spotId === undefined || state.remoteBoundSessionTarget === undefined ? undefined : {
-        routerChannelId: state.remoteBoundSessionTarget.routerChannelId,
+      state.spotId === undefined || boundSessionTarget === undefined ? undefined : {
+        routerChannelId: boundSessionTarget.routerChannelId,
         targetNodeRid: actorRef.nodeRid,
         spotId: state.spotId,
         spotKind: ZLinkSpotKind.User
@@ -1377,7 +1432,8 @@ export class ZLinkActorTransferRuntime {
 
   async openRoutedActorSession(actor: ZLinkActor): Promise<void> {
     const state = this.options.actorManager()?.getState(actor.context.actorId);
-    const sealId = state?.remoteBoundSessionTarget?.relocationSealId;
+    const sealId = (state?.remoteBoundSessionTarget ?? state?.boundSessionTransferTarget)
+      ?.relocationSealId;
     if (state === undefined || sealId === undefined) return;
     const retry = new ZLinkActorRetryDelay();
     let lastError: unknown;
@@ -1611,7 +1667,7 @@ export class ZLinkActorTransferRuntime {
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState
   ): Promise<void> {
-    const target = state.remoteBoundSessionTarget;
+    const target = state.remoteBoundSessionTarget ?? state.boundSessionTransferTarget;
     if (target === undefined) return;
     const actorRef = state.nativeActorRef;
     const journal = this.boundSessionAcceptedJournal();

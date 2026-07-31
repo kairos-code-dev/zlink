@@ -40,7 +40,7 @@ check() {
 has_literal() { grep -Fq -- "$1" "$2"; }
 has_no_match() { ! grep -Eq -- "$1" "$2"; }
 
-check package-version has_literal '"version": "11.0.0"' "$package_json"
+check package-version has_literal '"version": "11.0.2"' "$package_json"
 check cjs-export has_literal '"require": "./dist/index.js"' "$package_json"
 check esm-export has_literal '"import": "./dist/index.mjs"' "$package_json"
 check declaration-export has_literal '"types": "./dist/index.d.ts"' "$package_json"
@@ -51,7 +51,7 @@ check core-provenance-resolver has_literal 'core-package-provenance.json' "$reso
 check core-major-gate has_literal '/^11\.\d+\.\d+$/' "$resolver"
 check no-repository-core-fallback has_no_match 'core/(build|include)|ZLINK_LIB_PATH' "$binding_dir/binding.gyp"
 check no-pre-core-payload test ! -d "$binding_dir/prebuilds"
-check fixture-package-dependency has_literal '"@zlink-systems/zlink": "11.0.0"' "$fixture_source/package.json"
+check fixture-package-dependency has_literal '"@zlink-systems/zlink": "11.0.2"' "$fixture_source/package.json"
 check public-only-fixture has_no_match 'runtime/native|nativeHandle|node-gyp|bindings/node|addon' "$fixture_source/consumer.mts"
 
 (cd "$binding_dir" && npm run build >/dev/null)

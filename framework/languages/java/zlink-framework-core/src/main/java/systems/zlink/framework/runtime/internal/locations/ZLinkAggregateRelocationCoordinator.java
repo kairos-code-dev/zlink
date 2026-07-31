@@ -20,6 +20,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.*;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceRelocationWireCodec;
 
 /**
@@ -30,11 +31,11 @@ public final class ZLinkAggregateRelocationCoordinator {
     private static final Duration RETENTION = Duration.ofHours(24);
     private static final ZLinkStoreCancellation NEVER_CANCELLED = () -> false;
 
-    private final ZLinkLocationStore authorityStore;
+    private final ZLinkLocationRepository authorityStore;
     private final ZLinkRelocationStore relocationStore;
 
     public ZLinkAggregateRelocationCoordinator(
-        ZLinkLocationStore authorityStore,
+        ZLinkLocationRepository authorityStore,
         ZLinkRelocationStore relocationStore) {
         this.authorityStore = Objects.requireNonNull(
             authorityStore,

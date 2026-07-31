@@ -11,8 +11,6 @@ import type { BotTickRes } from '../../../../../Shared/contracts';
 import type { EnterZoneMsg } from '../../../../../Shared/contracts';
 import type {
   ZLinkActorClient,
-  ActorRef,
-  ZLinkActorMembership,
   ZLinkMessage,
   ZLinkSpot,
   ZLinkSpotActorJoinResponse,
@@ -25,16 +23,11 @@ import { DeliverZoneNotification } from '../Actors/player-actor';
 import { adjacentZones } from '../../../Domain/world';
 import {
   BotTickHandler,
-  FirstBorderSubscriptionHandler,
-  DeliverAnnounceHandler,
-  SecondBorderSubscriptionHandler,
-  UpdateZonePositionHandler,
   ZoneTickHandler
 } from '../Handlers/zone-runtime-handlers';
 import { NodeRuntimeState } from '../../../Domain/node-runtime-state';
 
 interface ZoneParticipant {
-  readonly actor: ActorRef;
   readonly actorId: string;
   x: number;
   y: number;
@@ -59,24 +52,8 @@ class ZoneSpot implements ZLinkSpot<PlayerActor> {
     @Inject(ZLINK_SPOT_PUBLISHER_CLIENT) private readonly publisher: ZLinkSpotPublisherClient
   ) {}
 
-  configure(): void {
-    this.context.handlers.addPacket(DeliverAnnounceHandler);
-    this.context.handlers.addPacket(UpdateZonePositionHandler);
-    const adjacent = adjacentZones(String(this.context.spotRid) as ZoneId);
-    this.context.handlers.addSubscribe(
-      FirstBorderSubscriptionHandler,
-      ZoneWorldNames.bridgeMesh,
-      ZoneWorldNames.borderTopic(adjacent[0], String(this.context.spotRid))
-    );
-    this.context.handlers.addSubscribe(
-      SecondBorderSubscriptionHandler,
-      ZoneWorldNames.bridgeMesh,
-      ZoneWorldNames.borderTopic(adjacent[1], String(this.context.spotRid))
-    );
-  }
-
   async onInitialize(): Promise<void> {
-    this.state = new ZoneState(String(this.context.spotRid) as ZoneId);
+    this.state = new ZoneState(String(this.context.spotId) as ZoneId);
     this.timer = await this.context.addTimer(
       'zone-tick',
       ZoneWorldSpec.tickPeriodMs,
@@ -103,21 +80,20 @@ class ZoneSpot implements ZLinkSpot<PlayerActor> {
     if (enter.playerId !== actorId) {
       return { accepted: false };
     }
-    if (this.nodeState.rejectsArrival(String(this.context.spotRid), enter.fromNodeId)) {
+    if (this.nodeState.rejectsArrival(String(this.context.spotId), enter.fromNodeId)) {
       return { accepted: false };
     }
-    console.log(`zone admission accepted zone=${String(this.context.spotRid)} player=${actorId} from=${enter.fromNodeId ?? 'new'}`);
+    console.log(`zone admission accepted zone=${String(this.context.spotId)} player=${actorId} from=${enter.fromNodeId ?? 'new'}`);
     this.pendingJoins.set(actorId, enter);
     return { accepted: true };
   }
 
-  async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
-    const actorId = actor.actor.actorId;
+  async onJoinedActor(actor: PlayerActor): Promise<void> {
+    const actorId = actor.actorId;
     const enter = this.pendingJoins.get(actorId);
     if (enter === undefined) return;
     this.pendingJoins.delete(actorId);
     const participant: ZoneParticipant = {
-      actor: actor.actor,
       actorId,
       x: enter.x,
       y: enter.y,
@@ -128,7 +104,7 @@ class ZoneSpot implements ZLinkSpot<PlayerActor> {
     this.nodeState.joined(actorId, participant.zoneId);
     this.requireState().enter(actorId, participant.x, participant.y, participant.isBot);
     if (!participant.isBot && enter.fromNodeId !== null) {
-      await this.notifyActor(participant.actor, new ZoneChangedNotify(
+      await this.notifyActor(participant.actorId, new ZoneChangedNotify(
         actorId,
         participant.zoneId,
         this.nodeState.nodeId,
@@ -138,14 +114,14 @@ class ZoneSpot implements ZLinkSpot<PlayerActor> {
     console.log(`zone player entered zone=${participant.zoneId} player=${actorId} from=${enter.fromNodeId ?? 'new'}`);
   }
 
-  async onLeaveActor(actor: ZLinkActorMembership): Promise<void> {
-    const participant = this.actors.get(actor.actor.actorId);
-    this.actors.delete(actor.actor.actorId);
+  async onLeaveActor(actor: PlayerActor): Promise<void> {
+    const participant = this.actors.get(actor.actorId);
+    this.actors.delete(actor.actorId);
     if (participant !== undefined) this.nodeState.left(participant.actorId, participant.zoneId);
-    this.requireState().leave(actor.actor.actorId);
+    this.requireState().leave(actor.actorId);
   }
 
-  async onDisconnectActor(_actor: ZLinkActorMembership): Promise<void> {}
+  async onDisconnectActor(_actor: PlayerActor): Promise<void> {}
 
   updatePosition(actorId: string, x: number, y: number): void {
     const actor = this.actors.get(actorId);
@@ -156,7 +132,7 @@ class ZoneSpot implements ZLinkSpot<PlayerActor> {
   }
 
   applyBorder(event: ZoneBorderEvent): void {
-    if (event.toZoneId !== String(this.context.spotRid)) return;
+    if (event.toZoneId !== String(this.context.spotId)) return;
     this.requireState().applyBorderSnapshot(event.fromZoneId, event.tick, event.players);
   }
 
@@ -167,7 +143,7 @@ class ZoneSpot implements ZLinkSpot<PlayerActor> {
     await Promise.allSettled(
       [...this.actors.values()]
         .filter((actor) => !actor.isBot)
-        .map((actor) => this.notifyActor(actor.actor, new ZoneStateNotify(state.zoneId, tick, visible)))
+        .map((actor) => this.notifyActor(actor.actorId, new ZoneStateNotify(state.zoneId, tick, visible)))
     );
     for (const adjacent of adjacentZones(state.zoneId)) {
       await this.publisher.publish(
@@ -184,7 +160,7 @@ class ZoneSpot implements ZLinkSpot<PlayerActor> {
 
   async pushHumans(payload: unknown): Promise<void> {
     await Promise.allSettled(
-      [...this.actors.values()].filter((actor) => !actor.isBot).map((actor) => this.notifyActor(actor.actor, payload))
+      [...this.actors.values()].filter((actor) => !actor.isBot).map((actor) => this.notifyActor(actor.actorId, payload))
     );
   }
 
@@ -210,15 +186,15 @@ class ZoneSpot implements ZLinkSpot<PlayerActor> {
   private async runBotTicks(): Promise<void> {
     for (const actor of [...this.actors.values()].filter((candidate) => candidate.isBot)) {
       await this.actorClient.requestToActor(
-        actor.actor.actorId,
+        actor.actorId,
         new BotTickReq()
       ).submit<BotTickRes>();
     }
   }
 
-  private async notifyActor(actor: ActorRef, payload: unknown): Promise<void> {
+  private async notifyActor(actorId: string, payload: unknown): Promise<void> {
     await this.actorClient
-      .sendToActor(actor.actorId, new DeliverZoneNotification(payload))
+      .sendToActor(actorId, new DeliverZoneNotification(payload))
       .submit();
   }
 

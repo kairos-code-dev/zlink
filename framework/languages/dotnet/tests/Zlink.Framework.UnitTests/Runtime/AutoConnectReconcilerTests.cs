@@ -181,8 +181,8 @@ public sealed class AutoConnectReconcilerTests
 
         // Only the byte-order smaller routing id dials, so route and dealer
         // meshes share one physical link per peer pair.
-        Assert.Single(fromSmaller);
-        Assert.Empty(fromBigger);
+        Assert.True(Assert.Single(fromSmaller).Value.InitiatesConnection);
+        Assert.False(Assert.Single(fromBigger).Value.InitiatesConnection);
     }
 
     [Fact]
@@ -336,8 +336,8 @@ public sealed class AutoConnectReconcilerTests
         var fromSmaller = Assert.Single(ZLinkAutoConnectPlanner.ComputeDesired(smaller, [rowBigger])).Value;
         var fromBigger = Assert.Single(ZLinkAutoConnectPlanner.ComputeDesired(bigger, [rowSmaller])).Value;
 
-        Assert.True(fromSmaller.InitiatesSpotRouterLink);
-        Assert.False(fromBigger.InitiatesSpotRouterLink);
+        Assert.True(fromSmaller.InitiatesConnection);
+        Assert.False(fromBigger.InitiatesConnection);
     }
 
     [Fact]
@@ -496,15 +496,15 @@ public sealed class AutoConnectReconcilerTests
     [Fact]
     public void Membership_Includes_Peers_The_Initiator_Rule_Excludes_From_Dialing()
     {
-        // "zz" dials "aa" never (aa initiates), yet aa is a reachable
-        // rid-addressed target once it dials us: membership, not the
-        // desired dial set, is the fail-fast knowledge source.
+        // "zz" does not dial "aa" because aa is the ordered initiator.
+        // The target remains in the desired set so the inbound side can
+        // validate the RID, endpoint and security identity from discovery.
         var local = Local(ZLinkLocationAutoConnectType.RouteMesh, ZLinkLocationRole.Router, "zz", "tcp://z:1");
         var descriptor = Descriptor("aa", "tcp://a:1");
 
         var desired = ZLinkAutoConnectPlanner.ComputeDesired(local, [descriptor]);
 
-        Assert.Empty(desired);
+        Assert.False(Assert.Single(desired).Value.InitiatesConnection);
     }
 
     [Fact]
@@ -885,7 +885,7 @@ public sealed class AutoConnectReconcilerTests
         DescriptorRevision: 1,
         endpoint,
         new Dictionary<string, int>(StringComparer.Ordinal) { [mesh] = 100 },
-        SecurityIdentity: string.Empty,
+        SecurityIdentity: ZLinkTransportSecurityIdentity.Plaintext,
         OwnerId: "peer-owner",
         LeaseGeneration: 2,
         UpdatedAt: default)

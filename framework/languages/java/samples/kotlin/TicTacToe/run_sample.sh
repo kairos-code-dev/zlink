@@ -131,12 +131,10 @@ cat >"${api_a_config}" <<EOF
 sample.apiBindUrl=http://127.0.0.1:${api_a_http_port}
 sample.apiPublicUrl=http://127.0.0.1:${api_a_http_port}
 sample.apiChannelEndpoint=tcp://127.0.0.1:${api_a_channel_port}
-sample.playChannelEndpoint=tcp://127.0.0.1:${play_a_channel_port}
-sample.playChannelEndpoints=${common_play_channels}
 sample.playEndpoint=tcp://127.0.0.1:${play_a_stream_port}
 sample.playEndpoints=${common_play_streams}
 sample.spotEndpoint=tcp://127.0.0.1:${play_a_spot_port}
-sample.routeEndpoint=tcp://127.0.0.1:${play_a_spot_port}
+sample.routeEndpoint=tcp://127.0.0.1:${unused_port1}
 sample.spotEndpoints=${common_spots}
 sample.spotPubSubEndpoint=tcp://127.0.0.1:${play_a_pub_port}
 sample.spotPubSubEndpoints=${common_pubs}
@@ -152,12 +150,15 @@ sed -i \
   -e "s#sample.apiBindUrl=.*#sample.apiBindUrl=http://127.0.0.1:${api_b_http_port}#" \
   -e "s#sample.apiPublicUrl=.*#sample.apiPublicUrl=http://127.0.0.1:${api_b_http_port}#" \
   -e "s#sample.apiChannelEndpoint=.*#sample.apiChannelEndpoint=tcp://127.0.0.1:${api_b_channel_port}#" \
+  -e "s#sample.routeEndpoint=.*#sample.routeEndpoint=tcp://127.0.0.1:${unused_port2}#" \
   "${api_b_config}"
 
 cp "${api_a_config}" "${play_a_config}"
 cp "${api_a_config}" "${play_b_config}"
 sed -i \
-  -e "s#sample.playChannelEndpoint=.*#sample.playChannelEndpoint=tcp://127.0.0.1:${play_b_channel_port}#" \
+  -e "s#sample.routeEndpoint=.*#sample.routeEndpoint=tcp://127.0.0.1:${play_a_spot_port}#" \
+  "${play_a_config}"
+sed -i \
   -e "s#sample.playEndpoint=.*#sample.playEndpoint=tcp://127.0.0.1:${play_b_stream_port}#" \
   -e "s#sample.spotEndpoint=.*#sample.spotEndpoint=tcp://127.0.0.1:${play_b_spot_port}#" \
   -e "s#sample.routeEndpoint=.*#sample.routeEndpoint=tcp://127.0.0.1:${play_b_spot_port}#" \

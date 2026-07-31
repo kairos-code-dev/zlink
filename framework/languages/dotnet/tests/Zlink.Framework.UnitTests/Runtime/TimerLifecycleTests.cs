@@ -71,6 +71,53 @@ public sealed class TimerLifecycleTests
     }
 
     [Fact]
+    public async Task Frozen_relocation_snapshot_waits_for_active_tick_before_reading_cursor()
+    {
+        var tickStarted = new TaskCompletionSource<ZLinkTimerTick>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseTick = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var registry = new ZLinkSpotTimerRegistry(static () => false);
+        _ = await registry.AddAsync(
+            "quiescent",
+            TimeSpan.FromMilliseconds(1),
+            null,
+            typeof(TestTimerHandler),
+            typeof(TestTimerSpot),
+            CancellationToken.None,
+            async (_, tick, _) =>
+            {
+                tickStarted.TrySetResult(tick);
+                await releaseTick.Task.ConfigureAwait(false);
+                return true;
+            },
+            static (_, _, _, _, _) => ValueTask.CompletedTask,
+            CancellationToken.None);
+
+        var activeTick = await tickStarted.Task.WaitAsync(
+            TimeSpan.FromSeconds(5));
+        var boundary = registry.FreezeRelocation();
+        Assert.Equal(
+            activeTick,
+            ZLinkSpotTimerRelocationCodec.Decode(
+                Assert.Single(boundary)).Timer.PendingTick);
+        var quiescent = registry
+            .SnapshotFrozenRelocationAfterDispatchesAsync(
+                CancellationToken.None)
+            .AsTask();
+        Assert.False(quiescent.IsCompleted);
+
+        releaseTick.TrySetResult();
+        var snapshot = await quiescent.WaitAsync(TimeSpan.FromSeconds(5));
+        var timer = ZLinkSpotTimerRelocationCodec.Decode(
+            Assert.Single(snapshot)).Timer;
+        Assert.Null(timer.PendingTick);
+        Assert.Equal(activeTick.DeliveryIndex, timer.DeliveryIndex);
+        Assert.Equal(activeTick.ScheduledIndex, timer.LastScheduledIndex);
+        await registry.DisposeAsync();
+    }
+
+    [Fact]
     public async Task Timer_freeze_keeps_tick_pending_when_dispatch_is_suppressed_after_freeze()
     {
         var tickStarted = new TaskCompletionSource<ZLinkTimerTick>(

@@ -54,9 +54,10 @@ internal static class ZLinkTelemetry
         string action,
         string reason)
     {
-        if (IsChannelSurface(surface)
-            && string.Equals(action, "drop", StringComparison.Ordinal))
-            ZLinkRuntimeMetrics.RecordChannelDropped(surface, kind, "no_handler");
+        _ = surface;
+        _ = kind;
+        _ = action;
+        _ = reason;
     }
 
     public static void RecordDropped(
@@ -64,9 +65,9 @@ internal static class ZLinkTelemetry
         string kind,
         string reason)
     {
-        if (!IsChannelSurface(surface)) return;
-        if (NormalizeDropReason(reason) is { } normalized)
-            ZLinkRuntimeMetrics.RecordChannelDropped(surface, kind, normalized);
+        _ = surface;
+        _ = kind;
+        _ = reason;
     }
 
     public static void RecordReplyError(
@@ -78,22 +79,6 @@ internal static class ZLinkTelemetry
         _ = kind;
         _ = reason;
     }
-
-    private static string? NormalizeDropReason(string reason)
-    {
-        return reason switch
-        {
-            "handler-missing" or "no-handler" => "no_handler",
-            "payload-decode-failed" or "invalid-frame" => "decode_error",
-            "backpressure" => "backpressure",
-            "stale-route" => "stale_route",
-            _ => null
-        };
-    }
-
-    private static bool IsChannelSurface(string surface) =>
-        string.Equals(surface, "Channel", StringComparison.Ordinal)
-        || string.Equals(surface, "RouteMeshChannel", StringComparison.Ordinal);
 
     public static void TraceFlowEvent(
         string eventName,

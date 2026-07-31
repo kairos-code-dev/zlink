@@ -52,8 +52,7 @@ internal sealed class PlayServer(SampleSettings settings)
                 .Client();
 
             var mesh = options.AddRouteMesh(SampleNodes.Mesh)
-                .Listen(settings.MeshEndpoint)
-                .SetRoutingIdPrefix("tictactoe-play");
+                .Listen(settings.MeshEndpoint);
             mesh.Objects().Server()
                 .AddEntrySpot<PlayEntrySpot>()
                 .AddActorFactory<PlayActor, PlayActorFactory>(

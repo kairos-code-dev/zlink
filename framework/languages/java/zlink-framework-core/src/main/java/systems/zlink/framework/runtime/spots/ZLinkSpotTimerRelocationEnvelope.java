@@ -199,6 +199,9 @@ final class ZLinkSpotTimerRelocationEnvelope {
         if (payload == null) {
             throw invalid(null);
         }
+        if (payload.length == 0) {
+            return new ZLinkSpotTimerRegistry.FrozenTimers(List.of());
+        }
         try {
             DataInputStream input = new DataInputStream(
                 new ByteArrayInputStream(payload));

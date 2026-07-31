@@ -337,7 +337,8 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                 : host.dispatchTransferBacklog(
                     packet.actorRef(),
                     packet.header(),
-                    packet.payload());
+                    packet.payload(),
+                    packet.acceptedJournalRecord());
         return dispatched
             .thenApply(reply -> {
                 Optional<Message> completed = host.replyTransferredRequestDirect(

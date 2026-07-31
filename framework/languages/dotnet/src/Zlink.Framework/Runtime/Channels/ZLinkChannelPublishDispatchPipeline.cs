@@ -38,7 +38,6 @@ internal sealed class ZLinkChannelPublishDispatchPipeline(
         ZLinkEnvelopeHeader header,
         CancellationToken cancellationToken)
     {
-        ZLinkRuntimeMetrics.RecordFanoutReceived(null);
         var scope = new ZLinkDispatchFlowScope(
             ZLinkDispatchErrorSurface.Channel,
             "Channel",

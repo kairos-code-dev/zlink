@@ -2,9 +2,9 @@ package systems.zlink.framework.locations.redis;
 
 import java.nio.charset.StandardCharsets;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.locations.ZLinkClientServerServerDescriptorKey;
-import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptorKey;
-import systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey;
+import systems.zlink.framework.runtime.internal.locations.ZLinkClientServerServerDescriptorKey;
+import systems.zlink.framework.runtime.internal.locations.ZLinkFanoutPublisherDescriptorKey;
+import systems.zlink.framework.runtime.internal.locations.ZLinkMeshNodeDescriptorKey;
 
 /*
  * Redis row key codec. It intentionally does not call the framework runtime

@@ -1,6 +1,6 @@
 package systems.zlink.framework.runtime.host;
 
-public enum ZLinkTerminationReason {
+enum ZLinkTerminationReason {
     NONE(0),
     TARGET_UNAVAILABLE(1),
     STORE_UNAVAILABLE(2),

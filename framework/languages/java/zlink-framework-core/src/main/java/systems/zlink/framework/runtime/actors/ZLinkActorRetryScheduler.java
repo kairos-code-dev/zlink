@@ -105,7 +105,8 @@ final class ZLinkActorRetryScheduler {
             attempt -> schedule(attempt, RetryDelay.RELAY.delay),
             false,
             result -> result == SubmitResult.BACKPRESSURED
-                || result == SubmitResult.NOT_ADMITTED);
+                || result == SubmitResult.NOT_ADMITTED
+                || result == SubmitResult.NOT_CONNECTED);
     }
 
     static CompletionStage<Void> submitRelayUntilAcceptedAfterRetry(

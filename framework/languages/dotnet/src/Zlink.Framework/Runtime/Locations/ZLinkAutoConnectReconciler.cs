@@ -33,7 +33,6 @@ internal sealed class ZLinkAutoConnectReconciler
     private readonly ZLinkLocationOptions _options;
     private readonly TimeProvider _time;
     private readonly SemaphoreSlim _reconcileGate = new(1, 1);
-    private IDisposable? _peerMetricRegistration;
     private readonly Dictionary<string, ZLinkAutoConnectTarget> _active = new(StringComparer.Ordinal);
     private Dictionary<string, ZLinkAutoConnectTarget> _lastDesired = new(StringComparer.Ordinal);
     private volatile Dictionary<string, ZLinkRouteMeshTargetClassification>?
@@ -115,17 +114,6 @@ internal sealed class ZLinkAutoConnectReconciler
     /// <summary>True while the last tick could not read the store. The loop
     /// must not let a change stamp skip ticks in this state.</summary>
     internal bool StoreFailed => _storeFailed;
-
-    internal void RegisterPeerMetric()
-    {
-        _peerMetricRegistration ??= ZLinkRuntimeMetrics.RegisterLocationPeers(
-            () => Volatile.Read(ref _discoveredPeerCount));
-    }
-
-    internal void RemovePeerMetric()
-    {
-        Interlocked.Exchange(ref _peerMetricRegistration, null)?.Dispose();
-    }
 
     internal void SetLocalWeight(uint weight) => Volatile.Write(ref _pendingLocalWeight, weight);
 

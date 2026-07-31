@@ -2,10 +2,11 @@ import type { RoutingId } from '../../contracts';
 import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
+  ZLinkFrameworkRuntimeState,
   ZLinkTopologyState,
+  ZLinkTopologyReason,
   ZLinkPeerState,
-  type ZLinkMeshNodeSnapshot,
-  type ZLinkMeshRuntimeEvent,
+  type ZLinkRouteMeshStatus,
   type ZLinkRouteMeshRuntime
 } from '../../contracts';
 
@@ -33,6 +34,8 @@ export interface ZLinkRouteMeshRuntimeCoordinatorOptions {
   readonly meshNodeDescriptor?: (
     meshName: string
   ) => ZLinkMeshNodeDescriptor | undefined;
+  readonly isLocationStoreHealthy?: () => boolean;
+  readonly hostState?: () => ZLinkFrameworkRuntimeState;
   readonly admission: ZLinkRuntimeAdmissionGate;
   readonly publishRetiring: (meshName: string, signal: AbortSignal) => Promise<void>;
   readonly rollbackRetiring: (meshName: string, signal: AbortSignal) => Promise<void>;
@@ -50,12 +53,15 @@ interface ZLinkMeshDrainState {
   operation?: Promise<ZLinkMeshDrainResult>;
   result?: ZLinkMeshDrainResult;
   readonly waiters: Array<(result: ZLinkMeshDrainResult) => void>;
-  readonly observers: Set<ZLinkMeshEventQueue>;
+  readonly observers: Set<ZLinkMeshStatusQueue>;
+  lastSnapshot?: ZLinkRouteMeshStatus;
 }
 
 export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
   private readonly states = new Map<string, ZLinkMeshDrainState>();
   private readonly placementFingerprints = new Map<string, string>();
+  private readonly peerFingerprints = new Map<string, Map<string, string>>();
+  private readonly locationStoreHealthFingerprints = new Map<string, boolean>();
   private placementObserver?: ReturnType<typeof setInterval>;
   private hostOperation?: Promise<ZLinkMeshDrainResult>;
   private hostRetiringPrepared = false;
@@ -79,7 +85,7 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
     }
   }
 
-  snapshot(meshName: string): ZLinkMeshNodeSnapshot {
+  snapshot(meshName: string): ZLinkRouteMeshStatus {
     const drain = this.requireState(meshName);
     const node = this.options.meshNode(meshName);
     if (node === undefined) throw routeNotFound(meshName);
@@ -89,82 +95,174 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
     const peerChannels = backendPeers.map((peer) => peer.routingId === null
       ? { names: [] as readonly string[], weights: [] as readonly number[] }
       : node.peerChannels(peer.routingId, peer.lifecycleGeneration));
-    const peers = backendPeers.map((peer, index) => ({
-      rid: (peer.routingId === null ? '' : String(peer.routingId)) as RoutingId,
-      lifecycleGeneration: peer.lifecycleGeneration,
-      descriptorRevision: peer.descriptorRevision,
-      endpoint: peer.endpoint,
-      state: peerState(peer.state),
-      ready: peer.state === 3 && peer.routingId !== null,
-      drainState: peer.state === 4 ? 'draining' : 'active',
-      channelNames: [...(peerChannels[index]?.names ?? [])],
-      lastFailure: peer.lastError === 0 ? undefined : String(peer.lastError)
-    }));
+    const peers = backendPeers.map((peer) => {
+      const state = peerState(peer.state);
+      return {
+        nodeRid: (peer.routingId === null ? '' : String(peer.routingId)) as RoutingId,
+        state,
+        unavailableReason: peerUnavailableReason(state)
+      };
+    });
     const channels = Object.entries(this.options.meshOptions.get(meshName)?.meshChannels ?? {})
-      .filter(([, channel]) => channel.server === true)
       .map(([channelName, channel]) => {
         const readyMemberCount = BigInt(peerChannels.filter((entry, index) =>
-          peers[index]?.ready === true
+          peers[index]?.state === ZLinkPeerState.Ready
           && entry.names.some((name, channelIndex) =>
             name === channelName && (entry.weights[channelIndex] ?? 0) > 0)
         ).length);
-        const localWeight = channel.weight ?? 1;
-        return { channelName, localWeight, readyMemberCount, selectable: localWeight > 0 || readyMemberCount > 0n };
+        const localWeight = descriptor?.channelWeights?.[channelName] ?? channel.weight ?? 100;
+        const readyTargetCount = Number(readyMemberCount)
+          + (channel.server === true && localWeight > 0 ? 1 : 0);
+        return { channelName, isReady: readyTargetCount > 0, readyTargetCount };
       });
-    const pendingApplicationWork = BigInt(this.options.admission.pending(meshName));
-    return {
+    const backendTopologyState = backendState(status.state);
+    const hasUnavailableRequiredPeer = peers.some(peer =>
+      peer.state === ZLinkPeerState.Connecting
+      || peer.state === ZLinkPeerState.NotConnected);
+    const localTopologyState = drain.state === ZLinkTopologyState.Ready
+      ? backendTopologyState
+      : drain.state;
+    const hostState = this.options.hostState?.()
+      ?? ZLinkFrameworkRuntimeState.Serving;
+    const hostTopologyState = topologyStateForHost(hostState, localTopologyState);
+    const locationStoreHealthy = this.options.isLocationStoreHealthy?.() ?? true;
+    const state = hostTopologyState === ZLinkTopologyState.Ready
+      && (hasUnavailableRequiredPeer || !locationStoreHealthy)
+      ? ZLinkTopologyState.Degraded
+      : hostTopologyState;
+    const hostReady = hostState === ZLinkFrameworkRuntimeState.Serving;
+    const objectRole = descriptor?.objectRole ?? ZLinkObjectRole.None;
+    const placementWeight = descriptor?.placementWeight ?? 0;
+    const capacityAvailable = descriptor !== undefined
+      && hasRemainingCapacity(descriptor.activationConcurrency)
+      && (
+        hasRemainingCapacity(descriptor.populationCapacity.actors)
+        || hasRemainingCapacity(descriptor.populationCapacity.spots)
+      );
+    const placementAvailable = objectRole === ZLinkObjectRole.Server
+      && placementWeight > 0
+      && capacityAvailable
+      && locationStoreHealthy
+      && hostReady
+      && localTopologyState === ZLinkTopologyState.Ready;
+    const snapshot: ZLinkRouteMeshStatus = {
       meshName,
-      rid: String(status.routingId),
-      lifecycleGeneration: status.lifecycleGeneration,
-      descriptorRevision: status.descriptorRevision,
-      endpoint: status.localEndpoint,
-      objectRole: descriptor?.objectRole ?? ZLinkObjectRole.None,
-      placementWeight: descriptor?.placementWeight ?? 0,
-      populationCapacity: descriptor?.populationCapacity ?? {
-        actors: { active: 0, reserved: 0, limit: 0 },
-        spots: { active: 0, reserved: 0, limit: 0 },
-        spotTypes: []
-      },
-      activationConcurrency: descriptor?.activationConcurrency ?? {
-        active: 0,
-        limit: 1
-      },
-      applicationVersion: descriptor?.applicationVersion ?? 0n,
-      placementReservationFailureCount: 0n,
-      objectCapabilities: descriptor?.objectCapabilities ?? [],
-      state: drain.state === ZLinkTopologyState.Ready ? backendState(status.state) : drain.state,
-      sequence: drain.sequence > status.lastChangedMs ? drain.sequence : status.lastChangedMs,
-      observedAt: new Date(),
-      descriptorSources: [],
+      state,
+      isReady: hostReady && state === ZLinkTopologyState.Ready,
+      readyPeerCount: peers.filter(peer => peer.state === ZLinkPeerState.Ready).length,
+      channels: hostReady
+        ? channels
+        : channels.map(channel => ({ ...channel, isReady: false })),
       peers,
-      channels,
-      instanceSpots: [],
-      claims: {
-        applicationActive: pendingApplicationWork > 0n,
-        pendingApplicationWork,
-        infrastructureActive: status.pendingInfrastructureMessages > 0n,
-        pendingInfrastructureWork: status.pendingInfrastructureMessages
+      placement: {
+        isAvailable: placementAvailable,
+        activeActorCount: descriptor?.populationCapacity.actors.active ?? 0,
+        activeSpotCount: descriptor?.populationCapacity.spots.active ?? 0,
+        unavailableReason: placementAvailable
+          ? undefined
+          : localTopologyState !== ZLinkTopologyState.Ready
+            ? ZLinkTopologyReason.RuntimeNotReady
+            : !locationStoreHealthy
+              ? ZLinkTopologyReason.LocationUnavailable
+            : placementWeight <= 0
+              ? ZLinkTopologyReason.NoReadyTarget
+              : ZLinkTopologyReason.CapacityExceeded
       },
-      location: { state: 'unknown' }
+      sequence: drain.sequence > status.lastChangedMs ? drain.sequence : status.lastChangedMs,
+      observedAt: new Date()
     };
+    drain.lastSnapshot = snapshot;
+    return snapshot;
   }
 
-  observe(meshName: string, capacity = 64, signal?: AbortSignal): AsyncIterable<ZLinkMeshRuntimeEvent> {
+  observe(meshName: string, capacity = 64, signal?: AbortSignal): AsyncIterable<ZLinkRouteMeshStatus> {
     const state = this.requireState(meshName);
     if (!Number.isInteger(capacity) || capacity <= 0) throw new RangeError('Observer capacity must be positive.');
     if (state.observers.size === 0) this.seedPlacementFingerprint(meshName);
-    const queue = new ZLinkMeshEventQueue(capacity, signal, () => {
+    const queue = new ZLinkMeshStatusQueue(capacity, signal, () => {
       state.observers.delete(queue);
       this.stopPlacementObserverIfIdle();
     });
+    this.snapshot(meshName);
     state.observers.add(queue);
     this.startPlacementObserver();
     return queue;
   }
 
   isReady(meshName: string): boolean {
-    const state = this.requireState(meshName);
-    return state.state === ZLinkTopologyState.Ready && this.options.meshNode(meshName) !== undefined;
+    return this.snapshot(meshName).isReady;
+  }
+
+  hostStateChanged(): void {
+    for (const [meshName, state] of this.states) {
+      state.sequence += 1n;
+      let snapshot: ZLinkRouteMeshStatus;
+      try {
+        snapshot = this.snapshot(meshName);
+      } catch {
+        continue;
+      }
+      for (const observer of state.observers) observer.push(snapshot);
+    }
+  }
+
+  stopObservers(): void {
+    for (const [meshName, state] of this.states) {
+      state.sequence += 1n;
+      let terminal: ZLinkRouteMeshStatus | undefined;
+      try {
+        const current = this.snapshot(meshName);
+        const terminalSequence = current.sequence >= state.sequence
+          ? current.sequence + 1n
+          : state.sequence;
+        state.sequence = terminalSequence;
+        terminal = {
+          ...current,
+          state: ZLinkTopologyState.Stopped,
+          isReady: false,
+          channels: current.channels.map(channel => ({
+            ...channel,
+            isReady: false
+          })),
+          placement: {
+            ...current.placement,
+            isAvailable: false,
+            unavailableReason: ZLinkTopologyReason.RuntimeNotReady
+          },
+          sequence: terminalSequence,
+          observedAt: new Date()
+        };
+      } catch {
+        const current = state.lastSnapshot;
+        if (current !== undefined) {
+          const terminalSequence = current.sequence >= state.sequence
+            ? current.sequence + 1n
+            : state.sequence;
+          state.sequence = terminalSequence;
+          terminal = {
+            ...current,
+            state: ZLinkTopologyState.Stopped,
+            isReady: false,
+            channels: current.channels.map(channel => ({
+              ...channel,
+              isReady: false
+            })),
+            placement: {
+              ...current.placement,
+              isAvailable: false,
+              unavailableReason: ZLinkTopologyReason.RuntimeNotReady
+            },
+            sequence: terminalSequence,
+            observedAt: new Date()
+          };
+        }
+      }
+      for (const observer of [...state.observers]) {
+        if (terminal === undefined) observer.close();
+        else observer.seal(terminal);
+      }
+      state.observers.clear();
+    }
   }
 
   drain(meshName: string, deadlineMs = 30_000, signal?: AbortSignal): Promise<ZLinkMeshDrainResult> {
@@ -240,6 +338,50 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
     }
   }
 
+  /**
+   * Relocates stateful resources without closing application transport.
+   * Shutdown owns admission sealing, peer/listener teardown and owner cleanup.
+   */
+  async relocateHost(deadlineMs: number): Promise<ZLinkMeshDrainResult> {
+    if (!Number.isFinite(deadlineMs) || deadlineMs <= 0) {
+      throw new TypeError('Relocation deadlineMs must be greater than zero.');
+    }
+    const entries = [...this.states.entries()];
+    const deadline = new AbortController();
+    const timer = setTimeout(
+      () => deadline.abort(new Error('Relocation deadline exceeded.')),
+      deadlineMs
+    );
+    try {
+      await Promise.all(entries.map(([meshName]) =>
+        this.options.drainResources(meshName, deadline.signal)));
+      this.hostRetiringPrepared = false;
+      return { kind: 'drained' };
+    } catch (error) {
+      const classified = drainFailureReason(error);
+      const reason: ZLinkDrainForceReason = deadline.signal.aborted
+        ? 'deadline_exceeded'
+        : classified;
+      const rollback = new AbortController();
+      const rollbackTimer = setTimeout(
+        () => rollback.abort(new Error('Relocation descriptor rollback deadline exceeded.')),
+        Math.min(Math.max(1, deadlineMs), 1000)
+      );
+      try {
+        await Promise.all(entries.map(([meshName]) =>
+          this.options.rollbackRetiring(meshName, rollback.signal)));
+      } catch {
+        throw new ZLinkRetiringRollbackError();
+      } finally {
+        clearTimeout(rollbackTimer);
+        this.hostRetiringPrepared = false;
+      }
+      return { kind: 'forceStopped', reason };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   private async performDrain(
     meshName: string,
     state: ZLinkMeshDrainState,
@@ -266,7 +408,7 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
         : deadline.signal.aborted ? 'deadline_exceeded' : classified;
       await this.options.forceStopResources(meshName).catch(() => undefined);
       result = { kind: 'forceStopped', reason };
-      this.transition(meshName, state, ZLinkTopologyState.Failed, reason);
+      this.transition(meshName, state, ZLinkTopologyState.Failed);
     } finally {
       clearTimeout(timer);
     }
@@ -316,7 +458,7 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
         this.options.forceStopResources(meshName).catch(() => undefined)));
       result = { kind: 'forceStopped', reason };
       for (const [meshName, state] of entries) {
-        this.transition(meshName, state, ZLinkTopologyState.Failed, reason);
+        this.transition(meshName, state, ZLinkTopologyState.Failed);
       }
     } finally {
       clearTimeout(timer);
@@ -331,24 +473,12 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
   private transition(
     meshName: string,
     state: ZLinkMeshDrainState,
-    next: ZLinkTopologyState,
-    reason?: string
+    next: ZLinkTopologyState
   ): void {
     if (state.state === next) return;
     state.state = next;
     state.sequence += 1n;
-    const node = this.options.meshNode(meshName);
-    const nodeStatus = node?.status();
-    const event: ZLinkMeshRuntimeEvent = {
-      identifier: 'zlink.runtime.mesh_node.drain_changed',
-      sequence: state.sequence,
-      timestamp: new Date(),
-      meshName,
-      sourceRid: String(nodeStatus?.routingId ?? '') as RoutingId,
-      state: next,
-      reason
-    };
-    for (const observer of state.observers) observer.push(event);
+    for (const observer of state.observers) observer.push(this.snapshot(meshName));
     if (next === ZLinkTopologyState.Stopped || next === ZLinkTopologyState.Failed) {
       for (const observer of state.observers) observer.close();
       state.observers.clear();
@@ -357,10 +487,17 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
   }
 
   private seedPlacementFingerprint(meshName: string): void {
+    this.locationStoreHealthFingerprints.set(
+      meshName,
+      this.options.isLocationStoreHealthy?.() ?? true
+    );
     const descriptor = this.options.meshNodeDescriptor?.(meshName);
     if (descriptor !== undefined) {
       this.placementFingerprints.set(meshName, placementFingerprint(descriptor));
     }
+    this.peerFingerprints.set(meshName, peerFingerprintMap(
+      this.options.meshNode(meshName)?.peers() ?? []
+    ));
   }
 
   private startPlacementObserver(): void {
@@ -378,27 +515,38 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
   private observePlacementChanges(): void {
     for (const [meshName, state] of this.states) {
       if (state.observers.size === 0) continue;
+      const locationStoreHealthy =
+        this.options.isLocationStoreHealthy?.() ?? true;
+      if (locationStoreHealthy !== this.locationStoreHealthFingerprints.get(meshName)) {
+        this.locationStoreHealthFingerprints.set(meshName, locationStoreHealthy);
+        state.sequence += 1n;
+        for (const observer of state.observers) {
+          observer.push(this.snapshot(meshName));
+        }
+      }
       const descriptor = this.options.meshNodeDescriptor?.(meshName);
       if (descriptor === undefined) continue;
       const fingerprint = placementFingerprint(descriptor);
       const previous = this.placementFingerprints.get(meshName);
       this.placementFingerprints.set(meshName, fingerprint);
-      if (previous === undefined || previous === fingerprint) continue;
+      const node = this.options.meshNode(meshName);
+      if (previous !== undefined && previous !== fingerprint) {
+        state.sequence += 1n;
+        for (const observer of state.observers) observer.push(this.snapshot(meshName));
+      }
 
-      state.sequence += 1n;
-      const nodeStatus = this.options.meshNode(meshName)?.status();
-      const event: ZLinkMeshRuntimeEvent = {
-        identifier: 'zlink.runtime.object.placement_changed',
-        sequence: state.sequence,
-        timestamp: new Date(),
-        meshName,
-        sourceRid: String(nodeStatus?.routingId ?? '') as RoutingId,
-        descriptorRevision: nodeStatus?.descriptorRevision,
-        populationCapacity: descriptor.populationCapacity,
-        activationConcurrency: descriptor.activationConcurrency,
-        reason: 'updated'
-      };
-      for (const observer of state.observers) observer.push(event);
+      const previousPeers = this.peerFingerprints.get(meshName) ?? new Map();
+      const peers = node?.peers() ?? [];
+      const nextPeers = peerFingerprintMap(peers);
+      this.peerFingerprints.set(meshName, nextPeers);
+      for (const peerRid of new Set([
+        ...previousPeers.keys(),
+        ...nextPeers.keys()
+      ])) {
+        if (previousPeers.get(peerRid) === nextPeers.get(peerRid)) continue;
+        state.sequence += 1n;
+        for (const observer of state.observers) observer.push(this.snapshot(meshName));
+      }
     }
   }
 
@@ -406,6 +554,26 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
     const state = this.states.get(meshName);
     if (state !== undefined) return state;
     throw routeNotFound(meshName);
+  }
+}
+
+function topologyStateForHost(
+  state: ZLinkFrameworkRuntimeState,
+  fallback: ZLinkTopologyState
+): ZLinkTopologyState {
+  switch (state) {
+    case ZLinkFrameworkRuntimeState.Serving:
+      return fallback;
+    case ZLinkFrameworkRuntimeState.Preparing:
+      return ZLinkTopologyState.Starting;
+    case ZLinkFrameworkRuntimeState.Relocating:
+    case ZLinkFrameworkRuntimeState.Relocated:
+    case ZLinkFrameworkRuntimeState.Draining:
+      return ZLinkTopologyState.Stopping;
+    case ZLinkFrameworkRuntimeState.Stopped:
+      return ZLinkTopologyState.Stopped;
+    case ZLinkFrameworkRuntimeState.Error:
+      return ZLinkTopologyState.Failed;
   }
 }
 
@@ -423,11 +591,37 @@ function placementFingerprint(descriptor: ZLinkMeshNodeDescriptor): string {
       entry.limit
     ]);
   return JSON.stringify([
+    descriptor.objectRole,
+    descriptor.placementWeight,
     descriptor.populationCapacity.actors,
     descriptor.populationCapacity.spots,
     spotTypes,
-    descriptor.activationConcurrency
+    descriptor.activationConcurrency,
+    Object.entries(descriptor.channelWeights ?? {}).sort(([left], [right]) =>
+      left.localeCompare(right))
   ]);
+}
+
+function hasRemainingCapacity(
+  capacity: { readonly active: number; readonly limit: number; readonly reserved?: number }
+): boolean {
+  return capacity.limit === 0
+    || capacity.active + (capacity.reserved ?? 0) < capacity.limit;
+}
+
+function peerFingerprintMap(
+  peers: ReturnType<ZLinkBackendMeshNode['peers']>
+): Map<string, string> {
+  return new Map(peers.map(peer => [
+    String(peer.routingId),
+    JSON.stringify([
+      peer.lifecycleGeneration.toString(),
+      peer.descriptorRevision.toString(),
+      peer.endpoint,
+      peer.state,
+      peer.lastError
+    ])
+  ]));
 }
 
 export class ZLinkRetiringRollbackError extends Error {
@@ -437,9 +631,9 @@ export class ZLinkRetiringRollbackError extends Error {
   }
 }
 
-class ZLinkMeshEventQueue implements AsyncIterable<ZLinkMeshRuntimeEvent>, AsyncIterator<ZLinkMeshRuntimeEvent> {
-  private readonly values: ZLinkMeshRuntimeEvent[] = [];
-  private readonly waiters: Array<(result: IteratorResult<ZLinkMeshRuntimeEvent>) => void> = [];
+class ZLinkMeshStatusQueue implements AsyncIterable<ZLinkRouteMeshStatus>, AsyncIterator<ZLinkRouteMeshStatus> {
+  private readonly values: ZLinkRouteMeshStatus[] = [];
+  private readonly waiters: Array<(result: IteratorResult<ZLinkRouteMeshStatus>) => void> = [];
   private closed = false;
 
   constructor(
@@ -450,21 +644,21 @@ class ZLinkMeshEventQueue implements AsyncIterable<ZLinkMeshRuntimeEvent>, Async
     signal?.addEventListener('abort', () => this.close(), { once: true });
   }
 
-  [Symbol.asyncIterator](): AsyncIterator<ZLinkMeshRuntimeEvent> { return this; }
+  [Symbol.asyncIterator](): AsyncIterator<ZLinkRouteMeshStatus> { return this; }
 
-  next(): Promise<IteratorResult<ZLinkMeshRuntimeEvent>> {
+  next(): Promise<IteratorResult<ZLinkRouteMeshStatus>> {
     const value = this.values.shift();
     if (value !== undefined) return Promise.resolve({ done: false, value });
     if (this.closed) return Promise.resolve({ done: true, value: undefined });
     return new Promise((resolve) => this.waiters.push(resolve));
   }
 
-  return(): Promise<IteratorResult<ZLinkMeshRuntimeEvent>> {
+  return(): Promise<IteratorResult<ZLinkRouteMeshStatus>> {
     this.close();
     return Promise.resolve({ done: true, value: undefined });
   }
 
-  push(value: ZLinkMeshRuntimeEvent): void {
+  push(value: ZLinkRouteMeshStatus): void {
     if (this.closed) return;
     const waiter = this.waiters.shift();
     if (waiter !== undefined) {
@@ -480,6 +674,15 @@ class ZLinkMeshEventQueue implements AsyncIterable<ZLinkMeshRuntimeEvent>, Async
     this.closed = true;
     this.remove();
     for (const resolve of this.waiters.splice(0)) resolve({ done: true, value: undefined });
+  }
+
+  seal(value: ZLinkRouteMeshStatus): void {
+    if (this.closed) return;
+    this.values.length = 0;
+    const waiter = this.waiters.shift();
+    if (waiter !== undefined) waiter({ done: false, value });
+    else this.values.push(value);
+    this.close();
   }
 }
 
@@ -519,6 +722,18 @@ function peerState(state: number): ZLinkPeerState {
       return ZLinkPeerState.Connecting;
     default:
       return ZLinkPeerState.NotConnected;
+  }
+}
+
+function peerUnavailableReason(state: ZLinkPeerState): ZLinkTopologyReason | undefined {
+  switch (state) {
+    case ZLinkPeerState.Ready:
+    case ZLinkPeerState.NotRequired:
+      return undefined;
+    case ZLinkPeerState.Draining:
+      return ZLinkTopologyReason.Draining;
+    default:
+      return ZLinkTopologyReason.NoReadyPeer;
   }
 }
 

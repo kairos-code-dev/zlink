@@ -33,8 +33,8 @@ struct bingo_protobuf_codecs_t
         ZLINK_BINGO_REGISTER_PROTOBUF (match_bingo_res_t, MatchBingoRes);
         ZLINK_BINGO_REGISTER_PROTOBUF (match_bingo_api_req_t, MatchBingoApiReq);
         ZLINK_BINGO_REGISTER_PROTOBUF (match_bingo_api_res_t, MatchBingoApiRes);
-        ZLINK_BINGO_REGISTER_PROTOBUF (allocate_bingo_room_req_t, AllocateBingoRoomReq);
-        ZLINK_BINGO_REGISTER_PROTOBUF (allocate_bingo_room_res_t, AllocateBingoRoomRes);
+        ZLINK_BINGO_REGISTER_PROTOBUF (reserve_bingo_room_req_t, ReserveBingoRoomReq);
+        ZLINK_BINGO_REGISTER_PROTOBUF (reserve_bingo_room_res_t, ReserveBingoRoomRes);
         ZLINK_BINGO_REGISTER_PROTOBUF (bingo_room_settings_payload_t, BingoRoomSettingsPayload);
         ZLINK_BINGO_REGISTER_PROTOBUF (bingo_room_join_req_t, BingoRoomJoinReq);
         ZLINK_BINGO_REGISTER_PROTOBUF (bingo_room_join_res_t, BingoRoomJoinRes);

@@ -567,6 +567,70 @@ public sealed class RelocationRuntimeTests
     }
 
     [Fact]
+    public void CanonicalTerminalCompletionAppenderOrdersConcurrentParticipants()
+    {
+        var source = new ZLinkRelocationEnvelope(
+            Guid.NewGuid(),
+            1,
+            new byte[32],
+            [
+                new ZLinkRelocationParticipantEnvelope(
+                    ZLinkUserSpotAuthorityPayloadCodec.AuthorityKey("spot"),
+                    ZLinkPlacementObjectKind.UserSpot,
+                    10,
+                    11,
+                    new byte[] { 1 },
+                    [],
+                    []),
+                new ZLinkRelocationParticipantEnvelope(
+                    ZLinkActorAuthorityPayloadCodec.AuthorityKey("actor"),
+                    ZLinkPlacementObjectKind.Actor,
+                    12,
+                    13,
+                    new byte[] { 2 },
+                    [],
+                    [])
+            ]);
+        var root = ZLinkCanonicalSpotRelocationWriter.CreateInitial(
+            source,
+            "spot",
+            "SpotType",
+            RoutingId.From("target"),
+            12);
+        var participants = root.Participants
+            .OrderBy(static participant => participant.CanonicalParticipantId)
+            .ToArray();
+        var laterParticipant = ZLinkRelocationEnvelopeCodec
+            .CreateCanonicalTerminalCompletion(
+                0, 42, "request-source", 6, "n", 1,
+                participants[1].CanonicalParticipantId, 1,
+                0, 0, 0, null);
+        var earlierParticipant = ZLinkRelocationEnvelopeCodec
+            .CreateCanonicalTerminalCompletion(
+                0, 43, "request-source", 6, "n", 1,
+                participants[0].CanonicalParticipantId, 1,
+                0, 0, 0, null);
+
+        root = ZLinkRelocationEnvelopeCodec.AppendCanonicalTerminalCompletion(
+            root,
+            laterParticipant);
+        root = ZLinkRelocationEnvelopeCodec.AppendCanonicalTerminalCompletion(
+            root,
+            earlierParticipant);
+
+        var roundTripped = ZLinkRelocationEnvelopeCodec.Decode(
+            ZLinkRelocationEnvelopeCodec.Encode(root));
+        Assert.Equal(
+            new ulong[] { participants[0].CanonicalParticipantId,
+                participants[1].CanonicalParticipantId },
+            roundTripped.Participants
+                .SelectMany(static participant =>
+                    participant.TerminalCompletions)
+                .Select(static completion => completion.ParticipantId)
+                .ToArray());
+    }
+
+    [Fact]
     public void CanonicalAuthorityRelocationStateDerivesRootCompletionCounts()
     {
         var root = ZLinkRelocationEnvelopeCodec.Decode(
@@ -1991,6 +2055,17 @@ public sealed class RelocationRuntimeTests
     }
 
     [Fact]
+    public void TargetStageTracksTheLatestVerifiedSuccessorRoot()
+    {
+        var stage = CreateTargetStageForHeldJournal();
+
+        stage.RememberFinalRoot("completed-root-1", 17);
+        stage.RememberFinalRoot("completed-root-2", 23);
+
+        Assert.Equal(("completed-root-2", 23U), stage.GetFinalRoot());
+    }
+
+    [Fact]
     public async Task NormalizationGenerationExhaustionPreservesFinalRoot()
     {
         var stage = CreateTargetStageForHeldJournal();
@@ -2450,6 +2525,33 @@ public sealed class RelocationRuntimeTests
         Assert.True(bytes.TryAcquire(16L * 1024 * 1024, out var byteLease));
         Assert.False(bytes.TryAcquire(1, out _));
         byteLease!.Dispose();
+    }
+
+    [Fact]
+    public async Task SpotMessageFollowExpiryClosesAdmissionAndWaitsForAcceptedRelay()
+    {
+        var owner = new ZLinkLocationOwnerToken("source-owner", 3);
+        var messageFollow = new ZLinkSpotMessageFollow(
+            RoutingId.From("target-node"),
+            5,
+            11,
+            12,
+            7,
+            8,
+            owner,
+            new ZLinkLocationOwnerToken("target-owner", 4),
+            DateTimeOffset.UtcNow - TimeSpan.FromMilliseconds(1));
+        Assert.True(messageFollow.TryAcquire(64, out var lease));
+
+        var drained = messageFollow
+            .WaitForExpiryAndDrainAsync(CancellationToken.None)
+            .AsTask();
+
+        Assert.False(drained.IsCompleted);
+        Assert.False(messageFollow.TryAcquire(1, out _));
+        lease!.Dispose();
+        await drained.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.Equal((0, 0L), messageFollow.AdmissionSnapshot());
     }
 
     [Fact]
@@ -4924,11 +5026,34 @@ public sealed class RelocationRuntimeTests
         Assert.True(ZLinkRelocationAuthorityPayloadCodec.TryDecode(
             read.Snapshot.Payload.Span,
             out var publication));
+        var stagedByParticipantId = canonical.Participants.ToDictionary(
+            static value => value.CanonicalParticipantId);
+        var normalizedDurable = durable with
+        {
+            Participants = durable.Participants.Select(value =>
+                value with
+                {
+                    AuthorityKey = stagedByParticipantId[
+                        value.CanonicalParticipantId].AuthorityKey,
+                    CompletionPayload =
+                        value.ObjectKind is
+                            ZLinkPlacementObjectKind.UserSpot
+                            or ZLinkPlacementObjectKind.InstanceSpot
+                            ? ZLinkSpotRetireCompletionMarker
+                                .CreateCompleted()
+                            : value.CompletionPayload
+                }).ToArray()
+        };
         Assert.True(ZLinkSpotRetireTargetRuntime
             .CanonicalCompletionMatchesTargetStaging(
                 canonical,
-                durable,
-                publication));
+                normalizedDurable,
+                publication,
+                stagedParticipant => normalizedDurable.Participants.Single(
+                        candidate => candidate.CanonicalParticipantId
+                                     == stagedParticipant
+                                         .CanonicalParticipantId)
+                    .AuthorityOwnerGeneration));
     }
 
     [Fact]

@@ -42,6 +42,7 @@ import {
   createRuntimeHost,
   providerToken
 } from './providers';
+import { markAutoDiscoveredProvider } from './auto-discovery-marker';
 
 
 export function zlinkDiscoverProviders(
@@ -105,8 +106,17 @@ function addDecoratedProviderModuleExports(providers: Set<Type>, filePath: strin
   if (!/\.(?:cjs|mjs|js)$/.test(filePath) || /\.d\.js$/.test(filePath)) {
     return;
   }
+  const source = fs.readFileSync(filePath, 'utf8');
+  if (!/(?:zlink(?:Request|Send|Publish|Spot|EntrySpot)[A-Za-z]*Handler|ZLinkPacket)/.test(source)) {
+    return;
+  }
   const loaded = createRequire(__filename)(filePath) as Record<string, unknown>;
   for (const value of Object.values(loaded)) {
+    const frameworkMetadata = typeof value === 'function'
+      ? ((value as unknown as Record<symbol, readonly { readonly kind?: string }[]>)[
+        Symbol.for('@zlink-systems/framework:decorator')
+      ] ?? [])
+      : [];
     if (
       typeof value === 'function'
       && (
@@ -114,9 +124,13 @@ function addDecoratedProviderModuleExports(providers: Set<Type>, filePath: strin
         || readNestSpotActorHandlerMetadata(value as Type).length > 0
         || readNestSpotHandlerMetadata(value as Type).length > 0
         || hasNestSpotTimerHandlerMetadata(value as Type)
+        || (
+          frameworkMetadata.some((entry) => entry.kind === 'packet')
+          && typeof (value as { prototype?: { handle?: unknown } }).prototype?.handle === 'function'
+        )
       )
     ) {
-      providers.add(value as Type);
+      providers.add(markAutoDiscoveredProvider(value as Type));
     }
   }
 }
@@ -131,14 +145,16 @@ export class ZLinkModule {
     return createZLinkDynamicModule(framework.createFrameworkRegistration(createRegistrationOptions(resolvedOptions)));
   }
 
-  static forRootFactory(options: ZLinkModuleFactoryOptions): DynamicModule {
+  static forRootFactory<TArgs extends unknown[]>(
+    options: ZLinkModuleFactoryOptions<TArgs>
+  ): DynamicModule {
     const registrationProvider: Provider<Promise<ZLinkFrameworkRegistration>> = {
       provide: ZLINK_FRAMEWORK_REGISTRATION,
       inject: [...(options.inject ?? []), DiscoveryService, ModuleRef],
       useFactory: async (...args: unknown[]) => {
         const discovery = args[args.length - 2] as DiscoveryService;
         const moduleRef = args[args.length - 1] as ModuleRef;
-        const factoryArgs = args.slice(0, -2);
+        const factoryArgs = args.slice(0, -2) as TArgs;
         const resolvedOptions = assertBuiltModuleOptions(await options.useFactory(...factoryArgs));
         return framework.createFrameworkRegistration(createDiscoveredOptions(resolvedOptions, discovery, moduleRef));
       }
@@ -233,9 +249,7 @@ function createDefaultProviderDiscoveryProviders(roleRoot: string): Provider[] {
 }
 
 function defaultProviderDiscoveryRoots(roleRoot: string): ZLinkNestProviderDiscoveryRoot[] {
-  return [
-    path.join(roleRoot, 'Handlers'),
-    path.join(roleRoot, 'Adapters', 'ZLink', 'Handlers'),
-    path.join(roleRoot, 'Adapters', 'ZLink', 'Spots', 'Handlers')
-  ].filter((rootDir) => fs.existsSync(rootDir));
+  return fs.existsSync(roleRoot)
+    ? [{ rootDir: roleRoot, options: { recursive: true } }]
+    : [];
 }

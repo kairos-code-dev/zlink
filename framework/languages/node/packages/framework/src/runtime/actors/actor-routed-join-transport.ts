@@ -14,6 +14,20 @@ export interface ZLinkActorRoutedJoinTransport {
     timeoutMs: number | undefined,
     signal?: AbortSignal
   ): Promise<TReply>;
+  submit?(
+    routerChannelId: string,
+    targetNodeRid: string,
+    packetName: string | undefined,
+    message: unknown,
+    signal?: AbortSignal
+  ): Promise<ZLinkSubmitResult>;
+  submitInfrastructure?(
+    routerChannelId: string,
+    targetNodeRid: string,
+    packetName: string | undefined,
+    message: unknown,
+    signal?: AbortSignal
+  ): Promise<ZLinkSubmitResult>;
   sendToSpot(
     spotRouteTarget: ZLinkSpotRouteTarget,
     message: unknown,

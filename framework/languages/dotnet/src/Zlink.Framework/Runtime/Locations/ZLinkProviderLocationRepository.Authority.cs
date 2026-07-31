@@ -641,13 +641,38 @@ internal sealed partial class ZLinkProviderLocationRepository
             Encode(nextCapacity),
             null));
 
-        var result = await provider.WriteAsync(
-                new ZLinkStoreWriteRequest(conditions, mutations),
-                cancellationToken)
-            .ConfigureAwait(false);
+        ZLinkStoreWriteResult result;
+        try
+        {
+            result = await provider.WriteAsync(
+                    new ZLinkStoreWriteRequest(conditions, mutations),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            RecordInstanceSpotTakeover(current, "failed");
+            throw;
+        }
+        RecordInstanceSpotTakeover(
+            current,
+            result is ZLinkStoreWriteResult.Applied ? "claimed" : "lost");
         return result is ZLinkStoreWriteResult.Applied
             ? StaleAuthorityReclaimResult.Reclaimed
             : StaleAuthorityReclaimResult.Conflict;
+    }
+
+    private static void RecordInstanceSpotTakeover(
+        StoredAuthority current,
+        string outcome)
+    {
+        if (current.Snapshot.Allocation.ObjectKind
+            != ZLinkPlacementObjectKind.InstanceSpot)
+            return;
+        ZLinkRuntimeMetrics.RecordInstanceSpotTakeover(
+            current.Snapshot.Allocation.Descriptor.MeshName,
+            current.Snapshot.Allocation.StableType,
+            outcome);
     }
 
     public ValueTask<ZLinkObjectCommitResult> CommitAsync(

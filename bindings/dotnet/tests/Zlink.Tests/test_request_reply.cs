@@ -9,6 +9,28 @@ namespace Systems.Zlink.Tests;
     public sealed class test_request_reply
     {
     [Fact]
+    public void router_poller_can_own_receive_and_completion_after_bind()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var router = ctx.CreateRouterSocket();
+        using var poller = Zlink.CreatePoller();
+        string endpoint = CoreTestSupport.NewEndpoint(
+            "inproc", "router-poller-receive-completion");
+
+        router.OnSendReady(() => { });
+        router.Bind(endpoint);
+
+        poller.Add(
+            router,
+            PollEventFlags.PollIn | PollEventFlags.PollCompletion,
+            1);
+        Assert.Equal(1, poller.Size);
+    }
+
+    [Fact]
     public async Task request_dealer_router_roundtrip()
     {
         if (!CoreTestSupport.IsNativeAvailable())
@@ -104,14 +126,89 @@ namespace Systems.Zlink.Tests;
         Assert.Equal(ReceivedMessageType.Request, received.MessageType);
         Assert.True(received.RequestSeq.HasValue);
         Assert.Equal("ping", received.Parts[0].GetString());
+        ReplyOperation detachedReply = received.Reply();
+        received.Dispose();
 
         using Message reply = Message.From("pong");
-        received.Reply().Message(reply).Submit();
+        detachedReply.Message(reply).Submit();
+        var duplicate = Assert.Throws<ZlinkConfigException>(
+            () => detachedReply.Message(reply));
+        Assert.Equal(
+            ZlinkConfigException.ErrorCode.InvalidState,
+            duplicate.Result);
 
         IReadOnlyList<Message> replyParts =
             await completion.Task.WaitAsync(TimeSpan.FromSeconds(2));
         Assert.Equal("pong", replyParts[0].GetString());
         Zlink.MultipartClose(replyParts);
+    }
+
+    [Fact]
+    public async Task router_completion_control_progresses_without_application_recv()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var server = ctx.CreateRouterSocket();
+        using var client = ctx.CreateRouterSocket();
+        using var poller = Zlink.CreatePoller();
+        string endpoint = CoreTestSupport.NewEndpoint(
+            "inproc", "completion-control");
+        RoutingId serverRid = CoreTestSupport.RoutingIdUtf8("control-server");
+        RoutingId clientRid = CoreTestSupport.RoutingIdUtf8("control-client");
+        server.SetRoutingId(serverRid);
+        client.SetRoutingId(clientRid);
+        client.Options.SetConnectRoutingId(serverRid);
+
+        var delivered = new TaskCompletionSource<(
+            RoutingId Source, IReadOnlyList<Message> Parts)>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var invokedRegistration = -1;
+        for (var registration = 0; registration < 16; registration++)
+        {
+            var capturedRegistration = registration;
+            server.OnCompletionControl((source, parts) =>
+            {
+                // Replacing a handler keeps one stable native trampoline and
+                // publishes only the latest managed target.
+                Interlocked.Exchange(ref invokedRegistration,
+                    capturedRegistration);
+                // Ownership survives the native callback return. The receiver
+                // can hand the messages to its own execution context and close
+                // them exactly once after processing.
+                delivered.TrySetResult((source, parts));
+            });
+        }
+        poller.Add(server, PollEventFlags.PollCompletion, 1);
+        server.Bind(endpoint);
+        client.Connect(endpoint);
+        Thread.Sleep(50);
+
+        using Message application = Message.From("application-unread");
+        Assert.True(client.Send(serverRid).Message(application).Submit());
+
+        using Message command = Message.From("relocation-ready");
+        using Message generation = Message.From("generation-9");
+        Assert.True(client.TrySendCompletionControl(
+            serverRid, [command, generation]));
+        Assert.Equal("relocation-ready", command.GetString());
+        Assert.Equal("generation-9", generation.GetString());
+
+        var events = new PollEvent[1];
+        Assert.Equal(1, poller.Wait(events, TimeSpan.FromSeconds(2)));
+        var control = await delivered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(15, Volatile.Read(ref invokedRegistration));
+        Assert.Equal(clientRid, control.Source);
+        Assert.Collection(control.Parts,
+            part => Assert.Equal("relocation-ready", part.GetString()),
+            part => Assert.Equal("generation-9", part.GetString()));
+        Zlink.MultipartClose(control.Parts);
+        foreach (Message part in control.Parts)
+            Assert.Throws<ObjectDisposedException>(() => _ = part.Size);
+
+        using Received received = RecvWithRetry(server);
+        Assert.Equal("application-unread", received.Parts[0].GetString());
     }
 
     [Fact]

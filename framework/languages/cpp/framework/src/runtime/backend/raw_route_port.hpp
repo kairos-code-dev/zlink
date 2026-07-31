@@ -40,11 +40,18 @@ class raw_route_port_t
   public:
     using request_callback_t =
       std::function<void (raw_request_result_t, raw_message_t)>;
+    using completion_control_handler_t =
+      std::function<void (raw_bytes_t, raw_message_t)>;
 
     explicit raw_route_port_t (zlink::router_socket_t &socket,
                                std::mutex *shared_socket_mutex = nullptr) noexcept;
 
     bool send (const raw_bytes_t &target_routing_id, const raw_message_t &parts);
+    bool send_completion_control (
+      const raw_bytes_t &target_routing_id,
+      const raw_message_t &parts);
+    void set_completion_control_handler (
+      completion_control_handler_t handler);
     bool request (const raw_bytes_t &target_routing_id,
                   const raw_message_t &parts,
                   std::chrono::milliseconds timeout,

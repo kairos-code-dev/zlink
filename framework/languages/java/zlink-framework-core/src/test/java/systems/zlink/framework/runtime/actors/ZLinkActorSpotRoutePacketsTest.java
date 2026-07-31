@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime.actors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Duration;
@@ -88,6 +89,35 @@ final class ZLinkActorSpotRoutePacketsTest {
                 try {
                     assertEquals(0, decoded.replyRoute().sourceSessionRid().size());
                     assertEquals(41L, decoded.replyRoute().requestId());
+                } finally {
+                    decoded.close();
+                }
+            } finally {
+                parts.forEach(Message::close);
+            }
+        }
+    }
+
+    @Test
+    void handoffActorPacketRoundTripsCanonicalAcceptedJournal() {
+        ZLinkBackendActorRef actor =
+            new ZLinkBackendActorRef(RoutingId.from("target"), "actor-1", 9);
+        byte[] journal = new byte[] {4, 3, 2, 1};
+        try (Message payload = Message.from("payload")) {
+            List<Message> parts = ZLinkActorSpotRoutePackets.createActorPacketParts(
+                actor,
+                new ZLinkStreamHeader(
+                    "DeferredSend", java.util.Map.of(), java.util.Optional.empty()),
+                payload,
+                null,
+                17L,
+                journal);
+            try {
+                ZLinkActorSpotRoutePackets.ActorPacket decoded =
+                    ZLinkActorSpotRoutePackets.decodeActorPacket(parts);
+                try {
+                    assertEquals(17L, decoded.handoffArrivalIndex());
+                    assertArrayEquals(journal, decoded.acceptedJournalRecord());
                 } finally {
                     decoded.close();
                 }

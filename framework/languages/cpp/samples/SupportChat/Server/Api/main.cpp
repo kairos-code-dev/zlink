@@ -3,11 +3,12 @@
 /* SupportChat API 서버.
  *
  * 공통 sample spec: 인증(`AuthenticateUserReq/Res`)과 대화 개설 접수
- * (`OpenConversationApiReq/Res` -> Support `AllocateConversationReq/Res`)는 API 서버가
- * 소유한다. Session 서버는 stream 경계만 다루고 사용자 정보를 스스로 만들지 않는다. */
+ * (`OpenConversationApiReq/Res`)는 API 서버가 소유한다. API는 SpotManager로 conversation
+ * User Spot을 만들고, Session 서버는 stream 경계만 다룬다. */
 
 #include "../../Shared/Contracts/messages.hpp"
 #include "../Configuration/location_store.hpp"
+#include "../Configuration/sample_names.hpp"
 #include "../Configuration/sample_configuration.hpp"
 
 #include <zlink/framework.hpp>
@@ -86,27 +87,34 @@ class open_conversation_api_handler_t
   public:
     using request_type = open_conversation_api_req_t;
     using reply_type = open_conversation_api_res_t;
-    using dependency_types = dependency_list_t<channel_client_t>;
+    using dependency_types = dependency_list_t<spot_manager_t>;
     static constexpr const char *topic_name = open_conversation_api_req_t::packet_name;
 
-    explicit open_conversation_api_handler_t (channel_client_t &channels) : _channels (channels) {}
+    explicit open_conversation_api_handler_t (spot_manager_t &spots) : _spots (spots) {}
 
     task_t<open_conversation_api_res_t> handle (const open_conversation_api_req_t &request)
     {
-        /* 대화 배정은 Support 서버가 소유한다. API는 접수만 하고 할당 결과를 돌려준다. */
-        auto allocated =
-          co_await _channels
-            .request ("supportchat.support",
-                      allocate_conversation_req_t{request.customer_actor_id,
-                                                  request.customer_display_name, request.subject})
-            .submit<allocate_conversation_res_t> ();
-        std::cerr << "supportchat api: conversation allocated id=" << allocated.conversation_id
-                  << " status=" << allocated.status << "\n";
-        co_return open_conversation_api_res_t{allocated.conversation_id, allocated.status};
+        auto created =
+          co_await _spots.create (sample_names_t::conversation_spot)
+            .in_mesh (sample_names_t::mesh)
+            .creation_request (conversation_create_req_t{
+              request.customer_actor_id, request.customer_display_name, request.subject})
+            .submit ();
+        if (created.state == spot_create_state_t::rejected || !created.reply) {
+            throw framework_exception_t (
+              framework_error_kind_t::request_rejected,
+              "SupportChat conversation creation returned no state");
+        }
+        const auto response = created.reply->decode<conversation_create_res_t> ();
+        std::cerr << "supportchat api: conversation created id="
+                  << response.state.conversation_id << " status=" << response.state.status
+                  << "\n";
+        co_return open_conversation_api_res_t{
+          response.state.conversation_id, response.state.status};
     }
 
   private:
-    channel_client_t &_channels;
+    spot_manager_t &_spots;
 };
 
 } // namespace
@@ -129,10 +137,18 @@ int main (int argc, char **argv)
         options.services ().add_singleton<user_directory_t> ();
 
         options.add_client_server_channel ("supportchat.api")
-          .enable_server (topology.api_route_endpoint)
-          .use_handler_group ("supportchat-api");
-        /* Support로 나가는 client 연결은 공유 location store가 만든다. */
-        options.add_client_server_channel ("supportchat.support").enable_client ();
+          .server ()
+          .set_bind_host (host_from_tcp_endpoint (
+            topology.api_route_endpoint))
+          .set_advertise_host (host_from_tcp_endpoint (
+            topology.api_route_endpoint))
+          .listen (port_from_tcp_endpoint (
+            topology.api_route_endpoint))
+          .add_handler_group ("supportchat-api");
+        options.add_route_mesh (sample_names_t::mesh)
+          .set_routing_id (zlink::routing_id_t::from ("supportchat-api"))
+          .set_object_role (object_role_t::client)
+          .listen (topology.api_spot_route_endpoint);
 
         options.handlers ()
           .group ("supportchat-api")

@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ZLINK_FRAMEWORK_RUNTIME } from '@zlink-systems/nestjs';
 import {
+  ZLinkFrameworkRelocationOutcome,
   ZLinkFrameworkRelocationMode,
   type ZLinkFrameworkRuntime
 } from '@zlink-systems/framework';
@@ -22,7 +23,12 @@ async function bootstrap(): Promise<void> {
   const beginDrain = () => {
     console.log('bingo-drain requested');
     void frameworkRuntime.relocate({ mode: ZLinkFrameworkRelocationMode.PlannedMaintenance }).then((result) => {
-      console.log(`bingo-retire outcome=${result.outcome} reason=${result.reason}`);
+      console.log(
+        `bingo-drain result=${result.outcome === ZLinkFrameworkRelocationOutcome.Relocated
+          ? 'drained'
+          : 'blocked'} `
+        + `outcome=${result.outcome} reason=${result.reason}`
+      );
       process.removeListener('SIGUSR2', beginDrain);
       process.removeListener('SIGBREAK', beginDrain);
       shutdown.abort();
@@ -37,7 +43,7 @@ async function bootstrap(): Promise<void> {
   process.stdout.write(`${JSON.stringify({
     event: 'ready',
     endpoint: config.playSpotEndpoint,
-    channelName: SampleNames.playChannel
+    meshName: SampleNames.playMeshName
   })}\n`);
 
   try {

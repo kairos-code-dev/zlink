@@ -30,6 +30,7 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
     private ulong _nextRelocationSerial = 1;
     private ZLinkRelocationQueueState? _relocation;
     private TaskCompletionSource<ZLinkSerialRelocationSeal>? _sealRequest;
+    private Func<int>? _sealRequestReservation;
     private bool _relocated;
 
     public ZLinkSerialExecutionQueue(
@@ -90,6 +91,7 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
             if (Interlocked.Exchange(ref _completed, 1) != 0) return;
             pendingSeal = _sealRequest;
             _sealRequest = null;
+            _sealRequestReservation = null;
             AbortRelocationUnderLock();
             if (_queue.Count > 0)
                 ScheduleDrain();
@@ -125,6 +127,29 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
 
             item = new ZLinkSerialWorkItem(callback);
             _queue.Enqueue(item);
+            ScheduleDrain();
+            return true;
+        }
+    }
+
+    public bool TryPostNext(
+        Func<CancellationToken, ValueTask> callback,
+        out ZLinkSerialWorkItem item)
+    {
+        lock (_admissionGate)
+        {
+            if (Volatile.Read(ref _completed) != 0 || !TryReserveSlot())
+            {
+                item = null!;
+                return false;
+            }
+
+            item = new ZLinkSerialWorkItem(callback);
+            var queued = _queue.ToArray();
+            _queue.Clear();
+            _queue.Enqueue(item);
+            foreach (var existing in queued)
+                _queue.Enqueue(existing);
             ScheduleDrain();
             return true;
         }
@@ -287,25 +312,27 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
                 firstReservedSequence = 0;
                 return false;
             }
-            if (reservedAcceptedSequences != 0
-                && (_nextAcceptedSequence == ulong.MaxValue
-                    || checked((ulong)reservedAcceptedSequences)
-                       > ulong.MaxValue - _nextAcceptedSequence))
-                throw new InvalidOperationException(
-                    "ZLink accepted-work sequence is exhausted.");
-            firstReservedSequence = _nextAcceptedSequence;
-            _nextAcceptedSequence = checked(
-                _nextAcceptedSequence + (ulong)reservedAcceptedSequences);
-            seal = SealUnderLock();
+            seal = SealUnderLock(reservedAcceptedSequences);
+            firstReservedSequence = seal.FirstReservedSequence;
             return true;
         }
     }
 
     public ValueTask<ZLinkSerialRelocationSeal> SealRelocationAsync(
+        CancellationToken cancellationToken) =>
+        SealRelocationAsync(
+            static () => 0,
+            cancellationToken);
+
+    internal ValueTask<ZLinkSerialRelocationSeal> SealRelocationAsync(
+        Func<int> reserveAcceptedSequencesAtBoundary,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        ArgumentNullException.ThrowIfNull(
+            reserveAcceptedSequencesAtBoundary);
         Task<ZLinkSerialRelocationSeal> sealTask;
+        TaskCompletionSource<ZLinkSerialRelocationSeal> request;
         lock (_admissionGate)
         {
             if (_relocated)
@@ -317,25 +344,67 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
             if (Volatile.Read(ref _completed) != 0)
                 throw new InvalidOperationException(
                     "ZLink serial execution queue is closed.");
+            if (_sealRequest is not null)
+                throw new InvalidOperationException(
+                    "ZLink serial execution queue already has a pending relocation seal.");
 
-            _sealRequest ??= new TaskCompletionSource<ZLinkSerialRelocationSeal>(
+            request = new TaskCompletionSource<ZLinkSerialRelocationSeal>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
+            _sealRequest = request;
+            _sealRequestReservation =
+                reserveAcceptedSequencesAtBoundary;
             if (_active is null && _acceptedOperations == 0)
                 CompleteSealRequestUnderLock();
             else
                 ScheduleDrain();
             sealTask = _sealRequest?.Task
                        ?? Task.FromResult(_relocation is not null
-                           ? new ZLinkSerialRelocationSeal(
-                               _relocation.Serial,
-                               _relocation.Captured
-                                   .Select(static item => item.AcceptedRecord!.Snapshot())
-                                   .ToArray())
-                           : throw new InvalidOperationException(
-                               "Relocation seal completion was lost."));
+                            ? new ZLinkSerialRelocationSeal(
+                                _relocation.Serial,
+                                _relocation.Captured
+                                    .Select(static item => item.AcceptedRecord!.Snapshot())
+                                    .ToArray(),
+                                _relocation.FirstReservedSequence,
+                                _relocation.ReservedAcceptedSequences)
+                            : throw new InvalidOperationException(
+                                "Relocation seal completion was lost."));
         }
-        return new ValueTask<ZLinkSerialRelocationSeal>(
-            sealTask.WaitAsync(cancellationToken));
+        return AwaitSealRequestAsync(
+            request,
+            sealTask,
+            cancellationToken);
+    }
+
+    private async ValueTask<ZLinkSerialRelocationSeal> AwaitSealRequestAsync(
+        TaskCompletionSource<ZLinkSerialRelocationSeal> request,
+        Task<ZLinkSerialRelocationSeal> sealTask,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await sealTask.WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            lock (_admissionGate)
+            {
+                if (ReferenceEquals(_sealRequest, request))
+                {
+                    _sealRequest = null;
+                    _sealRequestReservation = null;
+                    ScheduleDrain();
+                }
+                else if (request.Task.IsCompletedSuccessfully
+                         && Matches(request.Task.Result))
+                {
+                    AbortRelocationUnderLock();
+                    ScheduleDrain();
+                }
+            }
+            throw;
+        }
     }
 
     public bool TryAbortRelocation(ZLinkSerialRelocationSeal seal)
@@ -598,11 +667,21 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         return item is not null;
     }
 
-    private ZLinkSerialRelocationSeal SealUnderLock()
+    private ZLinkSerialRelocationSeal SealUnderLock(
+        int reservedAcceptedSequences = 0)
     {
         if (_nextRelocationSerial == ulong.MaxValue)
             throw new InvalidOperationException(
                 "ZLink relocation serial is exhausted.");
+        if (reservedAcceptedSequences < 0)
+            throw new ArgumentOutOfRangeException(
+                nameof(reservedAcceptedSequences));
+        if (reservedAcceptedSequences != 0
+            && (_nextAcceptedSequence == ulong.MaxValue
+                || checked((ulong)reservedAcceptedSequences)
+                   > ulong.MaxValue - _nextAcceptedSequence))
+            throw new InvalidOperationException(
+                "ZLink accepted-work sequence is exhausted.");
 
         var captured = new Queue<ZLinkSerialWorkItem>();
         var infrastructure = new Queue<ZLinkSerialWorkItem>();
@@ -617,12 +696,21 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
             _queue.Enqueue(item);
 
         var serial = _nextRelocationSerial++;
-        _relocation = new ZLinkRelocationQueueState(serial, captured);
+        var firstReservedSequence = _nextAcceptedSequence;
+        _nextAcceptedSequence = checked(
+            _nextAcceptedSequence + (ulong)reservedAcceptedSequences);
+        _relocation = new ZLinkRelocationQueueState(
+            serial,
+            captured,
+            firstReservedSequence,
+            reservedAcceptedSequences);
         return new ZLinkSerialRelocationSeal(
             serial,
             captured
                 .Select(static item => item.AcceptedRecord!.Snapshot())
-                .ToArray());
+                .ToArray(),
+            firstReservedSequence,
+            reservedAcceptedSequences);
     }
 
     private void CompleteSealRequestUnderLock()
@@ -630,8 +718,22 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         if (_sealRequest is null || _acceptedOperations != 0 || _active is not null)
             return;
         var request = _sealRequest;
+        var reserveAcceptedSequencesAtBoundary =
+            _sealRequestReservation;
         _sealRequest = null;
-        request.TrySetResult(SealUnderLock());
+        _sealRequestReservation = null;
+        try
+        {
+            var reservedAcceptedSequences =
+                reserveAcceptedSequencesAtBoundary?.Invoke()
+                ?? throw new InvalidOperationException(
+                    "Relocation seal reservation callback was lost.");
+            request.TrySetResult(SealUnderLock(reservedAcceptedSequences));
+        }
+        catch (Exception exception)
+        {
+            request.TrySetException(exception);
+        }
     }
 
     private bool HasQueuedWork()
@@ -714,11 +816,19 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
 
     private sealed class ZLinkRelocationQueueState(
         ulong serial,
-        Queue<ZLinkSerialWorkItem> captured)
+        Queue<ZLinkSerialWorkItem> captured,
+        ulong firstReservedSequence,
+        int reservedAcceptedSequences)
     {
         public ulong Serial { get; } = serial;
 
         public Queue<ZLinkSerialWorkItem> Captured { get; } = captured;
+
+        public ulong FirstReservedSequence { get; } =
+            firstReservedSequence;
+
+        public int ReservedAcceptedSequences { get; } =
+            reservedAcceptedSequences;
 
         public Queue<ZLinkSerialWorkItem> Held { get; } = new();
 
@@ -730,7 +840,9 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
 
 internal sealed record ZLinkSerialRelocationSeal(
     ulong Serial,
-    IReadOnlyList<ZLinkAcceptedWorkRecord> Captured);
+    IReadOnlyList<ZLinkAcceptedWorkRecord> Captured,
+    ulong FirstReservedSequence = 0,
+    int ReservedAcceptedSequences = 0);
 
 internal enum ZLinkAcceptedWorkAdmission
 {

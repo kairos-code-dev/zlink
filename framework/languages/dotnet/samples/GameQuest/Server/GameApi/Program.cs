@@ -14,7 +14,6 @@ using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Contracts.Dispatch;
-using Zlink.Framework.Contracts.Channels;
 using Zlink.Samples.Logging;
 
 namespace GameQuest.GameApi;
@@ -73,8 +72,6 @@ internal static class Program
                 .AddEntrySpot<GameQuestEntrySpot>()
                 .AddActorFactory<PlayerSessionActor, PlayerSessionActorFactory>(
                     SampleNames.SessionActorType, factory => factory.RecreateOnRelocation());
-            mesh.Channel(SampleNames.GameApiChannel).Server()
-                .AddHandlerGroup(SampleNames.GameApiHandlerGroup);
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(streamEndpoint)
                 .EnableActorDispatch()

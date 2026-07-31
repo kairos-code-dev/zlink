@@ -6,6 +6,7 @@ namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkClientServerRuntimeService(
     ZLinkFrameworkRuntime runtime,
+    ZLinkFrameworkHostLifecycleState hostLifecycle,
     ZLinkLocationStoreHealth? storeHealth) : IZLinkClientServerRuntime
 {
     private static readonly TimeSpan PollInterval =
@@ -74,6 +75,7 @@ internal sealed class ZLinkClientServerRuntimeService(
                     .Server;
         var readyCount = servers.Count(static entry => entry.Ready);
         var fingerprint = new Fingerprint(
+            hostLifecycle.State,
             role,
             state.Client?.ConnectionIntentCount ?? 0,
             state.Client?.PendingRequestCount ?? 0,
@@ -111,12 +113,13 @@ internal sealed class ZLinkClientServerRuntimeService(
                 MapPeerState(server.State),
                 MapUnavailableReason(server.State)))
             .ToArray();
-        var isReady = runtime.IsStarted && snapshot.Selectable;
+        var hostState = hostLifecycle.State;
+        var isReady = hostState == ZLinkFrameworkRuntimeState.Serving
+                      && runtime.IsStarted
+                      && snapshot.Selectable;
         var topologyState = isReady
             ? ZLinkTopologyState.Ready
-            : runtime.IsStarted
-                ? ZLinkTopologyState.Degraded
-                : ZLinkTopologyState.Starting;
+            : HostTopologyState(hostState, runtime.IsStarted);
         return new ZLinkClientServerStatus(
             snapshot.ChannelName,
             snapshot.LocalRole,
@@ -329,7 +332,26 @@ internal sealed class ZLinkClientServerRuntimeService(
             _ => ZLinkTopologyReason.InternalFailure
         };
 
+    private static ZLinkTopologyState HostTopologyState(
+        ZLinkFrameworkRuntimeState state,
+        bool runtimeStarted) =>
+        state switch
+        {
+            ZLinkFrameworkRuntimeState.Preparing => ZLinkTopologyState.Starting,
+            ZLinkFrameworkRuntimeState.Relocating
+                or ZLinkFrameworkRuntimeState.Relocated
+                or ZLinkFrameworkRuntimeState.Draining =>
+                ZLinkTopologyState.Stopping,
+            ZLinkFrameworkRuntimeState.Stopped =>
+                ZLinkTopologyState.Stopped,
+            ZLinkFrameworkRuntimeState.Error => ZLinkTopologyState.Failed,
+            _ => runtimeStarted
+                ? ZLinkTopologyState.Degraded
+                : ZLinkTopologyState.Starting
+        };
+
     private sealed record Fingerprint(
+        ZLinkFrameworkRuntimeState HostState,
         Zlink.Framework.Contracts.Configuration.ZLinkClientServerRole Role,
         int ConnectionIntentCount,
         int PendingRequestCount,

@@ -6,19 +6,16 @@ namespace Systems.Zlink;
 // Received.cs.
 public sealed partial class Received : IDisposable
 {
-    internal void ReplyCore(IReadOnlyList<Message> parts)
+    internal ReceivedReplyHandler CaptureReplyHandler()
     {
-        if (parts == null)
-            throw new ArgumentNullException(nameof(parts));
         if (_metadata is not
             {
-                RequestSeq: { } requestSeq,
+                RequestSeq: not null,
                 ReplyHandler: { } replyHandler
             })
             throw new ZlinkSubmitException(SubmitResult.InvalidArgument,
                 (int)ErrorCode.EInval);
-
-        replyHandler(parts);
+        return replyHandler;
     }
 
     internal bool SendCore(Message part, SendFlags flags = SendFlags.None)

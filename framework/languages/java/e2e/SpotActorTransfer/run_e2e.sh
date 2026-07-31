@@ -18,7 +18,7 @@ if rg -n 'java\.net\.http\.HttpClient|HttpClient\.new' "${ROOT_DIR}/Client/src/m
   exit 1
 fi
 if [[ "${SCENARIO}" == "all" ]]; then
-  for scenario in ST-A1 ST-A2 ST-A3 ST-B1 ST-B2 ST-B3 ST-B4 ST-C1 ST-C2 ST-C3 ST-D1 ST-D2 ST-E1 ST-E2 ST-F1 ST-F2 ST-F3 ST-F4 ST-F5 ST-F6; do
+  for scenario in ST-A1 ST-A2 ST-A3 ST-B1 ST-B2 ST-B3 ST-B4 ST-C1 ST-C2 ST-C3 ST-D1 ST-D2 ST-E1 ST-E2 ST-F1 ST-F2 ST-F3 ST-F4 ST-F5 ST-F6 ST-R1; do
     passed=0
     for attempt in 1 2 3; do
       if "${BASH_SOURCE[0]}" "${scenario}" --start-order "${e2e_start_order}"; then
@@ -126,6 +126,7 @@ e2e.stream-endpoint=tcp://127.0.0.1:${stream_port}
 e2e.redis-location-endpoint=${REDIS_LOCATION_ENDPOINT}
 e2e.location-key-prefix=${LOCATION_PREFIX}
 e2e.log-directory=${LOG_DIR}
+e2e.automatic-topology=$([[ "${SCENARIO}" == "ST-R1" ]] && echo true || echo false)
 EOF
   chmod 0600 "${config_path}"
   "${NODE_BIN}" --config "${config_path}" \
@@ -152,6 +153,8 @@ wait_http() {
     sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for ${url}" >&2
+  curl --silent --show-error --max-time 1 "${url}/health" >&2 || true
+  echo >&2
   return 1
 }
 
@@ -198,9 +201,21 @@ EOF
     >"${LOG_DIR}/client.stdout.log" 2>"${LOG_DIR}/client.stderr.log"
 }
 
+run_client_or_report() {
+  if run_client; then
+    return 0
+  else
+    local status="$?"
+    echo "SpotActorTransfer client failed with status ${status}" >&2
+    cat "${LOG_DIR}/client.stdout.log" >&2 || true
+    cat "${LOG_DIR}/client.stderr.log" >&2 || true
+    return "${status}"
+  fi
+}
+
 if [[ "${SCENARIO}" == "ST-B2" || "${SCENARIO}" == "ST-C1" \
    || "${SCENARIO}" == "ST-C2" || "${SCENARIO}" == "ST-D2" ]]; then
-  run_client &
+  run_client_or_report &
   CLIENT_PID="$!"
   deadline=$((SECONDS + 30))
   while [[ ! -f "${LOG_DIR}/${SCENARIO}.ready" ]]; do
@@ -215,7 +230,7 @@ if [[ "${SCENARIO}" == "ST-B2" || "${SCENARIO}" == "ST-C1" \
   wait "${PID_A}" >/dev/null 2>&1 || true
   wait "${CLIENT_PID}"
 else
-  run_client
+  run_client_or_report
 fi
 
 grep -q "spot-actor-transfer e2e result=passed" "${LOG_DIR}/client.stdout.log"

@@ -3,10 +3,10 @@ import type {
   ZLinkActor,
   ZLinkActorJoinCompletion,
   ZLinkActorJoinOperationId,
-  ZLinkAuthoritySnapshot,
   ZLinkBlobReference,
   ZLinkRelocationStore
 } from '../../contracts';
+import type { ZLinkAuthoritySnapshot } from '../../contracts/Locations';
 import type { ZLinkAuthorityStore } from '../locations/internal-store-contracts';
 import { ZLinkEncodedPayload, ZLinkMessage } from '../../contracts';
 import { encodeAuthorityKey } from '../locations/authority-key-codec';
@@ -1017,7 +1017,11 @@ function requireSameActor(
     root.actor.actorId !== actor.actorId
     || root.actor.objectGeneration !== actor.objectGeneration
   ) {
-    throw new Error('Deferred Join completion generation fence is stale.');
+    throw new Error(
+      'Deferred Join completion generation fence is stale '
+      + `(root ${root.actor.actorId}/${root.actor.objectGeneration}, `
+      + `actor ${actor.actorId}/${actor.objectGeneration}).`
+    );
   }
 }
 

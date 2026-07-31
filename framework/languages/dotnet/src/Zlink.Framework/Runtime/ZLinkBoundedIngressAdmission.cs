@@ -13,6 +13,8 @@ internal sealed class ZLinkBoundedIngressAdmission
     private readonly long _byteCapacity;
     private int _records;
     private long _bytes;
+    private bool _closed;
+    private TaskCompletionSource? _emptyWaiter;
 
     internal ZLinkBoundedIngressAdmission(
         int recordCapacity = SourceIngressHoldRecordCapacity,
@@ -32,7 +34,8 @@ internal sealed class ZLinkBoundedIngressAdmission
             return false;
         lock (_gate)
         {
-            if (_records >= _recordCapacity
+            if (_closed
+                || _records >= _recordCapacity
                 || encodedBytes > _byteCapacity - _bytes)
                 return false;
             _records++;
@@ -45,6 +48,7 @@ internal sealed class ZLinkBoundedIngressAdmission
     {
         if (encodedBytes < 0)
             throw new ArgumentOutOfRangeException(nameof(encodedBytes));
+        TaskCompletionSource? completed = null;
         lock (_gate)
         {
             if (_records == 0 || encodedBytes > _bytes)
@@ -52,16 +56,42 @@ internal sealed class ZLinkBoundedIngressAdmission
                     "Ingress admission release does not match an acquired record.");
             _records--;
             _bytes -= encodedBytes;
+            if (_records == 0)
+            {
+                completed = _emptyWaiter;
+                _emptyWaiter = null;
+            }
         }
+        completed?.TrySetResult();
     }
 
     internal void ReleaseAll()
     {
+        TaskCompletionSource? completed;
         lock (_gate)
         {
             _records = 0;
             _bytes = 0;
+            completed = _emptyWaiter;
+            _emptyWaiter = null;
         }
+        completed?.TrySetResult();
+    }
+
+    internal ValueTask CloseAndWaitForEmptyAsync(
+        CancellationToken cancellationToken)
+    {
+        Task? wait;
+        lock (_gate)
+        {
+            _closed = true;
+            if (_records == 0)
+                return ValueTask.CompletedTask;
+            _emptyWaiter ??= new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            wait = _emptyWaiter.Task;
+        }
+        return new ValueTask(wait.WaitAsync(cancellationToken));
     }
 
     internal (int Records, long Bytes) Snapshot()

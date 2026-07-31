@@ -28,30 +28,32 @@ internal static partial class ZLinkRelocationTreeStore
             TimeSpan retention,
             CancellationToken cancellationToken)
     {
-        var logicalPath = Path.GetTempFileName();
+        string? logicalPath = null;
         try
         {
-            await using (var output = new FileStream(
-                             logicalPath,
-                             FileMode.Truncate,
-                             FileAccess.Write,
-                             FileShare.None,
-                             1024 * 1024,
-                             FileOptions.Asynchronous
-                             | FileOptions.SequentialScan))
+            long sourceLength;
+            if (envelope.CanonicalLogicalStream.IsEmpty)
             {
-                if (envelope.CanonicalLogicalStream.IsEmpty)
+                logicalPath = Path.GetTempFileName();
+                await using (var output = new FileStream(
+                                 logicalPath,
+                                 FileMode.Truncate,
+                                 FileAccess.Write,
+                                 FileShare.None,
+                                 1024 * 1024,
+                                 FileOptions.Asynchronous
+                                 | FileOptions.SequentialScan))
+                {
                     ZLinkRelocationEnvelopeCodec.EncodeTo(output, envelope);
-                else
-                    await output.WriteAsync(
-                            envelope.CanonicalLogicalStream,
-                            cancellationToken)
+                    await output.FlushAsync(cancellationToken)
                         .ConfigureAwait(false);
-                await output.FlushAsync(cancellationToken)
-                    .ConfigureAwait(false);
+                }
+                sourceLength = new FileInfo(logicalPath).Length;
             }
-
-            var sourceLength = new FileInfo(logicalPath).Length;
+            else
+            {
+                sourceLength = envelope.CanonicalLogicalStream.Length;
+            }
             var componentCount = CalculateOrderedStripeCount(
                 sourceLength,
                 envelope.Participants.Count);
@@ -112,11 +114,17 @@ internal static partial class ZLinkRelocationTreeStore
                  componentIndex < componentCount;
                  componentIndex++)
             {
-                using var source = CreateFileSliceSource(
-                    logicalPath,
-                    sourceLength,
-                    componentCount,
-                    componentIndex);
+                using var source = logicalPath is null
+                    ? CreateMemorySliceSource(
+                        envelope.CanonicalLogicalStream,
+                        sourceLength,
+                        componentCount,
+                        componentIndex)
+                    : CreateFileSliceSource(
+                        logicalPath,
+                        sourceLength,
+                        componentCount,
+                        componentIndex);
                 var componentCrcState = uint.MaxValue;
                 await using var input = source.OpenRead();
                 var localChunkOrder = 0;
@@ -196,7 +204,8 @@ internal static partial class ZLinkRelocationTreeStore
         }
         finally
         {
-            File.Delete(logicalPath);
+            if (logicalPath is not null)
+                File.Delete(logicalPath);
         }
     }
 
@@ -289,6 +298,27 @@ internal static partial class ZLinkRelocationTreeStore
             path,
             offset,
             length);
+    }
+
+    private static ParticipantComponentSource CreateMemorySliceSource(
+        ReadOnlyMemory<byte> bytes,
+        long logicalLength,
+        int stripeCount,
+        int order)
+    {
+        var length = MeasureCanonicalSlice(
+            logicalLength,
+            stripeCount,
+            order);
+        var quotient = logicalLength / stripeCount;
+        var remainder = logicalLength % stripeCount;
+        var offset = checked(
+            order * quotient + Math.Min(order, remainder));
+        return ParticipantComponentSource.FromMemorySlice(
+            order,
+            bytes.Slice(
+                checked((int)offset),
+                checked((int)length)));
     }
 
     private static async ValueTask<ZLinkRelocationTreeRead>
@@ -718,18 +748,21 @@ internal static partial class ZLinkRelocationTreeStore
 
     private sealed class ParticipantComponentSource : IDisposable
     {
-        private readonly string _path;
+        private readonly string? _path;
+        private readonly ReadOnlyMemory<byte> _memory;
         private readonly long _offset;
 
         private ParticipantComponentSource(
             int order,
-            string path,
+            string? path,
+            ReadOnlyMemory<byte> memory,
             long offset,
             long length)
         {
             Order = order;
             Length = length;
             _path = path;
+            _memory = memory;
             _offset = offset;
         }
 
@@ -741,10 +774,19 @@ internal static partial class ZLinkRelocationTreeStore
             string path,
             long offset,
             long length) =>
-            new(order, path, offset, length);
+            new(order, path, default, offset, length);
+
+        internal static ParticipantComponentSource FromMemorySlice(
+            int order,
+            ReadOnlyMemory<byte> memory) =>
+            new(order, null, memory, 0, memory.Length);
 
         internal Stream OpenRead()
         {
+            if (_path is null)
+                return new MemoryStream(
+                    _memory.ToArray(),
+                    writable: false);
             var input = new FileStream(
                 _path,
                 FileMode.Open,

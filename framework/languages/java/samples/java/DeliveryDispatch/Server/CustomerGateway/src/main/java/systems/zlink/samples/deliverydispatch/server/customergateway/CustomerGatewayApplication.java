@@ -3,7 +3,6 @@ package systems.zlink.samples.deliverydispatch.server.customergateway;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
@@ -39,7 +38,7 @@ public final class CustomerGatewayApplication {
                 .traceLabel("customer-gateway");
             ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.CustomerSpotDiscovery);
             node.listen(topology.customerSpotRouterEndpoint())
-                .useAllocatedRoutingId(16, "delivery-customer");
+                .setRoutingIdPrefix("delivery-customer");
             node.objects()
                 .server()
                 .addEntrySpot(CustomerEntrySpot.class)

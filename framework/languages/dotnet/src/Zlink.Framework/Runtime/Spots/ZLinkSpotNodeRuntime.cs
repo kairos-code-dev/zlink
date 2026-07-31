@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Contracts.Configuration;
+using Zlink.Framework.Runtime.Dispatch;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -16,6 +17,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private readonly ZLinkSpotNodeCatalog _spots;
     private readonly CancellationTokenSource _stopSource = new();
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
+    private readonly ZLinkCompletionAdmissionOwner _completionAdmission;
     private readonly object _disposeGate = new();
     private Task? _disposeTask;
     private IDisposable? _manualConnectionAttachment;
@@ -27,6 +29,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private IRelocationReplyRelayTarget? _relocationReplyRelayTarget;
     private ZLinkCanonicalRelocationReservationOwner?
         _canonicalRelocationReservationOwner;
+    private readonly ZLinkServiceWireCodec.RequestSourceFence?
+        _localRequestSource;
     private IZLinkBackendSpot? _entrySpot;
     private ZLinkEntrySpotDispatchPump? _entryDispatchPump;
     private ZLinkSpotOutboundTransport? _entryOutbound;
@@ -43,6 +47,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         IZLinkBackendContext context,
         IZLinkChannelBackendAdapter channelAdapter,
         IZLinkBackendSpotNode node,
+        ZLinkCompletionAdmissionOwner completionAdmission,
         string spotChannelName,
         ZLinkLocationLifecycle? locationLifecycle,
         ZLinkMeshNodeStartupState? startupState = null,
@@ -53,6 +58,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         _frameworkRegistration = frameworkRegistration;
         Registration = registration;
         Node = node;
+        _completionAdmission = completionAdmission;
         if (node is IZLinkBackendActorMessageFollowIngress
             messageFollowIngress)
             messageFollowIngress.SetActorMessageFollowIngressHandler(
@@ -76,6 +82,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                     node.MeshStatus().LifecycleGeneration);
             sourceObserver.SetLocalRequestSourceFence(localRequestSource);
             sourceObserver.ObserveRequestSourceFence(localRequestSource);
+            _localRequestSource = localRequestSource;
         }
         StartupState = startupState;
         EntrySpotId = entrySpotId ?? startupState?.EntrySpotId
@@ -90,8 +97,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             node.OnSendReady,
             frameworkRegistration.DefaultSocketSendTimeout,
             _stopSource.Token,
-            ZLinkAsyncSubmitter.ResolvePendingCapacity(
-                registration.Router?.SocketConfig.SendHighWaterMark ?? 0));
+            ZLinkAsyncSubmitter.ResolvePendingCapacity(),
+            completionAdmission: _completionAdmission);
         _bundles = new ZLinkSpotNodeBundleRegistry(
             frameworkRegistration,
             node,
@@ -103,6 +110,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             registration,
             node,
             spotChannelName,
+            _completionAdmission,
             locationLifecycle);
         if (frameworkRegistration.Locations.ResolveStore() is not null
             && node is IZLinkBackendRelocationReplyRelay relayBackend)
@@ -191,6 +199,11 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             node.SetInstanceSpotActivationTarget(_instanceSpotActivationTarget);
         }
     }
+
+    internal ZLinkServiceWireCodec.RequestSourceFence LocalRequestSource =>
+        _localRequestSource
+        ?? throw new InvalidOperationException(
+            "The MeshNode does not have a Location Store owner fence.");
 
     internal bool TryTakeCanonicalRelocationPermit(
         ZLinkServiceWireCodec.RelocationWireId relocationId,
@@ -734,7 +747,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             _entrySpot,
             Registration.Router?.SocketConfig.SendTimeout
             ?? _frameworkRegistration.DefaultSocketSendTimeout,
-            _stopSource.Token);
+            _stopSource.Token,
+            _completionAdmission);
         if (Registration.EntrySpotType is null)
         {
             if (ShouldAttachActorDispatchPump())
@@ -742,7 +756,9 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 _entryDispatchPump = new ZLinkEntrySpotDispatchPump(_runtime, null, _taskRunner);
                 _entryDispatchPump.Attach(_entrySpot);
                 if (Interlocked.Exchange(ref _entrySpotMetricActive, 1) == 0)
-                    ZLinkRuntimeMetrics.RecordSpotCreated("entry");
+                    ZLinkRuntimeMetrics.RecordSpotCreated(
+                        Registration.SpotNodeName,
+                        "entry");
             }
 
             return;
@@ -764,7 +780,9 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         _entryDispatchPump = new ZLinkEntrySpotDispatchPump(_runtime, activation, _taskRunner);
         _entryDispatchPump.Attach(entrySpot);
         if (Interlocked.Exchange(ref _entrySpotMetricActive, 1) == 0)
-            ZLinkRuntimeMetrics.RecordSpotCreated("entry");
+            ZLinkRuntimeMetrics.RecordSpotCreated(
+                Registration.SpotNodeName,
+                "entry");
     }
 
     public ZLinkSpotMonitoringSnapshot GetMonitoringSnapshot()
@@ -899,8 +917,33 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         _peerConnector.DisconnectPeerManual(endpoint);
     }
 
-    public bool ConnectPeerAuto(RoutingId? peerRid, string endpoint)
-        => _peerConnector.ConnectPeerAuto(peerRid, endpoint);
+    public bool ConnectPeerAuto(
+        RoutingId? peerRid,
+        string endpoint,
+        string expectedSecurityIdentity)
+        => _peerConnector.ConnectPeerAuto(
+            peerRid,
+            endpoint,
+            expectedSecurityIdentity);
+
+    internal void ObservePeerExpectation(ZLinkAutoConnectTarget target)
+    {
+        if (target.NodeRid.IsEmpty) return;
+        Node.SetPeerExpectation(
+            target.NodeRid,
+            target.Endpoint,
+            ZLinkTransportSecurityIdentity.ToAdmissionIdentity(
+                target.SecurityIdentity),
+            target.LifecycleGeneration);
+    }
+
+    internal void ForgetPeerExpectation(ZLinkAutoConnectTarget target)
+    {
+        if (target.NodeRid.IsEmpty) return;
+        Node.RemovePeerExpectation(
+            target.NodeRid,
+            target.Endpoint);
+    }
 
     internal void ObserveRequestSourceFence(ZLinkAutoConnectTarget target)
     {
@@ -944,7 +987,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 Registration.SpotMeshChannelName ?? Registration.SpotNodeName,
                 _frameworkRegistration.DefaultRequestTimeout,
                 EntryOutbound);
-            activation.InitializeRuntimeResources();
+            activation.InitializeRuntimeResources(_completionAdmission);
             foreach (var handler in _frameworkRegistration.ScannedHandlerCatalog.SpotHandlers)
                 await activation.ApplyScannedHandlerAsync(handler, _stopSource.Token)
                     .ConfigureAwait(false);
@@ -984,7 +1027,9 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             _frameworkRegistration,
             Registration,
             _runtime,
-            _taskRunner);
+            _taskRunner,
+            _completionAdmission,
+            _nodeSubmitter);
         if (_nodeRouteDispatcher is not null)
             Node.OnNodeRoute(_nodeRouteDispatcher.Dispatch);
     }
@@ -1015,7 +1060,9 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
         await CaptureAsync(_entrySpot.DisposeAsync).ConfigureAwait(false);
         if (Interlocked.Exchange(ref _entrySpotMetricActive, 0) != 0)
-            ZLinkRuntimeMetrics.RecordSpotClosed("entry");
+            ZLinkRuntimeMetrics.RecordSpotClosed(
+                Registration.SpotNodeName,
+                "entry");
         if (failures.Count == 1)
             System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
         if (failures.Count > 1) throw new AggregateException(failures);

@@ -45,6 +45,7 @@ namespace zlink::framework
 namespace detail
 {
 class spot_node_builder_state_t;
+class spot_context_state_t;
 class spot_context_access_t;
 struct mesh_node_builder_state_t;
 void drain_spot_node_executors (spot_node_builder_state_t &node);
@@ -119,6 +120,29 @@ struct spot_relocation_ready_completion_t final
 {
     spot_relocation_ready_outcome_t outcome =
       spot_relocation_ready_outcome_t::continued;
+};
+
+class spot_relocation_ready_call_t
+{
+  public:
+    ~spot_relocation_ready_call_t ();
+    spot_relocation_ready_call_t (
+      spot_relocation_ready_call_t &&) noexcept;
+    spot_relocation_ready_call_t &
+    operator= (spot_relocation_ready_call_t &&) = delete;
+    spot_relocation_ready_call_t (
+      const spot_relocation_ready_call_t &) = delete;
+    spot_relocation_ready_call_t &
+    operator= (const spot_relocation_ready_call_t &) = delete;
+
+    void defer ();
+
+  private:
+    friend class spot_context_t;
+    explicit spot_relocation_ready_call_t (
+      std::shared_ptr<detail::spot_context_state_t> state);
+
+    std::shared_ptr<detail::spot_context_state_t> _state;
 };
 
 template <typename TActor> class spot_t;
@@ -352,7 +376,12 @@ struct spot_inbound_message_t
         context.mesh_name = mesh_name;
         context.packet_name = std::move (packet_name);
         context.content_type = content_type;
-        context.metadata = message_metadata_t (values);
+        std::map<std::string, std::string> application_metadata;
+        for (const auto &[key, value] : values) {
+            if (!key.starts_with ("__zlink."))
+                application_metadata.emplace (key, value);
+        }
+        context.metadata = message_metadata_t (std::move (application_metadata));
         context.correlation_id = correlation_id;
         return context;
     }
@@ -932,6 +961,7 @@ class spot_context_t
     std::uint64_t object_generation () const noexcept;
     std::string spot_name () const;
     spot_handler_registry_t handlers ();
+    spot_relocation_ready_call_t relocation_ready ();
     spot_manager_t manager () const;
     channel_client_t outbound () const;
     task_t<bool> close ();
@@ -960,6 +990,7 @@ class spot_context_t
     spot_request_call_t request_to_spot (spot_id_t target_spot_id,
                                          TRequest request)
     {
+        ensure_submission_open ();
         return spot_route_client ().request_to_spot (
           std::move (target_spot_id), std::move (request));
     }
@@ -968,6 +999,7 @@ class spot_context_t
     spot_send_call_t send_to_spot (spot_id_t target_spot_id,
                                    TMessage message)
     {
+        ensure_submission_open ();
         return spot_route_client ().send_to_spot (
           std::move (target_spot_id), std::move (message));
     }
@@ -982,9 +1014,22 @@ class spot_context_t
     {
         using result_type = std::invoke_result_t<TWork>;
         auto scheduler = _worker_scheduler;
+        auto preflight = submission_preflight ();
         return worker_call_t<result_type> (
-          [scheduler, work = std::move (work)] (
+          [scheduler, preflight = std::move (preflight),
+           work = std::move (work)] (
             std::optional<std::chrono::milliseconds> timeout) mutable -> task_t<result_type> {
+              if (preflight) {
+                  const auto admitted = preflight ();
+                  if (!admitted) {
+                      return task_t<result_type> (
+                        result_t<result_type>::failure (
+                          admitted.error_kind (),
+                          admitted.error ()
+                            ? admitted.error ()->what ()
+                            : "Spot worker preflight failed"));
+                  }
+              }
               (void) timeout;
               if (!scheduler) {
                   return task_t<result_type> (result_t<result_type>::failure (
@@ -1039,9 +1084,22 @@ class spot_context_t
     {
         using task_type = std::invoke_result_t<TWork>;
         using result_type = detail::task_result_t<task_type>;
+        auto preflight = submission_preflight ();
         return worker_call_t<result_type> (
-          [work = std::move (work)] (
+          [preflight = std::move (preflight),
+           work = std::move (work)] (
             std::optional<std::chrono::milliseconds> timeout) mutable -> task_t<result_type> {
+              if (preflight) {
+                  const auto admitted = preflight ();
+                  if (!admitted) {
+                      return task_t<result_type> (
+                        result_t<result_type>::failure (
+                          admitted.error_kind (),
+                          admitted.error ()
+                            ? admitted.error ()->what ()
+                            : "Spot worker preflight failed"));
+                  }
+              }
               auto completion =
                 std::make_shared<detail::task_completion_source_t<result_type>> ();
               auto result = completion->task ();
@@ -1205,6 +1263,9 @@ class spot_context_t
     };
 
     bool has_same_source_fence (const spot_context_t &other) const noexcept;
+    void ensure_submission_open () const;
+    std::function<result_t<void> ()>
+    submission_preflight () const;
 
     send_call_t
     publish_erased (std::string topic, std::string packet_name, zlink::message_t payload);
@@ -1762,6 +1823,9 @@ class spot_manager_t
     friend class detail::spot_route_internal_dispatcher_t;
     explicit spot_manager_t (
       std::shared_ptr<detail::spot_node_builder_state_t> state);
+    spot_manager_t (
+      std::shared_ptr<detail::spot_node_builder_state_t> state,
+      std::weak_ptr<detail::spot_context_state_t> source);
     std::optional<actor_ref_t> current_actor_ref (const actor_ref_t &actor_ref) const;
     result_t<std::optional<zlink::message_t>>
     relay_actor_packet (const actor_ref_t &actor_ref,
@@ -1782,6 +1846,7 @@ class spot_manager_t
                         spot_inbound_message_t metadata = {});
 
     std::shared_ptr<detail::spot_node_builder_state_t> _state;
+    std::weak_ptr<detail::spot_context_state_t> _source;
 };
 
 class spot_publisher_client_t
@@ -1836,6 +1901,9 @@ struct spot_lifecycle_callbacks_t
     std::function<void (void *)> on_initialize;
     std::function<void (
       void *, const spot_closing_context_t &, std::stop_token)> on_closing;
+    std::function<void (
+      void *, const spot_relocation_ready_completion_t &)>
+      on_relocation_ready_completed;
 };
 
 } // namespace detail
@@ -2061,6 +2129,16 @@ class spot_node_builder_t
               .result ()
               .value ();
         };
+        if constexpr (detail::user_spot_type<TSpot>) {
+            callbacks.on_relocation_ready_completed =
+              [] (void *spot,
+                  const spot_relocation_ready_completion_t &completion) {
+                  static_cast<TSpot *> (spot)
+                    ->on_relocation_ready_completed (completion)
+                    .result ()
+                    .value ();
+              };
+        }
         register_lifecycle_erased (std::move (spot_name), std::move (callbacks));
     }
     void register_lifecycle_erased (std::string spot_name,

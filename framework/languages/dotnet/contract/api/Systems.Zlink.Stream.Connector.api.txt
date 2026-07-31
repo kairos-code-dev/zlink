@@ -27,6 +27,9 @@ assembly Systems.Zlink.Stream.Connector
     method abstract System.Threading.Tasks.ValueTask<Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamMessage<Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamEncodedPayload>> Async(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract Systems.Zlink.Stream.Connector.Contracts.Calls.IZlinkStreamWaitCall Timeout(System.TimeSpan timeout [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract Systems.Zlink.Stream.Connector.Contracts.Calls.IZlinkStreamWaitCall Where(System.Func<Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamMessage<Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamEncodedPayload>, System.Boolean> predicate [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+  type interface Systems.Zlink.Stream.Connector.Contracts.IZlinkStreamCodecRegistration
+    property Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamCodec Codec { get; } [nullability=read:not-null,write:unknown]
+    property System.String ContentType { get; } [nullability=read:not-null,write:unknown]
   type interface Systems.Zlink.Stream.Connector.Contracts.IZlinkStreamCompressionCodec
     method abstract System.ReadOnlyMemory<System.Byte> Compress(System.ReadOnlyMemory<System.Byte> payload [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.ReadOnlyMemory<System.Byte> Decompress(System.ReadOnlyMemory<System.Byte> payload [nullability=read:not-null,write:not-null], System.Int32 maxDecompressedPayloadSize [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]

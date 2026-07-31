@@ -1,10 +1,5 @@
 package systems.zlink.samples.gamequest.client;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -14,12 +9,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import systems.zlink.samples.gamequest.server.configuration.SampleNames;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
+import systems.zlink.httpclient.ZLinkHttpClient;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamMessage;
 
 public final class GameQuestClientScenario {
-    private final ObjectMapper json = new ObjectMapper();
-    private final HttpClient http = HttpClient.newHttpClient();
     private final GameQuestClientOptions options;
     private final Function<String, ZLinkStreamConnector> connectorFactory;
 
@@ -301,26 +295,20 @@ public final class GameQuestClientScenario {
     }
 
     private boolean postRaw(String base, String path) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(base + path))
-            .POST(HttpRequest.BodyPublishers.ofString(""))
-            .build();
-        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-        return response.statusCode() >= 200 && response.statusCode() < 300;
+        var response = ZLinkHttpClient.create(base)
+            .post(path)
+            .submitRaw()
+            .toCompletableFuture()
+            .join();
+        return response.status() >= 200 && response.status() < 300;
     }
 
     private <T> T post(String base, String path, Object body, Class<T> type) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(base + path))
-            .header("content-type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(body instanceof String value ? value : json.writeValueAsString(body)))
-            .build();
-        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IllegalStateException("HTTP " + response.statusCode() + " for " + path + ": "
-                + response.body());
+        var request = ZLinkHttpClient.create(base).post(path);
+        if (!(body instanceof String value) || !value.isEmpty()) {
+            request.body(body);
         }
-        return json.readValue(response.body(), type);
+        return request.fetch(type).toCompletableFuture().join();
     }
 
     private static void ensure(boolean condition) {

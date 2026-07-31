@@ -1,30 +1,23 @@
 package systems.zlink.samples.shoppingmall.server.orderworkflow.spots;
 
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-import systems.zlink.framework.actors.ZLinkActor;
-import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotContext;
+import systems.zlink.framework.spots.ZLinkInstanceSpot;
+import systems.zlink.framework.spots.ZLinkInstanceSpotContext;
+import systems.zlink.samples.shoppingmall.server.orderworkflow.spots.handlers.ContinueOrderWorkflowSpotHandler;
+import systems.zlink.samples.shoppingmall.server.orderworkflow.spots.handlers.PrepareInventoryReservedCheckpointSpotHandler;
+import systems.zlink.samples.shoppingmall.server.orderworkflow.spots.handlers.RebuildOrderProjectionSpotHandler;
+import systems.zlink.samples.shoppingmall.server.orderworkflow.spots.handlers.RunOrderWorkflowCommandHandler;
+import systems.zlink.samples.shoppingmall.server.orderworkflow.spots.handlers.StartOrderWorkflowSpotHandler;
 
-public final class OrderWorkflowSpot implements ZLinkSpot<ZLinkActor> {
-    private final ZLinkSpotContext context;
+public final class OrderWorkflowSpot implements ZLinkInstanceSpot {
+    private final ZLinkInstanceSpotContext context;
 
-    public OrderWorkflowSpot(ZLinkSpotContext context) {
+    public OrderWorkflowSpot(ZLinkInstanceSpotContext context) {
         this.context = context;
     }
 
     @Override
-    public ZLinkSpotContext context() {
+    public ZLinkInstanceSpotContext context() {
         return context;
     }
 
-    @Override
-    public CompletionStage<Void> onJoinedActor(ZLinkActor actor) {
-        return CompletableFuture.completedFuture(null);
-    }
-
-    @Override
-    public CompletionStage<Void> onLeaveActor(ZLinkActor actor) {
-        return CompletableFuture.completedFuture(null);
-    }
 }

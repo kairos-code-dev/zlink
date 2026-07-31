@@ -7,6 +7,7 @@
 #include "runtime/spots/spot_route_packets.hpp"
 #include "runtime/streams/stream_runtime.hpp"
 
+#include <limits>
 #include <utility>
 
 namespace zlink::framework
@@ -1111,7 +1112,10 @@ actor_gateway_runtime_t::bound_session_route (const actor_ref_t &actor_ref) cons
     const auto found = _state->actors_by_id.find (std::string (actor_ref.actor_id ()));
     if (found == _state->actors_by_id.end () || !found->second.bound
         || found->second.ref.actor_type () != actor_ref.actor_type ()
-        || found->second.ref.generation () != actor_ref.generation ()) {
+        || found->second.ref.generation () != actor_ref.generation ()
+        || (found->second.bound_session_route
+            && found->second.bound_session_route->object_generation
+                 != actor_ref.generation ())) {
         return std::nullopt;
     }
     return found->second.bound_session_route;
@@ -1319,7 +1323,13 @@ void actor_gateway_runtime_t::bind_session_sink (
 
 void actor_gateway_runtime_t::record_bound_session_route (const actor_ref_t &actor_ref,
                                                           zlink::routing_id_t node_rid,
-                                                          std::optional<zlink::routing_id_t> session_rid)
+                                                          std::optional<zlink::routing_id_t> session_rid,
+                                                          std::uint64_t node_generation,
+                                                          std::uint64_t authority_owner_generation,
+                                                          std::uint64_t owner_lease_generation,
+                                                          std::uint64_t binding_generation,
+                                                          std::uint64_t binding_token,
+                                                          std::uint64_t session_sequence)
 {
     const auto actor_id = std::string (actor_ref.actor_id ());
     const std::lock_guard lock (_state->mutex);
@@ -1336,8 +1346,15 @@ void actor_gateway_runtime_t::record_bound_session_route (const actor_ref_t &act
         found->second.bound = true;
         found->second.disconnected = false;
     }
-    found->second.bound_session_route =
-      actor_bound_session_route_t{std::move (node_rid), std::move (session_rid)};
+    if (binding_generation == 0)
+        binding_generation = found->second.source_binding_generation;
+    if (binding_token == 0)
+        binding_token = found->second.binding_token;
+    found->second.bound_session_route = actor_bound_session_route_t{
+      std::move (node_rid), std::move (session_rid),
+      actor_ref.generation (), node_generation,
+      authority_owner_generation, owner_lease_generation,
+      binding_generation, binding_token, session_sequence};
 }
 
 void actor_gateway_runtime_t::unbind_session_stream (std::string actor_id,
@@ -1380,6 +1397,24 @@ result_t<void> actor_gateway_runtime_t::dispatch_bound_session_send (
         if (found->second.ref.generation () != actor_ref.generation ()) {
             return detail::boundary_failure<void> (detail::boundary_error_t::stale_generation,
                                             "actor generation is stale");
+        }
+        if (found->second.bound_session_route) {
+            auto &route = *found->second.bound_session_route;
+            if (route.object_generation != actor_ref.generation ()
+                || (route.binding_generation != 0
+                    && found->second.source_binding_generation != 0
+                    && route.binding_generation
+                         != found->second.source_binding_generation)
+                || (route.binding_token != 0
+                    && found->second.binding_token != 0
+                    && route.binding_token != found->second.binding_token)
+                || route.session_sequence
+                     == std::numeric_limits<std::uint64_t>::max ()) {
+                return result_t<void>::failure (
+                  framework_error_kind_t::actor_session_not_bound,
+                  "actor bound session route fence is stale");
+            }
+            ++route.session_sequence;
         }
         found->second.ref = actor_ref;
         const auto found_sink = _state->bound_session_sinks.find (actor_id);

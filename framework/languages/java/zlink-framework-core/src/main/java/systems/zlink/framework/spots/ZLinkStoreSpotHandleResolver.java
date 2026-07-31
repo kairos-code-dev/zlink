@@ -5,7 +5,7 @@ import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.runtime.internal.spots.SpotTransportAddress;
 import systems.zlink.framework.runtime.internal.spots.SpotTransportAddressResolver;
 import systems.zlink.framework.runtime.locations.ZLinkStoreLocationResolvers;
-import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
 
 public final class ZLinkStoreSpotHandleResolver
     implements SpotHandleResolver, ActorSpotHandleResolver, SpotTransportAddressResolver {
@@ -17,7 +17,7 @@ public final class ZLinkStoreSpotHandleResolver
 
     public ZLinkStoreSpotHandleResolver(
         ZLinkStoreLocationResolvers.AddressResolvers addresses,
-        ZLinkLocationStore authorities) {
+        ZLinkLocationRepository authorities) {
         this.addresses = java.util.Objects.requireNonNull(addresses, "addresses");
     }
 

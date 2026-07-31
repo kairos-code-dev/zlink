@@ -11,6 +11,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.*;
 
 /** Builds operational projections from descriptors and durable authority. */
 public final class ZLinkLocationRuntimeQueryService implements ZLinkLocationRuntimeQuery {
@@ -66,13 +67,6 @@ public final class ZLinkLocationRuntimeQueryService implements ZLinkLocationRunt
             runtime.lastError(),
             runtime.ownerLeaseHealthy(),
             runtime.ownerLeaseRenewedAt()));
-    }
-
-    @Override
-    public CompletionStage<ZLinkLocationPage<ZLinkMeshNodeDescriptor>> listMeshNodes(
-        String meshName,
-        ZLinkPageRequest page) {
-        return stores.unifiedStore().listMeshNodes(meshName, normalize(page));
     }
 
     @Override

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/locations/in_memory_location_store.hpp"
+#include <runtime/locations/location_repository.hpp>
 #include "runtime/locations/location_runtime.hpp"
 
 #include <gtest/gtest.h>
@@ -9,12 +10,12 @@ namespace
 {
 
 using zlink::framework::location_options_t;
-using zlink::framework::runtime::in_memory_location_store_t;
+using zlink::framework::runtime::in_memory_location_repository_t;
 using zlink::framework::runtime::location_runtime_t;
 
 TEST (ZLinkFrameworkLocationRuntime, ClaimsAndReleasesOwnerLease)
 {
-    in_memory_location_store_t store;
+    in_memory_location_repository_t store;
     location_runtime_t runtime (
       store,
       location_options_t{.owner_lease_renew_interval = std::chrono::milliseconds (5),

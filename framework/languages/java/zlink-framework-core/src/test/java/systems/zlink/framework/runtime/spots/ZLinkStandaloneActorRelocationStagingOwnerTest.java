@@ -8,8 +8,10 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.actors.ZLinkRelocationCancellation;
+import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 
 final class ZLinkStandaloneActorRelocationStagingOwnerTest {
     @Test
@@ -96,6 +98,75 @@ final class ZLinkStandaloneActorRelocationStagingOwnerTest {
     }
 
     @Test
+    void canonicalReplayerPreservesActorReplyCapabilityBeforePublication() {
+        FakeBackend backend = new FakeBackend();
+        backend.replayReply = Optional.of(new byte[] {9, 8});
+        var owner = new ZLinkStandaloneActorRelocationStagingOwner(backend);
+        UUID relocationId = UUID.randomUUID();
+        byte[] accepted = ZLinkAcceptedJournalTestRecords.actor(
+            "actor-a",
+            23,
+            "actor.request",
+            java.util.Map.of("trace", "a"),
+            new byte[] {1, 2});
+        byte[] root = ZLinkCanonicalActorRelocationEnvelope.encode(
+            relocationId,
+            "actor-a",
+            7,
+            11,
+            true,
+            new byte[] {4, 5},
+            List.of(new ZLinkAsyncSerialQueue.QueuedRecord(5, accepted)));
+        var staged = owner.stage(request(relocationId, true), root)
+            .toCompletableFuture().join();
+        AtomicReference<ZLinkActorAcceptedJournal.Record> relayed =
+            new AtomicReference<>();
+
+        var replayer = new ZLinkAcceptedJournalReplayer(
+            record -> CompletableFuture.failedFuture(
+                new AssertionError("standalone Actor must not replay Spot")),
+            record -> owner.replayActor(staged, record),
+            new ZLinkAcceptedJournalReplayer.ReplyRelay() {
+                @Override
+                public CompletionStage<Void> completeSpot(
+                    ZLinkSpotAcceptedJournal.Record record,
+                    long acceptedSequence,
+                    List<byte[]> reply) {
+                    return CompletableFuture.failedFuture(
+                        new AssertionError(
+                            "standalone Actor must not relay Spot"));
+                }
+
+                @Override
+                public CompletionStage<Void> completeActor(
+                    ZLinkActorAcceptedJournal.Record record,
+                    long acceptedSequence,
+                    Optional<byte[]> reply) {
+                    assertEquals(5, acceptedSequence);
+                    assertEquals(23, record.replyRouteId().orElseThrow());
+                    assertEquals("journal-owner", record.sourceOwnerId());
+                    assertEquals(1, record.sourceOwnerLeaseGeneration());
+                    assertEquals("journal-node", record.sourceNodeRid().toString());
+                    assertEquals(1, record.sourceNodeGeneration());
+                    assertArrayEquals(
+                        new byte[] {9, 8}, reply.orElseThrow());
+                    relayed.set(record);
+                    return CompletableFuture.completedFuture(null);
+                }
+            });
+
+        owner.publishAndReplayHidden(staged, root, replayer)
+            .toCompletableFuture().join();
+
+        assertNotNull(relayed.get());
+        assertTrue(backend.visible);
+        assertFalse(backend.admitted);
+        assertEquals(
+            List.of("prepare", "replay", "publish"),
+            backend.operations);
+    }
+
+    @Test
     void authoritySelectedRootCannotReplaceCapturedApplicationState() {
         FakeBackend backend = new FakeBackend();
         var owner = new ZLinkStandaloneActorRelocationStagingOwner(backend);
@@ -165,6 +236,7 @@ final class ZLinkStandaloneActorRelocationStagingOwnerTest {
         private boolean visible;
         private boolean admitted;
         private boolean discarded;
+        private Optional<byte[]> replayReply;
 
         @Override
         public CompletionStage<Object> prepare(
@@ -184,12 +256,17 @@ final class ZLinkStandaloneActorRelocationStagingOwnerTest {
             Object actor,
             ZLinkStandaloneActorRelocationStagingOwner.Request request,
             ZLinkActorAcceptedJournal.Record record) {
-            fail("empty journal must not dispatch a record");
-            return CompletableFuture.completedFuture(Optional.empty());
+            if (replayReply == null) {
+                fail("empty journal must not dispatch a record");
+            }
+            operations.add("replay");
+            return CompletableFuture.completedFuture(replayReply);
         }
 
         @Override
-        public void publish(Object actor) {
+        public void publish(
+            Object actor,
+            ZLinkStandaloneActorRelocationStagingOwner.Request request) {
             operations.add("publish");
             visible = true;
         }

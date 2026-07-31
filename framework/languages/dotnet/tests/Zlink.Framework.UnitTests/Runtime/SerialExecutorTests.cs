@@ -90,6 +90,91 @@ public sealed class SerialExecutorTests
     }
 
     [Fact]
+    public async Task Cancelled_async_relocation_seal_does_not_orphan_a_later_seal()
+    {
+        await using var queue = CreateQueue(CancellationToken.None);
+        var activeStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseActive = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        Assert.True(queue.TryPost(
+            async _ =>
+            {
+                activeStarted.TrySetResult();
+                await releaseActive.Task.ConfigureAwait(false);
+            },
+            out var active));
+        await activeStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        using var cancellation = new CancellationTokenSource();
+        var cancelledSeal = queue.SealRelocationAsync(
+            cancellation.Token).AsTask();
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => cancelledSeal);
+
+        releaseActive.TrySetResult();
+        await active.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        var nextRan = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        Assert.True(queue.TryPost(
+            _ =>
+            {
+                nextRan.TrySetResult();
+                return ValueTask.CompletedTask;
+            },
+            out _));
+        await nextRan.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var seal = await queue.SealRelocationAsync(
+            CancellationToken.None);
+        Assert.True(queue.TryAbortRelocation(seal));
+    }
+
+    [Fact]
+    public async Task Async_seal_reserves_timer_sequence_at_boundary_before_held_ingress()
+    {
+        await using var queue = CreateQueue(CancellationToken.None);
+        var activeStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseActive = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        Assert.True(queue.TryPost(
+            async _ =>
+            {
+                activeStarted.TrySetResult();
+                await releaseActive.Task.ConfigureAwait(false);
+            },
+            out _));
+        await activeStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var boundaryReached = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var sealTask = queue.SealRelocationAsync(
+            () =>
+            {
+                boundaryReached.TrySetResult();
+                return 1;
+            },
+            CancellationToken.None).AsTask();
+        releaseActive.TrySetResult();
+        await boundaryReached.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var seal = await sealTask.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal<ulong>(1, seal.FirstReservedSequence);
+        Assert.Equal(1, seal.ReservedAcceptedSequences);
+
+        Assert.Equal(
+            ZLinkAcceptedWorkAdmission.Accepted,
+            queue.TryPostAccepted(
+                new byte[] { 9 },
+                static _ => ValueTask.CompletedTask,
+                static () => { },
+                out _));
+        Assert.True(queue.TryCommitRelocation(seal, out var held));
+        Assert.Equal<ulong>(2, Assert.Single(held).AcceptedSequence);
+    }
+
+    [Fact]
     public async Task TargetCutoverRunsPreviousOwnerMessageFollowBeforeDirectIngress()
     {
         await using var queue = CreateQueue(CancellationToken.None);

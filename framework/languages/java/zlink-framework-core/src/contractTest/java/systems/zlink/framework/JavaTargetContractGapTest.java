@@ -195,9 +195,9 @@ final class JavaTargetContractGapTest {
         assertClassAbsent("systems.zlink.framework.monitoring.ZLinkMeshDrainSnapshot");
         assertNoPublicMethodNamed(
             "systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot", "drain");
-        assertClassAbsent("systems.zlink.framework.locations.ZLinkPeerLocation");
+        assertClassAbsent("systems.zlink.framework.runtime.internal.locations.ZLinkPeerLocation");
         assertNotNull(Class.forName(
-            "systems.zlink.framework.locations.ZLinkMeshNodeDescriptor"));
+            "systems.zlink.framework.runtime.internal.locations.ZLinkMeshNodeDescriptor"));
     }
 
     @Test
@@ -236,7 +236,29 @@ final class JavaTargetContractGapTest {
         assertNotPublic(
             "systems.zlink.framework.runtime.internal.service.ZLinkInMemoryLocationAuthority");
         assertNotPublic(
-            "systems.zlink.framework.runtime.internal.service.ZLinkRelocationScheduler");
+            "systems.zlink.framework.runtime.spots.ZLinkRelocationScheduler");
+        for (String type : new String[] {
+            "ActorTransferControl",
+            "ActorTransferPhase",
+            "FrameworkReadyBatch",
+            "FrameworkReceiveBatch",
+            "MeshRecordPayload",
+            "MeshMonitorEventMask",
+            "MeshNodeOptions",
+            "MessageBuilderStage",
+            "ReplySubmitOperation",
+            "RequestCallbackSubmitOperation",
+            "RequestSubmitOperation",
+            "SpotKind",
+            "StreamSessionBinding",
+            "StreamSessionService",
+            "StreamSessionState",
+            "StreamSessionStatus",
+            "TimeoutSubmitOperation"
+        }) {
+            assertNotPublic(
+                "systems.zlink.framework.runtime.internal.binding.spot." + type);
+        }
         for (String type : new String[] {
             "ZLinkClassicFanoutLiveness",
             "ZLinkServiceFrozenRecordCodec",
@@ -258,7 +280,7 @@ final class JavaTargetContractGapTest {
 
     @Test
     void completionStageOperationsDoNotUseAsyncSuffix() throws Exception {
-        Class<?> store = Class.forName("systems.zlink.framework.locations.ZLinkLocationStore");
+        Class<?> store = Class.forName("systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository");
         for (Method method : store.getMethods()) {
             if (CompletionStage.class.isAssignableFrom(method.getReturnType())) {
                 assertFalse(method.getName().endsWith("Async"), method.toString());
@@ -276,7 +298,7 @@ final class JavaTargetContractGapTest {
         assertClassAbsent("systems.zlink.framework.locations.ZLinkOwnerLeaseSnapshot");
         assertClassAbsent("systems.zlink.framework.locations.ZLinkOwnerLeaseRenewal");
         assertNotNull(Class.forName("systems.zlink.framework.locations.ZLinkLocationRuntimeQuery"));
-        assertNotNull(Class.forName("systems.zlink.framework.locations.ZLinkLocationStore"));
+        assertNotNull(Class.forName("systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository"));
     }
 
     @Test

@@ -1034,9 +1034,10 @@ void test_stream_send_and_close_race_is_safe ()
 
     std::atomic<int> send_errors (0);
     std::atomic<int> sender_done (0);
+    std::atomic<int> stop_sender (0);
     std::thread sender ([&] () {
         std::vector<unsigned char> payload (kPayloadSize, 0x5A);
-        for (;;) {
+        while (stop_sender.load (std::memory_order_acquire) == 0) {
             const int rc = test_stream_send_bytes (server, &rid, &payload[0], payload.size (), 0);
             if (rc == static_cast<int> (payload.size ()))
                 continue;
@@ -1051,8 +1052,18 @@ void test_stream_send_and_close_race_is_safe ()
     });
 
     std::this_thread::sleep_for (std::chrono::milliseconds (50));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (server));
+    errno = 0;
+    const zlink_close_result_t first_close = zlink_close (server);
+    const int first_close_errno = errno;
+    if (first_close != ZLINK_CLOSE_OK)
+        stop_sender.store (1, std::memory_order_release);
     sender.join ();
+
+    TEST_ASSERT_TRUE (first_close == ZLINK_CLOSE_OK || first_close == ZLINK_CLOSE_BUSY);
+    if (first_close == ZLINK_CLOSE_BUSY) {
+        TEST_ASSERT_EQUAL_INT (EBUSY, first_close_errno);
+        TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_close (server));
+    }
 
     TEST_ASSERT_EQUAL_INT (0, send_errors.load (std::memory_order_acquire));
     TEST_ASSERT_EQUAL_INT (1, sender_done.load (std::memory_order_acquire));

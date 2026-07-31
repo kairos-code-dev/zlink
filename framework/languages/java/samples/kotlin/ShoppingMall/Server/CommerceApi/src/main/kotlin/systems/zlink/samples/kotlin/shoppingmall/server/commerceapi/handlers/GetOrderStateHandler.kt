@@ -1,6 +1,6 @@
 package systems.zlink.samples.kotlin.shoppingmall.server.commerceapi.handlers
 
-import systems.zlink.framework.channels.ZLinkRequestContext
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.CommerceStore
@@ -14,7 +14,7 @@ class GetOrderStateHandler(
 ) : ZLinkSuspendingRequestHandler<GetOrderStateReq, GetOrderStateRes> {
     override suspend fun handle(
         request: GetOrderStateReq,
-        context: ZLinkRequestContext,
+        context: ZLinkMessageContext,
     ): GetOrderStateRes {
         val state = store.findReadModel(request.orderId)
             ?: throw IllegalStateException("Order '${request.orderId}' does not exist.")

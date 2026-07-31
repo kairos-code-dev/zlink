@@ -17,20 +17,6 @@ namespace zlink::samples::bingo
 
 namespace pb = ::bingo::samples;
 
-inline void to_protobuf (const actor_ref_snapshot_t &value, pb::ActorRefWire &message)
-{
-    message.set_node_rid (std::string (value.node_rid.value ()));
-    message.set_actor_id (value.actor_id);
-    message.set_generation (value.generation);
-}
-
-inline void from_protobuf (const pb::ActorRefWire &message, actor_ref_snapshot_t &value)
-{
-    value.node_rid = zlink::framework::node_rid_t::from_string (message.node_rid ());
-    value.actor_id = message.actor_id ();
-    value.generation = message.generation ();
-}
-
 inline void to_protobuf (const bingo_player_state_t &value, pb::BingoPlayerState &message)
 {
     message.set_actor_id (value.actor_id);
@@ -230,7 +216,6 @@ inline void to_protobuf (const ensure_player_actor_res_t &value, pb::EnsurePlaye
 {
     message.set_actor_id (value.actor_id);
     message.set_actor_type (value.actor_type);
-    to_protobuf (value.actor, *message.mutable_actor ());
 }
 
 inline void from_protobuf (const pb::EnsurePlayerActorRes &message,
@@ -238,7 +223,6 @@ inline void from_protobuf (const pb::EnsurePlayerActorRes &message,
 {
     value.actor_id = message.actor_id ();
     value.actor_type = message.actor_type ();
-    from_protobuf (message.actor (), value.actor);
 }
 
 inline void to_protobuf (const match_bingo_req_t &value, pb::MatchBingoReq &message)
@@ -287,28 +271,19 @@ inline void from_protobuf (const pb::MatchBingoApiRes &message, match_bingo_api_
     value.room_id = message.room_id ();
 }
 
-inline void to_protobuf (const allocate_bingo_room_req_t &value, pb::AllocateBingoRoomReq &message)
+inline void to_protobuf (const reserve_bingo_room_req_t &value, pb::ReserveBingoRoomReq &message)
 {
     message.set_mode (value.mode);
     message.set_actor_id (value.actor_id);
+    message.set_level_bucket (value.level_bucket);
 }
 
-inline void from_protobuf (const pb::AllocateBingoRoomReq &message,
-                           allocate_bingo_room_req_t &value)
+inline void from_protobuf (const pb::ReserveBingoRoomReq &message,
+                           reserve_bingo_room_req_t &value)
 {
     value.mode = message.mode ();
     value.actor_id = message.actor_id ();
-}
-
-inline void to_protobuf (const allocate_bingo_room_res_t &value, pb::AllocateBingoRoomRes &message)
-{
-    message.set_room_id (value.room_id);
-}
-
-inline void from_protobuf (const pb::AllocateBingoRoomRes &message,
-                           allocate_bingo_room_res_t &value)
-{
-    value.room_id = message.room_id ();
+    value.level_bucket = message.level_bucket ();
 }
 
 inline void to_protobuf (const bingo_room_settings_payload_t &value,
@@ -333,6 +308,19 @@ inline void from_protobuf (const pb::BingoRoomSettingsPayload &message,
     value.max_draw_number = message.max_draw_number ();
     value.purpose = message.purpose ();
     value.observed_room_id = message.has_observed_room_id () ? message.observed_room_id () : "";
+}
+
+inline void to_protobuf (const reserve_bingo_room_res_t &value, pb::ReserveBingoRoomRes &message)
+{
+    message.set_room_id (value.room_id);
+    to_protobuf (value.settings, *message.mutable_settings ());
+}
+
+inline void from_protobuf (const pb::ReserveBingoRoomRes &message,
+                           reserve_bingo_room_res_t &value)
+{
+    value.room_id = message.room_id ();
+    from_protobuf (message.settings (), value.settings);
 }
 
 inline void to_protobuf (const bingo_room_join_req_t &value, pb::BingoRoomJoinReq &message)
@@ -563,8 +551,8 @@ ZLINK_BINGO_STREAM_PAYLOAD (match_bingo_req_t, MatchBingoReq)
 ZLINK_BINGO_STREAM_PAYLOAD (match_bingo_res_t, MatchBingoRes)
 ZLINK_BINGO_STREAM_PAYLOAD (match_bingo_api_req_t, MatchBingoApiReq)
 ZLINK_BINGO_STREAM_PAYLOAD (match_bingo_api_res_t, MatchBingoApiRes)
-ZLINK_BINGO_STREAM_PAYLOAD (allocate_bingo_room_req_t, AllocateBingoRoomReq)
-ZLINK_BINGO_STREAM_PAYLOAD (allocate_bingo_room_res_t, AllocateBingoRoomRes)
+ZLINK_BINGO_STREAM_PAYLOAD (reserve_bingo_room_req_t, ReserveBingoRoomReq)
+ZLINK_BINGO_STREAM_PAYLOAD (reserve_bingo_room_res_t, ReserveBingoRoomRes)
 ZLINK_BINGO_STREAM_PAYLOAD (bingo_room_settings_payload_t, BingoRoomSettingsPayload)
 ZLINK_BINGO_STREAM_PAYLOAD (bingo_room_join_req_t, BingoRoomJoinReq)
 ZLINK_BINGO_STREAM_PAYLOAD (bingo_room_join_res_t, BingoRoomJoinRes)

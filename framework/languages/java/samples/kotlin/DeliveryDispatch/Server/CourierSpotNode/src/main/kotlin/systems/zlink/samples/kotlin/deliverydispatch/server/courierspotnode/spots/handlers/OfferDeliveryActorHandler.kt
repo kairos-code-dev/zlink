@@ -1,7 +1,7 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.courierspotnode.spots.handlers
 
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorSendHandler
-import systems.zlink.framework.spots.ZLinkSpotActorSendContext
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.samples.kotlin.deliverydispatch.server.courierspotnode.CourierActor
 import systems.zlink.samples.kotlin.deliverydispatch.server.courierspotnode.spots.CourierEntrySpot
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDeliveryMsg
@@ -18,7 +18,7 @@ class OfferDeliveryActorHandler : ZLinkSuspendingEntrySpotActorSendHandler<
     override suspend fun handle(
         entrySpot: CourierEntrySpot,
         actor: CourierActor,
-        context: ZLinkSpotActorSendContext,
+        context: ZLinkMessageContext,
         message: OfferDeliveryMsg,
     ) {
         actor.offer(message)

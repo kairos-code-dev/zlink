@@ -6,9 +6,11 @@ const path = require('node:path');
 const test = require('node:test');
 const { Inject, Injectable, Module, Scope } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
+const zlink = require('@zlink-systems/zlink');
 
 const framework = require('../../packages/framework/dist/internal');
 const nestjs = require('../../packages/nestjs/dist');
+const channelProtocol = require('../../packages/framework/dist/runtime/channels/channel-envelope');
 const {
   providerTokens,
   reserveTcpEndpoint,
@@ -197,48 +199,6 @@ test('ZLinkHttpClientModule registers named server clients through Nest DI', asy
     }),
     /already registered/
   );
-});
-
-test('ZLinkModule lifecycle registers decorated runtime event handlers with the runtime publisher', async () => {
-  const events = [];
-  class TimerFailureMonitor {
-    async handle(event) {
-      events.push(event);
-    }
-  }
-  nestjs.zlinkRuntimeEventHandler()(TimerFailureMonitor);
-
-  class AppModule {}
-  Module({
-    imports: [nestjs.ZLinkModule.forRoot()],
-    providers: [TimerFailureMonitor]
-  })(AppModule);
-
-  const app = await NestFactory.createApplicationContext(AppModule, { logger: false });
-  try {
-    const publisher = app.get(nestjs.ZLINK_FRAMEWORK_RUNTIME).eventPublisher;
-    await publisher.publish({
-      sourceName: 'stage-node',
-      timestamp: new Date(),
-      event: framework.ZLinkSpotEventKind.TimerHandlerFailed,
-      timerDiagnostic: {
-        spotId: 'stage-node',
-        isEntrySpot: true,
-        timerName: 'idle',
-        handlerType: 'IdleTimerHandler',
-        deliveryIndex: 1n,
-        scheduledIndex: 1n,
-        exceptionType: 'Error',
-        exceptionMessage: 'timer failed'
-      }
-    });
-  } finally {
-    await app.close();
-  }
-
-  const timerEvent = events.find((event) => event.event === framework.ZLinkSpotEventKind.TimerHandlerFailed);
-  assert.notEqual(timerEvent, undefined);
-  assert.equal(timerEvent.timerDiagnostic.timerName, 'idle');
 });
 
 test('ZLinkModule.forRoot exposes capability providers only when registration enables them', async () => {
@@ -842,6 +802,65 @@ module.exports = { ProfileHandler };
   await app.close();
 });
 
+test('zlinkModule role root automatically dispatches discovered session packet handlers', async () => {
+  const streamEndpoint = await reserveTcpEndpoint();
+  const roleRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'zlink-nest-session-discovery-'));
+  const frameworkPackage = path.resolve(__dirname, '../../packages/framework/dist');
+  fs.writeFileSync(path.join(roleRoot, 'ping-session-handler.js'), `
+const framework = require(${JSON.stringify(frameworkPackage)});
+
+class PingSessionHandler {
+  async handle() {
+    globalThis.__zlinkAutomaticSessionDispatchCount =
+      (globalThis.__zlinkAutomaticSessionDispatchCount ?? 0) + 1;
+  }
+}
+
+framework.ZLinkPacket('Ping')(PingSessionHandler);
+module.exports = { PingSessionHandler };
+`);
+
+  class AutoSessionFactory {
+    async create(context) {
+      return { context };
+    }
+  }
+
+  class SessionModule {}
+  nestjs.zlinkModule(roleRoot, {
+    imports: [nestjs.ZLinkModule.forRootFactory({
+      useFactory: () => nestjs.zlinkFramework()
+        .addStreamNode('gateway')
+          .bind(streamEndpoint)
+          .registerSession(AutoSessionFactory)
+        .build()
+    })],
+    providers: [AutoSessionFactory]
+  })(SessionModule);
+
+  const app = await NestFactory.createApplicationContext(SessionModule, { logger: false, abortOnError: false });
+  const registration = app.get(nestjs.ZLINK_FRAMEWORK_REGISTRATION);
+  const streamNode = registration.streamNodes.get('gateway');
+  const handlerTypes = streamNode[Symbol.for('@zlink-systems/framework:session-handler-types')];
+  assert.equal(handlerTypes.length, 1);
+
+  const { DefaultZLinkSessionContext } = require('../../packages/framework/dist/runtime/streams/session-context');
+  const { createStreamSessionInstance } = require('../../packages/framework/dist/runtime/streams/session-provider');
+  const context = new DefaultZLinkSessionContext(
+    {},
+    { sessionId: 'automatic-session' },
+    async () => {},
+    { get: (type) => app.get(type, { strict: false }) }
+  );
+  await createStreamSessionInstance(AutoSessionFactory, undefined, context, handlerTypes);
+  globalThis.__zlinkAutomaticSessionDispatchCount = 0;
+  assert.equal(await context.handlers.tryHandle({ packetName: 'Ping', metadata: new Map(), canReply: false }, {}), true);
+  assert.equal(globalThis.__zlinkAutomaticSessionDispatchCount, 1);
+  delete globalThis.__zlinkAutomaticSessionDispatchCount;
+
+  await app.close();
+});
+
 test('ZLinkModule.forRoot deduplicates grouped useExisting handler aliases', async () => {
   const apiEndpoint = await reserveTcpEndpoint();
   const PROFILE_HANDLER = Symbol('profile-handler');
@@ -1423,6 +1442,84 @@ test('ZLinkModule.forRoot discovers SPOT actor request handler decorators from N
   await app.close();
 });
 
+test('ZLinkModule.forRoot attaches discovered packet handlers to Instance Spot factories', async () => {
+  const spotEndpoint = await reserveTcpEndpoint();
+  class MatchmakerSpot {}
+  class ReserveMatchHandler {
+    async handle(_spot, request) {
+      return { reservationId: `reserved-${request.playerId}` };
+    }
+  }
+  nestjs.zlinkSpotPacketHandler({
+    packetName: 'ReserveMatch',
+    spot: () => MatchmakerSpot
+  })(ReserveMatchHandler);
+
+  const options = nestjs.zlinkFramework();
+  options.addRouteMesh('matchmaking')
+    .listen(spotEndpoint)
+    .routingId('matchmaking-node')
+    .objects().server()
+    .addInstanceSpotFactory(
+      'matchmaker',
+      MatchmakerSpot,
+      (factory) => factory.disableRelocation()
+    );
+
+  class TestModule {}
+  Module({
+    imports: [nestjs.ZLinkModule.forRoot(options.build())],
+    providers: [MatchmakerSpot, ReserveMatchHandler]
+  })(TestModule);
+
+  const app = await NestFactory.createApplicationContext(TestModule, { logger: false, abortOnError: false });
+  const registration = app.get(nestjs.ZLINK_FRAMEWORK_REGISTRATION);
+  assert.deepEqual(registration.spotNodes.get('matchmaking').spotPacketHandlers, [{
+    handlerType: ReserveMatchHandler,
+    packetName: 'ReserveMatch',
+    spotType: MatchmakerSpot
+  }]);
+
+  const manager = new framework.DefaultZLinkSpotManager({
+    instanceSpotFactories: new Map([[
+      'matchmaking',
+      new Map([['matchmaker', MatchmakerSpot]])
+    ]]),
+    spotPacketHandlers: registration.spotNodes.get('matchmaking').spotPacketHandlers,
+    providerResolver: { get: (type) => app.get(type, { strict: false }) }
+  });
+  const spotId = zlink.RoutingId.from('automatic-matchmaker');
+  await manager.materializeInstance('matchmaking', 'matchmaker', spotId);
+  const requestParts = channelProtocol.encodeChannelEnvelopeParts(
+    1,
+    'matchmaking',
+    'ReserveMatch',
+    { playerId: 'p1' }
+  ).map((part) => zlink.Message.from(part));
+  let replyParts;
+  try {
+    await manager.dispatchMeshSpot('matchmaking', {
+      ownerKind: framework.ReadyOwnerKind.Spot,
+      spotId
+    }, {
+      kind: framework.ReceiveKind.SpotRequest,
+      parts: requestParts,
+      reply(parts) {
+        replyParts = parts.map((part) => zlink.Message.from(part));
+        return zlink.SubmitResult.Ok;
+      }
+    });
+    const reply = channelProtocol.decodeChannelEnvelope(replyParts);
+    assert.deepEqual(JSON.parse(reply.payload.toString()), { reservationId: 'reserved-p1' });
+  } finally {
+    for (const part of requestParts) part.close();
+    for (const part of replyParts ?? []) part.close();
+    await manager.close('matchmaking', spotId);
+  }
+
+  await app.close();
+});
+
 test('ZLinkModule.forRoot rejects duplicate SPOT actor request handler decorators', async () => {
   class PlayerActor {}
   class RoomSpot {}
@@ -1489,12 +1586,14 @@ test('ZLinkModule.forRoot validates channel capability endpoints and peer acquis
       .build())),
     /bind endpoint/
   );
-  assert.throws(
-    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addFanoutChannel('events')
-        .enablePublisher(undefined)
-      .build()),
-    /publisher must define a bind endpoint/
+  const automaticPublisher = framework.createFrameworkRegistration(
+    framework.createFrameworkOptions((builder) => {
+      builder.addFanoutChannel('events').enablePublisher();
+    })
+  );
+  assert.equal(
+    automaticPublisher.channels.get('events').publisher.bind,
+    'tcp://127.0.0.1:0'
   );
   assert.throws(
     () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
@@ -1519,10 +1618,40 @@ test('ZLinkModule.forRoot validates channel capability endpoints and peer acquis
     .build()));
 });
 
+test('Nest builders preserve process listener identity and global Actor dispatch enablement', async () => {
+  class GatewaySession {}
+  const builder = nestjs.zlinkFramework();
+  const network = builder.configureNetwork();
+  network.bindHost = '0.0.0.0';
+  network.advertiseHost = 'node.internal';
+  builder.addLocationStore(new framework.ZLinkInMemoryProviderLocationStore());
+  builder.addRouteMesh('players').objects().client();
+  builder.addRouteMesh('parties')
+    .setBindHost('127.0.0.2')
+    .setAdvertiseHost('parties.internal')
+    .objects().client();
+  builder.addFanoutChannel('events').enablePublisher();
+  builder.addStreamNode('gateway')
+    .bind()
+    .enableActorDispatch()
+    .registerSession(GatewaySession);
+
+  const registration = await resolveFrameworkRegistration(
+    nestjs.ZLinkModule.forRoot(builder.build())
+  );
+  assert.equal(registration.spotNodes.get('players').router.bind, 'tcp://0.0.0.0:0');
+  assert.equal(registration.spotNodes.get('players').router.advertiseHost, 'node.internal');
+  assert.equal(registration.spotNodes.get('parties').router.bind, 'tcp://127.0.0.2:0');
+  assert.equal(registration.spotNodes.get('parties').router.advertiseHost, 'parties.internal');
+  assert.equal(registration.channels.get('events').publisher.bind, 'tcp://0.0.0.0:0');
+  assert.equal(registration.streamNodes.get('gateway').bind, 'tcp://0.0.0.0:0');
+  assert.equal(registration.streamNodes.get('gateway').actorDispatchEnabled, true);
+});
+
 test('ZLinkModule.forRoot maps route mesh channel options into runtime registration', async () => {
   const builder = nestjs.zlinkFramework();
   const mesh = builder.addRouteMesh('route')
-    .listen('tcp://0.0.0.0:7012')
+    .listen('tcp://127.0.0.1:7012')
     .routingId('node-a');
   mesh.channelName('route');
   mesh.peerConnections().connect('tcp://127.0.0.1:7013');
@@ -1530,7 +1659,7 @@ test('ZLinkModule.forRoot maps route mesh channel options into runtime registrat
   const registration = await resolveFrameworkRegistration(module);
   const route = registration.spotNodes.get('route');
 
-  assert.equal(route.router.bind, 'tcp://0.0.0.0:7012');
+  assert.equal(route.router.bind, 'tcp://127.0.0.1:7012');
   assert.equal(route.router.routingId, 'node-a');
   assert.deepEqual(route.router.manualConnections, ['tcp://127.0.0.1:7013']);
   assert.deepEqual(Object.keys(route.meshChannels), ['route']);
@@ -1644,15 +1773,15 @@ test('framework options builder maps the formal RouteMesh registration flow into
     builder.addLocationStore(new framework.ZLinkInMemoryProviderLocationStore());
     builder.configureStreamCompression().use(streamCompressionCodec);
     const events = builder.addFanoutChannel('events');
-    events.enablePublisher('tcp://0.0.0.0:9402');
+    events.enablePublisher('tcp://127.0.0.1:9402');
     events.enableSubscriber('tcp://127.0.0.1:9402');
     const route = builder.addRouteMesh('route');
-    route.listen('tcp://0.0.0.0:9403');
+    route.listen('tcp://127.0.0.1:9403');
     route.routingId('route-node');
     route.channelName('route');
     route.peerConnections().connect('tcp://127.0.0.1:9403');
     builder.addStreamNode('gateway')
-      .bind('tcp://0.0.0.0:9404')
+      .bind('tcp://127.0.0.1:9404')
       .registerSession(GatewaySession);
     const spot = builder.addRouteMesh('game.stage');
     const objectServer = spot.objects().server();
@@ -1665,7 +1794,7 @@ test('framework options builder maps the formal RouteMesh registration flow into
       StageActor,
       (factory) => factory.preserveStateWith(StageActorRelocationAdapter)
     );
-    spot.listen('tcp://0.0.0.0:9405');
+    spot.listen('tcp://127.0.0.1:9405');
     spot.routingId('stage-node');
     spot.channelName('game.stage');
   });
@@ -1683,11 +1812,11 @@ test('framework options builder maps the formal RouteMesh registration flow into
     spotNode.actorFactoryRegistrations.stage.relocation.adapterType,
     StageActorRelocationAdapter
   );
-  assert.equal(registration.channels.get('events').publisher.bind, 'tcp://0.0.0.0:9402');
+  assert.equal(registration.channels.get('events').publisher.bind, 'tcp://127.0.0.1:9402');
   assert.deepEqual(registration.channels.get('events').subscriber.manualConnections, ['tcp://127.0.0.1:9402']);
-  assert.equal(route.router.bind, 'tcp://0.0.0.0:9403');
+  assert.equal(route.router.bind, 'tcp://127.0.0.1:9403');
   assert.deepEqual(route.router.manualConnections, ['tcp://127.0.0.1:9403']);
-  assert.equal(streamNode.bind, 'tcp://0.0.0.0:9404');
+  assert.equal(streamNode.bind, 'tcp://127.0.0.1:9404');
   assert.equal(streamNode.session, GatewaySession);
   assert.equal(registration.streamCompression.codec, streamCompressionCodec);
   assert.equal(registration.streamCompression.disabled, false);
@@ -1696,7 +1825,7 @@ test('framework options builder maps the formal RouteMesh registration flow into
   assert.equal(spotNode.entrySpotType, StageEntrySpot);
   assert.equal(spotNode.entrySpot, undefined);
   assert.deepEqual(spotNode.spotFactories, [StageSpot, LocalStageSpot]);
-  assert.equal(spotNode.router.bind, 'tcp://0.0.0.0:9405');
+  assert.equal(spotNode.router.bind, 'tcp://127.0.0.1:9405');
   assert.deepEqual(spotNode.router.manualConnections, undefined);
   assert.deepEqual(Object.keys(spotNode.meshChannels), ['game.stage']);
 
@@ -1753,17 +1882,17 @@ test('ZLinkModule.forRoot maps stream node options into runtime registration', a
   }
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
     .addRouteMesh('game.spot')
-      .listen('tcp://0.0.0.0:9110')
+      .listen('tcp://127.0.0.1:9110')
     .addStreamNode('client.stream')
-      .bind('tcp://0.0.0.0:9100')
+      .bind('tcp://127.0.0.1:9100')
       .registerSession(ClientHeaderSession)
     .build());
   const registration = await resolveFrameworkRegistration(module);
   const streamNode = registration.streamNodes.get('client.stream');
 
-  assert.equal(streamNode.bind, 'tcp://0.0.0.0:9100');
+  assert.equal(streamNode.bind, 'tcp://127.0.0.1:9100');
   assert.equal(streamNode.session, ClientHeaderSession);
-  assert.equal(registration.spotNodes.get('game.spot').router.bind, 'tcp://0.0.0.0:9110');
+  assert.equal(registration.spotNodes.get('game.spot').router.bind, 'tcp://127.0.0.1:9110');
 
   assert.throws(
     () => framework.createFrameworkOptions((builder) => builder.addStreamNode('')),
@@ -1780,23 +1909,26 @@ test('ZLinkModule.forRoot maps stream node options into runtime registration', a
   assert.throws(
     () => framework.createFrameworkOptions((builder) => {
       builder.addStreamNode('client.stream')
-        .bind('tcp://0.0.0.0:9100')
+        .bind('tcp://127.0.0.1:9100')
         .registerSession(ClientHeaderSession)
         .registerSession(ClientHeaderSession);
     }),
     /STREAM node cannot register more than one header stream session/
   );
-  assert.throws(
-    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addStreamNode('missing-bind')
-        .registerSession(ClientHeaderSession)
-      .build()),
-    /STREAM node 'missing-bind' must define a bind endpoint/
+  const automaticStream = framework.createFrameworkRegistration(
+    framework.createFrameworkOptions((builder) => {
+      builder.addStreamNode('automatic-bind')
+        .registerSession(ClientHeaderSession);
+    })
+  );
+  assert.equal(
+    automaticStream.streamNodes.get('automatic-bind').bind,
+    'tcp://127.0.0.1:0'
   );
   assert.throws(
     () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .addStreamNode('missing-session')
-        .bind('tcp://0.0.0.0:9101')
+        .bind('tcp://127.0.0.1:9101')
       .build()),
     /STREAM node 'missing-session' must register a header stream session/
   );
@@ -1814,21 +1946,21 @@ test('zlinkFramework builder maps stream node registration without raw server co
   const options = nestjs.zlinkFramework()
     .options({ spotPublisherClients: ['game.spot'] });
   options.addRouteMesh('api')
-        .listen('tcp://0.0.0.0:9113')
+        .listen('tcp://127.0.0.1:9113')
         .routingId('api-node')
         .channelName('api')
         .addRequestHandler('NoopRequest', NoopRequestHandler);
   options.addFanoutChannel('game.events')
-        .enablePublisher('tcp://0.0.0.0:9114');
+        .enablePublisher('tcp://127.0.0.1:9114');
   options.addRouteMesh('route')
-        .listen('tcp://0.0.0.0:9115')
+        .listen('tcp://127.0.0.1:9115')
         .routingId('route-node')
         .channelName('route');
   options.addStreamNode('client.stream')
-        .bind('tcp://0.0.0.0:9100')
+        .bind('tcp://127.0.0.1:9100')
         .registerSession(ClientHeaderSession);
   const spotMesh = options.addRouteMesh('game.spot')
-    .listen('tcp://0.0.0.0:9110')
+    .listen('tcp://127.0.0.1:9110')
     .routingId('game-node');
   spotMesh.objects().server()
     .addEntrySpot(StageEntrySpot)
@@ -1843,11 +1975,11 @@ test('zlinkFramework builder maps stream node registration without raw server co
   const streamNode = registration.streamNodes.get('client.stream');
   const spotNode = registration.spotNodes.get('game.spot');
 
-  assert.equal(streamNode.bind, 'tcp://0.0.0.0:9100');
+  assert.equal(streamNode.bind, 'tcp://127.0.0.1:9100');
   assert.equal(streamNode.session, ClientHeaderSession);
   assert.equal(registration.actorFactories.get('player'), PlayerActorFactory);
   assert.equal(spotNode.actorFactories.player, PlayerActorFactory);
-  assert.equal(spotNode.router.bind, 'tcp://0.0.0.0:9110');
+  assert.equal(spotNode.router.bind, 'tcp://127.0.0.1:9110');
   assert.equal(spotNode.router.routingId, 'game-node');
   assert.deepEqual(Object.keys(spotNode.meshChannels), ['game.spot']);
   assert.equal(registration.spotPublisherClients.has('game.spot'), true);
@@ -1858,30 +1990,30 @@ test('zlinkFramework builder maps stream node registration without raw server co
 test('ZLinkModule.forRoot validates and maps formal MeshNode router and peer options', async () => {
   const builder = nestjs.zlinkFramework();
   const game = builder.addRouteMesh('game')
-    .listen('tcp://0.0.0.0:9201')
+    .listen('tcp://127.0.0.1:9201')
     .routingId('node-a');
   game.channelName('game');
   game.peerConnections().connect('tcp://127.0.0.1:9202');
   builder.addRouteMesh('api')
-      .listen('tcp://0.0.0.0:9208')
+      .listen('tcp://127.0.0.1:9208')
       .routingId('api-node')
       .channelName('api')
       .addRequestHandler('NoopRequest', NoopRequestHandler);
   builder.addRouteMesh('route')
-      .listen('tcp://0.0.0.0:9209')
+      .listen('tcp://127.0.0.1:9209')
       .routingId('route-node')
       .channelName('route');
   const module = nestjs.ZLinkModule.forRoot(builder.build());
   const registration = await resolveFrameworkRegistration(module);
   const spotNode = registration.spotNodes.get('game');
 
-  assert.equal(spotNode.router.bind, 'tcp://0.0.0.0:9201');
+  assert.equal(spotNode.router.bind, 'tcp://127.0.0.1:9201');
   assert.equal(spotNode.router.routingId, 'node-a');
   assert.deepEqual(spotNode.router.manualConnections, ['tcp://127.0.0.1:9202']);
 
   const orderedBuilder = nestjs.zlinkFramework();
   const ordered = orderedBuilder.addRouteMesh('ordered')
-    .listen('tcp://0.0.0.0:9214')
+    .listen('tcp://127.0.0.1:9214')
     .routingId('node-a');
   ordered.channelName('ordered');
   ordered.peerConnections().connect('tcp://127.0.0.1:9211');
@@ -1924,7 +2056,7 @@ test('ZLinkModule.forRoot registers explicit MeshNode publisher clients', async 
   const registration = await resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
     .options({ spotPublisherClients: ['game'] })
     .addRouteMesh('game')
-      .listen('tcp://0.0.0.0:9210')
+      .listen('tcp://127.0.0.1:9210')
       .routingId('game-node')
       .channelName('game')
     .build()));
@@ -2127,7 +2259,7 @@ test('framework runtime host starts registered stream nodes and disposes their r
     registration: framework.createFrameworkRegistration({
       streamNodes: {
         'client.stream': {
-          bind: 'tcp://0.0.0.0:9100',
+          bind: 'tcp://127.0.0.1:9100',
           session: ClientHeaderSession
         }
       }
@@ -2198,7 +2330,7 @@ test('framework runtime host starts registered stream nodes and disposes their r
   assert.deepEqual(calls, [
     'context:create',
     'stream:create',
-    'stream:bind:tcp://0.0.0.0:9100',
+    'stream:bind:tcp://127.0.0.1:9100',
     'monitor:open',
     'stream:onFramedPacket',
     'monitor:dispose',
@@ -2268,13 +2400,13 @@ test('framework runtime host attaches stream SessionRelay to registered SpotNode
     registration: framework.createFrameworkRegistration({
       spotNodes: {
         'game.spot': {
-          router: { bind: 'tcp://0.0.0.0:9110', routingId: 'game-node' },
+          router: { bind: 'tcp://127.0.0.1:9110', routingId: 'game-node' },
           meshChannels: { 'game.spot': {} }
         }
       },
       streamNodes: {
         'client.stream': {
-          bind: 'tcp://0.0.0.0:9100',
+          bind: 'tcp://127.0.0.1:9100',
           session: ClientHeaderSession
         }
       }
@@ -2382,8 +2514,8 @@ test('framework runtime host attaches stream SessionRelay to registered SpotNode
   await runtime.stop();
 
   assert.deepEqual(calls, [
-    'spot:setRouterBind:tcp://0.0.0.0:9110',
-    'stream:bind:tcp://0.0.0.0:9100',
+    'spot:setRouterBind:tcp://127.0.0.1:9110',
+    'stream:bind:tcp://127.0.0.1:9100',
     'monitor:dispose',
     'stream:dispose',
     'spot:dispose',
@@ -2466,7 +2598,7 @@ test('framework runtime host applies formal MeshNode router and peer options', a
       spotNodes: {
         game: {
           router: {
-            bind: 'tcp://0.0.0.0:9301',
+            bind: 'tcp://127.0.0.1:9301',
             routingId: 'node-a',
             manualConnections: ['tcp://127.0.0.1:9302'],
             manualPeerConnections: [{ peerRid: 'node-b', endpoint: 'tcp://127.0.0.1:9309' }]
@@ -2532,7 +2664,7 @@ test('framework runtime host applies formal MeshNode router and peer options', a
   await runtime.stop();
 
   assert.deepEqual(calls, [
-    'spot:setRouterBind:tcp://0.0.0.0:9301',
+    'spot:setRouterBind:tcp://127.0.0.1:9301',
     'spot:connectPeer:tcp://127.0.0.1:9302',
     'spot:connectPeerRid:node-b:tcp://127.0.0.1:9309',
     'spot:dispose',
@@ -2615,7 +2747,7 @@ test('framework runtime host lets the formal MeshNode own its accepted route cha
     registration: await resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot((() => {
       const builder = nestjs.zlinkFramework();
       const mesh = builder.addRouteMesh('room')
-        .listen('tcp://0.0.0.0:9411')
+        .listen('tcp://127.0.0.1:9411')
         .routingId('room-node');
       mesh.channelName('room.route');
       mesh.peerConnections().connect('tcp://127.0.0.1:9410');
@@ -2693,7 +2825,7 @@ test('framework runtime host lets the formal MeshNode own its accepted route cha
   await runtime.stop();
 
   assert.deepEqual(calls, [
-    'spot:setRouterBind:tcp://0.0.0.0:9411',
+    'spot:setRouterBind:tcp://127.0.0.1:9411',
     'spot:dispose',
     'context:dispose'
   ]);
@@ -2761,7 +2893,7 @@ test('framework runtime host drains accepted Spot route channel without route ro
   const runtime = new framework.ZLinkFrameworkRuntimeHost({
     registration: await resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .addRouteMesh('session')
-        .listen('tcp://0.0.0.0:9412')
+        .listen('tcp://127.0.0.1:9412')
         .routingId('session-node')
         .channelName('room.route')
       .build()))
@@ -2837,7 +2969,7 @@ test('framework runtime host drains accepted Spot route channel without route ro
   await runtime.stop();
 
   assert.deepEqual(calls, [
-    'spot:setRouterBind:tcp://0.0.0.0:9412',
+    'spot:setRouterBind:tcp://127.0.0.1:9412',
     'spot:dispose',
     'context:dispose'
   ]);
@@ -2920,7 +3052,7 @@ test('framework route transport sends Spot request through accepted Spot route c
   const runtime = new framework.ZLinkFrameworkRuntimeHost({
     registration: await resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .addRouteMesh('session')
-        .listen('tcp://0.0.0.0:9413')
+        .listen('tcp://127.0.0.1:9413')
         .routingId('session-node')
         .channelName('room.route')
       .build()))
@@ -2989,7 +3121,7 @@ test('framework route transport sends Spot request through accepted Spot route c
   await runtime.stop();
 
   assert.deepEqual(calls, [
-    'spot:setRouterBind:tcp://0.0.0.0:9413',
+    'spot:setRouterBind:tcp://127.0.0.1:9413',
     'spot:dispose',
     'context:dispose'
   ]);
@@ -3072,7 +3204,7 @@ test('framework route transport sends Spot request through accepted Spot route c
   const runtime = new framework.ZLinkFrameworkRuntimeHost({
     registration: await resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .addRouteMesh('session')
-        .listen('tcp://0.0.0.0:9415')
+        .listen('tcp://127.0.0.1:9415')
         .routingId('session-node')
         .channelName('room.route')
       .build()))
@@ -3146,7 +3278,7 @@ test('framework route transport sends Spot request through accepted Spot route c
   await runtime.stop();
 
   assert.deepEqual(calls, [
-    'spot:setRouterBind:tcp://0.0.0.0:9415',
+    'spot:setRouterBind:tcp://127.0.0.1:9415',
     'spot:dispose',
     'context:dispose'
   ]);
@@ -3205,7 +3337,7 @@ test('framework runtime host starts router-only SessionRelay SpotNode without Di
       spotNodes: {
         session: {
           router: {
-            bind: 'tcp://0.0.0.0:9391',
+            bind: 'tcp://127.0.0.1:9391',
             routingId: 'session-node'
           },
           meshChannels: { session: {} }
@@ -3264,7 +3396,7 @@ test('framework runtime host starts router-only SessionRelay SpotNode without Di
   await runtime.stop();
 
   assert.deepEqual(calls, [
-    'spot:setRouterBind:tcp://0.0.0.0:9391',
+    'spot:setRouterBind:tcp://127.0.0.1:9391',
     'spot:dispose',
     'context:dispose'
   ]);
@@ -3321,7 +3453,7 @@ test('framework runtime host starts a formal MeshNode without Discovery after bi
       spotNodes: {
         room: {
           router: {
-            bind: 'tcp://0.0.0.0:9396',
+            bind: 'tcp://127.0.0.1:9396',
             routingId: 'room-node'
           },
           meshChannels: { room: {} }
@@ -3380,7 +3512,7 @@ test('framework runtime host starts a formal MeshNode without Discovery after bi
   await runtime.stop();
 
   assert.deepEqual(calls, [
-    'spot:setRouterBind:tcp://0.0.0.0:9396',
+    'spot:setRouterBind:tcp://127.0.0.1:9396',
     'spot:dispose',
     'context:dispose'
   ]);
@@ -3473,7 +3605,7 @@ test('framework runtime host defers Entry Spot lifecycle until Core materializes
     registration: framework.createFrameworkRegistration({
       spotNodes: {
         entry: {
-          router: { bind: 'tcp://0.0.0.0:9501', routingId: 'entry-node' },
+          router: { bind: 'tcp://127.0.0.1:9501', routingId: 'entry-node' },
           meshChannels: { entry: {} },
           entrySpotType: EntrySpot,
           entrySpotActorRequestHandlers: [{
@@ -3524,7 +3656,7 @@ test('framework runtime host defers Entry Spot lifecycle until Core materializes
 
   assert.equal(registry, undefined);
   assert.deepEqual(calls, [
-    'spot:setRouterBind:tcp://0.0.0.0:9501',
+    'spot:setRouterBind:tcp://127.0.0.1:9501',
     'spot:dispose',
     'context:dispose'
   ]);

@@ -2,6 +2,7 @@
 #pragma once
 
 #include <zlink/framework/contracts/locations/options.hpp>
+#include <runtime/locations/location_repository.hpp>
 #include <zlink/framework/contracts/locations/stores.hpp>
 
 #include <algorithm>
@@ -24,7 +25,7 @@ namespace zlink::framework::runtime
 class live_location_reader_t final
 {
   public:
-    live_location_reader_t (location_store_t &store, location_options_t options = {}) :
+    live_location_reader_t (location_repository_t &store, location_options_t options = {}) :
         _store (&store), _options (std::move (options))
     {
     }
@@ -126,7 +127,7 @@ class live_location_reader_t final
                        [&owners] (const T &row) { return !owners.contains (row.owner_id); });
     }
 
-    location_store_t *_store;
+    location_repository_t *_store;
     location_options_t _options;
 };
 

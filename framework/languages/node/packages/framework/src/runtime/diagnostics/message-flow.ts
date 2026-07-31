@@ -179,7 +179,7 @@ export class ZLinkMessageFlowTracer {
   private enqueueObserver(flow: ZLinkRuntimeMessageFlowEvent): void {
     if (this.ctx.messageFlowObserverType === undefined) return;
     if (this.observerRunning && this.observerQueue.length >= this.observerQueueCapacity) {
-      this.metrics?.count('zlink.observability.observer.overflow', 1, { event: flow.outcome });
+      this.metrics?.count('zlink.observability.events.overflow', 1, { source: flow.outcome });
       return;
     }
     this.observerQueue.push(toPublicMessageFlowEvent(flow));

@@ -73,7 +73,7 @@ import systems.zlink.framework.runtime.locations.ZLinkLocationLifecycle;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 import systems.zlink.framework.runtime.messaging.ZLinkPacketNames;
-import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationWriteStatus;
 import systems.zlink.framework.runtime.messaging.ZLinkStringMessageSerializer;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
@@ -102,6 +102,8 @@ import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 final class SpotActivation
     extends SpotActivationBase<DefaultSpotContext> {
     private final ZLinkSpot<?> spot;
+    private final ZLinkAsyncSerialQueue membershipLifecycle =
+        new ZLinkAsyncSerialQueue();
 
     SpotActivation(
         ZLinkSpotRuntime host,
@@ -130,6 +132,23 @@ final class SpotActivation
         ZLinkBackendActorLifecycleEvent event,
         ZLinkBackendActorRef actorRef,
         ZLinkActor actor) {
+        if (host.shouldRunActorLifecycleInSpotDispatch(event, actor)) {
+            return membershipLifecycle.enqueue(() -> {
+                if (host.isClosing()) {
+                    return CompletableFuture.completedFuture(null);
+                }
+                Supplier<CompletionStage<Void>> transition =
+                    host.actorLifecycleTransition(
+                        spot,
+                        event,
+                        actorRef,
+                        actor,
+                        context.spotId());
+                return transition == null
+                    ? CompletableFuture.completedFuture(null)
+                    : transition.get();
+            });
+        }
         return host.actorSessions().dispatch(actor, () ->
             context.enqueueActorDispatch(actor.context().actorId(), () -> {
             if (host.isClosing()) {

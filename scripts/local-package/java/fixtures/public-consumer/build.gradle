@@ -8,7 +8,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'systems.zlink:zlink:11.0.0'
+    implementation 'systems.zlink:zlink:11.0.2'
 }
 
 application {

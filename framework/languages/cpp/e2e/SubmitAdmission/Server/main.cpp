@@ -349,21 +349,28 @@ class ready_handler_t
             return {.status = 400, .body = R"({"error":"targetRid is required"})"};
         }
         const auto snapshot = _runtime.snapshot (sa::mesh_name);
+        const auto channel = std::find_if (
+          snapshot.channels.begin (), snapshot.channels.end (),
+          [] (const auto &candidate) {
+              return candidate.channel_name == sa::channel_name;
+          });
+        const bool has_ready_channel =
+          channel != snapshot.channels.end ()
+          && channel->is_ready;
         nlohmann::json peers = nlohmann::json::array ();
         for (const auto &peer : snapshot.peers) {
-            const bool has_channel =
-              std::find (peer.channel_names.begin (), peer.channel_names.end (), sa::channel_name)
-              != peer.channel_names.end ();
-            peers.push_back ({{"rid", peer.rid.to_string ()},
-                              {"endpoint", peer.endpoint},
-                              {"ready", peer.ready},
-                              {"hasChannel", has_channel},
-                              {"admissionState", peer.admission_state},
-                              {"lastFailure", peer.last_failure.value_or ("")}});
-            if (peer.rid.to_string () == target->second && peer.ready && has_channel) {
+            const bool peer_ready =
+              peer.state
+              == zlink::framework::peer_state_t::ready;
+            peers.push_back (
+              {{"rid", peer.node_rid.to_string ()},
+               {"ready", peer_ready},
+               {"hasReadyChannel", has_ready_channel},
+               {"state", static_cast<int> (peer.state)}});
+            if (peer.node_rid.to_string () == target->second
+                && peer_ready && has_ready_channel) {
                 return {.body = nlohmann::json{{"ready", true},
                                                {"rid", target->second},
-                                               {"generation", peer.lifecycle_generation},
                                                {"peerCount", snapshot.peers.size ()},
                                                {"peers", peers}}
                                   .dump ()};
@@ -372,7 +379,6 @@ class ready_handler_t
         return {.status = 503,
                 .body = nlohmann::json{{"ready", false},
                                        {"rid", target->second},
-                                       {"localEndpoint", snapshot.endpoint},
                                        {"peerCount", snapshot.peers.size ()},
                                        {"peers", peers}}
                           .dump ()};
@@ -400,10 +406,11 @@ class actor_route_ready_handler_t
         }
         const auto snapshot = _runtime.snapshot (sa::mesh_name + std::string (".actors"));
         for (const auto &peer : snapshot.peers) {
-            if (peer.rid.to_string () == target->second && peer.ready) {
+            if (peer.node_rid.to_string () == target->second
+                && peer.state
+                     == zlink::framework::peer_state_t::ready) {
                 return {.body = nlohmann::json{{"ready", true},
-                                               {"rid", target->second},
-                                               {"generation", peer.lifecycle_generation}}
+                                               {"rid", target->second}}
                                   .dump ()};
             }
         }
@@ -1005,8 +1012,8 @@ void configure_mesh_role (zlink::framework::zlink_framework_options_t &framework
                           const role_options_t &options)
 {
     framework.add_location_store (
-      std::make_shared<zlink::framework::locations::redis::redis_location_store_t> (
-        zlink::framework::locations::redis::redis_location_options_t{
+      std::make_shared<zlink::framework::redis::redis_location_store_t> (
+        zlink::framework::redis::redis_location_options_t{
           .connection_string = options.redis_endpoint,
           .key_prefix = options.redis_key_prefix}));
     framework.services ().add_singleton<sa::handler_gate_t> ();
@@ -1017,8 +1024,8 @@ void configure_mesh_role (zlink::framework::zlink_framework_options_t &framework
 
     auto mesh = framework.add_route_mesh (sa::mesh_name);
     auto &socket = mesh.configure_router_socket ();
-    socket.send_high_water_mark = 1;
-    socket.receive_high_water_mark = 1;
+    socket.send_high_water_mark = zlink::byte_count_t::bytes (1);
+    socket.receive_high_water_mark = zlink::byte_count_t::bytes (1);
     socket.mailbox_message_budget = 1;
     socket.send_timeout = std::chrono::milliseconds (300);
     auto &node = mesh.listen (options.mesh_endpoint)
@@ -1052,8 +1059,8 @@ void configure_object_client_role (
   const role_options_t &options)
 {
     framework.add_location_store (
-      std::make_shared<zlink::framework::locations::redis::redis_location_store_t> (
-        zlink::framework::locations::redis::redis_location_options_t{
+      std::make_shared<zlink::framework::redis::redis_location_store_t> (
+        zlink::framework::redis::redis_location_options_t{
           .connection_string = options.redis_endpoint,
           .key_prefix = options.redis_key_prefix}));
     framework.services ().add_singleton<sa::handler_gate_t> ();
@@ -1064,8 +1071,8 @@ void configure_object_client_role (
 
     auto mesh = framework.add_route_mesh (sa::mesh_name);
     auto &socket = mesh.configure_router_socket ();
-    socket.send_high_water_mark = 1;
-    socket.receive_high_water_mark = 1;
+    socket.send_high_water_mark = zlink::byte_count_t::bytes (1);
+    socket.receive_high_water_mark = zlink::byte_count_t::bytes (1);
     socket.mailbox_message_budget = 1;
     socket.send_timeout = std::chrono::milliseconds (300);
     mesh.listen (options.mesh_endpoint)

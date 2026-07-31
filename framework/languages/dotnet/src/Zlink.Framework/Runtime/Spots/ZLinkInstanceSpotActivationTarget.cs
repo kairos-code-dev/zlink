@@ -392,6 +392,7 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
         return new ValueTask<InstanceSpotActivationTerminal>(
             monitoring.ObserveAsync(
                 operationKey,
+                operation.Target.MeshName,
                 operation.Target.StableType,
                 PendingBytes(metadata, payload),
                 () => operationGate.RunAsync(
@@ -489,6 +490,14 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
                                 1))),
                     cancellationToken)
                 .ConfigureAwait(false);
+            if (reserve is ZLinkObjectReserveResult.TypeMismatch)
+            {
+                ZLinkRuntimeMetrics.RecordInstanceSpotClaimConflict(
+                    operation.Target.MeshName,
+                    operation.Target.StableType,
+                    "spot_type");
+                throw ReserveFailure(operation, reserve);
+            }
             if (reserve is not ZLinkObjectReserveResult.Reserved reserved)
                 return await JoinExistingAsync(
                         operation,
@@ -530,7 +539,12 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
                 _ => throw new InvalidOperationException()
             };
             committed = true;
-            catalog.PublishInstanceReserved(prepared);
+            await catalog.PublishInstanceReservedAsync(
+                    prepared,
+                    readySnapshot.ObjectGeneration,
+                    readySnapshot.AuthorityOwnerGeneration,
+                    cancellationToken)
+                .ConfigureAwait(false);
             published = true;
             var terminal = await DispatchFirstMessageAsync(
                     prepared.Activation,
@@ -688,7 +702,12 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
                     ZLinkFrameworkErrorKind.ProtocolError,
                     $"Instance Spot '{authority.SpotId}' authority state is invalid.");
             }
-            catalog.PublishInstanceReserved(prepared);
+            await catalog.PublishInstanceReservedAsync(
+                    prepared,
+                    snapshot.ObjectGeneration,
+                    snapshot.AuthorityOwnerGeneration,
+                    cancellationToken)
+                .ConfigureAwait(false);
             activation = prepared.Activation;
         }
 
@@ -745,23 +764,92 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
         };
         while (true)
         {
-            if (current.Allocation.ObjectKind != ZLinkPlacementObjectKind.InstanceSpot
-                || !string.Equals(
-                    current.Allocation.StableType,
+            if (current.Allocation.ObjectKind != ZLinkPlacementObjectKind.InstanceSpot)
+            {
+                ZLinkRuntimeMetrics.RecordInstanceSpotClaimConflict(
+                    operation.Target.MeshName,
                     operation.Target.StableType,
-                    StringComparison.Ordinal))
+                    "spot_kind");
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.TypeMismatch,
                     $"Instance Spot '{operation.Target.TargetSpotId}' has another stable type.");
+            }
+            if (!string.Equals(
+                    current.Allocation.StableType,
+                    operation.Target.StableType,
+                    StringComparison.Ordinal))
+            {
+                ZLinkRuntimeMetrics.RecordInstanceSpotClaimConflict(
+                    operation.Target.MeshName,
+                    operation.Target.StableType,
+                    "spot_type");
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.TypeMismatch,
+                    $"Instance Spot '{operation.Target.TargetSpotId}' has another stable type.");
+            }
             if (!ZLinkInstanceSpotAuthorityPayloadCodec.TryDecode(
                     current.Payload.Span,
-                    out var authority)
-                || authority.NodeRid != node.RoutingId
-                || authority.NodeGeneration != node.MeshStatus().LifecycleGeneration)
+                    out var authority))
+            {
+                ZLinkRuntimeMetrics.RecordInstanceSpotClaimConflict(
+                    operation.Target.MeshName,
+                    operation.Target.StableType,
+                    "authority");
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.Unavailable,
                     $"Instance Spot '{operation.Target.TargetSpotId}' activation moved to another owner.",
                     ZLinkRetryAdvice.RetryAfterBackoff);
+            }
+            if (authority.NodeRid != node.RoutingId
+                || authority.NodeGeneration != node.MeshStatus().LifecycleGeneration)
+            {
+                var forwarded = operation with
+                {
+                    Target = new InstanceSpotActivationTarget(
+                        authority.MeshName,
+                        authority.NodeRid,
+                        authority.NodeGeneration,
+                        authority.SpotId,
+                        authority.StableType,
+                        current.StoreVersion)
+                };
+                while (true)
+                {
+                    try
+                    {
+                        var terminal = await node
+                            .ForwardInstanceSpotActivationAsync(
+                                forwarded,
+                                payload,
+                                metadata,
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                        await relocationStore.DeleteRelocationAsync(
+                                operationRoot.Reference,
+                                CancellationToken.None)
+                            .ConfigureAwait(false);
+                        return terminal;
+                    }
+                    catch (ZlinkSubmitException exception)
+                        when (exception.Result is
+                            ZlinkSubmitException.ErrorCode.Backpressured
+                            or ZlinkSubmitException.ErrorCode.NotConnected)
+                    {
+                        // The accepted operation remains durable while the
+                        // winner route is temporarily unavailable.
+                    }
+
+                    var forwardRemaining = checked((long)operation.DeadlineUnixMs)
+                                           - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    if (forwardRemaining <= 0)
+                        throw new TimeoutException(
+                            $"Instance Spot '{operation.Target.TargetSpotId}' activation forwarding deadline elapsed.");
+                    await Task.Delay(
+                            TimeSpan.FromMilliseconds(Math.Min(2, forwardRemaining)),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+            }
             var anotherOperationIsAccepted =
                 authority.ReplayCursor == 0
                 && authority.RecoveryReference is { } acceptedReference

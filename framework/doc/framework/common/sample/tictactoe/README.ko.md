@@ -42,7 +42,7 @@ owner 선택을 application 코드에서 숨긴다.
 - Play session은 인증 후 actor를 만들고 현재 stream session에 bind한다.
 - room Spot은 board, turn, 승패 판정을 소유한다.
 - peer 연결은 수동 endpoint 설정으로 구성하고 object 위치는 공식 Location Store에서 찾는다.
-- handler는 annotation·attribute·decorator로 선언하되, **자동 스캔 없이 구성 코드에서 직접 등록**한다.
+- handler는 annotation·attribute·decorator로 선언하고 assembly·module scan으로 **자동 등록**한다.
 - TicTacToe의 stream, channel, actor, room Spot payload는 JSON을 사용한다.
 
 Client self-check도 샘플의 일부다. client는 `.NET` 샘플처럼 request에 넣은 값과 response,
@@ -415,19 +415,12 @@ C++ 샘플은 `redis-plus-plus`를 사용한다. C++ framework는 이미 C++20�
 
 ## 7. Handler 등록 방식
 
-**TicTacToe는 수동 등록 샘플이다.** 두 축을 분리해서 본다.
+TicTacToe는 다른 샘플과 같은 자동 등록 방식을 사용한다. handler는
+attribute(.NET)·annotation(Java·Kotlin)·decorator(Node)로 packet kind와 이름을 선언한다.
+Framework integration은 지정한 assembly·module을 scan해 handler를 등록한다.
 
-| 축 | TicTacToe |
-|----|-----------|
-| **handler 선언** | 다른 샘플과 **같다** — attribute(.NET) / annotation(Java·Kotlin) / decorator(Node)로 packet kind와 이름을 선언한다 |
-| **handler 등록** | 다른 샘플과 **다르다** — assembly·module **스캔에 의한 자동 등록을 쓰지 않고**, 구성 코드에서 그 handler 타입을 직접 등록한다 |
-
-즉 "선언은 선언형, 등록은 수동"이다. 자동 등록을 기본으로 켠 언어라도 이 샘플에서는 스캔을 끄거나
-쓰지 않고, channel builder·session `Configure()`·spot `Configure()`에서 handler를 명시적으로
-등록한다. subscription은 등록 호출에 topic을 인자로 넘긴다.
-
-**이것이 수동 축을 보여 주는 샘플이라는 뜻이다.** TicTacToe는 연결도 수동(endpoint 직접 지정),
-등록도 수동이다. 자동 연결과 자동 등록은 나머지 정본 샘플이 맡는다
+수동 endpoint topology는 handler 등록 방식을 바꾸지 않는다. 구성 코드에는 handler 타입 목록을
+반복하지 않는다. C++만 reflection이 없으므로 compile-time 등록을 사용한다.
 ([샘플 규약](../README.ko.md)). 이 대비 자체가 TicTacToe의 목적 중 하나다.
 
 **C++ 샘플은 예외다.** runtime 스캔도 annotation 기반 선언도 쓰지 않고 compile-time 타입과 명시
@@ -922,7 +915,7 @@ backend call, runtime event, 또는 framework 테스트 중 하나로 아래 사
 | Session 서버 | 별도 프로세스 없음. Play 서버가 session과 room을 함께 소유한다. | 별도 Session 서버가 client stream과 actor binding을 소유한다. |
 | Play 서버 | 2개 Play가 stream session, actor, Entry Spot, room Spot, MeshNode route, Logical Multicast를 함께 호스팅한다. | actor, Entry Spot, room Spot을 호스팅한다. |
 | 주요 목적 | 수동 endpoint scale-out, room Spot route 조회, Logical Multicast fan-out | 분리된 session gateway 구조 |
-| Handler 등록 | **수동 등록** — annotation 기반 handler를 직접 등록(스캔 없음) | 자동 등록(스캔) |
+| Handler 등록 | 자동 등록(scan) | 자동 등록(scan) |
 
 ## 18. 완료 기준
 
@@ -979,6 +972,6 @@ backend call, runtime event, 또는 framework 테스트 중 하나로 아래 사
 - actor destroy는 `onLeaveActor`를 호출하지 않고 actor registry와 native actor ref를
   정리한다.
 - request/reply는 message name이 아니라 stream request sequence로 매칭된다.
-- handler는 annotation·attribute·decorator로 선언하고, 구성 코드에서 직접 등록한다. 자동 스캔을 켜지 않는다(C++ 제외).
+- handler는 annotation·attribute·decorator로 선언하고 assembly·module scan으로 자동 등록한다(C++은 compile-time 등록).
 - smoke test는 room 생성, 세 client 인증, join, milestone 구독, 최소 한 판 종료까지
   검증한다.

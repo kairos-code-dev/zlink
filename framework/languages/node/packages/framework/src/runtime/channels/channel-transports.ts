@@ -22,7 +22,9 @@ import {
 } from '../messaging/submission-result';
 import { ZLinkConfigurationException } from '../configuration';
 import type { ZLinkSpotRouteTarget } from '../spots/spot-routing-internal';
+import { ZLinkSpotKind } from '../../contracts/Spots';
 import { throwIfAborted } from '../abort';
+import type { ZLinkRuntimeMetrics } from '../diagnostics';
 import {
   closeMeshCompletion,
   type ZLinkMeshCompletionTable
@@ -35,6 +37,7 @@ import {
   ZLinkChannelMessageKind
 } from './channel-envelope';
 import type { ZLinkMeshSubmitterRegistry } from '../messaging';
+import type { ServiceDirectSpotRouteFence } from '../foundation/service-stateful-wire-codec';
 
 export interface ZLinkChannelClientTransport {
   trySend?(
@@ -352,7 +355,8 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
       meshName: string,
       sourceNodeRid: string,
       parts: readonly MessageLike[]
-    ) => ZLinkSubmitResult
+    ) => ZLinkSubmitResult,
+    private readonly metrics?: ZLinkRuntimeMetrics
   ) {}
 
   canRouteChannel(routerChannelId: string): boolean {
@@ -409,6 +413,45 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
     signal?: AbortSignal,
     metadata?: ReadonlyMap<string, string>
   ): Promise<ZLinkSubmitResult> {
+    return this.submitNode(
+      meshName,
+      targetNodeRid,
+      packetName,
+      message,
+      signal,
+      metadata,
+      false
+    );
+  }
+
+  async submitInfrastructure(
+    meshName: string,
+    targetNodeRid: string,
+    packetName: string | undefined,
+    message: unknown,
+    signal?: AbortSignal,
+    metadata?: ReadonlyMap<string, string>
+  ): Promise<ZLinkSubmitResult> {
+    return this.submitNode(
+      meshName,
+      targetNodeRid,
+      packetName,
+      message,
+      signal,
+      metadata,
+      true
+    );
+  }
+
+  private async submitNode(
+    meshName: string,
+    targetNodeRid: string,
+    packetName: string | undefined,
+    message: unknown,
+    signal: AbortSignal | undefined,
+    metadata: ReadonlyMap<string, string> | undefined,
+    allowObjectClientTarget: boolean
+  ): Promise<ZLinkSubmitResult> {
     const node = this.meshNode(meshName);
     if (node === undefined) {
       return await this.requireManager().routeSubmit(
@@ -421,7 +464,8 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
       );
     }
     throwIfAborted(signal);
-    if (node.isObjectClientNodeDirectTarget?.(toBindingRoutingId(targetNodeRid)) === true) {
+    if (!allowObjectClientTarget
+      && node.isObjectClientNodeDirectTarget?.(toBindingRoutingId(targetNodeRid)) === true) {
       return { status: ZLinkSubmitStatus.TargetNotFound };
     }
     const parts = this.encodeMessage(
@@ -515,7 +559,7 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
     metadata?: ReadonlyMap<string, string>
   ): ZLinkSubmitResult {
     const node = this.requireMeshNode(meshName);
-    return mapMeshSubmitResult(node.sendToChannel(
+    const result = mapMeshSubmitResult(node.sendToChannel(
       channelName,
       this.encodeMessage(
         ZLinkChannelMessageKind.Command,
@@ -527,6 +571,10 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
       ),
       { flags: 1 }
     ));
+    if (result.status === ZLinkSubmitStatus.TargetNotFound) {
+      this.metrics?.recordChannelSelectionFailure(meshName, channelName, 'no_ready_target');
+    }
+    return result;
   }
 
   async submitToChannel(
@@ -550,7 +598,11 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
     const operation = `MeshNode '${meshName}' send to channel '${channelName}'`;
     return await this.requireMeshSubmitters().submit(meshName, () => {
       try {
-        return mapMeshSubmitResult(node.sendToChannel(channelName, parts, { flags: 1 }));
+        const result = mapMeshSubmitResult(node.sendToChannel(channelName, parts, { flags: 1 }));
+        if (result.status === ZLinkSubmitStatus.TargetNotFound) {
+          this.metrics?.recordChannelSelectionFailure(meshName, channelName, 'no_ready_target');
+        }
+        return result;
       } catch (error) {
         throw mapMeshSubmissionError(error, operation);
       }
@@ -576,16 +628,28 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
       timeoutMs,
       metadata
     );
+    const metric = this.metrics?.startRequest(meshName, 'channel');
     let operationId;
     try {
       operationId = node.requestToChannel(channelName, parts, { flags: 1, timeoutMs });
     } catch (error) {
+      metric?.complete(requestMetricOutcome(error));
+      if (requestMetricOutcome(error) === 'target_not_found') {
+        this.metrics?.recordChannelSelectionFailure(meshName, channelName, 'no_ready_target');
+      }
       throw mapMeshSubmissionError(
         error,
         `MeshNode '${meshName}' request to channel '${channelName}'`
       );
     }
-    return this.waitForMeshReply(meshName, operationId, signal);
+    try {
+      const reply = await this.waitForMeshReply<TReply>(meshName, operationId, signal);
+      metric?.complete('completed');
+      return reply;
+    } catch (error) {
+      metric?.complete(requestMetricOutcome(error));
+      throw error;
+    }
   }
 
   async sendToSpot(
@@ -624,7 +688,11 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
             undefined,
             options.metadata
           ),
-          { flags: 1 }
+          {
+            flags: 1,
+            routeFence: directSpotRouteFence(spotRouteTarget),
+            entrySpot: spotRouteTarget.spotKind === ZLinkSpotKind.Entry
+          }
         ));
       } catch (error) {
         throw mapMeshSubmissionError(error, operation);
@@ -690,7 +758,12 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
           options.timeoutMs,
           options.metadata
         ),
-        { flags: 1, timeoutMs: options.timeoutMs }
+        {
+          flags: 1,
+          timeoutMs: options.timeoutMs,
+          routeFence: directSpotRouteFence(spotRouteTarget),
+          entrySpot: spotRouteTarget.spotKind === ZLinkSpotKind.Entry
+        }
       );
     } catch (error) {
       throw mapMeshSubmissionError(
@@ -759,7 +832,12 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
           toBindingRoutingId(spotRouteTarget.spotId),
           spotRouteTarget.targetSpotGeneration ?? 0n,
           parts,
-          { flags: 1, timeoutMs: options.timeoutMs }
+          {
+            flags: 1,
+            timeoutMs: options.timeoutMs,
+            routeFence: directSpotRouteFence(spotRouteTarget),
+            entrySpot: spotRouteTarget.spotKind === ZLinkSpotKind.Entry
+          }
         );
       } catch (error) {
         throw mapMeshSubmissionError(
@@ -806,7 +884,12 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
   }
 
   private meshNode(meshName: string): ZLinkBackendMeshNode | undefined {
-    return this.meshRuntime?.()?.meshNode(meshName);
+    const runtime = this.meshRuntime?.();
+    return (
+      runtime as unknown as {
+        meshNode?: (meshName: string) => ZLinkBackendMeshNode | undefined;
+      } | undefined
+    )?.meshNode?.(meshName);
   }
 
   private isSelfNode(node: ZLinkBackendMeshNode, targetNodeRid: string): boolean {
@@ -889,6 +972,39 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
   }
 }
 
+function directSpotRouteFence(target: ZLinkSpotRouteTarget): ServiceDirectSpotRouteFence | undefined {
+  // Entry Spots are addressed by their owning MeshNode. They have no
+  // Location Store authority row, so only User and Instance Spots carry the
+  // exact Ready authority fence required by direct Spot submission.
+  if (target.spotKind === ZLinkSpotKind.Entry) {
+    return undefined;
+  }
+  if (
+    target.targetSpotGeneration === undefined
+    || target.targetNodeGeneration === undefined
+    || target.authorityOwnerGeneration === undefined
+    || target.targetOwnerId === undefined
+    || target.ownerLeaseGeneration === undefined
+    || target.authorityStoreVersion === undefined
+  ) {
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.SpotRouteNotFound,
+      `Spot '${String(target.spotId)}' has no complete Ready authority fence.`
+    );
+  }
+  return {
+    spot: {
+      spotId: String(target.spotId),
+      generation: target.targetSpotGeneration
+    },
+    targetNodeRid: String(target.targetNodeRid),
+    targetNodeGeneration: target.targetNodeGeneration,
+    authorityOwnerGeneration: target.authorityOwnerGeneration,
+    ownerLeaseGeneration: target.ownerLeaseGeneration,
+    storeVersion: target.authorityStoreVersion
+  };
+}
+
 function mapMeshSubmitResult(result: number): ZLinkSubmitResult {
   switch (result) {
     case SubmitResult.Ok:
@@ -948,4 +1064,14 @@ function meshRequestFailure(meshName: string, result: number, nativeErrno: numbe
     `MeshNode '${meshName}' request failed with result ${result} and errno ${nativeErrno}.`,
     result === 109 || result === 113
   );
+}
+
+function requestMetricOutcome(error: unknown): string {
+  if (error instanceof ZLinkFrameworkException) {
+    if (error.kind === ZLinkFrameworkErrorKind.RequestTargetNotFound) return 'target_not_found';
+    if (error.kind === ZLinkFrameworkErrorKind.DeadlineExceeded) return 'timed_out';
+    if (error.kind === ZLinkFrameworkErrorKind.RuntimeShutdown) return 'shutdown';
+  }
+  if (error instanceof Error && /timed out|deadline/i.test(error.message)) return 'timed_out';
+  return 'failed';
 }

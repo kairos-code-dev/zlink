@@ -737,6 +737,20 @@ public final class ZLinkServiceRelocationEnvelopeCodec {
         }
 
         @Override public byte[] rawEntry() { return rawEntry.clone(); }
+
+        /**
+         * Returns only the canonical frozen operation. The raw entry also
+         * contains the participant and sequence prefixes used when the
+         * durable envelope is rewritten.
+         */
+        public byte[] frozenRecord() {
+            if (rawEntry.length <= 16) {
+                throw new IllegalStateException(
+                    "journal entry does not contain a frozen operation");
+            }
+            return java.util.Arrays.copyOfRange(
+                rawEntry, 16, rawEntry.length);
+        }
     }
 
     public record ObjectIdentity(

@@ -15,16 +15,20 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.StandardEnvironment;
-import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions;
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.samples.gamequest.server.configuration.SampleLocationStore;
 import systems.zlink.samples.gamequest.server.configuration.SampleNames;
 import systems.zlink.samples.gamequest.server.configuration.SampleTopology;
 import systems.zlink.samples.gamequest.server.gameapi.sessions.GameQuestSession;
-import systems.zlink.samples.gamequest.server.gameapi.sessions.GameQuestSessionRegistry;
+import systems.zlink.samples.gamequest.server.gameapi.actors.GameQuestPlayerActor;
+import systems.zlink.samples.gamequest.server.gameapi.actors.GameQuestPlayerActorFactory;
+import systems.zlink.samples.gamequest.server.gameapi.spots.GameQuestEntrySpot;
 import systems.zlink.samples.gamequest.server.gameapi.store.GameQuestStore;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
@@ -65,25 +69,33 @@ public class Program {
     ZLinkFrameworkConfigurer gameApiFramework(SampleTopology topology) {
         SampleTopology.GameApi api = topology.gameApi();
         return options -> {
+            options.configureLocations();
+            options.addLocationStore(SampleLocationStore.create(topology));
+            options.addRelocationStore(new ZLinkRedisRelocationStore(
+                new ZLinkRedisRelocationOptions()
+                    .setConnectionString(topology.location().redisEndpoint())
+                    .setKeyPrefix(topology.location().redisKeyPrefix() + "relocation:")));
             options.addHandlersFromPackageOf(Program.class);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(api.logDirectory() + "/flow-" + api.instanceName() + ".log")
                 .traceLabel(api.instanceName());
-            options.addClientServerChannel(SampleNames.QuestOwnerChannel)
-                .enableClient();
-            options.addClientServerChannel(SampleNames.questNotificationChannelFor(api.instanceName()))
-                .enableServer(api.notificationChannelEndpoint())
-                .addHandlerGroup("quest-notify");
+            options.addRouteMesh(SampleNames.PlayerQuestSpotDiscovery)
+                .setRoutingIdPrefix("gamequest-api")
+                .listen(api.spotRouterEndpoint())
+                .objects()
+                .server()
+                .addEntrySpot(GameQuestEntrySpot.class)
+                .addActorFactory(
+                    SampleNames.PlayerSessionActorType,
+                    GameQuestPlayerActor.class,
+                    GameQuestPlayerActorFactory.class,
+                    factory -> factory.recreateOnRelocation());
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(api.streamEndpoint())
+                .enableActorDispatch(SampleNames.PlayerQuestSpotDiscovery)
                 .registerSession(GameQuestSession.class);
         };
-    }
-
-    @Bean(destroyMethod = "close")
-    ZLinkRedisLocationStore locationStore(SampleTopology topology) {
-        return SampleLocationStore.create(topology);
     }
 
     @Bean(destroyMethod = "close")
@@ -94,12 +106,7 @@ public class Program {
     }
 
     @Bean
-    GameQuestSessionRegistry gameQuestSessionRegistry() {
-        return new GameQuestSessionRegistry();
-    }
-
-    @Bean
-    GameQuestApiServices gameQuestApiServices(GameQuestStore store, ZLinkClient channels) {
+    GameQuestApiServices gameQuestApiServices(GameQuestStore store, ZLinkRouteClient channels) {
         ApplicationContextHolder.store = store;
         ApplicationContextHolder.channels = channels;
         return new GameQuestApiServices();
@@ -145,9 +152,11 @@ public class Program {
         String action = parts.length >= 6 ? parts[5] : "";
         if ("delete".equals(action)) {
             return ApplicationContextHolder.channels
-                .requestToChannel(
-                    SampleNames.QuestOwnerChannel,
+                .requestToSpot(
+                    playerId,
                     new Messages.DeleteQuestProjectionReq(playerId, questId))
+                .instanceSpot(SampleNames.PlayerQuestSpotType)
+                .inMesh(SampleNames.PlayerQuestSpotDiscovery)
                 .submit(Messages.DeleteQuestProjectionRes.class)
                 .thenAccept(deleted -> {
                     store.deleteProjection(playerId, questId);
@@ -156,9 +165,11 @@ public class Program {
         }
         if ("rebuild".equals(action)) {
             return ApplicationContextHolder.channels
-                .requestToChannel(
-                    SampleNames.QuestOwnerChannel,
+                .requestToSpot(
+                    playerId,
                     new Messages.RebuildQuestProjectionReq(playerId, questId, 0))
+                .instanceSpot(SampleNames.PlayerQuestSpotType)
+                .inMesh(SampleNames.PlayerQuestSpotDiscovery)
                 .submit(Messages.QuestProgress.class)
                 .thenAccept(rebuilt -> {
                     store.mergeProjection(playerId, java.util.List.of(rebuilt));
@@ -211,6 +222,6 @@ public class Program {
 
     private static final class ApplicationContextHolder {
         private static GameQuestStore store;
-        private static ZLinkClient channels;
+        private static ZLinkRouteClient channels;
     }
 }

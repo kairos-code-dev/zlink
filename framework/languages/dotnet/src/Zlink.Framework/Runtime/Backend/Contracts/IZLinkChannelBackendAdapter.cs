@@ -4,6 +4,12 @@ internal interface IZLinkChannelBackendAdapter
 {
     IZLinkBackendContext CreateContext();
 
+    void ConfigureAutoHwm(
+        IZLinkBackendContext context,
+        ZLinkApplicationHwmProfile profile)
+    {
+    }
+
     IZLinkBackendDealerSocket CreateDealerSocket(IZLinkBackendContext context);
 
     IZLinkBackendRouterSocket CreateRouterSocket(IZLinkBackendContext context);

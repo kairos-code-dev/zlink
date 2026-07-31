@@ -69,11 +69,22 @@ inline void validate_framework_options (const framework_options_state_t &options
 {
     validate_dispatch_options (options.dispatch);
     validate_location_options (options.locations);
-    if (options.has_location_store_instance && options.use_in_memory_location_stores) {
+    if (options.process_memory_limit_bytes
+        && *options.process_memory_limit_bytes == 0) {
         throw framework_exception_t (
           framework_error_kind_t::request_protocol_error,
-          "add_location_store registers every store role at once and cannot be combined with "
-          "use_in_memory_location_stores.");
+          "process memory limit must be positive when specified");
+    }
+    switch (options.application_hwm_profile) {
+        case application_hwm_profile_t::compact:
+        case application_hwm_profile_t::low_latency:
+        case application_hwm_profile_t::balanced:
+        case application_hwm_profile_t::throughput:
+            break;
+        default:
+            throw framework_exception_t (
+              framework_error_kind_t::request_protocol_error,
+              "application HWM profile is invalid");
     }
     for (const auto &channel_name : options.client_server_channels) {
         if (!options.client_server_channels_with_server.contains (channel_name)

@@ -6,11 +6,18 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.lang.reflect.GenericArrayType;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.lang.reflect.Modifier;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
+import java.lang.reflect.WildcardType;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -27,6 +34,10 @@ final class OptimizationGuardContractTest {
     private static final Path KOTLIN_SAMPLES_SOURCE =
         Path.of("..", "kotlin", "samples", "src", "main", "kotlin");
     private static final Path PERF_SOURCE = Path.of("perf");
+    private static final String ZLINK_FACTORY_RUNTIME_IMPORT =
+        "import systems.zlink.runtime.nativeapi.ContractAccess;";
+    private static final String RUNTIME_PREFIX = "systems.zlink.runtime.";
+    private static final String INTERNAL_PREFIX = "systems.zlink.internal.";
 
     private static final String[] AGGREGATE_SYMBOLS = {
         "zlink_send",
@@ -100,9 +111,9 @@ final class OptimizationGuardContractTest {
     }
 
     @Test
-    void sourceTopLevelPackagesStayContractAndRuntimeOnly() throws IOException {
+    void sourceTopLevelPackagesStayWithinDeclaredOwners() throws IOException {
         Path zlinkPackage = MAIN_SOURCE.resolve(Path.of("systems", "zlink"));
-        Set<String> allowed = Set.of("contracts", "runtime");
+        Set<String> allowed = Set.of("contracts", "internal", "runtime");
         List<String> violations = new ArrayList<>();
 
         try (var stream = Files.list(zlinkPackage)) {
@@ -115,7 +126,65 @@ final class OptimizationGuardContractTest {
         }
 
         assertTrue(violations.isEmpty(),
-            "top-level Java packages must stay limited to contracts/runtime: " + violations);
+            "top-level Java packages must stay within declared owners: " + violations);
+    }
+
+    @Test
+    void contractSourcesReferenceRuntimeOnlyThroughExactZlinkFactoryImport()
+        throws IOException {
+        Path contracts = MAIN_SOURCE.resolve(Path.of(
+            "systems", "zlink", "contracts"));
+        Path allowedFacade = contracts.resolve(Path.of("core", "Zlink.java"));
+        List<String> violations = new ArrayList<>();
+
+        for (Path path : sourceFiles(contracts)) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            violations.addAll(contractRuntimeReferenceViolations(
+                path, allowedFacade, source));
+        }
+
+        assertTrue(violations.isEmpty(),
+            "contract source must not reference runtime implementation: "
+                + violations);
+    }
+
+    @Test
+    void zlinkFactoryFacadeDoesNotExposeRuntimeOrInternalTypes() {
+        List<String> violations = publicSignatureViolations(
+            systems.zlink.contracts.core.Zlink.class);
+
+        assertTrue(violations.isEmpty(),
+            "Zlink factory facade must expose contract types only: "
+                + violations);
+    }
+
+    @Test
+    void sourceAndGenericSignatureGuardsRejectMutations() throws Exception {
+        Path contracts = MAIN_SOURCE.resolve(Path.of(
+            "systems", "zlink", "contracts"));
+        Path allowedFacade = contracts.resolve(Path.of("core", "Zlink.java"));
+        String source = Files.readString(allowedFacade, StandardCharsets.UTF_8);
+
+        assertTrue(contractRuntimeReferenceViolations(
+            allowedFacade, allowedFacade, source).isEmpty());
+        assertFalse(contractRuntimeReferenceViolations(
+            allowedFacade, allowedFacade,
+            source + "\nimport systems.zlink.runtime.core.NativeContext;\n")
+            .isEmpty());
+        assertFalse(contractRuntimeReferenceViolations(
+            allowedFacade, allowedFacade,
+            source.replace(ZLINK_FACTORY_RUNTIME_IMPORT,
+                "import systems.zlink.runtime.nativeapi.*;"))
+            .isEmpty());
+        assertFalse(contractRuntimeReferenceViolations(
+            allowedFacade, allowedFacade,
+            source + "\n// " + RUNTIME_PREFIX + "core.NativeContext\n")
+            .isEmpty());
+
+        assertFalse(publicSignatureViolations(
+            RuntimeGenericSignatureMutation.class).isEmpty());
+        assertFalse(publicSignatureViolations(
+            InternalGenericSignatureMutation.class).isEmpty());
     }
 
     @Test
@@ -137,13 +206,13 @@ final class OptimizationGuardContractTest {
             }
             """,
             """
-            import systems.zlink.runtime.nativeapi.ContractAccess;
+            import systems.zlink.internal.ContractAccess;
             final class InternalProbe {
                 ContractAccess access;
             }
             """,
             """
-            import systems.zlink.runtime.sockets.SocketOptions;
+            import systems.zlink.internal.sockets.SocketOptions;
             final class RuntimeSocketOptionsProbe {
                 Object options = SocketOptions.all();
             }
@@ -168,9 +237,9 @@ final class OptimizationGuardContractTest {
         for (Path root : List.of(SAMPLES_SOURCE, KOTLIN_SAMPLES_SOURCE, PERF_SOURCE)) {
             for (Path path : sourceFiles(root)) {
                 String source = Files.readString(path, StandardCharsets.UTF_8);
-                if (source.contains("import systems.zlink.contracts.internal.")
+                if (source.contains("import systems.zlink.internal.")
                     || source.contains("import systems.zlink.runtime.")
-                    || source.contains("systems.zlink.contracts.internal.")
+                    || source.contains("systems.zlink.internal.")
                     || source.contains("systems.zlink.runtime.")
                     || source.contains("ContractAccess")) {
                     violations.add(path.toString());
@@ -180,6 +249,23 @@ final class OptimizationGuardContractTest {
 
         assertTrue(violations.isEmpty(),
             "samples/perf must stay on public contract packages: " + violations);
+    }
+
+    @Test
+    void bindingsSamplesStayOnCore11RawSocketBoundary() throws IOException {
+        List<String> violations = new ArrayList<>();
+        for (Path root : List.of(SAMPLES_SOURCE, KOTLIN_SAMPLES_SOURCE)) {
+            for (Path path : sourceFiles(root)) {
+                String source = Files.readString(path, StandardCharsets.UTF_8);
+                if (source.contains("systems.zlink.contracts.service.")) {
+                    violations.add(path.toString());
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+            "Actor, Spot and session service examples belong to Framework samples: "
+                + violations);
     }
 
     @Test
@@ -260,6 +346,115 @@ final class OptimizationGuardContractTest {
         try (var stream = Files.walk(root)) {
             return stream.filter(p ->
                 p.toString().endsWith(".java") || p.toString().endsWith(".kt")).toList();
+        }
+    }
+
+    private static List<String> contractRuntimeReferenceViolations(
+        Path path, Path allowedFacade, String source) {
+        List<String> violations = new ArrayList<>();
+        String sourceWithoutAllowedImport = source;
+        if (path.equals(allowedFacade)) {
+            int importCount = countOccurrences(source,
+                ZLINK_FACTORY_RUNTIME_IMPORT);
+            if (importCount != 1) {
+                violations.add(path + " must contain exactly one approved "
+                    + "runtime factory import, found " + importCount);
+            }
+            sourceWithoutAllowedImport = source.replace(
+                ZLINK_FACTORY_RUNTIME_IMPORT, "");
+        }
+        if (sourceWithoutAllowedImport.contains(RUNTIME_PREFIX)) {
+            violations.add(path + " contains an unapproved runtime reference");
+        }
+        return violations;
+    }
+
+    private static int countOccurrences(String source, String value) {
+        int count = 0;
+        int offset = 0;
+        while ((offset = source.indexOf(value, offset)) >= 0) {
+            count++;
+            offset += value.length();
+        }
+        return count;
+    }
+
+    private static List<String> publicSignatureViolations(Class<?> type) {
+        List<String> violations = new ArrayList<>();
+        for (var method : type.getDeclaredMethods()) {
+            if (!Modifier.isPublic(method.getModifiers())) {
+                continue;
+            }
+            List<Type> signatureTypes = new ArrayList<>();
+            signatureTypes.add(method.getGenericReturnType());
+            signatureTypes.addAll(Arrays.asList(method.getGenericParameterTypes()));
+            for (TypeVariable<?> variable : method.getTypeParameters()) {
+                signatureTypes.addAll(Arrays.asList(variable.getBounds()));
+            }
+            if (signatureTypes.stream().anyMatch(signatureType ->
+                    containsForbiddenPublicType(signatureType, new HashSet<>()))) {
+                violations.add(method.toGenericString());
+            }
+        }
+        return violations;
+    }
+
+    private static boolean containsForbiddenPublicType(Type type,
+                                                       Set<Type> visited) {
+        if (type == null || !visited.add(type)) {
+            return false;
+        }
+        if (type instanceof Class<?> classType) {
+            if (classType.isArray()) {
+                return containsForbiddenPublicType(
+                    classType.getComponentType(), visited);
+            }
+            return isForbiddenPublicTypeName(classType.getName());
+        }
+        if (type instanceof ParameterizedType parameterizedType) {
+            if (containsForbiddenPublicType(parameterizedType.getRawType(),
+                    visited)
+                || containsForbiddenPublicType(parameterizedType.getOwnerType(),
+                    visited)) {
+                return true;
+            }
+            return Arrays.stream(parameterizedType.getActualTypeArguments())
+                .anyMatch(argument -> containsForbiddenPublicType(
+                    argument, visited));
+        }
+        if (type instanceof GenericArrayType arrayType) {
+            return containsForbiddenPublicType(
+                arrayType.getGenericComponentType(), visited);
+        }
+        if (type instanceof TypeVariable<?> variable) {
+            return Arrays.stream(variable.getBounds()).anyMatch(bound ->
+                containsForbiddenPublicType(bound, visited));
+        }
+        if (type instanceof WildcardType wildcard) {
+            return Arrays.stream(wildcard.getUpperBounds()).anyMatch(bound ->
+                    containsForbiddenPublicType(bound, visited))
+                || Arrays.stream(wildcard.getLowerBounds()).anyMatch(bound ->
+                    containsForbiddenPublicType(bound, visited));
+        }
+        return false;
+    }
+
+    private static boolean isForbiddenPublicTypeName(String name) {
+        return name.startsWith(RUNTIME_PREFIX)
+            || name.startsWith(INTERNAL_PREFIX);
+    }
+
+    private static final class RuntimeGenericSignatureMutation {
+        public List<List<systems.zlink.runtime.nativeapi.ContractAccess>>
+            leakedType() {
+            return List.of();
+        }
+    }
+
+    private static final class InternalGenericSignatureMutation {
+        public List<? extends systems.zlink.internal.ContractAccess>
+            leakedType() {
+            return List.of();
         }
     }
 

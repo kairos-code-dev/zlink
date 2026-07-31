@@ -203,10 +203,11 @@ Spot·Actor·session route도 이어지므로 방향별 ClientServer Channel을 
 
 이 샘플은 mission별 ChannelName도 등록하지 않는다. `PlayerId` 문자열을 전역 `SpotId`로 사용하고
 Spot을 활성화할 수 있는 gameplay send/request에 `InstanceSpot("gamequest.player-quest")` marker를
-명시한다. QuestMission은 actor-free
-`PlayerQuestSpot` Instance factory를 등록하고 GameApi는 호출 전용 membership 0개 MeshNode로 같은 RouteMesh에
-참여한다. Caller는 Spot manager의 `GetOrCreate`, handle resolve, owner `NodeRid`나 endpoint 선택을 수행하지
-않는다. `gamequest.mission.*` 같은 wildcard ChannelName이나 실행 중 역할 추가도 사용하지 않는다.
+명시한다. QuestMission은 actor-free `PlayerQuestSpot` Instance factory를 등록한다. GameApi는
+session Actor와 Entry Spot factory를 등록하지만 `PlayerQuestSpot` factory는 등록하지 않는다.
+두 역할은 같은 RouteMesh로 자동 연결한다. Caller는 Spot manager의 `GetOrCreate`, handle resolve,
+owner `NodeRid`나 endpoint 선택을 수행하지 않는다. `gamequest.mission.*` 같은 wildcard
+ChannelName이나 실행 중 역할 추가도 사용하지 않는다.
 
 Gameplay event의 one-way 호출은 public async submit만 사용한다. 정상 완료는 source runtime의
 local outbound admission 완료만 뜻하며 target queue 수락이나 handler 실행 결과를 반환하지 않는다.

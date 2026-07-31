@@ -1,9 +1,7 @@
 package systems.zlink.samples.supportchat.server.support.spots.entryspot.handlers;
 
-import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.actors.ZLinkActorJoinResult;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.samples.supportchat.server.configuration.SampleNames;
 import systems.zlink.samples.supportchat.server.configuration.SampleTimings;
 import systems.zlink.samples.supportchat.server.support.actors.SupportUserActor;
@@ -20,7 +18,7 @@ public final class OpenConversationActorHandler
     public java.util.concurrent.CompletionStage<Messages.OpenConversationRes> handle(
         SupportEntrySpot spot,
         SupportUserActor actor,
-        ZLinkSpotActorRequestContext context,
+        ZLinkMessageContext context,
         Messages.OpenConversationReq request) {
         requireRole(actor, SampleNames.Roles.Customer);
         return spot.context().outbound()
@@ -29,21 +27,14 @@ public final class OpenConversationActorHandler
                 new Messages.OpenConversationApiReq(actor.actorId(), actor.displayName(), request.subject()))
             .timeout(SampleTimings.RequestTimeout)
             .submit(Messages.OpenConversationApiRes.class)
-            .thenCompose(opened -> actor.context()
-                .joinSpot(
-                    RoutingId.from(opened.conversationId()),
+            .thenApply(opened -> {
+                Messages.JoinConversationRes scheduled = actor
+                .scheduleConversationJoin(
+                    opened.conversationId(),
                     new Messages.JoinConversationReq(
-                        actor.participantId(), actor.role(), actor.displayName()))
-                .timeout(SampleTimings.RequestTimeout)
-                .submit(Messages.JoinConversationRes.class)
-                .thenApply(result -> {
-                    if (!(result instanceof ZLinkActorJoinResult.Accepted<?> accepted)) {
-                        throw new IllegalStateException("Customer conversation join was rejected");
-                    }
-                    Messages.JoinConversationRes joined =
-                        (Messages.JoinConversationRes) accepted.reply();
-                    return new Messages.OpenConversationRes(opened.conversationId(), joined.state());
-                }));
+                        actor.participantId(), actor.role(), actor.displayName()));
+                return new Messages.OpenConversationRes(opened.conversationId(), scheduled.state());
+            });
     }
 
     private static void requireRole(SupportUserActor actor, String expectedRole) {

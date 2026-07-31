@@ -3,7 +3,6 @@ import {
   ZLINK_ACTOR_CLIENT,
   zlinkEntrySpotActorSendHandler
 } from '@zlink-systems/nestjs';
-import { SampleNames } from '../../../../../Configuration/sample-names';
 import { PlayerActor } from '../../Actors/player-actor';
 import { PendingBingoActorDestroyRegistry } from '../../Actors/player-actor-lifecycle-handlers';
 import {
@@ -12,12 +11,12 @@ import {
 } from '../../../../../../Shared/Contracts/bingo-messages.generated';
 import type {
   ZLinkActorClient,
-  ZLinkActorMembership,
+  ZLinkActorCreateResponse,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
   ZLinkMessage,
   ZLinkSpotActorJoinResponse,
-  ZLinkSpotActorSendContext
+  ZLinkMessageContext
 } from '@zlink-systems/framework';
 
 @Injectable()
@@ -29,17 +28,14 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
     @Inject(ZLINK_ACTOR_CLIENT) private readonly actors: ZLinkActorClient
   ) {}
 
-  async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
-    if (!this.pendingDestroys.consume(actor.actor.actorId)) {
-      console.error(`bingo-lifecycle entry-joined actor=${actor.actor.actorId} destroy=false`);
+  async onJoinedActor(actor: PlayerActor): Promise<void> {
+    if (!this.pendingDestroys.consume(actor.actorId)) {
+      console.error(`bingo-lifecycle entry-joined actor=${actor.actorId} destroy=false`);
       return;
     }
-    const submitted = await this.actors
-      .sendToActor(actor.actor.actorId, new DestroyBingoActor({}))
+    await this.actors
+      .sendToActor(actor.actorId, new DestroyBingoActor({}))
       .submit();
-    if (submitted.status !== 'submitted') {
-      throw new Error(`Bingo actor '${actor.actor.actorId}' destroy was not submitted: ${submitted.status}.`);
-    }
   }
 
   async onActorJoin(
@@ -49,20 +45,21 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
     return { accepted: true };
   }
 
-  async onCreateActor(actor: ZLinkActorMembership, createRequest: ZLinkMessage): Promise<void> {
+  async onCreateActor(actor: PlayerActor, createRequest: ZLinkMessage): Promise<ZLinkActorCreateResponse> {
     const request = createRequest.decode<GeneratedEnsurePlayerActorReq>();
     if (typeof request.displayName === 'string') {
       await this.actors
-        .sendToActor(actor.actor.actorId, request)
+        .sendToActor(actor.actorId, request)
         .submit();
     }
+    return { accepted: true };
   }
 
-  async onLeaveActor(actor: ZLinkActorMembership): Promise<void> {
-    console.error(`bingo-lifecycle entry-leave actor=${actor.actor.actorId}`);
+  async onLeaveActor(actor: PlayerActor): Promise<void> {
+    console.error(`bingo-lifecycle entry-leave actor=${actor.actorId}`);
   }
 
-  async onDisconnectActor(_actor: ZLinkActorMembership): Promise<void> {}
+  async onDisconnectActor(_actor: PlayerActor): Promise<void> {}
 
   scheduleDestroy(actor: PlayerActor): void {
     void this.context.runIoWorker(async () => true).submit().then(async () => {
@@ -83,7 +80,7 @@ class DestroyBingoActorHandler {
 
   async handle(
     actor: PlayerActor,
-    _context: ZLinkSpotActorSendContext,
+    _context: ZLinkMessageContext,
     _message: DestroyBingoActor
   ): Promise<void> {
     this.entrySpot.scheduleDestroy(actor);

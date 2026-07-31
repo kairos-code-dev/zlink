@@ -43,8 +43,8 @@ public final class MatchBingoActorHandler
                     matched.getRoomId(),
                     BingoMessages.bingoRoomState(
                         matched.getRoomId(),
-                        "Waiting",
-                        "",
+                        "WaitingForPlayers",
+                        actor.actorId(),
                         false,
                         0,
                         null,

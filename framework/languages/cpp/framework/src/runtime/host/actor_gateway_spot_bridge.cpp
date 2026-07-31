@@ -30,6 +30,57 @@ namespace
 constexpr std::string_view actor_relay_kind_metadata_key = "__zlink.actorRelayKind";
 constexpr std::string_view actor_relay_kind_send = "send";
 constexpr std::string_view actor_relay_kind_request = "request";
+constexpr std::string_view message_follow_hop_metadata_key =
+  "__zlink.messageFollowHopCount";
+
+std::size_t message_follow_hop_count (
+  const spot_inbound_message_t &metadata)
+{
+    const auto value = metadata.find (message_follow_hop_metadata_key);
+    if (!value)
+        return 0;
+    try {
+        return std::stoul (std::string (*value));
+    }
+    catch (...) {
+        return 9;
+    }
+}
+
+std::size_t message_follow_payload_bytes (
+  const stream_header_t &header,
+  const zlink::message_t &payload,
+  const spot_inbound_message_t &metadata)
+{
+    auto total = payload.to_bytes ().size () + header.packet_name ().size ()
+                 + metadata.content_type.size ();
+    for (const auto &[key, value] : metadata.values)
+        total += key.size () + value.size ();
+    return total;
+}
+
+class actor_message_follow_lease_t
+{
+  public:
+    actor_message_follow_lease_t (
+      spot_node_runtime_t runtime,
+      actor_ref_t actor,
+      std::size_t payload_bytes) :
+        _runtime (std::move (runtime)), _actor (std::move (actor)),
+        _payload_bytes (payload_bytes)
+    {
+    }
+
+    ~actor_message_follow_lease_t ()
+    {
+        _runtime.release_actor_message_follow (_actor, _payload_bytes);
+    }
+
+  private:
+    spot_node_runtime_t _runtime;
+    actor_ref_t _actor;
+    std::size_t _payload_bytes;
+};
 
 void trace_actor_transfer (std::string_view stage,
                            const actor_ref_t &actor_ref,
@@ -928,7 +979,22 @@ relay_actor_packet_through_route (spot_node_runtime_t runtime,
                             node_entry, actor_ref);
     };
 
-    if (const auto follow_target = runtime.actor_message_follow_target (actor_ref)) {
+    if (runtime.actor_message_follow_target (actor_ref)) {
+        const auto payload_bytes =
+          message_follow_payload_bytes (header, payload, metadata);
+        const auto follow_target =
+          runtime.try_acquire_actor_message_follow (
+            actor_ref, payload_bytes,
+            message_follow_hop_count (metadata));
+        if (!follow_target) {
+            return result_t<std::optional<zlink::message_t>>::failure (
+              framework_error_kind_t::actor_location_stale,
+              "Actor Message Follow bound was exceeded");
+        }
+        actor_message_follow_lease_t lease (
+          runtime, actor_ref, payload_bytes);
+        metadata.values[std::string (message_follow_hop_metadata_key)] =
+          std::to_string (message_follow_hop_count (metadata) + 1);
         runtime.emit_actor_transfer_marker (
           "message_follow_relay", actor_ref,
           std::string (actor_ref.actor_type ()) + ":" + std::string (actor_ref.actor_id ()),

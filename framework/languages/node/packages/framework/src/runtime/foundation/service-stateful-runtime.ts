@@ -27,6 +27,7 @@ import {
 import {
   decodeStatefulHeader,
   decodeStatefulReply,
+  encodeActorCreateHeader,
   encodeActorDestroyHeader,
   encodeActorHeader,
   encodeActorJoinHeader,
@@ -44,8 +45,10 @@ import {
   M6bServiceWireFlag,
   sessionBindingFromWire,
   type ServiceActorRouteFence,
+  type ServiceActorCreateRecord,
   type ServiceInstanceActivationTarget,
   type ServiceInstanceRouteFence,
+  type ServiceDirectSpotRouteFence,
   type ServiceSpotRouteFence,
   type ServiceStatefulReplyTail,
   type ServiceStatefulWireRecord,
@@ -72,6 +75,33 @@ const SPOT_MOVING = 34;
 const USER_SPOT_OPERATION_CAPACITY = 65_536;
 const USER_SPOT_OPERATION_REPLAY_RETENTION_MS = 5 * 60_000;
 const ACTOR_ROUTE_NOT_FOUND = 1;
+const MESSAGE_FOLLOW_MESSAGE_LIMIT = 1024;
+const MESSAGE_FOLLOW_BYTE_LIMIT = 16 * 1024 * 1024;
+
+export interface ServiceSpotMessageFollowSeal {
+  readonly key: string;
+  readonly serial: bigint;
+}
+
+interface ServiceSpotMessageFollowRecord {
+  readonly ingress: RawServiceIngressRecord;
+  readonly wire: Extract<
+    ServiceStatefulWireRecord,
+    { readonly kind: 'spotSend' | 'spotRequest' }
+  >;
+  readonly bytes: number;
+}
+
+interface ServiceSpotMessageFollowState {
+  readonly seal: ServiceSpotMessageFollowSeal;
+  readonly source: ServiceDirectSpotRouteFence;
+  readonly queued: ServiceSpotMessageFollowRecord[];
+  queuedBytes: number;
+  target?: ServiceDirectSpotRouteFence;
+  expiresAtMs?: number;
+  draining: boolean;
+  retryTimer?: ReturnType<typeof setTimeout>;
+}
 
 export interface ServiceStatefulResult {
   readonly terminalResult: number;
@@ -120,12 +150,15 @@ interface ServiceInstanceIntent {
 
 export interface ServiceInstanceActivationReservation {
   readonly attempt: bigint;
+  readonly authorityOwnerGeneration: bigint;
   readonly token: string;
 }
 
 export interface ServiceInstanceApplicationLifecycle {
   materialize(target: ServiceInstanceActivationTarget, objectGeneration: bigint): Promise<void>;
   discard(target: ServiceInstanceActivationTarget): Promise<void>;
+  beginTerminal(target: ServiceInstanceActivationTarget): void;
+  completeTerminal(target: ServiceInstanceActivationTarget): Promise<boolean>;
 }
 
 export interface ServicePendingInstanceActivation {
@@ -211,7 +244,7 @@ export interface ServiceUserSpotOperationResult {
   readonly failureCode: number;
   readonly tail?: Extract<
     ServiceStatefulReplyTail,
-    { readonly kind: 'userSpotCreate' | 'userSpotClose' }
+    { readonly kind: 'userSpotCreate' | 'userSpotClose' | 'actorCreate' }
   >;
   readonly payload?: ServiceApplicationPayload;
 }
@@ -219,6 +252,7 @@ export interface ServiceUserSpotOperationResult {
 export interface ServiceUserSpotOperationHandler {
   create(record: ServiceUserSpotCreateRecord, signal: AbortSignal): Promise<ServiceUserSpotOperationResult>;
   close(record: ServiceUserSpotCloseRecord, signal: AbortSignal): Promise<ServiceUserSpotOperationResult>;
+  createActor?(record: ServiceActorCreateRecord, signal: AbortSignal): Promise<ServiceUserSpotOperationResult>;
 }
 
 /**
@@ -234,8 +268,9 @@ export class ServiceStatefulRuntime {
   private readonly instanceIntents = new Map<string, ServiceInstanceIntent>();
   private readonly admittedInstanceOperations = new Map<string, bigint>();
   private readonly actorRoutes = new Map<string, ServiceActorRouteFence>();
-  private readonly spotRoutes = new Map<string, ServiceSpotRouteFence>();
-  private readonly spotRouteStoreVersions = new Map<string, string>();
+  private readonly spotRoutes = new Map<string, ServiceDirectSpotRouteFence>();
+  private readonly spotMessageFollow = new Map<string, ServiceSpotMessageFollowState>();
+  private nextMessageFollowSerial = 1n;
   private nextSpotId = 1n;
   private nextSessionSequence = 1n;
   private nextInstanceOperation = 1n;
@@ -374,7 +409,8 @@ export class ServiceStatefulRuntime {
   activateInstanceSpot(
     spotId: string,
     instanceType: string,
-    attempt: bigint
+    attempt: bigint,
+    authorityOwnerGeneration = attempt
   ): { readonly spot: ServiceSpotState; readonly created: boolean } {
     this.requireOpen();
     const result = this.registry.reserve('instanceSpot', spotId, instanceType, attempt);
@@ -388,10 +424,18 @@ export class ServiceStatefulRuntime {
     if (result.kind === 'attemptStale') {
       throw new ServiceStaleGenerationError('spot', spotId);
     }
-    const spot = this.registry.commitReservation(result.reservation);
-    if (!('kind' in spot) || spot.kind !== 'instance') {
+    const committed = this.registry.commitReservation(result.reservation);
+    if (!('kind' in committed) || committed.kind !== 'instance') {
       throw new Error('Instance Spot reservation produced another object kind.');
     }
+    const spot = committed.authorityOwnerGeneration === authorityOwnerGeneration
+      ? committed
+      : this.registry.restoreSpot(
+          committed.ref,
+          'instance',
+          committed.stableType,
+          authorityOwnerGeneration
+        );
     return { spot, created: true };
   }
 
@@ -521,6 +565,31 @@ export class ServiceStatefulRuntime {
       }),
       correlation,
       'userSpotClose',
+      timeoutMs
+    );
+  }
+
+  requestActorCreate(
+    targetNodeRid: string,
+    request: Omit<ServiceActorCreateRecord, 'kind' | 'correlation' | 'operation'>,
+    timeoutMs: number
+  ): Promise<ServiceUserSpotOperationResult> {
+    const correlation = this.nextUserSpotOperation++;
+    const operation = {
+      high: this.nodeGeneration,
+      low: correlation
+    };
+    return this.requestUserSpotOperation(
+      targetNodeRid,
+      encodeActorCreateHeader({
+        ...request,
+        sourceNodeRid: this.nodeRid,
+        sourceNodeGeneration: this.nodeGeneration,
+        correlation,
+        operation
+      }),
+      correlation,
+      'actorCreate',
       timeoutMs
     );
   }
@@ -656,7 +725,13 @@ export class ServiceStatefulRuntime {
       throw new Error('Async Instance activation authority is not registered.');
     }
     const released = await authority.complete(target, route);
-    this.publishCommittedInstanceRoute(target.stableType, released);
+    const authorityReleased = await this.instanceApplicationLifecycle?.completeTerminal(target)
+      ?? false;
+    if (!authorityReleased) {
+      this.publishCommittedInstanceRoute(target.stableType, released);
+    } else {
+      this.forgetClosedInstanceRoute(released);
+    }
     return released;
   }
 
@@ -672,7 +747,7 @@ export class ServiceStatefulRuntime {
     }));
   }
 
-  rememberSpotRoute(route: ServiceSpotRouteFence, storeVersion = ''): void {
+  rememberSpotRoute(route: ServiceDirectSpotRouteFence): void {
     const key = spotKey(route.spot);
     const current = this.spotRoutes.get(key);
     if (current !== undefined) {
@@ -680,21 +755,76 @@ export class ServiceStatefulRuntime {
         return;
       }
       if (current.authorityOwnerGeneration === route.authorityOwnerGeneration) {
-        if (this.spotRouteStoreVersions.get(key) === storeVersion) {
-          if (sameSpotRoute(current, route)) {
-            return;
-          }
-          throw new ServiceStaleGenerationError('spot', route.spot.spotId);
+        if (sameDirectSpotRoute(current, route)) {
+          return;
         }
+        throw new ServiceStaleGenerationError('spot', route.spot.spotId);
       }
     }
-    this.spotRoutes.set(key, Object.freeze({
-      spot: Object.freeze({ ...route.spot }),
-      targetNodeRid: route.targetNodeRid,
-      targetNodeGeneration: route.targetNodeGeneration,
-      authorityOwnerGeneration: route.authorityOwnerGeneration
-    }));
-    this.spotRouteStoreVersions.set(key, storeVersion);
+    this.spotRoutes.set(key, freezeDirectSpotRoute(route));
+  }
+
+  sealSpotMessageFollowIngress(
+    source: ServiceDirectSpotRouteFence
+  ): ServiceSpotMessageFollowSeal | undefined {
+    this.requireOpen();
+    if (
+      source.targetNodeRid !== this.nodeRid
+      || source.targetNodeGeneration !== this.nodeGeneration
+    ) {
+      return undefined;
+    }
+    const key = spotKey(source.spot);
+    if (this.spotMessageFollow.has(key)) return undefined;
+    const seal = Object.freeze({ key, serial: this.nextMessageFollowSerial++ });
+    this.spotMessageFollow.set(key, {
+      seal,
+      source: freezeDirectSpotRoute(source),
+      queued: [],
+      queuedBytes: 0,
+      draining: false
+    });
+    return seal;
+  }
+
+  abortSpotMessageFollowIngress(seal: ServiceSpotMessageFollowSeal): boolean {
+    const state = this.exactSpotMessageFollow(seal);
+    if (state === undefined || state.target !== undefined) return false;
+    this.removeSpotMessageFollow(state);
+    for (const record of state.queued) {
+      const result = this.ingress(record.ingress);
+      if (result !== 'application') {
+        throw new Error('Aborted Spot ingress could not be restored to its source queue.');
+      }
+    }
+    return true;
+  }
+
+  async commitSpotMessageFollowIngress(
+    seal: ServiceSpotMessageFollowSeal,
+    target: ServiceDirectSpotRouteFence,
+    durationMs: number
+  ): Promise<boolean> {
+    const state = this.exactSpotMessageFollow(seal);
+    if (state === undefined || state.target !== undefined) return false;
+    if (!Number.isSafeInteger(durationMs) || durationMs < 0) {
+      throw new RangeError('Message Follow duration must be a non-negative safe integer.');
+    }
+    if (
+      target.spot.spotId !== state.source.spot.spotId
+      || target.spot.generation !== state.source.spot.generation
+      || target.authorityOwnerGeneration <= state.source.authorityOwnerGeneration
+      || target.targetNodeRid === this.nodeRid
+    ) {
+      throw new ServiceStaleGenerationError('spot', state.source.spot.spotId);
+    }
+    state.target = freezeDirectSpotRoute(target);
+    state.expiresAtMs = durationMs === 0
+      ? Number.MAX_SAFE_INTEGER
+      : Date.now() + durationMs;
+    await this.drainSpotMessageFollow(state);
+    if (durationMs === 0) this.removeSpotMessageFollow(state);
+    return true;
   }
 
   forgetSpotRoute(
@@ -706,10 +836,9 @@ export class ServiceStatefulRuntime {
     const current = this.spotRoutes.get(key);
     if (
       current?.authorityOwnerGeneration === authorityOwnerGeneration
-      && (storeVersion === undefined || this.spotRouteStoreVersions.get(key) === storeVersion)
+      && (storeVersion === undefined || current.storeVersion === storeVersion)
     ) {
       this.spotRoutes.delete(key);
-      this.spotRouteStoreVersions.delete(key);
     }
   }
 
@@ -761,39 +890,23 @@ export class ServiceStatefulRuntime {
 
   sendToSpot(
     sourceSpotId: string,
-    targetNodeRid: string,
-    targetSpot: ServiceSpotRef,
-    targetNodeGeneration: bigint,
-    authorityOwnerGeneration: bigint,
+    requested: ServiceDirectSpotRouteFence,
     payload: ServiceApplicationPayload
   ): number {
-    const target = this.acceptSpotAuthority(
-      targetNodeRid,
-      targetSpot,
-      targetNodeGeneration,
-      authorityOwnerGeneration
-    );
+    const target = this.acceptSpotAuthority(requested);
     if (target === undefined) return SubmitResult.NotFound;
     const header = encodeSpotHeader('spotSend', sourceSpotId, target);
-    return this.submitOneWay(targetNodeRid, [header, encodeApplicationPayload(payload)]);
+    return this.submitOneWay(target.targetNodeRid, [header, encodeApplicationPayload(payload)]);
   }
 
   requestToSpot(
     sourceSpotId: string,
-    targetNodeRid: string,
-    targetSpot: ServiceSpotRef,
-    targetNodeGeneration: bigint,
-    authorityOwnerGeneration: bigint,
+    requested: ServiceDirectSpotRouteFence,
     payload: ServiceApplicationPayload,
     timeoutMs: number
   ): ServiceStatefulPendingOperation {
     const pending = this.operations.reserve(timeoutMs);
-    const target = this.acceptSpotAuthority(
-      targetNodeRid,
-      targetSpot,
-      targetNodeGeneration,
-      authorityOwnerGeneration
-    );
+    const target = this.acceptSpotAuthority(requested);
     if (target === undefined) {
       this.operations.reply(pending.id, {
         terminalResult: RequestResult.NotFound,
@@ -804,7 +917,7 @@ export class ServiceStatefulRuntime {
     const header = encodeSpotHeader('spotRequest', sourceSpotId, target, pending.id);
     this.submitRequest(
       pending,
-      targetNodeRid,
+      target.targetNodeRid,
       [header, encodeApplicationPayload(payload)],
       timeoutMs,
       'spotRequest'
@@ -1237,7 +1350,10 @@ export class ServiceStatefulRuntime {
     this.admittedUserSpotOperations.clear();
     this.actorRoutes.clear();
     this.spotRoutes.clear();
-    this.spotRouteStoreVersions.clear();
+    for (const state of this.spotMessageFollow.values()) {
+      if (state.retryTimer !== undefined) clearTimeout(state.retryTimer);
+    }
+    this.spotMessageFollow.clear();
   }
 
   private ingress(record: RawServiceIngressRecord): RawServicePumpResult | undefined {
@@ -1247,6 +1363,7 @@ export class ServiceStatefulRuntime {
         record.command > M6bServiceWireCommand.instanceSpot
         && record.command !== M6bServiceWireCommand.userSpotCreate
         && record.command !== M6bServiceWireCommand.userSpotClose
+        && record.command !== M6bServiceWireCommand.actorCreate
       )
     ) {
       return undefined;
@@ -1266,7 +1383,8 @@ export class ServiceStatefulRuntime {
       const instanceMetadata = decoded.kind === 'instanceSpot'
         && (record.flags & M6bServiceWireFlag.metadata) !== 0;
       const userSpotInfrastructure = decoded.kind === 'userSpotCreate'
-        || decoded.kind === 'userSpotClose';
+        || decoded.kind === 'userSpotClose'
+        || decoded.kind === 'actorCreate';
       if (
         record.parts.length < 1
         || record.parts.length > (instanceMetadata ? 3 : 2)
@@ -1311,8 +1429,10 @@ export class ServiceStatefulRuntime {
   ): RawServicePumpResult {
     switch (record.kind) {
       case 'spotSend':
-      case 'spotRequest':
-        this.validateSpotFence(record.target);
+      case 'spotRequest': {
+        const followed = this.holdOrRelaySpotMessage(ingress, record);
+        if (followed !== undefined) return followed;
+        this.validateDirectSpotFence(record.target);
         return this.enqueueApplication(
           ingress,
           `spot:${record.target.spot.spotId}`,
@@ -1328,9 +1448,22 @@ export class ServiceStatefulRuntime {
               : {})
           }
         );
+      }
       case 'actorSend':
-      case 'actorRequest':
+      case 'actorRequest': {
         this.validateActorFence(record.target);
+        if (record.boundSession !== undefined) {
+          const binding = this.registry.validateBoundSession(
+            record.target.actor,
+            record.boundSession.bindingGeneration
+          );
+          if (
+            binding.sessionRid !== record.boundSession.sessionRid
+            || binding.sessionOwnerNodeRid !== ingress.sourceRoutingId
+          ) {
+            throw new ServiceStaleGenerationError('binding', record.target.actor.actorId);
+          }
+        }
         return this.enqueueApplication(
           ingress,
           `actor:${record.target.actor.actorId}\0${record.target.actor.generation}`,
@@ -1351,6 +1484,7 @@ export class ServiceStatefulRuntime {
               : {})
           }
         );
+      }
       case 'logicalMulticast':
         this.enqueueLogicalMulticast(
           record.channelName,
@@ -1375,6 +1509,7 @@ export class ServiceStatefulRuntime {
         return this.enqueueInstanceSpot(ingress, record, payload!, metadataFrame);
       case 'userSpotCreate':
       case 'userSpotClose':
+      case 'actorCreate':
         return this.handleUserSpotOperation(ingress, record);
     }
   }
@@ -1411,6 +1546,22 @@ export class ServiceStatefulRuntime {
       operationKey = instanceOperationKey(record);
       if (this.admittedInstanceOperations.has(operationKey)) return 'application';
     }
+    const directReply = record.operationKind === 'request'
+      ? localReply ?? this.replyPort(
+          ingress,
+          record.replyRouteId,
+          'instanceSpotRequest'
+        )
+      : undefined;
+    let deferredReply: Parameters<NonNullable<ServiceStatefulMailboxData['reply']>> | undefined;
+    const terminalCompletion = onTerminalCompletion === undefined
+      ? undefined
+      : async () => {
+          await onTerminalCompletion();
+          if (deferredReply !== undefined && directReply !== undefined) {
+            directReply(...deferredReply);
+          }
+        };
     const result = this.enqueueApplication(
       ingress,
       `spot:${spot.ref.spotId}`,
@@ -1422,20 +1573,24 @@ export class ServiceStatefulRuntime {
         ...(record.sourceSpotId === undefined ? {} : { sourceSpotId: record.sourceSpotId }),
         targetSpot: spot.ref,
         ...(metadataFrame === undefined ? {} : { applicationMetadata: metadataFrame }),
-        ...(onTerminalCompletion === undefined ? {} : { onTerminalCompletion }),
+        ...(terminalCompletion === undefined ? {} : { onTerminalCompletion: terminalCompletion }),
         ...(record.operationKind === 'request'
           ? {
-              reply: localReply ?? this.replyPort(
-                ingress,
-                record.replyRouteId,
-                'instanceSpotRequest'
-              )
+              reply: onTerminalCompletion === undefined
+                ? directReply
+                : ((...reply: Parameters<NonNullable<ServiceStatefulMailboxData['reply']>>) => {
+                    deferredReply = reply;
+                    return true;
+                  })
             }
           : {})
       }
     );
     if (operationKey !== undefined && result === 'application' && record.activation === 'missing') {
       this.admittedInstanceOperations.set(operationKey, record.deadlineUnixMs);
+      if (onTerminalCompletion !== undefined) {
+        this.instanceApplicationLifecycle?.beginTerminal(record.target);
+      }
     }
     return result;
   }
@@ -1507,7 +1662,13 @@ export class ServiceStatefulRuntime {
     return () => completion ??= (async () => {
       const released = await this.asyncInstanceAuthority?.complete(target, route);
       if (released !== undefined) {
-        this.publishCommittedInstanceRoute(target.stableType, released);
+        const authorityReleased = await this.instanceApplicationLifecycle?.completeTerminal(target)
+          ?? false;
+        if (!authorityReleased) {
+          this.publishCommittedInstanceRoute(target.stableType, released);
+        } else {
+          this.forgetClosedInstanceRoute(released);
+        }
       }
     })();
   }
@@ -1694,7 +1855,8 @@ export class ServiceStatefulRuntime {
       activation = this.activateInstanceSpot(
         target.targetSpotId,
         target.stableType,
-        reserved.reservation.attempt
+        reserved.reservation.attempt,
+        reserved.reservation.authorityOwnerGeneration
       );
     } catch (error) {
       authority.abort(target, reserved.reservation);
@@ -1803,7 +1965,8 @@ export class ServiceStatefulRuntime {
       activation = this.activateInstanceSpot(
         target.targetSpotId,
         target.stableType,
-        reserved.reservation.attempt
+        reserved.reservation.attempt,
+        reserved.reservation.authorityOwnerGeneration
       );
     } catch (error) {
       await authority.abort(target, reserved.reservation);
@@ -1848,9 +2011,27 @@ export class ServiceStatefulRuntime {
       },
       targetNodeRid: route.targetNodeRid,
       targetNodeGeneration: route.targetNodeGeneration,
-      authorityOwnerGeneration: route.authorityOwnerGeneration
-    }, route.storeVersion);
+      authorityOwnerGeneration: route.authorityOwnerGeneration,
+      ownerLeaseGeneration: route.leaseGeneration,
+      storeVersion: route.storeVersion
+    });
     this.registerInstanceIntent(stableType, route);
+  }
+
+  private forgetClosedInstanceRoute(route: ServiceInstanceRouteFence): void {
+    const local = this.registry.spot(route.targetSpotId);
+    if (
+      local?.kind === 'instance'
+      && local.ref.generation === route.objectGeneration
+      && local.authorityOwnerGeneration === route.authorityOwnerGeneration
+    ) {
+      this.registry.closeSpot(local.ref);
+    }
+    this.forgetSpotRoute(
+      { spotId: route.targetSpotId, generation: route.objectGeneration },
+      route.authorityOwnerGeneration
+    );
+    this.forgetInstanceIntent(route.targetSpotId, route.authorityOwnerGeneration);
   }
 
   private enqueueActorJoin(
@@ -1960,7 +2141,12 @@ export class ServiceStatefulRuntime {
           authorityOwnerGeneration: actor.authorityOwnerGeneration
         });
       } else {
-        this.registry.unbindSession(actor.ref, record.binding.retiredGeneration);
+        this.registry.unbindSession(
+          actor.ref,
+          record.binding.retiredGeneration,
+          record.sessionRid,
+          ingress.sourceRoutingId
+        );
         this.replyWire(ingress, record.correlation, RequestResult.Ok, 0);
       }
     } catch (error) {
@@ -1998,6 +2184,7 @@ export class ServiceStatefulRuntime {
       parts: [ingress.parts[0]!, encodeApplicationPayload(payload)],
       sourceRoutingId: ingress.sourceRoutingId,
       sourceRoute: ingress.sourceRoute,
+      ...(ingress.reply === undefined ? {} : { reply: ingress.reply }),
       ...(ingress.requestSequence === undefined ? {} : { requestSequence: ingress.requestSequence }),
       ...(stateful.correlation === undefined ? {} : { correlation: stateful.correlation }),
       stateful
@@ -2115,7 +2302,7 @@ export class ServiceStatefulRuntime {
 
   private handleUserSpotOperation(
     ingress: RawServiceIngressRecord,
-    record: ServiceUserSpotCreateRecord | ServiceUserSpotCloseRecord
+    record: ServiceUserSpotCreateRecord | ServiceUserSpotCloseRecord | ServiceActorCreateRecord
   ): RawServicePumpResult {
     if (
       ingress.requestSequence === undefined
@@ -2124,7 +2311,7 @@ export class ServiceStatefulRuntime {
     ) {
       return 'protocolError';
     }
-    const target = record.kind === 'userSpotCreate'
+    const target = record.kind === 'userSpotCreate' || record.kind === 'actorCreate'
       ? record.reservation
       : record.target;
     if (
@@ -2237,13 +2424,20 @@ export class ServiceStatefulRuntime {
 
   private async executeUserSpotOperation(
     handler: ServiceUserSpotOperationHandler,
-    record: ServiceUserSpotCreateRecord | ServiceUserSpotCloseRecord
+    record: ServiceUserSpotCreateRecord | ServiceUserSpotCloseRecord | ServiceActorCreateRecord
   ): Promise<ServiceUserSpotOperationResult> {
     const deadline = userSpotDeadline(record.deadlineUnixMs);
     try {
       const result = record.kind === 'userSpotCreate'
         ? await handler.create(record, deadline.signal)
-        : await handler.close(record, deadline.signal);
+        : record.kind === 'userSpotClose'
+          ? await handler.close(record, deadline.signal)
+          : handler.createActor === undefined
+            ? {
+                terminalResult: RequestResult.InvalidState,
+                failureCode: 0
+              }
+            : await handler.createActor(record, deadline.signal);
       if (
         result.terminalResult === RequestResult.Ok
         && (
@@ -2266,20 +2460,37 @@ export class ServiceStatefulRuntime {
     targetNodeRid: string,
     header: Buffer,
     correlation: bigint,
-    operationKind: 'userSpotCreate' | 'userSpotClose',
+    operationKind: 'userSpotCreate' | 'userSpotClose' | 'actorCreate',
     timeoutMs: number
   ): Promise<ServiceUserSpotOperationResult> {
     this.requireOpen();
-    const parts = await this.raw.requestService(targetNodeRid, [header], timeoutMs);
+    const deadlineMs = Date.now() + Math.max(1, timeoutMs);
+    let parts: readonly Buffer[];
+    for (;;) {
+      const remainingMs = deadlineMs - Date.now();
+      if (remainingMs <= 0) {
+        throw new Error(`${operationKind} timed out before terminal replay.`);
+      }
+      try {
+        parts = targetNodeRid === this.nodeRid
+          ? await this.requestLocalInfrastructure(header, correlation, remainingMs)
+          : await this.raw.requestService(targetNodeRid, [header], remainingMs);
+        break;
+      } catch (error) {
+        const retryDelayMs = Math.min(20, deadlineMs - Date.now());
+        if (retryDelayMs <= 0) throw error;
+        await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+      }
+    }
     if (parts.length < 1 || parts.length > 2) {
-      throw new ServiceWireProtocolError('Invalid User Spot reply parts.');
+      throw new ServiceWireProtocolError('Invalid creation operation reply parts.');
     }
     const decoded = decodeStatefulReply(parts[0]!, correlation, operationKind);
     if (
       decoded.terminalResult !== RequestResult.Ok
       && parts.length !== 1
     ) {
-      throw new ServiceWireProtocolError('Failed User Spot reply carries a payload.');
+      throw new ServiceWireProtocolError('Failed creation operation reply carries a payload.');
     }
     if (
       operationKind === 'userSpotClose'
@@ -2295,6 +2506,48 @@ export class ServiceStatefulRuntime {
         ? { payload: decodeApplicationPayload(parts[1]!) }
         : {})
     };
+  }
+
+  private requestLocalInfrastructure(
+    header: Buffer,
+    requestSequence: bigint,
+    timeoutMs: number
+  ): Promise<readonly Buffer[]> {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error('Local infrastructure request timed out.'));
+      }, timeoutMs);
+      const finish = (parts: readonly Uint8Array[]) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(parts.map(part => Buffer.from(part)));
+      };
+      try {
+        const result = this.ingress({
+          command: header[3]!,
+          flags: header[4]!,
+          sourceRoutingId: this.nodeRid,
+          requestSequence,
+          reply: finish,
+          parts: [header]
+        });
+        if (result !== 'infrastructure') {
+          clearTimeout(timer);
+          settled = true;
+          reject(new ServiceWireProtocolError(
+            `Local infrastructure request was rejected as '${result ?? 'unsupported'}'.`
+          ));
+        }
+      } catch (error) {
+        clearTimeout(timer);
+        settled = true;
+        reject(error);
+      }
+    });
   }
 
   private submitOneWay(targetNodeRid: string, parts: readonly Buffer[]): number {
@@ -2390,7 +2643,7 @@ export class ServiceStatefulRuntime {
       actor
     ));
     if (decoded.kind === 'spotRequest') {
-      this.validateSpotFence(decoded.target);
+      this.validateDirectSpotFence(decoded.target);
       this.enqueueApplication(
         ingress,
         `spot:${decoded.target.spot.spotId}`,
@@ -2479,7 +2732,12 @@ export class ServiceStatefulRuntime {
             current.membershipEpoch
           ));
         } else {
-          this.registry.unbindSession(current.ref, decoded.binding.retiredGeneration);
+          this.registry.unbindSession(
+            current.ref,
+            decoded.binding.retiredGeneration,
+            decoded.sessionRid,
+            this.nodeRid
+          );
         }
         this.operations.reply(pending.id, { terminalResult: RequestResult.Ok, failureCode: 0 });
       } catch (error) {
@@ -2646,6 +2904,150 @@ export class ServiceStatefulRuntime {
     return spot;
   }
 
+  private validateDirectSpotFence(fence: ServiceDirectSpotRouteFence): ServiceSpotState {
+    const spot = this.validateSpotFence(fence);
+    if (spot.kind === 'entry') {
+      if (!isEntrySpotFence(fence)) {
+        throw new ServiceStaleGenerationError('spot', fence.spot.spotId);
+      }
+      return spot;
+    }
+    const current = this.spotRoutes.get(spotKey(fence.spot));
+    if (current === undefined || !sameDirectSpotRoute(current, fence)) {
+      throw new ServiceStaleGenerationError('spot', fence.spot.spotId);
+    }
+    return spot;
+  }
+
+  private holdOrRelaySpotMessage(
+    ingress: RawServiceIngressRecord,
+    wire: Extract<
+      ServiceStatefulWireRecord,
+      { readonly kind: 'spotSend' | 'spotRequest' }
+    >
+  ): RawServicePumpResult | undefined {
+    const state = this.spotMessageFollow.get(spotKey(wire.target.spot));
+    if (state === undefined || !sameDirectSpotRoute(state.source, wire.target)) {
+      return undefined;
+    }
+    if (state.expiresAtMs !== undefined && state.expiresAtMs <= Date.now()) {
+      this.removeSpotMessageFollow(state);
+      return undefined;
+    }
+    const bytes = ingress.parts.reduce((sum, part) => sum + part.byteLength, 0);
+    if (
+      state.queued.length >= MESSAGE_FOLLOW_MESSAGE_LIMIT
+      || bytes > MESSAGE_FOLLOW_BYTE_LIMIT - state.queuedBytes
+    ) {
+      if (wire.kind === 'spotRequest') {
+        const result = failure(new ServiceStaleGenerationError('spot', wire.target.spot.spotId));
+        this.replyWire(ingress, wire.correlation!, result.terminalResult, result.failureCode);
+      }
+      return 'infrastructure';
+    }
+    state.queued.push({
+      ingress: retainIngress(ingress),
+      wire,
+      bytes
+    });
+    state.queuedBytes += bytes;
+    if (state.target !== undefined) void this.drainSpotMessageFollow(state);
+    return 'application';
+  }
+
+  private async drainSpotMessageFollow(state: ServiceSpotMessageFollowState): Promise<void> {
+    if (state.draining || state.target === undefined) return;
+    state.draining = true;
+    try {
+      while (state.queued.length > 0 && this.spotMessageFollow.get(state.seal.key) === state) {
+        if (state.expiresAtMs === undefined || state.expiresAtMs <= Date.now()) {
+          this.failExpiredSpotMessageFollow(state);
+          return;
+        }
+        const current = state.queued[0]!;
+        const parts = [
+          encodeSpotHeader(
+            current.wire.kind,
+            current.wire.sourceSpotId,
+            state.target,
+            current.wire.correlation!
+          ),
+          current.ingress.parts[1]!
+        ];
+        if (current.wire.kind === 'spotSend') {
+          if (!this.raw.sendService(state.target.targetNodeRid, parts)) {
+            this.scheduleSpotMessageFollowRetry(state);
+            return;
+          }
+        } else {
+          try {
+            const remainingMs = Math.max(
+              1,
+              Math.min(30_000, state.expiresAtMs - Date.now())
+            );
+            const reply = await this.raw.requestService(
+              state.target.targetNodeRid,
+              parts,
+              remainingMs
+            );
+            this.raw.replyService(current.ingress, reply);
+          } catch (error) {
+            const result = failure(error);
+            this.replyWire(
+              current.ingress,
+              current.wire.correlation!,
+              result.terminalResult,
+              result.failureCode
+            );
+          }
+        }
+        state.queued.shift();
+        state.queuedBytes -= current.bytes;
+      }
+    } finally {
+      state.draining = false;
+    }
+  }
+
+  private scheduleSpotMessageFollowRetry(state: ServiceSpotMessageFollowState): void {
+    if (state.retryTimer !== undefined) return;
+    state.retryTimer = setTimeout(() => {
+      state.retryTimer = undefined;
+      void this.drainSpotMessageFollow(state);
+    }, 10);
+  }
+
+  private failExpiredSpotMessageFollow(state: ServiceSpotMessageFollowState): void {
+    this.removeSpotMessageFollow(state);
+    for (const current of state.queued) {
+      if (current.wire.kind !== 'spotRequest') continue;
+      const result = failure(
+        new ServiceStaleGenerationError('spot', current.wire.target.spot.spotId)
+      );
+      this.replyWire(
+        current.ingress,
+        current.wire.correlation!,
+        result.terminalResult,
+        result.failureCode
+      );
+    }
+  }
+
+  private exactSpotMessageFollow(
+    seal: ServiceSpotMessageFollowSeal
+  ): ServiceSpotMessageFollowState | undefined {
+    const state = this.spotMessageFollow.get(seal.key);
+    return state?.seal.serial === seal.serial ? state : undefined;
+  }
+
+  private removeSpotMessageFollow(state: ServiceSpotMessageFollowState): void {
+    if (this.spotMessageFollow.get(state.seal.key) === state) {
+      this.spotMessageFollow.delete(state.seal.key);
+    }
+    if (state.retryTimer !== undefined) clearTimeout(state.retryTimer);
+    state.retryTimer = undefined;
+  }
+
   private actorFence(actor: ServiceActorRef): ServiceActorRouteFence {
     const route = this.tryActorFence(actor);
     if (route === undefined) throw new ServiceStaleGenerationError('actor', actor.actorId);
@@ -2687,36 +3089,36 @@ export class ServiceStatefulRuntime {
   }
 
   private acceptSpotAuthority(
-    targetNodeRid: string,
-    spot: ServiceSpotRef,
-    targetNodeGeneration: bigint,
-    authorityOwnerGeneration: bigint
-  ): ServiceSpotRouteFence | undefined {
+    requested: ServiceDirectSpotRouteFence
+  ): ServiceDirectSpotRouteFence | undefined {
+    const { targetNodeRid, spot, targetNodeGeneration, authorityOwnerGeneration } = requested;
     if (targetNodeRid === this.nodeRid) {
       const local = this.registry.spot(spot.spotId);
+      if (
+        local?.kind === 'entry'
+        && sameSpotRef(local.ref, spot)
+        && targetNodeGeneration === this.nodeGeneration
+        && authorityOwnerGeneration === local.authorityOwnerGeneration
+        && isEntrySpotFence(requested)
+      ) {
+        return requested;
+      }
+      const current = this.spotRoutes.get(spotKey(spot));
       return local !== undefined
         && sameSpotRef(local.ref, spot)
         && targetNodeGeneration === this.nodeGeneration
         && authorityOwnerGeneration === local.authorityOwnerGeneration
-        ? {
-            spot,
-            targetNodeRid,
-            targetNodeGeneration,
-            authorityOwnerGeneration
-          }
+        && current !== undefined
+        && sameDirectSpotRoute(current, requested)
+        ? current
         : undefined;
     }
     const peer = this.raw.topology.peer(targetNodeRid);
     if (peer?.descriptor.lifecycleGeneration !== targetNodeGeneration) {
       return undefined;
     }
-    this.rememberSpotRoute({
-      spot,
-      targetNodeRid,
-      targetNodeGeneration,
-      authorityOwnerGeneration
-    });
-    return this.trySpotFence(targetNodeRid, spot);
+    this.rememberSpotRoute(requested);
+    return this.spotRoutes.get(spotKey(spot));
   }
 
   private peerGeneration(nodeRid: string): bigint {
@@ -2767,6 +3169,14 @@ export class ServiceStatefulRuntime {
   }
 }
 
+function isEntrySpotFence(fence: ServiceDirectSpotRouteFence): boolean {
+  return fence.spot.spotId === fence.targetNodeRid
+    && fence.spot.generation === fence.targetNodeGeneration
+    && fence.authorityOwnerGeneration === fence.targetNodeGeneration
+    && fence.ownerLeaseGeneration === fence.targetNodeGeneration
+    && fence.storeVersion === `entry:${fence.targetNodeGeneration}`;
+}
+
 function userSpotDeadline(deadlineUnixMs: bigint): {
   readonly signal: AbortSignal;
   close(): void;
@@ -2789,7 +3199,7 @@ function operationReplayExpired(deadlineUnixMs: bigint): boolean {
 }
 
 function userSpotOperationFingerprint(
-  record: ServiceUserSpotCreateRecord | ServiceUserSpotCloseRecord
+  record: ServiceUserSpotCreateRecord | ServiceUserSpotCloseRecord | ServiceActorCreateRecord
 ): string {
   const { correlation: _correlation, ...semantic } = record;
   return JSON.stringify(
@@ -2857,6 +3267,41 @@ function sameSpotRef(left: ServiceSpotRef, right: ServiceSpotRef): boolean {
   return left.spotId === right.spotId && left.generation === right.generation;
 }
 
+function freezeSpotRoute(route: ServiceSpotRouteFence): ServiceSpotRouteFence {
+  return Object.freeze({
+    spot: Object.freeze({ ...route.spot }),
+    targetNodeRid: route.targetNodeRid,
+    targetNodeGeneration: route.targetNodeGeneration,
+    authorityOwnerGeneration: route.authorityOwnerGeneration
+  });
+}
+
+function freezeDirectSpotRoute(
+  route: ServiceDirectSpotRouteFence
+): ServiceDirectSpotRouteFence {
+  return Object.freeze({
+    ...freezeSpotRoute(route),
+    ownerLeaseGeneration: route.ownerLeaseGeneration,
+    storeVersion: route.storeVersion
+  });
+}
+
+function retainIngress(record: RawServiceIngressRecord): RawServiceIngressRecord {
+  return Object.freeze({
+    command: record.command,
+    flags: record.flags,
+    sourceRoutingId: record.sourceRoutingId,
+    ...(record.sourceRoute === undefined
+      ? {}
+      : { sourceRoute: Buffer.from(record.sourceRoute) }),
+    ...(record.requestSequence === undefined
+      ? {}
+      : { requestSequence: record.requestSequence }),
+    ...(record.reply === undefined ? {} : { reply: record.reply }),
+    parts: Object.freeze(record.parts.map(part => Buffer.from(part)))
+  });
+}
+
 function statefulCorrelation(record: ServiceStatefulWireRecord): bigint | undefined {
   if ('correlation' in record) return record.correlation;
   return record.kind === 'instanceSpot' && record.operationKind === 'request'
@@ -2880,6 +3325,15 @@ function sameSpotRoute(left: ServiceSpotRouteFence, right: ServiceSpotRouteFence
     && left.targetNodeRid === right.targetNodeRid
     && left.targetNodeGeneration === right.targetNodeGeneration
     && left.authorityOwnerGeneration === right.authorityOwnerGeneration;
+}
+
+function sameDirectSpotRoute(
+  left: ServiceDirectSpotRouteFence,
+  right: ServiceDirectSpotRouteFence
+): boolean {
+  return sameSpotRoute(left, right)
+    && left.ownerLeaseGeneration === right.ownerLeaseGeneration
+    && left.storeVersion === right.storeVersion;
 }
 
 function routeMatchesLocal(

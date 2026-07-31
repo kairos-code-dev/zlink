@@ -183,7 +183,10 @@ internal sealed class ZLinkActorDispatchRouter(
         var replayAdmission = relocationReplay
             ? ZLinkSpotRelocationReplayScope.Current
             : null;
-        if (relocationReplay && replayAdmission is null)
+        if (relocationReplay
+            && replayAdmission is null
+            && placement.Activation.ExecutionMode
+               != ZLinkUserSpotExecutionMode.PerActor)
             throw new InvalidOperationException(
                 "SPOT Actor relocation replay has no target admission.");
         await placement.Activation.SubmitActorAsync(
@@ -214,7 +217,10 @@ internal sealed class ZLinkActorDispatchRouter(
             var replayAdmission = relocationReplay
                 ? ZLinkSpotRelocationReplayScope.Current
                 : null;
-            if (relocationReplay && replayAdmission is null)
+            if (relocationReplay
+                && replayAdmission is null
+                && placement.Activation.ExecutionMode
+                   != ZLinkUserSpotExecutionMode.PerActor)
                 throw new InvalidOperationException(
                     "SPOT Actor relocation replay has no target admission.");
             return await placement.Activation.SubmitActorForReplyAsync(

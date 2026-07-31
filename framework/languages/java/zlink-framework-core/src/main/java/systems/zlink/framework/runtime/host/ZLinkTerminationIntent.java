@@ -1,6 +1,6 @@
 package systems.zlink.framework.runtime.host;
 
-public enum ZLinkTerminationIntent {
+enum ZLinkTerminationIntent {
     RETIRE(0),
     SHUTDOWN(1);
 

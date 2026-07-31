@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ZLINK_CHANNEL_CLIENT, ZLINK_FANOUT_CLIENT } from '@zlink-systems/nestjs';
+import { ZLINK_FANOUT_CLIENT, ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
 import { zlinkSendHandler } from '@zlink-systems/nestjs';
 import { ZLinkPacket } from '@zlink-systems/framework';
 import {
@@ -28,10 +28,10 @@ import type {
   SetMaintenanceReq
 } from '../../Shared/contracts';
 import type {
-  ZLinkChannelClient,
   ZLinkFanoutClient,
   ZLinkMessage,
-  ZLinkSendContext,
+  ZLinkMessageContext,
+  ZLinkRouteClient,
   ZLinkSendHandler,
   ZLinkSessionContext,
   ZLinkSessionDispatchContext
@@ -42,7 +42,7 @@ import type {
 class ReportNodeStatusHandler implements ZLinkSendHandler<ReportNodeStatusMsg> {
   constructor(private readonly nodes: NodeRegistry, private readonly consoles: OpsConsoleRegistry) {}
 
-  async handle(message: ReportNodeStatusMsg, _context: ZLinkSendContext): Promise<void> {
+  async handle(message: ReportNodeStatusMsg, _context: ZLinkMessageContext): Promise<void> {
     console.log(`node status received node=${message.nodeId}`);
     this.consoles.publish(this.nodes.report(message));
   }
@@ -53,7 +53,7 @@ class ReportNodeStatusHandler implements ZLinkSendHandler<ReportNodeStatusMsg> {
 class ReportSpotEventHandler implements ZLinkSendHandler<ReportSpotEventMsg> {
   constructor(private readonly consoles: OpsConsoleRegistry) {}
 
-  async handle(message: ReportSpotEventMsg, _context: ZLinkSendContext): Promise<void> {
+  async handle(message: ReportSpotEventMsg, _context: ZLinkMessageContext): Promise<void> {
     this.consoles.publishAlert(new NodeAlertNotify(
       message.nodeId,
       message.kind as never,
@@ -87,7 +87,7 @@ class AnnounceWorldHandler {
     const request = payload.decode<AnnounceWorldReq>(Object as never);
     const id = `announce-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     await this.fanout
-      .publish(ZoneWorldNames.broadcastChannel, ZoneWorldNames.announceTopic, new WorldAnnounceEvent(id, request.text))
+      .publish(ZoneWorldNames.broadcastChannel, new WorldAnnounceEvent(id, request.text))
       .submit();
     context.client.reply(new AnnounceWorldRes(id)).submit();
   }
@@ -97,7 +97,7 @@ class AnnounceWorldHandler {
 @ZLinkPacket(PacketNames.setMaintenanceReq)
 class SetMaintenanceHandler {
   constructor(
-    @Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient,
+    @Inject(ZLINK_ROUTE_CLIENT) private readonly channels: ZLinkRouteClient,
     @Inject(ZLINK_FANOUT_CLIENT) private readonly fanout: ZLinkFanoutClient,
     private readonly maintenance: MaintenanceStore
   ) {}
@@ -112,7 +112,6 @@ class SetMaintenanceHandler {
     try {
       const applied = await this.channels
         .requestToChannel(
-          ZoneWorldNames.zoneMesh,
           ZoneWorldNames.opsChannel(request.nodeId),
           new ApplyNodeMaintenanceReq(request.nodeId, request.enabled)
         )
@@ -132,7 +131,7 @@ class SetMaintenanceHandler {
 @Injectable()
 @ZLinkPacket(PacketNames.nodeDiagnosticsReq)
 class NodeDiagnosticsHandler {
-  constructor(@Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient) {}
+  constructor(@Inject(ZLINK_ROUTE_CLIENT) private readonly channels: ZLinkRouteClient) {}
 
   async handle(
     context: ZLinkSessionContext,
@@ -143,7 +142,6 @@ class NodeDiagnosticsHandler {
     try {
       const result = await this.channels
         .requestToChannel(
-          ZoneWorldNames.zoneMesh,
           ZoneWorldNames.opsChannel(request.nodeId),
           new GetNodeDiagnosticsReq(request.nodeId)
         )

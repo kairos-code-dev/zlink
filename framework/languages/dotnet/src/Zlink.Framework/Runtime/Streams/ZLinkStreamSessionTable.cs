@@ -196,7 +196,6 @@ internal sealed class ZLinkStreamSessionTable(
         }
         catch
         {
-            ZLinkRuntimeMetrics.RecordDrainForced("session");
         }
         finally
         {

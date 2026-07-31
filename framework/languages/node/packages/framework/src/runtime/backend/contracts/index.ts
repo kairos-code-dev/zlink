@@ -26,10 +26,13 @@ import type {
 import type { ZLinkSubmitResult } from '../../messaging/submission-result';
 import type { Message } from '../../../contracts/Common/Message';
 import type {
+  ServiceSpotMessageFollowSeal,
   ServiceUserSpotOperationHandler,
   ServiceUserSpotOperationResult
 } from '../../foundation/service-stateful-runtime';
 import type {
+  ServiceActorCreateRecord,
+  ServiceDirectSpotRouteFence,
   ServiceUserSpotCloseRecord,
   ServiceUserSpotCreateRecord
 } from '../../foundation/service-stateful-wire-codec';
@@ -52,6 +55,11 @@ export interface ZLinkBackendMeshNode {
   setRoutingId(routingId: unknown): void;
   setBind(endpoint: string): void;
   start(): void;
+  setInboundMessageDroppedHandler?(handler: (
+    surface: 'node' | 'channel',
+    messageKind: 'send',
+    reason: 'backpressure'
+  ) => void): void;
   shutdown(timeoutMs: number): RequestResult;
   close(): void;
   addChannelName(name: string): void;
@@ -69,6 +77,7 @@ export interface ZLinkBackendMeshNode {
     readonly targetNodeGeneration: bigint;
     readonly descriptorVersion: string;
   } | undefined;
+  instanceSpotPlacementTypes?(): readonly string[];
   sendToMissingInstanceSpot(
     target: {
       readonly targetNodeRid: string;
@@ -106,7 +115,17 @@ export interface ZLinkBackendMeshNode {
     request: Omit<ServiceUserSpotCloseRecord, 'kind' | 'correlation' | 'operation'>,
     timeoutMs: number
   ): Promise<ServiceUserSpotOperationResult>;
-  connectPeer(options: { readonly endpoint: string; readonly expectedRid?: unknown }): bigint;
+  requestActorCreate(
+    targetNodeRid: string,
+    request: Omit<ServiceActorCreateRecord, 'kind' | 'correlation' | 'operation'>,
+    timeoutMs: number
+  ): Promise<ServiceUserSpotOperationResult>;
+  connectPeer(options: {
+    readonly endpoint: string;
+    readonly expectedRid?: unknown;
+    readonly expectedSecurityIdentity?: string;
+    readonly expectedLifecycleGeneration?: bigint;
+  }): bigint;
   removePeerConnection(intentId: bigint): void;
   disconnectPeer(peerRid: unknown, lifecycleGeneration: bigint): void;
   replaceDiscoveredNotRequiredPeers?(peers: readonly {
@@ -188,14 +207,17 @@ export interface ZLinkBackendMeshNode {
   lookupRemoteActor(targetNodeRid: unknown, actorId: string, timeoutMs?: number): MeshOperationId;
   destroyActor(actor: ZLinkBackendActorRef, timeoutMs?: number): MeshOperationId;
   rememberSpotRoute?(
-    route: {
-      readonly spot: { readonly spotId: string; readonly generation: bigint };
-      readonly targetNodeRid: string;
-      readonly targetNodeGeneration: bigint;
-      readonly authorityOwnerGeneration: bigint;
-    },
-    storeVersion?: string
+    route: ServiceDirectSpotRouteFence
   ): void;
+  sealSpotMessageFollowIngress?(
+    source: ServiceDirectSpotRouteFence
+  ): ServiceSpotMessageFollowSeal | undefined;
+  abortSpotMessageFollowIngress?(seal: ServiceSpotMessageFollowSeal): boolean;
+  commitSpotMessageFollowIngress?(
+    seal: ServiceSpotMessageFollowSeal,
+    target: ServiceDirectSpotRouteFence,
+    durationMs: number
+  ): Promise<boolean>;
   joinActorSpot(
     actor: ZLinkBackendActorRef,
     targetNodeRid: unknown,

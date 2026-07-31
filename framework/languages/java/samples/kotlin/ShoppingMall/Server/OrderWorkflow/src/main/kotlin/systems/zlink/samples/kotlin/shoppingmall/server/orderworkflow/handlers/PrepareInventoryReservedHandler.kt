@@ -1,8 +1,9 @@
 package systems.zlink.samples.kotlin.shoppingmall.server.orderworkflow.handlers
 
-import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.handlers.ZLinkHandlerGroup
-import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionStage
+import systems.zlink.framework.spots.ZLinkSpotRequestHandler
+import systems.zlink.samples.kotlin.shoppingmall.server.orderworkflow.OrderWorkflowSpot
 import systems.zlink.samples.kotlin.shoppingmall.server.orderworkflow.OrderWorkflowService
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.PrepareInventoryReservedReq
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.PrepareInventoryReservedRes
@@ -11,13 +12,16 @@ import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.PrepareInvento
  * Self-check hook that stops after the inventory reservation checkpoint so the
  * client can prove explicit recovery resumes at the next event-stream step.
  */
-@ZLinkHandlerGroup("workflow")
 class PrepareInventoryReservedHandler(
     private val workflow: OrderWorkflowService,
-) : ZLinkSuspendingRequestHandler<PrepareInventoryReservedReq, PrepareInventoryReservedRes> {
-    override suspend fun handle(
+) : ZLinkSpotRequestHandler<OrderWorkflowSpot, PrepareInventoryReservedReq, PrepareInventoryReservedRes> {
+    override fun handle(
+        spot: OrderWorkflowSpot,
         request: PrepareInventoryReservedReq,
-        context: ZLinkRequestContext,
-    ): PrepareInventoryReservedRes =
-        PrepareInventoryReservedRes(workflow.prepareInventoryReserved(request.command))
+    ): CompletionStage<PrepareInventoryReservedRes> {
+        spot.requireOrder(request.command.orderId)
+        return CompletableFuture.completedFuture(
+            PrepareInventoryReservedRes(workflow.prepareInventoryReserved(request.command)),
+        )
+    }
 }

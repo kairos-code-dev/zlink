@@ -20,6 +20,10 @@ export type NativeRequestCallback = (
   result: number,
   replyParts: Buffer[] | null
 ) => void;
+export type NativeCompletionControlHandler = (
+  sourceRoutingId: Buffer,
+  parts: Buffer[]
+) => void;
 
 export type {
   MonitorEventValueRaw,

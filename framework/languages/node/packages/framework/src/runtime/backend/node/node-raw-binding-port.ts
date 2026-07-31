@@ -5,7 +5,10 @@ import {
   SendFlags,
   createContext,
   createDealerSocket,
+  createPollEvents,
+  createPoller,
   createRouterSocket,
+  PollEventFlag,
   type Context,
   type DealerSocket,
   type MonitorEvent,
@@ -24,6 +27,7 @@ export interface ZLinkRawReceivedRecord {
   readonly sourceRid: string;
   readonly sourceRoute: Uint8Array;
   readonly requestSeq?: bigint;
+  readonly reply?: (parts: readonly Uint8Array[]) => void;
   readonly parts: readonly Buffer[];
 }
 
@@ -65,6 +69,23 @@ export interface ZLinkRawRouterPort extends ZLinkRawSocketPort {
     requestSeq: bigint,
     parts: readonly Uint8Array[]
   ): void;
+  /**
+   * Submits a bounded Framework control record on the existing Completion
+   * connection. Application payload must continue to use send().
+   */
+  trySendCompletionControl?(
+    targetRid: string,
+    parts: readonly Uint8Array[]
+  ): boolean;
+  /**
+   * Receives Framework control records without consuming Application
+   * connection messages. The handler owns copied payload bytes.
+   */
+  setCompletionControlHandler?(
+    handler: (sourceRid: string, parts: readonly Buffer[]) => void
+  ): void;
+  /** Progresses only Completion connection work and never consumes Application messages. */
+  progressCompletion?(): number;
 }
 
 export interface ZLinkRawDealerPort extends ZLinkRawSocketPort {
@@ -226,11 +247,17 @@ abstract class NodeRawSocketPort<TSocket extends Socket> implements ZLinkRawSock
 }
 
 class NodeRawRouterPort extends NodeRawSocketPort<RouterSocket> implements ZLinkRawRouterPort {
+  private readonly completionPoller = createPoller();
+  private readonly completionEvents = createPollEvents(1);
+  private completionTimer?: ReturnType<typeof setTimeout>;
+  private completionClosed = false;
+
   constructor(socket: RouterSocket) {
     super(socket);
     socket.options.handover = true;
     socket.options.mandatory = true;
     socket.options.probe = true;
+    this.completionPoller.add(socket, [PollEventFlag.PollCompletion], 1);
   }
 
   localEndpoint(): string {
@@ -276,6 +303,70 @@ class NodeRawRouterPort extends NodeRawSocketPort<RouterSocket> implements ZLink
   reply(targetRid: string | Uint8Array, requestSeq: bigint, parts: readonly Uint8Array[]): void {
     this.requireOpen();
     appendReplyParts(this.socket.reply(bindingRoutingId(targetRid), requestSeq), parts).submit();
+  }
+
+  trySendCompletionControl(
+    targetRid: string,
+    parts: readonly Uint8Array[]
+  ): boolean {
+    this.requireOpen();
+    const messages = parts.map(part => Message.from(part));
+    try {
+      return this.socket.trySendCompletionControl(bindingRoutingId(targetRid), messages);
+    } finally {
+      for (const message of messages) message.close();
+    }
+  }
+
+  setCompletionControlHandler(
+    handler: (sourceRid: string, parts: readonly Buffer[]) => void
+  ): void {
+    this.requireOpen();
+    this.socket.setCompletionControlHandler((sourceRoutingId, messages) => {
+      try {
+        handler(
+          sourceRoutingId.toString(),
+          messages.map(message => message.toBytes())
+        );
+      } finally {
+        for (const message of messages) message.close();
+      }
+    });
+    this.scheduleCompletionProgress();
+  }
+
+  progressCompletion(): number {
+    this.requireOpen();
+    return this.completionPoller.wait(this.completionEvents, 0);
+  }
+
+  override close(): void {
+    this.completionClosed = true;
+    if (this.completionTimer !== undefined) {
+      clearTimeout(this.completionTimer);
+      this.completionTimer = undefined;
+    }
+    try {
+      this.completionPoller.remove(this.socket);
+    } finally {
+      this.completionEvents.close();
+      this.completionPoller.close();
+      super.close();
+    }
+  }
+
+  private scheduleCompletionProgress(): void {
+    if (this.completionClosed || this.completionTimer !== undefined) return;
+    this.completionTimer = setTimeout(() => {
+      this.completionTimer = undefined;
+      if (this.completionClosed) return;
+      try {
+        this.progressCompletion();
+      } finally {
+        this.scheduleCompletionProgress();
+      }
+    }, 5);
+    this.completionTimer.unref();
   }
 }
 
@@ -374,10 +465,20 @@ function receiveRecord(
     return undefined;
   }
   try {
+    const reply = received.requestSeq === null
+      ? undefined
+      : received.reply();
     return {
       sourceRid: received.routingId?.toString() ?? '',
       sourceRoute: received.routingId?.toBytes() ?? Buffer.alloc(0),
       ...(received.requestSeq === null ? {} : { requestSeq: received.requestSeq }),
+      ...(reply === undefined
+        ? {}
+        : {
+            reply: (parts: readonly Uint8Array[]) => {
+              appendReplyParts(reply, parts).submit();
+            }
+          }),
       parts: received.parts.map(part => part.toBytes())
     };
   } finally {

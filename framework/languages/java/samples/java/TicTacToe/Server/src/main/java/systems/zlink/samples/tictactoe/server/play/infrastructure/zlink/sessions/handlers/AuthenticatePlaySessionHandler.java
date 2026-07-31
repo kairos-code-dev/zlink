@@ -1,6 +1,8 @@
 package systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.sessions.handlers;
 
 import systems.zlink.framework.actors.ZLinkActorManager;
+import systems.zlink.framework.actors.ActorRef;
+import systems.zlink.framework.actors.ZLinkActorCreateResult;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionMessageContext;
@@ -43,10 +45,22 @@ public final class AuthenticatePlaySessionHandler
             .timeout(SampleNames.RequestTimeout)
             .submit(AuthenticatePlayerRes.class)
             .thenCompose(authenticated -> actors.getOrCreate(
-                    authenticated.player().actorId(), SampleNames.PlayActor, authenticated.player())
-                .thenCompose(playActor -> context.actors().bind(playActor))
+                    authenticated.player().actorId(), SampleNames.PlayActor)
+                .request(authenticated.player())
+                .submit()
+                .thenCompose(result -> context.actors().bind(requireActor(result)))
                 .thenRun(() -> context.client()
                     .reply(new AuthenticateRes(authenticated.player()))
                     .submit()));
+    }
+
+    private static ActorRef requireActor(ZLinkActorCreateResult result) {
+        if (result instanceof ZLinkActorCreateResult.Existing existing) {
+            return existing.actor();
+        }
+        if (result instanceof ZLinkActorCreateResult.Created created) {
+            return created.actor();
+        }
+        throw new IllegalStateException("Play actor creation was rejected.");
     }
 }

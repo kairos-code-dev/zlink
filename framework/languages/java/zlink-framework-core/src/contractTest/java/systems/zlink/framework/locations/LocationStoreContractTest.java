@@ -21,6 +21,7 @@ import systems.zlink.framework.runtime.locations.ZLinkLiveLocationRows;
 import systems.zlink.framework.runtime.locations.ZLinkLocationRuntime;
 import systems.zlink.framework.runtime.locations.ZLinkLocationRuntimeQueryService;
 import systems.zlink.framework.runtime.locations.ZLinkRegisteredLocationStores;
+import systems.zlink.framework.runtime.internal.locations.*;
 
 final class LocationStoreContractTest {
     private static final Instant STORE_NOW = Instant.parse("2026-07-03T00:00:00Z");
@@ -29,31 +30,36 @@ final class LocationStoreContractTest {
     @Test
     void registrationKeepsOneUnifiedProviderBoundary() {
         ZLinkInMemoryLocationStore store = newStore();
+        ZLinkProviderLocationRepository repository = repository(store);
         ZLinkRegisteredLocationStores stores =
-            ZLinkRegisteredLocationStores.fromUnified(store);
+            ZLinkRegisteredLocationStores.fromUnified(repository);
 
-        assertSame(store, stores.unifiedStore());
+        assertSame(repository, stores.unifiedStore());
+        assertTrue(store instanceof systems.zlink.framework.locationprovider
+            .ZLinkLocationStore);
     }
 
     @Test
     void descriptorPublicationUsesOwnerLeaseAndLifecycleFences() throws Exception {
         ZLinkInMemoryLocationStore store = newStore();
+        ZLinkProviderLocationRepository repository = repository(store);
         ZLinkLocationOwnerToken ownerA = ((ZLinkOwnerLeaseClaimed)
-            store.claimOwnerLease("owner-a", Duration.ofSeconds(30))
+            repository.claimOwnerLease("owner-a", Duration.ofSeconds(30))
                 .toCompletableFuture().get()).token();
         ZLinkLocationOwnerToken ownerB = ((ZLinkOwnerLeaseClaimed)
-            store.claimOwnerLease("owner-b", Duration.ofSeconds(30))
+            repository.claimOwnerLease("owner-b", Duration.ofSeconds(30))
                 .toCompletableFuture().get()).token();
 
-        ZLinkLocationWriteResult stored = store.updateMeshNode(
+        ZLinkLocationWriteResult stored = repository.updateMeshNode(
                 descriptor(ownerA, 1),
                 ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture().get();
-        ZLinkLocationWriteResult conflict = store.updateMeshNode(
+        ZLinkLocationWriteResult conflict = repository.updateMeshNode(
                 descriptor(ownerB, 1),
                 ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture().get();
-        ZLinkLocationPage<ZLinkMeshNodeDescriptor> page = store.listMeshNodes(
+        ZLinkLocationPage<ZLinkMeshNodeDescriptor> page =
+            repository.listMeshNodes(
                 "play",
                 ZLinkPageRequest.firstPage())
             .toCompletableFuture().get();
@@ -68,8 +74,9 @@ final class LocationStoreContractTest {
     @Test
     void runtimeQueryProjectsOnlyConfiguredLiveMeshDescriptors() throws Exception {
         ZLinkInMemoryLocationStore store = newStore();
+        ZLinkProviderLocationRepository repository = repository(store);
         ZLinkRegisteredLocationStores stores =
-            ZLinkRegisteredLocationStores.fromUnified(store);
+            ZLinkRegisteredLocationStores.fromUnified(repository);
         ZLinkLocationOptions options = new ZLinkLocationOptions();
         ZLinkLocationRuntime runtime = new ZLinkLocationRuntime(
             stores,
@@ -77,7 +84,7 @@ final class LocationStoreContractTest {
             Duration.ofSeconds(5));
         runtime.start(NODE_A).toCompletableFuture().get();
         try (runtime) {
-            store.updateMeshNode(
+            repository.updateMeshNode(
                     descriptor(runtime.currentOwnerToken(), 1),
                     ZLinkLocationWriteIntent.NEW_CLAIM)
                 .toCompletableFuture().get();
@@ -108,18 +115,23 @@ final class LocationStoreContractTest {
     @Test
     void removedRawRowContractsAreNotPublicTypes() {
         assertThrows(ClassNotFoundException.class, () ->
-            Class.forName("systems.zlink.framework.locations.ZLinkPeerLocation"));
+            Class.forName("systems.zlink.framework.runtime.internal.locations.ZLinkPeerLocation"));
         assertThrows(ClassNotFoundException.class, () ->
-            Class.forName("systems.zlink.framework.locations.ZLinkSpotLocation"));
+            Class.forName("systems.zlink.framework.runtime.internal.locations.ZLinkSpotLocation"));
         assertThrows(ClassNotFoundException.class, () ->
-            Class.forName("systems.zlink.framework.locations.ZLinkActorLocation"));
+            Class.forName("systems.zlink.framework.runtime.internal.locations.ZLinkActorLocation"));
         assertThrows(ClassNotFoundException.class, () ->
-            Class.forName("systems.zlink.framework.locations.ZLinkRouteLocation"));
+            Class.forName("systems.zlink.framework.runtime.internal.locations.ZLinkRouteLocation"));
     }
 
     private static ZLinkInMemoryLocationStore newStore() {
         return new ZLinkInMemoryLocationStore(
             Clock.fixed(STORE_NOW, ZoneOffset.UTC));
+    }
+
+    private static ZLinkProviderLocationRepository repository(
+        ZLinkInMemoryLocationStore store) {
+        return new ZLinkProviderLocationRepository(store);
     }
 
     private static ZLinkMeshNodeDescriptor descriptor(

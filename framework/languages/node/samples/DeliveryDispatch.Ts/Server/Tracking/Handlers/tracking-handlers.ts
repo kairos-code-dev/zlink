@@ -7,7 +7,7 @@ import { DeliveryStatusChangedReq, DeliveryStatusUpdatedMsg, PacketNames } from 
 import { EvidenceStore } from '../../Configuration/evidence-store';
 import type {
   ZLinkActorClient,
-  ZLinkRequestContext,
+  ZLinkMessageContext,
   ZLinkRequestHandler
 } from '@zlink-systems/framework';
 import type { DeliveryStatusChangedRes } from '../../../Shared/Contracts/messages';
@@ -19,7 +19,7 @@ class DeliveryStatusChangedHandler implements ZLinkRequestHandler<DeliveryStatus
     private readonly evidence: EvidenceStore
   ) {}
 
-  async handle(request: DeliveryStatusChangedReq, context: ZLinkRequestContext): Promise<DeliveryStatusChangedRes> {
+  async handle(request: DeliveryStatusChangedReq, context: ZLinkMessageContext): Promise<DeliveryStatusChangedRes> {
     void context;
     this.evidence.append(request);
     await this.actors.sendToActor(request.customerId, new DeliveryStatusUpdatedMsg(

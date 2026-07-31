@@ -4,13 +4,18 @@ plugins {
 }
 
 group = 'systems.zlink'
-version = '11.0.0'
+version = '11.0.2'
 description = 'zlink Java bindings — high-performance async messaging library'
 
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(22)
     }
+}
+
+tasks.withType(Jar).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
 }
 
 def nativeOs = System.getProperty('os.name').toLowerCase()

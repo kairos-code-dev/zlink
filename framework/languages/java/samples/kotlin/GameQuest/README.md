@@ -4,7 +4,7 @@ Kotlin version of the GameQuest player quest sample.
 
 The sample splits the game edge and quest owner roles into separate processes.
 `GameApi` owns stream sessions, validates gameplay actions, records gameplay
-facts, and routes each player event to the matching quest owner channel.
+facts, and routes each player event directly to its `PlayerQuestSpot` Instance Spot.
 `QuestMission` evaluates quest progress, records domain events, rebuilds
 projections, and returns progress notifications that `GameApi` pushes back over
 the bound stream session.

@@ -1,7 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ZLINK_ACTOR_MANAGER, ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
-import { questMissionRouteChannel, SampleNames } from '../../Shared/Configuration/sample-names';
-import { GAMEQUEST_LOCATION_STORE } from '../Configuration/tokens';
+import { ZLINK_ACTOR_MANAGER, ZLINK_SPOT_OUTBOUND } from '@zlink-systems/nestjs';
+import { questMissionSpotId, SampleNames } from '../../Shared/Configuration/sample-names';
 import {
   JoinSessionRes,
   PacketNames,
@@ -11,12 +10,11 @@ import {
   ZLinkPacket,
   type ZLinkActorManager,
   type ZLinkMessage,
-  type ZLinkRouteClient,
+  type ZLinkSpotOutbound,
   type ZLinkSession,
   type ZLinkSessionContext,
   type ZLinkSessionDispatchContext,
-  type ZLinkSessionFactory,
-  type ZLinkLocationStore
+  type ZLinkSessionFactory
 } from '@zlink-systems/framework';
 import type {
   JoinSessionReq
@@ -24,9 +22,7 @@ import type {
 import type { GetQuestProgressRes } from '../../Shared/Contracts/messages';
 
 class GameQuestSession implements ZLinkSession {
-  constructor(readonly context: ZLinkSessionContext) {
-    context.handlers.addHandler(JoinSessionHandler);
-  }
+  constructor(readonly context: ZLinkSessionContext) {}
 
   async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
     if (await this.context.handlers.tryHandle(dispatch, payload)) return;
@@ -40,8 +36,7 @@ class GameQuestSession implements ZLinkSession {
 @ZLinkPacket(PacketNames.joinSessionReq)
 class JoinSessionHandler {
   constructor(
-    @Inject(GAMEQUEST_LOCATION_STORE) private readonly locations: ZLinkLocationStore,
-    @Inject(ZLINK_ROUTE_CLIENT) private readonly routes: ZLinkRouteClient,
+    @Inject(ZLINK_SPOT_OUTBOUND) private readonly spots: ZLinkSpotOutbound,
     @Inject(ZLINK_ACTOR_MANAGER) private readonly actorManager: ZLinkActorManager
   ) {}
 
@@ -55,24 +50,31 @@ class JoinSessionHandler {
     if (existing !== undefined && existing.actorId !== request.playerId) {
       throw new Error(`Session is already bound to player '${existing.actorId}'.`);
     }
-    const actorRef = (await this.locations.resolveActor({
-      meshName: SampleNames.playerQuestSpotMesh,
-      actorId: request.playerId
-    }))?.actorRef ??
-      await this.actorManager.find(SampleNames.playerQuestSpotMesh, request.playerId) ??
-      await this.actorManager.getOrCreate(
-        SampleNames.playerQuestSpotMesh,
-        request.playerId,
-        SampleNames.playerActorType
-      );
+    const located = await this.actorManager.find(request.playerId);
+    const created = located === undefined
+      ? await this.actorManager
+        .getOrCreate(request.playerId, SampleNames.playerActorType)
+        .inMesh(SampleNames.playerQuestSpotMesh)
+        .request(request)
+        .submit()
+      : undefined;
+    if (created?.status === 'rejected') {
+      throw new Error(`Player actor '${request.playerId}' creation was rejected.`);
+    }
+    const actorRef = located ?? created?.actor;
+    if (actorRef === undefined) {
+      throw new Error(`Player actor '${request.playerId}' was not resolved.`);
+    }
     await context.actors.bindOrGet(actorRef);
     const current = await this.getProjection(request.playerId);
     context.client.reply(new JoinSessionRes(current.activeQuests)).submit();
   }
 
   private async getProjection(playerId: string): Promise<GetQuestProgressRes> {
-    return await this.routes
-      .requestToChannel(SampleNames.playerQuestSpotMesh, questMissionRouteChannel(playerId), getQuestProgressReq(playerId))
+    return await this.spots
+      .requestToSpot(questMissionSpotId(playerId), getQuestProgressReq(playerId))
+      .instanceSpot(SampleNames.playerQuestSpotType)
+      .inMesh(SampleNames.playerQuestSpotMesh)
       .timeout(SampleNames.requestTimeout)
       .submit<GetQuestProgressRes>();
   }

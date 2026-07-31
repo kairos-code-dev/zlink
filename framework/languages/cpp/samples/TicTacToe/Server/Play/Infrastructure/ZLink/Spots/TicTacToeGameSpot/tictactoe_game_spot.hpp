@@ -94,9 +94,9 @@ class tictactoe_game_spot_t : public spot_t<player_actor_t>
           std::move (response));
     }
 
-    place_mark_res_t place_mark (const player_actor_t &actor,
-                                 const message_context_t &context,
-                                 const place_mark_req_t &request);
+    task_t<place_mark_res_t> place_mark (const player_actor_t &actor,
+                                         const message_context_t &context,
+                                         const place_mark_req_t &request);
 
     void leave_game (const player_actor_t &actor,
                      const message_context_t &,
@@ -123,10 +123,10 @@ class tictactoe_game_spot_t : public spot_t<player_actor_t>
             actor.actor_id == state.x_actor_id ? tictactoe_marks_t::x : tictactoe_marks_t::o,
             state
         };
-        publisher.publish (notify, actor.actor_id);
+        co_await publisher.publish (notify, actor.actor_id);
 
         game_state_notify_t state_notify{state.room_id, state.next_turn, state};
-        publisher.publish (state_notify, actor.actor_id);
+        co_await publisher.publish (state_notify, actor.actor_id);
         co_return;
     }
 
@@ -164,10 +164,12 @@ class tictactoe_game_spot_t : public spot_t<player_actor_t>
         return *_match;
     }
 
-    void publish_win_milestone (const player_actor_t &actor, const tictactoe_state_t &state)
+    task_t<void>
+    publish_win_milestone (const player_actor_t &actor,
+                           const tictactoe_state_t &state)
     {
         if (state.status != tictactoe_status_t::won || state.winner != actor.actor_id) {
-            return;
+            co_return;
         }
         auto player = players[actor.actor_id];
         player.wins += 1;
@@ -176,8 +178,12 @@ class tictactoe_game_spot_t : public spot_t<player_actor_t>
         if (player.wins == 100) {
             const auto milestone_event = player_win_milestone_event_t{
               state.room_id, player.actor_id, player.display_name, player.wins};
-            _context.publish (sample_names_t::player_milestone_topic, milestone_event).submit ();
+            co_await _context
+              .publish (sample_names_t::player_milestone_topic,
+                        milestone_event)
+              .submit ();
         }
+        co_return;
     }
 
     static actor_ref_t actor_ref_for (const player_actor_t &actor)

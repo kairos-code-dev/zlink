@@ -1,14 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { ZLinkSpotRequestHandler } from '@zlink-systems/framework';
 import { zlinkSpotPacketHandler } from '@zlink-systems/nestjs';
-import { PacketNames } from '../../../../../../../Shared/Contracts/messages';
+import type { ZLinkSpotRequestHandler } from '@zlink-systems/framework';
 import type { StartOrderWorkflowReq, StartOrderWorkflowRes } from '../../../../../../../Shared/Contracts/messages';
 import { OrderWorkflowService } from '../../../../../Application/OrderWorkflow/order-workflow-service';
 import { OrderWorkflowSpot } from '../order-workflow-spot';
 import { SHOPPINGMALL_ROLE } from '../../../../../order-workflow-tokens';
 
 @Injectable()
-@zlinkSpotPacketHandler({ packetName: PacketNames.prepareInventoryEffectReq, spot: () => OrderWorkflowSpot })
+@zlinkSpotPacketHandler({ spot: () => OrderWorkflowSpot, packetName: 'PrepareInventoryEffectReq' })
 class PrepareInventoryEffectHandler implements ZLinkSpotRequestHandler<OrderWorkflowSpot, StartOrderWorkflowReq, StartOrderWorkflowRes> {
   constructor(
     private readonly workflow: OrderWorkflowService,

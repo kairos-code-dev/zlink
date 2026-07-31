@@ -2,11 +2,15 @@ package systems.zlink.samples.gamequest.server.gameapi.sessions;
 
 import java.time.Instant;
 import java.util.concurrent.CompletionStage;
-import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.actors.ActorRef;
+import systems.zlink.framework.actors.ZLinkActorCreateResult;
+import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionMessageContext;
+import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkStreamError;
 import systems.zlink.samples.gamequest.server.configuration.SampleNames;
 import systems.zlink.samples.gamequest.server.configuration.SampleTopology;
@@ -15,23 +19,24 @@ import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
 public final class GameQuestSession implements ZLinkSession {
     private final ZLinkSessionContext context;
-    private final ZLinkClient channels;
+    private final ZLinkRouteClient channels;
     private final GameQuestStore store;
     private final SampleTopology topology;
-    private final GameQuestSessionRegistry sessions;
+    private final ZLinkActorManager actors;
+    private ZLinkSessionActor playerActor;
     private String playerId;
 
     public GameQuestSession(
         ZLinkSessionContext context,
-        ZLinkClient channels,
+        ZLinkRouteClient channels,
         GameQuestStore store,
         SampleTopology topology,
-        GameQuestSessionRegistry sessions) {
+        ZLinkActorManager actors) {
         this.context = context;
         this.channels = channels;
         this.store = store;
         this.topology = topology;
-        this.sessions = sessions;
+        this.actors = actors;
     }
 
     @Override
@@ -47,7 +52,9 @@ public final class GameQuestSession implements ZLinkSession {
     @Override
     public java.util.concurrent.CompletionStage<Void> onDisconnected() {
         if (playerId != null) {
-            sessions.unbind(playerId, this);
+            if (playerActor != null) {
+                playerActor.notifyDisconnected();
+            }
             store.unbind(playerId);
         }
         return java.util.concurrent.CompletableFuture.completedFuture(null);
@@ -77,24 +84,30 @@ public final class GameQuestSession implements ZLinkSession {
 
     private java.util.concurrent.CompletionStage<Void> handleJoin(Messages.JoinSessionReq request) {
         playerId = request.playerId();
-        sessions.bind(request.playerId(), this);
         store.bind(request.playerId(), topology.gameApi().instanceName());
-        return channels
-            .requestToChannel(
-                SampleNames.QuestOwnerChannel,
+        return ensurePlayerActor(request)
+            .thenCompose(actorRef -> context.actors().bind(actorRef))
+            .thenCompose(bound -> {
+                playerActor = bound;
+                return channels
+            .requestToSpot(
+                request.playerId(),
                 new Messages.GetQuestProgressReq(request.playerId()))
+            .instanceSpot(SampleNames.PlayerQuestSpotType)
+            .inMesh(SampleNames.PlayerQuestSpotDiscovery)
             .submit(Messages.GetQuestProgressRes.class)
             .thenAccept(ownerProjection -> {
                 store.mergeProjection(request.playerId(), ownerProjection.activeQuests());
                 context.client().reply(new Messages.JoinSessionRes(ownerProjection.activeQuests())).submit();
             });
+            });
     }
 
     private java.util.concurrent.CompletionStage<Void> handleGetProgress(Messages.GetQuestProgressReq request) {
         return channels
-            .requestToChannel(
-                SampleNames.QuestOwnerChannel,
-                request)
+            .requestToSpot(request.playerId(), request)
+            .instanceSpot(SampleNames.PlayerQuestSpotType)
+            .inMesh(SampleNames.PlayerQuestSpotDiscovery)
             .submit(Messages.GetQuestProgressRes.class)
             .thenAccept(ownerProjection -> {
                 store.mergeProjection(request.playerId(), ownerProjection.activeQuests());
@@ -104,9 +117,9 @@ public final class GameQuestSession implements ZLinkSession {
 
     private java.util.concurrent.CompletionStage<Void> handleSync(Messages.SyncQuestProgressReq request) {
         return channels
-            .requestToChannel(
-                SampleNames.QuestOwnerChannel,
-                request)
+            .requestToSpot(request.playerId(), request)
+            .instanceSpot(SampleNames.PlayerQuestSpotType)
+            .inMesh(SampleNames.PlayerQuestSpotDiscovery)
             .submit(Messages.SyncQuestProgressRes.class)
             .thenAccept(response -> {
                 store.mergeProjection(request.playerId(), response.updatedQuests());
@@ -181,20 +194,26 @@ public final class GameQuestSession implements ZLinkSession {
 
     private java.util.concurrent.CompletionStage<Void> process(
         Messages.GameplayMsg event) {
-        channels.sendToChannel(SampleNames.QuestOwnerChannel, event).submit();
+        channels.sendToSpot(event.playerId(), event)
+            .instanceSpot(SampleNames.PlayerQuestSpotType)
+            .inMesh(SampleNames.PlayerQuestSpotDiscovery)
+            .submit();
         return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
-    CompletionStage<Void> deliver(Messages.QuestProcessingMsg message) {
-        if (!message.playerId().equals(playerId)) {
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
-        }
-        store.mergeProjection(message.playerId(), message.projection());
-        message.progressNotifications().forEach(notification ->
-            context.client().send(notification).submit());
-        message.completedNotifications().forEach(notification ->
-            context.client().send(notification).submit());
-        return java.util.concurrent.CompletableFuture.completedFuture(null);
+    private CompletionStage<ActorRef> ensurePlayerActor(Messages.JoinSessionReq request) {
+        return actors.getOrCreate(request.playerId(), SampleNames.PlayerSessionActorType)
+            .request(request)
+            .submit()
+            .thenApply(result -> {
+                if (result instanceof ZLinkActorCreateResult.Existing existing) {
+                    return existing.actor();
+                }
+                if (result instanceof ZLinkActorCreateResult.Created created) {
+                    return created.actor();
+                }
+                throw new IllegalStateException("Player session Actor creation was rejected");
+            });
     }
 
     private Messages.GameplayMsg event(

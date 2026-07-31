@@ -10,7 +10,8 @@ import { throwIfAborted } from '../abort';
 import { routingIdsEqual } from '../routing-id';
 import type { ZLinkRuntimeMetrics } from '../diagnostics';
 import {
-  ZLinkActorSessionBindingRegistry
+  ZLinkActorSessionBindingRegistry,
+  type ZLinkActorSessionAuthorityFence
 } from './actor-session-binding-registry';
 import { ZLinkActorSessionLifecycleCoordinator } from './actor-session-lifecycle-coordinator';
 import {
@@ -24,9 +25,14 @@ import {
 export interface ZLinkSessionActorCoordinatorOptions {
   readonly actorBindTimeoutMs?: number;
   readonly actorRefResolver?: (actor: ZLinkActor) => ActorRef;
+  readonly actorAuthorityFenceResolver?: (
+    actorId: string,
+    signal?: AbortSignal
+  ) => Promise<ZLinkActorSessionAuthorityFence | undefined>;
   readonly nativeActorNodeProvider?: () => {
     status(): { readonly routingId: unknown };
   } | undefined;
+  readonly nativeActorMeshNameProvider?: () => string | undefined;
   readonly confirmRemoteActorSessionBinding?: (
     actor: ActorRef,
     sessionRid: ActorRef['nodeRid'],
@@ -53,9 +59,9 @@ export class ZLinkSessionActorCoordinator {
     actorOrRef: ZLinkActor | ActorRef,
     signal?: AbortSignal
   ): Promise<DefaultZLinkSessionActor> {
-    const actorRef = isActorRef(actorOrRef)
-      ? actorOrRef
-      : this.resolveActorRef(actorOrRef);
+    const actorRef = isActorRefLike(actorOrRef)
+      ? normalizeActorRef(actorOrRef, this.options.nativeActorMeshNameProvider?.())
+      : this.resolveActorRef(actorOrRef as ZLinkActor);
     return await this.lifecycle.run(actorRef.actorId, async () => this.replaceBinding(context, actorRef, signal));
   }
 
@@ -64,15 +70,7 @@ export class ZLinkSessionActorCoordinator {
     actorRef: ActorRef,
     signal?: AbortSignal
   ): Promise<DefaultZLinkSessionActor> {
-    const bindStartedAt = process.hrtime.bigint();
-    try {
-      return await this.replaceBindingCore(context, actorRef, signal);
-    } finally {
-      this.options.metrics?.duration(
-        'zlink.stream.session.bind.duration',
-        Number(process.hrtime.bigint() - bindStartedAt) / 1e9
-      );
-    }
+    return await this.replaceBindingCore(context, actorRef, signal);
   }
 
   private async replaceBindingCore(
@@ -171,14 +169,33 @@ export class ZLinkSessionActorCoordinator {
         : undefined,
       previous?.actor.ref
     );
+    const authorityFence = await this.resolveAuthorityFence(boundActorRef, signal);
     const sessionActor = reuseActor ?? new DefaultZLinkSessionActor(this.sessionActorRuntime, boundActorRef, bindingToken);
     sessionActor.updateRef(boundActorRef);
     if (previous === undefined) {
-      this.routes.bind(context, sessionActor, bindingToken);
+      this.routes.bind(context, sessionActor, bindingToken, authorityFence);
     } else {
-      this.routes.replace(previous, context, sessionActor, bindingToken);
+      this.routes.replace(previous, context, sessionActor, bindingToken, authorityFence);
     }
     return sessionActor;
+  }
+
+  private async resolveAuthorityFence(
+    actorRef: ActorRef,
+    signal?: AbortSignal
+  ): Promise<ZLinkActorSessionAuthorityFence | undefined> {
+    const resolved = await this.options.actorAuthorityFenceResolver?.(actorRef.actorId, signal);
+    if (resolved !== undefined) return resolved;
+    const internal = actorRef as ActorRef & {
+      readonly ownershipGeneration?: bigint;
+      readonly ownerLeaseGeneration?: bigint;
+    };
+    return internal.ownershipGeneration === undefined || internal.ownerLeaseGeneration === undefined
+      ? undefined
+      : {
+          authorityOwnerGeneration: internal.ownershipGeneration,
+          ownerLeaseGeneration: internal.ownerLeaseGeneration
+        };
   }
 
   async bindOrGet(
@@ -186,62 +203,82 @@ export class ZLinkSessionActorCoordinator {
     actorRef: ActorRef,
     signal?: AbortSignal
   ): Promise<DefaultZLinkSessionActor> {
-    return await this.lifecycle.run(actorRef.actorId, async () => {
+    const normalizedActorRef = normalizeActorRef(
+      actorRef as ActorRef & { readonly generation?: bigint | number },
+      this.options.nativeActorMeshNameProvider?.()
+    );
+    return await this.lifecycle.run(normalizedActorRef.actorId, async () => {
       throwIfAborted(signal);
-      const existing = this.routes.find(actorRef.actorId);
-      if (existing !== undefined && sameActorRef(existing.ref, actorRef)) {
-        if (context.findBoundActor(actorRef.actorId) === existing) {
+      const existing = this.routes.find(normalizedActorRef.actorId);
+      if (existing !== undefined && sameActorRef(existing.ref, normalizedActorRef)) {
+        if (context.findBoundActor(normalizedActorRef.actorId) === existing) {
           return existing;
         }
-        return await this.replaceBinding(context, actorRef, signal);
+        return await this.replaceBinding(context, normalizedActorRef, signal);
       }
       if (existing !== undefined) {
         try {
-          return await this.replaceBinding(context, actorRef, signal);
+          return await this.replaceBinding(context, normalizedActorRef, signal);
         } catch (error) {
           throw new ZLinkFrameworkException(
             ZLinkFrameworkErrorKind.ActorLocationStale,
-            `Actor '${actorRef.actorId}' bound session ref is stale and could not be rebound.`,
+            `Actor '${normalizedActorRef.actorId}' bound session ref is stale and could not be rebound.`,
             true,
             error
           );
         }
       }
-      return await this.replaceBinding(context, actorRef, signal);
+      return await this.replaceBinding(context, normalizedActorRef, signal);
     });
   }
 
   async rebindActor(actorRef: ActorRef, signal?: AbortSignal): Promise<void> {
-    await this.lifecycle.run(actorRef.actorId, async () => {
+    const normalizedActorRef = normalizeActorRef(
+      actorRef as ActorRef & { readonly generation?: bigint | number },
+      this.options.nativeActorMeshNameProvider?.()
+    );
+    await this.lifecycle.run(normalizedActorRef.actorId, async () => {
       throwIfAborted(signal);
-      const route = this.routes.route(actorRef.actorId);
-      if (route === undefined || sameActorRef(route.actor.ref, actorRef)) return;
-      requireSameIncarnation(route.actor.ref, actorRef);
-      await this.replaceBinding(route.context, actorRef, signal);
+      const route = this.routes.route(normalizedActorRef.actorId);
+      if (route === undefined || sameActorRef(route.actor.ref, normalizedActorRef)) return;
+      requireSameIncarnation(route.actor.ref, normalizedActorRef);
+      await this.replaceBinding(route.context, normalizedActorRef, signal);
     });
   }
 
   async refreshActor(actorRef: ActorRef, signal?: AbortSignal): Promise<void> {
-    await this.lifecycle.run(actorRef.actorId, async () => {
+    const normalizedActorRef = normalizeActorRef(
+      actorRef as ActorRef & { readonly generation?: bigint | number },
+      this.options.nativeActorMeshNameProvider?.()
+    );
+    await this.lifecycle.run(normalizedActorRef.actorId, async () => {
       throwIfAborted(signal);
-      const route = this.routes.route(actorRef.actorId);
+      const route = this.routes.route(normalizedActorRef.actorId);
       if (route === undefined) return;
-      requireSameIncarnation(route.actor.ref, actorRef);
-      await this.replaceBinding(route.context, actorRef, signal);
+      requireSameIncarnation(route.actor.ref, normalizedActorRef);
+      await this.replaceBinding(route.context, normalizedActorRef, signal);
     });
   }
 
   async commitActorRoute(actorRef: ActorRef, signal?: AbortSignal): Promise<void> {
-    await this.lifecycle.run(actorRef.actorId, async () => {
+    const normalizedActorRef = normalizeActorRef(
+      actorRef as ActorRef & { readonly generation?: bigint | number },
+      this.options.nativeActorMeshNameProvider?.()
+    );
+    await this.lifecycle.run(normalizedActorRef.actorId, async () => {
       throwIfAborted(signal);
-      const route = this.routes.route(actorRef.actorId);
+      const route = this.routes.route(normalizedActorRef.actorId);
       if (route === undefined) return;
-      requireSameIncarnation(route.actor.ref, actorRef);
-      if (routingIdsEqual(route.actor.ref.nodeRid, actorRef.nodeRid)) {
-        route.actor.updateRef(actorRef);
+      requireSameIncarnation(route.actor.ref, normalizedActorRef);
+      if (routingIdsEqual(route.actor.ref.nodeRid, normalizedActorRef.nodeRid)) {
+        route.actor.updateRef(normalizedActorRef);
+        const authorityFence = await this.resolveAuthorityFence(normalizedActorRef, signal);
+        if (authorityFence !== undefined) {
+          this.routes.updateAuthorityFence(normalizedActorRef.actorId, authorityFence);
+        }
         return;
       }
-      await this.replaceBinding(route.context, actorRef, signal);
+      await this.replaceBinding(route.context, normalizedActorRef, signal);
     });
   }
 
@@ -323,22 +360,99 @@ function withBindingGeneration(
 ): ActorRef {
   const input = actorRef as ActorRef & { readonly bindingGeneration?: bigint };
   const previous = previousRef as (ActorRef & { readonly bindingGeneration?: bigint }) | undefined;
-  const bindingGeneration = input.bindingGeneration
-    ?? previous?.bindingGeneration
-    ?? nativeBindingGeneration;
-  return bindingGeneration === undefined
-    ? actorRef
-    : { ...actorRef, bindingGeneration } as ActorRef;
+  const bindingGeneration = nativeBindingGeneration
+    ?? input.bindingGeneration
+    ?? previous?.bindingGeneration;
+  if (bindingGeneration === undefined) {
+    return actorRef;
+  }
+  const result = { ...actorRef, bindingGeneration } as ActorRef;
+  preserveNormalizedActorRefField(result, actorRef, 'objectGeneration');
+  preserveNormalizedActorRefField(result, actorRef, 'meshName');
+  preserveInternalActorRefField(result, actorRef, 'ownershipGeneration');
+  preserveInternalActorRefField(result, actorRef, 'ownerLeaseGeneration');
+  return result;
 }
 
-function isActorRef(value: ZLinkActor | ActorRef): value is ActorRef {
+function preserveNormalizedActorRefField(
+  target: ActorRef,
+  source: ActorRef,
+  field: 'objectGeneration' | 'meshName'
+): void {
+  if (Object.prototype.propertyIsEnumerable.call(source, field)) {
+    return;
+  }
+  Object.defineProperty(target, field, {
+    configurable: false,
+    enumerable: false,
+    value: source[field]
+  });
+}
+
+function preserveInternalActorRefField(
+  target: ActorRef,
+  source: ActorRef,
+  field: 'ownershipGeneration' | 'ownerLeaseGeneration'
+): void {
+  const value = (source as ActorRef & {
+    readonly ownershipGeneration?: bigint;
+    readonly ownerLeaseGeneration?: bigint;
+  })[field];
+  if (value === undefined) return;
+  Object.defineProperty(target, field, {
+    configurable: false,
+    enumerable: false,
+    value
+  });
+}
+
+type CompatibleActorRef = Omit<ActorRef, 'objectGeneration' | 'meshName'> & {
+  readonly objectGeneration?: bigint;
+  readonly meshName?: string;
+  readonly generation?: bigint | number;
+};
+
+function isActorRefLike(
+  value: ZLinkActor | ActorRef | CompatibleActorRef
+): value is CompatibleActorRef {
   return (
     typeof value === 'object'
     && 'nodeRid' in value
-    && 'objectGeneration' in value
-    && 'meshName' in value
     && 'actorId' in value
+    && ('objectGeneration' in value || 'generation' in value)
   );
+}
+
+function normalizeActorRef(
+  value: CompatibleActorRef,
+  defaultMeshName: string | undefined
+): ActorRef {
+  const objectGeneration = value.objectGeneration ?? value.generation;
+  if (objectGeneration === undefined) {
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.ActorRouteNotFound,
+      `Actor '${value.actorId}' does not have an object generation.`
+    );
+  }
+  if (value.objectGeneration !== undefined && value.meshName !== undefined) {
+    return value as ActorRef;
+  }
+  const normalized = { ...value };
+  if (value.objectGeneration === undefined) {
+    Object.defineProperty(normalized, 'objectGeneration', {
+      configurable: false,
+      enumerable: false,
+      value: BigInt(objectGeneration)
+    });
+  }
+  if (value.meshName === undefined) {
+    Object.defineProperty(normalized, 'meshName', {
+      configurable: false,
+      enumerable: false,
+      value: defaultMeshName ?? ''
+    });
+  }
+  return normalized as ActorRef;
 }
 
 function createBindingToken(): string {

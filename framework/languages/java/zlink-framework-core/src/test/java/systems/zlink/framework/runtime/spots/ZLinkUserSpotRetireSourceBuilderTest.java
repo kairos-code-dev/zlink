@@ -15,6 +15,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkRelocationCancellation;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.*;
 import systems.zlink.framework.runtime.InMemoryRelocationStore;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
@@ -32,6 +33,8 @@ import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotRelocationAdapter;
+import systems.zlink.framework.spots.ZLinkSpotRelocationReadyCompletion;
+import systems.zlink.framework.spots.ZLinkSpotRelocationReadyOutcome;
 
 final class ZLinkUserSpotRetireSourceBuilderTest {
     private static final ZLinkStoreCancellation NEVER = () -> false;
@@ -42,10 +45,119 @@ final class ZLinkUserSpotRetireSourceBuilderTest {
     private static final RoutingId TARGET_RID = RoutingId.from("target-node");
 
     @Test
+    void applicationSignaledTurnWithoutRelocationCompletesBeforeNextJob()
+        throws Exception {
+        ZLinkInMemoryLocationStore locations = new ZLinkInMemoryLocationStore();
+        InMemoryRelocationStore relocations = new InMemoryRelocationStore();
+        LiveSpot.events.clear();
+        try (ZLinkFrameworkRuntime host = ZLinkFrameworkRuntimeTestAccess.start(
+                options(locations, relocations, true))) {
+            host.spotManager().getOrCreate(SPOT_ID, STABLE_TYPE)
+                .submit().toCompletableFuture().get();
+            DefaultSpotContext context =
+                (DefaultSpotContext) LiveSpot.last.get().context();
+            CompletableFuture<Void> releaseTurn = new CompletableFuture<>();
+            CompletionStage<Void> first = context.enqueueDispatch(() -> {
+                LiveSpot.events.add("turn");
+                context.relocationReady().defer();
+                assertThrows(
+                    systems.zlink.framework.errors.ZLinkFrameworkException.class,
+                    context::close);
+                return releaseTurn;
+            });
+            CompletionStage<Void> next = context.enqueueDispatch(() -> {
+                LiveSpot.events.add("next");
+                return CompletableFuture.completedFuture(null);
+            });
+            releaseTurn.complete(null);
+            CompletableFuture.allOf(
+                first.toCompletableFuture(),
+                next.toCompletableFuture()).get();
+
+            assertEquals(
+                List.of("turn", "continued", "next"),
+                List.copyOf(LiveSpot.events));
+        }
+    }
+
+    @Test
+    void applicationSignaledPrecommitAbortContinuesBeforeHeldJob()
+        throws Exception {
+        ZLinkInMemoryLocationStore locations = new ZLinkInMemoryLocationStore();
+        InMemoryRelocationStore relocations = new InMemoryRelocationStore();
+        LiveSpot.events.clear();
+        try (ZLinkFrameworkRuntime host = ZLinkFrameworkRuntimeTestAccess.start(
+                options(locations, relocations, true))) {
+            host.spotManager().getOrCreate(SPOT_ID, STABLE_TYPE)
+                .submit().toCompletableFuture().get();
+            ZLinkSpotRuntime runtime = (ZLinkSpotRuntime) host.spotManager();
+            DefaultSpotContext context =
+                (DefaultSpotContext) LiveSpot.last.get().context();
+            ZLinkUserSpotRelocationBarrier barrier =
+                context.relocationBarrier(runtime.actorSessions());
+            CompletionStage<Optional<ZLinkUserSpotRelocationBarrier.Seal>>
+                sealing = barrier.sealForRelocation(
+                    ignored -> true,
+                    () -> false);
+            CompletableFuture<Void> releaseTurn = new CompletableFuture<>();
+            CompletionStage<Void> first = context.enqueueDispatch(() -> {
+                LiveSpot.events.add("turn");
+                context.relocationReady().defer();
+                return releaseTurn;
+            });
+            CompletionStage<Void> held = context.enqueueAcceptedDispatch(
+                new byte[] {1},
+                () -> {
+                    LiveSpot.events.add("held");
+                    return CompletableFuture.completedFuture(null);
+                },
+                () -> { });
+            releaseTurn.complete(null);
+            ZLinkUserSpotRelocationBarrier.Seal seal =
+                sealing.toCompletableFuture().get().orElseThrow();
+
+            assertTrue(barrier.abort(seal));
+            CompletableFuture.allOf(
+                first.toCompletableFuture(),
+                held.toCompletableFuture()).get();
+
+            assertEquals(
+                List.of("turn", "continued", "held"),
+                List.copyOf(LiveSpot.events));
+        }
+    }
+
+    @Test
+    void anyTurnBoundaryRejectsApplicationDefer() throws Exception {
+        ZLinkInMemoryLocationStore locations = new ZLinkInMemoryLocationStore();
+        InMemoryRelocationStore relocations = new InMemoryRelocationStore();
+        try (ZLinkFrameworkRuntime host = ZLinkFrameworkRuntimeTestAccess.start(
+                options(locations, relocations))) {
+            host.spotManager().getOrCreate(SPOT_ID, STABLE_TYPE)
+                .submit().toCompletableFuture().get();
+            DefaultSpotContext context =
+                (DefaultSpotContext) LiveSpot.last.get().context();
+            CompletionStage<Void> turn = context.enqueueDispatch(() -> {
+                var failure = assertThrows(
+                    systems.zlink.framework.errors.ZLinkFrameworkException.class,
+                    () -> context.relocationReady().defer());
+                assertEquals(
+                    systems.zlink.framework.errors.ZLinkFrameworkErrorKind
+                        .INVALID_CONFIGURATION,
+                    failure.kind());
+                return CompletableFuture.completedFuture(null);
+            });
+            turn.toCompletableFuture().get();
+        }
+    }
+
+    @Test
     void capturesLiveSpotAndPreparesVerifiedImmutableRootBeforeSourceCommit()
         throws Exception {
         SnapshotAdapter.captured.set(null);
         ZLinkInMemoryLocationStore locations = new ZLinkInMemoryLocationStore();
+        ZLinkLocationRepository repository =
+            new ZLinkProviderLocationRepository(locations);
         InMemoryRelocationStore relocations = new InMemoryRelocationStore();
         DefaultZLinkFrameworkOptions options = options(locations, relocations);
         var registration = options.registration();
@@ -53,7 +165,7 @@ final class ZLinkUserSpotRetireSourceBuilderTest {
         try (ZLinkFrameworkRuntime host =
                 ZLinkFrameworkRuntimeTestAccess.start(options)) {
             ZLinkSpotRuntime runtime = (ZLinkSpotRuntime) host.spotManager();
-            ZLinkMeshNodeDescriptor source = locations.listMeshNodes(
+            ZLinkMeshNodeDescriptor source = repository.listMeshNodes(
                     MESH,
                     ZLinkPageRequest.firstPage())
                 .toCompletableFuture().get().items().stream()
@@ -62,21 +174,23 @@ final class ZLinkUserSpotRetireSourceBuilderTest {
             long sourceGeneration = source.lifecycleGeneration();
             ZLinkLocationOwnerToken targetOwner = assertInstanceOf(
                 ZLinkOwnerLeaseClaimed.class,
-                locations.claimOwnerLease("target-owner", Duration.ofSeconds(30))
+                repository.claimOwnerLease(
+                    "target-owner", Duration.ofSeconds(30))
                     .toCompletableFuture().get()).token();
             var created = host.spotManager().getOrCreate(SPOT_ID, STABLE_TYPE)
                 .submit()
                 .toCompletableFuture().get();
             assertNotNull(created.spot());
             assertSame(LiveSpot.last.get(), runtime.spotFor(SPOT_ID));
-            locations.updateMeshNode(
+            repository.updateMeshNode(
                     descriptor(TARGET_RID, 9, targetOwner,
                         "inproc://retire-target"),
                     ZLinkLocationWriteIntent.NEW_CLAIM)
                 .toCompletableFuture().get();
 
             ZLinkAggregateRelocationCoordinator coordinator =
-                new ZLinkAggregateRelocationCoordinator(locations, relocations);
+                new ZLinkAggregateRelocationCoordinator(
+                    repository, relocations);
             ZLinkRelocationPermitPool permits =
                 new ZLinkRelocationPermitPool(new ZLinkLocationOptions());
             ZLinkUserSpotRetireSourceBuilder builder =
@@ -84,7 +198,7 @@ final class ZLinkUserSpotRetireSourceBuilderTest {
                     MESH,
                     nodeRegistration.routingId(),
                     sourceGeneration,
-                    locations,
+                    repository,
                     coordinator,
                     permits,
                     runtime.spotLifecycle(),
@@ -96,7 +210,10 @@ final class ZLinkUserSpotRetireSourceBuilderTest {
                     nodeRegistration.relocatableActorFactories());
 
             ZLinkUserSpotRetireSourceBuilder.PreparedSource prepared =
-                builder.prepare(SPOT_ID, NEVER).toCompletableFuture().get();
+                builder.prepare(
+                    SPOT_ID,
+                    rollingToVersionOne(),
+                    NEVER).toCompletableFuture().get();
 
             assertSame(LiveSpot.last.get(), SnapshotAdapter.captured.get());
             assertEquals(1, permits.snapshot().outboundUnits());
@@ -130,14 +247,17 @@ final class ZLinkUserSpotRetireSourceBuilderTest {
 
             assertEquals(
                 ZLinkLocationWriteStatus.STORED,
-                locations.removeMeshNode(
+                repository.removeMeshNode(
                         new ZLinkMeshNodeDescriptorKey(MESH, TARGET_RID),
                         targetOwner)
                     .toCompletableFuture().get());
             SnapshotAdapter.captured.set(null);
             assertThrows(
                 java.util.concurrent.CompletionException.class,
-                () -> builder.prepare(SPOT_ID, NEVER)
+                () -> builder.prepare(
+                        SPOT_ID,
+                        rollingToVersionOne(),
+                        NEVER)
                     .toCompletableFuture().join());
             assertNull(SnapshotAdapter.captured.get(),
                 "target admission must finish before sealing and Capture");
@@ -147,8 +267,17 @@ final class ZLinkUserSpotRetireSourceBuilderTest {
     }
 
     private static DefaultZLinkFrameworkOptions options(
-        ZLinkLocationStore locations,
-        ZLinkRelocationStore relocations) {
+        systems.zlink.framework.runtime.locations
+            .ZLinkInMemoryLocationStore locations,
+        systems.zlink.framework.locationprovider.ZLinkRelocationStore relocations) {
+        return options(locations, relocations, false);
+    }
+
+    private static DefaultZLinkFrameworkOptions options(
+        systems.zlink.framework.runtime.locations
+            .ZLinkInMemoryLocationStore locations,
+        systems.zlink.framework.locationprovider.ZLinkRelocationStore relocations,
+        boolean applicationSignaled) {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addLocationStore(locations);
         options.addRelocationStore(relocations);
@@ -159,7 +288,15 @@ final class ZLinkUserSpotRetireSourceBuilderTest {
         mesh.objects().server().addSpotFactory(
             STABLE_TYPE,
             LiveSpot.class,
-            factory -> factory.preserveStateWith(SnapshotAdapter.class));
+            factory -> {
+                factory.preserveStateWith(SnapshotAdapter.class);
+                if (applicationSignaled) {
+                    factory.relocationReadiness(
+                        systems.zlink.framework.configuration
+                            .ZLinkSpotRelocationReadinessMode
+                            .APPLICATION_SIGNALED);
+                }
+            });
         options.validate();
         return options;
     }
@@ -199,9 +336,20 @@ final class ZLinkUserSpotRetireSourceBuilderTest {
             Instant.now());
     }
 
+    private static ZLinkRelocationTargetPolicy rollingToVersionOne() {
+        return new ZLinkRelocationTargetPolicy(
+            systems.zlink.framework.runtime.host
+                .ZLinkFrameworkRelocationMode.ROLLING_UPDATE,
+            0,
+            Optional.empty(),
+            1);
+    }
+
     public static final class LiveSpot implements ZLinkSpot<ZLinkActor> {
         private static final AtomicReference<LiveSpot> last =
             new AtomicReference<>();
+        private static final java.util.List<String> events =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
         private final ZLinkSpotContext context;
 
         public LiveSpot(ZLinkSpotContext context) {
@@ -226,6 +374,16 @@ final class ZLinkUserSpotRetireSourceBuilderTest {
         }
 
         @Override public CompletionStage<Void> onLeaveActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> onRelocationReadyCompleted(
+            ZLinkSpotRelocationReadyCompletion completion) {
+            events.add(completion.outcome()
+                == ZLinkSpotRelocationReadyOutcome.CONTINUED
+                    ? "continued"
+                    : "relocated");
             return CompletableFuture.completedFuture(null);
         }
     }

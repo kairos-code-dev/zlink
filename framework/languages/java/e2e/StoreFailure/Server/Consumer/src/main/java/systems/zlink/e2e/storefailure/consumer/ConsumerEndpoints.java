@@ -11,9 +11,9 @@ import systems.zlink.e2e.storefailure.shared.Contracts;
 import systems.zlink.e2e.storefailure.shared.HttpSupport;
 import systems.zlink.e2e.storefailure.shared.Wait;
 import systems.zlink.framework.channels.ZLinkClient;
-import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
 import systems.zlink.framework.locations.ZLinkPageRequest;
-import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle;
 
 public final class ConsumerEndpoints implements SmartLifecycle {
     private final ConsumerOptions options;

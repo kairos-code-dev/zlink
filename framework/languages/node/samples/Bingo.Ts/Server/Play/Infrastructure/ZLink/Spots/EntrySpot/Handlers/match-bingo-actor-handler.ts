@@ -5,9 +5,10 @@ import {
 } from '@zlink-systems/nestjs';
 import { BingoEntrySpot } from '../bingo-entry-spot';
 import { PlayerActor } from '../../../Actors/player-actor';
-import { PacketNames } from '../../../../../../../Shared/Contracts/messages';
+import { BingoRoomStatus, PacketNames } from '../../../../../../../Shared/Contracts/messages';
 import {
   BingoRoomJoinReq,
+  BingoRoomState,
   MatchBingoApiReq,
   MatchBingoRes
 } from '../../../../../../../Shared/Contracts/bingo-messages.generated';
@@ -15,11 +16,10 @@ import { SampleNames, SampleTimings } from '../../../../../../Configuration/samp
 import type {
   ZLinkChannelClient,
   ZLinkEntrySpotActorRequestHandler,
-  ZLinkSpotActorRequestContext
+  ZLinkMessageContext
 } from '@zlink-systems/framework';
 import type { PlayerActor as PlayerActorType } from '../../../Actors/player-actor';
 import type {
-  BingoRoomJoinRes,
   MatchBingoApiRes,
   MatchBingoReq
 } from '../../../../../../../Shared/Contracts/messages';
@@ -30,20 +30,20 @@ import type {
   packetName: PacketNames.matchBingoReq
 })
 class MatchBingoActorHandler
-  implements ZLinkEntrySpotActorRequestHandler<PlayerActorType, MatchBingoReq, MatchBingoRes> {
+  implements ZLinkEntrySpotActorRequestHandler<BingoEntrySpot, PlayerActorType, MatchBingoReq, MatchBingoRes> {
   constructor(
     @Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient
   ) {}
 
   async handle(
+    _spot: BingoEntrySpot,
     actor: PlayerActorType,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: MatchBingoReq
   ): Promise<MatchBingoRes> {
     console.error(`bingo-match request actor=${actor.actorId}`);
     const matched = await this.channels
       .requestToChannel(
-        SampleNames.roomSpotNode,
         SampleNames.apiChannel,
         new MatchBingoApiReq({
           actorId: actor.actorId,
@@ -53,7 +53,7 @@ class MatchBingoActorHandler
       )
       .timeout(SampleTimings.requestTimeout)
       .submit<MatchBingoApiRes>();
-    const joined = await actor.context
+    actor.context
       .joinSpot(matched.roomId, new BingoRoomJoinReq({
         roomId: matched.roomId,
         actorId: actor.actorId,
@@ -61,13 +61,20 @@ class MatchBingoActorHandler
         observeOnly: false
       }))
       .timeout(SampleTimings.requestTimeout)
-      .submit<BingoRoomJoinRes>();
-    if (joined.status === 'rejected') {
-      throw new Error(`Room ${matched.roomId} rejected actor '${actor.actorId}'.`);
-    }
+      .defer();
     const response = new MatchBingoRes({
       roomId: matched.roomId,
-      state: joined.reply.state
+      state: new BingoRoomState({
+        roomId: matched.roomId,
+        status: BingoRoomStatus.WaitingForPlayers,
+        hostActorId: '',
+        canStart: false,
+        drawSeq: 0,
+        lastDrawnNumber: null,
+        drawnNumbers: [],
+        players: [],
+        winners: []
+      })
     });
     console.error(`bingo-match reply actor=${actor.actorId} room=${response.roomId}`);
     void context;

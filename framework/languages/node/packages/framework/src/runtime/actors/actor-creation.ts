@@ -124,8 +124,8 @@ export class ZLinkActorCreationCoordinator {
       );
     }
     const nativeActorNode = this.options.nativeActorNode ?? this.options.nativeActorNodeProvider?.();
-    const meshName = state.meshName;
-    if (meshName === undefined || meshName.length === 0) {
+    const meshName = state.meshName ?? '';
+    if (meshName.length === 0 && state.nativeActorRef === undefined) {
       throw new ZLinkConfigurationException(
         `Actor '${actorId}' has no RouteMesh identity.`
       );

@@ -140,22 +140,17 @@ test('runtime topology and supporting exact names are declared by their producti
     'ZLinkFrameworkRelocationResult',
     'ZLinkFrameworkTerminationResult',
     'ZLinkFrameworkLifecycleOptions',
-    'ZLinkInstanceSpotTypeSnapshot',
     'ZLinkFrameworkRuntimeStatus',
     'ZLinkFrameworkRuntime',
-    'ZLinkMeshPeerSnapshot',
-    'ZLinkMeshChannelSnapshot',
-    'ZLinkMeshClaimSnapshot',
-    'ZLinkLocationRuntimeSnapshot',
-    'ZLinkMeshNodeSnapshot',
-    'ZLinkMeshRuntimeEvent',
+    'ZLinkPeerStatus',
+    'ZLinkChannelStatus',
+    'ZLinkPlacementStatus',
+    'ZLinkRouteMeshStatus',
     'ZLinkRouteMeshRuntime',
-    'ZLinkClientServerServerSnapshot',
-    'ZLinkClientServerChannelSnapshot',
-    'ZLinkClientServerRuntimeEvent',
+    'ZLinkClientServerTargetStatus',
+    'ZLinkClientServerStatus',
     'ZLinkClientServerRuntime',
-    'ZLinkFanoutPublisherConnectionSnapshot',
-    'ZLinkFanoutChannelSnapshot',
+    'ZLinkFanoutStatus',
     'ZLinkFanoutRuntime',
     'ZLinkSessionMessageContext',
     'ZLinkReservedObjectCreation'
@@ -166,9 +161,6 @@ test('runtime topology and supporting exact names are declared by their producti
   }
   const runtimeAliases = [
     'ZLinkClientServerRole',
-    'ZLinkClientServerServerState',
-    'ZLinkFanoutPublisherConnectionState',
-    'ZLinkFanoutRuntimeEvent',
     'ZLinkMessageFlowReason'
   ];
   for (const name of runtimeAliases) {
@@ -188,13 +180,11 @@ test('runtime topology and supporting exact names are declared by their producti
     'ZLinkFrameworkRuntime',
     'ZLinkTopologyState',
     'ZLinkPeerState',
-    'ZLinkMeshPeerSnapshot',
-    'ZLinkMeshChannelSnapshot',
-    'ZLinkMeshClaimSnapshot',
-    'ZLinkLocationRuntimeSnapshot',
-    'ZLinkInstanceSpotTypeSnapshot',
-    'ZLinkMeshNodeSnapshot',
-    'ZLinkMeshRuntimeEvent',
+    'ZLinkTopologyReason',
+    'ZLinkPeerStatus',
+    'ZLinkChannelStatus',
+    'ZLinkPlacementStatus',
+    'ZLinkRouteMeshStatus',
     'ZLinkRouteMeshRuntime'
   ];
   for (const name of exactRouteMeshNames) {
@@ -205,14 +195,22 @@ test('runtime topology and supporting exact names are declared by their producti
   assert.match(frameworkRuntime, /readonly status: ZLinkFrameworkRuntimeStatus/);
   assert.match(frameworkRuntime, /relocate\(options: ZLinkFrameworkRelocationOptions\): Promise<ZLinkFrameworkRelocationResult>/);
   assert.match(frameworkRuntime, /shutdown\(options\?: ZLinkFrameworkLifecycleOptions\): Promise<ZLinkFrameworkTerminationResult>/);
-  assert.match(routeMeshRuntime, /snapshot\(meshName: string\): ZLinkMeshNodeSnapshot/);
-  assert.match(routeMeshRuntime, /observe\(meshName: string, capacity\?: number, signal\?: AbortSignal\): AsyncIterable<ZLinkMeshRuntimeEvent>/);
+  assert.match(routeMeshRuntime, /snapshot\(meshName: string\): ZLinkRouteMeshStatus/);
+  assert.match(routeMeshRuntime, /observe\(meshName: string, capacity\?: number, signal\?: AbortSignal\): AsyncIterable<ZLinkRouteMeshStatus>/);
   assert.match(routeMeshRuntime, /isReady\(meshName: string\): boolean/);
   assert.doesNotMatch(routeMeshRuntime, /\bdrain\(/);
   assert.doesNotMatch(routeMeshRuntime, /\bawaitDrained\(/);
   for (const removed of ['ZLinkMeshDrainSnapshot', 'ZLinkDrainForceReason', 'ZLinkMeshDrainResult']) {
     assert.doesNotMatch(frameworkDeclarations, new RegExp(`\\b(?:interface|type) ${removed}\\b`));
     assert.doesNotMatch(exactInterfaceCatalog, new RegExp(`\\b(?:interface|type) ${removed}\\b`));
+  }
+  for (const removed of [
+    'ZLinkMeshRuntimeEvent',
+    'ZLinkMeshClaimSnapshot',
+    'ZLinkClientServerRuntimeEvent',
+    'ZLinkFanoutRuntimeEvent'
+  ]) {
+    assert.doesNotMatch(frameworkDeclarations, new RegExp(`\\b(?:interface|type) ${removed}\\b`));
   }
   assert.match(nestDeclarations, /\binterface ZLinkNestMeshChannelClientBuilder\b/);
   assert.match(nestDeclarations, /\binterface ZLinkNestMeshChannelServerBuilder\b/);
@@ -238,18 +236,19 @@ test('diagnostics options do not expose inert native diagnostics configuration',
   assert.equal(diagnosticsOptions.includes('includeNativeDiagnostics'), false);
 });
 
-test('monitoring options expose only socket and location runtime sources', () => {
-  const contracts = fs.readFileSync(
-    path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Eventing', 'Contracts.ts'),
-    'utf8'
+test('public declarations do not expose raw runtime events or monitoring registration', () => {
+  const contracts = readTree(
+    path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts')
   );
   const spec = readTree(interfaceSpecRoot);
 
-  assert.doesNotMatch(contracts, /\bregistry\?:\s*ZLinkPollingMonitoringRegistration/);
-  assert.doesNotMatch(spec, /\bregistry\?:\s*ZLinkPollingMonitoringRegistration/);
-  assert.doesNotMatch(contracts, /\bspot\?:\s*ZLinkPollingMonitoringRegistration/);
-  assert.doesNotMatch(spec, /\bspot\?:\s*ZLinkPollingMonitoringRegistration/);
   for (const removed of [
+    'ZLinkMonitoringOptions',
+    'ZLinkPollingMonitoringRegistration',
+    'ZLinkRuntimeEventHandler',
+    'ZLinkSocketEvent',
+    'ZLinkLocationRuntimeEvent',
+    'ZLinkSpotEvent',
     'ZLinkSpotPeerKind',
     'ZLinkSpotPeerSource',
     'ZLinkSpotPeerState',
@@ -258,8 +257,8 @@ test('monitoring options expose only socket and location runtime sources', () =>
     assert.doesNotMatch(contracts, new RegExp(`\\b${removed}\\b`));
     assert.doesNotMatch(spec, new RegExp(`\\b${removed}\\b`));
   }
-  assert.doesNotMatch(contracts, /\bStatusChanged\s*=\s*['"]statusChanged['"]/);
-  assert.doesNotMatch(contracts, /\bPeersChanged\s*=\s*['"]peersChanged['"]/);
+  assert.doesNotMatch(contracts, /\bmonitoring\??:/);
+  assert.doesNotMatch(spec, /\bzlinkRuntimeEventHandler\b/);
   assert.doesNotMatch(spec, /\bnativeCode\??:/);
 });
 
@@ -435,8 +434,9 @@ test('spot manager exposes exact single-use stable-type calls and generation-fen
   assert.doesNotMatch(declarations, /ZLinkEntrySpotOptions/);
 });
 
-test('location wire enums retain numeric values while Node-facing result enums use strings', () => {
+test('location wire enums retain values while provider write enums stay internal', () => {
   const framework = require('../../packages/framework/dist');
+  const internal = require('../../packages/framework/dist/internal');
   const expectedLocationEnums = {
     ZLinkLocationRole: {
       Invalid: 0,
@@ -477,9 +477,13 @@ test('location wire enums retain numeric values while Node-facing result enums u
   // reverse key-set check; the other eight were unguarded. Assert both directions for
   // every enum instead, so an added member fails rather than going unverified.
   for (const [enumName, expected] of Object.entries(expectedLocationEnums)) {
-    assert.deepEqual(pickEnumValues(framework[enumName], Object.keys(expected)), expected, enumName);
+    const enumObject = enumName === 'ZLinkLocationWriteIntent'
+      || enumName === 'ZLinkLocationWriteStatus'
+      ? internal[enumName]
+      : framework[enumName];
+    assert.deepEqual(pickEnumValues(enumObject, Object.keys(expected)), expected, enumName);
     assert.deepEqual(
-      Object.keys(framework[enumName])
+      Object.keys(enumObject)
         .filter((name) => Number.isNaN(Number(name)))
         .sort(),
       Object.keys(expected).sort(),
@@ -491,6 +495,8 @@ test('location wire enums retain numeric values while Node-facing result enums u
   assert.equal(framework.ZLinkLocationKind, undefined);
   assert.equal(framework.ZLinkRouteKind, undefined);
   assert.equal(framework.ZLinkLocationChangeType, undefined);
+  assert.equal(framework.ZLinkLocationWriteIntent, undefined);
+  assert.equal(framework.ZLinkLocationWriteStatus, undefined);
 
   assert.equal(framework.zlinkLocationAutoConnectTypeName, undefined);
   assert.equal(framework.zlinkLocationRoleName, undefined);

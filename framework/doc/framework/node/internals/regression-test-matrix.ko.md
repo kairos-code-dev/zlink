@@ -358,7 +358,7 @@ dotnet 의 문서 회귀 테스트처럼, Node 에서도 구현 기준 문서가
 [^ci-gate]: CI gate 는 새 변경을 머지하거나 배포하기 전에 통과해야 하는 자동 검증 단계(빌드, 테스트 등)의 묶음을 가리킨다.
 [^di]: DI(Dependency Injection) 는 객체가 필요한 의존성을 직접 만들지 않고 외부 컨테이너에서 주입받도록 하는 패턴이다. NestJS 에서는 module + provider + token 기반 컨테이너가 표준이다.
 [^backpressure]: backpressure는 송신 속도가 수신 측의 처리 용량을 넘지 않도록 흐름을 조절하는 메커니즘이다.
-[^hwm]: HWM(High Water Mark) 은 송신 큐에 쌓을 수 있는 최대 메시지 수를 가리키며, 이 한계에 도달하면 backpressure 가 발동한다.
+[^hwm]: HWM(High Water Mark) 은 송신 큐가 보관할 수 있는 최대 byte 를 가리키며, 이 한계에 도달하면 backpressure 가 발동한다.
 [^wire-multipart]: wire multipart 는 한 논리 메시지를 header, payload 등 여러 message part 로 나누어 전송하는 방식이다. 한쪽만 떼어 살펴봐도 라우팅이 가능해진다.
 [^entry-spot]: Entry Spot은 MeshNode에 들어온 actor를 가장 먼저 처리하는 진입용 Spot이다. 이후 user Spot으로 이동하기 전 단계 역할을 한다.
 [^spot]: `SPOT`은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다. MeshNode는 하나 이상의 Spot 인스턴스를 호스팅한다.

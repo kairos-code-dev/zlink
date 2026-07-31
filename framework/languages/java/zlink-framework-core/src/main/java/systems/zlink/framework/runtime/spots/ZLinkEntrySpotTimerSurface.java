@@ -73,6 +73,17 @@ record ZLinkEntrySpotBackedContext(
     }
 
     @Override
+    public systems.zlink.framework.spots.ZLinkSpotRelocationReadyCall
+        relocationReady() {
+        return () -> {
+            throw new systems.zlink.framework.errors.ZLinkFrameworkException(
+                systems.zlink.framework.errors.ZLinkFrameworkErrorKind
+                    .INVALID_CONFIGURATION,
+                "Entry Spot does not support relocationReady().defer()");
+        };
+    }
+
+    @Override
     public CompletionStage<Void> leaveActor(ZLinkActor actor) {
         return java.util.concurrent.CompletableFuture.completedFuture(null);
     }

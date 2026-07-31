@@ -893,10 +893,9 @@ int main ()
     zlink::framework::handler_registry_t mutual_tls_handlers;
     zlink::framework::serializer_registry_t mutual_tls_serializers;
     zlink::framework::zlink_builder_t mutual_tls_zlink;
-    zlink::framework::monitoring_builder_t mutual_tls_monitoring;
     zlink::framework::zlink_framework_options_t mutual_tls_options (
       mutual_tls_services, mutual_tls_handlers, mutual_tls_serializers,
-      mutual_tls_zlink, mutual_tls_monitoring);
+      mutual_tls_zlink);
     mutual_tls_options.add_stream_node ("mutual-tls-listener")
       .bind ("tls://127.0.0.1:" + std::to_string (mutual_tls_port))
       .set_tls_server (ZLINK_FRAMEWORK_STREAM_TEST_CERT,
@@ -941,9 +940,8 @@ int main ()
     zlink::framework::handler_registry_t custom_handlers;
     zlink::framework::serializer_registry_t custom_serializers;
     zlink::framework::zlink_builder_t custom_zlink;
-    zlink::framework::monitoring_builder_t custom_monitoring;
     zlink::framework::zlink_framework_options_t custom_options (
-      custom_services, custom_handlers, custom_serializers, custom_zlink, custom_monitoring);
+      custom_services, custom_handlers, custom_serializers, custom_zlink);
     custom_options.configure_stream_compression ().use (custom_codec);
     custom_options.add_stream_node ("custom-stream")
       .bind ("tcp://0.0.0.0:9201")
@@ -986,9 +984,8 @@ int main ()
     }
 
     zlink::framework::zlink_builder_t disabled_zlink;
-    zlink::framework::monitoring_builder_t disabled_monitoring;
     zlink::framework::zlink_framework_options_t disabled_options (
-      custom_services, custom_handlers, custom_serializers, disabled_zlink, disabled_monitoring);
+      custom_services, custom_handlers, custom_serializers, disabled_zlink);
     disabled_options.configure_stream_compression ().disable ();
     disabled_options.add_stream_node ("disabled-stream")
       .bind ("tcp://0.0.0.0:9202")
@@ -1021,9 +1018,8 @@ int main ()
     }
 
     zlink::framework::zlink_builder_t oversized_zlink;
-    zlink::framework::monitoring_builder_t oversized_monitoring;
     zlink::framework::zlink_framework_options_t oversized_options (
-      custom_services, custom_handlers, custom_serializers, oversized_zlink, oversized_monitoring);
+      custom_services, custom_handlers, custom_serializers, oversized_zlink);
     oversized_options.configure_stream_compression ().use (
       std::make_shared<oversized_stream_compression_codec_t> ());
     oversized_options.add_stream_node ("oversized-stream")
@@ -1049,7 +1045,6 @@ int main ()
     zlink::framework::handler_registry_t transport_handlers;
     zlink::framework::serializer_registry_t transport_serializers;
     zlink::framework::zlink_builder_t transport_zlink;
-    zlink::framework::monitoring_builder_t transport_monitoring;
     transport_services.add_singleton<zlink::framework::detail::actor_gateway_runtime_t> ();
     transport_services.add_factory<zlink::framework::session_actor_manager_t> (
       [] (zlink::framework::service_provider_t &provider) {
@@ -1058,8 +1053,7 @@ int main ()
       },
       zlink::framework::service_lifetime_t::scoped);
     zlink::framework::zlink_framework_options_t transport_options (
-      transport_services, transport_handlers, transport_serializers, transport_zlink,
-      transport_monitoring);
+      transport_services, transport_handlers, transport_serializers, transport_zlink);
     transport_options.add_stream_node ("transport-stream")
       .bind (transport_endpoint)
       .register_session ("transport-session");
@@ -1135,8 +1129,7 @@ int main ()
       "tcp://127.0.0.1:" + std::to_string (rejected_port);
     zlink::framework::zlink_builder_t rejected_zlink;
     zlink::framework::zlink_framework_options_t rejected_options (
-      transport_services, transport_handlers, transport_serializers, rejected_zlink,
-      transport_monitoring);
+      transport_services, transport_handlers, transport_serializers, rejected_zlink);
     rejected_options.add_stream_node ("rejected-stream")
       .bind (rejected_endpoint)
       .register_session ("rejected-session");

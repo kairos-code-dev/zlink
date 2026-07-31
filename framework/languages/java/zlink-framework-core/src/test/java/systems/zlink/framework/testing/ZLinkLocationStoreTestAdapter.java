@@ -5,9 +5,12 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.*;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkLocationRepository;
 
 /** Test-only adapter that lets focused tests override only the store operations they exercise. */
-public abstract class ZLinkLocationStoreTestAdapter implements ZLinkLocationStore {
+public abstract class ZLinkLocationStoreTestAdapter implements ZLinkLocationRepository {
     private static <T> CompletionStage<T> unsupported() {
         return CompletableFuture.failedFuture(new UnsupportedOperationException());
     }

@@ -16,6 +16,7 @@ import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOption
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.*;
 import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectPeer;
 import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectType;
 import systems.zlink.framework.runtime.locations.ZLinkLocationAutoConnectHost;
@@ -29,7 +30,7 @@ final class ZLinkFrameworkRuntimeDrainRouteTest {
         options.addFanoutChannel("manual-events")
             .enablePublisher(
                 "inproc://manual-events-" + java.util.UUID.randomUUID());
-        ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(
+        ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntimeTestAccess.start(
             options,
             new ZLinkJavaBackendAdapterFactory());
         long readyDeadline = System.nanoTime()
@@ -38,16 +39,21 @@ final class ZLinkFrameworkRuntimeDrainRouteTest {
             Thread.sleep(1);
         }
 
-        ZLinkTerminationResult result = runtime.retire(
-                java.time.Duration.ofSeconds(1))
+        ZLinkFrameworkRelocationResult result = runtime.relocate(
+                new ZLinkFrameworkRelocationOptions(
+                    ZLinkFrameworkRelocationMode.PLANNED_MAINTENANCE,
+                    null,
+                    java.time.Duration.ofSeconds(1)))
             .toCompletableFuture()
             .get(2, TimeUnit.SECONDS);
 
-        assertEquals(ZLinkTerminationOutcome.BLOCKED, result.outcome());
+        assertEquals(ZLinkFrameworkRelocationOutcome.BLOCKED, result.outcome());
         assertEquals(
-            ZLinkTerminationReason.MANUAL_TOPOLOGY_UNSUPPORTED,
+            ZLinkFrameworkRelocationReason.MANUAL_TOPOLOGY_UNSUPPORTED,
             result.reason());
-        assertEquals(ZLinkFrameworkRuntimeState.SERVING, runtime.state());
+        assertEquals(
+            ZLinkFrameworkRuntimeState.SERVING,
+            runtime.status().state());
         runtime.shutdown(java.time.Duration.ofSeconds(1))
             .toCompletableFuture()
             .get(2, TimeUnit.SECONDS);
@@ -57,7 +63,7 @@ final class ZLinkFrameworkRuntimeDrainRouteTest {
     void shutdownPublishesTheHostWideTerminalContract() throws Exception {
         DefaultZLinkFrameworkOptions options =
             new DefaultZLinkFrameworkOptions();
-        ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(
+        ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntimeTestAccess.start(
             options,
             new ZLinkJavaBackendAdapterFactory());
         long deadline = System.nanoTime()
@@ -65,9 +71,9 @@ final class ZLinkFrameworkRuntimeDrainRouteTest {
         while (!runtime.isReady() && System.nanoTime() < deadline) {
             Thread.sleep(1);
         }
-        CompletableFuture<ZLinkTerminationResult> observed =
+        CompletableFuture<ZLinkFrameworkTerminationResult> observed =
             new CompletableFuture<>();
-        runtime.observe(1).subscribe(new java.util.concurrent.Flow.Subscriber<>() {
+        runtime.observe().subscribe(new java.util.concurrent.Flow.Subscriber<>() {
             @Override
             public void onSubscribe(
                 java.util.concurrent.Flow.Subscription subscription) {
@@ -77,8 +83,8 @@ final class ZLinkFrameworkRuntimeDrainRouteTest {
             @Override
             public void onNext(
                 systems.zlink.framework.monitoring
-                    .ZLinkFrameworkRuntimeEvent event) {
-                event.runtime().terminalResult().ifPresent(observed::complete);
+                    .ZLinkFrameworkRuntimeStatus status) {
+                status.terminationResult().ifPresent(observed::complete);
             }
 
             @Override
@@ -91,18 +97,19 @@ final class ZLinkFrameworkRuntimeDrainRouteTest {
             }
         });
 
-        ZLinkTerminationResult result = runtime.shutdown(
+        ZLinkFrameworkTerminationResult result = runtime.shutdown(
                 java.time.Duration.ofSeconds(1))
             .toCompletableFuture()
             .get(2, TimeUnit.SECONDS);
 
-        assertEquals(ZLinkTerminationIntent.SHUTDOWN, result.effectiveIntent());
-        assertEquals(ZLinkTerminationOutcome.STOPPED, result.outcome());
-        assertEquals(ZLinkTerminationReason.NONE, result.reason());
-        assertEquals(ZLinkFrameworkRuntimeState.STOPPED, runtime.state());
+        assertEquals(ZLinkFrameworkTerminationOutcome.STOPPED, result.outcome());
+        assertEquals(ZLinkFrameworkTerminationReason.NONE, result.reason());
+        assertEquals(
+            ZLinkFrameworkRuntimeState.STOPPED,
+            runtime.status().state());
         assertEquals(
             result,
-            runtime.snapshot().terminalResult().orElseThrow());
+            runtime.status().terminationResult().orElseThrow());
         assertEquals(result, observed.get(1, TimeUnit.SECONDS));
     }
 

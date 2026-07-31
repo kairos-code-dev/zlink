@@ -1,5 +1,23 @@
 package systems.zlink.framework.runtime;
 
+import systems.zlink.framework.runtime.internal.locations.ZLinkRelocationStore;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationDeleteResult;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationFound;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationMissing;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationReadResult;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationRenewMissing;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationRenewResult;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationRenewed;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationStored;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
@@ -9,8 +27,11 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.zip.CRC32C;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.*;
 
-public final class InMemoryRelocationStore implements ZLinkRelocationStore {
+public final class InMemoryRelocationStore implements
+    ZLinkRelocationStore,
+    systems.zlink.framework.locationprovider.ZLinkRelocationStore {
     private final Map<String, Entry> values = new ConcurrentHashMap<>();
 
     public InMemoryRelocationStore() {
@@ -31,6 +52,75 @@ public final class InMemoryRelocationStore implements ZLinkRelocationStore {
         return CompletableFuture.completedFuture(
             new ZLinkRelocationStored(
                 reference, checksum.getValue(), expiresAt, now));
+    }
+
+    @Override
+    public CompletionStage<
+        systems.zlink.framework.locationprovider.ZLinkBlobPutResult> put(
+        systems.zlink.framework.locationprovider.ZLinkBlobReference reference,
+        byte[] payload,
+        Duration retention,
+        systems.zlink.framework.locationprovider.ZLinkStoreCancellation cancellation) {
+        Instant now = Instant.now();
+        Instant expiresAt = now.plus(retention);
+        Entry candidate = new Entry(payload, expiresAt);
+        Entry current = values.putIfAbsent(reference.value(), candidate);
+        if (current == null) {
+            return CompletableFuture.completedFuture(
+                new systems.zlink.framework.locationprovider.ZLinkBlobStored(
+                    expiresAt, now));
+        }
+        return CompletableFuture.completedFuture(
+            java.util.Arrays.equals(current.payload(), payload)
+                ? new systems.zlink.framework.locationprovider
+                    .ZLinkBlobAlreadyStored(current.expiresAt(), now)
+                : new systems.zlink.framework.locationprovider
+                    .ZLinkBlobConflict(now));
+    }
+
+    @Override
+    public CompletionStage<
+        systems.zlink.framework.locationprovider.ZLinkBlobReadResult> read(
+        systems.zlink.framework.locationprovider.ZLinkBlobReference reference,
+        systems.zlink.framework.locationprovider.ZLinkStoreCancellation cancellation) {
+        Entry entry = values.get(reference.value());
+        Instant now = Instant.now();
+        if (entry == null || !entry.expiresAt().isAfter(now)) {
+            values.remove(reference.value());
+            return CompletableFuture.completedFuture(
+                new systems.zlink.framework.locationprovider.ZLinkBlobMissing(now));
+        }
+        return CompletableFuture.completedFuture(
+            new systems.zlink.framework.locationprovider.ZLinkBlobFound(
+                entry.payload(), entry.expiresAt(), now));
+    }
+
+    @Override
+    public CompletionStage<
+        systems.zlink.framework.locationprovider.ZLinkBlobRenewResult> renew(
+        systems.zlink.framework.locationprovider.ZLinkBlobReference reference,
+        Duration retention,
+        systems.zlink.framework.locationprovider.ZLinkStoreCancellation cancellation) {
+        Entry entry = values.get(reference.value());
+        Instant now = Instant.now();
+        if (entry == null) {
+            return CompletableFuture.completedFuture(
+                new systems.zlink.framework.locationprovider
+                    .ZLinkBlobRenewMissing(now));
+        }
+        Instant expiresAt = now.plus(retention);
+        values.put(reference.value(), new Entry(entry.payload(), expiresAt));
+        return CompletableFuture.completedFuture(
+            new systems.zlink.framework.locationprovider.ZLinkBlobRenewed(
+                expiresAt, now));
+    }
+
+    @Override
+    public CompletionStage<Void> delete(
+        systems.zlink.framework.locationprovider.ZLinkBlobReference reference,
+        systems.zlink.framework.locationprovider.ZLinkStoreCancellation cancellation) {
+        values.remove(reference.value());
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override

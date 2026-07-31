@@ -172,24 +172,6 @@ struct sync_quest_progress_res_t
     std::vector<quest_progress_t> updated_quests;
 };
 
-struct ensure_player_quest_spot_req_t
-{
-    static constexpr const char *packet_name = "EnsurePlayerQuestSpotReq";
-    std::string player_id;
-};
-
-struct ensure_player_quest_spot_res_t
-{
-    static constexpr const char *packet_name = "EnsurePlayerQuestSpotRes";
-    bool ok = false;
-};
-
-struct player_quest_spot_create_req_t
-{
-    static constexpr const char *packet_name = "PlayerQuestSpotCreateReq";
-    std::string player_id;
-};
-
 struct quest_progress_notify_t
 {
     static constexpr const char *packet_name = "QuestProgressNotify";
@@ -485,30 +467,6 @@ inline void to_json (nlohmann::json &json, const sync_quest_progress_res_t &valu
 inline void from_json (const nlohmann::json &json, sync_quest_progress_res_t &value)
 {
     json.at ("updatedQuests").get_to (value.updated_quests);
-}
-inline void to_json (nlohmann::json &json, const ensure_player_quest_spot_req_t &value)
-{
-    json = {{"playerId", value.player_id}};
-}
-inline void from_json (const nlohmann::json &json, ensure_player_quest_spot_req_t &value)
-{
-    json.at ("playerId").get_to (value.player_id);
-}
-inline void to_json (nlohmann::json &json, const ensure_player_quest_spot_res_t &value)
-{
-    json = {{"ok", value.ok}};
-}
-inline void from_json (const nlohmann::json &json, ensure_player_quest_spot_res_t &value)
-{
-    json.at ("ok").get_to (value.ok);
-}
-inline void to_json (nlohmann::json &json, const player_quest_spot_create_req_t &value)
-{
-    json = {{"playerId", value.player_id}};
-}
-inline void from_json (const nlohmann::json &json, player_quest_spot_create_req_t &value)
-{
-    json.at ("playerId").get_to (value.player_id);
 }
 inline void to_json (nlohmann::json &json, const quest_progress_notify_t &value)
 {

@@ -65,7 +65,8 @@ inline int run_service_host (int argc, char **argv)
           .add_request_handler<mesh_application_gate_dispatch_handler_t,
                                application_gate_req_t,
                                application_gate_res_t> ();
-        mesh.configure_router_socket ().send_high_water_mark = 1;
+        mesh.configure_router_socket ().send_high_water_mark =
+          zlink::byte_count_t::bytes (1);
         mesh.configure_router_socket ().send_timeout =
           std::chrono::milliseconds (250);
         mesh.configure_router_socket ().mailbox_message_budget = 1;
@@ -90,27 +91,20 @@ inline int run_service_host (int argc, char **argv)
           });
         for (const auto &endpoint : options.mesh_peer_endpoints)
             mesh.peer_connections ().connect (endpoint);
-        auto &monitoring = framework.monitoring ();
-        monitoring.add_socket_events (channel_server_source);
-        if (options.monitor_profile == "socket-filter") {
-            monitoring.add_socket_events (
-              profile_channel, {zlink::framework::socket_event_kind_t::connection_ready});
-        } else {
-            monitoring.add_socket_events (profile_channel);
-        }
-        monitoring.add_location_events ("location-runtime", std::chrono::milliseconds (100));
-        monitoring.on<zlink::framework::socket_event_payload_t> (
-          [evidence_ptr] (const zlink::framework::socket_event_payload_t &event) {
-              server::record_socket_event (*evidence_ptr, event);
-          });
-        monitoring.on<zlink::framework::location_event_payload_t> (
-          [evidence_ptr] (const zlink::framework::location_event_payload_t &event) {
-              server::record_location_event (*evidence_ptr, event);
+        app.logging ().use_callback_sink (
+          [evidence_ptr, profile = options.monitor_profile] (
+            const zlink::framework::log_record_t &record) {
+              if (profile == "socket-filter"
+                  && server::log_field (record, "source_name") == profile_channel
+                  && server::log_field (record, "state") != "ready") {
+                  return;
+              }
+              server::record_runtime_log (*evidence_ptr, record);
           });
         if (options.monitor_profile == "throwing") {
-            monitoring.on<zlink::framework::socket_event_payload_t> (
-              [evidence_ptr] (const zlink::framework::socket_event_payload_t &event) {
-                  record_throwing_socket_event (*evidence_ptr, event);
+            app.logging ().use_callback_sink (
+              [evidence_ptr] (const zlink::framework::log_record_t &record) {
+                  record_throwing_runtime_log (*evidence_ptr, record);
               });
         }
         if (!options.http_endpoint.empty ()) {

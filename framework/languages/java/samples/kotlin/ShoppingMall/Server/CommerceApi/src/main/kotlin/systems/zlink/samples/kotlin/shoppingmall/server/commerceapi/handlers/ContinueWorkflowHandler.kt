@@ -1,6 +1,6 @@
 package systems.zlink.samples.kotlin.shoppingmall.server.commerceapi.handlers
 
-import systems.zlink.framework.channels.ZLinkRequestContext
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.samples.kotlin.shoppingmall.server.commerceapi.OrderWorkflowRouter
@@ -14,7 +14,7 @@ class ContinueWorkflowHandler(
 ) : ZLinkSuspendingRequestHandler<ContinueOrderWorkflowReq, ContinueOrderWorkflowRes> {
     override suspend fun handle(
         request: ContinueOrderWorkflowReq,
-        context: ZLinkRequestContext,
+        context: ZLinkMessageContext,
     ): ContinueOrderWorkflowRes =
         ContinueOrderWorkflowRes(workflows.continueWorkflow(request.orderId))
 }

@@ -58,16 +58,20 @@ internal sealed class SupportChatClientScenario
         ZlinkStreamAssert.Ensure((await assigned1ForAgent).Payload.ConversationId == cid1, "Assertion failed: (await assigned1ForAgent).Payload.ConversationId == cid1");
 
         var joined1ForCustomer = customer1.WaitFor<ParticipantJoinedNotify>().Async(cancellationToken);
+        var joined1ForAgent = agent.WaitFor<ParticipantJoinedNotify>()
+            .Where(message => message.Payload.ConversationId == cid1)
+            .Async(cancellationToken);
         var agentRoom1 = Conversation(agent, cid1);
         var customerRoom1 = Conversation(customer1, cid1);
         var agentJoin1 = await agentRoom1.JoinAsync(cancellationToken);
-        ZlinkStreamAssert.Ensure(agentJoin1.State.Status == ConversationStatuses.Active, "Assertion failed: agentJoin1.State.Status == ConversationStatuses.Active");
-        ZlinkStreamAssert.Ensure(agentJoin1.State.AgentActorId == "agent-1", "Assertion failed: agentJoin1.State.AgentActorId == \"agent-1\"");
-        ZlinkStreamAssert.Ensure(agentJoin1.State.Subject == "checkout payment failed", "Assertion failed: agentJoin1.State.Subject == \"checkout payment failed\"");
+        ZlinkStreamAssert.Ensure(agentJoin1.Scheduled, "Assertion failed: agentJoin1.Scheduled");
         var joined1 = await joined1ForCustomer;
+        var joined1Agent = await joined1ForAgent;
         ZlinkStreamAssert.Ensure(joined1.Payload.ConversationId == cid1, "Assertion failed: joined1.Payload.ConversationId == cid1");
         ZlinkStreamAssert.Ensure(joined1.Payload.ActorId == "agent-1", "Assertion failed: joined1.Payload.ActorId == \"agent-1\"");
         ZlinkStreamAssert.Ensure(joined1.Payload.State.Status == ConversationStatuses.Active, "Assertion failed: joined1.Payload.State.Status == ConversationStatuses.Active");
+        ZlinkStreamAssert.Ensure(joined1Agent.Payload.State.AgentActorId == "agent-1", "Assertion failed: joined1Agent.Payload.State.AgentActorId == \"agent-1\"");
+        ZlinkStreamAssert.Ensure(joined1Agent.Payload.State.Subject == "checkout payment failed", "Assertion failed: joined1Agent.Payload.State.Subject == \"checkout payment failed\"");
 
         // Agent greets, customer replies; sequence is assigned per conversation.
         var greeting1ForCustomer = customer1.WaitFor<ChatMessageNotify>().Async(cancellationToken);
@@ -97,12 +101,15 @@ internal sealed class SupportChatClientScenario
         ZlinkStreamAssert.Ensure((await assigned2ForAgent).Payload.ConversationId == cid2, "Assertion failed: (await assigned2ForAgent).Payload.ConversationId == cid2");
 
         var joined2ForCustomer = customer2.WaitFor<ParticipantJoinedNotify>().Async(cancellationToken);
+        var joined2ForAgent = agent.WaitFor<ParticipantJoinedNotify>()
+            .Where(message => message.Payload.ConversationId == cid2)
+            .Async(cancellationToken);
         var agentRoom2 = Conversation(agent, cid2);
         var customerRoom2 = Conversation(customer2, cid2);
         var agentJoin2 = await agentRoom2.JoinAsync(cancellationToken);
-        ZlinkStreamAssert.Ensure(agentJoin2.State.Status == ConversationStatuses.Active, "Assertion failed: agentJoin2.State.Status == ConversationStatuses.Active");
-        ZlinkStreamAssert.Ensure(agentJoin2.State.Subject == "cannot log in", "Assertion failed: agentJoin2.State.Subject == \"cannot log in\"");
+        ZlinkStreamAssert.Ensure(agentJoin2.Scheduled, "Assertion failed: agentJoin2.Scheduled");
         ZlinkStreamAssert.Ensure((await joined2ForCustomer).Payload.ConversationId == cid2, "Assertion failed: (await joined2ForCustomer).Payload.ConversationId == cid2");
+        ZlinkStreamAssert.Ensure((await joined2ForAgent).Payload.State.Subject == "cannot log in", "Assertion failed: (await joined2ForAgent).Payload.State.Subject == \"cannot log in\"");
 
         // The rooms are independent: cid2 starts its own MessageSeq at 1.
         var greeting2ForCustomer = customer2.WaitFor<ChatMessageNotify>().Async(cancellationToken);
@@ -127,6 +134,7 @@ internal sealed class SupportChatClientScenario
             .Async<AuthenticateRes>(cancellationToken)).ActorId == "customer-1", "Assertion failed: (await reconnectingCustomer.Request(new AuthenticateReq(\"customer-1\")) .Async<AuthenticateRes>(cancellationToken)).ActorId == \"customer-1\"");
         customerRoom1 = Conversation(reconnectingCustomer, cid1);
         var customerRejoin1 = await customerRoom1.JoinAsync(cancellationToken);
+        ZlinkStreamAssert.Ensure(!customerRejoin1.Scheduled, "Assertion failed: !customerRejoin1.Scheduled");
         ZlinkStreamAssert.Ensure(customerRejoin1.State.Subject == "checkout payment failed", "Assertion failed: customerRejoin1.State.Subject == \"checkout payment failed\"");
         ZlinkStreamAssert.Ensure(customerRejoin1.State.Status == ConversationStatuses.Active, "Assertion failed: customerRejoin1.State.Status == ConversationStatuses.Active");
         ZlinkStreamAssert.Ensure(customerRejoin1.State.LastMessageSeq == 2UL, "Assertion failed: customerRejoin1.State.LastMessageSeq == 2UL");
@@ -142,8 +150,12 @@ internal sealed class SupportChatClientScenario
             .Async<SetAgentAvailableRes>(cancellationToken)).IsAvailable, "Assertion failed: (await reconnectingAgent.Request(new SetAgentAvailableReq(true)) .Async<SetAgentAvailableRes>(cancellationToken)).IsAvailable");
         var reconnectedRoom1 = Conversation(reconnectingAgent, cid1);
         var reconnectedRoom2 = Conversation(reconnectingAgent, cid2);
-        ZlinkStreamAssert.Ensure((await reconnectedRoom1.JoinAsync(cancellationToken)).State.Subject == "checkout payment failed", "Assertion failed: (await reconnectedRoom1.JoinAsync(cancellationToken)).State.Subject == \"checkout payment failed\"");
-        ZlinkStreamAssert.Ensure((await reconnectedRoom2.JoinAsync(cancellationToken)).State.Subject == "cannot log in", "Assertion failed: (await reconnectedRoom2.JoinAsync(cancellationToken)).State.Subject == \"cannot log in\"");
+        var rejoinedRoom1 = await reconnectedRoom1.JoinAsync(cancellationToken);
+        var rejoinedRoom2 = await reconnectedRoom2.JoinAsync(cancellationToken);
+        ZlinkStreamAssert.Ensure(!rejoinedRoom1.Scheduled, "Assertion failed: !rejoinedRoom1.Scheduled");
+        ZlinkStreamAssert.Ensure(!rejoinedRoom2.Scheduled, "Assertion failed: !rejoinedRoom2.Scheduled");
+        ZlinkStreamAssert.Ensure(rejoinedRoom1.State.Subject == "checkout payment failed", "Assertion failed: rejoinedRoom1.State.Subject == \"checkout payment failed\"");
+        ZlinkStreamAssert.Ensure(rejoinedRoom2.State.Subject == "cannot log in", "Assertion failed: rejoinedRoom2.State.Subject == \"cannot log in\"");
 
         // Arm cid1 idle + auto-close waiters (both sides) before cid1 can close.
         var idleTimeout = SampleNames.IdleTimeout + SampleNames.CloseGraceTimeout + SampleNames.RequestTimeout;

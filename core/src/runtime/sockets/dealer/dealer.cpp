@@ -70,7 +70,9 @@ void zlink::dealer_t::xattach_pipe (pipe_t *pipe_, bool subscribe_to_all_, bool 
         int rc = probe_msg.init ();
         errno_assert (rc == 0);
 
-        rc = pipe_->write_and_flush (&probe_msg);
+        rc = pipe_->get_transport_pair_id () != 0
+               ? pipe_->write_transport_probe_and_flush (&probe_msg)
+               : pipe_->write_and_flush (&probe_msg);
         // zlink_assert (rc) is not applicable here, since it is not a bug.
         LIBZLINK_UNUSED (rc);
 

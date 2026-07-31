@@ -59,6 +59,9 @@ export function encodeRemoteActorPacketRelayPayload(input: {
       ? undefined
       : routingIdWireHex(input.bindingActorRef.nodeRid),
     bindingActorGeneration: input.bindingActorRef?.objectGeneration.toString(),
+    bindingGeneration: (input.bindingActorRef as (ActorRef & {
+      readonly bindingGeneration?: bigint;
+    }) | undefined)?.bindingGeneration?.toString(),
     returnResponse: input.returnResponse,
     messageFollowContext: input.messageFollowContext,
     header: Buffer.from(input.header).toString('base64'),
@@ -87,6 +90,7 @@ export interface ZLinkRemoteActorPacketTargetWire {
   readonly targetNodeRidHex?: string;
   readonly spotId: string;
   readonly spotKind: ZLinkSpotKind;
+  readonly targetSpotGeneration?: string;
 }
 
 export function encodeRemoteActorPacketTarget(
@@ -100,7 +104,8 @@ export function encodeRemoteActorPacketTarget(
     targetNodeRid: String(target.targetNodeRid),
     targetNodeRidHex: routingIdWireHex(target.targetNodeRid),
     spotId: String(target.spotId),
-    spotKind: target.spotKind ?? ZLinkSpotKind.User
+    spotKind: target.spotKind ?? ZLinkSpotKind.User,
+    targetSpotGeneration: target.targetSpotGeneration?.toString()
   };
 }
 
@@ -123,7 +128,11 @@ export function decodeRemoteActorPacketTarget(value: unknown): ZLinkRemoteActorP
     spotId: requireSpotId((value as { spotId: string }).spotId),
     spotKind: (value as { spotKind?: unknown }).spotKind === ZLinkSpotKind.Entry
       ? ZLinkSpotKind.Entry
-      : ZLinkSpotKind.User
+      : ZLinkSpotKind.User,
+    targetSpotGeneration:
+      typeof (value as { targetSpotGeneration?: unknown }).targetSpotGeneration === 'string'
+        ? BigInt((value as { targetSpotGeneration: string }).targetSpotGeneration)
+        : undefined
   };
 }
 
@@ -152,6 +161,7 @@ export function decodeRemoteActorPacketRelayPayload(payload: unknown): {
   readonly bindingActorNodeRid?: string;
   readonly bindingActorNodeRidHex?: string;
   readonly bindingActorGeneration?: string;
+  readonly bindingGeneration?: string;
   readonly returnResponse?: boolean;
   readonly messageFollowContext?: ZLinkActorMessageFollowContext;
 } {
@@ -178,6 +188,7 @@ export function decodeRemoteActorPacketRelayPayload(payload: unknown): {
     bindingActorNodeRid: optionalString(payload, 'bindingActorNodeRid'),
     bindingActorNodeRidHex: optionalString(payload, 'bindingActorNodeRidHex'),
     bindingActorGeneration: optionalString(payload, 'bindingActorGeneration'),
+    bindingGeneration: optionalString(payload, 'bindingGeneration'),
     returnResponse: (payload as { returnResponse?: unknown }).returnResponse === true,
     messageFollowContext: decodeActorMessageFollowContext(
       (payload as { messageFollowContext?: unknown }).messageFollowContext

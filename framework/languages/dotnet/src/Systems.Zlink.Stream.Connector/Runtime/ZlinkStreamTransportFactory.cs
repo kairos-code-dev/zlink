@@ -26,21 +26,16 @@ internal static class ZlinkStreamTransportFactory
         CancellationToken cancellationToken)
     {
         var webSocket = new ClientWebSocket();
-        var transport = ZlinkStreamRuntimeMetrics.TransportLabel(options);
-        var handshake = ZlinkStreamRuntimeMetrics.BeginHandshake();
         try
         {
             if (options.SkipServerCertificateValidation)
                 webSocket.Options.RemoteCertificateValidationCallback = (_, _, _, _) => true;
 
             await webSocket.ConnectAsync(options.Endpoint, cancellationToken).ConfigureAwait(false);
-            ZlinkStreamRuntimeMetrics.RecordHandshakeCompleted(handshake, transport);
             return new WebSocketConnection(webSocket, options.MaxReceivePayloadSize);
         }
-        catch (Exception exception)
+        catch
         {
-            ZlinkStreamRuntimeMetrics.RecordHandshakeCompleted(handshake, transport);
-            ZlinkStreamRuntimeMetrics.RecordHandshakeFailure(transport, exception);
             webSocket.Dispose();
             throw;
         }
@@ -66,18 +61,14 @@ internal static class ZlinkStreamTransportFactory
                     options.SkipServerCertificateValidation
                         ? (_, _, _, _) => true
                         : null);
-                var handshake = ZlinkStreamRuntimeMetrics.BeginHandshake();
                 try
                 {
                     await ssl.AuthenticateAsClientAsync(options.Endpoint.Host).WaitAsync(cancellationToken)
                         .ConfigureAwait(false);
-                    ZlinkStreamRuntimeMetrics.RecordHandshakeCompleted(handshake, "tls");
                     stream = ssl;
                 }
-                catch (Exception exception)
+                catch
                 {
-                    ZlinkStreamRuntimeMetrics.RecordHandshakeCompleted(handshake, "tls");
-                    ZlinkStreamRuntimeMetrics.RecordHandshakeFailure("tls", exception);
                     await ssl.DisposeAsync().ConfigureAwait(false);
                     throw;
                 }

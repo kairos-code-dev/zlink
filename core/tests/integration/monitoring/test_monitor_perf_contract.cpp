@@ -81,6 +81,12 @@ static const size_t kPerfMonitorEndpointSize = 256;
 std::atomic<unsigned int> g_inproc_endpoint_counter (0);
 std::atomic<int> g_send_ready_self_close_rc (0);
 std::atomic<int> g_send_ready_self_close_errno (0);
+std::atomic<int> g_async_send_ready_self_close_rc (0);
+std::atomic<int> g_async_send_ready_self_close_errno (0);
+std::atomic<long long> g_async_send_ready_self_close_elapsed_ms (0);
+std::atomic<bool> g_async_send_ready_callback_changed_thread (false);
+std::atomic<bool> g_async_request_completed (false);
+std::thread::id g_async_send_ready_test_thread;
 static const char kPerfPubsubTopic[] = "bench";
 
 struct connect_monitor_state_t
@@ -544,6 +550,34 @@ void send_ready_self_close_handler (void *subject_, void *)
     g_send_ready_self_close_rc.store (zlink_close (socket), std::memory_order_release);
     g_send_ready_self_close_errno.store (errno, std::memory_order_release);
 }
+
+void async_send_ready_self_close_handler (void *subject_, void *)
+{
+    g_async_send_ready_callback_changed_thread.store (
+      std::this_thread::get_id () != g_async_send_ready_test_thread,
+      std::memory_order_release);
+    const std::chrono::steady_clock::time_point started =
+      std::chrono::steady_clock::now ();
+    g_async_send_ready_self_close_rc.store (zlink_close (subject_),
+                                            std::memory_order_release);
+    g_async_send_ready_self_close_errno.store (errno, std::memory_order_release);
+    const long long elapsed_ms =
+      std::chrono::duration_cast<std::chrono::milliseconds> (
+        std::chrono::steady_clock::now () - started)
+        .count ();
+    g_async_send_ready_self_close_elapsed_ms.store (elapsed_ms,
+                                                    std::memory_order_release);
+}
+
+void discard_request_completion (zlink_request_result_t,
+                                 zlink_msg_t *parts_,
+                                 size_t part_count_,
+                                 void *)
+{
+    if (parts_)
+        zlink_multipart_close (parts_, part_count_);
+    g_async_request_completed.store (true, std::memory_order_release);
+}
 }
 
 void run_pair_perf_like_monitor_sampling_case (bool sample_send_, bool sample_recv_)
@@ -972,25 +1006,128 @@ void test_send_ready_self_close_blocks_followup_operational_api ()
     make_unique_inproc_endpoint (endpoint, sizeof (endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
-
     g_send_ready_self_close_rc.store (INT_MIN, std::memory_order_release);
     g_send_ready_self_close_errno.store (0, std::memory_order_release);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_send_ready_handler (client, &send_ready_self_close_handler, NULL));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
+    void *poller = zlink_poller_new ();
+    TEST_ASSERT_NOT_NULL (poller);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK, zlink_poller_add (poller, client, NULL, ZLINK_POLLOUT));
     arm_send_ready_notification_via_backpressure (client);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_handler (server, &discard_socket_message, NULL));
-
-    const bool callback_observed = zlink_test_wait_until_step (3000, 10, [] {
-        return g_send_ready_self_close_rc.load (std::memory_order_acquire) != INT_MIN;
+    std::thread drain_thread ([server] {
+        char payload[65536];
+        while (zlink_recv (server, payload, sizeof (payload), 0) >= 0) {
+        }
     });
-    TEST_ASSERT_TRUE (callback_observed);
+
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (3);
+    while (g_send_ready_self_close_rc.load (std::memory_order_acquire) == INT_MIN
+           && std::chrono::steady_clock::now () < deadline) {
+        zlink_poller_event_t event;
+        (void) zlink_poller_wait (poller, &event, 1, 10, NULL);
+    }
+    drain_thread.join ();
+    TEST_ASSERT_NOT_EQUAL (INT_MIN,
+                           g_send_ready_self_close_rc.load (std::memory_order_acquire));
 
     TEST_ASSERT_EQUAL_INT (0, g_send_ready_self_close_rc.load (std::memory_order_acquire));
 
     errno = 0;
     TEST_ASSERT_EQUAL_INT (-1, zlink_send (client, "post-close-send", 16, 0));
     TEST_ASSERT_TRUE (errno == ESHUTDOWN || errno == EFAULT);
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_poller_destroy (&poller));
+    close_socket_zero_linger (server);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_async_mailbox_send_ready_self_close_quiesces_before_reap ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *server = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    void *client = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_NOT_NULL (client);
+
+    configure_bounded_pair_socket (server, 200);
+    configure_bounded_pair_socket (client, 200);
+
+    char endpoint[128];
+    make_unique_inproc_endpoint (endpoint, sizeof (endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
+    msleep (SETTLE_TIME);
+
+    g_async_send_ready_test_thread = std::this_thread::get_id ();
+    g_async_send_ready_self_close_rc.store (INT_MIN, std::memory_order_release);
+    g_async_send_ready_self_close_errno.store (0, std::memory_order_release);
+    g_async_send_ready_self_close_elapsed_ms.store (0, std::memory_order_release);
+    g_async_send_ready_callback_changed_thread.store (false, std::memory_order_release);
+    g_async_request_completed.store (false, std::memory_order_release);
+
+    // A pending request starts the completion async mailbox executor. Send-ready
+    // recovery below must therefore close from that executor, not this test thread.
+    zlink_msg_t request;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&request, 1));
+    *static_cast<unsigned char *> (zlink_msg_data (&request)) = 'r';
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_dealer_request (client, &request, 1, &discard_request_completion,
+                            NULL, 0, 30000));
+
+    const zlink_routing_id_t *source_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *request_parts = NULL;
+    size_t request_part_count = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_router_recv (server, &source_rid, &request_seq, &request_parts,
+                         &request_part_count, ZLINK_RECV_FLAGS_NONE));
+    zlink_routing_id_t reply_rid = *source_rid;
+    zlink_multipart_close (request_parts, request_part_count);
+
+    zlink_msg_t reply;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&reply, 1));
+    *static_cast<unsigned char *> (zlink_msg_data (&reply)) = 'a';
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_router_reply (server, &reply_rid, request_seq, &reply, 1));
+    TEST_ASSERT_TRUE (zlink_test_wait_until_step (3000, 10, [] {
+        return g_async_request_completed.load (std::memory_order_acquire);
+    }));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_send_ready_handler (client, &async_send_ready_self_close_handler, NULL));
+
+    arm_send_ready_notification_via_backpressure (client);
+    std::thread drain_thread ([server] {
+        char payload[65536];
+        while (zlink_recv (server, payload, sizeof (payload), 0) >= 0) {
+        }
+    });
+
+    const bool callback_observed = zlink_test_wait_until_step (3000, 10, [] {
+        return g_async_send_ready_self_close_rc.load (std::memory_order_acquire)
+               != INT_MIN;
+    });
+    drain_thread.join ();
+
+    TEST_ASSERT_TRUE (callback_observed);
+    TEST_ASSERT_TRUE (
+      g_async_send_ready_callback_changed_thread.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, g_async_send_ready_self_close_errno.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CLOSE_OK,
+      g_async_send_ready_self_close_rc.load (std::memory_order_acquire));
+    TEST_ASSERT_LESS_THAN_INT64 (
+      1000, g_async_send_ready_self_close_elapsed_ms.load (std::memory_order_acquire));
 
     close_socket_zero_linger (server);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
@@ -1013,5 +1150,7 @@ int main ()
     RUN_TEST (test_dealer_dealer_perf_like_monitor_sockopts_preserve_connect_ready);
     RUN_TEST (test_dealer_router_perf_like_client_monitor_preserves_bidirectional_delivery);
     RUN_TEST (test_router_router_perf_like_client_monitor_preserves_bidirectional_delivery);
+    RUN_TEST (test_send_ready_self_close_blocks_followup_operational_api);
+    RUN_TEST (test_async_mailbox_send_ready_self_close_quiesces_before_reap);
     return UNITY_END ();
 }

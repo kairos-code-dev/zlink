@@ -1,6 +1,6 @@
 package systems.zlink.samples.kotlin.bingo.server.api.handlers
 
-import systems.zlink.framework.channels.ZLinkRequestContext
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.samples.kotlin.bingo.server.api.BingoPlayerRecordStore
@@ -13,7 +13,7 @@ class ReportBingoResultHandler(private val records: BingoPlayerRecordStore) :
     ZLinkSuspendingRequestHandler<ReportBingoResultReq, ReportBingoResultRes> {
     override suspend fun handle(
         request: ReportBingoResultReq,
-        context: ZLinkRequestContext,
+        context: ZLinkMessageContext,
     ): ReportBingoResultRes {
         val record = records.report(request.actorId, request.won)
         return ReportBingoResultRes(record.actorId, record.wins, record.losses)

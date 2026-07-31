@@ -8,6 +8,8 @@ import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.nio.file.Path
 import java.time.Instant
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionStage
 import kotlinx.coroutines.Dispatchers
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
@@ -16,12 +18,17 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.ConfigurableApplicationContext
 import org.springframework.context.annotation.Bean
 import org.springframework.core.env.StandardEnvironment
-import systems.zlink.framework.channels.ZLinkRequestContext
+import systems.zlink.framework.channels.ZLinkRouteClient
+import systems.zlink.framework.actors.ZLinkActorClient
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
-import systems.zlink.framework.handlers.ZLinkHandlerGroup
-import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.kotlin.useCoroutineHandlers
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationStore
+import systems.zlink.framework.spots.ZLinkInstanceSpot
+import systems.zlink.framework.spots.ZLinkInstanceSpotContext
+import systems.zlink.framework.spots.ZLinkSpotPacketHandler
+import systems.zlink.framework.spots.ZLinkSpotRequestHandler
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.gamequest.server.configuration.RedisSampleStore
@@ -51,7 +58,11 @@ import systems.zlink.samples.kotlin.gamequest.shared.contracts.SyncQuestProgress
 fun main(args: Array<String>) {
     val app = Program.run(SampleTopology.configPath(args))
     val store = Program.store
-    val http = startHttp(store, app.getBean(SampleTopology::class.java))
+    val http = startHttp(
+        store,
+        app.getBean(ZLinkRouteClient::class.java),
+        app.getBean(SampleTopology::class.java),
+    )
     Runtime.getRuntime().addShutdownHook(Thread {
         http.stop(0)
         app.close()
@@ -70,20 +81,32 @@ class Program {
     fun questMissionFramework(topology: SampleTopology): ZLinkFrameworkConfigurer {
         val mission = topology.questMission()
         return ZLinkFrameworkConfigurer { options ->
+            options.configureLocations()
+            options.addLocationStore(SampleLocationStore.create(topology))
+            val location = topology.location()
+            options.addRelocationStore(
+                ZLinkRedisRelocationStore(
+                    ZLinkRedisRelocationOptions()
+                        .setConnectionString(location.redisEndpoint)
+                        .setKeyPrefix("${location.redisKeyPrefix}relocation:"),
+                ),
+            )
             options.useCoroutineHandlers(Dispatchers.Default)
             options.addHandlersFromPackageOf(Program::class.java)
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("${mission.logDirectory}/flow-${mission.instanceName}.log")
                 .traceLabel(mission.instanceName)
-            options.addClientServerChannel(SampleNames.QuestOwnerChannel)
-                .enableServer(mission.channelEndpoint)
-                .addHandlerGroup("quest-owner")
+            options.addRouteMesh(SampleNames.PlayerQuestMesh)
+                .setRoutingIdPrefix("gamequest-mission-owner")
+                .listen(mission.channelEndpoint)
+                .objects().server()
+                .addInstanceSpotFactory(
+                    SampleNames.PlayerQuestSpotType,
+                    PlayerQuestSpot::class.java,
+                ) { factory -> factory.recreateOnRelocation() }
         }
     }
-
-    @Bean(destroyMethod = "close")
-    fun locationStore(topology: SampleTopology): ZLinkRedisLocationStore = SampleLocationStore.create(topology)
 
     @Bean(destroyMethod = "close")
     fun questStore(topology: SampleTopology): QuestStore =
@@ -107,7 +130,11 @@ class Program {
     }
 }
 
-private fun startHttp(store: QuestStore, topology: SampleTopology): HttpServer {
+private fun startHttp(
+    store: QuestStore,
+    routes: ZLinkRouteClient,
+    topology: SampleTopology,
+): HttpServer {
     val json = jacksonObjectMapper()
     val uri = URI.create(topology.questMission().httpEndpoint)
     val server = HttpServer.create(InetSocketAddress(uri.host, uri.port), 0)
@@ -115,8 +142,8 @@ private fun startHttp(store: QuestStore, topology: SampleTopology): HttpServer {
     server.createContext("/self-check/owner/") { exchange ->
         val parts = exchange.requestURI.path.split("/")
         val playerId = parts.getOrElse(3) { "" }
-        store.markRehydrated(playerId)
-        writeJson(exchange, 200, mapOf("closed" to true, "owner" to true))
+        routes.sendToSpot(playerId, ClosePlayerQuestMsg()).submit()
+        writeJson(exchange, 202, mapOf("closed" to true, "owner" to true))
     }
     server.createContext("/self-check/events") { exchange -> writeJson(exchange, 200, store.events()) }
     server.start()
@@ -130,49 +157,100 @@ private fun writeJson(exchange: HttpExchange, status: Int, body: Any) {
     exchange.responseBody.use { it.write(bytes) }
 }
 
-@ZLinkHandlerGroup("quest-owner")
-class GameplayMsgRouteHandler(
+data class ClosePlayerQuestMsg(val close: Boolean = true)
+
+class PlayerQuestSpot(
+    private val instanceContext: ZLinkInstanceSpotContext,
     private val store: QuestStore,
-) : ZLinkSuspendingRequestHandler<GameplayMsg, QuestProcessingRes> {
-    override suspend fun handle(request: GameplayMsg, context: ZLinkRequestContext): QuestProcessingRes {
-        store.markRehydrated(request.playerId)
+) : ZLinkInstanceSpot {
+    override fun context(): ZLinkInstanceSpotContext = instanceContext
+
+    override fun onInitialize(): CompletionStage<Void> {
+        store.markRehydrated(instanceContext.spotId())
+        return CompletableFuture.completedFuture(null)
+    }
+
+    fun requirePlayer(playerId: String) {
+        require(playerId == instanceContext.spotId()) {
+            "request player does not match owner Spot: $playerId"
+        }
+    }
+
+    fun apply(request: GameplayMsg): QuestProcessingRes {
+        requirePlayer(request.playerId)
         return store.apply(request)
     }
 }
 
-@ZLinkHandlerGroup("quest-owner")
+class GameplayMsgRouteHandler(
+    private val actors: ZLinkActorClient,
+) : ZLinkSpotPacketHandler<PlayerQuestSpot, GameplayMsg> {
+    override fun handle(
+        spot: PlayerQuestSpot,
+        request: GameplayMsg,
+    ): CompletionStage<Void> {
+        actors.sendToActor(request.playerId, spot.apply(request)).submit()
+        return CompletableFuture.completedFuture(null)
+    }
+}
+
 class GetQuestProgressHandler(
     private val store: QuestStore,
-) : ZLinkSuspendingRequestHandler<GetQuestProgressReq, GetQuestProgressRes> {
-    override suspend fun handle(request: GetQuestProgressReq, context: ZLinkRequestContext): GetQuestProgressRes =
-        GetQuestProgressRes(store.projection(request.playerId))
+) : ZLinkSpotRequestHandler<PlayerQuestSpot, GetQuestProgressReq, GetQuestProgressRes> {
+    override fun handle(
+        spot: PlayerQuestSpot,
+        request: GetQuestProgressReq,
+    ): CompletionStage<GetQuestProgressRes> {
+        spot.requirePlayer(request.playerId)
+        return CompletableFuture.completedFuture(GetQuestProgressRes(store.projection(request.playerId)))
+    }
 }
 
-@ZLinkHandlerGroup("quest-owner")
 class DeleteQuestProjectionHandler(
     private val store: QuestStore,
-) : ZLinkSuspendingRequestHandler<DeleteQuestProjectionReq, DeleteQuestProjectionRes> {
-    override suspend fun handle(
+) : ZLinkSpotRequestHandler<PlayerQuestSpot, DeleteQuestProjectionReq, DeleteQuestProjectionRes> {
+    override fun handle(
+        spot: PlayerQuestSpot,
         request: DeleteQuestProjectionReq,
-        context: ZLinkRequestContext,
-    ): DeleteQuestProjectionRes =
-        store.deleteProjection(request.playerId, request.questId)
+    ): CompletionStage<DeleteQuestProjectionRes> {
+        spot.requirePlayer(request.playerId)
+        return CompletableFuture.completedFuture(
+            store.deleteProjection(request.playerId, request.questId),
+        )
+    }
 }
 
-@ZLinkHandlerGroup("quest-owner")
 class RebuildQuestProjectionHandler(
     private val store: QuestStore,
-) : ZLinkSuspendingRequestHandler<RebuildQuestProjectionReq, QuestProgress> {
-    override suspend fun handle(request: RebuildQuestProjectionReq, context: ZLinkRequestContext): QuestProgress =
-        store.rebuildProjection(request.playerId, request.questId)
+) : ZLinkSpotRequestHandler<PlayerQuestSpot, RebuildQuestProjectionReq, QuestProgress> {
+    override fun handle(
+        spot: PlayerQuestSpot,
+        request: RebuildQuestProjectionReq,
+    ): CompletionStage<QuestProgress> {
+        spot.requirePlayer(request.playerId)
+        return CompletableFuture.completedFuture(
+            store.rebuildProjection(request.playerId, request.questId),
+        )
+    }
 }
 
-@ZLinkHandlerGroup("quest-owner")
 class SyncQuestProgressHandler(
     private val store: QuestStore,
-) : ZLinkSuspendingRequestHandler<SyncQuestProgressReq, SyncQuestProgressRes> {
-    override suspend fun handle(request: SyncQuestProgressReq, context: ZLinkRequestContext): SyncQuestProgressRes =
-        store.sync(request.playerId, 4)
+) : ZLinkSpotRequestHandler<PlayerQuestSpot, SyncQuestProgressReq, SyncQuestProgressRes> {
+    override fun handle(
+        spot: PlayerQuestSpot,
+        request: SyncQuestProgressReq,
+    ): CompletionStage<SyncQuestProgressRes> {
+        spot.requirePlayer(request.playerId)
+        return CompletableFuture.completedFuture(store.sync(request.playerId, 4))
+    }
+}
+
+class ClosePlayerQuestSpotHandler : ZLinkSpotPacketHandler<PlayerQuestSpot, ClosePlayerQuestMsg> {
+    override fun handle(
+        spot: PlayerQuestSpot,
+        request: ClosePlayerQuestMsg,
+    ): CompletionStage<Void> = spot.context().close().thenApply { null }
 }
 
 class QuestStore(topology: SampleTopology) : AutoCloseable {
@@ -187,7 +265,14 @@ class QuestStore(topology: SampleTopology) : AutoCloseable {
     fun apply(event: GameplayMsg): QuestProcessingRes {
         val key = "${event.playerId}:${event.decodePayload().idempotencyKey}"
         eventIdsByIdempotency[key]?.let {
-            return QuestProcessingRes(it, copyProjection(event.playerId), emptyList(), emptyList(), true)
+            return QuestProcessingRes(
+                it,
+                event.playerId,
+                copyProjection(event.playerId),
+                emptyList(),
+                emptyList(),
+                true,
+            )
         }
         eventIdsByIdempotency[key] = event.eventId
         val decision = domain.apply(event, copyProjection(event.playerId), nextVersion(event.playerId))
@@ -197,6 +282,7 @@ class QuestStore(topology: SampleTopology) : AutoCloseable {
         shared.appendQuestEvents(decision.storedEvents)
         return QuestProcessingRes(
             event.eventId,
+            event.playerId,
             copyProjection(event.playerId),
             decision.progressNotifications,
             decision.completedNotifications,

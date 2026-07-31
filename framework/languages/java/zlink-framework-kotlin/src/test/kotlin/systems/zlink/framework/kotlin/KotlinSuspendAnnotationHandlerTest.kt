@@ -47,7 +47,7 @@ import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkAutoConfiguration
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue
-import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.testkit.FakeZLinkBackendAdapterFactory

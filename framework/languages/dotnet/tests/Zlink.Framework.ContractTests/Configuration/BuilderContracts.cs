@@ -7,6 +7,7 @@ public sealed class BuilderContracts
     [Fact]
     [ContractExample(
         typeof(IZLinkFrameworkOptions),
+        typeof(IZLinkInboundDispatchOptions),
         typeof(IZLinkNetworkOptions),
         typeof(IZLinkMeshNodeBuilder),
         typeof(IZLinkMeshChannelRoleBuilder),
@@ -37,6 +38,7 @@ public sealed class BuilderContracts
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.Contains(nameof(IZLinkFrameworkOptions.AddRouteMesh), methods);
+        Assert.Contains(nameof(IZLinkFrameworkOptions.ConfigureInboundDispatch), methods);
         Assert.Contains(nameof(IZLinkFrameworkOptions.AddFanoutChannel), methods);
         Assert.Contains(nameof(IZLinkFrameworkOptions.AddStreamNode), methods);
     }

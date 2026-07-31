@@ -43,6 +43,19 @@ internal sealed class JoinConversationActorHandler
                     actor.Role,
                     actor.DisplayName))
             .Defer();
-        return ValueTask.CompletedTask;
+        return actor.Context.BoundSession
+            .Send(new JoinConversationRes(
+                true,
+                new ConversationState(
+                    conversationId,
+                    string.Empty,
+                    ConversationStatuses.WaitingForAgent,
+                    string.Empty,
+                    null,
+                    0,
+                    null,
+                    null)))
+            .Metadata(SampleNames.ConversationIdMetadataKey, conversationId)
+            .Async(cancellationToken);
     }
 }

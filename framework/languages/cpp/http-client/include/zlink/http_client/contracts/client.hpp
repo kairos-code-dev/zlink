@@ -214,6 +214,12 @@ class request_builder_t
         }
     }
 
+    template <typename T> T fetch () const
+    {
+        auto response = submit<T> ().result ().value ();
+        return std::move (response.body);
+    }
+
     template <typename T, typename TCallback> void submit (TCallback &&callback) const
     {
         auto task = submit<T> ();

@@ -1,11 +1,6 @@
-import { ZLinkSpotActorSend } from '@zlink-systems/framework';
+import { zlinkSpotActorSendHandler } from '@zlink-systems/nestjs';
+import { ZoneSpot } from '../Spots/zone-spot';
 import type { ZLinkActor, ZLinkActorContext } from '@zlink-systems/framework';
-import {
-  EntryEnterWorldHandler,
-  EntryJoinWorldHandler,
-  PlayerBotTickHandler,
-  PlayerMoveHandler
-} from '../Handlers/player-handlers';
 import { ZoneIds } from '../../../../../Shared/spec';
 import {
   WorldAnnounceNotify,
@@ -27,14 +22,6 @@ class PlayerActor implements ZLinkActor {
     public dirY = 0
   ) {}
 
-  configure(): void {
-    this.context.handlers.addHandler(EntryEnterWorldHandler);
-    this.context.handlers.addHandler(EntryJoinWorldHandler);
-    this.context.handlers.addHandler(PlayerMoveHandler);
-    this.context.handlers.addHandler(PlayerBotTickHandler);
-    this.context.handlers.addHandler(DeliverZoneNotificationHandler);
-  }
-
   push(payload: unknown): void {
     if (this.isBot) return;
     this.context.boundSession.send(payload).submit();
@@ -51,8 +38,12 @@ class DeliverZoneNotification {
   }
 }
 
+@zlinkSpotActorSendHandler({
+  spot: () => ZoneSpot,
+  actor: () => PlayerActor,
+  packetName: 'DeliverZoneNotification'
+})
 class DeliverZoneNotificationHandler {
-  @ZLinkSpotActorSend('DeliverZoneNotification')
   async handle(actor: PlayerActor, _context: unknown, message: DeliverZoneNotification): Promise<void> {
     const value = message.payload as Record<string, unknown>;
     switch (message.packetName) {

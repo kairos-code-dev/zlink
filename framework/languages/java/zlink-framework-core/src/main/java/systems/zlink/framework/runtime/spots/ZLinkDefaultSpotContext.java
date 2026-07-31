@@ -10,6 +10,9 @@ import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode;
+import systems.zlink.framework.configuration.ZLinkSpotRelocationReadinessMode;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
+import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.execution.ZLinkWorkerPool;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
@@ -21,6 +24,9 @@ import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotHandlerRegistry;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
+import systems.zlink.framework.spots.ZLinkSpotRelocationReadyCall;
+import systems.zlink.framework.spots.ZLinkSpotRelocationReadyCompletion;
+import systems.zlink.framework.spots.ZLinkSpotRelocationReadyOutcome;
 import systems.zlink.framework.spots.ZLinkTimer;
 import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.framework.spots.ZLinkWorkerCall;
@@ -37,6 +43,8 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
     private final ZLinkAsyncSerialQueue dispatchQueue = new ZLinkAsyncSerialQueue();
     private final ZLinkHandlerInstanceOwner handlerInstances;
     private final List<DefaultSpotContext> timerContexts = new ArrayList<>();
+    private final java.util.Map<String, ZLinkSpotTimerRegistry> actorTimers =
+        new java.util.concurrent.ConcurrentHashMap<>();
     private final ZLinkSpotHandlerCatalog handlerCatalog = new ZLinkSpotHandlerCatalog(
         "EntrySpot handler registration is only allowed while configure is running");
     private ZLinkEntrySpot<?> entrySpot;
@@ -68,6 +76,8 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
 
     void setEntrySpot(ZLinkEntrySpot<?> entrySpot) {
         this.entrySpot = entrySpot;
+        actorTimers.values().forEach(
+            timer -> timer.setSpot(new ZLinkEntrySpotTimerSurface(this)));
     }
 
     @Override
@@ -81,6 +91,12 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
         Duration period,
         Class<?> handlerType,
         ZLinkTimerOptions options) {
+        String actorId = systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.currentActorDispatch();
+        if (actorId != null) {
+            return actorTimer(actorId).add(
+                name, period, handlerType, options);
+        }
         DefaultSpotContext timerContext = new DefaultSpotContext(
             host,
             workerPool,
@@ -98,6 +114,8 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
 
     void closeTimers() {
         timerContexts.forEach(DefaultSpotContext::closeTimers);
+        actorTimers.values().forEach(ZLinkSpotTimerRegistry::close);
+        actorTimers.clear();
     }
 
     @Override
@@ -111,6 +129,7 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
 
     void sealTimerAdmission() {
         timerContexts.forEach(DefaultSpotContext::sealTimerAdmission);
+        actorTimers.values().forEach(ZLinkSpotTimerRegistry::freeze);
     }
 
     CompletionStage<Void> awaitAllLanes() {
@@ -173,6 +192,60 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
         }
     }
 
+    byte[] freezeActorTimerRelocationEnvelope(String actorId) {
+        ZLinkSpotTimerRegistry registry = actorTimers.get(actorId);
+        return ZLinkSpotTimerRelocationEnvelope.encode(
+            registry == null
+                ? new ZLinkSpotTimerRegistry.FrozenTimers(List.of())
+                : registry.freeze());
+    }
+
+    void resumeActorTimersAfterRelocationAbort(String actorId) {
+        ZLinkSpotTimerRegistry registry = actorTimers.get(actorId);
+        if (registry != null) {
+            registry.resume();
+        }
+    }
+
+    void stageActorTimerRelocationEnvelope(
+        String actorId,
+        byte[] envelope) {
+        actorTimer(actorId).stageRestore(
+            ZLinkSpotTimerRelocationEnvelope.decode(
+                envelope,
+                name -> loadActorTimerHandler(
+                    entrySpot.getClass().getClassLoader(), name)));
+    }
+
+    void publishStagedActorTimerRelocation(String actorId) {
+        actorTimer(actorId).publishStagedRestore();
+    }
+
+    void closeActorTimers(String actorId) {
+        ZLinkSpotTimerRegistry registry = actorTimers.remove(actorId);
+        if (registry != null) {
+            registry.close();
+        }
+    }
+
+    private ZLinkSpotTimerRegistry actorTimer(String actorId) {
+        return actorTimers.computeIfAbsent(actorId, key -> {
+            ZLinkSpotTimerRegistry timer = host.createTimerRegistry(
+                spotId(),
+                handlerInstances,
+                (timerName, operation) -> host.runActorTimerDispatch(
+                    key,
+                    () -> runApplicationExecution(
+                        key,
+                        false,
+                        () -> host.runWithOutbound(outbound, operation))));
+            if (entrySpot != null) {
+                timer.setSpot(new ZLinkEntrySpotTimerSurface(this));
+            }
+            return timer;
+        });
+    }
+
     void closeRegistration() {
         handlerCatalog.closeRegistration(handlerTypes -> handlerLoader.load(
             entrySpot.getClass(),
@@ -183,6 +256,19 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
     void bindSubscriptions(ZLinkBackendSpot spot) {
         for (String topic : handlerCatalog.subscriptionTopics()) {
             spot.setSubscription(topic);
+        }
+    }
+
+    private static Class<?> loadActorTimerHandler(
+        ClassLoader loader,
+        String name) {
+        try {
+            return Class.forName(name, false, loader);
+        } catch (ClassNotFoundException error) {
+            throw new systems.zlink.framework.errors.ZLinkConfigurationException(
+                "timer handler is not available on the relocation target: "
+                    + name,
+                error);
         }
     }
 }
@@ -200,8 +286,13 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
     private final java.util.concurrent.ConcurrentHashMap<
         String, ZLinkAsyncSerialQueue> timerQueues =
             new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Map<String, ZLinkSpotTimerRegistry> actorTimers =
+        new java.util.concurrent.ConcurrentHashMap<>();
     private final ZLinkUserSpotExecutionMode executionMode;
+    private final ZLinkSpotRelocationReadinessMode relocationReadiness;
     private final boolean instanceSpot;
+    private final Object relocationReadyLock = new Object();
+    private RelocationReadyWaiter relocationReadyWaiter;
     private ZLinkUserSpotRelocationBarrier relocationBarrier;
     private final ZLinkSpotHandlerCatalog handlerCatalog = new ZLinkSpotHandlerCatalog(
         "SPOT handler registration is only allowed while configure is running");
@@ -260,7 +351,8 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
             dispatchQueue,
             executionMode,
             instanceSpot,
-            null);
+            null,
+            ZLinkSpotRelocationReadinessMode.ANY_TURN_BOUNDARY);
     }
 
     DefaultSpotContext(
@@ -273,6 +365,30 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
         ZLinkUserSpotExecutionMode executionMode,
         boolean instanceSpot,
         ZLinkHandlerInstanceOwner sharedHandlerInstances) {
+        this(
+            host,
+            workerPool,
+            handlerLoader,
+            nodeRid,
+            backendSpot,
+            dispatchQueue,
+            executionMode,
+            instanceSpot,
+            sharedHandlerInstances,
+            ZLinkSpotRelocationReadinessMode.ANY_TURN_BOUNDARY);
+    }
+
+    DefaultSpotContext(
+        ZLinkSpotContextHost host,
+        ZLinkWorkerPool workerPool,
+        ZLinkSpotHandlerLoader handlerLoader,
+        RoutingId nodeRid,
+        ZLinkBackendSpot backendSpot,
+        ZLinkAsyncSerialQueue dispatchQueue,
+        ZLinkUserSpotExecutionMode executionMode,
+        boolean instanceSpot,
+        ZLinkHandlerInstanceOwner sharedHandlerInstances,
+        ZLinkSpotRelocationReadinessMode relocationReadiness) {
         this.host = host;
         this.workerPool = workerPool;
         this.handlerLoader = handlerLoader;
@@ -280,6 +396,8 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
         this.backendSpot = backendSpot;
         this.dispatchQueue = dispatchQueue;
         this.executionMode = Objects.requireNonNull(executionMode, "executionMode");
+        this.relocationReadiness = Objects.requireNonNull(
+            relocationReadiness, "relocationReadiness");
         this.instanceSpot = instanceSpot;
         this.handlerInstances = sharedHandlerInstances == null
             ? host.createHandlerInstances()
@@ -296,6 +414,7 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
     void setSpot(ZLinkSpot<?> spot) {
         this.spot = spot;
         timers.setSpot(spot);
+        actorTimers.values().forEach(timer -> timer.setSpot(spot));
     }
 
     @Override public String spotId() { return backendSpot.spotId(); }
@@ -304,17 +423,22 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
     }
     @Override public RoutingId nodeRid() { return nodeRid; }
     @Override public ZLinkSpotOutbound outbound() { return outbound; }
+    @Override public ZLinkSpotRelocationReadyCall relocationReady() {
+        return this::deferRelocationReady;
+    }
     @Override public DefaultSpotOutbound dispatchOutbound() { return outbound; }
     @Override public ZLinkSpotHandlerRegistry handlers() { return handlerCatalog; }
     @Override public ZLinkSpotHandlerCatalog handlerCatalog() { return handlerCatalog; }
 
     @Override
     public CompletionStage<Void> leaveActor(ZLinkActor actor) {
+        rejectAfterRelocationReady("leaveActor");
         return host.leaveActor(nodeRid, spot, actor, spotId());
     }
 
     @Override
     public CompletionStage<Boolean> close() {
+        rejectAfterRelocationReady("close");
         return host.closeSpot(spotId());
     }
 
@@ -324,11 +448,20 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
         Duration period,
         Class<?> handlerType,
         ZLinkTimerOptions options) {
+        rejectAfterRelocationReady("addTimer");
+        String actorId = systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.currentActorDispatch();
+        if (actorId != null) {
+            return actorTimer(actorId).add(
+                name, period, handlerType, options);
+        }
         return timers.add(name, period, handlerType, options);
     }
 
     void closeTimers() {
         timers.close();
+        actorTimers.values().forEach(ZLinkSpotTimerRegistry::close);
+        actorTimers.clear();
     }
 
     @Override
@@ -342,6 +475,7 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
 
     void sealTimerAdmission() {
         timers.freeze();
+        actorTimers.values().forEach(ZLinkSpotTimerRegistry::freeze);
     }
 
     byte[] freezeTimerRelocationEnvelope() {
@@ -368,6 +502,42 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
 
     void publishStagedTimerRelocation() {
         timers.publishStagedRestore();
+    }
+
+    byte[] freezeActorTimerRelocationEnvelope(String actorId) {
+        ZLinkSpotTimerRegistry registry = actorTimers.get(actorId);
+        return ZLinkSpotTimerRelocationEnvelope.encode(
+            registry == null
+                ? new ZLinkSpotTimerRegistry.FrozenTimers(List.of())
+                : registry.freeze());
+    }
+
+    void resumeActorTimersAfterRelocationAbort(String actorId) {
+        ZLinkSpotTimerRegistry registry = actorTimers.get(actorId);
+        if (registry != null) {
+            registry.resume();
+        }
+    }
+
+    void stageActorTimerRelocationEnvelope(
+        String actorId,
+        byte[] envelope) {
+        actorTimer(actorId).stageRestore(
+            ZLinkSpotTimerRelocationEnvelope.decode(
+                envelope,
+                name -> loadTimerHandler(
+                    spot.getClass().getClassLoader(), name)));
+    }
+
+    void publishStagedActorTimerRelocation(String actorId) {
+        actorTimer(actorId).publishStagedRestore();
+    }
+
+    void closeActorTimers(String actorId) {
+        ZLinkSpotTimerRegistry registry = actorTimers.remove(actorId);
+        if (registry != null) {
+            registry.close();
+        }
     }
 
     @Override
@@ -485,18 +655,67 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
 
     @Override
     public <T> ZLinkWorkerCall<T> runCpuWorker(ZLinkWorkerTask<T> work) {
+        rejectAfterRelocationReady("runCpuWorker");
         Objects.requireNonNull(work, "work");
         return new DefaultZLinkWorkerCall<>(workerPool, work);
     }
 
     @Override
     public <T> ZLinkWorkerCall<T> runIoWorker(ZLinkIoWorkerTask<T> work) {
+        rejectAfterRelocationReady("runIoWorker");
         Objects.requireNonNull(work, "work");
         return new DefaultZLinkIoWorkerCall<>(workerPool, work);
     }
 
     ZLinkUserSpotExecutionMode executionMode() {
         return executionMode;
+    }
+
+    ZLinkSpotRelocationReadinessMode relocationReadiness() {
+        return relocationReadiness;
+    }
+
+    CompletionStage<Optional<ZLinkUserSpotRelocationBarrier.Seal>>
+        awaitRelocationReadySignal(
+            Supplier<Optional<ZLinkUserSpotRelocationBarrier.Seal>> claim,
+            java.util.function.BooleanSupplier cancelled) {
+        Objects.requireNonNull(claim, "claim");
+        Objects.requireNonNull(cancelled, "cancelled");
+        if (relocationReadiness
+                != ZLinkSpotRelocationReadinessMode.APPLICATION_SIGNALED
+            || executionMode != ZLinkUserSpotExecutionMode.SPOT_WIDE
+            || instanceSpot) {
+            return java.util.concurrent.CompletableFuture.failedFuture(
+                invalidRelocationReady(
+                    "application-signaled relocation is not configured"));
+        }
+        RelocationReadyWaiter waiter =
+            new RelocationReadyWaiter(claim, cancelled);
+        synchronized (relocationReadyLock) {
+            if (relocationReadyWaiter != null) {
+                return java.util.concurrent.CompletableFuture.failedFuture(
+                    new IllegalStateException(
+                        "a relocation readiness waiter is already active"));
+            }
+            if (cancelled.getAsBoolean()) {
+                return java.util.concurrent.CompletableFuture.completedFuture(
+                    Optional.empty());
+            }
+            relocationReadyWaiter = waiter;
+        }
+        pollRelocationReadyCancellation(waiter);
+        return waiter.result;
+    }
+
+    CompletionStage<Void> runRelocationReadyCompletion(
+        ZLinkSpotRelocationReadyOutcome outcome) {
+        if (relocationReadiness
+            != ZLinkSpotRelocationReadinessMode.APPLICATION_SIGNALED) {
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
+        }
+        return runLifecycleExecution(() ->
+            spot.onRelocationReadyCompleted(
+                new ZLinkSpotRelocationReadyCompletion(outcome)));
     }
 
     private CompletionStage<Void> enqueueTimerDispatch(
@@ -514,6 +733,24 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
             operation));
     }
 
+    private ZLinkSpotTimerRegistry actorTimer(String actorId) {
+        return actorTimers.computeIfAbsent(actorId, key -> {
+            ZLinkSpotTimerRegistry timer = host.createTimerRegistry(
+                spotId(),
+                handlerInstances,
+                (timerName, operation) -> host.runActorTimerDispatch(
+                    key,
+                    () -> runApplicationExecution(
+                        key,
+                        false,
+                        () -> host.runWithOutbound(outbound, operation))));
+            if (spot != null) {
+                timer.setSpot(spot);
+            }
+            return timer;
+        });
+    }
+
     private boolean sharedSpotGate() {
         return instanceSpot
             || executionMode == ZLinkUserSpotExecutionMode.SPOT_WIDE;
@@ -529,6 +766,11 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
                 actorId,
                 sharedSpotGate(),
                 yieldAllowed,
+                !instanceSpot
+                    && executionMode == ZLinkUserSpotExecutionMode.SPOT_WIDE
+                    && relocationReadiness
+                        == ZLinkSpotRelocationReadinessMode
+                            .APPLICATION_SIGNALED,
                 candidate -> host.isActorMember(spotId(), candidate));
         try (var ignored = systems.zlink.framework.runtime.internal.handlers
                  .ZLinkSuspendInvocationContext.enterApplicationExecution(execution)) {
@@ -568,6 +810,104 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
                 "timer handler is not available on the relocation target: "
                     + name,
                 error);
+        }
+    }
+
+    private void deferRelocationReady() {
+        var execution = systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.currentApplicationExecution();
+        if (execution == null
+            || !execution.relocationReadyAllowed()
+            || !execution.spotId().equals(spotId())
+            || systems.zlink.framework.runtime.internal.handlers
+                .ZLinkSuspendInvocationContext.currentSerialExecutionTurn()
+                == null) {
+            throw invalidRelocationReady(
+                "relocationReady().defer() is only valid in a SpotWide "
+                    + "ApplicationSignaled User Spot turn");
+        }
+        if (!execution.tryDeferRelocationReady()) {
+            throw invalidRelocationReady(
+                "relocationReady().defer() can be called once per Spot turn");
+        }
+        dispatchQueue.enqueueBarrierNext(this::reachRelocationReadyBoundary);
+    }
+
+    private CompletionStage<Void> reachRelocationReadyBoundary() {
+        RelocationReadyWaiter waiter;
+        synchronized (relocationReadyLock) {
+            waiter = relocationReadyWaiter;
+            relocationReadyWaiter = null;
+        }
+        if (waiter == null || waiter.cancelled.getAsBoolean()) {
+            if (waiter != null) {
+                waiter.result.complete(Optional.empty());
+            }
+            return runRelocationReadyCompletion(
+                ZLinkSpotRelocationReadyOutcome.CONTINUED);
+        }
+        Optional<ZLinkUserSpotRelocationBarrier.Seal> claimed;
+        try {
+            claimed = Objects.requireNonNull(
+                waiter.claim.get(), "relocation readiness claim");
+        } catch (RuntimeException failure) {
+            waiter.result.completeExceptionally(failure);
+            return java.util.concurrent.CompletableFuture.failedFuture(failure);
+        }
+        waiter.result.complete(claimed);
+        return claimed.isPresent()
+            ? java.util.concurrent.CompletableFuture.completedFuture(null)
+            : runRelocationReadyCompletion(
+                ZLinkSpotRelocationReadyOutcome.CONTINUED);
+    }
+
+    private void pollRelocationReadyCancellation(
+        RelocationReadyWaiter waiter) {
+        java.util.concurrent.CompletableFuture.delayedExecutor(
+            25, java.util.concurrent.TimeUnit.MILLISECONDS)
+            .execute(() -> {
+                if (waiter.result.isDone()) {
+                    return;
+                }
+                if (waiter.cancelled.getAsBoolean()) {
+                    synchronized (relocationReadyLock) {
+                        if (relocationReadyWaiter == waiter) {
+                            relocationReadyWaiter = null;
+                        }
+                    }
+                    waiter.result.complete(Optional.empty());
+                    return;
+                }
+                pollRelocationReadyCancellation(waiter);
+            });
+    }
+
+    private static ZLinkFrameworkException invalidRelocationReady(
+        String message) {
+        return new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.INVALID_CONFIGURATION,
+            message);
+    }
+
+    private static void rejectAfterRelocationReady(String operation) {
+        systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.rejectAfterRelocationReady(
+                operation);
+    }
+
+    private static final class RelocationReadyWaiter {
+        private final Supplier<Optional<
+            ZLinkUserSpotRelocationBarrier.Seal>> claim;
+        private final java.util.function.BooleanSupplier cancelled;
+        private final java.util.concurrent.CompletableFuture<Optional<
+            ZLinkUserSpotRelocationBarrier.Seal>> result =
+                new java.util.concurrent.CompletableFuture<>();
+
+        RelocationReadyWaiter(
+            Supplier<Optional<ZLinkUserSpotRelocationBarrier.Seal>> claim,
+            java.util.function.BooleanSupplier cancelled) {
+            this.claim = claim;
+            this.cancelled = cancelled;
         }
     }
 }

@@ -175,6 +175,7 @@ public final class ZLinkActorSpotRoutePackets {
             parts.add(encodeReplyRoute(packet.replyRoute()));
             parts.add(Message.from(ZLinkStreamHeaderCodec.encode(packet.header())));
             parts.add(Message.from(packet.payload()));
+            parts.add(Message.from(packet.acceptedJournalRecord()));
         }
         return List.copyOf(parts);
     }
@@ -389,17 +390,18 @@ public final class ZLinkActorSpotRoutePackets {
     public static List<WireHandoffPacket> decodeHandoffPackets(
         List<Message> parts,
         int backlogCount) {
-        if (backlogCount < 0 || parts.size() != 3 + backlogCount * 4) {
+        if (backlogCount < 0 || parts.size() != 3 + backlogCount * 5) {
             throw new ZLinkConfigurationException("invalid actor transfer handoff backlog");
         }
         List<WireHandoffPacket> backlog = new ArrayList<>(backlogCount);
         for (int index = 0; index < backlogCount; index++) {
-            int offset = 3 + index * 4;
+            int offset = 3 + index * 5;
             backlog.add(new WireHandoffPacket(
                 Long.parseLong(parts.get(offset).toUtf8String()),
                 decodeReplyRoute(parts.get(offset + 1)),
                 ZLinkStreamHeaderCodec.decodeOrPlain(parts.get(offset + 2).toByteArray()),
-                Message.from(parts.get(offset + 3))));
+                Message.from(parts.get(offset + 3)),
+                parts.get(offset + 4).toByteArray()));
         }
         return List.copyOf(backlog);
     }
@@ -449,6 +451,18 @@ public final class ZLinkActorSpotRoutePackets {
         Message payload,
         ZLinkActorReplyRoute replyRoute,
         Long handoffArrivalIndex) {
+        return createActorPacketParts(
+            actorRef, header, payload, replyRoute, handoffArrivalIndex,
+            new byte[0]);
+    }
+
+    public static List<Message> createActorPacketParts(
+        ZLinkBackendActorRef actorRef,
+        ZLinkStreamHeader header,
+        Message payload,
+        ZLinkActorReplyRoute replyRoute,
+        Long handoffArrivalIndex,
+        byte[] acceptedJournalRecord) {
         return List.of(
             Message.from(ACTOR_PACKET_NAME.getBytes(StandardCharsets.UTF_8)),
             encodeActorRef(actorRef),
@@ -457,7 +471,10 @@ public final class ZLinkActorSpotRoutePackets {
             Message.from(payload),
             Message.from((handoffArrivalIndex == null
                 ? ""
-                : Long.toString(handoffArrivalIndex)).getBytes(StandardCharsets.UTF_8)));
+                : Long.toString(handoffArrivalIndex)).getBytes(StandardCharsets.UTF_8)),
+            Message.from(acceptedJournalRecord == null
+                ? new byte[0]
+                : acceptedJournalRecord));
     }
 
     public static BoundSessionSend decodeBoundSessionSend(List<Message> parts) {
@@ -482,7 +499,8 @@ public final class ZLinkActorSpotRoutePackets {
             Message.from(parts.get(4)),
             parts.size() < 6 || parts.get(5).toUtf8String().isBlank()
                 ? null
-                : Long.parseLong(parts.get(5).toUtf8String()));
+                : Long.parseLong(parts.get(5).toUtf8String()),
+            parts.size() < 7 ? new byte[0] : parts.get(6).toByteArray());
     }
 
     public static Message createHandoffDirectReplyAck() {
@@ -700,7 +718,17 @@ public final class ZLinkActorSpotRoutePackets {
         long arrivalIndex,
         ZLinkActorReplyRoute replyRoute,
         ZLinkStreamHeader header,
-        Message payload) implements AutoCloseable {
+        Message payload,
+        byte[] acceptedJournalRecord) implements AutoCloseable {
+        public WireHandoffPacket {
+            acceptedJournalRecord = acceptedJournalRecord.clone();
+        }
+
+        @Override
+        public byte[] acceptedJournalRecord() {
+            return acceptedJournalRecord.clone();
+        }
+
         @Override
         public void close() {
             payload.close();
@@ -734,7 +762,17 @@ public final class ZLinkActorSpotRoutePackets {
         ZLinkActorReplyRoute replyRoute,
         ZLinkStreamHeader header,
         Message payload,
-        Long handoffArrivalIndex) implements AutoCloseable {
+        Long handoffArrivalIndex,
+        byte[] acceptedJournalRecord) implements AutoCloseable {
+        public ActorPacket {
+            acceptedJournalRecord = acceptedJournalRecord.clone();
+        }
+
+        @Override
+        public byte[] acceptedJournalRecord() {
+            return acceptedJournalRecord.clone();
+        }
+
         @Override
         public void close() {
             payload.close();

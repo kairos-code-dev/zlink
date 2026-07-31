@@ -3,13 +3,13 @@ import type {
   Type,
   ZLinkActor,
   ZLinkEntrySpot,
+  ZLinkInstanceSpot,
   ZLinkMessageContext,
   ZLinkPublishMessageContext,
   ZLinkRouteMessageContext,
   ZLinkSpot,
   ZLinkTimerOptions
 } from '@zlink-systems/framework';
-import type { ZLinkRuntimeEventPublisher } from './framework-integration-contracts';
 import { ZLINK_NEST_HANDLER_GROUP } from './tokens';
 
 export type ZLinkNestHandlerKind = 'request' | 'send' | 'publish';
@@ -58,7 +58,7 @@ export interface ZLinkNestSpotHandlerMetadata {
   readonly packetName?: string;
   readonly channelName?: string;
   readonly topic?: string;
-  readonly spot?: ZLinkNestTypeResolver<ZLinkSpot>;
+  readonly spot?: ZLinkNestTypeResolver<ZLinkSpot | ZLinkInstanceSpot>;
   readonly entrySpot?: ZLinkNestTypeResolver<ZLinkEntrySpot>;
 }
 
@@ -76,8 +76,6 @@ const spotActorHandlerMetadata = new Map<InjectionToken, readonly ZLinkNestSpotA
 const spotHandlerMetadata = new Map<InjectionToken, readonly ZLinkNestSpotHandlerMetadata[]>();
 const spotTimerHandlerMetadata = new Map<InjectionToken, readonly ZLinkNestSpotTimerHandlerMetadata[]>();
 const spotTimerHandlerTokens = new Set<unknown>();
-const runtimeEventHandlerTokens = new Set<unknown>();
-const registeredRuntimeEventHandlers = new WeakMap<ZLinkRuntimeEventPublisher, WeakSet<object>>();
 
 export function appendNestHandlerMetadata(
   handlerToken: InjectionToken,
@@ -173,28 +171,4 @@ export function nestSpotHandlerMetadataEntries() {
 
 export function nestSpotTimerHandlerMetadataEntries() {
   return [...spotTimerHandlerMetadata.entries()];
-}
-
-export function markNestRuntimeEventHandler(handlerToken: InjectionToken): void {
-  runtimeEventHandlerTokens.add(handlerToken);
-}
-
-export function isNestRuntimeEventHandler(handlerToken: InjectionToken | undefined): boolean {
-  return handlerToken !== undefined && runtimeEventHandlerTokens.has(handlerToken);
-}
-
-export function claimRuntimeEventHandler(
-  publisher: ZLinkRuntimeEventPublisher,
-  handler: object
-): boolean {
-  let registered = registeredRuntimeEventHandlers.get(publisher);
-  if (registered === undefined) {
-    registered = new WeakSet<object>();
-    registeredRuntimeEventHandlers.set(publisher, registered);
-  }
-  if (registered.has(handler)) {
-    return false;
-  }
-  registered.add(handler);
-  return true;
 }

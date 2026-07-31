@@ -46,7 +46,7 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
         TicTacToeGameCreatedHandler createdHandler,
         ObjectMapper json) {
         this.context = context;
-        this.roomId = context.spotRid().toString();
+        this.roomId = context.spotId();
         this.match = new TicTacToeMatch(roomId);
         this.createdHandler = createdHandler;
         this.json = json;
@@ -59,12 +59,6 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
     @Override
     public ZLinkSpotContext context() {
         return context;
-    }
-
-    @Override
-    public void configure() {
-        context.handlers().addHandler(PlayActorLeaveGameHandler.class);
-        context.handlers().addHandler(PlayActorPlaceMarkHandler.class);
     }
 
     @Override

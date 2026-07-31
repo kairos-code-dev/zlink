@@ -1,6 +1,6 @@
 package systems.zlink.samples.kotlin.shoppingmall.server.commerceapi.handlers
 
-import systems.zlink.framework.channels.ZLinkRequestContext
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.samples.kotlin.shoppingmall.server.commerceapi.OrderWorkflowRouter
@@ -17,7 +17,7 @@ class RebuildProjectionHandler(
 ) : ZLinkSuspendingRequestHandler<RebuildProjectionApiReq, RebuildProjectionApiRes> {
     override suspend fun handle(
         request: RebuildProjectionApiReq,
-        context: ZLinkRequestContext,
+        context: ZLinkMessageContext,
     ) = run {
         RebuildProjectionApiRes(workflows.rebuildProjection(request.orderId))
     }

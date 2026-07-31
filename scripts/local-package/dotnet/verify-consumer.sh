@@ -43,7 +43,7 @@ fixture_source="$script_dir/fixtures/public-consumer/Program.cs"
 if $self_test; then
   $dry_run || { echo "--dry-run is required with --self-test" >&2; exit 2; }
   grep -Fq '<PackageId>Systems.Zlink</PackageId>' "$project"
-  grep -Fq '<Version>11.0.0</Version>' "$project"
+  grep -Fq '<Version>11.0.2</Version>' "$project"
   ! grep -Eq '<ProjectReference|bindings/dotnet/src' "$fixture_project"
   ! grep -Eq 'Runtime\.Native|DllImport|System\.Reflection|BindingFlags|NativeMethods' "$fixture_source"
   grep -Fq 'Zlink.Version()' "$fixture_source"
@@ -90,11 +90,25 @@ NODE
 version="${expected[0]}"
 runtime_sha="${expected[1]}"
 
+package_version="$(unzip -p "$package" '*.nuspec' | sed -n 's:.*<version>\([^<]*\)</version>.*:\1:p' | head -1)"
+node - "$package_version" "$version" <<'NODE'
+const [pkg, core] = process.argv.slice(2);
+const parse = value => {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(value);
+  if (!match) process.exit(1);
+  return match.slice(1).map(Number);
+};
+const p = parse(pkg), c = parse(core);
+if (p[0] !== c[0] || p[1] !== c[1] || p[2] < c[2]) process.exit(1);
+NODE
+
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/feed" "$work/consumer" "$work/packages" "$work/home"
 cp "$package" "$work/feed/"
 cp "$fixture_project" "$fixture_source" "$work/consumer/"
+sed -i "s/Version=\"[0-9][0-9.]*\"/Version=\"$package_version\"/" \
+  "$work/consumer/PublicConsumer.csproj"
 
 package_entries="$work/package-entries.txt"
 unzip -Z1 "$package" >"$package_entries"
@@ -144,17 +158,19 @@ loaded_version="$(node -p "JSON.parse(require('fs').readFileSync('$work/run.json
 package_sha="$(sha256sum "$package" | awk '{print $1}')"
 mkdir -p "$(dirname "$evidence")"
 EVIDENCE="$evidence" PACKAGE="$package" PACKAGE_SHA="$package_sha" PROVENANCE_SHA="$provenance_sha" \
-CANDIDATE_SHA="$candidate_sha" VERSION="$version" RUNTIME_SHA="$runtime_sha" LOADED_PATH="$loaded_path" \
+CANDIDATE_SHA="$candidate_sha" PACKAGE_VERSION="$package_version" CORE_VERSION="$version" \
+RUNTIME_SHA="$runtime_sha" LOADED_PATH="$loaded_path" \
 REVISION="$(git -C "$repo_root" rev-parse HEAD)" node <<'NODE'
 const fs = require('node:fs');
 fs.writeFileSync(process.env.EVIDENCE, JSON.stringify({
   schema: 1, ledgerId: 'V11-M4-PKG-DN', status: 'pass', mode: 'actual',
   completedAt: new Date().toISOString(), repositoryRevision: process.env.REVISION,
-  package: { path: process.env.PACKAGE, sha256: process.env.PACKAGE_SHA, version: process.env.VERSION },
+  package: { path: process.env.PACKAGE, sha256: process.env.PACKAGE_SHA,
+    version: process.env.PACKAGE_VERSION },
   core: { provenanceSha256: process.env.PROVENANCE_SHA,
     candidateManifestSha256: process.env.CANDIDATE_SHA,
     runtimeSha256: process.env.RUNTIME_SHA, soname: 'libzlink.so.11',
-    loadedVersion: process.env.VERSION, loadedPath: process.env.LOADED_PATH },
+    loadedVersion: process.env.CORE_VERSION, loadedPath: process.env.LOADED_PATH },
   checks: { isolatedRestore: 'pass', publicOnlyBuild: 'pass', run: 'pass',
     exactRuntimeLoaded: 'pass', embeddedProvenance: 'pass',
     exactNativePayloadOnly: 'pass', ambientLibraryEnvironmentRemoved: true }

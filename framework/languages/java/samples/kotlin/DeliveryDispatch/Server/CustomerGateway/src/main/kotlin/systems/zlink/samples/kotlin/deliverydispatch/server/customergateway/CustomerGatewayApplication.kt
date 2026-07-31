@@ -36,7 +36,7 @@ class CustomerGatewayApplication {
                 .traceLabel("customer-gateway")
             val node = options.addRouteMesh(SampleNames.CustomerSpotMesh)
             node.listen(SampleTopology.CustomerSpotRouterEndpoint)
-                .useAllocatedRoutingId(16, "delivery-customer")
+                .setRoutingIdPrefix("delivery-customer")
             node.objects().server()
                 .addEntrySpot(CustomerEntrySpot::class.java)
                 .addActorFactory(

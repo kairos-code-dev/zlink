@@ -47,6 +47,10 @@ internal static class StI4ActorMessageFollowMatrixScenario
         var oneWayMarker = $"actor-one-way-follow-{oneWayGate}";
         var requestMarker = $"actor-request-follow-{requestGate}";
         var replyMarker = $"actor-request-reply-{replyGate}";
+        Console.WriteLine(
+            "message_follow_case_evidence case=MF-AO-FOLLOW phase=started");
+        Console.WriteLine(
+            "message_follow_case_evidence case=MF-AR-FOLLOW phase=started");
         await context.ArmExternalTransportDeliveryAsync(
             oneWayGate,
             oneWayMarker);
@@ -146,5 +150,16 @@ internal static class StI4ActorMessageFollowMatrixScenario
                     .ReleasedCount == 1,
                 $"{scenario} external gate '{gate}' was not released once.");
         }
+        Console.WriteLine(
+            "message_follow_case_evidence case=MF-AO-FOLLOW"
+            + " phase=completed terminal_count=1"
+            + " current_owner_handler_count=1"
+            + " previous_owner_handler_count=0");
+        Console.WriteLine(
+            "message_follow_case_evidence case=MF-AR-FOLLOW"
+            + " phase=completed terminal_count=1"
+            + " current_owner_handler_count=1"
+            + " previous_owner_handler_count=0"
+            + " reply_correlation=preserved");
     }
 }

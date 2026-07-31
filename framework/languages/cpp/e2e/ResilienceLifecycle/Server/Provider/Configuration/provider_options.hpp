@@ -22,7 +22,6 @@ struct provider_options_t
     std::string evidence_file;
     std::string log_dir;
     std::optional<int> server_weight;
-    std::optional<int> max_message_size;
 
     static provider_options_t bind (const configuration_section_t &section)
     {
@@ -39,8 +38,7 @@ struct provider_options_t
                 .redis_key_prefix = section.require ("redis.keyPrefix"),
                 .evidence_file = section.require ("evidenceFile"),
                 .log_dir = section.require ("logDir"),
-                .server_weight = integer ("serverWeight"),
-                .max_message_size = integer ("maxMessageSize")};
+                .server_weight = integer ("serverWeight")};
     }
 };
 

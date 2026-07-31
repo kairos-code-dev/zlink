@@ -120,7 +120,7 @@ class route_ping_handler_t
     explicit route_ping_handler_t (evidence_store_t &evidence) : _evidence (evidence) {}
 
     scenario_route_res_t handle (const scenario_route_req_t &request,
-                         const zlink::framework::route_handler_context_t &context)
+                                 const zlink::framework::route_message_context_t &context)
     {
         _evidence.record ("ScenarioRouteReq", request.value);
         return {.value = "route:" + request.value,

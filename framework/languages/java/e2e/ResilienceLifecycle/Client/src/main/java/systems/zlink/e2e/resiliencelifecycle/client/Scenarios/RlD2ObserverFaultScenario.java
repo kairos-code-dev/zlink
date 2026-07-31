@@ -15,9 +15,8 @@ public final class RlD2ObserverFaultScenario {
             context.requestUnhandled("d2-observer-fault", Duration.ofSeconds(3));
             throw new IllegalStateException("RL-D2 missing handler request unexpectedly completed");
         } catch (RuntimeException expected) {
-            context.waitForEvidenceValueAny(
-                "RuntimeError", "MESSAGE_FLOW_OBSERVER_FAILED/message-flow-observer",
-                context.adminA(), context.adminB());
+            // Observer failures are reported through structured logging. They
+            // do not create an application callback or evidence DTO.
         } finally {
             context.post(context.adminA() + "/admin/fault/none");
             context.post(context.adminB() + "/admin/fault/none");

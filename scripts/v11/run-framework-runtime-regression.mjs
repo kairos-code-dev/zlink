@@ -256,11 +256,23 @@ function cppPlan() {
     "test_cpp_framework_m6a_runtime",
     "test_cpp_framework_m6b_runtime",
     ...(hasM6cRuntime ? ["test_cpp_framework_m6c_runtime"] : []),
+    "test_cpp_framework_channel_messaging",
     "zlink_cpp_framework_mesh_node_vertical_test",
   ];
   const internalPattern = hasM6cRuntime
-    ? "^(test_cpp_framework_m6[abc]_runtime|zlink_cpp_framework_mesh_node_vertical_test)$"
-    : "^(test_cpp_framework_m6[ab]_runtime|zlink_cpp_framework_mesh_node_vertical_test)$";
+    ? "^(test_cpp_framework_m6[abc]_runtime|test_cpp_framework_channel_messaging|zlink_cpp_framework_mesh_node_vertical_test)$"
+    : "^(test_cpp_framework_m6[ab]_runtime|test_cpp_framework_channel_messaging|zlink_cpp_framework_mesh_node_vertical_test)$";
+  const regressionCoverageTargets = [
+    "test_cpp_framework_host_lifecycle",
+    "test_cpp_framework_in_memory_location_store",
+    "test_cpp_framework_opaque_store_providers",
+    "test_cpp_framework_location_runtime",
+    "test_cpp_framework_store_location_resolvers",
+    "test_cpp_framework_gtest_harness",
+    "test_cpp_framework_locations_redis",
+  ];
+  const regressionCoveragePattern =
+    "^test_cpp_framework_(host_lifecycle|in_memory_location_store|opaque_store_providers|location_runtime|store_location_resolvers|gtest_harness|locations_redis)$";
   return [
     command("cpp-configure", "compile", cwd, "cmake", "-S", ".", "-B", build,
       "-DZLINK_FRAMEWORK_CPP_BUILD_TESTS=ON",
@@ -290,6 +302,10 @@ function cppPlan() {
       ...internalTargets),
     command("cpp-internal-test", "internal", cwd, "ctest", "--test-dir", build,
       "--output-on-failure", "-R", internalPattern),
+    command("cpp-regression-coverage-build", "internal", cwd, "cmake", "--build", build,
+      "--target", ...regressionCoverageTargets),
+    command("cpp-regression-coverage-test", "internal", cwd, "ctest", "--test-dir", build,
+      "--output-on-failure", "-R", regressionCoveragePattern),
     command("cpp-resource-build", "resource", cwd, "cmake", "--build", build, "--target",
       "test_cpp_framework_operation_registry", "test_cpp_framework_location_lifecycle",
       "test_cpp_framework_submit_admission"),
@@ -309,6 +325,9 @@ function dotnetPlan() {
   const cwd = "framework/languages/dotnet";
   const unit = "tests/Zlink.Framework.UnitTests/Zlink.Framework.UnitTests.csproj";
   const contract = "tests/Zlink.Framework.ContractTests/Zlink.Framework.ContractTests.csproj";
+  const redis = "tests/Zlink.Framework.Locations.Redis.Tests/Zlink.Framework.Locations.Redis.Tests.csproj";
+  const httpClient = "tests/Zlink.HttpClient.UnitTests/Zlink.HttpClient.UnitTests.csproj";
+  const foundation = "tests/Zlink.Framework.M5FoundationTests/Zlink.Framework.M5FoundationTests.csproj";
   const common = ["--nologo", "--verbosity", "minimal"];
   return [
     command("dotnet-runtime-compile", "compile", cwd, "dotnet", "build", unit, ...common),
@@ -325,6 +344,12 @@ function dotnetPlan() {
       "--no-build", "--no-restore", "--filter",
       "FullyQualifiedName~ServiceRuntimeFoundationTests|FullyQualifiedName~StatefulServiceRuntimeTests|FullyQualifiedName~EnvelopeCodecTests|FullyQualifiedName~RouteCodecTests|FullyQualifiedName~StreamWireInteropTests",
       ...common),
+    command("dotnet-redis-provider-regression", "internal", cwd, "dotnet", "test", redis,
+      ...common),
+    command("dotnet-http-client-regression", "internal", cwd, "dotnet", "test", httpClient,
+      ...common),
+    command("dotnet-m5-foundation-regression", "internal", cwd, "dotnet", "run",
+      "--project", foundation),
   ];
 }
 
@@ -371,6 +396,11 @@ function jvmPlan() {
     // truncating the suite to 9 of 31). Measured after the fixes: 31/31.
     command("jvm-internal-spring", "internal", cwd, ...gradle,
       `${runtime}:zlink-framework-spring-boot-starter:test`),
+    // The official Redis provider is part of the Framework runtime boundary.
+    // Its opaque Store and provider retry tests must run in the formal graph;
+    // compiling the module does not validate those contracts.
+    command("jvm-internal-redis-provider", "internal", cwd, ...gradle,
+      `${runtime}:zlink-framework-locations-redis:test`),
     command("jvm-resource-regression", "resource", cwd, ...gradle,
       `${runtime}:zlink-framework-core:test`,
       "--tests", "*CloseGateTest", "--tests", "*TeardownExecutorTest",
@@ -400,6 +430,10 @@ function nodePlan() {
     command("node-internal-m6a", "internal", cwd, "npm", "run", "verify:m6a-runtime"),
     command("node-internal-m6b", "internal", cwd, "npm", "run", "verify:m6b-runtime"),
     command("node-internal-m6c", "internal", cwd, "npm", "run", "verify:m6c-runtime"),
+    command("node-internal-channel-client", "internal", cwd, "node", "--test",
+      "test/contract/channel-client.test.js"),
+    command("node-internal-http-client", "internal", cwd, "node", "--test",
+      "test/contract/http-client.test.js"),
     command("node-resource-regression", "resource", cwd, "node", "--test",
       "test/contract/drain-control.test.js",
       "test/contract/abort.test.js",

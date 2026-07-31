@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import type { ZLinkRouteMeshRuntime } from '@zlink-systems/framework';
+import { ZLinkPeerState, type ZLinkRouteMeshRuntime } from '@zlink-systems/framework';
 import { ZLINK_ROUTE_MESH_RUNTIME } from '@zlink-systems/nestjs';
 import { closeNestRuntime, waitForShutdown } from '../runtime-support';
 import { TICTACTOE_SAMPLE_CONFIG } from '../Configuration/sample-config';
@@ -28,7 +28,9 @@ async function main(): Promise<void> {
 }
 
 async function logSpotPeerReady(runtime: ZLinkRouteMeshRuntime, meshName: string): Promise<void> {
-  const hasReadyPeer = (): boolean => runtime.snapshot(meshName).peers.some((peer) => peer.ready);
+  const hasReadyPeer = (): boolean => runtime.snapshot(meshName).peers.some(
+    (peer) => peer.state === ZLinkPeerState.Ready
+  );
   if (hasReadyPeer()) {
     process.stdout.write(`${JSON.stringify({ event: 'spotPeerReady' })}\n`);
     return;

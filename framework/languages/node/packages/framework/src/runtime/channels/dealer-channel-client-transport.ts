@@ -91,7 +91,11 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
       operation.timeout(timeoutMs);
     }
     const reply = await submitRequestOperation(operation, 'channel request');
-    return decodeChannelReply<TReply>(reply);
+    try {
+      return decodeChannelReply<TReply>(reply);
+    } finally {
+      for (const part of reply) part.close();
+    }
   }
 
   tryPublish(

@@ -48,7 +48,7 @@ final class ZLinkFrameworkActorSubsystem {
         ZLinkLocationLifecycle locationLifecycle,
         ZLinkStoreLocationResolvers storeLocationResolvers,
         SpotTransportAddressResolver remoteAddressResolver,
-        systems.zlink.framework.locations.ZLinkLocationStore locationStore,
+        systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository locationStore,
         java.util.Map<String,
             systems.zlink.framework.runtime.internal.backend
                 .ZLinkInternalMeshNode> meshNodes) {
@@ -59,7 +59,10 @@ final class ZLinkFrameworkActorSubsystem {
         var meshActorNode = registration.meshNodes().stream()
             .filter(node -> !node.actorFactories().isEmpty())
             .findFirst()
-            .orElse(null);
+            .orElseGet(() -> registration.meshNodes().stream()
+                .filter(node -> node.objectRoleEnabled())
+                .findFirst()
+                .orElse(null));
         String actorNodeName = legacyActorNode != null
             ? legacyActorNode.nodeName()
             : meshActorNode == null ? null : meshActorNode.meshName();
@@ -110,9 +113,7 @@ final class ZLinkFrameworkActorSubsystem {
             actors.setMetadataPolicy(
                 registration.metadataPolicy().sessionToActorKeys(),
                 registration.metadataPolicy().actorToSessionKeys());
-            if (meshActorNode != null
-                && !meshActorNode.relocatableActorFactories().isEmpty()
-                && locationStore != null) {
+            if (meshActorNode != null && locationStore != null) {
                 var meshNode = meshNodes.get(meshActorNode.meshName());
                 if (meshNode != null) {
                     var creation =

@@ -107,7 +107,6 @@ final class ZLinkChannelMessageDispatcher {
     }
 
     void dispatchPublish(String channelName, ZLinkBackendTopicMessage received) {
-        ZLinkRuntimeMetrics.increment("zlink.fanout.received", java.util.Map.of());
         var incomingFlow = ZLinkChannelFlowFrame.decode(received.parts());
         var flowScope = incomingFlow == null ? null
             : systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.enter(incomingFlow);

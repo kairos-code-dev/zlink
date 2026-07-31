@@ -3,7 +3,7 @@ using System.Threading.Channels;
 
 namespace Zlink.Framework.Runtime.Locations;
 
-internal sealed class ZLinkFanoutRuntimeService : IZLinkFanoutRuntime
+internal sealed class ZLinkFanoutRuntimeService : IZLinkFanoutRuntime, IDisposable
 {
     private readonly object _gate = new();
     private readonly HashSet<string> _automaticChannels;
@@ -11,9 +11,13 @@ internal sealed class ZLinkFanoutRuntimeService : IZLinkFanoutRuntime
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<Observer>> _observers =
         new(StringComparer.Ordinal);
+    private readonly ZLinkFrameworkHostLifecycleState _hostLifecycle;
 
-    internal ZLinkFanoutRuntimeService(ZLinkFrameworkRegistration registration)
+    internal ZLinkFanoutRuntimeService(
+        ZLinkFrameworkRegistration registration,
+        ZLinkFrameworkHostLifecycleState hostLifecycle)
     {
+        _hostLifecycle = hostLifecycle;
         _automaticChannels = registration.Channels.Values
             .Where(static channel =>
                 channel.AutoConnectType == ZLinkLocationAutoConnectType.Fanout
@@ -22,6 +26,12 @@ internal sealed class ZLinkFanoutRuntimeService : IZLinkFanoutRuntime
             .ToHashSet(StringComparer.Ordinal);
         foreach (var channelName in _automaticChannels)
             _states[channelName] = ChannelState.Empty(channelName);
+        _hostLifecycle.Changed += OnHostStateChanged;
+    }
+
+    internal ZLinkFanoutRuntimeService(ZLinkFrameworkRegistration registration)
+        : this(registration, new ZLinkFrameworkHostLifecycleState())
+    {
     }
 
     private ZLinkFanoutChannelSnapshot SnapshotInternal(string channelName)
@@ -39,10 +49,14 @@ internal sealed class ZLinkFanoutRuntimeService : IZLinkFanoutRuntime
                 MapPeerState(publisher.State),
                 MapUnavailableReason(publisher.State)))
             .ToArray();
-        var isReady = snapshot.ReadyConnectionCount > 0;
+        var hostState = _hostLifecycle.State;
+        var isReady = hostState == ZLinkFrameworkRuntimeState.Serving
+                      && snapshot.ReadyConnectionCount > 0;
         return new ZLinkFanoutStatus(
             snapshot.ChannelName,
-            isReady ? ZLinkTopologyState.Ready : ZLinkTopologyState.Degraded,
+            isReady
+                ? ZLinkTopologyState.Ready
+                : HostTopologyState(hostState),
             isReady,
             snapshot.ReadyConnectionCount,
             publishers,
@@ -187,6 +201,55 @@ internal sealed class ZLinkFanoutRuntimeService : IZLinkFanoutRuntime
             return;
         foreach (var observer in observers.ToArray())
             observer.Channel.Writer.TryWrite(item);
+    }
+
+    private void OnHostStateChanged(ZLinkFrameworkRuntimeState _)
+    {
+        lock (_gate)
+        {
+            var now = DateTimeOffset.UtcNow;
+            foreach (var (channelName, state) in _states.ToArray())
+            {
+                var sequence = checked(state.Snapshot.Sequence + 1);
+                _states[channelName] = new ChannelState(state.Snapshot with
+                {
+                    Sequence = sequence,
+                    ObservedAt = now
+                });
+                Emit(
+                    channelName,
+                    new ZLinkFanoutRuntimeEvent.RuntimeChanged(
+                        sequence,
+                        now,
+                        channelName));
+            }
+        }
+    }
+
+    private static ZLinkTopologyState HostTopologyState(
+        ZLinkFrameworkRuntimeState state) =>
+        state switch
+        {
+            ZLinkFrameworkRuntimeState.Preparing => ZLinkTopologyState.Starting,
+            ZLinkFrameworkRuntimeState.Relocating
+                or ZLinkFrameworkRuntimeState.Relocated
+                or ZLinkFrameworkRuntimeState.Draining =>
+                ZLinkTopologyState.Stopping,
+            ZLinkFrameworkRuntimeState.Stopped =>
+                ZLinkTopologyState.Stopped,
+            ZLinkFrameworkRuntimeState.Error => ZLinkTopologyState.Failed,
+            _ => ZLinkTopologyState.Degraded
+        };
+
+    public void Dispose()
+    {
+        _hostLifecycle.Changed -= OnHostStateChanged;
+        lock (_gate)
+        {
+            foreach (var observer in _observers.Values.SelectMany(static value => value))
+                observer.Channel.Writer.TryComplete();
+            _observers.Clear();
+        }
     }
 
     private static string IdentityKey(

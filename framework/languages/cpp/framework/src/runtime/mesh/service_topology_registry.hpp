@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -68,16 +69,25 @@ struct service_node_descriptor_t
 enum class peer_admission_result_t
 {
     admitted,
+    duplicate_connection,
     not_required,
     mesh_mismatch,
     invalid_descriptor,
     stale_descriptor
 };
 
+enum class service_connection_direction_t
+{
+    inbound,
+    outbound
+};
+
 struct admitted_peer_t
 {
     service_node_descriptor_t descriptor;
     std::vector<std::uint8_t> connection_id;
+    service_connection_direction_t direction =
+      service_connection_direction_t::inbound;
 };
 
 bool route_mesh_connection_not_required (
@@ -91,10 +101,20 @@ class service_topology_registry_t
 
     void publish_local (service_node_descriptor_t descriptor);
     service_node_descriptor_t local_descriptor () const;
+    void set_change_handler (std::function<void ()> handler);
 
     peer_admission_result_t admit (
       service_node_descriptor_t descriptor,
       std::vector<std::uint8_t> connection_id);
+    peer_admission_result_t admit (
+      service_node_descriptor_t descriptor,
+      std::vector<std::uint8_t> connection_id,
+      service_connection_direction_t direction);
+    peer_admission_result_t admit (
+      service_node_descriptor_t descriptor,
+      std::vector<std::uint8_t> connection_id,
+      service_connection_direction_t direction,
+      const service_node_descriptor_t &expected_descriptor);
     bool disconnect (const std::vector<std::uint8_t> &node_routing_id,
                      const std::vector<std::uint8_t> &connection_id);
 
@@ -116,6 +136,11 @@ class service_topology_registry_t
     static bool valid_descriptor (const service_node_descriptor_t &descriptor);
     static bool selectable (const service_node_descriptor_t &descriptor,
                             const std::string &channel_name);
+    peer_admission_result_t admit_impl (
+      service_node_descriptor_t descriptor,
+      std::vector<std::uint8_t> connection_id,
+      std::optional<service_connection_direction_t> direction,
+      const service_node_descriptor_t *expected_descriptor);
 
     mutable std::mutex _mutex;
     service_node_descriptor_t _local;
@@ -125,6 +150,7 @@ class service_topology_registry_t
              byte_vector_less_t>
       _not_required_peers;
     std::map<std::string, std::uint64_t> _selection_cursor;
+    std::function<void ()> _change_handler;
 };
 
 } // namespace zlink::framework::runtime::mesh

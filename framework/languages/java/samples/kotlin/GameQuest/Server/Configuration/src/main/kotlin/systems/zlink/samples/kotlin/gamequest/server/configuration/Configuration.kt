@@ -15,7 +15,9 @@ import systems.zlink.samples.kotlin.gamequest.shared.contracts.StoredQuestEvent
 
 object SampleNames {
     const val StreamNode = "gamequest-stream"
-    const val QuestOwnerChannel = "gamequest.quest-owner"
+    const val PlayerQuestMesh = "gamequest.player-quests"
+    const val PlayerQuestSpotType = "gamequest.player-quest"
+    const val PlayerSessionActorType = "gamequest.player-session"
     const val CompletedMarker = "gamequest=completed"
     const val ServerEvidenceMarker = "gamequest-server-evidence=completed"
 
@@ -33,8 +35,6 @@ data class SampleTopology(
     val streamEndpoint: String? = null,
     val channelEndpoint: String? = null,
     val httpEndpoint: String? = null,
-    val missionAChannelEndpoint: String? = null,
-    val missionBChannelEndpoint: String? = null,
     val redisEndpoint: String? = null,
     val redisKeyPrefix: String? = null,
 ) {
@@ -43,8 +43,6 @@ data class SampleTopology(
         required(logDirectory, "logDirectory"),
         required(streamEndpoint, "streamEndpoint"),
         required(httpEndpoint, "httpEndpoint"),
-        required(missionAChannelEndpoint, "missionAChannelEndpoint"),
-        required(missionBChannelEndpoint, "missionBChannelEndpoint"),
     )
 
     fun questMission(): QuestMission = QuestMission(
@@ -64,8 +62,6 @@ data class SampleTopology(
         val logDirectory: String,
         val streamEndpoint: String,
         val httpEndpoint: String,
-        val missionAChannelEndpoint: String,
-        val missionBChannelEndpoint: String,
     )
 
     data class QuestMission(

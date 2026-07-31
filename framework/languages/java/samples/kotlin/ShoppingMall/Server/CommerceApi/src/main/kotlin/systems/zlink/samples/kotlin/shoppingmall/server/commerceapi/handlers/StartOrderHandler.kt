@@ -1,6 +1,6 @@
 package systems.zlink.samples.kotlin.shoppingmall.server.commerceapi.handlers
 
-import systems.zlink.framework.channels.ZLinkRequestContext
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.samples.kotlin.shoppingmall.server.commerceapi.StartOrderUseCase
@@ -13,7 +13,7 @@ class StartOrderHandler(
 ) : ZLinkSuspendingRequestHandler<StartOrderReq, StartOrderRes> {
     override suspend fun handle(
         request: StartOrderReq,
-        context: ZLinkRequestContext,
+        context: ZLinkMessageContext,
     ) = run {
         useCase.execute(request)
     }

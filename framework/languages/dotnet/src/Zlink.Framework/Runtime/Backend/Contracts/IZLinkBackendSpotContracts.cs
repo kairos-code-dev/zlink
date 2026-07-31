@@ -16,6 +16,8 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
 
     void SetRouterBind(string endpoint);
 
+    void SetRouterAdvertisedEndpoint(string endpoint);
+
     void SetPubBind(string endpoint);
 
     // Adds a logical channel membership. Per spec 21-mesh-node §3 and the
@@ -32,7 +34,7 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
     // is translated by the backend to Core's -1 sentinel.
     void SetMaxMessageSize(long value);
 
-    void SetRouterHighWaterMark(int value);
+    void SetRouterHighWaterMark(ulong value);
 
     void SetRouterSendTimeout(TimeSpan? value);
 
@@ -50,7 +52,18 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
 
     void ConnectPeer(string endpoint);
 
-    void ConnectPeer(RoutingId peerRid, string endpoint);
+    void ConnectPeer(
+        RoutingId peerRid,
+        string endpoint,
+        string expectedSecurityIdentity = "none");
+
+    void SetPeerExpectation(
+        RoutingId peerRid,
+        string endpoint,
+        string expectedSecurityIdentity,
+        ulong expectedLifecycleGeneration);
+
+    void RemovePeerExpectation(RoutingId peerRid, string endpoint);
 
     void DisconnectPeer(string endpoint);
 
@@ -233,6 +246,14 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
         CancellationToken cancellationToken) =>
         throw new NotSupportedException(
             "This MeshNode backend does not support Instance Spot activation.");
+
+    ValueTask<InstanceSpotActivationTerminal> ForwardInstanceSpotActivationAsync(
+        InstanceSpotActivationOperation operation,
+        IReadOnlyList<ReadOnlyMemory<byte>> parts,
+        ReadOnlyMemory<byte>? metadata,
+        CancellationToken cancellationToken) =>
+        throw new NotSupportedException(
+            "This MeshNode backend does not support Instance Spot activation forwarding.");
 
     ValueTask<(UserSpotCreateCompletion Completion, IReadOnlyList<Message> Reply)>
         CreateUserSpotAsync(

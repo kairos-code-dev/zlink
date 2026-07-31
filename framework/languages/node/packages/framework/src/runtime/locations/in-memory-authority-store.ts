@@ -83,6 +83,7 @@ interface CapacityReservation {
 interface AggregateRecord {
   readonly request: ZLinkAggregatePrepareRequest;
   readonly fence: ZLinkAggregateFence;
+  readonly capacityReservationId?: string;
   state: 'prepared' | 'committed' | 'aborted';
 }
 
@@ -586,7 +587,18 @@ export class ZLinkInMemoryAuthorityStore {
       return { kind: 'conflict' };
     }
     const target = aggregateTargetAllocation(request);
-    if (!this.hasPendingCapacity(target)) {
+    const capacityReservation = this.capacityReservations.get(request.aggregateId.value);
+    const adoptsCapacityReservation = capacityReservation !== undefined
+      && capacityReservation.state === 'reserved'
+      && sameOwner(capacityReservation.request.targetOwner, request.targetOwner)
+      && sameDescriptor(
+        capacityReservation.request.targetDescriptor,
+        request.targetDescriptor
+      )
+      && capacityReservation.request.targetNodeLifecycleGeneration
+        === request.targetDescriptorLifecycleGeneration
+      && sameCapacity(capacityReservation.request.capacity, request.capacity);
+    if (!adoptsCapacityReservation && !this.hasPendingCapacity(target)) {
       return { kind: 'conflict' };
     }
     let sourceCapacity: ZLinkCapacityVector = { actors: 0, spots: 0 };
@@ -610,10 +622,18 @@ export class ZLinkInMemoryAuthorityStore {
       aggregateId: request.aggregateId,
       aggregateGeneration: request.aggregateGeneration
     };
-    this.adjustCapacity(this.pendingCapacity, target, 1);
+    if (adoptsCapacityReservation) {
+      capacityReservation.state = 'prepared';
+      capacityReservation.aggregate = aggregateKey;
+    } else {
+      this.adjustCapacity(this.pendingCapacity, target, 1);
+    }
     this.aggregates.set(aggregateKey, {
       request: cloneAggregateRequest(request),
       fence,
+      ...(adoptsCapacityReservation
+        ? { capacityReservationId: request.aggregateId.value }
+        : {}),
       state: 'prepared'
     });
     return { kind: 'prepared', fence };
@@ -698,6 +718,11 @@ export class ZLinkInMemoryAuthorityStore {
     this.adjustCapacity(this.pendingCapacity, aggregateTarget, -1);
     this.adjustCapacity(this.activeCapacity, aggregateTarget, 1);
     aggregate.state = 'committed';
+    if (aggregate.capacityReservationId !== undefined) {
+      const capacityReservation =
+        this.capacityReservations.get(aggregate.capacityReservationId);
+      if (capacityReservation !== undefined) capacityReservation.state = 'committed';
+    }
     this.scanRevision++;
     return { kind: 'committed' };
   }
@@ -718,6 +743,11 @@ export class ZLinkInMemoryAuthorityStore {
       -1
     );
     aggregate.state = 'aborted';
+    if (aggregate.capacityReservationId !== undefined) {
+      const capacityReservation =
+        this.capacityReservations.get(aggregate.capacityReservationId);
+      if (capacityReservation !== undefined) capacityReservation.state = 'aborted';
+    }
     return { kind: 'aborted' };
   }
 
@@ -978,7 +1008,7 @@ function validateRelocationReservation(request: ZLinkRelocationCapacityReservati
 
 function validateAggregateRequest(request: ZLinkAggregatePrepareRequest): void {
   requireText(request.aggregateId.value, 'aggregate ID');
-  if (request.aggregateGeneration < 1n || request.participants.length < 1 || request.participants.length > 1024) {
+  if (request.aggregateGeneration < 1n || request.participants.length < 1) {
     throw new RangeError('Aggregate generation and participant count are invalid.');
   }
   if (request.inventoryDigest.byteLength !== 32) {
@@ -1021,7 +1051,6 @@ function sameFenceAuthority(
     && current.allocation.stableType === request.stableType
     && sameDescriptor(current.allocation.descriptor, request.sourceDescriptor)
     && current.allocation.descriptorLifecycleGeneration === request.sourceNodeLifecycleGeneration
-    && sameCapacity(current.allocation.capacity, request.capacity)
     && current.ownerId === request.sourceOwner.ownerId
     && current.ownerLeaseGeneration === request.sourceOwner.leaseGeneration;
 }

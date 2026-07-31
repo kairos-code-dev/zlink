@@ -50,8 +50,15 @@ internal sealed class ZLinkClientServerDispatcher(
                         received.Parts,
                         header,
                         (replyHeader, reply, replyType) =>
-                            Reply(replyGate, router, received, replyHeader, reply, replyType),
-                        errorHeader => Reply(replyGate, router, received, errorHeader, null, null),
+                        {
+                            Reply(replyGate, router, received, replyHeader, reply, replyType);
+                            return ValueTask.CompletedTask;
+                        },
+                        errorHeader =>
+                        {
+                            Reply(replyGate, router, received, errorHeader, null, null);
+                            return ValueTask.CompletedTask;
+                        },
                         cancellationToken)
                     .ConfigureAwait(false);
                 break;

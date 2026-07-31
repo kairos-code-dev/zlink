@@ -21,8 +21,8 @@ inline void run_ta_b2_scenario (zlink::http_client::client_t &actor_a,
                              "actor_location_stale");
     assert_call (caller, "TA-B2-current-ref", "ta-b2-stale", "current", "reply:current", false);
 
-    const auto evidence_a = actor_a.get ("/evidence").async<std::vector<e2e::actor_evidence_t>> ().result ().value ().body;
-    const auto evidence_b = actor_b.get ("/evidence").async<std::vector<e2e::actor_evidence_t>> ().result ().value ().body;
+    const auto evidence_a = actor_a.get ("/evidence").submit<std::vector<e2e::actor_evidence_t>> ().result ().value ().body;
+    const auto evidence_b = actor_b.get ("/evidence").submit<std::vector<e2e::actor_evidence_t>> ().result ().value ().body;
     require_no_evidence (evidence_a, "TA-B2-stale-location");
     require_no_evidence (evidence_b, "TA-B2-stale-location");
     require_evidence (evidence_b, "TA-B2-current-ref", "request");

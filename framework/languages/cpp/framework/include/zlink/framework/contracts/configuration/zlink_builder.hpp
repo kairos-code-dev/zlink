@@ -15,7 +15,6 @@ namespace zlink::framework
 {
 
 struct dispatch_options_t;
-class monitoring_builder_t;
 class zlink_builder_t;
 
 namespace detail
@@ -29,7 +28,10 @@ void bind_stream_serializers (zlink_builder_t &builder, serializer_registry_t &s
 void apply_stream_compression_codec (zlink_builder_t &builder,
                                      std::shared_ptr<const stream_compression_codec_t> codec);
 void drain_zlink_builder_runtime (zlink_builder_t &builder) noexcept;
-void bind_zlink_monitoring (zlink_builder_t &builder, const monitoring_builder_t &monitoring);
+class monitoring_runtime_state_t;
+void bind_zlink_monitoring (
+  zlink_builder_t &builder,
+  std::shared_ptr<monitoring_runtime_state_t> monitoring);
 } // namespace detail
 
 class zlink_builder_t
@@ -64,8 +66,9 @@ class zlink_builder_t
     friend void detail::apply_stream_compression_codec (
       zlink_builder_t &builder, std::shared_ptr<const stream_compression_codec_t> codec);
     friend void detail::drain_zlink_builder_runtime (zlink_builder_t &builder) noexcept;
-    friend void detail::bind_zlink_monitoring (zlink_builder_t &builder,
-                                               const monitoring_builder_t &monitoring);
+    friend void detail::bind_zlink_monitoring (
+      zlink_builder_t &builder,
+      std::shared_ptr<detail::monitoring_runtime_state_t> monitoring);
     friend class detail::channel_runtime_manager_t;
     friend class detail::mesh_node_runtime_t;
     friend class detail::spot_node_runtime_t;

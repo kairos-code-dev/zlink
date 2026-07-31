@@ -3,7 +3,7 @@ package systems.zlink.samples.deliverydispatch.server.dispatch.handlers;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import systems.zlink.framework.channels.ZLinkSendContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
@@ -32,7 +32,7 @@ public final class OfferDeliveryResultHandler
     @Override
     public CompletionStage<Void> handle(
         Messages.OfferDeliveryResultMsg message,
-        ZLinkSendContext context) {
+        ZLinkMessageContext context) {
         Optional<DeliveryOffer> offer = offers.settle(message.deliveryId(), message.attempt());
         if (offer.isEmpty()) {
             System.out.println("deliverydispatch dispatch: dropped a late decision delivery="

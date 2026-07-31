@@ -119,7 +119,8 @@ public final class SupportChatSession implements ZLinkSession {
             .thenCompose(ensured -> bindOrGet(ensured.actor().toActorRef())
                 .thenAccept(actor -> {
                     conversationActors.put(conversationId, actor);
-                    context.client().reply(new Messages.JoinConversationRes(ensured.state())).submit();
+                    context.client().reply(
+                        new Messages.JoinConversationRes(ensured.scheduled(), ensured.state())).submit();
                 }));
     }
 

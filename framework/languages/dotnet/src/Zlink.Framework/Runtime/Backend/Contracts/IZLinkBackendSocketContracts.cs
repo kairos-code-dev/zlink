@@ -13,9 +13,9 @@ internal interface IZLinkBackendSocketOptions : IZLinkBackendSocket
 
     void SetMaxMessageSize(long value);
 
-    void SetSendHighWaterMark(int value);
+    void SetSendHighWaterMark(ulong value);
 
-    void SetReceiveHighWaterMark(int value);
+    void SetReceiveHighWaterMark(ulong value);
 }
 
 internal interface IZLinkBackendConnectableSocket : IZLinkBackendSocket

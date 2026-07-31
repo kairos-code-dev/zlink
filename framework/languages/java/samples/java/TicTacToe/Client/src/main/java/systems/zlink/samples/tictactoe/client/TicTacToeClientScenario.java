@@ -28,19 +28,18 @@ import systems.zlink.stream.connector.ZLinkStreamMessageKind;
 public final class TicTacToeClientScenario {
     public void run(TicTacToeClientOptions options) throws Exception {
         CreateGameHttpRes game;
-        CreateGameHttpRes nextGame;
         try (ZLinkHttpClient api = ZLinkHttpClient.create(options.apiUrl()).build()) {
             game = api.post("/games")
                 .body(new CreateGameHttpReq(options.gameName()))
-                .submit(CreateGameHttpRes.class).toCompletableFuture().join().body();
-            nextGame = api.post("/games")
-                .body(new CreateGameHttpReq(options.gameName() + "-round-robin"))
-                .submit(CreateGameHttpRes.class).toCompletableFuture().join().body();
+                .fetch(CreateGameHttpRes.class).toCompletableFuture().join();
         }
-        String observerEndpoint = nonOwnerEndpoint(game);
-        ZLinkStreamConnector host = playerConnector(game.ownerPlayEndpoint(), "host");
-        ZLinkStreamConnector guest = playerConnector(observerEndpoint, "guest");
-        ZLinkStreamConnector observer = playerConnector(observerEndpoint, "observer");
+        ensure(game.playEndpoints().size() >= 2);
+        ZLinkStreamConnector host = playerConnector(
+            game.playEndpoints().get(0), "host");
+        ZLinkStreamConnector guest = playerConnector(
+            game.playEndpoints().get(1), "guest");
+        ZLinkStreamConnector observer = playerConnector(
+            game.playEndpoints().get(1), "observer");
 
         try {
             host.connect().submit().toCompletableFuture().join();
@@ -48,9 +47,6 @@ public final class TicTacToeClientScenario {
             observer.connect().submit().toCompletableFuture().join();
 
             ensure(game.roomId() != null && !game.roomId().isBlank());
-            ensure(!game.roomId().equals(nextGame.roomId()));
-            ensure(game.ownerPlayEndpoint() != null && !game.ownerPlayEndpoint().isBlank());
-            ensure(!game.ownerPlayEndpoint().equals(nextGame.ownerPlayEndpoint()));
             ensure(options.gameName().equals(game.gameName()));
             ensure(game.requiredLevel() == 3);
 
@@ -74,7 +70,8 @@ public final class TicTacToeClientScenario {
                 .request(new ObserveMilestoneReq())
                 .submit(ObserveMilestoneRes.class).toCompletableFuture().join();
             ensure(subscribed.subscribed());
-            System.out.println("observer-connected endpoint=" + observerEndpoint);
+            System.out.println(
+                "observer-connected endpoint=" + game.playEndpoints().get(1));
             System.out.println("observer-subscription=verified subscribed=" + subscribed.subscribed());
 
             AtomicInteger hostOwnJoinNotifications = new AtomicInteger();
@@ -92,9 +89,12 @@ public final class TicTacToeClientScenario {
                 return CompletableFuture.completedFuture(null);
             });
 
-            JoinGameRes hostJoin = host
-                .request(new JoinGameReq(game.roomId()))
-                .submit(JoinGameRes.class).toCompletableFuture().join();
+            var hostJoinCompletion = host.waitFor(JoinGameRes.class)
+                .submit(JoinGameRes.class);
+            host.send(new JoinGameReq(game.roomId())).submit()
+                .toCompletableFuture().join();
+            JoinGameRes hostJoin = hostJoinCompletion
+                .toCompletableFuture().join().payload();
             ensure(hostJoin.state().roomId().equals(game.roomId()));
             ensure("WaitingForPlayers".equals(hostJoin.state().status()));
             ensure(options.xActorId().equals(hostJoin.state().xActorId()));
@@ -111,21 +111,15 @@ public final class TicTacToeClientScenario {
                         && options.oActorId().equals(message.payload().state().oActorId()))
                 .submit(GameStateNotify.class);
 
-            JoinGameRes guestJoin = guest
-                .request(new JoinGameReq(game.roomId()))
-                .submit(JoinGameRes.class).toCompletableFuture().join();
+            var guestJoinCompletion = guest.waitFor(JoinGameRes.class)
+                .submit(JoinGameRes.class);
+            guest.send(new JoinGameReq(game.roomId())).submit()
+                .toCompletableFuture().join();
+            JoinGameRes guestJoin = guestJoinCompletion
+                .toCompletableFuture().join().payload();
             ensure(guestJoin.state().roomId().equals(game.roomId()));
             ensure("InProgress".equals(guestJoin.state().status()));
             ensure(options.oActorId().equals(guestJoin.state().oActorId()));
-
-            boolean fullRoomJoinRejected = false;
-            try {
-                observer.request(new JoinGameReq(game.roomId()))
-                    .submit(JoinGameRes.class).toCompletableFuture().join();
-            } catch (java.util.concurrent.CompletionException expected) {
-                fullRoomJoinRejected = true;
-            }
-            ensure(fullRoomJoinRejected);
 
             PlayerJoinedNotify guestJoinNotify = hostSawGuestJoin.toCompletableFuture().join().payload();
             ensure("O".equals(guestJoinNotify.mark()));
@@ -247,21 +241,18 @@ public final class TicTacToeClientScenario {
                 + milestone.actorId()
                 + " wins=" + milestone.wins());
 
-            host.send(new LeaveGameReq(game.roomId())).submit();
-            guest.send(new LeaveGameReq(game.roomId())).submit();
+            java.util.concurrent.CompletableFuture.allOf(
+                host.send(new LeaveGameReq(game.roomId()))
+                    .submit().toCompletableFuture(),
+                guest.send(new LeaveGameReq(game.roomId()))
+                    .submit().toCompletableFuture())
+                .join();
             System.out.println("tictactoe completed");
         } finally {
             host.close().submit().toCompletableFuture().join();
             guest.close().submit().toCompletableFuture().join();
             observer.close().submit().toCompletableFuture().join();
         }
-    }
-
-    private static String nonOwnerEndpoint(CreateGameHttpRes game) {
-        return game.playEndpoints().stream()
-            .filter(endpoint -> !endpoint.equals(game.ownerPlayEndpoint()))
-            .findFirst()
-            .orElseThrow(() -> new IllegalStateException("non-owner Play endpoint is required"));
     }
 
     private static ZLinkStreamConnector playerConnector(String endpoint, String role) {

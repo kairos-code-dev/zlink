@@ -12,7 +12,14 @@ class SupportUserActorRelocationAdapter : ZLinkActorRelocationAdapter<SupportUse
         cancellation: ZLinkRelocationCancellation,
     ): CompletionStage<ByteArray> = CompletableFuture.completedFuture(
         json.writeValueAsBytes(
-            TransferState(actor.displayName, actor.role, actor.participantId, actor.conversationId),
+            TransferState(
+                actor.displayName,
+                actor.role,
+                actor.participantId,
+                actor.conversationId,
+                actor.pendingConversationId(),
+                actor.completedJoinOperations(),
+            ),
         ),
     )
 
@@ -26,6 +33,8 @@ class SupportUserActorRelocationAdapter : ZLinkActorRelocationAdapter<SupportUse
         if (transferred.conversationId.isNotBlank()) {
             actor.joinConversation(transferred.conversationId)
         }
+        actor.restorePendingConversationJoin(transferred.pendingConversationId)
+        actor.restoreCompletedJoinOperations(transferred.completedJoinOperations)
         return CompletableFuture.completedFuture(null)
     }
 
@@ -38,5 +47,8 @@ class SupportUserActorRelocationAdapter : ZLinkActorRelocationAdapter<SupportUse
         val role: String,
         val participantId: String,
         val conversationId: String,
+        val pendingConversationId: String,
+        val completedJoinOperations:
+            Set<systems.zlink.framework.actors.ZLinkActorJoinOperationId>,
     )
 }

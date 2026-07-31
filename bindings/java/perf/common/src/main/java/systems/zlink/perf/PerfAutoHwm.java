@@ -164,7 +164,7 @@ final class PerfAutoHwm {
         if (!sideVisible(socketType, monitorStatus.autoHwmRole(), sendSide)) {
             return "-";
         }
-        return Integer.toString(sendSide
+        return Long.toString(sendSide
             ? monitorStatus.autoHwmAppliedSendHwmBytes()
             : monitorStatus.autoHwmAppliedRecvHwmBytes());
     }

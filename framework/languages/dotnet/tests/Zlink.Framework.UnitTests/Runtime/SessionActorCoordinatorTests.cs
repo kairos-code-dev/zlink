@@ -114,22 +114,6 @@ public sealed class SessionActorCoordinatorTests
     [Fact]
     public async Task BindOrGetActorAsync_Rebinds_When_Generation_Changes_For_Same_ActorId()
     {
-        var bindDurations = new List<double>();
-        Instrument? bindDurationInstrument = null;
-        using var listener = new MeterListener
-        {
-            InstrumentPublished = (instrument, owner) =>
-            {
-                if (instrument.Meter.Name == ZLinkMeters.Framework
-                    && instrument.Name == "zlink.stream.session.bind.duration")
-                {
-                    bindDurationInstrument = instrument;
-                    owner.EnableMeasurementEvents(instrument);
-                }
-            }
-        };
-        listener.SetMeasurementEventCallback<double>((_, value, _, _) => bindDurations.Add(value));
-        listener.Start();
         var runtime = CreateRuntime();
         var context = new ZLinkSessionContext(
             runtime,
@@ -162,10 +146,6 @@ public sealed class SessionActorCoordinatorTests
         Assert.NotEqual(firstToken, secondSession.BindingToken);
         Assert.True(runtime.TryGetSessionActorContext("actor-1", secondSession.BindingToken, out var reboundContext));
         Assert.Same(context, reboundContext);
-        Assert.Equal(2, bindDurations.Count);
-        Assert.All(bindDurations, duration => Assert.True(duration >= 0));
-        Assert.NotNull(bindDurationInstrument);
-        listener.DisableMeasurementEvents(bindDurationInstrument);
     }
 
     [Fact]

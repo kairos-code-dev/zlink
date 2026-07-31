@@ -11,6 +11,7 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
     private static readonly TimeSpan DefaultDeadline = TimeSpan.FromSeconds(30);
 
     private readonly ZLinkDrainCoordinator _lifecycle;
+    private readonly ZLinkFrameworkHostLifecycleState _hostLifecycle;
     private readonly Func<
             ZLinkFrameworkRelocationMode,
             long,
@@ -20,6 +21,8 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
     private readonly Func<CancellationToken, ValueTask<bool>> _publishRelocating;
     private readonly long _sourceApplicationVersion;
     private readonly IDisposable _metricRegistration;
+    private readonly IDisposable _inboundMetricRegistration;
+    private readonly Func<ZLinkInboundDispatchStatus> _inboundDispatchSnapshot;
     private readonly object _gate = new();
     private readonly List<Channel<ZLinkFrameworkRuntimeStatus>> _observers = [];
 
@@ -27,7 +30,6 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
     private Task<ZLinkFrameworkTerminationResult>? _shutdownOperation;
     private CancellationTokenSource? _relocationCancellation;
     private ZLinkFrameworkRuntimeState? _relocationOriginState;
-    private ZLinkFrameworkRuntimeState _state = ZLinkFrameworkRuntimeState.Preparing;
     private ZLinkFrameworkRelocationResult? _relocationResult;
     private ZLinkFrameworkTerminationResult? _terminationResult;
     private DateTimeOffset? _deadline;
@@ -38,6 +40,7 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
 
     internal ZLinkFrameworkMaintenanceRuntime(
         ZLinkDrainCoordinator lifecycle,
+        ZLinkFrameworkHostLifecycleState hostLifecycle,
         Func<
                 ZLinkFrameworkRelocationMode,
                 long,
@@ -45,14 +48,19 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
                 ValueTask<ZLinkFrameworkRelocationReason?>>
             relocationPreflight,
         Func<CancellationToken, ValueTask<bool>> publishRelocating,
-        long sourceApplicationVersion = 0)
+        long sourceApplicationVersion = 0,
+        Func<ZLinkInboundDispatchStatus>? inboundDispatchSnapshot = null)
     {
         _lifecycle = lifecycle;
+        _hostLifecycle = hostLifecycle;
         _relocationPreflight = relocationPreflight;
         _publishRelocating = publishRelocating;
         _sourceApplicationVersion = sourceApplicationVersion;
-        _metricRegistration = ZLinkRuntimeMetrics.RegisterTerminationState(
-            () => Status.State.ToString().ToLowerInvariant());
+        _inboundDispatchSnapshot = inboundDispatchSnapshot ?? EmptyInboundDispatchSnapshot;
+        _metricRegistration = ZLinkRuntimeMetrics.RegisterHostState(
+            () => HostStateMetricValue(_hostLifecycle.State));
+        _inboundMetricRegistration = ZLinkRuntimeMetrics.RegisterHostInboundDispatch(
+            _inboundDispatchSnapshot);
     }
 
     public ZLinkFrameworkRuntimeStatus Status
@@ -68,7 +76,7 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
     {
         lock (_gate)
         {
-            if (_state == ZLinkFrameworkRuntimeState.Preparing)
+            if (_hostLifecycle.State == ZLinkFrameworkRuntimeState.Preparing)
                 TransitionUnderLock(ZLinkFrameworkRuntimeState.Serving);
         }
     }
@@ -77,7 +85,7 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
     {
         lock (_gate)
         {
-            if (_state != ZLinkFrameworkRuntimeState.Stopped)
+            if (_hostLifecycle.State != ZLinkFrameworkRuntimeState.Stopped)
                 TransitionUnderLock(ZLinkFrameworkRuntimeState.Error);
         }
     }
@@ -130,7 +138,7 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
         {
             ThrowIfDisposed();
             if (_shutdownOperation is not null
-                || _state is ZLinkFrameworkRuntimeState.Draining
+                || _hostLifecycle.State is ZLinkFrameworkRuntimeState.Draining
                     or ZLinkFrameworkRuntimeState.Stopped)
             {
                 if (_relocationResult is { } shutdownCompleted
@@ -156,15 +164,15 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
             }
             else
             {
-                if (_state == ZLinkFrameworkRuntimeState.Relocated
+                if (_hostLifecycle.State == ZLinkFrameworkRuntimeState.Relocated
                     && _relocationResult is { } completed)
                     return ValueTask.FromResult(completed);
-                if (_state != ZLinkFrameworkRuntimeState.Serving)
+                if (_hostLifecycle.State != ZLinkFrameworkRuntimeState.Serving)
                     return ValueTask.FromResult(Blocked(
                         options.Mode,
                         effectiveTargetVersion,
                         ZLinkFrameworkRelocationReason.RuntimeNotReady));
-                _relocationOriginState = _state;
+                _relocationOriginState = _hostLifecycle.State;
                 _relocationResult = null;
                 _activeMode = options.Mode;
                 _activeTargetVersion = effectiveTargetVersion;
@@ -226,7 +234,10 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
     {
         await Task.Yield();
         using var shutdownSignal = shutdownCancellation;
-        var metricStarted = ZLinkRuntimeMetrics.StartTermination();
+        var metricStarted = ZLinkRuntimeMetrics.StartHostRelocation(
+            mode == ZLinkFrameworkRelocationMode.PlannedMaintenance
+                ? "planned_maintenance"
+                : "rolling_update");
         using var deadline = CreateDeadline(absoluteDeadline);
         using var operationCancellation =
             CancellationTokenSource.CreateLinkedTokenSource(
@@ -353,7 +364,7 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
             _relocationOperation = null;
             _relocationCancellation = null;
             _relocationOriginState = null;
-            if (_state != ZLinkFrameworkRuntimeState.Relocated)
+            if (_hostLifecycle.State != ZLinkFrameworkRuntimeState.Relocated)
                 TransitionUnderLock(ZLinkFrameworkRuntimeState.Relocated);
             else
                 PublishUnderLock();
@@ -367,7 +378,7 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
         TimeSpan teardownBound)
     {
         await Task.Yield();
-        var metricStarted = ZLinkRuntimeMetrics.StartTermination();
+        var metricStarted = ZLinkRuntimeMetrics.StartHostShutdown();
         using var deadline = CreateDeadline(absoluteDeadline);
 
         Task<ZLinkFrameworkRelocationResult>? relocation;
@@ -420,9 +431,7 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
             _terminationResult = result;
             _deadline = null;
             TransitionUnderLock(ZLinkFrameworkRuntimeState.Stopped);
-            ZLinkRuntimeMetrics.CompleteTermination(
-                metricStarted,
-                "shutdown",
+            metricStarted.Complete(
                 result.Outcome == ZLinkFrameworkTerminationOutcome.Stopped
                     ? "stopped"
                     : "force_stopped",
@@ -439,7 +448,7 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
     {
         lock (_gate)
         {
-            if (_state == ZLinkFrameworkRuntimeState.Relocating)
+            if (_hostLifecycle.State == ZLinkFrameworkRuntimeState.Relocating)
                 TransitionUnderLock(ZLinkFrameworkRuntimeState.Relocated);
         }
     }
@@ -448,7 +457,7 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
         ZLinkFrameworkRelocationMode mode,
         long targetApplicationVersion,
         ZLinkFrameworkRelocationReason reason,
-        long metricStarted,
+        ZLinkRuntimeMetrics.ZLinkHostMetricOperation metricStarted,
         bool restoreServing = true)
     {
         lock (_gate)
@@ -464,7 +473,8 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
             _relocationOperation = null;
             _relocationCancellation = null;
             _relocationOriginState = null;
-            if (restoreServing && _state == ZLinkFrameworkRuntimeState.Relocating)
+            if (restoreServing
+                && _hostLifecycle.State == ZLinkFrameworkRuntimeState.Relocating)
                 TransitionUnderLock(originState);
             else
                 PublishUnderLock();
@@ -530,21 +540,23 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
 
     private ZLinkFrameworkRuntimeStatus CreateStatusUnderLock(DateTimeOffset observedAt)
     {
-        var accepting = _state == ZLinkFrameworkRuntimeState.Serving;
+        var state = _hostLifecycle.State;
+        var accepting = state == ZLinkFrameworkRuntimeState.Serving;
         return new ZLinkFrameworkRuntimeStatus(
-            _state,
-            _state == ZLinkFrameworkRuntimeState.Serving,
+            state,
+            state == ZLinkFrameworkRuntimeState.Serving,
             accepting,
             _deadline,
             _relocationResult,
             _terminationResult,
             _sequence,
-            observedAt);
+            observedAt,
+            _inboundDispatchSnapshot());
     }
 
     private void TransitionUnderLock(ZLinkFrameworkRuntimeState state)
     {
-        _state = state;
+        _hostLifecycle.TransitionTo(state);
         PublishUnderLock();
     }
 
@@ -557,15 +569,46 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
     }
 
     private static void RecordRelocationCompletion(
-        long started,
+        ZLinkRuntimeMetrics.ZLinkHostMetricOperation started,
         ZLinkFrameworkRelocationResult result) =>
-        ZLinkRuntimeMetrics.CompleteTermination(
-            started,
-            "relocate",
+        started.Complete(
             result.Outcome == ZLinkFrameworkRelocationOutcome.Relocated
                 ? "relocated"
                 : "blocked",
-            result.Reason.ToString().ToLowerInvariant());
+            RelocationReasonMetricValue(result.Reason));
+
+    private static string HostStateMetricValue(ZLinkFrameworkRuntimeState state) =>
+        state switch
+        {
+            ZLinkFrameworkRuntimeState.Preparing => "preparing",
+            ZLinkFrameworkRuntimeState.Serving => "serving",
+            ZLinkFrameworkRuntimeState.Relocating => "relocating",
+            ZLinkFrameworkRuntimeState.Relocated => "relocated",
+            ZLinkFrameworkRuntimeState.Draining => "draining",
+            ZLinkFrameworkRuntimeState.Stopped => "stopped",
+            ZLinkFrameworkRuntimeState.Error => "error",
+            _ => "error"
+        };
+
+    private static ZLinkInboundDispatchStatus EmptyInboundDispatchSnapshot() => default;
+
+    private static string RelocationReasonMetricValue(
+        ZLinkFrameworkRelocationReason reason) =>
+        reason switch
+        {
+            ZLinkFrameworkRelocationReason.None => "none",
+            ZLinkFrameworkRelocationReason.TargetUnavailable => "target_unavailable",
+            ZLinkFrameworkRelocationReason.StoreUnavailable => "store_unavailable",
+            ZLinkFrameworkRelocationReason.RelocationDisabled => "relocation_disabled",
+            ZLinkFrameworkRelocationReason.StateIncompatible => "state_incompatible",
+            ZLinkFrameworkRelocationReason.DeadlineExceeded => "deadline_exceeded",
+            ZLinkFrameworkRelocationReason.RelocationFailed => "relocation_failed",
+            ZLinkFrameworkRelocationReason.RuntimeNotReady => "runtime_not_ready",
+            ZLinkFrameworkRelocationReason.ManualTopologyUnsupported => "manual_topology_unsupported",
+            ZLinkFrameworkRelocationReason.ShutdownRequested => "shutdown_requested",
+            ZLinkFrameworkRelocationReason.OperationInProgress => "operation_in_progress",
+            _ => "relocation_failed"
+        };
 
     private void ThrowIfDisposed() =>
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
@@ -581,5 +624,6 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
             _observers.Clear();
         }
         _metricRegistration.Dispose();
+        _inboundMetricRegistration.Dispose();
     }
 }

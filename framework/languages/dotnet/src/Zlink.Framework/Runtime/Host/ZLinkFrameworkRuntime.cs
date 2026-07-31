@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Zlink.Framework.Runtime.Dispatch;
 
 namespace Zlink.Framework.Runtime.Host;
 
@@ -500,6 +501,33 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
 
     internal CancellationToken ShutdownToken
         => _state?.StopTokenSource.Token ?? new CancellationToken(canceled: true);
+
+    internal ZLinkCompletionAdmissionOwner CompletionAdmission =>
+        GetOrStartState().CompletionAdmission;
+
+    internal ZLinkInboundDispatchStatus SnapshotInboundDispatch()
+    {
+        var snapshot = Volatile.Read(ref _state)?.InboundDispatchBudget.Snapshot()
+                       ?? new ZLinkInboundDispatchBudgetSnapshot(
+                           Registration.InboundDispatchOptions
+                               .EffectiveApplicationHwmBytes,
+                           0,
+                           0,
+                           0,
+                           false);
+        var completion = Volatile.Read(ref _state)?
+            .CompletionAdmission.Snapshot();
+        return new ZLinkInboundDispatchStatus(
+            snapshot.ApplicationHwmBytes,
+            snapshot.PendingPayloadBytes,
+            snapshot.QueuedPayloadBytes,
+            snapshot.ActivePayloadBytes,
+            snapshot.ApplicationReceivePaused,
+            PendingCompletionSends: checked((ulong)(
+                completion?.PendingCompletionSends ?? 0)),
+            CompletionSendLimit: checked((ulong)(
+                completion?.CompletionSendLimit ?? 0)));
+    }
 
     internal void RunDetached(
         string name,

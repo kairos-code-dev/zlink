@@ -170,9 +170,11 @@ Spot gate를 다시 얻어 현재 job을 끝낸 뒤 Actor queue claim을 해제�
 재진입 호출로 바꾸거나 inline으로 실행하지 않는다.
 
 각 언어 service runtime은 application domain과 infrastructure domain을 독립적으로 진행한다. Payload decoding,
-user callback과 exception mapping은 application turn에서 처리한다. Completion, send-ready, peer lifecycle,
-relocation control과 shutdown barrier는 infrastructure task에서 처리한다. Application handler가 대기 중이어도
-infrastructure task를 진행할 수 있어야 한다.
+user callback과 exception mapping은 application turn에서 처리한다. Request completion과 bounded
+liveness·admission·relocation·reply recovery service control은 기존 Completion connection에서 받고 send-ready는
+Core callback으로 전달한다. Peer connection 상태 변경과 shutdown barrier도 infrastructure task에서 처리한다.
+Application handler가 대기 중이어도 infrastructure task를 진행할 수 있어야 한다. Actor·Spot lifecycle처럼
+user callback을 호출하는 job은 application turn에 포함한다.
 
 Object placement와 activation도 infrastructure task에서 처리한다. Location Store reservation이 확정한 owner만
 [factory](01-glossary.ko.md#factory)를 실행한다. AuthorityOwnerGeneration과 owner lease는 Store와 runtime fencing에만 사용한다.

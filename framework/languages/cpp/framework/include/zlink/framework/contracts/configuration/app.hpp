@@ -9,9 +9,9 @@
 #include <zlink/framework/contracts/configuration/module.hpp>
 #include <zlink/framework/contracts/configuration/services.hpp>
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
-#include <zlink/framework/contracts/eventing/events.hpp>
 #include <zlink/framework/contracts/eventing/health.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
+#include <zlink/framework/contracts/monitoring/framework_runtime.hpp>
 
 #include <chrono>
 #include <functional>
@@ -58,8 +58,6 @@ class app_t
 
     config_builder_t &config () noexcept;
     logging_builder_t &logging () noexcept;
-    monitoring_builder_t &monitoring () noexcept;
-    metrics_builder_t &metrics () noexcept;
     health_builder_t &health () noexcept;
     app_advanced_t advanced () noexcept;
 
@@ -79,7 +77,6 @@ class app_t
         module.configure_services (_services ());
         module.configure_zlink (_zlink_builder ());
         module.configure_handlers (_handlers ());
-        module.configure_monitoring (monitoring ());
         return *this;
     }
     app_t &add_hosted_service (std::unique_ptr<hosted_service_t> service);

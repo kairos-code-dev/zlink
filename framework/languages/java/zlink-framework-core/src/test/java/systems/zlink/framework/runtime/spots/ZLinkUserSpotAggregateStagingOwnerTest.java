@@ -40,6 +40,13 @@ final class ZLinkUserSpotAggregateStagingOwnerTest {
 
         assertEquals(List.of("actor-a", "actor-b", "spot"), backend.live);
         assertEquals("timers:publish", backend.operations.getLast());
+        assertEquals(
+            1,
+            backend.operations.stream()
+                .filter("relocation-ready"::equals)
+                .count());
+        assertTrue(backend.operations.indexOf("relocation-ready")
+            < backend.operations.indexOf("replay:spot:1"));
         assertTrue(backend.operations.indexOf("replay:spot:1")
             < backend.operations.indexOf("timers:publish"));
     }
@@ -86,6 +93,40 @@ final class ZLinkUserSpotAggregateStagingOwnerTest {
                 changed,
                 (lane, record) -> CompletableFuture.completedFuture(null)));
         assertTrue(backend.live.isEmpty());
+    }
+
+    @Test
+    void actorTimersAreStagedBeforeAggregatePublication() {
+        FakeBackend backend = new FakeBackend();
+        ZLinkUserSpotAggregateStagingOwner owner =
+            new ZLinkUserSpotAggregateStagingOwner(backend);
+        byte[] timerEnvelope =
+            ZLinkSpotTimerRelocationEnvelope.encodeCanonical(
+                List.of(new ZLinkSpotTimerRelocationEnvelope.CanonicalTimer(
+                    "actor-heartbeat", TestSpot.class.getName(),
+                    1000, 1, 1, true, 2, 3, 4, null)));
+        var base = request();
+        var timed = new ZLinkUserSpotAggregateStagingOwner.Request(
+            base.spotType(),
+            base.spotStableType(),
+            base.spotId(),
+            base.objectGeneration(),
+            base.spotState(),
+            base.restoreSpotSnapshot(),
+            base.timerEnvelope(),
+            List.of(
+                new ZLinkUserSpotAggregateStagingOwner.ActorParticipant(
+                    "actor-a", "player", new byte[] {4}, true, null,
+                    timerEnvelope),
+                actor("actor-b")),
+            base.acceptedJournal());
+
+        owner.stage(timed, () -> false).toCompletableFuture().join();
+
+        assertTrue(backend.operations.indexOf("timers:stage:actor-a")
+            > backend.operations.indexOf("prepare:actor-a"));
+        assertTrue(backend.operations.indexOf("timers:stage:actor-a")
+            < backend.operations.indexOf("prepare:actor-b"));
     }
 
     private static ZLinkUserSpotAggregateStagingOwner.Request request() {
@@ -149,6 +190,24 @@ final class ZLinkUserSpotAggregateStagingOwnerTest {
                 ? CompletableFuture.failedFuture(
                     new IllegalStateException("Restore failed"))
                 : CompletableFuture.completedFuture(participant.actorId());
+        }
+
+        @Override
+        public CompletionStage<Void> completeRelocationReady(
+            Object preparedSpot) {
+            operations.add("relocation-ready");
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> stageActorTimers(
+            Object preparedActor,
+            byte[] timerEnvelope) {
+            if (!ZLinkSpotTimerRelocationEnvelope
+                    .canonicalize(timerEnvelope).isEmpty()) {
+                operations.add("timers:stage:" + preparedActor);
+            }
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override public void publishSpot(Object value) {

@@ -2,6 +2,7 @@
 #pragma once
 
 #include "runtime/locations/location_key_codec.hpp"
+#include <runtime/locations/location_repository.hpp>
 #include "runtime/locations/pending_creation_projection.hpp"
 #include "runtime/locations/sha256.hpp"
 #include <zlink/framework/contracts/locations/stores.hpp>
@@ -24,12 +25,12 @@ struct owner_lease_row_t
     std::chrono::system_clock::time_point updated_at{};
 };
 
-class in_memory_location_store_t : public location_store_t
+class in_memory_location_repository_t : public location_repository_t
 {
   public:
-    in_memory_location_store_t () = default;
+    in_memory_location_repository_t () = default;
 
-    explicit in_memory_location_store_t (
+    explicit in_memory_location_repository_t (
       std::uint64_t initial_store_revision) :
         _store_revision (initial_store_revision)
     {

@@ -2,7 +2,7 @@
 
 package systems.zlink.runtime.errors;
 
-import systems.zlink.runtime.nativeapi.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 import systems.zlink.runtime.nativeapi.Native;
 
 final class NativeErrorRuntime {

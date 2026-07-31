@@ -178,7 +178,7 @@ public final class ZLinkServiceAuthorityPayloadCodec {
         return envelope.bytes();
     }
 
-    byte[] encodeInstance(
+    public byte[] encodeInstance(
         State state,
         String stableType,
         String spotId,

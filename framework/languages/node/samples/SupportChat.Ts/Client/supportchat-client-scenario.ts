@@ -53,13 +53,17 @@ class SupportChatClientScenario {
     zlinkStreamAssert.ensure(assigned1.payload.conversationId === cid1, 'Sample scenario assertion failed.');
 
     const joinedCustomer1 = wait<ParticipantJoinedNotify>(customer1, PacketNames.participantJoinedNotify, signal);
+    const joinedAgent1 = wait<ParticipantJoinedNotify>(agent, PacketNames.participantJoinedNotify, signal);
     const agentJoin1 = await request<JoinConversationRes>(agent, PacketNames.joinConversationReq, joinConversation(), cid1, signal);
-    zlinkStreamAssert.ensure(agentJoin1.state.status === ConversationStatuses.Active, 'Sample scenario assertion failed.');
-    const customer1Joined = await joinedCustomer1;
+    zlinkStreamAssert.ensure(agentJoin1.scheduled, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(agentJoin1.state.status === ConversationStatuses.WaitingForAgent, 'Sample scenario assertion failed.');
+    const [customer1Joined, agent1Joined] = await Promise.all([joinedCustomer1, joinedAgent1]);
     zlinkStreamAssert.ensure(customer1Joined.payload.actorId === 'agent-1', 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(customer1Joined.payload.conversationId === cid1, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(customer1Joined.payload.role === SupportChatRoles.Agent, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(customer1Joined.payload.state.status === ConversationStatuses.Active, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(agent1Joined.payload.conversationId === cid1, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(agent1Joined.payload.state.status === ConversationStatuses.Active, 'Sample scenario assertion failed.');
 
     const greeting1Task = wait<ChatMessageNotify>(customer1, PacketNames.chatMessageNotify, signal);
     const greeting1 = await request<SendChatMessageRes>(agent, PacketNames.sendChatMessageReq, sendChatMessage('How can I help?'), cid1, signal);
@@ -98,7 +102,8 @@ class SupportChatClientScenario {
     zlinkStreamAssert.ensure(assigned2.payload.conversationId === cid2, 'Sample scenario assertion failed.');
     const joinedCustomer2 = wait<ParticipantJoinedNotify>(customer2, PacketNames.participantJoinedNotify, signal);
     const agentJoin2 = await request<JoinConversationRes>(agent, PacketNames.joinConversationReq, joinConversation(), cid2, signal);
-    zlinkStreamAssert.ensure(agentJoin2.state.status === ConversationStatuses.Active, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(agentJoin2.scheduled, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(agentJoin2.state.status === ConversationStatuses.WaitingForAgent, 'Sample scenario assertion failed.');
     const customer2Joined = await joinedCustomer2;
     zlinkStreamAssert.ensure(customer2Joined.payload.conversationId === cid2, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(customer2Joined.payload.actorId === 'agent-1', 'Sample scenario assertion failed.');
@@ -126,7 +131,8 @@ class SupportChatClientScenario {
     zlinkStreamAssert.ensure(assigned3.payload.conversationId === cid3, 'Sample scenario assertion failed.');
     const joinedCustomer3 = wait<ParticipantJoinedNotify>(customer3, PacketNames.participantJoinedNotify, signal);
     const agentJoin3 = await request<JoinConversationRes>(agent, PacketNames.joinConversationReq, joinConversation(), cid3, signal);
-    zlinkStreamAssert.ensure(agentJoin3.state.status === ConversationStatuses.Active, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(agentJoin3.scheduled, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(agentJoin3.state.status === ConversationStatuses.WaitingForAgent, 'Sample scenario assertion failed.');
     await joinedCustomer3;
     const greeting3Task = wait<ChatMessageNotify>(customer3, PacketNames.chatMessageNotify, signal);
     const greeting3 = await request<SendChatMessageRes>(agent, PacketNames.sendChatMessageReq, sendChatMessage('I will check the refund.'), cid3, signal);
@@ -169,6 +175,7 @@ class SupportChatClientScenario {
       cid1,
       signal
     );
+    zlinkStreamAssert.ensure(!customerRejoined1.scheduled, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(customerRejoined1.state.subject === 'checkout payment failed' && customerRejoined1.state.lastMessageSeq === 2, 'Sample scenario assertion failed.');
 
     await agent.close(signal);
@@ -179,6 +186,7 @@ class SupportChatClientScenario {
     const rejoined1 = await request<JoinConversationRes>(reconnectedAgent, PacketNames.joinConversationReq, joinConversation(), cid1, signal);
     const rejoined2 = await request<JoinConversationRes>(reconnectedAgent, PacketNames.joinConversationReq, joinConversation(), cid2, signal);
     const rejoined3 = await request<JoinConversationRes>(reconnectedAgent, PacketNames.joinConversationReq, joinConversation(), cid3, signal);
+    zlinkStreamAssert.ensure(!rejoined1.scheduled && !rejoined2.scheduled && !rejoined3.scheduled, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(rejoined1.state.subject === 'checkout payment failed' && rejoined1.state.lastMessageSeq === 2, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(rejoined2.state.subject === 'cannot log in' && rejoined2.state.lastMessageSeq === 1, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(rejoined3.state.subject === 'refund delayed' && rejoined3.state.lastMessageSeq === 1, 'Sample scenario assertion failed.');

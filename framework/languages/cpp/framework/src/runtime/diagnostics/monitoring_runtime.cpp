@@ -2,249 +2,133 @@
 
 #include "monitoring_runtime.hpp"
 
-#include <algorithm>
-#include <exception>
-#include <iostream>
 #include <utility>
 
+namespace zlink::framework::detail
+{
 namespace
 {
 
-bool is_blank (const std::string &value)
+const char *socket_event_name (socket_event_kind_t event) noexcept
 {
-    return value.empty () || std::all_of (value.begin (), value.end (), [] (char ch) {
-               return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n';
-           });
-}
-
-void validate_source_name (const std::string &source_name, const char *kind)
-{
-    if (is_blank (source_name)) {
-        throw zlink::framework::framework_exception_t (
-          zlink::framework::framework_error_kind_t::request_protocol_error,
-          std::string ("monitoring ") + kind + " source name must not be empty");
+    switch (event) {
+        case socket_event_kind_t::connected:
+            return "connected";
+        case socket_event_kind_t::connection_ready:
+            return "ready";
+        case socket_event_kind_t::disconnected:
+            return "disconnected";
+        case socket_event_kind_t::handshake_failed:
+            return "handshake_failed";
+        case socket_event_kind_t::closed:
+            return "closed";
     }
+    return "unknown";
 }
 
-template <typename TSource, typename TName>
-bool contains_source (const std::vector<TSource> &sources, const TName &source_name)
+const char *stream_event_name (stream_event_kind_t event) noexcept
 {
-    return std::any_of (sources.begin (), sources.end (),
-                        [&] (const TSource &source) { return source.source_name == source_name; });
-}
-
-bool contains_source (const std::vector<std::string> &sources, const std::string &source_name)
-{
-    return std::find (sources.begin (), sources.end (), source_name) != sources.end ();
-}
-
-template <typename TSource>
-void ensure_unique_source (const std::vector<TSource> &sources,
-                           const std::string &source_name,
-                           const char *kind)
-{
-    if (contains_source (sources, source_name)) {
-        throw zlink::framework::framework_exception_t (
-          zlink::framework::framework_error_kind_t::request_protocol_error,
-          std::string ("duplicate monitoring ") + kind + " source");
+    switch (event) {
+        case stream_event_kind_t::connected:
+            return "connected";
+        case stream_event_kind_t::disconnected:
+            return "disconnected";
+        case stream_event_kind_t::transport_error:
+            return "transport_error";
+        case stream_event_kind_t::handler_exception:
+            return "handler_exception";
     }
+    return "unknown";
 }
 
-void validate_polling_interval (std::chrono::milliseconds interval, const char *kind)
+const char *actor_event_name (actor_event_kind_t event) noexcept
 {
-    if (interval <= std::chrono::milliseconds::zero ()) {
-        throw zlink::framework::framework_exception_t (
-          zlink::framework::framework_error_kind_t::request_protocol_error,
-          std::string ("monitoring ") + kind + " interval must be greater than zero");
+    switch (event) {
+        case actor_event_kind_t::bound:
+            return "bound";
+        case actor_event_kind_t::unbound:
+            return "unbound";
+        case actor_event_kind_t::relay_failed:
+            return "relay_failed";
+        case actor_event_kind_t::session_disconnected:
+            return "session_disconnected";
     }
+    return "unknown";
+}
+
+const char *metric_kind_name (metric_instrument_kind_t kind) noexcept
+{
+    switch (kind) {
+        case metric_instrument_kind_t::counter:
+            return "counter";
+        case metric_instrument_kind_t::updown:
+            return "updown";
+        case metric_instrument_kind_t::observable:
+            return "observable";
+        case metric_instrument_kind_t::histogram:
+            return "histogram";
+    }
+    return "unknown";
+}
+
+const char *metric_temporality_name (metric_temporality_t temporality) noexcept
+{
+    switch (temporality) {
+        case metric_temporality_t::delta:
+            return "delta";
+        case metric_temporality_t::current:
+            return "current";
+        case metric_temporality_t::sample:
+            return "sample";
+    }
+    return "unknown";
+}
+
+const char *drain_state_name (drain_state_t state) noexcept
+{
+    switch (state) {
+        case drain_state_t::serving:
+            return "serving";
+        case drain_state_t::draining:
+            return "draining";
+        case drain_state_t::stopped:
+            return "stopped";
+        case drain_state_t::force_stopping:
+            return "force_stopping";
+    }
+    return "unknown";
 }
 
 } // namespace
 
-namespace zlink::framework::detail
-{
-void monitoring_runtime_t::publish_erased (std::type_index event_type,
-                                           const runtime_event_base_t &base,
-                                           const void *event) const
-{
-    if (!_state) {
-        return;
-    }
-    if (_state->tracing_hook) {
-        _state->tracing_hook (base);
-    }
-    const auto found = _state->handlers.find (event_type);
-    if (found == _state->handlers.end ()) {
-        return;
-    }
-    for (const auto &handler : found->second) {
-        try {
-            handler (event);
-        }
-        catch (const std::exception &ex) {
-            std::cerr << "monitoring-event-dispatch: " << ex.what () << '\n';
-        }
-        catch (...) {
-            std::cerr << "monitoring-event-dispatch: unknown monitoring handler failure\n";
-        }
-    }
-}
-
-} // namespace zlink::framework::detail
-
-namespace zlink::framework
-{
-
-monitoring_builder_t::monitoring_builder_t () :
-    _state (std::make_shared<detail::monitoring_runtime_state_t> ())
-{
-}
-
-monitoring_builder_t::monitoring_builder_t (
-  std::shared_ptr<detail::monitoring_runtime_state_t> state) :
+monitoring_runtime_t::monitoring_runtime_t (
+  std::shared_ptr<monitoring_runtime_state_t> state) :
     _state (std::move (state))
 {
 }
 
-monitoring_builder_t::~monitoring_builder_t () = default;
-monitoring_builder_t::monitoring_builder_t (monitoring_builder_t &&) noexcept = default;
-monitoring_builder_t &monitoring_builder_t::operator= (monitoring_builder_t &&) noexcept = default;
-
-monitoring_builder_t &monitoring_builder_t::add_socket_events (std::string source_name)
+void monitoring_runtime_t::log (log_level_t level,
+                                std::string identifier,
+                                std::vector<log_field_t> fields) const noexcept
 {
-    return add_socket_events (std::move (source_name), {});
-}
-
-monitoring_builder_t &
-monitoring_builder_t::add_socket_events (std::string source_name,
-                                         std::initializer_list<socket_event_kind_t> events)
-{
-    validate_source_name (source_name, "socket");
-    ensure_unique_source (_state->socket_sources, source_name, "socket");
-    _state->socket_sources.push_back (detail::socket_monitoring_source_registration_t{
-      std::move (source_name), std::vector<socket_event_kind_t> (events.begin (), events.end ())});
-    return *this;
-}
-
-monitoring_builder_t &monitoring_builder_t::add_location_events (std::string source_name,
-                                                                 std::chrono::milliseconds interval)
-{
-    validate_source_name (source_name, "location");
-    validate_polling_interval (interval, "location");
-    ensure_unique_source (_state->location_sources, source_name, "location");
-    _state->location_sources.push_back (
-      detail::monitoring_source_registration_t{std::move (source_name), interval});
-    return *this;
-}
-
-monitoring_builder_t &monitoring_builder_t::add_stream_events (std::string source_name)
-{
-    validate_source_name (source_name, "stream");
-    ensure_unique_source (_state->stream_sources, source_name, "stream");
-    _state->stream_sources.push_back (std::move (source_name));
-    return *this;
-}
-
-monitoring_builder_t &monitoring_builder_t::add_actor_events (std::string source_name)
-{
-    validate_source_name (source_name, "actor");
-    ensure_unique_source (_state->actor_sources, source_name, "actor");
-    _state->actor_sources.push_back (std::move (source_name));
-    return *this;
-}
-
-monitoring_builder_t &
-monitoring_builder_t::on_trace (std::function<void (const runtime_event_base_t &)> hook)
-{
-    _state->tracing_hook = std::move (hook);
-    return *this;
-}
-
-monitoring_builder_t &monitoring_builder_t::on_erased (std::type_index event_type,
-                                                       std::function<void (const void *)> handler)
-{
-    _state->handlers[event_type].push_back (std::move (handler));
-    return *this;
-}
-
-metrics_builder_t::metrics_builder_t () :
-    _state (std::make_shared<detail::monitoring_runtime_state_t> ())
-{
-}
-
-metrics_builder_t::metrics_builder_t (const monitoring_builder_t &monitoring) :
-    _state (monitoring._state)
-{
-}
-
-metrics_builder_t::~metrics_builder_t () = default;
-
-metrics_builder_t::metrics_builder_t (metrics_builder_t &&) noexcept = default;
-
-metrics_builder_t &metrics_builder_t::operator= (metrics_builder_t &&) noexcept = default;
-
-metrics_builder_t &metrics_builder_t::add_runtime_metrics ()
-{
-    _state->runtime_metrics_enabled = true;
-    return *this;
-}
-
-bool metrics_builder_t::runtime_metrics_enabled () const noexcept
-{
-    return _state && _state->runtime_metrics_enabled;
-}
-
-metrics_builder_t &metrics_builder_t::record_runtime_metric (
-  std::string name, double value, std::map<std::string, std::string> tags)
-{
-    if (runtime_metrics_enabled ()) {
-        detail::monitoring_runtime_t (_state).publish_metric (metric_event_payload_t{
-          runtime_event_base_t{"runtime.metrics"}, std::move (name), value, std::string{},
-          metric_instrument_kind_t::counter, metric_temporality_t::delta, std::move (tags)});
+    if (!_state || !_state->diagnostics_logger.is_enabled (level)) {
+        return;
     }
-    return *this;
-}
-
-} // namespace zlink::framework
-
-namespace zlink::framework::detail
-{
-
-monitoring_runtime_t::monitoring_runtime_t (std::shared_ptr<monitoring_runtime_state_t> state) :
-    _state (std::move (state))
-{
-}
-
-monitoring_runtime_t monitoring_runtime_t::from (const monitoring_builder_t &builder)
-{
-    return monitoring_runtime_t (builder._state);
-}
-
-void monitoring_runtime_t::publish_metric (metric_event_payload_t event) const
-{
-    publish (std::move (event));
-}
-
-void monitoring_runtime_t::publish_drain (drain_event_t event) const
-{
-    publish (std::move (event));
+    try {
+        _state->diagnostics_logger.log_with_fields (
+          level, std::move (identifier), std::move (fields));
+    }
+    catch (...) {
+        // Diagnostics must never change runtime behavior.
+    }
 }
 
 void monitoring_runtime_t::publish_socket (socket_event_payload_t event) const
 {
-    const auto found = std::find_if (_state->socket_sources.begin (), _state->socket_sources.end (),
-                                     [&] (const socket_monitoring_source_registration_t &source) {
-                                         return source.source_name == event.source_name;
-                                     });
-    if (found == _state->socket_sources.end ()) {
-        return;
-    }
-    if (!found->events.empty ()
-        && std::find (found->events.begin (), found->events.end (), event.event)
-             == found->events.end ()) {
-        return;
-    }
-    publish (std::move (event));
+    log (log_level_t::debug,
+         "zlink.runtime.transport.connection_changed",
+         {{"source_name", std::move (event.source_name)},
+          {"state", socket_event_name (event.event)}});
 }
 
 void monitoring_runtime_t::publish_location_snapshot (
@@ -253,14 +137,8 @@ void monitoring_runtime_t::publish_location_snapshot (
   std::vector<location_topology_entry_t> topology,
   std::vector<location_service_summary_t> summary) const
 {
-    publish_location_changes (
-      std::move (source_name), std::move (status), true,
-      topology.empty () ? std::nullopt
-                        : std::optional<std::vector<location_topology_entry_t>> (
-                            std::move (topology)),
-      summary.empty () ? std::nullopt
-                       : std::optional<std::vector<location_service_summary_t>> (
-                           std::move (summary)));
+    publish_location_changes (std::move (source_name), std::move (status), true,
+                              std::move (topology), std::move (summary));
 }
 
 void monitoring_runtime_t::publish_location_changes (
@@ -270,66 +148,90 @@ void monitoring_runtime_t::publish_location_changes (
   std::optional<std::vector<location_topology_entry_t>> topology,
   std::optional<std::vector<location_service_summary_t>> summary) const
 {
-    if (!contains_source (_state->location_sources, source_name)) {
-        return;
-    }
     if (status_changed) {
-        publish (location_event_payload_t{runtime_event_base_t{source_name},
-                                          location_event_kind_t::status_changed,
-                                          status,
-                                          {},
-                                          {}});
+        log (status.store_healthy ? log_level_t::info : log_level_t::warn,
+             "zlink.runtime.location.store_changed",
+             {{"source_name", source_name},
+              {"state", status.store_healthy ? "ready" : "degraded"}});
     }
     if (topology) {
-        publish (location_event_payload_t{runtime_event_base_t{source_name},
-                                          location_event_kind_t::topology_changed,
-                                          status,
-                                          std::move (*topology),
-                                          {}});
+        log (log_level_t::debug,
+             "zlink.runtime.mesh_node.peer_changed",
+             {{"source_name", source_name},
+              {"entry_count", std::to_string (topology->size ())}});
     }
     if (summary) {
-        publish (location_event_payload_t{runtime_event_base_t{std::move (source_name)},
-                                          location_event_kind_t::service_summary_changed,
-                                          std::move (status),
-                                          {},
-                                          std::move (*summary)});
+        log (log_level_t::debug,
+             "zlink.runtime.mesh_node.state_changed",
+             {{"source_name", std::move (source_name)},
+              {"summary_count", std::to_string (summary->size ())}});
     }
 }
 
 void monitoring_runtime_t::publish_stream (stream_event_payload_t event) const
 {
-    if (!contains_source (_state->stream_sources, event.source_name)) {
-        return;
-    }
-    publish (std::move (event));
+    log (event.event == stream_event_kind_t::transport_error
+             || event.event == stream_event_kind_t::handler_exception
+           ? log_level_t::warn
+           : log_level_t::debug,
+         "zlink.runtime.stream.state_changed",
+         {{"source_name", std::move (event.source_name)},
+          {"stream_name", std::move (event.stream_name)},
+          {"session_id", std::move (event.session_id)},
+          {"state", stream_event_name (event.event)},
+          {"message", std::move (event.message)}});
 }
 
 void monitoring_runtime_t::publish_actor (actor_event_payload_t event) const
 {
-    if (!contains_source (_state->actor_sources, event.source_name)) {
-        return;
-    }
-    publish (std::move (event));
+    log (event.event == actor_event_kind_t::relay_failed
+           ? log_level_t::warn
+           : log_level_t::debug,
+         "zlink.runtime.actor.session_changed",
+         {{"source_name", std::move (event.source_name)},
+          {"actor_type", std::move (event.actor_type)},
+          {"actor_id", std::move (event.actor_id)},
+          {"session_id", std::move (event.session_id)},
+          {"state", actor_event_name (event.event)},
+          {"message", std::move (event.message)}});
 }
 
-void monitoring_runtime_t::publish_timer_failure (std::string source_name,
-                                                  spot_id_t spot_id,
-                                                  timer_failure_event_t failure) const
+void monitoring_runtime_t::publish_timer_failure (
+  std::string source_name,
+  spot_id_t spot_id,
+  timer_failure_event_t failure) const
 {
-    auto event_kind = failure.stopped ? spot_event_kind_t::timer_stopped_after_unhandled_exception
-                                      : spot_event_kind_t::timer_handler_failed;
-    publish (spot_event_payload_t{
-      runtime_event_base_t{source_name,
-                           std::chrono::system_clock::now (),
-                           runtime_event_severity_t::error,
-                           {},
-                           {},
-                           health_status_t::degraded},
-      event_kind,
-      spot_timer_diagnostic_t{std::move (spot_id), false, std::move (failure.timer_name),
-                              failure.handler_type.name (), failure.delivery_index,
-                              failure.delivery_index, "std::exception",
-                              std::move (failure.message)}});
+    log (log_level_t::error,
+         "zlink.runtime.spot.timer_failed",
+         {{"source_name", std::move (source_name)},
+          {"spot_id", std::string (spot_id)},
+          {"timer_name", std::move (failure.timer_name)},
+          {"handler_type", failure.handler_type.name ()},
+          {"delivery_index", std::to_string (failure.delivery_index)},
+          {"stopped", failure.stopped ? "true" : "false"},
+          {"message", std::move (failure.message)}});
+}
+
+void monitoring_runtime_t::publish_metric (metric_event_payload_t event) const
+{
+    std::vector<log_field_t> fields{
+      {"name", std::move (event.name)},
+      {"value", std::to_string (event.value)},
+      {"unit", std::move (event.unit)},
+      {"instrument_kind", metric_kind_name (event.instrument_kind)},
+      {"temporality", metric_temporality_name (event.temporality)}};
+    fields.reserve (fields.size () + event.tags.size ());
+    for (auto &[key, value] : event.tags) {
+        fields.push_back ({std::move (key), std::move (value)});
+    }
+    log (log_level_t::debug, "zlink.runtime.metric.recorded", std::move (fields));
+}
+
+void monitoring_runtime_t::publish_drain (drain_event_t event) const
+{
+    log (log_level_t::info,
+         "zlink.runtime.host.termination_changed",
+         {{"state", drain_state_name (event.state)}});
 }
 
 } // namespace zlink::framework::detail

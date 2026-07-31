@@ -19,6 +19,14 @@ internal sealed class ZLinkActorHandoffRejectedException(
     string message,
     Exception? innerException = null) : InvalidOperationException(message, innerException);
 
+internal sealed record ZLinkActorBoundSessionHandoffFence(
+    string ActorId,
+    ulong ActorGeneration,
+    RoutingId SessionRid,
+    string BindingToken,
+    ulong BindingGeneration,
+    ulong SessionSequence);
+
 internal sealed record ZLinkActorHandoffFrame(
     byte[] ReplyActorNodeRid,
     ulong ReplyActorGeneration,
@@ -33,7 +41,8 @@ internal sealed record ZLinkActorHandoffFrame(
     ulong SourceNodeGeneration = 0,
     ZLinkServiceWireCodec.RequestSourceFence? RequestSource = null,
     ulong RelocationReplyRouteId = 0,
-    long CanonicalEncodedLength = 0);
+    long CanonicalEncodedLength = 0,
+    ZLinkActorBoundSessionHandoffFence? BoundSessionSource = null);
 
 internal sealed record ZLinkActorAcceptedRecord(
     ZLinkActorHandoffFrame Frame,
@@ -66,7 +75,12 @@ internal static class ZLinkActorHandoffFrames
             frame.RouteContext,
             frame.SourceNodeGeneration,
             frame.RequestSource,
-            frame.RelocationReplyRouteId);
+            frame.RelocationReplyRouteId,
+            BoundSessionSource: ZLinkActorBoundSessionHandoffMetadata.TryDecode(
+                frame.ApplicationMetadata.Span,
+                out var boundSession)
+                ? boundSession
+                : null);
     }
 
     internal static long CanonicalEncodedLength(
@@ -110,7 +124,10 @@ internal static class ZLinkActorHandoffFrames
                     ZLinkStreamProtocolDefaults.DecodeHeader(frame.Header),
                     Message.From(frame.Body),
                     frame.SourceNodeGeneration,
-                    frame.RequestSource);
+                    frame.RequestSource,
+                    applicationMetadata: frame.BoundSessionSource is { } bound
+                        ? ZLinkActorBoundSessionHandoffMetadata.Encode(bound)
+                        : default);
                 if (frame.RelocationReplyRouteId != 0)
                     restoredFrame.BindRelocationReplyRoute(
                         frame.RelocationReplyRouteId);

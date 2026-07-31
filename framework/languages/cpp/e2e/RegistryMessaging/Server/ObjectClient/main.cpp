@@ -22,6 +22,37 @@ namespace
 inline constexpr const char *mesh_name = "registry-messaging-rm-a3";
 inline constexpr const char *server_channel = "registry.messaging.rm-a3.server";
 
+const char *peer_state_name (zlink::framework::peer_state_t state)
+{
+    using state_t = zlink::framework::peer_state_t;
+    switch (state) {
+        case state_t::connecting: return "connecting";
+        case state_t::ready: return "ready";
+        case state_t::draining: return "draining";
+        case state_t::not_connected: return "not_connected";
+        case state_t::not_required: return "not_required";
+    }
+    return "not_connected";
+}
+
+std::optional<std::string> unavailable_reason_name (
+  const std::optional<zlink::framework::topology_reason_t> &reason)
+{
+    if (!reason)
+        return std::nullopt;
+    using reason_t = zlink::framework::topology_reason_t;
+    switch (*reason) {
+        case reason_t::runtime_not_ready: return "runtime_not_ready";
+        case reason_t::no_ready_peer: return "no_ready_peer";
+        case reason_t::no_ready_target: return "no_ready_target";
+        case reason_t::location_unavailable: return "location_unavailable";
+        case reason_t::capacity_exceeded: return "capacity_exceeded";
+        case reason_t::draining: return "draining";
+        case reason_t::internal_failure: return "internal_failure";
+    }
+    return "internal_failure";
+}
+
 std::vector<std::string> split_csv (const std::string &text)
 {
     std::vector<std::string> result;
@@ -104,25 +135,23 @@ class status_handler_t
     {
         const auto snapshot = _runtime.snapshot (mesh_name);
         auto peers = nlohmann::json::array ();
-        std::size_t ready_count = 0;
         for (const auto &peer : snapshot.peers) {
-            if (peer.ready)
-                ++ready_count;
+            const auto unavailable_reason =
+              unavailable_reason_name (peer.unavailable_reason);
             peers.push_back (
-              {{"rid", peer.rid.to_string ()},
-               {"state", peer.admission_state},
-               {"ready", peer.ready},
-               {"lastFailure", peer.last_failure.value_or ("")},
-               {"channels", peer.channel_names}});
+              {{"nodeRid", peer.node_rid.to_string ()},
+               {"state", peer_state_name (peer.state)},
+               {"unavailableReason",
+                unavailable_reason.value_or ("")}});
         }
         return {
           .body =
             nlohmann::json{
               {"meshName", snapshot.mesh_name},
-              {"rid", snapshot.rid.to_string ()},
+              {"state", static_cast<int> (snapshot.state)},
+              {"isReady", snapshot.is_ready},
               {"sequence", snapshot.sequence},
-              {"locationState", snapshot.location.state},
-              {"readyPeerCount", ready_count},
+              {"readyPeerCount", snapshot.ready_peer_count},
               {"peers", std::move (peers)}}
               .dump ()};
     }

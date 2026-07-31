@@ -1,8 +1,7 @@
-import { Module } from '@nestjs/common';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
-import { BindCourierSessionHandler, CourierSessionFactory } from './courier-session';
+import { CourierSessionFactory } from './courier-session';
 import { createDeliveryDispatchLocationStore, deliveryDispatchLocationOptions } from '../Configuration/location-store';
 import {
   DELIVERYDISPATCH_SAMPLE_CONFIG,
@@ -20,7 +19,7 @@ function createCourierSessionModule() {
     'logDir'
   ]);
 
-  Module({
+  zlinkModule(__dirname, {
     imports: [
       configuration,
       ZLinkModule.forRootFactory({
@@ -34,10 +33,11 @@ function createCourierSessionModule() {
             .traceLabel('courier-session');
           builder.addLocationStore(createDeliveryDispatchLocationStore(config));
           deliveryDispatchLocationOptions(builder.configureLocations());
-          const mesh = builder.addRouteMesh(SampleNames.routeMesh)
+          const mesh = builder.addRouteMesh(SampleNames.courierMeshName)
             .listen(config.courierSessionSpotEndpoint).setRoutingIdPrefix('delivery-session');
-          mesh.channelName(SampleNames.routeMesh).setWeight(0);
+          mesh.objects().client();
           return builder.addStreamNode(SampleNames.courierStreamNode)
+              .enableActorDispatch()
               .bind(config.courierStreamEndpoint)
               .registerSession(CourierSessionFactory)
             .build();
@@ -50,7 +50,6 @@ function createCourierSessionModule() {
         inject: [DELIVERYDISPATCH_SAMPLE_CONFIG],
         useFactory: (config: DeliveryDispatchServerConfig) => createDeliveryDispatchLocationStore(config)
       },
-      BindCourierSessionHandler,
       CourierSessionFactory
     ]
   })(CourierSessionModule);

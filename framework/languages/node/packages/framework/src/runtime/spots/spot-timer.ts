@@ -10,14 +10,12 @@ import type {
 } from '../../contracts';
 import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import type { ZLinkRuntimeEventPublisher } from '../diagnostics';
+import { ZLinkSpotEventKind } from '../diagnostics/internal-event-contracts';
 import type {
   ZLinkEntrySpotTimerHandlerRegistration,
   ZLinkSpotTimerHandlerRegistration
 } from '../../contracts/Configuration/RegistrationTypes';
-import {
-  ZLinkSpotEventKind,
-  ZLinkTimerOverrunPolicy
-} from '../../contracts';
+import { ZLinkTimerOverrunPolicy } from '../../contracts';
 import { validateTimerRegistration } from '../../contracts/Configuration/TimerRegistrationValidator';
 import { throwIfAborted } from '../abort';
 import { ZLinkSpotSerialExecutor } from './spot-serial-executor';
@@ -53,7 +51,7 @@ export class ZLinkSpotTimerRegistry {
   private executionBarrier: ZLinkExecutionBarrier | undefined;
 
   constructor(
-    private readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics,
+    _metrics?: import('../diagnostics').ZLinkRuntimeMetrics,
     private readonly flowCreationEnabled: () => boolean = () => true,
     private readonly executionSerialForTimer?: (
       name: string,
@@ -99,7 +97,6 @@ export class ZLinkSpotTimerRegistry {
       periodMs,
       normalizeTimerOptions(options),
       async (tick) => {
-        this.metrics?.duration('zlink.spot.timer.tick.lateness', tick.delayMs / 1000);
         const timerFlow = createInboundFlow(undefined, 'Timer', this.flowCreationEnabled());
         await executionSerial.execute(() => {
           const current = this.timers.get(name);
@@ -455,7 +452,10 @@ export async function addSpotTimerRegistrations(
   }
 ): Promise<void> {
   for (const handler of registrations.timerHandlers ?? []) {
-    if (handler.spotType === spotType) {
+    if (
+      handler.spotType === spotType
+      || spotType.prototype instanceof handler.spotType
+    ) {
       await timers.add(
         handler.name,
         handler.periodMs,

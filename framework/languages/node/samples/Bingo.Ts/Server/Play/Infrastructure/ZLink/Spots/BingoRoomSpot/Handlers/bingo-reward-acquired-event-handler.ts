@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { zlinkSpotSubscriptionHandler } from '@zlink-systems/nestjs';
 import { SampleNames } from '../../../../../../Configuration/sample-names';
 import { BingoRoomSpot } from '../bingo-room-spot';
-import type { ZLinkPublishContext, ZLinkSpotSubscriptionHandler } from '@zlink-systems/framework';
+import type { ZLinkPublishMessageContext, ZLinkSpotSubscriptionHandler } from '@zlink-systems/framework';
 import type { BingoRewardAcquiredEvent } from '../../../../../../../Shared/Contracts/messages';
 
 @Injectable()
@@ -16,7 +16,7 @@ class BingoRewardAcquiredEventHandler
   async handle(
     room: BingoRoomSpot,
     event: BingoRewardAcquiredEvent,
-    context: ZLinkPublishContext
+    context: ZLinkPublishMessageContext
   ): Promise<void> {
     void context;
     await room.announceReward(event);

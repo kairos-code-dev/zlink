@@ -525,6 +525,30 @@ public sealed partial class RegressionTests
     }
 
     [Fact]
+    public void IntegratedSampleRunnerIncludesEveryCommonSample()
+    {
+        var runner = File.ReadAllText(Path.Combine(
+            ResolveDotnetRoot(), "samples", "run_samples.sh"));
+        var expectedSamples = new[]
+        {
+            "TicTacToe",
+            "Bingo",
+            "SupportChat",
+            "ShoppingMall",
+            "DeliveryDispatch",
+            "GameQuest",
+            "ZoneWorld"
+        };
+        var defaultSampleList = runner.Split('\n').Single(static line =>
+            line.StartsWith("SAMPLES=(", StringComparison.Ordinal));
+
+        foreach (var sample in expectedSamples)
+            Assert.Contains(sample, defaultSampleList, StringComparison.Ordinal);
+
+        Assert.Contains("${SCRIPT_DIR}/${sample}/run_sample.sh", runner, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ZoneWorldBrowserLoadsRunnerProvidedStaticConfiguration()
     {
         var browserRoot = Path.GetFullPath(Path.Combine(
@@ -595,12 +619,12 @@ public sealed partial class RegressionTests
             "PlayerMoveHandlers.cs"));
 
         Assert.Contains(
-            "RequestToActor(playerId, new BotTickReq())",
+            "SendToActor(playerId, new BotTickMsg())",
             spot,
             StringComparison.Ordinal);
-        Assert.Contains(".Yield<BotTickRes>(cancellationToken)", spot, StringComparison.Ordinal);
+        Assert.Contains(".Async(cancellationToken)", spot, StringComparison.Ordinal);
         Assert.DoesNotContain("FindAsync(playerId", spot, StringComparison.Ordinal);
-        Assert.Contains("IZLinkSpotActorRequestHandler<ZoneSpot, PlayerActor, BotTickReq, BotTickRes>",
+        Assert.Contains("IZLinkSpotActorSendHandler<ZoneSpot, PlayerActor, BotTickMsg>",
             handlers, StringComparison.Ordinal);
     }
 

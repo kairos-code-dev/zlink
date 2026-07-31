@@ -1,5 +1,7 @@
 package systems.zlink.framework.locations.redis;
 
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationDescriptorCodec;
+
 import io.lettuce.core.KeyValue;
 import io.lettuce.core.ScanArgs;
 import io.lettuce.core.ScanCursor;
@@ -18,8 +20,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Predicate;
 import systems.zlink.framework.locations.ZLinkLocationPage;
-import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
-import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor;
+import systems.zlink.framework.runtime.internal.locations.ZLinkClientServerServerDescriptor;
+import systems.zlink.framework.runtime.internal.locations.ZLinkFanoutPublisherDescriptor;
 import systems.zlink.framework.locations.ZLinkPageRequest;
 
 final class ZLinkRedisLocationRows {
@@ -82,7 +84,7 @@ final class ZLinkRedisLocationRows {
             page,
             keys.clientServerDescriptorChannelIndexKey(channelName),
             keys::clientServerDescriptorRowKey,
-            ZLinkRedisLocationRowJson::deserializeClientServer,
+            ZLinkLocationDescriptorCodec::deserializeClientServer,
             row -> new ServiceOwner(
                 row.ownerId(), row.leaseGeneration()));
     }
@@ -97,7 +99,7 @@ final class ZLinkRedisLocationRows {
             page,
             keys.fanoutPublisherDescriptorChannelIndexKey(channelName),
             keys::fanoutPublisherDescriptorRowKey,
-            ZLinkRedisLocationRowJson::deserializeFanoutPublisher,
+            ZLinkLocationDescriptorCodec::deserializeFanoutPublisher,
             row -> new ServiceOwner(
                 row.ownerId(), row.leaseGeneration()));
     }

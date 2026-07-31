@@ -1,28 +1,23 @@
 import type {
   ZLinkActor,
-  ZLinkActorContext
+  ZLinkActorJoinCompletion,
+  ZLinkActorContext,
+  ZLinkEntrySpotActorSendHandler,
+  ZLinkMessageContext
 } from '@zlink-systems/framework';
-import { ZLinkSpotActorSend } from '@zlink-systems/framework';
+import { zlinkEntrySpotActorSendHandler, zlinkSpotActorSendHandler } from '@zlink-systems/nestjs';
+import { PlayEntrySpot } from '../Spots/EntrySpot/play-entry-spot';
+import { TicTacToeGameSpot } from '../Spots/TicTacToeGameSpot/tictactoe-game-spot';
 import type { TicTacToeActor } from '../../../../../Shared/Contracts/messages';
 import {
   GameStateNotify,
   PlayerJoinedNotify,
-  WinMilestoneNotify
+  WinMilestoneNotify,
+  gameStateNotify
 } from '../../../../../Shared/Contracts/messages';
-import { PlayActorJoinGameHandler } from '../Spots/EntrySpot/Handlers/play-actor-join-game-handler';
-import { PlayActorObserveMilestoneHandler } from '../Spots/EntrySpot/Handlers/play-actor-observe-milestone-handler';
-import { PlayActorLeaveGameHandler } from '../Spots/TicTacToeGameSpot/Handlers/play-actor-leave-game-handler';
-import { PlayActorPlaceMarkHandler } from '../Spots/TicTacToeGameSpot/Handlers/play-actor-place-mark-handler';
+import type { TicTacToeGameJoinRes } from '../../../../../Shared/Contracts/messages';
 
 type PlayNotification = PlayerJoinedNotify | GameStateNotify | WinMilestoneNotify;
-
-class InitializePlayActor {
-  constructor(
-    readonly displayName: string,
-    readonly level: number,
-    readonly wins: number
-  ) {}
-}
 
 class DeliverPlayNotification {
   readonly kind: 'gameState' | 'playerJoined' | 'winMilestone';
@@ -60,15 +55,6 @@ class PlayActor implements ZLinkActor, TicTacToeActor {
     this.nextSeq = 0;
   }
 
-  configure(): void {
-    this.context.handlers.addHandler(PlayActorJoinGameHandler);
-    this.context.handlers.addHandler(PlayActorObserveMilestoneHandler);
-    this.context.handlers.addHandler(PlayActorPlaceMarkHandler);
-    this.context.handlers.addHandler(PlayActorLeaveGameHandler);
-    this.context.handlers.addHandler(InitializePlayActorHandler);
-    this.context.handlers.addHandler(DeliverPlayNotificationHandler);
-  }
-
   async push(payload: PlayNotification): Promise<void> {
     this.nextSeq += 1;
     await this.context.boundSession
@@ -76,52 +62,81 @@ class PlayActor implements ZLinkActor, TicTacToeActor {
       .metadata('seq', String(this.nextSeq))
       .submit();
   }
-}
 
-class InitializePlayActorHandler {
-  @ZLinkSpotActorSend('InitializePlayActor')
-  async handle(actor: PlayActor, _context: unknown, message: InitializePlayActor): Promise<void> {
-    actor.displayName = message.displayName;
-    actor.level = message.level;
-    actor.wins = message.wins;
+  async onJoinCompleted(completion: ZLinkActorJoinCompletion): Promise<void> {
+    if (completion.status !== 'accepted' || completion.reply === undefined) {
+      return;
+    }
+    // The deferred Join reply is delivered only after the target membership is
+    // committed, so the client receives the authoritative Spot state.
+    const joined = completion.reply.decode<TicTacToeGameJoinRes>();
+    this.roomId = joined.state.roomId;
+    await this.push(gameStateNotify(joined.state));
   }
 }
 
+@zlinkSpotActorSendHandler({
+  spot: () => TicTacToeGameSpot,
+  actor: () => PlayActor,
+  packetName: 'DeliverPlayNotification'
+})
 class DeliverPlayNotificationHandler {
-  @ZLinkSpotActorSend('DeliverPlayNotification')
   async handle(actor: PlayActor, _context: unknown, message: DeliverPlayNotification): Promise<void> {
-    const payload = message.payload;
-    if (message.kind === 'playerJoined') {
-      const value = payload as PlayerJoinedNotify;
-      await actor.push(new PlayerJoinedNotify(
-        value.roomId,
-        value.actorId,
-        value.displayName,
-        value.level,
-        value.mark,
-        value.state
-      ));
-      return;
-    }
-    if (message.kind === 'winMilestone') {
-      const value = payload as WinMilestoneNotify;
-      await actor.push(new WinMilestoneNotify(
-        value.roomId,
-        value.actorId,
-        value.displayName,
-        value.wins
-      ));
-      return;
-    }
-    const value = payload as GameStateNotify;
-    await actor.push(new GameStateNotify(value.state));
+    await deliverPlayNotification(actor, message);
   }
+}
+
+@zlinkEntrySpotActorSendHandler({
+  actor: () => PlayActor,
+  entrySpot: () => PlayEntrySpot,
+  packetName: 'DeliverPlayNotification'
+})
+class DeliverPlayNotificationEntryHandler
+  implements ZLinkEntrySpotActorSendHandler<PlayEntrySpot, PlayActor, DeliverPlayNotification> {
+  async handle(
+    _spot: PlayEntrySpot,
+    actor: PlayActor,
+    _context: ZLinkMessageContext,
+    message: DeliverPlayNotification
+  ): Promise<void> {
+    await deliverPlayNotification(actor, message);
+  }
+}
+
+async function deliverPlayNotification(
+  actor: PlayActor,
+  message: DeliverPlayNotification
+): Promise<void> {
+  const payload = message.payload;
+  if (message.kind === 'playerJoined') {
+    const value = payload as PlayerJoinedNotify;
+    await actor.push(new PlayerJoinedNotify(
+      value.roomId,
+      value.actorId,
+      value.displayName,
+      value.level,
+      value.mark,
+      value.state
+    ));
+    return;
+  }
+  if (message.kind === 'winMilestone') {
+    const value = payload as WinMilestoneNotify;
+    await actor.push(new WinMilestoneNotify(
+      value.roomId,
+      value.actorId,
+      value.displayName,
+      value.wins
+    ));
+    return;
+  }
+  const value = payload as GameStateNotify;
+  await actor.push(new GameStateNotify(value.state));
 }
 
 export {
   DeliverPlayNotification,
+  DeliverPlayNotificationEntryHandler,
   DeliverPlayNotificationHandler,
-  InitializePlayActor,
-  InitializePlayActorHandler,
   PlayActor
 };

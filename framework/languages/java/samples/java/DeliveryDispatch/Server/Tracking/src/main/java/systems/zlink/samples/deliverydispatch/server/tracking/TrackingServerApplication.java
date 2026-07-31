@@ -1,9 +1,9 @@
 package systems.zlink.samples.deliverydispatch.server.tracking;
 
+import java.net.URI;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
@@ -38,10 +38,13 @@ public final class TrackingServerApplication {
             options.addHandlersFromPackageOf(TrackingServerApplication.class);
             ZLinkMeshNodeBuilder trackingSpot = options.addRouteMesh(SampleNames.CustomerSpotDiscovery);
             trackingSpot.listen(topology.trackingSpotEndpoint())
-                .useAllocatedRoutingId(16, "delivery-tracking");
+                .setRoutingIdPrefix("delivery-tracking");
+            URI trackingEndpoint = URI.create(topology.trackingChannelEndpoint());
             options.addClientServerChannel(SampleNames.TrackingChannel)
-                .enableServer(topology.trackingChannelEndpoint())
-                .setRoutingId(RoutingId.from("delivery-tracking-server"))
+                .server()
+                .setBindHost(trackingEndpoint.getHost())
+                .setAdvertiseHost(trackingEndpoint.getHost())
+                .listen(trackingEndpoint.getPort())
                 .addHandlerGroup("tracking");
         };
     }

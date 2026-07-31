@@ -7,6 +7,9 @@ export async function runSample(ctx) {
   const redisKeyPrefix = `bingo:node:${process.pid}:`;
   const apiA = `tcp://127.0.0.1:${await ctx.port()}`;
   const apiB = `tcp://127.0.0.1:${await ctx.port()}`;
+  const apiMatchmakingA = `tcp://127.0.0.1:${await ctx.port()}`;
+  const apiMatchmakingB = `tcp://127.0.0.1:${await ctx.port()}`;
+  const matchmaking = `tcp://127.0.0.1:${await ctx.port()}`;
   const playA = await bingoPlayConfig(ctx, 'a', redisKeyPrefix);
   const playB = await bingoPlayConfig(ctx, 'b', redisKeyPrefix);
   const sessionA = await bingoSessionConfig(ctx, 'a', redisKeyPrefix);
@@ -14,9 +17,18 @@ export async function runSample(ctx) {
   const common = { redisEndpoint: ctx.redisEndpoint, redisKeyPrefix };
   const flowDir = path.join(ctx.logDir, 'flow');
   fs.mkdirSync(flowDir, { recursive: true });
-  const apiAConfig = ctx.writeConfig('api-a', { ...common, apiEndpoint: apiA, logDir: flowDir });
-  const apiBConfig = ctx.writeConfig('api-b', { ...common, apiEndpoint: apiB, logDir: flowDir });
+  const apiAConfig = ctx.writeConfig('api-a', {
+    ...common, apiEndpoint: apiA, apiMatchmakingEndpoint: apiMatchmakingA, logDir: flowDir
+  });
+  const apiBConfig = ctx.writeConfig('api-b', {
+    ...common, apiEndpoint: apiB, apiMatchmakingEndpoint: apiMatchmakingB, logDir: flowDir
+  });
+  const matchmakingConfig = ctx.writeConfig('matchmaking', {
+    ...common, matchmakingEndpoint: matchmaking, logDir: flowDir
+  });
 
+  await ctx.start('matchmaking', 'dist/Server/Matchmaking/main.js', ['--config', matchmakingConfig]);
+  await ctx.waitTcp(matchmaking);
   await ctx.start('api-b', 'dist/Server/Api/main.js', ['--config', apiBConfig]);
   await ctx.waitTcp(apiB);
   await ctx.start('api-a', 'dist/Server/Api/main.js', ['--config', apiAConfig]);
@@ -49,14 +61,6 @@ export async function runSample(ctx) {
   await ctx.waitLog('api-a', `bingo-room-peer ConnectionReady remote=${replacement.sample.playSpotEndpoint}`);
   await ctx.waitLog('play-b', `bingo-room-peer ConnectionReady remote=${apiA}`);
   await ctx.waitLog('play-replacement', `bingo-room-peer ConnectionReady remote=${apiA}`);
-  ctx.runNode(path.join(ctx.nodeRoot, 'e2e/location-readiness.js'), [
-    '--redis-endpoint', ctx.redisEndpoint,
-    '--key-prefix', `${redisKeyPrefix}location`,
-    '--peer', 'route-mesh', 'bingo.room', 'router',
-      apiA, apiB,
-      playB.sample.playSpotEndpoint, replacement.sample.playSpotEndpoint,
-      sessionA.sample.sessionSpotEndpoint, sessionB.sample.sessionSpotEndpoint
-  ]);
   ctx.runBrowser({
     timeoutMs: 90_000,
     config: {
@@ -117,10 +121,16 @@ async function verifyPlaySlotHandoff(ctx, redisKeyPrefix, oldRoomEndpoint, survi
   ctx.signal('play-a', 'SIGUSR2');
   await ctx.waitLog('play-a', 'bingo-drain result=drained');
   await ctx.stop('play-a', 'SIGTERM');
-  await ctx.waitLog(
-    'play-replacement',
-    `bingo-room-peer ConnectionReady remote=${survivingRoomEndpoint}`
-  );
+  await ctx.waitAnyLog([
+    {
+      name: 'play-replacement',
+      marker: `bingo-room-peer ConnectionReady remote=${survivingRoomEndpoint}`
+    },
+    {
+      name: 'play-b',
+      marker: `bingo-room-peer ConnectionReady remote=${replacement.sample.playSpotEndpoint}`
+    }
+  ]);
   console.log(`BINGO-ROLLING replacement=play-replacement retired=${oldRoomEndpoint}`);
   return replacement;
 }

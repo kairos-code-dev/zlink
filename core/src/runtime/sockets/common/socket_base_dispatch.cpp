@@ -194,9 +194,11 @@ int zlink::socket_base_t::socket_msg_dispatch_stop ()
 
     if (lifecycle_coordinator ().is_async_mailbox_active ()) {
         stop_async_mailbox_processing ();
-        wait_async_quiesced (10000);
+        if (current_async_mailbox_dispatch_socket () != this)
+            wait_async_quiesced (10000);
     } else if (lifecycle_coordinator ().is_async_quiesce_pending ()) {
-        wait_async_quiesced (10000);
+        if (current_async_mailbox_dispatch_socket () != this)
+            wait_async_quiesced (10000);
     }
 
     return 0;
@@ -421,6 +423,15 @@ void zlink::socket_base_t::arm_send_ready_notification ()
 {
     dispatch_runtime ().arm_send_ready_notification ();
     notify_send_ready_if_armed ();
+}
+
+void zlink::socket_base_t::arm_send_ready_after_backpressure ()
+{
+    const bool was_pending = dispatch_runtime ().send_recovery_pending ();
+    dispatch_runtime ().mark_send_recovery_pending ();
+    if (!was_pending)
+        static_cast<mailbox_t *> (_mailbox)->signal ();
+    arm_send_ready_notification ();
 }
 
 void zlink::socket_base_t::notify_send_ready_if_armed ()

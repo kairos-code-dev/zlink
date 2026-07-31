@@ -3,7 +3,7 @@
 
 #include <zlink/Contracts/Core/routing_id.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
-#include <zlink/framework/contracts/locations/writes.hpp>
+#include <runtime/locations/location_repository_values.hpp>
 
 #include <cstdint>
 #include <optional>

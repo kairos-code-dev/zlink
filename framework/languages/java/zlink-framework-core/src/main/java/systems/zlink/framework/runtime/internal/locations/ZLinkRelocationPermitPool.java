@@ -1,6 +1,9 @@
 package systems.zlink.framework.runtime.internal.locations;
 
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
 
 /**
@@ -46,6 +49,28 @@ public final class ZLinkRelocationPermitPool {
         payloadBytes = Math.addExact(payloadBytes, request.payloadBytes());
         oversizedPayloadActive = oversized;
         return new Lease(this, request, oversized);
+    }
+
+    public CompletionStage<Lease> acquire(
+        Request request,
+        ZLinkStoreCancellation cancellation) {
+        Objects.requireNonNull(request, "request");
+        Objects.requireNonNull(cancellation, "cancellation");
+        Lease acquired = tryAcquire(request);
+        if (acquired != null) {
+            return CompletableFuture.completedFuture(acquired);
+        }
+        if (cancellation.isCancellationRequested()) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException(
+                    "relocation permit acquisition was cancelled"));
+        }
+        return CompletableFuture.runAsync(
+                () -> {
+                },
+                CompletableFuture.delayedExecutor(
+                    5, TimeUnit.MILLISECONDS))
+            .thenCompose(ignored -> acquire(request, cancellation));
     }
 
     public synchronized Snapshot snapshot() {
@@ -143,7 +168,20 @@ public final class ZLinkRelocationPermitPool {
         }
 
         public static Request inbound(long bytes, boolean restore) {
-            return new Request(0, 1, 0, restore ? 1 : 0, bytes, false);
+            return inbound(bytes, restore, false);
+        }
+
+        public static Request inbound(
+            long bytes,
+            boolean restore,
+            boolean allowOversizedPayload) {
+            return new Request(
+                0,
+                1,
+                0,
+                restore ? 1 : 0,
+                bytes,
+                allowOversizedPayload);
         }
 
         Request withPayloadBytes(long bytes) {

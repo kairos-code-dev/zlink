@@ -44,6 +44,7 @@ import { ZLinkSpotRouteBridgeRawReplyRegistry } from './spot-route-bridge-raw-re
 import { ZLinkSpotRouteDispatchStrategy } from './spot-route-dispatch-strategy';
 import { ZLinkClientServerLocationRuntime } from './client-server-location-runtime';
 import { ZLinkFanoutLocationRuntime } from './fanout-location-runtime';
+import type { ZLinkInboundDispatchBudget } from '../dispatch/inbound-dispatch-budget';
 
 export interface ZLinkChannelRuntimeLifecycleOptions {
   readonly registration: ZLinkFrameworkRegistration;
@@ -56,6 +57,7 @@ export interface ZLinkChannelRuntimeLifecycleOptions {
   readonly spotRouteBridgeRawReplies: ZLinkSpotRouteBridgeRawReplyRegistry;
   readonly internalRouteSendHandlers?: ReadonlyMap<string, ZLinkRouteRuntimeSendHandler>;
   readonly internalRouteRequestHandlers?: ReadonlyMap<string, ZLinkRouteRuntimeRequestHandler>;
+  readonly inboundDispatchBudget?: ZLinkInboundDispatchBudget;
 }
 
 export class ZLinkChannelRuntimeLifecycle {
@@ -355,7 +357,8 @@ export class ZLinkChannelRuntimeLifecycle {
         dispatcher,
         spotRouteBridge,
         (received, socket) =>
-          this.options.sockets.tryHandleClientServerControl(channelName, received, socket)
+          this.options.sockets.tryHandleClientServerControl(channelName, received, socket),
+        this.options.inboundDispatchBudget
       );
       this.channelReceiveLoops.push(loop);
       tasks.push(taskRunner.run(`channel:${channelName}`, (signal) => loop.run(signal)));
@@ -445,11 +448,12 @@ export class ZLinkChannelRuntimeLifecycle {
       this.options.adapter,
       subscriber,
       dispatcher,
-          message => this.options.sockets.handleFanoutInbound(
+      message => this.options.sockets.handleFanoutInbound(
             connectionId,
             message,
             subscriber
-      )
+      ),
+      this.options.inboundDispatchBudget
     );
     this.subscriberReceiveLoops.push(loop);
     return taskRunner.run(
@@ -491,7 +495,8 @@ export class ZLinkChannelRuntimeLifecycle {
         connectionId,
         message,
         subscriber
-      )
+      ),
+      this.options.inboundDispatchBudget
     );
     this.subscriberReceiveLoops.push(loop);
     void taskRunner.run(
@@ -543,7 +548,11 @@ export class ZLinkChannelRuntimeLifecycle {
         rawBridgeReplyHandler: (received) =>
           this.options.spotRouteBridgeRawReplies.tryComplete(routeChannel.routerChannelId, received)
       });
-      const loop = new ZLinkRouteReceiveLoop(router, dispatcher);
+      const loop = new ZLinkRouteReceiveLoop(
+        router,
+        dispatcher,
+        this.options.inboundDispatchBudget
+      );
       this.routeReceiveLoops.push(loop);
       tasks.push(taskRunner.run(`route:${routeChannel.routerChannelId}`, (signal) => loop.run(signal)));
     }

@@ -22,8 +22,8 @@ inline void add_redis_location_store (zlink::framework::zlink_framework_options_
         throw std::runtime_error ("redis.keyPrefix is required");
     }
     framework.add_location_store (
-      std::make_shared<zlink::framework::locations::redis::redis_location_store_t> (
-        zlink::framework::locations::redis::redis_location_options_t{
+      std::make_shared<zlink::framework::redis::redis_location_store_t> (
+        zlink::framework::redis::redis_location_options_t{
           .connection_string = redis_endpoint, .key_prefix = redis_key_prefix}));
 }
 

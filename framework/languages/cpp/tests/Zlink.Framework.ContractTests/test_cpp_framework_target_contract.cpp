@@ -186,12 +186,12 @@ int main ()
       / "zlink/framework/contracts/configuration/detail/framework_options_validation.hpp");
     const auto execution_hpp =
       read_file (include_root / "zlink/framework/contracts/dispatch/execution.hpp");
-    const auto events_hpp =
-      read_file (include_root / "zlink/framework/contracts/eventing/events.hpp");
     const auto stream_hpp =
       read_file (include_root / "zlink/framework/contracts/streams/stream.hpp");
     const auto rows_hpp =
       read_file (include_root / "zlink/framework/contracts/locations/rows.hpp");
+    const auto location_records_hpp =
+      read_file (root / "framework/src/runtime/locations/location_records.hpp");
     const auto error_hpp =
       read_file (include_root / "zlink/framework/contracts/errors/error.hpp");
     const auto runner = read_file (e2e_root / "run_e2e_all.sh");
@@ -736,11 +736,19 @@ int main ()
                     || tree_contains (root / "framework/src", "0xf2"),
                   "CPP-G0-FLOW-001", "0xF2 envelope format marker is not encoded");
 
-    /* CPP-G0-METRIC-001 — metric payload carries catalog fields. */
-    for (const std::string required : {"metric_instrument_kind_t", "metric_temporality_t",
-                                       "std::string unit;"}) {
-        gate.require (events_hpp.find (required) != std::string::npos, "CPP-G0-METRIC-001",
-                      "metric_event_payload_t catalog field is missing: " + required);
+    /* CPP-G0-METRIC-001 — raw runtime event and metric DTOs stay private. */
+    gate.require (
+      !std::filesystem::exists (
+        include_root / "zlink/framework/contracts/eventing/events.hpp"),
+      "CPP-G0-METRIC-001",
+      "raw event contract header is still public");
+    for (const std::string forbidden : {
+           "monitoring_builder_t", "metrics_builder_t",
+           "metric_event_payload_t", "socket_event_payload_t"}) {
+        gate.require (
+          !tree_contains (include_root, forbidden),
+          "CPP-G0-METRIC-001",
+          "raw event or metric callback surface is still public: " + forbidden);
     }
 
     /* CPP-G0-DRAIN-001 — host-level Relocate and Shutdown surface. */
@@ -763,10 +771,10 @@ int main ()
           "CPP-G0-DRAIN-001",
           "legacy host lifecycle surface is still public: " + forbidden);
     }
-    gate.require (rows_hpp.find ("framework_runtime_state_t state")
+    gate.require (location_records_hpp.find ("framework_runtime_state_t state")
                     != std::string::npos,
                   "CPP-G0-DRAIN-001",
-                  "peer location row lacks the typed lifecycle state");
+                  "private location descriptor lacks the typed lifecycle state");
     gate.require (!tree_contains (include_root, "mesh_node_drain_policy_t"),
                   "CPP-G0-DRAIN-001",
                   "the removed mesh_node_drain_policy_t public API is still present");
@@ -1301,8 +1309,12 @@ int main ()
                   "E2E-CP-33", "RL-D5 fake soak remains in the config runner");
 
     /* E2E-CP-35 — MON-A4/MON-D1 prove named transitions rather than event counts. */
-    gate.require (runtime_monitoring_recorders.find ("|routes=") != std::string::npos,
-                  "E2E-CP-35", "location evidence does not identify RID-to-endpoint routes");
+    gate.require (
+      runtime_monitoring_recorders.find ("|routes=") == std::string::npos
+        && runtime_monitoring_recorders.find ("record_location_event")
+             == std::string::npos,
+      "E2E-CP-35",
+      "public monitoring evidence still exposes Location endpoint payloads");
     gate.require (runtime_monitoring_runner.find ("MON_D1_CYCLES=3") != std::string::npos,
                   "E2E-CP-35", "MON-D1 does not execute three crash/restart cycles");
     gate.require (runtime_monitoring_a4.find (
@@ -1398,8 +1410,8 @@ int main ()
                     && store_failure_client.find ("max_success_gap") != std::string::npos
                     && store_failure_client.find ("std::async") != std::string::npos,
                   "E2E-CP-40", "D1/D2 do not drive and bound traffic across recovery");
-    gate.require (store_failure_consumer.find ("add_socket_events") != std::string::npos
-                    && store_failure_consumer.find ("socket_event_payload_t")
+    gate.require (store_failure_consumer.find ("use_callback_sink") != std::string::npos
+                    && store_failure_consumer.find ("log_record_t")
                          != std::string::npos
                     && store_failure_consumer.find ("/query/connections") != std::string::npos
                     && store_failure_consumer_endpoints.find ("query_connections_handler_t")
@@ -1506,23 +1518,31 @@ int main ()
                          == std::string::npos,
                   "E2E-CP-45", "SF-E1 does not control latency outside the application process");
 
-    /* IMP-CP-38 — exact lease release and read each execute as one Redis script. */
-    gate.require (redis_hpp.find (
-                    "std::tuple<std::string, long long>>")
-                    != std::string::npos,
-                  "IMP-CP-38", "exact owner lease release is not a single scripted decision");
-    gate.require (redis_hpp.find (
-                    "std::string,\n                      long long,\n                      long long,\n                      long long>>")
-                    != std::string::npos,
-                  "IMP-CP-38", "exact owner lease read is not returned by one Redis script");
+    /*
+     * IMP-CP-38 — the public Redis provider implements the opaque atomic Store
+     * SPI. Owner leases and other domain repositories remain Framework-private.
+     */
+    gate.require (redis_hpp.find ("store_version_condition_t")
+                    != std::string::npos
+                    && redis_hpp.find ("write_script") != std::string::npos
+                    && redis_hpp.find ("redis_location_repository_t")
+                         == std::string::npos,
+                  "IMP-CP-38",
+                  "Redis location provider does not preserve the opaque atomic Store boundary");
 
-    /* IMP-CP-36 — paged location lists preserve the Redis SSCAN cursor. */
-    gate.require (redis_hpp.find ("\"SSCAN\"") != std::string::npos,
-                  "IMP-CP-36", "Redis location paging does not use SSCAN");
-    gate.require (redis_hpp.find ("parse_scan_state") != std::string::npos,
-                  "IMP-CP-36", "Redis location paging does not preserve cursor state");
-    gate.require (redis_hpp.find ("parse_offset") == std::string::npos,
-                  "IMP-CP-36", "Redis location paging still treats continuation as an offset");
+    /*
+     * IMP-CP-36 — Store scan keeps the first-page snapshot and reports an
+     * expired opaque cursor instead of exposing a provider-specific cursor.
+     */
+    gate.require (redis_hpp.find ("_scan_snapshots") != std::string::npos
+                    && redis_hpp.find ("store_scan_expired_t")
+                         != std::string::npos,
+                  "IMP-CP-36",
+                  "Redis opaque Store scan does not preserve snapshot cursor state");
+    gate.require (redis_hpp.find ("parse_scan_state") == std::string::npos
+                    && redis_hpp.find ("parse_offset") == std::string::npos,
+                  "IMP-CP-36",
+                  "Redis public Store still exposes a provider-specific paging codec");
 
     /* E2E-CP-64 — the sample is not duplicated as a twelfth, non-contract config. */
     /* E2E-CP-61 — C1 keeps the typed row and lease while existing traffic stays healthy. */

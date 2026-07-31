@@ -586,21 +586,12 @@ class runtime_observation_store_t
             return;
         _observation = runtime.observe (
           route_mesh_name, 32,
-          [&evidence] (const zlink::framework::mesh_runtime_event_t &event) {
-              auto line = "mesh-runtime-event|mesh=" + event.mesh_name
-                          + "|identifier=" + event.identifier
-                          + "|sequence=" + std::to_string (event.sequence);
-              if (event.peer_rid)
-                  line += "|peer-rid=" + event.peer_rid->to_string ();
-              if (event.lifecycle_generation)
-                  line += "|generation="
-                          + std::to_string (*event.lifecycle_generation);
-              if (event.channel_name)
-                  line += "|channel=" + *event.channel_name;
-              if (event.claim_domain)
-                  line += "|claim-domain=" + *event.claim_domain;
-              if (event.reason)
-                  line += "|reason=" + *event.reason;
+          [&evidence] (const zlink::framework::mesh_node_snapshot_t &event) {
+              auto line = "mesh-runtime-snapshot|mesh=" + event.mesh_name
+                          + "|sequence=" + std::to_string (event.sequence)
+                          + "|ready=" + (event.is_ready ? "true" : "false")
+                          + "|ready-peers="
+                          + std::to_string (event.ready_peer_count);
               evidence.add (std::move (line));
           });
     }
@@ -613,17 +604,17 @@ class runtime_observation_store_t
             return;
         _slow_observation = runtime.observe (
           route_mesh_name, 1,
-          [&evidence] (const zlink::framework::mesh_runtime_event_t &event) {
+          [&evidence] (const zlink::framework::mesh_node_snapshot_t &event) {
               evidence.add (
-                "mesh-runtime-slow|identifier=" + event.identifier
+                "mesh-runtime-slow|mesh=" + event.mesh_name
                 + "|sequence=" + std::to_string (event.sequence));
               std::this_thread::sleep_for (std::chrono::milliseconds (200));
           });
         _throwing_observation = runtime.observe (
           route_mesh_name, 1,
-          [&evidence] (const zlink::framework::mesh_runtime_event_t &event) {
+          [&evidence] (const zlink::framework::mesh_node_snapshot_t &event) {
               evidence.add (
-                "mesh-runtime-throwing|identifier=" + event.identifier
+                "mesh-runtime-throwing|mesh=" + event.mesh_name
                 + "|sequence=" + std::to_string (event.sequence));
               throw std::runtime_error ("MON-C1 observer failure");
           });
@@ -787,7 +778,7 @@ class mesh_weight_handler_t
             return response;
         }
         const auto value = std::stoi (found->second);
-        auto &channel = _options.channel (route_mesh_name, route_mesh_channel);
+        auto &channel = _options.channel (route_mesh_channel);
         channel.weight (value);
         zlink::framework::http_response_t response;
         response.body = nlohmann::json{{"weight", channel.weight ()}}.dump ();
@@ -825,7 +816,7 @@ class runtime_validation_handler_t
         try {
             (void) _runtime.observe (
               "missing", 1,
-              [] (const zlink::framework::mesh_runtime_event_t &) {});
+              [] (const zlink::framework::mesh_node_snapshot_t &) {});
         }
         catch (const zlink::framework::framework_exception_t &) {
             missing_observer_rejected = true;
@@ -833,7 +824,7 @@ class runtime_validation_handler_t
         try {
             (void) _runtime.observe (
               route_mesh_name, 0,
-              [] (const zlink::framework::mesh_runtime_event_t &) {});
+              [] (const zlink::framework::mesh_node_snapshot_t &) {});
         }
         catch (const zlink::framework::framework_exception_t &) {
             zero_capacity_rejected = true;

@@ -1,13 +1,13 @@
 import http from 'node:http';
-import { ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
-import { questMissionRouteChannel, SampleNames } from '../../Shared/Configuration/sample-names';
+import { ZLINK_SPOT_OUTBOUND } from '@zlink-systems/nestjs';
+import { questMissionSpotId, SampleNames } from '../../Shared/Configuration/sample-names';
 import { GameQuestSelfCheckStore, GameplayStateStore } from '../Shared/Store/quest-progress-store';
 import {
   deleteQuestProjectionReq,
   rebuildQuestProjectionReq
 } from '../../Shared/Contracts/messages';
 import type { INestApplicationContext } from '@nestjs/common';
-import type { ZLinkRouteClient } from '@zlink-systems/framework';
+import type { ZLinkSpotOutbound } from '@zlink-systems/framework';
 import type { GameQuestServerConfig } from '../Configuration/sample-config';
 import type {
   DeleteQuestProjectionRes,
@@ -23,7 +23,7 @@ function startGameApiServer(
 ): Promise<http.Server> {
   const gameplayState = app.get(GameplayStateStore, { strict: false });
   const selfCheck = app.get(GameQuestSelfCheckStore, { strict: false });
-  const routes = app.get(ZLINK_ROUTE_CLIENT, { strict: false }) as ZLinkRouteClient;
+  const spots = app.get(ZLINK_SPOT_OUTBOUND, { strict: false }) as ZLinkSpotOutbound;
   const base = new URL(instanceId === 'api-a' ? config.apiAHttpUrl : config.apiBHttpUrl);
   const server = http.createServer(async (request, response) => {
     try {
@@ -40,8 +40,10 @@ function startGameApiServer(
       if (request.method === 'POST' && deleteMatch !== undefined && deleteMatch !== null) {
         const playerId = decodeURIComponent(deleteMatch[1]);
         const questId = decodeURIComponent(deleteMatch[2]);
-        const deleted = await routes
-          .requestToChannel(SampleNames.playerQuestSpotMesh, questMissionRouteChannel(playerId), deleteQuestProjectionReq(playerId, questId))
+        const deleted = await spots
+          .requestToSpot(questMissionSpotId(playerId), deleteQuestProjectionReq(playerId, questId))
+          .instanceSpot(SampleNames.playerQuestSpotType)
+          .inMesh(SampleNames.playerQuestSpotMesh)
           .timeout(SampleNames.requestTimeout)
           .submit<DeleteQuestProjectionRes>();
         sendJson(response, 200, deleted);
@@ -51,8 +53,10 @@ function startGameApiServer(
       if (request.method === 'POST' && rebuildMatch !== undefined && rebuildMatch !== null) {
         const playerId = decodeURIComponent(rebuildMatch[1]);
         const questId = decodeURIComponent(rebuildMatch[2]);
-        const rebuilt = await routes
-          .requestToChannel(SampleNames.playerQuestSpotMesh, questMissionRouteChannel(playerId), rebuildQuestProjectionReq(playerId, questId))
+        const rebuilt = await spots
+          .requestToSpot(questMissionSpotId(playerId), rebuildQuestProjectionReq(playerId, questId))
+          .instanceSpot(SampleNames.playerQuestSpotType)
+          .inMesh(SampleNames.playerQuestSpotMesh)
           .timeout(SampleNames.requestTimeout)
           .submit<QuestProgress>();
         sendJson(response, 200, rebuilt);

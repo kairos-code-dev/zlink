@@ -15,7 +15,7 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
-import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationWriteStatus;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
@@ -232,6 +232,15 @@ final class ZLinkSpotLifecycle {
         return prepared.created().activation().spot();
     }
 
+    CompletionStage<Void> completeRelocationReady(
+        PreparedUserSpot prepared) {
+        requireNewPrepared(prepared);
+        return prepared.created().activation().context
+            .runRelocationReadyCompletion(
+                systems.zlink.framework.spots
+                    .ZLinkSpotRelocationReadyOutcome.RELOCATED);
+    }
+
     CompletionStage<List<byte[]>> replayReserved(
         PreparedUserSpot prepared,
         ZLinkSpotAcceptedJournal.Record record) {
@@ -251,6 +260,23 @@ final class ZLinkSpotLifecycle {
         requireNewPrepared(prepared);
         prepared.created().activation().context
             .publishStagedTimerRelocation();
+    }
+
+    void stageReservedActorTimers(
+        PreparedUserSpot prepared,
+        String actorId,
+        byte[] timerEnvelope) {
+        requireNewPrepared(prepared);
+        prepared.created().activation().context
+            .stageActorTimerRelocationEnvelope(actorId, timerEnvelope);
+    }
+
+    void publishReservedActorTimers(
+        PreparedUserSpot prepared,
+        String actorId) {
+        requireNewPrepared(prepared);
+        prepared.created().activation().context
+            .publishStagedActorTimerRelocation(actorId);
     }
 
     private static void requireNewPrepared(PreparedUserSpot prepared) {

@@ -60,6 +60,8 @@ export interface ZLinkRemoteActorJoinWirePayload {
   readonly transferId?: unknown;
   readonly transferAdapterKey?: unknown;
   readonly transferState?: unknown;
+  readonly transferStateReference?: unknown;
+  readonly transferStateChecksumCrc32c?: unknown;
   readonly sourceSpotId?: unknown;
   readonly routerChannelId?: unknown;
   readonly boundSessionRouterChannelId?: unknown;
@@ -98,6 +100,8 @@ export interface ZLinkRemoteActorJoinRequest {
   readonly transferId?: string;
   readonly transferAdapterKey?: string;
   readonly transferState?: string;
+  readonly transferStateReference?: string;
+  readonly transferStateChecksumCrc32c?: number;
   readonly routerChannelId?: string;
   readonly sourceSpotId?: string;
   readonly boundSessionRouterChannelId?: string;
@@ -136,6 +140,8 @@ export interface ZLinkRemoteActorJoinRequestPayload {
   readonly transferId?: string;
   readonly transferAdapterKey?: string;
   readonly transferState?: string;
+  readonly transferStateReference?: string;
+  readonly transferStateChecksumCrc32c?: number;
   readonly sourceSpotId?: string;
   readonly routerChannelId?: string;
   readonly boundSessionRouterChannelId?: string;
@@ -175,6 +181,8 @@ interface ZLinkRemoteActorJoinRequestPayloadOptions {
   readonly transferId?: string;
   readonly transferAdapterKey?: string;
   readonly transferState?: Buffer;
+  readonly transferStateReference?: string;
+  readonly transferStateChecksumCrc32c?: number;
   readonly handoffBacklog?: readonly ZLinkActorHandoffPacket[];
   readonly completionOperationId?: ZLinkActorJoinOperationId;
 }
@@ -210,6 +218,8 @@ export function buildRemoteActorJoinRequestPayload(
     transferId: options.transferId,
     transferAdapterKey: options.transferAdapterKey,
     transferState: options.transferState?.toString('base64'),
+    transferStateReference: options.transferStateReference,
+    transferStateChecksumCrc32c: options.transferStateChecksumCrc32c,
     handoffBacklog: options.handoffBacklog,
     completionOperationHigh: options.completionOperationId?.high.toString(),
     completionOperationLow: options.completionOperationId?.low.toString(),

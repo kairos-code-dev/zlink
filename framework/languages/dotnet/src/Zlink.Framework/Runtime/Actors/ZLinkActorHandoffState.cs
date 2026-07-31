@@ -12,6 +12,8 @@ internal sealed class ZLinkActorHandoffState(
     private readonly object _messageFollowGate = new();
     private readonly List<ZLinkActorHandoffFrame> _frames = [];
     private readonly List<ZLinkActorHandoffFrame> _sourceHoldFrames = [];
+    private readonly Dictionary<long, Task>
+        _canonicalMaintenanceReplayReservations = [];
     private readonly ZLinkBoundedIngressAdmission _sourceIngressAdmission =
         sourceIngressAdmission ?? new ZLinkBoundedIngressAdmission();
     private readonly ZLinkBoundedIngressAdmission _sourceHoldAdmission =
@@ -59,6 +61,7 @@ internal sealed class ZLinkActorHandoffState(
                 _joinRequest = null;
                 _preparation = null;
                 _canonicalMaintenanceDrain = null;
+                _canonicalMaintenanceReplayReservations.Clear();
                 _targetPhase = ZLinkActorTargetHandoffPhase.Idle;
                 _sourceTrailingImported = false;
                 _sourceCaptureSealed = false;
@@ -78,6 +81,7 @@ internal sealed class ZLinkActorHandoffState(
             _joinRequest = null;
             _preparation = null;
             _canonicalMaintenanceDrain = null;
+            _canonicalMaintenanceReplayReservations.Clear();
             _targetPhase = ZLinkActorTargetHandoffPhase.Idle;
             _sourceTrailingImported = false;
             _sourceCaptureSealed = false;
@@ -243,19 +247,28 @@ internal sealed class ZLinkActorHandoffState(
 
             if (!frame.RouteContext.IsDirectRoute)
             {
-                if (frame.RequestSource is not null
-                    || frame.SourceNodeGeneration != 0)
+                // A request keeps its live reply route and must drain before
+                // the session route seal. One-way work can cross the cutover
+                // because its exact binding and accepted sequence are frozen.
+                if ((frame.Flags & 1U) != 0)
+                    return ZLinkActorHandoffCaptureResult.NotSealed;
+                if (!frame.RouteContext.IsBoundSessionRoute
+                    || frame.RequestSource is not { } boundSource
+                    || frame.SourceNodeGeneration == 0
+                    || frame.SourceNodeRid != boundSource.NodeRid
+                    || frame.SourceNodeGeneration != boundSource.NodeGeneration
+                    || !ZLinkActorBoundSessionHandoffMetadata.TryDecode(
+                        frame.ApplicationMetadata.Span,
+                        out var boundSession)
+                    || boundSession.ActorId != actorId
+                    || boundSession.ActorGeneration != frame.Actor.Generation
+                    || boundSession.SessionRid != frame.SourceSessionRid)
                     throw new ZLinkActorHandoffRejectedException(
-                        $"Actor '{actorId}' received a bound-session frame with "
-                        + "a synthetic request-source fence.");
-                // Bound-session work has no lease-backed source identity and
-                // therefore cannot enter the durable relocation journal. The
-                // inbound pipeline gives requests an explicit ActorMoving
-                // terminal and discards one-way sends at this sealed boundary.
-                return ZLinkActorHandoffCaptureResult.NotSealed;
+                        $"Actor '{actorId}' received a bound-session frame without "
+                        + "an exact owner, binding, and accepted-sequence fence.");
             }
 
-            if (frame.RequestSource is not { } source
+            else if (frame.RequestSource is not { } source
                 || frame.SourceNodeGeneration == 0
                 || frame.SourceNodeRid != source.NodeRid
                 || frame.SourceNodeGeneration != source.NodeGeneration)
@@ -410,6 +423,7 @@ internal sealed class ZLinkActorHandoffState(
             _joinRequest = null;
             _preparation = null;
             _canonicalMaintenanceDrain = null;
+            _canonicalMaintenanceReplayReservations.Clear();
             _targetPhase = ZLinkActorTargetHandoffPhase.Importing;
             _sourceIngressAdmission.ReleaseAll();
             _sourceHoldAdmission.ReleaseAll();
@@ -449,6 +463,7 @@ internal sealed class ZLinkActorHandoffState(
             {
                 _targetIngressAdmission.ReleaseAll();
                 _frames.Clear();
+                _canonicalMaintenanceReplayReservations.Clear();
                 _handoffId = null;
                 _targetPhase = ZLinkActorTargetHandoffPhase.RolledBack;
                 throw;
@@ -635,6 +650,7 @@ internal sealed class ZLinkActorHandoffState(
             _targetPhase = ZLinkActorTargetHandoffPhase.RolledBack;
             _preparation = null;
             _canonicalMaintenanceDrain = null;
+            _canonicalMaintenanceReplayReservations.Clear();
         }
     }
 
@@ -648,6 +664,7 @@ internal sealed class ZLinkActorHandoffState(
             if (_targetPhase == ZLinkActorTargetHandoffPhase.Completed)
             {
                 _canonicalMaintenanceDrain = null;
+                _canonicalMaintenanceReplayReservations.Clear();
                 return;
             }
             if (_targetPhase != ZLinkActorTargetHandoffPhase.Replaying
@@ -656,6 +673,7 @@ internal sealed class ZLinkActorHandoffState(
                     $"Actor '{actorId}' cannot complete before target replay drains.");
             _targetPhase = ZLinkActorTargetHandoffPhase.Completed;
             _sourceTrailingImported = false;
+            _canonicalMaintenanceReplayReservations.Clear();
         }
     }
 
@@ -893,6 +911,73 @@ internal sealed class ZLinkActorHandoffState(
             long queuedThroughArrivalIndex,
             Action<ZLinkActorHandoffFrame> reserveReplay)
     {
+        ReserveCanonicalMaintenanceTrailing(
+            handoffId,
+            queuedThroughArrivalIndex,
+            reserveReplay,
+            openAdmission: true);
+    }
+
+    internal IReadOnlyList<Task>
+        ReserveCanonicalMaintenanceTrailingAndOpenAdmission(
+            string handoffId,
+            long queuedThroughArrivalIndex,
+            Func<ZLinkActorHandoffFrame, Task> reserveReplay)
+    {
+        return ReserveCanonicalMaintenanceTrailing(
+            handoffId,
+            queuedThroughArrivalIndex,
+            reserveReplay,
+            openAdmission: true);
+    }
+
+    internal void ReserveCanonicalMaintenanceTrailing(
+        string handoffId,
+        long queuedThroughArrivalIndex,
+        Action<ZLinkActorHandoffFrame> reserveReplay)
+    {
+        ReserveCanonicalMaintenanceTrailing(
+            handoffId,
+            queuedThroughArrivalIndex,
+            reserveReplay,
+            openAdmission: false);
+    }
+
+    internal IReadOnlyList<Task> ReserveCanonicalMaintenanceTrailing(
+        string handoffId,
+        long queuedThroughArrivalIndex,
+        Func<ZLinkActorHandoffFrame, Task> reserveReplay)
+    {
+        return ReserveCanonicalMaintenanceTrailing(
+            handoffId,
+            queuedThroughArrivalIndex,
+            reserveReplay,
+            openAdmission: false);
+    }
+
+    private void ReserveCanonicalMaintenanceTrailing(
+            string handoffId,
+            long queuedThroughArrivalIndex,
+            Action<ZLinkActorHandoffFrame> reserveReplay,
+            bool openAdmission)
+    {
+        _ = ReserveCanonicalMaintenanceTrailing(
+            handoffId,
+            queuedThroughArrivalIndex,
+            frame =>
+            {
+                reserveReplay(frame);
+                return Task.CompletedTask;
+            },
+            openAdmission);
+    }
+
+    private IReadOnlyList<Task> ReserveCanonicalMaintenanceTrailing(
+            string handoffId,
+            long queuedThroughArrivalIndex,
+            Func<ZLinkActorHandoffFrame, Task> reserveReplay,
+            bool openAdmission)
+    {
         ArgumentNullException.ThrowIfNull(reserveReplay);
         lock (_gate)
         {
@@ -912,12 +997,39 @@ internal sealed class ZLinkActorHandoffState(
                     frame.RouteContext.MessageFollowHopCount == 0 ? 1 : 0)
                 .ThenBy(static frame => frame.ArrivalIndex)
                 .ToArray();
+            // ACK removes the frame before DispatchReplayAsync necessarily
+            // finishes its post-handler reconciliation. Keep every reserved
+            // task in the drain until the whole replay completes so a retry
+            // cannot mistake an ACKed but still-running dispatch for durable
+            // completion.
+            var reservations =
+                _canonicalMaintenanceReplayReservations
+                    .OrderBy(static reservation => reservation.Key)
+                    .Select(static reservation => reservation.Value)
+                    .ToList();
             foreach (var frame in trailing)
-                reserveReplay(frame);
-            // New target ingress can bypass capture only after every
-            // preserved frame has reserved its mailbox position.
-            _targetPhase =
-                ZLinkActorTargetHandoffPhase.AdmissionOpenDraining;
+            {
+                if (_canonicalMaintenanceReplayReservations.TryGetValue(
+                        frame.ArrivalIndex,
+                        out _))
+                    continue;
+
+                var reservation = reserveReplay(frame)
+                                  ?? throw new InvalidOperationException(
+                                      $"Actor '{actorId}' replay reservation returned no completion task.");
+                _canonicalMaintenanceReplayReservations.Add(
+                    frame.ArrivalIndex,
+                    reservation);
+                reservations.Add(reservation);
+            }
+            if (openAdmission)
+            {
+                // New target ingress can bypass capture only after every
+                // preserved frame has reserved its mailbox position.
+                _targetPhase =
+                    ZLinkActorTargetHandoffPhase.AdmissionOpenDraining;
+            }
+            return reservations;
         }
     }
 
@@ -960,6 +1072,7 @@ internal sealed class ZLinkActorHandoffState(
                 return false;
             _targetPhase = ZLinkActorTargetHandoffPhase.Completed;
             _sourceTrailingImported = false;
+            _canonicalMaintenanceReplayReservations.Clear();
             return true;
         }
     }
@@ -1205,6 +1318,7 @@ internal sealed class ZLinkActorHandoffState(
                 _joinRequest = null;
                 _preparation = null;
                 _canonicalMaintenanceDrain = null;
+                _canonicalMaintenanceReplayReservations.Clear();
                 _sourceCompletion?.TrySetResult();
                 _sourceCompletion = null;
                 _staleSourceActor = null;
@@ -1238,6 +1352,7 @@ internal sealed class ZLinkActorHandoffState(
                 _joinRequest = null;
                 _preparation = null;
                 _canonicalMaintenanceDrain = null;
+                _canonicalMaintenanceReplayReservations.Clear();
                 _sourceCompletion?.TrySetException(failure);
                 _sourceCompletion = null;
                 _staleSourceActor = null;

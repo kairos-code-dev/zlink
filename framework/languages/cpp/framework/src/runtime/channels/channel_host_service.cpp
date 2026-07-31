@@ -53,7 +53,9 @@ class channel_host_service_t::server_loop_t
                    service_provider_t &services,
                    serializer_registry_t &serializers,
                    const handler_registry_t &handlers,
-                   std::atomic_bool &stop) :
+                   std::atomic_bool &stop,
+                   std::shared_ptr<inbound_dispatch_budget_t> inbound_budget,
+                   std::shared_ptr<completion_admission_owner_t> completion_admission) :
         _runtime (detail::channel_runtime_t::from (bus)),
         _channel_name (std::move (channel_name)),
         _endpoints (std::move (endpoints)),
@@ -62,6 +64,8 @@ class channel_host_service_t::server_loop_t
         _serializers (&serializers),
         _handlers (&handlers),
         _stop (&stop),
+        _inbound_budget (std::move (inbound_budget)),
+        _completion_admission (std::move (completion_admission)),
         _context (std::make_unique<zlink::context_t> ()),
         _router (std::make_unique<zlink::router_socket_t> (*_context))
     {
@@ -88,6 +92,10 @@ class channel_host_service_t::server_loop_t
             drain_monitor_events ();
             apply_runtime_options ();
             flush_replies ();
+            if (!_inbound_budget->can_start_application_receive ()) {
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                continue;
+            }
             zlink::received_t received;
             const int rc = _router->recv (received, zlink::recv_flags_t::dontwait);
             if (rc == static_cast<int> (zlink::recv_result_t::no_data)) {
@@ -156,6 +164,7 @@ class channel_host_service_t::server_loop_t
         std::optional<zlink::routing_id_t> routing_id;
         std::uint64_t request_seq = 0;
         zlink::framework::runtime::messaging::message_parts_t parts;
+        completion_admission_owner_t::permit_t permit;
     };
 
     static zlink::message_t clone (const zlink::message_t &message) { return message; }
@@ -176,9 +185,25 @@ class channel_host_service_t::server_loop_t
         auto routing_id = received.routing_id ();
         const auto request_seq = received.request_seq ();
         auto request_parts = copy_parts (received.parts ());
-        std::lock_guard<std::mutex> lock (_workers_mutex);
-        _workers.emplace_back ([this, routing_id = std::move (routing_id), request_seq,
-                                request_parts = std::move (request_parts)] () mutable {
+        const auto payload_bytes =
+          request_parts.size () >= 2
+            ? static_cast<std::uint64_t> (request_parts[1].size ())
+            : 0;
+        _inbound_budget->received (payload_bytes);
+        try {
+          std::lock_guard<std::mutex> lock (_workers_mutex);
+          _workers.emplace_back ([this, routing_id = std::move (routing_id), request_seq,
+                                  payload_bytes,
+                                  request_parts = std::move (request_parts)] () mutable {
+            auto completion_permit =
+              request_seq ? _completion_admission->acquire ()
+                          : completion_admission_owner_t::permit_t{};
+            if (request_seq && !completion_permit) {
+                _inbound_budget->completed (payload_bytes, false);
+                return;
+            }
+            _inbound_budget->handler_started (payload_bytes);
+            try {
             trace_channel ("server dispatch channel=" + _channel_name
                            + " parts=" + std::to_string (request_parts.size ()));
             detail::channel_packet_dispatcher_t dispatcher (_runtime);
@@ -188,12 +213,24 @@ class channel_host_service_t::server_loop_t
               _channel_name, request_parts, scope.provider (), *_serializers, *_handlers);
             if (!reply || reply.value ().size () == 0 || !routing_id || !request_seq) {
                 trace_channel ("server dispatch no-reply channel=" + _channel_name);
+                _inbound_budget->completed (payload_bytes, true);
                 return;
             }
             std::lock_guard<std::mutex> reply_lock (_replies_mutex);
-            _replies.push_back (completed_reply_t{std::move (routing_id), *request_seq,
-                                                  std::move (reply.value ())});
-        });
+            _replies.push_back (completed_reply_t{
+              std::move (routing_id), *request_seq,
+              std::move (reply.value ()), std::move (completion_permit)});
+            _inbound_budget->completed (payload_bytes, true);
+            }
+            catch (...) {
+                _inbound_budget->completed (payload_bytes, true);
+            }
+          });
+        }
+        catch (...) {
+            _inbound_budget->completed (payload_bytes, false);
+            throw;
+        }
     }
 
     void reply (const completed_reply_t &completed)
@@ -297,14 +334,14 @@ class channel_host_service_t::server_loop_t
                 continue;
             }
             if (!event->remote_addr.empty ()) {
-                if (*kind == socket_event_kind_t::connected) {
+                if (*kind == detail::socket_event_kind_t::connected) {
                     _pending_handshake_remotes.insert (event->remote_addr);
-                } else if (*kind == socket_event_kind_t::connection_ready) {
+                } else if (*kind == detail::socket_event_kind_t::connection_ready) {
                     _pending_handshake_remotes.erase (event->remote_addr);
-                } else if (*kind == socket_event_kind_t::disconnected
+                } else if (*kind == detail::socket_event_kind_t::disconnected
                            && _pending_handshake_remotes.erase (event->remote_addr) != 0) {
                     _runtime.publish_socket_event (
-                      _channel_name, socket_event_kind_t::handshake_failed, event->local_addr,
+                      _channel_name, detail::socket_event_kind_t::handshake_failed, event->local_addr,
                       event->remote_addr);
                 }
             }
@@ -324,6 +361,8 @@ class channel_host_service_t::server_loop_t
     serializer_registry_t *_serializers;
     const handler_registry_t *_handlers;
     std::atomic_bool *_stop;
+    std::shared_ptr<inbound_dispatch_budget_t> _inbound_budget;
+    std::shared_ptr<completion_admission_owner_t> _completion_admission;
     std::unique_ptr<zlink::context_t> _context;
     std::unique_ptr<zlink::router_socket_t> _router;
     zlink::socket_monitor_t _monitor;
@@ -345,7 +384,8 @@ class channel_host_service_t::subscriber_loop_t
                        service_provider_t &services,
                        serializer_registry_t &serializers,
                        const handler_registry_t &handlers,
-                       std::atomic_bool &stop) :
+                       std::atomic_bool &stop,
+                       std::shared_ptr<inbound_dispatch_budget_t> inbound_budget) :
         _runtime (detail::channel_runtime_t::from (bus)),
         _channel_name (std::move (channel_name)),
         _bundle (&bundle),
@@ -354,6 +394,7 @@ class channel_host_service_t::subscriber_loop_t
         _serializers (&serializers),
         _handlers (&handlers),
         _stop (&stop),
+        _inbound_budget (std::move (inbound_budget)),
         _context (std::make_unique<zlink::context_t> ()),
         _subscriber (std::make_unique<zlink::sub_socket_t> (*_context))
     {
@@ -368,6 +409,10 @@ class channel_host_service_t::subscriber_loop_t
     {
         while (!_stop->load (std::memory_order_acquire)) {
             apply_runtime_connections ();
+            if (!_inbound_budget->can_start_application_receive ()) {
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                continue;
+            }
             zlink::topic_message_t message;
             const int rc = _subscriber->subscribe (message, zlink::recv_flags_t::dontwait);
             if (rc == static_cast<int> (zlink::recv_result_t::no_data)) {
@@ -430,14 +475,32 @@ class channel_host_service_t::subscriber_loop_t
     void dispatch_async (zlink::topic_message_t message)
     {
         auto parts = copy_parts (message.parts ());
-        std::lock_guard<std::mutex> lock (_workers_mutex);
-        _workers.emplace_back ([this, parts = std::move (parts)] () mutable {
+        const auto payload_bytes =
+          parts.size () >= 2
+            ? static_cast<std::uint64_t> (parts[1].size ())
+            : 0;
+        _inbound_budget->received (payload_bytes);
+        try {
+          std::lock_guard<std::mutex> lock (_workers_mutex);
+          _workers.emplace_back ([this, payload_bytes,
+                                  parts = std::move (parts)] () mutable {
+            _inbound_budget->handler_started (payload_bytes);
+            try {
             detail::channel_packet_dispatcher_t dispatcher (_runtime);
             auto scope = detail::service_scope_t::create (
               *_services, detail::service_scope_kind_t::handler_invocation);
             (void) dispatcher.dispatch_server_message (_channel_name, parts, scope.provider (),
                                                        *_serializers, *_handlers);
-        });
+            }
+            catch (...) {
+            }
+            _inbound_budget->completed (payload_bytes, true);
+          });
+        }
+        catch (...) {
+            _inbound_budget->completed (payload_bytes, false);
+            throw;
+        }
     }
 
     void join_workers ()
@@ -488,6 +551,7 @@ class channel_host_service_t::subscriber_loop_t
     serializer_registry_t *_serializers;
     const handler_registry_t *_handlers;
     std::atomic_bool *_stop;
+    std::shared_ptr<inbound_dispatch_budget_t> _inbound_budget;
     std::unique_ptr<zlink::context_t> _context;
     std::unique_ptr<zlink::sub_socket_t> _subscriber;
     std::set<std::string> _connected;
@@ -498,11 +562,21 @@ class channel_host_service_t::subscriber_loop_t
 channel_host_service_t::channel_host_service_t (message_bus_t bus,
                                                 std::vector<channel_snapshot_t> channels,
                                                 handler_registry_t &handlers,
-                                                serializer_registry_t &serializers) :
+                                                serializer_registry_t &serializers,
+                                                std::shared_ptr<inbound_dispatch_budget_t> inbound_budget,
+                                                std::shared_ptr<completion_admission_owner_t> completion_admission) :
     _bus (std::move (bus)),
     _channels (std::move (channels)),
     _handlers (&handlers),
-    _serializers (&serializers)
+    _serializers (&serializers),
+    _inbound_budget (
+      inbound_budget
+        ? std::move (inbound_budget)
+        : std::make_shared<inbound_dispatch_budget_t> (0)),
+    _completion_admission (
+      completion_admission
+        ? std::move (completion_admission)
+        : std::make_shared<completion_admission_owner_t> (65'536))
 {
 }
 
@@ -512,18 +586,19 @@ void channel_host_service_t::start (service_provider_t &services)
 {
     _services = &services;
     auto manager = detail::channel_runtime_manager_t::from (_bus);
-    const bool auto_connect_active =
+    const bool shared_client_server_runtime_active =
       detail::channel_runtime_t::from (_bus).auto_connect_active ();
     _stop.store (false, std::memory_order_release);
     for (const auto &channel : _channels) {
         if (!channel.server.enabled
-            || (channel.server.discovery && auto_connect_active)
+            || shared_client_server_runtime_active
             || channel.server.bind_endpoints.empty ()) {
             continue;
         }
         auto loop = std::make_unique<server_loop_t> (
           _bus, channel.name, channel.server.bind_endpoints, channel.server.routing_id,
-          channel.server, services, *_serializers, *_handlers, _stop);
+          channel.server, services, *_serializers, *_handlers, _stop,
+          _inbound_budget, _completion_admission);
         auto *raw = loop.get ();
         _loops.push_back (std::move (loop));
         _threads.emplace_back ([raw] { raw->run (); });
@@ -537,7 +612,7 @@ void channel_host_service_t::start (service_provider_t &services)
         auto &bundle = manager.get_or_create_subscriber_bundle (channel.name);
         auto loop = std::make_unique<subscriber_loop_t> (
           _bus, channel.name, bundle, channel.subscriber, services, *_serializers, *_handlers,
-          _stop);
+          _stop, _inbound_budget);
         auto *raw = loop.get ();
         _subscriber_loops.push_back (std::move (loop));
         _threads.emplace_back ([raw] { raw->run (); });

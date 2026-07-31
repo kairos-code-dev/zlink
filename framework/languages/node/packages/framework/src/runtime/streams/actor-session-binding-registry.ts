@@ -21,6 +21,12 @@ export interface ZLinkActorSessionRoute<
   readonly bindingToken: string;
   acceptedHighWater: bigint;
   sealId?: string;
+  authorityFence?: ZLinkActorSessionAuthorityFence;
+}
+
+export interface ZLinkActorSessionAuthorityFence {
+  readonly authorityOwnerGeneration: bigint;
+  readonly ownerLeaseGeneration: bigint;
 }
 
 export class ZLinkActorSessionBindingRegistry<
@@ -29,12 +35,18 @@ export class ZLinkActorSessionBindingRegistry<
 > {
   private readonly routes = new Map<string, ZLinkActorSessionRoute<TContext, TActor>>();
 
-  bind(context: TContext, actor: TActor, bindingToken: string): void {
+  bind(
+    context: TContext,
+    actor: TActor,
+    bindingToken: string,
+    authorityFence?: ZLinkActorSessionAuthorityFence
+  ): void {
     this.routes.set(actor.actorId, {
       context,
       actor,
       bindingToken,
-      acceptedHighWater: actorAcceptedHighWater(actor)
+      acceptedHighWater: actorAcceptedHighWater(actor),
+      authorityFence
     });
     context.bindLocal(actor, bindingToken);
   }
@@ -43,7 +55,8 @@ export class ZLinkActorSessionBindingRegistry<
     previous: ZLinkActorSessionRoute<TContext, TActor>,
     context: TContext,
     actor: TActor,
-    bindingToken: string
+    bindingToken: string,
+    authorityFence?: ZLinkActorSessionAuthorityFence
   ): void {
     const current = this.routes.get(actor.actorId);
     if (current !== previous) {
@@ -71,7 +84,8 @@ export class ZLinkActorSessionBindingRegistry<
       actor,
       bindingToken,
       acceptedHighWater: previous.acceptedHighWater,
-      sealId: previous.sealId
+      sealId: previous.sealId,
+      authorityFence: authorityFence ?? previous.authorityFence
     });
   }
 
@@ -182,6 +196,11 @@ export class ZLinkActorSessionBindingRegistry<
     return true;
   }
 
+  updateAuthorityFence(actorId: string, authorityFence: ZLinkActorSessionAuthorityFence): void {
+    const route = this.requireRoute(actorId);
+    route.authorityFence = authorityFence;
+  }
+
   validateSeal(actorId: string, sealId: string, acceptedHighWater: bigint): boolean {
     const route = this.routes.get(actorId);
     return route !== undefined
@@ -202,16 +221,17 @@ function routeMatchesFence<
   TActor extends ZLinkActorSessionBindingActor
 >(route: ZLinkActorSessionRoute<TContext, TActor>, expected: ZLinkActorSessionRouteFence): boolean {
   const ref = (route.actor as TActor & { readonly ref?: unknown }).ref as {
+    readonly objectGeneration?: bigint;
     readonly generation?: bigint;
     readonly ownershipGeneration?: bigint;
     readonly bindingGeneration?: bigint;
     readonly ownerLeaseGeneration?: bigint;
   } | undefined;
   return ref !== undefined
-    && BigInt(ref.generation ?? -1n) === expected.objectGeneration
-    && ref.ownershipGeneration === expected.authorityOwnerGeneration
+    && BigInt(ref.objectGeneration ?? ref.generation ?? -1n) === expected.objectGeneration
     && ref.bindingGeneration === expected.bindingGeneration
-    && ref.ownerLeaseGeneration === expected.ownerLeaseGeneration;
+    && route.authorityFence?.authorityOwnerGeneration === expected.authorityOwnerGeneration
+    && route.authorityFence.ownerLeaseGeneration === expected.ownerLeaseGeneration;
 }
 
 function actorAcceptedHighWater<TActor extends ZLinkActorSessionBindingActor>(actor: TActor): bigint {

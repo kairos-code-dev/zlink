@@ -304,7 +304,7 @@ export class ZLinkEntrySpotActivation {
 
   notifyJoinActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
-    return this.serial.execute(() => this.entrySpot.onJoinedActor(actor));
+    return this.serial.execute(() => notifyEntryActorJoined(this.entrySpot, actor));
   }
 
   /**
@@ -363,7 +363,7 @@ export class ZLinkEntrySpotActivation {
 
   private async commitEntryActorTransaction(actor: ZLinkActor): Promise<void> {
     const notifyJoined = () => this.serial.execute(() =>
-      this.entrySpot.onJoinedActor(actor));
+      notifyEntryActorJoined(this.entrySpot, actor));
     const runtime = this.options.entryActorRuntime;
     if (runtime === undefined) {
       await notifyJoined();
@@ -492,6 +492,15 @@ export class ZLinkEntrySpotActivation {
   ): void {
     this.options.nativeNode.replyActorNoBind(info, parts, result);
   }
+}
+
+function notifyEntryActorJoined(entrySpot: ZLinkEntrySpot, actor: ZLinkActor): Promise<void> {
+  const callback = (entrySpot as unknown as {
+    readonly onJoinedActor?: (joinedActor: ZLinkActor) => Promise<void>;
+  }).onJoinedActor;
+  return callback === undefined
+    ? Promise.resolve()
+    : callback.call(entrySpot, actor);
 }
 
 function toContextGeneration(generation: bigint): number {

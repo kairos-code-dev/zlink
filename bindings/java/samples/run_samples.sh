@@ -16,18 +16,6 @@ TASKS=(
   ":samples:runStreamRecv"
   ":samples:runStreamPacketCallback"
   ":samples:runMonitorRecv"
-  ":samples:runSpotRecv"
-  ":samples:runSpotRequestAsync"
-  ":samples:runSpotChannelExample"
-  ":samples:runSpotPubSubExample"
-  ":samples:runSpotRpcExample"
-  ":samples:runSpotTimerExample"
-  ":samples:runActorRoomServer"
-  ":samples:runActorGatewayRelay"
-  ":samples:runActorSinglePlayerQueue"
-  ":samples:runActorQueueExample"
-  ":samples:runActorRoomExample"
-  ":samples:runActorSequentialExample"
 )
 
 failures=0

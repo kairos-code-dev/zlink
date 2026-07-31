@@ -28,6 +28,30 @@ public final class BingoRoomGame {
         }
     }
 
+    public static BingoRoomGame restore(
+        String roomId,
+        BingoRoomModels.BingoRoomSettings settings,
+        Messages.BingoRoomState state) {
+        BingoRoomGame game = new BingoRoomGame(roomId, settings);
+        game.status = state.getStatus();
+        game.drawnNumbers.addAll(state.getDrawnNumbersList());
+        game.drawDeck.removeAll(state.getDrawnNumbersList());
+        game.winners.addAll(state.getWinnersList());
+        for (Messages.BingoPlayerState player : state.getPlayersList()) {
+            BingoCard card = player.getCardCount() == 0
+                ? null
+                : BingoCard.restore(player.getCardList(), player.getMarksList());
+            game.players.add(new BingoRoomModels.RoomPlayer(
+                player.getActorId(),
+                player.getDisplayName(),
+                player.getSeat(),
+                card,
+                player.getWins(),
+                player.getLosses()));
+        }
+        return game;
+    }
+
     public Change join(String actorId, String displayName, int wins, int losses) {
         BingoRoomModels.RoomPlayer existing = player(actorId);
         if (existing != null) {

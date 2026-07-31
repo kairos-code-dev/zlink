@@ -14,6 +14,7 @@ BIN_DIR="$BUILD_DIR"
 cmake -S "$CPP_ROOT" -B "$BUILD_DIR" -DZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=ON >/dev/null
 cmake --build "$BUILD_DIR" --target \
   sample_cpp_framework_bingo_api \
+  sample_cpp_framework_bingo_matchmaking \
   sample_cpp_framework_bingo_play \
   sample_cpp_framework_bingo_session \
   sample_cpp_framework_bingo_client \
@@ -26,12 +27,13 @@ if [[ ! -x "$BIN_DIR/sample_cpp_framework_bingo_api" && -x "$BIN_DIR/linux-ninja
 fi
 
 API_BIN="$BIN_DIR/sample_cpp_framework_bingo_api"
+MATCHMAKING_BIN="$BIN_DIR/sample_cpp_framework_bingo_matchmaking"
 PLAY_BIN="$BIN_DIR/sample_cpp_framework_bingo_play"
 SESSION_BIN="$BIN_DIR/sample_cpp_framework_bingo_session"
 CLIENT_BIN="$BIN_DIR/sample_cpp_framework_bingo_client"
 CTEST_BIN="${CTEST_BIN:-ctest}"
 
-for binary in "$API_BIN" "$PLAY_BIN" "$SESSION_BIN" "$CLIENT_BIN"; do
+for binary in "$API_BIN" "$MATCHMAKING_BIN" "$PLAY_BIN" "$SESSION_BIN" "$CLIENT_BIN"; do
   if [[ ! -x "$binary" ]]; then
     echo "Missing executable: $binary" >&2
     echo "CMake build did not produce the expected Bingo sample executable." >&2
@@ -97,6 +99,11 @@ PLAY_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[14]}"
 API_B_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[15]}"
 PLAY_A_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[0]}"
 PLAY_B_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[1]}"
+API_A_PLAY_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[16]}"
+API_B_PLAY_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[17]}"
+API_A_MATCHMAKING_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[18]}"
+API_B_MATCHMAKING_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[19]}"
+MATCHMAKING_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[20]}"
 
 endpoint_host() {
   local endpoint="$1"
@@ -225,7 +232,10 @@ write_role_config() {
     "$PLAY_B_CHANNEL_ENDPOINT" "$PLAY_A_ROUTE_ENDPOINT" "$PLAY_B_ROUTE_ENDPOINT" \
     "$PLAY_A_SPOT_ENDPOINT" "$PLAY_B_SPOT_ENDPOINT" "$PLAY_A_SPOT_ROUTER_ENDPOINT" \
     "$PLAY_B_SPOT_ROUTER_ENDPOINT" "$SESSION_A_STREAM_ENDPOINT" \
-    "$SESSION_B_STREAM_ENDPOINT" "$BINGO_REDIS_ENDPOINT" "$BINGO_REDIS_KEY_PREFIX" <<'CONFIG_PY'
+    "$SESSION_B_STREAM_ENDPOINT" "$API_A_PLAY_ROUTE_ENDPOINT" \
+    "$API_B_PLAY_ROUTE_ENDPOINT" "$API_A_MATCHMAKING_ROUTE_ENDPOINT" \
+    "$API_B_MATCHMAKING_ROUTE_ENDPOINT" "$MATCHMAKING_ROUTE_ENDPOINT" \
+    "$BINGO_REDIS_ENDPOINT" "$BINGO_REDIS_KEY_PREFIX" <<'CONFIG_PY'
 import json
 import os
 import stat
@@ -235,7 +245,9 @@ import sys
  session_router_endpoint, flow_log_dir, api_a_channel, api_b_channel,
  play_a_channel, play_b_channel, play_a_route, play_b_route, play_a_spot,
  play_b_spot, play_a_spot_router, play_b_spot_router, session_a_stream,
- session_b_stream, redis_endpoint, redis_key_prefix) = sys.argv[1:]
+ session_b_stream, api_a_play_route, api_b_play_route,
+ api_a_matchmaking_route, api_b_matchmaking_route, matchmaking_route,
+ redis_endpoint, redis_key_prefix) = sys.argv[1:]
 
 document = {
     "sample": {
@@ -253,6 +265,11 @@ document = {
             "playBChannelEndpoint": play_b_channel,
             "playARouteEndpoint": play_a_route,
             "playBRouteEndpoint": play_b_route,
+            "apiAPlayRouteEndpoint": api_a_play_route,
+            "apiBPlayRouteEndpoint": api_b_play_route,
+            "apiAMatchmakingRouteEndpoint": api_a_matchmaking_route,
+            "apiBMatchmakingRouteEndpoint": api_b_matchmaking_route,
+            "matchmakingRouteEndpoint": matchmaking_route,
             "playASpotEndpoint": play_a_spot,
             "playBSpotEndpoint": play_b_spot,
             "playASpotRouterEndpoint": play_a_spot_router,
@@ -278,6 +295,7 @@ write_role_config play-a a a a "$SESSION_A_STREAM_ENDPOINT" "$SESSION_A_SPOT_END
 write_role_config play-b a b a "$SESSION_A_STREAM_ENDPOINT" "$SESSION_A_SPOT_ENDPOINT" "$SESSION_A_ROUTER_ENDPOINT"
 write_role_config api-a a a a "$SESSION_A_STREAM_ENDPOINT" "$SESSION_A_SPOT_ENDPOINT" "$SESSION_A_ROUTER_ENDPOINT"
 write_role_config api-b b a a "$SESSION_A_STREAM_ENDPOINT" "$SESSION_A_SPOT_ENDPOINT" "$SESSION_A_ROUTER_ENDPOINT"
+write_role_config matchmaking a a a "$SESSION_A_STREAM_ENDPOINT" "$SESSION_A_SPOT_ENDPOINT" "$SESSION_A_ROUTER_ENDPOINT"
 write_role_config session-a a a a "$SESSION_A_STREAM_ENDPOINT" "$SESSION_A_SPOT_ENDPOINT" "$SESSION_A_ROUTER_ENDPOINT"
 write_role_config session-b a a b "$SESSION_B_STREAM_ENDPOINT" "$SESSION_B_SPOT_ENDPOINT" "$SESSION_B_ROUTER_ENDPOINT"
 
@@ -291,19 +309,21 @@ start_server() {
 
 start_server play-a "$PLAY_BIN" --config="$CONFIG_DIR/play-a.json"
 start_server play-b "$PLAY_BIN" --config="$CONFIG_DIR/play-b.json"
+start_server matchmaking "$MATCHMAKING_BIN" --config="$CONFIG_DIR/matchmaking.json"
 start_server api-a "$API_BIN" --config="$CONFIG_DIR/api-a.json"
 start_server api-b "$API_BIN" --config="$CONFIG_DIR/api-b.json"
 start_server session-a "$SESSION_BIN" --config="$CONFIG_DIR/session-a.json"
 start_server session-b "$SESSION_BIN" --config="$CONFIG_DIR/session-b.json"
 
-wait_port play-a "$PLAY_A_ROUTE_ENDPOINT"
-wait_port play-a-route "$PLAY_A_ROUTE_ENDPOINT"
 wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER_ENDPOINT"
-wait_port play-b "$PLAY_B_ROUTE_ENDPOINT"
-wait_port play-b-route "$PLAY_B_ROUTE_ENDPOINT"
 wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER_ENDPOINT"
+wait_port matchmaking "$MATCHMAKING_ROUTE_ENDPOINT"
 wait_port api-a "$API_A_CHANNEL_ENDPOINT"
 wait_port api-b "$API_B_CHANNEL_ENDPOINT"
+wait_port api-a-play-route "$API_A_PLAY_ROUTE_ENDPOINT"
+wait_port api-b-play-route "$API_B_PLAY_ROUTE_ENDPOINT"
+wait_port api-a-matchmaking-route "$API_A_MATCHMAKING_ROUTE_ENDPOINT"
+wait_port api-b-matchmaking-route "$API_B_MATCHMAKING_ROUTE_ENDPOINT"
 wait_port session-a-router "$SESSION_A_ROUTER_ENDPOINT"
 wait_port session-a-stream "$SESSION_A_STREAM_ENDPOINT"
 wait_port session-b-router "$SESSION_B_ROUTER_ENDPOINT"
@@ -322,6 +342,8 @@ wait_port session-b-stream "$SESSION_B_STREAM_ENDPOINT"
   cat "$LOG_DIR/play-a.log" >&2
   echo "=== bingo play-b ===" >&2
   cat "$LOG_DIR/play-b.log" >&2
+  echo "=== bingo matchmaking ===" >&2
+  cat "$LOG_DIR/matchmaking.log" >&2
   echo "=== bingo api-a ===" >&2
   cat "$LOG_DIR/api-a.log" >&2
   echo "=== bingo api-b ===" >&2

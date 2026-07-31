@@ -50,3 +50,102 @@ test('router reply rejects unsupported non-none flags', () => {
     routerSocket.close();
     ctx.close();
 });
+test('completion control progresses without consuming application receive', async () => {
+    const ctx = zlink.createContext();
+    const server = zlink.createRouterSocket(ctx);
+    const client = zlink.createRouterSocket(ctx);
+    const serverRid = zlink.RoutingId.from(Buffer.from('control-server'));
+    const clientRid = zlink.RoutingId.from(Buffer.from('control-client'));
+    server.setRoutingId(serverRid);
+    client.setRoutingId(clientRid);
+    client.options.setConnectRoutingId(serverRid);
+    let delivered = null;
+    let replacedHandlerCalled = false;
+    server.setCompletionControlHandler(() => {
+        replacedHandlerCalled = true;
+    });
+    server.setCompletionControlHandler((sourceRoutingId, parts) => {
+        delivered = {
+            source: sourceRoutingId.toBytes().toString(),
+            values: parts.map((part) => part.data().toString())
+        };
+        for (const part of parts)
+            part.close();
+    });
+    const poller = zlink.createPoller();
+    const events = zlink.createPollEvents(1);
+    poller.add(server, [zlink.PollEventFlag.PollCompletion], 1);
+    server.bind('inproc://node-completion-control');
+    client.connect('inproc://node-completion-control');
+    client.send(serverRid).message('application-unread').submit();
+    const first = zlink.Message.from('opaque-command');
+    const second = zlink.Message.from('generation-1');
+    assert.equal(client.trySendCompletionControl(serverRid, [first, second]), true);
+    assert.equal(first.data().toString(), 'opaque-command');
+    assert.equal(second.data().toString(), 'generation-1');
+    assert.equal(poller.wait(events, 2000), 1);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(delivered, {
+        source: 'control-client',
+        values: ['opaque-command', 'generation-1']
+    });
+    assert.equal(replacedHandlerCalled, false);
+    const application = new zlink.Received();
+    assert.equal(server.recv(application), true);
+    assert.equal(application.parts[0].data().toString(), 'application-unread');
+    first.close();
+    second.close();
+    application.close();
+    poller.remove(server);
+    events.close();
+    poller.close();
+    client.close();
+    server.close();
+    ctx.close();
+});
+test('completion control handlers are not limited to eight sockets or replacements', async () => {
+    const ctx = zlink.createContext();
+    const routers = Array.from({ length: 12 }, () => zlink.createRouterSocket(ctx));
+    for (const router of routers) {
+        for (let replacement = 0; replacement < 12; replacement += 1) {
+            router.setCompletionControlHandler(() => { });
+        }
+    }
+    for (const router of routers)
+        router.close();
+    ctx.close();
+    await new Promise((resolve) => setImmediate(resolve));
+});
+test('socket close drains completion control payloads already accepted by Core', async () => {
+    const ctx = zlink.createContext();
+    const server = zlink.createRouterSocket(ctx);
+    const client = zlink.createRouterSocket(ctx);
+    const serverRid = zlink.RoutingId.from(Buffer.from('close-drain-server'));
+    const clientRid = zlink.RoutingId.from(Buffer.from('close-drain-client'));
+    server.setRoutingId(serverRid);
+    client.setRoutingId(clientRid);
+    client.options.setConnectRoutingId(serverRid);
+    let delivered = false;
+    server.setCompletionControlHandler((_sourceRoutingId, parts) => {
+        delivered = true;
+        for (const part of parts)
+            part.close();
+    });
+    const poller = zlink.createPoller();
+    const events = zlink.createPollEvents(1);
+    poller.add(server, [zlink.PollEventFlag.PollCompletion], 1);
+    server.bind('inproc://node-completion-control-close-drain');
+    client.connect('inproc://node-completion-control-close-drain');
+    const payload = zlink.Message.from('accepted-before-close');
+    assert.equal(client.trySendCompletionControl(serverRid, [payload]), true);
+    assert.equal(poller.wait(events, 2000), 1);
+    poller.remove(server);
+    server.close();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(delivered, true);
+    payload.close();
+    events.close();
+    poller.close();
+    client.close();
+    ctx.close();
+});

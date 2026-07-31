@@ -91,8 +91,9 @@ public final class CourierSession implements ZLinkSession {
 
     private CompletionStage<ActorRef> findOrEnsureActor(
         String courierId) {
-        return actors.getOrCreate(courierId, SampleNames.CourierActorType,
-                new Messages.EnsureCourierActorReq(courierId))
+        return actors.getOrCreate(courierId, SampleNames.CourierActorType)
+            .request(new Messages.EnsureCourierActorReq(courierId))
+            .submit()
             .thenApply(result -> {
                 if (result instanceof ZLinkActorCreateResult.Existing existing) {
                     return existing.actor();

@@ -1,16 +1,8 @@
-import { Module } from '@nestjs/common';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
 import { SampleNames } from '../Configuration/sample-names';
 import { createSupportChatLocationStore, supportChatLocationOptions } from '../Configuration/location-store';
 import {
-  AuthenticateSupportChatSessionHandler,
-  CloseConversationSessionHandler,
-  JoinConversationSessionHandler,
-  OpenConversationSessionHandler,
-  SendChatMessageSessionHandler,
-  SetAgentAvailableSessionHandler,
-  SetTypingSessionHandler,
   SupportChatSessionFactory,
   SupportChatSessionRouter
 } from './Sessions/supportchat-session';
@@ -23,7 +15,7 @@ function createSupportChatSessionModule() {
     'sessionSpotEndpoint', 'sessionStreamEndpoint', 'redisEndpoint', 'redisKeyPrefix', 'logDir'
   ]);
 
-  Module({
+  zlinkModule(__dirname, {
     imports: [
       configuration,
       ZLinkModule.forRootFactory({
@@ -40,10 +32,10 @@ function createSupportChatSessionModule() {
           supportChatLocationOptions(builder.configureLocations());
           const mesh = builder.addRouteMesh(SampleNames.conversationSpotMesh)
             .listen(config.sessionSpotEndpoint).setRoutingIdPrefix('support-session');
-          mesh.channelName(SampleNames.apiChannel).setWeight(0);
-          mesh.channelName(SampleNames.supportChannel).setWeight(0);
-          mesh.channelName(SampleNames.conversationSpotMesh).setWeight(0);
+          mesh.objects().client();
+          builder.addClientServerChannel(SampleNames.apiChannel).client();
           return builder.addStreamNode(SampleNames.sessionStreamNode)
+              .enableActorDispatch()
               .bind(config.sessionStreamEndpoint)
               .registerSession(SupportChatSessionFactory as never)
             .build();
@@ -57,13 +49,6 @@ function createSupportChatSessionModule() {
         useFactory: (config: SupportChatServerConfig) => createSupportChatLocationStore(config)
       },
       SupportChatSessionRouter,
-      AuthenticateSupportChatSessionHandler,
-      OpenConversationSessionHandler,
-      SetAgentAvailableSessionHandler,
-      JoinConversationSessionHandler,
-      SendChatMessageSessionHandler,
-      SetTypingSessionHandler,
-      CloseConversationSessionHandler,
       SupportChatSessionFactory
     ]
   })(SupportChatSessionModule);

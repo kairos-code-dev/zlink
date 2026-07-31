@@ -38,7 +38,10 @@ export async function runSample(ctx) {
     'redisEndpoint', 'redisKeyPrefix', 'peerPlaySpotEndpoint', 'instanceName',
     'logDir'
   ];
-  const apiKeys = ['apiHttpEndpoint', 'apiEndpoints', 'apiIndex', 'playSpotEndpoints', 'logDir'];
+  const apiKeys = [
+    'apiHttpEndpoint', 'apiEndpoints', 'apiIndex', 'playSpotEndpoints', 'playEndpoints',
+    'redisEndpoint', 'redisKeyPrefix', 'logDir'
+  ];
   const configs = {
     playA: roleConfig('play-a', playA, playKeys),
     playB: roleConfig('play-b', playB, playKeys),

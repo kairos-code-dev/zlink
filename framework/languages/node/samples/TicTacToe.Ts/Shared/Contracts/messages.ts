@@ -3,7 +3,6 @@ const PacketNames = Object.freeze({
   authenticateRes: 'AuthenticateRes',
   authenticatePlayerReq: 'AuthenticatePlayerReq',
   authenticatePlayerRes: 'AuthenticatePlayerRes',
-  createGameReq: 'CreateGameReq',
   createGameHttpReq: 'CreateGameHttpReq',
   createGameHttpRes: 'CreateGameHttpRes',
   joinGameReq: 'JoinGameReq',
@@ -47,8 +46,9 @@ export interface AuthenticatePlayerRes {
   player: PlayerInfo;
 }
 
-export interface CreateGameReq {
+export interface TicTacToeGameCreateReq {
   gameName: string;
+  requiredLevel: number;
 }
 
 export class CreateGameHttpReq {
@@ -61,27 +61,19 @@ export class CreateGameHttpReq {
   }
 }
 
-export class CreateGameReq implements CreateGameReq {
+export class TicTacToeGameCreateReq implements TicTacToeGameCreateReq {
   gameName: string;
-
-  constructor(gameName: string) {
-    this.gameName = gameName;
-  }
-}
-
-export interface CreateGameRes {
-  roomId: string;
-  gameName: string;
-  ownerPlayEndpoint: string;
-  playEndpoints: string[];
-  playNodes: PlayNodeInfo[];
   requiredLevel: number;
+
+  constructor(gameName: string, requiredLevel: number) {
+    this.gameName = gameName;
+    this.requiredLevel = requiredLevel;
+  }
 }
 
 export interface CreateGameHttpRes {
   roomId: string;
   gameName: string;
-  ownerPlayEndpoint: string;
   playEndpoints: string[];
   playNodes: PlayNodeInfo[];
   requiredLevel: number;
@@ -246,34 +238,8 @@ function authenticatePlayerRes(accessToken: string): AuthenticatePlayerRes {
   };
 }
 
-function createGameReq(gameName: string): CreateGameReq {
-  return new CreateGameReq(gameName);
-}
-
 function createGameHttpReq(gameName?: string): CreateGameHttpReq {
   return new CreateGameHttpReq(gameName);
-}
-
-function createGameRes(
-  roomId: string,
-  gameName: string,
-  ownerPlayEndpoint: string,
-  playEndpoints: string[],
-  playNodes: PlayNodeInfo[],
-  requiredLevel: number
-): CreateGameRes {
-  return { roomId, gameName, ownerPlayEndpoint, playEndpoints, playNodes, requiredLevel };
-}
-
-function createGameHttpRes(response: CreateGameRes): CreateGameHttpRes {
-  return {
-    roomId: response.roomId,
-    gameName: response.gameName,
-    ownerPlayEndpoint: response.ownerPlayEndpoint,
-    playEndpoints: response.playEndpoints,
-    playNodes: response.playNodes,
-    requiredLevel: response.requiredLevel
-  };
 }
 
 function authenticateRes(player: PlayerInfo): AuthenticateRes {
@@ -340,10 +306,7 @@ export {
   authenticatePlayerRes,
   authenticateReq,
   authenticateRes,
-  createGameRes,
-  createGameHttpRes,
   createGameHttpReq,
-  createGameReq,
   gameStateNotify,
   joinGameReq,
   joinGameRes,

@@ -24,8 +24,8 @@ void add_redis_location_store (fw::zlink_framework_options_t &framework,
                                const e2e::redis_configuration_t &redis)
 {
     framework.add_location_store (
-      std::make_shared<fw::locations::redis::redis_location_store_t> (
-        fw::locations::redis::redis_location_options_t{
+      std::make_shared<fw::redis::redis_location_store_t> (
+        fw::redis::redis_location_options_t{
           .connection_string = redis.endpoint, .key_prefix = redis.key_prefix}));
     auto &locations = framework.configure_locations ();
     locations.heartbeat_interval = std::chrono::seconds (1);

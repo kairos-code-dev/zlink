@@ -72,6 +72,26 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
 
     long connectPeer(String endpoint, RoutingId expectedRoutingId);
 
+    default long connectPeer(
+        String endpoint,
+        RoutingId expectedRoutingId,
+        long expectedLifecycleGeneration,
+        String expectedSecurityIdentity) {
+        return connectPeer(endpoint, expectedRoutingId);
+    }
+
+    default void observePeerAdmissionExpectation(
+        RoutingId peerRid,
+        String endpoint,
+        long lifecycleGeneration,
+        String securityIdentity) {
+        // Optional for alternate backends without descriptor admission.
+    }
+
+    default void forgetPeerAdmissionExpectation(RoutingId peerRid) {
+        // Optional for alternate backends without descriptor admission.
+    }
+
     default void removePeerConnection(long connectionIntentId) {
         // Optional for alternate and test backends that do not retain connection intents.
     }
@@ -165,6 +185,28 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
                 "Remote relocation control is unavailable"));
     }
 
+    /**
+     * Installs the canonical service-wire command 30-35/40-41 endpoint.
+     * These infrastructure records are one-way state-machine transitions and
+     * do not use the legacy relocation request/reply wrapper.
+     */
+    default void setCanonicalRelocationControlHandler(
+        CanonicalRelocationControlHandler handler) {
+        // Alternate backends may not yet support canonical relocation control.
+    }
+
+    /**
+     * Accepts one canonical relocation control record for infrastructure
+     * delivery to the exact admitted peer.
+     */
+    default CompletionStage<Void> sendCanonicalRelocationControl(
+        RoutingId targetNodeRid,
+        byte[] command) {
+        return java.util.concurrent.CompletableFuture.failedFuture(
+            new UnsupportedOperationException(
+                "Canonical relocation control is unavailable"));
+    }
+
     default void setRelocationReplyRelayHandler(
         RelocationReplyRelayHandler handler) {
         // Alternate backends may not support command 33/46 dispatch.
@@ -202,6 +244,7 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
             new UnsupportedOperationException(
                 "Session relocation routing is unavailable"));
     }
+
 
     default CompletionStage<ActorCreateResponse> requestActorCreate(
         RoutingId targetNodeRid,
@@ -248,9 +291,51 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
         // Alternate backends may materialize Instance Spot elsewhere.
     }
 
+    default void registerInstanceSpotType(String stableType) {
+        // Alternate backends may materialize Instance Spot elsewhere.
+    }
+
+    default void registerInstanceSpotType(
+        String stableType,
+        InstanceSpotActivationHandler handler) {
+        registerInstanceSpotType(stableType);
+    }
+
     default void forgetInstanceIntent(
         ZLinkServiceM6BWireCodec.InstanceRouteFence route) {
         // Alternate backends may materialize Instance Spot elsewhere.
+    }
+
+    @FunctionalInterface
+    interface InstanceSpotActivationHandler {
+        CompletionStage<Void> activate(
+            String stableType,
+            ZLinkServiceM6BWireCodec.InstanceRouteFence route,
+            ZLinkBackendSpot backendSpot);
+    }
+
+    default CompletionStage<Void> submitInstanceSpotSend(
+        ZLinkServiceM6BWireCodec.InstanceRouteFence route,
+        String stableType,
+        String sourceSpotId,
+        byte[] metadata,
+        List<systems.zlink.contracts.messaging.Message> parts) {
+        return java.util.concurrent.CompletableFuture.failedFuture(
+            new UnsupportedOperationException(
+                "Remote Instance Spot send is unavailable"));
+    }
+
+    default CompletionStage<List<systems.zlink.contracts.messaging.Message>>
+        requestInstanceSpot(
+        ZLinkServiceM6BWireCodec.InstanceRouteFence route,
+        String stableType,
+        String sourceSpotId,
+            byte[] metadata,
+            List<systems.zlink.contracts.messaging.Message> parts,
+            Duration timeout) {
+        return java.util.concurrent.CompletableFuture.failedFuture(
+            new UnsupportedOperationException(
+                "Remote Instance Spot request is unavailable"));
     }
 
     interface UserSpotOperationHandler {
@@ -297,6 +382,13 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
     @FunctionalInterface
     interface RelocationControlHandler {
         CompletionStage<byte[]> handle(
+            RoutingId sourceNodeRid,
+            byte[] command);
+    }
+
+    @FunctionalInterface
+    interface CanonicalRelocationControlHandler {
+        CompletionStage<Void> handle(
             RoutingId sourceNodeRid,
             byte[] command);
     }

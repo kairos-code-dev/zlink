@@ -6,6 +6,7 @@ using Zlink.Framework.Runtime.Dispatch;
 
 namespace Zlink.Framework.UnitTests;
 
+[Collection(DiagnosticsIsolationCollection.Name)]
 public sealed class ExactMessageFlowRuntimeTests
 {
     [Fact]

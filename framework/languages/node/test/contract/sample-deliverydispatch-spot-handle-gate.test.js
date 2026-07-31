@@ -23,10 +23,7 @@ test('DeliveryDispatch uses public Actor APIs without internal Spot handle resol
   const names = read('samples/DeliveryDispatch.Ts/Shared/Configuration/sample-names.ts');
   assert.doesNotMatch(names, /courierActorNodeRouteChannel/);
   const handlers = read('samples/DeliveryDispatch.Ts/Server/Courier/offer-delivery-handler.ts');
-  assert.match(
-    handlers,
-    /zlinkEntrySpotPacketHandler\(\{ entrySpot: \(\) => CourierEntrySpot, packetName: PacketNames\.ensureCourierActor \}\)/
-  );
+  assert.doesNotMatch(handlers, /ensureCourierActor|nodeRid|ActorRef/);
   assert.doesNotMatch(handlers, /joinEntrySpot/);
 
   for (const source of [

@@ -22,8 +22,8 @@ inline void add_redis_location_store (zlink::framework::zlink_framework_options_
     if (options.redis_key_prefix.empty ()) {
         throw std::runtime_error ("Redis key prefix is required");
     }
-    auto redis_store = std::make_shared<zlink::framework::locations::redis::redis_location_store_t> (
-      zlink::framework::locations::redis::redis_location_options_t{
+    auto redis_store = std::make_shared<zlink::framework::redis::redis_location_store_t> (
+      zlink::framework::redis::redis_location_options_t{
         .connection_string = options.redis_endpoint, .key_prefix = options.redis_key_prefix});
     framework.add_location_store (std::move (redis_store));
     auto &locations = framework.configure_locations ();

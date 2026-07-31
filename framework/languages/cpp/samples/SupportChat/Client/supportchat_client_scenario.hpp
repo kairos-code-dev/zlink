@@ -95,15 +95,17 @@ class supportchat_client_scenario_t
 
         auto opened = request<open_conversation_res_t> (
           customer, open_conversation_req_t{"checkout payment failed"}, "open conversation failed");
-        expect (opened.state.agent_actor_id == std::optional<std::string>{"agent-1"},
-                "conversation was not assigned");
+        expect (opened.state.status == conversation_status_t::waiting_for_agent,
+                "new conversation must remain waiting until the agent joins");
         expect (assigned.get ().conversation_id == opened.conversation_id,
                 "assignment notification mismatch");
 
         auto agent_joined = request_in_conversation<join_conversation_res_t> (
           agent, opened.conversation_id, join_conversation_req_t{}, "agent join failed");
-        expect (agent_joined.state.status == conversation_status_t::active,
-                "agent join did not activate conversation");
+        expect (agent_joined.scheduled,
+                "agent join must report a deferred membership operation");
+        expect (agent_joined.state.status == conversation_status_t::waiting_for_agent,
+                "scheduled agent join must return the pre-commit state");
         expect (joined.get ().actor_id == "agent-1", "participant join notification mismatch");
 
         const auto send_started_at = now_unix_ms ();
@@ -155,8 +157,10 @@ class supportchat_client_scenario_t
         auto second_agent_joined = request_in_conversation<join_conversation_res_t> (
           agent, second_opened.conversation_id, join_conversation_req_t{},
           "agent join of second conversation failed");
-        expect (second_agent_joined.state.status == conversation_status_t::active,
-                "second conversation was not activated");
+        expect (second_agent_joined.scheduled,
+                "second agent join must report a deferred membership operation");
+        expect (second_agent_joined.state.status == conversation_status_t::waiting_for_agent,
+                "second scheduled join must return the pre-commit state");
         expect (second_joined.get ().actor_id == "agent-1",
                 "second participant join notification mismatch");
 
@@ -171,6 +175,8 @@ class supportchat_client_scenario_t
         /* 방마다 MessageSeq와 push가 독립인지 확인한다(§17-17). */
         auto first_state = request_in_conversation<join_conversation_res_t> (
           agent, opened.conversation_id, join_conversation_req_t{}, "first conversation re-join failed");
+        expect (!first_state.scheduled,
+                "an already joined conversation must return current state");
         expect (first_state.state.last_message_seq == 2,
                 "first conversation sequence must be independent of the second");
 
@@ -200,6 +206,8 @@ class supportchat_client_scenario_t
         auto rejoined_first = request_in_conversation<join_conversation_res_t> (
           reconnected_agent, opened.conversation_id, join_conversation_req_t{},
           "reconnected agent could not re-join the first conversation");
+        expect (!rejoined_first.scheduled,
+                "reconnect must not schedule an already committed Join");
         expect (rejoined_first.state.status == conversation_status_t::active,
                 "first conversation state must survive the reconnect");
         expect (rejoined_first.state.last_message_seq == 3,
@@ -207,6 +215,8 @@ class supportchat_client_scenario_t
         auto rejoined_second = request_in_conversation<join_conversation_res_t> (
           reconnected_agent, second_opened.conversation_id, join_conversation_req_t{},
           "reconnected agent could not re-join the second conversation");
+        expect (!rejoined_second.scheduled,
+                "second reconnect must return current state");
         expect (rejoined_second.state.last_message_seq == 1,
                 "second conversation history must survive the reconnect");
 

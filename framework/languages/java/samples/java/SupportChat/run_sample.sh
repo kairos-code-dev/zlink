@@ -20,6 +20,10 @@ if rg -n 'private static void expect(Failure|Timeout)\(' "${client_source}"; the
   echo "SupportChat must not rebuild connector assertion helpers locally." >&2
   exit 1
 fi
+if rg -n 'CompletableFuture<Messages\.JoinConversationRes>|awaitJoin' Server; then
+  echo "SupportChat handlers must return after scheduling a deferred actor Spot join." >&2
+  exit 1
+fi
 
 RUN_DIR="$(mktemp -d)"
 chmod 0700 "${RUN_DIR}"

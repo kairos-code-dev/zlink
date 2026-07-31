@@ -17,6 +17,9 @@ const streamProtocol = require('../../packages/framework/dist/runtime/streams/pr
 const {
   ZLinkActorRuntimeState
 } = require('../../packages/framework/dist/runtime/actors/actor-runtime-state');
+const {
+  ZLinkActorDispatchMailbox
+} = require('../../packages/framework/dist/runtime/actors/actor-mailbox');
 
 function actorHarness(events, completionResult = { accepted: true }) {
   const state = new ZLinkActorRuntimeState('alice');
@@ -54,7 +57,7 @@ function actorHarness(events, completionResult = { accepted: true }) {
     }
   };
   state.bindActor(actor, context);
-  return { actor, context };
+  return { actor, context, state };
 }
 
 async function waitForEvents(events, count) {
@@ -81,6 +84,44 @@ test('deferred Actor Join starts after the handler continuation and preserves it
   assert.ok(timeoutMs > 0 && timeoutMs <= 25);
   assert.equal(events[3], 'completion:accepted:7');
   assert.equal(context.objectGeneration, 1n);
+});
+
+test('deferred Actor Join barrier keeps the next Actor mailbox turn behind completion', async () => {
+  const events = [];
+  const mailbox = new ZLinkActorDispatchMailbox();
+  let releaseJoin;
+  const joinGate = new Promise(resolve => {
+    releaseJoin = resolve;
+  });
+
+  const first = mailbox.submit(() => runActorHandlerWithDeferredJoins(() => {
+    events.push('handler:first');
+    deferActorJoin({
+      requestBytes: 0,
+      discard() {
+        events.push('join:discard');
+      },
+      async execute() {
+        events.push('join:start');
+        await joinGate;
+        events.push('join:completed');
+      }
+    });
+  }));
+  const second = mailbox.submit(async () => {
+    events.push('handler:second');
+  });
+
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(events, ['handler:first', 'join:start']);
+  releaseJoin();
+  await Promise.all([first, second]);
+  assert.deepEqual(events, [
+    'handler:first',
+    'join:start',
+    'join:completed',
+    'handler:second'
+  ]);
 });
 
 test('Core-routed Actor request submits its reply exactly once before deferred Join completion', async () => {
@@ -165,9 +206,42 @@ test('deferred Actor Join is discarded when the handler fails', async () => {
   assert.deepEqual(events, []);
 });
 
+test('deferred Actor Join rejects a request over 1 MiB without retaining partial registrations', async () => {
+  const events = [];
+
+  await assert.rejects(
+    runActorHandlerWithDeferredJoins(() => {
+      deferActorJoin({
+        requestBytes: 1,
+        discard() {
+          events.push('first:discard');
+        },
+        async execute() {
+          events.push('first:execute');
+        }
+      });
+      deferActorJoin({
+        requestBytes: 1024 * 1024 + 1,
+        discard() {
+          events.push('oversized:discard');
+        },
+        async execute() {
+          events.push('oversized:execute');
+        }
+      });
+    }),
+    (error) => error.kind === 'invalidConfiguration'
+  );
+
+  assert.deepEqual(events, [
+    'oversized:discard',
+    'first:discard'
+  ]);
+});
+
 test('Actor Join defer rejects detached use, duplicate terminal, and a second pending transition', async () => {
   const events = [];
-  const { context } = actorHarness(events);
+  const { context, state } = actorHarness(events);
 
   assert.throws(() => context.joinSpot('room-a').defer(), /handler scope/);
   await runActorHandlerWithDeferredJoins(async () => {
@@ -177,6 +251,10 @@ test('Actor Join defer rejects detached use, duplicate terminal, and a second pe
     assert.throws(
       () => context.joinSpot('room-b').defer(),
       (error) => error.kind === 'actorMoving'
+    );
+    assert.throws(
+      () => state.beginMove(),
+      (error) => error.kind === 'actorMoving' && error.isRetriable === true
     );
   });
   await waitForEvents(events, 2);

@@ -61,7 +61,6 @@ internal static class Program
                 .SetRoutingIdPrefix("quest-mission");
             mesh.Objects().Server().AddInstanceSpotFactory<PlayerQuestSpot>(
                 SampleNames.PlayerQuestSpotType, factory => factory.RecreateOnRelocation());
-            mesh.Channel(SampleNames.GameApiChannel).Client();
         });
 
         var app = builder.Build();

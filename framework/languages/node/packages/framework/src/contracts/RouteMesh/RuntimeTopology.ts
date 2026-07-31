@@ -1,4 +1,9 @@
 import type { RoutingId } from '../Common';
+import type {
+  ZLinkPeerState,
+  ZLinkTopologyReason,
+  ZLinkTopologyState
+} from './Contracts';
 import type { ZLinkFrameworkRuntimeState } from '../Locations';
 
 export enum ZLinkFrameworkRelocationOutcome {
@@ -60,16 +65,6 @@ export interface ZLinkFrameworkLifecycleOptions {
   readonly signal?: AbortSignal;
 }
 
-export interface ZLinkInstanceSpotTypeSnapshot {
-  readonly instanceSpotType: string;
-  readonly activeCount: bigint;
-  readonly activatingCount: bigint;
-  readonly closingCount: bigint;
-  readonly pendingMessageCount: bigint;
-  readonly pendingByteCount: bigint;
-  readonly lastActivationOutcome?: string;
-}
-
 export interface ZLinkFrameworkRuntimeStatus {
   readonly state: ZLinkFrameworkRuntimeState;
   readonly isReady: boolean;
@@ -77,8 +72,19 @@ export interface ZLinkFrameworkRuntimeStatus {
   readonly deadline?: Date;
   readonly relocationResult?: ZLinkFrameworkRelocationResult;
   readonly terminationResult?: ZLinkFrameworkTerminationResult;
+  readonly inboundDispatch: ZLinkInboundDispatchStatus;
   readonly sequence: bigint;
   readonly observedAt: Date;
+}
+
+export interface ZLinkInboundDispatchStatus {
+  readonly applicationHwmBytes: bigint;
+  readonly pendingPayloadBytes: bigint;
+  readonly queuedPayloadBytes: bigint;
+  readonly activePayloadBytes: bigint;
+  readonly applicationReceivePaused: boolean;
+  readonly pendingCompletionSends: bigint;
+  readonly completionSendLimit: bigint;
 }
 
 export interface ZLinkFrameworkRuntime {
@@ -89,100 +95,46 @@ export interface ZLinkFrameworkRuntime {
 }
 
 export type ZLinkClientServerRole = 'client' | 'server' | 'clientAndServer';
-export type ZLinkClientServerServerState =
-  | 'configured' | 'connecting' | 'ready' | 'draining' | 'disconnected' | 'rejected';
 
-export interface ZLinkClientServerServerSnapshot {
-  readonly serverRid: RoutingId;
-  readonly lifecycleGeneration: bigint;
-  readonly descriptorRevision: bigint;
-  readonly endpoint: string;
+export interface ZLinkClientServerTargetStatus {
+  readonly nodeRid: RoutingId;
   readonly weight: number;
-  readonly ready: boolean;
-  readonly state: ZLinkClientServerServerState;
-  readonly descriptorSource: string;
-  readonly lastFailure?: string;
+  readonly state: ZLinkPeerState;
+  readonly unavailableReason?: ZLinkTopologyReason;
 }
 
-export interface ZLinkClientServerChannelSnapshot {
+export interface ZLinkClientServerStatus {
   readonly channelName: string;
   readonly localRole: ZLinkClientServerRole;
-  readonly selectable: boolean;
-  readonly readyServerCount: number;
-  readonly connectionIntentCount: number;
-  readonly pendingRequestCount: number;
+  readonly state: ZLinkTopologyState;
+  readonly isReady: boolean;
+  readonly readyTargetCount: number;
+  readonly targets: readonly ZLinkClientServerTargetStatus[];
   readonly sequence: bigint;
   readonly observedAt: Date;
-  readonly servers: readonly ZLinkClientServerServerSnapshot[];
-  readonly location: import('./Contracts').ZLinkLocationRuntimeSnapshot;
-}
-
-export interface ZLinkClientServerRuntimeEvent {
-  readonly identifier: string;
-  readonly sequence: bigint;
-  readonly timestamp: Date;
-  readonly channelName: string;
-  readonly serverRid?: RoutingId;
-  readonly lifecycleGeneration?: bigint;
-  readonly descriptorRevision?: bigint;
-  readonly weight?: number;
-  readonly ready?: boolean;
-  readonly state?: ZLinkClientServerServerState;
-  readonly reason?: string;
 }
 
 export interface ZLinkClientServerRuntime {
-  snapshot(channelName: string): ZLinkClientServerChannelSnapshot;
+  snapshot(channelName: string): ZLinkClientServerStatus;
   observe(
     channelName: string,
     capacity?: number,
     signal?: AbortSignal
-  ): AsyncIterable<ZLinkClientServerRuntimeEvent>;
+  ): AsyncIterable<ZLinkClientServerStatus>;
   isReady(channelName: string): boolean;
 }
 
-export type ZLinkFanoutPublisherConnectionState =
-  | 'connecting' | 'ready' | 'disconnected' | 'reconnecting'
-  | 'excluded_draining' | 'excluded_stale';
-
-export interface ZLinkFanoutPublisherConnectionSnapshot {
-  readonly publisherRid: RoutingId;
-  readonly lifecycleGeneration: bigint;
-  readonly descriptorRevision: bigint;
-  readonly endpoint: string;
-  readonly connectionIntent: boolean;
-  readonly ready: boolean;
-  readonly state: ZLinkFanoutPublisherConnectionState;
-  readonly lastFailure?: string;
-}
-
-export interface ZLinkFanoutChannelSnapshot {
+export interface ZLinkFanoutStatus {
   readonly channelName: string;
-  readonly connectionIntentCount: number;
-  readonly readyConnectionCount: number;
+  readonly state: ZLinkTopologyState;
+  readonly isReady: boolean;
+  readonly readyPublisherCount: number;
+  readonly publishers: readonly import('./Contracts').ZLinkPeerStatus[];
   readonly sequence: bigint;
   readonly observedAt: Date;
-  readonly publishers: readonly ZLinkFanoutPublisherConnectionSnapshot[];
-  readonly location: import('./Contracts').ZLinkLocationRuntimeSnapshot;
 }
 
-export type ZLinkFanoutRuntimeEvent =
-  | {
-      readonly identifier: 'zlink.runtime.fanout.publisher_changed';
-      readonly sequence: bigint;
-      readonly timestamp: Date;
-      readonly channelName: string;
-      readonly entry: ZLinkFanoutPublisherConnectionSnapshot;
-    }
-  | {
-      readonly identifier: 'zlink.runtime.location.store_changed';
-      readonly sequence: bigint;
-      readonly timestamp: Date;
-      readonly channelName: string;
-      readonly location: import('./Contracts').ZLinkLocationRuntimeSnapshot;
-    };
-
 export interface ZLinkFanoutRuntime {
-  snapshot(channelName: string): ZLinkFanoutChannelSnapshot;
-  observe(channelName: string, capacity?: number, signal?: AbortSignal): AsyncIterable<ZLinkFanoutRuntimeEvent>;
+  snapshot(channelName: string): ZLinkFanoutStatus;
+  observe(channelName: string, capacity?: number, signal?: AbortSignal): AsyncIterable<ZLinkFanoutStatus>;
 }

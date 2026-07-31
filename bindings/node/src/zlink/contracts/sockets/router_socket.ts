@@ -2,7 +2,7 @@
 
 import type { RoutingId } from '../core';
 import type { Received } from '../messaging';
-import type { ReplyOperation, RequestOperation, SendOperation } from '../messaging';
+import type { Message, MessageLike, ReplyOperation, RequestOperation, SendOperation } from '../messaging';
 import type { RecvFlags } from './socket_constants';
 import type { RouterSocketOptions } from './socket_options';
 import type { ConnectableSocket } from './socket';
@@ -37,4 +37,19 @@ export interface RouterSocket extends ConnectableSocket {
   request(peerRid: RoutingId): RequestOperation;
   /** Begin a reply to request `requestSeq` from `peerRid`; parts are consumed on a successful submit. */
   reply(peerRid: RoutingId, requestSeq: bigint): ReplyOperation;
+  /**
+   * Try to submit an opaque multipart record on the peer's existing Completion
+   * connection. The input is not consumed; false means Completion back-pressure.
+   */
+  trySendCompletionControl(
+    peerRid: RoutingId,
+    parts: readonly MessageLike[]
+  ): boolean;
+  /**
+   * Install or replace the callback for opaque Completion control records.
+   * The callback owns the received messages.
+   */
+  setCompletionControlHandler(
+    handler: (sourceRoutingId: RoutingId, parts: Message[]) => void
+  ): void;
 }

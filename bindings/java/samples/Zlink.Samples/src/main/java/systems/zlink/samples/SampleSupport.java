@@ -2,32 +2,9 @@
 
 package systems.zlink.samples;
 
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.SocketMonitor;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.service.spot.Actor;
-import systems.zlink.contracts.service.spot.ActorJoinDecision;
-import systems.zlink.contracts.service.spot.ActorLocation;
-import systems.zlink.contracts.service.spot.ActorRef;
-import systems.zlink.contracts.service.spot.Claim;
-import systems.zlink.contracts.service.spot.ClaimRecvResult;
-import systems.zlink.contracts.service.spot.Dispatch;
-import systems.zlink.contracts.service.spot.MeshNode;
-import systems.zlink.contracts.service.spot.OperationId;
-import systems.zlink.contracts.service.spot.OperationKind;
-import systems.zlink.contracts.service.spot.ReadyBatch;
-import systems.zlink.contracts.service.spot.ReadyDomain;
-import systems.zlink.contracts.service.spot.ReceiveBatch;
-import systems.zlink.contracts.service.spot.ReceiveRecord;
-import systems.zlink.contracts.service.spot.RecordKind;
-import systems.zlink.contracts.service.spot.Spot;
-import systems.zlink.contracts.service.spot.StreamSessionBinding;
-import systems.zlink.contracts.service.spot.StreamSessionService;
-import systems.zlink.contracts.sockets.RecvFlags;
-import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.contracts.sockets.StreamSocket;
 import systems.zlink.contracts.core.Zlink;
 import java.io.IOException;
 import java.io.InputStream;
@@ -35,11 +12,9 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.time.Duration;
-import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
 
 final class SampleSupport {
     private static final Duration TIMEOUT = Duration.ofSeconds(5);
@@ -55,12 +30,6 @@ final class SampleSupport {
         new AtomicInteger(TCP_PORT_BASE);
 
     private SampleSupport() {
-    }
-
-    /** Handles one received record during a {@link #pumpReady} drain. */
-    @FunctionalInterface
-    interface RecordHandler {
-        void handle(ReceiveRecord record, ReceiveBatch batch, int index);
     }
 
     static String tcpEndpoint() {
@@ -145,223 +114,6 @@ final class SampleSupport {
                                 SocketMonitor subMonitor) {
         waitMonitorEvent(subMonitor, MonitorEventType.CONNECTION_READY);
         waitMonitorEvent(pubMonitor, MonitorEventType.CONNECTION_READY);
-    }
-
-    /** Waits until the mesh node has admitted at least one peer. */
-    static void waitMeshPeerConnected(MeshNode node) {
-        waitUntil("mesh peer admission",
-            () -> node.status().admittedPeerCount() > 0);
-    }
-
-    /**
-     * Drains the node's ready index once and invokes {@code handler} for every
-     * received record. The handler may take ownership of a record's parts with
-     * {@code batch.retainMessage(index)} and answer request/control records via
-     * {@link Dispatch}.
-     */
-    static void pumpReady(MeshNode node, ReadyBatch ready, ReceiveBatch recv,
-                          RecordHandler handler) {
-        pumpReady(node, ready, recv, handler, ReadyDomain.mask(ReadyDomain.ALL));
-    }
-
-    static void pumpReady(MeshNode node, ReadyBatch ready, ReceiveBatch recv,
-                          RecordHandler handler, int domains) {
-        ready.reset();
-        node.drainReady(domains, ready, RecvFlags.DONT_WAIT);
-        int readyCount = ready.count();
-        for (int i = 0; i < readyCount; i++) {
-            try (Claim claim = ready.takeClaim(i)) {
-                while (claim.valid()) {
-                    recv.reset();
-                    ClaimRecvResult result = claim.recvBatch(recv,
-                        RecvFlags.DONT_WAIT);
-                    if (result.resultCode() != 0) {
-                        break;
-                    }
-                    int count = recv.count();
-                    for (int r = 0; r < count; r++) {
-                        handler.handle(recv.at(r), recv, r);
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Joins a local actor to a spot hosted on the same node: submits the join,
-     * admits the host-side control record with {@code admitPayload}, waits for
-     * the join completion, and returns the actor's membership epoch.
-     */
-    static long joinLocalSpot(MeshNode node, Actor actor, Spot spot,
-                              String joinPayload, String admitPayload,
-                              Consumer<String> onHostObservedJoin) {
-        try (ReadyBatch ready = ReadyBatch.create(16);
-             ReceiveBatch recv = ReceiveBatch.create(64, 256, 1 << 16)) {
-            OperationId joinOp;
-            try (Message join = Message.from(joinPayload)) {
-                joinOp = actor.joinSpot(node.status().routingId(),
-                    spot.routingId(), spot.status().lifecycleGeneration(),
-                    List.of(join), TIMEOUT);
-            }
-            boolean[] completed = {false};
-            int[] terminal = {-1};
-            long deadline = System.nanoTime() + TIMEOUT.toNanos();
-            while (!completed[0] && System.nanoTime() < deadline) {
-                pumpReady(node, ready, recv, (record, batch, index) -> {
-                    if (record.kind() == RecordKind.SPOT_CONTROL
-                        && record.operationKind() == OperationKind.ACTOR_JOIN) {
-                        List<Message> request = batch.retainMessage(index);
-                        if (onHostObservedJoin != null && !request.isEmpty()) {
-                            onHostObservedJoin.accept(
-                                request.get(0).toUtf8String());
-                        }
-                        try (Message ok = Message.from(admitPayload)) {
-                            Dispatch.actorJoinReply(record.replyToken(),
-                                ActorJoinDecision.ACCEPTED, List.of(ok),
-                                SendFlags.NONE);
-                        }
-                        closeAll(request);
-                    } else if (record.kind() == RecordKind.COMPLETION
-                        && record.operationKind() == OperationKind.ACTOR_JOIN
-                        && record.operationId().equals(joinOp)) {
-                        terminal[0] = record.terminalResult();
-                        completed[0] = true;
-                    }
-                });
-                if (completed[0]) {
-                    break;
-                }
-                sleepQuietly("actor join");
-            }
-            if (!completed[0]) {
-                throw new IllegalStateException("actor join did not complete");
-            }
-            if (terminal[0] != 0) {
-                throw new IllegalStateException(
-                    "actor join rejected: " + terminal[0]);
-            }
-            return node.actorLookup(actor.ref().actorId())
-                .map(ActorLocation::membershipEpoch)
-                .orElse(0L);
-        }
-    }
-
-    /** Leaves a spot the actor previously joined (best effort completion wait). */
-    static void leaveLocalSpot(MeshNode node, Actor actor, long membershipEpoch) {
-        try (ReadyBatch ready = ReadyBatch.create(16);
-             ReceiveBatch recv = ReceiveBatch.create(64, 256, 1 << 16)) {
-            OperationId leaveOp = actor.leaveSpot(membershipEpoch, TIMEOUT);
-            boolean[] completed = {false};
-            long deadline = System.nanoTime() + TIMEOUT.toNanos();
-            while (!completed[0] && System.nanoTime() < deadline) {
-                pumpReady(node, ready, recv, (record, batch, index) -> {
-                    if (record.kind() == RecordKind.COMPLETION
-                        && record.operationKind() == OperationKind.ACTOR_LEAVE
-                        && record.operationId().equals(leaveOp)) {
-                        completed[0] = true;
-                    }
-                });
-                if (completed[0]) {
-                    break;
-                }
-                sleepQuietly("actor leave");
-            }
-        }
-    }
-
-    /** Creates and starts a STREAM session service for a stream socket. */
-    static StreamSessionService startSessionService(MeshNode node,
-                                                    StreamSocket stream) {
-        StreamSessionService service = StreamSessionService.create(node, stream);
-        service.start();
-        return service;
-    }
-
-    /** Binds an actor to a STREAM session and waits for the bind completion. */
-    static void bindSessionActor(MeshNode node, StreamSessionService service,
-                                 RoutingId sessionRid, ActorRef actor) {
-        OperationId op = service.bindActor(sessionRid, actor, TIMEOUT);
-        waitStreamOperation(node, op, "bind");
-    }
-
-    /** Unbinds an actor from a STREAM session through the session service. */
-    static void unbindSessionActor(MeshNode node, StreamSessionService service,
-                                   RoutingId sessionRid, ActorRef actor) {
-        long generation = 0;
-        for (StreamSessionBinding binding : service.bindings(sessionRid)) {
-            if (binding.actor().actorId().equals(actor.actorId())) {
-                generation = binding.bindingGeneration();
-            }
-        }
-        OperationId op = service.unbindActor(sessionRid, actor, generation,
-            TIMEOUT);
-        waitStreamOperation(node, op, "unbind");
-    }
-
-    /** Relays a payload to a session-bound actor via the session service. */
-    static void relaySessionMessage(StreamSessionService service,
-                                    RoutingId sessionRid, ActorRef actor,
-                                    String payload) {
-        try (Message message = Message.from(payload)) {
-            service.sendToActor(sessionRid, actor, List.of(message),
-                SendFlags.NONE);
-        }
-    }
-
-    private static void waitStreamOperation(MeshNode node, OperationId opId,
-                                            String name) {
-        try (ReadyBatch ready = ReadyBatch.create(16);
-             ReceiveBatch recv = ReceiveBatch.create(64, 256, 1 << 16)) {
-            boolean[] completed = {false};
-            int[] terminal = {0};
-            long deadline = System.nanoTime() + TIMEOUT.toNanos();
-            while (!completed[0] && System.nanoTime() < deadline) {
-                pumpReady(node, ready, recv, (record, batch, index) -> {
-                    if (record.kind() == RecordKind.COMPLETION
-                        && record.operationId().equals(opId)) {
-                        terminal[0] = record.terminalResult();
-                        completed[0] = true;
-                    }
-                });
-                if (completed[0]) {
-                    break;
-                }
-                sleepQuietly("stream session " + name);
-            }
-            if (!completed[0]) {
-                throw new IllegalStateException(
-                    "stream session " + name + " did not complete");
-            }
-            if (terminal[0] != 0) {
-                throw new IllegalStateException(
-                    "stream session " + name + " failed: " + terminal[0]);
-            }
-        }
-    }
-
-    /**
-     * Drains the node once and appends every actor-addressed message payload
-     * into {@code sink} in arrival order.
-     */
-    static void collectActorMessages(MeshNode node, ReadyBatch ready,
-                                     ReceiveBatch recv, List<String> sink) {
-        pumpReady(node, ready, recv, (record, batch, index) -> {
-            if (record.kind() != RecordKind.ACTOR_SEND
-                || record.partCount() == 0) {
-                return;
-            }
-            List<Message> parts = batch.retainMessage(index);
-            if (!parts.isEmpty()) {
-                sink.add(parts.get(0).toUtf8String());
-            }
-            closeAll(parts);
-        });
-    }
-
-    static void closeAll(List<Message> parts) {
-        for (Message part : parts) {
-            closeQuietly(part);
-        }
     }
 
     static void closeQuietly(AutoCloseable resource) {

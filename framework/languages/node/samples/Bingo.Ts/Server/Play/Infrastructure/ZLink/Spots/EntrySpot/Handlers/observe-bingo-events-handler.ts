@@ -8,12 +8,11 @@ import { PlayerActor } from '../../../Actors/player-actor';
 import { PacketNames } from '../../../../../../../Shared/Contracts/messages';
 import type {
   ZLinkEntrySpotActorRequestHandler,
-  ZLinkSpotActorRequestContext,
+  ZLinkMessageContext,
   ZLinkSpotManager
 } from '@zlink-systems/framework';
 import type { PlayerActor as PlayerActorType } from '../../../Actors/player-actor';
 import type {
-  BingoRoomJoinRes,
   ObserveBingoEventsReq
 } from '../../../../../../../Shared/Contracts/messages';
 import {
@@ -30,14 +29,15 @@ import { SampleNames } from '../../../../../../Configuration/sample-names';
   packetName: PacketNames.observeBingoEventsReq
 })
 class ObserveBingoEventsHandler
-  implements ZLinkEntrySpotActorRequestHandler<PlayerActorType, ObserveBingoEventsReq, ObserveBingoEventsRes> {
+  implements ZLinkEntrySpotActorRequestHandler<BingoEntrySpot, PlayerActorType, ObserveBingoEventsReq, ObserveBingoEventsRes> {
   constructor(
     @Inject(ZLINK_SPOT_MANAGER) private readonly spots: ZLinkSpotManager,
   ) {}
 
   async handle(
+    _spot: BingoEntrySpot,
     actor: PlayerActorType,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: ObserveBingoEventsReq
   ): Promise<ObserveBingoEventsRes> {
     const observerSpotId = `observe:${request.roomId}:${actor.actorId}`;
@@ -51,17 +51,17 @@ class ObserveBingoEventsHandler
         observedRoomId: settings.observedRoomId
       }))
       .submit();
-    const joined = await actor.context
+    actor.context
       .joinSpot(observerSpotId, new BingoRoomJoinReq({
         roomId: request.roomId,
         actorId: actor.actorId,
         displayName: actor.displayName,
         observeOnly: true
       }))
-      .submit<BingoRoomJoinRes>();
+      .defer();
     void context;
     return new ObserveBingoEventsRes({
-      subscribed: joined.status === 'accepted'
+      subscribed: true
     });
   }
 }

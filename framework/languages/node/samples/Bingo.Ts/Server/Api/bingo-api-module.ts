@@ -12,6 +12,7 @@ function createBingoApiModule() {
   class BingoApiModule {}
   const configuration = createBingoConfigurationModule([
     'apiEndpoint',
+    'apiMatchmakingEndpoint',
     'redisEndpoint',
     'redisKeyPrefix',
     'logDir'
@@ -27,7 +28,6 @@ function createBingoApiModule() {
           const builder = zlinkFramework();
           builder.options({
             metrics: { meterProvider: bingoMeterProvider },
-            monitoring: {}
           });
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
@@ -36,12 +36,18 @@ function createBingoApiModule() {
           builder.addLocationStore(createBingoLocationStore(config));
           bingoLocationOptions(builder.configureLocations());
           builder.codecs().use(bingoFrameworkProtobuf);
-          const apiMesh = builder.addRouteMesh(SampleNames.roomSpotNode)
+          const apiMesh = builder.addRouteMesh(SampleNames.playMeshName)
             .setRoutingIdPrefix('api')
             .listen(config.apiEndpoint);
-          apiMesh.channelName(SampleNames.apiChannel).addHandlerGroup('api');
-          apiMesh.channelName(SampleNames.playChannel).setWeight(0);
-          apiMesh.channelName(SampleNames.roomSpotNode).setWeight(0);
+          apiMesh.objects().client();
+          builder.addClientServerChannel(SampleNames.apiChannel)
+            .server()
+            .listen()
+            .addHandlerGroup('api');
+          builder.addRouteMesh(SampleNames.matchmakingMeshName)
+            .setRoutingIdPrefix('api-matchmaking')
+            .listen(config.apiMatchmakingEndpoint)
+            .objects().client();
           return builder.build();
         }
       })

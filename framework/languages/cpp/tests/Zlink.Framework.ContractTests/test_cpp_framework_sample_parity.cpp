@@ -4,10 +4,9 @@
 #include "../../samples/Bingo/Server/Configuration/sample_topology.hpp"
 #include "../../samples/Bingo/Shared/Contracts/messages.hpp"
 #include "../../samples/Bingo/Server/Play/Infrastructure/ZLink/Actors/player_actor_factory.hpp"
-#include "../../samples/Bingo/Server/Play/Infrastructure/ZLink/Handlers/allocate_bingo_room_handler.hpp"
+#include "../../samples/Bingo/Server/Matchmaking/Application/bingo_match_reservation_store.hpp"
 #include "../../samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_spot.hpp"
 #include "../../samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp"
-#include "../../samples/Bingo/Server/Play/Application/RoomAllocation/bingo_room_allocator.hpp"
 #include "../../samples/Bingo/Server/Api/Handlers/authenticate_player_handler.hpp"
 #include "../../samples/TicTacToe/Server/Configuration/sample_names.hpp"
 #include "../../samples/TicTacToe/Server/Configuration/sample_topology.hpp"
@@ -15,9 +14,7 @@
 #include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/tictactoe_game_spot.hpp"
 #include "../../samples/TicTacToe/Server/Api/Handlers/authenticate_player_handler.hpp"
 #include "../../samples/TicTacToe/Server/Api/Handlers/create_game_http_handler.hpp"
-#include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Handlers/create_game_handler.hpp"
 #include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/tictactoe_entry_spot.hpp"
-#include "../../samples/TicTacToe/Server/Play/Application/GameCreation/tictactoe_game_creator.hpp"
 #include "../../samples/TicTacToe/Server/Play/Domain/TicTacToe/tictactoe_match.hpp"
 #include "../../samples/DeliveryDispatch/Shared/Contracts/messages.hpp"
 #include "../../samples/GameQuest/Shared/Contracts/messages.hpp"
@@ -110,13 +107,14 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
     ASSERT_TRUE (authenticated.accepted);
 
     sample_topology_t topology;
-    const allocate_bingo_room_res_t allocated{"two-player-room-1"};
-
-    const actor_ref_snapshot_t actor{node_rid_t{}, authenticated.actor_id, 1};
+    const reserve_bingo_room_res_t allocated{
+      "two-player-room-1",
+      {"Bingo Room 1", bingo_sample_modes_t::two_player, 2, 15, "Game", ""}};
 
     player_actor_factory_t actor_factory;
-    const auto player_actor = actor_factory.create (actor, authenticated.display_name);
-    EXPECT_EQ (player_actor.actor.actor_id, authenticated.actor_id);
+    const auto player_actor =
+      actor_factory.create (authenticated.actor_id, authenticated.display_name);
+    EXPECT_EQ (player_actor.actor_id, authenticated.actor_id);
 
     bingo_room_spot_t room_spot (allocated.room_id);
     const auto joined = room_spot
@@ -155,7 +153,7 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
       entry_source.find ("add_actor_request<&bingo_entry_spot_t::observe_bingo_events>"),
       std::string::npos);
 
-    auto second_actor = actor_factory.create (actor_ref_snapshot_t{{}, "player-2", 1}, "Player 2");
+    auto second_actor = actor_factory.create ("player-2", "Player 2");
     const auto second_joined = room_spot
                                  .on_actor_join (
                                    "player-2",
@@ -226,29 +224,22 @@ TEST (CppFrameworkSampleParity, BingoRoomGameCopyOwnsItsPlayerState)
     EXPECT_EQ (projected.snapshot ().players[0].card.size (), 9U);
 }
 
-TEST (CppFrameworkSampleParity, BingoRoomIdsAreUniqueAcrossAllocatorInstances)
+TEST (CppFrameworkSampleParity, BingoMatchmakingUsesInstanceSpotAndRedisReservation)
 {
-    using namespace zlink::samples::bingo;
+    const auto api = read_file (
+      cpp_language_root ()
+      / "samples/Bingo/Server/Api/Handlers/match_bingo_handler.hpp");
+    const auto store = read_file (
+      cpp_language_root ()
+      / "samples/Bingo/Server/Matchmaking/Infrastructure/Redis/"
+        "redis_bingo_match_reservation_store.hpp");
 
-    class accepting_match_queue_t final : public bingo_match_queue_t
-    {
-      public:
-        bingo_match_reservation_t reserve (const std::string &,
-                                           const std::string &,
-                                           const std::string &new_room_id,
-                                           int) override
-        {
-            return {new_room_id};
-        }
-    } first_queue, second_queue;
-
-    bingo_room_allocator_t first (first_queue);
-    bingo_room_allocator_t second (second_queue);
-    const auto first_room = first.allocate ("two-player", "player-1");
-    const auto second_room = second.allocate ("two-player", "player-2");
-
-    EXPECT_NE (first_room.room_id, second_room.room_id)
-      << "independent Play processes must not allocate the same spot routing id";
+    EXPECT_NE (api.find (".instance_spot (sample_names_t::matchmaker_spot)"),
+               std::string::npos);
+    EXPECT_NE (api.find (".get_or_create ("), std::string::npos);
+    EXPECT_NE (store.find ("request.level_bucket + \":\" + request.mode"),
+               std::string::npos);
+    EXPECT_NE (store.find ("'RoomName', newRoomName"), std::string::npos);
 }
 
 TEST (CppFrameworkSampleParity, BingoRewardSubscriptionDoesNotDriveRoomCleanup)
@@ -323,7 +314,7 @@ TEST (CppFrameworkSampleParity, SupportChatSessionRelaysOpenConversationUnchange
 
     EXPECT_EQ (session.find ("open_conversation_api_req_t"), std::string::npos);
     EXPECT_EQ (session.find ("open_conversation_req_t{opened.subject"), std::string::npos);
-    EXPECT_NE (support.find ("_context.outbound ().request (\"supportchat.api\""),
+    EXPECT_NE (support.find ("_channels.request (\"supportchat.api\""),
                std::string::npos);
     EXPECT_NE (support.find ("_runtime.assign_agent (joined.state.conversation_id)"),
                std::string::npos);
@@ -355,13 +346,13 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     ASSERT_TRUE (authenticated.accepted);
 
     sample_topology_t topology;
-    const create_game_res_t created{std::string ("room-1"),
-                                    std::string ("tictactoe-game"),
-                                    topology.stream_endpoint,
-                                    {topology.stream_endpoint, topology.play_b_stream_endpoint},
-                                    {{topology.stream_endpoint},
-                                     {topology.play_b_stream_endpoint}},
-                                    sample_names_t::required_level};
+    const create_game_http_res_t created{
+      std::string ("room-1"),
+      std::string ("tictactoe-game"),
+      topology.stream_endpoint,
+      {topology.stream_endpoint, topology.play_b_stream_endpoint},
+      {{topology.stream_endpoint}, {topology.play_b_stream_endpoint}},
+      sample_names_t::required_level};
     EXPECT_EQ (created.owner_play_endpoint, topology.stream_endpoint);
     EXPECT_EQ (created.game_name, "tictactoe-game");
     tictactoe_match_t room (created.room_id);
@@ -384,7 +375,7 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     const auto entry_source = read_file (
       cpp_language_root ()
       / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/tictactoe_entry_spot.hpp");
-    EXPECT_NE (entry_source.find ("add_actor_request<&tictactoe_entry_spot_t::join_game>"),
+    EXPECT_NE (entry_source.find ("add_actor_send<&tictactoe_entry_spot_t::join_game>"),
                std::string::npos);
     EXPECT_NE (
       entry_source.find ("add_actor_request<&tictactoe_entry_spot_t::observe_milestone>"),
@@ -401,6 +392,8 @@ TEST (CppFrameworkSampleParity, TicTacToeRegistersDeferredRoomJoin)
       / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/play_actor_join_game_handler.hpp");
     EXPECT_NE (handler.find (".defer ()"), std::string::npos)
       << "actor join must register the exact deferred terminal";
+    EXPECT_NE (handler.find ("track_deferred_join"), std::string::npos)
+      << "the Actor must correlate the deferred completion with its room";
     EXPECT_EQ (handler.find (".async<"), std::string::npos)
       << "actor join must not expose an awaitable result";
 }
@@ -1296,8 +1289,8 @@ TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
     }
 }
 
-/* 공통 sample spec §6: TicTacToe는 location store 자동 연결이 아니라 수동 endpoint
- * scale-out을 보여 준다. API<->Play channel은 설정에 적힌 두 peer endpoint를 직접 연결한다. */
+/* 공통 sample spec §6/§12: API Object Client는 수동 endpoint RouteMesh로 Play Object
+ * Server에 연결하고 SpotManager.Create로 room을 만든다. 인증 channel은 별도다. */
 TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointScaleOutWithActorGatewayRelay)
 {
     const auto tictactoe_root = cpp_language_root () / "samples/TicTacToe";
@@ -1306,8 +1299,6 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointScaleOutWithActor
     const auto client_main = read_file (tictactoe_root / "Client/main.cpp");
     const auto create_game_handler =
       read_file (tictactoe_root / "Server/Api/Handlers/create_game_http_handler.hpp");
-    const auto play_create_game_handler =
-      read_file (tictactoe_root / "Server/Play/Infrastructure/ZLink/Handlers/create_game_handler.hpp");
     const auto play_factory =
       read_file (tictactoe_root / "Server/Play/play_server_host_factory.hpp");
 
@@ -1318,10 +1309,18 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointScaleOutWithActor
     EXPECT_EQ (play_factory.find (".use_registry_spot_resolver"), std::string::npos);
     EXPECT_EQ (api_factory.find (".enable_client ()"), std::string::npos);
     EXPECT_EQ (play_factory.find (".enable_client ()"), std::string::npos);
-    EXPECT_NE (api_factory.find ("topology.all_play_endpoints ()"), std::string::npos);
+    EXPECT_NE (api_factory.find ("topology.all_play_route_endpoints ()"), std::string::npos);
     EXPECT_NE (play_factory.find ("topology.all_api_endpoints ()"), std::string::npos);
-    EXPECT_NE (api_factory.find (".enable_client (endpoint)"), std::string::npos);
-    EXPECT_NE (play_factory.find (".enable_client (endpoint)"), std::string::npos);
+    EXPECT_NE (api_factory.find ("options.add_route_mesh (sample_names_t::game_spot_node)"),
+               std::string::npos);
+    EXPECT_NE (api_factory.find ("set_object_role (object_role_t::client)"),
+               std::string::npos);
+    EXPECT_NE (play_factory.find ("auto api_client = api_peers.client ()"),
+               std::string::npos);
+    EXPECT_NE (api_factory.find ("mesh.peer_connections ().connect (endpoint)"),
+               std::string::npos);
+    EXPECT_NE (play_factory.find ("api_client.connect (endpoint)"),
+               std::string::npos);
     EXPECT_NE (play_factory.find ("options.add_route_mesh"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_entry_spot<tictactoe_entry_spot_t> ("),
                std::string::npos);
@@ -1350,21 +1349,19 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointScaleOutWithActor
     EXPECT_EQ (api_factory.find (".add_protobuf"), std::string::npos);
     EXPECT_EQ (play_factory.find (".add_protobuf"), std::string::npos);
     EXPECT_EQ (client.find (".add_protobuf"), std::string::npos);
-    EXPECT_NE (create_game_handler.find ("channel_client_t"), std::string::npos);
-    EXPECT_NE (create_game_handler.find ("sample_names_t::play_channel"), std::string::npos);
-    EXPECT_NE (
-      create_game_handler.find ("const auto create_request = create_game_req_t{game_name}"),
-      std::string::npos);
-    EXPECT_NE (create_game_handler.find (".request (sample_names_t::play_channel, create_request)"),
+    EXPECT_NE (create_game_handler.find ("spot_manager_t"), std::string::npos);
+    EXPECT_NE (create_game_handler.find ("_spots.create (sample_names_t::match_spot)"),
                std::string::npos);
-    EXPECT_NE (play_factory.find ("add_singleton<tictactoe_game_creator_t"), std::string::npos);
+    EXPECT_NE (create_game_handler.find (".in_mesh (sample_names_t::game_spot_node)"),
+               std::string::npos);
+    EXPECT_EQ (create_game_handler.find ("channel_client_t"), std::string::npos);
+    EXPECT_EQ (create_game_handler.find ("request (sample_names_t::play_channel"),
+               std::string::npos);
+    EXPECT_EQ (play_factory.find ("tictactoe_game_creator_t"), std::string::npos);
     EXPECT_EQ (play_factory.find ("redis_room_route_store_t"), std::string::npos);
     EXPECT_EQ (play_factory.find ("add_singleton<room_route_store_t>"), std::string::npos);
-    EXPECT_NE (play_create_game_handler.find ("spot_manager_t"), std::string::npos);
-    EXPECT_NE (play_create_game_handler.find (".get_or_create (response.room_id"),
-               std::string::npos);
-    EXPECT_NE (play_factory.find (".group (\"play\")"), std::string::npos);
-    EXPECT_NE (play_factory.find (".add<create_game_handler_t> ()"), std::string::npos);
+    EXPECT_FALSE (std::filesystem::exists (
+      tictactoe_root / "Server/Play/Infrastructure/ZLink/Handlers/create_game_handler.hpp"));
     EXPECT_EQ (api_factory.find ("add_singleton<create_game_room_handler_t>"), std::string::npos);
     EXPECT_FALSE (std::filesystem::exists (
       tictactoe_root / "Server/Play/Application/GameCreation/create_game_room_handler.hpp"));
@@ -1374,7 +1371,8 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointScaleOutWithActor
     EXPECT_NE (client.find ("zlink::http_client::client_t::create (options.api_http_endpoint)"),
                std::string::npos);
     EXPECT_NE (client.find (".post (\"/games\")"), std::string::npos);
-    EXPECT_NE (client.find (".submit<create_game_http_res_t> ().result ().value ().body"), std::string::npos);
+    EXPECT_NE (client.find (".fetch<create_game_http_res_t> ()"), std::string::npos);
+    EXPECT_EQ (client.find (".submit<create_game_http_res_t>"), std::string::npos);
     EXPECT_EQ (client.find (".json ()"), std::string::npos);
     EXPECT_EQ (client.find ("create_room (options)"), std::string::npos);
     EXPECT_EQ (client.find ("static create_game_http_res_t create_room"), std::string::npos);
@@ -1513,8 +1511,33 @@ TEST (CppFrameworkSampleParity, SupportChatConversationJoinCarriesParticipantIde
     EXPECT_NE (contracts.find ("std::string display_name;"), std::string::npos);
     EXPECT_NE (contracts.find ("{\"participantId\", value.participant_id}"),
                std::string::npos);
-    EXPECT_NE (support.find ("join_conversation_req_t{participant_id"), std::string::npos)
-      << "Support server must fill participant identity for the conversation actor join";
+    EXPECT_NE (
+      support.find (
+        "join_conversation_req_t{participant_id, role, display_name}"),
+      std::string::npos)
+      << "Support Actor must fill participant identity for the deferred conversation Join";
+}
+
+TEST (CppFrameworkSampleParity, SupportChatConversationJoinIsDeferred)
+{
+    const auto contracts = read_file (
+      cpp_language_root () / "samples/SupportChat/Shared/Contracts/messages.hpp");
+    const auto support = read_file (
+      cpp_language_root () / "samples/SupportChat/Server/Support/main.cpp");
+    const auto session = read_file (
+      cpp_language_root () / "samples/SupportChat/Server/Session/main.cpp");
+    const auto scenario = read_file (
+      cpp_language_root () / "samples/SupportChat/Client/supportchat_client_scenario.hpp");
+
+    EXPECT_NE (contracts.find ("bool scheduled{false};"), std::string::npos);
+    EXPECT_NE (contracts.find ("JoinConversationFailedNotify"), std::string::npos);
+    EXPECT_NE (support.find (".defer ();"), std::string::npos);
+    EXPECT_NE (support.find ("on_join_completed"), std::string::npos);
+    EXPECT_NE (support.find ("request_to_actor"), std::string::npos)
+      << "Channel handlers must enter an Actor turn before they defer a Join";
+    EXPECT_NE (session.find ("joined.scheduled"), std::string::npos);
+    EXPECT_NE (scenario.find ("expect (agent_joined.scheduled"), std::string::npos);
+    EXPECT_NE (scenario.find ("expect (!rejoined_first.scheduled"), std::string::npos);
 }
 
 TEST (CppFrameworkSampleParity, SupportChatUsesFrameworkActorRefSnapshot)
@@ -1525,7 +1548,10 @@ TEST (CppFrameworkSampleParity, SupportChatUsesFrameworkActorRefSnapshot)
       cpp_language_root () / "samples/SupportChat/Server/Support/main.cpp");
     EXPECT_EQ (contracts.find ("support_actor_ref_snapshot_t"), std::string::npos);
     EXPECT_NE (contracts.find ("actor_ref_snapshot_t actor;"), std::string::npos);
-    EXPECT_NE (support.find ("snapshot_of (actor.value ().ref ())"), std::string::npos);
+    EXPECT_NE (support.find ("actor_ref_snapshot_t::from (actor->actor)"),
+               std::string::npos);
+    EXPECT_NE (support.find ("actor_ref_snapshot_t::from (actor)"),
+               std::string::npos);
 }
 
 TEST (CppFrameworkSampleParity, TicTacToeStatePreservesNullableWireFields)
@@ -1601,6 +1627,29 @@ TEST (CppFrameworkSampleParity, ChannelSendBackpressureUsesIndependentDefault)
       << "one-way send must use its own backpressure policy";
     EXPECT_EQ (submit_send_body.find ("resolve_channel_wait_timeout"), std::string::npos)
       << "one-way send must not reuse request/reply timeout policy";
+}
+
+TEST (CppFrameworkSampleParity, TypedHttpBodyOnlyCallsUseFetch)
+{
+    const std::vector<std::filesystem::path> client_scenarios{
+      "TicTacToe/Client/tictactoe_client_scenario.hpp",
+      "ShoppingMall/Client/shoppingmall_client_scenario.hpp",
+      "DeliveryDispatch/Client/delivery_dispatch_client_scenario.hpp",
+      "GameQuest/Client/gamequest_client_scenario.hpp"};
+
+    for (const auto &relative : client_scenarios) {
+        const auto source = read_file (
+          cpp_language_root () / "samples" / relative);
+        EXPECT_NE (source.find (".fetch<"), std::string::npos)
+          << relative.generic_string ()
+          << " must receive a body-only typed HTTP response with fetch<T>()";
+        EXPECT_EQ (source.find (".submit<"), std::string::npos)
+          << relative.generic_string ()
+          << " must not keep the typed HTTP response envelope when it only uses the DTO";
+        EXPECT_EQ (source.find (".template submit<"), std::string::npos)
+          << relative.generic_string ()
+          << " must not keep the typed HTTP response envelope when it only uses the DTO";
+    }
 }
 
 /* 샘플은 codec을 직접 짜지 않는다. protobuf payload는 protoc이 만든 message로 옮겨 싣고,

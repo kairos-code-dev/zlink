@@ -9,7 +9,7 @@ namespace zlink::http_client
 
 inline constexpr int version_major = 0;
 inline constexpr int version_minor = 3;
-inline constexpr int version_patch = 0;
+inline constexpr int version_patch = 1;
 
 enum class http_method_t
 {

@@ -20,20 +20,31 @@ public sealed class RuntimeMetricsTests
         };
 
         listener.Start();
-        ZLinkRuntimeMetrics.RecordActorCreated();
+        ZLinkRuntimeMetrics.RecordActorCreated("mesh");
 
         var expected = new Dictionary<string, (Type GenericType, string? Unit)>(StringComparer.Ordinal)
         {
             ["zlink.stream.connections.active"] = (typeof(UpDownCounter<>), "{connection}"),
             ["zlink.stream.connections.opened"] = (typeof(Counter<>), "{connection}"),
             ["zlink.stream.connections.closed"] = (typeof(Counter<>), "{connection}"),
-            ["zlink.stream.session.bind.duration"] = (typeof(Histogram<>), "s"),
-            ["zlink.stream.inbound.bytes"] = (typeof(Counter<>), "By"),
-            ["zlink.stream.outbound.bytes"] = (typeof(Counter<>), "By"),
+            ["zlink.mesh_node.peers.configured"] = (typeof(ObservableGauge<>), "{peer}"),
+            ["zlink.mesh_node.peers.connected"] = (typeof(ObservableGauge<>), "{peer}"),
+            ["zlink.mesh_node.peers.ready"] = (typeof(ObservableGauge<>), "{peer}"),
+            ["zlink.mesh_node.channels.ready_members"] = (typeof(ObservableGauge<>), "{member}"),
+            ["zlink.mesh_node.channel.selection_failures"] = (typeof(Counter<>), "{failure}"),
+            ["zlink.mesh_node.requests.inflight"] = (typeof(UpDownCounter<>), "{request}"),
+            ["zlink.mesh_node.request.duration"] = (typeof(Histogram<>), "s"),
+            ["zlink.mesh_node.request.timeouts"] = (typeof(Counter<>), "{request}"),
+            ["zlink.mesh_node.messages.dropped"] = (typeof(Counter<>), "{message}"),
+            ["zlink.object.capacity.active"] = (typeof(ObservableGauge<>), "{object}"),
+            ["zlink.object.capacity.reserved"] = (typeof(ObservableGauge<>), "{object}"),
+            ["zlink.object.capacity.limit"] = (typeof(ObservableGauge<>), "{object}"),
+            ["zlink.spot.type.capacity.active"] = (typeof(ObservableGauge<>), "{spot}"),
+            ["zlink.spot.type.capacity.reserved"] = (typeof(ObservableGauge<>), "{spot}"),
+            ["zlink.spot.type.capacity.limit"] = (typeof(ObservableGauge<>), "{spot}"),
+            ["zlink.object.activation.active"] = (typeof(ObservableGauge<>), "{activation}"),
+            ["zlink.object.activation.limit"] = (typeof(ObservableGauge<>), "{activation}"),
             ["zlink.spot.count"] = (typeof(UpDownCounter<>), "{spot}"),
-            ["zlink.spot.timer.tick.lateness"] = (typeof(Histogram<>), "s"),
-            ["zlink.spot.created"] = (typeof(Counter<>), "{spot}"),
-            ["zlink.spot.closed"] = (typeof(Counter<>), "{spot}"),
             ["zlink.actor.count"] = (typeof(UpDownCounter<>), "{actor}"),
             ["zlink.relocation.started"] = (typeof(Counter<>), "{relocation}"),
             ["zlink.relocation.completed"] = (typeof(Counter<>), "{relocation}"),
@@ -43,23 +54,29 @@ public sealed class RuntimeMetricsTests
             ["zlink.relocation.bytes"] = (typeof(Histogram<>), "By"),
             ["zlink.relocation.interruption"] =
                 (typeof(Histogram<>), "s"),
-            ["zlink.channel.request.duration"] = (typeof(Histogram<>), "s"),
-            ["zlink.channel.request.inflight"] = (typeof(UpDownCounter<>), "{request}"),
-            ["zlink.channel.request.timeouts"] = (typeof(Counter<>), "{request}"),
-            ["zlink.channel.messages.dropped"] = (typeof(Counter<>), "{message}"),
-            ["zlink.fanout.published"] = (typeof(Counter<>), "{message}"),
-            ["zlink.fanout.received"] = (typeof(Counter<>), "{message}"),
-            ["zlink.location.peers"] = (typeof(ObservableGauge<>), "{peer}"),
+            ["zlink.instance_spot.activations"] = (typeof(Counter<>), "{activation}"),
+            ["zlink.instance_spot.activation.duration"] = (typeof(Histogram<>), "s"),
+            ["zlink.instance_spot.pending.messages"] = (typeof(ObservableGauge<>), "{message}"),
+            ["zlink.instance_spot.pending.bytes"] = (typeof(ObservableGauge<>), "By"),
+            ["zlink.instance_spot.claim.conflicts"] = (typeof(Counter<>), "{claim}"),
+            ["zlink.instance_spot.takeovers"] = (typeof(Counter<>), "{takeover}"),
             ["zlink.location.store.errors"] = (typeof(Counter<>), "{error}"),
             ["zlink.location.owner_lease.renew.failures"] = (typeof(Counter<>), "{failure}"),
             ["zlink.location.owner_lease.renew.lateness"] = (typeof(Histogram<>), "s"),
-            ["zlink.location.write.conflicts"] = (typeof(Counter<>), "{write}"),
-            ["zlink.observability.observer.overflow"] = (typeof(Counter<>), "{event}"),
-            ["zlink.drain.state"] = (typeof(ObservableGauge<>), null),
-            ["zlink.drain.duration"] = (typeof(Histogram<>), "s"),
-            ["zlink.drain.actors.handed_off"] = (typeof(Counter<>), "{actor}"),
-            ["zlink.drain.forced"] = (typeof(Counter<>), "{item}")
+            ["zlink.observability.events.overflow"] = (typeof(Counter<>), "{event}"),
+            ["zlink.host.state"] = (typeof(ObservableGauge<>), "{runtime}"),
+            ["zlink.host.inbound.application_hwm"] = (typeof(ObservableGauge<>), "By"),
+            ["zlink.host.inbound.pending_payload"] = (typeof(ObservableGauge<>), "By"),
+            ["zlink.host.inbound.receive_paused"] = (typeof(ObservableGauge<>), "{state}"),
+            ["zlink.host.completion.pending_sends"] = (typeof(ObservableGauge<>), "{request}"),
+            ["zlink.host.completion.send_limit"] = (typeof(ObservableGauge<>), "{request}"),
+            ["zlink.host.relocation.duration"] = (typeof(Histogram<>), "s"),
+            ["zlink.host.relocation.blocked"] = (typeof(Counter<>), "{operation}"),
+            ["zlink.host.shutdown.duration"] = (typeof(Histogram<>), "s"),
+            ["zlink.host.shutdown.forced"] = (typeof(Counter<>), "{operation}")
         };
+
+        Assert.Equal(expected.Count, instruments.Count);
 
         foreach (var (name, contract) in expected)
         {
@@ -70,7 +87,11 @@ public sealed class RuntimeMetricsTests
                               && instrument.Unit == contract.Unit);
         }
 
-        Assert.DoesNotContain(instruments, instrument => instrument.Name == "zlink.fanout.dropped");
+        Assert.DoesNotContain(
+            instruments,
+            instrument => instrument.Name.StartsWith(
+                "zlink.fanout.",
+                StringComparison.Ordinal));
         Assert.DoesNotContain(
             instruments,
             instrument => instrument.Name is
@@ -103,15 +124,18 @@ public sealed class RuntimeMetricsTests
             throw new InvalidOperationException("application listener failure"));
         listener.Start();
 
-        var exception = Record.Exception(ZLinkRuntimeMetrics.RecordActorCreated);
+        var exception = Record.Exception(
+            () => ZLinkRuntimeMetrics.RecordActorCreated("mesh"));
 
         Assert.Null(exception);
     }
 
     [Fact]
-    public void Inactive_Histogram_Does_Not_Capture_A_Timestamp()
+    public void Disabled_Host_Operation_Remains_Safe()
     {
-        Assert.Equal(0, ZLinkRuntimeMetrics.StartStreamSessionBind());
+        var operation = ZLinkRuntimeMetrics.StartHostShutdown();
+        operation.Complete("stopped", "none");
+        operation.Complete("force_stopped", "deadline_exceeded");
     }
 
     [Fact]
@@ -271,11 +295,11 @@ public sealed class RuntimeMetricsTests
     [Fact]
     public void Inactive_Meter_Does_Not_Allocate_Or_Retain_Per_Event_State()
     {
-        ZLinkRuntimeMetrics.RecordLocationStoreError();
+        ZLinkRuntimeMetrics.RecordLocationStoreError("read");
         var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
 
         for (var index = 0; index < 1_000_000; index++)
-            ZLinkRuntimeMetrics.RecordLocationStoreError();
+            ZLinkRuntimeMetrics.RecordLocationStoreError("read");
 
         Assert.Equal(allocatedBefore, GC.GetAllocatedBytesForCurrentThread());
     }
@@ -446,25 +470,25 @@ public sealed class RuntimeMetricsTests
     }
 
     [Fact]
-    public void Channel_Request_Metrics_Close_Inflight_And_Count_Only_Timeouts()
+    public void Request_Metrics_Close_Inflight_And_Count_Only_Timeouts()
     {
         var inflight = new List<long>();
         var durations = new List<double>();
         var timeouts = new List<long>();
         using var inflightListener = Listen<long>(
-            "zlink.channel.request.inflight",
+            "zlink.mesh_node.requests.inflight",
             (_, value, _) => inflight.Add(value));
         using var durationListener = Listen<double>(
-            "zlink.channel.request.duration",
+            "zlink.mesh_node.request.duration",
             (_, value, _) => durations.Add(value));
         using var timeoutListener = Listen<long>(
-            "zlink.channel.request.timeouts",
+            "zlink.mesh_node.request.timeouts",
             (_, value, _) => timeouts.Add(value));
 
-        var completed = ZLinkRuntimeMetrics.StartChannelRequest();
-        ZLinkRuntimeMetrics.CompleteChannelRequest(completed, timedOut: false);
-        var timedOut = ZLinkRuntimeMetrics.StartChannelRequest();
-        ZLinkRuntimeMetrics.CompleteChannelRequest(timedOut, timedOut: true);
+        var completed = ZLinkRuntimeMetrics.StartRequest("mesh", "channel");
+        completed.Complete("completed");
+        var timedOut = ZLinkRuntimeMetrics.StartRequest("mesh", "channel");
+        timedOut.Complete("timed_out");
 
         Assert.Equal([1L, -1L, 1L, -1L], inflight);
         Assert.Equal(2, durations.Count);
@@ -472,22 +496,20 @@ public sealed class RuntimeMetricsTests
     }
 
     [Fact]
-    public void Spot_Count_And_Lifecycle_Counters_Keep_Entry_And_User_Separate()
+    public void Spot_Count_Keeps_Mesh_And_Spot_Kind_Separate()
     {
         var samples = new List<(string Name, long Value, string? Kind)>();
         using var listener = Listen<long>(
-            ["zlink.spot.count", "zlink.spot.created", "zlink.spot.closed"],
-            (instrument, value, tags) => samples.Add((instrument.Name, value, Tag(tags, "kind"))));
+            "zlink.spot.count",
+            (instrument, value, tags) => samples.Add((instrument.Name, value, Tag(tags, "spot_kind"))));
 
-        ZLinkRuntimeMetrics.RecordSpotCreated("entry");
-        ZLinkRuntimeMetrics.RecordSpotCreated("user");
-        ZLinkRuntimeMetrics.RecordSpotClosed("entry");
-        ZLinkRuntimeMetrics.RecordSpotClosed("user");
+        ZLinkRuntimeMetrics.RecordSpotCreated("mesh", "entry");
+        ZLinkRuntimeMetrics.RecordSpotCreated("mesh", "user");
+        ZLinkRuntimeMetrics.RecordSpotClosed("mesh", "entry");
+        ZLinkRuntimeMetrics.RecordSpotClosed("mesh", "user");
 
         Assert.Equal(0, samples.Where(sample => sample.Name == "zlink.spot.count" && sample.Kind == "entry").Sum(sample => sample.Value));
         Assert.Equal(0, samples.Where(sample => sample.Name == "zlink.spot.count" && sample.Kind == "user").Sum(sample => sample.Value));
-        Assert.Single(samples, sample => sample.Name == "zlink.spot.created" && sample.Kind == "entry");
-        Assert.Single(samples, sample => sample.Name == "zlink.spot.created" && sample.Kind == "user");
     }
 
     [Fact]
@@ -497,126 +519,176 @@ public sealed class RuntimeMetricsTests
         using var listener = Listen<long>(
             [
                 "zlink.location.owner_lease.renew.failures",
-                "zlink.location.write.conflicts",
-                "zlink.channel.messages.dropped"
+                "zlink.mesh_node.messages.dropped"
             ],
             (instrument, _, tags) => samples.Add((instrument.Name, Tags(tags))));
 
-        ZLinkRuntimeMetrics.RecordOwnerLeaseRenewFailure();
-        ZLinkRuntimeMetrics.RecordLocationWriteConflict();
-        ZLinkRuntimeMetrics.RecordChannelDropped("channel", "request", "stale_route");
+        ZLinkRuntimeMetrics.RecordOwnerLeaseRenewFailure("mesh", "mesh");
+        ZLinkRuntimeMetrics.RecordMessageDropped(
+            "mesh",
+            "channel",
+            "request",
+            "stale_target");
 
         Assert.Contains(samples, sample => sample.Name == "zlink.location.owner_lease.renew.failures");
-        Assert.Contains(samples, sample => sample.Name == "zlink.location.write.conflicts");
-        var dropped = Assert.Single(samples, sample => sample.Name == "zlink.channel.messages.dropped");
+        var dropped = Assert.Single(samples, sample => sample.Name == "zlink.mesh_node.messages.dropped");
         Assert.Equal("channel", dropped.Tags["surface"]);
-        Assert.Equal("request", dropped.Tags["kind"]);
-        Assert.Equal("stale_route", dropped.Tags["reason"]);
+        Assert.Equal("request", dropped.Tags["message_kind"]);
+        Assert.Equal("stale_target", dropped.Tags["reason"]);
     }
 
     [Fact]
-    public void Fanout_Without_A_Declared_Topic_Omits_The_Topic_Label()
+    public void Stream_Close_Uses_Closed_Transport_And_Reason_Labels()
     {
         var samples = new List<IReadOnlyDictionary<string, string>>();
         using var listener = Listen<long>(
-            ["zlink.fanout.published", "zlink.fanout.received"],
+            "zlink.stream.connections.closed",
             (_, _, tags) => samples.Add(Tags(tags)));
 
-        ZLinkRuntimeMetrics.RecordFanoutPublished(null);
-        ZLinkRuntimeMetrics.RecordFanoutReceived(null);
+        ZLinkRuntimeMetrics.RecordStreamClosed("tcp", "server_drain");
 
-        Assert.Equal(2, samples.Count);
-        Assert.All(samples, tags => Assert.DoesNotContain("topic", tags));
+        var sample = Assert.Single(samples);
+        Assert.Equal("tcp", sample["transport"]);
+        Assert.Equal("server_shutdown", sample["close_reason"]);
     }
 
     [Fact]
-    public void Session_Bind_Duration_Records_One_Completed_Interval()
+    public void Forced_Shutdown_Is_Recorded_Once_With_Reason()
     {
-        var samples = new List<double>();
-        using var listener = Listen<double>(
-            "zlink.stream.session.bind.duration",
-            (_, value, _) => samples.Add(value));
-
-        var started = ZLinkRuntimeMetrics.StartStreamSessionBind();
-        ZLinkRuntimeMetrics.CompleteStreamSessionBind(started);
-
-        Assert.Single(samples);
-        Assert.True(samples[0] >= 0);
-    }
-
-    [Fact]
-    public void Forced_Drain_Records_The_Exact_Count_For_Each_Closed_Kind()
-    {
-        var samples = new List<(long Value, string? Kind)>();
+        var samples = new List<(long Value, string? Reason)>();
         using var listener = new MeterListener
         {
             InstrumentPublished = (instrument, owner) =>
             {
                 if (instrument.Meter.Name == ZLinkMeters.Framework
-                    && instrument.Name == "zlink.drain.forced")
+                    && instrument.Name == "zlink.host.shutdown.forced")
                     owner.EnableMeasurementEvents(instrument);
             }
         };
         listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
         {
-            if (instrument.Name == "zlink.drain.forced")
-                samples.Add((value, Tag(tags, "kind")));
+            if (instrument.Name == "zlink.host.shutdown.forced")
+                samples.Add((value, Tag(tags, "reason")));
         });
         listener.Start();
 
-        ZLinkRuntimeMetrics.RecordDrainForced("actor", 2);
-        ZLinkRuntimeMetrics.RecordDrainForced("spot", 3);
-        ZLinkRuntimeMetrics.RecordDrainForced("request", 4);
-        ZLinkRuntimeMetrics.RecordDrainForced("session", 5);
+        var operation = ZLinkRuntimeMetrics.StartHostShutdown();
+        operation.Complete("force_stopped", "deadline_exceeded");
+        operation.Complete("force_stopped", "teardown_failed");
 
-        Assert.Equal(
-            new[]
-            {
-                (2L, (string?)"actor"),
-                (3L, (string?)"spot"),
-                (4L, (string?)"request"),
-                (5L, (string?)"session")
-            },
-            samples);
+        Assert.Equal([(1L, (string?)"deadline_exceeded")], samples);
     }
 
     [Fact]
     public void Observable_Metrics_Pull_Current_Source_State_After_Listener_Attaches()
     {
         long firstPeers = 2;
-        long secondPeers = 3;
-        var drainState = "drained";
-        using var first = ZLinkRuntimeMetrics.RegisterLocationPeers(() => firstPeers);
-        var second = ZLinkRuntimeMetrics.RegisterLocationPeers(() => secondPeers);
-        using var drain = ZLinkRuntimeMetrics.RegisterDrainState(() => drainState);
+        var hostState = "serving";
+        using var first = ZLinkRuntimeMetrics.RegisterMeshSnapshots(
+            () =>
+            [
+                new ZLinkRuntimeMetricMeshSnapshot(
+                    "mesh",
+                    "manual",
+                    firstPeers,
+                    1,
+                    1,
+                    [],
+                    new ZLinkRuntimeMetricCapacity(0, 0, 100),
+                    new ZLinkRuntimeMetricCapacity(0, 0, 100),
+                    [],
+                    new ZLinkRuntimeMetricActivation(0, 10),
+                    [])
+            ]);
+        using var host = ZLinkRuntimeMetrics.RegisterHostState(() => hostState);
         var peerSamples = new List<long>();
-        var drainSamples = new List<string?>();
+        var hostSamples = new List<string?>();
         using var listener = new MeterListener
         {
             InstrumentPublished = (instrument, owner) =>
             {
                 if (instrument.Meter.Name == ZLinkMeters.Framework
-                    && instrument.Name is "zlink.location.peers" or "zlink.drain.state")
+                    && instrument.Name is "zlink.mesh_node.peers.configured" or "zlink.host.state")
                     owner.EnableMeasurementEvents(instrument);
             }
         };
         listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
         {
-            if (instrument.Name == "zlink.location.peers") peerSamples.Add(value);
-            if (instrument.Name == "zlink.drain.state") drainSamples.Add(Tag(tags, "state"));
+            if (instrument.Name == "zlink.mesh_node.peers.configured") peerSamples.Add(value);
+            if (instrument.Name == "zlink.host.state") hostSamples.Add(Tag(tags, "state"));
         });
         listener.Start();
 
         listener.RecordObservableInstruments();
-        Assert.Contains(5, peerSamples);
-        Assert.Contains("drained", drainSamples);
+        Assert.Contains(2, peerSamples);
+        Assert.Contains("serving", hostSamples);
 
         firstPeers = 4;
-        drainState = "force_stopping";
-        second.Dispose();
+        hostState = "draining";
         listener.RecordObservableInstruments();
         Assert.Equal(4, peerSamples[^1]);
-        Assert.Equal("force_stopping", drainSamples[^1]);
+        Assert.Equal("draining", hostSamples[^1]);
+    }
+
+    [Fact]
+    public void Host_Inbound_Observable_Metrics_Read_Bounded_Status_Without_Identity_Labels()
+    {
+        var status = new ZLinkInboundDispatchStatus(
+            1024,
+            400,
+            300,
+            100,
+            true,
+            7,
+            32);
+        var providerReads = 0;
+        using var registration = ZLinkRuntimeMetrics.RegisterHostInboundDispatch(() =>
+        {
+            providerReads++;
+            return status;
+        });
+        var samples = new List<(string Name, long Value, IReadOnlyDictionary<string, string> Tags)>();
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, owner) =>
+            {
+                if (instrument.Meter.Name == ZLinkMeters.Framework
+                    && (instrument.Name.StartsWith("zlink.host.inbound.", StringComparison.Ordinal)
+                        || instrument.Name.StartsWith("zlink.host.completion.", StringComparison.Ordinal)))
+                    owner.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
+            samples.Add((instrument.Name, value, Tags(tags))));
+        listener.Start();
+
+        Assert.Equal(0, providerReads);
+        listener.RecordObservableInstruments();
+        Assert.Equal(5, providerReads);
+
+        Assert.Contains(samples, sample =>
+            sample is { Name: "zlink.host.inbound.application_hwm", Value: 1024 }
+            && sample.Tags.Count == 0);
+        Assert.Contains(samples, sample =>
+            sample is { Name: "zlink.host.inbound.pending_payload", Value: 300 }
+            && sample.Tags["state"] == "queued");
+        Assert.Contains(samples, sample =>
+            sample is { Name: "zlink.host.inbound.pending_payload", Value: 100 }
+            && sample.Tags["state"] == "active");
+        Assert.Contains(samples, sample =>
+            sample is { Name: "zlink.host.inbound.receive_paused", Value: 1 }
+            && sample.Tags.Count == 0);
+        Assert.Contains(samples, sample =>
+            sample is { Name: "zlink.host.completion.pending_sends", Value: 7 }
+            && sample.Tags.Count == 0);
+        Assert.Contains(samples, sample =>
+            sample is { Name: "zlink.host.completion.send_limit", Value: 32 }
+            && sample.Tags.Count == 0);
+        Assert.All(
+            samples,
+            sample => Assert.DoesNotContain(
+                sample.Tags.Keys,
+                key => key is "mesh_name" or "channel_name" or "actor_id" or "spot_id" or "owner"));
     }
 
     private static string? Tag(ReadOnlySpan<KeyValuePair<string, object?>> tags, string name)

@@ -55,6 +55,7 @@ void invoke_callback (void *owner_handle_,
                       size_t part_count_,
                       void *userdata_);
 int drain (queue_state_t *state_, void *owner_handle_);
+int drain_while_closing (queue_state_t *state_, void *owner_handle_);
 void close (queue_state_t *state_);
 void claim_owner_thread (queue_state_t *state_);
 bool current_thread_is_owner (queue_state_t *state_);

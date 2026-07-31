@@ -222,7 +222,9 @@ internal static class ZLinkRelocationEnvelopeCodec
             stream.Write(entry.RawEntry.Span);
         stream.Write(original[layout.JournalEnd..]);
         stream.Position = 0;
-        return Decode(stream, envelope.InventoryDigest);
+        return ProjectCanonicalProgress(
+            envelope,
+            Decode(stream, envelope.InventoryDigest));
     }
 
     internal static ZLinkRelocationEnvelope AppendCanonicalTerminalCompletion(
@@ -237,10 +239,13 @@ internal static class ZLinkRelocationEnvelopeCodec
         if (completion.RawRecord.IsEmpty)
             throw new ArgumentException(
                 "The canonical completion record is empty.", nameof(completion));
-        var existing = envelope.Participants
+        var completions = envelope.Participants
             .SelectMany(static participant => participant.TerminalCompletions)
+            .Append(completion)
+            .OrderBy(static item => item.ParticipantId)
+            .ThenBy(static item => item.AcceptedSequence)
             .ToArray();
-        if (existing.Length >= MaxItemsPerParticipant)
+        if (completions.Length > MaxItemsPerParticipant)
             throw new ArgumentOutOfRangeException(nameof(completion));
         using var stream = new MemoryStream();
         var original = envelope.CanonicalLogicalStream.Span;
@@ -248,14 +253,15 @@ internal static class ZLinkRelocationEnvelopeCodec
         Span<byte> count = stackalloc byte[sizeof(uint)];
         BinaryPrimitives.WriteUInt32BigEndian(
             count,
-            checked((uint)(existing.Length + 1)));
+            checked((uint)completions.Length));
         stream.Write(count);
-        foreach (var item in existing)
+        foreach (var item in completions)
             stream.Write(item.RawRecord.Span);
-        stream.Write(completion.RawRecord.Span);
         stream.Write(original[layout.CompletionEnd..]);
         stream.Position = 0;
-        return Decode(stream, envelope.InventoryDigest);
+        return ProjectCanonicalProgress(
+            envelope,
+            Decode(stream, envelope.InventoryDigest));
     }
 
     internal static ZLinkRelocationEnvelope AcknowledgeCanonicalTerminalCompletion(
@@ -346,7 +352,52 @@ internal static class ZLinkRelocationEnvelopeCodec
         }
         stream.Write(original[layout.CompletionEnd..]);
         stream.Position = 0;
-        return Decode(stream, envelope.InventoryDigest);
+        return ProjectCanonicalProgress(
+            envelope,
+            Decode(stream, envelope.InventoryDigest));
+    }
+
+    private static ZLinkRelocationEnvelope ProjectCanonicalProgress(
+        ZLinkRelocationEnvelope identity,
+        ZLinkRelocationEnvelope progress)
+    {
+        if (identity.Participants.Count != progress.Participants.Count)
+            throw new InvalidDataException(
+                "Canonical relocation progress changed the participant count.");
+        var progressById = progress.Participants.ToDictionary(
+            static participant => participant.CanonicalParticipantId);
+        var participants = new ZLinkRelocationParticipantEnvelope[
+            identity.Participants.Count];
+        for (var index = 0; index < participants.Length; index++)
+        {
+            var participant = identity.Participants[index];
+            if (participant.CanonicalParticipantId == 0
+                || !progressById.TryGetValue(
+                    participant.CanonicalParticipantId,
+                    out var current))
+                throw new InvalidDataException(
+                    "Canonical relocation progress changed a participant identity.");
+            participants[index] = participant with
+            {
+                AcceptedJobs = current.AcceptedJobs,
+                LogicalTimers = current.LogicalTimers,
+                CanonicalParticipantId = current.CanonicalParticipantId,
+                AcceptedBoundary = current.AcceptedBoundary,
+                ReplayCursor = current.ReplayCursor,
+                TerminalCompletions = current.TerminalCompletions
+            };
+        }
+
+        return identity with
+        {
+            Participants = participants,
+            CanonicalLogicalStream = progress.CanonicalLogicalStream,
+            CanonicalLayout = progress.CanonicalLayout,
+            CanonicalRelocationHigh = progress.CanonicalRelocationHigh,
+            CanonicalRelocationLow = progress.CanonicalRelocationLow,
+            CanonicalApplicationVersion =
+                progress.CanonicalApplicationVersion
+        };
     }
 
     internal static ZLinkCanonicalTerminalCompletion CreateCanonicalTerminalCompletion(

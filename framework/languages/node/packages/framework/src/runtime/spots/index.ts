@@ -178,6 +178,10 @@ export interface ZLinkSpotManagerOptions {
     meshName: string,
     spotType: Type<ZLinkSpot>
   ) => import('../../contracts').ZLinkUserSpotExecutionMode;
+  readonly userSpotRelocationReadiness?: (
+    meshName: string,
+    spotType: Type<ZLinkSpot>
+  ) => import('../../contracts').ZLinkSpotRelocationReadinessMode;
   readonly actorDispatchOwnerResolver?: (actorId: string) => {
     readonly actorRef?: ActorRef;
     readonly spotId?: RoutingId;
@@ -197,6 +201,10 @@ export interface ZLinkSpotManagerOptions {
   readonly workerRuntime?: ZLinkWorkerRuntime;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly locationLifecycle?: ZLinkLocationLifecycle;
+  readonly releaseInstanceAuthority?: (
+    meshName: string,
+    spotId: RoutingId
+  ) => Promise<void>;
   // Backs each user Spot with a core-native Spot object (registered for join
   // routing by rid) so actor-join admission uses the same recv/reply round-trip
   // as the Entry Spot and .NET, for local and remote callers alike.
@@ -237,6 +245,8 @@ export class DefaultZLinkSpotManager {
     string,
     Promise<ZLinkSpotActivation>
   >();
+  private readonly pendingInstanceTerminals = new Set<string>();
+  private readonly deferredInstanceAuthorityReleases = new Set<string>();
 
   constructor(private readonly options: ZLinkSpotManagerOptions) {
     this.activations = new ZLinkSpotActivationRegistry(options.metrics);
@@ -276,6 +286,7 @@ export class DefaultZLinkSpotManager {
       nodeRidProvider: options.nodeRidProvider,
       actorCountProvider: options.actorCountProvider,
       userSpotExecutionMode: options.userSpotExecutionMode,
+      userSpotRelocationReadiness: options.userSpotRelocationReadiness,
       channelClient: options.channelClient,
       fanoutClient: options.fanoutClient,
       spotPublisherClient: options.spotPublisherClient,
@@ -299,6 +310,14 @@ export class DefaultZLinkSpotManager {
       closeSpot: (meshName, spotId, signal, reason) =>
         this.closeWithReason(meshName, spotId, signal, reason),
       registerActivation: (activation) => this.activations.register(activation),
+      releaseLocation: (activation, meshName, spotId) =>
+        this.isInstanceFactory(meshName, activation.spotType)
+          ? this.pendingInstanceTerminals.has(`${meshName}\0${String(spotId)}`)
+            ? (this.deferredInstanceAuthorityReleases.add(
+                `${meshName}\0${String(spotId)}`
+              ), Promise.resolve())
+            : this.options.releaseInstanceAuthority?.(meshName, spotId) ?? Promise.resolve()
+          : this.locationClaim.release(meshName, spotId),
       metrics: options.metrics
     });
   }
@@ -349,9 +368,11 @@ export class DefaultZLinkSpotManager {
   }
 
   async publishRelocationSpot(
-    activation: ZLinkSpotActivation
+    activation: ZLinkSpotActivation,
+    beforeAdmission?: () => Promise<void>
   ): Promise<void> {
     await activation.serial.execute(() => activation.spot.onInitialize?.());
+    await beforeAdmission?.();
     this.activations.publish(activation.meshName, activation.spotId);
   }
 
@@ -387,14 +408,24 @@ export class DefaultZLinkSpotManager {
     const key = `${meshName}\0${String(spotId)}`;
     let pending = this.pendingInstanceMaterializations.get(key);
     if (pending === undefined) {
+      const metric = this.options.metrics?.startInstanceSpotActivation(meshName, instanceType);
       pending = this.activationLifecycle.materializeInstance(
-        meshName,
-        instanceType,
-        this.requireInstanceFactory(meshName, instanceType),
-        spotId,
-        objectGeneration,
-        signal
-      );
+          meshName,
+          instanceType,
+          this.requireInstanceFactory(meshName, instanceType),
+          spotId,
+          objectGeneration,
+          signal
+        ).then(
+          activation => {
+            metric?.complete('ready');
+            return activation;
+          },
+          error => {
+            metric?.complete(instanceActivationOutcome(error));
+            throw error;
+          }
+        );
       this.pendingInstanceMaterializations.set(key, pending);
       void pending.finally(() => {
         if (this.pendingInstanceMaterializations.get(key) === pending) {
@@ -416,6 +447,21 @@ export class DefaultZLinkSpotManager {
       () => true
     );
     await operation?.ready;
+  }
+
+  async completeInstanceTerminal(meshName: string, spotId: RoutingId): Promise<boolean> {
+    const key = `${meshName}\0${String(spotId)}`;
+    this.pendingInstanceTerminals.delete(key);
+    const deferredRelease = this.deferredInstanceAuthorityReleases.delete(key);
+    if (!deferredRelease && this.activations.closingOperation(meshName, spotId) === undefined) {
+      return false;
+    }
+    await (this.options.releaseInstanceAuthority?.(meshName, spotId) ?? Promise.resolve());
+    return true;
+  }
+
+  beginInstanceTerminal(meshName: string, spotId: RoutingId): void {
+    this.pendingInstanceTerminals.add(`${meshName}\0${String(spotId)}`);
   }
 
   private requireInstanceFactory(
@@ -1084,9 +1130,14 @@ export class DefaultZLinkSpotManager {
         && transferRequest !== undefined
         && this.options.actorTransferRuntime !== undefined
       ) {
-        const transferState = BindingMessage.from(
-          Buffer.from(transferRequest.transferState, 'base64')
-        );
+        const transferState = transferRequest.transferStateReference === undefined
+          ? BindingMessage.from(Buffer.from(transferRequest.transferState!, 'base64'))
+          : BindingMessage.from(
+              await this.options.actorTransferRuntime.readPreparedTransferState(
+                transferRequest.transferStateReference,
+                transferRequest.transferStateChecksumCrc32c!
+              )
+            );
         try {
           const result = await this.options.actorTransferRuntime.materializeRoutedActor(
             actorId,
@@ -1228,6 +1279,7 @@ export class DefaultZLinkSpotManager {
             throw new Error(`Actor '${actor.context.actorId}' source leave callback failed after target commit.`);
           }
           activation.commitActorJoin(actor);
+          await this.options.actorTransferRuntime?.openRoutedActorSession(actor);
           const deferredJoinRoot = pendingTransfer?.deferredJoinRoot
             ?? await this.options.actorTransferRuntime?.recoverDeferredJoinAccepted(actor.context.actorId);
           if (deferredJoinRoot !== undefined) {
@@ -1299,7 +1351,7 @@ export class DefaultZLinkSpotManager {
       readonly spotId: string;
       readonly spotGeneration: bigint;
       readonly membershipEpoch: bigint;
-      readonly spotAuthority: import('../../contracts').ZLinkAuthoritySnapshot;
+      readonly spotAuthority: import('../../contracts/Locations').ZLinkAuthoritySnapshot;
       readonly spotAuthorityPayload: Uint8Array;
       readonly activation?: ZLinkSpotActivation;
       readonly implementation: Type<ZLinkSpot>;
@@ -1328,7 +1380,6 @@ export class DefaultZLinkSpotManager {
         `Actor '${root.actor.actorId}' recovery payload reader is unavailable.`
       );
     }
-    const request = BindingMessage.from(recoveryPayload);
     let transferState: BindingMessage | undefined;
     let materialized = false;
     let authorityPublished = false;
@@ -1337,14 +1388,19 @@ export class DefaultZLinkSpotManager {
     let activationPublished = activation !== undefined;
     let currentRoot = root;
     try {
-      const transfer = decodeFormalRemoteTransferRequest(request);
+      const transfer = decodeFormalRemoteTransferRequestBytes(recoveryPayload);
       if (
         transfer === undefined
         || transfer.actorRef?.actorId !== root.actor.actorId
         || transfer.actorRef.objectGeneration !== root.actor.objectGeneration
       ) {
+        const recoveredIdentity = transfer?.actorRef === undefined
+          ? 'missing'
+          : `${transfer.actorRef.actorId}/${transfer.actorRef.objectGeneration}`;
         throw new Error(
-          `Actor '${root.actor.actorId}' published Join recovery request is invalid.`
+          `Actor '${root.actor.actorId}' published Join recovery request is invalid `
+          + `(expected ${root.actor.actorId}/${root.actor.objectGeneration}, `
+          + `recovered ${recoveredIdentity}, bytes ${recoveryPayload.byteLength}).`
         );
       }
       let actor = this.options.actorLifecycleResolver?.(root.actor.actorId)
@@ -1399,9 +1455,15 @@ export class DefaultZLinkSpotManager {
         activationPrepared = true;
       }
       if (actor === undefined) {
-        transferState = BindingMessage.from(
-          Buffer.from(transfer.transferState, 'base64')
-        );
+        transferState = transfer.transferStateReference === undefined
+          ? BindingMessage.from(Buffer.from(transfer.transferState!, 'base64'))
+          : BindingMessage.from(
+              await this.options.actorTransferRuntime.readPreparedTransferState(
+                transfer.transferStateReference,
+                transfer.transferStateChecksumCrc32c!,
+                signal
+              )
+            );
         actor = await this.options.actorTransferRuntime.prepareRecoveryRoutedActor(
           root.actor.actorId,
           transfer.actorType,
@@ -1491,6 +1553,7 @@ export class DefaultZLinkSpotManager {
             signal,
             true
           );
+        this.options.actorTransferRuntime!.publishRecoveryRoutedActor(actor!);
         await this.options.actorTransferRuntime!.openRoutedActorSession(actor!);
         await this.options.actorTransferRuntime!
           .releaseDeferredJoinRecovery(currentRoot, signal);
@@ -1508,7 +1571,6 @@ export class DefaultZLinkSpotManager {
       throw error;
     } finally {
       transferState?.close();
-      request.close();
     }
   }
 
@@ -1627,7 +1689,9 @@ interface ZLinkFormalRemoteTransferRequest {
   readonly actorType: string;
   readonly transferId: string;
   readonly transferAdapterKey?: string;
-  readonly transferState: string;
+  readonly transferState?: string;
+  readonly transferStateReference?: string;
+  readonly transferStateChecksumCrc32c?: number;
   readonly request: string;
   readonly actorEntryNodeRid?: RoutingId;
   readonly actorRef?: ActorRef;
@@ -1643,9 +1707,15 @@ interface ZLinkFormalRemoteTransferRequest {
 function decodeFormalRemoteTransferRequest(
   message: Message
 ): ZLinkFormalRemoteTransferRequest | undefined {
+  return decodeFormalRemoteTransferRequestBytes(message.data());
+}
+
+function decodeFormalRemoteTransferRequestBytes(
+  bytes: Uint8Array
+): ZLinkFormalRemoteTransferRequest | undefined {
   let payload: ZLinkRemoteActorJoinWirePayload;
   try {
-    payload = JSON.parse(message.data().toString()) as ZLinkRemoteActorJoinWirePayload;
+    payload = JSON.parse(Buffer.from(bytes).toString()) as ZLinkRemoteActorJoinWirePayload;
   } catch {
     return undefined;
   }
@@ -1653,7 +1723,13 @@ function decodeFormalRemoteTransferRequest(
     payload.packetName !== REMOTE_ACTOR_JOIN_PACKET
     || typeof payload.actorType !== 'string'
     || typeof payload.transferId !== 'string'
-    || typeof payload.transferState !== 'string'
+    || !(
+      typeof payload.transferState === 'string'
+      || (
+        typeof payload.transferStateReference === 'string'
+        && typeof payload.transferStateChecksumCrc32c === 'number'
+      )
+    )
     || typeof payload.request !== 'string'
   ) {
     return undefined;
@@ -1664,17 +1740,20 @@ function decodeFormalRemoteTransferRequest(
     transferAdapterKey: typeof payload.transferAdapterKey === 'string'
       ? payload.transferAdapterKey
       : undefined,
-    transferState: payload.transferState,
+    transferState: typeof payload.transferState === 'string'
+      ? payload.transferState
+      : undefined,
+    transferStateReference: typeof payload.transferStateReference === 'string'
+      ? payload.transferStateReference
+      : undefined,
+    transferStateChecksumCrc32c: typeof payload.transferStateChecksumCrc32c === 'number'
+      ? payload.transferStateChecksumCrc32c
+      : undefined,
     request: payload.request,
     actorEntryNodeRid: typeof payload.actorEntryNodeRid === 'string'
       ? decodeRoutingId(payload.actorEntryNodeRid, payload.actorEntryNodeRidHex)
       : undefined,
-    actorRef: decodeRemoteActorRef(
-      payload.actorNodeRid,
-      payload.actorNodeRidHex,
-      typeof payload.actorId === 'string' ? payload.actorId : '',
-      payload.actorGeneration
-    ) as ActorRef | undefined,
+    actorRef: decodeFormalRemoteActorRef(payload),
     remoteBoundSessionTarget: decodeRemoteBoundSessionTarget(
       payload.boundSessionRouterChannelId,
       payload.boundSessionTargetNodeRid,
@@ -1704,6 +1783,26 @@ function decodeFormalRemoteTransferRequest(
             low: BigInt(payload.completionOperationLow)
           }
         : undefined
+  };
+}
+
+function decodeFormalRemoteActorRef(
+  payload: ZLinkRemoteActorJoinWirePayload
+): ActorRef | undefined {
+  const backend = decodeRemoteActorRef(
+    payload.actorNodeRid,
+    payload.actorNodeRidHex,
+    typeof payload.actorId === 'string' ? payload.actorId : '',
+    payload.actorGeneration
+  );
+  if (backend === undefined || typeof payload.routerChannelId !== 'string') {
+    return undefined;
+  }
+  return {
+    actorId: backend.actorId,
+    objectGeneration: backend.generation,
+    meshName: payload.routerChannelId,
+    nodeRid: backend.nodeRid as unknown as RoutingId
   };
 }
 
@@ -1747,4 +1846,14 @@ function isAbortSignal(value: unknown): value is AbortSignal {
     && value !== null
     && typeof (value as { aborted?: unknown }).aborted === 'boolean'
     && typeof (value as { addEventListener?: unknown }).addEventListener === 'function';
+}
+
+function instanceActivationOutcome(error: unknown): string {
+  if (error instanceof Error) {
+    if (error.name === 'AbortError') return 'shutdown';
+    if (/timed out|deadline/i.test(error.message)) return 'timed_out';
+    if (/conflict|already exists/i.test(error.message)) return 'conflict';
+    if (/fenced|stale/i.test(error.message)) return 'fenced';
+  }
+  return 'failed';
 }

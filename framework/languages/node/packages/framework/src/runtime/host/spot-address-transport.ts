@@ -35,7 +35,6 @@ export interface ZLinkHostSpotAddressTransportOptions {
   readonly routed: ZLinkSpotRoutedTransport;
   readonly meshNames: () => readonly string[];
   readonly isMeshConfigured?: (meshName: string) => boolean;
-  readonly instanceTypes: (meshName: string) => readonly string[];
   readonly meshNode: (meshName: string) => ZLinkBackendMeshNode | undefined;
   readonly completions: (meshName: string) => ZLinkMeshCompletionTable | undefined;
   readonly codecs?: ZLinkChannelEnvelopeCodecRegistry;
@@ -92,6 +91,15 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
     request: unknown,
     call: ZLinkSpotAddressCallOptions
   ): Promise<TReply> {
+    return this.requestToSpotAddressOnce<TReply>(spotId, request, call, true);
+  }
+
+  private async requestToSpotAddressOnce<TReply>(
+    spotId: RoutingId,
+    request: unknown,
+    call: ZLinkSpotAddressCallOptions,
+    allowStaleInstanceRetry: boolean
+  ): Promise<TReply> {
     const existing = await this.resolveExisting(spotId, call.signal);
     if (existing !== undefined) {
       this.validateExisting(existing, call);
@@ -108,9 +116,13 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
             error.kind === ZLinkFrameworkErrorKind.SpotRouteNotFound
             || error.kind === ZLinkFrameworkErrorKind.SpotGenerationStale
             || error.kind === ZLinkFrameworkErrorKind.SpotMoving
+            || error.kind === ZLinkFrameworkErrorKind.RequestTargetNotFound
           )
         ) {
           this.options.resolver()?.invalidate?.(spotId);
+          if (call.instanceSpot && allowStaleInstanceRetry) {
+            return this.requestToSpotAddressOnce<TReply>(spotId, request, call, false);
+          }
         }
         throw error;
       }
@@ -221,9 +233,9 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
     const meshNames = call.initialMeshName === undefined
       ? configuredMeshes
       : [call.initialMeshName];
-    const distinctTypes = [...new Set(
-      meshNames.flatMap(meshName => this.options.instanceTypes(meshName))
-    )];
+    const distinctTypes = [...new Set(meshNames.flatMap(meshName =>
+      this.options.meshNode(meshName)?.instanceSpotPlacementTypes?.() ?? []
+    ))];
     const stableType = call.instanceSpotType
       ?? (distinctTypes.length === 1 ? distinctTypes[0] : undefined);
     if (stableType === undefined) {
@@ -234,7 +246,6 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
       );
     }
     for (const meshName of meshNames) {
-      if (!this.options.instanceTypes(meshName).includes(stableType)) continue;
       const node = this.options.meshNode(meshName);
       const placement = node?.selectObjectPlacement(stableType);
       if (node !== undefined && placement !== undefined) {

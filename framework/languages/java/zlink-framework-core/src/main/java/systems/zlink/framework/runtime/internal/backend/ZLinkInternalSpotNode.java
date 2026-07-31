@@ -181,7 +181,24 @@ public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
 
     ZLinkBackendActorRef createActor(String actorId, Message createRequest);
 
+    default ZLinkBackendActorRef createActor(
+        String actorId,
+        long objectGeneration,
+        Message createRequest) {
+        ZLinkBackendActorRef created = createActor(actorId, createRequest);
+        if (created.generation() != objectGeneration) {
+            throw new IllegalStateException(
+                "backend Actor generation does not match the reserved "
+                    + "Location Store generation");
+        }
+        return created;
+    }
+
     ZLinkBackendActorRef actorLookup(String actorId);
+
+    default boolean hasPendingActorRequests() {
+        return false;
+    }
 
     default void rememberActorAuthority(
         ZLinkBackendActorRef actor,
@@ -290,6 +307,19 @@ public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid);
 
+    default java.util.Optional<BoundSessionRoute> boundSessionRoute(
+        ZLinkBackendActorRef actor) {
+        return java.util.Optional.empty();
+    }
+
     void closeActorBoundSession(ZLinkBackendActorRef actor, Duration timeout);
+
+    record BoundSessionRoute(
+        RoutingId sessionOwnerNodeRid,
+        long sessionOwnerNodeGeneration,
+        RoutingId sessionRid,
+        long bindingGeneration,
+        long lastAcceptedSessionSequence) {
+    }
 
 }

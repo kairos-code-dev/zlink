@@ -2,6 +2,7 @@
 #pragma once
 
 #include "runtime/diagnostics/runtime_metrics.hpp"
+#include <runtime/locations/location_repository.hpp>
 
 #include <zlink/framework/contracts/locations/options.hpp>
 #include <zlink/framework/contracts/locations/stores.hpp>
@@ -21,7 +22,7 @@ namespace zlink::framework::runtime
 class location_runtime_t
 {
   public:
-    explicit location_runtime_t (location_store_t &store,
+    explicit location_runtime_t (location_repository_t &store,
                                  location_options_t options = {},
                                  std::string owner_id = make_owner_id ()) :
         _store (&store), _options (options), _owner_id (std::move (owner_id))
@@ -311,7 +312,7 @@ class location_runtime_t
         _last_error = std::move (message);
     }
 
-    location_store_t *_store;
+    location_repository_t *_store;
     location_options_t _options;
     std::string _owner_id;
     std::atomic_bool _draining = false;

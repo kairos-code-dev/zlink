@@ -170,6 +170,58 @@ test('fanout publisher sends the exact reserved beacon every five seconds and pu
   await sockets.dispose();
 });
 
+test('fanout publisher descriptor combines advertise host with the actual bound port', async t => {
+  const store = new internal.ZLinkInMemoryLocationStore();
+  const stores = locationStores(store);
+  const locationRuntime = new internal.ZLinkLocationRuntime({
+    stores,
+    ownerId: 'fanout-owner'
+  });
+  await locationRuntime.start('publisher-node');
+  const registration = internal.createFrameworkRegistration({
+    network: {
+      bindHost: '0.0.0.0',
+      advertiseHost: 'events.internal'
+    },
+    channels: {
+      events: { publisher: {} }
+    },
+    locations: { useInMemoryStores: true }
+  });
+  const publisher = {
+    nativeInstance: {},
+    lastEndpoint: 'tcp://0.0.0.0:45123',
+    setChannelName() {},
+    bind() {},
+    onSendReady() {},
+    publish() { return true; },
+    async dispose() {}
+  };
+  const sockets = new ZLinkChannelSocketRegistry(
+    registration,
+    { createPublisherSocket() { return publisher; } },
+    {}
+  );
+  const runtime = new ZLinkFanoutLocationRuntime(
+    registration,
+    sockets,
+    locationRuntime,
+    stores,
+    { pollingIntervalMs: 60_000 },
+    () => async () => {}
+  );
+  t.after(async () => {
+    await runtime.stop();
+    await locationRuntime.stop();
+    await sockets.dispose();
+  });
+
+  await runtime.start();
+  const rows = await store.listFanoutPublishers('events');
+  assert.equal(rows.items.length, 1);
+  assert.equal(rows.items[0].endpoint, 'tcp://events.internal:45123');
+});
+
 test('automatic fanout reconciles dedicated descriptors by publisher RID and lifecycle', async () => {
   const store = new internal.ZLinkInMemoryLocationStore();
   const stores = locationStores(store);

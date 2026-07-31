@@ -254,12 +254,6 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         Message header,
         Message payload)
     {
-        ZLinkRuntimeMetrics.RecordStreamBytes(
-            inbound: true,
-            ZLinkStreamFrameCodec.PrefixSize
-            + header.AsReadOnlyMemory().Length
-            + payload.AsReadOnlyMemory().Length,
-            _transport);
         if (_sessionIngress.Enqueue(async () =>
         {
             var ownershipTransferred = false;

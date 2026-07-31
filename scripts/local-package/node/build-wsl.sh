@@ -30,8 +30,14 @@ if [[ "$actual_core_provenance_sha256" != "$approved_core_provenance_sha256" ]];
   echo "Installed Core provenance does not match the R2-approved package" >&2
   exit 1
 fi
-if [[ "$package_version" != 11.* || "$package_version" != "$core_version" ]]; then
-  echo "Node package $package_version must match installed Core 11 version $core_version" >&2
+package_line="${package_version%.*}"
+core_line="${core_version%.*}"
+package_patch="${package_version##*.}"
+core_patch="${core_version##*.}"
+if [[ "$package_version" != 11.* || "$package_line" != "$core_line"
+      || ! "$package_patch" =~ ^[0-9]+$ || ! "$core_patch" =~ ^[0-9]+$
+      || "$package_patch" -lt "$core_patch" ]]; then
+  echo "Node package $package_version must use Core $core_version major.minor and an equal or newer patch" >&2
   exit 1
 fi
 

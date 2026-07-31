@@ -5,6 +5,7 @@ public final class SampleNames {
     public static final String SupportChannel = "supportchat-support";
     public static final String SupportActorMesh = "supportchat-actors";
     public static final String SupportActorType = "support-user";
+    public static final String ConversationSpotType = "supportchat.conversation";
     public static final String StreamNode = "supportchat-session";
     public static final int AgentCapacity = 3;
     public static final String ConversationIdMetadataKey = "ConversationId";

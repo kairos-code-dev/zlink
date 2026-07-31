@@ -332,19 +332,46 @@ internal sealed class ZLinkSpotRuntimeManager(
             }
             else
             {
-                var remaining = deadlineAt - DateTimeOffset.UtcNow;
-                if (remaining <= TimeSpan.Zero)
-                    throw new TimeoutException(
-                        "The User Spot create deadline elapsed.");
-                result = await source.Node.CreateUserSpotAsync(
-                        target.Rid,
-                        requestedSpotId,
-                        stableType,
-                        fence,
-                        deadline,
-                        remaining,
-                        deadlineToken.Token)
+                result = await CreateRemoteAfterAdmissionAsync()
                     .ConfigureAwait(false);
+            }
+
+            async ValueTask<(
+                UserSpotCreateCompletion Completion,
+                IReadOnlyList<Message> Reply)> CreateRemoteAfterAdmissionAsync()
+            {
+                while (true)
+                {
+                    var remaining = deadlineAt - DateTimeOffset.UtcNow;
+                    if (remaining <= TimeSpan.Zero)
+                        throw new TimeoutException(
+                            "The User Spot create deadline elapsed.");
+                    try
+                    {
+                        return await source.Node.CreateUserSpotAsync(
+                                target.Rid,
+                                requestedSpotId,
+                                stableType,
+                                fence,
+                                deadline,
+                                remaining,
+                                deadlineToken.Token)
+                            .ConfigureAwait(false);
+                    }
+                    catch (ZlinkSubmitException error)
+                        when (error.Result is
+                                  ZlinkSubmitException.ErrorCode.NotConnected
+                              or ZlinkSubmitException.ErrorCode.Backpressured)
+                    {
+                        // The reservation already fixes the exact target and
+                        // generation. Retry only source-local admission; do
+                        // not select another owner or create another claim.
+                        await Task.Delay(
+                                TimeSpan.FromMilliseconds(2),
+                                deadlineToken.Token)
+                            .ConfigureAwait(false);
+                    }
+                }
             }
         }
         catch

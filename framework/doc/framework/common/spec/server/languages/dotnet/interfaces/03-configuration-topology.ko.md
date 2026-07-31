@@ -29,6 +29,7 @@ public interface IZLinkFrameworkOptions
     void AddLocationStore(IZLinkLocationStore store);
     void AddRelocationStore(IZLinkRelocationStore store);
     ZLinkLocationOptions ConfigureLocations();
+    IZLinkInboundDispatchOptions ConfigureInboundDispatch();
     IZLinkNetworkOptions ConfigureNetwork();
     IZLinkDispatchOptions ConfigureDispatch();
     IZLinkStreamCompressionBuilder ConfigureStreamCompression();
@@ -38,6 +39,21 @@ public interface IZLinkFrameworkOptions
     IZLinkClientServerChannelRoleBuilder AddClientServerChannel(string channelName);
     IZLinkFanoutChannelBuilder AddFanoutChannel(string channelName);
     IZLinkStreamNodeBuilder AddStreamNode(string streamNodeName);
+}
+
+public enum ZLinkApplicationHwmProfile
+{
+    Compact = 0,
+    LowLatency = 1,
+    Balanced = 2,
+    Throughput = 3
+}
+
+public interface IZLinkInboundDispatchOptions
+{
+    ulong? ApplicationHwmBytes { get; set; }
+    ZLinkApplicationHwmProfile ApplicationHwmProfile { get; set; }
+    ulong? ProcessMemoryLimitBytes { get; set; }
 }
 
 public interface IZLinkMeshNodeBuilder
@@ -501,14 +517,14 @@ Node placement를 포함한 weighted selection은 후보 weight 합계를 최소
 ```csharp
 public interface IZLinkSpotPublisherConfig
 {
-    int SendHighWaterMark { get; set; }
+    ulong SendHighWaterMark { get; set; }
     TimeSpan? SendTimeout { get; set; }
     TimeSpan? Linger { get; set; }
 }
 
 public interface IZLinkSpotSubscriberConfig
 {
-    int ReceiveHighWaterMark { get; set; }
+    ulong ReceiveHighWaterMark { get; set; }
     TimeSpan? ReceiveTimeout { get; set; }
     TimeSpan? Linger { get; set; }
 }
@@ -516,8 +532,8 @@ public interface IZLinkSpotSubscriberConfig
 public interface IZLinkSocketConfig
 {
     long MaxMessageSize { get; set; }
-    int SendHighWaterMark { get; set; }
-    int ReceiveHighWaterMark { get; set; }
+    ulong SendHighWaterMark { get; set; }
+    ulong ReceiveHighWaterMark { get; set; }
     int SendBufferSize { get; set; }
     int ReceiveBufferSize { get; set; }
     TimeSpan? Linger { get; set; }
@@ -563,14 +579,18 @@ public interface IZLinkMeshChannelRuntimeOptions
 public interface IZLinkMeshNodeSocketConfig
 {
     long MaxMessageSize { get; set; }
-    int SendHighWaterMark { get; set; }
-    int ReceiveHighWaterMark { get; set; }
+    ulong SendHighWaterMark { get; set; }
+    ulong ReceiveHighWaterMark { get; set; }
     ulong MailboxMessageBudget { get; set; }
     ulong MailboxByteBudget { get; set; }
     TimeSpan? ReceiveTimeout { get; set; }
     TimeSpan? SendTimeout { get; set; }
 }
 ```
+
+Application listener의 `MaxMessageSize` 기본값은 `16 MiB`다. Application HWM을 Auto 또는 양수로
+사용할 때 `0`을 명시하면 startup configuration error다. `ApplicationHwmBytes = 0`일 때만
+`MaxMessageSize = 0`을 사용할 수 있다.
 
 `ConfigureSpotPublisher()`는 publish 전용 전달 정책 option을 제공하지 않는다. [Logical Multicast](../../../../01-glossary.ko.md#logical-multicast)는
 source-local 실행 용량을 send timeout 안에 확보하면 시작하고 결과값 없이 정상 완료한다. Target별
@@ -591,7 +611,13 @@ ChannelName은 local RouteMesh 또는 ClientServer Server 등록을 유일하게
 `MaxMessageSize`는 startup 전에만 설정하며 실행 중 setter를 제공하지 않는다. `0`은 Framework가 지원하는
 최대 complete message 크기를 사용한다. 양수는 public protocol의 표현 한계를 넘을 수 없으며 넘으면
 `ZLinkConfigurationException`으로 startup을 실패시킨다. Peer마다 두 endpoint가 허용한 값 중 작은 값을
-적용한다.
+적용한다. Framework application listener의 기본값은 `16_777_216` bytes다.
+
+`ConfigureInboundDispatch()`는 host 전체 inbound 설정 하나를 반환한다. `ApplicationHwmBytes`의 기본값은
+`null`이며 Auto mode를 뜻한다. `0`은 제한 없음, 양수는 정확한 byte 상한이다.
+`ApplicationHwmProfile` 기본값은 `Balanced`이고 Auto mode에서만
+계산에 사용한다. `ProcessMemoryLimitBytes`는 `null` 또는 양수만 허용한다. Auto mode에서 이 값을
+생략하면 process에 적용된 유한한 container·cgroup·Windows Job Object 상한을 사용한다.
 
 ## 6. 메시징 metadata
 

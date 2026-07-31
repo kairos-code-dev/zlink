@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/foundation/operation_registry.hpp"
+#include <runtime/locations/location_repository.hpp>
 #include "runtime/execution/actor_execution_context.hpp"
 #include "runtime/mesh/raw_mesh_node_owner.hpp"
 #include "runtime/locations/in_memory_location_store.hpp"
@@ -38,7 +39,7 @@ using namespace std::chrono_literals;
 namespace
 {
 
-class memory_relocation_store_t final :
+class memory_relocation_repository_t final :
     public stateful::relocation_store_port_t
 {
   public:
@@ -194,7 +195,7 @@ void verify_spot_id_contract ()
 void verify_entry_spot_identity_claim_is_global_and_fenced ()
 {
     using namespace zlink::framework;
-    runtime::in_memory_location_store_t store;
+    runtime::in_memory_location_repository_t store;
     const auto first_owner =
       std::get<owner_lease_claimed_t> (
         store.claim_owner_lease (
@@ -428,7 +429,7 @@ void verify_creation_terminal_operation_isolation ()
     using namespace zlink::framework;
     auto store =
       std::make_shared<
-        zlink::framework::runtime::in_memory_location_store_t> ();
+        zlink::framework::runtime::in_memory_location_repository_t> ();
     const auto claimed =
       std::get<owner_lease_claimed_t> (
         store
@@ -512,7 +513,7 @@ void verify_typed_capacity_retry_uses_second_candidate ()
     using namespace zlink::framework;
     auto store =
       std::make_shared<
-        zlink::framework::runtime::in_memory_location_store_t> ();
+        zlink::framework::runtime::in_memory_location_repository_t> ();
     const auto first_owner =
       std::get<owner_lease_claimed_t> (
         store->claim_owner_lease ("capacity-first", 15s)
@@ -657,14 +658,14 @@ void verify_global_identity_remote_create_and_generation_fence ()
 
     const stateful::object_ref_t reserved_spot{
       stateful::object_kind_t::user_spot, "spot-1", 1, 1, "mesh-a", "node-a"};
-    auto first_spot = runtime.begin_reserved_user_spot (
+    auto first_spot = runtime.begin_reserved_object (
       reserved_spot, "lobby", {});
     assert (first_spot.status == stateful::create_status_t::reserved);
-    const auto joined_spot = runtime.begin_reserved_user_spot (
+    const auto joined_spot = runtime.begin_reserved_object (
       reserved_spot, "lobby", {});
     assert (joined_spot.status == stateful::create_status_t::joined);
     assert (joined_spot.attempt == first_spot.attempt);
-    const auto spot_type_mismatch = runtime.begin_reserved_user_spot (
+    const auto spot_type_mismatch = runtime.begin_reserved_object (
       reserved_spot, "match", {});
     assert (spot_type_mismatch.status == stateful::create_status_t::failed);
     assert (spot_type_mismatch.error == stateful::stateful_error_t::type_mismatch);
@@ -976,7 +977,7 @@ void verify_remote_session_route_ack_and_atomic_switch ()
           mesh::raw_mesh_node_options_t{
             descriptor ("actor-target")}});
     auto relocation_store =
-      std::make_shared<memory_relocation_store_t> ();
+      std::make_shared<memory_relocation_repository_t> ();
     actor_target->configure_session_relocation_store (
       relocation_store);
     session_owner->configure_session_route_owner (
@@ -1386,7 +1387,7 @@ void verify_remote_session_route_ack_and_atomic_switch ()
 void verify_location_store_accepted_record_authority ()
 {
     using namespace zlink::framework;
-    runtime::in_memory_location_store_t store;
+    runtime::in_memory_location_repository_t store;
     const auto source_owner = std::get<owner_lease_claimed_t> (
       store.claim_owner_lease ("source-owner", 15s).result ().value ()).token;
     const auto target_owner = std::get<owner_lease_claimed_t> (
@@ -1760,7 +1761,10 @@ void verify_raw_relocation_replay_and_monotonic_ack ()
     int staged = 0;
     stateful::raw_relocation_replay_coordinator_t target_replay (target);
     assert (target_replay.register_target ({
-      relocation, 5, coordinator, 1, source_fence, object,
+      relocation, 5, coordinator, 1,
+      source_descriptor.node_routing_id,
+      source_descriptor.lifecycle_generation,
+      object,
       [&] (const protocol::relocation_data_t &record) {
           ++staged;
           return record.sequence == static_cast<std::uint64_t> (staged);
@@ -1793,7 +1797,10 @@ void verify_raw_relocation_replay_and_monotonic_ack ()
     assert (target_replay.target_high_water (relocation, 5, 1) == 1);
     bool second_participant_staged = false;
     assert (target_replay.register_target ({
-      relocation, 5, coordinator, 2, source_fence, object,
+      relocation, 5, coordinator, 2,
+      source_descriptor.node_routing_id,
+      source_descriptor.lifecycle_generation,
+      object,
       [&] (const protocol::relocation_data_t &) {
           second_participant_staged = true;
           return true;
@@ -2425,7 +2432,7 @@ void verify_remote_user_spot_create_close_terminal_once ()
     using namespace zlink::framework;
     auto store =
       std::make_shared<zlink::framework::runtime::
-                         in_memory_location_store_t> ();
+                         in_memory_location_repository_t> ();
     const auto claimed =
       store->claim_owner_lease ("target-owner", 30s)
         .result ()
@@ -2581,7 +2588,7 @@ void verify_remote_user_spot_create_close_terminal_once ()
     std::size_t instance_prepare_count = 0;
     bool fail_recovery_dispatch_once = false;
     auto instance_relocations =
-      std::make_shared<memory_relocation_store_t> ();
+      std::make_shared<memory_relocation_repository_t> ();
     target->configure_instance_spot_operations (
       store, instance_relocations, owner->token,
       host::instance_spot_activation_materializer_t{
@@ -2945,7 +2952,7 @@ void verify_remote_user_spot_create_close_terminal_once ()
       static_cast<std::uint64_t> (
         std::chrono::duration_cast<std::chrono::milliseconds> (
           std::chrono::system_clock::now ().time_since_epoch ()
-          + 100ms)
+          + 500ms)
           .count ());
     std::optional<protocol::user_spot_create_reply_t>
       create_reply;
@@ -2961,6 +2968,7 @@ void verify_remote_user_spot_create_close_terminal_once ()
           ++create_terminal_count;
           create_reply = std::move (reply);
       }));
+    deadline = std::chrono::steady_clock::now () + 5s;
     while (!create_reply
            && std::chrono::steady_clock::now () < deadline) {
         (void) target->dispatch_ready (dispatch);
@@ -3005,6 +3013,7 @@ void verify_remote_user_spot_create_close_terminal_once ()
             == foundation::operation_terminal_t::completed);
           replayed_create_reply = std::move (reply);
       }));
+    deadline = std::chrono::steady_clock::now () + 5s;
     while (!replayed_create_reply
            && std::chrono::steady_clock::now () < deadline) {
         (void) target->dispatch_ready (dispatch);
@@ -3031,6 +3040,7 @@ void verify_remote_user_spot_create_close_terminal_once ()
             == foundation::operation_terminal_t::completed);
           capacity_reply = std::move (reply);
       }));
+    deadline = std::chrono::steady_clock::now () + 5s;
     while (!capacity_reply
            && std::chrono::steady_clock::now () < deadline) {
         (void) target->dispatch_ready (dispatch);
@@ -3041,10 +3051,18 @@ void verify_remote_user_spot_create_close_terminal_once ()
     assert (capacity_reply->header.terminal_result == 103);
     assert (materialize_count == 1);
     std::this_thread::sleep_for (200ms);
+    auto expired_create = create;
+    expired_create.operation = {99, 4};
+    expired_create.deadline_unix_ms =
+      static_cast<std::uint64_t> (
+        std::chrono::duration_cast<std::chrono::milliseconds> (
+          std::chrono::system_clock::now ().time_since_epoch ()
+          - 1ms)
+          .count ());
     std::optional<protocol::user_spot_create_reply_t>
       expired_reply;
     assert (source->create_user_spot_remote (
-      target->status ().routing_id (), create, 5s,
+      target->status ().routing_id (), expired_create, 5s,
       [&] (foundation::operation_terminal_t terminal,
            protocol::user_spot_create_reply_t reply,
            std::optional<protocol::application_payload_t>) {
@@ -3053,6 +3071,7 @@ void verify_remote_user_spot_create_close_terminal_once ()
             == foundation::operation_terminal_t::completed);
           expired_reply = std::move (reply);
       }));
+    deadline = std::chrono::steady_clock::now () + 5s;
     while (!expired_reply
            && std::chrono::steady_clock::now () < deadline) {
         (void) target->dispatch_ready (dispatch);
@@ -3074,9 +3093,59 @@ void verify_remote_user_spot_create_close_terminal_once ()
     assert (ready);
     assert (ready->allocation.state
             == placement_allocation_state_t::active);
-    protocol::user_spot_close_header_t close{
+    const auto wait_until_wire_time =
+      [] (std::uint64_t target_unix_ms) {
+          const auto bound =
+            std::chrono::steady_clock::now () + 5s;
+          while (std::chrono::steady_clock::now () < bound) {
+              const auto now =
+                static_cast<std::uint64_t> (
+                  std::chrono::duration_cast<
+                    std::chrono::milliseconds> (
+                      std::chrono::system_clock::now ()
+                        .time_since_epoch ())
+                    .count ());
+              if (now > target_unix_ms)
+                  return true;
+              std::this_thread::sleep_for (1ms);
+          }
+          return false;
+      };
+    assert (wait_until_wire_time (
+      create.deadline_unix_ms + 50));
+
+    auto capacity_filler = create;
+    capacity_filler.operation = {99, 5};
+    capacity_filler.deadline_unix_ms =
+      static_cast<std::uint64_t> (
+        std::chrono::duration_cast<std::chrono::milliseconds> (
+          std::chrono::system_clock::now ().time_since_epoch ()
+          + 200ms)
+          .count ());
+    std::optional<protocol::user_spot_create_reply_t>
+      capacity_filler_reply;
+    assert (source->create_user_spot_remote (
+      target->status ().routing_id (), capacity_filler, 5s,
+      [&] (foundation::operation_terminal_t terminal,
+           protocol::user_spot_create_reply_t reply,
+           std::optional<protocol::application_payload_t>) {
+          assert (
+            terminal
+            == foundation::operation_terminal_t::completed);
+          capacity_filler_reply = std::move (reply);
+      }));
+    deadline = std::chrono::steady_clock::now () + 5s;
+    while (!capacity_filler_reply
+           && std::chrono::steady_clock::now () < deadline) {
+        (void) target->dispatch_ready (dispatch);
+        (void) source->dispatch_ready (dispatch);
+        std::this_thread::sleep_for (1ms);
+    }
+    assert (capacity_filler_reply);
+
+    protocol::user_spot_close_header_t expired_close{
       1,
-      {99, 2},
+      {99, 6},
       source->status ().routing_id ().to_bytes (),
       source->status ().lifecycle_generation (),
       {spot_id,
@@ -3088,8 +3157,54 @@ void verify_remote_user_spot_create_close_terminal_once ()
       static_cast<std::uint64_t> (
         std::chrono::duration_cast<std::chrono::milliseconds> (
           std::chrono::system_clock::now ().time_since_epoch ()
-          + 5s)
+          - 1ms)
           .count ())};
+    std::optional<protocol::user_spot_close_reply_t>
+      expired_close_reply;
+    assert (source->close_user_spot_remote (
+      target->status ().routing_id (), expired_close, 5s,
+      [&] (foundation::operation_terminal_t terminal,
+           protocol::user_spot_close_reply_t reply) {
+          assert (
+            terminal
+            == foundation::operation_terminal_t::completed);
+          expired_close_reply = std::move (reply);
+      }));
+    deadline = std::chrono::steady_clock::now () + 5s;
+    while (!expired_close_reply
+           && std::chrono::steady_clock::now () < deadline) {
+        (void) target->dispatch_ready (dispatch);
+        (void) source->dispatch_ready (dispatch);
+        std::this_thread::sleep_for (1ms);
+    }
+    assert (
+      expired_close_reply
+      && expired_close_reply->header.terminal_result == 101
+      && !expired_close_reply->closed);
+    const auto after_expired_close =
+      store
+        ->read_authority ({"2:" + spot_id})
+        .result ()
+        .value ();
+    const auto *after_expired_snapshot =
+      std::get_if<authority_snapshot_t> (&after_expired_close);
+    assert (
+      after_expired_snapshot
+      && after_expired_snapshot->store_version
+           == ready->store_version);
+
+    // The expired cache miss must not create a terminal record. Once the
+    // unrelated capacity filler expires, the same operation identity with a
+    // live deadline must execute instead of failing fingerprint validation.
+    assert (wait_until_wire_time (
+      capacity_filler.deadline_unix_ms + 50));
+    auto close = expired_close;
+    close.deadline_unix_ms =
+      static_cast<std::uint64_t> (
+        std::chrono::duration_cast<std::chrono::milliseconds> (
+          std::chrono::system_clock::now ().time_since_epoch ()
+          + 5s)
+          .count ());
     std::optional<protocol::user_spot_close_reply_t>
       close_reply;
     assert (source->close_user_spot_remote (
@@ -3101,6 +3216,7 @@ void verify_remote_user_spot_create_close_terminal_once ()
             == foundation::operation_terminal_t::completed);
           close_reply = std::move (reply);
       }));
+    deadline = std::chrono::steady_clock::now () + 5s;
     while (!close_reply
            && std::chrono::steady_clock::now () < deadline) {
         (void) target->dispatch_ready (dispatch);

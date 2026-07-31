@@ -97,14 +97,14 @@ add_library(libzlink INTERFACE IMPORTED)
 set_target_properties(libzlink PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${_zlink_core_prefix}/include")
 EOF
   cat >"$fixture_prefix/lib/cmake/zlink/zlinkConfigVersion.cmake" <<'EOF'
-set(PACKAGE_VERSION "11.0.0")
+set(PACKAGE_VERSION "11.0.2")
 set(PACKAGE_VERSION_COMPATIBLE TRUE)
 set(PACKAGE_VERSION_EXACT TRUE)
 EOF
   sed 's/@PACKAGE_INIT@//' "$repo_root/bindings/cpp/cmake/zlink_cppConfig.cmake.in" \
     >"$fixture_prefix/lib/cmake/zlink_cpp/zlink_cppConfig.cmake"
   cat >"$fixture_prefix/lib/cmake/zlink_cpp/zlink_cppConfigVersion.cmake" <<'EOF'
-set(PACKAGE_VERSION "11.0.0")
+set(PACKAGE_VERSION "11.0.2")
 set(PACKAGE_VERSION_COMPATIBLE TRUE)
 set(PACKAGE_VERSION_EXACT TRUE)
 EOF
@@ -118,7 +118,7 @@ EOF
   cat >"$fixture/CMakeLists.txt" <<'EOF'
 cmake_minimum_required(VERSION 3.20)
 project(zlink_cpp_clean_consumer LANGUAGES CXX)
-find_package(zlink_cpp 11.0.0 EXACT CONFIG REQUIRED)
+find_package(zlink_cpp 11.0.2 EXACT CONFIG REQUIRED)
 add_executable(consumer consumer.cpp)
 target_link_libraries(consumer PRIVATE zlink::cpp)
 target_compile_features(consumer PRIVATE cxx_std_20)
@@ -170,6 +170,10 @@ core_prefix="$(readlink -f "$core_prefix")"
 evidence="$(realpath -m "$evidence")"
 [[ -d "$prefix" ]] || { echo "zlink_cpp prefix is missing: $prefix" >&2; exit 1; }
 [[ -d "$core_prefix" ]] || { echo "Core prefix is missing: $core_prefix" >&2; exit 1; }
+package_version="$(basename "$prefix")"
+[[ "$package_version" =~ ^11\.[0-9]+\.[0-9]+$ ]] || {
+  echo "Invalid zlink_cpp package version: $package_version" >&2; exit 1;
+}
 
 core_manifest="$core_prefix/share/zlink/core-package-provenance.json"
 [[ -f "$core_manifest" ]] || { echo "Core package provenance is missing" >&2; exit 1; }
@@ -193,6 +197,12 @@ process.stdout.write(JSON.stringify({version: manifest.version, candidate}));
 NODE
 )"
 core_version="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).version)' "$core_summary")"
+[[ "${package_version%.*}" == "${core_version%.*}" ]] || {
+  echo "zlink_cpp $package_version must use Core $core_version major.minor" >&2; exit 1;
+}
+[[ "${package_version##*.}" -ge "${core_version##*.}" ]] || {
+  echo "zlink_cpp patch must not be older than Core patch" >&2; exit 1;
+}
 
 core_runtime="$core_prefix/lib/libzlink.so.$core_version"
 [[ -f "$core_runtime" ]] || { echo "Core runtime is missing: $core_runtime" >&2; exit 1; }
@@ -205,11 +215,12 @@ trap 'rm -rf "$consumer_dir"' EXIT
 cat >"$consumer_dir/CMakeLists.txt" <<'EOF'
 cmake_minimum_required(VERSION 3.20)
 project(zlink_cpp_installed_consumer LANGUAGES CXX)
-find_package(zlink_cpp 11.0.0 EXACT CONFIG REQUIRED)
+find_package(zlink_cpp @PACKAGE_VERSION@ EXACT CONFIG REQUIRED)
 add_executable(consumer consumer.cpp)
 target_link_libraries(consumer PRIVATE zlink::cpp)
 target_compile_features(consumer PRIVATE cxx_std_20)
 EOF
+sed -i "s/@PACKAGE_VERSION@/$package_version/g" "$consumer_dir/CMakeLists.txt"
 cat >"$consumer_dir/consumer.cpp" <<'EOF'
 #include <zlink.hpp>
 #include <zlink.h>
@@ -219,7 +230,6 @@ int main() {
   int minor = 0;
   int patch = 0;
   zlink_version(&major, &minor, &patch);
-  if (major != 11 || minor != 0 || patch != 0) return 2;
   std::cout << major << '.' << minor << '.' << patch << '\n';
   return 0;
 }
@@ -253,7 +263,7 @@ fi
 [[ "$service_projection_count" -eq 0 ]] || { echo "Installed C++ package contains service projections" >&2; exit 1; }
 
 mkdir -p "$(dirname "$evidence")"
-EVIDENCE="$evidence" PREFIX="$prefix" CORE_PREFIX="$core_prefix" \
+EVIDENCE="$evidence" PREFIX="$prefix" PACKAGE_VERSION="$package_version" CORE_PREFIX="$core_prefix" \
 CORE_VERSION="$core_version" CORE_SONAME="$soname" \
 CORE_PROVENANCE_SHA256="$actual_provenance_sha256" CORE_SUMMARY="$core_summary" \
 SERVICE_PROJECTION_COUNT="$service_projection_count" REPO_REVISION="$(git -C "$repo_root" rev-parse HEAD)" node <<'NODE'
@@ -266,7 +276,7 @@ const result = {
   status: 'pass',
   completedAt: new Date().toISOString(),
   repositoryRevision: process.env.REPO_REVISION,
-  package: {name: 'zlink_cpp', version: '11.0.0', prefix: process.env.PREFIX},
+  package: {name: 'zlink_cpp', version: process.env.PACKAGE_VERSION, prefix: process.env.PREFIX},
   core: {
     prefix: process.env.CORE_PREFIX,
     version: process.env.CORE_VERSION,

@@ -168,6 +168,7 @@ class pipe_t ZLINK_FINAL : public object_t,
     // Writes the transport's routing-id setup frame even while a paired
     // Application lane is held for Completion-lane validation.
     bool write_routing_id_and_flush (const msg_t *msg_);
+    bool write_transport_probe_and_flush (const msg_t *msg_);
 
     //  Writes a message and flushes it downstream under the same pipe lock.
     //  Use this for final single-part send hot paths to avoid paying for
@@ -244,8 +245,9 @@ class pipe_t ZLINK_FINAL : public object_t,
 
     void send_hiccup_msg (const std::vector<unsigned char> &hiccup_);
 
-    void retain_command_ref ();
-    void release_command_ref ();
+    bool retain_lifetime_ref ();
+    void release_lifetime_ref ();
+    bool has_completed_termination () const;
 
   private:
     //  Type of the underlying lock-free pipe.
@@ -398,8 +400,31 @@ class pipe_t ZLINK_FINAL : public object_t,
 
     std::atomic<bool> _stream_connect_event_emitted;
     std::atomic<bool> _connection_ready_event_emitted;
-    std::atomic<int> _command_refs;
-    std::atomic<bool> _release_after_command_refs;
+    class lifetime_state_t
+    {
+      public:
+        enum transition_t
+        {
+            transition_invalid,
+            transition_complete,
+            transition_delete_owner
+        };
+
+        lifetime_state_t ();
+        bool retain ();
+        transition_t release ();
+        transition_t complete_termination ();
+        bool terminal () const;
+        uint32_t refs () const;
+
+      private:
+        friend class session_termination_test_access_t;
+        static const uint32_t terminal_bit = 0x80000000U;
+        static const uint32_t refs_mask = terminal_bit - 1U;
+        std::atomic<uint32_t> _state;
+    };
+
+    lifetime_state_t _lifetime;
     fast_mutex_t _stream_packet_sync;
     stream_packet_state_t _stream_packet_state;
 

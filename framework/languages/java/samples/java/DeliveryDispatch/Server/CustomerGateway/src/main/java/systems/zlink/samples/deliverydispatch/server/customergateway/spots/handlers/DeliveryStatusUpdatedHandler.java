@@ -1,7 +1,7 @@
 package systems.zlink.samples.deliverydispatch.server.customergateway.spots.handlers;
 
 import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler;
-import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.samples.deliverydispatch.server.customergateway.CustomerActor;
 import systems.zlink.samples.deliverydispatch.server.customergateway.spots.CustomerEntrySpot;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
@@ -17,7 +17,7 @@ public final class DeliveryStatusUpdatedHandler
     public CompletionStage<Void> handle(
         CustomerEntrySpot entrySpot,
         CustomerActor actor,
-        ZLinkSpotActorSendContext context,
+        ZLinkMessageContext context,
         Messages.DeliveryStatusUpdatedMsg message) {
         actor.push(new Messages.DeliveryStatusNotify(
             message.deliveryId(),

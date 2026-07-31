@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Dispatch;
+
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed record ZLinkFanoutConnectionPlan(
@@ -23,6 +25,7 @@ internal sealed class ZLinkAutomaticFanoutSubscriberRuntime
     private readonly ZLinkChannelReceiveLoop _receiveLoop;
     private readonly ZLinkFanoutRuntimeService _monitoring;
     private readonly IZLinkRuntimeFailureReporter _errorSink;
+    private readonly ZLinkInboundDispatchBudget _inboundDispatchBudget;
     private readonly CancellationToken _runtimeStopToken;
     private readonly TimeProvider _time;
     private readonly object _gate = new();
@@ -43,7 +46,8 @@ internal sealed class ZLinkAutomaticFanoutSubscriberRuntime
         ZLinkFanoutRuntimeService monitoring,
         IZLinkRuntimeFailureReporter errorSink,
         CancellationToken runtimeStopToken,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        ZLinkInboundDispatchBudget? inboundDispatchBudget = null)
     {
         _channelName = channelName;
         _backendAdapterFactory = backendAdapterFactory;
@@ -53,6 +57,8 @@ internal sealed class ZLinkAutomaticFanoutSubscriberRuntime
         _monitoring = monitoring;
         _errorSink = errorSink;
         _runtimeStopToken = runtimeStopToken;
+        _inboundDispatchBudget = inboundDispatchBudget
+                                 ?? new ZLinkInboundDispatchBudget(0);
         _time = timeProvider ?? TimeProvider.System;
     }
 
@@ -288,6 +294,7 @@ internal sealed class ZLinkAutomaticFanoutSubscriberRuntime
                             _lastFailure = "invalid fanout liveness beacon";
                     },
                     owner._errorSink,
+                    owner._inboundDispatchBudget,
                     attempt.Token);
                 var watchdog = WatchInboundAsync(attempt);
                 _ = await Task.WhenAny(receive, watchdog)

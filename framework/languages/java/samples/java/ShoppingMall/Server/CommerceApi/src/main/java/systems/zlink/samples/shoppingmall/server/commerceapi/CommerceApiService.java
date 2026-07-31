@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.samples.shoppingmall.server.configuration.SampleNames;
 import systems.zlink.samples.shoppingmall.server.configuration.SampleTimings;
 import systems.zlink.samples.shoppingmall.server.configuration.SampleTopology;
@@ -14,15 +14,15 @@ import systems.zlink.samples.shoppingmall.shared.contracts.Messages;
 
 public final class CommerceApiService {
     private final RedisCommerceStore store;
-    private final ZLinkClient channels;
+    private final ZLinkRouteClient routes;
     private final SampleTopology topology;
 
     public CommerceApiService(
         RedisCommerceStore store,
-        ZLinkClient channels,
+        ZLinkRouteClient routes,
         SampleTopology topology) {
         this.store = store;
-        this.channels = channels;
+        this.routes = routes;
         this.topology = topology;
     }
 
@@ -42,9 +42,7 @@ public final class CommerceApiService {
         }
 
         Messages.StartOrderWorkflowReq workflowRequest = workflowRequest(request, mapping.orderId(), cart);
-        return channels.requestToChannel(
-                SampleNames.OrderWorkflowChannel,
-                workflowRequest)
+        return workflowRequest(mapping.orderId(), workflowRequest)
             .timeout(SampleTimings.WorkflowTimeout)
             .submit(Messages.StartOrderWorkflowRes.class)
             .thenApply(started -> {
@@ -63,9 +61,7 @@ public final class CommerceApiService {
     }
 
     public CompletionStage<Messages.RebuildOrderProjectionRes> rebuildProjection(String orderId) {
-        return channels.requestToChannel(
-                SampleNames.OrderWorkflowChannel,
-                new Messages.RebuildOrderProjectionReq(orderId))
+        return workflowRequest(orderId, new Messages.RebuildOrderProjectionReq(orderId))
             .timeout(SampleTimings.WorkflowTimeout)
             .submit(Messages.RebuildOrderProjectionRes.class);
     }
@@ -86,17 +82,15 @@ public final class CommerceApiService {
         Messages.CartSeed cart = store.getCart(request.cartId());
         store.saveOrderPaymentMethod(mapping.orderId(), request.paymentMethodId());
         Messages.StartOrderWorkflowReq workflowRequest = workflowRequest(request, mapping.orderId(), cart);
-        return channels.requestToChannel(
-                SampleNames.OrderWorkflowChannel,
+        return workflowRequest(
+                mapping.orderId(),
                 new Messages.PrepareInventoryReservedCheckpointReq(workflowRequest))
             .timeout(SampleTimings.WorkflowTimeout)
             .submit(Messages.ContinueOrderWorkflowRes.class);
     }
 
     public CompletionStage<Messages.ContinueOrderWorkflowRes> continueOrder(String orderId) {
-        return channels.requestToChannel(
-                SampleNames.OrderWorkflowChannel,
-                new Messages.ContinueOrderWorkflowReq(orderId))
+        return workflowRequest(orderId, new Messages.ContinueOrderWorkflowReq(orderId))
             .timeout(SampleTimings.WorkflowTimeout)
             .submit(Messages.ContinueOrderWorkflowRes.class);
     }
@@ -144,6 +138,14 @@ public final class CommerceApiService {
             cart.lines(),
             cart.amount(),
             cart.currency());
+    }
+
+    private systems.zlink.framework.spots.ZLinkSpotRequestCall workflowRequest(
+        String orderId,
+        Object request) {
+        return routes.requestToSpot(orderId, request)
+            .instanceSpot(SampleNames.OrderWorkflowSpotType)
+            .inMesh(SampleNames.OrderSpotDiscovery);
     }
 
     private static void validate(Messages.StartOrderReq request) {

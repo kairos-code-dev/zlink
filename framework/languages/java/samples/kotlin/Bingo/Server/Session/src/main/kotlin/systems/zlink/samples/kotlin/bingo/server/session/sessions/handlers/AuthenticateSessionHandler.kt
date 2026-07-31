@@ -5,6 +5,7 @@ import systems.zlink.framework.actors.ActorRef
 import systems.zlink.framework.actors.ZLinkActorCreateResult
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.channels.ZLinkRouteClient
+import systems.zlink.framework.kotlin.kotlin
 import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionMessageContext
@@ -49,11 +50,11 @@ class AuthenticateSessionHandler(
                 authenticated.reason ?: "Player authentication failed.",
             )
         }
-        val actor = actors.getOrCreate(
+        val actor = actors.kotlin().getOrCreate(
             authenticated.actorId,
             SampleNames.PlayerActorType,
-            EnsurePlayerActorReq(authenticated.actorId, authenticated.displayName),
         )
+            .request(EnsurePlayerActorReq(authenticated.actorId, authenticated.displayName))
             .await()
         context.actors().bind(requireActor(actor)).await()
         context.client()

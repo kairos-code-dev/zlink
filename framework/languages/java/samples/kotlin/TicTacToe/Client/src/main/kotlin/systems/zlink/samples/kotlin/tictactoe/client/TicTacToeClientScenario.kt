@@ -5,7 +5,7 @@ import java.time.Duration
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec
+import systems.zlink.stream.connector.ZLinkStreamJson
 import systems.zlink.framework.kotlin.await
 import systems.zlink.framework.kotlin.awaitReply
 import systems.zlink.framework.kotlin.ZLinkKotlinStreamConnector
@@ -37,10 +37,10 @@ class TicTacToeClientScenario {
                 .body(CreateGameHttpReq(options.gameName))
                 .fetch<CreateGameHttpRes>()
         }
-        val observerEndpoint = game.playEndpoints.first { it != game.ownerPlayEndpoint }
-        val hostStream = playerConnector(game.ownerPlayEndpoint)
-        val guestStream = playerConnector(observerEndpoint)
-        val observerStream = playerConnector(observerEndpoint)
+        ensure(game.playEndpoints.size >= 2)
+        val hostStream = playerConnector(game.playEndpoints[0])
+        val guestStream = playerConnector(game.playEndpoints[1])
+        val observerStream = playerConnector(game.playEndpoints[1])
 
         try {
             hostStream.connect().await()
@@ -48,12 +48,10 @@ class TicTacToeClientScenario {
             observerStream.connect().await()
 
             ensure(game.roomId.isNotBlank())
-            ensure(game.ownerPlayEndpoint.isNotBlank())
             ensure(game.gameName == options.gameName)
             ensure(game.requiredLevel == 3)
             ensure(game.playEndpoints.size >= 2)
             ensure(game.playEndpoints.distinct().size == game.playEndpoints.size)
-            ensure(game.ownerPlayEndpoint in game.playEndpoints)
             ensure(game.playNodes.size == game.playEndpoints.size)
             ensure(game.playNodes.map { it.streamEndpoint }.toSet() == game.playEndpoints.toSet())
 
@@ -73,7 +71,7 @@ class TicTacToeClientScenario {
             ensure(observerAuthentication.player.actorId == options.observerActorId)
             val subscription = observerStream.request(ObserveMilestoneReq()).awaitReply<ObserveMilestoneRes>()
             ensure(subscription.subscribed)
-            println("observer-connected endpoint=$observerEndpoint")
+            println("observer-connected endpoint=${game.playEndpoints[1]}")
             println("observer-subscription=verified subscribed=${subscription.subscribed}")
 
             val hostNoSelfJoin = async(start = CoroutineStart.UNDISPATCHED) {
@@ -81,7 +79,11 @@ class TicTacToeClientScenario {
                     .within(Duration.ofMillis(400))
                     .await()
             }
-            val xJoin = hostStream.request(JoinGameReq(game.roomId)).awaitReply<JoinGameRes>()
+            val xJoinWait = hostStream.waitFor<JoinGameRes>()
+                .where { message -> message.payload().state.roomId == game.roomId }
+                .let { wait -> async(start = CoroutineStart.UNDISPATCHED) { wait.await() } }
+            hostStream.send(JoinGameReq(game.roomId)).await()
+            val xJoin = xJoinWait.await().payload()
             ensure(xJoin.state.roomId == game.roomId)
             ensure(xJoin.state.status == "WaitingForPlayers")
             ensure(xJoin.state.xActorId == options.xActorId)
@@ -99,7 +101,11 @@ class TicTacToeClientScenario {
                     .within(Duration.ofMillis(400))
                     .await()
             }
-            val oJoin = guestStream.request(JoinGameReq(game.roomId)).awaitReply<JoinGameRes>()
+            val oJoinWait = guestStream.waitFor<JoinGameRes>()
+                .where { message -> message.payload().state.roomId == game.roomId }
+                .let { wait -> async(start = CoroutineStart.UNDISPATCHED) { wait.await() } }
+            guestStream.send(JoinGameReq(game.roomId)).await()
+            val oJoin = oJoinWait.await().payload()
             ensure(oJoin.state.roomId == game.roomId)
             ensure(oJoin.state.status == "InProgress")
             ensure(oJoin.state.oActorId == options.oActorId)
@@ -229,7 +235,7 @@ class TicTacToeClientScenario {
                 Duration.ofMillis(250),
                 Duration.ofSeconds(5),
                 2.0,
-                ZLinkMessagePackCodec.defaultCodec(),
+                ZLinkStreamJson.codec(),
             ),
         ).kotlin()
 }

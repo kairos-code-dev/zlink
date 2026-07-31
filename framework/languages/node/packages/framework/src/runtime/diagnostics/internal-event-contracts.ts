@@ -1,4 +1,9 @@
-import type { ZLinkRuntimeEvent } from '../../contracts/Eventing/Contracts';
+import type { RoutingId, SpotId } from '../../contracts/Common';
+import type {
+  ZLinkLocationRuntimeStatus,
+  ZLinkLocationServiceSummary,
+  ZLinkLocationTopologyEntry
+} from '../../contracts/Locations';
 import type { ZLinkLocationAutoConnectType } from '../../contracts/Locations/Values';
 import type {
   ZLinkActorLocation,
@@ -13,6 +18,91 @@ import type {
 } from '../../contracts/Locations/Keys';
 
 export interface ZLinkLocationMonitoringRegistration { readonly sourceName: string; }
+
+export interface ZLinkSocketMonitoringRegistration {
+  readonly sourceName: string;
+  readonly events?: readonly ZLinkSocketEventKind[];
+}
+
+export interface ZLinkPollingMonitoringRegistration {
+  readonly sourceName: string;
+  readonly intervalMs: number;
+}
+
+export interface ZLinkRuntimeEvent {
+  readonly sourceName: string;
+  readonly timestamp: Date;
+}
+
+export interface ZLinkRuntimeEventHandler<TEvent extends ZLinkRuntimeEvent> {
+  handle(event: TEvent): Promise<void>;
+}
+
+export enum ZLinkSocketEventKind {
+  Connected = 'connected',
+  ConnectionReady = 'connectionReady',
+  Disconnected = 'disconnected',
+  HandshakeFailed = 'handshakeFailed',
+  PeerAdmissionChanged = 'peerAdmissionChanged',
+  Closed = 'closed'
+}
+
+export interface ZLinkSocketEvent extends ZLinkRuntimeEvent {
+  readonly event: ZLinkSocketEventKind;
+  readonly routingId?: RoutingId;
+  readonly localAddr: string;
+  readonly remoteAddr: string;
+}
+
+export enum ZLinkLocationRuntimeEventKind {
+  StatusChanged = 0,
+  TopologyChanged = 1,
+  ServiceSummaryChanged = 2,
+  StoreFailure = 3,
+  StoreRecovered = 4
+}
+
+export type ZLinkLocationRuntimeEvent =
+  | (ZLinkRuntimeEvent & {
+    readonly event: ZLinkLocationRuntimeEventKind.StatusChanged;
+    readonly status: ZLinkLocationRuntimeStatus;
+  })
+  | (ZLinkRuntimeEvent & {
+    readonly event: ZLinkLocationRuntimeEventKind.TopologyChanged;
+    readonly topology: readonly ZLinkLocationTopologyEntry[];
+  })
+  | (ZLinkRuntimeEvent & {
+    readonly event: ZLinkLocationRuntimeEventKind.ServiceSummaryChanged;
+    readonly serviceSummary: readonly ZLinkLocationServiceSummary[];
+  })
+  | (ZLinkRuntimeEvent & {
+    readonly event:
+      | ZLinkLocationRuntimeEventKind.StoreFailure
+      | ZLinkLocationRuntimeEventKind.StoreRecovered;
+  });
+
+export enum ZLinkSpotEventKind {
+  TimerHandlerFailed = 'timerHandlerFailed',
+  TimerStoppedAfterUnhandledException = 'timerStoppedAfterUnhandledException'
+}
+
+export interface ZLinkSpotTimerDiagnostic {
+  readonly spotId: SpotId;
+  readonly isEntrySpot: boolean;
+  readonly timerName: string;
+  readonly handlerType: string;
+  readonly deliveryIndex: bigint;
+  readonly scheduledIndex: bigint;
+  readonly exceptionType: string;
+  readonly exceptionMessage: string;
+}
+
+export type ZLinkSpotEvent = ZLinkRuntimeEvent & {
+  readonly event:
+    | ZLinkSpotEventKind.TimerHandlerFailed
+    | ZLinkSpotEventKind.TimerStoppedAfterUnhandledException;
+  readonly timerDiagnostic: ZLinkSpotTimerDiagnostic;
+};
 
 export enum ZLinkSocketNativeEventType {
   Connected = 0x0001,

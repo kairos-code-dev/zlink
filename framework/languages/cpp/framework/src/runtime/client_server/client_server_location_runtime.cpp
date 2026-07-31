@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/client_server/client_server_location_runtime.hpp"
+#include "runtime/diagnostics/message_flow_tracer.hpp"
+#include <runtime/locations/location_repository.hpp>
 #include "runtime/client_server/weighted_selector.hpp"
 #include "runtime/configuration/service_scope.hpp"
 #include "runtime/messaging/request_failure_mapper.hpp"
@@ -151,7 +153,7 @@ struct client_server_location_runtime_t::server_entry_t
 {
     channel_capability_snapshot_t capability;
     std::unique_ptr<raw_client_server_server_t> owner;
-    client_server_server_descriptor_t descriptor;
+    std::optional<client_server_server_descriptor_t> published_descriptor;
 };
 
 struct client_server_location_runtime_t::client_connection_t
@@ -172,8 +174,8 @@ client_server_location_runtime_t::client_server_location_runtime_t (
   message_bus_t bus,
   std::vector<channel_snapshot_t> channels,
   location_runtime_t &locations,
-  location_store_t &store,
-  location_store_t &leases,
+  location_repository_t &store,
+  location_repository_t &leases,
   service_provider_t &services,
   serializer_registry_t &serializers,
   const handler_registry_t &handlers,
@@ -200,7 +202,8 @@ bool client_server_location_runtime_t::empty () const noexcept
 {
     return std::none_of (
       _channels.begin (), _channels.end (), [] (const auto &channel) {
-          return (channel.server.enabled && channel.server.discovery)
+          return (channel.server.enabled
+                  && !channel.server.bind_endpoints.empty ())
                  || (channel.client.enabled
                      && (channel.client.discovery
                          || !channel.client.connect_endpoints.empty ()));
@@ -211,16 +214,24 @@ void client_server_location_runtime_t::start ()
 {
     if (empty ())
         return;
+    const bool publishes_server =
+      std::any_of (
+        _channels.begin (), _channels.end (), [] (const auto &channel) {
+            return channel.server.enabled && channel.server.discovery;
+        });
     auto owner = _locations->current_owner_token ();
-    if (!owner)
+    if (publishes_server && !owner)
         throw std::runtime_error (
           "ClientServer publication requires an active owner lease");
 
     _stop.store (false, std::memory_order_release);
     try {
         for (const auto &channel : _channels) {
-            if (channel.server.enabled && channel.server.discovery)
-                start_server (channel, *owner);
+            if (channel.server.enabled
+                && !channel.server.bind_endpoints.empty ())
+                start_server (
+                  channel,
+                  channel.server.discovery ? owner : std::nullopt);
             if (channel.client.enabled
                 && (channel.client.discovery
                     || !channel.client.connect_endpoints.empty ()))
@@ -238,11 +249,11 @@ void client_server_location_runtime_t::start ()
 
 void client_server_location_runtime_t::start_server (
   const channel_snapshot_t &channel,
-  const location_owner_token_t &owner)
+  const std::optional<location_owner_token_t> &publication_owner)
 {
     if (channel.server.bind_endpoints.size () != 1) {
         throw std::invalid_argument (
-          "discovery ClientServer server requires one bind endpoint");
+          "ClientServer server requires one bind endpoint");
     }
     protocol::client_server_server_admission_t admission;
     admission.channel_name = channel.name;
@@ -268,23 +279,26 @@ void client_server_location_runtime_t::start_server (
           ? std::nullopt
           : std::optional<std::string> (advertise->second)});
     raw->start ();
-    auto descriptor =
-      to_descriptor (raw->descriptor (), owner);
-    const auto stored = _store
-                          ->update_client_server (
-                            descriptor,
-                            location_write_intent_t::new_claim)
-                          .result ()
-                          .value ();
-    if (stored.status != location_write_status_t::stored) {
-        raw->close ();
-        throw std::runtime_error (
-          "ClientServer descriptor publication was fenced");
-    }
     auto entry = std::make_unique<server_entry_t> ();
     entry->capability = channel.server;
     entry->owner = std::move (raw);
-    entry->descriptor = std::move (descriptor);
+    if (publication_owner) {
+        auto descriptor =
+          to_descriptor (
+            entry->owner->descriptor (), *publication_owner);
+        const auto stored = _store
+                              ->update_client_server (
+                                descriptor,
+                                location_write_intent_t::new_claim)
+                              .result ()
+                              .value ();
+        if (stored.status != location_write_status_t::stored) {
+            entry->owner->close ();
+            throw std::runtime_error (
+              "ClientServer descriptor publication was fenced");
+        }
+        entry->published_descriptor = std::move (descriptor);
+    }
     _servers.emplace (channel.name, std::move (entry));
 }
 
@@ -344,6 +358,8 @@ void client_server_location_runtime_t::publish_servers ()
     if (!owner)
         return;
     for (auto &[channel_name, server] : _servers) {
+        if (!server->published_descriptor)
+            continue;
         const auto weight_override =
           _channel_runtime.server_peer_weight_override (channel_name);
         const auto weight =
@@ -351,11 +367,12 @@ void client_server_location_runtime_t::publish_servers ()
             server->capability.service_weight);
         const auto state = current_state (*_locations);
         const bool new_owner =
-          server->descriptor.owner_id != owner->owner_id
-          || server->descriptor.lease_generation
+          server->published_descriptor->owner_id != owner->owner_id
+          || server->published_descriptor->lease_generation
                != owner->lease_generation;
-        if (!new_owner && server->descriptor.weight == weight
-            && server->descriptor.state == state)
+        if (!new_owner
+            && server->published_descriptor->weight == weight
+            && server->published_descriptor->state == state)
             continue;
 
         auto admission = server->owner->descriptor ();
@@ -377,7 +394,7 @@ void client_server_location_runtime_t::publish_servers ()
             .result ()
             .value ();
         if (written.status == location_write_status_t::stored)
-            server->descriptor = std::move (descriptor);
+            server->published_descriptor = std::move (descriptor);
     }
 }
 
@@ -572,6 +589,24 @@ void client_server_location_runtime_t::dispatch_server (
                 if (record.correlation)
                     inbound.message.correlation_id =
                       std::to_string (*record.correlation);
+                detail::message_flow_tracer_t flow (
+                  _channel_runtime.dispatch_options_ref ());
+                flow.trace (message_flow_outcome_t::received, [&] {
+                    return message_flow_event_t{
+                      message_flow_outcome_t::received,
+                      dispatch_error_surface_t::channel,
+                      record.request_sequence
+                        ? dispatch_message_kind_t::request
+                        : dispatch_message_kind_t::send,
+                      payload.packet_name,
+                      record.owner,
+                      std::nullopt,
+                      inbound.message.correlation_id,
+                      std::nullopt,
+                      std::nullopt,
+                      std::nullopt,
+                      std::nullopt};
+                });
                 auto scope =
                   zlink::framework::detail::service_scope_t::create (
                     *_services,
@@ -798,21 +833,9 @@ client_server_location_runtime_t::select_ready (
               framework_error_kind_t::request_target_not_found,
               "ClientServer channel is not registered");
         }
-        const bool has_selectable_snapshot = std::any_of (
-          found->second->connections.begin (),
-          found->second->connections.end (),
-          [] (const auto &entry) {
-              return entry.second.descriptor.state
-                       == framework_runtime_state_t::serving
-                     && entry.second.descriptor.weight > 0;
-          });
         return result_t<std::shared_ptr<raw_client_server_client_t>>::failure (
-          has_selectable_snapshot
-            ? framework_error_kind_t::route_not_connected
-            : framework_error_kind_t::request_target_not_found,
-          has_selectable_snapshot
-            ? "ClientServer target pipe did not become ready"
-            : "ClientServer has no selectable target snapshot");
+          framework_error_kind_t::request_target_not_found,
+          "ClientServer has no ready target before the bounded wait expired");
     }
     auto &channel = *_clients.at (channel_name);
     std::vector<weighted_candidate_t> candidates;
@@ -872,6 +895,10 @@ void client_server_location_runtime_t::stop_clients () noexcept
 void client_server_location_runtime_t::stop_servers () noexcept
 {
     for (auto &[_, server] : _servers) {
+        if (!server->published_descriptor) {
+            server->owner->close ();
+            continue;
+        }
         try {
             auto admission = server->owner->descriptor ();
             if (admission.state
@@ -881,7 +908,7 @@ void client_server_location_runtime_t::stop_servers () noexcept
                   mesh::service_node_state_t::draining;
                 admission.weight = 0;
                 server->owner->update_descriptor (admission);
-                auto draining = server->descriptor;
+                auto draining = *server->published_descriptor;
                 draining.descriptor_revision =
                   admission.descriptor_revision;
                 draining.state =
@@ -896,14 +923,14 @@ void client_server_location_runtime_t::stop_servers () noexcept
                     .value ();
                 if (written.status
                     == location_write_status_t::stored)
-                    server->descriptor = std::move (draining);
+                    server->published_descriptor = std::move (draining);
             }
             (void) _store
               ->remove_client_server (
-                {server->descriptor.channel_name,
-                 server->descriptor.server_rid},
-                {server->descriptor.owner_id,
-                 server->descriptor.lease_generation})
+                {server->published_descriptor->channel_name,
+                 server->published_descriptor->server_rid},
+                {server->published_descriptor->owner_id,
+                 server->published_descriptor->lease_generation})
               .result ()
               .value ();
         }

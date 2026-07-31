@@ -18,7 +18,9 @@ public final class SupportUserActorRelocationAdapter
                     actor.displayName(),
                     actor.role(),
                     actor.participantId(),
-                    actor.conversationId())));
+                    actor.conversationId(),
+                    actor.pendingConversationId(),
+                    actor.completedJoinOperations())));
         } catch (java.io.IOException error) {
             return java.util.concurrent.CompletableFuture.failedFuture(error);
         }
@@ -36,6 +38,10 @@ public final class SupportUserActorRelocationAdapter
                 transferred.role(),
                 transferred.participantId());
             actor.joinConversation(transferred.conversationId());
+            actor.restorePendingConversationJoin(
+                transferred.pendingConversationId());
+            actor.restoreCompletedJoinOperations(
+                transferred.completedJoinOperations());
             return java.util.concurrent.CompletableFuture.completedFuture(null);
         } catch (java.io.IOException error) {
             return java.util.concurrent.CompletableFuture.failedFuture(error);
@@ -46,6 +52,9 @@ public final class SupportUserActorRelocationAdapter
         String displayName,
         String role,
         String participantId,
-        String conversationId) {
+        String conversationId,
+        String pendingConversationId,
+        java.util.Set<systems.zlink.framework.actors.ZLinkActorJoinOperationId>
+            completedJoinOperations) {
     }
 }

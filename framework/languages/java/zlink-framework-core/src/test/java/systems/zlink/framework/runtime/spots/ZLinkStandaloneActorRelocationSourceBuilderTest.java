@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.*;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.*;
 import systems.zlink.framework.runtime.InMemoryRelocationStore;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
@@ -46,6 +47,7 @@ final class ZLinkStandaloneActorRelocationSourceBuilderTest {
         throws Exception {
         SnapshotAdapter.captured.set(null);
         var locations = new ZLinkInMemoryLocationStore();
+        var repository = new ZLinkProviderLocationRepository(locations);
         var relocations = new InMemoryRelocationStore();
         DefaultZLinkFrameworkOptions options = options(
             locations, relocations);
@@ -57,9 +59,10 @@ final class ZLinkStandaloneActorRelocationSourceBuilderTest {
                 (ZLinkSpotRuntime) host.spotManager();
             var created = host.actorManager()
                 .create("actor-a", ACTOR_TYPE)
+                .submit()
                 .toCompletableFuture().get();
             assertInstanceOf(ZLinkActorCreateResult.Created.class, created);
-            ZLinkMeshNodeDescriptor source = locations.listMeshNodes(
+            ZLinkMeshNodeDescriptor source = repository.listMeshNodes(
                     MESH, ZLinkPageRequest.firstPage())
                 .toCompletableFuture().get().items().stream()
                 .filter(value -> value.rid().equals(
@@ -67,32 +70,36 @@ final class ZLinkStandaloneActorRelocationSourceBuilderTest {
                 .findFirst().orElseThrow();
             ZLinkLocationOwnerToken targetOwner = assertInstanceOf(
                 ZLinkOwnerLeaseClaimed.class,
-                locations.claimOwnerLease(
+                repository.claimOwnerLease(
                         "actor-target-owner", Duration.ofSeconds(30))
                     .toCompletableFuture().get()).token();
-            locations.updateMeshNode(
+            repository.updateMeshNode(
                     descriptor(targetOwner),
                     ZLinkLocationWriteIntent.NEW_CLAIM)
                 .toCompletableFuture().get();
 
             var coordinator = new ZLinkAggregateRelocationCoordinator(
-                locations, relocations);
+                repository, relocations);
             var permits = new ZLinkRelocationPermitPool(
                 new ZLinkLocationOptions());
             var builder = new ZLinkStandaloneActorRelocationSourceBuilder(
                 MESH,
                 nodeRegistration.routingId(),
                 source.lifecycleGeneration(),
-                locations,
+                repository,
                 coordinator,
                 permits,
                 runtime.actorSessions(),
                 new ZLinkRelocationAdapterRegistry(
                     registration,
                     ZLinkHandlerActivator.reflection()),
-                nodeRegistration.relocatableActorFactories());
+                nodeRegistration.relocatableActorFactories(),
+                runtime);
 
-            var prepared = builder.prepare("actor-a", NEVER)
+            var prepared = builder.prepare(
+                    "actor-a",
+                    rollingToVersionOne(),
+                    NEVER)
                 .toCompletableFuture().get();
 
             assertNotNull(SnapshotAdapter.captured.get());
@@ -129,6 +136,7 @@ final class ZLinkStandaloneActorRelocationSourceBuilderTest {
         throws Exception {
         SnapshotAdapter.captured.set(null);
         var locations = new ZLinkInMemoryLocationStore();
+        var repository = new ZLinkProviderLocationRepository(locations);
         var relocations = new InMemoryRelocationStore();
         DefaultZLinkFrameworkOptions options = options(
             locations, relocations);
@@ -141,22 +149,23 @@ final class ZLinkStandaloneActorRelocationSourceBuilderTest {
             assertInstanceOf(
                 ZLinkActorCreateResult.Created.class,
                 host.actorManager().create("actor-b", ACTOR_TYPE)
+                    .submit()
                     .toCompletableFuture().get());
-            ZLinkMeshNodeDescriptor source = locations.listMeshNodes(
+            ZLinkMeshNodeDescriptor source = repository.listMeshNodes(
                     MESH, ZLinkPageRequest.firstPage())
                 .toCompletableFuture().get().items().getFirst();
             ZLinkLocationOwnerToken targetOwner = assertInstanceOf(
                 ZLinkOwnerLeaseClaimed.class,
-                locations.claimOwnerLease(
+                repository.claimOwnerLease(
                         "actor-target-owner", Duration.ofSeconds(30))
                     .toCompletableFuture().get()).token();
-            locations.updateMeshNode(
+            repository.updateMeshNode(
                     descriptor(targetOwner),
                     ZLinkLocationWriteIntent.NEW_CLAIM)
                 .toCompletableFuture().get();
 
             var coordinator = new ZLinkAggregateRelocationCoordinator(
-                locations, relocations);
+                repository, relocations);
             var permits = new ZLinkRelocationPermitPool(
                 new ZLinkLocationOptions());
             var adapters = new ZLinkRelocationAdapterRegistry(
@@ -166,13 +175,17 @@ final class ZLinkStandaloneActorRelocationSourceBuilderTest {
                 MESH,
                 nodeRegistration.routingId(),
                 source.lifecycleGeneration(),
-                locations,
+                repository,
                 coordinator,
                 permits,
                 runtime.actorSessions(),
                 adapters,
-                nodeRegistration.relocatableActorFactories());
-            var prepared = builder.prepare("actor-b", NEVER)
+                nodeRegistration.relocatableActorFactories(),
+                runtime);
+            var prepared = builder.prepare(
+                    "actor-b",
+                    rollingToVersionOne(),
+                    NEVER)
                 .toCompletableFuture().get();
             long objectGeneration =
                 prepared.targetRequest().objectGeneration();
@@ -207,18 +220,39 @@ final class ZLinkStandaloneActorRelocationSourceBuilderTest {
                     NEVER),
                 null,
                 null,
-                locations,
+                repository,
                 actorStaging);
 
-            AtomicReference<ZLinkInternalMeshNode.RelocationControlHandler>
-                control = new AtomicReference<>();
-            ZLinkInternalMeshNode transport = relocationTransport(
-                nodeRegistration.routingId(), control);
-            ZLinkSpotRetireControl.install(transport, endpoint);
+            AtomicReference<ZLinkCanonicalRelocationStateMachine>
+                sourceMachine = new AtomicReference<>();
+            AtomicReference<ZLinkCanonicalRelocationStateMachine>
+                targetMachine = new AtomicReference<>();
+            ZLinkInternalMeshNode sourceTransport = canonicalTransport(
+                nodeRegistration.routingId(),
+                source.lifecycleGeneration(),
+                targetMachine);
+            ZLinkInternalMeshNode targetTransport = canonicalTransport(
+                TARGET_RID,
+                9,
+                sourceMachine);
+            sourceMachine.set(new ZLinkCanonicalRelocationStateMachine(
+                sourceTransport,
+                MESH,
+                nodeRegistration.entrySpotId(),
+                repository,
+                coordinator,
+                unusedRelocationTarget()));
+            targetMachine.set(new ZLinkCanonicalRelocationStateMachine(
+                targetTransport,
+                MESH,
+                "actor-target-entry-00000000-0000-4000-8000-000000000001",
+                repository,
+                coordinator,
+                endpoint));
             new ZLinkStandaloneActorRelocationScheduler()
                 .executeRemote(
                     prepared,
-                    ZLinkSpotRetireControl.client(transport),
+                    sourceMachine.get(),
                     Duration.ofSeconds(5),
                     NEVER)
                 .toCompletableFuture().get();
@@ -227,7 +261,7 @@ final class ZLinkStandaloneActorRelocationSourceBuilderTest {
             assertTrue(targetBackend.admitted.get());
             ZLinkAuthoritySnapshot authority = assertInstanceOf(
                 ZLinkAuthoritySnapshot.class,
-                locations.read(
+                repository.read(
                         ZLinkAuthorityKeyCodec.actor("actor-b"), NEVER)
                     .toCompletableFuture().get());
             assertEquals(objectGeneration, authority.objectGeneration());
@@ -239,8 +273,8 @@ final class ZLinkStandaloneActorRelocationSourceBuilderTest {
     }
 
     private static DefaultZLinkFrameworkOptions options(
-        ZLinkLocationStore locations,
-        ZLinkRelocationStore relocations) {
+        ZLinkInMemoryLocationStore locations,
+        systems.zlink.framework.locationprovider.ZLinkRelocationStore relocations) {
         var options = new DefaultZLinkFrameworkOptions();
         options.addLocationStore(locations);
         options.addRelocationStore(relocations);
@@ -288,6 +322,15 @@ final class ZLinkStandaloneActorRelocationSourceBuilderTest {
             owner.ownerId(),
             owner.leaseGeneration(),
             Instant.now());
+    }
+
+    private static ZLinkRelocationTargetPolicy rollingToVersionOne() {
+        return new ZLinkRelocationTargetPolicy(
+            systems.zlink.framework.runtime.host
+                .ZLinkFrameworkRelocationMode.ROLLING_UPDATE,
+            0,
+            Optional.empty(),
+            1);
     }
 
     private static ZLinkUserSpotAggregateStagingOwner unusedSpotStaging() {
@@ -343,30 +386,75 @@ final class ZLinkStandaloneActorRelocationSourceBuilderTest {
             });
     }
 
-    private static ZLinkInternalMeshNode relocationTransport(
-        RoutingId source,
-        AtomicReference<ZLinkInternalMeshNode.RelocationControlHandler>
-            handler) {
+    private static ZLinkInternalMeshNode canonicalTransport(
+        RoutingId localRid,
+        long generation,
+        AtomicReference<ZLinkCanonicalRelocationStateMachine> peer) {
+        var status = new systems.zlink.framework.runtime.internal.binding.spot
+            .MeshNodeStatus(
+                systems.zlink.framework.runtime.internal.binding.spot
+                    .MeshNodeState.READY,
+                localRid,
+                MESH,
+                "",
+                generation,
+                1,
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0);
         return (ZLinkInternalMeshNode) Proxy.newProxyInstance(
             ZLinkInternalMeshNode.class.getClassLoader(),
             new Class<?>[] {ZLinkInternalMeshNode.class},
             (proxy, method, arguments) -> {
-                if (method.getName().equals("setRelocationControlHandler")) {
-                    handler.set(
-                        (ZLinkInternalMeshNode.RelocationControlHandler)
-                            arguments[0]);
-                    return null;
-                }
-                if (method.getName().equals("requestRelocationControl")) {
-                    return handler.get().handle(
-                        source,
-                        ((byte[]) arguments[1]).clone());
-                }
-                if (method.getDeclaringClass() == Object.class) {
-                    return method.invoke(proxy, arguments);
-                }
-                throw new UnsupportedOperationException(method.getName());
+                return switch (method.getName()) {
+                    case "status" -> status;
+                    case "sendCanonicalRelocationControl" ->
+                        peer.get().apply(
+                            localRid,
+                            Byte.toUnsignedInt(
+                                ((byte[]) arguments[1])[3]),
+                            ((byte[]) arguments[1]).clone());
+                    default -> throw new UnsupportedOperationException(
+                        method.getName());
+                };
             });
+    }
+
+    private static ZLinkSpotRetireControl.TargetEndpoint
+        unusedRelocationTarget() {
+        return new ZLinkSpotRetireControl.TargetEndpoint() {
+            private CompletionStage<Void> unused() {
+                return CompletableFuture.failedFuture(
+                    new AssertionError(
+                        "source owner must not run target relocation"));
+            }
+
+            @Override public CompletionStage<Void> stage(
+                ZLinkSpotRetireControl.StageRequest request) {
+                return unused();
+            }
+
+            @Override public CompletionStage<Void> publish(
+                ZLinkSpotRetireControl.StageRequest request) {
+                return unused();
+            }
+
+            @Override public CompletionStage<Void> abort(
+                ZLinkSpotRetireControl.StageRequest request) {
+                return unused();
+            }
+
+            @Override public CompletionStage<Void> finalizeAfterCompletion(
+                ZLinkSpotRetireControl.StageRequest request) {
+                return unused();
+            }
+        };
     }
 
     private static final class ActorTargetBackend
@@ -389,7 +477,9 @@ final class ZLinkStandaloneActorRelocationSourceBuilderTest {
             return CompletableFuture.completedFuture(Optional.empty());
         }
 
-        @Override public void publish(Object actor) {
+        @Override public void publish(
+            Object actor,
+            ZLinkStandaloneActorRelocationStagingOwner.Request request) {
             assertTrue(published.compareAndSet(false, true));
         }
 

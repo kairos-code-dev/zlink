@@ -1,11 +1,9 @@
-import { Module } from '@nestjs/common';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
-import { CustomerSessionFactory, SubscribeDeliverySessionHandler } from './customer-session';
+import { CustomerSessionFactory } from './customer-session';
 import { CustomerActorDirectory, CustomerActorFactory } from './customer-actor';
 import { CustomerEntrySpot } from './customer-entry-spot';
-import { CustomerStatusHandler } from './customer-status-handler';
 import { createDeliveryDispatchLocationStore, deliveryDispatchLocationOptions } from '../Configuration/location-store';
 import {
   DELIVERYDISPATCH_SAMPLE_CONFIG,
@@ -25,7 +23,7 @@ function createSessionModule() {
     'logDir'
   ]);
 
-  Module({
+  zlinkModule(__dirname, {
     imports: [
       configuration,
       ZLinkModule.forRootFactory({
@@ -39,7 +37,7 @@ function createSessionModule() {
             .traceLabel('customer-gateway');
           builder.addLocationStore(createDeliveryDispatchLocationStore(config));
           deliveryDispatchLocationOptions(builder.configureLocations());
-          const mesh = builder.addRouteMesh(SampleNames.routeMesh)
+          const mesh = builder.addRouteMesh(SampleNames.customerMeshName)
               .listen(config.sessionSpotRouterEndpoint).setRoutingIdPrefix('delivery-customer');
           const objectServer = mesh.objects().server();
           objectServer.addEntrySpot(CustomerEntrySpot);
@@ -48,8 +46,8 @@ function createSessionModule() {
             CustomerActorFactory,
             (factory) => factory.disableRelocation()
           );
-          mesh.channelName(SampleNames.routeMesh);
           return builder.addStreamNode(SampleNames.customerStreamNode)
+              .enableActorDispatch()
               .bind(config.sessionStreamEndpoint)
               .registerSession(CustomerSessionFactory)
             .build();
@@ -63,11 +61,9 @@ function createSessionModule() {
         inject: [DELIVERYDISPATCH_SAMPLE_CONFIG],
         useFactory: (config: DeliveryDispatchServerConfig) => createDeliveryDispatchLocationStore(config)
       },
-      SubscribeDeliverySessionHandler,
       CustomerSessionFactory,
       CustomerActorFactory,
-      CustomerEntrySpot,
-      CustomerStatusHandler
+      CustomerEntrySpot
     ]
   })(SessionModule);
 

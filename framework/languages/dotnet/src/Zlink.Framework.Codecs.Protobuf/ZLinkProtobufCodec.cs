@@ -6,7 +6,10 @@ using Zlink.Framework.Contracts.Codecs;
 
 namespace Zlink.Framework.Codecs.Protobuf;
 
-public sealed class ZLinkProtobufCodec : IZLinkCodecExtension, IZlinkStreamPayloadCodec
+public sealed class ZLinkProtobufCodec :
+    IZLinkCodecExtension,
+    IZlinkStreamPayloadCodec,
+    IZlinkStreamCodecRegistration
 {
     private static readonly ConcurrentDictionary<Type, Func<IMessage>> Factories = new();
 
@@ -23,8 +26,11 @@ public sealed class ZLinkProtobufCodec : IZLinkCodecExtension, IZlinkStreamPaylo
             "application/x-protobuf",
             ProtobufSerializer.Instance,
             type => typeof(IMessage).IsAssignableFrom(type));
-        codecs.AddStreamCodec("application/x-protobuf", ZlinkStreamCodec.Protobuf);
     }
+
+    string IZlinkStreamCodecRegistration.ContentType => "application/x-protobuf";
+
+    ZlinkStreamCodec IZlinkStreamCodecRegistration.Codec => ZlinkStreamCodec.Protobuf;
 
     public ZlinkStreamEncodedPayload Encode<TPayload>(TPayload payload)
     {

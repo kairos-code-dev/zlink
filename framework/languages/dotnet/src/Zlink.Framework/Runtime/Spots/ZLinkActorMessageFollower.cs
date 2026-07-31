@@ -207,9 +207,6 @@ internal sealed class ZLinkActorMessageFollower
                     frame,
                     cancellationToken)
                 .ConfigureAwait(false);
-            ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"actor_follow_reply_completed actor={actorId} request_id={requestId} "
-                + $"outcome={outcome}");
         }
         finally
         {

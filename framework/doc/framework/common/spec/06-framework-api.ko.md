@@ -36,6 +36,7 @@ Framework root는 process의 host lifecycle과 DI에 한 번 등록한다. Root 
 | network identity | listener가 공통으로 사용할 bind host와 advertised host를 설정한다 |
 | deployment identity | target eligibility에 사용할 application version과 maintenance wave를 설정한다 |
 | relocation limits | process 전체 outbound·inbound unit, `Capture`·`Restore` callback과 encoded payload in-flight 상한을 설정한다 |
+| inbound dispatch | 처리 중인 application payload의 host 전체 byte 상한과 Auto 계산에 사용할 memory limit·profile을 설정한다 |
 
 같은 root를 process에 두 번 구성하거나 같은 [MeshName](01-glossary.ko.md#meshname)을 중복 등록하면 startup에서 설정 오류가 발생한다.
 같은 [ChannelName](01-glossary.ko.md#channelname)을 서로 다른 RouteMesh 또는 ClientServer topology에 등록해도 역할과 관계없이 startup에서
@@ -53,6 +54,57 @@ State, mode별 target 선택, terminal result, 기본 deadline, 반복 호출과
 Framework builder는 service liveness interval과 [deadline](01-glossary.ko.md#deadline)을 공개하지 않는다. Service runtime은 공통 profile을
 내부에서 적용하며 orderly disconnect와 half-open 장애를 구분한다. 고정값, service liveness message와 reconnect
 계약은 [55 Transport Liveness](29-transport-liveness.ko.md)가 소유한다.
+
+### 2.1 수신 payload가 memory를 계속 늘리지 않게 한다
+
+Framework가 수신했지만 handler가 아직 처리를 끝내지 않은 application payload의 byte 합계를
+[Application HWM](01-glossary.ko.md#application-hwm)이라고 한다. 이 값은 connection이나 MeshNode별로
+나누지 않고 Framework host 전체에 한 번 적용한다.
+
+Application은 root의 inbound dispatch options에서 다음 세 값만 설정한다.
+
+| 설정 | 의미 |
+|---|---|
+| `ApplicationHwmBytes` | 생략하면 Auto, `0`이면 제한 없음, 양수이면 지정한 host 전체 byte 상한을 사용한다. |
+| `ApplicationHwmProfile` | Auto 계산 비율이다. 기본값은 `Balanced`다. |
+| `ProcessMemoryLimitBytes` | Auto 계산에 우선 사용하는 process memory 상한이다. 생략하면 container·cgroup·Windows Job Object의 유한한 상한을 사용한다. |
+
+Auto mode는 확인한 process memory 상한에 profile 비율을 곱하고 소수점 아래를 버린다.
+
+| Profile | 비율 |
+|---|---:|
+| `Compact` | 2% |
+| `LowLatency` | 5% |
+| `Balanced` | 10% |
+| `Throughput` | 20% |
+
+Auto mode에서 유한한 process memory 상한을 확인하지 못하거나 계산 결과가 양수가 아니면 socket bind
+전에 configuration error로 실패한다. 명시한 양수 HWM과 `0`은 process memory 상한이 없어도 사용할 수
+있다. 선택한 profile은 Framework가 만드는 Core context의 Auto HWM profile에도 적용하지만,
+Application HWM byte를 connection별 Core HWM으로 복사하거나 connection 수로 나누지 않는다.
+
+`ApplicationHwmBytes`가 양수이면 모든 application listener의 `MaxMessageSize`도 유한한 양수여야 한다.
+Auto mode도 같은 조건을 적용한다. 명시적인 `ApplicationHwmBytes = 0`만 이 검사를 생략한다.
+HWM이 `MaxMessageSize`보다 작아도 유효하다. Pending byte가 HWM보다 작을 때 시작한 complete message는
+끝까지 받고, 그 결과 HWM을 넘으면 다음 수신을 멈춘다. 따라서 비어 있는 host는 HWM보다 크고
+`MaxMessageSize` 이하인 message 한 건을 처리할 수 있다.
+
+Pending byte에는 complete message의 application payload part만 포함한다. Envelope, route, Framework
+metadata와 allocator overhead는 포함하지 않는다. Queue 대기와 handler 실행 중인 job은 포함하고,
+terminal 상태가 된 job과 Core·OS buffer에 아직 남아 있는 message는 포함하지 않는다. Framework는
+queue를 순회하지 않는다. 수신 시 계산한 immutable byte 값을 job에 보관하고, 수신 누계에서 terminal
+완료 누계를 뺀 값으로 현재 합계를 계산한다.
+
+Pending byte가 HWM에 도달하면 새 application `Recv`만 멈춘다. 이미 시작한 receive와 queue dispatch,
+별도 Completion connection의 request reply·bounded Framework service control과 Core의 send-ready callback은
+계속 처리한다. Handler가 정상 완료·실패·취소 중 하나로 끝나 합계가
+HWM보다 작아지면 수신을 재개한다. 받은 message를 HWM 초과만으로 버리거나 오류 reply로 바꾸지 않는다.
+Core receive queue가 채워지면 기존 byte 기반 transport HWM이 source의 새 send를 대기시킨다.
+
+Request handler는 reply를 보낼 내부 permit을 확보한 뒤 실행한다. Permit이 없으면 request는 application
+queue와 pending byte 합계에 남고, reply를 받을 completion connection의 처리는 계속한다. Permit 크기,
+peer별 공정성, connection pair와 reply reserve는 Framework 내부 정책이며 public option으로 노출하지
+않는다.
 
 ## 3. RouteMesh 등록
 
@@ -132,6 +184,12 @@ Create call은 target RID, predicate나 selection callback을 제공하지 않�
 Framework의 `MaxMessageSize = 0`은 Framework가 transport 기본값보다 작은 별도 상한을 두지 않는다는
 뜻이다. 양수는 같은 byte 상한으로 적용하고 음수 값은 설정 오류다. Binding option 표현과 변환은
 언어별 internals가 소유하며 application public API에 노출하지 않는다.
+
+Framework application listener의 `MaxMessageSize` 기본값은 `16,777,216` bytes(16 MiB)다. 따라서
+기본 Auto Application HWM 구성은 유한한 단일 message 상한을 가진다. Application이 이를 명시적으로
+`0`으로 바꾸면 별도 상한을 두지 않는 기존 의미를 유지하지만, Application HWM이 Auto 또는 양수이면
+startup validation에서 거부한다. 무제한 message와 무제한 pending payload가 모두 필요한 경우에만
+`MaxMessageSize = 0`과 `ApplicationHwmBytes = 0`을 함께 명시한다.
 
 MeshNode builder에는 drain policy나 lifecycle command를 추가하지 않는다. Host의 continuity maintenance는
 Framework runtime의 `Relocate`, 일반 종료는 `Shutdown`이 수행한다. Caller는 node 점검에는
@@ -339,8 +397,11 @@ handler가 실행 중인데 dependency를 먼저 정리하거나, 종료가 시�
 기다리는 순환 대기가 생기지 않아야 한다.
 
 Framework scheduler는 ready owner의 bounded mailbox를 drain하고 Node, Spot과 Actor handler를 해당
-application 실행 문맥에서 호출한다. Transport readiness는 application callback 인자가 아니다. Completion,
-send-ready와 relocation control은 application handler가 점유할 수 없는 infrastructure 실행 영역에서 진행한다.
+application 실행 문맥에서 호출한다. Transport readiness는 application callback 인자가 아니다. Request
+completion과 liveness·admission·relocation·reply recovery service control은 기존 Completion connection에서
+받는다. Send-ready는 Core callback으로 전달한다. 이 infrastructure 작업은 application handler가 점유할 수
+없는 실행 영역에서 진행한다. Actor·Spot lifecycle처럼 application callback을 호출하는 job은 application
+실행 영역에서 처리한다.
 
 ## 9. Codec
 

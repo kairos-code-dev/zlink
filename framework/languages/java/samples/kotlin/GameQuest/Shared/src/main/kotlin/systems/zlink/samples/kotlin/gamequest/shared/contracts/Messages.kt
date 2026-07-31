@@ -149,6 +149,7 @@ data class StoredQuestEvent(
 
 data class QuestProcessingRes(
     val eventId: String,
+    val playerId: String,
     val projection: List<QuestProgress>,
     val progressNotifications: List<QuestProgressNotify>,
     val completedNotifications: List<QuestCompletedNotify>,

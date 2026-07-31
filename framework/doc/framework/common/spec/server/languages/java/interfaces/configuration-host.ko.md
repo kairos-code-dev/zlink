@@ -18,6 +18,7 @@ public interface ZLinkFrameworkOptions {
     void setApplicationVersion(long version);
     void setMaintenanceWave(String waveId);
     ZLinkLocationOptions configureLocations();
+    ZLinkInboundDispatchOptions configureInboundDispatch();
     ZLinkNetworkOptions configureNetwork();
     ZLinkMeshNodeBuilder addRouteMesh(String meshName);
     ClientServerChannelBuilder addClientServerChannel(String channelName);
@@ -29,6 +30,22 @@ public interface ZLinkFrameworkOptions {
     ZLinkWorkerOptions configureWorkers();
     void useVirtualThreadHandlers();
     void useHandlerExecutor(Executor executor);
+}
+
+public enum ZLinkApplicationHwmProfile {
+    COMPACT,
+    LOW_LATENCY,
+    BALANCED,
+    THROUGHPUT
+}
+
+public interface ZLinkInboundDispatchOptions {
+    java.util.OptionalLong applicationHwmBytes();
+    void setApplicationHwmBytes(long value);
+    ZLinkApplicationHwmProfile applicationHwmProfile();
+    void setApplicationHwmProfile(ZLinkApplicationHwmProfile value);
+    java.util.OptionalLong processMemoryLimitBytes();
+    void setProcessMemoryLimitBytes(long value);
 }
 
 public interface ZLinkLocationOptions {
@@ -70,10 +87,10 @@ public interface ZLinkNetworkOptions {
 public interface ZLinkMeshNodeSocketConfig {
     long maxMessageSize();
     void setMaxMessageSize(long value);
-    int sendHighWaterMark();
-    void setSendHighWaterMark(int value);
-    int receiveHighWaterMark();
-    void setReceiveHighWaterMark(int value);
+    long sendHighWaterMark();
+    void setSendHighWaterMark(long value);
+    long receiveHighWaterMark();
+    void setReceiveHighWaterMark(long value);
     long mailboxMessageBudget();
     void setMailboxMessageBudget(long value);
     long mailboxByteBudget();
@@ -196,6 +213,12 @@ public interface FanoutChannelBuilder {
     FanoutChannelBuilder addHandlerGroup(String groupName);
 }
 ```
+
+`applicationHwmBytes()`가 비어 있으면 Auto mode다. Setter의 `0`은 제한 없음, 양수는 정확한 host 전체
+byte 상한이며 음수는 startup configuration error다. Profile 기본값은 `BALANCED`다.
+`processMemoryLimitBytes()`가 비어 있으면 process에 적용된 유한한 container·cgroup 상한을 사용한다.
+Auto mode에서 둘 다 확인할 수 없으면 socket bind 전에 startup이 실패한다.
+Application listener의 `maxMessageSize()` 기본값은 `16_777_216L` bytes다.
 
 `configureNetwork()`은 process의 RouteMesh, ClientServer, classic fanout과 stream listener가 사용하는
 기본 host를 반환한다. 기본 BindHost는 `127.0.0.1`이다. Listener별 `setBindHost(...)`와
@@ -397,10 +420,10 @@ public interface systems.zlink.framework.configuration.ZLinkEndpointConnections 
 public interface systems.zlink.framework.configuration.ZLinkMeshNodeSocketConfig {
   public abstract long maxMessageSize();
   public abstract void setMaxMessageSize(long);
-  public abstract int sendHighWaterMark();
-  public abstract void setSendHighWaterMark(int);
-  public abstract int receiveHighWaterMark();
-  public abstract void setReceiveHighWaterMark(int);
+  public abstract long sendHighWaterMark();
+  public abstract void setSendHighWaterMark(long);
+  public abstract long receiveHighWaterMark();
+  public abstract void setReceiveHighWaterMark(long);
   public abstract long mailboxMessageBudget();
   public abstract void setMailboxMessageBudget(long);
   public abstract long mailboxByteBudget();
@@ -472,8 +495,8 @@ public interface systems.zlink.framework.configuration.ZLinkMetadataPolicyBuilde
   public abstract systems.zlink.framework.configuration.ZLinkMetadataPolicyBuilder allowActorToSession(java.lang.String);
 }
 public interface systems.zlink.framework.configuration.ZLinkSpotPublisherConfig {
-  public abstract int sendHighWaterMark();
-  public abstract void setSendHighWaterMark(int);
+  public abstract long sendHighWaterMark();
+  public abstract void setSendHighWaterMark(long);
   public abstract java.util.Optional<java.time.Duration> sendTimeout();
   public abstract void setSendTimeout(java.time.Duration);
   public abstract java.util.Optional<java.time.Duration> linger();
@@ -602,6 +625,7 @@ public interface systems.zlink.framework.configuration.ZLinkFrameworkOptions {
   public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder addStreamNode(java.lang.String);
   public abstract void addLocationStore(systems.zlink.framework.locations.ZLinkLocationStore);
   public abstract systems.zlink.framework.locations.ZLinkLocationOptions configureLocations();
+  public abstract systems.zlink.framework.configuration.ZLinkInboundDispatchOptions configureInboundDispatch();
   public abstract systems.zlink.framework.configuration.ZLinkNetworkOptions configureNetwork();
   public abstract void useFilter(java.lang.Class<? extends systems.zlink.framework.ZLinkHandlerFilter>);
   public abstract systems.zlink.framework.configuration.ZLinkDispatchOptions configureDispatch();
@@ -744,6 +768,10 @@ Bean을 생성하는 동안 service socket, discovery loop와 application worker
 `SmartLifecycle.start()`가 같은 runtime의 start를 한 번 호출한다. Application에 보장하는 계약은 public bean의
 type, singleton 수명과 reference identity다. Auto-configuration class, bean factory method, lifecycle adapter와
 그 constructor는 implementation detail이며 application public signature가 아니다.
+
+Core의 internal bootstrap package는 starter module에만 qualified export한다. Application이 module path나
+classpath에서 `ZLinkFrameworkRuntime.start(...)`를 호출하면 compile에 실패해야 한다. Contract test는
+실제 module path에서 bootstrap을 호출하고 runtime이 `SERVING`에 도달하는지 확인한다.
 
 Contract test는 네 runtime bean을 각각 두 번 resolve해 singleton인지 확인한다. 이어서 세 topology bean을
 `runtime.routeMeshRuntime()`, `runtime.clientServerRuntime()`과 `runtime.fanoutRuntime()`의 반환값과

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import type { ZLinkChannelClient } from '@zlink-systems/framework';
-import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
+import type { ZLinkSpotOutbound } from '@zlink-systems/framework';
+import { ZLINK_SPOT_OUTBOUND } from '@zlink-systems/nestjs';
 import { Inject } from '@nestjs/common';
 import { SampleNames } from '../../../../Shared/Configuration/sample-names';
 import { OrderWorkflowRouterPort } from '../../Application/order-workflow-router-port';
@@ -21,7 +21,7 @@ import type {
 
 @Injectable()
 class ZLinkOrderWorkflowRouter implements OrderWorkflowRouterPort {
-  constructor(@Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient) {}
+  constructor(@Inject(ZLINK_SPOT_OUTBOUND) private readonly spots: ZLinkSpotOutbound) {}
 
   start(request: StartOrderWorkflowReq): Promise<StartOrderWorkflowRes> {
     return this.request(request);
@@ -64,12 +64,23 @@ class ZLinkOrderWorkflowRouter implements OrderWorkflowRouterPort {
   }
 
   private request<TResponse>(payload: object): Promise<TResponse> {
-    return this.channels
-      .requestToChannel(SampleNames.orderWorkflowSpotMesh, SampleNames.orderWorkflowChannel, payload)
+    const orderId = requireOrderId(payload);
+    return this.spots
+      .requestToSpot(orderId, payload)
+      .instanceSpot(SampleNames.orderWorkflowSpotType)
+      .inMesh(SampleNames.orderWorkflowSpotMesh)
       .timeout(SampleNames.requestTimeout)
       .submit<TResponse>();
   }
 
+}
+
+function requireOrderId(payload: object): string {
+  const orderId = (payload as { readonly orderId?: unknown }).orderId;
+  if (typeof orderId !== 'string' || orderId.length === 0) {
+    throw new Error('Order workflow request requires a non-empty orderId.');
+  }
+  return orderId;
 }
 
 export { ZLinkOrderWorkflowRouter };

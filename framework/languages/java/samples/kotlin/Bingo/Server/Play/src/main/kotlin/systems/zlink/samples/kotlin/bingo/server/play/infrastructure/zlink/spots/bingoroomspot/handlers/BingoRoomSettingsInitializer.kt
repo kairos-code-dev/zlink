@@ -4,6 +4,7 @@ import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomSettings
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.BingoRoomSpot
+import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomSettingsPayload
 
 class BingoRoomSettingsInitializer {
     fun handle(
@@ -21,6 +22,14 @@ class BingoRoomSettingsInitializer {
                 SampleTimings.DrawPeriod.toMillis(),
             )
         }
-        return request.decode(BingoRoomSettings::class.java)
+        val settings = request.decode(BingoRoomSettingsPayload::class.java)
+        return BingoRoomSettings(
+            roomName = settings.roomName,
+            mode = settings.mode,
+            requiredPlayers = settings.requiredPlayers,
+            maxDrawNumber = settings.maxDrawNumber,
+            drawPeriodMillis = SampleTimings.DrawPeriod.toMillis(),
+            observedRoomId = if (settings.hasObservedRoomId()) settings.observedRoomId else null,
+        )
     }
 }

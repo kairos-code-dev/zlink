@@ -36,7 +36,8 @@ DSL과 확장은 `systems.zlink.httpclient.kotlin` 패키지의 top-level 함수
 - `suspend ZLinkHttpRequestBuilder.awaitRaw(): RawHttpResponse`
 - `suspend ZLinkHttpRequestBuilder.await(type: Class<T>): HttpResponse<T>`
 - `suspend inline fun <reified T> ZLinkHttpRequestBuilder.await(): HttpResponse<T>`
-- `suspend inline fun <reified T> ZLinkHttpRequestBuilder.fetch(): T` — `await<T>().body()` 편의.
+- `suspend inline fun <reified T> ZLinkHttpRequestBuilder.fetch(): T` — status와 header를 제외하고
+  decoded body를 직접 반환한다.
 - `suspend ZLinkHttpRequestBuilder.awaitDownload(sink: (ByteArray) -> Unit): RawHttpResponse`
 - `suspend ZLinkHttpServerRequestBuilder.await(type)` / `await<T>()` — 현재 Spot turn을 유지한다.
 - `suspend ZLinkHttpServerRequestBuilder.await(): Unit` — one-way 전송의 비동기 완료와 실패만

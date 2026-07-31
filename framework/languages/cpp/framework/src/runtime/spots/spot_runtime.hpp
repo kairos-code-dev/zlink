@@ -206,6 +206,7 @@ class spot_node_builder_state_t
 struct spot_create_call_state_t
 {
     std::shared_ptr<spot_node_builder_state_t> node;
+    std::weak_ptr<spot_context_state_t> source;
     bool exclusive = false;
     std::optional<spot_id_t> spot_id;
     std::string stable_type;
@@ -242,8 +243,14 @@ inline void record_actor_instance_index_unlocked (spot_node_builder_state_t &nod
         return;
     }
     erase_actor_instance_index_unlocked (node, actor_ref.actor_type (), actor_ref.actor_id ());
-    node.actor_instance_index[instance] = {std::string (actor_ref.actor_type ()),
-                                           std::string (actor_ref.actor_id ())};
+    const auto actor_type = std::string (actor_ref.actor_type ());
+    const auto actor_id = std::string (actor_ref.actor_id ());
+    node.actor_instance_index[instance] = {actor_type, actor_id};
+    // Internal Actor packets contain the logical Actor id but not its stable
+    // type. Keep the type index when an instance is installed so a recreated
+    // Actor can accept its first bind packet before the new authority snapshot
+    // becomes visible through the Location Store reader.
+    node.actor_types_by_id[actor_id] = actor_type;
 }
 
 class spot_context_state_t : public std::enable_shared_from_this<spot_context_state_t>
@@ -337,6 +344,10 @@ class spot_context_state_t : public std::enable_shared_from_this<spot_context_st
                                     std::function<task_t<void> ()> work);
     bool run_serial_sync (std::string name, std::function<void ()> work);
     bool owns_current_serial_turn () const;
+    void defer_relocation_ready ();
+    void ensure_relocation_turn_open () const;
+    void complete_relocation_ready (
+      spot_relocation_ready_outcome_t outcome);
     void drain_serial ();
     void cancel_timers () noexcept;
 
@@ -349,7 +360,12 @@ class spot_context_state_t : public std::enable_shared_from_this<spot_context_st
     std::string spot_name;
     user_spot_execution_mode_t execution_mode =
       user_spot_execution_mode_t::spot_wide;
+    spot_relocation_readiness_mode_t relocation_readiness =
+      spot_relocation_readiness_mode_t::any_turn_boundary;
     bool entry_spot = false;
+    bool instance_spot = false;
+    bool relocation_boundary_active = false;
+    bool relocation_ready_deferred = false;
     std::vector<spot_packet_descriptor_t> packets;
     std::vector<spot_handler_descriptor_t> handlers;
     std::vector<spot_handler_registry_t::invoker_t> handler_invokers;
@@ -449,6 +465,13 @@ inline std::string effective_spot_node_rid (const spot_node_snapshot_t &snapshot
 class spot_node_runtime_t
 {
   public:
+    struct application_relocation_unit_t
+    {
+        spot_id_t spot_id;
+        std::string spot_type;
+        bool ready = false;
+        std::vector<actor_ref_t> actors;
+    };
     struct remote_actor_transfer_t
     {
         spot_id_t source_spot_id;
@@ -492,6 +515,14 @@ class spot_node_runtime_t
     std::optional<spot_route_t> actor_route (const actor_ref_t &actor_ref) const;
     std::optional<actor_message_follow_target_t>
     actor_message_follow_target (const actor_ref_t &actor_ref) const;
+    std::optional<actor_message_follow_target_t>
+    try_acquire_actor_message_follow (
+      const actor_ref_t &actor_ref,
+      std::size_t payload_bytes,
+      std::size_t hop_count);
+    void release_actor_message_follow (
+      const actor_ref_t &actor_ref,
+      std::size_t payload_bytes) noexcept;
     void record_actor_route (const actor_ref_t &actor_ref, spot_route_t route);
     std::optional<std::string> actor_route_transport_name () const;
     void request_stop () noexcept;
@@ -522,6 +553,16 @@ class spot_node_runtime_t
     /* Actors still joined to this node's spots, for the drain handoff pass
      * (graceful-drain-handoff §5.2). */
     std::vector<actor_ref_t> local_actor_refs () const;
+    std::vector<spot_id_t>
+    deferred_relocation_ready_spots () const;
+    std::vector<application_relocation_unit_t>
+    application_relocation_units () const;
+    void begin_relocation_readiness ();
+    void end_relocation_readiness (
+      const std::vector<spot_id_t> &relocated_spots);
+    bool complete_relocation_ready (
+      const spot_id_t &spot_id,
+      spot_relocation_ready_outcome_t outcome);
     /* Domain snapshot for the drain handoff join — the same shape the erased
      * cross-node leave path sends alongside the entry-spot join. */
     std::optional<zlink::message_t> serialize_actor_snapshot (const actor_ref_t &actor_ref) const;
@@ -530,6 +571,9 @@ class spot_node_runtime_t
       const zlink::routing_id_t &target_node_rid,
       const spot_id_t &target_spot_id,
       runtime::messaging::message_parts_t parts) const;
+    std::optional<std::uint64_t> resolve_spot_generation (
+      const zlink::routing_id_t &target_node_rid,
+      const spot_id_t &target_spot_id) const;
     result_t<runtime::messaging::message_parts_t> request_spot_mesh_parts (
       const zlink::routing_id_t &target_node_rid,
       const spot_id_t &target_spot_id,
@@ -546,6 +590,11 @@ class spot_node_runtime_t
                                           const std::vector<zlink::message_t> &parts,
                                           service_provider_t &services,
                                           serializer_registry_t &serializers) const;
+    std::size_t dispatch_multicast (
+      std::string topic,
+      const std::vector<zlink::message_t> &parts,
+      service_provider_t &services,
+      serializer_registry_t &serializers) const;
     std::size_t drain_routed_packets (service_provider_t &services,
                                       serializer_registry_t &serializers) const;
     std::size_t drain_actor_packets (service_provider_t &services,

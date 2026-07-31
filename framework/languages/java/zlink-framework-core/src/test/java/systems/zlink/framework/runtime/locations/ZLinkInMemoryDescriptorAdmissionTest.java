@@ -15,6 +15,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.*;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
 
 final class ZLinkInMemoryDescriptorAdmissionTest {
@@ -279,7 +280,7 @@ final class ZLinkInMemoryDescriptorAdmissionTest {
                 42,
                 2,
                 targetOwner,
-                ZLinkFrameworkRuntimeState.RETIRING,
+                ZLinkFrameworkRuntimeState.RELOCATING,
                 1,
                 1,
                 1,

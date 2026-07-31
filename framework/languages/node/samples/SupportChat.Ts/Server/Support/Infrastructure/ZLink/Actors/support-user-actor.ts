@@ -1,4 +1,10 @@
-import { ZLinkSpotActorRequest, ZLinkSpotActorSend } from '@zlink-systems/framework';
+import {
+  zlinkEntrySpotActorRequestHandler,
+  zlinkEntrySpotActorSendHandler,
+  zlinkSpotActorSendHandler
+} from '@zlink-systems/nestjs';
+import { SupportEntrySpot } from '../Spots/EntrySpot/support-entry-spot';
+import { ConversationSpot } from '../Spots/ConversationSpot/conversation-spot';
 import { joinConversation } from '../../../../../Shared/Contracts/messages';
 import {
   ChatMessageNotify,
@@ -10,7 +16,14 @@ import {
 } from '../../../../../Shared/Contracts/messages';
 import type { ConversationState } from '../../../../../Shared/Contracts/messages';
 import type { SupportRole } from '../../../../../Shared/Contracts/messages';
-import type { ZLinkActor, ZLinkActorContext } from '@zlink-systems/framework';
+import type {
+  ZLinkActor,
+  ZLinkActorContext,
+  ZLinkActorJoinCompletion
+} from '@zlink-systems/framework';
+import {
+  JoinConversationFailedNotify
+} from '../../../../../Shared/Contracts/messages';
 
 class DeliverSupportNotification {
   readonly packetName: string;
@@ -32,16 +45,14 @@ class JoinSupportConversation {
 }
 
 class SupportUserActor implements ZLinkActor {
+  private pendingConversationId?: string;
+  private readonly completedJoinOperations = new Set<string>();
+
   constructor(readonly actorId: string, readonly context: ZLinkActorContext) {}
 
-  configure(): void {
-    this.context.handlers.addHandler(DeliverSupportNotificationHandler);
-    this.context.handlers.addHandler(JoinSupportConversationHandler);
-  }
-
-  push(message: unknown, conversationId: string): void {
+  async push(message: unknown, conversationId: string): Promise<void> {
     try {
-      this.context.boundSession
+      await this.context.boundSession
         .send(message)
         .metadata('conversation-id', conversationId)
         .submit();
@@ -49,12 +60,80 @@ class SupportUserActor implements ZLinkActor {
       // Conversation state remains in the Spot and is returned after reconnect.
     }
   }
+
+  scheduleConversationJoin(message: JoinSupportConversation): {
+    readonly scheduled: true;
+    readonly state: ConversationState;
+  } {
+    if (this.pendingConversationId !== undefined) {
+      throw new Error('A conversation join is already pending.');
+    }
+    this.pendingConversationId = message.conversationId;
+    this.context.joinSpot(
+      message.conversationId,
+      joinConversation(message.participantId, message.role, message.displayName)
+    ).defer();
+    return {
+      scheduled: true,
+      state: {
+        conversationId: message.conversationId,
+        subject: '',
+        status: 'WaitingForAgent',
+        customerActorId: message.role === 'Customer' ? message.participantId : '',
+        lastMessageSeq: 0
+      }
+    };
+  }
+
+  async onJoinCompleted(completion: ZLinkActorJoinCompletion): Promise<void> {
+    const operationKey = `${completion.operationId.high}:${completion.operationId.low}`;
+    if (this.completedJoinOperations.has(operationKey)) {
+      return;
+    }
+    this.completedJoinOperations.add(operationKey);
+
+    const conversationId = this.pendingConversationId;
+    if (conversationId === undefined) {
+      return;
+    }
+    this.pendingConversationId = undefined;
+    if (completion.status === 'accepted') {
+      return;
+    }
+    if (completion.status === 'rejected') {
+      await this.push(
+        new JoinConversationFailedNotify(conversationId, 'Rejected', false),
+        conversationId
+      );
+      return;
+    }
+    await this.push(
+      new JoinConversationFailedNotify(
+        conversationId,
+        completion.kind,
+        completion.isRetriable
+      ),
+      conversationId
+    );
+  }
 }
 
+@zlinkEntrySpotActorSendHandler({
+  entrySpot: () => SupportEntrySpot,
+  actor: () => SupportUserActor,
+  packetName: 'DeliverSupportNotification'
+})
+@zlinkSpotActorSendHandler({
+  spot: () => ConversationSpot,
+  actor: () => SupportUserActor,
+  packetName: 'DeliverSupportNotification'
+})
 class DeliverSupportNotificationHandler {
-  @ZLinkSpotActorSend('DeliverSupportNotification')
   async handle(actor: SupportUserActor, _context: unknown, message: DeliverSupportNotification): Promise<void> {
-    actor.push(rehydrateSupportNotification(message.packetName, message.message), message.conversationId);
+    await actor.push(
+      rehydrateSupportNotification(message.packetName, message.message),
+      message.conversationId
+    );
   }
 }
 
@@ -92,21 +171,18 @@ function rehydrateSupportNotification(packetName: string, payload: unknown): unk
   }
 }
 
+@zlinkEntrySpotActorRequestHandler({
+  entrySpot: () => SupportEntrySpot,
+  actor: () => SupportUserActor,
+  packetName: 'JoinSupportConversation'
+})
 class JoinSupportConversationHandler {
-  @ZLinkSpotActorRequest('JoinSupportConversation')
   async handle(
     actor: SupportUserActor,
     _context: unknown,
     message: JoinSupportConversation
-  ): Promise<{ readonly state: ConversationState }> {
-    const joined = await actor.context.joinSpot(
-      message.conversationId,
-      joinConversation(message.participantId, message.role, message.displayName)
-    ).submit<{ state: ConversationState }>();
-    if (joined.status !== 'accepted') {
-      throw new Error(`Conversation '${message.conversationId}' rejected actor '${actor.actorId}'.`);
-    }
-    return joined.reply;
+  ): Promise<{ readonly scheduled: true; readonly state: ConversationState }> {
+    return actor.scheduleConversationJoin(message);
   }
 }
 

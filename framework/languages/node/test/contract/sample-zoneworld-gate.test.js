@@ -31,16 +31,16 @@ test('ZoneWorld roles use one physical MeshNode with automatic logical handlers'
   for (const module of [zoneNode, gateway, ops]) {
     assert.equal((module.match(/\.addRouteMesh\(/g) ?? []).length, 1);
   }
-  for (const channel of ['bridgeMesh', 'reportChannel', 'actorsChannel']) {
-    assert.match(zoneNode, new RegExp(`zoneMesh\\.channelName\\(ZoneWorldNames\\.${channel}\\)`));
+  for (const channel of ['bridgeMesh', 'reportChannel']) {
+    assert.match(zoneNode, new RegExp(`zoneMesh\\.channel\\(ZoneWorldNames\\.${channel}\\)`));
   }
   assert.match(zoneNode, /membership\.addHandlerGroup\('zone-ops'\)/);
-  assert.match(zoneNode, /addHandlerGroup\('zone-actors'\)/);
-  assert.match(ops, /channelName\(ZoneWorldNames\.reportChannel\)\.addHandlerGroup\('ops'\)/);
+  assert.match(gateway, /zoneMesh\.objects\(\)\.client\(\)/);
+  assert.match(ops, /channel\(ZoneWorldNames\.reportChannel\)\.server\(\)\.addHandlerGroup\('ops'\)/);
   assert.match(nodeHandlers, /@zlinkRequestHandler\('zone-ops', PacketNames\.applyNodeMaintenanceReq\)/);
-  assert.match(nodeHandlers, /@zlinkRequestHandler\('zone-actors', PacketNames\.ensurePlayerActorReq\)/);
+  assert.doesNotMatch(nodeHandlers, /ensurePlayerActor|nodeRid/);
   assert.match(opsHandlers, /@zlinkSendHandler\('ops', PacketNames\.reportNodeStatusMsg\)/);
-  assert.doesNotMatch(zoneNode, /addRouteMesh\(ZoneWorldNames\.(?:bridgeMesh|reportChannel|actorsChannel)\)/);
+  assert.doesNotMatch(zoneNode, /addRouteMesh\(ZoneWorldNames\.(?:bridgeMesh|reportChannel)\)/);
 });
 
 test('ZoneWorld runner proves the canonical scenario with generated routing identities', () => {
@@ -133,7 +133,7 @@ test('ZoneWorld human state pushes cross the ActorRef boundary before the bound 
   assert.match(actor, /push\(payload: unknown\): void/);
   assert.match(actor, /this\.context\.boundSession\.send\(payload\)\.submit\(\)/);
   assert.doesNotMatch(actor, /await[\s\S]*?boundSession\.send/);
-  assert.match(spot, /sendToActor\(actor\.actorId, new DeliverZoneNotification\(payload\)\)/);
+  assert.match(spot, /sendToActor\(actorId, new DeliverZoneNotification\(payload\)\)/);
   assert.doesNotMatch(spot, /Map<string, PlayerActor>/);
   assert.doesNotMatch(spot, /actor\.push\(/);
 });

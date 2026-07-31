@@ -326,6 +326,17 @@ wait_for_log_after() {
   return 1
 }
 
+wait_for_zone_log() {
+  local pattern="$1" attempts="${2:-200}"
+  for ((i = 0; i < attempts; i++)); do
+    if grep -q "$pattern" "$LOG_DIR"/zone-node-[12].log 2>/dev/null; then return 0; fi
+    sleep 0.1
+  done
+  echo "!! no zone owner logged '$pattern'" >&2
+  tail -20 "$LOG_DIR"/zone-node-[12].log >&2 || true
+  return 1
+}
+
 wait_for_file_while_running() {
   local path="$1" pid="$2" attempts="${3:-450}"
   for ((i = 0; i < attempts; i++)); do
@@ -445,10 +456,10 @@ wait_for_log gateway "Application started."
 # topology=ready proves that each process created its local spots. Border synchronization has
 # an additional distributed readiness boundary: each remote zone must receive at least one
 # snapshot before a client can use cross-zone visibility as a deterministic assertion.
-wait_for_log zone-node-1 "border subscription ready. zone=zone-nw, from=zone-ne"
-wait_for_log zone-node-1 "border subscription ready. zone=zone-sw, from=zone-se"
-wait_for_log zone-node-2 "border subscription ready. zone=zone-ne, from=zone-nw"
-wait_for_log zone-node-2 "border subscription ready. zone=zone-se, from=zone-sw"
+wait_for_zone_log "border subscription ready. zone=zone-nw, from=zone-ne"
+wait_for_zone_log "border subscription ready. zone=zone-sw, from=zone-se"
+wait_for_zone_log "border subscription ready. zone=zone-ne, from=zone-nw"
+wait_for_zone_log "border subscription ready. zone=zone-se, from=zone-sw"
 
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ZW-G2"* ]]; then
   run_client ZW-G2

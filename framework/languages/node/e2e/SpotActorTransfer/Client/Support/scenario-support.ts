@@ -36,6 +36,11 @@ export interface ClientOptions {
   sessionAStreamEndpoint: string;
   sessionBStreamEndpoint: string;
   scenario: string;
+  fixtureId?: string;
+  actorId?: string;
+  targetNodeRid?: string;
+  expectedObjectGeneration?: string;
+  expectedOperationId?: string;
 }
 
 export const options = parseOptions(await browserE2eConfig());
@@ -242,8 +247,19 @@ export async function createSpot(node: HttpClient, spotId: string, mode = 'accep
   return await post<CreateSpotRes>(node, '/spots', { spotId, mode } satisfies CreateSpotReq);
 }
 
-export async function createActor(node: HttpClient, actorId: string, actorType: string, stateVersion: number): Promise<ActorCreateRes> {
-  return await post(node, '/actors', { actorId, actorType, stateVersion } satisfies ActorCreateReq);
+export async function createActor(
+  node: HttpClient,
+  actorId: string,
+  actorType: string,
+  stateVersion: number,
+  applicationStateBytes?: number
+): Promise<ActorCreateRes> {
+  return await post(node, '/actors', {
+    actorId,
+    actorType,
+    stateVersion,
+    applicationStateBytes
+  } satisfies ActorCreateReq);
 }
 
 export async function joinActor(node: HttpClient, actorId: string, request: JoinTargetReq): Promise<JoinTargetRes> {
@@ -354,6 +370,62 @@ export async function waitSpotRef(node: HttpClient, spotId: string, expectedNode
     await delay(100);
   }
   throw new Error(`Spot '${spotId}' did not resolve while waiting for '${expectedNodeRid}'.`);
+}
+
+export async function getSpotRef(
+  node: HttpClient,
+  spotId: string
+): Promise<{
+  readonly found: boolean;
+  readonly spotId?: string;
+  readonly nodeRid?: string;
+  readonly objectGeneration?: string;
+}> {
+  return await node.get(`/spots/${spotId}/ref`).fetch();
+}
+
+export async function relocateHost(
+  node: HttpClient,
+  deadlineMs = 120_000
+): Promise<{
+  readonly relocated: boolean;
+  readonly outcome: string;
+  readonly reason: string;
+  readonly elapsedMs: number;
+}> {
+  return await post(node, '/relocate', { deadlineMs });
+}
+
+export async function waitActorMoved(
+  node: HttpClient,
+  actorId: string,
+  previousNodeRid: string
+): Promise<ActorRefRes> {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    try {
+      const current = await getRef(node, actorId);
+      if (current.nodeRid !== previousNodeRid) return current;
+    } catch {
+      // Authority publication may be between its internal prepare and commit records.
+    }
+    await delay(100);
+  }
+  throw new Error(`Actor '${actorId}' did not move from '${previousNodeRid}'.`);
+}
+
+export async function waitSpotMoved(
+  node: HttpClient,
+  spotId: string,
+  previousNodeRid: string
+): Promise<Awaited<ReturnType<typeof getSpotRef>>> {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const current = await getSpotRef(node, spotId);
+    if (current.found && current.nodeRid !== previousNodeRid) return current;
+    await delay(100);
+  }
+  throw new Error(`Spot '${spotId}' did not move from '${previousNodeRid}'.`);
 }
 
 export async function getEvidence(node: HttpClient): Promise<readonly ActorEvidence[]> {
@@ -471,7 +543,16 @@ export function parseOptions(value: unknown): ClientOptions {
     nodeCUrl: get('nodeCUrl'),
     sessionAStreamEndpoint: get('sessionAStreamEndpoint'),
     sessionBStreamEndpoint: get('sessionBStreamEndpoint'),
-    scenario: typeof values.scenario === 'string' ? values.scenario : 'all'
+    scenario: typeof values.scenario === 'string' ? values.scenario : 'all',
+    fixtureId: typeof values.fixtureId === 'string' ? values.fixtureId : undefined,
+    actorId: typeof values.actorId === 'string' ? values.actorId : undefined,
+    targetNodeRid: typeof values.targetNodeRid === 'string' ? values.targetNodeRid : undefined,
+    expectedObjectGeneration: typeof values.expectedObjectGeneration === 'string'
+      ? values.expectedObjectGeneration
+      : undefined,
+    expectedOperationId: typeof values.expectedOperationId === 'string'
+      ? values.expectedOperationId
+      : undefined
   };
 }
 

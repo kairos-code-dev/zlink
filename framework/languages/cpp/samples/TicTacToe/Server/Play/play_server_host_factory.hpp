@@ -8,12 +8,10 @@
 #include "../../Shared/Contracts/messages.hpp"
 #include "../host_support.hpp"
 #include "../sample_log_dir.hpp"
-#include "Infrastructure/ZLink/Handlers/create_game_handler.hpp"
 #include "Infrastructure/ZLink/Sessions/play_session.hpp"
 #include "Infrastructure/ZLink/Actors/player_actor_relocation_adapter.hpp"
 #include "Infrastructure/ZLink/Spots/EntrySpot/tictactoe_entry_spot.hpp"
 #include "Infrastructure/ZLink/Spots/TicTacToeGameSpot/tictactoe_game_spot.hpp"
-#include "Application/GameCreation/tictactoe_game_creator.hpp"
 
 #include <memory>
 #include <optional>
@@ -43,22 +41,22 @@ class play_server_host_factory_t
               .message_flow (message_flow_log_mode_t::key_transitions)
               .trace_log_file (flow_log_path (topology.log_dir, "play-" + topology.play_node))
               .trace_label ("tictactoe-play-" + topology.play_node);
-            options.services ()
-              .add_singleton<sample_topology_t> (std::make_unique<sample_topology_t> (topology))
-              .add_singleton<tictactoe_game_creator_t, sample_topology_t> ();
+            options.services ().add_singleton<sample_topology_t> (
+              std::make_unique<sample_topology_t> (topology));
             add_sample_location_store (options, topology);
-            options.add_client_server_channel (sample_names_t::play_channel)
-              .enable_server (topology.selected_play_endpoint ())
-              .use_handler_group ("play");
             /* 수동 endpoint scale-out(공통 sample spec §6/§18): API 두 노드를 직접 연결한다. */
             auto api_peers = options.add_client_server_channel (sample_names_t::api_channel);
+            auto api_client = api_peers.client ();
             for (const auto &endpoint : topology.all_api_endpoints ()) {
-                api_peers.enable_client (endpoint);
+                api_client.connect (endpoint);
             }
             auto game_spot = options.add_route_mesh (sample_names_t::game_spot_node);
+            game_spot.set_routing_id (zlink::routing_id_t::from (
+              "tictactoe-play-" + topology.play_node))
+              .set_object_role (object_role_t::server);
             game_spot.peer_connections ().connect (
-              topology.peer_play_spot_router_endpoint ());
-            game_spot.listen (topology.selected_play_spot_router_endpoint ())
+              topology.peer_play_route_endpoint ());
+            game_spot.listen (topology.selected_play_route_endpoint ())
               .add_entry_spot<tictactoe_entry_spot_t> (
                 [] (entry_spot_context_t context) {
                     return std::make_shared<tictactoe_entry_spot_t> (
@@ -84,9 +82,6 @@ class play_server_host_factory_t
             options.add_stream_node (sample_names_t::stream_name)
               .bind (topology.selected_stream_endpoint ())
               .register_session<play_session_t> ();
-            options.handlers ()
-              .group ("play")
-              .add<create_game_handler_t> ();
         });
         return app;
     }

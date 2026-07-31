@@ -32,6 +32,13 @@ struct actor_bound_session_route_t
 {
     zlink::routing_id_t node_rid;
     std::optional<zlink::routing_id_t> session_rid;
+    std::uint64_t object_generation = 0;
+    std::uint64_t node_generation = 0;
+    std::uint64_t authority_owner_generation = 0;
+    std::uint64_t owner_lease_generation = 0;
+    std::uint64_t binding_generation = 0;
+    std::uint64_t binding_token = 0;
+    std::uint64_t session_sequence = 0;
 };
 
 struct actor_record_t
@@ -155,7 +162,13 @@ class actor_gateway_runtime_t
                        bool replace_existing = true);
     void record_bound_session_route (const actor_ref_t &actor_ref,
                                      zlink::routing_id_t node_rid,
-                                     std::optional<zlink::routing_id_t> session_rid = std::nullopt);
+                                     std::optional<zlink::routing_id_t> session_rid = std::nullopt,
+                                     std::uint64_t node_generation = 0,
+                                     std::uint64_t authority_owner_generation = 0,
+                                     std::uint64_t owner_lease_generation = 0,
+                                     std::uint64_t binding_generation = 0,
+                                     std::uint64_t binding_token = 0,
+                                     std::uint64_t session_sequence = 0);
     void unbind_session_stream (std::string actor_id,
                                 std::string session_id = {},
                                 std::uint64_t binding_token = 0);

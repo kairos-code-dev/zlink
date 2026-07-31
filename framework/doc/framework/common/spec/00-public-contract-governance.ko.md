@@ -24,6 +24,36 @@
 자기 언어의 관례로 표현한다. .NET RouteMesh·MeshNode의 정확한 시그니처는
 [.NET RouteMesh·MeshNode 인터페이스](server/languages/dotnet/interfaces/03-configuration-topology.ko.md)가 소유한다.
 
+### 2.1 Production source owner
+
+각 배포 package는 application이 compile하는 interface, call, context, option, result와 error의
+production source owner를 하나만 둔다. Source directory 이름은 언어의 관례를 따르되 다음 방향은
+모든 언어에서 지킨다.
+
+- Application contract source는 해당 배포 package가 소유한다.
+- Server, HTTP client와 Stream Connector는 각각 독립된 배포 package이므로 각 package가 자기
+  contract source owner를 둔다. 한 package의 contract artifact를 다른 package 전체의 contract
+  owner로 사용하지 않는다.
+- Public constructor, factory, builder entrypoint, free function, extension, DTO, value, enum과
+  public error/result도 interface와 같은 contract source가 소유한다.
+- Runtime 구현은 contract를 참조한다. Contract source는 runtime 구현을 참조하지 않는다.
+- `runtime/internal` 아래 declaration은 외부에서 import할 수 없어야 한다. Directory 이름만
+  `internal`로 바꾸고 public visibility를 유지하면 이 규칙을 충족하지 않는다.
+- 외부 provider가 구현해야 하는 최소 SPI는 별도 abstraction artifact가 소유할 수 있다.
+  Application-facing contract 전체를 SPI artifact로 옮기지 않는다.
+- 여러 package가 같은 type identity를 사용해야 하는 codec·error 같은 최소 contract만
+  package-neutral artifact가 소유할 수 있다.
+
+Namespace나 package FQN은 exact interface가 정한다. Source를 정리한다는 이유로 FQN을 바꾸지 않는다.
+Layout 변경은 public API snapshot, package consumer build와 owner gate를 함께 통과해야 한다.
+각 언어 exact interface는 package별 contract source owner와 public projection을 기록한다. 예외 owner가
+필요하면 대상 declaration과 dependency 이유를 개별적으로 기록하며 directory나 assembly 전체를
+포괄하는 예외를 두지 않는다.
+
+이 경계는 [bindings public/internal 경계](../../../../../bindings/doc/spec/README.md#public-vs-internal-api-boundary)와
+같은 방향을 사용한다. Framework와 bindings는 서로 다른 배포 package이므로 source root는 각각의
+spec이 소유하지만, public contract가 runtime 구현에 역으로 의존하지 않는다는 원칙은 동일하다.
+
 ## 3. 공통 계약의 필수 항목
 
 공개 기능을 정의할 때 다음 항목을 함께 고정한다.
@@ -102,6 +132,9 @@ Node.js와 C++에 동일하게 적용한다.
 각 언어의 contract test는 최소한 다음을 확인한다.
 
 - 외부 package에서 import할 수 있는 public export
+- package별로 정한 contract source 밖의 application-facing public declaration
+- contract source에서 runtime, internal 또는 native bridge source로 향하는 역방향 dependency
+- runtime/internal source의 declaration이 실제 package·module·assembly visibility로 차단되는지 여부
 - public 타입과 메서드 시그니처
 - generic, nullable, optional, 기본값과 overload
 - 비동기 결과, timeout과 취소

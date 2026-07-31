@@ -69,6 +69,8 @@ void define_core_exports (napi_env env, napi_value exports)
       ZLINK_METHOD ("dealerRequest", dealer_request),
       ZLINK_METHOD ("routerRequest", router_request),
       ZLINK_METHOD ("routerReply", router_reply),
+      ZLINK_METHOD ("routerTrySendCompletionControl", router_try_send_completion_control),
+      ZLINK_METHOD ("routerCompletionControlHandler", router_completion_control_handler),
       ZLINK_METHOD ("routerRecvMessage", router_recv_message),
       ZLINK_METHOD ("routerRecvMessageNoWait", router_try_recv_message),
       ZLINK_METHOD ("monitorOpen", monitor_open),

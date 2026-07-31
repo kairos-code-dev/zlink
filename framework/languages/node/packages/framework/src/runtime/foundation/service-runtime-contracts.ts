@@ -6,6 +6,7 @@ import type {
 } from '@zlink-systems/zlink';
 import type { RoutingId } from '../../contracts';
 import type { ServiceActorRef } from './service-stateful-registry';
+import type { ServiceDirectSpotRouteFence } from './service-stateful-wire-codec';
 
 export interface MeshOperationId {
   readonly high: bigint;
@@ -60,6 +61,14 @@ export const OperationKind = Object.freeze({
   UserSpotCreate: 13,
   UserSpotClose: 14
 } as const);
+
+export function operationRequiresReply(operationKind: number): boolean {
+  return operationKind === OperationKind.NodeRequest
+    || operationKind === OperationKind.ChannelRequest
+    || operationKind === OperationKind.SpotRequest
+    || operationKind === OperationKind.ActorRequest
+    || operationKind === OperationKind.InstanceSpotRequest;
+}
 
 export const ActorLifecycleKind = Object.freeze({
   Created: 1,
@@ -315,14 +324,24 @@ export interface ServiceSpot {
     targetSpotId: unknown,
     targetSpotGeneration: bigint,
     parts: MessageLike | readonly MessageLike[],
-    options?: { flags?: number }
+    options?: {
+      flags?: number;
+      routeFence?: ServiceDirectSpotRouteFence;
+      entrySpot?: boolean;
+    }
   ): SubmitResult;
   requestToSpot(
     targetNodeRid: unknown,
     targetSpotId: unknown,
     targetSpotGeneration: bigint,
     parts: MessageLike | readonly MessageLike[],
-    options?: { flags?: number; timeoutMs?: number; applicationMetadata?: Buffer }
+    options?: {
+      flags?: number;
+      timeoutMs?: number;
+      applicationMetadata?: Buffer;
+      routeFence?: ServiceDirectSpotRouteFence;
+      entrySpot?: boolean;
+    }
   ): MeshOperationId;
   publish(
     channelName: string,

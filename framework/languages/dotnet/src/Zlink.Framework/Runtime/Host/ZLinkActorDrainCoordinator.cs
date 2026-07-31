@@ -99,7 +99,6 @@ internal sealed class ZLinkActorDrainCoordinator(
                     .ConfigureAwait(false);
                 if (actorState.Actor is null)
                 {
-                    ZLinkRuntimeMetrics.RecordDrainActorHandedOff();
                     return new ZLinkActorDrainResult(true, null, 1);
                 }
             }
@@ -151,7 +150,6 @@ internal sealed class ZLinkActorDrainCoordinator(
                             $"drain handoff rejected actor={actorState.ActorId} target={target.NodeRid} result=rejected");
                         continue;
                     }
-                    ZLinkRuntimeMetrics.RecordDrainActorHandedOff();
                     return new ZLinkActorDrainResult(true, null, 1);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

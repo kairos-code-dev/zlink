@@ -234,16 +234,16 @@ public sealed class ZoneSpot(
     /// Drives this zone's bots (§2.7). A bot moves down the same path a human does, and
     /// that path can end in a JoinSpot, which only an actor handler turn may start — so
     /// the bot is driven by a request addressed to it rather than by calling into it here.
-    /// Waiting for each result applies backpressure at the periodic producer: if a relocation
-    /// is pending, later timer periods are skipped instead of accumulating stale move steps.
+    /// The timer submits one step to each actor and then releases the Spot turn. The actor jobs
+    /// remain serialized and cannot deadlock by waiting for their owning SpotWide turn.
     /// </summary>
     internal async ValueTask BotTickAsync(CancellationToken cancellationToken)
     {
         foreach (var playerId in ZoneTickUseCase.Bots(_state))
         {
-            _ = await actors
-                .RequestToActor(playerId, new BotTickReq())
-                .Yield<BotTickRes>(cancellationToken);
+            await actors
+                .SendToActor(playerId, new BotTickMsg())
+                .Async(cancellationToken);
         }
     }
 
@@ -281,7 +281,9 @@ public sealed class ZoneSpot(
             {
                 // PlayerId is the global ActorId. Resolve the current owner for every
                 // delivery instead of retaining an Actor instance from a lifecycle callback.
-                await actors.SendToActor(playerId, message).Async(cancellationToken);
+                await actors
+                    .SendToActor(playerId, message)
+                    .Async(cancellationToken);
             }
             catch (Exception error)
             {

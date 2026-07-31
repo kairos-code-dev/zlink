@@ -42,6 +42,14 @@ public final class BingoCard {
         return new BingoCard(numbers, marks);
     }
 
+    static BingoCard restore(List<Integer> numbers, List<Boolean> marks) {
+        BingoCard card = from(numbers);
+        if (marks == null || marks.size() != CellCount) {
+            throw new IllegalArgumentException("bingo card marks must contain 9 cells");
+        }
+        return new BingoCard(new ArrayList<>(numbers), new ArrayList<>(marks));
+    }
+
     public void markDrawnNumber(int number) {
         for (int i = 0; i < numbers.size(); i++) {
             if (numbers.get(i) == number) {

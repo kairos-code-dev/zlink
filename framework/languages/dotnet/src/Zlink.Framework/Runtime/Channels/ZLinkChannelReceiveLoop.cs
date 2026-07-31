@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Dispatch;
+
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkChannelReceiveLoop(
@@ -9,6 +11,7 @@ internal sealed class ZLinkChannelReceiveLoop(
         IZLinkBackendRouterSocket router,
         ZLinkClientServerServerIdentity identity,
         IZLinkRuntimeFailureReporter errorSink,
+        ZLinkInboundDispatchBudget inboundDispatchBudget,
         CancellationToken cancellationToken)
     {
         var backoff = new ZLinkPollingBackoff();
@@ -23,9 +26,13 @@ internal sealed class ZLinkChannelReceiveLoop(
             while (!cancellationToken.IsCancellationRequested)
             {
                 Received? received = null;
+                var ownsResumePermit = false;
                 try
                 {
                     identity.TickLiveness(router);
+                    ownsResumePermit = await inboundDispatchBudget.WaitForReceiveCapacityAsync(
+                            cancellationToken)
+                        .ConfigureAwait(false);
                     received = router.Recv(RecvFlags.DontWait);
                     if (received is null)
                     {
@@ -45,18 +52,24 @@ internal sealed class ZLinkChannelReceiveLoop(
                     }
                     var owned = received;
                     received = null;
-                    applicationDispatch.TryPost(
-                        token => DispatchClientServerAsync(
-                            channelName,
-                            router,
-                            owned,
-                            applicationDispatch.ReplyGate,
-                            token),
-                        () => RejectClientServerDispatch(
-                            channelName,
-                            router,
-                            owned,
-                            applicationDispatch.ReplyGate));
+                    var payloadBytes = MeasurePayloadBytes(owned.Parts);
+                    inboundDispatchBudget.Received(payloadBytes);
+                    _ = await applicationDispatch.PostAsync(
+                            token => DispatchClientServerAsync(
+                                channelName,
+                                router,
+                                owned,
+                                applicationDispatch.ReplyGate,
+                                token),
+                            () => RejectClientServerDispatch(
+                                channelName,
+                                router,
+                                owned,
+                                applicationDispatch.ReplyGate),
+                            inboundDispatchBudget,
+                            payloadBytes,
+                            cancellationToken)
+                        .ConfigureAwait(false);
                 }
                 catch (Exception) when (cancellationToken.IsCancellationRequested)
                 {
@@ -75,6 +88,8 @@ internal sealed class ZLinkChannelReceiveLoop(
                 finally
                 {
                     received?.Dispose();
+                    inboundDispatchBudget.CompleteReceiveAttempt(
+                        ownsResumePermit);
                 }
             }
         }
@@ -212,6 +227,7 @@ internal sealed class ZLinkChannelReceiveLoop(
         string channelName,
         IZLinkBackendSubscriberSocket subscriber,
         IZLinkRuntimeFailureReporter errorSink,
+        ZLinkInboundDispatchBudget inboundDispatchBudget,
         CancellationToken cancellationToken)
     {
         var backoff = new ZLinkPollingBackoff();
@@ -223,8 +239,12 @@ internal sealed class ZLinkChannelReceiveLoop(
         while (!cancellationToken.IsCancellationRequested)
         {
             TopicMessage? topicMessage = new();
+            var ownsResumePermit = false;
             try
             {
+                ownsResumePermit = await inboundDispatchBudget.WaitForReceiveCapacityAsync(
+                        cancellationToken)
+                    .ConfigureAwait(false);
                 if (!subscriber.Subscribe(topicMessage, RecvFlags.DontWait))
                 {
                     await backoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
@@ -234,9 +254,15 @@ internal sealed class ZLinkChannelReceiveLoop(
                 backoff.Reset();
                 var owned = topicMessage;
                 topicMessage = null;
-                applicationDispatch.TryPost(
-                    token => DispatchFanoutAsync(channelName, owned, token),
-                    owned.Dispose);
+                var payloadBytes = MeasurePayloadBytes(owned.Parts);
+                inboundDispatchBudget.Received(payloadBytes);
+                _ = await applicationDispatch.PostAsync(
+                        token => DispatchFanoutAsync(channelName, owned, token),
+                        owned.Dispose,
+                        inboundDispatchBudget,
+                        payloadBytes,
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
             catch (Exception) when (cancellationToken.IsCancellationRequested)
             {
@@ -249,6 +275,8 @@ internal sealed class ZLinkChannelReceiveLoop(
             finally
             {
                 topicMessage?.Dispose();
+                inboundDispatchBudget.CompleteReceiveAttempt(
+                    ownsResumePermit);
             }
         }
     }
@@ -259,6 +287,7 @@ internal sealed class ZLinkChannelReceiveLoop(
         Action onActivity,
         Action onProtocolError,
         IZLinkRuntimeFailureReporter errorSink,
+        ZLinkInboundDispatchBudget inboundDispatchBudget,
         CancellationToken cancellationToken)
     {
         var backoff = new ZLinkPollingBackoff();
@@ -270,8 +299,12 @@ internal sealed class ZLinkChannelReceiveLoop(
         while (!cancellationToken.IsCancellationRequested)
         {
             TopicMessage? topicMessage = new();
+            var ownsResumePermit = false;
             try
             {
+                ownsResumePermit = await inboundDispatchBudget.WaitForReceiveCapacityAsync(
+                        cancellationToken)
+                    .ConfigureAwait(false);
                 if (!subscriber.Subscribe(topicMessage, RecvFlags.DontWait))
                 {
                     await backoff.NoDataAsync(cancellationToken)
@@ -296,9 +329,15 @@ internal sealed class ZLinkChannelReceiveLoop(
                 onActivity();
                 var owned = topicMessage;
                 topicMessage = null;
-                applicationDispatch.TryPost(
-                    token => DispatchFanoutAsync(channelName, owned, token),
-                    owned.Dispose);
+                var payloadBytes = MeasurePayloadBytes(owned.Parts);
+                inboundDispatchBudget.Received(payloadBytes);
+                _ = await applicationDispatch.PostAsync(
+                        token => DispatchFanoutAsync(channelName, owned, token),
+                        owned.Dispose,
+                        inboundDispatchBudget,
+                        payloadBytes,
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
             catch (Exception) when (cancellationToken.IsCancellationRequested)
             {
@@ -311,6 +350,8 @@ internal sealed class ZLinkChannelReceiveLoop(
             finally
             {
                 topicMessage?.Dispose();
+                inboundDispatchBudget.CompleteReceiveAttempt(
+                    ownsResumePermit);
             }
         }
     }
@@ -326,5 +367,13 @@ internal sealed class ZLinkChannelReceiveLoop(
                     topicMessage,
                     cancellationToken)
                 .ConfigureAwait(false);
+    }
+
+    private static ulong MeasurePayloadBytes(IReadOnlyList<Message> parts)
+    {
+        ulong total = 0;
+        foreach (var part in parts)
+            total = checked(total + checked((ulong)part.Size));
+        return total;
     }
 }

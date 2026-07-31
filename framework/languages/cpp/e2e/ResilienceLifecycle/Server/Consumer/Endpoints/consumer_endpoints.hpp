@@ -466,20 +466,21 @@ class transient_route_request_service_t final :
             do {
                 const auto snapshot = runtime.snapshot (route_channel);
                 std::cerr << "RL-C1 route snapshot cycle=" << _request.value
-                          << " localEndpoint=" << snapshot.endpoint
-                          << " localGeneration="
-                          << snapshot.lifecycle_generation;
+                          << " state="
+                          << static_cast<int> (snapshot.state);
                 for (const auto &peer : snapshot.peers)
                 {
-                    std::cerr << " peer=" << peer.rid.to_string ()
-                              << ",endpoint=" << peer.endpoint
-                              << ",generation=" << peer.lifecycle_generation
-                              << ",revision=" << peer.descriptor_revision
-                              << ",ready=" << (peer.ready ? "true" : "false")
-                              << ",admission=" << peer.admission_state;
+                    const auto peer_ready =
+                      peer.state
+                      == zlink::framework::peer_state_t::ready;
+                    std::cerr << " peer="
+                              << peer.node_rid.to_string ()
+                              << ",state="
+                              << static_cast<int> (peer.state);
                     ready = ready
-                            || (peer.rid.to_string () == "api-a"
-                                && peer.ready);
+                            || (peer.node_rid.to_string ()
+                                  == "api-a"
+                                && peer_ready);
                 }
                 std::cerr << '\n';
                 if (!ready)
@@ -532,7 +533,7 @@ inline profile_res_t request_profile_with_new_client_host (const consumer_option
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (options.log_dir + "/storm-" + trace_id + "-flow.log")
           .trace_label ("storm-" + trace_id);
-        framework.add_client_server_channel (api_channel).enable_client ();
+        framework.add_client_server_channel (api_channel).client ();
     });
     app.add_hosted_service (std::move (service));
     const auto exit_code = app.run (0, nullptr);

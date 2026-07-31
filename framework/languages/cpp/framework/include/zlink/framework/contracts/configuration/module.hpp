@@ -3,7 +3,6 @@
 
 #include <zlink/framework/contracts/configuration/services.hpp>
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
-#include <zlink/framework/contracts/eventing/events.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 
 #include <concepts>
@@ -32,15 +31,13 @@ class module_t
 
     virtual void configure_handlers (handler_registry_t &handlers) { (void) handlers; }
 
-    virtual void configure_monitoring (monitoring_builder_t &monitoring) { (void) monitoring; }
 };
 
 template <typename TModule>
 concept framework_module_contract_t = requires (TModule & module,
                                                 service_collection_t &services,
                                                 zlink_builder_t &zlink,
-                                                handler_registry_t &handlers,
-                                                monitoring_builder_t &monitoring)
+                                                handler_registry_t &handlers)
 {
     {
         module.configure_services (services)
@@ -50,9 +47,6 @@ concept framework_module_contract_t = requires (TModule & module,
     } -> std::same_as<void>;
     {
         module.configure_handlers (handlers)
-    } -> std::same_as<void>;
-    {
-        module.configure_monitoring (monitoring)
     } -> std::same_as<void>;
 };
 

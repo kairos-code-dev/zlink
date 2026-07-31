@@ -13,7 +13,7 @@ import org.springframework.context.SmartLifecycle
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.locations.ZLinkLocationStore
 import systems.zlink.framework.locations.ZLinkPageRequest
-import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle
 
 class ConsumerHttpServer(
     private val client: ZLinkClient,

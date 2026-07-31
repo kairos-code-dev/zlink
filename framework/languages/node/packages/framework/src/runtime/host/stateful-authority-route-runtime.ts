@@ -13,6 +13,7 @@ import type {
   ServicePendingInstanceActivation
 } from '../foundation/service-stateful-runtime';
 import type {
+  ServiceDirectSpotRouteFence,
   ServiceInstanceRouteFence,
   ServiceSpotRouteFence
 } from '../foundation/service-stateful-wire-codec';
@@ -26,12 +27,15 @@ import {
   decodeInstanceActivationRecoveryEnvelope,
   type ServiceInstanceActivationRecoveryEnvelope
 } from '../foundation/service-instance-activation-recovery-codec';
-import { decodePreparingAuthorityEnvelope } from '../foundation/service-relocation-runtime';
+import {
+  decodePreparingAuthorityEnvelope,
+  ServiceRelocationAuthorityPayloadCodec
+} from '../foundation/service-relocation-runtime';
 import { decodeActorAuthorityIdentity } from '../actors';
 
 interface StatefulAuthorityRouteSink {
   status(): ReturnType<ZLinkBackendMeshNode['status']>;
-  rememberSpotRoute(route: ServiceSpotRouteFence, storeVersion: string): void;
+  rememberSpotRoute(route: ServiceDirectSpotRouteFence): void;
   forgetSpotRoute(
     spot: ServiceSpotRouteFence['spot'],
     authorityOwnerGeneration: bigint,
@@ -61,7 +65,7 @@ interface AppliedAuthorityRoute {
   readonly kind: 'user_spot' | 'instance_spot';
   readonly stableType: string;
   readonly meshName: string;
-  readonly spotRoute: ServiceSpotRouteFence;
+  readonly spotRoute: ServiceDirectSpotRouteFence;
   readonly instanceRoute: ServiceInstanceRouteFence;
   readonly activationRecovery?: ServiceActivationRecoveryState;
 }
@@ -79,6 +83,7 @@ interface CompleteAuthoritySnapshot {
   readonly routes: Map<string, AppliedAuthorityRoute>;
   readonly pending: readonly PendingInstanceActivationRecovery[];
   readonly actors: readonly ZLinkAuthoritySnapshot[];
+  readonly relocations: readonly ZLinkAuthoritySnapshot[];
 }
 
 export interface ZLinkStatefulAuthorityRouteRuntimeOptions {
@@ -90,6 +95,10 @@ export interface ZLinkStatefulAuthorityRouteRuntimeOptions {
   readonly pageSize: number;
   readonly reportError: (error: unknown) => void;
   readonly recoverActor?: (
+    authority: ZLinkAuthoritySnapshot,
+    signal?: AbortSignal
+  ) => Promise<void>;
+  readonly recoverRelocation?: (
     authority: ZLinkAuthoritySnapshot,
     signal?: AbortSignal
   ) => Promise<void>;
@@ -141,6 +150,16 @@ export class ZLinkStatefulAuthorityRouteRuntime {
     }
     const current = snapshot.routes;
 
+    // Durable relocation and Actor recovery must finish before a route becomes
+    // visible. Otherwise ingress can resolve a committed authority while its
+    // queue, timers, session barrier, or hidden object is still being restored.
+    for (const relocation of snapshot.relocations) {
+      await this.options.recoverRelocation?.(relocation, signal);
+    }
+    for (const actor of snapshot.actors) {
+      await this.options.recoverActor?.(actor, signal);
+    }
+
     const sinks: Array<{
       readonly meshName: string;
       readonly sink: StatefulAuthorityRouteSink;
@@ -163,7 +182,7 @@ export class ZLinkStatefulAuthorityRouteRuntime {
 
       for (const [key, route] of current) {
         if (route.meshName !== meshName) continue;
-        sink.rememberSpotRoute(route.spotRoute, route.instanceRoute.storeVersion);
+        sink.rememberSpotRoute(route.spotRoute);
         if (route.kind === 'instance_spot') {
           const status = sink.status();
           if (
@@ -191,7 +210,7 @@ export class ZLinkStatefulAuthorityRouteRuntime {
                   instanceRoute: released
                 };
                 current.set(key, completed);
-                sink.rememberSpotRoute(completed.spotRoute, released.storeVersion);
+                sink.rememberSpotRoute(completed.spotRoute);
                 sink.registerInstanceIntent(route.stableType, released);
                 continue;
               } else {
@@ -215,10 +234,6 @@ export class ZLinkStatefulAuthorityRouteRuntime {
           }
         }
       }
-    }
-
-    for (const actor of snapshot.actors) {
-      await this.options.recoverActor?.(actor, signal);
     }
 
     // Publish every successor before cleaning old entries. Conditional cleanup
@@ -395,6 +410,8 @@ export class ZLinkStatefulAuthorityRouteRuntime {
     const result = new Map<string, AppliedAuthorityRoute>();
     const pending: PendingInstanceActivationRecovery[] = [];
     const actors: ZLinkAuthoritySnapshot[] = [];
+    const relocations: ZLinkAuthoritySnapshot[] = [];
+    const relocationCodec = new ServiceRelocationAuthorityPayloadCodec();
     for (const key of candidates.values()) {
       let current = await this.options.store.readAuthority(key, signal);
       if (current.kind !== 'snapshot') continue;
@@ -429,13 +446,17 @@ export class ZLinkStatefulAuthorityRouteRuntime {
         current.allocation.state === 'active'
         && current.allocation.objectKind === 'actor'
         && decodeActorAuthorityIdentity(current.payload) !== undefined
+        && relocationCodec.read(current.payload) === undefined
       ) {
         actors.push(current);
+      }
+      if (relocationCodec.read(current.payload) !== undefined) {
+        relocations.push(current);
       }
       const pendingRecovery = pendingInstanceActivation(current);
       if (pendingRecovery !== undefined) pending.push(pendingRecovery);
     }
-    return { routes: result, pending, actors };
+    return { routes: result, pending, actors, relocations };
   }
 }
 
@@ -502,11 +523,13 @@ function authorityRoute(snapshot: ZLinkAuthoritySnapshot): AppliedAuthorityRoute
   }
   const spotId = decoded.spotId;
   const targetNodeRid = String(allocation.descriptor.rid);
-  const spotRoute: ServiceSpotRouteFence = {
+  const spotRoute: ServiceDirectSpotRouteFence = {
     spot: { spotId, generation: snapshot.objectGeneration },
     targetNodeRid,
     targetNodeGeneration: allocation.descriptorLifecycleGeneration,
-    authorityOwnerGeneration: snapshot.authorityOwnerGeneration
+    authorityOwnerGeneration: snapshot.authorityOwnerGeneration,
+    ownerLeaseGeneration: snapshot.ownerLeaseGeneration,
+    storeVersion: snapshot.storeVersion.value
   };
   return {
     kind: allocation.objectKind,

@@ -115,18 +115,23 @@ public final class BingoMessages {
             .build();
     }
 
-    public static Messages.AllocateBingoRoomReq allocateBingoRoomReq(
+    public static Messages.ReserveBingoRoomReq reserveBingoRoomReq(
         String mode,
-        String actorId) {
-        return Messages.AllocateBingoRoomReq.newBuilder()
+        String actorId,
+        String levelBucket) {
+        return Messages.ReserveBingoRoomReq.newBuilder()
             .setMode(mode)
             .setActorId(actorId)
+            .setLevelBucket(levelBucket)
             .build();
     }
 
-    public static Messages.AllocateBingoRoomRes allocateBingoRoomRes(String roomId) {
-        return Messages.AllocateBingoRoomRes.newBuilder()
+    public static Messages.ReserveBingoRoomRes reserveBingoRoomRes(
+        String roomId,
+        Messages.BingoRoomSettingsPayload settings) {
+        return Messages.ReserveBingoRoomRes.newBuilder()
             .setRoomId(roomId)
+            .setSettings(settings)
             .build();
     }
 

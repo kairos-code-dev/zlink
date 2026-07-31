@@ -2,6 +2,7 @@
 #pragma once
 
 #include <array>
+#include <runtime/locations/location_repository.hpp>
 
 #include "runtime/locations/location_key_codec.hpp"
 #include "runtime/locations/actor_authority_payload.hpp"
@@ -52,7 +53,7 @@ class store_location_resolvers_t final : public spot_address_resolver_t,
 {
   public:
     explicit store_location_resolvers_t (
-      location_store_t &store,
+      location_repository_t &store,
       location_options_t options = {},
       std::shared_ptr<actor_location_observer_t> actor_locations =
         std::make_shared<actor_location_observer_t> (),
@@ -460,7 +461,7 @@ class store_location_runtime_query_t final : public location_runtime_query_t
 {
   public:
     store_location_runtime_query_t (
-      location_store_t &store,
+      location_repository_t &store,
       location_runtime_t &runtime,
       const location_options_t &options,
       std::shared_ptr<actor_location_observer_t> actor_locations =
@@ -492,14 +493,6 @@ class store_location_runtime_query_t final : public location_runtime_query_t
         value.last_error = _runtime->last_error ();
         value.store_healthy = !value.last_error.has_value ();
         return completed (std::move (value));
-    }
-
-    task_t<location_page_t<mesh_node_descriptor_t>>
-    list_mesh_node_descriptors (std::string mesh_name,
-                                location_page_request_t page = {}) override
-    {
-        return completed (
-          _store->list_mesh_nodes (std::move (mesh_name), page).result ().value ());
     }
 
     task_t<location_page_t<location_topology_entry_t>>

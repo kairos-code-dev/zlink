@@ -11,22 +11,24 @@ function read(relativePath) {
 
 test('SupportChat preserves the domain conversation state through the open response chain', () => {
   const contracts = read('samples/SupportChat.Ts/Shared/Contracts/messages.ts');
-  const allocator = read(
-    'samples/SupportChat.Ts/Server/Support/Infrastructure/ZLink/Handlers/allocate-conversation-handler.ts'
-  );
+  const api = read('samples/SupportChat.Ts/Server/Api/Handlers/open-conversation-handler.ts');
   const entry = read(
     'samples/SupportChat.Ts/Server/Support/Infrastructure/ZLink/Spots/EntrySpot/support-entry-handlers.ts'
   );
   const conversationSpot = read(
     'samples/SupportChat.Ts/Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/conversation-spot.ts'
   );
+  const actor = read(
+    'samples/SupportChat.Ts/Server/Support/Infrastructure/ZLink/Actors/support-user-actor.ts'
+  );
 
   assert.match(contracts, /type OpenConversationApiRes = \{ conversationId: string; status: ConversationStatus \};/);
-  assert.match(contracts, /type AllocateConversationRes = \{ conversationId: string; status: ConversationStatus \};/);
-  assert.doesNotMatch(allocator, /\.joinSpot\(/);
-  assert.match(entry, /actor\.context\.joinSpot\(\s*opened\.conversationId/);
-  assert.match(entry, /state:\s*joined\.reply\.state/);
-  assert.doesNotMatch(entry, /status:\s*ConversationStatuses\.WaitingForAgent/);
-  assert.doesNotMatch(entry, /ZLINK_SPOT_HANDLE_RESOLVER|ZLINK_SPOT_OUTBOUND|requestToSpot/);
+  assert.match(api, /\.create\(SampleNames\.conversationSpotType\)/);
+  assert.match(api, /\.inMesh\(SampleNames\.meshName\)/);
+  assert.match(entry, /actor\.scheduleConversationJoin\(new JoinSupportConversation\(/);
+  assert.match(actor, /this\.context\.joinSpot\([\s\S]*?\)\.defer\(\)/);
+  assert.match(actor, /JoinConversationFailedNotify/);
+  assert.match(api, /status:\s*ConversationStatuses\.WaitingForAgent/);
+  assert.doesNotMatch(api, /requestToChannel|supportChannel|nodeRid/);
   assert.match(conversationSpot, /this\.assignments\.assignNextAgent\(\)/);
 });

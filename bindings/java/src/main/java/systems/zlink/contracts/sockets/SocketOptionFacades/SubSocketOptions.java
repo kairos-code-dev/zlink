@@ -2,9 +2,9 @@
 
 package systems.zlink.contracts.sockets;
 
-import systems.zlink.runtime.sockets.SocketOptions;
+import systems.zlink.internal.sockets.SocketOptions;
 
-import systems.zlink.runtime.nativeapi.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 
 /** The typed facade over SUB/XSUB-specific socket options. */
 public final class SubSocketOptions extends CommonSocketOptions {

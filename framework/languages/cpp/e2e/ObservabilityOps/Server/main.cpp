@@ -65,57 +65,19 @@ struct server_options_t
     }
 };
 
-const char *metric_kind_name (fw::metric_instrument_kind_t kind)
-{
-    switch (kind) {
-        case fw::metric_instrument_kind_t::counter:
-            return "counter";
-        case fw::metric_instrument_kind_t::updown:
-            return "updown";
-        case fw::metric_instrument_kind_t::observable:
-            return "observable";
-        case fw::metric_instrument_kind_t::histogram:
-            return "histogram";
-    }
-    return "unknown";
-}
-
-const char *drain_state_name (fw::drain_state_t state)
-{
-    switch (state) {
-        case fw::drain_state_t::serving:
-            return "serving";
-        case fw::drain_state_t::draining:
-            return "draining";
-        case fw::drain_state_t::drained:
-            return "drained";
-        case fw::drain_state_t::force_stopping:
-            return "force_stopping";
-    }
-    return "unknown";
-}
-
 /* Aggregates the config-11 §3 evidence arrays. Metric samples keep the raw
  * catalog fields so counter deltas and current gauges stay distinguishable. */
 class observability_evidence_t
 {
   public:
-    void record_metric (const fw::metric_event_payload_t &event)
+    void record_metric (const fw::log_record_t &record)
     {
+        nlohmann::json fields = nlohmann::json::object ();
+        for (const auto &field : record.fields) {
+            fields[field.key] = field.value;
+        }
         std::lock_guard lock (_mutex);
-        _metrics.push_back (nlohmann::json{{"name", event.name},
-                                           {"kind", metric_kind_name (event.instrument_kind)},
-                                           {"value", event.value},
-                                           {"unit", event.unit},
-                                           {"tags", event.tags}});
-    }
-
-    void record_drain (const fw::drain_event_t &event)
-    {
-        std::lock_guard lock (_mutex);
-        _drain_events.push_back (nlohmann::json{{"sequence", ++_drain_sequence},
-                                                {"state", drain_state_name (event.state)},
-                                                {"source", event.source_name}});
+        _metrics.push_back (std::move (fields));
     }
 
     nlohmann::json snapshot () const
@@ -128,7 +90,6 @@ class observability_evidence_t
     mutable std::mutex _mutex;
     std::vector<nlohmann::json> _metrics;
     std::vector<nlohmann::json> _drain_events;
-    int _drain_sequence = 0;
 };
 
 /* Runtime control seam for the HTTP handlers: bound to the app after
@@ -473,12 +434,15 @@ class evidence_handler_t
     using dependency_types =
       fw::dependency_list_t<observability_evidence_t,
                             fw::location_runtime_query_t,
+                            fw::route_mesh_runtime_t,
                             drain_control_t>;
 
     evidence_handler_t (observability_evidence_t &evidence,
                         fw::location_runtime_query_t &locations,
+                        fw::route_mesh_runtime_t &route_mesh,
                         drain_control_t &drain) :
-        _evidence (evidence), _locations (locations), _drain (drain)
+        _evidence (evidence), _locations (locations),
+        _route_mesh (route_mesh), _drain (drain)
     {
     }
 
@@ -495,19 +459,12 @@ class evidence_handler_t
         }
         auto peer_rows = nlohmann::json::array ();
         try {
-            const auto peers =
-              _locations
-                .list_mesh_node_descriptors (
-                  {}, fw::location_page_request_t{.page_size = 1000})
-                .result ()
-                .value ();
-            for (const auto &peer : peers.items) {
+            const auto snapshot = _route_mesh.snapshot ("play");
+            for (const auto &peer : snapshot.peers) {
                 peer_rows.push_back (nlohmann::json{
-                  {"nodeRid", peer.rid.to_hex ()},
-                  {"meshName", peer.mesh_name},
-                  {"ownerId", peer.owner_id},
-                  {"draining", peer.state == fw::framework_runtime_state_t::draining},
-                  {"generation", peer.lifecycle_generation}});
+                  {"nodeRid", peer.node_rid.to_hex ()},
+                  {"meshName", snapshot.mesh_name},
+                  {"draining", peer.state == fw::peer_state_t::draining}});
             }
         }
         catch (const std::exception &error) {
@@ -550,6 +507,7 @@ class evidence_handler_t
   private:
     observability_evidence_t &_evidence;
     fw::location_runtime_query_t &_locations;
+    fw::route_mesh_runtime_t &_route_mesh;
     drain_control_t &_drain;
 };
 
@@ -703,14 +661,13 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
     /* OBS-B4: a node without a metric reader must keep messaging intact on
      * the inactive instrument path. */
     if (options.metrics_enabled) {
-        app.monitoring ().on<fw::metric_event_payload_t> (
-          [evidence] (const fw::metric_event_payload_t &event) {
-              evidence->record_metric (event);
+        app.logging ().use_callback_sink (
+          [evidence] (const fw::log_record_t &record) {
+              if (record.message == "zlink.runtime.metric.recorded") {
+                  evidence->record_metric (record);
+              }
           });
     }
-    app.monitoring ().on<fw::drain_event_t> (
-      [evidence] (const fw::drain_event_t &event) { evidence->record_drain (event); });
-
     const auto workflow_events = role == host_role_t::order_workflow
                                    ? std::make_shared<workflow_event_store_t> (
                                        std::filesystem::path (options.log_dir)
@@ -727,8 +684,8 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
         framework.services ().add_singleton<host_role_descriptor_t> (
           std::make_unique<host_role_descriptor_t> (host_role_descriptor_t{role}));
         framework.add_location_store (
-          std::make_shared<fw::locations::redis::redis_location_store_t> (
-            fw::locations::redis::redis_location_options_t{
+          std::make_shared<fw::redis::redis_location_store_t> (
+            fw::redis::redis_location_options_t{
               .connection_string = options.redis_endpoint,
               .key_prefix = options.redis_key_prefix}));
         {

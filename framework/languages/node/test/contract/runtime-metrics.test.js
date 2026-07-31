@@ -9,19 +9,31 @@ const channelEnvelope = require('../../packages/framework/dist/runtime/channels/
 
 function collector() {
   const records = [];
+  const instruments = [];
+  const observables = [];
   const instrument = (name, kind) => ({
     add(value, attributes) { records.push({ name, kind, value, attributes }); },
     record(value, attributes) { records.push({ name, kind, value, attributes }); }
   });
+  const create = (name, kind, options) => {
+    instruments.push({ name, kind, unit: options?.unit });
+    return instrument(name, kind);
+  };
   return {
     records,
+    instruments,
+    observables,
     provider: {
       getMeter(name) {
         assert.equal(name, 'zlink.framework');
         return {
-          createCounter: (instrumentName) => instrument(instrumentName, 'counter'),
-          createUpDownCounter: (instrumentName) => instrument(instrumentName, 'updown'),
-          createHistogram: (instrumentName) => instrument(instrumentName, 'histogram')
+          createCounter: (instrumentName, options) => create(instrumentName, 'counter', options),
+          createUpDownCounter: (instrumentName, options) => create(instrumentName, 'updown', options),
+          createHistogram: (instrumentName, options) => create(instrumentName, 'histogram', options),
+          createObservableGauge(instrumentName, options) {
+            instruments.push({ name: instrumentName, kind: 'gauge', unit: options?.unit });
+            return { addCallback(callback) { observables.push({ name: instrumentName, callback }); } };
+          }
         };
       }
     }
@@ -31,23 +43,66 @@ function collector() {
 test('RMETRIC-001 global OpenTelemetry no-op provider remains callable', () => {
   const metrics = new framework.ZLinkRuntimeMetrics();
   assert.equal(metrics.enabled(), true);
-  metrics.count('zlink.fanout.published');
-  metrics.change('zlink.channel.request.inflight', 1);
-  metrics.duration('zlink.channel.request.duration', 0.01);
+  metrics.count('zlink.mesh_node.request.timeouts');
+  metrics.change('zlink.mesh_node.requests.inflight', 1);
+  metrics.duration('zlink.mesh_node.request.duration', 0.01);
 });
 
-test('RMETRIC-006 framework metrics use stable catalog names and closed labels', () => {
-  const { provider, records } = collector();
-  const metrics = new framework.ZLinkRuntimeMetrics(provider);
-  metrics.change('zlink.channel.request.inflight', 1, { channel: 'api' });
-  metrics.count('zlink.channel.request.timeouts', 1, { channel: 'api' });
-  metrics.duration('zlink.channel.request.duration', 0.125, { channel: 'api' });
-  assert.deepEqual(records.map(({ name, kind }) => ({ name, kind })), [
-    { name: 'zlink.channel.request.inflight', kind: 'updown' },
-    { name: 'zlink.channel.request.timeouts', kind: 'counter' },
-    { name: 'zlink.channel.request.duration', kind: 'histogram' }
+test('RMETRIC-006 server runtime exposes the exact 44-instrument spec25 catalog', () => {
+  const { provider, instruments } = collector();
+  new framework.ZLinkRuntimeMetrics(provider);
+  const expected = new Map([
+    ['zlink.stream.connections.active', ['updown', '{connection}']],
+    ['zlink.stream.connections.opened', ['counter', '{connection}']],
+    ['zlink.stream.connections.closed', ['counter', '{connection}']],
+    ['zlink.mesh_node.peers.configured', ['gauge', '{peer}']],
+    ['zlink.mesh_node.peers.connected', ['gauge', '{peer}']],
+    ['zlink.mesh_node.peers.ready', ['gauge', '{peer}']],
+    ['zlink.mesh_node.channels.ready_members', ['gauge', '{member}']],
+    ['zlink.mesh_node.channel.selection_failures', ['counter', '{failure}']],
+    ['zlink.mesh_node.requests.inflight', ['updown', '{request}']],
+    ['zlink.mesh_node.request.duration', ['histogram', 's']],
+    ['zlink.mesh_node.request.timeouts', ['counter', '{request}']],
+    ['zlink.mesh_node.messages.dropped', ['counter', '{message}']],
+    ['zlink.object.capacity.active', ['gauge', '{object}']],
+    ['zlink.object.capacity.reserved', ['gauge', '{object}']],
+    ['zlink.object.capacity.limit', ['gauge', '{object}']],
+    ['zlink.spot.type.capacity.active', ['gauge', '{spot}']],
+    ['zlink.spot.type.capacity.reserved', ['gauge', '{spot}']],
+    ['zlink.spot.type.capacity.limit', ['gauge', '{spot}']],
+    ['zlink.object.activation.active', ['gauge', '{activation}']],
+    ['zlink.object.activation.limit', ['gauge', '{activation}']],
+    ['zlink.spot.count', ['updown', '{spot}']],
+    ['zlink.actor.count', ['updown', '{actor}']],
+    ['zlink.relocation.started', ['counter', '{relocation}']],
+    ['zlink.relocation.completed', ['counter', '{relocation}']],
+    ['zlink.relocation.duration', ['histogram', 's']],
+    ['zlink.relocation.recovered', ['counter', '{relocation}']],
+    ['zlink.relocation.journal.messages', ['histogram', '{message}']],
+    ['zlink.relocation.bytes', ['histogram', 'By']],
+    ['zlink.relocation.interruption', ['histogram', 's']],
+    ['zlink.instance_spot.activations', ['counter', '{activation}']],
+    ['zlink.instance_spot.activation.duration', ['histogram', 's']],
+    ['zlink.instance_spot.pending.messages', ['gauge', '{message}']],
+    ['zlink.instance_spot.pending.bytes', ['gauge', 'By']],
+    ['zlink.instance_spot.claim.conflicts', ['counter', '{claim}']],
+    ['zlink.instance_spot.takeovers', ['counter', '{takeover}']],
+    ['zlink.location.store.errors', ['counter', '{error}']],
+    ['zlink.location.owner_lease.renew.failures', ['counter', '{failure}']],
+    ['zlink.location.owner_lease.renew.lateness', ['histogram', 's']],
+    ['zlink.observability.events.overflow', ['counter', '{event}']],
+    ['zlink.host.state', ['gauge', '{runtime}']],
+    ['zlink.host.relocation.duration', ['histogram', 's']],
+    ['zlink.host.relocation.blocked', ['counter', '{operation}']],
+    ['zlink.host.shutdown.duration', ['histogram', 's']],
+    ['zlink.host.shutdown.forced', ['counter', '{operation}']]
   ]);
-  assert(records.every((record) => record.attributes.channel === 'api'));
+  assert.equal(instruments.length, 44);
+  assert.deepEqual(
+    new Map(instruments.map(({ name, kind, unit }) => [name, [kind, unit]])),
+    expected
+  );
+  assert(instruments.every(({ name }) => !name.startsWith('zlink.fanout.')));
 });
 
 test('RMETRIC-016 connector owns reconnect attempt counting', async () => {
@@ -120,7 +175,7 @@ test('RMETRIC-003 connector records failed handshake with closed labels', async 
   });
 });
 
-test('RMETRIC-007 session actor bind records the complete native-to-route interval', async () => {
+test('RMETRIC-007 server catalog does not publish connector-only session bind metrics', async () => {
   const { provider, records } = collector();
   const metrics = new framework.ZLinkRuntimeMetrics(provider);
   const socket = {
@@ -135,9 +190,7 @@ test('RMETRIC-007 session actor bind records the complete native-to-route interv
 
   await context.actors.bindOrGet({ nodeRid: 'node-1', actorId: 'actor-1', generation: 1n });
 
-  const sample = records.find((record) => record.name === 'zlink.stream.session.bind.duration');
-  assert.equal(sample.kind, 'histogram');
-  assert.equal(sample.value >= 0, true);
+  assert.equal(records.some((record) => record.name === 'zlink.stream.session.bind.duration'), false);
 });
 
 test('RMETRIC Entry Spot activation records entry count and lifecycle counters', async () => {
@@ -171,43 +224,8 @@ test('RMETRIC Entry Spot activation records entry count and lifecycle counters',
     attributes
   })), [
     { name: 'zlink.spot.count', kind: 'updown', value: 1, attributes: { kind: 'entry' } },
-    { name: 'zlink.spot.created', kind: 'counter', value: 1, attributes: { kind: 'entry' } },
-    { name: 'zlink.spot.count', kind: 'updown', value: -1, attributes: { kind: 'entry' } },
-    { name: 'zlink.spot.closed', kind: 'counter', value: 1, attributes: { kind: 'entry' } }
+    { name: 'zlink.spot.count', kind: 'updown', value: -1, attributes: { kind: 'entry' } }
   ]);
-});
-
-test('RMETRIC channel fanout receive omits unregistered dynamic topic labels', async () => {
-  const { provider, records } = collector();
-  const metrics = new framework.ZLinkRuntimeMetrics(provider);
-  const dispatcher = new framework.ZLinkChannelPublishDispatcher({
-    channelName: 'events',
-    dispatchErrors: new framework.ZLinkDispatchErrorReporter(
-      undefined,
-      undefined,
-      { reportRuntimeTaskException() {} }
-    ),
-    handlers: new Map([
-      ['DynamicEvent', { async handle() {} }]
-    ]),
-    metrics
-  });
-  const parts = channelEnvelope.encodeChannelEnvelopeParts(
-    4,
-    'events',
-    'DynamicEvent',
-    { value: 'payload' },
-    undefined,
-    'room.user-supplied-123'
-  ).map((part) => ({
-    data: () => Buffer.from(part)
-  }));
-
-  await dispatcher.dispatch({ topic: 'room.user-supplied-123', parts });
-
-  const received = records.find((record) => record.name === 'zlink.fanout.received');
-  assert.equal(received.value, 1);
-  assert.equal(received.attributes, undefined);
 });
 
 test('RMETRIC-009 channel drops use normalized closed labels when tracing is off', async () => {
@@ -238,11 +256,11 @@ test('RMETRIC-009 channel drops use normalized closed labels when tracing is off
 
   await dispatcher.dispatch({ topic: 'known', parts });
 
-  assert.deepEqual(records.find((record) => record.name === 'zlink.channel.messages.dropped'), {
-    name: 'zlink.channel.messages.dropped',
+  assert.deepEqual(records.find((record) => record.name === 'zlink.mesh_node.messages.dropped'), {
+    name: 'zlink.mesh_node.messages.dropped',
     kind: 'counter',
     value: 1,
-    attributes: { surface: 'channel', kind: 'publish', reason: 'no_handler' }
+    attributes: { surface: 'channel', message_kind: 'publish', reason: 'no_handler' }
   });
 });
 
@@ -271,37 +289,40 @@ test('RMETRIC-015 bounded flow observer queue counts overflow even when tracing 
   framework.flowIfEnabled(tracer, 'received').trace(event);
   framework.flowIfEnabled(tracer, 'received').trace(event);
 
-  assert.equal(records.filter((record) => record.name === 'zlink.observability.observer.overflow').length, 1);
+  assert.equal(records.filter((record) => record.name === 'zlink.observability.events.overflow').length, 1);
   release();
   await new Promise((resolve) => setImmediate(resolve));
 });
 
-test('OBS-B2/B3 runtime metric catalog keeps stable instrument kinds and low-cardinality labels', () => {
-  const { provider, records } = collector();
+test('OBS-B2/B3 observable gauges use bounded labels and isolate snapshot failures', () => {
+  const { provider, observables } = collector();
   const metrics = new framework.ZLinkRuntimeMetrics(provider);
-  for (const name of [
-    'zlink.stream.connections.opened', 'zlink.stream.connections.closed',
-    'zlink.spot.created', 'zlink.spot.closed', 'zlink.actor.transfers',
-    'zlink.channel.request.timeouts', 'zlink.channel.messages.dropped',
-    'zlink.fanout.published', 'zlink.fanout.received',
-    'zlink.location.store.errors', 'zlink.location.owner_lease.renew.failures',
-    'zlink.location.write.conflicts', 'zlink.observability.observer.overflow',
-    'zlink.drain.actors.handed_off', 'zlink.drain.rooms.drained', 'zlink.drain.forced'
-  ]) metrics.count(name, 1, { outcome: 'success' });
-  for (const name of [
-    'zlink.stream.connections.active', 'zlink.spot.count',
-    'zlink.actor.count', 'zlink.channel.request.inflight',
-    'zlink.location.peers', 'zlink.drain.state'
-  ]) metrics.change(name, 1, { state: 'serving' });
-  for (const name of [
-    'zlink.stream.handshake.duration', 'zlink.stream.session.bind.duration',
-    'zlink.spot.timer.tick.lateness',
-    'zlink.actor.transfer.duration', 'zlink.channel.request.duration',
-    'zlink.location.owner_lease.renew.lateness', 'zlink.drain.duration'
-  ]) metrics.duration(name, 0.001);
-  metrics.histogram('zlink.actor.transfer.pending_requests.count', 0, '{request}');
-  const names = new Set(records.map((record) => record.name));
-  assert.equal(names.size, records.length);
-  assert(records.every((record) => !record.attributes ||
-    !['actor_id', 'spot_rid', 'flow_id', 'correlation_id'].some((key) => key in record.attributes)));
+  metrics.registerMeshSnapshots(() => { throw new Error('observer failure'); });
+  const registration = metrics.registerMeshSnapshots(() => [{
+    meshName: 'mesh-a', source: 'manual_and_redis',
+    configuredPeers: 3, connectedPeers: 2, readyPeers: 1,
+    channels: [{ channelName: 'orders', readyMembers: 4 }],
+    actorCapacity: { active: 10, reserved: 2, limit: 100 },
+    spotCapacity: { active: 3, reserved: 1, limit: 20 },
+    spotTypeCapacities: [{
+      spotKind: 'user', stableType: 'room', active: 2, reserved: 1, limit: 8
+    }],
+    activation: { active: 2, limit: 16 },
+    instanceSpots: [{ instanceSpotType: 'matchmaker', pendingMessages: 7, pendingBytes: 4096 }]
+  }]);
+  const samples = [];
+  for (const observable of observables) {
+    observable.callback({
+      observe(value, attributes) { samples.push({ name: observable.name, value, attributes }); }
+    });
+  }
+  assert(samples.some((sample) => sample.name === 'zlink.mesh_node.peers.configured'
+    && sample.value === 3
+    && sample.attributes.source === 'manual_and_redis'));
+  assert(samples.some((sample) => sample.name === 'zlink.spot.type.capacity.limit'
+    && sample.value === 8
+    && sample.attributes.stable_type === 'room'));
+  assert(samples.every((sample) =>
+    !['actor_id', 'spot_id', 'flow_id', 'correlation_id'].some((key) => key in sample.attributes)));
+  registration.dispose();
 });

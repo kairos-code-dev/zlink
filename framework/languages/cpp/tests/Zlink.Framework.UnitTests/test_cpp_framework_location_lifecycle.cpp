@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/locations/in_memory_location_store.hpp"
+#include <runtime/locations/location_repository.hpp>
 #include "runtime/locations/location_lifecycle.hpp"
 #include "runtime/locations/location_runtime.hpp"
 
@@ -14,7 +15,7 @@ using zlink::framework::actor_location_t;
 using zlink::framework::location_write_status_t;
 using zlink::framework::spot_location_key_t;
 using zlink::framework::spot_location_t;
-using zlink::framework::runtime::in_memory_location_store_t;
+using zlink::framework::runtime::in_memory_location_repository_t;
 using zlink::framework::runtime::location_lifecycle_t;
 using zlink::framework::runtime::location_runtime_t;
 
@@ -48,7 +49,7 @@ spot_location_t make_spot (std::string spot_id)
 
 TEST (ZLinkFrameworkLocationLifecycle, TracksClaimedActor)
 {
-    in_memory_location_store_t store;
+    in_memory_location_repository_t store;
     location_runtime_t runtime (store, {}, "owner-a");
     runtime.start (zlink::routing_id_t::from ("node-a"));
     location_lifecycle_t lifecycle (runtime);
@@ -63,7 +64,7 @@ TEST (ZLinkFrameworkLocationLifecycle, TracksClaimedActor)
 
 TEST (ZLinkFrameworkLocationLifecycle, TracksMaterializationPerProcess)
 {
-    in_memory_location_store_t store;
+    in_memory_location_repository_t store;
     location_runtime_t owner_a (store, {}, "owner-a");
     location_runtime_t owner_b (store, {}, "owner-b");
     owner_a.start (zlink::routing_id_t::from ("node-a"));
@@ -85,7 +86,7 @@ TEST (ZLinkFrameworkLocationLifecycle, TracksMaterializationPerProcess)
 
 TEST (ZLinkFrameworkLocationLifecycle, ReleasesTrackedActor)
 {
-    in_memory_location_store_t store;
+    in_memory_location_repository_t store;
     location_runtime_t runtime (store, {}, "owner-a");
     runtime.start (zlink::routing_id_t::from ("node-a"));
     location_lifecycle_t lifecycle (runtime);
@@ -102,7 +103,7 @@ TEST (ZLinkFrameworkLocationLifecycle, ReleasesTrackedActor)
 
 TEST (ZLinkFrameworkLocationLifecycle, IgnoresActorOperationsWhenClaimIsNotTracked)
 {
-    in_memory_location_store_t store;
+    in_memory_location_repository_t store;
     location_runtime_t runtime (store, {}, "owner-a");
     runtime.start (zlink::routing_id_t::from ("node-a"));
     location_lifecycle_t lifecycle (runtime);
@@ -127,7 +128,7 @@ TEST (ZLinkFrameworkLocationLifecycle, IgnoresActorOperationsWhenClaimIsNotTrack
 
 TEST (ZLinkFrameworkLocationLifecycle, UpdatesTrackedActorLocationWithoutChangingOwnerToken)
 {
-    in_memory_location_store_t store;
+    in_memory_location_repository_t store;
     location_runtime_t runtime (store, {}, "owner-a");
     runtime.start (zlink::routing_id_t::from ("node-a"));
     location_lifecycle_t lifecycle (runtime);
@@ -152,7 +153,7 @@ TEST (ZLinkFrameworkLocationLifecycle, UpdatesTrackedActorLocationWithoutChangin
 
 TEST (ZLinkFrameworkLocationLifecycle, TracksSpotMaterializationPerProcess)
 {
-    in_memory_location_store_t store;
+    in_memory_location_repository_t store;
     location_runtime_t owner_a (store, {}, "owner-a");
     location_runtime_t owner_b (store, {}, "owner-b");
     owner_a.start (zlink::routing_id_t::from ("node-a"));
@@ -179,7 +180,7 @@ TEST (ZLinkFrameworkLocationLifecycle, TracksSpotMaterializationPerProcess)
 
 TEST (ZLinkFrameworkLocationLifecycle, ClaimsAndReleasesTrackedSpot)
 {
-    in_memory_location_store_t store;
+    in_memory_location_repository_t store;
     location_runtime_t runtime (store, {}, "owner-a");
     runtime.start (zlink::routing_id_t::from ("node-a"));
     location_lifecycle_t lifecycle (runtime);
@@ -198,7 +199,7 @@ TEST (ZLinkFrameworkLocationLifecycle, ClaimsAndReleasesTrackedSpot)
 
 TEST (ZLinkFrameworkLocationLifecycle, RenewKeepsTrackedActor)
 {
-    in_memory_location_store_t store;
+    in_memory_location_repository_t store;
     location_runtime_t owner_a (store, {}, "owner-a");
     owner_a.start (zlink::routing_id_t::from ("node-a"));
 

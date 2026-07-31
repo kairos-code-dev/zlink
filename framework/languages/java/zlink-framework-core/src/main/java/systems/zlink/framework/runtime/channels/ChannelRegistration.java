@@ -163,6 +163,14 @@ public final class ChannelRegistration {
         return clientServer.clientEnabled || routeMesh.clientEnabled;
     }
 
+    boolean clientServerClientEnabled() {
+        return clientServer.clientEnabled;
+    }
+
+    boolean clientServerServerEnabled() {
+        return clientServer.serverEnabled;
+    }
+
     boolean publisherEnabled() {
         return fanout.publisherEnabled;
     }

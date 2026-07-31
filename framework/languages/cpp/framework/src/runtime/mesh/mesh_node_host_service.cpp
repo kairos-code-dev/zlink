@@ -220,6 +220,15 @@ void reject_application_request (
     (void) host::reply (record.reply_token, reply.items ());
 }
 
+bool requires_completion_permit (
+  host::record_kind_t kind) noexcept
+{
+    return kind == host::record_kind_t::node_request
+           || kind == host::record_kind_t::channel_request
+           || kind == host::record_kind_t::spot_request
+           || kind == host::record_kind_t::actor_request;
+}
+
 handler_registry_t &empty_handler_filters ()
 {
     static handler_registry_t filters;
@@ -231,10 +240,13 @@ handler_registry_t &empty_handler_filters ()
 mesh_node_host_service_t::mesh_node_host_service_t (
   std::vector<std::shared_ptr<detail::mesh_node_builder_state_t>> registrations,
   serializer_registry_t &serializers,
-  dispatch_options_t dispatch_options) :
+  dispatch_options_t dispatch_options,
+  std::shared_ptr<inbound_dispatch_budget_t> inbound_budget,
+  std::shared_ptr<completion_admission_owner_t> completion_admission) :
     mesh_node_host_service_t (
       std::move (registrations), serializers, empty_handler_filters (),
-      std::move (dispatch_options))
+      std::move (dispatch_options), std::move (inbound_budget),
+      std::move (completion_admission))
 {
 }
 
@@ -242,14 +254,24 @@ mesh_node_host_service_t::mesh_node_host_service_t (
   std::vector<std::shared_ptr<detail::mesh_node_builder_state_t>> registrations,
   serializer_registry_t &serializers,
   handler_registry_t &filters,
-  dispatch_options_t dispatch_options) :
+  dispatch_options_t dispatch_options,
+  std::shared_ptr<inbound_dispatch_budget_t> inbound_budget,
+  std::shared_ptr<completion_admission_owner_t> completion_admission) :
     _registrations (std::move (registrations)),
     _serializers (&serializers),
     _filters (&filters),
     _dispatch_options (std::move (dispatch_options)),
     _application_dispatch (std::make_unique<offload_executor_t> (
       0, std::max<std::size_t> (2, std::thread::hardware_concurrency ()), 4096,
-      std::chrono::milliseconds (100), "zlink-mesh-app"))
+      std::chrono::milliseconds (100), "zlink-mesh-app")),
+    _inbound_budget (
+      inbound_budget
+        ? std::move (inbound_budget)
+        : std::make_shared<inbound_dispatch_budget_t> (0)),
+    _completion_admission (
+      completion_admission
+        ? std::move (completion_admission)
+        : std::make_shared<completion_admission_owner_t> (65'536))
 {
     detail::register_spot_route_packet_serializers (serializers);
     _nodes.reserve (_registrations.size ());
@@ -428,7 +450,8 @@ mesh_node_host_service_t::create_actor (
       .key = {placement_object_kind_t::actor, actor_id},
       .intent =
         {.stable_type = stable_type,
-         .request_content_reference = "inline-v1",
+         .request_content_reference =
+           encode_inline_creation_content (request_bytes),
          .request_sha256 = sha256 (request_bytes),
          .request_encoded_size = request_bytes.size ()},
       .target =
@@ -516,7 +539,10 @@ mesh_node_host_service_t::create_actor (
                   *request, *_serializers);
             const auto created =
               (*target_runtime)->create_application_actor (
-                stable_type, actor_id, raw_request, timeout);
+                stable_type, actor_id, raw_request,
+                winner->fence.object_generation,
+                winner->fence.authority_owner_generation,
+                timeout);
             if (!created) {
                 const auto failed_envelope =
                   actor_terminal_envelope (
@@ -1244,9 +1270,9 @@ void mesh_node_host_service_t::start (service_provider_t &services)
     }
     _stop.store (false, std::memory_order_release);
     _accept_application_dispatch.store (true, std::memory_order_release);
-    auto store = std::shared_ptr<location_store_t> (
-      &services.get_required<location_store_t> (),
-      [] (location_store_t *) noexcept {});
+    auto store = std::shared_ptr<location_repository_t> (
+      &services.get_required<location_repository_t> (),
+      [] (location_repository_t *) noexcept {});
     _location_store = store;
     auto &location_runtime =
       services.get_required<location_runtime_t> ();
@@ -1356,7 +1382,7 @@ void mesh_node_host_service_t::start (service_provider_t &services)
               if (created->reply) {
                   application_reply =
                     protocol::application_payload_t{
-                      {},
+                      stable_type,
                       "application/octet-stream",
                       detail::message_to_raw (
                         *created->reply, *_serializers)
@@ -1493,8 +1519,7 @@ void mesh_node_host_service_t::start (service_provider_t &services)
         descriptor.activation_concurrency.limit =
           node->activation_concurrency_limit ();
         descriptor.state = framework_runtime_state_t::serving;
-        descriptor.security_identity =
-          _location_owner->owner_id;
+        descriptor.security_identity = "default";
         descriptor.owner_id = _location_owner->owner_id;
         descriptor.lease_generation =
           _location_owner->lease_generation;
@@ -1684,6 +1709,18 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                                 || record.kind == host::record_kind_t::spot_request
                                 || record.kind == host::record_kind_t::spot_multicast
                                 || record.kind == host::record_kind_t::spot_control));
+                      std::uint64_t application_payload_bytes = 0;
+                      if (owner.domain
+                          == host::ready_domain_t::application
+                          && parts.size () >= 2) {
+                          application_payload_bytes =
+                            static_cast<std::uint64_t> (
+                              protocol::decode_application_payload (
+                                parts.back ().to_bytes ())
+                                .payload.size ());
+                          _inbound_budget->received (
+                            application_payload_bytes);
+                      }
                       auto run_direct = [this] (auto &&work) {
                           {
                               std::lock_guard lock (_dispatch_gate_mutex);
@@ -1706,12 +1743,33 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                           }
                           _dispatch_gate_changed.notify_all ();
                       };
-                      if (framework_object_dispatch) {
+                      if (framework_object_dispatch && transfer_dispatch) {
+                          auto completion_permit =
+                            requires_completion_permit (record.kind)
+                              ? _completion_admission->acquire ()
+                              : completion_admission_owner_t::permit_t{};
+                          if (requires_completion_permit (record.kind)
+                              && !completion_permit) {
+                              _inbound_budget->completed (
+                                application_payload_bytes, false);
+                              return;
+                          }
                           bool handled = false;
-                          run_direct ([&] {
-                              handled = spot_runtime.dispatch_mesh_record (
-                                owner, record, parts, *_services, *_serializers);
-                          });
+                          try {
+                              _inbound_budget->handler_started (
+                                application_payload_bytes);
+                              run_direct ([&] {
+                                  handled = spot_runtime.dispatch_mesh_record (
+                                    owner, record, parts, *_services, *_serializers);
+                              });
+                              _inbound_budget->completed (
+                                application_payload_bytes, true);
+                          }
+                          catch (...) {
+                              _inbound_budget->completed (
+                                application_payload_bytes, true);
+                              throw;
+                          }
                           if (handled || transfer_dispatch)
                               return;
                       }
@@ -1727,6 +1785,8 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                           }
                           if (!accepted) {
                               reject_application_request (record, std::move (parts));
+                              _inbound_budget->completed (
+                                application_payload_bytes, false);
                               return;
                           }
                           std::vector<std::vector<std::uint8_t>> owned_part_bytes;
@@ -1736,8 +1796,24 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                           try {
                               _application_dispatch->submit (
                                 [this, node, registration, owner, record,
+                                 application_payload_bytes,
                                  part_bytes = std::move (owned_part_bytes)] () mutable {
+                                    auto completion_permit =
+                                      requires_completion_permit (record.kind)
+                                        ? _completion_admission->acquire ()
+                                        : completion_admission_owner_t::permit_t{};
+                                    if (requires_completion_permit (record.kind)
+                                        && !completion_permit) {
+                                        _inbound_budget->completed (
+                                          application_payload_bytes, false);
+                                        node->application_work_started ();
+                                        node->application_work_finished ();
+                                        _dispatch_gate_changed.notify_all ();
+                                        return;
+                                    }
                                     node->application_work_started ();
+                                    _inbound_budget->handler_started (
+                                      application_payload_bytes);
                                     try {
                                         std::vector<zlink::message_t> owned_parts;
                                         owned_parts.reserve (part_bytes.size ());
@@ -1764,10 +1840,14 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                                         }
                                     }
                                     catch (...) {
+                                        _inbound_budget->completed (
+                                          application_payload_bytes, true);
                                         node->application_work_finished ();
                                         _dispatch_gate_changed.notify_all ();
                                         return;
                                     }
+                                    _inbound_budget->completed (
+                                      application_payload_bytes, true);
                                     node->application_work_finished ();
                                     _dispatch_gate_changed.notify_all ();
                                 });
@@ -1775,6 +1855,8 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                           catch (...) {
                               node->application_work_started ();
                               node->application_work_finished ();
+                              _inbound_budget->completed (
+                                application_payload_bytes, false);
                               _dispatch_gate_changed.notify_all ();
                               throw;
                           }
@@ -1790,7 +1872,8 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                             _dispatch_options);
                           (void) dispatcher.dispatch (record, std::move (parts));
                       });
-                  });
+                  },
+                  _inbound_budget->can_start_application_receive ());
                 detail::spot_node_runtime_t maintenance (registration->spot_state);
                 (void) maintenance.cleanup_expired_actor_admissions ();
                 if (count == 0)
@@ -1826,6 +1909,12 @@ bool mesh_node_host_service_t::wait_for_accepted_callbacks_until (
                    && node->active_application_callbacks () == 0;
         });
     });
+}
+
+inbound_dispatch_snapshot_t
+mesh_node_host_service_t::inbound_dispatch_snapshot () const noexcept
+{
+    return _inbound_budget->snapshot ();
 }
 
 bool mesh_node_host_service_t::publish_descriptor_state (

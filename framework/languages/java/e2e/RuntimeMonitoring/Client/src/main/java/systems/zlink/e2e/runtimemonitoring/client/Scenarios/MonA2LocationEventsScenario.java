@@ -3,7 +3,7 @@ package systems.zlink.e2e.runtimemonitoring.client.Scenarios;
 import systems.zlink.e2e.runtimemonitoring.client.Support.MonitoringScenarioContext;
 import systems.zlink.e2e.runtimemonitoring.shared.Contracts;
 
-/** Verifies peer admission, readiness, and lifecycle generation after restart. */
+/** Verifies public peer availability through a restart without exposing generation. */
 public final class MonA2LocationEventsScenario {
     private MonA2LocationEventsScenario() {
     }
@@ -11,10 +11,11 @@ public final class MonA2LocationEventsScenario {
     public static void run(MonitoringScenarioContext context) {
         Contracts.RuntimePeer first = context.awaitRuntimeSnapshot(
                 context.serviceEndpoint(),
-                snapshot -> snapshot.peers().stream().anyMatch(Contracts.RuntimePeer::ready),
+                snapshot -> snapshot.peers().stream()
+                    .anyMatch(peer -> "READY".equals(peer.state())),
                 "MON-A2 initial peer was not ready")
             .peers().stream()
-            .filter(Contracts.RuntimePeer::ready)
+            .filter(peer -> "READY".equals(peer.state()))
             .findFirst()
             .orElseThrow();
         int evidenceBaseline = context.evidenceEntryCount(context.serviceEndpoint());
@@ -22,7 +23,8 @@ public final class MonA2LocationEventsScenario {
         context.shutdownServiceB("MON-A2 service-b did not stop");
         context.awaitRuntimeSnapshot(
             context.serviceEndpoint(),
-            snapshot -> snapshot.peers().stream().noneMatch(Contracts.RuntimePeer::ready),
+            snapshot -> snapshot.peers().stream()
+                .noneMatch(peer -> "READY".equals(peer.state())),
             "MON-A2 stopped peer remained ready");
 
         context.restartServiceB();
@@ -33,29 +35,27 @@ public final class MonA2LocationEventsScenario {
         Contracts.RuntimePeer restarted = context.awaitRuntimeSnapshot(
                 context.serviceEndpoint(),
                 snapshot -> snapshot.peers().stream().anyMatch(peer ->
-                    peer.ready()
-                        && peer.lifecycleGeneration() != first.lifecycleGeneration()),
-                "MON-A2 restarted peer generation did not change")
+                    "READY".equals(peer.state())
+                        && peer.nodeRid().equals(first.nodeRid())),
+                "MON-A2 restarted peer did not return to Ready")
             .peers().stream()
             .filter(peer ->
-                peer.ready()
-                    && peer.lifecycleGeneration() != first.lifecycleGeneration())
+                "READY".equals(peer.state())
+                    && peer.nodeRid().equals(first.nodeRid()))
             .findFirst()
             .orElseThrow();
 
         MonitoringScenarioContext.ensure(
-            restarted.rid().equals(first.rid()),
+            restarted.nodeRid().equals(first.nodeRid()),
             "MON-A2 restarted peer RID changed");
         MonitoringScenarioContext.ensure(
-            restarted.descriptorRevision() > 0
-                && !restarted.endpoint().isBlank()
-                && restarted.lastFailure() != null,
-            "MON-A2 peer diagnostics are incomplete");
+            restarted.unavailableReason().isBlank(),
+            "MON-A2 Ready peer has an unavailable reason");
         context.waitForEvidenceAfter(
             context.serviceEndpoint(),
             evidenceBaseline,
             "route-mesh-runtime",
-            "zlink.runtime.mesh_node.peer_changed");
+            "status-changed");
 
         System.out.println("scenario MON-A2 passed");
     }

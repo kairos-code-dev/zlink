@@ -53,8 +53,10 @@ final class ZLinkStandaloneActorRelocationStagingOwner {
                     "Actor relocation root differs from the authority fence"));
         }
         return backend.prepare(request, decoded.state(), NOT_CANCELLED)
-            .thenApply(prepared -> new Staged(
-                request, decoded, prepared));
+            .thenCompose(prepared -> backend.stageTimers(
+                    request, decoded.timerEnvelope())
+                .thenApply(ignored -> new Staged(
+                    request, decoded, prepared)));
     }
 
     CompletionStage<Void> replayHidden(Staged staged) {
@@ -64,38 +66,78 @@ final class ZLinkStandaloneActorRelocationStagingOwner {
     CompletionStage<Void> publishAndReplayHidden(
         Staged staged,
         byte[] finalRoot) {
+        return publishAndReplayHidden(
+            staged,
+            finalRoot,
+            (laneId, record) -> {
+                if (!laneId.equals(
+                    "actor:" + staged.request().actorId())) {
+                    return CompletableFuture.failedFuture(
+                        new IllegalArgumentException(
+                            "standalone Actor journal lane differs"));
+                }
+                return replayActor(
+                        staged,
+                        ZLinkActorAcceptedJournal.decode(record.payload()))
+                    .thenApply(ignored -> null);
+            });
+    }
+
+    CompletionStage<Void> publishAndReplayHidden(
+        Staged staged,
+        byte[] finalRoot,
+        ZLinkUserSpotAggregateStagingOwner.JournalReplayer replayer) {
         requireActive(staged);
+        Objects.requireNonNull(replayer, "replayer");
         var decoded = ZLinkCanonicalActorRelocationEnvelope.decode(
             finalRoot,
             staged.request().relocationId(),
             staged.request().actorId(),
             staged.request().restoreSnapshot());
         requireStagingPrefix(staged, decoded);
-        return replayHidden(staged, decoded)
+        return replayHidden(staged, decoded, replayer)
             .thenRun(() -> publish(staged));
     }
 
     private CompletionStage<Void> replayHidden(
         Staged staged,
         ZLinkCanonicalActorRelocationEnvelope.Decoded decoded) {
+        return replayHidden(
+            staged,
+            decoded,
+            (laneId, record) -> replayActor(
+                    staged,
+                    ZLinkActorAcceptedJournal.decode(record.payload()))
+                .thenApply(ignored -> null));
+    }
+
+    private CompletionStage<Void> replayHidden(
+        Staged staged,
+        ZLinkCanonicalActorRelocationEnvelope.Decoded decoded,
+        ZLinkUserSpotAggregateStagingOwner.JournalReplayer replayer) {
         requireActive(staged);
         CompletionStage<Void> chain =
             CompletableFuture.completedFuture(null);
         for (var queued : decoded.journal()) {
-            chain = chain.thenCompose(ignored -> {
-                ZLinkActorAcceptedJournal.Record record =
-                    ZLinkActorAcceptedJournal.decode(queued.payload());
-                if (!record.actorId().equals(staged.request().actorId())) {
-                    return CompletableFuture.failedFuture(
-                        new IllegalArgumentException(
-                            "accepted journal references another Actor"));
-                }
-                return backend.replay(
-                        staged.actor(), staged.request(), record)
-                    .thenApply(reply -> null);
-            });
+            chain = chain.thenCompose(ignored -> replayer.replay(
+                "actor:" + staged.request().actorId(),
+                queued));
         }
         return chain.thenRun(() -> staged.replayed = true);
+    }
+
+    CompletionStage<java.util.Optional<byte[]>> replayActor(
+        Staged staged,
+        ZLinkActorAcceptedJournal.Record record) {
+        requireActive(staged);
+        Objects.requireNonNull(record, "record");
+        if (!record.actorId().equals(staged.request().actorId())) {
+            return CompletableFuture.failedFuture(
+                new IllegalArgumentException(
+                    "accepted journal references another Actor"));
+        }
+        return backend.replay(
+            staged.actor(), staged.request(), record);
     }
 
     private static void requireStagingPrefix(
@@ -130,7 +172,7 @@ final class ZLinkStandaloneActorRelocationStagingOwner {
             throw new IllegalStateException(
                 "Actor accepted journal has not been replayed");
         }
-        backend.publish(staged.actor());
+        backend.publish(staged.actor(), staged.request());
         staged.published = true;
     }
 
@@ -140,6 +182,7 @@ final class ZLinkStandaloneActorRelocationStagingOwner {
             throw new IllegalStateException(
                 "Actor relocation is not published");
         }
+        backend.publishTimers(staged.request());
         backend.openAdmission(staged.actor());
         staged.terminal = true;
     }
@@ -231,9 +274,23 @@ final class ZLinkStandaloneActorRelocationStagingOwner {
             Request request,
             ZLinkActorAcceptedJournal.Record record);
 
-        void publish(Object actor);
+        default CompletionStage<Void> stageTimers(
+            Request request,
+            byte[] timerEnvelope) {
+            if (ZLinkSpotTimerRelocationEnvelope
+                    .canonicalize(timerEnvelope).isEmpty()) {
+                return CompletableFuture.completedFuture(null);
+            }
+            return CompletableFuture.failedFuture(new IllegalStateException(
+                "standalone Actor timer staging is unavailable"));
+        }
+
+        void publish(Object actor, Request request);
 
         void openAdmission(Object actor);
+
+        default void publishTimers(Request request) {
+        }
 
         CompletionStage<Void> discard(Object actor);
     }
@@ -286,9 +343,23 @@ final class ZLinkStandaloneActorRelocationStagingOwner {
         }
 
         @Override
-        public void publish(Object actor) {
+        public CompletionStage<Void> stageTimers(
+            Request request,
+            byte[] timerEnvelope) {
+            spots.stageEntryActorTimerRelocationEnvelope(
+                request.targetSpotId(),
+                request.actorId(),
+                timerEnvelope);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public void publish(Object actor, Request request) {
             actors.publishRelocatedActor(
-                (ZLinkActorRuntime.PreparedTransferredActor) actor);
+                (ZLinkActorRuntime.PreparedTransferredActor) actor,
+                request.targetSpotId(),
+                Math.incrementExact(
+                    request.sourceAuthorityOwnerGeneration()));
         }
 
         @Override
@@ -298,9 +369,20 @@ final class ZLinkStandaloneActorRelocationStagingOwner {
         }
 
         @Override
+        public void publishTimers(Request request) {
+            spots.publishEntryActorTimerRelocation(
+                request.targetSpotId(),
+                request.actorId());
+        }
+
+        @Override
         public CompletionStage<Void> discard(Object actor) {
-            return actors.discardRelocatedActor(
-                (ZLinkActorRuntime.PreparedTransferredActor) actor);
+            var prepared =
+                (ZLinkActorRuntime.PreparedTransferredActor) actor;
+            String actorId = prepared.actor().context().actorId();
+            return actors.discardRelocatedActor(prepared)
+                .thenRun(() -> spots.discardEntryActorTimerRelocation(
+                    actorId));
         }
     }
 

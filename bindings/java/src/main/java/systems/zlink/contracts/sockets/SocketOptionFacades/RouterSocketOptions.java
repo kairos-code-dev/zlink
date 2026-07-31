@@ -2,12 +2,12 @@
 
 package systems.zlink.contracts.sockets;
 
-import systems.zlink.runtime.sockets.SocketOptions;
+import systems.zlink.internal.sockets.SocketOptions;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.runtime.nativeapi.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 import java.time.Duration;
-import systems.zlink.runtime.nativeapi.DurationConversions;
+import systems.zlink.internal.DurationConversions;
 import java.util.Objects;
 import java.util.Optional;
 

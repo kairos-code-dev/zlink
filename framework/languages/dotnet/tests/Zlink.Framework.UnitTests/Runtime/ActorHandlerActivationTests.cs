@@ -117,7 +117,8 @@ public sealed class ActorHandlerActivationTests
             .WaitAsync(TimeSpan.FromSeconds(5));
         await WaitUntilAsync(
             () => firstHandler.DisposeCount == 1
-                  && secondHandler.DisposeCount == 1);
+                  && secondHandler.DisposeCount == 1
+                  && Volatile.Read(ref probe.DisposedDependencies) == 2);
         Assert.Equal(2, probe.DisposedDependencies);
     }
 

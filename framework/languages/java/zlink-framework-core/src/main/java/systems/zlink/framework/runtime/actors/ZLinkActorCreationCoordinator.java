@@ -19,6 +19,9 @@ import systems.zlink.framework.actors.ZLinkActorCreateResult;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.*;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkLocationRepository;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.locations.ZLinkActorAuthorityPayloadCodec;
@@ -42,7 +45,7 @@ public final class ZLinkActorCreationCoordinator
 
     private final String meshName;
     private final ZLinkInternalMeshNode node;
-    private final ZLinkLocationStore locations;
+    private final ZLinkLocationRepository locations;
     private final ZLinkActorRuntime actors;
     private final ZLinkMessageSerializer serializer;
     private final Duration defaultTimeout;
@@ -58,7 +61,7 @@ public final class ZLinkActorCreationCoordinator
     public ZLinkActorCreationCoordinator(
         String meshName,
         ZLinkInternalMeshNode node,
-        ZLinkLocationStore locations,
+        ZLinkLocationRepository locations,
         ZLinkActorRuntime actors,
         ZLinkMessageSerializer serializer,
         Duration defaultTimeout) {
@@ -79,7 +82,8 @@ public final class ZLinkActorCreationCoordinator
         String actorId,
         String actorType,
         ZLinkMessage createRequest,
-        boolean getOrCreate) {
+        boolean getOrCreate,
+        Duration timeout) {
         UUID id = UUID.randomUUID();
         long high = id.getMostSignificantBits() & Long.MAX_VALUE;
         long low = id.getLeastSignificantBits() & Long.MAX_VALUE;
@@ -93,7 +97,7 @@ public final class ZLinkActorCreationCoordinator
             low);
         long deadline = Math.addExact(
             System.currentTimeMillis(),
-            defaultTimeout.toMillis());
+            timeout.toMillis());
         byte[] requestEnvelope = encodeCreateRequest(createRequest);
         return resumeOrCreate(
             operation,
@@ -345,7 +349,9 @@ public final class ZLinkActorCreationCoordinator
             return actors.createReservedActor(
                     request.intent().actorId(),
                     request.intent().stableType(),
-                    createRequest)
+                    createRequest,
+                    snapshot.objectGeneration(),
+                    snapshot.authorityOwnerGeneration())
                 .thenCompose(result -> completeTarget(
                     request,
                     operation,

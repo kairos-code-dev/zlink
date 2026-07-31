@@ -12,7 +12,8 @@ import type {
 type PlayZLinkActor = TicTacToeActor & ZLinkActor;
 
 class PlayActorFactory {
-  create(actorId: string, context: ZLinkActorContext): PlayZLinkActor {
+  async create(context: ZLinkActorContext): Promise<PlayZLinkActor> {
+    const actorId = context.actorId;
     return new PlayActor(
       actorId,
       actorDisplayName(actorId),

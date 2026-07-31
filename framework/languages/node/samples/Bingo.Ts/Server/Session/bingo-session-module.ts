@@ -1,5 +1,4 @@
-import { Module } from '@nestjs/common';
-import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { bingoFrameworkProtobuf } from '../../Shared/Contracts/protobuf-framework-codec';
 import { SessionAuthenticator } from './Sessions/Handlers/authenticate-session-handler';
@@ -21,7 +20,7 @@ function createBingoSessionModule() {
     'logDir'
   ]);
 
-  Module({
+  zlinkModule(__dirname, {
     imports: [
       configuration,
       ZLinkModule.forRootFactory({
@@ -31,7 +30,6 @@ function createBingoSessionModule() {
           const builder = zlinkFramework();
           builder.options({
             metrics: { meterProvider: bingoMeterProvider },
-            monitoring: {}
           });
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
@@ -43,10 +41,10 @@ function createBingoSessionModule() {
           const mesh = builder.addRouteMesh(SampleNames.roomSpotNode)
             .setRoutingIdPrefix('session')
             .listen(endpoints.sessionSpotEndpoint);
-          mesh.channelName(SampleNames.apiChannel).setWeight(0);
-          mesh.channelName(SampleNames.roomSpotNode).setWeight(0);
+          mesh.objects().client();
+          builder.addClientServerChannel(SampleNames.apiChannel).client();
           return builder.addStreamNode(SampleNames.sessionStream)
-            .enableActorDispatch(SampleNames.roomSpotNode)
+            .enableActorDispatch()
             .bind(endpoints.sessionEndpoint)
             .registerSession(BingoSessionFactory)
           .build();
@@ -55,7 +53,6 @@ function createBingoSessionModule() {
     ],
     providers: [
       BingoSessionFactory,
-      SessionAuthenticator,
       RoomRouterReadinessHandler
     ]
   })(BingoSessionModule);

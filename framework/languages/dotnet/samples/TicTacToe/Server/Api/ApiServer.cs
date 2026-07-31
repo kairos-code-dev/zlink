@@ -37,8 +37,7 @@ internal sealed class ApiServer(SampleSettings settings)
                 .AddRequestHandler<AuthenticatePlayerHandler, AuthenticatePlayerReq, AuthenticatePlayerRes>();
 
             var mesh = options.AddRouteMesh(SampleNodes.Mesh)
-                .Listen(settings.MeshEndpoint)
-                .SetRoutingIdPrefix("tictactoe-api");
+                .Listen(settings.MeshEndpoint);
             mesh.Objects().Client();
             foreach (var endpoint in settings.PeerMeshEndpoints)
                 mesh.PeerConnections.Connect(endpoint);

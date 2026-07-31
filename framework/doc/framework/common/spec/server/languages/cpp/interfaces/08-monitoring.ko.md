@@ -19,6 +19,16 @@ weight `0`을 포함한 Channel Server membership이 있으면 연결 부재는 
 수에서 제외하지만 `not_required`는 liveness·health failure 집계에 포함하지 않는다.
 
 ```cpp
+struct inbound_dispatch_status_t {
+    std::uint64_t application_hwm_bytes;
+    std::uint64_t pending_payload_bytes;
+    std::uint64_t queued_payload_bytes;
+    std::uint64_t active_payload_bytes;
+    bool application_receive_paused;
+    std::uint64_t pending_completion_sends;
+    std::uint64_t completion_send_limit;
+};
+
 struct framework_runtime_status_t {
     framework_runtime_state_t state;
     bool is_ready;
@@ -26,6 +36,7 @@ struct framework_runtime_status_t {
     std::optional<std::chrono::system_clock::time_point> operation_deadline;
     std::optional<relocation_result_t> relocation_result;
     std::optional<termination_result_t> termination_result;
+    inbound_dispatch_status_t inbound_dispatch;
     std::uint64_t sequence;
     std::chrono::system_clock::time_point observed_at;
 };

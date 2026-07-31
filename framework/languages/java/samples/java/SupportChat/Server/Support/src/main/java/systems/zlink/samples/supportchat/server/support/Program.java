@@ -65,6 +65,7 @@ public final class Program {
     @Bean
     ZLinkFrameworkConfigurer supportFramework(SampleTopology topology) {
         SampleTopology.Support support = topology.support();
+        URI channelEndpoint = URI.create(support.channelEndpoint());
         return options -> {
             options.configureLocations();
             options.addHandlersFromPackageOf(Program.class);
@@ -73,13 +74,16 @@ public final class Program {
                 .traceLogFile(SampleFlowLog.path(topology, "support"))
                 .traceLabel("support");
             options.addClientServerChannel(SampleNames.ApiChannel)
-                .enableClient();
+                .client();
             options.addClientServerChannel(SampleNames.SupportChannel)
-                .enableServer(support.channelEndpoint())
+                .server()
+                .setBindHost(channelEndpoint.getHost())
+                .setAdvertiseHost(channelEndpoint.getHost())
+                .listen(channelEndpoint.getPort())
                 .addHandlerGroup(SampleNames.SupportChannel);
             ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.SupportActorMesh);
             node.listen(support.routerEndpoint())
-                .useAllocatedRoutingId(16, "support-owner");
+                .setRoutingIdPrefix("support-owner");
             node.objects()
                 .server()
                 .addEntrySpot(SupportEntrySpot.class)
@@ -90,7 +94,7 @@ public final class Program {
                     factory -> factory.preserveStateWith(
                         SupportUserActorRelocationAdapter.class))
                 .addSpotFactory(
-                    "supportchat.conversation",
+                    SampleNames.ConversationSpotType,
                     ConversationSpot.class,
                     factory -> factory.disableRelocation());
         };

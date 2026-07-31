@@ -15,6 +15,7 @@ import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
+import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 
 final class JsonSessionActorsRuntimeIntegrationTest {
@@ -53,15 +54,17 @@ final class JsonSessionActorsRuntimeIntegrationTest {
     private static ZLinkFrameworkRuntime startLocalJsonRuntime() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(JsonSessionActorsRuntimeIntegrationTest.class);
-        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
+        options.addLocationStore(new ZLinkInMemoryLocationStore());
+        { var node = options.addRouteMesh("game"); node.listen("inproc://json-play-" + System.nanoTime()).setRoutingId(RoutingId.from("play-node"));
                 node.objects().server().addSpotFactory("SessionActorsRuntimeIntegrationTest.GameSpot", SessionActorsRuntimeIntegrationTest.GameSpot.class, factory -> factory.disableRelocation());
                 node.objects().server().addEntrySpot(SessionActorsRuntimeIntegrationTest.GameEntrySpot.class);
                 node.objects().server().addActorFactory(
                     "player",
                     SessionActorsRuntimeIntegrationTest.PlayerActor.class,
                     SessionActorsRuntimeIntegrationTest.PlayerActorFactory.class,
-                    factory -> factory.recreateOnRelocation()); }; };
+                    factory -> factory.disableRelocation()); }
         { var stream = options.addStreamNode("local-json"); stream.bind("inproc://local-json-bind-" + System.nanoTime());
+            stream.enableActorDispatch("game");
             stream.registerSession(SessionActorsRuntimeIntegrationTest.GameSession.class); };
 
         return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
@@ -76,7 +79,7 @@ final class JsonSessionActorsRuntimeIntegrationTest {
             SessionActorsRuntimeIntegrationTest.PlayerActor actor,
             JsonRelaySend request) {
             SessionActorsRuntimeIntegrationTest.actorRelayRequests.offer(
-                actor.actorId() + ":" + request.value());
+                actor.context().actorId() + ":" + request.value());
             return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
     }

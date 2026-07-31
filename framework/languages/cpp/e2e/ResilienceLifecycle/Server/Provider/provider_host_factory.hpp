@@ -16,12 +16,33 @@
 
 #include <cstdint>
 #include <memory>
+#include <stdexcept>
 
 namespace zlink::framework::e2e::resilience_lifecycle::provider
 {
 
 inline void configure_common_codecs (zlink::framework::codec_options_builder_t)
 {
+}
+
+inline std::string host_from_tcp_endpoint (const std::string &endpoint)
+{
+    const auto start = endpoint.rfind ("tcp://", 0) == 0 ? 6U : 0U;
+    const auto separator = endpoint.rfind (':');
+    if (separator == std::string::npos || separator <= start)
+        throw std::invalid_argument ("ClientServer endpoint must use tcp://host:port");
+    return endpoint.substr (start, separator - start);
+}
+
+inline std::uint16_t port_from_tcp_endpoint (const std::string &endpoint)
+{
+    const auto separator = endpoint.rfind (':');
+    if (separator == std::string::npos || separator + 1 >= endpoint.size ())
+        throw std::invalid_argument ("ClientServer endpoint must use tcp://host:port");
+    const auto value = std::stoul (endpoint.substr (separator + 1));
+    if (value == 0 || value > 65535)
+        throw std::invalid_argument ("ClientServer endpoint port is out of range");
+    return static_cast<std::uint16_t> (value);
 }
 
 inline void configure_provider_host (zlink::framework::zlink_framework_options_t &framework,
@@ -51,28 +72,24 @@ inline void configure_provider_host (zlink::framework::zlink_framework_options_t
                                         server_weight_state_t> ();
     configure_common_codecs (framework.codecs ());
     if (!options.api_endpoint.empty ()) {
-        auto channel = framework.add_client_server_channel (api_channel);
-        channel.enable_server (options.api_endpoint)
-          .set_routing_id (zlink::routing_id_t::from (options.rid));
+        auto server = framework.add_client_server_channel (api_channel).server ();
+        server
+          .set_bind_host (host_from_tcp_endpoint (options.api_endpoint))
+          .set_advertise_host (host_from_tcp_endpoint (options.api_endpoint))
+          .listen (port_from_tcp_endpoint (options.api_endpoint))
+          .add_handler_group (handler_group);
         if (options.server_weight) {
-            channel.server_peer_weight (
-              zlink::peer_weight_t::value (static_cast<std::uint32_t> (*options.server_weight)));
+            server.set_weight (*options.server_weight);
         }
-        if (options.max_message_size) {
-            channel.server_max_message_size (
-              zlink::byte_size_t::bytes (static_cast<std::int64_t> (*options.max_message_size)));
-        }
-        channel.use_handler_group (handler_group);
     }
     if (!options.route_endpoint.empty ()) {
         auto route = framework.add_route_mesh (route_channel);
         route.listen (options.route_endpoint)
           .set_routing_id (zlink::routing_id_t::from (options.rid))
           .channel_name (route_channel);
-        route.channel_name (route_channel)
-          .add_request_handler<route_ping_handler_t,
-                               scenario_route_req_t,
-                               scenario_route_res_t> ();
+        route.add_route_request_handler<route_ping_handler_t,
+                                        scenario_route_req_t,
+                                        scenario_route_res_t> ();
     }
     if (!options.http_endpoint.empty ()) {
         framework.http ()

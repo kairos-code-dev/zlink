@@ -12,9 +12,9 @@ import java.util.function.Supplier;
 import org.springframework.context.SmartLifecycle;
 import systems.zlink.e2e.resiliencelifecycle.shared.Contracts;
 import systems.zlink.framework.channels.ZLinkClient;
-import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
 import systems.zlink.framework.locations.ZLinkPageRequest;
-import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle;
 
 public final class ConsumerEndpoints implements SmartLifecycle {
     private final ObjectMapper json;

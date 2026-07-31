@@ -14,6 +14,7 @@ export const SpotServiceNames = {
   multiRouteChannelA: 'multi-route-a',
   multiRouteChannelB: 'multi-route-b',
   actorType: 'scenario-player',
+  alternateActorType: 'scenario-player-alternate',
   actorIdMetadata: 'actor-id'
 } as const;
 
@@ -298,6 +299,7 @@ export interface AuthReq {
   readonly actorId: string;
   readonly displayName: string;
   readonly nodeRid: string;
+  readonly meshName?: string;
 }
 
 export interface AuthRes {
@@ -310,6 +312,7 @@ export interface EnsureActorReq {
   readonly actorId: string;
   readonly displayName: string;
   readonly nodeRid: string;
+  readonly meshName?: string;
 }
 
 export interface EnsureActorRes {

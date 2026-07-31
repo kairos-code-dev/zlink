@@ -710,6 +710,22 @@ zlink::socket_base_t::completion_pipe_for_application (pipe_t *application_pipe_
 }
 
 zlink::pipe_t *
+zlink::socket_base_t::application_pipe_for_completion (pipe_t *completion_pipe_) const
+{
+    if (!completion_pipe_)
+        return NULL;
+    const transport_pair_key_t pair_key (
+      completion_pipe_->get_transport_pair_id (),
+      completion_pipe_->get_transport_pair_generation ());
+    scoped_lock_t lock (_transport_pairs_sync);
+    transport_pairs_t::const_iterator it = _transport_pairs.find (pair_key);
+    return it == _transport_pairs.end () || !it->second.ready
+             || it->second.completion != completion_pipe_
+             ? NULL
+             : it->second.application;
+}
+
+zlink::pipe_t *
 zlink::socket_base_t::completion_pipe_for_peer (const zlink_routing_id_t *peer_rid_) const
 {
     if (!peer_rid_ || peer_rid_->size == 0)

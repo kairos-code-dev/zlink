@@ -22,8 +22,14 @@ import { requireValidSendTimeoutMs } from './SendTimeoutValidation';
 
 export function validateFrameworkRegistration(
   registration: ZLinkFrameworkRegistration,
-  options: ZLinkFrameworkRegistrationOptions = {}
+  _options: ZLinkFrameworkRegistrationOptions = {}
 ): void {
+  validateListenerNetworkIdentity(
+    'process network',
+    undefined,
+    registration.network.bindHost,
+    registration.network.advertiseHost
+  );
   const actorCapableSpotNodes = [...registration.spotNodes.values()]
     .filter((spotNode) => toActorFactoryCount(spotNode.actorFactories) > 0);
   if (actorCapableSpotNodes.length > 1) {
@@ -33,14 +39,49 @@ export function validateFrameworkRegistration(
   }
 
   const peerLocationConfigured = hasLocationStores(registration);
-  validateChannelCapabilities(options.channels, peerLocationConfigured);
+  validateChannelCapabilities(
+    Object.fromEntries(registration.channels),
+    peerLocationConfigured
+  );
   validateChannelTopologyNames(registration);
   validateSpotNodes(registration);
   validateRouteChannels(registration, peerLocationConfigured);
   validateStreamNodes(registration);
   validateWorkerOptions(registration.worker);
-  validateMonitoring(registration);
+  validateInboundDispatchListenerBounds(registration);
   validateLocationRegistration(registration);
+}
+
+function validateInboundDispatchListenerBounds(
+  registration: ZLinkFrameworkRegistration
+): void {
+  if (registration.inboundDispatch.applicationHwmBytes === 0n) {
+    return;
+  }
+
+  const listeners: Array<readonly [string, number | undefined]> = [];
+  for (const [channelName, channel] of registration.channels) {
+    listeners.push(
+      [`channel '${channelName}' server`, channel.server?.maxMessageSize],
+      [`channel '${channelName}' subscriber`, channel.subscriber?.maxMessageSize],
+      [`channel '${channelName}' route mesh`, channel.routeMesh?.maxMessageSize]
+    );
+  }
+  for (const [channelName, routeChannel] of registration.routeChannelOptions) {
+    if (hasBind(routeChannel.bind)) {
+      listeners.push([`route channel '${channelName}'`, routeChannel.maxMessageSize]);
+    }
+  }
+  for (const [spotNodeName, spotNode] of registration.spotNodes) {
+    listeners.push([`SpotNode '${spotNodeName}' router`, spotNode.router?.maxMessageSize]);
+  }
+
+  const unbounded = listeners.find(([, maxMessageSize]) => maxMessageSize === 0);
+  if (unbounded !== undefined) {
+    throw new ZLinkConfigurationException(
+      `${unbounded[0]} maxMessageSize must be bounded when Application HWM is enabled.`
+    );
+  }
 }
 
 function validateChannelTopologyNames(registration: ZLinkFrameworkRegistration): void {
@@ -84,36 +125,6 @@ function validateWorkerOptions(worker: ZLinkWorkerOptions | undefined): void {
   }
   requirePositiveInteger('Worker maxThreads', worker.maxThreads);
   requirePositiveInteger('Worker maxQueueLength', worker.maxQueueLength);
-}
-
-function validateMonitoring(registration: ZLinkFrameworkRegistration): void {
-  const monitoring = registration.monitoring;
-  if (monitoring === undefined) {
-    return;
-  }
-
-  validateDuplicateMonitoringSourceNames([
-    ...(monitoring.socket ?? []).map((source) => source.sourceName),
-    ...(monitoring.locationRuntime ?? []).map((source) => source.sourceName)
-  ]);
-
-  const hasLocationMonitoring = (monitoring.locationRuntime?.length ?? 0) > 0;
-  if (hasLocationMonitoring && !hasLocationStores(registration)) {
-    throw new ZLinkConfigurationException('Location monitoring requires location stores to be registered.');
-  }
-
-  const socketSources = monitoringSocketSources(registration);
-  for (const source of monitoring.socket ?? []) {
-    requireName('Monitoring socket sourceName', source.sourceName);
-    if (!socketSources.has(source.sourceName)) {
-      throw new ZLinkConfigurationException(`Monitoring socket source '${source.sourceName}' is not registered.`);
-    }
-  }
-
-  for (const source of monitoring.locationRuntime ?? []) {
-    requireName('Monitoring location runtime sourceName', source.sourceName);
-    requirePositiveInteger(`Monitoring location runtime source '${source.sourceName}' intervalMs`, source.intervalMs);
-  }
 }
 
 function validateLocationRegistration(registration: ZLinkFrameworkRegistration): void {
@@ -163,44 +174,6 @@ function validateLocationRegistration(registration: ZLinkFrameworkRegistration):
   }
 }
 
-function validateDuplicateMonitoringSourceNames(sourceNames: readonly string[]): void {
-  const seen = new Set<string>();
-  for (const sourceName of sourceNames) {
-    requireName('Monitoring sourceName', sourceName);
-    if (seen.has(sourceName)) {
-      throw new ZLinkConfigurationException(`Duplicate monitoring source '${sourceName}'.`);
-    }
-    seen.add(sourceName);
-  }
-}
-
-function monitoringSocketSources(registration: ZLinkFrameworkRegistration): ReadonlySet<string> {
-  const sources = new Set<string>();
-  for (const [channelName, channel] of registration.channels.entries()) {
-    if (channel.server !== undefined) {
-      sources.add(`${channelName}.server`);
-    }
-    if (channel.client !== undefined) {
-      sources.add(`${channelName}.client`);
-    }
-    if (channel.publisher !== undefined) {
-      sources.add(`${channelName}.publisher`);
-    }
-    if (channel.subscriber !== undefined) {
-      sources.add(`${channelName}.subscriber`);
-    }
-  }
-  for (const [routerChannelId, routeChannel] of registration.routeChannelOptions.entries()) {
-    if (hasBind(routeChannel.bind)) {
-      sources.add(`${routerChannelId}.router`);
-    }
-    if (isRouteClientEnabled(routeChannel) || (routeChannel.manualConnections ?? []).length > 0) {
-      sources.add(`${routerChannelId}.client`);
-    }
-  }
-  return sources;
-}
-
 function requireNonNegativeInteger(label: string, value: number | undefined): void {
   if (value === undefined) {
     return;
@@ -231,6 +204,12 @@ function validateChannelCapabilities(
     }
     if (channel.publisher !== undefined) {
       requireEndpoint(`channel '${channelName}' publisher`, channel.publisher.bind);
+      validateListenerNetworkIdentity(
+        `channel '${channelName}' publisher`,
+        channel.publisher.bind,
+        channel.publisher.bindHost,
+        channel.publisher.advertiseHost
+      );
     }
     if (channel.client !== undefined) {
       requirePeerSource(
@@ -384,6 +363,9 @@ function validateListenerNetworkIdentity(
   advertiseHost: string | undefined
 ): void {
   const bindHost = configuredBindHost ?? tcpEndpointHost(bindEndpoint);
+  if (configuredBindHost !== undefined) {
+    requireName(`${capabilityName} bind host`, configuredBindHost);
+  }
   if (advertiseHost !== undefined) {
     requireName(`${capabilityName} advertise host`, advertiseHost);
     if (isWildcardHost(advertiseHost)) {
@@ -481,6 +463,12 @@ function requireFilePath(label: string, value: string | undefined): void {
 function validateStreamNodes(registration: ZLinkFrameworkRegistration): void {
   for (const [streamNodeName, streamNode] of registration.streamNodes.entries()) {
     requireEndpoint(`STREAM node '${streamNodeName}'`, streamNode.bind);
+    validateListenerNetworkIdentity(
+      `STREAM node '${streamNodeName}'`,
+      streamNode.bind,
+      streamNode.bindHost,
+      streamNode.advertiseHost
+    );
     if (streamNode.tlsServer !== undefined) {
       requireFilePath(`STREAM node '${streamNodeName}' TLS certificate`, streamNode.tlsServer.certificatePath);
       requireFilePath(`STREAM node '${streamNodeName}' TLS key`, streamNode.tlsServer.keyPath);
@@ -489,6 +477,18 @@ function validateStreamNodes(registration: ZLinkFrameworkRegistration): void {
       throw new ZLinkConfigurationException(
         `STREAM node '${streamNodeName}' must register a header stream session.`
       );
+    }
+    if (streamNode.actorDispatchEnabled === true) {
+      if (!hasLocationStores(registration)) {
+        throw new ZLinkConfigurationException(
+          `STREAM node '${streamNodeName}' enables Actor dispatch but no Location Store is registered.`
+        );
+      }
+      if (![...registration.spotNodes.values()].some((spotNode) => spotNode.objectRole !== undefined)) {
+        throw new ZLinkConfigurationException(
+          `STREAM node '${streamNodeName}' requires at least one local Object Client or Server MeshNode.`
+        );
+      }
     }
   }
 }

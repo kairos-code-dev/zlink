@@ -66,6 +66,7 @@ data class EnsureAgentConversationReq(
 
 data class EnsureAgentConversationRes(
     val actor: ActorRefSnapshot,
+    val scheduled: Boolean,
     val state: ConversationState,
 )
 
@@ -93,7 +94,14 @@ data class JoinConversationReq(
 )
 
 data class JoinConversationRes(
+    val scheduled: Boolean,
     val state: ConversationState,
+)
+
+data class JoinConversationFailedNotify(
+    val conversationId: String,
+    val error: String,
+    val isRetriable: Boolean,
 )
 
 data class SendChatMessageReq(

@@ -1,4 +1,8 @@
 package systems.zlink.runtime.sockets;
+import systems.zlink.internal.sockets.SocketOptionKey;
+import systems.zlink.internal.sockets.SocketOptions;
+import systems.zlink.internal.sockets.SocketOptionValueType;
+import systems.zlink.internal.sockets.SocketOption;
 
 import systems.zlink.TestSupport;
 import systems.zlink.contracts.core.Context;

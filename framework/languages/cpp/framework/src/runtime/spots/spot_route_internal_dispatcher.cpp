@@ -92,7 +92,8 @@ spot_route_internal_dispatcher_t::spot_route_internal_dispatcher_t (
 
 bool spot_route_internal_dispatcher_t::can_handle_send (std::string_view packet_name) const
 {
-    return packet_name == actor_bound_session_route_request_t::packet_name;
+    return packet_name == actor_bound_session_route_request_t::packet_name
+           || packet_name == spot_multicast_route_send_t::packet_name;
 }
 
 bool spot_route_internal_dispatcher_t::can_handle_request (std::string_view packet_name) const
@@ -119,6 +120,23 @@ spot_route_internal_dispatcher_t::dispatch_send (const route_received_packet_t &
                                                               : "actor route send body missing");
     }
     try {
+        if (body && received.parts.items ().size () > 0) {
+            const auto header = runtime::messaging::envelope_codec_t{}
+              .decode_header (received.parts);
+            if (header
+                && header.value ().message_name
+                     == spot_multicast_route_send_t::packet_name) {
+                auto request = _serializers
+                  ->get<spot_multicast_route_send_t> ()
+                  .deserialize (detail::encoded_payload_from_raw (body.value ()));
+                (void) _runtime.dispatch_multicast (
+                  std::move (request.topic),
+                  std::vector<zlink::message_t>{
+                    zlink::message_t::from (std::move (request.frame))},
+                  services, *_serializers);
+                return result_t<void>::success ();
+            }
+        }
         auto request = _serializers->get<actor_bound_session_route_request_t> ().deserialize (
           detail::encoded_payload_from_raw (body.value ()));
         auto actor_ref = actor_ref_from_bound_session_route (request);
@@ -129,8 +147,10 @@ spot_route_internal_dispatcher_t::dispatch_send (const route_received_packet_t &
                                                                      ? updated.error ()->what ()
                                                                      : "actor ref update failed");
         }
-        return actor_gateway.dispatch_bound_session_send (actor_ref, request.packet_name_value,
-                                                          zlink::message_t::from (request.payload));
+        auto dispatched = actor_gateway.dispatch_bound_session_send (
+          actor_ref, request.packet_name_value,
+          zlink::message_t::from (request.payload));
+        return dispatched;
     }
     catch (const framework_exception_t &error) {
         return detail::result_access_t::failure<void> (error);
@@ -433,6 +453,8 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
             spot_inbound_message_t metadata;
             metadata.content_type = request.content_type;
             metadata.values = request.metadata;
+            metadata.values["__zlink.messageFollowHopCount"] =
+              std::to_string (request.message_follow_hop_count);
             if (!header.correlation_id.empty ())
                 metadata.correlation_id = header.correlation_id;
             const auto message_kind = actor_relay_kind_from_metadata (metadata);

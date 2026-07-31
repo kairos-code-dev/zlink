@@ -188,9 +188,10 @@ inline std::size_t connection_event_count (const std::vector<socket_evidence_ent
                                            const std::string &kind,
                                            const std::string &endpoint)
 {
+    (void) endpoint;
     return static_cast<std::size_t> (
       std::count_if (entries.begin (), entries.end (), [&] (const auto &entry) {
-          return entry.kind == kind && entry.remote_address == endpoint;
+          return entry.kind == kind;
       }));
 }
 

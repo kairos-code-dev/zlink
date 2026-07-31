@@ -116,19 +116,16 @@ struct open_conversation_api_res_t
     std::string status;
 };
 
-struct allocate_conversation_req_t
+struct conversation_create_req_t
 {
-    static constexpr const char *packet_name = "AllocateConversationReq";
     std::string customer_actor_id;
     std::string customer_display_name;
     std::string subject;
 };
 
-struct allocate_conversation_res_t
+struct conversation_create_res_t
 {
-    static constexpr const char *packet_name = "AllocateConversationRes";
-    std::string conversation_id;
-    std::string status;
+    conversation_state_t state;
 };
 
 struct ensure_support_user_actor_req_t
@@ -158,6 +155,7 @@ struct ensure_agent_conversation_res_t
 {
     static constexpr const char *packet_name = "EnsureAgentConversationRes";
     actor_ref_snapshot_t actor;
+    bool scheduled{false};
     conversation_state_t state;
 };
 
@@ -197,7 +195,16 @@ struct join_conversation_req_t
 struct join_conversation_res_t
 {
     static constexpr const char *packet_name = "JoinConversationRes";
+    bool scheduled{false};
     conversation_state_t state;
+};
+
+struct join_conversation_failed_notify_t
+{
+    static constexpr const char *packet_name = "JoinConversationFailedNotify";
+    std::string conversation_id;
+    std::string error;
+    bool is_retriable{false};
 };
 
 struct send_chat_message_req_t
@@ -421,29 +428,28 @@ inline void from_json (const nlohmann::json &json, open_conversation_api_res_t &
     value.status = json.value ("status", "");
 }
 
-inline void to_json (nlohmann::json &json, const allocate_conversation_req_t &value)
+inline void to_json (nlohmann::json &json, const conversation_create_req_t &value)
 {
     json = {{"customerActorId", value.customer_actor_id},
             {"customerDisplayName", value.customer_display_name},
             {"subject", value.subject}};
 }
 
-inline void from_json (const nlohmann::json &json, allocate_conversation_req_t &value)
+inline void from_json (const nlohmann::json &json, conversation_create_req_t &value)
 {
     value.customer_actor_id = json.value ("customerActorId", "");
     value.customer_display_name = json.value ("customerDisplayName", "");
     value.subject = json.value ("subject", "");
 }
 
-inline void to_json (nlohmann::json &json, const allocate_conversation_res_t &value)
+inline void to_json (nlohmann::json &json, const conversation_create_res_t &value)
 {
-    json = {{"conversationId", value.conversation_id}, {"status", value.status}};
+    json = {{"state", value.state}};
 }
 
-inline void from_json (const nlohmann::json &json, allocate_conversation_res_t &value)
+inline void from_json (const nlohmann::json &json, conversation_create_res_t &value)
 {
-    value.conversation_id = json.value ("conversationId", "");
-    value.status = json.value ("status", "");
+    value.state = json.value ("state", conversation_state_t{});
 }
 
 inline void to_json (nlohmann::json &json, const ensure_support_user_actor_req_t &value)
@@ -488,12 +494,15 @@ inline void from_json (const nlohmann::json &json, ensure_agent_conversation_req
 
 inline void to_json (nlohmann::json &json, const ensure_agent_conversation_res_t &value)
 {
-    json = {{"actor", value.actor}, {"state", value.state}};
+    json = {{"actor", value.actor},
+            {"scheduled", value.scheduled},
+            {"state", value.state}};
 }
 
 inline void from_json (const nlohmann::json &json, ensure_agent_conversation_res_t &value)
 {
     value.actor = json.value ("actor", actor_ref_snapshot_t{});
+    value.scheduled = json.value ("scheduled", false);
     value.state = json.value ("state", conversation_state_t{});
 }
 
@@ -544,12 +553,29 @@ inline void from_json (const nlohmann::json &json, join_conversation_req_t &valu
 
 inline void to_json (nlohmann::json &json, const join_conversation_res_t &value)
 {
-    json = {{"state", value.state}};
+    json = {{"scheduled", value.scheduled}, {"state", value.state}};
 }
 
 inline void from_json (const nlohmann::json &json, join_conversation_res_t &value)
 {
+    value.scheduled = json.value ("scheduled", false);
     value.state = json.value ("state", conversation_state_t{});
+}
+
+inline void to_json (nlohmann::json &json,
+                     const join_conversation_failed_notify_t &value)
+{
+    json = {{"conversationId", value.conversation_id},
+            {"error", value.error},
+            {"isRetriable", value.is_retriable}};
+}
+
+inline void from_json (const nlohmann::json &json,
+                       join_conversation_failed_notify_t &value)
+{
+    value.conversation_id = json.value ("conversationId", "");
+    value.error = json.value ("error", "");
+    value.is_retriable = json.value ("isRetriable", false);
 }
 
 inline void to_json (nlohmann::json &json, const send_chat_message_res_t &value)

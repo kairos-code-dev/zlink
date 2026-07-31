@@ -1,23 +1,17 @@
 package systems.zlink.samples.deliverydispatch.client;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
+import systems.zlink.httpclient.ZLinkHttpClient;
 import systems.zlink.stream.connector.ZLinkStreamAssert;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamMessage;
 
 public final class DeliveryDispatchClientScenario {
-    private final ObjectMapper json = new ObjectMapper();
-    private final HttpClient http = HttpClient.newHttpClient();
     private final String dispatchHttpEndpoint;
 
     public DeliveryDispatchClientScenario(String dispatchHttpEndpoint) {
@@ -196,26 +190,9 @@ public final class DeliveryDispatchClientScenario {
         String path,
         Object body,
         Class<TResponse> responseType) {
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(dispatchHttpEndpoint + path))
-                .header("content-type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)))
-                .build();
-            return http.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-                .thenApply(response -> {
-                    if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                        throw new IllegalStateException("HTTP " + response.statusCode() + " for "
-                            + path + ": " + response.body());
-                    }
-                    try {
-                        return json.readValue(response.body(), responseType);
-                    } catch (java.io.IOException error) {
-                        throw new java.io.UncheckedIOException(error);
-                    }
-                });
-        } catch (java.io.IOException error) {
-            return CompletableFuture.failedFuture(error);
-        }
+        return ZLinkHttpClient.create(dispatchHttpEndpoint)
+            .post(path)
+            .body(body)
+            .fetch(responseType);
     }
 }

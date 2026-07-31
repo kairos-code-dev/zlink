@@ -96,12 +96,16 @@ namespace SpotActorTransfer.ActorNode
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (actor.ActorId.StartsWith(
-                    "actor-st-g5-slow-capture-",
+            if (actor.ActorId.Contains(
+                    "slow-capture",
                     StringComparison.Ordinal))
             {
                 evidence.Add(
-                    "ST-G5",
+                    actor.ActorId.Contains(
+                        "mf-ar-hold",
+                        StringComparison.Ordinal)
+                        ? "MF-AR-HOLD-SLOW-CAPTURE"
+                        : "ST-G5",
                     actor.ActorId,
                     "slow_capture_started",
                     "1250ms");
@@ -164,12 +168,16 @@ namespace SpotActorTransfer.ActorNode
                 "relocation_payload_restored",
                 $"bytes={payload.Length};sha256="
                 + TransferActorStateCodec.Sha256(payload.Span));
-            if (actorId.StartsWith(
-                    "actor-st-g5-slow-restore-",
+            if (actorId.Contains(
+                    "slow-restore",
                     StringComparison.Ordinal))
             {
                 evidence.Add(
-                    "ST-G5",
+                    actorId.Contains(
+                        "mf-ar-hold",
+                        StringComparison.Ordinal)
+                        ? "MF-AR-HOLD-SLOW-RESTORE"
+                        : "ST-G5",
                     actorId,
                     "slow_restore_started",
                     "1250ms");
@@ -824,6 +832,184 @@ namespace SpotActorTransfer.ActorNode
 
     }
 
+    internal sealed class RelocationReadyUserSpot(
+        IZLinkSpotContext context,
+        EvidenceStore evidence) : IZLinkSpot
+    {
+        public IZLinkSpotContext Context { get; } = context;
+
+        internal string Scenario { get; set; } = "ST-G6";
+
+        public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
+            ZLinkMessage request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Scenario = request.Decode<RelocationPayloadSpotReq>().Scenario;
+            return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
+        }
+
+        public ValueTask OnRelocationReadyCompletedAsync(
+            ZLinkSpotRelocationReadyCompletion completion,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            evidence.Add(
+                Scenario,
+                Context.SpotId,
+                "relocation_ready_completed",
+                $"{completion.Outcome}:{Context.NodeRid}");
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    internal sealed class RelocationReadyDefaultUserSpot(
+        IZLinkSpotContext context) : IZLinkSpot
+    {
+        public IZLinkSpotContext Context { get; } = context;
+    }
+
+    internal sealed class RelocationReadyUserSpotAdapter
+        : IZLinkSpotRelocationAdapter<RelocationReadyUserSpot>
+    {
+        public ValueTask<byte[]> CaptureAsync(
+            RelocationReadyUserSpot spot,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (spot.Scenario.Contains(
+                    "PRECOMMIT-ABORT",
+                    StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "Injected ST-G6 precommit abort.");
+            }
+            return ValueTask.FromResult(
+                Encoding.UTF8.GetBytes(spot.Scenario));
+        }
+
+        public ValueTask RestoreAsync(
+            RelocationReadyUserSpot spot,
+            ReadOnlyMemory<byte> payload,
+            CancellationToken cancellationToken)
+        {
+            _ = spot;
+            cancellationToken.ThrowIfCancellationRequested();
+            spot.Scenario = Encoding.UTF8.GetString(payload.Span);
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    internal static class RelocationReadySignal
+    {
+        internal static async ValueTask<RelocationReadySignalRes> ExecuteAsync(
+            IZLinkSpotContext context,
+            RelocationReadySignalReq request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            context.RelocationReady().Defer();
+            var secondRejected = !request.DeferTwice;
+            if (request.DeferTwice)
+            {
+                try
+                {
+                    context.RelocationReady().Defer();
+                }
+                catch (InvalidOperationException)
+                {
+                    secondRejected = true;
+                }
+            }
+
+            var operationRejected =
+                !request.StartFrameworkOperationAfterDefer;
+            if (request.StartFrameworkOperationAfterDefer)
+            {
+                try
+                {
+                    _ = await context.CloseAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (InvalidOperationException)
+                {
+                    operationRejected = true;
+                }
+            }
+
+            return new RelocationReadySignalRes(
+                context.SpotId,
+                context.NodeRid.ToString(),
+                Deferred: true,
+                SecondDeferRejected: secondRejected,
+                FrameworkOperationRejected: operationRejected);
+        }
+    }
+
+    internal sealed class RelocationReadyUserSpotSignalHandler
+        : IZLinkSpotRequestHandler<
+            RelocationReadyUserSpot,
+            RelocationReadySignalReq,
+            RelocationReadySignalRes>
+    {
+        public ValueTask<RelocationReadySignalRes> HandleAsync(
+            RelocationReadyUserSpot spot,
+            RelocationReadySignalReq request,
+            CancellationToken cancellationToken) =>
+            RelocationReadySignal.ExecuteAsync(
+                spot.Context,
+                request,
+                cancellationToken);
+    }
+
+    internal sealed class RelocationReadyDefaultUserSpotSignalHandler
+        : IZLinkSpotRequestHandler<
+            RelocationReadyDefaultUserSpot,
+            RelocationReadySignalReq,
+            RelocationReadySignalRes>
+    {
+        public ValueTask<RelocationReadySignalRes> HandleAsync(
+            RelocationReadyDefaultUserSpot spot,
+            RelocationReadySignalReq request,
+            CancellationToken cancellationToken) =>
+            RelocationReadySignal.ExecuteAsync(
+                spot.Context,
+                request,
+                cancellationToken);
+    }
+
+    internal sealed class AnyTurnRelocationReadyNegativeHandler
+        : IZLinkSpotRequestHandler<
+            RelocationPayloadUserSpot,
+            RelocationReadySignalReq,
+            RelocationReadySignalRes>
+    {
+        public ValueTask<RelocationReadySignalRes> HandleAsync(
+            RelocationPayloadUserSpot spot,
+            RelocationReadySignalReq request,
+            CancellationToken cancellationToken) =>
+            RelocationReadySignal.ExecuteAsync(
+                spot.Context,
+                request,
+                cancellationToken);
+    }
+
+    internal sealed class PerActorRelocationReadyNegativeHandler
+        : IZLinkSpotRequestHandler<
+            RelocationPayloadPerActorUserSpot,
+            RelocationReadySignalReq,
+            RelocationReadySignalRes>
+    {
+        public ValueTask<RelocationReadySignalRes> HandleAsync(
+            RelocationPayloadPerActorUserSpot spot,
+            RelocationReadySignalReq request,
+            CancellationToken cancellationToken) =>
+            RelocationReadySignal.ExecuteAsync(
+                spot.Context,
+                request,
+                cancellationToken);
+    }
+
     internal sealed class RelocationPayloadPerActorUserSpot(
         IZLinkSpotContext context) : IZLinkSpot<TransferActor>
     {
@@ -895,6 +1081,7 @@ namespace SpotActorTransfer.ActorNode
             return ValueTask.FromResult(new RelocationPayloadSpotRes(
                 spot.Context.SpotId,
                 spot.Context.NodeRid.ToString(),
+                checked((long)spot.Context.ObjectGeneration),
                 spot.ApplicationState.Length,
                 TransferActorStateCodec.Sha256(spot.ApplicationState)));
         }
@@ -904,11 +1091,23 @@ namespace SpotActorTransfer.ActorNode
         EvidenceStore evidence)
         : IZLinkSpotRelocationAdapter<RelocationPayloadUserSpot>
     {
-        public ValueTask<byte[]> CaptureAsync(
+        public async ValueTask<byte[]> CaptureAsync(
             RelocationPayloadUserSpot spot,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (spot.Scenario.Contains(
+                    "SLOW-CAPTURE",
+                    StringComparison.Ordinal))
+            {
+                evidence.Add(
+                    spot.Scenario,
+                    spot.Context.SpotId,
+                    "slow_capture_started",
+                    "1250ms");
+                await Task.Delay(1_250, cancellationToken)
+                    .ConfigureAwait(false);
+            }
             evidence.Add(
                 spot.Scenario,
                 spot.Context.SpotId,
@@ -920,7 +1119,7 @@ namespace SpotActorTransfer.ActorNode
                 "spot_application_payload",
                 $"kind=spotwide;bytes={spot.ApplicationState.Length};sha256="
                 + TransferActorStateCodec.Sha256(spot.ApplicationState));
-            return ValueTask.FromResult(spot.ApplicationState);
+            return spot.ApplicationState;
         }
 
         public ValueTask RestoreAsync(
@@ -949,26 +1148,57 @@ namespace SpotActorTransfer.ActorNode
         EvidenceStore evidence)
         : IZLinkSpotRelocationAdapter<RelocationPayloadInstanceSpot>
     {
-        public ValueTask<byte[]> CaptureAsync(
+        public async ValueTask<byte[]> CaptureAsync(
             RelocationPayloadInstanceSpot spot,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (spot.Scenario.Contains(
+                    "SLOW-CAPTURE",
+                    StringComparison.Ordinal))
+            {
+                evidence.Add(
+                    spot.Scenario,
+                    spot.Context.SpotId,
+                    "slow_capture_started",
+                    "1250ms");
+                await Task.Delay(1_250, cancellationToken)
+                    .ConfigureAwait(false);
+            }
             evidence.Add(
                 spot.Scenario,
                 spot.Context.SpotId,
                 "spot_application_payload",
                 $"kind=instance;bytes={spot.ApplicationState.Length};sha256="
                 + TransferActorStateCodec.Sha256(spot.ApplicationState));
-            return ValueTask.FromResult(spot.ApplicationState);
+            return spot.ApplicationState;
         }
 
-        public ValueTask RestoreAsync(
+        public async ValueTask RestoreAsync(
             RelocationPayloadInstanceSpot spot,
             ReadOnlyMemory<byte> payload,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var slowRestoreScenario = spot.Scenario.Contains(
+                "SLOW-RESTORE",
+                StringComparison.Ordinal)
+                ? spot.Scenario
+                : spot.Context.SpotId.Contains(
+                    "st-g5-instance-spot-slow-restore",
+                    StringComparison.Ordinal)
+                    ? "ST-G5-INSTANCE-SPOT-SLOW-RESTORE"
+                    : null;
+            if (slowRestoreScenario is not null)
+            {
+                evidence.Add(
+                    slowRestoreScenario,
+                    spot.Context.SpotId,
+                    "slow_restore_started",
+                    "1250ms");
+                await Task.Delay(1_250, cancellationToken)
+                    .ConfigureAwait(false);
+            }
             spot.ApplicationState = payload.ToArray();
             evidence.Add(
                 "ST-I1",
@@ -976,7 +1206,6 @@ namespace SpotActorTransfer.ActorNode
                 "spot_application_state_restored",
                 $"kind=instance;bytes={payload.Length};sha256="
                 + TransferActorStateCodec.Sha256(payload.Span));
-            return ValueTask.CompletedTask;
         }
     }
 
@@ -985,26 +1214,50 @@ namespace SpotActorTransfer.ActorNode
         : IZLinkSpotRelocationAdapter<
             RelocationPayloadPerActorUserSpot>
     {
-        public ValueTask<byte[]> CaptureAsync(
+        public async ValueTask<byte[]> CaptureAsync(
             RelocationPayloadPerActorUserSpot spot,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (spot.Scenario.Contains(
+                    "SLOW-CAPTURE",
+                    StringComparison.Ordinal))
+            {
+                evidence.Add(
+                    spot.Scenario,
+                    spot.Context.SpotId,
+                    "unexpected_spot_slow_capture",
+                    "per_actor");
+                await Task.Delay(1_250, cancellationToken)
+                    .ConfigureAwait(false);
+            }
             evidence.Add(
                 spot.Scenario,
                 spot.Context.SpotId,
                 "spot_application_payload",
                 $"kind=peractor;bytes={spot.ApplicationState.Length};sha256="
                 + TransferActorStateCodec.Sha256(spot.ApplicationState));
-            return ValueTask.FromResult(spot.ApplicationState);
+            return spot.ApplicationState;
         }
 
-        public ValueTask RestoreAsync(
+        public async ValueTask RestoreAsync(
             RelocationPayloadPerActorUserSpot spot,
             ReadOnlyMemory<byte> payload,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (spot.Scenario.Contains(
+                    "SLOW-RESTORE",
+                    StringComparison.Ordinal))
+            {
+                evidence.Add(
+                    spot.Scenario,
+                    spot.Context.SpotId,
+                    "unexpected_spot_slow_restore",
+                    "per_actor");
+                await Task.Delay(1_250, cancellationToken)
+                    .ConfigureAwait(false);
+            }
             spot.ApplicationState = payload.ToArray();
             evidence.Add(
                 "ST-G3",
@@ -1012,7 +1265,6 @@ namespace SpotActorTransfer.ActorNode
                 "spot_application_state_restored",
                 $"kind=peractor;bytes={payload.Length};sha256="
                 + TransferActorStateCodec.Sha256(payload.Span));
-            return ValueTask.CompletedTask;
         }
     }
 }

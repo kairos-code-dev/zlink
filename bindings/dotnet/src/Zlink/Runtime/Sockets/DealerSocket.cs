@@ -268,13 +268,21 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
 
+        var cloned = RequestReplySupport.CloneParts(parts);
         lock (SubmitGate)
         {
-            RequestReplySupport.SubmitOwnedParts(parts,
-                (ref ZlinkMsg nativePart,
-                        NativeMethods.ZlinkPartFlag partFlag) =>
-                    NativeMethods.zlink_dealer_reply_part(Handle, requestSeq,
-                        ref nativePart, partFlag));
+            try
+            {
+                RequestReplySupport.SubmitClonedParts(cloned,
+                    (ref ZlinkMsg nativePart,
+                            NativeMethods.ZlinkPartFlag partFlag) =>
+                        NativeMethods.zlink_dealer_reply_part(Handle,
+                            requestSeq, ref nativePart, partFlag));
+            }
+            finally
+            {
+                RequestReplySupport.DisposeParts(cloned);
+            }
         }
     }
 

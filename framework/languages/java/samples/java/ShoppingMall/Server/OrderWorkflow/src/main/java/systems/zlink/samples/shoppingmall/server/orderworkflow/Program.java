@@ -14,12 +14,11 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.StandardEnvironment;
-import systems.zlink.framework.spots.ZLinkSpotManager;
-import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
-import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions;
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.samples.shoppingmall.server.configuration.SampleFlowLog;
@@ -66,29 +65,27 @@ public final class Program {
     ZLinkFrameworkConfigurer orderWorkflowFramework(SampleTopology topology) {
         SampleTopology.Workflow workflow = topology.workflow();
         return options -> {
+            options.configureLocations();
+            options.addLocationStore(SampleLocationStore.create(topology));
+            options.addRelocationStore(new ZLinkRedisRelocationStore(
+                new ZLinkRedisRelocationOptions()
+                    .setConnectionString(topology.location().redisEndpoint())
+                    .setKeyPrefix(topology.location().redisKeyPrefix() + "relocation:")));
             options.addHandlersFromPackageOf(Program.class);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(SampleFlowLog.path(workflow.logDirectory(), workflow.instanceName()))
                 .traceLabel(workflow.instanceName());
-            options.addClientServerChannel(SampleNames.OrderWorkflowChannel)
-                .enableServer(workflow.channelEndpoint())
-                .addHandlerGroup("order-workflow");
             ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.OrderSpotDiscovery);
             node.listen(workflow.spotRouterEndpoint())
-                .useAllocatedRoutingId(16, "shoppingmall-workflow");
+                .setRoutingIdPrefix("shoppingmall-workflow");
             node.objects()
                 .server()
-                .addSpotFactory(
-                    "shoppingmall.order-workflow",
+                .addInstanceSpotFactory(
+                    SampleNames.OrderWorkflowSpotType,
                     OrderWorkflowSpot.class,
-                    factory -> factory.disableRelocation());
+                    factory -> factory.recreateOnRelocation());
         };
-    }
-
-    @Bean(destroyMethod = "close")
-    ZLinkRedisLocationStore locationStore(SampleTopology topology) {
-        return SampleLocationStore.create(topology);
     }
 
     @Bean(destroyMethod = "close")
@@ -99,12 +96,8 @@ public final class Program {
     }
 
     @Bean
-    OrderWorkflowService orderWorkflowService(
-        RedisCommerceStore store,
-        ZLinkSpotManager spots,
-        ZLinkRouteClient routes,
-        SpotHandleResolver spotHandles) {
-        return new OrderWorkflowService(store, spots, routes, spotHandles);
+    OrderWorkflowService orderWorkflowService(RedisCommerceStore store) {
+        return new OrderWorkflowService(store);
     }
 
     private static HttpServer startHttp(SampleTopology topology) throws IOException {

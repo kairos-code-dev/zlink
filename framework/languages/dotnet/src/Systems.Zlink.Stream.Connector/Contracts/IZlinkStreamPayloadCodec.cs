@@ -14,3 +14,15 @@ public interface IZlinkStreamPayloadCodec
     /// <summary>Decodes a wire payload back into an instance of <typeparamref name="TPayload" />.</summary>
     TPayload Decode<TPayload>(ZlinkStreamEncodedPayload payload);
 }
+
+/// <summary>
+///     Describes the STREAM wire codec supplied by a payload codec extension.
+///     Framework packages use this descriptor to map a serializer content type to
+///     the STREAM header value without adding STREAM concerns to the shared serializer registry.
+/// </summary>
+public interface IZlinkStreamCodecRegistration
+{
+    string ContentType { get; }
+
+    ZlinkStreamCodec Codec { get; }
+}

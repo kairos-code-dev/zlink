@@ -33,7 +33,7 @@ import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.spots.SpotHandleResolver;
 import io.micrometer.core.instrument.MeterRegistry;
 import systems.zlink.e2e.automaticturn.shared.DrainEvidence;
-import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle;
 import org.springframework.boot.ApplicationRunner;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.messaging.ZLinkMessage;
@@ -75,6 +75,7 @@ public final class Program {
         ZLinkFrameworkLifecycle lifecycle,
         DrainEvidence drainEvidence,
         SessionOptions config) {
+        drainEvidence.observe(lifecycle.observe());
         return new EvidenceHttpServer(
             evidence, json, config.httpEndpoint(), metrics,
             lifecycle, lifecycle::monitoringLocationRuntimeQuery, drainEvidence, null, null);

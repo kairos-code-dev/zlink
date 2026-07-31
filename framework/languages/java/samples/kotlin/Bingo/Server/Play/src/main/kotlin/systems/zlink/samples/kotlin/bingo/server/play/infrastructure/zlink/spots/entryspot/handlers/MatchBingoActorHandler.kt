@@ -1,15 +1,14 @@
 package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.entryspot.handlers
 
 import kotlinx.coroutines.future.await
-import systems.zlink.framework.kotlin.awaitJoin
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors.PlayerActor
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.entryspot.BingoEntrySpot
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinReq
-import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinRes
+import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomState
 import systems.zlink.samples.kotlin.bingo.shared.contracts.MatchBingoApiReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.MatchBingoApiRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.MatchBingoReq
@@ -24,7 +23,7 @@ class MatchBingoActorHandler : ZLinkSuspendingEntrySpotActorRequestHandler<
     override suspend fun handle(
         entrySpot: BingoEntrySpot,
         actor: PlayerActor,
-        context: ZLinkSpotActorRequestContext,
+        context: ZLinkMessageContext,
         request: MatchBingoReq,
     ): MatchBingoRes {
         val matched = entrySpot.context().outbound().requestToChannel(
@@ -38,7 +37,7 @@ class MatchBingoActorHandler : ZLinkSuspendingEntrySpotActorRequestHandler<
             .timeout(SampleTimings.RequestTimeout)
             .submit(MatchBingoApiRes::class.java)
             .await()
-        val joined = actor.context().joinSpot(
+        actor.context().joinSpot(
             matched.roomId,
             BingoRoomJoinReq(
                 matched.roomId,
@@ -48,7 +47,20 @@ class MatchBingoActorHandler : ZLinkSuspendingEntrySpotActorRequestHandler<
             ),
         )
             .timeout(SampleTimings.RequestTimeout)
-            .awaitJoin(BingoRoomJoinRes::class.java)
-        return MatchBingoRes(matched.roomId, joined.reply().state)
+            .defer()
+        return MatchBingoRes(
+            matched.roomId,
+            BingoRoomState(
+                matched.roomId,
+                "WaitingForPlayers",
+                actor.actorId(),
+                false,
+                0,
+                null,
+                emptyList(),
+                emptyList(),
+                emptyList(),
+            ),
+        )
     }
 }

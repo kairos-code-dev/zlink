@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
+#include <zlink/Contracts/Core/routing_id.hpp>
 #include <zlink/framework/contracts/locations/keys.hpp>
 
 #include <chrono>

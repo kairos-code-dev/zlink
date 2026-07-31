@@ -111,16 +111,6 @@ struct create_game_req_t
 {
     static constexpr const char *packet_name = "CreateGameReq";
     std::string game_name;
-};
-
-struct create_game_res_t
-{
-    static constexpr const char *packet_name = "CreateGameRes";
-    std::string room_id;
-    std::string game_name;
-    std::string owner_play_endpoint;
-    std::vector<std::string> play_endpoints;
-    std::vector<play_node_info_t> play_nodes;
     int required_level = 0;
 };
 
@@ -305,12 +295,13 @@ inline void from_json (const nlohmann::json &json, authenticate_player_res_t &va
 
 inline void to_json (nlohmann::json &json, const create_game_req_t &value)
 {
-    json = {{"gameName", value.game_name}};
+    json = {{"gameName", value.game_name}, {"requiredLevel", value.required_level}};
 }
 
 inline void from_json (const nlohmann::json &json, create_game_req_t &value)
 {
     value.game_name = json.value ("gameName", "");
+    value.required_level = json.value ("requiredLevel", 0);
 }
 
 inline void to_json (nlohmann::json &json, const create_game_http_req_t &value)
@@ -398,26 +389,6 @@ inline void to_json (nlohmann::json &json, const authenticate_res_t &value)
 inline void from_json (const nlohmann::json &json, authenticate_res_t &value)
 {
     value.player = json.value ("player", player_info_t{});
-}
-
-inline void to_json (nlohmann::json &json, const create_game_res_t &value)
-{
-    json = {{"roomId", value.room_id},
-            {"gameName", value.game_name},
-            {"ownerPlayEndpoint", value.owner_play_endpoint},
-            {"playEndpoints", value.play_endpoints},
-            {"playNodes", value.play_nodes},
-            {"requiredLevel", value.required_level}};
-}
-
-inline void from_json (const nlohmann::json &json, create_game_res_t &value)
-{
-    value.room_id = json.value ("roomId", "");
-    value.game_name = json.value ("gameName", "");
-    value.owner_play_endpoint = json.value ("ownerPlayEndpoint", "");
-    value.play_endpoints = json.value ("playEndpoints", std::vector<std::string>{});
-    value.play_nodes = json.value ("playNodes", std::vector<play_node_info_t>{});
-    value.required_level = json.value ("requiredLevel", 0);
 }
 
 inline void to_json (nlohmann::json &json, const create_game_http_res_t &value)

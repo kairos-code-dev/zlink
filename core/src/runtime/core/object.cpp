@@ -17,6 +17,8 @@ namespace
 zlink::pipe_t *pipe_command_destination (const zlink::command_t &cmd_)
 {
     switch (cmd_.type) {
+        case zlink::command_t::bind:
+            return cmd_.args.bind.pipe;
         case zlink::command_t::activate_read:
         case zlink::command_t::activate_write:
         case zlink::command_t::hiccup:
@@ -152,7 +154,7 @@ void zlink::object_t::process_command (const command_t &cmd_)
 
     pipe_t *pipe = pipe_command_destination (cmd_);
     if (pipe)
-        pipe->release_command_ref ();
+        pipe->release_lifetime_ref ();
 }
 
 int zlink::object_t::register_endpoint (const char *addr_, const endpoint_t &endpoint_)
@@ -255,8 +257,10 @@ void zlink::object_t::send_conn_failed (session_base_t *destination_)
     send_command (cmd);
 }
 
-void zlink::object_t::send_bind (own_t *destination_, pipe_t *pipe_, bool inc_seqnum_)
+bool zlink::object_t::send_bind (own_t *destination_, pipe_t *pipe_, bool inc_seqnum_)
 {
+    if (!pipe_->retain_lifetime_ref ())
+        return false;
     if (inc_seqnum_)
         destination_->inc_seqnum ();
 
@@ -265,6 +269,7 @@ void zlink::object_t::send_bind (own_t *destination_, pipe_t *pipe_, bool inc_se
     cmd.type = command_t::bind;
     cmd.args.bind.pipe = pipe_;
     send_command (cmd);
+    return true;
 }
 
 void zlink::object_t::send_activate_read (pipe_t *destination_)
@@ -486,7 +491,8 @@ void zlink::object_t::send_pipe_command (pipe_t *destination_,
                                          bool allow_self_dispatch_)
 {
     cmd_.destination = destination_;
-    destination_->retain_command_ref ();
+    if (!destination_->retain_lifetime_ref ())
+        return;
     if (allow_self_dispatch_ && destination_->get_tid () == _tid)
         destination_->process_command (cmd_);
     else

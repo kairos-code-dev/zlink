@@ -2,7 +2,7 @@ package systems.zlink.samples.deliverydispatch.server.tracking.handlers;
 
 import systems.zlink.framework.actors.ZLinkActorClient;
 import systems.zlink.framework.actors.ZLinkActorDirectory;
-import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.samples.deliverydispatch.server.configuration.EvidenceStore;
@@ -29,7 +29,7 @@ public final class DeliveryStatusChangedHandler
     @Override
     public CompletionStage<Messages.DeliveryStatusChangedRes> handle(
         Messages.DeliveryStatusChangedReq request,
-        ZLinkRequestContext context) {
+        ZLinkMessageContext context) {
         evidenceStore.append(request);
         return actorRefs.find(SAMPLE_CUSTOMER_ID).thenApply(found -> {
             var actor = found.orElseThrow(() -> new IllegalStateException(

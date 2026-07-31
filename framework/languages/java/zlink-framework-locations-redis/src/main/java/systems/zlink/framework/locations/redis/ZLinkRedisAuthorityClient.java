@@ -22,6 +22,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.*;
 
 final class ZLinkRedisAuthorityClient {
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -1728,12 +1729,11 @@ final class ZLinkRedisAuthorityClient {
         String version =
             ((ZLinkAuthorityExpectFound) expectation).storeVersion();
         boolean deleting = mutation instanceof ZLinkAuthorityDelete;
-        boolean restoring = mutation instanceof systems.zlink.framework.locations
-            .ZLinkAuthorityRestore;
+        boolean restoring = mutation instanceof systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityRestore;
         byte[] mutationPayload = deleting
             ? new byte[0]
             : restoring
-                ? ((systems.zlink.framework.locations.ZLinkAuthorityRestore)
+                ? ((systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityRestore)
                     mutation).payload()
                 : ((ZLinkAuthorityPut) mutation).payload();
         String payload = encode(mutationPayload);
@@ -1747,7 +1747,7 @@ final class ZLinkRedisAuthorityClient {
                 case NEW_OWNER -> "new-owner";
             };
         ZLinkLocationOwnerToken targetOwner = restoring
-            ? ((systems.zlink.framework.locations.ZLinkAuthorityRestore)
+            ? ((systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityRestore)
                 mutation).expectedOwner()
             : put == null ? null : put.targetOwner().orElse(null);
         String capacityFence = put == null
@@ -1976,8 +1976,7 @@ final class ZLinkRedisAuthorityClient {
                     keys.scansWatermarkKey(),
                     keys.scansExpiryKey(),
                     request.objectKind()
-                        == systems.zlink.framework.locations
-                            .ZLinkPlacementObjectKind.ACTOR
+                        == systems.zlink.framework.locations.ZLinkPlacementObjectKind.ACTOR
                         ? keys.schemaKey()
                         : keys.entrySpotIdentityClaimKeyFromAuthority(key),
                     keys.capacitySpotActiveKey(),

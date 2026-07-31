@@ -1,6 +1,6 @@
 import type { RoutingId } from '../../contracts';
+import { ZLinkLocationWriteStatus } from '../../contracts/Locations';
 import {
-  ZLinkLocationWriteStatus,
   ZLinkSpotKind,
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException

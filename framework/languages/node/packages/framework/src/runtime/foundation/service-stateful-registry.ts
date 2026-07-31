@@ -341,7 +341,12 @@ export class ServiceStatefulRegistry {
     this.requireActor(binding.actor);
     requirePositive(binding.bindingGeneration, 'bindingGeneration');
     const current = this.bindings.get(actorKey(binding.actor));
-    if (current !== undefined && current.bindingGeneration >= binding.bindingGeneration) {
+    if (
+      current !== undefined
+      && current.sessionOwnerNodeRid === binding.sessionOwnerNodeRid
+      && current.sessionRid === binding.sessionRid
+      && current.bindingGeneration >= binding.bindingGeneration
+    ) {
       throw new ServiceStaleGenerationError('binding', binding.actor.actorId);
     }
     this.nextBindingGeneration = max(this.nextBindingGeneration, binding.bindingGeneration + 1n);
@@ -353,11 +358,21 @@ export class ServiceStatefulRegistry {
     return binding?.actor.generation === actor.generation ? binding : undefined;
   }
 
-  unbindSession(actor: ServiceActorRef, expectedBindingGeneration: bigint): boolean {
+  unbindSession(
+    actor: ServiceActorRef,
+    expectedBindingGeneration: bigint,
+    expectedSessionRid?: string,
+    expectedSessionOwnerNodeRid?: string
+  ): boolean {
     const key = actorKey(actor);
     const binding = this.bindings.get(key);
     if (binding === undefined) return false;
-    if (binding.bindingGeneration !== expectedBindingGeneration) {
+    if (
+      binding.bindingGeneration !== expectedBindingGeneration
+      || expectedSessionRid !== undefined && binding.sessionRid !== expectedSessionRid
+      || expectedSessionOwnerNodeRid !== undefined
+        && binding.sessionOwnerNodeRid !== expectedSessionOwnerNodeRid
+    ) {
       throw new ServiceStaleGenerationError('binding', actor.actorId);
     }
     this.bindings.delete(key);

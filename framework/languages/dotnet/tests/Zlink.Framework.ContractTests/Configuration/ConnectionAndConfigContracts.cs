@@ -66,10 +66,10 @@ public sealed class ConnectionAndConfigContracts
         Assert.True(socket.Immediate);
         Assert.True(route.RequireKnownPeer);
         Assert.True(outbound.ProbeRouterOnConnect);
-        Assert.Equal(32, publisher.SendHighWaterMark);
+        Assert.Equal(32UL, publisher.SendHighWaterMark);
         Assert.Equal(TimeSpan.FromMilliseconds(20), publisher.SendTimeout);
         Assert.Equal(TimeSpan.Zero, publisher.Linger);
-        Assert.Equal(64, subscriber.ReceiveHighWaterMark);
+        Assert.Equal(64UL, subscriber.ReceiveHighWaterMark);
         Assert.Equal(TimeSpan.FromMilliseconds(30), subscriber.ReceiveTimeout);
         Assert.Equal(TimeSpan.Zero, subscriber.Linger);
         Assert.NotNull(dispatch.Unhandled);
@@ -79,9 +79,9 @@ public sealed class ConnectionAndConfigContracts
     {
         public long MaxMessageSize { get; set; }
 
-        public int SendHighWaterMark { get; set; }
+        public ulong SendHighWaterMark { get; set; }
 
-        public int ReceiveHighWaterMark { get; set; }
+        public ulong ReceiveHighWaterMark { get; set; }
 
         public int SendBufferSize { get; set; }
 
@@ -124,7 +124,7 @@ public sealed class ConnectionAndConfigContracts
 
     internal sealed class SpotPublisherConfig : IZLinkSpotPublisherConfig
     {
-        public int SendHighWaterMark { get; set; }
+        public ulong SendHighWaterMark { get; set; }
 
         public TimeSpan? SendTimeout { get; set; }
 
@@ -133,7 +133,7 @@ public sealed class ConnectionAndConfigContracts
 
     internal sealed class SpotSubscriberConfig : IZLinkSpotSubscriberConfig
     {
-        public int ReceiveHighWaterMark { get; set; }
+        public ulong ReceiveHighWaterMark { get; set; }
 
         public TimeSpan? ReceiveTimeout { get; set; }
 

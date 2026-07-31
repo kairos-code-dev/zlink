@@ -3,29 +3,23 @@ package systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.spo
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpot
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
+import systems.zlink.framework.spots.ZLinkActorCreateResponse
 import systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.CustomerActor
 import systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.CustomerActorDirectory
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeDeliveryReq
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeDeliveryRes
 
 class CustomerEntrySpot(
-    private val entryContext: ZLinkEntrySpotContext,
+    override val context: ZLinkEntrySpotContext,
     private val customers: CustomerActorDirectory,
 ) : ZLinkSuspendingEntrySpot<CustomerActor>() {
-    override fun context(): ZLinkEntrySpotContext = entryContext
-
     override suspend fun onCreateActorSuspending(
         actor: CustomerActor,
         createRequest: ZLinkMessage,
-    ) {
+    ): ZLinkActorCreateResponse {
         customers.register(actor)
+        return ZLinkActorCreateResponse.accept()
     }
-
-    override suspend fun onActorJoinSuspending(
-        actorId: String,
-        request: ZLinkMessage,
-    ): ZLinkSpotActorJoinResponse = ZLinkSpotActorJoinResponse.accept()
 
     override suspend fun onJoinedActorSuspending(actor: CustomerActor) {
         customers.register(actor)

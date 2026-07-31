@@ -37,9 +37,27 @@ Metric 표에서 `counter`는 발생 횟수나 누적량을 단조 증가시키�
 - Provider failure는 application callback, reply, 새 작업 수락과 host lifecycle 결과를
   바꾸지 않는다.
 
-## 3. MeshNode
+## 3. Host와 MeshNode
 
-### 3.1 Peer와 channel
+### 3.1 Host inbound dispatch
+
+Framework가 수신했지만 handler가 아직 끝나지 않은 payload의 host 전체 byte 합계는
+[Application HWM](01-glossary.ko.md#application-hwm)으로 제한한다. 다음 observable은 기존 dispatch
+accounting 값을 읽으며 metric 수집을 위해 queue나 handler를 순회하지 않는다.
+
+| 계기 | 종류 | 단위 | Label | 의미 |
+|---|---|---|---|---|
+| `zlink.host.inbound.application_hwm` | observable | `By` | 없음 | Startup에서 적용한 host 전체 HWM이다. `0`은 제한하지 않는다는 뜻이다. |
+| `zlink.host.inbound.pending_payload` | observable | `By` | `state` | 아직 terminal 상태가 아닌 application payload byte다. |
+| `zlink.host.inbound.receive_paused` | observable | `{state}` | 없음 | HWM 때문에 application receive가 중단되었으면 `1`, 아니면 `0`이다. |
+| `zlink.host.completion.pending_sends` | observable | `{request}` | 없음 | Reply 전송 permit을 기다리거나 확보한 request 수다. |
+| `zlink.host.completion.send_limit` | observable | `{request}` | 없음 | Host completion send permit 상한이다. |
+
+`zlink.host.inbound.pending_payload`의 `state`는 `queued|active`만 허용한다. MeshName, ChannelName,
+Actor ID, Spot ID, packet name과 owner는 label로 사용하지 않는다. Owner별 top-N 진단은 metric이 아니라
+명시적인 운영 조회로만 제공한다.
+
+### 3.2 Peer와 channel
 
 한 process에서 peer 연결과 Channel 메시징을 제공하는 runtime 단위를
 [MeshNode](01-glossary.ko.md#meshnode)라고 한다. 여러 MeshNode가 같은 메시징 규칙을
@@ -72,7 +90,7 @@ member만 ready 계기에 포함한다. Remote MeshNode가 identity, endpoint, C
 | Selection failure `reason` | `no_member`, `not_ready`, `draining` |
 | `surface` | `node`, `channel`, `spot`, `instance_spot`, `actor` |
 
-### 3.2 One-way message drop
+### 3.3 One-way message drop
 
 Reply를 만들지 않고 송신 완료와 remote handler 완료를 분리하는 호출을
 [one-way](01-glossary.ko.md#one-way-정상-완료)라고 한다. 이 절은 Framework가 remote

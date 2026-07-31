@@ -7,7 +7,8 @@ internal sealed record ZLinkPerActorShellRelocationPlan(
     RoutingId TargetNodeRid,
     ulong TargetNodeLifecycleGeneration,
     ZLinkLocationOwnerToken TargetOwner,
-    ulong TargetAuthorityOwnerGeneration);
+    ulong TargetAuthorityOwnerGeneration,
+    DateTimeOffset ClosingDeadline);
 
 internal sealed partial class ZLinkSpotActivation :
     IZLinkSpotContext,
@@ -34,6 +35,7 @@ internal sealed partial class ZLinkSpotActivation :
     private readonly ZLinkSpotTimerRegistry _timers;
     private readonly string _spotId;
     private readonly object _lifecycleGate = new();
+    private readonly SemaphoreSlim _membershipPublicationGate = new(1, 1);
     private ZLinkSpotActorHandlerRegistry? _actorHandlers;
     private bool _configurationOpen = true;
     private int _nativeDispatchAttached;
@@ -57,7 +59,8 @@ internal sealed partial class ZLinkSpotActivation :
         ZLinkUserSpotExecutionMode executionMode = ZLinkUserSpotExecutionMode.SpotWide,
         ZLinkSpotRelocationReadinessMode relocationReadiness =
             ZLinkSpotRelocationReadinessMode.AnyTurnBoundary,
-        bool restoreLogicalTimers = false)
+        bool restoreLogicalTimers = false,
+        ZLinkCompletionAdmissionOwner? completionAdmission = null)
     {
         _runtime = runtime;
         _timers = new ZLinkSpotTimerRegistry(
@@ -76,7 +79,8 @@ internal sealed partial class ZLinkSpotActivation :
         _outbound = new ZLinkSpotOutboundTransport(
             nativeSpot,
             sendTimeout,
-            _stopSource.Token);
+            _stopSource.Token,
+            completionAdmission);
         _outboundEndpoint = new ZLinkSpotOutboundEndpoint(
             this,
             _outbound,
@@ -101,7 +105,9 @@ internal sealed partial class ZLinkSpotActivation :
             _subscriptions,
             () => _actorHandlers,
             () => HandlerInvoker,
-            CommitNativeActorJoinAsync);
+            CommitNativeActorJoinAsync,
+            _outbound.Submitter,
+            completionAdmission);
         _actorDispatchSubmitter = new ZLinkSpotActorDispatchSubmitter(_serial, _dispatcher.ActorPackets);
     }
 
@@ -142,21 +148,31 @@ internal sealed partial class ZLinkSpotActivation :
         PerActorShellRelocationPlan =>
         Volatile.Read(ref _perActorShellRelocation);
 
-    internal void PublishPerActorShellRelocationPlan(
-        ZLinkPerActorShellRelocationPlan plan)
+    internal async ValueTask PublishPerActorShellRelocationPlanAsync(
+        ZLinkPerActorShellRelocationPlan plan,
+        CancellationToken cancellationToken = default)
     {
         if (ExecutionMode != ZLinkUserSpotExecutionMode.PerActor)
             throw new InvalidOperationException(
                 "Only a PerActor User Spot can publish a shell relocation plan.");
-        if (Interlocked.CompareExchange(
-                ref _perActorShellRelocation,
-                plan,
-                null) is { } existing
-            && existing != plan)
-            throw new ZLinkRelocationDataLostException(
-                $"SPOT '{SpotId}' shell relocation target changed.");
-        if (JoinedActorCount == 0)
-            _perActorMembersDrained.TrySetResult();
+        await _membershipPublicationGate.WaitAsync(cancellationToken)
+            .ConfigureAwait(false);
+        try
+        {
+            if (Interlocked.CompareExchange(
+                    ref _perActorShellRelocation,
+                    plan,
+                    null) is { } existing
+                && existing != plan)
+                throw new ZLinkRelocationDataLostException(
+                    $"SPOT '{SpotId}' shell relocation target changed.");
+            if (JoinedActorCount == 0)
+                _perActorMembersDrained.TrySetResult();
+        }
+        finally
+        {
+            _membershipPublicationGate.Release();
+        }
     }
 
     internal Task WaitForPerActorMembersDrainedAsync(

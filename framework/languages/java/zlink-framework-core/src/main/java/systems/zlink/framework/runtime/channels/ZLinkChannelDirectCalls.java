@@ -123,7 +123,6 @@ final class PublishCall implements ZLinkFanoutPublishCall {
         if (duplicate != null) {
             return duplicate;
         }
-        ZLinkRuntimeMetrics.increment("zlink.fanout.published", Map.of());
         List<Message> publishParts = ZLinkChannelCallRuntime.parts(packetName, payload);
         return runtime.oneWayCalls().submitOneWay(
             publisher,

@@ -1,5 +1,5 @@
 assembly Zlink.Framework.Codecs.Protobuf
-  type sealed-class Zlink.Framework.Codecs.Protobuf.ZLinkProtobufCodec : Systems.Zlink.Stream.Connector.Contracts.IZlinkStreamPayloadCodec, Zlink.Framework.Contracts.Codecs.IZLinkCodecExtension
+  type sealed-class Zlink.Framework.Codecs.Protobuf.ZLinkProtobufCodec : Systems.Zlink.Stream.Connector.Contracts.IZlinkStreamCodecRegistration, Systems.Zlink.Stream.Connector.Contracts.IZlinkStreamPayloadCodec, Zlink.Framework.Contracts.Codecs.IZLinkCodecExtension
     property static Zlink.Framework.Codecs.Protobuf.ZLinkProtobufCodec Default { get; } [nullability=read:not-null,write:unknown]
     method virtual TPayload? Decode<TPayload>(Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamEncodedPayload payload [nullability=read:not-null,write:not-null]) [return=read:nullable,write:nullable]
       generic TPayload variance=invariant nullable=nullable

@@ -54,8 +54,8 @@ inline void configure_play_host (zlink::framework::app_t &app,
         server::add_redis_location_store (options, play_options.redis_endpoint,
                                           play_options.redis_key_prefix);
         options.add_client_server_channel (yd::delay_channel)
-          .enable_client (play_options.delay_endpoint)
-          .set_routing_id (zlink::routing_id_t::from (play_options.node_rid));
+          .client ()
+          .connect (play_options.delay_endpoint);
         auto control = options.add_route_mesh (yd::control_channel);
         control.listen (play_options.control_endpoint)
           .set_routing_id (zlink::routing_id_t::from (play_options.node_rid))

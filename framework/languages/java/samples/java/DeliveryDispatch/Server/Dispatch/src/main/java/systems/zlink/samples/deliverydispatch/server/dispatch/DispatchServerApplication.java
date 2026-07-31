@@ -2,10 +2,10 @@ package systems.zlink.samples.deliverydispatch.server.dispatch;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.net.URI;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
@@ -38,20 +38,22 @@ public final class DispatchServerApplication {
                 .traceLogFile(topology.logDirectory() + "/flow-dispatch.log")
                 .traceLabel("dispatch");
             options.addClientServerChannel(SampleNames.CourierChannel)
-                .enableClient();
+                .client();
             // The courier's decision comes back here as its own one-way message, so dispatch has
             // to be a channel server (common sample spec section 7.4).
+            URI dispatchEndpoint = URI.create(topology.dispatchChannelEndpoint());
             options.addClientServerChannel(SampleNames.DispatchChannel)
-                .enableServer(topology.dispatchChannelEndpoint())
-                .setRoutingId(RoutingId.from("delivery-dispatch-channel"))
+                .server()
+                .setBindHost(dispatchEndpoint.getHost())
+                .setAdvertiseHost(dispatchEndpoint.getHost())
+                .listen(dispatchEndpoint.getPort())
                 .addHandlerGroup(SampleNames.DispatchChannel);
             options.addClientServerChannel(SampleNames.TrackingChannel)
-                .enableClient()
-                .setRoutingId(RoutingId.from("delivery-dispatch-tracking-client"));
+                .client();
             ZLinkMeshNodeBuilder courierRoutes = options.addRouteMesh(SampleNames.CourierSpotDiscovery);
             courierRoutes
                 .listen("inproc://deliverydispatch-dispatch-courier-client")
-                .useAllocatedRoutingId(16, "delivery-dispatch");
+                .setRoutingIdPrefix("delivery-dispatch");
         };
     }
 

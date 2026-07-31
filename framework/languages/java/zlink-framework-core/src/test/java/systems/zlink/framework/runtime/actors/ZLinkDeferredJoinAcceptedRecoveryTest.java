@@ -1,5 +1,23 @@
 package systems.zlink.framework.runtime.actors;
 
+import systems.zlink.framework.runtime.internal.locations.ZLinkRelocationStore;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationDeleteResult;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationFound;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationMissing;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationReadResult;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationRenewMissing;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationRenewResult;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationRenewed;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkRelocationStored;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -18,6 +36,7 @@ import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorJoinCompletion;
 import systems.zlink.framework.actors.ZLinkActorJoinOperationId;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.*;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
 

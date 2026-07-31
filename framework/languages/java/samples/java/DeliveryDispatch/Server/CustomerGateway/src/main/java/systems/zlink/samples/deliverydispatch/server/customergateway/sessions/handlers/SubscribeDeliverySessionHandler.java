@@ -1,6 +1,8 @@
 package systems.zlink.samples.deliverydispatch.server.customergateway.sessions.handlers;
 
 import systems.zlink.framework.actors.ZLinkActorManager;
+import systems.zlink.framework.actors.ActorRef;
+import systems.zlink.framework.actors.ZLinkActorCreateResult;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionMessageContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
@@ -40,8 +42,10 @@ public final class SubscribeDeliverySessionHandler
                 ? CompletableFuture.completedFuture(found.orElseThrow())
                 : actors.getOrCreate(
                     CustomerId,
-                    SampleNames.CustomerActorType,
-                    new Messages.EnsureCustomerActorReq(CustomerId)))
+                    SampleNames.CustomerActorType)
+                    .request(new Messages.EnsureCustomerActorReq(CustomerId))
+                    .submit()
+                    .thenApply(SubscribeDeliverySessionHandler::requireActor))
             .thenCompose(actor -> context.actors().find(actor.actorId()).isEmpty()
                 ? context.actors().bind(actor).thenApply(ignored -> actor)
                 : CompletableFuture.completedFuture(actor))
@@ -50,5 +54,15 @@ public final class SubscribeDeliverySessionHandler
                 context.client().reply(
                     new Messages.SubscribeDeliveryRes(request.deliveryId())).submit();
             });
+    }
+
+    private static ActorRef requireActor(ZLinkActorCreateResult result) {
+        if (result instanceof ZLinkActorCreateResult.Existing existing) {
+            return existing.actor();
+        }
+        if (result instanceof ZLinkActorCreateResult.Created created) {
+            return created.actor();
+        }
+        throw new IllegalStateException("Customer actor creation was rejected.");
     }
 }

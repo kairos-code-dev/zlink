@@ -214,7 +214,7 @@ export function applySpotHandlerRegistrations(
   registrations: ZLinkUserSpotHandlerRegistrationSet
 ): void {
   for (const handler of registrations.actorSendHandlers ?? []) {
-    if (handler.spotType === spotType) {
+    if (isSpotImplementation(handler.spotType, spotType)) {
       registry.addActorPacketRegistration(
         ZLinkActorPacketKind.Send,
         handler.handlerType,
@@ -224,7 +224,7 @@ export function applySpotHandlerRegistrations(
     }
   }
   for (const handler of registrations.actorRequestHandlers ?? []) {
-    if (handler.spotType === spotType) {
+    if (isSpotImplementation(handler.spotType, spotType)) {
       registry.addActorPacketRegistration(
         ZLinkActorPacketKind.Request,
         handler.handlerType,
@@ -234,13 +234,21 @@ export function applySpotHandlerRegistrations(
     }
   }
   for (const handler of registrations.packetHandlers ?? []) {
-    if (handler.spotType === spotType) {
+    if (isSpotImplementation(handler.spotType, spotType)) {
       registry.addPacket(handler.handlerType, handler.packetName);
     }
   }
   for (const handler of registrations.subscriptionHandlers ?? []) {
-    if (handler.spotType === spotType) {
+    if (isSpotImplementation(handler.spotType, spotType)) {
       registry.addSubscribe(handler.handlerType, handler.channelName, handler.topic);
     }
   }
+}
+
+function isSpotImplementation(
+  registeredType: Type<ZLinkSpot>,
+  implementation: Type<ZLinkSpot>
+): boolean {
+  return registeredType === implementation
+    || implementation.prototype instanceof registeredType;
 }

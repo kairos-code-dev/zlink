@@ -7,7 +7,6 @@ import systems.zlink.e2e.kotlin.runtimemonitoring.client.scenarios.MonA3SpotEven
 import systems.zlink.e2e.kotlin.runtimemonitoring.client.scenarios.MonA4AvailabilityTransitionScenario
 import systems.zlink.e2e.kotlin.runtimemonitoring.client.scenarios.MonA5FixedKindsScenario
 import systems.zlink.e2e.kotlin.runtimemonitoring.client.scenarios.MonB1KindFilterScenario
-import systems.zlink.e2e.kotlin.runtimemonitoring.client.scenarios.MonB2RegistrationValidationScenario
 import systems.zlink.e2e.kotlin.runtimemonitoring.client.scenarios.MonC1DispatchFailureScenario
 import systems.zlink.e2e.kotlin.runtimemonitoring.client.scenarios.MonD1FailureRecoveryScenario
 
@@ -22,7 +21,6 @@ class ClientScenario(
     private val monA4 = MonA4AvailabilityTransitionScenario(options, evidence)
     private val monA5 = MonA5FixedKindsScenario(options, evidence)
     private val monB1 = MonB1KindFilterScenario(options, evidence)
-    private val monB2 = MonB2RegistrationValidationScenario(options, evidence)
     private val monC1 = MonC1DispatchFailureScenario(options, evidence)
     private val monD1 = MonD1FailureRecoveryScenario(options, evidence)
 
@@ -37,7 +35,6 @@ class ClientScenario(
         monA4.runDrainSubset()
         monA5.run()
         monB1.run()
-        monB2.run()
         monC1.run()
         monD1.run()
     }
@@ -50,7 +47,6 @@ class ClientScenario(
             "MON-A4" -> monA4.runDrainSubset()
             "MON-A5" -> monA5.run()
             "MON-B1" -> monB1.run()
-            "MON-B2" -> monB2.run()
             "MON-C1" -> monC1.run()
             "MON-D1" -> monD1.run()
             else -> throw IllegalArgumentException("Unknown RuntimeMonitoring scenario '$scenario'.")

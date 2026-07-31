@@ -12,6 +12,7 @@ import type {
 } from '../streams/stream-binding-runtime-ports';
 import type { DefaultZLinkBoundSession } from '../streams/session-context';
 import type { MeshRouterResolver } from './mesh-router-resolver';
+import type { ZLinkStoreLocationResolvers } from '../locations';
 import { ZLinkRemoteBoundSessionRelay } from './remote-bound-session-relay';
 import { ZLinkActorPacketRelay } from './actor-packet-relay';
 import { ZLinkRemoteActorJoinReceiver } from './remote-actor-join-receiver';
@@ -25,7 +26,8 @@ export interface ZLinkBoundSessionRelayOptions {
   readonly actorManager: () => DefaultZLinkActorManager | undefined;
   readonly spotManager: () => DefaultZLinkSpotManager | undefined;
   readonly spotNodeRuntime: () => ZLinkSpotNodeRuntimeManager | undefined;
-  readonly primaryMeshNode: () => ZLinkBackendActorSessionNode;
+  readonly actorSessionNode: (actorId: string) => ZLinkBackendActorSessionNode | undefined;
+  readonly actorLocationResolver?: () => ZLinkStoreLocationResolvers | undefined;
   readonly destroyedActorRefs: ReadonlyMap<string, ActorRef>;
   readonly errorSink: () => { reportRuntimeTaskException(taskName: string, error: unknown): void };
   readonly boundSessionFactory: (actorId: string) => DefaultZLinkBoundSession;
@@ -45,7 +47,8 @@ export class ZLinkBoundSessionRelay {
       meshRouters: options.meshRouters,
       spotManager: options.spotManager,
       spotNodeRuntime: options.spotNodeRuntime,
-      errorSink: options.errorSink
+      errorSink: options.errorSink,
+      actorLocationResolver: options.actorLocationResolver
     });
     this.boundSessions = new ZLinkRemoteBoundSessionRelay({
       requestTimeoutMs: options.requestTimeoutMs,
@@ -53,7 +56,7 @@ export class ZLinkBoundSessionRelay {
       streamBindingRuntime: options.streamBindingRuntime,
       actorManager: options.actorManager,
       meshRouters: options.meshRouters,
-      primarySpotNode: options.primaryMeshNode,
+      actorSessionNode: options.actorSessionNode,
       destroyedActorRefs: options.destroyedActorRefs,
       boundSessionFactory: options.boundSessionFactory,
       updateRemoteActorPacketTarget: (actorId, value) =>

@@ -1,19 +1,21 @@
 import { Inject } from '@nestjs/common';
-import { ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
+import { ZLINK_SPOT_OUTBOUND } from '@zlink-systems/nestjs';
 import { gameplayMsg } from '../../../../Shared/Contracts/messages';
-import { questMissionRouteChannel, SampleNames } from '../../../../Shared/Configuration/sample-names';
-import type { ZLinkRouteClient } from '@zlink-systems/framework';
+import { questMissionSpotId, SampleNames } from '../../../../Shared/Configuration/sample-names';
+import type { ZLinkSpotOutbound } from '@zlink-systems/framework';
 import type { GameplayEventEnvelope } from '../../../../Shared/Contracts/messages';
 
 class GameplayEventPublisher {
   constructor(
-    @Inject(ZLINK_ROUTE_CLIENT) private readonly routes: ZLinkRouteClient
+    @Inject(ZLINK_SPOT_OUTBOUND) private readonly spots: ZLinkSpotOutbound
   ) {}
 
   async send(event: GameplayEventEnvelope): Promise<void> {
     const message = gameplayMsg(event);
-    this.routes
-      .sendToChannel(SampleNames.playerQuestSpotMesh, questMissionRouteChannel(event.playerId), message)
+    await this.spots
+      .sendToSpot(questMissionSpotId(event.playerId), message)
+      .instanceSpot(SampleNames.playerQuestSpotType)
+      .inMesh(SampleNames.playerQuestSpotMesh)
       .submit();
   }
 }

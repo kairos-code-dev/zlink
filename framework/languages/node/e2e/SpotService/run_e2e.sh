@@ -218,6 +218,8 @@ PLAY_A_ROUTER_PORT="$(allocate_port)"
 PLAY_B_ROUTER_PORT="$(allocate_port)"
 SESSION_A_ROUTER_PORT="$(allocate_port)"
 SESSION_B_ROUTER_PORT="$(allocate_port)"
+SESSION_A_ALTERNATE_OBJECT_PORT="$(allocate_port)"
+SESSION_B_ALTERNATE_OBJECT_PORT="$(allocate_port)"
 GATEWAY_ROUTER_PORT="$(allocate_port)"
 MULTI_A_ROUTE_PORT="$(allocate_port)"
 MULTI_B_ROUTE_PORT="$(allocate_port)"
@@ -251,6 +253,8 @@ PLAY_A_ROUTER="tcp://127.0.0.1:$PLAY_A_ROUTER_PORT"
 PLAY_B_ROUTER="tcp://127.0.0.1:$PLAY_B_ROUTER_PORT"
 SESSION_A_ROUTER="tcp://127.0.0.1:$SESSION_A_ROUTER_PORT"
 SESSION_B_ROUTER="tcp://127.0.0.1:$SESSION_B_ROUTER_PORT"
+SESSION_A_ALTERNATE_OBJECT="tcp://127.0.0.1:$SESSION_A_ALTERNATE_OBJECT_PORT"
+SESSION_B_ALTERNATE_OBJECT="tcp://127.0.0.1:$SESSION_B_ALTERNATE_OBJECT_PORT"
 GATEWAY_ROUTER="tcp://127.0.0.1:$GATEWAY_ROUTER_PORT"
 MULTI_A_ROUTE="tcp://127.0.0.1:$MULTI_A_ROUTE_PORT"
 MULTI_B_ROUTE="tcp://127.0.0.1:$MULTI_B_ROUTE_PORT"
@@ -306,17 +310,23 @@ write_config play-b \
   --string evidenceFile "$LOG_DIR/play-b.evidence.log" --string logDir "$LOG_DIR"
 write_config session-a \
   --string rid session-a --string httpUrl "$SESSION_A_URL" \
-  --string controlRouterEndpoint "$SESSION_A_CONTROL" --array playControlEndpoints "$PLAY_A_CONTROL,$PLAY_B_CONTROL" \
+  --string controlRouterEndpoint "$SESSION_A_CONTROL" --array playControlEndpoints "play-a=$PLAY_A_CONTROL,play-b=$PLAY_B_CONTROL" \
   --string spotRouterEndpoint "$SESSION_A_ROUTER" \
   --array playSpotRouterEndpoints "play-a=$PLAY_A_ROUTER,play-b=$PLAY_B_ROUTER" \
+  --string alternateObjectRouterEndpoint "$SESSION_A_ALTERNATE_OBJECT" \
+  --array playAlternateObjectRouterEndpoints "multi-node-a=$MULTI_A_SPOT_ROUTER" \
+  --string redisEndpoint "$REDIS_ENDPOINT" --string redisKeyPrefix "$REDIS_KEY_PREFIX" \
   --string streamEndpoint "$SESSION_A_STREAM" --string tlsStreamEndpoint "$SESSION_A_TLS_STREAM" \
   --string tlsCertPath "$TLS_CERT" --string tlsKeyPath "$TLS_KEY" \
   --string evidenceFile "$LOG_DIR/session-a.evidence.log" --string logDir "$LOG_DIR"
 write_config session-b \
   --string rid session-b --string httpUrl "$SESSION_B_URL" \
-  --string controlRouterEndpoint "$SESSION_B_CONTROL" --array playControlEndpoints "$PLAY_A_CONTROL,$PLAY_B_CONTROL" \
+  --string controlRouterEndpoint "$SESSION_B_CONTROL" --array playControlEndpoints "play-a=$PLAY_A_CONTROL,play-b=$PLAY_B_CONTROL" \
   --string spotRouterEndpoint "$SESSION_B_ROUTER" \
   --array playSpotRouterEndpoints "play-a=$PLAY_A_ROUTER,play-b=$PLAY_B_ROUTER" \
+  --string alternateObjectRouterEndpoint "$SESSION_B_ALTERNATE_OBJECT" \
+  --array playAlternateObjectRouterEndpoints "multi-node-a=$MULTI_A_SPOT_ROUTER" \
+  --string redisEndpoint "$REDIS_ENDPOINT" --string redisKeyPrefix "$REDIS_KEY_PREFIX" \
   --string streamEndpoint "$SESSION_B_STREAM" \
   --string evidenceFile "$LOG_DIR/session-b.evidence.log" --string logDir "$LOG_DIR"
 write_config gateway \
@@ -327,7 +337,7 @@ write_config gateway \
 
 multi_a_peer=()
 multi_b_peer=()
-if [[ "$SCENARIO" != "SM-F6" && "$SCENARIO" != "SM-G2" ]]; then
+if [[ "$SCENARIO" != "SM-F6" && "$SCENARIO" != "SM-G2" && "$SCENARIO" != "cross-mesh-actor-dispatch" ]]; then
   multi_a_peer=(--string peerSpotRouterEndpoint "$MULTI_B_SPOT_ROUTER")
   multi_b_peer=(--string peerSpotRouterEndpoint "$MULTI_A_SPOT_ROUTER")
 fi
@@ -335,7 +345,7 @@ write_config multi-node-a \
   --string rid multi-node-a --string httpUrl "$MULTI_A_URL" --string routeEndpoint "$MULTI_A_ROUTE" \
   --string spotRouterEndpoint "$MULTI_A_SPOT_ROUTER" --string spotPubEndpoint "$MULTI_A_SPOT_PUB" \
   "${multi_a_peer[@]}" --string redisEndpoint "$REDIS_ENDPOINT" --string redisKeyPrefix "$REDIS_KEY_PREFIX" \
-  --boolean spotOnly "$([[ "$SCENARIO" == "SM-F6" || "$SCENARIO" == "SM-G2" ]] && echo true || echo false)" \
+  --boolean spotOnly "$([[ "$SCENARIO" == "SM-F6" || "$SCENARIO" == "SM-G2" || "$SCENARIO" == "cross-mesh-actor-dispatch" ]] && echo true || echo false)" \
   --string evidenceFile "$LOG_DIR/multi-node-a.evidence.log" --string logDir "$LOG_DIR"
 write_config multi-node-b \
   --string rid multi-node-b --string httpUrl "$MULTI_B_URL" --string routeEndpoint "$MULTI_B_ROUTE" \
@@ -391,6 +401,7 @@ wait_named_server() {
       wait_health "$SESSION_A_URL" session-a "${pid_by_name[session-a]:-}"
       wait_port session-a-control "$SESSION_A_CONTROL"
       wait_port session-a-spot-router "$SESSION_A_ROUTER"
+      wait_port session-a-alternate-object "$SESSION_A_ALTERNATE_OBJECT"
       wait_port session-a-stream "$SESSION_A_STREAM"
       wait_port session-a-tls-stream "$SESSION_A_TLS_STREAM"
       ;;
@@ -398,6 +409,7 @@ wait_named_server() {
       wait_health "$SESSION_B_URL" session-b "${pid_by_name[session-b]:-}"
       wait_port session-b-control "$SESSION_B_CONTROL"
       wait_port session-b-spot-router "$SESSION_B_ROUTER"
+      wait_port session-b-alternate-object "$SESSION_B_ALTERNATE_OBJECT"
       wait_port session-b-stream "$SESSION_B_STREAM"
       ;;
     gateway)
@@ -406,7 +418,7 @@ wait_named_server() {
       ;;
     multi-node-a)
       wait_health "$MULTI_A_URL" multi-node-a "${pid_by_name[multi-node-a]:-}"
-      if [[ "$SCENARIO" != "SM-F6" && "$SCENARIO" != "SM-G2" ]]; then
+      if [[ "$SCENARIO" != "SM-F6" && "$SCENARIO" != "SM-G2" && "$SCENARIO" != "cross-mesh-actor-dispatch" ]]; then
         wait_port multi-node-a-route "$MULTI_A_ROUTE"
         wait_port multi-node-a-spot-pub "$MULTI_A_SPOT_PUB"
       fi
@@ -452,6 +464,10 @@ wait_topology_routes() {
   if [[ "$SCENARIO" == "SM-F3" || "$SCENARIO" == "SM-F4" || "$SCENARIO" == "SM-C4" ]]; then
     return 0
   fi
+  if [[ "$SCENARIO" == "cross-mesh-actor-dispatch" ]]; then
+    wait_control_route "$SESSION_A_URL" play-a session-a-to-play-a
+    return 0
+  fi
   if [[ "$SCENARIO" == "SM-F5" ]]; then
     local body='{"value":"route-ready"}'
     for _ in $(seq 1 "$((ROUTE_SETTLE_TIMEOUT_SECONDS * 10))"); do
@@ -479,6 +495,12 @@ case "$SCENARIO" in
   SM-C4) SERVER_ROLES=(play-a gateway) ;;
   SM-F3|SM-F4) SERVER_ROLES=(play-a) ;;
   SM-F5) SERVER_ROLES=(play-a play-b) ;;
+  sm-d5|session-binding-e2e|session-binding-regression)
+    SERVER_ROLES=(play-a play-b session-a session-b)
+    ;;
+  cross-mesh-actor-dispatch)
+    SERVER_ROLES=(play-a session-a multi-node-a)
+    ;;
   *) SERVER_ROLES=(play-a play-b session-a session-b gateway multi-node-a multi-node-b) ;;
 esac
 mapfile -t ORDERED_SERVER_ROLES < <(ordered_e2e_roles "$E2E_START_ORDER" "${SERVER_ROLES[@]}")

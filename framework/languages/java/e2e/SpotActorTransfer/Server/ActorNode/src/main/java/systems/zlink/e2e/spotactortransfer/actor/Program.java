@@ -69,6 +69,7 @@ public final class Program {
         systems.zlink.framework.spots.ZLinkSpotManager spots,
         systems.zlink.framework.actors.ZLinkActorManager actors,
         systems.zlink.framework.actors.ZLinkActorClient actorClient,
+        systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle lifecycle,
         ActorNodeOptions config) {
         return new ActorNodeHttpServer(
             config.httpEndpoint(),
@@ -77,7 +78,8 @@ public final class Program {
             gates,
             spots,
             actors,
-            actorClient);
+            actorClient,
+            lifecycle);
     }
 
     @Bean
@@ -102,10 +104,13 @@ public final class Program {
             ZLinkMeshNodeBuilder node = options.addRouteMesh(Contracts.MESH);
             node.listen(config.meshEndpoint())
                 .setRoutingId(RoutingId.from(nodeRid));
-            for (String peer : config.meshPeers().split(",")) {
-                String[] fields = peer.split("=", 2);
-                if (fields.length == 2 && !nodeRid.equals(fields[0])) {
-                    node.peerConnections().connect(RoutingId.from(fields[0]), fields[1]);
+            if (!config.automaticTopology()) {
+                for (String peer : config.meshPeers().split(",")) {
+                    String[] fields = peer.split("=", 2);
+                    if (fields.length == 2 && !nodeRid.equals(fields[0])) {
+                        node.peerConnections().connect(
+                            RoutingId.from(fields[0]), fields[1]);
+                    }
                 }
             }
             node.objects().client();

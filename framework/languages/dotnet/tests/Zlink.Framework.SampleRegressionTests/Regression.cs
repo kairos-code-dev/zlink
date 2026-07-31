@@ -84,6 +84,49 @@ public sealed partial class RegressionTests
             + string.Join(", ", offenders));
     }
 
+    [Theory]
+    [InlineData("Bingo")]
+    [InlineData("DeliveryDispatch")]
+    [InlineData("GameQuest")]
+    [InlineData("ShoppingMall")]
+    [InlineData("SupportChat")]
+    [InlineData("ZoneWorld")]
+    public void AutomaticSamplesUseAssemblyScanningAndLocationDiscovery(string sampleName)
+    {
+        var sources = EnumerateSourceFiles(ResolveSampleRoot(sampleName))
+            .Select(File.ReadAllText)
+            .ToArray();
+        var combined = string.Join(Environment.NewLine, sources);
+
+        Assert.Contains("AddHandlersFromAssembly", combined, StringComparison.Ordinal);
+        Assert.DoesNotContain("DisableImplicitHandlerAutoRegistration", combined, StringComparison.Ordinal);
+        Assert.DoesNotContain(".PeerConnections.Connect(", combined, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SamplePayloadCodecsMatchTheCommonSampleContract()
+    {
+        var samplesRoot = ResolveSamplesRoot();
+        var bingo = string.Join(Environment.NewLine,
+            EnumerateSourceFiles(Path.Combine(samplesRoot, "Bingo")).Select(File.ReadAllText));
+        Assert.Contains("Codecs.Use(ZLinkProtobufCodec.Default)", bingo, StringComparison.Ordinal);
+
+        foreach (var sampleName in new[]
+                 {
+                     "TicTacToe",
+                     "DeliveryDispatch",
+                     "GameQuest",
+                     "ShoppingMall",
+                     "SupportChat",
+                     "ZoneWorld"
+                 })
+        {
+            var source = string.Join(Environment.NewLine,
+                EnumerateSourceFiles(Path.Combine(samplesRoot, sampleName)).Select(File.ReadAllText));
+            Assert.DoesNotContain("Codecs.Use(", source, StringComparison.Ordinal);
+        }
+    }
+
     [Fact]
     public void Samples_Do_Not_Use_Location_Stores_Or_Resolvers_As_Business_Dependencies()
     {
@@ -323,11 +366,22 @@ public sealed partial class RegressionTests
             dotnetContractRoot,
             "interfaces",
             "05-spots.ko.md"));
-        var actorGuide = File.ReadAllText(Path.Combine(dotnetDocRoot, "guide", "07-actor-spot.ko.md"));
+        var spotModelSpec = File.ReadAllText(Path.Combine(
+            frameworkDocRoot,
+            "common",
+            "spec",
+            "11-spot-model.ko.md"));
+        var ticTacToeSampleSpec = File.ReadAllText(Path.Combine(
+            frameworkDocRoot,
+            "common",
+            "sample",
+            "tictactoe",
+            "README.ko.md"));
         Assert.Contains("ValueTask DestroyActorAsync(", actorSpec, StringComparison.Ordinal);
-        Assert.Contains("IZLinkEntrySpotContext.DestroyActorAsync(actor)", actorGuide, StringComparison.Ordinal);
-        Assert.Contains("lifecycle callback을", actorGuide, StringComparison.Ordinal);
-        Assert.Contains("호출하지 않고 native actor ref", actorGuide, StringComparison.Ordinal);
+        Assert.Contains("Entry Spot은 close operation 대신 Actor destroy", spotModelSpec, StringComparison.Ordinal);
+        Assert.Contains("Entry Spot context의 `destroyActor`를 호출한다", ticTacToeSampleSpec, StringComparison.Ordinal);
+        Assert.Contains("`destroyActor`는 `onLeaveActor`나 다른 lifecycle callback을 호출하지 않고", ticTacToeSampleSpec, StringComparison.Ordinal);
+        Assert.Contains("native actor ref, framework registry, bound session binding을 정리한다", ticTacToeSampleSpec, StringComparison.Ordinal);
         Assert.Empty(offenders.Order(StringComparer.Ordinal));
     }
 

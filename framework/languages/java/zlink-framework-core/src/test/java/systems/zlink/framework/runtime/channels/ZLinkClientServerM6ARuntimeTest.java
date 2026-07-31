@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 import java.lang.reflect.Proxy;
 import java.time.Duration;
@@ -20,15 +21,17 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
-import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.contracts.sockets.SubmitResult;
+import systems.zlink.framework.runtime.internal.locations.ZLinkClientServerServerDescriptor;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
 import systems.zlink.framework.testing.ZLinkLocationStoreTestAdapter;
-import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationOwnerToken;
 import systems.zlink.framework.locations.ZLinkLocationPage;
-import systems.zlink.framework.locations.ZLinkLocationWriteResult;
-import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationWriteResult;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationWriteStatus;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendDealerSocket;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterOptions;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendContext;
@@ -344,6 +347,43 @@ final class ZLinkClientServerM6ARuntimeTest {
     }
 
     @Test
+    void descriptorProjectionIgnoresPeerThatLostAdmission() {
+        ZLinkChannelSocketRegistry sockets =
+            new ZLinkChannelSocketRegistry();
+        ZLinkClientServerServerDescriptor initial =
+            descriptor(
+                "orders", RoutingId.from("server"), 5, 1,
+                "tcp://127.0.0.1:7001", 80);
+        sockets.setClientServerServerDescriptor("orders", initial);
+        ControlledRouter router = new ControlledRouter();
+        Message hello = Message.from(
+            ZLinkClientServerServiceWire.encodeHello(
+                new ZLinkClientServerServiceWire.Hello(
+                    "orders", "default", 4096)));
+        assertTrue(sockets.tryHandleClientServerControl(
+            "orders",
+            router,
+            new ZLinkBackendReceived(
+                Optional.of(RoutingId.from("client")),
+                Optional.empty(),
+                Optional.of(1L),
+                List.of(hello),
+                parts -> { },
+                () -> { })));
+
+        router.sendFailure = new ZlinkSubmitException(
+            SubmitResult.NOT_ADMITTED);
+        ZLinkClientServerServerDescriptor draining =
+            descriptor(
+                "orders", RoutingId.from("server"), 5, 2,
+                "tcp://127.0.0.1:7001", 0);
+
+        assertDoesNotThrow(() ->
+            sockets.setClientServerServerDescriptor(
+                "orders", draining));
+    }
+
+    @Test
     void serverLivenessFencesAckByRoutingIdAndDisconnectsTimedOutPeer() {
         ZLinkChannelSocketRegistry sockets =
             new ZLinkChannelSocketRegistry();
@@ -438,7 +478,7 @@ final class ZLinkClientServerM6ARuntimeTest {
                     default -> throw new UnsupportedOperationException(
                         method.getName());
                 });
-        ZLinkLocationStore store =
+        ZLinkLocationRepository store =
             new SingleDescriptorStore(descriptor);
         ZLinkBackendContext context =
             (ZLinkBackendContext) Proxy.newProxyInstance(
@@ -573,7 +613,7 @@ final class ZLinkClientServerM6ARuntimeTest {
         public java.util.concurrent.CompletionStage<ZLinkLocationWriteResult>
             updateClientServer(
                 ZLinkClientServerServerDescriptor value,
-                systems.zlink.framework.locations.ZLinkLocationWriteIntent intent) {
+                systems.zlink.framework.runtime.internal.locations.ZLinkLocationWriteIntent intent) {
             return CompletableFuture.completedFuture(
                 ZLinkLocationWriteResult.stored(
                     value.leaseGeneration(), Instant.now()));
@@ -582,8 +622,7 @@ final class ZLinkClientServerM6ARuntimeTest {
         @Override
         public java.util.concurrent.CompletionStage<ZLinkLocationWriteStatus>
             removeClientServer(
-                systems.zlink.framework.locations
-                    .ZLinkClientServerServerDescriptorKey key,
+                systems.zlink.framework.runtime.internal.locations.ZLinkClientServerServerDescriptorKey key,
                 ZLinkLocationOwnerToken owner) {
             return CompletableFuture.completedFuture(
                 ZLinkLocationWriteStatus.STORED);
@@ -718,6 +757,7 @@ final class ZLinkClientServerM6ARuntimeTest {
         private final List<RoutingId> disconnected =
             new ArrayList<>();
         private boolean acceptSend = true;
+        private RuntimeException sendFailure;
 
         @Override public String name() {
             return "controlled-router";
@@ -754,6 +794,9 @@ final class ZLinkClientServerM6ARuntimeTest {
             RoutingId routingId,
             List<Message> parts,
             SendFlags flags) {
+            if (sendFailure != null) {
+                throw sendFailure;
+            }
             sent.add(parts.get(0).toByteArray());
             return acceptSend;
         }

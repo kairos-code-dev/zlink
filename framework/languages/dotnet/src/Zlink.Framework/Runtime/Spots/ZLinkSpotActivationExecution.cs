@@ -19,7 +19,7 @@ internal sealed partial class ZLinkSpotActivation
     private ZLinkSpotMessageFollow? _messageFollow;
     private long _messageFollowPendingBytes;
     private bool _holdIngressForMessageFollow;
-    private TaskCompletionSource? _relocationReadySignal;
+    private RelocationReadySealRequest? _relocationReadyRequest;
     private bool _relocationReadyCompletionPending;
 
     internal object RuntimeExecutionOwner => _runtime.ExecutionOwner;
@@ -154,51 +154,76 @@ internal sealed partial class ZLinkSpotActivation
             _runtime.ErrorSink);
     }
 
-    internal Task WaitForRelocationReadyTurnAsync(
+    internal Task<ZLinkSpotRelocationSeal> WaitForRelocationReadyTurnAsync(
         CancellationToken cancellationToken)
     {
         if (RelocationReadiness
             != ZLinkSpotRelocationReadinessMode.ApplicationSignaled)
-            return Task.CompletedTask;
+            throw new InvalidOperationException(
+                "Only ApplicationSignaled readiness waits for an application turn.");
 
-        Task signal;
+        Task<ZLinkSpotRelocationSeal> signal;
         lock (_relocationReadyGate)
         {
-            if (_relocationReadySignal is not null)
+            if (_relocationReadyRequest is not null)
                 throw new InvalidOperationException(
                     "A relocation-ready turn is already pending.");
-            _relocationReadySignal = new TaskCompletionSource(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-            signal = _relocationReadySignal.Task;
+            _relocationReadyRequest = new RelocationReadySealRequest(
+                cancellationToken);
+            signal = _relocationReadyRequest.Completion.Task;
         }
         return signal.WaitAsync(cancellationToken);
     }
 
     internal void CompleteRelocationReadyTurn()
     {
-        TaskCompletionSource? pending;
+        RelocationReadySealRequest? pending;
         lock (_relocationReadyGate)
         {
-            pending = _relocationReadySignal;
+            pending = _relocationReadyRequest;
             if (pending is not null)
             {
                 _relocationReadyCompletionPending = true;
-                _relocationReadySignal = null;
+                _relocationReadyRequest = null;
             }
         }
 
         if (pending is not null)
         {
-            pending.TrySetResult();
+            var seal = SealRelocationAsync(
+                    allowActorClaims: false,
+                    pending.CancellationToken)
+                .AsTask();
+            _ = CompleteRelocationReadySealAsync(pending, seal);
             return;
         }
 
-        _ = QueueApplicationSerialized(
+        _ = QueueApplicationSerializedNext(
             static (activation, ct) =>
                 activation.InvokeRelocationReadyCompletedAsync(
                     ZLinkSpotRelocationReadyOutcome.Continued,
                     ct),
             countAsRequest: false);
+    }
+
+    private static async Task CompleteRelocationReadySealAsync(
+        RelocationReadySealRequest request,
+        Task<ZLinkSpotRelocationSeal> seal)
+    {
+        try
+        {
+            request.Completion.TrySetResult(
+                await seal.ConfigureAwait(false));
+        }
+        catch (OperationCanceledException)
+            when (request.CancellationToken.IsCancellationRequested)
+        {
+            request.Completion.TrySetCanceled(request.CancellationToken);
+        }
+        catch (Exception exception)
+        {
+            request.Completion.TrySetException(exception);
+        }
     }
 
     internal async ValueTask CompleteRelocationReadyAsync(
@@ -212,6 +237,27 @@ internal sealed partial class ZLinkSpotActivation
             _relocationReadyCompletionPending = false;
         }
         await InvokeRelocationReadyCompletedAsync(outcome, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal async ValueTask CompleteRelocationReadyBeforeAbortAsync(
+        ZLinkSpotRelocationSeal admissionSeal,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(admissionSeal);
+        lock (_relocationReadyGate)
+        {
+            if (!_relocationReadyCompletionPending)
+                return;
+            _relocationReadyCompletionPending = false;
+        }
+        await _serial.ExecuteSealedRelocationAsync(
+                admissionSeal.QueueSeal,
+                static (activation, ct) =>
+                    activation.InvokeRelocationReadyCompletedAsync(
+                        ZLinkSpotRelocationReadyOutcome.Continued,
+                        ct),
+                cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -237,7 +283,7 @@ internal sealed partial class ZLinkSpotActivation
     {
         lock (_relocationReadyGate)
         {
-            _relocationReadySignal = null;
+            _relocationReadyRequest = null;
             _relocationReadyCompletionPending = false;
         }
     }
@@ -248,6 +294,17 @@ internal sealed partial class ZLinkSpotActivation
         UserSpot.OnRelocationReadyCompletedAsync(
             new ZLinkSpotRelocationReadyCompletion(outcome),
             cancellationToken);
+
+    private sealed class RelocationReadySealRequest(
+        CancellationToken cancellationToken)
+    {
+        internal CancellationToken CancellationToken { get; } =
+            cancellationToken;
+
+        internal TaskCompletionSource<ZLinkSpotRelocationSeal> Completion
+            { get; } = new(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+    }
 
     ValueTask<bool> IZLinkSpotContext.CloseAsync(CancellationToken cancellationToken)
     {
@@ -618,6 +675,37 @@ internal sealed partial class ZLinkSpotActivation
             deadline);
     }
 
+    internal async ValueTask
+        InvokePerActorRelocationClosingAfterDrainAsync(
+            Task messageFollowDrained,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(messageFollowDrained);
+        var plan = PerActorShellRelocationPlan
+                   ?? throw new InvalidOperationException(
+                       "Only a relocated PerActor User Spot can complete source shell closing.");
+        try
+        {
+            await Task.WhenAll(
+                    messageFollowDrained,
+                    WaitForPerActorMembersDrainedAsync(cancellationToken))
+                .WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            // Detached runtime cleanup may cancel before Message Follow or the
+            // last member drains. The source shell is still valid here, so its
+            // terminal lifecycle callback must precede scope teardown.
+            await InvokeRelocationClosingAfterCommitAsync(plan.ClosingDeadline)
+                .ConfigureAwait(false);
+            return;
+        }
+        await InvokeRelocationClosingAfterCommitAsync(plan.ClosingDeadline)
+            .ConfigureAwait(false);
+    }
+
     internal async ValueTask<bool> TryCloseIfNoActorsAsync(
         ZLinkSpotCloseReason reason,
         DateTimeOffset deadline,
@@ -712,6 +800,32 @@ internal sealed partial class ZLinkSpotActivation
         }
 
         var queued = _serial.Queue(
+            async (activation, ct) =>
+            {
+                using (lease)
+                    await operation(activation, ct).ConfigureAwait(false);
+            },
+            () =>
+            {
+                lease.Dispose();
+                onRejected?.Invoke();
+            });
+        if (!queued) lease.Dispose();
+        return queued;
+    }
+
+    private bool QueueApplicationSerializedNext(
+        Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
+        bool countAsRequest,
+        Action? onRejected = null)
+    {
+        if (!_runtime.TryEnterInboundOperation(countAsRequest, out var lease))
+        {
+            onRejected?.Invoke();
+            return false;
+        }
+
+        var queued = _serial.QueueNext(
             async (activation, ct) =>
             {
                 using (lease)
@@ -945,17 +1059,72 @@ internal sealed partial class ZLinkSpotActivation
 
     internal async ValueTask<ZLinkSpotRelocationSeal> SealRelocationAsync(
         CancellationToken cancellationToken)
+        => await SealRelocationAsync(
+                allowActorClaims: false,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+    internal async ValueTask<ZLinkSpotRelocationSeal> SealRelocationAsync(
+        bool allowActorClaims,
+        CancellationToken cancellationToken)
     {
-        var logicalTimers = _timers.FreezeRelocation();
+        IReadOnlyList<ZLinkRelocationLogicalTimer>? boundaryTimers = null;
+        ZLinkSpotExecutionRelocationSeal? queueSeal = null;
         try
         {
-            var queueSeal = await _serial
-                .SealRelocationAsync(cancellationToken)
+            queueSeal = await _serial
+                .SealRelocationAsync(
+                    allowActorClaims,
+                    () =>
+                    {
+                        boundaryTimers = _timers.FreezeRelocation();
+                        if (allowActorClaims)
+                            return 0;
+                        // Reserve pending-tick sequences at the same queue
+                        // boundary. A dispatch that finishes immediately after
+                        // the freeze may remove its pending tick, but the
+                        // frozen timer cannot create another pending tick and
+                        // no later held ingress can overtake a retained tick.
+                        return boundaryTimers.Count(static timer =>
+                            ZLinkSpotTimerRelocationCodec.Decode(timer)
+                                .Timer.PendingTick.HasValue);
+                    },
+                    cancellationToken)
                 .ConfigureAwait(false);
+            _ = boundaryTimers
+                ?? throw new InvalidOperationException(
+                    "SPOT relocation timer boundary snapshot was not created.");
+            if (allowActorClaims)
+                return new ZLinkSpotRelocationSeal(queueSeal, []);
+            var logicalTimers = await _timers
+                .SnapshotFrozenRelocationAfterDispatchesAsync(
+                    cancellationToken)
+                .ConfigureAwait(false);
+            var pendingTimerCount = logicalTimers.Count(static timer =>
+                ZLinkSpotTimerRelocationCodec.Decode(timer)
+                    .Timer.PendingTick.HasValue);
+            if (pendingTimerCount
+                > queueSeal.QueueSeal.ReservedAcceptedSequences)
+                throw new InvalidOperationException(
+                    "SPOT relocation produced more pending timer ticks after its frozen boundary.");
+            var nextPendingSequence =
+                queueSeal.QueueSeal.FirstReservedSequence;
+            logicalTimers = logicalTimers.Select(timer =>
+            {
+                var snapshot = ZLinkSpotTimerRelocationCodec.Decode(timer);
+                return snapshot.Timer.PendingTick.HasValue
+                    ? timer with
+                    {
+                        PendingAcceptedSequence = nextPendingSequence++
+                    }
+                    : timer;
+            }).ToArray();
             return new ZLinkSpotRelocationSeal(queueSeal, logicalTimers);
         }
         catch
         {
+            if (queueSeal is not null)
+                _serial.TryAbortRelocation(queueSeal);
             _timers.Resume();
             throw;
         }
@@ -1156,15 +1325,13 @@ internal sealed partial class ZLinkSpotActivation
         RelayPendingMessageFollowRoutes();
     }
 
-    internal TimeSpan MessageFollowRemaining
+    internal ValueTask WaitForMessageFollowDrainedAsync(
+        CancellationToken cancellationToken)
     {
-        get
-        {
-            var messageFollow = Volatile.Read(ref _messageFollow);
-            return messageFollow is null
-                ? TimeSpan.Zero
-                : messageFollow.ExpiresAt - DateTimeOffset.UtcNow;
-        }
+        var messageFollow = Volatile.Read(ref _messageFollow);
+        return messageFollow is null
+            ? ValueTask.CompletedTask
+            : messageFollow.WaitForExpiryAndDrainAsync(cancellationToken);
     }
 
     private ZLinkSpotMessageFollowResult TryMessageFollow(
@@ -1604,11 +1771,14 @@ internal sealed partial class ZLinkSpotActivation
     }
 
     internal bool OpenRelocationTargetAdmission(
-        ZLinkSpotRelocationSeal seal)
+        ZLinkSpotRelocationSeal seal,
+        Action reserveBeforeApplicationAdmission)
     {
         ArgumentNullException.ThrowIfNull(seal);
+        ArgumentNullException.ThrowIfNull(reserveBeforeApplicationAdmission);
         if (!_serial.TryOpenRelocationAfterMessageFollow(
-                seal.QueueSeal))
+                seal.QueueSeal,
+                reserveBeforeApplicationAdmission))
             return false;
         ResumePendingMessageFollowRoutes();
         _timers.Resume();
@@ -1617,10 +1787,14 @@ internal sealed partial class ZLinkSpotActivation
 
     internal bool CommitRelocation(
         ZLinkSpotRelocationSeal seal,
-        out IReadOnlyList<ZLinkAcceptedWorkRecord> held)
+        out IReadOnlyList<ZLinkAcceptedWorkRecord> held,
+        bool preserveActorExecution = false)
     {
         ArgumentNullException.ThrowIfNull(seal);
-        return _serial.TryCommitRelocation(seal.QueueSeal, out held);
+        return _serial.TryCommitRelocation(
+            seal.QueueSeal,
+            out held,
+            preserveActorExecution);
     }
 
     internal bool FreezeRelocationIngress(
@@ -2030,7 +2204,11 @@ internal sealed partial class ZLinkSpotActivation
                 actorType,
                 ResolveActorRelocationRegistration(actor)));
         }
-        return capabilities;
+        return capabilities
+            .DistinctBy(static capability => (
+                capability.ObjectKind,
+                capability.StableType))
+            .ToArray();
     }
 
     private static ZLinkObjectCapability CreateRetireCapability(

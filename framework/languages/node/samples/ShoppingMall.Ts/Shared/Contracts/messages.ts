@@ -8,7 +8,6 @@ const PacketNames = {
   prepareInventoryReservedReq: 'PrepareInventoryReservedReq',
   prepareInventoryEffectReq: 'PrepareInventoryEffectReq',
   verifyExpectedVersionFenceReq: 'VerifyExpectedVersionFenceReq',
-  topologyReadyReq: 'ShoppingMallTopologyReadyReq',
   rebuildOrderProjectionReq: 'RebuildOrderProjectionReq'
 } as const;
 
@@ -50,9 +49,6 @@ class PrepareInventoryEffectReq extends StartOrderWorkflowReq {}
 
 @ZLinkPacket(PacketNames.verifyExpectedVersionFenceReq)
 class VerifyExpectedVersionFenceReq { constructor(readonly orderId: string) {} }
-
-@ZLinkPacket(PacketNames.topologyReadyReq)
-class ShoppingMallTopologyReadyReq { constructor(readonly probeId: string) {} }
 
 @ZLinkPacket(PacketNames.continueOrderWorkflowReq)
 class ContinueOrderWorkflowReq { constructor(readonly orderId: string) {} }
@@ -123,7 +119,6 @@ export {
   PrepareInventoryReservedReq,
   RebuildOrderProjectionReq,
   StartOrderWorkflowReq,
-  ShoppingMallTopologyReadyReq,
   VerifyExpectedVersionFenceReq
 };
 export type {

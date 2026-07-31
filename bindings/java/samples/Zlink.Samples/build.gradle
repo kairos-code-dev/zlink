@@ -26,18 +26,7 @@ def sampleMainClasses = [
     runDealerRouterRecv: 'systems.zlink.samples.DealerRouterRecvSample',
     runStreamRecv: 'systems.zlink.samples.StreamRecvSample',
     runStreamPacketCallback: 'systems.zlink.samples.StreamPacketCallbackSample',
-    runMonitorRecv: 'systems.zlink.samples.MonitorRecvSample',
-    runSpotRecv: 'systems.zlink.samples.SpotRecvSample',
-    runSpotRequestAsync: 'systems.zlink.samples.SpotRequestAsyncSample',
-    runActorRoomServer: 'systems.zlink.samples.ActorRoomServerSample',
-    runActorGatewayRelay: 'systems.zlink.samples.ActorGatewayRelaySample',
-    runActorSinglePlayerQueue: 'systems.zlink.samples.ActorSinglePlayerQueueSample',
-    runActorQueueExample: 'systems.zlink.samples.ActorQueueExample',
-    runActorRoomExample: 'systems.zlink.samples.ActorRoomExample',
-    runActorSequentialExample: 'systems.zlink.samples.ActorSequentialExample',
-    runSpotPubSubExample: 'systems.zlink.samples.SpotPubSubExample',
-    runSpotRpcExample: 'systems.zlink.samples.SpotRpcExample',
-    runSpotTimerExample: 'systems.zlink.samples.SpotTimerExample'
+    runMonitorRecv: 'systems.zlink.samples.MonitorRecvSample'
 ]
 
 def sampleRunTasks = sampleMainClasses.collect { taskName, mainClassName ->

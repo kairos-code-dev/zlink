@@ -38,6 +38,7 @@ export interface ZLinkRemoteActorPacketTarget {
   readonly targetNodeRid: RoutingId;
   readonly spotId: RoutingId;
   readonly spotKind?: ZLinkSpotKind;
+  readonly targetSpotGeneration?: bigint;
 }
 
 export interface ZLinkActorCreationOperation {
@@ -65,6 +66,7 @@ export class ZLinkActorRuntimeState {
   private actorValue: ZLinkActor | undefined;
   private spotValue: ZLinkSpot | undefined;
   private spotIdValue: RoutingId | undefined;
+  private spotGenerationValue: bigint | undefined;
   private spotMembershipEpochValue = 0n;
   private nativeActorRefValue: ZLinkBackendActorRef | undefined;
   private boundSessionBindingGenerationValue = 0n;
@@ -77,6 +79,7 @@ export class ZLinkActorRuntimeState {
   private locationGenerationValue: bigint | undefined;
   private ownerLeaseGenerationValue: bigint | undefined;
   private movingValue = false;
+  private deferredJoinPendingValue = false;
   private destroyTask: Promise<void> | undefined;
 
   constructor(readonly actorId: string) {}
@@ -109,6 +112,10 @@ export class ZLinkActorRuntimeState {
 
   get spotMembershipEpoch(): bigint {
     return this.spotMembershipEpochValue;
+  }
+
+  get spotGeneration(): bigint | undefined {
+    return this.spotGenerationValue;
   }
 
   get nativeActorRef(): ZLinkBackendActorRef | undefined {
@@ -159,11 +166,30 @@ export class ZLinkActorRuntimeState {
     return this.movingValue;
   }
 
+  tryBeginDeferredJoin(): boolean {
+    if (this.movingValue || this.deferredJoinPendingValue) {
+      return false;
+    }
+    this.deferredJoinPendingValue = true;
+    return true;
+  }
+
+  endDeferredJoin(): void {
+    this.deferredJoinPendingValue = false;
+  }
+
   get hasActorOrCreation(): boolean {
     return this.actorValue !== undefined || this.creationTask !== undefined;
   }
 
   beginMove(): void {
+    if (this.deferredJoinPendingValue) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.ActorMoving,
+        `Actor '${this.actorId}' has a pending membership transition.`,
+        true
+      );
+    }
     if (this.movingValue) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.ActorRouteNotFound,
@@ -400,15 +426,24 @@ export class ZLinkActorRuntimeState {
     this.createRequestPayloadValue = Buffer.from(payload);
   }
 
-  setJoinedSpot(spotId: RoutingId, spot?: ZLinkSpot, membershipEpoch = 0n): void {
+  setJoinedSpot(
+    spotId: RoutingId,
+    spot?: ZLinkSpot,
+    membershipEpoch = 0n,
+    spotGeneration?: bigint
+  ): void {
     this.spotIdValue = spotId;
     this.spotValue = spot;
+    if (spotGeneration !== undefined && spotGeneration > 0n) {
+      this.spotGenerationValue = spotGeneration;
+    }
     this.spotMembershipEpochValue = membershipEpoch;
   }
 
   clearJoinedSpot(): void {
     this.spotIdValue = undefined;
     this.spotValue = undefined;
+    this.spotGenerationValue = undefined;
     this.spotMembershipEpochValue = 0n;
   }
 
@@ -420,6 +455,7 @@ export class ZLinkActorRuntimeState {
     this.actorValue = undefined;
     this.spotValue = undefined;
     this.spotIdValue = undefined;
+    this.spotGenerationValue = undefined;
     this.spotMembershipEpochValue = 0n;
     this.nativeActorRefValue = undefined;
     this.boundSessionBindingGenerationValue = 0n;
@@ -431,6 +467,8 @@ export class ZLinkActorRuntimeState {
     this.ownsLocationValue = false;
     this.locationGenerationValue = undefined;
     this.ownerLeaseGenerationValue = undefined;
+    this.movingValue = false;
+    this.deferredJoinPendingValue = false;
     this.destroyTask = undefined;
   }
 
@@ -453,6 +491,7 @@ export class ZLinkActorRuntimeState {
     this.locationGenerationValue = undefined;
     this.ownerLeaseGenerationValue = undefined;
     this.movingValue = false;
+    this.deferredJoinPendingValue = false;
     this.destroyTask = undefined;
   }
 }
@@ -468,10 +507,16 @@ export function toFrameworkActorRef(
   actor: ZLinkBackendActorRef,
   meshName: string
 ): ActorRef {
-  return {
+  const actorRef = {
     actorId: actor.actorId,
     objectGeneration: actor.generation,
     meshName,
     nodeRid: toFrameworkRoutingId(actor.nodeRid)
   };
+  Object.defineProperty(actorRef, 'generation', {
+    configurable: false,
+    enumerable: false,
+    value: actor.generation
+  });
+  return actorRef;
 }

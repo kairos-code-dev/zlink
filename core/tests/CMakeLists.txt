@@ -107,6 +107,7 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_router_handover
   ${INTEGRATION_TEST_ROOT}/test_router_mandatory
   ${INTEGRATION_TEST_ROOT}/test_router_multiple_dealers
+  ${INTEGRATION_TEST_ROOT}/test_probe_router
   ${INTEGRATION_TEST_ROOT}/test_zmp_request_reply
   ${INTEGRATION_TEST_ROOT}/test_zmp_request_reply_router_recv_surface
   ${INTEGRATION_TEST_ROOT}/test_router_concurrent_routed_recv
@@ -856,7 +857,6 @@ set(UNREGISTERED_TEST_ALLOWLIST
     test_pair_ipc
     test_pair_tcp
     test_pair_send_blocking_wakeup
-    test_probe_router
     test_proxy
     test_pub_invert_matching
     test_pubsub_filter_xpub

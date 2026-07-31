@@ -57,7 +57,10 @@ public final class Messages {
         String conversationId) {
     }
 
-    public record EnsureAgentConversationRes(ActorRefSnapshot actor, ConversationState state) {
+    public record EnsureAgentConversationRes(
+        ActorRefSnapshot actor,
+        boolean scheduled,
+        ConversationState state) {
     }
 
     public record OpenConversationReq(String subject) {
@@ -78,7 +81,13 @@ public final class Messages {
         }
     }
 
-    public record JoinConversationRes(ConversationState state) {
+    public record JoinConversationRes(boolean scheduled, ConversationState state) {
+    }
+
+    public record JoinConversationFailedNotify(
+        String conversationId,
+        String error,
+        boolean isRetriable) {
     }
 
     public record SendChatMessageReq(String text) {

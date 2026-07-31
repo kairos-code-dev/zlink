@@ -47,7 +47,7 @@ export class EnsureActorHandler implements ZLinkRouteRequestHandler<EnsureActorR
     void context;
     const created = await this.actors
       .getOrCreate(request.actorId, SpotServiceNames.actorType)
-      .inMesh(SpotServiceNames.spotChannel)
+      .inMesh(request.meshName ?? SpotServiceNames.spotChannel)
       .request(request)
       .submit();
     if (created.status === 'rejected') {

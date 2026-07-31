@@ -462,6 +462,9 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
 }
 
 function remoteActorRouteTarget(route: ZLinkResolvedActorRoute) {
+  if (route.enclosingSpotRoute !== undefined) {
+    return route.enclosingSpotRoute;
+  }
   return {
     routerChannelId: route.meshName,
     targetNodeRid: route.actorRef.nodeRid,
@@ -471,7 +474,8 @@ function remoteActorRouteTarget(route: ZLinkResolvedActorRoute) {
     targetNodeGeneration: route.ownerNodeGeneration,
     targetOwnerId: route.ownerId,
     ownerLeaseGeneration: route.ownerLeaseGeneration,
-    authorityOwnerGeneration: route.authorityOwnerGeneration
+    authorityOwnerGeneration: route.authorityOwnerGeneration,
+    authorityStoreVersion: route.authorityStoreVersion
   };
 }
 

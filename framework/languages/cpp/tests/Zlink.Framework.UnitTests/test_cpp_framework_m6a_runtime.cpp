@@ -5,6 +5,8 @@
 #include "runtime/fanout/raw_fanout_owner.hpp"
 #include "runtime/client_server/raw_client_server_owner.hpp"
 #include "runtime/client_server/weighted_selector.hpp"
+#include "runtime/dispatch/inbound_dispatch_budget.hpp"
+#include "runtime/dispatch/completion_admission_owner.hpp"
 #include "runtime/protocol/service_wire_codec.hpp"
 
 #include <algorithm>
@@ -24,6 +26,7 @@ namespace fanout = zlink::framework::runtime::fanout;
 namespace client_server = zlink::framework::runtime::client_server;
 namespace foundation = zlink::framework::runtime::foundation;
 namespace protocol = zlink::framework::runtime::protocol;
+namespace runtime = zlink::framework::runtime;
 using namespace std::chrono_literals;
 
 namespace
@@ -32,6 +35,99 @@ namespace
 std::vector<std::uint8_t> bytes (std::string value)
 {
     return {value.begin (), value.end ()};
+}
+
+void verify_host_wide_application_byte_budget ()
+{
+    runtime::inbound_dispatch_budget_t budget (100);
+    assert (budget.can_start_application_receive ());
+
+    budget.received (120);
+    auto paused = budget.snapshot ();
+    assert (paused.application_hwm_bytes == 100);
+    assert (paused.pending_payload_bytes == 120);
+    assert (paused.queued_payload_bytes == 120);
+    assert (paused.active_payload_bytes == 0);
+    assert (paused.application_receive_paused);
+    assert (!budget.can_start_application_receive ());
+
+    budget.handler_started (120);
+    auto active = budget.snapshot ();
+    assert (active.pending_payload_bytes == 120);
+    assert (active.queued_payload_bytes == 0);
+    assert (active.active_payload_bytes == 120);
+    assert (active.application_receive_paused);
+
+    budget.completed (120, true);
+    auto resumed = budget.snapshot ();
+    assert (resumed.pending_payload_bytes == 0);
+    assert (resumed.queued_payload_bytes == 0);
+    assert (resumed.active_payload_bytes == 0);
+    assert (!resumed.application_receive_paused);
+    assert (budget.can_start_application_receive ());
+
+    runtime::inbound_dispatch_budget_t unlimited (0);
+    unlimited.received (1024);
+    assert (unlimited.can_start_application_receive ());
+    unlimited.completed (1024, false);
+    assert (unlimited.snapshot ().pending_payload_bytes == 0);
+}
+
+void verify_host_wide_completion_send_permits ()
+{
+    auto owner =
+      std::make_shared<runtime::completion_admission_owner_t> (1);
+    auto first = owner->acquire ();
+    assert (first);
+    auto waiting = std::async (
+      std::launch::async, [owner] { return owner->acquire (); });
+    while (owner->snapshot ().pending_completion_sends != 2)
+        std::this_thread::yield ();
+    const auto saturated = owner->snapshot ();
+    assert (saturated.pending_completion_sends == 2);
+    assert (saturated.completion_send_limit == 1);
+    first = {};
+    auto second = waiting.get ();
+    assert (second);
+    assert (owner->snapshot ().pending_completion_sends == 1);
+    second = {};
+    assert (owner->snapshot ().pending_completion_sends == 0);
+}
+
+void verify_actor_create_command_49_roundtrip ()
+{
+    const protocol::actor_create_header_t request{
+      19,
+      {20, 21},
+      bytes ("source"),
+      22,
+      "actor-1",
+      "player",
+      {"reservation-1", "store-1", 23, 24,
+       bytes ("target"), 25, "owner-1", 26, 1},
+      27};
+    assert (protocol::decode_actor_create_header (
+              protocol::encode_actor_create_header (request))
+            == request);
+
+    const auto created = protocol::decode_actor_create_reply (
+      protocol::encode_actor_create_reply (
+        19, 0, 0, protocol::actor_create_result_t::created,
+        bytes ("target"), "actor-1", 23));
+    assert (created.header.correlation == 19);
+    assert (created.result
+            == protocol::actor_create_result_t::created);
+    assert (created.node_routing_id == bytes ("target"));
+    assert (created.actor_id == "actor-1");
+    assert (created.object_generation == 23);
+
+    const auto rejected = protocol::decode_actor_create_reply (
+      protocol::encode_actor_create_reply (
+        19, 0, 0, protocol::actor_create_result_t::rejected,
+        {}, {}, 0));
+    assert (rejected.result
+            == protocol::actor_create_result_t::rejected);
+    assert (rejected.node_routing_id.empty ());
 }
 
 mesh::service_node_descriptor_t descriptor (
@@ -71,11 +167,291 @@ void verify_topology_snapshot_and_connection_fence ()
     assert (topology.admit (equal_revision_mutation, replacement_connection)
             == mesh::peer_admission_result_t::stale_descriptor);
 
+    auto immutable_mutation = peer;
+    immutable_mutation.descriptor_revision = 2;
+    immutable_mutation.security_identity = "changed-security";
+    assert (topology.admit (immutable_mutation, replacement_connection)
+            == mesh::peer_admission_result_t::stale_descriptor);
+
     peer.descriptor_revision = 2;
     peer.state = mesh::service_node_state_t::retiring;
     assert (topology.admit (peer, replacement_connection)
             == mesh::peer_admission_result_t::admitted);
     assert (!topology.select ("alpha"));
+}
+
+void verify_duplicate_connection_survivor_is_symmetric ()
+{
+    auto lower = descriptor ("aa");
+    auto higher = descriptor ("zz", "tcp://127.0.0.1:7003");
+    higher.state = mesh::service_node_state_t::serving;
+    mesh::service_topology_registry_t lower_topology (lower);
+
+    assert (lower_topology.admit (
+              higher, bytes ("inbound"),
+              mesh::service_connection_direction_t::inbound)
+            == mesh::peer_admission_result_t::admitted);
+    assert (lower_topology.admit (
+              higher, bytes ("outbound"),
+              mesh::service_connection_direction_t::outbound)
+            == mesh::peer_admission_result_t::admitted);
+    assert (lower_topology.peer (bytes ("zz"))->connection_id
+            == bytes ("outbound"));
+    assert (lower_topology.admit (
+              higher, bytes ("second-inbound"),
+              mesh::service_connection_direction_t::inbound)
+            == mesh::peer_admission_result_t::duplicate_connection);
+    assert (!lower_topology.disconnect (
+      bytes ("zz"), bytes ("second-inbound")));
+    assert (lower_topology.peer (bytes ("zz"))->connection_id
+            == bytes ("outbound"));
+    mesh::service_liveness_registry_t liveness;
+    liveness.admit (
+      bytes ("zz"), bytes ("outbound"),
+      mesh::service_liveness_registry_t::clock_t::now ());
+    assert (!liveness.disconnect (
+      bytes ("zz"), bytes ("second-inbound")));
+    assert (liveness.size () == 1);
+
+    auto lower_peer = descriptor (
+      "aa", "tcp://127.0.0.1:7004");
+    lower_peer.state = mesh::service_node_state_t::serving;
+    mesh::service_topology_registry_t higher_topology (
+      descriptor ("zz"));
+    assert (higher_topology.admit (
+              lower_peer, bytes ("outbound"),
+              mesh::service_connection_direction_t::outbound)
+            == mesh::peer_admission_result_t::admitted);
+    assert (higher_topology.admit (
+              lower_peer, bytes ("inbound"),
+              mesh::service_connection_direction_t::inbound)
+            == mesh::peer_admission_result_t::admitted);
+    assert (higher_topology.peer (bytes ("aa"))->connection_id
+            == bytes ("inbound"));
+}
+
+void verify_lifecycle_token_requires_current_discovery_expectation ()
+{
+    mesh::service_topology_registry_t topology (
+      descriptor ("local"));
+    auto generation_99 = descriptor (
+      "peer", "tcp://127.0.0.1:7099");
+    generation_99.lifecycle_generation = 99;
+    generation_99.state =
+      mesh::service_node_state_t::serving;
+    assert (topology.admit (
+              generation_99, bytes ("generation-99"),
+              mesh::service_connection_direction_t::outbound,
+              generation_99)
+            == mesh::peer_admission_result_t::admitted);
+
+    auto generation_3 = generation_99;
+    generation_3.lifecycle_generation = 3;
+    generation_3.descriptor_revision = 1;
+    assert (topology.admit (
+              generation_3, bytes ("generation-3-without-expectation"),
+              mesh::service_connection_direction_t::outbound)
+            == mesh::peer_admission_result_t::stale_descriptor);
+    assert (topology.peer (bytes ("peer"))->descriptor.lifecycle_generation
+            == 99);
+
+    auto wrong_expectation = generation_3;
+    wrong_expectation.lifecycle_generation = 4;
+    assert (topology.admit (
+              generation_3, bytes ("generation-3-mismatch"),
+              mesh::service_connection_direction_t::outbound,
+              wrong_expectation)
+            == mesh::peer_admission_result_t::stale_descriptor);
+    wrong_expectation = generation_3;
+    wrong_expectation.advertised_endpoint =
+      "tcp://127.0.0.1:7100";
+    assert (topology.admit (
+              generation_3, bytes ("generation-3-endpoint-mismatch"),
+              mesh::service_connection_direction_t::outbound,
+              wrong_expectation)
+            == mesh::peer_admission_result_t::stale_descriptor);
+    wrong_expectation = generation_3;
+    wrong_expectation.security_identity =
+      "different-security";
+    assert (topology.admit (
+              generation_3, bytes ("generation-3-security-mismatch"),
+              mesh::service_connection_direction_t::outbound,
+              wrong_expectation)
+            == mesh::peer_admission_result_t::stale_descriptor);
+
+    assert (topology.admit (
+              generation_3, bytes ("generation-3"),
+              mesh::service_connection_direction_t::outbound,
+              generation_3)
+            == mesh::peer_admission_result_t::admitted);
+    assert (topology.peer (bytes ("peer"))->descriptor.lifecycle_generation
+            == 3);
+}
+
+void verify_physical_candidates_preserve_survivor ()
+{
+    mesh::raw_mesh_connection_candidates_t candidates;
+    const auto peer = bytes ("peer");
+    const auto inbound = bytes ("inbound-physical");
+    const auto outbound = bytes ("outbound-physical");
+    const auto late_inbound = bytes ("late-inbound-physical");
+    candidates.ready (
+      peer, inbound,
+      mesh::service_connection_direction_t::inbound);
+    candidates.ready (
+      peer, outbound,
+      mesh::service_connection_direction_t::outbound);
+    assert (candidates.size (peer) == 2);
+    assert (candidates.for_handshake (
+              peer,
+              mesh::service_connection_direction_t::inbound)
+              ->connection_id
+            == inbound);
+    assert (candidates.for_handshake (
+              peer,
+              mesh::service_connection_direction_t::outbound)
+              ->connection_id
+            == outbound);
+
+    candidates.ready (
+      peer, late_inbound,
+      mesh::service_connection_direction_t::inbound);
+    assert (candidates.size (peer) == 3);
+    assert (candidates.for_handshake (
+              peer,
+              mesh::service_connection_direction_t::inbound)
+              ->connection_id
+            == late_inbound);
+    assert (candidates.for_handshake (
+              peer,
+              mesh::service_connection_direction_t::outbound)
+              ->connection_id
+            == outbound);
+
+    assert (candidates.disconnect (peer, inbound));
+    assert (!candidates.disconnect (peer, inbound));
+    assert (candidates.disconnect (peer, late_inbound));
+    assert (candidates.size (peer) == 1);
+    assert (candidates.for_handshake (
+              peer,
+              mesh::service_connection_direction_t::inbound)
+              ->connection_id
+            == outbound);
+}
+
+void verify_bilateral_raw_connection_without_public_pipe_id_keeps_survivor ()
+{
+    /* Public ROUTER receive exposes the peer RID but not the physical
+     * connection ID. Exercise the runtime's deterministic direction rule
+     * with both physical directions present, then drain late monitor and
+     * handshake events to prove that they cannot replace the survivor. */
+    mesh::raw_mesh_node_owner_t lower (
+      mesh::raw_mesh_node_options_t{
+        descriptor ("bilateral-aa")});
+    mesh::raw_mesh_node_owner_t higher (
+      mesh::raw_mesh_node_options_t{
+        descriptor ("bilateral-zz")});
+    lower.start ();
+    higher.start ();
+    const auto lower_descriptor =
+      lower.topology ().local_descriptor ();
+    const auto higher_descriptor =
+      higher.topology ().local_descriptor ();
+    lower.expect_peer (higher_descriptor);
+    higher.expect_peer (lower_descriptor);
+    assert (lower.connect_peer (
+      higher.endpoint (), higher_descriptor));
+    assert (higher.connect_peer (
+      lower.endpoint (), lower_descriptor));
+
+    const auto deadline =
+      std::chrono::steady_clock::now () + 5s;
+    while (std::chrono::steady_clock::now () < deadline) {
+        const auto now =
+          mesh::service_liveness_registry_t::clock_t::now ();
+        (void) lower.drain_monitor_events (now);
+        (void) higher.drain_monitor_events (now);
+        (void) lower.pump_one (now);
+        (void) higher.pump_one (now);
+        const auto lower_peer =
+          lower.topology ().peer (
+            higher_descriptor.node_routing_id);
+        const auto higher_peer =
+          higher.topology ().peer (
+            lower_descriptor.node_routing_id);
+        if (lower_peer && higher_peer
+            && lower_peer->direction
+                 == mesh::service_connection_direction_t::outbound
+            && higher_peer->direction
+                 == mesh::service_connection_direction_t::inbound)
+            break;
+        std::this_thread::sleep_for (1ms);
+    }
+
+    const auto lower_survivor =
+      lower.topology ().peer (
+        higher_descriptor.node_routing_id);
+    const auto higher_survivor =
+      higher.topology ().peer (
+        lower_descriptor.node_routing_id);
+    assert (lower_survivor);
+    assert (higher_survivor);
+    assert (lower_survivor->direction
+            == mesh::service_connection_direction_t::outbound);
+    assert (higher_survivor->direction
+            == mesh::service_connection_direction_t::inbound);
+
+    const auto settle_deadline =
+      std::chrono::steady_clock::now () + 100ms;
+    while (std::chrono::steady_clock::now ()
+           < settle_deadline) {
+        const auto now =
+          mesh::service_liveness_registry_t::clock_t::now ();
+        (void) lower.drain_monitor_events (now);
+        (void) higher.drain_monitor_events (now);
+        (void) lower.pump_one (now);
+        (void) higher.pump_one (now);
+        std::this_thread::sleep_for (1ms);
+    }
+    assert (lower.topology ().peer (
+              higher_descriptor.node_routing_id)
+              ->connection_id
+            == lower_survivor->connection_id);
+    assert (higher.topology ().peer (
+              lower_descriptor.node_routing_id)
+              ->connection_id
+            == higher_survivor->connection_id);
+}
+
+void verify_raw_admission_rejects_lifecycle_mismatch ()
+{
+    mesh::raw_mesh_node_owner_t first (
+      mesh::raw_mesh_node_options_t{
+        descriptor ("lifecycle-a")});
+    mesh::raw_mesh_node_owner_t second (
+      mesh::raw_mesh_node_options_t{
+        descriptor ("lifecycle-b")});
+    first.start ();
+    second.start ();
+    auto expected_second =
+      second.topology ().local_descriptor ();
+    ++expected_second.lifecycle_generation;
+    assert (first.connect_peer (
+      second.endpoint (), expected_second));
+
+    const auto deadline =
+      std::chrono::steady_clock::now () + 500ms;
+    while (std::chrono::steady_clock::now () < deadline) {
+        const auto now =
+          mesh::service_liveness_registry_t::clock_t::now ();
+        (void) first.drain_monitor_events (now);
+        (void) second.drain_monitor_events (now);
+        (void) first.pump_one (now);
+        (void) second.pump_one (now);
+        std::this_thread::sleep_for (1ms);
+    }
+    assert (!first.topology ().peer (
+      expected_second.node_routing_id));
 }
 
 void verify_object_client_connection_requirement ()
@@ -99,12 +475,15 @@ void verify_object_client_connection_requirement ()
     assert (topology.not_required_peers ().size () == 1);
 
     auto zero_weight_server = remote;
-    zero_weight_server.descriptor_revision = 2;
+    zero_weight_server.lifecycle_generation = 2;
+    zero_weight_server.descriptor_revision = 1;
     zero_weight_server.channels = {{"audit", 0}};
     assert (!mesh::route_mesh_connection_not_required (
       local, zero_weight_server));
     assert (topology.admit (
-              zero_weight_server, bytes ("required-connection"))
+              zero_weight_server, bytes ("required-connection"),
+              mesh::service_connection_direction_t::inbound,
+              zero_weight_server)
             == mesh::peer_admission_result_t::admitted);
     assert (topology.peers ().size () == 1);
     assert (topology.not_required_peers ().empty ());
@@ -774,6 +1153,9 @@ void verify_raw_owner_node_send_and_liveness ()
 
     auto first_descriptor = first.topology ().local_descriptor ();
     auto second_descriptor = second.topology ().local_descriptor ();
+    // The higher RID does not dial, but it retains discovery data to
+    // validate the inbound endpoint and security identity.
+    second.expect_peer (first_descriptor);
     const auto now = mesh::service_liveness_registry_t::clock_t::now ();
     const auto deadline = now + 5s;
     assert (first.connect_peer (second.endpoint (), second_descriptor));
@@ -839,6 +1221,48 @@ void verify_raw_owner_node_send_and_liveness ()
     }
     assert (retained_pump
             == mesh::raw_mesh_pump_result_t::backpressured);
+
+    // A full application mailbox retains the second payload and pauses
+    // application Recv. Liveness still crosses the existing Completion
+    // connection and must be processed before that retained payload.
+    const auto paused_liveness_base =
+      mesh::service_liveness_registry_t::clock_t::now ();
+    const auto paused_probe =
+      first.tick_liveness (paused_liveness_base + 5s);
+    assert (paused_probe.probes.size () == 1);
+    mesh::raw_mesh_pump_result_t paused_probe_pump =
+      mesh::raw_mesh_pump_result_t::no_data;
+    while (paused_probe_pump
+             != mesh::raw_mesh_pump_result_t::infrastructure
+           && mesh::service_liveness_registry_t::clock_t::now ()
+                < deadline) {
+        paused_probe_pump = second.pump_one (
+          mesh::service_liveness_registry_t::clock_t::now (),
+          false);
+        assert (paused_probe_pump
+                != mesh::raw_mesh_pump_result_t::protocol_error);
+        if (paused_probe_pump
+            != mesh::raw_mesh_pump_result_t::infrastructure)
+            std::this_thread::sleep_for (1ms);
+    }
+    assert (paused_probe_pump
+            == mesh::raw_mesh_pump_result_t::infrastructure);
+    mesh::raw_mesh_pump_result_t paused_ack_pump =
+      mesh::raw_mesh_pump_result_t::no_data;
+    while (paused_ack_pump
+             != mesh::raw_mesh_pump_result_t::infrastructure
+           && mesh::service_liveness_registry_t::clock_t::now ()
+                < deadline) {
+        paused_ack_pump = first.pump_one (
+          mesh::service_liveness_registry_t::clock_t::now ());
+        assert (paused_ack_pump
+                != mesh::raw_mesh_pump_result_t::protocol_error);
+        if (paused_ack_pump
+            != mesh::raw_mesh_pump_result_t::infrastructure)
+            std::this_thread::sleep_for (1ms);
+    }
+    assert (paused_ack_pump
+            == mesh::raw_mesh_pump_result_t::infrastructure);
 
     auto claim = second.mailbox ().try_claim (
       mesh::service_mailbox_domain_t::application, 1, 1024);
@@ -951,6 +1375,79 @@ void verify_raw_owner_node_send_and_liveness ()
     assert (protocol::decode_application_payload (request_result.second)
             == expected_reply);
 
+    std::promise<request_result_t> actor_create_promise;
+    auto actor_create_future = actor_create_promise.get_future ();
+    protocol::actor_create_header_t actor_create{
+      0,
+      {first_descriptor.lifecycle_generation, 91},
+      first_descriptor.node_routing_id,
+      first_descriptor.lifecycle_generation,
+      "actor-remote",
+      "player",
+      {"reservation-remote", "store-remote", 1, 1,
+       second_descriptor.node_routing_id,
+       second_descriptor.lifecycle_generation,
+       "owner-remote", 1, 1},
+      static_cast<std::uint64_t> (
+        std::chrono::duration_cast<std::chrono::milliseconds> (
+          std::chrono::system_clock::now ().time_since_epoch () + 2s)
+          .count ())};
+    assert (first.request_actor_create (
+      second_descriptor.node_routing_id, actor_create, 2s,
+      [&actor_create_promise] (
+        foundation::operation_terminal_t terminal,
+        std::vector<std::uint8_t> payload) mutable {
+          actor_create_promise.set_value (
+            {terminal, std::move (payload)});
+      }));
+    mesh::raw_mesh_pump_result_t actor_create_pump =
+      mesh::raw_mesh_pump_result_t::no_data;
+    while (actor_create_pump
+             != mesh::raw_mesh_pump_result_t::infrastructure
+           && mesh::service_liveness_registry_t::clock_t::now ()
+                < deadline) {
+        actor_create_pump = second.pump_one (
+          mesh::service_liveness_registry_t::clock_t::now ());
+        assert (actor_create_pump
+                != mesh::raw_mesh_pump_result_t::protocol_error);
+    }
+    assert (actor_create_pump
+            == mesh::raw_mesh_pump_result_t::infrastructure);
+    auto actor_create_claim = second.mailbox ().try_claim (
+      mesh::service_mailbox_domain_t::infrastructure, 1, 4096);
+    assert (actor_create_claim
+            && actor_create_claim->records.size () == 1);
+    const auto &actor_create_record =
+      actor_create_claim->records.front ();
+    const auto decoded_actor_create =
+      protocol::decode_actor_create_header (
+        actor_create_record.parts.front ());
+    assert (decoded_actor_create.operation == actor_create.operation);
+    assert (decoded_actor_create.actor_id == "actor-remote");
+    protocol::actor_create_reply_t actor_create_reply{
+      {*actor_create_record.correlation, 0, 0},
+      protocol::actor_create_result_t::created,
+      second_descriptor.node_routing_id,
+      "actor-remote",
+      1};
+    assert (second.reply_actor_create (
+      actor_create_record, actor_create_reply));
+    assert (second.mailbox ().release (*actor_create_claim));
+    while (actor_create_future.wait_for (0ms)
+             != std::future_status::ready
+           && mesh::service_liveness_registry_t::clock_t::now ()
+                < deadline) {
+        const auto pump = first.pump_one (
+          mesh::service_liveness_registry_t::clock_t::now ());
+        assert (pump != mesh::raw_mesh_pump_result_t::protocol_error);
+    }
+    assert (actor_create_future.wait_for (0ms)
+            == std::future_status::ready);
+    const auto actor_create_result = actor_create_future.get ();
+    assert (actor_create_result.first
+            == foundation::operation_terminal_t::completed);
+    assert (!actor_create_result.second.empty ());
+
     const auto liveness_base =
       mesh::service_liveness_registry_t::clock_t::now ();
     const auto first_probe = first.tick_liveness (liveness_base + 5s);
@@ -985,7 +1482,15 @@ void verify_raw_owner_node_send_and_liveness ()
 
 int main ()
 {
+    verify_host_wide_application_byte_budget ();
+    verify_host_wide_completion_send_permits ();
+    verify_actor_create_command_49_roundtrip ();
     verify_topology_snapshot_and_connection_fence ();
+    verify_duplicate_connection_survivor_is_symmetric ();
+    verify_lifecycle_token_requires_current_discovery_expectation ();
+    verify_physical_candidates_preserve_survivor ();
+    verify_bilateral_raw_connection_without_public_pipe_id_keeps_survivor ();
+    verify_raw_admission_rejects_lifecycle_mismatch ();
     verify_object_client_connection_requirement ();
     verify_manual_object_client_pair_ends_not_required ();
     verify_signed_weight_contract ();

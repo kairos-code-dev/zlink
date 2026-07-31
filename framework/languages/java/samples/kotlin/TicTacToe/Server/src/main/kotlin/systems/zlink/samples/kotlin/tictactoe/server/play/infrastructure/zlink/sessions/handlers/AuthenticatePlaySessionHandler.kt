@@ -2,7 +2,10 @@ package systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.
 
 import kotlinx.coroutines.future.await
 import systems.zlink.framework.actors.ZLinkActorManager
+import systems.zlink.framework.actors.ActorRef
+import systems.zlink.framework.actors.ZLinkActorCreateResult
 import systems.zlink.framework.channels.ZLinkClient
+import systems.zlink.framework.kotlin.kotlin
 import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionMessageContext
@@ -31,14 +34,19 @@ class AuthenticatePlaySessionHandler(
             .timeout(SampleNames.RequestTimeout)
             .submit(AuthenticatePlayerRes::class.java)
             .await()
-        val playActor = actors.getOrCreate(
+        val playActor = actors.kotlin().getOrCreate(
             authenticated.player.actorId,
             SampleNames.PlayActor,
-            authenticated.player,
-        ).await()
-        val bound = context.actors().bind(playActor).await()
+        ).request(authenticated.player).await()
+        context.actors().bind(requireActor(playActor)).await()
         context.client()
             .reply(AuthenticateRes(authenticated.player))
             .submit()
+    }
+
+    private fun requireActor(result: ZLinkActorCreateResult): ActorRef = when (result) {
+        is ZLinkActorCreateResult.Existing -> result.actor
+        is ZLinkActorCreateResult.Created -> result.actor
+        is ZLinkActorCreateResult.Rejected -> throw IllegalStateException("Play actor creation was rejected.")
     }
 }

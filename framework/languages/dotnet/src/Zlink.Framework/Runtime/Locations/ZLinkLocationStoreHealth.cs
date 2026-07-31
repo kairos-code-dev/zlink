@@ -95,13 +95,13 @@ internal static class ZLinkLocationStoreRead
                 $"Location store read '{source}' exceeded {Timeout}.",
                 error);
             health?.ReportFailure(source, failure);
-            ZLinkRuntimeMetrics.RecordLocationStoreError();
+            ZLinkRuntimeMetrics.RecordLocationStoreError("read");
             throw failure;
         }
         catch (Exception error)
         {
             health?.ReportFailure(source, error);
-            ZLinkRuntimeMetrics.RecordLocationStoreError();
+            ZLinkRuntimeMetrics.RecordLocationStoreError("read");
             throw;
         }
     }

@@ -24,7 +24,7 @@ export async function runSmD4A(options: ClientOptions): Promise<void> {
   await sessionB.connect();
   try {
     const original = await bindActor(sessionA, reboundActorId, 'play-a');
-    await bindActor(sessionA, sessionAActorId, 'play-a');
+    const sessionAActor = await bindActor(sessionA, sessionAActorId, 'play-a');
     const rebound = await bindActor(sessionB, reboundActorId, 'play-a');
     await bindActor(sessionB, sessionBActorId, 'play-b');
     ensure(
@@ -40,15 +40,15 @@ export async function runSmD4A(options: ClientOptions): Promise<void> {
 
     await sessionA.close();
     await waitEvidence(
-      options.playAUrl,
-      `entry-disconnected|rid=play-a|actor=${sessionAActorId}`
+      actorOwnerUrl(options, sessionAActor.nodeRid),
+      `entry-disconnected|rid=${sessionAActor.nodeRid}|actor=${sessionAActorId}`
     );
     await delay(300);
-    const playAEvidence = await getEvidence(options.playAUrl);
+    const currentOwnerEvidence = await getEvidence(actorOwnerUrl(options, rebound.nodeRid));
     ensure(
       countEvidence(
-        playAEvidence,
-        `entry-disconnected|rid=play-a|actor=${reboundActorId}`
+        currentOwnerEvidence,
+        `entry-disconnected|rid=${rebound.nodeRid}|actor=${reboundActorId}`
       ) === 0,
       'SM-D4A Session A late disconnect reached the Session B current binding.'
     );
@@ -63,4 +63,10 @@ export async function runSmD4A(options: ClientOptions): Promise<void> {
   }
 
   console.log('scenario SM-D4A passed');
+}
+
+function actorOwnerUrl(options: ClientOptions, nodeRid: string): string {
+  if (nodeRid === 'play-a') return options.playAUrl;
+  if (nodeRid === 'play-b') return options.playBUrl;
+  throw new Error(`Unexpected Actor owner '${nodeRid}'.`);
 }

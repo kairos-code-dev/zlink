@@ -7,25 +7,25 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseFound;
-import systems.zlink.framework.locations.ZLinkLocationStore;
-import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseFound;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationOwnerToken;
 
 final class ZLinkOwnerLeaseTracker {
-    private final ZLinkLocationStore store;
+    private final ZLinkLocationRepository store;
     private final Duration pollingInterval;
     private final LongSupplier nanoTime;
     private final Map<String, ObservedLease> observed =
         new ConcurrentHashMap<>();
 
     ZLinkOwnerLeaseTracker(
-        ZLinkLocationStore store,
+        ZLinkLocationRepository store,
         Duration pollingInterval) {
         this(store, pollingInterval, System::nanoTime);
     }
 
     ZLinkOwnerLeaseTracker(
-        ZLinkLocationStore store,
+        ZLinkLocationRepository store,
         Duration pollingInterval,
         LongSupplier nanoTime) {
         this.store = Objects.requireNonNull(store, "store");

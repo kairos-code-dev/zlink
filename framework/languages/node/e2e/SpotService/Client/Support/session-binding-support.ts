@@ -30,10 +30,17 @@ export function createSessionClient(endpoint: string): ZlinkStreamConnector {
 export async function bindActor(
   client: ZlinkStreamConnector,
   actorId: string,
-  nodeRid: string
+  nodeRid: string,
+  meshName?: string
 ): Promise<AuthRes> {
+  const request: AuthReq = {
+    actorId,
+    displayName: actorId,
+    nodeRid,
+    ...(meshName === undefined ? {} : { meshName })
+  };
   const result = await client
-    .request({ actorId, displayName: actorId, nodeRid } satisfies AuthReq)
+    .request(request)
     .packetName('AuthReq')
     .timeout(5000)
     .submit<AuthRes>();

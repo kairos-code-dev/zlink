@@ -8,6 +8,15 @@
 #include "core/mailbox.hpp"
 #include "sockets/common/socket_base.hpp"
 
+namespace
+{
+zlink::socket_base_t *&async_mailbox_dispatch_socket_tls ()
+{
+    static thread_local zlink::socket_base_t *socket = NULL;
+    return socket;
+}
+}
+
 void zlink::socket_base_t::reaper_mailbox_handler (void *arg_)
 {
     socket_base_t *self = static_cast<socket_base_t *> (arg_);
@@ -24,7 +33,10 @@ void zlink::socket_base_t::reaper_mailbox_pre_post (void *arg_)
 void zlink::socket_base_t::async_mailbox_handler (void *arg_)
 {
     socket_base_t *self = static_cast<socket_base_t *> (arg_);
+    socket_base_t *previous = async_mailbox_dispatch_socket_tls ();
+    async_mailbox_dispatch_socket_tls () = self;
     self->process_async_mailbox ();
+    async_mailbox_dispatch_socket_tls () = previous;
     self->dec_mailbox_ref ();
 }
 
@@ -32,6 +44,27 @@ void zlink::socket_base_t::async_mailbox_pre_post (void *arg_)
 {
     socket_base_t *self = static_cast<socket_base_t *> (arg_);
     self->inc_mailbox_ref ();
+}
+
+zlink::socket_base_t *zlink::socket_base_t::current_async_mailbox_dispatch_socket ()
+{
+    return async_mailbox_dispatch_socket_tls ();
+}
+
+void zlink::socket_base_t::defer_close_handoff_from_async_owner ()
+{
+    if (lifecycle_coordinator ().is_async_mailbox_active ())
+        stop_async_mailbox_processing ();
+}
+
+void zlink::socket_base_t::finish_deferred_close_after_async_quiesced ()
+{
+    if (!lifecycle_coordinator ().take_deferred_close ())
+        return;
+
+    static_cast<mailbox_t *> (_mailbox)->clear_signalers ();
+    _tag = 0xdeadbeef;
+    send_reap (this);
 }
 
 void zlink::socket_base_t::start_reaping (poller_t *poller_)
@@ -136,6 +169,10 @@ void zlink::socket_base_t::process_stop ()
 
 void zlink::socket_base_t::process_bind (pipe_t *pipe_)
 {
+    // A termination acknowledgement can overtake bind during rapid endpoint
+    // replacement. Do not add an already detached pipe back to the socket.
+    if (pipe_->has_completed_termination ())
+        return;
     attach_pipe (pipe_);
 }
 
@@ -235,6 +272,7 @@ void zlink::socket_base_t::process_async_mailbox ()
                 if (!mailbox->detach_io_context_if_idle ())
                     continue;
                 lifecycle_coordinator ().mark_async_processing_stopped (mailbox);
+                finish_deferred_close_after_async_quiesced ();
             }
             check_destroy ();
             return;
@@ -247,6 +285,7 @@ void zlink::socket_base_t::process_async_mailbox ()
                 continue;
             //  Signal quiesce completion to waiting close()/start_reaping().
             lifecycle_coordinator ().mark_async_processing_stopped (mailbox);
+            finish_deferred_close_after_async_quiesced ();
             return;
         }
     } while (static_cast<mailbox_t *> (_mailbox)->reschedule_if_needed ());

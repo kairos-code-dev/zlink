@@ -10,4 +10,5 @@ public interface ZLinkSpotGetOrCreateCall {
     ZLinkSpotGetOrCreateCall request(ZLinkMessage request);
     ZLinkSpotGetOrCreateCall timeout(Duration timeout);
     CompletionStage<ZLinkSpotCreateResult> submit();
+    CompletionStage<ZLinkSpotCreateResult> yield();
 }

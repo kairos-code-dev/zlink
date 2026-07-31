@@ -17,7 +17,8 @@ internal sealed class ZLinkChannelCommandDispatchPipeline(
         IReadOnlyList<Message> parts,
         ZLinkEnvelopeHeader header,
         CancellationToken cancellationToken,
-        ZLinkMessageMetadata? metadata = null)
+        ZLinkMessageMetadata? metadata = null,
+        RoutingId? sourceNodeRid = null)
     {
         var scope = new ZLinkDispatchFlowScope(
             ZLinkDispatchErrorSurface.Channel,
@@ -50,13 +51,22 @@ internal sealed class ZLinkChannelCommandDispatchPipeline(
                 out var message))
             return;
 
-        var context = new ZLinkMessageContext(
-            meshName,
-            channelName,
-            scope.PacketName!,
-            scope.ContentType,
-            metadata,
-            header.CorrelationId);
+        IZLinkMessageContext context = sourceNodeRid is { } source
+            ? new ZLinkRouteMessageContext(
+                meshName,
+                channelName,
+                source,
+                scope.PacketName!,
+                scope.ContentType,
+                metadata,
+                header.CorrelationId)
+            : new ZLinkMessageContext(
+                meshName,
+                channelName,
+                scope.PacketName!,
+                scope.ContentType,
+                metadata,
+                header.CorrelationId);
         try
         {
             await dispatcher.DispatchAsync(

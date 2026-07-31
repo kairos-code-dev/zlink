@@ -68,5 +68,11 @@ class BingoCard private constructor(
             val marks = MutableList(CellCount) { it == FreeCellIndex }
             return BingoCard(numbers, marks)
         }
+
+        fun restore(values: List<Int>, marks: List<Boolean>): BingoCard {
+            from(values)
+            require(marks.size == CellCount) { "Bingo card marks must contain $CellCount cells." }
+            return BingoCard(values.toMutableList(), marks.toMutableList())
+        }
     }
 }

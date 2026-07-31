@@ -39,20 +39,32 @@ class api_server_host_factory_t
               .trace_label ("tictactoe-api");
 
             add_sample_location_store (options, topology);
+            options.services ().add_singleton<sample_topology_t> (
+              std::make_unique<sample_topology_t> (topology));
 
             options.add_client_server_channel (sample_names_t::api_channel)
-              .enable_server (topology.selected_api_endpoint ())
-              .use_handler_group ("api");
+              .server ()
+              .set_bind_host (
+                host_from_tcp_endpoint (topology.selected_api_endpoint ()))
+              .set_advertise_host (
+                host_from_tcp_endpoint (topology.selected_api_endpoint ()))
+              .listen (
+                port_from_tcp_endpoint (topology.selected_api_endpoint ()))
+              .add_handler_group ("api");
 
             options.http ()
               .listen (topology.selected_api_http_endpoint ())
               .map_post<create_game_http_handler_t> ("/games");
 
-            /* 정본 TicTacToe는 location store 자동 연결 대신 수동 endpoint scale-out을
-             * 보여 준다(공통 sample spec §6/§18): Play 두 노드를 직접 연결한다. */
-            auto play_peers = options.add_client_server_channel (sample_names_t::play_channel);
-            for (const auto &endpoint : topology.all_play_endpoints ()) {
-                play_peers.enable_client (endpoint);
+            /* API는 Object Client RouteMesh로 Play Object Server에 연결한다. 새 room의
+             * owner는 Framework가 선택하며 API는 NodeRid를 지정하지 않는다. */
+            auto mesh = options.add_route_mesh (sample_names_t::game_spot_node);
+            mesh.set_object_role (object_role_t::client)
+              .set_routing_id (zlink::routing_id_t::from (
+                "tictactoe-api-" + topology.api_node))
+              .listen (topology.selected_api_route_endpoint ());
+            for (const auto &endpoint : topology.all_play_route_endpoints ()) {
+                mesh.peer_connections ().connect (endpoint);
             }
 
             options.handlers ()

@@ -1,7 +1,6 @@
-import { Module } from '@nestjs/common';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
-import { questMissionInstanceChannel, SampleNames } from '../../Shared/Configuration/sample-names';
+import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
+import { SampleNames } from '../../Shared/Configuration/sample-names';
 import { createGameQuestLocationStore, gameQuestLocationOptions } from '../Configuration/location-store';
 import { GAMEQUEST_INSTANCE_ID, GAMEQUEST_LOCATION_STORE } from '../Configuration/tokens';
 import { GAMEQUEST_SAMPLE_CONFIG, createGameQuestConfigurationModule } from '../Configuration/sample-config';
@@ -9,20 +8,7 @@ import { GameplayActionService } from './Application/gameplay-action-service';
 import { GameplayEventPublisher } from './Infrastructure/ZLink/gameplay-event-publisher';
 import { GameQuestEntrySpot } from './Infrastructure/ZLink/gamequest-entry-spot';
 import { GameQuestPlayerActor } from './Infrastructure/ZLink/gamequest-player-actor';
-import {
-  CollectItemHandler,
-  CompleteMissionHandler,
-  EnterAreaHandler,
-  GetQuestProgressHandler,
-  KillMonsterHandler,
-  SyncQuestProgressHandler,
-  UnlockFeatureHandler
-} from './Infrastructure/ZLink/gamequest-player-handlers';
-import {
-  QuestCompletedNotificationHandler,
-  QuestProgressNotificationHandler
-} from './Infrastructure/ZLink/quest-notification-handlers';
-import { GameQuestSessionFactory, JoinSessionHandler } from './game-api-session';
+import { GameQuestSessionFactory } from './game-api-session';
 import {
   GameQuestSelfCheckStore,
   GameplayStateStore,
@@ -33,8 +19,8 @@ import type { ZLinkActorContext, ZLinkActorFactory } from '@zlink-systems/framew
 import type { GameQuestServerConfig } from '../Configuration/sample-config';
 
 class GameQuestPlayerActorFactory implements ZLinkActorFactory {
-  async create(actorId: string, context: ZLinkActorContext): Promise<GameQuestPlayerActor> {
-    return new GameQuestPlayerActor(actorId, context);
+  async create(context: ZLinkActorContext): Promise<GameQuestPlayerActor> {
+    return new GameQuestPlayerActor(context.actorId, context);
   }
 }
 
@@ -52,7 +38,7 @@ function createGameApiModule(instanceId: 'api-a' | 'api-b') {
     instanceId === 'api-a' ? 'apiAHttpUrl' : 'apiBHttpUrl'
   ]);
 
-  Module({
+  zlinkModule(__dirname, {
     imports: [
       configuration,
       ZLinkModule.forRootFactory({
@@ -67,6 +53,7 @@ function createGameApiModule(instanceId: 'api-a' | 'api-b') {
           builder.addLocationStore(createGameQuestLocationStore(config));
           gameQuestLocationOptions(builder.configureLocations());
           builder.addStreamNode(SampleNames.playerStreamNode)
+            .enableActorDispatch()
             .bind(config[streamEndpointKey])
             .registerSession(GameQuestSessionFactory);
           const mesh = builder.addRouteMesh(SampleNames.playerQuestSpotMesh)
@@ -79,8 +66,6 @@ function createGameApiModule(instanceId: 'api-a' | 'api-b') {
             GameQuestPlayerActorFactory,
             (factory) => factory.disableRelocation()
           );
-          mesh.channelName(questMissionInstanceChannel('mission-a')).setWeight(0);
-          mesh.channelName(SampleNames.playerQuestSpotMesh);
           return builder.build();
         }
       })
@@ -117,17 +102,7 @@ function createGameApiModule(instanceId: 'api-a' | 'api-b') {
       GameplayEventPublisher,
       GameQuestEntrySpot,
       GameQuestPlayerActorFactory,
-      QuestProgressNotificationHandler,
-      QuestCompletedNotificationHandler,
-      GameQuestSessionFactory,
-      JoinSessionHandler,
-      KillMonsterHandler,
-      CollectItemHandler,
-      CompleteMissionHandler,
-      EnterAreaHandler,
-      UnlockFeatureHandler,
-      GetQuestProgressHandler,
-      SyncQuestProgressHandler
+      GameQuestSessionFactory
     ]
   })(GameApiModule);
 

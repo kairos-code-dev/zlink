@@ -62,6 +62,7 @@ final class ZLinkUserSpotAggregateStagingOwner {
                     request,
                     cancellation)
                 .thenCompose(ignored -> prepareActors(
+                    preparedSpot,
                     request,
                     cancellation,
                     preparedActors))
@@ -78,6 +79,7 @@ final class ZLinkUserSpotAggregateStagingOwner {
     }
 
     private CompletionStage<Void> prepareActors(
+        Object preparedSpot,
         Request request,
         ZLinkRelocationCancellation cancellation,
         List<Object> prepared) {
@@ -86,7 +88,14 @@ final class ZLinkUserSpotAggregateStagingOwner {
             chain = chain.thenCompose(ignored -> backend.prepareActor(
                     participant,
                     cancellation)
-                .thenAccept(prepared::add));
+                .thenCompose(actor -> {
+                    prepared.add(actor);
+                    return backend.stageActorTimers(
+                        preparedSpot,
+                        actor,
+                        participant,
+                        participant.timerEnvelope());
+                }));
         }
         return chain;
     }
@@ -133,7 +142,8 @@ final class ZLinkUserSpotAggregateStagingOwner {
         // Replay the final authority-selected journal while the prepared
         // objects remain hidden. Local Ready/admission opens only after every
         // captured and held suffix record completes.
-        CompletionStage<Void> replay = CompletableFuture.completedFuture(null);
+        CompletionStage<Void> replay =
+            backend.completeRelocationReady(staged.spot);
         for (Map.Entry<String, List<ZLinkAsyncSerialQueue.QueuedRecord>> lane
             : finalRequest.acceptedJournal().entrySet()) {
             for (ZLinkAsyncSerialQueue.QueuedRecord record : lane.getValue()) {
@@ -157,8 +167,12 @@ final class ZLinkUserSpotAggregateStagingOwner {
             throw new IllegalStateException(
                 "aggregate staging is not published");
         }
-        for (var actor : staged.actors) {
+        for (int index = 0; index < staged.actors.size(); index++) {
+            Object actor = staged.actors.get(index);
+            ActorParticipant participant = staged.request.actors().get(index);
             backend.completeActor(actor);
+            backend.publishActorTimers(
+                staged.spot, actor, participant);
         }
         backend.publishTimers(staged.spot);
         staged.terminal = true;
@@ -224,7 +238,9 @@ final class ZLinkUserSpotAggregateStagingOwner {
                 || left.restoreSnapshot() != right.restoreSnapshot()
                 || !Objects.equals(
                     left.preparedActorRef(), right.preparedActorRef())
-                || !java.util.Arrays.equals(left.state(), right.state())) {
+                || !java.util.Arrays.equals(left.state(), right.state())
+                || !java.util.Arrays.equals(
+                    left.timerEnvelope(), right.timerEnvelope())) {
                 return false;
             }
         }
@@ -323,11 +339,46 @@ final class ZLinkUserSpotAggregateStagingOwner {
             ActorParticipant participant,
             ZLinkRelocationCancellation cancellation);
 
+        default CompletionStage<Void> completeRelocationReady(
+            Object preparedSpot) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        default CompletionStage<Void> stageActorTimers(
+            Object preparedSpot,
+            Object preparedActor,
+            ActorParticipant participant,
+            byte[] timerEnvelope) {
+            return stageActorTimers(preparedActor, timerEnvelope);
+        }
+
+        default CompletionStage<Void> stageActorTimers(
+            Object preparedActor,
+            byte[] timerEnvelope) {
+            if (ZLinkSpotTimerRelocationEnvelope
+                    .canonicalize(timerEnvelope).isEmpty()) {
+                return CompletableFuture.completedFuture(null);
+            }
+            return CompletableFuture.failedFuture(new IllegalStateException(
+                "staged Actor timer runtime is unavailable"));
+        }
+
         void publishSpot(Object preparedSpot);
 
         void publishActor(Object preparedActor);
 
         void completeActor(Object preparedActor);
+
+        default void publishActorTimers(
+            Object preparedSpot,
+            Object preparedActor,
+            ActorParticipant participant) {
+            if (!ZLinkSpotTimerRelocationEnvelope
+                    .canonicalize(participant.timerEnvelope()).isEmpty()) {
+                throw new IllegalStateException(
+                    "staged Actor timer runtime is unavailable");
+            }
+        }
 
         void publishTimers(Object preparedSpot);
 
@@ -356,7 +407,23 @@ final class ZLinkUserSpotAggregateStagingOwner {
         String actorType,
         byte[] state,
         boolean restoreSnapshot,
-        ZLinkBackendActorRef preparedActorRef) {
+        ZLinkBackendActorRef preparedActorRef,
+        byte[] timerEnvelope) {
+        ActorParticipant(
+            String actorId,
+            String actorType,
+            byte[] state,
+            boolean restoreSnapshot,
+            ZLinkBackendActorRef preparedActorRef) {
+            this(
+                actorId,
+                actorType,
+                state,
+                restoreSnapshot,
+                preparedActorRef,
+                ZLinkSpotTimerRelocationEnvelope.encodeCanonical(List.of()));
+        }
+
         ActorParticipant {
             if (actorId == null || actorId.isBlank()
                 || actorType == null || actorType.isBlank()) {
@@ -364,9 +431,15 @@ final class ZLinkUserSpotAggregateStagingOwner {
                     "Actor id and stable type are required");
             }
             state = Objects.requireNonNull(state, "state").clone();
+            timerEnvelope = Objects.requireNonNull(
+                timerEnvelope, "timerEnvelope").clone();
+            ZLinkSpotTimerRelocationEnvelope.canonicalize(timerEnvelope);
         }
 
         @Override public byte[] state() { return state.clone(); }
+        @Override public byte[] timerEnvelope() {
+            return timerEnvelope.clone();
+        }
     }
 
     record Request(
@@ -482,6 +555,12 @@ final class ZLinkUserSpotAggregateStagingOwner {
         }
 
         @Override
+        public CompletionStage<Void> completeRelocationReady(Object value) {
+            return spots.completeRelocationReady(
+                (ZLinkSpotLifecycle.PreparedUserSpot) value);
+        }
+
+        @Override
         public CompletionStage<Object> prepareActor(
             ActorParticipant participant,
             ZLinkRelocationCancellation cancellation) {
@@ -496,6 +575,19 @@ final class ZLinkUserSpotAggregateStagingOwner {
                 .thenApply(value -> value);
         }
 
+        @Override
+        public CompletionStage<Void> stageActorTimers(
+            Object preparedSpot,
+            Object preparedActor,
+            ActorParticipant participant,
+            byte[] timerEnvelope) {
+            spots.stageReservedActorTimers(
+                (ZLinkSpotLifecycle.PreparedUserSpot) preparedSpot,
+                participant.actorId(),
+                timerEnvelope);
+            return CompletableFuture.completedFuture(null);
+        }
+
         @Override public void publishSpot(Object value) {
             spots.publishReserved((ZLinkSpotLifecycle.PreparedUserSpot) value);
         }
@@ -508,6 +600,16 @@ final class ZLinkUserSpotAggregateStagingOwner {
         @Override public void completeActor(Object value) {
             actors.completePreparedTransferredActor(
                 (ZLinkActorRuntime.PreparedTransferredActor) value);
+        }
+
+        @Override
+        public void publishActorTimers(
+            Object preparedSpot,
+            Object preparedActor,
+            ActorParticipant participant) {
+            spots.publishReservedActorTimers(
+                (ZLinkSpotLifecycle.PreparedUserSpot) preparedSpot,
+                participant.actorId());
         }
 
         @Override public void publishTimers(Object value) {

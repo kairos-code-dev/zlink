@@ -12,6 +12,17 @@
 namespace zlink::framework::detail
 {
 
+void to_json (nlohmann::json &json, const spot_multicast_route_send_t &value)
+{
+    json = nlohmann::json{{"topic", value.topic}, {"frame", value.frame}};
+}
+
+void from_json (const nlohmann::json &json, spot_multicast_route_send_t &value)
+{
+    value.topic = json.at ("topic").get<std::string> ();
+    value.frame = json.at ("frame").get<std::vector<std::uint8_t>> ();
+}
+
 result_t<zlink::message_t> encode_actor_bound_session_frame (
   stream_codec_t codec,
   std::string packet_name,
@@ -221,6 +232,7 @@ void to_json (nlohmann::json &json, const spot_actor_packet_route_request_t &val
                           {"spotId", value.spot_id},
                           {"packetName", value.packet_name_value},
                           {"contentType", value.content_type},
+                          {"messageFollowHopCount", value.message_follow_hop_count},
                           {"metadata", value.metadata},
                           {"payload", value.payload}};
 }
@@ -234,6 +246,11 @@ void from_json (const nlohmann::json &json, spot_actor_packet_route_request_t &v
     value.spot_id = json.at ("spotId").get<std::string> ();
     value.packet_name_value = json.at ("packetName").get<std::string> ();
     value.content_type = json.value ("contentType", "application/json");
+    value.message_follow_hop_count =
+      json.value ("messageFollowHopCount", std::uint8_t{0});
+    if (value.message_follow_hop_count > 8)
+        throw std::invalid_argument (
+          "Actor packet Message Follow hop count exceeds 8");
     value.metadata = json.value ("metadata", std::map<std::string, std::string>{});
     value.payload = json.at ("payload").get<std::vector<std::uint8_t>> ();
 }
@@ -401,6 +418,16 @@ make_spot_actor_packet_route_request (const actor_ref_t &actor_ref,
                                       const zlink::message_t &payload,
                                       const spot_inbound_message_t &metadata)
 {
+    std::uint8_t message_follow_hop_count = 0;
+    if (const auto hop = metadata.find (
+          "__zlink.messageFollowHopCount")) {
+        const auto parsed = std::stoul (std::string (*hop));
+        if (parsed > 8)
+            throw std::invalid_argument (
+              "Actor packet Message Follow hop count exceeds 8");
+        message_follow_hop_count =
+          static_cast<std::uint8_t> (parsed);
+    }
     return spot_actor_packet_route_request_t{.actor_node_rid =
                                                std::string (actor_ref.node_rid ().value ()),
                                              .actor_type = std::string (actor_ref.actor_type ()),
@@ -409,6 +436,8 @@ make_spot_actor_packet_route_request (const actor_ref_t &actor_ref,
                                              .spot_id = std::string (spot_id),
                                              .packet_name_value = std::string (packet_name),
                                              .content_type = metadata.content_type,
+                                             .message_follow_hop_count =
+                                               message_follow_hop_count,
                                              .metadata = metadata.values,
                                              .payload = payload.to_bytes ()};
 }
@@ -462,6 +491,16 @@ actor_ref_from_bound_session_route (const actor_bound_session_bind_route_request
 
 void register_spot_route_packet_serializers (serializer_registry_t &serializers)
 {
+    if (!serializers.contains (std::type_index (typeid (spot_multicast_route_send_t)))) {
+        serializers.add<spot_multicast_route_send_t> (
+          [] (const spot_multicast_route_send_t &value) {
+              return encoded_payload_t::from_string (nlohmann::json (value).dump ());
+          },
+          [] (const encoded_payload_t &payload) {
+              return nlohmann::json::parse (payload.to_string ())
+                .get<spot_multicast_route_send_t> ();
+          });
+    }
     if (!serializers.contains (std::type_index (typeid (spot_actor_admission_route_request_t)))) {
         serializers.add<spot_actor_admission_route_request_t> (
           [] (const spot_actor_admission_route_request_t &value) {

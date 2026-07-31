@@ -113,10 +113,12 @@ final class ZLinkAutoConnectReconcilerTest {
         reconciler.tick().toCompletableFuture().join();
         assertEquals(0, executor.connects);
         assertEquals(1, executor.notRequiredMarks);
+        assertEquals(1, executor.admissionExpectations);
 
         resolver.rows = List.of();
         reconciler.tick().toCompletableFuture().join();
         assertEquals(1, executor.notRequiredClears);
+        assertEquals(1, executor.forgottenAdmissionExpectations);
     }
 
     private static ZLinkAutoConnectReconciler reconciler(
@@ -179,6 +181,8 @@ final class ZLinkAutoConnectReconcilerTest {
         private int disconnects;
         private int notRequiredMarks;
         private int notRequiredClears;
+        private int admissionExpectations;
+        private int forgottenAdmissionExpectations;
         private boolean connectSucceeds = true;
 
         @Override
@@ -201,6 +205,18 @@ final class ZLinkAutoConnectReconcilerTest {
         @Override
         public void clearNotRequired(ZLinkAutoConnectPlanner.Target target) {
             notRequiredClears++;
+        }
+
+        @Override
+        public void observeAdmissionExpectation(
+            ZLinkAutoConnectPlanner.Target target) {
+            admissionExpectations++;
+        }
+
+        @Override
+        public void forgetAdmissionExpectation(
+            ZLinkAutoConnectPlanner.Target target) {
+            forgottenAdmissionExpectations++;
         }
     }
 }

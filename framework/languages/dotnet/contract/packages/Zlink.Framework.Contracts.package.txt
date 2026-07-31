@@ -6,9 +6,9 @@ entry _rels/.rels
 entry lib/net8.0/Zlink.Framework.Contracts.dll
 entry lib/net8.0/Zlink.Framework.Contracts.xml
 entry package/services/metadata/core-properties/{CORE_PROPERTIES}.psmdcp
-content-sha256 lib/net8.0/Zlink.Framework.Contracts.xml=d4351ee481b442c3347c81685e738176dc61627cad25fad6394daf93d3dc9690
+content-sha256 lib/net8.0/Zlink.Framework.Contracts.xml=59eb26b3285af7bca31cb03d457d0f3ab774a814d4d6253ed64326affa2a7de6
 metadata authors=Zlink.Framework.Contracts
-metadata description=Public handler, context, call, error, and payload contracts for ZLink framework packages.
+metadata description=Package-neutral codec and error contracts shared by ZLink framework packages.
 metadata id=Zlink.Framework.Contracts
 metadata license=LICENSE type=file
 metadata licenseUrl=https://aka.ms/deprecateLicenseUrl
@@ -16,6 +16,3 @@ metadata projectUrl=https://github.com/kairos-code-dev/zlink
 metadata version={VERSION}
 metadata repository commit={COMMIT} type=git
 dependency-group targetFramework=net8.0
-dependency targetFramework=net8.0 exclude=Build,Analyzers id=K4os.Compression.LZ4 version=1.3.8
-dependency targetFramework=net8.0 exclude=Build,Analyzers id=Systems.Zlink version=11.0.0
-dependency targetFramework=net8.0 exclude=Build,Analyzers id=Systems.Zlink.Stream.Connector version=[{VERSION}]

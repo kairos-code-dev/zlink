@@ -52,6 +52,9 @@ public static class SupportServerHostFactory
             }));
             options.ConfigureDispatch()
                 .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
+            options.ConfigureMetadata()
+                .AllowSessionToActor(SampleNames.ConversationIdMetadataKey)
+                .AllowActorToSession(SampleNames.ConversationIdMetadataKey);
             options.AddHandlersFromAssemblyOf(typeof(SupportServerHostFactory));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(topology.MeshEndpoint)

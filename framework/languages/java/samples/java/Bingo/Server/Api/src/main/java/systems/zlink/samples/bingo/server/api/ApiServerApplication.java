@@ -40,11 +40,21 @@ public final class ApiServerApplication {
             options.configureLocations();
             options.addHandlersFromPackageOf(ApiServerApplication.class);
             ZLinkMeshNodeBuilder api = options.addRouteMesh(SampleNames.Mesh)
-                .useAllocatedRoutingId(2, "api")
-                .setRoutingIdAllocationGroup(SampleNames.ApiAllocationGroup)
-                .listen(topology.selectedApiChannelEndpoint());
-            api.channelName(SampleNames.ApiChannel);
-            api.channelName(SampleNames.RoomSpotDiscovery);
+                .setRoutingIdPrefix("api")
+                .listen(topology.selectedApiMeshEndpoint());
+            api.objects().client();
+            java.net.URI apiChannelEndpoint = java.net.URI.create(
+                topology.selectedApiChannelEndpoint());
+            options.addClientServerChannel(SampleNames.ApiChannel)
+                .server()
+                .setBindHost(apiChannelEndpoint.getHost())
+                .listen(apiChannelEndpoint.getPort())
+                .addHandlerGroup(SampleNames.ApiChannel);
+            ZLinkMeshNodeBuilder matchmaking = options
+                .addRouteMesh(SampleNames.MatchmakingMesh)
+                .setRoutingIdPrefix("api-matchmaking")
+                .listen(topology.apiMatchmakingRouterEndpoint());
+            matchmaking.objects().client();
         };
     }
 

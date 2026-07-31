@@ -11,11 +11,14 @@
 namespace zlink::framework::e2e::runtime_monitoring::service
 {
 
-inline void record_throwing_socket_event (server::evidence_store_t &evidence,
-                                          const zlink::framework::socket_event_payload_t &event)
+inline void record_throwing_runtime_log (server::evidence_store_t &evidence,
+                                         const zlink::framework::log_record_t &record)
 {
-    evidence.add ("monitor-throw|source=" + event.source_name
-                  + "|kind=" + server::socket_kind_name (event.event));
+    if (record.message != "zlink.runtime.transport.connection_changed") {
+        return;
+    }
+    evidence.add ("monitor-throw|source=" + server::log_field (record, "source_name")
+                  + "|kind=" + server::log_field (record, "state"));
     throw std::runtime_error ("monitoring dispatch failure for e2e");
 }
 

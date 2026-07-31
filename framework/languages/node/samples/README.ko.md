@@ -42,7 +42,7 @@ runtime으로 사용되지 않는다.
 ZoneWorld의 언어별 디렉터리에는 Node server와 headless 검증 시나리오를 둔다. 모든 언어 server에
 연결하는 TypeScript 브라우저 UI는 `framework/languages/shared_sample/zoneworld/client/`에서 공유한다.
 자세한 connector 사용법은
-[TypeScript Stream Connector guide](../../../doc/framework/node/stream-connector/README.ko.md)를 참고한다.
+[TypeScript Stream Connector guide](../../../doc/framework/node/guide/stream-connector/README.ko.md)를 참고한다.
 
 ## 실행 준비
 

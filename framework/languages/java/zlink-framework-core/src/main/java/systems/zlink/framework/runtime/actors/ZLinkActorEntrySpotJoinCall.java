@@ -129,13 +129,17 @@ final class ZLinkActorEntrySpotJoinCall implements ZLinkActorJoinCall {
     private CompletionStage<Void> executeDeferred(
         ZLinkActorJoinOperationId operationId,
         long deadlineNanos) {
-        if (System.nanoTime() >= deadlineNanos) {
+        Duration remaining =
+            ZLinkActorSpotJoinCall.remainingTimeout(deadlineNanos);
+        if (remaining == null) {
             return notifyCompletion(new ZLinkActorJoinCompletion.Failed(
                 operationId,
                 ZLinkFrameworkErrorKind.DEADLINE_EXCEEDED,
                 false));
         }
-        return execute().handle((result, error) -> {
+        ZLinkActorEntrySpotJoinCall bounded =
+            (ZLinkActorEntrySpotJoinCall) timeout(remaining);
+        return bounded.execute().handle((result, error) -> {
                 if (error != null) {
                     Throwable cause = error instanceof java.util.concurrent.CompletionException
                         && error.getCause() != null ? error.getCause() : error;

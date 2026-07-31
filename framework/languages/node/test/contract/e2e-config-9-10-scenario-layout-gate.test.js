@@ -7,7 +7,23 @@ const root = path.resolve(import.meta.dirname, '../..');
 
 test('Config 9 and 10 keep one client scenario file per documented id', () => {
   assertScenarioLayout('ToActorMessaging', ids('TA', { A: 4, B: 3 }));
-  assertScenarioLayout('SpotActorTransfer', ids('ST', { A: 3, B: 4, C: 3, D: 2, E: 2, F: 6 }));
+  assertScenarioLayout(
+    'SpotActorTransfer',
+    [
+      ...ids('ST', { A: 3, B: 4, C: 3, D: 2, E: 2, F: 6 }),
+      'ST-H1',
+      'ST-H2',
+      'ST-H3',
+      'ST-H4',
+      'ST-H5',
+      'ST-I1',
+      'ST-I2',
+      'ST-I3',
+      'ST-I4',
+      'ST-I5',
+      'ST-I6'
+    ].sort()
+  );
 });
 
 function assertScenarioLayout(configName, expectedIds) {
@@ -27,7 +43,12 @@ function assertScenarioLayout(configName, expectedIds) {
     const matches = [...new Set(source.match(/\b(?:TA|ST)-[A-Z][0-9]+\b/g) ?? [])];
     assert.equal(matches.length, 1, `${configName}/${name} scenario id`);
     assert.match(source.split(/\r?\n/, 1)[0], new RegExp(`^// ${matches[0]}: `));
-    assert.match(source, /export async function run/);
+    if (matches[0] === 'ST-H2') {
+      assert.match(source, /export async function prepareStH2TargetRestart/);
+      assert.match(source, /export async function verifyStH2TargetRestart/);
+    } else {
+      assert.match(source, /export async function run/);
+    }
     return matches[0];
   }).sort();
   assert.deepEqual(actualIds, expectedIds);

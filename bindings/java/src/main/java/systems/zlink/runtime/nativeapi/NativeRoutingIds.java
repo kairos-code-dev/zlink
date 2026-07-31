@@ -2,6 +2,8 @@
 
 package systems.zlink.runtime.nativeapi;
 
+import systems.zlink.internal.ContractAccess;
+
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;

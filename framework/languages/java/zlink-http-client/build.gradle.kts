@@ -6,6 +6,10 @@ plugins {
 
 description = "ZLink Java HTTP client (fluent wrapper over java.net.http)"
 
+java {
+    modularity.inferModulePath.set(true)
+}
+
 // Single version source: HttpClientVersion.java (also drives the User-Agent token).
 version = Regex("VERSION = \"([^\"]+)\"")
     .find(file("src/main/java/systems/zlink/httpclient/internal/HttpClientVersion.java").readText())!!

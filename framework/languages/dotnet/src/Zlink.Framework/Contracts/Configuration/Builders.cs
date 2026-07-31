@@ -137,6 +137,8 @@ public interface IZLinkFrameworkOptions
 
     Locations.ZLinkLocationOptions ConfigureLocations();
 
+    IZLinkInboundDispatchOptions ConfigureInboundDispatch();
+
     IZLinkNetworkOptions ConfigureNetwork();
 
     void UseFilter<TFilter>()

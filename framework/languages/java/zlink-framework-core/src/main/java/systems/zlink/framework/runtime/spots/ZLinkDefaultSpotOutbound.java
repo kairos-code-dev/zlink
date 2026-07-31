@@ -16,6 +16,7 @@ import systems.zlink.framework.runtime.messaging.ZLinkApplicationMetadata;
 
 import systems.zlink.framework.runtime.internal.spots.SpotTransportAddress;
 import systems.zlink.framework.runtime.internal.spots.SpotTransportAddressResolver;
+import systems.zlink.framework.runtime.internal.spots.ZLinkInstanceSpotCallRuntime;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
@@ -29,6 +30,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
     private final String meshName;
     private final String publisherChannelName;
     private final ZLinkMessageSerializer serializer;
+    private final ZLinkSpotRouteMessages routeMessages;
     private final ZLinkSpotRoutedOutbound routed;
     private final ZLinkSpotDirectOutbound direct;
     private final ZLinkSpotPublisherRuntime publishers;
@@ -36,6 +38,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
     private final boolean routeMeshEnabled;
     private final Duration defaultRequestTimeout;
     private final Supplier<SpotTransportAddressResolver> spotAddressResolver;
+    private final ZLinkInstanceSpotCallRuntime instanceSpots;
 
     DefaultSpotOutbound(
         ZLinkBackendSpot backendSpot,
@@ -48,11 +51,13 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
         ZLinkChannelRuntime channels,
         boolean routeMeshEnabled,
         Duration defaultRequestTimeout,
-        Supplier<SpotTransportAddressResolver> spotAddressResolver) {
+        Supplier<SpotTransportAddressResolver> spotAddressResolver,
+        ZLinkInstanceSpotCallRuntime instanceSpots) {
         this.backendSpot = backendSpot;
         this.meshName = meshName;
         this.publisherChannelName = publisherChannelName;
         this.serializer = serializer;
+        this.routeMessages = new ZLinkSpotRouteMessages(serializer);
         this.routed = routed;
         this.direct = direct;
         this.publishers = publishers;
@@ -60,12 +65,14 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
         this.routeMeshEnabled = routeMeshEnabled;
         this.defaultRequestTimeout = defaultRequestTimeout;
         this.spotAddressResolver = spotAddressResolver;
+        this.instanceSpots = instanceSpots;
     }
 
     @Override
     public systems.zlink.framework.spots.ZLinkSpotSendCall sendToSpot(
         String spotId,
         Object message) {
+        rejectAfterRelocationReady("sendToSpot");
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
         return new DeferredSpotSendCall(spotId, encoded.payload(), Optional.of(encoded.packetName()));
@@ -75,6 +82,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
     public systems.zlink.framework.spots.ZLinkSpotRequestCall requestToSpot(
         String spotId,
         Object request) {
+        rejectAfterRelocationReady("requestToSpot");
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, request);
         return new DeferredSpotRequestCall(
@@ -86,6 +94,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
         String channelName,
         String topic,
         Object message) {
+        rejectAfterRelocationReady("publish");
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
         if (publisherChannelName != null && publishers.contains(publisherChannelName)) {
@@ -106,12 +115,14 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
 
     @Override
     public ZLinkSendCall sendToChannel(String channelName, Object message) {
+        rejectAfterRelocationReady("sendToChannel");
         requireChannels(channelName);
         return channels.sendToChannel(channelName, message);
     }
 
     @Override
     public ZLinkRequestCall requestToChannel(String channelName, Object request) {
+        rejectAfterRelocationReady("requestToChannel");
         requireChannels(channelName);
         return channels.requestToChannel(channelName, request);
     }
@@ -156,21 +167,60 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
         private final systems.zlink.contracts.messaging.Message payload;
         private final Optional<String> packetName;
         private final ZLinkApplicationMetadata metadata;
+        private final boolean instanceIntent;
+        private final String stableType;
+        private final String selectedMesh;
 
         private DeferredSpotSendCall(String target, systems.zlink.contracts.messaging.Message payload,
             Optional<String> packetName) {
-            this(target, payload, packetName, ZLinkApplicationMetadata.empty());
+            this(target, payload, packetName, ZLinkApplicationMetadata.empty(), false, null, null);
         }
 
         private DeferredSpotSendCall(
             String target,
             systems.zlink.contracts.messaging.Message payload,
             Optional<String> packetName,
-            ZLinkApplicationMetadata metadata) {
+            ZLinkApplicationMetadata metadata,
+            boolean instanceIntent,
+            String stableType,
+            String selectedMesh) {
             this.target = java.util.Objects.requireNonNull(target, "target");
             this.payload = payload;
             this.packetName = packetName;
             this.metadata = metadata;
+            this.instanceIntent = instanceIntent;
+            this.stableType = stableType;
+            this.selectedMesh = selectedMesh;
+        }
+
+        @Override
+        public systems.zlink.framework.spots.ZLinkSpotSendCall instanceSpot() {
+            return withInstanceType(null);
+        }
+
+        @Override
+        public systems.zlink.framework.spots.ZLinkSpotSendCall instanceSpot(
+            String value) {
+            return withInstanceType(requireStableType(value));
+        }
+
+        private DeferredSpotSendCall withInstanceType(String value) {
+            if (instanceIntent) {
+                throw new IllegalStateException("instanceSpot was already set");
+            }
+            return new DeferredSpotSendCall(
+                target, payload, packetName, metadata, true, value, selectedMesh);
+        }
+
+        @Override
+        public systems.zlink.framework.spots.ZLinkSpotSendCall inMesh(
+            String value) {
+            if (selectedMesh != null) {
+                throw new IllegalStateException("inMesh was already set");
+            }
+            return new DeferredSpotSendCall(
+                target, payload, packetName, metadata, instanceIntent,
+                stableType, requireStableType(value));
         }
 
         @Override
@@ -178,23 +228,39 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
             String key,
             String value) {
             return new DeferredSpotSendCall(
-                target, payload, packetName, metadata.with(key, value));
+                target, payload, packetName, metadata.with(key, value),
+                instanceIntent, stableType, selectedMesh);
         }
 
         @Override
         public systems.zlink.framework.spots.ZLinkSpotSendCall metadata(
             Map<String, String> values) {
             return new DeferredSpotSendCall(
-                target, payload, packetName, metadata.withAll(values));
+                target, payload, packetName, metadata.withAll(values),
+                instanceIntent, stableType, selectedMesh);
         }
 
         @Override public CompletionStage<Void> submit() {
+            rejectAfterRelocationReady("Spot send submit");
             CompletionStage<Void> duplicate =
                 ZLinkOneWayCalls.beginOneWay(submitGate);
             if (duplicate != null) {
                 return duplicate;
             }
-            return resolve(target).thenCompose(address -> {
+            return resolve(target).handle((address, failure) -> {
+                if (failure == null) {
+                    return sendExisting(address);
+                }
+                if (!instanceIntent || instanceSpots == null) {
+                    return CompletableFuture.<Void>failedFuture(unwrap(failure));
+                }
+                return instanceSpots.send(
+                    target, stableType, selectedMesh, payload, packetName,
+                    metadata.values());
+            }).thenCompose(java.util.function.Function.identity());
+        }
+
+        private CompletionStage<Void> sendExisting(SpotTransportAddress address) {
                 backendSpot.rememberSpotAuthority(
                     address.targetNodeRid(),
                     address.spotId(),
@@ -207,7 +273,6 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
                         address.spotGeneration(), payload, packetName);
                 call = call.metadata(metadata.values());
                 return call.submit();
-            });
         }
     }
 
@@ -218,6 +283,9 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
         private final Optional<String> packetName;
         private final Duration timeout;
         private final ZLinkApplicationMetadata metadata;
+        private final boolean instanceIntent;
+        private final String stableType;
+        private final String selectedMesh;
 
         private DeferredSpotRequestCall(String target, systems.zlink.contracts.messaging.Message payload,
             Optional<String> packetName, Duration timeout) {
@@ -226,7 +294,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
                 payload,
                 packetName,
                 timeout,
-                ZLinkApplicationMetadata.empty());
+                ZLinkApplicationMetadata.empty(), false, null, null);
         }
 
         private DeferredSpotRequestCall(
@@ -234,12 +302,49 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
             systems.zlink.contracts.messaging.Message payload,
             Optional<String> packetName,
             Duration timeout,
-            ZLinkApplicationMetadata metadata) {
+            ZLinkApplicationMetadata metadata,
+            boolean instanceIntent,
+            String stableType,
+            String selectedMesh) {
             this.target = java.util.Objects.requireNonNull(target, "target");
             this.payload = payload;
             this.packetName = packetName;
             this.timeout = timeout;
             this.metadata = metadata;
+            this.instanceIntent = instanceIntent;
+            this.stableType = stableType;
+            this.selectedMesh = selectedMesh;
+        }
+
+        @Override
+        public systems.zlink.framework.spots.ZLinkSpotRequestCall instanceSpot() {
+            return withInstanceType(null);
+        }
+
+        @Override
+        public systems.zlink.framework.spots.ZLinkSpotRequestCall instanceSpot(
+            String value) {
+            return withInstanceType(requireStableType(value));
+        }
+
+        private DeferredSpotRequestCall withInstanceType(String value) {
+            if (instanceIntent) {
+                throw new IllegalStateException("instanceSpot was already set");
+            }
+            return new DeferredSpotRequestCall(
+                target, payload, packetName, timeout, metadata, true, value,
+                selectedMesh);
+        }
+
+        @Override
+        public systems.zlink.framework.spots.ZLinkSpotRequestCall inMesh(
+            String value) {
+            if (selectedMesh != null) {
+                throw new IllegalStateException("inMesh was already set");
+            }
+            return new DeferredSpotRequestCall(
+                target, payload, packetName, timeout, metadata, instanceIntent,
+                stableType, requireStableType(value));
         }
 
         @Override
@@ -247,26 +352,47 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
             String key,
             String value) {
             return new DeferredSpotRequestCall(
-                target, payload, packetName, timeout, metadata.with(key, value));
+                target, payload, packetName, timeout, metadata.with(key, value),
+                instanceIntent, stableType, selectedMesh);
         }
 
         @Override
         public systems.zlink.framework.spots.ZLinkSpotRequestCall metadata(
             Map<String, String> values) {
             return new DeferredSpotRequestCall(
-                target, payload, packetName, timeout, metadata.withAll(values));
+                target, payload, packetName, timeout, metadata.withAll(values),
+                instanceIntent, stableType, selectedMesh);
         }
 
         @Override
         public systems.zlink.framework.spots.ZLinkSpotRequestCall timeout(
             Duration value) {
             return new DeferredSpotRequestCall(
-                target, payload, packetName, value, metadata);
+                target, payload, packetName, value, metadata, instanceIntent,
+                stableType, selectedMesh);
         }
         @Override public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
+            rejectAfterRelocationReady("Spot request submit");
             systems.zlink.framework.runtime.internal.handlers
                 .ZLinkSuspendInvocationContext.rejectSameSpotWait(target);
-            CompletionStage<TReply> stage = resolve(target).thenCompose(address -> {
+            CompletionStage<TReply> stage = resolve(target).handle((address, failure) -> {
+                if (failure == null) {
+                    return requestExisting(address, replyType);
+                }
+                if (!instanceIntent || instanceSpots == null) {
+                    return CompletableFuture.<TReply>failedFuture(unwrap(failure));
+                }
+                return instanceSpots.request(
+                        target, stableType, selectedMesh, payload, packetName,
+                        metadata.values(), timeout)
+                    .thenApply(parts -> routeMessages.decodeReply(parts, replyType));
+            }).thenCompose(java.util.function.Function.identity());
+            return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(stage);
+        }
+
+        private <TReply> CompletionStage<TReply> requestExisting(
+            SpotTransportAddress address,
+            Class<TReply> replyType) {
                 backendSpot.rememberSpotAuthority(
                     address.targetNodeRid(),
                     address.spotId(),
@@ -278,8 +404,6 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
                     : direct.request(backendSpot, address.targetNodeRid(), address.spotId(),
                         address.spotGeneration(), payload, packetName, timeout);
                 return call.metadata(metadata.values()).submit(replyType);
-            });
-            return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(stage);
         }
 
         @Override
@@ -289,5 +413,32 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
             return systems.zlink.framework.execution.ZLinkAsyncSerialQueue
                 .yieldCurrent(submit(replyType));
         }
+    }
+
+    private static RuntimeException unwrap(Throwable failure) {
+        Throwable current = failure;
+        while ((current instanceof java.util.concurrent.CompletionException
+                || current instanceof java.util.concurrent.ExecutionException)
+            && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current instanceof RuntimeException runtime
+            ? runtime : new RuntimeException(current);
+    }
+
+    private static String requireStableType(String value) {
+        if (value == null || value.isBlank()
+            || value.indexOf('\0') >= 0
+            || value.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 255) {
+            throw new IllegalArgumentException(
+                "value must be 1..255 UTF-8 bytes without NUL");
+        }
+        return value;
+    }
+
+    private static void rejectAfterRelocationReady(String operation) {
+        systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.rejectAfterRelocationReady(
+                operation);
     }
 }

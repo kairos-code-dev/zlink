@@ -59,18 +59,6 @@ class TriggerHttpServer(
                     "application/json",
                 )
             }
-            nextServer.createContext("/validation/registration/duplicate-source") { exchange ->
-                write(exchange, MonitoringValidationApplication.verifyDuplicateSocketSource())
-            }
-            nextServer.createContext("/validation/registration/interval") { exchange ->
-                write(exchange, MonitoringValidationApplication.verifyPollingInterval())
-            }
-            nextServer.createContext("/validation/registration/missing-socket") { exchange ->
-                write(exchange, MonitoringValidationApplication.verifyMissingSocketSource())
-            }
-            nextServer.createContext("/validation/registration/missing-spot") { exchange ->
-                write(exchange, MonitoringValidationApplication.verifyMissingSpotSource())
-            }
             nextServer.start()
             server = nextServer
             running = true

@@ -2,6 +2,7 @@
 #pragma once
 
 #include "runtime/channels/channel_runtime.hpp"
+#include <runtime/locations/location_repository.hpp>
 #include "runtime/client_server/raw_client_server_owner.hpp"
 #include "runtime/locations/location_runtime.hpp"
 
@@ -15,6 +16,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -34,8 +36,8 @@ class client_server_location_runtime_t
       message_bus_t bus,
       std::vector<channel_snapshot_t> channels,
       location_runtime_t &locations,
-      location_store_t &store,
-      location_store_t &leases,
+      location_repository_t &store,
+      location_repository_t &leases,
       service_provider_t &services,
       serializer_registry_t &serializers,
       const handler_registry_t &handlers,
@@ -56,8 +58,9 @@ class client_server_location_runtime_t
     struct client_connection_t;
     struct client_channel_t;
 
-    void start_server (const channel_snapshot_t &channel,
-                       const location_owner_token_t &owner);
+    void start_server (
+      const channel_snapshot_t &channel,
+      const std::optional<location_owner_token_t> &publication_owner);
     void start_client (const channel_snapshot_t &channel);
     void run ();
     void reconcile ();
@@ -103,8 +106,8 @@ class client_server_location_runtime_t
     detail::channel_runtime_t _channel_runtime;
     std::vector<channel_snapshot_t> _channels;
     location_runtime_t *_locations;
-    location_store_t *_store;
-    location_store_t *_leases;
+    location_repository_t *_store;
+    location_repository_t *_leases;
     service_provider_t *_services;
     serializer_registry_t *_serializers;
     const handler_registry_t *_handlers;

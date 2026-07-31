@@ -3,7 +3,7 @@ package systems.zlink.samples.kotlin.supportchat.server.api.handlers
 import kotlinx.coroutines.future.await
 import org.slf4j.LoggerFactory
 import systems.zlink.framework.channels.ZLinkClient
-import systems.zlink.framework.channels.ZLinkRequestContext
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleNames
@@ -19,7 +19,7 @@ class OpenConversationHandler(
 ) : ZLinkSuspendingRequestHandler<OpenConversationApiReq, OpenConversationApiRes> {
     override suspend fun handle(
         request: OpenConversationApiReq,
-        context: ZLinkRequestContext,
+        context: ZLinkMessageContext,
     ): OpenConversationApiRes {
         logger.info(
             "support api open: allocate request customer={} subject={}",

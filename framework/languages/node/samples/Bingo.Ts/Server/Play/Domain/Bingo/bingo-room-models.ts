@@ -62,4 +62,4 @@ function roomSettingsFromPayload(payload: BingoRoomSettingsInput): BingoRoomSett
 }
 
 export { createObserverRoomSettings, createRoomSettings, roomSettingsFromPayload };
-export type { BingoMode, BingoRoomSettings };
+export type { BingoMode, BingoRoomSettings, BingoRoomSettingsInput };

@@ -1,5 +1,7 @@
 package systems.zlink.framework.locations.redis;
 
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationDescriptorCodec;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.lettuce.core.RedisCommandExecutionException;
 import io.lettuce.core.RedisCommandTimeoutException;
@@ -19,28 +21,28 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
-import systems.zlink.framework.locations.ZLinkClientServerServerDescriptorKey;
-import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
-import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
-import systems.zlink.framework.locations.ZLinkLocationWriteResult;
-import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
-import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor;
-import systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey;
+import systems.zlink.framework.runtime.internal.locations.ZLinkClientServerServerDescriptor;
+import systems.zlink.framework.runtime.internal.locations.ZLinkClientServerServerDescriptorKey;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationOwnerToken;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationWriteIntent;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationWriteResult;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationWriteStatus;
+import systems.zlink.framework.runtime.internal.locations.ZLinkMeshNodeDescriptor;
+import systems.zlink.framework.runtime.internal.locations.ZLinkMeshNodeDescriptorKey;
 import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLease;
 import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseRenewal;
 import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseSnapshot;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseClaimResult;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseClaimed;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseClaimConflict;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseGenerationExhausted;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseReadResult;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseFound;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseMissing;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewResult;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewed;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewStale;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseReleaseResult;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseClaimResult;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseClaimed;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseClaimConflict;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseGenerationExhausted;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseReadResult;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseFound;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseMissing;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseRenewResult;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseRenewed;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseRenewStale;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseReleaseResult;
 
 final class ZLinkRedisLocationScriptsClient {
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -209,7 +211,7 @@ final class ZLinkRedisLocationScriptsClient {
         String rowKey =
             ZLinkRedisLocationKeyCodec.encodeMeshNodeKey(key);
         String json =
-            ZLinkRedisLocationRowJson.serializeMeshNode(descriptor);
+            ZLinkLocationDescriptorCodec.serializeMeshNode(descriptor);
         if (json.getBytes(java.nio.charset.StandardCharsets.UTF_8)
             .length > 1024 * 1024) {
             throw new IllegalArgumentException(
@@ -287,7 +289,7 @@ final class ZLinkRedisLocationScriptsClient {
                 Long.toString(descriptor.leaseGeneration()),
                 Long.toString(descriptor.lifecycleGeneration()),
                 Long.toString(descriptor.descriptorRevision()),
-                ZLinkRedisLocationRowJson
+                ZLinkLocationDescriptorCodec
                     .meshNodeImmutableFingerprint(descriptor),
                 json,
                 rowKey,
@@ -297,7 +299,7 @@ final class ZLinkRedisLocationScriptsClient {
                 Integer.toString(descriptor.state().wireValue()),
                 Long.toString(descriptor.applicationVersion()),
                 rowKey,
-                ZLinkRedisLocationRowJson
+                ZLinkLocationDescriptorCodec
                     .serializeMeshNodeAdmissionCapabilities(
                         descriptor.objectCapabilities()),
                 Integer.toString(
@@ -365,7 +367,7 @@ final class ZLinkRedisLocationScriptsClient {
         String rowKey =
             ZLinkRedisLocationKeyCodec.encodeClientServerKey(key);
         String json =
-            ZLinkRedisLocationRowJson.serializeClientServer(
+            ZLinkLocationDescriptorCodec.serializeClientServer(
                 descriptor);
         if (json.getBytes(StandardCharsets.UTF_8).length
             > 1024 * 1024) {
@@ -427,7 +429,7 @@ final class ZLinkRedisLocationScriptsClient {
                             descriptor.lifecycleGeneration()),
                         Long.toString(
                             descriptor.descriptorRevision()),
-                        ZLinkRedisLocationRowJson
+                        ZLinkLocationDescriptorCodec
                             .clientServerImmutableFingerprint(
                                 descriptor),
                         json,
@@ -487,18 +489,17 @@ final class ZLinkRedisLocationScriptsClient {
     }
 
     CompletionStage<ZLinkLocationWriteResult> writeFanoutPublisher(
-        systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor
+        systems.zlink.framework.runtime.internal.locations.ZLinkFanoutPublisherDescriptor
             descriptor,
         ZLinkLocationWriteIntent intent) {
         validateFanoutPublisher(descriptor);
-        var key = new systems.zlink.framework.locations
-            .ZLinkFanoutPublisherDescriptorKey(
+        var key = new systems.zlink.framework.runtime.internal.locations.ZLinkFanoutPublisherDescriptorKey(
                 descriptor.channelName(),
                 descriptor.publisherRid());
         String rowKey =
             ZLinkRedisLocationKeyCodec.encodeFanoutPublisherKey(key);
         String json =
-            ZLinkRedisLocationRowJson.serializeFanoutPublisher(
+            ZLinkLocationDescriptorCodec.serializeFanoutPublisher(
                 descriptor);
         if (json.getBytes(StandardCharsets.UTF_8).length
             > 1024 * 1024) {
@@ -562,7 +563,7 @@ final class ZLinkRedisLocationScriptsClient {
                             descriptor.lifecycleGeneration()),
                         Long.toString(
                             descriptor.descriptorRevision()),
-                        ZLinkRedisLocationRowJson
+                        ZLinkLocationDescriptorCodec
                             .fanoutPublisherImmutableFingerprint(
                                 descriptor),
                         json,
@@ -588,8 +589,7 @@ final class ZLinkRedisLocationScriptsClient {
 
     CompletionStage<ZLinkLocationWriteStatus>
         removeFanoutPublisher(
-            systems.zlink.framework.locations
-                .ZLinkFanoutPublisherDescriptorKey key,
+            systems.zlink.framework.runtime.internal.locations.ZLinkFanoutPublisherDescriptorKey key,
             ZLinkLocationOwnerToken owner) {
         String rowKey =
             ZLinkRedisLocationKeyCodec.encodeFanoutPublisherKey(key);
@@ -973,7 +973,7 @@ final class ZLinkRedisLocationScriptsClient {
     }
 
     private static void validateFanoutPublisher(
-        systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor
+        systems.zlink.framework.runtime.internal.locations.ZLinkFanoutPublisherDescriptor
             descriptor) {
         if (descriptor.channelName() == null
             || descriptor.channelName().isBlank()

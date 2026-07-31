@@ -4,24 +4,11 @@ import java.util.Map;
 import systems.zlink.framework.channels.ZLinkSendCall;
 
 public interface ZLinkSpotSendCall extends ZLinkSendCall {
-    default ZLinkSpotSendCall instanceSpot() {
-        throw new UnsupportedOperationException(
-            "Instance Spot activation is not available");
-    }
-    default ZLinkSpotSendCall instanceSpot(String stableType) {
-        throw new UnsupportedOperationException(
-            "Instance Spot activation is not available");
-    }
-    default ZLinkSpotSendCall inMesh(String meshName) {
-        throw new UnsupportedOperationException(
-            "Spot mesh selection is not available");
-    }
+    ZLinkSpotSendCall instanceSpot();
+    ZLinkSpotSendCall instanceSpot(String stableType);
+    ZLinkSpotSendCall inMesh(String meshName);
     @Override
-    default ZLinkSpotSendCall metadata(String key, String value) {
-        throw new UnsupportedOperationException("Spot metadata is not available");
-    }
+    ZLinkSpotSendCall metadata(String key, String value);
     @Override
-    default ZLinkSpotSendCall metadata(Map<String, String> metadata) {
-        throw new UnsupportedOperationException("Spot metadata is not available");
-    }
+    ZLinkSpotSendCall metadata(Map<String, String> metadata);
 }

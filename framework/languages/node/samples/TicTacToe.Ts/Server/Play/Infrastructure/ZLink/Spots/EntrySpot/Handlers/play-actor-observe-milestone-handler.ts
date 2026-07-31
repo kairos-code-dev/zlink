@@ -1,24 +1,35 @@
-import { Injectable } from '@nestjs/common';
-import { ZLinkSpotActorRequest } from '@zlink-systems/framework';
+import { zlinkEntrySpotActorRequestHandler } from '@zlink-systems/nestjs';
 import { observeMilestoneRes, PacketNames } from '../../../../../../../Shared/Contracts/messages';
 import type {
-  ZLinkSpotActorRequestContext
+  ZLinkEntrySpotActorRequestHandler,
+  ZLinkMessageContext
 } from '@zlink-systems/framework';
 import type {
   ObserveMilestoneReq,
   ObserveMilestoneRes,
 } from '../../../../../../../Shared/Contracts/messages';
-import type { PlayActor } from '../../../Actors/play-actor';
-import { MilestoneObserverRegistry } from '../play-entry-spot';
+import { PlayActor } from '../../../Actors/play-actor';
+import { MilestoneObserverRegistry } from '../entry-spot-registries';
+import { PlayEntrySpot } from '../play-entry-spot';
 
-@Injectable()
-class PlayActorObserveMilestoneHandler {
+@zlinkEntrySpotActorRequestHandler({
+  actor: () => PlayActor,
+  entrySpot: () => PlayEntrySpot,
+  packetName: PacketNames.observeMilestoneReq
+})
+class PlayActorObserveMilestoneHandler
+  implements ZLinkEntrySpotActorRequestHandler<
+    PlayEntrySpot,
+    PlayActor,
+    ObserveMilestoneReq,
+    ObserveMilestoneRes
+  > {
   constructor(private readonly observers: MilestoneObserverRegistry) {}
 
-  @ZLinkSpotActorRequest(PacketNames.observeMilestoneReq)
   async handle(
+    _spot: PlayEntrySpot,
     actor: PlayActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     _request: ObserveMilestoneReq
   ): Promise<ObserveMilestoneRes> {
     void context;

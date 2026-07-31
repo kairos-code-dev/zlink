@@ -171,21 +171,18 @@ test('RouteMesh snapshot projects typed population and activation capacity from 
       }]
     })
   });
+  runtime.markServing();
 
   const snapshot = runtime.snapshot('game');
-  assert.equal(snapshot.objectRole, framework.ZLinkObjectRole.Server);
-  assert.equal(snapshot.placementWeight, 275);
-  assert.deepEqual(snapshot.populationCapacity.actors, {
-    active: 7,
-    reserved: 2,
-    limit: 100
-  });
-  assert.equal(snapshot.populationCapacity.spotTypes[0].stableType, 'room');
-  assert.deepEqual(snapshot.activationConcurrency, { active: 4, limit: 64 });
-  assert.equal(snapshot.applicationVersion, 9n);
+  assert.equal(snapshot.meshName, 'game');
+  assert.equal(snapshot.state, framework.ZLinkTopologyState.Ready);
+  assert.equal(snapshot.isReady, true);
+  assert.equal(snapshot.placement.isAvailable, true);
+  assert.equal(snapshot.placement.activeActorCount, 7);
+  assert.equal(snapshot.placement.activeSpotCount, 3);
 });
 
-test('RouteMesh observer reports typed placement capacity changes', async () => {
+test('RouteMesh observer reports a complete status after placement capacity changes', async () => {
   const gate = new framework.ZLinkRuntimeAdmissionGate();
   let descriptor = {
     objectRole: framework.ZLinkObjectRole.Server,
@@ -202,6 +199,7 @@ test('RouteMesh observer reports typed placement capacity changes', async () => 
   const runtime = createRuntime(gate, {
     meshNodeDescriptor: () => descriptor
   });
+  runtime.markServing();
   const events = runtime.observe('game', 4)[Symbol.asyncIterator]();
 
   descriptor = {
@@ -230,10 +228,13 @@ test('RouteMesh observer reports typed placement capacity changes', async () => 
   await events.return();
 
   assert.equal(observed.done, false);
-  assert.equal(observed.value.identifier, 'zlink.runtime.object.placement_changed');
-  assert.equal(observed.value.reason, 'updated');
-  assert.deepEqual(observed.value.populationCapacity, descriptor.populationCapacity);
-  assert.deepEqual(observed.value.activationConcurrency, descriptor.activationConcurrency);
+  assert.equal(observed.value.meshName, 'game');
+  assert.equal(observed.value.state, framework.ZLinkTopologyState.Ready);
+  assert.equal(observed.value.isReady, true);
+  assert.equal(observed.value.placement.isAvailable, true);
+  assert.equal(observed.value.placement.activeActorCount, 2);
+  assert.equal(observed.value.placement.activeSpotCount, 1);
+  assert.ok(observed.value.observedAt instanceof Date);
 });
 
 test('RouteMesh snapshot keeps NotRequired distinct from NotConnected', () => {
@@ -255,11 +256,222 @@ test('RouteMesh snapshot keeps NotRequired distinct from NotConnected', () => {
 
   assert.equal(snapshot.peers.length, 1);
   assert.equal(snapshot.peers[0].state, framework.ZLinkPeerState.NotRequired);
-  assert.equal(snapshot.peers[0].ready, false);
+  assert.equal(snapshot.peers[0].unavailableReason, undefined);
   assert.notEqual(
     snapshot.peers[0].state,
     framework.ZLinkPeerState.NotConnected
   );
+});
+
+test('RouteMesh readiness degrades for every required peer that is not ready', () => {
+  for (const [backendPeerState, expectedPeerState] of [
+    [1, framework.ZLinkPeerState.Connecting],
+    [5, framework.ZLinkPeerState.NotConnected]
+  ]) {
+    const gate = new framework.ZLinkRuntimeAdmissionGate();
+    const node = {
+      ...fakeMeshNode(),
+      peers() {
+        return [{
+          routingId: 'required-peer',
+          lifecycleGeneration: 2n,
+          descriptorRevision: 3n,
+          endpoint: 'tcp://required-peer',
+          state: backendPeerState,
+          lastError: 0
+        }];
+      }
+    };
+    const runtime = createRuntime(gate, { meshNode: node });
+    runtime.markServing();
+
+    const snapshot = runtime.snapshot('game');
+    assert.equal(snapshot.peers[0].state, expectedPeerState);
+    assert.equal(
+      snapshot.peers[0].unavailableReason,
+      framework.ZLinkTopologyReason.NoReadyPeer
+    );
+    assert.equal(snapshot.state, framework.ZLinkTopologyState.Degraded);
+    assert.equal(snapshot.isReady, false);
+    assert.equal(runtime.isReady('game'), false);
+  }
+});
+
+test('NotRequired peers do not degrade RouteMesh readiness', () => {
+  const gate = new framework.ZLinkRuntimeAdmissionGate();
+  const node = {
+    ...fakeMeshNode(),
+    peers() {
+      return [{
+        routingId: 'client-b',
+        lifecycleGeneration: 2n,
+        descriptorRevision: 3n,
+        endpoint: 'tcp://client-b',
+        state: 6,
+        lastError: 0
+      }];
+    }
+  };
+  const runtime = createRuntime(gate, { meshNode: node });
+  runtime.markServing();
+
+  const snapshot = runtime.snapshot('game');
+  assert.equal(snapshot.state, framework.ZLinkTopologyState.Ready);
+  assert.equal(snapshot.isReady, true);
+  assert.equal(runtime.isReady('game'), true);
+});
+
+test('client-only RouteMesh Channel reports remote ready targets', () => {
+  const gate = new framework.ZLinkRuntimeAdmissionGate();
+  const node = {
+    ...fakeMeshNode(),
+    peers() {
+      return [{
+        routingId: 'channel-server',
+        lifecycleGeneration: 2n,
+        descriptorRevision: 3n,
+        endpoint: 'tcp://channel-server',
+        state: 3,
+        lastError: 0
+      }];
+    },
+    peerChannels() {
+      return { names: ['orders'], weights: [50] };
+    }
+  };
+  const runtime = createRuntime(gate, {
+    meshNode: node,
+    meshOptions: { meshChannels: { orders: { client: true } } }
+  });
+  runtime.markServing();
+
+  assert.deepEqual(runtime.snapshot('game').channels, [{
+    channelName: 'orders',
+    isReady: true,
+    readyTargetCount: 1
+  }]);
+});
+
+test('RouteMesh status follows local channel and placement weight overrides', async () => {
+  const gate = new framework.ZLinkRuntimeAdmissionGate();
+  let descriptor = runtimeDescriptor({
+    placementWeight: 100,
+    channelWeights: { orders: 100 }
+  });
+  const runtime = createRuntime(gate, {
+    meshOptions: { meshChannels: { orders: { server: true, weight: 100 } } },
+    meshNodeDescriptor: () => descriptor
+  });
+  runtime.markServing();
+
+  const initial = runtime.snapshot('game');
+  assert.deepEqual(initial.channels, [{
+    channelName: 'orders',
+    isReady: true,
+    readyTargetCount: 1
+  }]);
+  assert.equal(initial.placement.isAvailable, true);
+
+  const events = runtime.observe('game', 4)[Symbol.asyncIterator]();
+  descriptor = {
+    ...descriptor,
+    placementWeight: 0,
+    channelWeights: { orders: 0 }
+  };
+  const observed = await Promise.race([
+    events.next(),
+    new Promise((_, reject) => setTimeout(
+      () => reject(new Error('local weight change was not observed')),
+      1000
+    ))
+  ]);
+  await events.return();
+
+  assert.equal(observed.done, false);
+  assert.deepEqual(observed.value.channels, [{
+    channelName: 'orders',
+    isReady: false,
+    readyTargetCount: 0
+  }]);
+  assert.equal(observed.value.placement.isAvailable, false);
+  assert.equal(
+    observed.value.placement.unavailableReason,
+    framework.ZLinkTopologyReason.NoReadyTarget
+  );
+});
+
+test('RouteMesh placement is unavailable when all population capacity is exhausted', () => {
+  const gate = new framework.ZLinkRuntimeAdmissionGate();
+  const descriptor = runtimeDescriptor({
+    populationCapacity: {
+      actors: { active: 10, reserved: 0, limit: 10 },
+      spots: { active: 4, reserved: 1, limit: 5 },
+      spotTypes: []
+    }
+  });
+  const runtime = createRuntime(gate, {
+    meshNodeDescriptor: () => descriptor
+  });
+  runtime.markServing();
+
+  const placement = runtime.snapshot('game').placement;
+  assert.equal(placement.isAvailable, false);
+  assert.equal(
+    placement.unavailableReason,
+    framework.ZLinkTopologyReason.CapacityExceeded
+  );
+});
+
+test('RouteMesh status degrades while the Location Store is unhealthy', () => {
+  const gate = new framework.ZLinkRuntimeAdmissionGate();
+  let storeHealthy = true;
+  const runtime = createRuntime(gate, {
+    meshNodeDescriptor: () => runtimeDescriptor(),
+    isLocationStoreHealthy: () => storeHealthy
+  });
+  runtime.markServing();
+
+  assert.equal(runtime.snapshot('game').state, framework.ZLinkTopologyState.Ready);
+  storeHealthy = false;
+
+  const degraded = runtime.snapshot('game');
+  assert.equal(degraded.state, framework.ZLinkTopologyState.Degraded);
+  assert.equal(degraded.isReady, false);
+  assert.equal(degraded.placement.isAvailable, false);
+  assert.equal(
+    degraded.placement.unavailableReason,
+    framework.ZLinkTopologyReason.LocationUnavailable
+  );
+});
+
+test('RouteMesh observer reports Location Store degradation and recovery', async () => {
+  const gate = new framework.ZLinkRuntimeAdmissionGate();
+  let storeHealthy = true;
+  const runtime = createRuntime(gate, {
+    meshNodeDescriptor: () => runtimeDescriptor(),
+    isLocationStoreHealthy: () => storeHealthy
+  });
+  runtime.markServing();
+  const events = runtime.observe('game', 4)[Symbol.asyncIterator]();
+
+  storeHealthy = false;
+  const degraded = await nextObserved(
+    events,
+    'Location Store degradation was not observed'
+  );
+  assert.equal(degraded.state, framework.ZLinkTopologyState.Degraded);
+  assert.equal(degraded.isReady, false);
+
+  storeHealthy = true;
+  const recovered = await nextObserved(
+    events,
+    'Location Store recovery was not observed'
+  );
+  await events.return();
+  assert.equal(recovered.state, framework.ZLinkTopologyState.Ready);
+  assert.equal(recovered.isReady, true);
+  assert.equal(recovered.placement.isAvailable, true);
+  assert.ok(recovered.sequence > degraded.sequence);
 });
 
 test('multi-mesh drain fails before global owner cleanup can mutate another mesh', async () => {
@@ -293,6 +505,30 @@ test('multi-mesh drain fails before global owner cleanup can mutate another mesh
   assert.equal(cleaned, 0);
   assert.equal(gate.accepts('game-a'), true);
   assert.equal(gate.accepts('game-b'), true);
+});
+
+test('RouteMesh disables public readiness during relocation while preserving physical counts', () => {
+  const gate = new framework.ZLinkRuntimeAdmissionGate();
+  let hostState = framework.ZLinkFrameworkRuntimeState.Serving;
+  const runtime = createRuntime(gate, {
+    hostState: () => hostState,
+    meshNodeDescriptor: () => runtimeDescriptor()
+  });
+  runtime.markServing();
+  const serving = runtime.snapshot('game');
+  assert.equal(serving.isReady, true);
+
+  hostState = framework.ZLinkFrameworkRuntimeState.Relocating;
+  runtime.hostStateChanged();
+  const relocating = runtime.snapshot('game');
+  assert.equal(relocating.isReady, false);
+  assert.equal(relocating.state, framework.ZLinkTopologyState.Stopping);
+  assert.equal(relocating.readyPeerCount, serving.readyPeerCount);
+  assert.equal(relocating.placement.isAvailable, false);
+
+  hostState = framework.ZLinkFrameworkRuntimeState.Relocated;
+  runtime.hostStateChanged();
+  assert.equal(runtime.snapshot('game').state, framework.ZLinkTopologyState.Stopping);
 });
 
 test('host drain seals every mesh, drains each resource set, and cleans the shared owner once', async () => {
@@ -332,6 +568,36 @@ test('host drain seals every mesh, drains each resource set, and cleans the shar
   assert.ok(order.indexOf('retiring:game-a') < order.indexOf('drain:game-a'));
   assert.ok(order.indexOf('drain:game-a') < order.indexOf('publish:game-a'));
   assert.ok(order.indexOf('publish:host') < order.indexOf('cleanup'));
+});
+
+test('host relocation moves stateful resources without sealing or tearing down infrastructure', async () => {
+  const gate = new framework.ZLinkRuntimeAdmissionGate();
+  const order = [];
+  const runtime = new framework.ZLinkRouteMeshRuntimeCoordinator({
+    meshNames: ['game-a', 'game-b'],
+    meshOptions: new Map([['game-a', {}], ['game-b', {}]]),
+    meshNode: () => fakeMeshNode(),
+    admission: gate,
+    publishRetiring: async (meshName) => { order.push(`retiring:${meshName}`); },
+    rollbackRetiring: async (meshName) => { order.push(`rollback:${meshName}`); },
+    publishDraining: async () => { throw new Error('relocation must not publish draining'); },
+    publishHostDraining: async () => { throw new Error('relocation must not publish host draining'); },
+    drainResources: async (meshName) => { order.push(`relocate:${meshName}`); },
+    cleanupHostResources: async () => { throw new Error('relocation must not clean host owner'); },
+    forceStopResources: async () => { throw new Error('relocation must not force-stop resources'); }
+  });
+  runtime.markServing();
+  assert.equal(await runtime.prepareHostRetire(1000), 'prepared');
+
+  assert.deepEqual(await runtime.relocateHost(1000), { kind: 'drained' });
+  assert.equal(gate.accepts('game-a'), true);
+  assert.equal(gate.accepts('game-b'), true);
+  assert.equal(runtime.snapshot('game-a').state, framework.ZLinkTopologyState.Ready);
+  assert.equal(runtime.snapshot('game-b').state, framework.ZLinkTopologyState.Ready);
+  assert.deepEqual(
+    new Set(order.filter(entry => entry.startsWith('relocate:'))),
+    new Set(['relocate:game-a', 'relocate:game-b'])
+  );
 });
 
 test('Retire descriptor publication rolls back before host drain state changes', async () => {
@@ -458,7 +724,7 @@ test('Retire readiness requires exact RID and lifecycle generation in the admitt
     { ...descriptors[1], applicationVersion: 0n }
   ], { ...local, applicationVersion: 0n }, [
     { routingId: 'node-green', lifecycleGeneration: 7n, state: 3 }
-  ]), false);
+  ]), true);
   assert.equal(framework.hasExactPeerReadiness([
     descriptors[0],
     { ...descriptors[1], applicationVersion: 2n }
@@ -477,7 +743,32 @@ test('Retire readiness requires exact RID and lifecycle generation in the admitt
   ], { ...local, maintenanceWave: 'wave-a' }, [
     { routingId: 'node-green', lifecycleGeneration: 7n, state: 3 }
   ]), false);
-
+  assert.equal(framework.hasExactPeerReadiness([
+    ...descriptors,
+    meshDescriptor('node-green-2', 3n, framework.ZLinkFrameworkRuntimeState.Serving)
+  ], local, [
+    { routingId: 'node-green', lifecycleGeneration: 7n, state: 3 }
+  ]), true);
+  assert.equal(framework.hasExactPeerReadiness([
+    descriptors[0],
+    {
+      ...descriptors[1],
+      objectRole: framework.ZLinkObjectRole.Client
+    }
+  ], local, [
+    { routingId: 'node-green', lifecycleGeneration: 7n, state: 3 }
+  ]), false);
+  assert.equal(framework.hasExactPeerReadiness([
+    descriptors[0],
+    {
+      ...descriptors[1],
+      objectRole: framework.ZLinkObjectRole.Client
+    },
+    meshDescriptor('node-server', 4n, framework.ZLinkFrameworkRuntimeState.Serving)
+  ], local, [
+    { routingId: 'node-green', lifecycleGeneration: 7n, state: 3 },
+    { routingId: 'node-server', lifecycleGeneration: 4n, state: 3 }
+  ]), true);
   const draining = [
     descriptors[0],
     meshDescriptor('node-green', 7n, framework.ZLinkFrameworkRuntimeState.Draining)
@@ -490,10 +781,12 @@ function createRuntime(gate, overrides = {}) {
   const node = fakeMeshNode();
   return new framework.ZLinkRouteMeshRuntimeCoordinator({
     meshNames: ['game'],
-    meshOptions: new Map([['game', { meshChannels: {} }]]),
+    meshOptions: new Map([['game', overrides.meshOptions ?? { meshChannels: {} }]]),
     meshNode: (meshName) =>
       meshName === 'game' ? (overrides.meshNode ?? node) : undefined,
     meshNodeDescriptor: overrides.meshNodeDescriptor,
+    isLocationStoreHealthy: overrides.isLocationStoreHealthy,
+    hostState: overrides.hostState,
     admission: gate,
     publishRetiring: overrides.publishRetiring ?? (async () => {}),
     rollbackRetiring: overrides.rollbackRetiring ?? (async () => {}),
@@ -503,6 +796,23 @@ function createRuntime(gate, overrides = {}) {
     cleanupHostResources: overrides.cleanupHostResources ?? (async () => {}),
     forceStopResources: overrides.forceStopResources ?? (async () => {})
   });
+}
+
+function runtimeDescriptor(overrides = {}) {
+  return {
+    objectRole: framework.ZLinkObjectRole.Server,
+    placementWeight: 100,
+    populationCapacity: {
+      actors: { active: 0, reserved: 0, limit: 100 },
+      spots: { active: 0, reserved: 0, limit: 100 },
+      spotTypes: []
+    },
+    activationConcurrency: { active: 0, limit: 64 },
+    channelWeights: {},
+    applicationVersion: 1n,
+    objectCapabilities: [],
+    ...overrides
+  };
 }
 
 function fakeMeshNode() {
@@ -521,7 +831,13 @@ function fakeMeshNode() {
 }
 
 function meshDescriptor(rid, lifecycleGeneration, state) {
-  return { rid, lifecycleGeneration, state, applicationVersion: 1n };
+  return {
+    rid,
+    lifecycleGeneration,
+    state,
+    applicationVersion: 1n,
+    objectRole: framework.ZLinkObjectRole.Server
+  };
 }
 
 function deferred() {
@@ -532,4 +848,16 @@ function deferred() {
 
 function tick() {
   return new Promise((resolve) => setImmediate(resolve));
+}
+
+async function nextObserved(events, timeoutMessage) {
+  const observed = await Promise.race([
+    events.next(),
+    new Promise((_, reject) => setTimeout(
+      () => reject(new Error(timeoutMessage)),
+      1000
+    ))
+  ]);
+  assert.equal(observed.done, false);
+  return observed.value;
 }

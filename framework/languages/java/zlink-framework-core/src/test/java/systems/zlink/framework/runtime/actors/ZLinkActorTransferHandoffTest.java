@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime.actors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -66,6 +67,28 @@ final class ZLinkActorTransferHandoffTest {
         ZLinkActorHandoffPacket packet = handoff.take("actor").get(0);
         assertEquals("actor", packet.header().metadata().get("actor-id"));
         assertEquals("bound-1", packet.header().metadata().get("session"));
+        packet.close();
+    }
+
+    @Test
+    void canonicalAcceptedJournalSurvivesHandoff() {
+        ZLinkActorTransferHandoff handoff = new ZLinkActorTransferHandoff();
+        handoff.begin("actor");
+        byte[] journal = new byte[] {9, 8, 7, 6};
+        try (Message payload = Message.from("payload")) {
+            handoff.capture(
+                "actor",
+                new ZLinkStreamHeader("DeferredSend", Map.of(), Optional.empty()),
+                payload,
+                null,
+                journal);
+        }
+
+        ZLinkActorHandoffPacket packet = handoff.take("actor").get(0);
+        assertArrayEquals(journal, packet.acceptedJournalRecord());
+        byte[] copy = packet.acceptedJournalRecord();
+        copy[0] = 0;
+        assertArrayEquals(journal, packet.acceptedJournalRecord());
         packet.close();
     }
 
@@ -137,7 +160,8 @@ final class ZLinkActorTransferHandoffTest {
             ref("source", 9), RoutingId.from("caller-node"),
             RoutingId.from("caller-session"), 91L, 5);
         try (Message payload = Message.from(new byte[] {1})) {
-            handoff.capture("actor", header, payload, route);
+            handoff.capture(
+                "actor", header, payload, route, new byte[] {1});
         }
 
         ZLinkActorHandoffPacket packet = handoff.take("actor").get(0);
@@ -207,7 +231,8 @@ final class ZLinkActorTransferHandoffTest {
                 "actor",
                 new ZLinkStreamHeader(packetName, metadata, Optional.empty()),
                 payload,
-                null);
+                null,
+                new byte[] {1});
         }
     }
 

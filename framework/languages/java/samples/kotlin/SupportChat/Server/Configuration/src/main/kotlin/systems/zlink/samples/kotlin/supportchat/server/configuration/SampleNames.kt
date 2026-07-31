@@ -11,6 +11,7 @@ object SampleNames {
     const val ApiChannel = "supportchat.api"
     const val SupportChannel = "supportchat.support"
     const val SupportActorType = "supportchat.user"
+    const val ConversationSpotType = "supportchat.conversation"
     const val SupportSpotNode = "supportchat.support.node"
     const val SessionSpotNode = "supportchat.session.node"
     const val SupportEntrySpotNode = "supportchat.entry.node"

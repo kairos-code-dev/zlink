@@ -19,26 +19,51 @@ internal sealed class ZLinkProviderRelocationRepository(
         // another blob.
         var reference = new ZLinkBlobReference(
             Guid.NewGuid().ToString("N"));
-        return await PutAtCoreAsync(
-                reference,
-                payload,
-                retention,
-                cancellationToken)
-            .ConfigureAwait(false);
+        try
+        {
+            return await PutAtCoreAsync(
+                    reference,
+                    payload,
+                    retention,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            ZLinkRuntimeMetrics.RecordLocationStoreError("relocation_put");
+            throw;
+        }
     }
 
-    public ValueTask<ZLinkRelocationStored> PutRelocationAtAsync(
+    public async ValueTask<ZLinkRelocationStored> PutRelocationAtAsync(
         string reference,
         ReadOnlyMemory<byte> payload,
         TimeSpan retention,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(reference);
-        return PutAtCoreAsync(
-            new ZLinkBlobReference(reference),
-            payload,
-            retention,
-            cancellationToken);
+        try
+        {
+            return await PutAtCoreAsync(
+                    new ZLinkBlobReference(reference),
+                    payload,
+                    retention,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            ZLinkRuntimeMetrics.RecordLocationStoreError("relocation_put");
+            throw;
+        }
     }
 
     private async ValueTask<ZLinkRelocationStored> PutAtCoreAsync(
@@ -113,10 +138,23 @@ internal sealed class ZLinkProviderRelocationRepository(
         string reference,
         CancellationToken cancellationToken = default)
     {
-        var result = await provider.ReadAsync(
-                new ZLinkBlobReference(reference),
-                cancellationToken)
-            .ConfigureAwait(false);
+        ZLinkBlobReadResult result;
+        try
+        {
+            result = await provider.ReadAsync(
+                    new ZLinkBlobReference(reference),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            ZLinkRuntimeMetrics.RecordLocationStoreError("relocation_get");
+            throw;
+        }
         return result switch
         {
             ZLinkBlobReadResult.Found found =>
@@ -132,11 +170,24 @@ internal sealed class ZLinkProviderRelocationRepository(
         TimeSpan retention,
         CancellationToken cancellationToken = default)
     {
-        var result = await provider.RenewAsync(
-                new ZLinkBlobReference(reference),
-                retention,
-                cancellationToken)
-            .ConfigureAwait(false);
+        ZLinkBlobRenewResult result;
+        try
+        {
+            result = await provider.RenewAsync(
+                    new ZLinkBlobReference(reference),
+                    retention,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            ZLinkRuntimeMetrics.RecordLocationStoreError("relocation_put");
+            throw;
+        }
         return result switch
         {
             ZLinkBlobRenewResult.Renewed renewed =>
@@ -153,10 +204,22 @@ internal sealed class ZLinkProviderRelocationRepository(
         string reference,
         CancellationToken cancellationToken = default)
     {
-        await provider.DeleteAsync(
-                new ZLinkBlobReference(reference),
-                cancellationToken)
-            .ConfigureAwait(false);
+        try
+        {
+            await provider.DeleteAsync(
+                    new ZLinkBlobReference(reference),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            ZLinkRuntimeMetrics.RecordLocationStoreError("relocation_delete");
+            throw;
+        }
         return ZLinkRelocationDeleteResult.Deleted;
     }
 

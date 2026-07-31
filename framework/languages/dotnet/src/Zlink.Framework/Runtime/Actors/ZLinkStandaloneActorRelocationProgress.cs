@@ -437,25 +437,10 @@ internal sealed class ZLinkStandaloneActorRelocationProgressCoordinator(
             }
             if (result is ZLinkAuthorityCompareExchangeResult.Stored success)
             {
-                if (!string.Equals(
-                        publication.Reference,
-                        stored.Root.Reference,
-                        StringComparison.Ordinal))
-                {
-                    try
-                    {
-                        await ZLinkRelocationTreeStore.DeleteTreeAsync(
-                                relocationStore,
-                                publication.Reference,
-                                CancellationToken.None)
-                            .ConfigureAwait(false);
-                    }
-                    catch
-                    {
-                        // The new root is already authoritative. Retention can
-                        // safely remove an obsolete manifest after cleanup fails.
-                    }
-                }
+                // Command 35 retries prove that a published progress root is a
+                // monotonic successor of the sealed root. Keep predecessor
+                // roots until retention expires so a restarted target can
+                // verify that chain after the authority pointer advances.
                 return new ZLinkStandaloneActorRelocationProgress(
                     success.Snapshot,
                     nextPhase,

@@ -86,6 +86,7 @@ public sealed class StandaloneActorRelocationRuntimeTests
         var services = new ServiceCollection();
         services.AddZLinkFramework(options =>
         {
+            options.ConfigureInboundDispatch().ApplicationHwmBytes = 0;
             options.AddLocationStore(store);
             options.AddRelocationStore(relocationStore);
             options.AddRouteMesh("mesh")
@@ -516,6 +517,65 @@ public sealed class StandaloneActorRelocationRuntimeTests
     }
 
     [Fact]
+    public void Canonical_replay_keeps_capturing_until_final_admission_open()
+    {
+        var handoff = new ZLinkActorHandoffState(
+            "actor-1",
+            TimeProvider.System);
+        handoff.BeginCanonicalMaintenanceImport(
+            "handoff",
+            [AcceptedFrame(1)]);
+        handoff.MarkAuthorityCommitted("handoff", 42, 42);
+        _ = handoff.PrepareCanonicalMaintenanceReplay("handoff");
+        handoff.AcknowledgeCanonicalReplayThrough(1);
+        var requestSource = new ZLinkServiceWireCodec.RequestSourceFence(
+            "source-owner",
+            3,
+            RoutingId.From("source"),
+            7);
+        var actor = new ZLinkBackendActorRef(
+            RoutingId.From("target"),
+            "actor-1",
+            42);
+        using var beforeNormalization = ZLinkActorHandoffFrames.Restore(
+            actor,
+            [AcceptedFrame(2, requestSource)]);
+        using var duringNormalization = ZLinkActorHandoffFrames.Restore(
+            actor,
+            [AcceptedFrame(3, requestSource)]);
+        using var afterAdmission = ZLinkActorHandoffFrames.Restore(
+            actor,
+            [AcceptedFrame(4, requestSource)]);
+
+        Assert.Equal(
+            ZLinkActorHandoffCaptureResult.Captured,
+            handoff.TryCapture(beforeNormalization[0]));
+        var prepared = new List<long>();
+        handoff.ReserveCanonicalMaintenanceTrailing(
+            "handoff",
+            1,
+            frame => prepared.Add(frame.ArrivalIndex));
+        Assert.Single(prepared);
+        handoff.AcknowledgeReplayedFrame(prepared[0]);
+
+        // Authority normalization may await storage while the Spot execution
+        // seal remains closed. Actor ingress must still join the replay tail.
+        Assert.Equal(
+            ZLinkActorHandoffCaptureResult.Captured,
+            handoff.TryCapture(duringNormalization[0]));
+
+        var final = new List<long>();
+        handoff.ReserveCanonicalMaintenanceTrailingAndOpenAdmission(
+            "handoff",
+            1,
+            frame => final.Add(frame.ArrivalIndex));
+        Assert.Single(final);
+        Assert.Equal(
+            ZLinkActorHandoffCaptureResult.NotSealed,
+            handoff.TryCapture(afterAdmission[0]));
+    }
+
+    [Fact]
     public void Canonical_cutover_reserves_message_follow_before_new_owner_ingress()
     {
         var handoff = new ZLinkActorHandoffState(
@@ -584,6 +644,61 @@ public sealed class StandaloneActorRelocationRuntimeTests
         handoff.AcknowledgeCanonicalReplayThrough(1);
         Assert.True(
             handoff.TryCompleteCanonicalMaintenanceReplay("handoff"));
+    }
+
+    [Fact]
+    public async Task Canonical_replay_retry_reuses_a_partially_reserved_frame()
+    {
+        var handoff = new ZLinkActorHandoffState(
+            "actor-1",
+            TimeProvider.System);
+        handoff.BeginCanonicalMaintenanceImport(
+            "handoff",
+            [AcceptedFrame(1), AcceptedFrame(2)]);
+        handoff.MarkAuthorityCommitted("handoff", 42, 42);
+        _ = handoff.PrepareCanonicalMaintenanceReplay("handoff");
+        var firstDrain = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var attempts = new Dictionary<long, int>();
+
+        Task ReserveFirstAttempt(ZLinkActorHandoffFrame frame)
+        {
+            attempts[frame.ArrivalIndex] =
+                attempts.GetValueOrDefault(frame.ArrivalIndex) + 1;
+            if (frame.ArrivalIndex == 2)
+                throw new InvalidOperationException("queue full");
+            return firstDrain.Task;
+        }
+
+        Assert.Throws<InvalidOperationException>(() =>
+            handoff.ReserveCanonicalMaintenanceTrailing(
+                "handoff",
+                0,
+                ReserveFirstAttempt));
+        // Handler ACK can precede post-handler reconciliation. The retry must
+        // still wait for the original dispatch task after the frame leaves
+        // the replay inventory.
+        handoff.AcknowledgeReplayedFrame(1);
+
+        Task ReserveRetry(ZLinkActorHandoffFrame frame)
+        {
+            attempts[frame.ArrivalIndex] =
+                attempts.GetValueOrDefault(frame.ArrivalIndex) + 1;
+            return Task.CompletedTask;
+        }
+
+        var reservations =
+            handoff.ReserveCanonicalMaintenanceTrailingAndOpenAdmission(
+                "handoff",
+                0,
+                ReserveRetry);
+
+        Assert.Equal(2, reservations.Count);
+        Assert.Same(firstDrain.Task, reservations[0]);
+        Assert.Equal(1, attempts[1]);
+        Assert.Equal(2, attempts[2]);
+        firstDrain.TrySetResult();
+        await Task.WhenAll(reservations);
     }
 
     [Fact]
@@ -1334,7 +1449,7 @@ public sealed class StandaloneActorRelocationRuntimeTests
     }
 
     [Fact]
-    public async Task Replay_progress_publishes_counts_and_cleans_only_replaced_roots()
+    public async Task Replay_progress_publishes_counts_and_retains_predecessor_proof()
     {
         var requestSource = new ZLinkServiceWireCodec.RequestSourceFence(
             "caller-owner", 13, RoutingId.From("caller"), 17);
@@ -1427,7 +1542,7 @@ public sealed class StandaloneActorRelocationRuntimeTests
         Assert.Equal<ulong>(1, Assert.Single(advanced.Root.Participants).ReplayCursor);
         Assert.Equal<uint>(1, advanced.Phase.TerminalCompletionCount);
         Assert.Equal<uint>(1, advanced.Phase.PendingRelayCount);
-        Assert.DoesNotContain(initial.Root.Reference, relocationStore.Payloads.Keys);
+        Assert.Contains(initial.Root.Reference, relocationStore.Payloads.Keys);
         var acknowledged = await coordinator.CompleteReplyAsync(
             identity,
             completion,
@@ -1819,6 +1934,7 @@ public sealed class StandaloneActorRelocationRuntimeTests
         var services = new ServiceCollection();
         services.AddZLinkFramework(options =>
         {
+            options.ConfigureInboundDispatch().ApplicationHwmBytes = 0;
             options.AddLocationStore(store);
             options.AddRelocationStore(relocationStore);
             options.AddRouteMesh("mesh")

@@ -1254,13 +1254,6 @@ channel_outbound_exchange_t::submit_publish (std::string channel_name,
                     event_type),
                   std::move (payload),
                   resolve_send_wait_timeout (timeout));
-                if (published && _state->monitoring) {
-                    runtime::runtime_metrics_t metrics (_state->monitoring);
-                    if (metrics.enabled ()) {
-                        metrics.counter ("zlink.fanout.published", "{message}", 1,
-                                         {{"topic", topic}});
-                    }
-                }
                 return published;
             }
             catch (const framework_exception_t &error) {

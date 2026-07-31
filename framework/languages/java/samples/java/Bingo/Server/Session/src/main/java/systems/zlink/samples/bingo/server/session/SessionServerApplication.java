@@ -44,10 +44,10 @@ public final class SessionServerApplication {
             options.configureLocations();
             ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.Mesh);
             node.listen(topology.selectedSessionRouterEndpoint())
-                .useAllocatedRoutingId(2, "session")
-                .setRoutingIdAllocationGroup("bingo.session");
-            node.channelName(SampleNames.ApiChannel).setWeight(0);
-            node.channelName(SampleNames.RoomSpotDiscovery);
+                .setRoutingIdPrefix("session");
+            node.objects().client();
+            options.addClientServerChannel(SampleNames.ApiChannel).client();
+            node.channelName(SampleNames.RoomSpotDiscovery).client();
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(topology.selectedStreamEndpoint())
                 .enableActorDispatch(SampleNames.Mesh)

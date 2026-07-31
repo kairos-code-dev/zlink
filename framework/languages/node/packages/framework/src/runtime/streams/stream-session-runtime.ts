@@ -41,7 +41,8 @@ import {
 import { createInboundFlow, runWithFlow } from '../diagnostics/flow-context';
 import {
   streamSessionIdFromRoutingId,
-  ZLinkManagedStream
+  ZLinkManagedStream,
+  type ZLinkNativeSessionRoute
 } from './managed-stream';
 import { DefaultZLinkSessionContext } from './session-context';
 import { ZLinkStreamSessionSerialExecutor } from './session-serial-executor';
@@ -83,6 +84,9 @@ export interface ZLinkStreamSessionRuntimeOptions {
   readonly socket: ZLinkBackendStreamSocket;
   readonly nativeSessionService?: StreamSessionService;
   readonly meshCompletions?: ZLinkMeshCompletionTable;
+  readonly nativeSessionRouteForMesh?: (
+    meshName: string
+  ) => ZLinkNativeSessionRoute | undefined;
   readonly sessionFactory: (context: DefaultZLinkSessionContext) => ZLinkSession | Promise<ZLinkSession>;
   readonly bindingRuntime: ZLinkStreamSessionContextFactory;
   readonly providerResolver?: ZLinkProviderResolver;
@@ -133,7 +137,9 @@ export class ZLinkStreamSessionRuntime {
       options.messageSerializers,
       options.nativeSessionService,
       options.meshCompletions,
-      options.submitter
+      options.submitter,
+      undefined,
+      options.nativeSessionRouteForMesh
     );
     this.context = options.bindingRuntime.createSessionContext(
       this.stream,
@@ -250,8 +256,8 @@ export class ZLinkStreamSessionRuntime {
     this.connected = true;
     this.lastApplicationActivityAt = this.livenessClock.now();
     this.scheduleLivenessCheck();
-    this.options.metrics?.change('zlink.stream.connections.active', 1);
-    this.options.metrics?.count('zlink.stream.connections.opened');
+    this.options.metrics?.change('zlink.stream.connections.active', 1, { transport: 'tcp' });
+    this.options.metrics?.count('zlink.stream.connections.opened', 1, { transport: 'tcp' });
     const session = await this.requireSession();
     await session.onConnected?.(this.context);
   }
@@ -447,7 +453,11 @@ export class ZLinkStreamSessionRuntime {
       new Map(),
       false,
       {
-        code: error instanceof Error ? error.constructor.name : undefined,
+        code: error instanceof ZLinkFrameworkException
+          ? error.kind
+          : error instanceof Error
+            ? error.constructor.name
+            : 'RemoteError',
         message: error instanceof Error ? error.message : String(error)
       }
     );
@@ -491,8 +501,11 @@ export class ZLinkStreamSessionRuntime {
   private async cleanup(): Promise<void> {
     if (this.connected && !this.metricsClosed) {
       this.metricsClosed = true;
-      this.options.metrics?.change('zlink.stream.connections.active', -1);
-      this.options.metrics?.count('zlink.stream.connections.closed', 1, { close_reason: this.closeReason });
+      this.options.metrics?.change('zlink.stream.connections.active', -1, { transport: 'tcp' });
+      this.options.metrics?.count('zlink.stream.connections.closed', 1, {
+        transport: 'tcp',
+        close_reason: normalizeStreamCloseReason(this.closeReason)
+      });
     }
     await this.context.cleanupBindings();
     this.removeSession(this.stream.sessionId, this);
@@ -548,11 +561,13 @@ export class ZLinkStreamSessionNodeRuntime {
   constructor(
     private readonly options: ZLinkStreamSessionNodeRuntimeOptions & ZLinkStreamLivenessOptions
   ) {
+    const sendTimeoutMs = Number(options.socket.sendTimeoutMs);
+    const sendHighWaterMark = Number(options.socket.sendHighWaterMark);
     this.submitter = options.submitter ?? new ZLinkAsyncSubmitter(
       (handler) => options.socket.onSendReady(handler),
       {
-        timeoutMs: options.socket.sendTimeoutMs > 0 ? options.socket.sendTimeoutMs : 1000,
-        capacity: Math.max(1, options.socket.sendHighWaterMark)
+        timeoutMs: sendTimeoutMs > 0 ? sendTimeoutMs : 1000,
+        capacity: Math.max(1, sendHighWaterMark)
       }
     );
   }
@@ -778,7 +793,10 @@ export class ZLinkStreamSessionNodeRuntime {
         routingId,
         this.options.messageSerializers,
         this.options.nativeSessionService,
-        this.options.meshCompletions
+        this.options.meshCompletions,
+        undefined,
+        undefined,
+        this.options.nativeSessionRouteForMesh
       );
       void rejected.closeForDrain().catch((error) => this.options.onError?.(error));
       return undefined;
@@ -808,4 +826,19 @@ function streamMonitorHasEndpoint(event: ZLinkBackendSocketMonitorEvent): boolea
 
 function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
   return typeof (value as { then?: unknown }).then === 'function';
+}
+
+function normalizeStreamCloseReason(reason: string): string {
+  switch (reason) {
+    case 'client_close':
+    case 'idle_timeout':
+    case 'heartbeat_timeout':
+    case 'protocol_error':
+      return reason;
+    case 'server_shutdown':
+    case 'server_drain':
+      return 'server_shutdown';
+    default:
+      return 'transport_error';
+  }
 }

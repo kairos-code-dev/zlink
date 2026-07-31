@@ -70,6 +70,55 @@ bool valid_channels (const std::vector<service_channel_descriptor_t> &channels)
     return true;
 }
 
+bool immutable_fields_match (
+  const service_node_descriptor_t &current,
+  const service_node_descriptor_t &incoming,
+  bool allow_initial_endpoint_resolution = false)
+{
+    if (current.mesh_name != incoming.mesh_name
+        || current.node_routing_id != incoming.node_routing_id
+        || current.lifecycle_generation
+             != incoming.lifecycle_generation
+        || (!allow_initial_endpoint_resolution
+            && current.advertised_endpoint
+                 != incoming.advertised_endpoint)
+        || current.security_identity != incoming.security_identity
+        || current.effective_max_message_bytes
+             != incoming.effective_max_message_bytes
+        || current.application_version
+             != incoming.application_version
+        || current.protocol_capabilities
+             != incoming.protocol_capabilities
+        || current.object_role != incoming.object_role
+        || current.active_capacity_limit
+             != incoming.active_capacity_limit
+        || current.pending_capacity_limit
+             != incoming.pending_capacity_limit
+        || current.channels.size () != incoming.channels.size ()) {
+        return false;
+    }
+    return std::equal (
+      current.channels.begin (), current.channels.end (),
+      incoming.channels.begin (),
+      [] (const auto &left, const auto &right) {
+          return left.name == right.name;
+      });
+}
+
+bool discovery_expectation_matches (
+  const service_node_descriptor_t &expected,
+  const service_node_descriptor_t &incoming)
+{
+    return expected.mesh_name == incoming.mesh_name
+           && expected.node_routing_id == incoming.node_routing_id
+           && expected.advertised_endpoint
+                == incoming.advertised_endpoint
+           && expected.security_identity
+                == incoming.security_identity
+           && expected.lifecycle_generation
+                == incoming.lifecycle_generation;
+}
+
 } // namespace
 
 service_topology_registry_t::service_topology_registry_t (
@@ -140,25 +189,46 @@ void service_topology_registry_t::publish_local (
     if (!valid_descriptor (descriptor)) {
         throw std::invalid_argument ("published service descriptor is invalid");
     }
+    std::function<void ()> changed;
+    {
+        std::lock_guard lock (_mutex);
+        if (descriptor.mesh_name != _local.mesh_name
+            || descriptor.node_routing_id != _local.node_routing_id
+            || descriptor.lifecycle_generation != _local.lifecycle_generation) {
+            throw std::invalid_argument (
+              "published service descriptor changes the local identity");
+        }
+        if (descriptor.descriptor_revision <= _local.descriptor_revision) {
+            throw std::invalid_argument (
+              "published service descriptor revision is not increasing");
+        }
+        const bool resolving_bound_endpoint =
+          _local.state == service_node_state_t::preparing
+          && descriptor.state == service_node_state_t::serving;
+        if (!immutable_fields_match (
+              _local, descriptor, resolving_bound_endpoint)) {
+            throw std::invalid_argument (
+              "published service descriptor changes immutable fields");
+        }
+        _local = std::move (descriptor);
+        for (auto it = _not_required_peers.begin ();
+             it != _not_required_peers.end ();) {
+            if (!route_mesh_connection_not_required (_local, it->second))
+                it = _not_required_peers.erase (it);
+            else
+                ++it;
+        }
+        changed = _change_handler;
+    }
+    if (changed)
+        changed ();
+}
+
+void service_topology_registry_t::set_change_handler (
+  std::function<void ()> handler)
+{
     std::lock_guard lock (_mutex);
-    if (descriptor.mesh_name != _local.mesh_name
-        || descriptor.node_routing_id != _local.node_routing_id
-        || descriptor.lifecycle_generation != _local.lifecycle_generation) {
-        throw std::invalid_argument (
-          "published service descriptor changes the local identity");
-    }
-    if (descriptor.descriptor_revision <= _local.descriptor_revision) {
-        throw std::invalid_argument (
-          "published service descriptor revision is not increasing");
-    }
-    _local = std::move (descriptor);
-    for (auto it = _not_required_peers.begin ();
-         it != _not_required_peers.end ();) {
-        if (!route_mesh_connection_not_required (_local, it->second))
-            it = _not_required_peers.erase (it);
-        else
-            ++it;
-    }
+    _change_handler = std::move (handler);
 }
 
 service_node_descriptor_t
@@ -172,15 +242,52 @@ peer_admission_result_t service_topology_registry_t::admit (
   service_node_descriptor_t descriptor,
   std::vector<std::uint8_t> connection_id)
 {
+    return admit_impl (
+      std::move (descriptor), std::move (connection_id), std::nullopt,
+      nullptr);
+}
+
+peer_admission_result_t service_topology_registry_t::admit (
+  service_node_descriptor_t descriptor,
+  std::vector<std::uint8_t> connection_id,
+  service_connection_direction_t direction)
+{
+    return admit_impl (
+      std::move (descriptor), std::move (connection_id), direction,
+      nullptr);
+}
+
+peer_admission_result_t service_topology_registry_t::admit (
+  service_node_descriptor_t descriptor,
+  std::vector<std::uint8_t> connection_id,
+  service_connection_direction_t direction,
+  const service_node_descriptor_t &expected_descriptor)
+{
+    return admit_impl (
+      std::move (descriptor), std::move (connection_id), direction,
+      &expected_descriptor);
+}
+
+peer_admission_result_t service_topology_registry_t::admit_impl (
+  service_node_descriptor_t descriptor,
+  std::vector<std::uint8_t> connection_id,
+  std::optional<service_connection_direction_t> direction,
+  const service_node_descriptor_t *expected_descriptor)
+{
     if (!valid_descriptor (descriptor) || connection_id.empty ()) {
         return peer_admission_result_t::invalid_descriptor;
     }
-    std::lock_guard lock (_mutex);
+    std::unique_lock lock (_mutex);
     if (descriptor.mesh_name != _local.mesh_name) {
         return peer_admission_result_t::mesh_mismatch;
     }
     if (descriptor.node_routing_id == _local.node_routing_id) {
         return peer_admission_result_t::invalid_descriptor;
+    }
+    if (expected_descriptor != nullptr
+        && !discovery_expectation_matches (
+          *expected_descriptor, descriptor)) {
+        return peer_admission_result_t::stale_descriptor;
     }
     const auto admitted = _peers.find (descriptor.node_routing_id);
     const auto not_required =
@@ -192,17 +299,27 @@ peer_admission_result_t service_topology_registry_t::admit (
             ? &not_required->second
             : nullptr;
     if (current != nullptr
-        && (descriptor.lifecycle_generation
-              < current->lifecycle_generation
-            || (descriptor.lifecycle_generation
-                  == current->lifecycle_generation
-                && descriptor.descriptor_revision
-                     < current->descriptor_revision)
-            || (descriptor.lifecycle_generation
-                  == current->lifecycle_generation
-                && descriptor.descriptor_revision
-                     == current->descriptor_revision
+        && descriptor.lifecycle_generation
+             != current->lifecycle_generation
+        && expected_descriptor == nullptr) {
+        return peer_admission_result_t::stale_descriptor;
+    }
+    if (current != nullptr
+        && descriptor.lifecycle_generation
+             == current->lifecycle_generation
+        && (descriptor.descriptor_revision
+              < current->descriptor_revision
+            || (descriptor.descriptor_revision
+                  == current->descriptor_revision
                 && *current != descriptor))) {
+        return peer_admission_result_t::stale_descriptor;
+    }
+    if (current != nullptr
+        && descriptor.lifecycle_generation
+             == current->lifecycle_generation
+        && descriptor.descriptor_revision
+             > current->descriptor_revision
+        && !immutable_fields_match (*current, descriptor)) {
         return peer_admission_result_t::stale_descriptor;
     }
     if (route_mesh_connection_not_required (_local, descriptor)) {
@@ -210,13 +327,42 @@ peer_admission_result_t service_topology_registry_t::admit (
         _peers.erase (key);
         _not_required_peers.insert_or_assign (
           std::move (key), std::move (descriptor));
+        auto changed = _change_handler;
+        lock.unlock ();
+        if (changed)
+            changed ();
         return peer_admission_result_t::not_required;
     }
+
+    if (direction.has_value () && admitted != _peers.end ()
+        && admitted->second.descriptor.lifecycle_generation
+             == descriptor.lifecycle_generation
+        && admitted->second.connection_id != connection_id) {
+        const auto preferred_direction =
+          byte_vector_less_t{} (_local.node_routing_id,
+                                descriptor.node_routing_id)
+            ? service_connection_direction_t::outbound
+            : service_connection_direction_t::inbound;
+        const auto keep_current =
+          admitted->second.direction != direction.value ()
+            ? admitted->second.direction == preferred_direction
+            : !byte_vector_less_t{} (
+                connection_id, admitted->second.connection_id);
+        if (keep_current)
+            return peer_admission_result_t::duplicate_connection;
+    }
+
     _not_required_peers.erase (descriptor.node_routing_id);
     auto key = descriptor.node_routing_id;
     _peers.insert_or_assign (
       std::move (key),
-      admitted_peer_t{std::move (descriptor), std::move (connection_id)});
+      admitted_peer_t{std::move (descriptor), std::move (connection_id),
+                      direction.value_or (
+                        service_connection_direction_t::inbound)});
+    auto changed = _change_handler;
+    lock.unlock ();
+    if (changed)
+        changed ();
     return peer_admission_result_t::admitted;
 }
 
@@ -224,12 +370,19 @@ bool service_topology_registry_t::disconnect (
   const std::vector<std::uint8_t> &node_routing_id,
   const std::vector<std::uint8_t> &connection_id)
 {
-    std::lock_guard lock (_mutex);
-    const auto found = _peers.find (node_routing_id);
-    if (found == _peers.end () || found->second.connection_id != connection_id) {
-        return false;
+    std::function<void ()> changed;
+    {
+        std::lock_guard lock (_mutex);
+        const auto found = _peers.find (node_routing_id);
+        if (found == _peers.end ()
+            || found->second.connection_id != connection_id) {
+            return false;
+        }
+        _peers.erase (found);
+        changed = _change_handler;
     }
-    _peers.erase (found);
+    if (changed)
+        changed ();
     return true;
 }
 

@@ -119,7 +119,7 @@ public sealed partial class Received : IDisposable
     /// </remarks>
     public ReplyOperation Reply()
     {
-        return new ReceivedReplyOperationImpl(this);
+        return new ReceivedReplyOperationImpl(CaptureReplyHandler());
     }
 
     /// <summary>

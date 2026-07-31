@@ -77,9 +77,21 @@ bool zlink::socket_lifecycle_coordinator_t::begin_close_or_fail_busy (bool from_
             return false;
         }
 
-        if (!from_self_callback_ && (old & public_api_inflight_mask) != 0) {
-            errno = EBUSY;
-            return false;
+        const uint32_t inflight = old & public_api_inflight_mask;
+        if (!from_self_callback_) {
+            if (inflight != 0) {
+                errno = EBUSY;
+                return false;
+            }
+        } else {
+            // A callback may defer only its own close. Another callback or
+            // public API on any thread keeps the socket busy.
+            const uint32_t callbacks =
+              callback_api_depth.load (std::memory_order_acquire);
+            if (callbacks != 1 || inflight != 1) {
+                errno = EBUSY;
+                return false;
+            }
         }
 
         const uint32_t desired = old | public_api_closing_bit;
@@ -146,8 +158,15 @@ zlink::socket_callback_scope_t::~socket_callback_scope_t ()
     if (!_entered)
         return;
 
-    if (_coordinator->leave_callback_api () && _socket)
-        _socket->finish_close_handoff ();
+    if (!_coordinator->leave_callback_api () || !_socket)
+        return;
+
+    if (socket_base_t::current_async_mailbox_dispatch_socket () == _socket) {
+        _socket->defer_close_handoff_from_async_owner ();
+        return;
+    }
+
+    _socket->finish_close_handoff ();
 }
 
 zlink::socket_public_send_scope_t::socket_public_send_scope_t (
@@ -312,6 +331,11 @@ void zlink::socket_lifecycle_coordinator_t::complete_deferred_close_handoff (mai
 void zlink::socket_lifecycle_coordinator_t::clear_deferred_close ()
 {
     close_deferred.store (false, std::memory_order_release);
+}
+
+bool zlink::socket_lifecycle_coordinator_t::take_deferred_close ()
+{
+    return close_deferred.exchange (false, std::memory_order_acq_rel);
 }
 
 void zlink::socket_lifecycle_coordinator_t::set_monitor_async_mailbox_owned (bool owned_)

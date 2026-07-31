@@ -18,13 +18,10 @@ import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
-import systems.zlink.framework.monitoring.ZLinkSpotEvent;
-import systems.zlink.framework.monitoring.ZLinkSpotEventKind;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerInstanceOwner;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
-import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkTimer;
 import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.framework.spots.ZLinkTimerOverrunPolicy;
@@ -39,7 +36,7 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
     private final String sourceName;
     private final Dispatch dispatch;
     private final Map<String, ManagedTimer> timers = new LinkedHashMap<>();
-    private ZLinkSpot<?> spot;
+    private Object spot;
     private boolean frozen;
 
     ZLinkSpotTimerRegistry(
@@ -77,7 +74,7 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
         this.dispatch = dispatch;
     }
 
-    void setSpot(ZLinkSpot<?> spot) {
+    void setSpot(Object spot) {
         this.spot = spot;
     }
 
@@ -199,26 +196,18 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
         ZLinkTimerTick tick,
         Throwable error,
         boolean stopped) {
-        if (eventDispatcher == null) {
-            return;
-        }
         Throwable failure = unwrap(error);
-        eventDispatcher.publish(new ZLinkSpotEvent(
-            sourceName,
-            Instant.now(),
-            stopped
-                ? ZLinkSpotEventKind.TIMER_STOPPED_AFTER_UNHANDLED_EXCEPTION
-                : ZLinkSpotEventKind.TIMER_HANDLER_FAILED,
-            Optional.empty(),
-            List.of(),
-            List.of(),
-            Optional.of("spotId=" + spotId
-                + "|timer=" + timer.name
-                + "|handler=" + timer.handlerType.getName()
-                + "|deliveryIndex=" + tick.deliveryIndex()
-                + "|scheduledIndex=" + tick.scheduledIndex()
-                + "|exception=" + failure.getClass().getName()
-                + "|message=" + String.valueOf(failure.getMessage()))));
+        java.util.logging.Logger.getLogger(
+            ZLinkSpotTimerRegistry.class.getName()).warning(
+                (stopped ? "Spot timer stopped" : "Spot timer handler failed")
+                    + ": source=" + sourceName
+                    + ", spotId=" + spotId
+                    + ", timer=" + timer.name
+                    + ", handler=" + timer.handlerType.getName()
+                    + ", deliveryIndex=" + tick.deliveryIndex()
+                    + ", scheduledIndex=" + tick.scheduledIndex()
+                    + ", exception=" + failure.getClass().getName()
+                    + ", message=" + String.valueOf(failure.getMessage()));
     }
 
     private static Throwable unwrap(Throwable error) {

@@ -115,7 +115,8 @@ final class ZLinkRoutedActorTransferHandler {
             CompletableFuture.completedFuture(new ArrayList<>());
         for (ZLinkActorSpotRoutePackets.WireHandoffPacket packet : backlog) {
             tail = tail.thenCompose(replies -> host.dispatchTransferBacklog(
-                    actorRef, packet.header(), packet.payload())
+                    actorRef, packet.header(), packet.payload(),
+                    packet.acceptedJournalRecord())
                 .thenApply(reply -> appendReply(replies, actorRef, packet, reply)));
         }
         return tail.thenApply(List::copyOf);

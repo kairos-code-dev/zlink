@@ -50,7 +50,9 @@ public static class DispatchServerHostFactory
                 .Listen(topology.MeshEndpoint)
                 .SetRoutingIdPrefix("delivery-dispatch");
             mesh.Objects().Client();
-            options.AddClientServerChannel(SampleNames.DispatchChannel).Server()
+            var dispatchChannel = options.AddClientServerChannel(SampleNames.DispatchChannel);
+            dispatchChannel.Client();
+            dispatchChannel.Server()
                 .Listen()
                 .AddHandlerGroup(SampleNames.DispatchChannel);
             options.AddClientServerChannel(SampleNames.TrackingRouteChannel).Client();

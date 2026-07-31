@@ -111,6 +111,15 @@ public final class ZLinkSuspendInvocationContext {
         throw invalid(operation + " does not support yield");
     }
 
+    public static void rejectAfterRelocationReady(String operation) {
+        ApplicationExecution execution = APPLICATION_EXECUTION.get();
+        if (execution != null && execution.relocationReadyDeferred()) {
+            throw invalid(
+                operation + " cannot start after relocationReady().defer() "
+                    + "in the same Spot turn");
+        }
+    }
+
     public static void rejectSameSpotWait(String targetSpotId) {
         ApplicationExecution execution = APPLICATION_EXECUTION.get();
         if (execution != null
@@ -175,15 +184,78 @@ public final class ZLinkSuspendInvocationContext {
         void close();
     }
 
-    public record ApplicationExecution(
-        String spotId,
-        String actorId,
-        boolean sharedSpotGate,
-        boolean yieldAllowed,
-        Predicate<String> memberActor) {
-        public ApplicationExecution {
-            Objects.requireNonNull(spotId, "spotId");
-            memberActor = memberActor == null ? ignored -> false : memberActor;
+    public static final class ApplicationExecution {
+        private final String spotId;
+        private final String actorId;
+        private final boolean sharedSpotGate;
+        private final boolean yieldAllowed;
+        private final boolean relocationReadyAllowed;
+        private final Predicate<String> memberActor;
+        private final java.util.concurrent.atomic.AtomicBoolean
+            relocationReadyDeferred =
+                new java.util.concurrent.atomic.AtomicBoolean();
+
+        public ApplicationExecution(
+            String spotId,
+            String actorId,
+            boolean sharedSpotGate,
+            boolean yieldAllowed,
+            Predicate<String> memberActor) {
+            this(
+                spotId,
+                actorId,
+                sharedSpotGate,
+                yieldAllowed,
+                false,
+                memberActor);
+        }
+
+        public ApplicationExecution(
+            String spotId,
+            String actorId,
+            boolean sharedSpotGate,
+            boolean yieldAllowed,
+            boolean relocationReadyAllowed,
+            Predicate<String> memberActor) {
+            this.spotId = Objects.requireNonNull(spotId, "spotId");
+            this.actorId = actorId;
+            this.sharedSpotGate = sharedSpotGate;
+            this.yieldAllowed = yieldAllowed;
+            this.relocationReadyAllowed = relocationReadyAllowed;
+            this.memberActor =
+                memberActor == null ? ignored -> false : memberActor;
+        }
+
+        public String spotId() {
+            return spotId;
+        }
+
+        public String actorId() {
+            return actorId;
+        }
+
+        public boolean sharedSpotGate() {
+            return sharedSpotGate;
+        }
+
+        public boolean yieldAllowed() {
+            return yieldAllowed;
+        }
+
+        public Predicate<String> memberActor() {
+            return memberActor;
+        }
+
+        public boolean relocationReadyAllowed() {
+            return relocationReadyAllowed;
+        }
+
+        public boolean relocationReadyDeferred() {
+            return relocationReadyDeferred.get();
+        }
+
+        public boolean tryDeferRelocationReady() {
+            return relocationReadyDeferred.compareAndSet(false, true);
         }
     }
 }

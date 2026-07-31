@@ -1,4 +1,3 @@
-import { Inject } from '@nestjs/common';
 import type {
   ActorPushReq,
   ComplexActorReq,
@@ -19,7 +18,6 @@ import type {
 import { ActorPushNotify } from '../../../Shared/messages';
 import type {
   ZLinkActor,
-  ZLinkActorClient,
   ZLinkActorCreateResponse,
   ZLinkActorContext,
   ZLinkActorFactory,
@@ -31,7 +29,6 @@ import type {
 } from '@zlink-systems/framework';
 import { ZLinkSpotActorRequest, ZLinkSpotActorSend } from '@zlink-systems/framework';
 import {
-  ZLINK_ACTOR_CLIENT,
   zlinkEntrySpotActorRequestHandler,
   zlinkEntrySpotActorSendHandler
 } from '@zlink-systems/nestjs';
@@ -79,8 +76,6 @@ export class ScenarioEntrySpot implements ZLinkEntrySpot<ScenarioActor> {
   private static evidence?: EvidenceStore;
   readonly context!: ZLinkEntrySpotContext<ScenarioActor>;
 
-  constructor(@Inject(ZLINK_ACTOR_CLIENT) private readonly actors: ZLinkActorClient) {}
-
   static useEvidence(evidence: EvidenceStore): void {
     this.evidence = evidence;
   }
@@ -88,9 +83,7 @@ export class ScenarioEntrySpot implements ZLinkEntrySpot<ScenarioActor> {
   async onCreateActor(actor: ScenarioActor, createRequest: ZLinkMessage): Promise<ZLinkActorCreateResponse> {
     const request = createRequest.decode<Partial<EnsureActorReq>>(Object as never);
     if (typeof request.displayName === 'string') {
-      await this.actors
-        .sendToActor(actor.actorId, new InitializeScenarioActor(request.displayName))
-        .submit();
+      actor.displayName = request.displayName;
     }
     const evidence = ScenarioEntrySpot.requireEvidence();
     evidence.add(`entry-created|rid=${evidence.rid}|actor=${actor.actorId}`);

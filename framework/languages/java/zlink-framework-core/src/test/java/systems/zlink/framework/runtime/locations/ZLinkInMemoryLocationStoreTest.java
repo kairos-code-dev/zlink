@@ -13,47 +13,47 @@ import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.locations.ZLinkAuthorityConflict;
-import systems.zlink.framework.locations.ZLinkAuthorityDelete;
-import systems.zlink.framework.locations.ZLinkAuthorityExpectFound;
-import systems.zlink.framework.locations.ZLinkAuthorityGenerationTransition;
-import systems.zlink.framework.locations.ZLinkAuthorityPut;
-import systems.zlink.framework.locations.ZLinkAuthorityRestore;
-import systems.zlink.framework.locations.ZLinkAuthoritySnapshot;
-import systems.zlink.framework.locations.ZLinkAuthorityStored;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityConflict;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityDelete;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityExpectFound;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityGenerationTransition;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityPut;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityRestore;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthoritySnapshot;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityStored;
 import systems.zlink.framework.locations.ZLinkActivationConcurrency;
 import systems.zlink.framework.locations.ZLinkCapacityUsage;
-import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor;
-import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptorKey;
-import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
+import systems.zlink.framework.runtime.internal.locations.ZLinkFanoutPublisherDescriptor;
+import systems.zlink.framework.runtime.internal.locations.ZLinkFanoutPublisherDescriptorKey;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationOwnerToken;
 import systems.zlink.framework.locations.ZLinkLocationRole;
-import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
-import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
-import systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey;
-import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationWriteIntent;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationWriteStatus;
+import systems.zlink.framework.runtime.internal.locations.ZLinkMeshNodeDescriptorKey;
+import systems.zlink.framework.runtime.internal.locations.ZLinkMeshNodeDescriptor;
 import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole;
 import systems.zlink.framework.locations.ZLinkObjectCapability;
-import systems.zlink.framework.locations.ZLinkObjectCommitResult;
-import systems.zlink.framework.locations.ZLinkCreationOperationIdentity;
-import systems.zlink.framework.locations.ZLinkCreationOperationTerminal;
-import systems.zlink.framework.locations.ZLinkCreationTerminalFound;
-import systems.zlink.framework.locations.ZLinkCreationTerminalMissing;
-import systems.zlink.framework.locations.ZLinkCreationTerminalState;
-import systems.zlink.framework.locations.ZLinkObjectRejectResult;
+import systems.zlink.framework.runtime.internal.locations.ZLinkObjectCommitResult;
+import systems.zlink.framework.runtime.internal.locations.ZLinkCreationOperationIdentity;
+import systems.zlink.framework.runtime.internal.locations.ZLinkCreationOperationTerminal;
+import systems.zlink.framework.runtime.internal.locations.ZLinkCreationTerminalFound;
+import systems.zlink.framework.runtime.internal.locations.ZLinkCreationTerminalMissing;
+import systems.zlink.framework.runtime.internal.locations.ZLinkCreationTerminalState;
+import systems.zlink.framework.runtime.internal.locations.ZLinkObjectRejectResult;
 import systems.zlink.framework.locations.ZLinkObjectMaintenancePolicyKind;
-import systems.zlink.framework.locations.ZLinkObjectReservation;
-import systems.zlink.framework.locations.ZLinkObjectReservationRequest;
-import systems.zlink.framework.locations.ZLinkObjectReserved;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseClaimConflict;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseClaimed;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseFound;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseReleaseResult;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewStale;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewed;
-import systems.zlink.framework.locations.ZLinkPlacementCapacityBundle;
+import systems.zlink.framework.runtime.internal.locations.ZLinkObjectReservation;
+import systems.zlink.framework.runtime.internal.locations.ZLinkObjectReservationRequest;
+import systems.zlink.framework.runtime.internal.locations.ZLinkObjectReserved;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseClaimConflict;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseClaimed;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseFound;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseReleaseResult;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseRenewStale;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseRenewed;
+import systems.zlink.framework.runtime.internal.locations.ZLinkPlacementCapacityBundle;
 import systems.zlink.framework.locations.ZLinkPlacementObjectKind;
 import systems.zlink.framework.locations.ZLinkPlacementCapacity;
-import systems.zlink.framework.locations.ZLinkRelocationCapacityFence;
+import systems.zlink.framework.runtime.internal.locations.ZLinkRelocationCapacityFence;
 
 class ZLinkInMemoryLocationStoreTest {
     private static final Instant NOW = Instant.parse("2026-07-03T00:00:00Z");
@@ -298,7 +298,7 @@ class ZLinkInMemoryLocationStoreTest {
             ZLinkAuthoritySnapshot.class,
             store.read(key, () -> false).toCompletableFuture().get());
         assertInstanceOf(
-            systems.zlink.framework.locations.ZLinkAuthorityDeleted.class,
+            systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityDeleted.class,
             store.compareExchange(
                     key,
                     new ZLinkAuthorityExpectFound(active.storeVersion()),

@@ -20,6 +20,10 @@ import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.actors.ZLinkActorClient
 import systems.zlink.framework.actors.ZLinkActorContext
 import systems.zlink.framework.actors.ZLinkActorDirectory
+import systems.zlink.framework.actors.ZLinkActorCreateCall
+import systems.zlink.framework.actors.ZLinkActorCreateResult
+import systems.zlink.framework.actors.ZLinkActorGetOrCreateCall
+import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.actors.ZLinkActorRequestCall
 import systems.zlink.framework.actors.ZLinkActorSendCall
 import systems.zlink.framework.actors.ActorRef
@@ -41,6 +45,30 @@ import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.framework.streams.ZLinkSessionActor
 
 class KotlinFrameworkExtensionsContractTest {
+    @Test
+    fun `Kotlin manager wrappers preserve fluent state and coroutine terminals`() = runBlocking {
+        val actorManager = RecordingActorManager()
+        val spotManager = RecordingStableSpotManager()
+
+        val actor = actorManager.kotlin()
+            .create("actor-a", "player")
+            .inMesh("mesh-a")
+            .request(CreateActor("actor"))
+            .timeout(Duration.ofSeconds(2))
+            .await()
+        val spot = spotManager.kotlin()
+            .getOrCreate(SPOT_ID, "room")
+            .inMesh("mesh-a")
+            .request(CreateActor("spot"))
+            .timeout(Duration.ofSeconds(3))
+            .yield()
+
+        assertEquals(ACTOR_REF, (actor as ZLinkActorCreateResult.Created).actor())
+        assertEquals(SPOT_REF, spot.spot())
+        assertEquals(listOf("mesh-a", "PT2S"), actorManager.options)
+        assertTrue(spotManager.lastGetOrCreateCall.yielded)
+    }
+
     @Test
     fun `stable type spot call builders preserve options and are single use`() {
         val manager = RecordingStableSpotManager()
@@ -364,10 +392,13 @@ class KotlinFrameworkExtensionsContractTest {
             submitted = true
             return CompletableFuture.completedFuture(RESULT)
         }
+        override fun yield(): CompletionStage<ZLinkSpotCreateResult> =
+            submit()
     }
 
     private class RecordingGetOrCreateCall : ZLinkSpotGetOrCreateCall {
         private var submitted = false
+        var yielded = false
 
         override fun inMesh(meshName: String) = this
         override fun request(request: Any) = this
@@ -378,6 +409,54 @@ class KotlinFrameworkExtensionsContractTest {
             submitted = true
             return CompletableFuture.completedFuture(RESULT)
         }
+        override fun yield(): CompletionStage<ZLinkSpotCreateResult> {
+            yielded = true
+            return submit()
+        }
+    }
+
+    private class RecordingActorManager : ZLinkActorManager {
+        val options = mutableListOf<String>()
+
+        override fun create(
+            actorId: String,
+            actorType: String,
+        ): ZLinkActorCreateCall = RecordingActorCall(options)
+
+        override fun getOrCreate(
+            actorId: String,
+            actorType: String,
+        ): ZLinkActorGetOrCreateCall = RecordingActorCall(options)
+
+        override fun find(actorId: String): CompletionStage<Optional<ActorRef>> =
+            CompletableFuture.completedFuture(Optional.of(ACTOR_REF))
+    }
+
+    private class RecordingActorCall(
+        private val options: MutableList<String>,
+    ) : ZLinkActorCreateCall, ZLinkActorGetOrCreateCall {
+        private var submitted = false
+
+        override fun inMesh(meshName: String) =
+            apply { options += meshName }
+
+        override fun request(request: Any) = this
+
+        override fun request(request: ZLinkMessage) = this
+
+        override fun timeout(timeout: Duration) =
+            apply { options += timeout.toString() }
+
+        override fun submit(): CompletionStage<ZLinkActorCreateResult> {
+            check(!submitted)
+            submitted = true
+            return CompletableFuture.completedFuture(
+                ZLinkActorCreateResult.Created(ACTOR_REF, ZLinkMessage.empty()),
+            )
+        }
+
+        override fun yield(): CompletionStage<ZLinkActorCreateResult> =
+            submit()
     }
 
     companion object {

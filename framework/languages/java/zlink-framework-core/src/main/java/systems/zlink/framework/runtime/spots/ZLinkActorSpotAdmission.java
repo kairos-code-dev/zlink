@@ -124,9 +124,22 @@ final class ZLinkActorSpotAdmission {
             .thenCompose(ignored -> actorLeft)
             .thenCompose(ignored -> entryNodeRid == null
                 ? CompletableFuture.completedFuture(null)
-                : runtime.joinEntrySpot(actor, entryNodeRid, timeout)
+                : joinEntrySpotAfterLeave(runtime, actor, entryNodeRid, timeout)
                     .thenCompose(joined -> entryJoined));
         return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(leaving);
+    }
+
+    private static CompletionStage<Void> joinEntrySpotAfterLeave(
+        ZLinkActorRuntime runtime,
+        ZLinkActor actor,
+        RoutingId entryNodeRid,
+        Duration timeout) {
+        try (systems.zlink.framework.runtime.internal.handlers
+                 .ZLinkSuspendInvocationContext.Scope ignored =
+                 systems.zlink.framework.runtime.internal.handlers
+                     .ZLinkSuspendInvocationContext.enterApplicationExecution(null)) {
+            return runtime.joinEntrySpot(actor, entryNodeRid, timeout);
+        }
     }
 
     CompletionStage<Void> markLeft(ZLinkActor actor) {
@@ -146,7 +159,9 @@ final class ZLinkActorSpotAdmission {
                     "actor Entry Spot join was rejected: " + actor.context().actorId())))
             .thenCompose(ignored -> runtime.commitEntryLocation(actor, entryNodeRid))
             .thenRun(() -> runtime.completeRemoteMove(actor))
-            .thenCompose(ignored -> joinedCallback.apply(actor));
+            .thenCompose(ignored -> runtime.invokeActorLifecycle(
+                actor,
+                () -> joinedCallback.apply(actor)));
     }
 
     CompletionStage<Void> markJoined(
@@ -185,9 +200,11 @@ final class ZLinkActorSpotAdmission {
         ZLinkActorRuntime runtime = requireActors();
         return runtime.getOrCreateLocalActor(actorId, ZLinkActor.class)
             .thenCompose(actor -> actor
-                .map(value -> runtime.markJoined(
-                        value, request.targetActor(), spotId, null)
-                    .thenCompose(ignored -> joinedCallback.apply(value)))
+                .map(value -> {
+                    return runtime.markJoined(
+                            value, request.targetActor(), spotId, null)
+                        .thenCompose(ignored -> joinedCallback.apply(value));
+                })
                 .orElseGet(() -> CompletableFuture.failedFuture(
                     new ZLinkConfigurationException(
                         "Entry Spot actor is not available: " + actorId))))

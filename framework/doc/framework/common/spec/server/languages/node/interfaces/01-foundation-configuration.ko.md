@@ -43,6 +43,19 @@ export declare enum ZLinkSpotRelocationReadinessMode {
     ApplicationSignaled = "application_signaled"
 }
 
+export declare enum ZLinkApplicationHwmProfile {
+    Compact = "compact",
+    LowLatency = "low_latency",
+    Balanced = "balanced",
+    Throughput = "throughput"
+}
+
+export interface ZLinkInboundDispatchOptions {
+    applicationHwmBytes(value: bigint | undefined): this;
+    applicationHwmProfile(value: ZLinkApplicationHwmProfile): this;
+    processMemoryLimitBytes(value: bigint | undefined): this;
+}
+
 export declare function isZLinkFrameworkErrorRetriableByDefault(kind: ZLinkFrameworkErrorKind): boolean;
 
 export declare function isZLinkMessage(value: unknown): value is ZLinkMessage;
@@ -133,8 +146,8 @@ export interface ZLinkMeshChannelServerBuilder {
 
 export interface ZLinkMeshNodeSocketConfig {
     maxMessageSize: number;
-    sendHighWaterMark: number;
-    receiveHighWaterMark: number;
+    sendHighWaterMark: bigint;
+    receiveHighWaterMark: bigint;
     mailboxMessageBudget: number;
     mailboxByteBudget: number;
     receiveTimeoutMs?: number;
@@ -142,7 +155,7 @@ export interface ZLinkMeshNodeSocketConfig {
 }
 
 export interface ZLinkSpotPublisherConfig {
-    sendHighWaterMark: number;
+    sendHighWaterMark: bigint;
     sendTimeoutMs?: number;
     lingerMs?: number;
 }

@@ -13,14 +13,14 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.locations.ZLinkAuthorityEntry;
-import systems.zlink.framework.locations.ZLinkAuthorityPage;
-import systems.zlink.framework.locations.ZLinkAuthoritySnapshot;
-import systems.zlink.framework.locations.ZLinkLocationStore;
-import systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey;
-import systems.zlink.framework.locations.ZLinkPlacementAllocation;
-import systems.zlink.framework.locations.ZLinkPlacementAllocationState;
-import systems.zlink.framework.locations.ZLinkPlacementCapacityBundle;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityEntry;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityPage;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAuthoritySnapshot;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
+import systems.zlink.framework.runtime.internal.locations.ZLinkMeshNodeDescriptorKey;
+import systems.zlink.framework.runtime.internal.locations.ZLinkPlacementAllocation;
+import systems.zlink.framework.runtime.internal.locations.ZLinkPlacementAllocationState;
+import systems.zlink.framework.runtime.internal.locations.ZLinkPlacementCapacityBundle;
 import systems.zlink.framework.locations.ZLinkPlacementObjectKind;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
@@ -56,7 +56,7 @@ final class ZLinkStatefulAuthorityRouteRuntimeTest {
                     MESH_NAME,
                     NODE_RID,
                     NODE_GENERATION))));
-        ZLinkLocationStore store = authorityStore(entries);
+        ZLinkLocationRepository store = authorityStore(entries);
         var recorded = new RecordedNode();
         var failures = new CopyOnWriteArrayList<Throwable>();
 
@@ -126,12 +126,12 @@ final class ZLinkStatefulAuthorityRouteRuntimeTest {
                 Instant.EPOCH));
     }
 
-    private static ZLinkLocationStore authorityStore(
+    private static ZLinkLocationRepository authorityStore(
         java.util.concurrent.atomic.AtomicReference<
             List<ZLinkAuthorityEntry>> entries) {
-        return (ZLinkLocationStore) Proxy.newProxyInstance(
-            ZLinkLocationStore.class.getClassLoader(),
-            new Class<?>[] {ZLinkLocationStore.class},
+        return (ZLinkLocationRepository) Proxy.newProxyInstance(
+            ZLinkLocationRepository.class.getClassLoader(),
+            new Class<?>[] {ZLinkLocationRepository.class},
             (proxy, method, arguments) -> {
                 if (method.getName().equals("list")) {
                     return CompletableFuture.completedFuture(

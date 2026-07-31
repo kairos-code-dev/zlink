@@ -18,16 +18,30 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.ConfigurableApplicationContext
 import org.springframework.context.annotation.Bean
 import org.springframework.core.env.StandardEnvironment
-import systems.zlink.framework.channels.ZLinkClient
+import systems.zlink.framework.channels.ZLinkRouteClient
+import systems.zlink.framework.ZLinkMessageContext
+import systems.zlink.framework.actors.ActorRef
+import systems.zlink.framework.actors.ZLinkActor
+import systems.zlink.framework.actors.ZLinkActorContext
+import systems.zlink.framework.actors.ZLinkActorCreateResult
+import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.kotlin.ZLinkSuspendingActorFactory
+import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpot
+import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorSendHandler
 import systems.zlink.framework.kotlin.ZLinkSuspendingSession
+import systems.zlink.framework.kotlin.kotlin
 import systems.zlink.framework.kotlin.useCoroutineHandlers
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationStore
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionMessageContext
+import systems.zlink.framework.streams.ZLinkSessionActor
+import systems.zlink.framework.spots.ZLinkEntrySpotContext
 import systems.zlink.samples.kotlin.gamequest.server.configuration.RedisSampleStore
 import systems.zlink.samples.kotlin.gamequest.server.configuration.SampleLocationStore
 import systems.zlink.samples.kotlin.gamequest.server.configuration.SampleNames
@@ -88,30 +102,45 @@ class Program {
     fun gameApiFramework(topology: SampleTopology): ZLinkFrameworkConfigurer {
         val api = topology.gameApi()
         return ZLinkFrameworkConfigurer { options ->
+            options.configureLocations()
+            options.addLocationStore(SampleLocationStore.create(topology))
+            val location = topology.location()
+            options.addRelocationStore(
+                ZLinkRedisRelocationStore(
+                    ZLinkRedisRelocationOptions()
+                        .setConnectionString(location.redisEndpoint)
+                        .setKeyPrefix("${location.redisKeyPrefix}relocation:"),
+                ),
+            )
             options.useCoroutineHandlers(Dispatchers.Default)
+            options.addHandlersFromPackageOf(Program::class.java)
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("${api.logDirectory}/flow-${api.instanceName}.log")
                 .traceLabel(api.instanceName)
-            listOf(api.missionAChannelEndpoint, api.missionBChannelEndpoint).forEach { endpoint ->
-                options.addClientServerChannel(SampleNames.QuestOwnerChannel)
-                    .enableClient(endpoint)
-            }
+            options.addRouteMesh(SampleNames.PlayerQuestMesh)
+                .setRoutingIdPrefix("gamequest-api")
+                .listen()
+                .objects().server()
+                .addEntrySpot(GameQuestEntrySpot::class.java)
+                .addActorFactory(
+                    SampleNames.PlayerSessionActorType,
+                    GameQuestPlayerActor::class.java,
+                    GameQuestPlayerActorFactory::class.java,
+                ) { factory -> factory.recreateOnRelocation() }
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(api.streamEndpoint)
+                .enableActorDispatch(SampleNames.PlayerQuestMesh)
                 .registerSession(GameQuestSession::class.java)
         }
     }
-
-    @Bean(destroyMethod = "close")
-    fun locationStore(topology: SampleTopology): ZLinkRedisLocationStore = SampleLocationStore.create(topology)
 
     @Bean(destroyMethod = "close")
     fun gameQuestStore(topology: SampleTopology): GameQuestStore =
         GameQuestStore(topology).also { store = it }
 
     @Bean
-    fun gameQuestApiServices(store: GameQuestStore, routes: ZLinkClient): GameQuestApiServices {
+    fun gameQuestApiServices(store: GameQuestStore, routes: ZLinkRouteClient): GameQuestApiServices {
         Companion.store = store
         Companion.routes = routes
         return GameQuestApiServices()
@@ -121,7 +150,7 @@ class Program {
 
     companion object {
         lateinit var store: GameQuestStore
-        lateinit var routes: ZLinkClient
+        lateinit var routes: ZLinkRouteClient
         fun run(configPath: String): ConfigurableApplicationContext {
             val environment = StandardEnvironment().apply {
                 propertySources.remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME)
@@ -140,14 +169,17 @@ class Program {
 
 class GameQuestSession(
     private val context: ZLinkSessionContext,
-    private val routes: ZLinkClient,
+    private val routes: ZLinkRouteClient,
     private val store: GameQuestStore,
     private val topology: SampleTopology,
+    private val actors: ZLinkActorManager,
 ) : ZLinkSuspendingSession() {
     private var playerId: String? = null
+    private var playerActor: ZLinkSessionActor? = null
     override fun context(): ZLinkSessionContext = context
 
     override suspend fun onDisconnectedSuspending() {
+        playerActor?.notifyDisconnected()?.await()
         playerId?.let(store::unbind)
     }
 
@@ -168,8 +200,13 @@ class GameQuestSession(
     private suspend fun handleJoin(request: JoinSessionReq) {
         playerId = request.playerId
         store.bind(request.playerId, topology.gameApi().instanceName)
+        val actorRef = ensurePlayerActor(request)
+        playerActor = context.actors().find(actorRef.actorId).orElse(null)
+            ?: context.actors().bind(actorRef).await()
         val ownerProjection = routes
-            .requestToChannel(SampleNames.QuestOwnerChannel, GetQuestProgressReq(request.playerId))
+            .requestToSpot(request.playerId, GetQuestProgressReq(request.playerId))
+            .instanceSpot(SampleNames.PlayerQuestSpotType)
+            .inMesh(SampleNames.PlayerQuestMesh)
             .submit(GetQuestProgressRes::class.java)
             .await()
         store.mergeProjection(request.playerId, ownerProjection.activeQuests)
@@ -178,7 +215,9 @@ class GameQuestSession(
 
     private suspend fun handleGetProgress(request: GetQuestProgressReq) {
         val ownerProjection = routes
-            .requestToChannel(SampleNames.QuestOwnerChannel, request)
+            .requestToSpot(request.playerId, request)
+            .instanceSpot(SampleNames.PlayerQuestSpotType)
+            .inMesh(SampleNames.PlayerQuestMesh)
             .submit(GetQuestProgressRes::class.java)
             .await()
         store.mergeProjection(request.playerId, ownerProjection.activeQuests)
@@ -187,7 +226,9 @@ class GameQuestSession(
 
     private suspend fun handleSync(request: SyncQuestProgressReq) {
         val response = routes
-            .requestToChannel(SampleNames.QuestOwnerChannel, request)
+            .requestToSpot(request.playerId, request)
+            .instanceSpot(SampleNames.PlayerQuestSpotType)
+            .inMesh(SampleNames.PlayerQuestMesh)
             .submit(SyncQuestProgressRes::class.java)
             .await()
         store.mergeProjection(request.playerId, response.updatedQuests)
@@ -219,17 +260,27 @@ class GameQuestSession(
         context.client().reply(UnlockFeatureRes(processed.eventId)).submit()
     }
 
-    private suspend fun process(event: GameplayMsg): QuestProcessingRes {
+    private suspend fun process(event: GameplayMsg): GameplayMsg {
         store.recordGameplay(event)
-        val processed = routes
-            .requestToChannel(SampleNames.QuestOwnerChannel, event)
-            .submit(QuestProcessingRes::class.java)
+        routes
+            .sendToSpot(event.playerId, event)
+            .instanceSpot(SampleNames.PlayerQuestSpotType)
+            .inMesh(SampleNames.PlayerQuestMesh)
+            .submit()
             .await()
-        store.mergeProjection(event.playerId, processed.projection)
-        processed.progressNotifications.forEach { context.client().send(it).submit() }
-        processed.completedNotifications.forEach { context.client().send(it).submit() }
-        return processed
+        return event
     }
+
+    private suspend fun ensurePlayerActor(request: JoinSessionReq): ActorRef =
+        when (val result = actors.kotlin().getOrCreate(
+            request.playerId,
+            SampleNames.PlayerSessionActorType,
+        ).request(request).await()) {
+            is ZLinkActorCreateResult.Existing -> result.actor
+            is ZLinkActorCreateResult.Created -> result.actor
+            is ZLinkActorCreateResult.Rejected ->
+                error("Player session Actor creation was rejected")
+        }
 
     private fun event(playerId: String, idempotencyKey: String, eventType: String, value: String, count: Int, publish: Boolean) =
         GameplayMsg.create(
@@ -243,6 +294,51 @@ class GameQuestSession(
             Instant.now().toEpochMilli(),
             publish,
         )
+}
+
+class GameQuestPlayerActor(
+    private val id: String,
+    private val actorContext: ZLinkActorContext,
+) : ZLinkActor {
+    override fun context(): ZLinkActorContext = actorContext
+
+    fun push(message: QuestProcessingRes) {
+        message.progressNotifications.forEach { actorContext.boundSession().send(it).submit() }
+        message.completedNotifications.forEach { actorContext.boundSession().send(it).submit() }
+    }
+}
+
+class GameQuestPlayerActorFactory : ZLinkSuspendingActorFactory() {
+    override suspend fun createActor(context: ZLinkActorContext): ZLinkActor =
+        GameQuestPlayerActor(context.actorId(), context)
+}
+
+class GameQuestEntrySpot(
+    override val context: ZLinkEntrySpotContext,
+) : ZLinkSuspendingEntrySpot<GameQuestPlayerActor>() {
+    override suspend fun onJoinedActorSuspending(actor: GameQuestPlayerActor) {
+    }
+
+    override suspend fun onLeaveActorSuspending(actor: GameQuestPlayerActor) {
+    }
+}
+
+class QuestProcessingActorHandler(
+    private val store: GameQuestStore,
+) : ZLinkSuspendingEntrySpotActorSendHandler<
+    GameQuestEntrySpot,
+    GameQuestPlayerActor,
+    QuestProcessingRes,
+    > {
+    override suspend fun handle(
+        entrySpot: GameQuestEntrySpot,
+        actor: GameQuestPlayerActor,
+        context: ZLinkMessageContext,
+        message: QuestProcessingRes,
+    ) {
+        store.mergeProjection(message.playerId, message.projection)
+        actor.push(message)
+    }
 }
 
 private fun startHttp(store: GameQuestStore, topology: SampleTopology): HttpServer {
@@ -277,10 +373,12 @@ private fun handleProjection(exchange: HttpExchange, store: GameQuestStore, topo
         "delete" -> {
             val deleted = kotlinx.coroutines.runBlocking {
                 Program.routes
-                    .requestToChannel(
-                        SampleNames.QuestOwnerChannel,
+                    .requestToSpot(
+                        playerId,
                         DeleteQuestProjectionReq(playerId, questId),
                     )
+                    .instanceSpot(SampleNames.PlayerQuestSpotType)
+                    .inMesh(SampleNames.PlayerQuestMesh)
                     .submit(DeleteQuestProjectionRes::class.java)
                     .await()
             }
@@ -290,10 +388,12 @@ private fun handleProjection(exchange: HttpExchange, store: GameQuestStore, topo
         "rebuild" -> {
             val rebuilt = kotlinx.coroutines.runBlocking {
                 Program.routes
-                    .requestToChannel(
-                        SampleNames.QuestOwnerChannel,
+                    .requestToSpot(
+                        playerId,
                         RebuildQuestProjectionReq(playerId, questId, 0),
                     )
+                    .instanceSpot(SampleNames.PlayerQuestSpotType)
+                    .inMesh(SampleNames.PlayerQuestMesh)
                     .submit(QuestProgress::class.java)
                     .await()
             }

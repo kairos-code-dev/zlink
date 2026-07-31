@@ -18,6 +18,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.*;
 
 final class ZLinkInMemoryAuthorityStore {
     private final Object gate;
@@ -131,8 +132,7 @@ final class ZLinkInMemoryAuthorityStore {
                     nextVersion(),
                     now));
             }
-            if (mutation instanceof systems.zlink.framework.locations
-                .ZLinkAuthorityRestore restore) {
+            if (mutation instanceof systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityRestore restore) {
                 if (current == null
                     || current.allocation.state()
                         != ZLinkPlacementAllocationState.ACTIVE
@@ -1600,8 +1600,7 @@ final class ZLinkInMemoryAuthorityStore {
 
     private ZLinkAuthoritySnapshot snapshot(Row row, Instant now) {
         java.util.Optional<
-            systems.zlink.framework.locations
-                .ZLinkPendingObjectCreation> pending =
+            systems.zlink.framework.runtime.internal.locations.ZLinkPendingObjectCreation> pending =
             java.util.Optional.empty();
         if (row.allocation.state()
                 == ZLinkPlacementAllocationState.PENDING) {
@@ -1614,8 +1613,7 @@ final class ZLinkInMemoryAuthorityStore {
                 .orElse(null);
             if (state != null) {
                 pending = java.util.Optional.of(
-                    new systems.zlink.framework.locations
-                        .ZLinkPendingObjectCreation(
+                    new systems.zlink.framework.runtime.internal.locations.ZLinkPendingObjectCreation(
                             state.reservation
                                 .reservationVersion(),
                             state.request

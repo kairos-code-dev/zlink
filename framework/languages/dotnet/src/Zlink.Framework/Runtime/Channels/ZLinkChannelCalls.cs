@@ -31,7 +31,6 @@ internal sealed class ZLinkPublishCall(
                     cancellationToken)
                 .ConfigureAwait(false);
         ZLinkOneWaySubmitOutcome.EnsureAccepted(result, "Fanout publish");
-        ZLinkRuntimeMetrics.RecordFanoutPublished(null);
     }
 
     private (ZLinkChannelRuntimeBundle Bundle, IZLinkBackendPublisherSocket Publisher,

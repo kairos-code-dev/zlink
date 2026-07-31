@@ -20,9 +20,8 @@ class commerce_api_handlers_t
 {
   public:
     commerce_api_handlers_t (route_client_t &routes,
-                             redis_state_store_t &store,
-                             spot_handle_resolver_t &spot_handles) :
-        _routes (routes), _store (store), _spot_handles (spot_handles)
+                             redis_state_store_t &store) :
+        _routes (routes), _store (store)
     {
     }
 
@@ -213,32 +212,15 @@ class commerce_api_handlers_t
     template <typename TReply, typename TRequest>
     task_t<TReply> request_workflow (const TRequest &request)
     {
-        auto ensured =
-          co_await _routes
-            .request_to_channel (sample_names_t::order_workflow_channel,
-                                 ensure_order_workflow_spot_req_t{request.order_id})
-            .timeout (std::chrono::milliseconds (5000))
-            .template submit<ok_res_t> ();
-        if (!ensured.ok) {
-            throw framework_exception_t (framework_error_kind_t::request_failed,
-                                         "ShoppingMall workflow spot ensure failed");
-        }
-
-        auto target = co_await _spot_handles.resolve_spot_handle (
-          spot_rid_t::from_string (request.order_id));
-        if (!target) {
-            throw framework_exception_t (framework_error_kind_t::spot_route_not_found,
-                                         "Order workflow spot '" + request.order_id
-                                           + "' has no live location row");
-        }
-        co_return co_await _routes.request_to_spot (*target, request)
+        co_return co_await _routes
+          .request_to_spot (spot_id_t (request.order_id), request)
+          .instance_spot (sample_names_t::order_workflow_spot)
           .timeout (std::chrono::milliseconds (5000))
           .template submit<TReply> ();
     }
 
     route_client_t &_routes;
     redis_state_store_t &_store;
-    spot_handle_resolver_t &_spot_handles;
 };
 
 /* 공통 sample spec: 샘플 handler는 framework가 처리하는 dispatch 오류를 다시 잡아
@@ -290,8 +272,7 @@ int main (int argc, char **argv)
           .add_singleton<redis_state_store_t, sample_topology_t> ()
           .add_singleton<commerce_api_handlers_t,
                          route_client_t,
-                         redis_state_store_t,
-                         spot_handle_resolver_t> ();
+                         redis_state_store_t> ();
         add_shoppingmall_location_store (options, topology);
         options.configure_dispatch ()
           .message_flow (message_flow_log_mode_t::key_transitions)

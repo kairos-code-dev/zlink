@@ -3258,7 +3258,10 @@ function createEntryJoinHarness() {
       });
       dispatchHandler({ event: ENTRY_ACTOR_JOIN_READABLE });
       await done;
-      await new Promise((resolve) => setImmediate(resolve));
+      // The native reply commits before the Entry membership callback. Wait for
+      // the detached drain to finish instead of treating reply submission as
+      // lifecycle completion.
+      await new Promise((resolve) => setTimeout(resolve, 10));
     },
     replies
   };

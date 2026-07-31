@@ -1,13 +1,14 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 package systems.zlink.runtime.sockets;
+import systems.zlink.internal.sockets.SocketOptionKey;
 
 import systems.zlink.contracts.sockets.*;
 
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.SocketMonitor;
-import systems.zlink.runtime.nativeapi.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import java.lang.foreign.MemorySegment;
 import java.util.Objects;

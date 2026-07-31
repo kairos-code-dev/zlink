@@ -29,7 +29,7 @@ test('socket monitoring source maps backend raw events into framework typed even
   const source = new framework.ZLinkSocketMonitoringSource(
     {
       sourceName: 'api.server',
-      events: [framework.ZLinkSocketEventKind.ConnectionReady]
+      events: [internalEvents.ZLinkSocketEventKind.ConnectionReady]
     },
     fakeSocketMonitor(),
     publisher
@@ -56,7 +56,7 @@ test('socket monitoring source maps backend raw events into framework typed even
 
   assert.equal(events.length, 1);
   assert.equal(events[0].sourceName, 'api.server');
-  assert.equal(events[0].event, framework.ZLinkSocketEventKind.ConnectionReady);
+  assert.equal(events[0].event, internalEvents.ZLinkSocketEventKind.ConnectionReady);
   assert.equal(events[0].routingId, '706565722d61');
   assert.equal(typeof events[0].routingId, 'string');
 });
@@ -114,12 +114,12 @@ test('location runtime monitoring source publishes snapshot changes and suppress
   await source.pollOnce();
 
   assert.deepEqual(events.map((event) => event.event), [
-    framework.ZLinkLocationRuntimeEventKind.StatusChanged,
-    framework.ZLinkLocationRuntimeEventKind.TopologyChanged,
-    framework.ZLinkLocationRuntimeEventKind.ServiceSummaryChanged,
-    framework.ZLinkLocationRuntimeEventKind.StatusChanged,
-    framework.ZLinkLocationRuntimeEventKind.TopologyChanged,
-    framework.ZLinkLocationRuntimeEventKind.ServiceSummaryChanged
+    internalEvents.ZLinkLocationRuntimeEventKind.StatusChanged,
+    internalEvents.ZLinkLocationRuntimeEventKind.TopologyChanged,
+    internalEvents.ZLinkLocationRuntimeEventKind.ServiceSummaryChanged,
+    internalEvents.ZLinkLocationRuntimeEventKind.StatusChanged,
+    internalEvents.ZLinkLocationRuntimeEventKind.TopologyChanged,
+    internalEvents.ZLinkLocationRuntimeEventKind.ServiceSummaryChanged
   ]);
   assert.equal(events[2].serviceSummary[0].readyCount, 1);
   assert.equal(events[5].serviceSummary[0].readyCount, 2);
@@ -154,10 +154,10 @@ test('location runtime monitoring source publishes StoreFailure and StoreRecover
   fail = false;
   await source.pollOnce();
 
-  assert.equal(framework.ZLinkLocationRuntimeEventKind.StoreUnavailable, undefined);
+  assert.equal(internalEvents.ZLinkLocationRuntimeEventKind.StoreUnavailable, undefined);
   assert.deepEqual(events.slice(0, 2).map((event) => event.event), [
-    framework.ZLinkLocationRuntimeEventKind.StoreFailure,
-    framework.ZLinkLocationRuntimeEventKind.StoreRecovered
+    internalEvents.ZLinkLocationRuntimeEventKind.StoreFailure,
+    internalEvents.ZLinkLocationRuntimeEventKind.StoreRecovered
   ]);
 });
 
@@ -230,7 +230,7 @@ test('continuing spot timer publishes one TimerHandlerFailed event with its Spot
     await timer.dispose();
   }
 
-  assert.deepEqual(events.map((event) => event.event), [framework.ZLinkSpotEventKind.TimerHandlerFailed]);
+  assert.deepEqual(events.map((event) => event.event), [internalEvents.ZLinkSpotEventKind.TimerHandlerFailed]);
   assert.equal(events[0].timerDiagnostic.spotId, 'stage-entry-550e8400-e29b-41d4-a716-446655440000');
   assert.equal(events[0].timerDiagnostic.timerName, 'idle');
   assert.equal(events[0].timerDiagnostic.exceptionType, 'TypeError');
@@ -265,7 +265,7 @@ test('Entry Spot timer diagnostic uses the context SpotId rather than NodeRid', 
   await reportFailure(
     { deliveryIndex: 1n, scheduledIndex: 1n },
     new TypeError('timer failed'),
-    framework.ZLinkSpotEventKind.TimerHandlerFailed
+    internalEvents.ZLinkSpotEventKind.TimerHandlerFailed
   );
 
   assert.equal(context.spotId, 'stage-entry-550e8400-e29b-41d4-a716-446655440000');
@@ -307,7 +307,7 @@ test('decorated Entry Spot timer registration reports the canonical Entry SpotId
   await reportFailure(
     { deliveryIndex: 1n, scheduledIndex: 1n },
     new TypeError('timer failed'),
-    framework.ZLinkSpotEventKind.TimerHandlerFailed
+    internalEvents.ZLinkSpotEventKind.TimerHandlerFailed
   );
 
   assert.equal(events[0].timerDiagnostic.spotId, 'stage-entry-550e8400-e29b-41d4-a716-446655440000');
@@ -347,7 +347,7 @@ test('stopping spot timer publishes only TimerStoppedAfterUnhandledException', a
   }
 
   assert.deepEqual(events.map((event) => event.event), [
-    framework.ZLinkSpotEventKind.TimerStoppedAfterUnhandledException
+    internalEvents.ZLinkSpotEventKind.TimerStoppedAfterUnhandledException
   ]);
   assert.equal(events[0].timerDiagnostic.exceptionMessage, 'timer stopped');
 });

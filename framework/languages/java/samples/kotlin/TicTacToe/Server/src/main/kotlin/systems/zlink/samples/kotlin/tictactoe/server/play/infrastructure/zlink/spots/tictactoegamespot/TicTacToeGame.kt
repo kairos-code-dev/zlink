@@ -8,6 +8,7 @@ import systems.zlink.framework.kotlin.addHandler
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
+import systems.zlink.framework.spots.ZLinkSpotClosingContext
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
 import systems.zlink.framework.spots.ZLinkTimer
@@ -28,24 +29,17 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.TicTacToeGameJoin
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.TicTacToeGameJoinRes
 
 class TicTacToeGame(
-    private val context: ZLinkSpotContext,
+    override val context: ZLinkSpotContext,
     private val createdHandler: TicTacToeGameCreatedHandler,
     private val json: ObjectMapper,) : ZLinkSuspendingSpot<PlayActor>() {
     private val gameTickPeriod: Duration = Duration.ofSeconds(1)
     private val turnTimeout: Duration = Duration.ofSeconds(15)
-    val roomId: String = context.spotRid().toString()
+    val roomId: String = context.spotId()
     private val match = TicTacToeMatch(roomId, turnTimeout)
     private val players = mutableListOf<PlayerSlot>()
     private val pendingJoins = mutableMapOf<String, TicTacToeGameJoinReq>()
     private var gameTick: ZLinkTimer? = null
     private var created = false
-
-    override fun context(): ZLinkSpotContext = context
-
-    override fun configure() {
-        context.handlers().addHandler<PlayActorLeaveGameHandler>()
-        context.handlers().addHandler<PlayActorPlaceMarkHandler>()
-    }
 
     override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse {
         createdHandler.handle(this, request)
@@ -89,7 +83,7 @@ class TicTacToeGame(
         ).await()
     }
 
-    override suspend fun onClosingSuspending() {
+    override suspend fun onClosingSuspending(context: ZLinkSpotClosingContext) {
         gameTick?.cancel()?.await()
     }
 

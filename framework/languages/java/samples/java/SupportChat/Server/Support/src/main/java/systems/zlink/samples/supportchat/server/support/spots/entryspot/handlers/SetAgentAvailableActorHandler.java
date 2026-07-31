@@ -1,7 +1,7 @@
 package systems.zlink.samples.supportchat.server.support.spots.entryspot.handlers;
 
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.samples.supportchat.server.configuration.SampleNames;
 import systems.zlink.samples.supportchat.server.support.actors.SupportActorDirectory;
 import systems.zlink.samples.supportchat.server.support.actors.SupportUserActor;
@@ -29,7 +29,7 @@ public final class SetAgentAvailableActorHandler
     public java.util.concurrent.CompletionStage<Messages.SetAgentAvailableRes> handle(
         SupportEntrySpot spot,
         SupportUserActor actor,
-        ZLinkSpotActorRequestContext context,
+        ZLinkMessageContext context,
         Messages.SetAgentAvailableReq request) {
         requireRole(actor, SampleNames.Roles.Agent);
         directory.remember(actor);

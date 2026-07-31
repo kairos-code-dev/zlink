@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
-#include <zlink/framework/contracts/eventing/events.hpp>
+#include "runtime/diagnostics/monitoring_runtime.hpp"
 
 #include <zlink.hpp>
 

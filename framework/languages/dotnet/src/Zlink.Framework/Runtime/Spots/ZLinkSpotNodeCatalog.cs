@@ -15,6 +15,7 @@ internal sealed class ZLinkSpotNodeCatalog(
     ZLinkSpotNodeRegistration registration,
     IZLinkBackendSpotNode node,
     string spotChannelName,
+    ZLinkCompletionAdmissionOwner completionAdmission,
     ZLinkLocationLifecycle? lifecycle) : IAsyncDisposable
 {
     private readonly object _disposeGate = new();
@@ -25,7 +26,8 @@ internal sealed class ZLinkSpotNodeCatalog(
         frameworkRegistration,
         registration,
         node,
-        spotChannelName);
+        spotChannelName,
+        completionAdmission);
     private readonly ZLinkSpotRetireScheduler? _retireScheduler =
         CreateRetireScheduler(
             services,
@@ -194,49 +196,58 @@ internal sealed class ZLinkSpotNodeCatalog(
             _instanceSpotTypes.Remove(activation.SpotId);
             _closing.Remove(activation.SpotId);
         }
+        await ScheduleRelocatedSourceCleanupAsync(runtime, activation)
+            .ConfigureAwait(false);
+    }
+
+    internal static async ValueTask ScheduleRelocatedSourceCleanupAsync(
+        ZLinkFrameworkRuntime runtime,
+        ZLinkSpotActivation activation)
+    {
+        ArgumentNullException.ThrowIfNull(runtime);
+        ArgumentNullException.ThrowIfNull(activation);
         var waitForPerActorMembers =
             activation.PerActorShellRelocationPlan is not null;
+        async ValueTask CompleteAfterMessageFollowAsync(
+            CancellationToken detachedCancellationToken)
+        {
+            try
+            {
+                var messageFollow = activation
+                    .WaitForMessageFollowDrainedAsync(
+                        detachedCancellationToken)
+                    .AsTask();
+                if (waitForPerActorMembers)
+                    await activation
+                        .InvokePerActorRelocationClosingAfterDrainAsync(
+                            messageFollow,
+                            detachedCancellationToken)
+                        .ConfigureAwait(false);
+                else
+                    await messageFollow.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+                when (detachedCancellationToken.IsCancellationRequested)
+            {
+            }
+            finally
+            {
+                await activation.DisposeAsync().ConfigureAwait(false);
+                ZLinkRuntimeMetrics.RecordSpotClosed(
+                    activation.MeshName,
+                    activation.Spot is IZLinkInstanceSpot
+                        ? "instance"
+                        : "user");
+            }
+        }
+
         if (!runtime.TryRunDetached(
                 waitForPerActorMembers
                     ? "per-actor-shell-message-follow"
                     : "spot-message-follow-duration",
-                async detachedCancellationToken =>
-                {
-                    try
-                    {
-                        var messageFollowRemaining =
-                            activation.MessageFollowRemaining;
-                        var messageFollow = messageFollowRemaining
-                                            > TimeSpan.Zero
-                            ? Task.Delay(
-                                messageFollowRemaining,
-                                detachedCancellationToken)
-                            : Task.CompletedTask;
-                        var members = waitForPerActorMembers
-                            ? activation.WaitForPerActorMembersDrainedAsync(
-                                detachedCancellationToken)
-                            : Task.CompletedTask;
-                        await Task.WhenAll(messageFollow, members)
-                            .ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                    }
-                    ZLinkFrameworkDebugLog.SpotDiscovery(
-                        "message_follow_route_removed");
-                    await activation.DisposeAsync().ConfigureAwait(false);
-                    ZLinkRuntimeMetrics.RecordSpotClosed(
-                        activation.Spot is IZLinkInstanceSpot
-                            ? "instance"
-                            : "user");
-                }))
-        {
-            ZLinkFrameworkDebugLog.SpotDiscovery(
-                "message_follow_route_removed");
-            await activation.DisposeAsync().ConfigureAwait(false);
-            ZLinkRuntimeMetrics.RecordSpotClosed(
-                activation.Spot is IZLinkInstanceSpot ? "instance" : "user");
-        }
+                CompleteAfterMessageFollowAsync))
+            await CompleteAfterMessageFollowAsync(runtime.ShutdownToken)
+                .ConfigureAwait(false);
     }
 
     private static ZLinkSpotRetireScheduler? CreateRetireScheduler(
@@ -441,7 +452,7 @@ internal sealed class ZLinkSpotNodeCatalog(
             {
                 _spots.Add(activation.SpotId, activation);
             }
-            ZLinkRuntimeMetrics.RecordSpotCreated("user");
+            ZLinkRuntimeMetrics.RecordSpotCreated(registration.SpotNodeName, "user");
 
             return new ZLinkSpotCreateResult(
                 Reference(activation),
@@ -578,7 +589,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                 _spots.Add(activation.SpotId, activation);
                 pending.Complete(result);
             }
-            ZLinkRuntimeMetrics.RecordSpotCreated("user");
+            ZLinkRuntimeMetrics.RecordSpotCreated(registration.SpotNodeName, "user");
         }
         catch (Exception error)
         {
@@ -806,6 +817,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                 stableType,
                 objectGeneration,
                 authorityOwnerGeneration,
+                ZLinkSpotKind.User,
                 cancellationToken)
             .ConfigureAwait(false);
         lock (_gate)
@@ -816,7 +828,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                     $"SPOT '{prepared.Activation.SpotId}' became visible before publication.");
             _spots.Add(prepared.Activation.SpotId, prepared.Activation);
         }
-        ZLinkRuntimeMetrics.RecordSpotCreated("user");
+        ZLinkRuntimeMetrics.RecordSpotCreated(registration.SpotNodeName, "user");
     }
 
     internal ValueTask ValidateRelocatedReservedAsync(
@@ -884,14 +896,27 @@ internal sealed class ZLinkSpotNodeCatalog(
                         "Instance Spot stable type is missing."));
         }
         ZLinkRuntimeMetrics.RecordSpotCreated(
+            registration.SpotNodeName,
             prepared.Activation.Spot is IZLinkInstanceSpot
                 ? "instance"
                 : "user");
     }
 
-    internal void PublishInstanceReserved(PreparedReservedSpot prepared)
+    internal async ValueTask PublishInstanceReservedAsync(
+        PreparedReservedSpot prepared,
+        ulong objectGeneration,
+        ulong authorityOwnerGeneration,
+        CancellationToken cancellationToken)
     {
         if (prepared.Existing) return;
+        await ClaimSpotLocationAsync(
+                prepared.Activation,
+                prepared.InstanceStableType,
+                objectGeneration,
+                authorityOwnerGeneration,
+                ZLinkSpotKind.Instance,
+                cancellationToken)
+            .ConfigureAwait(false);
         lock (_gate)
         {
             if (_spots.ContainsKey(prepared.Activation.SpotId))
@@ -905,7 +930,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                 ?? throw new InvalidOperationException(
                     "Instance Spot stable type is missing."));
         }
-        ZLinkRuntimeMetrics.RecordSpotCreated("instance");
+        ZLinkRuntimeMetrics.RecordSpotCreated(registration.SpotNodeName, "instance");
     }
 
     internal bool TryGetInstanceActivation(
@@ -1131,6 +1156,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                 spotType.FullName,
                 activation.NativeSpot.LifecycleGeneration,
                 authorityOwnerGeneration: 0,
+                ZLinkSpotKind.User,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -1140,6 +1166,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         string? spotType,
         ulong objectGeneration,
         ulong authorityOwnerGeneration,
+        ZLinkSpotKind spotKind,
         CancellationToken cancellationToken)
     {
         if (lifecycle is null) return;
@@ -1152,7 +1179,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                 spotType,
                 node.RoutingId,
                 node.MeshStatus().LifecycleGeneration,
-                ZLinkSpotKind.User,
+                spotKind,
                 authorityOwnerGeneration,
                 deactivate: async ct => _ = await CloseAsync(spotId, ct).ConfigureAwait(false),
                 cancellationToken)
@@ -1223,7 +1250,9 @@ internal sealed class ZLinkSpotNodeCatalog(
             _instanceSpotTypes.Remove(spotId);
             _closing.Remove(spotId);
         }
-        ZLinkRuntimeMetrics.RecordSpotClosed("user");
+        ZLinkRuntimeMetrics.RecordSpotClosed(
+            registration.SpotNodeName,
+            activation.Spot is IZLinkInstanceSpot ? "instance" : "user");
 
         transaction.TrySetResult(true);
         return true;
@@ -1254,7 +1283,9 @@ internal sealed class ZLinkSpotNodeCatalog(
             _instanceSpotTypes.Remove(activation.SpotId);
             _closing.Remove(activation.SpotId);
         }
-        ZLinkRuntimeMetrics.RecordSpotClosed("user");
+        ZLinkRuntimeMetrics.RecordSpotClosed(
+            registration.SpotNodeName,
+            activation.Spot is IZLinkInstanceSpot ? "instance" : "user");
         failures.ThrowIfAny();
     }
 

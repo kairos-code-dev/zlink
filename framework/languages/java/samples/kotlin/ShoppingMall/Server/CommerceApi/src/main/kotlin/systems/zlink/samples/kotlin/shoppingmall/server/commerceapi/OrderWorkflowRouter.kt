@@ -1,9 +1,8 @@
 package systems.zlink.samples.kotlin.shoppingmall.server.commerceapi
 
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.future.await
 import org.springframework.stereotype.Component
-import systems.zlink.framework.channels.ZLinkClient
+import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.SampleTopology
@@ -22,7 +21,7 @@ import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.StartOrderWork
  * `OrderId`. Same `OrderId` always reaches the same workflow instance channel.
  */
 @Component
-class OrderWorkflowRouter(private val channels: ZLinkClient) {
+class OrderWorkflowRouter(private val routes: ZLinkRouteClient) {
     suspend fun startWorkflow(command: StartOrderWorkflowReq): OrderState =
         request(command.orderId, command, StartOrderWorkflowRes::class.java).state
 
@@ -36,18 +35,11 @@ class OrderWorkflowRouter(private val channels: ZLinkClient) {
         request(orderId, RebuildOrderProjectionReq(orderId), RebuildOrderProjectionRes::class.java).state
 
     private suspend fun <TReply> request(orderId: String, payload: Any, replyType: Class<TReply>): TReply {
-        var lastError: RuntimeException? = null
-        for (attempt in 1..SampleTimings.MaxChannelAttempts) {
-            try {
-                return channels.requestToChannel(SampleNames.OrderWorkflowChannel, payload)
-                    .timeout(SampleTimings.WorkflowTimeout)
-                    .submit(replyType)
-                    .await()
-            } catch (error: RuntimeException) {
-                lastError = error
-                delay(SampleTimings.ChannelRetryDelay.toMillis())
-            }
-        }
-        throw IllegalStateException("OrderWorkflow channel was not ready for order '$orderId'.", lastError)
+        return routes.requestToSpot(orderId, payload)
+            .instanceSpot(SampleNames.OrderWorkflowSpotType)
+            .inMesh(SampleNames.OrderWorkflowMesh)
+            .timeout(SampleTimings.WorkflowTimeout)
+            .submit(replyType)
+            .await()
     }
 }

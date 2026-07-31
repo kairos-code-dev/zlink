@@ -22,6 +22,7 @@ public sealed class StreamFlowEndToEndTests
         builder.Logging.AddProvider(flowLogs);
         builder.Services.AddZLinkFramework(options =>
         {
+            options.ConfigureInboundDispatch().ApplicationHwmBytes = 0;
             options.ConfigureDispatch().Diagnostics
                 .SetLevel(ZLinkDiagnosticsLevel.Normal);
             options.AddStreamNode("flow.stream")

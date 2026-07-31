@@ -13,7 +13,7 @@ public sealed partial class StreamConnectorTests
     private static readonly ConnectorMetricCollector ConnectorMetrics = new();
 
     [Fact]
-    public async Task TcpFramesRecordWireBytesWithoutHandshakeSamples()
+    public async Task TcpFramesDoNotEmitRemovedByteOrHandshakeMetrics()
     {
         var metrics = ConnectorMetrics.BeginScope();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -60,16 +60,11 @@ public sealed partial class StreamConnectorTests
         await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await server;
 
-        Assert.Equal(
-            await outboundSize.Task,
-            metrics.SumLong("zlink.stream.outbound.bytes", "transport", "tcp"));
-        Assert.Equal(
-            6L + inboundHeader.Length + inboundPayload.Length,
-            metrics.SumLong("zlink.stream.inbound.bytes", "transport", "tcp"));
+        _ = await outboundSize.Task;
         Assert.Equal(0, metrics.Count("zlink.stream.handshake.duration"));
         Assert.Equal(0, metrics.Count("zlink.stream.handshake.failures"));
-        metrics.AssertInstrument("zlink.stream.inbound.bytes", "By", typeof(Counter<long>));
-        metrics.AssertInstrument("zlink.stream.outbound.bytes", "By", typeof(Counter<long>));
+        Assert.Equal(0, metrics.Count("zlink.stream.inbound.bytes"));
+        Assert.Equal(0, metrics.Count("zlink.stream.outbound.bytes"));
     }
 
     [Fact]
@@ -107,12 +102,16 @@ public sealed partial class StreamConnectorTests
         await WaitUntilAsync(() => connector.IsConnected, TimeSpan.FromSeconds(5));
 
         Assert.Equal(1, metrics.SumLong("zlink.stream.reconnects"));
-        metrics.AssertInstrument("zlink.stream.reconnects", "{event}", typeof(Counter<long>));
+        var reconnect = Assert.Single(metrics.Samples("zlink.stream.reconnects"));
+        Assert.Equal("tcp", reconnect.Tags["transport"]);
+        Assert.Equal("connected", reconnect.Tags["outcome"]);
+        Assert.Equal("transport_closed", reconnect.Tags["reason"]);
+        metrics.AssertInstrument("zlink.stream.reconnects", "{reconnect}", typeof(Counter<long>));
         await server;
     }
 
     [Fact]
-    public async Task TlsAndWebSocketHandshakesRecordDurationAndFailureWithClosedLabels()
+    public async Task TlsAndWebSocketHandshakesDoNotEmitRemovedMetrics()
     {
         var metrics = ConnectorMetrics.BeginScope();
         using var certificate = CreateSelfSignedCertificate();
@@ -183,21 +182,18 @@ public sealed partial class StreamConnectorTests
             await Assert.ThrowsAsync<ZlinkStreamException>(async () => await connector.Connect.Async());
         await failureServer;
 
-        Assert.Equal(2, metrics.Count("zlink.stream.handshake.duration", "transport", "tls"));
-        Assert.Equal(1, metrics.Count("zlink.stream.handshake.duration", "transport", "ws"));
-        Assert.Equal(1, metrics.Count("zlink.stream.handshake.failures", "transport", "tls"));
-        Assert.Contains(
-            metrics.Samples("zlink.stream.handshake.failures"),
-            sample => sample.Tags.TryGetValue("reason", out var reason)
-                      && reason is "authentication_error" or "transport_error");
-        metrics.AssertInstrument("zlink.stream.handshake.duration", "s", typeof(Histogram<double>));
-        metrics.AssertInstrument("zlink.stream.handshake.failures", "{failure}", typeof(Counter<long>));
+        Assert.Equal(0, metrics.Count("zlink.stream.handshake.duration"));
+        Assert.Equal(0, metrics.Count("zlink.stream.handshake.failures"));
     }
 
     [Fact]
     public async Task ThrowingMetricsListenerDoesNotChangeRequestResult()
     {
         using var throwOnMeasurement = ConnectorMetrics.ThrowOnMeasurement();
+        ZlinkStreamRuntimeMetrics.RecordReconnect(
+            "tcp",
+            "failed",
+            "connect_failed");
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
@@ -245,7 +241,10 @@ public sealed partial class StreamConnectorTests
     {
         var metrics = ConnectorMetrics.BeginScope();
         for (var index = 0; index < ConnectorMetricCollector.MaxRetainedSamples * 2; index++)
-            ZlinkStreamRuntimeMetrics.RecordReconnectAttempt();
+            ZlinkStreamRuntimeMetrics.RecordReconnect(
+                "tcp",
+                "failed",
+                "connect_failed");
 
         Assert.Equal(
             ConnectorMetricCollector.MaxRetainedSamples,

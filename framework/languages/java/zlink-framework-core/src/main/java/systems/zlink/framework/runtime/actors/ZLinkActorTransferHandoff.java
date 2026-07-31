@@ -48,14 +48,16 @@ final class ZLinkActorTransferHandoff implements AutoCloseable {
         String actorId,
         ZLinkStreamHeader header,
         Message payload,
-        ZLinkActorReplyRoute replyRoute) {
+        ZLinkActorReplyRoute replyRoute,
+        byte[] acceptedJournalRecord) {
         List<ZLinkActorHandoffPacket> backlog = backlogs.get(actorId);
         if (backlog == null) {
             return null;
         }
         ZLinkActorHandoffPacket packet =
             new ZLinkActorHandoffPacket(
-                arrivalIndex.incrementAndGet(), header, payload, replyRoute);
+                arrivalIndex.incrementAndGet(), header, payload, replyRoute,
+                acceptedJournalRecord);
         synchronized (backlog) {
             if (backlogs.get(actorId) != backlog) {
                 packet.close();

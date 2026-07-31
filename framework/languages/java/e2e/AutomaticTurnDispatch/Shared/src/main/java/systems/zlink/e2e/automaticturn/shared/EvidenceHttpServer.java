@@ -17,7 +17,7 @@ import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
 import systems.zlink.framework.locations.ZLinkLocationTopologyFilter;
 import systems.zlink.framework.locations.ZLinkPageRequest;
-import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle;
 import systems.zlink.framework.runtime.host.ZLinkTerminationResult;
 
 public final class EvidenceHttpServer implements SmartLifecycle {

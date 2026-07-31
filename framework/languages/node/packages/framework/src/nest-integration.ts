@@ -66,7 +66,6 @@ import {
 } from './runtime/spots';
 import { ZLinkWorkerRuntime } from './runtime/workers';
 import { captureZLinkExecutionTurn } from './runtime/execution';
-import type { ZLinkRuntimeEventPublisher } from './runtime/diagnostics';
 export {
   registerHandlerFilterScope as registerIntegrationHandlerFilterScope,
   type ZLinkHandlerFilterScopeRunner
@@ -76,7 +75,6 @@ export interface ZLinkNestIntegrationRuntimeHost {
   readonly channelRuntimeOptions: unknown;
   readonly routeMeshRuntimeOptions: ZLinkRouteMeshRuntimeOptions;
   readonly boundSessionFactory: ZLinkBoundSessionFactory;
-  readonly eventPublisher: ZLinkRuntimeEventPublisher;
   readonly locationRuntimeQuery?: ZLinkLocationRuntimeQuery;
   readonly routeMeshRuntime: ZLinkRouteMeshRuntime;
   readonly clientServerRuntime: ZLinkClientServerRuntime;

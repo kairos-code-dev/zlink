@@ -3203,6 +3203,91 @@ user_spot_create_header_t decode_user_spot_create_header (
     return record;
 }
 
+std::vector<std::uint8_t> encode_actor_create_header (
+  const actor_create_header_t &record)
+{
+    if (record.correlation == 0
+        || (record.operation.high == 0 && record.operation.low == 0)
+        || record.source_node_generation == 0
+        || record.reservation.object_generation == 0
+        || record.reservation.authority_owner_generation == 0
+        || record.reservation.target_node_generation == 0
+        || record.reservation.target_owner_lease_generation == 0
+        || record.reservation.pending_capacity_delta == 0
+        || record.deadline_unix_ms == 0)
+        throw service_wire_error_t (
+          "Actor create contains a zero required fence");
+    std::vector<std::uint8_t> bytes{
+      magic[0], magic[1], wire_major,
+      static_cast<std::uint8_t> (command::actorCreate), 0};
+    append_u64 (bytes, record.correlation);
+    append_u64 (bytes, record.operation.high);
+    append_u64 (bytes, record.operation.low);
+    append_bytes8 (bytes, record.source_node_routing_id,
+                   "source node RID");
+    append_u64 (bytes, record.source_node_generation);
+    append_text8 (bytes, record.actor_id, "actor ID");
+    append_text8 (bytes, record.stable_type, "stable type");
+    append_text8 (bytes, record.reservation.reservation_id,
+                  "reservation ID");
+    append_text16 (bytes, record.reservation.expected_store_version,
+                   "expected StoreVersion");
+    append_u64 (bytes, record.reservation.object_generation);
+    append_u64 (bytes, record.reservation.authority_owner_generation);
+    append_bytes8 (bytes, record.reservation.target_node_routing_id,
+                   "target node RID");
+    append_u64 (bytes, record.reservation.target_node_generation);
+    append_text8 (bytes, record.reservation.target_owner_id,
+                  "target owner ID");
+    append_u64 (bytes,
+                record.reservation.target_owner_lease_generation);
+    append_u32 (bytes, record.reservation.pending_capacity_delta);
+    append_u64 (bytes, record.deadline_unix_ms);
+    return bytes;
+}
+
+actor_create_header_t decode_actor_create_header (
+  std::span<const std::uint8_t> bytes)
+{
+    const auto header = decode_header (bytes);
+    if (header.kind != command::actorCreate || header.flags != 0)
+        throw service_wire_error_t (
+          "record is not an Actor create command");
+    std::size_t offset = prefix_size;
+    actor_create_header_t record;
+    record.correlation = read_u64 (bytes, offset);
+    record.operation.high = read_u64 (bytes, offset);
+    record.operation.low = read_u64 (bytes, offset);
+    record.source_node_routing_id =
+      read_bytes8 (bytes, offset, "source node RID");
+    record.source_node_generation = read_u64 (bytes, offset);
+    record.actor_id = read_text8 (bytes, offset, "actor ID");
+    record.stable_type = read_text8 (bytes, offset, "stable type");
+    record.reservation.reservation_id =
+      read_text8 (bytes, offset, "reservation ID");
+    record.reservation.expected_store_version =
+      read_text16 (bytes, offset, "expected StoreVersion");
+    record.reservation.object_generation = read_u64 (bytes, offset);
+    record.reservation.authority_owner_generation =
+      read_u64 (bytes, offset);
+    record.reservation.target_node_routing_id =
+      read_bytes8 (bytes, offset, "target node RID");
+    record.reservation.target_node_generation =
+      read_u64 (bytes, offset);
+    record.reservation.target_owner_id =
+      read_text8 (bytes, offset, "target owner ID");
+    record.reservation.target_owner_lease_generation =
+      read_u64 (bytes, offset);
+    record.reservation.pending_capacity_delta =
+      read_u32 (bytes, offset);
+    record.deadline_unix_ms = read_u64 (bytes, offset);
+    if (offset != bytes.size ())
+        throw service_wire_error_t (
+          "Actor create command has trailing bytes");
+    (void) encode_actor_create_header (record);
+    return record;
+}
+
 std::vector<std::uint8_t> encode_user_spot_close_header (
   const user_spot_close_header_t &record)
 {
@@ -3809,7 +3894,10 @@ std::vector<std::uint8_t> encode_reply_header (
     if (!valid_terminal_failure (
           terminal_result,
           static_cast<framework_error_code> (failure_code))) {
-        throw service_wire_error_t ("invalid reply terminal fields");
+        throw service_wire_error_t (
+          "invalid reply terminal fields: terminal="
+          + std::to_string (terminal_result) + ", failure="
+          + std::to_string (failure_code));
     }
     std::vector<std::uint8_t> result{
       magic[0], magic[1], wire_major,
@@ -3835,7 +3923,11 @@ reply_header_t decode_reply_header (std::span<const std::uint8_t> bytes)
         || !valid_terminal_failure (
           terminal,
           static_cast<framework_error_code> (failure))) {
-        throw service_wire_error_t ("invalid reply terminal fields");
+        throw service_wire_error_t (
+          "invalid reply terminal fields: correlation="
+          + std::to_string (correlation) + ", terminal="
+          + std::to_string (terminal) + ", failure="
+          + std::to_string (failure));
     }
     return {correlation, terminal, failure};
 }
@@ -3898,6 +3990,74 @@ user_spot_create_reply_t decode_user_spot_create_reply (
         throw service_wire_error_t (
           "invalid User Spot create success reply");
     }
+    return reply;
+}
+
+std::vector<std::uint8_t> encode_actor_create_reply (
+  std::uint64_t correlation,
+  std::uint32_t terminal_result,
+  std::uint32_t failure_code,
+  actor_create_result_t result,
+  const std::vector<std::uint8_t> &node_routing_id,
+  const std::string &actor_id,
+  std::uint64_t object_generation)
+{
+    auto bytes = encode_reply_header (
+      correlation, terminal_result, failure_code);
+    if (terminal_result != 0)
+        return bytes;
+    const auto encoded = static_cast<std::uint8_t> (result);
+    if (encoded < 1 || encoded > 3)
+        throw service_wire_error_t (
+          "invalid Actor create result");
+    bytes.push_back (encoded);
+    if (result != actor_create_result_t::rejected) {
+        if (node_routing_id.empty () || actor_id.empty ()
+            || object_generation == 0)
+            throw service_wire_error_t (
+              "invalid Actor create success reply");
+        append_bytes8 (bytes, node_routing_id, "Actor node RID");
+        append_text8 (bytes, actor_id, "actor ID");
+        append_u64 (bytes, object_generation);
+    }
+    return bytes;
+}
+
+actor_create_reply_t decode_actor_create_reply (
+  std::span<const std::uint8_t> bytes)
+{
+    if (bytes.size () < prefix_size + 16)
+        throw service_wire_error_t (
+          "truncated Actor create reply");
+    actor_create_reply_t reply;
+    reply.header = decode_reply_header (
+      bytes.first (prefix_size + 16));
+    if (reply.header.terminal_result != 0) {
+        if (bytes.size () != prefix_size + 16)
+            throw service_wire_error_t (
+              "failed Actor create reply has a tail");
+        return reply;
+    }
+    std::size_t offset = prefix_size + 16;
+    if (offset >= bytes.size () || bytes[offset] < 1
+        || bytes[offset] > 3)
+        throw service_wire_error_t (
+          "invalid Actor create result");
+    reply.result = static_cast<actor_create_result_t> (
+      bytes[offset++]);
+    if (reply.result != actor_create_result_t::rejected) {
+        reply.node_routing_id =
+          read_bytes8 (bytes, offset, "Actor node RID");
+        reply.actor_id = read_text8 (bytes, offset, "actor ID");
+        reply.object_generation = read_u64 (bytes, offset);
+        if (reply.node_routing_id.empty () || reply.actor_id.empty ()
+            || reply.object_generation == 0)
+            throw service_wire_error_t (
+              "invalid Actor create success reply");
+    }
+    if (offset != bytes.size ())
+        throw service_wire_error_t (
+          "Actor create reply has trailing bytes");
     return reply;
 }
 

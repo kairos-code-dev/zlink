@@ -166,8 +166,11 @@ test('Spot close invokes lifecycle cleanup only after its execution seal is quie
   const lifecycle = new ZLinkSpotActivationLifecycle({
     locationClaim: {
       async release() {
-        events.push('released');
+        assert.fail('The lifecycle release port owns location cleanup.');
       }
+    },
+    releaseLocation: async () => {
+      events.push('released');
     },
     leaveActor: async () => undefined,
     closeSpot: async () => true,

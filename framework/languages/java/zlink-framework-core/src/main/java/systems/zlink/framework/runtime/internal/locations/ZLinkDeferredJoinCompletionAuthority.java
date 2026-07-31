@@ -12,6 +12,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.actors.ZLinkActorJoinOperationId;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.*;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.locations.ZLinkActorAuthorityPayloadCodec;
 import systems.zlink.framework.runtime.locations.ZLinkAuthorityKeyCodec;
@@ -35,11 +36,11 @@ public final class ZLinkDeferredJoinCompletionAuthority {
     private static final int RELOCATION_COMPLETION_MAGIC = 0x5A4C444A;
     private static final int RELOCATION_COMPLETION_VERSION = 1;
 
-    private final ZLinkLocationStore authority;
+    private final ZLinkLocationRepository authority;
     private final ZLinkRelocationStore relocation;
 
     public ZLinkDeferredJoinCompletionAuthority(
-        ZLinkLocationStore authority,
+        ZLinkLocationRepository authority,
         ZLinkRelocationStore relocation) {
         this.authority = Objects.requireNonNull(authority, "authority");
         this.relocation = Objects.requireNonNull(relocation, "relocation");

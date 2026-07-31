@@ -29,4 +29,9 @@ public interface ZLinkSpot<TActor extends ZLinkActor>
         return onClosing();
     }
 
+    default CompletionStage<Void> onRelocationReadyCompleted(
+        ZLinkSpotRelocationReadyCompletion completion) {
+        return CompletableFuture.completedFuture(null);
+    }
+
 }

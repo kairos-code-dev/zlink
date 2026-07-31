@@ -253,7 +253,11 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                 }
             }
         }
-        return awaitRouteReady(ref)
+        CompletionStage<Void> authorityReady = actors == null
+            ? CompletableFuture.completedFuture(null)
+            : actors.prepareRemoteSessionBinding(ref);
+        return authorityReady
+            .thenCompose(ignored -> awaitRouteReady(ref))
             .thenCompose(ignored -> {
                 trace("session-actor bind-native-submit sessionRid=" + sessionRid
                     + " actorNode=" + ref.nodeRid()

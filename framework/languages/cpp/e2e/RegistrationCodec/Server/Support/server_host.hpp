@@ -14,12 +14,35 @@
 #include <zlink/codecs/protobuf.hpp>
 #include <zlink/framework.hpp>
 
+#include <cstdint>
 #include <memory>
 #include <stdexcept>
 #include <string>
 
 namespace zlink::framework::e2e::registration_codec::server
 {
+
+struct tcp_endpoint_t
+{
+    std::string host;
+    std::uint16_t port;
+};
+
+inline tcp_endpoint_t parse_tcp_endpoint (const std::string &endpoint)
+{
+    constexpr std::string_view prefix = "tcp://";
+    if (!endpoint.starts_with (prefix))
+        throw std::invalid_argument ("client/server endpoint must use tcp://");
+    const auto separator = endpoint.rfind (':');
+    if (separator == std::string::npos || separator <= prefix.size ()
+        || separator + 1 >= endpoint.size ())
+        throw std::invalid_argument ("client/server endpoint must include host and port");
+    const auto value = std::stoul (endpoint.substr (separator + 1));
+    if (value == 0 || value > 65535)
+        throw std::invalid_argument ("client/server endpoint port is out of range");
+    return {.host = endpoint.substr (prefix.size (), separator - prefix.size ()),
+            .port = static_cast<std::uint16_t> (value)};
+}
 
 inline zlink::framework::encoded_payload_t encode_text (const std::string &prefix,
                                                         const std::string &value)
@@ -129,7 +152,12 @@ inline void configure_invalid (zlink::framework::zlink_framework_options_t &opti
         return;
     }
     if (mode == "unsupported-channel") {
-        options.add_client_server_channel ("registration.codec.invalid").enable_server (endpoint);
+        const auto parsed = parse_tcp_endpoint (endpoint);
+        options.add_client_server_channel ("registration.codec.invalid")
+          .server ()
+          .set_bind_host (parsed.host)
+          .set_advertise_host (parsed.host)
+          .listen (parsed.port);
         return;
     }
     throw std::runtime_error ("unknown invalid mode " + mode);
@@ -155,10 +183,14 @@ inline void configure_codecs (zlink::framework::codec_options_builder_t codecs,
 inline void configure_channels (zlink::framework::zlink_framework_options_t &options,
                                 const server_options_t &server)
 {
-    options.add_client_server_channel (api_channel)
-      .enable_server (server.api_endpoint)
-      .enable_client (server.api_endpoint)
-      .use_handler_group (handler_group);
+    const auto endpoint = parse_tcp_endpoint (server.api_endpoint);
+    auto channel = options.add_client_server_channel (api_channel);
+    channel.server ()
+      .set_bind_host (endpoint.host)
+      .set_advertise_host (endpoint.host)
+      .listen (endpoint.port)
+      .add_handler_group (handler_group);
+    channel.client ().connect (server.api_endpoint);
 }
 
 inline void configure_http (zlink::framework::http_options_builder_t &http,

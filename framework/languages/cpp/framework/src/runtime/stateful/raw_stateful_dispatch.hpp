@@ -2,6 +2,7 @@
 #pragma once
 
 #include "runtime/mesh/raw_mesh_node_owner.hpp"
+#include <runtime/locations/location_repository.hpp>
 #include "runtime/stateful/stateful_object_runtime.hpp"
 
 #include <zlink/framework/contracts/locations/stores.hpp>
@@ -44,7 +45,7 @@ using accepted_record_authority_resolver_t = std::function<
 
 accepted_record_authority_resolver_t
 make_location_store_authority_resolver (
-  zlink::framework::location_store_t &store);
+  zlink::framework::location_repository_t &store);
 
 struct stateful_delivery_t
 {
@@ -71,6 +72,16 @@ class raw_stateful_dispatch_t
     stateful_error_t complete (
       const stateful_delivery_t &delivery,
       std::optional<protocol::application_payload_t> reply = std::nullopt);
+    stateful_error_t stage_relocated (
+      const object_ref_t &owner,
+      turn_record_t turn,
+      std::function<bool (
+        const std::optional<protocol::application_payload_t> &)> terminal);
+    bool complete_relocated_source (
+      const object_ref_t &owner,
+      std::uint64_t sequence,
+      const protocol::reply_relay_t &relay,
+      const std::optional<protocol::application_payload_t> &reply);
 
   private:
     struct delivery_key_t
@@ -86,6 +97,10 @@ class raw_stateful_dispatch_t
     {
         protocol::application_payload_t payload;
         mesh::service_mailbox_record_t transport;
+        bool request = false;
+        std::function<bool (
+          const std::optional<protocol::application_payload_t> &)>
+          relocated_terminal;
     };
 
     static std::string mailbox_owner (const object_ref_t &owner);
@@ -132,7 +147,8 @@ struct raw_relocation_target_registration_t
     std::uint64_t target_attempt_generation = 0;
     protocol::relocation_coordinator_fence_t coordinator;
     std::uint64_t participant_id = 0;
-    protocol::request_source_fence_t source;
+    std::vector<std::uint8_t> relocation_source_node_routing_id;
+    std::uint64_t relocation_source_node_generation = 0;
     protocol::relocation_object_t object;
     std::function<bool (const protocol::relocation_data_t &)> stage;
 };
@@ -174,6 +190,7 @@ struct raw_relocation_terminal_target_registration_t
     std::optional<protocol::application_payload_t> application_reply;
     std::function<bool (protocol::reply_relay_ack_status_t)> persist_ack;
     std::function<bool ()> persist_source_lease_expiry;
+    std::vector<std::uint8_t> relay_destination_node_routing_id;
 };
 
 class raw_relocation_replay_coordinator_t
@@ -190,6 +207,10 @@ class raw_relocation_replay_coordinator_t
         std::chrono::hours (24));
 
     bool register_target (raw_relocation_target_registration_t registration);
+    bool unregister_target (
+      const protocol::relocation_id_t &relocation,
+      std::uint64_t target_attempt_generation,
+      std::uint64_t participant_id);
     bool register_source (raw_relocation_source_registration_t registration);
     bool arm_source (
       const protocol::relocation_id_t &relocation,
@@ -199,6 +220,9 @@ class raw_relocation_replay_coordinator_t
       const protocol::relocation_id_t &, std::uint64_t, std::uint64_t);
     bool register_terminal_source (
       raw_relocation_terminal_source_registration_t registration);
+    bool unregister_terminal_source (
+      const protocol::relocation_id_t &,
+      const protocol::wire_operation_id_t &);
     bool register_terminal_target (
       raw_relocation_terminal_target_registration_t registration);
     std::size_t retry_terminal_relays (clock_t::time_point now);

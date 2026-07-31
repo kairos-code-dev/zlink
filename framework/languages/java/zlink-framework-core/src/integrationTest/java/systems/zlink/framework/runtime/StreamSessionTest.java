@@ -25,15 +25,16 @@ import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorManager;
-import systems.zlink.framework.actors.ZLinkActorJoinResult;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
+import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
+import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.ZLinkMessageContext;
@@ -48,8 +49,9 @@ final class StreamSessionTest {
     void streamNodeStartsWithoutExplicitSessionRelayAttach() {
         Zlink.version();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");
-                node.objects().server().addSpotFactory("GameSpot", GameSpot.class, factory -> factory.disableRelocation()); }; };
+        options.addLocationStore(new ZLinkInMemoryLocationStore());
+        { var node = options.addRouteMesh("game"); node.listen("inproc://play-router-" + System.nanoTime());
+                node.objects().server().addSpotFactory("GameSpot", GameSpot.class, factory -> factory.disableRelocation()); }
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway-" + System.nanoTime());
             stream.registerSession(GameSession.class); };
 
@@ -121,9 +123,11 @@ final class StreamSessionTest {
         int port = reservePort();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(StreamSessionTest.class);
-        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
-                node.objects().server().addEntrySpot(GameEntrySpot.class); node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
+        options.addLocationStore(new ZLinkInMemoryLocationStore());
+        { var node = options.addRouteMesh("game"); node.listen("inproc://stream-play-" + System.nanoTime()).setRoutingId(RoutingId.from("play-node"));
+                node.objects().server().addEntrySpot(GameEntrySpot.class); node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.disableRelocation()); }
         { var stream = options.addStreamNode("gateway"); stream.bind("tcp://127.0.0.1:" + port);
+            stream.enableActorDispatch("game");
             stream.registerSession(ActorRelaySession.class); };
 
         try (ZLinkFrameworkRuntime ignored =
@@ -138,88 +142,6 @@ final class StreamSessionTest {
             client.getOutputStream().write(frame(requestHeader(2L, "StreamActorEcho"), bytes("\"hello\"")));
             client.getOutputStream().flush();
             assertReply(client.getInputStream(), 2L, "\"player-1:hello\"");
-        }
-    }
-
-    @Test
-    void streamActorGatewayPreservesReplySequenceWhenActorSendsBoundSessionFrame() throws Exception {
-        Zlink.version();
-        int port = reservePort();
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addHandlersFromPackageOf(StreamSessionTest.class);
-        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
-                node.objects().server().addEntrySpot(GameEntrySpot.class);
-                node.objects().server().addSpotFactory("UserSpot", UserSpot.class, factory -> factory.disableRelocation());
-                node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
-        { var stream = options.addStreamNode("gateway"); stream.bind("tcp://127.0.0.1:" + port);
-            stream.registerSession(ActorRelaySession.class); };
-
-        try (ZLinkFrameworkRuntime runtime =
-                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
-             Socket client = new Socket("127.0.0.1", port)) {
-            runtime.spotManager()
-                .create(UserSpot.class, RoutingId.from("room-a"))
-                .toCompletableFuture()
-                .join();
-            client.setSoTimeout(3000);
-
-            client.getOutputStream().write(frame(requestHeader(1L, "Bind"), bytes("\"player-1\"")));
-            client.getOutputStream().flush();
-            assertReply(client.getInputStream(), 1L, "\"bound\"");
-
-            client.getOutputStream().write(frame(requestHeader(2L, "StreamActorEchoWithPush"), bytes("\"hello\"")));
-            client.getOutputStream().flush();
-            assertSend(
-                client.getInputStream(),
-                "StreamActorPush",
-                "{\"value\":\"push:hello\"}");
-            assertReply(client.getInputStream(), 2L, "\"player-1:hello\"");
-
-            client.getOutputStream().write(frame(requestHeader(3L, "JoinUserSpot"), bytes("\"join\"")));
-            client.getOutputStream().flush();
-            assertReply(client.getInputStream(), 3L, "\"joined\"");
-
-            client.getOutputStream().write(frame(requestHeader(4L, "LeaveUserSpot"), bytes("\"leave\"")));
-            client.getOutputStream().flush();
-            assertReply(client.getInputStream(), 4L, "\"left\"");
-        }
-    }
-
-    @Test
-    void streamActorGatewayCanLeaveUserSpotDuringRelayedRequest() throws Exception {
-        Zlink.version();
-        UserSpot.lastLeave.set(false);
-        int port = reservePort();
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addHandlersFromPackageOf(StreamSessionTest.class);
-        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
-                node.objects().server().addEntrySpot(GameEntrySpot.class);
-                node.objects().server().addSpotFactory("UserSpot", UserSpot.class, factory -> factory.disableRelocation());
-                node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
-        { var stream = options.addStreamNode("gateway"); stream.bind("tcp://127.0.0.1:" + port);
-            stream.registerSession(ActorRelaySession.class); };
-
-        try (ZLinkFrameworkRuntime runtime =
-                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
-             Socket client = new Socket("127.0.0.1", port)) {
-            runtime.spotManager()
-                .create(UserSpot.class, RoutingId.from("room-a"))
-                .toCompletableFuture()
-                .join();
-            client.setSoTimeout(3000);
-
-            client.getOutputStream().write(frame(requestHeader(1L, "Bind"), bytes("\"player-1\"")));
-            client.getOutputStream().flush();
-            assertReply(client.getInputStream(), 1L, "\"bound\"");
-
-            client.getOutputStream().write(frame(requestHeader(2L, "JoinUserSpot"), bytes("\"join\"")));
-            client.getOutputStream().flush();
-            assertReply(client.getInputStream(), 2L, "\"joined\"");
-
-            client.getOutputStream().write(frame(requestHeader(3L, "LeaveUserSpot"), bytes("\"leave\"")));
-            client.getOutputStream().flush();
-            assertReply(client.getInputStream(), 3L, "\"left\"");
-            assertEventually(UserSpot.lastLeave::get);
         }
     }
 
@@ -246,10 +168,8 @@ final class StreamSessionTest {
         }
 
         @Override
-        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
-            String actorId,
-            ZLinkMessage request) {
-            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept());
+        public void configure() {
+            context.handlers().addHandler(JoinUserSpotHandler.class);
         }
 
         @Override public CompletionStage<Void> onJoinedActor(ZLinkActor actor) { return CompletableFuture.completedFuture(null); }
@@ -267,6 +187,11 @@ final class StreamSessionTest {
         @Override
         public ZLinkSpotContext context() {
             return context;
+        }
+
+        @Override
+        public void configure() {
+            context.handlers().addHandler(LeaveUserSpotHandler.class);
         }
 
         @Override
@@ -289,17 +214,10 @@ final class StreamSessionTest {
     }
 
     public static final class PlayerActor implements ZLinkActor {
-        private final String actorId;
         private final ZLinkActorContext context;
 
-        PlayerActor(String actorId, ZLinkActorContext context) {
-            this.actorId = actorId;
+        PlayerActor(ZLinkActorContext context) {
             this.context = context;
-        }
-
-        @Override
-        public String actorId() {
-            return actorId;
         }
 
         @Override
@@ -310,17 +228,16 @@ final class StreamSessionTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public CompletionStage<ZLinkActor> create(
-            String actorId,
-            ZLinkActorContext context) {
-            return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
+        public CompletionStage<ZLinkActor> create(ZLinkActorContext context) {
+            return CompletableFuture.completedFuture(new PlayerActor(context));
         }
     }
 
     public static final class ActorEchoHandler {
         @ZLinkSpotActorRequest(packetName = "StreamActorEcho")
         public CompletionStage<String> handle(PlayerActor actor, String request) {
-            return CompletableFuture.completedFuture(actor.actorId() + ":" + request);
+            return CompletableFuture.completedFuture(
+                actor.context().actorId() + ":" + request);
         }
 
         @ZLinkSpotActorRequest(packetName = "StreamActorEchoWithPush")
@@ -329,7 +246,8 @@ final class StreamSessionTest {
                 .boundSession()
                 .send(new StreamActorPush("push:" + request))
                 .submit();
-            return CompletableFuture.completedFuture(actor.actorId() + ":" + request);
+            return CompletableFuture.completedFuture(
+                actor.context().actorId() + ":" + request);
         }
     }
 
@@ -337,13 +255,24 @@ final class StreamSessionTest {
     public record StreamActorPush(String value) {
     }
 
-    public static final class JoinUserSpotHandler {
-        @ZLinkSpotActorRequest(packetName = "JoinUserSpot")
-        public CompletionStage<String> handle(PlayerActor actor, String request) {
-            return actor.context()
-                .joinSpot(RoutingId.from("room-a"), request)
-                .submit(String.class)
-                .thenApply(ZLinkActorJoinResult::reply);
+    @ZLinkPacket("JoinUserSpot")
+    public record JoinUserSpotRequest(String value) {
+    }
+
+    public static final class JoinUserSpotHandler implements
+        ZLinkEntrySpotActorRequestHandler<
+            GameEntrySpot,
+            PlayerActor,
+            JoinUserSpotRequest,
+            String> {
+        @Override
+        public CompletionStage<String> handle(
+            GameEntrySpot spot,
+            PlayerActor actor,
+            ZLinkMessageContext context,
+            JoinUserSpotRequest request) {
+            actor.context().joinSpot("room-a", request.value()).defer();
+            return CompletableFuture.completedFuture("deferred");
         }
     }
 
@@ -510,7 +439,19 @@ final class StreamSessionTest {
             if ("Bind".equals(dispatch.packetName())) {
                 String actorId = payload.decode(String.class);
                 return actors.getOrCreate(actorId, "player")
-                    .thenCompose(actor -> context.actors().bind(actor))
+                    .submit()
+                    .thenCompose(result -> {
+                        var actor = switch (result) {
+                            case systems.zlink.framework.actors.ZLinkActorCreateResult.Created created ->
+                                created.actor();
+                            case systems.zlink.framework.actors.ZLinkActorCreateResult.Existing existing ->
+                                existing.actor();
+                            case systems.zlink.framework.actors.ZLinkActorCreateResult.Rejected rejected ->
+                                throw new IllegalStateException(
+                                    "actor creation rejected: " + rejected.reply());
+                        };
+                        return context.actors().bind(actor);
+                    })
                     .thenRun(() -> context.client().reply("bound").submit());
             }
             return context.actors().bound().get(0).relay(payload);

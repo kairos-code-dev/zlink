@@ -6,7 +6,7 @@
 namespace zlink::samples::tictactoe
 {
 
-inline place_mark_res_t
+inline task_t<place_mark_res_t>
 tictactoe_game_spot_t::place_mark (const player_actor_t &actor,
                                    const message_context_t &context,
                                    const place_mark_req_t &request)
@@ -16,11 +16,11 @@ tictactoe_game_spot_t::place_mark (const player_actor_t &actor,
     }
     auto state = match ().place (actor.actor_id, request);
     game_state_notify_t state_notify{state.room_id, state.next_turn, state};
-    publisher.publish (state_notify, actor.actor_id);
+    co_await publisher.publish (state_notify, actor.actor_id);
     if (state.status == tictactoe_status_t::won || state.status == tictactoe_status_t::draw) {
-        publish_win_milestone (actor, state);
+        co_await publish_win_milestone (actor, state);
     }
-    return {state};
+    co_return place_mark_res_t{state};
 }
 
 } // namespace zlink::samples::tictactoe

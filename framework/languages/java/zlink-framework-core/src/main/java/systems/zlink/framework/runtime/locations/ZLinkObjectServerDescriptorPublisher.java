@@ -8,6 +8,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicLong;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.*;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
@@ -19,7 +20,7 @@ import systems.zlink.framework.runtime.mesh.MeshNodeRegistration;
  * Publishes MeshNode discovery descriptors under the host owner lease.
  */
 public final class ZLinkObjectServerDescriptorPublisher {
-    private final ZLinkLocationStore store;
+    private final ZLinkLocationRepository store;
     private final ZLinkLocationRuntime runtime;
     private final ZLinkFrameworkRegistration registration;
     private final java.util.Map<String, ZLinkInternalMeshNode> nodes;
@@ -28,7 +29,7 @@ public final class ZLinkObjectServerDescriptorPublisher {
         new java.util.concurrent.atomic.AtomicBoolean();
 
     public ZLinkObjectServerDescriptorPublisher(
-        ZLinkLocationStore store,
+        ZLinkLocationRepository store,
         ZLinkLocationRuntime runtime,
         ZLinkFrameworkRegistration registration,
         java.util.Map<String, ZLinkInternalMeshNode> nodes) {

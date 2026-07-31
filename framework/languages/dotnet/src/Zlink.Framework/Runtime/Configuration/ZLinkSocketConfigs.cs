@@ -5,17 +5,18 @@ namespace Zlink.Framework.Runtime.Configuration;
 // interface exposes (MaxMessageSize/HWM/timeouts) already lives here.
 internal sealed class ZLinkSocketConfig : IZLinkSocketConfig, IZLinkMeshNodeSocketConfig
 {
+    internal const long DefaultMaxMessageSize = 16L * 1024L * 1024L;
     internal const int DefaultPeerWeight = 100;
     internal const int MaximumPeerWeight = 10_000;
 
     private TimeSpan? _sendTimeout;
     private int _weight = DefaultPeerWeight;
 
-    public long MaxMessageSize { get; set; }
+    public long MaxMessageSize { get; set; } = DefaultMaxMessageSize;
 
-    public int SendHighWaterMark { get; set; }
+    public ulong SendHighWaterMark { get; set; }
 
-    public int ReceiveHighWaterMark { get; set; }
+    public ulong ReceiveHighWaterMark { get; set; }
 
     public ulong MailboxMessageBudget { get; set; }
 
@@ -105,7 +106,7 @@ internal sealed class ZLinkSpotPublisherConfig : IZLinkSpotPublisherConfig
 {
     private TimeSpan? _sendTimeout;
 
-    public int SendHighWaterMark { get; set; }
+    public ulong SendHighWaterMark { get; set; }
 
     public TimeSpan? SendTimeout
     {
@@ -121,7 +122,7 @@ internal sealed class ZLinkSpotPublisherConfig : IZLinkSpotPublisherConfig
 
 internal sealed class ZLinkSpotSubscriberConfig : IZLinkSpotSubscriberConfig
 {
-    public int ReceiveHighWaterMark { get; set; }
+    public ulong ReceiveHighWaterMark { get; set; }
 
     public TimeSpan? ReceiveTimeout { get; set; }
 

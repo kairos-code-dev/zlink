@@ -5876,3 +5876,45 @@ generation이다.
 다음 단계는 코드를 더 읽는 것이 아니라 측정이다. 이 분기에 진단이 없으므로 임시 trace를
 넣어 validation이 실패하는지, 실패한다면 어느 필드가 어긋나는지 찍어야 한다. 이 세션에서
 코드 구조 추론으로 두 번 틀렸고, 측정으로 간 경우는 매번 한 번에 갈렸다.
+
+### SM-B6 측정 결과: relay는 나가고 frame이 도착하지 않는다
+
+앞 절이 지목한 용의자부터 세 지점에 임시 trace를 넣고 측정했다.
+
+| 지점 | 결과 |
+|---|---|
+| `NotifyRemoteDisconnectedAsync` 진입 (session-a) | **찍힘.** `actor-sm-b6-disconnected` 포함 6개 actor 모두 |
+| `IsSessionDisconnectedPacket` 분기 진입 (소유 node) | **한 건도 없음** |
+| `TryValidateDisconnectedBinding` 실패 | **한 건도 없음** |
+
+용의자였던 validation은 실행조차 되지 않는다. Frame이 소유 node의 inbound pipeline에
+도착하지 않는다.
+
+Relay 쪽 코드가 실패를 어떻게 다루는지가 마지막 조각이다.
+
+```csharp
+if (!ForwardPart(..., SendFlags.DontWait, ...))
+    throw new InvalidOperationException("Actor session disconnect header forward failed.");
+```
+
+그리고 이 호출을 감싸는 cleanup은 모든 예외를 삼킨다.
+
+```csharp
+catch (Exception)
+{
+    // Cleanup is all-settled. The exact binding token prevents a
+    // stale or duplicate notification from affecting a replacement.
+}
+```
+
+따라서 `ForwardPart`가 실패하면 예외가 조용히 사라지고, 증거도 로그도 남지 않는다. 관측과
+정확히 일치한다. `SendFlags.DontWait`이므로 socket이 준비되지 않았거나 route가 없으면 즉시
+실패한다. 마침 disconnect 시점은 transport가 막 끊긴 직후다.
+
+남은 확인은 `ForwardPart`가 실제로 실패하는지와, 실패한다면 그것이 계약상 허용되는지다.
+Cleanup을 all-settled로 두는 것 자체는 한 actor의 callback 실패가 session cleanup을 막지
+않게 하려는 의도이고 spec 11 §3도 그렇게 정한다. 그러나 **전달 실패와 callback 실패는
+다르다.** 전자는 상대가 통지를 아예 받지 못하는 것이므로 spec 11 §3의
+"해당 Spot에 속한 Actor의 연결 단절을 알린다"가 지켜지지 않는다.
+
+측정 편집 세 개는 모두 되돌렸다.

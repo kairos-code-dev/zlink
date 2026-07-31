@@ -3646,3 +3646,31 @@ ST-E2는 이 세션에서 다섯 겹을 벗겼다. 조기 Accepted, seal 대상 
 tombstone 무응답, 그리고 요청 미도달이다. 앞의 셋은 framework 안에서 고쳤거나 원인을
 확정했고, 마지막 둘은 framework 밖으로 나간다. 여기서 framework 범위의 조사는 한계에
 닿았고, 다음은 core transport 추적이 필요하다.
+
+## 2026-08-01 ST-F3 다음 층 — handoff_backlog는 런타임 진단 마커다
+
+이번 세션의 응답 수정으로 ST-F3의 실패가 다음으로 넘어갔다.
+
+```
+Expected runtime evidence marker was not observed:
+  handoff_backlog actor=actor-bound-order-...
+```
+
+이 마커는 애플리케이션 evidence가 아니라 **런타임 진단**이다.
+
+```csharp
+diagnostic?.Invoke(
+    $"handoff_backlog actor={actorId} arrival={...} kind={...} request_id={...} flags={...}");
+```
+
+`diagnostic`이 nullable callback이므로 그것이 연결되지 않으면 아무것도 나오지 않는다.
+러너 헤더도 "Some ST-F handoff markers are runtime diagnostics behind this gate"라고
+적고 있다.
+
+따라서 ST-F3의 현재 실패는 둘 중 하나다. 진단 callback이 연결되지 않아 마커가 나오지
+않거나, backlog 자체가 일어나지 않거나. e2e host는
+`ConfigureDispatch().Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal)`을 설정하는데,
+이 마커가 그보다 높은 수준을 요구하는지 확인해야 한다.
+
+구분 방법은 간단하다. 진단 수준을 올려 마커가 나오는지 보면 된다. 나오면 설정 문제이고,
+안 나오면 backlog가 실제로 일어나지 않는 것이다.

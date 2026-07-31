@@ -2869,3 +2869,46 @@ wire record와 reference는 그 규약을 따르는데 **envelope만 실제 dige
 경로가 pending 여부와 무관하게 digest를 계산하는지 확인하면 어느 쪽이 규약을 어기는지
 정해진다. 판단할 것은 둘이다. envelope이 pending일 때 0을 넣어야 하는지, 아니면 검증이
 pending relocation에서 이 비교를 건너뛰어야 하는지다.
+
+### 두 값의 출처가 다르다 — 하나는 계산값, 하나는 미publish 상태
+
+`ZLinkRelocationRecoveryCandidate`는 세 가지를 들고 있다.
+
+```csharp
+internal sealed record ZLinkRelocationRecoveryCandidate(
+    ZLinkRelocationManifestReference Reference,   // authority에 publish된 manifest 참조
+    ZLinkRelocationEnvelope Envelope,             // 로컬에서 만든 envelope
+    IReadOnlyList<ZLinkAuthorityEntry> Authorities);
+```
+
+`Envelope`의 digest는 계산값이다. standalone actor relocation 경로가 참가자 하나로
+직접 계산한다.
+
+```csharp
+var digest = ZLinkAggregateInventoryDigest.Compute([publicationParticipant]);
+return new ZLinkRelocationEnvelope(relocationId, 1, digest, [participant]);
+```
+
+반면 `Reference`는 authority에 publish된 manifest를 가리키는데, ST-B2의 relocation은
+`reloc_ref=pending`, `crc=0`, digest 전부 0이다. 즉 **manifest가 publish되지 않은
+상태**다.
+
+그런데 `ZLinkRelocationStartupRecovery`의 주석은 이렇게 말한다.
+
+> "Finds durable Actor, User Spot and Instance Spot relocations whose authority
+> **already publishes an immutable root**."
+
+recovery는 root가 이미 publish된 relocation을 대상으로 한다. ST-B2의 relocation은 그
+조건을 만족하지 않는데도 candidate로 올라왔고, identity 검증이 그것을 거부한다.
+
+### 두 갈래 해석
+
+하나는 recovery가 애초에 이 relocation을 candidate로 올리지 말았어야 한다는 것이다.
+그렇다면 검증은 제 역할을 한 것이고 결함은 candidate 선별에 있다.
+
+다른 하나는 commit이 성공했으면 manifest도 publish되어야 하는데 그러지 않았다는
+것이다. ST-B2는 "Source Cleanup Failure After Success"이므로 commit은 성공했다.
+
+어느 쪽이든 스펙 §276이 요구하는 "commit 뒤 target 복구 후 Accepted 전달"은 일어나지
+않는다. 다만 고칠 지점이 다르다. 전자는 선별 조건, 후자는 publish 경로다. 이 판단은
+relocation의 pending·published 계약을 확인한 뒤에 해야 한다.

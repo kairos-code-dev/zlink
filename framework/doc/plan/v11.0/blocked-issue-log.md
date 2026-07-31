@@ -3107,3 +3107,27 @@ destroy를 호출한다. 스펙대로면 leave 또는 Entry Spot join을 먼저 
 
 수정은 시나리오 쪽이다. destroy 전에 Entry Spot으로 되돌리거나 leave를 완료하면 된다.
 이 판단은 스펙 문장이 명시적이므로 추가 확인이 필요하지 않다.
+
+### ST-I1 수정 방향과 그 전제
+
+스펙이 요구하는 "leave 또는 Entry Spot join"의 수단은 계약에 있다.
+`IZLinkActorContext.JoinEntrySpot(...)`이다. e2e server에는 이를 노출하는 엔드포인트가
+없다. 현재 actor node의 엔드포인트는 다음뿐이다.
+
+```
+/actors  /actors/{id}/bound-push  /actors/{id}/destroy  /actors/{id}/join
+/actors/{id}/probe  /actors/{id}/probe-from-node  /actors/{id}/ref
+/actors/{id}/send-from-node  /drain  /evidence  /health
+/placement-weight  /process-memory  /relocate  /relocation-blobs  /shutdown  /spots
+```
+
+따라서 수정은 e2e server에 Entry Spot 복귀 엔드포인트를 추가하고 ST-I1이 destroy 전에
+그것을 호출하는 형태가 된다.
+
+여기서 이미 열려 있는 문제와 만난다. `JoinEntrySpot`도 `.Defer()`를 쓰는 join이므로
+handler는 join이 실행되기 전에 반환한다(스펙 §183). 따라서 시나리오가 "복귀가 끝났다"고
+믿을 시점을 정해야 하고, 그것은 ST-C1·ST-C3·ST-E2를 막고 있는 조기 `Accepted` 문제와
+같은 판단이다. ST-E2에서는 target의 completion evidence를 기다리는 방식으로 풀었다.
+
+정리하면 ST-I1의 수정 자체는 명확하지만, 그 안에서 완료를 어떻게 확인할지는 미결
+항목에 의존한다. 같은 판단이 네 시나리오(C1, C3, E2, I1)에 걸쳐 있다.

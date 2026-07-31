@@ -32,9 +32,13 @@ internal static class ObsC1DrainingMarkerScenario
             && snapshot.PeerRows.Any(row =>
                 row.NodeRid == room.NodeRid && row.Draining)
             && snapshot.SpotRows.Any(row => row.SpotRid == roomRid)
-            && snapshot.Metrics.Any(sample => sample.Name == "zlink.host.state"
-                                              && sample.Value == 1
-                                              && sample.Tags.GetValueOrDefault("state") == "relocating"));
+            // The relocating state can pass faster than any snapshot poll, so
+            // spec 24 §3 exposes state changes as a stream. The host records
+            // every observed status, and this reads that record instead of
+            // racing the live gauge.
+            && snapshot.Entries.Any(line =>
+                line.Contains("host-state|", StringComparison.Ordinal)
+                && line.Contains("state=Relocating", StringComparison.Ordinal)));
         ZlinkStreamAssert.Ensure(
             draining.PeerRows.Any(row =>
                 row.NodeRid == room.NodeRid && row.Draining),

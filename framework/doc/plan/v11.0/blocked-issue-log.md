@@ -6105,3 +6105,17 @@ Unit test 계수에 주의가 필요하다. 이번에 한 번은 `Total: 1264`, 
 ObservabilityOps가 8개인 것은 OBS-B4의 기존 flakiness다. 같은 커밋에서 8·9·10이 모두
 관측됐고 원인은 앞에 기록했다. Aggregate 통과 개수를 판정 근거로 쓰지 않는다는 규칙이 여기에
 그대로 적용된다.
+
+### OBS-C1: host state 전이를 evidence로 기록하게 했으나 아직 통과하지 않는다
+
+Spec 24 §3은 상태 변화를 관찰 stream으로 제공한다. 중간 상태가 snapshot polling보다 빨리
+지나가기 때문이다. Play host가 `IZLinkFrameworkRuntime.ObserveAsync`를 구독해 관찰되는
+status마다 `host-state|rid=<role>|state=<state>` evidence를 남기도록 추가했다.
+
+OBS-C1의 술어에서 live gauge를 읽던 부분을 이 기록으로 바꿨다. 그래도 수렴하지 않는다.
+남은 조건 중 무엇이 빠지는지는 다시 찍어 봐야 한다. 이전 측정에서 `drainingPeers=0`도 함께
+관측됐으므로 peer draining 표시 역시 같은 전이 문제일 가능성이 크다. 그렇다면 peer 상태
+전이도 같은 방식으로 기록해야 한다.
+
+Observer 자체는 유지한다. 관찰 stream을 쓰는 것이 스펙이 정한 방식이고, 스위트 전체 실행에
+회귀가 없다(통과 개수 8은 OBS-B4의 기존 flakiness 범위 안이다).

@@ -34,6 +34,11 @@ internal static class PlayHostFactory
         builder.Logging.AddSimpleConsole(console => console.SingleLine = true);
         builder.WebHost.UseUrls(options.HttpUrl);
         builder.Services.AddSingleton<EvidenceStore>();
+        builder.Services.AddHostedService(provider =>
+            new Support.HostStateEvidenceObserver(
+                provider.GetRequiredService<IZLinkFrameworkRuntime>(),
+                provider.GetRequiredService<EvidenceStore>(),
+                options.Rid));
         builder.Services.AddSingleton<RelocationOperation>();
         builder.Services.AddSingleton<ShutdownOperation>();
         builder.Services.AddSingleton<BoundedOperationGate>();

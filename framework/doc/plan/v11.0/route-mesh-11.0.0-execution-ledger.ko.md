@@ -12066,3 +12066,46 @@ ZoneWorld를 `.NET`과 Node.js만 제공한다고 이미 정했는데 공통 가
 회귀는 C++ 전체 CTest **49/49**와 bindings sample 일곱 개 빌드, JVM `check`
 `BUILD SUCCESSFUL`, Node build·typecheck와 contract **118/118**, `.NET` solution 전체가
 통과한다.
+
+### 2026-08-01 SpotActorTransfer 실패 전수 규명과 런타임 결함 세 건 수정
+
+.NET `SpotActorTransfer` e2e 29개를 개별 실행해 확정 현황을 만들고, 실패 14개의 원인을
+전부 규명했다. 상세 근거는 `blocked-issue-log.md`가 소유하며 여기에는 결과만 남긴다.
+
+네 시나리오가 실패에서 통과로 바뀌었다. ST-D1, ST-B3, ST-B4는 relocation이 명시 지정된
+target에 **선택(selection) 규칙**을 적용하던 결함 때문이었다.
+`ReadEligibleTargetAsync`의 `requireNewPlacementEligibility`는 `PlacementWeight <= 0`인
+node를 탈락시키는데, 이는 후보 중 하나를 고를 때 쓰는 값이다. 호출자가 target을 직접
+지정한 relocation에는 선택이 없으므로 적용되면 안 된다. 예약 경로와 commit 경로 두
+곳에서 이 규칙이 걸려 각각 `TargetUnavailable`과 CAS Conflict를 만들었다. 같은 파일의
+`CommitAsync`·`CompleteCommitAsync`는 이미 `false`를 넘기고 있었으므로 구분은 원래
+설계에 있었고 두 곳이 누락돼 있었다. graceful drain은 placement weight를 쓰지 않으므로
+`28-graceful-drain-handoff` 계약에 영향이 없다.
+
+ST-C2와 ST-E1은 **infrastructure route request의 응답이 구조적으로 불가능하던** 결함
+때문이었다. session route commit·seal·abort·unseal 네 종류는 completion admission을
+잡지 않도록 분류되어 있다. 제어 평면이 application 혼잡에 막히지 않게 하려는 의도다.
+그런데 응답 경로가 그 null lease를 검사 없이 역참조해 응답을 보내려는 순간 반드시
+`NullReferenceException`이 났고, 요청자에게는 timeout으로만 보였다. lease가 있을 때만
+예약하도록 고쳐 의도를 지키면서 응답이 나가게 했다.
+
+ST-E1A는 session binding이 가리키는 incarnation이 사라졌을 때 응답이 아예 없던 문제였다.
+`20-session-actor-dispatch.ko.md`가 "저장한 route가 더 이상 유효하지 않으면 typed stale
+error로 끝낸다"고 요구하는데, 프레임이 one-way handler 안에서 예외로 사라지고 있었다.
+프레임이 이미 싣고 있던 reply route로 먼저 응답하도록 고쳤다. 오류 kind는 새 값을 만들지
+않고 기존 `NotFound`를 썼다. `10-monitoring-errors.ko.md`가 generation stale을 별도 public
+kind로 올리지 않는다고 명시하며, 대체된 incarnation은 재시도해도 돌아오지 않으므로
+`DoNotRetry`인 `NotFound`가 의미상 맞다.
+
+이와 별개로 dotnet e2e 스위트 12개가 기동조차 못 하던 원인을 찾아 해소했다. Auto HWM
+계약이 유한한 process memory 상한을 요구하는데(`06-framework-api.ko.md`), e2e 호스트는
+컨테이너 밖에서 돌고 이 머신의 cgroup에는 상한이 없다. `SpotActorTransfer`만 1 GiB를
+명시하고 있었으므로 나머지 32개 host에 같은 설정을 넣었다. 런타임은 스펙대로 동작한
+것이고 누락된 것은 후속 조치였다.
+
+남은 10건은 성격이 다섯으로 갈린다. `.Defer()` join에서 e2e가 완료를 어떻게 확인할지가
+정해져야 하는 것(ST-C1, ST-C3, ST-I1), relocation sentinel과 digest 비교의 불일치(ST-B2),
+마이그레이션과 함께 추가됐으나 아직 통과한 적 없는 것(ST-G6, ST-I4, ST-I5), 하네스가
+관측 지점을 바꿔야 하는 것(ST-D2, ST-F3), 그리고 이 머신에서 inotify가 동작하지 않아
+실행 자체가 불가능한 것(ST-B5)이다. ST-E2와 ST-F2는 각각 mesh transport와 marker 의미
+확인이 남았다.

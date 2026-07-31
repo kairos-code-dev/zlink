@@ -5597,3 +5597,34 @@ TA-A2는 `/route/disconnect`로 manual route를 끊고 그 뒤 호출이 `NotFou
 
 이 스위트는 "컴파일 불가"에서 "전 host 기동 + 시나리오 실행"까지 왔고, 남은 것은 시나리오
 재설계다.
+
+### TA-A2: "session-not-bound"을 어떤 public kind로 표현할지 정해지지 않았다
+
+앞 절의 TA-A2 실패는 route disconnect와 무관했다. Assertion 메시지가 "after disconnect"라
+그렇게 보였을 뿐, 실제 검사는 **bound session이 없는 actor에 push하면 실패한다**이다.
+
+```
+AssertBoundPushFailureAsync : !reply.Submitted && reply.ErrorKind == "NotFound"
+런타임                       : InvalidOperation
+런타임 메시지                : No current session binding exists for actor 'ta-a2'.
+```
+
+`ZLinkBoundSessionService`가 binding을 찾지 못하면
+`ZLinkFrameworkErrorKind.InvalidOperation`을 던진다.
+
+spec 20 §360이 이 경우를 다룬다.
+
+> Current binding 없이 push 또는 close를 요청했다. | **Session-not-bound 오류로 끝난다.**
+
+스펙은 오류의 *이름*을 정하지만 어떤 public kind로 표현할지는 정하지 않는다. 그래서
+시나리오와 런타임이 다른 값을 고른 것이고, 어느 쪽이 틀렸다고 할 근거가 없다.
+
+두 해석이 모두 성립한다. `NotFound`는 binding이라는 대상이 없다는 읽기이고,
+`InvalidOperation`은 binding이 없는 상태에서 push를 요청한 것이 잘못된 순서라는 읽기다.
+후자는 나중에 binding이 생기면 같은 호출이 성공한다는 점에서 "없는 것"과 다르다.
+
+이 세션에서 ST-E1A의 stale binding은 `NotFound`로 정했는데, 그것은 교체된 incarnation이
+재시도해도 돌아오지 않기 때문이었다. 지금 경우는 그 근거가 그대로 적용되지 않는다.
+
+`10-monitoring-errors.ko.md`가 kind 선택 기준을 소유하므로 그 문서나 spec 20에
+session-not-bound의 public kind를 명시해야 갈린다. 그 전에는 어느 쪽도 고치지 않는다.

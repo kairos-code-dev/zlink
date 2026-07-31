@@ -2843,3 +2843,29 @@ inventory로 계산됐을 가능성이 있다.
 
 ST-B2의 결함이 이 한 축으로 좁혀졌다. 다음은 envelope과 reference의 digest가 각각 언제
 어떤 inventory로 계산되는지 확인해 어느 쪽이 낡았는지 정하는 것이다.
+
+### 두 digest의 실제 값 — reference가 전부 0이다
+
+두 값을 직접 찍었다.
+
+```
+env_digest=BDAE29D54153F3A0...   (실제 digest)
+ref_digest=0000000000000000...   (전부 0)
+env_len=32  ref_len=32
+```
+
+길이는 둘 다 32로 정상인데 **reference의 InventoryDigest가 채워지지 않았다.** envelope만
+실제 digest를 들고 있다.
+
+여기서 눈여겨볼 점이 있다. 같은 검증에서 `wire.RelocationInventoryDigest`는 **전부 0이어야
+통과한다**(`digest_zero=True`가 통과 조건이다). 그리고 이 relocation은
+`reloc_ref=pending`, `crc=0`으로 **payload가 아직 publish되지 않은 pending 상태**다.
+
+즉 pending relocation에서는 inventory digest를 0으로 두는 규약이 있는 것으로 보이고,
+wire record와 reference는 그 규약을 따르는데 **envelope만 실제 digest를 계산해 넣는다.**
+그래서 envelope과 reference를 그대로 비교하는 마지막 조건이 실패한다.
+
+`ZLinkAggregateInventoryDigest.Compute` 호출 지점이 다섯 곳이므로, envelope을 만드는
+경로가 pending 여부와 무관하게 digest를 계산하는지 확인하면 어느 쪽이 규약을 어기는지
+정해진다. 판단할 것은 둘이다. envelope이 pending일 때 0을 넣어야 하는지, 아니면 검증이
+pending relocation에서 이 비교를 건너뛰어야 하는지다.

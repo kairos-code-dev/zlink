@@ -1538,7 +1538,10 @@ internal sealed partial class ZLinkFrameworkRuntime
             + $"src_rid={sourceNodeRid == sourceFence.NodeRid} "
             + $"env_ref_id={candidate.Envelope.AggregateId == candidate.Reference.AggregateId} "
             + $"env_ref_gen={candidate.Envelope.AggregateGeneration == candidate.Reference.AggregateGeneration} "
-            + $"env_ref_digest={candidate.Envelope.InventoryDigest.Span.SequenceEqual(candidate.Reference.InventoryDigest.Span)}");
+            + $"env_ref_digest={candidate.Envelope.InventoryDigest.Span.SequenceEqual(candidate.Reference.InventoryDigest.Span)} "
+            + $"env_digest={Convert.ToHexString(candidate.Envelope.InventoryDigest.Span)[..16]} "
+            + $"ref_digest={Convert.ToHexString(candidate.Reference.InventoryDigest.Span)[..16]} "
+            + $"env_len={candidate.Envelope.InventoryDigest.Length} ref_len={candidate.Reference.InventoryDigest.Length}");
         if (participant.AuthorityKey != actorKey
             || participant.ObjectKind != ZLinkPlacementObjectKind.Actor
             || participant.ObjectGeneration != wire.ActorGeneration

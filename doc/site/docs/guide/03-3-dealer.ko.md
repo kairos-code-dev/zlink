@@ -409,13 +409,13 @@ DEALER→ROUTER 요청을 비동기 콜백으로 받는 변형이다.
 === "Python"
 
     ```python
-    --8<-- "bindings/python/samples/request_reply_async_sample.py:doc"
+    --8<-- "bindings/python/samples/request_reply_callback_sample.py:doc"
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    --8<-- "bindings/node/samples/request_reply_async_sample.ts:doc"
+    --8<-- "bindings/node/samples/request_reply_sample.ts:doc"
     ```
 
 === "JavaScript"
@@ -433,7 +433,7 @@ DEALER→ROUTER 요청을 비동기 콜백으로 받는 변형이다.
 === "Rust"
 
     ```rust
-    --8<-- "bindings/rust/samples/request_reply_async_sample.rs:doc"
+    --8<-- "bindings/rust/samples/request_reply_callback_sample.rs:doc"
     ```
 
 ---

@@ -34,8 +34,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r doc/site/requirements.txt -r framework/doc/site/requirements.txt
 
-      - name: Check language tabs and snippets
-        run: python3 doc/site/scripts/check_doc_tabs.py
+      # 두 사이트의 게이트를 따로 돌린다. 한쪽 회귀가 다른 쪽 검증을 가리지 않는다.
+      - name: Check framework language tabs and snippets
+        run: python3 doc/site/scripts/check_doc_tabs.py framework
 
       - name: Check framework document contracts
         run: bash scripts/verify-framework-doc-contracts.sh
@@ -46,6 +47,9 @@ jobs:
       - name: Build framework documentation
         working-directory: framework/doc/site
         run: mkdocs build
+
+      - name: Check core language tabs and snippets
+        run: python3 doc/site/scripts/check_doc_tabs.py core
 
       - name: Build core documentation
         working-directory: doc/site

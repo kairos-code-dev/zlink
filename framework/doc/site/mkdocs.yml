@@ -60,7 +60,7 @@ nav:
       - common/guide/server/17-alternative.ko.md
   - 언어별:
       - .NET:
-          - dotnet/README.ko.md
+          - dotnet/guide/server/README.ko.md
           - dotnet/guide/server/01-overview.ko.md
           - dotnet/guide/server/02-getting-started.ko.md
           - dotnet/guide/server/11-monitoring.ko.md

@@ -117,14 +117,18 @@ public sealed class RegressionTests
     {
         var guideRoot = Path.Combine(GetDotNetDocRoot(), "guide", "server");
 
+        // 진입점 README는 읽는 순서만 담는 색인이라 장 목록에서 뺀다.
         var actual = Directory
             .EnumerateFiles(guideRoot, "*.ko.md", SearchOption.TopDirectoryOnly)
             .Select(Path.GetFileName)
             .OfType<string>()
+            .Where(static name => !string.Equals(name, "README.ko.md", StringComparison.Ordinal))
             .Order(StringComparer.Ordinal)
             .ToArray();
 
         Assert.Equal(LanguageGuideDocuments.Order(StringComparer.Ordinal), actual);
+        Assert.True(File.Exists(Path.Combine(guideRoot, "README.ko.md")),
+            "언어별 가이드는 읽는 순서를 제시하는 진입점 README를 가진다.");
 
         foreach (var document in LanguageGuideDocuments)
         {

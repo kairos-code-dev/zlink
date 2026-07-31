@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(zlink_cpp VERSION 11.0.2 LANGUAGES CXX)
+project(zlink_cpp VERSION 11.1.0 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -258,6 +258,7 @@ if(ZLINK_CPP_BUILD_SAMPLES)
     pair_recv_sample.cpp
     pubsub_recv_sample.cpp
     dealer_router_recv_sample.cpp
+    request_reply_async_sample.cpp
     stream_recv_sample.cpp
     stream_packet_callback_sample.cpp
     monitor_recv_sample.cpp

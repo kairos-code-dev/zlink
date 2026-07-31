@@ -147,25 +147,7 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 Options binding 기준�
 [사용자 가이드 문서 작성 가이드](../../../../doc/principal/documentation/guide-writing-guide.ko.md)를
 따른다.
 
-| 문서 | 역할 |
-|------|------|
-| [1. 개요](guide/server/01-overview.ko.md) | 무엇/왜/누구를 위한 것, 기존 방식 대비 체감 난이도, 4축 |
-| [2. 시작하기](guide/server/02-getting-started.ko.md) | NuGet 설치, 두 process 최소 예제, TicTacToe 방 생성 흐름 |
-| [3. 핵심 개념](../common/guide/server/03-concepts.ko.md) | 핵심 개념과 공통 스펙 매핑 |
-| [4. Backpressure](../common/guide/server/04-backpressure.ko.md) | 처리보다 도착이 빠를 때의 동작 원리와 영향을 주는 옵션 |
-| [5. Channel Messaging](../common/guide/server/05-channel-messaging.ko.md) | request / send / pub-sub 등록과 호출 사용법 |
-| [6. Spot](../common/guide/server/06-spot.ko.md) | room / stage / zone 같은 동적 SPOT 등록과 호출 사용법 |
-| [7. Actor와 Spot](../common/guide/server/07-actor-spot.ko.md) | actor 모델과 Spot 의 actor 호스팅(lifecycle 콜백·트리거 함수, location 축) |
-| [8. Session과 Actor binding](../common/guide/server/08-actor-session.ko.md) | session ↔ actor relay·binding·bound session push (binding 축) |
-| [9. STREAM](../common/guide/server/09-stream.ko.md) | 외부 client STREAM 서버와 Stream Connector 사용법 |
-| [10. Location](../common/guide/server/10-location.ko.md) | location store 등록, 자동 연결, 운영 조회 사용법 |
-| [11. Monitoring](guide/server/11-monitoring.ko.md) | 상태 snapshot·status stream과 진단으로 runtime을 관측하는 방법 |
-| [12. 운영](../common/guide/server/12-operations.ko.md) | 운영 — 런타임 메트릭, graceful drain, readiness 통합 |
-| [13. Interface 카탈로그](guide/server/13-interface-catalog.ko.md) | 모든 계약 인터페이스를 ContractTests 검증 코드로 색인 |
-| [14. 샘플 고르기](../common/guide/server/14-samples.ko.md) | 어떤 샘플을 먼저 볼지 고르고 실행하는 방법 |
-| [15. E2E 테스트](../common/guide/server/15-e2e-testing.ko.md) | client 라이브러리로 시스템 전체를 검증하는 E2E 테스트 만드는 법 |
-| [16. Options](guide/server/16-options.ko.md) | 설정 — 옵션 목록, 기본값과 변경 시점 |
-| [17. ZLink를 어디에 쓰나](../common/guide/server/17-alternative.ko.md) | 사용처, 문제 신호, 기술 선택 경계 |
+읽는 순서와 장별 내용은 [가이드 읽는 순서](guide/server/README.ko.md)가 제시한다.
 
 ### 2.1 기준 문서 (interface catalog)
 

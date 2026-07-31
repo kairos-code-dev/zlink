@@ -27,7 +27,7 @@
 
 | 언어 | 진입점 |
 | --- | --- |
-| `.NET` | [.NET 가이드](dotnet/README.ko.md) |
+| `.NET` | [.NET 가이드](dotnet/guide/server/README.ko.md) |
 | C++ | [C++ 가이드](cpp/guide/server/README.ko.md) |
 | Java | [Java 가이드](java/guide/server/README.ko.md) |
 | Kotlin | [Kotlin 가이드](kotlin/guide/server/README.ko.md) |

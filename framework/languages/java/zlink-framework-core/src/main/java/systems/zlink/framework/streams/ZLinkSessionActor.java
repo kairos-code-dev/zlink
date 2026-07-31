@@ -12,7 +12,7 @@ public interface ZLinkSessionActor {
     CompletionStage<Void> relay(ZLinkMessage payload);
 
     default CompletionStage<Void> relay(
-        ZLinkSessionMessageContext dispatch,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
         if (dispatch == null) {
             return java.util.concurrent.CompletableFuture.failedFuture(

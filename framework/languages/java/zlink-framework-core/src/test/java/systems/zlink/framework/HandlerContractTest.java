@@ -52,7 +52,7 @@ import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionMessageContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkSessionReplyCall;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
@@ -253,23 +253,23 @@ final class HandlerContractTest {
 
     @Test
     void sessionDispatchContractsUseFrameworkMessages() throws NoSuchMethodException {
-        ZLinkSession.class.getMethod("onDispatch", ZLinkSessionMessageContext.class, ZLinkMessage.class);
+        ZLinkSession.class.getMethod("onDispatch", ZLinkSessionDispatchContext.class, ZLinkMessage.class);
         assertClassMissing("systems.zlink.framework.streams.ZLinkSessionPacketHandler");
         ZLinkTypedSessionPacketHandler.class.getMethod(
             "handle",
             ZLinkSessionContext.class,
-            ZLinkSessionMessageContext.class,
+            ZLinkSessionDispatchContext.class,
             Object.class);
         assertEquals(CompletionStage.class,
             ZLinkTypedSessionPacketHandler.class.getMethod(
                 "handle",
                 ZLinkSessionContext.class,
-                ZLinkSessionMessageContext.class,
+                ZLinkSessionDispatchContext.class,
                 Object.class).getReturnType());
         ZLinkSessionPacketDispatcher.class.getMethod(
             "tryHandle",
             ZLinkSessionContext.class,
-            ZLinkSessionMessageContext.class,
+            ZLinkSessionDispatchContext.class,
             ZLinkMessage.class);
         ZLinkSessionActor.class.getMethod("relay", ZLinkMessage.class);
     }

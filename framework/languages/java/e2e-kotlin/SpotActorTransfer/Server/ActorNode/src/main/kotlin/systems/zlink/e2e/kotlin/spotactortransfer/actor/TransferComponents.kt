@@ -30,7 +30,7 @@ import systems.zlink.framework.spots.ZLinkActorCreateResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
 import systems.zlink.framework.streams.ZLinkSessionContext
-import systems.zlink.framework.streams.ZLinkSessionMessageContext
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher
 import systems.zlink.framework.streams.ZLinkStreamError
 import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
@@ -379,7 +379,7 @@ class TransferSession(
     }
 
     override suspend fun onDispatchSuspending(
-        dispatch: ZLinkSessionMessageContext,
+        dispatch: ZLinkSessionDispatchContext,
         payload: ZLinkMessage,
     ) {
         if (handlers.tryHandle(sessionContext, dispatch, payload).await()) return
@@ -399,7 +399,7 @@ class BindSessionHandler(
 
     override suspend fun handle(
         context: ZLinkSessionContext,
-        dispatch: ZLinkSessionMessageContext,
+        dispatch: ZLinkSessionDispatchContext,
         request: Contracts.BindSessionReq,
     ) {
         val actor = actors.find(request.actorId()).await()

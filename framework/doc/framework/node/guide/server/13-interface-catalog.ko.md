@@ -105,7 +105,7 @@ topic이다.
 | 계약 | 성격 |
 | --- | --- |
 | `ZLinkSession` | 구현한다 |
-| `ZLinkSessionContext` · `ZLinkSessionMessageContext` | context |
+| `ZLinkSessionContext` · `ZLinkSessionDispatchContext` | context |
 | `ZLinkSessionActor` · `ZLinkSessionActors` | bind된 Actor |
 | `ZLinkStreamError` | 오류 통지 |
 | `ZLinkBoundSession` | Actor에 묶인 session으로 push |

@@ -8,7 +8,7 @@ import systems.zlink.framework.kotlin.ZLinkSuspendingSession
 import systems.zlink.framework.kotlin.await
 import systems.zlink.framework.streams.ZLinkSessionActor
 import systems.zlink.framework.streams.ZLinkSessionContext
-import systems.zlink.framework.streams.ZLinkSessionMessageContext
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher
 import systems.zlink.framework.streams.ZLinkStreamError
 
@@ -32,7 +32,7 @@ class ScenarioSession(
     }
 
     override suspend fun onDispatchSuspending(
-        dispatch: ZLinkSessionMessageContext,
+        dispatch: ZLinkSessionDispatchContext,
         payload: ZLinkMessage
     ) {
         evidence.record("StreamInbound", "session", dispatch.packetName())
@@ -43,7 +43,7 @@ class ScenarioSession(
         requireActor(dispatch).relay(dispatch, payload).await()
     }
 
-    private fun requireActor(dispatch: ZLinkSessionMessageContext): ZLinkSessionActor {
+    private fun requireActor(dispatch: ZLinkSessionDispatchContext): ZLinkSessionActor {
         val actorId = dispatch.metadata()["actor-id"]
         if (actorId != null && actorId.isNotBlank()) {
             return context.actors().find(actorId)

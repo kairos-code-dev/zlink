@@ -8,7 +8,7 @@ import systems.zlink.framework.kotlin.bindOrGetActor
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.streams.ZLinkSessionActor
 import systems.zlink.framework.streams.ZLinkSessionContext
-import systems.zlink.framework.streams.ZLinkSessionMessageContext
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext
 import systems.zlink.framework.streams.ZLinkStreamError
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleTimings
@@ -45,7 +45,7 @@ class SupportChatSession(
     }
 
     override suspend fun onDispatchSuspending(
-        dispatch: ZLinkSessionMessageContext,
+        dispatch: ZLinkSessionDispatchContext,
         payload: ZLinkMessage,
     ) {
         when (dispatch.packetName()) {
@@ -99,7 +99,7 @@ class SupportChatSession(
     }
 
     private suspend fun joinConversation(
-        dispatch: ZLinkSessionMessageContext,
+        dispatch: ZLinkSessionDispatchContext,
         payload: ZLinkMessage,
     ) {
         if (identityRole == SupportChatRoles.Customer) {
@@ -133,7 +133,7 @@ class SupportChatSession(
     }
 
     private suspend fun relayConversationPacket(
-        dispatch: ZLinkSessionMessageContext,
+        dispatch: ZLinkSessionDispatchContext,
         payload: ZLinkMessage,
     ) {
         val conversationId = dispatch.metadata()[SampleNames.ConversationIdMetadataKey]
@@ -146,7 +146,7 @@ class SupportChatSession(
             "Client must authenticate before sending conversation packets.",
         )
 
-    private fun requireConversationId(dispatch: ZLinkSessionMessageContext): String =
+    private fun requireConversationId(dispatch: ZLinkSessionDispatchContext): String =
         dispatch.metadata()[SampleNames.ConversationIdMetadataKey]
             ?: throw IllegalStateException("Conversation packet is missing the ConversationId metadata.")
 

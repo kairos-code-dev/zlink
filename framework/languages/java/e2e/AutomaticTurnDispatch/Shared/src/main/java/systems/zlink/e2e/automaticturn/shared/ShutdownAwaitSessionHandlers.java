@@ -9,7 +9,7 @@ import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.spots.SpotHandle;
 import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionMessageContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 public final class ShutdownAwaitSessionHandlers {
@@ -38,7 +38,7 @@ public final class ShutdownAwaitSessionHandlers {
         @Override
         public CompletionStage<Void> handle(
             ZLinkSessionContext context,
-            ZLinkSessionMessageContext dispatch,
+            ZLinkSessionDispatchContext dispatch,
             Contracts.AwaitShutdownScenarioReq request) {
             RoutingId playNode = RoutingId.from(Contracts.PLAY_NODE_A);
             RoutingId spotRid = RoutingId.from(request.spotRid());
@@ -74,7 +74,7 @@ public final class ShutdownAwaitSessionHandlers {
         @Override
         public CompletionStage<Void> handle(
             ZLinkSessionContext context,
-            ZLinkSessionMessageContext dispatch,
+            ZLinkSessionDispatchContext dispatch,
             Contracts.AwaitShutdownRecoveryReq request) {
             RoutingId playNode = RoutingId.from(Contracts.PLAY_NODE_A);
             RoutingId spotRid = RoutingId.from(request.spotRid());

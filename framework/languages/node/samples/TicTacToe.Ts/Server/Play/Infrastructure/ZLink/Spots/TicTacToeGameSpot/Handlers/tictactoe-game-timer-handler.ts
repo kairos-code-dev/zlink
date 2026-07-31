@@ -15,11 +15,13 @@ import { TicTacToeGameSpot } from '../tictactoe-game-spot';
     stopOnUnhandledException: true
   }
 })
+// --8<-- [start:doc-timer-handler]
 class TicTacToeGameTimerHandler implements ZLinkSpotTimerHandler<TicTacToeGameSpot> {
   async handle(spot: TicTacToeGameSpot, tick: ZLinkTimerTick): Promise<void> {
     void tick;
     await spot.tick();
   }
 }
+// --8<-- [end:doc-timer-handler]
 
 export { TicTacToeGameTimerHandler };

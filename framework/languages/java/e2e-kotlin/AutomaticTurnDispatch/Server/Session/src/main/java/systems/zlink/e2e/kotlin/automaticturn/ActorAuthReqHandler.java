@@ -3,7 +3,7 @@ package systems.zlink.e2e.kotlin.automaticturn;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionMessageContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 public final class ActorAuthReqHandler
@@ -22,7 +22,7 @@ public final class ActorAuthReqHandler
     @Override
     public CompletionStage<Void> handle(
         ZLinkSessionContext context,
-        ZLinkSessionMessageContext dispatch,
+        ZLinkSessionDispatchContext dispatch,
         Contracts.ActorAuthReq request) {
         return actors.getOrCreate(request.actorId(), "probe", request)
             .thenCompose(context.actors()::bind)

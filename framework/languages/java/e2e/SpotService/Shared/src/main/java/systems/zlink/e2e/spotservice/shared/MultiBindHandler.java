@@ -2,7 +2,7 @@ package systems.zlink.e2e.spotservice.shared;
 
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionMessageContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 public final class MultiBindHandler
@@ -25,7 +25,7 @@ public final class MultiBindHandler
     @Override
     public java.util.concurrent.CompletionStage<Void> handle(
         ZLinkSessionContext context,
-        ZLinkSessionMessageContext dispatch,
+        ZLinkSessionDispatchContext dispatch,
         Contracts.MultiBindReq request) {
         return bind(context, request.firstActorId(), request)
             .thenCompose(ignored -> bind(context, request.secondActorId(), request))

@@ -5,7 +5,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionMessageContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 public abstract class SpotCommandHandler<TCommand>
@@ -31,7 +31,7 @@ public abstract class SpotCommandHandler<TCommand>
     @Override
     public CompletionStage<Void> handle(
         ZLinkSessionContext context,
-        ZLinkSessionMessageContext dispatch,
+        ZLinkSessionDispatchContext dispatch,
         TCommand command) {
         RoutingId targetSpotRid = RoutingId.from(dispatch.metadata()
             .getOrDefault(Contracts.SPOT_RID_METADATA, Contracts.TARGET_SPOT));
@@ -79,7 +79,7 @@ public abstract class SpotCommandHandler<TCommand>
         @Override
         public CompletionStage<Void> handle(
             ZLinkSessionContext context,
-            ZLinkSessionMessageContext dispatch,
+            ZLinkSessionDispatchContext dispatch,
             Contracts.ProbeReq request) {
             RoutingId targetSpotRid = RoutingId.from(dispatch.metadata()
                 .getOrDefault(Contracts.SPOT_RID_METADATA, Contracts.TARGET_SPOT));

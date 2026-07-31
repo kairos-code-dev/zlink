@@ -41,7 +41,7 @@ import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionMessageContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkStreamError;
 
 final class StreamSessionTest {
@@ -343,7 +343,7 @@ final class StreamSessionTest {
 
         @Override
         public CompletionStage<Void> onDispatch(
-            ZLinkSessionMessageContext dispatch,
+            ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload) {
             dispatchedOnVirtualThread.set(Thread.currentThread().isVirtual());
             if (!"Ping".equals(dispatch.packetName())) {
@@ -388,7 +388,7 @@ final class StreamSessionTest {
 
         @Override
         public CompletionStage<Void> onDispatch(
-            ZLinkSessionMessageContext dispatch,
+            ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload) {
             if ("MustFail".equals(dispatch.packetName())) {
                 throw new IllegalStateException("public failure");
@@ -434,7 +434,7 @@ final class StreamSessionTest {
 
         @Override
         public CompletionStage<Void> onDispatch(
-            ZLinkSessionMessageContext dispatch,
+            ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload) {
             if ("Bind".equals(dispatch.packetName())) {
                 String actorId = payload.decode(String.class);

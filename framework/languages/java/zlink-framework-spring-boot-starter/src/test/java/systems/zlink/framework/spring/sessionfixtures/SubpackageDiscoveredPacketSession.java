@@ -5,7 +5,7 @@ import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionMessageContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkStreamError;
 
@@ -42,7 +42,7 @@ public final class SubpackageDiscoveredPacketSession implements ZLinkSession {
 
     @Override
     public CompletionStage<Void> onDispatch(
-        ZLinkSessionMessageContext dispatch,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
         return dispatcher.tryHandle(context, dispatch, payload).thenApply(ignored -> null);
     }

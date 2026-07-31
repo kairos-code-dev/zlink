@@ -40,13 +40,13 @@ public interface systems.zlink.framework.streams.ZLinkSession {
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> onConnected();
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> onDisconnected();
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> onError(systems.zlink.framework.streams.ZLinkStreamError);
-  public default java.util.concurrent.CompletionStage<java.lang.Void> onDispatch(systems.zlink.framework.streams.ZLinkSessionMessageContext, systems.zlink.framework.messaging.ZLinkMessage);
+  public default java.util.concurrent.CompletionStage<java.lang.Void> onDispatch(systems.zlink.framework.streams.ZLinkSessionDispatchContext, systems.zlink.framework.messaging.ZLinkMessage);
 }
 public interface systems.zlink.framework.streams.ZLinkSessionActor {
   public abstract java.lang.String actorId();
   public abstract systems.zlink.framework.actors.ActorRef ref();
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> relay(systems.zlink.framework.messaging.ZLinkMessage);
-  public default java.util.concurrent.CompletionStage<java.lang.Void> relay(systems.zlink.framework.streams.ZLinkSessionMessageContext, systems.zlink.framework.messaging.ZLinkMessage);
+  public default java.util.concurrent.CompletionStage<java.lang.Void> relay(systems.zlink.framework.streams.ZLinkSessionDispatchContext, systems.zlink.framework.messaging.ZLinkMessage);
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> notifyDisconnected();
 }
 public interface systems.zlink.framework.streams.ZLinkSessionActors {
@@ -69,7 +69,7 @@ public interface systems.zlink.framework.streams.ZLinkSessionContext {
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> close();
 }
 public interface systems.zlink.framework.streams.ZLinkSessionPacketDispatcher<TSessionContext extends systems.zlink.framework.streams.ZLinkSessionContext> {
-  public abstract java.util.concurrent.CompletionStage<java.lang.Boolean> tryHandle(TSessionContext, systems.zlink.framework.streams.ZLinkSessionMessageContext, systems.zlink.framework.messaging.ZLinkMessage);
+  public abstract java.util.concurrent.CompletionStage<java.lang.Boolean> tryHandle(TSessionContext, systems.zlink.framework.streams.ZLinkSessionDispatchContext, systems.zlink.framework.messaging.ZLinkMessage);
 }
 public interface systems.zlink.framework.streams.ZLinkSessionReplyCall {
   public abstract systems.zlink.framework.streams.ZLinkSessionReplyCall compress();
@@ -101,7 +101,7 @@ public final class systems.zlink.framework.streams.ZLinkStreamSessionError exten
 }
 public interface systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler<TSessionContext extends systems.zlink.framework.streams.ZLinkSessionContext, TMessage> {
   public abstract java.lang.Class<TMessage> messageType();
-  public abstract java.util.concurrent.CompletionStage<java.lang.Void> handle(TSessionContext, systems.zlink.framework.streams.ZLinkSessionMessageContext, TMessage);
+  public abstract java.util.concurrent.CompletionStage<java.lang.Void> handle(TSessionContext, systems.zlink.framework.streams.ZLinkSessionDispatchContext, TMessage);
 }
 ```
 
@@ -115,8 +115,8 @@ capability가 없으므로 admission만 반환한다. Handshake failure는 sessi
 ## STREAM codec public signature
 
 ```java
-public final class systems.zlink.framework.streams.ZLinkSessionMessageContext extends java.lang.Record {
-  public systems.zlink.framework.streams.ZLinkSessionMessageContext(java.lang.String, java.util.Map<java.lang.String, java.lang.String>, boolean);
+public final class systems.zlink.framework.streams.ZLinkSessionDispatchContext extends java.lang.Record {
+  public systems.zlink.framework.streams.ZLinkSessionDispatchContext(java.lang.String, java.util.Map<java.lang.String, java.lang.String>, boolean);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);

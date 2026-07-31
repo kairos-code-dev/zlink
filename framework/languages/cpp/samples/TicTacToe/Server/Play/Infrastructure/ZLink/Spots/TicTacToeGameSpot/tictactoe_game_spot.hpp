@@ -25,11 +25,14 @@ using framework::message_t;
 
 class tictactoe_game_spot_t;
 
+// --8<-- [start:doc-timer-handler]
+// C++ timer만 별도 handler 타입이다. handle이 대상 Spot과 tick 둘을 받는다.
 class tictactoe_game_timer_handler_t
 {
   public:
     task_t<void> handle (tictactoe_game_spot_t &spot, const timer_tick_t &tick) const;
 };
+// --8<-- [end:doc-timer-handler]
 
 class tictactoe_game_spot_t : public spot_t<player_actor_t>
 {

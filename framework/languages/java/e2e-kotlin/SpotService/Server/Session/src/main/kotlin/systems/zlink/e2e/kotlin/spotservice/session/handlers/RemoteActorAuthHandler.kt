@@ -6,7 +6,7 @@ import systems.zlink.e2e.kotlin.spotservice.ScenarioState
 import systems.zlink.framework.actors.ActorRef
 import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.streams.ZLinkSessionContext
-import systems.zlink.framework.streams.ZLinkSessionMessageContext
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext
 import kotlinx.coroutines.future.await
 import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
 
@@ -20,7 +20,7 @@ class RemoteActorAuthHandler(
 
     override suspend fun handle(
         context: ZLinkSessionContext,
-        dispatch: ZLinkSessionMessageContext,
+        dispatch: ZLinkSessionDispatchContext,
         request: Contracts.ActorRemoteAuthReq
     ) {
         val ensured = routes.requestToNode(

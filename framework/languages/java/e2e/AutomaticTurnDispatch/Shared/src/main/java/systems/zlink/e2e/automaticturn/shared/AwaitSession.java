@@ -6,7 +6,7 @@ import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionMessageContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkStreamError;
 
@@ -49,7 +49,7 @@ public final class AwaitSession implements ZLinkSession {
 
     @Override
     public CompletionStage<Void> onDispatch(
-        ZLinkSessionMessageContext dispatch,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
         evidence.record("stream-inbound", "session", dispatch.packetName());
         return handlers.tryHandle(context, dispatch, payload)
@@ -58,7 +58,7 @@ public final class AwaitSession implements ZLinkSession {
                 : requireActor(dispatch).relay(dispatch, payload).thenApply(ignored -> null));
     }
 
-    private ZLinkSessionActor requireActor(ZLinkSessionMessageContext dispatch) {
+    private ZLinkSessionActor requireActor(ZLinkSessionDispatchContext dispatch) {
         String actorId = dispatch.metadata().get(Contracts.ACTOR_ID_METADATA);
         if (actorId != null && !actorId.isBlank()) {
             return context.actors().find(actorId)

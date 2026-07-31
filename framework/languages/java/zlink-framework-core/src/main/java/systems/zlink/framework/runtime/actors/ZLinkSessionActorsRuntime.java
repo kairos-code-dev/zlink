@@ -24,7 +24,7 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionActors;
-import systems.zlink.framework.streams.ZLinkSessionMessageContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
@@ -73,7 +73,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
     }
 
     public static void enterRelayDispatch(
-        ZLinkSessionMessageContext dispatch,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkStreamHeader header) {
         RELAY_HEADERS.enter(dispatch, header);
     }
@@ -82,7 +82,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         RELAY_HEADERS.exit();
     }
 
-    public static void exitRelayDispatch(ZLinkSessionMessageContext dispatch) {
+    public static void exitRelayDispatch(ZLinkSessionDispatchContext dispatch) {
         RELAY_HEADERS.exit(dispatch);
     }
 

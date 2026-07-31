@@ -5,7 +5,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionMessageContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 abstract class SpotMsgRouteHandler<TCommand>
@@ -31,7 +31,7 @@ abstract class SpotMsgRouteHandler<TCommand>
     @Override
     public CompletionStage<Void> handle(
         ZLinkSessionContext context,
-        ZLinkSessionMessageContext dispatch,
+        ZLinkSessionDispatchContext dispatch,
         TCommand command) {
         RoutingId targetSpotRid = targetSpot(dispatch);
         return spots.resolveSpotHandle(targetSpotRid).thenCompose(handle -> routes.sendToSpot(
@@ -39,12 +39,12 @@ abstract class SpotMsgRouteHandler<TCommand>
             command).submit().thenApply(ignored -> null));
     }
 
-    static RoutingId targetNode(ZLinkSessionMessageContext dispatch) {
+    static RoutingId targetNode(ZLinkSessionDispatchContext dispatch) {
         return RoutingId.from(dispatch.metadata()
             .getOrDefault(Contracts.TARGET_NODE_RID_METADATA, "play-a"));
     }
 
-    static RoutingId targetSpot(ZLinkSessionMessageContext dispatch) {
+    static RoutingId targetSpot(ZLinkSessionDispatchContext dispatch) {
         return RoutingId.from(dispatch.metadata()
             .getOrDefault(Contracts.SPOT_RID_METADATA, "room-a"));
     }

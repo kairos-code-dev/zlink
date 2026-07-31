@@ -350,14 +350,14 @@ export interface ZLinkSession {
     onConnected?(context: ZLinkSessionContext): Promise<void>;
     onDisconnected?(context: ZLinkSessionContext): Promise<void>;
     onError?(context: ZLinkSessionContext, error: ZLinkStreamError): Promise<void>;
-    onDispatch?(dispatch: ZLinkSessionMessageContext, payload: ZLinkMessage): Promise<void>;
+    onDispatch?(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void>;
 }
 
 export interface ZLinkSessionActor {
     readonly actorId: ActorId;
     readonly ref: ActorRef;
     relay(payload: ZLinkMessage, signal?: AbortSignal): Promise<void>;
-    relay(dispatch: ZLinkSessionMessageContext, payload: ZLinkMessage,
+    relay(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage,
         signal?: AbortSignal): Promise<void>;
     notifyDisconnected(signal?: AbortSignal): Promise<void>;
 }
@@ -385,7 +385,7 @@ export interface ZLinkSessionContext {
     close(signal?: AbortSignal): Promise<void>;
 }
 
-export interface ZLinkSessionMessageContext {
+export interface ZLinkSessionDispatchContext {
     readonly packetName: string;
     readonly metadata: ZLinkMessageMetadata;
     readonly canReply: boolean;
@@ -397,11 +397,11 @@ export interface ZLinkSessionFactory<TSession extends ZLinkSession = ZLinkSessio
 
 export interface ZLinkSessionHandlerRegistry {
     addHandler<THandler>(handlerType: Type<THandler>): this;
-    tryHandle(dispatch: ZLinkSessionMessageContext, payload: ZLinkMessage): Promise<boolean>;
+    tryHandle(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<boolean>;
 }
 
 export interface ZLinkSessionPacketHandler<TSessionContext, TMessage = ZLinkMessage> {
-    handle(context: TSessionContext, dispatch: ZLinkSessionMessageContext, message: TMessage): Promise<void>;
+    handle(context: TSessionContext, dispatch: ZLinkSessionDispatchContext, message: TMessage): Promise<void>;
 }
 
 export interface ZLinkSessionReplyCall {

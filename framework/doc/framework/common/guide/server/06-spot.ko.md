@@ -1703,6 +1703,40 @@ handler 안에서 Spot 상태를 그대로 만질 수 있다. 등록은 timer �
 
 Handler는 Spot과 tick 정보를 받는 별도 class다.
 
+> **샘플에서 보기 — [TicTacToe](../../../common/sample/tictactoe/README.ko.md).** 매 초
+> 판을 진행시키는 timer handler다. 저장소의 실제 코드를 그대로 가져왔다.
+
+=== "C#/.NET"
+
+    ```csharp
+    --8<-- "framework/languages/dotnet/samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/TicTacToeGameTimerHandler.cs:doc-timer-handler"
+    ```
+
+=== "C++"
+
+    ```cpp
+    --8<-- "framework/languages/cpp/samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/tictactoe_game_spot.hpp:doc-timer-handler"
+    ```
+
+=== "Java"
+
+    ```java
+    --8<-- "framework/languages/java/samples/java/TicTacToe/Server/src/main/java/systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/TicTacToeGameTimerHandler.java:doc-timer-handler"
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    --8<-- "framework/languages/java/samples/kotlin/TicTacToe/Server/src/main/kotlin/systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/TicTacToeGameTimerHandler.kt:doc-timer-handler"
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    --8<-- "framework/languages/node/samples/TicTacToe.Ts/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/tictactoe-game-timer-handler.ts:doc-timer-handler"
+    ```
+
+최소 형태로 보면 이렇다.
 === "C#/.NET"
 
     ```csharp

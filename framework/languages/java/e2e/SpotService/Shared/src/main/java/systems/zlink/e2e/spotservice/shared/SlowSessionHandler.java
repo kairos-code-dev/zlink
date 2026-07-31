@@ -1,7 +1,7 @@
 package systems.zlink.e2e.spotservice.shared;
 
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionMessageContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 public final class SlowSessionHandler
@@ -20,7 +20,7 @@ public final class SlowSessionHandler
     @Override
     public java.util.concurrent.CompletionStage<Void> handle(
         ZLinkSessionContext context,
-        ZLinkSessionMessageContext dispatch,
+        ZLinkSessionDispatchContext dispatch,
         Contracts.SlowSessionReq request) {
         try {
             Thread.sleep(Math.max(0, request.delayMilliseconds()));

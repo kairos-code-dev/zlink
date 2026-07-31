@@ -152,7 +152,6 @@ test('runtime topology and supporting exact names are declared by their producti
     'ZLinkClientServerRuntime',
     'ZLinkFanoutStatus',
     'ZLinkFanoutRuntime',
-    'ZLinkSessionMessageContext',
     'ZLinkReservedObjectCreation'
   ];
 

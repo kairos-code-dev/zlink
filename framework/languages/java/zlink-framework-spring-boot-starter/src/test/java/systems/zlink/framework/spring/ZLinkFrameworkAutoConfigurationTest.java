@@ -80,7 +80,7 @@ import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
 import systems.zlink.framework.testkit.FakeZLinkBackendAdapterFactory;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionMessageContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 import systems.zlink.framework.streams.ZLinkStreamCompressionCodec;
@@ -1255,7 +1255,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
         @Override
         public CompletionStage<Void> onDispatch(
-            ZLinkSessionMessageContext dispatch,
+            ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload) {
             return dispatcher.tryHandle(context, dispatch, payload).thenApply(ignored -> null);
         }
@@ -1281,7 +1281,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Override
         public CompletionStage<Void> handle(
             ZLinkSessionContext context,
-            ZLinkSessionMessageContext dispatch,
+            ZLinkSessionDispatchContext dispatch,
             AutoSessionPacket payload) {
             count.incrementAndGet();
             handled.complete(null);

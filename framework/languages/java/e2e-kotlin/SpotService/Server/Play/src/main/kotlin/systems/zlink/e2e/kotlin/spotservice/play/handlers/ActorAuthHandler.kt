@@ -5,7 +5,7 @@ import systems.zlink.e2e.kotlin.spotservice.ScenarioState
 import systems.zlink.e2e.kotlin.spotservice.play.spots.*
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.streams.ZLinkSessionContext
-import systems.zlink.framework.streams.ZLinkSessionMessageContext
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext
 import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
 import kotlinx.coroutines.future.await
 
@@ -19,7 +19,7 @@ class ActorAuthHandler(
 
     override suspend fun handle(
         context: ZLinkSessionContext,
-        dispatch: ZLinkSessionMessageContext,
+        dispatch: ZLinkSessionDispatchContext,
         request: Contracts.ActorAuthReq
     ) {
         val actor = actors.getOrCreate(request.actorId, "scenario", request)

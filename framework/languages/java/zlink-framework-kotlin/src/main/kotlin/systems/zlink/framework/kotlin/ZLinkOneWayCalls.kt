@@ -407,7 +407,7 @@ fun ZLinkSessionActor.kotlin(): ZLinkKotlinSessionActor =
             DeferredSubmissionCall { this@kotlin.relay(message) }
 
         override fun relay(
-            dispatch: systems.zlink.framework.streams.ZLinkSessionMessageContext,
+            dispatch: systems.zlink.framework.streams.ZLinkSessionDispatchContext,
             message: systems.zlink.framework.messaging.ZLinkMessage,
         ): ZLinkKotlinSubmissionCall =
             DeferredSubmissionCall { this@kotlin.relay(dispatch, message) }

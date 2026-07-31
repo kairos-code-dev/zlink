@@ -69,7 +69,7 @@ target `NodeRid`를 직접 전달하지 않는다.
 
     ```java
     public CompletionStage<Void> handle(
-        ZLinkSessionContext context, ZLinkSessionMessageContext dispatch, Authenticate request) {
+        ZLinkSessionContext context, ZLinkSessionDispatchContext dispatch, Authenticate request) {
         return actors
             .getOrCreate(request.playerId(), "player")
             .request(new CreatePlayer(request.displayName()))
@@ -93,7 +93,7 @@ target `NodeRid`를 직접 전달하지 않는다.
 
     ```kotlin
     suspend fun handle(
-        context: ZLinkSessionContext, dispatch: ZLinkSessionMessageContext, request: Authenticate) {
+        context: ZLinkSessionContext, dispatch: ZLinkSessionDispatchContext, request: Authenticate) {
         val result = actors
             .getOrCreate(request.playerId, "player")
             .request(CreatePlayer(request.displayName))
@@ -117,7 +117,7 @@ target `NodeRid`를 직접 전달하지 않는다.
 
     ```typescript
     async handle(
-      context: ZLinkSessionContext, dispatch: ZLinkSessionMessageContext, payload: ZLinkMessage) {
+      context: ZLinkSessionContext, dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
       const request = payload.decode<Authenticate>(Object as never);
       const created = await this.actors
         .getOrCreate(request.playerId, 'player')
@@ -237,7 +237,7 @@ bound Actor로 넘긴다.
 
         @Override
         public CompletionStage<Void> onDispatch(
-            ZLinkSessionMessageContext dispatch, ZLinkMessage payload) {
+            ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
             return context.handlers().tryHandle(dispatch, payload).thenCompose(handled -> {
                 if (handled) return CompletableFuture.completedFuture(null);
                 // decode하지 않고 Framework-owned payload를 Actor handler로 넘긴다.
@@ -263,7 +263,7 @@ bound Actor로 넘긴다.
             context.handlers().addHandler(AuthenticateHandler::class.java)
         }
 
-        override suspend fun onDispatch(dispatch: ZLinkSessionMessageContext, payload: ZLinkMessage) {
+        override suspend fun onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
             if (context.handlers().tryHandle(dispatch, payload).await()) return
 
             // decode하지 않고 Framework-owned payload를 Actor handler로 넘긴다.
@@ -286,7 +286,7 @@ bound Actor로 넘긴다.
         this.context.handlers.addHandler(AuthenticateHandler);
       }
 
-      async onDispatch(dispatch: ZLinkSessionMessageContext, payload: ZLinkMessage): Promise<void> {
+      async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
         if (await this.context.handlers.tryHandle(dispatch, payload)) return;
 
         // decode하지 않고 Framework-owned payload를 Actor handler로 넘긴다.

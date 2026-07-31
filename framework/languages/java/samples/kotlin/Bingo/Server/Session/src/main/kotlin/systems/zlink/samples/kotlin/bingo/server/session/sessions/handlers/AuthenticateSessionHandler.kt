@@ -8,7 +8,7 @@ import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.kotlin.kotlin
 import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
 import systems.zlink.framework.streams.ZLinkSessionContext
-import systems.zlink.framework.streams.ZLinkSessionMessageContext
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.shared.contracts.AuthenticatePlayerReq
@@ -27,7 +27,7 @@ class AuthenticateSessionHandler(
 
     override suspend fun handle(
         context: ZLinkSessionContext,
-        dispatch: ZLinkSessionMessageContext,
+        dispatch: ZLinkSessionDispatchContext,
         request: AuthenticateReq,
     ) {
         if (request.accessToken.isBlank()) {

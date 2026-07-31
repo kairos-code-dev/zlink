@@ -35,7 +35,7 @@ interface ZLinkSuspendingTypedSessionPacketHandler<
     fun messageType(): Class<TMessage>
     suspend fun handle(
         context: TSessionContext,
-        dispatch: ZLinkSessionMessageContext,
+        dispatch: ZLinkSessionDispatchContext,
         message: TMessage,
     )
 }
@@ -46,7 +46,7 @@ abstract class ZLinkSuspendingSession : ZLinkSession {
     protected open suspend fun onDisconnectedSuspending()
     protected open suspend fun onErrorSuspending(error: ZLinkStreamError)
     protected open suspend fun onDispatchSuspending(
-        dispatch: ZLinkSessionMessageContext,
+        dispatch: ZLinkSessionDispatchContext,
         payload: ZLinkMessage,
     )
 }
@@ -74,7 +74,7 @@ interface ZLinkKotlinSessionClient {
 interface ZLinkKotlinSessionActor {
     fun relay(message: ZLinkMessage): ZLinkKotlinSubmissionCall
     fun relay(
-        dispatch: ZLinkSessionMessageContext,
+        dispatch: ZLinkSessionDispatchContext,
         message: ZLinkMessage,
     ): ZLinkKotlinSubmissionCall
 }
@@ -90,7 +90,7 @@ interface ZLinkKotlinBoundSession {
 public interface systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler<TSessionContext extends systems.zlink.framework.streams.ZLinkSessionContext, TMessage> {
   public abstract java.lang.String packetName();
   public abstract java.lang.Class<TMessage> messageType();
-  public abstract java.lang.Object handle(TSessionContext, systems.zlink.framework.streams.ZLinkSessionMessageContext, TMessage, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+  public abstract java.lang.Object handle(TSessionContext, systems.zlink.framework.streams.ZLinkSessionDispatchContext, TMessage, kotlin.coroutines.Continuation<? super kotlin.Unit>);
 }
 public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingSession implements systems.zlink.framework.streams.ZLinkSession {
   public systems.zlink.framework.kotlin.ZLinkSuspendingSession();
@@ -98,7 +98,7 @@ public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingSession impl
   public final java.util.concurrent.CompletionStage<java.lang.Void> onConnected();
   public final java.util.concurrent.CompletionStage<java.lang.Void> onDisconnected();
   public final java.util.concurrent.CompletionStage<java.lang.Void> onError(systems.zlink.framework.streams.ZLinkStreamError);
-  public final java.util.concurrent.CompletionStage<java.lang.Void> onDispatch(systems.zlink.framework.streams.ZLinkSessionMessageContext, systems.zlink.framework.messaging.ZLinkMessage);
+  public final java.util.concurrent.CompletionStage<java.lang.Void> onDispatch(systems.zlink.framework.streams.ZLinkSessionDispatchContext, systems.zlink.framework.messaging.ZLinkMessage);
 }
 public final class systems.zlink.framework.kotlin.ZLinkFrameworkExtensionsKt {
   public static final java.lang.Object bindOrGetActor(systems.zlink.framework.streams.ZLinkSessionActors, systems.zlink.framework.actors.ActorRef, kotlin.coroutines.Continuation<? super systems.zlink.framework.streams.ZLinkSessionActor>);
@@ -118,7 +118,7 @@ public interface systems.zlink.framework.kotlin.ZLinkKotlinSessionClient {
 }
 public interface systems.zlink.framework.kotlin.ZLinkKotlinSessionActor {
   public abstract systems.zlink.framework.kotlin.ZLinkKotlinSubmissionCall relay(systems.zlink.framework.messaging.ZLinkMessage);
-  public abstract systems.zlink.framework.kotlin.ZLinkKotlinSubmissionCall relay(systems.zlink.framework.streams.ZLinkSessionMessageContext, systems.zlink.framework.messaging.ZLinkMessage);
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinSubmissionCall relay(systems.zlink.framework.streams.ZLinkSessionDispatchContext, systems.zlink.framework.messaging.ZLinkMessage);
 }
 public interface systems.zlink.framework.kotlin.ZLinkKotlinBoundSession {
   public abstract systems.zlink.framework.kotlin.ZLinkKotlinMessageSendCall send(java.lang.Object);

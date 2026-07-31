@@ -26,7 +26,7 @@ import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionMessageContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkStreamError;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
@@ -554,7 +554,7 @@ public final class TransferComponents {
         }
 
         @Override
-        public CompletionStage<Void> onDispatch(ZLinkSessionMessageContext dispatch, ZLinkMessage payload) {
+        public CompletionStage<Void> onDispatch(ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
             return handlers.tryHandle(context, dispatch, payload).thenCompose(handled -> {
                 if (handled) {
                     return CompletableFuture.completedFuture(null);
@@ -589,7 +589,7 @@ public final class TransferComponents {
         @Override
         public CompletionStage<Void> handle(
             ZLinkSessionContext context,
-            ZLinkSessionMessageContext dispatch,
+            ZLinkSessionDispatchContext dispatch,
             Contracts.BindSessionReq request) {
             return actors.find(request.actorId()).thenCompose(found -> {
                 var actor = found.orElseThrow(

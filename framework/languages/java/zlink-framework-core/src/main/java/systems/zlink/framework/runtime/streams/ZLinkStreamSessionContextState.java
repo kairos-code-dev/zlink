@@ -24,7 +24,7 @@ import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActors;
 import systems.zlink.framework.streams.ZLinkSessionClient;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionMessageContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamCompressionCodec;
 
@@ -184,7 +184,7 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
             + " name=" + header.packetName()
             + " requestSeq=" + header.requestSequence().orElse(null)
             + " correlation=" + header.correlationId().orElse(null));
-        ZLinkSessionMessageContext dispatch = new ZLinkSessionMessageContext(
+        ZLinkSessionDispatchContext dispatch = new ZLinkSessionDispatchContext(
             header.name(),
             header.metadata(),
             header.requestSequence().isPresent());

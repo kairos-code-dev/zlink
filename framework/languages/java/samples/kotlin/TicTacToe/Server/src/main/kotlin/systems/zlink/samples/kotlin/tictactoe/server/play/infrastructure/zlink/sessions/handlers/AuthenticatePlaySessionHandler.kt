@@ -8,7 +8,7 @@ import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.kotlin.kotlin
 import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
 import systems.zlink.framework.streams.ZLinkSessionContext
-import systems.zlink.framework.streams.ZLinkSessionMessageContext
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticatePlayerReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticatePlayerRes
@@ -25,7 +25,7 @@ class AuthenticatePlaySessionHandler(
 
     override suspend fun handle(
         context: ZLinkSessionContext,
-        dispatch: ZLinkSessionMessageContext,
+        dispatch: ZLinkSessionDispatchContext,
         request: AuthenticateReq,
     ) {
         require(request.accessToken.isNotBlank()) { "access token is required" }

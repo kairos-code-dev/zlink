@@ -143,7 +143,7 @@ interface ZLinkKotlinSessionActor {
     fun relay(message: systems.zlink.framework.messaging.ZLinkMessage):
         ZLinkKotlinSubmissionCall
     fun relay(
-        dispatch: systems.zlink.framework.streams.ZLinkSessionMessageContext,
+        dispatch: systems.zlink.framework.streams.ZLinkSessionDispatchContext,
         message: systems.zlink.framework.messaging.ZLinkMessage,
     ): ZLinkKotlinSubmissionCall
 }

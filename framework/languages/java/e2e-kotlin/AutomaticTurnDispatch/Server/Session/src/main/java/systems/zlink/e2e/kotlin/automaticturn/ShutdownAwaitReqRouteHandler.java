@@ -5,7 +5,7 @@ import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionMessageContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 public final class ShutdownAwaitReqRouteHandler
@@ -26,7 +26,7 @@ public final class ShutdownAwaitReqRouteHandler
     @Override
     public CompletionStage<Void> handle(
         ZLinkSessionContext context,
-        ZLinkSessionMessageContext dispatch,
+        ZLinkSessionDispatchContext dispatch,
         Contracts.ShutdownAwaitReq request) {
         var targetSpotRid = SpotMsgRouteHandler.targetSpot(dispatch);
         return spots.resolveSpotHandle(targetSpotRid)

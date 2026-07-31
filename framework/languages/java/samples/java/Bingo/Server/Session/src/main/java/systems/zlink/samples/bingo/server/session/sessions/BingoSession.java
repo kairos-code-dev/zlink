@@ -7,7 +7,7 @@ import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkStreamError;
-import systems.zlink.framework.streams.ZLinkSessionMessageContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 
 public final class BingoSession implements ZLinkSession {
     private final ZLinkSessionContext context;
@@ -44,7 +44,7 @@ public final class BingoSession implements ZLinkSession {
 
     @Override
     public java.util.concurrent.CompletionStage<Void> onDispatch(
-        ZLinkSessionMessageContext dispatch,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
         return handlers.tryHandle(context, dispatch, payload).thenCompose(handled ->
             handled

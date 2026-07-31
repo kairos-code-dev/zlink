@@ -3,6 +3,7 @@ using Zlink.Framework.Contracts.Timers;
 
 namespace TicTacToe.Server.Play.Infrastructure.ZLink.Spots.TicTacToeGameSpot.Handlers;
 
+// --8<-- [start:doc-timer-handler]
 internal sealed class TicTacToeGameTimerHandler : IZLinkSpotTimerHandler<TicTacToeGame>
 {
     public ValueTask HandleAsync(
@@ -14,3 +15,4 @@ internal sealed class TicTacToeGameTimerHandler : IZLinkSpotTimerHandler<TicTacT
         return spot.TickAsync(cancellationToken);
     }
 }
+// --8<-- [end:doc-timer-handler]

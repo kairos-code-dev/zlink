@@ -7,6 +7,6 @@ public interface ZLinkTypedSessionPacketHandler<TSessionContext extends ZLinkSes
 
     CompletionStage<Void> handle(
         TSessionContext context,
-        ZLinkSessionMessageContext dispatch,
+        ZLinkSessionDispatchContext dispatch,
         TMessage message);
 }

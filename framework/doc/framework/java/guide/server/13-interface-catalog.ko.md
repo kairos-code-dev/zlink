@@ -139,7 +139,7 @@ worker 관련 타입은 `ZLinkWorkerCall<T>` · `ZLinkWorkerTask<T>`(동기) ·
 | --- | --- |
 | `ZLinkSession` | 구현한다. `configure` · `onDispatch` · lifecycle callback |
 | `ZLinkSessionContext` | 생성자로 받는다 |
-| `ZLinkSessionMessageContext` | 이 packet의 dispatch 정보 |
+| `ZLinkSessionDispatchContext` | 이 packet의 dispatch 정보 |
 | `ZLinkSessionClient` | reply · send |
 | `ZLinkSessionReplyCall` · `ZLinkSessionSendCall` | 각 호출 |
 | `ZLinkSessionActor` · `ZLinkSessionActors` | session에 bind된 Actor |

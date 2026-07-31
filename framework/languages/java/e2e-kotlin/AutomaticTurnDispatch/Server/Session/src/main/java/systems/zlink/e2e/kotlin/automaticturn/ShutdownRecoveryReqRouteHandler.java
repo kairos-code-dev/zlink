@@ -9,7 +9,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionMessageContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 public final class ShutdownRecoveryReqRouteHandler
@@ -33,7 +33,7 @@ public final class ShutdownRecoveryReqRouteHandler
     @Override
     public CompletionStage<Void> handle(
         ZLinkSessionContext context,
-        ZLinkSessionMessageContext dispatch,
+        ZLinkSessionDispatchContext dispatch,
         Contracts.AwaitShutdownRecoveryReq request) {
         RoutingId targetNode = SpotMsgRouteHandler.targetNode(dispatch);
         RoutingId targetSpot = RoutingId.from(request.spotRid());

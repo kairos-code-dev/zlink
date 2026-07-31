@@ -193,7 +193,7 @@ public interface IZLinkSessionActor
 {
     ActorRef Ref { get; }
     ValueTask RelayAsync(
-        ZLinkSessionMessageContext dispatch,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken = default);
     ValueTask NotifyDisconnectedAsync(

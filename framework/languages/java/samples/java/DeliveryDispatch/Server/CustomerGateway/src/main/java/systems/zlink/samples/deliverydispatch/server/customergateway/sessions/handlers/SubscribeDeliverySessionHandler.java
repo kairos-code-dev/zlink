@@ -4,7 +4,7 @@ import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ZLinkActorCreateResult;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionMessageContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.customergateway.CustomerActorDirectory;
@@ -34,7 +34,7 @@ public final class SubscribeDeliverySessionHandler
     @Override
     public CompletionStage<Void> handle(
         ZLinkSessionContext context,
-        ZLinkSessionMessageContext dispatch,
+        ZLinkSessionDispatchContext dispatch,
         Messages.SubscribeDeliveryReq request) {
         Messages.FindCustomerActorReq find = new Messages.FindCustomerActorReq(CustomerId);
         return actors.find(find.customerId())

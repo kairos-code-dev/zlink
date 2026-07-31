@@ -39,7 +39,7 @@ import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.framework.streams.ZLinkSessionContext
-import systems.zlink.framework.streams.ZLinkSessionMessageContext
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext
 import systems.zlink.framework.streams.ZLinkSessionActor
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
 import systems.zlink.samples.kotlin.gamequest.server.configuration.RedisSampleStore
@@ -183,7 +183,7 @@ class GameQuestSession(
         playerId?.let(store::unbind)
     }
 
-    override suspend fun onDispatchSuspending(dispatch: ZLinkSessionMessageContext, payload: ZLinkMessage) {
+    override suspend fun onDispatchSuspending(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
         when (dispatch.packetName()) {
             "JoinSessionReq" -> handleJoin(payload.decode(JoinSessionReq::class.java))
             "GetQuestProgressReq" -> handleGetProgress(payload.decode(GetQuestProgressReq::class.java))

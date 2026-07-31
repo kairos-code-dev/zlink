@@ -1518,6 +1518,27 @@ internal sealed partial class ZLinkFrameworkRuntime
                 "source node identity",
                 error);
         }
+        //  One compound guard covers a dozen axes; print them so a mismatch
+        //  names the axis instead of the whole condition.
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"recovery_identity handoff_matches={handoffMatches} "
+            + $"key={participant.AuthorityKey == actorKey} "
+            + $"kind={participant.ObjectKind} "
+            + $"obj_gen={participant.ObjectGeneration}/{wire.ActorGeneration} "
+            + $"auth_gen={participant.AuthorityOwnerGeneration}/{wire.ActorAuthorityOwnerGeneration} "
+            + $"canon_key={canonical.AuthorityKey == participant.AuthorityKey} "
+            + $"canon_obj_gen={canonical.ObjectGeneration}/{participant.ObjectGeneration} "
+            + $"canon_auth_gen={canonical.AuthorityOwnerGeneration}/{participant.AuthorityOwnerGeneration} "
+            + $"stable_type={canonical.StableType}/{wire.ActorType} "
+            + $"reloc_ref={wire.RelocationReference} crc={wire.RelocationChecksumCrc32c} "
+            + $"agg_id={wire.RelocationAggregateId == candidate.Envelope.AggregateId} "
+            + $"agg_gen={wire.RelocationAggregateGeneration}/{candidate.Envelope.AggregateGeneration} "
+            + $"digest_len={wire.RelocationInventoryDigest.Length} "
+            + $"digest_zero={!wire.RelocationInventoryDigest.Any(static v => v != 0)} "
+            + $"src_rid={sourceNodeRid == sourceFence.NodeRid} "
+            + $"env_ref_id={candidate.Envelope.AggregateId == candidate.Reference.AggregateId} "
+            + $"env_ref_gen={candidate.Envelope.AggregateGeneration == candidate.Reference.AggregateGeneration} "
+            + $"env_ref_digest={candidate.Envelope.InventoryDigest.Span.SequenceEqual(candidate.Reference.InventoryDigest.Span)}");
         if (participant.AuthorityKey != actorKey
             || participant.ObjectKind != ZLinkPlacementObjectKind.Actor
             || participant.ObjectGeneration != wire.ActorGeneration

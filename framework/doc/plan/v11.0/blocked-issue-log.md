@@ -2814,3 +2814,32 @@ return, seal의 정상 경로, deferred join, 그리고 이번 recovery다. **re
 정식 오류 보고가 필요하다.
 
 두 번째는 첫 번째와 무관하게 그 자체로 고칠 값어치가 있다.
+
+### 어긋나는 축을 특정했다 — envelope과 reference의 InventoryDigest
+
+identity 검증의 큰 복합 조건을 축별로 찍었다. 열세 축 중 열둘이 일치한다.
+
+```
+handoff_matches=True  key=True  kind=Actor  obj_gen=1/1  auth_gen=7/7
+canon_key=True  canon_obj_gen=1/1  canon_auth_gen=6/6
+stable_type=transfer-stateful/transfer-stateful
+reloc_ref=pending  crc=0  agg_id=True  agg_gen=1/1
+digest_len=32  digest_zero=True  src_rid=True
+env_ref_id=True  env_ref_gen=True
+env_ref_digest=False          ← 유일하게 어긋나는 축
+```
+
+즉 마지막 조건 하나만 실패한다.
+
+```csharp
+|| !candidate.Envelope.InventoryDigest.Span.SequenceEqual(
+       candidate.Reference.InventoryDigest.Span)
+```
+
+**relocation envelope과 그 reference가 InventoryDigest에서 불일치한다.** aggregate id와
+generation은 같은데 digest만 다르다. 같은 aggregate를 가리키는 두 기록이 inventory에 대해
+서로 다른 값을 들고 있다는 뜻이므로, 둘 중 하나가 갱신되지 않았거나 서로 다른 시점의
+inventory로 계산됐을 가능성이 있다.
+
+ST-B2의 결함이 이 한 축으로 좁혀졌다. 다음은 envelope과 reference의 digest가 각각 언제
+어떤 inventory로 계산되는지 확인해 어느 쪽이 낡았는지 정하는 것이다.

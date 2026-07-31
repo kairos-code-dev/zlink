@@ -8,7 +8,10 @@ namespace SpotService.Client.Scenarios;
 
 internal static class SmB2RemoteActorJoinScenario
 {
-    public static async Task RunAsync(ZLinkHttpClient playB, string sessionAStreamEndpoint)
+    public static async Task RunAsync(
+        ZLinkHttpClient playB,
+        ZLinkHttpClient sessionA,
+        string sessionAStreamEndpoint)
     {
         var actorId = $"actor-sm-b2-remote-{Guid.NewGuid():N}";
         await using var client = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
@@ -32,17 +35,23 @@ internal static class SmB2RemoteActorJoinScenario
         ZlinkStreamAssert.Ensure(
             reply.NodeRid.StartsWith("play-b-", StringComparison.Ordinal),
             "SM-B2 remote node mismatch.");
-        var expectedEvidence = new[]
-        {
-            $"entry-created|rid=play-b|actor={actorId}",
-            $"entry-joined|rid=play-b|actor={actorId}"
-        };
-        var evidence = (await playB.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq(expectedEvidence))
+        // Same split as SM-B1: the play host stamps its harness role name and
+        // the session host stamps the Actor's mesh routing id.
+        var created = $"entry-created|rid=play-b|actor={actorId}";
+        var createdEvidence = (await playB.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq(new[] { created }))
             .Async<string[]>()).Body;
         ZlinkStreamAssert.Ensure(
-            expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
-            "SM-B2 remote lifecycle evidence mismatch.");
+            createdEvidence.Any(line => line.Contains(created, StringComparison.Ordinal)),
+            "SM-B2 entry-created evidence mismatch.");
+
+        var joined = $"entry-joined|rid={reply.NodeRid}|actor={actorId}";
+        var joinedEvidence = (await sessionA.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq(new[] { joined }))
+            .Async<string[]>()).Body;
+        ZlinkStreamAssert.Ensure(
+            joinedEvidence.Any(line => line.Contains(joined, StringComparison.Ordinal)),
+            "SM-B2 entry-joined evidence mismatch.");
         Console.WriteLine("operation SpotService.sm-b2 passed");
     }
 }

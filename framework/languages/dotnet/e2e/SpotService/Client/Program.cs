@@ -38,7 +38,7 @@ await (options.OperationGroup switch
     "sm-a11" => SmA11ReservedEntrySpotIdScenario.RunAsync(playA),
     "sm-b1" => SmB1LocalActorJoinScenario.RunAsync(playA, sessionA, options.SessionAStreamEndpoint),
     "sm-b0" => SmB0ActorManagerLifecycleScenario.RunAsync(gateway, playA, playB),
-    "sm-b2" => SmB2RemoteActorJoinScenario.RunAsync(playB, options.SessionAStreamEndpoint),
+    "sm-b2" => SmB2RemoteActorJoinScenario.RunAsync(playB, sessionA, options.SessionAStreamEndpoint),
     "sm-b3" => SmB3RequestMessageFidelityScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-b4" => SmB4RemoteActorRequestReplyScenario.RunAsync(playB, options.SessionAStreamEndpoint),
     "sm-b5" => SmB5MissingActorPacketScenario.RunAsync(playA, options.SessionAStreamEndpoint),
@@ -179,7 +179,7 @@ static async Task RunB1B2B3B5Async(
         await SmB1LocalActorJoinScenario.RunAsync(playA, sessionA, sessionAStreamEndpoint);
 
         await SetPlacementWeightsAsync(playA, playB, playAWeight: 0, playBWeight: 100);
-        await SmB2RemoteActorJoinScenario.RunAsync(playB, sessionAStreamEndpoint);
+        await SmB2RemoteActorJoinScenario.RunAsync(playB, sessionA, sessionAStreamEndpoint);
 
         await SetPlacementWeightsAsync(playA, playB, playAWeight: 100, playBWeight: 0);
         await SmB3RequestMessageFidelityScenario.RunAsync(playA, sessionAStreamEndpoint);

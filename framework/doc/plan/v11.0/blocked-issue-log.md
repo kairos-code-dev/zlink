@@ -6168,3 +6168,33 @@ RL-A1  : NotFound assertion 통과 (이후 다른 assertion에서 멈춤)
 StoreFailure : 2개 -> 4개
 contract 72/72, unit 1376/1376
 ```
+
+### SubmitAdmission 원인 확정: 독립적인 두 가지가 겹쳐 있었다
+
+동작하는 pair(RegistrationCodec)와 같은 빌드로 나란히 측정해 확정했다. Listener가 frame을
+받는지를 기준으로 조합을 갈랐다.
+
+| 구성 | target 수신 |
+|---|---|
+| gate + SNDHWM 1 (원래) | 0 |
+| gate 우회 + SNDHWM 1 | 0 |
+| gate + HWM 1000 | 0 |
+| **gate 우회 + HWM 1000** | **4** |
+
+즉 원인이 둘이고 **각각 단독으로 handshake를 막는다.**
+
+첫째, caller router socket의 `SendHighWaterMark = 1`이다. 연결 pipe가 준비되기 전의
+`Hello`가 조용히 버려지고 재시도도 같은 제한에 걸린다. LocationMessaging의
+`backpressure-consumer`(HWM 4)에서 확인한 것과 같은 계열이다.
+
+둘째, `ReceiverGate` proxy다. HWM을 올려도 gate를 통과하면 frame이 target에 도달하지
+않는다. 이 gate는 e2e harness의 TCP proxy이며 backlog 1과 4096 byte socket buffer로
+의도적으로 좁게 구성되어 있다.
+
+앞선 조사에서 "gate를 우회해도 동일"이라고 배제했던 것은 **그때 HWM이 1이었기 때문**이다.
+두 원인이 겹쳐 있어 하나씩 제거해서는 아무 변화가 없었고, 둘을 함께 제거해야 드러났다.
+단독 배제만으로 후보를 지우면 이런 조합을 놓친다.
+
+남은 판단은 두 가지다. Suite가 backpressure를 시험하려고 고른 값(HWM 1, 좁은 gate)이
+handshake까지 막는 것이 옳은지, 아니면 handshake·liveness frame이 application HWM과 gate의
+영향을 받지 않아야 하는지다. 후자라면 LocationMessaging의 같은 계열 항목도 함께 풀린다.

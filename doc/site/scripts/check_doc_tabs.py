@@ -56,6 +56,7 @@ SNIPPET_RE = re.compile(r'--8<--\s*"([^"]+)"')
 SITE_DIR = Path(__file__).resolve().parents[1]          # doc/site
 REPO_ROOT = SITE_DIR.parents[1]                         # repo root
 FRAMEWORK_SITE_DIR = REPO_ROOT / "framework" / "doc" / "site"
+FRAMEWORK_DOC_DIR = REPO_ROOT / "framework" / "doc" / "framework"
 
 
 class DocSet:
@@ -82,16 +83,11 @@ DOC_SETS = {
         CANONICAL,
         [SITE_DIR, REPO_ROOT],
     ),
+    # framework 사이트는 정본 트리를 그대로 docs root로 쓴다. 사본이 없으므로
+    # 검사 대상도 정본 트리 하나다.
     "framework": DocSet(
         "framework",
-        FRAMEWORK_SITE_DIR / "docs",
-        FRAMEWORK_CANONICAL,
-        [FRAMEWORK_SITE_DIR, REPO_ROOT],
-    ),
-    # 사이트가 아니라 공통 정본을 직접 본다. 사이트 배치와 무관하게 원본이 규약을 지켜야 한다.
-    "framework-guide": DocSet(
-        "framework-guide",
-        REPO_ROOT / "framework" / "doc" / "framework" / "common" / "guide",
+        FRAMEWORK_DOC_DIR,
         FRAMEWORK_CANONICAL,
         [FRAMEWORK_SITE_DIR, REPO_ROOT],
     ),

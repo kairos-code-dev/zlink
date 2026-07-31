@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - 'doc/site/**'
+      - 'framework/doc/site/**'
+      - 'framework/doc/framework/**'
   workflow_dispatch:
 
 permissions:
@@ -30,7 +32,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install -r doc/site/requirements.txt
+        run: pip install -r doc/site/requirements.txt -r framework/doc/site/requirements.txt
 
       - name: Check language tabs and snippets
         run: python3 doc/site/scripts/check_doc_tabs.py
@@ -38,7 +40,14 @@ jobs:
       - name: Check framework document contracts
         run: bash scripts/verify-framework-doc-contracts.sh
 
-      - name: Build documentation
+      # framework 사이트는 아직 배포 대상이 아니다. 도메인 분리 방식이 정해질 때까지
+      # 빌드만 돌려 정본 트리가 깨지지 않는지 확인한다.
+      # 배포 안은 framework/doc/plan/language-guide-port-runbook.ko.md §7.3이 소유한다.
+      - name: Build framework documentation
+        working-directory: framework/doc/site
+        run: mkdocs build
+
+      - name: Build core documentation
         working-directory: doc/site
         run: mkdocs build
 

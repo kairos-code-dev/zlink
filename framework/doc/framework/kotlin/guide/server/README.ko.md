@@ -5,8 +5,8 @@ Kotlin/Spring Boot 환경에서 ZLink Framework를 쓰는 순서다. 03~17장은
 
 | 순서 | 문서 | 내용 |
 |----|------|------|
-| 1 | `01. Overview` 장 — 준비 중 | 무엇을·왜 쓰는지, 기존 방식 대비 체감 난이도 |
-| 2 | `02. Getting Started` 장 — 준비 중 | 설치, 최소 예제, 첫 요청 흐름 |
+| 1 | [1. 개요](01-overview.ko.md) | Kotlin 레이어가 얹는 것, 산출물, 등록 진입점 |
+| 2 | [2. 시작하기](02-getting-started.ko.md) | 의존성, 등록, suspend handler, 두 가지 호출 방법 |
 | 3 | [3. 핵심 개념](../../../common/guide/server/03-concepts.ko.md) | channel · Spot · Actor · session · relocation |
 | 4 | [4. Backpressure](../../../common/guide/server/04-backpressure.ko.md) | 처리보다 도착이 빠를 때의 동작과 영향을 주는 옵션 |
 | 5 | [5. Channel Messaging](../../../common/guide/server/05-channel-messaging.ko.md) | request / send / pub-sub 등록과 호출 |
@@ -20,13 +20,21 @@ Kotlin/Spring Boot 환경에서 ZLink Framework를 쓰는 순서다. 03~17장은
 | 13 | `13. Interface 카탈로그` 장 — 준비 중 | 계약 인터페이스 색인 |
 | 14 | [14. 샘플 고르기](../../../common/guide/server/14-samples.ko.md) | 어떤 샘플을 먼저 볼지 고르고 실행하는 방법 |
 | 15 | [15. E2E 테스트](../../../common/guide/server/15-e2e-testing.ko.md) | client로 시스템 전체를 검증하는 방법 |
-| 16 | `16. Options` 장 — 준비 중 | 옵션 목록, 기본값과 변경 시점 |
+| 16 | [Java 16. Options](../../../java/guide/server/16-options.ko.md) | 옵션 표면이 Java와 같다 |
 | 17 | [17. ZLink를 어디에 쓰나](../../../common/guide/server/17-alternative.ko.md) | 사용처, 문제 신호, 기술 선택 경계 |
 
 파일 번호는 언어에 상관없이 같은 장을 가리키는 식별자다. 읽는 순서는 이 표가 정한다.
 
-01 · 02 · 11 · 13 · 16장은 설치 방법과 표면 이름이 언어마다 달라 Kotlin 전용으로
-따로 쓴다. 아직 작성하지 않았다.
+**Kotlin은 Java 런타임을 그대로 쓴다.** `zlink-framework-kotlin`은 별도 구현이 아니라
+coroutine idiom을 얹는 얇은 레이어다. 그래서 이 가이드는 **Java와 다른 지점만** 쓰고
+나머지는 [Java 가이드](../../../java/guide/server/README.ko.md)를 가리킨다.
+
+- **01 · 02** — 의존성과 등록 코드 모양이 달라 Kotlin 전용으로 쓴다.
+- **11 · 13 · 16** — 표면은 Java와 같고 idiom만 다르다. 차이만 쓰고 나머지는 Java 장을
+  가리킨다.
+
+같은 내용을 두 벌로 두지 않는 것이 목적이다. Java 문서가 바뀌면 Kotlin 독자도 같은
+문서를 본다.
 
 ## 관련 문서
 

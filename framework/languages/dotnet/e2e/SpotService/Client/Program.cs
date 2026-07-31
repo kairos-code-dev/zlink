@@ -42,7 +42,7 @@ await (options.OperationGroup switch
     "sm-b3" => SmB3RequestMessageFidelityScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-b4" => SmB4RemoteActorRequestReplyScenario.RunAsync(playB, options.SessionAStreamEndpoint),
     "sm-b5" => SmB5MissingActorPacketScenario.RunAsync(playA, options.SessionAStreamEndpoint),
-    "sm-b6" => SmB6ActorDisconnectCallbackScenario.RunAsync(playA, sessionA, options.SessionAStreamEndpoint),
+    "sm-b6" => SmB6ActorDisconnectCallbackScenario.RunAsync(playA, playB, sessionA, options.SessionAStreamEndpoint),
     "sm-b7" => SmB7ActorLifecycleOrderScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-b8" => SmB8ExplicitActorDestroyScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-b9" => SmB9ActorJoinAdmissionScenario.RunAsync(playA, playB, options.SessionAStreamEndpoint),

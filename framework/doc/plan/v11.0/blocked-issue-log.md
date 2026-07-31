@@ -5628,3 +5628,36 @@ spec 20 §360이 이 경우를 다룬다.
 
 `10-monitoring-errors.ko.md`가 kind 선택 기준을 소유하므로 그 문서나 spec 20에
 session-not-bound의 public kind를 명시해야 갈린다. 그 전에는 어느 쪽도 고치지 않는다.
+
+### SM-B1: placement 가정 함정이 다섯 번째 스위트에서도 나온다
+
+SpotService는 SM-B1에서 멈춘다.
+
+```
+InvalidOperationException: SM-B1 local node mismatch.
+```
+
+시나리오는 session-a의 stream endpoint로 붙어 actor를 만든 뒤 `ping.NodeRid`가
+`play-a-`로 시작하기를 요구하고, 이어서 play-a의 evidence에서
+`entry-created|rid=play-a`와 `entry-joined|rid=play-a`를 기다린다.
+
+실제로는 actor가 play-b에 놓인다.
+
+```
+play-b.evidence.log : actor-ping|rid=play-b-ad3d8227-9b23-469a-97c7-302d9062e9d3
+play-a.evidence.log : (없음)
+```
+
+Play host는 `SetRoutingIdPrefix(options.Rid)`를 쓰므로 RID 형식은 맞다. 어긋난 것은
+node다. 시나리오가 placement 결과를 play-a로 가정한다.
+
+이것으로 같은 함정이 다섯 스위트에서 확인됐다. ObservabilityOps 다섯 곳, SpotActorTransfer
+관련 배치, ChannelEgressRouting, 그리고 SpotService다. 공통 형태는 하나다. **Placement가
+여러 node 중 하나를 고르는데 시나리오가 특정 node를 이름으로 가정한다.** 통과하던 시점에도
+운에 의존하고 있었을 가능성이 높다.
+
+SM-B1은 `LocalActorJoin`이라는 이름이 무엇을 "local"이라고 부르는지에 따라 고치는 방향이
+갈린다. Session이 붙은 node를 뜻한다면 assertion이 그 node를 따라가야 하고, play-a에
+놓이는 것이 시나리오의 전제라면 placement를 고정해야 한다. ObservabilityOps의
+`CreateRoomOnObservedNodeAsync`에 해당하는 helper가 이 스위트에는 없다. 의도를 확인해야
+어느 쪽인지 정할 수 있다.

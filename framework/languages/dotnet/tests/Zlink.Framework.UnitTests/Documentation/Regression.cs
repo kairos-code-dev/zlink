@@ -29,7 +29,6 @@ public sealed class RegressionTests
     /// </summary>
     private static readonly string[] LanguageGuideDocuments =
     [
-        "01-overview.ko.md",
         "02-getting-started.ko.md",
         "11-monitoring.ko.md",
         "13-interface-catalog.ko.md",
@@ -42,6 +41,9 @@ public sealed class RegressionTests
     /// </summary>
     private static readonly string[] CommonGuideDocuments =
     [
+        //  01은 산출물과 등록 진입점만 언어별이고 나머지는 같다. 그 둘을 탭으로 두고
+        //  공통 소스에서 생성한다.
+        "01-overview.ko.md",
         "03-concepts.ko.md",
         "04-backpressure.ko.md",
         "05-channel-messaging.ko.md",
@@ -169,9 +171,44 @@ public sealed class RegressionTests
             // 앞뒤 장은 언어별 진입점과 사이트 nav가 정한다.
             Assert.DoesNotContain("framework-adapter-nav", text, StringComparison.Ordinal);
             // 링크 대상이 한 언어의 문서를 가리키면 다른 언어의 독자에게 잘못된 계약을
-            // 안내하게 된다. 탭 안 코드가 언어별 경로를 담는 것은 정상이므로 링크만 본다.
-            Assert.DoesNotMatch(@"\]\([^)]*languages/(dotnet|cpp|java|kotlin|node)/", text);
+            // 안내하게 된다. 탭 안은 이미 언어가 정해진 자리라 언어별 경로가 정상이므로
+            // 탭 밖 산문만 본다.
+            Assert.DoesNotMatch(
+                @"\]\([^)]*languages/(dotnet|cpp|java|kotlin|node)/",
+                OutsideLanguageTabs(text));
         }
+    }
+
+    /// <summary>
+    /// 탭 블록(`=== "라벨"` 아래 들여쓴 줄)을 걷어낸 산문만 남긴다. 탭 안은 이미
+    /// 언어가 정해진 자리라 언어별 이름과 경로가 정상이다.
+    /// </summary>
+    private static string OutsideLanguageTabs(string text)
+    {
+        var kept = new List<string>();
+        var insideTab = false;
+        foreach (var line in text.Split('\n'))
+        {
+            if (line.StartsWith("=== \"", StringComparison.Ordinal))
+            {
+                insideTab = true;
+                continue;
+            }
+
+            if (insideTab)
+            {
+                if (line.Trim().Length == 0 || line.StartsWith("    ", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                insideTab = false;
+            }
+
+            kept.Add(line);
+        }
+
+        return string.Join('\n', kept);
     }
 
     /// <summary>

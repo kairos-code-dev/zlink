@@ -111,6 +111,23 @@ def anchors_of(path: Path) -> set[str]:
     return found
 
 
+#  공통 가이드는 소스다. 링크는 생성된 자리(`<lang>/guide/server/`) 기준으로 성립하도록
+#  쓰므로, 그 디렉터리에만 있는 형제 장(`02-getting-started.ko.md`·`README.ko.md`)은
+#  소스 위치에서 풀리지 않는다. 생성 자리에서 한 번 더 확인한다.
+COMMON_GUIDE = (REPO_ROOT / "framework" / "doc" / "framework"
+                / "common" / "guide" / "server")
+GENERATED_INTO = [
+    REPO_ROOT / "framework" / "doc" / "framework" / lang / "guide" / "server"
+    for lang in ("dotnet", "cpp", "java", "kotlin", "node")
+]
+
+
+def resolves_after_generation(md: Path, link: str) -> bool:
+    if md.parent != COMMON_GUIDE or "/" in link:
+        return False
+    return any((d / link).exists() for d in GENERATED_INTO)
+
+
 def check_tree(name: str, root: Path, errors: list[str]) -> tuple[int, int]:
     """문서 트리 하나를 검사하고 (문서 수, 링크 수)를 돌려준다."""
     md_files = sorted(root.rglob("*.md"))
@@ -126,6 +143,8 @@ def check_tree(name: str, root: Path, errors: list[str]) -> tuple[int, int]:
             path, _, anchor = target.partition("#")
             resolved = md if not path else (md.parent / path).resolve()
             if not resolved.exists():
+                if resolves_after_generation(md, path):
+                    continue
                 errors.append(f"[{name}] {rel_md}:{ln}: 링크 대상 없음: {target}")
                 continue
             if anchor and resolved.suffix == ".md" \

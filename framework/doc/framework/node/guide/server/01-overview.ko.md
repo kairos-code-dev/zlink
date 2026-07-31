@@ -1,12 +1,26 @@
+---
+title: "1. 개요 · Node/TypeScript"
+---
+
+<!-- generated:start -->
+<!-- 이 파일은 `common/guide/server/01-overview.ko.md`에서 생성한다. 직접 고치지 않는다.
+     고칠 곳은 공통 소스이고, `python3 doc/site/scripts/generate_language_guides.py`로 다시 만든다. -->
+<!-- generated:end -->
+
 <!-- framework-adapter-nav:start -->
-[가이드 홈](../../../index.ko.md) | [다음: 2. 시작하기](02-getting-started.ko.md)
+[가이드 홈](README.ko.md) | [다음: 2. 시작하기](02-getting-started.ko.md)
 <!-- framework-adapter-nav:end -->
+
+<!-- language-switch:start -->
+다른 언어로 보기 — [C#/.NET](../../../dotnet/guide/server/01-overview.ko.md) · [C++](../../../cpp/guide/server/01-overview.ko.md) · [Java](../../../java/guide/server/01-overview.ko.md) · [Kotlin](../../../kotlin/guide/server/01-overview.ko.md) · **Node/TypeScript**
+<!-- language-switch:end -->
 
 # 1. 개요
 
-> 이 문서는 Node.js 가이드의 진입점이다. 언어 중립 정의는
-> [공통 스펙 목차](../../../common/README.ko.md)가, Node 표면의 정확한 계약은
-> [Node.js exact interface 목차](../../../common/spec/server/languages/node/interfaces/README.ko.md)가 소유한다.
+> **이 장의 계약 소유 문서** — [Framework 개요](../../../common/spec/02-overview.ko.md)가
+> 무엇을 제공하는지를, [언어별 공개 계약 목차](../../../common/spec/server/languages/README.ko.md)가
+> 각 언어 표면의 정확한 계약을 소유한다. 이 문서는 그 가운데 **어디서 시작하는지**를
+> 정리한다.
 
 ## 1. 무엇을 만드는가
 
@@ -29,6 +43,9 @@ Node에서는 **NestJS 애플리케이션 안에 얹는다.** 별도 프로세�
 HTTP는 대체하지 않는다. 외부 진입은 Nest controller가 그대로 맡고, ZLink는 그 뒤의
 서버 간 통신과 상태 처리를 맡는다.
 
+**어떤 상황에서 후보가 되는지**와 gRPC · Orleans · Akka와의 비교는
+[17. ZLink를 어디에 쓰나](17-alternative.ko.md)가 다룬다.
+
 ## 3. 산출물
 
 | 패키지 | 언제 넣나 |
@@ -43,6 +60,8 @@ HTTP는 대체하지 않는다. 외부 진입은 Nest controller가 그대로 �
 
 **계약 타입은 `@zlink-systems/framework`에서, 등록과 데코레이터는
 `@zlink-systems/nestjs`에서 온다.** import 출처가 둘로 나뉘는 것이 Node의 특징이다.
+
+설치 절차와 최소 예제는 [2. 시작하기](02-getting-started.ko.md)가 다룬다.
 
 ## 4. 등록 진입점
 
@@ -99,9 +118,8 @@ export class GetProfileHandler
 
 ## 5. 읽는 순서
 
-이 가이드의 03~17장은 **다섯 언어가 같은 정본에서 생성된다.** 예제는
-`Node/TypeScript` 코드만 담기며 다른 언어 코드가 섞이지 않는다. 순서는
-[Node.js 가이드 진입점](README.ko.md)이 제시한다.
+이 가이드의 03~17장은 **다섯 언어가 같은 정본에서 생성된다.** 예제는 이 언어의 코드만
+담기며 다른 언어 코드가 섞이지 않는다. 읽는 순서는 이 언어의 가이드 진입점이 제시한다.
 
 먼저 [3. 핵심 개념](03-concepts.ko.md)에서 channel · Spot · Actor · stream ·
 relocation 다섯 개념을 잡는다. 나머지 장은 그 조합이다.
@@ -115,12 +133,13 @@ relocation 다섯 개념을 잡는다. 나머지 장은 그 조합이다.
 | 서비스가 어디 있는지 관리하기 번거롭다 | [5. Channel Messaging](05-channel-messaging.ko.md) |
 | 방·세션 상태에 락이 얽힌다 | [6. Spot](06-spot.ko.md) |
 | client 실시간 연결을 직접 관리한다 | [9. STREAM](09-stream.ko.md) |
-| 배포할 때 세션이 끊긴다 | [10. Location](10-location.ko.md) |
+| 배포할 때 세션이 끊긴다 | [10. Location](10-location.ko.md) · [7. Actor와 Spot](07-actor-spot.ko.md) |
 | 부하가 몰릴 때 동작을 모르겠다 | [4. Backpressure](04-backpressure.ko.md) |
 
 ## 7. 관련 문서
 
 - 읽는 순서: [Node.js 가이드 진입점](README.ko.md)
-- 언어 중립 정의: [공통 스펙 목차](../../../common/README.ko.md)
 - Node 공개 계약: [exact interface 목차](../../../common/spec/server/languages/node/interfaces/README.ko.md)
+
+- 언어 중립 정의: [공통 스펙 목차](../../../common/README.ko.md)
 - 다음 장: [2. 시작하기](02-getting-started.ko.md)

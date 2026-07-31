@@ -49,8 +49,6 @@ public sealed class RuntimeMetricsTests
             ["zlink.relocation.started"] = (typeof(Counter<>), "{relocation}"),
             ["zlink.relocation.completed"] = (typeof(Counter<>), "{relocation}"),
             ["zlink.relocation.duration"] = (typeof(Histogram<>), "s"),
-            ["zlink.relocation.recovered"] = (typeof(Counter<>), "{relocation}"),
-            ["zlink.relocation.journal.messages"] = (typeof(Histogram<>), "{message}"),
             ["zlink.relocation.bytes"] = (typeof(Histogram<>), "By"),
             ["zlink.relocation.interruption"] =
                 (typeof(Histogram<>), "s"),
@@ -374,16 +372,9 @@ public sealed class RuntimeMetricsTests
     public void Relocation_Metric_Uses_Only_The_Closed_Terminal_Outcomes()
     {
         var terminal = new List<IReadOnlyDictionary<string, string>>();
-        var recovered = new List<IReadOnlyDictionary<string, string>>();
         using var listener = Listen<long>(
-            ["zlink.relocation.completed", "zlink.relocation.recovered"],
-            (instrument, _, tags) =>
-            {
-                if (instrument.Name == "zlink.relocation.completed")
-                    terminal.Add(Tags(tags));
-                else
-                    recovered.Add(Tags(tags));
-            });
+            ["zlink.relocation.completed"],
+            (_, _, tags) => terminal.Add(Tags(tags)));
 
         var outcomes = new[]
         {
@@ -400,14 +391,11 @@ public sealed class RuntimeMetricsTests
                     ZLinkRelocationMetricPolicy.Recreate)
                 .Complete(outcome);
 
+        //  `recovered` stays an allowed outcome value even though the derived
+        //  counter was removed from the spec.
         Assert.Equal(
             ["completed", "aborted", "recovered", "failed", "shutdown"],
             terminal.Select(static sample => sample["outcome"]));
-        var recoveryTags = Assert.Single(recovered);
-        Assert.Equal("mesh", recoveryTags["mesh_name"]);
-        Assert.Equal("user_spot", recoveryTags["object_kind"]);
-        Assert.DoesNotContain("policy", recoveryTags);
-        Assert.DoesNotContain("outcome", recoveryTags);
     }
 
     [Fact]
@@ -437,28 +425,19 @@ public sealed class RuntimeMetricsTests
     }
 
     [Fact]
-    public void Relocation_Journal_And_Bytes_Use_Their_Exact_Label_Sets()
+    public void Relocation_Bytes_Uses_Its_Exact_Label_Set()
     {
         var samples = new List<(string Name, long Value, IReadOnlyDictionary<string, string> Tags)>();
         using var listener = Listen<long>(
-            ["zlink.relocation.journal.messages", "zlink.relocation.bytes"],
+            ["zlink.relocation.bytes"],
             (instrument, value, tags) => samples.Add((instrument.Name, value, Tags(tags))));
 
         var operation = ZLinkRuntimeMetrics.StartRelocation(
             "mesh",
             ZLinkRelocationMetricObjectKind.InstanceSpot,
             ZLinkRelocationMetricPolicy.Snapshot);
-        operation.RecordJournalMessages(7);
         operation.RecordBytes(4096);
         operation.Complete(ZLinkRelocationMetricOutcome.Completed);
-
-        var journal = Assert.Single(
-            samples,
-            sample => sample.Name == "zlink.relocation.journal.messages");
-        Assert.Equal(7, journal.Value);
-        Assert.Equal("mesh", journal.Tags["mesh_name"]);
-        Assert.Equal("instance_spot", journal.Tags["object_kind"]);
-        Assert.DoesNotContain("policy", journal.Tags);
 
         var bytes = Assert.Single(
             samples,

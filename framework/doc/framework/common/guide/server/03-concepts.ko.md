@@ -344,7 +344,53 @@ store 없이 endpoint를 등록에 직접 지정하는 수동 연결도 지원�
 > 각 개념이 어떤 문제를 푸는지는 위에서 봤고, **함께 놓이면 어떤 모양인지**는
 > 이 샘플이 보여 준다.
 
-## 7. 관련 문서
+## 7. 무엇을 하려면 어디서 시작하나
+
+개념을 잡았으면 다음 질문은 "그래서 어느 표면을 잡느냐"다. 시작 지점은 **여덟 갈래**이고,
+전부 DI나 현재 handler context에서 얻는다. **application이 transport socket이나 endpoint를
+직접 고르지 않는다.**
+
+| 하려는 일 | 시작 표면 | 지정하는 대상 |
+| --- | --- | --- |
+| node를 직접 지정하거나 channel 이름으로 보내기 | route client | node 직접은 MeshName과 대상 RID, channel은 ChannelName |
+| Spot에 보내기 | spot client | 전역 Spot ID |
+| Actor에 보내기 | actor client | 전역 Actor ID |
+| User Spot 만들거나 찾기 | spot manager | Spot type과 필요하면 전역 Spot ID |
+| Actor 만들거나 찾기 | actor manager | 전역 Actor ID와 Actor type |
+| Logical Multicast 발행 | spot publisher client | ChannelName과 topic |
+| classic pub/sub 발행 | fanout client | fanout ChannelName과 필요하면 topic |
+| STREAM client에 보내거나 응답 | session client | 현재 session |
+
+정확한 타입 이름은 언어를 따른다 — `13. Interface 카탈로그` 장이 소유한다.
+
+**완료의 뜻은 두 갈래로 통일되어 있다.** send 계열은 **보낼 자리가 수락**하면 반환값 없이
+끝나고, request 계열은 **reply · timeout · route 오류** 중 하나로 끝난다. 어느 표면을
+쓰든 같다([04-backpressure §3](04-backpressure.ko.md#3-api에-드러나는-backpressure)).
+
+## 8. Framework가 맡는 것과 맡지 않는 것
+
+**아래는 전부 framework가 안에서 처리한다.** application 코드에 나타나지 않는다.
+
+| 맡는 것 |
+| --- |
+| transport 주소 선택과 peer 재연결 |
+| multipart framing과 packet codec |
+| reply correlation |
+| backpressure queue |
+
+**반대로 이것들은 이 framework의 계약 범위가 아니다.** 외부 edge에서 처리한다.
+
+| 맡지 않는 것 |
+| --- |
+| 외부 client 인증과 quota |
+| WAF |
+| 공개 API 버전 관리 |
+| 과금 |
+
+서버 사이 통신과 실시간 상태 서버가 이 framework의 자리다. 인터넷에 직접 노출하는
+edge의 정책은 그 앞단이 소유한다.
+
+## 9. 관련 문서
 
 - request/send/pub-sub 전체 사용법과 handler 작성·`async` 실행 모델:
   [05-channel-messaging](05-channel-messaging.ko.md)

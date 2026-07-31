@@ -19,6 +19,11 @@ builder.WebHost.UseUrls(options.HttpUrl);
 builder.Services.AddSingleton(new SessionEvidence(options.EvidenceFile));
 builder.Services.AddZLinkFramework(framework =>
 {
+    //  This E2E host is not started inside a memory-limited
+    //  container. Supply a deterministic finite limit so the
+    //  default Auto HWM contract does not depend on the host.
+    framework.ConfigureInboundDispatch().ProcessMemoryLimitBytes =
+        1UL * 1024 * 1024 * 1024;
     framework.AddLocationStore(new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = options.RedisKeyPrefix; }));
     framework.AddHandlersFromAssemblyOf(typeof(Program));
     var mesh26 = framework.AddRouteMesh("to-actor")

@@ -48,6 +48,11 @@ public static class RegistrationCodecServerHostFactory
             options.Rid));
         builder.Services.AddZLinkFramework(framework =>
         {
+            //  This E2E host is not started inside a memory-limited
+            //  container. Supply a deterministic finite limit so the
+            //  default Auto HWM contract does not depend on the host.
+            framework.ConfigureInboundDispatch().ProcessMemoryLimitBytes =
+                1UL * 1024 * 1024 * 1024;
             framework.ConfigureDispatch().Diagnostics
                 .SetLevel(ZLinkDiagnosticsLevel.Normal);
             if (options.CodecMode != "json-only")

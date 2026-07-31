@@ -24,6 +24,11 @@ internal sealed class ChannelMonitoringRoleHost
         _builder.Services.AddSingleton(new EvidenceStore(_options.EvidenceFile, _options.Rid));
         _builder.Services.AddZLinkFramework(framework =>
         {
+            //  This E2E host is not started inside a memory-limited
+            //  container. Supply a deterministic finite limit so the
+            //  default Auto HWM contract does not depend on the host.
+            framework.ConfigureInboundDispatch().ProcessMemoryLimitBytes =
+                1UL * 1024 * 1024 * 1024;
             var mesh = framework.AddRouteMesh(RuntimeMonitoringNames.Channel)
                 .Listen(Require(_options.ChannelEndpoint, "ChannelEndpoint"))
                 .SetRoutingId(RoutingId.From(_options.Rid));

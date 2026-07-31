@@ -3876,3 +3876,29 @@ ST-F1은 `/actors/{id}/send-from-node` 엔드포인트로 actor node에서 직�
 ST-F3를 통과시키려면 게이트웨이가 bound session send를 대상 actor로 relay해야 한다. 현재
 fall-through는 `BoundPushReq`만 가정하므로, 임의의 application packet을 bound actor에게
 전달하는 경로가 필요하다.
+
+### (정정) ST-F2·ST-I4는 같은 계열이 아니다
+
+앞 절에서 "ST-F2·ST-I4도 같은 계열일 가능성이 높아 함께 보는 게 낫다"고 적었다. 확인해
+보니 **틀렸다.** 둘 다 `SendFromNodeAsync`를 쓴다.
+
+```csharp
+// ST-F2
+await context.SendFromNodeAsync(context.NodeA, actorId, new HandoffPacket("ST-F2", marker));
+// ST-I4
+var oneWay = context.SendFromNodeAsync(caller, actorId, new HandoffPacket(scenario, oneWayMarker));
+```
+
+이는 통과하는 ST-F1과 **같은 경로**이며 게이트웨이를 거치지 않는다. 따라서 ST-F3의
+게이트웨이 relay 갭과는 무관하다.
+
+세 시나리오의 원인이 각각 다르다.
+
+| 시나리오 | 전송 경로 | 원인 |
+|---|---|---|
+| ST-F3 | bound session send | 게이트웨이가 relay하지 않음 |
+| ST-F2 | SendFromNode | `backlog_enqueued`와 `location_committed` 순서 역전 |
+| ST-I4 | SendFromNode | external transport gate가 응답 방향을 잘못 감시 |
+
+묶어서 고칠 수 있는 관계가 아니므로 각각 다뤄야 한다. 전송 경로를 확인하지 않고 packet
+종류만 보고 묶으려 했던 것이 오류였다.

@@ -15,17 +15,17 @@ theme:
   # Material 기본 Roboto에는 한글 글리프가 없다. 한글이 글자마다 OS 대체 폰트로
   # 떨어지면서 자간과 굵기가 흔들리므로 시스템 한글 폰트를 쓴다.
   font: false
+  # 첫 항목이 기본값이다. `media`를 걸면 OS 설정을 따라가므로, 다크로 시작하게
+  # 하려면 빼야 한다. 토글은 그대로 남고 고른 값은 브라우저에 저장된다.
   palette:
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      toggle:
-        icon: material/weather-night
-        name: Switch to dark mode
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
+    - scheme: slate
       toggle:
         icon: material/weather-sunny
         name: Switch to light mode
+    - scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
   features:
     - content.code.copy
     - content.tabs.link

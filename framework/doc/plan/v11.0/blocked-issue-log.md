@@ -5983,3 +5983,45 @@ peer 항목이 아예 없다. `ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY`로는 양�
 것이다. RegistrationCodec의 동작하는 pair와 나란히 찍으면 차이가 드러난다.
 
 측정 편집은 되돌렸다.
+
+### SubmitAdmission 확정 범위: manual connect가 handshake를 시작하지 못한다
+
+동작하는 pair와 나란히 측정했다. Peer admission 평가 지점에 임시 trace를 넣고 두 스위트를
+같은 빌드로 돌렸다.
+
+RegistrationCodec(동작함):
+
+```
+codec-mismatch-json-only : admission cmd=Hello  src=codec-mismatch-requester  decision=Accept dir=Inbound
+codec-mismatch-requester : admission cmd=Admit  src=codec-mismatch-json-only  decision=Accept dir=Outbound
+```
+
+SubmitAdmission(실패함):
+
+```
+caller : (없음)
+target : (없음)
+```
+
+Handshake가 시작조차 하지 않는다. `Hello`가 target에 도달하지 않는다.
+
+Router HWM을 1에서 1000으로 올리면 caller에 admission이 하나 생기는데, 상대가 target이
+아니다.
+
+```
+caller : admission cmd=Admit src=submit-object-client-8cf95375-... decision=Accept dir=Outbound
+```
+
+`submit-object-client`는 Location Store와 prefix RID를 쓰는 automatic discovery node다. 즉
+**같은 caller host에서 automatic peering은 handshake를 완료하고 manual connect만
+시작조차 못 한다.** Caller의 mesh 자체는 정상이다.
+
+이 스위트에서 배제한 것이 이제 다섯이다. Receiver gate, router HWM, 시간, expected RID,
+그리고 caller mesh의 전반적 동작. 남은 것은 manual connect 경로 자체다.
+
+RegistrationCodec의 manual pair는 동작하므로 manual connect 일반의 문제도 아니다. 두
+구성의 차이를 좁히는 것이 다음 단계다. 눈에 띄는 차이는 SubmitAdmission의 caller와 target이
+**둘 다 같은 ChannelName에 `Server()`를 등록**한다는 점이다. RegistrationCodec은
+requester가 `Client()`, 상대가 `Server()`다.
+
+측정 편집은 모두 되돌렸다.

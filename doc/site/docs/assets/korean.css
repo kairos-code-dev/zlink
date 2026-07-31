@@ -9,6 +9,15 @@
     ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
+/* 코드 바탕색. Material 기본 `#f5f5f5`는 흰 바탕과 명도 차가 4%뿐이라 사실상
+   흰색으로 보인다. 푸른 기가 도는 회색으로 바꿔 코드 영역이 색으로도 구분되게
+   한다. 인라인 코드도 같은 변수를 쓰므로 함께 따라간다.
+
+   다크 모드는 건드리지 않는다. 그쪽은 코드가 페이지보다 어두워 이미 구분된다. */
+[data-md-color-scheme="default"] {
+  --md-code-bg-color: #eef2f7;
+}
+
 /* 한국어는 어절 중간에서 끊으면 급격히 읽기 어려워진다. keep-all이 그것을 막는다.
 
    본문은 0.7rem(14px)이다. Material 기본값 0.8rem(16px)에서 줄인 이유는

@@ -2831,12 +2831,16 @@ internal sealed partial class ZLinkFrameworkRuntime
         }
         else
         {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"tombstone_request_sent target={sessionNodeRid}");
             response = await Services.GetRequiredService<IZLinkRouteClient>()
                 .RequestToNode(previous.MeshName, sessionNodeRid, request)
                 .Timeout(Registration.DefaultRequestTimeout)
                 .Async<ZLinkRemoteSessionOwnerTombstoneResponse>(cancellationToken)
                 .ConfigureAwait(false);
         }
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"tombstone_response ack={response.Acknowledged}");
         if (!response.Acknowledged)
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.Unavailable,

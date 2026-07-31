@@ -3527,3 +3527,32 @@ bind_done                1건   ← 하나만 끝난다
 그보다 아래, tombstone 처리 자체가 쓰는 자원에서 막히는 것이다.
 
 다음은 그 함수 내부를 같은 방식으로 짚는 것이다.
+
+### 정지 원인 — 이전 session owner로 보낸 tombstone 요청이 응답받지 못한다
+
+tombstone 함수 안의 원격 왕복을 찍었다.
+
+```
+tombstone_request_sent   211건
+tombstone_response         0건
+```
+
+`TombstoneReplacedSessionOwnerAsync`는 이전 session owner(session-a)에게
+`RequestToNode`로 tombstone을 요청하고 응답을 기다린다.
+
+```csharp
+response = await Services.GetRequiredService<IZLinkRouteClient>()
+    .RequestToNode(previous.MeshName, sessionNodeRid, request)
+    .Timeout(Registration.DefaultRequestTimeout)
+    .Async<ZLinkRemoteSessionOwnerTombstoneResponse>(cancellationToken);
+```
+
+**211번 보내고 한 번도 응답받지 못한다.** 이번 세션에서 고친 결함
+(infrastructure route request의 응답이 permit 없이 NRE로 죽는 문제)과 **형태가 같다.**
+다만 tombstone packet은 `IsInfrastructureRelay` 목록에 없으므로 permit은 잡힌다.
+따라서 원인이 같지는 않다.
+
+확인할 것은 셋이다. session gateway에 이 packet의 handler가 등록되어 있는지, 요청이
+실제로 그 노드에 도달하는지, 도달한다면 응답이 어디서 사라지는지다. 앞서 같은 종류의
+문제를 풀 때 송신·수신·응답 세 지점에 진단을 나눠 넣어 한 번에 갈렸으므로 같은 방법을
+쓴다.

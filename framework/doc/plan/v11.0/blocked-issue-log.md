@@ -3267,3 +3267,43 @@ if (result.Status != ZLinkOneWaySubmitStatus.Submitted)
 
 이로써 네 시나리오(ST-C2, ST-E1, ST-E2, ST-F3)를 잡고 있는 결함이 함수 하나로 좁혀졌다.
 handler는 응답을 만들고, dispatcher는 제출을 시작하지만, 제출이 끝나지 않는다.
+
+## 2026-07-31 bound session 군집 근본원인 — 응답 제출에서 NullReferenceException
+
+응답 호출을 감싸 예외를 포착했다.
+
+```
+route_reply_failed source=actor-a-70705cab-...
+System.NullReferenceException: Object reference not set to an instance of an object.
+  at ZLinkSpotReplySubmitter.SubmitAsync(ZLinkAsyncSubmitter submitter,
+       ZLinkBackendRouteReceived received, IReadOnlyList`1 replyParts, ...)
+  at ZLinkMeshNodeRouteDispatcher.DispatchNodeRouteAsync(...)
+```
+
+**session gateway가 route request에 응답하려 할 때 `SubmitAsync`에서 null 참조가
+발생한다.** 그래서 응답이 나가지 못하고 요청자는 deadline까지 기다린다.
+
+해당 함수는 다음과 같다.
+
+```csharp
+try { await completionLease.ReserveReplyAsync(...); }
+catch { ...; throw; }
+var result = await submitter.SubmitAsync(
+        replyParts,
+        pending => ZLinkSubmitFailureMapper.AcceptOrThrow(
+            received.Reply(pending, SendFlags.DontWait), nameof(SubmitAsync)),
+        cancellationToken);
+if (result.Status != ZLinkOneWaySubmitStatus.Submitted)
+    throw new ZlinkSubmitException(ZlinkSubmitException.ErrorCode.Terminated);
+completionLease.TransferToCore();
+```
+
+dispatcher가 `_replySubmitter is null`이면 `SubmitDirectAsync`로 가므로 `submitter`는
+null이 아니다. 따라서 `completionLease`나 `received`의 내부 값이 유력하다.
+`completionLease`는 `ResponderLease` 구조체이므로 default 값이 넘어오면 그 안의 참조가
+null일 수 있다.
+
+이 하나가 네 시나리오(ST-C2, ST-E1, ST-E2, ST-F3)를 잡고 있다. NRE는 계약 해석의 여지가
+없는 명백한 결함이므로, 판단 대기 없이 고칠 수 있는 항목이다.
+
+다음은 `SubmitAsync` 안에서 어느 참조가 null인지 특정하는 것이다.

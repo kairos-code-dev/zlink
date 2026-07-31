@@ -537,14 +537,25 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
         //  requester's node_request_result.
         Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
             $"route_reply_send source={sourceRid}");
-        await ReplyResponseAsync(
-                received,
-                header,
-                reply.Message,
-                reply.MessageType,
-                completionPermit!,
-                cancellationToken)
-            .ConfigureAwait(false);
+        try
+        {
+            await ReplyResponseAsync(
+                    received,
+                    header,
+                    reply.Message,
+                    reply.MessageType,
+                    completionPermit!,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            }
+        catch (Exception replyFailure)
+        {
+            //  The submit throws on a non-Submitted status; without this
+            //  the failure reaches no log on the responding node.
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"route_reply_failed source={sourceRid} {replyFailure}");
+            throw;
+        }
         Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
             $"route_reply_submitted source={sourceRid}");
         scope.Trace(_dispatchErrors, ZLinkMessageFlowOutcome.Replied);

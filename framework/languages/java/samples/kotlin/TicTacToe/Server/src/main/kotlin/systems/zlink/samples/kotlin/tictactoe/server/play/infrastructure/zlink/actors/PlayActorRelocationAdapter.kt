@@ -7,6 +7,7 @@ import systems.zlink.framework.actors.ZLinkActorRelocationAdapter
 import systems.zlink.framework.actors.ZLinkRelocationCancellation
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerInfo
 
+// --8<-- [start:doc-relocation-adapter]
 class PlayActorRelocationAdapter : ZLinkActorRelocationAdapter<PlayActor> {
     override fun capture(
         actor: PlayActor,
@@ -34,6 +35,7 @@ class PlayActorRelocationAdapter : ZLinkActorRelocationAdapter<PlayActor> {
         if (transferred.disconnected) actor.markDisconnected()
         return CompletableFuture.completedFuture(null)
     }
+// --8<-- [end:doc-relocation-adapter]
 
     companion object {
         private val json = jacksonObjectMapper()

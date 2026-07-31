@@ -7,6 +7,7 @@ import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerReq;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerRes;
 import systems.zlink.samples.tictactoe.shared.contracts.PlayerInfo;
 
+// --8<-- [start:doc-request-handler]
 @ZLinkHandlerGroup("api")
 public final class AuthenticatePlayerHandler
     implements ZLinkRequestHandler<AuthenticatePlayerReq, AuthenticatePlayerRes> {
@@ -33,3 +34,4 @@ public final class AuthenticatePlayerHandler
         };
     }
 }
+// --8<-- [end:doc-request-handler]

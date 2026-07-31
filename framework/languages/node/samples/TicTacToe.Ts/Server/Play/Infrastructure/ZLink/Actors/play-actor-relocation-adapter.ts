@@ -8,6 +8,7 @@ interface PlayActorTransferState {
   readonly roomId?: string;
 }
 
+// --8<-- [start:doc-relocation-adapter]
 class PlayActorRelocationAdapter implements ZLinkActorRelocationAdapter<PlayActor> {
   async capture(actor: PlayActor): Promise<Uint8Array> {
     return new TextEncoder().encode(JSON.stringify({
@@ -17,6 +18,7 @@ class PlayActorRelocationAdapter implements ZLinkActorRelocationAdapter<PlayActo
       roomId: actor.roomId
     } satisfies PlayActorTransferState));
   }
+// --8<-- [end:doc-relocation-adapter]
 
   async restore(actor: PlayActor, payload: Uint8Array): Promise<void> {
     const restored = JSON.parse(new TextDecoder().decode(payload)) as PlayActorTransferState;

@@ -435,6 +435,41 @@ channel handler는 독립 class다. 서로 다른 요청이 동시에 실행될 
 
 handler는 인터페이스를 구현하고, 결과를 반환값으로 돌려준다.
 
+> **샘플에서 보기 — [TicTacToe](../../../common/sample/tictactoe/README.ko.md).** API 서버가
+> 인증 요청을 받아 player 정보를 돌려주는 request handler다. 저장소의 실제 코드다.
+
+=== "C#/.NET"
+
+    ```csharp
+    --8<-- "framework/languages/dotnet/samples/TicTacToe/Server/Api/Handlers/AuthenticatePlayerHandler.cs:doc-request-handler"
+    ```
+
+=== "C++"
+
+    ```cpp
+    --8<-- "framework/languages/cpp/samples/TicTacToe/Server/Api/Handlers/authenticate_player_handler.hpp:doc-request-handler"
+    ```
+
+=== "Java"
+
+    ```java
+    --8<-- "framework/languages/java/samples/java/TicTacToe/Server/src/main/java/systems/zlink/samples/tictactoe/server/api/handlers/AuthenticatePlayerHandler.java:doc-request-handler"
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    --8<-- "framework/languages/java/samples/kotlin/TicTacToe/Server/src/main/kotlin/systems/zlink/samples/kotlin/tictactoe/server/api/handlers/AuthenticatePlayerHandler.kt:doc-request-handler"
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    --8<-- "framework/languages/node/samples/TicTacToe.Ts/Server/Api/Handlers/authenticate-player-handler.ts:doc-request-handler"
+    ```
+
+세 갈래를 최소 형태로 보면 이렇다.
+
 === "C#/.NET"
 
     ```csharp

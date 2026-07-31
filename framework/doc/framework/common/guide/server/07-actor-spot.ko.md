@@ -1036,6 +1036,41 @@ request 수는 `zlink.mesh_node.requests.inflight`의 `surface=actor` 값으로 
 Adapter는 Actor instance의 application state만 byte 배열로 저장하고 복원한다. Location authority,
 queue, timer, accepted journal과 session route는 Framework가 처리한다.
 
+> **샘플에서 보기 — [TicTacToe](../../../common/sample/tictactoe/README.ko.md).** player
+> Actor의 상태를 담고 푸는 adapter다. 저장소의 실제 코드다.
+
+=== "C#/.NET"
+
+    ```csharp
+    --8<-- "framework/languages/dotnet/samples/TicTacToe/Server/Play/Infrastructure/ZLink/Actors/PlayActorRelocationAdapter.cs:doc-relocation-adapter"
+    ```
+
+=== "C++"
+
+    ```cpp
+    --8<-- "framework/languages/cpp/samples/TicTacToe/Server/Play/Infrastructure/ZLink/Actors/player_actor_relocation_adapter.hpp:doc-relocation-adapter"
+    ```
+
+=== "Java"
+
+    ```java
+    --8<-- "framework/languages/java/samples/java/TicTacToe/Server/src/main/java/systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/actors/PlayActorRelocationAdapter.java:doc-relocation-adapter"
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    --8<-- "framework/languages/java/samples/kotlin/TicTacToe/Server/src/main/kotlin/systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/actors/PlayActorRelocationAdapter.kt:doc-relocation-adapter"
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    --8<-- "framework/languages/node/samples/TicTacToe.Ts/Server/Play/Infrastructure/ZLink/Actors/play-actor-relocation-adapter.ts:doc-relocation-adapter"
+    ```
+
+최소 형태로 보면 이렇다.
+
 === "C#/.NET"
 
     ```csharp

@@ -7,6 +7,7 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticatePlaye
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticatePlayerRes
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerInfo
 
+// --8<-- [start:doc-request-handler]
 @ZLinkHandlerGroup("api")
 class AuthenticatePlayerHandler :
     ZLinkSuspendingRequestHandler<AuthenticatePlayerReq, AuthenticatePlayerRes> {
@@ -33,3 +34,4 @@ class AuthenticatePlayerHandler :
             else -> "Observer"
         }
 }
+// --8<-- [end:doc-request-handler]

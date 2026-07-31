@@ -9,6 +9,7 @@
 namespace zlink::samples::tictactoe
 {
 
+// --8<-- [start:doc-request-handler]
 class authenticate_player_handler_t
 {
   public:
@@ -27,5 +28,6 @@ class authenticate_player_handler_t
                 ""};
     }
 };
+// --8<-- [end:doc-request-handler]
 
 } // namespace zlink::samples::tictactoe

@@ -5,6 +5,7 @@ import systems.zlink.framework.actors.ZLinkActorRelocationAdapter;
 import systems.zlink.framework.actors.ZLinkRelocationCancellation;
 import systems.zlink.samples.tictactoe.shared.contracts.PlayerInfo;
 
+// --8<-- [start:doc-relocation-adapter]
 public final class PlayActorRelocationAdapter
     implements ZLinkActorRelocationAdapter<PlayActor> {
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -57,3 +58,4 @@ public final class PlayActorRelocationAdapter
         boolean disconnected) {
     }
 }
+// --8<-- [end:doc-relocation-adapter]

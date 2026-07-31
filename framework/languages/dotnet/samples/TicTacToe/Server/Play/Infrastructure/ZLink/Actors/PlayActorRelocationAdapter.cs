@@ -4,6 +4,7 @@ using Zlink.Framework.Contracts.Actors;
 
 namespace TicTacToe.Server.Play.Infrastructure.ZLink.Actors;
 
+// --8<-- [start:doc-relocation-adapter]
 internal sealed class PlayActorRelocationAdapter
     : IZLinkActorRelocationAdapter<PlayActor>
 {
@@ -44,3 +45,4 @@ internal sealed class PlayActorRelocationAdapter
         bool Disconnected,
         IReadOnlyCollection<ZLinkActorJoinOperationId> ProcessedJoinOperations);
 }
+// --8<-- [end:doc-relocation-adapter]

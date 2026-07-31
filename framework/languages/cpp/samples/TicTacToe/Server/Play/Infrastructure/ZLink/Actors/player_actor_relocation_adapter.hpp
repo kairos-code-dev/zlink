@@ -37,6 +37,7 @@ inline void from_json (const nlohmann::json &json, player_actor_state_t &value)
     value.player = json.value ("player", player_info_t{});
 }
 
+// --8<-- [start:doc-relocation-adapter]
 class player_actor_relocation_adapter_t final
     : public actor_relocation_adapter_t<player_actor_t>
 {
@@ -65,5 +66,6 @@ class player_actor_relocation_adapter_t final
         co_return;
     }
 };
+// --8<-- [end:doc-relocation-adapter]
 
 } // namespace zlink::samples::tictactoe

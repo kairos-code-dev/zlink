@@ -3,6 +3,7 @@ using Zlink.Framework.Contracts.Handlers;
 
 namespace TicTacToe.Server.Api.Handlers;
 
+// --8<-- [start:doc-request-handler]
 [ZLinkHandlerGroup("api")]
 internal sealed class AuthenticatePlayerHandler(ILogger<AuthenticatePlayerHandler> logger)
     : IZLinkRequestHandler<AuthenticatePlayerReq, AuthenticatePlayerRes>
@@ -37,3 +38,4 @@ internal sealed class AuthenticatePlayerHandler(ILogger<AuthenticatePlayerHandle
         };
     }
 }
+// --8<-- [end:doc-request-handler]

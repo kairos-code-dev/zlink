@@ -6198,3 +6198,29 @@ contract 72/72, unit 1376/1376
 남은 판단은 두 가지다. Suite가 backpressure를 시험하려고 고른 값(HWM 1, 좁은 gate)이
 handshake까지 막는 것이 옳은지, 아니면 handshake·liveness frame이 application HWM과 gate의
 영향을 받지 않아야 하는지다. 후자라면 LocationMessaging의 같은 계열 항목도 함께 풀린다.
+
+### Handshake 격리 결정과 단순 구현의 실패
+
+앞 절이 남긴 판단을 정했다. **Handshake와 liveness frame은 application이 설정한 socket
+high water mark의 영향을 받지 않아야 한다.** 근거는 이렇다. Application이 HWM을 낮추는
+의도는 application traffic을 제한하는 것이지 연결 자체를 못 쓰게 만드는 것이 아니다.
+연결을 세우고 유지하는 frame이 버려지면 socket은 backpressure 상태가 아니라 사용 불가
+상태가 된다. 같은 원칙을 beacon(spec 29 §4)과 infrastructure relay의 completion
+admission에서 이미 적용하고 있다.
+
+구현은 실패했다. 하나의 ROUTER socket이 application record와 infrastructure frame을 함께
+나르므로 per-message 예외를 둘 수 없어, socket HWM에 하한(64)을 두는 방식을 시도했다.
+그러자 LocationMessaging이 **더 이른 지점에서** 깨진다.
+
+```
+baseline    : backpressure-consumer readiness에서 실패 (2/2회)
+HWM 하한 적용 : direct-consumer readiness에서 실패 (2/2회)
+```
+
+`direct-consumer`는 runner의 첫 readiness barrier다. 즉 하한이 이 스위트가 의도적으로
+좁게 잡은 구성을 바꿔 다른 곳을 깨뜨렸다. Application이 지정한 값을 프레임워크가 조용히
+올리는 것 자체가 계약 위반이기도 하다.
+
+따라서 격리는 socket 수준 하한이 아니라 **frame 수준**이어야 한다. Infrastructure frame을
+application HWM에 걸리지 않는 경로로 보내거나, infrastructure 전용 pipe를 두는 방향이다.
+어느 쪽이든 socket 구성 하나로 끝나지 않으므로 별도 작업으로 남긴다. 변경은 되돌렸다.

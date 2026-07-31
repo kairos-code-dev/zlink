@@ -3036,3 +3036,31 @@ reference에 대해 이 비교를 건너뛸 것인가. 어느 것이 계약상 �
 
 한 가지는 분명하다. detached recovery task에서 예외가 소실되는 것은 어느 선택과도
 무관하게 고칠 값어치가 있다. 이 세션에서 같은 패턴을 다섯 번 만났다.
+
+## 2026-07-31 (정정) recovery 실패는 이미 보고되고 있다
+
+앞 절들에서 "detached recovery task의 예외가 어디에도 보고되지 않는다"고 여러 번 적었다.
+**틀렸다.** `ZLinkRuntimeTaskRunner`가 이미 보고한다.
+
+```
+[zlink-framework] task 'actor-published-relocation-recovery' failed:
+  ZLinkFrameworkException: Actor 'actor-cleanup-after-success-...' ...
+```
+
+다만 `ZLinkFrameworkDebugLog.TaskFailure`는 `ZLINK_DEBUG_FRAMEWORK_TASKS` 뒤에 있고,
+이번 조사 내내 `ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY`만 켜고 돌렸다. 그래서 보고가
+없다고 판단했다.
+
+따라서 "예외 소실"을 고칠 필요는 없다. 이 세션에서 같은 패턴을 다섯 번 만났다고 적은 것
+중 이 건은 빼야 한다. 나머지 넷(ST-E1A의 one-way frame relay, seal의 조기 return,
+seal의 정상 경로, deferred join)은 실제로 응답이 요청자에게 나가지 않는 문제이므로
+성격이 다르다.
+
+### 교훈
+
+진단 플래그가 여럿이면 조사 시작 시 전부 켠다. 하나만 켜고 "보고가 없다"고 판단하면
+코드에 없는 결함을 만들어낸다. 이 저장소의 framework debug 플래그는 최소 셋이다.
+`ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY`, `ZLINK_DEBUG_FRAMEWORK_TASKS`,
+`ZLINK_DEBUG_FRAMEWORK_STARTUP`.
+
+ST-B2의 실제 결함(sentinel과 digest 비교의 불일치)과 세 가지 수정 후보는 그대로 유효하다.

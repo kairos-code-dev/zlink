@@ -2,7 +2,7 @@
 [가이드 홈](../../../index.ko.md) | [이전: 운영 — 메트릭 · drain · readiness](12-operations.ko.md) | [다음: 샘플 고르기](14-samples.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# 13. 주요 interface 사용 색인 — Kotlin이 더하는 것
+# 13. 주요 타입 사용 색인
 
 > **대부분의 표면은 Java와 같다.** 기능별 interface 색인은
 > [Java 13. 주요 interface 사용 색인](../../../java/guide/server/13-interface-catalog.ko.md)이

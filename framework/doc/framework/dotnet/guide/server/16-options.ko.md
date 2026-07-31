@@ -2,7 +2,7 @@
 [가이드 홈](../../../index.ko.md) | [이전: E2E 테스트](15-e2e-testing.ko.md) | [다음: ZLink를 어디에 쓰나](17-alternative.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# 16. 설정 — 옵션 목록 · 기본값 · 변경 시점
+# 16. Options — 설정 목록과 기본값
 
 > 각 옵션의 정확한 signature와 값 범위는
 > [Topology 공개 인터페이스](../../../common/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md)와
@@ -302,7 +302,7 @@ weight 값의 범위는 `0..10000`이고 기본값은 `100`이다. 운영 흐름
 - 정확한 signature와 값 범위:
   [Topology 공개 인터페이스](../../../common/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md) ·
   [Host 구성 인터페이스](../../../common/spec/server/languages/dotnet/interfaces/02-configuration-host.ko.md)
-- 등록 지점과 계층 구조: [01-overview](01-overview.ko.md#아키텍처--계층-구조와-등록-지점)
+- 등록 지점과 계층 구조: [01-overview](01-overview.ko.md#4-등록-진입점)
 - 실행 중 관측과 운영: [11-monitoring](11-monitoring.ko.md) · [12-operations](12-operations.ko.md)
 
 ---

@@ -15,12 +15,12 @@ Kotlin/Spring Boot 환경에서 ZLink Framework를 쓰는 순서다. 03~17장은
 | 8 | [8. Session과 Actor binding](08-actor-session.ko.md) | session ↔ actor relay · binding · push |
 | 9 | [9. STREAM](09-stream.ko.md) | 외부 client 실시간 연결과 Stream Connector |
 | 10 | [10. Location](10-location.ko.md) | location store 등록, 자동 연결, 운영 조회 |
-| 11 | [11. Monitoring — Kotlin에서 다른 점](11-monitoring.ko.md) | Flow로 받기, 람다 observer |
+| 11 | [11. Monitoring](11-monitoring.ko.md) | Flow로 받기, 람다 observer |
 | 12 | [12. 운영](12-operations.ko.md) | 런타임 메트릭, graceful drain, readiness |
-| 13 | [13. Kotlin이 더하는 것](13-interface-catalog.ko.md) | suspend 계약, .kotlin() wrapper, 확장 함수 |
+| 13 | [13. 주요 타입 사용 색인](13-interface-catalog.ko.md) | suspend 계약, .kotlin() wrapper, 확장 함수 |
 | 14 | [14. 샘플 고르기](14-samples.ko.md) | 어떤 샘플을 먼저 볼지 고르고 실행하는 방법 |
 | 15 | [15. E2E 테스트](15-e2e-testing.ko.md) | client로 시스템 전체를 검증하는 방법 |
-| 16 | [Java 16. Options](../../../java/guide/server/16-options.ko.md) | 옵션 표면이 Java와 같다 |
+| 16 | [16. Options](../../../java/guide/server/16-options.ko.md) | 옵션 표면이 Java와 같다 |
 | 17 | [17. ZLink를 어디에 쓰나](17-alternative.ko.md) | 사용처, 문제 신호, 기술 선택 경계 |
 
 파일 번호는 언어에 상관없이 같은 장을 가리키는 식별자다. 읽는 순서는 이 표가 정한다.

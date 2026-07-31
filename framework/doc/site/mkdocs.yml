@@ -62,8 +62,8 @@ nav:
   - 가이드:
       - .NET:
           - "가이드 홈": dotnet/guide/server/README.ko.md
-          - "1. ZLink Framework for .NET": dotnet/guide/server/01-overview.ko.md
-          - "2. Getting Started": dotnet/guide/server/02-getting-started.ko.md
+          - "1. 개요": dotnet/guide/server/01-overview.ko.md
+          - "2. 시작하기": dotnet/guide/server/02-getting-started.ko.md
           - "3. 핵심 개념": dotnet/guide/server/03-concepts.ko.md
           - "4. Backpressure": dotnet/guide/server/04-backpressure.ko.md
           - "5. Channel Messaging": dotnet/guide/server/05-channel-messaging.ko.md
@@ -74,10 +74,10 @@ nav:
           - "10. Location": dotnet/guide/server/10-location.ko.md
           - "11. Monitoring": dotnet/guide/server/11-monitoring.ko.md
           - "12. 운영": dotnet/guide/server/12-operations.ko.md
-          - "13. 주요 interface 사용 색인": dotnet/guide/server/13-interface-catalog.ko.md
+          - "13. 주요 타입 사용 색인": dotnet/guide/server/13-interface-catalog.ko.md
           - "14. 샘플 고르기": dotnet/guide/server/14-samples.ko.md
           - "15. E2E 테스트": dotnet/guide/server/15-e2e-testing.ko.md
-          - "16. 설정": dotnet/guide/server/16-options.ko.md
+          - "16. Options": dotnet/guide/server/16-options.ko.md
           - "17. ZLink를 어디에 쓰나": dotnet/guide/server/17-alternative.ko.md
       - C++:
           - "가이드 홈": cpp/guide/server/README.ko.md
@@ -116,7 +116,7 @@ nav:
           - "10. Location": java/guide/server/10-location.ko.md
           - "11. Monitoring": java/guide/server/11-monitoring.ko.md
           - "12. 운영": java/guide/server/12-operations.ko.md
-          - "13. 주요 interface 사용 색인": java/guide/server/13-interface-catalog.ko.md
+          - "13. 주요 타입 사용 색인": java/guide/server/13-interface-catalog.ko.md
           - "14. 샘플 고르기": java/guide/server/14-samples.ko.md
           - "15. E2E 테스트": java/guide/server/15-e2e-testing.ko.md
           - "16. Options": java/guide/server/16-options.ko.md
@@ -135,7 +135,7 @@ nav:
           - "10. Location": kotlin/guide/server/10-location.ko.md
           - "11. Monitoring": kotlin/guide/server/11-monitoring.ko.md
           - "12. 운영": kotlin/guide/server/12-operations.ko.md
-          - "13. 주요 interface 사용 색인": kotlin/guide/server/13-interface-catalog.ko.md
+          - "13. 주요 타입 사용 색인": kotlin/guide/server/13-interface-catalog.ko.md
           - "14. 샘플 고르기": kotlin/guide/server/14-samples.ko.md
           - "15. E2E 테스트": kotlin/guide/server/15-e2e-testing.ko.md
           - "17. ZLink를 어디에 쓰나": kotlin/guide/server/17-alternative.ko.md
@@ -153,7 +153,7 @@ nav:
           - "10. Location": node/guide/server/10-location.ko.md
           - "11. Monitoring": node/guide/server/11-monitoring.ko.md
           - "12. 운영": node/guide/server/12-operations.ko.md
-          - "13. 주요 interface 사용 색인": node/guide/server/13-interface-catalog.ko.md
+          - "13. 주요 타입 사용 색인": node/guide/server/13-interface-catalog.ko.md
           - "14. 샘플 고르기": node/guide/server/14-samples.ko.md
           - "15. E2E 테스트": node/guide/server/15-e2e-testing.ko.md
           - "16. Options": node/guide/server/16-options.ko.md

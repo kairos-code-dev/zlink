@@ -2,7 +2,7 @@
 [가이드 홈](../../../index.ko.md) | [이전: 운영 — 메트릭 · drain · readiness](12-operations.ko.md) | [다음: 샘플 고르기](14-samples.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# 13. 주요 interface 사용 색인
+# 13. 주요 타입 사용 색인
 
 > 이 문서는 application에서 자주 쓰는 public 표면을 기능별로 찾는 안내서다. 정확한
 > signature의 단일 기준은

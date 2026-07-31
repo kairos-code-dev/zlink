@@ -75,9 +75,7 @@ export class PlayModule {}
 **`useFactory`는 builder를 돌려준다.** 등록만 하고 끝내는 것이 아니라 마지막에
 `return builder`가 있어야 한다.
 
-## 5. handler는 데코레이터로 등록한다
-
-Node handler는 interface를 구현하고 데코레이터로 어느 group·packet인지 밝힌다.
+**handler는 데코레이터로 등록한다.** Node handler는 interface를 구현하고 데코레이터로 어느 group·packet인지 밝힌다.
 
 ```typescript
 import { zlinkRequestHandler } from '@zlink-systems/nestjs';
@@ -99,15 +97,18 @@ export class GetProfileHandler
 `zlinkEntrySpot*Handler` 넷이다. 목록은
 [13. 주요 interface 사용 색인](13-interface-catalog.ko.md)에 있다.
 
-## 6. 읽는 순서
+## 5. 읽는 순서
 
-03~17장은 다섯 언어가 같은 정본을 공유한다. 예제는 `Node/TypeScript` 탭을 고른다.
-순서는 [Node.js 가이드 진입점](README.ko.md)이 제시한다.
+이 가이드의 03~17장은 **다섯 언어가 같은 정본에서 생성된다.** 예제는
+`Node/TypeScript` 코드만 담기며 다른 언어 코드가 섞이지 않는다. 순서는
+[Node.js 가이드 진입점](README.ko.md)이 제시한다.
 
-먼저 [3. 핵심 개념](03-concepts.ko.md)에서 channel · Spot ·
-Actor · stream · relocation 다섯 개념을 잡는다.
+먼저 [3. 핵심 개념](03-concepts.ko.md)에서 channel · Spot · Actor · stream ·
+relocation 다섯 개념을 잡는다. 나머지 장은 그 조합이다.
 
-## 7. 도입 순서 고르기
+## 6. 도입 순서 고르기
+
+전부 한 번에 쓰지 않는다. 지금 겪는 문제부터 고른다.
 
 | 지금 겪는 문제 | 먼저 볼 장 |
 | --- | --- |
@@ -117,7 +118,7 @@ Actor · stream · relocation 다섯 개념을 잡는다.
 | 배포할 때 세션이 끊긴다 | [10. Location](10-location.ko.md) |
 | 부하가 몰릴 때 동작을 모르겠다 | [4. Backpressure](04-backpressure.ko.md) |
 
-## 8. 관련 문서
+## 7. 관련 문서
 
 - 읽는 순서: [Node.js 가이드 진입점](README.ko.md)
 - 언어 중립 정의: [공통 스펙 목차](../../../common/README.ko.md)

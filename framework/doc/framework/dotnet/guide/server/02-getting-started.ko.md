@@ -2,7 +2,7 @@
 [가이드 홈](../../../index.ko.md) | [이전: ZLink Framework for .NET 개요](01-overview.ko.md) | [다음: 핵심 개념](03-concepts.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# 2. Getting Started — 설치부터 첫 동작 확인까지
+# 2. 시작하기
 
 > 패키지를 설치하고 두 process가 서로 호출하는 최소 예제를 먼저 돌린 뒤(§1~§2),
 > 실제 [TicTacToe sample](../../../../../languages/dotnet/samples/TicTacToe)이

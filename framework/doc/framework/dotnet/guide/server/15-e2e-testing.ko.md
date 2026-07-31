@@ -8,7 +8,7 @@ title: "15. E2E 테스트 — client로 시스템 전체를 검증하기 · C#/.
 <!-- generated:end -->
 
 <!-- framework-adapter-nav:start -->
-[가이드 홈](README.ko.md) | [이전: 14. 샘플 고르기 — 내 문제에 가까운 예제부터](14-samples.ko.md) | [다음: 16. 설정 — 옵션 목록 · 기본값 · 변경 시점](16-options.ko.md)
+[가이드 홈](README.ko.md) | [이전: 14. 샘플 고르기 — 내 문제에 가까운 예제부터](14-samples.ko.md) | [다음: 16. Options — 설정 목록과 기본값](16-options.ko.md)
 <!-- framework-adapter-nav:end -->
 
 <!-- language-switch:start -->

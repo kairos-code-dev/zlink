@@ -8,7 +8,7 @@ title: "12. 운영 — 런타임 메트릭 · graceful drain · readiness · Kot
 <!-- generated:end -->
 
 <!-- framework-adapter-nav:start -->
-[가이드 홈](README.ko.md) | [이전: 11. Monitoring — Kotlin에서 다른 점](11-monitoring.ko.md) | [다음: 13. 주요 interface 사용 색인 — Kotlin이 더하는 것](13-interface-catalog.ko.md)
+[가이드 홈](README.ko.md) | [이전: 11. Monitoring — 상태 관측과 진단](11-monitoring.ko.md) | [다음: 13. 주요 타입 사용 색인](13-interface-catalog.ko.md)
 <!-- framework-adapter-nav:end -->
 
 <!-- language-switch:start -->

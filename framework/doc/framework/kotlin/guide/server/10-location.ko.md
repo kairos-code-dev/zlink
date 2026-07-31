@@ -8,7 +8,7 @@ title: "10. Location — 자동 연결과 Object 위치 · Kotlin"
 <!-- generated:end -->
 
 <!-- framework-adapter-nav:start -->
-[가이드 홈](README.ko.md) | [이전: 9. STREAM](09-stream.ko.md) | [다음: 11. Monitoring — Kotlin에서 다른 점](11-monitoring.ko.md)
+[가이드 홈](README.ko.md) | [이전: 9. STREAM](09-stream.ko.md) | [다음: 11. Monitoring — 상태 관측과 진단](11-monitoring.ko.md)
 <!-- framework-adapter-nav:end -->
 
 <!-- language-switch:start -->

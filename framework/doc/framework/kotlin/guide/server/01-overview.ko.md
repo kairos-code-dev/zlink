@@ -9,7 +9,16 @@
 > [Kotlin 공개 계약](../../../common/spec/server/languages/kotlin/README.ko.md)이,
 > 공유하는 표면은 [Java exact interface 목차](../../../common/spec/server/languages/java/interfaces/README.ko.md)가 소유한다.
 
-## 1. Kotlin 가이드가 다루는 범위
+## 1. 무엇을 만드는가
+
+실시간 메시징이 중요한 서버 시스템을 여러 프로세스로 나눠 만든다. 서버 간 typed
+메시징, 상태 단위(Spot)의 직렬 실행, 외부 client 실시간 연결, 무중단 이전을 한 선언
+모델 위에서 조합한다.
+
+Kotlin에서는 **Spring Boot 애플리케이션 안에 얹는다.** 별도 프로세스가 아니라 같은
+JVM에서 Spring의 DI·설정·수명주기를 그대로 쓴다.
+
+### 이 가이드가 다루는 범위
 
 **Kotlin은 Java 런타임을 그대로 쓴다.** `zlink-framework-kotlin`은 별도 구현이 아니라
 그 위에 coroutine idiom을 얹는 얇은 레이어다. 그래서 이 가이드는 **Java와 다른 지점만**
@@ -24,7 +33,18 @@
 같은 내용을 두 벌로 두지 않는 것이 목적이다. Java 문서가 바뀌면 Kotlin 독자도 같은
 문서를 본다.
 
-## 2. Kotlin 레이어가 얹는 것
+## 2. 무엇을 대체하나
+
+| 지금 쓰는 것 | ZLink가 대신하는 부분 |
+| --- | --- |
+| 서비스 간 gRPC · REST 호출 | host · port · stub 대신 **ChannelName**으로 부른다 |
+| 방·세션 상태를 담는 분산 락 | **Spot**의 직렬 실행 — 같은 상태에 두 요청이 겹치지 않는다 |
+| WebSocket 세션 관리 코드 | **STREAM session**과 Actor binding |
+| 배포 시 세션 드레이닝 스크립트 | **relocation** — 상태를 다른 node로 옮기고 내린다 |
+
+HTTP는 대체하지 않는다. 외부 진입은 Spring MVC·WebFlux가 그대로 맡는다.
+
+### Kotlin 레이어가 얹는 것
 
 네 가지다. 이것이 Java와 다른 전부다.
 
@@ -138,7 +158,19 @@ class PlayServerApplication {
 먼저 [3. 핵심 개념](03-concepts.ko.md)에서 channel · Spot ·
 Actor · stream · relocation 다섯 개념을 잡는다.
 
-## 6. 관련 문서
+## 6. 도입 순서 고르기
+
+전부 한 번에 쓰지 않는다. 지금 겪는 문제부터 고른다.
+
+| 지금 겪는 문제 | 먼저 볼 장 |
+| --- | --- |
+| 서비스가 어디 있는지 관리하기 번거롭다 | [5. Channel Messaging](05-channel-messaging.ko.md) |
+| 방·세션 상태에 락이 얽힌다 | [6. Spot](06-spot.ko.md) |
+| client 실시간 연결을 직접 관리한다 | [9. STREAM](09-stream.ko.md) |
+| 배포할 때 세션이 끊긴다 | [10. Location](10-location.ko.md) · [7. Actor와 Spot](07-actor-spot.ko.md) |
+| 부하가 몰릴 때 동작을 모르겠다 | [4. Backpressure](04-backpressure.ko.md) |
+
+## 7. 관련 문서
 
 - 읽는 순서: [Kotlin 가이드 진입점](README.ko.md)
 - Kotlin 전용 계약: [Kotlin 공개 계약](../../../common/spec/server/languages/kotlin/README.ko.md)

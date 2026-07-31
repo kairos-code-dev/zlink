@@ -17,7 +17,7 @@
 | 10 | [10. Location](10-location.ko.md) | location store 등록, 자동 연결, 운영 조회 사용법 |
 | 11 | [11. Monitoring](11-monitoring.ko.md) | 상태 snapshot·status stream과 진단으로 runtime을 관측하는 방법 |
 | 12 | [12. 운영](12-operations.ko.md) | 운영 — 런타임 메트릭, graceful drain, readiness 통합 |
-| 13 | [13. Interface 카탈로그](13-interface-catalog.ko.md) | 모든 계약 인터페이스를 ContractTests 검증 코드로 색인 |
+| 13 | [13. 주요 타입 사용 색인](13-interface-catalog.ko.md) | 모든 계약 인터페이스를 ContractTests 검증 코드로 색인 |
 | 14 | [14. 샘플 고르기](14-samples.ko.md) | 어떤 샘플을 먼저 볼지 고르고 실행하는 방법 |
 | 15 | [15. E2E 테스트](15-e2e-testing.ko.md) | client 라이브러리로 시스템 전체를 검증하는 E2E 테스트 만드는 법 |
 | 16 | [16. Options](16-options.ko.md) | 설정 — 옵션 목록, 기본값과 변경 시점 |

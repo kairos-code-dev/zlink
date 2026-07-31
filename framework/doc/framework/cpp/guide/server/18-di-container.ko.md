@@ -178,7 +178,7 @@ class season_scheduler_t : public zlink::framework::hosted_service_t
 | 연결·클라이언트 같이 앱 전체에서 재사용하는 인프라 | **singleton** + 내부 thread-safe 구현 |
 | 요청 단위로 격리해야 하는 상태 (트랜잭션, per-request context) | **scoped** |
 | 채널·HTTP 핸들러 — 요청마다 새 인스턴스 필요 | **transient** (dependency_types로 자동 등록) |
-| 가변 도메인 상태 (게임 룸, 대화 상태) | **DI 아님 — SPOT으로 관리** ([8장](06-spot.ko.md)) |
+| 가변 도메인 상태 (게임 룸, 대화 상태) | **DI 아님 — SPOT으로 관리** ([6장](06-spot.ko.md)) |
 
 ## 7. 수명 충돌 주의 — captive dependency
 

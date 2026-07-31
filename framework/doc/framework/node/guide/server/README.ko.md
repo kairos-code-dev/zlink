@@ -5,7 +5,7 @@ Node.js/NestJS 환경에서 ZLink Framework를 쓰는 순서다. 03~17장은 모
 
 | 순서 | 문서 | 내용 |
 |----|------|------|
-| 1 | [1. 개요](01-overview.ko.md) | 무엇을 만드나, 산출물, 등록 진입점과 데코레이터 |
+| 1 | [1. 개요](01-overview.ko.md) | 무엇을 만드나, 통합 4축과 전체 topology |
 | 2 | [2. 시작하기](02-getting-started.ko.md) | 패키지, NestJS 모듈, handler, 토큰 주입 |
 | 3 | [3. 핵심 개념](03-concepts.ko.md) | channel · Spot · Actor · session · relocation |
 | 4 | [4. Backpressure](04-backpressure.ko.md) | 처리보다 도착이 빠를 때의 동작과 영향을 주는 옵션 |

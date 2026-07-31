@@ -84,10 +84,6 @@ nav:
           - "1. 개요": cpp/guide/server/01-overview.ko.md
           - "2. 시작하기": cpp/guide/server/02-getting-started.ko.md
           - "3. 핵심 개념": cpp/guide/server/03-concepts.ko.md
-          - "21. 실행·구성 모델": cpp/guide/server/21-execution-model.ko.md
-          - "18. DI 컨테이너": cpp/guide/server/18-di-container.ko.md
-          - "19. Configuration": cpp/guide/server/19-configuration.ko.md
-          - "20. HTTP Hosting": cpp/guide/server/20-http-hosting.ko.md
           - "4. Backpressure": cpp/guide/server/04-backpressure.ko.md
           - "5. Channel Messaging": cpp/guide/server/05-channel-messaging.ko.md
           - "6. Spot": cpp/guide/server/06-spot.ko.md
@@ -102,6 +98,10 @@ nav:
           - "15. E2E 테스트": cpp/guide/server/15-e2e-testing.ko.md
           - "16. Options": cpp/guide/server/16-options.ko.md
           - "17. ZLink를 어디에 쓰나": cpp/guide/server/17-alternative.ko.md
+          - "18. DI 컨테이너": cpp/guide/server/18-di-container.ko.md
+          - "19. Configuration": cpp/guide/server/19-configuration.ko.md
+          - "20. HTTP Hosting": cpp/guide/server/20-http-hosting.ko.md
+          - "21. 실행·구성 모델": cpp/guide/server/21-execution-model.ko.md
       - Java:
           - "가이드 홈": java/guide/server/README.ko.md
           - "1. 개요": java/guide/server/01-overview.ko.md

@@ -5,7 +5,7 @@ Kotlin/Spring Boot 환경에서 ZLink Framework를 쓰는 순서다. 03~17장은
 
 | 순서 | 문서 | 내용 |
 |----|------|------|
-| 1 | [1. 개요](01-overview.ko.md) | Kotlin 레이어가 얹는 것, 산출물, 등록 진입점 |
+| 1 | [1. 개요](01-overview.ko.md) | Kotlin 레이어가 얹는 것, 통합 4축과 전체 topology |
 | 2 | [2. 시작하기](02-getting-started.ko.md) | 의존성, 등록, suspend handler, 두 가지 호출 방법 |
 | 3 | [3. 핵심 개념](03-concepts.ko.md) | channel · Spot · Actor · session · relocation |
 | 4 | [4. Backpressure](04-backpressure.ko.md) | 처리보다 도착이 빠를 때의 동작과 영향을 주는 옵션 |

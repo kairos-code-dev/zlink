@@ -122,7 +122,7 @@ auto topology = app.config ().bind_required<topology_t> ("sample.topology");
 ```
 
 bind한 struct를 DI에 singleton으로 올려 두면 핸들러가 주입받을 수 있다
-([4장](18-di-container.ko.md)).
+([18장](18-di-container.ko.md)).
 
 ```cpp
 options.services ().add_singleton<topology_t> (std::make_unique<topology_t> (topology));

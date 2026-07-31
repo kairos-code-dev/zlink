@@ -62,7 +62,7 @@ graph TB
 
 가변 도메인 상태(게임 룸 등)는 **SPOT**, 불변 구성(topology)은 싱글톤 서비스, 공유
 인프라(캐시·카운터)는 싱글톤 + 자체 동기화에 둔다. SPOT 핸들러 작성과 직렬 실행
-보장은 [8장](06-spot.ko.md), 채널 핸들러 노출은 [7장](05-channel-messaging.ko.md).
+보장은 [6장](06-spot.ko.md), 채널 핸들러 노출은 [5장](05-channel-messaging.ko.md).
 
 **handler 노출은 명시적이다** — `options.handlers().group("api").add<T>()` 로 group 에 넣고,
 channel 등록에서 `use_handler_group("api")` 로 붙인다. 시작 단계에서 같은 handler
@@ -190,7 +190,7 @@ stateDiagram-v2
 
   | 진입점 | 역할 | 다루는 장 |
   |--------|------|-----------|
-  | `app.config()` / `app.logging()` | 설정·로그 | [5장](19-configuration.ko.md) · 12장 |
+  | `app.config()` / `app.logging()` | 설정·로그 | [19장](19-configuration.ko.md) · 12장 |
   | `app.monitoring()` / `app.metrics()` / `app.health()` | 관측·상태 | 12장 |
   | `app.add_zlink_framework(람다)` | **zlink 토폴로지 선언** (채널/SPOT/stream/registry) | 6~11장 |
   | `app.add_module(...)` / `add_zlink_framework<TModule>()` | 구성 패키징 | 아래 |

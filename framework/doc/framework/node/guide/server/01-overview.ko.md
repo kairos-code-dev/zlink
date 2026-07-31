@@ -837,22 +837,7 @@ flowchart LR
 - **Location store** - 서버 주소 정보를 관리한다. 점선은 store 조회를 통해 endpoint를 찾는 연결이다.
 - **클라이언트 앱** - HTTP로 요청을 보내고, stream으로 실시간 상태를 받는다.
 
-## 6. 산출물
-
-| 패키지 | 언제 넣나 |
-| --- | --- |
-| `@zlink-systems/framework` | 항상. 계약과 런타임 |
-| `@zlink-systems/nestjs` | NestJS에 얹을 때. 대부분 함께 넣는다 |
-| `@zlink-systems/framework-locations-redis` | 여러 node를 쓸 때. Redis location store |
-| `@zlink-systems/framework-codec-protobuf` · `-codec-msgpack` | 기본 JSON 대신 다른 형식을 쓸 때 |
-| `@zlink-systems/stream-connector` | client 쪽 실시간 연결. 서버에는 필요 없다 |
-| `@zlink-systems/stream-wire` | connector가 쓰는 wire 계층 |
-| `@zlink-systems/http-client` | HTTP 요청을 보내는 쪽 |
-
-**계약 타입은 `@zlink-systems/framework`에서, 등록과 데코레이터는
-`@zlink-systems/nestjs`에서 온다.** import 출처가 둘로 나뉘는 것이 Node의 특징이다.
-
-## 7. 가이드의 대상과 범위
+## 6. 가이드의 대상과 범위
 
 이 가이드는 runtime 내부 구조보다 channel, handler, SPOT, STREAM, location store를
 언제 골라 쓰는지에 초점을 둔다.
@@ -885,7 +870,7 @@ location store 모델로 공개 기능을 사용한다. 정식 public API 계약
 [spec/interfaces 목차](../../../common/spec/server/languages/node/interfaces/README.ko.md)를, runtime 내부 구조를
 고치는 사람은 [internals/](../../internals/backend-dependency-policy.ko.md)를 같이 봐야 한다.
 
-## 8. 이름 표기 규칙
+## 7. 이름 표기 규칙
 
 가이드 전체에서 다음 표기를 일관되게 쓴다.
 
@@ -895,29 +880,22 @@ location store 모델로 공개 기능을 사용한다. 정식 public API 계약
 - npm 패키지는 `@zlink-systems/*`다.
 - 하부 zlink core C API는 `zlink_*` snake_case다.
 
-## 9. 현재 상태
+## 8. 가이드 읽는 순서
 
-이 가이드가 설명하는 public API는 [spec/interfaces 목차](../../../common/spec/server/languages/node/interfaces/README.ko.md)의 계약
-카탈로그를 따른다. 구현이 진행되는 동안에도 인터페이스의 모양과 동사(`requestToChannel`,
-`submit`, `bind`, `addRequestHandler` 등)는 spec 문서를 기준으로 확인한다. 세부
-필드까지 정확한 정식 정의가 필요하면 항상 spec 문서를 교차 참조한다.
-
-## 10. 가이드 읽는 순서
-
-1. [02-getting-started](02-getting-started.ko.md) — 패키지부터 첫 동작 확인까지
-2. [03-concepts](03-concepts.ko.md) — 핵심 개념 (channel, 역할, DI)
-3. [05-channel-messaging](05-channel-messaging.ko.md) — request/send/pub-sub 상세
-4. [06-spot](06-spot.ko.md) — room/stage/zone, timer, routed Spot 호출
-5. [07-actor-spot](07-actor-spot.ko.md) — actor lifecycle, Spot 호스팅·콜백
-6. [08-actor-session](08-actor-session.ko.md) — session↔actor binding·dispatch, client push
-7. [09-stream](09-stream.ko.md) — 외부 client(STREAM) 서버 + Stream Connector
-8. [10-location](10-location.ko.md) — location store 기반 자동 연결과 운영 조회
-9. [11-monitoring](11-monitoring.ko.md) — 상태 관측과 진단
-10. [14-samples](14-samples.ko.md) — 실행되는 샘플로 확인하기
-11. [16-options](16-options.ko.md) — 옵션 목록과 기본값, 무엇을 언제 바꾸나
-12. [13-interface-catalog](13-interface-catalog.ko.md) — 모든 계약 인터페이스를 코드로(ContractTests 검증)
-13. [17-alternative](17-alternative.ko.md) — **ZLink를 어디에 쓰나**(사용처·문제 신호·기술 선택 경계)
-14. [공통 샘플](../../../common/sample/README.ko.md) — 대표 업무 시나리오와 검증 기준
-15. [Node.js exact interface 목차](../../../common/spec/server/languages/node/interfaces/README.ko.md) — 정식 계약
+- [02-getting-started](02-getting-started.ko.md) — 패키지부터 첫 동작 확인까지
+- [03-concepts](03-concepts.ko.md) — 핵심 개념 (channel, 역할, DI)
+- [05-channel-messaging](05-channel-messaging.ko.md) — request/send/pub-sub 상세
+- [06-spot](06-spot.ko.md) — room/stage/zone, timer, routed Spot 호출
+- [07-actor-spot](07-actor-spot.ko.md) — actor lifecycle, Spot 호스팅·콜백
+- [08-actor-session](08-actor-session.ko.md) — session↔actor binding·dispatch, client push
+- [09-stream](09-stream.ko.md) — 외부 client(STREAM) 서버 + Stream Connector
+- [10-location](10-location.ko.md) — location store 기반 자동 연결과 운영 조회
+- [11-monitoring](11-monitoring.ko.md) — 상태 관측과 진단
+- [13-interface-catalog](13-interface-catalog.ko.md) — 모든 계약 인터페이스를 코드로(ContractTests 검증)
+- [14-samples](14-samples.ko.md) — 실행되는 샘플로 확인하기
+- [16-options](16-options.ko.md) — 옵션 목록과 기본값, 무엇을 언제 바꾸나
+- [17-alternative](17-alternative.ko.md) — **ZLink를 어디에 쓰나**(사용처·문제 신호·기술 선택 경계)
+- [공통 샘플](../../../common/sample/README.ko.md) — 대표 업무 시나리오와 검증 기준
+- [Node.js exact interface 목차](../../../common/spec/server/languages/node/interfaces/README.ko.md) — 정식 계약
 
 ---

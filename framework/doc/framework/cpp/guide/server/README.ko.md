@@ -99,7 +99,7 @@ class open_conversation_handler_t {
 ```
 
 request-reply 외에 fanout(pub/sub)과 route mesh(주소 라우팅) 패턴도 제공한다.
-[7장 →](05-channel-messaging.ko.md)
+[5장 →](05-channel-messaging.ko.md)
 
 ---
 
@@ -130,7 +130,7 @@ class conversation_spot_t : public zlink::framework::spot_t,
 ```
 
 배정·할당을 담당하는 entry spot(노드당 1개)과 상태 본체인 room spot(단위마다 1개)으로
-나뉜다. 주기 작업은 timer로 등록한다. [8장 →](06-spot.ko.md)
+나뉜다. 주기 작업은 timer로 등록한다. [6장 →](06-spot.ko.md)
 
 ---
 
@@ -154,7 +154,7 @@ class support_session_t : public zlink::framework::packet_stream_session_t {
 ```
 
 클라이언트 쪽 접속은 별도 산출물인 stream connector가 담당한다.
-[9장 →](08-actor-session.ko.md) · [10장 →](09-stream.ko.md)
+[8장 →](08-actor-session.ko.md) · [9장 →](09-stream.ko.md)
 
 ---
 
@@ -175,7 +175,7 @@ options.http ()
   .map_readiness ("/ready");
 ```
 
-[6장 →](20-http-hosting.ko.md)
+[20장 →](20-http-hosting.ko.md)
 
 ---
 
@@ -192,7 +192,7 @@ options.http ()
 - **Monitoring / Health** — socket·discovery·spot·타이머 이벤트를 typed 구독으로
   받는다. `/ready`, `/healthz` endpoint에 health check를 연결한다.
 
-[4장 →](18-di-container.ko.md) · [5장 →](19-configuration.ko.md) · `11. Monitoring` 장
+[18장 →](18-di-container.ko.md) · [19장 →](19-configuration.ko.md) · `11. Monitoring` 장
 
 ---
 
@@ -213,7 +213,7 @@ options.add_spot_mesh ("bingo.room.discovery")
   .add_spot<bingo_room_spot_t> ("bingo.room");
 ```
 
-[11장 →](10-location.ko.md)
+[10장 →](10-location.ko.md)
 
 ---
 
@@ -221,30 +221,33 @@ options.add_spot_mesh ("bingo.room.discovery")
 
 | 순서 | 문서 | 내용 |
 |----|------|------|
-| 1 | [1. 개요](01-overview.ko.md) | 전체 기능 지도, 산출물 정보 |
+| 1 | [1. 개요](01-overview.ko.md) | 전체 기능 지도, 통합 4축과 전체 topology |
 | 2 | [2. 시작하기](02-getting-started.ko.md) | CMake 연동, 첫 앱, 핸들러 작성, 실행과 확인 |
 | 3 | [3. 핵심 개념](03-concepts.ko.md) | channel · Spot · Actor · stream · relocation |
-| 4 | [21. 실행·구성 모델](21-execution-model.ko.md) | 핸들러 모델, `task_t`/`co_await`, app 수명주기, module |
-| 5 | [18. DI 컨테이너](18-di-container.ko.md) | 수명 3종, 등록 방법, 핸들러 자동 주입, captive dependency |
-| 6 | [19. Configuration](19-configuration.ko.md) | 설정 소스(cli/env/json), 우선순위, section/bind |
-| 7 | [20. HTTP Hosting](20-http-hosting.ko.md) | embedded HTTP server, route handler |
-| 8 | [4. Backpressure](04-backpressure.ko.md) | 처리보다 도착이 빠를 때의 동작과 영향을 주는 옵션 |
-| 9 | [5. 채널 메시징](05-channel-messaging.ko.md) | request-reply, fanout, route mesh, channel client |
-| 10 | [6. SPOT](06-spot.ko.md) | room/stage/zone, 직렬 실행, timer |
-| 11 | [7. Actor와 Spot](07-actor-spot.ko.md) | actor 호스팅, membership, relocation |
-| 12 | [8. Actor · Session](08-actor-session.ko.md) | actor manager, session actor, gateway relay |
-| 13 | [9. Stream](09-stream.ko.md) | stream session, stream connector |
-| 14 | [10. Location](10-location.ko.md) | location store, 자동 연결, 운영 조회 |
-| 15 | [11. Monitoring](11-monitoring.ko.md) | 상태 관측, 메시지 흐름, health |
-| 16 | [12. 운영](12-operations.ko.md) | 런타임 메트릭, graceful drain, readiness |
-| 17 | [13. 주요 타입 사용 색인](13-interface-catalog.ko.md) | 기능별 public 타입 색인과 얻는 방법 |
-| 18 | [14. 샘플 고르기](14-samples.ko.md) | TicTacToe · Bingo 샘플과 기능 매핑 |
-| 19 | [15. E2E 테스트](15-e2e-testing.ko.md) | client로 시스템 전체를 검증하는 방법 |
-| 20 | [16. Options](16-options.ko.md) | 옵션 목록, 기본값과 변경 시점 |
-| 21 | [17. ZLink를 어디에 쓰나](17-alternative.ko.md) | 내부 서비스 통신·실시간 상태 패턴, gRPC/mesh 비교 |
+| 4 | [4. Backpressure](04-backpressure.ko.md) | 처리보다 도착이 빠를 때의 동작과 영향을 주는 옵션 |
+| 5 | [5. 채널 메시징](05-channel-messaging.ko.md) | request-reply, fanout, route mesh, channel client |
+| 6 | [6. SPOT](06-spot.ko.md) | room/stage/zone, 직렬 실행, timer |
+| 7 | [7. Actor와 Spot](07-actor-spot.ko.md) | actor 호스팅, membership, relocation |
+| 8 | [8. Actor · Session](08-actor-session.ko.md) | actor manager, session actor, gateway relay |
+| 9 | [9. Stream](09-stream.ko.md) | stream session, stream connector |
+| 10 | [10. Location](10-location.ko.md) | location store, 자동 연결, 운영 조회 |
+| 11 | [11. Monitoring](11-monitoring.ko.md) | 상태 관측, 메시지 흐름, health |
+| 12 | [12. 운영](12-operations.ko.md) | 런타임 메트릭, graceful drain, readiness |
+| 13 | [13. 주요 타입 사용 색인](13-interface-catalog.ko.md) | 기능별 public 타입 색인과 얻는 방법 |
+| 14 | [14. 샘플 고르기](14-samples.ko.md) | TicTacToe · Bingo 샘플과 기능 매핑 |
+| 15 | [15. E2E 테스트](15-e2e-testing.ko.md) | client로 시스템 전체를 검증하는 방법 |
+| 16 | [16. Options](16-options.ko.md) | 옵션 목록, 기본값과 변경 시점 |
+| 17 | [17. ZLink를 어디에 쓰나](17-alternative.ko.md) | 내부 서비스 통신·실시간 상태 패턴, gRPC/mesh 비교 |
+| 18 | [18. DI 컨테이너](18-di-container.ko.md) | 수명 3종, 등록 방법, 핸들러 자동 주입, captive dependency |
+| 19 | [19. Configuration](19-configuration.ko.md) | 설정 소스(cli/env/json), 우선순위, section/bind |
+| 20 | [20. HTTP Hosting](20-http-hosting.ko.md) | embedded HTTP server, route handler |
+| 21 | [21. 실행·구성 모델](21-execution-model.ko.md) | 핸들러 모델, `task_t`/`co_await`, app 수명주기, module |
 
-파일 번호는 언어에 상관없이 같은 장을 가리키는 식별자다. 읽는 순서는 이 표가 정한다 —
-C++은 DI·configuration·HTTP hosting이 기초에 해당하므로 앞으로 당긴다.
+파일 번호는 언어에 상관없이 같은 장을 가리키는 식별자다. 1~17장은 다섯 언어가 공유하고,
+18~21장은 C++에만 있다 — DI·configuration·HTTP hosting·실행 모델은 .NET이 런타임에서
+받는 것을 C++은 프레임워크가 직접 제공하기 때문이다.
+
+이 넷은 기초에 해당하므로, 2·3장을 읽은 뒤 바로 18~21장을 먼저 보고 4장으로 돌아와도 좋다.
 
 ---
 

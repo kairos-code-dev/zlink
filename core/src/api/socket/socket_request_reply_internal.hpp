@@ -195,15 +195,30 @@ inline bool take_pending_reply_from_transport_locked (
     if (!state_)
         return false;
 
+    pending_key_t key = key_;
     std::unordered_map<pending_key_t, pending_request_t,
                        pending_key_hash_t>::const_iterator pending_it =
-      state_->pending_requests.find (key_);
-    if (pending_it == state_->pending_requests.end ()
-        || pending_it->second.transport_pair_id != transport_pair_id_
+      state_->pending_requests.find (key);
+    if (pending_it == state_->pending_requests.end ()) {
+        //  A request may be addressed to a routing id the caller only knows
+        //  by intent, while the reply carries the peer's settled routing id.
+        //  The sequence is allocated per socket, so it identifies the request
+        //  on its own; the transport pair below still fences a reply that
+        //  belongs to an earlier connection.
+        std::unordered_map<uint64_t, pending_key_t>::const_iterator by_seq =
+          state_->pending_request_keys_by_seq.find (key_.request_seq);
+        if (by_seq == state_->pending_request_keys_by_seq.end ())
+            return false;
+        key = by_seq->second;
+        pending_it = state_->pending_requests.find (key);
+        if (pending_it == state_->pending_requests.end ())
+            return false;
+    }
+    if (pending_it->second.transport_pair_id != transport_pair_id_
         || pending_it->second.transport_pair_generation
              != transport_pair_generation_)
         return false;
-    return remove_socket_pending_request_locked (state_, key_, pending_out_);
+    return remove_socket_pending_request_locked (state_, key, pending_out_);
 }
 
 bool remove_socket_pending_request (const std::shared_ptr<socket_request_reply_state_t> &state_,

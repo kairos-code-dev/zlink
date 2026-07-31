@@ -13,11 +13,13 @@ namespace transport_pair_policy
 static const uint64_t completion_hwm_bytes = 256u * 1024u;
 static const int completion_socket_buffer_bytes = 64 * 1024;
 
-static inline uint64_t completion_hwm (uint64_t configured_)
+//  The completion pair carries handshake, liveness and reply frames, never
+//  application traffic. An application lowers its high water mark to throttle
+//  what it sends, not to make the connection unusable, so the pair keeps its
+//  own budget instead of following the configured one down.
+static inline uint64_t completion_hwm (uint64_t /*configured_*/)
 {
-    return configured_ == 0
-             ? completion_hwm_bytes
-             : std::min (configured_, completion_hwm_bytes);
+    return completion_hwm_bytes;
 }
 
 static inline int completion_socket_buffer (int configured_)

@@ -5,8 +5,8 @@ Java/Spring Boot 환경에서 ZLink Framework를 쓰는 순서다. 03~17장은 �
 
 | 순서 | 문서 | 내용 |
 |----|------|------|
-| 1 | `01. Overview` 장 — 준비 중 | 무엇을·왜 쓰는지, 기존 방식 대비 체감 난이도 |
-| 2 | `02. Getting Started` 장 — 준비 중 | 설치, 최소 예제, 첫 요청 흐름 |
+| 1 | [1. 개요](01-overview.ko.md) | 무엇을 만드나, 무엇을 대체하나, 산출물과 등록 진입점 |
+| 2 | [2. 시작하기](02-getting-started.ko.md) | 의존성, Spring Boot 얹기, handler와 client, 실행 |
 | 3 | [3. 핵심 개념](../../../common/guide/server/03-concepts.ko.md) | channel · Spot · Actor · session · relocation |
 | 4 | [4. Backpressure](../../../common/guide/server/04-backpressure.ko.md) | 처리보다 도착이 빠를 때의 동작과 영향을 주는 옵션 |
 | 5 | [5. Channel Messaging](../../../common/guide/server/05-channel-messaging.ko.md) | request / send / pub-sub 등록과 호출 |

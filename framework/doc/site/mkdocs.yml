@@ -81,7 +81,10 @@ nav:
           - cpp/guide/server/18-di-container.ko.md
           - cpp/guide/server/19-configuration.ko.md
           - cpp/guide/server/20-http-hosting.ko.md
-      - Java: java/guide/server/README.ko.md
+      - Java:
+          - java/guide/server/README.ko.md
+          - java/guide/server/01-overview.ko.md
+          - java/guide/server/02-getting-started.ko.md
       - Kotlin: kotlin/guide/server/README.ko.md
       - Node.js: node/guide/server/README.ko.md
   - 스펙:

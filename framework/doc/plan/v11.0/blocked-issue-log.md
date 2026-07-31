@@ -3930,3 +3930,27 @@ max_user_watches        : 524288
 
 이는 프레임워크 결함이 아니며 고칠 대상도 아니다. 다른 환경에서 실행하거나, marker 감시를
 polling으로 바꾸면 이 제약을 벗어난다. 후자는 하네스 변경이므로 필요하면 별도로 판단한다.
+
+## 2026-08-01 ST-F2 실제 순서 — commit이 먼저이고 backlog가 뒤따른다
+
+러너가 요구하는 순서는 `backlog_enqueued`가 `location_committed`보다 먼저다. 로그의 실제
+순서는 반대다.
+
+```
+location_committed  actor=actor-inflight-overtake-... spot=spot-inflight-overtake-...
+backlog_enqueued    actor=actor-inflight-overtake-... arrival=0
+backlog_enqueued    ... arrival=1
+backlog_enqueued    ... arrival=2
+```
+
+세 건의 backlog는 시나리오가 보낸 P1·P2·P3이고, 모두 **location commit 뒤에** 담긴다.
+ST-F2가 "DirectOvertakePrevention"으로 막으려는 것이 바로 이 상황이다. commit이 먼저
+일어나면 그 사이에 도착한 직접 전달 packet이 backlog에 담긴 packet을 추월할 수 있다.
+
+`location_committed`는 두 곳에서 나오는데, 로그의 `spot=` 필드로 보아
+`ZLinkSpotActivationActors`의 것이다.
+
+확인할 것은 둘이다. 런타임이 실제로 commit을 먼저 하는 것이 계약 위반인지, 아니면
+시나리오가 packet을 보내는 시점이 commit 이후여서 순서가 그렇게 보이는지다. 전자라면
+런타임 결함이고 후자라면 시나리오 타이밍 문제다. 두 marker의 시각을 packet 전송 시각과
+대조하면 갈린다.

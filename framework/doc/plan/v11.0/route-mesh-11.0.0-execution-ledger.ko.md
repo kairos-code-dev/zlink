@@ -11990,3 +11990,34 @@ generation이 그대로면 snapshot을 새로 잡아 재시도한다. Test doubl
 아니다. 재시도가 성공하면 거부됐어야 할 membership이 실제로 커밋되므로 test가 명시한
 "거부된 갱신은 커밋된 base가 아니다"라는 불변식도 함께 깨진다. `Conflict`를 낙관적
 동시성 충돌로 볼지 거부로 볼지에 따라 판정이 갈리므로 spec 대조 뒤에 고친다.
+
+### 2026-07-31 .NET Actor_Failed_Renew 해결과 전체 unit 그린
+
+`LocationLifecycleTests.Actor_Failed_Renew_Does_Not_Become_The_Base_Of_The_Next_Write`
+실패의 원인은 test double이 거부를 일시적 compare-exchange 충돌로 모사한 것이었다.
+production 코드는 고치지 않았다.
+
+`ZLinkActorOwnershipCoordinator.RenewOwnedActorAsync`는 `attempt < 4`로 제한된 재시도
+루프를 가진다. `Conflict`를 받으면 authority를 다시 읽고 owner, owner lease generation과
+object generation이 모두 같을 때만 snapshot을 새로 잡아 다시 시도한다. 이때 base는
+거부된 제안이 아니라 store가 돌려준 payload이므로 "실패한 renew가 다음 write의 base가
+되지 않는다"는 불변식은 이미 지켜진다. 낙관적 동시성 충돌을 재시도하는 이 동작은
+정상이다.
+
+`ControlledActorStore`는 `RejectNextRenew`를 한 번 소비하고 즉시 내렸다. 그래서 두 번째
+시도가 성공했고 예외가 나오지 않았다. 여기서 끝나지 않는다. 재시도가 성공하면 거부됐어야
+할 `spot-rejected` membership이 실제로 커밋되므로 test가 주석으로 명시한 "거부된 갱신은
+커밋된 base가 아니다"라는 뒤쪽 단언도 함께 깨질 구조였다. 즉 test는 거부를 단언하면서
+재시도가 정답인 신호를 보내고 있었다.
+
+거부가 재시도 예산을 넘겨 지속되도록 double을 고치고 test가 단언 뒤에 직접 플래그를
+내리도록 바꿨다. 이제 네 번의 시도가 모두 실패해 ownership lost 경로로 가고 예외가
+발생하며, store는 object generation 1과 Entry Spot을 그대로 유지한다. 단독 실행 세 번
+연속 통과했다.
+
+`.NET` 전체 unit은 **1,375/1,375**, HTTP client unit은 **63/63**으로 실패 0이다.
+따라서 `11.1.0` 전환은 parity 기준 lane에서도 회귀 없이 통과한다.
+
+Java의 `ZLinkLocationLifecycle.notifyActorJoinedSpot`이 빈 구현이라는 점도 확인했다.
+이는 신규 결함이 아니라 `30-implementation-gap.ko.md`가 이미 기록한 네 언어 commit
+순서 gap의 일부다. location authority가 commit 순서를 소유하도록 바꾸는 항목에 포함된다.

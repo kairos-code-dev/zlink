@@ -85,6 +85,7 @@ nav:
           - java/guide/server/README.ko.md
           - java/guide/server/01-overview.ko.md
           - java/guide/server/02-getting-started.ko.md
+          - java/guide/server/11-monitoring.ko.md
           - java/guide/server/16-options.ko.md
       - Kotlin: kotlin/guide/server/README.ko.md
       - Node.js: node/guide/server/README.ko.md

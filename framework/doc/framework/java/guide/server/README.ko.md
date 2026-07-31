@@ -15,7 +15,7 @@ Java/Spring Boot 환경에서 ZLink Framework를 쓰는 순서다. 03~17장은 �
 | 8 | [8. Session과 Actor binding](../../../common/guide/server/08-actor-session.ko.md) | session ↔ actor relay · binding · push |
 | 9 | [9. STREAM](../../../common/guide/server/09-stream.ko.md) | 외부 client 실시간 연결과 Stream Connector |
 | 10 | [10. Location](../../../common/guide/server/10-location.ko.md) | location store 등록, 자동 연결, 운영 조회 |
-| 11 | `11. Monitoring` 장 — 준비 중 | 상태 snapshot · status stream · 진단 |
+| 11 | [11. Monitoring](11-monitoring.ko.md) | 상태 snapshot · status stream · 진단 |
 | 12 | [12. 운영](../../../common/guide/server/12-operations.ko.md) | 런타임 메트릭, graceful drain, readiness |
 | 13 | `13. Interface 카탈로그` 장 — 준비 중 | 계약 인터페이스 색인 |
 | 14 | [14. 샘플 고르기](../../../common/guide/server/14-samples.ko.md) | 어떤 샘플을 먼저 볼지 고르고 실행하는 방법 |

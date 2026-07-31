@@ -116,6 +116,36 @@ Java는 6배로 갈린다. 같은 mesh에 두 언어 node가 섞이면 owner 판
 기본값은 계약 문서가 명시하지 않은 자리다. 어느 쪽으로 맞출지, 아니면 언어별로 달라도
 되는지 판단이 필요하다.
 
+### G7 · runtime metric 구현이 언어마다 크게 갈린다
+
+[Runtime metric과 집계 규칙](../../framework/common/spec/25-runtime-metrics.ko.md)이 계기
+49개를 정의한다. **spec에 있는데 어느 구현에도 없는 이름은 없다** — 문제는 반대다.
+구현 쪽이 언어마다 크게 다르고, 일부는 spec에 없는 이름으로 방출한다.
+
+| 언어 | spec 계기 중 방출하는 수 |
+| --- | --- |
+| `.NET` | 58개(spec 49 + 확장) |
+| Java · Kotlin | **14개** |
+| C++ | **4개** |
+| Node | **0개** |
+
+Java가 방출하는 이름 중 spec에 없는 것이 넷이다. 앞의 셋은 **spec에 같은 개념이 다른
+이름으로 이미 있다.**
+
+| Java가 쓰는 이름 | spec의 이름 |
+| --- | --- |
+| `zlink.channel.request.duration` | `zlink.mesh_node.request.duration` |
+| `zlink.channel.request.inflight` | `zlink.mesh_node.requests.inflight` |
+| `zlink.channel.request.timeouts` | `zlink.mesh_node.request.timeouts` |
+| `zlink.actor.transfer.duration` · `zlink.actor.transfer.pending_requests.count` | spec에 대응 없음 |
+
+Java 구현 트리에서 `zlink.mesh_node`로 시작하는 계기는 **하나도 방출하지 않는다.**
+대시보드를 언어별로 따로 만들어야 하고, 같은 mesh에 여러 언어 node가 섞이면 같은 지표가
+두 이름으로 흩어진다.
+
+확인 방법은 각 언어의 계기 등록 호출을 grep하는 것이다 — `.NET`은
+`CreateCounter`·`CreateHistogram` 계열, Java는 `ZLinkRuntimeMetrics.add`·`record`다.
+
 ## 2. 문서가 가리키는데 없는 샘플
 
 ### S1 · ZoneWorld — C++ · Java · Kotlin

@@ -2554,3 +2554,122 @@ correlation이 맞지 않아 대기 중인 요청과 연결되지 못한다. 프
 조사 범위가 프레임워크에서 core transport로 넘어가는 지점이므로 여기서 구간을 끊는다.
 정리하면 ST-E2의 최종 미해결 항목은 "session gateway node가 보낸 route request 응답이
 요청자 node에 도달하지 않거나 correlation되지 않는다"이다.
+
+## 2026-07-31 ST-F3도 같은 원인이다 — 하나를 고치면 둘이 움직인다
+
+ST-F3를 같은 진단으로 실행해 대조했다. ST-E2의 잔여 결함과 패턴이 정확히 같다.
+
+```
+actor-a  : bound_seal_begin     session_node=session-a-...
+           node_request_result  target=session-a-... result=TimedOut
+           node_request_result  target=session-a-... result=TimedOut
+session-a: route_reply_send     source=actor-a-986c9a73-...
+           route_reply_send     source=actor-a-986c9a73-...
+```
+
+ST-F3는 ST-E2와 달리 relocation 중 재bind를 하지 않는다. 그런데도 같은 지점에서 멈춘다.
+따라서 두 시나리오는 **잔여 결함 하나를 공유한다.** session gateway가 보낸 route request
+응답이 요청자 node에 도달하지 않는 문제다.
+
+이로써 bound session 군집의 구조가 정리된다.
+
+| 시나리오 | 원인 |
+|---|---|
+| ST-E1A | one-way handler에서 예외가 삼켜져 응답 없음 (**해결**) |
+| ST-E2 | 조기 Accepted로 인한 재bind (**해결**) + 아래 공통 결함 |
+| ST-F3 | 아래 공통 결함 |
+| ST-E1 | 미조사 |
+
+공통 결함은 "session gateway node가 보낸 route request 응답이 요청자 node에 도달하지
+않거나 correlation되지 않는다"이며, 이것을 고치면 ST-E2와 ST-F3가 함께 움직인다.
+ST-E1도 bound session 경로이므로 같은 원인일 가능성이 있다.
+
+## 2026-07-31 ST-B2 — commit 뒤 recovery가 Accepted를 전달하지 않는다
+
+ST-B2("Source Cleanup Failure After Success")는 commit이 끝난 뒤 source가 죽는 상황을
+검증한다. 시나리오는 `CrashNodeAAndWaitUnavailableAsync()` 뒤에 **target**에서
+`success_reply`를 기다린다.
+
+```csharp
+await context.CrashNodeAAndWaitUnavailableAsync();
+await context.WaitEvidenceAsync(target, [
+    $"{scenario}|{actorId}|success_reply|{spotId}"
+], timeoutMilliseconds: 20_000);
+```
+
+이 대기는 스펙과 일치한다. `15-spot-actor.ko.md` §276이 이렇게 규정한다.
+
+> "Commit 뒤 recovery는 source로 rollback하지 않고 **target을 복구한 뒤 같은
+> `OperationId`의 `Accepted`를 전달한다.**"
+
+즉 commit 뒤 source가 죽어도 target이 복구되어 Accepted completion이 나와야 한다.
+그런데 20초를 기다려도 `success_reply`가 관측되지 않는다.
+
+시나리오는 올바르므로 **런타임이 commit 뒤 recovery에서 Accepted를 전달하지 않는
+것**이 결함이다. ST-D1에서 고친 "success_reply를 어느 노드에서 기다리는가" 문제와는
+다르다. ST-B2는 처음부터 target에서 기다리고 있었다.
+
+앞선 매트릭스에서 ST-B2의 실패 사유는 `Transport endpoint is not connected`였는데 이번에는
+`Expected evidence marker`로 바뀌었다. 이 세션의 수정으로 더 뒤 단계까지 진행하게 된
+것으로 보이며, 그만큼 원인이 더 정확히 드러났다.
+
+## 2026-07-31 ST-E1도 같은 구조다 — bound session 군집이 셋으로 확인된다
+
+ST-E1(`StE1BoundSessionPushAfterTransferScenario`)의 대기 지점을 확인했다.
+
+```csharp
+ZlinkStreamAssert.Ensure(join.Accepted, "ST-E1 join was rejected.");
+await context.WaitEvidenceAsync(context.NodeB, [
+    $"ST-E1|{actorId}|success_reply|{spotId}"
+]);
+```
+
+이미 **target(NodeB)**에서 기다린다. 스펙 §276("`Accepted`는 target Actor가 받는다")과
+일치하므로 시나리오는 옳다. 그리고 이름 그대로 bound session이 붙은 actor의 transfer를
+검증한다.
+
+즉 ST-E1, ST-E2, ST-F3가 모두 "bound session actor의 relocation이 완료되지 않는다"는
+같은 증상을 보인다. ST-E2와 ST-F3는 진단으로 원인이
+"session gateway가 보낸 route request 응답이 요청자에게 도달하지 않는다"임을 확인했고,
+ST-E1은 구조가 같으므로 같은 원인일 가능성이 높다(진단 실행은 매트릭스 종료 후로 미룸).
+
+정리하면 이 하나의 결함이 **세 시나리오**를 잡고 있다.
+
+| 시나리오 | 검증 대상 | 확인 방법 |
+|---|---|---|
+| ST-E1 | transfer 뒤 bound session push | 구조 대조 |
+| ST-E2 | bound session rebind isolation | 진단 실측 |
+| ST-F3 | bound session cross-move order | 진단 실측 |
+
+우선순위가 높다. 다만 원인 지점이 framework를 벗어나 mesh transport에 있으므로,
+framework 범위에서 고칠 수 있는지부터 판단해야 한다.
+
+## 2026-07-31 최종 확정 매트릭스 (수정 반영 후 29개 재실행)
+
+**통과 15**: ST-A1, ST-A2, ST-A3, ST-B1, ST-B3, ST-B4, ST-D1, ST-E1A, ST-F1, ST-F4,
+ST-F5, ST-F6, ST-G3, ST-H1, ST-I6
+
+**실패 14**: ST-B2, ST-B5, ST-C1, ST-C2, ST-C3, ST-D2, ST-E1, ST-E2, ST-F2, ST-F3,
+ST-G6, ST-I1, ST-I4, ST-I5
+
+세션 초반 매트릭스와 개수는 같지만 구성이 다르다. ST-B3·ST-B4·ST-D1·ST-E1A가 실패에서
+통과로 바뀌었고, ST-C1은 통과에서 실패로 돌아갔다. **ST-C1의 통과는 유효하지 않았다.**
+이 세션 초반에 가드 테스트가 지키는 `!response.Accepted` 단언을 잘못 제거해 통과한
+것이었고, 원복하면서 원래대로 실패 상태가 됐다. 즉 실제 순증은 네 개다.
+
+### 확정된 원인별 파급
+
+| 결함 | 잡고 있는 시나리오 | 범위 |
+|---|---|---|
+| session gateway route 응답 유실 | ST-E1, ST-E2, ST-F3 | mesh transport |
+| commit 뒤 recovery가 Accepted 미전달 | ST-B2 | framework |
+| 조기 `Accepted` 반환 | ST-C1, ST-C3 | e2e join 의미론 |
+| 하네스 관측 지점 전환 | ST-D2, ST-I4, ST-I5 | 하네스 |
+| 환경 (inotify 한도) | ST-B5 | 환경 |
+| 미조사 | ST-C2, ST-F2, ST-G6, ST-I1 | - |
+
+다음 착수는 ST-B2가 적합하다. framework 범위이고 스펙 §276이 명확한 근거이며, recovery
+경로(`SchedulePublishedActorRelocationRecovery` → `CompleteRoutedActorHandoffAsync`)가
+이미 존재하므로 왜 동작하지 않는지만 밝히면 된다. 그 경로가 `TryRunDetached`로 분리
+실행되는 점이 눈에 띈다. 이 세션에서 네 번 만난 "예외가 삼켜져 아무 일도 일어나지 않는"
+패턴과 모양이 같다.

@@ -156,8 +156,9 @@ handler 실행기를 정하므로 뒤에 부른 쪽이 앞을 덮는다.
 | `setMaxConcurrentRelocationRestores(int)` | 동시에 restore할 수 | 8 |
 | `setMaxRelocationPayloadInFlightBytes(long)` | 이동 중 payload 총량 상한 | 256 MiB |
 
-> **C++과 기본값이 다른 자리가 있다.** `ownerLeaseTtl`이 Java는 30초, C++은 15초다.
-> 같은 mesh에 두 언어 node를 섞는다면 값을 맞춰 지정한다.
+> **owner lease 기본값이 세 언어에서 모두 다르다.** 갱신 주기 대비 TTL 배수가 Java는
+> 6배(5초 : 30초), C++은 3배(5초 : 15초), Node는 1.5배(10초 : 15초)다. 같은 mesh에
+> 여러 언어 node를 섞는다면 값을 맞춰 지정한다.
 > 저장소의 같은 갭 기록 G6이 이 차이를 다룬다.
 
 ## 6. STREAM 옵션

@@ -98,7 +98,9 @@ nav:
           - node/guide/server/README.ko.md
           - node/guide/server/01-overview.ko.md
           - node/guide/server/02-getting-started.ko.md
+          - node/guide/server/11-monitoring.ko.md
           - node/guide/server/13-interface-catalog.ko.md
+          - node/guide/server/16-options.ko.md
   - 스펙:
       - common/README.ko.md
       - common/spec/server/languages/README.ko.md

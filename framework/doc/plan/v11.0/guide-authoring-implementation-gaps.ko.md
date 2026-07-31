@@ -105,18 +105,21 @@ fanout subscriber endpoint 호출(`connect`로 통일함)과 같은 부류다. �
   `mailboxMessageBudget` 필드가 있고 기본값 4096이지만 `ZLinkMeshNodeSocketConfig`로
   노출되지 않는다.
 
-### G6 · owner lease TTL 기본값이 언어마다 다르다
+### G6 · owner lease 기본값이 세 언어에서 모두 다르다
 
-| 언어 | `ownerLeaseTtl` 기본값 | 근거 |
-| --- | --- | --- |
-| C++ | 15초 | `contracts/locations/options.hpp` |
-| Java · Kotlin | **30초** | `ZLinkLocationOptions.java` |
+| 언어 | 갱신 주기 | TTL | 배수 | 근거 |
+| --- | --- | --- | --- | --- |
+| C++ | 5초 | 15초 | 3배 | `contracts/locations/options.hpp` |
+| Java · Kotlin | 5초 | **30초** | 6배 | `ZLinkLocationOptions.java` |
+| Node | **10초** | 15초 | **1.5배** | `contracts/Locations/Options.ts` |
 
-`ownerLeaseRenewInterval`은 양쪽 다 5초다. 갱신 주기 대비 TTL 배수가 C++은 3배,
-Java는 6배로 갈린다. 같은 mesh에 두 언어 node가 섞이면 owner 판정이 달라질 수 있다.
+세 언어가 각각 다르다. 특히 **Node는 배수가 1.5배로 가장 빡빡하다** — 갱신 한 번을
+놓치면 lease가 거의 만료된다. 같은 mesh에 여러 언어 node가 섞이면 같은 장애 상황에서
+owner 판정이 언어마다 달라진다.
 
-기본값은 계약 문서가 명시하지 않은 자리다. 어느 쪽으로 맞출지, 아니면 언어별로 달라도
-되는지 판단이 필요하다.
+기본값은 계약 문서가 명시하지 않은 자리다. 어느 값으로 맞출지, 아니면 언어별로 달라도
+되는지 판단이 필요하다. 맞춘다면 배수도 함께 정하는 것이 낫다 — 갱신 실패 몇 번까지
+견딜지가 그 배수다.
 
 ### G7 · runtime metric 구현이 언어마다 크게 갈린다
 
@@ -178,6 +181,19 @@ ObservabilityOps E2E에는 두 이름이 없다. C++ · Java는 애초에 방출
 > G7의 "Node 0개"는 다시 세야 한다. 이번에 확인한 `runtime-metrics.ts`는 계기 이름
 > 44개를 선언하고 그중 최소 12개를 실제로 기록한다(`this.count(...)` · `this.histogram(...)`
 > 호출 기준). G7 표는 다른 스캔 결과이므로 여기서 고치지 않고 재확인 대상으로만 남긴다.
+
+### G8 · Node `ZLinkMeshNodeSocketConfig`에 mailbox 두 값이 없다
+
+| | |
+| --- | --- |
+| 언어 | Node |
+| 선언 | [Node.js foundation과 configuration 공개 계약](../../framework/common/spec/server/languages/node/interfaces/01-foundation-configuration.ko.md) — `mailboxMessageBudget` · `mailboxByteBudget` |
+| 구현 | `contracts/Configuration/Builders.ts`의 `ZLinkMeshNodeSocketConfig`에 없다 |
+| 확인 | 해당 interface 선언 대조. 런타임 내부(`service-mailbox`)에는 개념이 있다 |
+
+Java의 [G5](#g5--java-zlinkmeshnodesocketconfig가-spec과-다르다)와 같은 부류다 —
+**두 언어가 같은 두 값을 public 표면에서 빠뜨렸다.** C++에는 있다
+(`mesh_node_socket_config_t`의 `mailbox_message_budget` · `mailbox_byte_budget`).
 
 ## 2. 문서가 가리키는데 없는 샘플
 

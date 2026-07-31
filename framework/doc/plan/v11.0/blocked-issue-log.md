@@ -4573,9 +4573,41 @@ Delay host에 Location Store를 붙여 확인했다. 그러면 `delay-a`가 후�
 pair**로 쓰려 한다. Store를 붙이면 두 pair가 한 mesh로 합쳐져 의도가 깨진다. 즉 store
 추가는 해답이 아니다.
 
-정리하면 이 스위트의 구성 자체가 지금 계약에서 성립하지 않는다. 해결은 설계 결정이다.
+여기서 확정할 수 있는 것과 없는 것을 구분해 둔다. 확정된 것은 관측이다. Peer가 ready여도
+descriptor가 없으면 select-one이 target을 찾지 못한다. 확정되지 않은 것은 그것이 옳은
+동작인지다. spec 07 §7은 "ready이고 weight가 0보다 크면 select-one target이 된다"고만 적고
+descriptor를 조건으로 걸지 않는데, spec 08 §3.2 각주는 후보를 descriptor 게시분으로
+한정한다. 관측은 각주 쪽과 일치하지만 두 조항이 다르게 읽히는 것 자체가 spec 정합성
+문제다. 스펙 소유자가 어느 쪽이 정본인지 정해야 이 스위트를 어떻게 고칠지 결정할 수 있다.
 
-- Pair마다 MeshName을 나누고 Location Store를 쓴다.
-- 또는 select-one 대신 RID direct로 주소를 지정한다.
+각주가 정본이면 이 스위트의 구성은 성립하지 않고 설계를 바꿔야 한다(pair마다 MeshName을
+나누고 store를 쓰거나, select-one 대신 RID direct로 주소를 지정한다). §7이 정본이면
+manual peer의 Server membership을 후보로 잡지 못하는 런타임 쪽이 격차다.
 
 측정 편집(store 주입, prefix 전환, runner 인자, diag 응답)은 모두 되돌렸다.
+
+### 후보 0개 격차는 RL-A1과 AutomaticTurnDispatch에 공통이며 아직 고칠 준비가 안 됐다
+
+앞의 두 절은 같은 결함의 두 사례다. 하나로 묶어 둔다.
+
+메커니즘까지는 확인했다. Core의 `RequestToChannel` submit이
+`ZlinkSubmitException(NotConnected)`을 던지고, `ZLinkAsyncSubmitter.IsRetryableSubmitFailure`가
+이것을 재시도 대상으로 판단한다. 이 경로에는 `_failFastNotConnected`가 지정되어 있지
+않기 때문이다. 그래서 후보가 0개여도 실패하지 않고 operation timeout까지 기다린다.
+
+그런데 여기서 바로 고칠 수 없는 이유가 둘이다.
+
+첫째, fail-fast만으로는 계약을 만족하지 못한다. `failFastNotConnected`가 참이면 submit
+실패가 그대로 올라오고 `TryMapSubmitFailure`가 `RouteNotConnected` → `Unavailable`로
+옮긴다. spec 08 §7이 요구하는 것은 `NotFound`다. 즉 fail-fast와 매핑을 함께 바꿔야 한다.
+
+둘째, 판별 기준을 어디에 둘지 정해지지 않았다. Framework 쪽 사전 검사(`MeshPeerChannels`로
+후보 수를 세고 0이면 즉시 `NotFound`)를 검토했지만, ATD 측정에서 `delay-a`는 `Ready`였다.
+그 peer의 channel table이 `await.delay`를 포함하면 사전 검사는 후보가 있다고 판단해
+아무것도 바뀌지 않는다. 포함하지 않으면 Core는 이미 후보가 없음을 아는데도 구분 가능한
+결과 대신 재시도 가능한 `NotConnected`를 돌려주는 것이 된다. 어느 쪽인지 확인하기 전에는
+판별을 framework에 둘 수 있는지조차 알 수 없다.
+
+Mesh outbound submit 전체에 걸리는 gate를 시나리오 하나의 assertion을 위해 두 곳 동시에
+바꾸는 것은 지금 근거로 할 일이 아니다. PS-A4와 같이 core lane 소유자와 함께 정할 문제로
+남긴다.

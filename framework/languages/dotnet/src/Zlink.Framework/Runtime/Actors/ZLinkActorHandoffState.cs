@@ -246,7 +246,8 @@ internal sealed class ZLinkActorHandoffState(
             diagnostic?.Invoke(
                 $"capture_entry actor={actorId} src_ingress={capturesSourceIngress} "
                 + $"tgt_ingress={capturesTargetIngress} direct={frame.RouteContext.IsDirectRoute} "
-                + $"flags={frame.Flags} bound_route={frame.RouteContext.IsBoundSessionRoute}");
+                + $"flags={frame.Flags} bound_route={frame.RouteContext.IsBoundSessionRoute} "
+                + $"arrival={_arrivalIndex} kind={frame.Header.Kind} request_id={frame.RequestId}");
             if (!capturesSourceIngress
                 && !capturesTargetIngress)
                 return ZLinkActorHandoffCaptureResult.NotSealed;

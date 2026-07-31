@@ -3773,3 +3773,24 @@ actor   inbound_resolve   1건
 않기 때문이다. 다음에는 marker(S1·S2)나 arrival index를 진단에 실어 **프레임 단위로
 대조**해야 한다. 지금 상태에서 "하나가 유실됐다"고 단정하면 앞서 여러 번 그랬듯 틀릴 수
 있다.
+
+### 프레임 식별자로 확정 — one-way send는 capture 경로에 오지 않는다
+
+진단에 arrival index와 request id를 실어 다시 측정했다.
+
+```
+capture_entry ... flags=1 bound_route=False arrival=0 kind=Request request_id=21
+capture_entry ... flags=1 bound_route=False arrival=0 kind=Request request_id=21
+```
+
+두 건은 서로 다른 프레임이 아니라 **같은 프레임(`request_id=21`)이 두 번 평가된 것**이다.
+앞 절에서 계수만 보고 "둘 중 하나가 유실됐다"고 읽을 뻔했는데, 식별자를 실으니 애초에
+프레임이 하나뿐이었다.
+
+그리고 그 하나는 `kind=Request`다. ST-F3가 backlog에 담기기를 기대하는 S1·S2는
+`bound.Send(...)`로 보내는 **one-way**다. 따라서 **one-way send는 capture 경로에 전혀
+도달하지 않는다.** 이것이 `handoff_backlog` 마커가 나오지 않는 직접 원인이다.
+
+남은 질문은 그 one-way send들이 어디까지 가느냐다. session에서 relay되기는 하는지,
+actor node에 도착하는지, 도착한다면 capture 이전 어느 단계에서 다른 경로로 빠지는지다.
+계수가 아니라 marker(S1·S2)를 진단에 실어야 답이 나온다.

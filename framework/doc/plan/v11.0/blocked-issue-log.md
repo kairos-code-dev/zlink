@@ -3398,3 +3398,46 @@ infrastructure request도 응답이 필요하므로 다음 중 하나다. 응답
 infrastructure를 회계에서 빼려는 원래 의도가 있었다면 전자가 맞다.
 
 이 결함 하나가 ST-C2, ST-E1, ST-E2, ST-F3 네 시나리오를 잡고 있다.
+
+## 2026-08-01 bound session 군집 수정 — ST-C2와 ST-E1 해결
+
+응답 경로가 null responder lease를 다루도록 고쳤다.
+
+```csharp
+//  Infrastructure requests - session route commit, seal, abort and unseal -
+//  carry no responder lease on purpose: their replies must not queue behind
+//  application completion admission, or the relocation control plane would
+//  stall whenever application traffic filled it. They still need an answer,
+//  so send without reserving.
+if (completionLease is not null)
+    try { await completionLease.ReserveReplyAsync(...); }
+    catch { ZLinkMessageParts.DisposeAll(replyParts); throw; }
+...
+completionLease?.TransferToCore();
+```
+
+근거는 `ZLinkCompletionAdmissionOwner`가 pending request·send·byte 상한을 두는
+backpressure 장치라는 점이다. infrastructure를 그 회계에서 제외한 것은 제어 평면이
+application 혼잡에 막히지 않게 하려는 의도다. 따라서 permit을 잡게 만드는 대신 응답
+경로가 없는 permit을 견디게 하는 쪽이 원래 의도를 지킨다.
+
+결과는 다음과 같다.
+
+| 시나리오 | 결과 |
+|---|---|
+| ST-C2 | **통과** |
+| ST-E1 | **통과** |
+| ST-F3 | 실패 지점 이동(runtime evidence marker 미관측) |
+| ST-E2 | 실패 지점 이동 |
+
+회귀는 없다. ST-D1·A1·B1·E1A·F4 통과, `Zlink.Framework.sln` 1831건 전량 통과.
+
+### 같은 실수를 한 번 더 했다
+
+첫 수정은 효과가 없었다. `ZLinkSpotReplySubmitter`에 본문이 거의 같은 메서드가 둘 있는데
+(`SubmitDirectAsync`와 `SubmitAsync`), 텍스트로 앵커해 치환하면서 앞의 것을 잡았다.
+stack이 `SubmitAsync`를 가리키는데 `SubmitDirectAsync`를 고쳐 놓고 "고쳤는데 안 된다"고
+판단할 뻔했다. 진단을 넣어 위치를 확인하고서야 드러났다.
+
+교훈은 앞선 것들과 같다. 비슷한 코드가 여럿일 때 텍스트 앵커는 위험하다. 수정 뒤에는
+그 수정이 실제로 실행되는 경로에 있는지 확인해야 한다.

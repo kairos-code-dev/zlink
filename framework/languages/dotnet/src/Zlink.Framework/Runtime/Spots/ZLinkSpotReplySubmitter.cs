@@ -33,43 +33,55 @@ internal static class ZLinkSpotReplySubmitter
     public static async ValueTask SubmitDirectAsync(
         ZLinkBackendRouteReceived received,
         IReadOnlyList<Message> replyParts,
-        ZLinkCompletionAdmissionOwner.ResponderLease completionLease,
+        ZLinkCompletionAdmissionOwner.ResponderLease? completionLease,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            await completionLease.ReserveReplyAsync(
-                    Measure(replyParts), cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch
-        {
-            ZLinkMessageParts.DisposeAll(replyParts);
-            throw;
-        }
+        //  Infrastructure requests - session route commit, seal, abort and
+        //  unseal - carry no responder lease on purpose: their replies must not
+        //  queue behind application completion admission, or the relocation
+        //  control plane would stall whenever application traffic filled it.
+        //  They still need an answer, so send without reserving.
+        if (completionLease is not null)
+            try
+            {
+                await completionLease.ReserveReplyAsync(
+                        Measure(replyParts), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch
+            {
+                ZLinkMessageParts.DisposeAll(replyParts);
+                throw;
+            }
 
         SubmitAndDispose(received, replyParts);
-        completionLease.TransferToCore();
+        completionLease?.TransferToCore();
     }
 
     public static async ValueTask SubmitAsync(
         ZLinkAsyncSubmitter submitter,
         ZLinkBackendRouteReceived received,
         IReadOnlyList<Message> replyParts,
-        ZLinkCompletionAdmissionOwner.ResponderLease completionLease,
+        ZLinkCompletionAdmissionOwner.ResponderLease? completionLease,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            await completionLease.ReserveReplyAsync(
-                    Measure(replyParts), cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch
-        {
-            ZLinkMessageParts.DisposeAll(replyParts);
-            throw;
-        }
+        //  Infrastructure requests - session route commit, seal, abort and
+        //  unseal - carry no responder lease on purpose: their replies must not
+        //  queue behind application completion admission, or the relocation
+        //  control plane would stall whenever application traffic filled it.
+        //  They still need an answer, so send without reserving.
+        if (completionLease is not null)
+            try
+            {
+                await completionLease.ReserveReplyAsync(
+                        Measure(replyParts), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch
+            {
+                ZLinkMessageParts.DisposeAll(replyParts);
+                throw;
+            }
 
         var result = await submitter.SubmitAsync(
                 replyParts,
@@ -81,6 +93,6 @@ internal static class ZLinkSpotReplySubmitter
         if (result.Status != ZLinkOneWaySubmitStatus.Submitted)
             throw new ZlinkSubmitException(
                 ZlinkSubmitException.ErrorCode.Terminated);
-        completionLease.TransferToCore();
+        completionLease?.TransferToCore();
     }
 }

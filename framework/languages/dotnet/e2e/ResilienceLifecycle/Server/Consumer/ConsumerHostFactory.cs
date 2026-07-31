@@ -99,8 +99,14 @@ internal static class ConsumerHostFactory
                     .Where(static peer => peer.State == ZLinkPeerState.Ready)
                     .Select(static peer => peer.NodeRid.ToString())
                     .ToHashSet(StringComparer.Ordinal);
+                // A gone row is not yet a gone candidate. Spec 08 §3.2 picks
+                // among ready Server members, so a scenario that waits for a
+                // provider to disappear has to see it leave the ready set too;
+                // otherwise the next call still selects it and fails with a
+                // transport error instead of the contracted NotFound.
                 var satisfied = request.ExpectedCount == 0
                     ? matches.Length == 0
+                      && !readyRids.Any(rid => MatchesRole(rid, request.RoutingId))
                     : matches.Length >= request.ExpectedCount
                       && matches.All(peer => readyRids.Contains(peer.NodeRid.ToString()));
                 if (satisfied)

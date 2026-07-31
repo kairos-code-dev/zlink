@@ -4502,3 +4502,35 @@ System.TimeoutException: ZLink request timed out before completion.
 
 즉 manual peer 연결이 성립하는데도 request가 상대에 도달하지 않는다. LocationMessaging의
 `backpressure-consumer`와 증상 계열이 같지만 그쪽 원인인 send HWM 설정은 여기에 없다.
+
+### RL-A1 판정: barrier가 부족했고, 그 아래에 계약 격차가 하나 더 있다
+
+앞 절에서 갈리지 않았던 두 갈래 중 barrier 쪽이 먼저 참으로 드러났다. `registry`와
+`consumer`는 같은 host였으므로 "consumer가 아직 수렴하지 않았다"는 표현은 정확하지
+않았다. 실제 문제는 `/topology/wait`의 `ExpectedCount == 0` 분기가 **Location Store row가
+사라진 것만** 확인하고 mesh ready set은 확인하지 않은 것이다. Row가 사라져도 ready
+후보에는 남아 있을 수 있다. Barrier가 다음 줄이 필요로 하는 것을 증명하지 못했다.
+
+`ExpectedCount == 0`일 때 해당 role이 ready set에서도 빠졌는지 함께 확인하도록 고쳤다.
+
+그러자 결과가 `Unavailable`에서 `TimeoutException`으로 바뀐다. 이것이 남은 격차다.
+
+```
+api-b : ready set에서 제거됨 (barrier가 보장)
+api-a : weight 0        (RL-A1이 의도적으로 배제)
+=> 선택 가능한 후보 0개
+```
+
+후보가 0개인데 submit이 수락되고 1초 operation timeout까지 기다린다. spec 08 §7은
+"ChannelName의 선택 가능한 target이 없다 → `NotFound`로 끝난다"로 정하고, timeout을
+허용하는 것은 그 다음 행 "알려진 target의 연결이 제한 시간까지 ready가 되지 않는다"
+뿐이다. 두 경우는 선택 시점에 구분되어야 한다.
+
+api-a가 살아 있는데도 요청이 처리되지 않은 것은 §3.2 step 4의 weight 0 배제가 동작한다는
+증거다. 즉 후보 집합은 비어 있고, 비어 있는데도 실패하지 않고 기다린다.
+
+이 대기는 `ZLinkAsyncSubmitter`의 `failFastNotConnected` 주석이 말하는 connect-window
+buffering이다. Rid-addressed router 경로만 fail-fast를 선택하고 channel select-one은
+선택하지 않는다. 후보 0개를 즉시 `NotFound`로 끝내려면 선택 시점의 후보 수를 알아야 하며
+그 선택은 Core의 `RequestToChannel` 안에서 일어난다. PS-A4와 마찬가지로 core lane이므로
+기록만 한다.

@@ -50,7 +50,7 @@ public interface IZLinkFanoutChannelBuilder
 
     IZLinkFanoutChannelBuilder EnableSubscriber();
 
-    IZLinkFanoutChannelBuilder ConnectSubscriber(string endpoint);
+    IZLinkFanoutChannelBuilder Connect(string endpoint);
 
     IZLinkEndpointConnections SubscriberConnections { get; }
 

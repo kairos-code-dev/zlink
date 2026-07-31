@@ -783,7 +783,7 @@ final class ChannelMessagingTest {
                 return CompletableFuture.completedFuture(null);
             }); };
         { var channel = subscriberOptions.addFanoutChannel("manual-events");
-            channel.enableSubscriber(fanoutEndpoint);
+            channel.connect(fanoutEndpoint);
             channel.addPublishHandler(
                 ManualRegistrationPublishHandler.class,
                 ManualEvent.class,
@@ -944,7 +944,7 @@ final class ChannelMessagingTest {
 
         DefaultZLinkFrameworkOptions subscriberOptions = new DefaultZLinkFrameworkOptions();
         subscriberOptions.addHandlersFromPackageOf(ChannelMessagingTest.class);
-        { var channel = subscriberOptions.addFanoutChannel("events"); channel.enableSubscriber(endpoint);
+        { var channel = subscriberOptions.addFanoutChannel("events"); channel.connect(endpoint);
             channel.addHandlerGroup("annotated-events"); };
 
         try (ZLinkFrameworkRuntime ignoredPublisher =
@@ -976,17 +976,17 @@ final class ChannelMessagingTest {
 
         DefaultZLinkFrameworkOptions firstOptions = new DefaultZLinkFrameworkOptions();
         { var channel = firstOptions.addFanoutChannel("sequence");
-            channel.enableSubscriber(endpoint);
+            channel.connect(endpoint);
             channel.addPublishHandler(FanoutSequenceOneHandler.class, FanoutSequence.class, "FanoutSequence"); };
 
         DefaultZLinkFrameworkOptions secondOptions = new DefaultZLinkFrameworkOptions();
         { var channel = secondOptions.addFanoutChannel("sequence");
-            channel.enableSubscriber(endpoint);
+            channel.connect(endpoint);
             channel.addPublishHandler(FanoutSequenceTwoHandler.class, FanoutSequence.class, "FanoutSequence"); };
 
         DefaultZLinkFrameworkOptions thirdOptions = new DefaultZLinkFrameworkOptions();
         { var channel = thirdOptions.addFanoutChannel("sequence");
-            channel.enableSubscriber(endpoint);
+            channel.connect(endpoint);
             channel.addPublishHandler(FanoutSequenceThreeHandler.class, FanoutSequence.class, "FanoutSequence"); };
 
         try (ZLinkFrameworkRuntime publisher =
@@ -1022,7 +1022,7 @@ final class ChannelMessagingTest {
         { var channel = publisherOptions.addFanoutChannel("events").enablePublisher(endpoint); };
 
         DefaultZLinkFrameworkOptions subscriberOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = subscriberOptions.addFanoutChannel("events"); channel.enableSubscriber(endpoint);
+        { var channel = subscriberOptions.addFanoutChannel("events"); channel.connect(endpoint);
             channel.addPublishHandler(ScoreChangedHandler.class, ScoreChanged.class, "ScoreChanged"); };
 
         try (ZLinkFrameworkRuntime ignoredPublisher =

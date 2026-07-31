@@ -1662,7 +1662,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
 
     options.add_fanout_channel ("events")
       .enable_subscriber ()
-      .enable_subscriber ("tcp://127.0.0.1:7001");
+      .connect ("tcp://127.0.0.1:7001");
 
     try {
         options.apply ();

@@ -147,7 +147,7 @@ inline void configure_invalid (zlink::framework::zlink_framework_options_t &opti
           .group (handler_group)
           .add_send<auto_send_handler_t> ();
         options.add_fanout_channel ("registration.codec.invalid")
-          .enable_subscriber (endpoint)
+          .connect (endpoint)
           .use_handler_group (handler_group);
         return;
     }

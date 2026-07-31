@@ -208,7 +208,7 @@ public interface FanoutChannelBuilder {
     FanoutChannelBuilder setRoutingId(RoutingId publisherRoutingId);
     FanoutChannelBuilder setRoutingIdPrefix(String prefix);
     FanoutChannelBuilder enableSubscriber();
-    FanoutChannelBuilder enableSubscriber(String endpoint);
+    FanoutChannelBuilder connect(String endpoint);
     ZLinkEndpointConnections subscriberConnections();
     FanoutChannelBuilder addHandlerGroup(String groupName);
 }
@@ -373,7 +373,7 @@ public interface systems.zlink.framework.configuration.FanoutChannelBuilder {
   public abstract systems.zlink.framework.configuration.FanoutChannelBuilder setRoutingId(systems.zlink.contracts.core.RoutingId);
   public abstract systems.zlink.framework.configuration.FanoutChannelBuilder setRoutingIdPrefix(java.lang.String);
   public abstract systems.zlink.framework.configuration.FanoutChannelBuilder enableSubscriber();
-  public abstract systems.zlink.framework.configuration.FanoutChannelBuilder enableSubscriber(java.lang.String);
+  public abstract systems.zlink.framework.configuration.FanoutChannelBuilder connect(java.lang.String);
   public abstract systems.zlink.framework.configuration.ZLinkEndpointConnections subscriberConnections();
   public abstract systems.zlink.framework.configuration.FanoutChannelBuilder addHandlerGroup(java.lang.String);
   public abstract void addPublishHandler(java.lang.Class<?>, java.lang.Class<?>);

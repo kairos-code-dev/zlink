@@ -84,7 +84,7 @@ export interface ZLinkFanoutChannelBuilder {
     routingId(publisherRoutingId: RoutingId): this;
     setRoutingIdPrefix(prefix: string): this;
     enableSubscriber(): this;
-    enableSubscriber(endpoint: string): this;
+    connect(endpoint: string): this;
     subscriberConnections(): ZLinkEndpointConnections;
 }
 

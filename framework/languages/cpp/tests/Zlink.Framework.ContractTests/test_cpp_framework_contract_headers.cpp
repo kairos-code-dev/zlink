@@ -1226,7 +1226,7 @@ static_assert (
 
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::fanout_channel_builder_t &> ()
-                             .enable_subscriber ("tcp://127.0.0.1:5001")),
+                             .connect ("tcp://127.0.0.1:5001")),
                  zlink::framework::fanout_channel_builder_t &>);
 
 static_assert (

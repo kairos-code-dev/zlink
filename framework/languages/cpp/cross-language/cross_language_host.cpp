@@ -463,7 +463,7 @@ int main (int argc, char **argv)
             }
             if (mode == "channel-subscriber") {
                 auto channel = options.add_fanout_channel (require ("channel-name"));
-                channel.enable_subscriber (require ("publisher-endpoint"));
+                channel.connect (require ("publisher-endpoint"));
                 channel.use_handler_group ("cross-language");
                 options.handlers ()
                   .group ("cross-language")

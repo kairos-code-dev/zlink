@@ -95,7 +95,7 @@ public class SubmitAdmissionRole {
             } else if ("subscriber".equals(config.role())) {
                 options.addHandlersFromPackageOf(FanoutHandler.class);
                 options.addFanoutChannel(FANOUT)
-                    .enableSubscriber(config.fanoutEndpoint())
+                    .connect(config.fanoutEndpoint())
                     .addPublishHandler(FanoutHandler.class, Probe.class);
             }
         };

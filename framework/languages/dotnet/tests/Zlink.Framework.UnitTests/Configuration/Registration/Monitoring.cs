@@ -83,7 +83,7 @@ public sealed class MonitoringTests : RegistrationValidationSupport
 
             {
                 var events = options.AddFanoutChannel("profile.events");
-                events.ConnectSubscriber("inproc://profile-events");
+                events.Connect("inproc://profile-events");
                 events.AddHandler<TestPublishHandler, TestPublishedEvent>();
             }
 

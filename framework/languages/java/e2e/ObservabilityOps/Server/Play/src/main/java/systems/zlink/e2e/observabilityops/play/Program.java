@@ -126,7 +126,7 @@ public final class Program {
                 if (Contracts.PLAY_NODE_A.equals(nodeRid)) {
                     fanout.enablePublisher(fanoutEndpoint);
                 }
-                fanout.enableSubscriber(fanoutEndpoint)
+                fanout.connect(fanoutEndpoint)
                     .addPublishHandler(
                         AwaitProbeHandlers.ObservabilityFanoutHandler.class,
                         Contracts.ObservabilityFanoutEvent.class);

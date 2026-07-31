@@ -51,7 +51,7 @@ function createSubscriberModule(): Function {
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
           builder.addFanoutChannel(PubSubNames.channel)
-            .enableSubscriber(options.publisherEndpoint)
+            .connect(options.publisherEndpoint)
             .routingId(options.rid)
             .addPublishHandler(PacketNames.eventMsg, EventMsgHandler);
           return {

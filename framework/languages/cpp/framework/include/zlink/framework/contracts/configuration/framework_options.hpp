@@ -729,7 +729,7 @@ class fanout_channel_builder_t
         return *this;
     }
 
-    fanout_channel_builder_t &enable_subscriber (std::string endpoint)
+    fanout_channel_builder_t &connect (std::string endpoint)
     {
         detail::require_non_blank (endpoint, "fanout subscriber endpoint is required");
         _subscriber_enabled = true;

@@ -236,7 +236,7 @@ public interface IZLinkFanoutChannelBuilder
     IZLinkFanoutChannelBuilder SetRoutingId(RoutingId publisherRoutingId);
     IZLinkFanoutChannelBuilder SetRoutingIdPrefix(string prefix);
     IZLinkFanoutChannelBuilder EnableSubscriber();
-    IZLinkFanoutChannelBuilder ConnectSubscriber(string endpoint);
+    IZLinkFanoutChannelBuilder Connect(string endpoint);
     IZLinkEndpointConnections SubscriberConnections { get; }
     IZLinkFanoutChannelBuilder AddHandler<THandler, TEvent>(
         string? packetName = null)
@@ -324,7 +324,7 @@ listener 호출 자체를 생략하면 port `0`으로 bind한다. Manual mode에
 Store가 없는 publisher는 fixed RID와 listener endpoint를 수동으로 전달하는 대상으로 계속 사용할 수 있다.
 Endpoint를
 받지 않는 `EnableSubscriber()`는 location store에서 같은 ChannelName의 유효한 publisher를 모두 발견한다.
-`ConnectSubscriber(endpoint)`는 명시한 endpoint만 사용하는 manual subscriber를 구성한다. 한 fanout
+`Connect(endpoint)`는 명시한 endpoint만 사용하는 manual subscriber를 구성한다. 한 fanout
 channel에서 automatic subscriber와 manual subscriber를 함께 설정하면 startup이 실패한다. Automatic
 subscriber는 location store가 필요하지만 manual publisher와 manual subscriber만 사용하는 host에는
 필요하지 않다.

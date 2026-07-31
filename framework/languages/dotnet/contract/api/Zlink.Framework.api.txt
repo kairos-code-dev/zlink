@@ -282,7 +282,7 @@ assembly Zlink.Framework
       generic THandler variance=invariant nullable=unspecified
       where THandler : class, Zlink.Framework.Contracts.Handlers.IZLinkFanoutHandler<TEvent>
       generic TEvent variance=invariant nullable=nullable
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkFanoutChannelBuilder ConnectSubscriber(System.String endpoint [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkFanoutChannelBuilder Connect(System.String endpoint [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkFanoutChannelBuilder EnablePublisher(System.Int32 port = 0 [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkFanoutChannelBuilder EnablePublisher(System.String endpoint [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkFanoutChannelBuilder EnableSubscriber() [return=read:not-null,write:not-null]

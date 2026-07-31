@@ -29,7 +29,7 @@ public sealed class FanoutAutomaticDiscoveryTests
                 options.AddLocationStore(new ZLinkInMemoryLocationStore());
                 options.AddFanoutChannel("events")
                     .EnableSubscriber()
-                    .ConnectSubscriber("tcp://127.0.0.1:7001")
+                    .Connect("tcp://127.0.0.1:7001")
                     .AddHandler<TestPublishHandler, TestPublishedEvent>();
             }));
         Assert.Contains("cannot combine automatic and manual", mixedMode.Message);
@@ -44,7 +44,7 @@ public sealed class FanoutAutomaticDiscoveryTests
         services.AddZLinkFramework(options =>
         {
             var fanout = options.AddFanoutChannel("events");
-            fanout.ConnectSubscriber("tcp://127.0.0.1:7001")
+            fanout.Connect("tcp://127.0.0.1:7001")
                 .AddHandler<TestPublishHandler, TestPublishedEvent>();
             connections = fanout.SubscriberConnections;
         });

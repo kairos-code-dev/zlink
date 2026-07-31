@@ -96,7 +96,7 @@ internal static class TestHostScenarioConfigurator
             var channel = framework.AddFanoutChannel(options.ChannelName
                                                      ?? throw new InvalidOperationException(
                                                          "Channel subscriber mode requires --channel-name."));
-            channel.ConnectSubscriber(
+            channel.Connect(
                 options.PublisherEndpoint
                 ?? throw new InvalidOperationException(
                     "Channel subscriber mode requires --publisher-endpoint."));

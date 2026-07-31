@@ -169,7 +169,7 @@ internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registr
         return this;
     }
 
-    public IZLinkFanoutChannelBuilder ConnectSubscriber(string endpoint)
+    public IZLinkFanoutChannelBuilder Connect(string endpoint)
     {
         var subscriber = Subscriber();
         ZLinkChannelEndpointBuilderSupport.AddManualConnection(

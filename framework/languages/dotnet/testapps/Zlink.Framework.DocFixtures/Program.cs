@@ -41,7 +41,7 @@ internal static class FixtureSamples
             {
                 var channel = options.AddFanoutChannel("orders.events");
                 channel.EnablePublisher("tcp://127.0.0.1:7202");
-                channel.ConnectSubscriber("tcp://127.0.0.1:7202");
+                channel.Connect("tcp://127.0.0.1:7202");
             }
         });
         return builder;

@@ -103,7 +103,7 @@ final class DefaultZLinkFrameworkOptionsTest {
             .client()
             .connect("inproc://manual-client");
         options.addFanoutChannel("manual-subscriber")
-            .enableSubscriber("inproc://manual-subscriber");
+            .connect("inproc://manual-subscriber");
         options.addFanoutChannel("storeless-publisher")
             .enablePublisher("inproc://storeless-publisher");
 
@@ -769,7 +769,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void fanoutChannelSubscriberManualConnectionsAreAcceptedWithoutLocationAutoConnect() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var channel = options.addFanoutChannel("events"); channel.enableSubscriber("inproc://events");
+        { var channel = options.addFanoutChannel("events"); channel.connect("inproc://events");
             channel.addPublishHandler(EventHandler.class, String.class, "Event"); };
 
         assertDoesNotThrow(options::validate);
@@ -780,7 +780,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         options.addLocationStore(new ZLinkInMemoryLocationStore());
-        { var channel = options.addFanoutChannel("events"); channel.enableSubscriber("inproc://events");
+        { var channel = options.addFanoutChannel("events"); channel.connect("inproc://events");
             channel.addPublishHandler(EventHandler.class, String.class, "Event"); };
 
         assertDoesNotThrow(options::validate);
@@ -807,7 +807,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addLocationStore(new ZLinkInMemoryLocationStore());
         var channel = options.addFanoutChannel("events");
-        channel.enableSubscriber("inproc://events");
+        channel.connect("inproc://events");
         channel.enableSubscriber();
         channel.addPublishHandler(EventHandler.class, String.class, "Event");
 
@@ -818,7 +818,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void fanoutChannelRejectsDuplicatePublishHandlerPacketName() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var channel = options.addFanoutChannel("events"); channel.enableSubscriber("inproc://events");
+        { var channel = options.addFanoutChannel("events"); channel.connect("inproc://events");
             channel.addPublishHandler(EventHandler.class, String.class, "Event");
             channel.addPublishHandler(EventHandler.class, String.class, "Event"); };
 
@@ -830,7 +830,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         options.addHandlersFromPackageOf(DefaultZLinkFrameworkOptionsTest.class);
-        { var channel = options.addFanoutChannel("events"); channel.enableSubscriber("inproc://events");
+        { var channel = options.addFanoutChannel("events"); channel.connect("inproc://events");
             channel.addHandlerGroup("scanned-publish");
             channel.addPublishHandler(EventHandler.class, String.class); };
 
@@ -846,7 +846,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         options.addHandlersFromPackageOf(DefaultZLinkFrameworkOptionsTest.class);
-        { var channel = options.addFanoutChannel("events"); channel.enableSubscriber("inproc://events");
+        { var channel = options.addFanoutChannel("events"); channel.connect("inproc://events");
             channel.addHandlerGroup("scanned-attributed-publish"); };
 
         assertDoesNotThrow(options::validate);
@@ -974,7 +974,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         options.addHandlersFromPackageOf(DefaultZLinkFrameworkOptionsTest.class);
-        { var channel = options.addFanoutChannel("events"); channel.enableSubscriber("inproc://events");
+        { var channel = options.addFanoutChannel("events"); channel.connect("inproc://events");
             channel.addHandlerGroup("scanned-request"); };
 
         assertThrows(ZLinkConfigurationException.class, options::validate);

@@ -1050,7 +1050,7 @@ fanout channel의 구독 handler는 fanout builder의 `AddHandler<...>()`로 등
 > mesh.Channel(ZoneWorldNames.ReportChannel).Client();  // 보고를 보내기만 하는 channel.
 >
 > options.AddFanoutChannel(ZoneWorldNames.BroadcastChannel)
->     .ConnectSubscriber(shared.BroadcastEndpoint)      // publisher endpoint에 연결한다.
+>     .Connect(shared.BroadcastEndpoint)      // publisher endpoint에 연결한다.
 >     .AddHandler<WorldAnnounceSubscriber, WorldAnnounceEvent>()
 >     .AddHandler<NodeMaintenanceChangedSubscriber, NodeMaintenanceChangedEvent>();
 > ```
@@ -1364,7 +1364,7 @@ Fanout handler는 독립 fanout channel builder에 등록하며 RouteMesh handle
 
 - topic은 선택이다. `Publish(channelName, message)`로 보내면 그 channel의 구독자 전체가
   받고, `Publish(channelName, topic, message)`는 topic을 분류 라벨로 함께 싣는다.
-- 구독자는 `AddFanoutChannel(name).ConnectSubscriber(endpoint)`로 publisher endpoint를
+- 구독자는 `AddFanoutChannel(name).Connect(endpoint)`로 publisher endpoint를
   연결한다.
 - Classic fanout handler는 등록한 typed event와 취소 신호만 받고 transport
   topic을 handler context로 노출하지 않는다. 업무 분기가 필요하면 event type이나 등록한
@@ -2329,7 +2329,7 @@ SPOT과의 결합은 [06-spot](06-spot.ko.md)에서 이어진다.
 
         options.AddFanoutChannel("api.events")
             .EnablePublisher("tcp://0.0.0.0:7201")         // 이 process가 발행자다.
-            .ConnectSubscriber("tcp://127.0.0.1:7201")     // 자기 발행도 구독해 보여 주는 예다.
+            .Connect("tcp://127.0.0.1:7201")     // 자기 발행도 구독해 보여 주는 예다.
             .AddHandler<UserCacheRefreshedEventHandler, UserCacheRefreshedEvent>();
     });
 
@@ -2391,7 +2391,7 @@ SPOT과의 결합은 [06-spot](06-spot.ko.md)에서 이어진다.
 
             options.add_fanout_channel ("api.events")
               .enable_publisher ("tcp://0.0.0.0:7201")                 // 이 process가 발행자다.
-              .enable_subscriber ("tcp://127.0.0.1:7201")             // 자기 발행도 구독해 보여 준다.
+              .connect ("tcp://127.0.0.1:7201")             // 자기 발행도 구독해 보여 준다.
               .use_handler_group ("api.events"); // 구독 handler를 group으로 붙인다.
 
             options.http ()
@@ -2426,7 +2426,7 @@ SPOT과의 결합은 [06-spot](06-spot.ko.md)에서 이어진다.
 
                 options.addFanoutChannel("api.events")
                     .enablePublisher("tcp://0.0.0.0:7201")       // 이 process가 발행자다.
-                    .enableSubscriber("tcp://127.0.0.1:7201")   // 자기 발행도 구독해 보여 주는 예다.
+                    .connect("tcp://127.0.0.1:7201")   // 자기 발행도 구독해 보여 주는 예다.
                     .addHandler(UserCacheRefreshedEventHandler.class, UserCacheRefreshedEvent.class);
             };
         }
@@ -2457,7 +2457,7 @@ SPOT과의 결합은 [06-spot](06-spot.ko.md)에서 이어진다.
 
         options.addFanoutChannel("api.events")
             .enablePublisher("tcp://0.0.0.0:7201")            // 이 process가 발행자다.
-            .enableSubscriber("tcp://127.0.0.1:7201")        // 자기 발행도 구독해 보여 주는 예다.
+            .connect("tcp://127.0.0.1:7201")        // 자기 발행도 구독해 보여 주는 예다.
             .addHandler(
                 UserCacheRefreshedEventHandler::class.java, UserCacheRefreshedEvent::class.java)
     }
@@ -2480,7 +2480,7 @@ SPOT과의 결합은 [06-spot](06-spot.ko.md)에서 이어진다.
 
           builder.addFanoutChannel('api.events')
             .enablePublisher('tcp://0.0.0.0:7201')       // 이 process가 발행자다.
-            .enableSubscriber('tcp://127.0.0.1:7201')   // 자기 발행도 구독해 보여 주는 예다.
+            .connect('tcp://127.0.0.1:7201')   // 자기 발행도 구독해 보여 주는 예다.
             .addHandler(UserCacheRefreshedEventHandler);
         })
       ],

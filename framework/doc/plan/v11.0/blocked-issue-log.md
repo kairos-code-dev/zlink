@@ -3902,3 +3902,31 @@ var oneWay = context.SendFromNodeAsync(caller, actorId, new HandoffPacket(scenar
 
 묶어서 고칠 수 있는 관계가 아니므로 각각 다뤄야 한다. 전송 경로를 확인하지 않고 packet
 종류만 보고 묶으려 했던 것이 오류였다.
+
+## 2026-08-01 ST-B5는 이 머신에서 실행할 수 없다 — inotify가 동작하지 않는다
+
+ST-B5를 재실행했으나 여전히 `inotify_add_watch failed` (`Errno 28`, ENOSPC)로 실패한다.
+앞서 "일시적 소진"으로 적었는데 그것도 틀렸다. 최소 재현으로 확인했다.
+
+```python
+libc.inotify_init1.argtypes=[ctypes.c_int]
+libc.inotify_add_watch.argtypes=[ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32]
+fd = libc.inotify_init1(os.O_CLOEXEC)      # 성공, fd=3
+libc.inotify_add_watch(fd, b'/tmp', 2)     # -1, errno=28
+```
+
+`/tmp`에 대한 watch조차 실패하며, `argtypes`를 명시해도 같다. 따라서 ctypes 마샬링
+문제도 `kill_on_file_marker.py`의 버그도 아니다. 자원 여유도 충분하다.
+
+```
+inotify instance 사용량 : 20
+max_user_instances      : 1024
+max_user_watches        : 524288
+```
+
+즉 **이 머신(WSL2)에서 inotify watch를 추가할 수 없다.** ST-B5는 `kill_on_file_marker.py`가
+로그 파일에 marker가 나타나는 순간 node를 죽이는 방식이라 inotify에 의존한다. 따라서
+이 시나리오는 코드 상태와 무관하게 여기서 실행할 수 없다.
+
+이는 프레임워크 결함이 아니며 고칠 대상도 아니다. 다른 환경에서 실행하거나, marker 감시를
+polling으로 바꾸면 이 제약을 벗어난다. 후자는 하네스 변경이므로 필요하면 별도로 판단한다.

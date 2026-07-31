@@ -52,12 +52,14 @@ LANGUAGES = {
 }
 
 # 언어별 공개 계약 spec 디렉터리. 샘플이 안 쓰는 표면은 여기에만 있다.
+# Kotlin은 Java runtime을 공유하는 얇은 coroutine 레이어라, 자기 spec에 없는
+# 표면은 Java spec이 소유한다. 두 곳을 함께 본다.
 SPEC_DIRS = {
-    "C#/.NET": "server/languages/dotnet",
-    "C++": "server/languages/cpp",
-    "Java": "server/languages/java",
-    "Kotlin": "server/languages/kotlin",
-    "Node/TypeScript": "server/languages/node",
+    "C#/.NET": ["server/languages/dotnet"],
+    "C++": ["server/languages/cpp"],
+    "Java": ["server/languages/java"],
+    "Kotlin": ["server/languages/kotlin", "server/languages/java"],
+    "Node/TypeScript": ["server/languages/node"],
 }
 
 TAB_RE = re.compile(r'^=== "(.+?)"\s*$')
@@ -110,6 +112,16 @@ ALLOWED_NON_FRAMEWORK = {
     "SaveChangesAsync": "예제 repository의 도메인 메서드",
     "requireSingleBoundActor": "예제가 정의해 쓰는 도우미 — bound actor가 하나인지 확인",
     "requireActor": "예제가 정의해 쓰는 도우미 — actor 생성 결과에서 ref를 꺼낸다",
+    "setDisplayName": "예제 Actor(PlayerActor)의 도메인 메서드",
+    "hasSeat": "예제 Spot(GameRoom)의 도메인 메서드",
+    "rememberCurrentLocation": "예제 Actor가 정의해 쓰는 도우미",
+    "clearPendingJoin": "예제 Actor가 정의해 쓰는 도우미",
+    "scheduleApplicationRetry": "예제 Actor가 정의해 쓰는 도우미",
+    "export_state": "예제 Actor의 도메인 메서드 — relocation adapter가 부른다",
+    "import_state": "예제 Actor의 도메인 메서드 — relocation adapter가 부른다",
+    "exportState": "예제 Actor의 도메인 메서드 — relocation adapter가 부른다",
+    "importState": "예제 Actor의 도메인 메서드 — relocation adapter가 부른다",
+    "apply_player": "예제 Actor의 도메인 메서드",
     # 서드파티 라이브러리.
     "GenericWriter": "Apache Avro",
     "GenericReader": "Apache Avro",
@@ -142,15 +154,15 @@ def language_sources(paths: list[str], exts: list[str]) -> str:
 
 
 def spec_text(label: str) -> str:
-    rel = SPEC_DIRS.get(label)
-    if rel is None:
-        return ""
-    root = SPEC_DIR / rel
-    if not root.is_dir():
-        return ""
-    return "\n".join(
-        p.read_text(encoding="utf-8", errors="ignore") for p in root.rglob("*.ko.md")
-    )
+    chunks: list[str] = []
+    for rel in SPEC_DIRS.get(label, []):
+        root = SPEC_DIR / rel
+        if not root.is_dir():
+            continue
+        chunks += [
+            p.read_text(encoding="utf-8", errors="ignore") for p in root.rglob("*.ko.md")
+        ]
+    return "\n".join(chunks)
 
 
 def tab_blocks(lines: list[str]):

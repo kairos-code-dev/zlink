@@ -29,19 +29,54 @@ Object Server에 Entry Spot과 Actor factory를 함께 등록한다. `actorType`
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    mesh.set_object_role (object_role_t::server)
+      .add_entry_spot<bingo_entry_spot_t> (
+        [] (entry_spot_context_t context) {
+            return std::make_shared<bingo_entry_spot_t> (std::move (context));
+        })
+      .add_actor_factory<player_actor_t, player_actor_factory_t> (
+        sample_names_t::player_actor_type,
+        std::make_shared<player_actor_factory_t> (),
+        [] (auto &factory) {
+            factory.template preserve_state_with<player_actor_relocation_adapter_t> ();
+        });
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    mesh.objects().server()
+        .addEntrySpot(BingoEntrySpot.class)
+        .addActorFactory(
+            SampleNames.PlayerActorType,
+            PlayerActor.class,
+            PlayerActorFactory.class,
+            factory -> factory.preserveStateWith(PlayerActorRelocationAdapter.class));
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    mesh.objects().server()
+        .addEntrySpot(BingoEntrySpot::class.java)
+        .addActorFactory(
+            SampleNames.PlayerActorType,
+            PlayerActor::class.java,
+            PlayerActorFactory::class.java,
+        ) { factory -> factory.preserveStateWith(PlayerActorRelocationAdapter::class.java) }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    mesh.objects().server()
+      .addEntrySpot(BingoEntrySpot)
+      .addActorFactory(
+        SampleNames.playerActorType,
+        PlayerActorFactory,
+        (factory) => factory.preserveStateWith(PlayerActorRelocationAdapter));
+    ```
 
 
 Relocation policy는 factory 등록에서 하나를 고정하며 실행 중에 변경하지 않는다.
@@ -80,19 +115,66 @@ Actor가 다른 node의 Spot으로 join할 때와 host `Relocate`로 이전할 �
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    auto result = co_await actors
+                    .get_or_create ("player", player_id, create_player_t{display_name})
+                    .in_mesh ("play")
+                    .timeout (std::chrono::seconds (10))
+                    .submit ();
+
+    if (!result)
+        throw std::runtime_error ("Player creation was rejected.");
+    auto actor = result.value ().ref ();
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    ZLinkActorCreateResult result = actors
+        .getOrCreate(playerId, "player")
+        .inMesh("play")
+        .request(new CreatePlayer(displayName))
+        .timeout(Duration.ofSeconds(10))
+        .submit()
+        .toCompletableFuture().join();
+
+    ActorRef actor;
+    if (result instanceof ZLinkActorCreateResult.Existing existing) actor = existing.actor();
+    else if (result instanceof ZLinkActorCreateResult.Created created) actor = created.actor();
+    else throw new IllegalStateException("Player creation was rejected.");
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    val result = actors
+        .getOrCreate(playerId, "player")
+        .inMesh("play")
+        .request(CreatePlayer(displayName))
+        .timeout(Duration.ofSeconds(10))
+        .submit()
+        .await()
+
+    val actor = when (result) {
+        is ZLinkActorCreateResult.Existing -> result.actor()
+        is ZLinkActorCreateResult.Created -> result.actor()
+        else -> error("Player creation was rejected.")
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    const result = await actors
+      .getOrCreate(playerId, 'player')
+      .inMesh('play')
+      .request(createPlayer(displayName))
+      .timeout(10_000)
+      .submit();
+
+    if (result.status === 'rejected') throw new Error('Player creation was rejected.');
+    const actor = result.actor;
+    ```
 
 
 `ActorRef`는 exact incarnation과 조회 당시 owner route를 담는다. Session binding이나 exact destroy에
@@ -112,19 +194,51 @@ Actor가 다른 node의 Spot으로 join할 때와 host `Relocate`로 이전할 �
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    auto current = co_await actors.find (player_id);
+    auto current_spot = co_await actors.find_spot (player_id);
+
+    if (current) {
+        // generation이 다른 Actor는 종료하지 않는다.
+        co_await actors.destroy (current.value ());
+    }
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    Optional<ActorRef> current = actors.find(playerId).toCompletableFuture().join();
+    Optional<SpotRef> currentSpot = actors.findSpot(playerId).toCompletableFuture().join();
+
+    current.ifPresent(actor ->
+        // generation이 다른 Actor는 종료하지 않는다.
+        actors.destroy(actor).toCompletableFuture().join());
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // Java 표면이 Optional을 돌려주므로 Kotlin에서는 orElse(null)로 받는다.
+    val current = actors.find(playerId).await().orElse(null)
+    val currentSpot = actors.findSpot(playerId).await().orElse(null)
+
+    if (current != null) {
+        // generation이 다른 Actor는 종료하지 않는다.
+        actors.destroy(current).await()
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    const current = await actors.find(playerId);
+    const currentSpot = await actors.findSpot(playerId);
+
+    if (current !== undefined) {
+      // generation이 다른 Actor는 종료하지 않는다.
+      await actors.destroy(current);
+    }
+    ```
 
 
 Actor는 Entry Spot에서만 종료할 수 있다. User Spot에 있으면 먼저 Entry Spot join을 완료한다.
@@ -200,19 +314,146 @@ Relocation으로 Actor가 다른 node의 Entry Spot에 복원되는 경우에는
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // <player_actor_t> — 이 Entry Spot이 membership을 관리할 Actor type이다.
+    class play_entry_spot_t : public entry_spot_t<player_actor_t>
+    {
+      public:
+        entry_spot_context_t &context () noexcept override { return _context; }
+
+        // Spot instance가 준비될 때 한 번 호출된다. 여기서 등록한 handler는
+        // 이 Entry Spot에 소속된 Actor 앞으로 온 packet을 처리한다.
+        void configure () override
+        {
+            // C++은 handler class 대신 member 함수를 직접 등록한다.
+            _context.handlers ().add_actor_send<&play_entry_spot_t::join_game> ();
+        }
+
+        // 새 Actor가 이 Entry Spot을 최초 membership으로 삼을 때 호출된다.
+        // 반환값이 이 Actor를 만들지 말지를 결정한다 — 이 Spot이 admission 관문이다.
+        task_t<actor_create_response_t>
+        on_create_actor (player_actor_t &actor, const message_t &create_request) override
+        {
+            // 초기 state는 Actor가 소유한다.
+            actor.apply_player (create_request.decode<create_player_t> ());
+            // reject(...)면 생성이 취소된다.
+            co_return actor_create_response_t::accept ();
+        }
+
+        // User Spot에 있던 Actor가 이 Entry Spot으로 돌아온 commit이 끝난 뒤 호출된다.
+        // 최초 생성과 relocation 복원에서는 호출되지 않는다.
+        task_t<void> on_actor_joined (player_actor_t &) override { co_return; }
+
+        // 이 Entry Spot에 있던 Actor가 User Spot으로 빠져나간 commit 뒤 호출된다.
+        // Actor가 사라진다는 뜻이 아니라 membership이 옮겨졌다는 뜻이다.
+        task_t<void> on_leave_actor (player_actor_t &) override { co_return; }
+
+      private:
+        entry_spot_context_t _context;
+    };
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // <PlayerActor> — 이 Entry Spot이 membership을 관리할 Actor type이다.
+    public final class PlayEntrySpot implements ZLinkEntrySpot<PlayerActor> {
+        private final ZLinkEntrySpotContext context;
+
+        // Framework가 생성자로 넣어 준 context를 그대로 노출한다.
+        @Override
+        public ZLinkEntrySpotContext context() {
+            return context;
+        }
+
+        // Spot instance가 준비될 때 한 번 호출된다.
+        @Override
+        public void configure() {
+            // JoinGameHandler가 PlayerActor 앞으로 온 JoinGame packet을 받는다.
+            context.handlers().addActorPacket(JoinGameHandler.class, PlayerActor.class);
+        }
+
+        // 새 Actor가 이 Entry Spot을 최초 membership으로 삼을 때 호출된다.
+        // 반환값이 이 Actor를 만들지 말지를 결정한다 — 이 Spot이 admission 관문이다.
+        @Override
+        public CompletionStage<ZLinkActorCreateResponse> onCreateActor(
+            PlayerActor actor, ZLinkMessage createRequest) {
+            actor.setDisplayName(createRequest.decode(CreatePlayer.class).displayName());
+            return CompletableFuture.completedFuture(ZLinkActorCreateResponse.accept());
+        }
+
+        // User Spot에 있던 Actor가 돌아온 commit이 끝난 뒤 호출된다.
+        @Override
+        public CompletionStage<Void> onJoinedActor(PlayerActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        // Actor가 User Spot으로 빠져나간 commit 뒤 호출된다.
+        @Override
+        public CompletionStage<Void> onLeaveActor(PlayerActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // <PlayerActor> — 이 Entry Spot이 membership을 관리할 Actor type이다.
+    class PlayEntrySpot(private val entryContext: ZLinkEntrySpotContext) : ZLinkEntrySpot<PlayerActor> {
+
+        override fun context(): ZLinkEntrySpotContext = entryContext
+
+        // Spot instance가 준비될 때 한 번 호출된다.
+        override fun configure() {
+            // JoinGameHandler가 PlayerActor 앞으로 온 JoinGame packet을 받는다.
+            entryContext.handlers().addActorPacket(JoinGameHandler::class.java, PlayerActor::class.java)
+        }
+
+        // 새 Actor가 이 Entry Spot을 최초 membership으로 삼을 때 호출된다.
+        // 반환값이 이 Actor를 만들지 말지를 결정한다 — 이 Spot이 admission 관문이다.
+        override suspend fun onCreateActor(
+            actor: PlayerActor, createRequest: ZLinkMessage): ZLinkActorCreateResponse {
+            actor.setDisplayName(createRequest.decode(CreatePlayer::class.java).displayName)
+            return ZLinkActorCreateResponse.accept()
+        }
+
+        // User Spot에 있던 Actor가 돌아온 commit이 끝난 뒤 호출된다.
+        override suspend fun onJoinedActor(actor: PlayerActor) {}
+
+        // Actor가 User Spot으로 빠져나간 commit 뒤 호출된다.
+        override suspend fun onLeaveActor(actor: PlayerActor) {}
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // <PlayerActor> — 이 Entry Spot이 membership을 관리할 Actor type이다.
+    export class PlayEntrySpot implements ZLinkEntrySpot<PlayerActor> {
+      readonly context!: ZLinkEntrySpotContext<PlayerActor>;
+
+      // Spot instance가 준비될 때 한 번 호출된다.
+      configure(): void {
+        // JoinGameHandler가 PlayerActor 앞으로 온 JoinGame packet을 받는다.
+        this.context.handlers.addActorPacket(JoinGameHandler);
+      }
+
+      // 새 Actor가 이 Entry Spot을 최초 membership으로 삼을 때 호출된다.
+      // 반환값이 이 Actor를 만들지 말지를 결정한다 — 이 Spot이 admission 관문이다.
+      async onCreateActor(
+        actor: PlayerActor, createRequest: ZLinkMessage): Promise<ZLinkActorCreateResponse> {
+        actor.setDisplayName(createRequest.decode<CreatePlayer>(Object as never).displayName);
+        return ZLinkActorCreateResponse.accept();
+      }
+
+      // User Spot에 있던 Actor가 돌아온 commit이 끝난 뒤 호출된다.
+      async onJoinedActor(actor: PlayerActor): Promise<void> {}
+
+      // Actor가 User Spot으로 빠져나간 commit 뒤 호출된다.
+      async onLeaveActor(actor: PlayerActor): Promise<void> {}
+    }
+    ```
 
 
 Entry Spot은 Actor별 application state를 따로 보관하지 않는 편이 안전하다. Actor state는 Actor가
@@ -231,19 +472,31 @@ entry spot context의 actor 파기 호출에 넘긴다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // Entry Spot이 현재 Actor의 종료를 요청한다.
+    co_await _context.destroy_actor (actor);
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // Entry Spot이 현재 Actor의 종료를 요청한다.
+    context.destroyActor(actor).toCompletableFuture().join();
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // Entry Spot이 현재 Actor의 종료를 요청한다.
+    entryContext.destroyActor(actor).await()
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // Entry Spot이 현재 Actor의 종료를 요청한다.
+    await this.context.destroyActor(actor);
+    ```
 
 
 이 호출은 membership lifecycle callback을 다시 호출하지 않고 native actor ref, Framework registry와
@@ -289,19 +542,97 @@ User Spot은 join 요청을 먼저 승인하거나 거절한다. 승인 뒤 memb
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    class game_room_t : public spot_t<player_actor_t>
+    {
+      public:
+        spot_context_t &context () noexcept override { return _context; }
+
+        task_t<spot_actor_join_response_t>
+        on_actor_join (std::string_view actor_id, const message_t &request) override
+        {
+            const auto join = request.decode<join_game_t> ();
+            co_return has_seat (join.seat)
+                     ? spot_actor_join_response_t::accept (joined_t{join.seat})
+                     : spot_actor_join_response_t::reject (room_full_t{});
+        }
+
+        task_t<void> on_actor_joined (player_actor_t &) override { co_return; }
+        task_t<void> on_leave_actor (player_actor_t &) override { co_return; }
+
+      private:
+        spot_context_t _context;
+    };
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    public final class GameRoom implements ZLinkSpot<PlayerActor> {
+        private final ZLinkSpotContext context;
+
+        @Override
+        public ZLinkSpotContext context() {
+            return context;
+        }
+
+        @Override
+        public CompletionStage<ZLinkSpotActorJoinResult> onActorJoin(
+            String actorId, ZLinkMessage request) {
+            JoinGame join = request.decode(JoinGame.class);
+            return CompletableFuture.completedFuture(hasSeat(join.seat())
+                ? ZLinkSpotActorJoinResult.accept(new Joined(join.seat()))
+                : ZLinkSpotActorJoinResult.reject(new RoomFull()));
+        }
+
+        @Override
+        public CompletionStage<Void> onJoinedActor(PlayerActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> onLeaveActor(PlayerActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    class GameRoom(private val spotContext: ZLinkSpotContext) : ZLinkSpot<PlayerActor> {
+
+        override fun context(): ZLinkSpotContext = spotContext
+
+        override suspend fun onActorJoin(
+            actorId: String, request: ZLinkMessage): ZLinkSpotActorJoinResult {
+            val join = request.decode(JoinGame::class.java)
+            return if (hasSeat(join.seat)) ZLinkSpotActorJoinResult.accept(Joined(join.seat))
+                   else ZLinkSpotActorJoinResult.reject(RoomFull())
+        }
+
+        override suspend fun onJoinedActor(actor: PlayerActor) {}
+        override suspend fun onLeaveActor(actor: PlayerActor) {}
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    export class GameRoom implements ZLinkSpot<PlayerActor> {
+      readonly context!: ZLinkSpotContext<PlayerActor>;
+
+      async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResult> {
+        const join = request.decode<JoinGame>(Object as never);
+        return this.hasSeat(join.seat)
+          ? ZLinkSpotActorJoinResult.accept(joined(join.seat))
+          : ZLinkSpotActorJoinResult.reject(roomFull());
+      }
+
+      async onJoinedActor(actor: PlayerActor): Promise<void> {}
+      async onLeaveActor(actor: PlayerActor): Promise<void> {}
+    }
+    ```
 
 
 ## 5. Join 실행 시점
@@ -377,19 +708,79 @@ actor packet으로 등록한 것이다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // C++은 handler class 대신 Entry Spot의 member 함수를 등록한다.
+    task_t<void> play_entry_spot_t::join_game (player_actor_t &actor,   // join을 요청한 Actor다.
+                                               message_context_t &,
+                                               const join_game_req_t &request)
+    {
+        actor.context ()
+          .join_spot (request.spot_id, join_game_request_t{request.seat})
+          .timeout (std::chrono::seconds (5))
+          .defer (); // 현재 handler가 성공한 뒤 join을 시작한다.
+        co_return;
+    }
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    public final class JoinGameHandler
+        implements ZLinkSpotActorSendHandler<PlayEntrySpot, PlayerActor, JoinGame> {
+
+        @Override
+        public CompletionStage<Void> handle(
+            PlayEntrySpot entrySpot,  // 이 Actor가 지금 속한 Spot이다.
+            PlayerActor actor,        // join을 요청한 Actor다.
+            ZLinkMessageContext messageContext,
+            JoinGame command) {
+            actor.context()
+                .joinSpot(command.spotId(), new JoinGameRequest(command.seat()))
+                .timeout(Duration.ofSeconds(5))
+                .defer(); // 현재 handler가 성공한 뒤 join을 시작한다.
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    class JoinGameHandler : ZLinkSpotActorSendHandler<PlayEntrySpot, PlayerActor, JoinGame> {
+
+        override suspend fun handle(
+            entrySpot: PlayEntrySpot,  // 이 Actor가 지금 속한 Spot이다.
+            actor: PlayerActor,        // join을 요청한 Actor다.
+            messageContext: ZLinkMessageContext,
+            command: JoinGame,
+        ) {
+            actor.context()
+                .joinSpot(command.spotId, JoinGameRequest(command.seat))
+                .timeout(Duration.ofSeconds(5))
+                .defer() // 현재 handler가 성공한 뒤 join을 시작한다.
+        }
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    export class JoinGameHandler
+      implements ZLinkSpotActorSendHandler<PlayEntrySpot, PlayerActor, JoinGame> {
+
+      async handle(
+        entrySpot: PlayEntrySpot,  // 이 Actor가 지금 속한 Spot이다.
+        actor: PlayerActor,        // join을 요청한 Actor다.
+        messageContext: ZLinkMessageContext,
+        command: JoinGame
+      ): Promise<void> {
+        actor.context
+          .joinSpot(command.spotId, joinGameRequest(command.seat))
+          .timeout(5_000)
+          .defer(); // 현재 handler가 성공한 뒤 join을 시작한다.
+      }
+    }
+    ```
 
 
 결과는 Actor의 `OnJoinCompletedAsync`로 받는다. 어느 Actor가 이 callback을 실행하는지는 결과에
@@ -427,19 +818,86 @@ actor packet으로 등록한 것이다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    task_t<void> on_join_completed (const actor_join_completion_t &completion) override
+    {
+        // 위치와 membership 변경이 commit됐다. accepted->actor가 현재 ActorRef다.
+        if (const auto *accepted = std::get_if<actor_join_accepted_t> (&completion)) {
+            remember_current_location (accepted->actor);
+            co_return;
+        }
+        // target의 admission callback이 join을 거절했다. 위치는 그대로다.
+        if (std::get_if<actor_join_rejected_t> (&completion)) {
+            clear_pending_join ();
+            co_return;
+        }
+        // 오류로 끝났다. is_retriable이면 같은 join을 다시 예약해도 된다.
+        if (const auto *failed = std::get_if<actor_join_failed_t> (&completion);
+            failed != nullptr && failed->is_retriable) {
+            schedule_application_retry ();
+        }
+        co_return;
+    }
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    @Override
+    public CompletionStage<Void> onJoinCompleted(ZLinkActorJoinCompletion completion) {
+        // 위치와 membership 변경이 commit됐다. accepted.actor()가 현재 ActorRef다.
+        if (completion instanceof ZLinkActorJoinCompletion.Accepted accepted) {
+            rememberCurrentLocation(accepted.actor());
+        // target의 admission callback이 join을 거절했다. 위치는 그대로다.
+        } else if (completion instanceof ZLinkActorJoinCompletion.Rejected) {
+            clearPendingJoin();
+        // 오류로 끝났다. isRetriable이면 같은 join을 다시 예약해도 된다.
+        } else if (completion instanceof ZLinkActorJoinCompletion.Failed failed
+            && failed.isRetriable()) {
+            scheduleApplicationRetry();
+        }
+        return CompletableFuture.completedFuture(null);
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    override suspend fun onJoinCompleted(completion: ZLinkActorJoinCompletion) {
+        when {
+            // 위치와 membership 변경이 commit됐다. completion.actor()가 현재 ActorRef다.
+            completion is ZLinkActorJoinCompletion.Accepted ->
+                rememberCurrentLocation(completion.actor())
+            // target의 admission callback이 join을 거절했다. 위치는 그대로다.
+            completion is ZLinkActorJoinCompletion.Rejected ->
+                clearPendingJoin()
+            // 오류로 끝났다. isRetriable이면 같은 join을 다시 예약해도 된다.
+            completion is ZLinkActorJoinCompletion.Failed && completion.isRetriable() ->
+                scheduleApplicationRetry()
+        }
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    async onJoinCompleted(completion: ZLinkActorJoinCompletion): Promise<void> {
+      switch (completion.status) {
+        // 위치와 membership 변경이 commit됐다. completion.actor가 현재 ActorRef다.
+        case 'accepted':
+          this.rememberCurrentLocation(completion.actor);
+          break;
+        // target의 admission callback이 join을 거절했다. 위치는 그대로다.
+        case 'rejected':
+          this.clearPendingJoin();
+          break;
+        // 오류로 끝났다. isRetriable이면 같은 join을 다시 예약해도 된다.
+        case 'failed':
+          if (completion.isRetriable) this.scheduleApplicationRetry();
+          break;
+      }
+    }
+    ```
 
 
 User Spot에서 Entry Spot으로 돌아갈 때도 같은 방식이다.
@@ -455,19 +913,39 @@ User Spot에서 Entry Spot으로 돌아갈 때도 같은 방식이다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    actor.context ()
+      .join_entry_spot (leave_game_t{reason})
+      .timeout (std::chrono::seconds (5))
+      .defer ();
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    actor.context()
+        .joinEntrySpot(new LeaveGame(reason))
+        .timeout(Duration.ofSeconds(5))
+        .defer();
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    actor.context()
+        .joinEntrySpot(LeaveGame(reason))
+        .timeout(Duration.ofSeconds(5))
+        .defer()
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    actor.context
+      .joinEntrySpot(leaveGame(reason))
+      .timeout(5_000)
+      .defer();
+    ```
 
 
 `OperationId`는 이 completion이 재시도된 결과인지 구분하는 idempotency ID다. 같은 `OperationId`의
@@ -492,19 +970,50 @@ Actor가 어느 Spot과 node에 있는지 몰라도 ActorId로 메시지를 보�
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    co_await actor_client.send_to_actor (player_id, award_experience_t{10}).submit ();
+
+    auto profile = co_await actor_client
+                     .request_to_actor (player_id, get_player_profile_t{})
+                     .timeout (std::chrono::seconds (3))
+                     .submit<player_profile_t> ();
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    actorClient.sendToActor(playerId, new AwardExperience(10))
+        .submit().toCompletableFuture().join();
+
+    PlayerProfile profile = actorClient
+        .requestToActor(playerId, new GetPlayerProfile())
+        .timeout(Duration.ofSeconds(3))
+        .submit(PlayerProfile.class)
+        .toCompletableFuture().join();
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    actorClient.sendToActor(playerId, AwardExperience(10)).submit().await()
+
+    val profile = actorClient
+        .requestToActor(playerId, GetPlayerProfile())
+        .timeout(Duration.ofSeconds(3))
+        .submit(PlayerProfile::class.java)
+        .await()
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    await actorClient.sendToActor(playerId, awardExperience(10)).submit();
+
+    const profile = await actorClient
+      .requestToActor(playerId, getPlayerProfile())
+      .timeout(3_000)
+      .submit<PlayerProfile>();
+    ```
 
 
 Actor가 다른 node로 옮겨가는 중에도 caller는 ActorId만 지정한다. Framework는 호출할 때마다
@@ -551,19 +1060,74 @@ queue, timer, accepted journal과 session route는 Framework가 처리한다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    class player_actor_relocation_adapter_t final
+        : public actor_relocation_adapter_t<player_actor_t>
+    {
+      public:
+        task_t<std::vector<std::byte>> capture (player_actor_t &actor, std::stop_token) override
+        {
+            auto state = actor.export_state ();
+            co_return std::vector<std::byte> (state.begin (), state.end ());
+        }
+
+        task_t<void> restore (player_actor_t &actor,
+                              std::vector<std::byte> payload,
+                              std::stop_token) override
+        {
+            actor.import_state (payload);
+            co_return;
+        }
+    };
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    public final class PlayerActorRelocationAdapter
+        implements ZLinkActorRelocationAdapter<PlayerActor> {
+
+        @Override
+        public CompletionStage<byte[]> capture(PlayerActor actor) {
+            return CompletableFuture.completedFuture(actor.exportState());
+        }
+
+        @Override
+        public CompletionStage<Void> restore(PlayerActor actor, byte[] payload) {
+            actor.importState(payload);
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    class PlayerActorRelocationAdapter : ZLinkActorRelocationAdapter<PlayerActor> {
+
+        override suspend fun capture(actor: PlayerActor): ByteArray = actor.exportState()
+
+        override suspend fun restore(actor: PlayerActor, payload: ByteArray) {
+            actor.importState(payload)
+        }
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    export class PlayerActorRelocationAdapter
+      implements ZLinkActorRelocationAdapter<PlayerActor> {
+
+      async capture(actor: PlayerActor): Promise<Uint8Array> {
+        return actor.exportState();
+      }
+
+      async restore(actor: PlayerActor, payload: Uint8Array): Promise<void> {
+        actor.importState(payload);
+      }
+    }
+    ```
 
 
 Capture와 restore는 같은 relocation에서 다시 호출될 수 있다. Adapter는 retry-safe해야 하며,

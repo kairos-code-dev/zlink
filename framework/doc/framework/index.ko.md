@@ -22,13 +22,17 @@
 있고, 처음부터 끝까지 그 안에서 읽힌다. 장 머리의 전환 줄로 같은 장을 다른 언어에서 볼
 수 있다.
 
-| 언어 | 가이드 | 바로 시작하기 |
-| --- | --- | --- |
-| `.NET` | [.NET 가이드](dotnet/guide/server/README.ko.md) | [설치와 첫 동작](dotnet/guide/server/02-getting-started.ko.md) |
-| C++ | [C++ 가이드](cpp/guide/server/README.ko.md) | [설치와 첫 동작](cpp/guide/server/02-getting-started.ko.md) |
-| Java | [Java 가이드](java/guide/server/README.ko.md) | [설치와 첫 동작](java/guide/server/02-getting-started.ko.md) |
-| Kotlin | [Kotlin 가이드](kotlin/guide/server/README.ko.md) | [설치와 첫 동작](kotlin/guide/server/02-getting-started.ko.md) |
-| Node.js | [Node.js 가이드](node/guide/server/README.ko.md) | [설치와 첫 동작](node/guide/server/02-getting-started.ko.md) |
+| 언어 | 서버 가이드 | 바로 시작하기 | client 쪽 가이드 |
+| --- | --- | --- | --- |
+| `.NET` | [서버](dotnet/guide/server/README.ko.md) | [설치와 첫 동작](dotnet/guide/server/02-getting-started.ko.md) | [Stream Connector](dotnet/guide/stream-connector/README.ko.md) · [HTTP Client](dotnet/guide/http-client/README.ko.md) |
+| C++ | [서버](cpp/guide/server/README.ko.md) | [설치와 첫 동작](cpp/guide/server/02-getting-started.ko.md) | [Stream Connector](cpp/guide/stream-connector/README.ko.md) · [HTTP Client](cpp/guide/http-client/README.ko.md) |
+| Java | [서버](java/guide/server/README.ko.md) | [설치와 첫 동작](java/guide/server/02-getting-started.ko.md) | [Stream Connector](java/guide/stream-connector/README.ko.md) · [HTTP Client](java/guide/http-client/README.ko.md) |
+| Kotlin | [서버](kotlin/guide/server/README.ko.md) | [설치와 첫 동작](kotlin/guide/server/02-getting-started.ko.md) | [Stream Connector](kotlin/guide/stream-connector/README.ko.md) · [HTTP Client](kotlin/guide/http-client/README.ko.md) |
+| Node.js | [서버](node/guide/server/README.ko.md) | [설치와 첫 동작](node/guide/server/02-getting-started.ko.md) | [Stream Connector](node/guide/stream-connector/README.ko.md) · [HTTP Client](node/guide/http-client/README.ko.md) |
+
+**client 쪽 가이드 둘**은 서버 framework와 따로 배포되는 라이브러리를 다룬다.
+Stream Connector는 client가 STREAM endpoint에 붙는 쪽이고(Unity · Godot · 브라우저
+포함), HTTP Client는 서버가 바깥 HTTP API를 호출할 때 쓴다.
 
 **개념부터 잡고 싶다면** 각 언어의 `3. 핵심 개념`부터 본다 — channel · Spot · Actor ·
 stream · relocation 다섯이고, 나머지 장은 그 조합이다.

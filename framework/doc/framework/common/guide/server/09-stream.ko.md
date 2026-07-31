@@ -178,7 +178,7 @@ Session은 연결, packet dispatch, 오류와 disconnect callback을 구현한�
 
         @Override
         public CompletionStage<Void> onDispatch(
-            ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
+            ZLinkSessionMessageContext dispatch, ZLinkMessage payload) {
             return context.handlers().tryHandle(dispatch, payload).thenCompose(handled -> handled
                 ? CompletableFuture.<Void>completedFuture(null)
                 // application protocol에 없는 packet을 받으면 연결을 닫는다.
@@ -209,7 +209,7 @@ Session은 연결, packet dispatch, 오류와 disconnect callback을 구현한�
             logger.info("connected: {}", context.sessionId())
         }
 
-        override suspend fun onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
+        override suspend fun onDispatch(dispatch: ZLinkSessionMessageContext, payload: ZLinkMessage) {
             if (context.handlers().tryHandle(dispatch, payload).await()) return
             // application protocol에 없는 packet을 받으면 연결을 닫는다.
             context.close().await()
@@ -238,7 +238,7 @@ Session은 연결, packet dispatch, 오류와 disconnect callback을 구현한�
         this.logger.log(`connected: ${this.context.sessionId}`);
       }
 
-      async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
+      async onDispatch(dispatch: ZLinkSessionMessageContext, payload: ZLinkMessage): Promise<void> {
         if (await this.context.handlers.tryHandle(dispatch, payload)) return;
         // application protocol에 없는 packet을 받으면 연결을 닫는다.
         await this.context.close();
@@ -303,7 +303,7 @@ one-shot reply token을 사용한다.
 
     ```java
     public CompletionStage<Void> handle(
-        ZLinkSessionContext context, ZLinkSessionDispatchContext dispatch, Ping message) {
+        ZLinkSessionContext context, ZLinkSessionMessageContext dispatch, Ping message) {
         if (!dispatch.canReply()) {
             throw new IllegalStateException("Ping must be a request.");
         }
@@ -317,7 +317,7 @@ one-shot reply token을 사용한다.
 
     ```kotlin
     suspend fun handle(
-        context: ZLinkSessionContext, dispatch: ZLinkSessionDispatchContext, message: Ping) {
+        context: ZLinkSessionContext, dispatch: ZLinkSessionMessageContext, message: Ping) {
         check(dispatch.canReply()) { "Ping must be a request." }
 
         // 같은 request correlation으로 한 번만 reply한다.
@@ -329,7 +329,7 @@ one-shot reply token을 사용한다.
 
     ```typescript
     async handle(
-      context: ZLinkSessionContext, dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
+      context: ZLinkSessionContext, dispatch: ZLinkSessionMessageContext, payload: ZLinkMessage) {
       if (!dispatch.canReply) throw new Error('Ping must be a request.');
 
       const message = payload.decode<Ping>(Object as never);

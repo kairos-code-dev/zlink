@@ -577,12 +577,12 @@ User Spot은 join 요청을 먼저 승인하거나 거절한다. 승인 뒤 memb
         }
 
         @Override
-        public CompletionStage<ZLinkSpotActorJoinResult> onActorJoin(
+        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
             String actorId, ZLinkMessage request) {
             JoinGame join = request.decode(JoinGame.class);
             return CompletableFuture.completedFuture(hasSeat(join.seat())
-                ? ZLinkSpotActorJoinResult.accept(new Joined(join.seat()))
-                : ZLinkSpotActorJoinResult.reject(new RoomFull()));
+                ? ZLinkSpotActorJoinResponse.accept(new Joined(join.seat()))
+                : ZLinkSpotActorJoinResponse.reject(new RoomFull()));
         }
 
         @Override
@@ -605,10 +605,10 @@ User Spot은 join 요청을 먼저 승인하거나 거절한다. 승인 뒤 memb
         override fun context(): ZLinkSpotContext = spotContext
 
         override suspend fun onActorJoin(
-            actorId: String, request: ZLinkMessage): ZLinkSpotActorJoinResult {
+            actorId: String, request: ZLinkMessage): ZLinkSpotActorJoinResponse {
             val join = request.decode(JoinGame::class.java)
-            return if (hasSeat(join.seat)) ZLinkSpotActorJoinResult.accept(Joined(join.seat))
-                   else ZLinkSpotActorJoinResult.reject(RoomFull())
+            return if (hasSeat(join.seat)) ZLinkSpotActorJoinResponse.accept(Joined(join.seat))
+                   else ZLinkSpotActorJoinResponse.reject(RoomFull())
         }
 
         override suspend fun onJoinedActor(actor: PlayerActor) {}
@@ -622,11 +622,11 @@ User Spot은 join 요청을 먼저 승인하거나 거절한다. 승인 뒤 memb
     export class GameRoom implements ZLinkSpot<PlayerActor> {
       readonly context!: ZLinkSpotContext<PlayerActor>;
 
-      async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResult> {
+      async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
         const join = request.decode<JoinGame>(Object as never);
         return this.hasSeat(join.seat)
-          ? ZLinkSpotActorJoinResult.accept(joined(join.seat))
-          : ZLinkSpotActorJoinResult.reject(roomFull());
+          ? ZLinkSpotActorJoinResponse.accept(joined(join.seat))
+          : ZLinkSpotActorJoinResponse.reject(roomFull());
       }
 
       async onJoinedActor(actor: PlayerActor): Promise<void> {}

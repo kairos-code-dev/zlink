@@ -406,7 +406,7 @@ Spot으로 한정되고, Classic fanout은 mesh 구성과 무관하게 연결된
     | --- | --- | --- |
     | request | `requestToChannel(name, req).submit(TReply.class)` | `ZLinkRequestHandler<TRequest, TReply>` |
     | send | `sendToChannel(name, msg).submit()` | `ZLinkSendHandler<TMessage>` |
-    | publish (fanout) | `publish(name, topic, evt).submit()` | `ZLinkFanoutHandler<TEvent>` |
+    | publish (fanout) | `publish(name, topic, evt).submit()` | `ZLinkPublishHandler<TEvent>` |
 
 === "Kotlin"
 
@@ -414,7 +414,7 @@ Spot으로 한정되고, Classic fanout은 mesh 구성과 무관하게 연결된
     | --- | --- | --- |
     | request | `requestToChannel(name, req).submit(TReply::class.java).await()` | `ZLinkRequestHandler<TRequest, TReply>` |
     | send | `sendToChannel(name, msg).submit().await()` | `ZLinkSendHandler<TMessage>` |
-    | publish (fanout) | `publish(name, topic, evt).submit().await()` | `ZLinkFanoutHandler<TEvent>` |
+    | publish (fanout) | `publish(name, topic, evt).submit().await()` | `ZLinkPublishHandler<TEvent>` |
 
 === "Node/TypeScript"
 
@@ -422,7 +422,7 @@ Spot으로 한정되고, Classic fanout은 mesh 구성과 무관하게 연결된
     | --- | --- | --- |
     | request | `requestToChannel(name, req).submit<TReply>()` | `ZLinkRequestHandler<TRequest, TReply>` |
     | send | `sendToChannel(name, msg).submit()` | `ZLinkSendHandler<TMessage>` |
-    | publish (fanout) | `publish(name, topic, evt).submit()` | `ZLinkFanoutHandler<TEvent>` |
+    | publish (fanout) | `publish(name, topic, evt).submit()` | `ZLinkPublishHandler<TEvent>` |
 
 channel handler는 독립 class다. 서로 다른 요청이 동시에 실행될 수 있으므로 가변 도메인
 상태를 handler 멤버에 두지 않는다. Handler instance와 scoped dependency는 그 dispatch가
@@ -551,7 +551,7 @@ handler는 인터페이스를 구현하고, 결과를 반환값으로 돌려준�
     }
 
     // publish 수신 (구독자 측)
-    public final class CacheRefreshedEventHandler implements ZLinkFanoutHandler<CacheRefreshedEvent> {
+    public final class CacheRefreshedEventHandler implements ZLinkPublishHandler<CacheRefreshedEvent> {
         @Override
         public CompletionStage<Void> handle(CacheRefreshedEvent message) {
             // Classic fanout handler는 등록한 event type의 payload만 받는다.
@@ -581,7 +581,7 @@ handler는 인터페이스를 구현하고, 결과를 반환값으로 돌려준�
     }
 
     // publish 수신 (구독자 측)
-    class CacheRefreshedEventHandler : ZLinkFanoutHandler<CacheRefreshedEvent> {
+    class CacheRefreshedEventHandler : ZLinkPublishHandler<CacheRefreshedEvent> {
         override suspend fun handle(message: CacheRefreshedEvent) {
             // Classic fanout handler는 등록한 event type의 payload만 받는다.
         }
@@ -611,7 +611,7 @@ handler는 인터페이스를 구현하고, 결과를 반환값으로 돌려준�
     }
 
     // publish 수신 (구독자 측)
-    export class CacheRefreshedEventHandler implements ZLinkFanoutHandler<CacheRefreshedEvent> {
+    export class CacheRefreshedEventHandler implements ZLinkPublishHandler<CacheRefreshedEvent> {
       async handle(message: CacheRefreshedEvent): Promise<void> {
         // Classic fanout handler는 등록한 event type의 payload만 받는다.
       }
@@ -1489,7 +1489,7 @@ filter로 한곳에 모은다.
 
       async invoke(
         context: ZLinkHandlerFilterContext, // 이 dispatch의 message 정보 + 어느 경로로 왔는지.
-        next: ZLinkHandlerFilterNext        // 인자 없는 delegate — 다음 filter 또는 handler를 실행한다.
+        next: ZLinkHandlerDelegate        // 인자 없는 delegate — 다음 filter 또는 handler를 실행한다.
       ): Promise<void> {
         // 운영 명령만 감사 로그로 남기고 일반 업무 요청은 그냥 통과시킨다.
         if (context.dispatchKind === ZLinkHandlerDispatchKind.NodeDirectRequest) {
@@ -1500,7 +1500,10 @@ filter로 한곳에 모은다.
     }
 
     // Node는 module 등록 옵션의 filters 배열로 넘긴다. 배열 순서가 곧 실행 순서다.
-    ZLinkFrameworkModule.forRoot({ filters: [AuditFilter, ValidationFilter] });
+    ZLinkModule.forRootFactory({
+      useFactory: () => zlinkFramework(),
+      filters: [AuditFilter, ValidationFilter]
+    });
     ```
 
 
@@ -2412,7 +2415,7 @@ SPOT과의 결합은 [06-spot](06-spot.ko.md)에서 이어진다.
         }
 
         @Bean
-        ZLinkFrameworkCustomizer zlink() {
+        ZLinkFrameworkConfigurer zlink() {
             return options -> {
                 options.codecs().use(ZLinkProtobufCodec.getDefault());
                 options.addHandlersFromPackageOf(Program.class);  // 발견: package에서 handler를 찾는다.
@@ -2444,7 +2447,7 @@ SPOT과의 결합은 [06-spot](06-spot.ko.md)에서 이어진다.
     }
 
     @Bean
-    fun zlink() = ZLinkFrameworkCustomizer { options ->
+    fun zlink() = ZLinkFrameworkConfigurer { options ->
         options.codecs().use(ZLinkProtobufCodec.getDefault())
         options.addHandlersFromPackageOf(Program::class.java) // 발견: package에서 handler를 찾는다.
 
@@ -2468,20 +2471,25 @@ SPOT과의 결합은 [06-spot](06-spot.ko.md)에서 이어진다.
     ```typescript
     @Module({
       imports: [
-        ZLinkFrameworkModule.forRoot((builder) => {
-          builder.codecs().use(ZLinkProtobufCodec.default);
+        ZLinkModule.forRootFactory({
+          useFactory: () => {
+            const builder = zlinkFramework();
+            builder.codecs().use(ZLinkProtobufCodec.default);
 
-          const mesh = builder.addRouteMesh('services')
-            .listen('tcp://0.0.0.0:7101')
-            .setRoutingId(RoutingId.from('api-1'));
-          mesh.channel('api').server()
-            .addHandlerGroup('api');                     // 노출: handler group을 channel에 연결한다.
-          mesh.channel('account').client();              // 호출만 하는 channel.
+            const mesh = builder.addRouteMesh('services')
+              .listen('tcp://0.0.0.0:7101')
+              .setRoutingId(RoutingId.from('api-1'));
+            mesh.channel('api').server()
+              .addHandlerGroup('api');                   // 노출: handler group을 channel에 연결한다.
+            mesh.channel('account').client();            // 호출만 하는 channel.
 
-          builder.addFanoutChannel('api.events')
-            .enablePublisher('tcp://0.0.0.0:7201')       // 이 process가 발행자다.
-            .connect('tcp://127.0.0.1:7201')   // 자기 발행도 구독해 보여 주는 예다.
-            .addHandler(UserCacheRefreshedEventHandler);
+            const events = builder.addFanoutChannel('api.events');
+            events.enablePublisher('tcp://0.0.0.0:7201'); // 이 process가 발행자다.
+            events.connect('tcp://127.0.0.1:7201');       // 자기 발행도 구독해 보여 주는 예다.
+            events.addHandlerGroup('api.events');         // 구독 handler를 group으로 붙인다.
+
+            return builder;
+          }
         })
       ],
       providers: [UserHandlers, UserCacheRefreshedEventHandler] // 발견: provider로 등록한다.

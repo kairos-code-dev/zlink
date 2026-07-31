@@ -68,6 +68,22 @@ FENCE_RE = re.compile(r"^\s{4}```(\w*)\s*$")
 # `.foo(` 또는 `.foo (` — 체이닝 호출. C++은 여는 괄호 앞에 공백을 둔다.
 CALL_RE = re.compile(r"\.([A-Za-z_]\w{2,})\s*[(<]")
 
+# framework 타입 이름. 호출 이름만 보면 `ZLinkFanoutHandler`처럼 있지도 않은 타입을
+# 지어내도 통과한다 — 실제로 그 부류로 오류가 나왔다. 접두사로 framework 소유가
+# 분명한 이름만 본다. 예제가 만든 도메인 타입은 이 규칙에 걸리지 않는다.
+TYPE_RE = {
+    "C#/.NET": re.compile(r"\b(I?ZLink[A-Z]\w+)\b"),
+    "Java": re.compile(r"\b(ZLink[A-Z]\w+)\b"),
+    "Kotlin": re.compile(r"\b(ZLink[A-Z]\w+)\b"),
+    "Node/TypeScript": re.compile(r"\b(ZLink[A-Z]\w+)\b"),
+}
+# C++은 framework 타입도 예제 도메인 타입도 모두 `_t`로 끝나 접두사로 가를 수 없다.
+# 대신 framework가 소유한 자리에서만 본다 — DI 주입 목록과 상속 선언이다.
+CPP_TYPE_RE = [
+    re.compile(r"dependency_list_t<([^>]*)>"),
+    re.compile(r":\s*public\s+([a-z][a-z0-9_]*_t)\b"),
+]
+
 # `Type::value` · `Type.VALUE` — enum 상수 참조. 언어마다 표기 관례가 달라
 # (C++ snake_case, Java SCREAMING_SNAKE, .NET·Node PascalCase) 옮겨 적을 때
 # 틀리기 쉬운 자리다. 호출과 같은 방식으로 실제 존재를 확인한다.
@@ -147,6 +163,11 @@ ALLOWED_NON_FRAMEWORK = {
     "gameName": "예제 client 옵션 record의 접근자",
     "oActorId": "예제 client 옵션 record의 접근자",
     "matchesStatus": "예제가 정의해 쓰는 도우미 — 상태 일치 확인",
+    # 예제가 만들어 쓰는 저장소·직렬화 타입. framework 표면이 아니다.
+    "order_store_t": "예제 repository 타입",
+    "profile_store_t": "예제 repository 타입",
+    "score_store_t": "예제 repository 타입",
+    "message_serializer_t": "예제가 구현하는 serializer — C++ 계약 이름은 언어별 spec을 본다",
     # 서드파티 라이브러리.
     "GenericWriter": "Apache Avro",
     "GenericReader": "Apache Avro",
@@ -261,6 +282,28 @@ def main() -> int:
                     unknown.append(
                         f"  [{label}] {doc.name}:{start + offset}: "
                         f"{type_name}에 없는 값: {member}")
+                # framework 타입 이름.
+                pattern = TYPE_RE.get(label)
+                if pattern is not None:
+                    for type_name in pattern.findall(code):
+                        if type_name in ALLOWED_NON_FRAMEWORK:
+                            continue
+                        if type_name in haystack:
+                            continue
+                        unknown.append(
+                            f"  [{label}] {doc.name}:{start + offset}: "
+                            f"실제 표면에 없는 타입: {type_name}")
+                if label == "C++":
+                    for cpp_pattern in CPP_TYPE_RE:
+                        for group in cpp_pattern.findall(code):
+                            for type_name in re.findall(r"[a-z][a-z0-9_]*_t", group):
+                                if type_name in ALLOWED_NON_FRAMEWORK:
+                                    continue
+                                if type_name in haystack:
+                                    continue
+                                unknown.append(
+                                    f"  [{label}] {doc.name}:{start + offset}: "
+                                    f"실제 표면에 없는 타입: {type_name}")
 
     if unknown:
         print(f"\n가이드 예제 회귀 {len(unknown)}건:")

@@ -43,19 +43,10 @@
 .md-typeset li { margin-bottom: 0.28em; }
 .md-typeset li > ul, .md-typeset li > ol { margin-top: 0.28em; }
 
-/* 레이아웃 폭.
-
-   주의 — `.md-grid`는 본문이 아니라 `.md-main__inner` 전체에 걸린다. 왼쪽 nav
-   12.1rem과 오른쪽 목차 12.1rem이 그 안에 들어 있으므로, 60rem을 주면 본문에
-   남는 것은 35.8rem(약 573px)뿐이다. 그 폭에서는 코드가 80자만 넘어도 넘치고
-   mermaid 다이어그램은 절반 이하로 줄어 글씨가 안 보인다.
-
-   84rem을 주면 사이드바를 빼고 본문에 59.8rem(약 957px)이 남는다. 14px 한글로
-   한 줄 65자 안팎이라 읽기 좋은 범위 안이고, 코드는 140자까지 접히지 않는다.
-
-   Material은 1220px 아래에서 목차를, 960px 아래에서 nav를 접으므로 좁은 화면은
-   그대로 동작한다. */
-.md-grid { max-width: 84rem; }
+/* 본문 폭. 비교표가 많아 기본 45rem으로는 셀이 짓눌린다. */
+/* 본문이 작아진 만큼 폭도 함께 줄인다. 글자가 작은데 줄이 길면 시선이 되돌아올
+   자리를 잃는다. 비교표는 아래 overflow-x로 따로 처리한다. */
+.md-grid { max-width: 60rem; }
 
 /* 표 — 이 문서군의 핵심 표현 수단이다. 조밀하게, 헤더는 고정 톤으로. */
 .md-typeset table:not([class]) { font-size: 0.68rem; line-height: 1.6; display: table; margin: 0.8em 0; }
@@ -102,10 +93,6 @@
 }
 .md-typeset h3 { margin-top: 1.25em; }
 .md-typeset h4 { margin-top: 1em; }
-
-/* mermaid 다이어그램은 자연폭을 지킨다(설정은 `hooks/mermaid_size.py`).
-   그 결과 폭을 넘기는 그림이 생기므로 블록 안에서만 가로로 움직이게 한다. */
-.md-typeset .mermaid { overflow-x: auto; }
 
 /* 인용(샘플에서 보기 / 계약 소유 문서)은 본문과 확실히 구분한다. */
 .md-typeset blockquote { border-left-width: 3px; }

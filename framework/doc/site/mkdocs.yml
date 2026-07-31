@@ -36,11 +36,6 @@ theme:
 extra_css:
   - assets/korean.css
 
-# 다이어그램마다 `useMaxWidth: false`를 심어 컨테이너에 맞춰 축소되지 않게 한다.
-# 노드가 많은 그림은 축소되면 안의 글씨를 읽을 수 없다.
-hooks:
-  - hooks/mermaid_size.py
-
 plugins:
   - search
   - i18n:

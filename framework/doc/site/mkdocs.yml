@@ -2,8 +2,8 @@ site_name: ZLink Framework
 site_url: https://zlink.systems/
 site_description: ZLink Framework — 실시간 메시징 서버 프레임워크
 
-repo_url: https://github.com/zlink-systems/zlink
-repo_name: zlink-systems/zlink
+repo_url: https://github.com/kairos-code-dev/zlink
+repo_name: kairos-code-dev/zlink
 
 # 정본 문서 트리를 그대로 docs root로 쓴다. 사이트용 사본을 두지 않으므로
 # 문서끼리의 상대 링크가 repo에서든 사이트에서든 같은 대상을 가리킨다.

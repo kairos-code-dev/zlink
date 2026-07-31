@@ -33,8 +33,8 @@
 **개념부터 잡고 싶다면** 각 언어의 `3. 핵심 개념`부터 본다 — channel · Spot · Actor ·
 stream · relocation 다섯이고, 나머지 장은 그 조합이다.
 
-어느 순서로 읽을지는 각 언어의 가이드 홈이 제시한다. 언어마다 순서가 조금 다르다 —
-C++은 DI · configuration · HTTP hosting을 앞으로 당긴다.
+어느 순서로 읽을지는 각 언어의 가이드 홈이 제시한다. 1~17장은 다섯 언어가 공유하고,
+C++에만 있는 DI · configuration · HTTP hosting · 실행 모델이 18~21장으로 뒤에 붙는다.
 
 ### 문서가 만들어지는 방식
 
@@ -44,5 +44,11 @@ C++은 DI · configuration · HTTP hosting을 앞으로 당긴다.
 
 ## 관련 문서
 
-- 언어 중립 의미와 공개 계약: [공통 스펙](common/README.ko.md)
-- Core 메시징 엔진: [core.zlink.systems](https://core.zlink.systems/)
+| | |
+| --- | --- |
+| 언어 중립 의미와 공개 계약 | [공통 스펙](common/README.ko.md) |
+| 그 아래 메시징 엔진 — 소켓 패턴, 전송, 옵션 | [Core 가이드](https://zlink.systems/guide/01-overview/) |
+| 소스와 이슈 | [github.com/kairos-code-dev/zlink](https://github.com/kairos-code-dev/zlink) |
+
+Core는 이 프레임워크가 올라타는 메시징 엔진이다. 프레임워크만 쓸 때는 볼 일이 없고,
+소켓 수준의 동작이나 전송 옵션을 직접 만져야 할 때 그쪽 가이드로 내려간다.

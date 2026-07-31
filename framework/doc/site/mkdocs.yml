@@ -17,18 +17,17 @@ theme:
   font: false
   # 첫 항목이 기본값이다. `media`를 걸면 OS 설정을 따라가므로, 다크로 시작하게
   # 하려면 빼야 한다. 토글은 그대로 남고 고른 값은 브라우저에 저장된다.
-  # primary는 헤더 바 색, accent는 호버·포커스 색이다. 헤더를 black으로 내려
-  # 페이지와 같은 어둠에 가라앉히고, 강조는 teal로 남긴다. slate에서 black은
-  # 링크 색이 자동으로 읽히는 파랑(#5e8bde)으로 잡히므로 대비도 확보된다.
+  # primary는 헤더 바 색, accent는 호버·포커스 색이다. slate에서 teal은 링크가
+  # 청록(#00ccb8)으로 잡히므로 어두운 바탕에서 대비가 넉넉하다.
   palette:
     - scheme: slate
-      primary: black
+      primary: teal
       accent: teal
       toggle:
         icon: material/weather-sunny
         name: Switch to light mode
     - scheme: default
-      primary: black
+      primary: teal
       accent: teal
       toggle:
         icon: material/weather-night

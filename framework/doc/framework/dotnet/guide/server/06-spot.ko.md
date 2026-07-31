@@ -47,21 +47,21 @@ Actor membership과 종료 계약이 다르다.
 | callback | Entry | User | Instance | 언제 |
 | --- | :---: | :---: | :---: | --- |
 | `Configure` | O | O | O | handler를 등록하는 구성 단계 |
-| `OnCreate` | X | O | X | 새 User Spot 생성 요청을 확인하고 수락 여부를 정한다. 기존 Spot을 찾은 경우에는 부르지 않는다 |
-| `OnInitialize` | O | O | O | 만들어진 instance의 초기화. Instance Spot은 `OnCreate` 없이 이것만 받는다 |
-| `OnClosing` | O | O | O | 아직 유효한 local instance가 정리되기 전(§4.1 아래) |
-| `OnActorJoin` | X | O※ | X | 이미 있는 Actor가 이 User Spot으로 오려 할 때 승인·거부 |
-| `OnCreateActor` | O※ | X | X | 새 Actor의 최초 Entry Spot membership 승인·거부 |
-| `OnJoinedActor` | O※ | O※ | X | join commit이 끝났음을 **간 쪽** Spot에 알린다 |
-| `OnLeaveActor` | O※ | O※ | X | commit 뒤 **떠난 쪽** Spot에 알린다. Actor가 사라졌다는 뜻이 아니다 |
-| `OnDisconnectActor` | O※ | O※ | X | 그 Spot 소속 Actor의 연결이 끊겼을 때 |
+| `OnCreateAsync` | X | O | X | 새 User Spot 생성 요청을 확인하고 수락 여부를 정한다. 기존 Spot을 찾은 경우에는 부르지 않는다 |
+| `OnInitializeAsync` | O | O | O | 만들어진 instance의 초기화. Instance Spot은 `OnCreateAsync` 없이 이것만 받는다 |
+| `OnClosingAsync` | O | O | O | 아직 유효한 local instance가 정리되기 전(§4.1 아래) |
+| `OnActorJoinAsync` | X | O※ | X | 이미 있는 Actor가 이 User Spot으로 오려 할 때 승인·거부 |
+| `OnCreateActorAsync` | O※ | X | X | 새 Actor의 최초 Entry Spot membership 승인·거부 |
+| `OnJoinedActorAsync` | O※ | O※ | X | join commit이 끝났음을 **간 쪽** Spot에 알린다 |
+| `OnLeaveActorAsync` | O※ | O※ | X | commit 뒤 **떠난 쪽** Spot에 알린다. Actor가 사라졌다는 뜻이 아니다 |
+| `OnDisconnectActorAsync` | O※ | O※ | X | 그 Spot 소속 Actor의 연결이 끊겼을 때 |
 
 ※ Actor type을 지정해 Actor membership을 지원하는 Spot에만 해당한다.
 
 **membership callback은 떠난 Spot과 간 Spot에서 나뉘어 실행된다.** 그래서 User Spot에
-있던 Actor가 Entry Spot으로 돌아가도 **Entry Spot의 `OnCreateActor`와 `OnActorJoin`은
+있던 Actor가 Entry Spot으로 돌아가도 **Entry Spot의 `OnCreateActorAsync`와 `OnActorJoinAsync`은
 불리지 않는다** — Entry Spot 복귀는 기본 membership이라 승인 절차가 없다. 양쪽 모두
-commit 뒤 간 쪽의 `OnJoinedActor`와 떠난 쪽의 `OnLeaveActor`만 실행된다.
+commit 뒤 간 쪽의 `OnJoinedActorAsync`와 떠난 쪽의 `OnLeaveActorAsync`만 실행된다.
 
 User Spot과 Instance Spot은 역할이 다르다. User Spot은 caller가 ID를 지정하거나 Framework가 새 ID를
 발급한다. Instance Spot은 별도 create API를 사용하지 않는다. 첫 메시지에 instance type을 지정하면
@@ -216,7 +216,7 @@ ID로 쓸 Spot을 확보하는 호출**이다. 어느 쪽을 쓸지는 "이미 �
 | --- | --- | --- |
 | 목적 | 새 Spot 하나를 만든다 | 그 ID의 Spot을 쓸 수 있게 한다 |
 | 결과 `State` | `Created` 또는 `Rejected` | `Existing` · `Created` · `Rejected` |
-| 이미 있을 때 | Framework가 SpotId를 새로 발급하므로 해당 없음 | `Existing`으로 끝나며 factory와 `OnCreate`를 실행하지 않는다 |
+| 이미 있을 때 | Framework가 SpotId를 새로 발급하므로 해당 없음 | `Existing`으로 끝나며 factory와 `OnCreateAsync`를 실행하지 않는다 |
 | SpotId | Framework가 발급한다 | caller가 지정한다 |
 | 실패하면 | 쓸 수 있는 Spot이 없다 | 쓸 수 있는 Spot이 없다 |
 
@@ -292,7 +292,7 @@ Spot handler는 [05-channel-messaging](05-channel-messaging.ko.md)의 channel ha
 | application state | handler field에 보관하지 않는다 | Spot 또는 member Actor가 소유한다 |
 
 Spot handler는 Spot class의 메서드가 아니라 그 Spot에 바인딩된 **별도 class**다. 첫
-제네릭 인자로 대상 Spot 타입을 받고, `Handle`의 첫 인자로 그 Spot instance를 받는다.
+제네릭 인자로 대상 Spot 타입을 받고, `HandleAsync`의 첫 인자로 그 Spot instance를 받는다.
 Framework는 Spot activation에서 handler를 한 번 만들고 Spot이 닫히거나 relocation될 때
 정리한다. Actor handler도 같은 방식으로 해당 Actor activation에 묶인다.
 
@@ -436,7 +436,7 @@ public sealed class GameRoom(IZLinkSpotContext context) : IZLinkSpot
 }
 ```
 
-`OnClosing`의 reason은 explicit close, host shutdown, relocation out을 구분한다.
+`OnClosingAsync`의 reason은 explicit close, host shutdown, relocation out을 구분한다.
 Framework는 `Deadline`이 끝날 때 cleanup token을 취소한다.
 
 **세 이유가 Spot 종류마다 다 오는 것은 아니다.**
@@ -450,10 +450,10 @@ Framework는 `Deadline`이 끝날 때 cleanup token을 취소한다.
 **불리지 않는 두 자리를 기억한다.**
 
 - **close가 실패하면 부르지 않는다.** User Spot에 Actor membership이 남아 있어 explicit
-  close가 실패로 끝나면 `OnClosing`은 실행되지 않는다. close 결과를 확인하지 않고
+  close가 실패로 끝나면 `OnClosingAsync`은 실행되지 않는다. close 결과를 확인하지 않고
   "정리됐겠지" 하고 넘어가면 안 되는 이유다.
 - **Actor가 떠나도 Entry Spot은 닫히지 않는다.** Actor 하나가 다른 Entry Spot으로
-  옮겨가는 것은 Spot instance의 종료가 아니므로 Entry Spot의 `OnClosing`을 부르지 않는다.
+  옮겨가는 것은 Spot instance의 종료가 아니므로 Entry Spot의 `OnClosingAsync`을 부르지 않는다.
 
 **Entry Spot 자체는 옮겨가지 않는다.** relocation out이 Entry Spot에 오지 않는 이유가
 여기 있다. host를 옮길 때 Framework가 옮기는 것은 **Entry Spot에 속한 Actor**이고,
@@ -836,7 +836,7 @@ public sealed class RoundTickHandler : IZLinkSpotTimerHandler<GameRoom>
 }
 ```
 
-신호한 뒤 실제로 어떻게 됐는지는 Spot의 `OnRelocationReadyCompleted`로 돌아온다. 이
+신호한 뒤 실제로 어떻게 됐는지는 Spot의 `OnRelocationReadyCompletedAsync`로 돌아온다. 이
 callback은 **두 경우 모두** 호출되므로, 다음 라운드를 여는 코드를 여기 한 곳에 둔다.
 
 ```csharp

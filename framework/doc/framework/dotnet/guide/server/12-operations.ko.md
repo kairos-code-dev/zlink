@@ -189,7 +189,7 @@ Actor가 없으므로 Spot 하나가 그대로 이전 단위다.
 `Shutdown(...)`는 이 host를 종료한다. §2와 달리 **상태를 다른 node로 옮기지 않는다.**
 
 호출하면 새 relocation을 시작하지 않고, 진행 중인 작업을 주어진 deadline 안에서 끝내거나
-실패로 확정한다. 그다음 Entry·User·Instance Spot에 `OnClosing`를 `HostShutdown` reason으로
+실패로 확정한다. 그다음 Entry·User·Instance Spot에 `OnClosingAsync`를 `HostShutdown` reason으로
 알리고, 그 callback이 끝난 뒤 scope·authority·session·topology resource를 정리한다. deadline을
 주지 않으면 30초다.
 

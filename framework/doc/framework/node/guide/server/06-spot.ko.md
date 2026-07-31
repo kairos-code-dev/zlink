@@ -35,10 +35,10 @@ Actor membership과 종료 계약이 다르다.
 | | Entry Spot | User Spot | Instance Spot |
 | --- | --- | --- | --- |
 | 생성 시점 | Object Server startup에서 Framework가 생성한다 | Application이 spot manager로 명시적으로 생성한다 | 해당 ID로 첫 direct message가 도착할 때 생성한다(cold activation) |
-| Spot ID | Framework가 발급한다 | `Create`는 Framework가, `GetOrCreate`는 caller가 지정한다 | Caller가 message의 target ID로 지정한다 |
+| Spot ID | Framework가 발급한다 | `create`는 Framework가, `getOrCreate`는 caller가 지정한다 | Caller가 message의 target ID로 지정한다 |
 | Stable type | 등록하지 않는다 | 필수 | 필수 |
 | Actor membership | 지원한다. Actor 생성 직후의 기본 실행 위치다 | 지원한다. Actor가 join·leave로 이동한다 | 지원하지 않는다 |
-| Application close | 제공하지 않는다 | `Close` 또는 local context에서 close한다 | 자신의 handler·timer context에서 close한다 |
+| Application close | 제공하지 않는다 | `close` 또는 local context에서 close한다 | 자신의 handler·timer context에서 close한다 |
 | 주요 용도 | 아직 User Spot에 속하지 않은 Actor의 기본 위치 | room, stage, zone | matchmaking worker처럼 ID 기반 요청 처리 단위 |
 
 **어떤 lifecycle callback을 받는지도 종류마다 다르다.** 이름은 언어를 따르고 호출 조건과
@@ -46,22 +46,22 @@ Actor membership과 종료 계약이 다르다.
 
 | callback | Entry | User | Instance | 언제 |
 | --- | :---: | :---: | :---: | --- |
-| `Configure` | O | O | O | handler를 등록하는 구성 단계 |
-| `OnCreate` | X | O | X | 새 User Spot 생성 요청을 확인하고 수락 여부를 정한다. 기존 Spot을 찾은 경우에는 부르지 않는다 |
-| `OnInitialize` | O | O | O | 만들어진 instance의 초기화. Instance Spot은 `OnCreate` 없이 이것만 받는다 |
-| `OnClosing` | O | O | O | 아직 유효한 local instance가 정리되기 전(§4.1 아래) |
-| `OnActorJoin` | X | O※ | X | 이미 있는 Actor가 이 User Spot으로 오려 할 때 승인·거부 |
-| `OnCreateActor` | O※ | X | X | 새 Actor의 최초 Entry Spot membership 승인·거부 |
-| `OnJoinedActor` | O※ | O※ | X | join commit이 끝났음을 **간 쪽** Spot에 알린다 |
-| `OnLeaveActor` | O※ | O※ | X | commit 뒤 **떠난 쪽** Spot에 알린다. Actor가 사라졌다는 뜻이 아니다 |
-| `OnDisconnectActor` | O※ | O※ | X | 그 Spot 소속 Actor의 연결이 끊겼을 때 |
+| `configure` | O | O | O | handler를 등록하는 구성 단계 |
+| `onCreate` | X | O | X | 새 User Spot 생성 요청을 확인하고 수락 여부를 정한다. 기존 Spot을 찾은 경우에는 부르지 않는다 |
+| `onInitialize` | O | O | O | 만들어진 instance의 초기화. Instance Spot은 `onCreate` 없이 이것만 받는다 |
+| `onClosing` | O | O | O | 아직 유효한 local instance가 정리되기 전(§4.1 아래) |
+| `onActorJoin` | X | O※ | X | 이미 있는 Actor가 이 User Spot으로 오려 할 때 승인·거부 |
+| `onCreateActor` | O※ | X | X | 새 Actor의 최초 Entry Spot membership 승인·거부 |
+| `onJoinedActor` | O※ | O※ | X | join commit이 끝났음을 **간 쪽** Spot에 알린다 |
+| `onLeaveActor` | O※ | O※ | X | commit 뒤 **떠난 쪽** Spot에 알린다. Actor가 사라졌다는 뜻이 아니다 |
+| `onDisconnectActor` | O※ | O※ | X | 그 Spot 소속 Actor의 연결이 끊겼을 때 |
 
 ※ Actor type을 지정해 Actor membership을 지원하는 Spot에만 해당한다.
 
 **membership callback은 떠난 Spot과 간 Spot에서 나뉘어 실행된다.** 그래서 User Spot에
-있던 Actor가 Entry Spot으로 돌아가도 **Entry Spot의 `OnCreateActor`와 `OnActorJoin`은
+있던 Actor가 Entry Spot으로 돌아가도 **Entry Spot의 `onCreateActor`와 `onActorJoin`은
 불리지 않는다** — Entry Spot 복귀는 기본 membership이라 승인 절차가 없다. 양쪽 모두
-commit 뒤 간 쪽의 `OnJoinedActor`와 떠난 쪽의 `OnLeaveActor`만 실행된다.
+commit 뒤 간 쪽의 `onJoinedActor`와 떠난 쪽의 `onLeaveActor`만 실행된다.
 
 User Spot과 Instance Spot은 역할이 다르다. User Spot은 caller가 ID를 지정하거나 Framework가 새 ID를
 발급한다. Instance Spot은 별도 create API를 사용하지 않는다. 첫 메시지에 instance type을 지정하면
@@ -207,19 +207,19 @@ Instance Spot에 Actor membership이나 Logical Multicast 구독을 등록하려
 
 ## 3. User Spot 만들기
 
-두 호출은 목적이 다르다. **`Create`는 새 Spot을 만드는 호출**이고, **`GetOrCreate`는 그
+두 호출은 목적이 다르다. **`create`는 새 Spot을 만드는 호출**이고, **`getOrCreate`는 그
 ID로 쓸 Spot을 확보하는 호출**이다. 어느 쪽을 쓸지는 "이미 있으면 어떻게 되기를 바라는가"로
 정한다.
 
-| | `Create` | `GetOrCreate` |
+| | `create` | `getOrCreate` |
 | --- | --- | --- |
 | 목적 | 새 Spot 하나를 만든다 | 그 ID의 Spot을 쓸 수 있게 한다 |
 | 결과 `State` | `Created` 또는 `Rejected` | `Existing` · `Created` · `Rejected` |
-| 이미 있을 때 | Framework가 SpotId를 새로 발급하므로 해당 없음 | `Existing`으로 끝나며 factory와 `OnCreate`를 실행하지 않는다 |
+| 이미 있을 때 | Framework가 SpotId를 새로 발급하므로 해당 없음 | `Existing`으로 끝나며 factory와 `onCreate`를 실행하지 않는다 |
 | SpotId | Framework가 발급한다 | caller가 지정한다 |
 | 실패하면 | 쓸 수 있는 Spot이 없다 | 쓸 수 있는 Spot이 없다 |
 
-**`Create` — 만들어졌는지가 곧 업무 결과일 때.** 방을 새로 여는 것처럼 생성 자체가 목적인
+**`create` — 만들어졌는지가 곧 업무 결과일 때.** 방을 새로 여는 것처럼 생성 자체가 목적인
 자리에 쓴다. 결과는 만들어졌거나(`Created`) 생성 callback이 거절했거나(`Rejected`) 둘 중
 하나다.
 
@@ -246,7 +246,7 @@ const spotId = created.spot.spotId; // 이후 메시징에는 전역 SpotId만 �
 --8<-- "framework/languages/node/samples/TicTacToe.Ts/Server/Api/Handlers/create-game-http-handler.ts:doc-create"
 ```
 
-**`GetOrCreate` — 그 ID를 쓸 수 있으면 되는 때.** "있으면 그걸 쓰고 없으면 만든다"가 필요한
+**`getOrCreate` — 그 ID를 쓸 수 있으면 되는 때.** "있으면 그걸 쓰고 없으면 만든다"가 필요한
 자리에 쓴다. 이미 있었는지(`Existing`)와 방금 만들었는지(`Created`)는 결과로 구분할 수 있고,
 둘 다 바로 쓸 수 있는 `SpotRef`를 준다. 여러 caller가 같은 ID를 동시에 요청해도 Framework가
 생성 시도를 한 번만 실행하므로 application이 경쟁을 직접 막지 않는다.
@@ -291,13 +291,13 @@ Spot handler는 [05-channel-messaging](05-channel-messaging.ko.md)의 channel ha
 | application state | handler field에 보관하지 않는다 | Spot 또는 member Actor가 소유한다 |
 
 Spot handler는 Spot class의 메서드가 아니라 그 Spot에 바인딩된 **별도 class**다. 첫
-제네릭 인자로 대상 Spot 타입을 받고, `Handle`의 첫 인자로 그 Spot instance를 받는다.
+제네릭 인자로 대상 Spot 타입을 받고, `handle`의 첫 인자로 그 Spot instance를 받는다.
 Framework는 Spot activation에서 handler를 한 번 만들고 Spot이 닫히거나 relocation될 때
 정리한다. Actor handler도 같은 방식으로 해당 Actor activation에 묶인다.
 
 ### 4.1 handler 종류와 구현할 interface
 
-무엇을 받느냐에 따라 구현할 interface가 다르다. 어느 것이든 `Configure()`에서 등록한
+무엇을 받느냐에 따라 구현할 interface가 다르다. 어느 것이든 `configure()`에서 등록한
 것과 짝이 맞아야 한다.
 
 받는 것마다 짝이 되는 interface와 등록 호출이 하나씩 있다.
@@ -375,7 +375,7 @@ export class PlaceMarkHandler
 Actor 앞 request는 actor request handler이며
 같은 인자에 반환값이 reply라는 점만 다르다.
 
-`Configure()`에서 handler를 등록하고 lifecycle callback에서 초기화와 정리를 수행한다.
+`configure()`에서 handler를 등록하고 lifecycle callback에서 초기화와 정리를 수행한다.
 
 ```typescript
 export class GameRoom implements ZLinkSpot {
@@ -406,7 +406,7 @@ export class GameRoom implements ZLinkSpot {
 }
 ```
 
-`OnClosing`의 reason은 explicit close, host shutdown, relocation out을 구분한다.
+`onClosing`의 reason은 explicit close, host shutdown, relocation out을 구분한다.
 Framework는 `Deadline`이 끝날 때 cleanup token을 취소한다.
 
 **세 이유가 Spot 종류마다 다 오는 것은 아니다.**
@@ -420,10 +420,10 @@ Framework는 `Deadline`이 끝날 때 cleanup token을 취소한다.
 **불리지 않는 두 자리를 기억한다.**
 
 - **close가 실패하면 부르지 않는다.** User Spot에 Actor membership이 남아 있어 explicit
-  close가 실패로 끝나면 `OnClosing`은 실행되지 않는다. close 결과를 확인하지 않고
+  close가 실패로 끝나면 `onClosing`은 실행되지 않는다. close 결과를 확인하지 않고
   "정리됐겠지" 하고 넘어가면 안 되는 이유다.
 - **Actor가 떠나도 Entry Spot은 닫히지 않는다.** Actor 하나가 다른 Entry Spot으로
-  옮겨가는 것은 Spot instance의 종료가 아니므로 Entry Spot의 `OnClosing`을 부르지 않는다.
+  옮겨가는 것은 Spot instance의 종료가 아니므로 Entry Spot의 `onClosing`을 부르지 않는다.
 
 **Entry Spot 자체는 옮겨가지 않는다.** relocation out이 Entry Spot에 오지 않는 이유가
 여기 있다. host를 옮길 때 Framework가 옮기는 것은 **Entry Spot에 속한 Actor**이고,
@@ -521,7 +521,7 @@ const state = await spotClient
   .submit<RoomState>();
 ```
 
-Instance Spot은 같은 호출 표면에 intent를 추가한다. `InstanceSpot(...)`의 인자는 **어느
+Instance Spot은 같은 호출 표면에 intent를 추가한다. `instanceSpot(...)`의 인자는 **어느
 factory로 준비할지 고르는 stable type**이다. 그 mesh에 Instance Spot type이 여럿 등록되어
 있으면 반드시 명시하고, 하나뿐이면 생략할 수 있다.
 
@@ -541,12 +541,12 @@ const single = await spotClient
   .submit<MatchResult>();
 ```
 
-`InstanceSpot(...)`을 붙이지 않은 호출은 이미 실행 중인 Spot만 찾고, 없으면 생성하지
-않고 실패한다. `Find`도 생성을 시작하지 않는다. 즉 cold activation은 호출하는
+`instanceSpot(...)`을 붙이지 않은 호출은 이미 실행 중인 Spot만 찾고, 없으면 생성하지
+않고 실패한다. `find`도 생성을 시작하지 않는다. 즉 cold activation은 호출하는
 쪽이 intent로 명시적으로 허용해야 일어난다.
 
-`SendToSpot`은 source-local admission까지 기다리는 one-way operation이다. Target handler 완료를
-기다리지 않는다. `RequestToSpot`은 reply 또는 typed error까지 기다린다.
+`sendToSpot`은 source-local admission까지 기다리는 one-way operation이다. Target handler 완료를
+기다리지 않는다. `requestToSpot`은 reply 또는 typed error까지 기다린다.
 
 **첫 message는 cold activation 중에도 잃지 않는다.** intent를 붙인 호출은 그 message를
 activation과 함께 보내고, target은 handler를 열기 전에 그것을 durable하게 기록한 뒤 큐
@@ -616,15 +616,15 @@ export class GameTickHandler implements ZLinkSpotTimerHandler<GameRoom> {
 #### 예정 시각을 지난 tick의 처리 정책
 
 Spot queue에 작업이 쌓이거나 handler 실행이 길어지면 tick이 예정 시각보다 늦게 실행된다.
-이때 지나간 tick을 어떻게 처리할지가 `OverrunPolicy`다.
+이때 지나간 tick을 어떻게 처리할지가 `overrunPolicy`다.
 
 | 값 | 예정 시각을 지났을 때 | 선택 기준 |
 | --- | --- | --- |
 | `SkipLateTicks`(기본) | 지나간 tick을 버리고 **현재 시각에 해당하는 tick 하나만** 전달한다 | 최신 상태만 의미 있을 때 — 상태 broadcast, 만료 검사 |
-| `CatchUpBounded` | 지나간 tick을 **최대 `MaxCatchUpTicks`개까지** 전달하고 초과분은 버린다 | tick 횟수 자체가 의미 있을 때 — 회복량 누적, 시뮬레이션 step |
+| `CatchUpBounded` | 지나간 tick을 **최대 `maxCatchUpTicks`개까지** 전달하고 초과분은 버린다 | tick 횟수 자체가 의미 있을 때 — 회복량 누적, 시뮬레이션 step |
 | `DelayNextTick` | 고정 주기를 유지하지 않고 **직전 tick 완료 시각 + 주기**로 다음 예정을 다시 계산한다 | 실행 간 최소 간격을 보장해야 할 때 — 외부 API polling |
 
-`MaxCatchUpTicks`는 `CatchUpBounded`에서만 쓰이며 기본값은 `1`이다. `0` 이하이면 등록 시점에
+`maxCatchUpTicks`는 `CatchUpBounded`에서만 쓰이며 기본값은 `1`이다. `0` 이하이면 등록 시점에
 설정 오류다. 앞의 두 정책은 timer 시작 시각 기준의 고정 rate를 유지하므로, 한 tick이 늦게 실행되어도
 다음 tick의 예정 시각은 변하지 않는다.
 
@@ -633,7 +633,7 @@ timer handler가 받는 tick 값은 예정 대비 지연과 건너뛴 tick 수�
 | 필드 | 뜻 |
 | --- | --- |
 | `Name` | 등록할 때 준 이름 |
-| `ScheduledIndex` · `DeliveryIndex` | 몇 번째 예정 tick인지 · 실제 전달 순번. 두 값의 차이가 지금까지 버려진 tick 수다 |
+| `scheduledIndex` · `deliveryIndex` | 몇 번째 예정 tick인지 · 실제 전달 순번. 두 값의 차이가 지금까지 버려진 tick 수다 |
 | `ScheduledAt` · `StartedAt` | 예정 시각 · 실제 실행 시작 시각 |
 | `ScheduledElapsed` · `StartedElapsed` | 타이머 시작 이후 경과(예정 기준 · 실제 기준) |
 | `Delay` | `StartedElapsed - ScheduledElapsed` — 이 tick의 예정 대비 지연 |
@@ -651,7 +651,7 @@ async handle(spot: GameRoom, tick: ZLinkTimerTick): Promise<void> {
 
 #### handler가 예외를 던졌을 때
 
-`StopOnUnhandledException`이 기본값 `false`면 그 tick만 실패로 끝나고 timer는 계속 돈다. `true`로
+`stopOnUnhandledException`이 기본값 `false`면 그 tick만 실패로 끝나고 timer는 계속 돈다. `true`로
 두면 그 timer가 멈춘다 — 같은 실패가 매 주기 반복되는 상황을 막아야 할 때 쓴다. 어느 쪽이든
 실패는 진단으로 기록되므로 로그·trace에서 확인한다([11. Monitoring](11-monitoring.ko.md) §3).
 
@@ -726,25 +726,25 @@ Worker 스레드 풀 자체(최소·최대 스레드, 유휴 시간, 대기열 �
 ## 7. Relocation을 시작해도 되는 시점 알리기
 
 Relocation은 Spot을 다른 node로 옮기는 절차다([03-concepts](03-concepts.ko.md#5-relocation--다른-node로-옮겨가기)).
-Framework는 source에서 새 turn 수락을 닫고, adapter의 `Capture`로 application state를
-직렬화하고, target에서 `Restore`로 복원한 뒤 authority를 commit한다. `Capture`를
+Framework는 source에서 새 turn 수락을 닫고, adapter의 `capture`로 application state를
+직렬화하고, target에서 `Restore`로 복원한 뒤 authority를 commit한다. `capture`를
 호출하는 시점을 relocation **safe point**라 하며, 이 시점을 누가 정하는지를 factory 등록에서
 고른다.
 
 | 모드 | safe point 결정 주체 | 적용 대상 |
 | --- | --- | --- |
 | `AnyTurnBoundary`(기본) | Framework — 완료된 turn과 다음 turn 사이 | 대부분의 Spot |
-| `ApplicationSignaled` | Application — `Defer()`를 호출한 turn의 끝 | 상태 일관성 단위가 여러 turn에 걸치는 Spot |
+| `ApplicationSignaled` | Application — `defer()`를 호출한 turn의 끝 | 상태 일관성 단위가 여러 turn에 걸치는 Spot |
 
 **기본 모드가 성립하는 조건.** Framework는 실행 중인 turn을 중단하지 않는다. handler 하나와
-tick 하나는 완료된 뒤에야 `Capture`가 호출되므로, 상태 변경이 한 turn 안에서 끝나면 turn
+tick 하나는 완료된 뒤에야 `capture`가 호출되므로, 상태 변경이 한 turn 안에서 끝나면 turn
 경계에서 직렬화한 state는 항상 일관된다.
 
 **기본 모드가 성립하지 않는 조건.** 상태 일관성 단위가 여러 turn에 걸쳐 있으면 turn 경계에서
 직렬화한 state가 불완전할 수 있다. FPS 라운드가 그런 예다 — 라운드는 시작 tick, 입력 packet
 다수, 정산 tick으로 이뤄지고 그 중간 state는 복원해도 라운드를 이어서 진행할 수 없다.
 Framework는 turn 경계는 알지만 application이 정의한 일관성 단위는 알지 못한다.
-`ApplicationSignaled`를 등록하면 Framework는 `Capture`를 스스로 호출하지 않고 application이
+`ApplicationSignaled`를 등록하면 Framework는 `capture`를 스스로 호출하지 않고 application이
 신호한 시점까지 대기한다.
 
 ```typescript
@@ -756,9 +756,9 @@ mesh.objects().server()
     .preserveStateWith(GameRoomRelocationAdapter));
 ```
 
-Application은 상태가 일관된 turn에서 `Defer()`를 호출한다. 이 호출은 relocation을 그 자리에서
+Application은 상태가 일관된 turn에서 `defer()`를 호출한다. 이 호출은 relocation을 그 자리에서
 수행하지 않는다. 현재 turn이 끝난 뒤 대기 중인 relocation이 있으면 Framework가 그 지점에서
-`Capture`를 호출한다.
+`capture`를 호출한다.
 
 ```typescript
 export class RoundTickHandler implements ZLinkSpotTimerHandler<GameRoom> {
@@ -771,7 +771,7 @@ export class RoundTickHandler implements ZLinkSpotTimerHandler<GameRoom> {
 }
 ```
 
-신호한 뒤 실제로 어떻게 됐는지는 Spot의 `OnRelocationReadyCompleted`로 돌아온다. 이
+신호한 뒤 실제로 어떻게 됐는지는 Spot의 `onRelocationReadyCompleted`로 돌아온다. 이
 callback은 **두 경우 모두** 호출되므로, 다음 라운드를 여는 코드를 여기 한 곳에 둔다.
 
 ```typescript
@@ -785,9 +785,9 @@ async onRelocationReadyCompleted(
 
 다음 규칙을 지킨다.
 
-- **`Defer()`는 그 turn의 마지막 Framework 호출이다.** 이후 같은 turn에서 다른 Framework
+- **`defer()`는 그 turn의 마지막 Framework 호출이다.** 이후 같은 turn에서 다른 Framework
   operation(send, request, close 등)을 시작하면 오류다.
-- **한 turn에 한 번만 호출한다.** 같은 turn에서 두 번째 `Defer()`는 오류다.
+- **한 turn에 한 번만 호출한다.** 같은 turn에서 두 번째 `defer()`는 오류다.
 - **`SpotWide` User Spot 전용이다.** Entry Spot, `PerActor` User Spot, Instance Spot과 기본
   `AnyTurnBoundary` 모드에서는 호출할 수 없다.
 

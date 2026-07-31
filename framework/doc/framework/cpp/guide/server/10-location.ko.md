@@ -105,7 +105,7 @@ Manual peer를 하나라도 사용한 host에서는 host relocation을 지원하
 
 ## 3. Location 옵션
 
-`ConfigureLocations()`는 lease, route cache와 relocation 실행 상한을 설정한다.
+`configure_locations()`는 lease, route cache와 relocation 실행 상한을 설정한다.
 
 ```cpp
 auto &location = options.configure_locations ();
@@ -119,17 +119,17 @@ location.max_relocation_payload_in_flight_bytes = 256LL * 1024 * 1024;
 
 | 옵션 | 기본값 | 의미 |
 |---|---:|---|
-| `OwnerLeaseRenewInterval` | 5초 | owner lease 갱신 주기 |
-| `OwnerLeaseTtl` | 15초 | 갱신이 중단된 owner를 만료로 판단하는 시간 |
-| `OwnerLeaseRenewTimeout` | 3초 | 갱신 요청 하나를 기다리는 상한 |
-| `OwnerLeaseFencingMargin` | 5초 | 만료 전에 새 작업을 미리 끊는 여유 |
-| `PollingInterval` | 1초 | change watch가 없을 때 Store를 다시 읽는 주기 |
-| `StoreFailureGrace` | 30초 | Store 장애 중 마지막 route 판단을 유지하는 시간 |
-| `RouteCacheMaxAge` | 15초 | cached route를 다시 확인하기 전 최대 시간 |
-| `MessageFollowDuration` | 30초 | 이동 전 owner가 새 owner로 메시지를 relay하는 기간 |
-| `MaxActiveOutboundRelocations` | 64 | process에서 동시에 내보내는 relocation unit 상한 |
-| `MaxActiveInboundRelocations` | 64 | process에서 동시에 복원하는 relocation unit 상한 |
-| `MaxRelocationPayloadInFlightBytes` | 256 MiB | process 전체 encoded payload 상한 |
+| `owner_lease_renew_interval` | 5초 | owner lease 갱신 주기 |
+| `owner_lease_ttl` | 15초 | 갱신이 중단된 owner를 만료로 판단하는 시간 |
+| `owner_lease_renew_timeout` | 3초 | 갱신 요청 하나를 기다리는 상한 |
+| `owner_lease_fencing_margin` | 5초 | 만료 전에 새 작업을 미리 끊는 여유 |
+| `polling_interval` | 1초 | change watch가 없을 때 Store를 다시 읽는 주기 |
+| `store_failure_grace` | 30초 | Store 장애 중 마지막 route 판단을 유지하는 시간 |
+| `route_cache_max_age` | 15초 | cached route를 다시 확인하기 전 최대 시간 |
+| `message_follow_duration` | 30초 | 이동 전 owner가 새 owner로 메시지를 relay하는 기간 |
+| `max_active_outbound_relocations` | 64 | process에서 동시에 내보내는 relocation unit 상한 |
+| `max_active_inbound_relocations` | 64 | process에서 동시에 복원하는 relocation unit 상한 |
+| `max_relocation_payload_in_flight_bytes` | 256 MiB | process 전체 encoded payload 상한 |
 
 **lease 값 넷은 서로 묶여 있다.** 다음 관계를 어기면 startup error다. 값을 바꿀 때는
 넷을 함께 본다.
@@ -141,7 +141,7 @@ location.max_relocation_payload_in_flight_bytes = 256LL * 1024 * 1024;
 기본값으로는 `5 + 3 < 15 - 5`가 성립한다. TTL만 줄이거나 갱신 주기만 늘리면 이 부등식이
 깨진다. 모든 값은 양수여야 한다.
 
-**Store 장애 중에 일어나는 일은 둘로 갈린다.** `StoreFailureGrace`는 마지막으로 완전히
+**Store 장애 중에 일어나는 일은 둘로 갈린다.** `store_failure_grace`는 마지막으로 완전히
 읽은 node 목록을 유지해 주는 시간이지, **owner 자격을 연장해 주는 시간이 아니다.**
 
 | grace 동안 | 결과 |
@@ -182,7 +182,7 @@ relocation record는 Framework 내부 정보이므로 반환하지 않는다. `N
 
 ## 5. Actor와 Spot 조회
 
-업무 코드는 global ActorId와 SpotId를 사용한다. Manager의 `Find(...)`는 현재 Ready object만
+업무 코드는 global ActorId와 SpotId를 사용한다. Manager의 `find(...)`는 현재 Ready object만
 반환한다.
 
 ```cpp

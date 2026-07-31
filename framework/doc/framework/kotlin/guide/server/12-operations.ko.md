@@ -102,14 +102,14 @@ Metrics.addRegistry(prometheusRegistry)
 | `zlink.location.owner_lease.renew.lateness` | 예정 시각 대비 owner lease 갱신 지연 |
 | `zlink.observability.events.overflow` | monitoring·trace observer queue overflow 누계 |
 | `zlink.host.state` | 현재 host Framework runtime state |
-| `zlink.host.relocation.duration` | Host `Relocate` 시작부터 terminal result까지의 시간 |
-| `zlink.host.relocation.blocked` | `Blocked`로 끝난 host `Relocate` 수 |
-| `zlink.host.shutdown.duration` | Host `Shutdown` 시작부터 terminal result까지의 시간 |
-| `zlink.host.shutdown.forced` | Bounded teardown으로 끝난 host `Shutdown` 수 |
+| `zlink.host.relocation.duration` | Host `relocate` 시작부터 terminal result까지의 시간 |
+| `zlink.host.relocation.blocked` | `Blocked`로 끝난 host `relocate` 수 |
+| `zlink.host.shutdown.duration` | Host `shutdown` 시작부터 terminal result까지의 시간 |
+| `zlink.host.shutdown.forced` | Bounded teardown으로 끝난 host `shutdown` 수 |
 
 ## 2. Relocate — 상태를 유지한 채 다른 host로 옮기기
 
-`Relocate(...)`는 이 host에서 살아 있는 User Spot·Instance Spot·Actor를 다른 Serving node로
+`relocate(...)`는 이 host에서 살아 있는 User Spot·Instance Spot·Actor를 다른 Serving node로
 옮긴다. Host 전체를 대상으로 하는 operation이며, 이 호출 자체가 host를 종료하지는 않는다.
 
 **무엇이 유지되나.** 옮긴 뒤에도 client와 다른 node가 쓰던 것이 그대로 남는다는 뜻이다.
@@ -119,7 +119,7 @@ Metrics.addRegistry(prometheusRegistry)
 | SpotId · ActorId와 `ObjectGeneration` | 호출하는 쪽이 쓰던 논리 ID가 바뀌지 않는다. 주소를 다시 알릴 필요가 없다 |
 | 아직 실행하지 않은 message와 accepted journal | seal 시점에 queue에 남아 있던 작업을 target에서 이어서 실행한다 |
 | timer 등록과 pending tick | 이름·주기·옵션·스케줄 커서를 함께 옮기므로 target에서 다시 등록하지 않는다 |
-| application state | factory에 등록한 relocation adapter의 `Capture`·`Restore`로 옮긴다 |
+| application state | factory에 등록한 relocation adapter의 `capture`·`Restore`로 옮긴다 |
 | bound STREAM session route | client session은 그대로 두고 route가 새 owner를 가리키도록 바꾼다 |
 
 절차는 다음과 같다.
@@ -129,7 +129,7 @@ Metrics.addRegistry(prometheusRegistry)
 2. Host를 `Relocating`으로 게시하고 standalone Actor, Instance Spot과 User Spot aggregate execution queue에
    infrastructure notification을 예약한다.
 3. Notification이 turn boundary에 도달했을 때 현재 실행 중인 turn만 source에서 완료한다. Outbound·inbound,
-   `Capture`·`Restore`와 encoded payload permit을 모두 얻은 ready unit만 queue를 seal한다. Permit을 얻지
+   `capture`·`Restore`와 encoded payload permit을 모두 얻은 ready unit만 queue를 seal한다. Permit을 얻지
    못한 unit은 source에서 application message와 timer를 계속 처리한다.
 4. Seal 시점에 실행하지 않은 message, accepted journal, logical timer registration·pending tick과 optional
    Snapshot bytes를 immutable relocation root에 저장한다. Target factory·`Restore`와 journal staging은
@@ -140,7 +140,7 @@ Metrics.addRegistry(prometheusRegistry)
 6. Frozen queue·timer를 target에 복원하고 seal 뒤 source hold를 target으로 relay한다. Source cleanup,
    `Completed`, bound STREAM route ACK와 steady normalization을 끝낸 뒤 target admission을 연다.
 7. 모든 unit이 source dispatch에서 분리되면 host를 `Relocated`로 전환한다. 연결과 infrastructure는
-   `Shutdown(...)`를 호출할 때까지 유지한다.
+   `shutdown(...)`를 호출할 때까지 유지한다.
 
 첫 relocation commit 전 failure는 source queue와 admission을 복원할 수 있다. 첫 commit 뒤에는 source로
 rollback하지 않고 target recovery를 계속하며 deadline을 넘기면 `ForceStopped`로 끝낸다.
@@ -185,15 +185,15 @@ Actor가 없으므로 Spot 하나가 그대로 이전 단위다.
 
 ## 3. Shutdown — 옮기지 않고 종료하기
 
-`Shutdown(...)`는 이 host를 종료한다. §2와 달리 **상태를 다른 node로 옮기지 않는다.**
+`shutdown(...)`는 이 host를 종료한다. §2와 달리 **상태를 다른 node로 옮기지 않는다.**
 
 호출하면 새 relocation을 시작하지 않고, 진행 중인 작업을 주어진 deadline 안에서 끝내거나
-실패로 확정한다. 그다음 Entry·User·Instance Spot에 `OnClosing`를 `HostShutdown` reason으로
+실패로 확정한다. 그다음 Entry·User·Instance Spot에 `onClosing`를 `HostShutdown` reason으로
 알리고, 그 callback이 끝난 뒤 scope·authority·session·topology resource를 정리한다. deadline을
 주지 않으면 30초다.
 
 여기서 정리되는 Spot의 state는 남지 않는다. 배포 자동화가 상태를 살려서 내려야 한다면 종료
-전에 `Relocate(...)`를 먼저 호출하고 그 결과가 `Relocated`인지 확인한 뒤 이 호출로
+전에 `relocate(...)`를 먼저 호출하고 그 결과가 `Relocated`인지 확인한 뒤 이 호출로
 넘어간다(§4의 예제).
 
 Spot의 수명은 request와 무관하다. 일반 request가 끝났다는 이유만으로 User·Instance Spot을 닫지
@@ -223,7 +223,7 @@ if (result.outcome() == ZLinkFrameworkRelocationOutcome.RELOCATED) {
 ```
 
 `PlannedMaintenance`는 source와 같은 application version의 target만 사용한다.
-`RollingUpdate`는 source보다 큰 `TargetApplicationVersion`을 요구하고 그 version과 정확히 같은 target만
+`RollingUpdate`는 source보다 큰 `targetApplicationVersion`을 요구하고 그 version과 정확히 같은 target만
 사용한다. Eligible target이 없으면 deadline까지 기다린 뒤 `Blocked/TargetUnavailable`을 반환한다.
 Cancellation은 해당 waiter만 끝내며 이미 시작한 shared lifecycle operation은 계속 실행된다.
 
@@ -250,22 +250,22 @@ Kubernetes 배포에 연결하면 다음 개념이 된다.
 
 | 상황 | 결과 |
 | --- | --- |
-| 같은 mode로 `Relocate`를 겹쳐 부름 | 최초 operation과 deadline을 공유한다. 뒤의 호출이 deadline을 늘리지 않는다 |
-| 다른 mode로 `Relocate`를 겹쳐 부름 | 기다리지 않고 `Blocked` — 진행 중인 operation이 있다는 뜻이다 |
-| `Blocked` 뒤에 다시 `Relocate` | `Blocked`는 저장하지 않으므로 host 조건을 처음부터 다시 검사한다. **재시도가 의미 있는 유일한 결과다** |
-| `Relocated`에서 다시 `Relocate` | 최초 성공 결과를 그대로 돌려준다. 다시 옮기지 않는다 |
-| `Shutdown`을 겹쳐 부름 | 같은 operation을 공유하고 terminal 결과를 저장한다 |
-| `Stopped`에서 다시 `Shutdown` | 저장한 결과를 돌려준다 |
-| 시작 중이거나 오류·정지 상태에서 `Relocate` | admission을 건드리지 않고 `Blocked`다 |
+| 같은 mode로 `relocate`를 겹쳐 부름 | 최초 operation과 deadline을 공유한다. 뒤의 호출이 deadline을 늘리지 않는다 |
+| 다른 mode로 `relocate`를 겹쳐 부름 | 기다리지 않고 `Blocked` — 진행 중인 operation이 있다는 뜻이다 |
+| `Blocked` 뒤에 다시 `relocate` | `Blocked`는 저장하지 않으므로 host 조건을 처음부터 다시 검사한다. **재시도가 의미 있는 유일한 결과다** |
+| `Relocated`에서 다시 `relocate` | 최초 성공 결과를 그대로 돌려준다. 다시 옮기지 않는다 |
+| `shutdown`을 겹쳐 부름 | 같은 operation을 공유하고 terminal 결과를 저장한다 |
+| `Stopped`에서 다시 `shutdown` | 저장한 결과를 돌려준다 |
+| 시작 중이거나 오류·정지 상태에서 `relocate` | admission을 건드리지 않고 `Blocked`다 |
 
 **호출자 취소는 그 호출만 끝낸다.** 공유하고 있는 operation 자체는 취소되지 않는다.
 
-**`Shutdown`은 막히지 않는다.** target이 없어도, capacity가 부족해도, Relocation Store가
-없어도 진행한다. 그래서 `Relocate`를 기다리는 중에 `Shutdown`이 확정되면 기다리던 쪽이
+**`shutdown`은 막히지 않는다.** target이 없어도, capacity가 부족해도, Relocation Store가
+없어도 진행한다. 그래서 `relocate`를 기다리는 중에 `shutdown`이 확정되면 기다리던 쪽이
 `Blocked`로 끝난다 — **먼저 옮기고 성공을 확인한 뒤 종료한다**는 순서를 지켜야 하는
 이유다.
 
-`Shutdown`이 deadline 안에 끝나지 않으면 제한된 정리만 하고 강제 종료 결과로 끝난다.
+`shutdown`이 deadline 안에 끝나지 않으면 제한된 정리만 하고 강제 종료 결과로 끝난다.
 deadline 초과와 callback 실패는 서로 다른 결과값으로 구분된다.
 
 ### 4.2 전이 중에도 살아 있는 것
@@ -286,10 +286,10 @@ deadline 초과와 callback 실패는 서로 다른 결과값으로 구분된다
 
 ## 5. MeshNode 런타임 제어와 관측
 
-`AddRouteMesh`로 등록한 MeshNode는 두 DI singleton으로 운영한다.
+`addRouteMesh`로 등록한 MeshNode는 두 DI singleton으로 운영한다.
 
 **런타임 옵션.** serving 중에 바꿀 수 있는 값은
-다음과 같다. 나머지 소켓 옵션(HWM·timeout)은 시작 전 `ConfigureRouterSocket()`
+다음과 같다. 나머지 소켓 옵션(HWM·timeout)은 시작 전 `configureRouterSocket()`
 전용이다.
 
 ```kotlin
@@ -343,7 +343,7 @@ stateDiagram-v2
 
 ### 6.1 상태 관측
 
-Host `Relocate`·`Shutdown` 상태 전이는 framework runtime의 bounded status stream에서 관측한다. MeshName별
+Host `relocate`·`shutdown` 상태 전이는 framework runtime의 bounded status stream에서 관측한다. MeshName별
 runtime은 component snapshot을 제공하지만 별도 termination authority나 partial drain operation을 만들지 않는다.
 
 ```kotlin

@@ -100,10 +100,10 @@ lifecycle callback을 말한다. Entry Spot에는 넷이 있다.
 
 | Callback | 언제 호출되나 |
 | --- | --- |
-| `OnCreateActor` | 새 Actor가 이 Entry Spot을 최초 membership으로 삼을 때. 승인·거절을 결정한다 |
-| `OnJoinedActor` | 다른 Spot에 있던 Actor가 이 Entry Spot으로 들어온 commit이 끝났을 때 |
-| `OnLeaveActor` | 이 Entry Spot에 있던 Actor가 다른 Spot으로 빠져나간 commit이 끝났을 때 |
-| `OnDisconnectActor` | 이 Entry Spot 소속 Actor의 client 연결이 끊겼을 때 |
+| `OnCreateActorAsync` | 새 Actor가 이 Entry Spot을 최초 membership으로 삼을 때. 승인·거절을 결정한다 |
+| `OnJoinedActorAsync` | 다른 Spot에 있던 Actor가 이 Entry Spot으로 들어온 commit이 끝났을 때 |
+| `OnLeaveActorAsync` | 이 Entry Spot에 있던 Actor가 다른 Spot으로 빠져나간 commit이 끝났을 때 |
+| `OnDisconnectActorAsync` | 이 Entry Spot 소속 Actor의 client 연결이 끊겼을 때 |
 
 Relocation으로 Actor가 다른 node의 Entry Spot에 복원되는 경우에는 이 callback들을 호출하지
 않는다. Relocation은 membership을 그대로 유지한 채 실행 위치만 옮기는 것이므로, application이
@@ -186,7 +186,7 @@ Entry Spot으로 돌아와야 한다.
 ## 4. User Spot membership
 
 User Spot은 join 요청을 먼저 승인하거나 거절한다. 승인 뒤 membership이 commit되면
-`OnJoinedActor`가 호출된다.
+`OnJoinedActorAsync`가 호출된다.
 
 ```csharp
 public sealed class GameRoom(IZLinkSpotContext context)
@@ -315,7 +315,7 @@ public sealed class JoinGameHandler
 }
 ```
 
-결과는 Actor의 `OnJoinCompleted`로 받는다. 어느 Actor가 이 callback을 실행하는지는 결과에
+결과는 Actor의 `OnJoinCompletedAsync`로 받는다. 어느 Actor가 이 callback을 실행하는지는 결과에
 따라 다르다 — `Accepted`는 위치 변경을 commit한 **target** Actor가, `Rejected`와 commit 전
 `Failed`는 기존 **source** Actor가 받는다.
 

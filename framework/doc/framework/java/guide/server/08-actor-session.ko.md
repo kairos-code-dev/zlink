@@ -73,12 +73,12 @@ private static ActorRef requireActor(ZLinkActorCreateResult result) {
 }
 ```
 
-`Bind`는 중복 bind를 오류로 처리한다. 인증 재전송처럼 이미 bind됐을 수 있는 흐름은
-`BindOrGet`를 사용한다.
+`bind`는 중복 bind를 오류로 처리한다. 인증 재전송처럼 이미 bind됐을 수 있는 흐름은
+`bindOrGet`를 사용한다.
 
 ## 2. Session packet을 Actor로 relay
 
-Session의 `Configure()`에서 인증 같은 session 전용 handler를 등록한다. 처리하지 않은 packet은
+Session의 `configure()`에서 인증 같은 session 전용 handler를 등록한다. 처리하지 않은 packet은
 bound Actor로 넘긴다.
 
 ```java

@@ -319,18 +319,18 @@ client 연결·서비스 메시징·actor 상태가 서로 다른 세 계층에�
 | 서비스 간 typed 메시징 + 토폴로지 선언 | ❌ 별도 조립(gRPC 등) | ✅ channel + location store |
 | actor 상태 persistence | ✅ 성숙한 provider 생태계 | ⚠️ lifecycle 훅은 있고 미리 구현된 storage 커넥터는 없다(아래 ①) |
 | relocation 뒤 Spot timer 복원 | ✅ | ✅ 등록과 pending tick을 payload에 포함해 자동 복원한다 |
-| 없는 Actor를 만들거나 기존 Actor를 사용 | ✅ | ✅ `GetOrCreate`가 같은 ActorId의 동시 생성을 조정한다 |
+| 없는 Actor를 만들거나 기존 Actor를 사용 | ✅ | ✅ `getOrCreate`가 같은 ActorId의 동시 생성을 조정한다 |
 | dormant actor를 예정 시각에 깨움(reminder) | ✅ API 한 콜(Orleans Reminder) | ❌ 전용 API 없음 — 분산 scheduler로 구성한다(아래 ②) |
 | 분산 트랜잭션 | Orleans 실험적 지원 | ❌ 없음(saga는 앱이 구성) — 이는 실제 프로토콜 난이도의 문제라 기존 primitive로 우회할 수 없다 |
 | 라이선스 | Orleans MIT / Akka BSL(연매출 기준 유료 트리거) | framework는 FSL-1.1-ALv2, core·binding은 MPL-2.0 — 매출 기준 유료 트리거가 없다(§7) |
 | 실전 검증 기간 | 10년 이상(Halo, Microsoft 365, Skype) | 짧음 — 이 프로젝트 자체가 진행 중 |
 
-① **actor 상태 persistence** — `OnCreate`·`OnClosing` 같은 lifecycle 훅은
+① **actor 상태 persistence** — `onCreate`·`onClosing` 같은 lifecycle 훅은
 제공하지만, 어느 DB에 어떻게 저장할지는 application이 정한다. 미리 구현된 storage
 커넥터 모음이 없다는 뜻이다([ShoppingMall](../../../common/sample/event/shoppingmall.ko.md)이 그 예다).
 
 ② **reminder** — Quartz.NET Clustered·Hangfire 같은 분산 scheduler가 정해진 시각에 Actor
-`GetOrCreate`나 message를 실행하도록 application이 구성한다.
+`getOrCreate`나 message를 실행하도록 application이 구성한다.
 
 **결론.** "실시간 상태 서버 하나를 조립 없이 만든다"는 이 가이드의 워크로드에는
 ZLink가 대체 후보다. Actor·Spot lifecycle과 relocation timer 복원은 Framework가 제공한다.

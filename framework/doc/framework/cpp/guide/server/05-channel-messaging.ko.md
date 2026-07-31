@@ -347,7 +347,7 @@ class cache_refreshed_event_handler_t
   다룬다.
 - handler class는 dispatch 키가 아니라 **코드 조직 단위**다. 메서드를 한 class에
   주제별로 묶어도, packet마다 class를 따로 둬도 동작은 같다.
-- interface 기반 handler는 컴파일 타임 타입 체크가 가장 강하다. `Handle(...)`
+- interface 기반 handler는 컴파일 타임 타입 체크가 가장 강하다. `handle(...)`
   의 payload, context, return 타입이 interface 계약과 맞지 않으면 컴파일이 실패한다.
 
 ### attribute 기반 메서드 handler
@@ -543,9 +543,9 @@ class price_service_t
 ```
 
 - reply 타입은 메시지가 아니라 **`.Async<TReply>(...)`** 에서 지정한다.
-- **`Timeout(...)`은 request 전용 선택 종결자다.** reply 대기 시간은 전역 기본
+- **`timeout(...)`은 request 전용 선택 종결자다.** reply 대기 시간은 전역 기본
   **30초**이고, 기본과 달라야 할 때만 붙인다(우선순위는 아래 예제 주석 참고).
-  `Send`/`Publish`는 응답을 기다리지 않으므로 timeout 표면 자체가 없다.
+  `send`/`publish`는 응답을 기다리지 않으므로 timeout 표면 자체가 없다.
 - packet 이름은 호출 시점에 바꿀 수 없다.
   [등록할 때](#3-handler를-channel에-노출하기) 한 번 확정된다.
 - route client는 startup에 등록한 RouteMesh를 사용한다. MeshName이나
@@ -966,7 +966,7 @@ class node_status_handler_t
 
 - Actor는 actor client와 ActorId로 호출한다.
 - Spot은 spot client와 SpotId로 호출한다.
-- 서비스 구성원 하나를 선택하려면 `SendToChannel(...)` 또는 `RequestToChannel(...)`을
+- 서비스 구성원 하나를 선택하려면 `send_to_channel(...)` 또는 `request_to_channel(...)`을
   사용한다.
 
 Framework가 현재 owner와 eligible node를 선택하므로 application은 Node RID를 보관하지 않는다.

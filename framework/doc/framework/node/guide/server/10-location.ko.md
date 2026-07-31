@@ -99,7 +99,7 @@ Manual peer를 하나라도 사용한 host에서는 host relocation을 지원하
 
 ## 3. Location 옵션
 
-`ConfigureLocations()`는 lease, route cache와 relocation 실행 상한을 설정한다.
+`configureLocations()`는 lease, route cache와 relocation 실행 상한을 설정한다.
 
 ```typescript
 const location = builder.configureLocations();
@@ -121,9 +121,9 @@ location.maxRelocationPayloadInFlightBytes = 256 * 1024 * 1024;
 | `StoreFailureGrace` | 30초 | Store 장애 중 마지막 route 판단을 유지하는 시간 |
 | `RouteCacheMaxAge` | 15초 | cached route를 다시 확인하기 전 최대 시간 |
 | `MessageFollowDuration` | 30초 | 이동 전 owner가 새 owner로 메시지를 relay하는 기간 |
-| `MaxActiveOutboundRelocations` | 64 | process에서 동시에 내보내는 relocation unit 상한 |
-| `MaxActiveInboundRelocations` | 64 | process에서 동시에 복원하는 relocation unit 상한 |
-| `MaxRelocationPayloadInFlightBytes` | 256 MiB | process 전체 encoded payload 상한 |
+| `maxActiveOutboundRelocations` | 64 | process에서 동시에 내보내는 relocation unit 상한 |
+| `maxActiveInboundRelocations` | 64 | process에서 동시에 복원하는 relocation unit 상한 |
+| `maxRelocationPayloadInFlightBytes` | 256 MiB | process 전체 encoded payload 상한 |
 
 **lease 값 넷은 서로 묶여 있다.** 다음 관계를 어기면 startup error다. 값을 바꿀 때는
 넷을 함께 본다.
@@ -174,7 +174,7 @@ relocation record는 Framework 내부 정보이므로 반환하지 않는다. `N
 
 ## 5. Actor와 Spot 조회
 
-업무 코드는 global ActorId와 SpotId를 사용한다. Manager의 `Find(...)`는 현재 Ready object만
+업무 코드는 global ActorId와 SpotId를 사용한다. Manager의 `find(...)`는 현재 Ready object만
 반환한다.
 
 ```typescript

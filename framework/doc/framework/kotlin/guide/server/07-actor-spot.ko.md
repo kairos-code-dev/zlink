@@ -46,7 +46,7 @@ mesh.objects().server()
 ```
 
 Relocation policy는 factory 등록에서 하나를 고정하며 실행 중에 변경하지 않는다.
-Actor가 다른 node의 Spot으로 join할 때와 host `Relocate`로 이전할 때 모두 이 policy를
+Actor가 다른 node의 Spot으로 join할 때와 host `relocate`로 이전할 때 모두 이 policy를
 따른다.
 
 | policy | 다른 node에서 만드는 방법 |
@@ -57,7 +57,7 @@ Actor가 다른 node의 Spot으로 join할 때와 host `Relocate`로 이전할 �
 
 ## 2. Actor 만들기
 
-`Create`는 같은 ActorId가 이미 있으면 실패한다. `GetOrCreate`는 같은 type의 Ready Actor가 있으면
+`create`는 같은 ActorId가 이미 있으면 실패한다. `getOrCreate`는 같은 type의 Ready Actor가 있으면
 `Existing`을 반환한다. Caller는 target node를 지정하지 않는다.
 
 ```kotlin
@@ -101,10 +101,10 @@ lifecycle callback을 말한다. Entry Spot에는 넷이 있다.
 
 | Callback | 언제 호출되나 |
 | --- | --- |
-| `OnCreateActor` | 새 Actor가 이 Entry Spot을 최초 membership으로 삼을 때. 승인·거절을 결정한다 |
-| `OnJoinedActor` | 다른 Spot에 있던 Actor가 이 Entry Spot으로 들어온 commit이 끝났을 때 |
-| `OnLeaveActor` | 이 Entry Spot에 있던 Actor가 다른 Spot으로 빠져나간 commit이 끝났을 때 |
-| `OnDisconnectActor` | 이 Entry Spot 소속 Actor의 client 연결이 끊겼을 때 |
+| `onCreateActor` | 새 Actor가 이 Entry Spot을 최초 membership으로 삼을 때. 승인·거절을 결정한다 |
+| `onJoinedActor` | 다른 Spot에 있던 Actor가 이 Entry Spot으로 들어온 commit이 끝났을 때 |
+| `onLeaveActor` | 이 Entry Spot에 있던 Actor가 다른 Spot으로 빠져나간 commit이 끝났을 때 |
+| `onDisconnectActor` | 이 Entry Spot 소속 Actor의 client 연결이 끊겼을 때 |
 
 Relocation으로 Actor가 다른 node의 Entry Spot에 복원되는 경우에는 이 callback들을 호출하지
 않는다. Relocation은 membership을 그대로 유지한 채 실행 위치만 옮기는 것이므로, application이
@@ -166,7 +166,7 @@ Entry Spot으로 돌아와야 한다.
 ## 4. User Spot membership
 
 User Spot은 join 요청을 먼저 승인하거나 거절한다. 승인 뒤 membership이 commit되면
-`OnJoinedActor`가 호출된다.
+`onJoinedActor`가 호출된다.
 
 ```kotlin
 class GameRoom(private val spotContext: ZLinkSpotContext) : ZLinkSpot<PlayerActor> {
@@ -187,10 +187,10 @@ class GameRoom(private val spotContext: ZLinkSpotContext) : ZLinkSpot<PlayerActo
 
 ## 5. Join 실행 시점
 
-### `Defer()`가 하는 일
+### `defer()`가 하는 일
 
-`Defer()`는 join을 **지금 실행하지 않고 현재 handler에 예약**한다. 호출 시점에 Framework는 세
-가지를 고정한다 — join request의 immutable snapshot, `Timeout(...)`으로 계산한 absolute
+`defer()`는 join을 **지금 실행하지 않고 현재 handler에 예약**한다. 호출 시점에 Framework는 세
+가지를 고정한다 — join request의 immutable snapshot, `timeout(...)`으로 계산한 absolute
 deadline, 그리고 이 handler가 끝난 뒤 실행할 barrier다.
 
 예약한 barrier의 운명은 handler의 종료 방식이 정한다.
@@ -200,7 +200,7 @@ deadline, 그리고 이 handler가 끝난 뒤 실행할 barrier다.
 | 정상 종료 | 활성화되어 실행을 시작한다 |
 | 예외·cancellation·reply encoding 실패 | 폐기한다. join은 시작되지 않는다 |
 
-`Defer()`는 **현재 handler의 registration scope가 열려 있는 동안에만** 호출할 수 있다. handler가
+`defer()`는 **현재 handler의 registration scope가 열려 있는 동안에만** 호출할 수 있다. handler가
 끝난 뒤나 handler에서 떼어낸 background task에서 호출하면 `InvalidOperation`이다.
 
 **부를 수 있는 자리는 정해져 있다.**
@@ -217,12 +217,12 @@ deadline, 그리고 이 handler가 끝난 뒤 실행할 barrier다.
 잡아낸다고 보장하지 않는다** — handler가 끝나기 전에 발견되지 않을 수 있으므로 애초에 그
 자리에서 부르지 않는다.
 
-같은 call에서 `Defer()`를 두 번 부르면 `InvalidOperation`이고, 그 Actor에 이미 다른
+같은 call에서 `defer()`를 두 번 부르면 `InvalidOperation`이고, 그 Actor에 이미 다른
 membership 전환이 걸려 있으면 `Unavailable`이다. **이미 그 Spot에 속해 있는 Actor가 같은
 Spot에 join하면** 위치를 바꾸지 않고 성공으로 끝난다 — Store도 membership도 건드리지 않고
 join · joined · leave callback도 실행하지 않는다.
 
-### `JoinSpot`이 `Defer()`로만 실행되는 이유
+### `joinSpot`이 `defer()`로만 실행되는 이유
 
 join call에는 `Async`가 없다. 결과를 그 자리에서 기다리는 형태를 제공하지 않는 이유는 join이
 하는 일 때문이다.
@@ -250,7 +250,7 @@ barrier가 활성화된 뒤에는 그 뒤에 도착한 일반 message가 complet
 Actor handler에서 join을 예약한다. handler는 member Actor 앞 one-way packet을 받는 별도
 class이며([06-spot §4.1](06-spot.ko.md#41-handler-종류와-구현할-interface)), 구성 단계에서
 actor packet으로 등록한 것이다.
-`Defer()` 뒤에는 이 handler를 정상 종료시키는 것 외에 할 일이 없다.
+`defer()` 뒤에는 이 handler를 정상 종료시키는 것 외에 할 일이 없다.
 
 > **샘플에서 보기 — [TicTacToe](../../../common/sample/tictactoe/README.ko.md).** player가
 > 방에 들어가겠다고 예약하는 handler다. 저장소의 실제 코드다.
@@ -278,7 +278,7 @@ class JoinGameHandler : ZLinkSpotActorSendHandler<PlayEntrySpot, PlayerActor, Jo
 }
 ```
 
-결과는 Actor의 `OnJoinCompleted`로 받는다. 어느 Actor가 이 callback을 실행하는지는 결과에
+결과는 Actor의 `onJoinCompleted`로 받는다. 어느 Actor가 이 callback을 실행하는지는 결과에
 따라 다르다 — `Accepted`는 위치 변경을 commit한 **target** Actor가, `Rejected`와 commit 전
 `Failed`는 기존 **source** Actor가 받는다.
 
@@ -307,7 +307,7 @@ actor.context()
     .defer()
 ```
 
-`OperationId`는 이 completion이 재시도된 결과인지 구분하는 idempotency ID다. 같은 `OperationId`의
+`operationId`는 이 completion이 재시도된 결과인지 구분하는 idempotency ID다. 같은 `operationId`의
 callback이 다시 실행되어도 안전하도록 처리한다.
 
 ### 등록 한도
@@ -327,7 +327,7 @@ callback이 다시 실행되어도 안전하도록 처리한다.
 
 ### 예약한 Actor에 request를 보내면 안 된다
 
-`Defer()`로 barrier를 건 Actor에게 **같은 handler에서 request를 보내고 reply를 기다리면
+`defer()`로 barrier를 건 Actor에게 **같은 handler에서 request를 보내고 reply를 기다리면
 순환 대기**가 된다. request는 barrier 뒤에서 기다리고, barrier는 이 handler가 끝나야
 열리는데, handler는 reply를 기다리느라 끝나지 못한다.
 
@@ -340,7 +340,7 @@ Framework가 이 request를 **제출하기 전에 `InvalidOperation`으로 거�
 process가 내려가면 그 예약은 재생되지 않는다. Actor의 위치와 membership은 원래 상태
 그대로다 — 절반만 옮겨진 상태로 남지 않는다.
 
-`Relocate`나 `Shutdown`과 겹치면 **먼저 확정된 쪽을 따른다.** join이 먼저 자리를 잡았으면
+`relocate`나 `shutdown`과 겹치면 **먼저 확정된 쪽을 따른다.** join이 먼저 자리를 잡았으면
 maintenance가 join이 끝날 때까지 기다리고, relocation seal이 먼저면 join이 `Unavailable`로,
 shutdown seal이 먼저면 `ShuttingDown`으로 끝난다.
 

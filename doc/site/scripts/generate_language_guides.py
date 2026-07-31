@@ -11,6 +11,8 @@
 생성 규칙
   - `=== "라벨"` 블록 중 대상 언어만 남기고 4칸 들여쓰기를 푼다.
   - 머리에 생성 파일 표시를 붙인다. 손으로 고치면 다음 생성에서 지워진다.
+  - 산문의 표면 이름을 그 언어 표기로 바꾼다(`surface_terms.py`). 공통 산문은 다섯
+    언어가 공유하므로 `.NET` 모양으로 적혀 있는데, 생성판은 대상이 정해져 있다.
   - `` `11. Monitoring` 장 `` 표기를 **실제 링크**로 바꾼다. 공통 소스는 대상 언어가
     정해지지 않아 링크할 수 없지만, 생성판은 정해져 있다.
   - 그 언어의 읽는 순서대로 앞뒤 장 nav를 붙인다. 순서는 각 언어 README의 표가 소유한다.
@@ -28,6 +30,9 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import surface_terms  # noqa: E402
 
 SITE_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = SITE_DIR.parents[1]
@@ -211,6 +216,7 @@ def generate(check_only: bool) -> int:
                 continue
             body = strip_tabs(src.read_text(encoding="utf-8"), label)
             body = NAV_RE.sub("", body)
+            body, _ = surface_terms.translate(body, label)
             body = link_chapter_refs(body, available)
             content = (FRONT_MATTER.format(
                            title=chapter_title(src), label=label)

@@ -105,7 +105,7 @@ connector가 제공하는 검증 함수로 대부분의 시나리오를 표현�
 | server가 먼저 보내는 push가 오는지 확인한다 | `WaitFor<TNotify>()` |
 | push가 **오지 않아야** 함을 확인한다 | `ExpectNone<TNotify>().Within(window)` |
 | push가 **정해진 순서로** 오는지 확인한다 | `WaitForSequence<TNotify>().Expect(...).Expect(...)` |
-| 요청이 **실패해야** 함을 확인한다 | `ExpectFailure(...)` |
+| 요청이 **실패해야** 함을 확인한다 | `ExpectFailureAsync(...)` |
 
 **terminal 표기는 언어를 따른다** — `.NET`은 `Async`, Java · Node · C++은 `submit`,
 Kotlin은 `await`다([비동기 실행 정책](../../../common/spec/05-async-execution-policy.ko.md)).

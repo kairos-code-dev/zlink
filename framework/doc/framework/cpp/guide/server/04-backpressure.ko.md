@@ -39,7 +39,7 @@ ZLink는 세 번째 방식을 사용한다. 이렇게 **받는 쪽의 처리 지
 
 ## 1. 송·수신 queue와 high-water mark
 
-`SendToChannel(...)`이나 `Publish(...)`로 보낸 message는 이 process가 상대별로 유지하는
+`send_to_channel(...)`이나 `publish(...)`로 보낸 message는 이 process가 상대별로 유지하는
 **송신 queue**에 먼저 들어가고, 그 queue에서 차례로 연결을 통해 나간다. 받는 쪽에도 아직
 처리하지 못한 message가 머무는 **수신 queue**가 있다. 두 queue에는 각각 상한이 있고, 이
 상한을 high-water mark(HWM)라 한다.
@@ -115,7 +115,7 @@ Framework는 그 host에서 새 application message를 받기 시작하지 않�
 
 **3단계 — 송신 queue가 상한에 닿으면 `send`가 대기한다.** 전송이 느려진 만큼 송신 queue도
 천천히 비워진다. application이 그보다 빠른 속도로 계속 message를 넣으면 queue에 쌓이고,
-보관 byte가 `SendHighWaterMark`에 닿는 순간 그 상대로 가는 송신이 잠긴다. 이때부터 `send`
+보관 byte가 `send_high_water_mark`에 닿는 순간 그 상대로 가는 송신이 잠긴다. 이때부터 `send`
 호출이 곧바로 반환되지 않고 자리가 나기를 기다린다 — 받는 쪽의 지연이 application의 대기로
 처음 나타나는 지점이다.
 
@@ -148,9 +148,9 @@ message 하나 단위로 잠금과 해제를 반복하지 않기 위한 동작�
 
 한 가지 예외가 있다. **queue가 완전히 비어 있으면 상한보다 큰 message도 한 건은
 통과시킨다.** 그렇지 않으면 그 message는 어떤 상황에서도 보낼 수 없다. 다만 무제한으로
-허용하지는 않고 그 방향의 `MaxMessageSize` 이하일 때만 통과시키며, 여러 part로 나뉜
+허용하지는 않고 그 방향의 `max_message_size` 이하일 때만 통과시키며, 여러 part로 나뉜
 message를 보내는 중에는 이 예외를 적용하지 않는다. 따라서 순간 보유량이 상한을 넘을 수
-있으므로, 한 queue가 차지할 수 있는 최악의 memory를 계산할 때는 상한과 `MaxMessageSize`
+있으므로, 한 queue가 차지할 수 있는 최악의 memory를 계산할 때는 상한과 `max_message_size`
 중 큰 값을 사용한다.
 
 ### 2.4 Application 연결과 Completion 연결 분리
@@ -222,7 +222,7 @@ Spot · Actor ID로 보내는 호출은 기다리는 동안에도 그 대상을 
 ### 3.2 request의 timeout 경계
 
 request는 보낼 자리와 상대의 reply를 모두 기다리므로, 정체가 일어난 구간에서는
-`Timeout(...)`이 실질적인 상한이다. 특히 **handler 안에서 다시 request를 보내는 흐름에는
+`timeout(...)`이 실질적인 상한이다. 특히 **handler 안에서 다시 request를 보내는 흐름에는
 유한한 timeout을 반드시 지정한다.**
 
 ```cpp
@@ -249,10 +249,10 @@ timeout으로 끝나도 이미 시작된 remote handler의 실행은 취소되�
 | --- | --- | --- |
 | `DefaultSocketSendTimeout` | 보낼 자리가 없을 때 기다리는 상한(기본 1초) | 루트 옵션 |
 | — | 실제로 적용되는 값은 **보내는 경로마다 다르다**(아래) | — |
-| `SendHighWaterMark` | 상대별로 **보내려고** 보관할 수 있는 byte. `0`은 무제한 | `ConfigureRouterSocket()` |
-| `ReceiveHighWaterMark` | 상대별로 **받아서** 보관할 수 있는 byte. `0`은 무제한 | `ConfigureRouterSocket()` |
-| `MaxMessageSize` | 받아들일 message 하나의 최대 크기 | `ConfigureRouterSocket()` |
-| `SendHighWaterMark` · `Linger` | pub/sub 발행 소켓의 상한과 종료 시 잔여 발행 대기 | `ConfigureSpotPublisher()` |
+| `send_high_water_mark` | 상대별로 **보내려고** 보관할 수 있는 byte. `0`은 무제한 | `configure_router_socket()` |
+| `receive_high_water_mark` | 상대별로 **받아서** 보관할 수 있는 byte. `0`은 무제한 | `configure_router_socket()` |
+| `max_message_size` | 받아들일 message 하나의 최대 크기 | `configure_router_socket()` |
+| `send_high_water_mark` · `linger` | pub/sub 발행 소켓의 상한과 종료 시 잔여 발행 대기 | `ConfigureSpotPublisher()` |
 
 **"보낼 자리를 기다리는 상한"은 하나의 전역 값이 아니다.** 실제로 쓰이는 값은 그 호출이
 사용하는 socket이 소유한다.
@@ -276,7 +276,7 @@ timeout으로 끝나도 이미 시작된 remote handler의 실행은 취소되�
 한도가 상대 쪽 흐름으로 이어진다. 값을 정할 때는 다음을 확인한다.
 
 - **올리면** 순간 폭주를 더 흡수하고, **내리면** 혼잡이 더 일찍 드러난다.
-- **`MaxMessageSize`를 유한하게 둔다.** 무제한이면 message 한 건이 상한을 얼마든지 넘을 수
+- **`max_message_size`를 유한하게 둔다.** 무제한이면 message 한 건이 상한을 얼마든지 넘을 수
   있어 queue가 차지할 memory의 최악값을 계산할 수 없다.
 - **이 값은 연결 하나에 적용되는 상한이다.** process 전체 상한이 아니므로, 목표 peer 수를
   곱한 결과가 process memory 예산 안에 들어오는지 확인한다.
@@ -335,13 +335,13 @@ STREAM socket은 같은 profile에서도 더 작은 값을 쓴다([09-stream](09
 
 ### 4.2 HWM을 직접 지정할 때
 
-`SendHighWaterMark`나 `ReceiveHighWaterMark`를 지정하면 그 socket은 지정한 값을 그대로
+`send_high_water_mark`나 `receive_high_water_mark`를 지정하면 그 socket은 지정한 값을 그대로
 쓰고, runtime은 그 socket의 상한을 다시 계산하지 않는다. **연결이 늘어도 값이 따라
 줄어들지 않으므로**, 직접 정할 때는 목표 peer 수까지 계산한 값을 넣는다.
 
 - **`0`은 무제한이라는 뜻이다.** 상한을 없애는 설정이므로 "기본값으로 두겠다"는 의미로
   `0`을 쓰지 않는다. 자동 계산에 맡기려면 아무 값도 지정하지 않는다.
-- **한 방향씩 따로 적용된다.** `SendHighWaterMark`만 지정하면 수신 방향은 계속 자동
+- **한 방향씩 따로 적용된다.** `send_high_water_mark`만 지정하면 수신 방향은 계속 자동
   계산값을 쓴다.
 - **상한을 줄여도 즉시 반영되지 않을 수 있다.** 이미 보관 중인 byte가 새 상한보다 많아도
   runtime은 들고 있던 message를 버리지 않는다. 새로 넣는 것만 막고, 보관량이 내려간 뒤에
@@ -361,7 +361,7 @@ dispatch를 기다리는 message가 얼마나 쌓일지 정해지지 않는다. 
 | 무엇을 세나 | 아직 상대가 가져가지 않은 전송 중 byte(routing frame·metadata·최소 charge 포함) | dispatch를 기다리는 **payload byte만** |
 | 언제 빠지나 | 상대가 읽어 갈 때 | handler가 그 job 실행을 **시작할 때** |
 | 상한에 닿으면 | 그 상대로 가는 송신이 잠긴다 | 이 host의 application 수신을 시작하지 않는다 |
-| 설정 이름 | `SendHighWaterMark` · `ReceiveHighWaterMark` | `ApplicationHwmBytes` · `ApplicationHwmProfile` |
+| 설정 이름 | `send_high_water_mark` · `receive_high_water_mark` | `application_hwm_bytes` · `ApplicationHwmProfile` |
 
 **두 값은 서로를 대신하지 못한다.** Framework는 Application HWM을 각 연결의 상한으로
 복사하지도, 연결 수로 나누지도 않는다. MeshNode나 Channel, Spot마다 따로 두지 않는 이유는
@@ -426,8 +426,8 @@ Framework는 다음 message의 크기를 미리 알 수 없으므로 **byte를 �
   필요한 control도 계속 받는다.
 - handler가 job 실행을 시작해 backlog가 상한보다 작아지면 수신을 재개한다.
 
-양수 값이 `MaxMessageSize`보다 작아도 설정 오류가 아니다. Application HWM은 message 한
-건의 허용 크기를 정하지 않는다 — 그 판단은 `MaxMessageSize`가 한다.
+양수 값이 `max_message_size`보다 작아도 설정 오류가 아니다. Application HWM은 message 한
+건의 허용 크기를 정하지 않는다 — 그 판단은 `max_message_size`가 한다.
 
 이 설정은 아직 적용되지 않았다 —
 [§6](#6-framework에-아직-적용되지-않은-부분)이 현재 상태를 밝힌다.
@@ -457,7 +457,7 @@ message flow 기록에 `backpressured`가 남았다면 보낼 자리를 기다�
 사용하지 않는다.** 다음 항목은 계약으로 확정되었을 뿐 아직 설정하거나 관측할 수 없다.
 
 - **host 전체 Application HWM** — [§4.3](#43-application-hwm--host-전체-상한)이
-  설명한 `ApplicationHwmBytes`·`ApplicationHwmProfile`과 그 자동 계산이다.
+  설명한 `application_hwm_bytes`·`ApplicationHwmProfile`과 그 자동 계산이다.
 - **두 연결을 나눠 보는 수신 경로** — Application 연결의 수신만 멈추고 Completion 연결은
   계속 읽는 동작이다([§2.4](#24-application-연결과-completion-연결-분리)).
 - **보유 byte 귀속 관측** — 수신이 멈췄을 때 어느 실행 대상이 backlog byte를 붙잡고 있는지
@@ -492,11 +492,11 @@ message flow 기록에 `backpressured`가 남았다면 보낼 자리를 기다�
 - **상한을 올렸더니 증상이 늦게 나타난다** → 정상이다. 혼잡이 memory로 흡수되면 실패가 늦게
   드러난다. 빠르게 실패시켜 다른 경로로 전환하려면 상한을 낮추고 `DefaultSocketSendTimeout`을
   줄인다.
-- **`Publish`는 정상 완료했는데 구독자가 받지 못했다** → publish의 완료는 보낼 준비가 끝나
+- **`publish`는 정상 완료했는데 구독자가 받지 못했다** → publish의 완료는 보낼 준비가 끝나
   runtime이 제출을 받아들였다는 뜻까지다. 전달·재전송·ack는 제공하지
   않는다([05-channel-messaging](05-channel-messaging.ko.md#13-pubsub의-두-갈래)).
 - **handler 안의 request가 오래 멈춘다** → 양쪽 처리가 동시에 지연되면 유한한 timeout이
-  회복의 시작점이다. nested request에 `Timeout(...)`을 지정한다.
+  회복의 시작점이다. nested request에 `timeout(...)`을 지정한다.
 - **한 node가 느린데 다른 호출까지 늦다** → 송신 queue는 상대별로 따로 있지만, 같은 handler
   안에서 기다리면 그 handler의 실행 자리도 함께 점유된다. 응답이 느린 대상으로 보내는
   호출은 같은 handler에 함께 두지 않는다.

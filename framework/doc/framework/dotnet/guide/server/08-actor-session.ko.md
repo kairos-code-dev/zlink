@@ -83,7 +83,7 @@ public sealed class AuthenticateHandler(IZLinkActorManager actors)
 ```
 
 `Bind`는 중복 bind를 오류로 처리한다. 인증 재전송처럼 이미 bind됐을 수 있는 흐름은
-`BindOrGet`를 사용한다.
+`BindOrGetAsync`를 사용한다.
 
 ## 2. Session packet을 Actor로 relay
 

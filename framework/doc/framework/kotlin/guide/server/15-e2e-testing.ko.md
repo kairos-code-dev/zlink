@@ -44,7 +44,7 @@ ZLinkStreamAssert.ensure(
     push.payload().actorId == auth.player.actorId, "join push actor mismatch.")
 ```
 
-`WaitFor`처럼 **검증에 필요한 대기 함수를 connector가 직접 제공하므로** 별도 테스트
+`waitFor`처럼 **검증에 필요한 대기 함수를 connector가 직접 제공하므로** 별도 테스트
 하네스를 구현하지 않는다. 저장소의 샘플이 모두 이 방식으로 검증된다.
 
 **E2E가 검증하는 범위를 구분한다.** E2E는 등록·라우팅·push·lifecycle처럼 **여러 process가
@@ -59,7 +59,7 @@ ZLinkStreamAssert.ensure(
 | --- | --- | --- |
 | 검증 대상 | 관리·관문 HTTP API | STREAM server node |
 | 사용하는 경우 | 방 생성, 조회, 관리 명령처럼 **요청 한 번에 결과가 끝나는** 것 | 연결을 유지한 채 **server가 먼저 보내는 push**까지 확인해야 하는 것 |
-| 대표 호출 | `Post(...).Body(...).Fetch<T>()` | `Connect` · `Request` · `WaitFor` · `ExpectNone` |
+| 대표 호출 | `Post(...).Body(...).Fetch<T>()` | `connect` · `request` · `waitFor` · `expectNone` |
 
 대부분의 시나리오는 둘을 이어서 사용한다. HTTP로 대상을 만들고, 그 응답에 담겨 온
 endpoint로 STREAM에 접속하는 순서다.
@@ -82,7 +82,7 @@ val client = ZLinkStreamConnectorFactory.create(
         options.streamTimeout))
 ```
 
-`DispatchMode`가 `Immediate`이면 connector가 수신을 자체적으로 처리하므로 시나리오
+`dispatchMode`가 `Immediate`이면 connector가 수신을 자체적으로 처리하므로 시나리오
 코드에서 별도로 펌프를 실행하지 않는다. 게임 엔진처럼 프레임 루프에 맞춰 직접 펌프해야 하는 환경은
 Stream Connector 가이드가 다룬다.
 
@@ -103,7 +103,7 @@ connector가 제공하는 검증 함수로 대부분의 시나리오를 표현�
 | server가 먼저 보내는 push가 오는지 확인한다 | `WaitFor<TNotify>()` |
 | push가 **오지 않아야** 함을 확인한다 | `ExpectNone<TNotify>().Within(window)` |
 | push가 **정해진 순서로** 오는지 확인한다 | `WaitForSequence<TNotify>().Expect(...).Expect(...)` |
-| 요청이 **실패해야** 함을 확인한다 | `ExpectFailure(...)` |
+| 요청이 **실패해야** 함을 확인한다 | `expectFailure(...)` |
 
 **terminal 표기는 언어를 따른다** — `.NET`은 `Async`, Java · Node · C++은 `submit`,
 Kotlin은 `await`다([비동기 실행 정책](../../../common/spec/05-async-execution-policy.ko.md)).
@@ -113,7 +113,7 @@ Kotlin은 `await`다([비동기 실행 정책](../../../common/spec/05-async-exe
 
 ### push 도착 확인
 
-`Where(...)`로 조건을 지정하면 **조건에 맞는 첫 message까지 기다린다.** 관심 대상이 아닌
+`where(...)`로 조건을 지정하면 **조건에 맞는 첫 message까지 기다린다.** 관심 대상이 아닌
 push가 섞여 들어와도 시나리오가 영향을 받지 않는다.
 
 ```kotlin
@@ -126,7 +126,7 @@ ZLinkStreamAssert.ensure(joined.payload().mark == TicTacToeMarks.O, "joined mark
 
 ### push 미도착 확인
 
-도착하지 않는다는 사실은 관찰 구간 없이 확정할 수 없으므로 `Within(...)`으로 구간을 반드시
+도착하지 않는다는 사실은 관찰 구간 없이 확정할 수 없으므로 `within(...)`으로 구간을 반드시
 지정한다. 지정하지 않으면 오류다.
 
 ```kotlin
@@ -201,7 +201,7 @@ client1Started.await()
 client2Started.await()
 ```
 
-`Sleep`으로 시점을 맞추지 않는다. 대기는 전부 `WaitFor`·`ExpectNone`·`WaitForSequence`의
+`Sleep`으로 시점을 맞추지 않는다. 대기는 전부 `waitFor`·`expectNone`·`waitForSequence`의
 timeout으로 표현한다. `Sleep`은 느린 장비에서 실패하고 빠른 장비에서는 시간을 낭비한다.
 
 ## 4. 전체 시나리오 예제
@@ -311,16 +311,16 @@ fi
 - **push를 받지 못해 간헐적으로 실패한다** → 행동보다 대기를 먼저 등록했는지 확인한다
   ([§3](#3-메시지-대기-처리-방법)). 대기를 나중에 시작하면 그 사이에
   도착한 push를 받지 못한다.
-- **`ExpectNone`이 오류로 끝난다** → `Within(...)`을 지정하지 않은 경우다. 관찰 구간 없이
+- **`expectNone`이 오류로 끝난다** → `within(...)`을 지정하지 않은 경우다. 관찰 구간 없이
   도착하지 않는다는 사실을 확정할 수 없으므로 구간을 명시적으로 요구한다.
-- **`WaitFor`가 다른 message를 반환한다** → 조건 없이 타입만으로 대기한 경우다.
-  `Where(...)`로 이 시나리오가 기다리는 사건인지 좁힌다.
+- **`waitFor`가 다른 message를 반환한다** → 조건 없이 타입만으로 대기한 경우다.
+  `where(...)`로 이 시나리오가 기다리는 사건인지 좁힌다.
 - **로컬에서는 통과하고 CI에서만 실패한다** → `sleep`으로 맞춘 시점이 남아 있는지 확인한다.
   대기는 전부 timeout이 지정된 대기 함수로 표현한다.
 - **client는 통과했는데 서버 로그에 오류가 남는다** → 서버 로그 오류 검사를 script에
   추가하지 않은 경우다([§6](#6-실행-스크립트와-성공-판정)).
 - **연결은 되지만 push가 도착하지 않는다** → 엔진 통합처럼 수동 펌프가 필요한 환경에서
-  `Dispatch`를 실행하지 않은 경우다(Stream Connector 가이드).
+  `dispatch`를 실행하지 않은 경우다(Stream Connector 가이드).
 
 ## 8. 관련 문서
 

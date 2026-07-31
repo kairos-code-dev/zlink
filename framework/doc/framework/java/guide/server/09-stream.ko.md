@@ -143,14 +143,14 @@ public CompletionStage<Void> handle(
 }
 ```
 
-`Reply`는 현재 request에서만 유효하며 한 번 제출할 수 있다. Timeout이나 cancellation으로 전송이
+`reply`는 현재 request에서만 유효하며 한 번 제출할 수 있다. Timeout이나 cancellation으로 전송이
 실패해도 같은 reply token을 다시 사용할 수 없다.
 
 **응답에는 packet 이름이 실리지 않는다.** client는 request sequence만으로 대기 중인 요청을
 찾고, 응답을 어떤 타입으로 읽을지는 **호출할 때 지정한 타입**이 정한다. 이름으로 고르지
 않으므로 응답 쪽에 packet 이름을 붙이는 표면도 없다. 오류 응답도 같은 sequence로 돌아온다.
 
-Server가 먼저 push할 때는 `Send`를 사용한다.
+Server가 먼저 push할 때는 `send`를 사용한다.
 
 ```java
 // local transport queue admission까지 기다린다.

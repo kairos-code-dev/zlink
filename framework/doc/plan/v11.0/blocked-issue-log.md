@@ -6314,3 +6314,34 @@ Admit은 후자로 들어오고, application 응답은 전자를 통해야 하�
 갈린다.
 
 측정 편집은 되돌렸다.
+
+### RC-B5 좁히기: 응답이 요청 측 socket에 어느 경로로도 오지 않는다
+
+앞 절의 두 갈래를 같은 실행에서 함께 찍었다.
+
+```
+requester : poll_in 9건, completion_control 4건, raw_recv 0건
+json-only : poll_in 5건, completion_control 2건, raw_recv 2건 (cmd=90)
+```
+
+요청 측 poller는 정상적으로 돈다. 다만 `Recv`가 매번 비어 있고, 실제로 들어오는 frame은
+completion-control callback 경로로만 온다. 그 경로의 내용은 전부 인프라 명령이다.
+
+```
+requester completion_control : Admit / Update / LivenessProbe / LivenessAck (모두 allowed=True)
+```
+
+즉 application 응답은 **두 경로 어디에도 나타나지 않는다.** 요청 측 수신 처리의 문제가
+아니라 응답이 요청 측 socket까지 오지 않는 것이다. 앞 절에서 의심했던 "completion-control
+경로로 와서 버려진다"는 아니다.
+
+Peer는 요청 2건을 raw로 받았고 flow log에 `phase=replied`까지 남긴다. 따라서 손실 구간은
+peer의 응답 송신과 requester의 socket 사이다. Peer의 ROUTER는 `Mandatory = true`이므로
+경로가 없으면 오류가 나야 하는데 그런 기록이 없다.
+
+다음은 peer가 응답을 어느 routing id로 보내는지 찍어 requester의 실제 identity와 대조하는
+것이다. 요청 측은 `SetRoutingId`로 고정 id를 쓰고 연결 시
+`SetConnectRoutingId`로 별도의 physical id를 지정하므로, 두 값이 응답 경로에서 어떻게
+쓰이는지가 다음 확인점이다.
+
+측정 편집은 되돌렸다.

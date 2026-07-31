@@ -76,7 +76,7 @@ class ZLinkMeshNodeRuntimeTest {
             registration,
             (context, meshName) -> node,
             new RecordingContext())) {
-            assertEquals(7, node.routerHighWaterMark);
+            assertEquals(7L, node.routerHighWaterMark);
             assertEquals(7, node.pendingAdmissionCapacity);
             assertEquals(Duration.ofMillis(23), node.routerSendTimeout);
         }
@@ -90,7 +90,7 @@ class ZLinkMeshNodeRuntimeTest {
 
     private static final class RecordingMeshNode implements ZLinkInternalMeshNode {
         private final List<String> calls = new ArrayList<>();
-        private int routerHighWaterMark;
+        private long routerHighWaterMark;
         private int pendingAdmissionCapacity;
         private Duration routerSendTimeout;
 
@@ -105,7 +105,7 @@ class ZLinkMeshNodeRuntimeTest {
         @Override public void setPlacementWeight(int weight) {
             calls.add("placement-weight:" + weight);
         }
-        @Override public void setRouterHighWaterMark(int value) {
+        @Override public void setRouterHighWaterMark(long value) {
             routerHighWaterMark = value;
         }
         @Override public void setRouterPendingAdmissionCapacity(int value) {

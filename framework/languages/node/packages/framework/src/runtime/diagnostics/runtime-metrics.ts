@@ -62,7 +62,6 @@ export interface ZLinkRuntimeMetricOperation {
 }
 
 export interface ZLinkRelocationMetricOperation extends ZLinkRuntimeMetricOperation {
-  recordJournalMessages(count: number): void;
   recordBytes(bytes: number): void;
 }
 
@@ -74,7 +73,6 @@ const COUNTERS = Object.freeze({
   'zlink.mesh_node.messages.dropped': '{message}',
   'zlink.relocation.started': '{relocation}',
   'zlink.relocation.completed': '{relocation}',
-  'zlink.relocation.recovered': '{relocation}',
   'zlink.instance_spot.activations': '{activation}',
   'zlink.instance_spot.claim.conflicts': '{claim}',
   'zlink.instance_spot.takeovers': '{takeover}',
@@ -95,7 +93,6 @@ const UP_DOWN_COUNTERS = Object.freeze({
 const HISTOGRAMS = Object.freeze({
   'zlink.mesh_node.request.duration': 's',
   'zlink.relocation.duration': 's',
-  'zlink.relocation.journal.messages': '{message}',
   'zlink.relocation.bytes': 'By',
   'zlink.relocation.interruption': 's',
   'zlink.instance_spot.activation.duration': 's',
@@ -348,14 +345,9 @@ export class ZLinkRuntimeMetrics {
   ): ZLinkRelocationMetricOperation {
     const started = process.hrtime.bigint();
     const startAttributes = { mesh_name: meshName, object_kind: objectKind, policy };
-    const objectAttributes = { mesh_name: meshName, object_kind: objectKind };
     let completed = false;
     this.count('zlink.relocation.started', 1, startAttributes);
     return {
-      recordJournalMessages: (count: number): void => {
-        if (completed || count < 0) return;
-        this.histogram('zlink.relocation.journal.messages', count, '{message}', objectAttributes);
-      },
       recordBytes: (bytes: number): void => {
         if (completed || bytes < 0) return;
         this.histogram('zlink.relocation.bytes', bytes, 'By', startAttributes);
@@ -370,9 +362,6 @@ export class ZLinkRuntimeMetrics {
           Number(process.hrtime.bigint() - started) / 1e9,
           terminal
         );
-        if (outcome === 'recovered') {
-          this.count('zlink.relocation.recovered', 1, objectAttributes);
-        }
       }
     };
   }

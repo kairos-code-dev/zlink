@@ -48,7 +48,7 @@ test('RMETRIC-001 global OpenTelemetry no-op provider remains callable', () => {
   metrics.duration('zlink.mesh_node.request.duration', 0.01);
 });
 
-test('RMETRIC-006 server runtime exposes the exact 44-instrument spec25 catalog', () => {
+test('RMETRIC-006 server runtime exposes the exact 42-instrument spec25 catalog', () => {
   const { provider, instruments } = collector();
   new framework.ZLinkRuntimeMetrics(provider);
   const expected = new Map([
@@ -77,8 +77,6 @@ test('RMETRIC-006 server runtime exposes the exact 44-instrument spec25 catalog'
     ['zlink.relocation.started', ['counter', '{relocation}']],
     ['zlink.relocation.completed', ['counter', '{relocation}']],
     ['zlink.relocation.duration', ['histogram', 's']],
-    ['zlink.relocation.recovered', ['counter', '{relocation}']],
-    ['zlink.relocation.journal.messages', ['histogram', '{message}']],
     ['zlink.relocation.bytes', ['histogram', 'By']],
     ['zlink.relocation.interruption', ['histogram', 's']],
     ['zlink.instance_spot.activations', ['counter', '{activation}']],
@@ -97,7 +95,7 @@ test('RMETRIC-006 server runtime exposes the exact 44-instrument spec25 catalog'
     ['zlink.host.shutdown.duration', ['histogram', 's']],
     ['zlink.host.shutdown.forced', ['counter', '{operation}']]
   ]);
-  assert.equal(instruments.length, 44);
+  assert.equal(instruments.length, 42);
   assert.deepEqual(
     new Map(instruments.map(({ name, kind, unit }) => [name, [kind, unit]])),
     expected

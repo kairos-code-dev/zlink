@@ -188,13 +188,20 @@ final class RequestCall implements ZLinkRequestCall {
     private final Message payload;
     private final Optional<String> packetName;
     private final Duration timeout;
+    //  spec 25 requires mesh_name and surface on every mesh_node request
+    //  instrument, and outcome on the duration histogram. The label sets are
+    //  fixed per mesh and surface, so they are built once and shared instead of
+    //  being rebuilt on each request.
+    private final ZLinkRequestMetricTags metricTags;
 
     RequestCall(
         ZLinkChannelCallRuntime runtime,
         ZLinkBackendDealerSocket client,
         Message payload,
         Optional<String> packetName,
-        Duration timeout) {
+        Duration timeout,
+        ZLinkRequestMetricTags metricTags) {
+        this.metricTags = metricTags;
         this.runtime = runtime;
         this.client = client;
         this.payload = payload;
@@ -203,30 +210,39 @@ final class RequestCall implements ZLinkRequestCall {
     }
 
     public ZLinkRequestCall packetName(String packetName) {
-        return new RequestCall(runtime, client, payload, Optional.of(packetName), timeout);
+        return new RequestCall(
+            runtime, client, payload, Optional.of(packetName), timeout, metricTags);
     }
 
     @Override
     public ZLinkRequestCall timeout(Duration timeout) {
-        return new RequestCall(runtime, client, payload, packetName, timeout);
+        return new RequestCall(
+            runtime, client, payload, packetName, timeout, metricTags);
     }
 
     @Override
     public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
         CompletableFuture<TReply> result = new CompletableFuture<>();
-        long started = ZLinkRuntimeMetrics.enabled() ? System.nanoTime() : 0L;
-        ZLinkRuntimeMetrics.add("zlink.channel.request.inflight", 1, Map.of());
-        result.whenComplete((ignored, error) -> {
-            ZLinkRuntimeMetrics.add("zlink.channel.request.inflight", -1, Map.of());
-            if (started != 0L) {
-                ZLinkRuntimeMetrics.record("zlink.channel.request.duration",
-                    Duration.ofNanos(System.nanoTime() - started), Map.of());
-            }
-            if (error instanceof TimeoutException
-                || (error != null && error.getCause() instanceof TimeoutException)) {
-                ZLinkRuntimeMetrics.increment("zlink.channel.request.timeouts", Map.of());
-            }
-        });
+        //  Nothing on this path allocates while metrics are off: no label map is
+        //  built and no completion callback is registered.
+        if (ZLinkRuntimeMetrics.enabled()) {
+            final long started = System.nanoTime();
+            ZLinkRuntimeMetrics.add(
+                "zlink.mesh_node.requests.inflight", 1, metricTags.request);
+            result.whenComplete((ignored, error) -> {
+                ZLinkRuntimeMetrics.add(
+                    "zlink.mesh_node.requests.inflight", -1, metricTags.request);
+                boolean timedOut = error instanceof TimeoutException
+                    || (error != null && error.getCause() instanceof TimeoutException);
+                ZLinkRuntimeMetrics.record("zlink.mesh_node.request.duration",
+                    Duration.ofNanos(System.nanoTime() - started),
+                    metricTags.duration(timedOut, error != null));
+                if (timedOut) {
+                    ZLinkRuntimeMetrics.increment(
+                        "zlink.mesh_node.request.timeouts", metricTags.request);
+                }
+            });
+        }
         runtime.track(result, timeout);
         List<Message> requestParts = ZLinkChannelCallRuntime.parts(packetName, payload);
         result.whenComplete((ignored, error) -> requestParts.forEach(Message::close));

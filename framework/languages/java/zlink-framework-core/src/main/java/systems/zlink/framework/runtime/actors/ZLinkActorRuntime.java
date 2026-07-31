@@ -1724,6 +1724,14 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         return locations.findStoredActorRef(actorId);
     }
 
+    @Override
+    public CompletionStage<Optional<systems.zlink.framework.spots.SpotRef>> findSpot(
+        String actorId) {
+        rejectAfterRelocationReady("Actor findSpot");
+        requireActorId(actorId);
+        return locations.findStoredSpotRef(actorId);
+    }
+
     CompletionStage<Optional<ActorRef>> findCommittedRemoteActor(
         String actorId,
         RoutingId targetNodeRid,

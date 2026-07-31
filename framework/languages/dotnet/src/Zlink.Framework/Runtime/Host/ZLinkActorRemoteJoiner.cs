@@ -404,6 +404,11 @@ internal sealed class ZLinkActorRemoteJoiner(
                          predictedPayloadBytes,
                          (ulong)snapshot.Generation,
                          snapshot.AuthorityOwnerGeneration);
+                    //  Both ends of the admission round trip are traced so a
+                    //  stall shows which side never moved.
+                    ZLinkFrameworkDebugLog.SpotDiscovery(
+                        $"admit_request_sent actor={actor.Context.ActorId} "
+                        + $"target_node={snapshot.NodeRid} spot={snapshot.SpotId}");
                     var replyParts = await runtime.RequestToSpotViaRouterChannelAsync(
                             snapshot.RouterChannelId,
                             snapshot.NodeRid,
@@ -416,6 +421,8 @@ internal sealed class ZLinkActorRemoteJoiner(
                             registration.DefaultRequestTimeout,
                             cancellationToken)
                         .ConfigureAwait(false);
+                    ZLinkFrameworkDebugLog.SpotDiscovery(
+                        $"admit_reply_received actor={actor.Context.ActorId}");
                     var reply = ZLinkRemoteActorJoinPackets.DecodeAdmissionReplyAndDispose(
                         replyParts,
                         actor.Context.ActorId,
@@ -433,6 +440,8 @@ internal sealed class ZLinkActorRemoteJoiner(
             registration.Codecs);
         if (!admissionReply.Accepted)
         {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"source_rejected site={1} token_empty={{string.IsNullOrEmpty(admissionReply.ReservationToken)}}");
             return new ZLinkActorJoinResult.Rejected(admissionReplyMessage);
         }
         if (string.IsNullOrEmpty(admissionReply.ReservationToken)
@@ -485,6 +494,10 @@ internal sealed class ZLinkActorRemoteJoiner(
                 ZLinkFrameworkErrorKind.InvalidOperation,
                 $"Actor '{actor.Context.ActorId}' authority changed during relocation preflight.");
         var hasBoundSession = actorState.TryGetBoundSession(out var boundSession);
+        //  The seal branch is conditional, so its trace being absent means
+        //  "skipped" just as often as "never reached". Record the condition.
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"preflight_done actor={actor.Context.ActorId} has_bound_session={hasBoundSession}");
         if (hasBoundSession && boundSession.SessionNodeRid is null)
             boundSession = boundSession with { SessionNodeRid = actorRef.NodeRid };
         if (hasBoundSession)
@@ -693,6 +706,9 @@ internal sealed class ZLinkActorRemoteJoiner(
             .ConfigureAwait(false);
         if (!reply.Accepted)
         {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"source_rejected site=join_reply actor={actor.Context.ActorId} "
+                + $"spot={targetSpotId} target_rid={targetNodeRid}");
             await publication.DiscardPreparedAsync(prepared)
                 .ConfigureAwait(false);
             if (hasBoundSession)
@@ -750,8 +766,6 @@ internal sealed class ZLinkActorRemoteJoiner(
             published.Snapshot.AuthorityOwnerGeneration,
             checked((ulong)runtime.LocationLifecycle!.OwnerToken.LeaseGeneration),
             admission.Snapshot.OwnerLeaseGeneration);
-        relocationMetric.RecordJournalMessages(
-            checked(committedFrames.Count + trailingFrames.Count));
         markSourceLeft();
         runtime.LogActorHandoff($"source_leave_started actor={actor.Context.ActorId}");
         await ReconcileCommittedSourceLeaveAsync(
@@ -1174,6 +1188,12 @@ internal sealed class ZLinkActorRemoteJoiner(
             handoffId);
         var sessionOwnerNode = session.SessionNodeRid!.Value;
         var meshName = session.MeshName;
+        //  Placed before the local/remote branch: putting it inside one arm
+        //  made its absence read as "never reached" when it only meant the
+        //  other arm ran.
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"bound_seal_begin actor={actorId} session_node={sessionOwnerNode} "
+            + $"local={sessionOwnerNode == runtime.GetMeshNodeRuntime(meshName).Node.RoutingId}");
         ZLinkSessionRouteSealReply reply;
         if (sessionOwnerNode
             == runtime.GetMeshNodeRuntime(meshName).Node.RoutingId)

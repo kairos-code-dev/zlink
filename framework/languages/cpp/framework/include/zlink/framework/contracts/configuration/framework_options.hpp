@@ -1003,6 +1003,19 @@ class stream_node_options_builder_t
         return *this;
     }
 
+    //  Lets a STREAM session relay to Actors. Mirrors the .NET
+    //  EnableActorDispatch() and the Java/Node enableActorDispatch(), including
+    //  the duplicate-call rejection.
+    stream_node_options_builder_t &enable_actor_dispatch ()
+    {
+        if (!_options->stream_nodes_with_actor_dispatch.insert (_stream_name).second) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "STREAM node '" + _stream_name
+                                           + "' already enabled actor dispatch");
+        }
+        return *this;
+    }
+
     stream_node_options_builder_t &register_session (std::string session_name)
     {
         detail::require_non_blank (session_name, "STREAM packet session name is required");

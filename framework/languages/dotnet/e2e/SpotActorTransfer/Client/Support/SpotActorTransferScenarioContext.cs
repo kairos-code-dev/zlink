@@ -664,9 +664,11 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
             {
                 return;
             }
-            catch (ZLinkFrameworkException error) when (
-                error.Kind == ZLinkFrameworkErrorKind.InternalFailure
-                && HasConnectionFailure(error))
+            //  A refused or dropped connection is the proof this loop waits
+            //  for, whatever kind the client stamps on it. ZLinkHttpClient maps
+            //  connection failures to Unavailable (see RetryPolicy), so keying
+            //  on InternalFailure let the very exception we wanted escape.
+            catch (ZLinkFrameworkException error) when (HasConnectionFailure(error))
             {
                 return;
             }

@@ -484,7 +484,11 @@ internal sealed partial class ZLinkSpotActivation
                                 spotGeneration,
                                 ct)
                             .ConfigureAwait(false);
-                        ZLinkFrameworkDebugLog.SpotDiscovery(
+                        //  Same-node join commits the location authority just as
+                        //  a cross-node handoff does, so it reports the commit on
+                        //  the same channel. Using the debug console here left
+                        //  the marker invisible to anything reading ILogger.
+                        _runtime.LogActorHandoff(
                             $"location_committed actor={actor.Context.ActorId} spot={SpotId}");
                     },
                     () =>

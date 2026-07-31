@@ -472,6 +472,11 @@ internal static class ActorNodeEndpoints
                 var kind = error is ZLinkFrameworkException frameworkError
                     ? frameworkError.Kind.ToString()
                     : error.Message;
+                //  The evidence line carries only the kind because scenarios
+                //  match on it. Losing the message and stack too left a failure
+                //  with no way to tell which of the many throw sites produced it.
+                Console.Error.WriteLine(
+                    $"[join-failed] actor={actorId} scenario={request.Scenario} {error}");
                 evidence.Add(request.Scenario, actorId, "join_failed", kind);
                 return Results.Ok(new { request.Scenario, ActorId = actorId, Accepted = false, ErrorKind = kind });
             }

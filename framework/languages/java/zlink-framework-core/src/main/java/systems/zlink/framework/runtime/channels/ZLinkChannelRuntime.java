@@ -930,7 +930,8 @@ public final class ZLinkChannelRuntime
                 client,
                 encoded.payload(),
                 Optional.of(encoded.packetName()),
-                defaultRequestTimeout(channelName));
+                defaultRequestTimeout(channelName),
+                ZLinkRequestMetricTags.forChannel(channelName));
         }
         ZLinkInternalSpotNode node = sockets.spotRouterNode(channelName);
         if (node != null) {
@@ -948,7 +949,8 @@ public final class ZLinkChannelRuntime
                 awaitClientServerTarget(channelName),
                 encoded.payload(),
                 Optional.of(encoded.packetName()),
-                defaultRequestTimeout(channelName));
+                defaultRequestTimeout(channelName),
+                ZLinkRequestMetricTags.forChannel(channelName));
         }
         throw new ZLinkConfigurationException(
             "channel is not configured: " + channelName);

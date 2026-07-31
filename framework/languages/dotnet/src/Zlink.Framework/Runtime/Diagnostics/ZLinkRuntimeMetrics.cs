@@ -103,10 +103,6 @@ internal static class ZLinkRuntimeMetrics
         Meter.CreateCounter<long>("zlink.relocation.completed", "{relocation}");
     private static readonly Histogram<double> RelocationDuration =
         Meter.CreateHistogram<double>("zlink.relocation.duration", "s");
-    private static readonly Counter<long> RelocationRecovered =
-        Meter.CreateCounter<long>("zlink.relocation.recovered", "{relocation}");
-    private static readonly Histogram<long> RelocationJournalMessages =
-        Meter.CreateHistogram<long>("zlink.relocation.journal.messages", "{message}");
     private static readonly Histogram<long> RelocationBytes =
         Meter.CreateHistogram<long>("zlink.relocation.bytes", "By");
     private static readonly Histogram<double> RelocationInterruption =
@@ -259,8 +255,7 @@ internal static class ZLinkRuntimeMetrics
         ArgumentException.ThrowIfNullOrWhiteSpace(meshName);
         if (!RelocationStarted.Enabled
             && !RelocationCompleted.Enabled
-            && !RelocationDuration.Enabled
-            && !RelocationRecovered.Enabled)
+            && !RelocationDuration.Enabled)
             return ZLinkRelocationMetricOperation.Disabled;
 
         return new ZLinkRelocationMetricOperation(
@@ -865,9 +860,6 @@ internal static class ZLinkRuntimeMetrics
             catch
             {
             }
-
-        if (outcome == ZLinkRelocationMetricOutcome.Recovered)
-            SafeAdd(RelocationRecovered, 1, operation.ObjectTags);
     }
 
     internal sealed class ZLinkRequestMetricOperation
@@ -1095,16 +1087,6 @@ internal static class ZLinkRuntimeMetrics
             if (Interlocked.CompareExchange(ref _state, Completed, Started) != Started)
                 return;
             CompleteRelocation(this, outcome);
-        }
-
-        internal void RecordJournalMessages(long messageCount)
-        {
-            if (messageCount < 0)
-                throw new ArgumentOutOfRangeException(nameof(messageCount));
-            if (Volatile.Read(ref _state) != Started
-                || !RelocationJournalMessages.Enabled)
-                return;
-            SafeRecord(RelocationJournalMessages, messageCount, ObjectTags);
         }
 
         internal void RecordBytes(long byteCount)

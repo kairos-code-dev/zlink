@@ -4370,7 +4370,13 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         lock (_gate)
             if (!_peersByRid.TryGetValue(sourceRid, out var peer)
                 || !peer.Admitted)
+            {
+                //  A request dropped here never reaches any staleness check and
+                //  simply times out at the caller.
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"stateful_dropped reason=peer_not_admitted actor={stateful.TargetActor}");
                 return;
+            }
         var request = stateful.Command is ServiceWireConstants.Command.SpotRequest
             or ServiceWireConstants.Command.ActorRequest;
         if (request
@@ -4483,7 +4489,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                                 0,
                                 replyParts)
                         : null;
-                if (messageFollowTarget?.TryFollow(
+                var followed = messageFollowTarget?.TryFollow(
                         new ActorMessageFollowIngress(
                             sourceRid,
                             ResolvePeerGeneration(sourceRid),
@@ -4498,8 +4504,14 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                             stateful.DeadlineUnixMs,
                             metadata ?? ReadOnlyMemory<byte>.Empty,
                             parts,
-                            messageFollowReply))
-                    == true)
+                            messageFollowReply));
+                //  Follow taking responsibility without replying and the stale
+                //  reply below are indistinguishable from the caller's side.
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"actor_stale_path actor={stateful.TargetActor} "
+                    + $"followed={followed} has_follow_target={messageFollowTarget is not null} "
+                    + $"request={request}");
+                if (followed == true)
                     return;
                 DisposeParts(parts);
                 if (request)

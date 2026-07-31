@@ -69,7 +69,16 @@ internal sealed partial class ZLinkProviderLocationRepository
             != ZLinkPlacementAllocationState.Active
             || current.Version.Value != expectedStoreVersion
             || current.Meta.AggregateFence is not null)
+        {
+            //  Four separate reasons collapse into one Conflict, and the caller
+            //  reports all of them as "authority changed".
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"cas_conflict_reason missing={current is null} "
+                + $"state={(current is null ? "n/a" : current.Snapshot.Allocation.State.ToString())} "
+                + $"version_match={current is not null && current.Version.Value == expectedStoreVersion} "
+                + $"fence={(current is null ? "n/a" : current.Meta.AggregateFence?.ToString() ?? "none")}");
             return Conflict(current);
+        }
 
         var metaKey = AuthorityMetaKey(key);
         var payloadKey = AuthorityPayloadKey(key);
@@ -1044,13 +1053,20 @@ internal sealed partial class ZLinkProviderLocationRepository
                         await ReadStoreNowAsync(cancellationToken)
                             .ConfigureAwait(false))
                     : new ZLinkAuthorityReadResult.Found(current.Snapshot));
+        //  The caller named this target, so no selection happens here and the
+        //  new-placement rules that govern selection do not apply. Placement
+        //  weight steers which node the framework *chooses*; a relocation to an
+        //  explicitly addressed target must not be refused because that node is
+        //  currently weighted out of the candidate pool. Capacity and liveness
+        //  still gate it, through the checks below.
         var targetRead = ReadEligibleTargetAsync(
             request.TargetDescriptor,
             request.TargetNodeLifecycleGeneration,
             request.TargetOwner,
             request.ObjectKind,
             request.StableType,
-            cancellationToken).AsTask();
+            cancellationToken,
+            requireNewPlacementEligibility: false).AsTask();
         var capacityRead = ReadCapacityAsync(
             request.TargetDescriptor,
             request.TargetNodeLifecycleGeneration,
@@ -4622,10 +4638,24 @@ internal sealed partial class ZLinkProviderLocationRepository
                 cancellationToken)
             .ConfigureAwait(false);
         if (descriptorRead is not ZLinkStoreReadResult.Found descriptorFound)
+        {
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"eligible_target_rejected reason=no_descriptor mesh={key.MeshName}");
             return null;
+        }
         var descriptor = Decode<MeshRecord>(descriptorFound.Value.Bytes).Descriptor;
         var ownerRead = await ReadLiveOwnerAsync(owner, cancellationToken)
             .ConfigureAwait(false);
+        //  Nine guards below share one bare null. Name the values they compare
+        //  so a rejection says which one disagreed.
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"eligible_target_check rid={key.Rid} owner_live={ownerRead is not null} "
+            + $"lifecycle={descriptor.LifecycleGeneration}/{lifecycleGeneration} "
+            + $"owner={descriptor.OwnerId}/{owner.OwnerId} "
+            + $"lease={descriptor.LeaseGeneration}/{owner.LeaseGeneration} "
+            + $"role={descriptor.ObjectRole} state={descriptor.State} "
+            + $"weight={descriptor.PlacementWeight} kind={objectKind} "
+            + $"stable_type={stableType}");
         if (ownerRead is null
             || descriptor.MeshName != key.MeshName
             || descriptor.Rid != key.Rid
@@ -4658,6 +4688,11 @@ internal sealed partial class ZLinkProviderLocationRepository
                 ownerRead.Version));
     }
 
+    //  Used only when committing a relocation whose target was already chosen
+    //  and reserved. Selection is long past, so the new-placement rules that
+    //  govern selection must not be re-applied here; a target weighted out of
+    //  the candidate pool after admission would otherwise fail the commit of a
+    //  relocation it had already accepted.
     private async ValueTask<bool> IsEligibleTargetAsync(
         ZLinkMeshNodeDescriptorKey key,
         ulong lifecycleGeneration,
@@ -4671,7 +4706,8 @@ internal sealed partial class ZLinkProviderLocationRepository
                 owner,
                 objectKind,
                 stableType,
-                cancellationToken)
+                cancellationToken,
+                requireNewPlacementEligibility: false)
             .ConfigureAwait(false) is not null;
 
     private async ValueTask<StoredOwner?> ReadLiveOwnerAsync(

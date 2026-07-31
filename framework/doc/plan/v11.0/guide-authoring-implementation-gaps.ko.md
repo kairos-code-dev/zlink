@@ -556,3 +556,66 @@ Node.js만 제공하며, 지원 범위 밖 sample을 새로 만들지 않는다�
 
 `.NET` ZoneWorld는 79개 소스 파일이고 Node는 34개다. 세 언어로 새로 쓰는 것은 ledger가
 정한 범위를 넘는 일이므로 이 문서의 판단 기준(§0 "계약이 기준이다")대로 결정을 따랐다.
+
+### P1. 디버그 추적이 꺼져 있어도 호출마다 문자열을 만들던 문제 (.NET)
+
+`ZLinkFrameworkDebugLog.SpotDiscovery(string)`은 게이트가 **메서드 안에** 있었다.
+호출부에서 보간 문자열을 먼저 만들어 인자로 넘긴 뒤에야 플래그를 검사하므로,
+추적이 꺼져 있어도 문자열은 매번 만들어졌다. 호출부는 68곳, 그 안의 보간 문자열은
+91개이고 `ZLinkSpotActivationActors`의 `backlog_enqueued`처럼 메시지마다 도는
+hot path도 포함된다. 게이트 자체도 호출마다 `Environment.GetEnvironmentVariable`을
+했다.
+
+두 가지를 고쳤다. 환경변수는 `static readonly bool`로 한 번만 읽는다. 프로세스가
+도는 동안 디버그 스위치는 바뀌지 않는다. 그리고 C# interpolated string handler
+(`ZLinkSpotDiscoveryLogMessage`)를 도입했다. 컴파일러가 hole을 평가하기 전에
+핸들러에게 append 여부를 묻기 때문에, 꺼져 있으면 인자 포맷도 문자열 할당도
+일어나지 않고 비용은 bool 검사 하나다.
+
+호출부는 한 줄도 바꾸지 않았다. C# 10부터 보간 문자열끼리의 `+` 연결도 핸들러로
+변환되므로, 연결을 쓰던 21곳까지 그대로 변환됐다. 빌드로 확인했다.
+
+이 결함은 [[feedback_no_hot_path_allocation]]이 말하는 "계측이 hot path 할당을
+만드는" 패턴과 같은 것이며, POSD 리뷰에서 성능 오버헤드도 찾으라는 지침에 따라
+ST-D1 조사 중 발견해 수정했다.
+
+#### P1 검증
+
+`Zlink.Framework.sln` 전체를 돌려 7개 프로젝트 1831건이 모두 통과했다(실패 0).
+`UnitTests` 1376, `Stream.Connector` 142, `SampleRegressionTests` 134,
+`ContractTests` 72, `HttpClient.UnitTests` 63, `Locations.Redis.Tests` 40,
+`ObservabilityOps.Tests` 4다.
+
+`UnitTests`만 돌려서는 부족하다. 이 변경은 68개 호출부의 overload 해소를 바꾸고
+환경변수를 읽는 시점을 type 초기화 시점으로 옮기므로, 필터된 게이트가 실행하지 않는
+프로젝트까지 포함해 확인해야 한다. 실제로 이 세션에서 필터된 게이트가
+`SampleRegressionTests`의 실패를 가렸던 전례가 있다.
+
+### R1. 명시 지정 target의 relocation에 선택 규칙을 적용하던 결함 (.NET)
+
+`ReadEligibleTargetAsync`의 `requireNewPlacementEligibility`는
+`descriptor.PlacementWeight <= 0`인 node를 target에서 탈락시킨다. placement weight는
+**후보 중 하나를 고를 때** 쓰는 값이므로, 호출자가 target을 직접 지정한 relocation에는
+적용되면 안 된다. 그런데 두 곳이 이 규칙을 적용하고 있었다.
+
+`ReserveRelocationCapacityAsync`(예약)에서 걸리면 `TargetUnavailable` → `NotFound`가
+되어 admission 자체가 일어나지 않았다. `IsEligibleTargetAsync`(commit)에서 걸리면
+CAS가 Conflict를 반환하고 "authority changed during handoff commit"으로 포장되어
+영구 거부가 됐다. 둘 다 `requireNewPlacementEligibility: false`로 고쳤다.
+
+같은 파일의 `CommitAsync`와 `CompleteCommitAsync`는 이미 `false`를 넘기고 있었다.
+즉 이 구분은 원래 설계에 있었고 두 곳이 누락돼 있던 것이다. drain은 placement weight를
+0으로 두지 않으므로 `28-graceful-drain-handoff` 계약에 영향이 없다.
+
+검증은 ST-D1 통과, 회귀 시나리오 6종(ST-A1·A2·A3·B1·F4·F5) 전량 통과,
+`Zlink.Framework.sln` 1831건 전량 통과다.
+
+### R2. ST-D1 시나리오의 스펙 위반 2건 (.NET e2e)
+
+런타임을 고치고 나서야 드러났다. 둘 다 `15-spot-actor.ko.md`가 규정하는 사항이다.
+
+remote 절반이 `joined_wait` 시점에 source ref가 아직 source node여야 한다고 단언했다.
+스펙은 "target admission callback, **commit 뒤 target joined**"로 순서를 규정하므로 그
+시점의 ref는 정당하게 target을 가리킨다. 그리고 `success_reply`를 source에서
+기다렸는데, 스펙은 "`Accepted`는 **target Actor**가 받는다"고 규정한다. 둘 다 스펙에
+맞춰 고쳤다.

@@ -44,7 +44,7 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
         throw new UnsupportedOperationException("MeshNode max message size is not available");
     }
 
-    default void setRouterHighWaterMark(int value) {
+    default void setRouterHighWaterMark(long value) {
         // Optional for test and alternate backends that do not expose Core
         // RouteMesh admission yet.
     }

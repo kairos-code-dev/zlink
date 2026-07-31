@@ -70,8 +70,14 @@ internal sealed class ZLinkStoreLocationResolvers :
         CancellationToken cancellationToken = default)
     {
         if (TryGetCached(_spotRoutes, key, out var cached))
+        {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"resolve_spot_row spot={key.SpotId} source=cache hit={cached is not null}");
             return cached;
+        }
 
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"resolve_spot_row spot={key.SpotId} source=store");
         var authority = await ZLinkLocationStoreRead.ExecuteAsync(
             _health,
             "ZLinkSpotLocation-resolver-read",
@@ -273,11 +279,27 @@ internal sealed class ZLinkStoreLocationResolvers :
         ZLinkAuthorityReadResult authority)
     {
         if (authority is not ZLinkAuthorityReadResult.Found found)
+        {
+            //  "No row in the store" and "row present but rejected" are
+            //  different failures that both surfaced as the same bare null.
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"project_spot_no_authority result={authority.GetType().Name}");
             return null;
+        }
         var snapshot = found.Snapshot;
-        if (ZLinkUserSpotAuthorityPayloadCodec.TryDecode(
-                snapshot.Payload.Span,
-                out var user)
+        var userDecoded = ZLinkUserSpotAuthorityPayloadCodec.TryDecode(
+            snapshot.Payload.Span,
+            out var user);
+        if (userDecoded)
+            //  A user-spot row that decodes but fails a guard used to vanish as
+            //  a bare null, which reads the same as "no row at all" at the
+            //  caller. Name the values the guards compare.
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"project_user_spot spot={user.SpotId} state={user.State} "
+                + $"payload_owner={user.OwnerId} snapshot_owner={snapshot.OwnerId} "
+                + $"payload_lease={user.OwnerLeaseGeneration} "
+                + $"snapshot_lease={snapshot.OwnerLeaseGeneration}");
+        if (userDecoded
             && user.State == ZLinkUserSpotAuthorityState.Ready
             && user.OwnerId == snapshot.OwnerId
             && snapshot.OwnerLeaseGeneration > 0

@@ -8,7 +8,7 @@ title: "3. 핵심 개념 · C++"
 <!-- generated:end -->
 
 <!-- framework-adapter-nav:start -->
-[가이드 홈](README.ko.md) | [이전: 2. 시작하기](02-getting-started.ko.md) | [다음: 21. 실행·구성 모델](21-execution-model.ko.md)
+[가이드 홈](README.ko.md) | [이전: 2. 시작하기](02-getting-started.ko.md) | [다음: 4. Backpressure — 처리보다 도착이 빠를 때](04-backpressure.ko.md)
 <!-- framework-adapter-nav:end -->
 
 <!-- language-switch:start -->

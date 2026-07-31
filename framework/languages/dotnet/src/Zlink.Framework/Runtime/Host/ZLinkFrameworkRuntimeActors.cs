@@ -72,6 +72,10 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken)
     {
         var timeout = Registration.DefaultRequestTimeout;
+        //  Traced at the send side; the receiving node's handler traces its own
+        //  entry, so a stall shows which side never moved.
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"route_control_sent target={sessionOwnerNode} type={typeof(TRequest).Name}");
         var packetName = ZLinkMessageNameResolver.ResolveFromMessage(request);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken);
@@ -613,6 +617,11 @@ internal sealed partial class ZLinkFrameworkRuntime
                     || actorState.Handoff.IsAuthorityCommitted(request.HandoffId))
                     throw;
 
+                //  The reply carries only "rejected", so without this the commit
+                //  failure that caused it never reaches any log.
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"handoff_commit_failed actor={request.ActorId} spot={spotId} "
+                    + $"{commitFailure}");
                 var rejected = CreateRejectedHandoffReply(request.ActorId);
                 _actorHandoffAdmissions.RejectPreparedJoinOutcome(request, spotId, rejected);
                 if (ownsImport)
@@ -2048,6 +2057,10 @@ internal sealed partial class ZLinkFrameworkRuntime
         ZLinkRemoteActorAdmissionRequest request,
         CancellationToken cancellationToken = default)
     {
+        //  Entry point for the target side of a relocation. Without this a
+        //  stall between arrival and the admission decision is invisible.
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"admit_entry actor={request.ActorId} spot={spotId} draining={_drainAdmission.IsDraining}");
         if (_drainAdmission.IsDraining)
             return ZLinkRemoteActorJoinPackets.CreateAdmissionReply(
                 false,
@@ -2258,6 +2271,11 @@ internal sealed partial class ZLinkFrameworkRuntime
                                 .ConfigureAwait(false);
                         else
                             result = ZLinkSpotActorJoinResult.Reject();
+                        ZLinkFrameworkDebugLog.SpotDiscovery(
+                            $"admission_decision actor={request.ActorId} spot={spotId} "
+                            + $"accepted={result.Accepted} "
+                            + $"user_spot={target.UserSpot is not null} "
+                            + $"entry_spot={target.EntrySpot is not null}");
                         if (!result.Accepted)
                         {
                             cleanupOwned = true;
@@ -2277,6 +2295,8 @@ internal sealed partial class ZLinkFrameworkRuntime
                                     request.DeadlineUnixTimeMilliseconds),
                                 default);
                         }
+                        ZLinkFrameworkDebugLog.SpotDiscovery(
+                            $"admit_reply_built actor={request.ActorId} accepted=true");
                         return new ZLinkActorHandoffAdmissionDecision(
                             ZLinkRemoteActorJoinPackets.CreateAdmissionReply(
                                 true,
@@ -3407,6 +3427,13 @@ internal sealed partial class ZLinkFrameworkRuntime
         // replacing the incoming identity would bypass this node's Message
         // Use the Message Follow route before attempting blocked local dispatch.
         var targetNode = GetSpotNodeRuntime(targetNodeRid).Node;
+        //  These throws run inside a one-way route send handler, so the
+        //  exception never reaches the original requester: the frame just
+        //  disappears and the caller waits out its deadline.
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"remote_frame_dispatch actor={actorId} "
+            + $"node_gen={targetNode.MeshStatus().LifecycleGeneration}/{targetNodeGeneration} "
+            + $"authority_gen={authorityOwnerGeneration} lease_gen={ownerLeaseGeneration}");
         if (targetNode.MeshStatus().LifecycleGeneration != targetNodeGeneration
             || authorityOwnerGeneration == 0
             || ownerLeaseGeneration == 0)
@@ -3493,9 +3520,28 @@ internal sealed partial class ZLinkFrameworkRuntime
                  || session.AuthorityOwnerGeneration != authorityOwnerGeneration
                  || session.OwnerLeaseGeneration != ownerLeaseGeneration)
         {
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.Unavailable,
+            //  A replaced incarnation never comes back, so this is NotFound
+            //  (DoNotRetry) rather than Unavailable (RetryAfterBackoff).
+            var staleIdentity = new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.NotFound,
                 $"Actor '{actorId}' session relay authority identity is stale.");
+            //  This runs inside a one-way route send handler, so throwing here
+            //  only reaches the dispatch error sink and the requester waits out
+            //  its deadline. Spec 20 requires the relay to end with a typed
+            //  stale error, so answer the request before giving up on it.
+            await ZLinkActorBoundSessionRelay.ReplyStaleActorAsync(
+                    this,
+                    actorRef,
+                    sourceNodeRid,
+                    sourceSessionRid,
+                    replyRequestId,
+                    replyFlags,
+                    replyCapability,
+                    ZLinkStreamProtocolDefaults.DecodeHeader(header),
+                    staleIdentity,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            throw staleIdentity;
         }
         var parts = new[]
         {

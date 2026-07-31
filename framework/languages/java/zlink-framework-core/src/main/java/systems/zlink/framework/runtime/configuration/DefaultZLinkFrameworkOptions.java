@@ -188,6 +188,12 @@ public final class DefaultZLinkFrameworkOptions
     }
 
     @Override
+    public systems.zlink.framework.configuration.ZLinkInboundDispatchOptions
+        configureInboundDispatch() {
+        return registration.inboundDispatch();
+    }
+
+    @Override
     public ZLinkNetworkOptions configureNetwork() {
         return network;
     }

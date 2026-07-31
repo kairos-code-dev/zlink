@@ -604,12 +604,12 @@ test('handler filter public contract exposes only the five supported dispatch ki
   const context = declarationBody(declarations, 'ZLinkHandlerFilterContext');
 
   assert.match(filter, /context: ZLinkHandlerFilterContext/);
-  assert.match(filter, /next: ZLinkHandlerDelegate/);
+  assert.match(filter, /next: ZLinkHandlerFilterNext/);
   assert.match(filter, /\): Promise<void>/);
   assert.match(context, /dispatchKind: ZLinkHandlerDispatchKind/);
   assert.match(
     declarations,
-    /type ZLinkHandlerDelegate\s*=\s*\(\) => Promise<void>/
+    /type ZLinkHandlerFilterNext\s*=\s*\(\) => Promise<void>/
   );
   assert.deepEqual(
     Object.values(require('../../packages/framework/dist').ZLinkHandlerDispatchKind),

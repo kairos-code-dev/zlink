@@ -250,6 +250,11 @@ internal sealed class ZLinkDeferredActorJoin(
             catch (Exception exception)
             {
                 var (kind, retriable) = MapFailure(exception, deadline);
+                //  The completion carries only a kind, so without this the
+                //  originating exception is lost and every throw site that maps
+                //  to the same kind looks identical from the outside.
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"deferred_join_failed kind={kind} retriable={retriable} {exception}");
                 completion = new ZLinkActorJoinCompletion.Failed(_operationId, kind, retriable);
             }
 

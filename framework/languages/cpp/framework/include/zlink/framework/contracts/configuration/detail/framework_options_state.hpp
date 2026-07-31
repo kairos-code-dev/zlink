@@ -346,6 +346,7 @@ struct framework_options_state_t
     std::set<std::string> stream_nodes;
     std::set<std::string> stream_nodes_with_bind;
     std::set<std::string> stream_nodes_with_session;
+    std::set<std::string> stream_nodes_with_actor_dispatch;
     std::set<std::string> stream_session_names;
     std::map<std::string, stream_session_factory_t> stream_session_factories;
     bool has_location_store_instance = false;

@@ -80,6 +80,26 @@ final class ZLinkActorLocationCoordinator {
                 : Optional.of(row.actorRef()));
     }
 
+    //  Resolves the Spot an Actor currently belongs to. The Actor authority row
+    //  already carries the current Spot id, so this reads the same row `find`
+    //  uses instead of taking a second lookup path.
+    CompletionStage<Optional<systems.zlink.framework.spots.SpotRef>>
+        findStoredSpotRef(String actorId) {
+        if (resolvers == null) {
+            return CompletableFuture.completedFuture(Optional.empty());
+        }
+        return resolvers.resolveActor(actorId)
+            .thenApply(row -> row == null
+                    || row.spotId() == null
+                    || row.spotId().isEmpty()
+                ? Optional.empty()
+                : Optional.of(new systems.zlink.framework.spots.SpotRef(
+                    row.spotId(),
+                    row.authorityOwnerGeneration(),
+                    row.meshName(),
+                    row.nodeRid())));
+    }
+
     CompletionStage<ZLinkStoreLocationResolvers.ActorRoute>
         resolveStoredActorRoute(String actorId) {
         if (resolvers == null) {

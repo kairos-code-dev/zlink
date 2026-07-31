@@ -8,7 +8,7 @@ title: "17. ZLink를 어디에 쓰나 — 내부 서비스 통신과 실시간 �
 <!-- generated:end -->
 
 <!-- framework-adapter-nav:start -->
-[가이드 홈](README.ko.md) | [이전: 16. Options — 설정 목록과 기본값](16-options.ko.md)
+[가이드 홈](README.ko.md) | [이전: 16. Options — 설정 목록과 기본값](16-options.ko.md) | [다음: 18. DI 컨테이너](18-di-container.ko.md)
 <!-- framework-adapter-nav:end -->
 
 <!-- language-switch:start -->

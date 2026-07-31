@@ -34,19 +34,34 @@ internal sealed class ZLinkOwnerLeaseTracker
         string ownerId,
         CancellationToken cancellationToken = default)
     {
-        var snapshot = await GetSnapshotAsync(ownerId, cancellationToken)
+        var (snapshot, fromCache) = await GetSnapshotAsync(ownerId, cancellationToken)
             .ConfigureAwait(false);
-        return snapshot.Token is not null
-               && IsUnexpired(snapshot);
+        if (snapshot.Token is not null)
+            return IsUnexpired(snapshot);
+
+        // A cached "no lease" answer must not decide a caller that treats the
+        // result as terminal. An owner that has just published its lease still
+        // reads as missing for the rest of the polling interval, and callers
+        // like the remote join target resolver turn that into a NotFound they
+        // never retry. Confirm a negative against the store once before it is
+        // allowed to stand. Positive answers keep using the cache.
+        if (!fromCache) return false;
+        var confirmed = await RefreshSnapshotAsync(ownerId, cancellationToken)
+            .ConfigureAwait(false);
+        return confirmed.Token is not null && IsUnexpired(confirmed);
     }
 
     internal async ValueTask<bool> IsOwnerTokenLiveAsync(
         ZLinkLocationOwnerToken token,
         CancellationToken cancellationToken = default)
     {
-        var snapshot = await GetSnapshotAsync(token.OwnerId, cancellationToken)
+        var (snapshot, fromCache) = await GetSnapshotAsync(token.OwnerId, cancellationToken)
             .ConfigureAwait(false);
-        return snapshot.Token == token && IsUnexpired(snapshot);
+        if (snapshot.Token == token) return IsUnexpired(snapshot);
+        if (!fromCache) return false;
+        var confirmed = await RefreshSnapshotAsync(token.OwnerId, cancellationToken)
+            .ConfigureAwait(false);
+        return confirmed.Token == token && IsUnexpired(confirmed);
     }
 
     /// <summary>
@@ -59,7 +74,7 @@ internal sealed class ZLinkOwnerLeaseTracker
         ZLinkLocationOwnerToken token,
         CancellationToken cancellationToken = default)
     {
-        var snapshot = await GetSnapshotAsync(token.OwnerId, cancellationToken)
+        var (snapshot, _) = await GetSnapshotAsync(token.OwnerId, cancellationToken)
             .ConfigureAwait(false);
         if (snapshot.Token != token) return null;
         var remaining = snapshot.LeaseExpiresAt - snapshot.StoreNow
@@ -85,7 +100,7 @@ internal sealed class ZLinkOwnerLeaseTracker
         return Interlocked.Increment(ref _liveSetVersion);
     }
 
-    private async ValueTask<Snapshot> GetSnapshotAsync(
+    private async ValueTask<(Snapshot Snapshot, bool FromCache)> GetSnapshotAsync(
         string ownerId,
         CancellationToken cancellationToken)
     {
@@ -95,9 +110,17 @@ internal sealed class ZLinkOwnerLeaseTracker
         if (current is not null
             && _time.GetElapsedTime(current.FetchedAt) < _options.PollingInterval)
         {
-            return current;
+            return (current, true);
         }
 
+        return (await RefreshSnapshotAsync(ownerId, cancellationToken)
+            .ConfigureAwait(false), false);
+    }
+
+    private async ValueTask<Snapshot> RefreshSnapshotAsync(
+        string ownerId,
+        CancellationToken cancellationToken)
+    {
         var fetchedAt = _time.GetTimestamp();
         var read = await ZLinkLocationStoreRead.ExecuteAsync(
                 _health,

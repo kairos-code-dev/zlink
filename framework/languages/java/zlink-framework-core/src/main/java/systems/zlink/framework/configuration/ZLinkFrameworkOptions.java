@@ -36,6 +36,8 @@ public interface ZLinkFrameworkOptions {
 
     ZLinkLocationOptions configureLocations();
 
+    ZLinkInboundDispatchOptions configureInboundDispatch();
+
     ZLinkNetworkOptions configureNetwork();
 
     void useFilter(Class<? extends ZLinkHandlerFilter> filterType);

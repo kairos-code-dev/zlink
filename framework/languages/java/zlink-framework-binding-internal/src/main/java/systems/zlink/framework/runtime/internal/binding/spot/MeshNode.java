@@ -44,7 +44,7 @@ public interface MeshNode extends AutoCloseable {
     int routerHighWaterMark();
 
     /** Sets the routed admission queue high-water mark override. */
-    void setRouterHighWaterMark(int value);
+    void setRouterHighWaterMark(long value);
 
     /** Returns the per-owner mailbox message budget. */
     long mailboxMessageBudget();

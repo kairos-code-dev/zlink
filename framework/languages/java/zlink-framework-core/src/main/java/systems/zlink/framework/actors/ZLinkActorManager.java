@@ -18,6 +18,12 @@ public interface ZLinkActorManager {
     CompletionStage<Optional<ActorRef>> find(String actorId);
 
     /**
+     * Looks up the Spot the actor currently belongs to. Returns an empty result
+     * when the actor is unknown or is not a member of any Spot.
+     */
+    CompletionStage<Optional<systems.zlink.framework.spots.SpotRef>> findSpot(String actorId);
+
+    /**
      * Finds an actor by id or creates it using the factory registered for the
      * supplied actor type string.
      */

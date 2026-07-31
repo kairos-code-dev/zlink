@@ -60,10 +60,15 @@ internal static class StD1LocationCommitTimingScenario
             $"ST-D1|{actorId}|admission|spot={spotId}",
             $"ST-D1|{actorId}|joined_wait|{spotId}"
         ]);
+        //  Spec 15-spot-actor: "Application이 요청한 User Spot join은 target
+        //  admission callback, commit 뒤 target joined와 source leave
+        //  notification을 사용한다." Commit precedes the joined callback, so by
+        //  the time joined_wait is observed the authority already names the
+        //  target. Asserting the ref had NOT moved here contradicted that order.
         var sourceDuring = await context.GetActorRefAsync(context.NodeA, actorId);
         ZlinkStreamAssert.Ensure(
-            SpotActorTransferScenarioContext.IsNode(sourceDuring.NodeRid, "actor-a"),
-            $"ST-D1 remote source ref moved before target joined completed. got={sourceDuring.NodeRid}");
+            SpotActorTransferScenarioContext.IsNode(sourceDuring.NodeRid, "actor-b"),
+            $"ST-D1 remote ref was not committed before target joined ran. got={sourceDuring.NodeRid}");
 
         await context.ReleaseJoinedGateAsync(context.NodeB, spotId);
         var join = await joinTask;
@@ -73,13 +78,17 @@ internal static class StD1LocationCommitTimingScenario
             SpotActorTransferScenarioContext.IsNode(targetAfter.NodeRid, "actor-b"),
             $"ST-D1 remote target ref was not committed after joined completed. got={targetAfter.NodeRid}");
 
+        //  Spec 15-spot-actor: "`Accepted`는 target Actor, `Rejected`와 commit 전
+        //  `Failed`는 source Actor가 받는다." The source sees the leave
+        //  notification; the Accepted completion belongs to the target, so
+        //  success_reply is expected on NodeB, not NodeA.
         await context.WaitEvidenceAsync(context.NodeA, [
-            $"transfer|{actorId}|leave|52",
-            $"ST-D1|{actorId}|success_reply|{spotId}"
+            $"transfer|{actorId}|leave|52"
         ]);
         await context.WaitEvidenceAsync(context.NodeB, [
             $"ST-D1|{actorId}|joined_released|{spotId}",
-            $"transfer|{actorId}|joined|{spotId}:52"
+            $"transfer|{actorId}|joined|{spotId}:52",
+            $"ST-D1|{actorId}|success_reply|{spotId}"
         ]);
     }
 }

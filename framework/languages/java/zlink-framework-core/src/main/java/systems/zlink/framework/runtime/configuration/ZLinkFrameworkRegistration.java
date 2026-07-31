@@ -33,6 +33,8 @@ public final class ZLinkFrameworkRegistration {
     private final ZLinkWorkerOptionsRegistration workers =
         new ZLinkWorkerOptionsRegistration();
     private final ZLinkLocationRegistration locations = new ZLinkLocationRegistration();
+    private final ZLinkInboundDispatchRegistration inboundDispatch =
+        new ZLinkInboundDispatchRegistration();
     private final List<ChannelRegistration> channels = new ArrayList<>();
     private final List<MeshNodeRegistration> meshNodes = new ArrayList<>();
     private final List<SpotNodeRegistration> spotNodes = new ArrayList<>();
@@ -95,6 +97,10 @@ public final class ZLinkFrameworkRegistration {
 
     public ZLinkLocationRegistration locations() {
         return locations;
+    }
+
+    public ZLinkInboundDispatchRegistration inboundDispatch() {
+        return inboundDispatch;
     }
 
     public List<ChannelRegistration> channels() {

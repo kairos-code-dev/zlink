@@ -78,9 +78,9 @@ internal static class StE1ANewIncarnationExplicitBindScenario
         ZlinkStreamAssert.Ensure(
             stale?.Error.Code == ZlinkStreamErrorCode.RemoteError
             && stale.Error.Message.StartsWith(
-                "ActorLocationStale:",
+                "NotFound:",
                 StringComparison.Ordinal),
-            $"{scenario} expected ActorLocationStale from the old binding, got '{stale?.Error.Message}'.");
+            $"{scenario} expected NotFound from the old binding, got '{stale?.Error.Message}'.");
 
         await SpotActorTransferScenarioContext.BindAsync(
             session,

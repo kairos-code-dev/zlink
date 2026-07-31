@@ -111,7 +111,7 @@ final class ZLinkJavaMeshNode implements ZLinkInternalMeshNode {
     }
 
     @Override
-    public void setRouterHighWaterMark(int value) {
+    public void setRouterHighWaterMark(long value) {
         node.setRouterHighWaterMark(value);
     }
 

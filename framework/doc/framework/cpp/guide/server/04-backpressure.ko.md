@@ -8,7 +8,7 @@ title: "4. Backpressure — 처리보다 도착이 빠를 때 · C++"
 <!-- generated:end -->
 
 <!-- framework-adapter-nav:start -->
-[가이드 홈](README.ko.md) | [이전: 20. HTTP Hosting](20-http-hosting.ko.md) | [다음: 5. Channel Messaging — request · send · pub/sub](05-channel-messaging.ko.md)
+[가이드 홈](README.ko.md) | [이전: 3. 핵심 개념](03-concepts.ko.md) | [다음: 5. Channel Messaging — request · send · pub/sub](05-channel-messaging.ko.md)
 <!-- framework-adapter-nav:end -->
 
 <!-- language-switch:start -->

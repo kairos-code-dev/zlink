@@ -100,9 +100,12 @@ public final class ZLinkMeshApplicationDispatcher
             meshName);
         ZLinkScannedHandlerCatalog scannedHandlers =
             ZLinkHandlerScanner.scan(framework.handlerPackageMarkers());
+        //  The receive HWM is an accounted byte count. This capacity is a message
+        //  count, so saturate rather than wrap when the HWM exceeds int range.
+        long receiveHighWaterMark = mesh.configureRouterSocket().receiveHighWaterMark();
         int localPendingCapacity =
-            mesh.configureRouterSocket().receiveHighWaterMark() > 0
-                ? mesh.configureRouterSocket().receiveHighWaterMark()
+            receiveHighWaterMark > 0
+                ? (int) Math.min(receiveHighWaterMark, Integer.MAX_VALUE)
                 : 4096;
         namespaces.put(
             NODE_NAMESPACE,

@@ -12021,3 +12021,48 @@ object generation이 모두 같을 때만 snapshot을 새로 잡아 다시 시�
 Java의 `ZLinkLocationLifecycle.notifyActorJoinedSpot`이 빈 구현이라는 점도 확인했다.
 이는 신규 결함이 아니라 `30-implementation-gap.ko.md`가 이미 기록한 네 언어 commit
 순서 gap의 일부다. location authority가 commit 순서를 소유하도록 바꾸는 항목에 포함된다.
+
+### 2026-07-31 가이드 집필 갭 문서 처리 완료
+
+`guide-authoring-implementation-gaps.ko.md`가 모아 둔 항목을 모두 닫았다. 처리 내역과
+근거는 그 문서 §6이 소유하며 여기에는 결과만 남긴다.
+
+spec이 선언했는데 구현에 없던 표면 넷을 채웠다. C++ `enable_actor_dispatch()`, Java
+`ZLinkActorManager.findSpot(String)`, Java inbound dispatch 옵션 전체
+(`ZLinkApplicationHwmProfile`, `ZLinkInboundDispatchOptions`, `configureInboundDispatch()`),
+Java `ZLinkMeshNodeSocketConfig`의 mailbox 두 값이다. Java HWM은 `int`라 2 GiB를 넘길 수
+없었으므로 `long`으로 넓혔고 bindings 계층은 이미 64-bit였다. Node의 같은 mailbox 누락도
+함께 채웠다.
+
+언어별로 갈리던 public 타입 이름 넷을 `.NET` 기준으로 통일했다.
+`ZLinkHandlerFilterNext`, `ZLinkFanoutHandler`, `ZLinkSpotActorJoinResult`,
+`ZLinkSessionDispatchContext`이며 구현·파일명·샘플·e2e·언어별 공개 계약 spec·가이드를
+함께 고쳤다. Node의 location option 두 이름이 spec 선언과 달랐던 것도 정렬했다.
+
+`ZLinkLocationOptions` 기본값 13개를 네 언어에서 전수 대조해 `ownerLeaseTtl`만 어긋난 것을
+확인하고 Java와 Node를 `.NET`·C++과 같은 15초로 맞췄다. 갱신 주기 5초 대비 배수가 3배와
+6배로 갈려 있어 같은 mesh에 여러 언어 node가 섞이면 owner 판정 시점이 달라지는 자리였다.
+
+spec에서 지운 계기 둘(`zlink.relocation.recovered`,
+`zlink.relocation.journal.messages`)을 `.NET`과 Node 구현·contract test·공통 가이드에서
+제거했다. Java가 spec과 다른 이름으로 방출하던 request 계기 셋도 `zlink.mesh_node.*`로
+바꾸면서 spec이 요구하는 `mesh_name`·`surface`·`outcome` label을 연결했다.
+
+이때 **요청 경로에 할당을 만들지 않는다**는 조건을 함께 지켰다. label을 붙이려고 요청마다
+map을 만들면 계기는 맞아도 hot path가 느려진다. `ZLinkRequestMetricTags`가 mesh와 surface
+조합마다 label 집합을 한 번만 만들어 공유하고, 캐시 키도 조합 문자열을 만들지 않는다.
+방출 전체를 `enabled()` 안쪽에 두어 계측이 꺼져 있으면 label 생성도 callback 등록도 하지
+않는다. 앞으로 POSD 리뷰는 이런 오버헤드도 수정 대상으로 본다.
+
+C++ bindings sample이 `-DZLINK_CPP_BUILD_SAMPLES=ON`에서 빌드되지 않던 것은 Core 11이
+제거한 `zlink::service` contract를 `sample_common.hpp`가 계속 참조한 탓이었다. `BLK-053`이
+Java·Node bindings sample에 적용한 정리와 같은 부류이며 C++만 빠져 있었다. 같은 방식으로
+raw 전용으로 정리해 sample 일곱 개가 모두 빌드된다.
+
+ZoneWorld sample 항목은 새 sample을 쓰는 일이 아니라 문서 정합성 문제였다. 이 ledger가
+ZoneWorld를 `.NET`과 Node.js만 제공한다고 이미 정했는데 공통 가이드가 일곱 sample을 모두
+공통 자산처럼 소개하고 있었다. 가이드를 결정에 맞췄다.
+
+회귀는 C++ 전체 CTest **49/49**와 bindings sample 일곱 개 빌드, JVM `check`
+`BUILD SUCCESSFUL`, Node build·typecheck와 contract **118/118**, `.NET` solution 전체가
+통과한다.

@@ -571,7 +571,6 @@ export class ZLinkActorTransferRuntime {
       const handoffBacklog = lifecycleAuthority === 'core'
         ? this.options.actorHandoff.snapshotCoreBacklog(actor.context.actorId)
         : this.options.actorHandoff.snapshot(actor.context.actorId);
-      relocationMetric?.recordJournalMessages(handoffBacklog.length);
       if (sealId !== undefined) {
         acceptedRoot = await this.prepareBoundSessionAcceptedJournal(actor, state, sealId, handoffBacklog, signal);
         state.setRemoteBoundSessionTarget({

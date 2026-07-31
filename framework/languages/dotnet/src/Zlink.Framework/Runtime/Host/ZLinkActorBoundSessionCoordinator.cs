@@ -710,6 +710,12 @@ internal sealed class ZLinkActorBoundSessionCoordinator
         ReadOnlyMemory<byte> applicationMetadata = default)
     {
         var routeNode = selectedNode ?? _getNode();
+        //  Three outcomes below all return a bool the caller mostly ignores;
+        //  name which branch a frame took so a vanished frame is traceable.
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"forward_part actor={actorRef.ActorId} target_node={actorRef.NodeRid} "
+            + $"local_node={(routeNode is null ? "none" : routeNode.RoutingId.ToString())} "
+            + $"has_relay={RemoteFrameRelay is not null} has_more={hasMore}");
 
         // A bound actor that migrated to another node cannot be reached
         // through the local bound-session send; buffer the parts and relay

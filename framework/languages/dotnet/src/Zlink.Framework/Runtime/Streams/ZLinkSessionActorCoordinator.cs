@@ -381,11 +381,19 @@ internal sealed class ZLinkSessionActorCoordinator(
         if (actor is not ZLinkSessionActor actorRef)
             throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
 
-        if (!runtime.TryGetSessionActorContext(
-                actorRef.ActorId,
-                actorRef.BindingToken,
-                out var currentContext)
-            || !ReferenceEquals(currentContext, actorRef.Context))
+        var contextLive = runtime.TryGetSessionActorContext(
+            actorRef.ActorId,
+            actorRef.BindingToken,
+            out var currentContext)
+            && ReferenceEquals(currentContext, actorRef.Context);
+        //  This guard checks the binding token only. An Actor destroyed and
+        //  recreated keeps the same token, so a stale incarnation passes here.
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"session_relay_entry actor={actorRef.ActorId} context_live={contextLive} "
+            + $"has_route={actorRef.TryGetRoute(out var relayRoute)} "
+            + $"route_authority_gen={relayRoute.AuthorityOwnerGeneration} "
+            + $"route_node_gen={relayRoute.TargetNodeGeneration}");
+        if (!contextLive)
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.InvalidOperation,
                 $"Actor '{actorRef.ActorId}' session binding is stale.",

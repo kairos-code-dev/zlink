@@ -27,6 +27,12 @@ final class ZLinkFrameworkActorManagerBean implements ZLinkActorManager {
     }
 
     @Override
+    public CompletionStage<Optional<systems.zlink.framework.spots.SpotRef>> findSpot(
+        String actorId) {
+        return lifecycle.actorManager().findSpot(actorId);
+    }
+
+    @Override
     public ZLinkActorGetOrCreateCall getOrCreate(
         String actorId,
         String actorType) {

@@ -627,6 +627,14 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                             currentAuthority.NodeGeneration,
                             currentAuthority.OwnerLeaseGeneration);
                     }
+                    //  The message says the authority changed but not how, so
+                    //  the axis that actually moved never reaches a log.
+                    Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                        $"handoff_cas_conflict actor={actorId} "
+                        + $"expected_version={snapshot.StoreVersion} "
+                        + $"expected_target_gen={targetAuthorityOwnerGeneration} "
+                        + $"current={conflict.Current.GetType().Name} "
+                        + $"current_detail={DescribeAuthority(conflict.Current)}");
                     throw new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.Unavailable,
                         $"Actor '{actorId}' authority changed during handoff commit.",
@@ -649,6 +657,17 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                         CancellationToken.None)
                     .ConfigureAwait(false);
         }
+    }
+
+    //  Renders an authority read for a trace line without assuming it was found.
+    private static string DescribeAuthority(ZLinkAuthorityReadResult read)
+    {
+        return read is ZLinkAuthorityReadResult.Found found
+            ? $"owner={found.Snapshot.OwnerId} lease={found.Snapshot.OwnerLeaseGeneration} "
+              + $"object_gen={found.Snapshot.ObjectGeneration} "
+              + $"authority_gen={found.Snapshot.AuthorityOwnerGeneration} "
+              + $"version={found.Snapshot.StoreVersion}"
+            : "missing";
     }
 
     private static bool TryResolveCommittedAuthority(

@@ -103,6 +103,8 @@ export interface ZLinkMeshNodeSocketConfig {
   maxMessageSize: number;
   sendHighWaterMark: number;
   receiveHighWaterMark: number;
+  mailboxMessageBudget: number;
+  mailboxByteBudget: number;
   receiveTimeoutMs?: number;
   sendTimeoutMs?: number;
 }

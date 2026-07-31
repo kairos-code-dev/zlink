@@ -359,6 +359,10 @@ internal sealed class ZLinkSessionActorBindingTable
         ZLinkSessionRouteSeal request,
         CancellationToken cancellationToken)
     {
+        //  Receiving side of the route seal. Paired with route_control_sent on
+        //  the requester so a stalled seal shows which side never moved.
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"route_seal_received actor={request.ActorId}");
         Task? drain = null;
         ulong acceptedHighWater;
         lock (_entries)
@@ -399,6 +403,12 @@ internal sealed class ZLinkSessionActorBindingTable
             };
             drain = signal?.Task;
             acceptedHighWater = entry.AcceptedHighWater;
+            //  A non-zero ActiveFrames makes the seal wait for a drain signal
+            //  that only frame completion raises. If a frame is never
+            //  completed the seal never answers and the join times out.
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"route_seal_drain actor={request.ActorId} "
+                + $"active_frames={entry.ActiveFrames} waits={drain is not null}");
         }
         if (drain is not null)
             await drain.WaitAsync(cancellationToken).ConfigureAwait(false);

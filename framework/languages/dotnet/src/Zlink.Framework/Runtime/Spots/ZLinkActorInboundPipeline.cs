@@ -336,9 +336,16 @@ internal sealed class ZLinkActorInboundPipeline(
         }
 
         var actor = endpoint.ResolveActor(state);
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"inbound_resolve actor={frame.Actor.ActorId} resolved={actor is not null} "
+            + $"request_id={frame.RequestId}");
         if (actor is null)
         {
-            await ZLinkActorBoundSessionRelay.TryReplyMissingNoBindActorAsync(
+            //  A bound request whose incarnation is gone used to get no reply at
+            //  all: the helper below answers no-bind requests only, and the frame
+            //  was then acknowledged and dropped, leaving the caller to time out.
+            //  Spec 07-stream-session names this case ActorGenerationStale.
+            if (!await ZLinkActorBoundSessionRelay.TryReplyMissingNoBindActorAsync(
                     runtime,
                     frame.Actor,
                     frame.SourceNodeRid,
@@ -349,7 +356,22 @@ internal sealed class ZLinkActorInboundPipeline(
                     frame.Header,
                     frame.DirectReply,
                     cancellationToken)
-                .ConfigureAwait(false);
+                .ConfigureAwait(false))
+                await ZLinkActorBoundSessionRelay.ReplyStaleActorAsync(
+                        runtime,
+                        frame.Actor,
+                        frame.SourceNodeRid,
+                        frame.SourceSessionRid,
+                        frame.RequestId,
+                        frame.Flags,
+                        frame.RouteContext.ReplyCapability,
+                        frame.Header,
+                        new ZLinkFrameworkException(
+                            ZLinkFrameworkErrorKind.InvalidOperation,
+                            $"Actor '{frame.Actor.ActorId}' session binding names an incarnation that no longer exists."),
+                        cancellationToken,
+                        frame.DirectReply)
+                    .ConfigureAwait(false);
             acknowledgeHandledFrame?.Invoke();
             return;
         }

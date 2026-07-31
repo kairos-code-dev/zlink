@@ -37,8 +37,8 @@ internal static class StA1LocalAcceptScenario
         var evidence = await context.WaitEvidenceAsync(owner, [
             $"ST-A1|{actorId}|admission|spot={spotId}",
             $"runtime|{actorId}|authority_committed|{spotId}",
-            $"transfer|{actorId}|leave|11",
             $"transfer|{actorId}|joined|{spotId}:11",
+            $"transfer|{actorId}|leave|11",
             $"ST-A1|{actorId}|success_reply|{spotId}",
             $"ST-A1|{actorId}|packet_handler|after-joined"
         ]);
@@ -50,32 +50,43 @@ internal static class StA1LocalAcceptScenario
         var actorEvidence = evidence
             .Where(item => item.ActorId == actorId)
             .ToArray();
+        //  The admission value packs spot, mode and input into one field, so it
+        //  is matched by its spot prefix rather than by equality.
         var admission = Array.FindIndex(actorEvidence, item =>
             item.Scenario == "ST-A1"
             && item.Kind == "admission"
-            && item.Value == $"spot={spotId}");
+            && item.Value.StartsWith($"spot={spotId}", StringComparison.Ordinal));
         var authorityCommitted = Array.FindIndex(actorEvidence, item =>
             item.Scenario == "runtime"
             && item.Kind == "authority_committed"
             && item.Value == spotId);
+        //  ActorEvidence is (Scenario, ActorId, Kind, Value, ...), so the
+        //  transfer markers carry Scenario "transfer" with Kind "leave" and
+        //  "joined". Matching Kind against "transfer" never resolved and left
+        //  both indexes at -1, so this order check could not pass either way.
         var leave = Array.FindIndex(actorEvidence, item =>
-            item.Kind == "transfer"
-            && item.Value == "leave|11");
+            item.Scenario == "transfer"
+            && item.Kind == "leave"
+            && item.Value == "11");
         var joined = Array.FindIndex(actorEvidence, item =>
-            item.Kind == "transfer"
-            && item.Value == $"joined|{spotId}:11");
+            item.Scenario == "transfer"
+            && item.Kind == "joined"
+            && item.Value == $"{spotId}:11");
         var successReply = Array.FindIndex(actorEvidence, item =>
             item.Scenario == "ST-A1"
             && item.Kind == "success_reply"
             && item.Value == spotId);
+        //  30-implementation-gap §"location authority가 commit 순서를 소유한다"
+        //  puts the CAS commit before the target OnJoinedActor and the source
+        //  OnLeaveActor after it, so joined precedes leave.
         ZlinkStreamAssert.Ensure(
             admission >= 0
             && admission < authorityCommitted
-            && authorityCommitted < leave
-            && leave < joined
-            && joined < successReply,
-            "ST-A1 order must be admission -> authority_committed -> leave "
-            + "-> joined -> success_reply.");
+            && authorityCommitted < joined
+            && joined < leave
+            && leave < successReply,
+            "ST-A1 order must be admission -> authority_committed -> joined "
+            + "-> leave -> success_reply.");
 
         var relocationArtifacts = (await context
                 .GetRelocationBlobMeasurementsAsync(context.NodeA))

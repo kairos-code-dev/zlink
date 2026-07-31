@@ -274,9 +274,10 @@ encoding이 끝난 뒤 caller가 연결을 종료했거나 transport가 reply를
 
 Join 결과는 0이 아닌 128-bit `OperationId`와 함께 Actor completion callback으로 전달한다. `Accepted`는
 target Actor, `Rejected`와 commit 전 `Failed`는 source Actor가 받는다. Commit 뒤 recovery는 source로
-rollback하지 않고 target을 복구한 뒤 같은 `OperationId`의 `Accepted`를 전달한다. Target joined callback,
-source leave notification과 durable cleanup이 끝나기 전에 completion과 뒤 application payload를 실행하지
-않는다.
+rollback하지 않고 target을 복구한 뒤 같은 `OperationId`의 `Accepted`를 전달한다. Target joined callback이
+끝나기 전에 completion과 뒤 application payload를 실행하지 않는다. Source leave notification은 one-way
+send로 전달하며 그 실행이나 실패가 completion을 막지 않는다. 남은 source resource의 durable cleanup도
+completion을 막지 않으며 그 뒤에 이어서 수행한다.
 
 Same-node Join은 membership commit만 durable하며 completion, `OperationId`, optional reply와 retry cursor는
 current process lifetime까지만 유지한다. Cross-node Join은 Location authority가 published Relocation manifest
@@ -407,7 +408,8 @@ Cross-node join은 다음 순서를 지킨다.
 6. Actor authority, source·target membership, capacity와 aggregate generation을
    제한된 하나의 transaction으로 함께 전환한다. 이 전환을 bounded aggregate
    commit이라 한다.
-7. Target joined callback과 source leave notification을 실행한다. 그다음 target
+7. Target joined callback을 실행하고 source leave notification을 one-way send로
+   전달한다. leave notification의 완료나 실패는 이 단계를 막지 않는다. 그다음 target
    Actor에서 `Accepted` completion callback과 accepted journal을 barrier 뒤 일반
    message보다 먼저 replay한다. Framework는 logical timer를 복원하지만 target
    application admission은 계속 닫아 둔다.
@@ -441,7 +443,7 @@ sequenceDiagram
     LocationStore-->>SourceRuntime: 새 owner generation과 membership 확정
     SourceRuntime->>SourceActor: Source Context operation 차단
     SourceRuntime->>TargetSpot: target joined callback 실행
-    SourceRuntime->>SourceActor: source leave notification 실행
+    SourceRuntime-)SourceActor: source leave notification (one-way send)
     SourceRuntime->>TargetActor: Accepted completion과 journal replay
     SourceRuntime->>TargetActor: 실행 전 queue와 hold message 전달
     SourceRuntime->>SourceRuntime: durable source cleanup

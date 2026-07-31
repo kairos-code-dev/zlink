@@ -31,9 +31,19 @@ internal sealed class ZLinkLiveLocationRows(ZLinkOwnerLeaseTracker leaseTracker)
         // generation floor, or the successor incarnation's fresh row (whose
         // axes legitimately restart) would be rejected as a lagging replica.
         if (!await leaseTracker.IsOwnerLiveAsync(ownerOf(row), cancellationToken).ConfigureAwait(false))
+        {
+            //  Both rejections below return a null row, and the caller cannot
+            //  tell a dead owner from a lagging replica without being told.
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"live_row_rejected reason=owner_not_live owner={ownerOf(row)}");
             return (null, false);
+        }
 
-        return (acceptObserved(row) ? row : null, true);
+        var accepted = acceptObserved(row);
+        if (!accepted)
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"live_row_rejected reason=stale_observation owner={ownerOf(row)}");
+        return (accepted ? row : null, true);
     }
 
     public async ValueTask<IReadOnlyList<TRow>> FilterAsync<TRow>(

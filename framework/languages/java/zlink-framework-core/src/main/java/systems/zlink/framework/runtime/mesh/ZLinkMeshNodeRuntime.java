@@ -32,12 +32,15 @@ public final class ZLinkMeshNodeRuntime implements AutoCloseable {
                         ? systems.zlink.framework.locations.ZLinkMeshNodeObjectRole.CLIENT
                         : systems.zlink.framework.locations.ZLinkMeshNodeObjectRole.NONE);
             node.setPlacementWeight(registration.placementWeight());
-            int routerSendHighWaterMark =
+            //  The HWM is an accounted byte count and stays 64-bit. The pending
+            //  admission capacity is a message count, so a byte HWM larger than
+            //  int range saturates instead of wrapping.
+            long routerSendHighWaterMark =
                 registration.configureRouterSocket().sendHighWaterMark();
             node.setRouterHighWaterMark(routerSendHighWaterMark);
             node.setRouterPendingAdmissionCapacity(
                 routerSendHighWaterMark > 0
-                    ? routerSendHighWaterMark
+                    ? (int) Math.min(routerSendHighWaterMark, Integer.MAX_VALUE)
                     : 4096);
             node.setRouterSendTimeout(
                 registration.configureRouterSocket().sendTimeout()

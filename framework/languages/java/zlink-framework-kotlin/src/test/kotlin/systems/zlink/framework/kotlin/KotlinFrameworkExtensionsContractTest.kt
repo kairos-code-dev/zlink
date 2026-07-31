@@ -430,6 +430,11 @@ class KotlinFrameworkExtensionsContractTest {
 
         override fun find(actorId: String): CompletionStage<Optional<ActorRef>> =
             CompletableFuture.completedFuture(Optional.of(ACTOR_REF))
+
+        override fun findSpot(
+            actorId: String,
+        ): CompletionStage<Optional<systems.zlink.framework.spots.SpotRef>> =
+            CompletableFuture.completedFuture(Optional.empty())
     }
 
     private class RecordingActorCall(

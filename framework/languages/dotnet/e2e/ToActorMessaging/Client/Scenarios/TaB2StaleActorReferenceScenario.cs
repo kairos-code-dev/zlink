@@ -15,7 +15,7 @@ internal static class TaB2StaleActorReferenceScenario
         await context.WaitForRouteAbsentAsync(actorId);
         await context.EnsureActorAAsync(actorId);
 
-        await context.AssertCachedFailureAsync("TA-B2-stale-request", actorId, "ActorLocationStale");
+        await context.AssertCachedFailureAsync("TA-B2-stale-request", actorId, "NotFound");
         var afterStale = await context.GetAllActorEvidenceAsync();
         ZlinkStreamAssert.Ensure(afterStale.All(item => item.Scenario != "TA-B2-stale-request"),
             "TA-B2 stale generation unexpectedly reached an actor handler.");

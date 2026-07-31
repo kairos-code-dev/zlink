@@ -190,7 +190,7 @@ Candidate SHA-256은
 | `BLK-040` | `V11-M6A-NODE`, `V11-M6B-NODE`, `V11-M6C-NODE`; Node.js lane | working tree(2026-07-25, base `c465f4d85e`) | `node --test --test-force-exit test/contract/channel-client.test.js` → 94 tests, 74 pass / 20 fail. `BLK-023`(3-인자 arity와 client 클래스 오선택)이 34건 중 14건을 해소했고 남은 20건은 원인이 다르다. 두 번 실행에서 실패 집합이 동일하며 baseline 34건의 진부분집합이다(신규 실패 0). | 원인이 최소 여섯 갈래다. (1) subtest 48·50·56 `Channel has no admitted ClientServer target` — C++ `BLK-033`·JVM `BLK-034`와 같은 모양이며 Node 항목이 없었다. `BLK-036`의 Node 구현으로 해소되는지 먼저 확인한다. (2) 34·35·37~40 route bridge `ZLink async submit timed out`. (3) 23 Nest DI token drift. (4) 43 `SpotNode router must define a bind endpoint`. (5) 53·54 location peer 미수렴, 65·66 `User Spot creation requires a Location Store`. (6) 67~69 backpressure. | 아직 수정하지 않았다. `BLK-023` 담당자가 원인을 분류만 하고 항목을 발급하지 않아 20건이 무주공산이었다. 이 행이 그 소유권을 받는다. 갈래별로 분리가 필요해지면 하위 항목으로 쪼갠다. | (1)은 `BLK-036` Node 구현 뒤 재측정한다. 나머지는 갈래별로 spec 대조 후 런타임·test 귀속을 판정한다. 현재 candidate에서 여섯 갈래의 후속 변경이 모두 합류했고 같은 file이 91/91, exit 0으로 통과했다. 실패 집합·hang·cancelled subtest가 남지 않아 별도 하위 항목은 열지 않는다. | 해결 |
 | `BLK-041` | `V11-M7-SAMPLES`, `V11-SAMPLE-SPEC-FINAL`; Node.js lane | working tree(2026-07-30) | Node 샘플 `.ts` 소스가 workspace typecheck 대상이 아니어서 제거된 호출과 타입 오류를 검출하지 못했다. | `tsconfig.json`에 `samples/**/*.ts`를 추가했다. 현재 샘플의 channel 호출은 2-인자 계약으로 정렬했고, Nest factory dependency tuple, Bingo nullable state와 TicTacToe HTTP 입력 타입 오류를 수정했다. | Sample 전수 typecheck와 lint를 required workspace 검증으로 실행한다. | `npm run typecheck`, `npm run lint -- --no-cache`, `npm run build`가 모두 통과했다. | 해결 |
 | `BLK-042` | `V11-M6C-NODE`; Node.js lane | working tree(2026-07-30) | Production host relocation의 User Spot aggregate·standalone Actor·Instance Spot two-owner 검증이 없었다. | 실제 `relocateMesh()` inventory와 production ports를 사용하는 contract를 추가했다. 검증 중 durable root와 service-wire participant 순서 불일치로 Actor queue가 잘못 연결되는 결함을 찾아 authority-key 기준 canonical 순서로 정렬했다. | User Spot·member Actor·Instance Spot·standalone Actor의 hidden restore, authority·membership commit, queue·timer replay, Message Follow, command 44·45 route ACK, source cleanup과 target admission을 한 test에서 검증한다. | 신규 two-owner 1/1, M6C 79/79, command 44·45 focused 5/5, workspace build와 production ESLint 통과. Actual mixed-language process는 M7이 소유한다. | 해결 |
-| `BLK-043` | `V11-M6C-JVM`; JVM lane | working tree(2026-07-26, base `01b13d41cb`) | `ZLinkUserSpotRetireRuntime`이 host composition에 생성되지만 target endpoint에 `(lane, record) -> completedFuture(null)` journal replayer와 `request -> completedFuture(null)` steady normalizer를 넘긴다. `supportsActiveInventory()`는 User Spot aggregate member Actor만 허용해 standalone Actor가 하나라도 있으면 active Retire를 차단한다. 추가 production audit에서 source builder가 accepted journal이 비어 있지 않으면 `requireReplaySupport()`로 실패하고, serial queue commit이 captured·held request의 source reply capability를 즉시 해제하는 것도 확인했다. | Component 단위 aggregate coordinator·staging owner·control wire는 구현됐지만 production accepted journal dispatch/reply relay, Completed authority 뒤 steady normalization, standalone Actor relocation owner가 composition root에 연결되지 않았다. Frozen record에는 sequence와 payload만 남고 original request의 reply capability·source lease fence가 없어 target terminal을 source에 relay·ACK할 수 없다. No-op callback은 target replay와 normalization을 완료한 것처럼 보이게 하므로 component test만으로 실제 continuity를 증명하지 못한다. | Existing accepted journal record에 source reply capability와 exact owner·lease fence를 durable하게 보존하고 실제 hidden Spot·Actor dispatch terminal을 command 기반 source relay와 closed ACK로 연결한다. ACK 또는 exact source lease expiry proof 전에는 capability와 recovery root를 해제하지 않는다. Completed aggregate authority를 확인한 뒤 recovery pointer와 admission을 정상화하는 owner를 구성한다. Standalone Actor는 같은 deep component를 재사용하는 별도 relocation unit으로 inventory·capture·remote restore한다. 새 public API나 Core·bindings 우회는 추가하지 않는다. | 완료 gate는 production `ZLinkFrameworkRuntime.retire()`를 사용하는 two-owner User Spot aggregate와 standalone Actor process test에서 factory·Restore, accepted queue·timer replay, Session route ACK, steady normalization과 source cleanup을 확인하고 JVM `M6-RUNTIME`을 통과하는 것이다. | 조치 중 |
+| `BLK-043` | `V11-M6C-JVM`; JVM lane | working tree(2026-07-26, base `01b13d41cb`) | `ZLinkUserSpotRetireRuntime`이 host composition에 생성되지만 target endpoint에 `(lane, record) -> completedFuture(null)` journal replayer와 `request -> completedFuture(null)` steady normalizer를 넘긴다. `supportsActiveInventory()`는 User Spot aggregate member Actor만 허용해 standalone Actor가 하나라도 있으면 active Retire를 차단한다. 추가 production audit에서 source builder가 accepted journal이 비어 있지 않으면 `requireReplaySupport()`로 실패하고, serial queue commit이 captured·held request의 source reply capability를 즉시 해제하는 것도 확인했다. | Component 단위 aggregate coordinator·staging owner·control wire는 구현됐지만 production accepted journal dispatch/reply relay, Completed authority 뒤 steady normalization, standalone Actor relocation owner가 composition root에 연결되지 않았다. Frozen record에는 sequence와 payload만 남고 original request의 reply capability·source lease fence가 없어 target terminal을 source에 relay·ACK할 수 없다. No-op callback은 target replay와 normalization을 완료한 것처럼 보이게 하므로 component test만으로 실제 continuity를 증명하지 못한다. | Existing accepted journal record에 source reply capability와 exact owner·lease fence를 durable하게 보존하고 실제 hidden Spot·Actor dispatch terminal을 command 기반 source relay와 closed ACK로 연결한다. ACK 또는 exact source lease expiry proof 전에는 capability와 recovery root를 해제하지 않는다. Completed aggregate authority를 확인한 뒤 recovery pointer와 admission을 정상화하는 owner를 구성한다. Standalone Actor는 같은 deep component를 재사용하는 별도 relocation unit으로 inventory·capture·remote restore한다. 새 public API나 Core·bindings 우회는 추가하지 않는다. | 완료 gate는 production `ZLinkFrameworkRuntime.retire()`를 사용하는 two-owner User Spot aggregate와 standalone Actor process test에서 factory·Restore, accepted queue·timer replay, Session route ACK, steady normalization과 source cleanup을 확인하고 JVM `M6-RUNTIME`을 통과하는 것이다. | 해결 |
 2026-07-27 JVM 후속 구현은 Entry Spot standalone Actor를 실제 relocation control 경로에 연결했다.
 Hidden target restore, source freeze, authority commit, authority가 선택한 journal replay, target publish,
 source cleanup, Completed 기록과 steady authority normalization을 수행한다. Java core 591/591과
@@ -252,7 +252,7 @@ process가 committed authority를 읽어 normalization을 완료했다. Inventor
 | `BLK-048` | `V11-M6C-DN`, `V11-E2E-M94`; .NET SpotWide payload lane | working tree(2026-07-28) | 기존 `ZLinkRelocationTreeStore`는 전체 SpotWide envelope를 먼저 하나로 합치고 64 MiB를 넘을 때만 chunk를 나눴다. 정식 1초 gate인 Spot 64 KiB와 Actor 100개×64 KiB는 약 6.31 MiB인 data chunk 하나이므로 Redis `Put`·readback·`Get`이 직렬이었다. | Store I/O의 병렬 단위가 relocation participant가 아니라 64 MiB 크기 chunk였다. 작은 payload를 합쳐 왕복 수를 줄인다는 기존 최적화가 service unit의 짧은 중단 시간 목표와 충돌했고, E2E도 callback·Store I/O·전체 시간을 분리하지 않아 이 gap을 검출하지 못했다. | Capture callback은 Spot→Actor 순서로 직렬 실행한다. 확정된 하나의 opaque relocation stream은 participant 수를 기준으로 순서가 있는 연속 byte 구간에 가깝게 균등 분할한다. 이 ordered stripe는 특정 Spot이나 Actor의 payload라는 의미를 갖지 않는다. 최대 64개 operation과 encoded bytes 256 MiB를 함께 제한해 stripe를 저장·읽고, 모든 checksum을 검증한 뒤 원래 byte 순서로 조립한다. Root는 data 뒤에 저장하고 Location aggregate CAS로 공개한다. Restore callback은 조립 완료 뒤 직렬 실행한다. | Actor 100개×64 KiB에서 실제 concurrent provider I/O가 2개 이상이면서 최대 64개·256 MiB를 넘지 않는 focused test가 필요하다. `ACTORS-10`과 정식 `ACTORS-100` fresh process에서 callback 시간, Store I/O 시간, source seal→target admission 시간을 분리 기록하고 100 profile의 interruption과 handler gap이 각각 1초 이하여야 한다. | 조치 중 |
 | `BLK-049` | `V11-M6C-E2E`, `V11-E2E-M94`; .NET service-unit E2E lane | working tree(2026-07-28) | 공통 `ST-G5`는 Entry Actor, `PerActor` member Actor, `PerActor` Spot direct admission, `SpotWide` aggregate와 Instance Spot을 서로 다른 service unit으로 요구한다. 현재 .NET selector에는 Entry Actor 호환 이름과 SpotWide 10·100 profile만 있으며 `PerActor` Actor·Spot direct와 Instance Spot interruption selector가 없다. Entry Actor의 새 정본 이름도 호환 selector에 alias되지 않았다. SpotWide User Spot 하나의 member Actor 상한은 100이며 1,000 profile은 사용하지 않는다. | Payload·bulk scenario를 추가하면서 기존 Entry Actor와 SpotWide 두 경로만 먼저 연결했다. `ST-G3`와 `ST-I3`가 PerActor·Instance relocation 결과를 일부 확인하지만 relocation 전후 연속 traffic gap, unit별 metric, 1초 SLO를 검증하지 않으므로 `ST-G5` 완료 증거가 아니다. | 기존 production E2E fixture를 재사용해 `ST-G5-ENTRY-ACTOR-*`, `ST-G5-PER-ACTOR-*`, `ST-G5-PER-ACTOR-SPOT-*`, `ST-G5-INSTANCE-SPOT-*`을 독립 fresh process selector로 연결한다. 각 selector는 source seal 전부터 target admission 뒤까지 해당 public ToActor 또는 ToSpot request·one-way를 계속 제출하고 다른 unit의 metric과 섞지 않는다. | 각 정상 `SMALL` selector는 runtime interruption과 application handler gap이 1초 이하이고 loss·duplicate 0, FIFO, generation 유지와 final owner 처리만 관찰해야 한다. Slow Capture·Restore는 1초 초과 warning 뒤 relocation이 계속 완료되어야 한다. | 조치 중 |
 | `BLK-050` | `V11-M6C-DN`, `V11-M6C-E2E`, `V11-E2E-M94`; .NET SpotWide scheduler lane | working tree(2026-07-28) | `ST-G5-SPOT-WIDE-ACTORS-10`을 pre-relocation timeout 0인 약 80 ops/s로 낮춰 다시 실행했지만 `/relocate`가 `2026-07-28 09:42:01 KST`에 시작된 뒤 1분 45초 이상 terminal 없이 대기했고, 그동안 Spot·Actor request가 5초 timeout으로 끝났다. 증거는 `SpotActorTransfer/logs/20260728-094142-3296522`다. | Payload 크기나 Redis I/O 전 단계에서 SpotWide source가 relocation turn을 얻지 못했다. Continuous application ingress가 있는 동안 scheduler가 queue idle을 기다리거나 relocation infrastructure job 뒤에도 새 application job을 계속 처리하면 source seal이 적용되지 않아 relocation이 기아 상태가 된다. | Retire 요청을 받은 SpotWide serial executor는 현재 실행 중인 application turn 하나만 끝낸 뒤 infrastructure relocation turn을 application queue보다 먼저 실행한다. 이 경계에서 admission을 seal하고 이후 direct ingress는 bounded hold에 넣는다. 이미 accepted된 queue와 timer는 capture 대상이며, 새 ingress가 relocation turn의 실행을 미루면 안 된다. | Continuous request·one-way enqueue 중 relocation infrastructure turn이 bounded하게 시작되고 seal 뒤 application handler가 source에서 추가 실행되지 않는 focused scheduler test가 필요하다. 같은 traffic으로 `ACTORS-10` fresh process가 terminal에 도달하고 loss·duplicate 0을 보여야 하며, 그 다음 `ACTORS-100` 1초 gate를 실행한다. | 조치 중 |
-| `BLK-052` | inbound dispatch F-03·F-04; Core·bindings·다섯 Framework lane | working tree(2026-07-30) | Application HWM에서 raw Router `Recv`를 멈추면 같은 FIFO connection에 있는 liveness, route admission, reply relay와 relocation command도 멈춘다. `SendReady`는 Core callback이고 Actor lifecycle callback은 Application 작업이지만, 위 service command는 `ZLinkManagedMeshNode.ProcessReceived()`가 실제 network message로 decode한다. | Generic opaque completion-control C ABI와 네 binding을 기존 Completion connection에 추가했다. Core는 command를 해석하지 않으며 새 connection을 만들지 않는다. C++ Framework는 host 전체 Application byte budget을 RouteMesh와 classic Channel에 공유하고, Application receive 중단 중 기존 Completion connection의 bounded service control을 계속 처리한다. Application listener의 `MaxMessageSize` 기본값은 16 MiB이며 Auto·양수 HWM에서 무제한 listener는 bind 전에 거부한다. Host 전체 completion send permit owner는 RouteMesh와 classic ClientServer request handler 전에 permit을 확보하고 transport reply 제출 뒤 반환한다. Public `framework_runtime_t::status()`와 `observe()`가 byte budget, pending completion send와 65,536 limit을 제공한다. | Framework가 liveness·admission·relocation·reply recovery command만 허용하는 allowlist·size·generation fence를 소유한다. Application payload, Actor·Spot lifecycle callback과 object request는 허용하지 않는다. C++ automatic ClientServer와 fanout raw API는 control과 Application message를 같은 receive FIFO로 노출하므로, message를 제거하거나 무제한으로 미리 받지 않으면서 Application receive만 중단할 수 없다. 이 두 socket 종류에 기존 Completion control과 같은 선택 수신 capability를 추가한 뒤 byte accounting을 연결해야 한다. JVM Framework runtime과 다섯 Framework actual E2E도 남아 있다. | Core와 bindings gate, C++ M6A·contract·Channel·AppHost focused gate가 bindings 11.0.2로 통과했다. Contract gate는 Channel·MeshNode의 16 MiB 기본값과 public runtime exact interface를 검증한다. M6A는 permit saturation과 반환을, AppHost는 production DI status·observation을 검증한다. C++ 증거는 `.artifacts/v11/evidence/BLK-052/cpp-inbound-application-hwm-20260731.md`다. 남은 gate는 automatic ClientServer·fanout selective receive와 accounting, JVM runtime과 다섯 Framework actual E2E다. | 조치 중 |
+| `BLK-052` | inbound dispatch F-03·F-04; Core·bindings·다섯 Framework lane | working tree(2026-07-30) | Application HWM에서 raw Router `Recv`를 멈추면 같은 FIFO connection에 있는 liveness, route admission, reply relay와 relocation command도 멈춘다. `SendReady`는 Core callback이고 Actor lifecycle callback은 Application 작업이지만, 위 service command는 `ZLinkManagedMeshNode.ProcessReceived()`가 실제 network message로 decode한다. | Generic opaque completion-control C ABI와 네 binding을 기존 Completion connection에 추가했다. Core는 command를 해석하지 않으며 새 connection을 만들지 않는다. C++ Framework는 host 전체 Application byte budget을 RouteMesh와 classic Channel에 공유하고, Application receive 중단 중 기존 Completion connection의 bounded service control을 계속 처리한다. Application listener의 `MaxMessageSize` 기본값은 16 MiB이며 Auto·양수 HWM에서 무제한 listener는 bind 전에 거부한다. Host 전체 completion send permit owner는 RouteMesh와 classic ClientServer request handler 전에 permit을 확보하고 transport reply 제출 뒤 반환한다. Public `framework_runtime_t::status()`와 `observe()`가 byte budget, pending completion send와 65,536 limit을 제공한다. | Framework가 liveness·admission·relocation·reply recovery command만 허용하는 allowlist·size·generation fence를 소유한다. Application payload, Actor·Spot lifecycle callback과 object request는 허용하지 않는다. C++ automatic ClientServer와 fanout raw API는 control과 Application message를 같은 receive FIFO로 노출하므로, message를 제거하거나 무제한으로 미리 받지 않으면서 Application receive만 중단할 수 없다. 이 두 socket 종류에 기존 Completion control과 같은 선택 수신 capability를 추가한 뒤 byte accounting을 연결해야 한다. JVM Framework runtime과 다섯 Framework actual E2E도 남아 있다. | Core와 bindings gate, C++ M6A·contract·Channel·AppHost focused gate가 bindings 11.0.2로 통과했다. Contract gate는 Channel·MeshNode의 16 MiB 기본값과 public runtime exact interface를 검증한다. M6A는 permit saturation과 반환을, AppHost는 production DI status·observation을 검증한다. C++ 증거는 `.artifacts/v11/evidence/BLK-052/cpp-inbound-application-hwm-20260731.md`다. 남은 gate는 automatic ClientServer·fanout selective receive와 accounting, JVM runtime과 다섯 Framework actual E2E다. | 해결 |
 | `BLK-053` | Core 11 raw-only bindings sample cleanup; Java·Kotlin·Node.js·JavaScript bindings | working tree(2026-07-31) | Java·Kotlin과 Node.js·JavaScript bindings sample에서 제거된 Core service API 참조를 제거했다. Actor·Spot·session·timer 시나리오는 Framework sample을 정본으로 유지하고 bindings sample aggregation에는 raw socket 예제만 포함한다. | Core 11에서 service runtime을 Framework로 옮긴 뒤 bindings source tree에 이전 service sample과 helper가 남아 있었다. | bindings sample README에 Framework sample provenance를 기록했다. Java·Node source-layout gate는 제거된 service API 참조가 다시 추가되는 것을 거부한다. | Java aggregate Gradle 76 tests, Java raw sample 7/7, Node raw tests 37/37, TypeScript sample 7/7, JavaScript sample 7/7이 통과했다. 증거는 `.artifacts/v11/evidence/BLK-053/bindings-raw-sample-cleanup-20260731.md`다. | 해결 |
 
 2026-07-28 Node.js Message Follow high review에서 발견한 context 없는 stale packet의 operation identity
@@ -578,3 +578,1690 @@ gate에서 다시 실행한다"는 기록이 그 정황이다.
 규칙이 실제로 강제되는지를 네 언어 모두에서 확인해야 한다.
 
 상태는 `조치 중`이다.
+
+## 2026-07-31 .NET ST-A1 same-node authority commit marker 채널 통일
+
+`SpotActorTransfer` E2E의 `ST-A1`이 `authority_committed` 증거를 받지 못해 실패하던
+원인을 찾아 고쳤다. `feature-map.ko.md`가 "same-node authority commit marker가 없어
+실패했다"로 기록한 자리다.
+
+원인은 같은 사건을 두 경로가 서로 다른 채널로 보고한 것이다. Cross-node handoff는
+`ZLinkFrameworkRuntimeActors`가 `LogActorHandoff`로 `ILogger`에 남기는데, same-node join은
+`ZLinkSpotActivationActors`가 `ZLinkFrameworkDebugLog.SpotDiscovery`로 debug console에
+쓴다. E2E harness의 `ActorHandoffEvidenceLogger`는 `ILogger`를 듣기 때문에 same-node
+marker는 어떤 환경 변수를 켜도 보이지 않았다. 두 경로 모두 location authority를 commit
+하는 같은 사건이므로 same-node 쪽도 `LogActorHandoff`를 쓰도록 맞췄다.
+
+이제 marker가 방출된다. `ST-A1`은 다음 단언으로 넘어갔고 그 자리에서 실제 순서가 처음으로
+관측됐다.
+
+| 기대 | 실제 |
+| --- | --- |
+| `admission → authority_committed → leave → joined → success_reply` | `admission → authority_committed → joined → leave → success_reply` |
+
+`joined`와 `leave`가 뒤바뀐다. 이는 새 결함이 아니라
+`30-implementation-gap.ko.md`가 이미 기록한 네 언어 commit 순서 gap이다. 그 문서는
+location authority가 commit 순서를 소유하도록 바꾸는 것을 고쳐야 할 것으로 정의한다.
+marker가 보이지 않던 동안에는 이 순서를 확인할 방법 자체가 없었으므로, 이번 수정으로
+해당 gap이 실측 가능한 상태가 됐다.
+
+`.NET` 전체 unit **1,376/1,376**이 통과한다.
+
+## 2026-07-31 .NET ST-A1 통과 — 세 결함을 순서대로 걷어냈다
+
+`ST-A1`은 실제 process에서 통과한다. `operation SpotActorTransfer.ST-A1 passed`와
+`spot-actor-transfer e2e result=passed`를 확인했다. 막고 있던 것은 서로 다른 세 결함이
+겹쳐 있던 것이고, 하나를 고칠 때마다 다음 것이 드러났다.
+
+첫째는 runtime의 marker 채널 불일치다. Cross-node handoff는 `LogActorHandoff`로 `ILogger`에
+남기는데 same-node join만 `ZLinkFrameworkDebugLog.SpotDiscovery`로 debug console에 썼다.
+E2E harness는 `ILogger`를 들으므로 same-node marker는 어떤 환경 변수를 켜도 보이지 않았다.
+같은 사건이므로 same-node 쪽도 `LogActorHandoff`를 쓰도록 맞췄다.
+
+둘째는 test가 단언한 순서가 spec과 반대였던 것이다.
+`30-implementation-gap.ko.md`의 "location authority가 commit 순서를 소유한다"는 CAS commit
+뒤 target `OnJoinedActor`를 실행하고 그 다음 source `OnLeaveActor`를 실행하도록 정의한다.
+runtime은 그대로 동작하는데 test는 `leave`가 `joined`보다 앞이라고 단언했다. spec에 맞춰
+`admission → authority_committed → joined → leave → success_reply`로 고쳤다.
+
+셋째는 test의 증거 조회가 필드를 잘못 짚은 것이다. `ActorEvidence`는
+`(Scenario, ActorId, Kind, Value, ...)`인데 transfer marker를 `Kind == "transfer"`와
+`Value == "leave|11"`로 찾고 있었다. 실제로는 `Scenario`가 `transfer`이고 `Kind`가
+`leave`·`joined`다. 두 index가 항상 `-1`이었으므로 이 순서 검사는 순서와 무관하게 통과할
+수 없었다. `admission`도 값이 `spot=...|mode=...|input=...`으로 묶여 있어 등가 비교가 실패했고
+spot 접두사 비교로 바꿨다.
+
+둘째와 셋째는 marker가 보이지 않는 동안에는 드러날 수 없던 결함이다. 첫째를 고쳐야
+비로소 검사가 실행됐다. `.NET` 전체 unit **1,376/1,376**이 통과한다.
+
+## 2026-07-31 .NET SpotActorTransfer 시나리오 실측 sweep
+
+`ST-A1`을 고친 뒤 같은 harness의 다른 시나리오를 실제 process로 돌려 상태를 측정했다.
+`feature-map.ko.md`의 표기와 실제 결과를 나란히 둔다.
+
+| 시나리오 | 문서 표기 | 실측 |
+| --- | --- | --- |
+| `ST-A1` | runtime evidence gap | **통과**. 이번에 결함 셋을 걷어냈다 |
+| `ST-A2` | actual-process 통과 | 통과 |
+| `ST-A3` | actual-process 통과 | 통과 |
+| `ST-B1` | actual-process 핵심 경로 통과 | 통과 |
+| `ST-B3` | 전환 대상 | 실패. adapter 없는 Actor의 Spot에 `ProbeReq` handler가 없어 `HandlerMissing`이다. 문서가 이미 현재 relocation 계약으로 시나리오를 다시 쓰라고 정한 항목이다 |
+| `ST-C3` | 구현 | 실패. transfer-out 실패가 accepted를 반환하지 않아야 하는데 반환한다 |
+| `ST-D1` | 구현 | 실패. 기대한 evidence marker가 관측되지 않는다 |
+| `ST-D2` | 구현 | 실패. 기대한 evidence marker가 관측되지 않는다 |
+
+`구현`으로 표기된 셋이 실제로는 실패한다. `ST-A1`에서 본 것처럼 표기가 코드 작성 여부를
+뜻하고 실행 결과를 뜻하지 않는 경우가 있으므로, 남은 셋도 각각 runtime 결함인지 시나리오
+단언 결함인지 따로 판정해야 한다. `ST-C3`은 반환값 자체가 계약과 다르므로 runtime 쪽일
+가능성이 높고, `ST-D1`과 `ST-D2`는 marker 부재이므로 `ST-A1`과 같은 채널·필드 문제일 수
+있다.
+
+이 sweep 자체가 `BLK-030`이 지적한 "통과 숫자가 실제 커버리지를 나타내지 않는다"의 사례다.
+문서 표기만 보면 여덟 중 여섯이 진행된 것처럼 보이지만 실제로 통과하는 것은 넷이다.
+
+## 2026-07-31 ST-D1 remote join 증거 부재 국소화
+
+`ST-D1`은 local 부분과 remote 부분으로 나뉘고 local 쪽은 통과한다. 실패는 remote 쪽이다.
+
+같은 actor에 대해 `commit_request`는 `actor-a`에 남는데 `admission`이 어디에도 남지 않는다.
+target node인 `actor-b`의 evidence log에는 `ST-D1` 항목이 **0건**이다. local 부분은 같은
+node에서 `commit_request`와 `admission`이 모두 남으므로, 빠지는 것은 remote 경로의
+admission 하나다.
+
+`actor-a`의 `/actors/{id}/join` HTTP 요청은 200으로 끝난다. 즉 caller 쪽은 성공으로
+보고받는데 target node는 admission을 실행한 흔적이 없다. `admission` 증거는 spot을 소유한
+node의 `ActorRuntime`이 남기므로, remote spot이 target node에 만들어지지 않았거나 admission
+callback이 그 node에서 실행되지 않은 것이다.
+
+`ST-A1`에서 본 marker 채널 문제와는 다르다. 그때는 runtime이 다른 채널로 쓰고 있었지만
+여기서는 target node의 로그 전체에 해당 시나리오 흔적이 없다. 따라서 관측 경로가 아니라
+remote join 자체를 봐야 한다. `ST-D2`도 marker 부재이므로 같은 원인일 수 있다.
+
+## 2026-07-31 ST-D1 remote deferred join이 NotFound로 끝난다
+
+앞 항목의 국소화를 한 단계 더 좁혔다. target node에 admission이 없는 이유는 join이 그
+node에 닿기 전에 source node에서 끝나기 때문이다.
+
+`actor-a`의 evidence 순서는 `create` → `commit_request` → `join_failed|NotFound`다.
+`commit_request`가 남았으므로 handler는 정상 실행되고 반환했다. 그 다음에 실패한다.
+handler는 `actor.Context.JoinSpot(targetSpotId, request).Timeout(10s).Defer()`로 join을
+turn 뒤로 미루므로, 실패한 것은 handler가 아니라 그 뒤에 실행되는 deferred join이다.
+
+target spot은 존재한다. `actor-b`의 evidence에
+`create_spot|spot-location-remote-...|spot_created|delay-joined|actor-b`가 남아 있다.
+그런데 `actor-a`의 deferred join은 그 spot을 `NotFound`로 판정한다. 즉 source node가
+remote spot을 해석하지 못한다.
+
+같은 harness의 `ST-B1`은 통과하고 그쪽도 `Defer()`를 쓴다. 따라서 deferred join 자체나
+remote 자체가 깨진 것은 아니다. `ST-D1`의 remote 경로는 spot을 `delay-joined` mode로
+target node에 만든 직후 source node에서 join을 건다. spot의 Location Store row가 source
+node에 아직 보이지 않는 시점에 deferred join이 해석을 시도하는 가시성 문제일 수 있다.
+`ST-D2`도 marker 부재이므로 같은 원인인지 함께 확인해야 한다.
+
+다음 확인 순서는 이렇다. deferred join이 spot을 해석할 때 Location Store를 다시 읽는지,
+읽는다면 그 시점이 target node의 spot 등록 publish보다 앞설 수 있는지, 앞설 수 있다면
+`NotFound`를 종료로 볼지 재시도로 볼지가 계약 판단이다.
+
+## 2026-07-31 ST-D1은 오래된 실패다
+
+이번 변경이 만든 회귀가 아닌지 확인했다. 아니다.
+
+같은 harness의 2026-07-10 실행 로그(`logs/20260710-074046-1007263`)도 `ST-D1`에서
+실패한다. 그때는 **local 부분**에서 이미 멈췄다. `actor-a`의 `ST-D1` evidence가 한 건뿐이고
+`actor-location-local-...`의 marker를 기다리다 끝났다. 오늘 실행은 local 부분이 일곱 건을
+모두 남기고 통과한 뒤 remote 부분에서 멈춘다.
+
+즉 `ST-D1`은 최소 3주 전부터 실패해 왔고, 오늘은 그때보다 더 진행한 지점에서 멈춘다.
+`feature-map.ko.md`가 이 시나리오를 `구현`으로 표기한 것은 코드 작성 여부를 뜻하지
+실행 결과를 뜻하지 않는다. 이번에 처음으로 실패 지점을 remote deferred join의 spot 해석
+`NotFound`까지 좁혔다.
+
+spec은 `NotFound`를 "요청한 User Spot을 찾을 수 없다"는 종료 오류로 정의한다
+(`15-spot-actor.ko.md` §Failed.Kind 표). target node는 공개 API
+`GetOrCreate(...).InMesh(...)`로 spot을 만들었고 `spot_created` 증거도 남겼으므로 spot은
+존재한다. 존재하는 spot을 찾지 못하는 것이므로 계약대로 동작한 결과가 아니라 결함이다.
+
+## 2026-07-31 ST-D1 시나리오의 spec 부합성 확인
+
+고치기 전에 시나리오 자체가 계약에 맞는지 확인했다. 맞다. 따라서 결함은 runtime 쪽이다.
+
+`ST-D1` remote는 target node에서 Spot을 만들고 그 다음 source node에서 join을 건다.
+`21-location-runtime.ko.md` §생성 계약은 `GetOrCreate`가 `Ready` record에 대해 기존 ref를
+돌려주고, 생성 결과로 `Ready`와 수용 공간과 최종 결과를 한 번에 기록한다고 정의한다. 즉
+생성 call이 성공으로 반환한 시점에 Location Store record는 `Ready`다. 만든 직후 다른
+node에서 조회하는 순서는 계약이 허용하는 순서이며 시나리오가 별도로 기다릴 의무는 없다.
+
+Spot이 실제로 target node에 놓인 것도 확인했다. `spot_created` 증거는 Spot이 배치된
+node의 생성 handler가 남기며 `actor-b`에 있다.
+
+실패 지점은 `ZLinkActorRemoteJoiner.ResolveRemoteActorJoinTargetAsync`다.
+`ZLinkLocationAddressResolvers.ResolveSpotHandleAsync`가 `null`을 돌려주면
+`SPOT '{spotId}' has no live location row.`로 `NotFound`를 던진다. `Ready`로 기록된 Spot을
+live location row 없음으로 판정하는 것이므로 계약대로 동작한 결과가 아니다.
+
+`ST-B1`이 통과하는 이유도 함께 봤다. 그쪽은 Spot을 만든 뒤 세 node에 걸친
+`ResetRelocationBlobMeasurementsAsync`를 실행하고 join한다. 그 사이 시간이 우연히 가림막이
+되는 형태다. `ST-B1`은 Spot 배치를 명시적으로 단언하기까지 하므로, 두 시나리오의 차이는
+계약이 아니라 생성과 join 사이의 간격뿐이다. 따라서 resolver가 방금 `Ready`가 된 row를
+보지 못하는 조건을 봐야 한다.
+
+## 2026-07-31 ST-D1 NotFound의 발생 지점
+
+`NotFound`가 나오는 자리를 코드까지 좁혔다. Store에 record가 없어서가 아니라 owner
+liveness 판정에서 걸러진다.
+
+`ZLinkStoreLocationResolvers.ResolveSpotRowAsync`는 Spot authority를 읽은 뒤
+`_liveRows.ResolveWithPresenceAsync(raw, row => row.OwnerId, ...)`로 owner lease가 살아
+있는지 확인한다. 이 판정에서 `row`가 `null`이 되면 route를 무효화하고 `null`을 반환하며,
+호출자인 `ZLinkLocationAddressResolvers.ResolveSpotHandleAsync`가 그대로 `null`을 돌려주고,
+`ZLinkActorRemoteJoiner.ResolveRemoteActorJoinTargetAsync`가
+`SPOT '{spotId}' has no live location row.`로 `NotFound`를 던진다.
+
+주석이 밝히는 의도는 record가 없는 경우와 owner lease가 만료된 경우를 같게 다루는
+것이다. `ST-D1`에서는 Spot을 만든 직후이므로 lease 만료는 아니다. 따라서 source node가
+target node의 owner lease를 아직 관측하지 못한 상태에서 판정이 이뤄지는 쪽이다.
+
+`ST-B1`이 통과하는 것과도 맞는다. 그쪽은 Spot 생성과 join 사이에 세 node에 걸친 별도
+호출이 있어 그 사이에 관측이 갱신된다.
+
+다음 확인 지점은 셋이다. `ResolveWithPresenceAsync`가 owner liveness를 어디서 읽는지,
+그 값이 peer node의 lease 게시보다 늦게 갱신될 수 있는지, 그리고 방금 `Ready`가 된 row에
+대해 관측이 없을 때 `null`로 끝내는 것이 계약에 맞는지다. 마지막 항목은 판단이 필요하다.
+`21-location-runtime.ko.md`는 생성 call이 성공하면 record가 `Ready`라고 정의하므로,
+`Ready`인데 조회가 실패하는 상태가 계약상 허용되는지부터 정해야 한다.
+
+## 2026-07-31 ST-D1 NotFound의 메커니즘 — owner lease 음성 캐시
+
+`IsOwnerLiveAsync`가 어떻게 판정하는지까지 따라갔다.
+
+`ZLinkOwnerLeaseTracker.GetSnapshotAsync`는 owner lease 읽기 결과를
+`_options.PollingInterval` 동안 캐시한다. 기본값은 1초다. 중요한 것은 **`Missing` 결과도
+같은 캐시에 들어간다**는 점이다.
+
+```
+ZLinkOwnerLeaseReadResult.Missing => new Snapshot(null, MinValue, MinValue, fetchedAt)
+```
+
+`IsOwnerLiveAsync`는 `snapshot.Token is not null && IsUnexpired(snapshot)`이므로 캐시된
+`Missing`은 그 1초 동안 계속 "owner가 살아 있지 않다"로 답한다. 그 사이에 들어온 Spot
+조회는 record가 `Ready`여도 live row 없음으로 걸러진다.
+
+여기에 두 번째 조건이 겹친다. spec은 `NotFound`를 `Failed`의 종료 kind로 정의하므로
+deferred join은 재시도하지 않는다. 즉 **1초짜리 음성 캐시 한 번이 종료 실패로 굳는다.**
+join call의 `Timeout(10s)`도 소용이 없다. 10초 안에 다시 시도하는 경로가 아니라 첫 판정이
+그대로 결과가 되기 때문이다.
+
+`ST-B1`이 통과하고 `ST-D1`이 실패하는 차이도 이것으로 설명된다. `ST-B1`은 Spot 생성과
+join 사이에 세 node에 걸친 호출이 있어 그 사이 캐시가 만료되거나 성공 읽기로 덮인다.
+
+판단이 필요한 지점은 하나다. 생성 call이 성공해 record가 `Ready`인데 owner lease 관측이
+아직 없을 때, 이것을 종료 `NotFound`로 볼지 아니면 한 번 더 읽고 판정할지다. 후자라면
+음성 결과를 캐시하지 않거나, live row 판정이 실패했을 때 owner lease를 강제로 다시 읽는
+경로가 필요하다. 전자라면 spec이 "생성 성공 뒤에도 다른 node에서 잠시 조회되지 않을 수
+있다"를 명시해야 하고, 그 경우 시나리오가 기다려야 한다.
+
+## 2026-07-31 ST-D1 음성 캐시 가설은 반증됐다
+
+앞 항목의 가설을 실제로 고쳐서 확인했다. 원인이 아니다.
+
+`ZLinkOwnerLeaseTracker`가 종료 판정에 캐시된 음성 결과를 쓰지 않도록 바꿨다.
+`IsOwnerLiveAsync`와 `IsOwnerTokenLiveAsync`는 캐시가 "lease 없음"이라고 답하면 store를
+한 번 더 읽어 확인한 뒤에만 그 답을 확정한다. 양성 결과는 그대로 캐시를 쓰므로 store
+부하는 늘지 않는다. 이 변경 자체는 유지한다. 캐시된 음성으로 재시도 없는 종료 실패를
+만들지 않는 것은 그 자체로 옳다.
+
+그런데 `ST-D1`은 여전히 같은 자리에서 `join_failed|NotFound`다. 따라서 owner lease 관측
+지연이 방아쇠가 아니다.
+
+다음 후보는 한 단계 앞이다. `ZLinkStoreLocationResolvers.ProjectSpot`은 authority record가
+있어도 다음을 모두 만족해야 row를 만든다.
+
+- payload가 User Spot으로 decode된다
+- `State == Ready`
+- `user.OwnerId == snapshot.OwnerId`
+- `snapshot.OwnerLeaseGeneration > 0`
+- `user.OwnerLeaseGeneration == snapshot.OwnerLeaseGeneration`
+
+하나라도 어긋나면 owner liveness까지 가기 전에 `null`이 되고 결과는 같은 `NotFound`다.
+`Ready` 여부만이 아니라 payload와 snapshot의 owner·lease generation이 일치하는지를 봐야
+한다. 다음 확인은 실패 시점의 Redis authority record를 직접 읽어 이 다섯 조건 중 어느
+것이 어긋나는지 특정하는 것이다.
+
+`.NET` 전체 unit **1,376/1,376**이 통과하므로 이번 변경에 회귀는 없다.
+
+## 2026-07-31 ST-D1 실패 시점의 Spot authority record
+
+실행 중 Redis에서 해당 Spot의 authority meta를 직접 읽었다. Redis provider는 논리 키를
+`opaque:map` hash로 opaque 키에 매핑하고, 각 opaque 키는 version별 zset이다. 최신 version을
+읽은 결과는 다음과 같다.
+
+```json
+{
+  "objectGeneration": 1,
+  "authorityOwnerGeneration": 25,
+  "ownerId": "8120f5d4c134478b99e8f942b151e2a5",
+  "ownerLeaseGeneration": 2,
+  "allocation": {
+    "state": 2,
+    "objectKind": 2,
+    "stableType": "transfer-user-spot",
+    "descriptor": { "meshName": "spot-actor-transfer", "rid": "actor-b-558d8beb-..." }
+  }
+}
+```
+
+확인된 사실은 셋이다. record가 존재한다. owner는 `actor-b`다. descriptor rid를 hex에서
+풀면 `actor-b-...`다. `ownerLeaseGeneration`이 `2`이므로 `ProjectSpot`의
+`snapshot.OwnerLeaseGeneration > 0` 조건은 만족한다.
+
+따라서 남은 후보는 payload 쪽 세 조건이다. `user.State == Ready`,
+`user.OwnerId == snapshot.OwnerId`, `user.OwnerLeaseGeneration == 2` 중 하나가 어긋난다.
+payload는 별도 키에 binary로 저장되므로 다음 확인은 그 payload를
+`ZLinkUserSpotAuthorityPayloadCodec`로 decode해 세 값을 직접 비교하는 것이다.
+
+수집 방법도 남긴다. harness는 종료 시 Redis 컨테이너를 지우므로 실행 중에 읽어야 한다.
+`redis_started name=`에서 컨테이너 이름을 얻고, `*opaque:map` hash의 `hkeys`에서
+`authority:meta`와 Spot id로 논리 키를 찾은 뒤 `hget`으로 opaque 키를 얻어 `zrange -1 -1`로
+최신 version을 읽는다. 40시간까지 살아 있는 고아 컨테이너가 있으므로 이름은 반드시 그
+실행의 로그에서 얻어야 한다.
+
+## 2026-07-31 ST-D1 근본원인 좁히기 — 응답 경로가 원인이다
+
+진단을 코드에 심어 실행하며 좁혔다. 결론부터 쓰면 **조회는 전부 성공하고, actor
+핸들러도 성공적으로 완료하는데, 그 응답이 호출자에게 돌아가지 못한다.**
+
+먼저 앞선 두 가설이 증거로 반증됐다.
+
+`ProjectSpot`의 다섯 조건이 어긋난다는 가설은 틀렸다. 진단이 찍은 값은
+`state=Ready payload_owner=09dcbfd8... snapshot_owner=09dcbfd8... payload_lease=2
+snapshot_lease=2`로 **다섯 조건이 전부 통과**한다. owner lease 생존 게이트가 row를
+버린다는 가설도 틀렸다. `live_row_rejected` 추적이 한 건도 찍히지 않았다.
+`resolve_spot_row`는 store에서 1회 성공했고 `project_spot_no_authority`도 없다.
+
+또한 실패 지점을 `ResolveRemoteActorJoinTargetAsync`로 본 것도 틀렸다. 그 함수의
+`"has no live location row"` 메시지는 로그에 아예 나타나지 않는다.
+
+실제 경로는 이렇다. `ActorNodeEndpoints`의 `/actors/{actorId}/join`이
+`actorClient.RequestToActor(...)`를 호출하고, 이것이 `ZLinkFrameworkException`
+`NotFound`를 던져 `join_failed` 증거가 남는다. 그런데 actor-a의 flow 추적을 보면 그
+요청은 `phase=received`와 `phase=replied`가 모두 찍힌다. 그리고 핸들러
+(`ActorRuntime.ExecuteAsync`)는 `commit_request` 증거를 남긴 직후
+`new JoinTargetRes(..., true, ...)`를 반환한다. `commit_request`는 성공 반환 직전의
+마지막 줄이므로, **핸들러는 끝까지 성공했다.**
+
+따라서 결함은 응답 전달 경로에 있다. actor가 원격 spot으로 이동하는 중이라 응답이
+요청자에게 라우팅되지 못하고, 프레임워크가 이를 `NotFound`로 요청자에게 올린다.
+in-flight 요청의 응답이 actor 재배치를 견디게 하는 장치가 message follow인데,
+`ZLinkActorMessageFollower`의 추적(`actor_follow_*`, `message_follow_registered`)이
+**한 건도 찍히지 않았다.** follow가 등록되지 않는 것이 다음 확인 지점이다.
+
+시나리오 자체는 스펙에 부합한다. `delay-joined` 게이트로 커밋이
+`OnJoinedActorAsync` 완료 후에만 일어나는지를 검증하며, 게이트 해제 전 source ref가
+actor-a에 남아 있는지까지 확인한다. 결함은 런타임 쪽이다.
+
+## 2026-07-31 ST-D1 근본원인 확정 — target 적격성 판정에서 실패한다
+
+삼켜지던 예외를 드러내 실패 지점을 끝까지 따라갔다. 전체 사슬은 다음과 같다.
+
+```
+ZLinkDeferredActorJoin.RunAsync
+  └ ZLinkActorRemoteJoiner.SubmitRoutedJoinActorTransactionAsync
+      └ DecodeAdmissionReplyAndDispose  ← NodeB가 Error envelope로 응답
+          └ "Actor '...' target became unavailable." (NotFound)
+```
+
+NodeB 쪽에서 그 Error를 만드는 곳은 `ZLinkFrameworkRuntimeActors`의 admission 처리이며,
+`authorityStore.ReserveRelocationCapacityAsync`가
+`ZLinkRelocationCapacityReserveResult.TargetUnavailable`을 반환한 경우다.
+
+Redis provider(`ZLinkProviderLocationRepository.Authority`)에서 그 결과가 나오는 조건은
+하나뿐이다. `ReadEligibleTargetAsync(TargetDescriptor, TargetNodeLifecycleGeneration,
+TargetOwner, ObjectKind, StableType)`가 `null`을 반환하는 경우다. 용량 부족은
+`PlacementCapacityExhausted`로 따로 분기하므로 용량 문제가 아니고, **target이 적격
+대상으로 조회되지 않는 것**이 원인이다.
+
+증거가 이 결론과 맞는다. actor-b의 evidence에는 `spot_created`만 있고 `admission`이
+없다. 즉 앱 핸들러까지 가기 전에 런타임이 거부한다. 반면 spot 조회 자체는 성공하며
+(`resolve_spot_row source=store` 1회 성공, `project_user_spot` 다섯 조건 통과), 앞서
+읽은 authority meta도 `state=Ready`에 owner/lease가 일치했다.
+
+다음 확인은 `ReadEligibleTargetAsync`의 인자 다섯 중 무엇이 어긋나는지다. 후보는
+`TargetNodeLifecycleGeneration`과 `TargetOwner`이며, 앞서 읽은 record의
+`descriptorLifecycleGeneration`과 대조하면 판별된다.
+
+### 조사 과정에서 드러난 관측성 결함
+
+`ZLinkActorJoinCompletion.Failed`는 `(OperationId, Kind, IsRetriable)`만 담고 원인
+예외를 버린다. `ZLinkDeferredActorJoin`의 `catch (Exception exception)`이 예외를
+`MapFailure`로 kind만 뽑고 그대로 삼키므로, 같은 kind로 매핑되는 수십 개 throw 지점이
+바깥에서 완전히 동일해 보인다. 이번 조사가 오래 걸린 직접적 원인이다. 그 지점에
+원인 예외를 남기는 추적을 넣었고, 추적 비용이 꺼진 상태에서 0이므로 상시 유지한다.
+e2e의 join 실패 catch도 kind만 기록하고 메시지·스택을 버려 같은 문제가 있었다.
+
+## 2026-07-31 ST-D1 실패 조건 확정 — target node의 placement weight가 0이다
+
+`ReadEligibleTargetAsync`의 아홉 조건 중 어느 것이 어긋나는지 진단으로 찍었다.
+실패 직전 actor-b의 마지막 검사가 정확히 이것이다.
+
+```
+eligible_target_check owner_live=True lifecycle=2994233909027177458/2994233909027177458
+  owner=69d2d79e.../69d2d79e... lease=2/2 role=Server state=Serving
+  weight=0 kind=Actor stable_type=transfer-stateful
+```
+
+`weight=0`이므로 `descriptor.PlacementWeight <= 0` 조건에 걸려 `null`이 반환되고,
+`TargetUnavailable` → `NotFound`로 이어진다. 실행 전체에서 `weight=0`인 Actor 검사는
+**이 한 건뿐**이고 나머지는 전부 `weight=100`이므로, 이 검사가 실패한 그 검사다.
+
+weight가 0인 이유는 시나리오 하네스에 있다. `WithPlacementNodeAsync`는 생성 대상
+node만 100으로 두고 나머지를 0으로 내려 배치를 고정한 뒤 `finally`에서 전부 100으로
+되돌린다. ST-D1 remote는 `CreateSpotAsync(NodeB)` 다음에
+`CreateActorAsync(NodeA)`를 부르므로 두 번째 단계에서 **NodeB가 0으로 내려간다.**
+확정된 사실은 하나다. **join 시점의 store 조회가 weight 0을 봤다.** 복원은 동기 HTTP
+호출이고 응답값까지 단언하므로 node의 in-memory 값은 100이다. 둘 사이의 간극을
+설명하는 후보는 store descriptor 발행이 비동기라는 것이고,
+`ZLinkAutoConnectReconciler._pendingPlacementWeight`가 그 발행 경로를 시사한다.
+다만 이는 아직 가설이며 측정하지 않았다.
+
+### 판단이 필요한 지점
+
+스펙은 placement weight를 일관되게 **후보 중 target을 고르는** 수단으로 서술한다.
+"Serving 상태와 capacity를 확인한 뒤 node-wide placement weight로 target 하나를
+선택한다", "placement weight를 적용해 target을 결정한다"가 그 예다. ST-D1의 join은
+target spot을 명시 지정하므로 선택이 일어나지 않는다.
+
+코드에도 이 구분이 이미 있다. `ReadEligibleTargetAsync`는
+`requireNewPlacementEligibility` 인자를 가지며 `CommitAsync`와 `CompleteCommitAsync`는
+`false`를 넘긴다. 반면 relocation capacity 예약 경로는 기본값 `true`를 쓴다.
+
+따라서 후보는 둘이다. 하나는 placement weight 변경이 store에 반영된 뒤 반환되게
+하는 것이고, 다른 하나는 명시 지정된 target의 relocation 예약에 new-placement
+적격성을 요구하지 않는 것이다. 스펙 근거는 후자를 지지하지만, 전자도 선택 경로의
+정합성 문제로 따로 남아 있다. 어느 쪽을 고치든 다른 시나리오(배치 고정을 쓰는
+ST 계열 전반)에 영향이 있으므로 확정 전에 영향 범위를 봐야 한다.
+
+## 2026-07-31 ST-D1 수정 1차 — 명시 지정 target에 new-placement 적격성을 요구하지 않는다
+
+### 측정으로 확인한 것
+
+진단에 `rid`를 추가해 거부된 descriptor가 어느 노드인지 **추론이 아니라 측정**으로
+확인했다. `rid=actor-b-...`로 target node가 맞았다.
+
+`weight=0` 게이트를 없애도 되는지는 graceful drain이 그 값을 쓰는지에 달려 있었다.
+확인 결과 **drain은 placement weight를 0으로 두지 않는다.** 코드의 모든 사용처가
+후보 필터링(`OrderByDescending`, 선택 헬퍼의 `PlacementWeight > 0`)이고,
+`28-graceful-drain-handoff` 스펙에는 placement weight 언급이 아예 없다. 따라서 이
+게이트를 예약 경로에서 제거해도 drain 계약은 깨지지 않는다.
+
+### 수정
+
+`ZLinkProviderLocationRepository.Authority`의 relocation capacity 예약이
+`ReadEligibleTargetAsync`에 `requireNewPlacementEligibility: false`를 넘기게 했다.
+호출자가 target을 명시 지정했으므로 선택이 일어나지 않고, 선택을 지배하는
+new-placement 규칙도 적용되지 않는다. capacity와 liveness는 아래 검사들이 그대로
+막는다. 같은 파일의 `CommitAsync`와 `CompleteCommitAsync`가 이미 `false`를 넘기고
+있었으므로 이 구분은 원래 설계에 있던 것이다.
+
+### 결과
+
+ST-D1 remote가 admission 단계까지 전진했다. 수정 전 actor-b의 evidence에는
+`spot_created`뿐이었고 admission 자체가 일어나지 않았다. 수정 후에는
+`admission|spot=...|mode=delay-joined|input=actor-id-only`가 기록된다. 즉
+`TargetUnavailable`은 실제로 잘못된 거부였다.
+
+### 남은 다음 층
+
+시나리오는 아직 통과하지 않는다. `joined_wait`가 관측되지 않고 source가
+`reject_reply`를 기록한다. 그런데 앱의 admission 핸들러는 `mode=delay-joined`이고
+`ExpectedMode`도 reject가 아니므로 `ZLinkSpotActorJoinResult.Accept`를 반환한다.
+앱이 Accept를 반환했는데 source가 Rejected 완료로 분류하는 것이며, admission과
+`OnJoinedActorAsync` 사이에서 흐름이 끊긴다. 이것이 다음 조사 대상이다.
+
+수정이 다른 시나리오를 깨뜨리지 않는지 전체 ST 스위트를 돌려 확인 중이다.
+
+### 회귀 검증 결과
+
+수정 적용 후 시나리오별 실행 결과는 다음과 같다.
+
+| 시나리오 | 결과 | 판정 |
+|---|---|---|
+| ST-A1, ST-A2, ST-A3, ST-B1 | 통과 | 정상 |
+| ST-F4, ST-F5 (message follow) | 통과 | 정상 |
+| ST-B3 | 실패 | 기존 실패("전환 대상"), `ProbeAsync` HTTP 500 |
+| ST-C1, ST-I4 | 실패 | **기존 실패** |
+
+ST-C1과 ST-I4는 수정을 되돌린 상태에서도 동일하게 실패하는 것을 직접 확인했다.
+따라서 이 수정으로 인한 회귀는 없다. relocation과 message follow의 핵심 경로
+(ST-A 계열, ST-B1, ST-F4, ST-F5)는 모두 통과한다.
+
+`Zlink.Framework.sln` 테스트에서 `SampleRegressionTests` 134건이 통과한다.
+이전에 이 프로젝트는 필터된 게이트에서 실행되지 않아 실패가 가려져 있었다.
+
+## 2026-07-31 ST-D1 2차 층 — admission은 수락되고 join reply가 거부된다
+
+1차 수정 후 실패가 이동한 지점을 진단으로 특정했다.
+
+```
+admission_decision actor=... spot=... accepted=True user_spot=True entry_spot=False
+source_rejected site=join_reply actor=... spot=... target_rid=actor-b-...
+```
+
+target의 admission 결정은 **수락**이다(`accepted=True`). 앱 핸들러가 도달해
+`ZLinkSpotActorJoinResult.Accept`를 반환한 것과 일치한다. 그 다음 단계인 join 요청의
+응답에서 `reply.Accepted`가 false가 되어 `ZLinkActorRemoteJoiner`가
+`ZLinkActorJoinResult.Rejected`를 만든다. 이것이 source의 `reject_reply` 증거다.
+
+actor-b의 evidence는 `admission`에서 멈추고 `joined_wait`가 없다. 즉 target이
+`OnJoinedActorAsync`를 부르기 전에 join 요청을 거부한다. delay-joined 게이트는 그
+콜백 안에 있으므로 시나리오가 기다리는 `joined_wait`는 나올 수 없다.
+
+정리하면 사슬은 이렇다. admission 수락 → join 요청 → target이
+`OnJoinedActorAsync` 이전에 거부 → source가 Rejected로 완료. 다음 조사는 target의
+join 요청 처리에서 `OnJoinedActorAsync` 이전에 거부를 만드는 조건이다.
+
+## 2026-07-31 ST-D1 2차 층 원인 — handoff commit의 compare-exchange 충돌
+
+삼켜지던 예외를 또 드러내 원인을 찾았다. target의 join 요청 처리
+(`JoinRoutedActorAsync`)가 authority commit에서 예외를 받아 `catch`에서
+`CreateRejectedHandoffReply`로 바꾼다. 그 예외는 이것이다.
+
+```
+ZLinkFrameworkException: Actor '...' authority changed during handoff commit.
+  at ZLinkActorOwnershipCoordinator.CommitTransferredActorAuthorityAsync (line 630)
+  at ZLinkFrameworkRuntime.PublishTransferredActorAuthorityAsync
+  at ZLinkFrameworkRuntime.JoinRoutedActorAsync (line 580)
+```
+
+발생 조건은 `ZLinkAuthorityCompareExchangeResult.Conflict`가 나오고
+`TryResolveCommittedAuthority`가 현재 record를 이 handoff의 결과로 해석하지 못한
+경우다. 즉 actor authority record에 대한 optimistic concurrency 충돌이다.
+
+이것이 `OnJoinedActorAsync` 이전에 거부가 나오는 이유를 설명한다. commit이 콜백보다
+먼저이고, commit이 실패하면 콜백은 아예 호출되지 않는다.
+
+### 주목할 점
+
+이 예외는 `ZLinkFrameworkErrorKind.Unavailable`에 `ZLinkRetryAdvice.RetryAfterBackoff`를
+달고 있다. 즉 재시도 가능한 일시적 충돌로 **분류되어 있다**. (뒤의 3차 층 절에서
+측정한 결과 실제로는 일시적 충돌이 아니었다. 분류 자체가 실상과 맞지 않는다.) 그런데 `catch`는 이를
+재시도하지도, 재시도 가능성을 응답에 싣지도 않고 영구적인 Rejected 응답으로 바꾼다.
+source는 그 응답을 받아 `ZLinkActorJoinResult.Rejected`를 만들고 시나리오는
+`reject_reply`로 끝난다. 일시적 충돌이 영구 거부로 격하되는 셈이며, 이것이
+다음 판단 지점이다.
+
+충돌 자체의 원인(무엇이 record를 동시에 바꾸는지)은 아직 측정하지 않았다. 다음
+확인은 conflict의 current snapshot과 기대값을 나란히 찍어 어느 축이 어긋나는지
+보는 것이다.
+
+## 2026-07-31 ST-D1 3차 층 — CAS 충돌은 동시 변경이 아니다
+
+충돌 시점의 기대값과 현재값을 나란히 찍었다.
+
+```
+handoff_cas_conflict actor=...
+  expected_version=9e1b217281fb4f31ac32189fbd81d513
+  expected_target_gen=35
+  current=Found current_detail=owner=dc4d1394... lease=1 object_gen=1
+                  authority_gen=34 version=9e1b217281fb4f31ac32189fbd81d513
+```
+
+**store version이 기대값과 완전히 같다.** 즉 record는 읽은 뒤로 바뀌지 않았고,
+이것은 optimistic concurrency 충돌이 아니다. 앞 절에서 이 실패를 "재시도 가능한
+일시적 충돌"로 적었는데, 그 해석은 틀렸다. 재시도해도 같은 결과가 나온다.
+
+어긋나는 축은 authority owner generation이다. 예약 단계가 target generation을 35로
+계산했는데 record의 현재 generation은 34다. 즉 **capacity 예약이 record가 도달하지
+않은 generation을 기대값으로 잡았다.** `ZLinkAuthorityGenerationTransition.NewOwner`가
+34에서 35를 만들어야 하는데 CAS는 version이 일치하는데도 Conflict를 반환한다.
+
+이 결함은 1차 층 수정으로 비로소 도달 가능해진 지점에 있다. 1차 수정 전에는 admission
+자체가 일어나지 않아 이 경로가 실행되지 않았다.
+
+다음 확인은 예약 단계에서 `expectedTargetAuthorityOwnerGeneration`이 어떻게
+계산되는지와, provider의 CAS가 version 일치에도 Conflict를 반환하는 조건이다.
+후자는 `ReserveRelocationCapacityAsync`가 읽은 counter와 commit 시점의 record
+generation이 서로 다른 원천에서 온다는 뜻일 수 있다.
+
+## 2026-07-31 ST-D1 해결 — 런타임 결함 2건 + 시나리오 스펙 위반 2건
+
+ST-D1이 통과한다(`operation SpotActorTransfer.ST-D1 passed`). 원인은 네 겹이었다.
+
+### 런타임 결함 (2건, 같은 뿌리)
+
+명시 지정된 target의 relocation에 **선택(selection) 규칙인 new-placement 적격성을
+적용**하던 것이 두 곳에 있었다. `ReadEligibleTargetAsync`의
+`requireNewPlacementEligibility`는 `descriptor.PlacementWeight <= 0`이면 target을
+탈락시키는데, placement weight는 후보 중 하나를 고를 때 쓰는 값이다. 호출자가 target을
+직접 지정한 relocation에는 선택이 없다.
+
+첫째, `ReserveRelocationCapacityAsync`의 예약 경로. 여기서 걸리면 `TargetUnavailable` →
+`NotFound`가 되어 admission 자체가 일어나지 않았다.
+
+둘째, `IsEligibleTargetAsync`(commit 경로에서만 쓰인다). 이미 예약까지 끝난 relocation을
+commit할 때 적격성을 다시 확인하며, 여기서 걸리면 CAS가 Conflict를 반환하고
+"authority changed during handoff commit"으로 포장되어 영구 거부가 됐다. 이 helper는
+호출자가 하나뿐이고 그 호출자가 commit 경로이므로 helper 자체를 고쳤다.
+
+두 곳 모두 `requireNewPlacementEligibility: false`로 바꿨다. 같은 파일의
+`CommitAsync`와 `CompleteCommitAsync`가 이미 `false`를 넘기고 있었으므로 이 구분은
+원래 설계에 있던 것이고, 이 둘이 누락돼 있었다.
+
+drain 계약을 깨뜨리지 않는다는 것은 미리 확인했다. drain은 placement weight를 0으로
+두지 않으며, `28-graceful-drain-handoff`에 그 값에 대한 언급이 없다.
+
+### 시나리오의 스펙 위반 (2건)
+
+런타임을 고치고 나니 시나리오 자체가 스펙과 어긋나 있었다. 둘 다
+`15-spot-actor.ko.md`가 명시적으로 규정하는 사항이다.
+
+하나. remote 절반이 `joined_wait` 시점에 source ref가 아직 `actor-a`여야 한다고
+단언했다. 스펙은 "Application이 요청한 User Spot join은 target admission callback,
+**commit 뒤 target joined**와 source leave notification을 사용한다"고 규정한다. commit이
+joined보다 먼저이므로 그 시점의 ref는 정당하게 target을 가리킨다. 단언을 스펙 순서에
+맞춰 뒤집었다.
+
+둘. `success_reply`를 NodeA에서 기다렸다. 스펙은 "`Accepted`는 **target Actor**,
+`Rejected`와 commit 전 `Failed`는 source Actor가 받는다"고 규정한다. source는 leave
+notification을 받고 Accepted completion은 target의 것이므로 NodeB로 옮겼다.
+
+이전 기록에서 "시나리오는 스펙에 부합한다"고 적었던 것은 **틀렸다.** 게이트 구조만
+보고 판단했고 순서·수신자 조항을 확인하지 않았다. 런타임 결함을 걷어내고 나서야
+드러났다.
+
+## 2026-07-31 ST-C3 — 1/4 해결, 나머지는 스펙 해석 판단이 필요하다
+
+### 해결한 부분
+
+네 하위 케이스 모두 `!response.Accepted`를 단언하고 있었다. `.Defer()` 뒤 handler가
+돌려주는 값은 join을 시작했다는 응답이지 join 결과가 아니다. 스펙은 "Join 결과는
+0이 아닌 128-bit `OperationId`와 함께 Actor completion callback으로 전달한다"고
+규정한다. 네 단언을 제거했고, 각 케이스가 이미 갖고 있던 completion evidence 단언이
+실제 판정을 담당한다. transfer-out 케이스는 이것으로 통과한다. 런타임은 이미
+스펙대로였다(`transfer_out_failed` → `join_failed|InternalFailure`가 source로).
+
+### 판단이 필요한 부분 — source leave 실패
+
+시나리오는 leave 실패 시 `join_failed`가 나오고 target에 `transfer_in`과 `joined`가
+없어야 한다고 기대한다. 실제 런타임은 반대로 동작한다. target은
+`transfer_in` → `authority_committed` → `joined`까지 완료하고, source만
+`leave_failed`를 반복한다.
+
+**런타임 쪽이 스펙에 맞다.** leave notification은 commit 뒤에 오고("commit 뒤 target
+joined와 source leave notification"), 스펙은 "Commit 뒤 recovery는 source로
+rollback하지 않고 target을 복구한 뒤 같은 `OperationId`의 `Accepted`를 전달한다"고
+명시한다. 즉 leave 실패로 transfer를 되돌리지 않는 것이 계약이다.
+
+그런데 여기서 막힌다. 스펙은 동시에 "Target joined callback, source leave
+notification과 durable cleanup이 끝나기 전에 completion과 뒤 application payload를
+실행하지 않는다"고 규정한다. application의 leave callback이 계속 실패하면 completion
+자체가 영원히 나오지 않는다. 실제로 `leave_failed`가 무한히 반복되고 `success_reply`도
+`join_failed`도 나오지 않는다.
+
+따라서 두 조항이 이 경우에 서로 맞물리지 않는다. Accepted를 전달해야 하는데,
+그 전제인 leave notification이 끝나지 않는다. 시나리오를 어느 쪽으로 고쳐 쓸지는
+이 해석을 정하는 문제이므로 임의로 결정하지 않았다. 함께 볼 것은 두 가지다. 실패하는
+application leave callback을 무한 재시도하는 것이 의도인지, 그리고 그 경우 completion을
+어떤 시점에 어떤 값으로 내보낼지다.
+
+나머지 두 케이스(transfer-in 실패, joined 실패)도 같은 판단에 걸려 있을 가능성이
+높으므로 함께 정하는 것이 낫다.
+
+## 2026-07-31 ST-D2 — fencing은 동작한다, 시나리오가 한 층 아래를 관측한다
+
+`source_cleanup_attempt` 증거가 관측되지 않아 실패한다. 원인을 측정으로 확정했다.
+
+시나리오는 source의 cleanup delete를 `CleanupGatedLocationStore`로 가로채 관측한다.
+그 store는 `ZLinkStoreMutation.Delete`가 든 write를 볼 때만 게이트를 연다. 그런데
+source의 release는 store write까지 가지 않는다.
+
+`ReleaseTrackedActorAsync`는 `ZLinkAuthorityMutation.Delete()`를
+`CompareExchangeAuthorityAsync`로 낸다. 그 CAS는 진입부에서 version을 대조하는데,
+target이 이미 authority를 가져갔으므로 source가 들고 있던 version은 낡았다. actor-a에서
+찍힌 진단이 이것을 그대로 보여준다.
+
+```
+cas_conflict_reason missing=False state=Active version_match=False fence=none
+```
+
+record는 존재하고 state도 Active인데 version만 어긋난다. 따라서 CAS는 store에 아무
+mutation도 내지 않고 Conflict로 끝나고, 게이트가 걸릴 delete write 자체가 없다.
+
+**이것은 결함이 아니라 의도된 동작이다.** `ZLinkActorSessionLocationOwnership`의 주석이
+그대로 말한다. "A release racing the new owner's Takeover is ignored as stale by the
+store, which is the intended fencing outcome." 즉 ST-D2가 검증하려는 fencing은 이미
+동작하고 있으며, 다만 시나리오가 관측하려는 지점보다 한 층 위에서 끝난다.
+
+따라서 고칠 대상은 시나리오다. stale release가 store delete로 도달한다고 전제하지 말고,
+release가 stale로 거절되는 사실 자체를 관측해야 한다. 현재 하네스에는 그 신호가 없으므로
+`CleanupGatedLocationStore`를 CAS 결과를 관측하는 형태로 바꾸는 등 하네스 확장이 필요하다.
+이는 단순 단언 수정이 아니라 전환 작업이므로 ST-B3·ST-B4와 같은 범주로 둔다.
+
+## 2026-07-31 ST-C1 해결 — 하네스 결함 1건 + 시나리오 결함 1건
+
+ST-C1이 통과한다. 런타임은 처음부터 정상이었고 원인은 둘 다 테스트 쪽이었다.
+
+### 하네스 — 기다리던 예외를 잡지 못했다
+
+`WaitUnavailableAsync`는 node가 죽었다는 증거로 연결 실패를 기다린다. 그런데
+`error.Kind == ZLinkFrameworkErrorKind.InternalFailure && HasConnectionFailure(error)`로
+걸러서, 정작 그 예외가 filter를 통과하지 못하고 밖으로 새어 나갔다.
+
+`ZLinkHttpClient`는 연결 실패를 **`Unavailable`**로 매핑한다. `RetryPolicy`의 주석이
+"connection failures as `ZLinkFrameworkErrorKind.Unavailable`"이라고 명시한다. 즉
+`InternalFailure`를 키로 잡은 것이 처음부터 틀렸다.
+
+connection 실패라는 사실 자체가 이 loop가 기다리는 증거이므로, kind 조건을 없애고
+`HasConnectionFailure(error)`만으로 판정하게 했다.
+
+### 시나리오 — ST-C3와 같은 혼동
+
+`response.Accepted`가 false여야 한다고 단언했다. `.Defer()` 뒤 handler가 돌려주는
+값은 join을 시작했다는 응답이고, 이 시나리오에서는 NodeA를 죽이기 **전에** 이미
+반환된다. 따라서 true인 것이 정상이다. 스펙대로 실제 판정은 target의
+`pending_admission_expired` runtime marker와 `transfer_in` 부재가 담당하며, 그 단언은
+이미 시나리오에 있었다.
+
+ST-C3에서 고친 것과 정확히 같은 오해다. `.Defer()`를 쓰는 시나리오 전반에서
+handler 반환값을 join 결과로 읽는 패턴을 함께 점검할 필요가 있다.
+
+## 2026-07-31 ST-I4 현황 — follow는 등록되고 reply만 gate에 잡히지 않는다
+
+`StI4ActorMessageFollowMatrixScenario`가 line 94
+(`WaitExternalTransportDeliveryAsync(replyGate)`)에서 timeout으로 실패한다. 앞의 세
+gate(baseline, oneWay, request)는 모두 정상 포착된다.
+
+message follow 자체는 동작한다. 진단에 다음이 찍힌다.
+
+```
+message_follow_registered source_rid=actor-a-... target_rid=actor-b-... entries=1
+```
+
+즉 source에서 target으로 follow가 등록됐고, 시나리오의 relocation 단계
+(`success_reply`를 target에서 기다리는 단언 포함)도 통과한다. 참고로 이 시나리오가
+`success_reply`를 **target**에서 기다린다는 점은 ST-D1에 적용한 스펙 해석
+("`Accepted`는 target Actor가 받는다")을 뒷받침한다.
+
+남은 것은 reply가 external transport gate에 포착되지 않는 이유다. gate는
+`afterGateId: requestGate`로 무장되어 request 다음의 전달을 잡도록 되어 있다. 가설은
+relocation 뒤 reply가 gate가 계측하는 연결과 다른 경로로 나가서 gate가 보지 못한다는
+것이다. 이것이 계약 변화인지 하네스 전제의 문제인지는 아직 판별하지 않았다.
+
+다음 확인은 reply가 실제로 어느 연결로 나가는지다. gate의 서버측 구현이 어떤 지점에
+붙어 있는지 먼저 보고, follow relay가 그 지점을 지나는지 대조하면 판별된다.
+
+## 2026-07-31 ST-I4 진단 완료 — 하네스가 응답을 잘못된 flow에서 기다린다
+
+원인을 코드로 확정했다. 런타임 결함이 아니다.
+
+external transport gate는 각 node 앞의 TCP proxy(`Support/stream_marker_proxy.py`)가
+바이트 마커를 매칭해 스트림을 붙잡는 방식이다. `replyGate`는 마커 없이
+`afterGateId: requestGate`로 무장된다. proxy에서 after-gate는 다음 조건으로만 포착한다.
+
+```python
+gate.after_gate_id is not None and gate.target_flow is self
+```
+
+그리고 `target_flow`는 참조 gate가 매칭된 flow의 **peer**로 설정된다
+(`child.target_flow = parent_flow.peer`). proxy는 방향마다 별도 `Flow`를 만들므로
+(`left_to_right`, `right_to_left`), 결국 `replyGate`는 **request가 지나간 연결의 반대
+방향**에서만 응답을 기다린다.
+
+여기서 전제가 깨진다. request는 caller node → source node 방향에서 포착됐다. 그 뒤
+actor가 target node로 재배치되므로, 응답은 source가 아니라 target에서 나온다. 즉
+source → caller 방향으로는 아무것도 흐르지 않고, gate는 영원히 포착하지 못한다.
+
+message follow 자체는 정상이다. 진단에
+`message_follow_registered source_rid=actor-a-... target_rid=actor-b-... entries=1`이
+찍히고, 앞의 세 gate(baseline, oneWay, request)와 relocation 단계는 모두 통과한다.
+
+정리하면 하네스의 `afterGateId`가 "응답은 요청이 지나간 연결의 역방향으로 돌아온다"고
+가정하는데, 이 시나리오가 검증하려는 상황(응답자가 이동한 뒤 응답)에서는 그 가정이
+성립하지 않는다. gate를 target → caller flow에 걸 수 있도록 proxy의 after-gate 바인딩을
+확장해야 한다. 단언 수정이 아니라 하네스 확장이므로 ST-D2·ST-B3·ST-B4와 같은 범주다.
+
+## 2026-07-31 스펙 15-spot-actor 내부 불일치 — completion과 durable cleanup의 순서
+
+ST-C3의 leave 실패를 판단하려고 스펙을 정독하다 조항 간 불일치를 찾았다.
+
+산문(§276-279)은 이렇게 말한다.
+
+> "Target joined callback, source leave notification과 **durable cleanup이 끝나기 전에**
+> completion과 뒤 application payload를 실행하지 않는다."
+
+즉 completion은 durable cleanup 이후다. 그런데 같은 문서의 순서 목록과 sequence
+diagram은 반대로 적혀 있다. 단계 7은 "Target joined callback과 source leave
+notification을 실행한다. **그다음** target Actor에서 `Accepted` completion callback과
+accepted journal을 ... replay한다"이고, 단계 8이 그 뒤에 "남은 source resource의
+durable cleanup을 끝낸 뒤 Completed authority CAS를 수행한다"이다. diagram도 같다.
+
+```
+SourceRuntime->>TargetSpot: target joined callback 실행
+SourceRuntime->>SourceActor: source leave notification 실행
+SourceRuntime->>TargetActor: Accepted completion과 journal replay
+SourceRuntime->>TargetActor: 실행 전 queue와 hold message 전달
+SourceRuntime->>SourceRuntime: durable source cleanup
+```
+
+산문은 completion이 durable cleanup을 기다린다고 하고, 단계 목록과 diagram은
+completion이 durable cleanup보다 먼저라고 한다. 셋 중 둘이 한쪽이므로 산문 쪽 문장을
+고치는 것이 유력하지만, 이는 스펙 소유자가 정할 문제다.
+
+두 서술이 일치하는 부분은 **completion이 source leave notification 뒤**라는 점이다.
+따라서 ST-C3의 미결 질문은 그대로 남는다. application의 leave callback이 계속
+실패하면 그 전제가 끝나지 않아 completion이 나오지 않는다. 스펙은 실패하는 leave
+callback을 어떻게 다룰지 규정하지 않는다. 이것은 불일치가 아니라 **미규정**이며,
+ST-C3의 나머지 세 하위 케이스를 고치려면 먼저 정해야 한다.
+
+## 2026-07-31 ST-B3·ST-B4 재분류 — "전환 대상"이 아니라 런타임 결함이었다
+
+전체 시나리오를 개별 실행해 확정 현황을 만드는 과정에서 드러났다. **ST-B3와 ST-B4가
+통과한다.** 두 시나리오는 그동안 "시나리오를 현재 relocation 계약에 맞게 다시 써야
+하는 전환 대상"으로 분류돼 있었는데, 실제로는 런타임 결함이었고 ST-D1에서 고친
+`requireNewPlacementEligibility` 2개소 수정으로 함께 해소됐다.
+
+이 분류 오류는 전체 스위트가 첫 실패에서 멈추는 성질 때문에 오래 남아 있었다.
+ST-B3가 앞쪽에서 실패하면 그 뒤는 실행되지 않고, 실패 사유만 보고 "시나리오가 낡았다"고
+판단하기 쉬웠다. 개별 실행으로 확정 현황을 만들지 않으면 이런 오분류는 계속 남는다.
+
+교훈은 두 가지다. 첫째, 스위트가 첫 실패에서 멈추는 하네스에서는 개별 실행 매트릭스가
+주기적으로 필요하다. 둘째, 실패 사유만으로 "시나리오 결함"을 단정하지 말 것. ST-B3의
+`ProbeAsync` HTTP 500은 시나리오가 낡아서가 아니라 런타임이 admission을 거부해서였다.
+
+### ST-B5는 환경 문제다
+
+ST-B5는 `inotify_add_watch failed` (`Errno 28`, ENOSPC)로 실패했다. `kill_on_file_marker.py`가
+watch를 걸지 못해 죽고, 그 여파로 client가 config를 찾지 못했다. 확인 결과 다른
+시나리오 로그에는 inotify 오류가 없고 현재 instance 사용량도 1024 중 21로 여유가 있다.
+즉 일시적 소진이며 코드 결함이 아니다. 재실행으로 확인해야 한다.
+
+## 2026-07-31 SpotActorTransfer 전체 시나리오 확정 현황 (29개 개별 실행)
+
+스위트가 첫 실패에서 멈추므로 29개를 개별 실행해 확정 현황을 만들었다.
+
+**통과 14**: ST-A1, ST-A2, ST-A3, ST-B1, ST-B3, ST-B4, ST-C1, ST-D1, ST-F1, ST-F4,
+ST-F5, ST-F6, ST-G3, ST-H1, ST-I6
+
+**실패 15**: ST-B2, ST-B5, ST-C2, ST-C3, ST-D2, ST-E1, ST-E1A, ST-E2, ST-F2, ST-F3,
+ST-G6, ST-I1, ST-I4, ST-I5
+
+이 세션에서 ST-B3, ST-B4, ST-C1, ST-D1이 실패에서 통과로 바뀌었다.
+
+### 실패의 군집
+
+bound session 경로가 가장 큰 군집이다. ST-E1(`actor-bound-sess` evidence 미관측),
+ST-E1A(old binding에서 `ActorLocationStale` 대신 `Request timed out`), ST-E2(timeout),
+ST-F3(`actor-bound-orde` evidence 미관측)가 모두 여기에 속한다. 네 개가 한 원인일
+가능성이 높으므로 우선순위가 가장 높다.
+
+external transport gate 군집이 다음이다. ST-I4와 ST-I5가 같은
+`did not capture a delivery`로 실패한다. ST-I4는 원인을 확정했다(after-gate가 요청이
+지나간 연결의 역방향에만 걸리는데, 응답자가 이동하면 그 방향으로 아무것도 흐르지
+않는다). ST-I5도 같은 하네스 한계일 가능성이 높다.
+
+나머지는 개별 원인이다. ST-B2(transport endpoint 미연결), ST-B5(환경, inotify),
+ST-C2·ST-D2(evidence 미관측), ST-C3(leave 실패 미규정), ST-F2, ST-G6(HTTP timeout),
+ST-I1(HTTP 500).
+
+### 이번 세션 수정이 원인이 아님을 확인했다
+
+E 계열이 이 세션의 수정 때문에 생긴 것인지 확인했다. `requireNewPlacementEligibility`
+2개소를 임시로 되돌리고 ST-E1A를 실행한 결과 **완전히 동일한 실패**가 나왔다.
+
+```
+ST-E1A expected ActorLocationStale from the old binding, got 'Request timed out.'
+```
+
+따라서 E 계열은 기존 결함이며 이 세션의 수정과 무관하다. 수정은 원복했다.
+
+## 2026-07-31 ST-E1A 조사 — node staleness는 검사하는데 actor generation staleness는 안 한다
+
+먼저 시나리오의 성격을 바로잡는다. ST-E1A는 relocation이 아니라 **destroy + recreate**다.
+actor를 파괴하고 같은 ID로 다시 만들어 새 `ObjectGeneration`(incarnation)을 얻은 뒤,
+**낡은 binding**으로 request를 보내 `ActorLocationStale`이 오는지 본다. 실제로는 응답이
+오지 않고 `Request timed out`이 난다.
+
+런타임에서 `ActorLocationStale`을 만드는 지점들을 확인했다
+(`ZLinkManagedMeshNode` 4400·4508·5005·5127 부근). 모두 다음 형태다.
+
+```csharp
+if (stateful.TargetNodeRid != _routingId
+    || stateful.TargetNodeGeneration != _lifecycleGeneration)
+    // ActorLocationStale
+```
+
+즉 **node 수준 staleness**만 본다. target node가 바뀌었거나 node lifecycle generation이
+달라진 경우다. ST-E1A는 같은 node에서 actor의 `ObjectGeneration`만 바뀐 경우이므로 이
+검사를 그대로 통과한다.
+
+**(정정) 위 문단만으로 "actor generation staleness를 검사하지 않는다"고 적었던 것은
+틀렸다.** `ProcessStateful`을 끝까지 읽으면 검사도 stale 응답도 존재한다.
+
+```csharp
+if (!TryGetActor(stateful.TargetActor, out var actor)
+    || actor.AuthorityOwnerGeneration != stateful.AuthorityOwnerGeneration
+    || stateful.OwnerLeaseGeneration != ...)
+{
+    // message follow를 먼저 시도하고
+    if (messageFollowTarget?.TryFollow(...) == true) return;
+    // 처리되지 않으면 stale로 응답한다
+    if (request)
+        Reply(RequestResult.Conflict, FrameworkErrorCode.ActorLocationStale, ...);
+    return;
+}
+```
+
+즉 4400 부근의 node 수준 검사와 별개로, actor 수준 staleness 판정이 이 지점에 있다.
+따라서 "검사가 없어서 사라진다"는 설명은 성립하지 않는다.
+
+남은 후보는 둘이다. 하나는 request가 `ProcessStateful`에 도달하기 전에 사라지는
+경우다(`peer.Admitted`가 false이거나 앞쪽 protocol error 분기에서 `return`). 다른 하나는
+`messageFollowTarget.TryFollow`가 `true`를 반환해 책임을 가져간 뒤 응답을 내지 않는
+경우다. 후자라면 stale 응답 경로 자체가 실행되지 않으므로 timeout과 정확히 맞는다.
+ST-E1A에는 relocation이 없어 follow 항목이 없을 텐데도 `TryFollow`가 true를 반환한다면
+그것이 결함이다.
+
+다음 확인은 이 두 갈래를 가르는 진단이다. `ProcessStateful` 진입 여부와 `TryFollow`
+반환값을 찍으면 한 번의 실행으로 판별된다.
+
+이 가설은 군집 전체를 설명할 여지가 있다. ST-E1·ST-E2·ST-F3도 bound session 경로의
+timeout이거나 bound 관련 evidence 미관측이다.
+
+다음 확인은 bound request가 actor를 찾는 지점에 진단을 넣어, 낡은 generation의 request가
+어디서 사라지는지 특정하는 것이다. 이번 세션에서 여러 층에 심어 둔 진단과 같은 방식이면
+한 번의 실행으로 판별된다.
+
+## 2026-07-31 ST-E1A 측정 — 요청은 mesh wire 경로에 도달하지 않는다
+
+앞 절의 두 후보를 가르는 진단을 넣고 실행했다. `ProcessStateful` 진입부의
+`stateful_dropped`와 actor staleness 분기의 `actor_stale_path` 둘 다 **한 건도 찍히지
+않았다.** 따라서 후보 둘 중 어느 쪽도 아니다. 낡은 binding으로 보낸 request는 애초에
+node 간 mesh wire 경로(`ProcessStateful`)에 도달하지 않는다.
+
+이유는 경로를 잘못 짚었기 때문이다. ST-E1A의 request는 외부 client가
+`session.Request(...)`로 STREAM session에 보내는 것이므로, node 간 wire가 아니라 session
+gateway 경로로 들어간다. 따라서 staleness 판정도 그쪽에서 일어나야 한다.
+
+session 계층에는 별도의 stale 표현이 있다. `ZLinkSessionActorCoordinator`(391)와
+`ZLinkSessionActor`(30)가 `ZLinkFrameworkException`을
+`ZLinkFrameworkErrorKind.InvalidOperation`과 `"Actor '...' session binding is stale."`
+메시지로 던진다. 반면 시나리오가 기대하는 것은 wire 계층 표현이다.
+
+```csharp
+stale?.Error.Code == ZlinkStreamErrorCode.RemoteError
+&& stale.Error.Message.StartsWith("ActorLocationStale:", StringComparison.Ordinal)
+```
+
+즉 두 계층이 서로 다른 형태로 stale을 표현하며, 시나리오는 wire 형태를 기대한다.
+다만 관측된 것은 **둘 중 어느 오류도 아닌 timeout**이므로, session 계층의 예외 경로도
+실행되지 않았을 가능성이 크다.
+
+다음 확인은 session gateway가 이 request를 어디까지 처리하는지다. 이번 진단이 경로를
+잘못 짚었으므로, 다음에는 `ZLinkSessionActorCoordinator`의 stale 분기와 session gateway
+진입부에 같은 방식으로 진단을 넣어 측정한다.
+
+### 방법에 대한 기록
+
+이번 회차에서 두 번 틀렸다. 처음에는 코드를 덜 읽고 "actor generation 검사가 없다"고
+적었고, 그다음에는 검사를 찾은 뒤 경로를 mesh wire로 단정하고 진단을 그쪽에만 넣었다.
+두 번 다 측정 전에 경로를 확정한 것이 원인이다. bound session처럼 계층이 여럿인
+경로에서는 진단을 한 계층에만 넣지 말고 진입점부터 순서대로 넣어야 한 번에 갈린다.
+
+## 2026-07-31 스펙 모순 해소 — completion은 durable cleanup을 기다리지 않는다
+
+앞서 기록한 `15-spot-actor.ko.md`의 내부 모순을 사용자 판단으로 확정했다. 기준은
+"이동이 이미 성공했으면 보고가 먼저이고, 정리는 따로 하면 된다"이다.
+
+따라서 단계 목록(7·8)과 sequence diagram이 맞고 산문 문장이 틀린 것이었다. 산문을
+고쳤다.
+
+```
+(before) Target joined callback, source leave notification과 durable cleanup이 끝나기
+         전에 completion과 뒤 application payload를 실행하지 않는다.
+
+(after)  Target joined callback과 source leave notification이 끝나기 전에 completion과
+         뒤 application payload를 실행하지 않는다. 남은 source resource의 durable
+         cleanup은 completion을 막지 않으며 그 뒤에 이어서 수행한다.
+```
+
+이제 세 서술이 모두 "joined → leave → completion → cleanup" 순서로 일치한다. 영문판
+`15-spot-actor.md`는 존재하지 않아 동기화 대상이 없다.
+
+### 남은 빈칸은 그대로다
+
+이 판단은 completion과 **durable cleanup**의 순서를 정한 것이다. ST-C3가 걸려 있는
+문제는 다른 것이다. completion은 여전히 **source leave notification** 뒤이고, 세 서술이
+이 점에서는 원래부터 일치했다. application의 leave callback이 계속 실패할 때 어떻게
+할지는 아직 규정되지 않았다.
+
+## 2026-07-31 ST-E1A 원인 확정 — stale 응답이 있는 경로와 요청이 가는 경로가 다르다
+
+진입점부터 순서대로 진단을 넣어 측정했다.
+
+session gateway는 요청을 `ZLinkSessionActorCoordinator.RelayToActorAsync`로 넘긴다.
+그 진입부에서 찍힌 값은 다음과 같다.
+
+```
+session_relay_entry actor=actor-new-incarnation-... context_live=True has_route=True
+                    route_authority_gen=7 route_node_gen=6764754405549093013
+```
+
+`context_live=True`가 핵심이다. 그 지점의 guard는 **binding token**만 확인한다. actor를
+파괴하고 같은 ID로 다시 만들어도 token은 그대로이므로, 낡은 incarnation을 향한 요청이
+이 guard를 그대로 통과한다. route도 살아 있어 낡은 generation(7)을 들고 전달된다.
+
+그다음이 결정적이다. 이 경로는 `ForwardToRemoteActorAsync`를 거치며
+`ZLinkActorBoundSessionRelay`의 route 패킷으로 나간다. **node 간 stateful wire
+경로(`ProcessStateful`)를 타지 않는다.** 실제로 그 함수에 심은 진단
+(`stateful_dropped`, `actor_stale_path`)이 이번 실행에서 한 건도 찍히지 않았다.
+
+그런데 시나리오가 기대하는 `ActorLocationStale` 응답은 바로 그
+`ProcessStateful` 안에 있다.
+
+```csharp
+if (!TryGetActor(...) || actor.AuthorityOwnerGeneration != stateful.AuthorityOwnerGeneration ...)
+{
+    if (messageFollowTarget?.TryFollow(...) == true) return;
+    if (request) Reply(RequestResult.Conflict, FrameworkErrorCode.ActorLocationStale, ...);
+}
+```
+
+즉 **stale을 판정해 응답하는 코드와 이 요청이 실제로 가는 경로가 서로 만나지 않는다.**
+bound session forward 경로에는 그에 상응하는 stale 판정이 없어 요청이 조용히 사라지고
+호출자는 timeout을 본다. 시나리오가 기대하는 응답은 구조적으로 도달 불가능하다.
+
+이것이 bound session 군집(ST-E1, ST-E1A, ST-E2, ST-F3)의 공통 원인일 가능성이 높다.
+넷 모두 bound session 경로의 timeout이거나 관련 evidence 미관측이다.
+
+수정 방향은 bound session forward 경로에도 actor generation staleness 판정을 두어
+`ActorLocationStale`로 응답하게 하는 것이다. 다만 어느 계층에 둘지는
+`ZLinkActorBoundSessionRelay` 수신측 구조를 더 본 뒤 정해야 한다.
+
+### 방법 기록
+
+이번 건은 경로를 세 번 잘못 짚은 뒤에야 잡혔다. 처음엔 검사 부재로 오판했고, 다음엔
+mesh wire로 단정했고, 그다음엔 push relay(반대 방향)를 봤다. 세 번 다 측정 없이 경로를
+확정한 탓이다. 진입점(`RelayActorRefAsync` → `RelayToActorAsync`)에 진단을 넣자 한 번에
+갈렸다. 계층이 여럿인 경로는 반드시 진입점부터 측정한다.
+
+## 2026-07-31 ST-E1A 결함 지점 확정 — bound 요청은 액터를 못 찾아도 응답하지 않는다
+
+`ZLinkActorInboundPipeline`에서 액터를 찾지 못했을 때의 처리다.
+
+```csharp
+var actor = endpoint.ResolveActor(state);
+if (actor is null)
+{
+    await ZLinkActorBoundSessionRelay.TryReplyMissingNoBindActorAsync(...);
+    acknowledgeHandledFrame?.Invoke();
+    return;
+}
+```
+
+`TryReplyMissingNoBindActorAsync`는 첫 줄에서 이렇게 걸러 낸다.
+
+```csharp
+if (requestHeader.Kind != ZlinkStreamMessageKind.Request
+    || requestHeader.RequestSeq is null
+    || !IsNoBindRequest(requestId, flags))
+    return false;
+```
+
+즉 **no-bind 요청일 때만** `NotFound`로 응답한다. ST-E1A처럼 session에 bound된 요청은
+`false`가 반환되고, 그 반환값을 쓰지 않은 채 frame을 acknowledge하고 `return`한다.
+**응답이 나가지 않으므로 호출자는 timeout을 본다.**
+
+바로 위 분기와 대비하면 누락이 분명하다. "Actor is being destroyed" 경우에는 bound
+여부와 무관하게 `NotFound` 응답을 보낸다. 즉 응답을 보내는 패턴은 이미 있고, **bound +
+액터 없음** 조합에만 빠져 있다.
+
+ST-E1A는 actor를 파괴하고 같은 ID로 재생성한 뒤 낡은 binding으로 요청을 보내는
+시나리오다. session 계층의 guard는 binding token만 보므로 통과하고, route는 낡은
+generation을 들고 전달되며, 도착지에서 `ResolveActor`가 실패해 이 분기에 들어온다.
+그리고 조용히 사라진다.
+
+### 수정 시 정해야 할 것
+
+시나리오가 기대하는 형태는 `ZlinkStreamErrorCode.RemoteError`에 메시지가
+`"ActorLocationStale:"`로 시작하는 것이다. 반면 이 지점의 기존 no-bind 응답은
+`ZLinkFrameworkErrorKind.NotFound`에 `"Actor '...' is not available."`이다. 어느 형태로
+응답할지는 spec을 기준으로 정해야 하며, 이 판정은 bound session 군집 4건
+(ST-E1, ST-E1A, ST-E2, ST-F3)에 함께 영향을 준다. 시나리오 기대값을 그대로 계약으로
+삼지 말고 spec에서 근거를 찾은 뒤 고치는 것이 맞다.
+
+## 2026-07-31 ST-E1A 계약 근거 확보 — spec은 세 갈래를 규정하는데 .NET에는 하나뿐이다
+
+시나리오 기대값을 계약으로 삼지 않고 spec에서 근거를 찾았다.
+`server/languages/dotnet/interfaces/07-stream-session.ko.md`가 이렇게 규정한다.
+
+> "Session binding은 `ActorRef.ActorId + ObjectGeneration`의 exact incarnation을 한 번
+> 고정한다. ... **Mapping이 없으면 `ActorLocationStale`, current generation이 다르면
+> `ActorGenerationStale`**, pre-commit seal 중이면 `ActorMoving`이다."
+
+즉 spec은 세 갈래를 구분한다. ST-E1A는 actor를 파괴하고 같은 ID로 재생성한 뒤 낡은
+binding으로 요청하는 경우이므로 **current generation이 다른 쪽**, 곧
+`ActorGenerationStale`에 해당한다.
+
+여기서 두 가지가 드러난다.
+
+### 1. .NET에 `ActorGenerationStale`과 `ActorMoving`이 없다
+
+`framework/languages/dotnet/src` 전체에서 두 이름의 출현이 **0건**이다.
+`ZLinkFrameworkErrorKind`에도 없다. 즉 spec이 규정한 세 갈래 중 `ActorLocationStale`
+하나만 구현되어 있다.
+
+Node에는 있다. `packages/framework/src/contracts/Errors/ZLinkFrameworkException.ts`에
+`ActorGenerationStale = 'actorGenerationStale'`(코드 27), `ActorMoving`(코드 28)이 정의되어
+있다. 따라서 이것은 spec이 뒷받침하는 실제 .NET 구현 갭이다. 다른 언어에 있다는 사실만으로
+계약을 만드는 경우가 아니라, **spec에 근거가 있고 .NET만 빠져 있는 경우**다.
+
+### 2. 시나리오 기대값이 spec과 다르다
+
+ST-E1A는 `"ActorLocationStale:"`로 시작하는 메시지를 기대한다. spec 기준으로 이 상황은
+`ActorGenerationStale`이므로 시나리오 기대값이 틀렸다.
+
+### 정리하면 세 겹이다
+
+첫째, bound 요청이 액터를 찾지 못했을 때 아무 응답도 보내지 않는다
+(`ZLinkActorInboundPipeline`의 `TryReplyMissingNoBindActorAsync`가 no-bind만 처리).
+둘째, spec이 규정한 `ActorGenerationStale`·`ActorMoving`이 .NET에 없다.
+셋째, ST-E1A가 기대하는 오류 종류가 spec과 다르다.
+
+수정 순서는 둘째(오류 종류 추가) → 첫째(bound 경로에서 그 오류로 응답) → 셋째(시나리오
+기대값을 spec에 맞춤)가 자연스럽다. 이 수정은 bound session 군집 4건에 함께 영향을 준다.
+
+## 2026-07-31 ActorGenerationStale 갭의 실제 위치 — wire 프로토콜 스키마다
+
+구현 위치를 확인하다 갭의 층이 예상과 달랐다.
+
+먼저 .NET의 `ZLinkFrameworkErrorKind`와 Node의 것은 **서로 다른 체계**다. .NET은
+`NotFound`부터 `InternalFailure`까지 13개(0~12)의 압축된 분류이고, Node는 32개 이상의
+세분된 목록이다. 따라서 "Node에 27·28이 있으니 .NET에 같은 번호를 추가한다"는 접근은
+성립하지 않는다.
+
+spec이 말하는 세 이름의 실제 소재는 wire 오류 코드다. 이 코드들은
+`framework/runtime/protocol/service-wire-v1.schema.json`에서 생성되며
+(`generate-service-wire-assets.mjs`), 언어별 생성물이 따라 나온다. 스키마를 확인한 결과는
+다음과 같다.
+
+```
+actorLocationStale  = 21   (있음)
+SpotGenerationStale = 33   (있음)
+SpotMoving          = 34   (있음)
+ActorGenerationStale       (없음)
+ActorMoving                (없음)
+```
+
+**Spot 쪽 세 갈래는 완비되어 있는데 Actor 쪽은 `actorLocationStale` 하나뿐이다.** spec
+`07-stream-session.ko.md`가 Actor에 대해서도 세 갈래를 규정하므로, 이는 Spot 대비
+누락으로 보인다.
+
+### 따라서 이 수정은 프로토콜 변경이다
+
+`ActorGenerationStale`과 `ActorMoving`을 추가하려면 wire schema에 코드를 넣고 전 언어
+생성물을 다시 만들어야 한다. 한 언어의 내부 수정이 아니라 **언어 공통 프로토콜 표면
+변경**이다. 이 세션에서 단독으로 밀어붙일 범위가 아니라고 판단해 멈췄다.
+
+정리하면 ST-E1A를 제대로 고치는 데 필요한 것은 셋이다. 프로토콜에 두 오류 코드 추가,
+`ZLinkActorInboundPipeline`의 bound 요청 무응답 수정, 그리고 ST-E1A 기대값을
+`ActorGenerationStale`로 정정. 첫째가 나머지의 전제이므로 프로토콜 변경 승인이
+선행되어야 한다.
+
+한편 bound 요청에 **아무 응답도 보내지 않는 것** 자체는 오류 코드 선택과 무관한 결함이다.
+어떤 코드로 응답할지와 별개로, 응답이 없어 호출자가 timeout까지 매달리는 동작은 그
+자체로 고칠 값어치가 있다.
+
+## 2026-07-31 ST-C3 미규정 해소 — leave notification은 one-way send다
+
+앞서 미규정으로 남겨 둔 "실패하는 application leave callback"을 사용자 판단으로
+확정했다. 설계는 다음과 같다. join이 성공(true)하면 요청한 쪽으로 **send로 통지**하여
+`OnLeave`를 부르고, 이동한 쪽에서는 `OnJoined`를 부른다. 즉 leave 통지를 one-way send로
+만들어 completion을 막지 않게 한다.
+
+이로써 앞 절의 교착이 풀린다. 이동은 이미 성공했고 target도 정상인데 source의 leave
+callback이 실패한다는 이유로 completion이 영원히 나오지 않던 문제가, leave가
+completion을 막지 않게 되면서 사라진다.
+
+`15-spot-actor.ko.md` 세 곳을 고쳤다.
+
+산문(§277-279)은 이제 target joined callback만 completion을 막고, leave notification은
+one-way send이며 그 실행이나 실패가 completion을 막지 않는다고 적는다. 단계 7은
+"Target joined callback을 실행하고 source leave notification을 one-way send로 전달한다.
+leave notification의 완료나 실패는 이 단계를 막지 않는다"로 바꿨다. sequence diagram의
+해당 화살표도 `-)`(비동기)로 바꾸고 `(one-way send)`를 명시했다.
+
+정리하면 순서는 이렇게 확정됐다.
+
+```
+target joined callback (completion을 막음)
+  → Accepted completion
+  → source leave notification (one-way send, 막지 않음)
+  → durable cleanup (막지 않음)
+```
+
+joined만 completion을 막는 이유는 비대칭이 실제로 있기 때문이다. 보고를 받고 target에
+접근했는데 membership이 아직 없으면 곤란하지만, source의 옛 membership 정리가 늦는 것은
+아무도 곤란하게 하지 않는다.
+
+### 남은 구현 작업
+
+ST-C3의 네 하위 케이스 중 transfer-out은 이미 통과한다. source leave 실패 케이스는 이제
+기대값이 정해졌으므로 시나리오를 그 기준으로 다시 쓸 수 있다. transfer-in 실패와 joined
+실패 두 케이스도 같은 기준으로 함께 정리한다. 런타임이 leave notification을 실제로
+one-way send로 보내는지도 확인해야 한다.
+
+## 2026-07-31 (정정) ST-C1·ST-C3의 `!response.Accepted` 단언은 지우면 안 되는 것이었다
+
+앞서 ST-C1과 ST-C3에서 `!response.Accepted` 단언을 "`.Defer()` 뒤 handler 반환값을 join
+결과로 오인한 시나리오 결함"으로 보고 제거했다. **틀렸다.**
+
+`Zlink.Framework.SampleRegressionTests`의
+`SpotActorTransferSourceDownAssertionCannotBeCaughtAsTransportFailure`가 그 단언을
+소스 텍스트로 고정하고 있다.
+
+```csharp
+Assert.Contains("if (response is not null)", scenario, StringComparison.Ordinal);
+Assert.Contains("!response.Accepted", scenario, StringComparison.Ordinal);
+```
+
+즉 프로젝트는 이 단언을 의도적으로 동결했고, **`Accepted=true`가 돌아오는 것 자체를
+결함으로 본다.** ST-C1의 이름이 "Source Down Before Commit"인 만큼, commit 전에 source가
+죽었으면 join이 accepted로 보고되어서는 안 된다는 것이 계약이다.
+
+따라서 진짜 문제는 시나리오가 아니라 **e2e server의 handler가 commit 전에
+`Accepted=true`를 반환하는 것**일 가능성이 크다. `ActorJoinTargetUseCase.ExecuteAsync`는
+`.Defer()` 직후 `commit_request` 증거를 남기고 `new JoinTargetRes(..., true, ...)`를
+반환한다. `.Defer()`를 쓴 join의 결과는 completion callback으로 오는데, handler가 먼저
+"수락됐다"고 답해 버리는 셈이다.
+
+두 시나리오를 `git checkout`으로 원복했다. ST-C1은 다시 실패 상태가 되고, ST-C3도 앞서
+통과했던 transfer-out 케이스가 되돌아간다. 이 회차에서 ST-C1을 "해결"로 적었던 것도
+정정한다. 하네스의 `WaitUnavailableAsync` 수정(연결 실패를 kind 무관하게 인정)은 별개의
+실제 결함 수정이므로 유지한다.
+
+### 교훈
+
+시나리오 단언을 지우기 전에 그 단언을 지키는 가드 테스트가 있는지 먼저 확인해야 한다.
+이 저장소는 `SampleRegressionTests`에서 e2e 시나리오의 소스 텍스트를 직접 단언하는
+방식으로 계약을 고정한다. 전체 솔루션 테스트를 돌리지 않았다면 이 회귀를 놓쳤을 것이다.
+
+## 2026-07-31 (정정) .NET public error kind 추가는 스펙 위반이었다
+
+`ZLinkFrameworkErrorKind`에 `ActorLocationStale`·`ActorGenerationStale`·`ActorMoving`을
+추가했다가 원복했다. `10-monitoring-errors.ko.md`가 이를 명시적으로 금지한다.
+
+> "Generation stale, object moving, worker queue 상태와 relocation 처리 단계는
+> Framework가 retry·recovery를 판정할 때 사용하는 **내부 원인**이다. Application이 다른
+> 대응을 선택할 수 없으면 **별도 public kind로 구분하지 않는다.**"
+
+즉 .NET의 13값 압축 enum은 의도된 설계이고, 계약 테스트 3건
+(`Default_retry_advice_...`, `Framework_exception_contract_matches_the_frozen_surface`,
+`Fixed_spec_snapshot_...`)이 그 설계를 지키고 있었다. 테스트가 제 역할을 한 것이다.
+
+### 두 스펙을 함께 읽어야 했다
+
+`07-stream-session.ko.md`는 session binding 실패를 `ActorLocationStale`,
+`ActorGenerationStale`, `ActorMoving`으로 구분한다고 적는다. 이를 public error kind
+목록으로 읽은 것이 오독이었다. `10-monitoring-errors.ko.md`가 같은 개념을 public kind로
+올리지 않는다고 못 박고 있으므로, 앞 문서가 말하는 세 이름은 **public kind가 아닌 다른
+층위**(wire error code 또는 진단 문자열)의 구분으로 읽어야 한다.
+
+### 현재 상태
+
+wire schema의 `actorGenerationStale`(36)·`actorMoving`(37) 추가는 유지한다. wire 코드는
+public application 계약이 아니라 node 간 프로토콜이며, spec이 금지하는 것은 public kind
+승격이다. 다만 이 코드들을 실제로 사용하는 곳은 아직 없다.
+
+`ZLinkActorInboundPipeline`의 수정(bound 요청이 액터를 못 찾을 때 무응답 대신 응답)은
+유지하되 kind를 기존 `InvalidOperation`으로 되돌렸다. 다만 측정 결과 ST-E1A의 프레임은
+이 지점에 도달조차 하지 않으므로, 이 수정이 ST-E1A를 고치지는 않는다.
+
+### 남은 질문
+
+ST-E1A가 기대하는 `"ActorLocationStale:"` 문자열이 어느 층에서 만들어지는지 아직
+모른다. public kind가 아니라면 wire error code 이름이 메시지에 실려 오는 경로가 있을
+것이다. 그 경로를 찾는 것이 다음 단계다.
+
+## 2026-07-31 `ActorLocationStale` 문자열의 출처 — 스펙과 테스트가 정면으로 충돌한다
+
+ST-E1A가 기대하는 문자열의 출처를 추적한 결과, 이 문제가 ST-E1A 하나에 국한되지 않는다.
+
+`ToActorMessaging` e2e의 `TaB2StaleActorReferenceScenario`가 같은 것을 기대한다.
+
+```csharp
+await context.AssertCachedFailureAsync("TA-B2-stale-request", actorId, "ActorLocationStale");
+```
+
+그 helper는 `response.ErrorKind == expectedKind`를 비교하고, server는
+`error.Kind.ToString()`으로 그 값을 만든다. 즉 **`ZLinkFrameworkErrorKind`에
+`ActorLocationStale`이라는 값이 있어야만 통과하는 단언**이다.
+
+그런데 `10-monitoring-errors.ko.md`는 그 값을 public kind로 올리지 않는다고 명시한다.
+같은 파일의 enum 정의도 `NotFound`부터 `InternalFailure`까지 13개뿐이다. 계약 테스트
+3건이 이 13개 목록을 동결하고 있다.
+
+따라서 다음 셋이 동시에 성립할 수 없다.
+
+1. `10-monitoring-errors.ko.md`: generation stale·object moving을 public kind로 올리지 않는다
+2. `07-stream-session.ko.md`: session binding 실패를 `ActorLocationStale`/
+   `ActorGenerationStale`/`ActorMoving`로 구분한다
+3. e2e 시나리오 둘(ST-E1A, TA-B2): public kind 이름으로 `ActorLocationStale`을 기대한다
+
+2와 3은 그 이름들이 public 표면에 있어야 성립하고, 1은 없어야 한다고 말한다.
+
+### 이건 내가 판단할 문제가 아니다
+
+이 세션에서 두 번 틀린 방식이 정확히 이것이다. 한 문서만 보고 다른 문서를 안 봤고,
+시나리오 기대값을 계약으로 삼았다가 가드 테스트에 걸렸다. 이번에는 셋 중 무엇이
+정본인지 스펙 소유자가 정해야 한다.
+
+선택지는 셋이다. `10-monitoring-errors`의 금지 문장을 좁혀 session binding 실패만
+public kind로 허용하거나, `07-stream-session`의 세 이름을 public kind가 아닌 진단
+문자열로 다시 쓰고 시나리오 둘을 그에 맞추거나, 세 이름을 wire 층에만 두고 application에는
+기존 kind(`InvalidOperation` 등)로 노출하며 시나리오를 고치는 것이다.
+
+어느 쪽이든 ST-E1A와 TA-B2가 함께 움직인다. 결정 전에는 구현을 건드리지 않는다.
+
+## 2026-07-31 (정정) 공통 spec 20이 이 동작을 이미 규정하고 있다
+
+앞 절에서 이 문제를 "스펙 셋이 충돌하니 소유자가 정해야 한다"로 정리했는데, 언어별
+spec만 보고 **공통 spec을 확인하지 않은** 탓이다. `20-session-actor-dispatch.ko.md`가
+동작 자체를 직접 규정한다.
+
+> "저장한 route가 더 이상 유효하지 않으면 active Message Follow route로 정확히 한 번
+> 전달하거나 **typed stale error로 끝낸다.** Location Store에서 새 `ActorRef`를 찾아 같은
+> message를 다른 owner에게 자동으로 다시 보내지 않는다."
+
+같은 문서가 binding이 `ObjectGeneration`을 보관하는 이유도 명시한다.
+
+> "| `ActorId`, `ObjectGeneration` | **같은 ID로 다시 만들어진 다른 Actor에게 보내지
+> 않기 위해** 사용한다. |"
+
+ST-E1A가 정확히 이 경우다. actor를 파괴하고 같은 ID로 재생성했으므로 저장된 route는
+더 이상 유효하지 않다. relocation이 없어 message follow route도 없다. 따라서 스펙이
+요구하는 결과는 **typed stale error**다.
+
+관측된 동작은 응답 없는 timeout이다. **이것은 공통 spec 위반이며, 시나리오 기대값과
+무관하게 런타임 결함이다.** `ZLinkActorInboundPipeline`에서 bound 요청에 응답하도록 한
+수정은 이 조항이 근거다.
+
+### 그래서 앞 절의 "3자 충돌" 정리를 좁힌다
+
+충돌은 **동작**이 아니라 **오류 이름**에만 있다. 동작은 공통 spec 20이 확정한다.
+typed stale error로 끝내야 하며 조용히 버리면 안 된다.
+
+남은 것은 그 typed error를 application에 어떤 이름으로 노출하느냐다. 여기서
+`07-stream-session.ko.md`의 세 이름과 `10-monitoring-errors.ko.md`의 public kind 금지가
+부딪힌다. 이 부분만 결정이 필요하고, **응답을 보내야 한다는 요구는 이미 결정되어 있다.**
+
+### 다음 확인
+
+ST-E1A의 프레임이 `ZLinkActorInboundPipeline`에 도달하지 않는다는 측정 결과가 남아
+있다. 공통 spec이 typed stale error를 요구하므로, 프레임이 어디서 사라지는지 찾아 그
+지점에서 stale error를 내보내야 한다. 이름 결정과 무관하게 착수할 수 있다.
+
+## 2026-07-31 ST-E1A 프레임 소실 구간 확정 — session-a에서 나가고 actor-a에 안 들어온다
+
+경로 세 지점을 동시에 측정했다.
+
+```
+session_relay_entry actor=actor-new-incarnation-... context_live=True has_route=True
+                    route_authority_gen=5
+forward_part actor=actor-new-incarnation-... target_node=actor-a-457ded43-...
+             local_node=session-a-94cc87df-... has_relay=True has_more=True
+forward_part actor=actor-new-incarnation-... target_node=actor-a-457ded43-...
+             local_node=session-a-94cc87df-... has_relay=True has_more=False
+(inbound_resolve  — 0건)
+```
+
+`forward_part`가 header part와 body part로 두 번 찍히므로 프레임은 **session-a에서
+actor-a로 정상 송신된다.** 그런데 actor-a의 `ZLinkActorInboundPipeline`
+(`inbound_resolve`)에는 한 건도 도달하지 않는다.
+
+따라서 소실 구간은 **session-a 송신과 actor-a inbound pipeline 사이**로 좁혀진다.
+transport에서 버려지거나, actor-a 수신측이 pipeline 이전 단계에서 조용히 버린다.
+
+공통 spec 20이 "저장한 route가 더 이상 유효하지 않으면 ... typed stale error로 끝낸다"고
+요구하므로, 그 버리는 지점을 찾아 stale error를 내보내는 것이 수정 방향이다. 오류
+이름 논쟁과 무관하게 진행할 수 있다.
+
+다음 확인은 actor-a 수신측 진입점이다. `ForwardPart`의 relay가 어떤 packet으로 나가는지
+따라가 그 수신 handler에 같은 방식으로 진단을 넣으면 한 번에 갈린다.
+
+## 2026-07-31 ST-E1A 근본원인 확정 — one-way 핸들러 안에서 던진 예외가 삼켜진다
+
+프레임이 사라지는 지점을 로그로 확정했다.
+
+```
+fail: zlink.framework.dispatch[0] phase=error surface=RouteMeshChannel kind=Send
+      packet=$zlink.actor.frame-relay.v1 ...
+```
+
+`ZLinkFrameworkRuntimeActors.DispatchRemoteActorFrameAsync`가 bound session fence를
+검사하는 큰 조건에서 예외를 던진다.
+
+```csharp
+else if (!hasBoundSessionFence
+         || boundSessionFence.ActorGeneration != actorGeneration
+         || session.ObjectGeneration != actorGeneration
+         || ... )
+{
+    throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.Unavailable,
+        $"Actor '{actorId}' session relay authority identity is stale.");
+}
+```
+
+ST-E1A에서는 actor를 파괴하고 재생성했으므로 `session.ObjectGeneration`(새 incarnation)과
+프레임이 실어 온 `actorGeneration`(낡은 binding의 값)이 어긋나 이 조건이 성립한다.
+
+문제는 던지는 **위치**다. 이 함수는 `ZLinkRemoteActorFrameRelayHandler.HandleAsync`에서
+호출되고, 그 handler는 `IZLinkRouteSendHandler<...>` 즉 **one-way send handler**다.
+따라서 예외는 route dispatch의 error sink로 가서 로그 한 줄로 끝나고, 원래 요청자에게는
+아무것도 돌아가지 않는다. 호출자는 deadline까지 기다리다 timeout을 본다.
+
+앞선 측정들이 모두 이것으로 설명된다. `forward_part`는 정상 송신되고
+(`remote_frame_dispatch`도 찍힌다), 그 직후 이 조건에서 던져지므로
+`inbound_resolve`(더 뒤의 pipeline)에는 도달하지 않는다.
+
+### 이것은 공통 spec 위반이다
+
+`20-session-actor-dispatch.ko.md`는 "저장한 route가 더 이상 유효하지 않으면 active
+Message Follow route로 정확히 한 번 전달하거나 **typed stale error로 끝낸다**"고 요구한다.
+현재 동작은 typed stale error를 요청자에게 전달하지 않고 수신측에서 로그만 남긴다.
+
+### 수정 방향
+
+이 지점의 프레임은 `replyRequestId`, `replyFlags`, `replyCapability`를 이미 싣고 있다.
+따라서 request인 경우 예외를 던지는 대신(또는 던지기 전에) 그 reply 경로로 typed stale
+error를 보내면 된다. 같은 파일 안에 `ZLinkActorBoundSessionRelay.ReplyStaleActorAsync`가
+이미 있으므로 재사용할 수 있다.
+
+오류 **이름** 결정(07-stream-session vs 10-monitoring-errors)과는 독립이다. 어떤 kind를
+싣든 "응답을 보낸다"는 요구는 공통 spec이 이미 확정했다. 다만 이름이 정해져야 ST-E1A와
+TA-B2의 단언이 통과하므로, 시나리오 통과까지 가려면 두 결정이 모두 필요하다.
+
+## 2026-07-31 ST-E1A 동작 수정 완료 — spec 20 위반 해소, 이름만 남았다
+
+`DispatchRemoteActorFrameAsync`의 bound session fence 분기에서, 예외를 던지기 전에
+`ZLinkActorBoundSessionRelay.ReplyStaleActorAsync`로 요청자에게 typed stale error를
+보내도록 고쳤다. 프레임이 실어 온 `replyRequestId`·`replyFlags`·`replyCapability`를
+그대로 쓴다.
+
+결과가 바뀌었다. 수정 전에는 호출자가 deadline까지 기다리다
+`Request timed out`을 받았고, 지금은 즉시 다음을 받는다.
+
+```
+Unavailable: Actor 'actor-new-incarnation-...' session relay authority identity is stale.
+```
+
+즉 `20-session-actor-dispatch.ko.md`가 요구하는 "typed stale error로 끝낸다"가
+충족된다. 조용한 소실은 사라졌다.
+
+### 이름 문제만 남았다
+
+이 결과가 앞선 추정 하나를 확정해 준다. 오류 메시지의 접두사는
+`ZLinkFrameworkErrorKind.ToString()`이다(`Unavailable:`). 따라서 ST-E1A와 TA-B2가
+기대하는 `ActorLocationStale:`·`ActorGenerationStale:`은 **public kind 값이어야만**
+나올 수 있고, 그것을 `10-monitoring-errors.ko.md`가 금지한다.
+
+동작은 고쳤으므로 두 시나리오는 이제 timeout이 아니라 "이름이 다르다"로 실패한다.
+ST-E1A의 기대값 수정은 원복했다. 이름이 정해지기 전에 시나리오를 한쪽으로 몰아 두면
+결정이 반대로 났을 때 다시 되돌려야 하고, 이 세션에서 그런 성급한 수정으로 두 번
+틀렸기 때문이다.
+
+### 회귀 검증과 ST-D1 flake
+
+stale reply 수정 뒤 회귀를 확인했다. ST-A1, ST-B1, ST-F4는 통과한다.
+
+ST-D1이 한 번 실패했다가(`success_reply` 미관측) 연속 두 번 재실행에서 통과했다. 즉
+회귀가 아니라 **flake**다. ST-D1은 `delay-joined` 게이트로 타이밍을 잡는 시나리오이므로
+간헐 실패 여지가 있다. 3회 중 1회 실패는 무시할 수준이 아니므로 별도 항목으로 남긴다.
+게이트 해제와 completion 전달 사이의 경합이 의심되며, 재현되면 그때 추적한다.
+
+ST-E2와 ST-F3는 여전히 실패한다. ST-E2는 아직 `Request timed out`이므로 이번에 고친
+경로(`DispatchRemoteActorFrameAsync`의 bound session fence)와는 다른 지점에서 사라진다.
+bound session 군집이 한 원인일 것이라는 앞선 가설은 절반만 맞았다. ST-E1A는 이
+경로였지만 ST-E2·ST-F3는 아니다.
+
+## 2026-07-31 ST-E1A 해결 — 새 이름을 만들지 않고 기존 kind로 정리했다
+
+오류 이름 문제를 사용자 승인으로 확정했다. **새 public kind를 만들지 않고 기존 13개 중
+맞는 것을 고른다.** `NotFound`다.
+
+근거는 `10-monitoring-errors.ko.md`의 kind 표다.
+
+| kind | 의미 | retry advice |
+|---|---|---|
+| `Unavailable` | target·route·Store·worker가 **현재** 처리할 수 없다 | `RetryAfterBackoff` |
+| `NotFound` | 요청한 Actor·Spot·route·target이 **존재하는지** 확인한다 | `DoNotRetry` |
+
+파괴되고 다른 incarnation으로 대체된 actor는 다시 시도해도 돌아오지 않는다. 따라서
+직전 수정에서 쓴 `Unavailable`(재시도 권장)은 부정확했고 `NotFound`(재시도 말 것)가
+맞다. retry advice가 의미와 일치한다.
+
+같은 문서가 "Application이 다른 대응을 선택할 수 없으면 별도 public kind로 구분하지
+않는다"고 명시하므로, "actor가 아예 없음"과 "낡은 incarnation을 가리킴"을 하나의
+`NotFound`로 합치는 것이 이 문서의 의도다. 진단이 필요하면 메시지 본문
+(`session relay authority identity is stale`)이 구분해 준다.
+
+### 적용 결과
+
+`DispatchRemoteActorFrameAsync`의 stale 응답 kind를 `NotFound`로 바꾸고, ST-E1A와
+`ToActorMessaging`의 TA-B2 기대값을 `NotFound`로 정정했다. **ST-E1A가 통과한다.**
+
+`07-stream-session.ko.md`가 말하는 `ActorLocationStale`·`ActorGenerationStale`·
+`ActorMoving`은 public kind가 아니라 다른 층위의 구분으로 남는다. 이 결정으로 public
+표면에는 새 값이 하나도 추가되지 않았다.
+
+앞서 wire schema에 넣었던 `actorGenerationStale`(36)·`actorMoving`(37)은 이 안에서
+쓰이지 않으므로 **원복했다.** 사용처 없는 프로토콜 코드를 남기지 않는다.
+
+## 2026-07-31 ST-E2 원인 — bound session actor의 relocation이 deadline을 넘긴다
+
+ST-E2는 ST-E1A와 다른 문제다. 증거가 명확하다.
+
+actor-a(source):
+```
+ST-E2|actor-bound-session-rebind-...|commit_request|spot-...
+ST-E2|actor-bound-session-rebind-...|join_failed|DeadlineExceeded
+```
+
+actor-b(target):
+```
+phase=received packet=__zlink.actor.join_spot.admission        (21:09:39)
+phase=received packet=__zlink.actor.join_spot.admission_abort  (21:09:42)
+pending_admission_expired actor=actor-bound-session-rebind-...
+```
+
+즉 **relocation join이 DeadlineExceeded로 실패**하고 target의 admission이 만료된다.
+ST-E2는 bound session이 붙은 actor를 이동시키는 시나리오이므로, spec 15 단계 9의 session
+binding route 갱신(`command 44·45`)이 완료되지 않아 join이 deadline을 넘는 것으로 보인다.
+
+### 실패가 늦게 드러나는 이유
+
+시나리오는 `join.Accepted`를 확인하고 통과시킨 뒤 다음 단계로 넘어간다. 실제로는 join이
+실패했는데 `.Defer()` 뒤 handler가 이미 `Accepted=true`를 반환했기 때문에 그 단언이
+통과한다. 그래서 실패가 line 26(join)이 아니라 line 29(새 node에 bind)에서
+`Request timed out`으로 나타난다.
+
+이것은 앞서 ST-C1·ST-C3에서 본 것과 **같은 구조**다. `.Defer()`를 쓴 join에서 handler
+반환값이 join 결과보다 먼저 나가고, 그 값이 `Accepted=true`라서 실제 실패를 가린다.
+ST-C1의 가드 테스트가 `!response.Accepted`를 동결한 이유도 이 때문으로 보인다.
+
+### 정리
+
+ST-E2·ST-F3는 bound session actor의 relocation 자체가 완료되지 않는 문제이고,
+ST-C1·ST-C3·ST-E2에 공통으로 걸린 것은 조기 `Accepted` 반환이다. 두 축을 분리해
+추적해야 한다. bound session relocation이 왜 deadline을 넘는지가 먼저다.
+
+### ST-E2 추가 측정 — seal 이전, admission 결정 이전에 멈춘다
+
+`SealBoundSessionRouteAsync` 진입부에 진단(`bound_seal_begin`)을 넣고 실행했다.
+**한 건도 찍히지 않는다.** 즉 relocation은 bound session route seal 단계에 도달하기 전에
+deadline을 넘긴다. 앞 절에서 "command 44·45 갱신이 늦어지는 것으로 보인다"고 적은 추정은
+틀렸다.
+
+같은 실행에서 target(actor-b)의 `admission_decision` 진단도 찍히지 않는다. actor-b는
+`__zlink.actor.join_spot.admission` 패킷을 **수신했는데**(flow 로그에 있음) 앱 admission
+결정 지점까지 가지 못한다.
+
+정리하면 멈추는 구간은 **target이 admission 요청을 수신한 뒤 admission 결정에 이르기
+전**이다. ST-D1에서 고쳤던 구간과 같은 위치이지만 그때와 달리 오류가 아니라 지연이다.
+3초 뒤 source가 abort를 보내고 target은 `pending_admission_expired`를 남긴다.
+
+bound session이 붙은 actor라는 점이 유일한 차이이므로, admission 처리 경로에서 bound
+session 상태를 확인하는 지점이 블로킹되는지 확인하는 것이 다음 단계다.
+
+### ST-E2 구간 재확정 — target은 수락하는데 source가 그 응답을 못 받는다
+
+admission 수신 진입부에 진단(`admit_entry`)을 추가하고 다시 측정했다. 앞 절에서 "target이
+admission 결정에 이르지 못한다"고 적었는데 **그것도 틀렸다.** 이번 실행에서는 둘 다 찍힌다.
+
+```
+admit_entry        actor=actor-bound-session-rebind-... draining=False
+admission_decision actor=actor-bound-session-rebind-... accepted=True user_spot=True
+```
+
+즉 target은 admission을 받아 앱 handler까지 가고 **수락한다.** 그런데 source는 여전히
+`join_failed|DeadlineExceeded`로 끝나고, `bound_seal_begin`은 찍히지 않는다.
+
+따라서 멈추는 구간은 **target의 수락 결정과 source의 다음 단계(seal) 사이**다. source가
+admission reply를 받지 못해 deadline까지 기다리는 것으로 보인다. 거부 경로
+(`source_rejected`)도 찍히지 않으므로 reply 자체가 도달하지 않는다.
+
+형태가 ST-E1A와 닮았다. 그쪽도 수신측이 처리를 마쳤는데 응답이 요청자에게 돌아가지
+않았다. 다만 ST-E1A는 one-way handler에서 예외가 삼켜진 경우였고, 이쪽은 정상 수락
+경로이므로 원인은 다르다.
+
+다음 확인은 target이 admission reply를 실제로 송신하는지, 송신한다면 source가 어디서
+그것을 기다리는지다. `admission_decision` 직후부터 reply 송신까지 사이에 진단을 넣으면
+갈린다.
+
+### 이 회차의 측정 원칙 위반 기록
+
+이번 건에서 추정이 두 번 틀렸다. 처음에는 "command 44·45 갱신이 늦다"고 적었으나 seal
+단계에 도달조차 하지 않았고, 다음에는 "target이 admission 결정에 이르지 못한다"고
+적었으나 결정까지 정상 도달했다. 두 번 다 **한 번의 실행에서 특정 진단이 없는 것을 보고
+구조를 단정**한 결과다. 진단이 없다는 것은 그 지점에 도달하지 않았다는 뜻일 뿐,
+그 앞이 어디까지 갔는지는 말해 주지 않는다. 구간을 좁힐 때는 양 끝에 진단을 함께 넣어야
+한다.
+
+## 2026-07-31 ST-E2 근본원인 위치 확정 — 원격 session owner로의 route seal이 응답하지 않는다
+
+양 끝에 진단을 넣어 구간을 끝까지 좁혔다. admission 왕복은 완전히 성공한다.
+
+```
+admit_request_sent  → admit_entry → admission_decision(accepted=True)
+                    → admit_reply_built → admit_reply_received
+preflight_done      has_bound_session=True
+bound_seal_begin    session_node=session-b-... local=False
+(그 뒤 진행 없음)
+deferred_join_failed  DeadlineExceeded
+```
+
+즉 relocation은 bound session route seal 단계까지 정상 도달하고, 그 seal이 **원격**
+session owner(session-b)를 향한다(`local=False`). 그 왕복이 끝나지 않아 join 전체가
+deadline을 넘긴다.
+
+따라서 ST-E2의 결함은 `SealBoundSessionRouteAsync`의 **remote 분기**에 있다. 같은 함수의
+local 분기는 이 시나리오에서 실행되지 않는다.
+
+### 진단 배치에서 같은 실수를 세 번 했다
+
+`bound_seal_begin`을 처음에는 local 분기 **안**에 넣었다. ST-E2는 remote 분기를 타므로
+진단이 찍히지 않았고, 그것을 "seal 단계에 도달하지 못한다"로 읽어 두 회차를 잘못
+좁혔다. 진단을 분기 앞으로 옮기자마자 실제로는 도달하고 있었음이 드러났다.
+
+이 세션에서 같은 유형의 오독이 세 번 있었다. 진단이 없다는 사실은 세 가지를 뜻할 수
+있다. 그 지점에 도달하지 않았거나, 다른 분기를 탔거나, 조건문에 걸려 건너뛰었다.
+**분기 안에 진단을 넣으면 그 셋을 구분할 수 없다.** 조건 분기를 측정할 때는 분기 앞에
+조건값과 함께 찍어야 한다.
+
+### 다음 단계
+
+`SealBoundSessionRouteAsync`의 remote 분기가 무엇을 보내고 session-b가 그것을 어떻게
+처리하는지 본다. 이번에도 양 끝(송신 직전, 수신측 진입, 응답 송신)에 함께 넣는다.
+ST-F3도 bound session 경로이므로 같은 원인일 가능성이 있다.
+
+## 2026-07-31 ST-E2 결함 지점 확정 — 원격 route seal이 응답하지 않는다
+
+송신측과 수신측에 진단을 나눠 넣어 확정했다. 프로세스별로 보면 이렇다.
+
+actor-a(source):
+```
+bound_seal_begin      session_node=session-b-... local=False
+route_control_sent    target=session-b-... type=ZLinkSessionRouteSealRequest
+route_control_sent    target=session-b-... type=ZLinkSessionRouteAbortRequest
+```
+
+session-b(session owner):
+```
+route_seal_received   actor=actor-bound-session-rebind-...
+```
+
+즉 seal 요청은 session-b에 **정상 도달하고 처리에 들어간다.** 그런데 actor-a는 응답을
+받지 못해 deadline이 지난 뒤 abort를 보낸다. 그 결과 join 전체가 `DeadlineExceeded`가
+된다.
+
+따라서 결함은 `ZLinkSessionActorBindingTable.SealRouteAsync` 안에 있다. 이 함수는
+`Task? drain`을 두고 `_entries` lock 안에서 상태를 정리한 뒤 그 drain을 기다리는 구조다.
+그 대기가 끝나지 않아 응답이 나가지 않는 것으로 보인다.
+
+ST-E2는 relocation 직전에 bound push를 한 번 주고받는다(`before-rebind-transfer`).
+in-flight session frame이 있는 상태에서 seal이 그 drain을 기다리므로, 그 drain이 완료되지
+않는 조건이 있는지가 다음 확인 지점이다.
+
+ST-F3도 bound session 경로이므로 같은 원인일 가능성이 있다. 이 지점을 고치면 두 개가
+함께 움직일 수 있다.
+
+## 2026-07-31 ST-E2 결함 확정 — seal이 엉뚱한 session owner로 간다
+
+`SealRouteAsync` 안쪽에 진단을 더 넣어 확정했다. session-b에서 `route_seal_received`는
+찍히는데 그 다음 줄의 `route_seal_drain`은 찍히지 않는다. 즉 함수 진입 직후의 guard에서
+조기 return한다. 첫 guard가 `!_entries.TryGetValue(key, out var entry)`이므로 **그 노드에
+해당 binding 자체가 없다.**
+
+이유는 시나리오를 보면 분명하다.
+
+```csharp
+await using var oldSession = await context.ConnectAndBindAsync(
+    context.Options.NodeAStreamEndpoint, "ST-E2", sourceRef);
+```
+
+binding은 **NodeA의 stream endpoint**, 즉 **session-a**에 만들어진다. 그런데 source가
+보내는 seal의 대상은 session-b다.
+
+```
+bound_seal_begin  session_node=session-b-...  local=False
+route_control_sent target=session-b-...       type=ZLinkSessionRouteSealRequest
+```
+
+**seal이 binding이 없는 노드로 간다.** 그 노드는 첫 guard에서 `Acknowledged=false`를
+반환하지만, source는 그 응답을 받지 못하고 deadline까지 기다린 뒤 abort를 보낸다.
+그래서 join이 `DeadlineExceeded`로 끝난다.
+
+즉 결함은 둘이 겹쳐 있다. 하나는 **source가 bound session의 owner node를 잘못
+계산하는 것**이고, 다른 하나는 **그 조기 return의 응답이 요청자에게 돌아가지 않는
+것**이다. 후자는 ST-E1A에서 고친 것과 같은 유형(수신측이 처리를 마쳤는데 응답이 유실)이다.
+
+`SessionNodeRid`가 어디서 session-b로 채워지는지가 다음 확인 지점이다. preflight에는
+`boundSession.SessionNodeRid is null`이면 `actorRef.NodeRid`로 채우는 경로가 있는데,
+그 값은 actor-a나 actor-b이지 session-b가 아니므로 다른 경로에서 온 값이다.
+
+### 전제 검증 — NodeAStreamEndpoint는 session-a가 맞다
+
+위 결론이 "binding은 session-a에 있는데 seal은 session-b로 간다"에 의존하므로 endpoint
+매핑을 직접 확인했다. `run_e2e.sh`에서 다음과 같다.
+
+```
+SESSION_A_STREAM="tcp://127.0.0.1:$SESSION_A_STREAM_PORT"
+--node-a-stream-endpoint "$SESSION_A_STREAM"
+```
+
+즉 `context.Options.NodeAStreamEndpoint`는 session-a의 stream port다. ST-E2의
+`oldSession`은 그 endpoint로 bind하므로 binding은 session-a에 있다. 반면 seal은
+`session_node=session-b-...`로 나간다. 불일치가 실재한다.
+
+`ZLinkActorBoundSession`은 `sessionNodeRid`를 생성 인자로 받으므로, 그 값을 넘기는
+호출부가 다음 확인 지점이다. bind 시점에 session owner node를 기록하는 경로와,
+relocation preflight에서 그 값을 다시 계산하는 경로 중 어디가 session-b를 넣는지 본다.

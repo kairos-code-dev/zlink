@@ -3131,3 +3131,31 @@ handler는 join이 실행되기 전에 반환한다(스펙 §183). 따라서 시
 
 정리하면 ST-I1의 수정 자체는 명확하지만, 그 안에서 완료를 어떻게 확인할지는 미결
 항목에 의존한다. 같은 판단이 네 시나리오(C1, C3, E2, I1)에 걸쳐 있다.
+
+## 2026-07-31 실패 시나리오의 성격 분류 — 신규 미완성 3건, 기존 실패 11건
+
+커밋 `00959010f4`가 손댄 SpotActorTransfer 시나리오 파일을 현재 실패 목록과 대조했다.
+
+그 커밋이 추가·수정한 시나리오는 일곱이다.
+
+```
+StG5SpotWideRelocationInterruption  StG6ApplicationSignaledRelocation
+StI2BulkActorRelocation             StI4ActorMessageFollowMatrix
+StI4RelocationAuthorityBoundary     StI4SpotMessageFollowMatrix
+StI5MessageFollowSafety
+```
+
+이 중 현재 실패하는 것은 셋이다. **ST-G6, ST-I4, ST-I5.** ST-G5와 ST-I2는 통과한다.
+
+나머지 열하나(ST-B2, ST-B5, ST-C1, ST-C2, ST-C3, ST-D2, ST-E1, ST-E2, ST-F2, ST-F3,
+ST-I1)는 그 커밋이 건드리지 않았으므로 더 오래된 실패다.
+
+### 이 분류가 작업 성격을 가른다
+
+신규 셋은 **아직 통과한 적이 없는 시나리오**다. 회귀가 아니라 마이그레이션이 끝나지
+않은 것이므로, 원저자가 의도한 계약이 무엇인지 확인해야 한다. ST-G6는 application이
+ready를 신호해도 relocation이 30초 안에 끝나지 않는다.
+
+나머지 열하나는 기존 실패이고, 이 세션에서 그중 여덟의 원인을 확정했다. 앞서 "실패의
+상당수가 미완성 마이그레이션일 것"이라고 추정했는데, 대조해 보니 셋뿐이다. 추정을
+숫자로 바꾼다.

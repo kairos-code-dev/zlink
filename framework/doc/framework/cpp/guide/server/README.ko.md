@@ -235,7 +235,7 @@ options.add_spot_mesh ("bingo.room.discovery")
 | 12 | [8. Actor · Session](../../../common/guide/server/08-actor-session.ko.md) | actor manager, session actor, gateway relay |
 | 13 | [9. Stream](../../../common/guide/server/09-stream.ko.md) | stream session, stream connector |
 | 14 | [10. Location](../../../common/guide/server/10-location.ko.md) | location store, 자동 연결, 운영 조회 |
-| 15 | `11. Monitoring` 장 | events, metrics, health |
+| 15 | [11. Monitoring](11-monitoring.ko.md) | 상태 관측, 메시지 흐름, health |
 | 16 | [12. 운영](../../../common/guide/server/12-operations.ko.md) | 런타임 메트릭, graceful drain, readiness |
 | 17 | `13. Interface 카탈로그` 장 | 핸들러/옵션 표면 레퍼런스 |
 | 18 | [14. 샘플 고르기](../../../common/guide/server/14-samples.ko.md) | TicTacToe · Bingo 샘플과 기능 매핑 |

@@ -76,19 +76,99 @@ application 코드에 남는 것은 endpoint나 프록시 설정이 아니라 **
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // 서버: handler 하나 (gRPC service 구현 대신)
+    class place_order_handler_t
+    {
+      public:
+        using request_type = place_order_t;
+        using reply_type = order_placed_t;
+        using dependency_types = dependency_list_t<order_store_t>;
+        static constexpr const char *topic_name = "PlaceOrder";
+
+        explicit place_order_handler_t (order_store_t &orders) : _orders (orders) {}
+
+        task_t<order_placed_t> handle (const place_order_t &request)
+        {
+            co_await _orders.save (request);
+            co_return order_placed_t{request.order_id};
+        }
+
+      private:
+        order_store_t &_orders;
+    };
+
+    // 클라이언트: gRPC stub 대신 route_client_t 주입
+    auto placed = co_await client
+                    // 대상은 ChannelName 하나. 주소도 MeshName도 넣지 않는다.
+                    .request_to_channel ("orders",
+                                         place_order_t{"order-1042", "acct-77", 18742})
+                    .submit<order_placed_t> ();
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // 서버: handler 하나 (gRPC service 구현 대신)
+    public final class PlaceOrderHandler implements ZLinkRequestHandler<PlaceOrder, OrderPlaced> {
+        private final OrderStore orders;
+
+        public PlaceOrderHandler(OrderStore orders) {
+            this.orders = orders;
+        }
+
+        @Override
+        public CompletionStage<OrderPlaced> handle(PlaceOrder request, ZLinkMessageContext context) {
+            return orders.save(request).thenApply(ignored -> new OrderPlaced(request.orderId()));
+        }
+    }
+
+    // 클라이언트: gRPC stub 대신 ZLinkRouteClient 주입
+    OrderPlaced placed = client
+        // 대상은 ChannelName 하나. 주소도 MeshName도 넣지 않는다.
+        .requestToChannel("orders", new PlaceOrder("order-1042", "acct-77", 18742))
+        .submit(OrderPlaced.class)
+        .toCompletableFuture().join();
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // 서버: handler 하나 (gRPC service 구현 대신)
+    class PlaceOrderHandler(private val orders: OrderStore) : ZLinkRequestHandler<PlaceOrder, OrderPlaced> {
+        override suspend fun handle(request: PlaceOrder, context: ZLinkMessageContext): OrderPlaced {
+            orders.save(request)
+            return OrderPlaced(request.orderId)
+        }
+    }
+
+    // 클라이언트: gRPC stub 대신 ZLinkRouteClient 주입
+    val placed = client
+        // 대상은 ChannelName 하나. 주소도 MeshName도 넣지 않는다.
+        .requestToChannel("orders", PlaceOrder("order-1042", "acct-77", 18742))
+        .submit(OrderPlaced::class.java)
+        .await()
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // 서버: handler 하나 (gRPC service 구현 대신)
+    export class PlaceOrderHandler implements ZLinkRequestHandler<PlaceOrder, OrderPlaced> {
+      constructor(private readonly orders: OrderStore) {}
+
+      async handle(request: PlaceOrder, context: ZLinkMessageContext): Promise<OrderPlaced> {
+        await this.orders.save(request);
+        return orderPlaced(request.orderId);
+      }
+    }
+
+    // 클라이언트: gRPC stub 대신 ZLinkRouteClient 주입
+    const placed = await client
+      // 대상은 ChannelName 하나. 주소도 MeshName도 넣지 않는다.
+      .requestToChannel('orders', placeOrder('order-1042', 'acct-77', 18742))
+      .submit<OrderPlaced>();
+    ```
 
 
 > 배치 구조·호출 경로·인프라 대응을 gRPC 스택과 나란히 놓고 보려면
@@ -206,19 +286,71 @@ mesh 소켓을 그대로 사용하므로 별도 소켓이 없고,
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // 발행 — game spot 안에서.
+    co_await _context.outbound ()
+      .publish (sample_topics_t::player_milestone_channel, // 전달 범위를 정하는 ChannelName.
+                sample_topics_t::player_milestone,         // 그 안에서 받을 Spot을 고르는 topic.
+                milestone_event)
+      .submit ();
+
+    // 구독 — entry spot이 시작할 때.
+    _context.handlers ().add_subscribe<&play_entry_spot_t::on_player_win_milestone> (
+      sample_topics_t::player_milestone_channel, // 발행 쪽과 같은 ChannelName·topic이어야 받는다.
+      sample_topics_t::player_milestone);
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // 발행 — TicTacToeGame spot 안에서.
+    context.outbound()
+        .publish(SampleTopics.PlayerMilestoneChannel, // 전달 범위를 정하는 ChannelName.
+                 SampleTopics.PlayerMilestone,        // 그 안에서 받을 Spot을 고르는 topic.
+                 milestoneEvent)
+        .submit();
+
+    // 구독 — PlayEntrySpot이 시작할 때.
+    context.handlers().addSubscribe(
+        PlayerWinMilestoneEventHandler.class,
+        SampleTopics.PlayerMilestoneChannel, // 발행 쪽과 같은 ChannelName·topic이어야 받는다.
+        SampleTopics.PlayerMilestone);
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // 발행 — TicTacToeGame spot 안에서.
+    context.outbound()
+        .publish(SampleTopics.PlayerMilestoneChannel, // 전달 범위를 정하는 ChannelName.
+                 SampleTopics.PlayerMilestone,        // 그 안에서 받을 Spot을 고르는 topic.
+                 milestoneEvent)
+        .submit()
+        .await()
+
+    // 구독 — PlayEntrySpot이 시작할 때.
+    context.handlers().addSubscribe(
+        PlayerWinMilestoneEventHandler::class.java,
+        SampleTopics.PlayerMilestoneChannel, // 발행 쪽과 같은 ChannelName·topic이어야 받는다.
+        SampleTopics.PlayerMilestone)
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // 발행 — TicTacToeGame spot 안에서.
+    await this.context.outbound
+      .publish(SampleTopics.playerMilestoneChannel, // 전달 범위를 정하는 ChannelName.
+               SampleTopics.playerMilestone,        // 그 안에서 받을 Spot을 고르는 topic.
+               milestoneEvent)
+      .submit();
+
+    // 구독 — PlayEntrySpot이 시작할 때.
+    this.context.handlers.addSubscribe(
+      PlayerWinMilestoneEventHandler,
+      SampleTopics.playerMilestoneChannel, // 발행 쪽과 같은 ChannelName·topic이어야 받는다.
+      SampleTopics.playerMilestone);
+    ```
 
 
 Spot 밖에서 발행해야 하면 spot publisher client를 주입받아 같은 방식으로 보낸다.
@@ -337,19 +469,138 @@ handler는 인터페이스를 구현하고, 결과를 반환값으로 돌려준�
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // request-response
+    class get_profile_handler_t
+    {
+      public:
+        using request_type = get_profile_request_t;
+        using reply_type = get_profile_reply_t;
+        using dependency_types = dependency_list_t<profile_store_t>;
+        static constexpr const char *topic_name = "GetProfile";
+
+        task_t<get_profile_reply_t> handle (const get_profile_request_t &request)
+        {
+            auto profile = co_await _store.load (request.account_id);
+            co_return get_profile_reply_t{profile.account_id, profile.nickname};
+        }
+    };
+
+    // one-way send (응답 없음)
+    class refresh_cache_handler_t
+    {
+      public:
+        using request_type = refresh_cache_command_t;
+        static constexpr const char *topic_name = "RefreshCache";
+
+        // 캐시 무효화 등. 호출자는 결과를 기다리지 않는다.
+        task_t<void> handle (const refresh_cache_command_t &) { co_return; }
+    };
+
+    // publish 수신 (구독자 측)
+    class cache_refreshed_event_handler_t
+    {
+      public:
+        using request_type = cache_refreshed_event_t;
+        static constexpr const char *topic_name = "CacheRefreshed";
+
+        // Classic fanout handler는 등록한 event type의 payload만 받는다.
+        task_t<void> handle (const cache_refreshed_event_t &) { co_return; }
+    };
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // request-response
+    public final class GetProfileHandler
+        implements ZLinkRequestHandler<GetProfileRequest, GetProfileReply> {
+        private final ProfileStore store;
+
+        @Override
+        public CompletionStage<GetProfileReply> handle(
+            GetProfileRequest request, ZLinkMessageContext context) {
+            return store.load(request.accountId())
+                .thenApply(profile -> new GetProfileReply(profile.accountId(), profile.nickname()));
+        }
+    }
+
+    // one-way send (응답 없음)
+    public final class RefreshCacheHandler implements ZLinkSendHandler<RefreshCacheCommand> {
+        @Override
+        public CompletionStage<Void> handle(RefreshCacheCommand message, ZLinkMessageContext context) {
+            // 캐시 무효화 등. 호출자는 결과를 기다리지 않는다.
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    // publish 수신 (구독자 측)
+    public final class CacheRefreshedEventHandler implements ZLinkFanoutHandler<CacheRefreshedEvent> {
+        @Override
+        public CompletionStage<Void> handle(CacheRefreshedEvent message) {
+            // Classic fanout handler는 등록한 event type의 payload만 받는다.
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // request-response
+    class GetProfileHandler(private val store: ProfileStore)
+        : ZLinkRequestHandler<GetProfileRequest, GetProfileReply> {
+        override suspend fun handle(
+            request: GetProfileRequest, context: ZLinkMessageContext): GetProfileReply {
+            val profile = store.load(request.accountId)
+            return GetProfileReply(profile.accountId, profile.nickname)
+        }
+    }
+
+    // one-way send (응답 없음)
+    class RefreshCacheHandler : ZLinkSendHandler<RefreshCacheCommand> {
+        override suspend fun handle(message: RefreshCacheCommand, context: ZLinkMessageContext) {
+            // 캐시 무효화 등. 호출자는 결과를 기다리지 않는다.
+        }
+    }
+
+    // publish 수신 (구독자 측)
+    class CacheRefreshedEventHandler : ZLinkFanoutHandler<CacheRefreshedEvent> {
+        override suspend fun handle(message: CacheRefreshedEvent) {
+            // Classic fanout handler는 등록한 event type의 payload만 받는다.
+        }
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // request-response
+    export class GetProfileHandler
+      implements ZLinkRequestHandler<GetProfileRequest, GetProfileReply> {
+      constructor(private readonly store: ProfileStore) {}
+
+      async handle(
+        request: GetProfileRequest, context: ZLinkMessageContext): Promise<GetProfileReply> {
+        const profile = await this.store.load(request.accountId);
+        return getProfileReply(profile.accountId, profile.nickname);
+      }
+    }
+
+    // one-way send (응답 없음)
+    export class RefreshCacheHandler implements ZLinkSendHandler<RefreshCacheCommand> {
+      async handle(message: RefreshCacheCommand, context: ZLinkMessageContext): Promise<void> {
+        // 캐시 무효화 등. 호출자는 결과를 기다리지 않는다.
+      }
+    }
+
+    // publish 수신 (구독자 측)
+    export class CacheRefreshedEventHandler implements ZLinkFanoutHandler<CacheRefreshedEvent> {
+      async handle(message: CacheRefreshedEvent): Promise<void> {
+        // Classic fanout handler는 등록한 event type의 payload만 받는다.
+      }
+    }
+    ```
 
 
 - handler 의존성은 **생성자 주입**으로 받는다(`IProfileStore`처럼). context에서
@@ -401,19 +652,109 @@ class에 여러 handler 메서드를 둘 때 편하다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // C++은 attribute 대신 handler group에 직접 등록한다.
+    // 어느 channel에 노출할지는 등록이 정한다.
+    options.handlers ().group ("api").add<get_user_handler_t> ();
+    options.handlers ().group ("api").add<refresh_cache_handler_t> ();
+
+    class refresh_cache_handler_t
+    {
+      public:
+        using request_type = refresh_user_cache_command_t;
+        using dependency_types = dependency_list_t<fanout_client_t>;
+        static constexpr const char *topic_name = "RefreshCache";
+
+        task_t<void> handle (const refresh_user_cache_command_t &command)
+        {
+            co_await _publisher
+              .publish ("api.events", "user.cache-refreshed",
+                        user_cache_refreshed_event_t{command.account_id})
+              .submit ();
+        }
+
+      private:
+        fanout_client_t &_publisher;
+    };
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // 이 class의 메서드들을 "api" group으로 묶는다. 어느 channel에 노출할지는 등록이 정한다.
+    @ZLinkHandlerGroup("api")
+    public final class UserHandlers {
+        private final ZLinkFanoutClient publisher;
+
+        // 메서드 attribute가 handler 종류를 정한다(channel 이름은 안 받음).
+        // 인자 순서 = (payload, context?) — context는 생략 가능.
+        @ZLinkRequest
+        public CompletionStage<GetUserReply> getUser(
+            GetUserRequest request, ZLinkMessageContext context) {
+            return CompletableFuture.completedFuture(new GetUserReply(request.accountId(), "alice"));
+        }
+
+        // send handler — 반환이 CompletionStage<Void>(응답 없음).
+        @ZLinkSend
+        public CompletionStage<Void> refreshCache(
+            RefreshUserCacheCommand command, ZLinkMessageContext context) {
+            return publisher
+                .publish("api.events", "user.cache-refreshed",
+                    new UserCacheRefreshedEvent(command.accountId()))
+                .submit();
+        }
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // 이 class의 메서드들을 "api" group으로 묶는다. 어느 channel에 노출할지는 등록이 정한다.
+    @ZLinkHandlerGroup("api")
+    class UserHandlers(private val publisher: ZLinkFanoutClient) {
+
+        // 메서드 attribute가 handler 종류를 정한다(channel 이름은 안 받음).
+        @ZLinkRequest
+        suspend fun getUser(request: GetUserRequest, context: ZLinkMessageContext): GetUserReply =
+            GetUserReply(request.accountId, "alice")
+
+        // send handler — 반환값이 없다(응답 없음).
+        @ZLinkSend
+        suspend fun refreshCache(command: RefreshUserCacheCommand, context: ZLinkMessageContext) {
+            publisher
+                .publish("api.events", "user.cache-refreshed",
+                    UserCacheRefreshedEvent(command.accountId))
+                .submit()
+                .await()
+        }
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // 이 class의 메서드들을 "api" group으로 묶는다. 어느 channel에 노출할지는 등록이 정한다.
+    @ZLinkHandlerGroup('api')
+    export class UserHandlers {
+      constructor(private readonly publisher: ZLinkFanoutClient) {}
+
+      // 메서드 decorator가 handler 종류를 정한다(channel 이름은 안 받음).
+      @ZLinkRequest()
+      async getUser(request: GetUserRequest, context: ZLinkMessageContext): Promise<GetUserReply> {
+        return getUserReply(request.accountId, 'alice');
+      }
+
+      // send handler — 반환이 Promise<void>(응답 없음).
+      @ZLinkSend()
+      async refreshCache(
+        command: RefreshUserCacheCommand, context: ZLinkMessageContext): Promise<void> {
+        await this.publisher
+          .publish('api.events', 'user.cache-refreshed',
+            userCacheRefreshedEvent(command.accountId))
+          .submit();
+      }
+    }
+    ```
 
 
 - 메서드 시그니처는 `(payload, context?, cancellation?)` 순서이며 context와
@@ -451,19 +792,62 @@ Request는 상대 reply가 도착할 때까지 기다린다. 규칙은 하나다
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    task_t<create_game_reply_t> handle (const create_game_request_t &request)
+    {
+        // 런타임(핸들러) 스레드 — co_await로 비운다. blocking은 테스트·클라이언트에서만 쓴다.
+        auto room = co_await _client
+                      .request_to_channel ("tictactoe.play",
+                                           create_room_request_t{request.game_name})
+                      .timeout (std::chrono::seconds (5)) // reply를 기다릴 상한.
+                      .submit<create_room_reply_t> ();    // reply가 도착할 때까지 기다린다.
+
+        co_return create_game_reply_t{room.room_id, room.game_name};
+    }
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    public CompletionStage<CreateGameReply> handle(
+        CreateGameRequest request, ZLinkMessageContext context) {
+        // 런타임(핸들러) 스레드 — CompletionStage를 이어 붙인다. join()으로 막지 않는다.
+        return client
+            .requestToChannel("tictactoe.play", new CreateRoomRequest(request.gameName()))
+            .timeout(Duration.ofSeconds(5))     // reply를 기다릴 상한.
+            .submit(CreateRoomReply.class)      // reply가 도착하면 이어지는 단계가 실행된다.
+            .thenApply(room -> new CreateGameReply(room.roomId(), room.gameName()));
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    suspend fun handle(request: CreateGameRequest, context: ZLinkMessageContext): CreateGameReply {
+        // 런타임(핸들러) 스레드 — await로 비운다. blocking join은 쓰지 않는다.
+        val room = client
+            .requestToChannel("tictactoe.play", CreateRoomRequest(request.gameName))
+            .timeout(Duration.ofSeconds(5))     // reply를 기다릴 상한.
+            .submit(CreateRoomReply::class.java)
+            .await()                            // reply가 도착할 때까지 기다린다.
+
+        return CreateGameReply(room.roomId, room.gameName)
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    async handle(request: CreateGameRequest, context: ZLinkMessageContext): Promise<CreateGameReply> {
+      // 런타임(핸들러) 스레드 — await로 비운다. 동기 blocking은 없다.
+      const room = await this.client
+        .requestToChannel('tictactoe.play', createRoomRequest(request.gameName))
+        .timeout(5_000)                     // reply를 기다릴 상한.
+        .submit<CreateRoomReply>();         // reply가 도착할 때까지 기다린다.
+
+      return createGameReply(room.roomId, room.gameName);
+    }
+    ```
 
 
 Channel handler는 channel별 비동기 수신 루프에서 실행된다. Handler가 대기 지점에 도달하면
@@ -527,19 +911,50 @@ framework는 발견한 handler를 모든 channel에 자동으로 열지 않는�
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    options.handlers ().group ("api").add<get_profile_handler_t> ();  // handler를 group에 넣는다.
+    auto mesh = options.add_route_mesh ("services");
+    mesh.listen ("tcp://0.0.0.0:7101")
+      .set_routing_id (zlink::routing_id_t::from (std::string ("api-1")));
+    mesh.channel_name ("api").server ()      // server ()가 handler를 받는 역할이다.
+      .use_handler_group ("api");
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    options.addHandlersFromPackageOf(Program.class); // handler type 발견
+    ZLinkMeshNodeBuilder mesh = options.addRouteMesh("services")
+        .listen("tcp://0.0.0.0:7101")
+        .setRoutingId(RoutingId.from("api-1"));
+    mesh.channelName("api").server()                // server()가 handler를 받는 역할이다.
+        .addRequestHandler(GetProfileHandler.class, GetProfileRequest.class, GetProfileReply.class)
+        .addSendHandler(RefreshCacheHandler.class, RefreshCacheCommand.class);
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    options.addHandlersFromPackageOf(Program::class.java) // handler type 발견
+    val mesh = options.addRouteMesh("services")
+        .listen("tcp://0.0.0.0:7101")
+        .setRoutingId(RoutingId.from("api-1"))
+    mesh.channelName("api").server()                     // server()가 handler를 받는 역할이다.
+        .addRequestHandler(
+            GetProfileHandler::class.java, GetProfileRequest::class.java, GetProfileReply::class.java)
+        .addSendHandler(RefreshCacheHandler::class.java, RefreshCacheCommand::class.java)
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    const mesh = builder.addRouteMesh('services')
+      .listen('tcp://0.0.0.0:7101')
+      .setRoutingId(RoutingId.from('api-1'));
+    mesh.channel('api').server()                    // server()가 handler를 받는 역할이다.
+      .addRequestHandler(GetProfileHandler)
+      .addSendHandler(RefreshCacheHandler);
+    ```
 
 
 ### 한 MeshNode에 여러 channel 등록
@@ -560,19 +975,52 @@ framework는 발견한 handler를 모든 channel에 자동으로 열지 않는�
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    auto mesh = options.add_route_mesh ("services");
+    mesh.listen ("tcp://0.0.0.0:7101")
+      .set_routing_id (zlink::routing_id_t::from (std::string ("api-1")));
+
+    mesh.channel_name ("api").server ()          // 이 node가 처리하는 channel.
+      .add_request_handler<get_profile_handler_t, get_profile_request_t, get_profile_reply_t> ();
+    mesh.channel_name ("billing").client ();     // 호출만 하는 channel은 client — handler를 등록하지 않는다.
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    ZLinkMeshNodeBuilder mesh = options.addRouteMesh("services")
+        .listen("tcp://0.0.0.0:7101")
+        .setRoutingId(RoutingId.from("api-1"));
+
+    mesh.channelName("api").server()             // 이 node가 처리하는 channel.
+        .addRequestHandler(GetProfileHandler.class, GetProfileRequest.class, GetProfileReply.class);
+    mesh.channelName("billing").client();        // 호출만 하는 channel은 client — handler를 등록하지 않는다.
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    val mesh = options.addRouteMesh("services")
+        .listen("tcp://0.0.0.0:7101")
+        .setRoutingId(RoutingId.from("api-1"))
+
+    mesh.channelName("api").server()             // 이 node가 처리하는 channel.
+        .addRequestHandler(
+            GetProfileHandler::class.java, GetProfileRequest::class.java, GetProfileReply::class.java)
+    mesh.channelName("billing").client()         // 호출만 하는 channel은 client — handler를 등록하지 않는다.
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    const mesh = builder.addRouteMesh('services')
+      .listen('tcp://0.0.0.0:7101')
+      .setRoutingId(RoutingId.from('api-1'));
+
+    mesh.channel('api').server()                 // 이 node가 처리하는 channel.
+      .addRequestHandler(GetProfileHandler);
+    mesh.channel('billing').client();            // 호출만 하는 channel은 client — handler를 등록하지 않는다.
+    ```
 
 
 fanout channel의 구독 handler는 fanout builder의 `AddHandler<...>()`로 등록한다.
@@ -635,19 +1083,94 @@ Fanout handler는 독립 fanout channel builder에 등록하며 RouteMesh handle
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    class price_service_t
+    {
+      public:
+        using dependency_types = dependency_list_t<route_client_t>;
+
+        task_t<double> get (const std::string &symbol)
+        {
+            auto reply = co_await _client
+                           // 대상은 ChannelName 하나다. reply 타입은 submit<T>에서 지정한다.
+                           .request_to_channel ("price", price_request_t{symbol})
+                           .submit<price_reply_t> ();
+            co_return reply.price;
+        }
+
+        task_t<void> refresh (const std::string &account_id)
+        {
+            // send: 내 runtime이 제출을 받아들일 때까지만 기다린다.
+            co_await _client.send_to_channel ("profile", refresh_cache_command_t{account_id}).submit ();
+        }
+
+      private:
+        route_client_t &_client;
+    };
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    public final class PriceService {
+        private final ZLinkRouteClient client;
+
+        public CompletionStage<BigDecimal> get(String symbol) {
+            return client
+                // 대상은 ChannelName 하나다. reply 타입은 submit(T.class)에서 지정한다.
+                .requestToChannel("price", new PriceRequest(symbol))
+                .submit(PriceReply.class)
+                .thenApply(PriceReply::price);
+        }
+
+        public CompletionStage<Void> refresh(String accountId) {
+            // send: 내 runtime이 제출을 받아들일 때까지만 기다린다.
+            return client.sendToChannel("profile", new RefreshCacheCommand(accountId)).submit();
+        }
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    class PriceService(private val client: ZLinkRouteClient) {
+
+        suspend fun get(symbol: String): BigDecimal {
+            val reply = client
+                // 대상은 ChannelName 하나다. reply 타입은 submit(T::class.java)에서 지정한다.
+                .requestToChannel("price", PriceRequest(symbol))
+                .submit(PriceReply::class.java)
+                .await()
+            return reply.price
+        }
+
+        suspend fun refresh(accountId: String) {
+            // send: 내 runtime이 제출을 받아들일 때까지만 기다린다.
+            client.sendToChannel("profile", RefreshCacheCommand(accountId)).submit().await()
+        }
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    export class PriceService {
+      constructor(private readonly client: ZLinkRouteClient) {}
+
+      async get(symbol: string): Promise<number> {
+        const reply = await this.client
+          // 대상은 ChannelName 하나다. reply 타입은 submit<T>에서 지정한다.
+          .requestToChannel('price', priceRequest(symbol))
+          .submit<PriceReply>();
+        return reply.price;
+      }
+
+      async refresh(accountId: string): Promise<void> {
+        // send: 내 runtime이 제출을 받아들일 때까지만 기다린다.
+        await this.client.sendToChannel('profile', refreshCacheCommand(accountId)).submit();
+      }
+    }
+    ```
 
 
 - reply 타입은 메시지가 아니라 **`.Async<TReply>(...)`** 에서 지정한다.
@@ -680,19 +1203,60 @@ Fanout handler는 독립 fanout channel builder에 등록하며 RouteMesh handle
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    co_await client
+      .request_to_channel ("price", price_request_t{symbol})
+      // 이 호출의 reply 대기 상한을 기본(30초)과 다르게 둘 때만 지정한다.
+      .timeout (std::chrono::seconds (5))
+      .submit<price_reply_t> ();
+    // reply 대기 상한 결정 순서(앞이 우선):
+    //   1) 호출별 .timeout (...)
+    //   2) MeshNode builder의 set_default_request_timeout (...)
+    //   3) 전역 옵션의 default_request_timeout (기본 30초)
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    client
+        .requestToChannel("price", new PriceRequest(symbol))
+        // 이 호출의 reply 대기 상한을 기본(30초)과 다르게 둘 때만 지정한다.
+        .timeout(Duration.ofSeconds(5))
+        .submit(PriceReply.class);
+    // reply 대기 상한 결정 순서(앞이 우선):
+    //   1) 호출별 .timeout(...)
+    //   2) MeshNode builder의 setDefaultRequestTimeout(...)
+    //   3) 전역 옵션의 defaultRequestTimeout (기본 30초)
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    client
+        .requestToChannel("price", PriceRequest(symbol))
+        // 이 호출의 reply 대기 상한을 기본(30초)과 다르게 둘 때만 지정한다.
+        .timeout(Duration.ofSeconds(5))
+        .submit(PriceReply::class.java)
+        .await()
+    // reply 대기 상한 결정 순서(앞이 우선):
+    //   1) 호출별 .timeout(...)
+    //   2) MeshNode builder의 setDefaultRequestTimeout(...)
+    //   3) 전역 옵션의 defaultRequestTimeout (기본 30초)
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    await client
+      .requestToChannel('price', priceRequest(symbol))
+      // 이 호출의 reply 대기 상한을 기본(30초)과 다르게 둘 때만 지정한다.
+      .timeout(5_000)
+      .submit<PriceReply>();
+    // reply 대기 상한 결정 순서(앞이 우선):
+    //   1) 호출별 .timeout(...)
+    //   2) MeshNode builder의 setDefaultRequestTimeout(...)
+    //   3) 전역 옵션의 defaultRequestTimeout (기본 30초)
+    ```
 
 
 ### publish — fanout client
@@ -713,19 +1277,73 @@ Fanout handler는 독립 fanout channel builder에 등록하며 RouteMesh handle
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    class profile_service_t
+    {
+      public:
+        using dependency_types = dependency_list_t<fanout_client_t>;
+
+        task_t<void> announce (const std::string &account_id)
+        {
+            // 인자 = (channel, topic, message). topic이 fan-out 라우팅 키다.
+            co_await _publisher
+              .publish ("api.events", "profile.cache-refreshed",
+                        profile_cache_refreshed_event_t{account_id})
+              .submit ();
+        }
+
+      private:
+        fanout_client_t &_publisher;
+    };
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    public final class ProfileService {
+        private final ZLinkFanoutClient publisher;
+
+        public CompletionStage<Void> announce(String accountId) {
+            // 인자 = (channel, topic, message). topic이 fan-out 라우팅 키다.
+            return publisher
+                .publish("api.events", "profile.cache-refreshed",
+                    new ProfileCacheRefreshedEvent(accountId))
+                .submit();
+        }
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    class ProfileService(private val publisher: ZLinkFanoutClient) {
+
+        suspend fun announce(accountId: String) {
+            // 인자 = (channel, topic, message). topic이 fan-out 라우팅 키다.
+            publisher
+                .publish("api.events", "profile.cache-refreshed",
+                    ProfileCacheRefreshedEvent(accountId))
+                .submit()
+                .await()
+        }
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    export class ProfileService {
+      constructor(private readonly publisher: ZLinkFanoutClient) {}
+
+      async announce(accountId: string): Promise<void> {
+        // 인자 = (channel, topic, message). topic이 fan-out 라우팅 키다.
+        await this.publisher
+          .publish('api.events', 'profile.cache-refreshed',
+            profileCacheRefreshedEvent(accountId))
+          .submit();
+      }
+    }
+    ```
 
 
 - topic은 선택이다. `Publish(channelName, message)`로 보내면 그 channel의 구독자 전체가
@@ -780,19 +1398,94 @@ filter로 한곳에 모은다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    class audit_filter_t
+    {
+      public:
+        using dependency_types = dependency_list_t<logger_t<audit_filter_t>>;
+
+        task_t<void> invoke (handler_filter_context_t &context, // 이 dispatch의 message 정보.
+                             handler_filter_next_t next)        // 다음 filter 또는 handler를 실행한다.
+        {
+            // 운영 명령만 감사 로그로 남기고 일반 업무 요청은 그냥 통과시킨다.
+            if (context.dispatch_kind () == handler_dispatch_kind_t::node_direct_request)
+                _logger.info (std::string ("ops ") + context.packet_name ());
+
+            co_await next (); // 호출하지 않으면 handler가 실행되지 않는다.
+        }
+
+      private:
+        logger_t<audit_filter_t> _logger;
+    };
+
+    options.use_filter<audit_filter_t> ();      // 등록한 순서가 곧 실행 순서다.
+    options.use_filter<validation_filter_t> ();
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    public final class AuditFilter implements ZLinkHandlerFilter {
+        private final Logger logger;
+
+        @Override
+        public CompletionStage<Void> invoke(
+            ZLinkHandlerFilterContext context, // 이 dispatch의 message 정보 + 어느 경로로 왔는지.
+            ZLinkHandlerFilterNext next) {     // 인자 없는 delegate — 다음 filter 또는 handler를 실행한다.
+            // 운영 명령만 감사 로그로 남기고 일반 업무 요청은 그냥 통과시킨다.
+            if (context.dispatchKind() == ZLinkHandlerDispatchKind.NODE_DIRECT_REQUEST) {
+                logger.info("ops {} on {}", context.packetName(), context.meshName());
+            }
+            return next.invoke(); // 호출하지 않으면 handler가 실행되지 않는다.
+        }
+    }
+
+    options.useFilter(AuditFilter.class);      // 등록한 순서가 곧 실행 순서다.
+    options.useFilter(ValidationFilter.class);
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    class AuditFilter(private val logger: Logger) : ZLinkHandlerFilter {
+
+        override suspend fun invoke(
+            context: ZLinkHandlerFilterContext, // 이 dispatch의 message 정보 + 어느 경로로 왔는지.
+            next: ZLinkHandlerFilterNext,       // 인자 없는 delegate — 다음 filter 또는 handler를 실행한다.
+        ) {
+            // 운영 명령만 감사 로그로 남기고 일반 업무 요청은 그냥 통과시킨다.
+            if (context.dispatchKind() == ZLinkHandlerDispatchKind.NODE_DIRECT_REQUEST) {
+                logger.info("ops {} on {}", context.packetName(), context.meshName())
+            }
+            next.invoke() // 호출하지 않으면 handler가 실행되지 않는다.
+        }
+    }
+
+    options.useFilter(AuditFilter::class.java)      // 등록한 순서가 곧 실행 순서다.
+    options.useFilter(ValidationFilter::class.java)
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    export class AuditFilter implements ZLinkHandlerFilter {
+      constructor(private readonly logger: Logger) {}
+
+      async invoke(
+        context: ZLinkHandlerFilterContext, // 이 dispatch의 message 정보 + 어느 경로로 왔는지.
+        next: ZLinkHandlerFilterNext        // 인자 없는 delegate — 다음 filter 또는 handler를 실행한다.
+      ): Promise<void> {
+        // 운영 명령만 감사 로그로 남기고 일반 업무 요청은 그냥 통과시킨다.
+        if (context.dispatchKind === ZLinkHandlerDispatchKind.NodeDirectRequest) {
+          this.logger.log(`ops ${context.packetName} on ${context.meshName}`);
+        }
+        await next(); // 호출하지 않으면 handler가 실행되지 않는다.
+      }
+    }
+
+    // Node는 module 등록 옵션의 filters 배열로 넘긴다. 배열 순서가 곧 실행 순서다.
+    ZLinkFrameworkModule.forRoot({ filters: [AuditFilter, ValidationFilter] });
+    ```
 
 
 ### 적용 범위
@@ -868,19 +1561,47 @@ filter도 그 수만큼 실행되고, 무거운 filter는 구독자가 늘수록
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    auto mesh = options.add_route_mesh ("services");
+    mesh.listen ("tcp://0.0.0.0:7102")
+      .set_routing_id (zlink::routing_id_t::from (std::string ("profile-client-1")));
+    mesh.channel_name ("profile").client ();
+    mesh.peer_connections ().connect ("tcp://10.0.10.15:7101");
+    mesh.peer_connections ().connect ("tcp://10.0.10.16:7101");
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    ZLinkMeshNodeBuilder mesh = options.addRouteMesh("services")
+        .listen("tcp://0.0.0.0:7102")
+        .setRoutingId(RoutingId.from("profile-client-1"));
+    mesh.channelName("profile").client();
+    mesh.peerConnections().connect("tcp://10.0.10.15:7101");
+    mesh.peerConnections().connect("tcp://10.0.10.16:7101");
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    val mesh = options.addRouteMesh("services")
+        .listen("tcp://0.0.0.0:7102")
+        .setRoutingId(RoutingId.from("profile-client-1"))
+    mesh.channelName("profile").client()
+    mesh.peerConnections().connect("tcp://10.0.10.15:7101")
+    mesh.peerConnections().connect("tcp://10.0.10.16:7101")
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    const mesh = builder.addRouteMesh('services')
+      .listen('tcp://0.0.0.0:7102')
+      .setRoutingId(RoutingId.from('profile-client-1'));
+    mesh.channel('profile').client();
+    mesh.peerConnections().connect('tcp://10.0.10.15:7101');
+    mesh.peerConnections().connect('tcp://10.0.10.16:7101');
+    ```
 
 
 endpoint 인자는 startup 설정이다. host 시작 뒤 실행 중인 socket을 직접 제어하는
@@ -949,19 +1670,35 @@ flowchart LR
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // 운영 admin 경로. "orders"는 등록한 ChannelName이다.
+    mesh_options.channel ("orders").weight (0);   // 이 ChannelName을 새 select-one 대상에서 제외
+    mesh_options.channel ("orders").weight (100); // 정상 복귀
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // 운영 admin 엔드포인트. "orders"는 등록한 ChannelName이다.
+    meshOptions.channel("orders").setWeight(0);   // 이 ChannelName을 새 select-one 대상에서 제외
+    meshOptions.channel("orders").setWeight(100); // 정상 복귀
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // 운영 admin 엔드포인트. "orders"는 등록한 ChannelName이다.
+    meshOptions.channel("orders").setWeight(0)   // 이 ChannelName을 새 select-one 대상에서 제외
+    meshOptions.channel("orders").setWeight(100) // 정상 복귀
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // 운영 admin 엔드포인트. "orders"는 등록한 ChannelName이다.
+    meshOptions.channel('orders').weight = 0;   // 이 ChannelName을 새 select-one 대상에서 제외
+    meshOptions.channel('orders').weight = 100; // 정상 복귀
+    ```
 
 
 - `Weight = 0`(drain)은 serving socket을 **닫지 않는다**. 이미 들어온 in-flight 요청은
@@ -986,19 +1723,39 @@ flowchart LR
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    auto mesh = options.add_route_mesh ("services");
+    mesh.listen ("tcp://0.0.0.0:7101")
+      .set_routing_id (zlink::routing_id_t::from (std::string ("orders-1")));
+    mesh.channel_name ("orders").server ().set_weight (30); // 이 channel 역할의 시작 weight
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    ZLinkMeshNodeBuilder mesh = options.addRouteMesh("services")
+        .listen("tcp://0.0.0.0:7101")
+        .setRoutingId(RoutingId.from("orders-1"));
+    mesh.channelName("orders").server().setWeight(30); // 이 channel 역할의 시작 weight
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    val mesh = options.addRouteMesh("services")
+        .listen("tcp://0.0.0.0:7101")
+        .setRoutingId(RoutingId.from("orders-1"))
+    mesh.channelName("orders").server().setWeight(30) // 이 channel 역할의 시작 weight
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    const mesh = builder.addRouteMesh('services')
+      .listen('tcp://0.0.0.0:7101')
+      .setRoutingId(RoutingId.from('orders-1'));
+    mesh.channel('orders').server().setWeight(30); // 이 channel 역할의 시작 weight
+    ```
 
 
 ## 7. 직렬화 codec
@@ -1014,19 +1771,31 @@ payload 직렬화 codec은 framework 등록에서 활성화한다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    options.codecs ().use (protobuf_codec_t::default_instance ());
+    options.codecs ().use (msgpack_codec_t::default_instance ());
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    options.codecs().use(ZLinkProtobufCodec.getDefault());
+    options.codecs().use(ZLinkMessagePackCodec.getDefault());
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    options.codecs().use(ZLinkProtobufCodec.getDefault())
+    options.codecs().use(ZLinkMessagePackCodec.getDefault())
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    builder.codecs().use(ZLinkProtobufCodec.default);
+    builder.codecs().use(ZLinkMessagePackCodec.default);
+    ```
 
 
 payload는 codec이 직렬화할 수 있는 DTO 여야 한다. root/요소 타입이
@@ -1071,19 +1840,99 @@ serializer는 서로 겹치지 않게 여러 개 둘 수 있다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // serializer의 책임은 business 객체 ↔ message(byte payload) 변환뿐이다.
+    // packet name 결정과 codec 선택은 framework가 한다.
+    class avro_order_serializer_t : public message_serializer_t
+    {
+      public:
+        zlink::message_t serialize (const std::any &value) override
+        {
+            auto bytes = _writer.write (value);
+            return zlink::message_t::from (bytes);
+        }
+
+        std::any deserialize (const zlink::message_t &message) override
+        {
+            return _reader.read (message.bytes ());
+        }
+    };
+
+    // extension 내부에서 Avro serializer를 한 번 등록한다.
+    options.codecs ().use (std::make_shared<avro_codec_extension_t> ());
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // serializer의 책임은 business 객체 ↔ Message(byte payload) 변환뿐이다.
+    // packet name 결정과 codec 선택은 framework가 한다.
+    public final class AvroOrderSerializer implements ZLinkMessageSerializer {
+        private final Schema schema = new Schema.Parser().parse(SCHEMA_JSON);
+
+        @Override
+        public ZLinkMessage serialize(Object value, Class<?> type) {
+            var buffer = new ByteArrayOutputStream();
+            new GenericDatumWriter<>(schema)
+                .write(value, EncoderFactory.get().binaryEncoder(buffer, null));
+            return ZLinkMessage.from(buffer.toByteArray());
+        }
+
+        @Override
+        public Object deserialize(ZLinkMessage message, Class<?> type) {
+            return new GenericDatumReader<>(schema)
+                .read(null, DecoderFactory.get().binaryDecoder(message.toBytes(), null));
+        }
+    }
+
+    // extension 내부에서 Avro serializer를 한 번 등록한다.
+    options.codecs().use(new AvroCodecExtension());
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // serializer의 책임은 business 객체 ↔ Message(byte payload) 변환뿐이다.
+    // packet name 결정과 codec 선택은 framework가 한다.
+    class AvroOrderSerializer : ZLinkMessageSerializer {
+        private val schema = Schema.Parser().parse(SCHEMA_JSON)
+
+        override fun serialize(value: Any, type: Class<*>): ZLinkMessage {
+            val buffer = ByteArrayOutputStream()
+            GenericDatumWriter<Any>(schema)
+                .write(value, EncoderFactory.get().binaryEncoder(buffer, null))
+            return ZLinkMessage.from(buffer.toByteArray())
+        }
+
+        override fun deserialize(message: ZLinkMessage, type: Class<*>): Any =
+            GenericDatumReader<Any>(schema)
+                .read(null, DecoderFactory.get().binaryDecoder(message.toBytes(), null))
+    }
+
+    // extension 내부에서 Avro serializer를 한 번 등록한다.
+    options.codecs().use(AvroCodecExtension())
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // serializer의 책임은 business 객체 ↔ Message(byte payload) 변환뿐이다.
+    // packet name 결정과 codec 선택은 framework가 한다.
+    export class AvroOrderSerializer implements ZLinkMessageSerializer {
+      private readonly type = avro.Type.forSchema(SCHEMA_JSON);
+
+      serialize(value: unknown): ZLinkMessage {
+        return ZLinkMessage.from(this.type.toBuffer(value));
+      }
+
+      deserialize(message: ZLinkMessage): unknown {
+        return this.type.fromBuffer(Buffer.from(message.toBytes()));
+      }
+    }
+
+    // extension 내부에서 Avro serializer를 한 번 등록한다.
+    builder.codecs().use(new AvroCodecExtension());
+    ```
 
 
 등록 후 high-level 호출은 그대로 업무 객체를 주고받고 직렬화는 Avro로 처리된다.
@@ -1113,19 +1962,47 @@ serializer는 서로 겹치지 않게 여러 개 둘 수 있다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // 처리 노드 A — 같은 ChannelName을 server로 등록한 node가 후보가 된다.
+    auto mesh = options.add_route_mesh ("media");
+    mesh.listen ("tcp://0.0.0.0:5600")
+      .set_routing_id (zlink::routing_id_t::from (std::string ("resize")));
+    mesh.channel_name ("image.resize").server ()
+      .add_request_handler<resize_handler_t, resize_request_t, resize_reply_t> ();
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // 처리 노드 A — 같은 ChannelName을 server로 등록한 node가 후보가 된다.
+    ZLinkMeshNodeBuilder mesh = options.addRouteMesh("media")
+        .listen("tcp://0.0.0.0:5600")
+        .setRoutingIdPrefix("resize");
+    mesh.channelName("image.resize").server()
+        .addRequestHandler(ResizeHandler.class, ResizeRequest.class, ResizeReply.class);
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // 처리 노드 A — 같은 ChannelName을 server로 등록한 node가 후보가 된다.
+    val mesh = options.addRouteMesh("media")
+        .listen("tcp://0.0.0.0:5600")
+        .setRoutingIdPrefix("resize")
+    mesh.channelName("image.resize").server()
+        .addRequestHandler(ResizeHandler::class.java, ResizeRequest::class.java, ResizeReply::class.java)
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // 처리 노드 A — 같은 ChannelName을 server로 등록한 node가 후보가 된다.
+    const mesh = builder.addRouteMesh('media')
+      .listen('tcp://0.0.0.0:5600')
+      .setRoutingIdPrefix('resize');
+    mesh.channel('image.resize').server()
+      .addRequestHandler(ResizeHandler);
+    ```
 
 호출 노드는 같은 ChannelName을 Client로 등록하고 처리 노드를 연결한다.
 
@@ -1148,19 +2025,63 @@ serializer는 서로 겹치지 않게 여러 개 둘 수 있다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // 호출 노드 — 처리 노드 endpoint를 직접 적는 수동 연결.
+    auto caller = options.add_route_mesh ("media");
+    caller.listen ("tcp://0.0.0.0:5590")
+      .set_routing_id (zlink::routing_id_t::from (std::string ("resize-client")));
+    caller.channel_name ("image.resize").client ();   // 호출만 하므로 client.
+    caller.peer_connections ().connect ("tcp://10.30.1.10:5600");
+    caller.peer_connections ().connect ("tcp://10.30.1.10:5601");
+
+    // 또는 location store로 자동 발견 — 노드를 추가해도 호출자를 다시 시작하지 않는다.
+    options.add_route_mesh ("media").listen (0).channel_name ("image.resize").client ();
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // 호출 노드 — 처리 노드 endpoint를 직접 적는 수동 연결.
+    ZLinkMeshNodeBuilder caller = options.addRouteMesh("media")
+        .listen("tcp://0.0.0.0:5590")
+        .setRoutingIdPrefix("resize-client");
+    caller.channelName("image.resize").client();     // 호출만 하므로 client.
+    caller.peerConnections().connect("tcp://10.30.1.10:5600");
+    caller.peerConnections().connect("tcp://10.30.1.10:5601");
+
+    // 또는 location store로 자동 발견 — 노드를 추가해도 호출자를 다시 시작하지 않는다.
+    options.addRouteMesh("media").listen(0).channelName("image.resize").client();
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // 호출 노드 — 처리 노드 endpoint를 직접 적는 수동 연결.
+    val caller = options.addRouteMesh("media")
+        .listen("tcp://0.0.0.0:5590")
+        .setRoutingIdPrefix("resize-client")
+    caller.channelName("image.resize").client()      // 호출만 하므로 client.
+    caller.peerConnections().connect("tcp://10.30.1.10:5600")
+    caller.peerConnections().connect("tcp://10.30.1.10:5601")
+
+    // 또는 location store로 자동 발견 — 노드를 추가해도 호출자를 다시 시작하지 않는다.
+    options.addRouteMesh("media").listen(0).channelName("image.resize").client()
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // 호출 노드 — 처리 노드 endpoint를 직접 적는 수동 연결.
+    const caller = builder.addRouteMesh('media')
+      .listen('tcp://0.0.0.0:5590')
+      .setRoutingIdPrefix('resize-client');
+    caller.channel('image.resize').client();        // 호출만 하므로 client.
+    caller.peerConnections().connect('tcp://10.30.1.10:5600');
+    caller.peerConnections().connect('tcp://10.30.1.10:5601');
+
+    // 또는 location store로 자동 발견 — 노드를 추가해도 호출자를 다시 시작하지 않는다.
+    builder.addRouteMesh('media').listen(0).channel('image.resize').client();
+    ```
 
 
 ```mermaid
@@ -1200,19 +2121,51 @@ Node direct 호출은 `RoutingId`로 특정 MeshNode 하나를 지정한다. 이
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    auto mesh = options.add_route_mesh ("play");
+    mesh.listen (play_router_endpoint)
+      .set_routing_id (zlink::routing_id_t::from (play_router_id));
+
+    // 노드 자체의 운영 상태를 반환하는 handler다.
+    mesh.add_route_request_handler<node_status_handler_t, get_node_status_t, node_status_t> (
+      "ops.node.status");
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    ZLinkMeshNodeBuilder mesh = options.addRouteMesh("play")
+        .listen(playRouterEndpoint)
+        .setRoutingId(RoutingId.from(playRouterId));
+
+    // 노드 자체의 운영 상태를 반환하는 handler다.
+    mesh.addRouteRequestHandler(
+        NodeStatusHandler.class, GetNodeStatus.class, NodeStatus.class, "ops.node.status");
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    val mesh = options.addRouteMesh("play")
+        .listen(playRouterEndpoint)
+        .setRoutingId(RoutingId.from(playRouterId))
+
+    // 노드 자체의 운영 상태를 반환하는 handler다.
+    mesh.addRouteRequestHandler(
+        NodeStatusHandler::class.java, GetNodeStatus::class.java, NodeStatus::class.java,
+        "ops.node.status")
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    const mesh = builder.addRouteMesh('play')
+      .listen(playRouterEndpoint)
+      .setRoutingId(RoutingId.from(playRouterId));
+
+    // 노드 자체의 운영 상태를 반환하는 handler다.
+    mesh.addRouteRequestHandler(NodeStatusHandler, 'ops.node.status');
+    ```
 
 
 호출자는 관리 시스템에서 확인한 Node RID와 MeshName을 함께 전달한다.
@@ -1240,19 +2193,85 @@ Node direct 호출은 `RoutingId`로 특정 MeshNode 하나를 지정한다. 이
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    auto target = zlink::routing_id_t::from (std::string ("play-node-1"));
+
+    // 특정 노드의 운영 상태를 묻기 때문에 node direct를 사용한다.
+    auto status = co_await route_client
+                    .request_to_node ("play", target, get_node_status_t{})
+                    .submit<node_status_t> ();
+
+    class node_status_handler_t
+    {
+      public:
+        using request_type = get_node_status_t;
+        using reply_type = node_status_t;
+        static constexpr const char *topic_name = "ops.node.status";
+
+        node_status_t handle (const get_node_status_t &, route_message_context_t &)
+        {
+            return node_status_t::ready ();
+        }
+    };
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    RoutingId target = RoutingId.from("play-node-1");
+
+    // 특정 노드의 운영 상태를 묻기 때문에 Node direct를 사용한다.
+    NodeStatus status = routeClient
+        .requestToNode("play", target, new GetNodeStatus())
+        .submit(NodeStatus.class)
+        .toCompletableFuture().join();
+
+    public final class NodeStatusHandler
+        implements ZLinkRouteRequestHandler<GetNodeStatus, NodeStatus> {
+        @Override
+        public CompletionStage<NodeStatus> handle(
+            GetNodeStatus request, ZLinkRouteMessageContext context) {
+            return CompletableFuture.completedFuture(NodeStatus.ready());
+        }
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    val target = RoutingId.from("play-node-1")
+
+    // 특정 노드의 운영 상태를 묻기 때문에 Node direct를 사용한다.
+    val status = routeClient
+        .requestToNode("play", target, GetNodeStatus())
+        .submit(NodeStatus::class.java)
+        .await()
+
+    class NodeStatusHandler : ZLinkRouteRequestHandler<GetNodeStatus, NodeStatus> {
+        override suspend fun handle(
+            request: GetNodeStatus, context: ZLinkRouteMessageContext): NodeStatus =
+            NodeStatus.ready()
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    const target = RoutingId.from('play-node-1');
+
+    // 특정 노드의 운영 상태를 묻기 때문에 Node direct를 사용한다.
+    const status = await routeClient
+      .requestToNode('play', target, getNodeStatus())
+      .submit<NodeStatus>();
+
+    export class NodeStatusHandler
+      implements ZLinkRouteRequestHandler<GetNodeStatus, NodeStatus> {
+      async handle(
+        request: GetNodeStatus, context: ZLinkRouteMessageContext): Promise<NodeStatus> {
+        return nodeStatusReady();
+      }
+    }
+    ```
 
 
 업무 메시지는 대상의 논리 주소를 사용한다.
@@ -1340,19 +2359,119 @@ SPOT과의 결합은 [06-spot](06-spot.ko.md)에서 이어진다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    int main (int argc, char **argv)
+    {
+        auto app = framework::app_t::create ();
+        app.add_zlink_framework ([] (zlink_framework_options_t &options) {
+            options.codecs ().use (protobuf_codec_t::default_instance ());
+            options.handlers ().group ("api").add<user_handlers_t> (); // 노출할 handler group.
+
+            auto mesh = options.add_route_mesh ("services");
+            mesh.listen ("tcp://0.0.0.0:7101")
+              .set_routing_id (zlink::routing_id_t::from (std::string ("api-1")));
+            mesh.channel_name ("api").server ().use_handler_group ("api");
+            mesh.channel_name ("account").client ();                   // 호출만 하는 channel.
+
+            options.add_fanout_channel ("api.events")
+              .enable_publisher ("tcp://0.0.0.0:7201")                 // 이 process가 발행자다.
+              .enable_subscriber ("tcp://127.0.0.1:7201")             // 자기 발행도 구독해 보여 준다.
+              .use_handler_group ("api.events"); // 구독 handler를 group으로 붙인다.
+
+            options.http ()
+              .listen ("http://0.0.0.0:8080")
+              .map_post<create_user_http_handler_t> ("/users/{id}");
+        });
+        return app.run (argc, argv);
+    }
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    @SpringBootApplication
+    public class Program {
+        public static void main(String[] args) {
+            SpringApplication.run(Program.class, args);
+        }
+
+        @Bean
+        ZLinkFrameworkCustomizer zlink() {
+            return options -> {
+                options.codecs().use(ZLinkProtobufCodec.getDefault());
+                options.addHandlersFromPackageOf(Program.class);  // 발견: package에서 handler를 찾는다.
+
+                ZLinkMeshNodeBuilder mesh = options.addRouteMesh("services")
+                    .listen("tcp://0.0.0.0:7101")
+                    .setRoutingId(RoutingId.from("api-1"));
+                mesh.channelName("api").server()
+                    .addHandlerGroup("api");                     // 노출: handler group을 channel에 연결한다.
+                mesh.channelName("account").client();            // 호출만 하는 channel.
+
+                options.addFanoutChannel("api.events")
+                    .enablePublisher("tcp://0.0.0.0:7201")       // 이 process가 발행자다.
+                    .enableSubscriber("tcp://127.0.0.1:7201")   // 자기 발행도 구독해 보여 주는 예다.
+                    .addHandler(UserCacheRefreshedEventHandler.class, UserCacheRefreshedEvent.class);
+            };
+        }
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    @SpringBootApplication
+    class Program
+
+    fun main(args: Array<String>) {
+        runApplication<Program>(*args)
+    }
+
+    @Bean
+    fun zlink() = ZLinkFrameworkCustomizer { options ->
+        options.codecs().use(ZLinkProtobufCodec.getDefault())
+        options.addHandlersFromPackageOf(Program::class.java) // 발견: package에서 handler를 찾는다.
+
+        val mesh = options.addRouteMesh("services")
+            .listen("tcp://0.0.0.0:7101")
+            .setRoutingId(RoutingId.from("api-1"))
+        mesh.channelName("api").server()
+            .addHandlerGroup("api")                           // 노출: handler group을 channel에 연결한다.
+        mesh.channelName("account").client()                  // 호출만 하는 channel.
+
+        options.addFanoutChannel("api.events")
+            .enablePublisher("tcp://0.0.0.0:7201")            // 이 process가 발행자다.
+            .enableSubscriber("tcp://127.0.0.1:7201")        // 자기 발행도 구독해 보여 주는 예다.
+            .addHandler(
+                UserCacheRefreshedEventHandler::class.java, UserCacheRefreshedEvent::class.java)
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    @Module({
+      imports: [
+        ZLinkFrameworkModule.forRoot((builder) => {
+          builder.codecs().use(ZLinkProtobufCodec.default);
+
+          const mesh = builder.addRouteMesh('services')
+            .listen('tcp://0.0.0.0:7101')
+            .setRoutingId(RoutingId.from('api-1'));
+          mesh.channel('api').server()
+            .addHandlerGroup('api');                     // 노출: handler group을 channel에 연결한다.
+          mesh.channel('account').client();              // 호출만 하는 channel.
+
+          builder.addFanoutChannel('api.events')
+            .enablePublisher('tcp://0.0.0.0:7201')       // 이 process가 발행자다.
+            .enableSubscriber('tcp://127.0.0.1:7201')   // 자기 발행도 구독해 보여 주는 예다.
+            .addHandler(UserCacheRefreshedEventHandler);
+        })
+      ],
+      providers: [UserHandlers, UserCacheRefreshedEventHandler] // 발견: provider로 등록한다.
+    })
+    export class AppModule {}
+    ```
 
 
 ## 11. 자주 발생하는 문제

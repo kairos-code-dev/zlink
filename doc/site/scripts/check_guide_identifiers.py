@@ -137,6 +137,11 @@ ALLOWED_NON_FRAMEWORK = {
     "importState": "예제 Actor의 도메인 메서드 — relocation adapter가 부른다",
     "apply_player": "예제 Actor의 도메인 메서드",
     "httpTimeout": "예제 client 옵션 record의 접근자",
+    "accountId": "예제 메시지 record의 접근자",
+    "nickname": "예제 메시지 record의 접근자",
+    "orderId": "예제 메시지 record의 접근자",
+    "roomId": "예제 메시지 record의 접근자",
+    "gameName": "예제 메시지 record의 접근자",
     "streamTimeout": "예제 client 옵션 record의 접근자",
     "apiUrl": "예제 client 옵션 record의 접근자",
     "gameName": "예제 client 옵션 record의 접근자",
@@ -151,6 +156,11 @@ ALLOWED_NON_FRAMEWORK = {
     "WithMetrics": "OpenTelemetry",
     "AddMeter": "OpenTelemetry",
     "AddPrometheusExporter": "OpenTelemetry",
+    "binaryEncoder": "Apache Avro",
+    "binaryDecoder": "Apache Avro",
+    "forSchema": "avsc(Node Avro)",
+    "toBuffer": "avsc(Node Avro)",
+    "fromBuffer": "avsc(Node Avro)",
 }
 
 

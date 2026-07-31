@@ -4534,3 +4534,48 @@ buffering이다. Rid-addressed router 경로만 fail-fast를 선택하고 channe
 선택하지 않는다. 후보 0개를 즉시 `NotFound`로 끝내려면 선택 시점의 후보 수를 알아야 하며
 그 선택은 Core의 `RequestToChannel` 안에서 일어난다. PS-A4와 마찬가지로 core lane이므로
 기록만 한다.
+
+### AutomaticTurnDispatch 판정: manual-only RouteMesh에는 select-one 후보가 없다
+
+`/topology/ready`가 실패할 때 mesh status를 함께 돌려주도록 측정을 붙였다.
+
+```
+{"ready":false,"diag":"delay-a|Ready ready=True"}
+```
+
+Peer는 `Ready`이고 MeshNode도 ready다. 그런데 `RequestToChannel("await.delay", ...)`는
+submit된 뒤 timeout으로 끝나고 `delay-a`는 아무것도 받지 못한다. 연결 문제가 아니라
+**선택할 후보가 없는** 문제다. RL-A1에서 확인한 것과 같은 증상이다. 후보가 0개일 때
+`NotFound`로 끝나지 않고 connect-window buffering으로 기다린다.
+
+후보가 왜 0개인가. spec 08 §3.2의 각주가 답한다.
+
+> RouteMesh 후보는 07 Channel topology §4.2가 **descriptor에 게시하는** Server
+> membership이고, 그 set은 remote target이 될 수 있는 membership만 나타내기 때문이다.
+
+Descriptor는 Location Store에 게시하는 정보다(spec 29 §5). `play-a`는 Location Store를
+등록하지만 `delay-a`는 등록하지 않는다. 따라서 `delay-a`의 `await.delay` Server
+membership은 어디에도 게시되지 않고, play는 peer가 ready인 것만 알 뿐 그 peer가 이
+channel의 Server라는 사실을 알 수 없다.
+
+spec 07 §7은 "ChannelName Server는 MeshNode가 ready이고 자신의 weight가 0보다 클 때만 새
+select-one target이 된다"고만 적어 descriptor를 언급하지 않는다. 두 조항이 다르게
+읽히지만, 관측은 spec 08 각주 쪽과 일치한다.
+
+Delay host에 Location Store를 붙여 확인했다. 그러면 `delay-a`가 후보가 되지만 동시에
+`play-a`가 같은 MeshName의 `delay-b`까지 발견하고 `NotConnected`로 남긴다.
+
+```
+{"ready":false,"diag":"delay-a-63f6e664|Ready;delay-b-4a84f7f7|NotConnected ready=False"}
+```
+
+이 스위트는 `play-a ↔ delay-a`와 `play-b ↔ delay-b`를 **같은 MeshName의 별개 manual
+pair**로 쓰려 한다. Store를 붙이면 두 pair가 한 mesh로 합쳐져 의도가 깨진다. 즉 store
+추가는 해답이 아니다.
+
+정리하면 이 스위트의 구성 자체가 지금 계약에서 성립하지 않는다. 해결은 설계 결정이다.
+
+- Pair마다 MeshName을 나누고 Location Store를 쓴다.
+- 또는 select-one 대신 RID direct로 주소를 지정한다.
+
+측정 편집(store 주입, prefix 전환, runner 인자, diag 응답)은 모두 되돌렸다.

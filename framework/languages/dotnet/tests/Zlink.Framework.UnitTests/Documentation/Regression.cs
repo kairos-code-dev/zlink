@@ -29,6 +29,7 @@ public sealed class RegressionTests
     /// </summary>
     private static readonly string[] LanguageGuideDocuments =
     [
+        "01-overview.ko.md",
         "02-getting-started.ko.md",
         "11-monitoring.ko.md",
         "13-interface-catalog.ko.md",
@@ -41,9 +42,6 @@ public sealed class RegressionTests
     /// </summary>
     private static readonly string[] CommonGuideDocuments =
     [
-        //  01은 산출물과 등록 진입점만 언어별이고 나머지는 같다. 그 둘을 탭으로 두고
-        //  공통 소스에서 생성한다.
-        "01-overview.ko.md",
         "03-concepts.ko.md",
         "04-backpressure.ko.md",
         "05-channel-messaging.ko.md",

@@ -3624,3 +3624,25 @@ peer다.** 그런데도 수신측 handler는 한 번도 실행되지 않는다.
 있다.
 
 다음은 session gateway가 이 packet의 route를 등록하는지 확인하는 것이다.
+
+### 세 후보 모두 배제 — 유실은 framework 밖이다
+
+마지막 후보였던 route 미등록도 배제됐다.
+
+```
+"No node route request handler" 오류 :  0건
+session-a stdout                     : 26줄 (tombstone 흔적 없음)
+```
+
+handler가 등록되지 않았다면 dispatcher가 Error 수준 로그를 남기고 오류 응답을 보낸다.
+그런 로그가 한 건도 없다. 즉 handler가 없는 것이 아니라 **요청이 session-a의 dispatcher에
+도달하지 않는다.**
+
+정리하면 tombstone 층의 세 후보가 모두 배제됐다. 주소는 실제 rid와 일치하고, 대상은
+admitted peer이며, handler는 등록되어 있다. 그런데 212번 보낸 요청을 상대 노드가 하나도
+받지 못한다. framework 계층은 모두 정상이므로 유실은 **mesh 전송 계층**이다.
+
+ST-E2는 이 세션에서 다섯 겹을 벗겼다. 조기 Accepted, seal 대상 오류, 응답 유실(NRE),
+tombstone 무응답, 그리고 요청 미도달이다. 앞의 셋은 framework 안에서 고쳤거나 원인을
+확정했고, 마지막 둘은 framework 밖으로 나간다. 여기서 framework 범위의 조사는 한계에
+닿았고, 다음은 core transport 추적이 필요하다.

@@ -5336,3 +5336,37 @@ spec 24 §2.1은 host state 값에 `relocating`을 두고 §2.2는 "Host가 `rel
 
 Status와 metric 부분만으로 판정할 수 있는지, 즉 시나리오의 `SpotRows` 조건이 꼭 필요한지도
 함께 봐야 한다.
+
+### OBS-C1 좁히기: 진단용 by-id 위치 조회가 공개 표면에 없다
+
+앞 절이 남긴 두 갈래를 좁혔다. 먼저 무엇이 되고 무엇이 안 되는지 갈린다. 같은 endpoint
+안에서 `locations.ListTopologyAsync`는 relocating 중에도 성공하고 그 다음
+`spots.FindAsync`만 실패한다. spec 24 §2.2가 요구하는 status 조회는 살아 있다.
+
+spec 28 §13이 결정적이다.
+
+> 개별 blocker와 relocation 상태는 **개수를 제한한 진단 조회와 trace에서 확인한다.**
+
+즉 relocation 중에도 진단 조회는 답해야 한다. 그런데 `IZLinkSpotManager.FindAsync`는
+일반 operation gate를 거치고 그 gate는 relocation이 봉인한다.
+
+그러면 host가 다른 API를 쓰면 될 것 같지만, 쓸 것이 없다. 운영용 읽기 표면인
+`IZLinkLocationRuntimeQuery`에는 by-id 조회가 없다.
+
+```csharp
+// Operational read surface for tools and self-checks.
+GetStatusAsync / ListTopologyAsync / ListServiceSummariesAsync
+```
+
+spec 21 §6.4는 "운영 도구는 ActorId 또는 SpotId로 현재 위치를 조회할 수 있다"고 정하는데
+그 조회를 제공하는 것은 object manager의 `FindAsync`뿐이다. 따라서 진단 목적의 by-id
+조회는 operation gate를 거치는 경로밖에 없다.
+
+정리하면 갈래는 host 구성이 아니라 둘 다 런타임이다.
+
+- `IZLinkLocationRuntimeQuery`가 spec 21 §6.4의 by-id 조회를 제공해야 한다(공개 표면 누락).
+- 또는 `FindAsync`가 relocation 중에도 답해야 한다.
+
+시나리오 쪽으로 우회할 수 없다는 점도 확인했다. OBS-C1의 술어는 draining 중에도 room의
+spot row가 남아 있는지를 보는 것이므로, 실패를 삼키고 빈 row를 돌려주면 검사 자체가
+사라진다. 공개 표면 결정이 필요한 항목으로 남긴다.

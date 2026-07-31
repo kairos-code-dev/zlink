@@ -4187,3 +4187,29 @@ setup commit이 섞였다, 런타임 순서 위반이다, same-node join의 것�
 `location_committed`가 transfer 수명주기의 정확히 어느 시점을 표시하는지, 그리고 러너가
 그 marker로 무엇을 보장하려 했는지는 이 marker와 검사를 설계한 쪽이 답해야 한다.
 로그만으로 추론하는 것은 이 항목에서 네 번 실패했다.
+
+## 2026-08-01 dotnet 나머지 스위트 — 기동은 하는데 연결이 성립하지 않는다
+
+메모리 한도 수정으로 기동 장벽이 사라진 뒤 PubSub을 다시 조사했다.
+
+```
+sub-1 : 01:37:42.606  Now listening on http://127.0.0.1:38789
+        01:37:42.615  Application started
+pub-a : 01:37:45.255  Now listening
+        01:37:45.263  Application started
+러너  : Timed out waiting 3s for sub-1 publisher connection evidence: event=ConnectionReady
+```
+
+노드는 모두 정상 기동하고 각각 0.9초 간격으로 뜬다. 대기가 3초이므로 처음에는 기동이
+느려 시간이 모자란 것으로 보였다. 그러나 `sub-1`의 evidence 파일은 **0줄**이다. 즉
+`ConnectionReady`가 늦게 오는 것이 아니라 **끝내 오지 않는다.**
+
+따라서 타이밍 문제가 아니라 연결 자체가 성립하지 않는다. 12개 스위트가 같은 모양
+("route readiness"/"connection evidence" 3초 타임아웃)으로 실패하므로 공통 원인일
+가능성이 있다.
+
+이 스위트들은 이번 세션 이전부터 실패해 왔고(`00959010f4`가 기동 장벽을 남긴 시점부터
+확인 불가였다), 기동이 풀린 지금 처음으로 다음 단계를 볼 수 있게 됐다. 연결이 왜
+성립하지 않는지는 아직 모른다. `SpotActorTransfer`는 같은 머신에서 정상 연결되므로
+머신이나 transport 전반의 문제는 아니고, 이 스위트들의 구성에서 갈리는 지점이 있을
+것이다.

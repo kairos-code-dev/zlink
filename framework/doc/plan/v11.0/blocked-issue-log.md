@@ -3085,3 +3085,25 @@ info: Request finished HTTP/1.1 POST http://127.0.0.1:39049/actors/actor-payload
 다음은 e2e server의 destroy 엔드포인트가 어떤 예외를 던지는지 확인하는 것이다.
 ST-I1은 relocation payload 크기를 측정하는 시나리오이므로, 측정 대상 actor를 정리하는
 단계에서 걸리는 것으로 보인다.
+
+### ST-I1 원인 확정 — 시나리오가 user Spot에 있는 actor를 그대로 destroy한다
+
+Kestrel 로그의 예외 본문을 끝까지 읽었다.
+
+```
+ZLinkFrameworkException: Actor 'actor-payload-small-...' must leave its current
+SPOT before destroy.
+  at ZLinkActorSessionManager...DestroyActorAsync
+```
+
+스펙 `14-actor-model.ko.md` §525가 이 계약을 규정한다.
+
+> "Actor destroy는 exact `ActorRef`를 받는다. Actor가 user Spot에 있으면 **먼저 leave
+> 또는 Entry Spot join을 완료해야 한다.**"
+
+따라서 런타임이 옳고 **시나리오가 계약을 지키지 않는다.** ST-I1은 relocation payload
+크기를 측정하는 시나리오이므로 actor를 user Spot으로 이동시킨 뒤 정리 단계에서 그대로
+destroy를 호출한다. 스펙대로면 leave 또는 Entry Spot join을 먼저 끝내야 한다.
+
+수정은 시나리오 쪽이다. destroy 전에 Entry Spot으로 되돌리거나 leave를 완료하면 된다.
+이 판단은 스펙 문장이 명시적이므로 추가 확인이 필요하지 않다.

@@ -61,6 +61,63 @@
 .md-typeset .highlight { margin: 0.8em 0; }
 .md-typeset code { word-break: normal; }
 
+/* 코드 블록의 경계.
+
+   Material 기본은 아주 옅은 회색 배경뿐이라 흰 바탕에서 블록이 어디서 시작해
+   어디서 끝나는지 눈에 잡히지 않는다. 산문과 코드가 번갈아 나오는 문서에서는
+   그 경계가 읽는 흐름을 잡아 주는 표지다.
+
+   테두리를 두르고 위에 언어 이름을 단 띠를 얹는다. 색은 전부 Material 변수라
+   light/dark 양쪽에서 같이 따라간다. */
+.md-typeset .highlight {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.15rem;
+  overflow: hidden;              /* 모서리 둥글기가 안쪽 배경에도 먹게 */
+}
+.md-typeset .highlight > pre { margin: 0; }
+
+.md-typeset .highlight::before {
+  display: block;
+  padding: 0.3em 1.1em;
+  font-family: var(--md-code-font-family);
+  font-size: 0.6rem;
+  letter-spacing: 0.03em;
+  color: var(--md-default-fg-color--light);
+  /* 띠와 코드는 같은 바탕에 두고 선 하나로 나눈다. Material이 파일 이름 띠를
+     그리는 방식과 같아서 둘이 섞여 나와도 어긋나지 않는다. */
+  background-color: var(--md-code-bg-color);
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+}
+.md-typeset .highlight.language-cpp::before { content: "C++"; }
+.md-typeset .highlight.language-c::before { content: "C"; }
+.md-typeset .highlight.language-csharp::before { content: "C#"; }
+.md-typeset .highlight.language-java::before { content: "Java"; }
+.md-typeset .highlight.language-kotlin::before { content: "Kotlin"; }
+.md-typeset .highlight.language-typescript::before { content: "TypeScript"; }
+.md-typeset .highlight.language-javascript::before { content: "JavaScript"; }
+.md-typeset .highlight.language-go::before { content: "Go"; }
+.md-typeset .highlight.language-rust::before { content: "Rust"; }
+.md-typeset .highlight.language-python::before { content: "Python"; }
+.md-typeset .highlight.language-bash::before { content: "shell"; }
+.md-typeset .highlight.language-console::before { content: "shell"; }
+.md-typeset .highlight.language-yaml::before { content: "YAML"; }
+.md-typeset .highlight.language-json::before { content: "JSON"; }
+.md-typeset .highlight.language-xml::before { content: "XML"; }
+.md-typeset .highlight.language-cmake::before { content: "CMake"; }
+.md-typeset .highlight.language-ts::before { content: "TypeScript"; }
+.md-typeset .highlight.language-jsonc::before { content: "JSON"; }
+.md-typeset .highlight.language-ini::before { content: "INI"; }
+.md-typeset .highlight.language-toml::before { content: "TOML"; }
+.md-typeset .highlight.language-groovy::before { content: "Groovy"; }
+.md-typeset .highlight.language-gdscript::before { content: "GDScript"; }
+/* ASCII 그림과 실행 출력은 언어가 아니다. 띠 없이 테두리만 남긴다.
+   언어를 안 적은 fence도 여기로 들어온다. */
+.md-typeset .highlight.language-text::before { display: none; }
+
+/* 파일 이름(`title="..."`)을 단 블록은 Material이 이미 띠를 그린다. 겹친다. */
+.md-typeset .highlight:has(span.filename)::before { display: none; }
+.md-typeset .highlight span.filename { margin-top: 0; border-radius: 0; }
+
 /* 긴 줄은 가로 스크롤 대신 접는다.
 
    코드 블록마다 아래에 스크롤 바가 생기면 문서를 훑는 흐름이 그때마다 끊긴다.

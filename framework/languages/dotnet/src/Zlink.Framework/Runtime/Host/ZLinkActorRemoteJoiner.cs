@@ -230,6 +230,11 @@ internal sealed class ZLinkActorRemoteJoiner(
             var sourceActivation = actorState.LiveActivation;
             var sourceLeft = false;
             var sourceCaptureStarted = false;
+            //  Spec 25 §5: the interruption histogram covers an Actor unit from
+            //  its admission seal to the target's admission-open ACK. The source
+            //  seals when capture starts and the target acknowledges by
+            //  accepting, so those two callbacks bound the window.
+            var interruption = Diagnostics.ZLinkRelocationInterruptionOperation.Disabled;
             var relocationMetric = ZLinkRuntimeMetrics.CreateRelocation(
                 actor.Context.MeshName,
                 ZLinkRelocationMetricObjectKind.Actor,
@@ -254,8 +259,17 @@ internal sealed class ZLinkActorRemoteJoiner(
                         sourcePermit,
                         operationId,
                         reservation => targetReservationRoute = reservation,
-                        accepted => targetAccepted = accepted,
-                        () => sourceCaptureStarted = true,
+                        accepted =>
+                        {
+                            targetAccepted = accepted;
+                            if (accepted) interruption.Complete();
+                        },
+                        () =>
+                        {
+                            sourceCaptureStarted = true;
+                            interruption = runtime.RelocationInterruption.Start(
+                                Diagnostics.ZLinkRelocationUnitKind.Actor);
+                        },
                         () => sourceLeft = true,
                         relocationMetric,
                         cancellationToken)

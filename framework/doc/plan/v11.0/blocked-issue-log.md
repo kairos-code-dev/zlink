@@ -5277,3 +5277,27 @@ spec 25 §5가 이 metric을 정의한다.
 수정하려면 actor handoff의 admission seal 시점과 target admission-open ACK 시점을 계측해야
 한다. `ZLinkActorRemoteJoiner`가 이미 relocation metric operation을 들고 있으므로 자리는
 분명하지만 두 시점을 잇는 계측 추가라 별도 작업으로 남긴다.
+
+### actor relocation interruption metric 추가로 OBS-B2 통과
+
+앞 절이 남긴 격차를 채웠다. spec 25 §5는 이 histogram이 Actor unit도 다루고 창을
+"admission seal부터 target admission-open ACK까지"로 정한다. `ZLinkActorRemoteJoiner`의
+transaction은 그 두 시점을 이미 callback으로 알린다.
+
+```
+() => sourceCaptureStarted = true      <- source가 봉인하는 시점
+accepted => targetAccepted = accepted  <- target이 수락을 알리는 시점
+```
+
+그래서 capture 시작에서 `RelocationInterruption.Start(ZLinkRelocationUnitKind.Actor)`로
+열고 accepted에서 `Complete()`한다. Actor에는 spot의 execution mode 개념이 없으므로 해당
+label은 붙이지 않는다. `ZLinkRelocationUnitKind.Actor`는 이미 정의되어 있었고 쓰이지 않던
+값이다.
+
+검증:
+
+- OBS-B2 3회 연속 통과
+- contract 72/72, unit 1376/1376
+- SpotActorTransfer handoff 시나리오 6종(ST-A1·B1·C2·D1·E1A·F1) 전부 통과
+
+ObservabilityOps는 OBS-A1~A5, OBS-B1, OBS-B2가 통과한다.

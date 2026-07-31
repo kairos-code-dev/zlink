@@ -70,19 +70,48 @@ MeshNode 하나에 두 역할을 함께 얹은 모양은 이렇다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    auto mesh = options.add_route_mesh ("services");  // MeshNode 하나가 mesh "services"에 참여한다.
+    mesh.listen ("tcp://0.0.0.0:7101");               // 다른 node가 접속할 자기 endpoint.
+
+    // C++은 Object role을 별도 builder 대신 enum 하나로 지정한다.
+    mesh.set_object_role (object_role_t::server);     // 이 node에 spot·actor를 배치한다.
+    mesh.channel_name ("orders").server ();           // Channel role — "orders" 요청을 이 node가 처리한다.
+    mesh.channel_name ("billing").client ();          // 호출만 하는 channel은 client다.
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    ZLinkMeshNodeBuilder mesh = options.addRouteMesh("services"); // MeshNode 하나가 mesh "services"에 참여한다.
+    mesh.listen("tcp://0.0.0.0:7101");                            // 다른 node가 접속할 자기 endpoint.
+
+    mesh.objects().server();                   // Object role — 이 node에 spot·actor를 배치한다.
+    mesh.channelName("orders").server();       // Channel role — "orders" 요청을 이 node가 처리한다.
+    mesh.channelName("billing").client();      // 호출만 하는 channel은 client다.
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    val mesh = options.addRouteMesh("services")  // MeshNode 하나가 mesh "services"에 참여한다.
+    mesh.listen("tcp://0.0.0.0:7101")            // 다른 node가 접속할 자기 endpoint.
+
+    mesh.objects().server()                      // Object role — 이 node에 spot·actor를 배치한다.
+    mesh.channelName("orders").server()          // Channel role — "orders" 요청을 이 node가 처리한다.
+    mesh.channelName("billing").client()         // 호출만 하는 channel은 client다.
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    const mesh = builder.addRouteMesh('services');  // MeshNode 하나가 mesh "services"에 참여한다.
+    mesh.listen('tcp://0.0.0.0:7101');              // 다른 node가 접속할 자기 endpoint.
+
+    mesh.objects().server();                        // Object role — 이 node에 spot·actor를 배치한다.
+    mesh.channel('orders').server();                // Channel role — "orders" 요청을 이 node가 처리한다.
+    mesh.channel('billing').client();               // 호출만 하는 channel은 client다.
+    ```
 
 
 peer 주소를 코드에 적지 않고 서버 증감을 따라가는 자동 연결은

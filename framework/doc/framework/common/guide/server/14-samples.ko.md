@@ -370,19 +370,42 @@ flowchart TD
 
 === "C++"
 
-    C++ 실행 방법은 준비 중이다.
+    ```bash
+    # 샘플 하나 실행
+    framework/languages/cpp/samples/Bingo/run_sample.sh
+
+    # 여러 개를 이어서 실행 (인자를 생략하면 전체)
+    framework/languages/cpp/samples/run_samples.sh TicTacToe Bingo
+    ```
 
 === "Java"
 
-    Java 실행 방법은 준비 중이다.
+    ```bash
+    # java와 kotlin 샘플을 한 runner가 함께 다룬다.
+    framework/languages/java/samples/java/TicTacToe/run_sample.sh
+
+    # 여러 개를 이어서 실행 (인자를 생략하면 전체)
+    ZLINK_SAMPLE_LANGUAGES=java \
+      framework/languages/java/samples/run_samples.sh TicTacToe Bingo
+    ```
 
 === "Kotlin"
 
-    Kotlin 실행 방법은 준비 중이다.
+    ```bash
+    # kotlin 샘플은 java와 같은 runner를 쓰고 언어만 골라 준다.
+    ZLINK_SAMPLE_LANGUAGES=kotlin \
+      framework/languages/java/samples/run_samples.sh TicTacToe Bingo
+    ```
 
 === "Node/TypeScript"
 
-    Node 실행 방법은 준비 중이다.
+    ```bash
+    # 샘플 하나 실행
+    framework/languages/node/samples/Bingo.Ts/run_sample.sh
+
+    # 여러 개를 이어서 실행 (인자를 생략하면 전체)
+    framework/languages/node/samples/run_samples.sh TicTacToe Bingo
+    ```
 
 `run_samples.sh`는 서버 샘플 6개를 다룬다. 브라우저 UI가 필요한 ZoneWorld는
 `ZoneWorld/run_sample.sh`로 따로 실행한다.

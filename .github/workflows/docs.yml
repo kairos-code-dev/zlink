@@ -38,6 +38,9 @@ jobs:
       - name: Check framework language tabs and snippets
         run: python3 doc/site/scripts/check_doc_tabs.py framework
 
+      - name: Check guide example identifiers
+        run: python3 doc/site/scripts/check_guide_identifiers.py
+
       - name: Check framework document contracts
         run: bash scripts/verify-framework-doc-contracts.sh
 

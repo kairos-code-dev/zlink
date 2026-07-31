@@ -4100,3 +4100,28 @@ await context.AssertEvidenceOrderAsync(context.NodeB, actorId, "handoff_packet",
 정리하면 ST-F2는 런타임의 순서 문제이며 검사가 그것을 정확히 잡아낸다. 이번 세션에서
 이 항목에 대해 두 번 잘못된 설명을 세웠고 두 번 다 측정이 뒤집었다. 세 번째 설명도
 세우기 전에 측정한 것이 이번의 유일한 개선이다.
+
+### 측정한 시간 순서
+
+ST-F2 실행의 관련 marker를 시각순으로 정리하면 이렇다.
+
+```
+01:23:18.995  location_committed
+01:23:19.084  handoff_backlog   (1)
+01:23:19.085  handoff_backlog   (2)
+01:23:19.169  handoff_backlog   (3)
+01:23:19.234  backlog_enqueued  ×3
+```
+
+commit → capture(3건) → enqueue(3건) 순서다. capture는 commit 89ms 뒤에 시작한다.
+
+여기서 설명이 필요한 지점이 하나 있다. 시나리오는 `joined_wait` 게이트를 잡은 상태에서
+B1·B2를 보내고 `handoff_backlog arrival=1`을 기다린 **뒤에** 게이트를 푼다. 즉 게이트가
+풀리기 전에 capture가 일어나야 하고, commit은 게이트가 풀린 뒤에 와야 자연스럽다. 그런데
+commit이 capture보다 앞선다.
+
+따라서 `location_committed`가 실제로 무엇을 표시하는지 확인해야 한다. transfer의 authority
+commit이라면 게이트보다 앞설 수 없고, 다른 것(예: 이전 membership 확정이나 target 예약)을
+표시한다면 앞서는 것이 자연스럽다. 이 세션에서 이 항목에 대해 설명을 먼저 세워 두 번
+틀렸으므로, 이번에는 `location_committed` 방출 지점의 코드를 읽어 무엇을 표시하는지
+확인한 뒤에 판단한다.

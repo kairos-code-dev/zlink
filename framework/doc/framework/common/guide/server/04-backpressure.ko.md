@@ -290,6 +290,17 @@ send는 응답을 기다리지 않지만, 기다려야 하는 대상이 하나 �
 기다리는 동안 대기하는 것은 그 호출뿐이며, 실행 스레드는 다른 작업을 처리한다
 ([05-channel-messaging](05-channel-messaging.ko.md#비동기-실행)).
 
+**상한까지 기다리지 않고 즉시 실패하는 경우가 하나 있다.** 자리를 기다리는 호출을 담아 두는
+공간까지 모두 찼을 때다. 이때는 payload를 보관하지 않고 바로 `DeadlineExceeded`로 끝낸다.
+설정한 상한이 1초인데 send가 즉시 실패했다면 queue가 찬 것이 아니라 **대기하는 호출이
+너무 많다**는 뜻이므로, 보내는 쪽 동시성을 먼저 본다.
+
+**기다리는 동안 target이 바뀔 수 있는 호출과 아닌 호출이 갈린다.** node를 직접 지정했거나
+Spot · Actor ID로 보내는 호출은 기다리는 동안에도 그 대상을 그대로 유지한다. 반면 channel
+이름으로 보내는 호출은 **자리가 확보되기 전까지 그 채널의 현재 후보를 다시 고를 수 있고**,
+전송 queue가 수락한 시점에 대상이 확정된다. 한 node가 느릴 때 channel 호출이 다른 node로
+흘러가는 것은 이 때문이다 — 대상이 고정된 호출에는 그 완충이 없다.
+
 ### 3.2 request의 timeout 경계
 
 request는 보낼 자리와 상대의 reply를 모두 기다리므로, 정체가 일어난 구간에서는
@@ -384,10 +395,29 @@ timeout으로 끝나도 이미 시작된 remote handler의 실행은 취소되�
 | 옵션 | 무엇을 정하나 | 설정 자리 |
 | --- | --- | --- |
 | `DefaultSocketSendTimeout` | 보낼 자리가 없을 때 기다리는 상한(기본 1초) | 루트 옵션 |
+| — | 실제로 적용되는 값은 **보내는 경로마다 다르다**(아래) | — |
 | `SendHighWaterMark` | 상대별로 **보내려고** 보관할 수 있는 byte. `0`은 무제한 | `ConfigureRouterSocket()` |
 | `ReceiveHighWaterMark` | 상대별로 **받아서** 보관할 수 있는 byte. `0`은 무제한 | `ConfigureRouterSocket()` |
 | `MaxMessageSize` | 받아들일 message 하나의 최대 크기 | `ConfigureRouterSocket()` |
 | `SendHighWaterMark` · `Linger` | pub/sub 발행 소켓의 상한과 종료 시 잔여 발행 대기 | `ConfigureSpotPublisher()` |
+
+**"보낼 자리를 기다리는 상한"은 하나의 전역 값이 아니다.** 실제로 쓰이는 값은 그 호출이
+사용하는 socket이 소유한다.
+
+| 보내는 경로 | 어느 상한을 쓰나 |
+| --- | --- |
+| RouteMesh node · channel, Spot, Actor | 고른 MeshNode의 송신 상한. **위치를 찾는 시간까지 포함한다** |
+| ClientServer | client 쪽 송신 상한 |
+| Logical Multicast | 고른 MeshNode의 송신 상한을 target마다 적용 |
+| classic pub/sub | 발행 socket의 송신 상한 |
+| session relay · bound session send | Framework socket의 송신 상한 |
+| STREAM send · reply | 그 STREAM socket의 송신 상한 |
+
+마지막 줄이 특히 헷갈리는 자리다. **reply에는 호출자가 지정한 request timeout을 쓰지
+않는다.** client가 5초를 기다리기로 했다고 해서 서버의 reply 제출이 5초를 기다리지 않는다.
+
+지정하지 않으면 각 경로가 1초를 쓴다. 값은 millisecond로 올림해 `1` 이상이어야 하며,
+`0` · 음수 · 무한대는 **host 시작에서 거부한다** — 조용히 기본값으로 바뀌지 않는다.
 
 두 HWM은 방향만 다를 뿐 성격이 같다. 각각 **자기 node가 들고 있을 byte**를 정하고, 그
 한도가 상대 쪽 흐름으로 이어진다. 값을 정할 때는 다음을 확인한다.

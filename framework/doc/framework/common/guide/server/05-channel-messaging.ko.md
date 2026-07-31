@@ -311,10 +311,9 @@ mesh 소켓을 그대로 사용하므로 별도 소켓이 없고,
                 milestone_event)
       .submit ();
 
-    // 구독 — entry spot이 시작할 때.
+    // 구독 — entry spot이 시작할 때. C++은 topic만 받는다.
     _context.handlers ().add_subscribe<&play_entry_spot_t::on_player_win_milestone> (
-      sample_topics_t::player_milestone_channel, // 발행 쪽과 같은 ChannelName·topic이어야 받는다.
-      sample_topics_t::player_milestone);
+      sample_topics_t::player_milestone); // 발행 쪽과 같은 topic이어야 받는다.
     ```
 
 === "Java"
@@ -327,11 +326,13 @@ mesh 소켓을 그대로 사용하므로 별도 소켓이 없고,
                  milestoneEvent)
         .submit();
 
-    // 구독 — PlayEntrySpot이 시작할 때.
-    context.handlers().addSubscribe(
-        PlayerWinMilestoneEventHandler.class,
-        SampleTopics.PlayerMilestoneChannel, // 발행 쪽과 같은 ChannelName·topic이어야 받는다.
-        SampleTopics.PlayerMilestone);
+    // 구독 — Java는 handler에 annotation으로 topic을 붙이고 등록은 addHandler로 한다.
+    @ZLinkSpotSubscription(topic = SampleTopics.PlayerMilestone) // 발행 쪽과 같은 topic이어야 받는다.
+    public final class PlayerWinMilestoneEventHandler
+        implements ZLinkSpotSubscriptionHandler<PlayEntrySpot, PlayerWinMilestoneEvent> { /* ... */ }
+
+    // PlayEntrySpot이 시작할 때.
+    context.handlers().addHandler(PlayerWinMilestoneEventHandler.class);
     ```
 
 === "Kotlin"
@@ -345,11 +346,13 @@ mesh 소켓을 그대로 사용하므로 별도 소켓이 없고,
         .submit()
         .await()
 
-    // 구독 — PlayEntrySpot이 시작할 때.
-    context.handlers().addSubscribe(
-        PlayerWinMilestoneEventHandler::class.java,
-        SampleTopics.PlayerMilestoneChannel, // 발행 쪽과 같은 ChannelName·topic이어야 받는다.
-        SampleTopics.PlayerMilestone)
+    // 구독 — Kotlin도 Java 표면을 쓴다. annotation으로 topic을 붙이고 addHandler로 등록한다.
+    @ZLinkSpotSubscription(topic = SampleTopics.PlayerMilestone) // 발행 쪽과 같은 topic이어야 받는다.
+    class PlayerWinMilestoneEventHandler :
+        ZLinkSpotSubscriptionHandler<PlayEntrySpot, PlayerWinMilestoneEvent> { /* ... */ }
+
+    // PlayEntrySpot이 시작할 때.
+    context.handlers().addHandler(PlayerWinMilestoneEventHandler::class.java)
     ```
 
 === "Node/TypeScript"

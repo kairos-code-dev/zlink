@@ -407,7 +407,8 @@ Relocation으로 Actor가 다른 node의 Entry Spot에 복원되는 경우에는
         @Override
         public void configure() {
             // JoinGameHandler가 PlayerActor 앞으로 온 JoinGame packet을 받는다.
-            context.handlers().addActorPacket(JoinGameHandler.class, PlayerActor.class);
+            // 어떤 종류인지는 handler에 붙인 @ZLinkSpotActorSend가 정한다.
+            context.handlers().addHandler(JoinGameHandler.class);
         }
 
         // 새 Actor가 이 Entry Spot을 최초 membership으로 삼을 때 호출된다.
@@ -444,7 +445,8 @@ Relocation으로 Actor가 다른 node의 Entry Spot에 복원되는 경우에는
         // Spot instance가 준비될 때 한 번 호출된다.
         override fun configure() {
             // JoinGameHandler가 PlayerActor 앞으로 온 JoinGame packet을 받는다.
-            entryContext.handlers().addActorPacket(JoinGameHandler::class.java, PlayerActor::class.java)
+            // 어떤 종류인지는 handler에 붙인 @ZLinkSpotActorSend가 정한다.
+            entryContext.handlers().addHandler(JoinGameHandler::class.java)
         }
 
         // 새 Actor가 이 Entry Spot을 최초 membership으로 삼을 때 호출된다.

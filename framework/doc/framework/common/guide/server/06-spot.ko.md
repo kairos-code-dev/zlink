@@ -795,7 +795,7 @@ Framework는 Spot activation에서 handler를 한 번 만들고 Spot이 닫히�
     | --- | --- |
     | Spot 앞 one-way packet | `add_handler<&TSpot::method> ()` |
     | Spot 앞 request | `add_handler<&TSpot::method> ()`(반환값이 reply) |
-    | Logical Multicast 구독 이벤트 | `add_subscribe<&TSpot::method> (channel_name, topic)` |
+    | Logical Multicast 구독 이벤트 | `add_subscribe<&TSpot::method> (topic)` |
     | timer tick | `add_timer<THandler> (name, period, options)`(§6.1) |
     | member Actor 앞 one-way packet | `add_actor_send<&TSpot::method> ()` |
     | member Actor 앞 request | `add_actor_request<&TSpot::method> ()` |
@@ -804,23 +804,29 @@ Framework는 Spot activation에서 handler를 한 번 만들고 Spot이 닫히�
 
     | 받는 것 | 구현할 interface | 등록 |
     | --- | --- | --- |
-    | Spot 앞 one-way packet | `ZLinkSpotPacketHandler<TSpot, TMessage>` | `addPacket(THandler.class)` |
-    | Spot 앞 request | `ZLinkSpotRequestHandler<TSpot, TRequest, TReply>` | `addPacket(THandler.class)` |
-    | Logical Multicast 구독 이벤트 | `ZLinkSpotSubscriptionHandler<TSpot, TEvent>` | `addSubscribe(THandler.class, channelName, topic)` |
-    | timer tick | `ZLinkSpotTimerHandler<TSpot>` | `addTimer(name, period, THandler.class, options)`(§6.1) |
-    | member Actor 앞 one-way packet | `ZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | `addActorPacket(THandler.class, TActor.class)` |
-    | member Actor 앞 request | `ZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | `addActorPacket(THandler.class, TActor.class)` |
+    | Spot 앞 one-way packet | `ZLinkSpotPacketHandler<TSpot, TMessage>` | `addHandler(THandler.class)` |
+    | Spot 앞 request | `ZLinkSpotRequestHandler<TSpot, TRequest, TReply>` | `addHandler(THandler.class)` |
+    | Logical Multicast 구독 이벤트 | `ZLinkSpotSubscriptionHandler<TSpot, TEvent>` | handler에 `@ZLinkSpotSubscription(topic)` + `addHandler(THandler.class)` |
+    | timer tick | `ZLinkSpotTimerHandler<TSpot>` | `context.addTimer(name, period, THandler.class, options)`(§6.1) |
+    | member Actor 앞 one-way packet | `ZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | handler에 `@ZLinkSpotActorSend` + `addHandler(THandler.class)` |
+    | member Actor 앞 request | `ZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | handler에 `@ZLinkSpotActorRequest` + `addHandler(THandler.class)` |
+
+    **등록 메서드는 `addHandler` 하나다.** 무엇을 받는 handler인지는 구현한 interface와
+    annotation이 정한다. packet 이름은 message 타입의 `@ZLinkPacket`에서 온다.
 
 === "Kotlin"
 
     | 받는 것 | 구현할 interface | 등록 |
     | --- | --- | --- |
-    | Spot 앞 one-way packet | `ZLinkSpotPacketHandler<TSpot, TMessage>` | `addPacket(THandler::class.java)` |
-    | Spot 앞 request | `ZLinkSpotRequestHandler<TSpot, TRequest, TReply>` | `addPacket(THandler::class.java)` |
-    | Logical Multicast 구독 이벤트 | `ZLinkSpotSubscriptionHandler<TSpot, TEvent>` | `addSubscribe(THandler::class.java, channelName, topic)` |
-    | timer tick | `ZLinkSpotTimerHandler<TSpot>` | `addTimer(name, period, THandler::class.java, options)`(§6.1) |
-    | member Actor 앞 one-way packet | `ZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | `addActorPacket(THandler::class.java, TActor::class.java)` |
-    | member Actor 앞 request | `ZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | `addActorPacket(THandler::class.java, TActor::class.java)` |
+    | Spot 앞 one-way packet | `ZLinkSpotPacketHandler<TSpot, TMessage>` | `addHandler(THandler::class.java)` |
+    | Spot 앞 request | `ZLinkSpotRequestHandler<TSpot, TRequest, TReply>` | `addHandler(THandler::class.java)` |
+    | Logical Multicast 구독 이벤트 | `ZLinkSpotSubscriptionHandler<TSpot, TEvent>` | handler에 `@ZLinkSpotSubscription(topic)` + `addHandler(THandler::class.java)` |
+    | timer tick | `ZLinkSpotTimerHandler<TSpot>` | `context.addTimer(name, period, THandler::class.java, options)`(§6.1) |
+    | member Actor 앞 one-way packet | `ZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | handler에 `@ZLinkSpotActorSend` + `addHandler(THandler::class.java)` |
+    | member Actor 앞 request | `ZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | handler에 `@ZLinkSpotActorRequest` + `addHandler(THandler::class.java)` |
+
+    **Java 표면을 그대로 쓴다.** 등록 메서드는 `addHandler` 하나이고, 무엇을 받는
+    handler인지는 구현한 interface와 annotation이 정한다.
 
 === "Node/TypeScript"
 
@@ -946,7 +952,7 @@ handler는 대상 Spot instance를 첫 인자로 받는다. Spot 안에서 실�
         // Spot 앞 request — 반환값이 reply다.
         room_state_t get_room_state (const get_room_state_t &) { return snapshot (); }
 
-        // 구독 이벤트 — add_subscribe로 등록한 channel·topic으로 들어온다.
+        // 구독 이벤트 — add_subscribe로 등록한 topic으로 들어온다.
         task_t<void> score (const score_changed_t &event)
         {
             apply_score (event);
@@ -985,7 +991,7 @@ handler는 대상 Spot instance를 첫 인자로 받는다. Spot 안에서 실�
         }
     }
 
-    // 구독 이벤트 — addSubscribe로 등록한 channel·topic으로 들어온다.
+    // 구독 이벤트 — @ZLinkSpotSubscription의 topic으로 들어온다.
     public final class ScoreHandler
         implements ZLinkSpotSubscriptionHandler<GameRoom, ScoreChanged> {
         @Override
@@ -1025,7 +1031,7 @@ handler는 대상 Spot instance를 첫 인자로 받는다. Spot 안에서 실�
         override suspend fun handle(spot: GameRoom, request: GetRoomState): RoomState = spot.snapshot()
     }
 
-    // 구독 이벤트 — addSubscribe로 등록한 channel·topic으로 들어온다.
+    // 구독 이벤트 — @ZLinkSpotSubscription의 topic으로 들어온다.
     class ScoreHandler : ZLinkSpotSubscriptionHandler<GameRoom, ScoreChanged> {
         override suspend fun handle(spot: GameRoom, event: ScoreChanged) {
             spot.applyScore(event)
@@ -1143,8 +1149,8 @@ Actor 앞 request는 actor request handler이며
         void configure () override
         {
             _context.handlers ().add_handler<&game_room_t::chat> (); // Spot send handler를 등록한다.
-            _context.handlers ().add_subscribe<&game_room_t::score> (
-              "game-events", "score.changed"); // Logical Multicast 구독을 등록한다.
+            // C++은 topic만 받는다.
+            _context.handlers ().add_subscribe<&game_room_t::score> ("score.changed");
         }
 
         task_t<spot_create_response_t> on_create (const message_t &request) override
@@ -1185,11 +1191,9 @@ Actor 앞 request는 actor request handler이며
 
         @Override
         public void configure() {
-            context.handlers().addPacket(ChatHandler.class); // Spot send handler를 등록한다.
-            context.handlers().addSubscribe(
-                ScoreHandler.class,
-                "game-events",
-                "score.changed"); // Logical Multicast 구독을 등록한다.
+            context.handlers().addHandler(ChatHandler.class); // Spot send handler를 등록한다.
+            // 구독 topic은 ScoreHandler에 붙인 @ZLinkSpotSubscription이 정한다.
+            context.handlers().addHandler(ScoreHandler.class);
         }
 
         @Override
@@ -1223,11 +1227,9 @@ Actor 앞 request는 actor request handler이며
         override fun context(): ZLinkSpotContext = spotContext
 
         override fun configure() {
-            spotContext.handlers().addPacket(ChatHandler::class.java) // Spot send handler를 등록한다.
-            spotContext.handlers().addSubscribe(
-                ScoreHandler::class.java,
-                "game-events",
-                "score.changed") // Logical Multicast 구독을 등록한다.
+            spotContext.handlers().addHandler(ChatHandler::class.java) // Spot send handler를 등록한다.
+            // 구독 topic은 ScoreHandler에 붙인 @ZLinkSpotSubscription이 정한다.
+            spotContext.handlers().addHandler(ScoreHandler::class.java)
         }
 
         override suspend fun onCreate(request: ZLinkMessage): ZLinkSpotCreateResponse {

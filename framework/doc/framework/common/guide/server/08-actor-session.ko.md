@@ -284,7 +284,7 @@ bound Actor로 넘긴다.
         @Override
         public CompletionStage<Void> onDispatch(
             ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
-            return context.handlers().tryHandle(dispatch, payload).thenCompose(handled -> {
+            return context.handlers().tryHandle(context, dispatch, payload).thenCompose(handled -> {
                 if (handled) return CompletableFuture.completedFuture(null);
                 // decode하지 않고 Framework-owned payload를 Actor handler로 넘긴다.
                 return requireSingleBoundActor().relay(payload).thenApply(ignored -> null);
@@ -310,7 +310,7 @@ bound Actor로 넘긴다.
         }
 
         override suspend fun onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
-            if (context.handlers().tryHandle(dispatch, payload).await()) return
+            if (context.handlers().tryHandle(context, dispatch, payload).await()) return
 
             // decode하지 않고 Framework-owned payload를 Actor handler로 넘긴다.
             requireSingleBoundActor().relay(payload).await()

@@ -495,6 +495,27 @@ kotlin은 Java 런타임을 공유하므로 **다른 지점만 쓰고 나머지�
 lifecycle 상태처럼 **값 이름의 표기까지 언어를 따르는 자리**(PascalCase ↔
 SCREAMING_SNAKE)는 이름을 적는 대신 뜻을 적고 "표기는 언어를 따른다"를 덧붙였다.
 
+**게이트 6도 끝냈다.** 두 축으로 돌렸다 — handler 시그니처 모양과 호출 arity다.
+
+terminal 이탈은 **0건**이다. 다섯 언어 탭 어디에도 다른 언어의 terminal(`.Async` ·
+`.submit` · `.await`)이 섞이지 않았다.
+
+**arity 대조에서 Java · Kotlin의 등록 표면이 통째로 틀린 것이 드러났다.** 가이드는
+`addPacket` · `addSubscribe` · `addActorPacket`을 registry 메서드로 적었는데,
+`ZLinkSpotHandlerRegistry`에는 **`addHandler(Class<?>)` 하나뿐**이다. 무엇을 받는
+handler인지는 구현한 interface와 annotation(`@ZLinkSpotSubscription` ·
+`@ZLinkSpotActorSend` · `@ZLinkSpotActorRequest`)이 정한다. `HandlerContractTest`가
+나머지 이름이 **없어야 한다고** 단언하고 있었다 — 즉 문서만 다른 언어 표면을 베껴 온
+자리였다. 06장 표 두 개와 코드 두 개, 07장 코드 두 개를 고쳤다.
+
+같은 대조에서 셋을 더 잡았다.
+
+| 자리 | 무엇이 틀렸나 |
+| --- | --- |
+| Java · Kotlin `tryHandle` | 인자 둘로 적었다. 계약은 `(context, dispatch, payload)` 셋이다(08 · 09장 네 자리) |
+| C++ `add_subscribe` | channel과 topic 둘을 넘겼다. C++은 **topic 하나만** 받는다 |
+| Java · Kotlin 구독 등록 | `addSubscribe(...)` 자체가 없다. annotation + `addHandler`다 |
+
 **게이트 6은 C++부터 돌렸다.** 방법은 이렇다 — 탭 코드에서 handler 선언과 `handle`
 파라미터 수를 뽑아, 그 언어의 실제 계약(.NET·Java·Node는 interface 선언, C++은 concept과
 `static_assert`)과 대조한다. `.NET` 8쌍, Java·Kotlin·Node 각 12쌍은 **전부 맞았다** —
@@ -667,7 +688,11 @@ operation을 `NotifyDisconnected`라 하며 `.NET` exact interface에서는
 | 남은 일 | 규모 |
 | --- | --- |
 | ZoneWorld 샘플 구현 | cpp · java · kotlin. 문서가 아니라 코드 작업이다 |
-| 게이트 6 잔여 | C++ 외 네 언어의 호출 형태 대조 |
+
+**§11의 게이트 여덟이 모두 통과했다.** 1 · 2 · 3 · 5 · 7은 스크립트가 상시 검사하고,
+4 · 6 · 8은 이번에 전수로 돌렸다. §12 완료 정의를 기준으로 **공통 정본과 다섯 언어 lane이
+모두 완료**다. 문서 쪽에 남은 일은 없고, ZoneWorld는 샘플 코드 작업이라 이 런북의 범위
+밖이다(handoff 문서 S1).
 
 **병행 트랙 상태.** 사이트는 정본 트리를 docs root로 쓰도록 구성했고 가이드 장의 빌드
 경고가 0이다. 체커는 정본 트리 전체를 보며 탭 언어 완전성을 검사한다. CI는 framework

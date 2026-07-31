@@ -236,7 +236,7 @@ Session은 연결, packet dispatch, 오류와 disconnect callback을 구현한�
         @Override
         public CompletionStage<Void> onDispatch(
             ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
-            return context.handlers().tryHandle(dispatch, payload).thenCompose(handled -> handled
+            return context.handlers().tryHandle(context, dispatch, payload).thenCompose(handled -> handled
                 ? CompletableFuture.<Void>completedFuture(null)
                 // application protocol에 없는 packet을 받으면 연결을 닫는다.
                 : context.close().toCompletableFuture());
@@ -267,7 +267,7 @@ Session은 연결, packet dispatch, 오류와 disconnect callback을 구현한�
         }
 
         override suspend fun onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
-            if (context.handlers().tryHandle(dispatch, payload).await()) return
+            if (context.handlers().tryHandle(context, dispatch, payload).await()) return
             // application protocol에 없는 packet을 받으면 연결을 닫는다.
             context.close().await()
         }

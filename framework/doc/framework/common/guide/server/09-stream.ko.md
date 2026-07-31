@@ -62,6 +62,26 @@ Stream node에는 session type 하나를 등록한다. Actor dispatch를 사용�
 Session handler와 Actor/Spot handler는 Framework의 기본 typed JSON serialization을 사용한다.
 Application이 message type마다 codec을 등록하거나 raw frame을 해석하지 않는다.
 
+**등록은 명시적이다.** attribute·annotation·decorator로 stream node를 암시적으로
+등록하는 표면은 없다. 축은 셋뿐이다 — node 이름, bind endpoint, session type. 그중 **bind
+endpoint는 반드시 지정한다.**
+
+다음 여덟은 첫 연결까지 미루지 않고 **host 시작 전에** 설정 오류로 막는다.
+
+| 조건 |
+| --- |
+| node 이름이 비어 있다 |
+| 같은 node 이름을 두 번 등록했다 |
+| bind endpoint가 없다 |
+| 같은 session type을 중복 등록했다 |
+| 한 node에 session을 둘 이상 등록했다 |
+| TLS를 켰는데 인증서 경로가 비어 있다 |
+| TLS를 켰는데 key 경로가 비어 있다 |
+| TLS server를 설정하지 않고 client 인증서를 요구했다 |
+
+TLS를 켜면 인증서와 key 경로를 함께 지정한다. client 인증서 요구는 기본이 꺼짐이고,
+켜면 검증에 실패한 연결은 **session을 만들기 전에** 거부한다.
+
 ## 2. Session lifecycle
 
 Session은 연결, packet dispatch, 오류와 disconnect callback을 구현한다. 같은 session의 callback은
@@ -288,8 +308,23 @@ Session은 연결, packet dispatch, 오류와 disconnect callback을 구현한�
     ```
 
 
-Handshake와 node 범위 오류는 runtime monitoring으로 보고한다. Session `OnError`는 session
-범위 오류만 받는다.
+오류가 어디로 가는지는 넷으로 갈린다. **session 오류 callback은 그 session에 귀속되는
+transport 오류만 받는다.**
+
+| 오류 | 어디로 가나 |
+| --- | --- |
+| 그 session의 transport 오류 | session 오류 callback |
+| handshake 실패 | runtime monitoring. session이 만들어지기 전이라 부를 대상이 없다 |
+| socket · node 단위 오류 | runtime monitoring. session 하나의 오류로 확정할 수 없다 |
+| application handler 예외 | handler 예외 처리 경로. **session 오류 callback이 아니다** |
+
+**handler filter는 session dispatch에 적용되지 않는다.** 다른 dispatch에 걸어 둔 filter가
+있어도 session callback 앞에서는 돌지 않는다. 인증처럼 session 경로에서 걸러야 하는 일은
+session의 handler 등록으로 처리한다.
+
+**recv loop를 직접 도는 표면은 없다.** Framework가 packet을 queue에 넣은 뒤 session
+callback을 실행하며, 그 경계에서 dispatch · DI · logging을 일관되게 적용한다. loop ·
+취소 · backpressure를 application이 떠안지 않게 하려는 설계다.
 
 ## 3. Typed packet handler
 
@@ -378,6 +413,10 @@ one-shot reply token을 사용한다.
 
 `Reply`는 현재 request에서만 유효하며 한 번 제출할 수 있다. Timeout이나 cancellation으로 전송이
 실패해도 같은 reply token을 다시 사용할 수 없다.
+
+**응답에는 packet 이름이 실리지 않는다.** client는 request sequence만으로 대기 중인 요청을
+찾고, 응답을 어떤 타입으로 읽을지는 **호출할 때 지정한 타입**이 정한다. 이름으로 고르지
+않으므로 응답 쪽에 packet 이름을 붙이는 표면도 없다. 오류 응답도 같은 sequence로 돌아온다.
 
 Server가 먼저 push할 때는 `Send`를 사용한다.
 

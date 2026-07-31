@@ -516,6 +516,15 @@ SCREAMING_SNAKE)는 이름을 적는 대신 뜻을 적고 "표기는 언어를 �
 Location Store를 다시 조회하지 않는다는 점, disconnect 통지의 all-settled·dedupe 규칙,
 닫힌 session의 늦은 reply 처리다. **넷 다 "빠졌다"이지 "틀렸다"가 아니었다.**
 
+**09장도 마쳤다.** `19-stream-session`과 대조해 다섯을 채웠다 — startup에서 막는 등록
+오류 여덟 가지, 오류가 어디로 가는지 가르는 네 갈래, **handler filter가 session
+dispatch에는 적용되지 않는다**는 점, recv loop를 표면에 두지 않은 이유, 응답에 packet
+이름이 실리지 않고 타입은 호출자가 정한다는 점이다.
+
+filter 항목이 특히 값이 있다. 다른 dispatch에 filter를 걸어 둔 독자는 session 경로에도
+걸릴 것으로 읽는데, 계약은 반대다. 문서에 없으면 인증을 filter에 두고 통과했다고 믿는
+사고가 난다.
+
 이 대조에서 게이트 3의 구멍도 드러났다. 산문이 `BindAsync` · `OnCreateActorAsync` 같은
 **`.NET` terminal이 붙은 operation 이름**을 부르고 있었는데 게이트 3이 타입 이름만 보고
 있어 놓쳤다. 공통 12장에서 33자리다.
@@ -528,7 +537,7 @@ operation을 `NotifyDisconnected`라 하며 `.NET` exact interface에서는
 | 남은 일 | 규모 |
 | --- | --- |
 | ZoneWorld 샘플 구현 | cpp · java · kotlin. 문서가 아니라 코드 작업이다 |
-| 게이트 4 나머지 8장 | 03 · 04 · 05 · 06 · 07 · 09 · 10 · 12. 08장과 같은 방식이다 |
+| 게이트 4 나머지 7장 | 03 · 04 · 05 · 06 · 07 · 10 · 12. 08 · 09장과 같은 방식이다 |
 | 게이트 6 | 호출 형태 대조. 사람이 읽는다 |
 
 **병행 트랙 상태.** 사이트는 정본 트리를 docs root로 쓰도록 구성했고 가이드 장의 빌드

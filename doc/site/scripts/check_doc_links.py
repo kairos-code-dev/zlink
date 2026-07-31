@@ -123,9 +123,9 @@ GENERATED_INTO = [
 
 
 def resolves_after_generation(md: Path, link: str) -> bool:
-    if md.parent != COMMON_GUIDE or "/" in link:
+    if md.parent != COMMON_GUIDE:
         return False
-    return any((d / link).exists() for d in GENERATED_INTO)
+    return any((d / link).resolve().exists() for d in GENERATED_INTO)
 
 
 def check_tree(name: str, root: Path, errors: list[str]) -> tuple[int, int]:

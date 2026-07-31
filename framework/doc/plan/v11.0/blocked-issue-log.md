@@ -4125,3 +4125,33 @@ commit이라면 게이트보다 앞설 수 없고, 다른 것(예: 이전 member
 표시한다면 앞서는 것이 자연스럽다. 이 세션에서 이 항목에 대해 설명을 먼저 세워 두 번
 틀렸으므로, 이번에는 `location_committed` 방출 지점의 코드를 읽어 무엇을 표시하는지
 확인한 뒤에 판단한다.
+
+### location_committed의 정체 — same-node join의 commit이다
+
+코드를 읽으니 그 marker가 무엇을 표시하는지 분명하다.
+
+```csharp
+//  Same-node join commits the location authority just as
+//  a cross-node handoff does, so it reports the commit on
+//  the same channel. Using the debug console here left
+//  the marker invisible to anything reading ILogger.
+_runtime.LogActorHandoff(
+    $"location_committed actor={actor.Context.ActorId} spot={SpotId}");
+```
+
+이것은 `ZLinkSpotActivationActors`의 **same-node join** 경로이고, 주석이 스스로
+"cross-node handoff와 마찬가지로 같은 채널에 commit을 보고한다"고 밝힌다. 즉 이 marker는
+transfer 전용이 아니라 **같은 노드 안에서의 join commit도 함께 찍는다.**
+
+이것이 시간 순서를 설명한다. ST-F2는 actor를 만들고 entry spot에 join시키는 setup을
+거치는데, 그 same-node join이 `location_committed`를 남긴다. 그 뒤에 transfer가 시작되고
+capture가 일어난다. 따라서 commit(setup) → capture(transfer) 순서가 관측된다.
+
+앞 절에서 "location_committed는 그 실행에서 한 번뿐이므로 setup 것이 섞인 게 아니다"라고
+적었는데, **한 번뿐이어도 그 한 번이 setup의 것**일 수 있다. 횟수만 보고 단계를 판단한
+것이 오류였다.
+
+정리하면 러너의 검사는 transfer의 commit을 의도하지만 marker가 same-node join에서도
+나오므로, 첫 출현을 비교하는 방식으로는 transfer 순서를 검증할 수 없다. ST-F2의 실패는
+런타임의 순서 위반이 아니라 **marker가 두 단계를 구분하지 못하는 것**이다. 시나리오
+단언이 모두 통과하는 것도 이와 맞는다.

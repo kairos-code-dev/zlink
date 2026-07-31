@@ -4911,7 +4911,13 @@ OBS-A1에서 찾은 "placement가 고른 node가 아니라 play-a에 묻는다"�
 
 OBS-A1·A2·A3이 통과한다.
 
-### OBS-A4: join 없이 만든 room에서 spot timer가 돌지 않는다
+### (정정됨) OBS-A4: spot timer 이야기는 틀렸다 — 아래 절 참조
+
+이 절의 결론은 오귀속이다. 실패 지점을 line 번호로 확인하지 않고 "timer-tick 증거가
+없다"만 보고 timer를 원인으로 지목했다. 실제로는 시나리오가 timer 부분에 도달한 적이
+없다. 아래 정정 절이 실제 지점을 다룬다.
+
+### (오귀속) OBS-A4: join 없이 만든 room에서 spot timer가 돌지 않는다
 
 OBS-A4는 이 수정 뒤에도 같은 지점에서 멈춘다. 원인은 host 선택이 아니다.
 
@@ -4930,3 +4936,21 @@ timer가 시작하지 않는다"가 가장 그럴듯한 설명이다. 이것이 
 
 RuntimeMonitoring MON-A4 로그에도 `Spot timer handler failed. source=monitor.spot`이 함께
 찍히므로 두 스위트를 같이 볼 여지가 있다.
+
+### OBS-A4 정정: 실패는 timer가 아니라 projection fanout이다
+
+앞 절의 timer 판단을 취소한다. Stack의 line 번호를 확인하니 실패 지점은 계속 line 23,
+즉 **projection fanout 증거 대기**였다. Timer room 생성은 그보다 뒤에 있어 실행된 적이
+없고, 따라서 "timer-tick 증거 0건"은 timer가 돌지 않는다는 근거가 아니었다. 증상만 보고
+원인을 지목한 오류다.
+
+이 지점에도 host 가정 결함이 있었다. `CreateWorkflowRes`의 `NodeRid`를 버리고
+`WorkflowA`·`WorkflowB`에 고정으로 물었다. 소유 node에 묻도록 고쳤다. 이때
+`ScenarioContext.Workflow(nodeRid)`는 role을 한 번 조회해야 채워지는 cache를 쓰므로
+양쪽 role을 먼저 warm해야 한다.
+
+그렇게 고쳐도 line 34에서 같은 timeout이 난다. 즉 소유 node에 물어도
+`projection-received` 증거가 오지 않는다. Owner workflow의 publish가 subscriber Spot에
+도달하지 않는 것이며, 이번에는 host 가정 문제가 아니다.
+
+OBS-A1·A2·A3은 통과 상태를 유지한다.

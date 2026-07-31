@@ -29,7 +29,6 @@ public final class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
         this.context = context;
         this.settings = settings;
     }
-// --8<-- [end:doc-entry-spot]
 
     @Override
     public ZLinkEntrySpotContext context() {
@@ -95,3 +94,4 @@ public final class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
         milestoneObservers.add(actor);
     }
 }
+// --8<-- [end:doc-entry-spot]

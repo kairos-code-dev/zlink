@@ -108,6 +108,39 @@ def resolve_snippet(rel: str, base_paths: list[Path]) -> Path | None:
     return None
 
 
+def section_of(rel: str) -> str | None:
+    """`path:section`의 section 이름. 없으면 None."""
+    m = re.search(r":([A-Za-z0-9_-]+)$", rel)
+    return m.group(1) if m else None
+
+
+def check_marker_span(path: Path, name: str) -> str | None:
+    """마커 구간이 온전한지 본다. 문제가 있으면 사유를, 없으면 None을 돌려준다.
+
+    마커 이름이 존재하고 경로가 풀려도 구간 자체가 빈 채로 렌더될 수 있다.
+    end 마커를 여는 중괄호와 같은 줄에서 닫히는 생성자(`) {}`) 뒤에 두면 class가
+    열린 채로 잘려 문법이 깨진 코드가 나간다. 실제로 겪은 회귀다.
+    """
+    lines = path.read_text(encoding="utf-8").splitlines()
+    start = end = None
+    for i, line in enumerate(lines):
+        if f"--8<-- [start:{name}]" in line:
+            start = i
+        elif f"--8<-- [end:{name}]" in line:
+            end = i
+    if start is None or end is None:
+        return f"마커 '{name}' 없음"
+    if end <= start:
+        return f"마커 '{name}'의 end가 start보다 앞이다"
+    body = [l for l in lines[start + 1:end] if l.strip()]
+    if len(body) < 2:
+        return f"마커 '{name}' 구간이 {len(body)}줄이다"
+    depth = sum(l.count("{") - l.count("}") for l in body)
+    if depth != 0:
+        return f"마커 '{name}' 구간의 중괄호가 {depth:+d}로 안 맞는다"
+    return None
+
+
 def parse_tab_groups(lines: list[str]):
     """연속된 `=== "Label"` 항목을 하나의 탭 그룹으로 묶는다.
 
@@ -166,9 +199,17 @@ def check_doc_set(ds: "DocSet", errors: list[str]) -> tuple[int, int, int]:
         for ln, line in enumerate(lines, 1):
             for sm in SNIPPET_RE.finditer(line):
                 total_snippets += 1
-                if resolve_snippet(sm.group(1), ds.base_paths) is None:
+                target = resolve_snippet(sm.group(1), ds.base_paths)
+                if target is None:
                     errors.append(
                         f"[{ds.name}] {rel_md}:{ln}: 스니펫 경로 미해석: {sm.group(1)}")
+                    continue
+                section = section_of(sm.group(1))
+                if section:
+                    reason = check_marker_span(target, section)
+                    if reason:
+                        errors.append(f"[{ds.name}] {rel_md}:{ln}: {reason}"
+                                      f" ({target.relative_to(REPO_ROOT)})")
 
         # (1)(3) 탭 그룹 검사: 스니펫을 담은 그룹은 표준 언어 전부 + 확장자 일치.
         for group in parse_tab_groups(lines):

@@ -25,5 +25,5 @@ class PlayActorJoinGameHandler {
             .timeout(SampleNames.RequestTimeout)
             .defer()
     }
-// --8<-- [end:doc-join-defer]
 }
+// --8<-- [end:doc-join-defer]

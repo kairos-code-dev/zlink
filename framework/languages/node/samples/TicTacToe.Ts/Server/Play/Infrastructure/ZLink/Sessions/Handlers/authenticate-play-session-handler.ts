@@ -24,7 +24,6 @@ class AuthenticatePlaySessionHandler {
     @Inject(ZLINK_ACTOR_MANAGER) private readonly actors: ZLinkActorManager,
     @Inject(ZLINK_ROUTE_CLIENT) private readonly api: ZLinkRouteClient
   ) {}
-// --8<-- [end:doc-session-auth]
 
   async handle(context: ZLinkSessionContext, _dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
     const request = payload.decode<AuthenticateReq>(Object as never);
@@ -47,5 +46,6 @@ class AuthenticatePlaySessionHandler {
     context.client.reply(authenticateRes(authenticated.player)).submit();
   }
 }
+// --8<-- [end:doc-session-auth]
 
 export { AuthenticatePlaySessionHandler };

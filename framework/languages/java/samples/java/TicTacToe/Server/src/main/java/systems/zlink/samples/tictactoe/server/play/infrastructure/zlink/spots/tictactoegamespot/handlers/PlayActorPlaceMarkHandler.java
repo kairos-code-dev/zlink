@@ -21,5 +21,5 @@ public final class PlayActorPlaceMarkHandler {
         PlaceMarkRes response = spot.placeMark(actor, request.cell());
         return java.util.concurrent.CompletableFuture.completedFuture(response);
     }
-// --8<-- [end:doc-actor-packet-handler]
 }
+// --8<-- [end:doc-actor-packet-handler]

@@ -19,7 +19,6 @@ public final class PlaySession implements ZLinkSession {
         this.context = context;
         this.handlers = handlers;
     }
-// --8<-- [end:doc-session]
 
     @Override
     public ZLinkSessionContext context() {
@@ -63,3 +62,4 @@ public final class PlaySession implements ZLinkSession {
         };
     }
 }
+// --8<-- [end:doc-session]

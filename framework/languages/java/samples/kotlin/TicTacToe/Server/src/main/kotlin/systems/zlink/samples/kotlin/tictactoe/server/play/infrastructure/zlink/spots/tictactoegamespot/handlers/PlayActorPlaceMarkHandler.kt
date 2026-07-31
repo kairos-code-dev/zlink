@@ -21,5 +21,5 @@ class PlayActorPlaceMarkHandler {
         actor.requireJoinedGame()
         return spot.placeMark(actor, request.cell)
     }
-// --8<-- [end:doc-actor-packet-handler]
 }
+// --8<-- [end:doc-actor-packet-handler]

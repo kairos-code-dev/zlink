@@ -35,7 +35,6 @@ class PlayActorRelocationAdapter : ZLinkActorRelocationAdapter<PlayActor> {
         if (transferred.disconnected) actor.markDisconnected()
         return CompletableFuture.completedFuture(null)
     }
-// --8<-- [end:doc-relocation-adapter]
 
     companion object {
         private val json = jacksonObjectMapper()
@@ -48,3 +47,4 @@ class PlayActorRelocationAdapter : ZLinkActorRelocationAdapter<PlayActor> {
         val disconnected: Boolean,
     )
 }
+// --8<-- [end:doc-relocation-adapter]

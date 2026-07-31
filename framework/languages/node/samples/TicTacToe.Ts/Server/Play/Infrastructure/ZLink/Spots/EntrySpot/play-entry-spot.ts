@@ -21,7 +21,6 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
     private readonly milestoneObservers: MilestoneObserverRegistry,
     private readonly pendingDestroys: PendingActorDestroyRegistry
   ) {}
-// --8<-- [end:doc-entry-spot]
 
   async onActorJoin(_actorId: string, _request: ZLinkMessage): Promise<{ accepted: boolean }> {
     return { accepted: true };
@@ -66,6 +65,7 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
     });
   }
 }
+// --8<-- [end:doc-entry-spot]
 
 export {
   PlayEntrySpot

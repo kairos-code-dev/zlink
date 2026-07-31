@@ -18,7 +18,6 @@ class PlayActorRelocationAdapter implements ZLinkActorRelocationAdapter<PlayActo
       roomId: actor.roomId
     } satisfies PlayActorTransferState));
   }
-// --8<-- [end:doc-relocation-adapter]
 
   async restore(actor: PlayActor, payload: Uint8Array): Promise<void> {
     const restored = JSON.parse(new TextDecoder().decode(payload)) as PlayActorTransferState;
@@ -28,5 +27,6 @@ class PlayActorRelocationAdapter implements ZLinkActorRelocationAdapter<PlayActo
     actor.roomId = restored.roomId;
   }
 }
+// --8<-- [end:doc-relocation-adapter]
 
 export { PlayActorRelocationAdapter };

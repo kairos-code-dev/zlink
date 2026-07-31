@@ -8,7 +8,6 @@ import type {
 // --8<-- [start:doc-session]
 class PlaySession implements ZLinkSession {
   constructor(readonly context: ZLinkSessionContext) {}
-// --8<-- [end:doc-session]
 
   async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
     if (await this.context.handlers.tryHandle(dispatch, payload)) return;
@@ -21,5 +20,6 @@ class PlaySession implements ZLinkSession {
     await Promise.allSettled(this.context.actors.bound.map((actor) => actor.notifyDisconnected()));
   }
 }
+// --8<-- [end:doc-session]
 
 export { PlaySession };

@@ -26,5 +26,5 @@ public final class PlayActorJoinGameHandler {
             .defer();
         return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
-// --8<-- [end:doc-join-defer]
 }
+// --8<-- [end:doc-join-defer]

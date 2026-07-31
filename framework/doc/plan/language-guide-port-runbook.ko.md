@@ -525,6 +525,17 @@ filter 항목이 특히 값이 있다. 다른 dispatch에 filter를 걸어 둔 �
 걸릴 것으로 읽는데, 계약은 반대다. 문서에 없으면 인증을 filter에 두고 통과했다고 믿는
 사고가 난다.
 
+**10장도 마쳤다.** `21-location-runtime`과 대조해 넷을 채웠다 — 어느 Store가 언제
+필수인지(Location은 object role이 있으면 필수, Relocation은 relocation policy나 Instance
+Spot factory가 있으면 필수), lease 값 넷을 묶는 부등식과 위반 시 startup error,
+`StoreFailureGrace`가 **owner 자격을 연장하지 않는다**는 점, lease가 끊긴 host가 새
+작업을 받지 않는 범위다. 옵션 표에 빠져 있던 `OwnerLeaseRenewTimeout` ·
+`OwnerLeaseFencingMargin`도 넣었다 — 부등식에 나오는 값이 표에 없었다.
+
+여기서는 **소유권 오귀속**도 하나 고쳤다. lease 제약을 "언어별 계약을 따른다"고 넘겼는데
+그 부등식은 `21-location-runtime` §4가 소유하는 공통 계약이다. 게이트 4가 아니면 드러나기
+어려운 종류다.
+
 이 대조에서 게이트 3의 구멍도 드러났다. 산문이 `BindAsync` · `OnCreateActorAsync` 같은
 **`.NET` terminal이 붙은 operation 이름**을 부르고 있었는데 게이트 3이 타입 이름만 보고
 있어 놓쳤다. 공통 12장에서 33자리다.
@@ -537,7 +548,7 @@ operation을 `NotifyDisconnected`라 하며 `.NET` exact interface에서는
 | 남은 일 | 규모 |
 | --- | --- |
 | ZoneWorld 샘플 구현 | cpp · java · kotlin. 문서가 아니라 코드 작업이다 |
-| 게이트 4 나머지 7장 | 03 · 04 · 05 · 06 · 07 · 10 · 12. 08 · 09장과 같은 방식이다 |
+| 게이트 4 나머지 6장 | 03 · 04 · 05 · 06 · 07 · 12. 08 · 09 · 10장과 같은 방식이다 |
 | 게이트 6 | 호출 형태 대조. 사람이 읽는다 |
 
 **병행 트랙 상태.** 사이트는 정본 트리를 docs root로 쓰도록 구성했고 가이드 장의 빌드

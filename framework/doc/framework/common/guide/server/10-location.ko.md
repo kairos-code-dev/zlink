@@ -123,6 +123,18 @@ cross-store transaction에 의존하지 않으므로 필요하면 물리 Redis�
 Store를 등록한 뒤 application이 provider operation을 직접 호출하거나 dispose하지 않는다. Framework가
 Store 수명과 호출 순서를 관리한다.
 
+**어느 쪽이 필수인지는 구성이 정한다.**
+
+| Store | 언제 필요한가 |
+| --- | --- |
+| Location Store | Object role이 `Client` 또는 `Server`인 MeshNode에 **필수**. 없으면 socket을 열기 전에 설정 오류로 끝난다 |
+| Relocation Store | relocation policy를 가진 factory나 Instance Spot factory가 **하나라도 있으면 필수**. 전부 relocation을 끄고 Instance Spot factory도 없을 때만 없어도 된다 |
+
+**각각 정확히 한 번 등록한다.** 둘을 하나의 등록 함수로 묶는 표면은 없고, 필요한데
+누락하거나 둘 이상 등록하면 socket bind 전에 설정 오류다. Store가 없을 때 Framework가
+process 안에 대체 Store를 만들어 주지 않는다 — **단일 node로 조용히 동작하지 않고
+실패한다.**
+
 ## 2. 자동 연결
 
 같은 Location Store를 사용하는 MeshNode는 descriptor를 통해 상대 endpoint와 역할을 확인한다. Automatic
@@ -280,6 +292,8 @@ Manual peer를 하나라도 사용한 host에서는 host relocation을 지원하
 |---|---:|---|
 | `OwnerLeaseRenewInterval` | 5초 | owner lease 갱신 주기 |
 | `OwnerLeaseTtl` | 15초 | 갱신이 중단된 owner를 만료로 판단하는 시간 |
+| `OwnerLeaseRenewTimeout` | 3초 | 갱신 요청 하나를 기다리는 상한 |
+| `OwnerLeaseFencingMargin` | 5초 | 만료 전에 새 작업을 미리 끊는 여유 |
 | `PollingInterval` | 1초 | change watch가 없을 때 Store를 다시 읽는 주기 |
 | `StoreFailureGrace` | 30초 | Store 장애 중 마지막 route 판단을 유지하는 시간 |
 | `RouteCacheMaxAge` | 15초 | cached route를 다시 확인하기 전 최대 시간 |
@@ -288,7 +302,31 @@ Manual peer를 하나라도 사용한 host에서는 host relocation을 지원하
 | `MaxActiveInboundRelocations` | 64 | process에서 동시에 복원하는 relocation unit 상한 |
 | `MaxRelocationPayloadInFlightBytes` | 256 MiB | process 전체 encoded payload 상한 |
 
-Lease option의 전체 제약과 Capture·Restore callback 상한은
+**lease 값 넷은 서로 묶여 있다.** 다음 관계를 어기면 startup error다. 값을 바꿀 때는
+넷을 함께 본다.
+
+```text
+갱신 주기 + 갱신 timeout < owner lease TTL - fencing margin
+```
+
+기본값으로는 `5 + 3 < 15 - 5`가 성립한다. TTL만 줄이거나 갱신 주기만 늘리면 이 부등식이
+깨진다. 모든 값은 양수여야 한다.
+
+**Store 장애 중에 일어나는 일은 둘로 갈린다.** `StoreFailureGrace`는 마지막으로 완전히
+읽은 node 목록을 유지해 주는 시간이지, **owner 자격을 연장해 주는 시간이 아니다.**
+
+| grace 동안 | 결과 |
+| --- | --- |
+| 이미 맺은 연결 | 상태 판단을 계속한다 |
+| 새 outbound 연결 | 만들지 않는다. grace가 끝나도 node 목록 전체를 같은 시점으로 다시 읽기 전에는 만들지 않는다 |
+| owner lease · relocation deadline | **연장되지 않는다** |
+
+lease 갱신이 끊긴 host는 계산해 둔 시각을 넘는 순간 **새 작업을 받지 않는다** — state를
+바꾸는 message와 timer 시작, factory·restore 결과 확정, relocation 상태 변경과 수용 공간
+확보가 모두 막힌다. 이미 queue에 들어온 작업의 마무리와 정리는 계속한다. 새 owner와 옛
+owner가 동시에 쓰는 것을 막는 장치다.
+
+Capture·Restore callback 상한은
 [언어별 location option 계약](../../../common/spec/server/languages/README.ko.md)을
 따른다.
 

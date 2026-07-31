@@ -165,7 +165,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         string spotId,
         CancellationToken cancellationToken = default)
     {
-        using var operation = EnterOperation();
+        using var operation = EnterOperationalRead();
         return await _spots.ResolveAsync(spotId, cancellationToken)
             .ConfigureAwait(false);
     }

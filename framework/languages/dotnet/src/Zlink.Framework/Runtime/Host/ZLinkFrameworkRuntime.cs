@@ -383,6 +383,37 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             return EnterOperationUnderLock(countAsRequest);
     }
 
+    /// <summary>
+    /// Entry for an operational read. Spec 28 §13 has individual blockers and
+    /// relocation state checked through bounded diagnostic queries, so a
+    /// location lookup still has to answer once the host stopped accepting
+    /// work; the sibling reads on the operational surface take no gate at all.
+    /// The lease still counts, so shutdown waits for a read in flight, and a
+    /// runtime past Running still refuses.
+    /// </summary>
+    internal ZLinkRuntimeOperationLease EnterOperationalRead()
+    {
+        if (AmbientOperation.Value is { IsActive: true } current
+            && ReferenceEquals(current.Runtime, this))
+        {
+            EnsureAmbientOperationCurrent(current);
+            return new ZLinkRuntimeOperationLease();
+        }
+
+        lock (_operationGate)
+        {
+            if (Volatile.Read(ref _lifecyclePhase) != (int)ZLinkRuntimeLifecyclePhase.Running
+                || _state is not { } state)
+                throw new InvalidOperationException(
+                    "ZLink framework runtime is not accepting operations.");
+            _activeOperations++;
+            var previous = AmbientOperation.Value;
+            var ownership = new ZLinkRuntimeOperationOwnership(this, state);
+            AmbientOperation.Value = ownership;
+            return new ZLinkRuntimeOperationLease(this, ownership, previous, false);
+        }
+    }
+
     internal ZLinkRuntimeOperationLease RetainOperationForBackgroundWork()
     {
         if (AmbientOperation.Value is not { IsActive: true } current

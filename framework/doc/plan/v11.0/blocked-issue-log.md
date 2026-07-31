@@ -5370,3 +5370,30 @@ spec 21 §6.4는 "운영 도구는 ActorId 또는 SpotId로 현재 위치를 조
 시나리오 쪽으로 우회할 수 없다는 점도 확인했다. OBS-C1의 술어는 draining 중에도 room의
 spot row가 남아 있는지를 보는 것이므로, 실패를 삼키고 빈 row를 돌려주면 검사 자체가
 사라진다. 공개 표면 결정이 필요한 항목으로 남긴다.
+
+### 진단 위치 조회에 operational read 진입점 추가
+
+앞 절의 두 선택지 중 공개 표면을 늘리지 않는 쪽을 골랐다. 결정적 근거는 기존 설계다.
+운영용 읽기 표면인 `IZLinkLocationRuntimeQuery`의 `ListTopologyAsync`는 operation gate를
+아예 타지 않는다. 그래서 relocating 중에도 답한다. By-id 조회만 object manager를 거쳐
+gate를 타고 있었다.
+
+`EnterOperationalRead()`를 추가하고 `FindAsync` 두 곳(spot·actor)이 그것을 쓰게 했다. 이
+진입점은 `_acceptingOperations`와 owner admission을 요구하지 않지만 runtime이 Running이고
+state가 살아 있을 것은 요구하며, lease를 그대로 계수하므로 shutdown이 진행 중인 읽기를
+기다린다. 근거는 spec 28 §13("개별 blocker와 relocation 상태는 개수를 제한한 진단 조회와
+trace에서 확인한다")이다.
+
+결과는 부분 진전이다. OBS-C1의 500은 사라지고 이제 draining 증거가 10초 안에 수렴하지
+않는다. 술어가 요구하는 네 조건(`!Ready`, draining peer row, spot row, host state
+`relocating`) 중 무엇이 빠지는지는 아직 보지 않았다.
+
+회귀 확인:
+
+- contract 72/72, unit 1376/1376
+- ObservabilityOps 9개 통과 유지
+- SpotActorTransfer: ST-C2가 4회 중 2회 실패해 회귀를 의심했으나 baseline도 4회 중 1회
+  실패한다. ST-E1과 같은 부류의 기존 flakiness다.
+
+이 스위트에서 flaky로 확인된 시나리오가 둘(ST-E1, ST-C2)이다. 단발 실행으로 회귀를
+판정하면 안 되는 대상으로 기록해 둔다.

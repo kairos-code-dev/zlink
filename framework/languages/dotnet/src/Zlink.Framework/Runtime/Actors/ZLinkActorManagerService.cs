@@ -20,7 +20,7 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
         string actorId,
         CancellationToken cancellationToken = default)
     {
-        using var operation = runtime.EnterOperation();
+        using var operation = runtime.EnterOperationalRead();
         cancellationToken.ThrowIfCancellationRequested();
         var store = runtime.Registration.Locations.ResolveStore();
         if (store is null)

@@ -11936,3 +11936,57 @@ out of memory는 `ulimit -v`가 가상 주소공간을 제한해 생긴 부작�
 그러므로 남은 작업은 Core reaper가 아니라 **Node lane의 teardown에서 해제되지 않는
 context와 handle**을 찾는 것이다. 기능 단언은 전부 통과하므로 이 항목은 정확성
 결함이 아니라 teardown 결함으로 분류한다.
+
+### 2026-07-31 네 언어 병렬 gate와 parity 결함 수정
+
+`11.1.0` 위에서 네 언어 gate를 병렬로 돌리고 드러난 결함을 모두 닫았다. 기존 gap인지
+이번 변경 때문인지와 무관하게 이 절에서 함께 처리한다.
+
+C++ 전체 CTest는 **49/49** 통과한다. 처음에는 세 건이 실패했다.
+
+- `test_cpp_framework_layout_contract`가 `contracts/monitoring/framework_runtime.hpp`에
+  직접 compile coverage가 없다고 거부했다. 이 header는 앞선 inbound dispatch 작업에서
+  추가했으나 coverage 목록에 등록하지 않았다. `test_cpp_framework_contract_headers.cpp`에
+  include를 넣어 닫았다.
+- `test_cpp_framework_target_contract`가 `E2E-CP-63`의 `OBS-B4` 조건을 거부했다.
+  `unsubscribed_metric_storage_unchanged` 검증 자체가 없었다. `.NET`은 플랫폼 `Meter`가
+  구독자 없이는 기록하지 않으므로 저장 불변을 언어가 보장한다. C++ runtime은 metric
+  경로를 직접 소유하므로 같은 보장을 명시적으로 증명해야 한다. 구독자 없는 상태에서
+  5만 회 emit한 뒤 state 소유 수가 그대로이고 reader가 활성화되지 않는지 확인하는
+  회귀를 넣었다. 보관된 sample, sink, observer가 있으면 state를 잡아야 하므로 소유
+  수 변화가 저장 증가의 관찰 가능한 형태다.
+- `test_cpp_framework_store_location_resolvers` timeout은 WSL에 유한한 memory 상한이
+  없어 Auto Application HWM이 startup에서 실패한 것이다. C++만 process 상한을 읽으므로
+  `ulimit -v`로 실행한다.
+
+Node.js는 `.NET` 대비 parity 결함 두 건을 고쳤다.
+
+- Application HWM 해석 시점이 달랐다. `.NET`은 component state factory가 socket을
+  bind하기 전에 해석하고 그 전까지는 0을 보고한다. Node는 host 생성자에서 해석해서
+  host를 만들기만 해도 환경에 따라 실패했다. `.NET`과 같이 start 경로로 옮기고
+  pre-start 값은 0으로 맞췄다.
+- `ZLinkFanoutChannelBuilder.connect`가 계약에 선언되어 있는데 구현체에 없어 workspace
+  typecheck가 깨져 있었다. `.NET`의 `IZLinkFanoutChannelBuilder.Connect`를 그대로
+  옮겨 subscriber manual connection에 중복 없이 추가하도록 구현했다.
+
+Node.js gate의 memory 상한 조건도 정정한다. `ulimit -v`는 Node에 아무 효과가 없다.
+Node와 `.NET`은 `process.constrainedMemory()`와 cgroup 파일만 읽고 process rlimit은
+읽지 않는다. process 상한을 읽는 것은 C++뿐이다. 이 장비에서
+`process.constrainedMemory()`는 무제한 값을 돌려주고 cgroup 상한 파일도 없다.
+따라서 Node gate는 `systemd-run --user --scope -p MemoryMax=8G`처럼 실제 cgroup 상한
+아래에서 실행한다. 이 조건에서 Node는 8 GiB를 정확히 인식한다. spec
+`06-framework-api.ko.md`가 `ApplicationHwmBytes`를 생략하면 Auto로 규정하므로 상한이
+없는 환경에서 host가 뜨지 않는 것은 설계된 계약이며 test로 우회하지 않는다.
+
+Java/Kotlin은 전체 `test`, `contractTest`와 sample package-mode 빌드 **290 task**가
+모두 통과한다. `.NET`은 전체 unit **1,374/1,375**와 solution Release 빌드 warning 0,
+error 0이다.
+
+`.NET`의 유일한 실패인 `Actor_Failed_Renew_Does_Not_Become_The_Base_Of_The_Next_Write`는
+`ZLinkActorOwnershipCoordinator.RenewOwnedActorAsync`의 compare-exchange 재시도 루프에
+있다. 루프는 `Conflict`를 받으면 authority를 다시 읽고 owner, lease generation과 object
+generation이 그대로면 snapshot을 새로 잡아 재시도한다. Test double은 거부를 한 번만
+수행하고 플래그를 내리므로 재시도가 성공하고 예외가 나오지 않는다. 여기서 끝나는 문제가
+아니다. 재시도가 성공하면 거부됐어야 할 membership이 실제로 커밋되므로 test가 명시한
+"거부된 갱신은 커밋된 base가 아니다"라는 불변식도 함께 깨진다. `Conflict`를 낙관적
+동시성 충돌로 볼지 거부로 볼지에 따라 판정이 갈리므로 spec 대조 뒤에 고친다.

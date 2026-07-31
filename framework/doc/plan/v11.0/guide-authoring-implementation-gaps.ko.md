@@ -86,6 +86,36 @@ fanout subscriber endpoint 호출(`connect`로 통일함)과 같은 부류다. �
 확인 방법은 `doc/site/scripts/check_guide_identifiers.py`다. 탭 코드의 타입 이름을 그
 언어의 실제 표면과 대조하므로, 한 언어 이름을 다른 언어 탭에 잘못 쓰면 걸린다.
 
+### G5 · Java `ZLinkMeshNodeSocketConfig`가 spec과 다르다
+
+| | |
+| --- | --- |
+| 언어 | Java(및 Kotlin) |
+| 선언 | [Java configuration과 host 공개 계약](../../framework/common/spec/server/languages/java/interfaces/configuration-host.ko.md) — HWM 넷이 `long`, `mailboxMessageBudget` · `mailboxByteBudget` 있음 |
+| 구현 | `sendHighWaterMark` · `receiveHighWaterMark`가 `int`, mailbox 둘은 interface에 없음 |
+| 확인 | `ZLinkMeshNodeSocketConfig.java`와 spec의 signature 목록 대조 |
+
+차이가 둘이다.
+
+- **타입이 좁다.** spec은 `long`인데 구현은 `int`다. HWM은 byte 단위이므로 `int`로는
+  2 GiB를 넘길 수 없다.
+- **mailbox 두 값이 public 표면에 없다.** 내부(`ZLinkJavaRawMeshNode`)에는
+  `mailboxMessageBudget` 필드가 있고 기본값 4096이지만 `ZLinkMeshNodeSocketConfig`로
+  노출되지 않는다.
+
+### G6 · owner lease TTL 기본값이 언어마다 다르다
+
+| 언어 | `ownerLeaseTtl` 기본값 | 근거 |
+| --- | --- | --- |
+| C++ | 15초 | `contracts/locations/options.hpp` |
+| Java · Kotlin | **30초** | `ZLinkLocationOptions.java` |
+
+`ownerLeaseRenewInterval`은 양쪽 다 5초다. 갱신 주기 대비 TTL 배수가 C++은 3배,
+Java는 6배로 갈린다. 같은 mesh에 두 언어 node가 섞이면 owner 판정이 달라질 수 있다.
+
+기본값은 계약 문서가 명시하지 않은 자리다. 어느 쪽으로 맞출지, 아니면 언어별로 달라도
+되는지 판단이 필요하다.
+
 ## 2. 문서가 가리키는데 없는 샘플
 
 ### S1 · ZoneWorld — C++ · Java · Kotlin

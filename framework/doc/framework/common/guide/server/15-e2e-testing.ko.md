@@ -28,19 +28,49 @@ handler 단위 테스트를 아무리 촘촘히 작성해도 확인되지 않는
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    co_await client.connect ().submit ();                                     // 실제 연결
+    auto auth = co_await client.request (authenticate_req_t{actor_id})       // 실제 request
+                  .submit<authenticate_res_t> ();
+    auto push = co_await other.wait_for<player_joined_notify_t> ().async (); // 실제 push 도착 확인
+    ensure (push.payload.actor_id == auth.player.actor_id);
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    client.connect().submit().toCompletableFuture().join();               // 실제 연결
+    AuthenticateRes auth = client.request(new AuthenticateReq(actorId))    // 실제 request
+        .submit(AuthenticateRes.class).toCompletableFuture().join();
+    var push = other.waitFor(PlayerJoinedNotify.class)                    // 실제 push 도착 확인
+        .submit(PlayerJoinedNotify.class).toCompletableFuture().join();
+    ZLinkStreamAssert.ensure(
+        push.payload().actorId().equals(auth.player().actorId()), "join push actor mismatch.");
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    client.connect().submit().await()                                   // 실제 연결
+    val auth = client.request(AuthenticateReq(actorId))                 // 실제 request
+        .submit(AuthenticateRes::class.java).await()
+    val push = other.waitFor(PlayerJoinedNotify::class.java)            // 실제 push 도착 확인
+        .submit(PlayerJoinedNotify::class.java).await()
+    ZLinkStreamAssert.ensure(
+        push.payload().actorId == auth.player.actorId, "join push actor mismatch.")
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    await client.connect(signal);                                            // 실제 연결
+    const auth = await client.request(authenticateReq(actorId))              // 실제 request
+      .submit<AuthenticateRes>(signal);
+    const push = await other.waitFor<PlayerJoinedNotify>(                    // 실제 push 도착 확인
+      PacketNames.playerJoinedNotify).submit(signal);
+    zlinkStreamAssert.ensure(
+      push.payload.actorId === auth.player.actorId, 'join push actor mismatch.');
+    ```
 
 
 `WaitFor`처럼 **검증에 필요한 대기 함수를 connector가 직접 제공하므로** 별도 테스트
@@ -89,19 +119,84 @@ endpoint로 STREAM에 접속하는 순서다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // 1단계 — 관문 API로 방을 만든다.
+    auto api = zlink::http_client::client_builder_t (options.api_url)
+                 .timeout (options.http_timeout)
+                 .build ();
+    // fetch는 역직렬화된 본문을 그대로 돌려준다.
+    auto room = api.post ("/games")
+                  .body (create_game_http_req_t{options.game_name})
+                  .fetch<create_game_http_res_t> ();
+
+    // 2단계 — 응답이 알려 준 endpoint로 실시간 연결을 연다.
+    zlink::stream_connector::connector_options_t connector_options;
+    connector_options.endpoint = room.play_endpoints[0];
+    connector_options.connect_timeout = options.stream_timeout;
+    connector_options.request_timeout = options.stream_timeout;
+    // console 시나리오는 자동 펌프를 사용한다.
+    connector_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
+    auto client = zlink::stream_connector::connector_factory_t::create (connector_options);
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // 1단계 — 관문 API로 방을 만든다.
+    ZLinkHttpClient api = ZLinkHttpClient.create(options.apiUrl())
+        .timeout(options.httpTimeout())
+        .build();
+    // fetch는 역직렬화된 본문을 그대로 돌려준다.
+    CreateGameHttpRes room = api.post("/games")
+        .body(new CreateGameHttpReq(options.gameName()))
+        .fetch(CreateGameHttpRes.class);
+
+    // 2단계 — 응답이 알려 준 endpoint로 실시간 연결을 연다.
+    ZLinkStreamConnector client = ZLinkStreamConnectorFactory.create(
+        new ZLinkStreamConnectorOptions(
+            URI.create(room.playEndpoints().get(0)),
+            ZLinkStreamDispatchMode.IMMEDIATE, // console 시나리오는 자동 펌프를 사용한다.
+            options.streamTimeout()));
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // 1단계 — 관문 API로 방을 만든다.
+    val api = ZLinkHttpClient.create(options.apiUrl)
+        .timeout(options.httpTimeout)
+        .build()
+    // fetch는 역직렬화된 본문을 그대로 돌려준다.
+    val room = api.post("/games")
+        .body(CreateGameHttpReq(options.gameName))
+        .fetch(CreateGameHttpRes::class.java)
+
+    // 2단계 — 응답이 알려 준 endpoint로 실시간 연결을 연다.
+    val client = ZLinkStreamConnectorFactory.create(
+        ZLinkStreamConnectorOptions(
+            URI.create(room.playEndpoints[0]),
+            ZLinkStreamDispatchMode.IMMEDIATE, // console 시나리오는 자동 펌프를 사용한다.
+            options.streamTimeout))
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // 1단계 — 관문 API로 방을 만든다.
+    const api = ZLinkHttpClient.create(options.apiUrl).timeout(options.httpTimeout).build();
+    // fetch는 역직렬화된 본문을 그대로 돌려준다.
+    const room = await api.post('/games')
+      .body(createGameHttpReq(options.gameName))
+      .fetch<CreateGameHttpRes>();
+
+    // 2단계 — 응답이 알려 준 endpoint로 실시간 연결을 연다.
+    const client = zlinkStreamConnectorFactory.create({
+      endpoint: room.playEndpoints[0],
+      connectTimeoutMs: options.streamTimeoutMs,
+      requestTimeoutMs: options.streamTimeoutMs,
+      dispatchMode: ZlinkStreamDispatchMode.Immediate // console 시나리오는 자동 펌프를 사용한다.
+    });
+    ```
 
 
 `DispatchMode`가 `Immediate`이면 connector가 수신을 자체적으로 처리하므로 시나리오
@@ -146,19 +241,42 @@ push가 섞여 들어와도 시나리오가 영향을 받지 않는다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    auto joined = co_await client1.wait_for<player_joined_notify_t> ()
+                    .where (&player_joined_notify_t::actor_id, options.o_actor_id)
+                    .async ();
+    ensure (joined.payload.mark == tictactoe_marks_t::o);
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    var joined = client1.waitFor(PlayerJoinedNotify.class)
+        .where(PlayerJoinedNotify.class,
+            message -> message.payload().actorId().equals(options.oActorId()))
+        .submit(PlayerJoinedNotify.class)
+        .toCompletableFuture().join();
+    ZLinkStreamAssert.ensure(joined.payload().mark() == TicTacToeMarks.O, "joined mark mismatch.");
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    val joined = client1.waitFor(PlayerJoinedNotify::class.java)
+        .where(PlayerJoinedNotify::class.java) { it.payload().actorId == options.oActorId }
+        .submit(PlayerJoinedNotify::class.java)
+        .await()
+    ZLinkStreamAssert.ensure(joined.payload().mark == TicTacToeMarks.O, "joined mark mismatch.")
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    const joined = await client1.waitFor<PlayerJoinedNotify>(PacketNames.playerJoinedNotify)
+      .where((message) => message.payload.actorId === options.oActorId)
+      .submit(signal);
+    zlinkStreamAssert.ensure(joined.payload.mark === TicTacToeMarks.O, 'joined mark mismatch.');
+    ```
 
 
 ### push 미도착 확인
@@ -177,19 +295,41 @@ push가 섞여 들어와도 시나리오가 영향을 받지 않는다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // 방금 들어온 본인에게는 자기 입장 알림이 가지 않아야 한다.
+    co_await client2.expect_none<player_joined_notify_t> ()
+      .within (std::chrono::milliseconds (250))
+      .async ();
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // 방금 들어온 본인에게는 자기 입장 알림이 가지 않아야 한다.
+    client2.expectNone(PlayerJoinedNotify.class)
+        .within(Duration.ofMillis(250))
+        .submit()
+        .toCompletableFuture().join();
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // 방금 들어온 본인에게는 자기 입장 알림이 가지 않아야 한다.
+    client2.expectNone(PlayerJoinedNotify::class.java)
+        .within(Duration.ofMillis(250))
+        .submit()
+        .await()
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // 방금 들어온 본인에게는 자기 입장 알림이 가지 않아야 한다.
+    await client2.expectNone<PlayerJoinedNotify>(PacketNames.playerJoinedNotify)
+      .within(250)
+      .run(signal);
+    ```
 
 
 ### push 순서 확인
@@ -214,19 +354,63 @@ push가 섞여 들어와도 시나리오가 영향을 받지 않는다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    auto status_sequence =
+      co_await customer.wait_for_sequence<delivery_status_notify_t> ()
+        .expect ([&] (const auto &m) { return m.delivery_id == delivery_id
+                                              && m.status == delivery_status_t::assigned; })
+        .expect ([&] (const auto &m) { return m.delivery_id == delivery_id
+                                              && m.status == delivery_status_t::accepted; })
+        .expect ([&] (const auto &m) { return m.delivery_id == delivery_id
+                                              && m.status == delivery_status_t::picked_up; })
+        .expect ([&] (const auto &m) { return m.delivery_id == delivery_id
+                                              && m.status == delivery_status_t::delivered; })
+        .timeout (customer.options ().wait_timeout)
+        .async ();
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    var statusSequence = customer.waitForSequence(DeliveryStatusNotify.class)
+        .expect(DeliveryStatusNotify.class,
+            message -> matchesStatus(message, deliveryId, DeliveryStatus.Assigned))
+        .expect(DeliveryStatusNotify.class,
+            message -> matchesStatus(message, deliveryId, DeliveryStatus.Accepted))
+        .expect(DeliveryStatusNotify.class,
+            message -> matchesStatus(message, deliveryId, DeliveryStatus.PickedUp))
+        .expect(DeliveryStatusNotify.class,
+            message -> matchesStatus(message, deliveryId, DeliveryStatus.Delivered))
+        .timeout(customer.options().waitTimeout())
+        .submit(DeliveryStatusNotify.class)
+        .toCompletableFuture().join();
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    val statusSequence = customer.waitForSequence(DeliveryStatusNotify::class.java)
+        .expect(DeliveryStatusNotify::class.java) { matchesStatus(it, deliveryId, DeliveryStatus.Assigned) }
+        .expect(DeliveryStatusNotify::class.java) { matchesStatus(it, deliveryId, DeliveryStatus.Accepted) }
+        .expect(DeliveryStatusNotify::class.java) { matchesStatus(it, deliveryId, DeliveryStatus.PickedUp) }
+        .expect(DeliveryStatusNotify::class.java) { matchesStatus(it, deliveryId, DeliveryStatus.Delivered) }
+        .timeout(customer.options().waitTimeout)
+        .submit(DeliveryStatusNotify::class.java)
+        .await()
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    const statusSequence = await customer
+      .waitForSequence<DeliveryStatusNotify>(PacketNames.deliveryStatusNotify)
+      .expect((message) => matchesStatus(message, deliveryId, DeliveryStatus.Assigned))
+      .expect((message) => matchesStatus(message, deliveryId, DeliveryStatus.Accepted))
+      .expect((message) => matchesStatus(message, deliveryId, DeliveryStatus.PickedUp))
+      .expect((message) => matchesStatus(message, deliveryId, DeliveryStatus.Delivered))
+      .timeout(customer.options.waitTimeoutMs)
+      .submit(signal);
+    ```
 
 
 ### 요청 실패 확인
@@ -246,19 +430,48 @@ push가 섞여 들어와도 시나리오가 영향을 받지 않는다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // 인증 전에는 대화를 열 수 없어야 한다.
+    bool failed = false;
+    try {
+        co_await agent.request (open_conversation_req_t{"unauthenticated"})
+          .submit<open_conversation_res_t> ();
+    } catch (const zlink::stream_connector::stream_error_t &error) {
+        failed = error.code == zlink::stream_connector::error_code_t::remote_error;
+    }
+    ensure (failed);
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // 인증 전에는 대화를 열 수 없어야 한다.
+    ZLinkStreamAssert.expectFailure(
+        () -> agent.request(new OpenConversationReq("unauthenticated"))
+            .submit(OpenConversationRes.class),
+        ZLinkStreamErrorCode.RemoteError);
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // 인증 전에는 대화를 열 수 없어야 한다.
+    ZLinkStreamAssert.expectFailure(
+        { agent.request(OpenConversationReq("unauthenticated"))
+            .submit(OpenConversationRes::class.java) },
+        ZLinkStreamErrorCode.RemoteError)
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // 인증 전에는 대화를 열 수 없어야 한다.
+    await zlinkStreamAssert.expectFailure(
+      () => agent.request(openConversationReq('unauthenticated'))
+        .submit<OpenConversationRes>(signal),
+      ZlinkStreamErrorCode.RemoteError
+    );
+    ```
 
 
 ## 3. 메시지 대기 처리 방법
@@ -289,19 +502,80 @@ E2E는 대부분 같은 원인으로 간헐 실패한다. **행동을 먼저 하
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // 대기를 먼저 등록한다 — 아직 co_await하지 않는다.
+    auto status_sequence_task =
+      customer.wait_for_sequence<delivery_status_notify_t> ()
+        .expect ([&] (const auto &m) { return m.delivery_id == delivery_id
+                                              && m.status == delivery_status_t::assigned; })
+        .timeout (customer.options ().wait_timeout)
+        .async ();
+
+    // 그다음에 push를 유발하는 행동을 실행한다.
+    auto created = http.post ("/deliveries")
+                     .body (create_delivery_req_t{
+                       delivery_id, "customer-1", "Kitchen 12", "Customer Lobby"})
+                     .fetch<create_delivery_res_t> ();
+
+    // 마지막에 결과를 받는다.
+    auto status_sequence = co_await std::move (status_sequence_task);
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // 대기를 먼저 등록한다 — 아직 join하지 않는다.
+    var statusSequenceStage = customer.waitForSequence(DeliveryStatusNotify.class)
+        .expect(DeliveryStatusNotify.class,
+            message -> matchesStatus(message, deliveryId, DeliveryStatus.Assigned))
+        .timeout(customer.options().waitTimeout())
+        .submit(DeliveryStatusNotify.class);
+
+    // 그다음에 push를 유발하는 행동을 실행한다.
+    CreateDeliveryRes created = http.post("/deliveries")
+        .body(new CreateDeliveryReq(deliveryId, "customer-1", "Kitchen 12", "Customer Lobby"))
+        .fetch(CreateDeliveryRes.class);
+
+    // 마지막에 결과를 받는다.
+    var statusSequence = statusSequenceStage.toCompletableFuture().join();
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // 대기를 먼저 등록한다 — 아직 await하지 않는다.
+    val statusSequenceDeferred = customer.waitForSequence(DeliveryStatusNotify::class.java)
+        .expect(DeliveryStatusNotify::class.java) { matchesStatus(it, deliveryId, DeliveryStatus.Assigned) }
+        .timeout(customer.options().waitTimeout)
+        .submit(DeliveryStatusNotify::class.java)
+
+    // 그다음에 push를 유발하는 행동을 실행한다.
+    val created = http.post("/deliveries")
+        .body(CreateDeliveryReq(deliveryId, "customer-1", "Kitchen 12", "Customer Lobby"))
+        .fetch(CreateDeliveryRes::class.java)
+
+    // 마지막에 결과를 받는다.
+    val statusSequence = statusSequenceDeferred.await()
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // 대기를 먼저 등록한다 — 아직 await하지 않는다.
+    const statusSequencePromise = customer
+      .waitForSequence<DeliveryStatusNotify>(PacketNames.deliveryStatusNotify)
+      .expect((message) => matchesStatus(message, deliveryId, DeliveryStatus.Assigned))
+      .timeout(customer.options.waitTimeoutMs)
+      .submit(signal);
+
+    // 그다음에 push를 유발하는 행동을 실행한다.
+    const created = await http.post('/deliveries')
+      .body(createDeliveryReq(deliveryId, 'customer-1', 'Kitchen 12', 'Customer Lobby'))
+      .fetch<CreateDeliveryRes>();
+
+    // 마지막에 결과를 받는다.
+    const statusSequence = await statusSequencePromise;
+    ```
 
 
 여러 client가 같은 사건을 확인해야 한다면 각각 등록해 두고 `Task.WhenAll`로 함께 받는다.
@@ -318,19 +592,52 @@ E2E는 대부분 같은 원인으로 간헐 실패한다. **행동을 먼저 하
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // Bingo — 두 player가 모두 입장하면 방이 시작되고, 두 client가 같은 push를 받는다.
+    auto client1_started = client1.wait_for<bingo_game_started_notify_t> ().async ();
+    auto client2_started = client2.wait_for<bingo_game_started_notify_t> ().async ();
+
+    co_await std::move (client1_started);
+    co_await std::move (client2_started);
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // Bingo — 두 player가 모두 입장하면 방이 시작되고, 두 client가 같은 push를 받는다.
+    var client1Started = client1.waitFor(BingoGameStartedNotify.class)
+        .submit(BingoGameStartedNotify.class);
+    var client2Started = client2.waitFor(BingoGameStartedNotify.class)
+        .submit(BingoGameStartedNotify.class);
+
+    CompletableFuture.allOf(
+        client1Started.toCompletableFuture(), client2Started.toCompletableFuture()).join();
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // Bingo — 두 player가 모두 입장하면 방이 시작되고, 두 client가 같은 push를 받는다.
+    val client1Started = client1.waitFor(BingoGameStartedNotify::class.java)
+        .submit(BingoGameStartedNotify::class.java)
+    val client2Started = client2.waitFor(BingoGameStartedNotify::class.java)
+        .submit(BingoGameStartedNotify::class.java)
+
+    client1Started.await()
+    client2Started.await()
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // Bingo — 두 player가 모두 입장하면 방이 시작되고, 두 client가 같은 push를 받는다.
+    const client1Started = client1
+      .waitFor<BingoGameStartedNotify>(PacketNames.gameStartedNotify).submit(signal);
+    const client2Started = client2
+      .waitFor<BingoGameStartedNotify>(PacketNames.gameStartedNotify).submit(signal);
+
+    await Promise.all([client1Started, client2Started]);
+    ```
 
 
 `Sleep`으로 시점을 맞추지 않는다. 대기는 전부 `WaitFor`·`ExpectNone`·`WaitForSequence`의
@@ -408,19 +715,183 @@ timeout으로 표현한다. `Sleep`은 느린 장비에서 실패하고 빠른 �
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    task_t<void> run (const tictactoe_client_options_t &options)
+    {
+        // 1. 관문 API로 방을 만들고 접속할 endpoint를 받는다.
+        auto api = zlink::http_client::client_builder_t (options.api_url)
+                     .timeout (options.http_timeout)
+                     .build ();
+        auto room = api.post ("/games")
+                      .body (create_game_http_req_t{options.game_name})
+                      .fetch<create_game_http_res_t> ();
+        ensure (room.play_endpoints.size () >= 2);
+
+        // 2. player 둘을 서로 다른 Play node에 연결한다 — node 사이 라우팅이 여기서 검증된다.
+        auto client1 = create_stream_client (room.play_endpoints[0], options);
+        auto client2 = create_stream_client (room.play_endpoints[1], options);
+
+        // 3. 먼저 접속한 쪽이 인증하고 빈 방에 들어간다.
+        co_await client1.connect ().submit ();
+        co_await client1.request (authenticate_req_t{options.x_actor_id})
+          .submit<authenticate_res_t> ();
+        auto join1 = co_await join_game (client1, room.room_id); // 대기 등록 → send → 수신(§3)
+        ensure (join1.state.status == tictactoe_status_t::waiting_for_players);
+
+        // 혼자 들어왔을 때 자기 입장 알림이 자기에게 오면 안 된다.
+        co_await client1.expect_none<player_joined_notify_t> ()
+          .within (std::chrono::milliseconds (250))
+          .async ();
+
+        // 4. 두 번째 player가 입장하면 방이 시작되고, 먼저 입장한 쪽에 push가 전달된다.
+        co_await client2.connect ().submit ();
+        co_await client2.request (authenticate_req_t{options.o_actor_id})
+          .submit<authenticate_res_t> ();
+        auto join2 = co_await join_game (client2, room.room_id);
+        ensure (join2.state.status == tictactoe_status_t::in_progress);
+
+        // 5. 수를 두면 응답과 상대에게 전달된 push가 같은 상태를 가리켜야 한다.
+        auto move = co_await client1.request (place_mark_req_t{0}).submit<place_mark_res_t> ();
+        auto saw_move = co_await client2.wait_for<game_state_notify_t> ()
+                          .where ([] (const auto &m) { return m.state.last_move_cell == 0; })
+                          .async ();
+        ensure (saw_move.payload.state.board == move.state.board);
+    }
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    public void run(TicTacToeClientOptions options) {
+        // 1. 관문 API로 방을 만들고 접속할 endpoint를 받는다.
+        ZLinkHttpClient api = ZLinkHttpClient.create(options.apiUrl())
+            .timeout(options.httpTimeout()).build();
+        CreateGameHttpRes room = api.post("/games")
+            .body(new CreateGameHttpReq(options.gameName()))
+            .fetch(CreateGameHttpRes.class);
+        ZLinkStreamAssert.ensure(room.playEndpoints().size() >= 2, "play endpoints are missing.");
+
+        // 2. player 둘을 서로 다른 Play node에 연결한다 — node 사이 라우팅이 여기서 검증된다.
+        ZLinkStreamConnector client1 = createStreamClient(room.playEndpoints().get(0), options);
+        ZLinkStreamConnector client2 = createStreamClient(room.playEndpoints().get(1), options);
+
+        // 3. 먼저 접속한 쪽이 인증하고 빈 방에 들어간다.
+        client1.connect().submit().toCompletableFuture().join();
+        client1.request(new AuthenticateReq(options.xActorId()))
+            .submit(AuthenticateRes.class).toCompletableFuture().join();
+        JoinGameRes join1 = joinGame(client1, room.roomId()); // 대기 등록 → send → 수신(§3)
+        ZLinkStreamAssert.ensure(
+            join1.state().status() == TicTacToeGameStatuses.WaitingForPlayers,
+            "room should wait for the second player.");
+
+        // 혼자 들어왔을 때 자기 입장 알림이 자기에게 오면 안 된다.
+        client1.expectNone(PlayerJoinedNotify.class)
+            .within(Duration.ofMillis(250)).submit().toCompletableFuture().join();
+
+        // 4. 두 번째 player가 입장하면 방이 시작된다.
+        client2.connect().submit().toCompletableFuture().join();
+        client2.request(new AuthenticateReq(options.oActorId()))
+            .submit(AuthenticateRes.class).toCompletableFuture().join();
+        JoinGameRes join2 = joinGame(client2, room.roomId());
+        ZLinkStreamAssert.ensure(
+            join2.state().status() == TicTacToeGameStatuses.InProgress,
+            "room should start with two players.");
+
+        // 5. 수를 두면 응답과 상대에게 전달된 push가 같은 상태를 가리켜야 한다.
+        PlaceMarkRes move = client1.request(new PlaceMarkReq(0))
+            .submit(PlaceMarkRes.class).toCompletableFuture().join();
+        var sawMove = client2.waitFor(GameStateNotify.class)
+            .where(GameStateNotify.class, message -> message.payload().state().lastMoveCell() == 0)
+            .submit(GameStateNotify.class).toCompletableFuture().join();
+        ZLinkStreamAssert.ensure(
+            sawMove.payload().state().board().equals(move.state().board()), "board state mismatch.");
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    suspend fun run(options: TicTacToeClientOptions) {
+        // 1. 관문 API로 방을 만들고 접속할 endpoint를 받는다.
+        val api = ZLinkHttpClient.create(options.apiUrl).timeout(options.httpTimeout).build()
+        val room = api.post("/games")
+            .body(CreateGameHttpReq(options.gameName))
+            .fetch(CreateGameHttpRes::class.java)
+        ZLinkStreamAssert.ensure(room.playEndpoints.size >= 2, "play endpoints are missing.")
+
+        // 2. player 둘을 서로 다른 Play node에 연결한다 — node 사이 라우팅이 여기서 검증된다.
+        val client1 = createStreamClient(room.playEndpoints[0], options)
+        val client2 = createStreamClient(room.playEndpoints[1], options)
+
+        // 3. 먼저 접속한 쪽이 인증하고 빈 방에 들어간다.
+        client1.connect().submit().await()
+        client1.request(AuthenticateReq(options.xActorId)).submit(AuthenticateRes::class.java).await()
+        val join1 = joinGame(client1, room.roomId) // 대기 등록 → send → 수신(§3)
+        ZLinkStreamAssert.ensure(
+            join1.state.status == TicTacToeGameStatuses.WaitingForPlayers,
+            "room should wait for the second player.")
+
+        // 혼자 들어왔을 때 자기 입장 알림이 자기에게 오면 안 된다.
+        client1.expectNone(PlayerJoinedNotify::class.java).within(Duration.ofMillis(250)).submit().await()
+
+        // 4. 두 번째 player가 입장하면 방이 시작된다.
+        client2.connect().submit().await()
+        client2.request(AuthenticateReq(options.oActorId)).submit(AuthenticateRes::class.java).await()
+        val join2 = joinGame(client2, room.roomId)
+        ZLinkStreamAssert.ensure(
+            join2.state.status == TicTacToeGameStatuses.InProgress, "room should start with two players.")
+
+        // 5. 수를 두면 응답과 상대에게 전달된 push가 같은 상태를 가리켜야 한다.
+        val move = client1.request(PlaceMarkReq(0)).submit(PlaceMarkRes::class.java).await()
+        val sawMove = client2.waitFor(GameStateNotify::class.java)
+            .where(GameStateNotify::class.java) { it.payload().state.lastMoveCell == 0 }
+            .submit(GameStateNotify::class.java).await()
+        ZLinkStreamAssert.ensure(sawMove.payload().state.board == move.state.board, "board state mismatch.")
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    async function run(options: TicTacToeClientOptions, signal: AbortSignal): Promise<void> {
+      // 1. 관문 API로 방을 만들고 접속할 endpoint를 받는다.
+      const api = ZLinkHttpClient.create(options.apiUrl).timeout(options.httpTimeout).build();
+      const room = await api.post('/games')
+        .body(createGameHttpReq(options.gameName))
+        .fetch<CreateGameHttpRes>();
+      zlinkStreamAssert.ensure(room.playEndpoints.length >= 2, 'play endpoints are missing.');
+
+      // 2. player 둘을 서로 다른 Play node에 연결한다 — node 사이 라우팅이 여기서 검증된다.
+      const client1 = createStreamClient(room.playEndpoints[0], options);
+      const client2 = createStreamClient(room.playEndpoints[1], options);
+
+      // 3. 먼저 접속한 쪽이 인증하고 빈 방에 들어간다.
+      await client1.connect(signal);
+      await client1.request(authenticateReq(options.xActorId)).submit<AuthenticateRes>(signal);
+      const join1 = await joinGame(client1, room.roomId, signal); // 대기 등록 → send → 수신(§3)
+      zlinkStreamAssert.ensure(
+        join1.state.status === TicTacToeGameStatuses.WaitingForPlayers,
+        'room should wait for the second player.');
+
+      // 혼자 들어왔을 때 자기 입장 알림이 자기에게 오면 안 된다.
+      await client1.expectNone<PlayerJoinedNotify>(PacketNames.playerJoinedNotify)
+        .within(250).run(signal);
+
+      // 4. 두 번째 player가 입장하면 방이 시작된다.
+      await client2.connect(signal);
+      await client2.request(authenticateReq(options.oActorId)).submit<AuthenticateRes>(signal);
+      const join2 = await joinGame(client2, room.roomId, signal);
+      zlinkStreamAssert.ensure(
+        join2.state.status === TicTacToeGameStatuses.InProgress, 'room should start with two players.');
+
+      // 5. 수를 두면 응답과 상대에게 전달된 push가 같은 상태를 가리켜야 한다.
+      const move = await client1.request(placeMarkReq(0)).submit<PlaceMarkRes>(signal);
+      const sawMove = await client2.waitFor<GameStateNotify>(PacketNames.gameStateNotify)
+        .where((message) => message.payload.state.lastMoveCell === 0)
+        .submit(signal);
+      zlinkStreamAssert.ensure(sawMove.payload.state.board === move.state.board, 'board state mismatch.');
+    }
+    ```
 
 
 **검증 지점은 다음 기준으로 고른다.** 요청의 응답만 확인하지 않고 *다른 client가 같은
@@ -447,19 +918,49 @@ timeout으로 표현한다. `Sleep`은 느린 장비에서 실패하고 빠른 �
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // join 응답은 request의 reply가 아니라 push로 온다 — 대기를 먼저 등록하고 send한다.
+    task_t<join_game_res_t> join_game (auto &connector, const std::string &room_id)
+    {
+        auto completion = connector.wait_for<join_game_res_t> ().async ();
+        co_await connector.send (join_game_req_t{room_id}).submit ();
+        co_return (co_await std::move (completion)).payload;
+    }
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // join 응답은 request의 reply가 아니라 push로 온다 — 대기를 먼저 등록하고 send한다.
+    private static JoinGameRes joinGame(ZLinkStreamConnector connector, String roomId) {
+        var completion = connector.waitFor(JoinGameRes.class).submit(JoinGameRes.class);
+        connector.send(new JoinGameReq(roomId)).submit().toCompletableFuture().join();
+        return completion.toCompletableFuture().join().payload();
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // join 응답은 request의 reply가 아니라 push로 온다 — 대기를 먼저 등록하고 send한다.
+    private suspend fun joinGame(connector: ZLinkStreamConnector, roomId: String): JoinGameRes {
+        val completion = connector.waitFor(JoinGameRes::class.java).submit(JoinGameRes::class.java)
+        connector.send(JoinGameReq(roomId)).submit().await()
+        return completion.await().payload()
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // join 응답은 request의 reply가 아니라 push로 온다 — 대기를 먼저 등록하고 send한다.
+    async function joinGame(
+      connector: ZlinkStreamConnector, roomId: string, signal: AbortSignal): Promise<JoinGameRes> {
+      const completion = connector.waitFor<JoinGameRes>(PacketNames.joinGameRes).submit(signal);
+      await connector.send(joinGameReq(roomId)).submit();
+      return (await completion).payload;
+    }
+    ```
 
 
 `Bingo` 샘플이 이 구성을 그대로 사용한다 — player 둘과 관전자 하나를 함께 두고, 승리

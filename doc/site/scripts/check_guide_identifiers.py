@@ -122,6 +122,12 @@ ALLOWED_NON_FRAMEWORK = {
     "exportState": "예제 Actor의 도메인 메서드 — relocation adapter가 부른다",
     "importState": "예제 Actor의 도메인 메서드 — relocation adapter가 부른다",
     "apply_player": "예제 Actor의 도메인 메서드",
+    "httpTimeout": "예제 client 옵션 record의 접근자",
+    "streamTimeout": "예제 client 옵션 record의 접근자",
+    "apiUrl": "예제 client 옵션 record의 접근자",
+    "gameName": "예제 client 옵션 record의 접근자",
+    "oActorId": "예제 client 옵션 record의 접근자",
+    "matchesStatus": "예제가 정의해 쓰는 도우미 — 상태 일치 확인",
     # 서드파티 라이브러리.
     "GenericWriter": "Apache Avro",
     "GenericReader": "Apache Avro",

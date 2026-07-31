@@ -5951,3 +5951,35 @@ Core 쪽에서 봐야 한다. Framework 쪽에서 더 볼 것은 남아 있지 �
 
 이 항목은 PS-A4, 후보 0개 대기, RC-B5 reply 유실과 같은 성격으로 core lane 목록에 넣는다.
 측정 편집은 모두 되돌렸다.
+
+### SubmitAdmission 추가 배제: expected RID가 아니다
+
+Manual pair가 `Connecting`에서 멈추는 원인 후보를 하나 더 지웠다.
+
+RegistrationCodec에는 동작하는 manual pair가 있다. 그쪽 requester는
+`PeerConnections.Connect(endpoint)`로 expected RID 없이 붙고 요청이 실제로 상대에 도착한다
+(응답만 유실된다). SubmitAdmission은
+`Connect(RoutingId.From(peerRid), endpoint)`로 expected RID를 지정한다. spec 07 §6이
+"Expected RID를 지정하면 실제 remote RID가 다를 때 연결에 실패한다"고 정하므로 이것이
+후보였다.
+
+Expected RID를 빼고 endpoint만으로 연결하도록 바꿔 실행해도 결과가 같다. 따라서 원인이
+아니다.
+
+지금까지 이 스위트에서 배제한 것을 모은다.
+
+| 후보 | 결과 |
+|---|---|
+| Receiver gate proxy | 우회해도 동일 |
+| Router socket HWM(1 → 1000) | 동일 |
+| 시간 부족(30회 → 300회, 약 90초) | 동일 |
+| Expected RID 지정 | 동일 |
+
+남은 관측은 그대로다. Caller는 상대를 `Connecting`/`NoReadyPeer`로 잡고 있고 target에는
+peer 항목이 아예 없다. `ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY`로는 양쪽 모두 한 줄도 나오지
+않으므로 peer handshake 경로에는 이 진단이 없다.
+
+다음 단계는 handshake 경로에 임시 trace를 넣어 target이 inbound 연결을 받는지부터 보는
+것이다. RegistrationCodec의 동작하는 pair와 나란히 찍으면 차이가 드러난다.
+
+측정 편집은 되돌렸다.

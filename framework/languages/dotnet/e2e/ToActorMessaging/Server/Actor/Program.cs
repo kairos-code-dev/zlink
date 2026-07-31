@@ -30,7 +30,7 @@ builder.Services.AddZLinkFramework(framework =>
     framework.AddHandlersFromAssemblyOf(typeof(Program));
     var mesh25 = framework.AddRouteMesh("to-actor")
         .Listen(options.RouterEndpoint)
-        .SetRoutingId(RoutingId.From(options.Rid));
+        .SetRoutingIdPrefix(options.Rid);
     mesh25.Objects().Server()
         .AddEntrySpot<TestEntrySpot>()
         .AddActorFactory<TestActor, TestActorFactory>(

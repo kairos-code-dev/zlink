@@ -28,7 +28,9 @@ builder.Services.AddZLinkFramework(framework =>
     framework.AddHandlersFromAssemblyOf(typeof(Program));
     var mesh26 = framework.AddRouteMesh("to-actor")
         .Listen(options.RouterEndpoint)
-        .SetRoutingId(RoutingId.From(options.Rid));
+        .SetRoutingIdPrefix(options.Rid);
+    // STREAM actor dispatch resolves Actors through a local Object role.
+    mesh26.Objects().Client();
     mesh26.Channel("to-actor").Client();
     framework.AddStreamNode("to-actor-session")
         .Bind(options.StreamEndpoint)

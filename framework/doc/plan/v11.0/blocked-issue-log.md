@@ -5562,3 +5562,38 @@ select-one의 ready target 수이지 relocation placement target이 아니다. �
 - 또는 스펙이 옮길 object가 없는 host의 relocation을 target 없이 끝내도록 정한다.
 
 두 번째는 계약 변경이므로 스펙 소유자 판단이 필요하다.
+
+### ToActorMessaging: Object Client는 manual topology와 함께 쓸 수 없다
+
+앞서 "topology 결정이 필요하다"고 남긴 항목을 진행했다. 규칙 두 개가 구성을 한 방향으로
+몰아붙인다.
+
+- spec 13 §3.3: Object role이 있는 MeshNode에 fixed RID를 설정하면 startup 오류다.
+- Routing ID prefix는 automatic discovery에서만 유효하다(같은 validator).
+
+Actor host는 `Objects().Server()`가 있으므로 fixed RID를 쓸 수 없고 prefix로 가야 한다.
+그러면 caller가 `PeerConnections.Connect(RoutingId.From(actorRid), endpoint)`로 상대를
+지목할 수 없다. spec 07 §6이 "Expected RID를 생략하면 handshake 결과로 remote identity를
+확정한다"고 정하므로 endpoint만으로 연결하도록 바꿨다.
+
+그 다음 세 가지가 연달아 드러났다. Session host의 STREAM actor dispatch는 local Object
+role을 요구한다. Caller의 endpoint는 `IZLinkActorManager`를 주입받는데 그 service는
+actor-capable spot node가 있을 때만 등록되므로 caller도 Object role이 필요하다. 그런데
+caller에 `Objects().Client()`를 주면 fixed RID가 금지되고, manual peer connection이 있으면
+prefix도 금지되어 **어느 RID도 쓸 수 없는 조합**이 된다.
+
+즉 Object Client는 manual topology와 함께 쓸 수 없다. Caller가 actor를 찾고 메시지를
+보내려면 Object Client여야 하고, 그러면 automatic discovery로 가야 한다. Manual peer
+연결을 없애자 모든 host가 기동하고 시나리오 실행까지 도달한다.
+
+```
+TA-A2 expected NotFound after disconnect, got 'InvalidOperation'.
+```
+
+TA-A2는 `/route/disconnect`로 manual route를 끊고 그 뒤 호출이 `NotFound`가 되기를
+기대한다. 이제 끊을 manual route가 없으므로 이 검사는 성립하지 않는다. 예상된 결과이며
+남은 것은 이 시나리오를 automatic topology에서 어떻게 표현할지다. Store에서 descriptor를
+제거하거나 대상 host를 내리는 쪽이 후보다.
+
+이 스위트는 "컴파일 불가"에서 "전 host 기동 + 시나리오 실행"까지 왔고, 남은 것은 시나리오
+재설계다.

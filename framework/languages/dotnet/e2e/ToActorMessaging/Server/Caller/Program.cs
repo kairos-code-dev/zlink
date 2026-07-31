@@ -30,13 +30,17 @@ builder.Services.AddZLinkFramework(framework =>
     framework.AddLocationStore(new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = options.RedisKeyPrefix; }));
     var spot = framework.AddRouteMesh("to-actor")
         .Listen(options.RouterEndpoint)
-        .SetRoutingId(RoutingId.From(options.Rid));
+        .SetRoutingIdPrefix(options.Rid);
+    // The caller finds and messages Actors, so it declares the Object Client
+    // role that surfaces IZLinkActorManager; spec 13 §3.3 then rules out a
+    // fixed RID for this MeshNode.
+    spot.Objects().Client();
     spot.Channel("to-actor").Client();
-    if (options.ConnectActorRoutes)
-    {
-        spot.PeerConnections.Connect(RoutingId.From(options.ActorRid), options.ActorRouterEndpoint);
-        spot.PeerConnections.Connect(RoutingId.From(options.ActorBRid), options.ActorBRouterEndpoint);
-    }
+    // An Object Client cannot combine a manual topology with the automatic
+    // RID its role requires: spec 13 §3.3 keeps a fixed RID out of an Object
+    // role, and a routing ID prefix is only valid with automatic discovery.
+    // So this caller discovers actor nodes through the Location Store.
+    _ = options.ConnectActorRoutes;
     actorConnections = spot.PeerConnections;
 });
 
@@ -131,8 +135,8 @@ app.MapPost("/route/reconnect", () =>
 {
     var connections = actorConnections
                       ?? throw new InvalidOperationException("Actor router connections are unavailable.");
-    connections.Connect(RoutingId.From(options.ActorRid), options.ActorRouterEndpoint);
-    connections.Connect(RoutingId.From(options.ActorBRid), options.ActorBRouterEndpoint);
+    connections.Connect(options.ActorRouterEndpoint);
+    connections.Connect(options.ActorBRouterEndpoint);
     return Results.Ok(new { status = "connected" });
 });
 app.MapPost("/shutdown", async (IHostApplicationLifetime lifetime) =>

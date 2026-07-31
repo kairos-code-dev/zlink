@@ -401,9 +401,20 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         }
     }
 
+    /// <summary>
+    /// <paramref name="ownsObjectWork"/>: false for dispatch that only invokes
+    /// a registered handler - channel, node route and fanout records. Spec 21
+    /// §4 blocks an expired owner from descriptor publishing, Actor, Spot and
+    /// Instance message and timer starts, factory and restore commits, and
+    /// relocation state, because "만료된 owner 자격으로 새 Store 변경을 만들지
+    /// 않는다". Handler invocation makes no Store change, so a Location Store
+    /// outage must not turn it away. The drain seal still applies to every
+    /// caller.
+    /// </summary>
     internal bool TryEnterInboundOperation(
         bool countAsRequest,
-        out ZLinkRuntimeOperationLease lease)
+        out ZLinkRuntimeOperationLease lease,
+        bool ownsObjectWork = true)
     {
         if (AmbientOperation.Value is { IsActive: true } current
             && ReferenceEquals(current.Runtime, this))
@@ -426,7 +437,8 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         lock (_operationGate)
         {
             if (_drainAdmission.IsSealed
-                || (_locationRuntime is not null
+                || (ownsObjectWork
+                    && _locationRuntime is not null
                     && !_locationRuntime.IsOwnerAdmissionOpen))
             {
                 lease = new ZLinkRuntimeOperationLease();

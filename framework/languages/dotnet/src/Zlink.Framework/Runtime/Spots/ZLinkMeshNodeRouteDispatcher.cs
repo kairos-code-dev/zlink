@@ -383,9 +383,13 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
             {
                 operation = new ZLinkFrameworkRuntime.ZLinkRuntimeOperationLease();
             }
+            //  This dispatcher only invokes registered channel and node
+            //  route handlers. Neither is object work, so an expired owner
+            //  lease must not turn them away (spec 21 §4).
             else if (!_runtime.TryEnterInboundOperation(
                          header.Kind == ZLinkMessageKind.Request,
-                         out operation))
+                         out operation,
+                         ownsObjectWork: false))
             {
                 if (header.Kind == ZLinkMessageKind.Request)
                     await ReplyErrorAsync(

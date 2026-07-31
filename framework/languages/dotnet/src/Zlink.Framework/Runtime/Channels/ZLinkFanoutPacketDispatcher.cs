@@ -69,7 +69,10 @@ internal sealed class ZLinkFanoutPacketDispatcher
         ZLinkFrameworkRuntime.ZLinkRuntimeOperationLease operation;
         if (_runtime is null)
             operation = new ZLinkFrameworkRuntime.ZLinkRuntimeOperationLease();
-        else if (!_runtime.TryEnterInboundOperation(countAsRequest: false, out operation))
+        //  Delivering a fanout record to its handler changes nothing in the
+        //  Location Store, so it is not object work (spec 21 §4).
+        else if (!_runtime.TryEnterInboundOperation(
+                     countAsRequest: false, out operation, ownsObjectWork: false))
             return;
         using (operation)
         {

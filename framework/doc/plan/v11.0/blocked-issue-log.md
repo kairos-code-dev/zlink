@@ -5077,3 +5077,32 @@ metric을 관측할 수 없다. Source와 target을 맞바꿔 시도했으나 �
 되돌렸다.
 
 OBS-A1~A5와 OBS-B1이 통과한다.
+
+### OBS-B2 보강: 두 가지 실패 모드가 번갈아 나온다
+
+`ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY=1`로 다시 돌렸다. Framework에는 이 경우를 위한
+진단이 이미 있다.
+
+```csharp
+//  The completion carries only a kind, so without this the originating
+//  exception is lost and every throw site that maps to the same kind looks
+//  identical from the outside.
+ZLinkFrameworkDebugLog.SpotDiscovery($"deferred_join_failed kind={kind} retriable={retriable} {exception}");
+```
+
+그런데 이 실행에서는 `deferred_join_failed`가 한 줄도 남지 않았다. Flag는 전달됐다
+(play host stderr에 spot-discovery 줄이 12·16건 있다). 대신 실패가 `InternalFailure`가 아니라
+metric 대기 timeout이었다.
+
+즉 OBS-B2는 실행에 따라 두 곳에서 다르게 멈춘다.
+
+| 모드 | 지점 |
+|---|---|
+| A | relocation join이 `InternalFailure`로 끝난다 |
+| B | join은 성공하고 relocation metric 대기가 timeout한다 |
+
+모드 B는 앞 절에 적은 배치 문제로 설명된다. Source가 play-b이고 그 host는 `--metrics-enabled false`이므로 relocation metric을 관측할 수 없다. 모드 A는 간헐적이며 재현될
+때 `deferred_join_failed` 줄을 잡아야 원인을 알 수 있다. `CreateRoomOnObservedNodeAsync`가
+placement를 고정하므로 방향 자체는 매 실행 같고, 무엇이 두 모드를 가르는지는 아직 모른다.
+
+다음 단계는 모드 A가 재현될 때까지 flag를 켠 채 반복 실행해 exception을 확보하는 것이다.

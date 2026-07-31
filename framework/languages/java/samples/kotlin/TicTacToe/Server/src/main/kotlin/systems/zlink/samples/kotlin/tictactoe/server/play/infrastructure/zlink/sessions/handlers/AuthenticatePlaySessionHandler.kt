@@ -15,6 +15,7 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticatePlaye
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticateReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticateRes
 
+// --8<-- [start:doc-session-auth]
 class AuthenticatePlaySessionHandler(
     private val actors: ZLinkActorManager,
     private val channels: ZLinkClient,
@@ -50,3 +51,4 @@ class AuthenticatePlaySessionHandler(
         is ZLinkActorCreateResult.Rejected -> throw IllegalStateException("Play actor creation was rejected.")
     }
 }
+// --8<-- [end:doc-session-auth]

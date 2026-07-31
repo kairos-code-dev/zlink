@@ -6,6 +6,7 @@ using Zlink.Framework.Contracts.Streams;
 
 namespace TicTacToe.Server.Play.Infrastructure.ZLink.Sessions.Handlers;
 
+// --8<-- [start:doc-session-auth]
 internal sealed class AuthenticatePlaySessionHandler(
     IZLinkActorManager actors,
     IZLinkRouteClient channels,
@@ -75,3 +76,4 @@ internal sealed class AuthenticatePlaySessionHandler(
             boundActor.ActorId);
     }
 }
+// --8<-- [end:doc-session-auth]

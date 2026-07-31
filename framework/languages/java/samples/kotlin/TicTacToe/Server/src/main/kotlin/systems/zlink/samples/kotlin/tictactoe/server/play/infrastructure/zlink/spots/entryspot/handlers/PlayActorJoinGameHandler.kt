@@ -10,6 +10,7 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.JoinGameReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.TicTacToeGameJoinReq
 
 @ZLinkHandlerGroup(SampleNames.PlayActor)
+// --8<-- [start:doc-join-defer]
 class PlayActorJoinGameHandler {
     @ZLinkSpotActorSend
     suspend fun joinGame(
@@ -24,4 +25,5 @@ class PlayActorJoinGameHandler {
             .timeout(SampleNames.RequestTimeout)
             .defer()
     }
+// --8<-- [end:doc-join-defer]
 }

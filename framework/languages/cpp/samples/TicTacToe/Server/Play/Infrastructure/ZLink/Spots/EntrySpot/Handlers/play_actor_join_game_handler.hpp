@@ -6,6 +6,8 @@
 namespace zlink::samples::tictactoe
 {
 
+// --8<-- [start:doc-join-defer]
+// C++은 handler class 대신 Entry Spot member 함수다.
 inline task_t<void>
 tictactoe_entry_spot_t::join_game (player_actor_t &actor,
                                    message_context_t &,
@@ -18,5 +20,6 @@ tictactoe_entry_spot_t::join_game (player_actor_t &actor,
     actor.context ().join_spot (request.room_id, payload).defer ();
     co_return;
 }
+// --8<-- [end:doc-join-defer]
 
 } // namespace zlink::samples::tictactoe

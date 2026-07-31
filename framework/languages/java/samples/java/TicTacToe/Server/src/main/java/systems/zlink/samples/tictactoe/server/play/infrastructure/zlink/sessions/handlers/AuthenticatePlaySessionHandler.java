@@ -13,6 +13,7 @@ import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerRes;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticateReq;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticateRes;
 
+// --8<-- [start:doc-session-auth]
 public final class AuthenticatePlaySessionHandler
     implements ZLinkTypedSessionPacketHandler<ZLinkSessionContext, AuthenticateReq> {
     private final ZLinkActorManager actors;
@@ -64,3 +65,4 @@ public final class AuthenticatePlaySessionHandler
         throw new IllegalStateException("Play actor creation was rejected.");
     }
 }
+// --8<-- [end:doc-session-auth]

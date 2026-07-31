@@ -17,6 +17,7 @@ import { GameStatus, joinGameRes } from '../../../../../../../Shared/Contracts/m
   entrySpot: () => PlayEntrySpot,
   packetName: 'JoinGameReq'
 })
+// --8<-- [start:doc-join-defer]
 class PlayActorJoinGameHandler
   implements ZLinkEntrySpotActorRequestHandler<PlayEntrySpot, PlayActor, JoinGameReq, JoinGameRes> {
   async handle(
@@ -52,5 +53,6 @@ class PlayActorJoinGameHandler
     });
   }
 }
+// --8<-- [end:doc-join-defer]
 
 export { PlayActorJoinGameHandler };

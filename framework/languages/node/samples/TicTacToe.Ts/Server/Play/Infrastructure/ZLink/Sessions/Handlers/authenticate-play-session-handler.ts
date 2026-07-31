@@ -18,11 +18,13 @@ import type { AuthenticatePlayerRes, AuthenticateReq } from '../../../../../../S
 
 @Injectable()
 @ZLinkPacket(PacketNames.authenticateReq)
+// --8<-- [start:doc-session-auth]
 class AuthenticatePlaySessionHandler {
   constructor(
     @Inject(ZLINK_ACTOR_MANAGER) private readonly actors: ZLinkActorManager,
     @Inject(ZLINK_ROUTE_CLIENT) private readonly api: ZLinkRouteClient
   ) {}
+// --8<-- [end:doc-session-auth]
 
   async handle(context: ZLinkSessionContext, _dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
     const request = payload.decode<AuthenticateReq>(Object as never);

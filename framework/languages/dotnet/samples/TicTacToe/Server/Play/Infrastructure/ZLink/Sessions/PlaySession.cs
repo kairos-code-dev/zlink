@@ -4,6 +4,7 @@ using TicTacToe.Server.Play.Infrastructure.ZLink.Sessions.Handlers;
 
 namespace TicTacToe.Server.Play.Infrastructure.ZLink.Sessions;
 
+// --8<-- [start:doc-session]
 internal sealed class PlaySession(
     IZLinkSessionContext context,
     ILogger<PlaySession> logger)
@@ -76,3 +77,4 @@ internal sealed class PlaySession(
         };
     }
 }
+// --8<-- [end:doc-session]

@@ -8,6 +8,7 @@ import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext
 
+// --8<-- [start:doc-session]
 class PlaySession(
     private val context: ZLinkSessionContext,
     private val handlers: ZLinkSessionPacketDispatcher<ZLinkSessionContext>,) : ZLinkSuspendingSession() {
@@ -33,3 +34,4 @@ class PlaySession(
             else -> throw IllegalStateException("Exactly one actor must be bound before play packet '$packetName'")
         }
 }
+// --8<-- [end:doc-session]

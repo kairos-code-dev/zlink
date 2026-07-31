@@ -16,6 +16,7 @@ using namespace framework;
 using framework::actor_ref_t;
 using framework::message_t;
 
+// --8<-- [start:doc-session]
 class play_session_t final : public packet_stream_session_t
 {
   public:
@@ -96,5 +97,6 @@ class play_session_t final : public packet_stream_session_t
     authenticate_play_session_handler_t &_authenticate;
     std::optional<std::string> _bound_actor_id;
 };
+// --8<-- [end:doc-session]
 
 } // namespace zlink::samples::tictactoe

@@ -718,6 +718,41 @@ class이며([06-spot §4.1](06-spot.ko.md#41-handler-종류와-구현할-interfa
 actor packet으로 등록한 것이다.
 `Defer()` 뒤에는 이 handler를 정상 종료시키는 것 외에 할 일이 없다.
 
+> **샘플에서 보기 — [TicTacToe](../../../common/sample/tictactoe/README.ko.md).** player가
+> 방에 들어가겠다고 예약하는 handler다. 저장소의 실제 코드다.
+
+=== "C#/.NET"
+
+    ```csharp
+    --8<-- "framework/languages/dotnet/samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/PlayActorJoinGameHandler.cs:doc-join-defer"
+    ```
+
+=== "C++"
+
+    ```cpp
+    --8<-- "framework/languages/cpp/samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/play_actor_join_game_handler.hpp:doc-join-defer"
+    ```
+
+=== "Java"
+
+    ```java
+    --8<-- "framework/languages/java/samples/java/TicTacToe/Server/src/main/java/systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/entryspot/handlers/PlayActorJoinGameHandler.java:doc-join-defer"
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    --8<-- "framework/languages/java/samples/kotlin/TicTacToe/Server/src/main/kotlin/systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/entryspot/handlers/PlayActorJoinGameHandler.kt:doc-join-defer"
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    --8<-- "framework/languages/node/samples/TicTacToe.Ts/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/play-actor-join-game-handler.ts:doc-join-defer"
+    ```
+
+최소 형태로 보면 이렇다.
+
 === "C#/.NET"
 
     ```csharp

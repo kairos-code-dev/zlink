@@ -5,8 +5,10 @@ import type {
   ZLinkSessionDispatchContext
 } from '@zlink-systems/framework';
 
+// --8<-- [start:doc-session]
 class PlaySession implements ZLinkSession {
   constructor(readonly context: ZLinkSessionContext) {}
+// --8<-- [end:doc-session]
 
   async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
     if (await this.context.handlers.tryHandle(dispatch, payload)) return;

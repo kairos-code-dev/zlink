@@ -10,6 +10,7 @@ import systems.zlink.samples.tictactoe.shared.contracts.JoinGameReq;
 import systems.zlink.samples.tictactoe.shared.contracts.TicTacToeGameJoinReq;
 
 @ZLinkHandlerGroup(SampleNames.PlayActor)
+// --8<-- [start:doc-join-defer]
 public final class PlayActorJoinGameHandler {
     @ZLinkSpotActorSend
     public java.util.concurrent.CompletionStage<Void> joinGame(
@@ -25,4 +26,5 @@ public final class PlayActorJoinGameHandler {
             .defer();
         return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
+// --8<-- [end:doc-join-defer]
 }

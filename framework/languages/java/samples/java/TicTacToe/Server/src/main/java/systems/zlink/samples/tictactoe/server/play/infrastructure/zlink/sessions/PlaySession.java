@@ -8,6 +8,7 @@ import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkStreamError;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 
+// --8<-- [start:doc-session]
 public final class PlaySession implements ZLinkSession {
     private final ZLinkSessionContext context;
     private final ZLinkSessionPacketDispatcher<ZLinkSessionContext> handlers;
@@ -18,6 +19,7 @@ public final class PlaySession implements ZLinkSession {
         this.context = context;
         this.handlers = handlers;
     }
+// --8<-- [end:doc-session]
 
     @Override
     public ZLinkSessionContext context() {

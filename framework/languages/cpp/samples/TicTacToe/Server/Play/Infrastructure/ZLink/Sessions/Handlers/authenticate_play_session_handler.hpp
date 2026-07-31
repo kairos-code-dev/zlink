@@ -18,6 +18,7 @@ using namespace framework;
 using framework::actor_ref_t;
 using framework::message_t;
 
+// --8<-- [start:doc-session-auth]
 class authenticate_play_session_handler_t
 {
   public:
@@ -69,5 +70,6 @@ class authenticate_play_session_handler_t
   private:
     channel_client_t &_client;
 };
+// --8<-- [end:doc-session-auth]
 
 } // namespace zlink::samples::tictactoe

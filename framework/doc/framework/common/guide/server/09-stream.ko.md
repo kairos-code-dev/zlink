@@ -66,6 +66,42 @@ Application이 message type마다 codec을 등록하거나 raw frame을 해석�
 Session은 연결, packet dispatch, 오류와 disconnect callback을 구현한다. 같은 session의 callback은
 직렬로 실행된다.
 
+> **샘플에서 보기 — [TicTacToe](../../../common/sample/tictactoe/README.ko.md).** client
+> 연결 하나를 대표하는 session이다. 인증 packet을 먼저 거르고 나머지는 Actor로 relay한다.
+> 저장소의 실제 코드다.
+
+=== "C#/.NET"
+
+    ```csharp
+    --8<-- "framework/languages/dotnet/samples/TicTacToe/Server/Play/Infrastructure/ZLink/Sessions/PlaySession.cs:doc-session"
+    ```
+
+=== "C++"
+
+    ```cpp
+    --8<-- "framework/languages/cpp/samples/TicTacToe/Server/Play/Infrastructure/ZLink/Sessions/play_session.hpp:doc-session"
+    ```
+
+=== "Java"
+
+    ```java
+    --8<-- "framework/languages/java/samples/java/TicTacToe/Server/src/main/java/systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/sessions/PlaySession.java:doc-session"
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    --8<-- "framework/languages/java/samples/kotlin/TicTacToe/Server/src/main/kotlin/systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/sessions/PlaySession.kt:doc-session"
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    --8<-- "framework/languages/node/samples/TicTacToe.Ts/Server/Play/Infrastructure/ZLink/Sessions/play-session.ts:doc-session"
+    ```
+
+최소 형태로 보면 이렇다.
+
 === "C#/.NET"
 
     ```csharp

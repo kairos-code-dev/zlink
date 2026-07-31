@@ -7,6 +7,7 @@ using Zlink.Framework.Contracts.Spots;
 namespace TicTacToe.Server.Play.Infrastructure.ZLink.Spots.EntrySpot.Handlers;
 
 [ZLinkSpotActorSendHandler(nameof(JoinGameReq))]
+// --8<-- [start:doc-join-defer]
 internal sealed class PlayActorJoinGameHandler(ILogger<PlayActorJoinGameHandler> logger)
     : IZLinkEntrySpotActorSendHandler<PlayEntrySpot, PlayActor, JoinGameReq>
 {
@@ -34,3 +35,4 @@ internal sealed class PlayActorJoinGameHandler(ILogger<PlayActorJoinGameHandler>
         return ValueTask.CompletedTask;
     }
 }
+// --8<-- [end:doc-join-defer]

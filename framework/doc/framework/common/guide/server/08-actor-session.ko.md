@@ -14,6 +14,42 @@ Binding은 Actor의 Spot membership과 독립이다. Actor가 다른 Spot이나 
 Session handler에서 Actor를 생성하거나 조회한 다음 `ActorRef`를 bind한다. Local Actor instance나
 target `NodeRid`를 직접 전달하지 않는다.
 
+> **샘플에서 보기 — [TicTacToe](../../../common/sample/tictactoe/README.ko.md).** 인증 요청을
+> 받아 player Actor를 만들고 session에 bind한 뒤 reply까지 보내는 자리다. 저장소의 실제
+> 코드다.
+
+=== "C#/.NET"
+
+    ```csharp
+    --8<-- "framework/languages/dotnet/samples/TicTacToe/Server/Play/Infrastructure/ZLink/Sessions/Handlers/AuthenticatePlaySessionHandler.cs:doc-session-auth"
+    ```
+
+=== "C++"
+
+    ```cpp
+    --8<-- "framework/languages/cpp/samples/TicTacToe/Server/Play/Infrastructure/ZLink/Sessions/Handlers/authenticate_play_session_handler.hpp:doc-session-auth"
+    ```
+
+=== "Java"
+
+    ```java
+    --8<-- "framework/languages/java/samples/java/TicTacToe/Server/src/main/java/systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/sessions/handlers/AuthenticatePlaySessionHandler.java:doc-session-auth"
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    --8<-- "framework/languages/java/samples/kotlin/TicTacToe/Server/src/main/kotlin/systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/sessions/handlers/AuthenticatePlaySessionHandler.kt:doc-session-auth"
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    --8<-- "framework/languages/node/samples/TicTacToe.Ts/Server/Play/Infrastructure/ZLink/Sessions/Handlers/authenticate-play-session-handler.ts:doc-session-auth"
+    ```
+
+최소 형태로 보면 이렇다.
+
 === "C#/.NET"
 
     ```csharp

@@ -690,6 +690,25 @@ deadline, 그리고 이 handler가 끝난 뒤 실행할 barrier다.
 `Defer()`는 **현재 handler의 registration scope가 열려 있는 동안에만** 호출할 수 있다. handler가
 끝난 뒤나 handler에서 떼어낸 background task에서 호출하면 `InvalidOperation`이다.
 
+**부를 수 있는 자리는 정해져 있다.**
+
+| 부를 수 있다 | 부를 수 없다 |
+| --- | --- |
+| Actor send · request handler | factory와 구성 단계 |
+| User · Entry Spot의 packet · request · subscription · timer handler | lifecycle callback |
+| | relocation adapter |
+| | Instance Spot handler |
+| | handler에서 떼어낸 background task |
+
+오른쪽에서 부르면 `InvalidOperation`이다. **떼어낸 task는 Framework가 모든 언어에서
+잡아낸다고 보장하지 않는다** — handler가 끝나기 전에 발견되지 않을 수 있으므로 애초에 그
+자리에서 부르지 않는다.
+
+같은 call에서 `Defer()`를 두 번 부르면 `InvalidOperation`이고, 그 Actor에 이미 다른
+membership 전환이 걸려 있으면 `Unavailable`이다. **이미 그 Spot에 속해 있는 Actor가 같은
+Spot에 join하면** 위치를 바꾸지 않고 성공으로 끝난다 — Store도 membership도 건드리지 않고
+join · joined · leave callback도 실행하지 않는다.
+
 ### `JoinSpot`이 `Defer()`로만 실행되는 이유
 
 join call에는 `Async`가 없다. 결과를 그 자리에서 기다리는 형태를 제공하지 않는 이유는 join이
@@ -1022,6 +1041,40 @@ User Spot에서 Entry Spot으로 돌아갈 때도 같은 방식이다.
 
 `OperationId`는 이 completion이 재시도된 결과인지 구분하는 idempotency ID다. 같은 `OperationId`의
 callback이 다시 실행되어도 안전하도록 처리한다.
+
+### 등록 한도
+
+한 handler가 예약할 수 있는 양에 상한이 있다.
+
+| 무엇 | 상한 |
+| --- | --- |
+| 한 handler의 join 예약 수 | 64개 |
+| join request 하나의 인코딩 크기 | 1 MiB |
+| 한 handler가 예약한 request 크기 합계 | 8 MiB |
+| cross-node join의 application reply | 1 MiB |
+| timeout 기본값 | 5초. 지정하면 유한한 양수여야 한다 |
+
+**상한을 넘기면 그 자리에서 오류로 끝난다.** 일부만 등록되고 나머지가 빠지는 상태는
+만들지 않는다. request와 reply 상한은 서로 독립이라 하나로 합쳐 계산하지 않는다.
+
+### 예약한 Actor에 request를 보내면 안 된다
+
+`Defer()`로 barrier를 건 Actor에게 **같은 handler에서 request를 보내고 reply를 기다리면
+순환 대기**가 된다. request는 barrier 뒤에서 기다리고, barrier는 이 handler가 끝나야
+열리는데, handler는 reply를 기다리느라 끝나지 못한다.
+
+Framework가 이 request를 **제출하기 전에 `InvalidOperation`으로 거부한다.** 멈추지 않고
+오류로 끝나므로, 이 오류를 보면 예약과 request의 대상이 같은 Actor인지 확인한다.
+
+### 예약이 살아남지 못하는 경우
+
+예약과 barrier는 **현재 process 메모리에만 있다.** join이 실행되거나 Store에 반영되기 전에
+process가 내려가면 그 예약은 재생되지 않는다. Actor의 위치와 membership은 원래 상태
+그대로다 — 절반만 옮겨진 상태로 남지 않는다.
+
+`Relocate`나 `Shutdown`과 겹치면 **먼저 확정된 쪽을 따른다.** join이 먼저 자리를 잡았으면
+maintenance가 join이 끝날 때까지 기다리고, relocation seal이 먼저면 join이 `Unavailable`로,
+shutdown seal이 먼저면 `ShuttingDown`으로 끝난다.
 
 ## 6. Actor 메시징
 

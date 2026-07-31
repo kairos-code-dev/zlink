@@ -560,6 +560,21 @@ Spot factory가 있으면 필수), lease 값 넷을 묶는 부등식과 위반 �
 셋 다 진단 방향을 바꾸는 종류다. 값 하나를 어디서 바꿔야 하는지, 즉시 실패가 무엇을
 뜻하는지, 왜 어떤 호출만 다른 node로 흘러가는지가 문서에 없었다.
 
+**07장도 마쳤다.** `14-actor-model` §3.1과 대조해 join 예약의 제약을 채웠다. 가이드는
+`Defer()`가 무엇을 하는지와 왜 그 형태인지는 잘 설명했지만 **어디서 부를 수 있고 얼마나
+부를 수 있는지**가 없었다.
+
+- 부를 수 있는 자리와 없는 자리(factory · lifecycle callback · relocation adapter ·
+  Instance Spot handler · 떼어낸 task는 `InvalidOperation`)
+- 한도 — handler당 64개, request 1 MiB, 합계 8 MiB, reply 1 MiB, timeout 기본 5초.
+  넘기면 그 자리에서 실패하고 **일부만 등록된 상태를 만들지 않는다**
+- **예약한 Actor에 request를 보내면 순환 대기**가 되므로 제출 전에 거부한다
+- 예약은 process 메모리에만 있어 crash 시 재생되지 않고, `Relocate` · `Shutdown`과
+  겹치면 먼저 확정된 쪽을 따른다
+
+순환 대기 항목이 특히 값이 있다. 예약과 request의 대상이 같은 Actor인지는 코드를 읽어서는
+잘 안 보이는데, 문서에 없으면 그 오류를 만나고도 원인을 못 찾는다.
+
 이 대조에서 게이트 3의 구멍도 드러났다. 산문이 `BindAsync` · `OnCreateActorAsync` 같은
 **`.NET` terminal이 붙은 operation 이름**을 부르고 있었는데 게이트 3이 타입 이름만 보고
 있어 놓쳤다. 공통 12장에서 33자리다.
@@ -572,7 +587,7 @@ operation을 `NotifyDisconnected`라 하며 `.NET` exact interface에서는
 | 남은 일 | 규모 |
 | --- | --- |
 | ZoneWorld 샘플 구현 | cpp · java · kotlin. 문서가 아니라 코드 작업이다 |
-| 게이트 4 나머지 4장 | 03 · 05 · 06 · 07. 05 · 06장은 2,400줄 이상이라 한 회차씩 든다 |
+| 게이트 4 나머지 3장 | 03 · 05 · 06. 05 · 06장은 2,400줄 이상이라 한 회차씩 든다 |
 | 게이트 6 | 호출 형태 대조. 사람이 읽는다 |
 
 **병행 트랙 상태.** 사이트는 정본 트리를 docs root로 쓰도록 구성했고 가이드 장의 빌드

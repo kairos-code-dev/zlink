@@ -6224,3 +6224,33 @@ HWM 하한 적용 : direct-consumer readiness에서 실패 (2/2회)
 따라서 격리는 socket 수준 하한이 아니라 **frame 수준**이어야 한다. Infrastructure frame을
 application HWM에 걸리지 않는 경로로 보내거나, infrastructure 전용 pipe를 두는 방향이다.
 어느 쪽이든 socket 구성 하나로 끝나지 않으므로 별도 작업으로 남긴다. 변경은 되돌렸다.
+
+### (정정) StoreFailure는 개선되지 않았다
+
+`NotFound` 수정 뒤 StoreFailure가 "2개에서 4개로 늘었다"고 기록했는데 오독이다.
+`grep -c passed`가 시나리오 줄과 `store-failure client result=passed` 줄을 함께 세는데,
+스위트마다 로그 형식이 달라 이 지표는 스위트 간·시점 간 비교에 쓸 수 없다.
+
+시나리오 줄만 세면 지금도 둘이다.
+
+```
+scenario SF-A1 passed
+scenario SF-A2 passed
+실패 지점 : SfB1FailStaticScenario.cs:line 28   (수정 전과 같음)
+```
+
+즉 `NotFound` 수정은 RL-A1에는 효과가 있었고(assertion 메시지가 바뀐 것으로 확인) SF-B1에는
+효과가 없다. SF-B1은 store outage 중 fail-static을 보는 시나리오이므로 후보 0개 문제와
+성격이 다르다.
+
+오늘 확인된 실제 변화는 다음과 같다.
+
+| 스위트 | 변화 |
+|---|---|
+| PubSub | **전량 통과** (lossy admission 수정) |
+| ResilienceLifecycle | RL-A1이 `NotFound` assertion을 통과, 이후 다른 assertion에서 멈춤 |
+| StoreFailure | 변화 없음 |
+| RegistrationCodec | 변화 없음(10개 유지) |
+
+스위트별로 로그 형식이 달라 통과 개수를 비교하려면 `scenario ... passed` 형태의 줄만
+세거나 client 로그를 따로 봐야 한다. 이번에 두 번 오독했다.

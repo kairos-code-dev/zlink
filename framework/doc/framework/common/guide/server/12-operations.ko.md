@@ -370,6 +370,47 @@ Kubernetes 배포에 연결하면 다음 개념이 된다.
 # preStop hook + terminationGracePeriodSeconds ≥ drain deadline — 자동 drain이 끝날 시간을 확보
 ```
 
+### 4.1 다시 부르거나 겹쳐 불렀을 때
+
+배포 자동화는 실패하면 재시도한다. 그래서 **같은 호출을 두 번 하면 어떻게 되는지**가
+계약으로 정해져 있다.
+
+| 상황 | 결과 |
+| --- | --- |
+| 같은 mode로 `Relocate`를 겹쳐 부름 | 최초 operation과 deadline을 공유한다. 뒤의 호출이 deadline을 늘리지 않는다 |
+| 다른 mode로 `Relocate`를 겹쳐 부름 | 기다리지 않고 `Blocked` — 진행 중인 operation이 있다는 뜻이다 |
+| `Blocked` 뒤에 다시 `Relocate` | `Blocked`는 저장하지 않으므로 host 조건을 처음부터 다시 검사한다. **재시도가 의미 있는 유일한 결과다** |
+| `Relocated`에서 다시 `Relocate` | 최초 성공 결과를 그대로 돌려준다. 다시 옮기지 않는다 |
+| `Shutdown`을 겹쳐 부름 | 같은 operation을 공유하고 terminal 결과를 저장한다 |
+| `Stopped`에서 다시 `Shutdown` | 저장한 결과를 돌려준다 |
+| 시작 중이거나 오류·정지 상태에서 `Relocate` | admission을 건드리지 않고 `Blocked`다 |
+
+**호출자 취소는 그 호출만 끝낸다.** 공유하고 있는 operation 자체는 취소되지 않는다.
+
+**`Shutdown`은 막히지 않는다.** target이 없어도, capacity가 부족해도, Relocation Store가
+없어도 진행한다. 그래서 `Relocate`를 기다리는 중에 `Shutdown`이 확정되면 기다리던 쪽이
+`Blocked`로 끝난다 — **먼저 옮기고 성공을 확인한 뒤 종료한다**는 순서를 지켜야 하는
+이유다.
+
+`Shutdown`이 deadline 안에 끝나지 않으면 제한된 정리만 하고 강제 종료 결과로 끝난다.
+deadline 초과와 callback 실패는 서로 다른 결과값으로 구분된다.
+
+### 4.2 전이 중에도 살아 있는 것
+
+`Relocating` · `Relocated` · `Draining`은 "아무것도 안 받는 상태"가 아니다. **새로
+시작하는 것만 막고 이미 수락한 것은 끝까지 처리한다.**
+
+| | `Relocating` | `Relocated` | `Draining` |
+| --- | --- | --- | --- |
+| channel 이름으로 고르기 | 새 선택에서 제외. 기존 owner 경로는 유지 | 새 선택에서 제외 | 새 admission 닫음 |
+| node를 직접 지정한 요청 | unit seal 전까지 수락 | 받지 않음 | shutdown 결과로 끝냄 |
+| Spot · Actor 생성과 join | 거부 | 거부 | 거부 |
+| STREAM | 새 binding 제외. 기존 session은 barrier로 처리 | 새 binding 제외 | 새 session 받지 않음 |
+| 이미 수락한 request | reply · error · timeout · shutdown 중 하나로 **한 번만** 끝난다 | 〃 | 〃 |
+
+**monitoring이나 observer callback은 종료를 붙잡지 않는다.** 상태를 관찰하는 코드가
+오래 돌아도 maintenance가 그것을 기다리지 않는다.
+
 ## 5. MeshNode 런타임 제어와 관측
 
 `AddRouteMesh`로 등록한 MeshNode는 두 DI singleton으로 운영한다.

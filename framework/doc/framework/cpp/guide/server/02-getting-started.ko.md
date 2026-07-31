@@ -1,6 +1,11 @@
-[← 목차](README.ko.md)
+<!-- framework-adapter-nav:start -->
+[가이드 홈](../../../index.ko.md) | [이전: 1. 개요](01-overview.ko.md) | [다음: 3. 핵심 개념](../../../common/guide/server/03-concepts.ko.md)
+<!-- framework-adapter-nav:end -->
 
 # 2. 시작하기
+
+> 이 장이 따라가는 코드는 저장소의 `framework/languages/cpp/samples/TicTacToe`다.
+> 빌드 연동과 옵션의 정식 계약은 [C++ configuration과 host 공개 계약](../../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md)이 다룬다.
 
 이 장은 실제 `samples/TicTacToe`의 첫 흐름만 따라간다. 전체 게임 규칙을 설명하지
 않고, 외부 클라이언트가 `POST /games`를 호출했을 때 API 서버가 Play 서버로 서버 간
@@ -237,4 +242,9 @@ location store를 통과하지 않는다. Store 장애와 readiness, descriptor 
 | location store 운영과 topology 조회 | [11장 location store](../../../common/guide/server/10-location.ko.md) |
 | 실행 가능한 전체 예제 | `samples/TicTacToe`와 `run_sample.sh` |
 
-[다음: 핵심 개념 →](../../../common/guide/server/03-concepts.ko.md)
+## 10. 관련 문서
+
+- 정식 계약: [C++ configuration과 host 공개 계약](../../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md)
+- 다음 장: [3. 핵심 개념](../../../common/guide/server/03-concepts.ko.md)
+- C++ 실행 모델: [21. 실행·구성 모델](21-execution-model.ko.md)
+- 샘플 전체: [14. 샘플 고르기](../../../common/guide/server/14-samples.ko.md)

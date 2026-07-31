@@ -1,6 +1,11 @@
-[← 목차](README.ko.md)
+<!-- framework-adapter-nav:start -->
+[가이드 홈](../../../index.ko.md) | [이전: 3. 핵심 개념](../../../common/guide/server/03-concepts.ko.md) | [다음: 19. Configuration](19-configuration.ko.md)
+<!-- framework-adapter-nav:end -->
 
-# 4. DI 컨테이너
+# 18. DI 컨테이너
+
+> 정식 계약은 [C++ configuration과 host 공개 계약](../../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md)이
+> 다룬다.
 
 프레임워크는 ASP.NET Core 스타일의 DI(의존성 주입) 컨테이너를 내장한다.
 `service_collection_t`에 서비스를 등록하고, `service_provider_t`로 꺼낸다.
@@ -227,4 +232,8 @@ class agent_availability_directory_t
 
 읽기 전용 singleton (topology, 설정 struct)은 `const` 메서드만 노출하면 락 없이 안전하다.
 
-[다음: Configuration →](19-configuration.ko.md)
+## 9. 관련 문서
+
+- 정식 계약: [C++ configuration과 host 공개 계약](../../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md)
+- 설정 값 읽기: [19. Configuration](19-configuration.ko.md)
+- 주입받는 타입 목록: [13. 주요 타입 사용 색인](13-interface-catalog.ko.md)

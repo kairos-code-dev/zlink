@@ -1,4 +1,6 @@
-[← 목차](README.ko.md)
+<!-- framework-adapter-nav:start -->
+[가이드 홈](../../../index.ko.md) | [다음: 2. 시작하기](02-getting-started.ko.md)
+<!-- framework-adapter-nav:end -->
 
 # 1. 개요
 
@@ -401,4 +403,9 @@ Framework는 handler를 자동으로 모든 channel에 열지 않는다. handler
 12. `13. Interface 카탈로그` 장 — 주요 public 표면
 13. [14장](../../../common/guide/server/14-samples.ko.md) — 샘플별 실행 흐름
 
-[다음: 시작하기 →](02-getting-started.ko.md)
+## 9. 관련 문서
+
+- 읽는 순서: [C++ 가이드 진입점](README.ko.md)
+- 언어 중립 정의: [공통 스펙 목차](../../../common/README.ko.md)
+- C++ 공개 계약: [exact interface 목차](../../../common/spec/server/languages/cpp/interfaces/README.ko.md)
+- 다음 장: [2. 시작하기](02-getting-started.ko.md)

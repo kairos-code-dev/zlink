@@ -1,6 +1,11 @@
-[← 목차](README.ko.md)
+<!-- framework-adapter-nav:start -->
+[가이드 홈](../../../index.ko.md) | [이전: 19. Configuration](19-configuration.ko.md) | [다음: 4. Backpressure](../../../common/guide/server/04-backpressure.ko.md)
+<!-- framework-adapter-nav:end -->
 
-# 6. HTTP Hosting
+# 20. HTTP Hosting
+
+> 정식 계약은 [C++ HTTP hosting 공개 계약](../../../common/spec/server/languages/cpp/60-http-hosting.ko.md)이 다룬다.
+> 요청을 보내는 쪽은 별도 산출물이다 — HTTP Client 가이드를 본다.
 
 ## 1. embedded HTTP server가 하는 일
 
@@ -111,4 +116,8 @@ options.http ().configure_server ([] (zlink::framework::http_server_options_buil
 timeout 안에 끝나지 않은 연결이나 keep-alive로 대기 중인 연결은 정리하므로
 `stop()`이 매달리지 않는다.
 
-[다음: 채널 메시징 →](../../../common/guide/server/05-channel-messaging.ko.md)
+## 7. 관련 문서
+
+- 정식 계약: [C++ HTTP hosting 공개 계약](../../../common/spec/server/languages/cpp/60-http-hosting.ko.md)
+- handler 모델: [13. 주요 타입 사용 색인](13-interface-catalog.ko.md)
+- health endpoint: [11. Monitoring](11-monitoring.ko.md)

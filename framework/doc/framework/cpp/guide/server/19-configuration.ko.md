@@ -1,6 +1,11 @@
-[← 목차](README.ko.md)
+<!-- framework-adapter-nav:start -->
+[가이드 홈](../../../index.ko.md) | [이전: 18. DI 컨테이너](18-di-container.ko.md) | [다음: 20. HTTP Hosting](20-http-hosting.ko.md)
+<!-- framework-adapter-nav:end -->
 
-# 5. Configuration
+# 19. Configuration
+
+> 정식 계약은 [C++ configuration과 host 공개 계약](../../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md)이
+> 다룬다. 무엇을 설정할 수 있는지는 [16. Options](16-options.ko.md)가 모은다.
 
 endpoint·포트·동작 플래그를 코드에 하드코딩하지 않고 CLI/환경변수/JSON 파일에서
 읽는 방법을 다룬다. 진입점은 `app.config()`(`config_builder_t`)다.
@@ -145,4 +150,8 @@ auto suffix = app.config ().environment ();     // "staging"
 4. 필수 값은 `require`/`bind_required`로 — 빠진 설정은 부팅 시점에 시끄럽게
    실패하는 편이 낫다.
 
-[다음: HTTP Hosting →](20-http-hosting.ko.md)
+## 8. 관련 문서
+
+- 정식 계약: [C++ configuration과 host 공개 계약](../../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md)
+- 설정할 수 있는 값 목록: [16. Options](16-options.ko.md)
+- DI 등록: [18. DI 컨테이너](18-di-container.ko.md)

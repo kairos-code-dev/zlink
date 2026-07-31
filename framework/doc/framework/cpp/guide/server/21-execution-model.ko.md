@@ -1,6 +1,11 @@
-[← 목차](README.ko.md)
+<!-- framework-adapter-nav:start -->
+[가이드 홈](../../../index.ko.md) | [이전: 3. 핵심 개념](../../../common/guide/server/03-concepts.ko.md) | [다음: 18. DI 컨테이너](18-di-container.ko.md)
+<!-- framework-adapter-nav:end -->
 
 # 21. 실행·구성 모델
+
+> 정식 계약은 [C++ 공통 runtime 공개 계약](../../../common/spec/server/languages/cpp/interfaces/01-common-runtime.ko.md)과
+> [비동기 실행 정책](../../../common/spec/05-async-execution-policy.ko.md)이 다룬다.
 
 C++ framework가 개념을 실제로 실행하고 구성하는 방식이다. 개념 자체는
 [3. 핵심 개념](../../../common/guide/server/03-concepts.ko.md)이 다루고, 이 장은 그것이
@@ -196,3 +201,9 @@ stateDiagram-v2
   configure_monitoring` 을 구현하고 `app.add_zlink_framework<TModule>()` 로 붙인다.
 
 [다음: DI 컨테이너 →](18-di-container.ko.md)
+
+## 5. 관련 문서
+
+- 정식 계약: [C++ 공통 runtime 공개 계약](../../../common/spec/server/languages/cpp/interfaces/01-common-runtime.ko.md)
+- 비동기 terminal 규약: [비동기 실행 정책](../../../common/spec/05-async-execution-policy.ko.md)
+- DI 주입 규칙: [18. DI 컨테이너](18-di-container.ko.md)

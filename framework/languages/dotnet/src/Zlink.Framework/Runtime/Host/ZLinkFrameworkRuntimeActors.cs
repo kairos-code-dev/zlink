@@ -1275,6 +1275,12 @@ internal sealed partial class ZLinkFrameworkRuntime
             participant.RecoveryPayload.Span);
         var sourceFence = ZLinkActorRelocationSourceFenceCodec.Decode(
             canonical.MembershipMutation.Span);
+        //  Printed before the branch, with the values it tests: an absent
+        //  trace inside the branch would not say whether recovery metadata was
+        //  missing or the path was never reached.
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"recovery_metadata operation_empty={canonical.OperationRecovery.IsEmpty} "
+            + $"legacy_empty={sourceFence.LegacyRemoteJoinRecovery.IsEmpty}");
         if (canonical.OperationRecovery.IsEmpty
             && sourceFence.LegacyRemoteJoinRecovery.IsEmpty)
             return;
@@ -1294,6 +1300,10 @@ internal sealed partial class ZLinkFrameworkRuntime
                 error);
         }
         var wire = recovery.Request;
+        //  Only one call separates this from the completion delivery, so a
+        //  trace on each side of it isolates the stall.
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"recovery_validating actor={wire.ActorId} handoff={wire.HandoffId}");
         await ValidateCanonicalRemoteJoinRecoveryAsync(
                 candidate,
                 participant,

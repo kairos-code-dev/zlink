@@ -2750,3 +2750,31 @@ detached task 시작 직후와 그 안의 분기마다 진단을 넣어 어디�
 따라서 12개 스위트의 연결 실패가 언제부터인지는 미확정으로 남는다. 다만 다음 둘은
 확실하다. 기동 실패는 `00959010f4`의 후속 누락이었고 이번에 해소했다. 그리고 그 커밋은
 이번 세션 작업보다 앞서므로 12개 스위트의 실패는 이번 세션이 만든 것이 아니다.
+
+### ST-B2 정지 지점 분리 완료
+
+분기 앞에 조건값과 함께 진단을 넣어 구간을 하나로 좁혔다.
+
+```
+recovery_scheduled   already_watched=False
+recovery_metadata    operation_empty=False legacy_empty=True   ← 조기 return 아님
+recovery_validating  actor=actor-cleanup-after-success-... handoff=...
+(recovery_completing — 없음)
+```
+
+`recovery_metadata`와 완료 전달 사이에는 호출이 하나뿐이다.
+
+```csharp
+await ValidateCanonicalRemoteJoinRecoveryAsync(candidate, participant, canonical,
+                                               sourceFence, recovery, cancellationToken);
+ZLinkFrameworkDebugLog.SpotDiscovery($"recovery_completing ...");
+await CompleteRoutedActorHandoffAsync(...);
+```
+
+`recovery_validating`은 찍히고 `recovery_completing`은 찍히지 않으므로, **정지 지점은
+`ValidateCanonicalRemoteJoinRecoveryAsync`**다. 던지거나 끝나지 않는다. 재시도·실패
+추적이 로그에 없으므로 예외가 밖으로 나가 조용히 사라지거나 그 안에서 대기하는 것으로
+보인다.
+
+이로써 ST-B2의 결함 위치가 함수 하나로 확정됐다. 다음은 그 함수 안에서 어느 검증이
+걸리는지 보는 것이다.

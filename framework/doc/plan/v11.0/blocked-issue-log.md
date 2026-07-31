@@ -2481,3 +2481,52 @@ actor node 사이의 request/reply는 정상이다. admission 왕복이
 참고로 session gateway 프로세스에는 flow 로깅이 켜져 있지 않아(로그 5줄) 기존 추적으로는
 이 구간이 보이지 않았다. 이번 진단이 없었다면 "seal이 처리되지 않는다"로 오판할 수
 있었다.
+
+## 2026-07-31 ST-E2 잔여 결함 확정 — mesh 계층에서 응답이 오지 않는다
+
+요청자 쪽 mesh 콜백에 진단을 넣어 확정했다.
+
+```
+actor-a:   route_control_sent   target=session-a-... type=ZLinkSessionRouteSealRequest
+           route_control_sent   target=session-a-... type=ZLinkSessionRouteAbortRequest
+           node_request_result  target=session-a-... result=TimedOut
+           node_request_result  target=session-a-... result=TimedOut
+session-a: route_seal_received
+           route_seal_drain     active_frames=0 waits=False
+           route_seal_replying  ack=True
+```
+
+session-a의 핸들러는 `ack=True`인 reply를 반환하는데, actor-a의 mesh 계층은 두 요청 모두
+`TimedOut`으로 끝난다. 즉 **응답이 요청자 노드에 도달하지 않는다.** 프레임워크 상위
+계층이 아니라 node 간 request/reply 전달의 문제다.
+
+같은 프로세스 쌍에서 요청은 정상적으로 간다(session-a가 받았다). 응답 방향만 유실된다.
+
+actor node 사이의 request/reply는 정상이다. admission 왕복이
+`admit_request_sent` → `admit_reply_received`로 완결된다. 차이는 대상이 **session gateway
+node**라는 점이다. session gateway는 다른 역할로 기동하므로, 그 노드가 응답을 되돌릴
+경로를 갖추고 있는지가 다음 확인 지점이다.
+
+확인할 것은 셋이다. session-a의 mesh peer 집합에 actor-a가 admitted 상태로 있는지,
+reply 송신이 실제로 일어나는지(session gateway에는 flow 로깅이 꺼져 있어 보이지 않는다),
+그리고 요청에 쓰인 `SendFlags.DontWait`가 응답 경로에도 적용되어 혼잡 시 버려지는지다.
+
+### 응답 주소는 정확하다
+
+세 후보 중 첫째를 확인했다. seal 핸들러가 받은 `context.SourceNodeRid`는 요청자의 실제
+rid와 정확히 일치한다.
+
+```
+session-a: route_seal_replying ack=True source_node=actor-a-bc77f9cc-a092-413f-a36d-64445ecf3d9d
+actor-a  : (실제 rid)          actor-a-bc77f9cc-a092-413f-a36d-64445ecf3d9d
+```
+
+따라서 "응답을 어디로 보낼지 모른다"는 원인은 배제된다. 핸들러는 올바른 요청자 주소를
+알고 `ack=True`를 반환한다. 그럼에도 요청자의 mesh 계층은 `TimedOut`을 받는다.
+
+남은 후보는 둘이다. 프레임워크가 route request의 응답을 실제로 송신하지 않거나, 송신은
+되는데 요청자 쪽에서 correlation이 맞지 않아 대기 중인 요청과 연결되지 못하는 경우다.
+전자와 후자는 증상이 같으므로 송신 측에 진단을 넣어야 갈린다.
+
+참고로 이 핸들러는 `context`를 `_ = context;`로 버리고 있었다. 진단을 넣으며 그 폐기를
+제거했다. 응답 경로를 조사하는 데 필요한 정보가 코드에 있으면서도 쓰이지 않고 있었다.

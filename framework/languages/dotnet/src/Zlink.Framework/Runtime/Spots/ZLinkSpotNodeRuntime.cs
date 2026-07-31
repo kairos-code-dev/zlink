@@ -557,6 +557,10 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 pending,
                 (result, reply) =>
                 {
+                    //  The mesh layer's own view of the round trip. If this
+                    //  never fires the reply did not reach this node at all.
+                    Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                        $"node_request_result target={targetNodeRid} result={result}");
                     if (result == RequestResult.Ok)
                     {
                         complete(reply);

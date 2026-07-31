@@ -122,7 +122,6 @@ internal sealed class ZLinkSessionRouteSealHandler(ZLinkFrameworkRuntime runtime
         ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
-        _ = context;
         cancellationToken.ThrowIfCancellationRequested();
         var result = await runtime.SealSessionActorRouteAsync(
             new ZLinkSessionRouteSeal(
@@ -140,7 +139,8 @@ internal sealed class ZLinkSessionRouteSealHandler(ZLinkFrameworkRuntime runtime
         //  Paired with route_control_sent on the requester: if this fires and
         //  the requester still times out, the loss is in the reply transport.
         Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-            $"route_seal_replying actor={message.ActorId} ack={result.Acknowledged}");
+            $"route_seal_replying actor={message.ActorId} ack={result.Acknowledged} "
+            + $"source_node={context.SourceNodeRid}");
         return new ZLinkSessionRouteSealReply(
             result.Acknowledged,
             result.AcceptedHighWater);

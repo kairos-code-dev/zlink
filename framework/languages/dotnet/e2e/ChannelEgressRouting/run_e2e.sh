@@ -9,6 +9,7 @@ SCENARIO="${*:-all}"
 SCENARIO="${SCENARIO// /,}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
+FANOUT_READINESS_TIMEOUT_SECONDS=20
 if [[ "$SCENARIO" == "all" ]]; then
   cat >&2 <<'EOF'
 ChannelEgressRouting 'all' is not executable yet.
@@ -123,7 +124,8 @@ start_role() {
 
 wait_json() {
   local url="$1" expression="$2" name="$3"
-  local deadline=$((SECONDS + LOCAL_READINESS_TIMEOUT_SECONDS))
+  local budget="${4:-$LOCAL_READINESS_TIMEOUT_SECONDS}"
+  local deadline=$((SECONDS + budget))
   while (( SECONDS < deadline )); do
     if curl --max-time 1 --connect-timeout 1 -fsS "$url" 2>/dev/null \
       | python3 -c "import json,sys; value=json.load(sys.stdin); assert ($expression)" \
@@ -132,7 +134,7 @@ wait_json() {
     fi
     sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "Timed out waiting for $name at $url" >&2
+  echo "Timed out waiting ${budget}s for $name at $url" >&2
   curl --max-time 1 --connect-timeout 1 -fsS "$url" >&2 || true
   echo >&2
   return 1
@@ -188,8 +190,13 @@ wait_json "${URLS[play]}/topology/audit" \
 wait_json "${URLS[workflow-client]}/client-server/workflow.command" \
   "value['isReady'] and value['readyTargetCount'] == 2" "workflow targets"
 if [[ "$SCENARIO" == *"CH-REG-03"* || "$SCENARIO" == *"CH-E2E-09"* ]]; then
+  # An automatic fanout publisher counts as ready once the subscriber
+  # receives an application record or a liveness beacon (spec 24 §2.2), and
+  # nothing is published before this point. The beacon interval is five
+  # seconds, so the shared three-second budget cannot cover a single one.
   wait_json "${URLS[play]}/fanout-status" \
-    "value['isReady'] and value['readyPublisherCount'] == 1" "fanout publisher"
+    "value['isReady'] and value['readyPublisherCount'] == 1" "fanout publisher" \
+    "$FANOUT_READINESS_TIMEOUT_SECONDS"
 fi
 
 curl --max-time 2 -fsS "${URLS[session]}/topology/game" \

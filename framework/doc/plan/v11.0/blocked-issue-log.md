@@ -4685,3 +4685,54 @@ spec 08 §7이 정확히 그렇게 정한다. "ChannelName이 현재 process에 
 
 CH-REG-01은 1차 개별 실행에서 `workflow-client health` timeout으로 실패했다가 전량
 실행에서는 통과했다. 재현되지 않는 기동 경합으로 보이며 별도로 다시 확인해야 한다.
+
+### CH-E2E-09·CH-REG-03: fanout barrier가 beacon 주기보다 짧았다
+
+두 selector가 같은 곳에서 멈췄다.
+
+```
+Timed out waiting for fanout publisher at .../fanout-status
+{"state":"Degraded","isReady":false,"readyPublisherCount":0}
+```
+
+spec 24 §2.2는 automatic fanout publisher가 "application record 또는 liveness beacon을
+받으면 ready가 된다"고 정한다. 이 barrier 앞에서는 아무것도 발행하지 않으므로 첫 beacon이
+유일한 신호이고, beacon 주기는 5초다(`ZLinkFanoutLivenessProtocol.BeaconInterval`).
+Runner의 공용 예산은 3초여서 beacon 하나를 담을 수 없다. 구조적으로 통과할 수 없는
+barrier였다.
+
+`wait_json`에 예산 인자를 추가하고 이 호출에만 20초를 준다. 다른 barrier는 그대로 3초다.
+
+두 selector 모두 barrier를 통과하고 같은 다음 지점에서 멈춘다.
+
+```
+InvalidOperationException: expected topology descriptors, got 5.
+```
+
+### `/locations` 열거 범위와 시나리오 기대가 어긋난다
+
+`AssertAutomaticEndpointsAsync`는 row가 7개 이상이고 meshName 집합에 `game`, `audit`,
+`workflow.command`, `config12.fanout`이 모두 있기를 요구한다. 실제로는 5개이고 전부
+`game`이다.
+
+`IZLinkLocationRuntimeQuery.ListTopologyAsync`가 돌려주는 `ZLinkLocationTopologyEntry`의
+주석은 범위를 명시한다.
+
+> One MeshNode descriptor projected with liveness. Spot and Actor rows are
+> resolve-only store records and never enumerate into topology.
+
+즉 MeshNode descriptor만 열거한다. ClientServer channel과 fanout channel은 MeshNode가
+아니므로 나오지 않는다. 이 스위트는 role마다 mesh를 하나만 등록하고 `audit.record`는 그
+mesh의 ChannelName이므로 `audit`이라는 mesh도 없다. 나머지 public 조회인
+`ListServiceSummariesAsync`도 MeshName 단위라 마찬가지다.
+
+한편 fanout은 실제로 ready가 됐다. Automatic subscriber가 publisher descriptor를 찾았다는
+뜻이므로 store에는 무언가 게시되어 있고 public 조회에 나오지 않을 뿐이다.
+
+공통 spec에서 이 열거 범위를 정하는 조항은 찾지 못했다. 21 §6.4는 ActorId·SpotId 기준
+object 위치 조회를 정할 뿐 MeshNode topology 열거를 다루지 않는다. 따라서 둘 중 하나다.
+
+- 공개 조회가 ClientServer·fanout descriptor도 열거해야 한다(런타임 격차).
+- 시나리오가 MeshNode descriptor만 기대해야 한다(시나리오 낡음).
+
+코드 주석은 후자를 시사하지만 근거가 주석 하나뿐이라 assertion을 임의로 낮추지 않는다.

@@ -5844,3 +5844,35 @@ session-a에 있으므로 `NotifyActorDisconnectedAsync`의 local 분기를 타�
 앞 절의 "런타임 격차" 판정은 근거가 부족했으므로 취소한다. 함수 하나를 읽고 호출부를 보지
 않은 것이 원인이다. 이 세션에서 같은 종류의 성급한 판정을 여러 번 했고, 매번 한 단계 더
 따라가면 그림이 달라졌다.
+
+### SM-B6 사슬 전체와 남은 용의자
+
+정정 뒤 경로를 끝까지 따라갔다. 전 구간이 placement를 고려한다.
+
+```
+session-a : CleanupAsync -> ZLinkSessionActor.NotifyDisconnectedAsync
+          -> ZLinkSessionActorCoordinator.NotifyActorDisconnectedAsync
+          -> runtime.NotifyActorDisconnectedAsync(binding)
+             actor가 원격이므로 local 분기가 아니라
+          -> ZLinkActorBoundSessionCoordinator.NotifyRemoteDisconnectedAsync
+             SessionDisconnected packet을 소유 node로 relay
+
+play-a/b  : ZLinkActorInboundPipeline
+          -> IsSessionDisconnectedPacket(frame.Header)
+          -> TryValidateDisconnectedBinding(...)      <-- 여기서 걸리면 조용히 끝난다
+          -> endpoint.NotifyDisconnectedAsync(actorId)
+          -> runtime.TryNotifyJoinedSpotActorDisconnectedAsync(actorId)
+             actor의 LiveActivation(User Spot)에 통지
+```
+
+마지막 단계는 User Spot을 제대로 찾는다. 따라서 "Entry Spot에만 간다"는 앞의 판정은
+확실히 틀렸다.
+
+남은 용의자는 `TryValidateDisconnectedBinding`이다. 실패하면
+`acknowledgeHandledFrame?.Invoke()`만 하고 **오류 없이 반환**한다. 증거도 로그도 남지 않는
+관측 결과와 일치한다. 검증 대상은 source node RID, source session RID, binding token과
+generation이다.
+
+다음 단계는 코드를 더 읽는 것이 아니라 측정이다. 이 분기에 진단이 없으므로 임시 trace를
+넣어 validation이 실패하는지, 실패한다면 어느 필드가 어긋나는지 찍어야 한다. 이 세션에서
+코드 구조 추론으로 두 번 틀렸고, 측정으로 간 경우는 매번 한 번에 갈렸다.

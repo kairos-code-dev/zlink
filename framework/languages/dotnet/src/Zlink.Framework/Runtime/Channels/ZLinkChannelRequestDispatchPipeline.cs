@@ -102,6 +102,10 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
                     ZLinkFrameworkErrorKind.Rejected,
                     $"A handler filter rejected '{channelName}:{header.MessageName}'.");
 
+            //  Send side of a route request reply. Paired with the requester's
+            //  node_request_result so a lost reply shows which side dropped it.
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"route_reply_send channel={channelName}");
             await reply(
                     ZLinkChannelReplyWriter.CreateReplyHeader(ZLinkMessageKind.Response, channelName, header),
                     dispatch.Value,

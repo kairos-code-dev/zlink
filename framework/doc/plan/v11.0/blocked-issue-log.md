@@ -2530,3 +2530,27 @@ actor-a  : (실제 rid)          actor-a-bc77f9cc-a092-413f-a36d-64445ecf3d9d
 
 참고로 이 핸들러는 `context`를 `_ = context;`로 버리고 있었다. 진단을 넣으며 그 폐기를
 제거했다. 응답 경로를 조사하는 데 필요한 정보가 코드에 있으면서도 쓰이지 않고 있었다.
+
+### 응답은 송신된다 — 전송 또는 correlation 문제로 좁혀진다
+
+남은 두 후보 중 "송신하지 않는다"를 배제했다. `ZLinkMeshNodeRouteDispatcher`의 응답 송신
+직전에 진단을 넣은 결과다.
+
+```
+session-a: route_seal_replying  ack=True
+           route_reply_send     source=actor-a-7422671e-7a2c-4ff1-86d0-6a5c5cd8649e
+           route_reply_send     source=actor-a-7422671e-...        (abort 응답)
+actor-a  : node_request_result  target=session-a-... result=TimedOut
+           node_request_result  target=session-a-... result=TimedOut
+```
+
+session-a는 seal과 abort 두 요청 모두에 대해 **올바른 요청자 주소로 응답을 송신한다.**
+그런데 actor-a의 mesh 콜백은 두 번 다 `TimedOut`을 받는다.
+
+따라서 결함은 다음 둘 중 하나다. 응답이 전송 계층에서 유실되거나, 도착은 하는데
+correlation이 맞지 않아 대기 중인 요청과 연결되지 못한다. 프레임워크 상위 계층은 양쪽
+끝에서 정상 동작하는 것이 확인됐으므로, 다음 조사는 mesh 전송 계층으로 내려가야 한다.
+
+조사 범위가 프레임워크에서 core transport로 넘어가는 지점이므로 여기서 구간을 끊는다.
+정리하면 ST-E2의 최종 미해결 항목은 "session gateway node가 보낸 route request 응답이
+요청자 node에 도달하지 않거나 correlation되지 않는다"이다.

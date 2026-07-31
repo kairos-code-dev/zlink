@@ -533,6 +533,10 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
             return;
         }
 
+        //  Send side of a node route request reply, paired with the
+        //  requester's node_request_result.
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"route_reply_send source={sourceRid}");
         await ReplyResponseAsync(
                 received,
                 header,

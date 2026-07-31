@@ -164,44 +164,30 @@
 .md-typeset h3 { margin-top: 1.25em; }
 .md-typeset h4 { margin-top: 1em; }
 
-/* 다크 모드에서 색 입힌 다이어그램 노드의 글씨.
+/* 다크 모드에서도 다이어그램은 밝은 종이 위에 그린다.
 
-   문서의 `classDef`는 397개 전부 옅은 파스텔 바탕(#e8f5e9·#e3f2fd 등)에 어두운
-   글씨(#1b5e20·#0d47a1·#000000 등) 조합이다. 밝은 화면을 전제로 그린 배색이다.
+   문서의 `classDef` 397개는 전부 옅은 파스텔 바탕(#e8f5e9·#e3f2fd·#fff3e0 등)에
+   어두운 글씨(#1b5e20·#0d47a1·#bf360c 등) 조합이다. 밝은 화면을 전제로 짠 배색이라
+   다크에서 바탕만 그대로 밝고 글씨는 테마 전경색(옅은 회색)으로 덮여 서로 묻힌다.
 
-   Material은 mermaid에 자기 themeCSS를 얹으면서 `.nodeLabel, .nodeLabel p`의
-   색을 테마 전경색으로 덮는다. 다크에서 그 값은 밝은 회색이라, 바탕은 파스텔
-   그대로인데 글씨만 밝아져 서로 묻힌다.
+   노드마다 글씨 색을 되돌리는 방법은 classDef 이름을 CSS에 일일이 나열해야 하고,
+   새 이름을 쓸 때마다 빠뜨린 노드가 다시 묻힌다. 대신 다이어그램 블록만 밝은
+   바탕으로 되돌려 배색이 의도대로 작동하게 한다.
 
-   바탕을 어둡게 바꾸면 다이어그램이 문서마다 달라지므로, 글씨를 원래 의도대로
-   되돌린다. classDef 이름별 색까지는 CSS가 알 수 없으니 근접한 먹색 하나로
-   모은다 — 여섯 파스텔 어디에 놓아도 대비가 충분하다.
+   Material의 mermaid 색은 아래 여섯 변수에서 파생된다(sequence 계열 20여 개도
+   전부 이 여섯을 참조한다). 컨테이너에서 덮으면 SVG 안까지 상속된다. */
+[data-md-color-scheme="slate"] .md-typeset .mermaid {
+  background-color: #f4f6f8;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.15rem;
+  padding: 0.5rem 0.3rem;
 
-   새 classDef 이름을 쓰면 여기에 더한다. 빠뜨리면 그 노드만 다시 묻힌다. */
-[data-md-color-scheme="slate"] .md-typeset .mermaid g.node.server .nodeLabel,
-[data-md-color-scheme="slate"] .md-typeset .mermaid g.node.client .nodeLabel,
-[data-md-color-scheme="slate"] .md-typeset .mermaid g.node.spot .nodeLabel,
-[data-md-color-scheme="slate"] .md-typeset .mermaid g.node.actor .nodeLabel,
-[data-md-color-scheme="slate"] .md-typeset .mermaid g.node.moving .nodeLabel,
-[data-md-color-scheme="slate"] .md-typeset .mermaid g.node.store .nodeLabel,
-[data-md-color-scheme="slate"] .md-typeset .mermaid g.node.app .nodeLabel,
-[data-md-color-scheme="slate"] .md-typeset .mermaid g.node.queue .nodeLabel,
-[data-md-color-scheme="slate"] .md-typeset .mermaid g.node.budget .nodeLabel,
-[data-md-color-scheme="slate"] .md-typeset .mermaid g.node.net .nodeLabel,
-[data-md-color-scheme="slate"] .md-typeset .mermaid g.node.island .nodeLabel,
-[data-md-color-scheme="slate"] .md-typeset .mermaid g.node.keep .nodeLabel,
-[data-md-color-scheme="slate"] .md-typeset .mermaid g.node.layer .nodeLabel,
-[data-md-color-scheme="slate"] .md-typeset .mermaid g.node.infra .nodeLabel,
-[data-md-color-scheme="slate"] .md-typeset .mermaid g.node.extra .nodeLabel,
-[data-md-color-scheme="slate"] .md-typeset .mermaid g.node.channel .nodeLabel,
-[data-md-color-scheme="slate"] .md-typeset .mermaid g.node.stream .nodeLabel,
-[data-md-color-scheme="slate"] .md-typeset .mermaid g.node.unit .nodeLabel,
-[data-md-color-scheme="slate"] .md-typeset .mermaid g.node.root .nodeLabel,
-[data-md-color-scheme="slate"] .md-typeset .mermaid g.node.rt .nodeLabel {
-  color: #101418;
-}
-[data-md-color-scheme="slate"] .md-typeset .mermaid g.node .nodeLabel p {
-  color: inherit;                /* Material이 `p`에도 직접 걸어 둔다 */
+  --md-mermaid-edge-color: hsla(200, 18%, 26%, 1);
+  --md-mermaid-label-fg-color: hsla(200, 18%, 26%, 1);
+  --md-mermaid-label-bg-color: #f4f6f8;
+  --md-mermaid-node-bg-color: rgba(0, 191, 165, 0.1);
+  --md-mermaid-node-fg-color: #00bfa5;
+  --md-accent-bg-color: #ffffff;
 }
 
 /* 인용(샘플에서 보기 / 계약 소유 문서)은 본문과 확실히 구분한다. */

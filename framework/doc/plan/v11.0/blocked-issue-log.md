@@ -6119,3 +6119,24 @@ OBS-C1의 술어에서 live gauge를 읽던 부분을 이 기록으로 바꿨다
 
 Observer 자체는 유지한다. 관찰 stream을 쓰는 것이 스펙이 정한 방식이고, 스위트 전체 실행에
 회귀가 없다(통과 개수 8은 OBS-B4의 기존 flakiness 범위 안이다).
+
+### PS-A4 해결: lossy 전달이 끊긴 pipe도 용서한다
+
+Core lane 첫 항목을 고쳤다. `xpub_t::xsend`가 "버려도 되는 상황"을 `hwm_full` 하나로만
+보고 있었다. `dist_t::check_hwm`은 matching pipe 중 가장 나쁜 상태를 대표값으로 올리므로,
+연결이 끊겨 `inactive`가 된 pipe 하나가 나머지 정상 구독자에 대한 발행까지 `EAGAIN`으로
+만들었다.
+
+`inactive`도 lossy가 용서하도록 두 곳(`_send_all_data` 경로와 일반 경로)을 고쳤다. 안전한
+이유는 `dist_t::distribute`가 이미 pipe별 write 실패를 처리하고 해당 pipe를 제거하기
+때문이다. 즉 admission을 통과시켜도 그 pipe에는 아무것도 가지 않고 나머지에만 간다.
+
+결과:
+
+```
+PubSub e2e : 전량 통과 (PS-A4 포함)
+core ctest : 84/84
+```
+
+Classic fanout의 손실 허용 계약(spec 29 §4)이 "포화된 subscriber는 record를 잃는다"는
+것이므로, 받을 수 없는 subscriber 하나가 channel 전체를 막지 않는 것이 계약에 맞다.

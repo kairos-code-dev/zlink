@@ -17,7 +17,7 @@ zlink::xpub_t::xpub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _more_send (false),
     _more_recv (false),
     _process_subscribe (false),
-    _lossy (false),
+    _lossy (true),
     _send_all_data (false),
     _manual (false),
     _send_last_pipe (false),
@@ -334,9 +334,16 @@ int zlink::xpub_t::xsend (msg_t *msg_)
 
     if (_send_all_data && !_manual && !options.invert_matching) {
         const pipe_message_admission_t admission = _dist.check_hwm (msg_);
+        //  Lossy delivery forgives a peer that cannot take this message: a full
+        //  queue and a pipe that left the active state are both "this one peer
+        //  misses it", not a reason to fail the send for every other peer.
+        //  dist_t::distribute already drops the copy for a pipe whose write
+        //  fails, so admitting here loses nothing else.
         const bool admitted =
           admission == pipe_message_admission_ready
-          || (_lossy && admission == pipe_message_admission_hwm_full);
+          || (_lossy
+              && (admission == pipe_message_admission_hwm_full
+                  || admission == pipe_message_admission_inactive));
         int rc = -1;
         if (admitted) {
             if (_dist.send_to_all (msg_) == 0) {
@@ -368,9 +375,12 @@ int zlink::xpub_t::xsend (msg_t *msg_)
     }
 
     const pipe_message_admission_t admission = _dist.check_hwm (msg_);
+    //  Same rule as the send-all path above.
     const bool admitted =
       admission == pipe_message_admission_ready
-      || (_lossy && admission == pipe_message_admission_hwm_full);
+      || (_lossy
+          && (admission == pipe_message_admission_hwm_full
+              || admission == pipe_message_admission_inactive));
     int rc = -1; //  Assume we fail
     if (admitted) {
         if (_dist.send_to_matching (msg_) == 0) {

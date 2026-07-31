@@ -1,5 +1,7 @@
 site_name: zlink Guide
-site_url: https://zlink.systems/
+# core는 `/core/` 구역에 실린다. 최상위는 framework 사이트다
+# (framework/doc/plan/language-guide-port-runbook.ko.md §7.3).
+site_url: https://zlink.systems/core/
 site_description: zlink — Modern messaging library guide
 repo_url: https://github.com/kairos-code-dev/zlink
 repo_name: kairos-code-dev/zlink

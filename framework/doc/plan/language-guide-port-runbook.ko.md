@@ -329,48 +329,53 @@ ZoneWorld는 전 언어에 추가한다. 브라우저 client는 `shared_sample/z
 
 ### 7.1 도메인과 프로젝트
 
-framework 문서는 아직 사이트에 없다. `doc/site/`가 유일한 mkdocs 프로젝트이고 core만 담아
-`zlink.systems`로 배포된다. framework를 **최상위 도메인의 메인 사이트**로 올리고 core를
-서브도메인으로 내린다.
+framework를 **최상위**로 올리고 core를 같은 도메인의 **`/core/` 구역**으로 내린다.
+서브도메인을 쓰지 않으므로 GitHub Pages 하나로 둘 다 낼 수 있다(§7.3).
 
 | | framework | core |
 | --- | --- | --- |
-| 도메인 | **`zlink.systems`**(메인) · `framework.zlink.systems`(별칭) | **`core.zlink.systems`** |
-| mkdocs 프로젝트 | **신규** — `framework/doc/site/` | `doc/site/`(현행 이동) |
-| 담는 것 | 공통 12장 · 언어별 5장 · cpp 전용 3장 · 샘플 · 공통 스펙 | 소켓 패턴 · C API · binding · internals |
-| 상대편 참조 | core 사이트로 절대 URL | framework 사이트로 절대 URL |
+| 주소 | **`zlink.systems`** | **`zlink.systems/core/`** |
+| mkdocs 프로젝트 | `framework/doc/site/` | `doc/site/` |
+| 담는 것 | 공통 12장 · 언어별 5장 · cpp 전용 4장 · 샘플 · 공통 스펙 | 소켓 패턴 · C API · binding · internals |
+| 상대편 참조 | core 구역으로 절대 URL | framework로 절대 URL |
 
-두 사이트는 각자 nav·검색 색인·i18n을 갖는다. framework 가이드가 transport·TLS·socket
-option을 설명할 때는 `https://core.zlink.systems/guide/04-transports/`로 건다.
+두 사이트는 각자 nav·검색 색인·i18n을 갖는다. 도메인만 공유하므로 독자에게는 상단
+링크로 오가는 두 구역으로 보인다. framework 가이드가 transport·TLS·socket option을
+설명할 때는 `https://zlink.systems/core/ko/guide/04-transports/`로 건다.
 
 ### 7.2 기존 링크 처리
 
-지금 `zlink.systems/guide/*`·`/api/*`·`/internals/*`가 core를 가리킨다. 최상위를
-framework로 바꾸면 이 경로가 전부 깨진다. **core 경로를 `core.zlink.systems`의 같은
-경로로 301 리다이렉트**한다. 외부에서 걸린 링크와 검색 색인이 살아 있으므로 이 작업을
-빼면 안 된다.
+지금 `zlink.systems/guide/*`·`/api/*`·`/internals/*`·`/ko/*`가 core를 가리킨다.
+최상위를 framework로 바꾸면 이 경로가 전부 깨진다.
+
+**옛 경로마다 stub을 깐다** — `doc/site/scripts/make_core_redirects.py`가 core 빌드
+결과를 훑어 같은 경로에 `<meta http-equiv="refresh">` 문서를 만들고 `/core/`의 같은
+자리로 보낸다. `<link rel="canonical">`을 함께 두어 크롤러가 새 주소를 잇는다.
+GitHub Pages는 정적 호스팅이라 301을 낼 수 없다.
+
+framework 최상위는 `dotnet/`·`cpp/`·`java/`·`kotlin/`·`node/`·`common/`이라 지금은
+겹치지 않는다. 스크립트는 framework 페이지가 이미 있는 자리를 덮지 않는다.
 
 ### 7.3 배포 선택
 
-GitHub Pages는 저장소당 사이트 하나, 커스텀 도메인도 사이트당 하나다. 사이트가 둘이
-되므로 지금처럼 이 저장소 Pages 하나로는 못 낸다.
+**한 도메인, 두 구역으로 간다.** GitHub Pages는 저장소당 사이트 하나, 커스텀 도메인도
+사이트당 하나다. 서브도메인을 쓰려면 저장소를 하나 더 두거나 호스팅을 옮겨야 했다.
+구역으로 나누면 그 비용이 사라진다 — 사이트 하나에 두 빌드 결과를 겹쳐 올린다.
 
-| 안 | 방식 | 비용 |
-| --- | --- | --- |
-| **A. 두 번째 저장소** | 소스는 이 저장소에 두고, CI가 core 사이트 빌드 결과를 `zlink-systems/core-docs` 같은 저장소로 push해 `core.zlink.systems` CNAME을 붙인다. 이 저장소 Pages는 framework를 낸다 | 저장소 하나 추가와 배포 토큰. 리다이렉트는 정적 stub으로 직접 만들어야 한다 |
-| **B. 호스팅 이전** | Cloudflare Pages·Netlify로 옮겨 한 저장소에서 프로젝트 둘을 각 도메인으로 배포 | 호스팅 이전 결정이 필요. 301 리다이렉트·PR 프리뷰·다중 사이트가 모두 규칙 파일 한 장으로 해결된다 |
+`docs.yml`이 이 순서로 짓는다.
 
-리다이렉트가 필요해진 만큼 B의 이점이 크다. **어느 쪽이든 문서 작업은 영향받지 않는다** —
-정해지기 전에도 `framework/doc/site/`를 만들고 로컬 빌드로 진행할 수 있다.
+1. framework 사이트를 `framework/doc/site/site`에 짓는다.
+2. core 사이트를 `mkdocs build -d ../../framework/doc/site/site/core`로 그 안에 짓는다.
+3. `make_core_redirects.py`가 옛 최상위 경로에 stub을 깐다(§7.2).
+4. 합쳐진 `framework/doc/site/site`를 Pages에 올린다.
 
-**정해질 때까지 배포는 core 그대로다.** `docs.yml`은 framework 사이트를 빌드해 정본
-트리가 깨지지 않는지 확인만 하고, Pages에 올리는 것은 core 사이트다. A/B가 정해지면
-배포 단계만 바꾼다.
+**순서가 뒤집히면 안 된다.** mkdocs는 `site_dir`를 비우고 시작하므로 framework를 나중에
+지으면 core 결과가 지워진다.
 
-**가이드가 core로 거는 절대 URL은 `core.zlink.systems`를 쓴다.** 이 링크는 core가 그
-서브도메인으로 옮겨간 뒤 살아난다. framework 사이트가 `zlink.systems`를 차지하는 시점과
-core가 옮겨가는 시점이 같으므로, framework 사이트를 공개하기 전에 §7.2의 이전과
-리다이렉트를 끝내야 한다.
+포기한 것은 통합 검색과 통합 사이드바다. 두 구역은 각자 색인을 갖고, 서로는 상단
+링크와 홈의 관련 문서 표로 오간다. 한 사이트로 병합하려면 `mkdocs-monorepo-plugin`과
+i18n 설정 병합이 필요한데(core는 영어 기본, framework는 한국어 전용), 얻는 것에 비해
+드는 위험이 크다.
 
 ### 7.4 nav와 미러
 
@@ -386,7 +391,7 @@ core 사이트는 `doc/site/docs`로 복사하는 미러라 양방향 drift가 �
 - 문서끼리의 상대 링크가 repo에서든 사이트에서든 같은 대상을 가리킨다. 이번에 고친
   spec·sample 교차 링크가 사이트에서도 그대로 산다.
 - 정본 트리 밖으로 나가는 링크(core guide, repo 루트 license)는 사이트 페이지가 없으므로
-  **절대 URL로 적는다.** `https://core.zlink.systems/guide/...` 형태다.
+  **절대 URL로 적는다.** `https://zlink.systems/core/ko/guide/...` 형태다.
 - 사이트에 올리지 않을 디렉터리는 `exclude_docs`로 뺀다. 현재 `perf/`가 그렇다.
 
 i18n은 `mkdocs-static-i18n` suffix 구조를 쓰되 framework 가이드는 한국어만 있으므로

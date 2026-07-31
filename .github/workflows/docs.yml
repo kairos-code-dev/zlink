@@ -70,9 +70,10 @@ jobs:
       - name: Check framework document contracts
         run: bash scripts/verify-framework-doc-contracts.sh
 
-      # framework 사이트는 아직 배포 대상이 아니다. 도메인 분리 방식이 정해질 때까지
-      # 빌드만 돌려 정본 트리가 깨지지 않는지 확인한다.
-      # 배포 안은 framework/doc/plan/language-guide-port-runbook.ko.md §7.3이 소유한다.
+      # 한 도메인에 두 구역으로 낸다 — 최상위가 framework, `/core/`가 core다
+      # (framework/doc/plan/language-guide-port-runbook.ko.md §7.3).
+      # framework를 먼저 지어야 한다. mkdocs는 site_dir를 비우고 시작하므로
+      # 순서가 뒤집히면 core 결과가 지워진다.
       - name: Build framework documentation
         working-directory: framework/doc/site
         run: mkdocs build
@@ -80,14 +81,19 @@ jobs:
       - name: Check core language tabs and snippets
         run: python3 doc/site/scripts/check_doc_tabs.py core
 
-      - name: Build core documentation
+      - name: Build core documentation into /core/
         working-directory: doc/site
-        run: mkdocs build
+        run: mkdocs build -d ../../framework/doc/site/site/core
+
+      # 최상위는 core 사이트였다. 옛 경로로 걸린 외부 링크와 검색 색인이 죽지
+      # 않도록 같은 시점에 stub을 깐다(§7.2).
+      - name: Redirect the old core paths
+        run: python3 doc/site/scripts/make_core_redirects.py framework/doc/site/site
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: doc/site/site
+          path: framework/doc/site/site
 
   deploy:
     environment:

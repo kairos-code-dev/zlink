@@ -1,7 +1,8 @@
 # 8. Session과 Actor binding
 
-> 정확한 시그니처는 [언어별 STREAM session 공개 계약](../../../common/spec/server/languages/README.ko.md)과
-> [언어별 bound session 공개 계약](../../../common/spec/server/languages/README.ko.md)이 정의한다.
+> **이 장의 계약 소유 문서** — [Session Actor dispatch](../../../common/spec/20-session-actor-dispatch.ko.md)가
+> 동작을, [언어별 STREAM session · bound session 공개 계약](../../../common/spec/server/languages/README.ko.md)이
+> 정확한 시그니처를 소유한다.
 
 Session binding은 client STREAM session과 exact Actor incarnation을 연결한다. Binding 뒤 session은
 client packet을 Actor로 relay할 수 있고, Actor는 같은 session으로 push할 수 있다.

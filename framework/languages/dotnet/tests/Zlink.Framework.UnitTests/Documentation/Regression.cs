@@ -165,6 +165,35 @@ public sealed class RegressionTests
     }
 
     /// <summary>
+    /// 공통 정본은 코드가 스니펫이라 코드 층위는 체커가 보지만 산문은 아무도 대조하지
+    /// 않는다. 그래서 챕터마다 계약을 소유하는 스펙 문서를 머리에 밝히고 그것과 맞춘다
+    /// (런북 §11 게이트 4). 소유 문서가 없는 챕터는 없다고 밝힌다.
+    /// </summary>
+    [Fact]
+    public void CommonGuideNarrative_DeclareTheSpecThatOwnsTheirContract()
+    {
+        // 계약이 아니라 안내가 본질인 챕터다. 소유 스펙이 없다고 밝히는 쪽이 맞다.
+        var withoutOwningSpec = new[]
+        {
+            "14-samples.ko.md",
+            "15-e2e-testing.ko.md",
+            "17-alternative.ko.md",
+        };
+
+        foreach (var document in CommonGuideDocuments)
+        {
+            var text = File.ReadAllText(Path.Combine(GetCommonGuideServerRoot(), document));
+            if (withoutOwningSpec.Contains(document, StringComparer.Ordinal))
+            {
+                Assert.Contains("이 장에는 계약을 소유하는 스펙 문서가 없다", text, StringComparison.Ordinal);
+                continue;
+            }
+
+            Assert.Contains("**이 장의 계약 소유 문서**", text, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
     /// 소스 코드 fence는 언어 탭 안에만 둔다. 탭 밖에 남으면 한 언어의 예제가 모든
     /// 언어의 독자에게 그대로 노출된다. mermaid·text·yaml처럼 언어에 중립인 블록은
     /// 탭 밖에 두어도 된다.

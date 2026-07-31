@@ -1,6 +1,6 @@
 # 10. Location — 자동 연결과 Object 위치
 
-> 정식 계약은 [Location runtime](../../../common/spec/21-location-runtime.ko.md),
+> **이 장의 계약 소유 문서** — [Location runtime](../../../common/spec/21-location-runtime.ko.md),
 > [Location Store](../../../common/spec/22-location-store-redis.ko.md)와
 > [언어별 location 공개 계약](../../../common/spec/server/languages/README.ko.md)이
 > 정의한다. 이 문서는 application에서 Store를 등록하고 상태를 확인하는 방법을 설명한다.

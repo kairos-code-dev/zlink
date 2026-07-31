@@ -1,7 +1,10 @@
 # 6. Spot
 
-> 정확한 시그니처는 [언어별 Spot 공개 계약](../../../common/spec/server/languages/README.ko.md)이 정의한다.
-> Actor와 Spot membership은 [Actor & Spot 호스팅](07-actor-spot.ko.md)에서 설명한다.
+> **이 장의 계약 소유 문서** — [Spot 모델](../../../common/spec/11-spot-model.ko.md)과
+> [SPOT 메시징](../../../common/spec/12-spot-messaging.ko.md)이 동작을,
+> [언어별 Spot 공개 계약](../../../common/spec/server/languages/README.ko.md)이 정확한
+> 시그니처를 소유한다. Actor와 Spot membership은
+> [Actor & Spot 호스팅](07-actor-spot.ko.md)에서 설명한다.
 
 Spot은 room, stage, zone처럼 문자열 ID로 찾는 실행 단위다. `SpotId`는 Location Store 전체에서
 유일하며, 대소문자를 구분한다. Application은 Spot이 존재하는 `NodeRid`를 선택하거나 보관하지 않는다.

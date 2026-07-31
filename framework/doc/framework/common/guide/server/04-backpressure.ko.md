@@ -1,6 +1,6 @@
 # 4. Backpressure — 처리보다 도착이 빠를 때
 
-> 정식 계약은 [비동기 실행 정책](../../../common/spec/05-async-execution-policy.ko.md)과
+> **이 장의 계약 소유 문서** — [비동기 실행 정책](../../../common/spec/05-async-execution-policy.ko.md)과
 > [언어별 topology 공개 계약](../../../common/spec/server/languages/README.ko.md)이
 > 다룬다. 이 챕터는 그 동작을 개념과 원리로 설명하고 어떤 옵션이 영향을 주는지 다룬다.
 > 옵션의 기본값과 변경 시점은 `16. Options` 장이 소유한다. 이 챕터가 쓰는

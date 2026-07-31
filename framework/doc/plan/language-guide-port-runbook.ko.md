@@ -495,10 +495,27 @@ kotlin은 Java 런타임을 공유하므로 **다른 지점만 쓰고 나머지�
 lifecycle 상태처럼 **값 이름의 표기까지 언어를 따르는 자리**(PascalCase ↔
 SCREAMING_SNAKE)는 이름을 적는 대신 뜻을 적고 "표기는 언어를 따른다"를 덧붙였다.
 
+**게이트 4의 전제도 갖췄다.** 공통 12장이 각자 계약을 소유하는 스펙 문서를 머리에
+밝힌다. 그전에는 아홉 챕터가 언어별 spec **목차**를 가리켜서 대조할 상대가 없었다.
+
+| 챕터 | 소유 스펙 |
+| --- | --- |
+| 03-concepts | `02-overview` · `03-interaction-model` |
+| 04-backpressure | `05-async-execution-policy` |
+| 05-channel-messaging | `08-channel-messaging` · `09-client-server-channel` |
+| 06-spot | `11-spot-model` · `12-spot-messaging` |
+| 07-actor-spot | `14-actor-model` · `15-spot-actor` |
+| 08-actor-session | `20-session-actor-dispatch` |
+| 09-stream | `19-stream-session` |
+| 10-location | `21-location-runtime` · `22-location-store-redis` |
+| 12-operations | `24-runtime-monitoring` · `25-runtime-metrics` · `28-graceful-drain-handoff` |
+| 14 · 15 · 17 | 없음. 안내가 본질인 챕터라 없다고 밝힌다 |
+
 | 남은 일 | 규모 |
 | --- | --- |
 | ZoneWorld 샘플 구현 | cpp · java · kotlin. 문서가 아니라 코드 작업이다 |
-| 게이트 4 · 6 | 산문·스펙 대조와 호출 형태 대조. 스크립트로 못 대신하는 사람 검수다 |
+| 게이트 4 본 검수 | 위 표를 따라 챕터별 산문↔스펙 대조. 사람이 읽는다 |
+| 게이트 6 | 호출 형태 대조. 사람이 읽는다 |
 
 **병행 트랙 상태.** 사이트는 정본 트리를 docs root로 쓰도록 구성했고 가이드 장의 빌드
 경고가 0이다. 체커는 정본 트리 전체를 보며 탭 언어 완전성을 검사한다. CI는 framework
@@ -554,6 +571,11 @@ SCREAMING_SNAKE)는 이름을 적는 대신 뜻을 적고 "표기는 언어를 �
 4번이 필요한 이유가 있다. 공통 정본은 코드가 스니펫이라 코드 층위는 자동으로 보장되지만
 **산문은 아무도 대조하지 않는다.** dotnet 검수에서 나온 "제거된 API를 챕터째 문서화"가
 정확히 산문 층위 결함이었다. 챕터마다 소유 스펙 문서를 지정하고 그것과 맞춘다.
+
+**소유 문서는 챕터 머리에 밝힌다.** 대조할 상대가 문서에 적혀 있지 않으면 게이트 4는
+매번 다시 찾는 일부터 해야 한다. 표기는 `**이 장의 계약 소유 문서** — …` 한 줄이고,
+계약이 아니라 안내가 본질인 챕터(14 · 15 · 17)는 없다고 밝힌다. 이 규약은
+`CommonGuideNarrative_DeclareTheSpecThatOwnsTheirContract`가 강제한다.
 
 1·2·3·5·7은 스크립트로 돌린다.
 

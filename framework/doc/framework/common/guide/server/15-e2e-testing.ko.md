@@ -1,7 +1,8 @@
 # 15. E2E 테스트 — client로 시스템 전체를 검증하기
 
-> 각 샘플이 무엇을 검증하는지는 [공통 sample 문서](../../../common/sample/README.ko.md)가
-> 정의한다. connector의 정식 API 표면은
+> **이 장에는 계약을 소유하는 스펙 문서가 없다.** 자기 시스템에 테스트를 만드는 방법을
+> 다루기 때문이다. 각 샘플이 무엇을 검증하는지는
+> [공통 sample 문서](../../../common/sample/README.ko.md)가 정의한다. connector의 정식 API 표면은
 > [언어별 Stream Connector 공개 계약](../../../common/spec/stream-connector/README.ko.md)이
 > 소유한다. 이 챕터는 **자기 시스템에 E2E 테스트를 만드는 방법**을 다룬다.
 

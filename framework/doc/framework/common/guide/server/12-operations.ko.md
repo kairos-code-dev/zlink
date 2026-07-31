@@ -1,7 +1,9 @@
 # 12. 운영 — 런타임 메트릭 · graceful drain · readiness
 
-> 정식 계약은 공통 스펙 [런타임 메트릭](../../../common/spec/25-runtime-metrics.ko.md)과
-> [Graceful Drain & Handoff](../../../common/spec/28-graceful-drain-handoff.ko.md)가 다룬다.
+> **이 장의 계약 소유 문서** — 공통 스펙
+> [Runtime 상태 조회와 운영 진단](../../../common/spec/24-runtime-monitoring.ko.md),
+> [런타임 메트릭](../../../common/spec/25-runtime-metrics.ko.md)과
+> [Graceful Drain & Handoff](../../../common/spec/28-graceful-drain-handoff.ko.md)가 소유한다.
 > 언어별 표면의 정식 정의는
 > [언어별 topology·monitoring 공개 계약](../../../common/spec/server/languages/README.ko.md)이
 > 소유한다.

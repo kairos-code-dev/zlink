@@ -1,8 +1,10 @@
 # 3. 핵심 개념
 
-> 개념의 정식 의미는 [공통 스펙 목차](../../../common/README.ko.md)가,
-> 인터페이스의 정식 정의는 [언어별 handler 인터페이스 계약](../../../common/spec/server/languages/README.ko.md)이
-> 다룬다. 이 문서는 그 의미가 코드에서 어떤 모양으로 보이는지 정리한다.
+> **이 장의 계약 소유 문서** — [Framework 개요](../../../common/spec/02-overview.ko.md)와
+> [상호작용 모델](../../../common/spec/03-interaction-model.ko.md)이 개념의 정식 의미를,
+> [언어별 handler 인터페이스 계약](../../../common/spec/server/languages/README.ko.md)이
+> 인터페이스의 정식 정의를 소유한다. 이 문서는 그 의미가 코드에서 어떤 모양으로 보이는지
+> 정리한다.
 
 ZLink framework는 **channel · spot · actor · stream · location**을 핵심 개념으로
 제공한다. 나머지 챕터는 전부 이 개념들의 변주다.

@@ -1,8 +1,10 @@
 # 5. Channel Messaging — request · send · pub/sub
 
-> 정식 계약은 [언어별 channel messaging 공개 계약](../../../common/spec/server/languages/README.ko.md)과
-> [언어별 topology 공개 계약](../../../common/spec/server/languages/README.ko.md)이 다룬다. 이
-> 챕터는 그 표면을 실제로 어떻게 등록하고 호출하는지 사용법 중심으로 다룬다.
+> **이 장의 계약 소유 문서** — [Channel 메시징](../../../common/spec/08-channel-messaging.ko.md)과
+> [ClientServer Channel](../../../common/spec/09-client-server-channel.ko.md)이 동작을,
+> [언어별 channel messaging 공개 계약](../../../common/spec/server/languages/README.ko.md)이
+> 표면을 소유한다. 이 챕터는 그 표면을 실제로 어떻게 등록하고 호출하는지 사용법 중심으로
+> 다룬다.
 
 channel messaging은 framework의 가장 기본 축이다. 다음 상호작용을 다룬다.
 

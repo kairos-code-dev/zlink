@@ -1,7 +1,9 @@
 # 7. Actor와 Spot
 
-> 정확한 시그니처는 [언어별 Actor 공개 계약](../../../common/spec/server/languages/README.ko.md)과
-> [언어별 Spot 공개 계약](../../../common/spec/server/languages/README.ko.md)이 정의한다.
+> **이 장의 계약 소유 문서** — [Actor 모델](../../../common/spec/14-actor-model.ko.md)과
+> [Spot과 Actor membership](../../../common/spec/15-spot-actor.ko.md)이 동작을,
+> [언어별 Actor · Spot 공개 계약](../../../common/spec/server/languages/README.ko.md)이 정확한
+> 시그니처를 소유한다.
 
 Actor는 전역 문자열 `ActorId`로 찾는 상태 객체다. 생성 직후에는 Object Server의 Entry Spot에
 존재한다. Application handler가 join을 예약하면 User Spot으로 이동한다.

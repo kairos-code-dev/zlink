@@ -18,6 +18,7 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerInfo
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerWinMilestoneMsg
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.WinMilestoneNotify
 
+// --8<-- [start:doc-entry-spot]
 class PlayEntrySpot(
     override val context: ZLinkEntrySpotContext,
     private val settings: SampleSettings,
@@ -79,3 +80,4 @@ class PlayEntrySpot(
         val logger = LoggerFactory.getLogger(PlayEntrySpot::class.java)
     }
 }
+// --8<-- [end:doc-entry-spot]

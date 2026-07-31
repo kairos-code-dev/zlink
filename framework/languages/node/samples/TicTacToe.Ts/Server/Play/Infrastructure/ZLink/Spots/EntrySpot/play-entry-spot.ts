@@ -13,6 +13,7 @@ import type {
 import type { PlayerWinMilestoneEvent, TicTacToeActor } from '../../../../../../Shared/Contracts/messages';
 
 @Injectable()
+// --8<-- [start:doc-entry-spot]
 class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
   readonly context!: ZLinkEntrySpotContext<PlayActor>;
 
@@ -20,6 +21,7 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
     private readonly milestoneObservers: MilestoneObserverRegistry,
     private readonly pendingDestroys: PendingActorDestroyRegistry
   ) {}
+// --8<-- [end:doc-entry-spot]
 
   async onActorJoin(_actorId: string, _request: ZLinkMessage): Promise<{ accepted: boolean }> {
     return { accepted: true };

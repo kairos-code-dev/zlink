@@ -934,17 +934,25 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
 
     private static final class RouterSocketConfig implements ZLinkMeshNodeSocketConfig {
         private long maxMessageSize;
-        private int sendHighWaterMark = 1000;
-        private int receiveHighWaterMark = 1000;
+        //  HWM is an accounted byte count, so it has to be 64-bit. The mailbox
+        //  budgets default to 0, which leaves the runtime default in place.
+        private long sendHighWaterMark = 1000;
+        private long receiveHighWaterMark = 1000;
+        private long mailboxMessageBudget;
+        private long mailboxByteBudget;
         private Duration receiveTimeout;
         private Duration sendTimeout;
 
         @Override public long maxMessageSize() { return maxMessageSize; }
         @Override public void setMaxMessageSize(long value) { maxMessageSize = value; }
-        @Override public int sendHighWaterMark() { return sendHighWaterMark; }
-        @Override public void setSendHighWaterMark(int value) { sendHighWaterMark = value; }
-        @Override public int receiveHighWaterMark() { return receiveHighWaterMark; }
-        @Override public void setReceiveHighWaterMark(int value) { receiveHighWaterMark = value; }
+        @Override public long sendHighWaterMark() { return sendHighWaterMark; }
+        @Override public void setSendHighWaterMark(long value) { sendHighWaterMark = value; }
+        @Override public long receiveHighWaterMark() { return receiveHighWaterMark; }
+        @Override public void setReceiveHighWaterMark(long value) { receiveHighWaterMark = value; }
+        @Override public long mailboxMessageBudget() { return mailboxMessageBudget; }
+        @Override public void setMailboxMessageBudget(long value) { mailboxMessageBudget = value; }
+        @Override public long mailboxByteBudget() { return mailboxByteBudget; }
+        @Override public void setMailboxByteBudget(long value) { mailboxByteBudget = value; }
         @Override public Optional<Duration> receiveTimeout() {
             return Optional.ofNullable(receiveTimeout);
         }

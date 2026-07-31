@@ -7,6 +7,7 @@ using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.Server.Play.Infrastructure.ZLink.Spots.EntrySpot;
 
+// --8<-- [start:doc-entry-spot]
 internal sealed class PlayEntrySpot(
     IZLinkEntrySpotContext context,
     ILogger<PlayEntrySpot> logger) : IZLinkEntrySpot<PlayActor>
@@ -136,3 +137,4 @@ internal sealed class PlayEntrySpot(
         }
     }
 }
+// --8<-- [end:doc-entry-spot]

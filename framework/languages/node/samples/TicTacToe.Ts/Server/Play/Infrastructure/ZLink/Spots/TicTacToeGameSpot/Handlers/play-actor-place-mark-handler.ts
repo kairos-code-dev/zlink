@@ -12,6 +12,7 @@ import { TicTacToeGameSpot } from '../tictactoe-game-spot';
   packetName: 'PlaceMarkReq',
   spot: () => TicTacToeGameSpot
 })
+// --8<-- [start:doc-actor-packet-handler]
 class PlayActorPlaceMarkHandler
   implements ZLinkSpotActorRequestHandler<TicTacToeGameSpot, PlayActor, PlaceMarkReq, PlaceMarkRes> {
   async handle(
@@ -26,5 +27,6 @@ class PlayActorPlaceMarkHandler
     return spot.placeMark(actor.actorId, request.cell);
   }
 }
+// --8<-- [end:doc-actor-packet-handler]
 
 export { PlayActorPlaceMarkHandler };

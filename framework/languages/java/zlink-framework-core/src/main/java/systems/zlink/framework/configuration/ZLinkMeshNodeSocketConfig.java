@@ -9,13 +9,21 @@ public interface ZLinkMeshNodeSocketConfig {
 
     void setMaxMessageSize(long value);
 
-    int sendHighWaterMark();
+    long sendHighWaterMark();
 
-    void setSendHighWaterMark(int value);
+    void setSendHighWaterMark(long value);
 
-    int receiveHighWaterMark();
+    long receiveHighWaterMark();
 
-    void setReceiveHighWaterMark(int value);
+    void setReceiveHighWaterMark(long value);
+
+    long mailboxMessageBudget();
+
+    void setMailboxMessageBudget(long value);
+
+    long mailboxByteBudget();
+
+    void setMailboxByteBudget(long value);
 
     Optional<Duration> receiveTimeout();
 

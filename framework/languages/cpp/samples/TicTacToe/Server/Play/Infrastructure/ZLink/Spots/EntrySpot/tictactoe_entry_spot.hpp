@@ -19,6 +19,7 @@ using namespace framework;
 using framework::actor_ref_t;
 using framework::message_t;
 
+// --8<-- [start:doc-entry-spot]
 class tictactoe_entry_spot_t : public entry_spot_t<player_actor_t>
 {
   public:
@@ -108,6 +109,7 @@ class tictactoe_entry_spot_t : public entry_spot_t<player_actor_t>
     entry_spot_context_t _context;
     std::map<std::string, player_actor_t *> observers;
 };
+// --8<-- [end:doc-entry-spot]
 
 } // namespace zlink::samples::tictactoe
 

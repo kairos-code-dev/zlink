@@ -9,6 +9,7 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlaceMarkReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlaceMarkRes
 
 @ZLinkHandlerGroup("play-actor")
+// --8<-- [start:doc-actor-packet-handler]
 class PlayActorPlaceMarkHandler {
     @ZLinkSpotActorRequest
     suspend fun placeMark(
@@ -20,4 +21,5 @@ class PlayActorPlaceMarkHandler {
         actor.requireJoinedGame()
         return spot.placeMark(actor, request.cell)
     }
+// --8<-- [end:doc-actor-packet-handler]
 }

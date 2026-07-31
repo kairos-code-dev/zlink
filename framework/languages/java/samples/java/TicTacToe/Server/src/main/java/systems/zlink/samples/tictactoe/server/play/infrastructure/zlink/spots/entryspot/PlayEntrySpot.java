@@ -16,6 +16,7 @@ import systems.zlink.samples.tictactoe.shared.contracts.PlayerInfo;
 import systems.zlink.samples.tictactoe.shared.contracts.PlayerWinMilestoneMsg;
 import systems.zlink.samples.tictactoe.shared.contracts.WinMilestoneNotify;
 
+// --8<-- [start:doc-entry-spot]
 public final class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
     private static final Logger LOGGER = LoggerFactory.getLogger(PlayEntrySpot.class);
     private final ZLinkEntrySpotContext context;
@@ -28,6 +29,7 @@ public final class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
         this.context = context;
         this.settings = settings;
     }
+// --8<-- [end:doc-entry-spot]
 
     @Override
     public ZLinkEntrySpotContext context() {

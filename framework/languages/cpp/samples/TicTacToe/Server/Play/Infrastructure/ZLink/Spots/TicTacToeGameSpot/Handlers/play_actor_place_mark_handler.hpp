@@ -6,6 +6,8 @@
 namespace zlink::samples::tictactoe
 {
 
+// --8<-- [start:doc-actor-packet-handler]
+// C++은 handler class 대신 Spot member 함수다. 첫 인자가 이 메시지를 받은 Actor다.
 inline task_t<place_mark_res_t>
 tictactoe_game_spot_t::place_mark (const player_actor_t &actor,
                                    const message_context_t &context,
@@ -22,5 +24,6 @@ tictactoe_game_spot_t::place_mark (const player_actor_t &actor,
     }
     co_return place_mark_res_t{state};
 }
+// --8<-- [end:doc-actor-packet-handler]
 
 } // namespace zlink::samples::tictactoe

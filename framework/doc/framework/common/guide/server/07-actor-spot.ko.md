@@ -261,6 +261,41 @@ Relocation으로 Actor가 다른 node의 Entry Spot에 복원되는 경우에는
 않는다. Relocation은 membership을 그대로 유지한 채 실행 위치만 옮기는 것이므로, application이
 보기에 "들어오거나 나간" 사건이 아니기 때문이다.
 
+> **샘플에서 보기 — [TicTacToe](../../../common/sample/tictactoe/README.ko.md).** player가
+> 처음 들어오는 Entry Spot이다. 저장소의 실제 코드다.
+
+=== "C#/.NET"
+
+    ```csharp
+    --8<-- "framework/languages/dotnet/samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/PlayEntrySpot.cs:doc-entry-spot"
+    ```
+
+=== "C++"
+
+    ```cpp
+    --8<-- "framework/languages/cpp/samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/tictactoe_entry_spot.hpp:doc-entry-spot"
+    ```
+
+=== "Java"
+
+    ```java
+    --8<-- "framework/languages/java/samples/java/TicTacToe/Server/src/main/java/systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/entryspot/PlayEntrySpot.java:doc-entry-spot"
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    --8<-- "framework/languages/java/samples/kotlin/TicTacToe/Server/src/main/kotlin/systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/entryspot/PlayEntrySpot.kt:doc-entry-spot"
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    --8<-- "framework/languages/node/samples/TicTacToe.Ts/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/play-entry-spot.ts:doc-entry-spot"
+    ```
+
+최소 형태로 보면 이렇다.
+
 === "C#/.NET"
 
     ```csharp

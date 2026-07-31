@@ -4359,3 +4359,39 @@ e2e/PubSub/Server/Publisher/bin/.../libzlink.so.11.1.0                         (
 차면 `EAGAIN`이 나고, submitter가 writability를 기다리다 send timeout에 걸린다. 관측된
 증상과 정확히 맞는다. Core를 다시 빌드해 native library를 갱신해야 PS-A4를 판정할 수
 있다.
+
+### PS-A4는 core lane 결함이다: 죽은 pipe 하나가 fanout 전체를 막는다
+
+Native library를 core 최신 소스로 다시 빌드해 `_lossy = true`를 반영하고 nupkg
+캐시까지 교체한 뒤에도 PS-A4는 같은 곳에서 실패한다.
+
+```
+Fanout publish timed out before local admission completed.  (1003ms)
+```
+
+`libzlink.so.11.1.0` 02:02 빌드가 실제로 로드된 것을 publisher bin에서 확인했다. 즉
+lossy 기본값은 반영됐고 그것만으로는 부족하다.
+
+코드 경로는 다음과 같다.
+
+```
+xpub_t::xsend            admitted = (admission == ready) || (_lossy && admission == hwm_full)
+dist_t::check_hwm        matching pipe 중 하나라도 ready가 아니면 그 상태를 결과로 올린다
+pipe_t::check_hwm_for_message
+                         _state != active  -> pipe_message_admission_inactive
+                         그 외 포화 경로   -> pipe_message_admission_hwm_full
+```
+
+`lossy`가 용서하는 것은 `hwm_full` 하나뿐이다. PS-A4의 `NetworkFaultProxy.Block()`은
+양쪽 socket을 `Dispose()`로 끊으므로 publisher 쪽 pipe가 active를 벗어나고
+`inactive`가 된다. `dist_t::check_hwm`은 matching pipe 전체에서 가장 나쁜 상태를
+돌려주므로, 끊긴 구독자 하나가 나머지 모든 구독자에 대한 publish까지 `EAGAIN`으로
+만든다. Submitter는 writability를 기다리다 send timeout에 걸린다.
+
+이것은 spec 29 §4의 손실 허용 계약과 어긋난다. 스펙은 포화된 subscriber에 대해 record를
+버린다고 정하지, 죽은 subscriber 하나가 channel 전체의 publish를 실패시킨다고 정하지
+않는다. 받을 수 없는 pipe는 건너뛰어야 할 대상이지 전체를 막을 근거가 아니다.
+
+수정 위치는 `xpub_t::xsend`와 `dist_t::check_hwm`으로 core lane이다. 이 세션의 커밋은
+`framework/`로 한정해 왔고 core working tree에는 v11 lossy 작업이 진행 중이므로 여기서는
+고치지 않고 남긴다. PS-A1~A3은 통과하고 PS-A4만 이 결함에 걸려 있다.

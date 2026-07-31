@@ -36,7 +36,7 @@ await (options.OperationGroup switch
     "sm-a7" => SmA7SpotTypeMismatchScenario.RunAsync(playA),
     "sm-a8" => SmA8WorkerOffloadScenario.RunAsync(playA),
     "sm-a11" => SmA11ReservedEntrySpotIdScenario.RunAsync(playA),
-    "sm-b1" => SmB1LocalActorJoinScenario.RunAsync(playA, options.SessionAStreamEndpoint),
+    "sm-b1" => SmB1LocalActorJoinScenario.RunAsync(playA, sessionA, options.SessionAStreamEndpoint),
     "sm-b0" => SmB0ActorManagerLifecycleScenario.RunAsync(gateway, playA, playB),
     "sm-b2" => SmB2RemoteActorJoinScenario.RunAsync(playB, options.SessionAStreamEndpoint),
     "sm-b3" => SmB3RequestMessageFidelityScenario.RunAsync(playA, options.SessionAStreamEndpoint),
@@ -112,7 +112,7 @@ await (options.OperationGroup switch
     "sm-g3" => SmG3ConcurrentSessionActorLifecycleScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-g4" => SmG4ConcurrentBoundSessionPushScenario.RunAsync(options.SessionAStreamEndpoint),
     "sm-g5" => SmG5PlacementWeightScenario.RunAsync(gateway, playA, playB),
-    "sm-b1-b2-b3-b5" => RunB1B2B3B5Async(playA, playB, options.SessionAStreamEndpoint),
+    "sm-b1-b2-b3-b5" => RunB1B2B3B5Async(playA, playB, sessionA, options.SessionAStreamEndpoint),
     "sm-d1-d6" => RunD1D2D6Async(
         playA,
         playB,
@@ -170,12 +170,13 @@ static async Task RunA3A6B4B7Async(
 static async Task RunB1B2B3B5Async(
     ZLinkHttpClient playA,
     ZLinkHttpClient playB,
+    ZLinkHttpClient sessionA,
     string sessionAStreamEndpoint)
 {
     try
     {
         await SetPlacementWeightsAsync(playA, playB, playAWeight: 100, playBWeight: 0);
-        await SmB1LocalActorJoinScenario.RunAsync(playA, sessionAStreamEndpoint);
+        await SmB1LocalActorJoinScenario.RunAsync(playA, sessionA, sessionAStreamEndpoint);
 
         await SetPlacementWeightsAsync(playA, playB, playAWeight: 0, playBWeight: 100);
         await SmB2RemoteActorJoinScenario.RunAsync(playB, sessionAStreamEndpoint);

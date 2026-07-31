@@ -8,7 +8,10 @@ namespace SpotService.Client.Scenarios;
 
 internal static class SmB1LocalActorJoinScenario
 {
-    public static async Task RunAsync(ZLinkHttpClient playA, string sessionAStreamEndpoint)
+    public static async Task RunAsync(
+        ZLinkHttpClient playA,
+        ZLinkHttpClient sessionA,
+        string sessionAStreamEndpoint)
     {
         var actorId = $"actor-sm-b1-local-{Guid.NewGuid():N}";
         ZlinkStreamAssert.Ensure(!string.IsNullOrWhiteSpace(sessionAStreamEndpoint),
@@ -33,17 +36,25 @@ internal static class SmB1LocalActorJoinScenario
         ZlinkStreamAssert.Ensure(
             ping.NodeRid.StartsWith("play-a-", StringComparison.Ordinal),
             "SM-B1 local node mismatch.");
-        var expectedEvidence = new[]
-        {
-            $"entry-created|rid=play-a|actor={actorId}",
-            $"entry-joined|rid=play-a|actor={actorId}"
-        };
-        var evidence = (await playA.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq(expectedEvidence))
+        // The two markers come from different hosts and mean different things
+        // by "rid": the play host stamps its harness role name, while the
+        // session host stamps the Actor's mesh routing id - now an automatic
+        // 'play-a-<uuid>', so the role name only prefixes it.
+        var created = $"entry-created|rid=play-a|actor={actorId}";
+        var createdEvidence = (await playA.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq(new[] { created }))
             .Async<string[]>()).Body;
         ZlinkStreamAssert.Ensure(
-            expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
-            "SM-B1 evidence mismatch.");
+            createdEvidence.Any(line => line.Contains(created, StringComparison.Ordinal)),
+            "SM-B1 entry-created evidence mismatch.");
+
+        var joined = $"entry-joined|rid={ping.NodeRid}|actor={actorId}";
+        var joinedEvidence = (await sessionA.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq(new[] { joined }))
+            .Async<string[]>()).Body;
+        ZlinkStreamAssert.Ensure(
+            joinedEvidence.Any(line => line.Contains(joined, StringComparison.Ordinal)),
+            "SM-B1 entry-joined evidence mismatch.");
         Console.WriteLine("operation SpotService.sm-b1 passed");
     }
 }

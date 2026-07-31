@@ -10,7 +10,7 @@ using Zlink.HttpClient;
 var game = await ZLinkHttpClient.Create("https://game-api.example.internal")
     .Post("/games")
     .Body(new CreateGameReq("ranked-match-0611"))
-    .Async<CreateGameRes>();
+    .Fetch<CreateGameRes>();
 ```
 
 ## 목차

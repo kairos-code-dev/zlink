@@ -32,7 +32,7 @@ Streaming 요청도 retry에서 제외된다([10장](10-redirects-retries-cookie
 ```csharp
 try
 {
-    var res = await client.Post("/games").Body(req).Async<CreateGameRes>();
+    var res = await client.Post("/games").Body(req).Fetch<CreateGameRes>();
 }
 catch (ZLinkFrameworkException ex)
     when (ex.Kind == ZLinkFrameworkErrorKind.DeadlineExceeded)

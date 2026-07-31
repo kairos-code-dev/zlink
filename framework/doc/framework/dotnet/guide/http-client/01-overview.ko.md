@@ -10,11 +10,11 @@ Client 설정과 request 설정을 fluent builder로 구성하며, redirect·coo
 
 ```csharp
 // Client 설정과 request를 한 흐름에서 구성한다.
-var profile = await client.Get("/players/7281").Async<PlayerProfile>();
+var profile = await client.Get("/players/7281").Fetch<PlayerProfile>();
 ```
 
 JSON 전용 client가 아니다. 일반 HTTP client이며 typed 경로
-(`Body(dto)` / `Async<T>()`)는 그 위에 얹은 편의 계층이다.
+(`Body(dto)` / `Fetch<T>()` / `Async<T>()`)는 그 위에 얹은 편의 계층이다.
 
 ## 사용 원칙
 

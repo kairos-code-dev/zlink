@@ -14,11 +14,11 @@ HTTP 호출은 비동기로 완료된다. 응답을 기다리기 위해 blocking
 ```csharp
 public async ValueTask NotifyMatchResultAsync(ZLinkHttpClient client, MatchResult result)
 {
-    var response = await client.Post($"/matches/{result.MatchId}/result")
+    var ack = await client.Post($"/matches/{result.MatchId}/result")
         .Body(result)
-        .Async<AckRes>();
+        .Fetch<AckRes>();
 
-    if (!response.Body.Accepted)
+    if (!ack.Accepted)
     {
         // HTTP 호출은 성공했지만 application이 결과를 거부했다.
         throw new InvalidOperationException("match result was not accepted");
@@ -36,7 +36,7 @@ await client.Post($"/matches/{result.MatchId}/events")
 
 ## Spot turn 선택
 
-`Async<T>()`는 현재 Spot turn을 유지한다. 응답을 기다리는 동안 같은 Spot의 다음 callback이
+`Fetch<T>()`·`Async<T>()`는 현재 Spot turn을 유지한다. 응답을 기다리는 동안 같은 Spot의 다음 callback이
 시작하지 않으므로, 요청 전후의 상태 불변식을 유지해야 할 때 사용한다.
 
 외부 HTTP 응답을 기다리는 동안 shared Spot gate를 반납하려면 `RunIoWorker(...)` 안에서
@@ -49,12 +49,11 @@ public async ValueTask<PlayerProfile> LoadProfileAsync(
     ZLinkHttpServerClient client,
     string playerId)
 {
-    var response = await context
+    return await context
         .RunIoWorker(async workerCancellation =>
             await client.Get($"/players/{playerId}")
-                .Async<PlayerProfile>(workerCancellation))
+                .Fetch<PlayerProfile>(workerCancellation))
         .Yield(); // Gate 반납은 HTTP client가 아니라 worker call이 수행한다.
-    return response.Body;
 }
 ```
 

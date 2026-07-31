@@ -1,8 +1,8 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: 인터페이스 카탈로그](13-interface-catalog.ko.md) | [다음: 샘플 고르기](15-samples.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: 설정 — 옵션 목록 · 기본값 · 변경 시점](16-options.ko.md) | [공통 스펙](../../../common/README.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# 14. ZLink를 어디에 쓰나 — 내부 서비스 통신과 실시간 상태 서버 패턴
+# 17. ZLink를 어디에 쓰나 — 내부 서비스 통신과 실시간 상태 서버 패턴
 
 > **내부 서비스 통신이나 실시간 상태 서버를 만들면서 gRPC나 Akka/Orleans를 고민하고
 > 있다면, ZLink가 그 자리를 대체할 후보다.**
@@ -15,8 +15,8 @@
 >
 > [01-overview §2](01-overview.ko.md)의 세 상황(실시간 게임 서버, 웹 서비스에
 > 실시간 기능 추가, 이벤트 중심 업무 처리 단순화)이 "왜 필요한가"였다면, 이 챕터는
-> 그 판단을 기술 선택 수준까지 내려서 확인하는 도입 판단 문서다. 실행 가능한 업무 흐름은 §5의 기준
-> sample이, 기능별 사용법은 05~12 챕터가 다룬다.
+> 그 판단을 기술 선택 수준까지 내려서 확인하는 도입 판단 문서다. 실행 가능한 업무 흐름은 샘플 챕터가,
+> 기능별 사용법은 05~12 챕터가 다룬다.
 
 ## 1. 한눈에 보는 사용처
 
@@ -62,7 +62,7 @@ channel/spot 계약으로 메시징할 수 있다.
 
 - 언어 간 계약 = **packet 이름 + codec으로 인코딩된 DTO**(교차 언어는 protobuf
   권장, 또는 합의된 JSON/MessagePack 스키마). gRPC처럼 service-stub 코드 생성이나
-  HTTP/2를 강제하지 않는다 — payload 스키마만 공유하면 된다.
+  HTTP/2를 강제하지 않는다 — payload 스키마만 공유한다.
 - 각 언어 binding은 같은 core(C ABI, ZMP) 위에 handler/SPOT/STREAM 표면을 올린다.
   그래서 handler 작성 언어가 달라도 wire 상으로는 같은 channel·packet 이다.
 
@@ -99,27 +99,12 @@ channel/spot 계약으로 메시징할 수 있다.
 아니다.** 분산 데이터 일관성(saga·outbox·idempotency)·영속·중복 제어 같은
 도메인 난제는 그대로 어플리케이션과 인프라가 책임진다.
 
-## 5. 기준 sample로 확인하기
-
-업무 흐름과 실행 결과를 확인할 때는 공통 sample과 `.NET` sample 문서를 함께 본다.
-공통 문서는 언어 중립 시나리오를, `.NET` 문서는 공개 API를 사용한 등록과 실행 방법을
-설명한다.
-
-| sample | 확인하는 업무 흐름 | `.NET` 실행 문서 |
-|--------|--------------------|------------------|
-| Bingo | session gateway, Entry Spot, room timer, bound push | [Bingo](../../../common/sample/bingo/README.ko.md) |
-| TicTacToe | 수동 연결, scale-out, 실시간 게임 | [TicTacToe](../../../common/sample/tictactoe/README.ko.md) |
-| SupportChat | 대화 상태, 재연결, idle close | [SupportChat](../../../common/sample/supportchat/README.ko.md) |
-| DeliveryDispatch | 배차, 재배정, 상태 fanout | [DeliveryDispatch](../../../common/sample/deliverydispatch/README.ko.md) |
-| ShoppingMall | 주문 workflow, 보상, projection | [ShoppingMall](../../../common/sample/event/shoppingmall.ko.md) |
-| GameQuest | player owner routing, quest event sourcing | [GameQuest](../../../common/sample/event/gamequest.ko.md) |
-
-## 6. 참고 — gRPC·service mesh 스택과의 비교
+## 5. 참고 — gRPC·service mesh 스택과의 비교
 
 §1의 "내부 `.NET` 서비스끼리 자주 호출" 이 왜 ZLink 후보인지, gRPC 스택과 비교해
 근거를 본다.
 
-### 6.1 gRPC만으로는 충분하지 않다
+### 5.1 gRPC 단독 구성의 한계
 
 gRPC 자체의 성능은 우수하다. 문제는 이런 류의 서비스를 **"프로덕션급"** 으로 만들려면
 공식 베스트프랙티스가 곧바로 추가 인프라를 요구한다는 점이다.
@@ -159,7 +144,7 @@ flowchart LR
 즉 "gRPC를 쓴다"는 실제로 **gRPC + L7 LB(보통 mesh) + 서비스 위치 조회 + event broker +
 proto 파이프라인**을 함께 운영한다는 뜻이다.
 
-### 6.2 배치 구조 비교
+### 5.2 배치 구조 비교
 
 ```text
 [classic] gRPC + service mesh + broker + WS edge
@@ -209,7 +194,7 @@ location store 한 겹으로 들어온다. broker와 WS edge는 요구가 단순
 수용이면 fanout channel·STREAM으로 흡수할 수 있고, 영속 큐·replay 나 HTTP edge
 정책이 필요하면 그대로 둔다.
 
-### 6.3 한 번의 호출이 지나는 경로
+### 5.3 한 번의 호출이 지나는 경로
 
 ```mermaid
 sequenceDiagram
@@ -234,7 +219,7 @@ sequenceDiagram
   B-->>A: reply
 ```
 
-### 6.4 접히는 항목 요약
+### 5.4 접히는 항목 요약
 
 | gRPC 베스트프랙티스/필요 인프라 | ZLink에서 | 비고 |
 | --- | --- | --- |
@@ -243,7 +228,7 @@ sequenceDiagram
 | L7 로드밸런싱(Envoy/Istio) | channel name + store 자동 연결이 peer 분배 | sidecar 불필요 |
 | interceptor | `IZLinkHandlerFilter` | [5](05-channel-messaging.ko.md) §5 |
 | 이벤트 broker(Kafka/NATS) | fanout channel pub/sub | 실시간 fan-out 한정. 영속/replay는 broker 유지 |
-| 통합 관측(mesh telemetry) | runtime monitoring 이벤트 | [11-monitoring](11-monitoring.ko.md) |
+| 통합 관측(mesh telemetry) | 상태 status stream과 표준 진단 | [11-monitoring](11-monitoring.ko.md) |
 | 양방향 streaming | STREAM session | 외부 client 수용. HTTP edge 정책은 별도 |
 
 이 비교는 우열을 일반화하려는 것이 아니다. gRPC는 외부 공개 API, 표준 RPC 계약, 조직
@@ -253,13 +238,13 @@ sequenceDiagram
 framework와 location store 한 겹으로 접힌다. 조직 보안 정책이나 외부 ingress가 필요하면
 기존 mesh·LB를 그대로 함께 둔다.
 
-## 7. 참고 — 분산 actor 프레임워크(Orleans/Akka)와의 비교
+## 6. 참고 — 분산 actor 프레임워크(Orleans/Akka)와의 비교
 
 [01-overview §2](01-overview.ko.md)의 ④ stateful actor 패턴에 실제로 쓰이는 대표
 프레임워크가 Microsoft Orleans와 Akka다. ZLink의 SPOT/actor는 같은 프리미티브
 (mailbox 직렬화 + 위치 투명)를 제공하므로, 이 워크로드에서 후보가 겹친다.
 
-### 7.1 Orleans/Akka만으로도 충분하지 않다
+### 6.1 Orleans/Akka 단독 구성의 한계
 
 Orleans·Akka는 **actor 프리미티브 하나에** 깊이 집중한다. 그런데 이 가이드가 다루는
 "실시간 상태 서버 하나"를 만들려면 actor 밖의 것들을 여전히 따로 조립해야 한다.
@@ -274,7 +259,7 @@ Orleans·Akka는 **actor 프리미티브 하나에** 깊이 집중한다. 그런
   이름 기반 요청/응답이나 fanout 같은 일반 서비스 메시징 표면은 없다 — 필요하면
   gRPC나 메시지 브로커를 별도로 추가한다.
 
-### 7.2 배치 구조 비교
+### 6.2 배치 구조 비교
 
 ```text
 [Orleans/Akka] actor cluster with separate edge
@@ -308,7 +293,7 @@ client 연결·서비스 메시징·actor 상태가 서로 다른 세 계층에�
 건 아니다. 아래 표에서 어디까지가 원시 기능 차이고 어디부터가 이런 미리 구현된
 도구의 유무 차이인지 나눠서 본다.
 
-### 7.3 기능 비교 — 유리한 것과 불리한 것을 같이 본다
+### 6.3 기능 비교 — 유리한 점과 불리한 점
 
 | 항목 | Orleans / Akka | ZLink |
 | --- | --- | --- |
@@ -316,13 +301,20 @@ client 연결·서비스 메시징·actor 상태가 서로 다른 세 계층에�
 | 외부 client 연결 내장 | ❌ SignalR/WS 별도 조립 | ✅ STREAM |
 | 폴리글랏 | ❌ 단일 언어(.NET 또는 JVM) | ✅ |
 | 서비스 간 typed 메시징 + 토폴로지 선언 | ❌ 별도 조립(gRPC 등) | ✅ channel + location store |
-| actor 상태 persistence | ✅ 성숙한 provider 생태계(다수 storage backend를 미리 만들어 둠) | 프레임워크는 `OnCreateAsync`/`OnClosingAsync` 같은 lifecycle 훅을 이미 제공한다. **어느 DB에 어떻게 저장할지는 앱 로직이 결정한다**는 뜻이다 — [ShoppingMall](../../../common/sample/event/shoppingmall.ko.md)이 그 예다. 즉 훅은 있지만 미리 구현된 커넥터 모음이 없다는 뜻이다 |
-| relocation 뒤 Spot timer 복원 | ✅ | ✅ — Framework가 logical timer 등록과 pending tick을 relocation payload에 포함해 target에서 자동 복원한다 |
-| 없는 Actor를 만들거나 기존 Actor를 사용 | ✅ | ✅ — `IZLinkActorManager.GetOrCreate(actorId, actorType).Async(...)`가 같은 global ActorId에 대한 concurrent 생성을 조정한다 |
-| dormant actor를 예정 시각에 깨움(reminder) | ✅ 클러스터 세이프 등록이 API 한 콜(Orleans Reminder) | 전용 reminder API는 없다. Quartz.NET Clustered·Hangfire 같은 분산 scheduler가 정해진 시각에 Actor GetOrCreate 또는 message를 실행하도록 application이 구성한다 |
+| actor 상태 persistence | ✅ 성숙한 provider 생태계 | ⚠️ lifecycle 훅은 있고 미리 구현된 storage 커넥터는 없다(아래 ①) |
+| relocation 뒤 Spot timer 복원 | ✅ | ✅ 등록과 pending tick을 payload에 포함해 자동 복원한다 |
+| 없는 Actor를 만들거나 기존 Actor를 사용 | ✅ | ✅ `GetOrCreate`가 같은 ActorId의 동시 생성을 조정한다 |
+| dormant actor를 예정 시각에 깨움(reminder) | ✅ API 한 콜(Orleans Reminder) | ❌ 전용 API 없음 — 분산 scheduler로 구성한다(아래 ②) |
 | 분산 트랜잭션 | Orleans 실험적 지원 | ❌ 없음(saga는 앱이 구성) — 이는 실제 프로토콜 난이도의 문제라 기존 primitive로 우회할 수 없다 |
-| 라이선스 | Orleans MIT / Akka BSL(연매출 기준 유료 트리거) | MPL-2.0 |
+| 라이선스 | Orleans MIT / Akka BSL(연매출 기준 유료 트리거) | framework는 FSL-1.1-ALv2, core·binding은 MPL-2.0 — 매출 기준 유료 트리거가 없다(§7) |
 | 실전 검증 기간 | 10년 이상(Halo, Microsoft 365, Skype) | 짧음 — 이 프로젝트 자체가 진행 중 |
+
+① **actor 상태 persistence** — `OnCreateAsync`·`OnClosingAsync` 같은 lifecycle 훅은
+제공하지만, 어느 DB에 어떻게 저장할지는 application이 정한다. 미리 구현된 storage
+커넥터 모음이 없다는 뜻이다([ShoppingMall](../../../common/sample/event/shoppingmall.ko.md)이 그 예다).
+
+② **reminder** — Quartz.NET Clustered·Hangfire 같은 분산 scheduler가 정해진 시각에 Actor
+`GetOrCreate`나 message를 실행하도록 application이 구성한다.
 
 **결론.** "실시간 상태 서버 하나를 조립 없이 만든다"는 이 가이드의 워크로드에는
 ZLink가 대체 후보다. Actor·Spot lifecycle과 relocation timer 복원은 Framework가 제공한다.
@@ -330,12 +322,43 @@ ZLink가 대체 후보다. Actor·Spot lifecycle과 relocation timer 복원은 F
 분산 transaction도 제공하지 않는다. 기존 Orleans/Akka 시스템의 전환 여부는 이 차이와 운영 경험을
 함께 비교해 결정한다.
 
-## 8. 더 보기
+## 7. 라이선스 — 쓰는 데 드는 비용
+
+기술 선택에는 라이선스 조건이 함께 들어간다. Akka는 연매출이 기준선을 넘으면 상용 계약이
+필요한 BSL이고, Orleans는 MIT다. ZLink는 계층마다 라이선스가 다르다.
+
+| 계층 | 라이선스 |
+| --- | --- |
+| `core`, `bindings` — 메시징 엔진과 언어별 native binding | [Mozilla Public License 2.0](../../../../../../LICENSE) |
+| `framework` — 이 가이드가 다루는 SPOT/actor·channel messaging·STREAM·drain | [Functional Source License 1.1, ALv2 Future License](../../../../../LICENSE) |
+| 각 언어의 `http-client` 패키지 | Apache License 2.0 |
+
+**FSL-1.1-ALv2는 한 줄로 이렇다.** ZLink와 경쟁하는 제품으로 파는 것만 막고, 나머지는 다
+허용하며, 각 릴리스는 공개 2년 뒤 Apache-2.0이 된다.
+
+| | |
+| --- | --- |
+| 쓸 수 있다 | 자기 제품·서비스를 만들어 배포하고 판매하는 것, 사내 시스템, 교육·연구 |
+| 쓸 수 없다 | ZLink 자체를 대체하거나 실질적으로 같은 기능을 제공하는 상용 제품·서비스 |
+| 비용 | 없다. 사용료도, 연매출 같은 유료 전환 기준선도 없다 |
+| 2년 뒤 | 그 릴리스가 Apache-2.0으로 자동 전환된다 |
+
+**결론.** 게임 서버든 업무 서버든 만들어서 서비스하고 판매하는 데 비용도 제약도 없다. Akka
+BSL처럼 매출이 커지면 유료로 바뀌는 트리거가 없다.
+
+`core`와 `bindings`가 MPL-2.0인 이유는 `core`가 MPL-2.0인 [libzmq](https://github.com/zeromq/libzmq)
+v4.3.5에서 출발했기 때문이다. `http-client`는 각 플랫폼의 통상적인 HTTP client 라이브러리를
+감싼 얇은 계층이라 Apache-2.0이다.
+
+정확한 조건은 [framework/LICENSE](../../../../../LICENSE)가, 정책 배경은
+[doc/license/README.md](../../../../../../doc/license/README.md)가 소유한다.
+
+## 8. 관련 문서
 
 - 공통 업무 시나리오: [Framework Common Sample Scenarios](../../../common/sample/README.ko.md)
 - `.NET` 사용 방법: [Channel Messaging](05-channel-messaging.ko.md)
 - 표면 매핑: [05-channel-messaging](05-channel-messaging.ko.md) §0, [13-interface-catalog](13-interface-catalog.ko.md) §1.6
-- 실행 코드로 보는 샘플: [15-samples](15-samples.ko.md)
+- 실행 코드로 보는 샘플: [14-samples](14-samples.ko.md)
 
 ### 참고 자료
 
@@ -349,5 +372,5 @@ ZLink가 대체 후보다. Actor·Spot lifecycle과 relocation timer 복원은 F
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: 인터페이스 카탈로그](13-interface-catalog.ko.md) | [다음: 샘플 고르기](15-samples.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: 설정 — 옵션 목록 · 기본값 · 변경 시점](16-options.ko.md) | [공통 스펙](../../../common/README.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

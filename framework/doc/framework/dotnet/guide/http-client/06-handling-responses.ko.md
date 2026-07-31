@@ -29,11 +29,22 @@ string raw = response.RawBody;             // 원본 응답 텍스트
 - status가 **400 이상**이면 `ZLinkFrameworkException(InternalFailure)`를 던진다.
 - 본문 디코드 실패는 `ZLinkFrameworkException(ProtocolError)`로 보고된다.
 
+## 본문만 필요할 때
+
+`Fetch<T>()`는 같은 디코드를 수행하고 **디코드된 본문만** 돌려준다. status와 header를
+보지 않는 호출은 이쪽이 짧다.
+
+```csharp
+PlayerProfile profile = await client.Get("/players/7281").Fetch<PlayerProfile>();
+```
+
+status나 header를 함께 봐야 할 때만 `Async<T>()`로 `HttpResponse<T>`를 받는다.
+
 ## status 처리 정리
 
 | 경로 | 4xx/5xx |
 |------|---------|
 | `AsyncRaw()` | status를 그대로 돌려준다(예외 없음) |
-| `Async<T>()` / typed callback | `InternalFailure` 오류 |
+| `Fetch<T>()` / `Async<T>()` / typed callback | `InternalFailure` 오류 |
 
 [다음: 비동기 →](07-async.ko.md)

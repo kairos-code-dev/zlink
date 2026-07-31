@@ -28,6 +28,7 @@ public sealed class RegressionTests
         "01-overview.ko.md",
         "02-getting-started.ko.md",
         "03-concepts.ko.md",
+        "04-backpressure.ko.md",
         "05-channel-messaging.ko.md",
         "06-spot.ko.md",
         "07-actor-spot.ko.md",
@@ -37,9 +38,10 @@ public sealed class RegressionTests
         "11-monitoring.ko.md",
         "12-operations.ko.md",
         "13-interface-catalog.ko.md",
-        "14-alternative.ko.md",
-        "15-samples.ko.md",
-        "16-options.ko.md"
+        "14-samples.ko.md",
+        "15-e2e-testing.ko.md",
+        "16-options.ko.md",
+        "17-alternative.ko.md"
     ];
 
     [Fact]
@@ -53,13 +55,11 @@ public sealed class RegressionTests
         // 사용 가이드는 온보딩 산문이라 계약 문서가 아니다 — 세 패키지 가이드를 모두 제외한다.
         var narrativeRoots = new[]
         {
-            Path.Combine(directory, "guide"),
-            Path.Combine(directory, "http-client"),
-            Path.Combine(directory, "stream-connector")
+            Path.Combine(directory, "guide")
         };
         var actualDocuments = Directory
             .EnumerateFiles(directory, "*.ko.md", SearchOption.AllDirectories)
-            .Where(path => !narrativeRoots.Any(root => IsUnderDirectory(path, root, true)))
+            .Where(path => !narrativeRoots.Any(root => IsUnderDirectory(path, root, false)))
             .Where(path => !string.Equals(
                 Path.GetFileName(path),
                 "public-symbol-delta-v11.ko.md",
@@ -103,7 +103,7 @@ public sealed class RegressionTests
     [Fact]
     public void DotNetGuideNarrative_DocumentsExist_AndAreWellFormed()
     {
-        var guideRoot = Path.Combine(GetDotNetDocRoot(), "guide");
+        var guideRoot = Path.Combine(GetDotNetDocRoot(), "guide", "server");
 
         var actual = Directory
             .EnumerateFiles(guideRoot, "*.ko.md", SearchOption.TopDirectoryOnly)

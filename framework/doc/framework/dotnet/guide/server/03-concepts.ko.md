@@ -8,8 +8,8 @@
 > 인터페이스의 정식 정의는 [spec/handler-interfaces](../../../common/spec/server/languages/dotnet/02-handler-interfaces.ko.md)가
 > 다룬다. 이 문서는 그 의미가 `.NET`에서 어떤 모양으로 보이는지 정리한다.
 
-ZLink framework는 **다섯 가지 핵심 개념**을 제공한다:
-**channel · spot · actor · stream · location**. 나머지 챕터는 전부 이 다섯의 변주다.
+ZLink framework는 **channel · spot · actor · stream · location**을 핵심 개념으로
+제공한다. 나머지 챕터는 전부 이 개념들의 변주다.
 아래에서 차례로 보고, 중간에 actor·spot이 다른 node로 옮겨가는
 [relocation](#5-relocation--다른-node로-옮겨가기)을 함께 다룬다. 각 개념을 실제로
 작성하고 운영하는 방법은 뒤의 전용 장이 소유한다.
@@ -27,7 +27,8 @@ ZLink framework는 **다섯 가지 핵심 개념**을 제공한다:
 
 `ChannelName`은 그 mesh 안에서 같은 기능을 맡은 node들을 묶는 논리 이름이다 —
 주소(`host:port`) 대신 `"orders"` 같은 이름으로 호출 대상을 고른다. 호출자는
-`IZLinkRouteClient`에 `MeshName`과 `ChannelName`을 함께 넘긴다.
+`IZLinkRouteClient`에 `ChannelName`만 넘긴다 — `MeshName`은 등록에서 정해지고 호출
+인자에 나타나지 않는다.
 
 호출자는 지금 어느 node가 그 요청을 처리하는지 몰라도 된다. 주소도 node 번호도 아닌
 논리 이름(`ChannelName`, spot id, actor id)만 넘기면, 그 이름이 지금 어느 node에 있든
@@ -75,7 +76,7 @@ peer 주소를 코드에 적지 않고 서버 증감을 따라가는 자동 연�
 > **주의:** `MeshName`과 `ChannelName`은 서로 다른 이름이다. 하나의 mesh에 여러
 > `ChannelName`을 등록할 수 있고, 서로 다른 mesh에서 같은 `ChannelName`을 사용할 수도 있다.
 
-"channel"이라는 이름을 쓰는 등록은 셋이고, 소켓을 공유하는지가 다르다.
+"channel"이라는 이름을 쓰는 등록은 아래와 같고, 소켓을 공유하는지가 다르다.
 
 | 종류 | 소켓 |
 | --- | --- |
@@ -92,8 +93,8 @@ mesh 소켓을 그대로 쓰고, **fanout channel**은 자기 소켓으로 연�
 
 게임 방 하나, 길드 하나, 경매 물건 하나처럼 **여러 요청이 같은 상태를 동시에 건드리는
 대상**이 있다.
-이걸 직접 만들면 두 가지를 챙겨야 한다. 그 상태를 지금 어느 process가 들고 있는지 찾아
-요청을 그리로 보내는 일과, 도착한 요청들이 상태를 동시에 건드리지 않게 막는 일이다.
+이를 직접 만들면 그 상태를 지금 어느 process가 들고 있는지 찾아 요청을 그리로 보내는
+일과, 도착한 요청들이 상태를 동시에 건드리지 않게 막는 일을 함께 챙겨야 한다.
 상태를 process 메모리에 두면 앞의 라우팅을 직접 관리해야 하고, DB나 Redis에 두면
 요청마다 읽고 쓰면서 락을 잡아야 한다.
 
@@ -283,8 +284,8 @@ store 없이 endpoint를 등록에 직접 지정하는 수동 연결도 지원�
 소규모 고정 배포에 사용한다([05-channel-messaging §6](05-channel-messaging.ko.md)).
 같은 MeshNode에서 두 방식을 함께 사용할 수는 없다.
 
-> **샘플에서 보기 — [TicTacToe](../../../common/sample/tictactoe/README.ko.md).** 다섯 개념이
-> 한 샘플에 전부 나오는 가장 작은 예다. Play 서버의 등록 코드 한 곳에서 다섯이 만난다.
+> **샘플에서 보기 — [TicTacToe](../../../common/sample/tictactoe/README.ko.md).** 이 개념들이
+> 한 샘플에 전부 나오는 가장 작은 예다. Play 서버의 등록 코드 한 곳에서 모두 만난다.
 >
 > | 개념 | TicTacToe에서 |
 > | --- | --- |
@@ -294,10 +295,10 @@ store 없이 endpoint를 등록에 직접 지정하는 수동 연결도 지원�
 > | stream | client가 API 응답의 Play STREAM endpoint에 직접 연결해 수를 두고 push를 받는다 |
 > | location | Redis location store가 새 `TicTacToeGame` spot을 만들 Play node를 자동으로 고른다 — API 코드에 특정 Play node 주소가 없다 |
 >
-> 다섯 개념이 각각 어떤 문제를 푸는지는 위에서 봤고, **함께 놓이면 어떤 모양인지**는
+> 각 개념이 어떤 문제를 푸는지는 위에서 봤고, **함께 놓이면 어떤 모양인지**는
 > 이 샘플이 보여 준다.
 
-## 7. 더 깊이
+## 7. 관련 문서
 
 - request/send/pub-sub 전체 사용법과 handler 작성·`async` 실행 모델:
   [05-channel-messaging](05-channel-messaging.ko.md)
@@ -305,7 +306,7 @@ store 없이 endpoint를 등록에 직접 지정하는 수동 연결도 지원�
 - host 수명주기와 운영: [12-operations](12-operations.ko.md)
 - 등록 지점과 계층 구조: [01-overview](01-overview.ko.md#아키텍처--계층-구조와-등록-지점)
 - 전체 인터페이스/attribute/context: [spec/handler-interfaces](../../../common/spec/server/languages/dotnet/02-handler-interfaces.ko.md)
-- 실행 코드로 보고 싶을 때 고를 샘플: [15-samples](15-samples.ko.md)
+- 실행 코드로 보고 싶을 때 고를 샘플: [14-samples](14-samples.ko.md)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

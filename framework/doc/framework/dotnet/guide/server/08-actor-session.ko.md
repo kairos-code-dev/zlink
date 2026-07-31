@@ -163,7 +163,13 @@ Bound session은 push와 disconnect만 제공한다. Client request에 대한 Ac
 `ActorRef.MeshName`과 `NodeRid`는 최초 control route의 snapshot이다. Application은 stale route를
 새로 조합하지 말고 `IZLinkActorManager.FindAsync`로 current ref를 다시 조회한다.
 
-## 6. 다음 문서
+## 6. 관련 문서
 
+- 이 챕터 계약의 실행 검증 예문: [13-interface-catalog](13-interface-catalog.ko.md) §5 — 검증 클래스 `StreamContracts`
 - STREAM node와 session lifecycle: [STREAM](09-stream.ko.md)
 - Actor 생성과 Spot join: [Actor와 Spot](07-actor-spot.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../README.ko.md) | [이전: Actor와 Spot](07-actor-spot.ko.md) | [다음: STREAM](09-stream.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

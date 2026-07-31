@@ -10,7 +10,7 @@ body 소스는 **상호 배타**다. `Body`, `BodyStream`, `Form`, `Multipart` �
 ```csharp
 await client.Post("/games")
     .Body(new CreateGameReq("ranked-match-0611"))
-    .Async<CreateGameRes>();
+    .Fetch<CreateGameRes>();
 ```
 
 별도 codec extension을 등록하지 않으면 `Body<T>(dto)`는 DTO를 Web 기본값

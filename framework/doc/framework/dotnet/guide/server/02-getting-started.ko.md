@@ -2,16 +2,125 @@
 [문서 목록](../../../../README.ko.md) | [이전: ZLink Framework for .NET 개요](01-overview.ko.md) | [다음: 핵심 개념](03-concepts.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# 2. Getting Started — TicTacToe 방 만들기
+# 2. Getting Started — 설치부터 첫 동작 확인까지
 
-이 장은 실제 [TicTacToe sample](../../../../../languages/dotnet/samples/TicTacToe)에서
-방 하나를 만드는 흐름을 설명한다.
+> 패키지를 설치하고 두 process가 서로 호출하는 최소 예제를 먼저 돌린 뒤(§1~§2),
+> 실제 [TicTacToe sample](../../../../../languages/dotnet/samples/TicTacToe)이
+> 방 하나를 만드는 흐름을 따라간다(§3~§11).
 
-핵심은 API 서버가 특정 Play node를 고르지 않는다는 점이다. API 서버는 방의 stable
+## 1. 설치
+
+NuGet에서 받는다. 서버 하나를 만들 때 필요한 최소 조합은 다음 셋이다.
+
+```bash
+dotnet add package Systems.Zlink                 # core 메시징 엔진(.NET binding)
+dotnet add package Zlink.Framework                # 계약과 runtime
+dotnet add package Zlink.Framework.AspNetCore     # DI·hosted service 등록(AddZLinkFramework)
+```
+
+필요할 때 더하는 패키지는 다음과 같다.
+
+| 패키지 | 언제 더하나 |
+| --- | --- |
+| `Zlink.Framework.Locations.Redis` | Redis location store로 자동 연결을 쓸 때([10-location](10-location.ko.md)) |
+| `Zlink.Framework.Codecs.Protobuf` · `.MessagePack` | 기본 JSON codec 대신 쓸 때([05-channel-messaging §7](05-channel-messaging.ko.md#7-직렬화-codec)) |
+| `Systems.Zlink.Stream.Connector` | 외부 client(게임 client·모바일)를 만들 때([09-stream](09-stream.ko.md)) |
+| `Zlink.HttpClient` | 서버에서 HTTP를 호출할 때([HTTP Client 가이드](../http-client/README.ko.md)) |
+
+Framework 패키지는 **0.9**부터 배포한다. `Systems.Zlink`(core binding)와
+`Zlink.HttpClient`는 각자의 버전 계열을 따르므로 세 패키지의 버전 번호가 서로 다르다.
+`net8.0` 이상이 필요하다.
+
+라이선스는 계층마다 다르다 — core·binding은 MPL-2.0, framework는 FSL-1.1-ALv2,
+`Zlink.HttpClient`는 Apache-2.0이다. 서비스를 만들어 파는 데 드는 비용은 없다
+([17-alternative §7](17-alternative.ko.md#7-라이선스--쓰는-데-드는-비용)).
+
+## 2. 최소 예제 — 두 process가 서로 호출한다
+
+Location store도 Redis도 없이, endpoint를 직접 적는 수동 연결로 request/reply 하나를
+돌려 본다. 여기까지가 "설치가 끝났다"를 확인하는 지점이다.
+
+**공유 계약.** 두 process가 같은 record를 참조한다.
+
+```csharp
+public sealed record Hello(string Name);
+public sealed record Greeting(string Text);
+```
+
+**server process.** `greeting` channel을 맡고 handler를 등록한다.
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddZLinkFramework(options =>
+{
+    options.AddHandlersFromAssemblyOf<Program>();          // handler type을 찾는다.
+
+    var mesh = options.AddRouteMesh("services")            // mesh 이름을 정한다.
+        .Listen("tcp://0.0.0.0:7101");                     // 다른 process가 접속할 자기 endpoint.
+    mesh.Channel("greeting").Server();                     // 이 process가 "greeting"을 처리한다.
+});
+
+var app = builder.Build();
+await app.RunAsync();
+
+// 요청 하나를 처리하는 handler.
+public sealed class HelloHandler : IZLinkRequestHandler<Hello, Greeting>
+{
+    public ValueTask<Greeting> HandleAsync(
+        Hello request,
+        IZLinkMessageContext context,
+        CancellationToken cancellationToken)
+        => ValueTask.FromResult(new Greeting($"hello, {request.Name}"));
+}
+```
+
+**client process.** 같은 mesh에 붙어 `greeting`을 호출한다.
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddZLinkFramework(options =>
+{
+    var mesh = options.AddRouteMesh("services")
+        .Listen("tcp://0.0.0.0:7102");                     // 자기 endpoint도 필요하다.
+    mesh.Channel("greeting").Client();                     // 호출만 하는 쪽은 Client.
+    mesh.PeerConnections.Connect("tcp://127.0.0.1:7101");  // 수동 연결 — server endpoint를 직접 적는다.
+});
+
+var app = builder.Build();
+
+app.MapGet("/hello/{name}", async (
+    string name,
+    IZLinkRouteClient route,
+    CancellationToken cancellationToken) =>
+{
+    // 대상은 ChannelName 하나다. 어느 node가 처리하는지는 지정하지 않는다.
+    var reply = await route
+        .RequestToChannel("greeting", new Hello(name))
+        .Async<Greeting>(cancellationToken);
+
+    return Results.Ok(reply.Text);
+});
+
+await app.RunAsync();
+```
+
+server를 먼저 띄우고 client를 띄운 뒤 `curl http://localhost:5000/hello/world`를 호출하면
+`hello, world`가 돌아온다.
+
+여기서 확인한 것은 셋이다 — 패키지가 붙었고, 두 process가 mesh로 연결됐고, 논리 이름
+(`greeting`)만으로 호출이 라우팅됐다. 이 예제에는 Redis도 location store도 없다. 서버가
+늘고 줄어도 호출 코드가 그대로이려면 자동 연결이 필요하고, 그건
+[10-location](10-location.ko.md)이 다룬다.
+
+## 3. TicTacToe — 방 하나를 만드는 흐름
+
+아래부터는 실제 sample로 옮겨간다. API 서버는 특정 Play node를 고르지 않고 방의 stable
 type과 최초 설정만 넘긴다. Framework가 해당 type을 등록한 Object Server 중 하나를
 선택하고, 전역에서 유일한 `SpotId`를 발급한다.
 
-## 1. 실행 흐름
+### 3.1 실행 흐름
 
 ```mermaid
 sequenceDiagram
@@ -34,7 +143,7 @@ sequenceDiagram
 API 코드에는 Play node의 `NodeRid`나 endpoint가 들어가지 않는다. Play node가
 추가되거나 교체되어도 같은 생성 코드를 사용한다.
 
-## 2. sample 위치
+### 3.2 sample 위치
 
 | 확인할 내용 | 파일 |
 | --- | --- |
@@ -49,7 +158,7 @@ API 코드에는 Play node의 `NodeRid`나 endpoint가 들어가지 않는다. P
 
 표의 상대 경로는 `framework/languages/dotnet`을 기준으로 한다.
 
-## 3. API 서버 설정
+## 4. API 서버 설정
 
 API 서버는 Location Store와 Object Client role을 등록한다. Object Client role은
 Actor와 Spot을 다른 Object Server에 생성하거나 호출할 때 사용한다.
@@ -77,7 +186,7 @@ sample은 재현 가능한 로컬 실행을 위해 peer endpoint를 설정 파�
 endpoint는 연결을 구성할 뿐, 새 Game Spot을 어느 Play node에 배치할지는 지정하지
 않는다.
 
-## 4. HTTP 요청에서 Spot 만들기
+## 5. HTTP 요청에서 Spot 만들기
 
 HTTP handler는 DI로 받은 `IZLinkSpotManager`를 사용한다.
 
@@ -113,7 +222,7 @@ internal static async Task<IResult> HandleAsync(
 `Create`는 호출자가 `SpotId`를 정하지 않는 새 User Spot 생성에 사용한다. 같은
 `SpotId`를 다시 찾거나 만들려면 `GetOrCreate(spotId, spotType)`을 사용한다.
 
-## 5. Play 서버에서 stable type 등록
+## 6. Play 서버에서 stable type 등록
 
 Framework는 요청한 stable type을 등록한 Serving Object Server만 생성 후보로
 사용한다. Play 서버는 `TicTacToeGame` factory를 다음과 같이 등록한다.
@@ -132,7 +241,7 @@ mesh.Objects().Server()
 특정 Play node를 선호하거나 `NodeRid`로 배치하는 sample 계약은 없다. 배치 후보와
 용량은 Framework와 Location Store가 판단한다.
 
-## 6. 최초 설정 검증
+## 7. 최초 설정 검증
 
 선택된 Play node는 Spot을 만든 뒤 최초 요청을 `OnCreateAsync`에 전달한다. Spot은
 설정을 검증하고 생성 수락 여부를 반환한다.
@@ -159,7 +268,7 @@ public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
 생성을 거부하면 해당 예약은 Ready Spot으로 공개되지 않는다. 호출자는 typed failure로
 완료 결과를 받는다.
 
-## 7. ClientServer channel은 별도 용도다
+## 8. ClientServer channel의 용도
 
 TicTacToe의 `tictactoe.api` ClientServer channel은 Play session이 사용자 인증을
 API 서버에 요청할 때 사용한다. Game Spot 생성에는 사용하지 않는다.
@@ -182,7 +291,7 @@ options.AddClientServerChannel(SampleChannels.Api)
 Object 생성과 ClientServer 호출은 서로 다른 기능이다. 방 생성 전용 channel이나
 `CreateGameHandler`를 추가하지 않는다.
 
-## 8. build와 실행
+## 9. build와 실행
 
 ```bash
 # sample solution을 먼저 build한다.
@@ -196,7 +305,7 @@ runner는 API 두 개와 Play 두 개를 실행한다. Game Spot을 생성한 �
 endpoint에 연결한 참가자들이 같은 방에 join하고, 게임 메시지와 종료 정리를
 검증한다.
 
-## 9. 실패할 때 확인할 항목
+## 10. 실패할 때 확인할 항목
 
 | 증상 | 확인할 항목 |
 | --- | --- |

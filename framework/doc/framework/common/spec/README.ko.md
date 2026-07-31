@@ -6,7 +6,7 @@ contract test에 필요한 입력, 상태, 정상 흐름, 실패와 완료 조�
 
 ## 작성 기준과 공통 용어
 
-- [스펙 작성 가이드](../../../../../doc/principal/documentation/spec-writing-guide.ko.md)
+- [스펙 문서 작성 가이드](../../../../../doc/principal/documentation/spec-writing-guide.ko.md)
 - [00 공개 계약 관리](00-public-contract-governance.ko.md)
 - [01 Framework 메시징 용어집](01-glossary.ko.md)
 

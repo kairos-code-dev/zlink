@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: STREAM](09-stream.ko.md) | [다음: Monitoring — runtime 이벤트](11-monitoring.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: STREAM](09-stream.ko.md) | [다음: Monitoring — 상태 관측과 진단](11-monitoring.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 10. Location — 자동 연결과 Object 위치
@@ -9,7 +9,7 @@
 > [.NET exact interface](../../../common/spec/server/languages/dotnet/interfaces/08-location-maintenance.ko.md)가
 > 정의한다. 이 문서는 application에서 Store를 등록하고 상태를 확인하는 방법을 설명한다.
 
-## 0. 무엇을 해주는가
+## 0. 제공하는 기능
 
 Location Store는 MeshNode descriptor와 Actor·Spot의 현재 owner를 저장한다. Framework는 이 정보를
 사용해 peer를 자동으로 연결하고 논리 ID를 현재 owner로 전달한다.
@@ -172,7 +172,14 @@ if (room is not null)
 `IZLinkActorClient`가 Location Store에서 current owner를 확인하고 이동 중에는 Message Follow 규칙을
 적용한다. `SpotRef`와 `ActorRef`는 exact generation을 닫거나 삭제할 때 사용한다.
 
+## 6. 관련 문서
+
+- 이 챕터 계약의 실행 검증 예문: [13-interface-catalog](13-interface-catalog.ko.md) §6 — 검증 클래스 `LocationContracts`
+- 정식 계약: [Location runtime](../../../common/spec/21-location-runtime.ko.md)
+- 자동 연결이 없는 수동 연결: [05-channel-messaging §6](05-channel-messaging.ko.md#6-연결-제어)
+- Host relocate와 drain 관측: [12-operations](12-operations.ko.md)
+
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: STREAM](09-stream.ko.md) | [다음: Monitoring — runtime 이벤트](11-monitoring.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: STREAM](09-stream.ko.md) | [다음: Monitoring — 상태 관측과 진단](11-monitoring.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

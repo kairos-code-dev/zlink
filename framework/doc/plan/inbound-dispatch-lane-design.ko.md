@@ -1,11 +1,11 @@
 # 수신 backpressure 목표 설계와 적용 계획
 
-> 상태: 적용 승인. C-01부터 BP-03까지 순차 진행
+> 상태: Framework 적용 진행 중. C-01부터 F-02까지 완료, F-03 진행 중
 >
 > 두 connection 구조와 byte 기준 HWM을 구현 기준으로 사용한다.
 > C-01부터 BP-03까지의 Core·bindings 작업과 검증은 이 문서만 단일 기준으로 사용한다.
 >
-> Framework 적용은 F-01부터 별도 지시가 있을 때 시작한다.
+> 2026-07-30 사용자 승인에 따라 Framework F-01부터 F-09까지 이어서 진행한다.
 
 ## 1. 이 문서가 정하는 결과
 
@@ -15,19 +15,20 @@ Queue와 transport가 보관하는 in-flight message의 허용 상한을 high wa
 Target이 HWM 때문에 수신을 멈추면 Core의 network pipe가 차고, 그 결과 source의 송신이
 대기한다.
 
-Application message와 request는 memory 여유가 없을 때 수신을 중단한다. 이미 보낸 request의
-reply와 처리를 계속하기 위해 필요한 runtime control은 별도 Completion connection으로
-수신한다. 이 구조로 application 수신 중단이 completion 진행을 막는 순환 의존성을 제거한다.
+Application message와 request는 memory 여유가 없을 때 수신을 중단한다. 이미 보낸 request의 reply와
+liveness·admission·relocation·reply recovery service control은 별도 Completion connection으로 수신한다.
+Core의 send-ready 상태는 network message가 아니라 기존 callback으로 전달한다. Actor lifecycle처럼
+application callback을 실행하는 작업은 Application 영역에서 처리한다. 이 구조로 application 수신
+중단이 completion과 필수 Framework coordination 진행을 막는 순환 의존성을 제거한다.
 
-이번 승인 범위는 C-01부터 BP-03까지다. Framework F-01 이후 작업은 이번 범위에 포함하지
-않는다.
+Core와 bindings 범위 C-01부터 BP-03까지는 완료했다. Framework는 F-01부터 F-09까지 공통
+정식 spec을 먼저 갱신한 뒤 구현·contract test·E2E·성능 검증 순서로 진행한다.
 
 ### 1.1 목표 결과
 
 - Core와 bindings는 C-01부터 BP-03까지 이 문서의 순서와 gate를 따라 변경한다.
 - 두 connection, byte HWM과 내부 queue 제거를 Core 목표 구조로 적용한다.
-- Framework Application HWM은 F-01 이후 별도 지시 전까지 적용하지
-  않는다.
+- Framework Application HWM은 공통 spec과 다섯 언어 exact interface를 먼저 확정한 뒤 적용한다.
 - 정확한 public contract는 이 문서, C header, 정식 spec과 contract test에서 같은 의미로
   유지한다.
 
@@ -41,7 +42,7 @@ reply와 처리를 계속하기 위해 필요한 runtime control은 별도 Compl
 | Framework | Host 전체에서 수신 후 handler가 완료되지 않은 payload byte를 계산하고 Application `Recv`를 중단·재개한다. Reply가 사용하는 memory는 별도 동시성과 reserve로 제한한다. |
 | Core | Directional pipe의 실제 보관 byte를 HWM으로 제한하고 Application·Completion connection pair를 관리한다. |
 | Bindings | Core의 64-bit byte option, monitoring 값과 오류를 각 언어에서 같은 의미로 제공한다. |
-| Remote runtime | 같은 pair identity와 generation을 검증하고, stale reply와 control을 적용하지 않는다. |
+| Remote runtime | 같은 pair identity와 generation을 검증하고 stale reply를 적용하지 않는다. |
 
 ### 1.3 정상 처리 순서
 
@@ -51,8 +52,8 @@ reply와 처리를 계속하기 위해 필요한 runtime control은 별도 Compl
 3. 처리 중인 payload 합계가 HWM에 도달하거나 초과하면 Application connection의 `Recv`만
    중단한다.
 4. Core pipe가 byte HWM까지 차면 source의 send가 대기한다.
-5. Completion connection의 poller는 계속 실행하여 이미 보낸 request의 reply와 필수 control을
-   처리한다.
+5. Completion connection의 poller는 이미 보낸 request의 reply와 bounded service control을 계속 처리한다.
+   Send-ready callback도 Application `Recv`와 독립적으로 처리한다.
 6. Request handler는 실행 전에 reply 한 건의 최대 memory를 예약한다. Reply를 Core가
    받아들이면 Framework의 reply byte를 Core transport reserve로 넘긴다.
 7. Handler가 terminal 상태에 도달하여 처리 중인 payload 합계가 HWM보다 작아지면 Application
@@ -69,13 +70,13 @@ Target의 처리 속도보다 source의 송신 속도가 빠르면 수신 대기
 - 수신한 application message를 부하 때문에 버리지 않는다.
 - Target의 수신 여유가 부족하면 source의 송신 압력을 낮춘다.
 - Message 개수뿐 아니라 payload 크기도 고려한다.
-- Application `Recv`가 중단되어도 Completion connection에서 reply와 필수 runtime
-  control을 계속 처리한다.
+- Application `Recv`가 중단되어도 Completion connection에서 reply와 bounded service control을 처리하고
+  Core의 send-ready callback을 계속 실행한다.
 - 수천 개 peer를 사용하는 환경에서 두 connection의 socket과 memory 비용을 계산하고
   Completion connection의 HWM과 buffer를 application traffic보다 작게 제한한다.
 - Backpressure 상태를 계산하는 동기화가 정상 dispatch 성능을 크게 낮추지 않는다.
 - Process 전체 ingress가 중단되면 byte를 가장 많이 보유한 실행 대상을 진단할 수 있어야 한다.
-- 양방향 nested request와 두 connection의 순서 역전이 영구 교착이나 stale control 적용으로
+- 양방향 nested request와 두 connection의 순서 역전이 영구 교착이나 stale completion 적용으로
   이어지지 않아야 한다.
 
 ## 3. 구현하면서 정식 계약에 고정할 값
@@ -85,9 +86,9 @@ Target의 처리 속도보다 source의 송신 속도가 빠르면 수신 대기
 
 - Framework가 수신 후 처리 중인 application payload에 적용할 byte 합산 규칙
 - Framework Application HWM과 Completion connection HWM의 production 기본값
-- Host 전체 `maxPendingCompletionSends`, peer별 공정성 상한과 completion send permit 값
+- Host 전체 `maxPendingCompletionSends`, peer별 공정성 상한과 completion send permit의 내부 기본값
 - Completion connection handshake, reconnect와 pending request 종료 error
-- Owner attribution top-N 수, 장시간 pause 진단 threshold와 조회 rate limit
+- 장시간 pause 진단 threshold와 조회 rate limit
 - Core Auto HWM planning unit option의 정확한 migration 계약
 - C monitoring ABI version과 다섯 Framework 언어의 exact public interface
 
@@ -159,10 +160,13 @@ payload byte를 포함하고 Application HWM owner가 그 통지를 처리할 �
 모든 terminal 처리는 기존 공통 완료 경로를 사용하여 같은 payload byte를 두 번 반영하지 않는다.
 
 Application HWM owner는 두 누적값을 일반 64-bit 값으로 관리한다. Ingress poller와 handler
-terminal 경로가 이미 사용하는 dispatch·완료 통지에 byte를 함께 전달하며, HWM 계산만을 위한
-새 lock, queue, event, allocation 또는 cross-thread wakeup을 추가하지 않는다. 완료 통지가
-owner에 반영되기 전까지 pending payload가 실제보다 크게 보일 수 있지만, 이 지연은 새 수신을
-더 허용하지 않고 보수적으로 늦출 뿐이다.
+terminal 경로가 이미 사용하는 dispatch·완료 통지에 byte를 함께 전달한다. Message마다
+accounting object, queue, event 또는 wakeup을 만들지 않는다. 다만 수신을 멈춘 뒤 handler
+terminal로 pending payload가 HWM 아래로 내려가면 receive loop를 다시 실행할 신호가 필요하다.
+Framework는 host 수명 동안 하나만 유지하는 resume gate를 사용하고
+`paused → resumable` 전환에서 한 번만 signal한다. Handler terminal마다 signal하지 않으며
+polling으로 재개 여부를 확인하지 않는다. 이 gate는 HWM 계산용 message allocation을 만들지
+않고, 여러 ingress loop가 같은 host budget을 사용하게 한다.
 
 ### 4.2 설정값은 어떻게 해석하는가
 
@@ -248,7 +252,8 @@ application job이 없으면 수신할 수 있다.
 2. 이미 시작한 `Recv`는 완료하고 받은 payload byte를 처리 중인 합계에 더한다. HWM을 초과했다는
    이유로 message를 제거하거나 application error로 완료하지 않는다.
 3. Framework queue에서 기다리는 application job은 계속 dispatch한다.
-4. 이미 보낸 request의 reply와 Framework 처리에 필요한 control message는 계속 수신한다.
+4. 별도 Completion connection에서 이미 보낸 request의 reply와 bounded service control을 계속 수신하고
+   Core의 send-ready callback도 계속 처리한다.
 5. Handler가 terminal 상태에 도달하면 HandlerContext에 저장한 payload byte를 완료 누적값에
    더한다. Pending payload는 수신 누적값과 완료 누적값의 차이만큼 감소한다.
 6. 처리 중인 payload 합계가 HWM보다 작아지면 application message의 `Recv`를 재개한다.
@@ -614,10 +619,10 @@ C++ binding처럼 현재 HWM을 `message_count_t`로 표현하는 binding은 값
     완료하고, 합계가 HWM에 도달하거나 초과한 뒤에는 새 `Recv`를 시작하지 않으며,
     connection별 미사용 chunk reserve가 생기지 않는지 검증한다. 복수 ingress poller가 이미
     시작한 message는 완료될 수 있음을 함께 검증한다.
-24. Application message와 relocation·session binding·peer lifecycle control을 두
-    connection에서 양방향으로 추월시켜도 generation, epoch, sequence와 barrier가 stale
-    control 적용과 순서 역전을 막는지 검증한다. Fence 대기 상한을 넘으면 pair 전체와 pair
-    generation이 종료되고 해당 pending request가 terminal error로 끝나는지도 확인한다.
+24. Application message와 request completion을 두 connection에서 양방향으로 추월시켜도
+    generation, epoch와 sequence가 stale completion 적용과 순서 역전을 막는지 검증한다.
+    Fence 대기 상한을 넘으면 pair 전체와 pair generation이 종료되고 해당 pending request가
+    terminal error로 끝나는지도 확인한다.
 25. `applicationPendingPayloadBytes`가 HWM에 도달하거나 초과하면 새 수신을 중단하고, handler
     terminal로 HWM보다 작아지면 수신을 재개하는지 검증한다. Framework Auto HWM profile을 변경하면
     Framework가 사용하는 Core context의 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`도 같은 값으로
@@ -661,9 +666,10 @@ HWM을 처리하고, peer마다 Application·Completion connection pair를 제�
    message별 allocation·mutex·system call을 추가하지 않는다.
 6. Peer마다 Application connection과 Completion connection을 하나씩 설정한다. Handshake는
    peer identity, pair identity와 generation을 검증한다. 한 connection이 끊기거나 protocol
-   error가 발생하면 pair 전체를 종료하고 이전 generation의 reply와 control을 폐기한다.
-7. Request와 application message는 Application connection으로, reply와 진행에 필요한
-   control은 Completion connection으로 전달한다. Application payload를 옮기던 내부 PAIR
+   error가 발생하면 pair 전체를 종료하고 이전 generation의 reply를 폐기한다.
+7. Request와 application message는 Application connection으로, reply와 bounded
+   liveness·admission·relocation·reply recovery service control은 Completion connection으로 전달한다.
+   Send-ready는 기존 Core callback으로 전달한다. Application payload를 옮기던 내부 PAIR
    `recv_queue`, reply payload를 보관하던 completion deque와 signal socket을 제거한다.
 8. Core는 incomplete multipart를 reader에 공개하지 않는다. Completion poller가 reply를
    받으면 별도 deque에 다시 보관하지 않고 pending request를 직접 완료할 수 있는 record를
@@ -699,7 +705,7 @@ Review coordinator는 각 round를 시작하기 전에 candidate commit SHA와 �
 검토한다.
 
 - 이 설계 문서와 1단계에서 갱신한 Core 정식 spec
-- `AGENTS.md`, [spec 작성 지침](../../../doc/principal/documentation/spec-writing-guide.ko.md),
+- `AGENTS.md`, [스펙 문서 작성 가이드](../../../doc/principal/documentation/spec-writing-guide.ko.md),
   [source comment 원칙](../../../doc/principal/source-comment-principles.ko.md)과
   [software design 원칙](../../../doc/principal/software-design-principles.ko.md)
 - C public header, Core source, test, benchmark와 monitoring 변경
@@ -892,9 +898,10 @@ bindings source가 바뀌면 5단계 review를 다시 수행한다. Core source�
    확인할 수 없으면 startup을 실패시킨다. Auto mode에서 선택한 profile은 Framework가 사용하는
    Core context의 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`에도 동일하게 설정한다.
 7. Framework monitoring은 pending application payload 합계와 queued·active handler 구분,
-   Auto HWM memory 계산 입력, pause, owner별 byte,
+   적용한 HWM, pause,
    requester·responder completion reserve, completion send permit과 pending request를
-   queue 순회 없이 제공한다.
+   queue 순회 없이 제공한다. Actor ID·Spot ID와 owner별 top-N은 public status·metric에
+   노출하지 않는다. 장시간 pause의 내부 진단 log도 message hot path에 owner별 event를 만들지 않는다.
 8. 양방향 nested request, pair reconnect, timeout, cancellation, shutdown, relocation과
    두 connection 사이의 순서 역전을 검증한다.
 9. 다섯 Framework 언어에서 같은 public 동작과 E2E를 제공하고, memory·throughput·CPU/message·
@@ -908,9 +915,9 @@ bindings source가 바뀌면 5단계 review를 다시 수행한다. Core source�
 
 ## 9. 진행표
 
-상태는 `승인 대기`, `진행 중`, `완료`, `차단`, `범위 밖` 가운데 하나를 사용한다. 이번 승인
-범위는 C-01부터 BP-03까지다. 완료 증거에는 test 명령, 결과 log, contract 문서, commit 또는
-artifact 위치를 기록한다. F-01 이후 Framework 항목은 별도 지시 전까지 `범위 밖`으로 둔다.
+상태는 `대기`, `진행 중`, `완료`, `차단`, `범위 밖` 가운데 하나를 사용한다. 현재 승인
+범위는 F-09까지다. 완료 증거에는 test 명령, 결과 log, contract 문서, commit 또는 artifact
+위치를 기록한다.
 
 2026-07-30 기준으로 C-01부터 C-06까지의 Core 구현과 C-08 정식 문서 동기화를 완료했다.
 64-bit byte HWM, Auto HWM, monitoring ABI v2, Application·Completion pair와 숨은 payload
@@ -988,15 +995,15 @@ Accounted byte 기준으로 64 B payload에서 1.38, 1 KiB에서 1.04,
 | BP-01 | Bindings perf smoke | Candidate package와 `core/build` runtime provenance 확인 | [package manifest](../../../.artifacts/v11/evidence/BP-01/bindings-package-manifest-37f4f394b1.json), Core runtime SHA-256 `cc3e0968cd076e0c4807a8ebb25d9b42882622972242c7178defb5a955a1d51e` | 완료 |
 | BP-02 | Bindings perf smoke | C single 전체 64B smoke 재실행 | [single report](../../../bindings/c/perf/results/single/report/perf_c_single_linux_20260730_200222_bindings-37f4f394b1.txt): 210/210, `status=complete` | 완료 |
 | BP-03 | Bindings perf smoke | C multi 전체 64B smoke 재실행 | [multi report](../../../bindings/c/perf/results/multi/report/perf_c_multi_linux_20260730_200647_bindings-37f4f394b1.txt): 160/160, fail 0, `status=complete` | 완료 |
-| F-01 | Framework | 공통 spec과 다섯 언어 exact interface 확정 | Contract review와 문서 검증 결과 | 범위 밖 |
-| F-02 | Framework | 6단계 통과 binding package version 적용 | 언어별 중앙 dependency 변경과 restore log | 범위 밖 |
-| F-03 | Framework | 두 connection poll과 직접 Application `Recv` 적용 | 검증 11, 12, 15 결과 | 범위 밖 |
-| F-04 | Framework | Application HWM, 수신 중단·재개와 Auto 계산 적용 | 검증 14, 17, 23, 25, 26 결과 | 범위 밖 |
-| F-05 | Framework | Completion reserve, send permit과 pending 상한 적용 | 검증 16, 17, 21, 22 결과 | 범위 밖 |
-| F-06 | Framework | Owner별 byte 귀속과 monitoring 적용 | 검증 8, 20 결과 | 범위 밖 |
-| F-07 | Framework | 다섯 언어 public contract와 E2E parity 확인 | 언어별 contract test와 공통 E2E 결과 | 범위 밖 |
-| F-08 | Framework | Memory·성능·다중 MeshNode 통합 검증 | 검증 17~19과 benchmark log | 범위 밖 |
-| F-09 | Framework | 정식 spec, guide와 운영 문서 갱신 | 문서 검증 결과와 최종 review | 범위 밖 |
+| F-01 | Framework | 공통 spec과 다섯 언어 exact interface 확정 | `01-glossary`, `06-framework-api`, `24-runtime-monitoring`, `25-runtime-metrics`, `30-implementation-gap`과 .NET·Java·Kotlin·Node.js·C++ configuration·monitoring exact interface 동기화. 기존 socket HWM도 64-bit byte type으로 정렬. `scripts/verify-framework-doc-contracts.sh` CLEAN | 완료 |
+| F-02 | Framework | 6단계 통과 binding package version 적용 | 네 중앙 dependency를 `11.0.0`으로 고정했다. 승인된 Core package로 다시 만든 .NET·Java·C++ isolated consumer와 Node CJS·ESM consumer가 통과했다. 증거: `.artifacts/v11/evidence/F-03/dotnet-package-consumer-r2.json`, `.artifacts/v11/evidence/F-02/java-consumer-r2.json`, `.artifacts/v11/evidence/F-02/cpp-consumer-r2.json` | 완료 |
+| F-03 | Framework | 두 connection poll과 직접 Application `Recv` 적용 | .NET Node·Channel·Spot·Actor request를 Core request callback과 Completion connection reply로 연결했다. Target reply는 `RequestSeq`를 사용하며 두 번째 reply는 `InvalidState`다. Generic opaque completion-control C ABI와 .NET binding도 새 connection 없이 구현해 Core 28/28, .NET bindings 15/15를 통과했다. Application `Recv`가 멈춘 상태의 callback, payload ownership과 callback-close race를 검증했다. Framework allowlist·Instance Spot 수렴과 C++·Node.js·Java bindings parity가 남았다. | 진행 중 |
+| F-04 | Framework | Application HWM, 수신 중단·재개와 Auto 계산 적용 | .NET 설정·Auto 계산·pre-bind validation·16 MiB 기본값·64-bit socket HWM과 Classic Channel host budget 연결을 완료했다. HWM 해제 뒤 32개 receive waiter를 하나씩 재개하고 shutdown queue를 single reader로 정리했다. Inbound budget 7/7, ClientServer 24/24, automatic fanout 6/6과 source·unit build warning·error 0이다. 증거: `.artifacts/v11/evidence/F-04/dotnet-classic-budget-audit.md`. ClientServer control과 automatic fanout liveness를 Application gate 밖으로 옮기는 작업과 Mesh runtime 연결은 F-03 capability 뒤에 남았다. | 진행 중 |
+| F-05 | Framework | Completion reserve, send permit과 pending 상한 적용 | 정적 audit에서 네 검증이 모두 미구현임을 확인했다. Host-level completion admission owner와 focused test를 구현 중이다. 증거: `.artifacts/v11/evidence/F-05/dotnet-static-audit.md` | 진행 중 |
+| F-06 | Framework | Host byte accounting과 bounded monitoring 적용 | .NET public status와 pull-based 5개 metric seam, Classic Channel의 queued→active→completed·shutdown reject accounting과 host snapshot wiring을 완료했다. RuntimeMetrics 22/22, MaintenanceRuntime 19/19, inbound budget 7/7과 diff-check가 통과했다. Mesh·completion reserve snapshot 연결은 진행 중이다. | 진행 중 |
+| F-07 | Framework | 다섯 언어 public contract와 E2E parity 확인 | 언어별 contract test와 공통 E2E 결과 | 대기 |
+| F-08 | Framework | Memory·성능·다중 MeshNode 통합 검증 | 검증 17~19과 benchmark log | 대기 |
+| F-09 | Framework | 정식 spec, guide와 운영 문서 갱신 | 문서 검증 결과와 최종 review | 대기 |
 
 ### 9.1 지금까지 한 일과 다음 작업
 
@@ -1024,9 +1031,13 @@ bindings finding 반영 candidate는 `37f4f394b1`이다. 네 binding package는 
 
 **다음에 할 일.**
 
-1. 이 문서의 다음 범위는 없다. Framework F-01 이후는 별도 지시가 있을 때 시작한다.
-2. Framework를 진행하면 BP-01 package manifest의 11.0.0 artifact만 언어별 중앙 dependency에서
-   참조하고 binding source를 직접 참조하지 않는다.
+1. F-03에서 .NET request/reply 완료와 bounded service control을 bindings의 Completion connection으로
+   연결한다. Application 수신을 멈춰도 reply·service control과 send-ready callback 처리가 계속되어야 한다.
+2. F-04에서 Host 전체 Application HWM을 receive·queue·handler terminal 경계에 연결한다.
+   이미 받은 message는 버리지 않고 처리하며, 상한에 도달하면 새 Application receive만 멈춘다.
+3. F-05와 F-06에서 completion permit, byte accounting과 낮은 비용의 monitoring을 적용한다.
+4. .NET 기준 구현과 회귀 test가 끝나면 Java·Kotlin, Node.js와 C++가 같은
+   accounting·ordering·error 계약을 이식한다.
 
 **작업 규칙.** 작업 tree(`/home/hep7/project/kairos/zlink`)에는 다른 담당자의 미완료 변경이
 있다. `git reset`, `git checkout`, `git clean`을 쓰지 않고, 이 작업과 관련된 file만 stage해서
@@ -1037,8 +1048,8 @@ build 결과를 쓰지 않는다. count HWM 비교 기준 worktree는
 
 ## 10. 언제 적용할 수 있는가
 
-작성자가 C-01부터 BP-03까지의 적용을 승인했으며 해당 범위는 완료됐다. Framework F-01 이후
-작업은 별도 지시가 있을 때까지 시작하지 않는다.
+작성자가 C-01부터 BP-03까지의 적용을 승인했고 해당 범위는 완료됐다. 2026-07-30 추가 승인으로
+Framework F-01부터 F-09까지 진행한다.
 
 원래 gate는 새 candidate가 `CLEAN` 판정을 받을 때까지 review를 반복하도록 정했다. 그러나
 2026-07-30 사용자 지시에 따라 Core Round 6과 bindings Round 1을 각각 마지막 review로 삼고,

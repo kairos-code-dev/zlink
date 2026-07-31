@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: 운영 — 메트릭 · drain · readiness](12-operations.ko.md) | [다음: ZLink를 어디에 쓰나](14-alternative.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: 운영 — 메트릭 · drain · readiness](12-operations.ko.md) | [다음: 샘플 고르기](14-samples.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 13. 주요 interface 사용 색인
@@ -143,6 +143,10 @@ var match = await spotClient
 | `IZLinkInstanceSpotContext` | Instance Spot handler, timer, worker와 close 관리 |
 | `IZLinkEntrySpotContext` | Entry Spot handler, timer와 Actor lifecycle 관리 |
 | `IZLinkSpotRelocationAdapter<TSpot>` | `PreserveStateWith`에서 opaque state bytes capture·restore |
+| `IZLinkSpotPacketHandler<TSpot, TMessage>` | Spot 앞 one-way packet 처리 |
+| `IZLinkSpotRequestHandler<TSpot, TRequest, TReply>` | Spot 앞 request 처리와 reply 반환 |
+| `IZLinkSpotSubscriptionHandler<TSpot, TEvent>` | Logical Multicast 구독 이벤트 처리 |
+| `IZLinkSpotTimerHandler<TSpot>` | Spot timer tick 처리 |
 
 `SpotRef`는 current location snapshot이다. 일반 message target으로 보관하지 않는다. `CloseAsync(spotRef)`처럼
 exact generation을 확인해야 하는 operation에 사용한다.
@@ -182,6 +186,8 @@ actor.Context
 | `IZLinkActorContext` | 현재 Actor identity, Spot membership, session binding과 deferred join |
 | `IZLinkActorFactory<TActor>` | Framework가 선택한 target에서 Actor instance 생성 |
 | `IZLinkActorRelocationAdapter<TActor>` | `PreserveStateWith`에서 opaque state bytes capture·restore |
+| `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | member Actor 앞 one-way packet 처리 |
+| `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | member Actor 앞 request 처리와 reply 반환 |
 
 `ActorRef`도 exact incarnation을 가리키는 snapshot이다. 일반 messaging은 ActorId를 사용한다.
 
@@ -290,7 +296,7 @@ if (result.Outcome == ZLinkFrameworkRelocationOutcome.Relocated)
 Public monitoring은 application이 판단할 수 있는 상태만 제공한다. Socket generation, authority record,
 relocation staging과 mailbox 내부 상태는 log·trace 또는 Framework 내부 진단에 남긴다.
 
-## 8. 더 보기
+## 8. 관련 문서
 
 - [공개 계약 관리 원칙](../../../common/spec/00-public-contract-governance.ko.md)
 - [.NET exact interface 목차](../../../common/spec/server/languages/dotnet/interfaces/README.ko.md)
@@ -298,5 +304,5 @@ relocation staging과 mailbox 내부 상태는 log·trace 또는 Framework 내�
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: 운영 — 메트릭 · drain · readiness](12-operations.ko.md) | [다음: ZLink를 어디에 쓰나](14-alternative.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: 운영 — 메트릭 · drain · readiness](12-operations.ko.md) | [다음: 샘플 고르기](14-samples.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

@@ -6,10 +6,10 @@
 `gzip` 또는 `deflate`로 인코딩됐으면 투명하게 해제한다.
 
 ```csharp
-var response = await ZLinkHttpClient.Create("https://api.internal")
+var report = await ZLinkHttpClient.Create("https://api.internal")
     .Compression()
     .Get("/large-report")
-    .Async<Report>();
+    .Fetch<Report>();
 ```
 
 ## 래퍼 통제 해제

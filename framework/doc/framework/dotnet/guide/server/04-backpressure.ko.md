@@ -7,100 +7,122 @@
 > 정식 계약은 [비동기 실행 정책](../../../common/spec/05-async-execution-policy.ko.md)과
 > [Topology exact interface](../../../common/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md)가
 > 다룬다. 이 챕터는 그 동작을 개념과 원리로 설명하고 어떤 옵션이 영향을 주는지 다룬다.
-> 옵션의 기본값과 변경 시점은 [16-options](16-options.ko.md)가 소유한다.
+> 옵션의 기본값과 변경 시점은 [16-options](16-options.ko.md)가 소유한다. 이 챕터가 쓰는
+> 계약 가운데 .NET runtime에 아직 반영되지 않은 부분은
+> [Framework에 아직 적용되지 않은 부분](#6-framework에-아직-적용되지-않은-부분)이 밝힌다.
 
-## 0. 초당 5,000건을 처리하는 서비스에 12,000건이 도착하면
+## 0. 처리 능력을 넘는 유입이 발생할 때의 선택지
 
-세 가지 중 하나가 일어난다.
+다음 중 하나가 일어난다.
 
 - **버린다** — 처리량은 유지되지만 message가 사라지고, 무엇이 사라졌는지 확인할 방법도 없다.
 - **무한히 쌓는다** — 아무것도 잃지 않지만 memory 사용량이 계속 늘어 결국 process가 종료된다.
 - **보내는 쪽을 기다리게 한다** — 받는 쪽의 처리 지연이 보내는 쪽의 송신 지연으로 돌아온다.
 
 ZLink는 세 번째 방식을 사용한다. 이렇게 **받는 쪽의 처리 지연을 보내는 쪽의 송신 대기로
-되돌리는 흐름 제어를 backpressure라고 한다.** 따라서 부하가 걸린 상태에서 application에
-나타나는 증상은 "message가 사라졌다"가 아니라 "`send`가 느려졌다" 또는
-"`DeadlineExceeded`가 발생했다"다.
+되돌리는 흐름 제어를 backpressure라고 한다.** 한 번 받아들인 application message는 부하를
+이유로 버리지 않는다. 따라서 부하가 걸린 상태에서 application에 나타나는 증상은
+"message가 사라졌다"가 아니라 "`send`가 느려졌다" 또는 "`DeadlineExceeded`가 발생했다"다.
 
-## 1. message는 곧바로 상대에게 전달되지 않는다
+## 1. 송·수신 queue와 high-water mark
 
 `SendToChannel(...)`이나 `Publish(...)`로 보낸 message는 이 process가 상대별로 유지하는
 **송신 queue**에 먼저 들어가고, 그 queue에서 차례로 연결을 통해 나간다. 받는 쪽에도 아직
 처리하지 못한 message가 머무는 **수신 queue**가 있다. 두 queue에는 각각 상한이 있고, 이
 상한을 high-water mark(HWM)라 한다.
 
+**HWM은 message 개수가 아니라 그 queue가 실제로 보관하는 byte로 센다.** 개수로 세면 같은
+상한에서도 payload 크기에 따라 보유 memory가 수십 배 달라지고, 그 결과 설정값으로 process
+memory를 예측할 수 없다. byte로 세면 queue 하나가 차지할 수 있는 memory가 설정한 값으로
+정해진다.
+
+두 queue가 세는 byte는 payload 크기가 아니다. runtime이 message와 함께 들고 있는 routing
+frame과 고정 metadata를 더한 값이며, 그 합이 작더라도 message 한 건에 **최소 charge**가
+적용된다. 크기가 거의 0인 message를 아주 많이 보내도 queue metadata만 늘어나는 상황을
+막기 위해서다. 그래서 payload 합계로 계산한 값보다 상한에 조금 일찍 닿는다.
+
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
     H1["보내는 handler<br/>SendToChannel(...)"]:::app
-    SQ["송신 queue<br/>SendHighWaterMark"]:::queue
-    NET(["연결"]):::net
-    RQ["수신 queue<br/>ReceiveHighWaterMark"]:::queue
-    MB["실행 단위 mailbox<br/>MailboxMessageBudget · MailboxByteBudget"]:::drop
+    SQ["송신 queue<br/>SendHighWaterMark (byte)"]:::queue
+    AC(["Application 연결"]):::net
+    RQ["수신 queue<br/>ReceiveHighWaterMark (byte)"]:::queue
+    BUD["host application backlog<br/>dispatch를 기다리는 payload byte"]:::budget
     H2["받는 handler"]:::app
+    CC(["Completion 연결"]):::net
 
-    H1 --> SQ --> NET --> RQ --> MB --> H2
+    H1 --> SQ --> AC --> RQ --> BUD --> H2
+    H2 -. "reply · runtime control" .-> CC
+    CC -.-> H1
 
     classDef app fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
     classDef queue fill:#fff3e0,stroke:#e65100,color:#bf360c
-    classDef drop fill:#fce4ec,stroke:#ad1457,color:#880e4f
+    classDef budget fill:#f3e5f5,stroke:#6a1b9a,color:#4a148c
     classDef net fill:#eceff1,stroke:#546e7a,color:#000000
 ```
 
-**두 종류를 구분해야 한다.** 송신·수신 queue(주황)의 상한은 **대기**로 이어진다 — 상한에
-닿으면 그 앞 단계의 처리가 지연되고, 보내는 쪽에 최종적으로 나타나는 결과는 "보낼 자리가
-없다" 하나다. 반면 [Spot](03-concepts.ko.md#2-spot--상태를-소유하고-순서대로-처리하는-단위)과
-[Actor](03-concepts.ko.md#3-actor--id로-식별되는-상태-객체)는 자기에게 온 message를 한 줄로
-하나씩 처리하는 실행 단위이고, 각각 처리를 기다리는 message를 담아 두는 mailbox(분홍)를
-가진다. 이 mailbox는 상한을 넘으면 **그 message를 버린다.** 보내는 쪽까지 대기가 전달되지
-않고 `Backpressured` 이벤트만 남는다. 이 챕터에서 backpressure라고 부르는 것은 앞의
-대기이며, mailbox 상한은 [영향을 주는 옵션](#4-영향을-주는-옵션)에서 다시 다룬다.
+받는 쪽에서 message는 수신 queue를 지나 Framework의 **application backlog** 안으로 들어온다.
+backlog는 Framework가 받았지만 **아직 handler 실행을 시작하지 못한** message의 payload
+byte 합계다. connection이나 node마다 나누지 않고 한 host 전체에 하나로 적용하며, handler가
+그 message 처리를 시작하는 순간 backlog에서 빠진다. backlog가 상한에 닿으면 Framework는 새
+message를 받는 것을 멈추고, 그만큼 수신 queue가 차고, 그 압력이 보내는 쪽까지 이어진다.
+**어느 단계에서도 이미 받아들인 message를 버리지 않는다** — 상한이 하는 일은 버리는 것이
+아니라 기다리게 하는 것이다.
 
 ## 2. 동작 원리
 
-### 2.1 보내는 쪽은 자기 queue만 본다
+### 2.1 송신 잠금 판단 기준
 
 보내기를 멈출지 여부는 **자기 process 안의 값 하나**로 판단한다. 상대에게 얼마나 보내도
-되는지 묻지 않고, 아직 상대가 가져가지 않은 message 수가 송신 queue의 상한에 닿으면 그
-상대로 가는 송신을 잠근다. 상한에 닿는 이유는 여럿이다.
+되는지 묻지 않고, 아직 상대가 가져가지 않은 message의 byte 합이 송신 queue의 상한에 닿으면
+그 상대로 가는 송신을 잠근다. 상한에 닿는 이유는 여럿이다.
 
 - 짧은 시간에 평소보다 훨씬 많이 보냈다.
+- 평소와 같은 건수를 보냈지만 payload가 커서 같은 byte를 더 빨리 채웠다.
 - 네트워크가 느려 queue가 평소만큼 비워지지 않는다.
 - 받는 쪽이 처리하지 못해 전송 경로가 막혔다.
 - 연결이 끊겨 재연결하는 동안 내보낼 곳이 없다.
 
-### 2.2 받는 쪽이 느려지면 왜 보내는 쪽이 대기하나
+### 2.2 수신 지연이 송신으로 전파되는 경로
 
-두 단계를 거친다. 앞 단계는 TCP가 처리하고, 뒤 단계에서 비로소 application이 대기를 겪는다.
+세 단계를 거친다. 앞 두 단계는 받는 쪽 runtime과 TCP가 처리하고, 마지막 단계에서 비로소
+보내는 application이 대기를 겪는다.
 
-**1단계 — TCP 흐름 제어가 전송 속도를 낮춘다.** 받는 쪽이 도착한 데이터를 제때 가져가지
-못하면 그쪽 수신 버퍼가 차고, TCP는 남은 여유(수신 윈도우)를 보내는 쪽에 알려 준다. 여유가
-없으면 보내는 쪽 TCP는 더 내보내지 않고 상대가 읽어 갈 때까지 기다린다. 결과적으로 **전송
-속도가 받는 쪽이 처리하는 속도에 맞춰진다.** 이 단계는 실패가 아니라 감속이므로
-application에는 아직 아무 변화도 나타나지 않는다.
+**1단계 — 받는 쪽이 수신을 멈춘다.** handler가 처리하는 속도보다 도착이 빠르면 dispatch를
+기다리는 message가 쌓이면서 host의 application backlog가 먼저 상한에 닿는다. 그때부터
+Framework는 그 host에서 새 application message를 받기 시작하지 않는다. 이미 도착한 message는
+버려지지 않고 수신 queue에 그대로 남는다.
 
-**2단계 — 송신 queue가 상한에 닿으면 `send`가 대기한다.** 전송이 느려진 만큼 송신 queue도
+**2단계 — TCP 흐름 제어가 전송 속도를 낮춘다.** 받는 쪽이 수신을 멈추면 수신 queue가
+상한까지 차고 그다음에는 수신 버퍼가 찬다. TCP는 남은 여유(수신 윈도우)를 보내는 쪽에 알려
+주고, 여유가 없으면 보내는 쪽 TCP는 더 내보내지 않고 상대가 읽어 갈 때까지 기다린다.
+결과적으로 **전송 속도가 받는 쪽이 처리하는 속도에 맞춰진다.** 이 단계는 실패가 아니라
+감속이므로 보내는 application에는 아직 아무 변화도 나타나지 않는다.
+
+**3단계 — 송신 queue가 상한에 닿으면 `send`가 대기한다.** 전송이 느려진 만큼 송신 queue도
 천천히 비워진다. application이 그보다 빠른 속도로 계속 message를 넣으면 queue에 쌓이고,
-`SendHighWaterMark`에 닿는 순간 그 상대로 가는 송신이 잠긴다. 이때부터 `send` 호출이 곧바로
-반환되지 않고 자리가 나기를 기다린다 — 받는 쪽의 지연이 application의 대기로 처음 나타나는
-지점이다.
+보관 byte가 `SendHighWaterMark`에 닿는 순간 그 상대로 가는 송신이 잠긴다. 이때부터 `send`
+호출이 곧바로 반환되지 않고 자리가 나기를 기다린다 — 받는 쪽의 지연이 application의 대기로
+처음 나타나는 지점이다.
 
 ```text
 받는 handler가 처리 속도를 못 맞춤
-  → 받는 쪽 수신 버퍼가 차고 TCP 수신 윈도우가 줄어든다
-  → TCP가 전송 속도를 낮춘다                          (1단계: 전송이 느려진다)
+  → 받는 쪽 application backlog가 차고 수신이 멈춘다   (1단계: 받는 쪽이 멈춘다)
+  → 수신 queue가 byte 상한까지 차고 수신 윈도우가 줄어든다
+  → TCP가 전송 속도를 낮춘다                          (2단계: 전송이 느려진다)
   → 보내는 쪽 송신 queue가 비워지는 속도도 느려진다
-  → 넣는 속도가 빠지는 속도보다 크면 queue가 상한까지 찬다
-  → send가 자리를 기다린다                            (2단계: application이 대기한다)
+  → 넣는 byte가 비워지는 byte보다 많으면 상한까지 찬다
+  → send가 자리를 기다린다                            (3단계: application이 대기한다)
 ```
 
 **즉 backpressure는 TCP 흐름 제어의 연장이다.** TCP는 전송 속도를 낮추는 데서 멈추고,
-HWM이 그 영향을 application 호출까지 끌어올린다. 그래서 보내는 쪽이 알 수 있는 것은 "내
-자리가 없다" 하나이고, "상대가 느리다"는 정보는 전달되지 않는다. `DeadlineExceeded`도 상대의
+HWM이 그 영향을 application 호출까지 끌어올린다. 그래서 보내는 쪽이 알 수 있는 것은 "내 자리가
+없다"는 사실뿐이고, "상대가 느리다"는 정보는 얻지 못한다. `DeadlineExceeded`도 상대의
 상태를 알려 주지 못하므로, 원인을 구분하려면 상대 node의 처리 지표를 함께
-확인한다([11-monitoring](11-monitoring.ko.md)).
+확인한다([12-operations](12-operations.ko.md) §1).
 
-### 2.3 잠기는 지점과 풀리는 지점이 다르다
+### 2.3 잠금과 해제 임계값
 
 상한에 닿으면 송신이 잠기지만, message가 하나 빠져나갈 때마다 곧바로 풀리지는 않는다.
 **상한의 절반가량이 비워졌을 때** 다시 보낼 수 있게 된다.
@@ -109,9 +131,31 @@ message 하나 단위로 잠금과 해제를 반복하지 않기 위한 동작�
 빠질 때마다 하나씩 넣도록 하면 양쪽이 번갈아 깨어나기만 하고 throughput이 오르지 않는다.
 반대로 queue가 완전히 빌 때까지 잠가 두면 필요 이상으로 오래 멈춘다. **그래서 상한은
 "잠기는 지점"이면서 동시에 "절반만큼 비워야 풀리는 단위"다** — 값을 크게 설정할수록 한 번
-잠겼을 때 다시 흐르기까지 비워야 하는 양도 함께 늘어난다.
+잠겼을 때 다시 흐르기까지 비워야 하는 byte도 함께 늘어난다.
 
-## 3. 코드에서 보이는 것
+한 가지 예외가 있다. **queue가 완전히 비어 있으면 상한보다 큰 message도 한 건은
+통과시킨다.** 그렇지 않으면 그 message는 어떤 상황에서도 보낼 수 없다. 다만 무제한으로
+허용하지는 않고 그 방향의 `MaxMessageSize` 이하일 때만 통과시키며, 여러 part로 나뉜
+message를 보내는 중에는 이 예외를 적용하지 않는다. 따라서 순간 보유량이 상한을 넘을 수
+있으므로, 한 queue가 차지할 수 있는 최악의 memory를 계산할 때는 상한과 `MaxMessageSize`
+중 큰 값을 사용한다.
+
+### 2.4 Application 연결과 Completion 연결 분리
+
+한 상대와 연결하면 두 개의 경로를 만든다. **Application 연결**은 일반 message와 request를
+나르고, **Completion 연결**은 이미 보낸 request의 reply와 runtime이 진행에 필요한 control을
+나른다.
+
+경로를 나누는 이유는 backlog가 차서 수신을 멈출 때 reply까지 같은 경로에 있으면 이미 보낸
+request가 완료되지 못하고 그 handler도 끝나지 못해 backlog가 줄어들 방법이 없어지기
+때문이다. Completion 연결은 application 수신이 멈춘 동안에도 계속 읽으므로 진행 중이던
+request가 정상적으로 끝나고, 다음 job이 실행을 시작하면서 backlog가 내려간다.
+
+두 경로 사이에는 공통 도착 순서가 없다. 같은 상대가 보낸 것이라도 Completion 연결의 control이
+Application 연결의 message를 앞지를 수 있으므로, handler는 도착 순서로 선후 관계를 판단하지
+않는다.
+
+## 3. API에 드러나는 backpressure
 
 ### 3.1 send가 `async`인 이유
 
@@ -153,7 +197,7 @@ catch (ZLinkFrameworkException ex)
 기다리는 동안 대기하는 것은 그 호출뿐이며, 실행 스레드는 다른 작업을 처리한다
 ([05-channel-messaging](05-channel-messaging.ko.md#비동기-실행--asyncawait-valuetask)).
 
-### 3.2 request는 timeout이 마지막 경계다
+### 3.2 request의 timeout 경계
 
 request는 보낼 자리와 상대의 reply를 모두 기다리므로, 정체가 일어난 구간에서는
 `Timeout(...)`이 실질적인 상한이다. 특히 **handler 안에서 다시 request를 보내는 흐름에는
@@ -163,7 +207,7 @@ request는 보낼 자리와 상대의 reply를 모두 기다리므로, 정체가
 public async ValueTask<PlaceOrderReply> HandleAsync(
     PlaceOrder request, IZLinkMessageContext context, CancellationToken ct)
 {
-    // handler가 reply를 기다리는 동안 이 handler가 받은 message도 계속 자리를 차지한다.
+    // handler가 reply를 기다리는 동안 이 handler의 실행 자리는 계속 점유된다.
     // 양쪽 node의 처리가 동시에 지연되면 유한한 timeout이 회복을 시작하는 유일한 지점이다.
     var reserved = await _client
         .RequestToChannel("inventory", new ReserveStock(request.Sku, request.Quantity))
@@ -182,83 +226,246 @@ timeout으로 끝나도 이미 시작된 remote handler의 실행은 취소되�
 | 옵션 | 무엇을 정하나 | 설정 자리 |
 | --- | --- | --- |
 | `DefaultSocketSendTimeout` | 보낼 자리가 없을 때 기다리는 상한(기본 1초) | 루트 옵션 |
-| `SendHighWaterMark` | 상대별로 **보내려고** 쌓아 둘 수 있는 message 수 | `ConfigureRouterSocket()` |
-| `ReceiveHighWaterMark` | 상대별로 **받아서** 쌓아 둘 수 있는 message 수 | `ConfigureRouterSocket()` |
+| `SendHighWaterMark` | 상대별로 **보내려고** 보관할 수 있는 byte. `0`은 무제한 | `ConfigureRouterSocket()` |
+| `ReceiveHighWaterMark` | 상대별로 **받아서** 보관할 수 있는 byte. `0`은 무제한 | `ConfigureRouterSocket()` |
 | `MaxMessageSize` | 받아들일 message 하나의 최대 크기 | `ConfigureRouterSocket()` |
-| `MailboxMessageBudget` · `MailboxByteBudget` | 실행 단위별 mailbox 용량(건수·byte). **넘으면 대기가 아니라 drop이다.** `0`은 framework 기본 profile | `ConfigureRouterSocket()` |
 | `SendHighWaterMark` · `Linger` | pub/sub 발행 소켓의 상한과 종료 시 잔여 발행 대기 | `ConfigureSpotPublisher()` |
 
-두 HWM은 방향만 다를 뿐 성격이 같다. 각각 **자기 node가 들고 있을 양**을 정하고, 그 한도가
-상대 쪽 흐름으로 이어진다. 값을 정할 때 기준은 셋이다.
+두 HWM은 방향만 다를 뿐 성격이 같다. 각각 **자기 node가 들고 있을 byte**를 정하고, 그
+한도가 상대 쪽 흐름으로 이어진다. 값을 정할 때는 다음을 확인한다.
 
 - **올리면** 순간 폭주를 더 흡수하고, **내리면** 혼잡이 더 일찍 드러난다.
-- **`MaxMessageSize`를 유한하게 둔다.** 상한을 message 개수로 세므로, 크기를 제한하지 않으면
-  같은 개수라도 보유 memory가 크게 달라진다.
+- **`MaxMessageSize`를 유한하게 둔다.** 무제한이면 message 한 건이 상한을 얼마든지 넘을 수
+  있어 queue가 차지할 memory의 최악값을 계산할 수 없다.
+- **이 값은 연결 하나에 적용되는 상한이다.** process 전체 상한이 아니므로, 목표 peer 수를
+  곱한 결과가 process memory 예산 안에 들어오는지 확인한다.
 - **high-water mark를 올리는 것이 기본 대응은 아니다.** 상한을 키우면 혼잡이 memory로
   흡수되어 `DeadlineExceeded`가 늦게 나타나고, 그만큼 원인도 늦게 파악하게 된다. 처리
   지연이 계속된다면 상한이 아니라 처리 쪽(수신 node 수, handler 실행 시간)을 확인한다.
 
-기본값, 실행 중 변경 가능 여부와 옵션별 상세는
+두 HWM은 지정하지 않아도 된다. 지정하지 않으면 runtime이 계획한 값이,
+지정하면 그 값이 그대로 적용된다 — 두 경우의 차이는 아래 두 절이 다룬다. 옵션별 기본값과
+실행 중 변경 가능 여부는
 [16-options §3.2](16-options.ko.md#32-backpressure-한도를-정하는-옵션)가 다룬다.
 
-## 5. 정체가 실제로 일어났는지 확인하기
+### 4.1 Auto HWM — 미지정 socket의 자동 계산
+
+두 high-water mark는 지정하지 않아도 무제한이 되지 않는다. runtime이 socket마다 상한
+byte를 직접 계산해서 적용하며, 이 계산을 **Auto HWM**이라 한다. 기본으로 켜져 있고,
+application이 값을 정하지 않은 socket에만 적용된다.
+
+계산 결과는 byte다. 중간에 message 건수로 환산하는 단계가 없다. 값을 정하는 입력은
+다음과 같다.
+
+- **profile** — 이 process가 queue에 얼마나 여유를 둘지 정하는 성향. 기본은 balanced다.
+- **그 socket에 붙은 연결 수** — 연결이 많아질수록 **연결 하나에 주는 byte를 줄인다.**
+
+두 번째가 핵심이다. 상한은 연결마다 따로 적용되므로 연결당 값을 고정해 두면 peer가
+늘어난 만큼 이 socket이 쥘 수 있는 memory도 그대로 따라 늘어난다. 그래서 연결 수를
+구간으로 나누고, 구간이 올라갈수록 연결당 상한을 낮춘다.
+
+| 그 socket의 연결 수 | balanced(기본) | compact | low-latency | throughput |
+| --- | --- | --- | --- | --- |
+| 64 이하 | 1,048,576 bytes(1 MiB) | 262,144(256 KiB) | 524,288(512 KiB) | 2,097,152(2 MiB) |
+| 65 ~ 128 | 524,288(512 KiB) | 262,144(256 KiB) | 262,144(256 KiB) | 1,048,576(1 MiB) |
+| 129 ~ 512 | 262,144(256 KiB) | 131,072(128 KiB) | 131,072(128 KiB) | 524,288(512 KiB) |
+| 513 ~ 2,048 | 131,072(128 KiB) | 65,536(64 KiB) | 65,536(64 KiB) | 262,144(256 KiB) |
+| 2,048 초과 | 65,536(64 KiB) | 32,768(32 KiB) | 32,768(32 KiB) | 131,072(128 KiB) |
+
+값은 한 방향 queue 하나에 적용된다. balanced에서 상대가 100개면 이 socket이 수신 방향에
+보관할 수 있는 byte는 `512 KiB × 100`이다. 연결이 늘면 연결당 상한이 줄어들지만 총량은
+그대로 늘어나므로, 이 곱을 process memory 예산과 비교한다.
+
+연결이 늘거나 줄면 계산을 다시 한다. 구간 경계에서 연결 수가 오르내려도 상한이 계속
+바뀌지 않도록 구간을 바꾸는 기준에 여유를 두며, 짧은 시간에 연결이 여러 번 바뀌어도 3초
+안에는 다시 계산하지 않는다.
+
+여기서 쓰는 profile은 [§4.3](#43-application-hwm--host-전체-상한)의
+`ApplicationHwmProfile`과 **같은 이름을 공유한다.** profile을 바꾸면 host 전체 상한과 이
+연결별 상한이 함께 움직인다. 다만 계산식은 서로 다르다 — 이쪽은 연결 수 구간에서 byte를
+고르고, 저쪽은 할당된 memory에 비율을 곱한다. profile을 지정하지 않으면 양쪽 모두
+balanced를 쓴다.
+
+STREAM socket은 같은 profile에서도 더 작은 값을 쓴다([09-stream](09-stream.ko.md)).
+
+계산 결과를 짐작하지 말고 monitor status가 제공하는 값을 읽는다 — 계획한 byte, 실제
+적용한 byte, 축소가 보류된 byte, 현재 in-flight byte, 상한을 넘겨 통과시킨 message의
+횟수와 최대 크기를 각각 제공한다([12-operations](12-operations.ko.md) §1).
+
+### 4.2 HWM을 직접 지정할 때
+
+`SendHighWaterMark`나 `ReceiveHighWaterMark`를 지정하면 그 socket은 지정한 값을 그대로
+쓰고, runtime은 그 socket의 상한을 다시 계산하지 않는다. **연결이 늘어도 값이 따라
+줄어들지 않으므로**, 직접 정할 때는 목표 peer 수까지 계산한 값을 넣는다.
+
+- **`0`은 무제한이라는 뜻이다.** 상한을 없애는 설정이므로 "기본값으로 두겠다"는 의미로
+  `0`을 쓰지 않는다. 자동 계산에 맡기려면 아무 값도 지정하지 않는다.
+- **한 방향씩 따로 적용된다.** `SendHighWaterMark`만 지정하면 수신 방향은 계속 자동
+  계산값을 쓴다.
+- **상한을 줄여도 즉시 반영되지 않을 수 있다.** 이미 보관 중인 byte가 새 상한보다 많아도
+  runtime은 들고 있던 message를 버리지 않는다. 새로 넣는 것만 막고, 보관량이 내려간 뒤에
+  줄어든 상한을 적용한다. 반대로 상한을 올리는 변경은 곧바로 반영된다.
+
+### 4.3 Application HWM — host 전체 상한
+
+앞의 두 절은 **연결 하나**의 상한이다. 연결이 늘면 총량도 늘어나므로 이 값만으로는
+dispatch를 기다리는 message가 얼마나 쌓일지 정해지지 않는다. 그래서 Framework는 성격이
+다른 상한을 하나 더 둔다 — **아직 handler 실행을 시작하지 못한 message의 payload
+합계**에 적용하는 상한이며, 이것을 Application HWM이라 한다.
+
+| | 연결마다 두는 상한 | host 전체 Application HWM |
+| --- | --- | --- |
+| 적용 범위 | socket의 방향별 queue 하나 | 이 host의 application job 전부 |
+| 개수 | 연결 수만큼 | 하나 |
+| 무엇을 세나 | 아직 상대가 가져가지 않은 전송 중 byte(routing frame·metadata·최소 charge 포함) | dispatch를 기다리는 **payload byte만** |
+| 언제 빠지나 | 상대가 읽어 갈 때 | handler가 그 job 실행을 **시작할 때** |
+| 상한에 닿으면 | 그 상대로 가는 송신이 잠긴다 | 이 host의 application 수신을 시작하지 않는다 |
+| 설정 이름 | `SendHighWaterMark` · `ReceiveHighWaterMark` | `ApplicationHwmBytes` · `ApplicationHwmProfile` |
+
+**두 값은 서로를 대신하지 못한다.** Framework는 Application HWM을 각 연결의 상한으로
+복사하지도, 연결 수로 나누지도 않는다. MeshNode나 Channel, Spot마다 따로 두지 않는 이유는
+나누어 두면 node나 connection이 늘어날 때 허용 총량이 자동으로 함께 늘어나기 때문이다.
+
+세는 값이 payload뿐이라는 점도 연결 상한과 다르다. envelope, routing 정보, metadata,
+allocator overhead와 최소 charge를 더하지 않는다. 여러 part로 나뉜 message는 application
+payload part의 길이를 모두 합한다. 실행 중인 handler가 참조하는 message, Core pipe와 OS
+socket buffer는 여기에 들어가지 않는다 — Application HWM은 process memory 전체가 아니라
+**dispatch를 기다리는 양**을 제한한다.
+
+#### 값을 어떻게 해석하는가
+
+| 설정 | 적용 결과 |
+| --- | --- |
+| 지정하지 않음 | `ApplicationHwmProfile`로 자동 계산한다 |
+| `0` | Application HWM을 적용하지 않는다(무제한) |
+| 양수 | 지정한 byte를 그대로 적용한다 |
+
+자동 계산은 이 process에 할당된 memory에 profile 비율을 곱한다.
+
+```text
+Application HWM = floor(할당된 memory byte × profile 비율)
+```
+
+| profile | 비율 | 언제 고르나 |
+| --- | ---: | --- |
+| `COMPACT` | 2% | backlog memory를 가장 작게 제한해야 한다 |
+| `LOW_LATENCY` | 5% | 짧은 queue 지연이 burst 흡수보다 중요하다 |
+| **`BALANCED`**(기본) | **10%** | 별도의 우선 조건이 없다 |
+| `THROUGHPUT` | 20% | 추가 memory와 queue 지연을 감수하고 burst를 흡수한다 |
+
+할당된 memory는 application이 명시한 process memory limit을 먼저 쓰고, 없으면 container나
+cgroup, Windows Job Object가 이 process에 적용한 유한한 limit을 쓴다. 둘 다 확인할 수 없으면
+startup에서 실패시킨다. host 전체 물리 memory, 지금 남은 OS free memory, process RSS, CPU
+사용률, 처리량은 이 계산에 쓰지 않는다. 계산은 ingress를 시작하기 전에 한 번 하며, memory
+limit이나 profile을 명시적으로 바꿨을 때만 다시 한다.
+
+profile을 직접 정하는 것으로 부족하면 production과 같은 workload에서 지속 처리량을 재고
+양수 값을 지정한다. 지속 처리량은 backlog가 있는 동안 handler가 처리를 끝낸 payload byte를
+실행 시간으로 나눈 값이며, 도착 byte나 순간 peak가 아니다.
+
+```text
+후보값 = 측정한 지속 처리 byte/초 × 허용할 최대 queue 대기 초
+```
+
+지속 처리량이 초당 200 MiB이고 queue 대기를 2초까지 허용한다면 후보값은 400 MiB다. 이
+값까지 backlog를 채워도 process memory limit을 넘지 않는지 같은 workload에서 확인한 뒤
+production 값으로 쓴다.
+
+#### 상한에 닿으면 무엇이 일어나나
+
+Framework는 다음 message의 크기를 미리 알 수 없으므로 **byte를 미리 예약하지 않는다.**
+판단 기준은 backlog와 상한의 비교다 — backlog가 상한보다 작으면 새로 받기 시작한다.
+
+- 상한보다 작은 backlog에서 시작한 수신은 그 message가 상한보다 크더라도 **끝까지 받는다.**
+  그래서 상한을 넘겨도 이미 시작한 수신은 실패하지 않고, 상한보다 큰 message 한 건도
+  backlog가 비어 있으면 처리할 수 있다.
+- 상한에 닿거나 넘어서면 **새 수신만 시작하지 않는다.** 넘었다는 이유로 message를
+  제거하거나 오류로 끝내지 않는다.
+- Framework queue에서 기다리던 job은 계속 dispatch하고, 이미 보낸 request의 reply와 진행에
+  필요한 control도 계속 받는다.
+- handler가 job 실행을 시작해 backlog가 상한보다 작아지면 수신을 재개한다.
+
+양수 값이 `MaxMessageSize`보다 작아도 설정 오류가 아니다. Application HWM은 message 한
+건의 허용 크기를 정하지 않는다 — 그 판단은 `MaxMessageSize`가 한다.
+
+이 설정은 아직 적용되지 않았다 —
+[§6](#6-framework에-아직-적용되지-않은-부분)이 현재 상태를 밝힌다.
+
+## 5. 정체 발생 확인 방법
 
 ```csharp
 options.ConfigureDispatch().Diagnostics
-    .SetLevel(ZLinkDiagnosticsLevel.Errors); // 기본값 — error와 backpressure, drop을 기록한다.
+    .SetLevel(ZLinkDiagnosticsLevel.Errors); // 기본값 — error와 backpressure를 기록한다.
 ```
 
-message flow 기록에 `backpressured`가 남았다면 대기 또는 mailbox drop이 실제로 일어났다는
-뜻이다. 함께 확인하는 메트릭은 `zlink.mesh_node.request.timeouts`(request가 경계에 걸린
-횟수)와 `zlink.mesh_node.messages.dropped`(원인을 확인한 one-way drop)다
-([11-monitoring](11-monitoring.ko.md) · [12-operations](12-operations.ko.md)). 대기와 drop은
-같은 이벤트 이름을 쓰므로, 어느 쪽인지는 drop 메트릭이 함께 증가했는지로 구분한다.
+message flow 기록에 `backpressured`가 남았다면 보낼 자리를 기다리는 일이 실제로 일어났다는
+뜻이다. 함께 확인하는 메트릭은 `zlink.mesh_node.request.timeouts`(request가
+경계에 걸린 횟수)이며, 어느 실행 대상이 지연의 원인인지는 handler 실행 시간과 노드별 처리
+지표로 좁힌다([11-monitoring](11-monitoring.ko.md) ·
+[12-operations](12-operations.ko.md)).
 
-## 6. 설계상 모델 — 미구현
+`zlink.mesh_node.messages.dropped`는 backpressure 지표가 아니다. 이 값이 오르면 부하가
+아니라 별도의 확인된 사유로 message가 버려진 것이므로 `reason` attribute를 먼저 본다.
 
-지금 상한은 **message 개수**로 센다. 개수는 payload 크기를 반영하지 못하므로 같은
-상한에서도 보유 memory가 수십 배 달라질 수 있다. 그래서 다음 두 가지를 설계하고 있다.
+## 6. Framework에 아직 적용되지 않은 부분
 
-- **byte 기준 상한** — 개수 대신 실제 보유 byte로 세고, host가 보관하는 application message
-  전체에 하나의 상한을 적용한다. Application이 지정하는 값은 `ApplicationHwmBytes`이며 유한한
-  `MaxMessageSize`가 전제 조건이 된다.
-- **application과 completion 경로 분리** — application message는 상한에 닿으면 수신을 멈추고,
-  이미 보낸 request의 reply와 진행에 필요한 control은 별도 경로로 계속 받는다. application
-  backlog가 이미 보낸 request의 완료를 막는 순환을 없애기 위한 구조다.
+연결마다 두는 byte 상한과 Application·Completion 두 연결 구조는 Core 계층에 구현되어
+있다. .NET binding과 Framework runtime이 그 구조를 사용하도록 바꾸는 작업은 2026-07-30
+기준으로 시작하지 않았다. 따라서 **지금 배포된 .NET runtime은 이 단위와 상한을 아직
+사용하지 않는다.** 다음 항목은 계약으로 확정되었을 뿐 아직 설정하거나 관측할 수 없다.
 
-2026-07-30 기준으로 이 설계는 Core 계층에만 구현되어 있고 Framework에는 적용되지 않았다.
-따라서 **이 챕터의 나머지 절이 설명하는 것이 현재 동작이며, 위 두 항목은 아직 코드에 없다.**
-미리 설정해 둘 옵션도 없다.
-설계 근거와 적용 순서는
-[수신 backpressure 목표 설계와 적용 계획](../../../../plan/inbound-dispatch-lane-design.ko.md)이
-소유한다.
+- **host 전체 Application HWM** — [§4.3](#43-application-hwm--host-전체-상한)이
+  설명한 `ApplicationHwmBytes`·`ApplicationHwmProfile`과 그 자동 계산이다.
+- **두 연결을 나눠 보는 수신 경로** — Application 연결의 수신만 멈추고 Completion 연결은
+  계속 읽는 동작이다([§2.4](#24-application-연결과-completion-연결-분리)).
+- **보유 byte 귀속 관측** — 수신이 멈췄을 때 어느 실행 대상이 backlog byte를 붙잡고 있는지
+  조회한다. 여기서 실행 대상은 자기에게 온 message를 한 줄로 하나씩 처리하는
+  [Spot](03-concepts.ko.md#2-spot--상태를-소유하고-순서대로-처리하는-단위)과
+  [Actor](03-concepts.ko.md#3-actor--id로-식별되는-상태-객체)다. 아직 target이 정해지지
+  않은 message, relocation처럼 두 owner 사이에 있는 message, 이미 실행이 시작된 handler가
+  들고 있는 byte는 각각 따로 집계한다.
 
-## 7. 자주 막히는 곳
+## 7. 자주 발생하는 문제
 
 - **`send`가 `DeadlineExceeded`로 끝난다** → 보낼 자리가 끝까지 생기지 않았다. 상한을 올리기
   전에 받는 쪽 handler의 실행 시간과 node 수를 확인한다.
+- **건수는 평소와 같은데 더 일찍 대기한다** → 상한은 byte로 센다. payload가 커지면 같은
+  건수로도 상한에 먼저 닿는다. 평균 payload 크기 변화를 함께 확인한다.
+- **payload 합계는 상한보다 한참 작은데 대기한다** → 연결 queue가 세는 값은 payload가
+  아니라 routing frame과 metadata를 더한 값이고, 작은 message에는 최소 charge가 적용된다.
+  작은 message를 많이 보내는 구간일수록 차이가 커진다. host 전체 상한은 반대로 payload만
+  세므로 두 값을 같은 기준으로 비교하지 않는다
+  ([§4.3](#43-application-hwm--host-전체-상한)).
+- **host 상한보다 큰 message를 보냈는데 처리된다** → 정상이다. 판단 기준은 받기 전의
+  backlog가 상한보다 작은지 하나뿐이라, 상한보다 큰 message도 backlog가 비어 있으면 끝까지
+  받는다. 그 결과 잠깐 상한을 넘고 그때부터 새 수신만 멈춘다.
+- **HWM을 설정한 적이 없는데 상한이 걸린다** → 지정하지 않은 socket에는 runtime이 계산한
+  값이 적용된다. 기본 profile에서 연결이 64개 이하면 방향마다·상대마다 1 MiB이고, 연결이
+  늘수록 연결당 값은 작아진다
+  ([§4.1](#41-auto-hwm--미지정-socket의-자동-계산)).
+- **`0`으로 두었더니 memory가 계속 는다** → `0`은 기본값이 아니라 무제한이다. 기본 계산에
+  맡기려면 값을 지정하지 않는다([§4.2](#42-hwm을-직접-지정할-때)).
+- **상한을 낮췄는데 곧바로 반영되지 않는다** → 이미 보관 중인 byte가 새 상한보다 많으면
+  그 queue가 줄어든 뒤에 적용한다. 이미 받아 둔 message를 버리지 않기 때문이다.
 - **상한을 올렸더니 증상이 늦게 나타난다** → 정상이다. 혼잡이 memory로 흡수되면 실패가 늦게
   드러난다. 빠르게 실패시켜 다른 경로로 전환하려면 상한을 낮추고 `DefaultSocketSendTimeout`을
   줄인다.
-- **보내는 쪽은 대기하지 않는데 받는 쪽에 message가 도착하지 않는다** → 실행 단위 mailbox
-  용량을 넘겨 drop된 경우다. `zlink.mesh_node.messages.dropped`가 함께 증가한다. 한
-  Spot·Actor가 처리 속도를 따라가지 못한다는 신호이므로, `MailboxMessageBudget`을 늘리기
-  전에 handler의 실행 시간을 확인한다.
 - **`Publish`는 정상 완료했는데 구독자가 받지 못했다** → publish의 완료는 보낼 준비가 끝나
   runtime이 제출을 받아들였다는 뜻까지다. 전달·재전송·ack는 제공하지
-  않는다([05-channel-messaging](05-channel-messaging.ko.md#13-pubsub은-두-갈래다)).
+  않는다([05-channel-messaging](05-channel-messaging.ko.md#13-pubsub의-두-갈래)).
 - **handler 안의 request가 오래 멈춘다** → 양쪽 처리가 동시에 지연되면 유한한 timeout이
   회복의 시작점이다. nested request에 `Timeout(...)`을 지정한다.
 - **한 node가 느린데 다른 호출까지 늦다** → 송신 queue는 상대별로 따로 있지만, 같은 handler
   안에서 기다리면 그 handler의 실행 자리도 함께 점유된다. 응답이 느린 대상으로 보내는
   호출은 같은 handler에 함께 두지 않는다.
 
-## 8. 더 보기
+## 8. 관련 문서
 
 - 옵션 기본값과 변경 시점: [16-options §3](16-options.ko.md#3-meshnode-옵션)
 - one-way submit과 완료 경계의 정식 계약:
   [비동기 실행 정책](../../../common/spec/05-async-execution-policy.ko.md)
 - 소켓 설정 표면: [Topology exact interface](../../../common/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md)
+- socket option의 byte 단위 계약: [core guide의 socket option](../../../../../../core/doc/guide/12-socket-options.ko.md)
 - 다음 축: [05-channel-messaging](05-channel-messaging.ko.md)
 
 ---

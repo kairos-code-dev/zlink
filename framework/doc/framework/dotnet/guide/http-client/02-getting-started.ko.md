@@ -23,8 +23,8 @@ using Zlink.HttpClient;
 using var client = ZLinkHttpClient.Create("http://127.0.0.1:18080")
     .Build();
 
-var player = await client.Get("/players/7281").Async<PlayerProfile>();
-Console.WriteLine(player.Body.Name);
+var player = await client.Get("/players/7281").Fetch<PlayerProfile>();
+Console.WriteLine(player.Name);
 ```
 
 - `Create(baseUrl)`로 builder를 시작하고 `.Build()`로 client를 만든다.
@@ -39,7 +39,7 @@ Console.WriteLine(player.Body.Name);
 var res = await ZLinkHttpClient.Create("https://game-api.example.internal")
     .Post("/games")
     .Body(new CreateGameReq("ranked-match-0611"))
-    .Async<CreateGameRes>();
+    .Fetch<CreateGameRes>();
 ```
 
 반복 호출한다면 client를 한 번 만들어 재사용하는 편이 connection pool 재사용 측면에서

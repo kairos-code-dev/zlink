@@ -2,251 +2,87 @@
 [문서 목록](../../../../README.ko.md) | [이전: Location](10-location.ko.md) | [다음: 운영 — 메트릭 · drain · readiness](12-operations.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# 11. Monitoring — runtime 이벤트 관찰
+# 11. Monitoring — 상태 관측과 진단
 
 > 정식 계약은 [spec/aspnet-core-monitoring](../../../common/spec/server/languages/dotnet/01-system-structure.ko.md)가
 > 다룬다.
 
-handler 호출만으로는 운영을 다 볼 수 없다. socket connect/disconnect, 위치·연결 상태를 runtime이
-합성한 보기의 변화, timer handler 실패 같은 **runtime
-변화**도 framework 표면에서 받아야 한다. monitoring이 이를 source 별로 통일된
-방식으로 노출한다.
+handler 호출만으로는 운영을 다 볼 수 없다. 연결이 준비되었는지, 어느 peer가 빠졌는지,
+메시지가 어디서 실패했는지도 framework 표면에서 읽어야 한다. framework는 이를 **세
+갈래**로 노출한다 — 상태 snapshot과 status stream, 표준 진단(trace·log), 표준 meter다.
 
-## 1. source 별 표면
+runtime event를 DI handler로 받는 표면은 없다. 관측은 전부 아래 세 갈래를 통한다.
 
-하부 `.NET zlink` 표면이 source마다 모양이 달라, framework는 source 별로 표면을
-다르게 둔다.
+## 1. 관측 표면
 
-| source | 방식 |
-|--------|------|
-| socket | raw monitor 기반 event (connect/disconnect/handshake 등) — classic channel용 |
-| mesh | `AddRouteMesh`로 등록한 MeshNode의 runtime 이벤트 스트림(state/peer 전이)을 그대로 전달 |
-| location | 주기적으로 상태를 읽고 직전 상태와 비교해 event 합성 (`location-runtime` source, [10-location](10-location.ko.md)) |
-
-공통 규칙: event kind는 `enum`, payload는 `record struct`, 어플리케이션은
-`IZLinkRuntimeEventHandler<TEvent>`를 DI에 등록해 수신한다.
-
-흐름은 단순하다 — **source에서 변화가 나면 framework가 typed handler로 전달**하고,
-DI에 등록된 handler를 scope 안에서 꺼내 호출한다(HTTP 요청 handler와 같은 결).
+| 무엇을 보나 | 표면 | 어디서 다루나 |
+|---|---|---|
+| Host lifecycle(relocate·drain·readiness) | `IZLinkFrameworkRuntime.Status` · `ObserveAsync` | [12-operations](12-operations.ko.md) §6.1 |
+| MeshNode의 node·peer·channel 준비 상태 | `IZLinkRouteMeshRuntime.GetStatus` · `ObserveAsync` | [12-operations](12-operations.ko.md) §5 |
+| ClientServer channel의 target 상태 | `IZLinkClientServerRuntime.GetStatus` · `ObserveAsync` | 이 챕터 §2 |
+| pub/sub channel의 publisher 상태 | `IZLinkFanoutRuntime.GetStatus` · `ObserveAsync` | 이 챕터 §2 |
+| Location store 상태와 topology | `IZLinkLocationRuntimeQuery` | [10-location](10-location.ko.md) §4 |
+| 메시지 수신·dispatch·실패와 흐름 | 진단 level + `ActivitySource`·`ILogger` | 이 챕터 §3 |
+| CCU·큐 깊이 같은 수치 | `Meter` `zlink.framework` | [12-operations](12-operations.ko.md) §1 |
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
-  SRC["source: socket / mesh / location"] -->|"변화 발생"| FW["framework runtime"]
-  FW -->|"typed event로 전달"| H["IZLinkRuntimeEventHandler 등록<br/>(DI scope에서 호출)"]
+  RT["framework runtime"] -->|"snapshot · status stream"| ST["IZLink*Runtime<br/>GetStatus / ObserveAsync"]
+  RT -->|"trace · structured log"| DG["ActivitySource Zlink.Framework<br/>ILogger"]
+  RT -->|"계기"| MT["Meter zlink.framework"]
 ```
 
-## 2. 등록
+세 갈래는 소비 방식이 다르다. **상태 표면**은 지금 값을 읽거나 변화를 순서대로 받을
+때, **진단**은 개별 메시지가 어디서 어떻게 끝났는지 추적할 때, **meter**는 대시보드에
+올릴 수치를 모을 때 쓴다.
 
-`AddZLinkMonitoring(...)`은 **source 등록만** 한다. 실제 socket이나 mesh source는
-framework runtime에 올라와 있어야 한다.
+## 2. 상태 snapshot과 status stream
 
-```csharp
-builder.Services.AddZLinkMonitoring(monitor =>
-{
-    monitor.AddSocketEvents(
-        "profile.server",                        // channel + capability 형태
-        ZLinkSocketEventKind.ConnectionReady,
-        ZLinkSocketEventKind.Disconnected);
-
-    // RouteMesh 노드의 state/peer 전이 이벤트 — mesh 이름으로 등록
-    monitor.AddMeshNodeEvents("game.room");
-
-    // location store를 등록한 배포에서 — 자기 노드의 위치/연결 상태 변화 이벤트를 받는다
-    monitor.AddLocationRuntimeEvents("location-runtime", TimeSpan.FromSeconds(1));
-});
-
-// AddZLinkMonitoring은 source 등록만 한다 — event handler는 자동 등록되지 않으니 직접 DI로 등록한다.
-// framework는 이벤트마다 새 scope에서 handler를 resolve 하므로 AddScoped가 자연스럽다.
-builder.Services.AddScoped<
-    IZLinkRuntimeEventHandler<ZLinkSocketEvent>,
-    ProfileServerSocketMonitor>();
-builder.Services.AddScoped<
-    IZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent>,
-    LocationMonitor>();
-builder.Services.AddScoped<
-    IZLinkRuntimeEventHandler<ZLinkSpotEvent>,
-    StageNodeMonitor>();
-builder.Services.AddScoped<
-    IZLinkRuntimeEventHandler<ZLinkMeshRuntimeEvent>,
-    RoomMeshMonitor>();
-```
-
-- socket source 이름은 `channel + capability`(예: `profile.server`,
-  `profile.client`) 형태다. capability는 `server`, `client`, `publisher`,
-  `subscriber` 중 하나다.
-- location source 이름(예: `location-runtime`)은 event의 `SourceName` 으로만
-  쓰이는 자유 문자열이라 별도 infrastructure 등록 이름으로 검증하지 않는다.
-- location polling 주기는 **항상 명시**해야 한다(숨은 기본 주기 없음 — 운영
-  코드가 polling 비용을 설정에서 바로 읽도록).
-- socket source가 등록된 channel capability와 맞지 않으면 시작 단계 예외다.
-  location source는 자유 문자열이라
-  이 검증의 대상이 아니다.
-- `AddSocketEvents(...)`에 kind를 안 넘기면 그 source가 지원하는 모든 이벤트를
-  받는다.
-- `AddMeshNodeEvents(meshName)`의 이름은 `AddRouteMesh(meshName)`로 등록한 mesh와
-  일치해야 한다(시작 단계 검증). 이벤트는 kind 필터 없이 전부 전달되고, handler는
-  `ZLinkMeshRuntimeEvent.Identifier`(예: `zlink.runtime.mesh_node.peer_changed`)와
-  `Reason`/`State` 필드로 구분한다.
-
-## 3. event handler 작성
-
-`IZLinkRuntimeEventHandler<TEvent>`를 구현한 뒤 같은 타입으로 DI에 등록하면
-framework가 이벤트마다 새 DI scope를 열어 그 안에서 handler를 resolve 해 호출한다.
-그래서 `AddScoped`가 기본 선택이고, handler가 무상태라면 `AddSingleton`도 무방하다.
-`AddZLinkMonitoring(...)`은 source만 등록하며, event handler를 자동 스캔하거나
-자동 등록하지 않는다.
-
-> **handler가 던져도 messaging은 멈추지 않는다.** 이벤트 dispatch는 messaging 경로와 분리된
-> detached task(`monitoring-event-dispatch`)로 돌아, `HandleAsync`가 예외를 던져도 그 실패는
-> 격리되고 이후 메시지 처리는 정상 복구된다. 단 이 실패의 stderr 로그는 기본적으로 조용하고,
-> `ZLINK_DEBUG_FRAMEWORK_TASKS=1` 환경변수를 켰을 때만 `monitoring-event-dispatch` 마커로 남는다
-> (handler 문제를 추적할 땐 이 변수를 켜고 그 마커로 grep 한다).
-
-### socket
+상태 표면은 모두 같은 모양이다 — `GetStatus(name)`이 immutable snapshot 한 장을,
+`ObserveAsync(name, ct)`가 그 이후 변화를 순서대로 준다.
 
 ```csharp
-public sealed class ProfileServerSocketMonitor(ILogger<ProfileServerSocketMonitor> logger)
-    : IZLinkRuntimeEventHandler<ZLinkSocketEvent>
+var fanout = app.Services.GetRequiredService<IZLinkFanoutRuntime>();
+
+var status = fanout.GetStatus("user.events");   // 지금 값 한 장
+if (!status.IsReady)
+    logger.LogWarning("fanout not ready: {Channel} {State}", status.ChannelName, status.State);
+
+await foreach (var update in fanout.ObserveAsync("user.events", cancellationToken: ct))
 {
-    public ValueTask HandleAsync(ZLinkSocketEvent @event, CancellationToken ct)
-    {
-        switch (@event.Event)
-        {
-            case ZLinkSocketEventKind.ConnectionReady:
-                logger.LogInformation("socket ready: {Source} {Remote}",
-                    @event.SourceName, @event.RemoteAddr);
-                break;
-            case ZLinkSocketEventKind.Disconnected:
-                logger.LogWarning("socket disconnected: {Source} {Remote}",
-                    @event.SourceName, @event.RemoteAddr);
-                break;
-        }
-        return ValueTask.CompletedTask;
-    }
+    // publisher가 붙고 빠질 때마다 Sequence 순서로 도착한다.
+    logger.LogInformation("publishers={Count} state={State} seq={Seq}",
+        update.ReadyPublisherCount, update.State, update.Sequence);
 }
 ```
 
-socket event는 backend의 native event code를 노출하지 않고 framework가 정의한
-event kind와 endpoint·routing identity만 전달한다.
-
-### mesh
+ClientServer channel도 같다. `IZLinkClientServerRuntime`은 그 channel에서 이 process가
+맡은 역할(`LocalRole`)과 select-one 후보인 target 목록을 함께 준다.
 
 ```csharp
-public sealed class RoomMeshMonitor(ILogger<RoomMeshMonitor> logger)
-    : IZLinkRuntimeEventHandler<ZLinkMeshRuntimeEvent>
-{
-    public ValueTask HandleAsync(ZLinkMeshRuntimeEvent @event, CancellationToken ct)
-    {
-        // peer 전이는 Reason("ready"/"disconnected" 등), 노드 전이는 State로 온다.
-        if (@event.PeerRid is { } peer)
-            logger.LogInformation("mesh peer: {Mesh} {Peer} {Reason}",
-                @event.MeshName, peer, @event.Reason);
-        else if (@event.State is { } state)
-            logger.LogInformation("mesh state: {Mesh} {State}", @event.MeshName, state);
-        return ValueTask.CompletedTask;
-    }
-}
+var clientServer = app.Services.GetRequiredService<IZLinkClientServerRuntime>();
+var channel = clientServer.GetStatus("profile");
+
+foreach (var target in channel.Targets)
+    logger.LogInformation("target {Node} weight={Weight} state={State} reason={Reason}",
+        target.NodeRid, target.Weight, target.State, target.UnavailableReason);
 ```
 
-mesh 이벤트는 polling 합성이 아니라 MeshNode runtime의 순서 있는 이벤트
-스트림([12-operations](12-operations.ko.md)의 `IZLinkRouteMeshRuntime.ObserveAsync`)을
-그대로 event 버스에 올린 것이다 — `Sequence`가 mesh 안에서 단조 증가한다.
+세 가지 공통 규칙을 지킨다.
 
-### location
+- **`Sequence`는 그 이름 안에서 단조 증가한다.** 두 snapshot의 선후는 `Sequence`로
+  판단한다. `ObservedAt`은 표시용 시각이다.
+- **`IsReady`와 `State`를 함께 읽는다.** `ZLinkTopologyState`는 `Starting`·`Ready`·
+  `Degraded`·`Stopping`·`Stopped`·`Failed`이고, 준비되지 않은 이유는
+  `ZLinkTopologyReason`(`NoReadyPeer`, `LocationUnavailable`, `Draining` 등)으로 온다.
+- **stream은 hosted service에서 소비한다.** `ObserveAsync`는 취소될 때까지 열려 있으므로
+  `BackgroundService`처럼 host 수명에 묶인 자리에서 돌린다.
 
-location store를 등록한 배포([10-location](10-location.ko.md))에서, 자기 노드의 위치와 연결 상태
-보기(활성 peer, 연결 상태, store 상태)가 바뀔 때 이벤트가 온다.
+`IZLinkFanoutRuntime`은 자동 구독으로 등록한 channel만 조회할 수 있다. 그 밖의 이름을
+넘기면 `ZLinkConfigurationException`이다.
 
-```csharp
-public sealed class LocationMonitor(ILogger<LocationMonitor> logger)
-    : IZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent>
-{
-    public ValueTask HandleAsync(ZLinkLocationRuntimeEvent @event, CancellationToken ct)
-    {
-        switch (@event)   // 종류별 중첩 record — 타입 패턴으로 분기한다
-        {
-            case ZLinkLocationRuntimeEvent.TopologyChanged topology:
-                // 서버가 추가/제거되어 활성 peer 구성이 바뀌었다
-                logger.LogInformation("topology: {Count} entries", topology.Topology.Count);
-                break;
-            case ZLinkLocationRuntimeEvent.StoreFailure failure:
-                // store가 죽었다 — 기존 연결은 유지되지만 새 위치 반영이 멈춘다
-                logger.LogWarning("location store unavailable: {Source}", failure.SourceName);
-                break;
-            case ZLinkLocationRuntimeEvent.StoreRecovered:
-                logger.LogInformation("location store recovered");
-                break;
-        }
-        return ValueTask.CompletedTask;
-    }
-}
-```
-
-event 종류는 enum이 아니라 **중첩 sealed record**다. `switch (@event)`에 타입
-패턴을 쓰고, 각 종류의 데이터(`Topology`, `Status` 등)는 해당 record에만 있다.
-종류는 `StatusChanged` / `TopologyChanged` / `ServiceSummaryChanged` /
-`StoreFailure` / `StoreRecovered` **5종 고정**이다. 하부 raw monitor가 없어
-framework가 `interval` 주기로 runtime query 결과를 읽어 직전 값과 비교해 합성한다.
-store가 죽어도 이 source는 죽지 않는다 — 조회 실패는 `StoreFailure` 이벤트 한
-번으로 강등되고, 복구되면 `StoreRecovered`가 온다.
-
-### spot
-
-spot의 timer handler 실패는 polling source를 별도로 등록하지 않아도 발생 시점에
-provider-neutral runtime event로 전달된다. SpotNode의 state·peer 상태는 중복된
-spot 전용 projection을 만들지 않고 `AddMeshNodeEvents(...)`와
-`IZLinkRouteMeshRuntime` snapshot을 사용한다.
-
-```csharp
-public sealed class StageNodeMonitor(ILogger<StageNodeMonitor> logger)
-    : IZLinkRuntimeEventHandler<ZLinkSpotEvent>
-{
-    public ValueTask HandleAsync(ZLinkSpotEvent @event, CancellationToken ct)
-    {
-        switch (@event)   // timer failure 두 종류만 provider-neutral event로 받는다.
-        {
-            case ZLinkSpotEvent.TimerHandlerFailed failed:
-                logger.LogError("spot timer failed: {Source} {Timer} {Handler} {Exception}",
-                    failed.SourceName,
-                    failed.Diagnostic.TimerName,
-                    failed.Diagnostic.HandlerType,
-                    failed.Diagnostic.ExceptionType);
-                break;
-            case ZLinkSpotEvent.TimerStoppedAfterUnhandledException stopped:
-                logger.LogError("spot timer stopped: {Source} {Timer}",
-                    stopped.SourceName, stopped.Diagnostic.TimerName);
-                break;
-        }
-        return ValueTask.CompletedTask;
-    }
-}
-```
-
-spot event는 `TimerHandlerFailed`, `TimerStoppedAfterUnhandledException` **2종 고정**이다.
-timer 실패는 polling 주기를 기다리지 않고 발생 시점에 즉시 발행된다.
-timer 정책은 [06-spot](06-spot.ko.md) §3을 참고한다.
-
-## 4. 자주 막히는 곳
-
-- **이벤트가 안 온다** → `AddZLinkMonitoring`은 source 등록만 한다. 해당 source가
-  `IZLinkRuntimeEventHandler<TEvent>` 구현체가 DI에 등록됐는지 확인한다.
-- **자동 연결 상태를 받고 싶다** → `location-runtime` source의 이벤트
-  (`AddLocationRuntimeEvents`)를 받거나, 시점 조회는 location runtime query를 쓴다
-  ([10-location](10-location.ko.md) §3).
-- **health/metric endpoint를 기대한다** → `AddZLinkMonitoring(...)`은 socket,
-  mesh, location runtime event source를 등록할 뿐 HTTP endpoint를 만들지 않는다.
-  health check 나 metric은 이벤트와 runtime query를 읽어 앱이 직접 노출한다
-  ([10-location](10-location.ko.md) §3).
-- **등록되지 않은 메시지를 알고 싶다** → `ConfigureDispatch().Diagnostics`의 level을
-  `Errors` 이상으로 설정하고 application의 `ILogger` 또는 `ActivitySource` exporter를
-  확인한다. Request 실패는 error reply로 돌아가며, send 실패는 diagnostic record로
-  확인할 수 있다. Publish는 subscriber별 결과를 확인하지 않으므로 target별 record를
-  만들지 않는다.
-- **handler payload의 정확한 필드** → 가이드는 자주 쓰는 필드만 보였다. 전체는
-  [spec/aspnet-core-monitoring](../../../common/spec/server/languages/dotnet/01-system-structure.ko.md) 참고.
-
-## 5. 메시지 흐름 추적
+## 3. 메시지 흐름 추적
 
 메시지 흐름 추적은 메시지의 수신, handler 전달과 terminal 결과를 기록한다.
 `CorrelationId`는 한 request와 reply를 연결하고, `FlowId`는 그 request가 시작한
@@ -299,12 +135,33 @@ trace나 count를 만들지 않는다.
 [메시지 흐름 추적](../../../common/spec/26-message-flow-tracing.ko.md)과
 [Flow 상관관계](../../../common/spec/27-flow-correlation.ko.md)를 참고한다.
 
-## 6. 더 보기
+## 4. 자주 발생하는 문제
 
-- 이 챕터 계약의 실행 검증 예문(monitoring options/event/handler/publisher): [13-interface-catalog](13-interface-catalog.ko.md) §7 — 검증 클래스 `EventingContracts`
+- **runtime event를 DI handler로 받고 싶다** → 그런 표면은 없다. 상태 변화는
+  `ObserveAsync` stream으로 받고(§2), 개별 메시지의 처리 결과는 진단으로 본다(§3).
+- **`ObserveAsync`가 아무것도 주지 않는다** → 그 이름에 변화가 없으면 stream도 조용하다.
+  현재 값이 필요하면 `GetStatus`로 snapshot을 먼저 읽고 stream을 이어 받는다.
+- **자동 연결 상태를 보고 싶다** → location store를 등록한 배포에서는
+  `IZLinkLocationRuntimeQuery`로 store 상태와 topology를 조회한다
+  ([10-location](10-location.ko.md) §4).
+- **health/metric endpoint를 기대한다** → framework는 HTTP endpoint를 만들지 않는다.
+  readiness는 `IZLinkFrameworkRuntime.IsReady`를 앱의 기존 endpoint에 연결하고
+  ([12-operations](12-operations.ko.md) §4), 수치는 meter `zlink.framework`를 앱의
+  수집 파이프라인에 등록해 노출한다([12-operations](12-operations.ko.md) §1).
+- **등록되지 않은 메시지를 알고 싶다** → `ConfigureDispatch().Diagnostics`의 level을
+  `Errors` 이상으로 설정하고 application의 `ILogger` 또는 `ActivitySource` exporter를
+  확인한다. Request 실패는 error reply로 돌아가며, send 실패는 diagnostic record로
+  확인할 수 있다. Publish는 subscriber별 결과를 확인하지 않으므로 target별 record를
+  만들지 않는다.
+- **Spot timer handler 실패를 보고 싶다** → 진단 level `Errors` 이상에서 dispatch 오류로
+  기록된다. timer 정책은 [06-spot](06-spot.ko.md) §6을 참고한다.
+
+## 5. 관련 문서
+
+- 이 챕터 계약의 실행 검증 예문: [13-interface-catalog](13-interface-catalog.ko.md) §7 — 검증 클래스 `EventingContracts`
 - 정식 계약: [spec/aspnet-core-monitoring](../../../common/spec/server/languages/dotnet/01-system-structure.ko.md)
 - location 운영 조회: [10-location](10-location.ko.md)
-- 런타임 메트릭·drain 상태 관측: [12-operations](12-operations.ko.md)
+- 런타임 메트릭·mesh 상태·drain 관측: [12-operations](12-operations.ko.md)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

@@ -8,7 +8,7 @@
 > [Topology exact interface](../../../common/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md)가 다룬다. 이
 > 챕터는 그 표면을 실제로 어떻게 등록하고 호출하는지 사용법 중심으로 다룬다.
 
-channel messaging은 framework의 가장 기본 축이다. 세 가지 상호작용을 다룬다.
+channel messaging은 framework의 가장 기본 축이다. 다음 상호작용을 다룬다.
 
 - **request/response** — 보낸 뒤 응답을 기다리는 1:1 호출, 예: 가격 조회 (DEALER → ROUTER)
 - **one-way send** — 던지고 끝인 단방향 명령, 예: 캐시 무효화 통지 (DEALER → ROUTER)
@@ -29,7 +29,7 @@ flowchart LR
   CL -->|"Publish(topic): 여러 곳에"| SUB["구독자 1 · 2 · ... · N"]
 ```
 
-## 0. gRPC를 쓰던 웹 서비스라면
+## 0. gRPC를 대체하는 용도
 
 channel messaging은 일반 웹·마이크로서비스 백엔드에서 **서비스 간 gRPC를 대체**하는
 용도로 쓴다. 서비스마다 host:port를 알리거나 앞단에 gateway·로드밸런서를 둘 필요 없이,
@@ -46,7 +46,7 @@ channel messaging은 일반 웹·마이크로서비스 백엔드에서 **서비�
 | Interceptor | handler filter | [filter](#5-filter--공통-처리) |
 | Deadline | request timeout | [outbound 호출](#4-outbound-호출) |
 
-호출 경로에서 달라지는 지점은 하나다. gRPC는 stub이 만든 요청을 L7 로드밸런서나 service
+호출 경로는 다음 지점에서 갈린다. gRPC는 stub이 만든 요청을 L7 로드밸런서나 service
 mesh sidecar가 받아 scale-out된 서버 중 하나로 보내지만, ZLink는 application이 논리 channel
 이름으로 요청하면 framework runtime이 연결된 서버 runtime 중 하나를 직접 고른다. 그래서
 application 코드에 남는 것은 endpoint나 프록시 설정이 아니라 **channel 이름과 handler**다.
@@ -77,7 +77,7 @@ var placed = await client
 ```
 
 > 배치 구조·호출 경로·인프라 대응을 gRPC 스택과 나란히 놓고 보려면
-> [14-alternative](14-alternative.ko.md)가 그 비교를 다룬다. 이 챕터는 그 판단이 끝난
+> [17-alternative](17-alternative.ko.md)가 그 비교를 다룬다. 이 챕터는 그 판단이 끝난
 > 뒤의 사용법을 다룬다.
 
 ## 1. channel 종류
@@ -86,9 +86,9 @@ var placed = await client
 이름으로 호출 대상을 고르는 서버 간 연결 단위다. 그 이름을 `ChannelName`이라 하고,
 이름을 등록한 node 중 하나가 요청을 받는다.
 
-"channel"이라는 이름을 쓰는 등록은 셋이다. 모두 `ChannelName`을 사용하지만, 지원하는
+"channel"이라는 이름을 쓰는 등록은 아래와 같다. 모두 `ChannelName`을 사용하지만, 지원하는
 메시징 방식과 소켓을 공유하는지가 다르다. 여기서 **MeshNode**는 한 process가 하나
-가지는 서버 간 연결의 기초 단위이며, route mesh channel은 그 소켓 위에 이름만 얹는다.
+가지는 서버 간 연결의 기초 단위이며, route mesh channel은 그 소켓 위에 이름만 추가한다.
 
 | 종류 | 등록 | 소켓 | 연결 패턴 |
 | --- | --- | --- | --- |
@@ -127,7 +127,7 @@ flowchart LR
 ```
 
 상자는 소켓이 아니라 이름으로 묶인 그룹이다. `orders`를 호출하면 select-one이 그 상자
-안의 A1·A2 중 하나를 고르고, channel을 열 개 더 등록해도 node B의 소켓은 하나다.
+안의 A1·A2 중 하나를 고르고, channel을 열 개 더 등록해도 node B의 소켓은 늘지 않는다.
 
 ### 1.2 ClientServer channel — channel별 독립 runtime
 
@@ -164,7 +164,7 @@ channel에 모두 참여해도 각 channel runtime이 Z와의 연결을 따로 �
 (`tictactoe.api` ClientServer channel)을 Game Spot 생성(MeshNode의 Object role)과
 분리하는 이유다([02-getting-started §7](02-getting-started.ko.md)).
 
-### 1.3 pub/sub은 두 갈래다
+### 1.3 pub/sub의 두 갈래
 
 [Spot](03-concepts.ko.md#2-spot--상태를-소유하고-순서대로-처리하는-단위)은 id로 찾는 상태
 객체이고 자기 앞으로 온 일을 한 줄로 세워 처리한다. route mesh channel 위에서 그 Spot끼리
@@ -222,8 +222,8 @@ channel handler는 독립 class다. 서로 다른 요청이 동시에 실행될 
 
 > Framework는 HTTP 요청을 처리하지 않는다. `ASP.NET Core`의 endpoint·middleware가
 > HTTP를 맡고, channel handler는 그와 별개인 서버 간 메시지 dispatch 경로다. class를
-> 만들어 DI로 의존성을 받고 등록해 두면 runtime이 호출한다는 **작성 방식**이 controller
-> action과 닮았을 뿐이다.
+> 만들어 DI로 의존성을 받고 등록해 두면 runtime이 호출한다는 **작성 방식**만 controller
+> action과 닮았다.
 
 handler는 인터페이스를 구현하고, 결과를 반환값으로 돌려준다.
 
@@ -381,7 +381,7 @@ sequenceDiagram
 
 같은 `await` 규칙이 Spot·Actor handler에도 적용되지만, 그쪽은 turn이 handler 완료까지
 유지되어 동시 실행 범위가 다르다 —
-[06-spot §2.1](06-spot.ko.md#21-실행-모델--무엇이-무엇과-동시에-실행되나)이 다룬다.
+[06-spot §2.1](06-spot.ko.md#21-실행-모델--동시-실행-범위)이 다룬다.
 
 ## 3. handler를 channel에 노출하기
 
@@ -440,7 +440,7 @@ fanout channel의 구독 handler는 fanout builder의 `AddHandler<...>()`로 등
 `[ZLinkPacket("...")]` → ③ 둘 다 없으면 타입 이름(`Type.Name`). packet 이름은 **등록 시
 한 번** 확정되고, 호출 call마다 다시 지정하는 표면은 없다.
 
-### 잘못된 등록은 시작 단계에서 막힌다
+### 등록 오류의 시작 단계 검증
 
 다음은 첫 호출까지 미루지 않고 **host startup에서 즉시** `ZLinkConfigurationException`으로
 막는다.
@@ -524,7 +524,7 @@ public sealed class ProfileService(IZLinkFanoutClient publisher)
   topic을 handler context로 노출하지 않는다. 업무 분기가 필요하면 event type이나 등록한
   handler를 나눈다.
 - `Async(...)`/`Async<T>(...)`의 완료는 transport 위임까지만 보장한다 — remote handler
-  완료나 구독자 수신은 보장하지 않는다([pub/sub은 두 갈래다](#13-pubsub은-두-갈래다)).
+  완료나 구독자 수신은 보장하지 않는다([pub/sub의 두 갈래](#13-pubsub의-두-갈래)).
 - **pub/sub는 replay가 없다.** 구독자가 **아직 연결되기 전**에 publish 된 메시지나
   **연결이 끊긴 동안** 지나간 메시지는 재연결해도 오지 않는다. 놓치면 안 되는 이벤트는
   별도 재동기화(예: 재연결 후 현재 상태를 한 번 request)로 메운다.
@@ -564,7 +564,7 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-### 어디에 적용되나
+### 적용 범위
 
 filter는 **node가 받는 message**에 적용된다. Spot이나 actor처럼 수명을 가진 객체가
 소유한 handler에는 적용되지 않는다 — 그쪽은 자기 실행 순서와 수명을 그대로 쓰고,
@@ -700,9 +700,9 @@ app.MapPost("/admin/channels/orders/restore",
   descriptor row도 그대로 남는다(graceful drain).
 - 값의 범위는 `0..10000`, 기본값은 `100`이다. `Weight = 100`이 정상 serving 복귀다.
 - drain 신호 전파는 best-effort eventual 이다 — "drain 신호를 보냈다" 까지 보장하고, peer가
-  실제로 후보에서 뺀 시점은 모니터링(`PeerAdmissionChanged` 이벤트, [11-monitoring](11-monitoring.ko.md))
-  으로 확인한다. `drain`/`restore`라는 운영 어휘는 위처럼 앱 admin 레이어가 `Weight = 0`/`= 100`
-  에 이름을 붙여 노출하면 된다.
+  실제로 후보에서 뺀 시점은 peer 상태(`ZLinkPeerStatus.State`가 `Draining`)로 확인한다
+  ([11-monitoring](11-monitoring.ko.md) §2). `drain`/`restore`라는 운영 어휘는 위처럼 앱 admin 레이어가 `Weight = 0`/`= 100`
+  에 이름을 붙여 노출한다.
 
 같은 `Weight`를 등록 시점의 초기값으로도 설정한다.
 
@@ -725,7 +725,7 @@ options.Codecs.Use(ZLinkMessagePackCodec.Default);
 payload는 codec이 직렬화할 수 있는 DTO 여야 한다. root/요소 타입이
 abstract/interface 면 명시 codec 없이는 설정 오류가 난다.
 
-> **샘플에서 보기 — 언제 codec을 명시하나.** 실시간 게임이라 packet 크기와 인코딩 비용을
+> **샘플에서 보기 — codec을 명시하는 시점.** 실시간 게임이라 packet 크기와 인코딩 비용을
 > 줄여야 하는 [Bingo](../../../common/sample/bingo/README.ko.md)만
 > `Codecs.Use(ZLinkProtobufCodec.Default)`를 등록하고 `.proto`로 DTO를 정의한다. 나머지
 > [샘플](../../../common/sample/README.ko.md)은 codec을 등록하지 않고 기본값을 쓴다 —
@@ -933,7 +933,7 @@ public sealed class UserCacheRefreshedEventHandler
 }
 ```
 
-## 11. 자주 막히는 곳
+## 11. 자주 발생하는 문제
 
 - **handler가 안 불린다** → `AddHandlersFromAssemblyOf(...)`만으로는 노출되지
   않는다. `Channel(name).Server()`의 typed registration이 필요하다
@@ -941,14 +941,14 @@ public sealed class UserCacheRefreshedEventHandler
 - **`ZLinkConfigurationException`** → channel이 없거나 해당 역할이 없는
   경우. 등록을 확인한다.
 - **시작 시 예외** → channel 이름 중복, 같은 channel `kind + packet 이름` 중복,
-  client에 연결 경로 없음. fail-fast 다([잘못된 등록은 시작 단계에서 막힌다](#잘못된-등록은-시작-단계에서-막힌다)).
+  client에 연결 경로 없음. fail-fast 다([등록 오류의 시작 단계 검증](#등록-오류의-시작-단계-검증)).
 - **`ZLink` vs `Zlink`** → 서버 framework 타입은 전부 `ZLink`(대문자 L)다.
 - **handler 없는 packet으로 보냈을 때(런타임)** → **request는 error reply로 실패**(client는
   예외로 받음), **send는 조용히 drop** 된다. drop 은 호출자에게 reply가 없다는 뜻이고
   관측 흔적이 없다는 뜻은 아니다 — message flow 로그/observer를 켜 두면 dispatch 실패가
   marker(`no_handler` / `reply_error`·`drop`)로 남는다([11-monitoring](11-monitoring.ko.md)).
 
-## 12. 더 보기
+## 12. 관련 문서
 
 - 이 챕터 계약의 실행 검증 예문(client/handler/filter/codec):
   [13-interface-catalog](13-interface-catalog.ko.md) §1

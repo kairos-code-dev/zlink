@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: Monitoring — runtime 이벤트](11-monitoring.ko.md) | [다음: 인터페이스 카탈로그](13-interface-catalog.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: Monitoring — 상태 관측과 진단](11-monitoring.ko.md) | [다음: 인터페이스 카탈로그](13-interface-catalog.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 12. 운영 — 런타임 메트릭 · graceful drain · readiness
@@ -11,9 +11,9 @@
 > 소유한다.
 > 이 챕터는 운영 환경에서 실제로 무엇을 붙이고 무엇을 선언하는지 사용법 중심으로 다룬다.
 
-## 0. 무엇을 해주는가
+## 0. 제공하는 기능
 
-서비스를 운영에 올리면 [11-monitoring](11-monitoring.ko.md)의 이벤트 관측 외에 세 가지가
+서비스를 운영에 올리면 [11-monitoring](11-monitoring.ko.md)의 이벤트 관측 외에 다음 항목이
 더 필요하다.
 
 1. **메트릭** — CCU, 큐 깊이, 요청 지연 같은 수치를 대시보드로 본다.
@@ -95,10 +95,22 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m
 | `zlink.host.shutdown.duration` | Host `Shutdown` 시작부터 terminal result까지의 시간 |
 | `zlink.host.shutdown.forced` | Bounded teardown으로 끝난 host `Shutdown` 수 |
 
-## 2. Relocate — continuity를 다른 host로 이전
+## 2. Relocate — 상태를 유지한 채 다른 host로 옮기기
 
-라이브 User Spot과 Actor가 있는 host는 `RelocateAsync(...)`로 stateful object를 다른 Serving node에
-이전한다. Relocate는 host 전체 operation이며 host를 종료하지 않는다.
+`RelocateAsync(...)`는 이 host에서 살아 있는 User Spot·Instance Spot·Actor를 다른 Serving node로
+옮긴다. Host 전체를 대상으로 하는 operation이며, 이 호출 자체가 host를 종료하지는 않는다.
+
+**무엇이 유지되나.** 옮긴 뒤에도 client와 다른 node가 쓰던 것이 그대로 남는다는 뜻이다.
+
+| 유지되는 것 | 의미 |
+| --- | --- |
+| SpotId · ActorId와 `ObjectGeneration` | 호출하는 쪽이 쓰던 논리 ID가 바뀌지 않는다. 주소를 다시 알릴 필요가 없다 |
+| 아직 실행하지 않은 message와 accepted journal | seal 시점에 queue에 남아 있던 작업을 target에서 이어서 실행한다 |
+| timer 등록과 pending tick | 이름·주기·옵션·스케줄 커서를 함께 옮기므로 target에서 다시 등록하지 않는다 |
+| application state | factory에 등록한 relocation adapter의 `CaptureAsync`·`RestoreAsync`로 옮긴다 |
+| bound STREAM session route | client session은 그대로 두고 route가 새 owner를 가리키도록 바꾼다 |
+
+절차는 다음과 같다.
 
 1. Preflight에서 모든 stateful object, target capability·capacity와 Relocation Store를 확인한다. Eligible
    target이 없으면 source admission을 바꾸지 않고 `Blocked`로 끝난다.
@@ -121,7 +133,7 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m
 첫 relocation commit 전 failure는 source queue와 admission을 복원할 수 있다. 첫 commit 뒤에는 source로
 rollback하지 않고 target recovery를 계속하며 deadline을 넘기면 `ForceStopped`로 끝낸다.
 
-### 2.1 이전 단위는 execution mode가 정한다
+### 2.1 execution mode별 이전 단위
 
 같은 host 안에서도 무엇을 하나의 단위로 묶어 옮기는지가 Spot 종류와 execution mode에
 따라 다르다. `SpotWide` User Spot은 Spot과 member Actor가 하나의 aggregate이므로 함께
@@ -159,21 +171,29 @@ flowchart LR
 사용할 수 있다. Member Actor의 policy는 각 Actor factory가 따로 정한다. Instance Spot은
 Actor가 없으므로 Spot 하나가 그대로 이전 단위다.
 
-## 3. Shutdown — relocation 없는 bounded cleanup
+## 3. Shutdown — 옮기지 않고 종료하기
 
-Hosting stop은 `ShutdownAsync(...)`를 호출한다. `Shutdown`은 새 relocation을 시작하지 않고 진행 중인 work를
-deadline 안에서 terminal 상태로 만든 뒤 Entry·User·Instance Spot에 `OnClosingAsync`를
-`HostShutdown` reason으로 알린다. Callback 완료 뒤 scope, authority, session과 topology resource를 정리한다.
-Continuity가 필요한 배포 자동화는 hosting stop 전에 `RelocateAsync(...)` 결과를 확인해야 한다.
+`ShutdownAsync(...)`는 이 host를 종료한다. §2와 달리 **상태를 다른 node로 옮기지 않는다.**
 
-일반 request가 끝났다는 이유만으로 User·Instance Spot을 닫지 않는다. `Relocate`에서는 User Spot aggregate와
-Instance Spot을 target으로 relocation하며 logical ID와 `ObjectGeneration`을 유지한다. Missing Instance Spot의
-cold activation은 별도 address나 manager create가 아니라 global SpotId direct fluent call의 explicit
-Instance marker만 시작한다.
+호출하면 새 relocation을 시작하지 않고, 진행 중인 작업을 주어진 deadline 안에서 끝내거나
+실패로 확정한다. 그다음 Entry·User·Instance Spot에 `OnClosingAsync`를 `HostShutdown` reason으로
+알리고, 그 callback이 끝난 뒤 scope·authority·session·topology resource를 정리한다. deadline을
+주지 않으면 30초다.
 
-## 4. 명시 제어와 readiness
+여기서 정리되는 Spot의 state는 남지 않는다. 배포 자동화가 상태를 살려서 내려야 한다면 종료
+전에 `RelocateAsync(...)`를 먼저 호출하고 그 결과가 `Relocated`인지 확인한 뒤 이 호출로
+넘어간다(§4의 예제).
 
-`IZLinkFrameworkRuntime`은 host maintenance를 소유하는 DI singleton이다.
+Spot의 수명은 request와 무관하다. 일반 request가 끝났다는 이유만으로 User·Instance Spot을 닫지
+않는다. 없는 Instance Spot을 준비시키는 것도 마찬가지로 별도 address나 manager create가 아니라,
+SpotId direct 호출에 Instance intent를 붙였을 때만 시작한다([06-spot](06-spot.ko.md) §5).
+
+## 4. 운영 호출과 readiness 연결
+
+앞의 두 operation은 자동으로 일어나지 않는다. Application이 `IZLinkFrameworkRuntime`으로 직접
+호출한다. 이 interface는 host maintenance를 소유하는 DI singleton이다.
+
+배포에서 쓰는 순서는 "먼저 옮기고, 성공했으면 종료한다"다.
 
 ```csharp
 var runtime = app.Services.GetRequiredService<IZLinkFrameworkRuntime>();
@@ -195,8 +215,7 @@ else
 `PlannedMaintenance`는 source와 같은 application version의 target만 사용한다.
 `RollingUpdate`는 source보다 큰 `TargetApplicationVersion`을 요구하고 그 version과 정확히 같은 target만
 사용한다. Eligible target이 없으면 deadline까지 기다린 뒤 `Blocked/TargetUnavailable`을 반환한다.
-`ShutdownAsync(...)`의 `deadline == null`은 30초다. Cancellation은 해당 waiter만 끝내며 이미 시작한
-shared lifecycle operation은 계속 실행된다.
+Cancellation은 해당 waiter만 끝내며 이미 시작한 shared lifecycle operation은 계속 실행된다.
 
 Readiness는 host `IZLinkFrameworkRuntime.IsReady`와 업무에 필요한 component runtime의 readiness를 함께
 확인해 기존 HTTP endpoint에 연결한다.
@@ -220,7 +239,7 @@ Kubernetes 배포에 연결하면 다음 개념이 된다.
 `AddRouteMesh`로 등록한 MeshNode는 두 DI singleton으로 운영한다.
 
 **런타임 옵션 — `IZLinkRouteMeshRuntimeOptions`.** serving 중에 바꿀 수 있는 값은
-두 가지뿐이다. 나머지 소켓 옵션(HWM·timeout)은 시작 전 `ConfigureRouterSocket()`
+다음과 같다. 나머지 소켓 옵션(HWM·timeout)은 시작 전 `ConfigureRouterSocket()`
 전용이다.
 
 ```csharp
@@ -244,8 +263,8 @@ var ready = status.IsReady;
 
 await foreach (var meshEvent in meshRuntime.ObserveAsync("game.room", cancellationToken: ct))
 {
-    // state/peer 전이가 Sequence 순서로 온다 — 11-monitoring의
-    // AddMeshNodeEvents(mesh)는 이 스트림을 event 버스에 올린 것이다.
+    // state/peer 전이가 Sequence 순서로 온다 — 상태 표면의 공통 규칙은
+    // 11-monitoring §2를 참고한다.
 }
 ```
 
@@ -300,7 +319,14 @@ await foreach (var hostEvent in runtime.ObserveAsync(cancellationToken: ct))
 그대로 관측한다. Status의 relocation·termination 결과는 해당 operation의 terminal 결과와 같아야 한다.
 수치로 보려면 §1의 `zlink.host.*` 계기를 사용한다.
 
+## 7. 관련 문서
+
+- 이 챕터 계약의 실행 검증 예문: [13-interface-catalog](13-interface-catalog.ko.md) §7 — 검증 클래스 `FrameworkRuntimeContracts`
+- 정식 계약: [Host Relocate와 Shutdown](../../../common/spec/28-graceful-drain-handoff.ko.md) · [Runtime Metrics](../../../common/spec/25-runtime-metrics.ko.md)
+- 상태 관측과 진단: [11-monitoring](11-monitoring.ko.md)
+- relocation 경계를 application이 정하는 Spot: [06-spot §7](06-spot.ko.md#7-relocation을-시작해도-되는-시점-알리기)
+
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: Monitoring — runtime 이벤트](11-monitoring.ko.md) | [다음: 인터페이스 카탈로그](13-interface-catalog.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: Monitoring — 상태 관측과 진단](11-monitoring.ko.md) | [다음: 인터페이스 카탈로그](13-interface-catalog.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

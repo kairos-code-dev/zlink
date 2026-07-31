@@ -100,7 +100,7 @@ mesh.Objects().Server()
         factory => factory.RecreateOnRelocation());
 ```
 
-### 2.1 실행 모델 — 무엇이 무엇과 동시에 실행되나
+### 2.1 실행 모델 — 동시 실행 범위
 
 Spot에 들어오는 작업은 두 queue로 나뉘어 대기한다. Spot 자신에게 온 direct packet과
 timer는 **Spot queue**에, 그 Spot에 속한 Actor 앞으로 온 payload는 **Actor queue**에
@@ -157,7 +157,21 @@ Execution mode는 factory 등록에서 고정하며 실행 중에는 변경하�
 
 ## 3. User Spot 만들기
 
-새 ID가 필요하면 `Create`를 사용한다. Framework가 SpotId를 발급하고 eligible node를 선택한다.
+두 호출은 목적이 다르다. **`Create`는 새 Spot을 만드는 호출**이고, **`GetOrCreate`는 그
+ID로 쓸 Spot을 확보하는 호출**이다. 어느 쪽을 쓸지는 "이미 있으면 어떻게 되기를 바라는가"로
+정한다.
+
+| | `Create` | `GetOrCreate` |
+| --- | --- | --- |
+| 목적 | 새 Spot 하나를 만든다 | 그 ID의 Spot을 쓸 수 있게 한다 |
+| 결과 `State` | `Created` 또는 `Rejected` | `Existing` · `Created` · `Rejected` |
+| 이미 있을 때 | Framework가 SpotId를 새로 발급하므로 해당 없음 | `Existing`으로 끝나며 factory와 `OnCreateAsync`를 실행하지 않는다 |
+| SpotId | Framework가 발급한다 | caller가 지정한다 |
+| 실패하면 | 쓸 수 있는 Spot이 없다 | 쓸 수 있는 Spot이 없다 |
+
+**`Create` — 만들어졌는지가 곧 업무 결과일 때.** 방을 새로 여는 것처럼 생성 자체가 목적인
+자리에 쓴다. 결과는 만들어졌거나(`Created`) 생성 callback이 거절했거나(`Rejected`) 둘 중
+하나다.
 
 ```csharp
 ZLinkSpotCreateResult created = await spots
@@ -167,23 +181,31 @@ ZLinkSpotCreateResult created = await spots
     .Timeout(TimeSpan.FromSeconds(10))
     .Async(cancellationToken);
 
+if (created.State == ZLinkSpotCreateState.Rejected)
+    throw new InvalidOperationException("Game creation was rejected.");
+
 string spotId = created.Spot.SpotId; // 이후 메시징에는 전역 SpotId만 사용한다.
 ```
 
-Caller가 정한 ID를 사용하려면 `GetOrCreate`를 사용한다. 동시에 여러 caller가 같은 ID를 요청해도
-Framework는 하나의 생성 시도만 실행한다.
+**`GetOrCreate` — 그 ID를 쓸 수 있으면 되는 때.** "있으면 그걸 쓰고 없으면 만든다"가 필요한
+자리에 쓴다. 이미 있었는지(`Existing`)와 방금 만들었는지(`Created`)는 결과로 구분할 수 있고,
+둘 다 바로 쓸 수 있는 `SpotRef`를 준다. 여러 caller가 같은 ID를 동시에 요청해도 Framework가
+생성 시도를 한 번만 실행하므로 application이 경쟁을 직접 막지 않는다.
 
 ```csharp
 ZLinkSpotCreateResult result = await spots
     .GetOrCreate("lobby-eu-1", "lobby")
     .InMesh("play")
-    .Request(new CreateLobby("eu"))
+    .Request(new CreateLobby("eu")) // Existing으로 끝나면 이 요청은 전달되지 않는다.
     .Async(cancellationToken);
 
-if (result.State == ZLinkSpotCreateState.Rejected)
+switch (result.State)
 {
-    // 생성 callback이 거절했으므로 Ready Spot은 만들어지지 않았다.
-    throw new InvalidOperationException("Lobby creation was rejected.");
+    case ZLinkSpotCreateState.Existing: // 이미 있던 lobby를 그대로 쓴다.
+    case ZLinkSpotCreateState.Created:  // 이 호출이 만들었다.
+        break;
+    case ZLinkSpotCreateState.Rejected: // 생성 callback이 거절해 Ready Spot이 없다.
+        throw new InvalidOperationException("Lobby creation was rejected.");
 }
 ```
 
@@ -201,7 +223,7 @@ if (current is { } exact)
 ## 4. Spot 작성
 
 Spot handler는 [05-channel-messaging](05-channel-messaging.ko.md)의 channel handler와
-작성 규칙이 다르다. 주소·수명·실행·상태 네 가지가 모두 갈린다.
+작성 규칙이 다르다. 주소·수명·실행·상태가 모두 갈린다.
 
 | 구분 | channel handler | spot handler |
 | --- | --- | --- |
@@ -211,10 +233,81 @@ Spot handler는 [05-channel-messaging](05-channel-messaging.ko.md)의 channel ha
 | application state | handler field에 보관하지 않는다 | Spot 또는 member Actor가 소유한다 |
 
 Spot handler는 Spot class의 메서드가 아니라 그 Spot에 바인딩된 **별도 class**다. 첫
-제네릭 인자로 대상 Spot 타입을 받고, `HandleAsync`의 첫 인자로 그 Spot instance를 받는다
-([아래 예시](#41-spot과-actor는-각-activation-scope를-사용한다)). Framework는 Spot
-activation에서 handler를 한 번 만들고 Spot이 닫히거나 relocation될 때 정리한다. Actor
-handler도 같은 방식으로 해당 Actor activation에 묶인다.
+제네릭 인자로 대상 Spot 타입을 받고, `HandleAsync`의 첫 인자로 그 Spot instance를 받는다.
+Framework는 Spot activation에서 handler를 한 번 만들고 Spot이 닫히거나 relocation될 때
+정리한다. Actor handler도 같은 방식으로 해당 Actor activation에 묶인다.
+
+### 4.1 handler 종류와 구현할 interface
+
+무엇을 받느냐에 따라 구현할 interface가 다르다. 어느 것이든 `Configure()`에서 등록한
+것과 짝이 맞아야 한다.
+
+| 받는 것 | 구현할 interface | 등록 |
+| --- | --- | --- |
+| Spot 앞 one-way packet | `IZLinkSpotPacketHandler<TSpot, TMessage>` | `AddPacket<THandler>()` |
+| Spot 앞 request | `IZLinkSpotRequestHandler<TSpot, TRequest, TReply>` | `AddPacket<THandler>()` |
+| Logical Multicast 구독 이벤트 | `IZLinkSpotSubscriptionHandler<TSpot, TEvent>` | `AddSubscribe<THandler>(channelName, topic)` |
+| timer tick | `IZLinkSpotTimerHandler<TSpot>` | `AddTimer<THandler>(name, period, …)`(§6.1) |
+| member Actor 앞 one-way packet | `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | `AddActorPacket<THandler, TActor>()` |
+| member Actor 앞 request | `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | `AddActorPacket<THandler, TActor>()` |
+
+```csharp
+// Spot 앞 packet — 첫 인자가 대상 Spot instance다.
+public sealed class ChatHandler : IZLinkSpotPacketHandler<GameRoom, Chat>
+{
+    public ValueTask HandleAsync(
+        GameRoom spot,
+        Chat message,
+        CancellationToken cancellationToken)
+    {
+        spot.AppendChat(message.Text);  // Spot 상태를 직접 만진다. 락은 필요 없다.
+        return ValueTask.CompletedTask;
+    }
+}
+
+// Spot 앞 request — 반환값이 reply다.
+public sealed class GetRoomStateHandler
+    : IZLinkSpotRequestHandler<GameRoom, GetRoomState, RoomState>
+{
+    public ValueTask<RoomState> HandleAsync(
+        GameRoom spot,
+        GetRoomState request,
+        CancellationToken cancellationToken)
+        => ValueTask.FromResult(spot.Snapshot());
+}
+
+// 구독 이벤트 — AddSubscribe로 등록한 channel·topic으로 들어온다.
+public sealed class ScoreHandler : IZLinkSpotSubscriptionHandler<GameRoom, ScoreChanged>
+{
+    public ValueTask HandleAsync(
+        GameRoom spot,
+        ScoreChanged @event,
+        CancellationToken cancellationToken)
+    {
+        spot.ApplyScore(@event);
+        return ValueTask.CompletedTask;
+    }
+}
+
+// member Actor 앞 packet — Spot과 Actor를 함께 받는다.
+public sealed class PlaceMarkHandler
+    : IZLinkSpotActorSendHandler<GameRoom, PlayerActor, PlaceMark>
+{
+    public ValueTask HandleAsync(
+        GameRoom spot,
+        PlayerActor actor,              // 이 메시지를 받은 Actor다.
+        IZLinkMessageContext messageContext,
+        PlaceMark message,
+        CancellationToken cancellationToken)
+    {
+        spot.Place(actor.ActorId, message.Cell);
+        return ValueTask.CompletedTask;
+    }
+}
+```
+
+Actor 앞 request는 `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>`이며
+같은 인자에 반환값이 reply라는 점만 다르다.
 
 `Configure()`에서 handler를 등록하고 lifecycle callback에서 초기화와 정리를 수행한다.
 
@@ -261,7 +354,7 @@ public sealed class GameRoom(IZLinkSpotContext context) : IZLinkSpot
 `OnClosingAsync`의 reason은 explicit close, host shutdown, relocation out을 구분한다.
 Framework는 `Deadline`이 끝날 때 cleanup token을 취소한다.
 
-### 4.1 Spot과 Actor는 각 activation scope를 사용한다
+### 4.2 Spot과 Actor의 activation scope
 
 Framework는 Spot을 활성화할 때 DI scope를 하나 만들고 Spot 본체와 Spot handler의
 dependency를 이 scope에서 resolve한다. Scope는 Spot이 닫히거나 다른 node로 이전할
@@ -351,13 +444,22 @@ RoomState state = await spotClient
     .Async<RoomState>(cancellationToken);
 ```
 
-Instance Spot은 같은 호출 표면에 intent를 추가한다. type이 하나만 등록된 mesh에서는
-`InstanceSpot()`을 사용할 수 있다. 둘 이상이면 type을 명시한다.
+Instance Spot은 같은 호출 표면에 intent를 추가한다. `InstanceSpot(...)`의 인자는 **어느
+factory로 준비할지 고르는 stable type**이다. 그 mesh에 Instance Spot type이 여럿 등록되어
+있으면 반드시 명시하고, 하나뿐이면 생략할 수 있다.
 
 ```csharp
+// type이 여럿 등록된 mesh — 어느 factory로 만들지 stable type으로 지정한다.
 MatchResult match = await spotClient
     .RequestToSpot("bronze", new FindMatch(playerId))
-    .InstanceSpot("matchmaker") // 기존 instance가 없으면 Framework가 생성한다.
+    .InstanceSpot("matchmaker")   // 대상이 없으면 이 stable type의 factory로 준비한다.
+    .InMesh("matchmaking")        // 처음 배치할 mesh를 고른다.
+    .Async<MatchResult>(cancellationToken);
+
+// type이 하나만 등록된 mesh — 생략하면 Framework가 그 유일한 type을 고른다.
+MatchResult single = await spotClient
+    .RequestToSpot("bronze", new FindMatch(playerId))
+    .InstanceSpot()               // 대상 node에 등록된 유일한 type으로 준비한다.
     .InMesh("matchmaking")
     .Async<MatchResult>(cancellationToken);
 ```
@@ -371,60 +473,255 @@ MatchResult match = await spotClient
 
 ## 6. Timer와 worker
 
-Timer는 Spot context에 등록한다. Framework가 relocation 때 등록 정보와 pending tick을 옮기므로
-application adapter가 timer를 따로 저장하거나 target에서 다시 등록하지 않는다.
+둘 다 Spot context에서 시작하지만 목적이 다르다. **Timer는 주기적으로 실행할 작업**을
+등록하고, **worker는 오래 걸리는 단발 작업**을 Spot queue 밖에서 실행한다.
+
+### 6.1 Timer — 주기 실행
+
+Timer는 이름·주기·handler를 Spot context에 등록한다. tick은 그 Spot의 실행 queue에 들어가므로
+handler 안에서 Spot 상태를 그대로 만질 수 있다. 등록은 `IZLinkTimer`를 돌려주며, 이것으로
+나중에 취소한다.
 
 ```csharp
-await Context.AddTimer<HeartbeatHandler>(
-    "heartbeat",
-    TimeSpan.FromSeconds(1),
+// Spot 안에서 — 반환된 IZLinkTimer를 필드에 보관해 두었다가 취소에 쓴다.
+_gameTick = await Context.AddTimer<GameTickHandler>(
+    "game-tick",                 // 같은 Spot 안에서 유일한 이름이다.
+    TimeSpan.FromSeconds(1),     // 주기. 0 이하이면 ZLinkConfigurationException이다.
     new ZLinkTimerOptions
     {
-        OverrunPolicy = ZLinkTimerOverrunPolicy.SkipLateTicks
+        OverrunPolicy = ZLinkTimerOverrunPolicy.SkipLateTicks,
+        MaxCatchUpTicks = 1,
+        StopOnUnhandledException = false
     },
-    cancellationToken);
+    cancellationToken: cancellationToken);
+
+await _gameTick.CancelAsync();   // 더 이상 필요 없을 때. Spot이 닫히면 Framework가 함께 정리한다.
 ```
 
-긴 CPU 작업과 I/O는 Spot queue를 계속 점유하지 않도록 worker call로 실행할 수 있다. `Yield`는
-`SpotWide` User Spot 안의 Actor가 자기 queue 순서를 유지하면서 Spot 전체 실행권만 잠시 반환해야 할 때
-사용한다. Entry Spot과 `PerActor`에서는 허용되지 않는다.
+Handler는 Spot과 tick 정보를 받는 별도 class다.
 
-## 7. Application이 relocation 경계를 고르는 경우
+```csharp
+public sealed class GameTickHandler : IZLinkSpotTimerHandler<GameRoom>
+{
+    public ValueTask HandleAsync(
+        GameRoom spot,
+        ZLinkTimerTick tick,
+        CancellationToken cancellationToken)
+        => spot.TickAsync(cancellationToken);
+}
+```
 
-기본 `AnyTurnBoundary`는 Framework가 완료된 turn 사이에서 relocation을 시작한다. FPS round처럼
-application만 안전한 경계를 아는 Spot은 `ApplicationSignaled`를 등록한다.
+#### 예정 시각을 지난 tick의 처리 정책
+
+Spot queue에 작업이 쌓이거나 handler 실행이 길어지면 tick이 예정 시각보다 늦게 실행된다.
+이때 지나간 tick을 어떻게 처리할지가 `OverrunPolicy`다.
+
+| 값 | 예정 시각을 지났을 때 | 선택 기준 |
+| --- | --- | --- |
+| `SkipLateTicks`(기본) | 지나간 tick을 버리고 **현재 시각에 해당하는 tick 하나만** 전달한다 | 최신 상태만 의미 있을 때 — 상태 broadcast, 만료 검사 |
+| `CatchUpBounded` | 지나간 tick을 **최대 `MaxCatchUpTicks`개까지** 전달하고 초과분은 버린다 | tick 횟수 자체가 의미 있을 때 — 회복량 누적, 시뮬레이션 step |
+| `DelayNextTick` | 고정 주기를 유지하지 않고 **직전 tick 완료 시각 + 주기**로 다음 예정을 다시 계산한다 | 실행 간 최소 간격을 보장해야 할 때 — 외부 API polling |
+
+`MaxCatchUpTicks`는 `CatchUpBounded`에서만 쓰이며 기본값은 `1`이다. `0` 이하이면 등록 시점에
+`ZLinkConfigurationException`이다. 앞의 두 정책은 timer 시작 시각 기준의 고정 rate를 유지하므로, 한 tick이 늦게 실행되어도
+다음 tick의 예정 시각은 변하지 않는다.
+
+`ZLinkTimerTick`은 예정 대비 지연과 건너뛴 tick 수를 필드로 제공한다.
+
+| 필드 | 뜻 |
+| --- | --- |
+| `Name` | 등록할 때 준 이름 |
+| `ScheduledIndex` · `DeliveryIndex` | 몇 번째 예정 tick인지 · 실제 전달 순번. 두 값의 차이가 지금까지 버려진 tick 수다 |
+| `ScheduledAt` · `StartedAt` | 예정 시각 · 실제 실행 시작 시각 |
+| `ScheduledElapsed` · `StartedElapsed` | 타이머 시작 이후 경과(예정 기준 · 실제 기준) |
+| `Delay` | `StartedElapsed - ScheduledElapsed` — 이 tick의 예정 대비 지연 |
+| `SkippedTicks` | 이번 tick 직전에 건너뛴 tick 수 |
+| `Period` | 등록한 주기 |
+
+```csharp
+public ValueTask HandleAsync(GameRoom spot, ZLinkTimerTick tick, CancellationToken ct)
+{
+    if (tick.Delay > TimeSpan.FromMilliseconds(500))
+        spot.ReportLag(tick.Delay, tick.SkippedTicks); // 지연이 크면 부하를 보고한다.
+
+    return spot.TickAsync(ct);
+}
+```
+
+#### handler가 예외를 던졌을 때
+
+`StopOnUnhandledException`이 기본값 `false`면 그 tick만 실패로 끝나고 timer는 계속 돈다. `true`로
+두면 그 timer가 멈춘다 — 같은 실패가 매 주기 반복되는 상황을 막아야 할 때 쓴다. 어느 쪽이든
+실패는 진단으로 기록되므로 로그·trace에서 확인한다([11-monitoring](11-monitoring.ko.md) §3).
+
+#### relocation과 timer
+
+Spot이 다른 node로 옮겨갈 때 Framework가 timer 이름·handler type·주기·`ZLinkTimerOptions`·
+스케줄 커서·아직 실행하지 않은 tick을 함께 옮긴다. 그래서 relocation adapter가 timer를
+저장하거나 target에서 다시 등록하지 않는다([§7](#7-relocation을-시작해도-되는-시점-알리기)).
+
+### 6.2 Worker — 긴 작업을 Spot queue 밖에서 실행
+
+Spot의 실행 queue는 한 번에 하나만 실행한다. 무거운 계산이나 외부 I/O를 handler 안에서 그대로
+기다리면 그동안 그 Spot의 다른 작업이 전부 멈춘다. 이런 작업은 worker call로 위임한다.
+
+**선택 기준.** 위임할 작업이 **스레드를 점유하는 동기 코드**면 `RunCpuWorker`, **await로
+완료를 기다리는 비동기 코드**면 `RunIoWorker`다.
+
+| | `RunCpuWorker` | `RunIoWorker` |
+| --- | --- | --- |
+| 넘기는 것 | `Func<CancellationToken, TResult>` — 동기 계산 | `Func<CancellationToken, ValueTask<TResult>>` — 비동기 호출 |
+| 쓰는 자리 | 직렬화·압축·경로 탐색·이미지 처리처럼 CPU를 계속 쓰는 작업 | DB·파일·HTTP처럼 응답을 기다리는 작업 |
+
+```csharp
+// CPU worker — 동기 계산을 worker 스레드에서 실행한다.
+public sealed class BuildSnapshotHandler
+    : IZLinkSpotRequestHandler<GameRoom, BuildSnapshot, SnapshotReply>
+{
+    public async ValueTask<SnapshotReply> HandleAsync(
+        GameRoom spot,
+        BuildSnapshot request,
+        CancellationToken cancellationToken)
+    {
+        var board = spot.CopyBoard();          // Spot 상태는 turn 안에서 먼저 복사해 둔다.
+
+        var packed = await spot.Context
+            .RunCpuWorker(ct =>
+            {
+                ct.ThrowIfCancellationRequested();
+                return SnapshotCodec.Compress(board); // 무거운 동기 계산.
+            })
+            .Yield(cancellationToken);
+
+        return new SnapshotReply(packed);
+    }
+}
+```
+
+```csharp
+// I/O worker — 외부 저장소 호출을 worker에서 실행한다.
+public sealed class SaveScoreHandler
+    : IZLinkSpotRequestHandler<GameRoom, SaveScore, SaveScoreReply>
+{
+    public async ValueTask<SaveScoreReply> HandleAsync(
+        GameRoom spot,
+        SaveScore request,
+        CancellationToken cancellationToken)
+    {
+        var version = await spot.Context
+            .RunIoWorker(async ct => await _store.SaveAsync(request.Value, ct))
+            .Timeout(TimeSpan.FromSeconds(3))  // 이 worker 호출의 상한.
+            .Yield(cancellationToken);
+
+        return new SaveScoreReply(version);
+    }
+}
+```
+
+**결과를 받는 세 가지 종결자.**
+
+| 종결자 | Spot 실행권 | 쓰는 자리 |
+| --- | --- | --- |
+| `Yield(ct)` | 기다리는 동안 **반납한다** | 기본 선택. 그 사이 같은 Spot의 다른 작업이 실행된다 |
+| `Async(ct)` | 기다리는 동안 **유지한다** | 작업이 짧고, 기다리는 동안 Spot 상태가 바뀌면 안 될 때 |
+| `Submit(ct)` | 즉시 반환 | 결과를 기다리지 않고 제출만 할 때 |
+
+`Yield`를 쓰면 반납한 사이에 같은 Spot의 다른 작업이 실행되므로, **`Yield` 전후로 Spot 상태가
+바뀌었을 수 있다고 보고 코드를 쓴다.** 위 CPU worker 예제가 board를 먼저 복사하는 이유다.
+`Yield`는 `SpotWide` User Spot과 Instance Spot에서만 쓸 수 있다 — Entry Spot과 `PerActor`에는
+공유 Spot turn이 없어 반납할 실행권 자체가 없다.
+
+Worker 스레드 풀 자체(최소·최대 스레드, 유휴 시간, 대기열 길이)는 루트 옵션의 `Worker`에서
+정한다([16-options](16-options.ko.md) §2).
+
+## 7. Relocation을 시작해도 되는 시점 알리기
+
+Relocation은 Spot을 다른 node로 옮기는 절차다([03-concepts](03-concepts.ko.md#5-relocation--다른-node로-옮겨가기)).
+Framework는 source에서 새 turn 수락을 닫고, adapter의 `CaptureAsync`로 application state를
+직렬화하고, target에서 `RestoreAsync`로 복원한 뒤 authority를 commit한다. `CaptureAsync`를
+호출하는 시점을 relocation **safe point**라 하며, 이 시점을 누가 정하는지를 factory 등록에서
+고른다.
+
+| 모드 | safe point 결정 주체 | 적용 대상 |
+| --- | --- | --- |
+| `AnyTurnBoundary`(기본) | Framework — 완료된 turn과 다음 turn 사이 | 대부분의 Spot |
+| `ApplicationSignaled` | Application — `Defer()`를 호출한 turn의 끝 | 상태 일관성 단위가 여러 turn에 걸치는 Spot |
+
+**기본 모드가 성립하는 조건.** Framework는 실행 중인 turn을 중단하지 않는다. handler 하나와
+tick 하나는 완료된 뒤에야 `CaptureAsync`가 호출되므로, 상태 변경이 한 turn 안에서 끝나면 turn
+경계에서 직렬화한 state는 항상 일관된다.
+
+**기본 모드가 성립하지 않는 조건.** 상태 일관성 단위가 여러 turn에 걸쳐 있으면 turn 경계에서
+직렬화한 state가 불완전할 수 있다. FPS 라운드가 그런 예다 — 라운드는 시작 tick, 입력 packet
+다수, 정산 tick으로 이뤄지고 그 중간 state는 복원해도 라운드를 이어서 진행할 수 없다.
+Framework는 turn 경계는 알지만 application이 정의한 일관성 단위는 알지 못한다.
+`ApplicationSignaled`를 등록하면 Framework는 `CaptureAsync`를 스스로 호출하지 않고 application이
+신호한 시점까지 대기한다.
 
 ```csharp
 mesh.Objects().Server()
     .AddSpotFactory<GameRoom>(
         "game-room",
         factory => factory
-            .ExecutionMode(ZLinkUserSpotExecutionMode.SpotWide)
+            .ExecutionMode(ZLinkUserSpotExecutionMode.SpotWide) // 이 모드에서만 쓸 수 있다.
             .RelocationReadiness(
                 ZLinkSpotRelocationReadinessMode.ApplicationSignaled)
             .PreserveStateWith<GameRoomRelocationAdapter>());
 ```
 
-안전한 turn의 마지막 Framework operation으로 `Defer()`를 호출한다. 이동이 없거나 commit 전에
-중단되면 source에서 `Continued`, 이동했으면 target에서 `Relocated` callback을 받는다.
+Application은 상태가 일관된 turn에서 `Defer()`를 호출한다. 이 호출은 relocation을 그 자리에서
+수행하지 않는다. 현재 turn이 끝난 뒤 대기 중인 relocation이 있으면 Framework가 그 지점에서
+`CaptureAsync`를 호출한다.
 
 ```csharp
-Context.RelocationReady().Defer(); // 이 handler가 끝난 뒤 다음 turn 전에 경계를 연다.
+public sealed class RoundTickHandler : IZLinkSpotTimerHandler<GameRoom>
+{
+    public ValueTask HandleAsync(
+        GameRoom spot,
+        ZLinkTimerTick tick,
+        CancellationToken cancellationToken)
+    {
+        if (!spot.TryFinishRound())      // 라운드 진행 중이면 신호하지 않는다.
+            return ValueTask.CompletedTask;
 
+        // 라운드가 끝나 상태가 정산된 지점이다. 이 turn의 마지막 Framework 호출이어야 한다.
+        spot.Context.RelocationReady().Defer();
+        return ValueTask.CompletedTask;
+    }
+}
+```
+
+신호한 뒤 실제로 어떻게 됐는지는 Spot의 `OnRelocationReadyCompletedAsync`로 돌아온다. 이
+callback은 **두 경우 모두** 호출되므로, 다음 라운드를 여는 코드를 여기 한 곳에 둔다.
+
+```csharp
 public ValueTask OnRelocationReadyCompletedAsync(
     ZLinkSpotRelocationReadyCompletion completion,
     CancellationToken cancellationToken)
 {
-    StartNextRound(completion.Outcome);
+    // Continued — 대기 중인 relocation이 없었거나 commit 전에 중단됐다. 이 node에서 계속한다.
+    // Relocated — 이동이 끝났고, 이 callback은 target node의 새 instance에서 실행된다.
+    StartNextRound(completion.Outcome == ZLinkSpotRelocationReadyOutcome.Relocated);
     return ValueTask.CompletedTask;
 }
 ```
 
-`Defer()` 뒤 같은 turn에서 다른 Framework operation을 시작하면 오류다. `PerActor`, Entry Spot,
-Instance Spot과 기본 `AnyTurnBoundary`에서도 호출할 수 없다.
+다음 규칙을 지킨다.
 
-## 8. 다음 문서
+- **`Defer()`는 그 turn의 마지막 Framework 호출이다.** 이후 같은 turn에서 다른 Framework
+  operation(send, request, close 등)을 시작하면 오류다.
+- **한 turn에 한 번만 호출한다.** 같은 turn에서 두 번째 `Defer()`는 오류다.
+- **`SpotWide` User Spot 전용이다.** Entry Spot, `PerActor` User Spot, Instance Spot과 기본
+  `AnyTurnBoundary` 모드에서는 호출할 수 없다.
 
+## 8. 관련 문서
+
+- 이 챕터 계약의 실행 검증 예문: [13-interface-catalog](13-interface-catalog.ko.md) §3 — 검증 클래스 `SpotContracts`
 - Actor 생성과 Spot 이동: [Actor & Spot 호스팅](07-actor-spot.ko.md)
 - Session binding: [Session Actor Dispatch](08-actor-session.ko.md)
 - Location Store 설정: [Location](10-location.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../README.ko.md) | [이전: Channel Messaging — request · send · pub/sub](05-channel-messaging.ko.md) | [다음: Actor와 Spot](07-actor-spot.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

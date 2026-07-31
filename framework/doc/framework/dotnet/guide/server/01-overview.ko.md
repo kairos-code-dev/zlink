@@ -11,7 +11,7 @@
 > [spec/interfaces 목차](../../../common/spec/server/languages/dotnet/interfaces/README.ko.md) 문서가 다룬다. 두 표기가 어긋나면
 > spec이 우선이다.
 
-## 1. 무엇인가 — 한 줄 정의
+## 1. 한 줄 정의
 
 `ZLink Framework`는 **기존 메이저 프레임워크와 통합되는 실시간 메시징
 프레임워크**다. Spring 위에 Spring MVC가 웹 계층으로 올라가듯, `ASP.NET Core` 위에
@@ -21,7 +21,7 @@ ZLink Framework가 **실시간 메시징 계층**으로 올라간다. 별도 런
 이 계층은 서버 간 호출, pub/sub, 그리고 실시간 상태 단위를 제공한다. 서버 간
 호출과 pub/sub는 별도 **gateway나 전용 로드밸런서 없이** 논리 `channel name`만으로
 대상을 찾는다. 실시간 상태 단위는 `SPOT`(room · stage · zone), actor(연결·사용자
-하나를 대표하는 상태 객체), `STREAM`(외부 client 연결) 세 가지다(용어가 낯설면
+하나를 대표하는 상태 객체), `STREAM`(외부 client 연결)이다(용어가 낯설면
 [03-concepts](03-concepts.ko.md)의 개념 설명을 먼저 본다). 개발자는 HTTP/gRPC를
 쓰던 감각으로 **handler, client, filter**를 작성하고, 연결·위치 조회·라우팅·재연결·
 correlation은 framework가 처리한다.
@@ -31,11 +31,11 @@ correlation은 framework가 처리한다.
 > protocol(ZMP) + codec + 논리 channel/packet이라 서로 다른 언어로 구현된 서비스가
 > 같은 channel 위에서 상호 호출한다(예: room 서버 C++, API 서버 .NET·Java). 이
 > 가이드는 `.NET` 기준이며 `.NET` 구현을 reference implementation(기준 구현)으로
-> 삼는다. 자세한 cross-language 모델은 [14-alternative §2.1](14-alternative.ko.md)이 다룬다.
+> 삼는다. 자세한 cross-language 모델은 [17-alternative §2.1](17-alternative.ko.md)이 다룬다.
 
-## 2. 언제 필요한가
+## 2. 사용이 필요한 상황
 
-### 실시간 게임 서버를 만들 때
+### 실시간 게임 서버 구축
 
 **무엇이 어려운가.** 게임 서버에는 웹의 `ASP.NET Core`/Spring 같은 표준화된
 프레임워크가 없다. 우연이 아니라 이유가 있다.
@@ -116,7 +116,7 @@ flowchart TB
   쓰는 범용 동시성 단위이고, ZLink는 이걸 Spot(실행 격리 단위)과 Actor(도메인
   엔티티)로 나눴다. Orleans의 virtual actor·grain에 더 가까운 건 ZLink Actor가
   아니라 이 방식이 쓰는 **Instance Spot**이다. 세부 비교는
-  [14장 §7](14-alternative.ko.md)에서 다룬다.
+  [17장 §6](17-alternative.ko.md)에서 다룬다.
 
 **ZLink가 제공하는 것.** 어려움 하나하나에 기능이 대응한다.
 
@@ -131,12 +131,18 @@ flowchart TB
 그리고 위의 **네 방식이 전부 같은 선언 모델 위의 조합**이 된다. 방식마다 소켓부터
 다시 만들 필요가 없다.
 
-| 방식 | ZLink로는 |
-| --- | --- |
-| ① zone 분할 | zone = `AddRouteMesh` + 노드 지목 route mesh. 경계를 넘는 플레이어는 **actor 크로스노드 relocation**이 대신 넘겨준다([07](07-actor-spot.ko.md)) — [ZoneWorld](../../../common/sample/zoneworld/README.ko.md)가 이 방식 그대로다 |
-| ② lobby + room | 입장·매칭 = Entry Spot, 방 = room spot을 `GetOrCreate`로 — [Bingo](../../../common/sample/bingo/README.ko.md)가 이 방식 그대로다 |
-| ③ matchmaker + dedicated | 매칭은 channel handler(HTTP 등)로 구현한다. **판마다 새 프로세스를 띄우는 대신**, 매칭 결과로 `GetOrCreate`된 room spot에 client가 STREAM으로 접속한다 — [TicTacToe](../../../common/sample/tictactoe/README.ko.md)가 이 흐름(매칭 요청 → room·접속 정보 응답 → 이미 준비된 room spot에 접속)에 가장 가깝다 |
-| ④ actor 서비스 | **Instance Spot** — 엔티티 ID로 cold activation되는 spot이 여러 유저가 동시에 건드리는 엔티티 상태를 직렬로 처리한다(Redis 분산 락 없이) — [길드 서비스 예시](#여러-유저가-하나의-엔티티를-동시에-건드릴-때)에서 이어진다 |
+- **① zone 분할** — zone을 `AddRouteMesh` + 노드 지목 route mesh로 잡는다. 경계를 넘는
+  플레이어는 **actor 크로스노드 relocation**이 대신 넘겨준다([07](07-actor-spot.ko.md)).
+  [ZoneWorld](../../../common/sample/zoneworld/README.ko.md)가 이 방식 그대로다.
+- **② lobby + room** — 입장·매칭은 Entry Spot, 방은 `GetOrCreate`로 만드는 room spot이다.
+  [Bingo](../../../common/sample/bingo/README.ko.md)가 이 방식 그대로다.
+- **③ matchmaker + dedicated** — 매칭은 channel handler(HTTP 등)로 구현한다. **판마다 새
+  프로세스를 띄우는 대신** 매칭 결과로 `GetOrCreate`된 room spot에 client가 STREAM으로
+  접속한다. [TicTacToe](../../../common/sample/tictactoe/README.ko.md)가 이 흐름에 가장
+  가깝다 — 매칭 요청 → room·접속 정보 응답 → 이미 준비된 room spot에 접속.
+- **④ actor 서비스** — **Instance Spot**이 엔티티 ID로 cold activation되어, 여러 유저가
+  동시에 건드리는 엔티티 상태를 Redis 분산 락 없이 직렬로 처리한다.
+  [길드 서비스 예시](#하나의-엔티티에-대한-동시-접근)에서 이어진다.
 
 위 "기존 방식" 4분할 그림과 같은 자리에서, ZLink로는 각 방식이 이렇게 조립된다.
 
@@ -186,7 +192,7 @@ RouteMesh·Spot·Instance Spot 조합으로 구현한다. 방식이 바뀌어도
 > 현재 STREAM이 제공하는 transport는 TCP/TLS/WS/WSS이며, **비신뢰 전송(QUIC
 > datagram·WebTransport)은 지원 예정**이다. 다만 그런 게임에서도 매칭·로비·메타·
 > 소셜은 지금 이 네 방식으로 충분히 처리된다. 어디까지 되고 안 되는지는
-> [14장](14-alternative.ko.md) §4에서 다룬다.
+> [17장](17-alternative.ko.md) §4에서 다룬다.
 
 **게임 서버 엔진·서비스와는 어떻게 다른가.** 직접 만들지 않는 길로는 엔진과
 관리형 서비스가 있다. 이들이 제공하는 것을 영역별로 놓고 보면 ZLink의 자리가
@@ -276,7 +282,7 @@ public sealed class MarkNumberHandler
 실행되는 근거 샘플: [TicTacToe](../../../common/sample/tictactoe/README.ko.md) ·
 [Bingo](../../../common/sample/bingo/README.ko.md) · [GameQuest](../../../common/sample/event/gamequest.ko.md)
 
-### 여러 유저가 하나의 엔티티를 동시에 건드릴 때
+### 하나의 엔티티에 대한 동시 접근
 
 **왜 어려운가.** 길드처럼 **서로 다른 여러 유저가 같은 엔티티를 동시에 수정**해야
 하는 경우가 있다. 두 유저가 동시에 가입을 신청해 정원을 넘기거나, 두 기부가 동시에
@@ -360,7 +366,7 @@ await spots.RequestToSpot(guildId, new JoinGuildReq(userId))
 이 시나리오는 아직 실행 가능한 기준 샘플이 없다 — 위 코드는 GameQuest의
 `PlayerQuestSpot` 등록·호출 방식과 같은 API 표면을 길드에 적용한 것이다.
 
-### 기존 웹 서비스에 실시간 기능을 추가할 때
+### 기존 웹 서비스의 실시간 기능 추가
 
 **왜 복잡도가 올라가는가.** 대규모 웹 서비스의 표준 구성 — Spring/`ASP.NET Core` +
 Redis(캐시) + Kafka(이벤트) + LB/K8s — 은 **stateless 요청/응답**에 최적화되어
@@ -453,7 +459,7 @@ sticky LB, WebSocket 서버, pub/sub 경유, 분산 락, mesh/discovery — 다�
 줄이는 것은 그 사이에서 실시간 전달을 위해 직접 조립하던 **연결·라우팅·상태 관리의
 복잡도**다.
 
-**코드로 보면.** 분산 락과 sticky 라우팅이 있던 자리에 두 줄이 남는다.
+**코드로 보면.** 분산 락과 sticky 라우팅이 있던 자리에 다음 코드가 남는다.
 
 ```csharp
 // HTTP handler 안 — 주문 이벤트를 그 주문의 workflow Spot으로.
@@ -471,7 +477,7 @@ await actor.Context.BoundSession.Send(new OrderStatusChanged(orderId, status)).A
 실행되는 근거 샘플: [SupportChat](../../../common/sample/supportchat/README.ko.md) ·
 [DeliveryDispatch](../../../common/sample/deliverydispatch/README.ko.md)
 
-### 실시간 기능이 없어도 — 이벤트 중심 업무 처리를 단순화할 때
+### 이벤트 중심 업무 처리 단순화
 
 ZLink의 사용 지점은 실시간 기능만이 아니다. 주문 처리·정산·재고처럼 **같은 엔티티의
 이벤트를 순서대로, 중복 없이 처리해야 하는** 업무는 화면에 실시간 push가 하나도 없어도
@@ -583,7 +589,7 @@ Kafka(주황)가 처리 경로 **밖으로** 나가 전파·보존만 맡는다(
 **남는 것은 남는다.** 클라이언트 HTTP 진입은 여전히 stateless라 L7 LB/Ingress가 평소처럼
 API 서버에 분배하고(회색), 주문 상태는 여전히 DB에 저장한다. gRPC와 달리 이 HTTP 진입
 경로에 L7 분배 장치를 **추가로** 요구하지도 않는다(그 이유는
-[14장 §6.1](14-alternative.ko.md)이 다룬다).
+[17장 §5.1](17-alternative.ko.md)이 다룬다).
 
 **ZLink가 제공하는 것.** "같은 key를 한 곳에 모아 순서대로"를 log가 아니라 **owner
 routing**으로 풀면, 위 조각의 대부분은 조립할 필요 자체가 사라진다.
@@ -597,7 +603,7 @@ routing**으로 풀면, 위 조각의 대부분은 조립할 필요 자체가 �
 | offset·lag·재동기화 잡 운영 | 소비 파이프라인이 없으므로 해당 운영 항목 자체가 없다 | |
 
 **경계는 그대로다.** durable log가 진짜 필요한 요구 — 이벤트 replay, 장기 보존, 독립
-시스템들로의 광범위 fan-out — 는 Kafka가 맞고 그대로 남긴다([14장 §4](14-alternative.ko.md)).
+시스템들로의 광범위 fan-out — 는 Kafka가 맞고 그대로 남긴다([17장 §4](17-alternative.ko.md)).
 ZLink가 줄이는 것은 "엔티티 단위 순서 처리"만을 위해 log 파이프라인을 조립하던
 경우다. 순서와 정합성이 목적의 전부였다면, owner routing이 그 목적을 파이프라인 없이
 직접 달성한다.
@@ -625,9 +631,9 @@ public sealed class StartOrderWorkflowHandler :
 프레임워크 통합 + 직렬 실행 상태 단위 + 자동 연결 토폴로지를 한 몸에 담은
 조합**이 ZLink의 자리다.
 
-## 3. 표면과 구조 — 조금 더 들여다보기
+## 3. 표면과 구조
 
-### 호출 단위는 MeshName과 ChannelName
+### 호출 단위 — MeshName과 ChannelName
 
 ZLink Framework의 서버 간 호출은 **`MeshName`과 `ChannelName`**으로 대상을 고른다.
 application에서는 "`services` mesh의 `orders` channel로 요청을 보낸다"처럼 사용한다.
@@ -647,7 +653,7 @@ application에서는 "`services` mesh의 `orders` channel로 요청을 보낸다
 | 서버 주소 관리·연결 결정 | location store를 통해 현재 활성 endpoint 추적 |
 | 설정·로그·모니터링 | ASP.NET Core 설정·logging·hosted service와 통합 |
 
-### 기존 방식 대비 (체감 난이도)
+### 기존 방식 대비 체감 난이도
 
 같은 "서버 간 요청/응답"을 붙이는 코드량 차이다.
 
@@ -689,7 +695,7 @@ var reply = await client
     .Async<PriceReply>(ct);                                // 송신한 뒤 reply를 비동기로 기다린다.
 ```
 
-연결·설정 코드가 사라지고 남는 것은 handler와 channel 등록 몇 줄뿐이다.
+연결·설정 코드가 사라지고 남는 것은 handler와 channel 등록 몇 줄이다.
 
 ### 아키텍처 — 계층 구조와 등록 지점
 
@@ -708,7 +714,7 @@ var reply = await client
 +-----------------------------------------------------------+
 ```
 
-application이 짜는 코드는 맨 위 두 층뿐이다. Framework는 자신의 기능을
+application이 짜는 코드는 맨 위 두 층이다. Framework는 자신의 기능을
 **DI · hosted service · handler · attribute** 모델로 제공하고, 아래 두 층
 (`bindings/dotnet`, Core C API)은 framework 뒤에 숨는 backend로만 쓰인다 —
 public API에 직접 노출되지 않으며, 나중에 교체돼도 application 코드는 바뀌지
@@ -751,11 +757,11 @@ connection도 자동으로 새로 연결되거나 정리된다 — 설정 파일
 | --- | --- | --- |
 | `builder.Services.AddZLinkFramework(...)` | channel·SPOT·STREAM 선언 | [5장](05-channel-messaging.ko.md)~[9장](09-stream.ko.md) |
 | `options.AddRouteMesh(...)` / `AddFanoutChannel(...)` | RouteMesh·fanout 선언 | [5장](05-channel-messaging.ko.md) |
-| runtime event handler | monitoring event 관찰 | [11장](11-monitoring.ko.md) |
+| `IZLink*Runtime` status | 상태 관측과 진단 | [11장](11-monitoring.ko.md) |
 
 각 표면에서 정할 수 있는 옵션 전체와 기본값은 [16-options](16-options.ko.md)에 모아 두었다.
 
-### 무엇부터 쓸지 고르기
+### 도입 순서 고르기
 
 만들려는 것이 정해졌다면 아래 갈래로 시작 지점을 잡는다.
 
@@ -783,7 +789,7 @@ flowchart TD
 - **외부 게임·모바일 client** → STREAM(서버) + Stream Connector(client).
 - **연결 서버와 로직 서버 분리(재접속 이전성)** → session actor dispatch.
 
-실행되는 코드로 먼저 보고 싶다면 [15-samples](15-samples.ko.md)에서 가까운 샘플을 고른다.
+실행되는 코드로 먼저 보고 싶다면 [14-samples](14-samples.ko.md)에서 가까운 샘플을 고른다.
 
 ## 4. 개념 요약
 
@@ -854,7 +860,7 @@ endpoint와 membership 정보를 읽어 동적으로 연결한다.
 
 [10장 →](10-location.ko.md)
 
-### 통합 4축 한눈에
+### 통합 4축 요약
 
 ```mermaid
 flowchart LR
@@ -920,16 +926,20 @@ flowchart LR
 
 | 항목 | 값 |
 | --- | --- |
-| assembly | `Zlink.Framework`(계약·runtime), `Zlink.Framework.AspNetCore`(DI·hosted service 통합) |
-| namespace | `Zlink.Framework` / `Zlink.Framework.Contracts.*`, 등록 확장(`AddZLinkFramework`)은 `Zlink.Framework.AspNetCore` |
+| 필수 패키지 | `Systems.Zlink` · `Zlink.Framework` · `Zlink.Framework.AspNetCore` |
+| 선택 패키지 | `Zlink.Framework.Locations.Redis` · `Zlink.Framework.Codecs.Protobuf`·`.MessagePack` · `Zlink.HttpClient` |
+| 버전 | framework 계열은 0.9부터 배포한다. core binding과 HTTP client는 각자 버전 계열을 따른다 |
+| namespace | `Zlink.Framework`, `Zlink.Framework.Contracts.*` |
+| 등록 진입점 | `builder.Services.AddZLinkFramework(...)` — `Zlink.Framework.AspNetCore`가 제공한다 |
 | public 계약 | `Zlink.Framework.Contracts.*`와 `spec/interfaces/`(언어별 exact interface) |
-| 등록 진입점 | `builder.Services.AddZLinkFramework(...)` |
+
+설치 절차와 최소 예제는 [02-getting-started §1](02-getting-started.ko.md#1-설치)이 다룬다.
 
 client 측 Stream Connector는 별도 산출물 `Systems.Zlink.Stream.Connector`다. 서버
 framework와 독립적으로 배포되며, client application에서 TCP/TLS/WS/WSS 접속과 packet codec을
 담당한다.
 
-## 7. 누구를 위한 가이드인가 — 그리고 다루지 않는 것
+## 7. 가이드의 대상과 범위
 
 이 가이드는 runtime 내부 구조보다 channel, handler, SPOT, STREAM, location store를
 언제 골라 쓰는지에 초점을 둔다.
@@ -962,7 +972,7 @@ location store 모델로 공개 기능을 사용한다. 정식 public API 계약
 [spec/interfaces 목차](../../../common/spec/server/languages/dotnet/interfaces/README.ko.md)를, runtime 내부 구조를
 고치는 사람은 [internals/](../../internals/backend-dependency-policy.ko.md)를 같이 봐야 한다.
 
-## 8. 이름 표기 규칙 (혼동 주의)
+## 8. 이름 표기 규칙
 
 가이드 전체에서 다음 표기를 일관되게 쓴다.
 
@@ -988,7 +998,7 @@ location store 모델로 공개 기능을 사용한다. 정식 public API 계약
 `Async`, `Bind`, `AddRequestHandler` 등)는 spec 문서를 기준으로 확인한다. 세부
 필드까지 정확한 정식 정의가 필요하면 항상 spec 문서를 교차 참조한다.
 
-## 10. 이 가이드 읽는 순서
+## 10. 가이드 읽는 순서
 
 1. [02-getting-started](02-getting-started.ko.md) — 패키지부터 첫 동작 확인까지
 2. [03-concepts](03-concepts.ko.md) — 핵심 개념 (channel, 역할, DI)
@@ -998,13 +1008,13 @@ location store 모델로 공개 기능을 사용한다. 정식 public API 계약
 6. [08-actor-session](08-actor-session.ko.md) — session↔actor binding·dispatch, client push
 7. [09-stream](09-stream.ko.md) — 외부 client(STREAM) 서버 + Stream Connector
 8. [10-location](10-location.ko.md) — location store 기반 자동 연결과 운영 조회
-9. [11-monitoring](11-monitoring.ko.md) — runtime 이벤트 관찰
-10. [15-samples](15-samples.ko.md) — 실행되는 샘플로 확인하기
+9. [11-monitoring](11-monitoring.ko.md) — 상태 관측과 진단
+10. [14-samples](14-samples.ko.md) — 실행되는 샘플로 확인하기
 11. [16-options](16-options.ko.md) — 옵션 목록과 기본값, 무엇을 언제 바꾸나
-11. [13-interface-catalog](13-interface-catalog.ko.md) — 모든 계약 인터페이스를 코드로(ContractTests 검증)
-12. [14-alternative](14-alternative.ko.md) — **ZLink를 어디에 쓰나**(사용처·문제 신호·기술 선택 경계)
-13. [공통 샘플](../../../common/sample/README.ko.md) — 대표 업무 시나리오와 검증 기준
-14. [spec/interfaces 목차](../../../common/spec/server/languages/dotnet/interfaces/README.ko.md) — 정식 계약(인터페이스 카탈로그)
+12. [13-interface-catalog](13-interface-catalog.ko.md) — 모든 계약 인터페이스를 코드로(ContractTests 검증)
+13. [17-alternative](17-alternative.ko.md) — **ZLink를 어디에 쓰나**(사용처·문제 신호·기술 선택 경계)
+14. [공통 샘플](../../../common/sample/README.ko.md) — 대표 업무 시나리오와 검증 기준
+15. [spec/interfaces 목차](../../../common/spec/server/languages/dotnet/interfaces/README.ko.md) — 정식 계약(인터페이스 카탈로그)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

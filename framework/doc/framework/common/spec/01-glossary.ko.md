@@ -6,7 +6,7 @@
 > 이 문서는 `framework/doc/framework/common/spec/`의 공개 계약을 이해하는 데 필요한
 > 공통 domain term, 상태와 결과 이름을 설명한다.
 
-[스펙 작성 가이드](../../../../../doc/principal/documentation/spec-writing-guide.ko.md) ·
+[스펙 문서 작성 가이드](../../../../../doc/principal/documentation/spec-writing-guide.ko.md) ·
 [Spot 메시징](12-spot-messaging.ko.md)
 
 ## 표와 .NET 코드 예제를 읽는 방법
@@ -872,9 +872,9 @@ status나 result 값을 반환하지 않으며 target handler 실행이나 remot
 ### Backpressure
 
 송신 queue의 상한으로 송신 속도를 제한하는 흐름 제어다. Node는 상대별 송신 queue를
-가지며, 아직 상대가 가져가지 않은 message 수가 그 queue의 high-water mark에 닿으면 그
-상대로 가는 새 제출을 잠근다. 한도는 remote가 보내는 신호가 아니라 **자기 process 안의
-값**이다. 다만 remote가 느리면 connection의 흐름 제어가 전송 속도를 낮추고 그만큼 송신
+가지며, 아직 상대가 가져가지 않은 message가 차지하는 byte가 그 queue의 high-water mark에
+닿으면 그 상대로 가는 새 제출을 잠근다. High-water mark는 message 개수가 아니라 그 queue가
+보관하는 byte로 센다. 한도는 remote가 보내는 신호가 아니라 **자기 process 안의 값**이다. 다만 remote가 느리면 connection의 흐름 제어가 전송 속도를 낮추고 그만큼 송신
 queue도 비워지지 않으므로, remote의 지연은 별도 신호가 아니라 송신 대기로 전달된다.
 
 [One-way submit](05-async-execution-policy.ko.md#13-one-way-submit)이 비동기인 이유가 이
@@ -888,6 +888,19 @@ queue도 비워지지 않으므로, remote의 지연은 별도 신호가 아니�
 송신 경로나 queue의 capacity가 일시적으로 부족한 내부 상태다. Public terminal result가 아니며 Framework는
 family별 send timeout까지 capacity를 기다린다. Logical Multicast를 시작한 뒤에는 target별
 capacity 부족을 public 결과나 publish 전용 monitoring으로 집계하지 않는다.
+
+<a id="application-hwm"></a>
+### Application HWM
+
+Framework가 이미 수신했지만 application handler가 아직 처리를 끝내지 않은 payload의 byte 합계를
+제한하는 host 단위 값이다. Queue에서 기다리는 payload와 handler가 처리 중인 payload를 모두 센다.
+이 합계가 상한에 도달하면 Framework는 새 application message 수신만 멈춘다. 이미 받은 job과
+별도 Completion connection의 request reply·bounded Framework service control과 Core의 send-ready callback
+처리는 계속하므로 message를 버리지 않고 송신 측에
+[backpressure](#backpressure)가 전달된다.
+
+`HWM`은 high-water mark의 약자다. 이 문서에서 별도 범위를 붙이지 않은 Application HWM은 Core
+socket의 connection별 HWM과 다른 Framework host 전체 제한을 뜻한다.
 
 <a id="timed-out"></a>
 ### DeadlineExceeded

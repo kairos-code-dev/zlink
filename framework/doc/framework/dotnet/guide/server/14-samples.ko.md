@@ -1,8 +1,8 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: ZLink를 어디에 쓰나](14-alternative.ko.md) | [다음: 설정 — 옵션 목록 · 기본값 · 변경 시점](16-options.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: 인터페이스 카탈로그](13-interface-catalog.ko.md) | [다음: E2E 테스트 — client로 시스템 전체를 검증하기](15-e2e-testing.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# 15. 샘플 고르기 — 내 문제에 가까운 예제부터
+# 14. 샘플 고르기 — 내 문제에 가까운 예제부터
 
 > 각 샘플의 언어 중립 시나리오, 메시지 계약과 검증 기준은
 > [공통 sample 문서](../../../common/sample/README.ko.md)가 정의한다. 이 문서는 그중
@@ -26,7 +26,7 @@
 | 퀘스트·미션 진행 시스템 | [GameQuest](#7-gamequest--퀘스트-진행-시스템-구축) | 유실을 허용하는 대신 실시간성을 얻는 owner 처리 |
 | zone 분할 MMORPG와 운영 관제 | [ZoneWorld](#8-zoneworld--zone-분할-mmorpg와-운영-관제-구축) | 여러 노드에 무언가를 할 때 어떤 표면을 고르는가 |
 
-기능 쪽에서 거꾸로 고르려면 [01-overview의 선택 갈래](01-overview.ko.md#무엇부터-쓸지-고르기)를
+기능 쪽에서 거꾸로 고르려면 [01-overview의 선택 갈래](01-overview.ko.md#도입-순서-고르기)를
 먼저 본다.
 
 두 쌍은 서로 대비하도록 만들어져 있어 함께 보면 선택 기준이 분명해진다.
@@ -42,7 +42,7 @@
 **peer 연결을 location store에 맡기지 않고 endpoint를 직접 적는 유일한 샘플**이기도 하다. 다만 room과 actor가 지금 어느 node에 있는지는
 여기서도 Location Store가 해석한다 — 수동인 것은 **node 사이의 연결**이고, **object 위치
 조회**는 아니다. handler도 스캔 없이 구성 코드에서 직접 등록하는 유일한 샘플이라, framework가
-자동으로 해 주던 두 가지를 걷어낸 상태에서 나머지가 어떻게 맞물리는지 보기 좋다.
+자동으로 해 주던 부분을 걷어낸 상태에서 나머지가 어떻게 맞물리는지 보기 좋다.
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
@@ -114,7 +114,7 @@ flowchart LR
   classDef store fill:#fff3e0,stroke:#e65100,color:#bf360c
 ```
 
-역할은 넷이다. `Session`은 client 연결과 actor bind를, `Play`는 player actor와 room User
+`Session`은 client 연결과 actor bind를, `Play`는 player actor와 room User
 Spot을, `Api`는 인증과 매칭 요청을, `Matchmaking`은 level별 Matchmaker Instance Spot을
 맡는다. client는 **`Session` 서버 연결 하나만** 유지하고, 서버 간 연결은 공유 Location
 Store가 해석한다. `Session`·`Api`·`Play`는 각각 2개씩 띄워 gateway 구조에서도 scale-out이
@@ -138,7 +138,7 @@ payload는 이 샘플만 Protobuf다. 역할과 계약 수가 많은 gateway형 
 ## 4. SupportChat — 라이브 채팅 상담 시스템 구축
 
 고객이 상담을 요청하면 상담원이 배정되어 실시간으로 대화하는 시스템이다. 대화 한 건이
-conversation Spot 하나이고, 참여자·메시지 순서·typing 상태·종료 상태를 그 Spot이 소유한다.
+conversation Spot에 대응하고, 참여자·메시지 순서·typing 상태·종료 상태를 그 Spot이 소유한다.
 
 이 도메인의 기술적 어려움은 **상담원 한 명이 여러 고객을 동시에 응대**한다는 데서 나온다.
 고객은 대화 하나만 가지므로 자기 actor가 곧 그 대화의 참여자다. 상담원은 그럴 수 없다 —
@@ -373,7 +373,7 @@ framework/languages/dotnet/samples/run_samples.sh TicTacToe Bingo
 `run_samples.sh`는 서버 샘플 6개를 다룬다. 브라우저 UI가 필요한 ZoneWorld는
 `ZoneWorld/run_sample.sh`로 따로 실행한다.
 
-## 10. 더 보기
+## 10. 관련 문서
 
 - 샘플의 언어 중립 시나리오와 검증 기준: [공통 sample](../../../common/sample/README.ko.md)
 - `.NET` 샘플 디렉터리 구성: [samples/README](../../../../../languages/dotnet/samples/README.md)
@@ -382,5 +382,5 @@ framework/languages/dotnet/samples/run_samples.sh TicTacToe Bingo
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: ZLink를 어디에 쓰나](14-alternative.ko.md) | [다음: 설정 — 옵션 목록 · 기본값 · 변경 시점](16-options.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: 인터페이스 카탈로그](13-interface-catalog.ko.md) | [다음: E2E 테스트 — client로 시스템 전체를 검증하기](15-e2e-testing.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

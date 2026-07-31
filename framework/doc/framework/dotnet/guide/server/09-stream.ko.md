@@ -178,8 +178,14 @@ Profile profile = await connector
 Connector의 기본 typed codec은 JSON이다. Packet name override, push 대기, reconnect, heartbeat와
 bounded queue 설정은 [Stream Connector 가이드](../stream-connector/INDEX.ko.md)에서 설명한다.
 
-## 7. 다음 문서
+## 7. 관련 문서
 
+- 이 챕터 계약의 실행 검증 예문: [13-interface-catalog](13-interface-catalog.ko.md) §5 — 검증 클래스 `StreamContracts`
 - Session과 Actor binding: [Session Actor Dispatch](08-actor-session.ko.md)
 - Client connector 전체 사용법: [Stream Connector](../stream-connector/INDEX.ko.md)
 - Location Store와 자동 연결: [Location](10-location.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../README.ko.md) | [이전: Session과 Actor binding](08-actor-session.ko.md) | [다음: Location — 자동 연결과 Object 위치](10-location.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

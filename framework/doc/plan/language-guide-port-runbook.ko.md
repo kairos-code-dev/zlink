@@ -486,9 +486,19 @@ kotlin은 Java 런타임을 공유하므로 **다른 지점만 쓰고 나머지�
 대응 구간에는 거절 경로가 없다. 그래서 샘플 인용을 위에 두고 "최소 형태로 보면 이렇다"로
 교육용 예제를 이어 붙인다.
 
+**게이트 3(산문 중립성)도 스크립트로 돌렸다.** 공통 12장의 탭 밖 산문 2,415줄에서 .NET
+이름 14자리를 찾아 역할 이름으로 바꿨다 — `[ZLinkRequest]` 계열 attribute 표기,
+`ZLinkConfigurationException`, `ZLinkTimerTick` · `ZLinkTimerOptions`, `ZLinkMessage`,
+`ZLinkPeerStatus.State`, `ZLinkProtobufCodec`, `ZLinkFrameworkRuntimeState`다.
+
+산문이 이런 이름을 부르면 나머지 네 언어 독자에게는 없는 이름이 된다. 특히 host
+lifecycle 상태처럼 **값 이름의 표기까지 언어를 따르는 자리**(PascalCase ↔
+SCREAMING_SNAKE)는 이름을 적는 대신 뜻을 적고 "표기는 언어를 따른다"를 덧붙였다.
+
 | 남은 일 | 규모 |
 | --- | --- |
 | ZoneWorld 샘플 구현 | cpp · java · kotlin. 문서가 아니라 코드 작업이다 |
+| 게이트 4 · 6 | 산문·스펙 대조와 호출 형태 대조. 스크립트로 못 대신하는 사람 검수다 |
 
 **병행 트랙 상태.** 사이트는 정본 트리를 docs root로 쓰도록 구성했고 가이드 장의 빌드
 경고가 0이다. 체커는 정본 트리 전체를 보며 탭 언어 완전성을 검사한다. CI는 framework
@@ -545,13 +555,18 @@ kotlin은 Java 런타임을 공유하므로 **다른 지점만 쓰고 나머지�
 **산문은 아무도 대조하지 않는다.** dotnet 검수에서 나온 "제거된 API를 챕터째 문서화"가
 정확히 산문 층위 결함이었다. 챕터마다 소유 스펙 문서를 지정하고 그것과 맞춘다.
 
-1·2·5·7은 스크립트로 돌린다.
+1·2·3·5·7은 스크립트로 돌린다.
 
 | 게이트 | 스크립트 |
 | --- | --- |
 | 1 탭 완전성 · 2 스니펫 해석 | `doc/site/scripts/check_doc_tabs.py framework` |
+| 3 산문 중립성 | `doc/site/scripts/check_prose_neutrality.py` |
 | 5 식별자 대조 | `doc/site/scripts/check_guide_identifiers.py` |
 | 7 링크·앵커 | `doc/site/scripts/check_doc_links.py` |
+
+3번은 **탭 밖 산문만** 본다. 코드 펜스와 탭 블록은 언어별이므로 정상이고, 그 바깥에
+`ZLink*` · `*_t` 같은 언어 고유 이름이 남았는지 찾는다. 다섯 언어 공통 규칙이라 산문에
+나와도 되는 이름(§10의 terminal 셋 등)은 스크립트의 `ALLOWED`에 근거와 함께 등록한다.
 
 2번은 경로와 마커 이름만 보다가 **구간이 온전한지**까지 본다. 마커가 있어도
 end를 `) {}` 뒤에 두면 class가 열린 채 잘려 문법이 깨진 코드가 나간다. 줄 수와
@@ -561,7 +576,7 @@ end를 `) {}` 뒤에 두면 class가 열린 채 잘려 문법이 깨진 코드�
 slugify(`case: lower, unicode: true`)로 계산하므로 한글 제목도 그대로 대조된다.
 제목을 고치고 링크를 안 고친 자리가 이 방식으로 26건 나왔다.
 
-3·4·6은 사람이 본다.
+4·6은 사람이 본다.
 
 ## 12. 완료 정의
 

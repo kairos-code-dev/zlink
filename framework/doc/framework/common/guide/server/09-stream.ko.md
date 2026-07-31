@@ -292,7 +292,7 @@ Handshake와 node 범위 오류는 runtime monitoring으로 보고한다. Sessio
 
 ## 3. Typed packet handler
 
-Handler registry가 `ZLinkMessage`를 typed message로 decode한다. Request에 reply할 때는 현재 dispatch의
+Handler registry가 수신 message를 typed message로 decode한다. Request에 reply할 때는 현재 dispatch의
 one-shot reply token을 사용한다.
 
 === "C#/.NET"
@@ -437,7 +437,7 @@ Server가 먼저 push할 때는 `Send`를 사용한다.
 
 ## 4. Actor dispatch
 
-인증 뒤 Actor를 session에 bind하고, session 전용 handler가 처리하지 않은 `ZLinkMessage`를
+인증 뒤 Actor를 session에 bind하고, session 전용 handler가 처리하지 않은 message를
 session actor의 relay 호출로 넘길 수 있다. 상세 흐름은
 [Session과 Actor binding](08-actor-session.ko.md)을 따른다.
 

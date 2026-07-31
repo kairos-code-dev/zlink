@@ -814,7 +814,7 @@ class에 여러 handler 메서드를 둘 때 편하다.
   쉽지만, interface 기반처럼 handler 계약을 컴파일 타임에 강하게 고정하지는 않는다.
   잘못된 context 타입이나 반환 타입은 framework의 scan/validation 또는 실행 단계에서
   드러날 수 있다.
-- `[ZLinkRequest]`/`[ZLinkSend]`/`[ZLinkPublish]`는 **channel 이름을 받지
+- handler 종류를 표시하는 attribute·annotation·decorator는 **channel 이름을 받지
   않는다.** channel 매핑은 [등록](#3-handler를-channel에-노출하기)이 소유한다.
 
 ### 비동기 실행
@@ -1090,14 +1090,13 @@ fanout channel의 구독 handler는 fanout builder의 `AddHandler<...>()`로 등
 >     .AddHandler<NodeMaintenanceChangedSubscriber, NodeMaintenanceChangedEvent>();
 > ```
 
-**packet 이름 해석 순서:** ① handler 등록의 `packetName` 인자 → ② payload 타입의
-`[ZLinkPacket("...")]` → ③ 둘 다 없으면 타입 이름(`Type.Name`). packet 이름은 **등록 시
+**packet 이름 해석 순서:** ① handler 등록의 `packetName` 인자 → ② payload 타입에 붙인
+packet 이름 표시 → ③ 둘 다 없으면 타입 이름. packet 이름은 **등록 시
 한 번** 확정되고, 호출 call마다 다시 지정하는 표면은 없다.
 
 ### 등록 오류의 시작 단계 검증
 
-다음은 첫 호출까지 미루지 않고 **host startup에서 즉시** `ZLinkConfigurationException`으로
-막는다.
+다음은 첫 호출까지 미루지 않고 **host startup에서 즉시** 설정 오류로 막는다.
 
 - 같은 process에서 같은 MeshName을 두 번 등록하거나, MeshNode에 ChannelName을 하나도
   등록하지 않음.
@@ -1231,7 +1230,7 @@ Fanout handler는 독립 fanout channel builder에 등록하며 RouteMesh handle
 - packet 이름은 호출 시점에 바꿀 수 없다.
   [등록할 때](#3-handler를-channel에-노출하기) 한 번 확정된다.
 - route client는 startup에 등록한 RouteMesh를 사용한다. MeshName이나
-  ChannelName이 등록되어 있지 않으면 `ZLinkConfigurationException`으로 실패한다.
+  ChannelName이 등록되어 있지 않으면 설정 오류로 실패한다.
 - **send가 `async`인 이유는 응답이 아니라 보낼 자리를 기다리기 때문이다.** 받는 쪽이 밀리면
   송신 queue가 비워질 때까지 기다렸다가 제출하고, 끝내 자리가 나지 않으면
   `DeadlineExceeded`로 끝난다. 이 흐름 제어(backpressure)의 동작 원리와 영향을 주는 옵션은
@@ -1760,7 +1759,7 @@ flowchart LR
   descriptor row도 그대로 남는다(graceful drain).
 - 값의 범위는 `0..10000`, 기본값은 `100`이다. `Weight = 100`이 정상 serving 복귀다.
 - drain 신호 전파는 best-effort eventual 이다 — "drain 신호를 보냈다" 까지 보장하고, peer가
-  실제로 후보에서 뺀 시점은 peer 상태(`ZLinkPeerStatus.State`가 `Draining`)로 확인한다
+  실제로 후보에서 뺀 시점은 peer 상태가 draining인지로 확인한다
   (`11. Monitoring` 장 §2). `drain`/`restore`라는 운영 어휘는 위처럼 앱 admin 레이어가 `Weight = 0`/`= 100`
   에 이름을 붙여 노출한다.
 
@@ -1857,7 +1856,7 @@ abstract/interface 면 명시 codec 없이는 설정 오류가 난다.
 
 > **샘플에서 보기 — codec을 명시하는 시점.** 실시간 게임이라 packet 크기와 인코딩 비용을
 > 줄여야 하는 [Bingo](../../../common/sample/bingo/README.ko.md)만
-> `Codecs.Use(ZLinkProtobufCodec.Default)`를 등록하고 `.proto`로 DTO를 정의한다. 나머지
+> Protobuf codec을 등록하고 `.proto`로 DTO를 정의한다. 나머지
 > [샘플](../../../common/sample/README.ko.md)은 codec을 등록하지 않고 기본값을 쓴다 —
 > 명시 등록은 필요할 때만 하는 선택이다.
 
@@ -2538,7 +2537,7 @@ SPOT과의 결합은 [06-spot](06-spot.ko.md)에서 이어진다.
 - **handler가 안 불린다** → `AddHandlersFromAssemblyOf(...)`만으로는 노출되지
   않는다. `Channel(name).Server()`의 typed registration이 필요하다
   ([handler를 channel에 노출하기](#3-handler를-channel에-노출하기)).
-- **`ZLinkConfigurationException`** → channel이 없거나 해당 역할이 없는
+- **설정 오류** → channel이 없거나 해당 역할이 없는
   경우. 등록을 확인한다.
 - **시작 시 예외** → channel 이름 중복, 같은 channel `kind + packet 이름` 중복,
   client에 연결 경로 없음. fail-fast 다([등록 오류의 시작 단계 검증](#등록-오류의-시작-단계-검증)).

@@ -1844,10 +1844,10 @@ Spot queue에 작업이 쌓이거나 handler 실행이 길어지면 tick이 예�
 | `DelayNextTick` | 고정 주기를 유지하지 않고 **직전 tick 완료 시각 + 주기**로 다음 예정을 다시 계산한다 | 실행 간 최소 간격을 보장해야 할 때 — 외부 API polling |
 
 `MaxCatchUpTicks`는 `CatchUpBounded`에서만 쓰이며 기본값은 `1`이다. `0` 이하이면 등록 시점에
-`ZLinkConfigurationException`이다. 앞의 두 정책은 timer 시작 시각 기준의 고정 rate를 유지하므로, 한 tick이 늦게 실행되어도
+설정 오류다. 앞의 두 정책은 timer 시작 시각 기준의 고정 rate를 유지하므로, 한 tick이 늦게 실행되어도
 다음 tick의 예정 시각은 변하지 않는다.
 
-`ZLinkTimerTick`은 예정 대비 지연과 건너뛴 tick 수를 필드로 제공한다.
+timer handler가 받는 tick 값은 예정 대비 지연과 건너뛴 tick 수를 필드로 제공한다.
 
 | 필드 | 뜻 |
 | --- | --- |
@@ -1927,7 +1927,7 @@ Spot queue에 작업이 쌓이거나 handler 실행이 길어지면 tick이 예�
 
 #### relocation과 timer
 
-Spot이 다른 node로 옮겨갈 때 Framework가 timer 이름·handler type·주기·`ZLinkTimerOptions`·
+Spot이 다른 node로 옮겨갈 때 Framework가 timer 이름·handler type·주기·timer 옵션·
 스케줄 커서·아직 실행하지 않은 tick을 함께 옮긴다. 그래서 relocation adapter가 timer를
 저장하거나 target에서 다시 등록하지 않는다([§7](#7-relocation을-시작해도-되는-시점-알리기)).
 

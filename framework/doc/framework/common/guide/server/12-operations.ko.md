@@ -98,8 +98,6 @@ framework는 `"zlink.framework"`라는 이름의 `System.Diagnostics.Metrics.Met
 | `zlink.relocation.started` | Actor·User·Instance Spot relocation 시작 누계 |
 | `zlink.relocation.completed` | relocation terminal 결과 누계 |
 | `zlink.relocation.duration` | prepare부터 terminal phase까지의 시간 |
-| `zlink.relocation.recovered` | recovery coordinator가 이어서 처리한 relocation 수 |
-| `zlink.relocation.journal.messages` | relocation root에 포함한 accepted message 수 |
 | `zlink.relocation.bytes` | immutable relocation envelope 크기 |
 | `zlink.instance_spot.activations` | Instance Spot activation 결과 누계 |
 | `zlink.instance_spot.activation.duration` | 첫 주소 확인부터 Ready 또는 terminal 실패까지의 시간 |
@@ -417,7 +415,7 @@ Kubernetes 배포에 연결하면 다음 개념이 된다.
 
 두 weight는 독립적이며 실행 중 새 선택에 반영된다. Placement weight는 Actor·Spot create와 relocation
 target 선택에만 사용한다. Channel weight는 해당 server membership의 새 select-one 대상 선택에만
-사용한다. 등록되지 않은 mesh나 membership을 조회하면 `ZLinkConfigurationException`이다.
+사용한다. 등록되지 않은 mesh나 membership을 조회하면 설정 오류다.
 
 **상태 조회 — RouteMesh 런타임.** Mesh 하나에 대해 일관된 snapshot 한 장과 순서 있는
 component 이벤트 스트림을 제공한다. Host termination은 framework runtime이 소유한다.
@@ -580,8 +578,8 @@ runtime은 component snapshot을 제공하지만 별도 termination authority나
     ```
 
 
-`ZLinkFrameworkRuntimeState`의 `Preparing`·`Serving`·`Relocating`·`Relocated`·`Draining`·`Stopped`·`Error`를
-그대로 관측한다. Status의 relocation·termination 결과는 해당 operation의 terminal 결과와 같아야 한다.
+host lifecycle 상태 일곱(preparing · serving · relocating · relocated · draining ·
+stopped · error)을 그대로 관측한다. 표기는 언어를 따른다. Status의 relocation·termination 결과는 해당 operation의 terminal 결과와 같아야 한다.
 수치로 보려면 §1의 `zlink.host.*` 계기를 사용한다.
 
 ## 7. 관련 문서

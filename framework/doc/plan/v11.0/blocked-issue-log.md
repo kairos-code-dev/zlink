@@ -3159,3 +3159,37 @@ ready를 신호해도 relocation이 30초 안에 끝나지 않는다.
 나머지 열하나는 기존 실패이고, 이 세션에서 그중 여덟의 원인을 확정했다. 앞서 "실패의
 상당수가 미완성 마이그레이션일 것"이라고 추정했는데, 대조해 보니 셋뿐이다. 추정을
 숫자로 바꾼다.
+
+## 2026-07-31 ST-C2도 bound session 군집이다 — 네 시나리오가 한 원인
+
+미조사였던 ST-C2를 모든 진단 플래그를 켜고 돌렸다. 실패는
+`StC2SourceDownAfterTargetCommitScenario.cs:30`에서 `transfer_in`·`joined` evidence
+미관측이다. 이 시나리오도 bound session을 쓴다.
+
+```csharp
+var beforeTransferReply = await bound.Request(new BoundPushReq("ST-C2", "bound-before-transfer"))
+```
+
+진단이 앞선 셋과 같은 모양을 보인다.
+
+```
+actor-a: bound_seal_begin      actor=actor-source-down-after-commit-...
+         node_request_result   target=session-b-... result=TimedOut
+         node_request_result   target=session-b-... result=TimedOut
+session: route_reply_send      2건
+```
+
+session이 응답을 송신하는데 요청자는 두 번 다 `TimedOut`을 받는다. ST-E2·ST-F3에서 확정한
+"session gateway를 대상으로 한 route request의 응답이 요청자에게 도달하지 않는다"와
+같다.
+
+따라서 이 하나의 결함이 잡고 있는 시나리오는 넷이다.
+
+| 시나리오 | 검증 대상 |
+|---|---|
+| ST-C2 | target commit 뒤 source 종료 |
+| ST-E1 | transfer 뒤 bound session push |
+| ST-E2 | bound session rebind isolation |
+| ST-F3 | bound session cross-move order |
+
+기존 실패 열하나 중 넷이 여기에 묶인다. 우선순위가 가장 높은 단일 결함이다.

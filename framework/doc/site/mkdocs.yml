@@ -168,6 +168,12 @@ markdown_extensions:
   - attr_list
   - pymdownx.highlight:
       anchor_linenums: true
+      # 줄마다 span을 두면 CSS가 줄 단위로 스타일을 줄 수 있다. 긴 줄을 접을 때
+      # 이어지는 줄을 안쪽으로 들여 원래 한 줄이었음을 보이게 하는 데 쓴다.
+      line_spans: __span
+      # `<div class="highlight language-cpp">`. 접기는 코드에만 걸고 ASCII
+      # 다이어그램(```text)은 가로 스크롤로 남기려면 언어를 구분해야 한다.
+      pygments_lang_class: true
   - pymdownx.inlinehilite
   - pymdownx.superfences:
       custom_fences:

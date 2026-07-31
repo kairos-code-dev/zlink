@@ -2912,3 +2912,37 @@ recovery는 root가 이미 publish된 relocation을 대상으로 한다. ST-B2�
 어느 쪽이든 스펙 §276이 요구하는 "commit 뒤 target 복구 후 Accepted 전달"은 일어나지
 않는다. 다만 고칠 지점이 다르다. 전자는 선별 조건, 후자는 publish 경로다. 이 판단은
 relocation의 pending·published 계약을 확인한 뒤에 해야 한다.
+
+## 2026-07-31 ST-B2 결론 — sentinel이 published root 자리에 들어와 있다
+
+`"pending"` reference의 정체를 코드가 직접 설명한다.
+
+```csharp
+// The immutable root cannot contain its own reference, checksum, or
+// digest. Recovery persists this exact sentinel; startup verifies the
+// real root against the published authority instead.
+var pendingReference = new ZLinkRelocationManifestReference(
+    "pending", 0, relocationId, 1, new byte[32]);
+```
+
+즉 `"pending"` + checksum 0 + digest 32바이트 0은 **의도된 sentinel**이다. immutable root는
+자기 자신의 reference·checksum·digest를 담을 수 없으므로 recovery record에는 이 sentinel을
+저장하고, **startup은 실제 root를 published authority에서 따로 확인한다**는 설계다.
+
+여기에 비추면 문제가 분명해진다. identity 검증은 두 가지를 한다. 하나는 wire record가
+sentinel 규약을 지키는지 보는 것이고(`reloc_ref=pending`, `crc=0`, digest 전부 0 —
+이번 실행에서 모두 통과), 다른 하나는 `candidate.Envelope.InventoryDigest`와
+`candidate.Reference.InventoryDigest`를 비교하는 것이다.
+
+그런데 관측된 `candidate.Reference`는 **sentinel 그 자체**다(digest 전부 0). 주석대로라면
+startup recovery는 published authority에서 **실제 root**를 읽어 `Reference`에 넣어야
+하는데, sentinel이 그 자리에 들어와 있다. 실제 digest를 계산해 넣은 envelope과 비교하니
+당연히 어긋난다.
+
+따라서 결함은 검증이 아니라 **candidate의 `Reference`를 채우는 쪽**이다. sentinel을
+published root로 착각해 그대로 넘긴다.
+
+이 결론은 코드가 스스로 밝힌 의도("startup verifies the real root against the published
+authority instead")에 근거한다. 다음은 `ZLinkRelocationStartupRecovery`가 `Reference`를
+어디서 읽는지 확인해, published authority 대신 recovery record의 sentinel을 읽고 있는지
+보는 것이다.

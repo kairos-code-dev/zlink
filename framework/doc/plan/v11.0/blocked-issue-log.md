@@ -4244,3 +4244,26 @@ var subscriber = framework.AddFanoutChannel(PubSubNames.Channel)
 `SpotActorTransfer`가 같은 머신에서 정상 연결되는 것은 그쪽이 auto-connect와 mesh peer
 admission을 쓰기 때문일 수 있다. 두 스위트가 연결을 맺는 방식이 다르므로 단순 비교는
 성립하지 않는다.
+
+### 스펙에 부합하는 후보 — NotRequired 종료라면 재시도하지 않는다
+
+`07-channel-topology.ko.md`에 조용한 연결 생략을 규정한 조항이 있다.
+
+> "Manual peer 양쪽이 Object Client이고 RouteMesh Channel Server membership도 없으면
+> 설정 오류로 host 전체를 중단하지 않는다. 해당 connection intent만 `NotRequired`
+> terminal로 끝내고 ready peer와 liveness 대상에서 제외한다. **같은 설정을 계속
+> 재시도하지 않는다.** Monitoring에는 peer를 `NotRequired`로 남겨 정상적인 연결
+> 생략임을 보여 준다. 연결이 필요하지만 ready connection이 없는 `NotConnected`와 같은
+> 장애로 집계하지 않는다."
+
+관측된 것과 잘 맞는다. 연결이 성립하지 않고, 재시도 흔적이 없고, 오류 로그도 없고,
+`ConnectionReady`가 끝내 오지 않는다. 조항이 이를 **정상적인 생략**으로 규정하므로 조용한
+것도 설명된다.
+
+다만 이것은 아직 **가설**이다. 이 세션에서 그럴듯한 설명을 세우고 그에 맞춰 고쳤다가
+되돌린 일이 여러 번 있었으므로, 검증 방법을 함께 적는다. 이 가설이 참이라면 monitoring에
+해당 peer가 `NotRequired`로 남아 있어야 한다. 그것을 확인하기 전에는 코드를 고치지 않는다.
+
+가설이 맞다면 PubSub e2e host들이 Object Client로만 구성되고 RouteMesh Channel Server
+membership이 없어서, v11에서 이 조항이 도입·강화되며 연결이 생략되기 시작한 것이 된다.
+그렇다면 수정은 e2e host 구성이지 런타임이 아니다.

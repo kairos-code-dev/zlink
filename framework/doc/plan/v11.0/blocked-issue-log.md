@@ -5429,3 +5429,38 @@ snapshot으로 잡을 수 없다. Spec 28 §13이 "terminal event는 observer ov
 그 창에 머무르도록 만들어야 한다. 어느 쪽이든 시나리오 재설계라 별도 항목으로 남긴다.
 
 Room을 play-a에 고정하는 수정은 유지한다. 그것이 없으면 metric 자체를 못 읽는다.
+
+### OBS-C 시리즈 전수 triage
+
+OBS-C1이 aggregate 실행을 막으므로 C 시리즈를 개별 실행해 각각의 첫 실패를 확보했다.
+
+| 시나리오 | 결과 |
+|---|---|
+| OBS-C1 | relocating 창을 snapshot polling으로 못 잡는다(앞 절) |
+| OBS-C2 | `actor handoff location did not converge` |
+| OBS-C3 | `relocating marker for '<node>'` timeout |
+| OBS-C4 | Play shutdown이 `ForceStopped/DeadlineExceeded` |
+| OBS-C5 | `sequential actor location did not converge` |
+| OBS-C6~C9 | HTTP timeout |
+| OBS-C10 | 500 — 아래 참조 |
+| OBS-C11 | 완료된 operation을 active intent로 유지 |
+| **OBS-C12** | **통과** |
+
+OBS-C3의 `relocating marker` timeout은 OBS-C1과 같은 계열로 보인다. 관측하려는 중간
+상태가 polling보다 빨리 지나간다.
+
+OBS-C10의 500은 앞 절의 gate 문제와 **다르다**. Stack이 `SubmitUserSpotAsync`를 가리킨다.
+
+```
+InvalidOperationException: ZLink framework runtime is not accepting operations.
+  at ZLinkFrameworkRuntime.EnterOperationUnderLock
+  at ZLinkFrameworkRuntime.SubmitUserSpotAsync
+```
+
+이것은 진단 조회가 아니라 application message submit이다. Relocation 중 새 작업을 거부하는
+것은 spec 28의 drain 계약대로이므로 런타임이 옳다. 앞 절에서 추가한
+`EnterOperationalRead`가 이 경로를 덮지 않은 것도 의도대로다. 시나리오가 relocating 중인
+node로 계속 보내는 쪽을 봐야 한다.
+
+C 시리즈에서 metric을 읽으면서 node를 고정하지 않는 시나리오가 셋 더 있다(C2·C4·C5).
+OBS-B2·C1에서 확인한 함정과 같은 조건이므로 우선 확인 대상이다.

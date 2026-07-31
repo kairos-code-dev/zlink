@@ -3727,3 +3727,30 @@ frame이 bound session route가 아니다. `direct=True`, `flags=1`(request)과 
 따라서 확인할 것은 둘이다. 시나리오가 보내는 in-flight message가 애초에 이 경로로
 오는지, 그리고 온다면 그 시점에 handoff phase가 포착 단계인지다. 전자가 아니라면
 frame이 다른 경로로 처리되고 있는 것이고, 후자라면 타이밍 문제다.
+
+### 시나리오가 보내는 in-flight message는 capture 경로로 오지 않는다
+
+ST-F3가 보내는 것은 bound session 위의 **one-way send**다.
+
+```csharp
+await context.WaitEvidenceAsync(context.NodeB, [$"ST-F3|{actorId}|joined_wait|{spotId}"]);
+await bound.Send(new HandoffPacket("ST-F3", "S1")).Async();
+await bound.Send(new HandoffPacket("ST-F3", "S2")).Async();
+await context.WaitRuntimeEvidenceAsync(context.NodeA,
+    $"handoff_backlog actor={actorId} arrival=1");
+```
+
+`joined_wait` 게이트로 handoff를 멈춘 상태에서 S1·S2를 보내고, 그것들이 backlog에
+담기기를 기다린다.
+
+그런데 capture 진입 진단에 잡힌 frame은 둘뿐이고 **`flags=1`, 즉 request**다. 같은 코드의
+주석이 그 비트를 request로 설명한다("A request keeps its live reply route"). 또 둘 다
+`bound_route=False`다.
+
+즉 **S1·S2 one-way send는 capture 경로에 도달하지 않는다.** 잡힌 두 건은 시나리오가
+기대하는 그 message가 아니다.
+
+bound session send는 session-a에서 actor-a로 relay되는 경로를 탄다. 이 세션에서 확인한
+대로 그 경로에는 이미 결함이 있었고(응답 유실은 고쳤지만 tombstone 요청 미도달은
+mesh 계층으로 남았다), S1·S2가 그 경로에서 사라지는지 확인해야 한다. ST-F3의 backlog
+미발생이 별개 결함인지, 아니면 bound session relay 문제의 또 다른 증상인지가 갈린다.

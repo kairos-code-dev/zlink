@@ -170,24 +170,62 @@
    어두운 글씨(#1b5e20·#0d47a1·#bf360c 등) 조합이다. 밝은 화면을 전제로 짠 배색이라
    다크에서 바탕만 그대로 밝고 글씨는 테마 전경색(옅은 회색)으로 덮여 서로 묻힌다.
 
-   노드마다 글씨 색을 되돌리는 방법은 classDef 이름을 CSS에 일일이 나열해야 하고,
-   새 이름을 쓸 때마다 빠뜨린 노드가 다시 묻힌다. 대신 다이어그램 블록만 밝은
-   바탕으로 되돌려 배색이 의도대로 작동하게 한다.
+   노드마다 글씨 색을 되돌리려면 classDef 이름을 CSS에 일일이 나열해야 하고, 새
+   이름을 쓸 때마다 빠뜨린 노드가 다시 묻힌다. 대신 다이어그램 블록만 밝은 바탕으로
+   되돌려 배색이 의도대로 작동하게 한다.
 
-   Material의 mermaid 색은 아래 여섯 변수에서 파생된다(sequence 계열 20여 개도
-   전부 이 여섯을 참조한다). 컨테이너에서 덮으면 SVG 안까지 상속된다. */
+   **파생 변수도 전부 다시 적어야 한다.** Material은 `:root`에서
+   `--md-mermaid-sequence-message-fg-color: var(--md-mermaid-edge-color)`처럼 스무 개
+   남짓을 파생시킨다. custom property는 선언된 그 자리에서 값이 정해지므로, 여기서
+   `--md-mermaid-edge-color`만 바꿔도 파생값은 이미 `:root`에서 다크 색으로 굳은 뒤다.
+   sequence 다이어그램의 화살표 글씨가 안 보였던 이유가 이것이다.
+
+   state·ER 다이어그램은 themeCSS가 `--md-default-*`를 직접 쓰므로 그쪽도 함께 준다. */
 [data-md-color-scheme="slate"] .md-typeset .mermaid {
-  background-color: #e8ecf0;
-  border: 1px solid var(--md-default-fg-color--lightest);
+  --paper: #e8ecf0;
+  --ink: hsla(200, 18%, 26%, 1);
+  --tint: rgba(0, 191, 165, 0.12);
+  --line: #00838f;
+
+  background-color: var(--paper);
+  border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 0.15rem;
   padding: 0.5rem 0.3rem;
 
-  --md-mermaid-edge-color: hsla(200, 18%, 26%, 1);
-  --md-mermaid-label-fg-color: hsla(200, 18%, 26%, 1);
-  --md-mermaid-label-bg-color: #e8ecf0;
-  --md-mermaid-node-bg-color: rgba(0, 191, 165, 0.1);
-  --md-mermaid-node-fg-color: #00bfa5;
+  /* 기본 여섯 */
+  --md-mermaid-edge-color: var(--ink);
+  --md-mermaid-label-fg-color: var(--ink);
+  --md-mermaid-label-bg-color: var(--paper);
+  --md-mermaid-node-bg-color: var(--tint);
+  --md-mermaid-node-fg-color: var(--line);
   --md-accent-bg-color: #ffffff;
+
+  /* :root에서 이미 다크 값으로 굳은 파생 변수들 */
+  --md-mermaid-sequence-actor-bg-color: var(--paper);
+  --md-mermaid-sequence-actor-fg-color: var(--ink);
+  --md-mermaid-sequence-actor-border-color: var(--line);
+  --md-mermaid-sequence-actor-line-color: rgba(0, 0, 0, 0.32);
+  --md-mermaid-sequence-actorman-bg-color: var(--paper);
+  --md-mermaid-sequence-actorman-line-color: var(--line);
+  --md-mermaid-sequence-box-bg-color: var(--tint);
+  --md-mermaid-sequence-box-fg-color: var(--ink);
+  --md-mermaid-sequence-label-bg-color: var(--tint);
+  --md-mermaid-sequence-label-fg-color: var(--line);
+  --md-mermaid-sequence-loop-bg-color: var(--tint);
+  --md-mermaid-sequence-loop-fg-color: var(--ink);
+  --md-mermaid-sequence-loop-border-color: var(--line);
+  --md-mermaid-sequence-message-fg-color: var(--ink);
+  --md-mermaid-sequence-message-line-color: var(--ink);
+  --md-mermaid-sequence-note-bg-color: var(--paper);
+  --md-mermaid-sequence-note-fg-color: var(--ink);
+  --md-mermaid-sequence-note-border-color: var(--ink);
+  --md-mermaid-sequence-number-bg-color: var(--line);
+  --md-mermaid-sequence-number-fg-color: #ffffff;
+
+  /* themeCSS가 직접 참조하는 테마 색(state cluster·divider, ER entity) */
+  --md-default-bg-color: #ffffff;
+  --md-default-fg-color--lightest: rgba(0, 0, 0, 0.07);
+  --md-default-fg-color--lighter: rgba(0, 0, 0, 0.32);
 }
 
 /* 인용(샘플에서 보기 / 계약 소유 문서)은 본문과 확실히 구분한다. */

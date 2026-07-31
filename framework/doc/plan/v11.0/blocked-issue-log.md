@@ -2946,3 +2946,47 @@ published root로 착각해 그대로 넘긴다.
 authority instead")에 근거한다. 다음은 `ZLinkRelocationStartupRecovery`가 `Reference`를
 어디서 읽는지 확인해, published authority 대신 recovery record의 sentinel을 읽고 있는지
 보는 것이다.
+
+## 2026-07-31 ST-B2 — sentinel이 published로 분류된다
+
+`ZLinkRelocationStartupRecovery`가 published와 unpublished를 가르는 조건이다.
+
+```csharp
+if (ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(...)
+    && canonical.Phase == 1
+    && string.IsNullOrEmpty(canonical.RelocationReference))
+{
+    // Preparing has no immutable root yet and therefore cannot be
+    // reconciled as a published relocation tree.
+    unpublished++;
+    continue;
+}
+AddPublished(entry, linked);
+```
+
+unpublished 판정은 `RelocationReference`가 **비어 있는지**만 본다. 그런데 sentinel은 빈
+문자열이 아니라 `"pending"`이다.
+
+```csharp
+var pendingReference = new ZLinkRelocationManifestReference(
+    "pending", 0, relocationId, 1, new byte[32]);
+```
+
+따라서 sentinel을 가진 relocation은 `IsNullOrEmpty`를 통과하지 못해 **published로
+분류되고**, sentinel이 그대로 `group.Reference`가 되어 candidate의 `Reference`에 실린다.
+그 뒤 identity 검증이 실제 digest를 가진 envelope과 비교하니 어긋난다. ST-B2에서 관측한
+`ref_digest=0000...`이 바로 이 sentinel이다.
+
+### 다만 이것만 고치면 ST-B2는 통과하지 않는다
+
+조건에 `"pending"`을 더해 unpublished로 분류하면, `unpublished == participants.Count`가
+되어 recovery가 `null`을 반환하고 candidate 자체가 생기지 않는다. 그러면 identity
+mismatch는 사라지지만 **Accepted completion은 여전히 전달되지 않는다.**
+
+즉 질문이 하나 남는다. ST-B2는 commit이 성공한 뒤 source가 죽는 시나리오인데, commit이
+성공했다면 manifest도 publish되어 sentinel이 실제 root로 대체되었어야 하는 것 아닌가.
+관측된 상태는 commit 뒤에도 reference가 sentinel로 남아 있다.
+
+따라서 결함은 둘 중 하나이거나 둘 다다. 분류가 sentinel을 published로 잘못 보거나,
+commit이 성공했는데 publish가 sentinel을 실제 root로 갱신하지 않는다. 후자라면 스펙
+§276이 요구하는 recovery의 전제 자체가 성립하지 않는다.

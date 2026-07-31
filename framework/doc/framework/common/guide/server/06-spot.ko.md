@@ -1601,7 +1601,8 @@ handler 안에서 Spot 상태를 그대로 만질 수 있다. 등록은 timer �
     options.max_catch_up_ticks = 1;
     options.stop_on_unhandled_exception = false;
 
-    _game_tick = _context.add_timer<game_room_t> (
+    // handler는 Spot이 아니라 별도 타입이다 — handle (spot, tick) 두 인자를 받는다.
+    _game_tick = _context.add_timer<game_tick_handler_t> (
       "game-tick",                              // 같은 Spot 안에서 유일한 이름이다.
       std::chrono::seconds (1),                 // 주기. 0 이하이면 구성 오류다.
       options);
@@ -1684,11 +1685,15 @@ Handler는 Spot과 tick 정보를 받는 별도 class다.
 === "C++"
 
     ```cpp
-    // C++ timer handler는 Spot member 함수다. 두 번째 인자가 timer_tick_t다.
-    task_t<void> game_room_t::game_tick (const timer_tick_t &tick)
+    // C++ timer handler는 별도 class다. handle이 대상 Spot과 tick을 함께 받는다.
+    class game_tick_handler_t
     {
-        co_await tick_once ();
-    }
+      public:
+        task_t<void> handle (game_room_t &spot, const timer_tick_t &tick) const
+        {
+            co_await spot.tick_once ();
+        }
+    };
     ```
 
 === "Java"
@@ -1765,12 +1770,13 @@ Spot queue에 작업이 쌓이거나 handler 실행이 길어지면 tick이 예�
 === "C++"
 
     ```cpp
-    task_t<void> game_room_t::game_tick (const timer_tick_t &tick)
+    task_t<void> game_tick_handler_t::handle (game_room_t &spot,
+                                              const timer_tick_t &tick) const
     {
         if (tick.delay > std::chrono::milliseconds (500))
-            report_lag (tick.delay, tick.skipped_ticks); // 지연이 크면 부하를 보고한다.
+            spot.report_lag (tick.delay, tick.skipped_ticks); // 지연이 크면 부하를 보고한다.
 
-        co_await tick_once ();
+        co_await spot.tick_once ();
     }
     ```
 
@@ -2160,13 +2166,14 @@ Application은 상태가 일관된 turn에서 `Defer()`를 호출한다. 이 호
 === "C++"
 
     ```cpp
-    task_t<void> game_room_t::round_tick (const timer_tick_t &)
+    task_t<void> round_tick_handler_t::handle (game_room_t &spot,
+                                               const timer_tick_t &) const
     {
-        if (!try_finish_round ()) // 라운드 진행 중이면 신호하지 않는다.
+        if (!spot.try_finish_round ()) // 라운드 진행 중이면 신호하지 않는다.
             co_return;
 
         // 라운드가 끝나 상태가 정산된 지점이다. 이 turn의 마지막 Framework 호출이어야 한다.
-        _context.relocation_ready ().defer ();
+        spot.context ().relocation_ready ().defer ();
         co_return;
     }
     ```

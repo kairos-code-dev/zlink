@@ -4645,3 +4645,43 @@ admission까지 도달하지 못한다.
 않는다. Manual peer handshake가 target에 peer 항목조차 만들지 못하는 이유가 남은 질문이다.
 
 측정 편집(peer view 출력, HWM 상향, gate 우회, 시도 횟수)은 모두 되돌렸다.
+
+### ChannelEgressRouting: 컴파일 수정 + 미등록 channel 오류 kind 수정으로 16/18
+
+이 스위트도 빌드되지 않고 있었다. `Shared` project가 `Zlink.Framework.Contracts`만
+참조하는데 `Zlink.Framework.Contracts.Handlers`와 `ZLinkPacketAttribute`는
+`Zlink.Framework` assembly에 있다. 같은 attribute를 쓰는 RegistrationCodec의 Shared는
+`Zlink.Framework`를 참조한다. 참조를 맞추자 전량 빌드된다.
+
+Runner는 `all`을 거부한다. 미구현 selector 4건(CH-E2E-03·08, CH-REG-02·05) 때문이며
+이것은 의도된 gate다. 구현된 18건을 개별 실행한 결과가 다음이다.
+
+```
+1차: pass=15 fail=3   (CH-E2E-07, CH-E2E-09, CH-REG-03)
+```
+
+CH-E2E-07은 런타임 결함이었다. 시나리오는 등록되지 않은 ChannelName 호출이 `NotFound`로
+끝나기를 요구한다.
+
+```csharp
+var missing = await InvokeRequestAsync("session", "not.registered", "missing");
+Require(!missing.Succeeded && missing.Error == "NotFound", ...);
+```
+
+spec 08 §7이 정확히 그렇게 정한다. "ChannelName이 현재 process에 등록되지 않았다 →
+`NotFound`로 끝나며 다른 송신 경로로 보내지 않는다." 그런데
+`ZLinkFrameworkRuntime.ResolveRouteMeshForChannel`은 후보 0개일 때
+`ZLinkConfigurationException`을 던졌다. Host가 이것을 잡지 못해 500이 됐다. 이 호출
+시점의 판단은 startup 결함이 아니라 caller가 대응할 수 있는 routing 결과이므로
+`ZLinkFrameworkErrorKind.NotFound`로 바꿨다. 후보가 2개 이상인 경우는 실제 등록 모호성이
+맞으므로 `ZLinkConfigurationException`을 유지한다.
+
+```
+2차: pass=16 fail=2   (CH-E2E-09, CH-REG-03)
+```
+
+남은 둘은 같은 지점이다. `wait_json .../fanout-status`가 automatic fanout publisher를
+기다리다 timeout한다. 아직 조사하지 않았다.
+
+CH-REG-01은 1차 개별 실행에서 `workflow-client health` timeout으로 실패했다가 전량
+실행에서는 통과했다. 재현되지 않는 기동 경합으로 보이며 별도로 다시 확인해야 한다.

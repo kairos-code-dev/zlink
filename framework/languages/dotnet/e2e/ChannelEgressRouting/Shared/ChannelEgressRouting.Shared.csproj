@@ -5,6 +5,6 @@
     <RootNamespace>ChannelEgressRouting.Shared</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../../src/Zlink.Framework.Contracts/Zlink.Framework.Contracts.csproj" />
+    <ProjectReference Include="../../../src/Zlink.Framework/Zlink.Framework.csproj" />
   </ItemGroup>
 </Project>

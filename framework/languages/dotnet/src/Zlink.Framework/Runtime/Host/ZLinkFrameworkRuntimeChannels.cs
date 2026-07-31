@@ -85,7 +85,12 @@ internal sealed partial class ZLinkFrameworkRuntime
         return matches.Length switch
         {
             1 => matches[0],
-            0 => throw new ZLinkConfigurationException(
+            //  Spec 08 §7: a ChannelName that is not registered in this
+            //  process ends the call as NotFound and is not sent along any
+            //  other path. Naming a channel this host does not serve is a
+            //  routing outcome the caller can act on, not a startup defect.
+            0 => throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.NotFound,
                 $"No process-local RouteMesh or ClientServer client is registered for ChannelName '{channelName}'."),
             _ => throw new ZLinkConfigurationException(
                 $"ChannelName '{channelName}' resolves to more than one process-local RouteMesh.")

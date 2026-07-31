@@ -395,3 +395,186 @@ permit을 기다리는 동안 message 처리를 막는다. Application-signaled 
 probe가 signal을 소비하면 실제 capture에서 다음 signal을 기다리게 된다. 사용자 설정
 64-unit·256 MiB 값, 준비 뒤 실제 payload 크기 조정과 shutdown 직전 재검사도 함께
 필요하다. 따라서 unsafe WIP는 원복했고 `BLK-043`을 release blocker로 유지한다.
+
+## 2026-07-31 BLK-052 fanout 재판정
+
+Classic pub/sub이 손실 허용 기본값으로 바뀌면서 `BLK-052`의 fanout 절반이 사라졌다.
+근거는 두 가지다.
+
+첫째, 애초에 fanout에는 교착 경로가 없었다. Application HWM으로 receive를 멈출 때
+문제가 되는 조건은 지속 시간이 아니라 그 lane에 budget을 풀어줄 신호가 실려 있는지다.
+RouteMesh `ROUTER` FIFO에는 route admission과 relocation command가 함께 실린다. 이
+host의 work를 옮겨 pending byte를 낮추는 유일한 경로가 그 안에 있으므로, receive를
+멈추면 budget을 풀 수단까지 멈추는 자기 참조 교착이 생긴다. 그래서 opaque
+completion-control로 옮긴 조치가 맞다. 반면 `SUB` FIFO에는 application payload와
+5초 keepalive beacon만 있다. 둘 다 budget 해제와 무관하고 pending byte는 handler
+완료로만 내려가므로 fanout에는 같은 교착이 성립하지 않는다.
+
+둘째, PUB/SUB에 transport control lane을 추가하는 안은 대상 자체가 잘못됐다. 그
+lane에서 보호하려던 것은 4바이트 keepalive 하나이고, Core wire와 socket queue를 함께
+바꾸는 비용에 맞지 않는다. `DEALER`·`ROUTER`가 선택 수신을 할 수 있는 이유도
+Completion lane이라는 이름 때문이 아니라 application receive FIFO와 분리된 push
+전달 경로가 이미 서 있기 때문이다. 그 성질을 PUB/SUB에 새로 만들 근거가 없다.
+
+손실 허용 기본값 아래에서 fanout의 동작은 단순해졌다. Subscriber가 receive를 멈추면
+pipe가 차고 publisher는 그 subscriber 몫을 버린다. 무제한 선수신도, 무손실 배압도
+아니며 이것이 Classic fanout의 정식 계약이다. 남은 결과는 beacon도 함께 버려질 수
+있다는 것뿐이고 `29-transport-liveness.ko.md`가 판정 규칙을 정의한다.
+
+따라서 `BLK-052`에서 "automatic fanout same-socket 선택 수신"과 "PUB/SUB
+transport control lane" 항목을 제거한다. Automatic ClientServer 절반은 남으며, 그
+쪽도 같은 기준으로 다시 판정해야 한다. 그 FIFO의 control이 hello·admission·liveness
+뿐이고 budget 해제 경로를 포함하지 않는다면 `DEALER` completion-control API 추가도
+필요하지 않다.
+
+## 2026-07-31 automatic ClientServer 재판정과 pump livelock 수정
+
+`BLK-052`의 남은 절반인 automatic ClientServer를 fanout과 같은 기준으로 판정했다.
+
+C++ 구현은 이미 control과 application을 수신 직후에 분리한다.
+`raw_client_server_server_t::pump_one`은 record 하나를 받아 header를 해석한 뒤
+`hello`, `livenessProbe`, `livenessAck`는 그 자리에서 처리하고 application record만
+bounded `_mailbox`에 넣는다. Control record는 mailbox에 들어가지 않는다.
+`client_server_location_runtime_t::pump`도 budget과 무관하게 `drain_monitor_events`와
+`tick_liveness`를 매 cycle 실행한다.
+
+이 FIFO의 control은 admission과 liveness뿐이고 mailbox를 비우는 신호는 없다.
+mailbox는 `dispatch_server`의 handler 완료로만 줄어든다. 따라서 fanout과 마찬가지로
+budget 해제 경로가 lane 안에 없으므로 자기 참조 교착이 성립하지 않는다.
+`DEALER` completion-control API 추가는 필요하지 않다.
+
+mailbox가 가득 찬 동안 남는 영향은 두 가지이고 모두 포화 지속 시간에 비례한다.
+앞선 application record 하나가 뒤의 control record를 막으므로 liveness probe와 ack가
+지연되고, 새 client의 `hello` admission도 지연된다. 15초 넘게 포화가 이어지면 peer가
+not-ready가 되며 이는 fanout과 같은 판정이다. 그 시간 동안 server는 application
+record를 처리하지 못하는 상태다.
+
+이 경로를 확인하는 중에 별개 결함을 찾아 수정했다. `pump`의 두 수신 loop가
+`while (pump_one(now) != no_data)` 조건이라 `backpressured`에서 빠져나오지 못했다.
+mailbox가 차면 `pump_one`은 보관한 `_pending_received`를 다시 넣으려다 실패해 계속
+`backpressured`를 반환하는데, mailbox를 비우는 `dispatch_server`는 loop 뒤에 있으므로
+진행 없이 무한 반복한다. 두 loop 모두 `no_data`와 `backpressured`에서 중단하도록
+바꿔 dispatch가 mailbox를 비우고 다음 cycle에 재시도하게 했다.
+
+C++ framework unit은 `11.1.0` package 기준으로 **30/30**을 세 번 연속 통과했다.
+WSL에는 유한한 cgroup memory 상한이 없어 Auto Application HWM이 startup에서 실패하므로
+`ulimit -v 8388608`을 적용해 실행한다. 이 조건은 기존 `BLK-052` 증거 문서와 같다.
+
+따라서 `BLK-052`에서 automatic ClientServer 선택 수신 항목도 제거한다. 남은 것은
+JVM과 나머지 Framework의 host 전체 Application HWM 및 terminal byte 회계다.
+
+## 2026-07-31 BLK-043 admission 거절의 신호 소비 여부 확정
+
+`BLK-043`의 설계 분기를 가르는 질문은 하나였다. admission predicate가 거절할 때
+APPLICATION_SIGNALED readiness 신호를 소비하지 않고 다음 turn boundary에서 다시
+시도할 수 있는가다. 코드를 따라가 확정했다. 소비한다.
+
+`ZLinkDefaultSpotContext.reachRelocationReadyBoundary`는 waiter를 꺼내면서
+`relocationReadyWaiter`를 즉시 `null`로 지운다. 그 뒤 `claim.get()`으로
+`trySeal(admission)`을 부르고 결과가 비어 있어도 `waiter.result`를 그 빈 값으로
+완료한 다음 `runRelocationReadyCompletion(CONTINUED)`을 실행한다. 따라서
+`sealForRelocation`은 빈 결과를 반환하고 `sealAndCapture`는
+"User Spot relocation seal or permit was unavailable"로 prepare를 실패시킨다.
+waiter는 이미 사라졌으므로 같은 신호로 재시도할 수 없다.
+
+재무장으로 바꾸는 방법은 쓸 수 없다. APPLICATION_SIGNALED에서 application은
+`relocationReady().defer()`로 신호를 보낸 뒤 완료 callback을 기다린다. 완료를 주지
+않고 조용히 재무장하면 그 turn이 끝나지 않는다. 거절은 반드시 `CONTINUED`로
+완료해야 하고 application이 나중에 다시 신호를 보내는 것이 정식 계약이다.
+
+seal 이전에 `permits.acquire(...)`로 비동기 대기하는 방법도 쓸 수 없다.
+TURN_BOUNDARY mode는 현재 turn이 끝날 때까지라 대기가 유계지만
+APPLICATION_SIGNALED mode는 application이 언제 신호를 보낼지 정하므로 무계다.
+permit을 먼저 잡으면 그 unit이 신호를 보낼 때까지 slot을 점유해 준비된 다른 unit을
+막는다. High review가 지적한 readiness fairness 위반이 그대로 재현된다.
+
+따라서 남는 설계는 하나다. Admission 판정은 지금처럼 turn boundary의 predicate 안에
+두고, 거절을 실패가 아니라 상위의 재시도로 처리한다. 구체적으로는 다음과 같다.
+
+- `ZLinkRelocationScheduler`의 64 unit·256 MiB budget을 제거한다. 이 값은 실제
+  admission 지점과 분리되어 있어 policy가 두 곳으로 나뉜 것이 결함의 원인이다.
+  실제 unit·byte 상한은 `ZLinkRelocationPermitPool`이 `ZLinkLocationOptions`에서
+  이미 소유하며, `Lease.tryShrinkPayload`가 실제 payload 보정까지 담당한다.
+- `executePlan`은 모든 unit을 제출하고, permit 부족으로 인한 transient prepare
+  실패만 host deadline 안에서 재시도한다. inventory 불일치나 cancellation 같은
+  terminal 실패는 그대로 전파한다. 두 실패를 구분하는 것이 구현의 핵심이다.
+- 재시도는 slot을 점유하지 않으므로 준비된 unit이 앞선 느린 unit을 기다리지 않는다.
+  거절된 unit은 seal을 rollback하고 timer를 재개한 상태로 돌아가므로 실행되지 않은
+  prepared source도 생기지 않는다.
+
+이 변경은 같은 날 기록한 `ZLinkRelocationScheduler` 증거를 무효화한다. focused
+15/15, Java core 667/667과 `M6-RUNTIME` 12/12은 제거될 budget을 검증한 것이므로
+scheduler를 걷어낼 때 그 증거도 함께 폐기한다. 조용한 철회로 읽히지 않도록 여기에
+먼저 남긴다.
+
+수용 test는 설계와 무관하게 동일하다. 앞의 64개 turn을 지연시킨 상태에서 65번째
+준비 unit이 즉시 시작하는지, 그리고 byte gate가 실제 payload로 256 MiB에서
+동작하는지를 확인한다. 구현보다 이 test를 먼저 작성한다.
+
+## 2026-07-31 BLK-043 해결 — scheduler는 spec 중복 구현이었다
+
+앞 항목에서 설계를 논하던 방향이 틀렸다. `ZLinkRelocationScheduler`는 고칠 대상이
+아니라 없어야 할 구성요소였다. 근거는 정본 spec과 `.NET` 구현 두 가지다.
+
+`28-graceful-drain-handoff.ko.md` §7은 상한 다섯 개를 정의하면서 소유자를 `.NET`
+public member로 못 박는다. `MaxActiveOutboundRelocations` 64,
+`MaxActiveInboundRelocations` 64, `MaxRelocationPayloadInFlightBytes` 256 MiB,
+`MaxConcurrentRelocationCaptures` 8, `MaxConcurrentRelocationRestores` 8이다.
+같은 문서 §660은 이 다섯을 "Unit gate"로 묶고 permit을 한 번에 모두 얻어야 한다고
+규정한다. 이 다섯은 `ZLinkRelocationPermitPool`의 필드 집합과 정확히 일치하며
+`.NET`과 JVM 모두 그렇게 구현되어 있다.
+
+즉 spec이 요구하는 64 unit·256 MiB gate는 permit pool이 이미 정본대로 소유한다.
+`ZLinkRelocationScheduler`는 같은 요구를 두 번째로 구현한 중복이었고, 더구나
+잘못된 지점에서 구현했다. permit pool은 turn boundary에서 실제 payload가 확정된 뒤
+admission을 판정하는데, scheduler는 입력 순서와 payload 미확정 시점에 slot을
+배정했다. 그래서 실제 readiness와 payload를 scheduler에 연결하려는 모든 시도가
+readiness fairness를 깨뜨렸고 High review가 반복해서 기각했다. 고칠 수 없는 위치에
+있는 policy를 고치려던 것이다.
+
+`.NET`에는 host retire 계획을 unit·byte로 다시 제한하는 구성요소가 없다.
+`ZLinkFrameworkRuntimeSpotRetire`는 참여자를 모두 동시에 제출하고 각 작업이 실행
+시점에 자원을 얻는다. `256L * 1024 * 1024` 상수도 `ZLinkRelocationTreeStore`의
+`MaxComponentIoBytes`라는 다른 축이며 relocation unit budget이 아니다.
+
+조치는 다음과 같다.
+
+- `ZLinkRelocationScheduler`와 `ZLinkRelocationSchedulerTest`를 삭제했다.
+  `JavaTargetContractGapTest`의 비공개 단언도 함께 제거했다.
+- `executePlan`은 모든 unit을 제출하고 `Task.WhenAll`과 같은 의미로 기다린다.
+  모든 unit이 terminal에 도달하며 첫 실패가 보고되고 이후 실패는 그 실패에
+  suppressed로 붙는다. shutdown은 unit이 시작하는 시점에 다시 확인한다.
+- unit 상한과 byte 상한은 permit pool이 단독으로 소유한다.
+
+회귀는 두 개를 새로 넣었다. 하나는 64개 unit이 각자 turn boundary를 기다리는 동안
+65번째 unit도 자신의 admission 지점까지 도달하는지 확인한다. 두 번째 gate가 없어야
+성립한다. 다른 하나는 한 unit이 실패해도 나머지가 terminal에 도달한 뒤 첫 실패가
+보고되는지 확인한다.
+
+이 변경으로 2026-07-31에 기록한 scheduler 증거는 무효다. focused 15/15, Java core
+667/667과 `M6-RUNTIME` 12/12은 삭제된 구성요소를 검증한 것이므로 폐기한다.
+앞 항목에서 제안했던 "상위 재시도로 admission 거절 처리"와 그때 작성한 수용 test도
+`.NET` 동작과 어긋나므로 함께 폐기한다. `BLK-043`은 해결로 판정한다.
+
+## 2026-07-31 .NET Actor_Failed_Renew 기존 결함 등록
+
+`11.1.0` 전환 회귀에서 `.NET` 전체 unit 1,375건 중 1건이 실패했다.
+`LocationLifecycleTests.Actor_Failed_Renew_Does_Not_Become_The_Base_Of_The_Next_Write`가
+`RejectNextRenew`를 켠 상태에서 `ZLinkFrameworkException`을 기대하는데 예외가 나오지
+않는다. 세 번 연속 같은 결과이므로 flake가 아니다.
+
+이 실패는 `11.1.0` 전환이나 pub/sub 손실 허용 기본값과 무관하다. 근거는 두 가지다.
+작업 tree에서 `.NET` framework source는 바뀌지 않았고 바뀐 것은
+`Directory.Packages.props`의 참조 버전 한 줄뿐이다. 그 참조를 `11.0.2`로 되돌려
+같은 test를 실행해도 동일하게 실패한다.
+
+따라서 이전부터 있었으나 ledger의 어느 행에도 잡히지 않은 결함이다. 이전 전체 unit
+실행이 완주하지 못한 채 기록되었기 때문에 드러나지 않았을 가능성이 크다. ledger
+0.0.1 checkpoint의 "전체 unit 재검증은 첫 실행이 120초 제한을 넘어 종료했으며 최종
+gate에서 다시 실행한다"는 기록이 그 정황이다.
+
+`.NET`은 parity 기준 lane이므로 이 결함은 나머지 세 언어의 같은 계약에도 영향을
+줄 수 있다. Renew가 거부됐을 때 그 write가 다음 write의 base가 되지 않아야 한다는
+규칙이 실제로 강제되는지를 네 언어 모두에서 확인해야 한다.
+
+상태는 `조치 중`이다.

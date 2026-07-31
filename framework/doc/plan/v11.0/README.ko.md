@@ -14,6 +14,7 @@
 | [다섯 언어 exact interface](../../framework/common/spec/server/languages/README.ko.md) | C++·.NET·Java·Kotlin·Node.js public signature의 정식 계약. 각 언어의 `interfaces/`가 정확한 선언을 소유한다. |
 | [언어별 public contract source 경계 감사](framework-public-contract-source-layout-audit.ko.md) | Server, HTTP client와 Stream Connector의 `Contracts/contracts` 이탈 현황, 이동 근거와 복구 조건 |
 | [통합 execution ledger](route-mesh-11.0.0-execution-ledger.ko.md) | 선행 조건, 병렬 lane, 상태, 구현 차이와 완료 증거의 단일 기준 |
+| [가이드 집필 중 발견한 구현·샘플 갭](guide-authoring-implementation-gaps.ko.md) | 언어별 가이드를 쓰면서 확인한 spec↔구현 차이, 없는 샘플과 막힌 빌드. 담당자 handoff 자료 |
 | [blocked issue log](blocked-issue-log.md) | 자율 실행 중 발생한 blocker의 원인, 수정 내용과 재검증 결과 기록. 진행 상태는 소유하지 않는다 |
 
 정식 spec과 정식 internals가 현재 계약과 runtime 구조를 소유한다. Core 10 migration의 no-loss 대조와 분류는

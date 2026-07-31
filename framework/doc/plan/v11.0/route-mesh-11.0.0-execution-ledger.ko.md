@@ -11776,3 +11776,163 @@ member·owner·intentional-removal set과 signature override를 함께 갱신했
 
 따라서 이전 .NET design review와 reference revision도 현재 `V11-M6C-DN` candidate에
 대한 완료 증거로 사용하지 않고 `수정 진행`으로 되돌렸다.
+
+### 2026-07-31 Node.js formal aggregate native 종료 조사
+
+8 GiB cgroup에서 `channel-client.test.js` 전체를 실행하면 41개 subtest가
+통과하고 42번째 subtest를 시작한 뒤 process가 종료되지 않는다. 정지한 process를
+`gdb`로 확인한 결과 JavaScript request 경로나 Application HWM 대기가 아니라
+Node bindings의 `Context.close()`가 호출한 `zlink_ctx_term()` 안에서
+`mailbox_t::recv(timeout=-1)`을 기다리고 있었다.
+
+.NET과 같은 `shutdown` 후 `term` 순서로 바꾼 Node bindings `11.0.3` package를
+별도로 만들었다. Package build, clean consumer import와 Framework build는
+통과했지만 같은 8 GiB formal aggregate는 같은 위치에서 30초 뒤 종료됐다.
+따라서 wrapper의 종료 순서 차이만으로 해결되지 않으며 Core/native reaper의
+누적 context 종료 조건을 추가로 확인해야 한다.
+
+검증되지 않은 `11.0.3` source와 consumer pin은 모두 원복했다. Node Framework는
+`11.0.2`를 계속 사용한다. 분리한 public binding socket 수명 회귀는 같은
+cgroup에서 **3/3** 통과했지만 전체 aggregate는 통과하지 않았으므로 Node M6 행을
+완료 처리하지 않는다. 상세 근거는
+`.artifacts/v11/evidence/V11-M6-NODE/inbound-dispatch-hwm-20260731.md`다.
+
+### 2026-07-31 classic pub/sub 손실 허용 기본값과 Core 11.1.0
+
+Classic pub/sub의 전달 계약을 ZeroMQ와 같은 손실 허용 방식으로 바꿨다.
+`ZLINK_PUB_OPT_NODROP`의 기본값을 `1`에서 `0`으로 뒤집어 HWM에 도달하면 해당
+subscriber에게 보내는 message를 버리고 publish는 성공으로 끝낸다. drop 대신
+배압이 필요하면 `1`을 명시적으로 설정한다. `pub_t`가 `xpub_t`를 상속하므로
+`xpub.cpp`의 `_lossy` 초기값 하나가 PUB와 XPUB에 함께 적용된다.
+
+RouteMesh의 pub/sub은 이 변경의 대상이 아니다. Spot Logical Multicast는 PUB/SUB
+socket을 쓰지 않고 MeshNode 연결로 각 참여 node에 전달한다. 네 binding 구현을
+모두 확인했다. C++는 `channel_outbound_exchange.cpp`와 `channel_host_service.cpp`의
+classic fanout만, `.NET`은 `IZLinkChannelBackendAdapter` 경로만 PUB/SUB를 만들고
+multicast는 `ZLinkManagedMeshNode`가 소유한다. Java는 `MeshNodePublisher`,
+Node는 `node-raw-mesh-backend.ts`의 `publishLogicalMulticast`를 사용한다.
+따라서 framework 구현 변경은 없다.
+
+Core source가 바뀌었으므로 `scripts/local-package/README.ko.md`의 버전 정책에
+따라 Core를 `11.1.0`으로 올리고 네 binding package도 `11.1.0`에서 다시 시작했다.
+
+| 산출물 | SHA-256 | isolated consumer |
+|---|---|---|
+| Core provenance | `5fece6a8b59d25def5f352f57a9eb402ed7a59b74b991d06250bedc7efd9418e` | clean C consumer 통과 |
+| .NET `Systems.Zlink.11.1.0.nupkg` | `87cb53ae74b4d7fe2a607113611ebe958444e85eab2939c03b4fd0fcef617da5` | 통과 |
+| Java `zlink-11.1.0.jar` | `d3a8989ff7e337bb22c780bbe5d5c0c06ad221245fa6da5a949e1b83a9560c0c` | local Maven publish 성공 |
+| Node.js `zlink-systems-zlink-11.1.0.tgz` | `1350527e68a2a490b1e0ca888fd2ba65d90938dd2d29385c1509fd997ef4a945` | prebuild 검증 통과 |
+| C++ `libzlink_cpp.a` | `ceb5f81a096222881191eb85f61f475416b13b4665a4ecaf8e0c8a7c1f2136bb` | compile·link·load·run 통과 |
+
+이 표는 `11.0.2` package 표와 그 hash에 묶여 있던 provenance 판정을 대체한다.
+네 Framework의 중앙 참조 버전도 `11.1.0`으로 고정했다.
+
+Core 전체 CTest는 **84/84** 통과했다. 신규 회귀 두 건을 `test_xpub_nodrop`에
+추가했다. 하나는 PUB와 XPUB 모두에서 `ZLINK_PUB_OPT_NODROP` 읽기값이 `0`인지
+확인하고, 다른 하나는 HWM을 넘겨도 publish가 계속 성공하며 수신 수가 송신 수보다
+적은지 확인한다. focused suite는 **4/4** 통과했다.
+
+독립 Codex reviewer를 쓸 수 없어 이번 candidate는 coordinator 자체 리뷰로
+승인했다. 근거는 `.artifacts/v11/evidence/V11-R2/`의
+`core-candidate-pubsub-lossy-11.1.0-review-20260731.json`이며 검증 9항목,
+blocking finding 0이다.
+
+자체 리뷰가 찾아 고친 항목은 다음과 같다.
+
+- Python과 Rust의 pubsub perf 하네스가 기존 기본값에 의존했다. C 레퍼런스
+  하네스는 항상 명시 설정이므로 두 하네스도 명시 설정으로 맞췄다. 그대로 두면
+  sample과 stop token이 유실된다.
+- `bindings/rust/tests/send_failure_tests.rs`도 주석과 달리 기본값에 의존해서
+  명시 설정을 추가했다.
+- `contract_public_surface`가 `core/packaging`의 debian·redhat·nuget 버전
+  metadata 불일치로 실패해 여섯 파일을 갱신했다.
+- local package consumer fixture가 버전을 문자열이 아니라 값으로 비교한다.
+  `.NET`은 tuple, Java는 배열 원소를 비교하므로 메시지만 바꾸면 통과하지 않는다.
+  두 곳의 실제 비교값과 script 여섯 곳의 `11.0.2` 하드코딩을 함께 고쳤다.
+- pub/sub guide 예제에 message 선언이 없고 C에 없는 digit separator를 써서
+  두 언어 네 snippet을 고쳤다.
+
+문서는 core spec 넷, core guide 둘, bindings spec 둘, `doc/site` 미러 일곱 개를
+갱신했다. 공통 framework spec에도 Classic fanout이 손실을 허용한다는 조항과
+liveness beacon이 같은 PUB socket을 쓰므로 함께 버려질 수 있다는 조항을 넣었다.
+
+남은 위험은 하나다. Host가 15초 넘게 포화 상태를 유지하면서 fanout application
+traffic이 subscriber queue를 계속 채우면 beacon이 연속으로 버려져 해당 publisher가
+not-ready가 된다. 그 시간 동안 subscriber는 application record를 처리하지 못하는
+상태이므로 오탐으로 보지 않는다. `29-transport-liveness.ko.md`에 기록했다.
+
+### 2026-07-31 pub/sub 손실 허용 후속 검증과 정정
+
+앞 절의 package 표에 대한 isolated consumer 근거를 네 lane 모두 채웠다. 앞 절을
+작성한 시점에는 `.NET`과 C++ 두 lane만 consumer를 실행했으므로 그 범위를 여기서
+바로잡는다.
+
+| Binding | isolated consumer | 증거 |
+|---|---|---|
+| .NET | NuGet consumer 통과 | `V11-PUBSUB-LOSSY/dotnet-package-11.1.0.json` |
+| Java | 빈 Maven repository consumer 통과 | `V11-PUBSUB-LOSSY/java-consumer-11.1.0.json` |
+| Node.js | package consumer self-test 통과, clean install 실측 | `V11-PUBSUB-LOSSY/node-consumer-11.1.0.json` |
+| C++ | installed package compile·link·load·run 통과 | `V11-PUBSUB-LOSSY/cpp-package-11.1.0.json` |
+
+Node는 배포한 `11.1.0` tarball을 빈 project에 설치한 뒤 `pub` socket의 `noDrop`이
+`false`로 읽히는 것을 실제로 확인했다. 손실 허용 기본값이 package 경계를 넘어
+소비자에게 그대로 도달한다는 뜻이다.
+
+Framework 회귀는 다음과 같다. C++ framework unit **30/30**을 세 번 연속,
+Java/Kotlin 전체 Gradle test `BUILD SUCCESSFUL`, Node build·typecheck와 binding
+smoke·contract **6/6**이 통과했다. `.NET` 전체 unit은 아직 실행 중이며 이 절을
+쓰는 시점까지 결과가 없다. `.NET`은 parity 기준 lane이므로 그 결과가 나오기 전에는
+`11.1.0` 전환을 완료로 판정하지 않는다.
+
+C++ framework unit은 한 차례 실행에서 1건이 실패했으나 실패한 test 이름을 남기지
+못했고 이후 세 번 연속 30/30이었다. 재현되지 않았다는 사실만 기록하고 flake로
+단정하지 않는다.
+
+Node perf 하네스의 `noDrop` 해석은 C 레퍼런스와 일치한다.
+`perf_pubsub.ts`는 `PERF_SINGLE_PUBSUB_XPUB_NODROP === '0' ? false : true`이고
+`perf_pubsub.cpp`는 `env == "0" ? 0 : 1`이다. 앞 절의 parity 서술은 유효하다.
+
+### 2026-07-31 11.1.0 네 언어 회귀 확정과 Node·.NET 진단 정정
+
+`11.1.0` 전환의 네 언어 회귀가 모두 나왔다. 전환 자체는 회귀를 만들지 않았다.
+
+| 언어 | 결과 |
+|---|---|
+| Core | CTest **84/84** |
+| C++ | framework unit **30/30**, 세 번 연속 |
+| Java/Kotlin | 전체 `test`와 `contractTest` 모두 `BUILD SUCCESSFUL` |
+| Node.js | build, typecheck, binding smoke와 contract **6/6** |
+| .NET | 전체 unit **1,374/1,375** |
+
+앞 절에서 `.NET`을 hang으로 보고한 것은 정정한다. `--blame-hang`으로 다시 실행하면
+2분 53초에 완주한다. 실패는 hang이 아니라 test 한 건이다.
+
+`LocationLifecycleTests.Actor_Failed_Renew_Does_Not_Become_The_Base_Of_The_Next_Write`가
+`RejectNextRenew` 상태에서 기대한 예외를 받지 못한다. 세 번 연속 같은 결과다. 이
+실패는 `11.1.0`과 무관하다. 작업 tree에서 `.NET` framework source는 바뀌지 않았고
+참조 버전을 `11.0.2`로 되돌려도 동일하게 실패한다. 이전부터 있었으나 전체 unit이
+완주하지 못해 드러나지 않은 결함이며 blocked issue log에 새로 등록했다.
+
+Node.js formal aggregate의 진단도 정정한다. 기존 증거 문서는 `Context.close()`가
+호출한 `zlink_ctx_term()` 안의 `mailbox_t::recv(timeout=-1)`에서 멈춘다고 기록했다.
+`11.1.0`에서 `ZLINK_CTX_DEBUG_SOCKETS`로 재현한 결과는 다르다.
+
+- `channel-client.test.js`의 subtest **93개가 모두 통과**한다. 미완료 subtest는 없다.
+- 그 뒤 process가 종료되지 않는다. worker의 CPU 시간이 완전히 멈춘다.
+- 정지 시점의 thread는 node 자신의 main `epoll_wait`, DelayedTaskScheduler와
+  worker 넷뿐이다. **zlink thread는 하나도 없다.**
+- Core의 socket dump는 `destroy-socket socket_count=0` 뒤 `before-delete`로
+  정상 종료한 기록을 남긴다.
+
+따라서 native 대기가 아니다. 모든 test가 끝난 뒤 libuv event loop를 붙잡는 handle이
+남아 process가 종료되지 않는 문제다. 8 GiB `ulimit -v`도 원인이 아니다. 제한 없이
+실행해도 같은 지점에서 종료되지 않는다. `--test-force-exit`에서 나온 WebAssembly
+out of memory는 `ulimit -v`가 가상 주소공간을 제한해 생긴 부작용이며 원인이 아니다.
+
+누적 문제라는 것도 확인했다. 마지막 subtest 하나만 실행하면 정상 종료한다. 전체
+실행에서는 `before-delete`가 **5회**만 나온다. 생성한 context 대부분이 종료 경로에
+도달하지 않는다는 뜻이다.
+
+그러므로 남은 작업은 Core reaper가 아니라 **Node lane의 teardown에서 해제되지 않는
+context와 handle**을 찾는 것이다. 기능 단언은 전부 통과하므로 이 항목은 정확성
+결함이 아니라 teardown 결함으로 분류한다.

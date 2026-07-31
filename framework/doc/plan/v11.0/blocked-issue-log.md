@@ -5245,3 +5245,35 @@ with fix : 6회 중 5 pass 1 fail
 
 OBS-B2는 여전히 실패한다. 남은 것은 앞에 기록한 모드 B, 즉 relocation metric이 source
 node에 기록되는데 그 node를 `--metrics-enabled false`로 띄우는 배치 문제다. 별개 항목이다.
+
+### OBS-B2 모드 B 부분 해결과 남은 격차: actor interruption metric이 없다
+
+모드 A가 고쳐졌으므로 앞서 실패했던 배치 교체를 다시 시도했다. Relocation metric은 source
+node가 기록하고 play-b는 `--metrics-enabled false`이므로, 측정 대상 이동이 play-a에서
+시작하도록 source와 target을 맞바꿨다. 이번에는 relocation join이 통과한다.
+
+교체 뒤 play-a의 metric을 덤프해 확인했다.
+
+```
+zlink.relocation.completed | 1        | mesh_name=observability.play, object_kind=actor, policy=snapshot, outcome=completed
+zlink.relocation.duration  | 0.300    | 같은 tag
+zlink.relocation.started   | 1        | mesh_name, object_kind=actor, policy=snapshot
+```
+
+시나리오가 요구하는 두 metric은 값도 tag도 정확히 맞는다. 그런데 세 번째가 없다.
+`zlink.relocation.interruption`은 어떤 tag로도 나타나지 않는다.
+
+spec 25 §5가 이 metric을 정의한다.
+
+> `zlink.relocation.interruption` … **Actor**, Instance Spot 또는 User Spot 한 unit의
+> admission seal부터 target admission-open ACK까지 걸린 시간을 기록한다. `unit_kind`는
+> `actor`, `instance_spot`, `user_spot`이다.
+
+런타임에는 `ZLinkRelocationUnitKind.Actor` 값이 정의되어 있지만 **아무도 쓰지 않는다**.
+`StartRelocationInterruption(bool instanceSpot)`은 `InstanceSpot`과 `UserSpot`만 만들고
+호출부도 spot retire 경로뿐이다. 즉 actor relocation은 이 metric을 전혀 내지 않는다.
+시나리오가 맞고 런타임에 격차가 있다.
+
+수정하려면 actor handoff의 admission seal 시점과 target admission-open ACK 시점을 계측해야
+한다. `ZLinkActorRemoteJoiner`가 이미 relocation metric operation을 들고 있으므로 자리는
+분명하지만 두 시점을 잇는 계측 추가라 별도 작업으로 남긴다.

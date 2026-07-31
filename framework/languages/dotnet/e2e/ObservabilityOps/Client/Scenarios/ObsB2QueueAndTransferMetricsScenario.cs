@@ -11,10 +11,13 @@ internal static class ObsB2QueueAndTransferMetricsScenario
     {
         var suffix = Guid.NewGuid().ToString("N");
         var actorId = $"obs-b2-{suffix}";
+        // Relocation is coordinated by the source node, so its metrics are
+        // recorded there. play-b runs with metrics disabled on purpose for
+        // OBS-B4, so the measured move has to start on play-a.
         var source = await context.CreateRoomOnObservedNodeAsync(
-            "play-b", $"room-b2-source-{suffix}");
+            "play-a", $"room-b2-source-{suffix}");
         var target = await context.CreateRoomOnObservedNodeAsync(
-            "play-a", $"room-b2-target-{suffix}");
+            "play-b", $"room-b2-target-{suffix}");
         await using var connector = await context.ConnectAsync();
         await connector.Request(new AuthenticateReq(actorId)).Async<AuthenticateRes>();
         await context.JoinRoomAsync(connector, actorId, source.RoomRid);

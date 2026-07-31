@@ -5527,3 +5527,38 @@ Join 자체가 `Rejected`로 끝난다. `CreateRoomOnObservedNodeAsync`가 place
 
 이 시나리오의 실패 문구가 최소 셋(`not accepting operations`, binding 전이, join
 `Rejected`)이므로, 한 번의 실행으로 원인을 특정하면 안 되는 대상이다.
+
+### MON-A4: relocation target 조건과 시나리오 기대가 어긋난다
+
+RuntimeMonitoring은 6개가 통과하고 MON-A4에서 멈춘다.
+
+```
+MON-A4 planned source returned Blocked/TargetUnavailable.
+```
+
+시나리오는 ephemeral service를 띄우고 `/admin/graceful-drain`을 호출한 뒤 결과가
+`Drained`이기를 요구한다. 그 endpoint는 `RelocateAsync`를 `PlannedMaintenance` mode로
+부른다.
+
+spec 28 §5의 target 좁히기 2단계가 판정한다.
+
+> Source가 아니며 `Serving` 상태인 **Object Server**만 남긴다.
+
+Ephemeral service(`ChannelMonitoringRoleHost`)는 `mesh.Channel(...).Server()`만 등록하고
+`Objects().Server()`는 등록하지 않는다. 같은 mesh를 쓰는 다른 host도 마찬가지다.
+`ServiceHostFactory`에서 `Objects().Server()`는 **spot mesh**에 있고 channel mesh에는 없다.
+따라서 이 mesh에는 Object Server가 하나도 없고 2단계에서 후보가 비므로 §5.1대로
+deadline까지 기다린 뒤 `Blocked/TargetUnavailable`을 돌려준다. 런타임은 스펙대로다.
+
+시나리오는 직전에 `ReadyTargetCount >= 2`를 확인하고 통과한다. 그러나 그것은 ChannelName
+select-one의 ready target 수이지 relocation placement target이 아니다. 두 값을 같은 것으로
+보는 것이 어긋남의 지점이다.
+
+옮길 object가 하나도 없는 host도 target을 요구하는 것이 옳은지는 스펙만으로 갈리지 않는다.
+§5.1은 "요청한 version의 target이 없으면 … deadline까지 기다린다"고만 하고 object가 없는
+경우를 따로 두지 않는다. 따라서 둘 중 하나다.
+
+- e2e가 channel mesh에도 Object Server를 두어 target이 생기게 한다.
+- 또는 스펙이 옮길 object가 없는 host의 relocation을 target 없이 끝내도록 정한다.
+
+두 번째는 계약 변경이므로 스펙 소유자 판단이 필요하다.

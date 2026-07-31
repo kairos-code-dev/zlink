@@ -3954,3 +3954,43 @@ ST-F2가 "DirectOvertakePrevention"으로 막으려는 것이 바로 이 상황�
 시나리오가 packet을 보내는 시점이 commit 이후여서 순서가 그렇게 보이는지다. 전자라면
 런타임 결함이고 후자라면 시나리오 타이밍 문제다. 두 marker의 시각을 packet 전송 시각과
 대조하면 갈린다.
+
+## 2026-08-01 ST-F2는 시나리오가 통과한다 — 러너의 사후 검사만 실패한다
+
+시각과 클라이언트 결과를 함께 보니 성격이 달라진다.
+
+```
+client.stdout : operation SpotActorTransfer.ST-F2 passed
+client.stderr : 0 바이트
+러너          : Marker order failed ... backlog_enqueued=238, location_committed=207
+```
+
+즉 **시나리오의 모든 단언은 통과**하고, 러너가 실행 뒤에 하는 marker 순서 검사만 실패한다.
+
+두 marker가 서로 다르다는 점이 열쇠다. 시나리오가 기다리는 것은 `handoff_backlog`이고,
+러너가 검사하는 것은 `backlog_enqueued`다.
+
+```csharp
+// 시나리오: 게이트를 풀기 전에 capture 를 확인한다
+await context.WaitRuntimeEvidenceAsync(context.NodeA,
+    $"handoff_backlog actor={actorId} arrival=1");
+await context.ReleaseJoinedGateAsync(context.NodeB, spotId);
+```
+
+```bash
+# 러너: 다른 marker 로 순서를 검사한다
+require_marker_order actor-inflight-overtake- backlog_enqueued location_committed
+```
+
+시각도 이를 뒷받침한다. `location_committed`가 23:43:43.412이고 세 건의
+`backlog_enqueued`가 23:43:43.609에 **동시에** 찍힌다. 즉 `backlog_enqueued`는 handoff
+중의 capture가 아니라 commit 뒤 target 쪽에서 프레임을 actor queue에 넣는 시점의
+marker로 보인다. 그렇다면 commit 뒤에 오는 것이 자연스럽다.
+
+따라서 러너의 검사가 요구하는 순서(`backlog_enqueued` → `location_committed`)가 실제
+설계와 맞지 않을 가능성이 있다. 확인할 것은 `backlog_enqueued`가 두 곳
+(`ZLinkSpotActivationActors`와 `ZLinkActorHandoffState`)에서 나오는데 러너가 어느 쪽을
+의도했는지다. capture 쪽을 의도했다면 marker 이름을 `handoff_backlog`으로 바꿔야 하고,
+enqueue 쪽을 의도했다면 순서 기대가 뒤집혀야 한다.
+
+시나리오가 통과하므로 런타임 동작 자체에는 문제가 없어 보인다.

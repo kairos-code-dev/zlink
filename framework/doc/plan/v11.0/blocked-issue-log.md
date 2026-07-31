@@ -6025,3 +6025,29 @@ RegistrationCodec의 manual pair는 동작하므로 manual connect 일반의 문
 requester가 `Client()`, 상대가 `Server()`다.
 
 측정 편집은 모두 되돌렸다.
+
+### SubmitAdmission: 채널 role 조합도 아니다
+
+앞 절이 지목한 차이("두 host가 같은 ChannelName에 둘 다 `Server()`")를 확인했다. Caller만
+`Client()`로 바꿔 RegistrationCodec의 동작하는 조합(Client + Server)과 같게 만들었다.
+
+결과는 같다. Caller가 target을 여전히 찾지 못한다.
+
+첫 시도에서는 measurement 자체를 잘못 짰다. 기존 `Server()` 등록을 남긴 채 `Client()`를
+더해 같은 ChannelName에 두 role을 등록했고, spec 07이 금지하는 구성이라 host가 죽었다.
+Server 등록을 `else`로 옮겨 다시 측정했다.
+
+이 스위트에서 배제한 것이 여섯이 됐다.
+
+| 후보 | 결과 |
+|---|---|
+| Receiver gate proxy | 동일 |
+| Router socket HWM | 동일 |
+| 시간 | 동일 |
+| Expected RID | 동일 |
+| Caller mesh 전반 | automatic peering은 정상 |
+| Channel role 조합 | 동일 |
+
+확정된 범위는 그대로다. Manual connect가 `Hello`를 만들어 보내지 못한다. 다음은 connect
+시도 자체에 trace를 넣어 socket connect가 실행되는지, 실행된다면 어느 endpoint로 가는지를
+보는 것이다. 지금까지는 admission 평가 지점만 관측했고 그 앞 단계는 보지 않았다.

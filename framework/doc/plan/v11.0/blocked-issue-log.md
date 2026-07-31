@@ -4043,3 +4043,27 @@ require_marker_order actor-inflight-overtake- backlog_enqueued location_committe
 capture 대신 import marker를 commit과 비교한다. 수정은 러너의 검사에서 marker 이름을
 `handoff_backlog`으로 바꾸는 것이다. 다만 러너 검사의 원래 의도를 확인한 뒤 고치는 것이
 안전하다.
+
+### (정정) marker 이름을 바꿔도 순서는 뒤집히지 않는다
+
+앞 절에서 "러너가 capture marker를 의도했을 것"이라 보고 검사를 `handoff_backlog`으로
+바꿔 시험했다. **여전히 실패한다.**
+
+```
+handoff_backlog=130, location_committed=108
+```
+
+capture marker조차 `location_committed`보다 뒤에 나온다. 따라서 "capture는 commit
+앞, import는 commit 뒤"라는 앞 절의 정리는 이 실행을 설명하지 못한다. 러너 수정은
+원복했다.
+
+가능한 설명이 하나 있다. `location_committed`는 transfer뿐 아니라 actor 생성이나 최초
+membership 확정에서도 나올 수 있다. 러너의 `require_marker_order`는 각 marker의 **첫
+출현**을 비교하므로, 첫 `location_committed`가 setup 단계의 것이라면 어떤 handoff marker와
+비교해도 항상 앞선다. 그렇다면 marker 이름을 무엇으로 바꾸든 이 검사는 통과할 수 없다.
+
+확인하려면 `location_committed`가 그 실행에서 몇 번 나오는지, 그리고 각각 어느 단계인지
+봐야 한다. 지금 상태에서 러너를 고치면 또 헛수고가 되므로 여기서 멈춘다.
+
+이 세션에서 같은 실수를 반복하고 있다. 그럴듯한 설명을 세우고 그에 맞춰 고친 뒤 실패로
+확인하는 순서다. 고치기 전에 그 설명이 예측하는 바를 먼저 측정했다면 한 회차를 아꼈다.

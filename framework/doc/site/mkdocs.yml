@@ -35,8 +35,11 @@ theme:
   features:
     - content.code.copy
     - content.tabs.link
-    - navigation.sections
+    # navigation.sections를 켜면 언어 묶음이 접히지 않는 제목 덩어리가 된다.
+    # 빼면 각 묶음이 여닫히므로 지금 보는 언어만 펼쳐 둘 수 있다.
     - navigation.top
+    # 본문 맨 아래에 앞·뒤 장 링크. 순서는 이 파일의 nav가 정한다.
+    - navigation.footer
     - search.highlight
     # 오른쪽 목차 칸(12.1rem)을 없애고 목차를 왼쪽 nav 안으로 넣는다.
     # `.md-grid`의 폭 제한은 사이드바를 포함한 레이아웃 전체에 걸리므로, 이
@@ -209,7 +212,10 @@ markdown_extensions:
   - tables
   - toc:
       permalink: true
-      toc_depth: 3
+      # 왼쪽 목차에는 `##`까지만 싣는다. 장이 길어 `###`까지 펼치면 목차가
+      # 본문만큼 길어진다. anchor와 permalink는 모든 제목에 그대로 붙으므로
+      # 문서끼리의 `#소제목` 링크는 영향받지 않는다.
+      toc_depth: 2
       # 한글 제목이 anchor로 살아남으려면 unicode slug가 필요하다.
       # 기본 slugify는 non-ASCII를 버려서 문서 안의 anchor 링크가 전부 깨진다.
       slugify: !!python/object/apply:pymdownx.slugs.slugify

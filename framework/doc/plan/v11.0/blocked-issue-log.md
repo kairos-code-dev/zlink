@@ -3506,3 +3506,24 @@ bind_replacement owns=True   212건
 
 이 세션에서 추정이 빗나간 것이 여러 번인데, 공통점은 "그럴듯한 설명"을 먼저 세우고
 측정으로 확인한 순서다. 순서를 뒤집으면 회차가 줄어든다.
+
+## 2026-08-01 ST-E2 정지 지점 확정 — TombstoneReplacedSessionOwnerAsync
+
+실행권 경로를 단계별로 찍었다.
+
+```
+bind_replacement       211건   owns=True
+bind_tombstone_begin   211건   ← 전부 tombstone 호출에 진입한다
+bind_done                1건   ← 하나만 끝난다
+```
+
+즉 **210건이 `TombstoneReplacedSessionOwnerAsync` 안에서 멈춘다.** 예외도 아니고
+반환도 하지 않는다.
+
+이 함수는 교체된 이전 session owner를 tombstone 처리한다. ST-E2는 이전 session이 아직
+살아 있는 상태에서 새 session을 bind하므로 이 경로가 반드시 실행된다. 하나만 완료된다는
+점을 보면, 첫 시도가 무언가를 붙잡은 뒤 놓지 않고 이후 시도들이 거기에 쌓이는 형태로
+보인다. 다만 `OwnsExecution`이 전부 true이므로 replacement 수준의 상호배제는 아니다.
+그보다 아래, tombstone 처리 자체가 쓰는 자원에서 막히는 것이다.
+
+다음은 그 함수 내부를 같은 방식으로 짚는 것이다.

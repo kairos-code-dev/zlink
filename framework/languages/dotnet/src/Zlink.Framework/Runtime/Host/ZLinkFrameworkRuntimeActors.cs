@@ -2635,6 +2635,10 @@ internal sealed partial class ZLinkFrameworkRuntime
             request.AcceptedHighWater,
             ZLinkSessionBindingReplacement.CreateFence(
                 request.PreviousBinding));
+        //  A non-owning attempt waits on another attempt's completion; if that
+        //  never signals, every retry parks here.
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"bind_replacement actor={request.ActorId} owns={replacement.OwnsExecution}");
         if (!replacement.OwnsExecution)
         {
             var joinedFailure = await replacement.Completion
@@ -2679,6 +2683,8 @@ internal sealed partial class ZLinkFrameworkRuntime
                 _actorBoundSessionCoordinator.PublishActorSessionReplacement(
                     request.ActorId,
                     replacement);
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"bind_tombstone_begin actor={request.ActorId}");
                 await TombstoneReplacedSessionOwnerAsync(
                         request.ActorId,
                         targetNodeRid,
@@ -2701,6 +2707,8 @@ internal sealed partial class ZLinkFrameworkRuntime
                 throw;
             }
         }
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"bind_done actor={request.ActorId}");
         return new ZLinkRemoteSessionBindResponse(
             true,
             request.ObjectGeneration,

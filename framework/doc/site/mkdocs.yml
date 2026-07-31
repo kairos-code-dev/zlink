@@ -39,9 +39,13 @@ plugins:
           default: true
           build: true
 
-# 가이드와 스펙만 사이트에 올린다. 진행 기록과 성능 실험은 repo에서만 본다.
+# 가이드 · 스펙 · 샘플만 사이트에 올린다(런북 §7.1). internals는 구현·검증 기준이고
+# e2e는 검증 시나리오라 독자용 문서가 아니다. mkdocs는 nav에 없어도 docs_dir 아래
+# 파일을 전부 빌드하므로 여기서 명시적으로 뺀다.
 exclude_docs: |
   perf/
+  */internals/
+  common/e2e/
 
 nav:
   - 홈: index.ko.md

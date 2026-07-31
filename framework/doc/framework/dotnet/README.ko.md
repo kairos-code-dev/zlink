@@ -1,8 +1,8 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../README.ko.md) | [다음: ZLink Framework for .NET — 개요](guide/server/01-overview.ko.md)
+[가이드 홈](../index.ko.md) | [다음: ZLink Framework for .NET — 개요](guide/server/01-overview.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[Framework 문서](../../README.ko.md) | [공통 스펙](../common/README.ko.md)
+[가이드 홈](../index.ko.md) | [공통 스펙](../common/README.ko.md)
 
 [공통 스펙](../common/README.ko.md) | [비동기 실행](../common/spec/05-async-execution-policy.ko.md) | [Exact interface](../common/spec/server/languages/dotnet/interfaces/README.ko.md) | [Stream Connector](../common/spec/stream-connector/languages/dotnet/03-stream-connector.ko.md) | [Unity 가이드](guide/stream-connector/02-unity.ko.md) | [Runtime Lifecycle](internals/runtime-lifecycle.ko.md) | [Runtime Execution](internals/runtime-execution.ko.md) | [Regression Matrix](internals/regression-test-matrix.ko.md) | [Backend Policy](internals/backend-dependency-policy.ko.md)
 
@@ -266,5 +266,5 @@ guide가 맡고, sample 문서는 공통 정본 시나리오의 실제 등록·�
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../README.ko.md) | [다음: ZLink Framework for .NET — 개요](guide/server/01-overview.ko.md)
+[가이드 홈](../index.ko.md) | [다음: ZLink Framework for .NET — 개요](guide/server/01-overview.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

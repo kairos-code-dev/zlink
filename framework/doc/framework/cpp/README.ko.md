@@ -34,4 +34,4 @@ HTTP를 직접 제공한다.**
 
 공통 6종의 역할, DTO와 검증 기준은 [공통 샘플](../common/sample/README.ko.md)에서 확인한다.
 
-상위 framework 공통 문서는 [framework/doc](../../README.ko.md)을 본다.
+상위 framework 공통 문서는 [가이드 홈](../index.ko.md)을 본다.

@@ -3754,3 +3754,22 @@ bound session send는 session-a에서 actor-a로 relay되는 경로를 탄다. �
 대로 그 경로에는 이미 결함이 있었고(응답 유실은 고쳤지만 tombstone 요청 미도달은
 mesh 계층으로 남았다), S1·S2가 그 경로에서 사라지는지 확인해야 한다. ST-F3의 backlog
 미발생이 별개 결함인지, 아니면 bound session relay 문제의 또 다른 증상인지가 갈린다.
+
+### 계수만으로는 갈리지 않는다 — 프레임 단위 대조가 필요하다
+
+S1·S2가 actor node에 도달하는지 기존 진단으로 세어 봤다.
+
+```
+session forward_part      2건
+actor   inbound_resolve   1건
+        capture_entry     2건
+```
+
+`forward_part`는 앞선 조사에서 프레임 하나당 두 번 찍혔다(header part와 body part).
+그렇게 보면 session이 내보낸 것은 **프레임 하나**인데 시나리오는 S1과 S2 **둘**을 보낸다.
+한편 actor 쪽 `inbound_resolve`는 한 건이고 `capture_entry`는 두 건이라 서로 맞지 않는다.
+
+즉 계수만으로는 어느 프레임이 어디서 사라졌는지 특정할 수 없다. 진단이 프레임을 구분하지
+않기 때문이다. 다음에는 marker(S1·S2)나 arrival index를 진단에 실어 **프레임 단위로
+대조**해야 한다. 지금 상태에서 "하나가 유실됐다"고 단정하면 앞서 여러 번 그랬듯 틀릴 수
+있다.

@@ -61,6 +61,11 @@ internal sealed class ScenarioContext(ClientOptions options) : IDisposable
             ? "play-a"
             : "play-b";
 
+    public async Task<string> WorkflowRoleForNodeAsync(string nodeRid) =>
+        string.Equals(nodeRid, await WorkflowNodeIdAsync("workflow-a"), StringComparison.Ordinal)
+            ? "workflow-a"
+            : "workflow-b";
+
     public async Task<string[]> WaitPlayEvidenceForNodeAsync(
         string nodeRid,
         params string[] markers) =>

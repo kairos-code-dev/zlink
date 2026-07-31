@@ -5206,3 +5206,42 @@ dispatch state를 만나 거부된다.** 새 incarnation을 위한 state를 쓰�
 `ZLinkActorRuntimeState` / `ZLinkActorDispatchMailbox`의 재입장 처리이며 e2e 구성과 무관하다.
 
 측정 편집은 되돌렸다.
+
+### OBS-B2 모드 A 수정: 돌아오는 handoff가 admission을 다시 연다
+
+원인 사슬의 마지막 조각은 순서였다. Commit 경로가 `PrepareForTransferredActivation`으로
+admission을 다시 열기는 하는데, 그보다 **먼저** `ExecuteHandoffTransitionAsync`가
+`_dispatchMailbox.EnterAsync`를 호출한다. 그래서 닫힌 state를 만나면 다시 열 기회에
+닿기 전에 던진다.
+
+```
+JoinRoutedActorAsync
+  -> ZLinkActorRuntimeState.ExecuteHandoffTransitionAsync
+    -> ZLinkActorDispatchMailbox.EnterAsync   <-- 여기서 throw
+       (PrepareForTransferredActivation은 이 뒤에 있다)
+```
+
+`ExecuteHandoffTransitionAsync`가 mailbox에 들어가기 전에 idle한 경우에만 admission을 다시
+열도록 했다. Turn을 쥐고 있거나 대기자가 있으면 lifecycle 진행 중이므로 열지 않는다. 진입
+직후의 `EnsureReusable`이 teardown 중인 state를 여전히 거부하므로 destroy 경로의 보호는
+그대로다.
+
+검증은 세 가지로 했다.
+
+**모드 A 재현 중단.** Flag를 켜고 6회 돌려 그중 3회가 `entry == target`(되돌아오는 handoff)
+였는데 모두 통과했다. 수정 전에는 이 경우가 매번 모드 A였다.
+
+**단위·계약 회귀 없음.** contract 72/72, unit 1376/1376.
+
+**SpotActorTransfer 회귀 없음.** ST-E1이 수정 후 1회 실패해 회귀를 의심했으나, baseline도
+같은 비율로 실패한다.
+
+```
+baseline : 6회 중 5 pass 1 fail
+with fix : 6회 중 5 pass 1 fail
+```
+
+기존부터 flaky이며 이 수정과 무관하다. Baseline 표본이 2회뿐일 때 회귀로 단정할 뻔했다.
+
+OBS-B2는 여전히 실패한다. 남은 것은 앞에 기록한 모드 B, 즉 relocation metric이 source
+node에 기록되는데 그 node를 `--metrics-enabled false`로 띄우는 배치 문제다. 별개 항목이다.

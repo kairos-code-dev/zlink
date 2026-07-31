@@ -115,6 +115,25 @@ internal sealed class ZLinkActorDispatchMailbox
         return new BarrierReservation(turn.AsTask(), cancellation);
     }
 
+    /// <summary>
+    /// Reopens admission for an Actor arriving back on this node. A completed
+    /// migration leaves this mailbox closed, and an incoming handoff has to
+    /// enter it before anything can reopen it, so a returning Actor would meet
+    /// the state it left. Only an idle mailbox reopens: one still holding a
+    /// turn or queued waiters is mid-lifecycle and keeps its closed admission.
+    /// </summary>
+    public bool TryReopenAdmissionForIncomingHandoff()
+    {
+        lock (_sync)
+        {
+            if (!_admissionClosed) return true;
+            if (_busy || _barrierWaiters.Count != 0 || _waiters.Count != 0)
+                return false;
+            _admissionClosed = false;
+            return true;
+        }
+    }
+
     public void ReopenAdmission()
     {
         lock (_sync)

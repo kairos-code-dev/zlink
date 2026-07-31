@@ -1293,6 +1293,10 @@ internal sealed class ZLinkActorRuntimeState(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(transition);
+        //  An Actor that migrated away left this mailbox closed. Reopen before
+        //  entering so a handoff bringing it back is not rejected by the state
+        //  it left; EnsureReusable below still refuses a state in teardown.
+        _dispatchMailbox.TryReopenAdmissionForIncomingHandoff();
         using var turn = await _dispatchMailbox.EnterAsync(cancellationToken).ConfigureAwait(false);
         return await ExecuteLockedAsync(
                 () =>

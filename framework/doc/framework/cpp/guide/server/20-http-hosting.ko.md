@@ -39,7 +39,7 @@ registry에 이미 등록된 타입은 덮어쓰지 않는다.
 - 같은 메서드+경로를 두 번 매핑하면 구성 시점에 거부된다.
 
 동기 핸들러와 코루틴 핸들러 모두 가능하다. HTTP 요청을 받아 채널로 위임하는
-전형적인 패턴은 [7장 §3](05-channel-messaging.ko.md)에 있다.
+전형적인 패턴은 [5장 §3](05-channel-messaging.ko.md)에 있다.
 
 ## 3. health endpoint
 

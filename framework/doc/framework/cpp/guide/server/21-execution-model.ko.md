@@ -185,7 +185,7 @@ stateDiagram-v2
 
 - **DI 컨테이너** — `options.services()` 에 `add_singleton/scoped/transient` 로
   등록하고, 소비 측은 `dependency_types` + 생성자 주입(또는 `get_required<T>()`)으로
-  받는다. 전체 API 는 [4장 DI 컨테이너](18-di-container.ko.md).
+  받는다. 전체 API 는 [18장 DI 컨테이너](18-di-container.ko.md).
 - **구성 표면 지도** — `app_t` 진입점이 역할별로 나뉜다:
 
   | 진입점 | 역할 | 다루는 장 |

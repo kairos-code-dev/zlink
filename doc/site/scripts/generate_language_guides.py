@@ -159,6 +159,34 @@ def link_chapter_refs(text: str, available: dict[str, str]) -> str:
     return CHAPTER_REF_RE.sub(repl, text)
 
 
+#  Kotlin 가이드는 Java 런타임을 공유하므로 Java 문서를 그대로 가리키는 장이 있다
+#  (16-options, internals). 공통 소스는 형제 링크로 쓰지만 Kotlin 디렉터리에는 그
+#  파일이 없다. Java 쪽으로 돌려 준다.
+SHARES_WITH = {"kotlin": "java"}
+
+
+def redirect_missing(text: str, lang_dir: str) -> str:
+    donor = SHARES_WITH.get(lang_dir)
+    if donor is None:
+        return text
+    target_dir = FRAMEWORK / lang_dir / "guide" / "server"
+    donor_dir = FRAMEWORK / donor / "guide" / "server"
+
+    def repl(m: re.Match) -> str:
+        link = m.group(1)
+        if (target_dir / link).resolve().exists():
+            return m.group(0)
+        if not (donor_dir / link).resolve().exists():
+            return m.group(0)
+        #  `../../internals/x.md`처럼 경로를 낀 링크도 있다. 붙여 쓰면 중간에
+        #  `guide/server/../..`가 남아 읽기 어려우므로 정규화한다.
+        resolved = (donor_dir / link).resolve().relative_to(FRAMEWORK)
+        depth = len(target_dir.relative_to(FRAMEWORK).parts)
+        return m.group(0).replace(link, "../" * depth + str(resolved))
+
+    return re.sub(r"\]\(([^)#\s]+\.ko\.md)\)", repl, text)
+
+
 def nav_block(order: list[str], name: str, titles: dict[str, str]) -> str:
     """그 언어의 읽는 순서 기준 앞뒤 장 nav."""
     try:
@@ -218,6 +246,7 @@ def generate(check_only: bool) -> int:
             body = NAV_RE.sub("", body)
             body, _ = surface_terms.translate(body, label)
             body = link_chapter_refs(body, available)
+            body = redirect_missing(body, lang_dir)
             content = (FRONT_MATTER.format(
                            title=chapter_title(src), label=label)
                        + BANNER.format(source=src.name) + "\n"

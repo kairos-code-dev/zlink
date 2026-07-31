@@ -118,6 +118,12 @@ IGNORE = {
 ALLOWED_NON_FRAMEWORK = {
     # 예제가 만들어 쓰는 도메인 타입의 메서드.
     "AppendChat": "예제 Spot(GameRoom)의 도메인 메서드",
+    "HasBingo": "예제 Spot(BingoRoomSpot)의 도메인 메서드",
+    "hasBingo": "예제 Spot(BingoRoomSpot)의 도메인 메서드",
+    "setLastActivity": "예제 Spot(BingoRoomSpot)의 도메인 메서드",
+    "has_bingo": "예제 Spot(BingoRoomSpot)의 도메인 메서드",
+    "startInSpot": "예제 서비스(OrderWorkflowService)의 도메인 메서드",
+    "start_workflow": "예제 Spot(order_workflow_spot_t)의 도메인 메서드",
     "appendChat": "예제 Spot(GameRoom)의 도메인 메서드",
     "applyScore": "예제 Spot(GameRoom)의 도메인 메서드",
     "append_chat": "예제 Spot(GameRoom)의 도메인 메서드",

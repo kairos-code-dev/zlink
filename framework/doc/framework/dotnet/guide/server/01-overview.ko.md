@@ -1,8 +1,24 @@
+---
+title: "1. 개요 · C#/.NET"
+---
+
+<!-- generated:start -->
+<!-- 이 파일은 `common/guide/server/01-overview.ko.md`에서 생성한다. 직접 고치지 않는다.
+     고칠 곳은 공통 소스이고, `python3 doc/site/scripts/generate_language_guides.py`로 다시 만든다. -->
+<!-- generated:end -->
+
 <!-- framework-adapter-nav:start -->
-[가이드 홈](../../../index.ko.md) | [이전: ZLink Framework for .NET](../../README.ko.md) | [다음: Getting Started](02-getting-started.ko.md)
+[가이드 홈](README.ko.md) | [다음: 2. 시작하기](02-getting-started.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# 1. ZLink Framework for .NET - 개요
+<!-- language-switch:start -->
+다른 언어로 보기 — **C#/.NET** · [C++](../../../cpp/guide/server/01-overview.ko.md) · [Java](../../../java/guide/server/01-overview.ko.md) · [Kotlin](../../../kotlin/guide/server/01-overview.ko.md) · [Node/TypeScript](../../../node/guide/server/01-overview.ko.md)
+<!-- language-switch:end -->
+
+# 1. 개요
+
+> **이 장의 계약 소유 문서** — [Framework 개요](../../../common/spec/02-overview.ko.md)와
+> [언어별 공개 계약 목차](../../../common/spec/server/languages/README.ko.md)가 소유한다.
 
 > 이 문서는 `.NET` 가이드의 진입점이다. 가이드는 `ASP.NET Core` 개발자가
 > ZLink Framework의 기능을 **읽고 바로 따라 쓸 수 있도록** 개념과 사용법을
@@ -1017,6 +1033,3 @@ location store 모델로 공개 기능을 사용한다. 정식 public API 계약
 15. [spec/interfaces 목차](../../../common/spec/server/languages/dotnet/interfaces/README.ko.md) — 정식 계약(인터페이스 카탈로그)
 
 ---
-<!-- framework-adapter-nav:bottom:start -->
-[가이드 홈](../../../index.ko.md) | [이전: ZLink Framework for .NET](../../README.ko.md) | [다음: Getting Started](02-getting-started.ko.md)
-<!-- framework-adapter-nav:bottom:end -->

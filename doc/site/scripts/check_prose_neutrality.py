@@ -59,6 +59,9 @@ ALLOWED = {
     "Async", "submit", "Submit", "Yield", "yield", "await",
     #  spec이 정의한 계기·wire 이름이라 언어 무관이다.
     "zlink",
+    #  "Spring과 NestJS 위에도 똑같이 올라간다"처럼 **다른 언어를 예로 드는** 문장에
+    #  나온다. 어느 언어 독자가 봐도 맞는 서술이라 언어별로 바꾸지 않는다.
+    "NestJS",
 }
 
 #  operation 이름을 산문에 적을 때는 terminal을 뗀 언어 중립 이름을 쓴다. spec 20 §4.1이

@@ -4213,3 +4213,34 @@ pub-a : 01:37:45.255  Now listening
 성립하지 않는지는 아직 모른다. `SpotActorTransfer`는 같은 머신에서 정상 연결되므로
 머신이나 transport 전반의 문제는 아니고, 이 스위트들의 구성에서 갈리는 지점이 있을
 것이다.
+
+### PubSub 연결 실패의 정황 — 구독자가 발행자보다 먼저 뜬다
+
+`sub-1`의 stdout은 13줄뿐이고 mesh·peer·connect 관련 기록이 하나도 없다. 기동 후 6초 뒤
+drain으로 끝난다.
+
+구독자는 발행자 endpoint로 연결한다.
+
+```csharp
+var subscriber = framework.AddFanoutChannel(PubSubNames.Channel)
+    .Connect(options.PublisherEndpoint);
+```
+
+그런데 러너의 기동 순서는 구독자가 먼저다.
+
+```bash
+173:  start_server "sub-$sub" "$SUBSCRIBER_PROJECT" ...
+185:  start_server pub-a "$PUBLISHER_PROJECT" ...
+```
+
+시각도 이를 확인한다. 구독자 셋이 01:37:42.6, 43.5, 44.4에 뜨고 발행자가 45.3에 뜬다.
+즉 **구독자가 연결하려는 시점에 발행자가 아직 listen하지 않는다.**
+
+여기서 갈린다. connect가 재시도하는 계약이면 발행자가 뜬 뒤 연결이 성립해야 하고, 그렇지
+않다면 최초 실패로 끝난다. 관측된 결과는 후자에 가깝지만, 연결 시도 자체가 로그에 없어
+재시도 여부를 확인할 수 없다. 다음은 connect의 재시도 계약을 스펙에서 확인하고, 필요하면
+기동 순서를 바꿔 대조하는 것이다.
+
+`SpotActorTransfer`가 같은 머신에서 정상 연결되는 것은 그쪽이 auto-connect와 mesh peer
+admission을 쓰기 때문일 수 있다. 두 스위트가 연결을 맺는 방식이 다르므로 단순 비교는
+성립하지 않는다.

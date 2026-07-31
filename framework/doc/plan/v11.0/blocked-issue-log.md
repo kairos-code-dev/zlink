@@ -6464,3 +6464,44 @@ spot에 join하려다 실패했다. `spot=`이 비어 있는 것은 entry spot �
 
 SM-B1에서 겪은 placement 가정 함정과 같은 계열이며, 이번에는 spot이 아니라 actor 쪽 배치가
 어긋난 경우다.
+
+### SubmitAdmission: gate가 연결을 하나만 받았다 (해소), 그러나 아직 통과하지 않는다
+
+Mesh peer 하나는 **transport pair**다. 한 연결이 application traffic을 나르고 다른 연결이
+handshake·liveness·응답을 나른다. Core의 `transport_lane_completion`과
+`transport_pair_policy`가 그 구조다.
+
+`ReceiverGate` proxy는 `RunAsync`에서 `AcceptSocketAsync`를 **한 번만** 호출하고 그 한 쌍만
+전달했다. 두 번째 연결은 listen backlog에 영원히 남는다. 그래서 HWM을 올려도 gate를 통과하면
+frame이 도달하지 않았던 것이다. 앞선 측정표의 "gate + HWM 1000 → 0"이 이것이다.
+
+Accept를 loop으로 바꾸고 연결마다 forwarding 쌍을 만들도록 고쳤다. 계측으로 확인하면 이제
+accept가 2회 일어나고 두 쌍 모두 성립한다.
+
+```
+MEASUREMENT gate_accept      x2
+MEASUREMENT gate_pair_ready  x2
+```
+
+그래도 readiness는 여전히 실패한다. `EnsureKnownRouteMeshPeer`가 peer를 모른다고 한다.
+target 쪽 로그에는 admission 흔적이 전혀 없다. 즉 두 연결이 서 있는데도 첫 admission frame이
+target에 닿지 않는다. 남은 용의자는 caller router socket의 `SendHighWaterMark = 1`이 application
+lane에 그대로 남아 있는 것과, 4096 byte socket buffer가 pair 성립 자체를 좁히는 것이다.
+completion pair의 HWM은 이미 분리했으므로 다음은 application lane 쪽을 봐야 한다.
+
+### 두 core 수정 이후 .NET e2e 스위트 재측정
+
+| 스위트 | 결과 |
+|---|---|
+| PubSub | 전량 통과 |
+| RegistrationCodec | **11 전량 통과** |
+| ObservabilityOps | 8, OBS-B4에서 실패(기존 flaky) |
+| RuntimeMonitoring | 4, MON-A5에서 실패 |
+| SpotService | sm-b0·b1·b2·b3·b5 통과, sm-b6 잔여 |
+| LocationMessaging | readiness 통과, RM-A4 잔여 |
+| SubmitAdmission | readiness 잔여 |
+| StoreFailure | SF-B1 잔여 |
+
+`ResilienceLifecycle`·`ToActorMessaging`·`AutomaticTurnDispatch`·`SpotActorTransfer`는 이번
+sweep에서 0으로 나왔으나 SubmitAdmission 실행과 겹쳐 돌았다. 포트 경합 가능성이 있어 결과로
+치지 않는다. e2e는 동시에 돌리지 말 것.

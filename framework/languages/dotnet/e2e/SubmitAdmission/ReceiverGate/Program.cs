@@ -60,6 +60,7 @@ internal sealed class ReceiverGate : IAsyncDisposable
     private CancellationTokenSource _readEnabled = new();
     private TaskCompletionSource _paused = CompletedSignal();
     private TaskCompletionSource _resumed = CompletedSignal();
+    private readonly List<Socket> _live = [];
     private Task? _run;
     private Socket? _caller;
     private Socket? _target;
@@ -79,7 +80,7 @@ internal sealed class ReceiverGate : IAsyncDisposable
         // Apply the receive-window request before the TCP handshake so the
         // caller never observes a large initial advertised window.
         Configure(_listener.Server);
-        _listener.Start(1);
+        _listener.Start();
         _run = RunAsync();
     }
 
@@ -142,8 +143,9 @@ internal sealed class ReceiverGate : IAsyncDisposable
             _resumed.TrySetResult();
         }
         _listener.Stop();
-        _caller?.Dispose();
-        _target?.Dispose();
+        lock (_stateGate)
+            foreach (var socket in _live)
+                socket.Dispose();
         if (_run is not null)
         {
             try { await _run.ConfigureAwait(false); }
@@ -157,21 +159,56 @@ internal sealed class ReceiverGate : IAsyncDisposable
 
     private async Task RunAsync()
     {
-        var caller = await _listener.AcceptSocketAsync(_stop.Token).ConfigureAwait(false);
+        // A mesh peer is a transport pair: one connection carries application
+        // traffic and a second carries handshake, liveness and replies.
+        // Accepting only the first leaves the peer permanently half-connected,
+        // so every connection gets its own forwarding pair.
+        var pairs = new List<Task>();
+        try
+        {
+            while (!_stop.IsCancellationRequested)
+            {
+                var caller = await _listener.AcceptSocketAsync(_stop.Token).ConfigureAwait(false);
+                pairs.Add(ForwardPairAsync(caller));
+            }
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+        {
+        }
+
+        await Task.WhenAll(pairs).ConfigureAwait(false);
+    }
+
+    private async Task ForwardPairAsync(Socket caller)
+    {
         Configure(caller);
         var target = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         Configure(target);
         await target.ConnectAsync(IPAddress.Loopback, _targetPort, _stop.Token).ConfigureAwait(false);
         lock (_stateGate)
         {
-            _caller = caller;
-            _target = target;
+            _caller ??= caller;
+            _target ??= target;
+            _live.Add(caller);
+            _live.Add(target);
         }
 
-        await Task.WhenAll(
-                ForwardCallerAsync(caller, target),
-                ForwardAsync(target, caller))
-            .ConfigureAwait(false);
+        try
+        {
+            await Task.WhenAll(
+                    ForwardCallerAsync(caller, target),
+                    ForwardAsync(target, caller))
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+        {
+        }
+        catch (SocketException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
     }
 
     private async Task ForwardCallerAsync(Socket source, Socket destination)

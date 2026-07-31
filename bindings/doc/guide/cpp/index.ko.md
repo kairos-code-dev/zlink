@@ -1,4 +1,4 @@
-[바인딩 가이드](../README.ko.md) · [코어 가이드](../../../../core/doc/guide/01-overview.ko.md)
+[바인딩 가이드](../README.ko.md) · [코어 가이드](https://zlink.systems/core/ko/guide/01-overview/)
 
 # C++ 바인딩 가이드 (`zlink::`)
 
@@ -275,5 +275,5 @@ cmake -B build -DZLINK_CPP_BUILD_SAMPLES=ON && cmake --build build
 
 ## 더 보기
 
-- 소켓 패턴: [개요](../../../../core/doc/guide/03-0-socket-patterns.ko.md) — [PAIR](../../../../core/doc/guide/03-1-pair.ko.md) · [PUB/SUB](../../../../core/doc/guide/03-2-pubsub.ko.md) · [DEALER](../../../../core/doc/guide/03-3-dealer.ko.md) · [ROUTER](../../../../core/doc/guide/03-4-router.ko.md) · [STREAM](../../../../core/doc/guide/03-5-stream.ko.md) · [프록시](../../../../core/doc/guide/03-6-proxy.ko.md)
-- 운영: [소켓 옵션](../../../../core/doc/guide/12-socket-options.ko.md) · [TLS](../../../../core/doc/guide/05-tls-security.ko.md) · [모니터링](../../../../core/doc/guide/06-monitoring.ko.md) · [스레드 안전성](../../../../core/doc/guide/11-thread-safety.ko.md) · [메시지 API](../../../../core/doc/guide/09-message-api.ko.md) · [라우팅 ID](../../../../core/doc/guide/08-routing-id.ko.md)
+- 소켓 패턴: [개요](https://zlink.systems/core/ko/guide/03-0-socket-patterns/) — [PAIR](https://zlink.systems/core/ko/guide/03-1-pair/) · [PUB/SUB](https://zlink.systems/core/ko/guide/03-2-pubsub/) · [DEALER](https://zlink.systems/core/ko/guide/03-3-dealer/) · [ROUTER](https://zlink.systems/core/ko/guide/03-4-router/) · [STREAM](https://zlink.systems/core/ko/guide/03-5-stream/) · [프록시](https://zlink.systems/core/ko/guide/03-6-proxy/)
+- 운영: [소켓 옵션](https://zlink.systems/core/ko/guide/12-socket-options/) · [TLS](https://zlink.systems/core/ko/guide/05-tls-security/) · [모니터링](https://zlink.systems/core/ko/guide/06-monitoring/) · [스레드 안전성](https://zlink.systems/core/ko/guide/11-thread-safety/) · [메시지 API](https://zlink.systems/core/ko/guide/09-message-api/) · [라우팅 ID](https://zlink.systems/core/ko/guide/08-routing-id/)

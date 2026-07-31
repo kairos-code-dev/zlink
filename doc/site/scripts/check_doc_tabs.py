@@ -182,9 +182,15 @@ def parse_tab_groups(lines: list[str]):
     return groups
 
 
+#  문서 작성 규약을 적은 글이다. `--8<-- "…:doc"` 같은 표기가 실제 스니펫이 아니라
+#  설명 대상으로 나오므로 검사하면 거짓 양성이 된다. 사이트에도 싣지 않는다.
+AUTHORING_DOCS = {"EXAMPLES.ko.md", "STYLE.ko.md"}
+
+
 def check_doc_set(ds: "DocSet", errors: list[str]) -> tuple[int, int, int]:
     """문서 묶음 하나를 검사하고 (문서 수, 스니펫 수, 샘플 탭 그룹 수)를 돌려준다."""
-    md_files = sorted(ds.docs_dir.rglob("*.md"))
+    md_files = sorted(f for f in ds.docs_dir.rglob("*.md")
+                      if f.name not in AUTHORING_DOCS)
     if not md_files:
         errors.append(f"[{ds.name}] 검사할 markdown이 없다: {ds.docs_dir}")
         return 0, 0, 0

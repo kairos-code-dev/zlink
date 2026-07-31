@@ -17,9 +17,9 @@ socket API.
 - [ROUTER](guide/03-4-router.md) — Routing
 - [STREAM](guide/03-5-stream.md) — Raw TCP communication
 
-## Services
+## Bindings
 
-- [SPOT](guide/07-3-spot.md) — Location-transparent pub/sub mesh
+- [Language bindings](bindings/guide/README.ko.md) — .NET · C++ · Java · Node.js · Python · Go · Rust
 
 ## Code Examples
 

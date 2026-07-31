@@ -100,6 +100,20 @@ plugins:
             Result Enums: 결과 Enum
             Actor: Actor
 
+# 문서 트리는 정본을 심링크로 직접 건다(`docs/guide` → `core/doc/guide` 등).
+# 복사본을 두면 양쪽이 갈라진다 — 실제로 갈라져서 사이트가 byte HWM 이전의 낡은
+# 내용을 내고 있었고, v11이 지운 서비스 계층 장까지 남아 있었다.
+exclude_docs: |
+  # 문서 작성 규약이다. 독자용이 아니다.
+  guide/EXAMPLES.ko.md
+  guide/STYLE.ko.md
+  # 확정 전 초안.
+  spec/draft/
+  # binding spec은 구현자용 target blueprint다. 사이트에 실은 적이 없고,
+  # 트리 밖(core/doc, 각 binding 소스)을 상대 경로로 가리키는 자리가 많아
+  # 실으면 링크 경고 200건이 따라온다.
+  bindings/spec/
+
 nav:
   - Home: index.md
   - Guide:
@@ -120,10 +134,6 @@ nav:
       - Proxy: guide/03-6-proxy.md
     - Transports: guide/04-transports.md
     - TLS Security: guide/05-tls-security.md
-    - Services:
-      - Overview: guide/07-0-services.md
-      - SPOT: guide/07-3-spot.md
-      - Actor: guide/07-4-actor.md
     - Operations:
       - Monitoring: guide/06-monitoring.md
       - Performance: guide/10-performance.md
@@ -133,36 +143,50 @@ nav:
       - ZMP Protocol: guide/zmp-protocol.ko.md
       - Glossary: guide/glossary.ko.md
       - Shared Scenarios: guide/scenarios.ko.md
-    - Bindings:
-      - Overview: guide/bindings/README.md
-      - .NET: guide/bindings/dotnet/index.md
-      - C++: guide/bindings/cpp/index.md
-      - Java: guide/bindings/java/index.md
-      - Node.js: guide/bindings/node/index.md
-      - Python: guide/bindings/python/index.md
-      - Go: guide/bindings/go/index.md
-      - Rust: guide/bindings/rust/index.md
+  - Bindings:
+    - Overview: bindings/guide/README.ko.md
+    - .NET: bindings/guide/dotnet/index.ko.md
+    - C++: bindings/guide/cpp/index.ko.md
+    - Java: bindings/guide/java/index.ko.md
+    - Node.js: bindings/guide/node/index.ko.md
+    - Python: bindings/guide/python/index.ko.md
+    - Go: bindings/guide/go/index.ko.md
+    - Rust: bindings/guide/rust/index.ko.md
   - API Reference:
-    - Context: api/context.md
-    - Socket: api/socket.md
-    - Message: api/message.md
-    - Events: api/events.md
-    - Monitoring: api/monitoring.md
-    - Polling: api/polling.md
-    - Errors: api/errors.md
-    - Result Enums: api/errno-map.md
-    - Utilities: api/utilities.md
-    - SPOT: api/spot.md
+    - Overview: spec/core/README.md
+    - Public Contract Governance: spec/core/00-public-contract-governance.md
+    - Context: spec/core/01-context.md
+    - Message: spec/core/02-message.md
+    - Errors: spec/core/03-errors.md
+    - Result Enums: spec/core/04-errno-map.md
+    - Events: spec/core/05-events.md
+    - Polling: spec/core/06-polling.md
+    - Monitoring: spec/core/07-monitoring.md
+    - Utilities: spec/core/08-utilities.md
+    - Runtime Boundary: spec/core/09-runtime-boundary.md
+    - Sockets:
+      - Overview: spec/core/socket/README.md
+      - PAIR: spec/core/socket/01-pair.md
+      - PUB: spec/core/socket/02-pub.md
+      - SUB: spec/core/socket/03-sub.md
+      - XPUB: spec/core/socket/04-xpub.md
+      - XSUB: spec/core/socket/05-xsub.md
+      - DEALER: spec/core/socket/06-dealer.md
+      - ROUTER: spec/core/socket/07-router.md
+      - STREAM: spec/core/socket/08-stream.md
   - Internals:
     - Architecture: internals/architecture.md
     - Threading Model: internals/threading-model.md
     - Thread Safety: internals/thread-safety.md
+    - I/O Thread: internals/io-thread.md
     - Design Decisions: internals/design-decisions.md
     - POSD Module Structure: internals/posd-module-structure.md
-    - Services Internals: internals/services-internals.md
+    - Source Layout: internals/core-source-layout.ko.md
     - Stream Socket: internals/stream-socket.md
     - Socket Options: internals/socket-option-defaults.md
-    - I/O Thread: internals/io-thread.md
+    - Connection Memory: internals/connection-memory.md
+    - Multipart Atomicity: internals/multipart-atomicity.ko.md
+    - Runtime Boundary: internals/runtime-boundary.md
     - Protocol ZMP: internals/protocol-zmp.md
     - Protocol Raw: internals/protocol-raw.md
 

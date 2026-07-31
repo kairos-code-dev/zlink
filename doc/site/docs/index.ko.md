@@ -16,9 +16,9 @@ zlink 문서에 오신 것을 환영합니다. zlink은 libzmq 기반의 현대�
 - [ROUTER](guide/03-4-router.md) — 라우팅
 - [STREAM](guide/03-5-stream.md) — Raw TCP 통신
 
-## 서비스
+## 바인딩
 
-- [SPOT](guide/07-3-spot.md) — 위치 투명 발행/구독 메시
+- [언어별 바인딩 가이드](bindings/guide/README.ko.md) — .NET · C++ · Java · Node.js · Python · Go · Rust
 
 ## 코드 예제
 

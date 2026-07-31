@@ -1,4 +1,4 @@
-[바인딩 가이드](../README.ko.md) · [코어 가이드](../../../../core/doc/guide/01-overview.ko.md)
+[바인딩 가이드](../README.ko.md) · [코어 가이드](https://zlink.systems/core/ko/guide/01-overview/)
 
 # .NET 바인딩 가이드 (`Systems.Zlink`)
 
@@ -101,7 +101,7 @@ byte[] copy             = fromText.ToArray();         // 복사해서 꺼내기
 
 `Message`는 네이티브 저장소를 소유하므로 `IDisposable`입니다. `AsSpan()` /
 `AsReadOnlySpan()`이 주는 span은 메시지가 살아있는 동안만 유효합니다. 메시지 모델
-개념은 [메시지 API](../../../../core/doc/guide/09-message-api.ko.md)를 참고하세요.
+개념은 [메시지 API](https://zlink.systems/core/ko/guide/09-message-api/)를 참고하세요.
 
 바인딩은 JSON, Protobuf, MessagePack 같은 객체 codec package를 제공하지 않는다.
 이 계층은 raw `Message`와 byte payload를 주고받는 저수준 API만 유지한다.
@@ -128,7 +128,7 @@ IReadOnlyList<Message> parts = received.Parts;  // 멀티파트 전체
 ### 4. 라우팅 ID (RoutingId)
 
 피어·스팟·액터를 식별하는 바이너리 안전 값 타입입니다. 정적 팩토리로만 만듭니다.
-개념과 정책은 [라우팅 ID](../../../../core/doc/guide/08-routing-id.ko.md)를 참고하세요.
+개념과 정책은 [라우팅 ID](https://zlink.systems/core/ko/guide/08-routing-id/)를 참고하세요.
 
 ```csharp
 RoutingId a = RoutingId.From("order-client");       // UTF-8 문자열
@@ -152,7 +152,7 @@ string    h = a.ToHex();                             // 원시 바이트 보존�
   (`IReadOnlyList<Message>`)는 **호출자 소유**입니다 — 사용 후 dispose 하세요.
 - span을 보관하려면 `ToArray()`/`CopyTo(...)`로 복사하세요.
 
-스레드 안전성 규칙은 [스레드 안전성](../../../../core/doc/guide/11-thread-safety.ko.md)을 참고하세요.
+스레드 안전성 규칙은 [스레드 안전성](https://zlink.systems/core/ko/guide/11-thread-safety/)을 참고하세요.
 `IContext`는 여러 스레드에서 공유해도 안전합니다. **소켓은 안전하지 않습니다** —
 같은 소켓을 둘 이상의 스레드에서 동시에 호출하지 마세요.
 
@@ -202,7 +202,7 @@ if (!socket.Send().Message(m).Flags(SendFlags.DontWait).Submit()) { /* 백프레
 
 C 코어(`zlink.h`)에서 넘어오거나 다른 언어 바인딩과 비교할 때 쓰는 압축 매핑입니다.
 .NET은 raw 함수 대신 객체와 플루언트 빌더로 감싸므로 1:1은 아니지만 개념 단위로는
-대응합니다. 전체 C 함수 목록은 [코어 C API 가이드](../../../../core/doc/guide/02-core-api.ko.md)를
+대응합니다. 전체 C 함수 목록은 [코어 C API 가이드](https://zlink.systems/core/ko/guide/02-core-api/)를
 참고하세요.
 
 | 영역 | C API (`zlink_*`) | .NET |
@@ -242,7 +242,7 @@ C 코어(`zlink.h`)에서 넘어오거나 다른 언어 바인딩과 비교할 �
 RID 자산이 출력에 포함되는지 확인하세요 (`dotnet publish -r <rid>`).
 
 스레딩: `IContext`는 스레드 안전하며 여러 스레드에서 공유 가능합니다. 소켓은
-단일 스레드 소유 — 전체 규칙은 [스레드 안전성](../../../../core/doc/guide/11-thread-safety.ko.md) 참고.
+단일 스레드 소유 — 전체 규칙은 [스레드 안전성](https://zlink.systems/core/ko/guide/11-thread-safety/) 참고.
 
 ---
 
@@ -268,13 +268,13 @@ RID 자산이 출력에 포함되는지 확인하세요 (`dotnet publish -r <rid
 ## 더 보기
 
 **소켓 패턴**
-- [소켓 패턴 개요](../../../../core/doc/guide/03-0-socket-patterns.ko.md)
-  - [PAIR](../../../../core/doc/guide/03-1-pair.ko.md)
-  - [PUB/SUB](../../../../core/doc/guide/03-2-pubsub.ko.md)
-  - [DEALER](../../../../core/doc/guide/03-3-dealer.ko.md)
-  - [ROUTER](../../../../core/doc/guide/03-4-router.ko.md)
-  - [STREAM](../../../../core/doc/guide/03-5-stream.ko.md)
-  - [프록시](../../../../core/doc/guide/03-6-proxy.ko.md)
+- [소켓 패턴 개요](https://zlink.systems/core/ko/guide/03-0-socket-patterns/)
+  - [PAIR](https://zlink.systems/core/ko/guide/03-1-pair/)
+  - [PUB/SUB](https://zlink.systems/core/ko/guide/03-2-pubsub/)
+  - [DEALER](https://zlink.systems/core/ko/guide/03-3-dealer/)
+  - [ROUTER](https://zlink.systems/core/ko/guide/03-4-router/)
+  - [STREAM](https://zlink.systems/core/ko/guide/03-5-stream/)
+  - [프록시](https://zlink.systems/core/ko/guide/03-6-proxy/)
 
 **서비스**
 - [서비스 개요](../../../../core/doc/guide/07-0-services.ko.md)
@@ -282,9 +282,9 @@ RID 자산이 출력에 포함되는지 확인하세요 (`dotnet publish -r <rid
   - [Actor](../../../../core/doc/guide/07-4-actor.ko.md)
 
 **운영**
-- [소켓 옵션](../../../../core/doc/guide/12-socket-options.ko.md)
-- [TLS 보안](../../../../core/doc/guide/05-tls-security.ko.md)
-- [모니터링](../../../../core/doc/guide/06-monitoring.ko.md)
-- [스레드 안전성](../../../../core/doc/guide/11-thread-safety.ko.md)
-- [메시지 API](../../../../core/doc/guide/09-message-api.ko.md)
-- [라우팅 ID](../../../../core/doc/guide/08-routing-id.ko.md)
+- [소켓 옵션](https://zlink.systems/core/ko/guide/12-socket-options/)
+- [TLS 보안](https://zlink.systems/core/ko/guide/05-tls-security/)
+- [모니터링](https://zlink.systems/core/ko/guide/06-monitoring/)
+- [스레드 안전성](https://zlink.systems/core/ko/guide/11-thread-safety/)
+- [메시지 API](https://zlink.systems/core/ko/guide/09-message-api/)
+- [라우팅 ID](https://zlink.systems/core/ko/guide/08-routing-id/)

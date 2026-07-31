@@ -24,6 +24,28 @@ Actor membership과 종료 계약이 다르다.
 | Application close | 제공하지 않는다 | `Close` 또는 local context에서 close한다 | 자신의 handler·timer context에서 close한다 |
 | 주요 용도 | 아직 User Spot에 속하지 않은 Actor의 기본 위치 | room, stage, zone | matchmaking worker처럼 ID 기반 요청 처리 단위 |
 
+**어떤 lifecycle callback을 받는지도 종류마다 다르다.** 이름은 언어를 따르고 호출 조건과
+순서는 같다.
+
+| callback | Entry | User | Instance | 언제 |
+| --- | :---: | :---: | :---: | --- |
+| `Configure` | O | O | O | handler를 등록하는 구성 단계 |
+| `OnCreate` | X | O | X | 새 User Spot 생성 요청을 확인하고 수락 여부를 정한다. 기존 Spot을 찾은 경우에는 부르지 않는다 |
+| `OnInitialize` | O | O | O | 만들어진 instance의 초기화. Instance Spot은 `OnCreate` 없이 이것만 받는다 |
+| `OnClosing` | O | O | O | 아직 유효한 local instance가 정리되기 전(§4.1 아래) |
+| `OnActorJoin` | X | O※ | X | 이미 있는 Actor가 이 User Spot으로 오려 할 때 승인·거부 |
+| `OnCreateActor` | O※ | X | X | 새 Actor의 최초 Entry Spot membership 승인·거부 |
+| `OnJoinedActor` | O※ | O※ | X | join commit이 끝났음을 **간 쪽** Spot에 알린다 |
+| `OnLeaveActor` | O※ | O※ | X | commit 뒤 **떠난 쪽** Spot에 알린다. Actor가 사라졌다는 뜻이 아니다 |
+| `OnDisconnectActor` | O※ | O※ | X | 그 Spot 소속 Actor의 연결이 끊겼을 때 |
+
+※ Actor type을 지정해 Actor membership을 지원하는 Spot에만 해당한다.
+
+**membership callback은 떠난 Spot과 간 Spot에서 나뉘어 실행된다.** 그래서 User Spot에
+있던 Actor가 Entry Spot으로 돌아가도 **Entry Spot의 `OnCreateActor`와 `OnActorJoin`은
+불리지 않는다** — Entry Spot 복귀는 기본 membership이라 승인 절차가 없다. 양쪽 모두
+commit 뒤 간 쪽의 `OnJoinedActor`와 떠난 쪽의 `OnLeaveActor`만 실행된다.
+
 User Spot과 Instance Spot은 역할이 다르다. User Spot은 caller가 ID를 지정하거나 Framework가 새 ID를
 발급한다. Instance Spot은 별도 create API를 사용하지 않는다. 첫 메시지에 instance type을 지정하면
 Framework가 기존 instance를 선택하거나 필요한 위치에 생성한 뒤 같은 메시지를 처리한다.
@@ -1246,6 +1268,32 @@ Actor 앞 request는 actor request handler이며
 
 `OnClosing`의 reason은 explicit close, host shutdown, relocation out을 구분한다.
 Framework는 `Deadline`이 끝날 때 cleanup token을 취소한다.
+
+**세 이유가 Spot 종류마다 다 오는 것은 아니다.**
+
+| 종료 이유 | Entry | User | Instance | 언제 |
+| --- | :---: | :---: | :---: | --- |
+| explicit close | X | O | O | application이 close를 시작해 local instance를 정상 정리할 때 |
+| host shutdown | O | O | O | relocation 없이 host가 local Spot을 정리할 때 |
+| relocation out | X | O | O | owner를 target으로 commit한 뒤 source instance를 정리할 때 |
+
+**불리지 않는 두 자리를 기억한다.**
+
+- **close가 실패하면 부르지 않는다.** User Spot에 Actor membership이 남아 있어 explicit
+  close가 실패로 끝나면 `OnClosing`은 실행되지 않는다. close 결과를 확인하지 않고
+  "정리됐겠지" 하고 넘어가면 안 되는 이유다.
+- **Actor가 떠나도 Entry Spot은 닫히지 않는다.** Actor 하나가 다른 Entry Spot으로
+  옮겨가는 것은 Spot instance의 종료가 아니므로 Entry Spot의 `OnClosing`을 부르지 않는다.
+
+**Entry Spot 자체는 옮겨가지 않는다.** relocation out이 Entry Spot에 오지 않는 이유가
+여기 있다. host를 옮길 때 Framework가 옮기는 것은 **Entry Spot에 속한 Actor**이고,
+target 쪽 Entry Spot은 그 host가 시작할 때 새 ID와 수명으로 이미 만들어져 있다. 그래서
+Entry Spot에 담아 둔 상태는 host를 옮겨도 따라가지 않는다 — **옮겨야 하는 상태는 Actor나
+User Spot에 둔다.**
+
+host shutdown에서는 **Actor membership과 local instance가 아직 살아 있는 상태로**
+callback이 실행된다. 정리는 callback이 끝난 뒤에 이뤄지므로, 이 안에서 member Actor를
+읽는 코드가 성립한다.
 
 ### 4.2 Spot과 Actor의 activation scope
 

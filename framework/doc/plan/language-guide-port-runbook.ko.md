@@ -585,6 +585,20 @@ Spot factory가 있으면 필수), lease 값 넷을 묶는 부등식과 위반 �
   공개 API 버전 관리 · 과금은 계약 범위가 아니다.** 도입 검토에서 반드시 나오는
   질문인데 어느 장에도 없었다.
 
+**06장은 `11-spot-model` 쪽을 마쳤다.** 셋을 채웠다.
+
+- **Spot 종류별 lifecycle callback 매트릭스.** 어느 Spot이 어느 callback을 받는지가
+  없었다. 특히 **User Spot에 있던 Actor가 Entry Spot으로 돌아가도 Entry Spot의
+  `OnCreateActor` · `OnActorJoin`은 불리지 않는다** — 복귀는 기본 membership이라 승인
+  절차가 없다.
+- **`OnClosing` 호출 조건.** 가이드에 한 줄뿐이었다. 세 이유가 Spot 종류마다 다 오지
+  않고, **close가 실패하면 아예 불리지 않으며**, host shutdown에서는 member Actor가 아직
+  살아 있는 상태로 실행된다.
+- **Entry Spot 자체는 옮겨가지 않는다.** 옮겨지는 것은 거기 속한 Actor다. 그래서
+  **Entry Spot에 담아 둔 상태는 host를 옮겨도 따라가지 않는다.**
+
+`12-spot-messaging` 쪽 대조는 다음 회차로 남긴다.
+
 이 대조에서 게이트 3의 구멍도 드러났다. 산문이 `BindAsync` · `OnCreateActorAsync` 같은
 **`.NET` terminal이 붙은 operation 이름**을 부르고 있었는데 게이트 3이 타입 이름만 보고
 있어 놓쳤다. 공통 12장에서 33자리다.
@@ -597,7 +611,7 @@ operation을 `NotifyDisconnected`라 하며 `.NET` exact interface에서는
 | 남은 일 | 규모 |
 | --- | --- |
 | ZoneWorld 샘플 구현 | cpp · java · kotlin. 문서가 아니라 코드 작업이다 |
-| 게이트 4 나머지 2장 | 05 · 06. 2,400줄 이상이라 한 회차씩 든다 |
+| 게이트 4 나머지 | 05 전체와 06의 `12-spot-messaging` 쪽 |
 | 게이트 6 | 호출 형태 대조. 사람이 읽는다 |
 
 **병행 트랙 상태.** 사이트는 정본 트리를 docs root로 쓰도록 구성했고 가이드 장의 빌드

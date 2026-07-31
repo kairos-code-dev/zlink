@@ -2990,3 +2990,49 @@ mismatch는 사라지지만 **Accepted completion은 여전히 전달되지 않�
 따라서 결함은 둘 중 하나이거나 둘 다다. 분류가 sentinel을 published로 잘못 보거나,
 commit이 성공했는데 publish가 sentinel을 실제 root로 갱신하지 않는다. 후자라면 스펙
 §276이 요구하는 recovery의 전제 자체가 성립하지 않는다.
+
+## 2026-07-31 ST-B2 최종 정리 — sentinel 설계와 digest 비교가 서로 맞지 않는다
+
+authority 쪽도 확인했다. `ValidateCanonicalRemoteJoinRecoveryAsync`의 다른 검증은
+authority의 publication reference를 candidate의 reference와 비교한다.
+
+```csharp
+|| publication.RelocationReference != candidate.Reference.Reference
+|| publication.RelocationChecksumCrc32c != candidate.Reference.ChecksumCrc32c
+```
+
+이 비교는 통과한다. 즉 authority에 저장된 `RelocationReference`도 `"pending"` sentinel이다.
+코드 주석이 말한 대로 "Recovery persists this exact sentinel"이 실제로 그렇게 되어 있다.
+
+그런데 같은 함수의 마지막 조건은 이렇다.
+
+```csharp
+|| !candidate.Envelope.InventoryDigest.Span.SequenceEqual(
+       candidate.Reference.InventoryDigest.Span)
+```
+
+`Reference`는 sentinel이므로 digest가 32바이트 0이고, `Envelope`은
+`ZLinkStandaloneActorRelocationRuntime`이 실제로 계산해 넣는다.
+
+```csharp
+var digest = ZLinkAggregateInventoryDigest.Compute([publicationParticipant]);
+return new ZLinkRelocationEnvelope(relocationId, 1, digest, [participant]);
+```
+
+**따라서 이 조건은 standalone actor relocation에서 통과할 수 없다.** sentinel을 persist하는
+설계와, envelope·reference의 digest가 같기를 요구하는 검증이 서로 맞지 않는다.
+
+### 정리
+
+ST-B2의 실패는 다음 사슬이다. commit 성공 → recovery 스케줄 → sentinel을 가진
+relocation이 published로 분류됨(`IsNullOrEmpty`만 검사하므로) → identity 검증이
+envelope의 실제 digest와 sentinel의 0 digest를 비교 → 불일치 → 예외가 detached task에서
+소실 → Accepted completion 미전달 → 시나리오 20초 대기 후 실패.
+
+고칠 후보는 셋이고 각각 다른 층이다. 분류가 `"pending"`을 unpublished로 볼 것인가.
+envelope이 sentinel과 짝을 이룰 때 digest를 0으로 둘 것인가. 아니면 검증이 sentinel
+reference에 대해 이 비교를 건너뛸 것인가. 어느 것이 계약상 옳은지는 sentinel 설계의
+의도를 아는 쪽이 정해야 한다. 셋 다 증상은 없애지만 의미가 다르다.
+
+한 가지는 분명하다. detached recovery task에서 예외가 소실되는 것은 어느 선택과도
+무관하게 고칠 값어치가 있다. 이 세션에서 같은 패턴을 다섯 번 만났다.

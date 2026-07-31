@@ -311,11 +311,24 @@ GitHub Pages는 저장소당 사이트 하나, 커스텀 도메인도 사이트�
 
 framework 사이트의 첫 화면은 "무엇을 만드나 → 시작하기 → 개념 → 샘플" 순서다. 공통 장은
 한 벌이므로 nav에 다섯 번 등장시키지 않고 독자가 페이지 안에서 언어 탭으로 전환한다.
-언어별 5장과 cpp 전용 3장만 언어 그룹으로 묶고, 각 언어 그룹의 순서는 §4의 진입점이 정한
+언어별 5장과 cpp 전용 장만 언어 그룹으로 묶고, 각 언어 그룹의 순서는 §4의 진입점이 정한
 순서를 그대로 옮긴다. core로 가는 입구는 상단 링크 하나로 둔다.
 
-미러 규칙은 core 사이트 방식을 따른다 — guide·internals는 verbatim, 스펙은 재배치. i18n은
-`mkdocs-static-i18n` suffix 구조(`.md`/`.ko.md`)를 그대로 쓴다.
+**미러를 두지 않는다.** `docs_dir`을 정본 트리(`framework/doc/framework`)로 직접 잡는다.
+core 사이트는 `doc/site/docs`로 복사하는 미러라 양방향 drift가 계속 문제였고, 여기서는
+같은 구조를 만들지 않는다. 따라온 성질 셋.
+
+- 문서끼리의 상대 링크가 repo에서든 사이트에서든 같은 대상을 가리킨다. 이번에 고친
+  spec·sample 교차 링크가 사이트에서도 그대로 산다.
+- 정본 트리 밖으로 나가는 링크(core guide, repo 루트 license)는 사이트 페이지가 없으므로
+  **절대 URL로 적는다.** `https://core.zlink.systems/guide/...` 형태다.
+- 사이트에 올리지 않을 디렉터리는 `exclude_docs`로 뺀다. 현재 `perf/`가 그렇다.
+
+i18n은 `mkdocs-static-i18n` suffix 구조를 쓰되 framework 가이드는 한국어만 있으므로
+`ko` 하나를 default locale로 둔다. 이렇게 해야 `.ko` 없는 URL로 나온다.
+
+`toc`에 unicode slugify가 반드시 있어야 한다. 기본 slug는 한글 제목에서 non-ASCII를
+버려 문서 안 anchor 링크가 전부 깨진다.
 
 `docs.yml`은 지금 `doc/site/**` 변경에만 반응한다. 두 사이트를 각각 빌드·배포하고 탭
 체커를 양쪽에 돌리도록 고친다.

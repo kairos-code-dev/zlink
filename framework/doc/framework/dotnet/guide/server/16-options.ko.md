@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: E2E 테스트](../../../common/guide/server/15-e2e-testing.ko.md) | [다음: ZLink를 어디에 쓰나](../../../common/guide/server/17-alternative.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: E2E 테스트](../../../common/guide/server/15-e2e-testing.ko.md) | [다음: ZLink를 어디에 쓰나](../../../common/guide/server/17-alternative.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 16. 설정 — 옵션 목록 · 기본값 · 변경 시점
@@ -139,7 +139,7 @@ await client.SendToChannel("profile", command).Async(ct);
 상대의 지연이 왜 이쪽 대기가 되는지, 상한이 언제 걸리고 언제 풀리는지는
 [04-backpressure](../../../common/guide/server/04-backpressure.ko.md)가 다룬다. 이 절과 다음 절은 그 동작에서 값을 정하는
 옵션만 다룬다. 흐름 제어 자체는 Core가 담당하며 정확한 계약은
-[core guide의 socket option](../../../../../../core/doc/guide/12-socket-options.ko.md)이 다룬다.
+[core guide의 socket option](https://core.zlink.systems/guide/12-socket-options/)이 다룬다.
 
 > **Logical Multicast는 target마다 따로 판단한다.** 한 target에 제출하지 못해도 이미
 > 수락된 target을 되돌리지 않고, target별 실패를 발행 결과로 돌려주지도 않는다.
@@ -307,5 +307,5 @@ weight 값의 범위는 `0..10000`이고 기본값은 `100`이다. 운영 흐름
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: E2E 테스트](../../../common/guide/server/15-e2e-testing.ko.md) | [다음: ZLink를 어디에 쓰나](../../../common/guide/server/17-alternative.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: E2E 테스트](../../../common/guide/server/15-e2e-testing.ko.md) | [다음: ZLink를 어디에 쓰나](../../../common/guide/server/17-alternative.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: ZLink Framework for .NET](../../README.ko.md) | [다음: Getting Started](02-getting-started.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: ZLink Framework for .NET](../../README.ko.md) | [다음: Getting Started](02-getting-started.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 1. ZLink Framework for .NET - 개요
@@ -1018,5 +1018,5 @@ location store 모델로 공개 기능을 사용한다. 정식 public API 계약
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: ZLink Framework for .NET](../../README.ko.md) | [다음: Getting Started](02-getting-started.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: ZLink Framework for .NET](../../README.ko.md) | [다음: Getting Started](02-getting-started.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

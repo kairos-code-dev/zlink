@@ -5,6 +5,10 @@ site_description: ZLink Framework — 실시간 메시징 서버 프레임워크
 repo_url: https://github.com/zlink-systems/zlink
 repo_name: zlink-systems/zlink
 
+# 정본 문서 트리를 그대로 docs root로 쓴다. 사이트용 사본을 두지 않으므로
+# 문서끼리의 상대 링크가 repo에서든 사이트에서든 같은 대상을 가리킨다.
+docs_dir: ../framework
+
 theme:
   name: material
   palette:
@@ -25,9 +29,58 @@ theme:
     - navigation.top
     - search.highlight
 
+plugins:
+  - search
+  - i18n:
+      docs_structure: suffix
+      languages:
+        - locale: ko
+          name: 한국어
+          default: true
+          build: true
+
+# 가이드와 스펙만 사이트에 올린다. 진행 기록과 성능 실험은 repo에서만 본다.
+exclude_docs: |
+  perf/
+
 nav:
-  - Home: index.md
-  - 스파이크: spike.md
+  - 홈: index.ko.md
+  - 가이드:
+      - common/guide/server/03-concepts.ko.md
+      - common/guide/server/04-backpressure.ko.md
+      - common/guide/server/05-channel-messaging.ko.md
+      - common/guide/server/06-spot.ko.md
+      - common/guide/server/07-actor-spot.ko.md
+      - common/guide/server/08-actor-session.ko.md
+      - common/guide/server/09-stream.ko.md
+      - common/guide/server/10-location.ko.md
+      - common/guide/server/12-operations.ko.md
+      - common/guide/server/14-samples.ko.md
+      - common/guide/server/15-e2e-testing.ko.md
+      - common/guide/server/17-alternative.ko.md
+  - 언어별:
+      - .NET:
+          - dotnet/README.ko.md
+          - dotnet/guide/server/01-overview.ko.md
+          - dotnet/guide/server/02-getting-started.ko.md
+          - dotnet/guide/server/11-monitoring.ko.md
+          - dotnet/guide/server/13-interface-catalog.ko.md
+          - dotnet/guide/server/16-options.ko.md
+      - C++:
+          - cpp/guide/server/README.ko.md
+          - cpp/guide/server/01-overview.ko.md
+          - cpp/guide/server/02-getting-started.ko.md
+          - cpp/guide/server/21-execution-model.ko.md
+          - cpp/guide/server/18-di-container.ko.md
+          - cpp/guide/server/19-configuration.ko.md
+          - cpp/guide/server/20-http-hosting.ko.md
+      - Java: java/guide/server/README.ko.md
+      - Kotlin: kotlin/guide/server/README.ko.md
+      - Node.js: node/guide/server/README.ko.md
+  - 스펙:
+      - common/README.ko.md
+      - common/spec/server/languages/README.ko.md
+  - 샘플: common/sample/README.ko.md
 
 markdown_extensions:
   - admonition
@@ -55,7 +108,7 @@ markdown_extensions:
       permalink: true
       toc_depth: 3
       # 한글 제목이 anchor로 살아남으려면 unicode slug가 필요하다.
-      # 기본 slugify는 non-ASCII를 버려서 문서 내 링크가 전부 깨진다.
+      # 기본 slugify는 non-ASCII를 버려서 문서 안의 anchor 링크가 전부 깨진다.
       slugify: !!python/object/apply:pymdownx.slugs.slugify
         kwds:
           case: lower

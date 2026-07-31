@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: Location](../../../common/guide/server/10-location.ko.md) | [다음: 운영 — 메트릭 · drain · readiness](../../../common/guide/server/12-operations.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: Location](../../../common/guide/server/10-location.ko.md) | [다음: 운영 — 메트릭 · drain · readiness](../../../common/guide/server/12-operations.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 11. Monitoring — 상태 관측과 진단
@@ -165,5 +165,5 @@ trace나 count를 만들지 않는다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: Location](../../../common/guide/server/10-location.ko.md) | [다음: 운영 — 메트릭 · drain · readiness](../../../common/guide/server/12-operations.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: Location](../../../common/guide/server/10-location.ko.md) | [다음: 운영 — 메트릭 · drain · readiness](../../../common/guide/server/12-operations.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

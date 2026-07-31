@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: ZLink Framework for .NET 개요](01-overview.ko.md) | [다음: 핵심 개념](../../../common/guide/server/03-concepts.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: ZLink Framework for .NET 개요](01-overview.ko.md) | [다음: 핵심 개념](../../../common/guide/server/03-concepts.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 2. Getting Started — 설치부터 첫 동작 확인까지
@@ -319,5 +319,5 @@ endpoint에 연결한 참가자들이 같은 방에 join하고, 게임 메시지
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: ZLink Framework for .NET 개요](01-overview.ko.md) | [다음: 핵심 개념](../../../common/guide/server/03-concepts.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: ZLink Framework for .NET 개요](01-overview.ko.md) | [다음: 핵심 개념](../../../common/guide/server/03-concepts.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

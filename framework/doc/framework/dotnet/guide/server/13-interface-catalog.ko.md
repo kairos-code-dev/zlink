@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: 운영 — 메트릭 · drain · readiness](../../../common/guide/server/12-operations.ko.md) | [다음: 샘플 고르기](../../../common/guide/server/14-samples.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: 운영 — 메트릭 · drain · readiness](../../../common/guide/server/12-operations.ko.md) | [다음: 샘플 고르기](../../../common/guide/server/14-samples.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 13. 주요 interface 사용 색인
@@ -304,5 +304,5 @@ relocation staging과 mailbox 내부 상태는 log·trace 또는 Framework 내�
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: 운영 — 메트릭 · drain · readiness](../../../common/guide/server/12-operations.ko.md) | [다음: 샘플 고르기](../../../common/guide/server/14-samples.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: 운영 — 메트릭 · drain · readiness](../../../common/guide/server/12-operations.ko.md) | [다음: 샘플 고르기](../../../common/guide/server/14-samples.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

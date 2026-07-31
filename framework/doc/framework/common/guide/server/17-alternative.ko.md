@@ -347,7 +347,7 @@ v4.3.5에서 출발했기 때문이다. `http-client`는 각 플랫폼의 통상
 감싼 얇은 계층이라 Apache-2.0이다.
 
 정확한 조건은 [framework/LICENSE](../../../../../LICENSE)가, 정책 배경은
-[doc/license/README.md](../../../../../../doc/license/README.md)가 소유한다.
+[doc/license/README.md](https://github.com/zlink-systems/zlink/blob/main/doc/license/README.md)가 소유한다.
 
 ## 8. 관련 문서
 

@@ -50,19 +50,71 @@ Store는 위치를 찾을 때만 사용한다. 실제 application message는 선
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // 현재 owner와 위치를 결정하는 Store를 등록한다.
+    options.add_location_store (
+      std::make_shared<framework::redis::redis_location_store_t> (
+        framework::redis::redis_location_options_t{
+          .connection_string = "redis-host:6379",
+          .key_prefix = "game:location"}));
+
+    // 이동할 state·queue·timer payload를 저장하는 Store를 별도로 등록한다.
+    options.add_relocation_store (
+      std::make_shared<framework::redis::redis_relocation_store_t> (
+        framework::redis::redis_relocation_options_t{
+          .connection_string = "redis-host:6379",
+          .key_prefix = "game:relocation"}));
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // 현재 owner와 위치를 결정하는 Store를 등록한다.
+    options.addLocationStore(new ZLinkRedisLocationStore(
+        new ZLinkRedisLocationOptions()
+            .setConnectionString("redis-host:6379")
+            .setKeyPrefix("game:location")));
+
+    // 이동할 state·queue·timer payload를 저장하는 Store를 별도로 등록한다.
+    options.addRelocationStore(new ZLinkRedisRelocationStore(
+        new ZLinkRedisRelocationOptions()
+            .setConnectionString("redis-host:6379")
+            .setKeyPrefix("game:relocation")));
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // 현재 owner와 위치를 결정하는 Store를 등록한다.
+    options.addLocationStore(
+        ZLinkRedisLocationStore(
+            ZLinkRedisLocationOptions()
+                .setConnectionString("redis-host:6379")
+                .setKeyPrefix("game:location")))
+
+    // 이동할 state·queue·timer payload를 저장하는 Store를 별도로 등록한다.
+    options.addRelocationStore(
+        ZLinkRedisRelocationStore(
+            ZLinkRedisRelocationOptions()
+                .setConnectionString("redis-host:6379")
+                .setKeyPrefix("game:relocation")))
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // 현재 owner와 위치를 결정하는 Store를 등록한다.
+    builder.addLocationStore(new ZLinkRedisLocationStore({
+      url: 'redis://redis-host:6379',
+      keyPrefix: 'game:location'
+    }));
+
+    // 이동할 state·queue·timer payload를 저장하는 Store를 별도로 등록한다.
+    builder.addRelocationStore(new ZLinkRedisRelocationStore({
+      url: 'redis://redis-host:6379',
+      keyPrefix: 'game:relocation'
+    }));
+    ```
 
 
 두 Store는 같은 Redis deployment를 사용할 수 있다. Key prefix는 서로 다르게 둔다. Framework는
@@ -98,19 +150,59 @@ admission에서 하나만 Ready로 유지한다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    auto play = options.add_route_mesh ("play");
+    play.listen ("tcp://0.0.0.0:5501")
+      .set_routing_id (zlink::routing_id_t::from (std::string ("play-1")));
+
+    play.set_object_role (object_role_t::server)
+      .add_spot_factory<room_spot_t> (
+        "room",
+        [] (spot_context_t context) { return std::make_shared<room_spot_t> (std::move (context)); },
+        [] (auto &factory) { factory.recreate_on_relocation (); });
+
+    play.channel_name ("play.ops").server ()
+      .add_request_handler<node_status_handler_t, get_node_status_t, node_status_t> ();
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    ZLinkMeshNodeBuilder play = options.addRouteMesh("play");
+    play.listen(5501).setRoutingIdPrefix("play");
+
+    play.objects().server()
+        .addSpotFactory("room", RoomSpot.class, factory -> factory.recreateOnRelocation());
+
+    play.channelName("play.ops").server()
+        .addRequestHandler(NodeStatusHandler.class, GetNodeStatus.class, NodeStatus.class);
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    val play = options.addRouteMesh("play")
+    play.listen(5501).setRoutingIdPrefix("play")
+
+    play.objects().server()
+        .addSpotFactory("room", RoomSpot::class.java) { factory -> factory.recreateOnRelocation() }
+
+    play.channelName("play.ops").server()
+        .addRequestHandler(NodeStatusHandler::class.java, GetNodeStatus::class.java, NodeStatus::class.java)
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    const play = builder.addRouteMesh('play');
+    play.listen(5501).setRoutingIdPrefix('play');
+
+    play.objects().server()
+      .addSpotFactory('room', RoomSpot, (factory) => factory.recreateOnRelocation());
+
+    play.channel('play.ops').server()
+      .addRequestHandler(NodeStatusHandler);
+    ```
 
 
 Application은 Actor·Spot을 생성할 target Node RID나 endpoint를 지정하지 않는다. Framework가 stable type,
@@ -137,19 +229,51 @@ Manual peer를 하나라도 사용한 host에서는 host relocation을 지원하
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    auto &location = options.configure_locations ();
+    location.owner_lease_renew_interval = std::chrono::seconds (5);
+    location.owner_lease_ttl = std::chrono::seconds (15);
+    location.message_follow_duration = std::chrono::seconds (30);
+    location.max_active_outbound_relocations = 64;
+    location.max_active_inbound_relocations = 64;
+    location.max_relocation_payload_in_flight_bytes = 256LL * 1024 * 1024;
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    ZLinkLocationOptions location = options.configureLocations();
+    location.setOwnerLeaseRenewInterval(Duration.ofSeconds(5));
+    location.setOwnerLeaseTtl(Duration.ofSeconds(15));
+    location.setMessageFollowDuration(Duration.ofSeconds(30));
+    location.setMaxActiveOutboundRelocations(64);
+    location.setMaxActiveInboundRelocations(64);
+    location.setMaxRelocationPayloadInFlightBytes(256L * 1024 * 1024);
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    val location = options.configureLocations()
+    location.setOwnerLeaseRenewInterval(Duration.ofSeconds(5))
+    location.setOwnerLeaseTtl(Duration.ofSeconds(15))
+    location.setMessageFollowDuration(Duration.ofSeconds(30))
+    location.setMaxActiveOutboundRelocations(64)
+    location.setMaxActiveInboundRelocations(64)
+    location.setMaxRelocationPayloadInFlightBytes(256L * 1024 * 1024)
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    const location = builder.configureLocations();
+    location.ownerLeaseRenewIntervalMs = 5_000;
+    location.ownerLeaseTtlMs = 15_000;
+    location.messageFollowDurationMs = 30_000;
+    location.maxActiveOutboundRelocations = 64;
+    location.maxActiveInboundRelocations = 64;
+    location.maxRelocationPayloadInFlightBytes = 256 * 1024 * 1024;
+    ```
 
 
 | 옵션 | 기본값 | 의미 |
@@ -204,19 +328,59 @@ topology는 location runtime query로 조회한다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    auto status = co_await query.get_status ();
+    auto page = co_await query.list_topology (
+      location_topology_filter_t{.mesh_name = "play"},
+      location_page_request_t{.page_size = 100});
+
+    auto object_peer_ready = co_await readiness.is_peer_ready ("play", location_role_t::spot);
+
+    // status.store_healthy · status.owner_lease_healthy · object_peer_ready · page.items를
+    // 운영 endpoint의 응답으로 조립한다.
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    ZLinkLocationRuntimeStatus status = query.getStatus().toCompletableFuture().join();
+    ZLinkLocationPage<ZLinkLocationTopologyEntry> page = query
+        .listTopology(new ZLinkLocationTopologyFilter("play"), new ZLinkPageRequest(100))
+        .toCompletableFuture().join();
+
+    boolean objectPeerReady = readiness
+        .isPeerReady("play", ZLinkLocationRole.SPOT, null)
+        .toCompletableFuture().join();
+
+    // status.storeHealthy() · status.ownerLeaseHealthy() · objectPeerReady · page.items()를
+    // 운영 endpoint의 응답으로 조립한다.
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    val status = query.getStatus().await()
+    val page = query
+        .listTopology(ZLinkLocationTopologyFilter("play"), ZLinkPageRequest(100))
+        .await()
+
+    val objectPeerReady = readiness.isPeerReady("play", ZLinkLocationRole.SPOT, null).await()
+
+    // status.storeHealthy() · status.ownerLeaseHealthy() · objectPeerReady · page.items()를
+    // 운영 endpoint의 응답으로 조립한다.
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    const status = await query.getStatus();
+    const page = await query.listTopology({ meshName: 'play' }, { pageSize: 100 });
+
+    const objectPeerReady = await readiness.isPeerReady('play', ZLinkLocationRole.Spot);
+
+    // status.storeHealthy · status.ownerLeaseHealthy · objectPeerReady · page.items를
+    // 운영 endpoint의 응답으로 조립한다.
+    ```
 
 
 운영 query는 health와 사람이 확인할 topology만 반환한다. Store key, authority version, owner token과
@@ -244,19 +408,56 @@ relocation record는 Framework 내부 정보이므로 반환하지 않는다. `N
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    auto actor = co_await actor_manager.find ("player-1");
+    auto room = co_await spot_manager.find ("room-42");
+
+    if (room) {
+        co_await spot_client.request_to_spot (room.value ().spot_id (), get_room_state_t{})
+          .submit<room_state_t> ();
+    }
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    ActorRef actor = actorManager.find("player-1").toCompletableFuture().join();
+    SpotRef room = spotManager.find("room-42").toCompletableFuture().join();
+
+    if (room != null) {
+        spotClient
+            .requestToSpot(room.spotId(), new GetRoomState())
+            .submit(RoomState.class)
+            .toCompletableFuture().join();
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    val actor = actorManager.find("player-1").await()
+    val room = spotManager.find("room-42").await()
+
+    if (room != null) {
+        spotClient
+            .requestToSpot(room.spotId(), GetRoomState())
+            .submit(RoomState::class.java)
+            .await()
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    const actor = await actorManager.find('player-1');
+    const room = await spotManager.find('room-42');
+
+    if (room !== undefined) {
+      await spotClient
+        .requestToSpot(room.spotId, getRoomState())
+        .submit<RoomState>();
+    }
+    ```
 
 
 일반 메시징은 `SpotRef.NodeRid`를 target으로 사용하지 않는다. spot client와 actor client가

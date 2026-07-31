@@ -49,19 +49,88 @@ target `NodeRid`를 직접 전달하지 않는다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // C++ session은 handler 등록 대신 on_packet에서 직접 분기한다.
+    auto located = actors.get_or_create (sample_names_t::actor_type, request.player_id,
+                                         create_player_t{request.display_name});
+    if (!located)
+        co_return result_t<session_actor_t>::failure (framework_error_kind_t::request_failed,
+                                                     "Player actor could not be located.");
+
+    // 같은 exact incarnation이 이미 bind됐으면 기존 route를 반환한다.
+    auto actor = co_await actors.bind_or_get (located.value ().ref ()).submit ();
+
+    // 현재 request의 one-shot reply를 제출한다.
+    stream.reply_packet (zlink::message_t::from_json (authenticated_t{actor.actor_id ()}))
+      .submit ();
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    public CompletionStage<Void> handle(
+        ZLinkSessionContext context, ZLinkSessionDispatchContext dispatch, Authenticate request) {
+        return actors
+            .getOrCreate(request.playerId(), "player")
+            .request(new CreatePlayer(request.displayName()))
+            .submit()
+            // 같은 exact incarnation이 이미 bind됐으면 기존 route를 반환한다.
+            .thenCompose(result -> context.actors().bind(requireActor(result)))
+            // 현재 request의 one-shot reply를 제출한다.
+            .thenRun(() -> context.client()
+                .reply(new Authenticated(request.playerId()))
+                .submit());
+    }
+
+    private static ActorRef requireActor(ZLinkActorCreateResult result) {
+        if (result instanceof ZLinkActorCreateResult.Existing existing) return existing.actor();
+        if (result instanceof ZLinkActorCreateResult.Created created) return created.actor();
+        throw new IllegalStateException("Player creation was rejected.");
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    suspend fun handle(
+        context: ZLinkSessionContext, dispatch: ZLinkSessionDispatchContext, request: Authenticate) {
+        val result = actors
+            .getOrCreate(request.playerId, "player")
+            .request(CreatePlayer(request.displayName))
+            .submit()
+            .await()
+        val actor = when (result) {
+            is ZLinkActorCreateResult.Existing -> result.actor()
+            is ZLinkActorCreateResult.Created -> result.actor()
+            else -> error("Player creation was rejected.")
+        }
+
+        // 같은 exact incarnation이 이미 bind됐으면 기존 route를 반환한다.
+        context.actors().bind(actor).await()
+
+        // 현재 request의 one-shot reply를 제출한다.
+        context.client().reply(Authenticated(actor.actorId())).submit().await()
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    async handle(
+      context: ZLinkSessionContext, dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
+      const request = payload.decode<Authenticate>(Object as never);
+      const created = await this.actors
+        .getOrCreate(request.playerId, 'player')
+        .request(createPlayer(request.displayName))
+        .submit();
+
+      // 같은 exact incarnation이 이미 bind됐으면 기존 route를 반환한다.
+      await context.actors.bindOrGet(requireActor(created));
+
+      // 현재 request의 one-shot reply를 제출한다.
+      await context.client.reply(authenticated(request.playerId)).submit();
+    }
+    ```
 
 
 `BindAsync`는 중복 bind를 오류로 처리한다. 인증 재전송처럼 이미 bind됐을 수 있는 흐름은
@@ -123,19 +192,111 @@ bound Actor로 넘긴다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // C++ session은 interface를 상속하고 on_packet 하나에서 분기한다.
+    // handler registry 대신 "인증 packet인가"를 직접 확인하는 형태다.
+    class play_session_t : public packet_stream_session_t
+    {
+      public:
+        task_t<void> on_packet (stream_t &stream,
+                                const stream_dispatch_context_t &dispatch,
+                                const zlink::message_t &payload) override
+        {
+            // Actor binding 전에 처리할 packet을 먼저 걸러 낸다.
+            if (_authenticate.can_handle (dispatch)) {
+                auto authenticated = co_await _authenticate.handle (_actors, stream, payload);
+                _bound_actor_id = std::string (authenticated.actor_id ());
+                co_return;
+            }
+
+            auto actor = require_bound_actor ();
+            if (!actor)
+                co_return;
+
+            // decode하지 않고 Framework-owned payload를 Actor handler로 넘긴다.
+            co_await actor.value ().relay (payload);
+        }
+
+        task_t<void> on_connected (stream_t &) override { co_return; }
+        task_t<void> on_disconnected (stream_t &) override { co_return; }
+        task_t<void> on_error (stream_t &, const stream_error_t &) override { co_return; }
+    };
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    public final class PlaySession implements ZLinkSession {
+        private final ZLinkSessionContext context;
+
+        @Override
+        public void configure() {
+            // Actor binding 전에 처리할 packet을 등록한다.
+            context.handlers().addHandler(AuthenticateHandler.class);
+        }
+
+        @Override
+        public CompletionStage<Void> onDispatch(
+            ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
+            return context.handlers().tryHandle(dispatch, payload).thenCompose(handled -> {
+                if (handled) return CompletableFuture.completedFuture(null);
+                // decode하지 않고 Framework-owned payload를 Actor handler로 넘긴다.
+                return requireSingleBoundActor().relay(payload).thenApply(ignored -> null);
+            });
+        }
+
+        @Override
+        public CompletionStage<Void> onConnected() { return CompletableFuture.completedFuture(null); }
+
+        @Override
+        public CompletionStage<Void> onDisconnected() { return CompletableFuture.completedFuture(null); }
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    class PlaySession(private val context: ZLinkSessionContext) : ZLinkSession {
+
+        override fun configure() {
+            // Actor binding 전에 처리할 packet을 등록한다.
+            context.handlers().addHandler(AuthenticateHandler::class.java)
+        }
+
+        override suspend fun onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
+            if (context.handlers().tryHandle(dispatch, payload).await()) return
+
+            // decode하지 않고 Framework-owned payload를 Actor handler로 넘긴다.
+            requireSingleBoundActor().relay(payload).await()
+        }
+
+        override suspend fun onConnected() {}
+        override suspend fun onDisconnected() {}
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    export class PlaySession implements ZLinkSession {
+      constructor(private readonly context: ZLinkSessionContext) {}
+
+      configure(): void {
+        // Actor binding 전에 처리할 packet을 등록한다.
+        this.context.handlers.addHandler(AuthenticateHandler);
+      }
+
+      async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
+        if (await this.context.handlers.tryHandle(dispatch, payload)) return;
+
+        // decode하지 않고 Framework-owned payload를 Actor handler로 넘긴다.
+        await this.requireSingleBoundActor().relay(payload);
+      }
+
+      async onConnected(): Promise<void> {}
+      async onDisconnected(): Promise<void> {}
+    }
+    ```
 
 
 한 session에 여러 Actor를 bind할 수 있다. 이 경우 application protocol이 선택한 ActorId를
@@ -159,19 +320,41 @@ Physical STREAM disconnect는 Framework가 current binding 전체에 자동으�
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    if (auto actor = _actors.find (player_id)) {
+        // Actor가 속한 Spot의 on_disconnect_actor callback 완료까지 기다린다.
+        co_await actor->notify_disconnected ();
+    }
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    ZLinkSessionActor actor = context.actors().find(playerId);
+    if (actor != null) {
+        // Actor가 속한 Spot의 onDisconnectActor callback 완료까지 기다린다.
+        actor.notifyDisconnected().toCompletableFuture().join();
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    context.actors().find(playerId)?.let { actor ->
+        // Actor가 속한 Spot의 onDisconnectActor callback 완료까지 기다린다.
+        actor.notifyDisconnected().await()
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    const actor = context.actors.find(playerId);
+    if (actor !== undefined) {
+      // Actor가 속한 Spot의 onDisconnectActor callback 완료까지 기다린다.
+      await actor.notifyDisconnected();
+    }
+    ```
 
 
 Disconnect는 Actor를 삭제하거나 Entry Spot으로 이동시키지 않는다. 재접속한 session은 같은
@@ -204,19 +387,57 @@ Actor handler는 `Context.BoundSession`으로 현재 bound client에 메시지�
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    task_t<void> handle (game_room_t &spot, player_actor_t &actor,
+                         const message_context_t &, const state_changed_t &message)
+    {
+        // 현재 bound session의 local admission까지 기다린다.
+        co_await actor.context ().bound_session ()
+          .send (game_state_notify_t{message.state})
+          .metadata ("revision", std::to_string (message.revision))
+          .submit ();
+    }
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    public CompletionStage<Void> handle(
+        GameRoom spot, PlayerActor actor, ZLinkMessageContext messageContext, StateChanged message) {
+        // 현재 bound session의 local admission까지 기다린다.
+        return actor.context().boundSession()
+            .send(new GameStateNotify(message.state()))
+            .metadata("revision", String.valueOf(message.revision()))
+            .submit();
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    suspend fun handle(
+        spot: GameRoom, actor: PlayerActor, messageContext: ZLinkMessageContext, message: StateChanged) {
+        // 현재 bound session의 local admission까지 기다린다.
+        actor.context().boundSession()
+            .send(GameStateNotify(message.state))
+            .metadata("revision", message.revision.toString())
+            .submit()
+            .await()
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    async handle(
+      spot: GameRoom, actor: PlayerActor, messageContext: ZLinkMessageContext, message: StateChanged) {
+      // 현재 bound session의 local admission까지 기다린다.
+      await actor.context.boundSession
+        .send(gameStateNotify(message.state))
+        .metadata('revision', String(message.revision))
+        .submit();
+    }
+    ```
 
 
 Bound session은 push와 disconnect만 제공한다. Client request에 대한 Actor reply는 request handler의

@@ -108,6 +108,8 @@ ALLOWED_NON_FRAMEWORK = {
     "ReportLag": "예제 메트릭 수집기의 도메인 메서드",
     "LoadAsync": "예제 repository의 도메인 메서드",
     "SaveChangesAsync": "예제 repository의 도메인 메서드",
+    "requireSingleBoundActor": "예제가 정의해 쓰는 도우미 — bound actor가 하나인지 확인",
+    "requireActor": "예제가 정의해 쓰는 도우미 — actor 생성 결과에서 ref를 꺼낸다",
     # 서드파티 라이브러리.
     "GenericWriter": "Apache Avro",
     "GenericReader": "Apache Avro",

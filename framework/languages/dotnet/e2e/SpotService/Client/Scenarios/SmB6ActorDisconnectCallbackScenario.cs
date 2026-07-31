@@ -75,9 +75,13 @@ internal static class SmB6ActorDisconnectCallbackScenario
                 StringComparison.Ordinal)),
             "SM-B6 explicit leave incorrectly emitted disconnect evidence.");
 
+        // Case (b) of the document is an abnormal termination of the bound
+        // connection. The connector exposes only a graceful Close, so the
+        // transport is cut underneath it with a proxy.
+        await using var fault = new ReconnectProxy(new Uri(sessionAStreamEndpoint));
         await using (var disconnectClient = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
-            Endpoint = new Uri(sessionAStreamEndpoint),
+            Endpoint = fault.Endpoint,
             ConnectTimeout = TimeSpan.FromSeconds(5),
             RequestTimeout = TimeSpan.FromSeconds(5),
             Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
@@ -95,7 +99,8 @@ internal static class SmB6ActorDisconnectCallbackScenario
             await disconnectClient.Request(new JoinUserSpotActorReq(spotRid, disconnectActorId))
                 .PacketName("JoinUserSpotActorReq")
                 .Async<JoinUserSpotActorRes>();
-            await disconnectClient.Close.Async();
+            await fault.WaitForConnectionAsync();
+            fault.DropConnection();
         }
 
         var expectedDisconnectEvidence =

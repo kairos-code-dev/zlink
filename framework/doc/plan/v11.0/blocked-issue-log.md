@@ -5742,3 +5742,30 @@ dispose 역시 정상 종료로 닫는다.
 수단(proxy 차단 등)을 쓸지다. ObservabilityOps가 `NetworkFaultProxy`로 같은 일을 한다.
 
 이 스위트는 0개에서 7개로 왔다.
+
+### SM-B6: 비정상 종료를 실제로 만들어도 disconnect callback이 실행되지 않는다
+
+문서가 요구하는 case (b)를 구현했다. Connector 표면에는 `Connect`, `Close`, `Dispatch`만
+있고 abort가 없으므로, ObservabilityOps가 쓰는 `ReconnectProxy`를 이 스위트에 두고 그
+proxy를 통해 붙은 뒤 `DropConnection()`으로 transport를 끊었다. 이것이 "bind한 STREAM
+connection을 비정상 종료한다"에 해당한다.
+
+그래도 `spot-actor-disconnected` 증거가 나오지 않는다.
+
+```
+play-a.evidence.log : 0건
+play-b.evidence.log : 0건
+```
+
+Evidence 대기를 10초에서 25초로 늘려도 같다. Spec 29의 peer deadline이 15초이므로 감지
+지연으로 설명되지 않는다. Play host에는 `OnDisconnectActorAsync`가 구현되어 있고 marker도
+남기므로 callback 자체가 호출되지 않는 것이다.
+
+다음으로 확인할 것은 disconnect 시점에 이 actor가 **current binding snapshot에 있었는지**다.
+spec은 "(b)는 disconnect 시점의 current binding snapshot에 있는 Actor마다"라고 한정한다.
+시나리오는 `UserSpotAuthReq` 뒤 `JoinUserSpotActorReq`만 하는데, 그 경로가 session binding을
+만드는지 확인해야 한다. Binding이 없으면 callback이 없는 것이 계약대로이고, 그렇다면
+시나리오가 binding을 먼저 만들어야 한다.
+
+Proxy 도입은 유지한다. 문서의 case (b)를 정상 종료로 대신하고 있던 것은 그 자체로 어긋난
+구현이었다.

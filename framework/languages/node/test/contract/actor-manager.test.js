@@ -1622,11 +1622,11 @@ test('ZLinkActorNativeJoinCoordinator uses the formal Core operation for a remot
     createActor() {
       return createdRef;
     },
-    rememberSpotRoute(route, storeVersion) {
+    rememberSpotRoute(route) {
       events.push(
         `rememberSpot:${route.spot.spotId}:${route.spot.generation}:`
         + `${route.targetNodeRid}:${route.targetNodeGeneration}:`
-        + `${route.authorityOwnerGeneration}:${storeVersion}`
+        + `${route.authorityOwnerGeneration}:${route.storeVersion}`
       );
     },
     joinActor(actorRef, targetNodeRid, targetSpotId, request, callback, timeoutMs) {
@@ -1656,6 +1656,10 @@ test('ZLinkActorNativeJoinCoordinator uses the formal Core operation for a remot
         targetSpotGeneration: 9n,
         targetNodeGeneration: 4n,
         authorityOwnerGeneration: 5n,
+        // A route fence needs the full generation set. Omitting the owner lease
+        // generation makes the fence unsound, so the runtime skips remembering
+        // the route entirely.
+        ownerLeaseGeneration: 7n,
         authorityStoreVersion: 'store-6'
       };
     }

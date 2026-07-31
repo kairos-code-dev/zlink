@@ -26,7 +26,7 @@ final class JavaTargetContractGapTest {
     void handlersFactoriesAndLifecycleExposeCompletionStages() throws Exception {
         assertNamedMethodsReturnStage("systems.zlink.framework.channels.ZLinkRequestHandler", "handle");
         assertNamedMethodsReturnStage("systems.zlink.framework.channels.ZLinkSendHandler", "handle");
-        assertNamedMethodsReturnStage("systems.zlink.framework.channels.ZLinkPublishHandler", "handle");
+        assertNamedMethodsReturnStage("systems.zlink.framework.channels.ZLinkFanoutHandler", "handle");
         assertNamedMethodsReturnStage("systems.zlink.framework.actors.ZLinkActorFactory", "create");
     }
 
@@ -235,8 +235,6 @@ final class JavaTargetContractGapTest {
             "systems.zlink.framework.runtime.internal.service.ZLinkCanonicalRelocationControlCodec");
         assertNotPublic(
             "systems.zlink.framework.runtime.internal.service.ZLinkInMemoryLocationAuthority");
-        assertNotPublic(
-            "systems.zlink.framework.runtime.spots.ZLinkRelocationScheduler");
         for (String type : new String[] {
             "ActorTransferControl",
             "ActorTransferPhase",

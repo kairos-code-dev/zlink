@@ -19,7 +19,7 @@ import java.lang.reflect.Type;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
-import systems.zlink.framework.channels.ZLinkPublishHandler;
+import systems.zlink.framework.channels.ZLinkFanoutHandler;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.channels.ZLinkRouteSendHandler;
@@ -62,7 +62,7 @@ final class ZLinkInterfaceHandlerScanner {
             ZLinkScannedHandlerSurface.CHANNEL, ZLinkScannedHandlerKind.REQUEST);
         addInterfaceHandler(handlers, candidate, groups, handlerInterface(KOTLIN_REQUEST_HANDLER),
             ZLinkScannedHandlerSurface.CHANNEL, ZLinkScannedHandlerKind.REQUEST);
-        addInterfaceHandler(handlers, candidate, groups, handlerInterface(ZLinkPublishHandler.class),
+        addInterfaceHandler(handlers, candidate, groups, handlerInterface(ZLinkFanoutHandler.class),
             ZLinkScannedHandlerSurface.CHANNEL, ZLinkScannedHandlerKind.PUBLISH);
         addInterfaceHandler(handlers, candidate, groups, handlerInterface(KOTLIN_PUBLISH_HANDLER),
             ZLinkScannedHandlerSurface.CHANNEL, ZLinkScannedHandlerKind.PUBLISH);

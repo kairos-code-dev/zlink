@@ -4,7 +4,7 @@ import type {
   ZLinkActorMembership,
   ZLinkMessage,
   ZLinkSpot,
-  ZLinkSpotActorJoinResponse,
+  ZLinkSpotActorJoinResult,
   ZLinkSpotContext
 } from '@zlink-systems/framework';
 import type { DelayReq } from '../../../Shared/messages';
@@ -55,7 +55,7 @@ export class AwaitProbeSpot implements ZLinkSpot<AwaitActor> {
     this.context.handlers.addPacket(TimerStopCommandHandler);
   }
 
-  async onActorJoin(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResult> {
     const delay = request.decode<DelayReq>(Object as never);
     if (delay.delayMs > 0) {
       await new Promise<void>((resolve, reject) => {

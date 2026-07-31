@@ -413,20 +413,20 @@ class conversation_spot_t : public spot_t<support_user_actor_t>
           conversation_create_res_t{_conversation->snapshot ()});
     }
 
-    task_t<spot_actor_join_response_t>
+    task_t<spot_actor_join_result_t>
     on_actor_join (std::string_view actor_id,
                    const zlink::framework::message_t &message) override
     {
         const auto profile = _runtime.actor_profile (std::string (actor_id));
         if (!profile) {
-            co_return spot_actor_join_response_t::reject ();
+            co_return spot_actor_join_result_t::reject ();
         }
         const auto request = message.decode<join_conversation_req_t> ();
         const auto participant_id = profile->participant_id.empty () ? profile->actor_id
                                                                       : profile->participant_id;
         if (request.participant_id != participant_id || request.role != profile->role
             || request.display_name != profile->display_name) {
-            co_return spot_actor_join_response_t::reject ();
+            co_return spot_actor_join_result_t::reject ();
         }
         auto projected = require_conversation ();
         conversation_state_t admission_state;
@@ -443,7 +443,7 @@ class conversation_spot_t : public spot_t<support_user_actor_t>
             }
         }
         _pending_actor_joins.insert (std::string (actor_id));
-        co_return spot_actor_join_response_t::accept (
+        co_return spot_actor_join_result_t::accept (
           join_conversation_res_t{true, admission_state});
     }
 
@@ -663,13 +663,13 @@ class support_entry_spot_t : public entry_spot_t<support_user_actor_t>
             open_conversation_req_t::packet_name);
     }
 
-    task_t<spot_actor_join_response_t>
+    task_t<spot_actor_join_result_t>
     on_actor_join (std::string_view actor_id,
                    const zlink::framework::message_t &request) override
     {
         auto join = request.decode<ensure_support_user_actor_req_t> ();
         _pending_profiles[std::string (actor_id)] = std::move (join);
-        co_return spot_actor_join_response_t::accept ();
+        co_return spot_actor_join_result_t::accept ();
     }
 
     task_t<actor_create_response_t>

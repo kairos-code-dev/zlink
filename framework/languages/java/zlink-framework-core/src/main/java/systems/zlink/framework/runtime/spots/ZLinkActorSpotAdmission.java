@@ -24,12 +24,12 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorJoinReq
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 
 final class ZLinkActorSpotAdmission {
     record RoutedJoin(
         ZLinkBackendActorRef actorRef,
-        ZLinkSpotActorJoinResponse response,
+        ZLinkSpotActorJoinResult response,
         List<Message> handoffReplies) {
     }
 
@@ -149,7 +149,7 @@ final class ZLinkActorSpotAdmission {
     CompletionStage<Void> leaveRoutedActorToLocalEntry(
         ZLinkActor actor,
         RoutingId entryNodeRid,
-        Function<String, CompletionStage<ZLinkSpotActorJoinResponse>> admissionCallback,
+        Function<String, CompletionStage<ZLinkSpotActorJoinResult>> admissionCallback,
         Function<ZLinkActor, CompletionStage<Void>> joinedCallback) {
         ZLinkActorRuntime runtime = requireActors();
         return invokeAdmissionCallback(admissionCallback, actor.context().actorId())
@@ -172,12 +172,12 @@ final class ZLinkActorSpotAdmission {
         return requireActors().markJoined(actor, actorRef, spotId, spot);
     }
 
-    CompletionStage<ZLinkSpotActorJoinResponse> admitEntryActor(
+    CompletionStage<ZLinkSpotActorJoinResult> admitEntryActor(
         ZLinkBackendActorJoinRequest request,
         String spotId,
-        Function<String, CompletionStage<ZLinkSpotActorJoinResponse>> callback) {
+        Function<String, CompletionStage<ZLinkSpotActorJoinResult>> callback) {
         if (draining.getAsBoolean()) {
-            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.reject());
+            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResult.reject());
         }
         String actorId = request.targetActor().actorId();
         return invokeAdmissionCallback(callback, actorId)
@@ -243,28 +243,28 @@ final class ZLinkActorSpotAdmission {
         return pendingLeaves.containsKey(actorId);
     }
 
-    CompletionStage<ZLinkSpotActorJoinResponse> admitSpotActor(
+    CompletionStage<ZLinkSpotActorJoinResult> admitSpotActor(
         ZLinkBackendActorJoinRequest request,
         String spotId,
         ZLinkSpot<?> spotSurface,
-        Function<String, CompletionStage<ZLinkSpotActorJoinResponse>> callback,
+        Function<String, CompletionStage<ZLinkSpotActorJoinResult>> callback,
         Function<ZLinkActor, CompletionStage<Void>> joinedCallback) {
         return admitNativeActor(request, spotId, spotSurface, callback, joinedCallback);
     }
 
-    private CompletionStage<ZLinkSpotActorJoinResponse> admitNativeActor(
+    private CompletionStage<ZLinkSpotActorJoinResult> admitNativeActor(
         ZLinkBackendActorJoinRequest request,
         String spotId,
         ZLinkSpot<?> spotSurface,
-        Function<String, CompletionStage<ZLinkSpotActorJoinResponse>> callback,
+        Function<String, CompletionStage<ZLinkSpotActorJoinResult>> callback,
         Function<ZLinkActor, CompletionStage<Void>> joinedCallback) {
         if (draining.getAsBoolean()) {
-            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.reject());
+            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResult.reject());
         }
         String actorId = request.targetActor().actorId();
         return invokeAdmissionCallback(callback, actorId)
             .thenCompose(response -> {
-                ZLinkSpotActorJoinResponse effective = effectiveResponse(response);
+                ZLinkSpotActorJoinResult effective = effectiveResponse(response);
                 if (!effective.accepted()) {
                     return CompletableFuture.completedFuture(effective);
                 }
@@ -305,17 +305,17 @@ final class ZLinkActorSpotAdmission {
         }
     }
 
-    CompletionStage<ZLinkSpotActorJoinResponse> prepareRoutedActor(
+    CompletionStage<ZLinkSpotActorJoinResult> prepareRoutedActor(
         ZLinkActorSpotRoutePackets.TransferRequest request,
         String routeChannelName,
         RoutingId sourcePeerRid,
-        Function<String, CompletionStage<ZLinkSpotActorJoinResponse>> callback) {
+        Function<String, CompletionStage<ZLinkSpotActorJoinResult>> callback) {
         if (!request.admission()) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "actor transfer admission request has the wrong phase"));
         }
         if (draining.getAsBoolean()) {
-            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.reject());
+            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResult.reject());
         }
         requireActors().traceActorTransferMarker(
             "target_admission_received", request.actorId(), request.transferId());
@@ -468,7 +468,7 @@ final class ZLinkActorSpotAdmission {
                     })
                     .thenApply(replies -> new RoutedJoin(
                         completeRemoteMove(runtime, prepared),
-                        ZLinkSpotActorJoinResponse.accept(), replies));
+                        ZLinkSpotActorJoinResult.accept(), replies));
             });
         return attempt.exceptionallyCompose(error -> {
             if (aggregateCommitted.get()) {
@@ -581,8 +581,8 @@ final class ZLinkActorSpotAdmission {
         return runtime.bindNativeSession(actor, primaryNode, actorRef);
     }
 
-    private static CompletionStage<ZLinkSpotActorJoinResponse> invokeAdmissionCallback(
-        Function<String, CompletionStage<ZLinkSpotActorJoinResponse>> callback,
+    private static CompletionStage<ZLinkSpotActorJoinResult> invokeAdmissionCallback(
+        Function<String, CompletionStage<ZLinkSpotActorJoinResult>> callback,
         String actorId) {
         try {
             return callback.apply(actorId);
@@ -600,9 +600,9 @@ final class ZLinkActorSpotAdmission {
         }
     }
 
-    private static ZLinkSpotActorJoinResponse effectiveResponse(
-        ZLinkSpotActorJoinResponse response) {
-        return response == null ? ZLinkSpotActorJoinResponse.reject() : response;
+    private static ZLinkSpotActorJoinResult effectiveResponse(
+        ZLinkSpotActorJoinResult response) {
+        return response == null ? ZLinkSpotActorJoinResult.reject() : response;
     }
 
     private ZLinkActorRuntime requireActors() {

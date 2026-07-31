@@ -224,7 +224,7 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     this.ownerToken = claim.token;
     this.ownerLeaseHealthy = true;
     this.ownerLeaseRenewedAt = claim.storeNow;
-    this.nextLeaseRenewAtMs = this.monotonicNowMs() + this.options.heartbeatIntervalMs;
+    this.nextLeaseRenewAtMs = this.monotonicNowMs() + this.options.ownerLeaseRenewIntervalMs;
     this.scheduleHeartbeat();
   }
 
@@ -661,7 +661,7 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
       return;
     }
     const scheduledAt = this.nextLeaseRenewAtMs
-      ?? this.monotonicNowMs() + this.options.heartbeatIntervalMs;
+      ?? this.monotonicNowMs() + this.options.ownerLeaseRenewIntervalMs;
     const delayMs = Math.max(0, scheduledAt - this.monotonicNowMs());
     this.heartbeatTimer = this.setTimer(() => {
       this.heartbeatTimer = undefined;
@@ -669,7 +669,7 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
       for (const scope of this.leaseScopes) {
         this.metrics?.recordOwnerLeaseRenewLateness(lateness, scope.kind, scope.name);
       }
-      this.nextLeaseRenewAtMs = scheduledAt + this.options.heartbeatIntervalMs;
+      this.nextLeaseRenewAtMs = scheduledAt + this.options.ownerLeaseRenewIntervalMs;
       const renewal = this.renewOwnerLeaseOnce().then(
         () => undefined,
         () => undefined

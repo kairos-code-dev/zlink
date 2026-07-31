@@ -12,10 +12,10 @@ export function createRedisLocationStore(options: RedisLocationOptions): ZLinkRe
   });
 }
 
-export function storeFailureLocationOptions(): { pollingIntervalMs: number; heartbeatIntervalMs: number; ownerLeaseTtlMs: number; storeFailureGraceMs: number } {
+export function storeFailureLocationOptions(): { pollingIntervalMs: number; ownerLeaseRenewIntervalMs: number; ownerLeaseTtlMs: number; storeFailureGraceMs: number } {
   return {
     pollingIntervalMs: 100,
-    heartbeatIntervalMs: 1000,
+    ownerLeaseRenewIntervalMs: 1000,
     ownerLeaseTtlMs: 3000,
     storeFailureGraceMs: 6000
   };

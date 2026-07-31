@@ -8,7 +8,7 @@ import type {
   ZLinkChannelClient,
   ZLinkFanoutClient,
   ZLinkSpot,
-  ZLinkSpotActorJoinResponse,
+  ZLinkSpotActorJoinResult,
   ZLinkSpotInfo,
   ZLinkSpotPublisherClient,
 } from '../../contracts';
@@ -729,7 +729,7 @@ export class DefaultZLinkSpotManager {
     commit: (spot: ZLinkSpot) => Promise<ZLinkActorJoinRollback | void> | ZLinkActorJoinRollback | void,
     signal?: AbortSignal,
     leaveSource?: () => Promise<void>
-  ): Promise<ZLinkSpotActorJoinResponse> {
+  ): Promise<ZLinkSpotActorJoinResult> {
     const meshName = this.activations.resolveUnique(spotId)?.meshName;
     this.options.admission?.requireRequest('Actor join admission', meshName);
     return await this.actorMembership.admitActorJoin(
@@ -1086,7 +1086,7 @@ export class DefaultZLinkSpotManager {
           meshName,
           nodeRid: rawActorRef.nodeRid as unknown as RoutingId
         };
-        const response: ZLinkSpotActorJoinResponse = await activation.serial.execute(async () =>
+        const response: ZLinkSpotActorJoinResult = await activation.serial.execute(async () =>
           activation.spot.onActorJoin(
             actorRef.actorId,
             wrapFrameworkPayloadMessage(request, this.options.messageSerializers)

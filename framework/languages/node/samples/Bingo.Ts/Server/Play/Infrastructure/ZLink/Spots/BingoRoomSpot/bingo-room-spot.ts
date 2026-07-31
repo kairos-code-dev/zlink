@@ -27,7 +27,7 @@ import type {
   ZLinkMessage,
   ZLinkChannelClient,
   ZLinkSpot,
-  ZLinkSpotActorJoinResponse,
+  ZLinkSpotActorJoinResult,
   ZLinkSpotContext,
   ZLinkSpotCreateResponse,
   ZLinkTimer
@@ -96,7 +96,7 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     this.drawTimer = undefined;
   }
 
-  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResult> {
     try {
       const joinRequest = request.decode<BingoRoomJoinReq>(Object as never);
       const joined = this.admitActor(actorId, joinRequest);

@@ -289,9 +289,9 @@ grep으로 선언이 실재하는지 본다. 확인되면 §1로 올리고 근�
 | 뜻 | 정본(.NET) | 상태 |
 | --- | --- | --- |
 | filter 다음 단계 | `ZLinkHandlerFilterNext` | **완료.** Node의 `ZLinkHandlerDelegate`를 바꿨다. 파일명, 구현, e2e 호출부, Node 공개 계약 spec과 공통 가이드를 함께 고쳤다. build와 typecheck 통과 |
-| Spot join admission 결과 | `ZLinkSpotActorJoinResult` | 대기. Java·Kotlin·Node·C++이 `...Response`를 쓴다. 66개 파일 |
+| fanout 수신 handler | `ZLinkFanoutHandler` | **완료.** Java의 `ZLinkPublishHandler`와 Node의 같은 이름을 바꿨다. Java 파일명, 두 언어 구현, 샘플·e2e 호출부, 두 언어 공개 계약 spec과 가이드를 함께 고쳤다. Java `compileJava`, Node build·typecheck 통과 |
+| Spot join admission 결과 | `ZLinkSpotActorJoinResult` | **완료.** Java·Kotlin·Node의 `ZLinkSpotActorJoinResponse`와 C++의 `spot_actor_join_response_t`를 바꿨다. 130개 파일이며 Java 파일명도 함께 바꿨다. Java `compileJava`, Node build·typecheck, C++ 전체 빌드가 통과한다 |
 | session dispatch context | `ZLinkSessionDispatchContext` | 대기. Java·Kotlin·Node·C++이 `...MessageContext`를 쓴다. 84개 파일 |
-| fanout 수신 handler | `ZLinkFanoutHandler` | 대기. Java·Node가 `ZLinkPublishHandler`를 쓴다. 15개 파일 |
 
 각 이름은 구현뿐 아니라 언어별 공개 계약 spec에도 선언되어 있으므로 spec·가이드·공개
 계약 trace를 함께 갱신해야 한다.

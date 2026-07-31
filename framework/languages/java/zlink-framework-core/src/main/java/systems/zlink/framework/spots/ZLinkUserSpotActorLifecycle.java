@@ -9,10 +9,10 @@ import systems.zlink.framework.messaging.ZLinkMessage;
  */
 public interface ZLinkUserSpotActorLifecycle<TActor extends ZLinkActor>
     extends ZLinkSpotActorMembershipLifecycle<TActor> {
-    default CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+    default CompletionStage<ZLinkSpotActorJoinResult> onActorJoin(
         String actorId,
         ZLinkMessage request) {
         return java.util.concurrent.CompletableFuture.completedFuture(
-            ZLinkSpotActorJoinResponse.reject());
+            ZLinkSpotActorJoinResult.reject());
     }
 }

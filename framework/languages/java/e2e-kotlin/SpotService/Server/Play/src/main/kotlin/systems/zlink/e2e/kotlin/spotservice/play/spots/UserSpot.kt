@@ -7,7 +7,7 @@ import java.time.Duration
 import systems.zlink.framework.kotlin.addHandler
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
 import systems.zlink.framework.messaging.ZLinkMessage
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
 
@@ -52,7 +52,7 @@ class UserSpot(
     override suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-    ): ZLinkSpotActorJoinResponse {
+    ): ZLinkSpotActorJoinResult {
         val join = request.decode(Contracts.ActorJoinReq::class.java)
         pendingProfiles[actorId] = join.profile
         evidence.record(
@@ -60,7 +60,7 @@ class UserSpot(
             context.spotRid().toString(),
             actorId + "/" + join.profile.displayName + "/" + join.tags.joinToString(",")
         )
-        return ZLinkSpotActorJoinResponse.accept(
+        return ZLinkSpotActorJoinResult.accept(
             Contracts.ActorJoinRes(
                 actorId,
                 context.spotRid().toString(),

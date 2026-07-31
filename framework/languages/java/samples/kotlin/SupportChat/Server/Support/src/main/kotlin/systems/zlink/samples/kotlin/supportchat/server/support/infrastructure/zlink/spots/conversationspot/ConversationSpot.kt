@@ -5,7 +5,7 @@ import org.slf4j.LoggerFactory
 import kotlinx.coroutines.future.await
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
 import systems.zlink.framework.messaging.ZLinkMessage
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotClosingContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
@@ -80,11 +80,11 @@ class ConversationSpot(
     override suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-    ): ZLinkSpotActorJoinResponse {
+    ): ZLinkSpotActorJoinResult {
         val conversation = requireConversation()
         request.decode(JoinConversationReq::class.java)
         pendingJoins += actorId
-        return ZLinkSpotActorJoinResponse.accept(
+        return ZLinkSpotActorJoinResult.accept(
             JoinConversationRes(
                 scheduled = false,
                 state = ConversationContracts.toState(conversation.snapshot()),

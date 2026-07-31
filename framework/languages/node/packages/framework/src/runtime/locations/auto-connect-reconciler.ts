@@ -112,7 +112,7 @@ export class ZLinkAutoConnectReconciler {
     if (this.storeFailedValue) {
       this.storeFailedValue = false;
       this.storeFailureStartedAtMs = undefined;
-      this.recoveryDeferUntilMs = this.monotonicNowMs() + this.options.heartbeatIntervalMs;
+      this.recoveryDeferUntilMs = this.monotonicNowMs() + this.options.ownerLeaseRenewIntervalMs;
     }
 
     this.meshMemberRidHexes = new Set(rows

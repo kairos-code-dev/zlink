@@ -280,12 +280,15 @@ export class ZLinkFrameworkRuntimeHost implements
   readonly clientServerRuntime: ZLinkClientServerRuntime;
   readonly fanoutRuntime: ZLinkFanoutRuntime;
   private readonly routeMeshCoordinator: ZLinkRouteMeshRuntimeCoordinator;
-  private readonly inboundDispatchBudget: ZLinkInboundDispatchBudget;
+  //  Auto sizing needs a finite process memory limit, so resolving it is a
+  //  start-time step, not a construction-time one. The .NET reference resolves
+  //  inside the component state factory before any socket is bound and reports
+  //  a zero budget until then; constructing a host must not fail on the
+  //  environment it has not started in yet.
+  private inboundDispatchBudget: ZLinkInboundDispatchBudget =
+    new ZLinkInboundDispatchBudget(0n);
 
   constructor(readonly options: ZLinkFrameworkRuntimeHostOptions, internalOptions?: unknown) {
-    this.inboundDispatchBudget = new ZLinkInboundDispatchBudget(
-      resolveApplicationHwm(options.registration.inboundDispatch)
-    );
     this.backendAdapterFactory = resolveBackendAdapterFactory(internalOptions);
     this.lifecycleSink = options.lifecycleSink;
     this.meshSubmitters = new ZLinkMeshSubmitterRegistry(
@@ -1158,6 +1161,10 @@ export class ZLinkFrameworkRuntimeHost implements
 
     this.setRuntimeState(ZLinkFrameworkRuntimeState.Preparing);
     this.lifecycleSink?.push('framework:start');
+    //  Resolve every memory-limited ingress setting before any socket is bound.
+    this.inboundDispatchBudget = new ZLinkInboundDispatchBudget(
+      resolveApplicationHwm(this.options.registration.inboundDispatch)
+    );
     const channelAdapter = this.backendAdapterFactory.createChannelAdapter();
     const context = channelAdapter.createContext();
     let channelRuntime: ZLinkChannelRuntimeManager | undefined;

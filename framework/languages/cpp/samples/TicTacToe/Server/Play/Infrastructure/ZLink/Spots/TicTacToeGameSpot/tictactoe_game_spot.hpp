@@ -79,18 +79,18 @@ class tictactoe_game_spot_t : public spot_t<player_actor_t>
         co_return;
     }
 
-    task_t<spot_actor_join_response_t>
+    task_t<spot_actor_join_result_t>
     on_actor_join (std::string_view actor_id,
                    const message_t &request_message) override
     {
         auto request = request_message.decode<tictactoe_game_join_req_t> ();
         if (request.player.actor_id.empty ()
             || request.player.level < sample_names_t::required_level) {
-            co_return spot_actor_join_response_t::reject ();
+            co_return spot_actor_join_result_t::reject ();
         }
         auto response = match ().evaluate_join (std::string (actor_id), request.room_id);
         _pending_joins[std::string (actor_id)] = request;
-        co_return spot_actor_join_response_t::accept (
+        co_return spot_actor_join_result_t::accept (
           std::move (response));
     }
 

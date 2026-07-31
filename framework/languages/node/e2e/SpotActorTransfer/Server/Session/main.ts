@@ -112,7 +112,7 @@ Module({
         }));
         builder.configureLocations()
           .pollingIntervalMs(100)
-          .heartbeatIntervalMs(1000)
+          .ownerLeaseRenewIntervalMs(1000)
           .ownerLeaseTtlMs(3000);
         builder.configureDispatch()
           .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)

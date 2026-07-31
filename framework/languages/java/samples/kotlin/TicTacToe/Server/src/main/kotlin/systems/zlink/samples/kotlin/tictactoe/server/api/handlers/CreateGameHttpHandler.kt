@@ -19,11 +19,13 @@ class CreateGameHttpHandler(
     @PostMapping("/games")
     suspend fun handle(@RequestBody request: CreateGameHttpReq): CreateGameHttpRes {
         val gameName = request.gameName?.takeIf { it.isNotBlank() } ?: "tictactoe-game"
-        val created = spots.create("tictactoe.game")
-            .inMesh(SampleNames.SpotMesh)
+        // --8<-- [start:doc-create]
+        val created = spots.create("tictactoe.game")  // 이 stable type을 등록한 node가 후보가 된다.
+            .inMesh(SampleNames.SpotMesh)             // Spot을 만들 mesh를 고른다.
             .timeout(SampleNames.RequestTimeout)
             .submit()
-            .await()
+            .await()                                  // Kotlin의 비동기 완료 terminal이다.
+        // --8<-- [end:doc-create]
         return CreateGameHttpRes(
             roomId = created.spot.spotId,
             gameName = gameName,

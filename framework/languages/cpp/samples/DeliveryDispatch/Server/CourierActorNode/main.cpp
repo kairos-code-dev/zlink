@@ -79,11 +79,11 @@ class courier_entry_spot_t : public entry_spot_t<courier_actor_t>
             courier_decision_msg_t::packet_name);
     }
 
-    task_t<spot_actor_join_response_t>
+    task_t<spot_actor_join_result_t>
     on_actor_join (std::string_view,
                    const zlink::framework::message_t &) override
     {
-        co_return spot_actor_join_response_t::accept ();
+        co_return spot_actor_join_result_t::accept ();
     }
 
     task_t<void> on_actor_joined (courier_actor_t &) override { co_return; }

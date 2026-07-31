@@ -14,7 +14,7 @@ import systems.zlink.framework.handlers.ZLinkSpotRequest
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
@@ -50,8 +50,8 @@ class MultiNodeSpotA(
     override suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-    ): ZLinkSpotActorJoinResponse {
-        return ZLinkSpotActorJoinResponse.accept()
+    ): ZLinkSpotActorJoinResult {
+        return ZLinkSpotActorJoinResult.accept()
     }
 
     override suspend fun onJoinedActorSuspending(actor: MultiNodeActor) {
@@ -92,8 +92,8 @@ class MultiNodeSpotB(
     override suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-    ): ZLinkSpotActorJoinResponse {
-        return ZLinkSpotActorJoinResponse.accept()
+    ): ZLinkSpotActorJoinResult {
+        return ZLinkSpotActorJoinResult.accept()
     }
 
     override suspend fun onJoinedActorSuspending(actor: MultiNodeActor) {
@@ -218,7 +218,7 @@ class MultiNodeEntrySpot(
 ) : ZLinkSuspendingEntrySpot<MultiNodeActor>() {
     override suspend fun onCreateActorSuspending(actor: MultiNodeActor, createRequest: ZLinkMessage) {
     }
-    override suspend fun onActorJoinSuspending(actorId: String, request: ZLinkMessage) = ZLinkSpotActorJoinResponse.accept()
+    override suspend fun onActorJoinSuspending(actorId: String, request: ZLinkMessage) = ZLinkSpotActorJoinResult.accept()
     override suspend fun onJoinedActorSuspending(actor: MultiNodeActor) {
     }
 

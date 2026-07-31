@@ -123,7 +123,7 @@ class bingo_room_spot_t : public spot_t<player_actor_t>
         co_return;
     }
 
-    task_t<spot_actor_join_response_t>
+    task_t<spot_actor_join_result_t>
     on_actor_join (std::string_view actor_id,
                    const message_t &request_message) override
     {
@@ -135,7 +135,7 @@ class bingo_room_spot_t : public spot_t<player_actor_t>
                 throw std::runtime_error ("observe-only actor can join only its observer room");
             }
             _pending_joins[joined_actor_id] = request;
-            co_return spot_actor_join_response_t::accept (bingo_room_join_res_t{
+            co_return spot_actor_join_result_t::accept (bingo_room_join_res_t{
               bingo_room_state_t{request.room_id, bingo_room_status_t::running}});
         }
         if (_is_observer) {
@@ -145,7 +145,7 @@ class bingo_room_spot_t : public spot_t<player_actor_t>
         projected.set_room_id_if_empty (request.room_id);
         projected.join (joined_actor_id, request.display_name);
         _pending_joins[joined_actor_id] = request;
-        co_return spot_actor_join_response_t::accept (
+        co_return spot_actor_join_result_t::accept (
           bingo_room_join_res_t{projected.snapshot ()});
     }
 

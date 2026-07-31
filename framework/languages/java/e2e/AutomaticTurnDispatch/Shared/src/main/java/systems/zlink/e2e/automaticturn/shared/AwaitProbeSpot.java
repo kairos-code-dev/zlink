@@ -7,7 +7,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.framework.spots.ZLinkTimer;
@@ -136,7 +136,7 @@ public final class AwaitProbeSpot implements ZLinkSpot<AwaitActor> {
     }
 
     @Override
-    public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+    public CompletionStage<ZLinkSpotActorJoinResult> onActorJoin(
         String actorId,
         ZLinkMessage request) {
         if (actorId.startsWith("atdb3-")) {
@@ -149,7 +149,7 @@ public final class AwaitProbeSpot implements ZLinkSpot<AwaitActor> {
             }
         }
         evidence.record("actor-target-join-requested", actorId, context.spotRid().toString());
-        return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept());
+        return CompletableFuture.completedFuture(ZLinkSpotActorJoinResult.accept());
     }
 
     @Override

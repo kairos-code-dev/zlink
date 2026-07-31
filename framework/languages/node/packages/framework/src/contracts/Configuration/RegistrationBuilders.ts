@@ -339,8 +339,8 @@ export class DefaultDispatchOptionsBuilder implements ZLinkDispatchOptionsBuilde
 export class DefaultLocationOptionsBuilder implements ZLinkLocationOptions {
   constructor(private readonly options: MutableLocationOptionValues) {}
 
-  heartbeatIntervalMs(value: number): this {
-    this.options.heartbeatIntervalMs = value;
+  ownerLeaseRenewIntervalMs(value: number): this {
+    this.options.ownerLeaseRenewIntervalMs = value;
     return this;
   }
 
@@ -359,8 +359,8 @@ export class DefaultLocationOptionsBuilder implements ZLinkLocationOptions {
     return this;
   }
 
-  routingIdFencingMarginMs(value: number): this {
-    this.options.routingIdFencingMarginMs = value;
+  ownerLeaseFencingMarginMs(value: number): this {
+    this.options.ownerLeaseFencingMarginMs = value;
     return this;
   }
 
@@ -476,6 +476,17 @@ class DefaultFanoutChannelBuilder implements ZLinkFanoutChannelBuilder {
     this.channel.subscriber ??= { manualConnections: [] };
     if (endpoint !== undefined) {
       this.channel.subscriber.manualConnections ??= [];
+      this.channel.subscriber.manualConnections.push(endpoint);
+    }
+    return this;
+  }
+
+  connect(endpoint: string): this {
+    requireRegistrationName(endpoint, `Fanout channel '${this.name}' subscriber endpoint`);
+    this.selectSubscriberMode('manual');
+    this.channel.subscriber ??= { manualConnections: [] };
+    this.channel.subscriber.manualConnections ??= [];
+    if (!this.channel.subscriber.manualConnections.includes(endpoint)) {
       this.channel.subscriber.manualConnections.push(endpoint);
     }
     return this;

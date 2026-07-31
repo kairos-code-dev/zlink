@@ -9,7 +9,7 @@ import systems.zlink.framework.kotlin.addHandler
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpot
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult
 
 class ScenarioEntrySpot(
     private val context: ZLinkEntrySpotContext,
@@ -50,9 +50,9 @@ class ScenarioEntrySpot(
     override suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-    ): ZLinkSpotActorJoinResponse {
+    ): ZLinkSpotActorJoinResult {
         evidence.record("ActorEntryJoinRequested", "entry", actorId)
-        return ZLinkSpotActorJoinResponse.accept()
+        return ZLinkSpotActorJoinResult.accept()
     }
 
     override suspend fun onJoinedActorSuspending(actor: ScenarioActor) {

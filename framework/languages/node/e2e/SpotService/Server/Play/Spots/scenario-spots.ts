@@ -2,7 +2,7 @@ import type {
   ZLinkSpot,
   ZLinkMessage,
   ZLinkMessageContext,
-  ZLinkSpotActorJoinResponse,
+  ZLinkSpotActorJoinResult,
   ZLinkSpotActorRequestHandler,
   ZLinkSpotContext
 } from '@zlink-systems/framework';
@@ -68,7 +68,7 @@ export class ScenarioUserSpot implements ZLinkSpot<ScenarioActor> {
     return this.value;
   }
 
-  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResult> {
     const payload = request.decode<Partial<{ readonly actorId: string }>>(Object as never);
     if (payload.actorId?.includes('reject') === true) {
       const evidence = ScenarioUserSpot.requireEvidence();

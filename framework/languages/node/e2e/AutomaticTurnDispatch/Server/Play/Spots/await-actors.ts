@@ -20,7 +20,7 @@ import type {
   ZLinkChannelClient,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
-  ZLinkSpotActorJoinResponse,
+  ZLinkSpotActorJoinResult,
   ZLinkSpotActorRequestHandler,
   ZLinkSpotActorRequestContext,
   ZLinkSpotActorSendHandler,
@@ -52,7 +52,7 @@ export class AwaitActorFactory implements ZLinkActorFactory {
 export class AwaitEntrySpot implements ZLinkEntrySpot<AwaitActor> {
   readonly context!: ZLinkEntrySpotContext<AwaitActor>;
 
-  async onActorJoin(actor: ZLinkActorJoinRequest): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(actor: ZLinkActorJoinRequest): Promise<ZLinkSpotActorJoinResult> {
     void actor;
     return { accepted: true };
   }

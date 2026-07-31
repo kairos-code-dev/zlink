@@ -96,11 +96,11 @@ class monitoring_spot_t
           "stopping", 50ms, {.stop_on_unhandled_exception = true});
     }
 
-    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    zlink::framework::task_t<zlink::framework::spot_actor_join_result_t>
     on_actor_join (std::string_view,
                    const zlink::framework::message_t &) override
     {
-        co_return zlink::framework::spot_actor_join_response_t::accept ();
+        co_return zlink::framework::spot_actor_join_result_t::accept ();
     }
 
     zlink::framework::task_t<void>
@@ -143,11 +143,11 @@ class monitoring_subject_spot_t
 
     void configure () override {}
 
-    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    zlink::framework::task_t<zlink::framework::spot_actor_join_result_t>
     on_actor_join (std::string_view,
                    const zlink::framework::message_t &) override
     {
-        co_return zlink::framework::spot_actor_join_response_t::accept ();
+        co_return zlink::framework::spot_actor_join_result_t::accept ();
     }
 
     zlink::framework::task_t<void>

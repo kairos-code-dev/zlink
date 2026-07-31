@@ -15,7 +15,7 @@ import type {
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
   ZLinkMessage,
-  ZLinkSpotActorJoinResponse,
+  ZLinkSpotActorJoinResult,
   ZLinkMessageContext
 } from '@zlink-systems/framework';
 
@@ -41,7 +41,7 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
   async onActorJoin(
     _actorId: string,
     _request: ZLinkMessage
-  ): Promise<ZLinkSpotActorJoinResponse> {
+  ): Promise<ZLinkSpotActorJoinResult> {
     return { accepted: true };
   }
 

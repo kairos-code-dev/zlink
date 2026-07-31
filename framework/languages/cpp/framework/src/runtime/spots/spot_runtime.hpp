@@ -643,7 +643,7 @@ class spot_node_runtime_t
                                       spot_id_t spot_id,
                                       const zlink::message_t &request,
                                       actor_context_t actor_context = {});
-    result_t<spot_actor_join_response_t>
+    result_t<spot_actor_join_result_t>
     admit_remote_actor_to_spot (std::string transfer_id,
                                 const actor_ref_t &actor_ref,
                                 spot_id_t source_spot_id,
@@ -912,7 +912,7 @@ class spot_node_runtime_t
     {
         {
             spot.on_actor_join (actor_id, request)
-        } -> std::same_as<spot_actor_join_response_t>;
+        } -> std::same_as<spot_actor_join_result_t>;
     };
 
     template <typename TSpot>
@@ -921,7 +921,7 @@ class spot_node_runtime_t
     {
         {
             spot.on_actor_join (actor_id, request)
-        } -> std::same_as<spot_actor_join_response_t>;
+        } -> std::same_as<spot_actor_join_result_t>;
     };
 
     template <typename TSpot>
@@ -929,7 +929,7 @@ class spot_node_runtime_t
       has_framework_actor_join_callback<TSpot> || has_raw_actor_join_callback<TSpot>;
 
     template <typename TSpot>
-    spot_actor_join_response_t invoke_actor_join_callback (TSpot &spot,
+    spot_actor_join_result_t invoke_actor_join_callback (TSpot &spot,
                                                            std::string_view actor_id,
                                                            const zlink::message_t &request)
     {
@@ -941,7 +941,7 @@ class spot_node_runtime_t
         }
     }
 
-    static zlink::message_t actor_join_reply (const spot_actor_join_response_t &response,
+    static zlink::message_t actor_join_reply (const spot_actor_join_result_t &response,
                                               serializer_registry_t &serializers)
     {
         return response.reply ? response.reply->to_raw (serializers) : zlink::message_t{};

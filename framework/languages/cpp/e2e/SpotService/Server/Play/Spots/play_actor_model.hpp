@@ -193,7 +193,7 @@ class user_spot_t : public zlink::framework::spot_t<scenario_actor_t>
         co_return;
     }
 
-    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    zlink::framework::task_t<zlink::framework::spot_actor_join_result_t>
     on_actor_join (std::string_view actor_id,
                    const zlink::framework::message_t &request_message) override
     {
@@ -202,7 +202,7 @@ class user_spot_t : public zlink::framework::spot_t<scenario_actor_t>
             if (!request.allow) {
                 _state.record ("SpotActorJoinRejected", std::string (actor_id),
                                _context.spot_id (), request.reason);
-                co_return zlink::framework::spot_actor_join_response_t::reject (
+                co_return zlink::framework::spot_actor_join_result_t::reject (
                   e2e::join_admitted_user_spot_actor_res_t{
                     .spot_id = _context.spot_id (),
                     .actor_id = std::string (actor_id),
@@ -214,7 +214,7 @@ class user_spot_t : public zlink::framework::spot_t<scenario_actor_t>
                            _context.spot_id (), request.reason);
             _state.record ("SpotActorJoined", std::string (actor_id),
                            _context.spot_id ());
-            co_return zlink::framework::spot_actor_join_response_t::accept (
+            co_return zlink::framework::spot_actor_join_result_t::accept (
               e2e::join_admitted_user_spot_actor_res_t{
                 .spot_id = _context.spot_id (),
                 .actor_id = std::string (actor_id),
@@ -227,7 +227,7 @@ class user_spot_t : public zlink::framework::spot_t<scenario_actor_t>
 
         const auto request = request_message.decode<e2e::join_req_t> ();
         _pending_joins[std::string (actor_id)] = request;
-        co_return zlink::framework::spot_actor_join_response_t::accept (
+        co_return zlink::framework::spot_actor_join_result_t::accept (
           e2e::join_res_t{.spot_id = _context.spot_id (),
                           .owner_node_rid = _state.node_rid,
                           .actor_id = std::string (actor_id),
@@ -897,12 +897,12 @@ class entry_spot_t
         co_return zlink::framework::actor_create_response_t::accept ();
     }
 
-    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    zlink::framework::task_t<zlink::framework::spot_actor_join_result_t>
     on_actor_join (
       std::string_view,
       const zlink::framework::message_t &) override
     {
-        co_return zlink::framework::spot_actor_join_response_t::accept ();
+        co_return zlink::framework::spot_actor_join_result_t::accept ();
     }
 
     zlink::framework::task_t<void>
@@ -1089,12 +1089,12 @@ class alternate_user_spot_t
 
     void configure () override {}
 
-    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    zlink::framework::task_t<zlink::framework::spot_actor_join_result_t>
     on_actor_join (
       std::string_view,
       const zlink::framework::message_t &) override
     {
-        co_return zlink::framework::spot_actor_join_response_t::accept ();
+        co_return zlink::framework::spot_actor_join_result_t::accept ();
     }
 
     zlink::framework::task_t<void>

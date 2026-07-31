@@ -78,7 +78,7 @@ import systems.zlink.framework.runtime.messaging.ZLinkStringMessageSerializer;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 import systems.zlink.framework.spots.ZLinkSpotCreateResult;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.framework.spots.ZLinkWorkerCall;
@@ -432,8 +432,8 @@ final class SpotActivation
                     }
                     return null;
                 }
-                ZLinkSpotActorJoinResponse effective =
-                    response == null ? ZLinkSpotActorJoinResponse.reject() : response;
+                ZLinkSpotActorJoinResult effective =
+                    response == null ? ZLinkSpotActorJoinResult.reject() : response;
                 Message reply = effective.reply() == null
                     ? Message.from(new byte[0])
                     : ZLinkMessagePayloads.message(effective.reply(), host.serializerForSpot());
@@ -519,7 +519,7 @@ final class SpotActivation
                 sourcePeerRid,
                 actorId -> host.runWithOutbound(context.dispatchOutbound(), () ->
                     ZLinkHandlerStages.fromStageSupplier(() ->
-                        (CompletionStage<ZLinkSpotActorJoinResponse>)
+                        (CompletionStage<ZLinkSpotActorJoinResult>)
                         ((ZLinkSpot) spot).onActorJoin(
                         actorId,
                         ZLinkMessage.fromEncoded(
@@ -606,7 +606,7 @@ final class SpotActivation
         }
     }
 
-    private Message encodeRoutedAdmissionReply(ZLinkSpotActorJoinResponse response) {
+    private Message encodeRoutedAdmissionReply(ZLinkSpotActorJoinResult response) {
         Message reply = response.reply() == null
             ? Message.from(new byte[0])
             : ZLinkMessagePayloads.message(response.reply(), host.serializerForSpot());
@@ -619,7 +619,7 @@ final class SpotActivation
 
     private Message encodeRoutedJoinReply(
         ZLinkBackendActorRef actorRef,
-        ZLinkSpotActorJoinResponse response) {
+        ZLinkSpotActorJoinResult response) {
         Message reply = response.reply() == null
             ? Message.from(new byte[0])
             : ZLinkMessagePayloads.message(response.reply(), host.serializerForSpot());
@@ -634,7 +634,7 @@ final class SpotActivation
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
-    private CompletionStage<ZLinkSpotActorJoinResponse> invokeActorJoinCallback(
+    private CompletionStage<ZLinkSpotActorJoinResult> invokeActorJoinCallback(
         ZLinkBackendActorJoinRequest request,
         Message payload) {
         return host.actorAdmissions().admitSpotActor(
@@ -642,7 +642,7 @@ final class SpotActivation
             backendSpot.spotId(),
             host.spotFor(backendSpot.spotId()),
             actorId -> ZLinkHandlerStages.fromStageSupplier(() ->
-                (CompletionStage<ZLinkSpotActorJoinResponse>)
+                (CompletionStage<ZLinkSpotActorJoinResult>)
                 ((ZLinkSpot) spot).onActorJoin(
                 actorId,
                 ZLinkMessage.fromEncoded(

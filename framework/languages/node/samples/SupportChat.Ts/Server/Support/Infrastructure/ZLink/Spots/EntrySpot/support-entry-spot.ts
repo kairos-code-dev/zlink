@@ -8,7 +8,7 @@ import type {
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
   ZLinkMessage,
-  ZLinkSpotActorJoinResponse
+  ZLinkSpotActorJoinResult
 } from '@zlink-systems/framework';
 
 @Injectable()
@@ -23,7 +23,7 @@ class SupportEntrySpot implements ZLinkEntrySpot<SupportUserActor> {
   async onActorJoin(
     _actorId: string,
     _request: ZLinkMessage
-  ): Promise<ZLinkSpotActorJoinResponse> {
+  ): Promise<ZLinkSpotActorJoinResult> {
     return { accepted: true };
   }
 

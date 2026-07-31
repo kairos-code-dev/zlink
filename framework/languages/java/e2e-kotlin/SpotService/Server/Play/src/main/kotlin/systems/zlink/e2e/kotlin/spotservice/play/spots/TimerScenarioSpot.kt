@@ -19,7 +19,7 @@ class TimerScenarioSpot(
     private val context: ZLinkSpotContext,
     private val evidence: ScenarioState
 ) : ZLinkSuspendingSpot<ZLinkActor>() {
-    override suspend fun onActorJoinSuspending(actorId: String, request: ZLinkMessage) = systems.zlink.framework.spots.ZLinkSpotActorJoinResponse.reject("unsupported")
+    override suspend fun onActorJoinSuspending(actorId: String, request: ZLinkMessage) = systems.zlink.framework.spots.ZLinkSpotActorJoinResult.reject("unsupported")
     override suspend fun onJoinedActorSuspending(actor: ZLinkActor) {
     }
 

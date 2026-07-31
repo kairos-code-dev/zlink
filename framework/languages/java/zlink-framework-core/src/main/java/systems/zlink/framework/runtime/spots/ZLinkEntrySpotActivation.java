@@ -76,7 +76,7 @@ import systems.zlink.framework.runtime.messaging.ZLinkStringMessageSerializer;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 import systems.zlink.framework.spots.ZLinkActorCreateResponse;
 import systems.zlink.framework.spots.ZLinkSpotCreateResult;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
@@ -248,7 +248,7 @@ final class EntrySpotActivation
                 backendSpot.spotId(),
                 entrySpot,
                 (actorId, request) -> java.util.concurrent.CompletableFuture.completedFuture(
-                    ZLinkSpotActorJoinResponse.accept()),
+                    ZLinkSpotActorJoinResult.accept()),
                 actor -> host.notifySpotActorLifecycleAndSuppressBackendEvent(
                     entrySpot, actor, backendSpot.spotId(), true));
             transfer.handle(received.parts())
@@ -337,7 +337,7 @@ final class EntrySpotActivation
             backendSpot.spotId(),
             entrySpot,
             (actorId, request) -> java.util.concurrent.CompletableFuture.completedFuture(
-                ZLinkSpotActorJoinResponse.accept()),
+                ZLinkSpotActorJoinResult.accept()),
             actor -> host.notifySpotActorLifecycleAndSuppressBackendEvent(
                 entrySpot, actor, backendSpot.spotId(), true));
         CompletableFuture<Message> result = new CompletableFuture<>();
@@ -490,8 +490,8 @@ final class EntrySpotActivation
                                 }
                                 return;
                             }
-                            ZLinkSpotActorJoinResponse effective =
-                                response == null ? ZLinkSpotActorJoinResponse.reject() : response;
+                            ZLinkSpotActorJoinResult effective =
+                                response == null ? ZLinkSpotActorJoinResult.reject() : response;
                             Message reply = effective.reply() == null
                                 ? Message.from(new byte[0])
                                 : ZLinkMessagePayloads.message(effective.reply(), host.serializerForSpot());
@@ -510,14 +510,14 @@ final class EntrySpotActivation
         }
     }
 
-    private CompletionStage<ZLinkSpotActorJoinResponse> acceptEntryActorJoin(
+    private CompletionStage<ZLinkSpotActorJoinResult> acceptEntryActorJoin(
         ZLinkBackendActorJoinRequest request,
         Message payload) {
         return host.actorAdmissions().admitEntryActor(
             request,
             backendSpot.spotId(),
             actorId -> java.util.concurrent.CompletableFuture.completedFuture(
-                ZLinkSpotActorJoinResponse.accept()));
+                ZLinkSpotActorJoinResult.accept()));
     }
 
     private void completeAcceptedEntryJoin(ZLinkBackendActorJoinRequest request) {

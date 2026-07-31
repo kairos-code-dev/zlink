@@ -3,12 +3,12 @@ package systems.zlink.e2e.pubsub.subscriber.Handlers;
 import systems.zlink.e2e.pubsub.shared.Contracts;
 import systems.zlink.e2e.pubsub.subscriber.Infrastructure.EvidenceStore;
 import systems.zlink.framework.channels.ZLinkPublishContext;
-import systems.zlink.framework.channels.ZLinkPublishHandler;
+import systems.zlink.framework.channels.ZLinkFanoutHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 
 @ZLinkHandlerGroup(Contracts.HANDLER_GROUP)
 public final class EventMsgHandler
-    implements ZLinkPublishHandler<Contracts.EventMsg> {
+    implements ZLinkFanoutHandler<Contracts.EventMsg> {
     private final EvidenceStore evidence;
 
     public EventMsgHandler(EvidenceStore evidence) {

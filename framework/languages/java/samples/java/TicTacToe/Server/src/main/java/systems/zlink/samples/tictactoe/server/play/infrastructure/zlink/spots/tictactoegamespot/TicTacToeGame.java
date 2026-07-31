@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.HashMap;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.framework.spots.ZLinkTimer;
@@ -67,7 +67,7 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
     }
 
     @Override
-    public java.util.concurrent.CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+    public java.util.concurrent.CompletionStage<ZLinkSpotActorJoinResult> onActorJoin(
         String actorId,
         ZLinkMessage request) {
         TicTacToeGameJoinReq joinRequest = request.decode(TicTacToeGameJoinReq.class);
@@ -77,12 +77,12 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
         validateJoin(joinRequest.roomId(), joinRequest.player());
         if (!match.canJoin(actorId)) {
             return java.util.concurrent.CompletableFuture.completedFuture(
-                ZLinkSpotActorJoinResponse.reject(new TicTacToeGameJoinRes(match.snapshot())));
+                ZLinkSpotActorJoinResult.reject(new TicTacToeGameJoinRes(match.snapshot())));
         }
         TicTacToeMatch.JoinResult preview = match.previewJoin(actorId);
         pendingJoins.put(actorId, joinRequest);
         return java.util.concurrent.CompletableFuture.completedFuture(
-            ZLinkSpotActorJoinResponse.accept(new TicTacToeGameJoinRes(preview.state())));
+            ZLinkSpotActorJoinResult.accept(new TicTacToeGameJoinRes(preview.state())));
     }
 
     @Override

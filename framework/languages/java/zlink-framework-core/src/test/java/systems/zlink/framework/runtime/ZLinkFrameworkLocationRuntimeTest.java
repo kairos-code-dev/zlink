@@ -50,7 +50,7 @@ import systems.zlink.framework.runtime.locations.ZLinkAuthorityKeyCodec;
 import systems.zlink.framework.runtime.InMemoryRelocationStore;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 
 class ZLinkFrameworkLocationRuntimeTest {
@@ -436,10 +436,10 @@ class ZLinkFrameworkLocationRuntimeTest {
         }
 
         @Override
-        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+        public CompletionStage<ZLinkSpotActorJoinResult> onActorJoin(
             String actorId,
             systems.zlink.framework.messaging.ZLinkMessage request) {
-            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept());
+            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResult.accept());
         }
 
         @Override

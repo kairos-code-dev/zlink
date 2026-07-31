@@ -36,7 +36,7 @@ import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.streams.ZLinkSession;
@@ -195,10 +195,10 @@ final class StreamSessionTest {
         }
 
         @Override
-        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+        public CompletionStage<ZLinkSpotActorJoinResult> onActorJoin(
             String actorId,
             ZLinkMessage request) {
-            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept("joined"));
+            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResult.accept("joined"));
         }
 
         @Override

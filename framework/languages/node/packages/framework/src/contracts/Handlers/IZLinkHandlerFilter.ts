@@ -1,4 +1,4 @@
-import type { ZLinkHandlerDelegate } from './ZLinkHandlerDelegate';
+import type { ZLinkHandlerFilterNext } from './ZLinkHandlerFilterNext';
 import type { ZLinkMessageContext } from './Contexts';
 
 export enum ZLinkHandlerDispatchKind {
@@ -16,7 +16,7 @@ export interface ZLinkHandlerFilterContext extends ZLinkMessageContext {
 export interface ZLinkHandlerFilter {
   invoke(
     context: ZLinkHandlerFilterContext,
-    next: ZLinkHandlerDelegate,
+    next: ZLinkHandlerFilterNext,
     signal?: AbortSignal
   ): Promise<void>;
 }

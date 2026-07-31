@@ -52,7 +52,7 @@ import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.channels.ZLinkPublishMessageContext;
-import systems.zlink.framework.channels.ZLinkPublishHandler;
+import systems.zlink.framework.channels.ZLinkFanoutHandler;
 import systems.zlink.framework.channels.ZLinkRouteMessageContext;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.channels.ZLinkRouteClient;
@@ -1863,7 +1863,7 @@ final class ChannelMessagingTest {
         }
     }
 
-    public static final class ManualRegistrationPublishHandler implements ZLinkPublishHandler<ManualEvent> {
+    public static final class ManualRegistrationPublishHandler implements ZLinkFanoutHandler<ManualEvent> {
         @Override
         public CompletionStage<Void> handle(ManualEvent message, ZLinkPublishMessageContext context) {
             MANUAL_REG_PUBLISH_MESSAGE.set(message.value());
@@ -1922,7 +1922,7 @@ final class ChannelMessagingTest {
         }
     }
 
-    public static final class ScoreChangedHandler implements ZLinkPublishHandler<ScoreChanged> {
+    public static final class ScoreChangedHandler implements ZLinkFanoutHandler<ScoreChanged> {
         @Override
         public CompletionStage<Void> handle(ScoreChanged message, ZLinkPublishMessageContext context) {
             FANOUT_MESSAGE.set(message.value());
@@ -1933,7 +1933,7 @@ final class ChannelMessagingTest {
         }
     }
 
-    public static final class FanoutSequenceOneHandler implements ZLinkPublishHandler<FanoutSequence> {
+    public static final class FanoutSequenceOneHandler implements ZLinkFanoutHandler<FanoutSequence> {
         @Override
         public CompletionStage<Void> handle(FanoutSequence message, ZLinkPublishMessageContext context) {
             FANOUT_SEQUENCE_ONE.add(message.value());
@@ -1941,7 +1941,7 @@ final class ChannelMessagingTest {
         }
     }
 
-    public static final class FanoutSequenceTwoHandler implements ZLinkPublishHandler<FanoutSequence> {
+    public static final class FanoutSequenceTwoHandler implements ZLinkFanoutHandler<FanoutSequence> {
         @Override
         public CompletionStage<Void> handle(FanoutSequence message, ZLinkPublishMessageContext context) {
             FANOUT_SEQUENCE_TWO.add(message.value());
@@ -1949,7 +1949,7 @@ final class ChannelMessagingTest {
         }
     }
 
-    public static final class FanoutSequenceThreeHandler implements ZLinkPublishHandler<FanoutSequence> {
+    public static final class FanoutSequenceThreeHandler implements ZLinkFanoutHandler<FanoutSequence> {
         @Override
         public CompletionStage<Void> handle(FanoutSequence message, ZLinkPublishMessageContext context) {
             FANOUT_SEQUENCE_THREE.add(message.value());

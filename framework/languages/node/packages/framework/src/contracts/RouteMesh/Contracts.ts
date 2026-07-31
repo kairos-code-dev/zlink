@@ -7,11 +7,11 @@ export interface ZLinkActorMembership {
 }
 
 export interface ZLinkLocationOptionValues {
-  readonly heartbeatIntervalMs: number;
+  readonly ownerLeaseRenewIntervalMs: number;
   readonly ownerLeaseTtlMs: number;
   readonly pollingIntervalMs: number;
   readonly storeFailureGraceMs: number;
-  readonly routingIdFencingMarginMs: number;
+  readonly ownerLeaseFencingMarginMs: number;
   readonly ownerLeaseRenewTimeoutMs: number;
   readonly routeCacheMaxAgeMs: number;
   readonly messageFollowDurationMs: number;

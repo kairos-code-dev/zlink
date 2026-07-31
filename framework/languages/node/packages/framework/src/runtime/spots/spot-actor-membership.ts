@@ -3,7 +3,7 @@ import type {
   ZLinkActor,
   ZLinkMessageSerializer,
   ZLinkSpot,
-  ZLinkSpotActorJoinResponse
+  ZLinkSpotActorJoinResult
 } from '../../contracts';
 import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import { ZLinkEncodedPayload, ZLinkMessage } from '../../contracts';
@@ -56,7 +56,7 @@ export class ZLinkSpotActorMembership {
     commit: (spot: ZLinkSpot) => Promise<ZLinkActorJoinRollback | void> | ZLinkActorJoinRollback | void,
     signal?: AbortSignal,
     leaveSource?: () => Promise<void>
-  ): Promise<ZLinkSpotActorJoinResponse> {
+  ): Promise<ZLinkSpotActorJoinResult> {
     throwIfAborted(signal);
     const activation = this.requireActivation(spotId);
     const dispatcher = this.createActorDispatcher(activation);
@@ -65,7 +65,7 @@ export class ZLinkSpotActorMembership {
       rollbackMembership?: () => void;
       committed: boolean;
     } = { committed: false };
-    let response: ZLinkSpotActorJoinResponse;
+    let response: ZLinkSpotActorJoinResult;
     try {
       response = await dispatcher.evaluateActorJoin(actor, request);
       if (response.accepted) {

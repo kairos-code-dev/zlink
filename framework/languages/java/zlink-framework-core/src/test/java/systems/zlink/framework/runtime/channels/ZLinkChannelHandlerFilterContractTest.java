@@ -17,7 +17,7 @@ import systems.zlink.framework.ZLinkHandlerDispatchKind;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.ZLinkHandlerFilterContext;
 import systems.zlink.framework.ZLinkHandlerFilterNext;
-import systems.zlink.framework.channels.ZLinkPublishHandler;
+import systems.zlink.framework.channels.ZLinkFanoutHandler;
 import systems.zlink.framework.channels.ZLinkPublishMessageContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.channels.ZLinkRouteMessageContext;
@@ -287,7 +287,7 @@ final class ZLinkChannelHandlerFilterContractTest {
     }
 
     private record PublishHandler(Probe probe)
-        implements ZLinkPublishHandler<String> {
+        implements ZLinkFanoutHandler<String> {
         @Override
         public CompletionStage<Void> handle(
             String message,

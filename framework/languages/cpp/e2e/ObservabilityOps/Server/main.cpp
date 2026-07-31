@@ -199,10 +199,10 @@ class room_spot_t : public fw::spot_t<fw::actor_t>
         co_return;
     }
 
-    fw::task_t<fw::spot_actor_join_response_t>
+    fw::task_t<fw::spot_actor_join_result_t>
     on_actor_join (std::string_view, const fw::message_t &) override
     {
-        co_return fw::spot_actor_join_response_t::accept ();
+        co_return fw::spot_actor_join_result_t::accept ();
     }
 
     fw::task_t<void> on_actor_joined (fw::actor_t &) override { co_return; }
@@ -296,10 +296,10 @@ class obs_entry_spot_t : public fw::entry_spot_t<obs_actor_t>
           obs::actor_ping_req_t::packet_name);
     }
 
-    fw::task_t<fw::spot_actor_join_response_t>
+    fw::task_t<fw::spot_actor_join_result_t>
     on_actor_join (std::string_view actor_id, const fw::message_t &) override
     {
-        co_return fw::spot_actor_join_response_t::accept (
+        co_return fw::spot_actor_join_result_t::accept (
           obs::join_actor_res_t{std::string (actor_id),
                                 std::string (_context.node_rid ().value ()), true, {}});
     }

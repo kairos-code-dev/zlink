@@ -6,7 +6,7 @@ import systems.zlink.framework.kotlin.ZLinkSuspendingSpotTimerHandler
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult
 import systems.zlink.framework.spots.ZLinkTimerOptions
 import systems.zlink.framework.spots.ZLinkTimerOverrunPolicy
 import systems.zlink.framework.spots.ZLinkTimerTick
@@ -39,7 +39,7 @@ class MonitoringSpot(
     }
 
     override suspend fun onActorJoinSuspending(actorId: String, request: ZLinkMessage) =
-        ZLinkSpotActorJoinResponse.reject("actors are not supported")
+        ZLinkSpotActorJoinResult.reject("actors are not supported")
 
     override suspend fun onJoinedActorSuspending(actor: ZLinkActor) = Unit
 

@@ -44,7 +44,7 @@ import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotActorSendHandler;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
 import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
@@ -248,7 +248,7 @@ final class HandlerContractTest {
             ZLinkEntrySpot.class.getMethod("onJoinedActor", ZLinkActor.class).getReturnType());
         assertEquals(CompletionStage.class,
             ZLinkEntrySpot.class.getMethod("onLeaveActor", ZLinkActor.class).getReturnType());
-        assertTrue(ZLinkSpotActorJoinResponse.accept().accepted());
+        assertTrue(ZLinkSpotActorJoinResult.accept().accepted());
     }
 
     @Test

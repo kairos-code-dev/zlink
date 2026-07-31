@@ -36,7 +36,7 @@ import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 
 @EnableZLinkFramework
 @SpringBootApplication(proxyBeanMethods = false)
@@ -269,11 +269,11 @@ public final class Program {
         }
 
         @Override
-        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+        public CompletionStage<ZLinkSpotActorJoinResult> onActorJoin(
             String actorId,
             ZLinkMessage request) {
             evidence.append(new Contracts.ActorEvidence("admission", actorId, "join", "accepted"));
-            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept());
+            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResult.accept());
         }
 
         @Override

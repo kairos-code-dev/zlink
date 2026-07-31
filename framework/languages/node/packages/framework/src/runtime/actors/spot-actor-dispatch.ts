@@ -3,7 +3,7 @@ import type {
   ZLinkActor,
   ZLinkActorHandlerRegistry,
   ZLinkSpot,
-  ZLinkSpotActorJoinResponse,
+  ZLinkSpotActorJoinResult,
   ZLinkMessageContext,
   ZLinkSpotActorRequestHandler,
   ZLinkSpotActorSendHandler
@@ -176,7 +176,7 @@ export class ZLinkSpotActorDispatcher {
     actor: ZLinkActor,
     request: Message,
     commit: () => Promise<void> | void
-  ): Promise<ZLinkSpotActorJoinResponse> {
+  ): Promise<ZLinkSpotActorJoinResult> {
     return this.evaluateActorJoin(actor, request).then(async (result) => {
       if (result.accepted) {
         await this.commitActorJoin(actor, commit);
@@ -188,7 +188,7 @@ export class ZLinkSpotActorDispatcher {
   evaluateActorJoin(
     actor: ZLinkActor,
     request: Message
-  ): Promise<ZLinkSpotActorJoinResponse> {
+  ): Promise<ZLinkSpotActorJoinResult> {
     return this.execute(async () => {
       const payload = wrapFrameworkPayloadMessage(request, this.options.messageSerializers);
       const onActorJoin = (this.options.spot as Partial<ZLinkSpot>).onActorJoin;

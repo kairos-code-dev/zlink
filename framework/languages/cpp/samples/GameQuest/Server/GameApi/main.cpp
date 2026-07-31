@@ -203,11 +203,11 @@ class player_entry_spot_t : public entry_spot_t<player_actor_t>
           .add_actor_request<&player_entry_spot_t::join_session> (join_session_req_t::packet_name);
     }
 
-    task_t<spot_actor_join_response_t>
+    task_t<spot_actor_join_result_t>
     on_actor_join (std::string_view,
                    const zlink::framework::message_t &) override
     {
-        co_return spot_actor_join_response_t::accept ();
+        co_return spot_actor_join_result_t::accept ();
     }
 
     task_t<void> on_actor_joined (player_actor_t &) override { co_return; }

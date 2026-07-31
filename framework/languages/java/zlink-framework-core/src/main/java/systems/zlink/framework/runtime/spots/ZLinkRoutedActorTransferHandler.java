@@ -16,7 +16,7 @@ import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 
 /** Shared routed transfer protocol for user and Entry Spot activations. */
 final class ZLinkRoutedActorTransferHandler {
@@ -24,7 +24,7 @@ final class ZLinkRoutedActorTransferHandler {
     private final ZLinkInternalSpotNode node;
     private final String targetSpotId;
     private final Object targetSurface;
-    private final BiFunction<String, ZLinkMessage, CompletionStage<ZLinkSpotActorJoinResponse>> admission;
+    private final BiFunction<String, ZLinkMessage, CompletionStage<ZLinkSpotActorJoinResult>> admission;
     private final Function<ZLinkActor, CompletionStage<Void>> joined;
 
     ZLinkRoutedActorTransferHandler(
@@ -32,7 +32,7 @@ final class ZLinkRoutedActorTransferHandler {
         ZLinkInternalSpotNode node,
         String targetSpotId,
         Object targetSurface,
-        BiFunction<String, ZLinkMessage, CompletionStage<ZLinkSpotActorJoinResponse>> admission,
+        BiFunction<String, ZLinkMessage, CompletionStage<ZLinkSpotActorJoinResult>> admission,
         Function<ZLinkActor, CompletionStage<Void>> joined) {
         this.host = host;
         this.node = node;
@@ -144,7 +144,7 @@ final class ZLinkRoutedActorTransferHandler {
         }
     }
 
-    private Message encodeAdmission(ZLinkSpotActorJoinResponse response) {
+    private Message encodeAdmission(ZLinkSpotActorJoinResult response) {
         Message reply = response.reply() == null
             ? Message.from(new byte[0])
             : ZLinkMessagePayloads.message(response.reply(), host.serializerForSpot());
@@ -157,7 +157,7 @@ final class ZLinkRoutedActorTransferHandler {
 
     private Message encodeJoin(
         ZLinkBackendActorRef actorRef,
-        ZLinkSpotActorJoinResponse response) {
+        ZLinkSpotActorJoinResult response) {
         Message reply = response.reply() == null
             ? Message.from(new byte[0])
             : ZLinkMessagePayloads.message(response.reply(), host.serializerForSpot());

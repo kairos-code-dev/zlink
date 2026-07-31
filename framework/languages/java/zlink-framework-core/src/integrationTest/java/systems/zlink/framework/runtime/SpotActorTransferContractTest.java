@@ -28,7 +28,7 @@ import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 
@@ -178,11 +178,11 @@ final class SpotActorTransferContractTest {
         }
 
         @Override
-        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+        public CompletionStage<ZLinkSpotActorJoinResult> onActorJoin(
             String actorId,
             ZLinkMessage request) {
             return CompletableFuture.completedFuture(
-                ZLinkSpotActorJoinResponse.accept());
+                ZLinkSpotActorJoinResult.accept());
         }
 
         @Override

@@ -1,13 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import type {
-  ZLinkPublishHandler,
+  ZLinkFanoutHandler,
   ZLinkPublishMessageContext
 } from '@zlink-systems/framework';
 import type { LoadEvent } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 
 @Injectable()
-export class LoadEventHandler implements ZLinkPublishHandler<LoadEvent> {
+export class LoadEventHandler implements ZLinkFanoutHandler<LoadEvent> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   async handle(event: LoadEvent, context: ZLinkPublishMessageContext): Promise<void> {

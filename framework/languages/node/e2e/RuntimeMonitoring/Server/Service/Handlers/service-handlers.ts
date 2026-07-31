@@ -5,7 +5,7 @@ import type {
   ZLinkActorJoinRequest,
   ZLinkActorMembership,
   ZLinkMessage,
-  ZLinkSpotActorJoinResponse,
+  ZLinkSpotActorJoinResult,
   ZLinkRequestContext,
   ZLinkRequestHandler,
   ZLinkRuntimeEventHandler,
@@ -50,7 +50,7 @@ export class SocketEventRecorder implements ZLinkRuntimeEventHandler<ZLinkSocket
 export class MonitoringEntrySpot implements ZLinkEntrySpot {
   declare readonly context: ZLinkEntrySpotContext;
 
-  async onActorJoin(_actor: ZLinkActorJoinRequest, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(_actor: ZLinkActorJoinRequest, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResult> {
     return { accepted: true };
   }
 

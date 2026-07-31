@@ -30,7 +30,7 @@ import systems.zlink.framework.runtime.internal.relocation
     .ZLinkRelocationAdapterRegistry;
 import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotRelocationAdapter;
 import systems.zlink.framework.spots.ZLinkSpotRelocationReadyCompletion;
@@ -362,11 +362,11 @@ final class ZLinkUserSpotRetireSourceBuilderTest {
         }
 
         @Override
-        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+        public CompletionStage<ZLinkSpotActorJoinResult> onActorJoin(
             String actorId,
             systems.zlink.framework.messaging.ZLinkMessage request) {
             return CompletableFuture.completedFuture(
-                ZLinkSpotActorJoinResponse.accept());
+                ZLinkSpotActorJoinResult.accept());
         }
 
         @Override public CompletionStage<Void> onJoinedActor(ZLinkActor actor) {

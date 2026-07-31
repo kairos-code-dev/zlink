@@ -8,7 +8,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.framework.spots.ZLinkTimer;
@@ -60,7 +60,7 @@ public final class ProbeSpot implements ZLinkSpot<ProbeActor> {
     }
 
     @Override
-    public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+    public CompletionStage<ZLinkSpotActorJoinResult> onActorJoin(
         String actorId,
         ZLinkMessage request) {
         if (actorId.startsWith("ATD-B3-")) {
@@ -71,11 +71,11 @@ public final class ProbeSpot implements ZLinkSpot<ProbeActor> {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException("actor join interrupted", error);
             }
-            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept());
+            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResult.accept());
         }
         Contracts.ActorJoinReq join = request.decode(Contracts.ActorJoinReq.class);
         return CompletableFuture.completedFuture(
-            ZLinkSpotActorJoinResponse.accept(new Contracts.ActorJoinRes(
+            ZLinkSpotActorJoinResult.accept(new Contracts.ActorJoinRes(
                 actorId,
                 context.spotRid().toString(),
                 "joined:" + join.value())));

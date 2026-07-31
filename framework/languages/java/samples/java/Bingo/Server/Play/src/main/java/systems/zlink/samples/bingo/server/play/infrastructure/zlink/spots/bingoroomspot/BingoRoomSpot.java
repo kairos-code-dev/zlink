@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Map;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.framework.spots.ZLinkSpotRelocationReadyCompletion;
@@ -54,7 +54,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     }
 
     @Override
-    public java.util.concurrent.CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+    public java.util.concurrent.CompletionStage<ZLinkSpotActorJoinResult> onActorJoin(
         String actorId,
         ZLinkMessage request) {
         Messages.BingoRoomJoinReq joinRequest = request.decode(Messages.BingoRoomJoinReq.class);
@@ -64,7 +64,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
             : game.previewJoin(actorId, joinRequest.getDisplayName());
         pendingJoins.put(actorId, joinRequest);
         return java.util.concurrent.CompletableFuture.completedFuture(
-            ZLinkSpotActorJoinResponse.accept(BingoMessages.bingoRoomJoinRes(preview)));
+            ZLinkSpotActorJoinResult.accept(BingoMessages.bingoRoomJoinRes(preview)));
     }
 
     @Override

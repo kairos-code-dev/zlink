@@ -11,7 +11,7 @@ export interface ZLinkSpotAcceptRejectResponse {
   readonly reply?: unknown;
 }
 
-export interface ZLinkSpotActorJoinResponse extends ZLinkSpotAcceptRejectResponse {}
+export interface ZLinkSpotActorJoinResult extends ZLinkSpotAcceptRejectResponse {}
 
 export interface ZLinkSpotCreateResponse extends ZLinkSpotAcceptRejectResponse {}
 export interface ZLinkActorCreateResponse extends ZLinkSpotAcceptRejectResponse {}
@@ -54,7 +54,7 @@ export interface ZLinkUserSpotActorLifecycle<
   // Admission observes the joining Actor by identity only. The framework keeps
   // fencing state such as the expected membership epoch inside the runtime so an
   // application callback never has to reason about it.
-  onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
+  onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResult>;
 }
 
 export interface ZLinkSpot<TActor extends ZLinkActor = ZLinkActor>

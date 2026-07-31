@@ -12,7 +12,7 @@ import {
   type ZLinkFanoutClient,
   type ZLinkHandlerContext,
   type ZLinkPublishContext,
-  type ZLinkPublishHandler,
+  type ZLinkFanoutHandler,
   type ZLinkSpot,
   type ZLinkSpotContext,
   type ZLinkSpotManager,
@@ -23,7 +23,7 @@ import type {
   ZLinkActorJoinRequest,
   ZLinkActorMembership,
   ZLinkMessage,
-  ZLinkSpotActorJoinResponse,
+  ZLinkSpotActorJoinResult,
   ZLinkSpotTimerHandler,
   ZLinkTimer,
   ZLinkTimerTick
@@ -87,7 +87,7 @@ class WorkflowSpot implements ZLinkSpot {
     return { accepted: true };
   }
 
-  async onActorJoin(_actor: ZLinkActorJoinRequest, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(_actor: ZLinkActorJoinRequest, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResult> {
     return { accepted: false };
   }
 
@@ -122,7 +122,7 @@ class WorkflowApplyHandler implements ZLinkSpotRequestHandler<WorkflowSpot, Work
 }
 
 @Injectable()
-class ProjectionHandler implements ZLinkPublishHandler<WorkflowProjected> {
+class ProjectionHandler implements ZLinkFanoutHandler<WorkflowProjected> {
   async handle(message: WorkflowProjected, context: ZLinkPublishContext): Promise<void> {
     evidence.add('projection', message.orderId, 'received', `${message.value}|source=${message.sourceRid}|topic=${context.topic}`);
   }

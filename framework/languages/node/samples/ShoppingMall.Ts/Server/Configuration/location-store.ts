@@ -14,7 +14,7 @@ function createShoppingMallLocationStore(
 function shoppingMallLocationOptions(options: ZLinkLocationOptions): void {
   options
     .pollingIntervalMs(100)
-    .heartbeatIntervalMs(1000)
+    .ownerLeaseRenewIntervalMs(1000)
     .ownerLeaseTtlMs(5000);
 }
 

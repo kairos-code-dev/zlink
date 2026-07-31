@@ -5,7 +5,7 @@ import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 
 public final class MultiNodeSpot implements ZLinkSpot<ScenarioActor> {
@@ -65,10 +65,10 @@ public final class MultiNodeSpot implements ZLinkSpot<ScenarioActor> {
     }
 
     @Override
-    public java.util.concurrent.CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+    public java.util.concurrent.CompletionStage<ZLinkSpotActorJoinResult> onActorJoin(
         String actorId,
         ZLinkMessage request) {
-        return java.util.concurrent.CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept());
+        return java.util.concurrent.CompletableFuture.completedFuture(ZLinkSpotActorJoinResult.accept());
     }
 
     @Override

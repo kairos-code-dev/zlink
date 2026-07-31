@@ -13,7 +13,7 @@ import type {
   ZLinkActorClient,
   ZLinkMessage,
   ZLinkSpot,
-  ZLinkSpotActorJoinResponse,
+  ZLinkSpotActorJoinResult,
   ZLinkSpotContext,
   ZLinkSpotPublisherClient,
   ZLinkTimer
@@ -75,7 +75,7 @@ class ZoneSpot implements ZLinkSpot<PlayerActor> {
     this.botTimer = undefined;
   }
 
-  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResult> {
     const enter = request.decode<EnterZoneMsg>(Object as never);
     if (enter.playerId !== actorId) {
       return { accepted: false };

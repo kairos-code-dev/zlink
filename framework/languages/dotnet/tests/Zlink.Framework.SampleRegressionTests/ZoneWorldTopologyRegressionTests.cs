@@ -119,7 +119,9 @@ public sealed partial class RegressionTests
 
         Assert.DoesNotContain("Dictionary<string, PlayerActor>", spot, StringComparison.Ordinal);
         Assert.DoesNotContain("actor.Context.BoundSession", spot, StringComparison.Ordinal);
-        Assert.Contains("actors.SendToActor(playerId, message)", spot, StringComparison.Ordinal);
+        // The sample resolves the owner per delivery through the fluent call, so the
+        // send spans two lines. Pin the call itself rather than a single-line form.
+        Assert.Contains(".SendToActor(playerId, message)", spot, StringComparison.Ordinal);
         Assert.Contains("PlayerZoneStateDeliveryHandler", actorHandlers, StringComparison.Ordinal);
         Assert.Contains("PlayerWorldAnnouncementDeliveryHandler", actorHandlers, StringComparison.Ordinal);
         Assert.Contains("actor.Context.BoundSession", actorHandlers, StringComparison.Ordinal);

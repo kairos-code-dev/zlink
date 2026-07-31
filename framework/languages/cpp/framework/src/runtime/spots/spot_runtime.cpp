@@ -3770,7 +3770,7 @@ result_t<void> spot_node_runtime_t::restore_pending_join_completion (
     return result_t<void>::success ();
 }
 
-result_t<spot_actor_join_response_t>
+result_t<spot_actor_join_result_t>
 spot_node_runtime_t::admit_remote_actor_to_spot (std::string transfer_id,
                                                  const actor_ref_t &actor_ref,
                                                  spot_id_t source_spot_id,
@@ -3782,35 +3782,35 @@ spot_node_runtime_t::admit_remote_actor_to_spot (std::string transfer_id,
     /* graceful-drain-handoff §4-2/§5.2: a draining node rejects new actor
     * admission and joins; already-admitted transfer commits stay accepted. */
     if (_state->drain_flag && _state->drain_flag->load (std::memory_order_acquire)) {
-        return result_t<spot_actor_join_response_t>::failure (
+        return result_t<spot_actor_join_result_t>::failure (
           framework_error_kind_t::request_rejected,
           "spot node is draining and rejects new actor admission");
     }
     std::unique_lock<std::recursive_mutex> node_lock (_state->mutex);
     cleanup_expired_actor_admissions ();
     if (transfer_id.empty () || actor_ref.empty ()) {
-        return result_t<spot_actor_join_response_t>::failure (
+        return result_t<spot_actor_join_result_t>::failure (
           framework_error_kind_t::request_protocol_error,
           "remote actor admission requires transfer and actor identity");
     }
     auto context = actor_join_context_unlocked (target_spot_id, request);
     if (!context) {
-        return detail::propagate_failure<spot_actor_join_response_t> (context, "target spot is not registered");
+        return detail::propagate_failure<spot_actor_join_result_t> (context, "target spot is not registered");
     }
     auto actor_factory = actor_factory_unlocked (actor_ref);
     if (!actor_factory) {
-        return detail::propagate_failure<spot_actor_join_response_t> (actor_factory, "actor factory failed");
+        return detail::propagate_failure<spot_actor_join_result_t> (actor_factory, "actor factory failed");
     }
     auto admission = actor_admission_unlocked (context.value (),
                                                actor_factory.value ().get ().actor_type,
                                                target_spot_id, actor_ref);
     if (!admission) {
-        return detail::propagate_failure<spot_actor_join_response_t> (admission, "actor admission failed");
+        return detail::propagate_failure<spot_actor_join_result_t> (admission, "actor admission failed");
     }
 
     auto &target = *context.value ()._state;
     auto &serializers = *target.channel_runtime->serializers;
-    spot_actor_join_response_t response;
+    spot_actor_join_result_t response;
     // The admission callback is user code on the spot serial queue. It may call back
     // into the framework (sends, joins) that need the node mutex from the serial
     // thread, so the node mutex must not be held across this wait.
@@ -3820,7 +3820,7 @@ spot_node_runtime_t::admit_remote_actor_to_spot (std::string transfer_id,
                                                        actor_ref.actor_id (),
                                                        request, serializers);
         })) {
-        return result_t<spot_actor_join_response_t>::failure (
+        return result_t<spot_actor_join_result_t>::failure (
           framework_error_kind_t::request_rejected, "spot serial queue is full");
     }
     node_lock.lock ();
@@ -3836,12 +3836,12 @@ spot_node_runtime_t::admit_remote_actor_to_spot (std::string transfer_id,
                                         std::chrono::steady_clock::now () + timeout,
                                         completion_operation_id_high,
                                         completion_operation_id_low})) {
-            return result_t<spot_actor_join_response_t>::failure (
+            return result_t<spot_actor_join_result_t>::failure (
               framework_error_kind_t::request_protocol_error,
               "remote actor admission is already pending");
         }
     }
-    return result_t<spot_actor_join_response_t>::success (std::move (response));
+    return result_t<spot_actor_join_result_t>::success (std::move (response));
 }
 
 result_t<spot_node_runtime_t::remote_actor_transfer_t>

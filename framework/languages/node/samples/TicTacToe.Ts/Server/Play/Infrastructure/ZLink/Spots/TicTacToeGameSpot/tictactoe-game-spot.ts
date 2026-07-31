@@ -13,7 +13,7 @@ import { DeliverPlayNotification, PlayActor } from '../../Actors/play-actor';
 import type {
   ZLinkMessage,
   ZLinkSpot,
-  ZLinkSpotActorJoinResponse,
+  ZLinkSpotActorJoinResult,
   ZLinkSpotCreateResponse,
   ZLinkSpotContext,
   ZLinkTimer
@@ -74,7 +74,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlayActor> {
   async onActorJoin(
     actorId: string,
     requestMessage: ZLinkMessage
-  ): Promise<ZLinkSpotActorJoinResponse> {
+  ): Promise<ZLinkSpotActorJoinResult> {
     try {
       console.log(`game spot: onActorJoin received. actor=${actorId} roomId=${this.roomId}`);
       const request = requestMessage.decode<TicTacToeGameJoinReq>();

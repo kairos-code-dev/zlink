@@ -222,4 +222,83 @@ final class ZLinkUserSpotRetireRuntimePreflightTest {
             1,
             java.time.Instant.now());
     }
+
+    //  BLK-043 acceptance. The spec unit gate of 28-graceful-drain-handoff §7
+    //  belongs to ZLinkRelocationPermitPool, which admits at the turn boundary
+    //  where the actual payload is known. executePlan must therefore not bound
+    //  the units a second time: a unit waiting on its own turn boundary must
+    //  not hold a slot that a later unit needs.
+    @Test
+    void executePlanStartsEveryUnitWithoutASecondConcurrencyBound() {
+        var held = new ArrayList<CompletableFuture<Void>>();
+        var started = new ArrayList<String>();
+        var spotIds = new ArrayList<String>();
+        for (int index = 0; index < 64; index++) {
+            spotIds.add("waiting-" + index);
+        }
+        spotIds.add("ready");
+
+        var completion = ZLinkUserSpotRetireRuntime.executePlan(
+            new ZLinkUserSpotRetireRuntime.RelocationPlan(
+                List.copyOf(spotIds), List.of()),
+            spotId -> CompletableFuture.completedFuture(null),
+            actorId -> CompletableFuture.completedFuture(null),
+            () -> {
+            },
+            () -> false,
+            spotId -> {
+                started.add(spotId);
+                if (spotId.equals("ready")) {
+                    return CompletableFuture.completedFuture(null);
+                }
+                var turnBoundary = new CompletableFuture<Void>();
+                held.add(turnBoundary);
+                return turnBoundary;
+            },
+            actorId -> CompletableFuture.completedFuture(null));
+
+        assertEquals(
+            spotIds.size(),
+            started.size(),
+            "every unit must reach its own admission point; "
+                + "started=" + started);
+        assertEquals(false, completion.toCompletableFuture().isDone());
+
+        held.forEach(turnBoundary -> turnBoundary.complete(null));
+        completion.toCompletableFuture().join();
+    }
+
+    //  A unit that fails does not strand the others. Every unit still reaches a
+    //  terminal state and the first failure is the reported one.
+    @Test
+    void executePlanReportsTheFirstFailureAfterEveryUnitSettles() {
+        var second = new CompletableFuture<Void>();
+        var settled = new ArrayList<String>();
+
+        var completion = ZLinkUserSpotRetireRuntime.executePlan(
+            new ZLinkUserSpotRetireRuntime.RelocationPlan(
+                List.of("spot-a", "spot-b"), List.of()),
+            spotId -> CompletableFuture.completedFuture(null),
+            actorId -> CompletableFuture.completedFuture(null),
+            () -> {
+            },
+            () -> false,
+            spotId -> {
+                settled.add(spotId);
+                return spotId.equals("spot-a")
+                    ? CompletableFuture.failedFuture(
+                        new IllegalStateException("first"))
+                    : second;
+            },
+            actorId -> CompletableFuture.completedFuture(null));
+
+        assertEquals(List.of("spot-a", "spot-b"), settled);
+        assertEquals(false, completion.toCompletableFuture().isDone());
+
+        second.complete(null);
+        var failure = assertThrows(
+            CompletionException.class,
+            () -> completion.toCompletableFuture().join());
+        assertEquals("first", failure.getCause().getMessage());
+    }
 }

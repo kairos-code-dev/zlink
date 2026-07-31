@@ -1,11 +1,11 @@
 import type { ZLinkLocationOptionValues } from '../RouteMesh';
 
 export interface ZLinkLocationOptions {
-  heartbeatIntervalMs(value: number): this;
+  ownerLeaseRenewIntervalMs(value: number): this;
   ownerLeaseTtlMs(value: number): this;
   pollingIntervalMs(value: number): this;
   storeFailureGraceMs(value: number): this;
-  routingIdFencingMarginMs(value: number): this;
+  ownerLeaseFencingMarginMs(value: number): this;
   ownerLeaseRenewTimeoutMs(value: number): this;
   routeCacheMaxAgeMs(value: number): this;
   messageFollowDurationMs(value: number): this;
@@ -22,12 +22,12 @@ export type ZLinkLocationOptionOverrides =
 export const zlinkRuntimeDefaultLocationOptions: Readonly<
   ZLinkLocationOptionValues & { readonly listPageSize: number }
 > = {
-  heartbeatIntervalMs: 10000,
-  ownerLeaseTtlMs: 30000,
+  ownerLeaseRenewIntervalMs: 10000,
+  ownerLeaseTtlMs: 15000,
   pollingIntervalMs: 1000,
   listPageSize: 1000,
   storeFailureGraceMs: 30000,
-  routingIdFencingMarginMs: 5000,
+  ownerLeaseFencingMarginMs: 5000,
   ownerLeaseRenewTimeoutMs: 3000,
   routeCacheMaxAgeMs: 15000,
   messageFollowDurationMs: 30000,

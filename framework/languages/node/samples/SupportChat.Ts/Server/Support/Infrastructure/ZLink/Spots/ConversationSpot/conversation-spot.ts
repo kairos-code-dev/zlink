@@ -9,7 +9,7 @@ import { SupportActorDirectory } from '../../Actors/support-actor-directory';
 import type {
   ZLinkMessage,
   ZLinkSpot,
-  ZLinkSpotActorJoinResponse,
+  ZLinkSpotActorJoinResult,
   ZLinkSpotContext,
   ZLinkSpotCreateResponse,
   ZLinkTimer
@@ -69,7 +69,7 @@ class ConversationSpot implements ZLinkSpot<SupportUserActor> {
   async onActorJoin(
     actorId: string,
     request: ZLinkMessage
-  ): Promise<ZLinkSpotActorJoinResponse> {
+  ): Promise<ZLinkSpotActorJoinResult> {
     const join = request.decode<JoinConversationReq>(Object as never);
     this.pendingJoins.set(actorId, {
       actorId,

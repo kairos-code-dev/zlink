@@ -43,6 +43,7 @@
 #include <zlink/framework/contracts/locations/values.hpp>
 #include <zlink/framework/contracts/messaging/message.hpp>
 #include <zlink/framework/contracts/messaging/message_context.hpp>
+#include <zlink/framework/contracts/monitoring/framework_runtime.hpp>
 #include <zlink/framework/contracts/monitoring/route_mesh_runtime.hpp>
 #include <zlink/framework/contracts/placement.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>
@@ -751,11 +752,11 @@ struct contract_create_request_t
 struct contract_spot_t
     : public zlink::framework::spot_t<contract_actor_t>
 {
-    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    zlink::framework::task_t<zlink::framework::spot_actor_join_result_t>
     on_actor_join (
       std::string_view, const zlink::framework::message_t &) override
     {
-        co_return zlink::framework::spot_actor_join_response_t::accept ();
+        co_return zlink::framework::spot_actor_join_result_t::accept ();
     }
 
     void on_create_actor (contract_actor_t &, const zlink::framework::message_t &) {}
@@ -789,11 +790,11 @@ struct contract_context_spot_t
     zlink::framework::spot_context_t &context () noexcept override { return value; }
     const zlink::framework::spot_context_t &context () const noexcept override { return value; }
     void configure () override {}
-    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    zlink::framework::task_t<zlink::framework::spot_actor_join_result_t>
     on_actor_join (std::string_view,
                    const zlink::framework::message_t &) override
     {
-        co_return zlink::framework::spot_actor_join_response_t::accept ();
+        co_return zlink::framework::spot_actor_join_result_t::accept ();
     }
     zlink::framework::task_t<void>
     on_actor_joined (contract_actor_t &) override
@@ -842,11 +843,11 @@ struct contract_context_entry_spot_t
         return value;
     }
     void configure () override {}
-    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    zlink::framework::task_t<zlink::framework::spot_actor_join_result_t>
     on_actor_join (std::string_view,
                    const zlink::framework::message_t &) override
     {
-        co_return zlink::framework::spot_actor_join_response_t::accept ();
+        co_return zlink::framework::spot_actor_join_result_t::accept ();
     }
     zlink::framework::task_t<void>
     on_actor_joined (contract_actor_t &) override
@@ -1355,7 +1356,7 @@ static_assert (std::is_same_v<decltype (std::declval<contract_spot_t &> ().on_ac
                                 std::declval<std::string_view> (),
                                 std::declval<zlink::framework::message_t> ())),
                               zlink::framework::task_t<
-                                zlink::framework::spot_actor_join_response_t>>);
+                                zlink::framework::spot_actor_join_result_t>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_context_t &> ().close ()),
                  zlink::framework::task_t<bool>>);

@@ -532,12 +532,12 @@ class transfer_entry_spot_t : public fw::entry_spot_t<transfer_actor_t>
         co_return fw::actor_create_response_t::accept ();
     }
 
-    fw::task_t<fw::spot_actor_join_response_t>
+    fw::task_t<fw::spot_actor_join_result_t>
     on_actor_join (std::string_view actor_id,
                    const fw::message_t &request) override
     {
         g_evidence->add ("local", std::string (actor_id), "admission", "actor-id-only");
-        co_return fw::spot_actor_join_response_t::accept (request);
+        co_return fw::spot_actor_join_result_t::accept (request);
     }
 
     fw::task_t<void> on_actor_joined (transfer_actor_t &actor) override
@@ -651,7 +651,7 @@ class transfer_user_spot_t : public fw::spot_t<transfer_actor_t>
         co_return fw::spot_create_response_t::accept ();
     }
 
-    fw::task_t<fw::spot_actor_join_response_t>
+    fw::task_t<fw::spot_actor_join_result_t>
     on_actor_join (std::string_view actor_id,
                    const fw::message_t &request) override
     {
@@ -665,10 +665,10 @@ class transfer_user_spot_t : public fw::spot_t<transfer_actor_t>
                          "spot=" + _context.spot_id () + "|mode=" + _mode
                            + "|input=actor-id-only");
         if (_mode == "reject" || join.expected_mode == "reject") {
-            co_return fw::spot_actor_join_response_t::reject (
+            co_return fw::spot_actor_join_result_t::reject (
               make_join_reply (join.scenario, id, false, _context.spot_id ()));
         }
-        co_return fw::spot_actor_join_response_t::accept (
+        co_return fw::spot_actor_join_result_t::accept (
           make_join_reply (join.scenario, id, true, _context.spot_id ()));
     }
 

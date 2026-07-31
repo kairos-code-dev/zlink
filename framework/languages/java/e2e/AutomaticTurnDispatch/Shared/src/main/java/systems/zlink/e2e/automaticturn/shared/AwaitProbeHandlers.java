@@ -17,7 +17,7 @@ import systems.zlink.framework.spots.ZLinkSpotTimerHandler;
 import systems.zlink.framework.spots.ZLinkTimerTick;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkPublishContext;
-import systems.zlink.framework.channels.ZLinkPublishHandler;
+import systems.zlink.framework.channels.ZLinkFanoutHandler;
 
 public final class AwaitProbeHandlers {
     public static final class PersistentRoomStateHandler
@@ -421,7 +421,7 @@ public final class AwaitProbeHandlers {
     }
 
     public static final class ObservabilityFanoutHandler
-        implements ZLinkPublishHandler<Contracts.ObservabilityFanoutEvent> {
+        implements ZLinkFanoutHandler<Contracts.ObservabilityFanoutEvent> {
         private final EvidenceStore evidence;
 
         public ObservabilityFanoutHandler(EvidenceStore evidence) {

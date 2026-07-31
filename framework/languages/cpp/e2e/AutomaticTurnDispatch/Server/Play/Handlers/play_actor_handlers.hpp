@@ -42,7 +42,7 @@ class await_entry_spot_t
           yd::actor_fast_req_t::packet_name);
     }
 
-    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    zlink::framework::task_t<zlink::framework::spot_actor_join_result_t>
     on_actor_join (std::string_view actor_id,
                    const zlink::framework::message_t &request_message) override
     {
@@ -55,7 +55,7 @@ class await_entry_spot_t
         _evidence.add ("actor-join-target-completed|rid=" + _evidence.node_rid + "|spot="
                        + spot_id + "|actor=" + std::string (actor_id) + "|request="
                        + request.request_id + "|handler=entry");
-        co_return zlink::framework::spot_actor_join_response_t::accept (
+        co_return zlink::framework::spot_actor_join_result_t::accept (
           yd::delay_res_t{.request_id = request.request_id,
                             .marker = request.marker,
                             .node_rid = _evidence.node_rid});

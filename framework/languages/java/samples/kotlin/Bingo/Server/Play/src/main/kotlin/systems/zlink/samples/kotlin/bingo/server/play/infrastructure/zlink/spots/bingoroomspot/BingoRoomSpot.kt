@@ -5,7 +5,7 @@ import kotlinx.coroutines.future.await
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
 import systems.zlink.framework.kotlin.yieldReply
 import systems.zlink.framework.messaging.ZLinkMessage
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult
 import systems.zlink.framework.spots.ZLinkSpotClosingContext
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
@@ -66,7 +66,7 @@ class BingoRoomSpot(
     override suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-    ): ZLinkSpotActorJoinResponse {
+    ): ZLinkSpotActorJoinResult {
         val joinRequest = request.decode(BingoRoomJoinReq::class.java)
         validateJoin(actorId, joinRequest)
         val preview = if (joinRequest.observeOnly) {
@@ -75,7 +75,7 @@ class BingoRoomSpot(
             requireGame().previewJoin(actorId, joinRequest.displayName)
         }
         pendingJoins[actorId] = joinRequest
-        return ZLinkSpotActorJoinResponse.accept(BingoRoomJoinRes(preview))
+        return ZLinkSpotActorJoinResult.accept(BingoRoomJoinRes(preview))
     }
 
     override suspend fun onJoinedActorSuspending(actor: PlayerActor) {

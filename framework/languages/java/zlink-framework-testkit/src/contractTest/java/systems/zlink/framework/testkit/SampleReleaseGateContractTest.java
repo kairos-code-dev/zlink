@@ -902,7 +902,7 @@ final class SampleReleaseGateContractTest {
             "TicTacToe direct sample must split client JoinGame contracts from Spot join contracts");
         assertTrue(gameSpotSource.contains("onActorJoin(")
                 && gameSpotSource.contains("ZLinkMessage request")
-                && gameSpotSource.contains("ZLinkSpotActorJoinResponse.accept")
+                && gameSpotSource.contains("ZLinkSpotActorJoinResult.accept")
                 && gameSpotSource.contains("TicTacToeGameJoinReq.class")
                 && gameSpotSource.contains("TicTacToeGameJoinRes")
                 && playActorJoinHandlerSource.contains("new TicTacToeGameJoinReq")
@@ -1262,7 +1262,7 @@ final class SampleReleaseGateContractTest {
             "Kotlin TicTacToe Play stream session must authenticate through the Api role and relay actor packets");
         assertTrue(gameSpotSource.contains("override suspend fun onActorJoinSuspending(")
                 && gameSpotSource.contains("request: ZLinkMessage")
-                && gameSpotSource.contains("ZLinkSpotActorJoinResponse.accept")
+                && gameSpotSource.contains("ZLinkSpotActorJoinResult.accept")
                 && gameSpotSource.contains("TicTacToeGameJoinReq::class.java")
                 && gameSpotSource.contains("TicTacToeGameJoinRes")
                 && playActorJoinHandlerSource.contains("TicTacToeGameJoinReq")

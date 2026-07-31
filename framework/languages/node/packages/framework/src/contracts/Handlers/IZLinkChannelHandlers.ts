@@ -23,7 +23,7 @@ export interface ZLinkRouteRequestHandler<TRequest, TReply> {
   handle(request: TRequest, context: ZLinkRouteMessageContext): Promise<TReply>;
 }
 
-export interface ZLinkPublishHandler<TMessage> {
+export interface ZLinkFanoutHandler<TMessage> {
   handle(message: TMessage, context: ZLinkPublishMessageContext): Promise<void>;
 }
 

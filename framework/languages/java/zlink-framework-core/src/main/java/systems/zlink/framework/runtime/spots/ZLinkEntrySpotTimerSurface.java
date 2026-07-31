@@ -8,7 +8,7 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 import systems.zlink.framework.spots.ZLinkTimer;
@@ -27,10 +27,10 @@ final class ZLinkEntrySpotTimerSurface implements ZLinkSpot<ZLinkActor> {
     }
 
     @Override
-    public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+    public CompletionStage<ZLinkSpotActorJoinResult> onActorJoin(
         String actorId,
         ZLinkMessage request) {
-        return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.reject());
+        return CompletableFuture.completedFuture(ZLinkSpotActorJoinResult.reject());
     }
 
     @Override

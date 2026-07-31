@@ -18,7 +18,7 @@ import org.springframework.beans.factory.config.DependencyDescriptor;
 import org.springframework.core.MethodParameter;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.actors.ZLinkActorFactory;
-import systems.zlink.framework.channels.ZLinkPublishHandler;
+import systems.zlink.framework.channels.ZLinkFanoutHandler;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.channels.ZLinkRouteSendHandler;
@@ -280,7 +280,7 @@ final class ZLinkSpringHandlerFactory implements ZLinkHandlerActivator {
             || ZLinkActorFactory.class.isAssignableFrom(type)
             || ZLinkSendHandler.class.isAssignableFrom(type)
             || ZLinkRequestHandler.class.isAssignableFrom(type)
-            || ZLinkPublishHandler.class.isAssignableFrom(type)
+            || ZLinkFanoutHandler.class.isAssignableFrom(type)
             || ZLinkRouteSendHandler.class.isAssignableFrom(type)
             || ZLinkRouteRequestHandler.class.isAssignableFrom(type)
             || ZLinkSpot.class.isAssignableFrom(type)

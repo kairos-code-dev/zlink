@@ -24,7 +24,7 @@ import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkPublishContext;
-import systems.zlink.framework.channels.ZLinkPublishHandler;
+import systems.zlink.framework.channels.ZLinkFanoutHandler;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.channels.ZLinkRouteSendContext;
 import systems.zlink.framework.channels.ZLinkRouteSendHandler;
@@ -126,7 +126,7 @@ public class SubmitAdmissionRole {
         }
     }
 
-    public static final class FanoutHandler implements ZLinkPublishHandler<Probe> {
+    public static final class FanoutHandler implements ZLinkFanoutHandler<Probe> {
         private final RoleState state;
 
         public FanoutHandler(RoleState state) {

@@ -12,9 +12,9 @@ function createZoneWorldLocationStore(shared: SharedSettings): ZLinkRedisLocatio
 function zoneWorldLocationOptions(options: ZLinkLocationOptions): void {
   options
     .pollingIntervalMs(100)
-    .heartbeatIntervalMs(1_000)
+    .ownerLeaseRenewIntervalMs(1_000)
     .ownerLeaseTtlMs(3_000)
-    .routingIdFencingMarginMs(500)
+    .ownerLeaseFencingMarginMs(500)
     .ownerLeaseRenewTimeoutMs(500);
 }
 

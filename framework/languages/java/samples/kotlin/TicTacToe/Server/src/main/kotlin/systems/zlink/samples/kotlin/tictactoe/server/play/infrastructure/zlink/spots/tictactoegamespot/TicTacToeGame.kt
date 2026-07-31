@@ -7,7 +7,7 @@ import kotlinx.coroutines.future.await
 import systems.zlink.framework.kotlin.addHandler
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
 import systems.zlink.framework.messaging.ZLinkMessage
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult
 import systems.zlink.framework.spots.ZLinkSpotClosingContext
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
@@ -49,7 +49,7 @@ class TicTacToeGame(
     override suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-    ): ZLinkSpotActorJoinResponse {
+    ): ZLinkSpotActorJoinResult {
         val joinRequest = request.decode(TicTacToeGameJoinReq::class.java)
         require(joinRequest.player.actorId == actorId) {
             "join request actor id does not match bound actor"
@@ -57,7 +57,7 @@ class TicTacToeGame(
         validateJoin(joinRequest.roomId, joinRequest.player)
         val preview = match.previewJoin(actorId)
         pendingJoins[actorId] = joinRequest
-        return ZLinkSpotActorJoinResponse.accept(TicTacToeGameJoinRes(preview.state))
+        return ZLinkSpotActorJoinResult.accept(TicTacToeGameJoinRes(preview.state))
     }
 
     override suspend fun onJoinedActorSuspending(actor: PlayActor) {

@@ -16,7 +16,7 @@ import type {
 } from '../../../../../Shared/contracts';
 import type {
   ZLinkPublishMessageContext,
-  ZLinkPublishHandler,
+  ZLinkFanoutHandler,
   ZLinkMessageContext,
   ZLinkRequestHandler,
   ZLinkSpotManager,
@@ -70,7 +70,7 @@ class GetNodeDiagnosticsHandler implements
 
 @Injectable()
 @zlinkPublishHandler('zone-broadcast', PacketNames.worldAnnounceEvent)
-class WorldAnnounceSubscriber implements ZLinkPublishHandler<WorldAnnounceEvent> {
+class WorldAnnounceSubscriber implements ZLinkFanoutHandler<WorldAnnounceEvent> {
   constructor(
     @Inject(ZONEWORLD_CONFIG) private readonly config: ZoneWorldConfiguration,
     @Inject(ZLINK_SPOT_MANAGER) private readonly handles: ZLinkSpotManager,
@@ -94,7 +94,7 @@ class WorldAnnounceSubscriber implements ZLinkPublishHandler<WorldAnnounceEvent>
 
 @Injectable()
 @zlinkPublishHandler('zone-broadcast', PacketNames.nodeMaintenanceChangedEvent)
-class MaintenanceChangedSubscriber implements ZLinkPublishHandler<NodeMaintenanceChangedEvent> {
+class MaintenanceChangedSubscriber implements ZLinkFanoutHandler<NodeMaintenanceChangedEvent> {
   constructor(private readonly state: NodeRuntimeState) {}
 
   async handle(message: NodeMaintenanceChangedEvent, context: ZLinkPublishMessageContext): Promise<void> {

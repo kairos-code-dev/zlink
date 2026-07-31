@@ -17,7 +17,7 @@ import systems.zlink.framework.spots.ZLinkEntrySpot
 import systems.zlink.framework.spots.ZLinkInstanceSpot
 import systems.zlink.framework.spots.ZLinkInstanceSpotContext
 import systems.zlink.framework.spots.ZLinkSpot
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult
 import systems.zlink.framework.spots.ZLinkActorCreateResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotClosingContext
@@ -193,7 +193,7 @@ abstract class ZLinkSuspendingSpot<TActor : ZLinkActor> : ZLinkSpot<TActor> {
         onRelocationReadyCompletedSuspending(completion)
     }
 
-    final override fun onActorJoin(actorId: String, request: ZLinkMessage): CompletionStage<ZLinkSpotActorJoinResponse> =
+    final override fun onActorJoin(actorId: String, request: ZLinkMessage): CompletionStage<ZLinkSpotActorJoinResult> =
         coroutineStage { onActorJoinSuspending(actorId, request) }
 
     final override fun onJoinedActor(actor: TActor): CompletionStage<Void> =
@@ -224,7 +224,7 @@ abstract class ZLinkSuspendingSpot<TActor : ZLinkActor> : ZLinkSpot<TActor> {
     protected abstract suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-    ): ZLinkSpotActorJoinResponse
+    ): ZLinkSpotActorJoinResult
 
     protected abstract suspend fun onJoinedActorSuspending(actor: TActor)
 

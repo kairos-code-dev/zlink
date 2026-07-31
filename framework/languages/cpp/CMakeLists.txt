@@ -40,7 +40,7 @@ set(ZLINK_FRAMEWORK_CPP_REPO_ROOT "${ZLINK_FRAMEWORK_CPP_DIR}/../../.." CACHE PA
   "Path to the zlink repository root")
 set(ZLINK_FRAMEWORK_CPP_LOCAL_PACKAGE_ROOT "$ENV{ZLINK_LOCAL_PACKAGE_ROOT}" CACHE PATH
   "Root directory containing local package outputs")
-set(ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION "11.0.2" CACHE STRING
+set(ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION "11.1.0" CACHE STRING
   "Exact local zlink_cpp package version consumed by the C++ framework")
 set(ZLINK_FRAMEWORK_CPP_ZLINK_CORE_VERSION "11.0.0" CACHE STRING
   "Exact local zlink Core package version embedded by zlink_cpp")

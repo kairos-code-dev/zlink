@@ -2,7 +2,7 @@ import type {
   ZLinkActor,
   ZLinkMessage,
   ZLinkMessageSerializer,
-  ZLinkSpotActorJoinResponse
+  ZLinkSpotActorJoinResult
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import { Message as BindingMessage, Received as BindingReceived } from '@zlink-systems/zlink';
@@ -33,7 +33,7 @@ import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 import type { ZLinkActorHandoffPacket, ZLinkActorHandoffResult } from '../actors/actor-handoff';
 
 interface ZLinkRoutedActorAdmissionTarget {
-  onActorJoin?(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
+  onActorJoin?(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResult>;
 }
 
 interface ZLinkSpotRoutedActorAdmissionOptions {
@@ -229,7 +229,7 @@ export class ZLinkSpotRoutedActorAdmission {
   private runJoinCallback(
     decoded: ZLinkDecodedRemoteActorJoinRequest,
     request: Message
-  ): Promise<ZLinkSpotActorJoinResponse> {
+  ): Promise<ZLinkSpotActorJoinResult> {
     const target = this.options.getTarget();
     const joinPayload = wrapFrameworkPayloadMessage(request, this.options.messageSerializers);
     const actorRef = decoded.actorRef;

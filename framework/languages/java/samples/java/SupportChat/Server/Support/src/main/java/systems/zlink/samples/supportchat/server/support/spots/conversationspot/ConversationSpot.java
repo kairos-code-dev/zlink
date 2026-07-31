@@ -9,7 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.framework.spots.ZLinkTimer;
@@ -87,12 +87,12 @@ public final class ConversationSpot implements ZLinkSpot<SupportUserActor> {
     }
 
     @Override
-    public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+    public CompletionStage<ZLinkSpotActorJoinResult> onActorJoin(
         String actorId,
         ZLinkMessage request) {
         request.decode(Messages.JoinConversationReq.class);
         pendingJoins.add(actorId);
-        return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept(
+        return CompletableFuture.completedFuture(ZLinkSpotActorJoinResult.accept(
             new Messages.JoinConversationRes(
                 false,
                 ConversationContracts.state(requireConversation().snapshot()))));

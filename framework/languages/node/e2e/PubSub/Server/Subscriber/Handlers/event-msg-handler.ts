@@ -4,7 +4,7 @@ import {
   type ZLinkMessageFlowEvent,
   type ZLinkMessageFlowObserver,
   type ZLinkPublishContext,
-  type ZLinkPublishHandler,
+  type ZLinkFanoutHandler,
   type ZLinkRuntimeEventHandler,
   type ZLinkSocketEvent
 } from '@zlink-systems/framework';
@@ -14,7 +14,7 @@ import { SUBSCRIBER_OPTIONS, type SubscriberOptions } from '../Configuration/sub
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 
 @Injectable()
-export class EventMsgHandler implements ZLinkPublishHandler<EventMsg> {
+export class EventMsgHandler implements ZLinkFanoutHandler<EventMsg> {
   constructor(
     private readonly evidence: EvidenceStore,
     @Inject(SUBSCRIBER_OPTIONS)

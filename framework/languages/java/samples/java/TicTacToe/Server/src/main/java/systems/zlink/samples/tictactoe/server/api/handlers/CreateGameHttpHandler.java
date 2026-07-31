@@ -23,10 +23,12 @@ public final class CreateGameHttpHandler {
     @PostMapping("/games")
     public java.util.concurrent.CompletionStage<CreateGameHttpRes> handle(@RequestBody CreateGameHttpReq request) {
         String gameName = gameName(request);
-        return spots.create("tictactoe.game")
-            .inMesh(SampleNames.SpotMesh)
+        // --8<-- [start:doc-create]
+        return spots.create("tictactoe.game")   // 이 stable type을 등록한 node가 후보가 된다.
+            .inMesh(SampleNames.SpotMesh)       // Spot을 만들 mesh를 고른다.
                 .timeout(SampleNames.RequestTimeout)
-            .submit()
+            .submit()                           // Java의 비동기 완료 terminal이다.
+        // --8<-- [end:doc-create]
             .thenApply(created -> new CreateGameHttpRes(
                 created.spot().spotId(),
                 gameName,

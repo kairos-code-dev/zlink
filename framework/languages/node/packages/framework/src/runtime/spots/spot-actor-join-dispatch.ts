@@ -5,7 +5,7 @@ import type {
   ZLinkMessage,
   ZLinkMessageSerializer,
   ZLinkSpot,
-  ZLinkSpotActorJoinResponse
+  ZLinkSpotActorJoinResult
 } from '../../contracts';
 import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import { ZLinkBackendSpotDispatchEvent } from '../backend/contracts';
@@ -51,7 +51,7 @@ const ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER = 3;
  * drains only need the callbacks declared here.
  */
 interface ZLinkActorJoinAdmissionTarget {
-  onActorJoin?(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
+  onActorJoin?(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResult>;
   onJoinedActor?(actor: ZLinkActor): Promise<void>;
   onLeaveActor?(actor: ZLinkActor): Promise<void>;
   onDisconnectActor?(actor: ZLinkActor): Promise<void>;

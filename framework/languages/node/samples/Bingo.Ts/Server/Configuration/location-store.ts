@@ -12,9 +12,9 @@ function createBingoLocationStore(config: Pick<BingoSampleConfig, 'redisEndpoint
 function bingoLocationOptions(options: ZLinkLocationOptions): void {
   options
     .pollingIntervalMs(100)
-    .heartbeatIntervalMs(10_000)
+    .ownerLeaseRenewIntervalMs(10_000)
     .ownerLeaseTtlMs(30_000)
-    .routingIdFencingMarginMs(5_000)
+    .ownerLeaseFencingMarginMs(5_000)
     .ownerLeaseRenewTimeoutMs(3_000);
 }
 

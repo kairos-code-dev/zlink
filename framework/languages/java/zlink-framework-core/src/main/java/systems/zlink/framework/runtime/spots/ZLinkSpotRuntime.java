@@ -87,7 +87,7 @@ import systems.zlink.framework.runtime.messaging.ZLinkStringMessageSerializer;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 import systems.zlink.framework.spots.ZLinkSpotCreateResult;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.framework.spots.ZLinkWorkerCall;
@@ -3233,7 +3233,7 @@ public final class ZLinkSpotRuntime
                     actor,
                     primaryNode.routingId(),
                     actorId -> java.util.concurrent.CompletableFuture.completedFuture(
-                        systems.zlink.framework.spots.ZLinkSpotActorJoinResponse.accept()),
+                        systems.zlink.framework.spots.ZLinkSpotActorJoinResult.accept()),
                     joinedActor -> notifySpotActorLifecycleAndSuppressBackendEvent(
                         rawEntrySpot,
                         joinedActor,

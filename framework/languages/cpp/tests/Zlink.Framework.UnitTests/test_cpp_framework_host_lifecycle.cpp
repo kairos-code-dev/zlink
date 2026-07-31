@@ -77,13 +77,13 @@ class relocation_ready_spot_t final
     }
 
     zlink::framework::task_t<
-      zlink::framework::spot_actor_join_response_t>
+      zlink::framework::spot_actor_join_result_t>
     on_actor_join (
       std::string_view,
       const zlink::framework::message_t &) override
     {
         co_return zlink::framework::
-          spot_actor_join_response_t::reject ();
+          spot_actor_join_result_t::reject ();
     }
 
     zlink::framework::task_t<void>

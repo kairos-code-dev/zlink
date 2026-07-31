@@ -3,7 +3,7 @@ import type {
   ZLinkMessage,
   ZLinkMessageSerializer,
   ZLinkSpot,
-  ZLinkSpotActorJoinResponse
+  ZLinkSpotActorJoinResult
 } from '../../contracts';
 import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import type { RoutingId } from '../../contracts';
@@ -32,7 +32,7 @@ import type { ZLinkRoutedActorTransferProvider } from './spot-remote-codec';
 import type { ZLinkActorHandoffPacket, ZLinkActorHandoffResult } from '../actors/actor-handoff';
 
 interface ZLinkRoutedFrameAdmissionTarget {
-  onActorJoin?(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
+  onActorJoin?(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResult>;
 }
 
 interface ZLinkSpotRoutedFrameDispatchOptions {

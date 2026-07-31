@@ -19,7 +19,7 @@ import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
@@ -312,7 +312,7 @@ public final class TransferComponents {
         }
 
         @Override
-        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+        public CompletionStage<ZLinkSpotActorJoinResult> onActorJoin(
             String actorId,
             ZLinkMessage request) {
             Contracts.JoinTargetReq join = request.decode(Contracts.JoinTargetReq.class);
@@ -323,8 +323,8 @@ public final class TransferComponents {
             Contracts.JoinTargetRes response = new Contracts.JoinTargetRes(
                 join.scenario(), actorId, !reject, "", context.spotId(), 0);
             return CompletableFuture.completedFuture(reject
-                ? ZLinkSpotActorJoinResponse.reject(response)
-                : ZLinkSpotActorJoinResponse.accept(response));
+                ? ZLinkSpotActorJoinResult.reject(response)
+                : ZLinkSpotActorJoinResult.accept(response));
         }
 
         @Override

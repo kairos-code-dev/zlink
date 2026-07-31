@@ -327,6 +327,7 @@ public sealed class LocationLifecycleTests
                 ActorId,
                 "spot-rejected",
                 spotGeneration: 1));
+        controlled.RejectNextRenew = false;
 
         var notTracked = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
             await node.ActorOwnership.NotifyActorJoinedSpotAsync(
@@ -951,9 +952,13 @@ public sealed class LocationLifecycleTests
                 RenewStarted.TrySetResult();
                 if (RenewGate is not null)
                     await RenewGate.Task.WaitAsync(cancellationToken);
+                // A rejection has to outlast the renew retry budget. Clearing
+                // the flag after one attempt models a transient compare-exchange
+                // race, which the coordinator is required to rebase and retry,
+                // so the renew would succeed and the rejected membership would
+                // reach the committed base.
                 if (RejectNextRenew)
                 {
-                    RejectNextRenew = false;
                     return new ZLinkAuthorityCompareExchangeResult.Conflict(
                         await inner.ReadAuthorityAsync(
                             key,

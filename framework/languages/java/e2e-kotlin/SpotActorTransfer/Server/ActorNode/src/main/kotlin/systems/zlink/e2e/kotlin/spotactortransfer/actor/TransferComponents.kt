@@ -25,7 +25,7 @@ import systems.zlink.framework.kotlin.ZLinkSuspendingSession
 import systems.zlink.framework.kotlin.addHandler
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult
 import systems.zlink.framework.spots.ZLinkActorCreateResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
@@ -208,7 +208,7 @@ class TransferUserSpot(
     override suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-    ): ZLinkSpotActorJoinResponse {
+    ): ZLinkSpotActorJoinResult {
         val join = request.decode(Contracts.JoinTargetReq::class.java)
         scenarios[actorId] = join.scenario()
         evidence.add(
@@ -221,8 +221,8 @@ class TransferUserSpot(
         val response = Contracts.JoinTargetRes(
             join.scenario(), actorId, !reject, "", spotContext.spotId(), 0,
         )
-        return if (reject) ZLinkSpotActorJoinResponse.reject(response)
-        else ZLinkSpotActorJoinResponse.accept(response)
+        return if (reject) ZLinkSpotActorJoinResult.reject(response)
+        else ZLinkSpotActorJoinResult.accept(response)
     }
 
     override suspend fun onJoinedActorSuspending(actor: TransferActor) {

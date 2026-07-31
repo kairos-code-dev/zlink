@@ -61,7 +61,7 @@ export async function startGatewayHost(): Promise<void> {
           }));
           builder.configureLocations()
             .pollingIntervalMs(100)
-            .heartbeatIntervalMs(1000)
+            .ownerLeaseRenewIntervalMs(1000)
             .ownerLeaseTtlMs(5000);
           builder.addRouteMesh(SpotServiceNames.spotChannel)
             .routingId(options.rid)

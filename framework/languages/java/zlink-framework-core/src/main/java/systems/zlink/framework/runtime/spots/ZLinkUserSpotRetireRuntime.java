@@ -445,30 +445,73 @@ public final class ZLinkUserSpotRetireRuntime {
                 onPreflightPassed.get(),
                 "onPreflightPassed result");
             return admission.thenCompose(admissionIgnored -> {
-                java.util.ArrayList<ZLinkRelocationScheduler.Unit> units =
+                //  Every unit starts here. The spec unit gate of
+                //  28-graceful-drain-handoff §7 (outbound 64, inbound 64,
+                //  payload 256 MiB, capture and restore 8) belongs to
+                //  ZLinkRelocationPermitPool, which admits at the turn
+                //  boundary where the actual payload is known. Bounding the
+                //  units a second time here would hold input-order slots
+                //  across a turn wait and starve a unit that is already ready.
+                java.util.ArrayList<CompletionStage<Void>> started =
                     new java.util.ArrayList<>(
                         plan.spotIds().size() + plan.actorIds().size());
                 for (String spotId : plan.spotIds()) {
-                    units.add(new ZLinkRelocationScheduler.Unit(
-                        "spot:" + spotId,
-                        0,
-                        CompletableFuture.completedFuture(null),
-                        () -> stopBeforeNextUnit.getAsBoolean()
-                            ? shutdownRequested()
-                            : spotRelocation.execute(spotId)));
+                    started.add(startUnit(
+                        stopBeforeNextUnit,
+                        () -> spotRelocation.execute(spotId)));
                 }
                 for (String actorId : plan.actorIds()) {
-                    units.add(new ZLinkRelocationScheduler.Unit(
-                        "actor:" + actorId,
-                        0,
-                        CompletableFuture.completedFuture(null),
-                        () -> stopBeforeNextUnit.getAsBoolean()
-                            ? shutdownRequested()
-                            : actorRelocation.execute(actorId)));
+                    started.add(startUnit(
+                        stopBeforeNextUnit,
+                        () -> actorRelocation.execute(actorId)));
                 }
-                return new ZLinkRelocationScheduler().schedule(units)
-                    .completion();
+                return awaitAllUnits(started);
             });
+        });
+    }
+
+    //  Shutdown is re-checked as the unit starts, not when the plan was built.
+    private static CompletionStage<Void> startUnit(
+        BooleanSupplier stopBeforeNextUnit,
+        java.util.function.Supplier<CompletionStage<Void>> relocation) {
+        if (stopBeforeNextUnit.getAsBoolean()) {
+            return shutdownRequested();
+        }
+        try {
+            return Objects.requireNonNull(
+                relocation.get(), "relocation action result");
+        } catch (RuntimeException failure) {
+            return CompletableFuture.failedFuture(failure);
+        }
+    }
+
+    //  Mirrors Task.WhenAll: every unit runs to a terminal state and the first
+    //  failure is the reported one. Later failures are attached to it.
+    private static CompletionStage<Void> awaitAllUnits(
+        List<CompletionStage<Void>> units) {
+        if (units.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        java.util.concurrent.atomic.AtomicReference<Throwable> firstFailure =
+            new java.util.concurrent.atomic.AtomicReference<>();
+        CompletableFuture<?>[] settled = units.stream()
+            .map(unit -> unit.toCompletableFuture()
+                .handle((ignored, failure) -> {
+                    if (failure != null
+                        && !firstFailure.compareAndSet(null, failure)) {
+                        Throwable first = firstFailure.get();
+                        if (first != failure) {
+                            first.addSuppressed(failure);
+                        }
+                    }
+                    return null;
+                }))
+            .toArray(CompletableFuture[]::new);
+        return CompletableFuture.allOf(settled).thenCompose(ignored -> {
+            Throwable failure = firstFailure.get();
+            return failure == null
+                ? CompletableFuture.completedFuture(null)
+                : CompletableFuture.<Void>failedFuture(failure);
         });
     }
 

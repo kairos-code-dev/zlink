@@ -1,6 +1,6 @@
 import {
   type Type,
-  type ZLinkHandlerDelegate,
+  type ZLinkHandlerFilterNext,
   type ZLinkHandlerFilter,
   type ZLinkHandlerFilterContext,
   ZLinkFrameworkErrorKind,
@@ -52,11 +52,11 @@ export function exposeZLinkHandlers(
 export async function invokeZLinkHandlerFilters(
   filters: readonly ZLinkHandlerFilter[],
   context: ZLinkHandlerFilterContext,
-  terminal: ZLinkHandlerDelegate,
+  terminal: ZLinkHandlerFilterNext,
   signal?: AbortSignal
 ): Promise<boolean> {
   let handlerInvoked = false;
-  let next: ZLinkHandlerDelegate = async () => {
+  let next: ZLinkHandlerFilterNext = async () => {
     handlerInvoked = true;
     await terminal();
   };
@@ -73,7 +73,7 @@ export async function invokeZLinkHandlerFilters(
   return handlerInvoked;
 }
 
-function invokeAtMostOnce(next: ZLinkHandlerDelegate): ZLinkHandlerDelegate {
+function invokeAtMostOnce(next: ZLinkHandlerFilterNext): ZLinkHandlerFilterNext {
   let invoked = false;
   return () => {
     if (invoked) {

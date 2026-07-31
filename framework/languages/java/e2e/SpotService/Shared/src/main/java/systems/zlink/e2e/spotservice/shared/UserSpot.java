@@ -9,7 +9,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 
@@ -68,7 +68,7 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
     }
 
     @Override
-    public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+    public CompletionStage<ZLinkSpotActorJoinResult> onActorJoin(
         String actorId,
         ZLinkMessage request) {
         Contracts.JoinAdmittedUserSpotActorReq admission = decodeAdmission(request);
@@ -76,7 +76,7 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
             if (!admission.admit()) {
                 evidence.record("ActorUserJoinRejected", context.spotRid().toString(),
                     actorId + "/" + admission.reason());
-                return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.reject(new Contracts.ActorJoinRes(
+                return CompletableFuture.completedFuture(ZLinkSpotActorJoinResult.reject(new Contracts.ActorJoinRes(
                     actorId,
                     context.spotRid().toString(),
                     evidence.nodeRid(),
@@ -87,7 +87,7 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
             pendingProfiles.put(actorId, admission.profile());
             evidence.record("ActorUserJoinAdmitted", context.spotRid().toString(),
                 actorId + "/" + admission.reason());
-            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept(new Contracts.ActorJoinRes(
+            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResult.accept(new Contracts.ActorJoinRes(
                 actorId,
                 context.spotRid().toString(),
                 evidence.nodeRid(),
@@ -99,7 +99,7 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
         pendingProfiles.put(actorId, join.profile());
         evidence.record("ActorUserJoinRequested", context.spotRid().toString(),
             actorId + "/" + join.profile().displayName() + "/" + String.join(",", join.tags()));
-        return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept(new Contracts.ActorJoinRes(
+        return CompletableFuture.completedFuture(ZLinkSpotActorJoinResult.accept(new Contracts.ActorJoinRes(
             actorId,
             context.spotRid().toString(),
             evidence.nodeRid(),

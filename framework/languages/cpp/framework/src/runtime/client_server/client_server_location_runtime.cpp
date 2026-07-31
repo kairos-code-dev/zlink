@@ -534,8 +534,14 @@ void client_server_location_runtime_t::pump ()
       mesh::service_liveness_registry_t::clock_t::now ();
     for (auto &[_, server] : _servers) {
         (void) server->owner->drain_monitor_events (now);
-        while (server->owner->pump_one (now)
-               != client_server_pump_result_t::no_data) {
+        //  Stop on backpressure as well as on no_data. The pending record can
+        //  only be enqueued after dispatch drains the mailbox below, so
+        //  looping again here would spin without progress.
+        for (;;) {
+            const auto result = server->owner->pump_one (now);
+            if (result == client_server_pump_result_t::no_data
+                || result == client_server_pump_result_t::backpressured)
+                break;
         }
         (void) server->owner->tick_liveness (now);
         dispatch_server (*server);
@@ -550,8 +556,11 @@ void client_server_location_runtime_t::pump ()
     }
     for (auto &client : clients) {
         (void) client->drain_monitor_events (now);
-        while (client->pump_one (now)
-               != client_server_pump_result_t::no_data) {
+        for (;;) {
+            const auto result = client->pump_one (now);
+            if (result == client_server_pump_result_t::no_data
+                || result == client_server_pump_result_t::backpressured)
+                break;
         }
         (void) client->tick_liveness (now);
         (void) client->expire_requests (

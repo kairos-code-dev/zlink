@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkPublishMessageContext;
-import systems.zlink.framework.channels.ZLinkPublishHandler;
+import systems.zlink.framework.channels.ZLinkFanoutHandler;
 import systems.zlink.framework.channels.ZLinkRouteMessageContext;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.channels.ZLinkRouteSendHandler;
@@ -1079,7 +1079,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @ZLinkHandlerGroup("scanned-publish")
-    public static final class EventHandler implements ZLinkPublishHandler<String> {
+    public static final class EventHandler implements ZLinkFanoutHandler<String> {
         @Override
         public CompletionStage<Void> handle(
             String message,

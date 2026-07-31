@@ -5,7 +5,7 @@ import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 
 public final class ProbeEntrySpot implements ZLinkEntrySpot<ProbeActor> {
     private final ZLinkEntrySpotContext context;
@@ -30,10 +30,10 @@ public final class ProbeEntrySpot implements ZLinkEntrySpot<ProbeActor> {
     }
 
     @Override
-    public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+    public CompletionStage<ZLinkSpotActorJoinResult> onActorJoin(
         String actorId,
         ZLinkMessage request) {
-        return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept());
+        return CompletableFuture.completedFuture(ZLinkSpotActorJoinResult.accept());
     }
 
     @Override

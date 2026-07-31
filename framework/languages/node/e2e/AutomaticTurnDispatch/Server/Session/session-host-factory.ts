@@ -8,7 +8,7 @@ import {
   type ZLinkEntrySpot,
   type ZLinkEntrySpotContext,
   type ZLinkMessage,
-  type ZLinkSpotActorJoinResponse
+  type ZLinkSpotActorJoinResult
 } from '@zlink-systems/framework';
 import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
@@ -23,7 +23,7 @@ import { AwaitSessionFactory } from './Handlers/await-session';
 class AwaitSessionEntrySpot implements ZLinkEntrySpot {
   readonly context!: ZLinkEntrySpotContext;
 
-  async onActorJoin(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResult> {
     void actor;
     void request;
     return { accepted: true };

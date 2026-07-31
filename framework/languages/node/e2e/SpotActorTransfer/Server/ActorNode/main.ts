@@ -813,7 +813,7 @@ Module({
         builder.addRelocationStore(relocationStore);
         builder.configureLocations()
           .pollingIntervalMs(100)
-          .heartbeatIntervalMs(1000)
+          .ownerLeaseRenewIntervalMs(1000)
           .ownerLeaseTtlMs(3000)
           .routeCacheMaxAgeMs(500)
           .messageFollowDurationMs(6000);

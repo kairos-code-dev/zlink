@@ -14,13 +14,13 @@ export function createRedisLocationStore(options: RedisLocationOptions): ZLinkRe
 
 export function monitoringLocationOptions(): {
   pollingIntervalMs: number;
-  heartbeatIntervalMs: number;
+  ownerLeaseRenewIntervalMs: number;
   ownerLeaseTtlMs: number;
   storeFailureGraceMs: number;
 } {
   return {
     pollingIntervalMs: 100,
-    heartbeatIntervalMs: 1000,
+    ownerLeaseRenewIntervalMs: 1000,
     ownerLeaseTtlMs: 3000,
     storeFailureGraceMs: 6000
   };

@@ -93,7 +93,7 @@ class spot_manager_t;
 class spot_context_t;
 class entry_spot_context_t;
 class instance_spot_context_t;
-struct spot_actor_join_response_t;
+struct spot_actor_join_result_t;
 struct actor_create_response_t;
 struct spot_create_response_t;
 
@@ -201,36 +201,36 @@ struct spot_accept_reject_result_t
 };
 } // namespace detail
 
-struct spot_actor_join_response_t
+struct spot_actor_join_result_t
 {
     bool accepted = false;
     std::optional<message_t> reply;
 
-    static spot_actor_join_response_t accept (std::optional<message_t> reply = std::nullopt)
+    static spot_actor_join_result_t accept (std::optional<message_t> reply = std::nullopt)
     {
         auto result = detail::spot_accept_reject_result_t::accept (std::move (reply));
-        return spot_actor_join_response_t{result.accepted, std::move (result.reply)};
+        return spot_actor_join_result_t{result.accepted, std::move (result.reply)};
     }
 
     template <typename TReply>
     requires (!std::is_same_v<std::remove_cvref_t<TReply>, message_t>
               && !std::is_same_v<std::remove_cvref_t<TReply>,
-                                 zlink::message_t>) static spot_actor_join_response_t
+                                 zlink::message_t>) static spot_actor_join_result_t
       accept (TReply reply)
     {
         return accept (message_t::from (std::move (reply)));
     }
 
-    static spot_actor_join_response_t reject (std::optional<message_t> reply = std::nullopt)
+    static spot_actor_join_result_t reject (std::optional<message_t> reply = std::nullopt)
     {
         auto result = detail::spot_accept_reject_result_t::reject (std::move (reply));
-        return spot_actor_join_response_t{result.accepted, std::move (result.reply)};
+        return spot_actor_join_result_t{result.accepted, std::move (result.reply)};
     }
 
     template <typename TReply>
     requires (!std::is_same_v<std::remove_cvref_t<TReply>, message_t>
               && !std::is_same_v<std::remove_cvref_t<TReply>,
-                                 zlink::message_t>) static spot_actor_join_response_t
+                                 zlink::message_t>) static spot_actor_join_result_t
       reject (TReply reply)
     {
         return reject (message_t::from (std::move (reply)));
@@ -450,7 +450,7 @@ class spot_node_runtime_t;
 
 struct spot_actor_admission_callbacks_t
 {
-    std::function<spot_actor_join_response_t (
+    std::function<spot_actor_join_result_t (
       void *, std::string_view, const zlink::message_t &, serializer_registry_t &)>
       join;
     std::function<task_t<void> (void *, void *)> on_actor_joined;
@@ -1382,7 +1382,7 @@ class spot_t
         (void) completion;
         co_return;
     }
-    virtual task_t<spot_actor_join_response_t> on_actor_join (
+    virtual task_t<spot_actor_join_result_t> on_actor_join (
       std::string_view actor_id,
       const message_t &request) = 0;
     virtual task_t<void> on_actor_joined (TActor &actor) = 0;
@@ -1421,7 +1421,7 @@ class entry_spot_t
         (void) create_request;
         co_return actor_create_response_t::accept ();
     }
-    virtual task_t<spot_actor_join_response_t> on_actor_join (
+    virtual task_t<spot_actor_join_result_t> on_actor_join (
       std::string_view actor_id,
       const message_t &request) = 0;
     virtual task_t<void> on_actor_joined (TActor &actor) = 0;

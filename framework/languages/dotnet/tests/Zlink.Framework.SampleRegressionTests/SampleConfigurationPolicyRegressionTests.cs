@@ -354,7 +354,10 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.Contains("node status observed. node={NodeId}, rid={NodeRid}", reportHandler,
             StringComparison.Ordinal);
-        Assert.Contains("context.SourceNodeRid", reportHandler, StringComparison.Ordinal);
+        // The handler narrows IZLinkMessageContext to ZLinkRouteMessageContext before
+        // reading the source identity, so the read happens through that local.
+        Assert.Contains("ZLinkRouteMessageContext", reportHandler, StringComparison.Ordinal);
+        Assert.Contains("route.SourceNodeRid", reportHandler, StringComparison.Ordinal);
     }
 
     [Fact]

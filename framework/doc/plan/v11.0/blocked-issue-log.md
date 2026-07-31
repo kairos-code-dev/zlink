@@ -6254,3 +6254,31 @@ scenario SF-A2 passed
 
 스위트별로 로그 형식이 달라 통과 개수를 비교하려면 `scenario ... passed` 형태의 줄만
 세거나 client 로그를 따로 봐야 한다. 이번에 두 번 오독했다.
+
+### SF-B1도 "응답했는데 도달하지 않는다" 계열이다
+
+정정 뒤 SF-B1의 실제 실패를 다시 봤다. Provider의 flow log가 답한다.
+
+```
+api-a : phase=received packet=ProfileReq ... phase=replied
+api-b : phase=received packet=ProfileReq ... phase=replied
+consumer : HTTP 408 (request timeout)
+```
+
+Provider가 받아서 응답까지 했는데 consumer는 타임아웃한다. RC-B5와 SM-B6에서 확인한 것과
+같은 증상이다.
+
+이로써 같은 증상이 세 스위트다.
+
+| 스위트 | 상황 |
+|---|---|
+| RC-B5 | manual pair, outage 없음 |
+| SM-B6 | automatic, session -> play relay |
+| SF-B1 | automatic, store outage 중 |
+
+Manual/automatic도, outage 유무도 공통점이 아니다. 공통점은 **응답 또는 통지가 송신
+측에서 성공으로 보고되고 수신 측에 도달하지 않는다**는 것뿐이다.
+
+셋을 하나의 원인으로 보고 함께 조사하는 편이 낫다. 각각 다른 스위트에서 다른 시나리오로
+나타나므로 재현 경로가 셋이고, 그중 가장 짧은 것을 골라 응답 경로에 추적을 넣으면 된다.
+RC-B5가 가장 짧다(요청 하나, 응답 하나).

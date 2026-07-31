@@ -241,6 +241,12 @@ internal sealed class ZLinkActorHandoffState(
                     or ZLinkActorTargetHandoffPhase.NotifyingJoined
                     or ZLinkActorTargetHandoffPhase.Prepared
                     or ZLinkActorTargetHandoffPhase.Replaying;
+            //  Several NotSealed returns share one result; print the values
+            //  they test so a frame that is not backlogged names its reason.
+            diagnostic?.Invoke(
+                $"capture_entry actor={actorId} src_ingress={capturesSourceIngress} "
+                + $"tgt_ingress={capturesTargetIngress} direct={frame.RouteContext.IsDirectRoute} "
+                + $"flags={frame.Flags} bound_route={frame.RouteContext.IsBoundSessionRoute}");
             if (!capturesSourceIngress
                 && !capturesTargetIngress)
                 return ZLinkActorHandoffCaptureResult.NotSealed;

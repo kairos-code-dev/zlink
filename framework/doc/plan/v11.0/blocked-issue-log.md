@@ -3699,3 +3699,31 @@ ST-F3는 bound session actor가 이동하는 동안 in-flight frame이 backlog�
 확인해야 한다. 참고로 ST-F2도 backlog 관련이며 `backlog_enqueued`와
 `location_committed`의 순서가 뒤집혀 실패한다. 두 시나리오가 같은 영역을 다루므로 함께
 볼 만하다.
+
+### ST-F3 backlog 미발생의 조건 — 포착 단계가 아니다
+
+capture 진입부에 그 조건이 검사하는 값들을 찍었다.
+
+```
+capture_entry  src_ingress=False  tgt_ingress=False
+               direct=True  flags=1  bound_route=False      (2건)
+```
+
+두 건뿐이고 둘 다 첫 조건에서 곧바로 빠진다.
+
+```csharp
+if (!capturesSourceIngress && !capturesTargetIngress)
+    return ZLinkActorHandoffCaptureResult.NotSealed;
+```
+
+`capturesSourceIngress`와 `capturesTargetIngress`는 handoff의 현재 phase로 결정된다.
+둘 다 false라는 것은 **frame이 도착한 시점에 actor가 포착하는 phase에 있지 않다**는
+뜻이다. 그래서 backlog가 생기지 않고 `handoff_backlog` 마커도 나오지 않는다.
+
+`bound_route=False`도 눈에 띈다. ST-F3는 bound session 시나리오인데 포착 후보로 들어온
+frame이 bound session route가 아니다. `direct=True`, `flags=1`(request)과 함께 보면,
+이 frame들은 시나리오가 기대하는 in-flight bound session message가 아닐 수 있다.
+
+따라서 확인할 것은 둘이다. 시나리오가 보내는 in-flight message가 애초에 이 경로로
+오는지, 그리고 온다면 그 시점에 handoff phase가 포착 단계인지다. 전자가 아니라면
+frame이 다른 경로로 처리되고 있는 것이고, 후자라면 타이밍 문제다.

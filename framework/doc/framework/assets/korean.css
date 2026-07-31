@@ -9,28 +9,66 @@
     ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
-/* 한국어는 어절 중간에서 끊으면 급격히 읽기 어려워진다. keep-all이 그것을 막는다. */
-.md-typeset { line-height: 1.78; word-break: keep-all; overflow-wrap: break-word; }
-.md-typeset h1, .md-typeset h2, .md-typeset h3, .md-typeset h4 { word-break: keep-all; }
+/* 한국어는 어절 중간에서 끊으면 급격히 읽기 어려워진다. keep-all이 그것을 막는다.
+
+   본문은 0.7rem(14px)이다. Material 기본값 0.8rem(16px)에서 줄인 이유는
+   한글의 글자 크기 체감이 영문과 다르기 때문이다. 영문 소문자는 x-height가 em의
+   0.52 정도만 차지하는데 한글은 네모틀을 거의 채운다. 그래서 같은 px에서 한글이
+   15~20% 커 보인다. 영문 본문 16px에 맞먹는 한글 크기가 14~15px다.
+
+   14px 아래로는 내리지 않는다. 한글은 자소가 모여 한 글자를 이루므로 작아지면
+   받침이 뭉개진다. 라틴 문자보다 하한이 높다. */
+.md-typeset {
+  font-size: 0.7rem;
+  line-height: 1.75;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
 .md-typeset p, .md-typeset li { letter-spacing: -0.003em; }
 
+/* 제목은 본문 행간을 물려받으면 안 된다. 1.72가 상속되면 제목 하나가 본문 두 줄
+   높이를 먹어 화면이 성기게 보인다. 제목은 짧으니 촘촘히 둔다. */
+.md-typeset h1, .md-typeset h2, .md-typeset h3,
+.md-typeset h4, .md-typeset h5, .md-typeset h6 {
+  line-height: 1.35;
+  word-break: keep-all;
+}
+.md-typeset h1 { font-size: 1.7em; }
+.md-typeset h2 { font-size: 1.32em; }
+.md-typeset h3 { font-size: 1.1em; }
+
+/* 문단 간격도 함께 줄인다. 행간을 줄여 놓고 문단 사이가 넓으면 리듬이 어긋난다. */
+.md-typeset p { margin: 0.7em 0; }
+.md-typeset ul, .md-typeset ol { margin-top: 0.5em; margin-bottom: 0.7em; }
+.md-typeset li { margin-bottom: 0.28em; }
+.md-typeset li > ul, .md-typeset li > ol { margin-top: 0.28em; }
+
 /* 본문 폭. 비교표가 많아 기본 45rem으로는 셀이 짓눌린다. */
-.md-grid { max-width: 68rem; }
+/* 본문이 작아진 만큼 폭도 함께 줄인다. 글자가 작은데 줄이 길면 시선이 되돌아올
+   자리를 잃는다. 비교표는 아래 overflow-x로 따로 처리한다. */
+.md-grid { max-width: 60rem; }
 
 /* 표 — 이 문서군의 핵심 표현 수단이다. 조밀하게, 헤더는 고정 톤으로. */
-.md-typeset table:not([class]) { font-size: 0.76rem; line-height: 1.6; display: table; }
+.md-typeset table:not([class]) { font-size: 0.68rem; line-height: 1.6; display: table; margin: 0.8em 0; }
 .md-typeset table:not([class]) th { font-weight: 600; white-space: nowrap; }
 .md-typeset table:not([class]) td,
 .md-typeset table:not([class]) th { padding: 0.5em 0.9em; }
 .md-typeset__table { overflow-x: auto; }
 
 /* 코드 블록은 한글 본문보다 조금 작게 두어야 시각 무게가 맞는다. */
-.md-typeset pre > code { font-size: 0.74rem; line-height: 1.55; }
+/* 코드는 라틴 monospace다. 한글 본문과 같은 rem이면 오히려 작아 보이므로 맞춰 둔다. */
+.md-typeset pre > code { font-size: 0.7rem; line-height: 1.5; }
+.md-typeset .highlight { margin: 0.8em 0; }
 .md-typeset code { word-break: normal; }
 
-/* 제목 간격 — 장이 길어 스캔이 중요하다. */
-.md-typeset h2 { margin-top: 2.2em; padding-top: 0.4em; border-top: 1px solid var(--md-default-fg-color--lightest); }
-.md-typeset h3 { margin-top: 1.6em; }
+/* 제목 간격 — 장이 길어 스캔이 중요하다. 구분선은 남기되 여백은 줄인다. */
+.md-typeset h2 {
+  margin-top: 1.7em;
+  padding-top: 0.55em;
+  border-top: 1px solid var(--md-default-fg-color--lightest);
+}
+.md-typeset h3 { margin-top: 1.25em; }
+.md-typeset h4 { margin-top: 1em; }
 
 /* 인용(샘플에서 보기 / 계약 소유 문서)은 본문과 확실히 구분한다. */
 .md-typeset blockquote { border-left-width: 3px; }

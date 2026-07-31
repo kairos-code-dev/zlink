@@ -22,6 +22,18 @@
   --md-code-bg-color: hsla(var(--md-hue), 16%, 21%, 1);
 }
 
+/* 전체 배율.
+
+   Material은 `html`에 125%를 줘서 1rem = 20px로 쓴다. 글자·여백·본문 폭·사이드바
+   너비가 전부 rem이므로, 이 값을 내리면 브라우저 배율을 내린 것과 같아진다.
+   112.5%는 그 90%다 — 본문 14px → 12.6px, 레이아웃 폭 1200px → 1080px.
+
+   mermaid는 자기 크기를 px로 계산하므로 여기에 딸려 줄지 않는다. 결과적으로
+   다이어그램만 상대적으로 커진 채 나머지가 조여진다.
+
+   되돌리려면 이 블록을 지운다. 중간값은 118.75%(95%)다. */
+html { font-size: 112.5%; }
+
 /* 한국어는 어절 중간에서 끊으면 급격히 읽기 어려워진다. keep-all이 그것을 막는다.
 
    본문은 0.7rem(14px)이다. Material 기본값 0.8rem(16px)에서 줄인 이유는
@@ -177,14 +189,14 @@
    Material의 mermaid 색은 아래 여섯 변수에서 파생된다(sequence 계열 20여 개도
    전부 이 여섯을 참조한다). 컨테이너에서 덮으면 SVG 안까지 상속된다. */
 [data-md-color-scheme="slate"] .md-typeset .mermaid {
-  background-color: #f4f6f8;
+  background-color: #e8ecf0;
   border: 1px solid var(--md-default-fg-color--lightest);
   border-radius: 0.15rem;
   padding: 0.5rem 0.3rem;
 
   --md-mermaid-edge-color: hsla(200, 18%, 26%, 1);
   --md-mermaid-label-fg-color: hsla(200, 18%, 26%, 1);
-  --md-mermaid-label-bg-color: #f4f6f8;
+  --md-mermaid-label-bg-color: #e8ecf0;
   --md-mermaid-node-bg-color: rgba(0, 191, 165, 0.1);
   --md-mermaid-node-fg-color: #00bfa5;
   --md-accent-bg-color: #ffffff;

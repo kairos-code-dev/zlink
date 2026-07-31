@@ -795,7 +795,7 @@ Framework는 Spot activation에서 handler를 한 번 만들고 Spot이 닫히�
     | --- | --- |
     | Spot 앞 one-way packet | `add_handler<&TSpot::method> ()` |
     | Spot 앞 request | `add_handler<&TSpot::method> ()`(반환값이 reply) |
-    | Logical Multicast 구독 이벤트 | `add_subscribe<&TSpot::method> (topic)` |
+    | Logical Multicast 구독 이벤트 | `add_subscribe<&TSpot::method> (channel_name, topic)` |
     | timer tick | `add_timer<THandler> (name, period, options)`(§6.1) |
     | member Actor 앞 one-way packet | `add_actor_send<&TSpot::method> ()` |
     | member Actor 앞 request | `add_actor_request<&TSpot::method> ()` |
@@ -952,7 +952,7 @@ handler는 대상 Spot instance를 첫 인자로 받는다. Spot 안에서 실�
         // Spot 앞 request — 반환값이 reply다.
         room_state_t get_room_state (const get_room_state_t &) { return snapshot (); }
 
-        // 구독 이벤트 — add_subscribe로 등록한 topic으로 들어온다.
+        // 구독 이벤트 — add_subscribe로 등록한 channel·topic으로 들어온다.
         task_t<void> score (const score_changed_t &event)
         {
             apply_score (event);
@@ -1149,8 +1149,8 @@ Actor 앞 request는 actor request handler이며
         void configure () override
         {
             _context.handlers ().add_handler<&game_room_t::chat> (); // Spot send handler를 등록한다.
-            // C++은 topic만 받는다.
-            _context.handlers ().add_subscribe<&game_room_t::score> ("score.changed");
+            _context.handlers ().add_subscribe<&game_room_t::score> (
+              "game-events", "score.changed"); // Logical Multicast 구독을 등록한다.
         }
 
         task_t<spot_create_response_t> on_create (const message_t &request) override

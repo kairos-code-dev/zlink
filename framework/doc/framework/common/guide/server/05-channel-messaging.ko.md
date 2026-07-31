@@ -311,9 +311,10 @@ mesh 소켓을 그대로 사용하므로 별도 소켓이 없고,
                 milestone_event)
       .submit ();
 
-    // 구독 — entry spot이 시작할 때. C++은 topic만 받는다.
+    // 구독 — entry spot이 시작할 때.
     _context.handlers ().add_subscribe<&play_entry_spot_t::on_player_win_milestone> (
-      sample_topics_t::player_milestone); // 발행 쪽과 같은 topic이어야 받는다.
+      sample_topics_t::player_milestone_channel, // 발행 쪽과 같은 ChannelName·topic이어야 받는다.
+      sample_topics_t::player_milestone);
     ```
 
 === "Java"

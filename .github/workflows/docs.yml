@@ -41,6 +41,15 @@ jobs:
       - name: Check guide example identifiers
         run: python3 doc/site/scripts/check_guide_identifiers.py
 
+      - name: Check common guide prose neutrality
+        run: python3 doc/site/scripts/check_prose_neutrality.py
+
+      # 상대 링크와 anchor. mkdocs는 docs_dir 안만 보므로 별도로 돌린다.
+      # repo-doc·bindings-doc은 v11이 지운 서비스 계층 장을 아직 가리켜 제외한다
+      # (framework/doc/plan/v11.0/guide-authoring-implementation-gaps.ko.md B2).
+      - name: Check document links and anchors
+        run: python3 doc/site/scripts/check_doc_links.py framework framework-plan core-doc
+
       - name: Check framework document contracts
         run: bash scripts/verify-framework-doc-contracts.sh
 

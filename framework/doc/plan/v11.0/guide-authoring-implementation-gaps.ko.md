@@ -199,6 +199,26 @@ Java의 [G5](#g5--java-zlinkmeshnodesocketconfig가-spec과-다르다)와 같은
 **두 언어가 같은 두 값을 public 표면에서 빠뜨렸다.** C++에는 있다
 (`mesh_node_socket_config_t`의 `mailbox_message_budget` · `mailbox_byte_budget`).
 
+### G10 · C++ `add_subscribe`가 ChannelName을 받지 않는다
+
+| | |
+| --- | --- |
+| 언어 | C++ |
+| 선언 | [C++ Spot 공개 계약](../../framework/common/spec/server/languages/cpp/interfaces/04-spots.ko.md) — `add_subscribe (std::string channel_name, std::string topic)` |
+| 구현 | `spot.hpp`의 `add_subscribe (std::string topic)` — topic 하나만 받는다 |
+| 확인 | 선언 대조와 샘플 호출부(`tictactoe_entry_spot.hpp:38`, `bingo_room_spot.hpp:81`) 모두 인자 하나다 |
+
+[SPOT 메시징 §5.1](../../framework/common/spec/12-spot-messaging.ko.md)이 subscription
+등록 값을 **`ChannelName` · `topic` · packet name 셋**으로 정의한다. `.NET`
+(`AddSubscribe<THandler>(channelName, topic)`)과 Node
+(`addSubscribe(handlerType, channelName, topic)`)는 그대로 받는다.
+
+**C++만 ChannelName 범위를 지정할 수 없다.** 같은 topic을 여러 Channel에서 쓰면 C++ Spot이
+어느 범위의 event를 받을지 구분하지 못한다. §5.1이 "등록한 Spot이 해당 ChannelName에
+참여하지 않으면 host를 시작할 수 없다"고 정한 시작 검사도 지금 C++에서는 성립하지 않는다.
+
+가이드는 계약대로 두 인자를 적어 두었다.
+
 ## 2. 문서가 가리키는데 없는 샘플
 
 ### S1 · ZoneWorld — C++ · Java · Kotlin
@@ -441,3 +461,98 @@ C++와 Java는 애초에 방출하지 않아 손댈 곳이 없었다. `.NET` run
 - Node `runtime-metrics.test.js`의 계기 개수 단언. 계기 둘을 지웠으므로 44에서 42가 된다
 - Node `contract-surface.test.js`의 `ZLinkHandlerDelegate` 정규식 두 곳
 - `.NET` `RuntimeMetricsTests`의 계기 이름 목록과 journal·recovered 단언
+
+### G7 · runtime metric 구현 편차 — 이름 셋 처리 완료
+
+G8이 지운 계기 둘은 처리했다. Java가 spec과 다른 이름으로 방출하는 셋은 이번 회차에서
+고치지 않았고 그 이유를 남긴다.
+
+| Java가 쓰는 이름 | spec의 이름 | spec이 요구하는 label |
+| --- | --- | --- |
+| `zlink.channel.request.duration` | `zlink.mesh_node.request.duration` | `mesh_name`, `surface`, `outcome` |
+| `zlink.channel.request.inflight` | `zlink.mesh_node.requests.inflight` | `mesh_name`, `surface` |
+| `zlink.channel.request.timeouts` | `zlink.mesh_node.request.timeouts` | `mesh_name`, `surface` |
+
+`.NET`은 세 이름을 spec대로 등록한다(`ZLinkRuntimeMetrics.cs:51,54,56`). Java도 이름만
+바꾸면 되는 것처럼 보이지만 그렇지 않다. 방출 지점인
+`ZLinkChannelDirectCalls.RequestCall.submit`은 label을 `Map.of()`로 비워서 보낸다. 그
+자리에서 닿는 값은 `ZLinkChannelCallRuntime`의 `channelName`뿐이고 `mesh_name`도
+`surface`도 없다.
+
+이름만 바꾸면 spec 이름을 쓰면서 필수 label이 빠진 계기가 된다. 이름이 다른 것보다
+나쁘다. 수집기 쪽에서는 계약을 지킨 것처럼 보이지만 집계 축이 없어 대시보드가 만들어지지
+않기 때문이다. 따라서 label 원천을 먼저 연결하고 이름을 함께 바꿨다.
+
+`RequestCall`이 label 집합을 들고, 생성 지점인 `ZLinkChannelRuntime.requestToChannel`이
+이미 가진 `channelName`과 표면 종류 `"channel"`을 넘긴다. `.NET`이
+`StartRequest(activation.ChannelName, "channel")`으로 같은 두 값을 넘기는 것과 같은
+구조다. duration의 outcome 값도 `.NET`과 같이 `completed`·`failed`·`timed_out`이며,
+timeout 판정을 한 번만 계산해 duration의 outcome과 timeouts counter가 같은 근거를 쓴다.
+
+**요청 경로에 할당을 만들지 않는다.** label을 붙이려고 요청마다 map을 만들면 계기는
+맞아도 hot path가 느려진다. Java `Map.of()`는 인자가 없을 때만 싱글턴이고 인자가 있으면
+매번 새 map이므로, 고치기 전의 `Map.of()`는 무할당이었지만 그대로 label을 넣으면 요청마다
+두 개를 할당하게 된다. 그래서 `ZLinkRequestMetricTags`가 mesh와 surface 조합마다 base
+label과 outcome 3종을 **한 번만 만들어 공유**한다. 캐시 키도 조합 문자열을 만들지 않고
+호출자가 이미 가진 이름 문자열을 그대로 쓴다. 방출 전체를 `ZLinkRuntimeMetrics.enabled()`
+안쪽에 두어 계측이 꺼져 있으면 label 생성도 completion callback 등록도 하지 않는다.
+
+Spring `ZLinkMicrometerMetricSinkTest`가 쓰던 예시 이름도 spec 이름으로 맞췄다.
+JVM `check`가 통과한다.
+
+`zlink.actor.transfer.duration`과 `zlink.actor.transfer.pending_requests.count`는 방향이
+반대다. spec에 대응 이름이 없으므로 spec에 넣을지 구현에서 뺄지 판단이 필요하다. 이 둘은
+`.NET`에도 있으므로 Java만의 확장이 아니다.
+
+### Node.js `ZLinkMeshNodeSocketConfig`의 mailbox 둘 — 처리 완료
+
+Java의 G5와 같은 부류다. spec이 선언한 `mailboxMessageBudget`과 `mailboxByteBudget`이
+Node 공개 표면에 없었다. C++에는 이미 있다. `ZLinkMeshNodeSocketConfig`와 그 backing인
+`ZLinkSpotRouterCapabilityOptions`에 함께 추가했다. build, typecheck와 contract 표면
+test **43/43**이 통과한다.
+
+HWM 타입은 이번 회차에서 바꾸지 않았다. spec은 `bigint`인데 구현은 `number`다. Java의
+`int`와 달리 실질 위험은 다르다. JavaScript `number`는 2^53까지 안전하므로 byte 단위
+HWM으로는 약 9 PB까지 정확하다. 넘길 수 있는 값이 아니다. 반면 Java의 `int`는 2 GiB에서
+막혔으므로 그쪽은 실제 결함이었고 이번에 고쳤다. Node 쪽은 spec과 구현이 다른 것은
+맞지만 잘못된 값을 만들지는 않으며, 바꾸려면 backend contract의 HWM 타입까지 함께
+`bigint`로 옮겨야 하므로 별도 회차로 둔다.
+
+### B1 · C++ binding 샘플 빌드 — 처리 완료
+
+`bindings/cpp` 샘플 전체가 `-DZLINK_CPP_BUILD_SAMPLES=ON`에서 빌드되지 않던 원인은
+`samples/sample_common.hpp`가 Core 11에서 제거된 `zlink::service` contract를 계속
+참조한 것이다. `BLK-053`이 Java·Kotlin과 Node.js·JavaScript bindings sample에 적용한
+정리와 같은 부류이며 C++만 빠져 있었다.
+
+같은 방식으로 처리했다. bindings sample은 raw socket과 socket monitor 공개 API만
+사용한다. `sample_common.hpp`에서 RouteMesh pull-dispatch helper 전체와
+`mesh_start_single_node`를 지우고, 그 자리에 Actor·Spot·session binding·timer·Logical
+Multicast 시나리오의 정본이 `framework/languages/cpp/samples`임을 밝히는 주석을 남겼다.
+service API를 쓰던 sample 아홉 개는 삭제하고 `ZLINK_CPP_SAMPLE_SOURCES` 등록도 함께
+지웠다. 시나리오 자체는 C++ Framework sample이 이미 소유한다.
+
+남은 raw 전용 sample 일곱 개가 모두 빌드된다. 이 때문에 함께 막혀 있던
+`request_reply_async_sample`도 정식 구성에서 빌드된다.
+
+| 빌드되는 sample |
+| --- |
+| `pair_recv_sample`, `pubsub_recv_sample`, `dealer_router_recv_sample`, `request_reply_async_sample`, `stream_recv_sample`, `stream_packet_callback_sample`, `monitor_recv_sample` |
+
+### S1 · ZoneWorld 샘플 — 문서 정합성으로 처리 완료
+
+이 항목은 샘플 셋을 새로 쓰는 일이 아니었다. 이미 내려진 결정과 가이드 서술이 어긋난
+것이 실체다.
+
+통합 execution ledger는 sample 지원 범위를 명시한다. Bingo, TicTacToe, SupportChat,
+DeliveryDispatch, ShoppingMall, GameQuest 여섯이 다섯 언어 공통이고 ZoneWorld는 `.NET`과
+Node.js만 제공하며, 지원 범위 밖 sample을 새로 만들지 않는다는 결정이다. 반면 공통 가이드
+[14. 샘플 고르기](../../framework/common/guide/server/14-samples.ko.md)는 일곱 샘플을 모두
+공통 자산처럼 소개해서 C++·Java·Kotlin 독자가 없는 코드를 찾게 만들었다.
+
+가이드를 결정에 맞췄다. 선택 표의 ZoneWorld 행에 제공 언어를 적고, §8 도입부에 앞의 여섯과
+달리 두 언어에만 있다는 것과 다른 언어에서는 설명과 공통 시나리오 문서를 읽고 코드는 두
+언어 중 하나를 참고하라는 안내를 넣었다.
+
+`.NET` ZoneWorld는 79개 소스 파일이고 Node는 34개다. 세 언어로 새로 쓰는 것은 ledger가
+정한 범위를 넘는 일이므로 이 문서의 판단 기준(§0 "계약이 기준이다")대로 결정을 따랐다.

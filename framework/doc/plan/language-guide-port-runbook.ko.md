@@ -513,8 +513,17 @@ handler인지는 구현한 interface와 annotation(`@ZLinkSpotSubscription` ·
 | 자리 | 무엇이 틀렸나 |
 | --- | --- |
 | Java · Kotlin `tryHandle` | 인자 둘로 적었다. 계약은 `(context, dispatch, payload)` 셋이다(08 · 09장 네 자리) |
-| C++ `add_subscribe` | channel과 topic 둘을 넘겼다. C++은 **topic 하나만** 받는다 |
 | Java · Kotlin 구독 등록 | `addSubscribe(...)` 자체가 없다. annotation + `addHandler`다 |
+
+**여기서 방향을 한 번 잘못 잡았다가 되돌렸다.** C++ `add_subscribe`가 topic 하나만 받길래
+가이드를 구현에 맞췄는데, [C++ Spot 공개 계약](../framework/common/spec/server/languages/cpp/interfaces/04-spots.ko.md)은
+`(channel_name, topic)` 둘을 선언한다. **계약이 기준이므로 가이드를 되돌리고 구현 갭으로
+넘겼다**(handoff G10). 게이트 6은 구현이 아니라 **소유 spec**과 대조해야 한다 — 구현
+불일치를 문서로 흡수하면 갭이 사라진 것처럼 보인다.
+
+나머지 셋은 spec을 확인해 편집이 맞았다. Java `ZLinkSpotHandlerRegistry`는 spec도
+`addHandler` 하나이고, Java `tryHandle`은 spec도 인자 셋이며, C++ typed session handler는
+spec이 침묵해 구현이 유일한 근거다.
 
 **게이트 6은 C++부터 돌렸다.** 방법은 이렇다 — 탭 코드에서 handler 선언과 `handle`
 파라미터 수를 뽑아, 그 언어의 실제 계약(.NET·Java·Node는 interface 선언, C++은 concept과
@@ -534,8 +543,9 @@ handler인지는 구현한 interface와 annotation(`@ZLinkSpotSubscription` ·
 Spot member function이므로 DI handler class로 등록하지 않는다"* 고 이미 못박아 둔
 내용이었다. **언어별 장은 맞게 썼는데 공통 정본이 어긋난** 경우다.
 
-**게이트 4를 12장 전부에 돌렸다.** 결과는 아래에 챕터별로 적었다. **틀린 서술은 하나도
-없었고 전부 "빠졌다"였다** — 소유권을 잘못 가리킨 자리 하나(10장 lease 제약)만 예외다.
+**게이트 4를 12장 전부에 돌렸다.** 결과는 아래에 챕터별로 적었다. **산문에는 틀린 서술이
+하나도 없었고 전부 "빠졌다"였다** — 소유권을 잘못 가리킨 자리 하나(10장 lease 제약)만
+예외다. 코드 쪽은 사정이 달랐다(게이트 6).
 빠진 것들의 성격은 한 갈래로 모인다. **개념과 사용법은 잘 적혀 있는데, 그 계약이 어떤
 조건에서 다르게 동작하는지가 없었다.** 실패 조건, 호출 규칙, 어느 경로에만 적용되는
 예외가 그것이다.
@@ -689,8 +699,10 @@ operation을 `NotifyDisconnected`라 하며 `.NET` exact interface에서는
 | --- | --- |
 | ZoneWorld 샘플 구현 | cpp · java · kotlin. 문서가 아니라 코드 작업이다 |
 
-**§11의 게이트 여덟이 모두 통과했다.** 1 · 2 · 3 · 5 · 7은 스크립트가 상시 검사하고,
-4 · 6 · 8은 이번에 전수로 돌렸다. §12 완료 정의를 기준으로 **공통 정본과 다섯 언어 lane이
+**§11의 게이트 여덟이 모두 통과했다.** 1 · 2 · 3 · 5 · 7 · 8은 스크립트로, 4 · 6은 사람이
+전수로 돌렸다. 게이트 8은 렌더 HTML의 tab 그룹 수(101) · tab 수(505)를 소스와 대조하고 빈
+code 블록이 없는지 확인했다 — 경고 수 세기가 아니다. 스크립트 셋은
+`.github/workflows/docs.yml`에 걸려 있다. §12 완료 정의를 기준으로 **공통 정본과 다섯 언어 lane이
 모두 완료**다. 문서 쪽에 남은 일은 없고, ZoneWorld는 샘플 코드 작업이라 이 런북의 범위
 밖이다(handoff 문서 S1).
 

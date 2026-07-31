@@ -5044,3 +5044,36 @@ OBS-A1~A5와 OBS-B1이 통과하고 OBS-B2에서 멈춘다.
 ```
 ZlinkStreamException: Actor 'obs-b2-...' session binding changed before frame admission.
 ```
+
+### OBS-B2: cross-node actor relocation join이 `InternalFailure`로 끝난다
+
+OBS-B2는 actor를 play-b의 room에 join시킨 뒤 play-a의 room에 join시켜 relocation을 만든다.
+처음 증상은 두 번째 join에서 나온 것이었다.
+
+```
+ZlinkStreamException: Actor 'obs-b2-...' session binding changed before frame admission.
+```
+
+이 오류는 runtime이 `ZLinkRetryAdvice.RetryAfterBackoff`로 표시한다. Relocation 중 binding
+재설정과 겹친 frame은 caller가 다시 보내라는 뜻이므로 `JoinRoomAsync`에 bounded retry를
+넣었다.
+
+그러자 다음이 드러난다.
+
+```
+InvalidOperationException: Actor '...' could not join room '...': InternalFailure.
+```
+
+Binding 오류는 첫 증상일 뿐이고 relocation join 자체가 `InternalFailure`로 끝난다. Retry는
+runtime이 광고한 재시도 가능 오류만 삼키고 최종 실패는 그대로 드러내므로 신호를 가리지
+않는다.
+
+조사 중 확인한 별개 사실도 남긴다. Relocation metric은 source node가 기록한다
+(`ZLinkActorRemoteJoiner`가 source permit을 쥐고 조정한다). 그런데 OBS-B2는 source를
+play-b에 두고 metric은 play-a에 묻는다. play-b는 OBS-B4를 위해 `--metrics-enabled false`로
+띄우므로 그 node에서는 `/metrics/wait`가 404다. 즉 지금 배치로는 이 시나리오가 relocation
+metric을 관측할 수 없다. Source와 target을 맞바꿔 시도했으나 그 방향에서는 relocation join
+자체가 같은 `InternalFailure`로 끝나므로 배치 교체만으로 해결되지 않는다. 원래 배치로
+되돌렸다.
+
+OBS-A1~A5와 OBS-B1이 통과한다.

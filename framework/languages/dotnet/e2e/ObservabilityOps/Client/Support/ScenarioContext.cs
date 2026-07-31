@@ -87,6 +87,9 @@ internal sealed class ScenarioContext(ClientOptions options) : IDisposable
             .Async<string[]>()).Body;
     }
 
+    private static bool IsBindingRebind(Exception error) =>
+        error.ToString().Contains("session binding", StringComparison.Ordinal);
+
     public async Task<ActorJoinCompletedNotify> JoinRoomAsync(
         IZlinkStreamConnector connector,
         string actorId,
@@ -98,7 +101,22 @@ internal sealed class ScenarioContext(ClientOptions options) : IDisposable
             .Timeout(TimeSpan.FromSeconds(15))
             .Async()
             .AsTask();
-        await connector.Request(new JoinRoomReq(roomId)).Async<JoinRoomRes>();
+        // A join that relocates the Actor can land while its session binding is
+        // being rebound. The runtime marks that RetryAfterBackoff, so it is a
+        // transient the caller retries rather than a failure.
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                await connector.Request(new JoinRoomReq(roomId)).Async<JoinRoomRes>();
+                break;
+            }
+            catch (Exception error) when (attempt < 10 && IsBindingRebind(error))
+            {
+                await Task.Delay(100);
+            }
+        }
+
         var result = (await completion).Payload;
         if (!result.Accepted)
             throw new InvalidOperationException(

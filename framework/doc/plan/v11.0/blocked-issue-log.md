@@ -5397,3 +5397,35 @@ trace에서 확인한다")이다.
 
 이 스위트에서 flaky로 확인된 시나리오가 둘(ST-E1, ST-C2)이다. 단발 실행으로 회귀를
 판정하면 안 되는 대상으로 기록해 둔다.
+
+### OBS-C1 남은 격차: 관측하려는 창이 먼저 닫힌다
+
+Gate 수정 뒤 술어의 네 조건을 하나씩 찍었다.
+
+```
+ready=False  peers=3  drainingPeers=0  spots=1  hostState=(없음)
+```
+
+`spots=1`은 앞 절의 gate 수정이 동작한다는 증거다. 나머지 둘이 남았다.
+
+`hostState`가 빈 것은 metric 배치 문제였다. 시나리오는 room을 소유한 node를 relocate하고
+그 node의 metric을 읽는데, room이 play-b에 놓이면 그 host는 `--metrics-enabled false`라
+metric snapshot이 비어 있다. OBS-B2와 같은 부류다. Room을 play-a에 고정하자 값이 나온다.
+
+```
+ready=False  peers=3  drainingPeers=0  spots=1  hostState=relocated:1
+```
+
+그런데 값이 `relocating`이 아니라 `relocated`다. 술어는 `relocating`을 요구한다. 즉
+relocation이 첫 polling보다 먼저 끝난다. `drainingPeers=0`도 같은 성격으로 보인다. Peer
+row의 draining 표시 역시 그 창 안에서만 유효하다.
+
+정리하면 남은 것은 계약 위반이 아니라 **관측 방식**이다. 시나리오가 10초 동안 snapshot을
+polling하는데, room 하나짜리 node의 relocation은 그보다 훨씬 빨리 끝나므로 중간 상태를
+snapshot으로 잡을 수 없다. Spec 28 §13이 "terminal event는 observer overflow로 잃지
+않는다"고 정하는 것도 중간 상태는 event로 관찰하라는 뜻으로 읽힌다.
+
+고치려면 polling이 아니라 상태 변화를 구독해서 `relocating` 전이를 잡거나, relocation이
+그 창에 머무르도록 만들어야 한다. 어느 쪽이든 시나리오 재설계라 별도 항목으로 남긴다.
+
+Room을 play-a에 고정하는 수정은 유지한다. 그것이 없으면 metric 자체를 못 읽는다.

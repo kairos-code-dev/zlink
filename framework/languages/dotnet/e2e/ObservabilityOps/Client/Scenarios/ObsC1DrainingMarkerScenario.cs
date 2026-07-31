@@ -14,11 +14,13 @@ internal static class ObsC1DrainingMarkerScenario
         _ = await context.PlayNodeIdAsync("play-b");
         var suffix = Guid.NewGuid().ToString("N");
         var actorId = $"obs-c1-{suffix}";
-        var roomRid = $"room-c1-{suffix}";
+        var roomPrefix = $"room-c1-{suffix}";
+        // The scenario reads host-state metrics from the node it relocates, and
+        // play-b runs with metrics disabled on purpose for OBS-B4, so the room
+        // has to sit on play-a.
+        var room = await context.CreateRoomOnObservedNodeAsync("play-a", roomPrefix);
+        var roomRid = room.RoomRid;
         RoomRid = roomRid;
-        var room = (await context.PlayA.Post("/rooms")
-            .Body(new CreateRoomReq(roomRid))
-            .Async<CreateRoomRes>()).Body;
         var source = context.Play(room.NodeRid);
         await using var connector = await context.ConnectAsync();
         await connector.Request(new AuthenticateReq(actorId)).Async<AuthenticateRes>();

@@ -4984,3 +4984,32 @@ Placement는 실행마다 달라진다. 어떤 실행에서는 owner와 subscrib
 
 이것은 host 가정이나 harness 문제가 아니라 cross-node spot pub/sub 전달의 문제다.
 측정 편집은 되돌렸다.
+
+### OBS-A4 해결: workflow host가 Channel에 Client만 등록했다
+
+앞 절의 "cross-node spot pub/sub 전달 문제"의 실체를 찾았다. 런타임 결함이 아니라 host
+구성이다.
+
+`ZLinkManagedMeshNode.Publish`는 두 단계다. 먼저 local spot 중
+`Matches(channelName, topic)`인 것에 전달하고, 그 다음
+`SnapshotChannelTargets(channelName)`으로 remote 후보를 고른다. 그래서 local subscriber는
+항상 받고 remote subscriber는 후보 집합에 들어와야만 받는다.
+
+spec 12 §2가 후보를 정한다.
+
+> Weight가 0보다 큰 node는 Logical Multicast의 remote 전달 후보에 포함된다.
+
+Weight는 Server membership에 붙는 값이다(`Channel(x).Server().SetWeight(...)`). spec 08
+§3.2 step 2도 "RouteMesh 경로이면 같은 ChannelName의 Server membership만 후보로
+사용한다"고 정하고, spec 07 §4.2.2는 Client role이 "target 후보에는 포함되지 않는다"고
+명시한다.
+
+ObservabilityOps의 workflow host는 `mesh16.Channel(WorkflowMesh).Client()`만 등록했다.
+Client-only node는 remote 전달 후보가 될 수 없으므로 publisher와 같은 node의 subscriber만
+받는다. 관측과 정확히 일치한다.
+
+`Server().SetWeight(100)`으로 바꾸자 OBS-A4가 통과한다. OBS-A1~A4 통과, OBS-A5에서 멈춘다.
+
+```
+InvalidOperationException: OBS-A5 enabled diagnostics did not emit request flow records.
+```

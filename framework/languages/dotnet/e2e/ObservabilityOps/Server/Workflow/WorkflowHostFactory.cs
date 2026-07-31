@@ -77,7 +77,12 @@ internal static class WorkflowHostFactory
                     factory => factory
                         .StableTypeLimit(64)
                         .DisableRelocation());
-            mesh16.Channel(ObservabilityNames.WorkflowMesh).Client();
+            // Logical Multicast picks remote nodes that participate in the
+            // ChannelName with a positive weight (spec 12 §2), and weight lives
+            // on the Server membership. A Client-only node is never a remote
+            // delivery candidate, so projection fanout would reach only the
+            // subscribers co-located with the publisher.
+            mesh16.Channel(ObservabilityNames.WorkflowMesh).Server().SetWeight(100);
         });
 
         var app = builder.Build();

@@ -6345,3 +6345,26 @@ peer의 응답 송신과 requester의 socket 사이다. Peer의 ROUTER는 `Manda
 쓰이는지가 다음 확인점이다.
 
 측정 편집은 되돌렸다.
+
+### RC-B5: 응답 주소 지정은 원인이 아니다
+
+앞 절이 남긴 확인점을 봤다. 응답 송신 경로가 application 송신과 다른 방식으로 주소를
+지정한다는 것을 찾았다.
+
+```csharp
+SubmitApplication  : TrySend(peer.PhysicalRoutingId, ...)   // peer를 조회해 physical id 사용
+SendTerminalReply  : TrySend(targetRid, ...)                // 논리 RID를 그대로 사용
+```
+
+연결을 건 쪽에서는 socket이 상대를 `SetConnectRoutingId`로 지정한 physical id로 알고
+있으므로 논리 RID로 보내면 경로가 없다. 그래서 응답도 peer를 조회해 physical id를 쓰도록
+바꿔 시험했다.
+
+RC-B5는 변하지 않는다. 이 pair에서는 json-only가 **inbound** 연결로 요청을 받았고, inbound
+연결의 physical id는 상대가 제시한 논리 RID와 같으므로 변경이 무효과다.
+
+따라서 응답 주소 지정은 이 증상의 원인이 아니다. 변경은 근거가 없으므로 되돌렸다.
+
+남은 것은 응답 frame이 peer의 socket을 실제로 떠나는지다. `SendTerminalReply`는
+`TrySend`의 결과만 `Ok`/`Backpressured`로 옮기고 그 아래는 보지 않는다. 다음은 `TrySend`
+반환값과 그 시점의 peer 상태를 함께 찍는 것이다.

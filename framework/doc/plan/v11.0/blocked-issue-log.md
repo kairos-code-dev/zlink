@@ -5811,3 +5811,36 @@ Spot 멤버의 disconnect 통지가 빠진 것은 런타임 격차다.
 수정 방향은 actor가 현재 속한 Spot(User Spot이면 그것, 아니면 Entry Spot)으로 통지를
 보내는 것이다. Actor membership 해석을 건드리므로 SpotActorTransfer까지 함께 회귀
 확인해야 한다.
+
+### (정정) SM-B6: "Entry Spot에만 간다"는 결론은 한 단계 얕았다
+
+앞 절에서 `ZLinkEntrySpotActorRouter.TryNotifyDisconnectedAsync`가
+`node.EntrySpotActivation`만 순회하는 것을 보고 User Spot 멤버에게 통지가 가지 않는다고
+결론지었다. 그 함수에 대해서는 맞지만 **호출부를 보지 않은 판단**이었다.
+
+호출부는 이미 올바른 순서를 갖고 있다.
+
+```csharp
+// ZLinkActorDispatchRouter.NotifyDisconnectedByCurrentLocationAsync
+var placement = await state.ExecuteLockedAsync(() => state.SelectPlacementLocked(false), ct);
+if (placement.Activation is not null)
+{
+    await placement.Activation.NotifyActorDisconnectedAsync(actor, ct);   // User Spot 포함
+    return;
+}
+await runtime.TryNotifyEntrySpotActorDisconnectedAsync(actor, null, ct);  // fallback
+```
+
+`TryNotifyJoinedSpotActorDisconnectedAsync`도 따로 있고 actor의 `LiveActivation`을 찾아
+통지한다. 즉 User Spot 경로는 존재한다. Entry-Spot-only 함수는 activation이 없을 때의
+fallback이다.
+
+따라서 남은 질문이 바뀐다. SM-B6에서 actor는 원격 node(play-a/b)에 있고 session은
+session-a에 있으므로 `NotifyActorDisconnectedAsync`의 local 분기를 타지 않고
+`NotifyRemoteDisconnectedAsync`로 relay된다. 확인해야 할 것은 **그 relay가 소유 node에
+도달해 위 router를 타는지**, 그리고 그때 `SelectPlacementLocked`가 User Spot activation을
+돌려주는지다.
+
+앞 절의 "런타임 격차" 판정은 근거가 부족했으므로 취소한다. 함수 하나를 읽고 호출부를 보지
+않은 것이 원인이다. 이 세션에서 같은 종류의 성급한 판정을 여러 번 했고, 매번 한 단계 더
+따라가면 그림이 달라졌다.

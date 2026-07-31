@@ -29,8 +29,11 @@ internal static class ObsC1DrainingMarkerScenario
 
         var draining = await WaitEvidenceAsync(source, snapshot =>
             !snapshot.Ready
-            && snapshot.PeerRows.Any(row =>
-                row.NodeRid == room.NodeRid && row.Draining)
+            // The draining mark is as short-lived as the relocating state, so
+            // it is read from the recorded transitions for the same reason.
+            && snapshot.Entries.Any(line =>
+                line.Contains("peer-state|", StringComparison.Ordinal)
+                && line.Contains("state=Draining", StringComparison.Ordinal))
             && snapshot.SpotRows.Any(row => row.SpotRid == roomRid)
             // The relocating state can pass faster than any snapshot poll, so
             // spec 24 §3 exposes state changes as a stream. The host records
@@ -40,8 +43,9 @@ internal static class ObsC1DrainingMarkerScenario
                 line.Contains("host-state|", StringComparison.Ordinal)
                 && line.Contains("state=Relocating", StringComparison.Ordinal)));
         ZlinkStreamAssert.Ensure(
-            draining.PeerRows.Any(row =>
-                row.NodeRid == room.NodeRid && row.Draining),
+            draining.Entries.Any(line =>
+                line.Contains("peer-state|", StringComparison.Ordinal)
+                && line.Contains("state=Draining", StringComparison.Ordinal)),
             "OBS-C1 typed draining peer row was not published.");
         var action = await connector.Request(new GameActionReq("obs-c1-existing-session"))
             .Async<GameActionRes>();

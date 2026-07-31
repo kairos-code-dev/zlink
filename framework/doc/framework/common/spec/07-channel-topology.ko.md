@@ -568,7 +568,9 @@ MeshNode는 다음 준비가 모두 끝나야 ready 상태가 된다.
 수 있다.
 
 ChannelName Server는 MeshNode가 ready이고 자신의 weight가 0보다 클 때만 새
-select-one target이 된다.
+select-one target이 된다. 이때 후보 집합은 §4.2가 descriptor에 게시한 Server membership에서
+나온다. Descriptor에 게시되지 않은 Server membership은 remote caller가 알 수 없으므로
+후보가 되지 않는다.
 
 Framework는 target 선택과 message submit을 하나의 작업으로 처리한다. 선택한 RID를
 application에 중간 결과로 반환하지 않는다.

@@ -357,7 +357,7 @@ Actor owner host의 Relocate는 §5 barrier를 사용한다. Session owner host�
 | Actor가 relocation pre-commit seal 상태다. | `Unavailable`로 끝난다. |
 | 같은 packet key의 handler를 중복 등록했다. | Configuration error로 startup에 실패한다. |
 | Actor factory가 없다. | Explicit create error로 끝난다. |
-| Current binding 없이 push 또는 close를 요청했다. | Session-not-bound 오류로 끝난다. |
+| Current binding 없이 push 또는 close를 요청했다. | Session-not-bound 오류로 끝난다. Public kind는 `InvalidOperation`이다. 대상이 없는 것이 아니라 binding을 먼저 만들어야 하는 순서 문제이며, binding이 생기면 같은 호출이 성공한다. |
 | Actor·owner·binding fence가 stale하다. | Typed stale error로 끝나며 다른 대상으로 fallback하지 않는다. |
 
 ## 9. 구현 및 contract test 검증 요구

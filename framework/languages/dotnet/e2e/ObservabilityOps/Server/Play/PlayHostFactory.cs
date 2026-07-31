@@ -37,6 +37,7 @@ internal static class PlayHostFactory
         builder.Services.AddHostedService(provider =>
             new Support.HostStateEvidenceObserver(
                 provider.GetRequiredService<IZLinkFrameworkRuntime>(),
+                provider.GetRequiredService<IZLinkRouteMeshRuntime>(),
                 provider.GetRequiredService<EvidenceStore>(),
                 options.Rid));
         builder.Services.AddSingleton<RelocationOperation>();

@@ -265,7 +265,13 @@ Descriptor가 게시됐거나 connect intent가 만들어진 것만으로 target
 
 ### 5.1 Target이 아직 없을 때
 
-요청한 version의 target이 없으면 source state와 admission을 유지한 채
+Target 탐색보다 먼저 이전할 unit이 있는지 확인한다. Source가 소유한 Actor, User Spot과
+Instance Spot이 모두 없으면 옮길 것이 없으므로 target을 찾지 않고 `Relocated/None`으로
+끝낸다. Relocation의 목적은 workload 이전이며, 이전할 workload가 없는 host를 target이
+없다는 이유로 막지 않는다. 이 경우에도 host state 전이와 admission 종료는 다른 relocation과
+같다.
+
+이전할 unit이 있는데 요청한 version의 target이 없으면 source state와 admission을 유지한 채
 deadline까지 descriptor와 Core peer table의 수렴을 기다린다. 여러 Mesh를 가진
 process는 모든 Mesh에서 조건을 만족해야 한다. Deadline까지 target을 확보하지 못하면
 tentative coordination을 정리하고 `Blocked/TargetUnavailable`을 반환한다.

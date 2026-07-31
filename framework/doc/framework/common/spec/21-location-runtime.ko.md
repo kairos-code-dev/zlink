@@ -690,6 +690,11 @@ stable type별 목록도 페이지로 읽을 수 있다. 이 결과는 운영 �
 - 전체를 제한 없이 한 번에 반환하는 함수는 제공하지 않는다.
 - `Missing`, `Creating`과 Store 오류를 “없는 object”로 cache하지 않는다.
 
+Topology 열거는 MeshNode descriptor만 대상으로 한다. ClientServer channel과 classic
+fanout channel은 MeshNode가 아니므로 이 목록에 나타나지 않으며, 그것들의 상태는
+[50 Runtime monitoring](24-runtime-monitoring.ko.md) §2.2의 topology status로 확인한다.
+Object 위치 조회는 이 열거와 별개이며 ActorId·SpotId 기준으로만 답한다.
+
 ## 7. Actor 또는 User Spot을 다른 node로 옮긴다
 
 이 절은 Entry Spot Actor, `PerActor` User Spot의 Actor, `SpotWide` User Spot

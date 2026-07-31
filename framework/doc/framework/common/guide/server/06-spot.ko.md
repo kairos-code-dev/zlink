@@ -55,19 +55,104 @@ Instance Spot을 등록한다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // Play 서버 — Entry Spot과 방을 담을 User Spot.
+    mesh.set_object_role (object_role_t::server)
+      .add_entry_spot<bingo_entry_spot_t> (              // Entry Spot은 stable type이 없다.
+        [] (entry_spot_context_t c) { return std::make_shared<bingo_entry_spot_t> (std::move (c)); })
+      .add_spot_factory<bingo_room_t> (
+        sample_names_t::room_spot_type,                  // stable type — 생성할 때 이 이름으로 선택한다.
+        [] (spot_context_t c) { return std::make_shared<bingo_room_t> (std::move (c)); },
+        [] (auto &factory) {
+            factory.execution_mode (user_spot_execution_mode_t::spot_wide);
+            factory.template preserve_state_with<bingo_room_relocation_adapter_t> ();
+        });
+
+    // Matchmaking 서버 — 매칭 대기열을 담을 Instance Spot.
+    options.add_route_mesh (sample_names_t::matchmaking_mesh_name)
+      .set_routing_id (zlink::routing_id_t::from (std::string ("matchmaking")))
+      .listen (configuration.node.mesh_endpoint)
+      .set_object_role (object_role_t::server)
+      .add_instance_spot_factory<bingo_matchmaker_t> (
+        sample_names_t::matchmaker_spot_type,
+        [] (instance_spot_context_t c) {
+            return std::make_shared<bingo_matchmaker_t> (std::move (c));
+        },
+        [] (auto &factory) { factory.recreate_on_relocation (); });
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // Play 서버 — Entry Spot과 방을 담을 User Spot.
+    mesh.objects().server()
+        .addEntrySpot(BingoEntrySpot.class)              // Entry Spot은 stable type이 없다.
+        .addSpotFactory(
+            SampleNames.RoomSpotType,                    // stable type — 생성할 때 이 이름으로 선택한다.
+            BingoRoom.class,
+            factory -> factory
+                .executionMode(ZLinkUserSpotExecutionMode.SPOT_WIDE)
+                .preserveStateWith(BingoRoomRelocationAdapter.class));
+
+    // Matchmaking 서버 — 매칭 대기열을 담을 Instance Spot.
+    options.addRouteMesh(SampleNames.MatchmakingMeshName)
+        .setRoutingIdPrefix("matchmaking")
+        .listen(configuration.node().meshEndpoint())
+        .objects().server()
+        .addInstanceSpotFactory(
+            SampleNames.MatchmakerSpotType,
+            BingoMatchmaker.class,
+            factory -> factory.recreateOnRelocation());
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // Play 서버 — Entry Spot과 방을 담을 User Spot.
+    mesh.objects().server()
+        .addEntrySpot(BingoEntrySpot::class.java)          // Entry Spot은 stable type이 없다.
+        .addSpotFactory(
+            SampleNames.RoomSpotType,                      // stable type — 생성할 때 이 이름으로 선택한다.
+            BingoRoom::class.java,
+        ) { factory ->
+            factory.executionMode(ZLinkUserSpotExecutionMode.SPOT_WIDE)
+                .preserveStateWith(BingoRoomRelocationAdapter::class.java)
+        }
+
+    // Matchmaking 서버 — 매칭 대기열을 담을 Instance Spot.
+    options.addRouteMesh(SampleNames.MatchmakingMeshName)
+        .setRoutingIdPrefix("matchmaking")
+        .listen(configuration.node.meshEndpoint)
+        .objects().server()
+        .addInstanceSpotFactory(
+            SampleNames.MatchmakerSpotType,
+            BingoMatchmaker::class.java,
+        ) { factory -> factory.recreateOnRelocation() }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // Play 서버 — Entry Spot과 방을 담을 User Spot.
+    mesh.objects().server()
+      .addEntrySpot(BingoEntrySpot)                    // Entry Spot은 stable type이 없다.
+      .addSpotFactory(
+        SampleNames.roomSpotType,                      // stable type — 생성할 때 이 이름으로 선택한다.
+        BingoRoom,
+        (factory) => factory
+          .executionMode(ZLinkUserSpotExecutionMode.SpotWide)
+          .preserveStateWith(BingoRoomRelocationAdapter));
+
+    // Matchmaking 서버 — 매칭 대기열을 담을 Instance Spot.
+    builder.addRouteMesh(SampleNames.matchmakingMeshName)
+      .setRoutingIdPrefix('matchmaking')
+      .listen(configuration.node.meshEndpoint)
+      .objects().server()
+      .addInstanceSpotFactory(
+        SampleNames.matchmakerSpotType,
+        BingoMatchmaker,
+        (factory) => factory.recreateOnRelocation());
+    ```
 
 
 차이는 **호출하는 쪽**에서 드러난다. Entry Spot은 호출 대상이 아니고(server가 시작하며
@@ -94,19 +179,79 @@ Bingo의 매칭 handler 하나에 뒤의 둘이 함께 나온다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // Instance Spot — 생성 호출이 없다. 해당 ID로 보내면 없을 때 생성된다.
+    auto allocated = co_await spot_client
+                       .request_to_spot ("match:" + level_bucket, reserve_bingo_room_req_t{})
+                       .instance_spot (sample_names_t::matchmaker_spot_type) // 없으면 생성해도 된다는 intent.
+                       .in_mesh (sample_names_t::matchmaking_mesh_name)
+                       .submit<reserve_bingo_room_res_t> ();
+
+    // User Spot — 생성 호출이 따로 있다.
+    auto created = co_await spots
+                     .get_or_create (allocated.room_id, sample_names_t::room_spot_type)
+                     .in_mesh (sample_names_t::play_mesh_name)
+                     .request (allocated.settings) // 새 Spot의 on_create로 전달된다.
+                     .submit ();
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // Instance Spot — 생성 호출이 없다. 해당 ID로 보내면 없을 때 생성된다.
+    ReserveBingoRoomRes allocated = spotClient
+        .requestToSpot("match:" + levelBucket, new ReserveBingoRoomReq())
+        .instanceSpot(SampleNames.MatchmakerSpotType) // 없으면 생성해도 된다는 intent.
+        .inMesh(SampleNames.MatchmakingMeshName)
+        .submit(ReserveBingoRoomRes.class)
+        .toCompletableFuture().join();
+
+    // User Spot — 생성 호출이 따로 있다.
+    ZLinkSpotCreateResult created = spots
+        .getOrCreate(allocated.roomId(), SampleNames.RoomSpotType)
+        .inMesh(SampleNames.PlayMeshName)
+        .request(allocated.settings())   // 새 Spot의 onCreate로 전달된다.
+        .submit()
+        .toCompletableFuture().join();
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // Instance Spot — 생성 호출이 없다. 해당 ID로 보내면 없을 때 생성된다.
+    val allocated = spotClient
+        .requestToSpot("match:$levelBucket", ReserveBingoRoomReq())
+        .instanceSpot(SampleNames.MatchmakerSpotType) // 없으면 생성해도 된다는 intent.
+        .inMesh(SampleNames.MatchmakingMeshName)
+        .submit(ReserveBingoRoomRes::class.java)
+        .await()
+
+    // User Spot — 생성 호출이 따로 있다.
+    val created = spots
+        .getOrCreate(allocated.roomId, SampleNames.RoomSpotType)
+        .inMesh(SampleNames.PlayMeshName)
+        .request(allocated.settings)     // 새 Spot의 onCreate로 전달된다.
+        .submit()
+        .await()
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // Instance Spot — 생성 호출이 없다. 해당 ID로 보내면 없을 때 생성된다.
+    const allocated = await spotClient
+      .requestToSpot(`match:${levelBucket}`, reserveBingoRoomReq())
+      .instanceSpot(SampleNames.matchmakerSpotType) // 없으면 생성해도 된다는 intent.
+      .inMesh(SampleNames.matchmakingMeshName)
+      .submit<ReserveBingoRoomRes>();
+
+    // User Spot — 생성 호출이 따로 있다.
+    const created = await spots
+      .getOrCreate(allocated.roomId, SampleNames.roomSpotType)
+      .inMesh(SampleNames.playMeshName)
+      .request(allocated.settings)      // 새 Spot의 onCreate로 전달된다.
+      .submit();
+    ```
 
 
 User·Instance Spot은 factory 등록에서 relocation policy도 함께 지정한다. 생략할 수
@@ -138,19 +283,81 @@ Spot을 실행할 MeshNode는 Object Server role과 factory를 등록한다. 고
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    auto mesh = options.add_route_mesh ("play");
+    mesh.listen ("tcp://0.0.0.0:9001")
+      .set_routing_id (zlink::routing_id_t::from (std::string ("play")));
+
+    mesh.set_object_role (object_role_t::server)
+      // Actor가 처음 배치될 Entry Spot을 등록한다.
+      .add_entry_spot<play_entry_spot_t> (
+        [] (entry_spot_context_t c) { return std::make_shared<play_entry_spot_t> (std::move (c)); })
+      .add_spot_factory<game_room_t> (
+        "game-room",
+        [] (spot_context_t c) { return std::make_shared<game_room_t> (std::move (c)); },
+        [] (auto &factory) {
+            factory.execution_mode (user_spot_execution_mode_t::spot_wide);
+            factory.disable_relocation ();
+        })
+      .add_instance_spot_factory<matchmaker_t> (
+        "matchmaker",
+        [] (instance_spot_context_t c) { return std::make_shared<matchmaker_t> (std::move (c)); },
+        [] (auto &factory) { factory.recreate_on_relocation (); });
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    ZLinkMeshNodeBuilder mesh = options.addRouteMesh("play")
+        .listen("tcp://0.0.0.0:9001")
+        .setRoutingIdPrefix("play");
+
+    mesh.objects().server()
+        .addEntrySpot(PlayEntrySpot.class) // Actor가 처음 배치될 Entry Spot을 등록한다.
+        .addSpotFactory(
+            "game-room",
+            GameRoom.class,
+            factory -> factory
+                .executionMode(ZLinkUserSpotExecutionMode.SPOT_WIDE)
+                .disableRelocation())
+        .addInstanceSpotFactory(
+            "matchmaker",
+            Matchmaker.class,
+            factory -> factory.recreateOnRelocation());
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    val mesh = options.addRouteMesh("play")
+        .listen("tcp://0.0.0.0:9001")
+        .setRoutingIdPrefix("play")
+
+    mesh.objects().server()
+        .addEntrySpot(PlayEntrySpot::class.java) // Actor가 처음 배치될 Entry Spot을 등록한다.
+        .addSpotFactory("game-room", GameRoom::class.java) { factory ->
+            factory.executionMode(ZLinkUserSpotExecutionMode.SPOT_WIDE).disableRelocation()
+        }
+        .addInstanceSpotFactory("matchmaker", Matchmaker::class.java) { factory ->
+            factory.recreateOnRelocation()
+        }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    const mesh = builder.addRouteMesh('play')
+      .listen('tcp://0.0.0.0:9001')
+      .setRoutingIdPrefix('play');
+
+    mesh.objects().server()
+      .addEntrySpot(PlayEntrySpot) // Actor가 처음 배치될 Entry Spot을 등록한다.
+      .addSpotFactory('game-room', GameRoom, (factory) => factory
+        .executionMode(ZLinkUserSpotExecutionMode.SpotWide)
+        .disableRelocation())
+      .addInstanceSpotFactory('matchmaker', Matchmaker, (factory) =>
+        factory.recreateOnRelocation());
+    ```
 
 
 ### 2.1 실행 모델 — 동시 실행 범위
@@ -244,19 +451,72 @@ ID로 쓸 Spot을 확보하는 호출**이다. 어느 쪽을 쓸지는 "이미 �
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    auto created = co_await spots
+                     .create ("game-room")            // stable type으로 factory와 배치 후보를 선택한다.
+                     .in_mesh ("play")
+                     .request (create_game_t{"ranked"}) // on_create에 전달할 생성 요청이다.
+                     .timeout (std::chrono::seconds (10))
+                     .submit ();
+
+    if (created.state == spot_create_state_t::rejected)
+        throw std::runtime_error ("Game creation was rejected.");
+
+    auto spot_id = created.spot.spot_id (); // 이후 메시징에는 전역 SpotId만 사용한다.
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    ZLinkSpotCreateResult created = spots
+        .create("game-room")                  // stable type으로 factory와 배치 후보를 선택한다.
+        .inMesh("play")
+        .request(new CreateGame("ranked"))    // onCreate에 전달할 생성 요청이다.
+        .timeout(Duration.ofSeconds(10))
+        .submit()
+        .toCompletableFuture().join();
+
+    if (created.state() == ZLinkSpotCreateState.REJECTED) {
+        throw new IllegalStateException("Game creation was rejected.");
+    }
+
+    String spotId = created.spot().spotId(); // 이후 메시징에는 전역 SpotId만 사용한다.
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    val created = spots
+        .create("game-room")                  // stable type으로 factory와 배치 후보를 선택한다.
+        .inMesh("play")
+        .request(CreateGame("ranked"))        // onCreate에 전달할 생성 요청이다.
+        .timeout(Duration.ofSeconds(10))
+        .submit()
+        .await()
+
+    if (created.state() == ZLinkSpotCreateState.REJECTED) {
+        error("Game creation was rejected.")
+    }
+
+    val spotId = created.spot().spotId() // 이후 메시징에는 전역 SpotId만 사용한다.
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    const created = await spots
+      .create('game-room')                  // stable type으로 factory와 배치 후보를 선택한다.
+      .inMesh('play')
+      .request(createGame('ranked'))        // onCreate에 전달할 생성 요청이다.
+      .timeout(10_000)
+      .submit();
+
+    if (created.state === ZLinkSpotCreateState.Rejected) {
+      throw new Error('Game creation was rejected.');
+    }
+
+    const spotId = created.spot.spotId; // 이후 메시징에는 전역 SpotId만 사용한다.
+    ```
 
 
 **`GetOrCreate` — 그 ID를 쓸 수 있으면 되는 때.** "있으면 그걸 쓰고 없으면 만든다"가 필요한
@@ -285,19 +545,75 @@ ID로 쓸 Spot을 확보하는 호출**이다. 어느 쪽을 쓸지는 "이미 �
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    auto result = co_await spots
+                    .get_or_create ("lobby-eu-1", "lobby")
+                    .in_mesh ("play")
+                    .request (create_lobby_t{"eu"}) // existing으로 끝나면 이 요청은 전달되지 않는다.
+                    .submit ();
+
+    switch (result.state) {
+    case spot_create_state_t::existing: // 이미 있던 lobby를 그대로 쓴다.
+    case spot_create_state_t::created:  // 이 호출이 만들었다.
+        break;
+    case spot_create_state_t::rejected: // 생성 callback이 거절해 Ready Spot이 없다.
+        throw std::runtime_error ("Lobby creation was rejected.");
+    }
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    ZLinkSpotCreateResult result = spots
+        .getOrCreate("lobby-eu-1", "lobby")
+        .inMesh("play")
+        .request(new CreateLobby("eu")) // EXISTING으로 끝나면 이 요청은 전달되지 않는다.
+        .submit()
+        .toCompletableFuture().join();
+
+    switch (result.state()) {
+        case EXISTING -> { }  // 이미 있던 lobby를 그대로 쓴다.
+        case CREATED -> { }   // 이 호출이 만들었다.
+        case REJECTED ->      // 생성 callback이 거절해 Ready Spot이 없다.
+            throw new IllegalStateException("Lobby creation was rejected.");
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    val result = spots
+        .getOrCreate("lobby-eu-1", "lobby")
+        .inMesh("play")
+        .request(CreateLobby("eu")) // EXISTING으로 끝나면 이 요청은 전달되지 않는다.
+        .submit()
+        .await()
+
+    when (result.state()) {
+        ZLinkSpotCreateState.EXISTING -> { }  // 이미 있던 lobby를 그대로 쓴다.
+        ZLinkSpotCreateState.CREATED -> { }   // 이 호출이 만들었다.
+        // 생성 callback이 거절해 Ready Spot이 없다.
+        ZLinkSpotCreateState.REJECTED -> error("Lobby creation was rejected.")
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    const result = await spots
+      .getOrCreate('lobby-eu-1', 'lobby')
+      .inMesh('play')
+      .request(createLobby('eu')) // Existing으로 끝나면 이 요청은 전달되지 않는다.
+      .submit();
+
+    switch (result.state) {
+      case ZLinkSpotCreateState.Existing: // 이미 있던 lobby를 그대로 쓴다.
+      case ZLinkSpotCreateState.Created:  // 이 호출이 만들었다.
+        break;
+      case ZLinkSpotCreateState.Rejected: // 생성 callback이 거절해 Ready Spot이 없다.
+        throw new Error('Lobby creation was rejected.');
+    }
+    ```
 
 
 `SpotRef`는 조회 시점의 exact incarnation이다. 일반 메시징에는 사용하지 않는다. 같은 incarnation을
@@ -315,19 +631,42 @@ ID로 쓸 Spot을 확보하는 호출**이다. 어느 쪽을 쓸지는 "이미 �
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    auto current = co_await spots.find ("lobby-eu-1");
+    if (current) {
+        // 다른 generation을 실수로 닫지 않는다.
+        co_await spots.close (current.value ());
+    }
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    Optional<SpotRef> current = spots.find("lobby-eu-1").toCompletableFuture().join();
+    current.ifPresent(spot ->
+        // 다른 generation을 실수로 닫지 않는다.
+        spots.close(spot).toCompletableFuture().join());
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    val current = spots.find("lobby-eu-1").await().orElse(null)
+    if (current != null) {
+        // 다른 generation을 실수로 닫지 않는다.
+        spots.close(current).await()
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    const current = await spots.find('lobby-eu-1');
+    if (current !== undefined) {
+      // 다른 generation을 실수로 닫지 않는다.
+      await spots.close(current);
+    }
+    ```
 
 
 ## 4. Spot 작성
@@ -454,19 +793,158 @@ handler는 대상 Spot instance를 첫 인자로 받는다. Spot 안에서 실�
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // C++은 handler class 대신 Spot member 함수를 등록한다. 첫 인자가 대상 Spot이다.
+    class game_room_t : public spot_t<player_actor_t>
+    {
+      public:
+        // Spot 앞 packet.
+        task_t<void> chat (const chat_t &message)
+        {
+            append_chat (message.text); // Spot 상태를 직접 만진다. 락은 필요 없다.
+            co_return;
+        }
+
+        // Spot 앞 request — 반환값이 reply다.
+        room_state_t get_room_state (const get_room_state_t &) { return snapshot (); }
+
+        // 구독 이벤트 — add_subscribe로 등록한 channel·topic으로 들어온다.
+        task_t<void> score (const score_changed_t &event)
+        {
+            apply_score (event);
+            co_return;
+        }
+
+        // member Actor 앞 packet — Spot과 Actor를 함께 받는다.
+        task_t<void> place_mark (player_actor_t &actor,   // 이 메시지를 받은 Actor다.
+                                 message_context_t &,
+                                 const place_mark_t &message)
+        {
+            place (actor.actor_id, message.cell);
+            co_return;
+        }
+    };
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // Spot 앞 packet — 첫 인자가 대상 Spot instance다.
+    public final class ChatHandler implements ZLinkSpotPacketHandler<GameRoom, Chat> {
+        @Override
+        public CompletionStage<Void> handle(GameRoom spot, Chat message) {
+            spot.appendChat(message.text()); // Spot 상태를 직접 만진다. 락은 필요 없다.
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    // Spot 앞 request — 반환값이 reply다.
+    public final class GetRoomStateHandler
+        implements ZLinkSpotRequestHandler<GameRoom, GetRoomState, RoomState> {
+        @Override
+        public CompletionStage<RoomState> handle(GameRoom spot, GetRoomState request) {
+            return CompletableFuture.completedFuture(spot.snapshot());
+        }
+    }
+
+    // 구독 이벤트 — addSubscribe로 등록한 channel·topic으로 들어온다.
+    public final class ScoreHandler
+        implements ZLinkSpotSubscriptionHandler<GameRoom, ScoreChanged> {
+        @Override
+        public CompletionStage<Void> handle(GameRoom spot, ScoreChanged event) {
+            spot.applyScore(event);
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    // member Actor 앞 packet — Spot과 Actor를 함께 받는다.
+    public final class PlaceMarkHandler
+        implements ZLinkSpotActorSendHandler<GameRoom, PlayerActor, PlaceMark> {
+        @Override
+        public CompletionStage<Void> handle(
+            GameRoom spot,
+            PlayerActor actor,              // 이 메시지를 받은 Actor다.
+            ZLinkMessageContext messageContext,
+            PlaceMark message) {
+            spot.place(actor.actorId(), message.cell());
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // Spot 앞 packet — 첫 인자가 대상 Spot instance다.
+    class ChatHandler : ZLinkSpotPacketHandler<GameRoom, Chat> {
+        override suspend fun handle(spot: GameRoom, message: Chat) {
+            spot.appendChat(message.text) // Spot 상태를 직접 만진다. 락은 필요 없다.
+        }
+    }
+
+    // Spot 앞 request — 반환값이 reply다.
+    class GetRoomStateHandler : ZLinkSpotRequestHandler<GameRoom, GetRoomState, RoomState> {
+        override suspend fun handle(spot: GameRoom, request: GetRoomState): RoomState = spot.snapshot()
+    }
+
+    // 구독 이벤트 — addSubscribe로 등록한 channel·topic으로 들어온다.
+    class ScoreHandler : ZLinkSpotSubscriptionHandler<GameRoom, ScoreChanged> {
+        override suspend fun handle(spot: GameRoom, event: ScoreChanged) {
+            spot.applyScore(event)
+        }
+    }
+
+    // member Actor 앞 packet — Spot과 Actor를 함께 받는다.
+    class PlaceMarkHandler : ZLinkSpotActorSendHandler<GameRoom, PlayerActor, PlaceMark> {
+        override suspend fun handle(
+            spot: GameRoom,
+            actor: PlayerActor,             // 이 메시지를 받은 Actor다.
+            messageContext: ZLinkMessageContext,
+            message: PlaceMark,
+        ) {
+            spot.place(actor.actorId(), message.cell)
+        }
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // Spot 앞 packet — 첫 인자가 대상 Spot instance다.
+    export class ChatHandler implements ZLinkSpotPacketHandler<GameRoom, Chat> {
+      async handle(spot: GameRoom, message: Chat): Promise<void> {
+        spot.appendChat(message.text); // Spot 상태를 직접 만진다. 락은 필요 없다.
+      }
+    }
+
+    // Spot 앞 request — 반환값이 reply다.
+    export class GetRoomStateHandler
+      implements ZLinkSpotRequestHandler<GameRoom, GetRoomState, RoomState> {
+      async handle(spot: GameRoom, request: GetRoomState): Promise<RoomState> {
+        return spot.snapshot();
+      }
+    }
+
+    // 구독 이벤트 — addSubscribe로 등록한 channel·topic으로 들어온다.
+    export class ScoreHandler implements ZLinkSpotSubscriptionHandler<GameRoom, ScoreChanged> {
+      async handle(spot: GameRoom, event: ScoreChanged): Promise<void> {
+        spot.applyScore(event);
+      }
+    }
+
+    // member Actor 앞 packet — Spot과 Actor를 함께 받는다.
+    export class PlaceMarkHandler
+      implements ZLinkSpotActorSendHandler<GameRoom, PlayerActor, PlaceMark> {
+      async handle(
+        spot: GameRoom,
+        actor: PlayerActor,             // 이 메시지를 받은 Actor다.
+        messageContext: ZLinkMessageContext,
+        message: PlaceMark
+      ): Promise<void> {
+        spot.place(actor.actorId, message.cell);
+      }
+    }
+    ```
 
 
 Actor 앞 request는 actor request handler이며
@@ -518,19 +996,149 @@ Actor 앞 request는 actor request handler이며
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    class game_room_t : public spot_t<player_actor_t>
+    {
+      public:
+        spot_context_t &context () noexcept override { return _context; }
+
+        void configure () override
+        {
+            _context.handlers ().add_handler<&game_room_t::chat> (); // Spot send handler를 등록한다.
+            _context.handlers ().add_subscribe<&game_room_t::score> (
+              "game-events", "score.changed"); // Logical Multicast 구독을 등록한다.
+        }
+
+        task_t<spot_create_response_t> on_create (const message_t &request) override
+        {
+            const auto create = request.decode<create_game_t> ();
+            co_return (create.mode == "ranked" || create.mode == "casual")
+                      ? spot_create_response_t::accept (game_created_t{create.mode})
+                      : spot_create_response_t::reject (invalid_mode_t{create.mode});
+        }
+
+        task_t<void> on_initialize () override
+        {
+            // 생성 승인 뒤 메시지를 받기 전에 필요한 준비를 끝낸다.
+            co_return;
+        }
+
+        task_t<void> on_closing (const spot_closing_context_t &) override
+        {
+            // Deadline까지 application resource를 정리한다.
+            co_return;
+        }
+
+      private:
+        spot_context_t _context;
+    };
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    public final class GameRoom implements ZLinkSpot {
+        private final ZLinkSpotContext context;
+
+        @Override
+        public ZLinkSpotContext context() {
+            return context;
+        }
+
+        @Override
+        public void configure() {
+            context.handlers().addPacket(ChatHandler.class); // Spot send handler를 등록한다.
+            context.handlers().addSubscribe(
+                ScoreHandler.class,
+                "game-events",
+                "score.changed"); // Logical Multicast 구독을 등록한다.
+        }
+
+        @Override
+        public CompletionStage<ZLinkSpotCreateResponse> onCreate(ZLinkMessage request) {
+            CreateGame create = request.decode(CreateGame.class);
+            boolean known = "ranked".equals(create.mode()) || "casual".equals(create.mode());
+            return CompletableFuture.completedFuture(known
+                ? ZLinkSpotCreateResponse.accept(new GameCreated(create.mode()))
+                : ZLinkSpotCreateResponse.reject(new InvalidMode(create.mode())));
+        }
+
+        @Override
+        public CompletionStage<Void> onInitialize() {
+            // 생성 승인 뒤 메시지를 받기 전에 필요한 준비를 끝낸다.
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> onClosing(ZLinkSpotClosingContext closing) {
+            // Deadline까지 application resource를 정리한다.
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    class GameRoom(private val spotContext: ZLinkSpotContext) : ZLinkSpot {
+
+        override fun context(): ZLinkSpotContext = spotContext
+
+        override fun configure() {
+            spotContext.handlers().addPacket(ChatHandler::class.java) // Spot send handler를 등록한다.
+            spotContext.handlers().addSubscribe(
+                ScoreHandler::class.java,
+                "game-events",
+                "score.changed") // Logical Multicast 구독을 등록한다.
+        }
+
+        override suspend fun onCreate(request: ZLinkMessage): ZLinkSpotCreateResponse {
+            val create = request.decode(CreateGame::class.java)
+            return if (create.mode in setOf("ranked", "casual"))
+                ZLinkSpotCreateResponse.accept(GameCreated(create.mode))
+            else ZLinkSpotCreateResponse.reject(InvalidMode(create.mode))
+        }
+
+        override suspend fun onInitialize() {
+            // 생성 승인 뒤 메시지를 받기 전에 필요한 준비를 끝낸다.
+        }
+
+        override suspend fun onClosing(closing: ZLinkSpotClosingContext) {
+            // Deadline까지 application resource를 정리한다.
+        }
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    export class GameRoom implements ZLinkSpot {
+      readonly context!: ZLinkSpotContext;
+
+      configure(): void {
+        this.context.handlers.addPacket(ChatHandler); // Spot send handler를 등록한다.
+        this.context.handlers.addSubscribe(
+          ScoreHandler,
+          'game-events',
+          'score.changed'); // Logical Multicast 구독을 등록한다.
+      }
+
+      async onCreate(request: ZLinkMessage): Promise<ZLinkSpotCreateResponse> {
+        const create = request.decode<CreateGame>(Object as never);
+        return create.mode === 'ranked' || create.mode === 'casual'
+          ? ZLinkSpotCreateResponse.accept(gameCreated(create.mode))
+          : ZLinkSpotCreateResponse.reject(invalidMode(create.mode));
+      }
+
+      async onInitialize(): Promise<void> {
+        // 생성 승인 뒤 메시지를 받기 전에 필요한 준비를 끝낸다.
+      }
+
+      async onClosing(closing: ZLinkSpotClosingContext): Promise<void> {
+        // Deadline까지 application resource를 정리한다.
+      }
+    }
+    ```
 
 
 `OnClosingAsync`의 reason은 explicit close, host shutdown, relocation out을 구분한다.
@@ -585,19 +1193,69 @@ handler는 dispatch마다 scope를 가지므로 ORM을 생성자로 받아도 �
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // 저장은 그 일을 담당하는 channel의 handler에 맡긴다.
+    task_t<save_score_reply_t> game_room_t::save_score (const save_score_t &request)
+    {
+        auto saved = co_await _context.outbound ()
+                       .request_to_channel ("score",
+                                            persist_score_t{_context.spot_id (), request.value})
+                       .submit<persist_score_reply_t> ();
+
+        co_return save_score_reply_t{saved.version};
+    }
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    public final class SaveScoreHandler
+        implements ZLinkSpotRequestHandler<GameRoom, SaveScore, SaveScoreReply> {
+
+        @Override
+        public CompletionStage<SaveScoreReply> handle(GameRoom spot, SaveScore request) {
+            // 저장은 그 일을 담당하는 channel의 handler에 맡긴다.
+            return spot.context().outbound()
+                .requestToChannel("score", new PersistScore(spot.context().spotId(), request.value()))
+                .submit(PersistScoreReply.class)
+                .thenApply(saved -> new SaveScoreReply(saved.version()));
+        }
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    class SaveScoreHandler : ZLinkSpotRequestHandler<GameRoom, SaveScore, SaveScoreReply> {
+
+        override suspend fun handle(spot: GameRoom, request: SaveScore): SaveScoreReply {
+            // 저장은 그 일을 담당하는 channel의 handler에 맡긴다.
+            val saved = spot.context().outbound()
+                .requestToChannel("score", PersistScore(spot.context().spotId(), request.value))
+                .submit(PersistScoreReply::class.java)
+                .await()
+
+            return SaveScoreReply(saved.version)
+        }
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    export class SaveScoreHandler
+      implements ZLinkSpotRequestHandler<GameRoom, SaveScore, SaveScoreReply> {
+
+      async handle(spot: GameRoom, request: SaveScore): Promise<SaveScoreReply> {
+        // 저장은 그 일을 담당하는 channel의 handler에 맡긴다.
+        const saved = await spot.context.outbound
+          .requestToChannel('score', persistScore(spot.context.spotId, request.value))
+          .submit<PersistScoreReply>();
+
+        return saveScoreReply(saved.version);
+      }
+    }
+    ```
 
 
 **Spot 안에서 직접 써야 한다면 `IServiceScopeFactory`로 그 호출에만 사는 scope를 연다.**
@@ -626,19 +1284,75 @@ handler는 dispatch마다 scope를 가지므로 ORM을 생성자로 받아도 �
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // C++ DI는 handler 생성자 주입으로 필요한 scope를 받는다.
+    // 이 호출 동안만 유지되는 자원은 handler instance와 수명을 같이한다.
+    class save_score_handler_t
+    {
+      public:
+        using dependency_types = dependency_list_t<score_store_t>;
+
+        explicit save_score_handler_t (score_store_t &store) : _store (store) {}
+
+        task_t<save_score_reply_t> handle (game_room_t &spot, const save_score_t &request)
+        {
+            co_await _store.append (spot.context ().spot_id (), request.value);
+            co_return save_score_reply_t{request.value};
+        }
+
+      private:
+        score_store_t &_store;
+    };
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    public final class SaveScoreHandler
+        implements ZLinkSpotRequestHandler<GameRoom, SaveScore, SaveScoreReply> {
+
+        // handler는 dispatch마다 새로 만들어지고 scoped 의존성도 그 dispatch 동안만 산다.
+        private final ScoreRepository repository;
+
+        @Override
+        public CompletionStage<SaveScoreReply> handle(GameRoom spot, SaveScore request) {
+            repository.append(spot.context().spotId(), request.value());
+            return CompletableFuture.completedFuture(new SaveScoreReply(request.value()));
+        }
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    class SaveScoreHandler(
+        // handler는 dispatch마다 새로 만들어지고 scoped 의존성도 그 dispatch 동안만 산다.
+        private val repository: ScoreRepository,
+    ) : ZLinkSpotRequestHandler<GameRoom, SaveScore, SaveScoreReply> {
+
+        override suspend fun handle(spot: GameRoom, request: SaveScore): SaveScoreReply {
+            repository.append(spot.context().spotId(), request.value)
+            return SaveScoreReply(request.value)
+        }
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    @Injectable({ scope: Scope.REQUEST })
+    export class SaveScoreHandler
+      implements ZLinkSpotRequestHandler<GameRoom, SaveScore, SaveScoreReply> {
+
+      // REQUEST scope라 이 dispatch 동안만 유지된다.
+      constructor(private readonly repository: ScoreRepository) {}
+
+      async handle(spot: GameRoom, request: SaveScore): Promise<SaveScoreReply> {
+        await this.repository.append(spot.context.spotId, request.value);
+        return saveScoreReply(request.value);
+      }
+    }
+    ```
 
 
 Spot 수명 동안 유지해도 되는 의존성(설정, 싱글톤 client, 순수 계산 서비스)은 생성자로
@@ -668,19 +1382,49 @@ Spot 수명 동안 유지해도 되는 의존성(설정, 싱글톤 client, 순�
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    co_await spot_client.send_to_spot ("room-42", chat_t{"hello"}).submit ();
+
+    auto state = co_await spot_client
+                   .request_to_spot ("room-42", get_room_state_t{})
+                   .timeout (std::chrono::seconds (3))
+                   .submit<room_state_t> ();
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    spotClient.sendToSpot("room-42", new Chat("hello")).submit().toCompletableFuture().join();
+
+    RoomState state = spotClient
+        .requestToSpot("room-42", new GetRoomState())
+        .timeout(Duration.ofSeconds(3))
+        .submit(RoomState.class)
+        .toCompletableFuture().join();
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    spotClient.sendToSpot("room-42", Chat("hello")).submit().await()
+
+    val state = spotClient
+        .requestToSpot("room-42", GetRoomState())
+        .timeout(Duration.ofSeconds(3))
+        .submit(RoomState::class.java)
+        .await()
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    await spotClient.sendToSpot('room-42', chat('hello')).submit();
+
+    const state = await spotClient
+      .requestToSpot('room-42', getRoomState())
+      .timeout(3_000)
+      .submit<RoomState>();
+    ```
 
 
 Instance Spot은 같은 호출 표면에 intent를 추가한다. `InstanceSpot(...)`의 인자는 **어느
@@ -707,19 +1451,79 @@ factory로 준비할지 고르는 stable type**이다. 그 mesh에 Instance Spot
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // type이 여럿 등록된 mesh — 어느 factory로 만들지 stable type으로 지정한다.
+    auto match = co_await spot_client
+                   .request_to_spot ("bronze", find_match_t{player_id})
+                   .instance_spot ("matchmaker") // 대상이 없으면 이 stable type의 factory로 준비한다.
+                   .in_mesh ("matchmaking")      // 처음 배치할 mesh를 고른다.
+                   .submit<match_result_t> ();
+
+    // type이 하나만 등록된 mesh — 생략하면 Framework가 그 유일한 type을 고른다.
+    auto single = co_await spot_client
+                    .request_to_spot ("bronze", find_match_t{player_id})
+                    .instance_spot ()            // 대상 node에 등록된 유일한 type으로 준비한다.
+                    .in_mesh ("matchmaking")
+                    .submit<match_result_t> ();
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // type이 여럿 등록된 mesh — 어느 factory로 만들지 stable type으로 지정한다.
+    MatchResult match = spotClient
+        .requestToSpot("bronze", new FindMatch(playerId))
+        .instanceSpot("matchmaker") // 대상이 없으면 이 stable type의 factory로 준비한다.
+        .inMesh("matchmaking")      // 처음 배치할 mesh를 고른다.
+        .submit(MatchResult.class)
+        .toCompletableFuture().join();
+
+    // type이 하나만 등록된 mesh — 생략하면 Framework가 그 유일한 type을 고른다.
+    MatchResult single = spotClient
+        .requestToSpot("bronze", new FindMatch(playerId))
+        .instanceSpot()             // 대상 node에 등록된 유일한 type으로 준비한다.
+        .inMesh("matchmaking")
+        .submit(MatchResult.class)
+        .toCompletableFuture().join();
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // type이 여럿 등록된 mesh — 어느 factory로 만들지 stable type으로 지정한다.
+    val match = spotClient
+        .requestToSpot("bronze", FindMatch(playerId))
+        .instanceSpot("matchmaker") // 대상이 없으면 이 stable type의 factory로 준비한다.
+        .inMesh("matchmaking")      // 처음 배치할 mesh를 고른다.
+        .submit(MatchResult::class.java)
+        .await()
+
+    // type이 하나만 등록된 mesh — 생략하면 Framework가 그 유일한 type을 고른다.
+    val single = spotClient
+        .requestToSpot("bronze", FindMatch(playerId))
+        .instanceSpot()             // 대상 node에 등록된 유일한 type으로 준비한다.
+        .inMesh("matchmaking")
+        .submit(MatchResult::class.java)
+        .await()
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // type이 여럿 등록된 mesh — 어느 factory로 만들지 stable type으로 지정한다.
+    const match = await spotClient
+      .requestToSpot('bronze', findMatch(playerId))
+      .instanceSpot('matchmaker') // 대상이 없으면 이 stable type의 factory로 준비한다.
+      .inMesh('matchmaking')      // 처음 배치할 mesh를 고른다.
+      .submit<MatchResult>();
+
+    // type이 하나만 등록된 mesh — 생략하면 Framework가 그 유일한 type을 고른다.
+    const single = await spotClient
+      .requestToSpot('bronze', findMatch(playerId))
+      .instanceSpot()             // 대상 node에 등록된 유일한 type으로 준비한다.
+      .inMesh('matchmaking')
+      .submit<MatchResult>();
+    ```
 
 
 `InstanceSpot(...)`을 붙이지 않은 호출은 이미 실행 중인 Spot만 찾고, 없으면 생성하지
@@ -760,19 +1564,76 @@ handler 안에서 Spot 상태를 그대로 만질 수 있다. 등록은 timer �
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // Spot 안에서 — 반환된 timer_t를 필드에 보관해 두었다가 취소에 쓴다.
+    timer_options_t options;
+    options.overrun_policy = timer_overrun_policy_t::skip_late_ticks;
+    options.max_catch_up_ticks = 1;
+    options.stop_on_unhandled_exception = false;
+
+    _game_tick = _context.add_timer<game_room_t> (
+      "game-tick",                              // 같은 Spot 안에서 유일한 이름이다.
+      std::chrono::seconds (1),                 // 주기. 0 이하이면 구성 오류다.
+      options);
+
+    co_await _game_tick.cancel (); // 더 이상 필요 없을 때. Spot이 닫히면 Framework가 함께 정리한다.
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // Spot 안에서 — 반환된 ZLinkTimer를 필드에 보관해 두었다가 취소에 쓴다.
+    ZLinkTimerOptions options = new ZLinkTimerOptions()
+        .setOverrunPolicy(ZLinkTimerOverrunPolicy.SKIP_LATE_TICKS)
+        .setMaxCatchUpTicks(1)
+        .setStopOnUnhandledException(false);
+
+    gameTick = context.addTimer(
+        "game-tick",                    // 같은 Spot 안에서 유일한 이름이다.
+        Duration.ofSeconds(1),          // 주기. 0 이하이면 ZLinkConfigurationException이다.
+        GameTickHandler.class,
+        options).toCompletableFuture().join();
+
+    // 더 이상 필요 없을 때. Spot이 닫히면 Framework가 함께 정리한다.
+    gameTick.cancel().toCompletableFuture().join();
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // Spot 안에서 — 반환된 ZLinkTimer를 필드에 보관해 두었다가 취소에 쓴다.
+    val options = ZLinkTimerOptions()
+        .setOverrunPolicy(ZLinkTimerOverrunPolicy.SKIP_LATE_TICKS)
+        .setMaxCatchUpTicks(1)
+        .setStopOnUnhandledException(false)
+
+    gameTick = spotContext.addTimer(
+        "game-tick",                    // 같은 Spot 안에서 유일한 이름이다.
+        Duration.ofSeconds(1),          // 주기. 0 이하이면 ZLinkConfigurationException이다.
+        GameTickHandler::class.java,
+        options).await()
+
+    // 더 이상 필요 없을 때. Spot이 닫히면 Framework가 함께 정리한다.
+    gameTick.cancel().await()
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // Spot 안에서 — 반환된 ZLinkTimer를 필드에 보관해 두었다가 취소에 쓴다.
+    this.gameTick = await this.context.addTimer(
+      'game-tick',                     // 같은 Spot 안에서 유일한 이름이다.
+      1_000,                           // 주기(ms). 0 이하이면 구성 오류다.
+      GameTickHandler,
+      {
+        overrunPolicy: ZLinkTimerOverrunPolicy.SkipLateTicks,
+        maxCatchUpTicks: 1,
+        stopOnUnhandledException: false
+      });
+
+    // 더 이상 필요 없을 때. Spot이 닫히면 Framework가 함께 정리한다.
+    await this.gameTick.cancel();
+    ```
 
 
 Handler는 Spot과 tick 정보를 받는 별도 class다.
@@ -792,19 +1653,44 @@ Handler는 Spot과 tick 정보를 받는 별도 class다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // C++ timer handler는 Spot member 함수다. 두 번째 인자가 timer_tick_t다.
+    task_t<void> game_room_t::game_tick (const timer_tick_t &tick)
+    {
+        co_await tick_once ();
+    }
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    public final class GameTickHandler implements ZLinkSpotTimerHandler<GameRoom> {
+        @Override
+        public CompletionStage<Void> handle(GameRoom spot, ZLinkTimerTick tick) {
+            return spot.tick();
+        }
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    class GameTickHandler : ZLinkSpotTimerHandler<GameRoom> {
+        override suspend fun handle(spot: GameRoom, tick: ZLinkTimerTick) {
+            spot.tick()
+        }
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    export class GameTickHandler implements ZLinkSpotTimerHandler<GameRoom> {
+      async handle(spot: GameRoom, tick: ZLinkTimerTick): Promise<void> {
+        await spot.tick();
+      }
+    }
+    ```
 
 
 #### 예정 시각을 지난 tick의 처리 정책
@@ -848,19 +1734,49 @@ Spot queue에 작업이 쌓이거나 handler 실행이 길어지면 tick이 예�
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    task_t<void> game_room_t::game_tick (const timer_tick_t &tick)
+    {
+        if (tick.delay > std::chrono::milliseconds (500))
+            report_lag (tick.delay, tick.skipped_ticks); // 지연이 크면 부하를 보고한다.
+
+        co_await tick_once ();
+    }
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    @Override
+    public CompletionStage<Void> handle(GameRoom spot, ZLinkTimerTick tick) {
+        if (tick.delay().compareTo(Duration.ofMillis(500)) > 0) {
+            spot.reportLag(tick.delay(), tick.skippedTicks()); // 지연이 크면 부하를 보고한다.
+        }
+        return spot.tick();
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    override suspend fun handle(spot: GameRoom, tick: ZLinkTimerTick) {
+        if (tick.delay() > Duration.ofMillis(500)) {
+            spot.reportLag(tick.delay(), tick.skippedTicks()) // 지연이 크면 부하를 보고한다.
+        }
+        spot.tick()
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    async handle(spot: GameRoom, tick: ZLinkTimerTick): Promise<void> {
+      if (tick.delayMs > 500) {
+        spot.reportLag(tick.delayMs, tick.skippedTicks); // 지연이 크면 부하를 보고한다.
+      }
+      await spot.tick();
+    }
+    ```
 
 
 #### handler가 예외를 던졌을 때
@@ -917,19 +1833,75 @@ Spot의 실행 queue는 한 번에 하나만 실행한다. 무거운 계산이�
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // CPU worker — 동기 계산을 worker 스레드에서 실행한다.
+    task_t<snapshot_reply_t> game_room_t::build_snapshot (const build_snapshot_t &)
+    {
+        auto board = copy_board (); // Spot 상태는 turn 안에서 먼저 복사해 둔다.
+
+        auto packed = co_await _context
+                        .run_cpu_worker ([board] (std::stop_token) {
+                            return snapshot_codec_t::compress (board); // 무거운 동기 계산.
+                        })
+                        .yield ();
+
+        co_return snapshot_reply_t{packed};
+    }
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    public final class BuildSnapshotHandler
+        implements ZLinkSpotRequestHandler<GameRoom, BuildSnapshot, SnapshotReply> {
+
+        @Override
+        public CompletionStage<SnapshotReply> handle(GameRoom spot, BuildSnapshot request) {
+            var board = spot.copyBoard(); // Spot 상태는 turn 안에서 먼저 복사해 둔다.
+
+            return spot.context()
+                .runCpuWorker(cancellation -> SnapshotCodec.compress(board)) // 무거운 동기 계산.
+                .yield()
+                .thenApply(SnapshotReply::new);
+        }
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    class BuildSnapshotHandler : ZLinkSpotRequestHandler<GameRoom, BuildSnapshot, SnapshotReply> {
+
+        override suspend fun handle(spot: GameRoom, request: BuildSnapshot): SnapshotReply {
+            val board = spot.copyBoard() // Spot 상태는 turn 안에서 먼저 복사해 둔다.
+
+            val packed = spot.context()
+                .runCpuWorker { SnapshotCodec.compress(board) } // 무거운 동기 계산.
+                .yield()
+                .await()
+
+            return SnapshotReply(packed)
+        }
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    export class BuildSnapshotHandler
+      implements ZLinkSpotRequestHandler<GameRoom, BuildSnapshot, SnapshotReply> {
+
+      async handle(spot: GameRoom, request: BuildSnapshot): Promise<SnapshotReply> {
+        const board = spot.copyBoard(); // Spot 상태는 turn 안에서 먼저 복사해 둔다.
+
+        const packed = await spot.context
+          .runCpuWorker(() => SnapshotCodec.compress(board)) // 무거운 동기 계산.
+          .yield();
+
+        return snapshotReply(packed);
+      }
+    }
+    ```
 
 I/O를 기다리는 작업은 `RunIoWorker`로 넘긴다.
 
@@ -957,19 +1929,71 @@ I/O를 기다리는 작업은 `RunIoWorker`로 넘긴다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // I/O worker — 외부 저장소 호출을 worker에서 실행한다.
+    task_t<save_score_reply_t> game_room_t::save_score (const save_score_t &request)
+    {
+        auto version = co_await _context
+                         .run_io_worker ([this, request] (std::stop_token token) {
+                             return _store.save (request.value, token);
+                         })
+                         .timeout (std::chrono::seconds (3)) // 이 worker 호출의 상한.
+                         .yield ();
+
+        co_return save_score_reply_t{version};
+    }
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    public final class SaveScoreHandler
+        implements ZLinkSpotRequestHandler<GameRoom, SaveScore, SaveScoreReply> {
+
+        @Override
+        public CompletionStage<SaveScoreReply> handle(GameRoom spot, SaveScore request) {
+            return spot.context()
+                .runIoWorker(cancellation -> store.save(request.value()))
+                .timeout(Duration.ofSeconds(3)) // 이 worker 호출의 상한.
+                .yield()
+                .thenApply(SaveScoreReply::new);
+        }
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    class SaveScoreHandler : ZLinkSpotRequestHandler<GameRoom, SaveScore, SaveScoreReply> {
+
+        override suspend fun handle(spot: GameRoom, request: SaveScore): SaveScoreReply {
+            val version = spot.context()
+                .runIoWorker { store.save(request.value) }
+                .timeout(Duration.ofSeconds(3)) // 이 worker 호출의 상한.
+                .yield()
+                .await()
+
+            return SaveScoreReply(version)
+        }
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    export class SaveScoreHandler
+      implements ZLinkSpotRequestHandler<GameRoom, SaveScore, SaveScoreReply> {
+
+      async handle(spot: GameRoom, request: SaveScore): Promise<SaveScoreReply> {
+        const version = await spot.context
+          .runIoWorker(async (signal) => this.store.save(request.value, signal))
+          .timeout(3_000) // 이 worker 호출의 상한.
+          .yield();
+
+        return saveScoreReply(version);
+      }
+    }
+    ```
 
 
 **결과를 받는 세 가지 종결자.**
@@ -1027,19 +2051,56 @@ Framework는 turn 경계는 알지만 application이 정의한 일관성 단위�
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    mesh.set_object_role (object_role_t::server)
+      .add_spot_factory<game_room_t> (
+        "game-room",
+        [] (spot_context_t c) { return std::make_shared<game_room_t> (std::move (c)); },
+        [] (auto &factory) {
+            // 이 모드에서만 쓸 수 있다.
+            factory.execution_mode (user_spot_execution_mode_t::spot_wide);
+            factory.relocation_readiness (spot_relocation_readiness_mode_t::application_signaled);
+            factory.template preserve_state_with<game_room_relocation_adapter_t> ();
+        });
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    mesh.objects().server()
+        .addSpotFactory(
+            "game-room",
+            GameRoom.class,
+            factory -> factory
+                // 이 모드에서만 쓸 수 있다.
+                .executionMode(ZLinkUserSpotExecutionMode.SPOT_WIDE)
+                .relocationReadiness(ZLinkSpotRelocationReadinessMode.APPLICATION_SIGNALED)
+                .preserveStateWith(GameRoomRelocationAdapter.class));
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    mesh.objects().server()
+        .addSpotFactory("game-room", GameRoom::class.java) { factory ->
+            factory
+                // 이 모드에서만 쓸 수 있다.
+                .executionMode(ZLinkUserSpotExecutionMode.SPOT_WIDE)
+                .relocationReadiness(ZLinkSpotRelocationReadinessMode.APPLICATION_SIGNALED)
+                .preserveStateWith(GameRoomRelocationAdapter::class.java)
+        }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    mesh.objects().server()
+      .addSpotFactory('game-room', GameRoom, (factory) => factory
+        // 이 모드에서만 쓸 수 있다.
+        .executionMode(ZLinkUserSpotExecutionMode.SpotWide)
+        .relocationReadiness(ZLinkSpotRelocationReadinessMode.ApplicationSignaled)
+        .preserveStateWith(GameRoomRelocationAdapter));
+    ```
 
 
 Application은 상태가 일관된 turn에서 `Defer()`를 호출한다. 이 호출은 relocation을 그 자리에서
@@ -1068,19 +2129,60 @@ Application은 상태가 일관된 turn에서 `Defer()`를 호출한다. 이 호
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    task_t<void> game_room_t::round_tick (const timer_tick_t &)
+    {
+        if (!try_finish_round ()) // 라운드 진행 중이면 신호하지 않는다.
+            co_return;
+
+        // 라운드가 끝나 상태가 정산된 지점이다. 이 turn의 마지막 Framework 호출이어야 한다.
+        _context.relocation_ready ().defer ();
+        co_return;
+    }
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    public final class RoundTickHandler implements ZLinkSpotTimerHandler<GameRoom> {
+        @Override
+        public CompletionStage<Void> handle(GameRoom spot, ZLinkTimerTick tick) {
+            if (!spot.tryFinishRound()) { // 라운드 진행 중이면 신호하지 않는다.
+                return CompletableFuture.completedFuture(null);
+            }
+
+            // 라운드가 끝나 상태가 정산된 지점이다. 이 turn의 마지막 Framework 호출이어야 한다.
+            spot.context().relocationReady().defer();
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    class RoundTickHandler : ZLinkSpotTimerHandler<GameRoom> {
+        override suspend fun handle(spot: GameRoom, tick: ZLinkTimerTick) {
+            if (!spot.tryFinishRound()) return // 라운드 진행 중이면 신호하지 않는다.
+
+            // 라운드가 끝나 상태가 정산된 지점이다. 이 turn의 마지막 Framework 호출이어야 한다.
+            spot.context().relocationReady().defer()
+        }
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    export class RoundTickHandler implements ZLinkSpotTimerHandler<GameRoom> {
+      async handle(spot: GameRoom, tick: ZLinkTimerTick): Promise<void> {
+        if (!spot.tryFinishRound()) return; // 라운드 진행 중이면 신호하지 않는다.
+
+        // 라운드가 끝나 상태가 정산된 지점이다. 이 turn의 마지막 Framework 호출이어야 한다.
+        spot.context.relocationReady().defer();
+      }
+    }
+    ```
 
 
 신호한 뒤 실제로 어떻게 됐는지는 Spot의 `OnRelocationReadyCompletedAsync`로 돌아온다. 이
@@ -1102,19 +2204,51 @@ callback은 **두 경우 모두** 호출되므로, 다음 라운드를 여는 �
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    task_t<void> game_room_t::on_relocation_ready_completed (
+      const spot_relocation_ready_completion_t &completion)
+    {
+        // continued — 대기 중인 relocation이 없었거나 commit 전에 중단됐다. 이 node에서 계속한다.
+        // relocated — 이동이 끝났고, 이 callback은 target node의 새 instance에서 실행된다.
+        start_next_round (completion.outcome == spot_relocation_ready_outcome_t::relocated);
+        co_return;
+    }
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    @Override
+    public CompletionStage<Void> onRelocationReadyCompleted(
+        ZLinkSpotRelocationReadyCompletion completion) {
+        // CONTINUED — 대기 중인 relocation이 없었거나 commit 전에 중단됐다. 이 node에서 계속한다.
+        // RELOCATED — 이동이 끝났고, 이 callback은 target node의 새 instance에서 실행된다.
+        startNextRound(completion.outcome() == ZLinkSpotRelocationReadyOutcome.RELOCATED);
+        return CompletableFuture.completedFuture(null);
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    override suspend fun onRelocationReadyCompleted(
+        completion: ZLinkSpotRelocationReadyCompletion) {
+        // CONTINUED — 대기 중인 relocation이 없었거나 commit 전에 중단됐다. 이 node에서 계속한다.
+        // RELOCATED — 이동이 끝났고, 이 callback은 target node의 새 instance에서 실행된다.
+        startNextRound(completion.outcome() == ZLinkSpotRelocationReadyOutcome.RELOCATED)
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    async onRelocationReadyCompleted(
+      completion: ZLinkSpotRelocationReadyCompletion): Promise<void> {
+      // Continued — 대기 중인 relocation이 없었거나 commit 전에 중단됐다. 이 node에서 계속한다.
+      // Relocated — 이동이 끝났고, 이 callback은 target node의 새 instance에서 실행된다.
+      this.startNextRound(completion.outcome === ZLinkSpotRelocationReadyOutcome.Relocated);
+    }
+    ```
 
 
 다음 규칙을 지킨다.

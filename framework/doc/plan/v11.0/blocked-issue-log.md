@@ -3233,3 +3233,37 @@ commit이 먼저 일어나면 그 사이에 도착한 message가 추월당할 �
 | 환경(inotify) | B5 | 1 |
 
 미조사는 0이다.
+
+## 2026-07-31 bound session 군집 — 응답 제출이 반환하지 않는다
+
+session gateway 쪽 응답 경로를 단계별로 좁혔다.
+
+```
+route_reply_send       2건    ← ReplyResponseAsync 호출 직전
+route_reply_dropped    0건    ← CanReply 는 true, 조용한 drop 아님
+route_reply_submitted  0건    ← 호출이 반환하지 않는다
+```
+
+즉 `ReplyResponseAsync`에 진입은 하는데 완료되지 않는다. 던지거나 끝나지 않는다.
+session 프로세스에는 task 실패 로그도 없다.
+
+경로를 따라가면 `SubmitEnvelopeAsync` → `ZLinkSpotReplySubmitter.SubmitAsync`이고,
+그 안은 이렇다.
+
+```csharp
+var result = await submitter.SubmitAsync(
+        replyParts,
+        pending => ZLinkSubmitFailureMapper.AcceptOrThrow(
+            received.Reply(pending, SendFlags.DontWait), nameof(SubmitAsync)),
+        cancellationToken);
+if (result.Status != ZLinkOneWaySubmitStatus.Submitted)
+    throw new ZlinkSubmitException(ZlinkSubmitException.ErrorCode.Terminated);
+```
+
+`SendFlags.DontWait`으로 보내므로 상대 경로가 없거나 혼잡하면 즉시 실패하고, 그 결과가
+`AcceptOrThrow` 또는 `result.Status` 검사에서 예외가 된다. 그 예외가 어디로 가는지가
+다음 확인 지점이다. session 프로세스의 task 실패 로그에 나타나지 않으므로 중간에서
+잡히는 것으로 보인다.
+
+이로써 네 시나리오(ST-C2, ST-E1, ST-E2, ST-F3)를 잡고 있는 결함이 함수 하나로 좁혀졌다.
+handler는 응답을 만들고, dispatcher는 제출을 시작하지만, 제출이 끝나지 않는다.

@@ -545,6 +545,8 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
                 completionPermit!,
                 cancellationToken)
             .ConfigureAwait(false);
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"route_reply_submitted source={sourceRid}");
         scope.Trace(_dispatchErrors, ZLinkMessageFlowOutcome.Replied);
     }
 
@@ -639,7 +641,14 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
         ZLinkCompletionAdmissionOwner.ResponderLease completionPermit,
         CancellationToken cancellationToken)
     {
-        if (!received.CanReply) return ValueTask.CompletedTask;
+        //  A false CanReply drops the reply with no trace, so the handler
+        //  believes it answered while the requester waits out its deadline.
+        if (!received.CanReply)
+        {
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                "route_reply_dropped reason=cannot_reply");
+            return ValueTask.CompletedTask;
+        }
 
         var replyParts = ZLinkEnvelopeCodec.EncodeParts(
             header, body, bodyType, _codecs);

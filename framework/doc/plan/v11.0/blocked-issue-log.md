@@ -5147,3 +5147,33 @@ terminal lifecycle 전이를 위해 이미 닫혀 있다. `ZLinkActorDispatchMai
 
 두 진단 모두 "완료 결과가 kind만 담아서 원인이 사라진다"는 이유로 미리 심어 둔 것이다.
 이번 조사가 그 의도대로 동작했다.
+
+### OBS-B2 모드 A 좁히기: source finalize가 닫은 admission이 재입장을 막는다
+
+Admission을 닫는 두 후보 중 어느 쪽인지 임시 trace로 좁혔다. Target(play-a)에서 닫힘은
+정확히 한 번, `BeginHandlerActivationCompletion` 쪽이다. Stack이 경로를 특정한다.
+
+```
+ZLinkActorRemoteJoiner.ApplyRemoteActorMigrationCoreAsync
+  -> ZLinkActorSessionManager.FinalizeMigratedSourceAsync
+    -> ZLinkActorRuntimeState.BeginHandlerActivationCompletion
+      -> CloseAdmissionAndReserveLifecycleBarrier
+```
+
+`FinalizeMigratedSourceAsync`는 migration의 **source** 쪽 마무리다. 그것이 target이 될
+node에서 먼저 실행됐다는 사실이 순서를 설명한다. 같은 로그에서 닫힘이 29행,
+`handoff_commit_failed`가 144행이다.
+
+OBS-B2는 actor를 두 번 옮긴다. 먼저 entry spot이 있는 node에서 play-b의 room으로, 그
+다음 play-a의 room으로. 첫 이동에서 play-a가 source였다면 play-a의 actor state는 그때
+admission이 닫힌다. 두 번째 이동은 그 play-a로 **되돌아오는** 것이므로 commit이 닫힌 채로
+남아 있는 예전 state를 만난다.
+
+정리하면 가설은 이렇다. **한 번 떠난 node로 actor가 돌아오면 예전 dispatch state가
+admission-closed로 남아 있어 handoff commit이 거부된다.** 새 incarnation을 위한 state가
+아니라 종료된 state를 재사용하는 것이 문제다.
+
+간헐성도 설명된다. Entry spot placement가 play-a인 실행에서만 이 순서가 만들어진다.
+
+확인 방법: 첫 join의 source node를 기록해 두 번째 join의 target과 같은지 보면 된다. 같을
+때만 모드 A가 나야 한다. 아직 하지 않았다. 측정 trace는 되돌렸다.

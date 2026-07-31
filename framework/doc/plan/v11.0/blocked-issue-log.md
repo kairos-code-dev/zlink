@@ -3847,3 +3847,32 @@ packet이 backlog에 담기기를 기대하지만 애초에 actor node로 보내
 다만 고칠 방향은 확인이 더 필요하다. 게이트웨이가 `HandoffPacket`도 relay하도록 하는 것이
 맞는지, 아니면 시나리오가 다른 방식으로 보내야 하는지다. `HandoffPacket`을 쓰는 다른
 시나리오(ST-I4 등)가 어떻게 동작하는지 보면 갈린다.
+
+### 통과하는 시나리오와의 차이 — 전송 경로가 다르다
+
+`HandoffPacket`을 쓰는 시나리오 아홉 중 여섯(ST-A2, ST-B1, ST-F1, ST-F4, ST-F5, ST-H1)이
+통과하고 셋(ST-F2, ST-F3, ST-I4)이 실패한다. 통과하는 ST-F1과 실패하는 ST-F3를 나란히
+놓으면 차이가 분명하다.
+
+```csharp
+// ST-F1 (통과) — node 를 통해 보낸다
+await context.SendFromNodeAsync(context.NodeA, actorId, new HandoffPacket("ST-F1", marker));
+await context.WaitRuntimeEvidenceAsync(context.NodeA, $"handoff_backlog actor={actorId} arrival=2");
+
+// ST-F3 (실패) — bound session 으로 보낸다
+await bound.Send(new HandoffPacket("ST-F3", "S1")).Async();
+await context.WaitRuntimeEvidenceAsync(context.NodeA, $"handoff_backlog actor={actorId} arrival=1");
+```
+
+둘 다 같은 packet을 보내고 같은 `handoff_backlog` 마커를 기다리는데, **경로가 다르다.**
+ST-F1은 `/actors/{id}/send-from-node` 엔드포인트로 actor node에서 직접 보내므로 게이트웨이를
+거치지 않는다. ST-F3는 bound session으로 보내므로 게이트웨이의 세션 dispatch를 지나야
+하고, 거기서 `BoundPushReq` fall-through에 걸려 사라진다.
+
+즉 backlog capture 자체는 정상 동작한다(ST-F1이 그것을 증명한다). ST-F3가 실패하는 것은
+**bound session을 통한 send가 게이트웨이에서 relay되지 않기 때문**이다. 결함의 위치가
+런타임의 handoff 처리가 아니라 e2e 게이트웨이의 session dispatch로 확정된다.
+
+ST-F3를 통과시키려면 게이트웨이가 bound session send를 대상 actor로 relay해야 한다. 현재
+fall-through는 `BoundPushReq`만 가정하므로, 임의의 application packet을 bound actor에게
+전달하는 경로가 필요하다.

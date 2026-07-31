@@ -3794,3 +3794,25 @@ capture_entry ... flags=1 bound_route=False arrival=0 kind=Request request_id=21
 남은 질문은 그 one-way send들이 어디까지 가느냐다. session에서 relay되기는 하는지,
 actor node에 도착하는지, 도착한다면 capture 이전 어느 단계에서 다른 경로로 빠지는지다.
 계수가 아니라 marker(S1·S2)를 진단에 실어야 답이 나온다.
+
+### S1·S4 증거는 어느 actor에도 없다 — 다만 이는 예상된 상태다
+
+actor 양쪽의 evidence를 확인했다.
+
+```
+actor-a : S1~S4 증거 0건
+actor-b : S1~S4 증거 0건
+```
+
+다만 이것만으로는 유실이라고 볼 수 없다. 시나리오는 `joined_wait` 게이트를 잡은 상태에서
+S1·S2를 보내고 **backlog에 담기기를** 기다린다. 게이트가 아직 풀리지 않았으므로 이
+시점에 handler까지 배달되지 않는 것이 정상이다. 즉 "증거가 없다"는 "backlog에 있다"와
+"사라졌다"를 구분하지 못한다.
+
+구분하려면 send가 session에서 actor node로 relay되는 구간에 marker를 실은 진단이
+필요하다. 현재 `forward_part`는 프레임을 구분하지 못하고 payload도 해석하지 않으므로
+S1·S2를 식별할 수 없다.
+
+이 세션에서 확인한 사실만 정리하면 이렇다. one-way send는 handoff capture 경로에
+도달하지 않는다. 그리고 그 send가 session에서 나갔는지, actor node에 도착했는지는 아직
+모른다. 계수는 프레임 하나(Request)로 설명되므로 send가 relay된 흔적은 관측되지 않았다.

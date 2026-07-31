@@ -3064,3 +3064,24 @@ seal의 정상 경로, deferred join)은 실제로 응답이 요청자에게 나
 `ZLINK_DEBUG_FRAMEWORK_STARTUP`.
 
 ST-B2의 실제 결함(sentinel과 digest 비교의 불일치)과 세 가지 수정 후보는 그대로 유효하다.
+
+## 2026-07-31 ST-I1 첫 관측 — destroy 요청에서 500이 난다
+
+진단 플래그를 모두 켜고(`SPOT_DISCOVERY`, `TASKS`, `STARTUP`) ST-I1을 처음 돌렸다.
+클라이언트는 `HTTP request failed with status 500`으로
+`StI1RelocationPayloadMeasurementScenario.cs:223`에서 실패한다.
+
+서버(actor-b) 로그에서 그 500의 출처가 보인다.
+
+```
+fail: Microsoft.AspNetCore.Server.Kestrel[13] ... An unhandled exception was thrown
+      by the application.
+info: Request finished HTTP/1.1 POST http://127.0.0.1:39049/actors/actor-payload-small-.../des...
+```
+
+즉 **actor destroy 요청 처리 중 예외가 나서 500이 된다.** 예외 본문은 Kestrel의 한 줄
+로그에만 있고 stack이 남지 않아 아직 종류를 모른다.
+
+다음은 e2e server의 destroy 엔드포인트가 어떤 예외를 던지는지 확인하는 것이다.
+ST-I1은 relocation payload 크기를 측정하는 시나리오이므로, 측정 대상 actor를 정리하는
+단계에서 걸리는 것으로 보인다.

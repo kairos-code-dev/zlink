@@ -96,7 +96,7 @@ ZLinkModule.forRootFactory({
 
 > **spec에 있고 구현에 없는 값이 둘 있다.** 공개 계약은 `mailboxMessageBudget` ·
 > `mailboxByteBudget`을 이 config에 두지만 현재 builder 표면에는 없다. 저장소의
-> `framework/doc/plan/v11.0/guide-authoring-implementation-gaps.ko.md` G8이 기록한다.
+> `framework/doc/plan/v11.0/guide-authoring-implementation-gaps.ko.md` G9가 기록한다.
 
 동작 원리와 값을 고르는 기준은
 [4. Backpressure](../../../common/guide/server/04-backpressure.ko.md)가 다룬다.
@@ -155,11 +155,9 @@ ZLinkModule.forRootFactory({
 | `maxConcurrentRelocationCaptures(...)` · `maxConcurrentRelocationRestores(...)` | 8 |
 | `maxRelocationPayloadInFlightBytes(...)` | 268,435,456 (256 MiB) |
 
-> **owner lease 기본값이 세 언어에서 모두 다르다.** 갱신 주기 대비 TTL 배수가 Node는
-> 1.5배(10초 : 15초), C++은 3배(5초 : 15초), Java는 6배(5초 : 30초)다. **Node가 가장
-> 빡빡하다** — 갱신 한 번을 놓치면 lease가 거의 만료된다. 같은 mesh에 여러 언어 node를
-> 섞는다면 값을 맞춰 지정한다. 저장소의
-> `framework/doc/plan/v11.0/guide-authoring-implementation-gaps.ko.md` G6이 현황을 정리한다.
+> **갱신 주기 대비 TTL 배수가 3배다**(5초 : 15초). 갱신을 두 번 놓칠 때까지 lease가
+> 버틴다는 뜻이다. 네 언어가 같은 값이므로 여러 언어 node를 한 mesh에 섞어도 owner 판정
+> 시점이 갈리지 않는다. 값을 바꾼다면 **배수까지 함께 정한다.**
 
 ## 6. STREAM 옵션
 

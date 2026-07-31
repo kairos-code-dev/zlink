@@ -109,11 +109,12 @@ observer는 provider class로 등록한다 — 함수가 아니라 `ZLinkMessage
 
 ## 4. 메트릭
 
-> **Node runtime은 아직 계기를 방출하지 않는다.** 계약이 정의한 계기 49개 중 Node가
-> 내는 것은 없다. 대시보드가 필요하면 `observe(...)` 상태 stream이나 message flow
-> 기록에서 직접 만든다. 저장소의
+> **Node runtime이 실제로 내는 계기는 계약의 일부다.** 계약은 47개를 정의하는데
+> `runtime-metrics.ts`가 선언하는 이름은 44개이고 그중 실제로 기록되는 것은 더 적다.
+> 방출 지점이 여러 파일에 흩어져 있어 정확한 수는 확정하지 않았다. **대시보드를 만들기
+> 전에 필요한 계기가 실제로 나오는지 확인한다.** 저장소의
 > `framework/doc/plan/v11.0/guide-authoring-implementation-gaps.ko.md` G7이 언어별
-> 현황을 정리한다.
+> 현황과 재확인 범위를 정리한다.
 
 계기 이름 · 종류 · 단위 · label의 계약은
 [Runtime metric과 집계 규칙](../../../common/spec/25-runtime-metrics.ko.md)이 소유한다.

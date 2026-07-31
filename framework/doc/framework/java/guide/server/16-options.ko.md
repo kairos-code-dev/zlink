@@ -49,6 +49,7 @@ Spring 컨텍스트가 시작된 뒤에 builder를 다시 호출하는 표면은
 | `addHandlersFromPackageOf(Class)` | handler 탐색 시작점 | 탐색하지 않음 |
 | `configureMetadata()` | metadata 전달 정책 | — |
 | `configureDispatch()` | 진단 수준과 message flow(§4) | `ERRORS_ONLY` |
+| `configureInboundDispatch()` | host 전체 수신 상한(§3.3) | 자동 계산 |
 | `configureLocations()` | location store 동작(§5) | §5 표 |
 | `configureNetwork()` | listener의 bind · advertise host 기본값 | bind `0.0.0.0` |
 | `configureWorkers()` | CPU worker 풀(§3.2) | §3.2 표 |
@@ -94,15 +95,14 @@ handler 실행기를 정하므로 뒤에 부른 쪽이 앞을 덮는다.
 | `setSendHighWaterMark(...)` | 상대별로 보내려고 보관할 byte |
 | `setReceiveHighWaterMark(...)` | 상대별로 받아서 보관할 byte |
 | `setReceiveTimeout` · `setSendTimeout` | 지정하면 그 방향의 대기 상한 |
+| `setMailboxMessageBudget(long)` | 이 node의 service mailbox가 담을 message 수 |
+| `setMailboxByteBudget(long)` | 이 node의 service mailbox가 담을 byte |
 
 두 high-water mark의 동작 원리와 값을 고르는 기준은
 [4. Backpressure](../../../common/guide/server/04-backpressure.ko.md)가 다룬다.
 `0`은 기본값이 아니라 **무제한**이다.
 
-> **spec과 구현이 다른 자리다.** 공개 계약은 HWM 넷을 `long`으로 선언하고
-> `mailboxMessageBudget` · `mailboxByteBudget`을 함께 두지만, 현재 구현은 HWM이 `int`이고
-> mailbox 두 값이 이 interface에 없다.
-> 저장소의 `framework/doc/plan/v11.0/guide-authoring-implementation-gaps.ko.md` G5가 이 차이를 기록한다.
+**HWM 넷은 `long`이다.** byte 단위이므로 `int`로는 2 GiB를 넘길 수 없다.
 
 ### 3.2 CPU worker 풀
 
@@ -118,6 +118,25 @@ handler 실행기를 정하므로 뒤에 부른 쪽이 앞을 덮는다.
 
 **큐가 차면 submit이 즉시 실패한다.** 기다리거나 호출자 스레드에서 실행하는 정책은
 없다. 큐 길이를 늘리기 전에 worker에 넘기는 작업의 실행 시간을 먼저 본다.
+
+### 3.3 host 전체 수신 상한
+
+`configureInboundDispatch()`가 돌려주는 `ZLinkInboundDispatchOptions`의 값이다.
+연결마다 두는 상한(§3.1)과 성격이 다르다 — 아직 handler 실행을 시작하지 못한 message의
+**payload 합계**에 적용한다.
+
+| 메서드 | 무엇을 정하나 | 기본값 |
+| --- | --- | --- |
+| `setApplicationHwmBytes(long)` | host 전체 수신 상한 byte | 생략하면 자동 계산 |
+| `setApplicationHwmProfile(ZLinkApplicationHwmProfile)` | 자동 계산이 쓸 비율 | `BALANCED` |
+| `setProcessMemoryLimitBytes(long)` | 자동 계산의 기준이 되는 프로세스 메모리 상한 | 감지한 값 |
+
+profile은 `COMPACT` · `LOW_LATENCY` · `BALANCED` · `THROUGHPUT` 넷이다.
+`setApplicationHwmBytes(0)`은 **제한 없음**이고, 음수는 거절한다.
+`setProcessMemoryLimitBytes`는 양수만 받는다. 둘 다 `ZLinkConfigurationException`이다.
+
+> 이 단위와 상한은 계약으로 확정되었을 뿐 **아직 runtime이 사용하지 않는다.**
+> [4. Backpressure §6](../../../common/guide/server/04-backpressure.ko.md#6-framework에-아직-적용되지-않은-부분)을 본다.
 
 ## 4. 진단
 

@@ -129,7 +129,7 @@ ZLinkMetricsCustomizer zlinkMetrics(PlaySettings settings) {
 계기 이름은 `zlink.`으로 시작한다. 정확한 이름 · 종류 · 단위 · label은
 [Runtime metric과 집계 규칙](../../../common/spec/25-runtime-metrics.ko.md)이 소유한다.
 
-> **현재 Java runtime이 방출하는 계기는 계약의 일부뿐이다.** 계약이 정의한 49개 중
+> **현재 Java runtime이 방출하는 계기는 계약의 일부뿐이다.** 계약이 정의한 47개 중
 > 14개만 나오고, request 관련 셋은 계약 이름(`zlink.mesh_node.request.*`)이 아니라
 > `zlink.channel.request.*`로 나온다. 대시보드를 만들기 전에 실제 방출 이름을 확인한다.
 > 저장소의 `framework/doc/plan/v11.0/guide-authoring-implementation-gaps.ko.md` G7이

@@ -162,8 +162,8 @@ return app.run (argc, argv);
 | `register_session<TSession> ()` | 연결마다 만들 session 타입 | 지정해야 한다 |
 | `set_tls_server (cert, key, require_client_cert)` | TLS 구성 | 평문 |
 
-> `enable_actor_dispatch ()`는 [STREAM session 공개 계약](../../../common/spec/server/languages/cpp/interfaces/06-stream-session.ko.md)이
-> 선언하지만 C++ 구현에는 아직 없다. 계약이 기준이므로 표에 남긴다.
+> **`enable_actor_dispatch ()`는 STREAM node마다 한 번만 부른다.** 같은 node에 두 번
+> 부르면 `request_protocol_error`로 던진다.
 
 STREAM socket은 같은 profile에서도 MeshNode보다 작은 상한을 쓴다.
 [9. STREAM](../../../common/guide/server/09-stream.ko.md)을 본다.

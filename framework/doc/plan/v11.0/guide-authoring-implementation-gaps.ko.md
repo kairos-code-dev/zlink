@@ -22,6 +22,10 @@
 
 ## 1. spec에 있고 구현에 없는 표면
 
+> **G1 · G2 · G3 · G4 · G5 · G6 · G8은 처리를 마쳤다.** 각 항목의 처리 내용은 §6에 있다.
+> 아래 서술은 발견 당시 기록이므로 현재 구현 상태는 §6이 기준이다. 남은 것은 **G7 ·
+> G9**와 §2 이후다.
+
 ### G1 · C++ `enable_actor_dispatch()`
 
 | | |
@@ -129,10 +133,10 @@ owner 판정이 언어마다 달라진다.
 
 | 언어 | spec 계기 중 방출하는 수 |
 | --- | --- |
-| `.NET` | 58개(spec 49 + 확장) |
+| `.NET` | 58개(spec 전량 + 확장) |
 | Java · Kotlin | **14개** |
 | C++ | **4개** |
-| Node | **0개** |
+| Node | 재확인 필요(아래 단서) |
 
 Java가 방출하는 이름 중 spec에 없는 것이 넷이다. 앞의 셋은 **spec에 같은 개념이 다른
 이름으로 이미 있다.**
@@ -399,3 +403,41 @@ spec이 선언한 표면을 그대로 구현했다. `.NET`의
 밝힌 범위로 남는다.
 
 JVM `check`가 통과한다.
+
+### G8 · spec에서 뺀 계기 둘 — 처리 완료
+
+`zlink.relocation.recovered`와 `zlink.relocation.journal.messages`를 구현과 문서에서
+지웠다. spec이 이미 판단을 끝낸 정리 대상이므로 방향은 삭제다.
+
+`.NET`에서 지운 자리는 계기 등록 둘, `outcome == Recovered`일 때의 기록,
+`RecordJournalMessages` 메서드와 `ZLinkActorRemoteJoiner`의 호출부다.
+`StartRelocation`의 enabled 검사에서 `RelocationRecovered`도 뺐다.
+Node.js에서는 계기 이름 선언 둘, `recordJournalMessages` 선언과 구현,
+`outcome === 'recovered'` 기록, `actor-transfer-runtime`의 호출부를 지웠다.
+쓰이지 않게 된 `objectAttributes` 지역 변수도 함께 정리했다.
+
+계기 이름 전체 목록을 하드코딩해 단언하던 양쪽 contract test도 같이 고쳤다.
+`.NET`의 `Relocation_Journal_And_Bytes_Use_Their_Exact_Label_Sets`는 journal 단언을
+빼고 `Relocation_Bytes_Uses_Its_Exact_Label_Set`으로 바꿨다.
+`Relocation_Metric_Uses_Only_The_Closed_Terminal_Outcomes`는 삭제한 counter를 듣던
+listener를 걷어내고 terminal outcome 다섯만 확인한다. `outcome` 허용값의 `recovered`는
+그대로 남는다. 공통 가이드 `12-operations`의 표 두 줄도 지웠다.
+
+C++와 Java는 애초에 방출하지 않아 손댈 곳이 없었다. `.NET` runtime metric test
+**22/22**와 Node build·typecheck가 통과한다.
+
+### 이 회차 최종 회귀
+
+| 언어 | 결과 |
+| --- | --- |
+| C++ | 전체 CTest **49/49** |
+| Java/Kotlin | `check` `BUILD SUCCESSFUL` |
+| Node.js | build, typecheck와 변경 범위 contract **118/118** |
+| .NET | solution 전체 test |
+
+이름을 바꾼 계기와 타입은 contract test가 이름 목록이나 정규식으로 하드코딩하고 있어
+구현만 고치면 반드시 깨진다. 이번 회차에서 함께 고친 자리는 다음과 같다.
+
+- Node `runtime-metrics.test.js`의 계기 개수 단언. 계기 둘을 지웠으므로 44에서 42가 된다
+- Node `contract-surface.test.js`의 `ZLinkHandlerDelegate` 정규식 두 곳
+- `.NET` `RuntimeMetricsTests`의 계기 이름 목록과 journal·recovered 단언

@@ -4267,3 +4267,24 @@ admission을 쓰기 때문일 수 있다. 두 스위트가 연결을 맺는 방�
 가설이 맞다면 PubSub e2e host들이 Object Client로만 구성되고 RouteMesh Channel Server
 membership이 없어서, v11에서 이 조항이 도입·강화되며 연결이 생략되기 시작한 것이 된다.
 그렇다면 수정은 e2e host 구성이지 런타임이 아니다.
+
+### 가설을 뒷받침하는 구조 차이
+
+두 스위트의 host 구성을 대조했다.
+
+```
+SpotActorTransfer : mesh28.Objects().Server()      ← Server role 선언
+PubSub            : (role 선언 없음)
+```
+
+`SpotActorTransfer`는 mesh object role을 `Server`로 선언하고, PubSub의 publisher와
+subscriber는 어떤 role도 선언하지 않는다. 앞 절의 스펙 조항이 요구하는 조건("양쪽이
+Object Client이고 RouteMesh Channel Server membership도 없으면")과 방향이 맞는다. 같은
+머신에서 `SpotActorTransfer`만 연결되는 것도 이것으로 설명된다.
+
+다만 role을 선언하지 않았을 때의 기본값이 무엇인지는 아직 확인하지 않았다. 기본이
+`Client`라면 조항의 조건이 성립하고, 다른 값이라면 성립하지 않는다. 따라서 이 대조는
+가설을 **뒷받침**하지만 확정하지는 않는다.
+
+확정하려면 둘 중 하나다. role 기본값을 spec이나 구현에서 확인하거나, monitoring에서 peer
+상태가 `NotRequired`인지 보는 것이다. 전자가 더 값싸므로 그쪽을 먼저 본다.

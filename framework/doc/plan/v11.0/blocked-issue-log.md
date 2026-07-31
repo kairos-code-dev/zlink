@@ -4611,3 +4611,37 @@ manual peer의 Server membership을 후보로 잡지 못하는 런타임 쪽이 
 Mesh outbound submit 전체에 걸리는 gate를 시나리오 하나의 assertion을 위해 두 곳 동시에
 바꾸는 것은 지금 근거로 할 일이 아니다. PS-A4와 같이 core lane 소유자와 함께 정할 문제로
 남긴다.
+
+### SubmitAdmission: manual peer가 `Connecting`에서 벗어나지 못한다
+
+Runner의 마지막 readiness 호출이 500으로 끝난다.
+
+```
+ZLinkFrameworkException: Route channel 'submit-admission.mesh' is not connected
+to node 'submit-target' for packet 'RouteReadyRequest'.
+  at ZLinkFrameworkRuntime.EnsureKnownRouteMeshPeer
+```
+
+`EnsureKnownRouteMeshPeer`가 manual 경로에서 `RequiredNotConnected`로 분류한 결과다. 즉
+peer가 등록되어 있으나 `Admitted`가 아니다. 양쪽 view를 함께 찍어 확인했다.
+
+```
+{"state":"Connecting","diag":"submit-target|reason=NoReadyPeer"}   <- caller view
+(404, 항목 없음)                                                    <- target view
+```
+
+Caller는 상대를 `Connecting`으로 잡고 있고 target에는 peer 항목 자체가 없다. 연결이
+admission까지 도달하지 못한다.
+
+세 가지를 배제했다.
+
+- Receiver gate가 아니다. Caller를 gate 대신 target endpoint로 직접 연결해도 같다.
+- Router socket HWM이 아니다. 이 스위트는 `SendHighWaterMark`와 `ReceiveHighWaterMark`를
+  모두 `1`로 두는데, 1000으로 올려도 `Connecting` 그대로다. LocationMessaging의
+  `backpressure-consumer`는 같은 증상이 HWM으로 풀렸으므로 두 스위트는 원인이 다르다.
+- 시간 부족이 아니다. Readiness 시도를 30회에서 300회로 늘려도(약 90초) 그대로다.
+
+증상 문자열(`Connecting` + `NoReadyPeer`)은 LocationMessaging과 같지만 원인은 공유하지
+않는다. Manual peer handshake가 target에 peer 항목조차 만들지 못하는 이유가 남은 질문이다.
+
+측정 편집(peer view 출력, HWM 상향, gate 우회, 시도 횟수)은 모두 되돌렸다.

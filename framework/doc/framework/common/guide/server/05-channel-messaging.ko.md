@@ -231,6 +231,16 @@ flowchart LR
 ClientServer channel은 RouteMesh transport를 공유하지 않는다. Channel마다 독립
 runtime을 만들고, 그 runtime이 Ready Server별 연결을 관리한다.
 
+**연결은 client가 시작한다.** server가 client로 연결을 걸지 않으므로, 방화벽과 보안 그룹은
+client → server 한 방향만 열면 된다.
+
+**등록 정보도 서로 나뉜다.** ClientServer의 server 등록 정보에는 MeshName · RouteMesh
+membership · Spot·Actor 위치가 들어가지 않는다. 반대로 MeshNode의 등록 정보를 ClientServer
+탐색에 쓰지도 않는다 — **두 종류를 서로 대신 쓰지 않는다.**
+
+수동 endpoint만 쓰면 location store가 없어도 된다. **자동 탐색을 켰는데 store가 없으면
+listener를 bind하기 전에 시작이 실패한다.**
+
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
@@ -255,6 +265,11 @@ flowchart LR
 
 `auth`와 `report`는 연결 대상과 수명을 서로 공유하지 않는다. 같은 process Z가 양쪽
 channel에 모두 참여해도 각 channel runtime이 Z와의 연결을 따로 관리한다.
+
+**같은 process 안의 Server도 다른 Server와 똑같은 후보다.** 같은 process라는 이유로 먼저
+고르지도, 빼지도 않는다. 선택되더라도 handler를 그 자리에서 부르지 않고 **실제로
+연결을 통해 보낸다** — codec · admission · 상한 · timeout · reply 처리를 건너뛰는 지름길은
+없다. 그래서 local 호출이라고 더 빠를 것으로 계산하지 않는다.
 
 방향도 고정이라 Server는 Client가 시작한 요청에만 응답할 수 있다. Server가 먼저 알림을
 보내야 한다면 ClientServer가 아니라 RouteMesh를 사용한다. TicTacToe에서 로그인 인증
@@ -376,6 +391,14 @@ graph LR
 차이는 **대상 범위**다. Logical Multicast는 그 mesh 안에서 같은 channel·topic을 구독한
 Spot으로 한정되고, Classic fanout은 mesh 구성과 무관하게 연결된 구독자 전체로 전달된다.
 
+**손실 규칙도 다르다.** fanout channel은 **손실을 허용하는 전달**이다. 어느 구독자의
+수신이 늦어 발행자의 송신 queue가 상한에 닿으면 **그 구독자 몫을 버리고 발행은 성공으로
+끝난다.** 나머지 구독자는 영향을 받지 않고, 발행자는 느린 구독자 하나 때문에 멈추지
+않는다.
+
+Logical Multicast는 PUB/SUB 소켓을 쓰지 않고 mesh 연결로 각 node에 전달하므로 이 규칙의
+대상이 아니다. **손실을 허용할 수 없는 전달에는 fanout channel을 쓰지 않는다.**
+
 ## 2. handler 작성
 
 | 종류 | 보내는 호출 | 완료가 뜻하는 것 |
@@ -383,6 +406,15 @@ Spot으로 한정되고, Classic fanout은 mesh 구성과 무관하게 연결된
 | request | channel 이름과 요청을 넘기고 reply를 기다린다 | 상대의 reply가 도착했다 |
 | send | channel 이름과 메시지를 넘긴다 | 보내기가 접수됐다 — 상대 처리 결과는 아니다 |
 | publish (fanout) | channel · topic · 이벤트를 넘긴다 | 전송 준비가 접수됐다 — 구독자 수신은 아니다 |
+
+**request가 실패해도 다른 서버로 자동 재전송하지 않는다.** 대상을 고르고 보낸 뒤에 연결이
+끊기거나 timeout이 나면 그대로 실패로 끝난다. **첫 대상이 이미 처리했는데 reply만 못
+돌아온 것일 수 있기 때문**이다. 다시 보내는 것은 application의 새 호출이고, 중복 실행
+처리도 그쪽 책임이다.
+
+**payload 내용으로 대상 종류가 바뀌지 않는다.** node를 지정해 보낸 message는 그 node의
+handler가 처리한다 — 안에 Spot ID나 Actor ID가 들어 있어도 Framework가 그것을 보고 Spot
+message로 바꿔 주지 않는다. Spot이나 Actor에 보내려면 **처음부터 그 전용 호출**을 쓴다.
 
 언어별 호출 형태와 짝이 되는 handler interface는 다음과 같다.
 
@@ -1666,6 +1698,24 @@ handle이 아니다. **단 하나, 가용성(drain/restore)은 런타임에 바�
 시작하면 store의 descriptor row가 갱신되고 client 연결도 따라 갱신되므로 별도 조작이
 필요 없다. 수동 연결은 설정을 바꾼 뒤 애플리케이션을 다시 시작해야 적용된다.
 
+**store에서 찾았다고 바로 보내지는 않는다.** client는 등록 정보에서 endpoint를 얻은 뒤
+**실제 연결에서 신원과 실행 세대를 다시 확인**하고 나서야 그 대상을 쓴다. 수동 연결도
+같은 확인을 거친다. 그래서 store에 row가 있는데도 호출이 대상 없음으로 끝날 수 있다 —
+그때는 store가 아니라 **연결이 맺어졌는지**를 본다.
+
+**server를 재시작하면 실행 세대가 바뀐다.** endpoint가 같아도 이전 세대의 연결은 새
+대상으로 쓰지 않고, client가 새 세대를 준비한 뒤 이전 연결을 걷어낸다. 세대 값은 **숫자
+크기로 순서를 판단하지 않는다.**
+
+늦게 도착한 reply는 **원래 요청이 아직 기다리고 있으면 그 결과가 된다** — 이전 세대에서
+온 것이어도 그렇다. 반대로 timeout · 취소 · client 재시작으로 그 요청이 사라졌으면 버리고,
+**나중에 시작한 다른 요청의 결과로 쓰지 않는다.**
+
+**store가 멈춰도 이미 맺은 연결과 이미 받은 요청은 유지된다.** 장애 동안에는 대상 목록의
+추가 · 제거 계산만 멈춘다. 다만 server 쪽이 자기 권한을 갱신하지 못한 채 허용 시간을
+넘기면 **새 업무 message를 받지 않는다.** store가 복구되면 최신 등록 정보를 기준으로 목록을
+다시 맞춘다.
+
 ### 운영 drain / restore (런타임)
 
 유지보수·rolling 재시작·scale-in 직전에, 노드를 종료하거나 store의 descriptor row를 제거하지 않고
@@ -2060,6 +2110,33 @@ serializer는 서로 겹치지 않게 여러 개 둘 수 있다.
     ```
 
 호출 노드는 같은 ChannelName을 Client로 등록하고 처리 노드를 연결한다.
+
+**두 경로에서 "자기 자신"의 취급이 다르다.** 여기서 갈리므로 확장 구성을 잡기 전에
+확인한다.
+
+| | route mesh channel | ClientServer channel |
+| --- | --- | --- |
+| 보내는 node 자신이 그 channel의 Server일 때 | **후보가 아니다** | 다른 Server와 같은 후보다 |
+| 그래서 자기 자신만 Server인 node에서 부르면 | **대상 없음으로 실패한다** | 자기 자신이 선택될 수 있다 |
+| 후보가 아직 하나도 없을 때 | 즉시 대상 없음으로 실패한다 | **잠깐 기다린 뒤** 실패한다 |
+
+route mesh 경로가 자기 자신을 빼는 이유는 구조에 있다 — channel 등록은 새 socket을 만들지
+않고 **이미 있는 peer 연결**을 쓰는데, MeshNode는 자기 자신과 peer 연결을 맺지 않는다.
+같은 process에서 처리하고 싶으면 ClientServer 경로를 쓴다.
+
+기다리는 쪽도 이유가 있다. route mesh에서 후보가 없다는 것은 **그 이름을 게시한 peer가
+없다**는 뜻이라 기다려도 생기지 않는다. ClientServer에서는 같은 process에 설정이 이미
+있고 준비만 안 끝났을 수 있다. 그래서 **호출의 timeout과 5초 중 짧은 쪽**만큼 기다린다 —
+startup 직후 호출이 설정이 맞는데도 대상 없음으로 실패하는 것을 막으려는 것이다. 이
+대기는 준비를 앞당기지 않고 진행 중인 준비가 끝나기를 기다릴 뿐이다.
+
+**선택 비율은 weight를 따른다.** weight가 `0`인 대상과 drain 중인 대상을 뺀 뒤, 남은
+weight 비율로 고른다. 두 후보가 `100`과 `300`이면 길게 보아 약 `1:3`이다 — **호출 하나
+하나의 순서를 보장한다는 뜻은 아니다.**
+
+**등록되지 않은 ChannelName은 다른 곳에서 찾아 주지 않는다.** 같은 process에 다른
+MeshNode나 ClientServer client가 있어도 그쪽으로 대신 보내지 않는다. 반대로 같은
+ChannelName을 물리 송신 경로 둘 이상에 등록하는 것도 **host 시작에서 실패**한다.
 
 === "C#/.NET"
 

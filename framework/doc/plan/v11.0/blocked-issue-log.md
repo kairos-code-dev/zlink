@@ -3193,3 +3193,43 @@ session이 응답을 송신하는데 요청자는 두 번 다 `TimedOut`을 받�
 | ST-F3 | bound session cross-move order |
 
 기존 실패 열하나 중 넷이 여기에 묶인다. 우선순위가 가장 높은 단일 결함이다.
+
+## 2026-07-31 ST-F2 — marker 순서가 뒤집혀 있다
+
+마지막 미조사 항목이었다. ST-F2는 클라이언트 단언이 아니라 **러너의 사후 검증**에서
+실패한다.
+
+```
+Marker order failed for actor-inflight-overtake-...:
+  backlog_enqueued=238, location_committed=207
+```
+
+`run_e2e.sh`의 다음 검증이다.
+
+```bash
+require_marker_order actor-inflight-overtake- backlog_enqueued location_committed
+```
+
+`backlog_enqueued`가 `location_committed`보다 먼저 나와야 하는데 실제로는 반대다
+(207 < 238). 즉 **in-flight message가 backlog에 들어가기 전에 location commit이
+먼저 일어난다.**
+
+ST-F2가 검증하려는 것이 "in-flight overtake"이므로, 이 순서는 시나리오의 핵심 계약이다.
+commit이 먼저 일어나면 그 사이에 도착한 message가 추월당할 수 있다.
+
+이것은 bound session 군집과 다른 별개의 원인이다. 순서 자체가 뒤집혔는지, 아니면 marker
+검증이 보는 지점이 실제 순서를 반영하지 못하는지는 다음 확인 대상이다.
+
+### 이로써 실패 14개의 성격이 모두 파악됐다
+
+| 원인 | 시나리오 | 수 |
+|---|---|---|
+| session gateway route 응답 유실 | C2, E1, E2, F3 | 4 |
+| `.Defer()` join의 완료 확인 방식(판단 대기) | C1, C3, I1 | 3 |
+| sentinel과 digest 비교 불일치(판단 대기) | B2 | 1 |
+| 신규 미완성 마이그레이션 | G6, I4, I5 | 3 |
+| marker 순서 역전 | F2 | 1 |
+| 하네스 관측 지점 전환 | D2 | 1 |
+| 환경(inotify) | B5 | 1 |
+
+미조사는 0이다.

@@ -6282,3 +6282,35 @@ Manual/automatic도, outage 유무도 공통점이 아니다. 공통점은 **응
 셋을 하나의 원인으로 보고 함께 조사하는 편이 낫다. 각각 다른 스위트에서 다른 시나리오로
 나타나므로 재현 경로가 셋이고, 그중 가장 짧은 것을 골라 응답 경로에 추적을 넣으면 된다.
 RC-B5가 가장 짧다(요청 하나, 응답 하나).
+
+### RC-B5 추적: 요청 측 raw 수신 경로가 한 번도 동작하지 않는다
+
+가장 짧은 재현인 RC-B5에 추적을 넣었다. 먼저 operation 완료 결과를 찍었다.
+
+```
+requester : managed_operation_completed kind=ChannelRequest result=TimedOut parts=0
+```
+
+응답이 매칭되지 않고 timeout으로 끝난다. 그래서 수신 경로를 봤다. `DrainRawSocket`이
+`Recv`로 가져온 frame마다 찍게 했다.
+
+```
+codec-mismatch-json-only  : raw_recv 2건 (parts=3 cmd=90)
+codec-mismatch-requester  : raw_recv 0건
+```
+
+요청 측은 raw 수신이 **한 번도 일어나지 않는다.** 그런데 같은 host는 admission 단계에서
+상대의 `Admit`을 정상 처리했다. 즉 inbound 경로가 둘이다.
+
+- `DrainRawSocket` : poller가 `PollIn`을 알릴 때 도는 경로
+- `ProcessCompletionControl` : socket의 completion-control callback 경로
+
+Admit은 후자로 들어오고, application 응답은 전자를 통해야 하는데 요청 측에서는 그것이
+한 번도 돌지 않는다. 세 스위트에서 공통으로 관측된 "응답이 도달하지 않는다"가 이 지점과
+연결될 가능성이 크다.
+
+다음은 요청 측 socket이 `PollIn`을 받는지, 아니면 응답이 completion-control 경로로 와서
+거기서 버려지는지를 가르는 것이다. 두 경로 모두에 추적을 넣고 같은 실행에서 비교하면
+갈린다.
+
+측정 편집은 되돌렸다.

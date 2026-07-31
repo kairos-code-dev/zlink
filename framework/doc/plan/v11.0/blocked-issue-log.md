@@ -3573,3 +3573,29 @@ line 37(새 session bind)이 아니라 line 33(relocation의 `success_reply` 대
 따라서 ST-E2의 tombstone 무응답(211건 송신, 0건 응답)은 유효한 관측이지만, 그것이
 유일한 정지 원인인지는 확실하지 않다. relocation이 완료되지 않는 경우가 별도로 있고,
 그쪽은 아직 원인을 모른다. 두 층을 각각 다뤄야 한다.
+
+## 2026-08-01 ST-E2 flake 양상과 tombstone 미도달
+
+먼저 비결정성을 정량화했다. 세 번 연속 실행에서 **3/3이 line 37**에서 실패한다. 앞서 한
+번 관측한 line 33(relocation 미완료)은 드문 경우다. 따라서 공략 대상은 line 37,
+즉 새 session bind의 tombstone 층이다.
+
+그 층을 송신·수신·응답 세 지점으로 나눠 측정했다.
+
+```
+tombstone_request_sent (actor-a)   212건
+tombstone_received     (전체)        0건
+tombstone_response                   0건
+```
+
+**요청이 대상 노드에 도달하지 않는다.** 수신 handler가 한 번도 실행되지 않으므로 응답이
+없는 것도 당연하다. 이는 앞서 고친 결함(수신은 되는데 응답이 유실)과 **다른 성격**이다.
+그쪽은 수신측이 처리를 마치고도 응답이 못 돌아온 경우였고, 이쪽은 애초에 도달하지 않는다.
+
+`TombstoneReplacedSessionOwnerAsync`는 `IZLinkRouteClient.RequestToNode(previous.MeshName,
+sessionNodeRid, request)`로 보낸다. 확인할 것은 셋이다. `previous.MeshName`과
+`sessionNodeRid`가 실제 이전 session owner를 가리키는지, 그 노드가 해당 mesh의 peer로
+연결되어 있는지, route client가 그 조합을 해석하지 못하고 조용히 버리는지다.
+
+`bind_session` 진단에서 이전 owner가 session-a였고 새 bind 대상이 session-b였다는 점을
+감안하면, 첫 번째(주소가 실제 이전 owner를 가리키는가)부터 보는 것이 순서다.

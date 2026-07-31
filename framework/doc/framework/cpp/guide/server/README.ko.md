@@ -240,7 +240,7 @@ options.add_spot_mesh ("bingo.room.discovery")
 | 17 | `13. Interface 카탈로그` 장 | 핸들러/옵션 표면 레퍼런스 |
 | 18 | [14. 샘플 고르기](../../../common/guide/server/14-samples.ko.md) | TicTacToe · Bingo 샘플과 기능 매핑 |
 | 19 | [15. E2E 테스트](../../../common/guide/server/15-e2e-testing.ko.md) | client로 시스템 전체를 검증하는 방법 |
-| 20 | `16. Options` 장 | 옵션 목록, 기본값과 변경 시점 |
+| 20 | [16. Options](16-options.ko.md) | 옵션 목록, 기본값과 변경 시점 |
 | 21 | [17. ZLink를 어디에 쓰나](../../../common/guide/server/17-alternative.ko.md) | 내부 서비스 통신·실시간 상태 패턴, gRPC/mesh 비교 |
 
 파일 번호는 언어에 상관없이 같은 장을 가리키는 식별자다. 읽는 순서는 이 표가 정한다 —

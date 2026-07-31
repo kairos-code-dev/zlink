@@ -76,6 +76,7 @@ nav:
           - cpp/guide/server/02-getting-started.ko.md
           - cpp/guide/server/21-execution-model.ko.md
           - cpp/guide/server/11-monitoring.ko.md
+          - cpp/guide/server/16-options.ko.md
           - cpp/guide/server/18-di-container.ko.md
           - cpp/guide/server/19-configuration.ko.md
           - cpp/guide/server/20-http-hosting.ko.md

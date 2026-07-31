@@ -2832,7 +2832,9 @@ internal sealed partial class ZLinkFrameworkRuntime
         else
         {
             ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"tombstone_request_sent target={sessionNodeRid}");
+                $"tombstone_request_sent target={sessionNodeRid} "
+                + $"mesh={previous.MeshName} local={localNodeRid} "
+                + $"peers=[{string.Join(",", GetMeshNodeRuntime(previous.MeshName).Node.MeshPeers().Select(p => $"{p.RoutingId}:{p.State}"))}]");
             response = await Services.GetRequiredService<IZLinkRouteClient>()
                 .RequestToNode(previous.MeshName, sessionNodeRid, request)
                 .Timeout(Registration.DefaultRequestTimeout)

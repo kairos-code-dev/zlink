@@ -3599,3 +3599,28 @@ sessionNodeRid, request)`로 보낸다. 확인할 것은 셋이다. `previous.Me
 
 `bind_session` 진단에서 이전 owner가 session-a였고 새 bind 대상이 session-b였다는 점을
 감안하면, 첫 번째(주소가 실제 이전 owner를 가리키는가)부터 보는 것이 순서다.
+
+### 주소와 연결은 정상이다 — 남은 것은 route 해석
+
+세 후보 중 둘을 배제했다.
+
+```
+tombstone_request_sent
+  target=session-a-df1ae3e5-...      ← session-a 의 실제 rid 와 일치
+  local=actor-b-...                   ← 송신자는 재배치 후 새 owner
+  mesh=spot-actor-transfer
+  peers=[actor-c:Admitted, actor-d:Admitted, actor-a:Admitted,
+         session-a:Admitted, session-b:Admitted]
+```
+
+주소가 실제 이전 session owner를 정확히 가리키고, **session-a는 송신 노드의 admitted
+peer다.** 그런데도 수신측 handler는 한 번도 실행되지 않는다.
+
+따라서 남은 후보는 셋째, route client 또는 그 아래 계층이 이 packet을 해석하지 못하고
+버리는 경우다. handler 자체는 `ZLinkMeshNodeRouteDispatcher`의 descriptor 목록에
+등록되어 있고 DI에도 `TryAddScoped<ZLinkRemoteSessionOwnerTombstoneRouteHandler>()`로
+등록되어 있다. 다만 그 등록이 **session gateway 프로세스의 mesh node에도 적용되는지**는
+확인하지 않았다. gateway는 actor node와 다른 역할로 기동하므로 route 등록 집합이 다를 수
+있다.
+
+다음은 session gateway가 이 packet의 route를 등록하는지 확인하는 것이다.

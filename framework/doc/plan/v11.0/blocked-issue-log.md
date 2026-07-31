@@ -6437,3 +6437,30 @@ SM-B6는 명시적 leave 절반을 통과하고 이제 비정상 종료 evidence
 SF-B1은 그대로다. store를 멈춘 동안의 요청 probe가 408로 끝난다. fail-static은 캐시된 route로
 계속 동작해야 한다는 뜻이므로, 이쪽은 응답 정합이 아니라 store 의존이 요청 경로에 남아 있다는
 쪽을 봐야 한다. 세 항목을 한 원인으로 묶었던 판단은 RC-B5·SM-B6까지만 맞았다.
+
+### SM-B6 남은 절반: actor의 entry 배치와 spot의 node가 갈린다
+
+응답 정합 수정 뒤 SM-B6는 leave 절반을 통과하고 비정상 종료 절반에서 멈춘다. Evidence만으로
+원인이 드러났다. disconnect callback 이전 단계에서 이미 join이 실패한다.
+
+```
+play-a : actor-factory   | actor=actor-sm-b6-disconnected-...
+play-a : entry-created   | actor=actor-sm-b6-disconnected-...
+play-a : actor-join-failed| actor=actor-sm-b6-disconnected-...|spot=|kind=InvalidOperation
+play-b : create-spot     | spot=spot-sm-b6-...|state=Existing
+play-b : spot-actor-admitted | actor=actor-sm-b6-disconnected-...
+```
+
+Spot은 play-b에 있다. leave 절반은 entry actor도 play-b에 생겨서 같은 node 안의 join이었고
+`actor-join-completed`까지 갔다. disconnect 절반은 entry actor가 play-a에 생겼고, play-b의
+spot에 join하려다 실패했다. `spot=`이 비어 있는 것은 entry spot 경로(`targetSpotId` 없음)라는
+뜻이다.
+
+즉 SM-B6가 시험하려는 disconnect callback은 아직 시험되지도 않았다. 그 앞의 cross-node join이
+막혀 있다. 시나리오가 actor를 spot의 node에 고정하지 않는 것이 문제인지, cross-node join이
+동작해야 하는데 안 하는 것인지는 다음 실행에서 가른다. `ZLinkDeferredActorJoin`에 이미
+`deferred_join_failed kind=... {exception}` 추적이 심겨 있으므로
+`ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY=1`로 돌리면 원래 예외가 나온다.
+
+SM-B1에서 겪은 placement 가정 함정과 같은 계열이며, 이번에는 spot이 아니라 actor 쪽 배치가
+어긋난 경우다.

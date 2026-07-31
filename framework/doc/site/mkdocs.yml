@@ -32,6 +32,11 @@ theme:
     - navigation.sections
     - navigation.top
     - search.highlight
+    # 오른쪽 목차 칸(12.1rem)을 없애고 목차를 왼쪽 nav 안으로 넣는다.
+    # `.md-grid`의 폭 제한은 사이드바를 포함한 레이아웃 전체에 걸리므로, 이
+    # 칸이 사라진 만큼(약 194px) 본문·코드·다이어그램이 넓어진다. 목차 자체는
+    # 없어지지 않으므로 긴 장에서 절을 건너뛰는 길은 남는다.
+    - toc.integrate
 
 extra_css:
   - assets/korean.css

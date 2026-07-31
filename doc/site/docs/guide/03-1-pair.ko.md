@@ -121,7 +121,7 @@ Multipart frame:  [frame1][frame2]...[frameN]
 ```
 
 > `source_rid` 등 공통 수신 인터페이스는
-> [소켓 패턴 개요](03-0-socket-patterns.ko.md#7-공통-수신-인터페이스)를 참고.
+> [소켓 패턴 개요](03-0-socket-patterns.ko.md#8-공통-수신-인터페이스)를 참고.
 
 멀티파트 전송:
 

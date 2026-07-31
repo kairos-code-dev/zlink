@@ -378,7 +378,7 @@ retrying; treating `NOT_ADMITTED` as a hard failure would discard
 messages that are expected to succeed once maintenance ends.
 
 > For the full contract, see
-> [Weight-aware outbound selection](../spec/core/socket/dealer.md#weight-aware-outbound-selection)
+> [Weight-aware outbound selection](../spec/core/socket/06-dealer.md#2-dealer-options)
 > in the DEALER spec.
 
 ### Set routing_id Before connect

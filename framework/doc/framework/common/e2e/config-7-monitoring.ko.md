@@ -133,7 +133,7 @@ status field와 operation result를 대신하지 않는다.
   Public status에 Store의 last success·last failure, owner token이나 raw provider record를 추가하지 않는다.
   Store 장애만으로 이미 admitted된 peer와 local queue의 메시지를 즉시 중단하지 않으며, 복구 뒤 Framework가
   descriptor를 현재 owner fence로 재검증한다.
-- 세부 동작: [Location Runtime §8](../spec/21-location-runtime.ko.md#8-store-outage와-cancellation)의
+- 세부 동작: [Location Runtime §8](../spec/21-location-runtime.ko.md#8-store-응답을-받지-못했을-때)의
   health projection.
 
 #### MON-A6 public placement 집계와 capacity 경계
@@ -168,7 +168,7 @@ log를 만들지 않는가.
   `zlink.runtime.mesh_node.multicast_backpressured`, `zlink.runtime.mesh_node.multicast_dropped`와
   `zlink.mesh_node.multicast.*` metric은 발생하지 않는다. 앞에서 수락된 target의 payload는 취소되지 않고
   전체 publish를 rollback하거나 자동 재시도하지 않는다.
-- 세부 동작: [Spot Messaging §4.1](../spec/12-spot-messaging.ko.md#41-publish-시작과-완료)과
+- 세부 동작: [Spot Messaging §4](../spec/12-spot-messaging.ko.md#4-channel-범위-logical-multicast)과
   [Runtime Monitoring §5](../spec/24-runtime-monitoring.ko.md#5-structured-log)의
   publish 전용 monitoring 제거 계약.
 

@@ -1,7 +1,7 @@
 # .NET G4 DDD/POSD 리팩터링 ledger
 
 이 문서는 `.NET` G4 반복 리뷰에서 확정한 finding, 비교 대안, 선택과 검증 상태를 기록한다.
-실행 절차와 gate는 [공개 계약 gap 구현 계획](../../framework-public-contract-gap-implementation.ko.md)을 따른다.
+실행 절차와 gate는 [공개 계약 gap 구현 계획](../../v11.0/route-mesh-11.0.0-execution-ledger.ko.md)을 따른다.
 
 ## Finding 진행표
 

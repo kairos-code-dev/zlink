@@ -1,7 +1,7 @@
 # Framework public contract gap 구현 로그
 
 이 디렉터리는
-[`framework-public-contract-gap-implementation.ko.md`](../../framework-public-contract-gap-implementation.ko.md)를
+[`route-mesh-11.0.0-execution-ledger.ko.md`](../../v11.0/route-mesh-11.0.0-execution-ledger.ko.md)를
 실행하면서 생성되는 시간순 기록을 보관한다. 계획 문서는 작업 절차, 완료 조건과 현재 진행 상태만
 유지하고, 명령 실행 결과와 반복 리뷰 이력은 이 디렉터리의 언어별 로그에 기록한다.
 

@@ -29,9 +29,15 @@ from pathlib import Path
 SITE_DIR = Path(__file__).resolve().parents[1]          # doc/site
 REPO_ROOT = SITE_DIR.parents[1]                         # repo root
 
+# 문서 트리별로 이름을 나눈다. `repo-doc`은 저장소 공통 문서(perf · principal ·
+# plan · site 미러)이고 `core-doc`은 core 컴포넌트의 정본이다. 둘을 한 이름으로
+# 묶으면 어느 쪽을 검사했는지 보고에서 구분되지 않는다.
 DOC_TREES = {
-    "core": REPO_ROOT / "doc",
+    "repo-doc": REPO_ROOT / "doc",
+    "core-doc": REPO_ROOT / "core" / "doc",
+    "bindings-doc": REPO_ROOT / "bindings" / "doc",
     "framework": REPO_ROOT / "framework" / "doc" / "framework",
+    "framework-plan": REPO_ROOT / "framework" / "doc" / "plan",
 }
 
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^()\s]+)\)")
@@ -57,6 +63,54 @@ def links_in(text: str):
             yield ln, target
 
 
+HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
+EXPLICIT_ID_RE = re.compile(r"\{#([^}\s]+)[^}]*\}\s*$")
+HTML_ID_RE = re.compile(r"<a\s+(?:id|name)=[\"']([^\"']+)[\"']")
+
+_anchor_cache: dict[Path, set[str]] = {}
+
+
+def anchors_of(path: Path) -> set[str]:
+    """문서가 제공하는 anchor 집합.
+
+    사이트 두 곳 모두 `toc`의 slugify를 `case: lower, unicode: true`로 설정한다.
+    한글 제목이 anchor로 살아남게 하는 설정이고, 같은 규칙으로 계산해야 링크가
+    실제로 걸리는지 알 수 있다. 중복 제목은 markdown `toc`가 `_1` · `_2`를 붙인다.
+    """
+    if path in _anchor_cache:
+        return _anchor_cache[path]
+
+    from pymdownx.slugs import slugify
+
+    slug = slugify(case="lower", unicode=True)
+    found: set[str] = set()
+    seen: dict[str, int] = {}
+    in_fence = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if FENCE_RE.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        found.update(HTML_ID_RE.findall(line))
+        m = HEADING_RE.match(line)
+        if not m:
+            continue
+        text = m.group(2)
+        explicit = EXPLICIT_ID_RE.search(text)
+        if explicit:
+            found.add(explicit.group(1))
+            continue
+        base = slug(INLINE_CODE_RE.sub(lambda c: c.group(0).strip("`"), text), "-")
+        if not base:
+            continue
+        n = seen.get(base, 0)
+        seen[base] = n + 1
+        found.add(base if n == 0 else f"{base}_{n}")
+    _anchor_cache[path] = found
+    return found
+
+
 def check_tree(name: str, root: Path, errors: list[str]) -> tuple[int, int]:
     """문서 트리 하나를 검사하고 (문서 수, 링크 수)를 돌려준다."""
     md_files = sorted(root.rglob("*.md"))
@@ -69,12 +123,14 @@ def check_tree(name: str, root: Path, errors: list[str]) -> tuple[int, int]:
         rel_md = md.relative_to(REPO_ROOT)
         for ln, target in links_in(md.read_text(encoding="utf-8")):
             total += 1
-            path = target.split("#", 1)[0]
-            if not path:                      # 같은 문서 안 앵커.
-                continue
-            resolved = (md.parent / path).resolve()
+            path, _, anchor = target.partition("#")
+            resolved = md if not path else (md.parent / path).resolve()
             if not resolved.exists():
                 errors.append(f"[{name}] {rel_md}:{ln}: 링크 대상 없음: {target}")
+                continue
+            if anchor and resolved.suffix == ".md" \
+                    and anchor not in anchors_of(resolved):
+                errors.append(f"[{name}] {rel_md}:{ln}: anchor 없음: {target}")
     return len(md_files), total
 
 

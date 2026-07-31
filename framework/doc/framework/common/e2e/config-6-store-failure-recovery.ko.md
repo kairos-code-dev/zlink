@@ -54,7 +54,7 @@ descriptor·owner lease record를 직접 읽거나 의미를 해석하지 않는
 시간 관련 option(owner lease renew interval, owner lease TTL, polling interval, store failure grace)은
 시나리오가 유한 시간 안에 기다릴 수 있도록 짧게 설정한다(예: lease renew 1초, lease TTL 3초,
 polling 0.5초). 값 자체는 언어별 option 표면을 따르되, 의미는
-[Location runtime §4](../spec/21-location-runtime.ko.md#4-owner-lease와-local-admission-deadline)의
+[Location runtime §4](../spec/21-location-runtime.ko.md#4-store-연결이-끊기면-이전-owner의-새-작업을-막는다)의
 option 정의와 같아야 한다. 이 값들은 `run_e2e.sh` 상단의 명시적 config 상수로 두고 시나리오 대기 시간의 근거로
 사용한다.
 

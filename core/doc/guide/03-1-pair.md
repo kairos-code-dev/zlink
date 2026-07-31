@@ -121,7 +121,7 @@ Multipart frame:  [frame1][frame2]...[frameN]
 ```
 
 > For `source_rid` and the common receive interface, see
-> [Socket Patterns Overview](03-0-socket-patterns.md#8-common-receive-interface).
+> [Socket Patterns Overview](03-0-socket-patterns.md#common-receive-model).
 
 Multipart send:
 

@@ -81,7 +81,7 @@ internal static class ZLinkServiceTransportLiveness
 
 이 timing은 public option으로 투영하지 않는다. RouteMesh와 ClientServer connection은 service protocol의
 `livenessProbe`·`livenessAck`을 사용한다. Fanout subscriber는 publisher마다 전용 SUB socket과 receive loop를
-두고, publisher가 idle이면 [exact two-frame beacon](../../common/internals/service-wire-protocol.ko.md#411-classic-fanout-liveness-frame)을
+두고, publisher가 idle이면 [exact two-frame beacon](../../common/internals/service-wire-protocol.ko.md#5-service-liveness)을
 받는다. 첫 valid application record나 beacon을 받기 전에는 해당 publisher를 ready로 만들지 않는다. Runtime은
 `bindings/dotnet`의 public raw socket API만 호출한다. Core service C API, service binding object,
 `NativeMethods`, non-public reflection과 native symbol 직접 호출은 사용하지 않는다. Owner lease renew interval은

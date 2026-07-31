@@ -231,13 +231,32 @@ v11 작업에서 Service contracts가 binding include에서 빠지면서 남은 
 | 증상 | 정본(`core/doc/`)에서 지운 문서의 사본이 사이트 미러에 남아 nav에도 걸려 있다 |
 | 확인 | `git show 05a7061bad6 --name-status -- core/doc/guide/07-3-spot.ko.md` → `D`. v11이 raw core와 framework를 가르면서 서비스 계층 장을 core에서 뺐다 |
 
-`doc/README.ko.md`(core 문서 색인)의 네 행이 그 삭제된 경로를 가리켜 링크가 깨져 있다.
+삭제된 그 경로를 가리키는 링크가 저장소에 **16개** 남아 있다.
+
+| 어디 | 몇 개 |
+| --- | --- |
+| `doc/README.ko.md` · `doc/README.md` (core 문서 색인) | 7 |
+| `bindings/doc/guide/{dotnet,java,node,python,rust}/index.ko.md` | 9 |
+
 고치려면 **서비스 계층 서술을 v11 이후 어디로 보낼지부터 정해야 한다** — framework 정본으로
 옮길지, core에 축소판으로 되살릴지, 사이트에서 내릴지. 링크만 다른 데로 돌리면 삭제된 층을
 계속 내보내게 된다.
 
-`doc/site/scripts/check_doc_links.py core`가 이 네 행을 계속 보고한다. 나머지 core 링크
-결함은 이번에 정리했다.
+`doc/site/scripts/check_doc_links.py`가 이 16개를 계속 보고한다. 나머지 링크 결함
+(`repo-doc` · `core-doc` · `bindings-doc` · `framework` · `framework-plan` 다섯 트리)은
+이번에 정리했다.
+
+### B3 · core 가이드가 인용하는 `:doc` 마커가 바인딩 샘플에 없다
+
+| | |
+| --- | --- |
+| 대상 | `doc/site/docs/guide/06-monitoring.{ko.,}md`가 인용하는 9개 언어 `monitor_recv_sample` |
+| 증상 | `--8<-- "…:doc"`의 `doc` 마커가 어느 샘플에도 없어 코드 블록 18개가 **빈 채로** 렌더된다 |
+| 확인 | `python3 doc/site/scripts/check_doc_tabs.py core` |
+
+pymdownx snippets는 없는 section을 조용히 빈 문자열로 만든다. mkdocs도 경고하지 않아
+그동안 드러나지 않았다. 고치려면 9개 샘플에 `--8<-- [start:doc]` · `[end:doc]`를
+심어야 한다 — 바인딩 샘플 쪽 작업이라 이 lane에서 하지 않았다.
 
 ## 4. 조사 단서 (미확인)
 
@@ -336,5 +355,47 @@ spec이 요구한 대로 고쳤다. 차이 두 가지를 모두 닫았다.
 application dispatcher의 local pending capacity는 byte가 아니라 message 개수다. byte
 HWM이 int 범위를 넘을 때 wrap하지 않도록 두 곳 모두 `Integer.MAX_VALUE`로 saturate하게
 바꿨다. test double의 `setRouterHighWaterMark`도 함께 넓혔다.
+
+JVM `check`가 통과한다.
+
+### G1 · C++ `enable_actor_dispatch()` — 처리 완료
+
+spec이 선언한 `stream_node_options_builder_t &enable_actor_dispatch();`를 구현했다.
+`.NET`의 `EnableActorDispatch()`와 Java·Node의 `enableActorDispatch()`를 그대로 옮겼고
+중복 호출을 거부하는 동작도 같다. options state에
+`stream_nodes_with_actor_dispatch` 집합을 추가해 STREAM node 이름 단위로 기록한다.
+
+C++ 전체 CTest **49/49**가 통과한다.
+
+### G2 · Java `ZLinkActorManager.findSpot(String)` — 처리 완료
+
+spec이 선언한 `CompletionStage<Optional<SpotRef>> findSpot(String spotId);`를 구현했다.
+`.NET`의 `FindSpotAsync`와 같은 자리를 읽는다. Actor authority row가 이미 현재 Spot id를
+들고 있으므로 `find`가 쓰는 그 row를 그대로 읽고, 별도 조회 경로를 만들지 않는다.
+Spot 소속이 없거나 Actor를 찾지 못하면 빈 결과다.
+
+`ZLinkActorLocationCoordinator.findStoredSpotRef`를 추가하고 `ZLinkActorRuntime`이
+노출한다. Spring bean과 Kotlin test double의 구현도 함께 채웠다.
+
+JVM `check`가 통과한다.
+
+### G3 · Java inbound dispatch 옵션 — 처리 완료
+
+spec이 선언한 표면을 그대로 구현했다. `.NET`의
+`ZLinkInboundDispatchOptionsModel`을 기준으로 옮겼다.
+
+- `ZLinkApplicationHwmProfile` enum 넷(`COMPACT`, `LOW_LATENCY`, `BALANCED`, `THROUGHPUT`)
+- `ZLinkInboundDispatchOptions` interface — `applicationHwmBytes`,
+  `applicationHwmProfile`, `processMemoryLimitBytes`의 getter와 setter
+- `ZLinkFrameworkOptions.configureInboundDispatch()` 진입점
+
+검증 규칙도 `.NET`과 같다. profile 기본값은 `BALANCED`이고, `processMemoryLimitBytes`는
+양수여야 하며 `0`을 넣으면 configuration error다. `applicationHwmBytes`는 생략하면 Auto,
+`0`이면 제한 없음, 양수면 그 값을 쓴다. 값을 담는 자리는
+`ZLinkInboundDispatchRegistration`이며 `ZLinkFrameworkRegistration`이 소유한다.
+
+여기까지는 표면과 값 보관이다. runtime이 이 값을 실제 Application receive 중단에
+연결하는 것은 [4. Backpressure §6](../../framework/common/guide/server/04-backpressure.ko.md#6-framework에-아직-적용되지-않은-부분)이
+밝힌 범위로 남는다.
 
 JVM `check`가 통과한다.

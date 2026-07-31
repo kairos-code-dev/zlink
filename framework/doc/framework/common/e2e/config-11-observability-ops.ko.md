@@ -96,9 +96,9 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 - 검증: trigger connector가 별도 설정 없이 `origin=application` flow를 생성한다. 세 노드 로그를 모아
   `grep flow=<id>` 하면 connector outbound→Session STREAM inbound(보존)→actor relay→room-spot 내부
   dispatch가 시간순으로 이어진다. corr이 없는 Spot 경계에서도 `flow=`가 유지된다
-  ([Flow Correlation §2](../spec/27-flow-correlation.ko.md#2-두-식별자)).
+  ([Flow Correlation §2](../spec/27-flow-correlation.ko.md#2-두-식별자의-역할)).
 - 세부 동작: Spot·Actor 경계 관통
-  ([Flow Correlation §5](../spec/27-flow-correlation.ko.md#5-propagation)).
+  ([Flow Correlation §5](../spec/27-flow-correlation.ko.md#5-전파-규칙)).
 
 #### OBS-A2 error 라인에도 flow
 
@@ -111,7 +111,7 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
   주입하지 않는다. Typed client는 항상 정상 envelope를 만들기 때문에 decode failure는 raw-frame contract
   test가 별도로 검증한다.
 - 검증: dispatch error 라인에 `flow=`가 있고, `grep flow=<id>`로 성공 라인과 실패 라인이 함께
-  확인된다([Flow Correlation §7](../spec/27-flow-correlation.ko.md#7-reply와-failure)).
+  확인된다([Flow Correlation §7](../spec/27-flow-correlation.ko.md#7-reply와-실패)).
 - 세부 동작: error reporter flow 기록.
 
 #### OBS-A3 create-if-absent · off 노드의 flow 생략
@@ -125,7 +125,7 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 - 검증: (a) tracing이 켜진 하류 노드는 전달받은 flow를 재생성하지 않는다. (b) `off` node는 inbound
   flow field를 context로 만들거나 outbound message에 복사하지 않는다. 따라서 그 다음 tracing-enabled
   node는 flow field가 없는 inbound 작업을 새 flow로 시작하며, `off` node 앞의 flow ID와 같으면 실패다
-  ([Flow Correlation §4](../spec/27-flow-correlation.ko.md#4-flow-생성)).
+  ([Flow Correlation §4](../spec/27-flow-correlation.ko.md#4-flow를-만드는-시점)).
 - 세부 동작: create-if-absent와 `off` 구간의 flow 생성·전파 생략.
 
 #### OBS-A4 publish fan-out 트리 · timer 발원
@@ -136,9 +136,9 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 
 - 절차: (a) `OrderWorkflow`가 projection 갱신을 fanout publish하고 다수 구독자가 받는다. (b) room timer tick이 발생한다.
 - 검증: (a) 구독자 N개 라인이 같은 flow ID를 갖는다
-  ([Flow Correlation §5](../spec/27-flow-correlation.ko.md#5-propagation)). (b) timer 발원
+  ([Flow Correlation §5](../spec/27-flow-correlation.ko.md#5-전파-규칙)). (b) timer 발원
   callback은 `origin=timer`로 새 flow를 시작한다
-  ([Flow Correlation §4](../spec/27-flow-correlation.ko.md#4-flow-생성)).
+  ([Flow Correlation §4](../spec/27-flow-correlation.ko.md#4-flow를-만드는-시점)).
 - 세부 동작: fan-out 트리 + timer origin.
 
 #### OBS-A5 실행 중 tracing level 변경
@@ -172,7 +172,7 @@ flow 정보와 log message가 생성되지 않는가.
 - 검증: 서버 reader의 `zlink.stream.connections.active`가 접속/종료에 정확히 증감한다. 재접속을
   수행한 trigger connector의 reader에서 `zlink.stream.reconnects`가 자동 재접속 시도마다 증가한다.
   서버는 새 연결과 재접속을 추측하지 않는다. `close_reason` 라벨은 닫힌 enum에 속한다.
-- 세부 동작: 서버 연결 계기는 [Runtime metrics §4](../spec/25-runtime-metrics.ko.md#4-object와-stream-계기),
+- 세부 동작: 서버 연결 계기는 [Runtime metrics §4](../spec/25-runtime-metrics.ko.md#4-object와-stream),
   connector 재접속 계기는 [Stream Connector §6.2](../spec/stream-connector/32-stream-connector.ko.md#62-connector-reconnect-계기)를 따른다.
 
 #### OBS-B2 Actor 이동 계기
@@ -195,7 +195,7 @@ flow 정보와 log message가 생성되지 않는가.
   `zlink.relocation.completed`의 실패 결과로 바꾸면 안 된다.
   이동 전 actor request가 pending이면 `zlink.mesh_node.requests.inflight`의 `surface=actor` 값에
   반영되고, 각 request가 terminal completion에 도달하면 기준값으로 돌아온다
-  ([Runtime Metrics §3.1](../spec/25-runtime-metrics.ko.md#31-peer와-channel),
+  ([Runtime Metrics §3.1](../spec/25-runtime-metrics.ko.md#32-peer와-channel),
   [§4](../spec/25-runtime-metrics.ko.md#4-object와-stream)).
 - 세부 동작: Actor relocation 계기.
 
@@ -258,13 +258,13 @@ flow 정보와 log message가 생성되지 않는가.
 
 - 절차: `play-a`에 `PlannedMaintenance` mode의 host `Relocate`를 요청하고, bound actor가
   `play-b`로 relocation되게 한다.
-- 검증: relocation이 [Spot Actor §4](../spec/15-spot-actor.ko.md#4-join-의미와-commit-순서) 완료 조건까지
+- 검증: relocation이 [Spot Actor §4](../spec/15-spot-actor.ko.md#4-actor-join과-commit-순서) 완료 조건까지
   진행되고 committed Actor authority가 `play-b`를 target owner로 가리킨다. Bound session push가 이동 후
   `play-b` Actor로 이어진다.
   `zlink.relocation.completed{object_kind=actor}`가 target activation당 한 번 계수된다. 이동 전 pending actor request는
   `zlink.mesh_node.requests.inflight{surface=actor}`에 반영되고, 이동 중 각 request는 원래 reply
   또는 timeout 결과를 유지한 뒤 계기 값에서 제거된다
-  ([Runtime Metrics §3.1](../spec/25-runtime-metrics.ko.md#31-peer와-channel),
+  ([Runtime Metrics §3.1](../spec/25-runtime-metrics.ko.md#32-peer와-channel),
   [Host maintenance §7](../spec/28-graceful-drain-handoff.ko.md#7-relocation-unit과-실행량-제한)).
 - 세부 동작: 핸드오프 + FIFO 연속성.
 

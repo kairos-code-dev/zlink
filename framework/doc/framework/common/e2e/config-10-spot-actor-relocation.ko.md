@@ -490,7 +490,7 @@ route를 갱신하는가([Spot Actor §8](../spec/15-spot-actor.ko.md#8-message-
 **검증 질문:** seal 전에 수락한 lease-backed request가 replay된 뒤 original reply route로 correlate되고,
 timeout과 seal 뒤 `Unavailable`이 서로 다른 terminal 결과로 유지되는가
 ([Actor model §8](../spec/14-actor-model.ko.md#8-실패와-관측),
-[Flow Correlation §7](../spec/27-flow-correlation.ko.md#7-reply와-failure)).
+[Flow Correlation §7](../spec/27-flow-correlation.ko.md#7-reply와-실패)).
 
 - 절차: 세 부분으로 실행한다. (a) 충분히 긴 timeout의 lease-backed request를 source가 수락한 직후 handler
   실행 전에 remote relocation을 시작한다. (b) 같은 accepted-before-seal 흐름에서 caller timeout을 Ready보다

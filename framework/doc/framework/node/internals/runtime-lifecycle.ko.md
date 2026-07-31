@@ -70,7 +70,7 @@ Application callback이 Promise를 기다리는 동안 infrastructure mailbox는
 RouteMesh와 ClientServer runtime은 service protocol의 `livenessProbe`와 `livenessAck`을 만들고 검증한다. 두
 command는 connection-local non-zero probe ID를 사용하고 metadata와 payload를 포함하지 않는다. Fanout
 subscriber runtime은 publisher마다 전용 SUB socket과 receive loop를 두고, 첫 valid application record 또는
-[exact two-frame beacon](../../common/internals/service-wire-protocol.ko.md#411-classic-fanout-liveness-frame)을 받은
+[exact two-frame beacon](../../common/internals/service-wire-protocol.ko.md#5-service-liveness)을 받은
 뒤에만 해당 publisher를 ready로 만든다. Probe·ACK과 beacon을 application message로 decode하거나 application
 queue와 handler에 전달하지 않는다. Core raw runtime은 disconnect·error monitor와 reconnect primitive만 제공한다.
 

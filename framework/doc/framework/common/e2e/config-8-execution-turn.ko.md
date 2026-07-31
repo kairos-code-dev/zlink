@@ -321,7 +321,7 @@ terminator가 정하는가.
 - 검증: handler terminal 전에는 target admission·Location CAS·source/target lifecycle evidence가 없다.
   이후 evidence 순서는 `target OnActorJoin → location CAS commit → target OnJoinedActor →
   source OnLeaveActor → Actor OnJoinCompleted(Accepted)`다
-  ([23 §4](../spec/15-spot-actor.ko.md#4-join-의미와-commit-순서)).
+  ([23 §4](../spec/15-spot-actor.ko.md#4-actor-join과-commit-순서)).
   Entry Spot도 이 join의 source이므로 source leave를 생략하지 않는다. 다른 actor의 join·packet이 그 사이
   막히지 않는다. 같은 Entry Actor에 뒤이어 제출한 packet은 join job의 terminal 완료 전에는 시작하지
   않으며, 두 job의 handler 실행 구간은 겹치지 않는다.

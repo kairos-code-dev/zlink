@@ -57,7 +57,7 @@ Kotlin handler는 Java runtime의 registration과 실행 queue를 공유한다. 
 continuation과 coroutine context를 연결하는 wrapper만 Kotlin 전용이며, 별도 service runtime이나 lifecycle을
 만들지 않는다. 공유 runtime은 RouteMesh·ClientServer에서 idle probe 5초와 inbound deadline 15초의
 probe·ACK profile을 적용한다. Fanout은 publisher마다 전용 SUB socket과 receive loop를 사용하고, 첫 valid
-application record 또는 [exact two-frame beacon](../../common/internals/service-wire-protocol.ko.md#411-classic-fanout-liveness-frame)을
+application record 또는 [exact two-frame beacon](../../common/internals/service-wire-protocol.ko.md#5-service-liveness)을
 받은 뒤에만 해당 publisher를 ready로 만든다.
 
 ## 5. 회귀 테스트

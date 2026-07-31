@@ -1,7 +1,7 @@
 # .NET public contract gap 구현 로그
 
 이 문서는 `.NET` 단계의 명령 실행 결과와 Codex 리뷰 이력을 시간순으로 보존한다. 현재 진행 상태와
-완료 조건은 [구현 계획](../../framework-public-contract-gap-implementation.ko.md)에서 확인한다.
+완료 조건은 [구현 계획](../../v11.0/route-mesh-11.0.0-execution-ledger.ko.md)에서 확인한다.
 
 ## 명령 실행 기록
 

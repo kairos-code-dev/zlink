@@ -103,7 +103,7 @@ admission은 signal 기반으로 대기하며 busy polling이나 timeout 증가�
 Service runtime의 기본 liveness timing은 idle 5초, inbound deadline 15초다. RouteMesh와 ClientServer runtime은
 Framework service protocol의 `livenessProbe`와 `livenessAck`을 처리한다. Fanout subscriber runtime은
 publisher마다 전용 SUB socket과 receive loop를 두고, 첫 valid application record 또는
-[exact two-frame beacon](../../common/internals/service-wire-protocol.ko.md#411-classic-fanout-liveness-frame)을 받은
+[exact two-frame beacon](../../common/internals/service-wire-protocol.ko.md#5-service-liveness)을 받은
 뒤에만 해당 publisher를 ready로 만든다. 이 정책을 Framework public API로 노출하지 않는다. Core raw socket은
 disconnect·error monitor와 reconnect primitive만 제공한다. Orderly disconnect와 transport monitor failure는
 즉시 ready index에서 제거하고, 마지막 valid receive부터 15초가 지난 connection만 not-ready로 바꾸고 닫는다.

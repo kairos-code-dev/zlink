@@ -6368,3 +6368,34 @@ RC-B5는 변하지 않는다. 이 pair에서는 json-only가 **inbound** 연결�
 남은 것은 응답 frame이 peer의 socket을 실제로 떠나는지다. `SendTerminalReply`는
 `TrySend`의 결과만 `Ok`/`Backpressured`로 옮기고 그 아래는 보지 않는다. 다음은 `TrySend`
 반환값과 그 시점의 peer 상태를 함께 찍는 것이다.
+
+### RC-B5 최종 범위: native reply가 올바른 대상으로 제출되고 도달하지 않는다
+
+응답 송신 경로를 끝까지 찾았다. 관리형 `SendTerminalReply`가 아니라 native reply 경로다.
+
+```
+json-only : MEASUREMENT native_reply target=codec-mismatch-requester seq=1 corr=1 result=Ok
+json-only : MEASUREMENT native_reply target=codec-mismatch-requester seq=2 corr=2 result=Ok
+```
+
+`socket.Reply(targetRid, requestSeq).Messages(wire).Submit()`이 예외 없이 끝난다. 대상
+RID도 요청자의 실제 identity와 일치하고 request sequence도 1·2로 맞다.
+
+요청 측은 같은 실행에서 raw 수신 0건이고 operation은 `TimedOut parts=0`으로 끝난다.
+
+정리하면 framework 쪽에서 볼 수 있는 것은 모두 정상이다.
+
+| 지점 | 결과 |
+|---|---|
+| 요청 도착 | peer가 raw로 2건 수신 |
+| Handler 실행 | flow log `phase=replied` |
+| 응답 제출 | native reply, 올바른 target·seq, 예외 없음 |
+| 요청 측 수신 | raw 0건, 인프라 frame만 도착 |
+| Operation 결과 | `TimedOut parts=0` |
+
+따라서 손실은 binding의 reply 제출과 요청 측 socket 사이, 즉 core lane이다. Core에서 볼
+것은 `zlink_*_reply` 계열이 request sequence를 어떤 경로로 되돌리는지와, 그 경로가 이
+연결에서 유효한지다.
+
+SM-B6와 SF-B1도 같은 증상이므로 같은 지점일 가능성이 크다. 셋을 한 항목으로 묶는다.
+측정 편집은 되돌렸다.

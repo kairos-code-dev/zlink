@@ -4011,3 +4011,35 @@ enqueue 쪽을 의도했다면 순서 기대가 뒤집혀야 한다.
 사후 검사만 실패한다. 그 검사가 비교하는 두 marker는 실제로 commit을 사이에 두고
 나뉘어 나온다. 이것이 런타임 결함인지 검사의 기대가 잘못된 것인지는 388행이 속한
 단계를 확인해야 갈린다.
+
+### 두 marker의 단계가 다르다 — 러너의 기대가 성립하지 않는다
+
+388행이 속한 메서드를 확정했다.
+
+```
+227행 : TryCapture(...)   → handoff_backlog   (320행)
+332행 : Import(...)       → backlog_enqueued  (388행)
+```
+
+`TryCapture`는 source에서 handoff 중 도착한 프레임을 붙잡는 단계이고, `Import`는 target이
+그 프레임들을 받아들이는 단계다. 이름 그대로 **capture가 먼저이고 import가 나중**이며,
+그 사이에 authority commit이 있다.
+
+시나리오가 `handoff_backlog`(capture)을 기다린 뒤 게이트를 푸는 것도 이 순서와 맞는다.
+capture는 commit 전에 끝나야 하고, import는 commit 뒤 target에서 일어난다.
+
+따라서 러너의 검사는 성립하지 않는다.
+
+```bash
+require_marker_order actor-inflight-overtake- backlog_enqueued location_committed
+```
+
+`backlog_enqueued`는 `Import` 단계의 marker이므로 `location_committed`보다 **뒤에 오는
+것이 정상**이다. 이 검사는 capture 단계의 marker(`handoff_backlog`)를 의도했을
+가능성이 크다. ST-F1에 대해서는 두 marker의 존재만 요구하고 순서는 보지 않는데
+(`require_runtime_marker`), ST-F2에만 순서를 요구하면서 marker를 잘못 지목한 것으로 보인다.
+
+정리하면 ST-F2는 런타임 결함이 아니다. 시나리오 단언은 모두 통과하고, 러너의 사후 검사가
+capture 대신 import marker를 commit과 비교한다. 수정은 러너의 검사에서 marker 이름을
+`handoff_backlog`으로 바꾸는 것이다. 다만 러너 검사의 원래 의도를 확인한 뒤 고치는 것이
+안전하다.

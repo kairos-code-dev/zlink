@@ -1,7 +1,7 @@
 # 8. Session과 Actor binding
 
-> 정확한 시그니처는 [언어별 STREAM session 공개 계약](../../../common/spec/server/languages/README.ko.md)와
-> [언어별 bound session 공개 계약](../../../common/spec/server/languages/README.ko.md)가 정의한다.
+> 정확한 시그니처는 [언어별 STREAM session 공개 계약](../../../common/spec/server/languages/README.ko.md)과
+> [언어별 bound session 공개 계약](../../../common/spec/server/languages/README.ko.md)이 정의한다.
 
 Session binding은 client STREAM session과 exact Actor incarnation을 연결한다. Binding 뒤 session은
 client packet을 Actor로 relay할 수 있고, Actor는 같은 session으로 push할 수 있다.
@@ -233,7 +233,7 @@ Bound session은 push와 disconnect만 제공한다. Client request에 대한 Ac
 | Session disconnect | Actor와 Spot membership은 유지한다. |
 
 `ActorRef.MeshName`과 `NodeRid`는 최초 control route의 snapshot이다. Application은 stale route를
-새로 조합하지 말고 `IZLinkActorManager.FindAsync`로 current ref를 다시 조회한다.
+새로 조합하지 말고 actor manager의 조회 호출로 current ref를 다시 얻는다.
 
 ## 6. 관련 문서
 

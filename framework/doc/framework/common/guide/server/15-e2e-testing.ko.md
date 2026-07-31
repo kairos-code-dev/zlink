@@ -113,7 +113,7 @@ Stream Connector 가이드가 다룬다.
 - HTTP Client 가이드 — 요청 구성, 본문, 인증·TLS, 재시도,
   오류 처리까지 13장
 - Stream Connector 가이드 — 실행 환경별 통합(Unity,
-  Godot C#). 서버 쪽 STREAM 등록은 [09-stream](09-stream.ko.md)이 다룬다.
+  Godot). 서버 쪽 STREAM 등록은 [09-stream](09-stream.ko.md)이 다룬다.
 
 ## 2. 검증 함수와 사용법
 

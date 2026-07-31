@@ -1,8 +1,8 @@
 # 3. 핵심 개념
 
 > 개념의 정식 의미는 [공통 스펙 목차](../../../common/README.ko.md)가,
-> 인터페이스의 정식 정의는 [언어별 handler 인터페이스 계약](../../../common/spec/server/languages/README.ko.md)가
-> 다룬다. 이 문서는 그 의미가 `.NET`에서 어떤 모양으로 보이는지 정리한다.
+> 인터페이스의 정식 정의는 [언어별 handler 인터페이스 계약](../../../common/spec/server/languages/README.ko.md)이
+> 다룬다. 이 문서는 그 의미가 코드에서 어떤 모양으로 보이는지 정리한다.
 
 ZLink framework는 **channel · spot · actor · stream · location**을 핵심 개념으로
 제공한다. 나머지 챕터는 전부 이 개념들의 변주다.
@@ -23,7 +23,7 @@ ZLink framework는 **channel · spot · actor · stream · location**을 핵심 
 
 `ChannelName`은 그 mesh 안에서 같은 기능을 맡은 node들을 묶는 논리 이름이다 —
 주소(`host:port`) 대신 `"orders"` 같은 이름으로 호출 대상을 고른다. 호출자는
-`IZLinkRouteClient`에 `ChannelName`만 넘긴다 — `MeshName`은 등록에서 정해지고 호출
+route client에 `ChannelName`만 넘긴다 — `MeshName`은 등록에서 정해지고 호출
 인자에 나타나지 않는다.
 
 호출자는 지금 어느 node가 그 요청을 처리하는지 몰라도 된다. 주소도 node 번호도 아닌

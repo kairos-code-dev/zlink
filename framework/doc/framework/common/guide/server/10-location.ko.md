@@ -2,7 +2,7 @@
 
 > 정식 계약은 [Location runtime](../../../common/spec/21-location-runtime.ko.md),
 > [Location Store](../../../common/spec/22-location-store-redis.ko.md)와
-> [언어별 location 공개 계약](../../../common/spec/server/languages/README.ko.md)가
+> [언어별 location 공개 계약](../../../common/spec/server/languages/README.ko.md)이
 > 정의한다. 이 문서는 application에서 Store를 등록하고 상태를 확인하는 방법을 설명한다.
 
 ## 0. 제공하는 기능
@@ -165,13 +165,13 @@ Manual peer를 하나라도 사용한 host에서는 host relocation을 지원하
 | `MaxRelocationPayloadInFlightBytes` | 256 MiB | process 전체 encoded payload 상한 |
 
 Lease option의 전체 제약과 Capture·Restore callback 상한은
-[언어별 location option 계약](../../../common/spec/server/languages/README.ko.md)를
+[언어별 location option 계약](../../../common/spec/server/languages/README.ko.md)을
 따른다.
 
 ## 4. readiness와 운영 조회
 
-운영 코드는 `IZLinkLocationReadiness`로 필요한 peer가 Ready인지 확인한다. 전체 상태와 paged topology는
-`IZLinkLocationRuntimeQuery`로 조회한다.
+운영 코드는 location readiness 표면으로 필요한 peer가 Ready인지 확인한다. 전체 상태와 paged
+topology는 location runtime query로 조회한다.
 
 === "C#/.NET"
 
@@ -259,8 +259,8 @@ relocation record는 Framework 내부 정보이므로 반환하지 않는다. `N
     Node 예제는 준비 중이다.
 
 
-일반 메시징은 `SpotRef.NodeRid`를 target으로 사용하지 않는다. `IZLinkSpotClient`와
-`IZLinkActorClient`가 Location Store에서 current owner를 확인하고 이동 중에는 Message Follow 규칙을
+일반 메시징은 `SpotRef.NodeRid`를 target으로 사용하지 않는다. spot client와 actor client가
+Location Store에서 current owner를 확인하고 이동 중에는 Message Follow 규칙을
 적용한다. `SpotRef`와 `ActorRef`는 exact generation을 닫거나 삭제할 때 사용한다.
 
 ## 6. 관련 문서

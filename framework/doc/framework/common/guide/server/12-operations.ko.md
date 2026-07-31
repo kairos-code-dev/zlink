@@ -2,8 +2,8 @@
 
 > 정식 계약은 공통 스펙 [런타임 메트릭](../../../common/spec/25-runtime-metrics.ko.md)과
 > [Graceful Drain & Handoff](../../../common/spec/28-graceful-drain-handoff.ko.md)가 다룬다.
-> `.NET` 표면의 정식 정의는
-> [언어별 topology·monitoring 공개 계약](../../../common/spec/server/languages/README.ko.md)가
+> 언어별 표면의 정식 정의는
+> [언어별 topology·monitoring 공개 계약](../../../common/spec/server/languages/README.ko.md)이
 > 소유한다.
 > 이 챕터는 운영 환경에서 실제로 무엇을 붙이고 무엇을 선언하는지 사용법 중심으로 다룬다.
 
@@ -23,7 +23,7 @@ framework는 메트릭 계기와 host 종료 시의 drain 절차를 제공한다
 
 | 용어 | 한 줄 풀이 |
 |---|---|
-| Meter / 계기(instrument) | .NET 표준 메트릭 방출 단위. counter·gauge·histogram이 계기다 |
+| Meter / 계기(instrument) | 언어 표준 메트릭 방출 단위. counter·gauge·histogram이 계기다 |
 | OpenTelemetry(OTel) | 메트릭·트레이스 수집 표준. Prometheus 등 exporter로 내보낸다 |
 | Relocate | stateful object를 compatible target으로 이전하고 host를 `Relocated` 상태로 만드는 operation |
 | Shutdown | 새 relocation 없이 local resource를 bounded cleanup하는 operation |
@@ -60,7 +60,7 @@ framework는 `"zlink.framework"`라는 이름의 `System.Diagnostics.Metrics.Met
     Node 예제는 준비 중이다.
 
 
-- zlink 전용 메트릭 API는 없다. `.NET` 표준 `Meter`/`MeterListener`가 그대로 표면이다.
+- zlink 전용 메트릭 API는 없다. 각 언어의 표준 메트릭 API가 그대로 표면이다.
   OTel 없이 수집하려면 `MeterListener`에서 meter 이름 `"zlink.framework"`를 직접 구독한다.
 - 어떤 listener도 붙지 않으면 계기 갱신은 최소 비용의 비활성 경로로 끝난다. 계기를
   등록만 해 두고 켜지 않아도 messaging 성능에 영향이 없다.
@@ -205,7 +205,7 @@ SpotId direct 호출에 Instance intent를 붙였을 때만 시작한다([06-spo
 
 ## 4. 운영 호출과 readiness 연결
 
-앞의 두 operation은 자동으로 일어나지 않는다. Application이 `IZLinkFrameworkRuntime`으로 직접
+앞의 두 operation은 자동으로 일어나지 않는다. Application이 framework runtime으로 직접
 호출한다. 이 interface는 host maintenance를 소유하는 DI singleton이다.
 
 배포에서 쓰는 순서는 "먼저 옮기고, 성공했으면 종료한다"다.
@@ -251,7 +251,7 @@ SpotId direct 호출에 Instance intent를 붙였을 때만 시작한다([06-spo
 사용한다. Eligible target이 없으면 deadline까지 기다린 뒤 `Blocked/TargetUnavailable`을 반환한다.
 Cancellation은 해당 waiter만 끝내며 이미 시작한 shared lifecycle operation은 계속 실행된다.
 
-Readiness는 host `IZLinkFrameworkRuntime.IsReady`와 업무에 필요한 component runtime의 readiness를 함께
+Readiness는 host framework runtime의 준비 여부와 업무에 필요한 component runtime의 readiness를 함께
 확인해 기존 HTTP endpoint에 연결한다.
 
 === "C#/.NET"
@@ -291,7 +291,7 @@ Kubernetes 배포에 연결하면 다음 개념이 된다.
 
 `AddRouteMesh`로 등록한 MeshNode는 두 DI singleton으로 운영한다.
 
-**런타임 옵션 — `IZLinkRouteMeshRuntimeOptions`.** serving 중에 바꿀 수 있는 값은
+**런타임 옵션.** serving 중에 바꿀 수 있는 값은
 다음과 같다. 나머지 소켓 옵션(HWM·timeout)은 시작 전 `ConfigureRouterSocket()`
 전용이다.
 
@@ -324,8 +324,8 @@ Kubernetes 배포에 연결하면 다음 개념이 된다.
 target 선택에만 사용한다. Channel weight는 해당 server membership의 새 select-one 대상 선택에만
 사용한다. 등록되지 않은 mesh나 membership을 조회하면 `ZLinkConfigurationException`이다.
 
-**상태 조회 — `IZLinkRouteMeshRuntime`.** Mesh 하나에 대해 일관된 snapshot 한 장과
-순서 있는 component 이벤트 스트림을 제공한다. Host termination은 `IZLinkFrameworkRuntime`이 소유한다.
+**상태 조회 — RouteMesh 런타임.** Mesh 하나에 대해 일관된 snapshot 한 장과 순서 있는
+component 이벤트 스트림을 제공한다. Host termination은 framework runtime이 소유한다.
 
 === "C#/.NET"
 
@@ -361,7 +361,7 @@ target 선택에만 사용한다. Channel weight는 해당 server membership의 
 
 ## 6. Host lifecycle
 
-Framework runtime은 `ASP.NET Core`의 **hosted service**로 host 시작·종료에 묶인다.
+Framework runtime은 host의 **수명주기 서비스**로 시작·종료에 묶인다.
 channel·SPOT·STREAM runtime은 startup에서 등록한 역할을 보고 생성되어 shutdown에서
 정리된다.
 
@@ -385,11 +385,11 @@ stateDiagram-v2
   startup에서 예외로 거부된다.
 - **종료** — host shutdown 신호가 오면 hosted service `stop()` → channel/SPOT/STREAM
   runtime 정리 순으로 내려간다.
-- 백그라운드 작업은 표준 `IHostedService`로 같은 수명주기에 편입시킨다.
+- 백그라운드 작업은 host의 표준 수명주기 서비스로 같은 수명주기에 편입시킨다.
 
 ### 6.1 상태 관측
 
-Host `Relocate`·`Shutdown` 상태 전이는 `IZLinkFrameworkRuntime`의 bounded status stream에서 관측한다. MeshName별
+Host `Relocate`·`Shutdown` 상태 전이는 framework runtime의 bounded status stream에서 관측한다. MeshName별
 runtime은 component snapshot을 제공하지만 별도 termination authority나 partial drain operation을 만들지 않는다.
 
 === "C#/.NET"

@@ -43,7 +43,7 @@ client는 .NET과 Node.js server가 공유하므로 `shared_sample`에 둔다. �
 ## 1. 목적
 
 ZoneWorld는 **zone 분할 MMORPG**와 그것을 **운영·관제하는 콘솔**을 한 샘플에 담는다.
-[01-overview](../../guide/server/01-overview.ko.md) §2가 게임 서버 4갈래 중 ①로
+`01. Overview` 장 §2가 게임 서버 4갈래 중 ①로
 소개하는 **zoning**(월드를 지리 구역으로 나누고 각 구역을 전역 `SpotId`로 식별하는 방식)을
 보여 주는 첫 샘플이다. 어느 물리 노드가 구역을 담당하는지는 Location Store와 framework가
 결정하며 application 설정에 고정하지 않는다.

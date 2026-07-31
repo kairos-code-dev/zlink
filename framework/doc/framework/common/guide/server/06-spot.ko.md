@@ -1,6 +1,6 @@
 # 6. Spot
 
-> 정확한 시그니처는 [언어별 Spot 공개 계약](../../../common/spec/server/languages/README.ko.md)가 정의한다.
+> 정확한 시그니처는 [언어별 Spot 공개 계약](../../../common/spec/server/languages/README.ko.md)이 정의한다.
 > Actor와 Spot membership은 [Actor & Spot 호스팅](07-actor-spot.ko.md)에서 설명한다.
 
 Spot은 room, stage, zone처럼 문자열 ID로 찾는 실행 단위다. `SpotId`는 Location Store 전체에서
@@ -14,7 +14,7 @@ Actor membership과 종료 계약이 다르다.
 
 | | Entry Spot | User Spot | Instance Spot |
 | --- | --- | --- | --- |
-| 생성 시점 | Object Server startup에서 Framework가 생성한다 | Application이 `IZLinkSpotManager`로 명시적으로 생성한다 | 해당 ID로 첫 direct message가 도착할 때 생성한다(cold activation) |
+| 생성 시점 | Object Server startup에서 Framework가 생성한다 | Application이 spot manager로 명시적으로 생성한다 | 해당 ID로 첫 direct message가 도착할 때 생성한다(cold activation) |
 | Spot ID | Framework가 발급한다 | `Create`는 Framework가, `GetOrCreate`는 caller가 지정한다 | Caller가 message의 target ID로 지정한다 |
 | Stable type | 등록하지 않는다 | 필수 | 필수 |
 | Actor membership | 지원한다. Actor 생성 직후의 기본 실행 위치다 | 지원한다. Actor가 join·leave로 이동한다 | 지원하지 않는다 |
@@ -352,14 +352,48 @@ Framework는 Spot activation에서 handler를 한 번 만들고 Spot이 닫히�
 무엇을 받느냐에 따라 구현할 interface가 다르다. 어느 것이든 `Configure()`에서 등록한
 것과 짝이 맞아야 한다.
 
-| 받는 것 | 구현할 interface | 등록 |
-| --- | --- | --- |
-| Spot 앞 one-way packet | `IZLinkSpotPacketHandler<TSpot, TMessage>` | `AddPacket<THandler>()` |
-| Spot 앞 request | `IZLinkSpotRequestHandler<TSpot, TRequest, TReply>` | `AddPacket<THandler>()` |
-| Logical Multicast 구독 이벤트 | `IZLinkSpotSubscriptionHandler<TSpot, TEvent>` | `AddSubscribe<THandler>(channelName, topic)` |
-| timer tick | `IZLinkSpotTimerHandler<TSpot>` | `AddTimer<THandler>(name, period, …)`(§6.1) |
-| member Actor 앞 one-way packet | `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | `AddActorPacket<THandler, TActor>()` |
-| member Actor 앞 request | `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | `AddActorPacket<THandler, TActor>()` |
+받는 것마다 짝이 되는 interface와 등록 호출이 하나씩 있다.
+
+| 받는 것 | 짝이 되는 등록 |
+| --- | --- |
+| Spot 앞 one-way packet | packet 등록 |
+| Spot 앞 request | packet 등록 |
+| Logical Multicast 구독 이벤트 | 구독 등록(channel과 topic 지정) |
+| timer tick | timer 등록(이름과 주기 지정, §6.1) |
+| member Actor 앞 one-way packet | actor packet 등록 |
+| member Actor 앞 request | actor packet 등록 |
+
+언어별 interface 이름과 등록 메서드는 다음과 같다.
+
+=== "C#/.NET"
+
+    | 받는 것 | 구현할 interface | 등록 |
+    | --- | --- | --- |
+    | Spot 앞 one-way packet | `IZLinkSpotPacketHandler<TSpot, TMessage>` | `AddPacket<THandler>()` |
+    | Spot 앞 request | `IZLinkSpotRequestHandler<TSpot, TRequest, TReply>` | `AddPacket<THandler>()` |
+    | Logical Multicast 구독 이벤트 | `IZLinkSpotSubscriptionHandler<TSpot, TEvent>` | `AddSubscribe<THandler>(channelName, topic)` |
+    | timer tick | `IZLinkSpotTimerHandler<TSpot>` | `AddTimer<THandler>(name, period, …)`(§6.1) |
+    | member Actor 앞 one-way packet | `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | `AddActorPacket<THandler, TActor>()` |
+    | member Actor 앞 request | `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | `AddActorPacket<THandler, TActor>()` |
+
+=== "C++"
+
+    C++ 표는 준비 중이다.
+
+=== "Java"
+
+    Java 표는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 표는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 표는 준비 중이다.
+
+handler는 대상 Spot instance를 첫 인자로 받는다. Spot 안에서 실행되므로 상태를 락 없이
+직접 만진다.
 
 === "C#/.NET"
 
@@ -435,7 +469,7 @@ Framework는 Spot activation에서 handler를 한 번 만들고 Spot이 닫히�
     Node 예제는 준비 중이다.
 
 
-Actor 앞 request는 `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>`이며
+Actor 앞 request는 actor request handler이며
 같은 인자에 반환값이 reply라는 점만 다르다.
 
 `Configure()`에서 handler를 등록하고 lifecycle callback에서 초기화와 정리를 수행한다.
@@ -703,7 +737,7 @@ factory로 준비할지 고르는 stable type**이다. 그 mesh에 Instance Spot
 ### 6.1 Timer — 주기 실행
 
 Timer는 이름·주기·handler를 Spot context에 등록한다. tick은 그 Spot의 실행 queue에 들어가므로
-handler 안에서 Spot 상태를 그대로 만질 수 있다. 등록은 `IZLinkTimer`를 돌려주며, 이것으로
+handler 안에서 Spot 상태를 그대로 만질 수 있다. 등록은 timer 핸들을 돌려주며, 이것으로
 나중에 취소한다.
 
 === "C#/.NET"
@@ -851,7 +885,7 @@ Spot의 실행 queue는 한 번에 하나만 실행한다. 무거운 계산이�
 
 | | `RunCpuWorker` | `RunIoWorker` |
 | --- | --- | --- |
-| 넘기는 것 | `Func<CancellationToken, TResult>` — 동기 계산 | `Func<CancellationToken, ValueTask<TResult>>` — 비동기 호출 |
+| 넘기는 것 | 동기 계산 함수 | 비동기 호출 함수 |
 | 쓰는 자리 | 직렬화·압축·경로 탐색·이미지 처리처럼 CPU를 계속 쓰는 작업 | DB·파일·HTTP처럼 응답을 기다리는 작업 |
 
 === "C#/.NET"

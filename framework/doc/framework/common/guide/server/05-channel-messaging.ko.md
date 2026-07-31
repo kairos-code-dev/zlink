@@ -1,7 +1,7 @@
 # 5. Channel Messaging — request · send · pub/sub
 
-> 정식 계약은 [언어별 channel messaging 공개 계약](../../../common/spec/server/languages/README.ko.md)와
-> [언어별 topology 공개 계약](../../../common/spec/server/languages/README.ko.md)가 다룬다. 이
+> 정식 계약은 [언어별 channel messaging 공개 계약](../../../common/spec/server/languages/README.ko.md)과
+> [언어별 topology 공개 계약](../../../common/spec/server/languages/README.ko.md)이 다룬다. 이
 > 챕터는 그 표면을 실제로 어떻게 등록하고 호출하는지 사용법 중심으로 다룬다.
 
 channel messaging은 framework의 가장 기본 축이다. 다음 상호작용을 다룬다.
@@ -19,7 +19,7 @@ channel messaging은 framework의 가장 기본 축이다. 다음 상호작용�
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
-  CL["호출하는 쪽<br/>IZLinkRouteClient / IZLinkFanoutClient"]
+  CL["호출하는 쪽<br/>route client / fanout client"]
   CL -->|"Request: 응답이 필요"| H1["server handler → 응답 돌려줌"]
   CL -->|"Send: 응답 없는 단방향"| H2["server handler (응답 없음)"]
   CL -->|"Publish(topic): 여러 곳에"| SUB["구독자 1 · 2 · ... · N"]
@@ -221,7 +221,7 @@ mesh 소켓을 그대로 사용하므로 별도 소켓이 없고,
     Node 예제는 준비 중이다.
 
 
-Spot 밖에서 발행해야 하면 `IZLinkSpotPublisherClient`를 주입받아 같은 방식으로 보낸다.
+Spot 밖에서 발행해야 하면 spot publisher client를 주입받아 같은 방식으로 보낸다.
 
 반대로 **fanout channel**(스펙에서는 **Classic fanout**)은 그 자체로 독립된 PUB/SUB
 소켓 쌍을 연다. Spot이나 MeshNode와 무관하게 발행자 하나가 연결된 구독자 전원에게
@@ -244,17 +244,43 @@ Spot으로 한정되고, Classic fanout은 mesh 구성과 무관하게 연결된
 
 ## 2. handler 작성
 
-| 종류 | 보내는 호출 | 받는 handler | 완료가 뜻하는 것 |
-| --- | --- | --- | --- |
-| request | `RequestToChannel(name, req).Async<TReply>(ct)` | `IZLinkRequestHandler<TRequest, TReply>` | 상대의 reply가 도착했다 |
-| send | `SendToChannel(name, msg).Async(ct)` | `IZLinkSendHandler<TMessage>` | 보내기가 접수됐다 — 상대 처리 결과는 아니다 |
-| publish (fanout) | `Publish(name, topic, evt).Async(ct)` | `IZLinkFanoutHandler<TEvent>` | 전송 준비가 접수됐다 — 구독자 수신은 아니다 |
+| 종류 | 보내는 호출 | 완료가 뜻하는 것 |
+| --- | --- | --- |
+| request | channel 이름과 요청을 넘기고 reply를 기다린다 | 상대의 reply가 도착했다 |
+| send | channel 이름과 메시지를 넘긴다 | 보내기가 접수됐다 — 상대 처리 결과는 아니다 |
+| publish (fanout) | channel · topic · 이벤트를 넘긴다 | 전송 준비가 접수됐다 — 구독자 수신은 아니다 |
+
+언어별 호출 형태와 짝이 되는 handler interface는 다음과 같다.
+
+=== "C#/.NET"
+
+    | 종류 | 보내는 호출 | 받는 handler |
+    | --- | --- | --- |
+    | request | `RequestToChannel(name, req).Async<TReply>(ct)` | `IZLinkRequestHandler<TRequest, TReply>` |
+    | send | `SendToChannel(name, msg).Async(ct)` | `IZLinkSendHandler<TMessage>` |
+    | publish (fanout) | `Publish(name, topic, evt).Async(ct)` | `IZLinkFanoutHandler<TEvent>` |
+
+=== "C++"
+
+    C++ 표는 준비 중이다.
+
+=== "Java"
+
+    Java 표는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 표는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 표는 준비 중이다.
 
 channel handler는 독립 class다. 서로 다른 요청이 동시에 실행될 수 있으므로 가변 도메인
 상태를 handler 멤버에 두지 않는다. Handler instance와 scoped dependency는 그 dispatch가
 끝날 때까지만 유지된다.
 
-> Framework는 HTTP 요청을 처리하지 않는다. `ASP.NET Core`의 endpoint·middleware가
+> Framework는 HTTP 요청을 처리하지 않는다. 웹 프레임워크의 endpoint·middleware가
 > HTTP를 맡고, channel handler는 그와 별개인 서버 간 메시지 dispatch 경로다. class를
 > 만들어 DI로 의존성을 받고 등록해 두면 runtime이 호출한다는 **작성 방식**만 controller
 > action과 닮았다.
@@ -329,9 +355,9 @@ handler는 인터페이스를 구현하고, 결과를 반환값으로 돌려준�
 - handler 의존성은 **생성자 주입**으로 받는다(`IProfileStore`처럼). context에서
   service를 꺼내는 service locator 패턴은 쓰지 않는다.
 - context는 그 dispatch의 메시지 정보(ChannelName, packet 이름, metadata 등)를 읽는
-  자리다. **cancellation은 context가 아니라 별도 `CancellationToken` 인자**가 소유한다.
+  자리다. **cancellation은 context가 아니라 별도 취소 인자**가 소유한다.
   경로별 context 타입과 전체 필드는
-  [언어별 channel messaging 공개 계약](../../../common/spec/server/languages/README.ko.md)가
+  [언어별 channel messaging 공개 계약](../../../common/spec/server/languages/README.ko.md)이
   다룬다.
 - handler class는 dispatch 키가 아니라 **코드 조직 단위**다. 메서드를 한 class에
   주제별로 묶어도, packet마다 class를 따로 둬도 동작은 같다.
@@ -390,7 +416,7 @@ class에 여러 handler 메서드를 둘 때 편하다.
     Node 예제는 준비 중이다.
 
 
-- 메서드 시그니처는 `(payload, context?, CancellationToken?)` 순서이며 context와
+- 메서드 시그니처는 `(payload, context?, cancellation?)` 순서이며 context와
   토큰은 생략할 수 있다.
 - attribute 기반 handler는 한 class에 여러 request/send/publish 메서드를 묶기
   쉽지만, interface 기반처럼 handler 계약을 컴파일 타임에 강하게 고정하지는 않는다.
@@ -399,9 +425,9 @@ class에 여러 handler 메서드를 둘 때 편하다.
 - `[ZLinkRequest]`/`[ZLinkSend]`/`[ZLinkPublish]`는 **channel 이름을 받지
   않는다.** channel 매핑은 [등록](#3-handler를-channel에-노출하기)이 소유한다.
 
-### 비동기 실행 — `async`/`await`, `ValueTask`
+### 비동기 실행
 
-Framework 전반의 비동기 값은 `ValueTask` / `ValueTask<T>`로 표현된다. send는 source
+Framework 전반의 비동기 값은 각 언어의 표준 비동기 타입으로 표현된다. send는 source
 runtime이 작업을 제출할 수 있을 때까지 기다리며 target handler 완료는 기다리지 않는다.
 Request는 상대 reply가 도착할 때까지 기다린다. 규칙은 하나다 — **런타임(핸들러)
 스레드에서는 `await`, blocking(`.Result`/`.GetAwaiter().GetResult()`)은 테스트·클라이언트
@@ -440,8 +466,8 @@ Request는 상대 reply가 도착할 때까지 기다린다. 규칙은 하나다
     Node 예제는 준비 중이다.
 
 
-Channel handler는 channel별 async 수신 루프에서 실행된다. Handler가 `await`에 도달하면
-async 상태 머신만 멈추고(suspend) 실행 스레드는 풀로 돌아가 다른 일을 처리한다.
+Channel handler는 channel별 비동기 수신 루프에서 실행된다. Handler가 대기 지점에 도달하면
+그 실행 흐름만 멈추고 스레드는 풀로 돌아가 다른 일을 처리한다.
 
 ```mermaid
 sequenceDiagram
@@ -585,7 +611,7 @@ Fanout handler는 독립 fanout channel builder에 등록하며 RouteMesh handle
 
 ## 4. outbound 호출
 
-### request / send — `IZLinkRouteClient`
+### request / send — route client
 
 === "C#/.NET"
 
@@ -630,7 +656,7 @@ Fanout handler는 독립 fanout channel builder에 등록하며 RouteMesh handle
   `Send`/`Publish`는 응답을 기다리지 않으므로 timeout 표면 자체가 없다.
 - packet 이름은 호출 시점에 바꿀 수 없다.
   [등록할 때](#3-handler를-channel에-노출하기) 한 번 확정된다.
-- `IZLinkRouteClient`는 startup에 등록한 RouteMesh를 사용한다. MeshName이나
+- route client는 startup에 등록한 RouteMesh를 사용한다. MeshName이나
   ChannelName이 등록되어 있지 않으면 `ZLinkConfigurationException`으로 실패한다.
 - **send가 `async`인 이유는 응답이 아니라 보낼 자리를 기다리기 때문이다.** 받는 쪽이 밀리면
   송신 queue가 비워질 때까지 기다렸다가 제출하고, 끝내 자리가 나지 않으면
@@ -669,7 +695,7 @@ Fanout handler는 독립 fanout channel builder에 등록하며 RouteMesh handle
     Node 예제는 준비 중이다.
 
 
-### publish — `IZLinkFanoutClient`
+### publish — fanout client
 
 === "C#/.NET"
 
@@ -706,7 +732,7 @@ Fanout handler는 독립 fanout channel builder에 등록하며 RouteMesh handle
   받고, `Publish(channelName, topic, message)`는 topic을 분류 라벨로 함께 싣는다.
 - 구독자는 `AddFanoutChannel(name).ConnectSubscriber(endpoint)`로 publisher endpoint를
   연결한다.
-- Classic fanout handler는 등록한 typed event와 `CancellationToken`만 받고 transport
+- Classic fanout handler는 등록한 typed event와 취소 신호만 받고 transport
   topic을 handler context로 노출하지 않는다. 업무 분기가 필요하면 event type이나 등록한
   handler를 나눈다.
 - `Async(...)`/`Async<T>(...)`의 완료는 transport 위임까지만 보장한다 — remote handler
@@ -722,9 +748,9 @@ Fanout handler는 독립 fanout channel builder에 등록하며 RouteMesh handle
 
 ## 5. filter — 공통 처리
 
-ASP.NET Core HTTP middleware(`app.Use(...)`)는 HTTP 파이프라인 전용이라 ZLink
-handler에는 적용되지 않는다. 로그·검증·권한 확인·측정처럼 여러 handler에 같은 코드가
-반복될 일은 `IZLinkHandlerFilter`로 한곳에 모은다.
+웹 프레임워크의 HTTP middleware는 HTTP 파이프라인 전용이라 ZLink handler에는 적용되지
+않는다. 로그·검증·권한 확인·측정처럼 여러 handler에 같은 코드가 반복될 일은 handler
+filter로 한곳에 모은다.
 
 === "C#/.NET"
 
@@ -867,7 +893,7 @@ handle이 아니다. **단 하나, 가용성(drain/restore)은 런타임에 바�
 ### 운영 drain / restore (런타임)
 
 유지보수·rolling 재시작·scale-in 직전에, 노드를 종료하거나 store의 descriptor row를 제거하지 않고
-**새 요청 수신만 멈추고 싶을 때**가 있다. `IZLinkRouteMeshRuntimeOptions`를 주입받아
+**새 요청 수신만 멈추고 싶을 때**가 있다. RouteMesh 런타임 옵션을 주입받아
 MeshName과 ChannelName으로 weight를 변경한다.
 
 여기서 쓰는 `Weight`는 drain 전용 플래그가 아니라, ChannelName membership이 새
@@ -1012,7 +1038,7 @@ abstract/interface 면 명시 codec 없이는 설정 오류가 난다.
 > [샘플](../../../common/sample/README.ko.md)은 codec을 등록하지 않고 기본값을 쓴다 —
 > 명시 등록은 필요할 때만 하는 선택이다.
 
-기본 codec 외의 포맷(Avro·Thrift 등)이 필요하면 `IZLinkMessageSerializer`를 구현해
+기본 codec 외의 포맷(Avro·Thrift 등)이 필요하면 메시지 serializer를 구현해
 content type으로 등록한다. 한 payload 타입에 **둘 이상이 매칭하면** 구성 오류가 난다 —
 타입 조건 없이 모든 타입을 받는 fallback serializer는 하나만 두고, 타입 조건을 받는
 serializer는 서로 겹치지 않게 여러 개 둘 수 있다.
@@ -1231,8 +1257,8 @@ Node direct 호출은 `RoutingId`로 특정 MeshNode 하나를 지정한다. 이
 
 업무 메시지는 대상의 논리 주소를 사용한다.
 
-- Actor는 `IZLinkActorClient`와 ActorId로 호출한다.
-- Spot은 `IZLinkSpotClient`와 SpotId로 호출한다.
+- Actor는 actor client와 ActorId로 호출한다.
+- Spot은 spot client와 SpotId로 호출한다.
 - 서비스 구성원 하나를 선택하려면 `SendToChannel(...)` 또는 `RequestToChannel(...)`을
   사용한다.
 

@@ -1,10 +1,10 @@
 # 4. Backpressure — 처리보다 도착이 빠를 때
 
 > 정식 계약은 [비동기 실행 정책](../../../common/spec/05-async-execution-policy.ko.md)과
-> [언어별 topology 공개 계약](../../../common/spec/server/languages/README.ko.md)가
+> [언어별 topology 공개 계약](../../../common/spec/server/languages/README.ko.md)이
 > 다룬다. 이 챕터는 그 동작을 개념과 원리로 설명하고 어떤 옵션이 영향을 주는지 다룬다.
-> 옵션의 기본값과 변경 시점은 `16. Options` 장가 소유한다. 이 챕터가 쓰는
-> 계약 가운데 .NET runtime에 아직 반영되지 않은 부분은
+> 옵션의 기본값과 변경 시점은 `16. Options` 장이 소유한다. 이 챕터가 쓰는
+> 계약 가운데 runtime에 아직 반영되지 않은 부분은
 > [Framework에 아직 적용되지 않은 부분](#6-framework에-아직-적용되지-않은-부분)이 밝힌다.
 
 ## 0. 처리 능력을 넘는 유입이 발생할 때의 선택지
@@ -229,7 +229,7 @@ send는 응답을 기다리지 않지만, 기다려야 하는 대상이 하나 �
 키우므로, 재시도 사이에 간격을 둔다.
 
 기다리는 동안 대기하는 것은 그 호출뿐이며, 실행 스레드는 다른 작업을 처리한다
-([05-channel-messaging](05-channel-messaging.ko.md#비동기-실행--asyncawait-valuetask)).
+([05-channel-messaging](05-channel-messaging.ko.md#비동기-실행)).
 
 ### 3.2 request의 timeout 경계
 
@@ -482,8 +482,8 @@ message flow 기록에 `backpressured`가 남았다면 보낼 자리를 기다�
 ## 6. Framework에 아직 적용되지 않은 부분
 
 연결마다 두는 byte 상한과 Application·Completion 두 연결 구조는 Core 계층에 구현되어
-있다. .NET binding과 Framework runtime이 그 구조를 사용하도록 바꾸는 작업은 2026-07-30
-기준으로 시작하지 않았다. 따라서 **지금 배포된 .NET runtime은 이 단위와 상한을 아직
+있다. binding과 Framework runtime이 그 구조를 사용하도록 바꾸는 작업은 2026-07-30 기준으로
+어느 언어에서도 시작하지 않았다. 따라서 **지금 배포된 runtime은 이 단위와 상한을 아직
 사용하지 않는다.** 다음 항목은 계약으로 확정되었을 뿐 아직 설정하거나 관측할 수 없다.
 
 - **host 전체 Application HWM** — [§4.3](#43-application-hwm--host-전체-상한)이

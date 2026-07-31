@@ -2,7 +2,7 @@
 
 > 각 샘플의 언어 중립 시나리오, 메시지 계약과 검증 기준은
 > [공통 sample 문서](../../../common/sample/README.ko.md)가 정의한다. 이 문서는 그중
-> **어떤 샘플을 먼저 보면 도움이 되는지**와 `.NET`에서 실행하는 방법을 정리한다.
+> **어떤 샘플을 먼저 보면 도움이 되는지**와 실행하는 방법을 정리한다.
 
 샘플은 서로 다른 기능 묶음을 맡도록 나뉘어 있다. 전부 읽을 필요는 없고, 만들려는
 것에 가장 가까운 하나를 골라 그 안에서 등록 코드와 handler를 따라가는 편이 빠르다.
@@ -71,7 +71,7 @@ Entry Spot에 등록된 observer handler가 그것을 받아 관전 client로 pu
 - 짝이 되는 장: [05-channel-messaging](05-channel-messaging.ko.md)(ClientServer channel),
   [06-spot](06-spot.ko.md)(User Spot 생성), [09-stream](09-stream.ko.md)
 - 시나리오: [TicTacToe](../../../common/sample/tictactoe/README.ko.md) · payload JSON
-- `02. Getting Started` 장가 이 샘플을 따라간다. 처음 읽는다면 여기부터.
+- `02. Getting Started` 장이 이 샘플을 따라간다. 처음 읽는다면 여기부터.
 
 ## 3. Bingo — 온라인 게임 서버 구축
 

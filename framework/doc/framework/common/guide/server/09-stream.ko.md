@@ -1,6 +1,6 @@
 # 9. STREAM
 
-> 서버의 정확한 시그니처는 [언어별 STREAM session 공개 계약](../../../common/spec/server/languages/README.ko.md)가
+> 서버의 정확한 시그니처는 [언어별 STREAM session 공개 계약](../../../common/spec/server/languages/README.ko.md)이
 > 정의한다. Client package는 Stream Connector 가이드와
 > [언어별 공개 계약](../../../common/spec/stream-connector/README.ko.md)을 따른다.
 
@@ -200,7 +200,7 @@ Server가 먼저 push할 때는 `Send`를 사용한다.
 ## 4. Actor dispatch
 
 인증 뒤 Actor를 session에 bind하고, session 전용 handler가 처리하지 않은 `ZLinkMessage`를
-`IZLinkSessionActor.RelayAsync`로 넘길 수 있다. 상세 흐름은
+session actor의 relay 호출로 넘길 수 있다. 상세 흐름은
 [Session과 Actor binding](08-actor-session.ko.md)을 따른다.
 
 Application은 session route를 Location Store에서 직접 조회하지 않는다. Actor relocation이 완료되면

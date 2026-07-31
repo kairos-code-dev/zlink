@@ -3,7 +3,7 @@
 > **내부 서비스 통신이나 실시간 상태 서버를 만들면서 gRPC나 Akka/Orleans를 고민하고
 > 있다면, ZLink가 그 자리를 대체할 후보다.**
 >
-> ZLink는 단순 RPC 라이브러리가 아니라, `.NET` 백엔드에서 **논리 channel, 연결
+> ZLink는 단순 RPC 라이브러리가 아니라, 백엔드에서 **논리 channel, 연결
 > 수명, 동적 상태 단위(SPOT), pub/sub, 위치 기반 자동 연결을 한 framework 안에서 묶어 주는
 > 서버 간·실시간 메시징 계층**이다. 특히 "서비스가 어디 있는지", "client가
 > 어디에 연결돼 있는지", "room/zone/symbol 같은 상태 단위를 어떻게 직렬 처리할지" 가
@@ -23,7 +23,7 @@
 
 | 상황 | ZLink이 좋은 이유 | 쓰는 기능 |
 |------|--------------------|-----------|
-| 내부 `.NET` 서비스끼리 자주 호출 | host/port/stub 대신 **channel name** 으로 호출 | channel + location store |
+| 내부 서비스끼리 자주 호출 | host/port/stub 대신 **channel name** 으로 호출 | channel + location store |
 | 이벤트를 실시간으로 여러 서비스에 뿌림 | 별도 broker 없이 **transport fan-out** | fanout pub/sub |
 | 게임 room·채팅 room·ride zone 같은 동적 상태 단위 | **단일 실행 큐**로 lock 없는 직렬 상태 처리 | SPOT |
 | 모바일·게임 client와 장기 연결 | 연결 수명·framing·재접속 흐름을 framework가 소유 | STREAM |
@@ -42,7 +42,7 @@ ZLink의 체감 장점은 인프라 구성 요소가 사라지는 데 있지 않
 - **client 연결 수명과 packet framing** 은 STREAM이 맡는다.
 - **room/zone/symbol 상태 직렬성**은 SPOT 실행 큐가 맡는다.
 - **재접속 후 actor/session binding** 은 framework가 이어 준다.
-- **handler/filter/DI 모델**이 `ASP.NET Core` 방식과 맞아 익숙하게 쓴다.
+- **handler/filter/DI 모델**이 기존 웹 프레임워크 방식과 맞아 익숙하게 쓴다.
 
 > ZLink는 이 문제들을 **없애는 게 아니라 호출자 밖으로 밀어낸다.** 위치·연결·
 > correlation·dispatch 직렬성을 framework가 처리하므로, 어플리케이션 코드가 transport
@@ -50,7 +50,7 @@ ZLink의 체감 장점은 인프라 구성 요소가 사라지는 데 있지 않
 
 ### 2.1 여러 언어가 한 channel 위에서 (cross-language)
 
-ZLink는 `.NET` 전용이 아니다. 호출 계약이 **언어 중립 wire protocol(ZMP) +
+ZLink는 한 언어 전용이 아니다. 호출 계약이 **언어 중립 wire protocol(ZMP) +
 codec(protobuf/json/messagepack) + 논리 channel/packet 이름** 이라, 서로 다른
 언어로 구현된 서비스가 **같은 channel 위에서 상호 호출**한다. 예를 들어 게임
 시스템에서 **room 서버는 C++, API·매치메이킹 서버는 .NET 또는 Java** 로 두고 같은
@@ -62,10 +62,10 @@ channel/spot 계약으로 메시징할 수 있다.
 - 각 언어 binding은 같은 core(C ABI, ZMP) 위에 handler/SPOT/STREAM 표면을 올린다.
   그래서 handler 작성 언어가 달라도 wire 상으로는 같은 channel·packet 이다.
 
-> **다른 언어 binding.** `.NET`이 reference 구현이며, 같은 channel/packet 계약을
-> 다른 언어 binding이 자기 언어로 구현한다. 이 가이드는 `.NET` binding 기준이다.
-> cross-language는 ZLink의 **설계 목표**다 — 호출 계약이 binding 구현 언어와
-> 무관하기 때문이다.
+> **다른 언어 binding.** 같은 channel/packet 계약을 언어별 binding이 자기 언어로
+> 구현한다. 이 가이드의 예제는 언어 탭으로 나뉘며, 어느 탭을 보든 같은 계약을
+> 설명한다. cross-language는 ZLink의 **설계 목표**다 — 호출 계약이 binding 구현
+> 언어와 무관하기 때문이다.
 
 ## 3. 이런 문제가 반복되면 ZLink 후보
 
@@ -89,7 +89,7 @@ channel/spot 계약으로 메시징할 수 있다.
 | durable queue·replay·consumer offset | Kafka/NATS 유지 |
 | DB 조회·geo-index·audit trail | DB/Redis/event store 유지 |
 | HFT 마이크로초 matching loop | Disruptor/Aeron/FIX 유지 |
-| 내부 `.NET` 서비스 통신 + 실시간 상태 dispatch | **ZLink 적합** |
+| 내부 서비스 통신 + 실시간 상태 dispatch | **ZLink 적합** |
 
 요지: ZLink는 transport·dispatch 계층이지 **datastore·durable log·HFT 버스가
 아니다.** 분산 데이터 일관성(saga·outbox·idempotency)·영속·중복 제어 같은
@@ -97,7 +97,7 @@ channel/spot 계약으로 메시징할 수 있다.
 
 ## 5. 참고 — gRPC·service mesh 스택과의 비교
 
-§1의 "내부 `.NET` 서비스끼리 자주 호출" 이 왜 ZLink 후보인지, gRPC 스택과 비교해
+§1의 "내부 서비스끼리 자주 호출" 이 왜 ZLink 후보인지, gRPC 스택과 비교해
 근거를 본다.
 
 ### 5.1 gRPC 단독 구성의 한계
@@ -219,10 +219,10 @@ sequenceDiagram
 
 | gRPC 베스트프랙티스/필요 인프라 | ZLink에서 | 비고 |
 | --- | --- | --- |
-| "stub/channel을 재사용하라" | `IZLinkRouteClient`가 DI singleton이고 MeshNode 연결 수명은 framework가 관리 | 호출마다 만들 일 없음 |
+| "stub/channel을 재사용하라" | route client가 DI singleton이고 MeshNode 연결 수명은 framework가 관리 | 호출마다 만들 일 없음 |
 | RPC deadline | `RequestToChannel(...).Timeout(...)` | reply 대기 시간 |
 | L7 로드밸런싱(Envoy/Istio) | channel name + store 자동 연결이 peer 분배 | sidecar 불필요 |
-| interceptor | `IZLinkHandlerFilter` | [5](05-channel-messaging.ko.md) §5 |
+| interceptor | handler filter | [5](05-channel-messaging.ko.md) §5 |
 | 이벤트 broker(Kafka/NATS) | fanout channel pub/sub | 실시간 fan-out 한정. 영속/replay는 broker 유지 |
 | 통합 관측(mesh telemetry) | 상태 status stream과 표준 진단 | `11. Monitoring` 장 |
 | 양방향 streaming | STREAM session | 외부 client 수용. HTTP edge 정책은 별도 |
@@ -261,23 +261,23 @@ Orleans·Akka는 **actor 프리미티브 하나에** 깊이 집중한다. 그런
 [Orleans/Akka] actor cluster with separate edge
 
   +------------------+     +------------------+
-  | ASP.NET Core /    |     | SignalR /        |
-  | Spring edge       +---->| WebSocket edge   |  (client gateway)
+  | web framework    |     | SignalR /        |
+  | edge             +---->| WebSocket edge   |  (client gateway)
   +--------+---------+     +------------------+
            |
   +--------v---------+
-  | Orleans/Akka      |
-  | actor cluster     |
-  | storage provider  |
-  | persistence       |
-  +-------------------+
+  | Orleans/Akka     |
+  | actor cluster    |
+  | storage provider |
+  | persistence      |
+  +------------------+
 ```
 
 ```text
 [ZLink] integrated stack
 
   +-----------------------------------------------+
-  | ASP.NET Core / Spring / NestJS + ZLink        |
+  | web framework (ASP.NET Core / Spring / …)     |
   | STREAM clients / SPOT and actor state         |
   | channel messaging / location store            |
   +-----------------------------------------------+
@@ -352,7 +352,7 @@ v4.3.5에서 출발했기 때문이다. `http-client`는 각 플랫폼의 통상
 ## 8. 관련 문서
 
 - 공통 업무 시나리오: [Framework Common Sample Scenarios](../../../common/sample/README.ko.md)
-- `.NET` 사용 방법: [Channel Messaging](05-channel-messaging.ko.md)
+- 사용 방법: [Channel Messaging](05-channel-messaging.ko.md)
 - 표면 매핑: [05-channel-messaging](05-channel-messaging.ko.md) §0, `13. Interface 카탈로그` 장 §1.6
 - 실행 코드로 보는 샘플: [14-samples](14-samples.ko.md)
 

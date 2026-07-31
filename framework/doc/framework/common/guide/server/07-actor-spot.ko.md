@@ -1,7 +1,7 @@
 # 7. Actor와 Spot
 
-> 정확한 시그니처는 [언어별 Actor 공개 계약](../../../common/spec/server/languages/README.ko.md)와
-> [언어별 Spot 공개 계약](../../../common/spec/server/languages/README.ko.md)가 정의한다.
+> 정확한 시그니처는 [언어별 Actor 공개 계약](../../../common/spec/server/languages/README.ko.md)과
+> [언어별 Spot 공개 계약](../../../common/spec/server/languages/README.ko.md)이 정의한다.
 
 Actor는 전역 문자열 `ActorId`로 찾는 상태 객체다. 생성 직후에는 Object Server의 Entry Spot에
 존재한다. Application handler가 join을 예약하면 User Spot으로 이동한다.
@@ -219,7 +219,7 @@ Entry Spot은 Actor별 application state를 따로 보관하지 않는 편이 �
 소유하고, Entry Spot은 handler와 membership lifecycle만 제공한다.
 
 Actor를 종료하려면 먼저 Entry Spot으로 돌아온 뒤 현재 Actor instance를
-`IZLinkEntrySpotContext.DestroyActorAsync(actor)`에 넘긴다.
+entry spot context의 actor 파기 호출에 넘긴다.
 
 === "C#/.NET"
 
@@ -347,9 +347,9 @@ barrier가 활성화된 뒤에는 그 뒤에 도착한 일반 message가 complet
 
 ### 등록과 결과 수신
 
-Actor handler에서 join을 예약한다. handler는 `IZLinkSpotActorSendHandler<TSpot, TActor,
-TMessage>`를 구현한 별도 class이며([06-spot §4.1](06-spot.ko.md#41-handler-종류와-구현할-interface)),
-`Configure()`에서 `AddActorPacket<JoinGameHandler, PlayerActor>()`로 등록한 것이다.
+Actor handler에서 join을 예약한다. handler는 member Actor 앞 one-way packet을 받는 별도
+class이며([06-spot §4.1](06-spot.ko.md#41-handler-종류와-구현할-interface)), 구성 단계에서
+actor packet으로 등록한 것이다.
 `Defer()` 뒤에는 이 handler를 정상 종료시키는 것 외에 할 일이 없다.
 
 === "C#/.NET"

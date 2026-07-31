@@ -19,8 +19,8 @@ internal static class PsA4SubscriberReconnectScenario
     {
         var runId = Guid.NewGuid().ToString("N");
         await PublishAsync(publisher, $"activate-{runId}", 0, "activate-publisher");
-        // Keep the proxy upstream blocked until the subscriber host is healthy.
-        // This makes ConnectionReady occur after its monitor is attached.
+        // Keep the proxy upstream blocked until the subscriber host is healthy,
+        // so the connection this scenario interrupts is the one it established.
         await using var fault = new NetworkFaultProxy(new Uri(publisherEndpoint), initiallyBlocked: true);
         using var subscriberProcess = processes.StartSubscriber(
             "sub-reconnect",
@@ -34,9 +34,8 @@ internal static class PsA4SubscriberReconnectScenario
             await fault.WaitForUpstreamConnectionAsync();
             try
             {
-                var readyRun = $"ready-{Guid.NewGuid():N}";
-                await PublishAsync(publisher, readyRun, 0, "initial-ready");
-                await SubscriberObservation.WaitForEventAsync(reconnectSubscriber, readyRun, 0);
+                await FanoutReadiness.WaitUntilReceivingAsync(
+                    publisher, reconnectSubscriber, "PS-A4 reconnect subscriber");
             }
             catch (Exception error)
             {

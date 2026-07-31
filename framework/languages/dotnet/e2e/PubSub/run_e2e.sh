@@ -16,6 +16,10 @@ CONFIG_DIR="$(mktemp -d)"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 HTTP_PROBE_TIMEOUT_SECONDS=3
+# The readiness barrier below drives a real connect and first delivery, so it
+# needs a longer budget than a local HTTP health probe.
+WARMUP_TIMEOUT_SECONDS=30
+MAIN_TOPIC=orders
 
 PUBLISHER_PROJECT="$ROOT_DIR/Server/Publisher/PubSub.Publisher.csproj"
 SUBSCRIBER_PROJECT="$ROOT_DIR/Server/Subscriber/PubSub.Subscriber.csproj"
@@ -119,34 +123,6 @@ PY
   return 1
 }
 
-wait_evidence_contains() {
-  local file="$1"
-  local marker="$2"
-  local name="$3"
-  local deadline_ns
-  deadline_ns="$(python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" <<'PY'
-import sys
-import time
-
-print(time.monotonic_ns() + int(float(sys.argv[1]) * 1_000_000_000))
-PY
-  )"
-  while [[ "$(python3 - "$deadline_ns" <<'PY'
-import sys
-import time
-
-print("yes" if time.monotonic_ns() < int(sys.argv[1]) else "no")
-PY
-  )" == "yes" ]]; do
-    if [[ -f "$file" ]] && grep -Fq "$marker" "$file"; then
-      return 0
-    fi
-    sleep "$LOCAL_READINESS_POLL_SECONDS"
-  done
-  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name evidence: $marker" >&2
-  return 1
-}
-
 start_server() {
   local name="$1"
   local project="$2"
@@ -180,8 +156,8 @@ for sub in 1 2 3; do
   wait_health "${!url_var}" "sub-$sub"
 done
 
-# Start the publisher after the subscriber monitors are active so the initial
-# ConnectionReady transition is part of the scenario evidence.
+# The subscribers connect first so that no scenario record can be published
+# into a fanout nobody has subscribed to yet.
 start_server pub-a "$PUBLISHER_PROJECT" \
   --rid pub-a \
   --http-url "$PUB_URL" \
@@ -190,11 +166,59 @@ start_server pub-a "$PUBLISHER_PROJECT" \
   --log-dir "$LOG_DIR"
 wait_health "$PUB_URL" pub-a
 
+# Classic fanout has no status surface to poll. Spec 24 §2.2 scopes topology
+# state to RouteMesh, ClientServer and automatic fanout, and the fanout runtime
+# registers only channels whose subscriber uses automatic discovery, so asking
+# it about this manual channel is an error rather than a "not ready" answer.
+# Spec 29 §170 defines classic fanout readiness as the subscriber receiving its
+# first valid application record, which is what this barrier waits for.
+#
+# The record is republished on an interval instead of sent once. A record
+# published before a subscriber's subscription has reached the publisher is
+# dropped with no trace, so a single warm-up can vanish and leave the barrier
+# waiting on evidence that will never arrive.
+warmup_run="warmup-$RUN_ID"
+warmup_deadline_ns="$(python3 - "$WARMUP_TIMEOUT_SECONDS" <<'PY'
+import sys
+import time
+
+print(time.monotonic_ns() + int(float(sys.argv[1]) * 1_000_000_000))
+PY
+)"
+warmup_sequence=0
+while true; do
+  warmup_pending=0
+  for sub in 1 2 3; do
+    if ! grep -Fq "run=$warmup_run" "$LOG_DIR/sub-$sub.evidence.log" 2>/dev/null; then
+      warmup_pending=1
+    fi
+  done
+  if [[ "$warmup_pending" == "0" ]]; then
+    break
+  fi
+  if [[ "$(python3 - "$warmup_deadline_ns" <<'PY'
+import sys
+import time
+
+print("yes" if time.monotonic_ns() < int(sys.argv[1]) else "no")
+PY
+  )" != "yes" ]]; then
+    echo "Timed out waiting ${WARMUP_TIMEOUT_SECONDS}s for subscribers to receive the warm-up record" >&2
+    exit 1
+  fi
+  warmup_sequence=$((warmup_sequence + 1))
+  curl --max-time "$HTTP_PROBE_TIMEOUT_SECONDS" -fsS -X POST \
+    "$PUB_URL/publish/event?topic=$MAIN_TOPIC&runId=$warmup_run&sequence=$warmup_sequence&value=warmup" \
+    >/dev/null 2>&1 || true
+  sleep "$LOCAL_READINESS_POLL_SECONDS"
+done
+
+# The warm-up records are readiness proof, not scenario evidence. Drop them so
+# that scenarios reading from index 0 see only what they published.
 for sub in 1 2 3; do
-  wait_evidence_contains \
-    "$LOG_DIR/sub-$sub.evidence.log" \
-    "event=ConnectionReady" \
-    "sub-$sub publisher connection"
+  url_var="SUB_${sub}_URL"
+  curl --max-time "$HTTP_PROBE_TIMEOUT_SECONDS" -fsS -X POST \
+    "${!url_var}/evidence/clear" >/dev/null
 done
 
 python3 "$ROOT_DIR/../write_role_config.py" "$CONFIG_DIR/client.json" -- \

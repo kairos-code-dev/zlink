@@ -4288,3 +4288,74 @@ Object Client이고 RouteMesh Channel Server membership도 없으면")과 방향
 
 확정하려면 둘 중 하나다. role 기본값을 spec이나 구현에서 확인하거나, monitoring에서 peer
 상태가 `NotRequired`인지 보는 것이다. 전자가 더 값싸므로 그쪽을 먼저 본다.
+
+### 가설 기각: PubSub은 mesh peer를 쓰지 않는다
+
+앞 두 절의 `not_required` 가설은 틀렸다. PubSub e2e는 classic fanout channel을 쓴다.
+Host factory가 `framework.AddFanoutChannel(...).Connect(endpoint)`로 구성하고 주석에도
+"Classic fanout uses no location store (config-3)"라고 적혀 있다. MeshNode도 peer도
+등장하지 않으므로 peer state 자체가 성립하지 않는다. `Objects().Server()` 유무를 비교한
+것은 애초에 이 스위트와 무관한 축이었다.
+
+실제 원인은 다른 것이었다. `f14abf3c37f`가 subscriber host에서
+`AddZLinkMonitoring(monitor => monitor.AddSocketEvents(..., ConnectionReady, ...))`
+등록을 지웠는데 `run_e2e.sh`는 여전히 `event=ConnectionReady` 증거를 기다렸다. 그 API는
+지금 framework 어디에도 없다. 삭제는 의도된 것이다. spec 24 §3이
+"변화 stream의 각 항목은 일부 field만 담은 event가 아니라 완전한 status다. Nullable
+field를 조합하는 범용 event DTO는 제공하지 않는다"고 정한다. 즉 낡은 쪽은 runner다.
+
+대체 barrier로 status 조회를 쓸 수는 없었다. spec 24 §2.2는 topology status의 범위를
+RouteMesh·ClientServer·automatic fanout으로 한정하고, `ZLinkFanoutRuntimeService`도
+subscriber가 automatic discovery인 channel만 등록한다. Manual channel을 물으면
+"not ready"가 아니라 오류다. 그래서 spec 29 §170이 정의한 classic fanout readiness,
+곧 "첫 정상 application record 수신"을 그대로 barrier로 삼았다.
+
+이 조사가 뒤집은 것이 하나 더 있다. "12개 스위트가 하나의 공통 원인으로 막혀 있다"는
+추정은 근거가 없다. `event=ConnectionReady`를 기다리는 runner는 PubSub 하나뿐이다
+(SubmitAdmission의 `event=` 표지는 application 수준이라 무관하다). 스위트별로 개별
+확인해야 한다.
+
+### classic fanout subscriber가 liveness beacon을 application record로 처리했다
+
+barrier를 고치자 PS-A1~A3이 통과하고 PS-A4에서 다음 증거가 나왔다.
+
+```
+dispatch-error|surface=Channel|kind=Publish|reason=InvalidFrame|action=Drop|channel=events|topic=ZLF1
+```
+
+`ZLF1`은 `ZLinkFanoutLivenessProtocol.Topic`의 예약 topic이다. Publisher는 5초마다 같은
+PUB socket으로 beacon을 보내므로 manual subscriber도 이것을 받는다.
+`ZLinkChannelReceiveLoop.RunFanoutConnectionLoopAsync`(automatic)는 예약 topic을
+걸러내지만 `RunSubscriberLoopAsync`(manual)는 걸러내지 않아 beacon이 application
+dispatch로 흘러갔다.
+
+spec 29 §4는 Classic fanout 전체(automatic·manual 양쪽)에 적용되며 "Beacon은
+application event가 아니다. Application queue나 fanout handler에 전달하지 않는다.
+Application message trace를 만들지 않는다"고 정한다. Manual loop는 세 항목을 모두
+어겼다. 예약 topic 처리를 automatic loop와 같게 맞췄다.
+
+남은 gap이 하나 있다. Manual mode에는 spec 29 §4의 15초 inbound timeout과 재연결이
+없다. Automatic mode에만 watchdog이 있다. 이번 수정 범위 밖이므로 별도로 남긴다.
+
+### PS-A4는 native library가 낡아서 막혀 있다
+
+Beacon 수정 뒤 PS-A4는 다른 지점에서 멈춘다. 한 subscriber의 transport를 proxy로 막은
+직후의 publish가 실패한다.
+
+```
+Fanout publish timed out before local admission completed.  (1003ms)
+```
+
+Classic fanout은 손실 허용이므로 느린 subscriber 하나 때문에 publish가 실패해서는 안
+된다. 원인은 framework가 아니다.
+
+```
+core/src/runtime/sockets/pubsub/xpub.cpp:  -_lossy (false),  +_lossy (true),   (2026-07-31 23:17 수정)
+bindings/dotnet/native/linux-x64/libzlink.so.11.1.0                            (2026-07-31 14:52 빌드)
+e2e/PubSub/Server/Publisher/bin/.../libzlink.so.11.1.0                         (2026-07-31 14:52 빌드)
+```
+
+로드되는 native library가 lossy 기본값 변경보다 먼저 빌드됐다. nodrop 상태에서는 pipe가
+차면 `EAGAIN`이 나고, submitter가 writability를 기다리다 send timeout에 걸린다. 관측된
+증상과 정확히 맞는다. Core를 다시 빌드해 native library를 갱신해야 PS-A4를 판정할 수
+있다.

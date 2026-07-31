@@ -26,8 +26,8 @@ internal static class PsA3LateSubscriberScenario
                 .Query("value", $"before-late-{i}")
                 .AsyncRaw();
 
-        // Keep the publisher transport blocked until the late subscriber's
-        // monitor is active, then allow the first ConnectionReady transition.
+        // Keep the publisher transport blocked until the late subscriber host is
+        // healthy, so the join it is measured against happens after this point.
         await using var connectionGate = new NetworkFaultProxy(
             new Uri(processes.PublisherEndpoint),
             initiallyBlocked: true);
@@ -55,14 +55,8 @@ internal static class PsA3LateSubscriberScenario
                 "PS-A3 expected late subscriber to become healthy.");
             connectionGate.Unblock();
             await connectionGate.WaitForUpstreamConnectionAsync();
-            var readyRun = $"ready-{Guid.NewGuid():N}";
-            await publisher.Post("/publish/event")
-                .Query("topic", PubSubNames.MainTopic)
-                .Query("runId", readyRun)
-                .Query("sequence", "0")
-                .Query("value", "late-subscriber-ready")
-                .AsyncRaw();
-            await SubscriberObservation.WaitForEventAsync(lateSubscriberClient, readyRun, 0);
+            await FanoutReadiness.WaitUntilReceivingAsync(
+                publisher, lateSubscriberClient, "PS-A3 late subscriber");
 
             var afterLateRun = Guid.NewGuid().ToString("N");
 

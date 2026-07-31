@@ -252,6 +252,26 @@ internal sealed class ZLinkChannelReceiveLoop(
                 }
 
                 backoff.Reset();
+                //  The beacon shares the publisher's PUB socket, so a manual
+                //  subscriber receives it alongside application records. It is
+                //  not an application event: it never reaches the queue, a
+                //  handler or a message trace.
+                if (ZLinkFanoutLivenessProtocol.IsReservedTopic(
+                        topicMessage.Topic))
+                {
+                    if (ZLinkFanoutLivenessProtocol.IsValidBeacon(topicMessage))
+                        continue;
+
+                    //  A reserved topic carrying anything else is a protocol
+                    //  error. Leaving the loop closes this publisher's socket,
+                    //  which is the only connection it governs.
+                    errorSink.ReportRuntimeTaskException(
+                        $"channel-subscriber:{channelName}",
+                        new InvalidOperationException(
+                            "Fanout publisher sent a malformed liveness beacon."));
+                    return;
+                }
+
                 var owned = topicMessage;
                 topicMessage = null;
                 var payloadBytes = MeasurePayloadBytes(owned.Parts);

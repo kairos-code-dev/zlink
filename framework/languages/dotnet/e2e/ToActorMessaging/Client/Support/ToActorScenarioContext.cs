@@ -273,8 +273,11 @@ internal sealed class ToActorScenarioContext : IDisposable
         var reply = (await actor.Post($"/actors/{actorId}/push")
             .Body(new BoundPushRequest(scenario, actorId, value))
             .Async<BoundPushReply>()).Body;
-        ZlinkStreamAssert.Ensure(!reply.Submitted && reply.ErrorKind == "NotFound",
-            $"{scenario} expected NotFound after disconnect, got '{reply.ErrorKind}'.");
+        // Spec 20 §360: a push with no current binding is session-not-bound,
+        // which surfaces as InvalidOperation. The Actor is not missing - the
+        // binding has to exist first, and the same call succeeds once it does.
+        ZlinkStreamAssert.Ensure(!reply.Submitted && reply.ErrorKind == "InvalidOperation",
+            $"{scenario} expected InvalidOperation with no bound session, got '{reply.ErrorKind}'.");
     }
 
     public async Task<BoundSessionSnapshot[]> GetBoundSessionSnapshotsAsync(string actorId)

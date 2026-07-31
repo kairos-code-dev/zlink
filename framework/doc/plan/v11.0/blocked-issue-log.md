@@ -6505,3 +6505,32 @@ completion pair의 HWM은 이미 분리했으므로 다음은 application lane �
 `ResilienceLifecycle`·`ToActorMessaging`·`AutomaticTurnDispatch`·`SpotActorTransfer`는 이번
 sweep에서 0으로 나왔으나 SubmitAdmission 실행과 겹쳐 돌았다. 포트 경합 가능성이 있어 결과로
 치지 않는다. e2e는 동시에 돌리지 말 것.
+
+### TA-A2·TA-A3 통과, TA-A4에서 진짜 결함이 드러난다
+
+ToActorMessaging은 첫 시나리오 TA-A2에서 멈춰 있었다. 원인은 e2e 기대가 spec 결정보다 낡은
+것이었다. Spec 20 §360은 current binding 없이 push하면 session-not-bound이고 public kind는
+`InvalidOperation`이라고 정한다. `AssertBoundPushFailureAsync`는 `NotFound`를 기대하고 있었다.
+e2e를 spec에 맞추자 TA-A2와 TA-A3가 통과한다.
+
+TA-A4는 다른 문제다. 여기서 나온 것은 기대 불일치가 아니라 결함이다.
+
+```
+TA-A4 expected InvalidOperation with no bound session, got ''
+```
+
+`ErrorKind`가 빈 문자열인 것은 예외가 없었다는 뜻이다. Endpoint는 예외를 잡을 때만 kind를
+채우고, actor handler는 성공 경로에서만 reply를 만든다. 즉 **연결이 끊긴 뒤에도
+`BoundSession.Send`가 조용히 성공했다.**
+
+시나리오는 그 직전에 session host의 `/bindings/{actorId}`가 양쪽 모두 null인 것을 확인한다.
+따라서 session 쪽 registry는 풀렸고 actor 쪽 `_boundSession`은 남아 있다. Binding의 두 면 중
+한 면만 정리된 것이다.
+
+Code에서도 같은 모양이 보인다. `ZLinkSessionActorBindingRegistry`의 disconnect sweep은
+`runtime.UnbindSessionActor`만 부른다. Actor 쪽 상태를 지우는 것은 `UnbindActorSession`이고,
+둘을 함께 부르는 것은 `RemoveActorSessionBinding`뿐이다. ToActorMessaging은 actor host와
+session host가 별도 process이므로 actor 쪽 정리는 relay되어야 한다.
+
+SM-B6의 disconnect callback 미실행과 같은 계열일 가능성이 있다. 양쪽 모두 "session은 끊긴 것을
+알고 actor node는 모른다"이다.

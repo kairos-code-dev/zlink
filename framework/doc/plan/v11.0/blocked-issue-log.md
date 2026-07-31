@@ -6051,3 +6051,35 @@ Server 등록을 `else`로 옮겨 다시 측정했다.
 확정된 범위는 그대로다. Manual connect가 `Hello`를 만들어 보내지 못한다. 다음은 connect
 시도 자체에 trace를 넣어 socket connect가 실행되는지, 실행된다면 어느 endpoint로 가는지를
 보는 것이다. 지금까지는 admission 평가 지점만 관측했고 그 앞 단계는 보지 않았다.
+
+### SubmitAdmission 최종 범위: framework 구성은 동일하고 결과만 다르다
+
+Connect 시도 앞단까지 내려가 두 pair를 같은 빌드로 비교했다. Manual peer 연결의 진입
+조건과 등록 수를 찍었다.
+
+```
+SubmitAdmission  caller  : mode=Manual count=1      target     : mode=None count=0
+RegistrationCodec requester: mode=Manual count=1    json-only  : mode=None count=0
+```
+
+**완전히 같다.** Acquisition mode도, 등록된 manual endpoint 수도, 듣는 쪽이 manual 연결을
+갖지 않는 것도 같다. 그런데 한쪽만 `Hello`가 오간다.
+
+이 스위트에서 배제한 것이 일곱이 됐다.
+
+| 후보 | 결과 |
+|---|---|
+| Receiver gate proxy | 동일 |
+| Router socket HWM | 동일 |
+| 시간 | 동일 |
+| Expected RID | 동일 |
+| Caller mesh 전반 | automatic peering은 정상 |
+| Channel role 조합 | 동일 |
+| Peer acquisition mode와 등록 수 | 동작하는 pair와 동일 |
+
+Framework 수준에서 관측할 수 있는 구성과 호출은 동작하는 pair와 구분되지 않는다. 연결
+시도는 발생하고 `Hello`는 만들어지지 않는다. 따라서 차이는 그 아래, 즉 실제 socket connect와
+listener 사이에 있다.
+
+이 항목도 core lane으로 넘긴다. Core에서 볼 것은 두 실행의 connect 대상 endpoint와 그
+시점의 listener 상태다. 이로써 core lane 목록은 다섯이 된다.

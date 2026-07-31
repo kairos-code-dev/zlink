@@ -47,6 +47,9 @@ PATTERNS = [
     ("Node 표면", re.compile(
         r"\b(AbortSignal|NestJS|@Injectable|@Inject|@Module)\b")),
     ("Kotlin 표면", re.compile(r"\b(suspend fun|StateFlow|CoroutineScope)\b")),
+    #  `.NET` terminal이 붙은 operation 이름. 계약 문서가 정한 언어 중립 이름은
+    #  terminal을 뗀 쪽이다(spec 20 §4.1이 NotifyDisconnected로 명시한다).
+    (".NET terminal이 붙은 operation 이름", re.compile(r"\b\w+Async\b")),
 ]
 
 #  다섯 언어 공통 규칙이라 산문에 나와도 되는 이름. 근거를 함께 적는다.
@@ -57,6 +60,10 @@ ALLOWED = {
     #  spec이 정의한 계기·wire 이름이라 언어 무관이다.
     "zlink",
 }
+
+#  operation 이름을 산문에 적을 때는 terminal을 뗀 언어 중립 이름을 쓴다. spec 20 §4.1이
+#  이 규약을 정한다 — "이 언어 중립 operation을 `NotifyDisconnected`라 하며 `.NET` exact
+#  interface에서는 `NotifyDisconnectedAsync(...)`로 표현한다."
 
 #  검사에서 통째로 빼는 파일. 이유를 함께 적는다.
 SKIP_FILES = {

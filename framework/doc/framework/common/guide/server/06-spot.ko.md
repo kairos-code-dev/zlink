@@ -21,7 +21,7 @@ Actor membership과 종료 계약이 다르다.
 | Spot ID | Framework가 발급한다 | `Create`는 Framework가, `GetOrCreate`는 caller가 지정한다 | Caller가 message의 target ID로 지정한다 |
 | Stable type | 등록하지 않는다 | 필수 | 필수 |
 | Actor membership | 지원한다. Actor 생성 직후의 기본 실행 위치다 | 지원한다. Actor가 join·leave로 이동한다 | 지원하지 않는다 |
-| Application close | 제공하지 않는다 | `CloseAsync` 또는 local context에서 close한다 | 자신의 handler·timer context에서 close한다 |
+| Application close | 제공하지 않는다 | `Close` 또는 local context에서 close한다 | 자신의 handler·timer context에서 close한다 |
 | 주요 용도 | 아직 User Spot에 속하지 않은 Actor의 기본 위치 | room, stage, zone | matchmaking worker처럼 ID 기반 요청 처리 단위 |
 
 User Spot과 Instance Spot은 역할이 다르다. User Spot은 caller가 ID를 지정하거나 Framework가 새 ID를
@@ -428,7 +428,7 @@ ID로 쓸 Spot을 확보하는 호출**이다. 어느 쪽을 쓸지는 "이미 �
 | --- | --- | --- |
 | 목적 | 새 Spot 하나를 만든다 | 그 ID의 Spot을 쓸 수 있게 한다 |
 | 결과 `State` | `Created` 또는 `Rejected` | `Existing` · `Created` · `Rejected` |
-| 이미 있을 때 | Framework가 SpotId를 새로 발급하므로 해당 없음 | `Existing`으로 끝나며 factory와 `OnCreateAsync`를 실행하지 않는다 |
+| 이미 있을 때 | Framework가 SpotId를 새로 발급하므로 해당 없음 | `Existing`으로 끝나며 factory와 `OnCreate`를 실행하지 않는다 |
 | SpotId | Framework가 발급한다 | caller가 지정한다 |
 | 실패하면 | 쓸 수 있는 Spot이 없다 | 쓸 수 있는 Spot이 없다 |
 
@@ -719,7 +719,7 @@ Spot handler는 [05-channel-messaging](05-channel-messaging.ko.md)의 channel ha
 | application state | handler field에 보관하지 않는다 | Spot 또는 member Actor가 소유한다 |
 
 Spot handler는 Spot class의 메서드가 아니라 그 Spot에 바인딩된 **별도 class**다. 첫
-제네릭 인자로 대상 Spot 타입을 받고, `HandleAsync`의 첫 인자로 그 Spot instance를 받는다.
+제네릭 인자로 대상 Spot 타입을 받고, `Handle`의 첫 인자로 그 Spot instance를 받는다.
 Framework는 Spot activation에서 handler를 한 번 만들고 Spot이 닫히거나 relocation될 때
 정리한다. Actor handler도 같은 방식으로 해당 Actor activation에 묶인다.
 
@@ -1244,7 +1244,7 @@ Actor 앞 request는 actor request handler이며
     ```
 
 
-`OnClosingAsync`의 reason은 explicit close, host shutdown, relocation out을 구분한다.
+`OnClosing`의 reason은 explicit close, host shutdown, relocation out을 구분한다.
 Framework는 `Deadline`이 끝날 때 cleanup token을 취소한다.
 
 ### 4.2 Spot과 Actor의 activation scope
@@ -1630,7 +1630,7 @@ factory로 준비할지 고르는 stable type**이다. 그 mesh에 Instance Spot
 
 
 `InstanceSpot(...)`을 붙이지 않은 호출은 이미 실행 중인 Spot만 찾고, 없으면 생성하지
-않고 실패한다. `FindAsync`도 생성을 시작하지 않는다. 즉 cold activation은 호출하는
+않고 실패한다. `Find`도 생성을 시작하지 않는다. 즉 cold activation은 호출하는
 쪽이 intent로 명시적으로 허용해야 일어난다.
 
 `SendToSpot`은 source-local admission까지 기다리는 one-way operation이다. Target handler 완료를
@@ -2158,8 +2158,8 @@ Worker 스레드 풀 자체(최소·최대 스레드, 유휴 시간, 대기열 �
 ## 7. Relocation을 시작해도 되는 시점 알리기
 
 Relocation은 Spot을 다른 node로 옮기는 절차다([03-concepts](03-concepts.ko.md#5-relocation--다른-node로-옮겨가기)).
-Framework는 source에서 새 turn 수락을 닫고, adapter의 `CaptureAsync`로 application state를
-직렬화하고, target에서 `RestoreAsync`로 복원한 뒤 authority를 commit한다. `CaptureAsync`를
+Framework는 source에서 새 turn 수락을 닫고, adapter의 `Capture`로 application state를
+직렬화하고, target에서 `Restore`로 복원한 뒤 authority를 commit한다. `Capture`를
 호출하는 시점을 relocation **safe point**라 하며, 이 시점을 누가 정하는지를 factory 등록에서
 고른다.
 
@@ -2169,14 +2169,14 @@ Framework는 source에서 새 turn 수락을 닫고, adapter의 `CaptureAsync`�
 | `ApplicationSignaled` | Application — `Defer()`를 호출한 turn의 끝 | 상태 일관성 단위가 여러 turn에 걸치는 Spot |
 
 **기본 모드가 성립하는 조건.** Framework는 실행 중인 turn을 중단하지 않는다. handler 하나와
-tick 하나는 완료된 뒤에야 `CaptureAsync`가 호출되므로, 상태 변경이 한 turn 안에서 끝나면 turn
+tick 하나는 완료된 뒤에야 `Capture`가 호출되므로, 상태 변경이 한 turn 안에서 끝나면 turn
 경계에서 직렬화한 state는 항상 일관된다.
 
 **기본 모드가 성립하지 않는 조건.** 상태 일관성 단위가 여러 turn에 걸쳐 있으면 turn 경계에서
 직렬화한 state가 불완전할 수 있다. FPS 라운드가 그런 예다 — 라운드는 시작 tick, 입력 packet
 다수, 정산 tick으로 이뤄지고 그 중간 state는 복원해도 라운드를 이어서 진행할 수 없다.
 Framework는 turn 경계는 알지만 application이 정의한 일관성 단위는 알지 못한다.
-`ApplicationSignaled`를 등록하면 Framework는 `CaptureAsync`를 스스로 호출하지 않고 application이
+`ApplicationSignaled`를 등록하면 Framework는 `Capture`를 스스로 호출하지 않고 application이
 신호한 시점까지 대기한다.
 
 === "C#/.NET"
@@ -2248,7 +2248,7 @@ Framework는 turn 경계는 알지만 application이 정의한 일관성 단위�
 
 Application은 상태가 일관된 turn에서 `Defer()`를 호출한다. 이 호출은 relocation을 그 자리에서
 수행하지 않는다. 현재 turn이 끝난 뒤 대기 중인 relocation이 있으면 Framework가 그 지점에서
-`CaptureAsync`를 호출한다.
+`Capture`를 호출한다.
 
 === "C#/.NET"
 
@@ -2329,7 +2329,7 @@ Application은 상태가 일관된 turn에서 `Defer()`를 호출한다. 이 호
     ```
 
 
-신호한 뒤 실제로 어떻게 됐는지는 Spot의 `OnRelocationReadyCompletedAsync`로 돌아온다. 이
+신호한 뒤 실제로 어떻게 됐는지는 Spot의 `OnRelocationReadyCompleted`로 돌아온다. 이
 callback은 **두 경우 모두** 호출되므로, 다음 라운드를 여는 코드를 여기 한 곳에 둔다.
 
 === "C#/.NET"

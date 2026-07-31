@@ -217,13 +217,16 @@ connector가 제공하는 검증 함수로 대부분의 시나리오를 표현�
 
 | 검증 항목 | 사용하는 함수 |
 | --- | --- |
-| 요청을 보내고 응답을 확인한다 | `Request(req).Async<TRes>(ct)` |
-| server가 먼저 보내는 push가 오는지 확인한다 | `WaitFor<TNotify>().Async(ct)` |
-| push가 **오지 않아야** 함을 확인한다 | `ExpectNone<TNotify>().Within(window).Async(ct)` |
+| 요청을 보내고 응답을 확인한다 | `Request(req)` — 응답 타입은 terminal에 지정한다 |
+| server가 먼저 보내는 push가 오는지 확인한다 | `WaitFor<TNotify>()` |
+| push가 **오지 않아야** 함을 확인한다 | `ExpectNone<TNotify>().Within(window)` |
 | push가 **정해진 순서로** 오는지 확인한다 | `WaitForSequence<TNotify>().Expect(...).Expect(...)` |
-| 요청이 **실패해야** 함을 확인한다 | `ZlinkStreamAssert.ExpectFailureAsync(...)` |
+| 요청이 **실패해야** 함을 확인한다 | `ExpectFailure(...)` |
 
-값 비교는 `ZlinkStreamAssert.Ensure(조건, 메시지)`를 사용한다. 메시지는 필수이며, 실패하면 그
+**terminal 표기는 언어를 따른다** — `.NET`은 `Async`, Java · Node · C++은 `submit`,
+Kotlin은 `await`다([비동기 실행 정책](../../../common/spec/05-async-execution-policy.ko.md)).
+
+값 비교는 `Ensure(조건, 메시지)`를 사용한다. 메시지는 필수이며, 실패하면 그
 메시지를 담은 예외로 시나리오가 끝난다.
 
 ### push 도착 확인

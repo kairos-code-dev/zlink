@@ -389,7 +389,7 @@ relocation record는 Framework 내부 정보이므로 반환하지 않는다. `N
 
 ## 5. Actor와 Spot 조회
 
-업무 코드는 global ActorId와 SpotId를 사용한다. Manager의 `FindAsync(...)`는 현재 Ready object만
+업무 코드는 global ActorId와 SpotId를 사용한다. Manager의 `Find(...)`는 현재 Ready object만
 반환한다.
 
 === "C#/.NET"

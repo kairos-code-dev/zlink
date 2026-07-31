@@ -21,7 +21,7 @@
 | 배차 시스템 | [DeliveryDispatch](#5-deliverydispatch--배차-시스템-구축) | 요청 생성 → 수행자 선택 → 무응답 시 재배정 → 당사자에게 전달 |
 | 주문 처리 시스템 | [ShoppingMall](#6-shoppingmall--주문-처리-시스템-구축) | 조율 계층 없이 순차 코드로 쓰는 무손실 event sourcing |
 | 퀘스트·미션 진행 시스템 | [GameQuest](#7-gamequest--퀘스트-진행-시스템-구축) | 유실을 허용하는 대신 실시간성을 얻는 owner 처리 |
-| zone 분할 MMORPG와 운영 관제 | [ZoneWorld](#8-zoneworld--zone-분할-mmorpg와-운영-관제-구축) | 여러 노드에 무언가를 할 때 어떤 표면을 고르는가 |
+| zone 분할 MMORPG와 운영 관제 | [ZoneWorld](#8-zoneworld--zone-분할-mmorpg와-운영-관제-구축) — `.NET`과 Node.js만 제공한다 | 여러 노드에 무언가를 할 때 어떤 표면을 고르는가 |
 
 기능 쪽에서 거꾸로 고르려면 `01. Overview` 장의 도입 순서를
 먼저 본다.
@@ -304,6 +304,10 @@ ShoppingMall과 나란히 놓으면 선택 기준이 드러난다. 게임 진행
 - 시나리오: [GameQuest](../../../common/sample/event/gamequest.ko.md) · payload JSON
 
 ## 8. ZoneWorld — zone 분할 MMORPG와 운영 관제 구축
+
+> 앞의 일곱 샘플과 달리 ZoneWorld는 `.NET`과 Node.js에만 있다. 나머지 여섯은 다섯 언어
+> 공통이다. 다른 언어에서 같은 주제를 보려면 이 장의 설명과 공통 시나리오 문서를 읽고
+> 코드는 두 언어 중 하나를 참고한다.
 
 월드를 구역으로 나눠 `ZoneNode` 여러 대가 나눠 맡고, 어느 노드가 어느 구역을 맡는지는
 Location Store와 framework가 정한다. 플레이어가 경계를 넘으면 actor가 인접 zone Spot에

@@ -665,7 +665,7 @@ handler는 인터페이스를 구현하고, 결과를 반환값으로 돌려준�
   다룬다.
 - handler class는 dispatch 키가 아니라 **코드 조직 단위**다. 메서드를 한 class에
   주제별로 묶어도, packet마다 class를 따로 둬도 동작은 같다.
-- interface 기반 handler는 컴파일 타임 타입 체크가 가장 강하다. `HandleAsync(...)`
+- interface 기반 handler는 컴파일 타임 타입 체크가 가장 강하다. `Handle(...)`
   의 payload, context, return 타입이 interface 계약과 맞지 않으면 컴파일이 실패한다.
 
 ### attribute 기반 메서드 handler

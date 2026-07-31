@@ -288,7 +288,7 @@ Session은 연결, packet dispatch, 오류와 disconnect callback을 구현한�
     ```
 
 
-Handshake와 node 범위 오류는 runtime monitoring으로 보고한다. Session `OnErrorAsync`는 session
+Handshake와 node 범위 오류는 runtime monitoring으로 보고한다. Session `OnError`는 session
 범위 오류만 받는다.
 
 ## 3. Typed packet handler

@@ -308,7 +308,7 @@ client 연결·서비스 메시징·actor 상태가 서로 다른 세 계층에�
 | 라이선스 | Orleans MIT / Akka BSL(연매출 기준 유료 트리거) | framework는 FSL-1.1-ALv2, core·binding은 MPL-2.0 — 매출 기준 유료 트리거가 없다(§7) |
 | 실전 검증 기간 | 10년 이상(Halo, Microsoft 365, Skype) | 짧음 — 이 프로젝트 자체가 진행 중 |
 
-① **actor 상태 persistence** — `OnCreateAsync`·`OnClosingAsync` 같은 lifecycle 훅은
+① **actor 상태 persistence** — `OnCreate`·`OnClosing` 같은 lifecycle 훅은
 제공하지만, 어느 DB에 어떻게 저장할지는 application이 정한다. 미리 구현된 storage
 커넥터 모음이 없다는 뜻이다([ShoppingMall](../../../common/sample/event/shoppingmall.ko.md)이 그 예다).
 

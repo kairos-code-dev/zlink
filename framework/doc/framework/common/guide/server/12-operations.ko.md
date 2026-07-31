@@ -130,7 +130,7 @@ framework는 `"zlink.framework"`라는 이름의 `System.Diagnostics.Metrics.Met
 
 ## 2. Relocate — 상태를 유지한 채 다른 host로 옮기기
 
-`RelocateAsync(...)`는 이 host에서 살아 있는 User Spot·Instance Spot·Actor를 다른 Serving node로
+`Relocate(...)`는 이 host에서 살아 있는 User Spot·Instance Spot·Actor를 다른 Serving node로
 옮긴다. Host 전체를 대상으로 하는 operation이며, 이 호출 자체가 host를 종료하지는 않는다.
 
 **무엇이 유지되나.** 옮긴 뒤에도 client와 다른 node가 쓰던 것이 그대로 남는다는 뜻이다.
@@ -140,7 +140,7 @@ framework는 `"zlink.framework"`라는 이름의 `System.Diagnostics.Metrics.Met
 | SpotId · ActorId와 `ObjectGeneration` | 호출하는 쪽이 쓰던 논리 ID가 바뀌지 않는다. 주소를 다시 알릴 필요가 없다 |
 | 아직 실행하지 않은 message와 accepted journal | seal 시점에 queue에 남아 있던 작업을 target에서 이어서 실행한다 |
 | timer 등록과 pending tick | 이름·주기·옵션·스케줄 커서를 함께 옮기므로 target에서 다시 등록하지 않는다 |
-| application state | factory에 등록한 relocation adapter의 `CaptureAsync`·`RestoreAsync`로 옮긴다 |
+| application state | factory에 등록한 relocation adapter의 `Capture`·`Restore`로 옮긴다 |
 | bound STREAM session route | client session은 그대로 두고 route가 새 owner를 가리키도록 바꾼다 |
 
 절차는 다음과 같다.
@@ -161,7 +161,7 @@ framework는 `"zlink.framework"`라는 이름의 `System.Diagnostics.Metrics.Met
 6. Frozen queue·timer를 target에 복원하고 seal 뒤 source hold를 target으로 relay한다. Source cleanup,
    `Completed`, bound STREAM route ACK와 steady normalization을 끝낸 뒤 target admission을 연다.
 7. 모든 unit이 source dispatch에서 분리되면 host를 `Relocated`로 전환한다. 연결과 infrastructure는
-   `ShutdownAsync(...)`를 호출할 때까지 유지한다.
+   `Shutdown(...)`를 호출할 때까지 유지한다.
 
 첫 relocation commit 전 failure는 source queue와 admission을 복원할 수 있다. 첫 commit 뒤에는 source로
 rollback하지 않고 target recovery를 계속하며 deadline을 넘기면 `ForceStopped`로 끝낸다.
@@ -206,15 +206,15 @@ Actor가 없으므로 Spot 하나가 그대로 이전 단위다.
 
 ## 3. Shutdown — 옮기지 않고 종료하기
 
-`ShutdownAsync(...)`는 이 host를 종료한다. §2와 달리 **상태를 다른 node로 옮기지 않는다.**
+`Shutdown(...)`는 이 host를 종료한다. §2와 달리 **상태를 다른 node로 옮기지 않는다.**
 
 호출하면 새 relocation을 시작하지 않고, 진행 중인 작업을 주어진 deadline 안에서 끝내거나
-실패로 확정한다. 그다음 Entry·User·Instance Spot에 `OnClosingAsync`를 `HostShutdown` reason으로
+실패로 확정한다. 그다음 Entry·User·Instance Spot에 `OnClosing`를 `HostShutdown` reason으로
 알리고, 그 callback이 끝난 뒤 scope·authority·session·topology resource를 정리한다. deadline을
 주지 않으면 30초다.
 
 여기서 정리되는 Spot의 state는 남지 않는다. 배포 자동화가 상태를 살려서 내려야 한다면 종료
-전에 `RelocateAsync(...)`를 먼저 호출하고 그 결과가 `Relocated`인지 확인한 뒤 이 호출로
+전에 `Relocate(...)`를 먼저 호출하고 그 결과가 `Relocated`인지 확인한 뒤 이 호출로
 넘어간다(§4의 예제).
 
 Spot의 수명은 request와 무관하다. 일반 request가 끝났다는 이유만으로 User·Instance Spot을 닫지

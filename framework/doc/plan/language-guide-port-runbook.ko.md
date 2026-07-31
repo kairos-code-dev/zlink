@@ -511,10 +511,24 @@ SCREAMING_SNAKE)는 이름을 적는 대신 뜻을 적고 "표기는 언어를 �
 | 12-operations | `24-runtime-monitoring` · `25-runtime-metrics` · `28-graceful-drain-handoff` |
 | 14 · 15 · 17 | 없음. 안내가 본질인 챕터라 없다고 밝힌다 |
 
+**게이트 4를 08장부터 시작했다.** `20-session-actor-dispatch`와 대조해 산문이 빠뜨린
+계약 넷을 채웠다 — session:Actor 개수 비대칭(session은 여럿, Actor는 하나), relay가
+Location Store를 다시 조회하지 않는다는 점, disconnect 통지의 all-settled·dedupe 규칙,
+닫힌 session의 늦은 reply 처리다. **넷 다 "빠졌다"이지 "틀렸다"가 아니었다.**
+
+이 대조에서 게이트 3의 구멍도 드러났다. 산문이 `BindAsync` · `OnCreateActorAsync` 같은
+**`.NET` terminal이 붙은 operation 이름**을 부르고 있었는데 게이트 3이 타입 이름만 보고
+있어 놓쳤다. 공통 12장에서 33자리다.
+
+계약 문서가 이미 답을 정해 두었다 — `20-session-actor-dispatch` §4.1이 *"이 언어 중립
+operation을 `NotifyDisconnected`라 하며 `.NET` exact interface에서는
+`NotifyDisconnectedAsync(...)`로 표현한다"* 고 쓴다. **terminal을 뗀 이름이 언어 중립
+이름이다.** 33자리를 그 규약으로 맞추고 게이트 3에 규칙을 넣었다.
+
 | 남은 일 | 규모 |
 | --- | --- |
 | ZoneWorld 샘플 구현 | cpp · java · kotlin. 문서가 아니라 코드 작업이다 |
-| 게이트 4 본 검수 | 위 표를 따라 챕터별 산문↔스펙 대조. 사람이 읽는다 |
+| 게이트 4 나머지 8장 | 03 · 04 · 05 · 06 · 07 · 09 · 10 · 12. 08장과 같은 방식이다 |
 | 게이트 6 | 호출 형태 대조. 사람이 읽는다 |
 
 **병행 트랙 상태.** 사이트는 정본 트리를 docs root로 쓰도록 구성했고 가이드 장의 빌드

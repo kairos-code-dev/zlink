@@ -10,6 +10,15 @@ client packet을 Actor로 relay할 수 있고, Actor는 같은 session으로 pus
 Binding은 Actor의 Spot membership과 독립이다. Actor가 다른 Spot이나 node로 relocation되어도
 `ActorId`와 `ObjectGeneration`은 유지되며 Framework가 binding route를 갱신한다.
 
+**개수는 한쪽만 열려 있다.** Session 하나는 여러 Actor를 동시에 bind할 수 있다 — 한
+connection이 player Actor와 party Actor를 함께 써도 된다. 반대로 **Actor 하나는 동시에
+session 하나에만 bind된다.** 새 binding이 확정되면 이전 binding은 무효가 되고 그쪽으로 온
+늦은 message는 거부된다.
+
+**relay는 Location Store를 다시 조회하지 않는다.** bind할 때 확인한 route를 session이
+Actor마다 보관하고 그것으로 보낸다. Actor가 옮겨가면 relocation commit 뒤 Framework가 그
+보관 route를 갱신한다 — application이 다시 bind하지 않는다.
+
 ## 1. 인증 뒤 Actor bind
 
 Session handler에서 Actor를 생성하거나 조회한 다음 `ActorRef`를 bind한다. Local Actor instance나
@@ -170,8 +179,8 @@ target `NodeRid`를 직접 전달하지 않는다.
     ```
 
 
-`BindAsync`는 중복 bind를 오류로 처리한다. 인증 재전송처럼 이미 bind됐을 수 있는 흐름은
-`BindOrGetAsync`를 사용한다.
+`Bind`는 중복 bind를 오류로 처리한다. 인증 재전송처럼 이미 bind됐을 수 있는 흐름은
+`BindOrGet`를 사용한다.
 
 ## 2. Session packet을 Actor로 relay
 
@@ -397,6 +406,14 @@ Physical STREAM disconnect는 Framework가 current binding 전체에 자동으�
 Disconnect는 Actor를 삭제하거나 Entry Spot으로 이동시키지 않는다. 재접속한 session은 같은
 ActorRef를 다시 조회해 bind할 수 있다.
 
+**한 Actor의 통지가 실패해도 나머지는 계속한다.** Framework는 연결이 끊긴 시점의 binding
+snapshot을 고정하고 각 Actor에 통지하는데, 그중 하나가 실패하거나 callback이 deadline을
+넘겨도 남은 Actor 통지와 session cleanup을 멈추지 않는다.
+
+**자동 통지와 명시 호출이 겹쳐도 callback은 한 번만 실행된다.** 같은 binding에 대한 두
+통지를 Framework가 합치므로, 명시 호출 직후 연결이 끊겨도 Spot의 disconnect callback이
+두 번 돌지 않는다.
+
 ## 4. Actor에서 client로 push
 
 Actor handler는 `Context.BoundSession`으로 현재 bound client에 메시지를 보낸다.
@@ -489,6 +506,8 @@ Bound session은 push와 disconnect만 제공한다. Client request에 대한 Ac
 | Actor relocation seal 진행 중 | `ActorMoving`으로 끝나며 hidden retry하지 않는다. |
 | Binding 뒤 Actor relocation | Framework가 route를 갱신하며 session을 다시 bind하지 않는다. |
 | Session disconnect | Actor와 Spot membership은 유지한다. |
+| Session이 닫힌 뒤 도착한 reply | 버린다. 새 session이나 새 binding의 reply로 쓰지 않는다. |
+| relay 뒤 timeout · route 실패 | 다른 Actor · 새 owner · 다른 node로 자동 재전송하지 않는다. |
 
 `ActorRef.MeshName`과 `NodeRid`는 최초 control route의 snapshot이다. Application은 stale route를
 새로 조합하지 말고 actor manager의 조회 호출로 current ref를 다시 얻는다.

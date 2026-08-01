@@ -553,6 +553,9 @@ internal sealed class ZLinkActorInboundPipeline(
             finally
             {
                 runtime.RemoveActorSessionBinding(actor.Context.ActorId, bindingToken);
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"session_disconnect_applied actor={actor.Context.ActorId} "
+                    + $"binding={bindingToken}");
                 acknowledgeHandledFrame?.Invoke();
             }
             return;

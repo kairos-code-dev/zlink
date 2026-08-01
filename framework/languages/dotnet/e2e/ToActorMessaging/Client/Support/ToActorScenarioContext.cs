@@ -270,9 +270,20 @@ internal sealed class ToActorScenarioContext : IDisposable
         string value)
     {
         var actor = actorB ? _actorBHttp : _actorHttp;
-        var reply = (await actor.Post($"/actors/{actorId}/push")
-            .Body(new BoundPushRequest(scenario, actorId, value))
-            .Async<BoundPushReply>()).Body;
+        // A disconnect reaches the Actor's owner node as a relayed frame, so
+        // the session side reporting the binding gone does not mean the owner
+        // has seen it yet. Poll until it has.
+        BoundPushReply reply;
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (true)
+        {
+            reply = (await actor.Post($"/actors/{actorId}/push")
+                .Body(new BoundPushRequest(scenario, actorId, value))
+                .Async<BoundPushReply>()).Body;
+            if (!reply.Submitted || DateTime.UtcNow >= deadline) break;
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+        }
+
         // Spec 20 §360: a push with no current binding is session-not-bound,
         // which surfaces as InvalidOperation. The Actor is not missing - the
         // binding has to exist first, and the same call succeeds once it does.

@@ -932,6 +932,7 @@ internal sealed class ZLinkActorBoundSessionCoordinator
     public ValueTask NotifyRemoteDisconnectedAsync(
         ZLinkSessionBindingEntry binding,
         IZLinkBackendSpotNode node,
+        ZLinkServiceWireCodec.RequestSourceFence localRequestSource,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -952,6 +953,26 @@ internal sealed class ZLinkActorBoundSessionCoordinator
                 binding.BindingToken,
                 binding.BindingGeneration,
                 binding.SessionOwnerNodeGeneration));
+        //  A relayed session frame has to name the session it belongs to and
+        //  the node it came from, and the relay validates that on the way out.
+        //  Without it the disconnect never leaves this node.
+        var routeContext = new ZLinkBackendActorRouteContext(
+            default,
+            0,
+            binding.TargetNodeGeneration,
+            binding.AuthorityOwnerGeneration,
+            binding.OwnerLeaseGeneration,
+            IsBoundSessionRoute: true);
+        var applicationMetadata = ZLinkActorBoundSessionHandoffMetadata.Encode(
+            new ZLinkActorBoundSessionHandoffFence(
+                actorRef.ActorId,
+                actorRef.Generation,
+                sourceSessionRid,
+                binding.BindingToken,
+                binding.BindingGeneration,
+                //  The fence rejects a zero sequence, and a disconnect carries
+                //  no frame of its own, so it names the last one it accepted.
+                binding.AcceptedHighWater == 0 ? 1 : binding.AcceptedHighWater));
         // The disconnect frame takes the same route as any session frame to
         // this actor: ForwardPart relays it to the actor's owner node when the
         // actor is remote and writes the native bound session when it is local.
@@ -960,14 +981,22 @@ internal sealed class ZLinkActorBoundSessionCoordinator
                 SendFlags.DontWait, binding.MeshName, node,
                 binding.TargetNodeGeneration,
                 binding.AuthorityOwnerGeneration,
-                binding.OwnerLeaseGeneration))
+                binding.OwnerLeaseGeneration,
+                routeContext,
+                localRequestSource.NodeGeneration,
+                localRequestSource,
+                applicationMetadata))
             throw new InvalidOperationException("Actor session disconnect header forward failed.");
         if (!ForwardPart(
                 actorRef, sourceNodeRid, sourceSessionRid, bodyPart, false,
                 SendFlags.DontWait, binding.MeshName, node,
                 binding.TargetNodeGeneration,
                 binding.AuthorityOwnerGeneration,
-                binding.OwnerLeaseGeneration))
+                binding.OwnerLeaseGeneration,
+                routeContext,
+                localRequestSource.NodeGeneration,
+                localRequestSource,
+                applicationMetadata))
             throw new InvalidOperationException("Actor session disconnect body forward failed.");
         return ValueTask.CompletedTask;
     }

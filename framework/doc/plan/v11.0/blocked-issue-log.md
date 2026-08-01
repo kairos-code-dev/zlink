@@ -6595,3 +6595,32 @@ Session과 actor가 같은 node에 있으면 `NotifyActorDisconnectedAsync`의 l
 수정 방향은 disconnect frame도 다른 session relay frame과 같은 신원을 싣게 하는 것이다. 받는
 쪽 비-direct 분기는 `applicationMetadata`의 bound-session fence까지 요구하므로 그것도 함께
 채워야 한다. Fence를 느슨하게 푸는 방향은 택하지 않는다.
+
+### 원격 disconnect 통지 해결: 신원 세 조각이 빠져 있었다
+
+`ForwardPart`에 `routeContext`·`sourceNodeGeneration`·`requestSource`·`applicationMetadata`를
+채워 넣었다. 값은 전부 binding과 node runtime이 이미 들고 있는 것이다.
+
+- `requestSource` = `ZLinkSpotNodeRuntime.LocalRequestSource` (session node의 owner fence)
+- `sourceNodeGeneration` = 그 fence의 node generation
+- `applicationMetadata` = `ZLinkActorBoundSessionHandoffFence`
+- `routeContext` = `IsBoundSessionRoute: true`, hop 0, reply 0
+
+세 번 막혔고 세 번 다 무진단 폐기였다. 진단을 심을 때마다 다음 벽이 나왔다.
+
+1. `session_disconnect_notify_failed` → 송신 측 검증에서 `requestSource`가 null이라 throw
+2. `relay_identity_stale` → metadata는 76 byte로 도착하는데 `fence=False`
+3. 원인은 `TryDecode`가 `sessionSequence == 0`을 거부하는 것. Disconnect는 자기 frame이 없어
+   0을 넣고 있었다. `AcceptedHighWater`(0이면 1)로 바꾸자 통과했다.
+
+결과는 `applied=3 stale=0`이다. 세 actor 모두 owner node에서 binding이 정리된다. TA-A4의
+"끊긴 뒤 push가 성공한다"가 사라지고 시나리오가 다음 단계로 넘어갔다.
+
+남은 것은 그 다음 단계다. Actor destroy 뒤 cached request가 `NotFound`를 기대하는데
+`Unavailable`이 온다. 이것은 지금까지 disconnect가 무시되어 **한 번도 실행되지 않던 경로**가
+살아나면서 처음 드러난 것이다. 다른 스위트도 같은 이유로 달라질 수 있으므로 전량 재측정이
+필요하다.
+
+진단 셋을 영구로 남겼다. `session_disconnect_notify_failed`·`session_disconnect_ignored`·
+`session_disconnect_applied`·`relay_identity_stale`. 이 경로는 실패해도 아무 데도 남지 않는
+구간이 길어서, 없으면 같은 조사에 다시 몇 시간이 든다.

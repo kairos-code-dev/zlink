@@ -3355,11 +3355,12 @@ internal sealed partial class ZLinkFrameworkRuntime
             return;
         }
 
-        var node = GetMeshNodeRuntime(binding.MeshName).Node;
+        var nodeRuntime = GetMeshNodeRuntime(binding.MeshName);
 
         await _actorBoundSessionCoordinator.NotifyRemoteDisconnectedAsync(
                 binding,
-                node,
+                nodeRuntime.Node,
+                nodeRuntime.LocalRequestSource,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -3596,6 +3597,19 @@ internal sealed partial class ZLinkFrameworkRuntime
                  || session.AuthorityOwnerGeneration != authorityOwnerGeneration
                  || session.OwnerLeaseGeneration != ownerLeaseGeneration)
         {
+            //  Nine fields decide this and the frame is gone either way, so
+            //  name what the relay claimed against what the binding holds.
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"relay_identity_stale actor={actorId} fence={hasBoundSessionFence} "
+                + $"hop={messageFollowHopCount} reply={replyRequestId}/{replyFlags} "
+                + $"bound={state.TryGetBoundSession(out var stale)} "
+                + $"token={(stale.BindingToken ?? "-")}/{boundSessionFence?.BindingToken ?? "-"} "
+                + $"binding_gen={stale.BindingGeneration}/{boundSessionFence?.BindingGeneration} "
+                + $"obj_gen={stale.ObjectGeneration}/{actorGeneration} "
+                + $"mesh={stale.MeshName}/{ResolveSpotNodeMeshName(GetSpotNodeRuntime(targetNodeRid))} "
+                + $"target_gen={stale.TargetNodeGeneration}/{targetNodeGeneration} "
+                + $"authority_gen={stale.AuthorityOwnerGeneration}/{authorityOwnerGeneration} "
+                + $"lease_gen={stale.OwnerLeaseGeneration}/{ownerLeaseGeneration}");
             //  A replaced incarnation never comes back, so this is NotFound
             //  (DoNotRetry) rather than Unavailable (RetryAfterBackoff).
             var staleIdentity = new ZLinkFrameworkException(

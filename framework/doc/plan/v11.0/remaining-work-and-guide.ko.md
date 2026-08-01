@@ -125,8 +125,26 @@ callback이나 evidence가 나른다. SM-B6와 ST-C3가 같은 이유로 막혀 
 
 ### 2.2 원인이 확정된 미해결 항목
 
-**SM-B6.** Cross-node join은 통과한다. 남은 것은 actor가 handoff로 다른 node로 옮겨간 뒤
-bound session이 따라가지 않는 것이다. 그래서 disconnect 통지가 actor가 join한 spot에 닿지 못한다.
+**SM-B6 — cross-node join이 session route commit을 거치지 않는다.** Join 자체는 통과한다. Actor는
+entry node를 떠나 target node에서 `spot-actor-joined`까지 간다. Session route seal도 성립한다.
+
+```
+session-a : route_seal_drain    active_frames=0 waits=False
+session-a : route_seal_replying ack=True
+session-a : session_binding_removed  by=UnbindSessionActor   (transport 절단 뒤 cleanup)
+```
+
+Seal 뒤에 commit이 오지 않는다. Session 쪽 binding은 sealed 상태로 남고 계속 source node를
+가리킨다. 그래서 disconnect 통지가 actor가 실제로 join한 spot이 아니라 원래 node로 간다.
+
+Commit을 보내는 곳은 `CompleteRoutedActorHandoffAsync`이고, 이 메서드는 결과를
+`session_route_commit_acknowledged` 또는 `_not_required`로 남긴다. Target node의 handoff log에는
+`capture_entry`와 `location_committed`는 있는데 이 표시가 **없다.** 즉 cross-node join은
+`CompleteRoutedActorHandoffAsync`를 거치지 않는 다른 경로로 actor를 옮긴다.
+
+다음은 그 경로를 찾아 session route commit을 같은 자리에 붙이는 것이다. Commit 자체는 구현되어
+있고(`ZLinkSessionRouteCommitHandler` → `CommitSessionActorRoute`) target actor ref로 binding route를
+갱신하므로, 빠진 것은 호출이지 기능이 아니다.
 
 **RM-B2 — mesh 계층에 drain 표시가 구현되어 있지 않다.** Provider가 drain 중일 때 select-one이 그
 member를 고르고 `Rejected`(admission sealed)를 caller에게 그대로 돌려준다. 원인을 끝까지 보면 표시

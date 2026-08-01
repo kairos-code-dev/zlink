@@ -6624,3 +6624,29 @@ Session과 actor가 같은 node에 있으면 `NotifyActorDisconnectedAsync`의 l
 진단 셋을 영구로 남겼다. `session_disconnect_notify_failed`·`session_disconnect_ignored`·
 `session_disconnect_applied`·`relay_identity_stale`. 이 경로는 실패해도 아무 데도 남지 않는
 구간이 길어서, 없으면 같은 조사에 다시 몇 시간이 든다.
+
+### Disconnect 수정 이후 재측정: 회귀 없음, SM-B6는 예상대로 그대로
+
+| 스위트 | 결과 |
+|---|---|
+| PubSub | 전량 통과 (변화 없음) |
+| RegistrationCodec | 11 전량 통과 (변화 없음) |
+| SpotService | 5, sm-b6에서 실패 (변화 없음) |
+
+SM-B6가 안 움직인 것은 맞다. 이 항목은 disconnect보다 **앞 단계**에서 막혀 있다. 다만 수정이
+동작한 증거는 SpotService에도 남았다. 이전에는 없던 evidence가 나온다.
+
+```
+play-b : entry-disconnected|rid=play-b|actor=actor-sm-b6-left-...
+```
+
+즉 원격 disconnect callback이 실제로 실행되기 시작했다.
+
+SM-B6 자체의 남은 문제는 cross-node join이다. Entry actor는 play-a에 생기고 spot은 play-b에
+있다. 흥미로운 것은 play-b가 그 actor를 `spot-actor-admitted`까지 했다는 점이다. 즉 spot 쪽
+admission은 되고 actor 쪽 join completion이 `InvalidOperation`으로 끝난다. Cross-node join이
+아예 미지원인 것이 아니라 완결 단계에서 깨진다는 뜻이므로, `deferred_join_failed` 추적으로
+원래 예외를 봐야 한다.
+
+배치가 우연이 아니라는 점도 적어 둔다. 두 번의 실행에서 모두 leave actor는 play-b, disconnect
+actor는 play-a에 생겼다. 두 play node 사이의 결정적 배치다.

@@ -24,7 +24,9 @@ internal static class RmB1ScaleOutScenario
 
         await WaitConnectionEvidenceAsync(
             requester,
-            $"monitor-mesh|source=profile|kind=ConnectionReady|remote={providerA.ChannelEndpoint}");
+            // Spec 24 §7 keeps the endpoint out of public status, so a peer is
+            // identified by its automatic RID, which carries the role prefix.
+            "monitor-mesh|source=profile|kind=ConnectionReady|remote=|routing=api-a-");
         var beforeA = await ReadEvidenceAsync(providerAClient);
         var markerBefore = $"rm-b1-before-{Guid.NewGuid():N}";
         for (var i = 0; i < 10; i++)
@@ -54,7 +56,7 @@ internal static class RmB1ScaleOutScenario
         await WaitForPeerRowAsync(requester, "api-b", expected: true);
         await WaitConnectionEvidenceAsync(
             requester,
-            $"monitor-mesh|source=profile|kind=ConnectionReady|remote={providerB.ChannelEndpoint}");
+            "monitor-mesh|source=profile|kind=ConnectionReady|remote=|routing=api-b-");
         var first = (await requester.Post("/profile/request")
             .Body(new ProfileReq("rm-b1-first-after-row"))
             .Async<ProfileRes>()).Body;

@@ -118,8 +118,10 @@ internal static class RmB3ProviderCrashFailoverScenario
         string providerAEndpoint,
         string providerBEndpoint)
     {
-        await WaitConnectionReadyAsync(requester, providerAEndpoint);
-        await WaitConnectionReadyAsync(requester, providerBEndpoint);
+        // Spec 24 §7 keeps the endpoint out of public status, so peers are
+        // identified by their automatic RID, which carries the role prefix.
+        await WaitConnectionReadyAsync(requester, "api-a-");
+        await WaitConnectionReadyAsync(requester, "api-b-");
 
         var marker = $"rm-b3-before-{Guid.NewGuid():N}";
         for (var index = 0; index < 40; index++)
@@ -138,11 +140,12 @@ internal static class RmB3ProviderCrashFailoverScenario
 
     private static async Task WaitConnectionReadyAsync(
         ZLinkHttpClient requester,
-        string endpoint)
+        string routingPrefix)
     {
         _ = await requester.Post("/connections/wait")
             .Body(new EvidenceWaitReq(
-                $"monitor-mesh|source=profile|kind=ConnectionReady|remote={endpoint}"))
+                "monitor-mesh|source=profile|kind=ConnectionReady"
+                + $"|remote=|routing={routingPrefix}"))
             .Async<string[]>();
     }
 

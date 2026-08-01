@@ -32,10 +32,10 @@ internal static class RmB2ScaleInScenario
         await WaitForPeerRowAsync(requester, "api-b", expected: true);
         await WaitConnectionEvidenceAsync(
             requester,
-            $"monitor-mesh|source=profile|kind=ConnectionReady|remote={providerA.ChannelEndpoint}");
+            "monitor-mesh|source=profile|kind=ConnectionReady|remote=|routing=api-a-");
         await WaitConnectionEvidenceAsync(
             requester,
-            $"monitor-mesh|source=profile|kind=ConnectionReady|remote={providerB.ChannelEndpoint}");
+            "monitor-mesh|source=profile|kind=ConnectionReady|remote=|routing=api-b-");
         var firstBefore = (await requester.Post("/profile/request")
             .Body(new ProfileReq("rm-b2-first-before-scale-in"))
             .Async<ProfileRes>()).Body;
@@ -81,7 +81,7 @@ internal static class RmB2ScaleInScenario
 
         var beforeDisconnect = await WaitConnectionEvidenceAsync(
             requester,
-            $"monitor-mesh|source=profile|kind=ConnectionReady|remote={providerB.ChannelEndpoint}");
+            "monitor-mesh|source=profile|kind=ConnectionReady|remote=|routing=api-b-");
 
         var transitionMarker = $"rm-b2-continuous-{Guid.NewGuid():N}";
         var continuingResults = new List<ProfileRes>();
@@ -107,7 +107,7 @@ internal static class RmB2ScaleInScenario
         await WaitForPeerRowGoneAsync(requester, "api-b");
         await WaitConnectionEvidenceAsync(
             requester,
-            $"monitor-mesh|source=profile|kind=Disconnected|remote={providerB.ChannelEndpoint}",
+            "monitor-mesh|source=profile|kind=Disconnected|remote=|routing=api-b-",
             beforeDisconnect.Length);
         var firstAfter = (await requester.Post("/profile/request")
             .Body(new ProfileReq("rm-b2-first-after-scale-in"))

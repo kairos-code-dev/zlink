@@ -1088,23 +1088,52 @@ internal sealed class ZLinkActorRemoteJoiner(
             admissionReply,
             boundSession,
             frames);
-        var replyParts = await runtime.RequestToSpotViaRouterChannelAsync(
-                routerChannelId,
-                targetNodeRid,
-                targetSpotId,
-                targetSpotGeneration,
-                targetNodeGeneration,
-                authorityOwnerGeneration,
-                ownerLeaseGeneration,
-                parts,
-                registration.DefaultRequestTimeout,
-                cancellationToken)
-            .ConfigureAwait(false);
-        _ = ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<ZLinkRemoteActorHandoffCompletionRequest>(
-            replyParts,
-            "Remote actor handoff completion reply was empty.",
-            $"Remote actor handoff completion failed for '{actorId}'.",
-            null);
+        //  The reconciliation runner retries this, so a request that never
+        //  succeeds leaves the target completion - and with it the session
+        //  route commit - simply absent. Name each attempt and its outcome.
+        runtime.LogActorHandoff(
+            $"target_completion_requesting actor={actorId} "
+            + $"target_node={targetNodeRid} target_spot={targetSpotId}");
+        IReadOnlyList<Systems.Zlink.Message> replyParts;
+        try
+        {
+            replyParts = await runtime.RequestToSpotViaRouterChannelAsync(
+                    routerChannelId,
+                    targetNodeRid,
+                    targetSpotId,
+                    targetSpotGeneration,
+                    targetNodeGeneration,
+                    authorityOwnerGeneration,
+                    ownerLeaseGeneration,
+                    parts,
+                    registration.DefaultRequestTimeout,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception failure)
+        {
+            runtime.LogActorHandoff(
+                $"target_completion_request_failed actor={actorId} {failure.GetType().Name}: "
+                + failure.Message);
+            throw;
+        }
+        runtime.LogActorHandoff(
+            $"target_completion_replied actor={actorId} parts={replyParts.Count}");
+        try
+        {
+            _ = ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<ZLinkRemoteActorHandoffCompletionRequest>(
+                replyParts,
+                "Remote actor handoff completion reply was empty.",
+                $"Remote actor handoff completion failed for '{actorId}'.",
+                null);
+        }
+        catch (Exception decodeFailure)
+        {
+            runtime.LogActorHandoff(
+                $"target_completion_reply_rejected actor={actorId} "
+                + $"{decodeFailure.GetType().Name}: {decodeFailure.Message}");
+            throw;
+        }
     }
 
     private void ReportCommittedHandoffFailure(string operation, Exception exception)

@@ -142,9 +142,26 @@ Commit을 보내는 곳은 `CompleteRoutedActorHandoffAsync`이고, 이 메서�
 `capture_entry`와 `location_committed`는 있는데 이 표시가 **없다.** 즉 cross-node join은
 `CompleteRoutedActorHandoffAsync`를 거치지 않는 다른 경로로 actor를 옮긴다.
 
-다음은 그 경로를 찾아 session route commit을 같은 자리에 붙이는 것이다. Commit 자체는 구현되어
-있고(`ZLinkSessionRouteCommitHandler` → `CommitSessionActorRoute`) target actor ref로 binding route를
-갱신하므로, 빠진 것은 호출이지 기능이 아니다.
+경로를 끝까지 따라가면 호출은 있고 **완료되지 않는다.**
+
+```
+play-a : target_completion_requesting     target_node=play-b
+play-a : target_completion_replied        parts=2
+play-a : target_completion_reply_rejected ZLinkFrameworkException: The operation has timed out.
+play-a : target_completion_requesting     (재시도, 끝나지 않음)
+```
+
+Source는 handoff completion을 target에 요청하고, target은 응답한다. 그 응답이 error envelope이며
+내용은 timeout이다. 즉 target의 `CompleteRoutedActorHandoffAsync`가 시작은 하지만 deadline 안에
+끝나지 못한다. 그래서 그 안에 있는 session route commit까지 도달하지 못하고,
+`ZLinkReconciliationRunner`가 같은 요청을 계속 재시도한다.
+
+`CompleteRoutedActorHandoffAsync`는 commit을 위해 **session node로 다시 요청을 보낸다**
+(`RequestSessionRouteCommitAsync`). Cross-node join에서는 target → session node 중첩 요청이 되므로,
+다음은 그 중첩 요청이 응답을 받는지 확인하는 것이다. Target 쪽에서 이 단계를 찍으면 바로 갈린다.
+
+Commit 구현 자체는 있다(`ZLinkSessionRouteCommitHandler` → `CommitSessionActorRoute`, target actor
+ref로 binding route 갱신).
 
 **RM-B2 — mesh 계층에 drain 표시가 구현되어 있지 않다.** Provider가 drain 중일 때 select-one이 그
 member를 고르고 `Rejected`(admission sealed)를 caller에게 그대로 돌려준다. 원인을 끝까지 보면 표시

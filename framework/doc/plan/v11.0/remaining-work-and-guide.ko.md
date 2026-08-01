@@ -144,7 +144,18 @@ commit이 성립하게 됐다. 그러나 disconnect callback은 여전히 실행
 변화가 없었다. 근거 없이 spec 23 §10.2의 순서 보장을 약화시키므로 되돌렸다. 따라서 "FIFO 체인이
 막는다"는 설명도 아직 입증되지 않았다.
 
-**다음 사람에게 남기는 조언은 접근에 대한 것이다.** 나는 완전한 이해를 좇느라 결과를 놓쳤다.
+**가장 먼저 해볼 것: 되는 사례와 대조한다.** 나는 이것을 하지 않았고, 그게 가장 큰 실수였다.
+
+`samples/Bingo`는 두 play node를 두고 **cross-node actor transfer를 실제로 수행하며 통과한다.**
+SM-B6가 막히는 지점이 그 handoff의 마지막 단계(unseal)이므로, Bingo의 transfer와 SM-B6의 handoff
+로그를 나란히 놓고 비교하면 차이가 바로 드러난다. 오늘 심어 둔 handoff 표시
+(`target_completion_*`, `route_commit_*`, `route_unseal_received`)가 양쪽에서 같은 이름으로 찍히므로
+대조가 쉽다.
+
+주의할 점 하나. 샘플들은 `OnDisconnectActorAsync`를 구현만 하고 runner가 연결을 끊지 않으므로
+disconnect 경로 자체는 샘플에서 실행되지 않는다. 대조 대상은 disconnect가 아니라 **transfer**다.
+
+**두 번째 조언은 접근에 대한 것이다.** 나는 완전한 이해를 좇느라 결과를 놓쳤다.
 측정을 22번 하고 판정을 일곱 번 뒤집는 동안 고친 것은 없다. SM-B6가 검증하려는 것은 "비정상 종료
 시 disconnect callback이 실행되는가"이며 handoff 내부 동작이 아니다. Handoff가 걸린 상태에서도
 통지가 가는 경로를 만드는 쪽이, 왜 걸리는지 끝까지 밝히는 쪽보다 목표에 가깝다.

@@ -231,9 +231,20 @@ play-b    응답 없음 → 한 번의 요청이 deadline 전체를 소진
 handoff_completion                              0회
 ```
 
-   같은 실행에서 commit은 141회 재시도한다. Unseal이 1회뿐인 것은 재시도할 기회조차 없이 첫 요청이
-   deadline을 다 쓴다는 뜻이다. 그러므로 고칠 자리는 unseal의 판정 로직이 아니라 **node 간 request의
-   응답 경로**다.
+   여기서 내가 한 번 잘못 읽었다. `route_control_sent`는 재시도 loop **바깥**에 있어 호출당 한 번만
+   찍힌다. 따라서 "unseal은 1회만 보낸다"는 판정은 틀렸고, loop 안에서 여러 번 재시도했을 수 있다.
+   Commit이 141회로 보인 것도 재시도 횟수가 아니라 **completion 재시도로 호출 자체가 141번 일어난
+   것**이다.
+
+   Framework operation 계층은 정상이다. play-b에서 `route_control_sent` 122건, `node_request_result`
+   122건이 전부 `Ok`, `managed_operation_completed` 123건이다. 즉 unseal 요청도 응답을 받아 operation이
+   완료된다. 그러므로 "응답이 오지 않는다"도 정확한 표현이 아니다.
+
+   남은 모순이 하나 있다. `UnsealCompletedSessionRouteAsync`는 `Acknowledged=false`를 받으면
+   `InvalidOperation`을 던지고, 그것은 재시도 대상이 아니다. 그런데 source가 받는 것은 timeout이고
+   `target_completion_after_unseal`은 0이다. 응답이 오는데도 호출이 반환하지 않는다는 뜻이므로,
+   다음은 `RequestSessionRouteControlAsync`의 loop이 어떤 예외로 계속 도는지를 직접 찍는 것이다.
+   그 loop은 `Unavailable`·`RetryAfterBackoff`에만 재시도하므로, 그 예외가 어디서 나오는지가 답이다.
 
    Session node의 로그 순서가 나머지를 채운다.
 

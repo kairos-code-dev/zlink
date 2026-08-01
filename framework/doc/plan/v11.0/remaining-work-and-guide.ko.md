@@ -143,10 +143,18 @@ route_commit_result actor=actor-sm-b6-disconnected-... ack=True
 ```
 
 둘째가 남았다. Commit으로 session binding은 target node를 가리키게 됐는데, 연결을 끊어도 그
-actor에 대해서는 `session_disconnect_applied`도 `_ignored`도 `_notify_failed`도 찍히지 않는다.
-다른 actor 다섯은 모두 `applied`가 찍힌다. 즉 통지가 실패하는 것이 아니라 **시도되지 않는다.**
-Cleanup은 session context의 bound actor snapshot을 순회하므로, 다음은 그 snapshot에 이 actor가
-남아 있는지다.
+actor에 대해서는 `session_disconnect_applied`도 `_ignored`도 찍히지 않는다. 같은 실행의 다른 actor
+다섯은 모두 `applied`가 찍힌다.
+
+의심되는 지점은 cleanup이 도는 대상이다. `ZLinkSessionActorBindingRegistry.CleanupAsync`는 시작
+시점에 `SnapshotSessionActors(context)`로 actor 목록을 뜨고, 각 `ZLinkSessionActor`는 bind 시점의
+`Ref`를 들고 있다. Handoff 뒤에는 binding table의 `Route`만 target node로 갱신되고
+(`CommitRoute`가 entry의 `Route`를 바꾼다) snapshot이 들고 있는 `Ref`는 원래 node를 가리킨 채일 수
+있다. 그러면 disconnect가 옛 owner로 가고, 그 node는 actor를 더 이상 갖고 있지 않으므로 조용히
+끝난다.
+
+다음은 그 `Ref`가 commit 뒤 무엇을 가리키는지 확인하는 것이다. Commit이 entry의 route를 갱신할 때
+같은 entry의 `ActorRef`도 함께 갱신되어야 하는지가 판정 지점이다.
 
 Handoff 경로에 심은 표시(`target_completion_entered`·`_before_session_commit`·`_requesting`·
 `_replied`·`_reply_rejected`, `route_commit_received`·`_result`·`_rejected`)가 이 두 단계를 갈랐다.

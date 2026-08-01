@@ -303,6 +303,11 @@ bindings 배포, local package, framework의 bindings 참조 버전, WSL/Windows
   `ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION`을 기준으로 한다.
 - local package 생성 스크립트는 `scripts/local-package/` 아래에서 관리한다. 같은 목적의 wrapper를
   `bindings/<lang>/` 또는 다른 디렉터리에 다시 만들지 않는다.
+- Core를 고쳤으면 `native/sync-local-core-libs.sh`와 언어별 package 생성까지 끝내야 framework가 그
+  Core를 쓴다. 이 단계를 건너뛰면 실패하지 않고 **옛 라이브러리가 그대로 쓰인다.** .NET이면
+  framework는 `~/.nuget/packages/systems.zlink/<ver>/runtimes/`에 이미 풀린 native를 읽으므로,
+  같은 버전으로 다시 만들어도 추출된 캐시를 지우지 않으면 갱신되지 않는다. Core에 넣은 추적이
+  아무것도 찍히지 않으면 코드가 안 도는 것이 아니라 배포가 안 된 것을 먼저 의심한다.
 
 ---
 

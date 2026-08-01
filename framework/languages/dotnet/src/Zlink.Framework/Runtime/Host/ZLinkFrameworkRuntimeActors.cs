@@ -944,6 +944,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                     actorState,
                     cancellationToken)
                 .ConfigureAwait(false);
+            LogActorHandoff($"target_completion_after_replay actor={request.ActorId}");
             if (!authorityWasSteady)
                 await actorLocations.AdvanceTransferredActorAuthorityPhaseAsync(
                         request.ActorId,
@@ -963,6 +964,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             if (sessionRouteCommit is not null)
             {
                 actorState.CompleteRelocationSessionRoute(request.HandoffId);
+                LogActorHandoff($"target_completion_before_unseal actor={request.ActorId}");
                 await UnsealCompletedSessionRouteAsync(
                         sessionRouteCommit.Value.Request,
                         sessionRouteCommit.Value.SessionOwnerNode,

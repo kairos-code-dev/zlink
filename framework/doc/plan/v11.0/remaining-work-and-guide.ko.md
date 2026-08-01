@@ -187,37 +187,38 @@ target_completion_reply_rejected          120
 첫 시도는 commit을 통과해 그 뒤로 계속 간다. 그런데도 deadline 안에 끝나지 못한다. 이후 시도는
 cleanup이 binding을 지운 뒤라 commit에서 멈추고, 그래서 117번이 commit 호출까지만 도달한다.
 
-첫 시도가 commit 뒤 어디까지 가는지도 측정했다.
+첫 시도가 commit 뒤 어디까지 가는지 끝까지 측정했다.
 
 ```
-session_route_commit_acknowledged       1
-target_completion_join_callback_done    1
-target_completion_before_replay         1     ← 여기까지 가고 반환하지 않는다
+session_route_commit_acknowledged      1
+target_completion_join_callback_done   1
+target_completion_after_replay         1   (final replay는 frames=0으로 즉시 반환)
+target_completion_before_unseal        1   ← 여기까지 간다
+handoff_completion                     0   ← 끝에 도달하지 못한다
 ```
 
-Commit도 join completion callback도 끝낸다. `ReplayFinalTransferredActorHandoffAsync`에서 멈춘다.
+Completion은 commit, join completion callback, final replay를 모두 끝내고
+`UnsealCompletedSessionRouteAsync`에서 멈춘다. Unseal도 commit과 같은 **session node 요청**이다.
+그 시점에는 시나리오가 이미 연결을 끊어 cleanup이 binding을 지운 뒤이므로, unseal이 deadline까지
+재시도만 반복하고 completion이 timeout으로 끝난다. 그 뒤의 commit 재시도 120건이 전부
+`entry=False`인 것도 같은 이유다.
 
-여기까지가 측정이고, 아래는 그 관측에 맞는 가장 단순한 설명이다. **순환 대기로 보인다.**
+Join dispatch는 completion이 돌아와야 끝나고, disconnect는 actor별 FIFO에서 그 뒤에 서 있으므로
+pipeline에 도달하지 못한다.
 
-- Deferred join frame의 dispatch가 handoff를 일으키고, target에서 completion이 돈다.
-- Completion의 마지막이 captured frame replay다.
-- Replay도 actor별 FIFO 체인(`_remoteFrameChains`)을 탄다.
-- 그 체인의 앞에는 아직 끝나지 않은 join frame dispatch가 있다.
-- Join frame dispatch는 completion이 돌아와야 끝난다.
+수정 방향은 셋이고 서로 독립적이다.
 
-Disconnect는 그 뒤에 선다. 그래서 도착은 하는데 pipeline에 오지 않는다.
-
-다음 확인은 replay가 실제로 같은 체인을 기다리는지다. `DispatchRemoteFrameAfterAsync`가 기다리는
-`prior` task의 정체를 replay 시점에 찍으면 갈린다.
-
-수정 방향은 둘이다.
-
-1. Replay를 join frame dispatch와 같은 체인에 세우지 않는다. Replay는 그 join의 후속 단계이지
-   뒤에 온 frame이 아니다.
-2. Disconnect 통지를 application frame FIFO 뒤에 세우지 않는다. 이것은 lifecycle 통지이지
+1. **Unseal이 binding 부재를 정상 종료로 받아들인다.** Commit이 이미 성립했다면 session route는
+   옮겨졌고, 그 뒤 session이 사라진 것은 실패가 아니다. Unseal을 재시도로 붙잡아 두면 handoff
+   전체가 끝나지 못한다.
+2. **Disconnect 통지를 application frame FIFO 뒤에 세우지 않는다.** 이것은 lifecycle 통지이지
    application 순서를 지켜야 하는 message가 아니다. Spec 23 §10.2가 요구하는 FIFO의 대상인지
-   먼저 판정할 것. 이 쪽은 순환 대기와 독립적으로 disconnect를 살린다.
+   먼저 판정할 것.
+3. 시나리오가 기다리는 지점을 handoff 종료 뒤로 옮긴다. `actor-join-completed`는 completion
+   **안에서** 나오므로 아직 이르다. 다만 1과 2를 고치면 이 대기는 필요 없어진다.
 
+이 사슬을 밝히는 데 진단 20개가 들었다. 그중 네 번은 내 판정을 측정이 반증했다 — cleanup snapshot
+누락, commit 미도달, commit 거부가 join을 막는다, replay 순환 대기. 모두 표시를 넣어 갈랐다.
 
 **RM-B2 — mesh 계층에 drain 표시가 구현되어 있지 않다.** Provider가 drain 중일 때 select-one이 그
 member를 고르고 `Rejected`(admission sealed)를 caller에게 그대로 돌려준다. 원인을 끝까지 보면 표시

@@ -128,6 +128,12 @@ def resolves_after_generation(md: Path, link: str) -> bool:
     return any((d / link).resolve().exists() for d in GENERATED_INTO)
 
 
+#  빌드 산출물이다(.gitignore 173·262행). 저장소에 없는 것이 정상이므로 문서 링크
+#  검사 대상에서 뺀다 — perf 리포트와 증거 파일은 그때그때 생겼다 사라진다.
+#  이 기계에는 있어서 로컬은 통과하고 CI만 깨지던 자리다.
+GENERATED_OUTPUT = re.compile(r"(^|/)(\.artifacts|perf/results)/")
+
+
 def check_tree(name: str, root: Path, errors: list[str]) -> tuple[int, int]:
     """문서 트리 하나를 검사하고 (문서 수, 링크 수)를 돌려준다."""
     md_files = sorted(root.rglob("*.md"))
@@ -143,7 +149,7 @@ def check_tree(name: str, root: Path, errors: list[str]) -> tuple[int, int]:
             path, _, anchor = target.partition("#")
             resolved = md if not path else (md.parent / path).resolve()
             if not resolved.exists():
-                if resolves_after_generation(md, path):
+                if resolves_after_generation(md, path) or GENERATED_OUTPUT.search(path):
                     continue
                 errors.append(f"[{name}] {rel_md}:{ln}: 링크 대상 없음: {target}")
                 continue

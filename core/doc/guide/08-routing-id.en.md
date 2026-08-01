@@ -1,4 +1,4 @@
-[한국어](08-routing-id.ko.md) | [Message API →](09-message-api.md)
+[한국어](08-routing-id.ko.md) | [Message API →](09-message-api.en.md)
 
 # Routing IDs
 

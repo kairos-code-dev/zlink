@@ -1,7 +1,7 @@
-[English](03-3-dealer.md) | [한국어](03-3-dealer.ko.md)
+[English](03-3-dealer.en.md) | [한국어](03-3-dealer.ko.md)
 
 <!-- zlink-nav:start -->
-[← PUB/SUB](03-2-pubsub.md) | [ROUTER →](03-4-router.md)
+[← PUB/SUB](03-2-pubsub.en.md) | [ROUTER →](03-4-router.en.md)
 <!-- zlink-nav:end -->
 
 # DEALER Socket
@@ -95,7 +95,7 @@ if (rc == ZLINK_RECV_OK) {
 
 > When HWM is reached, `zlink_send()` blocks (default) or returns
 > `ZLINK_SUBMIT_BACKPRESSURED` with `ZLINK_DONTWAIT`. For advanced
-> backpressure patterns, see [Performance Guide](10-performance.md).
+> backpressure patterns, see [Performance Guide](10-performance.en.md).
 
 ## 3. Usage Example
 
@@ -142,7 +142,7 @@ When DEALER needs to send a request and wait for a reply, use
 attaches a ZMP request-reply envelope and delivers the reply via callback.
 
 > For the ZMP request-reply envelope wire format, see
-> [ZMP Protocol](../internals/protocol-zmp.md).
+> [ZMP Protocol](../internals/protocol-zmp.en.md).
 
 ```c
 static void on_reply(zlink_request_result_t result,
@@ -378,7 +378,7 @@ retrying; treating `NOT_ADMITTED` as a hard failure would discard
 messages that are expected to succeed once maintenance ends.
 
 > For the full contract, see
-> [Weight-aware outbound selection](../spec/core/socket/06-dealer.md#2-dealer-options)
+> [Weight-aware outbound selection](../spec/core/socket/06-dealer.en.md#2-dealer-options)
 > in the DEALER spec.
 
 ### Set routing_id Before connect
@@ -392,7 +392,7 @@ zlink_connect(dealer, endpoint);  /* identified as D1 */
 ```
 
 ---
-[← PUB/SUB](03-2-pubsub.md) | [ROUTER →](03-4-router.md)
+[← PUB/SUB](03-2-pubsub.en.md) | [ROUTER →](03-4-router.en.md)
 
 
 ## Full language examples
@@ -453,5 +453,5 @@ zlink_connect(dealer, endpoint);  /* identified as D1 */
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← PUB/SUB](03-2-pubsub.md) | [ROUTER →](03-4-router.md)
+[← PUB/SUB](03-2-pubsub.en.md) | [ROUTER →](03-4-router.en.md)
 <!-- zlink-nav:bottom:end -->

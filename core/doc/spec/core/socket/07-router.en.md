@@ -1,6 +1,6 @@
 [한국어](07-router.ko.md) | English
 
-[Specification index](../../README.md) · [Core index](../README.md) · [Socket overview](README.md) · [errno map](../04-errno-map.md)
+[Specification index](../../README.en.md) · [Core index](../README.en.md) · [Socket overview](README.en.md) · [errno map](../04-errno-map.en.md)
 
 # Socket — ROUTER
 
@@ -250,7 +250,7 @@ meaning for the payload.
 
 Submit APIs return `zlink_submit_result_t`, receive APIs return
 `zlink_recv_result_t`, and option APIs return `zlink_config_result_t`. The
-[errno map](../04-errno-map.md) defines the mapping between each result and
+[errno map](../04-errno-map.en.md) defines the mapping between each result and
 `zlink_errno()`.
 
 ROUTER `ZLINK_POLLIN` means that a complete raw record can be received.

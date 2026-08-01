@@ -1,6 +1,6 @@
 [한국어](03-errors.ko.md) | English
 
-[Specification index](../README.md) · [Core index](README.md) · [errno map](04-errno-map.md)
+[Specification index](../README.en.md) · [Core index](README.en.md) · [errno map](04-errno-map.en.md)
 
 # Errors, result enums, and version
 
@@ -35,7 +35,7 @@ Public functions return their primary control flow through a `zlink_*_result_t` 
 POSIX errno values missing on a platform use public values based on
 `ZLINK_HAUSNUMERO`. `ESTALE`, `EALREADY`, `EDEADLK`, and `ESHUTDOWN` are
 available on every supported platform for stale handles, duplicate operations,
-reentrant callbacks, and closed sockets. The [errno map](04-errno-map.md) owns
+reentrant callbacks, and closed sockets. The [errno map](04-errno-map.en.md) owns
 the exact per-function mappings.
 
 ## 2. Submit result

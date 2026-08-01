@@ -1,6 +1,6 @@
 [한국어](README.ko.md) | English
 
-[Spec Index](../../README.md) · [Core Index](../README.md)
+[Spec Index](../../README.en.md) · [Core Index](../README.en.md)
 
 # Socket — Common Specification
 
@@ -10,14 +10,14 @@ behavioral details) live in separate files.
 
 | Socket Type | Spec |
 |-------------|------|
-| PAIR | [01-pair.md](01-pair.md) |
-| DEALER | [06-dealer.md](06-dealer.md) |
-| ROUTER | [07-router.md](07-router.md) |
-| PUB | [02-pub.md](02-pub.md) |
-| SUB | [03-sub.md](03-sub.md) |
-| XPUB | [04-xpub.md](04-xpub.md) |
-| XSUB | [05-xsub.md](05-xsub.md) |
-| STREAM | [08-stream.md](08-stream.md) |
+| PAIR | [01-pair.md](01-pair.en.md) |
+| DEALER | [06-dealer.md](06-dealer.en.md) |
+| ROUTER | [07-router.md](07-router.en.md) |
+| PUB | [02-pub.md](02-pub.en.md) |
+| SUB | [03-sub.md](03-sub.en.md) |
+| XPUB | [04-xpub.md](04-xpub.en.md) |
+| XSUB | [05-xsub.md](05-xsub.en.md) |
+| STREAM | [08-stream.md](08-stream.en.md) |
 
 ## Thread-Safety Summary
 
@@ -568,7 +568,7 @@ the messaging pattern. Receive mode for raw sockets is fixed per type:
 `PAIR`, `DEALER`, `SUB`, and `XSUB` use part receive, and `ROUTER` uses
 `zlink_router_recv_part()`. Only `STREAM` offers a choice of raw part receive, raw
 callback (`zlink_recv_handler()`), or packet callback
-(`zlink_stream_packet_handler()`) — see [08-stream.md](08-stream.md). The socket
+(`zlink_stream_packet_handler()`) — see [08-stream.md](08-stream.en.md). The socket
 must be closed with `zlink_close()` before the context is terminated.
 
 **Returns:** Socket handle on success, `NULL` on failure (errno is set).
@@ -598,7 +598,7 @@ with `ENOTSUP`. After attach, `zlink_recv_part()`,
 the same handle fail with `errno=EBUSY`. A second attach on the same
 handle also fails with `errno=EBUSY`.
 
-See [08-stream.md](08-stream.md) for the full contract.
+See [08-stream.md](08-stream.en.md) for the full contract.
 
 **Returns:** `ZLINK_HANDLER_OK` on success. On failure, returns a
 `zlink_handler_result_t` value. Detailed internal errno remains available

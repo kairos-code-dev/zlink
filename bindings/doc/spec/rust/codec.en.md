@@ -1,4 +1,4 @@
-[Rust Binding Specification](README.md) · [Bindings Policy](../README.md)
+[Rust Binding Specification](README.en.md) · [Bindings Policy](../README.en.md)
 
 # Rust Codec Crate Policy
 

@@ -1,6 +1,6 @@
-[English](README.md) | [한국어](README.ko.md)
+[English](README.en.md) | [한국어](README.ko.md)
 
-[Spec Index](https://kairos-code-dev.github.io/zlink/core/spec/) · [Bindings Policy](../README.md)
+[Spec Index](https://kairos-code-dev.github.io/zlink/en/spec/) · [Bindings Policy](../README.en.md)
 
 # C Binding Implementation Blueprint
 

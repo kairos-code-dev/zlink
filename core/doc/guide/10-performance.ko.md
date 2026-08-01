@@ -1,4 +1,4 @@
-[English](10-performance.md)
+[English](10-performance.en.md)
 
 # Core 성능
 

@@ -1,6 +1,6 @@
 [한국어](00-public-contract-governance.ko.md) | English
 
-[Specification index](../README.md) · [Core index](README.md)
+[Specification index](../README.en.md) · [Core index](README.en.md)
 
 # Core public-contract governance
 
@@ -19,7 +19,7 @@ with both expressions.
 The Core 11.0 public C ABI provides only context, message, socket, transport,
 eventing, and utility capabilities used directly by applications and raw
 bindings. It provides no separate public SPI, private C ABI, or compatibility
-facade for Framework service runtimes. [Core Runtime Boundary](09-runtime-boundary.md)
+facade for Framework service runtimes. [Core Runtime Boundary](09-runtime-boundary.en.md)
 owns the exact responsibility boundary.
 
 The formal specification is not reduced for implementation convenience. A

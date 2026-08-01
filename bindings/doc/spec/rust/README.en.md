@@ -1,4 +1,4 @@
-[Spec Index](https://kairos-code-dev.github.io/zlink/core/spec/) · [Bindings Policy](../README.md)
+[Spec Index](https://kairos-code-dev.github.io/zlink/en/spec/) · [Bindings Policy](../README.en.md)
 
 # Rust Binding Implementation Blueprint
 
@@ -266,7 +266,7 @@ public inherent methods in `contracts/` and private runtime helpers under
 ## Contract File Layout
 
 The contract source must use the same classification as the
-[.NET binding blueprint](../dotnet/README.md), with Rust naming. Keep the same
+[.NET binding blueprint](../dotnet/README.en.md), with Rust naming. Keep the same
 conceptual file grouping so a developer who knows another binding can find the
 same public concept in Rust quickly.
 
@@ -292,7 +292,7 @@ builders need named contract files.
 ## Runtime File Layout
 
 Runtime source mirrors the runtime classification in the
-[.NET binding blueprint](../dotnet/README.md) but contains only implementation.
+[.NET binding blueprint](../dotnet/README.en.md) but contains only implementation.
 
 - `core/`: context implementation and context option helpers.
 - `handles/`: native handle ownership, close state, lifetime checks, and

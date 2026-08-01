@@ -1,6 +1,6 @@
 [한국어](05-events.ko.md) | English
 
-[Specification index](../README.md) · [Core index](README.md) · [Monitoring](07-monitoring.md) · [Polling](06-polling.md)
+[Specification index](../README.en.md) · [Core index](README.en.md) · [Monitoring](07-monitoring.en.md) · [Polling](06-polling.en.md)
 
 # Events and readiness catalog
 
@@ -29,5 +29,5 @@ and unknown. Events contain no service topology or application payload.
 ## 3. Ordering and overflow
 
 One monitor queue preserves the order in which Core commits events. No global
-wall-clock order is provided across connection I/O threads. [Monitoring](07-monitoring.md)
+wall-clock order is provided across connection I/O threads. [Monitoring](07-monitoring.en.md)
 owns the exact queue-overflow and status-counter contract.

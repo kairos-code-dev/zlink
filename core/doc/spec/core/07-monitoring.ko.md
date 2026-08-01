@@ -1,4 +1,4 @@
-[English](07-monitoring.md) | 한국어
+[English](07-monitoring.en.md) | 한국어
 
 [스펙 목차](../README.ko.md) · [코어 목차](README.ko.md) · [Events](05-events.ko.md) · [errno map](04-errno-map.ko.md)
 

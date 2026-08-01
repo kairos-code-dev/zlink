@@ -1,4 +1,4 @@
-[바인딩 가이드](../README.ko.md) · [코어 가이드](https://kairos-code-dev.github.io/zlink/core/ko/guide/01-overview/)
+[바인딩 가이드](../README.ko.md) · [코어 가이드](https://kairos-code-dev.github.io/zlink/guide/01-overview/)
 
 # C++ 바인딩 가이드 (`zlink::`)
 
@@ -275,5 +275,5 @@ cmake -B build -DZLINK_CPP_BUILD_SAMPLES=ON && cmake --build build
 
 ## 더 보기
 
-- 소켓 패턴: [개요](https://kairos-code-dev.github.io/zlink/core/ko/guide/03-0-socket-patterns/) — [PAIR](https://kairos-code-dev.github.io/zlink/core/ko/guide/03-1-pair/) · [PUB/SUB](https://kairos-code-dev.github.io/zlink/core/ko/guide/03-2-pubsub/) · [DEALER](https://kairos-code-dev.github.io/zlink/core/ko/guide/03-3-dealer/) · [ROUTER](https://kairos-code-dev.github.io/zlink/core/ko/guide/03-4-router/) · [STREAM](https://kairos-code-dev.github.io/zlink/core/ko/guide/03-5-stream/) · [프록시](https://kairos-code-dev.github.io/zlink/core/ko/guide/03-6-proxy/)
-- 운영: [소켓 옵션](https://kairos-code-dev.github.io/zlink/core/ko/guide/12-socket-options/) · [TLS](https://kairos-code-dev.github.io/zlink/core/ko/guide/05-tls-security/) · [모니터링](https://kairos-code-dev.github.io/zlink/core/ko/guide/06-monitoring/) · [스레드 안전성](https://kairos-code-dev.github.io/zlink/core/ko/guide/11-thread-safety/) · [메시지 API](https://kairos-code-dev.github.io/zlink/core/ko/guide/09-message-api/) · [라우팅 ID](https://kairos-code-dev.github.io/zlink/core/ko/guide/08-routing-id/)
+- 소켓 패턴: [개요](https://kairos-code-dev.github.io/zlink/guide/03-0-socket-patterns/) — [PAIR](https://kairos-code-dev.github.io/zlink/guide/03-1-pair/) · [PUB/SUB](https://kairos-code-dev.github.io/zlink/guide/03-2-pubsub/) · [DEALER](https://kairos-code-dev.github.io/zlink/guide/03-3-dealer/) · [ROUTER](https://kairos-code-dev.github.io/zlink/guide/03-4-router/) · [STREAM](https://kairos-code-dev.github.io/zlink/guide/03-5-stream/) · [프록시](https://kairos-code-dev.github.io/zlink/guide/03-6-proxy/)
+- 운영: [소켓 옵션](https://kairos-code-dev.github.io/zlink/guide/12-socket-options/) · [TLS](https://kairos-code-dev.github.io/zlink/guide/05-tls-security/) · [모니터링](https://kairos-code-dev.github.io/zlink/guide/06-monitoring/) · [스레드 안전성](https://kairos-code-dev.github.io/zlink/guide/11-thread-safety/) · [메시지 API](https://kairos-code-dev.github.io/zlink/guide/09-message-api/) · [라우팅 ID](https://kairos-code-dev.github.io/zlink/guide/08-routing-id/)

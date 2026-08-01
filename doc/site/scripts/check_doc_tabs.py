@@ -9,7 +9,7 @@
 
 두 문서 묶음을 검사한다.
   core       — doc/site/docs/guide, 9개 바인딩 언어
-  framework  — framework/doc/site/docs, 5개 framework 언어
+  framework  — framework/doc/framework, 5개 framework 언어
 
 구현이 아직 없는 언어의 탭은 스니펫 없이 안내 문구만 둘 수 있다. 라벨이 있으면
 누락으로 보지 않으므로 (1)을 통과한다.

@@ -16,7 +16,7 @@ only as documented by the public contract.
 
 - `ZLINK_OPT_SNDHWM` and `ZLINK_OPT_RCVHWM` bound the queued bytes. Values are
   `uint64_t` byte counts and `0` means unlimited. See the
-  [socket spec](../spec/core/socket/README.md) for the exact accounting and
+  [socket spec](../spec/core/socket/README.en.md) for the exact accounting and
   errors.
 - `ZLINK_OPT_SNDTIMEO` and `ZLINK_OPT_RCVTIMEO` bound blocking calls.
 - `ZLINK_OPT_LINGER` controls how close treats pending outbound data.

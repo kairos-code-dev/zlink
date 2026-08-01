@@ -1,4 +1,4 @@
-[English](runtime-boundary.md) | 한국어
+[English](runtime-boundary.en.md) | 한국어
 
 # Core 11 raw runtime 내부 경계
 

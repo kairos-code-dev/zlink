@@ -1,6 +1,6 @@
-[English](README.md) | [한국어](README.ko.md)
+[English](README.en.md) | [한국어](README.ko.md)
 
-[Spec Index](https://kairos-code-dev.github.io/zlink/core/spec/)
+[Spec Index](https://kairos-code-dev.github.io/zlink/en/spec/)
 
 # Bindings API Policy
 
@@ -757,7 +757,7 @@ bindings/<lang>/
 |---|---|
 | C | `core/include/zlink.h`가 public C ABI의 단일 기준이다. `bindings/c`는 별도 contract/runtime 계층을 추가하지 않고, C API 기준의 mapping, sample, test, perf, packaging 정책만 정렬한다. |
 | C++ | `bindings/cpp/include/zlink/Contracts/`가 공개 C++ 계약 위치다. `bindings/cpp/src/Runtime/`은 비공개 구현 위치다. C++20, RAII class, concrete value를 우선하고, public class를 virtual interface로 과도하게 감싸지 않는다. |
-| .NET | 세부 기준은 [.NET binding blueprint](dotnet/README.md)를 따른다. 이 문서에서는 .NET 세부 파일 구조를 복사하지 않는다. |
+| .NET | 세부 기준은 [.NET binding blueprint](dotnet/README.en.md)를 따른다. 이 문서에서는 .NET 세부 파일 구조를 복사하지 않는다. |
 | Java | `bindings/java/src/main/java/systems/zlink/contracts/` 아래의 public contract package가 공개 계약 위치다. Java는 URL 기반 package layout을 따르므로 lower-case `contracts`와 `runtime` package를 실제 폴더에 반영한다. native bridge는 non-exported `systems.zlink.runtime.nativeapi` 아래에 둔다. |
 | Node | `bindings/node/src/index.ts`와 `package.json` exports가 public contract projection이다. contract source는 `bindings/node/src/zlink/contracts/` 같은 lower-case source path에 두고, runtime/native addon 구현은 `bindings/node/src/zlink/runtime/` 아래에 숨긴다. |
 | Python | `bindings/python/src/zlink/contracts/`가 public contract source다. `zlink` root package는 이 계약을 re-export하는 projection이고, native/FFI 구현은 `_runtime/`과 `_native/` 같은 private package 아래에 둔다. |
@@ -786,7 +786,7 @@ perf와 함께 단계적으로 맞춘다. public package, namespace, module, imp
 | Binding | Contract root | Runtime root | Public projection |
 |---|---|---|---|
 | C++ | `bindings/cpp/include/zlink/Contracts/` | `bindings/cpp/src/Runtime/` | `#include <zlink.hpp>` and installed `include/zlink/...` headers |
-| .NET | [dotnet/README.md](dotnet/README.md) 참조 | [dotnet/README.md](dotnet/README.md) 참조 | [dotnet/README.md](dotnet/README.md) 참조 |
+| .NET | [dotnet/README.md](dotnet/README.en.md) 참조 | [dotnet/README.md](dotnet/README.en.md) 참조 | [dotnet/README.md](dotnet/README.en.md) 참조 |
 | Java | `bindings/java/src/main/java/systems/zlink/contracts/` | `bindings/java/src/main/java/systems/zlink/runtime/` | exported `systems.zlink.contracts.*` JPMS packages and Maven artifact |
 | Node | `bindings/node/src/index.ts` and `bindings/node/src/zlink/contracts/` | `bindings/node/src/zlink/runtime/` | package root export, generated `.d.ts`, and `package.json` exports |
 | Python | `bindings/python/src/zlink/contracts/` | `bindings/python/src/zlink/_runtime/` and `bindings/python/src/zlink/_native/` | `zlink` package exports from `__init__.py` |
@@ -1570,7 +1570,7 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
 - 바인딩은 이 코드를 언어별 에러 타입의 `int code` 에 포함시킨다
   (exception 언어는 예외 객체, return-based 언어는 반환 에러 값).
 - 전체 enum 정의는
-  [errno-map.md](https://kairos-code-dev.github.io/zlink/core/spec/core/04-errno-map/) 를 참조한다.
+  [errno-map.md](https://kairos-code-dev.github.io/zlink/en/spec/core/04-errno-map/) 를 참조한다.
 
 #### Per-Function Error Type Hierarchy
 
@@ -1814,7 +1814,7 @@ builder의 callback submit 메서드 (`submit(callback)`).
 #### 공통
 
 - `zlink_request_result_t` 전체 정의는
-  [errno-map.md](https://kairos-code-dev.github.io/zlink/core/spec/core/04-errno-map/) 를 참조한다.
+  [errno-map.md](https://kairos-code-dev.github.io/zlink/en/spec/core/04-errno-map/) 를 참조한다.
 - Go / Rust 는 exception 이 없으므로 callback request 의 submit 실패도
   return-based 로 처리한다 (Go: `*SubmitError` 반환, Rust:
   `Result<_, SubmitError>` 반환).
@@ -3844,7 +3844,7 @@ zlink 에서 사용하는 코드와 의미. 바인딩은 이 코드를 언어별
 
 1. **Public result enum 코드 (0–706)** — 공개 C API 함수의 반환 enum 값.
    바인딩이 직접 마주하고 언어별 에러 타입으로 노출해야 하는 값이다.
-   전체 정의는 [core/errno-map.md](https://kairos-code-dev.github.io/zlink/core/spec/core/04-errno-map/) 참조.
+   전체 정의는 [core/errno-map.md](https://kairos-code-dev.github.io/zlink/en/spec/core/04-errno-map/) 참조.
 2. **Internal errno** — `zlink_errno()` 로 조회되는 내부 raw errno.
    `INTERNAL_ERROR` 같은 coarse bucket 의 상세 원인 조회용. 바인딩은 이 값을
    `internalErrno` / `internal_errno` 필드로 노출한다 (디버깅 전용).
@@ -4616,7 +4616,7 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
   우회 방지는 Review Checklist에서 검증한다. 자동화 테스트 항목이 아니다.
 
 ## Sample Policy
-- 샘플 제작 규칙은 [`doc/spec/sample/SAMPLE_POLICY.md`](https://kairos-code-dev.github.io/zlink/core/spec/sample/SAMPLE_POLICY/)
+- 샘플 제작 규칙은 [`doc/spec/sample/SAMPLE_POLICY.md`](https://kairos-code-dev.github.io/zlink/en/spec/sample/SAMPLE_POLICY/)
   를 단일 기준 문서로 사용한다.
 - 이 문서는 `core/samples/`와 `bindings/*/samples/`를 함께 포괄한다.
 - 바인딩 샘플을 추가, 수정, 리뷰할 때는 위 문서를 기준으로 판단한다.
@@ -4654,14 +4654,14 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../../doc/perf/PERF_POLICY.md)에�
 
 | 바인딩 | API Spec |
 |--------|----------|
-| C | [`c/README.md`](c/README.md) |
-| C++ | [`cpp/README.md`](cpp/README.md) |
-| Java | [`java/README.md`](java/README.md) |
-| .NET | [`dotnet/README.md`](dotnet/README.md) |
-| Node.js | [`node/README.md`](node/README.md) |
-| Python | [`python/README.md`](python/README.md) |
-| Go | [`go/README.md`](go/README.md) |
-| Rust | [`rust/README.md`](rust/README.md) |
+| C | [`c/README.md`](c/README.en.md) |
+| C++ | [`cpp/README.md`](cpp/README.en.md) |
+| Java | [`java/README.md`](java/README.en.md) |
+| .NET | [`dotnet/README.md`](dotnet/README.en.md) |
+| Node.js | [`node/README.md`](node/README.en.md) |
+| Python | [`python/README.md`](python/README.en.md) |
+| Go | [`go/README.md`](go/README.en.md) |
+| Rust | [`rust/README.md`](rust/README.en.md) |
 
 ### Perf Review Checklist
 

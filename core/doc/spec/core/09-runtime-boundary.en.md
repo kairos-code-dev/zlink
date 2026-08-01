@@ -1,6 +1,6 @@
 [한국어](09-runtime-boundary.ko.md) | English
 
-[Specification index](../README.md) · [Core index](README.md)
+[Specification index](../README.en.md) · [Core index](README.en.md)
 
 # Core Runtime Boundary
 

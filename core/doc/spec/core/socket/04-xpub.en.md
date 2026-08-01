@@ -1,6 +1,6 @@
 [한국어](04-xpub.ko.md) | English
 
-[Spec Index](../../README.md) · [Core Index](../README.md) · [Socket Common](README.md)
+[Spec Index](../../README.en.md) · [Core Index](../README.en.md) · [Socket Common](README.en.md)
 
 # Socket — XPUB
 
@@ -33,16 +33,22 @@ typedef enum zlink_pub_option_t
 | `ZLINK_PUB_OPT_VERBOSER` | Pass all subscribe and unsubscribe messages upstream (`int`; 0 or 1) |
 | `ZLINK_PUB_OPT_MANUAL` | Enable manual subscription management (`int`; 0 or 1) |
 | `ZLINK_PUB_OPT_MANUAL_LAST_VALUE` | Enable last-value caching in manual mode (`int`; 0 or 1) |
-| `ZLINK_PUB_OPT_NODROP` | Do not silently drop messages on HWM; return `EAGAIN` instead (`int`; 0 or 1, default `1`) |
+| `ZLINK_PUB_OPT_NODROP` | Do not silently drop messages on HWM; return `EAGAIN` instead (`int`; 0 or 1, default `0`) |
 | `ZLINK_PUB_OPT_WELCOME_MSG` | Message sent to new subscribers on connect (`binary`) |
 | `ZLINK_PUB_OPT_TOPICS_COUNT` | Number of subscribed topics (get-only, `int`) |
 | `ZLINK_PUB_OPT_APPROVE_SUBSCRIBE` | Approve a pending subscription in manual mode (`binary`) |
 | `ZLINK_PUB_OPT_REJECT_SUBSCRIBE` | Reject a pending subscription in manual mode (`binary`) |
 
-`ZLINK_PUB_OPT_NODROP` defaults to `1`. When the HWM is reached,
-`zlink_publish_part()` returns `ZLINK_SUBMIT_BACKPRESSURED` instead of silently
-dropping. Callers that want silent-drop behavior must set this
-option explicitly to `0`.
+`ZLINK_PUB_OPT_NODROP` defaults to `0`. Fanout delivery is lossy: when the HWM
+is reached, `zlink_publish_part()` drops the message for the affected
+subscriber and reports success. Callers that need a full send queue to
+backpressure the publisher instead of dropping must set this option explicitly
+to `1`; `zlink_publish_part()` then returns `ZLINK_SUBMIT_BACKPRESSURED`.
+
+Setting `1` couples the publisher to its slowest subscriber, because a single
+full pipe stops delivery to every subscriber on the socket. Reliable delivery
+that must not depend on subscriber speed belongs on a request-reply socket, not
+on XPUB/XSUB.
 
 ## Functions
 
@@ -125,7 +131,7 @@ backpressure, a retry resubmits the retained entire record from its first part.
 
 Applicable types are raw `PUB` and raw `XPUB`. Other types return
 `ZLINK_SUBMIT_NOT_SUPPORTED` with `errno == ENOTSUP`. See the
-[errno map](../04-errno-map.md) for the full result mapping.
+[errno map](../04-errno-map.en.md) for the full result mapping.
 
 **See also:** `zlink_xpub_recv_part`, `zlink_send_ready_handler`
 

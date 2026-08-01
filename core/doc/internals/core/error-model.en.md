@@ -19,7 +19,7 @@ stable public results at the API boundary.
     message lifecycle, timer config
 - Result enum values are globally unique across the 0-706 range so a single
   `int` always identifies the origin unambiguously.
-- See [spec/core/04-errno-map.md](../../spec/core/04-errno-map.md)
+- See [spec/core/04-errno-map.md](../../spec/core/04-errno-map.en.md)
   for the canonical enum catalog.
 - Request reply callbacks still pass raw `errno_`, but that completion channel
   is normalized by contract as `zlink_request_result_t`.
@@ -84,9 +84,9 @@ Language bindings inherit this 8-category structure as eight per-function
 exception/error subclasses (e.g. `SubmitException` / `BindException` /
 `RecvException` ...). The method signature reveals which failure category
 can occur. See
-[bindings/doc/spec/README.md](../../../../bindings/doc/spec/README.md)
+[bindings/doc/spec/README.md](../../../../bindings/doc/spec/README.en.md)
 (Per-Function Error Type Hierarchy) for the canonical binding rule and
-[spec/core/04-errno-map.md](../../spec/core/04-errno-map.md)
+[spec/core/04-errno-map.md](../../spec/core/04-errno-map.en.md)
 for the full enum catalog.
 
 ## `zlink_errno()` Scope

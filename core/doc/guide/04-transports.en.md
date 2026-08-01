@@ -1,7 +1,7 @@
 English | [한국어](04-transports.ko.md)
 
 <!-- zlink-nav:start -->
-[← Proxy](03-6-proxy.md) | [TLS/Security →](05-tls-security.md)
+[← Proxy](03-6-proxy.en.md) | [TLS/Security →](05-tls-security.en.md)
 <!-- zlink-nav:end -->
 
 # Transport Guide
@@ -92,7 +92,7 @@ if (conn_rc != ZLINK_CONNECT_OK) {
 - **Speculative write** — attempts synchronous write first, falls back to async on failure
 - **Gather write** — sends header and body together (reduces system calls)
 
-> For internal optimization details such as speculative write, see [architecture.md](../internals/architecture.md).
+> For internal optimization details such as speculative write, see [architecture.md](../internals/architecture.en.md).
 
 ## 3. IPC
 
@@ -244,7 +244,7 @@ zlink_set_tls_client(socket, "/path/to/ca.pem", NULL, 1);
 zlink_connect(socket, "tls://server:5555");
 ```
 
-For detailed TLS configuration, see the [TLS Security Guide](05-tls-security.md).
+For detailed TLS configuration, see the [TLS Security Guide](05-tls-security.en.md).
 
 ## 8. Transport Constraints
 
@@ -303,9 +303,9 @@ zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 printf("Bound endpoint: %s\n", endpoint);
 ```
 
-For performance comparisons, see the [Performance Guide](10-performance.md).
+For performance comparisons, see the [Performance Guide](10-performance.en.md).
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← Proxy](03-6-proxy.md) | [TLS/Security →](05-tls-security.md)
+[← Proxy](03-6-proxy.en.md) | [TLS/Security →](05-tls-security.en.md)
 <!-- zlink-nav:bottom:end -->

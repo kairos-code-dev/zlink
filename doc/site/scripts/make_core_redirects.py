@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
-"""core가 `/core/` 아래로 내려간 뒤, 옛 최상위 경로를 새 자리로 보낸다.
+"""사이트를 하나로 합치면서 자리가 바뀐 옛 경로를 새 자리로 보낸다.
 
-`zlink.systems` 최상위는 core 사이트였다. framework 사이트가 그 자리를 차지하면
-`/guide/...` · `/api/...` · `/internals/...` · `/ko/...`로 걸린 외부 링크와 검색
-색인이 전부 죽는다. 옮기는 것과 같은 시점에 이 stub을 깔아야 한다
-(`framework/doc/plan/language-guide-port-runbook.ko.md` §7.2).
+core 사이트가 `zlink.systems`(Pages) 최상위였을 때의 주소는 이랬다.
 
-GitHub Pages는 301을 낼 수 없다. 정적 호스팅이라 서버 규칙을 둘 자리가 없다.
-그래서 `<meta http-equiv="refresh">` 문서를 옛 경로에 깔고 `<link rel="canonical">`로
-새 주소를 알린다. 사람은 곧바로 넘어가고, 크롤러는 canonical을 따라간다.
+  `/guide/...`     영어 가이드        → 지금은 같은 경로가 **한국어**다
+  `/ko/guide/...`  한국어 가이드      → `/guide/...`
+  `/api/...`       축약 API 레퍼런스  → `/spec/core/...`
 
-framework 사이트가 이미 쓰는 경로는 건드리지 않는다. 지금은 겹치지 않지만
-(framework 최상위는 `dotnet/` · `cpp/` · `java/` · `kotlin/` · `node/` · `common/`),
-나중에 겹치는 이름이 생겨도 이 스크립트가 덮어써서 페이지를 잡아먹는 일은 없다.
+합친 사이트는 한국어가 기본이라 `/ko/` 접두사가 없어졌고, 축약 `api/`를 버리고
+정본 spec을 그대로 낸다. 그 두 자리에 stub을 깔아 외부 링크와 검색 색인을 잇는다.
+
+GitHub Pages는 정적 호스팅이라 301을 낼 수 없다. `<meta http-equiv="refresh">`와
+`<link rel="canonical">`을 쓴다. 대상은 상대 경로다 — 사이트가 도메인 루트에 있든
+`/zlink/` 아래에 있든 같은 자리를 가리킨다.
+
+이미 페이지가 있는 자리는 덮지 않는다.
 
 실행:
-    python3 doc/site/scripts/make_core_redirects.py <합쳐진-사이트-루트>
+    python3 doc/site/scripts/make_core_redirects.py <사이트-루트>
 """
 
 from __future__ import annotations
@@ -27,15 +29,41 @@ STUB = """<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<title>이동함 — {target}</title>
+<title>이동함</title>
 <link rel="canonical" href="{target}">
 <meta http-equiv="refresh" content="0; url={target}">
 </head>
 <body>
-<p>core 문서가 <a href="{target}">{target}</a>으로 옮겨졌다.</p>
+<p>문서가 <a href="{target}">여기</a>로 옮겨졌다.</p>
 </body>
 </html>
 """
+
+#  옛 축약 API 레퍼런스 한 장 → 정본 spec의 대응 자리.
+API_MAP = {
+    "context": "spec/core/01-context",
+    "message": "spec/core/02-message",
+    "errors": "spec/core/03-errors",
+    "errno-map": "spec/core/04-errno-map",
+    "events": "spec/core/05-events",
+    "polling": "spec/core/06-polling",
+    "monitoring": "spec/core/07-monitoring",
+    "utilities": "spec/core/08-utilities",
+    "socket": "spec/core/socket",
+    "spot": "spec/core",
+    "bindings": "bindings/spec",
+    "README": "spec/core",
+}
+
+
+def write(root: Path, old_rel: str, new_rel: str) -> bool:
+    old = root / old_rel / "index.html"
+    if old.exists():
+        return False                       # 실제 페이지가 있는 자리는 덮지 않는다
+    up = "../" * len(Path(old_rel).parts)
+    old.parent.mkdir(parents=True, exist_ok=True)
+    old.write_text(STUB.format(target=f"{up}{new_rel}/"), encoding="utf-8")
+    return True
 
 
 def main() -> int:
@@ -43,30 +71,27 @@ def main() -> int:
         print(__doc__, file=sys.stderr)
         return 2
     root = Path(sys.argv[1]).resolve()
-    core = root / "core"
-    if not core.is_dir():
-        print(f"core 빌드 결과가 없다: {core}", file=sys.stderr)
+    if not (root / "index.html").exists():
+        print(f"사이트 빌드 결과가 없다: {root}", file=sys.stderr)
         return 1
 
-    written = skipped = 0
-    for page in sorted(core.rglob("index.html")):
-        rel = page.parent.relative_to(core)
-        if rel == Path("."):
-            continue                      # core 첫 화면. 최상위는 framework 몫이다.
-        old = root / rel / "index.html"
-        if old.exists():
-            skipped += 1                  # framework 페이지를 덮지 않는다
+    written = 0
+    #  `/ko/**` → 같은 경로의 한국어 기본판.
+    #  옛 core 사이트가 `/ko/` 아래 두던 것은 이 셋뿐이다. framework 문서는
+    #  그 사이트에 없었으므로 `/ko/dotnet/...` 같은 자리는 만들지 않는다.
+    for top in ("guide", "internals", "spec"):
+        base = root / top
+        if not base.is_dir():
             continue
-        old.parent.mkdir(parents=True, exist_ok=True)
-        #  상대 경로로 적는다. 사이트가 도메인 루트에 있든 `/zlink/` 아래에 있든
-        #  같은 자리를 가리킨다. `/core/...`로 적으면 Pages 기본 주소에서 깨진다.
-        up = "../" * len(rel.parts)
-        old.write_text(STUB.format(target=f"{up}core/{rel.as_posix()}/"),
-                       encoding="utf-8")
-        written += 1
+        for page in sorted(base.rglob("index.html")):
+            rel = page.parent.relative_to(root)
+            written += write(root, f"ko/{rel.as_posix()}", rel.as_posix())
 
-    print(f"옛 core 경로 stub {written}개 생성"
-          + (f", framework와 겹쳐 건너뜀 {skipped}개" if skipped else ""))
+    for old, new in API_MAP.items():
+        written += write(root, f"api/{old}", new)
+        written += write(root, f"ko/api/{old}", new)
+
+    print(f"옛 경로 stub {written}개 생성")
     return 0
 
 

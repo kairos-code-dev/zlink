@@ -1,7 +1,7 @@
-[English](03-2-pubsub.md) | [한국어](03-2-pubsub.ko.md)
+[English](03-2-pubsub.en.md) | [한국어](03-2-pubsub.ko.md)
 
 <!-- zlink-nav:start -->
-[← PAIR](03-1-pair.md) | [DEALER →](03-3-dealer.md)
+[← PAIR](03-1-pair.en.md) | [DEALER →](03-3-dealer.en.md)
 <!-- zlink-nav:end -->
 
 # PUB/SUB/XPUB/XSUB Publish-Subscribe
@@ -131,16 +131,15 @@ SUB / XSUB are recv-only types. The intended pattern is to observe
 `ZLINK_POLLIN` from a poller and then pull topic messages with
 `zlink_subscribe()`. No direct topic callback surface is provided.
 
-> **PUB / XPUB default:** `ZLINK_PUB_OPT_NODROP` defaults to `1`.
-> Instead of silently dropping when the HWM is reached,
-> `zlink_publish()` returns `ZLINK_SUBMIT_BACKPRESSURED`. Callers that
-> want loss-tolerant behavior must set `ZLINK_PUB_OPT_NODROP` to `0`
+> **PUB / XPUB default:** `ZLINK_PUB_OPT_NODROP` defaults to `0`.
+> When the HWM is reached, the message for that subscriber is silently
+> dropped and `zlink_publish()` reports success. Callers that need
+> backpressure instead of dropping must set `ZLINK_PUB_OPT_NODROP` to `1`
 > explicitly.
 
 > When PUB's send queue is full (HWM), the default
-> (`ZLINK_PUB_OPT_NODROP=1`) makes `zlink_publish()` return
-> `ZLINK_SUBMIT_BACKPRESSURED` instead of silently dropping. For details,
-> see [Performance Guide](10-performance.md).
+> (`ZLINK_PUB_OPT_NODROP=0`) silently drops the message for that
+> subscriber. For details, see [Performance Guide](10-performance.en.md).
 
 ## 3. Topic Filtering
 
@@ -288,44 +287,57 @@ zlink_connect(sub, "tcp://pub2:5557");
 
 ### Slow Subscriber (HWM Handling)
 
-By default PUB/XPUB run in **NODROP mode** — `ZLINK_PUB_OPT_NODROP`
-defaults to `1`. When a slow subscriber's send queue reaches the HWM,
-`zlink_publish()` returns `ZLINK_SUBMIT_BACKPRESSURED` instead of dropping,
-so the caller can react.
+By default PUB/XPUB run in **lossy mode** — `ZLINK_PUB_OPT_NODROP`
+defaults to `0`. When a slow subscriber's send queue reaches the HWM, the
+message for that subscriber is **silently dropped** (no error returned) and
+`zlink_publish()` reports success. Delivery to the other subscribers is
+unaffected.
 
 ```c
-/* Default backpressure handling — publish returns BACKPRESSURED on HWM */
-zlink_msg_t msg;
-zlink_msg_init_size(&msg, 5);
-memcpy(zlink_msg_data(&msg), "hello", 5);
-zlink_submit_result_t rc = zlink_publish(
-    pub, NULL, &msg, 1, ZLINK_DONTWAIT);
-if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
-    /* HWM reached — retry or apply backpressure logic */
-    zlink_msg_close(&msg);
-}
+/* Default — the slow subscriber's copy is dropped on HWM, publish succeeds */
+struct quote_tick tick = {.price_micros = 91450000000LL, .volume = 1420};
+zlink_msg_t quote;
+zlink_msg_init_size(&quote, sizeof(tick));
+memcpy(zlink_msg_data(&quote), &tick, sizeof(tick));
+zlink_publish(pub, "quotes.KRW-BTC", &quote, 1, ZLINK_DONTWAIT);
 
-/* Or raise the HWM to absorb bursts */
+/* Raise the HWM to absorb bursts and reduce loss */
 uint64_t hwm_bytes = 64 * 1024 * 1024;  /* HWM is bytes */
 zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm_bytes, sizeof(hwm_bytes));
 ```
 
-#### Lossy Mode — Drop Instead of Backpressure
+#### NODROP Mode — Backpressure Instead of Drop
 
-Setting `ZLINK_PUB_OPT_NODROP` to `0` enables lossy mode. When the HWM is
-reached, messages to that subscriber are **silently dropped** (no error
-returned) instead of signaling backpressure.
+Setting `ZLINK_PUB_OPT_NODROP` to `1` makes `zlink_publish()` return
+`ZLINK_SUBMIT_BACKPRESSURED` on HWM instead of dropping, so the caller can
+react.
 
 ```c
-/* Enable lossy mode (drop on HWM) */
-int nodrop = 0;
+/* Enable NODROP mode (backpressure on HWM) */
+int nodrop = 1;
 zlink_set_pub_option(pub, ZLINK_PUB_OPT_NODROP, &nodrop, sizeof(nodrop));
+
+struct quote_tick tick = {.price_micros = 91450000000LL, .volume = 1420};
+zlink_msg_t quote;
+zlink_msg_init_size(&quote, sizeof(tick));
+memcpy(zlink_msg_data(&quote), &tick, sizeof(tick));
+zlink_submit_result_t rc = zlink_publish(
+    pub, "quotes.KRW-BTC", &quote, 1, ZLINK_DONTWAIT);
+if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
+    /* HWM reached — retry the whole record after send-ready */
+    zlink_msg_close(&quote);
+}
 ```
+
+This mode couples the publisher to its **slowest subscriber**: one full pipe
+stops delivery to every subscriber on the socket. Reliable delivery that must
+not depend on subscriber speed belongs on a request-reply socket, not on
+PUB/SUB.
 
 | Mode | Behavior on HWM | When to Use |
 |------|-----------------|-------------|
-| Default (`NODROP=1`) | Returns `ZLINK_SUBMIT_BACKPRESSURED` — caller controls | Message loss is not acceptable (default) |
-| `NODROP=0` (lossy) | Silent drop — no error, message lost | Only latest data matters (sensor, tick) |
+| Default (`NODROP=0`, lossy) | Silent drop — no error, message lost | Ordinary fanout (observation, notification, sensor, tick) |
+| `NODROP=1` | Returns `ZLINK_SUBMIT_BACKPRESSURED` — caller controls | Loss is unacceptable and coupling to the slowest subscriber is acceptable |
 
 > `ZLINK_PUB_OPT_NODROP` applies to both PUB and XPUB sockets (PUB is
 > implemented on top of XPUB).
@@ -459,7 +471,7 @@ flowchart LR
 
 > Proxy patterns (built-in `zlink_proxy()`, manual proxy construction,
 > ROUTER/DEALER broker) are covered in the
-> [Proxy Guide](03-6-proxy.md).
+> [Proxy Guide](03-6-proxy.en.md).
 
 ## 9. Subscription Frame Format
 
@@ -648,7 +660,7 @@ When multiple SUBs subscribe to the same topic, the XPUB subscription is maintai
 > Reference: `core/tests/integration/test_xpub_manual.cpp` -- `test_missing_subscriptions()`: processing two subscribers sequentially to prevent omissions
 
 ---
-[← PAIR](03-1-pair.md) | [DEALER →](03-3-dealer.md)
+[← PAIR](03-1-pair.en.md) | [DEALER →](03-3-dealer.en.md)
 
 
 ## Full language examples
@@ -709,5 +721,5 @@ When multiple SUBs subscribe to the same topic, the XPUB subscription is maintai
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← PAIR](03-1-pair.md) | [DEALER →](03-3-dealer.md)
+[← PAIR](03-1-pair.en.md) | [DEALER →](03-3-dealer.en.md)
 <!-- zlink-nav:bottom:end -->

@@ -1,4 +1,4 @@
-[English](03-2-pubsub.md) | [한국어](03-2-pubsub.ko.md)
+[English](03-2-pubsub.en.md) | [한국어](03-2-pubsub.ko.md)
 
 <!-- zlink-nav:start -->
 [← PAIR](03-1-pair.ko.md) | [DEALER →](03-3-dealer.ko.md)
@@ -131,14 +131,14 @@ SUB / XSUB는 recv-only 타입이다. poller의 `ZLINK_POLLIN`과 함께 써서
 서버 루프에서 readable을 관찰한 뒤 `zlink_subscribe()`로 토픽 메시지를
 가져온다. 직접 토픽 콜백 표면은 제공하지 않는다.
 
-> **PUB/XPUB 기본값:** `ZLINK_PUB_OPT_NODROP` 의 기본값은 `1` 이다.
-> HWM 이 찼을 때 조용히 drop 하지 않고 `zlink_publish()` 가
-> `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. 메시지 손실을 허용하는 동작이 필요하면
-> `ZLINK_PUB_OPT_NODROP` 을 명시적으로 `0` 으로 설정한다.
+> **PUB/XPUB 기본값:** `ZLINK_PUB_OPT_NODROP` 의 기본값은 `0` 이다.
+> HWM 이 찼을 때 그 구독자에게 보내는 메시지를 조용히 drop 하고
+> `zlink_publish()` 는 성공을 반환한다. drop 대신 배압을 받아야 하면
+> `ZLINK_PUB_OPT_NODROP` 을 명시적으로 `1` 로 설정한다.
 
-> PUB의 송신 큐가 가득 차면(HWM) 기본값(`ZLINK_PUB_OPT_NODROP=1`)에서는
-> 조용히 drop하지 않고 `zlink_publish()`가 `ZLINK_SUBMIT_BACKPRESSURED`를
-> 반환한다. 상세는 [성능 가이드](10-performance.ko.md)를 참고.
+> PUB의 송신 큐가 가득 차면(HWM) 기본값(`ZLINK_PUB_OPT_NODROP=0`)에서는
+> 그 구독자에게 보내는 메시지를 조용히 drop한다. 상세는
+> [성능 가이드](10-performance.ko.md)를 참고.
 
 ## 3. 토픽 필터링
 
@@ -284,44 +284,55 @@ zlink_connect(sub, "tcp://pub2:5557");
 
 ### Slow Subscriber (HWM 처리)
 
-PUB/XPUB는 기본적으로 **NODROP 모드**로 동작한다 — `ZLINK_PUB_OPT_NODROP`의
-기본값이 `1`이다. 느린 구독자의 송신 queue가 HWM(High-Water Mark, 보관할 수 있는
-accounted byte 상한)에
-도달하면 메시지를 버리지 않고 `zlink_publish()`가 `ZLINK_SUBMIT_BACKPRESSURED`를
-반환해 호출자가 대응할 수 있다.
+PUB/XPUB는 기본적으로 **손실 허용 모드**로 동작한다 — `ZLINK_PUB_OPT_NODROP`의
+기본값이 `0`이다. 느린 구독자의 송신 queue가 HWM(High-Water Mark, 보관할 수 있는
+accounted byte 상한)에 도달하면 그 구독자에게 보내는 메시지를 오류 반환 없이
+**조용히 버리고** `zlink_publish()`는 성공을 반환한다. 나머지 구독자에 대한
+전달은 영향을 받지 않는다.
 
 ```c
-/* 기본 배압 처리 — HWM 도달 시 publish가 BACKPRESSURED 반환 */
-zlink_msg_t msg;
-zlink_msg_init_size(&msg, 5);
-memcpy(zlink_msg_data(&msg), "hello", 5);
-zlink_submit_result_t rc = zlink_publish(
-    pub, NULL, &msg, 1, ZLINK_DONTWAIT);
-if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
-    /* HWM 도달 — 재시도 또는 backpressure 처리 */
-    zlink_msg_close(&msg);
-}
+/* 기본 동작 — HWM 도달 시 느린 구독자 몫만 drop, publish는 성공 */
+struct quote_tick tick = {.price_micros = 91450000000LL, .volume = 1420};
+zlink_msg_t quote;
+zlink_msg_init_size(&quote, sizeof(tick));
+memcpy(zlink_msg_data(&quote), &tick, sizeof(tick));
+zlink_publish(pub, "quotes.KRW-BTC", &quote, 1, ZLINK_DONTWAIT);
 
-/* 또는 HWM을 올려 버스트를 흡수 */
+/* 버스트 손실을 줄이려면 HWM을 올린다 */
 uint64_t hwm_bytes = 64 * 1024 * 1024;  /* HWM은 byte다 */
 zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm_bytes, sizeof(hwm_bytes));
 ```
 
-#### 손실 허용 모드 — 배압 대신 버리기
+#### NODROP 모드 — 버리는 대신 배압
 
-`ZLINK_PUB_OPT_NODROP`을 `0`으로 설정하면 손실 허용 모드가 켜진다. HWM 도달 시
-배압을 알리는 대신 그 구독자에게 보내는 메시지를 오류 반환 없이 **조용히 버린다**.
+`ZLINK_PUB_OPT_NODROP`을 `1`로 설정하면 HWM 도달 시 메시지를 버리지 않고
+`zlink_publish()`가 `ZLINK_SUBMIT_BACKPRESSURED`를 반환해 호출자가 대응할 수 있다.
 
 ```c
-/* 손실 허용 모드 활성화 (HWM 도달 시 drop) */
-int nodrop = 0;
+/* NODROP 모드 활성화 (HWM 도달 시 배압) */
+int nodrop = 1;
 zlink_set_pub_option(pub, ZLINK_PUB_OPT_NODROP, &nodrop, sizeof(nodrop));
+
+struct quote_tick tick = {.price_micros = 91450000000LL, .volume = 1420};
+zlink_msg_t quote;
+zlink_msg_init_size(&quote, sizeof(tick));
+memcpy(zlink_msg_data(&quote), &tick, sizeof(tick));
+zlink_submit_result_t rc = zlink_publish(
+    pub, "quotes.KRW-BTC", &quote, 1, ZLINK_DONTWAIT);
+if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
+    /* HWM 도달 — send-ready 후 record 전체를 재전송 */
+    zlink_msg_close(&quote);
+}
 ```
+
+이 모드는 publisher를 **가장 느린 구독자에 묶는다**. 한 pipe가 차면 같은 socket의
+모든 구독자에 대한 전달이 멈춘다. 구독자 속도에 의존하면 안 되는 신뢰 전달은
+PUB/SUB가 아니라 request-reply socket이 담당한다.
 
 | 모드 | HWM 도달 시 동작 | 사용 시점 |
 |------|------------------|-----------|
-| 기본 (`NODROP=1`) | `ZLINK_SUBMIT_BACKPRESSURED` 반환 — 호출자가 배압 제어 | 메시지 유실이 허용되지 않는 경우 (기본) |
-| `NODROP=0` (손실 허용) | 조용히 버림 — 오류 반환 없이 메시지 유실 | 최신 데이터만 중요한 경우 (센서, 시세 데이터) |
+| 기본 (`NODROP=0`, 손실 허용) | 조용히 버림 — 오류 반환 없이 메시지 유실 | fanout 일반 (관찰, 알림, 센서, 시세 데이터) |
+| `NODROP=1` | `ZLINK_SUBMIT_BACKPRESSURED` 반환 — 호출자가 배압 제어 | 유실을 허용할 수 없고 느린 구독자에 묶여도 되는 경우 |
 
 > `ZLINK_PUB_OPT_NODROP`은 PUB·XPUB 양쪽에 적용된다(PUB은 XPUB 위에 구현됨).
 

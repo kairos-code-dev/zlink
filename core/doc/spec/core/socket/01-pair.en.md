@@ -1,6 +1,6 @@
 [한국어](01-pair.ko.md) | English
 
-[Spec Index](../../README.md) · [Core Index](../README.md) · [Socket Common](README.md)
+[Spec Index](../../README.en.md) · [Core Index](../README.en.md) · [Socket Common](README.en.md)
 
 # Socket — PAIR
 
@@ -40,7 +40,7 @@ next submit starts the first part of a new record. A retry therefore resubmits
 the entire record from its first part using copies retained before the calls.
 
 **Returns:** `ZLINK_SUBMIT_OK` on success; otherwise a
-`zlink_submit_result_t` value. See the [errno map](../04-errno-map.md) for the
+`zlink_submit_result_t` value. See the [errno map](../04-errno-map.en.md) for the
 full mapping.
 
 **See also:** `zlink_recv_part`, `zlink_send_ready_handler`

@@ -1,4 +1,4 @@
-[Node Binding Specification](README.md) · [Bindings Policy](../README.md)
+[Node Binding Specification](README.en.md) · [Bindings Policy](../README.en.md)
 
 # Node Codec Package Policy
 

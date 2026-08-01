@@ -1,4 +1,4 @@
-[English](03-errors.md) | 한국어
+[English](03-errors.en.md) | 한국어
 
 [스펙 목차](../README.ko.md) · [코어 목차](README.ko.md) · [errno map](04-errno-map.ko.md)
 

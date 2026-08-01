@@ -1,4 +1,4 @@
-[English](08-utilities.md) | 한국어
+[English](08-utilities.en.md) | 한국어
 
 [스펙 목차](../README.ko.md) · [코어 목차](README.ko.md)
 

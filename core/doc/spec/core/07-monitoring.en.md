@@ -1,6 +1,6 @@
 [한국어](07-monitoring.ko.md) | English
 
-[Specification index](../README.md) · [Core index](README.md) · [Events](05-events.md) · [errno map](04-errno-map.md)
+[Specification index](../README.en.md) · [Core index](README.en.md) · [Events](05-events.en.md) · [errno map](04-errno-map.en.md)
 
 # Monitoring
 
@@ -241,4 +241,4 @@ does not block raw-socket submission.
 Within one monitor, Core queues events in the order in which it commits state
 transitions. No wall-clock order is guaranteed across connection I/O threads.
 Handler and receive follow the single-consumer rule for one event queue. Results
-and errno follow the [errno map](04-errno-map.md).
+and errno follow the [errno map](04-errno-map.en.md).

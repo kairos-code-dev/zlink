@@ -1,6 +1,6 @@
 [한국어](04-errno-map.ko.md) | English
 
-[Specification index](../README.md) · [Core index](README.md) · [Errors and result enums](03-errors.md)
+[Specification index](../README.en.md) · [Core index](README.en.md) · [Errors and result enums](03-errors.en.md)
 
 # Result and errno mapping
 

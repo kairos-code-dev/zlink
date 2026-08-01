@@ -1,4 +1,4 @@
-[English](stream-socket.md) | [한국어](stream-socket.ko.md)
+[English](stream-socket.en.md) | [한국어](stream-socket.ko.md)
 
 # STREAM Socket WS/WSS Optimization
 
@@ -199,7 +199,7 @@ reasons worth calling out:
 
 STREAM uses a consolidated default performance profile across transports.
 For non-STREAM-wide socket defaults, see
-[socket-option-defaults.md](socket-option-defaults.md).
+[socket-option-defaults.md](socket-option-defaults.en.md).
 
 ### 7.1 Fixed internal constants
 

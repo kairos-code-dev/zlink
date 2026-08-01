@@ -1,4 +1,4 @@
-[English](08-routing-id.md) | [Message API →](09-message-api.ko.md)
+[English](08-routing-id.en.md) | [Message API →](09-message-api.ko.md)
 
 # Routing ID
 

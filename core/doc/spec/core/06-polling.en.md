@@ -1,6 +1,6 @@
 [한국어](06-polling.ko.md) | English
 
-[Specification index](../README.md) · [Core index](README.md) · [errno map](04-errno-map.md)
+[Specification index](../README.en.md) · [Core index](README.en.md) · [errno map](04-errno-map.en.md)
 
 # Poll and poller
 
@@ -141,4 +141,4 @@ families do not drain this completion. Using
 
 ## 5. Errors and close
 
-An invalid event bit returns `ZLINK_CONFIG_INVALID_ARGUMENT` with `EINVAL`; an event unsupported by the source returns `ZLINK_CONFIG_NOT_SUPPORTED` with `ENOTSUP`. Destroy while wait is active returns `ZLINK_CLOSE_BUSY` with `EBUSY`. The [errno map](04-errno-map.md) defines all result and errno mappings.
+An invalid event bit returns `ZLINK_CONFIG_INVALID_ARGUMENT` with `EINVAL`; an event unsupported by the source returns `ZLINK_CONFIG_NOT_SUPPORTED` with `ENOTSUP`. Destroy while wait is active returns `ZLINK_CLOSE_BUSY` with `EBUSY`. The [errno map](04-errno-map.en.md) defines all result and errno mappings.

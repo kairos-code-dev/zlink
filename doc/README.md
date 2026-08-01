@@ -23,9 +23,9 @@ internal context, link to the internals document instead.
 
 | Audience | Starting Document | Description |
 |----------|-------------------|-------------|
-| **Library Users** | [guide/01-overview.md](../core/doc/guide/01-overview.md) | Developing messaging applications with the zlink API |
+| **Library Users** | [guide/01-overview.md](../core/doc/guide/01-overview.en.md) | Developing messaging applications with the zlink API |
 | **Binding Users** | [guide/bindings/README.ko.md](../bindings/doc/guide/README.ko.md) (Korean) | C++/Java/.NET/Node.js/Python bindings |
-| **Library Developers** | [internals/architecture.md](../core/doc/internals/architecture.md) | Internal architecture and implementation details |
+| **Library Developers** | [internals/architecture.md](../core/doc/internals/architecture.en.md) | Internal architecture and implementation details |
 | **Build/Release Engineers** | [building/build-guide.md](building/build-guide.md) | Building, testing, and packaging |
 | **Adopters / Legal Reviewers** | [license/README.md](license/README.md) | License policy across `core`/`bindings`/`framework`/`http-client` |
 
@@ -36,17 +36,17 @@ internal context, link to the internals document instead.
 ### Core
 | Document | Description |
 |----------|-------------|
-| [01-overview.md](../core/doc/guide/01-overview.md) | zlink overview and getting started |
-| [02-core-api.md](../core/doc/guide/02-core-api.md) | Core C API detailed guide |
-| [03-0-socket-patterns.md](../core/doc/guide/03-0-socket-patterns.md) | Socket patterns overview and selection guide |
-| [03-1-pair.md](../core/doc/guide/03-1-pair.md) | PAIR socket (1:1 bidirectional) |
-| [03-2-pubsub.md](../core/doc/guide/03-2-pubsub.md) | PUB/SUB/XPUB/XSUB publish-subscribe |
-| [03-3-dealer.md](../core/doc/guide/03-3-dealer.md) | DEALER socket (asynchronous requests) |
-| [03-4-router.md](../core/doc/guide/03-4-router.md) | ROUTER socket (ID-based routing) |
-| [03-5-stream.md](../core/doc/guide/03-5-stream.md) | STREAM socket (RAW communication) |
-| [04-transports.md](../core/doc/guide/04-transports.md) | Transport guide (tcp/ipc/inproc/ws/wss/tls) |
-| [05-tls-security.md](../core/doc/guide/05-tls-security.md) | TLS/SSL configuration and security guide |
-| [06-monitoring.md](../core/doc/guide/06-monitoring.md) | Monitoring API usage |
+| [01-overview.md](../core/doc/guide/01-overview.en.md) | zlink overview and getting started |
+| [02-core-api.md](../core/doc/guide/02-core-api.en.md) | Core C API detailed guide |
+| [03-0-socket-patterns.md](../core/doc/guide/03-0-socket-patterns.en.md) | Socket patterns overview and selection guide |
+| [03-1-pair.md](../core/doc/guide/03-1-pair.en.md) | PAIR socket (1:1 bidirectional) |
+| [03-2-pubsub.md](../core/doc/guide/03-2-pubsub.en.md) | PUB/SUB/XPUB/XSUB publish-subscribe |
+| [03-3-dealer.md](../core/doc/guide/03-3-dealer.en.md) | DEALER socket (asynchronous requests) |
+| [03-4-router.md](../core/doc/guide/03-4-router.en.md) | ROUTER socket (ID-based routing) |
+| [03-5-stream.md](../core/doc/guide/03-5-stream.en.md) | STREAM socket (RAW communication) |
+| [04-transports.md](../core/doc/guide/04-transports.en.md) | Transport guide (tcp/ipc/inproc/ws/wss/tls) |
+| [05-tls-security.md](../core/doc/guide/05-tls-security.en.md) | TLS/SSL configuration and security guide |
+| [06-monitoring.md](../core/doc/guide/06-monitoring.en.md) | Monitoring API usage |
 
 ### Services
 | Document | Description |
@@ -57,18 +57,18 @@ internal context, link to the internals document instead.
 ### Reference
 | Document | Description |
 |----------|-------------|
-| [08-routing-id.md](../core/doc/guide/08-routing-id.md) | Routing ID concepts and usage |
-| [09-message-api.md](../core/doc/guide/09-message-api.md) | Message API details |
-| [10-performance.md](../core/doc/guide/10-performance.md) | Performance characteristics and tuning guide |
+| [08-routing-id.md](../core/doc/guide/08-routing-id.en.md) | Routing ID concepts and usage |
+| [09-message-api.md](../core/doc/guide/09-message-api.en.md) | Message API details |
+| [10-performance.md](../core/doc/guide/10-performance.en.md) | Performance characteristics and tuning guide |
 
 ## Library Specification (spec/)
 
 | Document | Description |
 |----------|-------------|
-| [spec/README.md](../core/doc/spec/README.md) | Specification master index |
-| [spec/core/README.md](../core/doc/spec/core/README.md) | Core C library specification |
-| [spec/core/socket/](../core/doc/spec/core/socket/README.md) | Socket specifications (common + per-type) |
-| [spec/bindings/README.md](../bindings/doc/spec/README.md) | Cross-language binding policy and per-language specs |
+| [spec/README.md](../core/doc/spec/README.en.md) | Specification master index |
+| [spec/core/README.md](../core/doc/spec/core/README.en.md) | Core C library specification |
+| [spec/core/socket/](../core/doc/spec/core/socket/README.en.md) | Socket specifications (common + per-type) |
+| [spec/bindings/README.md](../bindings/doc/spec/README.en.md) | Cross-language binding policy and per-language specs |
 
 ## Binding Guides (guide/bindings/)
 
@@ -86,14 +86,14 @@ language-specific rules.
 
 | Document | Description |
 |----------|-------------|
-| [architecture.md](../core/doc/internals/architecture.md) | System architecture overview (5-layer details) |
-| [protocol-zmp.md](../core/doc/internals/protocol-zmp.md) | ZMP v1.0 protocol details |
-| [protocol-raw.md](../core/doc/internals/protocol-raw.md) | RAW (STREAM) protocol details |
-| [stream-socket.md](../core/doc/internals/stream-socket.md) | STREAM socket internals, WS/WSS optimization, runtime defaults |
-| [socket-option-defaults.md](../core/doc/internals/socket-option-defaults.md) | Effective socket option defaults from code |
-| [threading-model.md](../core/doc/internals/threading-model.md) | Threading and concurrency model |
+| [architecture.md](../core/doc/internals/architecture.en.md) | System architecture overview (5-layer details) |
+| [protocol-zmp.md](../core/doc/internals/protocol-zmp.en.md) | ZMP v1.0 protocol details |
+| [protocol-raw.md](../core/doc/internals/protocol-raw.en.md) | RAW (STREAM) protocol details |
+| [stream-socket.md](../core/doc/internals/stream-socket.en.md) | STREAM socket internals, WS/WSS optimization, runtime defaults |
+| [socket-option-defaults.md](../core/doc/internals/socket-option-defaults.en.md) | Effective socket option defaults from code |
+| [threading-model.md](../core/doc/internals/threading-model.en.md) | Threading and concurrency model |
 | [services-internals.md](../core/doc/internals/services-internals.md) | Service layer internal design (overview) |
-| [design-decisions.md](../core/doc/internals/design-decisions.md) | Design decision records |
+| [design-decisions.md](../core/doc/internals/design-decisions.en.md) | Design decision records |
 
 ## Build and Development (building/)
 

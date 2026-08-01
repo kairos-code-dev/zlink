@@ -46,4 +46,4 @@ monitors observe raw transport and protocol transitions. The control runtime
 executes monitor and timer callbacks outside socket I/O threads.
 
 The exact raw-only responsibility boundary is documented in
-[Runtime Boundary](runtime-boundary.md).
+[Runtime Boundary](runtime-boundary.en.md).

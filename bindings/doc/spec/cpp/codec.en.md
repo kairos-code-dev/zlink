@@ -1,4 +1,4 @@
-[C++ Binding Specification](README.md) · [Bindings Policy](../README.md)
+[C++ Binding Specification](README.en.md) · [Bindings Policy](../README.en.md)
 
 # C++ Codec Package Policy
 

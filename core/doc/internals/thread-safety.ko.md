@@ -1,4 +1,4 @@
-[English](thread-safety.md) | 한국어
+[English](thread-safety.en.md) | 한국어
 
 # Core 11 thread safety 구현
 

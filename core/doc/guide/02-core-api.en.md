@@ -39,5 +39,5 @@ Pollers wait for socket, file-descriptor, and generic-timer readiness. Socket
 monitors report raw transport and protocol events and expose a current status
 snapshot. Generic timers can be consumed by receive, callback, or poller.
 
-The public header comments and [Core specification](../spec/core/README.md) are
+The public header comments and [Core specification](../spec/core/README.en.md) are
 the source of truth for result values, ownership, and concurrency.

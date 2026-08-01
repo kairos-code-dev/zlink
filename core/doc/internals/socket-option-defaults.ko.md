@@ -1,4 +1,4 @@
-[English](socket-option-defaults.md)
+[English](socket-option-defaults.en.md)
 
 # Socket option 기본값
 

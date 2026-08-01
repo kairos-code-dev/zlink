@@ -1,6 +1,6 @@
-[English](README.md) | [한국어](README.ko.md)
+[English](README.en.md) | [한국어](README.ko.md)
 
-[Spec Index](https://kairos-code-dev.github.io/zlink/core/spec/) · [Bindings Policy](../README.md)
+[Spec Index](https://kairos-code-dev.github.io/zlink/en/spec/) · [Bindings Policy](../README.en.md)
 
 # C++ Binding Final Structure
 
@@ -419,7 +419,7 @@ and concrete values.
 
 The `Repository Layout` section intentionally follows the .NET contract
 classification: Core, Messaging, Sockets, Eventing, Service, and Errors. The
-.NET source of truth is the [.NET binding blueprint](../dotnet/README.md),
+.NET source of truth is the [.NET binding blueprint](../dotnet/README.en.md),
 especially its Contract Folder Layout and Runtime Folder Layout sections. This
 C++ README defines the C++20 projection of those categories, so file names and
 types may differ when C++ ownership, RAII, move-only resources, or performance

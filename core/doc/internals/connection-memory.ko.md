@@ -1,4 +1,4 @@
-[English](connection-memory.md)
+[English](connection-memory.en.md)
 
 # Connection별 memory
 

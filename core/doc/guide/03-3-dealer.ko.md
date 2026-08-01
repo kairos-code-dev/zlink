@@ -1,4 +1,4 @@
-[English](03-3-dealer.md) | [한국어](03-3-dealer.ko.md)
+[English](03-3-dealer.en.md) | [한국어](03-3-dealer.ko.md)
 
 <!-- zlink-nav:start -->
 [← PUB/SUB](03-2-pubsub.ko.md) | [ROUTER →](03-4-router.ko.md)

@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - 'doc/site/**'
-      - 'framework/doc/site/**'
       - 'framework/doc/framework/**'
   workflow_dispatch:
 
@@ -32,7 +31,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install -r doc/site/requirements.txt -r framework/doc/site/requirements.txt
+        run: pip install -r doc/site/requirements.txt
 
       # 두 사이트의 게이트를 따로 돌린다. 한쪽 회귀가 다른 쪽 검증을 가리지 않는다.
       # 언어별 장은 공통 소스에서 생성한다. 소스만 고치고 생성물을 안 올리면
@@ -70,30 +69,23 @@ jobs:
       - name: Check framework document contracts
         run: bash scripts/verify-framework-doc-contracts.sh
 
-      # 한 도메인에 두 구역으로 낸다 — 최상위가 framework, `/core/`가 core다
-      # (framework/doc/plan/language-guide-port-runbook.ko.md §7.3).
-      # framework를 먼저 지어야 한다. mkdocs는 site_dir를 비우고 시작하므로
-      # 순서가 뒤집히면 core 결과가 지워진다.
-      - name: Build framework documentation
-        working-directory: framework/doc/site
-        run: mkdocs build
-
+      # 사이트는 하나다. `doc/site/docs/`가 정본 트리를 심링크로 모아 두었고
+      # (framework · core · bindings), 한국어가 기본 locale이다.
       - name: Check core language tabs and snippets
         run: python3 doc/site/scripts/check_doc_tabs.py core
 
-      - name: Build core documentation into /core/
+      - name: Build documentation
         working-directory: doc/site
-        run: mkdocs build -d ../../framework/doc/site/site/core
+        run: mkdocs build
 
-      # 최상위는 core 사이트였다. 옛 경로로 걸린 외부 링크와 검색 색인이 죽지
-      # 않도록 같은 시점에 stub을 깐다(§7.2).
-      - name: Redirect the old core paths
-        run: python3 doc/site/scripts/make_core_redirects.py framework/doc/site/site
+      # 옛 core 사이트의 `/ko/**`·`/api/**` 주소를 새 자리로 보낸다.
+      - name: Redirect the old paths
+        run: python3 doc/site/scripts/make_core_redirects.py doc/site/site
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: framework/doc/site/site
+          path: doc/site/site
 
   deploy:
     environment:

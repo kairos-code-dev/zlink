@@ -1,6 +1,6 @@
 [한국어](05-xsub.ko.md) | English
 
-[Spec Index](../../README.md) · [Core Index](../README.md) · [Socket Common](README.md)
+[Spec Index](../../README.en.md) · [Core Index](../README.en.md) · [Socket Common](README.en.md)
 
 # Socket — XSUB
 

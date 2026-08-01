@@ -1,47 +1,55 @@
-site_name: zlink Guide
-# core는 `/core/` 구역에 실린다. 최상위는 framework 사이트다
-# (framework/doc/plan/language-guide-port-runbook.ko.md §7.3).
-site_url: https://kairos-code-dev.github.io/zlink/core/
-site_description: zlink — Modern messaging library guide
+site_name: ZLink
+site_url: https://kairos-code-dev.github.io/zlink/
+site_description: ZLink Framework — 실시간 메시징 서버 프레임워크
+
 repo_url: https://github.com/kairos-code-dev/zlink
 repo_name: kairos-code-dev/zlink
 
+# docs/는 정본 트리를 심링크로 모은 자리다(복사본이 아니다).
+# framework · core · bindings 문서가 한 사이트에 함께 실린다.
+docs_dir: docs
+
 theme:
   name: material
-  language: en
+  language: ko
+  # Material 기본 Roboto에는 한글 글리프가 없다. 한글이 글자마다 OS 대체 폰트로
+  # 떨어지면서 자간과 굵기가 흔들리므로 시스템 한글 폰트를 쓴다.
+  font: false
+  # 첫 항목이 기본값이다. `media`를 걸면 OS 설정을 따라가므로, 다크로 시작하게
+  # 하려면 빼야 한다. 토글은 그대로 남고 고른 값은 브라우저에 저장된다.
+  # primary는 헤더 바 색, accent는 호버·포커스 색이다. slate에서 teal은 링크가
+  # 청록(#00ccb8)으로 잡히므로 어두운 바탕에서 대비가 넉넉하다.
   palette:
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      primary: indigo
-      accent: indigo
+    - scheme: slate
+      primary: teal
+      accent: teal
       toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      primary: indigo
-      accent: indigo
-      toggle:
-        icon: material/brightness-4
+        icon: material/weather-sunny
         name: Switch to light mode
-  font:
-    text: Inter
-    code: JetBrains Mono
+    - scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
   features:
-    - navigation.tabs
-    - navigation.sections
-    - navigation.expand
-    - navigation.top
-    - navigation.footer
-    - navigation.indexes
-    - search.suggest
-    - search.highlight
-    - content.tabs.link
     - content.code.copy
-    - content.code.annotate
-    - toc.follow
-  icon:
-    repo: fontawesome/brands/github
+    - content.tabs.link
+    # navigation.sections를 켜면 언어 묶음이 접히지 않는 제목 덩어리가 된다.
+    # 빼면 각 묶음이 여닫히므로 지금 보는 언어만 펼쳐 둘 수 있다.
+    - navigation.top
+    # 본문 맨 아래에 앞·뒤 장 링크. 순서는 이 파일의 nav가 정한다.
+    - navigation.footer
+    - search.highlight
+    # 오른쪽 목차 칸(12.1rem)을 없애고 목차를 왼쪽 nav 안으로 넣는다.
+    # `.md-grid`의 폭 제한은 사이드바를 포함한 레이아웃 전체에 걸리므로, 이
+    # 칸이 사라진 만큼(약 194px) 본문·코드·다이어그램이 넓어진다. 목차 자체는
+    # 없어지지 않으므로 긴 장에서 절을 건너뛰는 길은 남는다.
+    - toc.integrate
+
+extra_css:
+  - assets/korean.css
+  - assets/stylesheets/extra.css
 
 # 다이어그램 안 글씨를 키운다. 폰트만 올리면 자연폭이 함께 늘어 축소율이 나빠지므로
 # 폰트와 간격 상수를 같이 조정한다. 자세한 이유는 hook 파일 머리말에.
@@ -50,15 +58,15 @@ hooks:
 
 plugins:
   - search
+  # 한국어가 기본이다. framework 402장은 전부 `.ko.md`이고, core·bindings의 영어
+  # 문서는 `.en.md`로 옮겼다 — 접미사 없는 자리가 비어야 이 배치가 성립한다.
+  # nav 라벨은 영어로 적고 번역표가 한국어를 준다.
   - i18n:
       docs_structure: suffix
       languages:
-        - locale: en
-          name: English
-          default: true
-          build: true
         - locale: ko
           name: 한국어
+          default: true
           build: true
           nav_translations:
             Guide: 가이드
@@ -99,11 +107,21 @@ plugins:
             I/O Thread: I/O 스레드
             Result Enums: 결과 Enum
             Actor: Actor
+        - locale: en
+          name: English
+          build: true
 
 # 문서 트리는 정본을 심링크로 직접 건다(`docs/guide` → `core/doc/guide` 등).
 # 복사본을 두면 양쪽이 갈라진다 — 실제로 갈라져서 사이트가 byte HWM 이전의 낡은
 # 내용을 내고 있었고, v11이 지운 서비스 계층 장까지 남아 있었다.
+#
+# 사이트에 올리지 않을 자리. mkdocs는 nav에 없어도 docs_dir 아래를 전부 빌드한다.
 exclude_docs: |
+  perf/
+  */internals/
+  common/e2e/
+  # 공통 가이드는 언어 탭을 담은 소스다. 읽는 자리는 언어별 생성판이다.
+  common/guide/
   # 문서 작성 규약이다. 독자용이 아니다.
   guide/EXAMPLES.ko.md
   guide/STYLE.ko.md
@@ -112,8 +130,111 @@ exclude_docs: |
   bindings/spec/draft/
 
 nav:
-  - Home: index.md
-  - Guide:
+  - 홈: index.ko.md
+  - 가이드:
+      - .NET:
+          - "가이드 홈": dotnet/guide/server/README.ko.md
+          - "1. 개요": dotnet/guide/server/01-overview.ko.md
+          - "2. 시작하기": dotnet/guide/server/02-getting-started.ko.md
+          - "3. 핵심 개념": dotnet/guide/server/03-concepts.ko.md
+          - "4. Backpressure": dotnet/guide/server/04-backpressure.ko.md
+          - "5. Channel Messaging": dotnet/guide/server/05-channel-messaging.ko.md
+          - "6. Spot": dotnet/guide/server/06-spot.ko.md
+          - "7. Actor와 Spot": dotnet/guide/server/07-actor-spot.ko.md
+          - "8. Session과 Actor binding": dotnet/guide/server/08-actor-session.ko.md
+          - "9. STREAM": dotnet/guide/server/09-stream.ko.md
+          - "10. Location": dotnet/guide/server/10-location.ko.md
+          - "11. Monitoring": dotnet/guide/server/11-monitoring.ko.md
+          - "12. 운영": dotnet/guide/server/12-operations.ko.md
+          - "13. 주요 타입 사용 색인": dotnet/guide/server/13-interface-catalog.ko.md
+          - "14. 샘플 고르기": dotnet/guide/server/14-samples.ko.md
+          - "15. E2E 테스트": dotnet/guide/server/15-e2e-testing.ko.md
+          - "16. Options": dotnet/guide/server/16-options.ko.md
+          - "17. ZLink를 어디에 쓰나": dotnet/guide/server/17-alternative.ko.md
+      - C++:
+          - "가이드 홈": cpp/guide/server/README.ko.md
+          - "1. 개요": cpp/guide/server/01-overview.ko.md
+          - "2. 시작하기": cpp/guide/server/02-getting-started.ko.md
+          - "3. 핵심 개념": cpp/guide/server/03-concepts.ko.md
+          - "4. Backpressure": cpp/guide/server/04-backpressure.ko.md
+          - "5. Channel Messaging": cpp/guide/server/05-channel-messaging.ko.md
+          - "6. Spot": cpp/guide/server/06-spot.ko.md
+          - "7. Actor와 Spot": cpp/guide/server/07-actor-spot.ko.md
+          - "8. Session과 Actor binding": cpp/guide/server/08-actor-session.ko.md
+          - "9. STREAM": cpp/guide/server/09-stream.ko.md
+          - "10. Location": cpp/guide/server/10-location.ko.md
+          - "11. Monitoring": cpp/guide/server/11-monitoring.ko.md
+          - "12. 운영": cpp/guide/server/12-operations.ko.md
+          - "13. 주요 타입 사용 색인": cpp/guide/server/13-interface-catalog.ko.md
+          - "14. 샘플 고르기": cpp/guide/server/14-samples.ko.md
+          - "15. E2E 테스트": cpp/guide/server/15-e2e-testing.ko.md
+          - "16. Options": cpp/guide/server/16-options.ko.md
+          - "17. ZLink를 어디에 쓰나": cpp/guide/server/17-alternative.ko.md
+          - "18. DI 컨테이너": cpp/guide/server/18-di-container.ko.md
+          - "19. Configuration": cpp/guide/server/19-configuration.ko.md
+          - "20. HTTP Hosting": cpp/guide/server/20-http-hosting.ko.md
+          - "21. 실행·구성 모델": cpp/guide/server/21-execution-model.ko.md
+      - Java:
+          - "가이드 홈": java/guide/server/README.ko.md
+          - "1. 개요": java/guide/server/01-overview.ko.md
+          - "2. 시작하기": java/guide/server/02-getting-started.ko.md
+          - "3. 핵심 개념": java/guide/server/03-concepts.ko.md
+          - "4. Backpressure": java/guide/server/04-backpressure.ko.md
+          - "5. Channel Messaging": java/guide/server/05-channel-messaging.ko.md
+          - "6. Spot": java/guide/server/06-spot.ko.md
+          - "7. Actor와 Spot": java/guide/server/07-actor-spot.ko.md
+          - "8. Session과 Actor binding": java/guide/server/08-actor-session.ko.md
+          - "9. STREAM": java/guide/server/09-stream.ko.md
+          - "10. Location": java/guide/server/10-location.ko.md
+          - "11. Monitoring": java/guide/server/11-monitoring.ko.md
+          - "12. 운영": java/guide/server/12-operations.ko.md
+          - "13. 주요 타입 사용 색인": java/guide/server/13-interface-catalog.ko.md
+          - "14. 샘플 고르기": java/guide/server/14-samples.ko.md
+          - "15. E2E 테스트": java/guide/server/15-e2e-testing.ko.md
+          - "16. Options": java/guide/server/16-options.ko.md
+          - "17. ZLink를 어디에 쓰나": java/guide/server/17-alternative.ko.md
+      - Kotlin:
+          - "가이드 홈": kotlin/guide/server/README.ko.md
+          - "1. 개요": kotlin/guide/server/01-overview.ko.md
+          - "2. 시작하기": kotlin/guide/server/02-getting-started.ko.md
+          - "3. 핵심 개념": kotlin/guide/server/03-concepts.ko.md
+          - "4. Backpressure": kotlin/guide/server/04-backpressure.ko.md
+          - "5. Channel Messaging": kotlin/guide/server/05-channel-messaging.ko.md
+          - "6. Spot": kotlin/guide/server/06-spot.ko.md
+          - "7. Actor와 Spot": kotlin/guide/server/07-actor-spot.ko.md
+          - "8. Session과 Actor binding": kotlin/guide/server/08-actor-session.ko.md
+          - "9. STREAM": kotlin/guide/server/09-stream.ko.md
+          - "10. Location": kotlin/guide/server/10-location.ko.md
+          - "11. Monitoring": kotlin/guide/server/11-monitoring.ko.md
+          - "12. 운영": kotlin/guide/server/12-operations.ko.md
+          - "13. 주요 타입 사용 색인": kotlin/guide/server/13-interface-catalog.ko.md
+          - "14. 샘플 고르기": kotlin/guide/server/14-samples.ko.md
+          - "15. E2E 테스트": kotlin/guide/server/15-e2e-testing.ko.md
+          - "17. ZLink를 어디에 쓰나": kotlin/guide/server/17-alternative.ko.md
+      - Node.js:
+          - "가이드 홈": node/guide/server/README.ko.md
+          - "1. 개요": node/guide/server/01-overview.ko.md
+          - "2. 시작하기": node/guide/server/02-getting-started.ko.md
+          - "3. 핵심 개념": node/guide/server/03-concepts.ko.md
+          - "4. Backpressure": node/guide/server/04-backpressure.ko.md
+          - "5. Channel Messaging": node/guide/server/05-channel-messaging.ko.md
+          - "6. Spot": node/guide/server/06-spot.ko.md
+          - "7. Actor와 Spot": node/guide/server/07-actor-spot.ko.md
+          - "8. Session과 Actor binding": node/guide/server/08-actor-session.ko.md
+          - "9. STREAM": node/guide/server/09-stream.ko.md
+          - "10. Location": node/guide/server/10-location.ko.md
+          - "11. Monitoring": node/guide/server/11-monitoring.ko.md
+          - "12. 운영": node/guide/server/12-operations.ko.md
+          - "13. 주요 타입 사용 색인": node/guide/server/13-interface-catalog.ko.md
+          - "14. 샘플 고르기": node/guide/server/14-samples.ko.md
+          - "15. E2E 테스트": node/guide/server/15-e2e-testing.ko.md
+          - "16. Options": node/guide/server/16-options.ko.md
+          - "17. ZLink를 어디에 쓰나": node/guide/server/17-alternative.ko.md
+  - 스펙:
+      - common/README.ko.md
+      - common/spec/server/languages/README.ko.md
+  - 샘플: common/sample/README.ko.md
+  - Core 가이드:
     - Overview: guide/01-overview.md
     - Concepts:
       - Socket Pattern Selection: guide/03-0-socket-patterns.md
@@ -140,7 +261,7 @@ nav:
       - ZMP Protocol: guide/zmp-protocol.ko.md
       - Glossary: guide/glossary.ko.md
       - Shared Scenarios: guide/scenarios.ko.md
-  - Bindings:
+  - Bindings 가이드:
     - Overview: bindings/guide/README.ko.md
     - .NET: bindings/guide/dotnet/index.ko.md
     - C++: bindings/guide/cpp/index.ko.md
@@ -149,7 +270,7 @@ nav:
     - Python: bindings/guide/python/index.ko.md
     - Go: bindings/guide/go/index.ko.md
     - Rust: bindings/guide/rust/index.ko.md
-  - Binding Spec:
+  - Bindings 스펙:
     - Overview: bindings/spec/README.md
     - Async & Coroutine Policy: bindings/spec/async-coroutine-policy.ko.md
     - C: bindings/spec/c/README.md
@@ -160,7 +281,7 @@ nav:
     - Python: bindings/spec/python/README.md
     - Go: bindings/spec/go/README.md
     - Rust: bindings/spec/rust/README.md
-  - API Reference:
+  - Core 스펙:
     - Overview: spec/core/README.md
     - Public Contract Governance: spec/core/00-public-contract-governance.md
     - Context: spec/core/01-context.md
@@ -182,7 +303,7 @@ nav:
       - DEALER: spec/core/socket/06-dealer.md
       - ROUTER: spec/core/socket/07-router.md
       - STREAM: spec/core/socket/08-stream.md
-  - Internals:
+  - Core 내부 구조:
     - Architecture: internals/architecture.md
     - Threading Model: internals/threading-model.md
     - Thread Safety: internals/thread-safety.md
@@ -199,9 +320,15 @@ nav:
     - Protocol Raw: internals/protocol-raw.md
 
 markdown_extensions:
+  - admonition
+  - attr_list
   - pymdownx.highlight:
       anchor_linenums: true
+      # 줄마다 span을 두면 CSS가 줄 단위로 스타일을 줄 수 있다. 긴 줄을 접을 때
+      # 이어지는 줄을 안쪽으로 들여 원래 한 줄이었음을 보이게 하는 데 쓴다.
       line_spans: __span
+      # `<div class="highlight language-cpp">`. 접기는 코드에만 걸고 ASCII
+      # 다이어그램(```text)은 가로 스크롤로 남기려면 언어를 구분해야 한다.
       pygments_lang_class: true
   - pymdownx.inlinehilite
   - pymdownx.superfences:
@@ -211,37 +338,24 @@ markdown_extensions:
           format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
-      slugify: !!python/object/apply:pymdownx.slugs.slugify
-        kwds:
-          case: lower
   - pymdownx.snippets:
       dedent_subsections: true
-      # base_path는 mkdocs 실행 cwd(doc/site) 기준. repo 루트를 포함시켜
-      # 가이드가 bindings/<lang>/samples/의 실제 예제 파일을 그대로 임베드한다.
+      # base_path는 mkdocs 실행 cwd(framework/doc/site) 기준.
+      # repo 루트를 포함시켜 가이드가 framework/languages/<lang>/samples/의
+      # 실제 샘플 파일을 그대로 임베드한다.
       base_path:
         - .
         - ../..
-  - pymdownx.details
-  - pymdownx.mark
-  - admonition
   - tables
   - toc:
       permalink: true
-      toc_depth: 3
+      # 왼쪽 목차에는 `##`까지만 싣는다. 장이 길어 `###`까지 펼치면 목차가
+      # 본문만큼 길어진다. anchor와 permalink는 모든 제목에 그대로 붙으므로
+      # 문서끼리의 `#소제목` 링크는 영향받지 않는다.
+      toc_depth: 2
+      # 한글 제목이 anchor로 살아남으려면 unicode slug가 필요하다.
+      # 기본 slugify는 non-ASCII를 버려서 문서 안의 anchor 링크가 전부 깨진다.
       slugify: !!python/object/apply:pymdownx.slugs.slugify
         kwds:
           case: lower
           unicode: true
-  - attr_list
-  - md_in_html
-  - def_list
-
-extra_css:
-  - assets/stylesheets/extra.css
-  - assets/korean.css
-
-extra:
-  social:
-    - icon: fontawesome/brands/github
-      link: https://github.com/kairos-code-dev/zlink
-  generator: false

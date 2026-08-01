@@ -1,4 +1,4 @@
-[English](04-xpub.md) | 한국어
+[English](04-xpub.en.md) | 한국어
 
 [스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [소켓 공통](README.ko.md)
 
@@ -32,15 +32,21 @@ typedef enum zlink_pub_option_t
 | `ZLINK_PUB_OPT_VERBOSER` | 구독/해제 메시지를 업스트림 전달 (`int`; 0 또는 1) |
 | `ZLINK_PUB_OPT_MANUAL` | XPUB 수동 구독 관리 (`int`; 0 또는 1) |
 | `ZLINK_PUB_OPT_MANUAL_LAST_VALUE` | 수동 모드 최신 값 캐싱 (`int`; 0 또는 1) |
-| `ZLINK_PUB_OPT_NODROP` | HWM 시 drop 대신 `EAGAIN` 반환 (`int`; 0 또는 1, 기본값 `1`) |
+| `ZLINK_PUB_OPT_NODROP` | HWM 시 drop 대신 `EAGAIN` 반환 (`int`; 0 또는 1, 기본값 `0`) |
 | `ZLINK_PUB_OPT_WELCOME_MSG` | 새 subscriber 연결 시 전송 메시지 (`binary`) |
 | `ZLINK_PUB_OPT_TOPICS_COUNT` | 구독된 토픽 수 (`int`, 읽기 전용) |
 | `ZLINK_PUB_OPT_APPROVE_SUBSCRIBE` | manual 모드 구독 승인 (`binary`) |
 | `ZLINK_PUB_OPT_REJECT_SUBSCRIBE` | manual 모드 구독 거부 (`binary`) |
 
-`ZLINK_PUB_OPT_NODROP`의 기본값은 `1`입니다. HWM(High-Water Mark)에 도달했을 때 조용히 drop하는
-대신 `zlink_publish_part()`가 `ZLINK_SUBMIT_BACKPRESSURED`를 반환합니다. 호출자가
-조용한 drop 동작을 원하면 명시적으로 `0`으로 설정해야 합니다.
+`ZLINK_PUB_OPT_NODROP`의 기본값은 `0`입니다. fanout 전달은 손실을 허용합니다.
+HWM(High-Water Mark)에 도달했을 때 `zlink_publish_part()`는 해당 subscriber에 대한
+메시지를 버리고 성공을 보고합니다. 송신 큐가 찼을 때 drop 대신 publisher에
+backpressure를 주려면 명시적으로 `1`로 설정해야 하며, 이때
+`zlink_publish_part()`는 `ZLINK_SUBMIT_BACKPRESSURED`를 반환합니다.
+
+`1`로 설정하면 publisher가 가장 느린 subscriber에 묶입니다. 한 pipe가 차면 같은
+socket의 모든 subscriber에 대한 전달이 멈추기 때문입니다. subscriber 속도에
+의존하면 안 되는 신뢰 전달은 XPUB/XSUB가 아니라 request-reply socket이 담당합니다.
 
 ## 함수
 

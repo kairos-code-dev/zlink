@@ -1,7 +1,7 @@
-[English](03-5-stream.md) | [한국어](03-5-stream.ko.md)
+[English](03-5-stream.en.md) | [한국어](03-5-stream.ko.md)
 
 <!-- zlink-nav:start -->
-[← ROUTER](03-4-router.md) | [Proxy →](03-6-proxy.md)
+[← ROUTER](03-4-router.en.md) | [Proxy →](03-6-proxy.en.md)
 <!-- zlink-nav:end -->
 
 # STREAM Socket
@@ -83,7 +83,7 @@ STREAM-specific behavior:
 ## 4. Callback Example
 
 In STREAM raw callbacks every delivered part is application data; observe
-connect/disconnect on the socket monitor (see [Monitoring](06-monitoring.md)).
+connect/disconnect on the socket monitor (see [Monitoring](06-monitoring.en.md)).
 
 ```c
 void on_message(const zlink_routing_id_t *source_rid,
@@ -121,7 +121,7 @@ zlink_recv_handler(stream, on_message, NULL);
 
 > When the send queue is full (HWM), `zlink_send_rid()` blocks
 > (default) or returns `ZLINK_SUBMIT_BACKPRESSURED` with `ZLINK_DONTWAIT`. For advanced
-> backpressure patterns, see [Performance Guide](10-performance.md).
+> backpressure patterns, see [Performance Guide](10-performance.en.md).
 
 - Only one callback can be attached at a time; calling attach while a
   callback is already attached returns `ZLINK_HANDLER_BUSY`.
@@ -238,7 +238,7 @@ Defaults currently used by STREAM internals:
 - STREAM session scheduling default: `rr`
 
 > STREAM runtime environment variables and internal tuning constants
-> are documented in [STREAM internals](../internals/stream-socket.md).
+> are documented in [STREAM internals](../internals/stream-socket.en.md).
 
 ---
 
@@ -260,7 +260,7 @@ Defaults currently used by STREAM internals:
 These tests use STREAM server + raw client paths.
 
 ---
-[← ROUTER](03-4-router.md) | [Proxy →](03-6-proxy.md) | [Transport →](04-transports.md)
+[← ROUTER](03-4-router.en.md) | [Proxy →](03-6-proxy.en.md) | [Transport →](04-transports.en.md)
 
 
 ## Full language examples
@@ -321,5 +321,5 @@ These tests use STREAM server + raw client paths.
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← ROUTER](03-4-router.md) | [Proxy →](03-6-proxy.md)
+[← ROUTER](03-4-router.en.md) | [Proxy →](03-6-proxy.en.md)
 <!-- zlink-nav:bottom:end -->

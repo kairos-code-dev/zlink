@@ -329,59 +329,53 @@ ZoneWorld는 전 언어에 추가한다. 브라우저 client는 `shared_sample/z
 
 ### 7.1 도메인과 프로젝트
 
-framework를 **최상위**로 올리고 core를 같은 도메인의 **`/core/` 구역**으로 내린다.
-서브도메인을 쓰지 않으므로 GitHub Pages 하나로 둘 다 낼 수 있다(§7.3).
+**사이트는 하나다.** framework · core · bindings 문서가 한 mkdocs 프로젝트
+(`doc/site/`)에 함께 실린다. `docs/`는 정본 트리를 심링크로 모은 자리다 — 복사본이
+아니므로 갈라질 일이 없고, 트리 안의 상대 링크가 저장소에서든 사이트에서든 같은
+대상을 가리킨다.
 
-| | framework | core |
-| --- | --- | --- |
-| 주소 | 사이트 루트 | 루트의 **`core/`** |
-| mkdocs 프로젝트 | `framework/doc/site/` | `doc/site/` |
-| 담는 것 | 공통 12장 · 언어별 5장 · cpp 전용 4장 · 샘플 · 공통 스펙 | 소켓 패턴 · C API · binding · internals |
-| 상대편 참조 | core 구역으로 절대 URL | framework로 절대 URL |
+| 자리 | 담는 것 |
+| --- | --- |
+| `/` | framework 홈 |
+| `/<언어>/guide/server/...` | framework 가이드 5개 언어 |
+| `/common/...` | 공통 스펙·샘플 |
+| `/guide/` · `/spec/` · `/internals/` | core |
+| `/bindings/` | binding 가이드·스펙 |
+| `/en/...` | 위의 영어판(core·bindings만 있다) |
+
+**한국어가 기본 locale이다.** framework 402장은 전부 `.ko.md`라 접미사 없는 자리가
+비어 있고, core·bindings의 영어 문서를 `.en.md`로 옮겨 그 자리를 비웠다. 이 배치가
+아니면 i18n이 영어를 기본으로 잡아 framework 전체가 `/ko/` 아래로 밀린다.
+
+nav 표기 규칙이 따라온다 — 두 언어가 다 있는 문서는 접미사 없는 이름(`x.md`)으로,
+한국어만 있는 문서는 `x.ko.md`로 적어야 항목이 찾아진다.
 
 **도메인은 아직 붙지 않았다.** `zlink.systems`는 Squarespace "Coming Soon"
 페이지이고, 문서는 GitHub Pages 기본 주소 `https://kairos-code-dev.github.io/zlink/`로
-나간다. 트리를 넘는 절대 URL 161곳이 이 주소를 쓴다. 커스텀 도메인을 붙이는 날
-그 문자열을 한 번에 바꾸면 된다 — 사이트 안 링크와 리다이렉트 stub은 상대 경로라
-영향받지 않는다.
-
-두 사이트는 각자 nav·검색 색인·i18n을 갖는다. 도메인만 공유하므로 독자에게는 상단
-링크로 오가는 두 구역으로 보인다. framework 가이드가 transport·TLS·socket option을
-설명할 때는 `https://kairos-code-dev.github.io/zlink/guide/04-transports/`로 건다.
+나간다. 트리를 넘는 절대 URL이 이 주소를 쓴다. 커스텀 도메인을 붙이는 날 그 문자열을
+한 번에 바꾸면 된다 — 사이트 안 링크와 리다이렉트 stub은 상대 경로라 영향받지 않는다.
 
 ### 7.2 기존 링크 처리
 
-지금 `zlink.systems/guide/*`·`/api/*`·`/internals/*`·`/ko/*`가 core를 가리킨다.
-최상위를 framework로 바꾸면 이 경로가 전부 깨진다.
+배포되던 core 사이트의 주소 중 둘이 자리를 옮겼다.
 
-**옛 경로마다 stub을 깐다** — `doc/site/scripts/make_core_redirects.py`가 core 빌드
-결과를 훑어 같은 경로에 `<meta http-equiv="refresh">` 문서를 만들고 `/core/`의 같은
-자리로 보낸다. `<link rel="canonical">`을 함께 두어 크롤러가 새 주소를 잇는다.
-GitHub Pages는 정적 호스팅이라 301을 낼 수 없다.
+| 옛 주소 | 지금 |
+| --- | --- |
+| `/guide/...`(영어) | 같은 경로가 **한국어**다. 영어는 `/en/guide/...` |
+| `/ko/guide/...` | `/guide/...` |
+| `/api/...` | `/spec/core/...` (축약본을 버리고 정본 spec을 낸다) |
 
-framework 최상위는 `dotnet/`·`cpp/`·`java/`·`kotlin/`·`node/`·`common/`이라 지금은
-겹치지 않는다. 스크립트는 framework 페이지가 이미 있는 자리를 덮지 않는다.
+`doc/site/scripts/make_core_redirects.py`가 옛 자리에 stub을 깐다. GitHub Pages는
+정적 호스팅이라 301을 낼 수 없어 `<meta http-equiv="refresh">`와
+`<link rel="canonical">`을 쓴다. 대상은 상대 경로다.
 
 ### 7.3 배포 선택
 
-**한 도메인, 두 구역으로 간다.** GitHub Pages는 저장소당 사이트 하나, 커스텀 도메인도
-사이트당 하나다. 서브도메인을 쓰려면 저장소를 하나 더 두거나 호스팅을 옮겨야 했다.
-구역으로 나누면 그 비용이 사라진다 — 사이트 하나에 두 빌드 결과를 겹쳐 올린다.
+GitHub Pages 하나로 낸다. 사이트가 하나이므로 저장소를 더 두거나 호스팅을 옮길
+이유가 없다 — 저울질하던 "저장소 추가 vs 호스팅 이전"이 사라졌다.
 
-`docs.yml`이 이 순서로 짓는다.
-
-1. framework 사이트를 `framework/doc/site/site`에 짓는다.
-2. core 사이트를 `mkdocs build -d ../../framework/doc/site/site/core`로 그 안에 짓는다.
-3. `make_core_redirects.py`가 옛 최상위 경로에 stub을 깐다(§7.2).
-4. 합쳐진 `framework/doc/site/site`를 Pages에 올린다.
-
-**순서가 뒤집히면 안 된다.** mkdocs는 `site_dir`를 비우고 시작하므로 framework를 나중에
-지으면 core 결과가 지워진다.
-
-포기한 것은 통합 검색과 통합 사이드바다. 두 구역은 각자 색인을 갖고, 서로는 상단
-링크와 홈의 관련 문서 표로 오간다. 한 사이트로 병합하려면 `mkdocs-monorepo-plugin`과
-i18n 설정 병합이 필요한데(core는 영어 기본, framework는 한국어 전용), 얻는 것에 비해
-드는 위험이 크다.
+`docs.yml`은 `doc/site`에서 `mkdocs build` 한 번을 돌리고, 옛 경로 stub을 깐 뒤
+`doc/site/site`를 올린다.
 
 ### 7.4 nav와 미러
 
@@ -445,7 +439,7 @@ framework 5언어 집합을 추가하고, §6의 미구현 안내 탭을 통과�
 
 1. 샘플 한 곳(예: TicTacToe dotnet의 Spot 생성 handler)에 `:doc-create` 마커를 심는다.
 2. 공통 정본 한 장을 만들어 그 스니펫을 탭으로 인용한다.
-3. `framework/doc/site/`에 최소 mkdocs 설정을 두고 로컬 빌드로 확인한다.
+3. `doc/site/`의 mkdocs 설정으로 로컬 빌드해 확인한다.
 
 확인할 것은 셋이다 — 스니펫 경로가 repo 루트 기준으로 풀리는가, 탭이 언어별로 전환되는가,
 마커 구간이 의도한 크기로 잘리는가.
@@ -854,7 +848,7 @@ slugify(`case: lower, unicode: true`)로 계산하므로 한글 제목도 그대
 | --- | --- | --- |
 | 공통 샘플에 발췌 마커가 없다 | 스니펫을 못 쓴다 | Phase 1이 구간을 정의하며 dotnet에 심고, Phase 2에서 lane별로 심는다(§8.1) |
 | 교육용 예제는 샘플 대응이 없다 | 스니펫으로 못 바꾸고 복붙이 남는다 | 탭 안 인라인으로 두고 식별자·호출 형태 대조로 검증(§5.2) |
-| framework 문서가 사이트에 없다 | 탭이 렌더되지 않는다 | `framework/doc/site/` 신설(§7.1) |
+| framework 문서가 사이트에 없다 | 탭이 렌더되지 않는다 | `doc/site/`에 합쳐 실었다(§7.1) |
 | GitHub Pages는 저장소당 사이트 하나 | 두 도메인을 지금 구성으로 낼 수 없다 | 두 번째 저장소 또는 호스팅 이전(§7.3) |
 | 최상위가 core에서 framework로 바뀐다 | 기존 `zlink.systems/guide/*` 링크가 깨진다 | core 경로를 301 리다이렉트(§7.2) |
 | `check_doc_tabs.py`가 core 9언어 전용 | framework 탭을 검사하지 못한다 | 5언어 집합과 미구현 안내 허용 추가(§8.2) |

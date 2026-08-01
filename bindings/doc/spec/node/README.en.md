@@ -1,4 +1,4 @@
-[Spec Index](https://kairos-code-dev.github.io/zlink/core/spec/) · [Bindings Policy](../README.md)
+[Spec Index](https://kairos-code-dev.github.io/zlink/en/spec/) · [Bindings Policy](../README.en.md)
 
 # Node / TypeScript Binding Implementation Blueprint
 
@@ -29,7 +29,7 @@ naming: lower-case `contracts` and `runtime` source folders, plus package
 exports that decide what is public. Do not copy capitalized .NET or C++ folder
 names into the Node package.
 
-Node follows the [.NET design shape](../dotnet/README.md) after alignment. Native-backed resource
+Node follows the [.NET design shape](../dotnet/README.en.md) after alignment. Native-backed resource
 behavior is described by public contract interfaces and types under
 `src/zlink/contracts`; native-backed runtime implementations live under
 `src/zlink/runtime` and are obtained through package-root factory functions.
@@ -350,7 +350,7 @@ and published TypeScript declarations.
 ## Contract File Layout
 
 The contract source must use the same classification as the
-[.NET binding blueprint](../dotnet/README.md), with TypeScript naming. Keep the same conceptual file grouping so a
+[.NET binding blueprint](../dotnet/README.en.md), with TypeScript naming. Keep the same conceptual file grouping so a
 developer who knows the .NET binding can find the same public concept in Node
 quickly. The folder map is shared with .NET, but the names inside it should
 stay idiomatic TypeScript.
@@ -375,7 +375,7 @@ and operation builders need named contract files.
 ## Runtime File Layout
 
 Runtime source mirrors the runtime classification in the
-[.NET binding blueprint](../dotnet/README.md) but contains only implementation.
+[.NET binding blueprint](../dotnet/README.en.md) but contains only implementation.
 Node runtime file names must use the same lower-case
 TypeScript concept names as the contract tree. Do not use a `default_` file
 prefix such as `default_context.ts` or `default_pair_socket.ts`. In this

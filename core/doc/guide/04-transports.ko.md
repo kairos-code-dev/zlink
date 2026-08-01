@@ -1,4 +1,4 @@
-[English](04-transports.md) | [한국어](04-transports.ko.md)
+[English](04-transports.en.md) | [한국어](04-transports.ko.md)
 
 <!-- zlink-nav:start -->
 [← 프록시](03-6-proxy.ko.md) | [TLS/보안 →](05-tls-security.ko.md)

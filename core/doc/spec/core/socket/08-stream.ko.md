@@ -1,4 +1,4 @@
-[English](08-stream.md) | 한국어
+[English](08-stream.en.md) | 한국어
 
 [스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [소켓 공통](README.ko.md) · [errno map](../04-errno-map.ko.md)
 

@@ -1,7 +1,7 @@
 [한국어](01-overview.ko.md)
 
 <!-- zlink-nav:start -->
-[Core API →](02-core-api.md)
+[Core API →](02-core-api.en.md)
 <!-- zlink-nav:end -->
 
 # zlink overview
@@ -54,10 +54,10 @@ cmake -S core -B core/build -DWITH_TLS=ON -DBUILD_TESTS=ON
 cmake --build core/build
 ```
 
-Choose a socket pattern in [Socket Patterns](03-0-socket-patterns.md), then use
-the [Core API](02-core-api.md) and [Message API](09-message-api.md) guides. The
-[Monitoring](06-monitoring.md) guide covers raw socket events and snapshots.
+Choose a socket pattern in [Socket Patterns](03-0-socket-patterns.en.md), then use
+the [Core API](02-core-api.en.md) and [Message API](09-message-api.en.md) guides. The
+[Monitoring](06-monitoring.en.md) guide covers raw socket events and snapshots.
 
 <!-- zlink-nav:bottom:start -->
-[Core API →](02-core-api.md)
+[Core API →](02-core-api.en.md)
 <!-- zlink-nav:bottom:end -->

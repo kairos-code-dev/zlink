@@ -1,6 +1,6 @@
-[English](README.md) | [한국어](README.ko.md)
+[English](README.en.md) | [한국어](README.ko.md)
 
-[Spec Index](https://kairos-code-dev.github.io/zlink/core/spec/) · [Bindings Policy](../README.md)
+[Spec Index](https://kairos-code-dev.github.io/zlink/en/spec/) · [Bindings Policy](../README.en.md)
 
 # Java Binding Implementation Blueprint
 
@@ -20,7 +20,7 @@ The Java binding is aligned only when it uses the same architecture map as the
 - tests, samples, perf, and applications import only public contract packages.
 
 The Java public contract classification follows the
-[.NET binding blueprint](../dotnet/README.md) as the baseline. Java does not have to
+[.NET binding blueprint](../dotnet/README.en.md) as the baseline. Java does not have to
 copy every C# file literally when Java's public type rules make that awkward,
 but it must preserve the same category ownership, resource boundary, and
 operation/model grouping.
@@ -33,7 +33,7 @@ constructors only to preserve the old Java surface.
 
 The semantic source of truth is `core/include/zlink.h`. The shared binding
 policy is `doc/spec/bindings/README.md`. The .NET projection is the
-[.NET binding blueprint](../dotnet/README.md), and Java follows that design
+[.NET binding blueprint](../dotnet/README.en.md), and Java follows that design
 while using Java package names and Java naming conventions.
 
 The Java repository ownership boundaries are:
@@ -235,7 +235,7 @@ contract package and must not be imported by samples, perf, or applications.
 ### Public Contract Layout
 
 This tree is the Java projection of the contract categories defined by the
-[.NET binding blueprint](../dotnet/README.md). The group directories below are
+[.NET binding blueprint](../dotnet/README.en.md). The group directories below are
 physical source-file groups used to keep the Java tree readable at a .NET-like
 level. They do not create additional public Java package names. For example,
 `contracts/sockets/SocketEnums/SendResult.java` still declares
@@ -305,7 +305,7 @@ are not application-facing API.
 
 The group directories are not arbitrary feature buckets. They are Java source
 file groups for the contract groups defined by the
-[.NET binding blueprint](../dotnet/README.md). A new public contract file must
+[.NET binding blueprint](../dotnet/README.en.md). A new public contract file must
 go into the smallest group that owns its concept.
 
 Java public names should still be Java names. The C# `I` prefix is not copied:

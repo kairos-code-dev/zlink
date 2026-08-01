@@ -1,4 +1,4 @@
-[스펙 목차](https://kairos-code-dev.github.io/zlink/core/ko/spec/) | [바인딩 API 정책](README.ko.md)
+[스펙 목차](https://kairos-code-dev.github.io/zlink/spec/) | [바인딩 API 정책](README.ko.md)
 
 # 바인딩 비동기 완료 표면 정책
 

@@ -1,4 +1,4 @@
-[English](05-events.md) | 한국어
+[English](05-events.en.md) | 한국어
 
 [스펙 목차](../README.ko.md) · [코어 목차](README.ko.md) · [Monitoring](07-monitoring.ko.md) · [Polling](06-polling.ko.md)
 

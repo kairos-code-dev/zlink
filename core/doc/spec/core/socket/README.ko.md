@@ -1,4 +1,4 @@
-[English](README.md) | 한국어
+[English](README.en.md) | 한국어
 
 [스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md)
 

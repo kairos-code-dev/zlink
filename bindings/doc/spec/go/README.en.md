@@ -1,4 +1,4 @@
-[Spec Index](https://kairos-code-dev.github.io/zlink/core/spec/) · [Bindings Policy](../README.md)
+[Spec Index](https://kairos-code-dev.github.io/zlink/en/spec/) · [Bindings Policy](../README.en.md)
 
 # Go Binding Implementation Blueprint
 
@@ -229,7 +229,7 @@ contract file that gives them meaning. Avoid `types.go`, `models.go`,
 ## Runtime File Layout
 
 Runtime source mirrors the runtime classification in the
-[.NET binding blueprint](../dotnet/README.md) but stays private.
+[.NET binding blueprint](../dotnet/README.en.md) but stays private.
 
 - `internal/core`, `internal/messaging`, `internal/sockets`,
   `internal/eventing`, `internal/service`, and `internal/errors` own private

@@ -1,4 +1,4 @@
-[English](io-thread.md) | 한국어
+[English](io-thread.en.md) | 한국어
 
 # I/O Thread 내부 구조
 

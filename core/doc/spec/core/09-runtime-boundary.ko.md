@@ -1,4 +1,4 @@
-[English](09-runtime-boundary.md) | 한국어
+[English](09-runtime-boundary.en.md) | 한국어
 
 [스펙 목차](../README.ko.md) · [코어 목차](README.ko.md)
 

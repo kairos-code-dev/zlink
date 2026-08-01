@@ -1,6 +1,6 @@
 [한국어](08-stream.ko.md) | English
 
-[Specification Index](../../README.md) · [Core Index](../README.md) · [Socket Common](README.md) · [Errno Map](../04-errno-map.md)
+[Specification Index](../../README.en.md) · [Core Index](../README.en.md) · [Socket Common](README.en.md) · [Errno Map](../04-errno-map.en.md)
 
 # Socket — STREAM
 
@@ -88,7 +88,7 @@ a payload copy before the call gives the caller one uniform recovery strategy
 across all failure results.
 
 A missing connection returns `ZLINK_SUBMIT_NOT_CONNECTED`. See the
-[Errno Map](../04-errno-map.md) for the full result mapping.
+[Errno Map](../04-errno-map.en.md) for the full result mapping.
 
 ## 5. Raw part receive
 
@@ -170,6 +170,6 @@ be replaced but cannot be removed with `NULL`. Reentrant registration from
 the same send-ready callback returns `ZLINK_HANDLER_DEADLOCK` with
 `errno == EDEADLK`.
 
-The [Socket Common](README.md) contract defines public socket-handle thread
+The [Socket Common](README.en.md) contract defines public socket-handle thread
 safety and close behavior. The same `zlink_msg_t` cannot be used concurrently
 from multiple threads.

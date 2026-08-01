@@ -36,5 +36,5 @@ available.
 
 ## Detailed guides
 
-- [PAIR](03-1-pair.md), [PUB/SUB](03-2-pubsub.md), [DEALER](03-3-dealer.md)
-- [ROUTER](03-4-router.md), [STREAM](03-5-stream.md), [Proxy](03-6-proxy.md)
+- [PAIR](03-1-pair.en.md), [PUB/SUB](03-2-pubsub.en.md), [DEALER](03-3-dealer.en.md)
+- [ROUTER](03-4-router.en.md), [STREAM](03-5-stream.en.md), [Proxy](03-6-proxy.en.md)

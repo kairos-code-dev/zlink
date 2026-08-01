@@ -1,6 +1,6 @@
-[English](README.md) | [한국어](README.ko.md)
+[English](README.en.md) | [한국어](README.ko.md)
 
-[Spec Index](https://kairos-code-dev.github.io/zlink/core/spec/) · [Bindings Policy](../README.md)
+[Spec Index](https://kairos-code-dev.github.io/zlink/en/spec/) · [Bindings Policy](../README.en.md)
 
 # .NET Binding Implementation Blueprint
 
@@ -41,7 +41,7 @@ place where new user-facing behavior is discovered.
   helpers.
 - Documentation role: this README defines the library shape and review rules.
   `Contracts/` owns the exact public behavior surface.
-- API reference comments: [`api-reference-comments.md`](api-reference-comments.md)
+- API reference comments: [`api-reference-comments.md`](api-reference-comments.en.md)
   defines how XML comments in `Contracts/` are written and reviewed.
 
 Runtime implementation files must not define user-facing behavior that cannot

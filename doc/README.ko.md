@@ -56,7 +56,7 @@
 | [spec/README.ko.md](../core/doc/spec/README.ko.md) | 스펙 마스터 인덱스 |
 | [spec/core/README.ko.md](../core/doc/spec/core/README.ko.md) | 코어 C 라이브러리 스펙 |
 | [spec/core/socket/](../core/doc/spec/core/socket/README.ko.md) | 소켓 스펙 (공통 + 타입별) |
-| [spec/bindings/README.md](../bindings/doc/spec/README.md) | Cross-language 바인딩 정책 및 언어별 스펙 |
+| [spec/bindings/README.md](../bindings/doc/spec/README.en.md) | Cross-language 바인딩 정책 및 언어별 스펙 |
 
 ## 바인딩 가이드 (guide/bindings/)
 

@@ -1,6 +1,6 @@
 [한국어](01-context.ko.md) | English
 
-[Spec Index](../README.md) · [Core Index](README.md)
+[Spec Index](../README.en.md) · [Core Index](README.en.md)
 
 # Context
 

@@ -1,4 +1,4 @@
-[English](design-decisions.md)
+[English](design-decisions.en.md)
 
 # Core 설계 결정
 

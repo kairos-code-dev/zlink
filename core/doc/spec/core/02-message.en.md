@@ -1,6 +1,6 @@
 [한국어](02-message.ko.md) | English
 
-[Spec Index](../README.md) · [Core Index](README.md)
+[Spec Index](../README.en.md) · [Core Index](README.en.md)
 
 # Message API Reference
 
@@ -345,4 +345,4 @@ than the message API.
 
 See these documents for the adjacent contracts:
 
-- request-reply public API: [socket/README.md](socket/README.md)
+- request-reply public API: [socket/README.md](socket/README.en.md)

@@ -1,4 +1,4 @@
-[Java Binding Specification](README.md) · [Bindings Policy](../README.md)
+[Java Binding Specification](README.en.md) · [Bindings Policy](../README.en.md)
 
 # Java Netty Extension Specification
 

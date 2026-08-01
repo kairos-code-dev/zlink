@@ -1,4 +1,4 @@
-[English](architecture.md)
+[English](architecture.en.md)
 
 # Core runtime architecture
 

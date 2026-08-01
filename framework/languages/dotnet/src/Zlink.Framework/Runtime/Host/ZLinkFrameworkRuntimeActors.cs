@@ -3523,9 +3523,15 @@ internal sealed partial class ZLinkFrameworkRuntime
         if (targetNode.MeshStatus().LifecycleGeneration != targetNodeGeneration
             || authorityOwnerGeneration == 0
             || ownerLeaseGeneration == 0)
+        {
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"relay_target_stale actor={actorId} "
+                + $"node_gen={targetNode.MeshStatus().LifecycleGeneration}/{targetNodeGeneration} "
+                + $"authority_gen={authorityOwnerGeneration} lease_gen={ownerLeaseGeneration}");
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.Unavailable,
                 $"Actor '{actorId}' session relay target lifecycle is stale.");
+        }
         if (authenticatedRelayNodeRid.IsEmpty
             || relayNodeRid.IsEmpty
             || authenticatedRelayNodeRid != relayNodeRid
@@ -3534,9 +3540,15 @@ internal sealed partial class ZLinkFrameworkRuntime
                 peer.State == MeshPeerState.Admitted
                 && peer.RoutingId == authenticatedRelayNodeRid
                 && peer.LifecycleGeneration == relayNodeGeneration))
+        {
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"relay_peer_stale actor={actorId} authenticated={authenticatedRelayNodeRid} "
+                + $"claimed={relayNodeRid} relay_gen={relayNodeGeneration} "
+                + $"admitted=[{string.Join(",", targetNode.MeshPeers().Where(p => p.State == MeshPeerState.Admitted).Select(p => $"{p.RoutingId}:{p.LifecycleGeneration}"))}]");
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.Unavailable,
                 $"Actor '{actorId}' relay peer identity is stale.");
+        }
         var state = GetOrCreateActorState(actorId);
         var actorRef = new ZLinkBackendActorRef(
             targetNodeRid,
@@ -3660,6 +3672,13 @@ internal sealed partial class ZLinkFrameworkRuntime
         var batch = ZLinkActorHandoffIngress.CaptureMovingFrames(this, parts);
         if (batch.Count == 0)
         {
+            //  A frame for an Actor mid-handoff is captured for replay instead
+            //  of dispatched. Returning quietly makes that indistinguishable
+            //  from delivery, and the frame is lost outright if the handoff
+            //  never completes.
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"relay_frame_captured actor={actorId} "
+                + $"packet={ZLinkStreamProtocolDefaults.DecodeHeader(header).Name}");
             return;
         }
         if (!routeContext.IsDirectRoute)

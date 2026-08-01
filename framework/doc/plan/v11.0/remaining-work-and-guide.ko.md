@@ -142,26 +142,35 @@ route_commit_result   ack=False  ×121  (deadline까지 재시도)
 route_commit_result actor=actor-sm-b6-disconnected-... ack=True
 ```
 
-둘째가 남았다. 통지가 **session node를 떠나 target node의 pipeline에 도착하지 않는다.** 그 사이
-구간을 전부 밝혔고 모두 정상이다.
+둘째는 **actor별 FIFO 체인**이다. 사슬을 끝까지 밝혔다.
 
 ```
-session-a : session_cleanup_entered  actors=1 [actor-sm-b6-disconnected-...]
-session-a : session_disconnect_skipped   0건   (가드가 건너뛰지 않았다)
-session-a : session_disconnect_notify_failed 0건 (송신이 실패하지 않았다)
-session-a : forward_part ×4  → target_node=play-a(join relay), play-b(disconnect)
-play-b    : relay_source_stale        0건   (신원 검증에서 버려지지 않았다)
-play-b    : actor_frame_arrived       이 actor는 JoinUserSpotActorReq 1건뿐
-play-*    : 같은 실행의 다른 actor 5개는 disconnect frame이 도착하고 applied까지 간다
+play-b : relay_frame_received      2건  (join relay, disconnect 둘 다 도착)
+play-b : remote_frame_dispatch     2건  (둘 다 dispatch 진입)
+play-b : actor_frame_arrived       1건  (join만 pipeline에 도착)
+play-b : relay_target_stale / relay_peer_stale / relay_source_stale
+         relay_identity_stale / relay_frame_captured   모두 0건
 ```
 
-즉 commit 뒤 route는 play-b로 정확히 갱신되고, session node는 그리로 forward하고, 송신도
-성공하는데, target의 actor pipeline에는 오지 않는다. 남은 미조명 구간은
-session node의 `SendToNode`와 target의 relay handler 사이 한 hop뿐이다.
+거부도 capture도 아니다. `DispatchRemoteActorFrameAsync`는 spec 23 §10.2의 actor별 FIFO를 지키기
+위해 frame을 직전 frame의 dispatch task 뒤에 잇는다.
 
-같은 실행에서 다른 actor 5개의 disconnect는 같은 경로로 도착한다는 점이 중요하다. 그 5개는
-handoff를 겪지 않았다. 따라서 다음은 handoff를 겪은 actor의 relay가 어떤 점에서 다른지다.
-`ZLinkRemoteActorFrameRelayHandler` 진입을 찍으면 그 한 hop이 갈린다.
+```csharp
+var prior = _remoteFrameChains.TryGetValue(actorId, out var chain) ? chain : Task.CompletedTask;
+chained = DispatchRemoteFrameAfterAsync(prior, batch, deadlineUnixMs, cancellationToken);
+```
+
+Disconnect는 join frame의 dispatch 뒤에 줄을 선다. 그 join은 deferred join이므로 handoff·seal·
+commit이 끝나야 완료된다. Commit이 `AcceptedHighWater` 불일치로 120번 거부되는 동안 join dispatch가
+끝나지 않고, 그 뒤에 선 disconnect는 pipeline에 도달하지 못한다.
+
+그래서 SM-B6는 두 지점 중 어느 쪽을 고쳐도 달라진다.
+
+1. Commit이 첫 시도에 성립하게 한다. `route_commit_rejected`가 매번 `high_water`에서 갈리는지
+   확인할 것. Seal이 돌려준 값과 commit이 보내는 값 사이에 frame이 더 수락되면 어긋난다.
+2. Disconnect 통지를 application frame FIFO 뒤에 세우지 않는다. 이것은 lifecycle 통지이지
+   application 순서를 지켜야 하는 message가 아니다. Spec 23 §10.2가 요구하는 FIFO의 대상인지
+   먼저 판정할 것.
 
 **RM-B2 — mesh 계층에 drain 표시가 구현되어 있지 않다.** Provider가 drain 중일 때 select-one이 그
 member를 고르고 `Rejected`(admission sealed)를 caller에게 그대로 돌려준다. 원인을 끝까지 보면 표시

@@ -321,6 +321,11 @@ internal sealed class ZLinkRemoteActorFrameRelayHandler(ZLinkFrameworkRuntime ru
         CancellationToken cancellationToken)
     {
         var requestSource = DecodeRequestSource(message);
+        //  The only unlit hop on the relay: a frame that never gets here and one
+        //  that is dropped after dispatch look identical from the sender.
+        Zlink.Framework.Runtime.Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"relay_frame_received actor={message.ActorId} "
+            + $"target_node={message.TargetNodeRid} relay={message.RelayNodeRid}");
         await runtime.DispatchRemoteActorFrameAsync(
                 message.ActorId,
                 message.ActorGeneration,

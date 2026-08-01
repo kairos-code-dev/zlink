@@ -235,10 +235,28 @@ handoff_completion                              0회
    deadline을 다 쓴다는 뜻이다. 그러므로 고칠 자리는 unseal의 판정 로직이 아니라 **node 간 request의
    응답 경로**다.
 
-   이 증상은 오늘 core에서 고친 reply 정합 결함과 같은 계열이다(요청은 도달하고 handler는 돌지만
-   응답이 caller에 닿지 않는다). 그때 원인은 pending을 intent rid로 걸고 응답은 정착한 rid로 오는
-   것이었다. Unseal은 target node가 session node에 보내는 요청이므로 같은 조건이 성립할 수 있다.
-   다음은 play-b가 session-a를 어떤 rid로 addressing하는지 확인하는 것이다.
+   Session node의 로그 순서가 나머지를 채운다.
+
+```
+session-a  forward_part ×2 → play-b            (disconnect 전달)
+session-a  session_binding_removed              (cleanup)
+session-a  route_unseal_received                ← unseal은 cleanup 뒤에 도착한다
+session-a  route_reply_send / route_reply_submitted → play-b   ← 응답이 제출된다
+session-a  route_commit_received … ack=False    (이후 completion 재시도)
+```
+
+   즉 응답은 제출되는데 play-b의 pending 요청이 완료되지 않는다. 요청은 도달하고 handler는 돌고
+   응답도 나가는데 caller가 받지 못하는 것으로, 오늘 오전 core에서 고친 reply 정합 결함과 같은
+   모양이다. 그때 원인은 pending을 `zlink-intent-...` rid로 걸고 응답은 정착한 rid로 오는 것이었고,
+   sequence 대체 조회로 해결했다.
+
+   다만 그 수정은 core의 request/reply pending에 적용된 것이고, 여기는 framework의 route request
+   응답 경로다. 같은 종류의 어긋남이 이 계층에도 있는지 확인해야 한다. 다음은 play-b에서 이 unseal
+   요청의 pending이 어떤 key로 등록되고 도착한 응답이 어떤 key로 조회되는지 찍는 것이다.
+
+   같은 실행에서 commit 응답은 141번 모두 정상적으로 돌아온다는 점이 중요한 대조군이다. 두 요청은
+   같은 helper(`RequestSessionRouteControlAsync`)와 같은 transport를 쓰고 reply 타입도 같다. 차이는
+   packet 이름과, unseal이 cleanup 이후에 온다는 시점뿐이다.
 2. **Disconnect 통지를 application frame FIFO 뒤에 세우지 않는다.** 이것은 lifecycle 통지이지
    application 순서를 지켜야 하는 message가 아니다. Spec 23 §10.2가 요구하는 FIFO의 대상인지
    먼저 판정할 것.

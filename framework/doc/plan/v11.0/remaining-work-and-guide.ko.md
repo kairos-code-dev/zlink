@@ -211,6 +211,14 @@ pipeline에 도달하지 못한다.
 1. **Unseal이 binding 부재를 정상 종료로 받아들인다.** Commit이 이미 성립했다면 session route는
    옮겨졌고, 그 뒤 session이 사라진 것은 실패가 아니다. Unseal을 재시도로 붙잡아 두면 handoff
    전체가 끝나지 못한다.
+
+   구현 시 주의할 점이 하나 있다. Source가 받는 오류는 unseal의 거부가 아니라 **timeout**이다.
+   `UnsealCompletedSessionRouteAsync`는 응답이 `Acknowledged=false`면 `InvalidOperation`으로 바로
+   던진다. Timeout이 온다는 것은 그 지점까지 가지 못하고 `RequestSessionRouteUnsealAsync`의 재시도
+   loop이 deadline을 다 쓴다는 뜻이며, 그 loop은 `Unavailable`·`RetryAfterBackoff`에만 재시도한다.
+   따라서 session node가 binding 부재를 `Unavailable`로 답하고 있다. 고칠 자리는 두 곳 중 하나다.
+   Session node가 그 경우를 재시도 대상이 아닌 종료로 답하게 하거나, 호출 측이 commit 성공 뒤의
+   부재를 정상으로 받아들이게 하는 것이다. 둘을 혼동하면 진짜 일시적 오류까지 삼키게 된다.
 2. **Disconnect 통지를 application frame FIFO 뒤에 세우지 않는다.** 이것은 lifecycle 통지이지
    application 순서를 지켜야 하는 message가 아니다. Spec 23 §10.2가 요구하는 FIFO의 대상인지
    먼저 판정할 것.

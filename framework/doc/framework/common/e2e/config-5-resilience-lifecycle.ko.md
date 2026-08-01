@@ -72,8 +72,10 @@ crash·termination·failover 시나리오는 `corr=` 흐름으로 어디서 끊�
   짧은 timeout의 target 미지정 request 한 건을 보낸 뒤 provider를 같은 endpoint로 재시작한다. Automatic
   discovery가 새 lifecycle RID를 발급하며 application은 이전 RID를 다시 설정하지 않는다.
 - 검증: 종료 전에 시작한 request는 `Shutdown` deadline 안에서 정상 reply로 끝난다. old descriptor 제거 뒤의
-  target 미지정 request는 send readiness 한계 안에서 `Unavailable`로 끝나며 자동 재전송되지
-  않는다. 재시작 뒤 이전 RID와 다른 RID, 같은 endpoint를 가진 새 MeshNode descriptor가 조회되고
+  target 미지정 request는 send readiness 한계 안에서 `NotFound`로 끝나며 자동 재전송되지
+  않는다. Channel에 송신 경로가 없는 경우이므로
+  [공통 spec 06](../spec/06-framework-api.ko.md)의 결과표를 따른다. `Unavailable`은 route가 아직
+  준비되지 않은 알려진 direct target에 쓴다. 재시작 뒤 이전 RID와 다른 RID, 같은 endpoint를 가진 새 MeshNode descriptor가 조회되고
   `ConnectionReady` 뒤 follow-up request 20개가 모두 성공한다. consumer 재시작은 없다. crash restart는
   RL-A2의 old lease 만료 경로에서 별도로 검증한다.
 - 세부 동작: 재기동 복구.

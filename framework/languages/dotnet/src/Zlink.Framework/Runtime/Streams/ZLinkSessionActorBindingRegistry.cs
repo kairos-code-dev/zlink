@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Diagnostics;
+
 namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime runtime)
@@ -128,10 +130,17 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
                 // stale or duplicate notification from affecting a replacement.
                 // Settling quietly also hides a notification that never reached
                 // the Actor's owner node, which leaves a binding whose session
-                // is gone, so name the failure.
-                Zlink.Framework.Runtime.Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-                    $"session_disconnect_notify_failed actor={actor.ActorId} "
-                    + $"binding={actor.BindingToken} {failure}");
+                // is gone, so the drop is a traced one (spec 26 §2.1).
+                if (runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Dropped))
+                    runtime.Flow.Trace(new ZLinkMessageFlowEvent(
+                        ZLinkMessageFlowOutcome.Dropped,
+                        ZLinkDispatchErrorSurface.StreamSession,
+                        ZLinkDispatchMessageKind.Send,
+                        ActorId: actor.ActorId,
+                        ErrorReason: ZLinkDispatchErrorReason.ReplyPathMissing,
+                        ErrorAction: ZLinkDispatchErrorAction.Drop,
+                        ErrorType: failure.GetType().Name,
+                        ErrorMessage: failure.Message));
             }
         }
     }

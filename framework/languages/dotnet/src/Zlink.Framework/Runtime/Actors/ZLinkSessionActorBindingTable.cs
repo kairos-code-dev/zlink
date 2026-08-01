@@ -381,9 +381,24 @@ internal sealed class ZLinkSessionActorBindingTable
                     request.OwnerLeaseGeneration)
                 || entry.SessionOwnerNodeGeneration
                 != request.SessionOwnerNodeGeneration)
+            {
+                //  A refused seal ends the join with one kind and no field, so
+                //  name which half of the binding identity disagreed.
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"route_seal_rejected actor={request.ActorId} entry={entry is not null} "
+                    + $"want_token={request.BindingToken} "
+                    + $"have_tokens=[{string.Join(",", _entries.Keys.Where(k => k.ActorId == request.ActorId).Select(k => k.BindingToken))}] "
+                    + $"binding_gen={entry?.BindingGeneration}/{request.BindingGeneration} "
+                    + $"obj_gen={entry?.ObjectGeneration}/{request.ObjectGeneration} "
+                    + $"authority_gen={entry?.AuthorityOwnerGeneration}/{request.AuthorityOwnerGeneration} "
+                    + $"mesh={entry?.MeshName}/{request.MeshName} "
+                    + $"target_gen={entry?.Route.TargetNodeGeneration}/{request.TargetNodeGeneration} "
+                    + $"lease_gen={entry?.Route.OwnerLeaseGeneration}/{request.OwnerLeaseGeneration} "
+                    + $"session_owner_gen={entry?.SessionOwnerNodeGeneration}/{request.SessionOwnerNodeGeneration}");
                 return new ZLinkSessionRouteSealResult(
                     false,
                     entry?.AcceptedHighWater ?? 0);
+            }
 
             if (entry.RelocationHandoffId is { } current
                 && !string.Equals(current, request.HandoffId, StringComparison.Ordinal))

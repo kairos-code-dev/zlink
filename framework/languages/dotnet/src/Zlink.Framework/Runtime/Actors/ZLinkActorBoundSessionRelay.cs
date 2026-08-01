@@ -79,16 +79,8 @@ internal static class ZLinkActorBoundSessionRelay
             || current.BindingGeneration != bindingGeneration
             || current.SessionOwnerNodeGeneration != sessionOwnerNodeGeneration)
         {
-            //  A disconnect that fails this check is dropped and the Actor keeps
-            //  a binding whose session is gone, so the mismatching field has to
-            //  be visible or the loss looks like the notification never arrived.
-            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"session_disconnect_ignored bound={state.TryGetBoundSession(out var seen)} "
-                + $"token={(seen.BindingToken ?? "-")}/{decodedBindingToken} "
-                + $"node={seen.SessionNodeRid}/{sourceNodeRid} "
-                + $"session={seen.SessionRid}/{sourceSessionRid} "
-                + $"binding_gen={seen.BindingGeneration}/{bindingGeneration} "
-                + $"owner_gen={seen.SessionOwnerNodeGeneration}/{sessionOwnerNodeGeneration}");
+            //  Dropping here leaves the Actor holding a binding whose session
+            //  is gone; the caller traces it (spec 26 §2.1).
             return false;
         }
 

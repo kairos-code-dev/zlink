@@ -23,7 +23,7 @@ internal static class RlA1ProviderRestartScenario
         var oldRows = (await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 1))
             .Async<TopologyEntryRes[]>()).Body;
-        var oldGeneration = oldRows.Single().Generation;
+        var oldRoutingId = oldRows.Single().RoutingId;
 
         var acceptedMarker = $"rl-a1-accepted-{Guid.NewGuid():N}";
         var accepted = consumer.Post("/profile/request")
@@ -45,10 +45,10 @@ internal static class RlA1ProviderRestartScenario
         var down = (await consumer.Post("/profile/request/attempt/1000")
             .Body(new ProfileReq("fast", "rl-a1-down"))
             .Async<ProfileAttemptRes>()).Body;
-        // 10.0.0 select-one: a provider whose row is gone leaves the member
-        // snapshot, so the down-window submit maps to NotFound
-        // (spec 05 §13.1 ZLINK_SUBMIT_NOT_FOUND), not the 9.x dealer's
-        // Unavailable.
+        // Spec 06: a Channel with no send path ends NotFound, while Unavailable
+        // is for a known direct target whose route is not ready. Once the old
+        // descriptor is gone the Channel has no member, so this is NotFound and
+        // the request is not resent.
         ZlinkStreamAssert.Ensure(
             down is { Reply: null, ErrorKind: "NotFound" },
             $"RL-A1 down-window result was '{down.ErrorKind}', expected NotFound.");
@@ -59,9 +59,11 @@ internal static class RlA1ProviderRestartScenario
             .Body(new TopologyWaitReq("api-b", "Ready", 1))
             .Async<TopologyEntryRes[]>()).Body;
         var newRow = newRows.Single();
+        // Automatic discovery issues a new lifecycle RID on restart; the endpoint
+        // is the one the provider was restarted on.
         ZlinkStreamAssert.Ensure(
-            newRow.Endpoint == restarted.Endpoint && newRow.Generation != oldGeneration,
-            "RL-A1 restart did not publish the same endpoint with a new owner generation.");
+            newRow.Endpoint == restarted.Endpoint && newRow.RoutingId != oldRoutingId,
+            "RL-A1 restart did not publish the same endpoint under a new RID.");
         await consumer.Post("/connections/wait")
             .Body(new ConnectionWaitReq(
                 ["kind=ConnectionReady", $"remote={restarted.Endpoint}"], connectionCount))

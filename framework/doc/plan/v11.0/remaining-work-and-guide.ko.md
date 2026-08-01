@@ -144,23 +144,27 @@ lane에 그대로 남아 있는 것이다.
 구독 시 현재 상태를 한 번 쓴다. Evidence는 HTTP로만 노출되므로 로그 파일 grep으로는 판정할 수
 없다. 다음은 `/evidence`를 직접 읽어 host-state 항목 유무를 확인하는 것이다.
 
-### 2.2 배포 경로 복구
+### 2.2 배포 경로 (해소)
 
-Core 수정 두 건이 소스에만 있고 package에 없다.
+Core 수정 두 건이 소스에만 있던 상태를 닫았다. 절차는 `AGENTS.md`와
+[`scripts/local-package/README.ko.md`](../../../../scripts/local-package/README.ko.md)가 정한 그대로다.
 
-- `core/src/api/socket/socket_request_reply_internal.hpp` — reply 정합
-- `core/src/runtime/core/transport_pair_policy.hpp` — completion pair budget
+| 단계 | 산출물 |
+|---|---|
+| candidate manifest | `.artifacts/v11/evidence/V11-M3-CORE-VERIFY/candidate-reply-match-completion-hwm-20260801.json` |
+| 자체 R2 review | `.artifacts/v11/evidence/V11-R2/core-candidate-reply-match-completion-hwm-review-20260801.json` |
+| Core package | `.artifacts/wsl/install/zlink-core/11.1.0` (clean C consumer 통과) |
+| `.NET` package | `.artifacts/wsl/nuget/Systems.Zlink.11.1.0.nupkg` (isolated NuGet consumer 통과) |
 
-`scripts/local-package/dotnet/build-wsl.sh`는 review를 통과한 `V11-M3-CORE-VERIFY` candidate
-manifest를 요구하고, 봉인된 파일 hash가 현재 worktree와 정확히 같아야 한다. 최신 candidate는 이
-수정들보다 앞서 봉인됐다. 새 candidate는 만들어 두었다.
+독립 리뷰어(codex)를 쓸 수 없어 자체 리뷰로 대체했고, evidence의 `independent: false`와
+`independenceWaiver`에 그 사실을 남겼다.
 
-```
-.artifacts/v11/evidence/V11-M3-CORE-VERIFY/candidate-reply-match-completion-hwm-20260801.json
-```
+소비자 쪽에서도 확인했다. 추출된 package를 지우고 nupkg에서 새로 풀린 native로 RegistrationCodec를
+돌려 11개 전량이 통과한다. 이 통과에는 reply 정합 수정이 필요하므로, 구성상 그럴 것이라는 추정이
+아니라 실제 확인이다. Core ctest는 경합 없는 실행에서 84/84다.
 
-남은 것은 자체 R2 review evidence 작성, Core package 생성, `.NET` package 생성, 소비자 검증이다.
-독립 리뷰어(codex)는 사용할 수 없으므로 자체 리뷰로 대체하고 evidence에 그 사실을 명시한다.
+`.artifacts`는 gitignore 대상이므로 이 산출물은 저장소에 들어가지 않는다. 다른 기계에서 다시
+만들려면 위 네 단계를 같은 순서로 실행한다.
 
 ## 3. 다른 언어
 

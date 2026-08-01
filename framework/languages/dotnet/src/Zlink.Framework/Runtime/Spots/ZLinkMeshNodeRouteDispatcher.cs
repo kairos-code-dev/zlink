@@ -391,12 +391,17 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
                          out operation,
                          ownsObjectWork: false))
             {
+                //  With ownsObjectWork false the only refusal here is the drain
+                //  seal, which spec 06 §13.1 classifies as `ShuttingDown` -
+                //  new admission closed by host shutdown - rather than
+                //  `Rejected`, which is an application policy decision. The
+                //  distinction is what lets a select-one caller reselect.
                 if (header.Kind == ZLinkMessageKind.Request)
                     await ReplyErrorAsync(
                         received,
                         header,
                         new ZLinkFrameworkException(
-                            ZLinkFrameworkErrorKind.Rejected,
+                            ZLinkFrameworkErrorKind.ShuttingDown,
                             "MeshNode application admission is sealed for drain."), completionPermit!, cancellationToken).ConfigureAwait(false);
                 return;
             }

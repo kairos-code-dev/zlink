@@ -17,6 +17,12 @@ fn main() {
     common::apply_single_auto_hwm_msg_unit(&ctx, config.size);
     let pub_sock = ctx.pub_socket().expect("pub");
     let sub_sock = ctx.sub_socket().expect("sub");
+    // Match C perf: the harness always sets NODROP explicitly. The socket
+    // default is lossy fanout, which would drop samples and the stop token.
+    pub_sock
+        .pub_options()
+        .set_no_drop(true)
+        .expect("pub no_drop");
     // Match C perf: numeric socket HWM remains behind the manual-override gate.
     common::apply_single_hwm(&pub_sock);
     common::apply_single_hwm(&sub_sock);

@@ -119,8 +119,13 @@ internal sealed class ZLinkSpotNodeCatalog(
         {
             if (_spots.Count == 0)
                 return new ZLinkSpotDrainResult(true, 0);
+            //  Preflight(같은 파일의 RelocationDisabled 분기)와 같은 판정이다.
+            //  Scheduler가 없으면 다시 불러도 결과가 달라지지 않는다.
             if (_retireScheduler is null)
-                return new ZLinkSpotDrainResult(false, 0);
+                return new ZLinkSpotDrainResult(
+                    false,
+                    0,
+                    ZLinkFrameworkRelocationReason.RelocationDisabled);
             units = _spots.Values
                 .Select(activation => (
                     Activation: activation,
@@ -1396,7 +1401,11 @@ internal sealed class ZLinkSpotNodeCatalog(
 
 internal readonly record struct ZLinkSpotDrainResult(
     bool Completed,
-    ulong CommittedUnitCount)
+    ulong CommittedUnitCount,
+    //  `Completed=false`만으로는 "아직 남았으니 다시 부르라"와 "구성상 영원히
+    //  완료될 수 없다"를 구분할 수 없다. 후자를 이유와 함께 올려보내지 않으면
+    //  호출자의 재시도 loop가 deadline까지 돈다.
+    ZLinkFrameworkRelocationReason? TerminalReason = null)
 {
     internal bool HasCommitted => CommittedUnitCount != 0;
 }

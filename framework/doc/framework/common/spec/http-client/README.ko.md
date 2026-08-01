@@ -24,7 +24,7 @@ public type과 signature로 표현한다.
 | 6 | [Redirect · Retry · Cookie](06-redirect-retry-cookie.ko.md) | rewrite 규칙 표, 재시도 계약, cookie 부분집합 |
 | 7 | [인증 · TLS · Proxy](07-auth-tls-proxy.ko.md) | Basic/Bearer, PEM 신뢰/mTLS, CONNECT tunnel |
 | 8 | [압축](08-compression.ko.md) | gzip/deflate 투명 해제 의미론 |
-| 9 | [에러 모델](09-error-model.ko.md) | error kind 공통 집합, retriable, 언어별 매핑과 구현 갭 |
+| 9 | [에러 모델](09-error-model.ko.md) | error kind 공통 집합, 언어별 매핑과 구현 갭 |
 | 10 | [개정 후보](10-revision-candidates.ko.md) | **비계약** — 승격 전 검토 항목(R1~R14) |
 | 11 | [회귀 테스트 계약](11-regression-tests.ko.md) | 공통 계약 케이스 매트릭스, 게이트, 커버리지 갭 |
 | — | [언어별 인터페이스 대조표](language-interfaces.ko.md) | **비규범** — 5개 언어 표면을 나란히 보는 대조표. 계약을 고정하지 않는다 |

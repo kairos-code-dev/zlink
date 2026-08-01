@@ -66,7 +66,11 @@ export function discoverSessionProviderRefs(
     ) {
       continue;
     }
-    const metadata = (handlerType as unknown as Record<symbol, readonly { readonly kind?: string }[]>)[metadataSymbol] ?? [];
+    //  The symbol is only present on decorated handlers, so the lookup has to
+    //  admit undefined for the fallback to mean anything.
+    const metadata = (handlerType as unknown as
+      Record<symbol, readonly { readonly kind?: string }[] | undefined>
+    )[metadataSymbol] ?? [];
     if (
       metadata.some((entry) => entry.kind === 'packet')
       && typeof (handlerType as { prototype?: { handle?: unknown } }).prototype?.handle === 'function'

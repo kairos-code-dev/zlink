@@ -46,7 +46,7 @@ public final class Program {
             var channel = options.addClientServerChannel(Contracts.API_CHANNEL);
             if ("discovery".equals(mode)) {
                 channel.enableClient();
-                options.addClientServerChannel(Contracts.WORKFLOW_CHANNEL).enableClient();
+                options.addClientServerChannel(Contracts.WORKFLOW_CHANNEL).client();
             } else {
                 for (String endpoint : consumer.providerEndpoints().split(",")) {
                     if (!endpoint.isBlank()) {

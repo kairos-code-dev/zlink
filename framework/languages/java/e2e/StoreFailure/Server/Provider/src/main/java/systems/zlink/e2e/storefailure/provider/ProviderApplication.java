@@ -37,13 +37,18 @@ public final class ProviderApplication {
                 .traceLogFile(options.logDir() + "/" + options.rid() + "-flow.log")
                 .traceLabel(options.rid());
             framework.addHandlersFromPackageOf(ProfileReqHandler.class);
-            framework.configureLocations().setHeartbeatInterval(Duration.ofMillis(options.heartbeatMillis()));
+            framework.configureLocations().setOwnerLeaseRenewInterval(Duration.ofMillis(options.heartbeatMillis()));
             framework.configureLocations().setOwnerLeaseTtl(Duration.ofMillis(options.leaseTtlMillis()));
             framework.configureLocations().setPollingInterval(Duration.ofMillis(options.pollingMillis()));
             framework.configureLocations().setStoreFailureGrace(Duration.ofMillis(options.storeFailureGraceMillis()));
-            framework.addClientServerChannel(Contracts.CHANNEL)
-                .enableServer(options.channelEndpoint())
-                .setRoutingId(RoutingId.from(options.rid()))
+            //  참조 lane인 `.NET` provider와 같은 topology다. ClientServer channel이
+            //  아니라 RouteMesh node 위의 channel server이며, routing id는 mesh node의
+            //  prefix로 정한다(ClientServer server builder에는 routing id 설정이 없다).
+            framework.addRouteMesh(Contracts.CHANNEL)
+                .listen(options.channelEndpoint())
+                .setRoutingIdPrefix(options.rid())
+                .channelName(Contracts.CHANNEL)
+                .server()
                 .addHandlerGroup(Contracts.HANDLER_GROUP);
         };
     }

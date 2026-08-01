@@ -2,7 +2,7 @@ package systems.zlink.e2e.registrymessaging.workflow.Handlers;
 
 import systems.zlink.e2e.registrymessaging.shared.Contracts;
 import systems.zlink.e2e.registrymessaging.workflow.Infrastructure.ScenarioState;
-import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 
@@ -18,7 +18,7 @@ public final class WorkflowReqHandler
     @Override
     public java.util.concurrent.CompletionStage<Contracts.WorkflowRes> handle(
         Contracts.WorkflowReq request,
-        ZLinkRequestContext context) {
+        ZLinkMessageContext context) {
         state.record("workflow-request", request.value());
         return java.util.concurrent.CompletableFuture.completedFuture(
             new Contracts.WorkflowRes("workflow:" + request.value(), state.providerRid()));

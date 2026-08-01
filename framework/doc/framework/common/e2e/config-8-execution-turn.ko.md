@@ -402,7 +402,7 @@ terminator가 정하는가.
 우선순위: `P0`
 
 - 절차: delay service가 응답하지 않게 하고 `.Async(...)` / `.Yield(...)`로 각각 기다린다.
-- 검증: 둘 다 request timeout으로 실패하고, 실패 뒤 그 spot의 다음 작업이 정상 진행된다. **turn이
+- 검증: 둘 다 `DeadlineExceeded`로 실패하고, 실패 뒤 그 Spot의 다음 작업이 정상 진행된다. **turn이
   영구 점유되지 않는다.**
 - 세부 동작: 실패 경로의 turn 회수.
 
@@ -420,7 +420,7 @@ terminator가 정하는가.
 
 - 절차: 지연된 외부 request가 이미 수락된 상태에서 host `Shutdown`을 시작하고 admission seal과 deadline을
   관찰한다. Seal 뒤 같은 Spot·Actor에 새 작업도 제출한다.
-- 검증: Seal 뒤 신규 작업은 `Shutdown`으로 거부된다. 이미 수락한 continuation은 deadline 안에 정상 terminal로
+- 검증: Seal 뒤 신규 작업은 `ShuttingDown`으로 거부된다. 이미 수락한 continuation은 deadline 안에 정상 terminal로
   끝나거나 deadline 경계에서 owner별 shutdown terminal을 정확히 한 번 받는다. Seal 뒤 “다음 작업이
   진행된다”고 단언하지 않는다. Host는 bounded `Stopped/None` 또는 `ForceStopped/DeadlineExceeded`로 끝나며
   무한 대기하지 않는다.
@@ -432,7 +432,7 @@ terminator가 정하는가.
 **검증 질문:** 현재 claim 없이는 처리할 수 없는 target을 기다리는 요청을 timeout에 의존하지 않고 거부하는가.
 
 - 절차: spot A의 handler가 **A 자신에게** request를 보내고 `.Async(...)`로 기다린다.
-- 검증: outbound admission과 target queue mutation 전에 닫힌 same-claim 오류로 끝난다. Handler inline
+- 검증: outbound admission과 target queue mutation 전에 `InvalidOperation`으로 끝난다. Handler inline
   실행과 timeout timer 할당은 0건이며 실패 뒤 A의 다음 작업이 정상 진행된다.
 - 세부 동작: 구조적으로 완료할 수 없는 cycle을 operation 정의에서 제거한다.
 

@@ -6,7 +6,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import systems.zlink.e2e.registrymessaging.provider.Infrastructure.ScenarioState;
 import systems.zlink.e2e.registrymessaging.shared.Contracts;
-import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 
@@ -22,7 +22,7 @@ public final class PayloadReqHandler
     @Override
     public java.util.concurrent.CompletionStage<Contracts.PayloadRes> handle(
         Contracts.PayloadReq request,
-        ZLinkRequestContext context) {
+        ZLinkMessageContext context) {
         state.record("payload-request", request.marker());
         return java.util.concurrent.CompletableFuture.completedFuture(new Contracts.PayloadRes(
             request.marker(),

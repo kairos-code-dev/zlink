@@ -56,7 +56,25 @@ export interface ZLinkInboundDispatchOptions {
     processMemoryLimitBytes(value: bigint | undefined): this;
 }
 
-export declare function isZLinkFrameworkErrorRetriableByDefault(kind: ZLinkFrameworkErrorKind): boolean;
+export declare enum ZLinkFrameworkErrorKind {
+    NotFound = 0,
+    AlreadyExists = 1,
+    TypeMismatch = 2,
+    NotConfigured = 3,
+    Rejected = 4,
+    Unavailable = 5,
+    CapacityExceeded = 6,
+    DeadlineExceeded = 7,
+    ShuttingDown = 8,
+    ProtocolError = 9,
+    InvalidOperation = 10,
+    DataLost = 11,
+    InternalFailure = 12
+}
+
+export declare class ZLinkFrameworkException extends Error {
+    readonly kind: ZLinkFrameworkErrorKind;
+}
 
 export declare function isZLinkMessage(value: unknown): value is ZLinkMessage;
 
@@ -306,25 +324,21 @@ Actor adapter를 사용한다. Whole User Spot의 Spot root와 cross-node User·
 adapter를 사용한다. Same-node join·relocation에서는 adapter를 호출하지 않으며 `DisableRelocation` cross-node operation은
 `capture(...)` 전에 거부한다. `RecreateOnRelocation` policy도 application payload를 capture·restore하지 않는다.
 
-Target은 owner commit 전에 restore와 accepted journal validation·staging만 완료하며 application handler를
-실행하지 않는다. Standalone Actor는 [owner](../../../../01-glossary.ko.md#owner) commit 뒤 journal replay와
-old Entry [membership](../../../../01-glossary.ko.md#membership)을 포함한 source resource cleanup을
-완료한다. Infrastructure relocation은 Entry Spot의 join·leave callback을 호출하지 않는다.
-`"activated"`에 도달해도
-application과 session ingress는 sealed 상태를 유지하고 bound-session route는 staged 상태로만 준비한다. Source
-cleanup이 terminal 상태에 도달하고 authority의 `"completed"` CAS가 성공한 뒤에만 target을 `"ready"`로 열고
-relocation fence를 해제한다.
-`"completed"` 뒤의 target failure는 ordinary owner loss로 처리하며 이전 relocation payload를 transparent replay하지
-않는다. 이 barrier를 조작하는 public phase API는 제공하지 않는다.
+Target은 owner commit 전에 restore와 accepted journal staging을 완료하며 application handler를 실행하지
+않는다. Owner commit과 lifecycle callback 뒤 저장된 기존 작업을 실제 queue에 먼저 넣고 relocation
+temporary queue 작업을 그 뒤에 옮긴다. Temporary queue 등록을 제거하고 dispatch를 atomic하게 전환한 뒤
+target을 `"ready"`로 연다. Source cleanup, `"completed"` 기록과 bound-session 위치 갱신 응답은 target
+message 처리를 막지 않는다. Infrastructure relocation은 Entry Spot의 join·leave callback을 호출하지 않는다.
+`"ready"` 뒤 target process가 종료되면 ordinary owner loss로 처리하며 이전 relocation payload를 자동
+replay하지 않는다. 이 barrier를 조작하는 public phase API는 제공하지 않는다.
 
-Target replacement가 발생하면 stable relocation 안의 각 attempt가 factory와 `restore(...)`를 at-least-once
-호출할 수 있고 중단된 stale attempt callback이 successor와 겹칠 수 있다. `capture(...)`도 immutable relocation
-root가 [authority](../../../../01-glossary.ko.md#authority)에 연결되기 전까지 반복될 수 있다. Current exact owner와 attempt fence만 completion을 commit하고
+같은 source와 target process 안의 재시도에서 factory와 `restore(...)`를 두 번 이상 호출할 수 있다.
+`capture(...)`도 [authority](../../../../01-glossary.ko.md#authority) commit 전에 반복될 수 있다. Current owner와 attempt fence만 completion을 commit하고
 admission을 열 수 있다. Callback에는 relocation ID를 추가하지 않으므로 application restore와 capture는 retry-safe해야
 하며 exactly-once external side effect를 보장하지 않는다. `capture(...)`가 throw하거나 rejected Promise로
 끝나면 relocation attempt를 게시하지 않고 durable abort와 source normalization 뒤 admission을 복원한다.
-`restore(...)` 실패는 target staging을 폐기하고 source owner를 유지한 채 같은 immutable payload retry 또는
-target replacement로 처리한다.
+`restore(...)` 실패는 target staging을 폐기하고 source owner를 유지한 채 같은 target process에서 동일한
+payload로 다시 시도할 수 있다. 다른 target을 자동 선택하지 않는다.
 Framework는 capture 결과를 즉시 복사하고 restore마다 독립된 `Uint8Array`를 전달한다.
 Adapter가 비동기 호출 뒤 payload를 보관하려면 직접 복사해야 한다.
 
@@ -343,9 +357,9 @@ CAS, recovery transport와 teardown failure는 adapter failure가 아니며 해�
 phase의 `StoreUnavailable`, `RelocationFailed` 또는 `TeardownFailed`로 분류한다.
 
 Entry Spot과 `PerActor` User Spot의 Actor maintenance는 application membership
-callback을 호출하지 않는다. Authority·membership commit, accepted
-journal·queue·Actor timer 복원, source relay, durable cleanup과 route ACK를 끝낸
-뒤 target dispatch를 연다. `PerActor` Spot policy는 `RecreateOnRelocation`만 허용하고 Spot
+callback을 호출하지 않는다. Actor state·queue·timer를 복원하고 Authority·membership을
+commit한 뒤 target message 처리를 시작한다. Bound Session 위치 갱신 응답은 target 처리를
+막지 않으며, 응답 전에는 source relay가 이전 route의 message를 target에 전달한다. `PerActor` Spot policy는 `RecreateOnRelocation`만 허용하고 Spot
 adapter를 등록하지 않는다.
 
 Relocated terminal reply accounting은 internal command ID 46 `replyRelayAck`를 사용한다. 이 command는 stable

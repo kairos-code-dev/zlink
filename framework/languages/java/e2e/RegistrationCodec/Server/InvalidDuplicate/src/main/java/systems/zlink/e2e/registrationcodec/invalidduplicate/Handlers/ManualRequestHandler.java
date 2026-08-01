@@ -1,7 +1,7 @@
 package systems.zlink.e2e.registrationcodec.invalidduplicate.Handlers;
 
 import systems.zlink.e2e.registrationcodec.shared.Contracts;
-import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 
 public final class ManualRequestHandler
@@ -9,7 +9,7 @@ public final class ManualRequestHandler
     @Override
     public java.util.concurrent.CompletionStage<Contracts.EchoRes> handle(
         Contracts.EchoManualReq request,
-        ZLinkRequestContext context) {
+        ZLinkMessageContext context) {
         return java.util.concurrent.CompletableFuture.completedFuture(
             new Contracts.EchoRes("echo:" + request.value(), "manual"));
     }

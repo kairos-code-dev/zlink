@@ -1,6 +1,6 @@
 # Framework 언어별 구현 차이
 
-[스펙 목차](README.ko.md) · [이전: Transport 연결 상태 확인](29-transport-liveness.ko.md)
+[스펙 목차](README.ko.md) · [이전: Framework 오류 모델](32-framework-error-model.ko.md)
 
 
 이 문서는 정식 public contract가 아니다. 공통 스펙과 언어별 스펙을 기준으로 현재
@@ -55,7 +55,7 @@ declaration의 세부 차이는 `server/languages/<lang>/`의 exact spec이 소�
 | §12.26 | Java/Kotlin | Config 5·7 E2E가 exact RouteMesh runtime options 대신 [ChannelName](01-glossary.ko.md#channelname) 전용 options를 사용한다 |
 | §12.27 | Java/Kotlin, C++ | Actor location이 [Spot](01-glossary.ko.md#spot) lifecycle generation을 보존하지 않아 Spot ID 재사용 뒤 stale [membership](01-glossary.ko.md#membership)을 구분할 수 없다 |
 | §12.28 | C++, Java/Kotlin, Node | STREAM Actor dispatch의 global Actor authority 계약과 실제 runtime 연결을 다시 맞춰야 한다. `.NET`은 여러 Object Mesh를 허용하고 resolve한 `ActorRef.MeshName`으로 framework route를 선택한다 |
-| §12.29 | C++, Java/Kotlin, Node | Location provider의 opaque authority CAS와 Relocation Store를 relocation coordinator에 연결하는 작업이 남아 있다. `.NET`은 accepted request의 durable replay cursor·terminal completion·reply relay ACK와 source cleanup을 production 경로에 연결했다 |
+| §12.29 | C++, Java/Kotlin, Node | Location provider의 opaque authority CAS와 Relocation Store를 정상 relocation 경로에 연결하는 작업이 남아 있다. Process 종료 뒤 자동 failover는 현재 version의 gap이 아니다 |
 | §12.31 | Java/Kotlin, Node, C++ | Actor relocation metric이 `mesh_name`, 닫힌 `outcome`과 실패 terminal을 기록하지 않는다 |
 | §12.32 | 전 언어 | 알 수 없는 non-JSON content-type을 decode 전에 거부하지 않는다 |
 | §12.33 | Java/Kotlin, Node, C++ | [MeshName](01-glossary.ko.md#meshname) 중심 [RouteMesh](01-glossary.ko.md#routemesh)·MeshNode 등록 표면이 package·sample·E2E까지 일관되게 적용되지 않았고 분리 builder나 production in-memory location helper가 남아 있다 |
@@ -66,7 +66,7 @@ declaration의 세부 차이는 `server/languages/<lang>/`의 exact spec이 소�
 | §12.38 | Java/Kotlin | RouteMesh runtime [snapshot](01-glossary.ko.md#snapshot)의 Core 미노출 필드를 빈 값이나 근사값으로 채운다. Drain은 RouteMesh가 하나인 host에서만 host 공유 operation을 사용하고, 둘 이상이면 다른 MeshNode까지 종료하지 않도록 요청을 거부한다 |
 | §12.39 | 전 언어 | ClientServer dual-role 등록과 local Server transport 선택은 구현됐다. ChannelName 단일 주소, exact role builder·listener network identity·monitoring snapshot과 process E2E가 남았다 |
 | §12.40 | 전 언어 | classic fanout 전용 publisher descriptor·store·RID allocation과 endpoint 없는 automatic subscriber가 적용되지 않았다 |
-| §12.41 | 전 언어 | maintenance runtime의 target restore·replay·source cleanup·reply ACK까지 이어지는 production 경로와 process 장애 E2E를 완성해야 한다. `.NET`은 durable accepted request completion, closed relay ACK와 exact source lease expiry를 연결했으며 실제 두 host 장애 recovery 검증이 남아 있다 |
+| §12.41 | 전 언어 | maintenance runtime의 target Restore, queue 전환, source hold 정리와 terminal result까지 이어지는 정상 production 경로를 완성해야 한다. Process 종료 뒤 relocation 자동 재개 E2E는 현재 version 범위가 아니다 |
 | §12.42 | `.NET`, Java/Kotlin, Node, C++ | maintenance relocation transport가 service wire command 30~35·40~46의 canonical frame 대신 언어별 private control envelope를 사용하거나 production wire 연결이 없다 |
 | §12.43 | 전 언어 | 다섯 언어의 공개 one-way call은 비동기 결과로 전환됐다. 그러나 언어별 admission runtime에 signal 없는 재시도, blocking executor, terminal queue cleanup과 Logical Multicast commit barrier 차이가 남아 있고 Config 13 process E2E가 없다 |
 | §12.44 | 전 언어 | Instance Spot exact public surface, opaque [authority](01-glossary.ko.md#authority) CAS 기반 cold activation과 네 언어 runtime의 actor-free lifecycle·fencing·recovery가 완성되지 않았다 |
@@ -78,6 +78,8 @@ declaration의 세부 차이는 `server/languages/<lang>/`의 exact spec이 소�
 | §12.57 | Java/Kotlin | Global Actor ID request가 remote owner route를 resolve한 뒤에도 local-only dispatch에서 실패한다 |
 | §12.58 | Java/Kotlin, Node.js, C++ | `.NET`은 양쪽 모두 Object Client이고 RouteMesh Channel Server membership도 없는 pair의 connection만 생략하고 `NotConnected`와 `NotRequired`를 구분한다. Object Client와 Channel Server의 동시 등록, weight `0` Server capability, public Node direct 분류, connecting expected RID와 backend Object role 설정을 함께 검증해야 한다. 다른 runtime의 같은 동작이 남아 있다 |
 | §12.59 | 전 언어 | Byte 기반 Core HWM은 bindings까지 적용됐지만 Framework host 전체 Application HWM, Auto memory 계산, application receive 중단·재개, completion send permit과 public monitoring은 구현되지 않았다. Socket HWM exact type도 새 64-bit byte 계약으로 수렴해야 한다. |
+| §12.60 | 전 언어 | Actor Join과 host relocation에서 dispatch가 target object를 찾기 전에 relocation temporary queue를 확인하고, commit 뒤 저장된 기존 작업과 temporary 작업을 실제 queue로 옮긴 다음 atomic하게 기존 dispatch로 전환하는 계약이 구현·검증되지 않았다 |
+| §12.61 | 전 언어 | Public 오류를 공통 13개 `ErrorKind`로 제한하고 재시도 hint를 제거해야 하지만, 현재 package에는 언어별 세부 kind와 retry boolean·advice가 남아 있다 |
 
 ## 10. Stream Connector wire·검증 계약 차이
 
@@ -252,50 +254,37 @@ MeshNode를 공유하지 않으며 session Actor bind·dispatch는 resolve한 `A
 - 서로 다른 Mesh에 존재하는 ActorRef를 같은 STREAM node에서 bind·dispatch할 수 있다.
 - resolve한 ActorRef의 MeshName·NodeRid·generation fence가 stale하면 다른 Mesh로 fallback하지 않는다.
 
-### 12.29 전 언어 durable authority와 Relocation Store 연결 미구현
+### 12.29 전 언어 Location Store와 Relocation Store 정상 경로 연결 미구현
 
-[Spot Actor §7](15-spot-actor.ko.md#7-실패와-recovery)과
-[Location Store provider §4](22-location-store-redis.ko.md#4-conditional-atomic-batch)는 current owner와
-relocation state를 표현하는 private record를 같은 atomic batch에서 전이하고, process 종료 뒤 successor가
-immutable relocation root와 replay cursor로 처리를 이어 가도록 요구한다.
+[Spot Actor §7](15-spot-actor.ko.md#7-실패-처리와-1110-범위)과
+[Location Store provider §4](22-location-store-redis.ko.md#4-conditional-atomic-batch)는
+정상 relocation에서 복원 payload를 먼저 저장하고 확인한 뒤 current owner와 relocation
+상태를 atomic하게 바꾸도록 요구한다. Source와 target process가 실행되는 동안 Store 응답이
+유실되면 같은 key와 expected Store version으로 결과를 다시 확인한다.
 
-목표 exact interface는 Actor·Instance phase별 Store를 공개하지 않는다. Root에 등록한 Location provider가
-opaque payload의 exact read와 expected Store version 기반 atomic batch를 제공한다. Framework coordinator만
-relocation phase, source·target identity, object fence와 recovery lease를 해석한다. `RecreateOnRelocation` 또는 `PreserveStateWith`
-policy가 하나라도 있거나 [Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory가 하나라도 있는 host는 accepted journal, application state와
-recovery payload를 보존할 Relocation Store도 정확히 하나 등록한다. Instance Spot [factory](01-glossary.ko.md#factory)가 없고 모든 factory가
-`DisableRelocation`인 same-node 구성에서만 Relocation Store를 생략할 수 있다.
+11.1.0은 process 종료 뒤 successor가 relocation을 이어받거나 다른 target을 선택하는 자동
+failover를 요구하지 않는다. 구현에 restart recovery용 record나 coordinator가 이미 있더라도
+현재 version의 public contract나 완료 조건으로 사용하지 않는다.
 
-`.NET`은 opaque authority CAS, immutable relocation root, aggregate publication과 target replay를 production
-scheduler에 연결했다. Accepted request handler가 끝나면 successor root에 replay cursor와 terminal completion을
-먼저 기록하고 모든 participant authority의 reference·checksum·completion count를 aggregate CAS로 바꾼다.
-Source reply는 request/ACK로 전달하며 ACK 뒤 pending delivery state를 successor root와 authority count에
-반영한다. ACK CAS 전에 process가 중단되면 durable cursor를 읽어 handler를 다시 실행하지 않고 pending terminal
-payload만 relay한다. 모든 terminal count와 ACK count가 맞은 current successor root에서 source cleanup phase를
-완료한다. Codec round-trip, durable cursor·ACK·cleanup coordinator test와 전체 Unit test가 이 경계를 검증한다.
+Java/Kotlin, Node와 C++에는 phase별 Actor relocation Store, Instance owner Store, in-memory
+pending map과 별도 relocation adapter가 섞여 있거나 정상 handoff scheduler 연결이 남아 있다.
+`.NET`은 opaque authority CAS와 immutable relocation payload 경로를 갖고 있지만, 모든 Spot
+종류에서 temporary queue와 atomic dispatch 전환까지 검증해야 한다.
 
-Java/Kotlin, Node와 C++에는 phase별 Actor relocation Store, Instance owner Store, in-memory pending map과 별도
-relocation adapter가 섞여 있거나 coordinator와 production scheduler 연결이 남아 있다. 이 구조는 provider에
-Framework 상태 기계를 누출하고 Actor·Instance가 서로 다른 recovery 규칙을 갖게 만든다. 일부 durable 전이가
-존재하더라도 공통 opaque authority 계약, durable relocation root와 process 장애 E2E가 끝까지 연결되지 않아 목표
-기능으로 판단하지 않는다.
+각 언어는 다음 정상 경로를 contract test로 고정해야 한다.
 
-각 언어는 공식 Location Store와 Relocation Store 구현을 별도 class로 제공하고 다음을 contract test로 고정해야 한다.
-
-- Logical authority key는 object kind와 logical identity를 충돌 없이 encode한다.
-- Read는 current payload, opaque Store version, Store time과 조건부 lease expiry를 한 snapshot으로 반환한다.
-- Compare-exchange는 expected version이 current일 때만 owner와 transaction payload를 한 번에 바꾼다.
-- Commit 전 abort와 commit 뒤 recovery는 같은 authority revision과 coordinator lease로 순서를 정한다.
-- Relocation reference, checksum과 [replay cursor](01-glossary.ko.md#replay-cursor)는 authority CAS와 연결되고 orphan payload는 retention expiry가 정리한다.
-- Accepted request의 terminal completion과 reply relay delivery state는 successor root에 먼저 기록하고 expected
-  StoreVersion CAS로 authority reference·checksum·count를 교체한다. Source ACK 뒤에만 pending relay를 완료한다.
-- 같은 object의 동시 relocation, 늦은 source cleanup과 commit 이후 callback 실패가 committed target을 지우지 않는다.
+- 복원 payload를 먼저 저장하고 checksum을 확인한 뒤 Location Store authority가 그 reference를 가리킨다.
+- Expected Store version이 current일 때만 owner와 transaction payload를 한 번에 바꾼다.
+- Commit 전 abort는 source owner와 queue를 유지하고 target staging과 temporary queue를 폐기한다.
+- Store 응답이 유실되면 결과를 추측하지 않고 exact read로 실제 owner를 확인한다.
+- Commit 뒤 failure가 committed target을 source로 되돌리거나 다른 target을 자동 선택하지 않는다.
+- Source는 target dispatch 전환 완료를 받기 전까지 ingress hold 원본을 유지한다.
 
 ### 12.31 Java/Kotlin·Node·C++ relocation metric outcome 미구현
 
 [Runtime Metrics §4](25-runtime-metrics.ko.md#4-object와-stream)는
 `zlink.relocation.completed`와 `zlink.relocation.duration`에 `mesh_name`, `object_kind`, `policy`와 닫힌
-`outcome=completed|aborted|recovered|failed|shutdown`을 기록하도록 고정한다. Duration은 prepare부터
+`outcome=completed|aborted|failed|shutdown`을 기록하도록 고정한다. Duration은 prepare부터
 terminal phase까지의 시간이며 Location commit만으로 성공을 기록하지 않는다.
 
 남은 구현은 성공 경로의 label 없는 값만 기록한다.
@@ -529,6 +518,10 @@ lease 만료·drain·재게시 reconcile과 manual publisher/subscriber의 store
 
 ### 12.41 전 언어 host maintenance production 경로 미완성
 
+이 절은 source와 선택한 target process가 끝까지 실행되는 정상 handoff만 현재 gap으로
+판정한다. Process 종료 뒤 relocation 자동 재개, 다른 target 선택과 Message Follow route
+복원은 11.1.0 완료 조건이 아니다.
+
 정식 계약은 MeshNode별 drain policy를 제공하지 않는다. Host `Relocate`는 Entry
 Spot Actor, `PerActor` User Spot의 Actor, Instance Spot과 `SpotWide` User Spot
 aggregate에 infrastructure notification을 예약하고 현재 turn을 끝낸 ready unit부터
@@ -556,8 +549,8 @@ bounded cleanup한다.
   handoff admission을 연다. 따라서 unseal 실패 retry가 누락된 단계를 다시 실행한 뒤에만 steady로
   전환한다. Receipt가 24시간 뒤 만료되면 ACK를 추측하지 않고 거부한다. Preflight는
   Spot aggregate와 standalone Actor가 공유하는
-  provisional capacity를 누적하고 limit `0`을 unlimited로 해석한다. 실제 두 host process 장애 E2E와 Entry Spot
-  standalone Actor callback 순서 검증은 남아 있다.
+  provisional capacity를 누적하고 limit `0`을 unlimited로 해석한다. Entry Spot standalone
+  Actor callback 순서 검증은 남아 있다.
 - Java/Kotlin, Node와 C++은 위 단계를 일부 구현했지만 target factory·restore staging, aggregate publication,
   replay, source cleanup과 completion ACK가 하나의 production scheduler 경로로 끝까지 연결되지 않았다.
 - Java/Kotlin에는 별도 `ZLinkDrainControl` 공개 표면이 남아 있어 host runtime이 termination intent와 terminal
@@ -1072,8 +1065,8 @@ Production code 대조 결과도 다음 차이가 남아 있다.
 
 | Runtime | Actor Message Follow | Spot Message Follow | Track I에서 남은 핵심 차이 |
 |---|---|---|---|
-| Java/Kotlin | generation과 1,024-message·16 MiB 제한을 검사하지만 accepted handoff packet에 original operation ID와 Message Follow hop이 없고, relay request에 original absolute deadline 대신 기본 timeout을 다시 적용한다 | 없음 | duplicate·loop, durable multi-hop recovery와 payload·bulk process 증거가 없다 |
-| Node.js | Immutable internal context에 128-bit operation ID, correlation·reply route, source·target owner fence, ObjectGeneration, hop·visited-owner chain, payload checksum과 original absolute deadline을 보존한다. Route별 terminal dedupe와 loop·8-hop·1,024-message·16 MiB bound를 적용한다. 만료 request는 handler queue 전에 끝내고 late reply를 폐기한다 | codec field만 있고 route 수명과 relay를 소유하는 runtime이 없다 | restart recovery와 payload·bulk process 증거가 없다 |
+| Java/Kotlin | generation과 1,024-message·16 MiB 제한을 검사하지만 accepted handoff packet에 original operation ID와 Message Follow hop이 없고, relay request에 original absolute deadline 대신 기본 timeout을 다시 적용한다 | 없음 | duplicate·loop와 payload·bulk process 증거가 없다 |
+| Node.js | Immutable internal context에 128-bit operation ID, correlation·reply route, source·target owner fence, ObjectGeneration, hop·visited-owner chain, payload checksum과 original absolute deadline을 보존한다. Route별 terminal dedupe와 loop·8-hop·1,024-message·16 MiB bound를 적용한다. 만료 request는 handler queue 전에 끝내고 late reply를 폐기한다 | codec field만 있고 route 수명과 relay를 소유하는 runtime이 없다 | payload·bulk process 증거가 없다 |
 | C++ | production relay는 target route를 사용하지만 1,024-message·16 MiB·hop 제한을 적용하는 admission API가 unit test에서만 호출된다. Relay request는 새 30초 envelope를 만들어 original operation·deadline·correlation을 보존하지 않고, Actor client는 Location Store에서 fresh owner를 다시 찾아 재시도한다 | 없음 | bounded committed route만 사용하는 전달, original operation·deadline·correlation 보존과 payload·bulk process 증거가 없다 |
 
 따라서 세 runtime의 component code나 F6 결과를 Actor·Spot 전체 Message Follow 또는
@@ -1095,7 +1088,6 @@ Track I 완료 증거로 사용하지 않는다.
 | 8-hop 제한 | 미구현 | 구현 | production relay에는 미적용 | 미구현 |
 | route당 1,024 messages·16 MiB | 구현 | 구현 | production relay에는 미적용 | 미구현 |
 | duration·cleanup | process memory에서 구현 | process memory에서 구현 | process memory에서 구현 | 미구현 |
-| restart recovery·multi-hop cleanup | 미구현 | process 내 multi-hop route와 cleanup은 구현, restart recovery는 미구현 | 미구현 | 미구현 |
 
 여기서 `Message Follow`는 relocation commit 뒤 이전 physical route에 도착한 message를
 새 owner로 전달하는 기능만 뜻한다. Session의 일반 reply relay나 relocation commit 전
@@ -1117,7 +1109,7 @@ Node workspace build, Actor client·handoff focused 30/30과 authority transfer 
 Fresh process `ST-F4` `log/20260728-082930-2149821`과 A→B→C `ST-F5`
 `log/20260728-082947-2149807`에서는 보류한 one-way와 positive request가 final owner에서
 각각 한 번 처리되고 reply도 한 번 돌아왔다. 모든 process stderr는 0 bytes다. Spot route
-runtime, restart recovery, payload·bulk와 process `MF-DEADLINE` 증거는 남아 있다.
+runtime, payload·bulk와 process `MF-DEADLINE` 증거는 남아 있다.
 
 Spot public call은 Spot ID만 받고 terminal 실행 안에서 route를 찾는다. Relocation 전에
 선택한 opaque route를 보존해 commit 뒤 제출하는 public operation은 없다. Message Follow가
@@ -1206,7 +1198,7 @@ application DTO가 이전 `SpotRid` 이름을 유지한다. 일부 Java E2E는 �
 | `.NET SpotActorTransfer` | ST-A1 Client·ActorNode compile 통과, current ST-A1 process 실패 | Same-node join과 Relocation Store artifact 0건은 고정했다. Runtime이 same-node authority commit evidence를 발행하지 않아 `admission -> authority_committed -> leave -> joined -> success_reply` 전체 순서를 검증할 수 없다. 증거: `logs/20260728-042012-2770643` |
 | Java SpotActorTransfer | 현재 Client·Shared·ActorNode compile 통과 | 제거된 route-bearing `ActorRef` 제출은 제거했지만 `ST-F4/F5` transport delivery-delay fixture는 아직 없다 |
 | Kotlin SpotActorTransfer | Client·Shared·JavaClient·ActorNode compile 통과, process ST-A1 실패 | Actor가 다른 owner에 배치되면 public global Actor ID request가 `actor is not local`로 실패하는 Java runtime cross-node routing 차이가 있다 |
-| Node.js SpotActorTransfer | Client·ActorNode·Session과 workspace build가 통과한다. Native MeshNode의 relocation control을 application node-direct dispatch 전에 처리하며 internal route handler도 native dispatcher에 연결한다. Fresh `ST-F4` `20260728-082930-2149821`과 3-node `ST-F5` `20260728-082947-2149807`에서 one-way·positive request의 final-owner handler와 reply가 각각 한 번이고 모든 stderr가 0 bytes다. Runner가 delivery·terminal·중복 0을 terminal gate로 강제한다 | 현행 `ST-F4/F5` 범위의 gap 없음. Spot Message Follow와 Track I payload·bulk·restart recovery는 별도 gap이다 |
+| Node.js SpotActorTransfer | Client·ActorNode·Session과 workspace build가 통과한다. Native MeshNode의 relocation control을 application node-direct dispatch 전에 처리하며 internal route handler도 native dispatcher에 연결한다. Fresh `ST-F4` `20260728-082930-2149821`과 3-node `ST-F5` `20260728-082947-2149807`에서 one-way·positive request의 final-owner handler와 reply가 각각 한 번이고 모든 stderr가 0 bytes다. Runner가 delivery·terminal·중복 0을 terminal gate로 강제한다 | 현행 `ST-F4/F5` 범위의 gap 없음. Spot Message Follow와 Track I payload·bulk는 별도 gap이다 |
 | C++ SpotActorTransfer | 강화한 ST-A1·ST-B1 contract gate 통과, process는 host compile 전 차단 | ST-A1은 same-node와 `admission -> authority_committed -> leave -> joined -> success_reply`, Relocation Store·Message Follow 0건을 요구하고 ST-B1은 commit-before-joined를 요구한다. 기존 host source에는 제거된 Spot handler context·factory/context 생성·Actor 생성자·transfer adapter·builder·location option이 남아 actual process를 시작하지 못한다 |
 
 각 fixture는 정식 exact interface의 `MessageContext`, global `SpotId`, 현재 builder와
@@ -1312,6 +1304,49 @@ completion send permit 연결이 없다. Configuration과 host status의 새 exa
 package export에 아직 없다. `.NET` 기준 구현과 회귀 test를 먼저 완료하고, 나머지 언어는 같은
 accounting·ordering·startup error를 이식한다.
 
+### 12.60 Relocation temporary queue와 dispatch 전환 미구현
+
+[Spot model §3.1](11-spot-model.ko.md#31-relocation-중에는-temporary-queue를-먼저-확인한다),
+[Spot Actor §4.2](15-spot-actor.ko.md#42-다른-node의-spot으로-actor를-join하는-순서)와
+[Host relocation §8.2](28-graceful-drain-handoff.ko.md#82-모든-actor와-spot이-따르는-공통-순서)는
+Target Restore 중에는 다음 순서로 relocation temporary queue를 사용하도록 요구한다.
+
+1. Restore 요청을 받으면 target object를 찾기 전에 temporary queue를 등록한다.
+2. Source ingress hold에서 relay한 message와 target에 들어온 message를 이 queue에 보관한다.
+3. Restore, owner commit과 필요한 callback을 끝낸다.
+4. 저장된 기존 작업을 실제 object queue에 먼저 넣고 temporary 작업을 그 뒤에 옮긴다.
+5. Temporary queue 등록을 제거하고 기존 dispatch로 atomic하게 전환한다.
+
+Commit 전 abort에서는 target temporary queue를 실행하지 않고 폐기하며 source ingress hold
+원본만 다시 처리해야 한다. Commit 뒤 target 전환이 끝날 때까지 source는 hold 원본을
+유지한다. 같은 relocation request를 다시 받아도 temporary queue, Restore와 factory를 다시
+만들면 안 된다.
+
+현재 gap evidence는 `.NET` Entry Actor small profile에서 preserved backlog가 direct 작업보다
+먼저 처리된 결과만 제공한다. `PerActor`, `SpotWide`, Instance Spot과 cross-node Join 전체에서
+temporary queue 등록, target별 분배, atomic dispatch 전환, commit 전 abort와 duplicate Restore를
+검증한 contract test는 없다. Java/Kotlin, Node.js와 C++도 이 전체 계약을 검증한 production
+경로와 process E2E가 없다.
+
+### 12.61 Framework 오류 public surface 불일치
+
+[Framework 오류 모델](32-framework-error-model.ko.md)은 다섯 언어와 HTTP client가 숫자 `0..12`의
+공통 `ErrorKind`만 공개하도록 요구한다. Public exception, result와 Actor Join 실패 결과에는
+재시도 여부를 제공하지 않는다.
+
+현재 구현에는 다음 차이가 남아 있다.
+
+- .NET은 공통 13개 kind를 사용하지만 `ZLinkRetryAdvice`와 `RetryAdvice` property를 공개한다.
+- C++와 Java는 Actor route, moving, generation stale, relocation 단계처럼 내부 원인을 약 40개의
+  public kind로 구분하며 `is_retriable()` 또는 `retriable()`을 제공한다.
+- Kotlin은 Java 오류 타입을 그대로 사용하므로 Java와 같은 차이가 있다.
+- Node.js는 내부 원인별 kind와 기본 재시도 여부를 계산하는 public helper를 제공한다.
+- 언어별 Actor Join `Failed` 결과와 HTTP client 오류 표면에도 retry boolean 또는 advice가 남아 있다.
+
+구현은 내부 원인을 공통 13개 kind로 변환하고 상세 원인을 log와 trace에만 기록해야 한다. 기존 public
+심볼 제거는 major version 변경으로 수행한다. Contract test는 다섯 언어의 kind 이름·숫자가 일치하고
+public retry hint가 없으며 typed `Rejected` 결과가 Framework exception으로 바뀌지 않는지 검증해야 한다.
+
 ## 13. 샘플 계약 차이
 
 [공통 샘플 규약](../sample/README.ko.md)과 개별 sample 문서를 기준으로 남아 있는 차이는
@@ -1404,7 +1439,7 @@ Runtime에는 handler-scoped `Defer`와 기본 barrier가 들어갔지만 아래
 | **IMP-CTX-1** | Actor·User·Entry·Instance Spot은 factory에서 받은 exact Context를 보관하고 ID 중복 factory 인자를 제거해야 한다. Same-node는 Context를 유지하고 cross-node는 ObjectGeneration을 유지한 새 owner Context를 사용하며 source Context를 fence해야 한다. | .NET · Java · Kotlin · Node.js · C++ |
 | **IMP-CTX-2** | 공통 inbound 타입은 `MessageContext`, Route·Publish·Session은 specialized MessageContext여야 한다. Send·Request·Spot Actor marker context, Actor request reply option과 이전 filter invocation 이름을 제거해야 한다. | .NET · Java · Kotlin · Node.js · C++ |
 | **IMP-CTX-3** | Actor handler는 containing Spot, Actor, MessageContext와 payload를 받아야 한다. `PerActor`·Entry에서 공유 Spot state를 직렬화하려면 명시적인 Spot send/request를 사용해야 한다. | .NET · Java · Kotlin · Node.js · C++ |
-| **IMP-ERR-1** | `RelocationDisabled=37`, `RelocationTargetUnavailable=38`, `RelocationFailed=39`를 같은 숫자와 의미로 공개해야 한다. | .NET · Java · Kotlin · Node.js · C++ |
+| **IMP-ERR-1** | [Framework 오류 모델](32-framework-error-model.ko.md)의 공통 13개 kind로 수렴하고 내부 원인별 kind와 public retry hint를 제거해야 한다. 현재 구현 차이는 §12.61에서 관리한다. | .NET · Java · Kotlin · Node.js · C++ |
 
 구현은 exact interface, runtime queue·authority·relocation state machine, durable
 manifest, contract test와 E2E를 함께 바꿔야 한다. Kotlin은 Java의 동기 `defer()`를
@@ -1420,7 +1455,7 @@ all-settled 통지를 수행하도록 요구한다.
 | ID | 목표 계약과 현재 구현 차이 | 대상 |
 |---|---|---|
 | **IMP-SA-1** | 다섯 runtime의 focused contract는 Bind 때 저장한 route 사용, hidden rebind 금지, physical disconnect all-settled·dedupe·failure cleanup과 same-generation route fence를 검증한다. 그러나 실제 process connection을 끊어 여러 binding callback, no-Store relay와 stale token 거부를 함께 관측하는 E2E는 아직 없다. | .NET · Java · Kotlin · Node.js · C++ |
-| **IMP-SA-2** | Relocation의 durable `Completed` 뒤 command 44·45 route switch·ACK, steady normalization 뒤 target admission을 여는 순서를 실제 process relocation과 Store 상태로 검증하지 못했다. 새 incarnation이 explicit bind 없이 기존 binding을 교체하지 않는다는 부정 assertion도 같은 E2E에 남아 있다. | .NET · Java · Kotlin · Node.js · C++ |
+| **IMP-SA-2** | 현재 service-wire schema와 다섯 runtime은 `sessionRelocationRoute`(44)와 `sessionRelocationRouted`(45)를 request/reply처럼 처리하고 위치 갱신 응답 전 target 처리를 막는다. 목표 계약은 이를 독립된 send message인 `sessionActorLocationUpdateReqMsg`와 `sessionActorLocationUpdateResMsg`로 바꾸고, Target Actor 처리와 Join completion 뒤 위치 갱신을 시작한다. 응답은 `Applied`, `AlreadyApplied`, `Stale`, `SessionOrBindingClosed` 가운데 처리 결과 하나를 포함한다. 응답이 없으면 최초 send 1초 뒤 재전송하고 이후 1초, 2초, 4초, 5초 간격을 사용하며 5초를 최댓값으로 유지해야 한다. 응답 전에는 Message Follow route가 이전 route의 message를 target에 전달해야 한다. Wire schema·generated constant·runtime·contract test와 실제 process E2E가 아직 이 목표 계약을 구현하지 않았다. 새 incarnation이 explicit bind 없이 기존 binding을 교체하지 않는다는 부정 assertion도 같은 E2E에 남아 있다. | .NET · Java · Kotlin · Node.js · C++ |
 
 ## 16. 언어별 구현 차이 연결
 

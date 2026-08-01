@@ -50,11 +50,61 @@ Entry Spot은 Object Server와 함께 준비된다. User Spot은 application이 
 | Host shutdown | Accepted turn을 정리한 뒤 `HostShutdown` reason으로 `OnClosing`을 호출한다. | 같은 shutdown closing 계약을 적용한다. | 같은 shutdown closing 계약을 적용한다. |
 | .NET 구현 type | `IZLinkEntrySpot`, Actor type을 지정하면 `IZLinkEntrySpot<TActor>` | `IZLinkSpot`, Actor type을 지정하면 `IZLinkSpot<TActor>` | `IZLinkInstanceSpot` |
 
+Host relocation의 공통 단계와 Spot 종류별 sequence diagram은
+[Graceful drain과 handoff §8](28-graceful-drain-handoff.ko.md#8-unit-하나를-이전하는-순서)이
+정의한다.
+
 Framework는 작업의 대상에 따라 실행을 기다릴 queue를 정한다. 세 종류의 Spot에
 전달된 direct packet과 timer callback은
 [Spot application queue](01-glossary.ko.md#spot-application-queue)에 넣는다.
 Actor에 전달된 업무 payload는 Spot queue를 거치지 않고 해당 Actor의 queue에
 바로 넣는다.
+
+### 3.1 Relocation 중에는 temporary queue를 먼저 확인한다
+
+일반 dispatch는 기존처럼 Ready Actor나 Spot의 execution queue를 찾아 message를 넣는다.
+Target runtime이 Restore 요청을 받으면 다음 packet을 dispatch하기 전에
+[relocation temporary queue](01-glossary.ko.md#relocation-temporary-queue)를 등록한다. 이후
+Actor나 Spot message의 dispatch 순서는 다음과 같다.
+
+1. Object 종류, ID와 `ObjectGeneration`을 검사한다.
+2. 같은 `RelocationId`와 target attempt에 등록된 temporary queue가 있는지 확인한다.
+3. 있으면 실제 application instance를 찾지 않고 temporary queue에 넣는다.
+4. 없으면 기존 object lookup과 execution queue 경로를 사용한다.
+
+Temporary queue에는 source ingress hold에서 relay한 message와 owner 변경 전후 target에
+도착한 message가 함께 들어갈 수 있다. Target은 temporary queue의 application payload를
+실행하지 않는다. Actor나 Spot 생성, state Restore, owner 변경과 필요한 lifecycle callback이
+끝난 뒤 다음 순서로 실제 execution queue에 옮긴다.
+
+```text
++----------------------------------------------------------------------+
+| Target object queue                                                  |
+|                                                                      |
+| Restored work -> Temporary queue work -> New direct work             |
++----------------------------------------------------------------------+
+```
+
+이 전환은 dispatch와 atomic하게 처리한다. 전환 전에 temporary queue가 수락한 message를 실제
+queue에 모두 넣은 뒤 temporary queue 등록을 제거한다. 동시에 들어온 message는 temporary
+queue와 실제 queue 중 정확히 한 곳에만 들어간다. 실제 queue는 이 전환이 끝나기 전에
+application handler를 실행하지 않는다.
+
+저장했다가 복원한 기존 작업은 temporary queue의 message보다 먼저 처리한다. Temporary queue
+안에서는 target dispatcher가 message를 수락한 순서를 유지한다. 서로 다른 network route에서
+동시에 들어온 message 사이에 별도의 전역 순서를 만들지는 않는다.
+
+`SpotWide` User Spot relocation에서는 Spot과 모든 member Actor를 같은 relocation group으로
+등록한다. Temporary queue의 각 record는 실제 target Spot 또는 Actor identity를 보존한다.
+복원이 끝나면 Spot message는 Spot queue, Actor message는 해당 Actor queue로 나눠 넣으며 각
+target 안의 수신 순서를 유지한다. `PerActor`에서는 Spot과 Actor relocation을 독립적으로
+등록하므로 이동하지 않는 Actor의 기존 dispatch를 막지 않는다.
+
+같은 Restore 요청을 다시 받으면 기존 temporary queue와 Restore 진행 상태를 사용한다. 이전
+target attempt나 다른 `ObjectGeneration`의 queue에는 message를 넣지 않는다. Commit 전 abort에서는
+target temporary queue를 실행하지 않고 폐기하며 source가 보관한 작업을 원래 queue로 되돌린다.
+Commit 뒤에는 같은 target process가 실행 중일 때만 temporary queue를 실제 queue로 옮긴다.
+Target process가 종료되면 다른 runtime이 이 작업을 자동으로 이어받지 않는다.
 
 Queue는 작업이 기다리는 위치를 정한다. Execution mode는 서로 다른 queue의 작업을
 동시에 실행할 수 있는지 정한다. User Spot의 기본 `SpotWide` mode에서는 queue를
@@ -100,7 +150,7 @@ handler instance나 scoped dependency를 공유하지 않는다. 정확한 생�
 relocation aggregate이므로 Spot field와 Spot timer를 Spot relocation adapter로
 함께 이전할 수 있다.
 
-### 3.1 Spot 종류별 lifecycle callback
+### 3.2 Spot 종류별 lifecycle callback
 
 다음 표의 callback 이름은 .NET 표기를 사용한다. 다른 언어는 이름과 비동기 표현이
 다를 수 있지만 호출 조건과 순서는 같다. `Configure`는 비동기 lifecycle callback이
@@ -112,7 +162,7 @@ relocation aggregate이므로 Spot field와 Spot timer를 Spot relocation adapte
 | `Configure` | O | O | O | 해당 Spot instance가 사용할 handler를 등록한다. |
 | `OnCreateAsync` | X | O | X | Manager가 새 User Spot을 만들 때 creation request를 확인하고 생성 수락 여부와 optional reply를 반환한다. 기존 User Spot을 찾은 `Existing` 결과에서는 호출하지 않는다. |
 | `OnInitializeAsync` | O | O | O | 생성된 Spot instance의 application 초기화를 완료한다. Instance Spot은 `OnCreateAsync` 없이 이 callback을 사용한다. |
-| `OnClosingAsync` | O | O | O | 아직 유효한 local Spot instance가 종료되기 전에 application resource를 정리한다. 호출 조건은 §3.3에서 구분한다. |
+| `OnClosingAsync` | O | O | O | 아직 유효한 local Spot instance가 종료되기 전에 application resource를 정리한다. 호출 조건은 §3.4에서 구분한다. |
 | `OnActorJoinAsync` | X | O¹ | X | 이미 존재하는 Actor가 User Spot으로 이동하려 할 때 target User Spot이 요청을 승인하거나 거부한다. Entry Spot 복귀는 기본 membership이므로 admission callback을 사용하지 않는다. |
 | `OnJoinedActorAsync` | O¹ | O¹ | X | 일반 join의 membership commit이 끝났음을 target Spot에 알린다. Actor 최초 생성과 maintenance 복원에서는 호출하지 않는다. |
 | `OnLeaveActorAsync` | O¹ | O¹ | X | Membership commit 뒤 Actor가 빠져나간 source Spot에 알린다. Actor 소멸을 뜻하지 않는다. |
@@ -122,7 +172,7 @@ relocation aggregate이므로 Spot field와 Spot timer를 Spot relocation adapte
 ¹ Actor type을 지정해 Actor membership을 지원하는 Entry Spot 또는 User Spot에만
 적용한다.
 
-### 3.2 Actor membership callback은 source와 target에서 나누어 실행한다
+### 3.3 Actor membership callback은 source와 target에서 나누어 실행한다
 
 Entry Spot과 User Spot은 서로 다른 Spot instance다. 두 종류가 같은 Actor membership
 interface를 구현하더라도 callback은 이동 전 Spot과 이동 후 Spot에서 각각 실행한다.
@@ -137,7 +187,7 @@ commit 순서는
 [23 Spot과 Actor membership §4](15-spot-actor.ko.md#4-actor-join과-commit-순서)가
 정의한다.
 
-### 3.3 Spot instance가 종료될 때 호출하는 callback
+### 3.4 Spot instance가 종료될 때 호출하는 callback
 
 `OnClosingAsync`는 Actor별 callback이 아니라 Entry·User·Instance Spot instance의
 terminal lifecycle callback이다. Framework는 callback을 실행할 때 종료 이유와
@@ -201,18 +251,21 @@ state를 복원하고 Actor owner와 target Entry Spot membership을 commit하�
 `OnJoinedActorAsync`나 source의 `OnLeaveActorAsync`를 호출하지 않는다. Relocation
 전용 application callback도 제공하지 않는다.
 
-Accepted journal replay, 남은 source resource의 durable cleanup과 `Completed`까지 마친 뒤,
-이 Actor가 Session에 bind되어 있으면 Framework는 Session owner가 보관한 해당
-Actor의 현재 전달 경로인 binding route를 target owner로 갱신한다. 같은 Session에 bind된 다른 Actor의
-route와 physical STREAM connection은 바꾸지 않는다. Session owner가 route 갱신을
-확인하고 target authority를 steady 상태로 정리하기 전에는 target Actor의 session
-packet·push admission을 열지 않는다. Route
-갱신은 같은 `ObjectGeneration`에만 적용하며, 새 incarnation은 application이
+Target에서 Actor state와 queue를 복원하고 owner·membership을 commit하면 Target Actor가
+message를 처리하기 시작한다. 이 Actor가 Session에 bind되어 있으면 target runtime은
+`sessionActorLocationUpdateReqMsg`를 send하여 Session owner가 보관한 해당 Actor의 현재
+전달 경로인 binding route를 target owner로 갱신한다. Route switch와 함께
+bound-session accessor가 반환하는 current Actor location snapshot도 같은
+ActorId·ObjectGeneration을 유지한 채 target MeshName·NodeRid로 갱신한다. 같은 Session에 bind된
+relocation 대상에 포함되지 않은 다른 Actor의 route와 physical STREAM connection은 바꾸지 않는다.
+Session owner는 갱신을 마치면 `sessionActorLocationUpdateResMsg`를 send한다. 응답이 없으면
+target runtime은 최초 send 1초 뒤부터 1초, 2초, 4초, 5초 간격으로 같은 요청을 다시
+보내고 이후에는 5초 간격을 유지한다. 응답을 기다리는 동안에도 Target Actor는 message를
+처리하며 이전 route의 message는 Message Follow route가 전달한다. Route 갱신은 같은 `ObjectGeneration`에만 적용하며,
+application은 relocation을 알기 위해 rebind하지 않는다. 새 incarnation은 application이
 명시적으로 다시 bind해야 한다.
 
-Target admission은 Actor adapter restore, journal·queue·timer 복원, source relay와
-session route 변경이 끝난 뒤 연다. Application은 relocation 사실을 Entry Spot
-lifecycle callback으로 추적하지 않는다.
+Application은 relocation 사실을 Entry Spot lifecycle callback으로 추적하지 않는다.
 
 ### 4.3 Entry Spot 자체는 이동하지 않는다
 
@@ -308,14 +361,18 @@ Spot의 `OnActorJoinAsync`, `OnJoinedActorAsync`, `OnLeaveActorAsync`를 호출�
 않는다. Source User Spot instance를 정리할 때는 `RelocationOut` 이유로
 `OnClosingAsync`를 호출한다.
 
-Member Actor가 Session에 bind되어 있으면 accepted journal replay, durable
-source cleanup 및 `Completed` 뒤 aggregate에 포함된 각 Actor의 [binding route](01-glossary.ko.md#binding-route)를 target
-owner로 갱신한다. 같은 Session에 bind되어 있지만 이 aggregate에 포함되지 않은
-Actor의 route와 physical STREAM connection은 바꾸지 않는다. 모든 [Binding route 갱신
-ACK](01-glossary.ko.md#binding-route-ack) 전에는 target User Spot과 member Actor의
-session packet·push admission을 열지 않는다. 모든 route 갱신 확인과 steady
-normalization 뒤에만 admission을 연다. Route 갱신은 같은 `ObjectGeneration`에만
-적용하며, 새 incarnation은 application이 명시적으로 다시 bind해야 한다.
+Member Actor가 Session에 bind되어 있으면 Spot과 Actor를 target에 복원하고 aggregate owner를
+commit한 뒤 target runtime이 각 Session owner에 `sessionActorLocationUpdateReqMsg`를 send한다.
+Session owner는 aggregate에 포함된 각 Actor의 [binding route](01-glossary.ko.md#binding-route)를
+target owner로 갱신한다. Route switch와 함께 각 bound-session accessor가 반환하는 current Actor
+location snapshot도 같은 ActorId·ObjectGeneration을 유지한 채 target MeshName·NodeRid로 갱신한다.
+같은 Session에 bind되어 있지만 이 aggregate에 포함되지 않은 Actor의 route와 physical STREAM
+connection은 바꾸지 않는다. 각 Session owner는 갱신을 마치면
+`sessionActorLocationUpdateResMsg`를 send한다. 응답이 없으면 target runtime은 정해진
+1초, 1초, 2초, 4초, 이후 5초 간격으로 각 요청을 다시 보낸다. 응답을 기다리는 동안에도
+target User Spot과 member Actor는 message를 처리한다. Route 갱신은 같은 `ObjectGeneration`에만 적용하며,
+application은 relocation을 알기 위해 rebind하지 않는다. 새 incarnation은 application이 명시적으로
+다시 bind해야 한다.
 
 `PerActor` relocation에서는 target에 같은 `SpotId`와 `ObjectGeneration`을 사용하는
 private Spot shell을 먼저 준비한다. 이 shell은 Location Store의 Spot authority가
@@ -327,7 +384,12 @@ Actor는 bounded concurrency로 각각 이전한다. Actor의 `ObjectGeneration`
 User Spot membership은 유지하고 Actor owner generation만 바꾼다. Infrastructure
 relocation은 `OnActorJoinAsync`, `OnJoinedActorAsync`, `OnLeaveActorAsync` 또는
 `OnDisconnectActorAsync`를 호출하지 않는다. 마지막 Actor와 source에서 이미 수락한
-Spot 작업을 모두 정리한 뒤 source shell에 `RelocationOut`을 전달하고 종료한다.
+Spot 작업을 모두 정리한 뒤 source shell에 `RelocationOut`을 전달하고 종료한다. 각 Actor가
+Session에 bind되어 있으면 target runtime이 `sessionActorLocationUpdateReqMsg`를 send하여 해당
+binding route와 bound-session current Actor location snapshot을 같은
+ActorId·ObjectGeneration을 유지한 채 target owner 및 target MeshName·NodeRid로 갱신한다.
+응답이 없으면 정해진 간격으로 재전송하며, 응답을 기다리는 동안에도 Target Actor는 message를
+처리한다. Application은 이 갱신을 위해 rebind하지 않는다.
 
 ## 6. Instance Spot
 

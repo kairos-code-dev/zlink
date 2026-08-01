@@ -36,10 +36,10 @@ descriptor·owner lease record를 직접 읽거나 의미를 해석하지 않는
   lease와 local MeshNode descriptor 재등록 → owner lease renew interval 1회 유예 → disconnect diff), watch가 없는
   store 구성의 polling fallback, runtime status 관측, store가 끊기지 않고 응답만 느려질 때
   Redis client 호출이 무관한 concurrent 처리를 막지 않는지(비블로킹 실측), immutable Relocation payload의
-  renew·orphan cleanup·recovery와 두 Store의 독립 장애.
+  renew·orphan cleanup, commit 전 Store 장애와 두 Store의 독립 장애.
 - 여기서 다루지 않는 것: 정상 상태 자동 연결·scale·failover(Config 1), provider 노드 자체의
   restart/crash resilience(Config 5), monitoring event 표면(Config 7), store 제품 자체의
-  HA/복제(store 구현체 책임).
+  HA/복제(store 구현체 책임), source·target process 종료 뒤 relocation 자동 재개와 다른 target 선택.
 
 ## 2. 서버 구성
 
@@ -324,24 +324,21 @@ failure point로 주입한다. Payload를 먼저 준비하고 Location Store ref
   remaining lease를 12시간 이하로 만들고 renew 한 건을 실패시킨다. 성공 반복에서는 complete manifest tree를
   renew한 뒤 authority CAS로 current reference를 확정한다. 별도 relocation은 authority CAS에 실패해 orphan으로
   남긴다. Harness가 provider 기준 시각과 renew cycle을 제어해 24시간 retention 경계를 통과시킨다.
-- 검증: Current authority owner 또는 recovery coordinator가 현재 reference만 renew해 recovery를
-  계속할 수 있고 orphan은 TTL 뒤 제거된다. Reference가 CAS로 교체되거나 해제되면 이전
+- 검증: 현재 relocation을 실행 중인 source 또는 target runtime이 current reference만 renew하고
+  orphan은 TTL 뒤 제거된다. Reference가 CAS로 교체되거나 해제되면 이전
   reference renew는 stale 결과로 종료하고 cleanup한다. `Captured`·`Prepared` CAS 직전에는 root와 모든 chunk가
   12시간보다 긴 lease를 가졌는지 provider 시각으로 확인한다. Missing component나 renew 실패가 있으면 root를
   authority에 연결하지 않고 precommit abort하며 partial relocation을 current로 공개하지 않는다.
 
-#### SF-F3 relocation recovery horizon 초과
+#### SF-F3 Relocation Store 장기 장애 중 relocation 차단
 
 우선순위: `P1`
 
-- 절차: Relocation Store와 모든 recovery coordinator를 24시간 이상 사용할 수 없는 상태로 두고
-  relocation renew가 발생하지 않게 한 뒤 Store를 복구한다. Location Store에는 current authority가
-  이미 publish한 relocation reference를 그대로 유지한다.
-- 검증: Published reference가 가리키는 payload가 retention 이후 영구적으로 없으면 Runtime은 새 state를
-  추측하거나 이전 owner로 rollback하지 않고 non-retriable `DataLost`로 끝낸다. 진행 중인 `Relocate`는
-  `ForceStopped/RelocationFailed`로 terminal 완료하고 detail에 `DataLost`를 보존한다. Metric·event에는
-  object kind, phase와 relocation reference hash를 기록한다. Authority에 publish되지 않은 orphan expiry는 이
-  data-loss 결과로 분류하지 않는다.
+- 절차: Relocation Store를 사용할 수 없는 상태에서 새 relocation을 시작한다. Source와 target process는
+  종료하지 않는다. Store를 복구한 뒤 별도의 새 relocation call도 실행한다.
+- 검증: 장애 중 call은 owner와 source admission을 변경하지 않고 `StoreUnavailable`로 끝난다. Target factory,
+  Restore와 temporary queue 등록 evidence는 0건이어야 한다. Store 복구 뒤 새 call은 새로운 relocation ID로
+  정상 완료된다. 실패한 call을 process 재시작 뒤 자동으로 이어서 처리하면 실패다.
 
 #### SF-F4 authority generation 원자 전이와 exhaustion
 
@@ -364,41 +361,41 @@ failure point로 주입한다. Payload를 먼저 준비하고 Location Store ref
 
 우선순위: `P0`
 
-- 절차: Instance cold activation은 durable authority의 `Creating`에서 `Ready` commit 전에 멈추고, 별도
-  Actor relocation은 `Committed`에서 target activation이 끝나기 전에 멈춘다. Creation authority에는 immutable
-  creation intent·reservation과 현재 generation을, relocation authority에는 published relocation reference·replay
-  cursor와 현재 generation을 기록한다. 각 process를 중지해 owner lease를 만료시킨 뒤 authority row가
-  유지되는지 확인하고 successor가 새 owner token과 `new_owner` CAS로 해당 state machine의 recovery를 계속한다.
-- 검증: Owner lease expiry는 descriptor와 신규 admission만 무효화하고 authority row, phase, relocation
-  reference, replay cursor와 object generation을 삭제하지 않는다. Successor만 더 높은 owner generation으로
-  Instance는 같은 ObjectGeneration으로 factory·`Ready` barrier를 수렴시키고 Actor relocation은 published root에서
-  current target activation을 이어서 완료한다. 이전 owner의 늦은 phase CAS와 cleanup은 stale이며 current
-  authority를 변경하지 않는다.
+- 절차: Instance cold activation을 durable authority의 `Creating`에서 `Ready` commit 전에 멈춘다.
+  Creation authority에 immutable creation intent·reservation과 현재 generation을 기록한다. Process를
+  중지해 owner lease를 만료시킨 뒤 authority row가 유지되는지 확인하고 successor가 새 owner
+  token과 `new_owner` CAS로 cold activation을 계속한다. Actor relocation process는 이 시나리오에
+  포함하지 않는다.
+- 검증: Owner lease expiry는 descriptor와 신규 admission만 무효화하고 creation authority row, phase,
+  recovery reference, replay cursor와 object generation을 삭제하지 않는다. Successor만 더 높은 owner
+  generation으로 Instance를 같은 ObjectGeneration으로 factory·`Ready` barrier에 수렴시킨다. 이전
+  owner의 늦은 phase CAS와 cleanup은 stale이며 current authority를 변경하지 않는다.
   Authority row는 terminal cleanup의 explicit fenced delete 전까지 TTL 없이 유지된다. Durable owner tuple의
   owner ID와 owner lease generation은 current host lease와 모두 일치해야 하며, 같은 owner ID를 새 generation으로
   다시 claim해도 이전 authority admission이나 owner ID만 사용한 bulk cleanup을 유효하게 만들지 않는다.
 
-#### SF-F6 snapshot-consistent recovery scan
+#### SF-F6 snapshot-consistent Store scan
 
 우선순위: `P0`
 
-- 절차: Provider가 registered MeshName scope의 authority recovery scan 첫 page에서 opaque scan token과
+- 절차: Provider가 registered MeshName scope의 authority scan 첫 page에서 opaque scan token과
   watermark를 만든다. Page를 읽는 동안 watermark 전 row의 update·delete와 watermark 뒤 새 key create,
   같은 key delete·recreate를 경쟁시킨다. 각 반환 key는 current row를 다시 읽고 expected store version CAS로
-  recovery ownership을 시도한다.
+  정리 가능 여부를 확인한다.
 - 검증: Watermark 시점에 존재한 key incarnation은 page 전체에서 정확히 한 번 열거된다. 중간에 삭제된
   row의 exact read는 `missing`으로 닫히고, watermark 뒤 create·recreate는 다음 scan에서만 나타난다.
   Startup runtime은 등록한 MeshName의 initial scan을 끝내기 전에 `Serving` descriptor를 게시하지 않으며,
-  이후 background scan이 새 orphaned transaction을 발견한다. Concurrent mutation이 recovery row를 영구히
-  누락시키거나 같은 store version을 두 coordinator가 소유하면 실패다.
+  이후 background scan이 새 orphaned transaction을 발견한다. Concurrent mutation이 row를 영구히
+  누락시키거나 같은 Store version의 변경이 두 번 적용되면 실패다.
 
 #### SF-F7 chunked relocation manifest
 
 우선순위: `P0`
 
 - 절차: 64 MiB보다 큰 accepted journal과 captured application state를 만들어 reversible seal 뒤 logical relocation을
-  여러 immutable data chunk와 root manifest로 저장한다. Chunk write, manifest write, authority CAS, renew와
-  cleanup 사이에서 process를 각각 종료한다. Empty `RecreateOnRelocation` relocation도 별도 실행한다.
+  여러 immutable data chunk와 root manifest로 저장한다. Chunk write, manifest write와 authority CAS 전에
+  provider failure를 각각 주입한다. Source와 target process는 종료하지 않는다. Empty `RecreateOnRelocation`
+  relocation도 별도 실행한다.
 - 검증: 각 data chunk는 64 MiB 이하이고 manifest가 total length·checksum, 1부터 시작하는 order와 각
   reference·length·checksum을 고정한다. Authority는 manifest reference 하나만 가리키며 target은 전체 payload를
   한 번에 allocation하지 않고 bounded streaming validation·replay로 원래 journal과 state를 복원한다. Authority
@@ -413,12 +410,11 @@ failure point로 주입한다. Payload를 먼저 준비하고 Location Store ref
 
 - 절차: Target이 relocation capacity를 offer하고 reservation ACK를 보낸 직후 target process만 pause한다.
   Transport I/O는 유지한 채 target host owner lease를 만료시키고, 같은 target node lifecycle에서 늦은 ACK와
-  activation completion을 전달한다. 별도 반복에서는 같은 owner ID를 더 높은 lease generation으로 다시
-  claim한다.
+  activation completion을 전달한다.
 - 검증: Candidate, reservation ACK와 durable authority가 기록한 target owner ID·owner lease generation이
-  current host lease와 일치하지 않으면 `Prepared`·`Committed` CAS와 activation을 수행하지 않는다. Coordinator는
-  current lease를 다시 확인한 새 target reservation으로 replacement round를 시작하며 stale target의 예약과
-  completion은 current authority를 변경하지 않는다.
+  current host lease와 일치하지 않으면 `Prepared`·`Committed` CAS와 activation을 수행하지 않는다. Relocation은
+  source owner를 유지하고 `TargetUnavailable`로 끝나며 다른 target reservation을 자동으로 만들지 않는다.
+  Stale target의 예약과 completion은 current authority를 변경하지 않는다.
 
 #### SF-F9 owner-token bulk cleanup fence
 
@@ -434,7 +430,7 @@ failure point로 주입한다. Payload를 먼저 준비하고 Location Store ref
 
 우선순위: `P0`
 
-- 절차: Accepted request와 large reply completion을 계속 추가하면서 relocation phase CAS와 authority recovery
+- 절차: Accepted request와 large reply completion을 계속 추가하면서 relocation phase CAS와 authority
   scan을 실행한다. Late completion 두 개가 같은 current relocation root에서 새 completion chunk와 root
   manifest를 동시에 만들도록 경쟁시킨다. Scan은 item 1,000개보다 먼저 encoded bytes 4 MiB에 도달하는
   authority payload를 포함한다.
@@ -444,7 +440,7 @@ failure point로 주입한다. Payload를 먼저 준비하고 Location Store ref
   lease-expiry 전이는 새 immutable root를 만들고 expected authority store version CAS 한 번으로 root·checksum,
   terminal completion count와 pending relay count를 함께 교체한다. 두 count는 참조 relocation에서 계산하며
   accepted request count와 terminal completion count가 다르거나 pending relay count가 pending delivery entry
-  수와 다르면 recovery error로 처리하고 `Completed`를 금지한다. Delivery state는 pending에서
+  수와 다르면 consistency error로 처리하고 `Completed`를 금지한다. Delivery state는 pending에서
   `terminalReceived`, `alreadyTerminal`, `sourceLeaseExpired` 중 하나로만 단조 전이한다. Root reference CAS
   winner 하나만 current가 되고 loser root/chunk는 orphan cleanup 대상이며 loser는 current root를 다시 읽는다.
   여기서 pending relay는 accepted request의 terminal reply delivery를 뜻한다. 이전 owner route로 들어온
@@ -501,11 +497,12 @@ failure point로 주입한다. Payload를 먼저 준비하고 Location Store ref
 - 절차: member Actor가 N개인 stable type `room` User Spot aggregate를 target으로 relocation한다. Target은
   (a) Spot total slot은 남지만 Actor total slot이 N보다 하나 부족한 경우, (b) Spot total과 Actor total은
   충분하지만 `room` stable type slot만 부족한 경우, (c) 세 bucket이 모두 충분한 경우를 각각 만든다.
-  Prepare 뒤 abort와 process restart도 주입한다.
+  (a)와 (b)에서 Prepare 전 capacity 거부를 주입하고, 별도 반복에서 Prepare 뒤 commit 전
+  abort를 주입한다. Source와 선택한 target process는 시나리오가 끝날 때까지 유지한다.
 - 검증: (a)와 (b)에는 target Spot total 1개, `room` stable type 1개와 Actor total N개 가운데 어떤
   reservation도 남지 않고 factory·Restore·authority mutation이 0건이다. (c)는 단일 typed capacity
   bundle 전체와 aggregate participant authority를 한 transaction으로 Reserved→Active 전환한다.
-  Abort·recovery는 aggregate에 연결된 exact bundle만 해제하고 successor lifecycle count를 변경하지 않는다.
+  Abort cleanup은 aggregate에 연결된 exact bundle만 해제하고 successor lifecycle count를 변경하지 않는다.
 
 ## 5. 완료 기준
 

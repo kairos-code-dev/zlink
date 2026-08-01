@@ -2,7 +2,7 @@ package systems.zlink.e2e.registrationcodec.main.Handlers;
 
 import systems.zlink.e2e.registrationcodec.shared.Contracts;
 import systems.zlink.e2e.registrationcodec.main.Infrastructure.EvidenceStore;
-import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 
 public final class JsonRequestHandler
@@ -16,7 +16,7 @@ public final class JsonRequestHandler
     @Override
     public java.util.concurrent.CompletionStage<Contracts.EchoRes> handle(
         Contracts.JsonEchoReq request,
-        ZLinkRequestContext context) {
+        ZLinkMessageContext context) {
         state.record("Request", "JsonEcho", request.value());
         state.record("ContentType", "JsonEcho", context.contentType().orElse("missing"));
         return java.util.concurrent.CompletableFuture.completedFuture(

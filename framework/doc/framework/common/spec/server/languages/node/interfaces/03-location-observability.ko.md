@@ -45,7 +45,7 @@ Node direct는 MeshName을 제공한다. ClientServer와 classic fanout은 MeshN
 
 Filter는 `next()`를 최대 한 번 호출한다. 두 번째 호출은
 `ZLinkFrameworkErrorKind.InvalidOperation`으로 실패하며 handler를 다시 실행하지 않는다. Request에서
-`next()`를 호출하지 않으면 `ZLinkFrameworkErrorKind.RequestRejected` reply를 보낸다. Filter의 반환값으로
+`next()`를 호출하지 않으면 `ZLinkFrameworkErrorKind.Rejected` reply를 보낸다. Filter의 반환값으로
 업무 reply를 만들거나 바꾸지 않는다.
 
 `ZLinkHandlerInvocation`은 public contract가 아니다. Filter는 Node direct send/request, Channel

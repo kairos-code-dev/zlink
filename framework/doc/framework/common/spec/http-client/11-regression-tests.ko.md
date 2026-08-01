@@ -34,7 +34,7 @@ default 헤더 + 요청별 override · Basic/Bearer 주입.
 cross-origin 제거 · 한도 초과 · 상대/절대 Location.
 
 **retry/timeout**: 전송 실패 후 재시도 성공 · 재시도 소진 · timeout →
-retriable · streaming 재시도 제외.
+자동 retry 대상 · streaming 재시도 제외.
 
 **cookie**: 저장/전송 왕복 · Path scope 매칭 · Secure의 http 미전송 ·
 `Max-Age<=0` 삭제 · host당 128개 축출(현재 cpp 미검증 — 갭).

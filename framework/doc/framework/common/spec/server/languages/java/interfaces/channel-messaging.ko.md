@@ -21,7 +21,7 @@ Application service 등록으로 이 수명을 바꿀 수 없다. Dispatch가 �
 
 Filter의 `next.invoke()`는 최대 한 번 호출할 수 있다. 두 번째 호출은
 `IllegalStateException`으로 거부하고 handler를 다시 실행하지 않는다. Request filter가
-`next`를 호출하지 않으면 `ZLinkFrameworkException`의 `REQUEST_REJECTED`로 완료한다.
+`next`를 호출하지 않으면 `ZLinkFrameworkException`의 `REJECTED`로 완료한다.
 Filter가 임의 값을 반환해도 업무 reply로 사용하지 않는다. `next`가 실행한 handler의
 값만 reply가 된다.
 
@@ -313,4 +313,4 @@ public interface systems.zlink.framework.handlers.ZLinkStreamRaw extends java.la
 
 이 문서의 request builder에 선언된 `yield(...)`는 호출자가 `SpotWide` User Spot 또는 Instance Spot의
 shared turn을 소유할 때만 유효하다. 다른 실행 문맥에서는 message를 제출하거나 turn을 반환하지 않고
-`INVALID_CONFIGURATION`으로 완료한다. `submit(...)`은 현재 turn을 유지하는 공통 `Async` 의미다.
+`INVALID_OPERATION`으로 완료한다. `submit(...)`은 현재 turn을 유지하는 공통 `Async` 의미다.

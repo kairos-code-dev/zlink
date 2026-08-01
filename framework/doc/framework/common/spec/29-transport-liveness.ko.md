@@ -1,6 +1,6 @@
 # Transport 연결 상태 확인
 
-[스펙 목차](README.ko.md) · [이전: Host Relocate와 Shutdown](28-graceful-drain-handoff.ko.md) · [다음: Framework 언어별 구현 차이](30-implementation-gap.ko.md)
+[스펙 목차](README.ko.md) · [이전: Host Relocate와 Shutdown](28-graceful-drain-handoff.ko.md) · [다음: 장애 대응과 failover 범위](31-failure-failover-policy.ko.md)
 
 
 ## 1. Application에서 보이는 결과
@@ -186,8 +186,8 @@ Orderly close와 transport disconnect는 15초를 기다리지 않는다. 이전
 connection에서 늦게 도착한 ACK나 frame은 새 connection의 상태를 바꾸지 못한다.
 
 Peer 하나의 실패는 host 전체를 `Error`로 바꾸지 않는다. 다른 ready peer와 local
-owner는 계속 처리한다. Ready peer가 없으면 Channel 호출은 target-not-found 또는
-route-not-connected 계약에 따라 끝난다. Framework는 timeout을 늘려 실패를 숨기지
+owner는 계속 처리한다. Ready peer가 없으면 Channel 호출은 `NotFound` 또는
+`Unavailable`로 끝난다. Framework는 timeout을 늘려 실패를 숨기지
 않는다.
 
 ## 6. Connection loss와 reconnect

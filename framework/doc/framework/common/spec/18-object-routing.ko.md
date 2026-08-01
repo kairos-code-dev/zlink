@@ -54,7 +54,7 @@ Spot direct call은 global Spot ID를 받고 Actor direct call은 global Actor I
 |            +-----------------------------+                           |
 |                          |                                           |
 |                          v                                           |
-|             [Owner route + generation fences]                        |
+|                 [Owner route + route fences]                         |
 +----------------------------------------------------------------------+
 ```
 
@@ -64,10 +64,11 @@ Source runtime은 다음 순서로 처리한다.
 2. 사용할 수 있는 최근 route가 없으면 Location Store에서 current object 상태를
    조회한다.
 3. Object가 Ready이면 owner의 `MeshName`과 `NodeRid`, object generation과 owner
-   fence를 이번 operation에 고정한다.
+   fence를 route snapshot에 기록한다.
 4. 선택한 owner route로 message를 제출한다.
-5. Target은 generation, owner fence와 local admission 상태를 확인한 뒤
-   application queue에 넣는다.
+5. Target은 자신이 같은 logical ID의 current owner인지, current Ready object가 있는지,
+   local admission이 가능한지 확인한 뒤 application queue에 넣는다. Object generation은
+   application handler의 target 일치 조건으로 검사하지 않는다.
 
 Location Store가 global object마다 기록한 current owner, incarnation, owner
 generation과 lease 정보를 authority라 한다. Framework는 current Ready
@@ -97,9 +98,15 @@ Source runtime은 Location Store에서 확인한 Ready owner route를 잠시 보
 | 즉시 무효화하는 조건 | 더 큰 `StoreVersion`, stale route 결과, Store recovery event 또는 owner lease invalidation을 확인하면 entry를 제거한다. |
 | 실행 중 설정 변경 | 변경한 `RouteCacheMaxAge`는 새 cache entry부터 적용한다. 기존 entry의 수명을 새 값으로 연장하지 않는다. |
 
-Resolve한 뒤 object가 close·destroy되고 같은 ID로 새 incarnation이 만들어져도
-진행 중인 operation을 새 `ObjectGeneration`으로 보내지 않는다. Local owner와
-remote owner에는 같은 handler, metadata와 completion 계약을 적용한다.
+Resolve한 뒤 같은 owner에서 object가 close·destroy되고 같은 ID로 새 incarnation이
+만들어졌다면 target queue가 수락하는 시점의 current Ready object가 message를 처리한다.
+이 동작은 Actor와 Instance Spot을 포함한 모든 Spot direct message에 동일하게 적용한다.
+`ObjectGeneration`은 일반 message의 target 조건이 아니기 때문이다.
+
+Resolve한 owner가 더 이상 같은 logical ID를 소유하지 않으면 current operation은 stale
+route 오류로 끝낸다. Framework는 Location Store에서 fresh owner를 찾아 같은 operation을
+자동으로 다시 보내지 않는다. Local owner와 remote owner에는 같은 handler, metadata와
+completion 계약을 적용한다.
 
 ### 2.3 Object가 없을 때
 
@@ -132,8 +139,12 @@ duration보다 최소 5초 짧아야 한다. 실행 중 변경한 Message Follow
 relocation부터 적용한다.
 
 Relay는 original operation ID, `ObjectGeneration`, payload와 reply route를
-보존한다. Message Follow route가 없거나 만료됐거나 generation mismatch, loop 또는 bound
-초과가 발생하면 typed stale-route 오류로 끝난다.
+보존한다. Message Follow route가 없거나 만료됐거나 loop가 발생하면 `Unavailable`, generation mismatch는
+`InvalidOperation`, bound 초과는 `CapacityExceeded`로 끝난다.
+
+이 generation 검사는 relocation이 설치한 Message Follow route가 같은 incarnation의 이동에
+속하는지 확인한다. 일반 Actor·Spot message의 target을 generation으로 제한하는 검사가 아니다.
+Application이 새로 시작한 direct call은 logical ID의 current Ready object를 대상으로 한다.
 
 `PerActor` User Spot relocation 중 `ToActor`는 Spot authority가 아니라 Actor별
 current owner route를 사용한다. Spot authority가 target으로 바뀌어도 아직 source에
@@ -142,12 +153,19 @@ current owner route를 사용한다. Spot authority가 target으로 바뀌어도
 
 Actor queue를 seal하기 전에 수락한 작업은 이전 queue와 accepted journal에
 포함한다. Seal 뒤 source에 도착한 작업은 ingress hold에 보관한다. Target은 다음
-순서를 지킨 뒤 Actor admission을 연다.
+순서로 relocation temporary queue를 사용한다.
 
-1. 이전 queue와 accepted journal을 복원한다.
-2. Source ingress hold를 original operation identity와 reply route로 받는다.
-3. Source의 relay 완료를 확인한다.
-4. Owner CAS 뒤 target에 직접 도착해 대기 중인 작업을 받는다.
+1. Restore 요청을 받으면 Actor instance를 만들기 전에 temporary queue를 등록한다.
+2. Source ingress hold의 message를 original operation identity와 reply route를 유지해 이
+   queue로 relay한다.
+3. Restore가 끝나면 owner CAS를 실행한다. Source는 target dispatch 전환이 끝날 때까지 ingress
+   hold 원본을 유지하고 이전 route의 message를 target temporary queue로 계속 relay한다.
+4. 이전 queue와 accepted journal을 실제 Actor queue에 먼저 넣고 temporary queue의 작업을
+   그 뒤에 옮긴다.
+5. Temporary queue 등록을 제거하고 기존 Actor dispatch로 전환한다.
+
+전환 전에 target으로 들어온 작업은 temporary queue에 보관한다. 전환 뒤 Message Follow와
+target direct 작업은 기존 Actor queue가 실제로 수락한 순서대로 실행한다.
 
 따라서 Actor가 전송 도중 이전되어도 caller가 새 route를 선택하거나 operation을
 다시 만들 필요가 없다. Request deadline과 correlation, one-way operation identity,
@@ -171,8 +189,8 @@ Session relay는 message마다 Actor ID를 resolve하지 않는다. Bind할 때 
 |                                                                      |
 | Bind       : ActorRef -> validate -> store route                     |
 | Relay      : Session -> stored route -> Actor owner                  |
-| Relocation : Target -> command 44 -> Session owner                   |
-|                                   -> command 45 ACK                  |
+| Relocation : Target -> location update request -> Session owner     |
+|                                   <- location update response       |
 |                                                                      |
 | No per-message Location Store lookup                                 |
 +----------------------------------------------------------------------+
@@ -226,7 +244,7 @@ route는 current owner lease와 local admission deadline 안에서만 유효하�
 일시적으로 사용할 수 없어도 lease나 deadline을 연장하지 않는다.
 
 저장 route가 더 이상 유효하지 않으면 active Message Follow route로 original
-operation을 정확히 한 번 전달하거나 typed stale 오류로 끝낸다. Location Store에서
+operation을 정확히 한 번 전달하거나 `Unavailable`로 끝낸다. Location Store에서
 새 `ActorRef`를 찾아 같은 operation을 다른 owner에게 자동으로 보내지 않는다.
 
 Location Store와 Relocation Store는 binding route를 저장하거나 갱신하지 않는다.
@@ -243,32 +261,40 @@ Relocation 중에도 Session owner는 Location Store를 조회하여 새 Actor r
 추측하지 않는다. 같은 `ObjectGeneration`의 target Actor가 다음 순서를 완료한 뒤
 Session owner에 새 route를 전달한다.
 
-1. Source Actor와 Session ingress를 seal하고 마지막 accepted session sequence를
-   high-water로 고정한다.
-2. Bound-session request를 terminal 상태까지 정리하고 허용된 one-way 작업과 Actor
-   state를 target staging에 준비한다.
-3. Owner와 membership을 commit하고 lifecycle callback과 accepted journal replay를
-   완료한다.
-4. Durable source cleanup과 `Completed` authority CAS를 완료한다.
-5. Target은 command 44로 Session owner에 route 갱신을 요청한다.
+1. Source Actor의 현재 handler가 끝난 뒤 새 Actor message의 application dispatch를 막는다.
+   Seal 전에 Actor queue가 수락한 request와 one-way packet은 reply route와 수락 순서를
+   포함해 저장한다.
+2. Seal 뒤 source로 들어온 Actor message는 ingress hold에 보관하고, target이 Restore
+   요청을 받아 temporary queue를 등록한 뒤 그 queue로 relay한다.
+3. Owner와 membership을 commit하고 lifecycle callback을 완료한다. Join relocation이면
+   Join completion callback도 이 단계에서 호출한다.
+4. 저장된 기존 작업과 temporary queue 작업을 실제 Actor queue에 옮기고 dispatch를
+   전환한다. 그 뒤 Target Actor가 message를 처리하기 시작한다.
+5. Target은 `sessionActorLocationUpdateReqMsg`를 Session owner에 send한다.
 6. Session owner는 Actor generation, 이전·target owner generation, binding
    generation, owner lease와 high-water를 검증한다.
-7. Session owner는 해당 Actor route만 atomic하게 바꾸고 command 45 ACK를 반환한다.
-8. Maintenance authority를 steady target으로 정리한 뒤 target Actor의 session
-   packet·push admission을 연다.
+7. Session owner는 해당 Actor route와 bound-session current Actor location snapshot을 atomic하게
+   바꾸고 `sessionActorLocationUpdateResMsg`를 send한다. Snapshot은 같은 ActorId·ObjectGeneration과 target
+   MeshName·NodeRid를 가진다.
+8. 응답이 없으면 Target은 최초 send 1초 뒤 같은 요청을 다시 보낸다. 이후 재전송
+   간격은 1초, 2초, 4초, 5초이며 그 뒤에는 5초를 유지한다.
 
 Route 갱신은 binding이 가리키는 `ObjectGeneration`과 같은 Actor relocation에만
 허용한다. 같은 Actor ID로 새 incarnation이 만들어지면 기존 binding을 새 Actor로
 바꾸지 않는다. Application이 새 `ActorRef`로 bind를 다시 시작해야 한다.
 
-같은 Session에 bind된 다른 Actor의 route, token과 generation은 유지한다. Physical
-STREAM connection도 그대로 유지한다. Command 45 ACK와 steady normalization 전에는
-target Actor가 session packet이나 push를 수락하지 않는다.
+같은 Session에서 relocation 대상에 포함되지 않은 다른 Actor의 route, location snapshot, token과 generation은 유지한다.
+Physical STREAM connection도 그대로 유지한다. 위치 갱신 응답을 기다리는 동안에도 Target
+Actor는 message를 처리한다. 이전 route로 도착한 message는 source Message Follow route가
+Target Actor에 전달한다. Application은 relocation을 알기 위해 rebind하지 않는다.
 
-Commit 전 relocation failure는 durable abort, source route 복원 ACK, cleanup과
-steady source normalization 뒤 기존 source admission을 다시 연다. Commit 뒤에는
-source route로 rollback하지 않으며 current target 또는 recovery coordinator가
-route switch ACK와 steady normalization을 이어간다.
+Commit 전 relocation failure에서는 Session 위치 갱신을 보내지 않는다. Location Store에서
+source owner를 확인하고 target temporary queue를 폐기한 뒤 source Actor queue와 admission을
+복원한다. Session owner의 기존 route와 location snapshot은 source를 유지한다. Commit 뒤에는
+source route나 snapshot으로 rollback하지 않는다. 실행 중인 current target만
+`sessionActorLocationUpdateReqMsg` 재전송을 이어간다. 위치 갱신 응답을 받을 때까지 source
+Message Follow route가 이전 route의 message를 target에 전달한다. Target process가 종료되면
+다른 runtime이 route 갱신을 자동으로 이어받지 않는다.
 
 ## 4. Request의 reply가 돌아가는 방법
 
@@ -343,8 +369,8 @@ timeout, cancellation 또는 shutdown 가운데 먼저 확정된 terminal 결과
 - Message Follow relay가 committed route만 사용하고 Store를 읽지 않으며 operation
   ID, generation, payload와 reply route를 보존한다.
 - `PerActor` User Spot relocation에서 `ToSpot`은 Spot authority, `ToActor`는 Actor별
-  current owner를 사용하며 source hold, relay 완료와 target direct queue 순서를
-  보존한다.
+  current owner를 사용한다. Spot과 Actor의 relocation temporary queue를 독립적으로 등록하고
+  atomic하게 기존 dispatch로 전환한다.
 - Failed operation을 fresh owner에게 자동 재제출하지 않고 다음 call만 current
   authority를 다시 resolve한다.
 - Bind가 caller의 exact `ActorRef` 위치를 최초 route로 사용하고 검증된 route만
@@ -352,9 +378,10 @@ timeout, cancellation 또는 shutdown 가운데 먼저 확정된 terminal 결과
 - Session relay, disconnect와 Actor push가 message마다 Location Store를 조회하지
   않고 stored binding route를 사용한다.
 - Actor relocation이 같은 `ObjectGeneration`에서만 해당 Actor의 binding route를
-  command 44·45로 바꾸고 다른 Actor route와 physical STREAM connection을 유지한다.
-- Command 45 ACK와 steady normalization 전에는 target Actor의 session packet·push
-  admission을 열지 않는다.
+  `sessionActorLocationUpdateReqMsg`와 `sessionActorLocationUpdateResMsg`로 바꾸고 relocation
+  대상에 포함되지 않은 다른 Actor route와 physical STREAM connection을 유지한다.
+- 위치 갱신 응답이 없어도 Target Actor가 message를 처리하며, 재전송이 끝날 때까지 source
+  Message Follow route가 이전 route로 도착한 message를 전달한다.
 - Reply가 request의 reply route와 correlation을 사용하고 requester의 logical ID를
   Location Store에서 조회하지 않는다.
 - Application metadata가 owner route와 reply route를 대신하지 않고 request metadata를

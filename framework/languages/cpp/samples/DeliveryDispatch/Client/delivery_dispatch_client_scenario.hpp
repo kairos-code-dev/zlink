@@ -73,10 +73,6 @@ class delivery_dispatch_client_scenario_t
   private:
     using connector_t = zlink::stream_e2e_client::coroutine_connector_t;
 
-<<<<<<< Updated upstream
-    /* Actor placement는 Location Store가 결정한다. Scenario는 global CourierId와 bind 성공만
-     * 검증하며 current owner NodeRid를 성공 조건으로 사용하지 않는다. */
-=======
     static void use_json_codec (zlink::stream_connector::connector_t &connector)
     {
         connector.codecs ()
@@ -84,7 +80,8 @@ class delivery_dispatch_client_scenario_t
           .use_default_codec (zlink::stream_connector::codec_t::json);
     }
 
->>>>>>> Stashed changes
+    /* Actor placement는 Location Store가 결정한다. Scenario는 global CourierId와 bind 성공만
+     * 검증하며 current owner NodeRid를 성공 조건으로 사용하지 않는다. */
     static void bind_courier (connector_t &courier, const std::string &courier_id)
     {
         const auto bound = courier.request (bind_courier_session_req_t{courier_id})

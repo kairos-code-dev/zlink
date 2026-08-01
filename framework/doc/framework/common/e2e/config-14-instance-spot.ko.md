@@ -172,7 +172,7 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 
 | ID | 검증 대상 | 완료 조건 |
 |---|---|---|
-| `IS-REG-01` | Missing existing-only call | Instance marker 없는 Spot ID 호출은 target-not-found이며 activation·creation intent를 시작하지 않음 |
+| `IS-REG-01` | Missing existing-only call | Instance marker 없는 Spot ID 호출은 `NotFound`이며 activation·creation intent를 시작하지 않음 |
 | `IS-REG-02` | Generation fence | Direct Spot generation 0·stale generation을 거부하고 create-if-missing으로 해석하지 않음 |
 | `IS-REG-03` | User Spot creation | User Spot Create·GetOrCreate가 global authority·factory 하나로 수렴하고 Instance kind를 만들지 않음 |
 | `IS-REG-04` | Entry Spot | Startup Entry Spot, Actor 기본 위치와 shutdown 순서가 유지됨 |
@@ -206,7 +206,7 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 | `IS-E2E-13` | Accepted send then failure | 다른 owner에서 replay하지 않고 runtime error·trace·drop metric으로 관측 |
 | `IS-E2E-14` | Store outage | Authority deadline 뒤 cached route와 target admission을 막고 Missing Spot ID를 local 상태로 추측하지 않음 |
 | `IS-E2E-15` | Kind·type atomic conflict | 같은 global Spot ID의 User Spot `GetOrCreate`와 Instance cold request를 동시에 제출해 authority CAS winner의 kind·type·factory 하나만 성공하고 loser가 Mesh별 location row·generation을 남기지 않음. Winner close 뒤 다른 kind를 만들면 더 높은 object generation을 사용 |
-| `IS-E2E-16` | No eligible node | Request와 send가 target-not-found로 종료하고 authority row를 남기지 않음 |
+| `IS-E2E-16` | No eligible node | Stable type을 제공하는 node가 없으면 request와 send가 `NotFound`, capability는 있지만 capacity가 모두 소진됐으면 `CapacityExceeded`로 종료하며 authority row를 남기지 않음 |
 | `IS-E2E-17` | Activation backpressure | Message·byte 상한 초과가 bounded 결과로 종료하고 accepted order와 serial handler를 유지 |
 | `IS-E2E-18` | Cross-language | 다른 Framework 언어 caller·owner 조합이 authority, queue, failure code와 timeout을 같게 해석 |
 | `IS-E2E-19` | `Ready` ordering | Durable activation inbox first record가 Ready CAS 전에 확정되지만 handler는 실행되지 않는다. Ready를 본 뒤의 message는 restored local queue head 뒤에 admit되어 cold first message를 추월하지 않음 |

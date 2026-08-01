@@ -164,8 +164,9 @@ maintenance이면 source version, rolling update이면 요청한 target version�
 
 모든 target을 `Prepared`로 만들고 relocation commit을 publish하기 전에 deadline이 먼저 끝나면 relocation
 reference와 reservation을 durable abort 순서로 정리하고 source authority와 admission을 복원한 뒤
-`Blocked/DeadlineExceeded`를 반환한다. Commit 뒤에는 source로 rollback하지 않으며 target recovery가
-완료되어 `RELOCATED`가 될 때까지 같은 shared relocation operation이 조정한다.
+`Blocked/DeadlineExceeded`를 반환한다. Commit 뒤에는 source로 rollback하지 않으며 같은 target
+process가 실행 중일 때만 남은 단계를 처리한다. Target process가 종료되면
+다른 runtime이 relocation을 자동으로 이어받지 않으며 `RELOCATED`를 반환하지 않는다.
 
 `ZLinkFrameworkRuntime`은 RouteMesh, ClientServer와 automatic fanout의 monitoring view를 각각 하나씩
 소유한다. 세 accessor는 runtime 수명 동안 같은 객체를 반환하며 호출할 때 새 adapter를 만들지 않는다.
@@ -277,76 +278,34 @@ public interface systems.zlink.framework.ZLinkHandlerFilterNext<T> {
   public abstract java.util.concurrent.CompletionStage<T> invoke();
 }
 public final class systems.zlink.framework.errors.ZLinkFrameworkErrorKind extends java.lang.Enum<systems.zlink.framework.errors.ZLinkFrameworkErrorKind> {
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ACTOR_ROUTE_NOT_FOUND;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ACTOR_CREATE_FAILED;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ACTOR_ALREADY_EXISTS;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ACTOR_TYPE_MISMATCH;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind SPOT_CREATE_FAILED;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind SPOT_ROUTE_NOT_FOUND;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind SPOT_TYPE_MISMATCH;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ACTOR_SESSION_NOT_BOUND;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind HANDLER_NOT_FOUND;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ROUTE_HANDLER_NOT_FOUND;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ACTOR_DISPATCH_HANDLER_NOT_FOUND;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind PAYLOAD_DECODE_FAILED;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ROUTE_NOT_CONNECTED;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind REQUEST_TARGET_NOT_FOUND;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind REQUEST_REJECTED;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind REQUEST_PROTOCOL_ERROR;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind REQUEST_FAILED;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind WORKER_QUEUE_FULL;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind WORKER_TIMED_OUT;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind WORKER_FAILED;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ACTOR_LOCATION_STALE;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ACTOR_CREATE_REJECTED;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind OBJECT_CLIENT_NOT_CONFIGURED;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind MESH_SELECTION_REQUIRED;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind MESH_NOT_FOUND;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind INVALID_CONFIGURATION;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ALREADY_SUBMITTED;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ACTOR_GENERATION_STALE;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ACTOR_MOVING;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind NOT_FOUND;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ALREADY_EXISTS;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind TYPE_MISMATCH;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind NOT_CONFIGURED;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind REJECTED;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind UNAVAILABLE;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind CAPACITY_EXCEEDED;
   public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind DEADLINE_EXCEEDED;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind PLACEMENT_CAPACITY_EXHAUSTED;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ROUTING_ID_CONFLICT;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind SPOT_GENERATION_STALE;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind SPOT_MOVING;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind RELOCATION_DATA_LOST;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind SPOT_ID_CONFLICT;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind RUNTIME_SHUTDOWN;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind RELOCATION_DISABLED;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind RELOCATION_TARGET_UNAVAILABLE;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind RELOCATION_FAILED;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind SHUTTING_DOWN;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind PROTOCOL_ERROR;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind INVALID_OPERATION;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind DATA_LOST;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind INTERNAL_FAILURE;
   public static systems.zlink.framework.errors.ZLinkFrameworkErrorKind[] values();
   public static systems.zlink.framework.errors.ZLinkFrameworkErrorKind valueOf(java.lang.String);
   public int value();
-  public boolean retriable();
   public static systems.zlink.framework.errors.ZLinkFrameworkErrorKind fromValue(int);
 }
 public class systems.zlink.framework.errors.ZLinkFrameworkException extends java.lang.RuntimeException {
-  public systems.zlink.framework.errors.ZLinkFrameworkException(java.lang.String);
-  public systems.zlink.framework.errors.ZLinkFrameworkException(java.lang.String, java.lang.Throwable);
   public systems.zlink.framework.errors.ZLinkFrameworkException(systems.zlink.framework.errors.ZLinkFrameworkErrorKind, java.lang.String);
   public systems.zlink.framework.errors.ZLinkFrameworkException(systems.zlink.framework.errors.ZLinkFrameworkErrorKind, java.lang.String, java.lang.Throwable);
-  public systems.zlink.framework.errors.ZLinkFrameworkException(systems.zlink.framework.errors.ZLinkFrameworkErrorKind, java.lang.String, java.lang.Boolean, java.lang.Throwable);
   public systems.zlink.framework.errors.ZLinkFrameworkErrorKind kind();
-  public boolean retriable();
 }
 ```
 
-`ZLinkFrameworkErrorKind.value()`는 선언 순서와 무관하게 공통 숫자를 반환한다. 기존 kind 0..21 뒤에
-`OBJECT_CLIENT_NOT_CONFIGURED=22`, `MESH_SELECTION_REQUIRED=23`, `MESH_NOT_FOUND=24`,
-`INVALID_CONFIGURATION=25`, `ALREADY_SUBMITTED=26`, `ACTOR_GENERATION_STALE=27`, `ACTOR_MOVING=28`,
-`DEADLINE_EXCEEDED=29`, `PLACEMENT_CAPACITY_EXHAUSTED=30`, `ROUTING_ID_CONFLICT=31`,
-`SPOT_GENERATION_STALE=32`, `SPOT_MOVING=33`, `RELOCATION_DATA_LOST=34`,
-`SPOT_ID_CONFLICT=35`, `RUNTIME_SHUTDOWN=36`, `RELOCATION_DISABLED=37`,
-`RELOCATION_TARGET_UNAVAILABLE=38`, `RELOCATION_FAILED=39`를 고정한다.
-`ROUTING_ID_CONFLICT`는 MeshNode RID 충돌에만 사용하고
-Spot·Entry Spot identity 충돌은 `SPOT_ID_CONFLICT`로 반환한다. `fromValue(int)`도 같은
-mapping을 사용한다. `RELOCATION_DATA_LOST`는 Location [authority](../../../../01-glossary.ko.md#authority)가 공개한 Relocation payload가 영구적으로
-없거나 checksum·inventory digest가 일치하지 않을 때 반환하며 재시도하거나 이전 owner로 rollback하지 않는다.
-One-way operation의 target 부재는 Actor·Spot·Mesh·request·session별 기존 not-found kind를 사용한다.
-Runtime 종료만 공통 `RUNTIME_SHUTDOWN`으로 투영한다.
+`ZLinkFrameworkErrorKind.value()`는 선언 순서와 무관하게 공통 숫자 `0..12`를 반환한다.
+`fromValue(int)`도 [공통 오류 모델](../../../../32-framework-error-model.ko.md)의 같은 mapping을 사용한다.
+Public exception은 재시도 여부를 제공하지 않는다.
 
 ## Serializer와 오류 public signature
 
@@ -358,19 +317,6 @@ public final class systems.zlink.framework.ZLinkEncodedPayload {
 public final class systems.zlink.framework.errors.ZLinkConfigurationException extends systems.zlink.framework.errors.ZLinkFrameworkException {
   public systems.zlink.framework.errors.ZLinkConfigurationException(java.lang.String);
   public systems.zlink.framework.errors.ZLinkConfigurationException(java.lang.String, java.lang.Throwable);
-  public systems.zlink.framework.errors.ZLinkConfigurationException(systems.zlink.framework.errors.ZLinkFrameworkErrorKind, java.lang.String);
-}
-public final class systems.zlink.framework.errors.ZLinkOperationCanceledException extends systems.zlink.framework.errors.ZLinkFrameworkException {
-  public systems.zlink.framework.errors.ZLinkOperationCanceledException(java.lang.String);
-}
-public class systems.zlink.framework.errors.ZLinkWorkerFailedException extends systems.zlink.framework.errors.ZLinkFrameworkException {
-  public systems.zlink.framework.errors.ZLinkWorkerFailedException(java.lang.String, java.lang.Throwable);
-}
-public class systems.zlink.framework.errors.ZLinkWorkerQueueFullException extends systems.zlink.framework.errors.ZLinkFrameworkException {
-  public systems.zlink.framework.errors.ZLinkWorkerQueueFullException(java.lang.String);
-}
-public class systems.zlink.framework.errors.ZLinkWorkerTimeoutException extends systems.zlink.framework.errors.ZLinkFrameworkException {
-  public systems.zlink.framework.errors.ZLinkWorkerTimeoutException(java.lang.String);
 }
 public final class systems.zlink.framework.messaging.ZLinkMessage {
   public static systems.zlink.framework.messaging.ZLinkMessage empty();

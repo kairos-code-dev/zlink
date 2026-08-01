@@ -278,10 +278,12 @@ generation에는 실제 Spot 하나만 존재할 수 있다.
 상태다. Framework는 cache 또는 Location Store에서
 [Ready Spot](01-glossary.ko.md#ready)과 그 owner에게 message를 보낼 경로를 찾는다.
 
-Message를 받을 node는 요청에 포함된 `ObjectGeneration`이 현재 Spot과 같은지,
-owner가 바뀌지 않았는지, Spot queue에 여유가 있는지를 확인한다. 이전 owner가
-늦게 보낸 작업을 거부하기 위해 현재 owner를 식별하는 값인 `owner fence`도 함께
-확인한다. 모든 확인을 통과한 payload만 Spot의 application queue에 넣는다.
+일반 Spot message의 target은 `SpotId`다. Message를 받을 node는 자신이 이 ID의 current
+owner인지, 같은 ID의 Ready Spot이 있는지, Spot queue에 여유가 있는지를 확인한다. 이전
+owner의 route를 거부하기 위해 current owner를 식별하는 값인 `owner fence`도 함께 확인한다.
+요청을 보낼 때 확인한 `ObjectGeneration`은 route snapshot과 stale cache를 구분하는 정보이며,
+application handler의 target 일치 조건이 아니다. 같은 owner에서 Spot이 제거된 뒤 같은 ID로
+다시 만들어졌다면 queue가 message를 수락하는 시점의 current Ready Spot에 payload를 넣는다.
 
 ### 3.2 Instance Spot이 없을 때 새로 준비하기
 
@@ -289,7 +291,7 @@ owner가 바뀌지 않았는지, Spot queue에 여유가 있는지를 확인한�
 상태로 준비하는 과정을 `cold activation`이라 한다.
 
 Spot direct call에 `Instance intent`(Spot이 없으면 새로 준비하라는 명시적 선택)가
-없는데 target Spot이 존재하지 않으면 target-not-found로 끝난다. 이 경우 Framework가
+없는데 target Spot이 존재하지 않으면 `NotFound`로 끝난다. 이 경우 Framework가
 [Spot kind](01-glossary.ko.md#spot-kind), stable type과 최초 배치 위치를 담은 생성 정보를 만들지 않는다.
 
 [Instance intent](01-glossary.ko.md#instance-intent)를 명시하면 Missing Instance
@@ -446,7 +448,7 @@ static ValueTask<TReply> RequestAsync<TRequest, TReply>(
 이 call도 target node나 endpoint를 지정하지 않는다. Framework는 선택한 Mesh에서
 Serving 상태이고 stable type을 등록했으며 capacity가 남아 있는 node를 찾은 뒤
 node-wide placement weight를 적용해 target을 결정한다. `InstanceSpot(...)`을
-생략하면 Ready authority가 없는 request는 target-not-found로 끝난다. Authority가
+생략하면 Ready authority가 없는 request는 `NotFound`로 끝난다. Authority가
 이미 있으면 저장된 current [owner route](01-glossary.ko.md#owner-route)를 사용하므로 `InMesh(...)`가 기존 Spot을
 이동시키지 않는다.
 
@@ -886,9 +888,10 @@ Application callback이 다른 작업의 결과를 기다리는 동안에도 위
 Instance intent로 cold activation을 시작하지 않는 call에서 target Spot의 Ready
 authority가 없으면 Spot target 오류로 끝난다.
 
-Spot ID와 `ObjectGeneration`을 함께 지정하여 특정 Spot instance를 가리키는
-작업은 Location Store의 현재 generation도 확인한다. 지정한 generation이 현재
-generation과 다르면 이미 바뀐 Spot을 참조했다는 오류를 반환한다.
+`Close`처럼 Spot ID와 `ObjectGeneration`을 함께 지정하여 특정 Spot incarnation을
+변경하는 lifecycle 작업은 Location Store의 current generation도 확인한다. 지정한
+generation이 current generation과 다르면 이미 바뀐 Spot을 참조했다는 오류를 반환한다.
+Spot direct send/request에는 이 검사를 적용하지 않는다.
 
 Request handler를 찾지 못하거나 payload를 해석하지 못하면 reply를 보낼 경로가
 남아 있는지 확인한다. 경로가 있으면 오류 reply를 보내 request를 완료한다.

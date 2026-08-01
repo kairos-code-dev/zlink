@@ -34,7 +34,6 @@ inline const char *const k_dealer_router_reply = "pong";
 inline const char *const k_stream_payload = "hello-stream";
 inline const char *const k_pubsub_topic = "prices";
 inline const char *const k_pubsub_payload = "101.25";
-inline const char *const k_spot_service = "sample";
 inline const char *const k_spot_topic = "room:lobby";
 inline const char *const k_spot_payload = "hello-spot";
 
@@ -232,115 +231,11 @@ class raw_tcp_client_t
     boost::asio::ip::tcp::socket _socket;
 };
 
-//  --- RouteMesh 10.0.0 pull-dispatch helpers ---------------------------------
-//
-//  In the 10.0.0 model completions and inbound records are not pushed to a
-//  callback: the application drives a pull loop
-//    set_ready_handler → drain_ready(domains, ready_batch) → take_claim(i)
-//    → claim.recv_batch(receive_batch) → receive_batch.at(i)/retain_message(i)
-//  and replies to a request through the sealed reply token it carried.
-//
-//  These helpers wrap that loop so the guide samples can stay focused on the
-//  concept each one demonstrates.
-
-//  One record drained from a mesh node: its metadata (kind, source, reply
-//  token, topic/channel, …) plus an owned copy of its payload parts.
-struct mesh_record_t
-{
-    zlink::service::receive_record_t record;
-    std::vector<zlink::message_t> parts;
-    zlink::service::claim_t claim;
-
-    std::string first_text () const
-    {
-        return parts.empty () ? std::string () : parts.front ().to_string ();
-    }
-};
-
-//  One dispatch turn over a single claimed ready owner. It drains the *whole*
-//  receive batch — every record, not just record 0 — retaining an owned copy of
-//  each record's parts while the claim is still held so reply tokens stay valid,
-//  The selected record retains the claim until its caller has handled any
-//  reply token. This keeps the token lifetime rule in one place.
-inline bool mesh_drain_claim (zlink::service::claim_t &claim_,
-                              zlink::service::receive_batch_t &batch_,
-                              std::vector<mesh_record_t> &out_records_)
-{
-    using namespace zlink::service;
-    if (!claim_.valid ())
-        return false;
-    batch_.reset ();
-    receive_requirements_t required;
-    const int brc = claim_.recv_batch (batch_, required, zlink::recv_flags_t::none);
-    if (brc != static_cast<int> (zlink::recv_result_t::ok))
-        return false;
-    const size_t count = batch_.count ();
-    for (size_t i = 0; i < count; ++i) {
-        mesh_record_t rec;
-        rec.record = batch_.at (i);
-        rec.parts = batch_.retain_message (i);
-        out_records_.push_back (std::move (rec));
-    }
-    return true;
-}
-
-//  Drives the pull loop until a record whose owner is @p want_owner and whose
-//  domain intersects @p want_domain arrives, then returns the first such record.
-//  Every record in a claimed batch is drained and preserved during the turn (so
-//  the whole batch is removed from the claim); the selected record retains the
-//  claim until the caller finishes handling it. Returns false on
-//  timeout. Application traffic (requests, sends, multicast) lands on the
-//  application domain; completions of the caller's own requests land on the
-//  infrastructure domain.
-inline bool mesh_pull_one (zlink::service::mesh_node_t &node_,
-                           zlink::service::owner_kind_t want_owner_,
-                           zlink::service::ready_domain_t want_domain_,
-                           mesh_record_t &out_,
-                           int timeout_ms_ = 3000,
-                           std::function<bool (const mesh_record_t &)> accept_ = {})
-{
-    using namespace zlink::service;
-    ready_batch_t ready (16);
-    receive_batch_t batch (32, 128, 1u << 20);
-    const std::chrono::steady_clock::time_point deadline =
-      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
-
-    while (std::chrono::steady_clock::now () < deadline) {
-        ready.reset ();
-        bool has_residue = false;
-        const int rc = node_.drain_ready (ready_domain_t::all, ready, has_residue,
-                                          zlink::recv_flags_t::dontwait);
-        if (rc != static_cast<int> (zlink::recv_result_t::ok)) {
-            std::this_thread::sleep_for (std::chrono::milliseconds (5));
-            continue;
-        }
-        const size_t count = ready.count ();
-        for (size_t i = 0; i < count; ++i) {
-            const ready_record_t record = ready.at (i);
-            if (record.owner_kind != want_owner_)
-                continue;
-            if ((record.domain & want_domain_) == ready_domain_t::none)
-                continue;
-            claim_t claim = ready.take_claim (i);
-            std::vector<mesh_record_t> drained;
-            const bool ok = mesh_drain_claim (claim, batch, drained);
-            if (!ok || drained.empty ())
-                continue;
-            auto selected = accept_
-                              ? std::find_if (drained.begin (), drained.end (), accept_)
-                              : drained.begin ();
-            if (selected == drained.end ())
-                continue;
-            // A reply token remains valid only while its claim is retained.
-            // Transfer the claim with the selected record so a caller can
-            // submit its reply before the record goes out of scope.
-            selected->claim = std::move (claim);
-            out_ = std::move (*selected);
-            return true;
-        }
-    }
-    return false;
-}
+//  RouteMesh service helpers used to live here. Core 11 removed the service
+//  contracts from the binding headers, so these samples use the raw socket and
+//  socket monitor public API only. The Actor, Spot, session binding, timer and
+//  Logical Multicast scenarios are owned by the C++ Framework samples under
+//  framework/languages/cpp/samples.
 
 //  Convenience: wrap a single text payload as a one-part message vector.
 inline std::vector<zlink::message_t> make_parts (const std::string &text_)
@@ -348,23 +243,6 @@ inline std::vector<zlink::message_t> make_parts (const std::string &text_)
     std::vector<zlink::message_t> parts;
     parts.push_back (zlink::message_t::from (text_));
     return parts;
-}
-
-//  Starts a single-node mesh with one channel and returns the started node's
-//  own routing id (used for local self-addressing in the guide samples). Core
-//  requires a routing id, a bind endpoint and at least one channel before
-//  start(), so a unique per-node routing id is assigned here first.
-inline zlink::routing_id_t
-mesh_start_single_node (zlink::service::mesh_node_t &node_, const std::string &channel_name_)
-{
-    static std::atomic<uint64_t> counter{0};
-    std::ostringstream rid;
-    rid << "node-" << channel_name_ << '-' << counter.fetch_add (1u, std::memory_order_relaxed);
-    node_.set_routing_id (zlink::routing_id_t::from (rid.str ()));
-    node_.set_bind (unique_tcp ("mesh-node"));
-    node_.add_channel_name (channel_name_);
-    node_.start ();
-    return node_.status ().routing_id ();
 }
 
 } // namespace detail

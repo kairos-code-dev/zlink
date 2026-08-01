@@ -59,6 +59,10 @@
 #include <vector>
 #if defined(__unix__) || defined(__APPLE__)
 #include <sys/resource.h>
+#include <unistd.h>
+#endif
+#if defined(_WIN32)
+#include <windows.h>
 #endif
 
 namespace zlink::framework::detail
@@ -729,6 +733,23 @@ std::optional<std::uint64_t> read_process_address_space_limit ()
     return std::nullopt;
 }
 
+std::optional<std::uint64_t> read_total_physical_memory ()
+{
+#if defined(_WIN32)
+    MEMORYSTATUSEX status{};
+    status.dwLength = sizeof (status);
+    if (::GlobalMemoryStatusEx (&status) && status.ullTotalPhys > 0)
+        return static_cast<std::uint64_t> (status.ullTotalPhys);
+#elif defined(_SC_PHYS_PAGES) && defined(_SC_PAGESIZE)
+    const long pages = ::sysconf (_SC_PHYS_PAGES);
+    const long page_size = ::sysconf (_SC_PAGESIZE);
+    if (pages > 0 && page_size > 0)
+        return static_cast<std::uint64_t> (pages)
+               * static_cast<std::uint64_t> (page_size);
+#endif
+    return std::nullopt;
+}
+
 std::uint64_t resolve_application_hwm (
   std::optional<std::uint64_t> configured,
   zlink::framework::application_hwm_profile_t profile,
@@ -746,10 +767,15 @@ std::uint64_t resolve_application_hwm (
           "/sys/fs/cgroup/memory/memory.limit_in_bytes");
     if (!limit)
         limit = read_process_address_space_limit ();
+    //  Spec 06: total physical memory is the last fallback, so Auto sizing
+    //  starts without configuration. Total, not free, keeps it deterministic.
+    if (!limit)
+        limit = read_total_physical_memory ();
     if (!limit)
         throw framework_exception_t (
           framework_error_kind_t::invalid_configuration,
-          "Auto Application HWM requires a finite process memory limit");
+          "Auto Application HWM could not read the total physical memory of "
+          "this host");
     std::uint64_t percent = 0;
     switch (profile) {
         case application_hwm_profile_t::compact:

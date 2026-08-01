@@ -972,6 +972,7 @@ public sealed class DrainCoordinatorTests
             },
             RestoreServing: _ => ValueTask.FromResult(true),
             SealApplicationAdmissions: () => Events.Add("seal-admission"),
+            PublishDrainingToPeers: () => Events.Add("publish-draining"),
             ReopenAdmissions: () => Events.Add("reopen-admission"),
             WaitForAcceptedOperations: () =>
             {

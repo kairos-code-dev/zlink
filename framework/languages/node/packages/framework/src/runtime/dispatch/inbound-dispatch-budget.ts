@@ -4,6 +4,7 @@ import type { ZLinkInboundDispatchOptionValues } from
   '../../contracts/Configuration/InboundDispatch';
 import { ZLinkConfigurationException } from '../configuration';
 import { readFileSync } from 'node:fs';
+import { totalmem } from 'node:os';
 import { join } from 'node:path';
 
 const PROFILE_PERCENT = new Map<ZLinkApplicationHwmProfile, bigint>([
@@ -53,7 +54,8 @@ export class ZLinkInboundDispatchBudget {
       throw new Error('Inbound dispatch queued byte accounting underflow.');
     }
     this.queuedBytes -= bytes;
-    if (wasPaused && !this.receivePaused) {
+    const stillPaused = this.receivePaused;
+    if (wasPaused && !stillPaused) {
       for (const listener of this.resumeListeners) listener();
     }
   }
@@ -65,7 +67,8 @@ export class ZLinkInboundDispatchBudget {
       throw new Error('Inbound dispatch active byte accounting underflow.');
     }
     this.activeBytes -= bytes;
-    if (wasPaused && !this.receivePaused) {
+    const stillPaused = this.receivePaused;
+    if (wasPaused && !stillPaused) {
       for (const listener of this.resumeListeners) listener();
     }
   }
@@ -106,7 +109,7 @@ export class ZLinkInboundDispatchBudget {
           };
           this.completionWaiters.push(wake);
           signal?.addEventListener('abort', abort, { once: true });
-          if (signal?.aborted) abort();
+          if (signal?.aborted === true) abort();
         });
       }
       this.activeCompletionSends += 1n;
@@ -149,11 +152,14 @@ export function resolveApplicationHwm(
     }
     return configured;
   }
+  //  Spec 06: configured limit, then the container/cgroup limit, then total
+  //  physical memory. Total, not free, so Auto stays deterministic.
   const memoryLimit = options.processMemoryLimitBytes
-    ?? detectFiniteProcessMemoryLimit();
-  if (memoryLimit === undefined || memoryLimit <= 0n) {
+    ?? detectFiniteProcessMemoryLimit()
+    ?? totalPhysicalMemory();
+  if (memoryLimit <= 0n) {
     throw new ZLinkConfigurationException(
-      'Application HWM uses Auto sizing, but no finite process memory limit was configured or detected.'
+      'Application HWM Auto sizing could not read the total physical memory of this host.'
     );
   }
   const percent = PROFILE_PERCENT.get(options.applicationHwmProfile);
@@ -172,17 +178,20 @@ export function resolveApplicationHwm(
 }
 
 function detectFiniteProcessMemoryLimit(): bigint | undefined {
-  const constrained = process.constrainedMemory?.();
-  if (
-    constrained !== undefined
-    && Number.isSafeInteger(constrained)
-    && constrained > 0
-  ) {
+  //  Node reports 0 when the process is not memory constrained, so only a
+  //  positive safe integer names a real limit.
+  const constrained = process.constrainedMemory();
+  if (Number.isSafeInteger(constrained) && constrained > 0) {
     return BigInt(constrained);
   }
   const cgroupPath = currentCgroupPath();
   return readFiniteLimit(join('/sys/fs/cgroup', cgroupPath, 'memory.max'))
     ?? readFiniteLimit(join('/sys/fs/cgroup/memory', cgroupPath, 'memory.limit_in_bytes'));
+}
+
+function totalPhysicalMemory(): bigint {
+  const total = totalmem();
+  return Number.isSafeInteger(total) && total > 0 ? BigInt(total) : 0n;
 }
 
 function currentCgroupPath(): string {

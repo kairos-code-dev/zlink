@@ -177,8 +177,8 @@ Operation을 시작한 뒤 cancellation, timeout 또는 transport error가 발�
 적용되었는지 알 수 없을 수 있다. Provider는 이 경우를 성공이나 정상 결과로 추정하지 않는다.
 
 공식 Redis provider의 `OperationTimeout`은 connection을 얻는 시간과 Redis command가 끝나는
-시간을 합친 operation 전체에 적용한다. 제한 시간이 지나면 waiter는 `TimeoutException`으로
-완료된다. 이미 Redis에 전달한 write는 timeout 뒤에도 적용될 수 있으므로 실패했다고
+시간을 합친 operation 전체에 적용한다. 제한 시간이 지나면 provider waiter는 언어별 timeout으로
+완료되고 Framework public operation은 이를 `DeadlineExceeded`로 변환한다. 이미 Redis에 전달한 write는 timeout 뒤에도 적용될 수 있으므로 실패했다고
 추정하지 않는다.
 
 `Put` 결과를 받지 못한 Framework는 자신이 발급한 reference로 `Read`를 실행하거나, 같은 reference와

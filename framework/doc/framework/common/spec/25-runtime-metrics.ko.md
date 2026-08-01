@@ -160,7 +160,7 @@ ID로 처음 호출할 때 Framework가 만들 수 있는 Spot을
 | `stable_type` | Startup에 등록하여 개수가 제한된 User·Instance Spot의 stable type만 사용한다. |
 | `object_kind` | `actor|user_spot|instance_spot` |
 | `policy` | `recreate|snapshot` |
-| Relocation `outcome` | `completed|aborted|recovered|failed|shutdown` |
+| Relocation `outcome` | `completed|aborted|failed|shutdown` |
 | `transport` | Startup 등록 시점에 정한 허용 값 중 하나다. |
 | `close_reason` | `client_close|idle_timeout|heartbeat_timeout|server_shutdown|protocol_error|transport_error` |
 

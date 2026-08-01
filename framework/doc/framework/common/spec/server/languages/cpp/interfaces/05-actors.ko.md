@@ -1,10 +1,11 @@
 # C++ Actor exact interface
 
-Session에 bind된 Actor를 포함한 Spot relocation은 owner와 membership을 commit한 뒤 필요한 lifecycle
-callback과 accepted journal replay·logical timer 복원을 끝내고 durable source state를 정리한 다음 `Completed`를 commit한다.
-같은 `ObjectGeneration`의 route 전환이 양쪽 runtime에서 확인되고 steady route가 확정된 뒤에만
-target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
-아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
+Session에 bind된 Actor를 포함한 Spot relocation은 target에서 Actor와 queue를 복원하고 owner와
+membership을 commit한 뒤 message 처리를 시작한다. Target runtime은
+`sessionActorLocationUpdateReqMsg`를 send하여 binding route와 bound-session current Actor
+location snapshot을 갱신한다. 응답이 없어도 Actor 처리를 멈추지 않으며 정해진 간격으로
+같은 요청을 다시 보낸다. Snapshot은 target MeshName·NodeRid를 제공한다. Relocation 자체는 physical·logical disconnect가
+아니므로 Actor disconnect callback을 실행하지 않는다. relocation 대상에 포함되지 않은 다른 Actor의 route와 physical connection은
 변경하지 않는다.
 
 [C++ exact interface 목차](README.ko.md) · [Actor model](../../../../14-actor-model.ko.md) ·
@@ -55,7 +56,6 @@ struct actor_join_failed_t {
     std::uint64_t operation_id_high;
     std::uint64_t operation_id_low;
     framework_error_kind_t error_kind;
-    bool retryable;
 };
 
 using actor_join_completion_t = std::variant<
@@ -123,10 +123,9 @@ context와 cancellation만 사용하며 ActorId, 다른 owner RID, relocation ph
 Store token을 중복 입력으로 받지 않는다.
 
 Join completion의 128-bit operation ID는 completion idempotency ID이며
-`RelocationId`, reservation ID나 aggregate commit ID가 아니다. Same-node outcome과
-rejected·commit 전 failed completion retry는 current process lifetime으로
-제한한다. Cross-node commit 뒤 accepted만 Relocation manifest에 operation ID,
-optional reply와 cursor를 보존해 durable at-least-once로 전달한다.
+`RelocationId`, reservation ID나 aggregate commit ID가 아니다. Same-node와
+cross-node completion retry는 current source와 target process lifetime으로 제한한다.
+Process 종료 뒤 다른 runtime이 completion을 자동 replay하지 않는다.
 
 모든 Actor factory configure callback은 policy를 정확히 하나 선택한다. `preserve_state_with<TAdapter>()`의 `TAdapter`는
 `actor_relocation_adapter_t<TActor>`를 구현해야 하며 다른 adapter type이면 socket bind 전에 configuration error로
@@ -143,8 +142,8 @@ relocation에서는 adapter를 호출하지 않으며 `DisableRelocation` cross-
 `restore(...)`에 전달한 byte vector는 해당 비동기 호출이 소유한다. Capture가 throw하거나 failed task로 끝나면
 durable abort와 source normalization 뒤 admission을 복원한다. Restore가 실패한 instance는 폐기하고 새 attempt의
 factory가 만든 instance에 같은 immutable payload를 적용한다. Framework가 operation deadline 때문에 callback을
-취소하면 `deadline_exceeded`로 분류한다. Target replacement와 response loss 때문에 두 method는 at-least-once
-호출될 수 있고 stale attempt와 successor 호출이 겹칠 수 있으므로 구현은 retry-safe해야 한다. Framework는
+취소하면 `deadline_exceeded`로 분류한다. 같은 source와 target process 안의 재시도 때문에 두 method는 두 번
+이상 호출될 수 있으므로 구현은 retry-safe해야 한다. 다른 target을 자동 선택하지 않는다. Framework는
 adapter의 external side effect에 exactly-once를 보장하지 않는다.
 
 ## 2. ID-only messaging
@@ -189,7 +188,7 @@ public:
 
 Actor send와 request는 global `actor_id_t`만 target으로 받는다. [MeshName](../../../../01-glossary.ko.md#meshname), ActorRef, [owner](../../../../01-glossary.ko.md#owner) NodeRid와 current
 SpotId를 받는 overload는 없다. Runtime은 positive Ready route만 cache하고 negative cache를 두지 않는다.
-Stale route는 `actor_location_stale`, exact-ref generation mismatch는 `actor_generation_stale`로 구분한다.
+Missing route는 `not_found`, exact-ref generation mismatch는 `invalid_operation`으로 구분한다.
 
 ## 3. Single-use manager operation
 
@@ -249,11 +248,11 @@ public:
 ```
 
 Call object는 option마다 최대 한 번 설정하고 `submit()`도 한 번만 호출한다. Duplicate option은
-`invalid_configuration`, 두 번째 submit은 `already_submitted`다. `in_mesh`를 생략했을 때 object role Mesh가
-하나면 자동 선택하고, 0개면 `object_client_not_configured`, 여러 개면 `mesh_selection_required`다. Unknown
-Mesh는 `mesh_not_found`다.
+`invalid_operation`, 두 번째 submit도 `invalid_operation`이다. `in_mesh`를 생략했을 때 object role Mesh가
+하나면 자동 선택하고, 0개면 `not_configured`, 여러 개면 `invalid_operation`이다. Unknown
+Mesh는 `not_found`다.
 
-`Create`는 existing identity에 `actor_already_exists`를 반환하고 새 attempt에서는
+`Create`는 existing identity에 `already_exists`를 반환하고 새 attempt에서는
 `actor_create_created_t` 또는 `actor_create_rejected_t`를 반환한다. `GetOrCreate`는
 같은 stable type의 [Ready](../../../../01-glossary.ko.md#ready) Actor를 callback 없이
 `actor_create_existing_t`로 반환한다. Creating이면 authority 변경을 기다리며 CAS loser는
@@ -263,12 +262,12 @@ reply를 공유하지 않는다. 같은 source Node RID·lifecycle generation·`
 재전송만 correlation-free `creation-operation-terminal-v1` envelope를 읽고 현재
 correlation·reply route로 reply를 다시 encode한다. Terminal은 original deadline 뒤 5분
 동안 유지한다. Callback exception은 rejected result가
-아니라 typed creation failure다. Type이 다르면 `actor_type_mismatch`다.
+아니라 typed creation failure다. Type이 다르면 `type_mismatch`다.
 [Deadline](../../../../01-glossary.ko.md#deadline)은 resolve, reservation, factory와
 Ready 전체에 적용한다. `Find`는 Ready ref만 반환하며 생성하지 않는다. `FindSpot`은 current User Spot
 membership의 Ready `spot_ref_t`만 반환하고 Entry [membership](../../../../01-glossary.ko.md#membership) 또는 Missing Actor에는 빈 optional을 반환한다.
 `Destroy`는 exact ActorRef만 변경한다.
-같은 incarnation이 없으면 `false`, 다른 generation은 `actor_generation_stale`, 이동 중이면 `actor_moving`이다.
+같은 incarnation이 없으면 `false`, 다른 generation은 `invalid_operation`, 이동 중이면 `unavailable`이다.
 Public Actor directory와 local Actor bind overload는 제공하지 않는다.
 
 Actor creation은 selected owner MeshNode의 [Entry Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) membership을 Ready barrier 안에서 함께 확정한다. Actor
@@ -306,6 +305,11 @@ Bind는 caller가 제출한 exact ActorRef 위치로 한 번만 control request�
 ActorId를 다시 lookup하거나 fresh incarnation으로 자동 bind하지 않는다. `find(...)`는 해당 STREAM session에
 이미 bind된 Actor만 조회하며 global Actor directory가 아니다.
 
+Actor relocation이 commit되면 `session_actor_t::ref()`는 같은 ActorId·ObjectGeneration과 target
+MeshName·NodeRid를 가진 current location snapshot을 반환하고, 저장된 binding route도 같은 시점에
+갱신된다. Caller가 복사해 보관한 이전 `actor_ref_t` 값은 변경하지 않는다. Application은 relocation을
+알기 위해 `bind(...)`를 다시 호출하지 않는다.
+
 현재 STREAM binding을 통한 one-way push는 connection-bound operation이다. 유효한 binding이 없거나 connection
 generation이 바뀌면 session-not-bound 또는 stale 결과로 끝나며, Framework가 다른 session을 찾아 다시
 제출하지 않는다. Connection 종료는 Actor의 [Spot](../../../../01-glossary.ko.md#spot) membership을 바꾸거나 Actor를 자동 종료하지 않는다.
@@ -318,5 +322,5 @@ generation이 바뀌면 session-not-bound 또는 stale 결과로 끝나며, Fram
 
 이 문서에 선언된 `yield()`와 `yield_message()`는 현재 Actor handler가 `SpotWide` User Spot의 shared
 execution gate에서 실행 중일 때만 유효하다. Entry Spot Actor와 `PerActor` User Spot의 Actor가 호출하면
-operation을 제출하거나 turn을 반환하지 않고 `invalid_configuration`으로 완료한다. `submit()`은 모든 Actor
+operation을 제출하거나 turn을 반환하지 않고 `invalid_operation`으로 완료한다. `submit()`은 모든 Actor
 실행 문맥에서 사용할 수 있다.

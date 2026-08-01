@@ -343,10 +343,70 @@ void test_pub_blocking_publish_succeeds_while_subscriber_drains_tcp ()
     test_context_socket_close (pub);
 }
 
+//  PUB and XPUB default to lossy fanout: ZLINK_PUB_OPT_NODROP is 0 unless the
+//  caller sets it. Reliable delivery is opt-in, not the default.
+void test_pub_nodrop_default_is_zero ()
+{
+    const int socket_types[] = {ZLINK_SOCKET_XPUB, ZLINK_SOCKET_PUB};
+    for (size_t i = 0; i < sizeof (socket_types) / sizeof (socket_types[0]); i++) {
+        void *pub = test_context_socket (socket_types[i]);
+        int value = -1;
+        size_t size = sizeof (value);
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_get_pub_option (pub, ZLINK_PUB_OPT_NODROP, &value, &size));
+        TEST_ASSERT_EQUAL_INT (0, value);
+        test_context_socket_close (pub);
+    }
+}
+
+//  With the default option the publisher never reports backpressure. Messages
+//  past the HWM are dropped for the slow subscriber and publish keeps
+//  succeeding.
+void test_default_publish_drops_instead_of_backpressuring ()
+{
+    void *pub = test_context_socket (ZLINK_SOCKET_XPUB);
+
+    const uint64_t hwm = 200u * sizeof (zlink_msg_t);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (pub, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, "inproc://nodrop-default"));
+
+    void *sub = test_context_socket (ZLINK_SOCKET_SUB);
+    //  Bound both ends: an unbounded receive queue would absorb every message
+    //  and the publisher pipe would never reach its HWM.
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (sub, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, "inproc://nodrop-default"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, ""));
+
+    //  Wait for the subscription so the count below is not lost to the race.
+    recv_string_expect_success (pub, "\1", 0);
+
+    //  Do not drain the subscriber. Every send must still succeed.
+    const int send_target = 4000;
+    for (int i = 0; i < send_target; i++)
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_send (pub, static_cast<const void *> (NULL), 0, 0));
+
+    const int sub_rcvtimeo = 250;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (sub, ZLINK_OPT_RCVTIMEO, &sub_rcvtimeo, sizeof (sub_rcvtimeo)));
+
+    int recv_count = 0;
+    while (zlink_recv (sub, NULL, 0, 0) == 0)
+        recv_count++;
+    TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
+
+    //  The HWM is far below the send count, so the socket must have dropped.
+    TEST_ASSERT_TRUE (recv_count < send_target);
+
+    test_context_socket_close (sub);
+    test_context_socket_close (pub);
+}
+
 int main ()
 {
     setup_test_environment ();
     UNITY_BEGIN ();
+    RUN_TEST (test_pub_nodrop_default_is_zero);
+    RUN_TEST (test_default_publish_drops_instead_of_backpressuring);
     RUN_TEST (test);
     RUN_TEST (test_pub_blocking_publish_succeeds_while_subscriber_drains_tcp);
     return UNITY_END ();

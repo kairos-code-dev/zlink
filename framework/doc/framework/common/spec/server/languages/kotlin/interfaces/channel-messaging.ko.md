@@ -17,7 +17,7 @@ direct는 MeshName을 제공하고 ClientServer와 classic fanout은 제공하�
 
 Handler와 filter는 dispatch마다 한 번씩 만들어 같은 scoped dependency를 사용하며,
 Application DI 등록으로 이 수명을 바꿀 수 없다. `next.invoke()`를 두 번 호출하면
-`IllegalStateException`이고, request에서 호출하지 않으면 `REQUEST_REJECTED`다. Filter가
+`IllegalStateException`이고, request에서 호출하지 않으면 `REJECTED`다. Filter가
 임의 값을 반환해도 handler reply를 대체하지 않는다. Coroutine suspension은 dispatch
 scope를 terminal completion 뒤까지 연장하지 않는다.
 

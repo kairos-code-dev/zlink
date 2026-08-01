@@ -15,10 +15,11 @@ internal static class ZLinkApplicationHwmResolver
         if (options.ApplicationHwmBytes is { } configured)
             return configured;
 
-        var memoryLimit = options.ProcessMemoryLimitBytes ?? ReadCgroupMemoryLimit();
-        if (memoryLimit is not { } finiteLimit)
-            throw new ZLinkConfigurationException(
-                "ApplicationHwmBytes uses Auto sizing, but no finite process memory limit was configured or detected.");
+        // Spec 06: configured limit, then the container/cgroup limit, then total
+        // physical memory. Total, not available, so Auto stays deterministic.
+        var finiteLimit = options.ProcessMemoryLimitBytes
+                          ?? ReadCgroupMemoryLimit()
+                          ?? ReadTotalPhysicalMemory();
 
         var percent = options.ApplicationHwmProfile switch
         {
@@ -37,6 +38,15 @@ internal static class ZLinkApplicationHwmResolver
             throw new ZLinkConfigurationException(
                 "Application Auto HWM must resolve to a positive finite byte value.");
         return hwm;
+    }
+
+    internal static ulong ReadTotalPhysicalMemory()
+    {
+        var total = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
+        if (total <= 0)
+            throw new ZLinkConfigurationException(
+                "Application Auto HWM could not read the total physical memory of this host.");
+        return (ulong) total;
     }
 
     internal static ulong? ReadCgroupMemoryLimit()

@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'systems.zlink'
-version = '11.0.2'
+version = '11.1.0'
 description = 'zlink Java bindings — high-performance async messaging library'
 
 java {
@@ -40,7 +40,7 @@ def bridgeOutputDir = layout.buildDirectory.dir(
 ['apiElements', 'runtimeElements'].each { configurationName ->
     configurations.named(configurationName) {
         attributes {
-            attribute(Attribute.of('systems.zlink.core.version', String), '11.0.0')
+            attribute(Attribute.of('systems.zlink.core.version', String), '11.1.0')
             attribute(Attribute.of('systems.zlink.core.soname', String),
                 'libzlink.so.11')
             attribute(Attribute.of('systems.zlink.core.provenance-sha256', String),
@@ -118,11 +118,11 @@ tasks.register('buildZlinkJavaBridge', Exec) {
             .digest(manifest.bytes).encodeHex().toString()
         def runtimeSha256 = java.security.MessageDigest.getInstance('SHA-256')
             .digest(runtime.bytes).encodeHex().toString()
-        if (metadata.version != '11.0.0') {
-            throw new GradleException('Core package must report version 11.0.0')
+        if (metadata.version != '11.1.0') {
+            throw new GradleException('Core package must report version 11.1.0')
         }
         def approved = approvedCorePackage
-        if (approved != null && (approved.version != '11.0.0'
+        if (approved != null && (approved.version != '11.1.0'
             || approved.prefix != corePackagePrefix.canonicalPath
             || approved.provenanceSha256 != manifestSha256
             || approved.runtime.sha256 != runtimeSha256
@@ -250,7 +250,7 @@ publishing {
                     }
                 }
                 properties = [
-                    'zlink.core.version': '11.0.0',
+                    'zlink.core.version': '11.1.0',
                     'zlink.core.soname': 'libzlink.so.11',
                     'zlink.core.provenance-sha256':
                         approvedCorePackage?.provenanceSha256 ?: 'unverified',

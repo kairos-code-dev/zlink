@@ -2,7 +2,7 @@ package systems.zlink.e2e.registrymessaging.workflow.Handlers;
 
 import systems.zlink.e2e.registrymessaging.workflow.Infrastructure.ScenarioState;
 import systems.zlink.e2e.registrymessaging.shared.Contracts;
-import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 
@@ -18,7 +18,7 @@ public final class ProfileReqHandler
     @Override
     public java.util.concurrent.CompletionStage<Contracts.ProfileRes> handle(
         Contracts.ProfileReq request,
-        ZLinkRequestContext context) {
+        ZLinkMessageContext context) {
         if (request.value().startsWith("slow")) {
             try {
                 Thread.sleep(1000);

@@ -44,6 +44,11 @@ Framework는 다음 결과를 보장한다.
 - 이전 owner가 뒤늦게 위치를 변경하지 못하게 한다.
 - Host 교체 중 application state와 아직 실행하지 않은 작업을 다른 node에서 복원한다.
 
+11.1.0의 relocation은 source와 선택한 target process가 실행되는 동안에만 진행한다.
+Process가 종료된 뒤 다른 runtime이 relocation을 이어받거나 다른 target으로 자동
+failover하지 않는다. Location Store 응답이 유실됐을 때 실제 owner를 다시 확인하는
+동작은 자동 failover가 아니라 owner를 둘로 만들지 않기 위한 필수 확인이다.
+
 Core transport는 byte를 전달할 뿐 Actor·Spot의 위치, 생성과 relocation 상태를
 해석하지 않는다.
 
@@ -106,7 +111,7 @@ Framework의 Actor·Spot 규칙을 provider가 직접 구현하지 않는다.
 | 의미를 해석하지 않는 key와 bytes를 읽고, 지정한 버전이 그대로일 때만 함께 변경한다. | Location Store provider |
 | 한 번 저장하면 바꾸지 않는 relocation payload를 저장하고 읽고 삭제한다. | Relocation Store provider |
 | 실행 중인 node 정보, owner 사용 기한과 현재 위치 record의 의미를 해석한다. | Framework |
-| 남은 수용 공간을 계산하고 여러 object를 함께 옮기며 실패 후 복구한다. | Framework |
+| 남은 수용 공간을 계산하고 여러 object를 함께 옮기며 실패 결과를 정리한다. | Framework |
 
 예를 들어 Location Store provider는 저장할 bytes가 Actor owner인지 capacity인지 알
 필요가 없다. Framework가 필요한 record를 만들고 provider에는 읽기와 “전부
@@ -168,43 +173,58 @@ services.AddZLinkFramework(options =>
 
 ### 1.4 정상 처리 순서
 
-Object 생성과 이동은 다음 순서를 따른다.
+Actor나 Spot을 다른 node로 이전할 때는 다음 순서를 따른다.
 
 1. Framework가 현재 실행 중인 node 정보, owner의 사용 기한과 위치 record를
    확인한다.
 2. Location Store에서 target node가 사용할 수용 공간을 확보한다.
-3. 다른 node에서 복원할 데이터가 있으면 Relocation Store에 먼저 저장한다. 저장
-   위치, 내용 확인값과 보관 기한을 다시 읽어 확인한다.
-4. Location Store는 처음 읽은 버전이 그대로일 때만 owner, membership, 수용 공간과
-   복원 데이터의 위치를 한 번에 변경한다. 이 방식을 compare-and-set, 줄여서
+3. Source는 application state와 아직 실행하지 않은 작업을 Relocation Store에 먼저
+   저장한다. 저장 위치, 내용 확인값과 보관 기한을 다시 읽어 확인한다.
+4. Location Store의 `Captured` record가 이 payload를 가리키게 한 뒤 Source가 Target에
+   Restore 요청을 보낸다.
+5. Target은 요청을 받으면 relocation temporary queue를 먼저 등록한다. Source는 ingress
+   hold의 message와 이후 이전 route로 들어오는 message를 이 queue로 계속 relay한다.
+6. Target은 Location Store가 가리키는 payload만 읽어 외부에 아직 공개하지 않은 instance에
+   복원한다. Restore가 끝나면 Location Store는 처음 읽은 version이 그대로일
+   때만 owner, membership과 수용 공간을 한 번에 변경한다. 이 방식을 compare-and-set, 줄여서
    [CAS](01-glossary.ko.md#compare-and-set)라고 한다.
-5. Target node는 Location Store가 가리키는 데이터만 읽어 복원한다.
-6. Target node가 message를 받을 준비와 source 정리를 끝내면 Location Store에서
+7. Owner 변경과 필요한 lifecycle callback이 끝나면 저장된 기존 작업을 실제 object queue에
+   먼저 넣고 temporary queue의 작업을 그 뒤에 옮긴다. Temporary queue 등록을 제거하고 기존
+   dispatch로 전환한 뒤 application message 처리를 시작한다.
+8. Target이 전환 완료를 알릴 때까지 source는 ingress hold 원본을 유지한다. 전환 완료와 source
+   정리가 끝나면 Location Store에서
    해당 데이터의 사용 종료를 먼저 기록한다. 그 뒤 Relocation Store에서 데이터를
    삭제한다.
 
 ```mermaid
 sequenceDiagram
-    participant F as Framework
-    participant T as Relocation Store
+    participant S as Source runtime
+    participant B as Relocation Store
     participant L as Location Store
-    participant R as Target runtime
+    participant T as Target runtime
 
-    F->>L: 현재 owner와 record version을 확인한다
-    F->>T: 복원할 데이터를 저장한다
-    T-->>F: 저장 위치, 내용 확인값과 만료 시각을 반환한다
-    F->>L: owner와 저장 위치를 CAS로 변경한다
-    L-->>F: 변경된 record version을 반환한다
-    F->>R: Location Store가 가리키는 데이터로 복원을 요청한다
-    R->>L: 현재 owner와 저장 위치를 다시 확인한다
-    R->>T: 지정된 데이터를 읽는다
-    R-->>F: 복원과 message 수신 준비 완료를 알린다
-    F->>L: 저장 데이터 사용 종료를 CAS로 기록한다
-    F->>T: payload를 삭제한다
+    S->>L: 현재 owner와 record version을 확인한다
+    S->>B: state와 queue payload를 저장한다
+    S->>L: payload 위치와 확인값을 Captured로 기록한다
+    S->>T: Restore 요청을 보낸다
+    T->>T: relocation temporary queue를 등록한다
+    S->>T: ingress hold message를 계속 relay한다
+    T->>T: temporary queue에 message를 보관한다
+    T->>L: Captured에 기록된 payload 위치를 읽는다
+    T->>B: payload를 읽어 외부에 공개하지 않은 instance에 Restore한다
+    T->>L: target attempt와 준비 결과를 Prepared로 기록한다
+    T-->>S: target Restore 준비 완료를 알린다
+    T->>L: owner와 membership을 target으로 CAS한다
+    T->>T: 기존 작업 뒤 temporary 작업을 옮기고 dispatch를 전환한다
+    L-->>S: target owner 확정을 알린다
+    T-->>S: temporary queue 전환 완료를 알린다
+    S->>S: target queue가 수락한 ingress hold 원본을 제거한다
+    T->>L: 저장 데이터 사용 종료를 기록한다
+    T->>B: relocation payload를 삭제한다
 ```
 
 두 Store를 하나의 distributed transaction이나 2PC로 묶지 않는다. Relocation
-Store에 데이터를 먼저 준비하고 Location Store의 한 번의 변경으로 새 owner에게
+Store에 데이터를 먼저 준비하고 Location Store의 owner CAS 한 번으로 새 owner에게
 공개한다.
 
 Relocation Store 사용 여부는 다음과 같다.
@@ -416,7 +436,7 @@ Deadline을 넘거나 현재 host 실행 조합이 Store 값과 다르면 다음
 | Descriptor 게시와 automatic RID owner 변경 |
 | Actor·Spot·Instance message와 timer callback 시작 |
 | Factory·restore 결과를 Store에 확정하는 작업 |
-| Relocation source·target·coordinator 상태 변경과 수용 공간 확보 |
+| Relocation source·target 상태 변경과 수용 공간 확보 |
 
 이미 local queue가 받은 작업의 결과 처리와 정리는 별도 deadline 안에서 진행할 수
 있다. 하지만 만료된 owner 자격으로 새 Store 변경을 만들지 않는다.
@@ -644,7 +664,9 @@ Manager의 `Find(global ID)`는 현재 `Ready`인 object만 반환하며 새 obj
 않는다. ActorRef와 SpotRef에는 전역 ID, `ObjectGeneration`, `MeshName`과 `NodeRid`가
 들어간다. `ObjectGeneration`은 0이 아닌 63-bit unsigned 값이며 JSON에서는 decimal
 string이다. `MeshName`과 `NodeRid`는 조회 당시 위치를 보여 주며 일반 message target
-또는 새 배치 조건으로 사용하지 않는다.
+또는 새 배치 조건으로 사용하지 않는다. Bound session accessor가 반환하는 ActorRef snapshot은
+relocation의 route switch 뒤 target MeshName·NodeRid로 갱신되지만, binding route 자체는
+Location Store가 저장하거나 선택하지 않는다.
 
 `Destroy`와 `Close`는 caller가 넘긴 ref의 generation만 대상으로 한다. 해당
 generation이 없으면 `false`, 같은 ID의 다른 generation이 있으면 stale-generation
@@ -675,7 +697,8 @@ Message Follow라고 하며, 기간인 `MessageFollowDuration`의 기본값은 3
 읽지 않는다. 새 owner의 `AuthorityOwnerGeneration`은 이전 값보다 커야 하며 최대
 8번까지만 이어서 전달한다. 이동 하나당 보관할 수 있는 양은 message 1,024개와
 16 MiB다. 기존 operation ID, `ObjectGeneration`, payload와 reply route를 그대로
-유지한다. 순환, generation 불일치 또는 제한 초과는 typed stale-route error다.
+유지한다. 순환은 `Unavailable`, generation 불일치는 `InvalidOperation`, 제한 초과는
+`CapacityExceeded`다.
 
 ### 6.4 운영 도구에서 현재 위치를 조회한다
 
@@ -710,22 +733,25 @@ Framework는 이동 대상 하나마다 다음 순서를 지킨다.
 2. Source queue가 실행 중인 작업 하나를 끝낸 뒤 새 작업 시작을 막는다.
 3. 아직 실행하지 않은 message, timer와 application state를 Relocation Store에
    저장한다.
-4. Target 수용 공간을 확보하고 application이 반환한 복원 결과를 준비한다. 아직
-   새 message를 받지 않는다.
+4. Target 수용 공간을 확보하고 Restore 요청을 보낸다. Target은 relocation temporary
+   queue를 먼저 등록한 뒤 application state를 복원한다. 이때 들어오는 message는
+   temporary queue에 보관하고 handler를 실행하지 않는다.
 5. Location Store 요청 하나로 owner, membership, 수용 공간과 복원 데이터 위치를
    함께 바꾼다.
-6. Target에서 미완료 작업과 timer를 복원하고 source 정리까지 끝낸 뒤 새 message를
-   받는다.
+6. 필요한 lifecycle callback을 완료하고 저장된 기존 작업과 temporary queue 작업을
+   실제 queue에 순서대로 넣는다. Temporary queue 등록을 제거하고 dispatch를 전환한 뒤
+   새 message를 처리한다.
 
-5번 전에 실패하면 source가 계속 owner다. 5번 뒤에 실패하면 Location Store에
-기록된 target에서 복구한다. Source를 다시 owner로 추측하여 되돌리지 않는다.
+5번 전에 실패하면 source가 계속 owner다. 5번 뒤에 실패하면 Source를 다시 owner로
+추측하여 되돌리지 않는다. 같은 target process가 실행 중일 때만 deadline 안에서 현재
+단계를 다시 시도하며, target process가 종료되면 object를 unavailable 상태로 둔다.
 
-### 7.1 같은 이동과 target 재시도를 구분하는 값
+### 7.1 같은 이동과 target 요청을 구분하는 값
 
 | 값 | 용도 |
 |---|---|
 | `RelocationId` | 이동 하나를 식별하는 0이 아닌 128-bit 난수다. Runtime만 사용한다. |
-| `TargetAttemptGeneration` | 같은 이동에서 target 준비를 다시 시도했는지 구분하는 0이 아닌 값이다. |
+| `TargetAttemptGeneration` | 같은 target에 보낸 중복 또는 이전 Restore 요청을 구분하는 0이 아닌 값이다. 11.1.0에서는 다른 target 선택에 사용하지 않는다. |
 | [Reservation ID](01-glossary.ko.md#reservation-id) | Target 수용 공간을 확보한 요청을 식별하는 0이 아닌 128-bit 값이다. 생성용 ID와 별개다. |
 
 Location Store의 object별 위치 record는 최대 1 MiB다. 큰 목록과 실제 복원 데이터는
@@ -748,14 +774,14 @@ target의 host 실행 세대, owner 정보와 필요한 공간을 모두 고정�
 | 확인 결과 | 처리 |
 |---|---|
 | 현재 owner와 사용 중인 공간이 요청과 같음 | Target 검사를 계속한다. |
-| Source descriptor나 owner lease가 만료됨 | Location Store의 사용 중인 공간과 owner가 요청과 같으면 복구 작업은 계속할 수 있다. |
+| Source descriptor나 owner lease가 만료됨 | Relocation을 자동으로 이어받지 않는다. 남은 staging record와 payload는 정리 대상으로 둔다. |
 | Target host 실행 세대, owner lease, 제공 type과 남은 공간이 모두 유효함 | Target 공간을 같은 Store 요청에서 확보한다. |
 | 같은 Reservation ID와 같은 내용 | 앞서 발급한 값을 다시 반환한다. |
 | 같은 ID의 내용이 다르거나 target이 만료됨 | `Conflict`이며 아무것도 변경하지 않는다. |
 
 공간을 확보했다는 사실만으로 owner를 바꾸거나 source의 새 작업을 허용하지 않는다.
-시간이 지났다는 이유만으로 공간을 반환하지 않는다. Location Store의 정확한
-record를 확인한 복구 작업만 계속하거나 취소할 수 있다.
+시간이 지났다는 이유만으로 공간을 반환하지 않는다. 실행 중인 source와 target이
+Location Store의 정확한 record를 확인한 뒤에만 계속하거나 취소할 수 있다.
 
 `SpotWide` User Spot 전체를 옮길 때는 두 종류의 Store 변경만 허용한다.
 
@@ -795,8 +821,8 @@ User Spot relocation을 `Completed`로 기록한다.
 | `Aborted` | Source가 owner다. 취소 전달, 정리와 진행 정보 제거가 끝날 때까지 새 application 작업을 받지 않는다. |
 
 User Spot membership을 바꾸지 않는 Actor 이동은 `NewOwner` CAS 한 번으로 owner를
-바꾼다. Target 준비를 다시 하면 target 시도 번호와 target 정보만 교체한다. 이전
-시도는 owner를 바꿀 수 없다.
+바꾼다. 같은 target process에서 준비를 다시 하면 target 시도 번호와 준비 정보만
+교체한다. 11.1.0은 다른 target으로 교체하지 않는다. 이전 시도는 owner를 바꿀 수 없다.
 
 | 이동 종류 | Location Store에서 함께 바꾸는 값 |
 |---|---|
@@ -835,9 +861,9 @@ Queue 중지, 동시 이동 수, payload 구성, timer와 Session 처리는
 |---|---|---|
 | `Preparing` | Source owner 정보와 이동 대상 목록의 내용 확인값 | 현재 source와 모두 같아야 한다. |
 | `Captured` | Relocation Store의 데이터 위치, checksum과 목록 내용 확인값 | 전체 데이터가 존재하고 남은 보관 기간이 충분해야 한다. |
-| `Prepared` | Target 시도 번호, target owner 정보와 확보한 공간 | Target의 복원 준비와 payload 검증을 끝내야 한다. |
-| Owner 변경 | Target owner, membership, 사용 중인 공간과 같은 데이터 위치 | Object 하나 또는 User Spot 전체의 CAS가 성공해야 한다. |
-| `Completed` | 복원, 이전 owner 전달과 source 정리를 끝낸 항목 수 | 저장한 전체 항목 수가 같고 전달 대기 수가 0이어야 한다. |
+| `Prepared` | Target 시도 번호, target owner 정보와 확보한 공간 | Target의 Restore 준비와 relocation temporary queue 등록을 끝내야 한다. |
+| Owner 변경 | Target owner, membership, 사용 중인 공간과 같은 복원 데이터 위치 | Restore를 끝내고 Object 하나 또는 User Spot 전체의 CAS가 성공해야 한다. |
+| `Completed` | Target dispatch 전환과 이전 owner를 통한 reply 전달을 끝낸 항목 수 | 저장한 전체 항목 수가 같고 전달 대기 수가 0이어야 한다. |
 
 ```mermaid
 sequenceDiagram
@@ -849,27 +875,33 @@ sequenceDiagram
     S->>L: Preparing을 기록한다
     S->>B: 복원 데이터를 저장하고 다시 확인한다
     S->>L: 데이터 위치와 checksum을 Captured로 기록한다
+    S->>T: Restore 요청을 보낸다
+    T->>T: relocation temporary queue를 등록한다
+    S->>T: ingress hold message를 계속 relay한다
     T->>L: 현재 owner와 데이터 위치를 읽는다
-    T->>B: 지정된 데이터를 읽고 확인한다
+    T->>B: 지정된 데이터를 읽고 Restore한다
     T->>L: target 정보와 Prepared를 기록한다
-    S->>L: owner, membership과 공간을 함께 변경한다
+    T-->>S: target Restore 준비 완료를 알린다
+    T->>L: owner, membership과 공간을 함께 변경한다
+    T->>T: temporary 작업을 실제 queue로 옮기고 dispatch를 전환한다
     T->>L: 복원과 정리가 끝나면 Completed를 기록한다
 ```
 
-Target은 Location Store가 가리키는 데이터만 사용한다. Checksum 또는 이동 대상
-목록의 내용 확인값이 다르면 복원과 owner 변경을 시작하지 않는다.
+Target은 Location Store가 가리키는 데이터만 사용한다. Payload checksum이나 이동 대상 목록의
+내용 확인값이 다르면 Restore와 owner 변경을 시작하지 않는다. 같은 `RelocationId`라도 target
+attempt가 다르면 이전 attempt의 temporary queue를 사용하지 않는다.
 
 | 실패 시점 | 처리 |
 |---|---|
 | `Preparing` 또는 payload 저장 중 source 종료 | 현재 source owner를 확인한 뒤 이동을 취소한다. 어떤 위치 record도 가리키지 않는 payload는 보관 기한 뒤 삭제한다. |
-| `Captured` 뒤 target 실패 | 기록된 payload와 새로운 target 시도 번호로 계속한다. Source로 되돌리지 않는다. |
+| `Captured` 뒤 owner 변경 전 target 실패 | 이동을 취소하고 source owner를 유지한다. 다른 target을 자동 선택하지 않는다. |
 | `Captured` 또는 `Prepared` 직전에 필수 정보가 사라짐 | Owner를 바꾸지 않고 이동을 취소한다. Payload 위치도 Location Store에 연결하지 않는다. |
 | Location Store가 가리키는 payload가 영구적으로 없거나 확인값이 다름 | 다시 시도해도 고칠 수 없는 `DataLost`로 기록한다. |
 
 `Captured` 전의 요청 실패는 일반 connection failure, timeout 또는 cancellation으로
 처리한다. 이미 받았던 작업을 다른 node에서 자동 실행한다고 보장하지 않는다.
-`Captured` 뒤에는 Location Store가 가리키는 payload를 process 재시작 후 복구
-근거로 사용한다.
+`Captured` 뒤에는 Location Store가 가리키는 payload를 현재 source와 target process가
+정상 handoff를 계속하는 근거로 사용한다. Process 재시작 뒤 자동 복구에는 사용하지 않는다.
 
 Target은 object ID와 예상 `AuthorityOwnerGeneration`으로 현재 위치를 직접 읽는다.
 여기서 종류, stable type, membership, 수용 공간과 `StoreVersion`을 얻는다. Record가
@@ -878,22 +910,27 @@ Target은 object ID와 예상 `AuthorityOwnerGeneration`으로 현재 위치를 
 
 ### 7.4 Target이 새 message를 받기 시작하는 시점
 
-Target은 factory와 `Restore`를 실행하는 동안 새 message를 받지 않는다. Process가
-종료되면 같은 payload로 factory와 `Restore`가 다시 실행될 수 있다. 실패한 instance는
-버리고 새 instance에서 다시 실행한다. Application callback도 같은 입력을 다시
-받아도 상태가 깨지지 않아야 한다. Framework는 callback이 외부 system에 만든
-변경을 정확히 한 번만 실행했다고 보장하지 않는다.
+Target은 factory와 `Restore`를 실행하는 동안 새 message를 relocation temporary queue에
+보관하고 application handler에는 전달하지 않는다. 같은 target process 안에서 Restore를
+다시 시도하면 실패한 instance를 버리고 새 instance를 만든다. Application callback은 같은
+입력을 다시 받아도 상태가 깨지지 않아야 한다. Framework는 callback이 외부 system에 만든
+변경을 정확히 한 번만 실행했다고 보장하지 않는다. Target process가 종료되면 다른 runtime이
+같은 payload로 Restore를 자동 재개하지 않는다.
 
 Target은 다음 조건을 모두 만족한 뒤에만 `Ready`가 된다.
 
 - Owner와 membership 변경을 완료했다.
 - Lifecycle callback, 미완료 작업과 timer 복원을 완료했다.
-- Source 정리 완료를 Store에 기록했다.
-- 위치 record를 `Completed`로 변경했다.
-- Session에 연결된 Actor이면 새 reply route 사용 확인을 받았다.
-- Owner, generation과 수용 공간을 유지한 채 이동 중에만 쓰던 정보를 제거했다.
+- 저장된 기존 작업과 temporary queue 작업을 실제 execution queue에 순서대로 넣었다.
+- Temporary queue 등록을 제거하고 기존 dispatch 경로로 atomic하게 전환했다.
 
-Resolver는 이동용 payload 위치가 남아 있는 object를 `Ready`로 반환하지 않는다.
+Source ingress hold 원본 제거, 위치 record의 `Completed` 변경과 Session Actor 위치 갱신 응답은 target
+application message 처리를 막지 않는다. 실행 중인 source와 target runtime이 이 후속 작업을
+각자 계속한다.
+
+Resolver는 위 `Ready` 조건을 모두 만족하기 전에는 이동 중인 object를 `Ready`로 반환하지
+않는다. Target dispatch 전환 뒤 이전 owner를 통한 reply 전달과 `Completed` 기록을 위해 relocation payload
+위치를 유지하는 것은 `Ready`를 막지 않는다.
 
 `PerActor` User Spot의 target shell은 Spot authority CAS, source Spot queue relay와
 target Spot admission 준비가 끝나면 `ToSpot`, Create와 Join에 대해 Ready가 된다.
@@ -932,23 +969,20 @@ Connection 종료나 재연결만으로 완료 결과를 받았다고 판단하�
 deadline을 넘으면 `ForceStopped`다. 이 경우 payload와 reply bytes를 24시간
 보관한다.
 
-### 7.6 Source 정리와 owner 변경 전 취소
-
-`relocationComplete`는 source 정리 완료를 Store에 기록했거나, 현재 조정 작업이
-source owner lease 종료를 확인하고 `SourceLeaseExpired`를 기록한 경우에만 보낸다.
-각 sender는 자신이 받은 변경 권한이 아직 유효한지 확인한다. 같은
-`RelocationId`와 정리 상태를 다시 처리해도 결과가 바뀌지 않아야 한다.
+### 7.6 Owner 변경 전 취소
 
 Owner를 바꾸기 전에 취소할 때는 다음 순서를 지킨다.
 
 1. Source가 새 작업을 받지 않는 상태를 유지한다.
 2. Location Store에 `Aborted`를 기록한다.
-3. Session에 취소 route를 전달하고 응답을 받는다.
+3. Target temporary queue의 작업을 실행하지 않고 폐기한다. Source ingress hold 원본과
+   저장해 둔 기존 작업은 원래 순서대로 source queue에 되돌린다.
 4. 확보한 target 공간과 어떤 위치 record도 가리키지 않는 payload를 정리한다.
 5. Source owner, generation과 사용 중인 공간을 유지하고 이동 진행 정보만 제거한다.
 6. Source가 새 작업을 다시 받는다.
 
-`Aborted`를 기록하기 전에 Session 취소 route를 보내거나 새 작업을 받지 않는다.
+Owner를 바꾸기 전에는 Session Actor 위치 갱신 message를 보내지 않았으므로 취소 message나
+응답 대기도 필요하지 않다. `Aborted`를 기록하기 전에 source가 새 작업을 받으면 안 된다.
 
 ## 8. Store 응답을 받지 못했을 때
 
@@ -1026,11 +1060,12 @@ Deadline을 넘으면 `ForceStopped` 결과를 한 번만 완료한다. Timer, S
 | Instance Spot 최초 생성 | Source가 owner를 미리 만들지 않는다. 하나의 target만 factory를 실행한다. 최초 message와 복구 정보를 `Ready` 전에 저장한다. |
 | 위치 cache와 이전 owner 전달 | `Missing`, `Creating`과 Store 오류를 cache하지 않는다. Cache는 owner의 새 작업 허용 시각을 넘지 않는다. 전달은 최대 8번, message 1,024개와 16 MiB다. |
 | Relocation 단계 | §7.2의 owner 규칙과 target 시도 번호를 지킨다. 이전 target 시도는 owner를 바꾸거나 새 message를 받을 수 없다. |
+| Owner 변경 전 relay | Target이 현재 target attempt의 temporary queue를 등록한 뒤 source message를 계속 받는다. Commit 전 abort에서는 temporary queue를 폐기하고 source 원본을 유지한다. Source는 target dispatch 전환 완료를 받을 때까지 hold 원본을 제거하지 않는다. |
 | Membership | Entry Spot member Actor와 User Spot 전체 이동은 각각 필요한 owner와 membership을 한 번에 바꾼다. |
-| 완료 결과 | `OperationId`와 `ReplyRouteId`를 구분한다. 저장한 항목 수가 Location Store의 항목 수와 같아야 하며 source 응답 또는 owner lease 종료 전에는 payload 사용을 끝내지 않는다. |
+| 완료 결과 | `OperationId`와 `ReplyRouteId`를 구분한다. 저장한 항목 수가 Location Store의 항목 수와 같아야 하며 이전 owner를 통한 reply 전달 또는 owner lease 종료 전에는 payload 사용을 끝내지 않는다. |
 | 두 Store의 순서 | Payload 저장과 확인이 Location Store CAS보다 먼저다. Location Store의 reference 사용 종료가 payload 삭제보다 먼저다. |
 | 데이터 손실 | Payload가 영구적으로 없거나 checksum·목록 확인값이 다르면 `DataLost`다. Source로 되돌리지 않는다. |
-| 이동 취소 | `Aborted`를 기록하기 전에 Session 취소 route를 보내거나 source가 새 작업을 받지 않는다. |
+| 이동 취소 | Owner 변경 전에는 Session 위치 갱신이나 취소 message를 보내지 않는다. `Aborted`를 기록하고 target temporary queue를 폐기한 뒤 source queue를 다시 연다. |
 | Store 장애 | 유예 시간에는 새 discovery connection만 막으며 owner deadline은 연장하지 않는다. 결과를 받지 못한 Store 요청은 같은 key와 version으로 다시 확인한다. |
 
 Permit, queue, timer, Session handoff와 host 최종 결과 검증은

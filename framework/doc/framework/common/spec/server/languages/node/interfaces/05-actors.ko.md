@@ -1,10 +1,11 @@
 # Node.js Actor와 session binding 공개 인터페이스
 
-Session에 bind된 Actor를 포함한 Spot relocation은 owner와 membership을 commit한 뒤 필요한 lifecycle
-callback과 accepted journal replay·logical timer 복원을 끝내고 durable source state를 정리한 다음 `Completed`를 commit한다.
-같은 `ObjectGeneration`의 route 전환이 양쪽 runtime에서 확인되고 steady route가 확정된 뒤에만
-target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
-아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
+Session에 bind된 Actor를 포함한 Spot relocation은 target에서 Actor와 queue를 복원하고 owner와
+membership을 commit한 뒤 message 처리를 시작한다. Target runtime은
+`sessionActorLocationUpdateReqMsg`를 send하여 binding route와 bound-session current Actor
+location snapshot을 갱신한다. 응답이 없어도 Actor 처리를 멈추지 않으며 정해진 간격으로
+같은 요청을 다시 보낸다. Snapshot은 target MeshName·NodeRid를 제공한다. Relocation 자체는 physical·logical disconnect가
+아니므로 Actor disconnect callback을 실행하지 않는다. relocation 대상에 포함되지 않은 다른 Actor의 route와 physical connection은
 변경하지 않는다.
 
 [인터페이스 목차](README.ko.md) · [Actor model](../../../../14-actor-model.ko.md) ·
@@ -69,7 +70,7 @@ export type ZLinkActorJoinCompletion =
     | { readonly status: 'rejected'; readonly operationId: ZLinkActorJoinOperationId;
         readonly reply?: ZLinkMessage }
     | { readonly status: 'failed'; readonly operationId: ZLinkActorJoinOperationId;
-        readonly kind: ZLinkFrameworkErrorKind; readonly isRetriable: boolean };
+        readonly kind: ZLinkFrameworkErrorKind };
 ```
 
 `ActorId`와 `ActorRef`의 canonical declaration은
@@ -136,8 +137,8 @@ terminal `submit(...)`을 두 번 호출하면 `InvalidOperation`이다. `inMesh
 `NotConfigured`다. 명시한 Mesh가 없으면 `NotFound`다.
 Caller는 target RID나 predicate를 지정하지 않는다.
 
-`create`는 같은 ActorId의 ready incarnation이 있으면 `ActorAlreadyExists`, stable type이 다르면
-`ActorTypeMismatch`다. 새 attempt는 `created` 또는 `rejected`를 반환한다.
+`create`는 같은 ActorId의 ready incarnation이 있으면 `AlreadyExists`, stable type이 다르면
+`TypeMismatch`다. 새 attempt는 `created` 또는 `rejected`를 반환한다.
 `getOrCreate`는 같은 type의 [ready](../../../../01-glossary.ko.md#ready) Actor를
 callback 없이 `existing`으로 반환한다. Creating이면 authority 변경을 기다리고 CAS loser는
 별도 factory나 callback을 시작하지 않는다. 서로 다른 operation은 ready 뒤 `existing`을
@@ -146,8 +147,8 @@ callback 없이 `existing`으로 반환한다. Creating이면 authority 변경�
 `creation-operation-terminal-v1` envelope를 읽고 현재 correlation·reply route로 reply를
 다시 encode한다. Terminal은 original deadline 뒤 5분 동안 유지한다. Callback exception은 `rejected`가 아니라
 typed creation failure다. 전체 deadline이
-끝나면 `DeadlineExceeded`, capacity가 없으면 `PlacementCapacityExhausted`다. ActorRef의 object generation이
-current와 다르면 `ActorGenerationStale`, 이동 중이면 retriable `ActorMoving`이다.
+끝나면 `DeadlineExceeded`, capacity가 없으면 `CapacityExceeded`다. ActorRef의 object generation이
+current와 다른 exact lifecycle operation은 `InvalidOperation`, 이동 중에는 `Unavailable`이다.
 
 Actor create는 선택한 owner MeshNode의 Entry Spot membership과 Ready barrier를 같은 lifecycle에서 완료한다.
 Ready 이후 one-way message는 Actor queue에 직접 제출한다. Resolve 또는 queue admission 이후 stale route가
@@ -161,10 +162,9 @@ Join을 실행하고 실패하면 barrier를 폐기한다. Handler가 `yield(...
 
 Result는 같은 operation ID의 `onJoinCompleted(...)` Actor callback으로 전달한다.
 Operation ID는 completion idempotency ID이며 `RelocationId`, reservation ID나
-aggregate commit ID가 아니다. Same-node outcome과 `rejected`·commit 전 `failed`
-retry는 current process lifetime으로 제한한다. Cross-node commit 뒤 `accepted`만
-Relocation manifest에 operation ID, optional reply와 cursor를 보존하여 durable
-at-least-once로 전달한다.
+aggregate commit ID가 아니다. Same-node와 cross-node completion retry는 current
+source와 target process lifetime으로 제한한다. Process 종료 뒤 다른 runtime이
+completion을 자동 replay하지 않는다.
 
 Request 없는 overload는 empty `ZLinkMessage`를 고정한다. Timeout 기본값은 5초이고
 명시 값은 millisecond 올림 기준 유한한 `1..2_147_483_647` ms다. `defer()`를

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { totalmem } from 'node:os';
 import { test } from 'node:test';
 
 import {
@@ -1082,9 +1083,19 @@ test('Application HWM Auto uses the configured finite process memory limit', () 
     applicationHwmProfile: ZLinkApplicationHwmProfile.Balanced,
     processMemoryLimitBytes: 1_000n
   }), 100n);
-  assert.throws(() => resolveApplicationHwm({
+});
+
+test('Application HWM Auto falls back to total physical memory', () => {
+  //  Spec 06: an unconfigured host with no cgroup limit still starts, and the
+  //  fallback is total memory so repeated resolution is stable.
+  const resolved = resolveApplicationHwm({
     applicationHwmProfile: ZLinkApplicationHwmProfile.Balanced
-  }), /no finite process memory limit/u);
+  });
+  assert.ok(resolved > 0n);
+  assert.equal(resolved, resolveApplicationHwm({
+    applicationHwmProfile: ZLinkApplicationHwmProfile.Balanced
+  }));
+  assert.ok(resolved <= BigInt(totalmem()));
 });
 
 async function pollUntil(condition: () => boolean): Promise<void> {

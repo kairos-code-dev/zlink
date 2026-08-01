@@ -113,6 +113,10 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
 
             if (intent == ZLinkFrameworkLifecycleIntent.Relocate)
             {
+                //  Spec 28 §567은 이동을 시작한 node를 새 selection과 placement에서
+                //  빼도록 요구한다. Shutdown 경로는 serving weight를 내리며 함께
+                //  게시하지만 Relocate는 그 경로를 타지 않는다.
+                _operations.PublishDrainingToPeers();
                 while (true)
                 {
                     ThrowIfShutdownRequested();
@@ -449,6 +453,7 @@ internal sealed record ZLinkDrainExecutionOperations(
     Func<CancellationToken, ValueTask<bool>> MarkDraining,
     Func<CancellationToken, ValueTask<bool>> RestoreServing,
     Action SealApplicationAdmissions,
+    Action PublishDrainingToPeers,
     Action ReopenAdmissions,
     Func<Task> WaitForAcceptedOperations,
     Func<CancellationToken, Task> WaitForAcceptedActorHandoffs,
@@ -480,6 +485,7 @@ internal sealed record ZLinkDrainExecutionOperations(
             ? static _ => ValueTask.FromResult(true)
             : autoConnect.MarkServingAsync,
         runtime.SealApplicationAdmissionsForDrain,
+        runtime.PublishDrainingToPeers,
         runtime.ReopenRetireAdmissionsAfterRollback,
         runtime.WaitForAcceptedOperationsForDrainAsync,
         runtime.WaitForAcceptedActorHandoffsAsync,

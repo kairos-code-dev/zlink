@@ -62,13 +62,13 @@ public final class Program {
     ZLinkFrameworkConfigurer consumerFramework(ConsumerOptions consumer) {
         return options -> {
             String logDir = consumer.logDir();
-            options.configureLocations().setHeartbeatInterval(Duration.ofMillis(500));
+            options.configureLocations().setOwnerLeaseRenewInterval(Duration.ofMillis(500));
             options.configureLocations().setOwnerLeaseTtl(Duration.ofSeconds(2));
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/consumer-flow.log")
                 .traceLabel("java-rl-consumer");
-            options.addClientServerChannel(Contracts.CHANNEL).enableClient();
+            options.addClientServerChannel(Contracts.CHANNEL).client();
         };
     }
 

@@ -268,9 +268,9 @@ provider로만 처리하는가.
   public RouteMesh status에서 A가 ready peer·Channel target에서 제외되는지 확인한다 → target 미지정 신규 request
   20개를 보낸다 → 수동 peer 구성을 유지한 RouteMesh에서 `RequestToNode(A)`와 등록한 적 없는 rid
   `api-missing`을 대상으로 한 `RequestToNode`를 각각 한 건 보낸다.
-- 검증: A handler-start evidence가 있는 in-flight request는 연결 종료가 먼저 관측되면 retriable
+- 검증: A handler-start evidence가 있는 in-flight request는 연결 종료가 먼저 관측되면
   `Unavailable`, handler 완료 여부를 caller가 확정할 수 없으면 설정한 request timeout 안의
-  timeout으로 끝나며 무한 대기하지 않는다. framework가 그 request를 B로 자동 재전송하지 않는다.
+  `DeadlineExceeded`로 끝나며 무한 대기하지 않는다. Framework가 그 request를 B로 자동 재전송하지 않는다.
   crash 전파 구간의 target 미지정 request는 B의 정상 reply, reply보다 연결 종료가 먼저 request 완료로
   전달된 `Unavailable`, 또는 request deadline이 먼저 도달한 timeout 중 하나로 유한 시간 안에
   끝나며, B의 성공 reply가 하나 이상 있어야 한다. A가 성공 topology 조회에서 제외된 뒤 보낸 20개는
@@ -319,10 +319,10 @@ public error로 실패하는가.
 
 우선순위: `P0`
 
-**검증 질문:** 느린 요청이 timeout으로 끝난 뒤, 뒤늦게 도착한 reply가 다음 정상 요청을 오염시키지 않는가.
+**검증 질문:** 느린 요청이 `DeadlineExceeded`로 끝난 뒤, 뒤늦게 도착한 reply가 다음 정상 요청을 오염시키지 않는가.
 
 - 절차: `value=="slow"` request를 짧은 timeout으로 보내 client timeout을 유도 → 곧바로 정상 request → 잠시 뒤 또 정상 request.
-- 검증: 첫 request는 timeout 예외. 이후 request는 정상 reply. late reply가 뒤 요청을 오염시키지 않음. 느린 handler도 결국 server에선 완료로 기록.
+- 검증: 첫 request는 `DeadlineExceeded`다. 이후 request는 정상 reply다. Late reply가 뒤 요청을 오염시키지 않으며 느린 handler는 server에서 완료될 수 있다.
 - 세부 동작: timeout 경로 + 연결 비오염.
 
 #### RM-C5 미등록 packet 처리

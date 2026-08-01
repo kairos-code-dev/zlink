@@ -23,7 +23,7 @@ internal sealed class ZLinkRelocationWorkloadCoordinator(
         if (!shells.Completed || control.StopRequested())
             return new ZLinkRelocationWorkloadDrainResult(
                 false,
-                null,
+                shells.TerminalReason,
                 shells.CommittedUnitCount);
 
         var actors = await drainActors(control.CancellationToken)

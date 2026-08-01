@@ -1,10 +1,11 @@
 # C++ Spot exact interface
 
-Session에 bind된 Actor를 포함한 Spot relocation은 owner와 membership을 commit한 뒤 필요한 lifecycle
-callback과 accepted journal replay·logical timer 복원을 끝내고 durable source state를 정리한 다음 `Completed`를 commit한다.
-같은 `ObjectGeneration`의 route 전환이 양쪽 runtime에서 확인되고 steady route가 확정된 뒤에만
-target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
-아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
+Session에 bind된 Actor를 포함한 Spot relocation은 target에서 Spot·Actor state와 queue를 복원하고
+owner와 membership을 commit한 뒤 message 처리를 시작한다. Target runtime은
+`sessionActorLocationUpdateReqMsg`를 send하여 각 bound Actor의 route와 위치 snapshot을
+갱신한다. 응답이 없어도 message 처리를 멈추지 않으며 정해진 간격으로 같은 요청을 다시
+보낸다. Relocation 자체는 physical·logical disconnect가
+아니므로 Actor disconnect callback을 실행하지 않는다. relocation 대상에 포함되지 않은 다른 Actor의 route와 physical connection은
 변경하지 않는다.
 
 [C++ exact interface 목차](README.ko.md)
@@ -507,7 +508,7 @@ fencing 조건을 만족하는 location row만 해제한다.
 User Spot은 manager의 explicit Create·GetOrCreate가 `Creating` reservation을 시작한다. Instance Spot은
 `spot_send_call_t` 또는 `spot_request_call_t`에서 `instance_spot()`을 선택한 direct call만 missing RID의
 [cold activation](../../../../01-glossary.ko.md#cold-activation)을 시작한다. Marker가 없는 일반 send·request에서
-RID가 없으면 `spot_route_not_found`로 끝나며 factory를 실행하거나 creation intent를 기록하지 않는다.
+RID가 없으면 `not_found`로 끝나며 factory를 실행하거나 creation intent를 기록하지 않는다.
 
 Source와 target은 다음 순서로 역할을 나눈다.
 
@@ -571,13 +572,13 @@ authority row가 있으면 global SpotId로 현재 owner를 찾으므로 marker�
 Stable type을 생략한 marker는 선택된 Mesh의 eligible descriptor가 게시한 Instance Spot capability를 비교한다.
 서로 다른 stable type이 정확히 하나이면 그 type을 사용한다. 둘 이상이면 caller가
 `instance_spot(stable_type)`으로 type을 명시해야 하며 reservation을 만들기 전에 호출 오류로 끝난다. 등록된
-type이 없으면 missing 결과로 끝난다. Explicit stable type이 existing row와 다르면 `spot_type_mismatch`이며,
+type이 없으면 missing 결과로 끝난다. Explicit stable type이 existing row와 다르면 `type_mismatch`이며,
 existing row의 type을 caller가 다시 전달할 필요는 없다.
 
-`in_mesh(...)`를 생략했을 때 eligible Object Mesh가 없으면 `object_client_not_configured`, 둘 이상이면
-`mesh_selection_required`다. 하나이면 그 Mesh를 선택한다. `in_mesh(...)`가 지정한 Mesh를 찾지 못하면
-`mesh_not_found`다. Mesh를 선택한 뒤 stable type을 생략했는데 distinct Instance Spot type이 0개이면
-`spot_route_not_found`, 둘 이상이면 `invalid_configuration`이다. 여러 MeshNode가 같은 stable type을
+`in_mesh(...)`를 생략했을 때 eligible Object Mesh가 없으면 `not_configured`, 둘 이상이면
+`invalid_operation`이다. 하나이면 그 Mesh를 선택한다. `in_mesh(...)`가 지정한 Mesh를 찾지 못하면
+`not_found`다. Mesh를 선택한 뒤 stable type을 생략했는데 distinct Instance Spot type이 0개이면
+`not_found`, 둘 이상이면 `invalid_operation`이다. 여러 MeshNode가 같은 stable type을
 등록한 경우 distinct type 하나로 계산한다.
 
 Cold Instance로 향하는 one-way call은 resolve, reservation, activation과 outbound admission까지 같은 send
@@ -686,10 +687,10 @@ accepted가 `true`일 때만 actor 위치를 user Spot으로 commit하고
     post-joined callback도 호출하지 않는다. Commit 이후 결과는 callback 이름으로 구분한다.
 Maintenance가 Actor를 target Entry Spot에 materialize할 때 Snapshot은 Actor adapter
 `restore(...)`를 먼저 완료하고 Recreate는 payload restore 없이 factory
-materialization을 완료한다. 그 다음 Location authority·Entry membership commit,
-Actor accepted journal·queue·Actor timer 복원, old Entry membership을 포함한 durable
-source cleanup, `Completed` CAS, bound-session route switch·ACK, steady
-normalization과 dispatch admission 순서로 실행한다. Infrastructure relocation은
+materialization을 완료한다. 그 다음 queue·Actor timer를 복원하고 Location
+authority·Entry membership을 commit한 뒤 Actor message 처리를 시작한다. Bound Session
+위치 갱신은 `sessionActorLocationUpdateReqMsg`와 `sessionActorLocationUpdateResMsg` send
+message로 수행하며 응답이 없어도 Actor 처리를 멈추지 않는다. Infrastructure relocation은
 target joined, source leave 또는 별도 relocation callback을 호출하지 않는다.
 
 일반 same-node·remote User·Entry Spot join만 기존 `on_actor_join(...)`,
@@ -714,7 +715,7 @@ virtual 구현은 no-op이다. Callback 완료 전에는 보류한 application m
 실행하지 않는다.
 
 기본 `any_turn_boundary`, `per_actor`, Entry·Instance Spot, Spot turn 밖과 같은 turn의
-중복 `defer()`는 queue mutation 전에 `invalid_configuration`으로 실패한다.
+중복 `defer()`는 queue mutation 전에 `invalid_operation`으로 실패한다.
 `defer()` 뒤 같은 turn의 다른 Framework operation도 같은 오류다. Recovery에서
 callback이 다시 실행될 수 있으므로 override는 retry-safe해야 한다.
 actor packet member는 containing Spot에 선언하며 mutable Actor, `message_context_t`, DTO 순서로 받는다.
@@ -773,7 +774,7 @@ Join 결과는 나중에 `actor_t::on_join_completed(...)`로 알린다. 기본 
 monotonic clock으로 absolute deadline을 고정한다.
 
 `yield()`는 `SpotWide` User Spot 또는 Instance Spot의 shared turn에서만 그 turn을 반환한다.
-그 밖의 문맥에서는 operation을 제출하거나 turn을 반환하지 않고 `invalid_configuration`으로 완료한다.
+그 밖의 문맥에서는 operation을 제출하거나 turn을 반환하지 않고 `invalid_operation`으로 완료한다.
 Worker call도 같은 실행 문맥 제한을 적용한다. CPU worker는 동기 작업, I/O worker는 `task_t<TResult>`를 반환하는
 작업을 받는다. 한 call object에서 terminator를 두 번 시작하면 protocol error로 완료한다.
 
@@ -886,16 +887,16 @@ public:
 `spot_manager_t`는 User Spot만 생성한다. `Create`는 Framework가 global SpotId를 생성하고,
 `GetOrCreate`는 caller가 제공한 global SpotId를 사용한다. Instance Spot create/get-or-create member와 kind
 인자는 제공하지 않는다. Call option과 submit은 각각 한 번만 사용할 수 있다. Existing authority가 Instance
-kind이거나 stable type이 다르면 `spot_type_mismatch`, eligible capacity가 없으면
-`placement_capacity_exhausted`다.
+kind이거나 stable type이 다르면 `type_mismatch`, eligible capacity가 없으면
+`capacity_exceeded`다.
 Terminal `submit()`은 exact `spot_ref_t`, `existing`·`created`·`rejected` state와 creation callback reply를
 `spot_create_result_t` 하나로 반환한다.
 
 `Find`는 current Ready User SpotRef만 반환하고 생성하지 않는다. Instance authority는 manager의 `Find` 결과에
 포함하지 않는다. `Close`는 User Spot의 exact SpotRef만 변경한다. Instance Spot은
 `instance_spot_context_t::close()`가 context에 보관한 exact current SpotRef로 local close를 수행한다. 같은 User
-Spot incarnation이 없으면 manager `Close`는 `false`, 다른 generation이면 `spot_generation_stale`, 이동 중이면
-`spot_moving`이다. Public list, resolver와 handle은 제공하지 않는다.
+Spot incarnation이 없으면 manager `Close`는 `false`, 다른 generation이면 `invalid_operation`, 이동 중이면
+`unavailable`이다. Public list, resolver와 handle은 제공하지 않는다.
 
 ## 5. Public trace category
 

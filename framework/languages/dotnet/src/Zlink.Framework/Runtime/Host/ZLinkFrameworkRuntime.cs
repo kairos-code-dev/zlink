@@ -233,6 +233,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         if (state is null) return new ZLinkSpotDrainResult(true, 0);
         var drained = true;
         ulong committedUnitCount = 0;
+        ZLinkFrameworkRelocationReason? terminalReason = null;
         foreach (var spotNode in state.SpotNodes.Values)
         {
             var result = await spotNode.TryDrainSpotsAsync(
@@ -242,10 +243,14 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
                     cancellationToken)
                 .ConfigureAwait(false);
             drained &= result.Completed;
+            terminalReason ??= result.TerminalReason;
             committedUnitCount = checked(
                 committedUnitCount + result.CommittedUnitCount);
         }
-        return new ZLinkSpotDrainResult(drained, committedUnitCount);
+        return new ZLinkSpotDrainResult(
+            drained,
+            committedUnitCount,
+            terminalReason);
     }
 
     internal async ValueTask<ZLinkRelocationWorkloadDrainResult>
@@ -267,10 +272,14 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         var state = _state;
         if (state is null) return true;
 
-        // Once the marker propagation window closes, advertise zero weight before request
-        // admissions are sealed. Requests that arrived during the contract's propagation window
-        // were still processed; later traffic is removed from peer load balancing before owner
-        // cleanup can terminate the pipes.
+        // Spec 28 §11 seals application admission first (step 1) and publishes the
+        // Draining descriptor second (step 2), so a caller can still select this
+        // node between the two. Zeroing the serving weight here narrows that
+        // window and removes the node from peer load balancing before owner
+        // cleanup can terminate the pipes, but it cannot close the window:
+        // propagation is asynchronous. What closes it is caller-side
+        // reselection on the `ShuttingDown` answer (spec 06 §13.1), in
+        // ZLinkChannelRequestCall.
         var published = true;
         foreach (var (name, spotNode) in state.SpotNodes)
         {
@@ -287,6 +296,11 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
                         membership.ChannelName,
                         0);
             }
+
+            //  Spec 28 §11 step 2. Weight 0은 이 node를 선택에서 빼지만 peer가
+            //  "왜"를 알지 못한다. Draining descriptor를 함께 게시해야 peer의
+            //  status·monitoring이 draining을 관측하고 placement에서도 빠진다.
+            spotNode.Node.PublishDraining();
 
             var meshName = registration.SpotMeshChannelName ?? registration.SpotNodeName;
             published &= await PublishWeightAsync(
@@ -309,6 +323,17 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         autoConnect is null
             ? ValueTask.FromResult(true)
             : autoConnect.SetLocalWeightAsync(type, meshName, role, 0, cancellationToken);
+
+    //  Relocate도 이 node를 새 selection에서 빼야 한다. Shutdown 경로는
+    //  QuiesceServingChannelsForDrainAsync가 weight 0과 함께 게시하지만,
+    //  Relocate는 그 경로를 타지 않으므로 별도 진입점이 필요하다.
+    internal void PublishDrainingToPeers()
+    {
+        var state = _state;
+        if (state is null) return;
+        foreach (var (_, spotNode) in state.SpotNodes)
+            spotNode.Node.PublishDraining();
+    }
 
     internal void SealApplicationAdmissionsForDrain()
     {
@@ -852,12 +877,23 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
 
     private ZLinkRuntimeOperationLease EnterOperationUnderLock(bool countAsRequest)
     {
-        if (!_acceptingOperations
-            || Volatile.Read(ref _lifecyclePhase) != (int)ZLinkRuntimeLifecyclePhase.Running
-            || _state is not { } state
-            || (_locationRuntime is not null
-                && !_locationRuntime.IsOwnerAdmissionOpen))
-            throw new InvalidOperationException("ZLink framework runtime is not accepting operations.");
+        //  네 조건을 한 문장으로 뭉치면 호출자는 admission seal인지, 아직 기동
+        //  중인지, owner lease가 닫힌 것인지 구분할 수 없다. 조사할 때마다 여기에
+        //  계측을 다시 심게 되므로 어느 조건인지 메시지에 남긴다.
+        var refusal =
+            !_acceptingOperations ? "application admission is sealed"
+            : Volatile.Read(ref _lifecyclePhase) != (int)ZLinkRuntimeLifecyclePhase.Running
+                ? $"lifecycle phase is {(ZLinkRuntimeLifecyclePhase)Volatile.Read(ref _lifecyclePhase)}"
+            : _state is null ? "runtime state is not created"
+            : _locationRuntime is not null && !_locationRuntime.IsOwnerAdmissionOpen
+                ? "owner admission is closed"
+            : null;
+        if (refusal is not null)
+            throw new InvalidOperationException(
+                $"ZLink framework runtime is not accepting operations ({refusal}).");
+        if (_state is not { } state)
+            throw new InvalidOperationException(
+                "ZLink framework runtime is not accepting operations (runtime state is not created).");
         _activeOperations++;
         if (countAsRequest) _activeRequests++;
         var previous = AmbientOperation.Value;

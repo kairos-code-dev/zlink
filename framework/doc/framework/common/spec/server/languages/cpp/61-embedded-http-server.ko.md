@@ -152,14 +152,14 @@ Read request
 - malformed request는 `400 Bad Request`로 닫는다.
 - 지원하지 않는 method는 `405 Method Not Allowed`로 닫는다.
 - route가 없으면 `404 Not Found`로 닫는다.
-- content type이 맞지 않으면 `request_protocol_error`를 던지고 `400 Bad Request`로 닫는다.
+- content type이 맞지 않으면 `protocol_error`를 던지고 `400 Bad Request`로 닫는다.
 - body size가 limit를 넘으면 `413 Payload Too Large`를 사용한다.
-- handler timeout은 `framework_exception_t::code()`의 `std::errc::timed_out` 경계로 식별하고
+- handler timeout은 `framework_error_kind_t::deadline_exceeded`로 식별하고
   `504 Gateway Timeout`을 사용한다.
-- shutdown 중 새 request는 `framework_exception_t::code()`의 shutdown 경계와 host 상태로
+- shutdown 중 새 request는 `framework_error_kind_t::shutting_down`과 host 상태로
   식별하여 `503 Service Unavailable`로 닫거나 connection을 drain 정책에 따라 닫는다.
-- framework exception의 오류 kind는 `framework_error_kind_t`, timeout과 shutdown 경계는
-  `framework_exception_t::code()`를 기준으로 status와 JSON body를 만든다.
+- Framework exception의 HTTP status와 JSON body는 `framework_error_kind_t`를 기준으로 만든다.
+  `framework_exception_t::code()`는 platform 원인을 log에 남길 때만 사용한다.
 
 ## 7. Binding 과 Handler 통합
 

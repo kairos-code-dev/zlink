@@ -92,7 +92,7 @@ public final class Program {
         return options -> {
             String nodeRid = state.nodeRid();
             String logDir = play.logDir();
-            options.configureLocations().setHeartbeatInterval(
+            options.configureLocations().setOwnerLeaseRenewInterval(
                 Duration.ofMillis(play.locationHeartbeatMillis()));
             options.configureLocations().setOwnerLeaseTtl(
                 Duration.ofMillis(play.locationLeaseTtlMillis()));

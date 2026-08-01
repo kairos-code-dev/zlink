@@ -265,9 +265,11 @@ Instance Spot을 새로 준비할 때 어떤 factory를 사용할지 결정하�
 ### ObjectGeneration
 
 같은 ActorId 또는 Spot ID의 서로 다른 logical incarnation을 구분하는 번호다. 이전
-generation에 늦게 도착한 message나 reply를 새 incarnation에 전달하지 않도록
-사용한다. Relocation 중 target에서 `RecreateOnRelocation` policy로 application 객체를 다시
-만들어도 같은 logical incarnation을 계속 실행하므로 이 값은 유지한다.
+generation의 lifecycle·relocation control이 새 incarnation의 상태를 바꾸지 않도록
+사용한다. 일반 Actor·Spot message는 logical ID가 가리키는 current Ready object를
+대상으로 하므로 `ObjectGeneration`을 target 일치 조건으로 사용하지 않는다. Relocation 중 target에서
+`RecreateOnRelocation` policy로 application 객체를 다시 만들어도 같은 logical incarnation을 계속
+실행하므로 이 값은 유지한다.
 
 | 항목 | 내용 |
 |---|---|
@@ -305,8 +307,9 @@ Authority는 단순한 endpoint나 송신 경로가 아니다. Object identity�
 - 현재 owner와 이전 owner
 - 현재 Location Store 기록과 변경되기 전의 오래된 기록
 
-따라서 이전 owner가 늦게 보낸 작업이나 이전 object generation을 대상으로 한
-작업을 현재 object에 적용하지 않는다.
+따라서 이전 owner가 늦게 보낸 control이나 이전 object generation을 대상으로 한
+lifecycle 변경을 현재 object에 적용하지 않는다. 일반 Actor·Spot message는 authority의
+logical ID와 current Ready owner를 사용하며 `ObjectGeneration`으로 handler target을 제한하지 않는다.
 
 | 항목 | 내용 |
 |---|---|
@@ -452,9 +455,10 @@ Location Store에서 생성 또는 relocation을 위해 확보한 수용 공간�
 같은 ID와 같은 요청을 다시 보내면 앞서 발급한 결과를 반환한다. 같은 ID로 내용이
 다른 요청을 보내면 `Conflict`다.
 
-이 값은 process 재시작 뒤 같은 작업을 계속하거나 정확히 그 작업만 취소할 때
-사용한다. 서로 다른 operation을 같은 application 결과에 합류시키는 식별자가
-아니다.
+Creation에서는 process 재시작 뒤 같은 작업을 계속하거나 정확히 그 작업만 취소할 때
+사용할 수 있다. 11.1.0 relocation에서는 실행 중인 source와 target process 안에서
+중복 요청을 구분하는 데만 사용하며 process 종료 뒤 작업을 이어받지 않는다. 서로
+다른 operation을 같은 application 결과에 합류시키는 식별자가 아니다.
 
 ```csharp
 public readonly record struct ZLinkCreationReservationId(
@@ -1069,6 +1073,46 @@ Spot direct payload, 일치한 Logical Multicast payload, timer callback과 Spot
 | 공개 구성 | Spot direct, matching publish, timer와 Spot control work item을 한 순서로 보관한다. |
 | 수명 | Spot incarnation 동안 유지되며 close·relocation에서는 lifecycle 규칙에 따라 seal·drain·restore한다. |
 
+<a id="object-execution-queue"></a>
+### Object execution queue
+
+Actor 또는 Spot의 application 작업을 실행 순서대로 보관하는 Framework 내부 queue다.
+Framework는 application instance를 찾기 전에 message의 object identity와 generation을
+검사하고 이 queue를 찾는다. Create가 진행 중이면 application instance가 아직 없어도 queue가
+먼저 존재할 수 있다. Relocation Restore는 아래 temporary queue를 사용한다.
+
+| 항목 | 내용 |
+|---|---|
+| 형태 | Object identity와 generation별 Framework-owned serialized queue |
+| .NET 표기 | Public queue type 없음 |
+| 공개 구성 | Create 같은 lifecycle 작업과 준비가 끝난 application object에 전달할 message의 실행 순서를 보관한다. |
+| 수명 | Object 준비 전에 만들 수 있으며 같은 incarnation이 유지되는 동안 사용한다. 준비가 실패하거나 object가 제거되면 남은 작업을 terminal 결과로 끝낸 뒤 queue가 비었을 때 제거한다. |
+
+Relocation 중에는 아직 준비되지 않은 target object의 message를 이 queue에 바로 넣지 않는다.
+아래에서 정의하는 relocation temporary queue에 먼저 보관하고, target 준비가 끝나면 기존
+작업 뒤에 옮긴다.
+
+<a id="relocation-temporary-queue"></a>
+### Relocation temporary queue
+
+Target runtime이 Actor나 Spot을 복원하는 동안 해당 대상으로 들어오는 message를 잠시
+보관하는 Framework 내부 queue다. Dispatch는 Actor나 Spot instance를 찾기 전에 현재
+relocation에 등록된 temporary queue가 있는지 확인한다. 있으면 message를 그 queue에 넣고,
+없으면 기존 dispatch 경로를 사용한다.
+
+| 항목 | 내용 |
+|---|---|
+| 형태 | `RelocationId`, target attempt, object 종류·ID와 `ObjectGeneration`에 연결된 bounded Framework queue |
+| .NET 표기 | Public queue type 없음 |
+| 공개 구성 | Target identity, original operation identity, deadline, payload와 reply route를 보존한다. `SpotWide`에서는 Spot과 member Actor를 같은 relocation group에 넣되 record마다 실제 target을 보존한다. |
+| 수명 | Target이 Restore 요청을 수락할 때 등록한다. Commit과 필요한 callback 뒤 실제 object queue로 작업을 옮기고 제거한다. Commit 전 abort에서는 실행하지 않고 폐기한다. |
+
+Temporary queue에서 실제 object queue로 옮길 때 dispatch 전환을 atomic하게 처리한다. 전환
+전에 수락한 message는 temporary queue에 남고, 전환 뒤 수락한 message는 실제 queue로 바로
+들어간다. Framework는 저장했던 기존 작업을 실제 queue에 먼저 넣고 temporary queue의 작업을
+그 뒤에 넣는다. 이 작업을 모두 마치기 전에는 실제 queue의 application handler를 실행하지
+않는다.
+
 <a id="spot-control-claim"></a>
 ### Spot control claim
 
@@ -1112,6 +1156,23 @@ Application version을 유지하는 node 점검은 `PlannedMaintenance`, 준비�
 Mode가 정한 exact version을 먼저 적용하고 그 뒤 capability, policy, adapter, capacity와
 placement weight를 평가한다. 요청한 version과 다른 node는 더 높은 version이어도 target이
 아니다.
+
+<a id="relocation-unit"></a>
+### Relocation unit
+
+Host relocation에서 Framework가 source의 새 작업을 한 번 막고 target에 복원한 뒤 현재
+처리 node를 바꾸는 최소 Actor 또는 Spot 묶음이다. 서로 다른 unit은 준비가 끝난 순서에
+따라 동시에 이동할 수 있다. Unit 하나에 Actor와 Spot이 함께 포함되면 Actor를 처리할
+node와 Actor가 속한 Spot을 해당 unit의 계약에 따라 함께 변경한다.
+
+| 항목 | 내용 |
+|---|---|
+| 형태 | Actor 하나 또는 함께 이동해야 하는 Spot과 Actor의 묶음이다. 독립 public type은 없다. |
+| 공개 구성 | Entry Spot Actor 하나, `PerActor` User Spot의 Actor 하나, `PerActor` Spot message target, `SpotWide` User Spot과 모든 member Actor, Instance Spot 하나 중 하나다. |
+| 생성·관리 | Host `Relocate`를 처리하는 Framework가 현재 처리 node와 Spot execution mode를 기준으로 만든다. Application은 unit의 구성원을 추가하거나 제외하지 않는다. |
+| 전달 | Relocation Store에는 unit의 identity, 저장한 state·queue·timer와 target 복원 정보를 기록한다. Application message에는 노출하지 않는다. |
+| 수명 | Source가 새 작업을 막고 이동을 시작할 때 생성되며 위치 변경 후 target이 처리를 시작하거나 위치 변경 전 이동을 취소하면 끝난다. |
+| Application 권한 | Application은 unit을 직접 만들거나 변경하지 않는다. `SpotWide`에서 `ApplicationSignaled`를 선택한 경우에만 이동을 시작할 안전한 turn을 알릴 수 있다. |
 
 <a id="maintenance-wave"></a>
 ### Maintenance wave
@@ -1935,20 +1996,29 @@ Session owner가 특정 Actor binding에 보관하는 현재 Actor owner 전달 
 Actor push는 이 저장된 route를 사용한다. Message마다 Location Store를 다시 조회해
 route를 선택하지 않는다.
 
-Actor relocation에서는 callback·accepted journal replay·durable source cleanup과
-`Completed`를 마친 같은 `ObjectGeneration`의 Actor만 route를 갱신한다. Framework
-runtime이 이동한 Actor의 binding route만 target owner로 갱신하며, 새 incarnation은
-명시적으로 다시 bind해야 한다. 같은 Session에 bind된 다른 Actor의 route와 physical
-STREAM connection은 유지한다. Location Store와 Relocation Store는 이 route를
-저장하거나 갱신하지 않는다.
+Actor relocation에서는 target에서 복원되고 owner·membership commit을 마친 같은
+`ObjectGeneration`의 Actor만 route를 갱신한다. Target runtime은 이동한 Actor의 binding
+route와 bound-session current Actor location snapshot을 target owner 및 target
+MeshName·NodeRid로 함께 갱신하도록 Session owner에 요청한다. ActorId·ObjectGeneration은 유지하며,
+새 incarnation은 명시적으로 다시 bind해야 한다. 같은 Session에서 relocation 대상에 포함되지 않은 다른 Actor의
+route와 location snapshot, physical STREAM connection은 유지한다. Location Store와 Relocation Store는
+binding route를 저장하거나 갱신하지 않는다.
 
 <a id="binding-route-ack"></a>
-### Binding route 갱신 ACK
+### Session Actor 위치 갱신 응답
 
-Session owner가 새 binding route를 저장하고, 이전 owner generation의 늦은 packet과
-push를 current binding에 적용하지 않도록 검증을 마쳤다는 응답이다. 이 ACK가 오기
-전에는 target Actor의 session packet·push admission을 열지 않는다. ACK는 target
-Actor handler가 실행을 끝냈다는 응답이 아니다.
+Session owner가 새 binding route와 relocation 뒤 current Actor location snapshot을 저장하고,
+이전 owner generation의 늦은 packet과 push를 current binding에 적용하지 않도록 검증을 마쳤다는
+`sessionActorLocationUpdateResMsg`다. Snapshot은 같은 ActorId·ObjectGeneration과 target
+MeshName·NodeRid를 가진다. 이 응답은 위치 갱신 재전송을 중단하기 위해 사용하며 Target
+Actor의 message 처리나 Join completion을 허용하는 신호가 아니다.
+
+응답 결과는 `Applied`, `AlreadyApplied`, `Stale` 또는
+`SessionOrBindingClosed`다. 앞의 두 결과는 요청한 위치가 적용됐음을 뜻한다. 뒤의 두
+결과는 더 최신 위치가 있거나 Session·binding이 종료되어 이전 위치를 적용하지 않았음을 뜻한다.
+정확한 wire 값과 Message Follow route 제거 조건은
+[Session–Actor dispatch §5.1](20-session-actor-dispatch.ko.md#51-session-actor-위치-갱신-message)이
+정의한다.
 
 <a id="binding-generation"></a>
 ### Binding generation

@@ -35,6 +35,24 @@ public sealed class InboundDispatchOptionsTests
     }
 
     [Fact]
+    public void Auto_Hwm_Falls_Back_To_Total_Physical_Memory()
+    {
+        // Spec 06: an unconfigured host with no cgroup limit still starts.
+        var options = new ZLinkInboundDispatchOptionsModel
+        {
+            ApplicationHwmProfile = ZLinkApplicationHwmProfile.Balanced
+        };
+
+        var resolved = ZLinkApplicationHwmResolver.Resolve(options);
+
+        Assert.True(resolved > 0);
+        var limit = ZLinkApplicationHwmResolver.ReadCgroupMemoryLimit()
+                    ?? ZLinkApplicationHwmResolver.ReadTotalPhysicalMemory();
+        Assert.Equal(limit / 10UL, resolved);
+        Assert.Equal(resolved, ZLinkApplicationHwmResolver.Resolve(options));
+    }
+
+    [Fact]
     public void Invalid_Profile_And_Zero_Memory_Limit_Are_Rejected()
     {
         var options = new ZLinkInboundDispatchOptionsModel();
@@ -53,7 +71,8 @@ public sealed class InboundDispatchOptionsTests
         services.AddZLinkFramework(options =>
         {
             options.ConfigureInboundDispatch().ProcessMemoryLimitBytes = 1_000_000;
-            options.AddRouteMesh("mesh").Listen();
+            options.AddRouteMesh("mesh").Listen()
+                .ConfigureRouterSocket().MaxMessageSize = 0;
         });
         using var provider = services.BuildServiceProvider();
 

@@ -1,7 +1,8 @@
 # .NET Actor 공개 인터페이스
 
-Session에 bind된 Actor를 포함한 relocation은 같은 `ObjectGeneration`을 유지한다. Relocation 자체는
-physical·logical disconnect가 아니므로 Actor disconnect callback을 실행하지 않는다.
+Session에 bind된 Actor를 포함한 relocation은 같은 `ObjectGeneration`을 유지하고 bound-session current
+Actor location snapshot을 target MeshName·NodeRid로 갱신한다. Relocation 자체는 physical·logical
+disconnect가 아니므로 Actor disconnect callback을 실행하지 않는다.
 
 [.NET exact interface 목차](README.ko.md)
 
@@ -213,8 +214,7 @@ public abstract record ZLinkActorJoinCompletion
         ZLinkMessage? Reply) : ZLinkActorJoinCompletion;
     public sealed record Failed(
         ZLinkActorJoinOperationId OperationId,
-        ZLinkFrameworkErrorKind Kind,
-        bool IsRetriable) : ZLinkActorJoinCompletion;
+        ZLinkFrameworkErrorKind Kind) : ZLinkActorJoinCompletion;
 }
 ```
 
@@ -237,10 +237,9 @@ operation ID의 `OnJoinCompletedAsync(...)` callback으로 전달한다. Handler
 않는다.
 
 Operation ID는 completion idempotency ID이며 `RelocationId`, reservation ID와
-aggregate commit ID가 아니다. Same-node outcome과 `Rejected`·commit 전 `Failed`
-completion retry는 current process lifetime으로 제한한다. Cross-node commit 뒤
-`Accepted`만 Relocation manifest에 operation ID, optional reply와 cursor를 보존해
-durable at-least-once로 전달한다.
+aggregate commit ID가 아니다. Same-node와 cross-node completion retry는 current
+source와 target process lifetime으로 제한한다. Process 종료 뒤 다른 runtime이
+completion을 자동 replay하지 않는다.
 
 Request 없는 overload는 empty `ZLinkMessage`를 고정한다. Timeout 기본값은 5초이고
 명시 값은 millisecond 올림 기준 유한한 `1..int.MaxValue` ms다. `Defer()`에서
@@ -258,24 +257,21 @@ Spot relocation의 모든 Actor participant는 같은 Actor factory policy를 �
 `CaptureAsync(...)`와 `RestoreAsync(...)`를 호출한다. Same-node join은 adapter를 호출하지 않으며 `DisableRelocation`으로
 거부하지도 않는다. `DisableRelocation` policy의 cross-node 이동은 adapter 없이 capture 전에 거부한다.
 
-Target은 [owner](../../../../01-glossary.ko.md#owner) commit 전에 restore와 accepted journal validation·staging만 완료하며 application handler를
-실행하지 않는다. Standalone Actor는 owner commit 뒤 lifecycle callback과 old Entry membership의 durable
-callback을 완료한 다음 journal replay를 실행하고 old Entry membership을 포함한 source resource를 durable하게
-cleanup한다. `Activated`에 도달해도
-application과 session ingress는 sealed 상태를 유지하고 bound-session route는 staged 상태로만 준비한다. Source
-cleanup이 terminal 상태에 도달하고 [authority](../../../../01-glossary.ko.md#authority)의 `Completed` CAS가 성공한 뒤에만 target을 `Ready`로 열고 relocation
-fence를 해제한다. `Completed`
-뒤의 target failure는 ordinary owner loss로 처리하며 이전 relocation을 transparent replay하지 않는다. 이
-barrier를 조작하는 public phase API는 제공하지 않는다.
+Target은 [owner](../../../../01-glossary.ko.md#owner) commit 전에 restore와 accepted journal validation·staging을 완료하며 application handler를
+실행하지 않는다. Owner commit과 lifecycle callback 뒤 저장된 기존 작업을 실제 Actor queue에 먼저 넣고
+relocation temporary queue의 작업을 그 뒤에 옮긴다. Temporary queue 등록을 제거하고 dispatch를 atomic하게
+전환한 뒤 target을 `Ready`로 열고 relocation fence를 해제한다. Source cleanup, `Completed` 기록과
+bound-session 위치 갱신 응답은 target message 처리를 막지 않는다. `Ready` 뒤 target process가 종료되면
+ordinary owner loss로 처리하며 이전 relocation을 자동 replay하지 않는다. 이 barrier를 조작하는 public
+phase API는 제공하지 않는다.
 
-Target replacement가 발생하면 stable relocation 안의 각 attempt가 factory와 `RestoreAsync(...)`를 at-least-once
-호출할 수 있고 중단된 stale attempt callback이 successor와 겹칠 수 있다. `CaptureAsync(...)`도 immutable
-relocation root가 authority에 연결되기 전까지 반복될 수 있다. 두 callback은 같은 logical relocation에 대해 같은
+같은 source와 target process 안의 재시도에서 factory와 `RestoreAsync(...)`를 두 번 이상
+호출할 수 있다. `CaptureAsync(...)`도 authority commit 전에 다시 호출될 수 있다. 두 callback은 같은 logical relocation에 대해 같은
 결과를 내도록 retry-safe해야 하며 외부 side effect의 exactly-once 실행에 의존하면 안 된다. Capture exception은
 durable abort와 source normalization 뒤 admission을 복원한다. `CaptureAsync(...)` 결과는 최대 64 MiB이며 빈
 배열은 유효하고 null은 contract 위반이다. Framework는 완료된 배열을 즉시 복사한다. `RestoreAsync(...)`의
 `ReadOnlyMemory<byte>`는 callback 완료까지만 유효하다. Restore exception이 발생한 instance는 폐기하고 새
-attempt의 factory가 만든 instance에 같은 immutable payload를 적용한다. Framework가 operation deadline 때문에
+instance에 같은 immutable payload를 적용한다. 다른 target을 자동 선택하지 않는다. Framework가 operation deadline 때문에
 callback을 취소하면 `DeadlineExceeded`로 분류한다. Current exact owner와 attempt fence만 completion을 commit하고
 admission을 열 수 있으며 callback에는 relocation ID를 제공하지 않는다.
 
@@ -316,8 +312,8 @@ barrier 전체에 적용할 deadline 하나를 확정한다. `InMesh(...)`를 �
 그 Mesh를 사용하고, 0개이면 `NotConfigured`, 둘 이상이면 `InvalidOperation`이다. 명시한 Mesh가
 없으면 `NotFound`다. Caller는 target RID, predicate와 callback을 지정하지 않는다.
 
-`Create`는 같은 ActorId의 [Ready](../../../../01-glossary.ko.md#ready) incarnation이 있으면 `ActorAlreadyExists`, stable type이 다르면
-`ActorTypeMismatch`다. `GetOrCreate`는 같은 type의 Ready Actor를 `Existing`으로
+`Create`는 같은 ActorId의 [Ready](../../../../01-glossary.ko.md#ready) incarnation이 있으면 `AlreadyExists`, stable type이 다르면
+`TypeMismatch`다. `GetOrCreate`는 같은 type의 Ready Actor를 `Existing`으로
 반환하고, Creating attempt이면 authority 변경을 기다린다. CAS loser는 별도 factory를
 실행하지 않는다. 서로 다른 operation은 Ready 뒤 `Existing`을 받고 cleanup 뒤 새
 reservation을 경쟁하며 앞선 application reply를 공유하지 않는다. 같은 source Node
@@ -333,7 +329,7 @@ retry-safe해야 한다.
 `FindAsync(actorId)`는 current Ready `ActorRef`만 반환한다. `FindSpotAsync(actorId)`는 current User Spot
 membership의 `SpotRef`만 반환한다. 별도 Actor directory와 public handle·resolver는 제공하지 않는다.
 `DestroyAsync(actorRef)`는 exact incarnation만 종료한다. 해당 incarnation이 없으면 `false`, generation이
-다르면 `ActorGenerationStale`, pre-commit seal 중이면 `ActorMoving`이며 current ref를 찾아 hidden retry하지
+다르면 `InvalidOperation`, pre-commit seal 중이면 `Unavailable`이며 current ref를 찾아 hidden retry하지
 않는다.
 
 `ActorRef.ObjectGeneration`은 1..`long.MaxValue`다. `MeshName`과 `NodeRid`는 조회 시점의 route [snapshot](../../../../01-glossary.ko.md#snapshot)이며

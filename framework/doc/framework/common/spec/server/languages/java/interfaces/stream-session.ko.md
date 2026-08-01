@@ -5,8 +5,8 @@
 STREAM session, Actor binding과 relay는 JVM Framework runtime이 소유한다. Application에는 session lifecycle,
 typed packet·push와 Actor binding 결과만 공개하며 transport frame과 binding 구현은 노출하지 않는다.
 
-Session bind는 exact `ActorRef`를 한 번 제출한다. Active Message Follow route가 없으면 `ACTOR_LOCATION_STALE`,
-generation이 다르면 `ACTOR_GENERATION_STALE`, pre-commit seal 중이면 `ACTOR_MOVING`이다. Framework는 Store에서
+Session bind는 exact `ActorRef`를 한 번 제출한다. Active Message Follow route가 없으면 `NOT_FOUND`,
+generation이 다르면 `INVALID_OPERATION`, pre-commit seal 중이면 `UNAVAILABLE`이다. Framework는 Store에서
 새 ref를 찾아 hidden retry하지 않는다. `enableActorDispatch()`는 MeshName을 받지 않으며 startup에 Object
 Client 또는 Server role과 Location Store가 필요하다.
 
@@ -25,10 +25,13 @@ Bind 뒤 relay·request relay와 `notifyDisconnected()`는 Actor별 저장 route
 Store를 조회하지 않는다. Physical disconnect는 Framework가 current binding 전체에 automatic all-settled
 통지를 수행하고 exact binding identity마다 Spot callback을 최대 한 번 실행한다.
 `notifyDisconnected()`는 connection이 유지된 상태의 logical notification이며 callback terminal까지
-기다린다. Relocation route update는 같은 ObjectGeneration에만 허용하고 callback·journal replay,
-durable source cleanup과 `Completed` 뒤 해당 Actor route만 바꾼다. Route 전환이 양쪽 runtime에서 확인되고
-steady route가 확정되기 전에는 target session packet·push admission을 열지 않으며 같은 Session의 다른 Actor
-route와 physical STREAM connection은 유지한다.
+기다린다. Relocation route update는 같은 ObjectGeneration에만 허용한다. Target Actor가
+복원되어 message 처리를 시작한 뒤 target runtime이 `sessionActorLocationUpdateReqMsg`를
+send하여 해당 Actor route와 `ZLinkSessionActor.ref()`가 반환하는 current `ActorRef`
+location snapshot을 함께 바꾼다. Snapshot은 같은 ActorId·ObjectGeneration과 target
+MeshName·NodeRid를 반영한다. 응답이 없어도 Target Actor 처리를 멈추지 않으며 정해진
+간격으로 같은 요청을 다시 보낸다. 같은 Session에서 relocation 대상에 포함되지 않은 다른 Actor의 route와 physical STREAM connection은 유지한다.
+Application은 relocation을 알기 위해 rebind하지 않는다.
 
 ## Exact public member inventory
 

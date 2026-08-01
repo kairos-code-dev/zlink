@@ -262,15 +262,6 @@ if(ZLINK_CPP_BUILD_SAMPLES)
     stream_recv_sample.cpp
     stream_packet_callback_sample.cpp
     monitor_recv_sample.cpp
-    actor_room_server_sample.cpp
-    actor_gateway_relay_sample.cpp
-    actor_single_player_queue_sample.cpp
-    actor_queue_example.cpp
-    actor_room_example.cpp
-    actor_sequential_example.cpp
-    spot_pubsub_example.cpp
-    spot_rpc_example.cpp
-    spot_timer_example.cpp
   )
   file(GLOB ZLINK_CPP_SAMPLE_FILES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/samples/*_sample.cpp"

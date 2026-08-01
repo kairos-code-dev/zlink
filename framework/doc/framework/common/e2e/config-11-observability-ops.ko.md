@@ -21,7 +21,8 @@ event를 다룬다면, 이 config는 (1) 한 흐름을 노드 경계 너머로 �
   독립적으로 bounded cleanup을 수행하는지.
 - 여기서 다루지 않는 것: 기능 자체의 messaging 정확성(다른 config), RouteMesh·host public status
   관찰(Config 7), 대시보드·exporter 구성(앱 몫,
-  [Runtime Metrics §8](../spec/25-runtime-metrics.ko.md#8-수집-경계)).
+  [Runtime Metrics §8](../spec/25-runtime-metrics.ko.md#8-수집-경계)), source·target process 종료 뒤
+  relocation 자동 재개와 다른 target으로의 자동 failover.
 
 ## 2. 서버 구성 (한 번 구동)
 
@@ -185,7 +186,7 @@ flow 정보와 log message가 생성되지 않는가.
 - 절차: Player Actor를 `play-a`→`play-b`로 이동시킨다.
 - 검증: `zlink.relocation.completed`가 `object_kind=actor`의 terminal relocation
   1회당 1회 증가한다.
-  `zlink.relocation.duration`은 prepare부터 `completed|aborted|recovered|failed|shutdown` terminal까지의
+  `zlink.relocation.duration`은 prepare부터 `completed|aborted|failed|shutdown` terminal까지의
   구간을 담는다. Location commit은 중간 상태이며 terminal 결과로 기록하지 않는다.
   Actor, Instance Spot과 User Spot relocation unit은 source admission seal부터 target
   admission-open ACK까지의 시간을 `zlink.relocation.interruption`에 기록한다.
@@ -258,7 +259,7 @@ flow 정보와 log message가 생성되지 않는가.
 
 - 절차: `play-a`에 `PlannedMaintenance` mode의 host `Relocate`를 요청하고, bound actor가
   `play-b`로 relocation되게 한다.
-- 검증: relocation이 [Spot Actor §4](../spec/15-spot-actor.ko.md#4-actor-join과-commit-순서) 완료 조건까지
+- 검증: relocation이 [Host Relocate §8.3](../spec/28-graceful-drain-handoff.ko.md#83-entry-spot에-속한-actor) 완료 조건까지
   진행되고 committed Actor authority가 `play-b`를 target owner로 가리킨다. Bound session push가 이동 후
   `play-b` Actor로 이어진다.
   `zlink.relocation.completed{object_kind=actor}`가 target activation당 한 번 계수된다. 이동 전 pending actor request는
@@ -284,8 +285,10 @@ ObjectGeneration을 유지하는가.
      deadline 안에 해제한다.
   3. `play-b`의 target factory·adapter `Restore`, participant별 staging과 모든 `Prepared`가 끝난 뒤에만
      `Relocated`가 게시되는지 확인한다. Location Store의 aggregate commit 전에는 target handler를 열지 않는다.
-  4. Aggregate commit 뒤 같은 global Spot ID와 Actor ID로 request를 보내 `play-b` handler에서 처리되는지
-     확인하고 bound STREAM route ACK와 steady normalization까지 기다린다.
+  4. Aggregate commit 뒤 target 임시 queue의 message를 Spot·Actor queue로 옮기고 dispatch를
+     target으로 전환한다. 같은 global Spot ID와 Actor ID로 request를 보내 `play-b`
+     handler에서 처리되는지 확인한다. Bound session에 보내는 Actor 위치 갱신 응답은
+     target dispatch 전환을 막지 않는다.
 - 검증: User Spot과 모든 member Actor는 ObjectGeneration을 유지하고 AuthorityOwnerGeneration만 증가한다.
   Location Store의 aggregate owner·generation·inventory root는 한 CAS에서 target으로
   전환되고 Relocation manifest의 participant count와 inventory digest가 일치한다. Source Spot에는 `OnClosing(RelocationOut)`이 한 번
@@ -296,8 +299,9 @@ ObjectGeneration을 유지하는가.
   OBS-C1의 배치 제외,
   OBS-C2의 bound-session 연속성, OBS-C4의 `Shutdown` closing과 OBS-C5의 target blocker 판단은 각 scenario
   evidence를 barrier로 사용한다.
-- 세부 동작: aggregate preflight·seal → immutable payload 준비 → target staging·Prepared → Location aggregate
-  commit → callback·journal replay → route ACK·steady normalization.
+- 세부 동작: aggregate preflight·seal → immutable payload 준비 → target temporary queue 등록·Restore·Prepared →
+  Location aggregate commit → callback → 저장된 기존 작업과 temporary queue 작업 이관·target dispatch 전환. Source ingress hold 원본 제거와 bound session
+  Actor 위치 갱신은 이 완료 조건에 포함하지 않는다.
 
 #### OBS-C4 Shutdown closing callback + 세션 종료 통지
 

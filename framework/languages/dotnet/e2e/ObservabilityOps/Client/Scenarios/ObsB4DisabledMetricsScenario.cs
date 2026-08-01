@@ -34,7 +34,24 @@ internal static class ObsB4DisabledMetricsScenario
             }
         }
         await using var connector = await context.ConnectAsync();
-        await connector.Request(new AuthenticateReq(actorId)).Async<AuthenticateRes>();
+        //  Room 생성과 같은 이유로 여기도 창을 둔다. B3의 store 정지 동안 owner
+        //  lease 갱신이 실패하면 owner admission이 닫히고, 복구 뒤 첫 갱신이
+        //  성공해야 다시 열린다. 그 사이에 들어온 호출은
+        //  "not accepting operations (owner admission is closed)"로 끝난다.
+        //  위 room 생성만 기다리고 이 호출은 기다리지 않던 것이 비대칭이었다.
+        var authenticateDeadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(20);
+        while (true)
+        {
+            try
+            {
+                await connector.Request(new AuthenticateReq(actorId)).Async<AuthenticateRes>();
+                break;
+            }
+            catch (Exception) when (DateTimeOffset.UtcNow < authenticateDeadline)
+            {
+                await Task.Delay(500);
+            }
+        }
         var joined = await context.JoinRoomAsync(connector, actorId, roomRid);
         ZlinkStreamAssert.Ensure(
             joined.NodeRid == playBNode,

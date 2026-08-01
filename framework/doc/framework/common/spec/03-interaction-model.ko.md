@@ -118,11 +118,11 @@ public interface IZLinkSessionClient
 
 ## 3. Node direct와 channel select-one
 
-Node direct는 infrastructure와 명시적 owner routing에 사용한다. target RID가 현재 mesh member가 아니면
-target-not-found 결과를 내고, member이지만 pipe가 준비되지 않았으면 send readiness 한계까지 기다린 뒤
-route-not-connected 결과를 낸다. Node direct operation은 실패한 request를 다른 node에 자동으로 다시
+Node direct는 infrastructure와 명시적 owner routing에 사용한다. Target RID가 현재 Mesh member가 아니면
+`NotFound`, member이지만 pipe가 준비되지 않았으면 send readiness 한계까지 기다린 뒤
+`Unavailable`로 끝난다. Node direct operation은 실패한 request를 다른 node에 자동으로 다시
 보내지 않는다. Global Spot·Actor message는 cached Ready route와 committed Message Follow route만 사용한다.
-Message Follow 제한 안에서 current owner로 relay할 수 없으면 stale-route 오류로 끝내며 source가 Store를 읽어
+Message Follow 제한 안에서 current owner로 relay할 수 없으면 `Unavailable`로 끝내며 source가 Store를 읽어
 다른 owner에게 같은 operation을 다시 제출하지 않는다.
 
 Channel operation은 ChannelName으로 process-local 송신 경로를 먼저 결정한다. RouteMesh 경로는 호출 순간의
@@ -173,6 +173,9 @@ object의 creation intent를 기본적으로 만들지 않는다. Spot 전용 fl
 기다리는 시간이다. 전송 단계의 backpressure는 send timeout이 담당한다. route 오류나 timeout으로 끝난
 request를 Framework가 자동 재전송하지 않는다. 언어별 transport 오류는 이 문서의 닫힌 Framework 결과 가운데 하나로 변환하며
 transport 전용 결과를 public call에 노출하지 않는다.
+
+`Send`와 `Request`가 반환하는 공통 kind, timeout과 cancellation의 정확한 의미는
+[Framework 오류 모델](32-framework-error-model.ko.md)이 정의한다.
 
 다른 RouteMesh 또는 ClientServer Channel로 보낸 request도 같은 단일 terminal completion 규칙을 따른다.
 Spot에서 시작한 경우 Framework는 원래 Spot activation과 generation을 completion record에 보존하고, reply를
@@ -243,8 +246,10 @@ Framework는 first record를 local queue head로 복원한 뒤 activation barrie
 attempt의 terminal 결과에 합류하며 별도 [factory](01-glossary.ko.md#factory)나 message를 시작하지 않는다.
 
 `ActorRef`와 `SpotRef`는 global ID, ObjectGeneration, 조회 시점의 MeshName과 NodeRid를 담은 immutable location
-snapshot이다. Endpoint, 내부 frame과 runtime resource는 포함하지 않는다. 일반 message는 ref가 아니라 global
-ID를 사용하며 Framework가 current authority를 resolve한다.
+snapshot이다. Endpoint, 내부 frame과 runtime resource는 포함하지 않는다. Bound session의 `Ref`/`ref()`
+accessor는 Actor relocation의 route switch가 완료되면 같은 ActorId·ObjectGeneration과 target MeshName·NodeRid를
+담은 새 immutable snapshot을 반환한다. 기존에 반환한 ref 값은 변경하지 않는다. 일반 message는 ref가 아니라
+global ID를 사용하며 Framework가 current authority를 resolve한다.
 
 Actor message는 global Actor ID의 current authority를 resolve한 뒤 Actor mailbox에 직접 추가한다. Actor
 payload는 Spot message queue를 경유하지 않는다. Entry Spot Actor와 `PerActor` User Spot의 Actor는 Actor별

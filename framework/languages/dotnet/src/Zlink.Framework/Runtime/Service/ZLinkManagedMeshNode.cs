@@ -372,6 +372,27 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         Publish(MeshMonitorEventKind.ChannelChanged, channelName: channelName);
     }
 
+    //  Spec 28 §11 step 2: host를 Draining으로 바꾼 뒤 그 descriptor를 게시해
+    //  peer의 새 selection과 placement에서 빠진다. Descriptor revision을 올려
+    //  같은 lifecycle generation의 reader가 최신 snapshot만 적용하게 한다
+    //  (SetChannelWeight와 같은 방식).
+    public void PublishDraining()
+    {
+        Peer[] peers;
+        lock (_gate)
+        {
+            if (_state == MeshNodeState.Draining) return;
+            _state = MeshNodeState.Draining;
+            _descriptorRevision = checked(_descriptorRevision + 1);
+            peers = _peersByRid.Values
+                .Where(static peer => peer.Admitted)
+                .ToArray();
+        }
+        foreach (var peer in peers)
+            SendAdmission(peer, ServiceWireConstants.Command.Update);
+        Publish(MeshMonitorEventKind.StateChanged);
+    }
+
     public void SetUserSpotOperationTarget(IUserSpotOperationTarget target)
     {
         ArgumentNullException.ThrowIfNull(target);
@@ -3903,8 +3924,18 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         var key = new PendingRelocationReservationKey(sourceNodeRid,
             reserved.RelocationId, reserved.TargetAttemptGeneration,
             reserved.Coordinator);
-        if (_pendingRelocationReservations.TryGetValue(key, out var pending)
-            && pending.MatchesReserved(reserved))
+        //  여기서 어긋나면 `pending.Reserved`가 끝내 완료되지 않아 source가
+        //  reservation deadline을 소진한다. 그런데 실패해도 monitor event만
+        //  남아 "key를 못 찾았는지" "찾았는데 내용이 안 맞는지" 구분할 수 없다.
+        //  둘을 나눠 남긴다.
+        var found = _pendingRelocationReservations.TryGetValue(key, out var pending);
+        var matches = found && pending.MatchesReserved(reserved);
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"canonical_reserved_applied found={found} matches={matches} "
+            + $"source={sourceNodeRid} "
+            + $"relocation={reserved.RelocationId.High:x16}{reserved.RelocationId.Low:x16} "
+            + $"attempt={reserved.TargetAttemptGeneration}");
+        if (matches)
             pending.Reserved.TrySetResult(reserved);
         else
             Publish(MeshMonitorEventKind.ProtocolError, peerRid: sourceNodeRid);
@@ -4459,7 +4490,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         }
         else
         {
-            if (!TryGetActor(stateful.TargetActor, out var actor)
+            var actorPresent = TryGetActor(stateful.TargetActor, out var actor);
+            if (!actorPresent
                 || actor.AuthorityOwnerGeneration
                     != stateful.AuthorityOwnerGeneration
                 || stateful.OwnerLeaseGeneration
@@ -4502,10 +4534,19 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 if (followed == true)
                     return;
                 DisposeParts(parts);
+                //  Spec 06 §13.1 separates two outcomes. No Actor incarnation
+                //  under this reference means the authority is gone, which is
+                //  `NotFound`. An incarnation that is here under a different
+                //  authority or owner lease generation is a stale reference the
+                //  caller can re-resolve, which stays `ActorLocationStale`. A
+                //  relocation in flight is carried by the follow target above,
+                //  so reaching here with no Actor is a real absence.
                 if (request)
                     Reply(
-                        RequestResult.Conflict,
-                        (uint)ServiceWireConstants.FrameworkErrorCode.ActorLocationStale,
+                        actorPresent ? RequestResult.Conflict : RequestResult.NotFound,
+                        (uint)(actorPresent
+                            ? ServiceWireConstants.FrameworkErrorCode.ActorLocationStale
+                            : ServiceWireConstants.FrameworkErrorCode.ActorRouteNotFound),
                         Array.Empty<Message>());
                 return;
             }
@@ -5559,7 +5600,12 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             peer.DescriptorRevision = admission.DescriptorRevision;
             peer.Channels = admission.Channels;
             peer.Admission = admission;
-            peer.State = MeshPeerState.Admitted;
+            //  Peer가 draining을 알려오면 그대로 표시한다. 이 값이 없으면
+            //  MeshPeerState.Draining은 어디에서도 대입되지 않고, 그것을 읽는
+            //  status·selection·monitoring이 전부 죽은 코드가 된다.
+            peer.State = admission.RuntimeState == 2
+                ? MeshPeerState.Draining
+                : MeshPeerState.Admitted;
             peer.Admitted = true;
             peer.Liveness = new ZLinkServiceLiveness(Stopwatch.GetTimestamp());
             peer.LastChangedMs = checked((ulong)Environment.TickCount64);
@@ -6546,7 +6592,9 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                     _routingId,
                     checked((int)localWeight)));
             targets.AddRange(_peersByRid.Values
+                //  Spec 28 §567: draining peer는 새 selection 후보가 아니다.
                 .Where(peer => peer.Admitted
+                               && peer.State != MeshPeerState.Draining
                                && peer.Channels.TryGetValue(channelName, out var weight)
                                && weight > 0)
                 .Select(peer => new WeightedChannelTarget(
@@ -6586,10 +6634,14 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             return;
         ulong descriptorRevision;
         Dictionary<string, uint> channels;
+        byte runtimeState;
         lock (_gate)
         {
             descriptorRevision = _descriptorRevision;
             channels = new Dictionary<string, uint>(_channels, StringComparer.Ordinal);
+            //  Spec 28 §567: draining node는 그 사실을 descriptor로 알려 새
+            //  selection과 placement에서 빠진다. runtime-state.draining = 2.
+            runtimeState = _state == MeshNodeState.Draining ? (byte)2 : (byte)1;
         }
         var descriptor = ZLinkServiceWireCodec.EncodeRouteAdmission(
             command,
@@ -6598,7 +6650,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             _lifecycleGeneration,
             descriptorRevision,
             channels,
-            (byte)_objectRole);
+            (byte)_objectRole,
+            runtimeState);
         SendControl(target, descriptor);
     }
 
@@ -7587,19 +7640,47 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         internal bool MatchesReserved(
             ZLinkServiceWireCodec.RelocationReservedRecord value)
         {
-            if (!Offer.Task.IsCompletedSuccessfully) return false;
-            var offer = Offer.Task.Result;
-            if (value.RelocationId != prepare.RelocationId
-                || value.TargetAttemptGeneration != prepare.TargetAttemptGeneration
-                || value.RoundKind != prepare.RoundKind
-                || value.Coordinator != prepare.Coordinator
-                || value.Candidate != prepare.Candidate
-                || value.ReservationGeneration != offer.ReservationGeneration
-                || value.Participants.Count != prepare.Participants.Count)
+            //  여덟 비교를 한 식으로 묶으면 어느 것이 거부했는지 알 수 없고,
+            //  실패는 source의 reservation deadline으로만 나타난다. 어느 필드가
+            //  어긋났는지 남긴다.
+            if (!Offer.Task.IsCompletedSuccessfully)
+            {
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    "canonical_reserved_mismatch field=offer_not_completed");
                 return false;
+            }
+            var offer = Offer.Task.Result;
+            var mismatch =
+                value.RelocationId != prepare.RelocationId ? "relocationId"
+                : value.TargetAttemptGeneration != prepare.TargetAttemptGeneration
+                    ? "targetAttemptGeneration"
+                : value.RoundKind != prepare.RoundKind ? "roundKind"
+                : value.Coordinator != prepare.Coordinator ? "coordinator"
+                : value.Candidate != prepare.Candidate ? "candidate"
+                : value.ReservationGeneration != offer.ReservationGeneration
+                    ? $"reservationGeneration value={value.ReservationGeneration} offer={offer.ReservationGeneration}"
+                : value.Participants.Count != prepare.Participants.Count
+                    ? $"participantCount value={value.Participants.Count} prepare={prepare.Participants.Count}"
+                : null;
+            if (mismatch is not null)
+            {
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    "canonical_reserved_mismatch field=" + mismatch);
+                return false;
+            }
             for (var index = 0; index < prepare.Participants.Count; index++)
                 if (value.Participants[index] != prepare.Participants[index])
+                {
+                    //  개수는 같은데 항목이 어긋나는 경우다. 어느 자리에서 무엇이
+                    //  다른지 남기지 않으면 source의 reservation deadline으로만
+                    //  나타난다.
+                    ZLinkFrameworkDebugLog.SpotDiscovery(
+                        $"canonical_reserved_mismatch field=participant index={index} "
+                        + $"value={value.Participants[index]} prepare={prepare.Participants[index]} "
+                        + $"valueAll=[{string.Join(",", value.Participants)}] "
+                        + $"prepareAll=[{string.Join(",", prepare.Participants)}]");
                     return false;
+                }
             return true;
         }
     }

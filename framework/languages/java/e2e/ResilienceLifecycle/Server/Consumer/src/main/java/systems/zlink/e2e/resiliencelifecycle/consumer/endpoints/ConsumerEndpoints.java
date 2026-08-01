@@ -11,6 +11,7 @@ import java.util.concurrent.Executors;
 import java.util.function.Supplier;
 import org.springframework.context.SmartLifecycle;
 import systems.zlink.e2e.resiliencelifecycle.shared.Contracts;
+import systems.zlink.framework.locationprovider.ZLinkLocationStore;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
 import systems.zlink.framework.locations.ZLinkPageRequest;

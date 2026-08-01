@@ -470,7 +470,7 @@ health 집계 규칙은 `contracts/eventing/health.hpp`와 runtime diagnostics �
 | success status | `200 OK` |
 | route not found | `404 Not Found` |
 | method mismatch | `405 Method Not Allowed` |
-| unsupported content type | `400 Bad Request`(`request_protocol_error`) |
+| unsupported content type | `400 Bad Request`(`protocol_error`) |
 | invalid JSON | `400 Bad Request` |
 | body limit exceeded | `413 Payload Too Large` |
 | serializer registration | `map_*<THandler>`가 request/reply JSON serializer를 등록한다 |
@@ -481,7 +481,7 @@ object로 반환한다.
 
 ```json
 {
-  "error": "payload_decode_failed",
+  "error": "protocol_error",
   "message": "payload deserialization failed"
 }
 ```
@@ -492,16 +492,15 @@ framework error kind는 HTTP status로 매핑한다.
 
 | framework error | HTTP status | 이유 |
 |-----------------|-------------|------|
-| `payload_decode_failed` | `400 Bad Request` | client body가 DTO로 변환되지 않았다 |
-| `request_target_not_found` | `404 Not Found` | 대상 route, channel, service를 찾지 못했다 |
-| `request_protocol_error` | `400 Bad Request` | request 의미가 framework 계약과 맞지 않는다 |
+| `protocol_error` | `400 Bad Request` | client body가 DTO로 변환되지 않았거나 request 의미가 framework 계약과 맞지 않는다 |
+| `not_found` | `404 Not Found` | 대상 route, channel, service를 찾지 못했다 |
 | `framework_exception_t::code() == std::errc::timed_out` | `504 Gateway Timeout` | HTTP hosting 뒤의 zlink request가 시간 안에 끝나지 않았다 |
 | `framework_exception_t::code()`가 [shutdown](../../../01-glossary.ko.md#shutdown) 경계를 나타내고 host가 종료 중임 | `503 Service Unavailable` | host가 종료 중이다 |
-| `request_failed` | `500 Internal Server Error` | 내부 handler 또는 runtime 실패다 |
+| `internal_failure` | `500 Internal Server Error` | 내부 handler 또는 runtime 실패다 |
 
 HTTP server runtime이 body size limit을 초과한 request를 감지하면 `413 Payload Too Large`로
 닫는다. JSON route에 `application/json`과 호환되지 않는 content type이 들어오면
-`request_protocol_error`를 던지고 `400 Bad Request`로 닫는다. 두 status는 handler failure가 아니라 server
+`protocol_error`를 던지고 `400 Bad Request`로 닫는다. 두 status는 handler failure가 아니라 server
 request validation 실패다.
 
 error kind가 명확하지 않은 예외는 `500 Internal Server Error`로 닫고 log/monitoring에

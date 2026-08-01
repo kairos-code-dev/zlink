@@ -559,10 +559,20 @@ internal sealed partial class ZLinkSpotActivation
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
-        if (_actorHandlers is not null
-            && _actorHandlers.TryResolveJoined(actor.GetType(), out var descriptor)
-            && descriptor is not null)
-            await HandlerInvoker.InvokeActorLifecycleAsync(descriptor, actor, cancellationToken)
+        //  "자리에 왔다"만 남기면 해석 성공 여부를 알 수 없다. 결과와 대상까지
+        //  함께 남긴다.
+        var hasHandlers = _actorHandlers is not null;
+        ZLinkSpotActorLifecycleDescriptor? descriptor = null;
+        var resolved = hasHandlers
+                       && _actorHandlers!.TryResolveJoined(
+                           actor.GetType(), out descriptor)
+                       && descriptor is not null;
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            "actor_joined_hook actor=" + actor.GetType().Name
+            + " handlers=" + hasHandlers
+            + " resolved=" + resolved);
+        if (resolved)
+            await HandlerInvoker.InvokeActorLifecycleAsync(descriptor!, actor, cancellationToken)
                 .ConfigureAwait(false);
     }
 

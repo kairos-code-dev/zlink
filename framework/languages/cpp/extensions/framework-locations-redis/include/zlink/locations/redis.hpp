@@ -46,6 +46,26 @@ struct redis_relocation_options_t
     std::chrono::milliseconds operation_timeout{5000};
 };
 
+namespace detail
+{
+
+/* redis_location_store_t seeds its scan epoch from this on every build, so it
+ * cannot live behind the async-client guard the way the connection helpers do.
+ * It needs only <atomic> and <random>, both of which this header includes
+ * unconditionally. */
+inline std::uint64_t next_scan_epoch ()
+{
+    static std::atomic<std::uint64_t> next = [] {
+        std::random_device source;
+        const auto high =
+          static_cast<std::uint64_t> (source ()) << 32;
+        return high ^ static_cast<std::uint64_t> (source ());
+    } ();
+    return next.fetch_add (1, std::memory_order_relaxed);
+}
+
+} // namespace detail
+
 #if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
 namespace detail
 {
@@ -70,17 +90,6 @@ inline std::unique_ptr<sw::redis::Redis> make_redis (
     options.socket_timeout = operation_timeout;
     return std::make_unique<sw::redis::Redis> (
       options, uri.connection_pool_options ());
-}
-
-inline std::uint64_t next_scan_epoch ()
-{
-    static std::atomic<std::uint64_t> next = [] {
-        std::random_device source;
-        const auto high =
-          static_cast<std::uint64_t> (source ()) << 32;
-        return high ^ static_cast<std::uint64_t> (source ());
-    } ();
-    return next.fetch_add (1, std::memory_order_relaxed);
 }
 
 class redis_location_worker_t

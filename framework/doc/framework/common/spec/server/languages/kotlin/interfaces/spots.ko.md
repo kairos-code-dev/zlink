@@ -1,10 +1,11 @@
 # Kotlin Spot 공개 인터페이스
 
-Session에 bind된 Actor를 포함한 Spot relocation은 owner와 membership을 commit한 뒤 필요한 lifecycle
-callback과 accepted journal replay·logical timer 복원을 끝내고 durable source state를 정리한 다음 `Completed`를 commit한다.
-같은 `ObjectGeneration`의 route 전환이 양쪽 runtime에서 확인되고 steady route가 확정된 뒤에만
-target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
-아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
+Session에 bind된 Actor를 포함한 Spot relocation은 target에서 Spot·Actor state와 queue를 복원하고
+owner와 membership을 commit한 뒤 message 처리를 시작한다. Target runtime은
+`sessionActorLocationUpdateReqMsg`를 send하여 각 bound Actor의 route와 위치 snapshot을
+갱신한다. 응답이 없어도 message 처리를 멈추지 않으며 정해진 간격으로 같은 요청을 다시
+보낸다. Relocation 자체는 physical·logical disconnect가
+아니므로 Actor disconnect callback을 실행하지 않는다. relocation 대상에 포함되지 않은 다른 Actor의 route와 physical connection은
 변경하지 않는다.
 
 [인터페이스 목차](README.ko.md) · [Java Spot](../../java/interfaces/spots.ko.md) ·
@@ -116,8 +117,8 @@ runtime은 completion에서 복사한다.
 Restore는 호출마다 fresh defensive copy를 받고 completion 뒤 보관하지 않는다. Empty `ByteArray`도 유효한
 보존 state다. Factory는 target attempt마다 fresh Spot instance를 만들며 source나 이전 attempt instance를
 재사용하지 않는다. 같은 attempt의 restore는 반복될 수 있다. Capture exception은 source authority와 admission을
-유지하고 restore exception은 target을 sealed 상태로 유지한 채 same payload retry 또는 target replacement로
-처리한다. Null stage와 null capture payload는 contract 위반이다. Host relocation의 precommit adapter
+유지하고 restore exception은 target을 sealed 상태로 유지한 채 같은 target process에서 동일한 payload로 다시
+시도할 수 있다. 다른 target을 자동 선택하지 않는다. Null stage와 null capture payload는 contract 위반이다. Host relocation의 precommit adapter
 exception·contract violation은 [deadline](../../../../01-glossary.ko.md#deadline)이 먼저 확정되지 않았으면 `Blocked/StateIncompatible`, deadline이 먼저
 확정되면 `Blocked/DeadlineExceeded`다. Stale attempt cancellation은 terminal result를 commit하지 못한다.
 Callback은 at-least-once이고 stale attempt와 겹칠 수 있으므로 retry-safe해야 한다.
@@ -360,14 +361,14 @@ Actor handler를 유지하고 cross-node Join과 relocation은 target activation
 Kotlin은 address DTO, process-local handle, resolver와 unbounded directory를 제공하지 않는다. Kotlin-facing
 route client와 manager는 fluent option과 single-use state를 보존하는 전용 wrapper를 반환하며 Java call,
 `CompletionStage`와 `Class<T>`를 application에 노출하지 않는다.
-`close(SpotRef)`는 Missing이면 `false`, generation 불일치는 `SpotGenerationStale`, seal된 이관 구간은
-`SpotMoving`으로 처리하며 User Spot만 대상으로 한다. Instance Spot의 self-close는 Java
+`close(SpotRef)`는 Missing이면 `false`, generation 불일치는 `InvalidOperation`, seal된 이관 구간은
+`Unavailable`로 처리하며 User Spot만 대상으로 한다. Instance Spot의 self-close는 Java
 `ZLinkInstanceSpotContext.close()`를 그대로 사용한다.
 
-Maintenance target은 Actor adapter restore, Location commit, accepted
-journal·queue·Actor timer 복원, old Entry membership을 포함한 durable source
-cleanup, `Completed` CAS, bound-session route switch·ACK, steady normalization과
-dispatch 개방 순서로 처리한다. Infrastructure relocation은
+Maintenance target은 Actor adapter와 queue·timer를 복원하고 Location authority·membership을
+commit한 뒤 Actor message 처리를 시작한다. Bound Session 위치 갱신은 그 뒤
+`sessionActorLocationUpdateReqMsg`와 `sessionActorLocationUpdateResMsg` send message로
+수행하며 응답이 없어도 Actor 처리를 멈추지 않는다. Infrastructure relocation은
 `onJoinedActorSuspending`, `onLeaveActorSuspending` 또는 별도 relocation callback을
 호출하지 않는다. User Spot application join만
 `onActorJoinSuspending`과 `onJoinedActorSuspending`을 사용한다. 새 Actor의 첫 생성은
@@ -403,7 +404,7 @@ completion을 `onRelocationReadyCompletedSuspending(...)`에 전달하며 기본
 no-op이다. Callback 완료 전에는 보류한 message와 timer를 실행하지 않는다.
 
 기본 mode, `PER_ACTOR`, Entry·Instance Spot, Spot turn 밖과 같은 turn의 중복
-`defer()`는 queue mutation 전에 `INVALID_CONFIGURATION`이다. Recovery에서 callback이
+`defer()`는 queue mutation 전에 `INVALID_OPERATION`이다. Recovery에서 callback이
 다시 실행될 수 있으므로 override는 retry-safe해야 한다.
 
 Yield는 Channel·Spot·Actor request, I/O·CPU worker와 Actor·Spot create/get-or-create에만 제공한다.

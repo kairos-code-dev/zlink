@@ -45,8 +45,8 @@ class TicTacToeClientScenario {
     connector.zlinkStreamAssert.ensure(game.playNodes.length === game.playEndpoints.length, 'Sample scenario assertion failed.');
     connector.zlinkStreamAssert.ensure(game.playNodes.every((node) => game.playEndpoints.includes(node.streamEndpoint)), 'Sample scenario assertion failed.');
     connector.zlinkStreamAssert.ensure(game.requiredLevel === 3, 'Sample scenario assertion failed.');
+    connector.zlinkStreamAssert.ensure(game.playEndpoints.length > 0, 'Sample scenario assertion failed.');
     const hostPlayEndpoint = game.playEndpoints[0];
-    connector.zlinkStreamAssert.ensure(hostPlayEndpoint !== undefined, 'Sample scenario assertion failed.');
     const guestPlayEndpoint = game.playEndpoints.find((endpoint) => endpoint !== hostPlayEndpoint);
     connector.zlinkStreamAssert.ensure(guestPlayEndpoint !== undefined, 'Sample scenario assertion failed.');
     const observerPlayEndpoint = guestPlayEndpoint as string;

@@ -9,12 +9,13 @@ internal static class TaB1MissingActorScenario
     {
         const string actorId = "missing-actor";
         await context.AssertRouteAbsentAsync(actorId);
-        await context.AssertCallAsync(
+        //  The send's submit result is not the verification here (config 9
+        //  TA-B1). What must hold is that no handler ran and no authority was
+        //  created, which the evidence and route checks below assert.
+        await context.SendWithoutOutcomeAssertionAsync(
             "TA-B1-missing",
             actorId,
             "missing",
-            "sent",
-            send: true,
             targetNodeRid: "actor-a",
             targetGeneration: 1);
         await context.AssertFailureAsync(

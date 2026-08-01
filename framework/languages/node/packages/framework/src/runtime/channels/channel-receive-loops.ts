@@ -15,6 +15,14 @@ import {
 import { isChannelEnvelope } from './channel-envelope-inspection';
 import type { ZLinkInboundDispatchBudget } from '../dispatch/inbound-dispatch-budget';
 
+//  The loop awaits between reads and the signal can abort in that gap. Reading
+//  through a function keeps the later check honest; an inline read stays
+//  narrowed by the loop condition and the comparison is rejected as dead.
+function signalAborted(signal?: AbortSignal): boolean {
+  return signal?.aborted === true;
+}
+
+
 interface ZLinkMultipartOperation<TNext> {
   message(message: MessageLike): TNext;
 }
@@ -75,7 +83,14 @@ interface ZLinkChannelInfrastructureHandler {
 }
 
 export class ZLinkChannelReceiveLoop {
-  private stopped = false;
+  //  The loop awaits between the two reads and stop() can land in that gap.
+  //  Reading through a method keeps the second check honest; a field read stays
+  //  narrowed to false across the await and is treated as dead code.
+  private stoppedFlag = false;
+
+  private isStopped(): boolean {
+    return this.stoppedFlag;
+  }
   private running?: Promise<void>;
   private readonly inFlight = new Set<Promise<void>>();
 
@@ -106,9 +121,9 @@ export class ZLinkChannelReceiveLoop {
   }
 
   private async runLoop(signal?: AbortSignal): Promise<void> {
-    while (!this.stopped && signal?.aborted !== true) {
+    while (!this.isStopped() && signal?.aborted !== true) {
       await this.inboundDispatchBudget?.waitUntilResumed(signal);
-      if (this.stopped || signal?.aborted) break;
+      if (this.isStopped() || signalAborted(signal)) break;
       const received = this.router.recv(1);
       if (received == null) {
         await waitReceiveLoopIdle();
@@ -121,7 +136,7 @@ export class ZLinkChannelReceiveLoop {
   }
 
   async stop(): Promise<void> {
-    this.stopped = true;
+    this.stoppedFlag = true;
     await this.running;
     await Promise.allSettled([...this.inFlight]);
   }
@@ -182,7 +197,14 @@ export class ZLinkChannelReceiveLoop {
 }
 
 export class ZLinkSubscriberReceiveLoop {
-  private stopped = false;
+  //  The loop awaits between the two reads and stop() can land in that gap.
+  //  Reading through a method keeps the second check honest; a field read stays
+  //  narrowed to false across the await and is treated as dead code.
+  private stoppedFlag = false;
+
+  private isStopped(): boolean {
+    return this.stoppedFlag;
+  }
   private running?: Promise<void>;
   private readonly inFlight = new Set<Promise<void>>();
 
@@ -216,9 +238,9 @@ export class ZLinkSubscriberReceiveLoop {
   }
 
   private async runLoop(signal?: AbortSignal): Promise<void> {
-    while (!this.stopped && signal?.aborted !== true) {
+    while (!this.isStopped() && signal?.aborted !== true) {
       await this.inboundDispatchBudget?.waitUntilResumed(signal);
-      if (this.stopped || signal?.aborted) break;
+      if (this.isStopped() || signalAborted(signal)) break;
       if (!this.poller.wait(0)) {
         await waitReceiveLoopIdle();
         continue;
@@ -233,7 +255,7 @@ export class ZLinkSubscriberReceiveLoop {
   }
 
   async stop(): Promise<void> {
-    this.stopped = true;
+    this.stoppedFlag = true;
     try {
       await this.running;
       await Promise.allSettled([...this.inFlight]);
@@ -265,7 +287,14 @@ export class ZLinkSubscriberReceiveLoop {
 }
 
 export class ZLinkRouteReceiveLoop {
-  private stopped = false;
+  //  The loop awaits between the two reads and stop() can land in that gap.
+  //  Reading through a method keeps the second check honest; a field read stays
+  //  narrowed to false across the await and is treated as dead code.
+  private stoppedFlag = false;
+
+  private isStopped(): boolean {
+    return this.stoppedFlag;
+  }
   private running?: Promise<void>;
   private readonly inFlight = new Set<Promise<void>>();
 
@@ -293,9 +322,9 @@ export class ZLinkRouteReceiveLoop {
   }
 
   private async runLoop(signal?: AbortSignal): Promise<void> {
-    while (!this.stopped && signal?.aborted !== true) {
+    while (!this.isStopped() && signal?.aborted !== true) {
       await this.inboundDispatchBudget?.waitUntilResumed(signal);
-      if (this.stopped || signal?.aborted) break;
+      if (this.isStopped() || signalAborted(signal)) break;
       const received = this.router.recv(1);
       if (received == null) {
         await waitReceiveLoopIdle();
@@ -309,7 +338,7 @@ export class ZLinkRouteReceiveLoop {
   }
 
   async stop(): Promise<void> {
-    this.stopped = true;
+    this.stoppedFlag = true;
     await this.running;
     await Promise.allSettled([...this.inFlight]);
   }

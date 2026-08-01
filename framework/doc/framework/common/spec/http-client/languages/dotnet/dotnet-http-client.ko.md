@@ -102,9 +102,9 @@ public ValueTask<T> Fetch<T>(
 ## 6. 에러 매핑
 
 [공통 spec 9장](../../09-error-model.ko.md)을 따른다. .NET은
-`ZLinkFrameworkErrorKind`와 `ZLinkRetryAdvice`를 사용한다.
+`ZLinkFrameworkErrorKind`를 사용하며 public exception은 재시도 여부를 제공하지 않는다.
 
-- timeout은 `DeadlineExceeded`와 `RetryAfterBackoff`, inner `TimeoutException`으로
+- timeout은 `DeadlineExceeded`와 inner `TimeoutException`으로
   보고한다. 호출자 취소는
   `OperationCanceledException` 그대로 전파된다.
 

@@ -143,10 +143,10 @@ auto created = zlink::http_client::client_t::create(topology.api_http_endpoint)
   주입하면 HTTP 실행 위치와 continuation resume 위치를 분리할 수 있다.
 - redirect 자동 추적: `follow_redirects(max)`. `301/302`의 `POST`와 `303`은 `GET`으로
   바뀌고 body를 버린다. `307/308`은 method와 body를 보존한다. 절대 URL과 절대 경로
-  Location을 지원하며 한도를 넘으면 `request_failed`로 닫힌다. 최초 요청 origin과 다른
+  Location을 지원하며 한도를 넘으면 `protocol_error`로 닫힌다. 최초 요청 origin과 다른
   redirect hop에는 `Authorization` 헤더를 다시 보내지 않는다. 다른 이름의 비밀 헤더는
   일반 헤더와 구분할 수 없으므로 caller가 직접 관리한다.
-- retry: `retry(attempts)`. retriable한 transport 실패(연결 끊김, timeout)만 재시도하고
+- retry: `retry(attempts)`. 설정된 operation 안에서 transport 실패(연결 끊김, timeout)만 재시도하고
   HTTP status 실패는 재시도하지 않는다. 되감을 수 없는 `body_stream`/`download`
   request는 자동 retry에서 제외한다.
 - cookie jar: `cookies()`. `Set-Cookie`의 `Path`, `Secure`, `Max-Age`(0 이하 = 삭제)를
@@ -172,8 +172,8 @@ HTTP/2와 caller cancellation 공통 모델은 현재 구현 범위 밖이다. H
 request path, request header name, query/form/multipart field name은 call을 보내기 전에
 검증한다. URL scheme이 `http://` 또는 `https://`가 아니거나 timeout 또는 응답 body 상한이
 0 이하인 경우, 또는 이름이 비어 있는 경우에는
-`framework_error_kind_t::request_protocol_error`로 설정 오류를 알린다. 이 오류는 transport
-실패와 구분되어야 하므로 `request_failed`로 뭉개지 않는다.
+`framework_error_kind_t::protocol_error`로 설정 오류를 알린다. 이 오류는 transport
+실패를 나타내는 `unavailable`로 바꾸지 않는다.
 
 ## 4. JSON 계약
 
@@ -239,7 +239,7 @@ HTTP 작업 실행 위치와 resume 위치를 모두 caller가 정해야 하면
 
 `coroutine_execute_scheduler_t::execute(...)`는 HTTP 작업을 실행한다.
 `coroutine_resume_scheduler_t::resume(...)`은 완료된 continuation을 다시 실행한다.
-scheduler 인자가 `nullptr`이면 `request_protocol_error`로 실패한다.
+scheduler 인자가 `nullptr`이면 `invalid_operation`으로 실패한다.
 
 coroutine 설정이 있는 client에서 `submit_raw()` 또는 `submit<T>()`를 호출하면 request
 builder가 method, path, headers, body provider, timeout 같은 request state를 값으로
@@ -290,7 +290,7 @@ HTTP handler e2e 테스트는 외부 HTTP 도구나 sample-local client가 아�
 - method coverage: `PATCH`, `OPTIONS`가 전달되고 `HEAD`는 body 없이 status/header를 받는다
 - query encoding: `query(...)`가 percent-encoding된 query string으로 전달된다
 - body 소스: raw content-type, form-urlencoded, multipart 인코딩이 wire에 그대로 실리고,
-  복수 body 소스는 `request_protocol_error`로 거부된다
+  복수 body 소스는 `protocol_error`로 거부된다
 - redirect: 추적 on/off, 절대 URL Location, `POST`→`GET` 변환, redirect 한도 초과 실패,
   교차 origin `Authorization` 제거
 - retry: 응답 없이 끊긴 연결이 재시도로 복구된다
@@ -312,7 +312,7 @@ HTTP handler e2e 테스트는 외부 HTTP 도구나 sample-local client가 아�
 - HTTP status mapping: `400`, `404`, `500` 응답이 client result/error kind로 고정된다
 - timeout: 응답 지연은 timeout error로 닫힌다
 - fluent input validation: 잘못된 base URL, path, header name, timeout은
-  `request_protocol_error`로 닫힌다
+  `protocol_error`로 닫힌다
 - HTTPS success: test certificate trust 설정이 있으면 `https://` JSON request/response가
   성공한다
 - TLS failure: 신뢰하지 않은 certificate와 hostname mismatch는 명시적인 client error로

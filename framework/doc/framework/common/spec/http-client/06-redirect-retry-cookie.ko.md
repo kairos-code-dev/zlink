@@ -16,25 +16,25 @@
 | 303 | **항상 GET** | **제거** |
 | 307, 308 | 보존 | 보존 (streaming body는 rewind 불가라 드롭) |
 
-- `Location`은 절대/상대 URL을 지원한다. 해석 불가능한 형식은
-  `ProtocolError`와 `DoNotRetry`(원 요청 재전송 금지).
+- `Location`은 절대/상대 URL을 지원한다. 해석 불가능한 형식은 `ProtocolError`이며 원 요청을
+  다시 전송하지 않는다.
 - **cross-origin으로 이동하면 `Authorization` 헤더를 제거**한다.
   same-origin(scheme+host+port 동일)이면 보존한다.
-- 한도 초과는 `ProtocolError`와 `DoNotRetry`.
+- 한도 초과는 `ProtocolError`이며 원 요청을 다시 전송하지 않는다.
 - redirect 중간 응답의 body는 소비(drain)하되 사용자에게 노출하지 않는다
   ([4장 §4.4](04-response-model.ko.md)).
 
 ## 6.2 Retry와 timeout
 
 - `retry(attempts)`: 총 시도 = 1 + attempts.
-- **retriable 대상은 전송 계층 실패와 timeout뿐이다.** HTTP status(4xx/5xx)는
+- **자동 retry 대상은 전송 계층 실패와 timeout뿐이다.** HTTP status(4xx/5xx)는
   재시도하지 않는다.
 - streaming(업로드 provider 또는 download sink)이 있으면 재시도하지 않는다.
 - 시도 간 지연은 **지수 백오프 + full jitter**다: 상한 =
   `min(1초, 50ms × 2^attempt)`, 실제 지연 = `[0, 상한]` 균등 무작위
   (2026-07-12 R3 승격 — 고정 50ms에서 개정. 고정 지연은 장애 서버에 대한
   동시 재돌진을 유발한다).
-- timeout은 **시도(attempt)당** 적용한다. timeout 실패는 retriable이다.
+- timeout은 **시도(attempt)당** 적용한다. Timeout 실패는 설정한 횟수 안에서 자동 retry 대상이다.
   따라서 `retry(n)` + timeout 조합이 "응답이 timeout 안에 안 오면 n회
   재시도"의 표준 표현이다.
 - 재시도 전체를 아우르는 총 데드라인은 계약에 없다(최악 대기 ≈

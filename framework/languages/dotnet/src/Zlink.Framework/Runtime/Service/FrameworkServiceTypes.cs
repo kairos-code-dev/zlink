@@ -547,6 +547,8 @@ internal interface IMeshNode : IDisposable, IAsyncDisposable
     void DisconnectPeer(RoutingId peerRid, ulong lifecycleGeneration = 0);
     void AddChannel(string channelName);
     void SetChannelWeight(string channelName, uint weight);
+
+    void PublishDraining();
     MeshNodeStatus Status();
     MeshNodePeer[] Peers();
     MeshPeerChannel[] PeerChannels(RoutingId peerRid, ulong lifecycleGeneration);

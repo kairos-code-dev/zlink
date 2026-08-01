@@ -1,10 +1,11 @@
 # Kotlin Actor 공개 인터페이스
 
-Session에 bind된 Actor를 포함한 Spot relocation은 owner와 membership을 commit한 뒤 필요한 lifecycle
-callback과 accepted journal replay·logical timer 복원을 끝내고 durable source state를 정리한 다음 `Completed`를 commit한다.
-같은 `ObjectGeneration`의 route 전환이 양쪽 runtime에서 확인되고 steady route가 확정된 뒤에만
-target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
-아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
+Session에 bind된 Actor를 포함한 Spot relocation은 target에서 Actor와 queue를 복원하고 owner와
+membership을 commit한 뒤 message 처리를 시작한다. Target runtime은
+`sessionActorLocationUpdateReqMsg`를 send하여 binding route와 bound-session current Actor
+location snapshot을 갱신한다. 응답이 없어도 Actor 처리를 멈추지 않으며 정해진 간격으로
+같은 요청을 다시 보낸다. Snapshot은 target MeshName·NodeRid를 제공한다. Relocation 자체는 physical·logical disconnect가
+아니므로 Actor disconnect callback을 실행하지 않는다. relocation 대상에 포함되지 않은 다른 Actor의 route와 physical connection은
 변경하지 않는다.
 
 [인터페이스 목차](README.ko.md) · [Java Actor](../../java/interfaces/actors.ko.md) ·
@@ -29,7 +30,7 @@ reservation, factory 실행과 queue 변경 전에 `InvalidOperation`으로 끝�
 `await(): Unit`만 제공하고 `yield()`를 제공하지 않는다.
 
 Actor type은 UTF-8 1..255 bytes의 stable exact value다. `Create`에서 Ready object가 있으면
-`ActorAlreadyExists`이며 새 attempt에서는 Java `ZLinkActorCreateResult`의 `Created`
+`AlreadyExists`이며 새 attempt에서는 Java `ZLinkActorCreateResult`의 `Created`
 또는 `Rejected`를 반환한다. `GetOrCreate`는 같은 type의
 [Ready](../../../../01-glossary.ko.md#ready) object를 callback 없이 `Existing`으로
 반환한다. Creating이면 authority 변경을 기다리며 CAS loser는
@@ -38,7 +39,7 @@ Actor type은 UTF-8 1..255 bytes의 stable exact value다. `Create`에서 Ready 
 같은 source Node RID·lifecycle generation·`OperationId`의 재전송만 correlation-free
 `creation-operation-terminal-v1` envelope를 읽고 현재 correlation·reply route로 reply를
 다시 encode한다. Terminal은 original deadline 뒤 5분 동안 유지한다. Callback exception은 `Rejected`가 아니라
-typed creation failure다. 다른 type이면 `ActorTypeMismatch`다. Kotlin은 local Actor
+typed creation failure다. 다른 type이면 `TypeMismatch`다. Kotlin은 local Actor
 create, directory, resolver 또는 hidden remote retry를 추가하지 않는다.
 
 Kotlin은 Java `ZLinkActorRelocationAdapter<TActor>`와 factory builder를 그대로 사용한다.
@@ -56,7 +57,8 @@ Capture가 반환한 `ByteArray`는 최대 64 MiB이며 adapter가 completion까
 fresh defensive copy를 받고 completion 뒤 보관하지 않는다. Empty `ByteArray`도 유효한 보존 state다.
 [Factory](../../../../01-glossary.ko.md#factory)는 target attempt마다 fresh Actor instance를 만들며 source나 이전 attempt instance를 재사용하지 않는다.
 같은 attempt의 restore는 반복될 수 있다. Capture exception은 source [authority](../../../../01-glossary.ko.md#authority)와 admission을 유지하고, restore
-exception은 target을 sealed 상태로 유지한 채 same payload retry 또는 target replacement로 처리한다. Null stage와
+exception은 target을 sealed 상태로 유지한 채 같은 target process에서 동일한 payload로 다시 시도할 수 있다.
+다른 target을 자동 선택하지 않는다. Null stage와
 null capture payload는 contract 위반이다. Host relocation의 precommit adapter exception·contract violation은 deadline이
 먼저 확정되지 않았으면 `Blocked/StateIncompatible`, [deadline](../../../../01-glossary.ko.md#deadline)이 먼저 확정되면 `Blocked/DeadlineExceeded`다.
 Stale attempt cancellation은 terminal result를 commit하지 못한다. 두 callback은 at-least-once이고 stale attempt와
@@ -223,8 +225,8 @@ public interface systems.zlink.framework.kotlin.ZLinkKotlinActorClient {
 Factory callback은 `disableRelocation()`, `recreateOnRelocation()`, `preserveStateWith(...)` 중 하나를 반드시 호출한다. Kotlin은 state 보존 설정과
 adapter registration을 위한 reified helper, policy를 생략하는 overload와 default argument를 생성하지 않는다.
 Exact `ActorRef`를 받는 public operation은
-destroy와 session bind뿐이다. Missing exact ref는 `false`, generation 불일치는 `ActorGenerationStale`, seal된
-이관 구간은 `ActorMoving`으로 처리한다.
+destroy와 session bind뿐이다. Missing exact ref는 `false`, generation 불일치는 `InvalidOperation`, seal된
+이관 구간은 `Unavailable`로 처리한다.
 
 Actor Join에는 coroutine terminal을 추가하지 않는다. Java exact interface의 동기 `defer()`를 handler
 실행 중 한 번 호출하며 Spot gate나 Actor FIFO claim을 반납하지 않는다. Request·worker·create
@@ -243,6 +245,6 @@ continuation 뒤 실행한다. Callback을 inline 또는 재진입 방식으로 
 고정한다.
 
 Completion operation ID는 `RelocationId`, reservation ID나 aggregate commit ID와
-다른 idempotency ID다. Same-node outcome과 `Rejected`·commit 전 `Failed` retry는
-현재 process lifetime으로 제한하고, cross-node `Accepted`만 Relocation manifest를
-사용해 durable at-least-once로 전달한다.
+다른 idempotency ID다. Same-node와 cross-node completion retry는 현재 source와
+target process lifetime으로 제한한다. Process 종료 뒤 다른 runtime이 completion을
+자동 replay하지 않는다.

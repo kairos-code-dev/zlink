@@ -76,7 +76,7 @@ public final class Program {
     ZLinkFrameworkConfigurer providerFramework(ScenarioState state, ProviderOptions provider) {
         return options -> {
             String logDir = provider.logDir();
-            options.configureLocations().setHeartbeatInterval(Duration.ofMillis(500));
+            options.configureLocations().setOwnerLeaseRenewInterval(Duration.ofMillis(500));
             options.configureLocations().setOwnerLeaseTtl(Duration.ofSeconds(2));
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)

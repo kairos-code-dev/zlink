@@ -122,8 +122,12 @@ public sealed partial class EntrySpotActorDispatchTests
         Assert.Equal(nameof(ZLinkMessageKind.Error), result);
     }
 
+    //  Spec 06 §13.1 splits the two refusals: `Rejected` is an application
+    //  policy decision, while new admission closed by host shutdown is
+    //  `ShuttingDown`. The drain seal is the second, and a select-one caller
+    //  relies on that classification to choose another eligible member.
     [Fact]
-    public async Task MeshNode_Channel_Request_Is_Rejected_After_Drain_Admission_Is_Sealed()
+    public async Task MeshNode_Channel_Request_Reports_ShuttingDown_After_Drain_Admission_Is_Sealed()
     {
         var membership = new ZLinkMeshChannelMembership { ChannelName = "play" };
         membership.RequestHandlers.Add(new ZLinkChannelHandlerRegistration(
@@ -139,7 +143,7 @@ public sealed partial class EntrySpotActorDispatchTests
             expectedSurface: ZLinkDispatchErrorSurface.Channel,
             sealAdmission: true);
 
-        Assert.Equal(nameof(ZLinkFrameworkErrorKind.Rejected), result);
+        Assert.Equal(nameof(ZLinkFrameworkErrorKind.ShuttingDown), result);
     }
 
     private static async Task<string> DispatchMeshRequestAsync(

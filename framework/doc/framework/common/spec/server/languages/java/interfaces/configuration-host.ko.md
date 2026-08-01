@@ -216,8 +216,9 @@ public interface FanoutChannelBuilder {
 
 `applicationHwmBytes()`가 비어 있으면 Auto mode다. Setter의 `0`은 제한 없음, 양수는 정확한 host 전체
 byte 상한이며 음수는 startup configuration error다. Profile 기본값은 `BALANCED`다.
-`processMemoryLimitBytes()`가 비어 있으면 process에 적용된 유한한 container·cgroup 상한을 사용한다.
-Auto mode에서 둘 다 확인할 수 없으면 socket bind 전에 startup이 실패한다.
+`processMemoryLimitBytes()`가 비어 있으면 process에 적용된 유한한 container·cgroup 상한을 사용하고,
+유한한 상한이 없으면 시스템 물리 메모리 총량을 사용한다. Auto mode는 설정 없이도 기동하며, 계산
+결과가 양수가 아닐 때만 socket bind 전에 startup이 실패한다.
 Application listener의 `maxMessageSize()` 기본값은 `16_777_216L` bytes다.
 
 `configureNetwork()`은 process의 RouteMesh, ClientServer, classic fanout과 stream listener가 사용하는
@@ -307,9 +308,9 @@ weight보다 먼저 적용한다.
 Object Server의 Entry Spot ID는 MeshNode diagnostic prefix를 사용한
 `<prefix>-entry-<lowercase-canonical-uuid-v4>` 형식이며 MeshNode와 별도로 생성한 UUID v4를 사용한다.
 Framework 내부 descriptor의 `entrySpotId`가 같은 lifecycle의 exact mapping을 제공한다. Global Spot ID가
-active owner와 충돌하면 새 UUID로 다시 시도하지 않고 즉시 `SPOT_ID_CONFLICT`로 startup을
+active owner와 충돌하면 새 UUID로 다시 시도하지 않고 즉시 configuration exception으로 startup을
 실패시킨다. Caller가 지정한 User·Instance Spot ID가 이 예약 형식과 일치하면 Store와 factory를 시작하기
-전에 `INVALID_CONFIGURATION`으로 거부한다.
+전에 `INVALID_OPERATION`으로 거부한다.
 
 Location provider는 `ZLinkLocationStore`를 통해 Framework의 opaque record read, version 조건부 atomic
 batch와 bounded snapshot scan을 제공한다. 별도 domain별 Store instance를 host에 등록하지 않는다.

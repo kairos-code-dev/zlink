@@ -45,9 +45,9 @@ runner는 "시작 → cleanup → 종료"만 지원하므로, 아래 시나리�
 이 연산이 없으면 해당 시나리오는 "미구현(하네스 대기)"로 둔다.
 
 **성공 기준 어휘:** "정해진 public error"는 시나리오마다 정확한 `ZLinkFrameworkErrorKind`
-(`Unavailable`·`NotFound`·`Rejected`·`InternalFailure`) 또는
-`TimeoutException`과, 그 retriable 여부·timeout window를 명시한다. 재시도가 framework 동작인지
-client harness 동작인지도 구분한다. 복구는 "이후 follow-up request 성공과 public RouteMesh status의
+(`Unavailable`·`NotFound`·`Rejected`·`DeadlineExceeded`·`InternalFailure`)와 timeout window를 명시한다.
+Framework는 public retry hint를 제공하지 않는다.
+새 operation을 시작한다면 framework 내부 동작인지 client harness 동작인지 구분한다. 복구는 "이후 follow-up request 성공과 public RouteMesh status의
 ready peer·Channel target에서 제거·추가가 반영되는지 확인하는 방식처럼
 **눈으로 확인 가능한 결과**로 판정한다(내부 pending dict는 public 표면이 아니므로 직접 단언하지
 않는다).
@@ -182,10 +182,10 @@ crash·termination·failover 시나리오는 `corr=` 흐름으로 어디서 끊�
 남지 않으며 다른 provider의 트래픽은 계속 처리되는가.
 
 - 절차: handler가 처리 중일 때 provider를 SIGKILL한다.
-- 검증: 연결 종료가 먼저 관측되면 해당 request는 `Unavailable`과 `RetryAfterBackoff`, 이미 제출되어 handler
-  실행 여부를 caller가 확정할 수 없으면 설정한 request timeout 안의 timeout으로 끝난다. 오류는
+- 검증: 연결 종료가 먼저 관측되면 해당 request는 `Unavailable`, 이미 제출되어 handler
+  실행 여부를 caller가 확정할 수 없으면 설정한 request timeout 안에 `DeadlineExceeded`로 끝난다. 오류는
   socket/location 상태 evidence와 함께 기록한다. framework가 in-flight request를 다른 provider로 자동
-  재전송했다고 단언하지 않는다. 같은 consumer가 다른 provider로 보내는 follow-up request는 성공한다.
+  재전송하지 않는다. Client harness가 새로 시작한 follow-up request는 다른 provider에서 성공한다.
 - 세부 동작: in-flight 실패 처리. crash 이후 이미 실행 중인 다른 provider가 신규 부하를 계속
   처리하는 failover 결과는 Config 1 RM-B3와 함께 검증한다.
 
@@ -472,8 +472,8 @@ monitor callback이 남지 않는가.
   바꾸어 반복한다.
 - 검증: 성공으로 반환한 preflight 뒤 accepted work가 reservation 부족으로 유실되지 않는다.
   Reservation이 부족하면 source admission과 descriptor state를 원래대로 복원하고 `Blocked`로 종료한다.
-  Target replacement는 target attempt generation과 reservation만 바꾸며 stable relocation ID가 소유한 immutable
-  relocation, accepted journal, replay cursor와 operation terminal record를 다시 쓰거나 다른 key로 옮기지 않는다.
+  선택한 target이 owner commit 전에 unavailable 상태가 되면 source admission과 descriptor state를 복원하고
+  `Blocked/TargetUnavailable`로 끝낸다. 다른 target이나 새 reservation을 자동으로 선택하면 실패다.
 
 #### RL-F2 Actor owner ABA fence
 
@@ -505,25 +505,18 @@ monitor callback이 남지 않는가.
   전달하지 않고 해당 physical connection만 protocol error로 종료한다. 잘못된 command를 RouteMesh admission
   또는 server-originated 업무로 해석하지 않으며 다른 정상 연결의 ready와 request completion은 유지한다.
 
-#### RL-F5 Activated seal과 Completed 공개 경계
+#### RL-F5 temporary queue와 dispatch 공개 경계
 
 우선순위: `P0`
 
-- 절차: Actor와 Instance Spot relocation을 target restore·필요한 lifecycle gate·journal replay가 끝난
-  `Activated`에서 멈춘다. Standalone Actor의 old Entry membership cleanup은 lifecycle gate에 포함되어 replay
-  전에 끝난다. Target application call과 bound-session packet을 제출하고 남은 source resource cleanup 전후에
-  source·target을 각각 종료한다. 별도 실행에서는 남은 source resource cleanup을 terminal로 확인한 뒤 authority
-  `Completed` CAS를 수행하고 같은 call을
-  다시 제출한다.
-- 검증: `Activated`에서는 restored target과 session route가 준비되어도 application·session ingress와 public
-  ready가 열리지 않는다. Relocation 시작 때 source node와 exact source owner ID·host lease generation을 durable
-  subrecord에 고정하며 main owner가 target으로 바뀌어도 이 source token을 유지한다. `Completed` 전 crash는
-  immutable relocation을 사용한 replacement 하나로 수렴하고
-  target에서 새 업무를 처리한 evidence가 없다. Source cleanup terminal은 current source owner token으로
-  인증한 completion 또는 exact source lease expiry를 확인한 coordinator의 fenced CAS로 authority에 먼저
-  기록한다. 이 증거와 `Completed` CAS 뒤에만 steady authority로 정규화하고 ready·ingress를 열어 relocation
-  reference를 fenced release한다. `Completed` 뒤 owner loss는 종료된 relocation을 replay하지 않고
-  일반 owner-loss 결과로 처리한다.
+- 절차: Actor와 Instance Spot relocation을 target Restore와 lifecycle callback 뒤, 저장된 기존 작업을
+  실제 queue에 넣기 직전에 멈춘다. Source relay message와 target으로 들어온 message가 relocation temporary
+  queue에 보관되는지 확인한 뒤 dispatch 전환을 진행한다. Source와 target process는 종료하지 않는다.
+- 검증: Temporary queue 등록을 제거하기 전에는 application handler와 public Ready를 열지 않는다. 저장된
+  기존 작업을 실제 queue에 먼저 넣고 temporary queue 작업을 그 뒤에 옮긴 다음 dispatch를 atomic하게
+  전환한다. 전환과 동시에 들어온 message는 temporary queue와 실제 queue 중 정확히 한 곳에만 들어간다.
+  Source ingress hold 원본 제거, `Completed` 기록과 bound-session 위치 갱신 응답은 dispatch 전환 뒤 target message 처리를
+  막지 않는다. Process 종료 뒤 relocation 자동 재개는 검증하지 않는다.
 
 #### RL-F6 admitted descriptor update fence
 
@@ -552,11 +545,10 @@ monitor callback이 남지 않는가.
   request 종류마다 원 correlation으로 terminal result 하나가 도착한다. Current request-source connection의
   `terminalReceived` 또는 `alreadyTerminal` ACK까지 relay를 재전송한다. ACK가
   유실되면 source가 이미 terminal이어도 같은 결과로 다시 ACK하며 application completion은 한 번뿐이다.
-  Physical connection close는 terminal 증거가 아니므로 current route에서 relay를 계속한다. 모든 accepted
-  request가 ACK되거나 accepted record에 고정한 exact request-source owner lease expiry로 caller terminal이
-  확정되기 전에는 source cleanup terminal, authority `Completed`와 relocation release를 수행하지 않는다.
-  Source lease가 유지된 partition이 host deadline을 넘으면 `ForceStopped`로 끝내되 reply bytes와 relocation은
-  recovery retention 동안 유지한다.
+  Physical connection close는 terminal 증거가 아니므로 current route에서 deadline 안에 relay를 계속한다.
+  Reply ACK 대기는 target object의 dispatch 전환과 application message 처리를 막지 않는다. Deadline까지
+  terminal을 전달하지 못하면 해당 request를 원인에 맞는 실패로 끝내며 다른 runtime이나 target으로 자동
+  전달하지 않는다.
 
 #### RL-F8 manual source의 accepted work와 maintenance capture
 
@@ -603,20 +595,21 @@ monitor callback이 남지 않는가.
   수용할 capacity를 게시한다.
 - 검증: Entry member Actor는 ObjectGeneration을 유지하면서 owner node, AuthorityOwnerGeneration과 current Spot을
   target Entry Spot ID·ObjectGeneration·kind로 한 CAS에서 바꾼다. Target factory가 만든 Actor에
-  Actor relocation adapter의 `Restore`와 journal staging을 끝낸 뒤 authority를 commit한다. Infrastructure relocation은
+  Target은 restore 요청을 받으면 temporary queue를 먼저 등록하고 Actor relocation adapter의 `Restore`를
+  끝낸 뒤 authority를 commit한다. Infrastructure relocation은
   application의 membership 변경이 아니므로 target Entry Spot의 join·relocation callback과 source Entry
-  Spot의 leave callback을 호출하지 않는다. Source membership의 durable cleanup 뒤 accepted journal을
-  replay한다. Source process 종료 반복에서도 fenced durable source cleanup terminal 뒤에만 replay를 시작한다.
-  Maintenance 반복에서 target `OnActorJoin`·`OnJoinedActor` 또는 source `OnLeaveActor`가 한 번이라도 호출되거나
-  source cleanup보다 journal replay가 먼저 시작되면 실패다.
+  Spot의 leave callback을 호출하지 않는다. 저장된 기존 queue와 journal을 실제 Actor queue에 먼저 넣고
+  temporary queue 작업을 그 뒤에 옮긴 다음 dispatch를 전환한다. Maintenance 반복에서 target
+  `OnActorJoin`·`OnJoinedActor` 또는 source `OnLeaveActor`가 한 번이라도 호출되면 실패다.
   이 `Restore` 검증은 `PreserveStateWith` participant에만 적용하며 RL-F10에
   `RecreateOnRelocation` 반복을 섞지 않는다.
-  Callback·replay·cleanup은 current attempt에서 retry-safe하며 source cleanup 뒤 `Completed`, bound-session
-  route ACK와 steady normalization 전까지 admission을 닫는다. User Spot member가 있는
+  Callback과 Restore는 같은 source와 target process의 재시도에서 retry-safe해야 한다. Dispatch 전환 전까지
+  admission을 닫고, bound-session 위치 갱신 응답은 전환 뒤 message 처리를 막지 않는다. User Spot member가 있는
   반복은 Spot과 current member Actor 전체의 captured state payload와 accepted journal을 하나의 immutable relocation
   root에 저장하고 membership을 유지한 채 owner·membership aggregate commit에 성공한다. User Spot aggregate는
   Actor `OnActorJoin`·`OnJoinedActor`·`OnLeaveActor` evidence가 모두 0건이어야 하며 aggregate
-  journal은 commit 뒤에 replay한다. 일반 join용 `OnJoinedActor`를 maintenance 완료 신호로 사용하면 실패다.
+  payload에 저장한 기존 작업을 temporary queue 작업보다 먼저 각 target queue에 넣는다. 일반 join용
+  `OnJoinedActor`를 maintenance 완료 신호로 사용하면 실패다.
   `RelocationDisabled` blocker가 필요하면 이 성공 반복을 바꾸지 않고 별도의 `DisableRelocation` participant fixture로
   preflight abort와 source authority 보존을 검증한다.
 
@@ -683,8 +676,9 @@ monitor callback이 남지 않는가.
 
 - 절차: User Spot의 현재 turn을 완료한 뒤 frozen queue `Q1 -> Q2`와 seal 중 hold queue `H1 -> H2`를 만든다.
   Target reservation failure와 Restore failure를 authority commit 전에 각각 주입한다. Abort authority CAS,
-  route abort ACK와 source steady normalization을 단계별로 지연한다.
-- 검증: Abort가 durable하게 확정되기 전에는 source admission을 열지 않는다. 정상화 뒤 source는
+  Location Store에서 source가 owner로 유지됐는지 확인하는 단계와 source queue 복원을 각각 지연한다.
+- 검증: Abort가 Location Store에 확정되고 source owner를 다시 확인하기 전에는 source admission을
+  열지 않는다. Queue 복원 뒤 source는
   `Q1 -> Q2 -> H1 -> H2` 순서와 original operation ID·reply route를 보존해 정확히 한 번 처리한다. Frozen
   queue나 hold queue를 다른 owner에 숨겨서 제출하지 않고, timer registration과 pending tick도 source의 같은
   logical schedule로 복원한다. Abort cleanup 뒤 relocation payload와 target staging이 남지 않는다.

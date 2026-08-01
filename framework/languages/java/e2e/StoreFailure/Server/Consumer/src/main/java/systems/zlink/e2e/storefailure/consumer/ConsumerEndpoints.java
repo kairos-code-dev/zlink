@@ -10,6 +10,8 @@ import org.springframework.context.SmartLifecycle;
 import systems.zlink.e2e.storefailure.shared.Contracts;
 import systems.zlink.e2e.storefailure.shared.HttpSupport;
 import systems.zlink.e2e.storefailure.shared.Wait;
+import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
+import systems.zlink.framework.locations.ZLinkLocationTopologyFilter;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
 import systems.zlink.framework.locations.ZLinkPageRequest;
@@ -19,7 +21,7 @@ public final class ConsumerEndpoints implements SmartLifecycle {
     private final ConsumerOptions options;
     private final ZLinkClient client;
     private final ZLinkFrameworkLifecycle lifecycle;
-    private final ZLinkLocationStore locationStore;
+    private final java.util.function.Supplier<ZLinkLocationRuntimeQuery> locationQuery;
     private final LocationStoreDelayState delayState;
     private final ObjectMapper json;
     private HttpServer server;
@@ -30,13 +32,13 @@ public final class ConsumerEndpoints implements SmartLifecycle {
         ConsumerOptions options,
         ZLinkClient client,
         ZLinkFrameworkLifecycle lifecycle,
-        ZLinkLocationStore locationStore,
+        java.util.function.Supplier<ZLinkLocationRuntimeQuery> locationQuery,
         LocationStoreDelayState delayState,
         ObjectMapper json) {
         this.options = options;
         this.client = client;
         this.lifecycle = lifecycle;
-        this.locationStore = locationStore;
+        this.locationQuery = locationQuery;
         this.delayState = delayState;
         this.json = json;
     }
@@ -57,19 +59,41 @@ public final class ConsumerEndpoints implements SmartLifecycle {
                 HttpSupport.writeJson(exchange, json, request(request));
             });
             server.createContext("/profile/request/wait", exchange -> {
-                Contracts.ProfileReq request =
-                    HttpSupport.readJson(exchange, json, Contracts.ProfileReq.class);
-                Contracts.ProfileRes reply = Wait.until(
-                    Duration.ofSeconds(10),
-                    "timed out waiting for profile request routing",
-                    () -> {
-                        try {
-                            return request(request);
-                        } catch (Exception error) {
-                            return null;
-                        }
-                    });
-                HttpSupport.writeJson(exchange, json, reply);
+                //  Handler가 예외를 그대로 흘리면 응답이 나가지 않아 호출자에게는
+                //  무응답(hang)으로 보인다. 실패도 반드시 응답으로 만든다.
+                //  안쪽 catch가 원인을 버리면 그 응답조차 "timed out"만 말하므로
+                //  마지막 오류를 잡아 두었다가 함께 돌려준다.
+                java.util.concurrent.atomic.AtomicReference<Exception> lastError =
+                    new java.util.concurrent.atomic.AtomicReference<>();
+                try {
+                    Contracts.ProfileReq request =
+                        HttpSupport.readJson(exchange, json, Contracts.ProfileReq.class);
+                    Contracts.ProfileRes reply = Wait.until(
+                        Duration.ofSeconds(10),
+                        "timed out waiting for profile request routing",
+                        () -> {
+                            try {
+                                return request(request);
+                            } catch (Exception error) {
+                                lastError.set(error);
+                                return null;
+                            }
+                        });
+                    HttpSupport.writeJson(exchange, json, reply);
+                } catch (RuntimeException error) {
+                    Exception cause = lastError.get();
+                    String body = "{\"error\":\""
+                        + String.valueOf(error.getMessage()).replace('"', '\'')
+                        + " lastCause="
+                        + (cause == null ? "none" : cause.toString().replace('"', '\''))
+                        + "\"}";
+                    byte[] payload = body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().add("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(500, payload.length);
+                    try (java.io.OutputStream out = exchange.getResponseBody()) {
+                        out.write(payload);
+                    }
+                }
             });
             server.createContext("/locations/status", exchange -> HttpSupport.writeJson(
                 exchange,
@@ -109,18 +133,20 @@ public final class ConsumerEndpoints implements SmartLifecycle {
     }
 
     private List<java.util.Map<String, Object>> peers() {
-        return locationStore.listClientServers(
-                Contracts.CHANNEL,
+        //  Peer 목록은 store를 직접 열거해서 얻지 않는다. 참조 lane인 `.NET`
+        //  consumer도 IZLinkLocationRuntimeQuery.ListTopologyAsync를 쓴다.
+        return locationQuery.get().listTopology(
+                ZLinkLocationTopologyFilter.all(),
                 new ZLinkPageRequest(1_000, null))
             .toCompletableFuture()
             .join()
             .items().stream()
-            .map(server -> java.util.Map.<String, Object>of(
-                "nodeRid", server.serverRid().toString(),
-                "endpoint", server.endpoint(),
-                "ownerId", server.ownerId(),
+            .map(peer -> java.util.Map.<String, Object>of(
+                "nodeRid", peer.nodeRid().toString(),
+                "endpoint", peer.endpoint(),
+                "ownerId", "",
                 "role", "ROUTER",
-                "meshName", server.channelName()))
+                "meshName", peer.meshName()))
             .toList();
     }
 

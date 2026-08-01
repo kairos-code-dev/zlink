@@ -13,6 +13,7 @@ direct handoff 뒤 Framework service runtime이 확정한 target snapshot을 한
 API의 근거가 아니다. 공개 계약은
 [async 실행 정책](../spec/05-async-execution-policy.ko.md),
 [Framework API](../spec/06-framework-api.ko.md),
+[Framework 오류 모델](../spec/32-framework-error-model.ko.md),
 [Channel messaging](../spec/08-channel-messaging.ko.md),
 [Spot messaging](../spec/12-spot-messaging.ko.md)이 소유한다.
 
@@ -259,13 +260,13 @@ Public awaitable의 정상 완료·예외, 역할 server evidence와 사용한 g
   사용하는 waiter 외에 payload reservation이 무제한 증가하지 않는지 확인하고 gate는 send deadline까지 열지 않는다.
 - **기대 결과:** 두 번째 후보는 non-blocking transport 또는 local mailbox admission을 한 번 시도해
   `EAGAIN` 또는 mailbox-full을 확인한다. Backpressure status나 결과 객체를 반환하지 않고 bounded capacity를
-  기다리다가 timeout 예외로 한 번 완료되며 첫 pending operation의 상태는 바뀌지 않는다.
+  기다리다가 `DeadlineExceeded` 예외로 한 번 완료되며 첫 pending operation의 상태는 바뀌지 않는다.
 - **공통 evidence:** Pending waiter count 1, 두 operation의 서로 다른 ID, 두 번째 terminal time과
   timeout exception kind, public invocation 1회, transport attempt 1회, commit 0회를 남긴다.
 
 ### SA-E2E-04 — deadline 만료와 late admission 차단
 
-- **목적:** Queue가 deadline까지 비지 않으면 timeout 예외로 끝나고 이후 writable event가 완료된 operation을
+- **목적:** Queue가 deadline까지 비지 않으면 `DeadlineExceeded`로 끝나고 이후 writable event가 완료된 operation을
   다시 제출하지 않는지 확인한다.
 - **Topology·사전 조건:** Logical Multicast를 제외한 각 family에서 remote route는 `ReceiverGate`, local
   mailbox는 `LocalMailboxGate`를 닫고 검증 operation을 pending으로 만든다. 설정된 send timeout을 기록한다.
@@ -280,7 +281,7 @@ Public awaitable의 정상 완료·예외, 역할 server evidence와 사용한 g
   - `SA-E2E-04.e`: 해당 언어의 public duration type으로 표현 가능한 `INT_MAX + 1`, 양의 infinity와 음의 infinity를
     각각 설정한다. 표현할 수 없는 입력은 호출을 흉내 내지 않고 N/A evidence를 남긴다.
   - `SA-E2E-04.f`: Node.js에서 `NaN`과 정수가 아닌 millisecond 값을 각각 설정한다.
-- **기대 결과:** 만료 operation은 timeout 예외로 한 번 완료되며 late admission과 handler delivery는 0이다.
+- **기대 결과:** 만료 operation은 `DeadlineExceeded` 예외로 한 번 완료되며 late admission과 handler delivery는 0이다.
   새 operation만 반환 데이터 없이 정상 완료한다. `0`과 `-1`은 늦어도 host startup에서 거부되고 기본값으로
   바뀌지 않는다. `INT_MAX`는
   유효한 값으로 보존된다. 양수 sub-millisecond 값은 1ms로 올림하며 0으로 줄이지 않는다. `INT_MAX + 1`과
@@ -302,12 +303,12 @@ Public awaitable의 정상 완료·예외, 역할 server evidence와 사용한 g
 - **절차:** 두 상태에서 같은 family call을 한 번씩 시작한다. Settle 반복이나 fallback target을 허용하지 않는다.
 - **기대 결과:** 대상 부재는 `NotFound`, 알려진 target의 미연결은 `Unavailable` Framework
   예외다. 둘 다 terminal
-  한 번이고 handler 실행은 0이다.
+  한 번이고 handler 실행은 0이다. Exception에는 public retry hint가 없다.
 - **공통 evidence:** Resolve snapshot, known target ID, route-ready state, public exception kind와 handler count를 남긴다.
 
 ### SA-E2E-06 — Relocate·Shutdown admission 거부
 
-- **목적:** `Relocate` 또는 `Shutdown`의 admission seal 뒤 새 one-way call이 runtime shutdown 예외로 한 번만
+- **목적:** `Relocate` 또는 `Shutdown`의 admission seal 뒤 새 one-way call이 `ShuttingDown`으로 한 번만
   거부되는지 확인한다.
 - **Topology·사전 조건:** Target이 아니라 family별 public call의 실제 source host를 `Relocate`와 `Shutdown` 대상으로
   사용한다. RouteMesh·ClientServer Channel, Spot·Actor와 Logical Multicast는 `AdmissionCaller`, classic fanout은
@@ -320,7 +321,7 @@ Public awaitable의 정상 완료·예외, 역할 server evidence와 사용한 g
   call barrier를 해제한다. `SA-E2E-06.b`는 같은 source에서 pending operation을 만든 뒤 해당 source Framework
   host의 `Shutdown`과 경쟁시킨다. Target 역할 server의 `Relocate`·`Shutdown` 결과와 source host 안의 control endpoint를
   종료 후 evidence로 사용하지 않는다.
-- **기대 결과:** Admission seal 뒤의 신규 call과 shutdown이 먼저 선형화된 pending call은 runtime shutdown
+- **기대 결과:** Admission seal 뒤의 신규 call과 shutdown이 먼저 선형화된 pending call은 `ShuttingDown`
   예외로 한 번 완료된다. 이미 transport admission을 완료한 call의 정상 완료는 바꾸지 않는다. 어느
   terminal도 뒤늦게 timeout으로 바뀌거나 `Draining` 뒤 새로 admission되지 않는다.
 - **공통 evidence:** Family별 source 역할·process·host ID, effective termination intent, source
@@ -374,7 +375,7 @@ Public awaitable의 정상 완료·예외, 역할 server evidence와 사용한 g
 - **절차:** Local·remote에서 즉시 수락, gate pending 뒤 수락, deadline 만료를 같은 순서로 실행한다.
   마지막에는 Object Client RID로 한 번 제출한다.
 - **기대 결과:** Route 위치와 관계없이 즉시 admission과 delayed admission은 반환 데이터 없이 정상 완료하고,
-  deadline 만료는 timeout 예외다. 원격 경로에만 application retry나 더 긴 timeout을 적용하지 않는다.
+  deadline 만료는 `DeadlineExceeded`다. 원격 경로에만 Application retry나 더 긴 timeout을 적용하지 않는다.
   Object Client target은 physical connection을 새로 만들지 않고 `NotFound`로 한 번 완료한다.
 - **공통 evidence:** Route kind를 제외한 deadline·terminal·transport attempt·commit 필드를 나란히 비교하고
   sequence delivery를 target별로 남긴다.
@@ -399,38 +400,39 @@ Public awaitable의 정상 완료·예외, 역할 server evidence와 사용한 g
 - **Topology·사전 조건:** 전용 ClientServer client와 server를 구성하고 server 방향 receiver gate를 닫는다.
   같은 process의 RouteMesh timeout은 다른 값으로 두어 잘못된 소유자를 드러낸다.
 - **절차:** Pending 뒤 gate를 deadline 전에 열어 수락시키고, 별도 operation은 client deadline까지 닫아 둔다.
-- **기대 결과:** 첫 call은 반환 데이터 없이 정상 완료하고, 둘째는 client DEALER deadline의 timeout 예외다.
+- **기대 결과:** 첫 call은 반환 데이터 없이 정상 완료하고, 둘째는 client DEALER deadline의 `DeadlineExceeded`다.
   RouteMesh deadline이나 server retry를 사용하지 않는다.
 - **공통 evidence:** ClientServer ChannelName, DEALER deadline, RouteMesh 비교값, gate 기록과 terminal kind를
   남긴다.
 
-### SA-E2E-11 — Spot resolve generation과 route admission
+### SA-E2E-11 — Spot logical ID와 route admission
 
-- **목적:** Spot direct send가 location resolve 실패와 resolved owner route의 capacity 완료를 구분하는지 확인한다.
+- **목적:** Spot direct send가 logical Spot ID의 current object와 resolved owner route의 capacity 완료를 구분하는지 확인한다.
 - **Topology·사전 조건:** 존재하지 않는 global Spot ID와 ready location을 가진 remote Spot을 준비한다.
   Ready Spot은 resolve와 outbound admission 사이에서 close·recreate하여 generation을 바꿀 수 있고 current
   owner의 receiver gate를 독립 제어할 수 있어야 한다.
 - **절차:** Missing Spot ID로 한 번 보낸다. Ready Spot ID는 resolve barrier에서 정지한 뒤 close·recreate하고 barrier를
   해제한다. 별도 fresh operation으로 즉시 수락·pending 뒤 수락·deadline 만료를 실행한다.
-- **기대 결과:** Missing Spot은 `TargetNotFound` Framework 예외이며 remote creation을 시작하지 않는다. Generation 교체 전
-  operation은 새 incarnation으로 자동 retarget되지 않고 terminal 한 번으로 끝나며 잘못된 handler 실행은 0이다.
-  Fresh operation은 route capacity에 따라 반환 데이터 없이 정상 완료하거나 timeout 예외로 끝나며 handler
+- **기대 결과:** Missing Spot은 `TargetNotFound` Framework 예외이며 remote creation을 시작하지 않는다. 같은 owner에서
+  generation 교체 전에 시작한 operation은 target queue가 수락하는 시점의 current Ready Spot에서 한 번 처리된다.
+  이전 generation의 handler 실행은 0이다.
+  Fresh operation은 route capacity에 따라 반환 데이터 없이 정상 완료하거나 `DeadlineExceeded`로 끝나며 handler
   delivery는 성공 sequence에만 있다.
 - **공통 evidence:** Global Spot ID, resolve에서 선택한 object·owner generation, current generation, owner route,
   admission terminal과 generation별 Spot handler sequence를 남긴다. Public call에는 handle·ref·owner를 넘기지 않는다.
 
-### SA-E2E-12 — Actor resolve generation과 route admission
+### SA-E2E-12 — Actor logical ID와 route admission
 
-- **목적:** Actor direct send가 global `ActorId` resolve 뒤 generation 교체와 current owner route capacity를
+- **목적:** Actor direct send가 global `ActorId`의 current Actor와 current owner route capacity를
   구분하는지 확인한다.
 - **Topology·사전 조건:** Remote Actor를 준비하고 resolve와 admission 사이에서 current `ActorRef`로
   destroy한 뒤 같은 global ID·stable type으로 recreate해 ObjectGeneration을 바꿀 수 있어야 한다. Current
   owner의 receiver gate도 닫을 수 있어야 한다. 이 scenario는 owner relocation을 사용하지 않는다.
 - **절차:** Global `ActorId` call을 resolve barrier에 멈춘 뒤 generation을 교체하고 해제한다. 이어서 같은 ID의
   fresh call로 gate-open·gate-closed case를 실행한다.
-- **기대 결과:** 이전 operation은 current incarnation으로 자동 retarget되지 않고 terminal 한 번으로 끝나며
-  generation별 handler 실행을 섞지 않는다. Fresh operation은 capacity에 따라 반환 데이터 없이 정상
-  완료하거나 timeout 예외로 끝난다.
+- **기대 결과:** 같은 owner에서 generation 교체 전에 시작한 operation은 target queue가 수락하는 시점의
+  current Ready Actor에서 한 번 처리된다. 이전 generation의 handler는 실행되지 않는다. Fresh operation은 capacity에 따라 반환 데이터 없이 정상
+  완료하거나 `DeadlineExceeded`로 끝난다.
 - **공통 evidence:** Global Actor ID, resolved·current object generation과 owner fence, terminal kind와
   generation별 handler count를 기록한다. Public call에는 `ActorRef`·handle·owner를 넘기지 않는다.
 
@@ -459,7 +461,7 @@ Public awaitable의 정상 완료·예외, 역할 server evidence와 사용한 g
   `SA-E2E-13.b`도 정상 완료하며 target count나 unreachable count를 public monitoring에 보존하지 않는다. Direct
   handoff에 사용할 `worker slot`이 없는
   `SA-E2E-13.c`는 executor capacity를 send timeout까지 기다린다. Capacity가 생기면 한 번 처리하고 정상
-  완료하며, 생기지 않으면 snapshot pass·commit 없이 timeout 예외로 끝난다. Snapshot count가 모두 0인
+  완료하며, 생기지 않으면 snapshot pass·commit 없이 `DeadlineExceeded`로 끝난다. Snapshot count가 모두 0인
   `SA-E2E-13.d`는 유효한 local index entry를 유지하며 target admission attempt 없이 한 번의 snapshot
   pass로 정상 완료한다. Local Spot만 capacity drop된 `SA-E2E-13.e`도 정상 완료하며 local dropped count를
   public monitoring에 만들지 않는다. Commit된 operation은 snapshot pass를 정확히 한 번 끝내며 각 snapshot member에는
@@ -495,7 +497,7 @@ Public awaitable의 정상 완료·예외, 역할 server evidence와 사용한 g
   - `SA-E2E-15.a`: Bound session send의 local·remote 경로에서 pending 뒤 capacity signal 수락과 deadline 만료를
     각각 실행한다. Local relay 수락 직후 remote connection을 끊는 case도 실행한다.
   - `SA-E2E-15.b`: Session Actor relay의 local·remote 경로에서 즉시 정상 완료, capacity 대기 뒤 정상 완료,
-    timeout 예외를 만들고 각 언어의 결과 없는 비동기 terminal을 확인한다.
+    `DeadlineExceeded`를 만들고 각 언어의 결과 없는 비동기 terminal을 확인한다.
 - **기대 결과:** 두 family의 local·remote 경로는 같은 deadline source와 결과 없는 비동기 완료 계약을 사용한다.
   Local relay가 수락한 뒤 발생한 remote failure는 같은 submit을 되돌리거나 replay하지 않으며 session delivery
   count는 최대 1이다.
@@ -510,7 +512,7 @@ Public awaitable의 정상 완료·예외, 역할 server evidence와 사용한 g
   STREAM socket HWM과 pending capacity는 §3.1 값이다.
 - **절차:** Sequence를 가진 send를 제출해 pending을 만든 뒤 gate를 열고, 이어지는 sequence를 제출한다. 별도
   case는 gate를 deadline까지 닫는다.
-- **기대 결과:** 수락된 send는 반환 데이터 없이 정상 완료하고, 닫힌 case는 timeout 예외다. Peer wire sequence는 수락 순서와 같고
+- **기대 결과:** 수락된 send는 반환 데이터 없이 정상 완료하고, 닫힌 case는 `DeadlineExceeded`다. Peer wire sequence는 수락 순서와 같고
   timeout operation은 wire에 나타나지 않는다.
 - **공통 evidence:** Session ID, socket deadline, operation sequence·terminal, peer wire capture sequence를 남긴다.
   Connector send completion은 증거로 사용하지 않는다.
@@ -607,15 +609,17 @@ Public awaitable의 정상 완료·예외, 역할 server evidence와 사용한 g
 
 ## 6. 회귀 시나리오
 
-### SA-REG-01 — 제거된 one-way result type 잔여 검사
+### SA-REG-01 — 제거된 one-way result와 retry hint 잔여 검사
 
-- **목적:** 다섯 언어의 public declaration·guide·sample·consumer에 제거한 동기 `TrySubmit` 계열과 one-way
-  status·result type이 남지 않는지 확인한다.
+- **목적:** 다섯 언어의 public declaration·guide·sample·consumer에 제거한 동기 `TrySubmit` 계열,
+  one-way status·result type과 public retry hint가 남지 않는지 확인한다.
 - **Topology·사전 조건:** 설치 package와 public API snapshot, 모든 server sample·E2E consumer source를 준비한다.
-- **절차:** 언어별 exported declaration과 source allowlist를 검사하고 compile-negative fixture에서 제거된 호출이
-  compile되지 않는지 확인한다.
+- **절차:** 언어별 exported declaration과 source allowlist를 검사한다. Compile-negative fixture에서는
+  제거된 one-way 호출과 `RetryAdvice`, `isRetriable`, `is_retriable`, `retriable` 접근이 compile되지 않는지
+  확인한다. Public `ErrorKind` enum의 이름과 숫자도 대조한다.
 - **기대 결과:** Public `TrySubmit`, `trySubmit`, `try_submit`, one-way status·result type과 동기 `void`
   wrapper가 0개다. Session Actor relay도 언어별 비동기 완료형을 사용하고 정상 완료 값은 없다.
+  Public 오류는 공통 13개 kind만 제공하며 retry hint는 0개다.
 - **공통 evidence:** Package version, API snapshot hash, 검색 결과 0과 compile-negative 결과를 남긴다.
 
 ### SA-REG-02 — 내부 non-blocking primitive 유지
@@ -633,7 +637,7 @@ Public awaitable의 정상 완료·예외, 역할 server evidence와 사용한 g
 - **목적:** Kotlin convenience wrapper가 Java runtime의 정상 완료와 실패를 `await(): Unit`으로 정확히
   투영하고 제거된 상태 payload를 다시 노출하지 않는지 확인한다.
 - **Topology·사전 조건:** Kotlin compile fixture와 JVM Config 13 역할 server를 사용한다. Receiver gate로
-  즉시 정상 완료, capacity 대기 뒤 정상 완료와 timeout 예외 case를 만든다.
+  즉시 정상 완료, capacity 대기 뒤 정상 완료와 `DeadlineExceeded` case를 만든다.
 - **절차:** `SA-REG-03.a`는 Kotlin wrapper의 `await()`가 `Unit`으로 정상 완료하는 두 success case와 timeout
   예외 case를 실행한다. Java call을 직접 반환하거나 결과 분기를 요구하는 extension이 compile
   surface에 없는지 확인한다.

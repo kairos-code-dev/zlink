@@ -1472,7 +1472,12 @@ internal static partial class ZLinkServiceWireCodec
         ulong lifecycleGeneration,
         ulong descriptorRevision,
         IReadOnlyDictionary<string, uint> channels,
-        byte objectRole = 0)
+        byte objectRole = 0,
+        //  descriptor-extension field 1. Schema는 preparing=0·serving=1·
+        //  draining=2를 이미 정의하고, admission guard도 field 1을 변경 가능한
+        //  것으로 둔다. 기본값 serving을 유지해야 golden fixture가 바이트
+        //  동일하게 남는다.
+        byte runtimeState = 1)
     {
         if (command is not (ServiceWireConstants.Command.Hello
             or ServiceWireConstants.Command.Admit
@@ -1506,7 +1511,7 @@ internal static partial class ZLinkServiceWireCodec
             body.Text8(name);
             body.U32(weight);
         }
-        body.Bytes(EncodeDescriptorExtension(objectRole));
+        body.Bytes(EncodeDescriptorExtension(objectRole, runtimeState));
 
         var admission = new WireWriter();
         admission.U8(1); // service-topology-kind.routeMesh
@@ -1826,10 +1831,10 @@ internal static partial class ZLinkServiceWireCodec
         return bytes;
     }
 
-    private static byte[] EncodeDescriptorExtension(byte objectRole)
+    private static byte[] EncodeDescriptorExtension(byte objectRole, byte runtimeState)
     {
         var fields = new WireWriter();
-        fields.Tlv(1, [1]); // runtime-state.serving
+        fields.Tlv(1, [runtimeState]); // runtime-state
 
         var applicationVersion = new byte[sizeof(long)];
         BinaryPrimitives.WriteInt64BigEndian(applicationVersion, 0);

@@ -7533,6 +7533,10 @@ public sealed partial class EntrySpotActorDispatchTests
         public void SetChannelWeight(string channelName, uint weight) =>
             ChannelWeights[channelName] = weight;
 
+        public bool DrainingPublished { get; private set; }
+
+        public void PublishDraining() => DrainingPublished = true;
+
         public void SetMaxMessageSize(long value)
         {
         }

@@ -82,7 +82,7 @@ C++ 공개 header는 사용자가 구성하거나 호출하는 타입과 결과�
 공개 `route_client_t`와 `route_send_call_t`는 node와 global Spot ID를 대상으로 하는 typed 호출을
 제공한다. [User Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)과 Instance Spot은 같은 ID-only 호출 표면을 사용하며, 별도 handle·resolver·논리 주소
 타입을 제공하지 않는다. request 계열은 `channel_request_call_t`을 반환한다. 사용자는 target MeshNode,
-location owner token, generation이나 retry 절차를 넘기지 않으며 routing envelope, location claim과
+location owner token이나 generation을 넘기지 않으며 routing envelope, location claim과
 serializer 선택은 framework가 처리한다.
 
 일반 request는 `request_to_node(...).timeout(...).submit<TReply>()`로 typed reply를 받는다.
@@ -91,15 +91,14 @@ serializer 선택은 framework가 처리한다.
 
 하위 transport와 remote error envelope는 다음 공개 오류 의미로 변환한다.
 
-| 하위 오류 의미 | C++ error kind | retriable |
-|-------------------|----------------|-----------|
-| `timed_out`, `timeout` | 경계 timeout — public enum 값이 아니라 `framework_exception_t`의 `code() == std::errc::timed_out` 값(§7.4) | no |
-| `not_connected`, `route_not_connected` | `route_not_connected` | yes |
-| `not_found`, `request_target_not_found` | `request_target_not_found` | no |
-| `rejected`, `request_rejected` | `request_rejected` | no |
-| `busy`, `conflict` | `request_rejected` | yes |
-| `protocol_error`, `request_protocol_error` | `request_protocol_error` | no |
-| `handler_not_found` | `handler_not_found` | no |
+| 하위 오류 의미 | C++ error kind |
+|-------------------|----------------|
+| `timed_out`, `timeout` | `deadline_exceeded` |
+| `not_connected`, `route_not_connected` | `unavailable` |
+| `not_found`, `request_target_not_found`, `handler_not_found` | `not_found` |
+| typed 결과가 없는 admission 또는 filter 거부 | `rejected` |
+| `busy`, queue capacity 부족 | `capacity_exceeded` |
+| `protocol_error`, `request_protocol_error` | `protocol_error` |
 
 이 표는 request completion과 error envelope reply에 같은 의미로 적용한다.
 
@@ -133,8 +132,7 @@ public:
     static result_t success(T value);
     static result_t failure(
       framework_error_kind_t kind,
-      std::string message,
-      bool retriable = false);
+      std::string message);
     bool has_value() const noexcept;
     explicit operator bool() const noexcept;
     const T &value() const;
@@ -149,8 +147,7 @@ public:
     static result_t success();
     static result_t failure(
       framework_error_kind_t kind,
-      std::string message,
-      bool retriable = false);
+      std::string message);
     bool has_value() const noexcept;
     explicit operator bool() const noexcept;
     void value() const;
@@ -247,7 +244,7 @@ SPOT과 STREAM의 backpressure는 public **call object, timeout, result error ki
 
 - **application handler가 framework queue를 직접 제어하는 API를 두지 않는다.**
 - **기본 정책은 무한 queue가 아니다.** queue 상한·submit timeout·overflow 정책은 framework runtime
-  설정으로 닫고, **한도 초과는 실패 result로 반환한다**(`request_rejected` 등).
+  설정으로 닫고, **한도 초과는 실패 result로 반환한다**(`capacity_exceeded`).
 
 ### 6.2 Handler filter
 
@@ -256,8 +253,8 @@ message storage는 Framework 내부에 유지한다. filter는 result를 반환�
 바꿀 수 없다.
 
 `next()`를 호출하지 않으면 send와 Classic Fanout의 현재 handler만 종료한다. request는
-`request_rejected`로 완료한다. `next()`는 한 번만 호출할 수 있으며 두 번째 호출은
-`already_submitted` 오류다.
+`rejected`로 완료한다. `next()`는 한 번만 호출할 수 있으며 두 번째 호출은
+`invalid_operation` 오류다.
 
 filter의 등록 순서·`next` 의미·scope는 [framework API §8.1](../../../../06-framework-api.ko.md)이
 소유한다.
@@ -283,7 +280,7 @@ logical timer registration과 callback metadata만 사용한다.
 | **`actor_ref_t` public 형태** | node routing id, actor id와 **generation**을 담는 C++ 값 타입 |
 | **session 생성** | session 구현체는 **DI에서 resolve한다.** handler registry callback은 낮은 수준 확장 표면으로만 둔다 |
 | **remote ActorGateway** | application에는 `actor_ref_t`와 session actor 표면만 보인다 |
-| **actor factory 중복 정책** | 같은 actor id 중복은 **`actor_already_exists`**, actor id/type 불일치는 **`actor_type_mismatch`** 로 보고한다 |
+| **actor factory 중복 정책** | 같은 actor id 중복은 **`already_exists`**, actor id/type 불일치는 **`type_mismatch`** 로 보고한다 |
 
 **`actor_ref_t`의 `node_rid`·`actor_id`·`generation`은 bind·relay·push round-trip에서 보존된다.**
 **local actor relay와 remote actor relay는 같은 public 표면을 쓴다.**
@@ -339,14 +336,15 @@ public:
 host 종료와 caller cancellation을 합친 `std::stop_token`을 전달한다. `submit()`은 결과를 기다리지
 않는 terminal이고 `submit()`은 현재 turn을 유지하며 결과를 기다린다. `yield()`는 `SpotWide` User Spot
 또는 Instance Spot의 shared turn에서만 그 turn을 반환하고 결과를 기다린다. 다른 실행 문맥에서는
-worker를 제출하거나 turn을 반환하지 않고 `invalid_configuration`으로 완료한다.
+worker를 제출하거나 turn을 반환하지 않고 `invalid_operation`으로 완료한다.
 `worker_options_t`의 최소·최대 thread 수, idle timeout과 queue 상한은 host 시작 전에만 설정한다.
 
 ### 7.4 오류 경계
 
 동기 validation과 명시적인 결과 객체를 반환하는 API는 `result_t<T>`로 실패를 반환한다. 비동기 call의
-`submit()`은 실패하면 같은 오류 정보를 가진 `framework_exception_t`를 throw한다. 오류 code는
-`framework_exception_t::code()`의 `std::error_code`로 노출한다.
+`submit()`은 실패하면 같은 오류 정보를 가진 `framework_exception_t`를 throw한다. Application의 오류 분기는
+`kind()`를 사용한다. `code()`는 timeout이나 transport처럼 platform 원인이 있을 때 진단 정보를 추가하지만
+공통 오류 분류를 대신하지 않는다.
 
 
 같은 Spot의 dispatch 직렬화와 `yield()` 허용 범위는

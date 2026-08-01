@@ -5,7 +5,7 @@ import systems.zlink.e2e.registrationcodec.shared.Contracts;
 import systems.zlink.e2e.registrationcodec.main.Infrastructure.DiScopedDependency;
 import systems.zlink.e2e.registrationcodec.main.Infrastructure.DiSingletonDependency;
 import systems.zlink.e2e.registrationcodec.main.Infrastructure.EvidenceStore;
-import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 
 public final class DiLifecycleReqHandler
@@ -26,7 +26,7 @@ public final class DiLifecycleReqHandler
     @Override
     public java.util.concurrent.CompletionStage<Contracts.DiLifecycleRes> handle(
         Contracts.DiLifecycleReq request,
-        ZLinkRequestContext context) {
+        ZLinkMessageContext context) {
         int scopedId;
         try (DiScopedDependency dependency = scoped.getObject()) {
             scopedId = dependency.id();

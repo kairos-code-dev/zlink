@@ -27,13 +27,13 @@ internal static class ObsC1DrainingMarkerScenario
         await context.JoinRoomAsync(connector, actorId, roomRid);
         await source.Post("/relocate?deadlineMs=30000").AsyncRaw();
 
+        //  Config 11 OBS-C1이 요구하는 것은 host status의 `State=Relocating`,
+        //  `IsReady=false`와 신규 배치 제외이지 peer가 관측하는 Draining 표시가
+        //  아니다. 그리고 이 evidence는 relocate 대상인 `source` 자신에게서 읽으므로
+        //  구조적으로 peer의 Draining이 나올 수 없다. `source`는 자기 자신을 자기
+        //  peer 목록에 두지 않는다. Spec이 요구하는 조건만 기다린다.
         var draining = await WaitEvidenceAsync(source, snapshot =>
             !snapshot.Ready
-            // The draining mark is as short-lived as the relocating state, so
-            // it is read from the recorded transitions for the same reason.
-            && snapshot.Entries.Any(line =>
-                line.Contains("peer-state|", StringComparison.Ordinal)
-                && line.Contains("state=Draining", StringComparison.Ordinal))
             && snapshot.SpotRows.Any(row => row.SpotRid == roomRid)
             // The relocating state can pass faster than any snapshot poll, so
             // spec 24 §3 exposes state changes as a stream. The host records
@@ -44,13 +44,29 @@ internal static class ObsC1DrainingMarkerScenario
                 && line.Contains("state=Relocating", StringComparison.Ordinal)));
         ZlinkStreamAssert.Ensure(
             draining.Entries.Any(line =>
-                line.Contains("peer-state|", StringComparison.Ordinal)
-                && line.Contains("state=Draining", StringComparison.Ordinal)),
-            "OBS-C1 typed draining peer row was not published.");
-        var action = await connector.Request(new GameActionReq("obs-c1-existing-session"))
-            .Async<GameActionRes>();
-        ZlinkStreamAssert.Ensure(action.ActorId == actorId,
-            "OBS-C1 existing bound session request failed during drain propagation.");
+                line.Contains("host-state|", StringComparison.Ordinal)
+                && line.Contains("state=Relocating", StringComparison.Ordinal)),
+            "OBS-C1 host did not publish the Relocating state.");
+        //  Config 11은 OBS-C1의 몫을 **배치 제외**로, bound-session 연속성을
+        //  OBS-C2의 몫으로 명시한다(config-11 §296~297). 이전에는 여기서
+        //  relocate 시작 뒤 새로 보낸 bound-session 요청의 성공을 단언했는데,
+        //  그것은 C2의 검증이고 C1이 요구하는 "이미 수락한 작업"도 아니다.
+        //  C1이 실제로 요구하는 것만 확인한다.
+        //  요청은 draining이 아닌 host에서 낸다. Spec 28 §11 step 1이 draining
+        //  host의 신규 admission을 닫으므로, relocate 중인 play-a에 직접 내면
+        //  placement에 닿기 전에 `RequireSpotAdmission`이 거절한다(그게 정상이다).
+        //  "배치 제외"는 **다른 host가 target으로 고르지 않는다**는 뜻이다.
+        var relocatingNode = room.NodeRid;
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            var placed = (await context.PlayB.Post("/rooms")
+                .Body(new CreateRoomReq($"obs-c1-exclusion-{attempt}-{Guid.NewGuid():N}", "normal"))
+                .Async<CreateRoomRes>()).Body;
+            ZlinkStreamAssert.Ensure(
+                placed.NodeRid != relocatingNode,
+                "OBS-C1 relocating host was still selected for a new room placement.");
+            await context.PlayB.Post($"/rooms/{placed.RoomRid}/close").AsyncRaw();
+        }
         ZlinkStreamAssert.Ensure(
             (await EvidenceAsync(source)).SpotRows.Any(row => row.SpotRid == roomRid),
             "OBS-C1 room disappeared before relocation commit.");

@@ -87,10 +87,10 @@ Awaitable을 쓰지 않는 호출자를 위한 callback
 
 | | 예외/실패 타입 | kind 접근 |
 | --- | --- | --- |
-| C++ | `framework_exception_t` / `result_t` | Framework 공통 kind와 retry advice |
-| .NET | `ZLinkFrameworkException` | `ZLinkFrameworkErrorKind`와 `ZLinkRetryAdvice` |
-| Java/Kotlin | `ZLinkFrameworkException` | `kind()`와 `retryAdvice()` |
-| Node.js | `ZLinkFrameworkException` | Framework 공통 kind와 `retryAdvice` |
+| C++ | `framework_exception_t` / `result_t` | Framework 공통 kind |
+| .NET | `ZLinkFrameworkException` | `ZLinkFrameworkErrorKind` |
+| Java/Kotlin | `ZLinkFrameworkException` | `kind()` |
+| Node.js | `ZLinkFrameworkException` | Framework 공통 kind |
 
 ## 2. 언어별 공개 표면 요약 (비규범)
 

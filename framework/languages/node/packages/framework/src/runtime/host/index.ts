@@ -280,7 +280,7 @@ export class ZLinkFrameworkRuntimeHost implements
   readonly clientServerRuntime: ZLinkClientServerRuntime;
   readonly fanoutRuntime: ZLinkFanoutRuntime;
   private readonly routeMeshCoordinator: ZLinkRouteMeshRuntimeCoordinator;
-  //  Auto sizing needs a finite process memory limit, so resolving it is a
+  //  Auto sizing reads the environment's memory limit, so resolving it is a
   //  start-time step, not a construction-time one. The .NET reference resolves
   //  inside the component state factory before any socket is bound and reports
   //  a zero budget until then; constructing a host must not fail on the
@@ -883,9 +883,7 @@ export class ZLinkFrameworkRuntimeHost implements
 
   private notifyTopologyHostStateChanged(): void {
     const callbacks = [
-      () => (this.routeMeshCoordinator as ZLinkRouteMeshRuntimeCoordinator & {
-        hostStateChanged?: () => void;
-      }).hostStateChanged?.(),
+      () => this.routeMeshCoordinator.hostStateChanged(),
       () => (this.clientServerRuntime as ZLinkClientServerRuntimeProjection)
         .hostStateChanged(),
       () => (this.fanoutRuntime as ZLinkFanoutRuntimeProjection)
@@ -909,9 +907,7 @@ export class ZLinkFrameworkRuntimeHost implements
 
   private stopTopologyObservers(): void {
     const callbacks = [
-      () => (this.routeMeshCoordinator as ZLinkRouteMeshRuntimeCoordinator & {
-        stopObservers?: () => void;
-      }).stopObservers?.(),
+      () => this.routeMeshCoordinator.stopObservers(),
       () => (this.clientServerRuntime as ZLinkClientServerRuntimeProjection)
         .stopObservers(),
       () => (this.fanoutRuntime as ZLinkFanoutRuntimeProjection)

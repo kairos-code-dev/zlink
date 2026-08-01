@@ -7,7 +7,7 @@
 [![Build](https://github.com/ulala-x/zlink/actions/workflows/build.yml/badge.svg)](https://github.com/ulala-x/zlink/actions/workflows/build.yml)
 [![License: MPL-2.0 / FSL-1.1 / Apache-2.0](https://img.shields.io/badge/License-multiple-blue.svg)](./doc/license/README.md)
 
-[Website](https://zlink.systems/) · [User Guide](./doc/guide/01-overview.md) · [Spec](./doc/spec/README.md) · [Bindings](doc/bindings/overview.md) · [Internals](./doc/internals/architecture.md) · [Build](./doc/building/build-guide.md)
+[Website](https://kairos-code-dev.github.io/zlink/) · [User Guide](./doc/guide/01-overview.md) · [Spec](./doc/spec/README.md) · [Bindings](doc/bindings/overview.md) · [Internals](./doc/internals/architecture.md) · [Build](./doc/building/build-guide.md)
 
 ---
 

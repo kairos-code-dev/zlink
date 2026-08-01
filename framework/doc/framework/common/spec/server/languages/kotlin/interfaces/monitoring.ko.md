@@ -50,36 +50,28 @@ limit은 Kotlin projection에도 추가하지 않는다.
 
 ## Framework 오류 값
 
-Kotlin은 Java `ZLinkFrameworkErrorKind`를 그대로 사용한다. Enum 이름과 숫자는 wire와 public exception
-분류의 일부이며 다음 값을 고정한다. 기존 값 0..21은 유지한다.
+Kotlin은 Java `ZLinkFrameworkErrorKind`를 그대로 사용한다. Enum 이름과 숫자는 public exception
+분류의 일부이며 다음 값을 고정한다.
 
 ```text
-OBJECT_CLIENT_NOT_CONFIGURED = 22
-MESH_SELECTION_REQUIRED = 23
-MESH_NOT_FOUND = 24
-INVALID_CONFIGURATION = 25
-ALREADY_SUBMITTED = 26
-ACTOR_GENERATION_STALE = 27
-ACTOR_MOVING = 28
-DEADLINE_EXCEEDED = 29
-PLACEMENT_CAPACITY_EXHAUSTED = 30
-ROUTING_ID_CONFLICT = 31
-SPOT_GENERATION_STALE = 32
-SPOT_MOVING = 33
-RELOCATION_DATA_LOST = 34
-SPOT_ID_CONFLICT = 35
-RUNTIME_SHUTDOWN = 36
-RELOCATION_DISABLED = 37
-RELOCATION_TARGET_UNAVAILABLE = 38
-RELOCATION_FAILED = 39
+NOT_FOUND = 0
+ALREADY_EXISTS = 1
+TYPE_MISMATCH = 2
+NOT_CONFIGURED = 3
+REJECTED = 4
+UNAVAILABLE = 5
+CAPACITY_EXCEEDED = 6
+DEADLINE_EXCEEDED = 7
+SHUTTING_DOWN = 8
+PROTOCOL_ERROR = 9
+INVALID_OPERATION = 10
+DATA_LOST = 11
+INTERNAL_FAILURE = 12
 ```
 
-`RELOCATION_DATA_LOST`는 Location authority가 공개한 Relocation payload가 영구적으로 없거나 checksum·inventory
-digest가 일치하지 않을 때 반환하는 non-retriable 오류다. Runtime은 이전 owner로 rollback하지 않는다.
-`ROUTING_ID_CONFLICT`는 MeshNode RID 충돌에만 사용한다. Spot·Entry Spot identity 충돌은
-`SPOT_ID_CONFLICT`로 반환한다.
 Remote framework error는 `ZLinkFrameworkException`으로 전달한다. Public argument validation은 JVM 표준
 `IllegalArgumentException`, startup 구성 충돌은 `ZLinkConfigurationException`을 사용한다.
+Public exception은 재시도 여부를 제공하지 않는다.
 
 ## Kotlin source signature
 

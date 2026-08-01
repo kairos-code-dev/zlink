@@ -83,6 +83,26 @@ internal sealed class ToActorScenarioContext : IDisposable
         ZlinkStreamAssert.Ensure(response.ErrorKind is null, $"{scenario} unexpected error '{response.ErrorKind}'.");
     }
 
+    //  Config 9 TA-B1: a send has no reply, so its submit result reports local
+    //  acceptance only and is not a way to learn whether the remote Actor
+    //  exists. The scenario therefore records the outcome and leaves the
+    //  verification to the evidence and authority checks that follow.
+    public async Task<ActorCallResponse> SendWithoutOutcomeAssertionAsync(
+        string scenario,
+        string actorId,
+        string value,
+        string? targetNodeRid = null,
+        ulong? targetGeneration = null)
+    {
+        return await PostJsonAsync<ActorCallResponse>(
+            "/send", new ActorCallRequest(
+                scenario,
+                actorId,
+                value,
+                targetNodeRid,
+                targetGeneration));
+    }
+
     public async Task AssertFailureAsync(
         string scenario,
         string actorId,

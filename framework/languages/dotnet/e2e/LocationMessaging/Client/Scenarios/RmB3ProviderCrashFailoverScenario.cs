@@ -78,11 +78,17 @@ internal static class RmB3ProviderCrashFailoverScenario
             continuingOutcomes.Any(result => result.Outcome == "api-b"),
             "RM-B3 did not keep serving new untargeted traffic on the remaining provider after crash.");
         await WaitForPeerAsync(requester, "api-a", present: true);
-        ZlinkStreamAssert.Ensure(
-            continuingOutcomes.All(result => result.Outcome is "api-b"
+        var unexpectedContinuing = continuingOutcomes
+            .Where(result => result.Outcome is not ("api-b"
                 or nameof(ZLinkFrameworkErrorKind.Unavailable)
-                or "Timeout"),
-            "RM-B3 continuing request completed with an outcome outside the public failover contract.");
+                or "Timeout"))
+            .Select(result => result.Outcome)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        ZlinkStreamAssert.Ensure(
+            unexpectedContinuing.Length == 0,
+            "RM-B3 continuing request completed with an outcome outside the public failover "
+            + $"contract: {string.Join(", ", unexpectedContinuing)}.");
 
         await WaitForPeerAsync(requester, "api-a", present: false);
         await WaitForOnlyRemainingProviderAsync(requester);

@@ -1,10 +1,11 @@
 # Java Spot 공개 인터페이스
 
-Session에 bind된 Actor를 포함한 Spot relocation은 owner와 membership을 commit한 뒤 필요한 lifecycle
-callback과 accepted journal replay·logical timer 복원을 끝내고 durable source state를 정리한 다음 `Completed`를 commit한다.
-같은 `ObjectGeneration`의 route 전환이 양쪽 runtime에서 확인되고 steady route가 확정된 뒤에만
-target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
-아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
+Session에 bind된 Actor를 포함한 Spot relocation은 target에서 Spot·Actor state와 queue를 복원하고
+owner와 membership을 commit한 뒤 message 처리를 시작한다. Target runtime은
+`sessionActorLocationUpdateReqMsg`를 send하여 각 bound Actor의 route와 위치 snapshot을
+갱신한다. 응답이 없어도 message 처리를 멈추지 않으며 정해진 간격으로 같은 요청을 다시
+보낸다. Relocation 자체는 physical·logical disconnect가
+아니므로 Actor disconnect callback을 실행하지 않는다. relocation 대상에 포함되지 않은 다른 Actor의 route와 physical connection은
 변경하지 않는다.
 
 [인터페이스 목차](README.ko.md) · [Spot 공통 계약](../../../../12-spot-messaging.ko.md)
@@ -194,7 +195,7 @@ creation intent를 만들며 Instance Spot create/get-or-create member와 kind m
 `ZLinkSpotRequestCall`을 반환한다. `instanceSpot()` 또는 `instanceSpot(stableType)`을 호출한 operation만
 Missing Instance Spot의 cold activation을 시작할 수 있다. Marker가 없는 operation은
 Missing [authority](../../../../01-glossary.ko.md#authority)를
-`TARGET_NOT_FOUND` 또는 request target-not-found 오류로 끝내며 creation intent를 만들지 않는다.
+`NOT_FOUND`로 끝내며 creation intent를 만들지 않는다.
 
 `instanceSpot()`은 existing authority가 있으면 등록된 Instance type 수와 관계없이 authority에 저장된 stable
 type을 사용한다. Missing authority라면 placement가 선택한 Mesh에서 serving 가능한 distinct Instance type이
@@ -227,11 +228,11 @@ precommit adapter exception과 contract 위반은 `Blocked/StateIncompatible`, [
 `Blocked/DeadlineExceeded`다. Stale attempt cancellation은 terminal result를 commit하지 못한다. Capture와
 restore는 at-least-once이고 stale target attempt와 겹칠 수 있으므로 retry-safe해야 한다.
 
-Maintenance가 Actor를 target Entry Spot으로 옮길 때는 Actor adapter restore, Location
-authority·membership commit, accepted journal·queue·Actor timer 복원, old Entry
-[membership](../../../../01-glossary.ko.md#membership)의 durable source cleanup,
-`Completed` CAS, bound-session route switch·ACK, steady normalization, application
-dispatch 개방 순서로 진행한다. Infrastructure relocation은 target
+Maintenance가 Actor를 target Entry Spot으로 옮길 때는 Actor adapter와 queue·timer를
+복원하고 Location authority·membership을 commit한 뒤 Actor message 처리를 시작한다.
+Bound Session 위치 갱신은 그 뒤 `sessionActorLocationUpdateReqMsg`와
+`sessionActorLocationUpdateResMsg` send message로 수행하며 응답이 없어도 Actor 처리를
+멈추지 않는다. Infrastructure relocation은 target
 `onJoinedActor(...)`, source `onLeaveActor(...)` 또는 relocation 전용 application
 callback을 호출하지 않는다.
 
@@ -253,7 +254,7 @@ source에서 `CONTINUED`, 이동했으면 target에서 `RELOCATED` completion을
 완료 전에는 보류한 application message와 timer를 실행하지 않는다.
 
 기본 `ANY_TURN_BOUNDARY`, `PER_ACTOR`, Entry·Instance Spot, Spot turn 밖과 같은
-turn의 중복 `defer()`는 queue mutation 전에 `INVALID_CONFIGURATION`으로 실패한다.
+turn의 중복 `defer()`는 queue mutation 전에 `INVALID_OPERATION`으로 실패한다.
 `defer()` 뒤 같은 turn의 다른 Framework operation도 같은 오류다. Recovery에서
 callback이 다시 실행될 수 있으므로 override는 retry-safe해야 한다.
 
@@ -361,7 +362,7 @@ SpotId는 UTF-8 encoded 크기 1..255 bytes의 global logical ID다. `SpotRef.ob
 조회 시점의 location snapshot이다. Typed JSON은 required property `spotId`, `objectGeneration`, `meshName`,
 `nodeRid`를 사용하며 generation은 leading-zero 없는 decimal string으로 encode한다. Public handle, resolver와
 unbounded list는 제공하지 않는다. User Spot Create/GetOrCreate call과 Instance cold activation call은 option
-중복을 `INVALID_CONFIGURATION`, submit 중복을 `ALREADY_SUBMITTED`로 끝낸다.
+중복과 submit 중복을 `INVALID_OPERATION`으로 끝낸다.
 
 Ref JSON의 unknown property, duplicate property, required property 누락, 숫자 generation token과
 범위 밖 값은 거부한다.
@@ -690,4 +691,4 @@ public final class systems.zlink.framework.spots.ZLinkSpotCreateResponse extends
 
 이 문서에 선언된 `yield()`는 `SpotWide` User Spot 또는 Instance Spot의 shared turn에서만 유효하다.
 Entry Spot과 `PerActor` User Spot에서 호출하면 operation을 제출하거나 turn을 반환하지 않고
-`INVALID_CONFIGURATION`으로 완료한다. `submit()`은 현재 turn을 유지하는 공통 `Async` 의미다.
+`INVALID_OPERATION`으로 완료한다. `submit()`은 현재 turn을 유지하는 공통 `Async` 의미다.

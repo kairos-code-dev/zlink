@@ -380,8 +380,10 @@ Maintenance가 Actor를 다른 node의 Entry Spot에 복원하면 Actor adapter 
 Entry [membership](../../../../01-glossary.ko.md#membership)을 commit한다. 이 작업은
 application membership 변경이 아니므로 target `OnJoinedActorAsync(...)`, source
 `OnLeaveActorAsync(...)`와 relocation 전용 callback을 호출하지 않는다. Accepted
-journal·queue·Actor timer 복원, source relay, `Completed` CAS, bound-session route
-switch·ACK와 steady normalization을 마친 뒤에만 Actor dispatch admission을 연다.
+journal·queue·Actor timer를 복원하고 Location authority·membership을 commit한 뒤 Actor
+message 처리를 시작한다. Bound Session 위치 갱신은 그 뒤
+`sessionActorLocationUpdateReqMsg`와 `sessionActorLocationUpdateResMsg` send message로
+수행하며 응답이 없어도 Actor 처리를 멈추지 않는다.
 User Spot으로 향하는 일반 application join은 target의 `OnActorJoinAsync(...)`,
 membership commit, target의 `OnJoinedActorAsync(...)` 순서를 유지한다. Entry Spot
 복귀는 admission callback 없이 membership을 commit한 뒤 target Entry Spot의
@@ -598,7 +600,7 @@ type을 다시 제공할 필요가 없다. Instance marker를 사용했는데 ex
 [Cold activation](../../../../01-glossary.ko.md#cold-activation)에서 `InstanceSpot()`은 선택된 Mesh에 등록된
 Instance Spot type이 하나일 때만 그
 type을 사용한다. 등록 type이 여러 개면 `InstanceSpot(instanceSpotType)`으로 type을 명시해야
-한다. 선택한 Mesh에 type이 없으면 target-not-found, 여러 개인데 type을 생략하면
+한다. 선택한 Mesh에 type이 없으면 `NotFound`, 여러 개인데 type을 생략하면
 `InvalidOperation`으로 완료한다.
 `InMesh`는 Missing Instance Spot을 처음 생성할 Mesh를 지정한다. Object Client 또는 Server role의
 Mesh가 하나면 생략할 수 있다. 후보가 둘 이상인데 생략하면 `InvalidOperation`, 후보가 없으면
@@ -629,7 +631,7 @@ instance가 없을 때만 자신을 owner로 하는 `Creating` record와 수용 
 확보한다. 이 작업에 성공한 target 하나만 factory와 initialization을 실행한다.
 
 `CloseAsync(spotRef)`는 exact incarnation만 닫는다. 해당 incarnation이 없으면 `false`, generation이 다르면
-`SpotGenerationStale`, pre-commit seal 중이면 `SpotMoving`이다. User Spot에 Actor membership이 남아 있으면
+`InvalidOperation`, pre-commit seal 중이면 `Unavailable`이다. User Spot에 Actor membership이 남아 있으면
 `false`이며 Actor를 자동 leave·destroy하지 않는다. Framework는 current ref를 다시 찾아 다른 incarnation을
 닫지 않는다.
 

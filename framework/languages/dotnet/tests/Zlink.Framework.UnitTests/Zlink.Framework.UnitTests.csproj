@@ -40,6 +40,7 @@
         <Compile Include="AssemblyInfo.cs"/>
         <Compile Include="Configuration/Registration/Channels.cs"/>
         <Compile Include="Configuration/Registration/HandlerExposure.cs"/>
+        <Compile Include="Configuration/Registration/InboundDispatchOptionsTests.cs"/>
         <Compile Include="Configuration/Registration/NodesAndServices.cs"/>
         <Compile Include="Configuration/Registration/Monitoring.cs"/>
         <Compile Include="Configuration/Registration/Support.cs"/>

@@ -55,7 +55,8 @@ Kotlin은 이 규칙을 축약하는 default mode나 별도 target 선택 extens
 
 Java와 같이 모든 target을 `Prepared`로 만들고 relocation commit을 publish하기 전 deadline은 durable abort와
 source normalization 뒤 `Blocked/DeadlineExceeded`다. Commit 뒤에는 source로 rollback하지 않으며
-target recovery가 끝나면 `Relocated`를 반환한다. `RELOCATING`에서 `shutdown()`을 호출하면 실행 중인 atomic
+같은 target process가 실행 중일 때만 남은 단계를 처리한다. Target process가 종료되면 다른 runtime이
+relocation을 자동으로 이어받지 않으며 `Relocated`를 반환하지 않는다. `RELOCATING`에서 `shutdown()`을 호출하면 실행 중인 atomic
 unit만 끝내고 relocation waiter는 `Blocked/ShutdownRequested`를 받는다. Kotlin enum이나 result를 추가하지 않는다.
 
 ```kotlin

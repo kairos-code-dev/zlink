@@ -31,27 +31,71 @@ internal static class ObsC2ActorHandoffScenario
         _ = await context.PlayNodeIdAsync("play-b");
         var targetNode = context.OtherPlayNode(sourceNode);
         var source = context.Play(sourceNode);
+        //  이동 뒤 연속성 확인에 쓸 room은 두 노드가 모두 성한 지금 target에
+        //  올려 둔다. Relocate가 시작된 뒤에는 source의 `/rooms`가 배치를
+        //  받아주지 않아 room이 draining 노드로 떨어질 수 있다.
+        var movedRoom = await context.CreateRoomOnObservedNodeAsync(
+            targetNode, $"room-c2-moved-{suffix}");
         await context.PlayA.Post($"/rooms/{roomRid}/close").AsyncRaw();
         await source.Post("/relocate?deadlineMs=30000").AsyncRaw();
+        //  Relocation의 terminal 결과를 **먼저** 본다. `/relocate`는 시작만 하고
+        //  200을 돌려주므로, actor 위치를 먼저 기다리면 relocation이 Blocked로
+        //  끝났을 때도 조용한 timeout으로만 보인다. 결과를 먼저 드러내면 실패
+        //  이유가 메시지에 실린다.
+        var relocation = await ScenarioContext.WaitForRelocationAsync(
+            source, TimeSpan.FromSeconds(40));
+        ZlinkStreamAssert.Ensure(relocation.Result == "Relocated",
+            $"OBS-C2 host relocation did not complete: {relocation.Result}/{relocation.Reason}.");
         var location = await WaitActorLocationAsync(
             context, actorId, targetNode);
         ZlinkStreamAssert.Ensure(
             location.ActorRows.Any(row =>
                 row.ActorId == actorId && row.NodeRid == targetNode),
             "OBS-C2 actor location did not commit to the eligible peer.");
-        var result = await ScenarioContext.WaitForRelocationAsync(
-            source, TimeSpan.FromSeconds(40));
+        var result = relocation;
         var metrics = (await source.Get("/evidence")
             .Async<EvidenceSnapshot>()).Body.Metrics;
         ZlinkStreamAssert.Ensure(result.Result == "Relocated",
             $"OBS-C2 serving target handoff failed: {result.Result}/{result.Reason}.");
-        var moved = await connector.WaitFor<PlayerMovedNotify>()
-            .Where(message => message.Payload.ActorId == actorId
-                              && message.Payload.TargetNodeRid == targetNode)
-            .Timeout(TimeSpan.FromSeconds(10))
-            .Async();
-        ZlinkStreamAssert.Ensure(moved.Payload.TargetNodeRid == targetNode,
-            "OBS-C2 bound session did not receive the target handoff notification.");
+        //  이동 뒤 연속성은 `PlayerMovedNotify`로 확인할 수 없다. Spec 28 §536~540이
+        //  "이 이동은 application이 요청한 join이 아니므로 target Entry Spot의
+        //  `OnJoinedActor`를 호출하지 않는다"고 정하는데, 그 push는 바로 그 훅에서
+        //  나간다(`Server/Play/Spots/PlayEntrySpot.cs`). 즉 계약상 오지 않는다.
+        //  Config 11 OBS-C2가 요구하는 것은 "bound session이 이동 뒤에도 target
+        //  Actor로 이어진다"이므로, 같은 session으로 새 room join을 태워서 그
+        //  push가 target에서 돌아오는지로 확인한다. 이쪽 join은 application이
+        //  요청한 join이라 `OnJoinedActor`가 정상적으로 불린다.
+        //  이동 직후에는 target에서 본 room의 위치 행이 아직 안 보일 수 있다.
+        //  Join 실패는 예외가 아니라 완료 통지로 오므로 여기서 예산을 두고
+        //  다시 시도한다.
+        ActorJoinCompletedNotify? rejoined = null;
+        var rejoinDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(20);
+        Exception? lastRejoinError = null;
+        while (DateTime.UtcNow < rejoinDeadline)
+        {
+            try
+            {
+                rejoined = await context.JoinRoomAsync(
+                    connector, actorId, movedRoom.RoomRid);
+                break;
+            }
+            catch (Exception error)
+            {
+                lastRejoinError = error;
+                await Task.Delay(TimeSpan.FromMilliseconds(500));
+            }
+        }
+        ZlinkStreamAssert.Ensure(rejoined is not null,
+            $"OBS-C2 bound session could not reach the relocated actor: "
+            + $"{lastRejoinError?.Message}");
+        ZlinkStreamAssert.Ensure(rejoined!.NodeRid == targetNode,
+            $"OBS-C2 bound session did not continue to the relocated actor: "
+            + $"{rejoined.NodeRid} != {targetNode}.");
+        var movedLocation = await WaitActorLocationAsync(context, actorId, targetNode);
+        ZlinkStreamAssert.Ensure(
+            movedLocation.ActorRows.Any(row =>
+                row.ActorId == actorId && row.NodeRid == targetNode),
+            "OBS-C2 relocated actor did not stay committed on the target owner.");
         ZlinkStreamAssert.Ensure(metrics.Any(sample =>
                 sample.Name == "zlink.relocation.completed"
                 && sample.Tags.GetValueOrDefault("object_kind") == "actor"
@@ -75,7 +119,12 @@ internal static class ObsC2ActorHandoffScenario
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(15);
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var snapshot = (await context.PlayB.Get("/evidence").Query("actorId", actorId)
+            //  Evidence는 **이동 대상 node**에서 읽어야 한다. `targetNode`는
+            //  `OtherPlayNode(sourceNode)`로 계산되므로 room 배치에 따라 play-a가
+            //  될 수 있는데, 여기서 `PlayB`를 하드코딩하면 그때 영원히 수렴하지
+            //  않는다.
+            var snapshot = (await context.Play(targetNode).Get("/evidence")
+                .Query("actorId", actorId)
                 .Async<EvidenceSnapshot>()).Body;
             if (snapshot.ActorRows.Any(row =>
                     row.ActorId == actorId && row.NodeRid == targetNode))

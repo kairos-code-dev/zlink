@@ -336,11 +336,12 @@ Actor queue가 그 owner node에서만 실행되는가.
 - 절차: Actor placement capacity는 `play-a`만 허용해 Actor를 initial Entry Spot에 먼저 생성하고, User Spot
   placement capacity는 `play-b`만 허용해 target Spot을 만든다. `play-a`의 Actor가 target global Spot ID로
   `JoinSpot`을 호출한다. Caller는 target node RID·endpoint·owner token을 전달하지 않는다.
-- 검증: target `OnActorJoin` accept 뒤 source adapter `Capture`, Relocation Store immutable root 저장, target factory와
-  adapter `Restore`·journal staging, Location Store owner·membership CAS commit, target `OnJoinedActor`, source
-  `OnLeaveActor`, accepted message·journal replay, durable cleanup, `Completed` CAS, route ACK·steady normalization
-  순서가 evidence에 남는다.
-  Target Ready와 caller success는 이 순서가 끝난 뒤에만 공개된다. 그 뒤 global Actor ID request는 `play-b`의
+- 검증: target `OnActorJoin` accept 뒤 source adapter `Capture`, Relocation Store immutable root 저장,
+  target temporary queue 등록, target factory와 adapter `Restore`, Location Store owner·membership CAS commit,
+  target `OnJoinedActor`, source `OnLeaveActor`, Join completion callback, 저장된 기존 작업과 temporary queue
+  작업의 Actor queue 이관, dispatch 전환 순서가 evidence에 남는다.
+  Target Ready와 caller success는 target dispatch 전환이 끝난 뒤에 공개된다. Source ingress hold 원본 제거와
+  bound session에 보내는 Actor 위치 갱신은 이 시점을 막지 않는다. 그 뒤 global Actor ID request는 `play-b`의
   Actor queue에서 처리되고 `play-a`의 old Actor queue는 실행하지 않는다.
 - 세부 동작: explicit `PreserveStateWith` policy를 사용하는 cross-node Actor join과 mailbox 이동.
 
@@ -490,7 +491,7 @@ send·request·publish verb와 timeout·미등록 negative를 모두 본다(같�
 - request: ChannelName client가 spot으로 request → 정확한 reply, spot evidence에 기록.
 - send: one-way send → reply 없이 spot evidence에 command 기록.
 - publish: channel이 publish → 구독한 spot이 수신(미구독 spot은 미수신).
-- timeout: 느린 spot handler에 짧은 timeout → client timeout 예외, 이후 같은 연결의 정상 messaging 비오염.
+- timeout: 느린 Spot handler에 짧은 timeout → `DeadlineExceeded`, 이후 같은 연결의 정상 messaging 비오염.
 - 미등록: handler 없는 spot packet → request는 error reply, send는 drop. message-flow error evidence(`surface`=`spot_route`, `reason`=`no_handler`, `action`=`reply_error`/`drop`)가 남는다.
 - 세부 동작: 외부 channel에서 spot으로 들어오는 방향 전체 verb + negative.
 
@@ -642,14 +643,14 @@ actor가 존재하는 Spot 종류(entry/user), 한 session에 bind된 actor 수(
 우선순위: `P0`
 
 **검증 질문:** bind 뒤 relay·disconnect가 Location Store를 다시 읽지 않고 저장 route만 사용하며,
-stale route도 숨은 lookup이나 retry 없이 한 번의 Message Follow 또는 typed stale 결과로 끝나는가.
+stale route도 숨은 lookup이나 retry 없이 한 번의 Message Follow 또는 `Unavailable`로 끝나는가.
 
 - 절차: exact `ActorRef` bind 직후 Location Store read counter를 기록하고 이후 read를 차단한다.
   Valid stored route로 request, push와 disconnect를 수행한다. 이어 stale route에 대해 active committed
   Message Follow route가 있는 경우와 route가 만료되거나 없는 경우를 각각 실행한다.
 - 검증: bind 이후 두 경우 모두 Location Store read counter 증가는 `0`이다. Valid route는 owner lease와
   local admission deadline 안에서 성공한다. Active mapping은 같은 exact identity를 최대 한 번
-  Message Follow로 전달하고, expired/missing route는 typed stale 결과로 끝난다. Runtime은 fresh `ActorRef`를
+  Message Follow로 전달하고, expired/missing route의 request는 `Unavailable`로 끝난다. Runtime은 fresh `ActorRef`를
   lookup하거나 Store 장애를 이유로 retry·deadline 연장을 하지 않는다.
 - 용어 경계: Session bind의 일반 request·push·disconnect 전달은 session relay다. Relocation commit이 만든
   이전 owner route에서 current owner로 보내는 구간만 Message Follow라고 부른다. Rebind로 무효가 된
@@ -870,8 +871,8 @@ messaging target이 아니다.
 
 - 절차: 존재하지 않는 Spot ID로 existing-only request와 send를 제출한다. User Spot을 닫고
   같은 Spot ID로 새 incarnation을 만든 뒤 이전 `SpotRef`로 exact `Close`를 시도한다.
-- 검증: Missing request와 send는 target-not-found 계약으로 완료되고 Instance cold activation을 시작하지
-  않는다. 이전 `SpotRef` close는 stale-generation으로 끝나며 새 incarnation을 닫지 않는다.
+- 검증: Missing request와 send는 `NotFound`로 완료되고 Instance cold activation을 시작하지
+  않는다. 이전 `SpotRef` close는 `InvalidOperation`으로 끝나며 새 incarnation을 닫지 않는다.
   정상 ChannelName과 RID direct messaging은 영향을 받지 않는다.
 
 #### SM-F5 Spot lifecycle과 MeshNode lifecycle 분리
@@ -890,9 +891,10 @@ messaging target이 아니다.
   않는다.
 - 검증: 시작 순서와 무관하게 두 MeshNode가 ready가 된 뒤 request reply, send evidence와 Actor join
   evidence가 target Spot에만 기록된다. Cross-node join은 adapter capture·restore와 Relocation Store root를
-  사용하고 target `OnActorJoin` → target staging·restore → authority commit → target `OnJoinedActor` → source
-  `OnLeaveActor` → accepted message·journal replay → durable cleanup → `Completed` → route ACK·steady
-  normalization → Ready 순서를 지킨다. 호출자는 owner RID, endpoint, generation 또는 내부 route frame을
+  사용하고 target `OnActorJoin` → target temporary queue 등록 → target factory·Restore → authority commit →
+  target `OnJoinedActor` → source `OnLeaveActor` → Join completion callback → 저장된 기존 작업과 temporary
+  queue 작업 이관 → Actor queue dispatch 전환 → Ready 순서를 지킨다. Source ingress hold 원본 제거, `Completed` 기록과 bound session에 보내는 Actor 위치 갱신은
+  Ready를 막지 않는다. 호출자는 owner RID, endpoint, generation 또는 내부 route frame을
   조립하지 않는다.
 
 ### Track G — MeshNode 증설, 장애와 복구
@@ -924,12 +926,12 @@ spot 배포(play/session 노드)를 쓰는 시나리오는 Config 2에 둔다. �
      `play-b`만 eligible하도록 placement weight·capacity를 고정한 뒤 같은 global Actor ID의 manager
      `GetOrCreate(...).InMesh(...)`를 실행한다. 반환된 current `ActorRef`를 session에 rebind한 뒤
      application snapshot/replay를 적용한다.
-- 검증: crash 직전 처리 중인 request는 연결 단절이 먼저 확정되면 `Unavailable`과 `RetryAfterBackoff`,
-  handler 완료 여부를 caller가 확정할 수 없으면 설정한 request timeout 안의 timeout으로 끝난다.
+- 검증: crash 직전 처리 중인 request는 연결 단절이 먼저 확정되면 `Unavailable`,
+  handler 완료 여부를 caller가 확정할 수 없으면 설정한 request timeout 안에 `DeadlineExceeded`로 끝난다.
   owner lease 만료로 old Actor authority projection이 성공 조회에서 제외된 뒤, Actor를 다시 만들기 전에
   global Actor ID request는 `NotFound`로 끝난다. Actor를 같은 ID와 새 generation으로 다시 만든 뒤
   같은 global Actor ID의 fresh request는 성공한다. 이전 `ActorRef`는 session rebind 같은 exact-ref lifecycle
-  operation에서 `Unavailable`로 거부되며 messaging target으로 사용하지 않는다. 각 실패는 설정한
+  operation에서 `InvalidOperation`으로 거부되며 messaging target으로 사용하지 않는다. 각 실패는 설정한
   timeout 안에 종료되고 어느 단계에서도 old handler가
   실행되지 않아야 한다. stream 연결 종료는 framework request 오류와 섞지 않고
   connector/session의 `Disconnected`로 별도 확인한다. `play-b`의 기준 actor·session은 영향받지 않는다.

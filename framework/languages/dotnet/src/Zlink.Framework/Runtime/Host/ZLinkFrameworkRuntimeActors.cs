@@ -1019,6 +1019,33 @@ internal sealed partial class ZLinkFrameworkRuntime
             publication.SteadyAuthorityPayload.Span,
             out _);
 
+    //  Relocation의 bound session route는 target 쪽에서만 풀린다. 완료 명령과
+    //  reconcile 두 경로가 같은 꼬리를 부르지 않으면, 한쪽이 stage를 먼저
+    //  치웠을 때 seal이 영구히 남아 이후 frame이 전부 거절된다.
+    internal async ValueTask FinishRelocationSessionRouteAsync(
+        ZLinkActorRuntimeState actorState,
+        string handoffId,
+        CancellationToken cancellationToken)
+    {
+        //  이미 다른 경로가 끝냈으면 commit이 null이라 그대로 no-op이다.
+        var commit = await CommitCompletedSessionRouteAsync(
+                actorState,
+                handoffId,
+                cancellationToken)
+            .ConfigureAwait(false);
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"relocation_session_route commit={(commit is null ? "none" : "present")} "
+            + $"actor={actorState.ActorId} handoff={handoffId}");
+        if (commit is not { } completedRoute)
+            return;
+        await UnsealCompletedSessionRouteAsync(
+                completedRoute.Request,
+                completedRoute.SessionOwnerNode,
+                cancellationToken)
+            .ConfigureAwait(false);
+        actorState.CompleteRelocationSessionRoute(handoffId);
+    }
+
     private async ValueTask<(
         ZLinkSessionRouteCommitRequest Request,
         RoutingId SessionOwnerNode)?>

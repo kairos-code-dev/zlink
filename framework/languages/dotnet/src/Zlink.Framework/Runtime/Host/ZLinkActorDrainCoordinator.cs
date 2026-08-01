@@ -108,8 +108,16 @@ internal sealed class ZLinkActorDrainCoordinator(
             var actorType = actorState.ActorType;
             if (actor is null || sourceNode is null || string.IsNullOrWhiteSpace(actorType))
                 return new ZLinkActorDrainResult(true, null, 0);
+            //  이유 없이 `Completed=false`만 돌려주면 호출자의 재시도 loop가
+            //  빠져나갈 조건이 없어 deadline을 소진하고 `DeadlineExceeded`로
+            //  보고된다. 실제 이유는 "옮길 대상 node가 없다"이고 그 이름이
+            //  이미 있으므로 그대로 싣는다. Target이 생기기를 기다리는 것은
+            //  drain 이전 preflight의 몫이다(PreflightRetireAsync).
             if (!targetsByActorType.TryGetValue(actorType, out var targets))
-                return new ZLinkActorDrainResult(false, null, 0);
+                return new ZLinkActorDrainResult(
+                    false,
+                    ZLinkFrameworkRelocationReason.TargetUnavailable,
+                    0);
             var shellPlan = actorState.LiveActivation?
                 .PerActorShellRelocationPlan;
             var eligible = shellPlan is null
@@ -125,7 +133,10 @@ internal sealed class ZLinkActorDrainCoordinator(
                         == checked((long)shellPlan.TargetOwner.LeaseGeneration))
                     .ToArray();
             if (eligible.Length == 0)
-                return new ZLinkActorDrainResult(false, null, 0);
+                return new ZLinkActorDrainResult(
+                    false,
+                    ZLinkFrameworkRelocationReason.TargetUnavailable,
+                    0);
 
             var start = shellPlan is null
                 ? (Interlocked.Increment(ref nextTarget) & int.MaxValue)
@@ -142,8 +153,20 @@ internal sealed class ZLinkActorDrainCoordinator(
                             candidate.Descriptor,
                             cancellationToken)
                         .ConfigureAwait(false);
+                    //  Deferred는 "지금은 못 옮긴다"이므로 재시도가 의도된
+                    //  경로다. 다만 이 분기만 표시가 없어, 영구 deferred일 때
+                    //  호출자가 deadline을 소진하고 `DeadlineExceeded`로 보고할
+                    //  뿐 왜 못 옮겼는지 알 수 없었다. TargetRejected 쪽과 같게
+                    //  표시를 남긴다.
                     if (result == ZLinkStandaloneActorRelocationResult.Deferred)
+                    {
+                        ZLinkFrameworkDebugLog.SpotDiscovery(
+                            "relocation_actor_deferred actor="
+                            + actorState.ActorId
+                            + " target="
+                            + candidate.Descriptor.Rid);
                         return new ZLinkActorDrainResult(false, null, 0);
+                    }
                     if (result == ZLinkStandaloneActorRelocationResult.TargetRejected)
                     {
                         ZLinkFrameworkDebugLog.SpotDiscovery(
@@ -198,7 +221,18 @@ internal sealed class ZLinkActorDrainCoordinator(
                         0);
                 }
             }
-            return new ZLinkActorDrainResult(false, null, 0);
+
+            //  후보를 모두 시도했고 아무도 받지 않았다. 이유 없이 false를
+            //  돌려주면 호출자의 재시도 loop가 빠져나갈 조건이 없어 deadline을
+            //  소진하고 `DeadlineExceeded`로 보고된다. 실제로는 "쓸 수 있는
+            //  target이 없다"이므로 그 이름을 싣는다. 다시 불러도 같은 후보를
+            //  같은 이유로 거부하므로 재시도가 상태를 바꾸지 못한다.
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                "relocation_actor_no_target_accepted actor=" + actorState.ActorId);
+            return new ZLinkActorDrainResult(
+                false,
+                ZLinkFrameworkRelocationReason.TargetUnavailable,
+                0);
         }
     }
 

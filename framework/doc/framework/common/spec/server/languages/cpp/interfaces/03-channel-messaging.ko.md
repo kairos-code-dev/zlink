@@ -373,7 +373,7 @@ Descriptor capacity는 candidate filter에만 사용한다. Framework는 선택�
 bundle reservation을 원자적으로 얻은 뒤에만 factory를 실행한다. Actor는 Actor slot 하나, Spot은 Spot 전체
 slot 하나와 해당 stable type slot 하나를 예약한다. `SpotWide` User Spot과 member Actor `N`개의 aggregate relocation은
 Spot total 1개, 해당 Spot stable type 1개와 Actor total `N`개를 all-or-none으로 예약한다. 모든 후보의
-reservation이 capacity 때문에 실패하면 `placement_capacity_exhausted`로 완료하고 application factory나
+reservation이 capacity 때문에 실패하면 `capacity_exceeded`로 완료하고 application factory나
 handler를 호출하지 않는다.
 Actor·User Spot·Instance Spot [factory](../../../../01-glossary.ko.md#factory)는 relocation policy를 항상 명시하며 이를 생략하는
 overload는 없다. State 보존 Actor factory에는 `actor_relocation_adapter_t<TActor>`, state 보존 User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)
@@ -399,9 +399,9 @@ resolver에 RID를 게시한다.
 
 RID 형식은 `<prefix>-entry-<lowercase-canonical-uuid-v4>`이며 MeshNode와 별도로 생성한 UUID v4를
 사용한다. Framework 내부 MeshNode descriptor의 `entry_spot_id`가 lifecycle의 exact mapping을 제공한다. Global Spot
-ID가 active owner와 충돌하면 새 UUID로 다시 시도하지 않고 즉시 `spot_id_conflict`로 startup을
+ID가 active owner와 충돌하면 새 UUID로 다시 시도하지 않고 즉시 configuration exception으로 startup을
 실패시킨다. Caller가 지정한 User·Instance Spot ID가 이 예약 형식과 일치하면
-Store와 factory를 시작하기 전에 `invalid_configuration`으로 거부한다.
+Store와 factory를 시작하기 전에 `invalid_operation`으로 거부한다.
 
 Framework가 모든 registration에서 만든 fully encoded MeshNode descriptor는 1 MiB 이하여야 한다.
 Spot type과 stateful object capability collection은 각각 최대 1024개다. Runtime은 완성된 descriptor를 socket
@@ -563,55 +563,26 @@ public:
 
 // 숫자 값은 관측·진단 데이터의 안정 키이므로 고정한다(framework API §13).
 enum class framework_error_kind_t {
-    actor_route_not_found = 0,
-    actor_create_failed = 1,
-    actor_already_exists = 2,
-    actor_type_mismatch = 3,
-    spot_create_failed = 4,
-    spot_route_not_found = 5,
-    spot_type_mismatch = 6,
-    actor_session_not_bound = 7,
-    handler_not_found = 8,
-    route_handler_not_found = 9,
-    actor_dispatch_handler_not_found = 10,
-    payload_decode_failed = 11,
-    route_not_connected = 12,          // retriable
-    request_target_not_found = 13,
-    request_rejected = 14,
-    request_protocol_error = 15,
-    request_failed = 16,
-    worker_queue_full = 17,
-    worker_timed_out = 18,
-    worker_failed = 19,
-    actor_location_stale = 20,         // retriable
-    actor_create_rejected = 21,
-    object_client_not_configured = 22,
-    mesh_selection_required = 23,
-    mesh_not_found = 24,
-    invalid_configuration = 25,
-    already_submitted = 26,
-    actor_generation_stale = 27,
-    actor_moving = 28,                 // retriable
-    deadline_exceeded = 29,            // retriable
-    placement_capacity_exhausted = 30, // retriable
-    routing_id_conflict = 31,
-    spot_generation_stale = 32,
-    spot_moving = 33,                  // retriable
-    relocation_data_lost = 34,         // non-retriable
-    spot_id_conflict = 35,             // non-retriable
-    runtime_shutdown = 36,
-    relocation_disabled = 37,          // non-retriable
-    relocation_target_unavailable = 38,
-    relocation_failed = 39
+    not_found = 0,
+    already_exists = 1,
+    type_mismatch = 2,
+    not_configured = 3,
+    rejected = 4,
+    unavailable = 5,
+    capacity_exceeded = 6,
+    deadline_exceeded = 7,
+    shutting_down = 8,
+    protocol_error = 9,
+    invalid_operation = 10,
+    data_lost = 11,
+    internal_failure = 12
 };
 
 class framework_exception_t : public std::exception {
 public:
     framework_error_kind_t kind() const noexcept;
-    bool is_retriable() const noexcept;
-    // 경계 상태(timed_out, disconnected, closed, cancelled)는
-    // public enum 값이 아니라 이 error_code로 노출한다(common runtime §7.4).
-    // ID-only route stale과 exact-ref generation stale은 서로 다른 kind다.
+    // Platform 원인이 있으면 진단용 error_code를 함께 제공한다.
+    // Application의 오류 분기는 kind()를 사용한다.
     std::error_code code() const noexcept;
     const char *what() const noexcept override;
 };
@@ -763,8 +734,8 @@ subscription handler다. Spot·Actor handler, Logical Multicast subscription과 
 
 `next()`를 호출하지 않은 send는 정상 완료하며 현재 handler를 실행하지 않는다. Classic Fanout은 현재
 handler만 종료하고 다른 matching handler를 계속 처리한다. request는 정상 reply 대신
-`request_rejected`로 완료한다. `next()`는 한 번만 호출할 수 있으며 두 번째 호출은
-`already_submitted` 오류다.
+`rejected`로 완료한다. `next()`는 한 번만 호출할 수 있으며 두 번째 호출은
+`invalid_operation` 오류다.
 
 handler와 filter는 dispatch마다 만든 같은 handler invocation scope에서 resolve한다. Classic Fanout의
 matching handler마다 scope를 따로 만들며 한 handler의 filter 중단이나 실패가 다른 handler를 취소하지
@@ -945,13 +916,13 @@ public:
 `send_to_spot(...)`과 `request_to_spot(...)`의 target은 항상 global `spot_id_t` 하나다. Fluent option은
 Missing Instance Spot의 cold activation intent를 표현하며 address에 [MeshName](../../../../01-glossary.ko.md#meshname), stable type, owner RID 또는
 generation을 추가하지 않는다. Instance marker를 설정하지 않은 call은 existing-only이고 Missing RID에서
-target-not-found로 끝난다.
+`not_found`로 끝난다.
 
 `instance_spot()`은 [stable type](../../../../01-glossary.ko.md#stable-type)을 생략하고 `instance_spot(stable_type)`은 stable type을 명시한다.
 `in_mesh(...)`는 Instance marker와 함께 Missing RID의 최초 placement에만 적용한다. Marker와 이 option은
 한 call에서 한 번만 설정할 수 있고 중복 설정은
-`invalid_configuration`이다. `submit()` 또는 `yield<TReply>()` 가운데 terminal operation도
-한 번만 시작할 수 있으며 두 번째 호출은 `already_submitted`다.
+`invalid_operation`이다. `submit()` 또는 `yield<TReply>()` 가운데 terminal operation도
+한 번만 시작할 수 있으며 두 번째 호출은 `invalid_operation`이다.
 
 Public API는 transport 종류와 무관하게 channel name과 typed payload를 기준으로 유지한다.
 `publisher_t::publish(...)`는 typed event의 [packet name](../../../../01-glossary.ko.md#packet-name)을 topic으로 사용하는 편의 호출과 [topic](../../../../01-glossary.ko.md#topic)을
@@ -968,8 +939,8 @@ publisher local queue가 event를 수락하면 정상 완료한다.
 subscriber 수신, remote Spot queue 수락과 application callback 완료는 기다리지 않는다. Queue capacity가
 부족하면 해당 family의 send timeout까지 capacity signal을 기다리고, deadline 안에 공간이 생기면 message를
 정확히 한 번 제출한다. `backpressured`는 public terminal result나 즉시 발생하는 application exception이
-아니다. Timeout은 `deadline_exceeded`, route 단절은 `route_not_connected`, runtime 종료는
-`runtime_shutdown` kind의 `framework_exception_t`로 완료한다. Actor·Spot·Mesh·session target 부재는 operation
+아니다. Timeout은 `deadline_exceeded`, route 단절은 `unavailable`, runtime 종료는
+`shutting_down` kind의 `framework_exception_t`로 완료한다. Actor·Spot·Mesh·session target 부재는 operation
 family가 정의한 기존 error kind를 사용한다. C++ server call에는 별도 cancellation 인자가 없다.
 반환된 task를 보관하지 않거나 파괴해도 operation이 취소된다고 보장하지 않으며 timeout이나 shutdown 뒤에
 같은 operation을 자동으로 다시 제출하지 않는다. 잘못된 argument·state와 중복 submit은
@@ -1038,5 +1009,5 @@ enum class handler_kind_t;   // request / send / publish
 
 이 문서의 request·Spot request builder에 선언된 `yield()`는 호출자가 `SpotWide` User Spot 또는 Instance
 Spot의 shared turn을 소유할 때만 유효하다. 다른 실행 문맥에서는 message나 operation을 제출하거나 turn을
-반환하지 않고 `invalid_configuration`으로 완료한다. Actor Join은 현재 handler 안에서
+반환하지 않고 `invalid_operation`으로 완료한다. Actor Join은 현재 handler 안에서
 `defer()`로만 등록하며 `async()`와 `yield()`를 제공하지 않는다.

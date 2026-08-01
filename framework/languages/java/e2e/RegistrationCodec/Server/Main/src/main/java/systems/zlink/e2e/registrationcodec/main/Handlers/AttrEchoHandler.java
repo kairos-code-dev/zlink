@@ -2,7 +2,7 @@ package systems.zlink.e2e.registrationcodec.main.Handlers;
 
 import systems.zlink.e2e.registrationcodec.shared.Contracts;
 import systems.zlink.e2e.registrationcodec.main.Infrastructure.EvidenceStore;
-import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkRequest;
@@ -19,7 +19,7 @@ public final class AttrEchoHandler {
     @ZLinkRequest(packetName = "EchoAttr")
     public java.util.concurrent.CompletionStage<Contracts.EchoRes> request(
         Contracts.EchoAttrReq request,
-        ZLinkRequestContext context) {
+        ZLinkMessageContext context) {
         state.record("Request", "EchoAttr", request.value());
         return java.util.concurrent.CompletableFuture.completedFuture(
             new Contracts.EchoRes("echo:" + request.value(), "attr"));

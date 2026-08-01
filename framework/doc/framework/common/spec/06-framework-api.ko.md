@@ -67,9 +67,15 @@ Application은 root의 inbound dispatch options에서 다음 세 값만 설정�
 |---|---|
 | `ApplicationHwmBytes` | 생략하면 Auto, `0`이면 제한 없음, 양수이면 지정한 host 전체 byte 상한을 사용한다. |
 | `ApplicationHwmProfile` | Auto 계산 비율이다. 기본값은 `Balanced`다. |
-| `ProcessMemoryLimitBytes` | Auto 계산에 우선 사용하는 process memory 상한이다. 생략하면 container·cgroup·Windows Job Object의 유한한 상한을 사용한다. |
+| `ProcessMemoryLimitBytes` | Auto 계산에 우선 사용하는 process memory 상한이다. 생략하면 container·cgroup·Windows Job Object의 유한한 상한을 사용하고, 그것도 없으면 시스템 물리 메모리 총량을 사용한다. |
 
-Auto mode는 확인한 process memory 상한에 profile 비율을 곱하고 소수점 아래를 버린다.
+Auto mode는 다음 순서로 처음 확인한 process memory 상한에 profile 비율을 곱하고 소수점 아래를 버린다.
+
+1. `ProcessMemoryLimitBytes`
+2. Process에 적용된 유한한 container·cgroup·Windows Job Object 상한
+3. 시스템 물리 메모리 총량
+
+3단계는 가용 메모리가 아니라 총량이므로 같은 host에서 Auto HWM은 실행마다 같은 값이 된다.
 
 | Profile | 비율 |
 |---|---:|
@@ -78,9 +84,8 @@ Auto mode는 확인한 process memory 상한에 profile 비율을 곱하고 소�
 | `Balanced` | 10% |
 | `Throughput` | 20% |
 
-Auto mode에서 유한한 process memory 상한을 확인하지 못하거나 계산 결과가 양수가 아니면 socket bind
-전에 configuration error로 실패한다. 명시한 양수 HWM과 `0`은 process memory 상한이 없어도 사용할 수
-있다. 선택한 profile은 Framework가 만드는 Core context의 Auto HWM profile에도 적용하지만,
+Auto mode의 계산 결과가 양수가 아니면 socket bind 전에 configuration error로 실패한다. 상한을 설정하지
+않은 것 자체는 오류가 아니며, 3단계 fallback이 있으므로 Auto mode는 별도 설정 없이도 기동한다. 선택한 profile은 Framework가 만드는 Core context의 Auto HWM profile에도 적용하지만,
 Application HWM byte를 connection별 Core HWM으로 복사하거나 connection 수로 나누지 않는다.
 
 `ApplicationHwmBytes`가 양수이면 모든 application listener의 `MaxMessageSize`도 유한한 양수여야 한다.
@@ -601,10 +606,12 @@ Relocation ID, target RID, relocation reference, journal cursor와 authority rev
 
 Create와 lookup은 immutable `ActorRef` 또는 `SpotRef`를 반환한다. Ref는 global ID, non-zero unsigned 63-bit
 `ObjectGeneration`, 조회 시점의 MeshName과 NodeRid를 담은 location snapshot이다. JSON generation은 decimal
-string으로 encode한다. Ref는 runtime resource나 local object를 소유하지 않는다. 일반 message는 global ID로
+string으로 encode한다. Ref는 runtime resource나 local object를 소유하지 않는다. Bound session accessor는
+relocation route switch 뒤 같은 ActorId·ObjectGeneration과 target MeshName·NodeRid를 담은 새 immutable
+ActorRef snapshot을 반환하며, 이전에 반환된 ref 값은 변경하지 않는다. 일반 message는 global ID로
 current authority를 resolve하며 ref의 location을 target으로 고정하지 않는다. Destroy와 Close는 exact ref를
-받는다. 같은 incarnation이 없으면 `false`, generation이 다르거나 relocation seal 중이면 typed stale·moving
-오류로 끝나며 current ref를 다시 찾아 다른 incarnation을 종료하지 않는다.
+받는다. 같은 incarnation이 없으면 `false`, generation이 다르면 `InvalidOperation`, relocation seal 중이면
+`Unavailable`로 끝나며 current ref를 다시 찾아 다른 incarnation을 종료하지 않는다.
 
 Manager `Find`는 global ID의 current Ready ref를 반환한다. Actor가 현재 속한 User Spot을 조회하는 operation도
 current `SpotRef`만 반환한다. Location operational query는 page size 1..1000과 encoded page 최대 4 MiB를
@@ -628,7 +635,7 @@ callback은 진행할 수 있지만 같은 Actor의 다음 job은 현재 continu
 
 [Spot direct](01-glossary.ko.md#spot-direct) 시작 method는 global Spot ID와 payload를 받고 Spot 전용 send/request call을 반환한다. 이 call은
 metadata와 terminal 외에 [Instance intent](01-glossary.ko.md#instance-intent), optional stable type과 initial Mesh를
-설정할 수 있다. Instance intent가 없는 call은 existing-only이며 Missing에서 target-not-found다. Instance
+설정할 수 있다. Instance intent가 없는 call은 existing-only이며 Missing에서 `NotFound`다. Instance
 intent를 가진 call은 Location resolve와 [cold activation](01-glossary.ko.md#cold-activation) claim을 분리하지 않고 하나의 terminal operation으로
 수행한다. Existing authority가 있으면 저장된 kind·type과 current Mesh를 사용하며 cold activation option으로
 현재 owner를 제한하거나 이동시키지 않는다.
@@ -640,36 +647,9 @@ Actor egress는 bound session FIFO를 사용한다. Actor dispatch capability를
 
 ## 13. 오류 kind
 
-언어별 exception과 error object는 실패한 내부 단계가 아니라 application이 선택할 수 있는 대응을
-기준으로 다음 kind와 숫자 값을 보존한다. 값 0도 유효한 kind다.
-
-| 값 | kind | 의미 |
-|---:|---|---|
-| 0 | `NotFound` | Actor, Spot, handler, route 또는 target이 존재하지 않는다. |
-| 1 | `AlreadyExists` | 같은 identity나 registration이 이미 존재한다. |
-| 2 | `TypeMismatch` | stable type과 요청한 application type이 다르다. |
-| 3 | `NotConfigured` | 필요한 role, handler 또는 Store가 등록되지 않았다. |
-| 4 | `Rejected` | application callback이나 현재 policy가 operation을 거부했다. |
-| 5 | `Unavailable` | target, route, Store 또는 worker를 현재 사용할 수 없다. |
-| 6 | `CapacityExceeded` | placement, queue 또는 bounded resource에 여유가 없다. |
-| 7 | `DeadlineExceeded` | operation이 deadline 안에 완료되지 않았다. |
-| 8 | `ShuttingDown` | Runtime이 신규 operation admission을 받지 않는다. |
-| 9 | `ProtocolError` | wire, payload 또는 reply 계약을 처리할 수 없다. |
-| 10 | `InvalidOperation` | 현재 object·session·runtime 상태에서 operation을 실행할 수 없다. |
-| 11 | `DataLost` | 공개된 Relocation payload가 없거나 검증에 실패했다. |
-| 12 | `InternalFailure` | 위 분류로 표현할 수 없는 Framework 실패다. |
-
-Generation, owner fence, moving phase, worker queue 상태와 Relocation 처리 단계는 Framework가
-retry·recovery를 판단할 때 사용하는 내부 원인이다. Application이 다른 대응을 선택할 수 없다면
-별도 public kind로 노출하지 않는다.
-
-오류에는 현재 실패 조건에 대한 retry advice를 함께 제공한다.
-
-| Retry advice | 의미 |
-|---|---|
-| `DoNotRetry` | 같은 입력과 상태로 다시 실행하지 않는다. |
-| `RetryAfterBackoff` | operation이 idempotent일 때만 간격을 두고 다시 실행할 수 있다. |
-| `RetryAfterStateChange` | configuration, topology 또는 대상 상태가 바뀐 뒤 다시 실행할 수 있다. |
+언어별 exception과 error object는 공통 13개 `ErrorKind`를 사용한다. Public 오류에는 재시도 여부를
+추가하지 않는다. 정확한 kind와 숫자, `Send`·`Request` 완료 조건, typed `Rejected` 결과와 exception의
+구분은 [Framework 오류 모델](32-framework-error-model.ko.md)이 정의한다.
 
 ### 13.1 Operation 결과 변환
 
@@ -686,7 +666,7 @@ RouteMesh·ClientServer select-one ChannelName은 성공한 admission 전까지 
 | Logical Multicast를 시작한 뒤 일부 target에 제출하지 못함 | 이미 수락한 target은 유지한다. Target별 실패를 public 결과나 publish 전용 monitoring으로 만들지 않으며 전체 operation을 rollback하거나 자동 retry하지 않음 |
 | 알려진 direct target의 route가 준비되지 않음 | `Unavailable` |
 | Actor·Spot authority 또는 Node·Channel 송신 경로가 없음 | `NotFound` |
-| target admission seal 또는 application policy가 거부함 | `Rejected` |
+| typed 결과가 없는 target admission seal, filter 또는 runtime policy가 거부함 | `Rejected` |
 | host [shutdown](01-glossary.ko.md#shutdown)으로 신규 admission이 닫힘 | `ShuttingDown` |
 | invalid argument·state, 지원하지 않는 operation 또는 내부 불변 조건 위반 | 언어별 local call 오류. remote error reply로 바꾸지 않음 |
 
@@ -716,9 +696,9 @@ Global object message의 missing·route·exact-incarnation 결과는 다음처�
 
 Create·GetOrCreate에서 eligible node가 없거나 capacity가 부족하면 `CapacityExceeded`, reservation을
 확보한 owner route가 준비되지 않았으면 `Unavailable`이다. Store resolve·reservation·commit과 activation
-infrastructure 실패는 `InternalFailure`, object kind·stable type 충돌은 `TypeMismatch`,
-stale authority fence와 application admission 거부는 각각 `Unavailable`과 `Rejected`로 완료한다. 다른 owner로 자동
-재제출하지 않는다.
+infrastructure 실패는 `InternalFailure`, object kind·stable type 충돌은 `TypeMismatch`, stale authority fence는
+`Unavailable`이다. Application creation callback이 정상적으로 거부하면 exception이 아니라 typed `Rejected`
+result로 완료한다. 다른 owner로 자동 재제출하지 않는다.
 
 이 request 실패는 확인 시점과 관계없이 해당 error kind로 한 번만 완료한다. One-way send는 source의 local
 outbound admission 전에 실패를 확인했을 때만 위 kind의 exceptional completion을 반환할 수 있다. Source가

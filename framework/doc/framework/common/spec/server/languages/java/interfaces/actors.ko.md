@@ -1,10 +1,11 @@
 # Java Actor 공개 인터페이스
 
-Session에 bind된 Actor를 포함한 Spot relocation은 owner와 membership을 commit한 뒤 필요한 lifecycle
-callback과 accepted journal replay·logical timer 복원을 끝내고 durable source state를 정리한 다음 `Completed`를 commit한다.
-같은 `ObjectGeneration`의 route 전환이 양쪽 runtime에서 확인되고 steady route가 확정된 뒤에만
-target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
-아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
+Session에 bind된 Actor를 포함한 Spot relocation은 target에서 Actor와 queue를 복원하고 owner와
+membership을 commit한 뒤 message 처리를 시작한다. Target runtime은
+`sessionActorLocationUpdateReqMsg`를 send하여 binding route와 bound-session current Actor
+location snapshot을 갱신한다. 응답이 없어도 Actor 처리를 멈추지 않으며 정해진 간격으로
+같은 요청을 다시 보낸다. Snapshot은 target MeshName·NodeRid를 제공한다. Relocation 자체는 physical·logical disconnect가
+아니므로 Actor disconnect callback을 실행하지 않는다. relocation 대상에 포함되지 않은 다른 Actor의 route와 physical connection은
 변경하지 않는다.
 
 [인터페이스 목차](README.ko.md) · [Actor 공통 계약](../../../../14-actor-model.ko.md)
@@ -59,23 +60,22 @@ remote User·[Entry Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-
 Same-node join과 `disableRelocation()` 또는 `recreateOnRelocation()`을 선택한 factory에서는 adapter를 호출하지
 않는다. `recreateOnRelocation()`은 application state를 capture하지 않으므로 adapter가 없다.
 
-Target이 `Activated`에 도달해도 application과 session ingress는 sealed 상태를 유지하고 restore, accepted
-journal replay와 bound-session route는 staged 상태로만 준비한다. Source cleanup이 terminal 상태에 도달하고
-authority의 `COMPLETED` CAS가 성공한 뒤에만 target을 `READY`로 열고 relocation fence를 해제한다. `COMPLETED`
-뒤의 target failure는 ordinary [owner](../../../../01-glossary.ko.md#owner) loss로 처리하며 이전 relocation을 transparent replay하지 않는다. 이
-barrier를 조작하는 public phase API는 제공하지 않는다.
+Target은 restore와 accepted journal staging을 끝낸 뒤 owner를 commit한다. Lifecycle callback 뒤 저장된 기존
+작업을 실제 Actor queue에 먼저 넣고 relocation temporary queue 작업을 그 뒤에 옮긴다. Temporary queue
+등록을 제거하고 dispatch를 atomic하게 전환한 뒤 target을 `READY`로 연다. Source cleanup, `COMPLETED` 기록과
+bound-session 위치 갱신 응답은 target message 처리를 막지 않는다. `READY` 뒤 target process가 종료되면
+ordinary [owner](../../../../01-glossary.ko.md#owner) loss로 처리하며 이전 relocation을 자동 replay하지 않는다. 이 barrier를 조작하는 public phase API는 제공하지 않는다.
 
-Target replacement가 발생하면 stable relocation 안의 각 attempt가 factory와 `restore(...)`를 at-least-once
-호출할 수 있고 중단된 stale attempt callback이 successor와 겹칠 수 있다. `capture(...)`도 immutable relocation
-root가 [authority](../../../../01-glossary.ko.md#authority)에 연결되기 전까지 반복될 수 있다. Current exact owner와 attempt fence만 completion을 commit하고
+같은 source와 target process 안의 재시도에서 factory와 `restore(...)`를 두 번 이상 호출할 수 있다.
+`capture(...)`도 [authority](../../../../01-glossary.ko.md#authority) commit 전에 반복될 수 있다. Current owner와 attempt fence만 completion을 commit하고
 admission을 열 수 있다. Callback에는 relocation ID를 추가하지 않으므로 application restore와 capture는 retry-safe해야
 하며 exactly-once external side effect를 보장하지 않는다. Factory는 target attempt마다 fresh Actor instance를
 만들고 Framework는 그 attempt의 `restore(...)`만 해당 instance에 호출한다. Source instance나 이전 target
 attempt의 instance를 새 attempt에 재사용하지 않으며 같은 attempt에서는 restore가 반복될 수 있다.
 
 Capture stage가 exception으로 끝나면 authority publication 전에 attempt를 abort하고 source authority와 admission을
-유지한다. Restore stage가 exception으로 끝나면 target admission을 sealed 상태로 유지하고 같은 immutable payload의
-retry 또는 target replacement를 수행한다. Exception을 빈 payload나 정상 completion으로 바꾸지 않는다. Capture의
+유지한다. Restore stage가 exception으로 끝나면 target admission을 sealed 상태로 유지하고 같은 target process에서
+동일한 payload로 다시 시도할 수 있다. 다른 target을 자동 선택하지 않는다. Exception을 빈 payload나 정상 completion으로 바꾸지 않는다. Capture의
 null stage와 null `byte[]`, Restore의 null stage는 adapter contract 위반이다. Host relocation에서 deadline이 먼저
 확정되지 않은 precommit adapter exception과 contract 위반은 `Blocked/StateIncompatible`로 분류한다. [Deadline](../../../../01-glossary.ko.md#deadline)이
 먼저 확정되면 `Blocked/DeadlineExceeded`를 사용하며 stale target attempt의 cancellation은 terminal result를
@@ -121,10 +121,9 @@ Join을 실행하고 실패하면 barrier를 폐기한다. 결과는 같은 128-
 `onJoinCompleted(...)` Actor callback으로 전달한다.
 
 Operation ID는 completion idempotency ID이며 `RelocationId`, reservation ID나
-aggregate commit ID가 아니다. Same-node outcome과 `Rejected`·commit 전 `Failed`
-completion retry는 current process lifetime으로 제한한다. Cross-node commit 뒤
-`Accepted`만 Relocation manifest에 operation ID, optional reply와 cursor를 보존해
-durable at-least-once로 전달한다.
+aggregate commit ID가 아니다. Same-node와 cross-node completion retry는 current
+source와 target process lifetime으로 제한한다. Process 종료 뒤 다른 runtime이
+completion을 자동 replay하지 않는다.
 
 Request 없는 overload는 empty `ZLinkMessage`를 고정한다. Timeout 기본값은 5초이고
 명시 값은 millisecond 올림 기준 유한한 `1..Integer.MAX_VALUE` ms다. `defer()`에서
@@ -205,10 +204,9 @@ public final class systems.zlink.framework.actors.ZLinkActorJoinCompletion$Rejec
   public systems.zlink.framework.messaging.ZLinkMessage reply();
 }
 public final class systems.zlink.framework.actors.ZLinkActorJoinCompletion$Failed extends java.lang.Record implements systems.zlink.framework.actors.ZLinkActorJoinCompletion {
-  public systems.zlink.framework.actors.ZLinkActorJoinCompletion$Failed(systems.zlink.framework.actors.ZLinkActorJoinOperationId, systems.zlink.framework.errors.ZLinkFrameworkErrorKind, boolean);
+  public systems.zlink.framework.actors.ZLinkActorJoinCompletion$Failed(systems.zlink.framework.actors.ZLinkActorJoinOperationId, systems.zlink.framework.errors.ZLinkFrameworkErrorKind);
   public systems.zlink.framework.actors.ZLinkActorJoinOperationId operationId();
   public systems.zlink.framework.errors.ZLinkFrameworkErrorKind kind();
-  public boolean isRetriable();
 }
 public sealed interface systems.zlink.framework.actors.ZLinkActorJoinCompletion
     permits systems.zlink.framework.actors.ZLinkActorJoinCompletion.Accepted,
@@ -267,13 +265,13 @@ ActorId는 UTF-8 1..255 bytes의 global logical ID다. `ActorRef`는 ActorId, po
 ObjectGeneration과 조회 시점의 MeshName·NodeRid를 보존한다. 일반 message는 ActorId만 받고 current authority를
 resolve한다. Destroy와 session bind만 exact ref를 받는다.
 
-Create와 GetOrCreate call은 single-use다. 같은 option을 두 번 설정하면 `INVALID_CONFIGURATION`, submit을 두 번
-호출하면 `ALREADY_SUBMITTED`다. `inMesh` 생략 시 object-role Mesh가 하나면 자동 선택하고 0개이면
-`OBJECT_CLIENT_NOT_CONFIGURED`, 둘 이상이면 `MESH_SELECTION_REQUIRED`다. 명시한 Mesh가 없으면
-`MESH_NOT_FOUND`다. Caller는 target RID나 placement callback을 지정하지 않는다. `find`와 `findSpot`은
+Create와 GetOrCreate call은 single-use다. 같은 option을 두 번 설정하거나 submit을 두 번
+호출하면 `INVALID_OPERATION`이다. `inMesh` 생략 시 object-role Mesh가 하나면 자동 선택하고 0개이면
+`NOT_CONFIGURED`, 둘 이상이면 `INVALID_OPERATION`이다. 명시한 Mesh가 없으면
+`NOT_FOUND`다. Caller는 target RID나 placement callback을 지정하지 않는다. `find`와 `findSpot`은
 current Ready ref만 반환하며 directory와 resolver를 제공하지 않는다.
 
-`create`는 Ready Actor가 있으면 `ACTOR_ALREADY_EXISTS`이며 새 attempt에서는 `Created`
+`create`는 Ready Actor가 있으면 `ALREADY_EXISTS`이며 새 attempt에서는 `Created`
 또는 `Rejected`를 반환한다. `getOrCreate`는 같은 type의 Ready Actor를 callback 없이
 `Existing`으로 반환한다. Creating이면 authority 변경을 기다리며 CAS loser는
 별도 factory나 callback을 시작하지 않는다. 서로 다른 operation은 Ready 뒤 `Existing`을
@@ -289,5 +287,5 @@ Unknown property, duplicate property, required property 누락, 숫자 token과 
 
 Actor request에 선언된 `yield(...)`는 현재 Actor handler가 `SpotWide` User Spot의 shared execution
 gate에서 실행 중일 때만 유효하다. Entry Spot Actor와 `PerActor` User Spot의 Actor가 호출하면 operation을
-제출하거나 turn을 반환하지 않고 `INVALID_CONFIGURATION`으로 완료한다. Actor Join은 현재
+제출하거나 turn을 반환하지 않고 `INVALID_OPERATION`으로 완료한다. Actor Join은 현재
 handler 안에서 `defer()`로만 등록하며 `submit(...)`과 `yield(...)`를 제공하지 않는다.

@@ -314,8 +314,8 @@ node-wide placement weight도 바꾸지 않는다.
 | Node direct | Caller가 지정한 `MeshName` 안에서 exact target RID로 한 번 제출한다. Object Client RID는 application Node direct target이 아니다. |
 | Channel | Process-local `ChannelName` index가 RouteMesh를 정한다. 그 Mesh에서 ready 상태이고 Channel weight가 0보다 큰 Server 중 하나를 weight 비율에 따라 선택한다. |
 | Logical Multicast | 먼저 해당 ChannelName에 참여하고 ready 상태이며 Channel weight가 0보다 큰 remote MeshNode를 모두 선택한다. 각 수신 MeshNode는 자신의 local Spot 중에서 ChannelName과 topic 조건이 일치하는 subscription에 message를 전달한다. |
-| Actor direct | Global ActorId의 current authority와 ObjectGeneration을 확인한 뒤 current owner route로 제출한다. |
-| Spot direct | Global SpotId의 current [authority](01-glossary.ko.md#authority)와 [ObjectGeneration](01-glossary.ko.md#objectgeneration)을 확인한 뒤 current [owner route](01-glossary.ko.md#owner-route)로 제출한다. |
+| Actor direct | Global ActorId의 current Ready authority를 확인한 뒤 current owner route로 제출한다. `ObjectGeneration`은 application message의 target 조건이 아니다. |
+| Spot direct | Global SpotId의 current [Ready](01-glossary.ko.md#ready) [authority](01-glossary.ko.md#authority)를 확인한 뒤 current [owner route](01-glossary.ko.md#owner-route)로 제출한다. `ObjectGeneration`은 application message의 target 조건이 아니다. |
 
 Target 선택과 message submit은 하나의 operation이다. Framework가 선택한 RID 목록을
 application에 반환한 뒤 별도 send를 요구하지 않는다.

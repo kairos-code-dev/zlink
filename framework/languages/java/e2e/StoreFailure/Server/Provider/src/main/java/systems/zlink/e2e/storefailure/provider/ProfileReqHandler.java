@@ -1,7 +1,7 @@
 package systems.zlink.e2e.storefailure.provider;
 
 import systems.zlink.e2e.storefailure.shared.Contracts;
-import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import java.util.concurrent.CompletableFuture;
@@ -19,7 +19,7 @@ public final class ProfileReqHandler
     @Override
     public CompletionStage<Contracts.ProfileRes> handle(
         Contracts.ProfileReq request,
-        ZLinkRequestContext context) {
+        ZLinkMessageContext context) {
         evidence.record(request.marker(), request.value());
         return CompletableFuture.completedFuture(new Contracts.ProfileRes(
             "profile:" + request.value(),

@@ -249,13 +249,15 @@ Terminal call은 별도 check와 send로 나누지 않고 다음 순서로 resol
 
 1. global Spot ID의 current authority를 조회한다.
 2. Ready authority가 있으면 저장된 kind와 stable type을 사용해 current owner로 전송한다.
-3. authority가 Missing이고 Instance intent가 없으면 target-not-found로 끝낸다.
+3. authority가 Missing이고 Instance intent가 없으면 `NotFound`로 끝낸다.
 4. authority가 Missing이고 Instance intent가 있으면 eligible Object Mesh를 선택한다. `InMesh`를 생략했고 후보가
    0개이면 `NotConfigured`, 둘 이상이면 `InvalidOperation`이다.
-5. stable type을 명시하면 해당 capability를 가진 serving node만 후보로 사용한다.
+5. stable type을 명시하면 해당 capability를 가진 serving node만 후보로 사용한다. 해당 type을 제공하는
+   node가 없으면 `NotFound`다.
 6. stable type을 생략하면 선택한 Mesh의 serving descriptor에 등록된 distinct Instance type을 계산한다. 하나면
    자동 선택하고, 0개이면 `NotFound`, 둘 이상이면 required type을 생략한 `InvalidOperation`이다.
-7. Source는 global Spot ID, 선택한 Mesh·stable type과 target descriptor fence,
+7. 선택한 stable type을 제공하지만 capacity가 남은 node가 없으면 `CapacityExceeded`다.
+8. Source는 global Spot ID, 선택한 Mesh·stable type과 target descriptor fence,
    source node RID·lifecycle generation·optional source Spot ID, operation
    identity·reply correlation·deadline, command 39의 optional metadata 존재 여부와
    metadata frame 및 최초 application message를 하나의 activation envelope에 넣어
@@ -340,15 +342,19 @@ type 수와 관계없이 전송할 수 있다.
 ## 5. Existing-owner resolve와 direct call
 
 Spot direct send/request의 시작 method는 global Spot ID와 typed payload만 받는다. Framework는 positive route cache 또는
-Location Store에서 current Ready incarnation과 owner route를 resolve하고 selected ObjectGeneration을 wire
-admission에 고정한다. Local과 remote owner는 같은 handler, metadata와 completion 의미를 가진다.
+Location Store에서 current Ready Spot과 owner route를 resolve한다. Resolve할 때 확인한
+`ObjectGeneration`은 route snapshot에 기록하지만 application message의 target 일치 조건으로
+사용하지 않는다. Local과 remote owner는 같은 handler, metadata와 completion 의미를 가진다.
 Instance intent가 없는 direct call은 existing-only operation이며, 이미 존재하는 Ready Spot만 대상으로 한다.
 
 - Missing, Creating과 Store failure는 negative cache에 저장하지 않는다.
 - Positive Ready cache는 current owner lease의 local admission deadline과 `RouteCacheMaxAge` 안에서만
   사용한다.
 - Higher StoreVersion, stale result 또는 Store recovery event를 확인하면 즉시 invalidate한다.
-- Resolve 뒤 close와 recreate가 발생해도 이전 generation operation을 새 generation으로 retarget하지 않는다.
+- Resolve 뒤 같은 owner에서 close와 recreate가 발생했다면 target queue가 수락하는 시점의
+  current Ready Spot이 message를 처리한다.
+- Resolve한 owner가 더 이상 해당 SpotId를 소유하지 않으면 현재 operation은 stale route
+  오류로 끝낸다. Framework는 fresh owner를 찾아 같은 operation을 자동으로 다시 보내지 않는다.
 - Timeout, cancellation, disconnect와 실행 여부가 불명확한 failure 뒤 다른 owner에게 자동 재제출하지 않는다.
 
 One-way call은 local outbound admission까지만 기다린다. Cold activation이 필요해도 application handler 실행은
@@ -372,9 +378,13 @@ target AuthorityOwnerGeneration과 owner fence를 exact 검증한다. Target own
 
 Message Follow route 하나의 대기열은 1024 messages와 16 MiB 이하이며 negotiated message
 bound도 지킨다. Message Follow는 original operation ID, generation, payload와 reply route를
-보존한다. Route 없음·만료, generation mismatch, loop 또는 bound 초과는 stale-route 오류로
-끝난다. Failed application operation을 Store에서 찾은 owner에게 다시
+보존한다. Route 없음·만료와 loop는 `Unavailable`, generation mismatch는 `InvalidOperation`, bound 초과는
+`CapacityExceeded`로 끝난다. Failed application operation을 Store에서 찾은 owner에게 다시
 제출하지 않으며 다음 call만 fresh resolve를 수행한다.
+
+이 generation 검사는 relocation route가 같은 incarnation에 속하는지 확인한다. Spot direct
+send/request의 target은 `SpotId`이며 `ObjectGeneration` mismatch로 current Ready Spot의 handler
+실행을 거부하지 않는다.
 
 `SpotWide` User Spot relocation은 Spot과 member Actor의 Message Follow route를 같은
 aggregate commit에서 설치한다. 개별 participant route를 commit 전에 current route로
@@ -440,7 +450,8 @@ Store authority가 target으로 바뀌기 전까지 resolver와 application hand
 
 Source seal, durable capture, target reservation·factory·restore, authority commit과 admission 순서는
 [23 Spot과 Actor membership](15-spot-actor.ko.md)이 정한다. Commit 전 failure는 source를 유지하고 commit 뒤에는
-target recovery만 계속한다. Seal 시점의 실행하지 않은 message, accepted journal과 timer logical
+selection이 끝난 같은 target process에서만 절차를 계속한다. Target process가 종료되면
+11.1.0은 다른 target을 선택하거나 relocation을 자동으로 재개하지 않는다. Seal 시점의 실행하지 않은 message, accepted journal과 timer logical
 registration·pending tick은 relocation payload에 포함하며 target Framework가 timer를 자동 복원한다. Application은
 `Restore`에서 Framework timer를 다시 등록하지 않는다. 이 queue·timer 규칙은
 `SpotWide`와 Instance Spot에 적용한다. `PerActor`에서는 Actor queue와 Actor timer만
@@ -452,7 +463,7 @@ Original send·request를 maintenance target에 새 operation으로 자동 재�
 ## 9. 실패와 관측
 
 - Object role Mesh 후보가 없거나 여러 개인 create와 cold activation은 §3·§4의 typed error로 끝난다.
-- Ready authority가 없으면 not-found, exact generation이나 [owner fence](01-glossary.ko.md#owner-fence)가 다르면 typed stale error다.
+- Ready authority가 없으면 `NotFound`, exact generation이 다르면 `InvalidOperation`, [owner fence](01-glossary.ko.md#owner-fence)가 다르면 `Unavailable`이다.
 - `Closing`, relocation seal 이후 또는 `Draining` owner는 신규 admission을 거부한다. `Relocating`이지만 아직 seal하지
   않은 unit은 기존 owner admission을 유지한다.
 - Request failure를 다른 Spot ID, MeshName이나 owner로 우회하지 않는다.

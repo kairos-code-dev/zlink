@@ -10,6 +10,14 @@ import {
 import type { ZLinkBackendMeshNode } from './contracts';
 import type { ZLinkInboundDispatchBudget } from '../dispatch/inbound-dispatch-budget';
 
+//  The pump awaits between the two reads and the budget can pause in that gap.
+//  Reading through a function keeps the later check honest; an inline read
+//  stays narrowed by the first one.
+function budgetPaused(budget?: { readonly receivePaused: boolean }): boolean {
+  return budget?.receivePaused === true;
+}
+
+
 export interface ZLinkMeshDispatchPumpOptions {
   readonly readyCapacity?: number;
   readonly messageCapacity?: number;
@@ -103,7 +111,7 @@ export class ZLinkMeshDispatchPump {
     const applicationBudget = domain === ReadyDomain.Application
       ? this.options.inboundDispatchBudget
       : undefined;
-    if (applicationBudget?.receivePaused) return;
+    if (budgetPaused(applicationBudget)) return;
     const readyBatch = this.node.createReadyBatch(this.options.readyCapacity ?? 32);
     const receiveBatch = this.node.createReceiveBatch(
       applicationBudget === undefined ? (this.options.messageCapacity ?? 64) : 1,
@@ -122,7 +130,7 @@ export class ZLinkMeshDispatchPump {
           try {
             receiveBatch.reset();
             for (;;) {
-              if (applicationBudget?.receivePaused) return;
+              if (budgetPaused(applicationBudget)) return;
               const received = claim.recvBatch(receiveBatch, RecvFlags.DontWait);
               if (!received.ok) {
                 break;

@@ -319,11 +319,19 @@ internal sealed class ZLinkSessionActorBindingTable
             var key = new ZLinkSessionBindingKey(actorId, bindingToken);
             if (!_entries.TryGetValue(key, out var entry))
             {
+                //  두 거절 분기가 같은 문구로 나가면 어느 쪽인지 알 수 없다.
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"session_frame_refused reason=no_binding actor={actorId}");
                 acceptedHighWater = 0;
                 return false;
             }
             if (entry.RelocationHandoffId is not null)
             {
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"session_frame_refused reason=relocation_sealed actor={actorId} "
+                    + $"handoff={entry.RelocationHandoffId} "
+                    + $"completed={entry.CompletedRelocationHandoffId ?? "none"} "
+                    + $"high_water={entry.AcceptedHighWater}");
                 acceptedHighWater = entry.AcceptedHighWater;
                 return false;
             }

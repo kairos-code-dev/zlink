@@ -105,12 +105,11 @@ lifecycle에서 완료한다. 이후 one-way 업무 message는 Actor queue로 �
 
 Maintenance가 Actor를 target Entry Spot에 materialize할 때 Snapshot은 Actor adapter
 `restore(...)`를 먼저 완료하고 Recreate는 payload restore 없이 factory
-materialization을 완료한다. Accepted journal은 checksum, 순서와 fence를 검증하여
-target staging queue에 준비한 뒤 Prepared CAS와 Location authority·Entry
-[membership](../../../../01-glossary.ko.md#membership) commit을 수행한다. Journal,
-queue·Actor timer 복원, old Entry membership과 source resource cleanup, Completed
-CAS, route ACK와 steady normalization을 모두 완료한 뒤 Actor dispatch admission을
-연다.
+materialization을 완료한다. Queue·Actor timer를 복원하고 Location authority·Entry
+[membership](../../../../01-glossary.ko.md#membership)을 commit한 뒤 Actor message 처리를
+시작한다. Bound Session 위치 갱신은 그 뒤 `sessionActorLocationUpdateReqMsg`와
+`sessionActorLocationUpdateResMsg` send message로 수행하며 응답이 없어도 Actor 처리를
+멈추지 않는다.
 
 Infrastructure relocation은 target joined, source leave 또는 별도 relocation
 callback을 호출하지 않는다. 일반 same-node·remote User·Entry Spot join만 기존
@@ -421,10 +420,13 @@ Bind 뒤 relay·request relay와 `notifyDisconnected(...)`는 Actor별 저장 ro
 Location Store를 조회하지 않는다. Physical disconnect는 Framework가 current binding 전체에 automatic
 all-settled 통지를 수행하고 exact binding identity마다 Spot callback을 최대 한 번 실행한다.
 `notifyDisconnected(...)`는 connection이 유지된 상태의 logical notification이며 callback terminal까지
-기다린다. Relocation route update는 같은 ObjectGeneration에만 허용하고 callback·journal replay,
-durable source cleanup과 `Completed` 뒤 해당 Actor route만 바꾼다. Route 전환이 양쪽 runtime에서 확인되고
-steady route가 확정되기 전에는 target session packet·push admission을 열지 않으며 같은 Session의 다른 Actor
-route와 physical STREAM connection은 유지한다.
+기다린다. Relocation route update는 같은 ObjectGeneration에만 허용한다. Target Actor가
+복원되어 message 처리를 시작한 뒤 target runtime이 `sessionActorLocationUpdateReqMsg`를
+send하여 해당 Actor route와 `ZLinkSessionActor.ref`가 반환하는 current location snapshot을
+함께 바꾼다. Snapshot은 같은 ActorId·ObjectGeneration과 target MeshName·NodeRid를 반영한다.
+응답이 없어도 Target Actor 처리를 멈추지 않으며 정해진 간격으로 같은 요청을 다시 보낸다.
+같은 Session에서 relocation 대상에 포함되지 않은 다른 Actor의 route와 physical STREAM connection은 유지한다. Application은 relocation을 알기
+위해 rebind하지 않는다.
 
 Payload만 받는 `relay(...)`는 local relay queue가 operation을 수락하면 정상 완료하는 one-way admission이다.
 Dispatch context를 받는 overload는 explicit current STREAM request reply capability를 호출 즉시 runtime에

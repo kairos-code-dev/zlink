@@ -174,6 +174,11 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         _node.SetChannelWeight(channelName, weight);
     }
 
+    public void PublishDraining()
+    {
+        _node.PublishDraining();
+    }
+
     public void SetMaxMessageSize(long value)
     {
         _node.MaxMessageSize = value == 0 ? -1 : value;

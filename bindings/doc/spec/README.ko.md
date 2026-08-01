@@ -1225,7 +1225,7 @@ streamSocket.bindActor(sessionRid, actorRef)
   `XSUB`/`ROUTER` 에 attach 하면 `ZLINK_HANDLER_NOT_SUPPORTED` 로 실패한다.
 - socket 기본값: `ZLINK_ROUTER_OPT_MANDATORY` = `1`,
   `ZLINK_OPT_RID_DUPLICATE_POLICY` = `ZLINK_RID_DUPLICATE_REJECT`,
-  `ZLINK_PUB_OPT_NODROP` = `1`.
+  `ZLINK_PUB_OPT_NODROP` = `0`.
   바인딩 예제는 이 기본값을 기준으로 작성한다.
 
 ## Actor Dispatch 바인딩 계약

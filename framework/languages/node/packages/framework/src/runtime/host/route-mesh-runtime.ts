@@ -110,7 +110,7 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
           && entry.names.some((name, channelIndex) =>
             name === channelName && (entry.weights[channelIndex] ?? 0) > 0)
         ).length);
-        const localWeight = descriptor?.channelWeights?.[channelName] ?? channel.weight ?? 100;
+        const localWeight = descriptor?.channelWeights[channelName] ?? channel.weight ?? 100;
         const readyTargetCount = Number(readyMemberCount)
           + (channel.server === true && localWeight > 0 ? 1 : 0);
         return { channelName, isReady: readyTargetCount > 0, readyTargetCount };
@@ -597,7 +597,7 @@ function placementFingerprint(descriptor: ZLinkMeshNodeDescriptor): string {
     descriptor.populationCapacity.spots,
     spotTypes,
     descriptor.activationConcurrency,
-    Object.entries(descriptor.channelWeights ?? {}).sort(([left], [right]) =>
+    Object.entries(descriptor.channelWeights).sort(([left], [right]) =>
       left.localeCompare(right))
   ]);
 }

@@ -38,17 +38,9 @@ public enum ZLinkFrameworkErrorKind
     InternalFailure = 12
 }
 
-public enum ZLinkRetryAdvice
-{
-    DoNotRetry = 0,
-    RetryAfterBackoff = 1,
-    RetryAfterStateChange = 2
-}
-
 public sealed class ZLinkFrameworkException : Exception
 {
     public ZLinkFrameworkErrorKind Kind { get; }
-    public ZLinkRetryAdvice RetryAdvice { get; }
 }
 
 public sealed class ZLinkConfigurationException : InvalidOperationException
@@ -56,18 +48,12 @@ public sealed class ZLinkConfigurationException : InvalidOperationException
 }
 ```
 
-`ZLinkFrameworkException`은 Framework만 생성한다. Application은 exception을 상속하거나 retry 분류를
+`ZLinkFrameworkException`은 Framework만 생성한다. Application은 exception을 상속하거나 오류 분류를
 변경하지 않는다. `ZLinkConfigurationException`도 Framework가 startup validation 결과로 생성한다.
 `Message`는 사람이 진단하기 위한 설명이며 programmatic 분기에 사용하지 않는다.
 
-`RetryAdvice`는 Framework가 확인한 현재 실패 조건만 설명한다. Application은 operation의 idempotency와
-업무 deadline을 확인한 뒤 retry 여부를 결정해야 한다.
-
-| `RetryAdvice` | 의미 |
-|---|---|
-| `DoNotRetry` | 같은 입력과 상태로 다시 실행해도 성공할 수 없거나 중복 실행의 안전성을 보장하지 않는다. |
-| `RetryAfterBackoff` | 일시적인 resource·transport 실패일 수 있다. Operation이 idempotent일 때만 간격을 두고 다시 실행한다. |
-| `RetryAfterStateChange` | configuration, topology 또는 대상 상태가 바뀐 뒤 다시 실행할 수 있다. 즉시 반복하지 않는다. |
+Public exception은 재시도 여부를 제공하지 않는다. Application은 operation의 완료 조건, idempotency와
+업무 상태를 확인해 새 operation을 시작할지 결정한다.
 
 ## 3. 오류 kind 의미
 
@@ -77,9 +63,9 @@ public sealed class ZLinkConfigurationException : InvalidOperationException
 | `AlreadyExists` | create와 registration이 멱등하게 처리되어야 하는지 확인한다. |
 | `TypeMismatch` | stable type과 요청한 application type이 일치하는지 확인한다. |
 | `NotConfigured` | 필요한 role, handler, Store 또는 object client가 startup에 등록되었는지 확인한다. |
-| `Rejected` | 대상 application callback 또는 현재 policy가 operation을 거부했다. |
+| `Rejected` | Typed 결과가 없는 Framework admission, filter 또는 runtime policy가 operation을 거부했다. |
 | `Unavailable` | target, route, Store 또는 worker가 현재 operation을 처리할 수 없다. |
-| `CapacityExceeded` | placement, queue 또는 bounded resource의 여유가 생긴 뒤 다시 시도할 수 있다. |
+| `CapacityExceeded` | placement, queue 또는 bounded resource의 여유가 없다. |
 | `DeadlineExceeded` | operation이 정한 deadline 안에 완료되지 않았다. 결과의 side effect 여부는 해당 operation 계약을 따른다. |
 | `ShuttingDown` | Runtime이 신규 admission을 받지 않는 상태다. 다른 serving instance를 사용해야 한다. |
 | `ProtocolError` | peer와 protocol 또는 reply 계약이 일치하는지 확인한다. |
@@ -87,8 +73,8 @@ public sealed class ZLinkConfigurationException : InvalidOperationException
 | `DataLost` | 공개된 relocation payload를 찾을 수 없거나 검증에 실패했다. 이전 owner로 임의 rollback하지 않는다. |
 | `InternalFailure` | 위 분류로 표현할 수 없는 Framework 실패다. Log와 trace의 correlation 정보로 원인을 확인한다. |
 
-Generation stale, object moving, worker queue 상태와 relocation 처리 단계는 Framework가 retry·recovery를
-판정할 때 사용하는 내부 원인이다. Application이 다른 대응을 선택할 수 없으면 별도 public kind로
+Generation stale, object moving, worker queue 상태와 relocation 처리 단계는 Framework가 내부 처리를
+판정할 때 사용하는 원인이다. Application이 다른 대응을 선택할 수 없으면 별도 public kind로
 구분하지 않는다.
 
 ## 4. Diagnostics 경계

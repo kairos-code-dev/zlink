@@ -71,10 +71,9 @@ core의 기본 의존성은 아니다(단방향 의존).
 
 ## 6. 에러 매핑
 
-[공통 spec 9장](../../09-error-model.ko.md)을 따른다. Node는 Framework 공통 kind와
-`retryAdvice`를 사용한다.
+[공통 spec 9장](../../09-error-model.ko.md)을 따른다. Node는 Framework 공통 kind만 사용한다.
 
-- timeout은 `deadlineExceeded`, `retryAfterBackoff`로 보고하고, 예외의 `cause`는
+- timeout은 `DeadlineExceeded`로 보고하고, 예외의 `cause`는
   `Error`이며 `name`을 정확히 `TimeoutError`로 고정한다.
 
 ## 7. 회귀 테스트 / 등록

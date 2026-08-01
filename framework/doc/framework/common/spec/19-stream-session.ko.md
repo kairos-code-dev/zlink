@@ -209,12 +209,18 @@ Application callback은 bound 목록을 순회하지 않는다. 한 Actor의 실
 `NotifyDisconnected`는 connection이 유지되는 동안 application이 보내는 논리적 통지로 유지한다.
 
 Bound Actor가 relocation되면 physical STREAM socket과 Session object는 그대로
-유지한다. Owner·membership commit 뒤 callback·journal replay와 durable source cleanup,
-`Completed` CAS를 완료한 뒤 Framework가 Session owner에 저장된 해당 Actor binding
-route, 즉 현재 Actor owner에 전달할 경로를 target owner로 갱신해 달라고 요청하고 확인을 받는다(`command 44·45`). 같은 Session의 다른 Actor route는
-바꾸지 않으며 routed ACK와 steady normalization 전에는 target Actor의 session
-packet·push admission을 열지 않는다. Route update는 같은 ObjectGeneration에만
-허용하고 새 incarnation은 explicit bind가 필요하다.
+유지한다. Target Actor를 복원하고 owner·membership commit을 완료하면 Target Actor가
+message를 처리하기 시작한다. 그 뒤 target runtime이
+`sessionActorLocationUpdateReqMsg`를 send하여 Session owner에 저장된 해당 Actor binding
+route, 즉 현재 Actor owner에 전달할 경로를 target owner로 갱신하도록 요청한다.
+Route switch와 함께 bound-session current Actor location snapshot도 같은 ActorId·ObjectGeneration을
+유지한 채 target MeshName·NodeRid로 갱신한다. 같은 Session에서 relocation 대상에 포함되지 않은 다른 Actor의 route와 location snapshot은
+바꾸지 않는다. Session owner는 갱신한 뒤 `sessionActorLocationUpdateResMsg`를 send한다.
+응답이 없으면 target runtime은 최초 send 1초 뒤부터 1초, 2초, 4초, 5초 간격으로 같은
+요청을 다시 보내고 이후에는 5초 간격을 유지한다. 응답을 기다리는 동안에도 Target Actor는
+message를 처리하며, 이전 route로 도착한 message는 Message Follow route가 전달한다. Route
+update는 같은 ObjectGeneration에만 허용하고 application은 relocation을 알기 위해 rebind하지
+않는다. 새 incarnation은 explicit bind가 필요하다.
 
 ## 9. 구현 및 contract test 검증 요구
 

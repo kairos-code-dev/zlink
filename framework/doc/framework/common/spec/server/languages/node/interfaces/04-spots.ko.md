@@ -1,10 +1,11 @@
 # Node.js Spot과 Instance Spot 공개 인터페이스
 
-Session에 bind된 Actor를 포함한 Spot relocation은 owner와 membership을 commit한 뒤 필요한 lifecycle
-callback과 accepted journal replay·logical timer 복원을 끝내고 durable source state를 정리한 다음 `Completed`를 commit한다.
-같은 `ObjectGeneration`의 route 전환이 양쪽 runtime에서 확인되고 steady route가 확정된 뒤에만
-target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
-아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
+Session에 bind된 Actor를 포함한 Spot relocation은 target에서 Spot·Actor state와 queue를 복원하고
+owner와 membership을 commit한 뒤 message 처리를 시작한다. Target runtime은
+`sessionActorLocationUpdateReqMsg`를 send하여 각 bound Actor의 route와 위치 snapshot을
+갱신한다. 응답이 없어도 message 처리를 멈추지 않으며 정해진 간격으로 같은 요청을 다시
+보낸다. Relocation 자체는 physical·logical disconnect가
+아니므로 Actor disconnect callback을 실행하지 않는다. relocation 대상에 포함되지 않은 다른 Actor의 route와 physical connection은
 변경하지 않는다.
 
 [인터페이스 목차](README.ko.md) · [Spot address와 messaging](../../../../16-spot-address-messaging.ko.md) ·
@@ -273,12 +274,12 @@ ready Spot을 `existing`으로 반환한다. Creating이면 authority 변경을 
 되면 `existing`, cleanup으로 Missing이 되면 새 reservation을 경쟁한다. Kind나 type이 다르면
 `TypeMismatch`, [deadline](../../../../01-glossary.ko.md#deadline) 안에 terminal state가 되지 않으면 `DeadlineExceeded`다.
 
-`close(spotRef)`는 exact incarnation만 닫는다. Generation이 다르면 `SpotGenerationStale`, 이동 중이면
-retriable `SpotMoving`이다. Framework는 current ref를 다시 찾아 다른 incarnation을 닫지 않는다.
+`close(spotRef)`는 exact incarnation만 닫는다. Generation이 다르면 `InvalidOperation`, 이동 중이면
+`Unavailable`이다. Framework는 current ref를 다시 찾아 다른 incarnation을 닫지 않는다.
 
 Instance Spot에는 manager create·get-or-create를 제공하지 않는다. `sendToSpot`과 `requestToSpot`은 SpotId만
 받고 Spot 전용 call을 반환한다. [Instance intent](../../../../01-glossary.ko.md#instance-intent)를 설정하지 않은 call은 existing-only이며 Missing에서
-target-not-found다. `instanceSpot()`은 선택한 Mesh의 serving descriptor에 distinct Instance type이 하나일 때
+`NotFound`다. `instanceSpot()`은 선택한 Mesh의 serving descriptor에 distinct Instance type이 하나일 때
 그 type을 자동 선택하고, 여러 type이면 stable type을 받는 overload를 요구한다. 같은 type을 여러 MeshNode가
 등록한 것은 distinct type 하나다. `inMesh`는 Missing cold activation의 최초 Mesh를
 선택할 때만 사용하고 existing [owner](../../../../01-glossary.ko.md#owner)의 current Mesh를 제한하지 않는다.

@@ -35,6 +35,9 @@ fn blocking_publish_failure_surfaces_error() {
     let ctx = Context::new().unwrap();
     let pub_sock = ctx.pub_socket().unwrap();
     pub_sock.bind("inproc://sf-pub-nodrop").unwrap();
+    // The socket default is lossy fanout, so NODROP must be set explicitly for
+    // this scenario.
+    pub_sock.pub_options().set_no_drop(true).unwrap();
     pub_sock
         .common_options()
         .set_send_high_water_mark(1)

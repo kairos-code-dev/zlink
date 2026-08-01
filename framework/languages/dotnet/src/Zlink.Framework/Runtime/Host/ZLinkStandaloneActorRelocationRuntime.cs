@@ -51,11 +51,27 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
         var actor = actorState.Actor;
         var sourceRef = actorState.NativeActorRef;
         var actorType = actorState.ActorType;
+        //  두 거부 조건이 같은 열거값으로 합쳐져 호출자는 무엇 때문인지 알 수
+        //  없다. 특히 아래 동일-node 검사는 `Descriptor.Rid`로 하는데 후보를
+        //  거르는 쪽은 `Target.NodeRid`를 쓰므로, 두 식별자가 어긋나면 필터를
+        //  통과한 후보가 여기서 전부 거부된다. 어느 쪽인지 남긴다.
         if (actor is null || sourceRef is null
             || string.IsNullOrWhiteSpace(actorType))
+        {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                "relocation_target_rejected reason=incomplete_actor_state actor="
+                + actorState.ActorId);
             return ZLinkStandaloneActorRelocationResult.TargetRejected;
+        }
         if (target.Rid == sourceRef.Value.NodeRid)
+        {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                "relocation_target_rejected reason=target_is_source actor="
+                + actorState.ActorId
+                + " targetRid=" + target.Rid
+                + " sourceRid=" + sourceRef.Value.NodeRid);
             return ZLinkStandaloneActorRelocationResult.TargetRejected;
+        }
         ZLinkActorRelocationRegistry.TryResolve(
             registration,
             actorType,
@@ -1061,15 +1077,23 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
             requiredMessages,
             requiredBytes,
             [
+                //  Wire 계약(`relocation-participant-identity`)은 participant
+                //  kind별 conditional-union이며 `objectMailbox`(1) case의 필드
+                //  목록은 비어 있다. Session 신원은 `boundSession`(2) case에만
+                //  있다. 따라서 kind=1 record에 session 값을 채워도 인코딩되지
+                //  않고, target이 echo한 Reserved에는 그 자리가 비어 돌아온다.
+                //  그러면 MatchesReserved의 등가 비교가 거부해 예약이 완료되지
+                //  않고 relocation이 deadline까지 간다. 실을 수 없는 값은 싣지
+                //  않는다.
                 new ZLinkServiceWireCodec.RelocationParticipantRecord(
                     1,
                     1,
-                    boundSession?.SessionNodeRid ?? default,
-                    boundSession?.SessionOwnerNodeGeneration ?? 0,
+                    default,
+                    0,
                     null,
                     0,
-                    boundSession?.SessionRid ?? default,
-                    boundSession?.BindingGeneration ?? 0,
+                    default,
+                    0,
                     requiredMessages,
                     allowanceBytes)
             ],
@@ -2019,7 +2043,13 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
             complete.RelocationId.High,
             complete.RelocationId.Low,
             complete.TargetAttemptGeneration);
-        if (!_targetStages.TryGetValue(key, out var stage)) return;
+        if (!_targetStages.TryGetValue(key, out var stage))
+        {
+            //  조용한 return이라 완료가 통째로 생략돼도 흔적이 없다.
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                "relocation_target_complete_skipped reason=no_stage");
+            return;
+        }
         if (stage.SourceNodeRid != authenticatedSourceNodeRid
             || complete.Coordinator != stage.Prepare.Coordinator
             || !stage.AuthorityPublished)
@@ -2073,6 +2103,14 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                 stage.TargetAuthorityOwnerGeneration,
                 stage.TargetAuthority))
         {
+            //  Authority가 steady여도 bound session route는 아직 봉인돼 있을 수
+            //  있다. 여기서 stage를 지우면 뒤늦게 도착하는 완료 명령은 stage를
+            //  못 찾고 조용히 반환하므로, 그 seal을 풀 주체가 사라진다.
+            await runtime.FinishRelocationSessionRouteAsync(
+                    stage.ActorState,
+                    stage.Envelope.AggregateId.ToString("N"),
+                    cancellationToken)
+                .ConfigureAwait(false);
             RemoveTargetStage(key, stage);
             return;
         }
@@ -2539,6 +2577,9 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken,
         bool normalizeSteady = true)
     {
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"relocation_target_complete_entry actor={actorState.ActorId} "
+            + $"handoff={handoffId}");
         await ActivateStandaloneActorRelocationTargetAsync(
                 actorState,
                 targetAuthority,
@@ -2595,20 +2636,11 @@ internal sealed partial class ZLinkFrameworkRuntime
                        ?? throw new ZLinkFrameworkException(
                            ZLinkFrameworkErrorKind.NotFound,
                            $"Actor '{actorState.ActorId}' target reference is unavailable.");
-        var commit = await CommitCompletedSessionRouteAsync(
+        await FinishRelocationSessionRouteAsync(
                 actorState,
                 handoffId,
                 cancellationToken)
             .ConfigureAwait(false);
-        if (commit is { } completedRoute)
-        {
-            await UnsealCompletedSessionRouteAsync(
-                    completedRoute.Request,
-                    completedRoute.SessionOwnerNode,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            actorState.CompleteRelocationSessionRoute(handoffId);
-        }
         if (normalizeSteady)
             await coordinator.NormalizeSteadyAsync(
                     relocationIdentity,

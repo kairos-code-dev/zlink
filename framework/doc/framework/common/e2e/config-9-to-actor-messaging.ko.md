@@ -125,33 +125,35 @@ actor 제거 후에는 actor 부재 실패로 분류되는가.
 **검증 질문:** 존재하지 않는 global `ActorId`로 호출하면 actor가 자동 생성되거나 메시지가 보관되지 않고 `NotFound`로 실패하는가.
 
 - 절차: live actor authority가 없는 global `ActorId`로 외부 caller 서버가 request와 send를 시도한다.
-- 검증: request는 caller 서버에서 `NotFound`로 실패한다. reply가 없는 send의 submit은 로컬 전송 접수까지만 나타내며 원격 Actor의 존재 여부를 확인하는 수단으로 사용하지 않는다. send 뒤 Actor 노드에는 해당 Actor ID의 handler evidence가 없고 Actor authority도 새로 만들어지지 않는다. Auto-create나 메시지 파킹이 없어야 하며, 호출자가 Actor 부재를 확인해야 하는 흐름은 request를 사용한다.
+- 검증: Source가 outbound queue에 넣기 전에 Actor authority가 없음을 확인하므로 request와 send는 모두
+  `NotFound`로 실패한다. Actor node에는 해당 Actor ID의 handler evidence가 없고 Actor authority도 새로
+  만들어지지 않는다. Auto-create나 message parking이 없어야 한다.
 - 세부 동작: Actor authority 없음 실패 분류.
 
-#### TA-B2 resolve 뒤 generation 교체
+#### TA-B2 같은 process에서 resolve 뒤 generation 교체
 
 우선순위: `P0`
 
-**검증 질문:** global `ActorId`를 resolve한 뒤 destroy·recreate로 generation이 바뀌어도 진행 중인 operation을
-새 generation으로 retarget하지 않는가.
+**검증 질문:** global `ActorId`를 resolve한 뒤 같은 process에서 Actor를 다시 만들면 ID-only Application
+message를 새 Actor가 처리하는가.
 
 - 절차: actor를 만들고 caller 서버의 global `ActorId` request를 resolve와 outbound admission 사이에서
   정지한다. 그 사이 current `ActorRef`로 actor를 destroy하고 같은 ID·stable type으로 recreate한 뒤 barrier를 해제한다. 이후 같은
   `ActorId`로 새 operation을 제출한다.
-- 검증: 이전 operation은 resolve에서 선택한 generation·owner fence만 사용하며 새 incarnation handler로
-  retarget되지 않는다. 이전 owner와 새 owner의 evidence에서 잘못된 generation handler 실행은 0이다.
-  새 operation만 fresh resolve로 current incarnation에 도달한다. 이전 operation의 정확한 terminal error는
-  race winner에 따라 route·stale 분류를 따르지만 terminal은 한 번이다.
-- 세부 동작: logical Actor messaging의 resolve/admission fence와 hidden retarget 금지.
+- 검증: 같은 process와 route가 유지된 상태에서는 이전 operation과 새 operation을 새 Actor가 각각 한 번
+  처리한다. Application message의 target 조건에는 `ObjectGeneration`을 사용하지 않는다. 반면 이전
+  `ActorRef`로 시작한 destroy나 session bind 같은 lifecycle operation은 `InvalidOperation`으로 끝나고 새
+  Actor의 상태를 바꾸지 않는다.
+- 세부 동작: ID-only Application message와 exact-ref lifecycle operation의 target 조건 분리.
 
 #### TA-B3 route 미연결
 
 우선순위: `P0`
 
-**검증 질문:** 대상 actor node rid는 알려졌지만 routed plane으로 보낼 수 없으면 `Unavailable`로 분류되고 `RetryAfterBackoff`가 제공되는가.
+**검증 질문:** 대상 actor node rid는 알려졌지만 routed plane으로 보낼 수 없으면 `Unavailable`로 분류되는가.
 
 - 절차: actor를 만든 뒤 caller 서버에서 current actor owner node로 가는 route 연결을 끊는다. 외부 caller 서버가 global `ActorId`로 request를 보낸다. 연결 복구 뒤 같은 ID로 새 request를 보낸다.
-- 검증: 단절 구간의 실패는 `Unavailable`과 `RetryAfterBackoff`로 분류되고, actor handler evidence는 남지 않는다. 복구 뒤 follow-up request는 같은 actor handler에서 처리되고 reply가 caller 서버로 돌아온다. 이 시나리오는 actor row 없음이나 stale location으로 판정하면 안 된다.
+- 검증: 단절 구간의 실패는 `Unavailable`로 분류되고 public retry hint는 제공되지 않으며, actor handler evidence는 남지 않는다. 연결 복구 뒤 client가 새로 시작한 follow-up request는 같은 actor handler에서 처리되고 reply가 caller 서버로 돌아온다. 이 시나리오는 actor row 없음으로 판정하면 안 된다.
 - 세부 동작: route 미연결 실패 분류와 복구 뒤 성공.
 
 ## 5. 완료 기준

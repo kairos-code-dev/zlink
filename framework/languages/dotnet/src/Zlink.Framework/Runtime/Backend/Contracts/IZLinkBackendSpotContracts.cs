@@ -30,6 +30,8 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
     // it after start (descriptor-revision bump, spec 21 §4).
     void SetChannelWeight(string channelName, uint weight);
 
+    void PublishDraining();
+
     // Applies the Core MeshNode receive cap. Framework 0 means no limit and
     // is translated by the backend to Core's -1 sentinel.
     void SetMaxMessageSize(long value);

@@ -60,7 +60,9 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          # gradle toolchain이 22를 요구한다(framework/languages/java/
+          # build.gradle.kts). 21을 깔면 toolchain을 못 찾아 실패한다.
+          java-version: '22'
 
       - name: Compile guide examples (Java)
         working-directory: framework/languages/java

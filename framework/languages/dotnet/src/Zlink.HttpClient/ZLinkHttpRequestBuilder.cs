@@ -509,4 +509,15 @@ public sealed class ZLinkHttpServerRequestBuilder : ZLinkHttpRequestBuilder
         var turn = RequireExecutionTurn("Async");
         return new ValueTask(ObserveSubmissionAsync(turn, cancellationToken));
     }
+
+    /// <summary>
+    ///     Submits the request, releases the shared Spot gate while the response is outstanding, and
+    ///     resumes the continuation in a new turn on the same execution line. Available where the
+    ///     framework grants gate release, which is a SpotWide User Spot or an Instance Spot.
+    /// </summary>
+    public ValueTask<HttpResponse<T>> Yield<T>(CancellationToken cancellationToken = default)
+    {
+        var turn = RequireExecutionTurn("Yield");
+        return turn.YieldAsync(Async<T>, cancellationToken);
+    }
 }

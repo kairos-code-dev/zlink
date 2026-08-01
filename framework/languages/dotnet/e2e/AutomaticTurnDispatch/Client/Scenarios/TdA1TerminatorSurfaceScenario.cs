@@ -25,7 +25,7 @@ internal static class TdA1TerminatorSurfaceScenario
         ZlinkStreamAssert.Ensure(!methods.Contains("Submit") && !methods.Contains("Yield"),
             "TD-A1 standalone HTTP request builder exposes server-only terminators.");
         // Spec http-client 05 §5.2 uses Fetch<T> inside an I/O Worker, so it is
-        // part of the builder contract; only Yield and Submit are withheld.
+        // part of the builder contract, and the standalone client withholds Yield.
         return Task.CompletedTask;
     }
 
@@ -34,8 +34,13 @@ internal static class TdA1TerminatorSurfaceScenario
         var methods = type.GetMethods().Select(method => method.Name).ToHashSet(StringComparer.Ordinal);
         ZlinkStreamAssert.Ensure(methods.Contains("Async"),
             $"TD-A1 {type.Name} is missing Async.");
-        foreach (var name in new[] { "Submit", "Yield" })
-            ZlinkStreamAssert.Ensure(!methods.Contains(name), $"TD-A1 {type.Name} exposes {name}.");
+        // Spec http-client 05 §5.1: the server builder returns the shared Spot
+        // gate with Yield where the framework allows it; the standalone client
+        // has no gate to return.
+        ZlinkStreamAssert.Ensure(methods.Contains("Yield"),
+            $"TD-A1 {type.Name} is missing Yield.");
+        ZlinkStreamAssert.Ensure(!methods.Contains("Submit"),
+            $"TD-A1 {type.Name} exposes Submit.");
     }
 
     private static void AssertAwaitedTerminators(Type type)

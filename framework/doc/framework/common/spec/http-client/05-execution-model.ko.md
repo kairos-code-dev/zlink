@@ -13,7 +13,9 @@
 HTTP client는 one-way submission과 response completion을 제공한다. 정확한 terminator 이름은
 .NET `Async`, Kotlin wrapper `await`, Java·C++ `submit`이다. Node는 raw response `submitRaw`,
 typed response·callback `async`와 one-way `submit`을 구분한다. Shared Spot gate를 반납하는
-`Yield`는 HTTP request builder가 아니라 서버 request와 Worker call에만 제공한다.
+`Yield`는 gate 반납이 허용되는 실행 문맥, 곧 `SpotWide` User Spot과 Instance Spot에서 실행하는
+서버 HTTP request builder, 서버 request와 Worker call에 제공한다. Standalone client에는 반납할
+gate가 없으므로 제공하지 않는다.
 
 | 실행 방식 | 무엇을 기다리나 | [Spot](../01-glossary.ko.md#spot) 실행 줄 |
 | --- | --- | --- |
@@ -42,9 +44,15 @@ Spot 실행 줄의 **새 turn**으로 들어간다
 
 ## 5.2 외부 HTTP 대기와 Spot 실행 줄
 
-HTTP request builder는 shared Spot gate를 반납하는 `Yield`를 제공하지 않는다. Actor 입·퇴장 시 외부
-API를 기다리면서 같은 Spot의 다른 작업과 timer를 진행해야 하면 I/O Worker에서 HTTP response를
-기다리고 Worker call의 `Yield`로 끝낸다.
+외부 API를 기다리는 동안 같은 Spot의 다른 작업과 timer가 진행되어야 하면 gate를 반납해야 한다.
+서버 HTTP request builder는 그 문맥에서 `Yield`를 직접 제공한다.
+
+```csharp
+var profile = await http.Get($"/players/{id}").Yield<Profile>(ct);
+```
+
+응답을 기다리는 동안 다른 작업도 함께 수행해야 하면 I/O Worker로 감싸고 Worker call의 `Yield`로
+끝낸다. 아래 예제가 그 형태다.
 
 ```csharp
 var profile = await Context
@@ -67,7 +75,7 @@ var profile = await Context
   어디서 재개할지 정한다.
 - **Framework가 DI 등록 시 callback completion scheduler를 꽂는다.** Callback은 Spot 실행 줄의 새
   turn으로 들어간다.
-- DI와 단독 사용 모두 HTTP request builder에 **`Yield`를 노출하지 않는다.**
+- **단독 사용 HTTP request builder에는 `Yield`를 노출하지 않는다.** 반납할 Spot gate가 없다.
 
 cpp의 `coroutines(resume_scheduler)` / `framework_resume_scheduler_t`가 이 seam의 선례다.
 

@@ -53,6 +53,9 @@ Stream Connector runtime이나 compression package에 의존하지 않는다.
 - `ZLinkHttpServerRequestBuilder` — standalone 표면을 포함하고 one-way
   `ValueTask Async(CancellationToken cancellationToken = default)`를 추가한다. 반환된
   `ValueTask`는 비동기 완료와 실패만 전달하며 전송 결과나 admission status를 포함하지 않는다.
+  Shared Spot gate를 반납하고 새 turn에서 이어받는
+  `ValueTask<HttpResponse<T>> Yield<T>(CancellationToken cancellationToken = default)`도
+  추가한다. gate 반납이 허용되는 `SpotWide` User Spot과 Instance Spot에서만 사용한다.
 - `IZLinkHttpExecutionScheduler` / `IZLinkHttpExecutionTurn` — DI 통합이 현재 Spot turn을
   캡처하고 callback 완료를 원래 실행 줄의 새 turn에 배치하는 공개 주입점이다.
 - `RawHttpResponse` { `Status`, `Headers`, `Body` }.

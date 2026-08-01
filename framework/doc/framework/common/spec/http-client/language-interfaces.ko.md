@@ -62,6 +62,7 @@ Awaitable을 쓰지 않는 호출자를 위한 callback
 | **비동기 완료** (download) | `download(sink)` | `DownloadAsync(sink, ct?)` | `download(Consumer<byte[]>)` | `awaitDownload(sink)` | `download(sink)` |
 | **one-way** | `submit()` → `task_t<void>` | `Async(ct?)` → `ValueTask` | `submit()` → `CompletionStage<Void>` | `await()` → `Unit` (suspend) | `submit()` → `Promise<void>` |
 | **callback** | `submit<T>(callback)` | `Async<T>(callback)` | `submit(Class<T>, callback)` | (suspend로 대체) | `async<T>(callback)` |
+| **gate 반납 완료** (서버 builder 전용) | `yield<T>()` | `Yield<T>(ct?)` → `ValueTask<HttpResponse<T>>` | `yield(Class<T>)` | `yield<T>()` (suspend) | `yield<T>()` → `Promise<HttpResponse<T>>` |
 | blocking 언래핑 | **두지 않는다** | **두지 않는다** | **두지 않는다** | **두지 않는다** | **두지 않는다** |
 
 - HTTP request builder에는 `Yield`·`yield`를 제공하지 않는다. Spot shared turn을 반납해야 하는

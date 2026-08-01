@@ -731,9 +731,9 @@ target만 사용하며 Follow 중 Location Store에서 다른 owner를 찾지 �
 |---|---|
 | operation | one-way send와 request/reply 모두 original operation ID, payload와 ObjectGeneration을 유지한다. |
 | request terminal | original reply route를 유지한다. Relay가 새 reply route를 만들지 않는다. |
-| hop | 최대 8번까지만 relay한다. Loop나 hop 초과는 typed stale-route error다. |
+| hop | 최대 8번까지만 relay한다. Loop나 hop 초과는 `Unavailable`이다. |
 | route queue | route 하나당 최대 1,024 messages, encoded 합계 16 MiB와 negotiated message bound를 지킨다. |
-| lifetime | configured Message Follow 기간이 끝나면 이전 route를 사용하지 않는다. 만료·generation mismatch·용량 초과는 typed stale-route error다. |
+| lifetime | configured Message Follow 기간이 끝나면 이전 route를 사용하지 않는다. 만료는 `Unavailable`, generation mismatch는 `InvalidOperation`, message·byte 한도 초과는 `CapacityExceeded`다. |
 
 봇은 bound session이 없으므로 client push 대상이 아니다(§2.7, `ZW-F3`).
 
@@ -984,7 +984,7 @@ client/src/
 | `ZW-B2` | **서로 다른 owner 사이의 zone 이동** | 운영 probe가 선택한 서로 다른 owner의 인접 zone 경계를 통과 → target `ZoneChangedNotify` + **WebSocket 연결 유지** + 이후 이동 동작. NodeRid는 검증 증거일 뿐 업무 route로 사용하지 않는다 |
 | `ZW-B3` | **Y 경계 zone 이동** | Y 경계 통과 → `ZoneChangedNotify(ZoneId=zone-sw)`. 특정 owner NodeRid는 성공 조건이 아니다 |
 | `ZW-B5` | **Actor generation 보존** | 운영 probe가 서로 다른 owner의 인접 zone pair를 선택한다. Cross-node relocation 전후 같은 `ActorId`의 `ObjectGeneration`이 유지되고 owner generation만 증가하는지 확인한다. |
-| `ZW-B6` | **Message Follow bounded relay** | 선택한 cross-node pair에서 one-way와 request/reply의 payload·operation ID·generation·reply route를 보존하고 hop·message 수·byte·기간 제한과 typed stale-route error를 확인한다. |
+| `ZW-B6` | **Message Follow bounded relay** | 선택한 cross-node pair에서 one-way와 request/reply의 payload·operation ID·generation·reply route를 보존하고 원인별 `Unavailable`, `InvalidOperation`, `CapacityExceeded`를 확인한다. |
 | `ZW-C1` | 노드 관찰 | 관제 콘솔이 두 노드를 `Registered=true`, `Connected=true`로 표시. **두 플래그를 모두 확인한다** — 각각 location event와 socket event라는 다른 출처에서 오므로, 하나만 보면 다른 하나의 배선이 동작하지 않아도 통과한다 |
 | `ZW-C2` | **노드 종료** | 현재 snapshot에서 `Registered=true`인 node를 선택하고 runner가 그 process를 종료 → 같은 `NodeId`의 `Registered=false` 전이를 확인한다 |
 | `ZW-C3` | **연결 단절** | `Ops`↔노드 연결 단절 → `NodeStatusNotify(Connected=false)`(socket event). `ZW-C2`와 같은 이유로 **먼저 `Connected=true`를 확인한 뒤** 전이를 본다 |
@@ -1110,8 +1110,9 @@ same-node 이동 결과와 구분한다.
 - **`ZW-B6` ◆** — relocation commit 직후 runner가 보존한 이전 owner route로 one-way
   `MoveMsg`와 request/reply probe를 보낸다. Relay 뒤에도 operation ID, generation, payload와
   reply route가 같고 target handler의 업무 효과가 한 번인지 확인한다.
-  이어서 최대 8 hop, route당 1,024 messages와 16 MiB 경계를 각각 검증한다. Hop·message 수·byte
-  제한 초과, Message Follow 기간 만료와 generation mismatch는 typed stale-route error여야 한다.
+  이어서 최대 8 hop, route당 1,024 messages와 16 MiB 경계를 각각 검증한다. Hop 초과와 Message Follow
+  기간 만료는 `Unavailable`, generation mismatch는 `InvalidOperation`, message·byte 한도 초과는
+  `CapacityExceeded`여야 한다.
   Source가 Follow 중 Location Store를 다시 조회하거나 다른 owner로 hidden retry하면 실패다.
 - **`ZW-B4` ◆** — client 둘(west·east). `east.WalkTo(52,25)`(zone-ne), `west.WalkTo(45,25)`.
   **east가 `zone-ne` 소속으로** west에 보일 때까지 기다린다(단순히 "보이면"이 아니다 — relocation
@@ -1225,9 +1226,9 @@ zoneworld=completed
 - Actor relocation은 `ActorId`와 `ObjectGeneration`을 유지하고 owner generation만 증가시킨다.
 - Cross-node 검증은 Location Store에서 관측한 서로 다른 owner의 인접 zone pair를 사용한다.
   Pair가 없으면 release gate를 통과시키지 않는다.
-- Message Follow는 one-way와 request/reply의 operation ID, generation, payload와 reply
-  route를 보존한다. 최대 8 hop, route당 1,024 messages·16 MiB와 configured 기간을 넘거나
-  generation이 다르면 typed stale-route error로 끝난다.
+- Message Follow는 one-way와 request/reply의 operation ID, generation, payload와 reply route를 보존한다.
+  Hop·기간·route 오류는 `Unavailable`, generation mismatch는 `InvalidOperation`, route당 1,024 messages·
+  16 MiB 한도 초과는 `CapacityExceeded`로 끝난다.
 - 노드 내부 zone 이동에서는 actor relocation이 일어나지 않는다.
 - 경계 동기화는 인접 zone별 topic으로 publish하며 대각선 zone에는 전달되지 않는다.
 - 전 노드 공지는 channel fanout이며 **발행 경로가 노드를 열거하지 않는다**. Zone을 호스팅하지

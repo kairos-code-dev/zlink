@@ -153,7 +153,7 @@ Node.js와 C++에 동일하게 적용한다.
 internals를 다시 검토해 함께 수정한다.
 
 정식 spec은 사용자가 관찰하는 목표 계약만 설명한다. 현재 언어별 구현 누락, 제거 진행률과 test 상태는
-[implementation gap](30-implementation-gap.ko.md)과 실행 ledger가 소유한다. Internals는 목표 runtime의
+언어별 audit·실행 ledger가 소유한다. Internals는 목표 runtime의
 책임 경계, 데이터 흐름과 불변 조건을 설명하며 migration 이력이나 진행표를 포함하지 않는다.
 
 Core 11.0은 raw transport를 소유하고, C++·.NET·JVM·Node.js Framework는 각 언어의 service runtime을

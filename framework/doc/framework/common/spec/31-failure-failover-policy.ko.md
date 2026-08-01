@@ -126,7 +126,9 @@ route와 cache 규칙은 [Spot·Actor routing](18-object-routing.ko.md)이 정�
 
 현재 `Ready` Actor 또는 Spot의 owner process가 종료되면 Framework는 다른 node에 같은 object를
 자동 복원하지 않는다. Location Store에 기록된 owner를 임의로 바꾸거나 같은 global ID의 새
-incarnation을 만들지 않는다.
+incarnation을 만들지 않는다. 이 규칙은 Instance Spot에도 동일하게 적용한다. Instance Spot이라는
+종류만으로 owner lease 만료 뒤 authority를 release하거나 다음 message를 cold activation으로
+전환하지 않는다.
 
 ### 4.3 Actor와 Spot 생성
 
@@ -139,7 +141,7 @@ object ID와 generation의 생성 record를 다시 확인한다. 같은 생성�
 복구하는 failover가 아니다. 생성 경쟁과 결과는
 [Spot과 Actor membership §2](15-spot-actor.ko.md#2-object를-하나만-생성하도록-확정하는-과정)가 정의한다.
 
-### 4.4 Instance Spot cold activation
+### 4.4 Instance Spot cold activation과 owner 장애를 구분한다
 
 최초 message가 도착했을 때 Instance Spot을 만들고 준비하는 과정을
 [cold activation](01-glossary.ko.md#cold-activation)이라고 한다. Framework는 최초 message와 생성
@@ -147,7 +149,26 @@ record를 저장하므로 process가 `Creating` 또는 최초 message 복원 중
 생성을 계속하거나 취소할 수 있다. 최초 message를 queue 선두에 복원하기 전에는 새 message를
 처리하지 않는다.
 
-이 recovery 정보는 Instance Spot의 최초 생성에만 사용한다. Actor, User Spot, 이미 `Ready`인
+Instance Spot은 별도 create API를 호출하지 않고 `Missing` 상태에서 첫 message로 생성한다. 이 특징은
+object를 **언제 만드는지** 정할 뿐, `Ready` owner 장애 뒤 다른 node에서 object를 자동 복원하는
+failover 정책을 추가하지 않는다. 다음 표는 message가 도착했을 때 현재 authority에 따라 Framework가
+어떤 동작을 하는지 구분한다.
+
+| 현재 상태 | Instance intent가 있는 새 message의 처리 |
+|---|---|
+| Authority record가 없는 `Missing` | Eligible node 하나를 선택해 새 `ObjectGeneration`의 cold activation을 시작한다. |
+| `Creating` 또는 최초 message를 아직 복원하지 않은 `Ready` | 저장한 생성 record와 최초 message를 사용해 같은 `ObjectGeneration`의 생성을 계속하거나 취소한다. 새 incarnation을 만들지 않는다. |
+| Owner lease가 유효한 `Ready` | 현재 owner로 message를 보낸다. Cold activation을 시작하지 않는다. |
+| `Ready` owner process가 종료되었거나 owner lease가 무효임 | Authority record를 자동 release하지 않고 다른 node에서 새 incarnation을 만들지 않는다. Operation은 `Unavailable`로 끝난다. |
+| Application의 explicit `Close`가 authority release까지 완료됨 | 이후 조회 결과는 `Missing`이다. 다음 Instance intent message는 새 `ObjectGeneration`의 cold activation을 시작할 수 있다. |
+| 계획된 `Relocate`가 진행 중이거나 완료됨 | Relocation 계약에 따라 같은 object와 `ObjectGeneration`을 target으로 옮긴다. Cold activation이나 crash failover로 처리하지 않는다. |
+
+따라서 “process가 종료된 뒤 lease가 만료되면 다음 message가 다른 node에서 Instance Spot을 다시
+활성화한다”는 동작은 현재 계약에 없다. 그런 동작을 제공하려면, 장애가 난 owner의 authority를 어떤
+조건에서 release할지, 저장한 state와 수락된 operation을 어떻게 복구할지, 이전 owner를 어떤 fence로
+차단할지를 별도의 failover 계약으로 정의해야 한다.
+
+최초 생성 recovery 정보는 Instance Spot의 최초 생성에만 사용한다. Actor, User Spot, 이미 `Ready`인
 Instance Spot과 host relocation에는 적용하지 않는다. 저장과 재개 순서는
 [Location runtime §6.1](21-location-runtime.ko.md#61-message를-받은-node에서-instance-spot을-처음-만든다)이
 정의한다.
@@ -233,7 +254,10 @@ Framework가 수락 전 target을 다시 선택하거나 Store 결과를 재확�
   mismatch만으로 application handler 실행을 거부하지 않는다.
 - Destroy·Close, membership, relocation과 생성 recovery는 exact ObjectGeneration을 확인한다.
 - Actor를 제거한 뒤 같은 ActorId로 다시 만들어도 이전 Session binding을 다시 사용하지 않는다.
-- Instance Spot cold activation recovery를 Actor, User Spot이나 host relocation에 사용하지 않는다.
+- Instance Spot은 `Missing`일 때만 cold activation을 시작한다. `Ready` owner process 종료나 owner lease
+  만료를 `Missing`으로 바꾸거나 cold activation으로 복구하지 않는다.
+- Instance Spot cold activation recovery를 Actor, User Spot, 이미 `Ready`인 Instance Spot이나 host
+  relocation에 사용하지 않는다.
 - Relocation commit 전 failure는 source를 유지하고, commit 뒤 failure는 source로 rollback하지 않는다.
 - Source 또는 target process 종료 뒤 다른 runtime이 relocation을 이어받거나 다른 target을 자동 선택하지
   않는다.

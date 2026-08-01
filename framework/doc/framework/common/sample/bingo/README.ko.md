@@ -138,7 +138,7 @@ MeshNode endpoint를 descriptor로 게시하고, STREAM endpoint는 해당 strea
 | Session -> Play session relay | location store 기반 actor locator | Session 서버가 Play 서버 actor의 위치를 직접 관리하지 않게 한다. |
 | Play actor -> remote room Spot | Location Store 기반 Spot routing | actor가 다른 Play 서버의 room Spot에 join할 수 있게 한다. |
 | Play Logical Multicast | 같은 RouteMesh의 routed multicast | reward event를 target channel의 각 node에 한 번 전달하고 local `BingoRoom` subscription으로 fan-out한다. |
-| Play -> Session bound push | location store 기반 session route | Play 서버가 현재 client session 위치를 framework route로 찾는다. |
+| Play -> Session bound push | Session owner가 보관하는 binding route | Play 서버가 Location Store를 조회하지 않고 current binding token과 route로 client에 push한다. |
 | Matchmaker Instance Spot -> Redis | Redis endpoint 설정 | waiting room과 actor reservation의 source of truth를 제공한다. |
 
 이 샘플이 자동 연결을 쓰는 이유는 운영형 gateway 구조에서 서버 증설과 endpoint
@@ -151,7 +151,8 @@ ready remote node마다 같은 ROUTER mesh로 routed message를 한 번 제출�
 topic과 일치하는 local Spot subscription에 message ref를 공유하는 동작을 application code에서 구현하지 않는다.
 
 Bingo는 Redis를 두 가지 다른 용도로 쓴다. 하나는 framework의 Location Store 구현체로,
-peer discovery·actor route·session route를 담당한다. Logical Multicast도 같은 RouteMesh peer set을 사용한다. 다른 하나는
+peer discovery와 actor·Spot authority를 담당한다. Session binding route는 Session owner가 보관한다.
+Logical Multicast도 같은 RouteMesh peer set을 사용한다. 다른 하나는
 §3.1의 reservation store로, matching 중인 waiting room의 짧은 상태만 저장한다. 두 용도는
 같은 Redis 인스턴스를 공유할 수 있지만 책임은 다르다 — room Spot owner 조회 같은
 위치 정보는 Location Store가, waiting room reservation은 Matchmaking Redis가 맡는다.
@@ -273,9 +274,10 @@ RID field를 두지 않고 endpoint만 유지한다. 자동 발급한 RID는 con
 
 Room은 game 진행 중 임의의 turn에서 relocation하지 않는다. 승부가 끝나 결과와
 Logical Multicast event를 제출한 turn, 또는 observer의 membership·event 처리가 끝난
-turn에서 `Context.RelocationReady().Defer()`를 호출한다. Framework는 실제 relocation
-대상 여부를 확인한 뒤 `OnRelocationReadyCompletedAsync(...)`를 항상 한 번 호출한다.
-Application이 다음 round를 시작해야 하는 경우에는 이 callback이 끝난 뒤 시작해야 한다.
+turn에서 `Context.RelocationReady().Defer()`를 호출한다. 정상 실행에서는 readiness 등록마다 logical
+completion 하나를 만들지만 recovery에서는 `OnRelocationReadyCompletedAsync(...)`를 다시 호출할 수 있다.
+Callback은 retry-safe해야 하며 Application이 다음 round를 시작해야 하는 경우에는 completion이 끝난 뒤
+시작해야 한다.
 Room state adapter는 game·observer application state만 저장한다. Actor participant,
 대기 중인 message, accepted journal과 logical timer는 Framework가 보존하므로 adapter에
 중복 저장하지 않는다.
@@ -284,8 +286,8 @@ Location Store와 reservation Redis가 같은 Redis instance를 사용하더라�
 공식 Location Store가 owner lease와 generation을 관리하고, Matchmaking adapter는
 `RoomId`와 actor reservation만 저장한다. Reservation adapter는 node를 선택하거나 lease를 갱신하지 않는다.
 
-API, Matchmaking, Play와 Session은 heartbeat 10초, owner lease TTL 30초, fencing margin 5초와 renew timeout
-3초의 framework 기본값을 함께 사용한다. 역할별 override는 두지 않는다.
+API, Matchmaking, Play와 Session은 renew interval 5초, owner lease TTL 15초, fencing margin 5초와 renew
+timeout 3초의 Framework 기본값을 함께 사용한다. 역할별 override는 두지 않는다.
 
 #### Actor와 room의 배치
 
@@ -325,7 +327,7 @@ relocation 계약을 따른다.
 | `Bingo.Play` | `BingoEntrySpot` | actor가 특정 room에 들어가기 전의 admission 지점을 맡는다. |
 | `Bingo.Play` | `BingoRoom` room Spot | game room에서는 room 참가자, 제출된 카드, draw deck, 승리 판정, player Notify 생성을 소유한다. observer용 local room에서는 reward topic 수신과 observer push 전달만 맡는다. |
 | `Bingo.Play` | 독립 `bingo.api` ClientServer Client | room Spot의 join/leave callback이 전적을 조회·기록한다. 이 왕복은 `yield`로 기다린다(§7.1). |
-| `Location Store` | framework Location Store provider | 두 RouteMesh의 discovery와 actor/session/Spot 위치를 저장한다. |
+| `Location Store` | framework Location Store provider | 두 RouteMesh의 discovery와 actor·Spot authority를 저장한다. Session binding route는 저장하지 않는다. |
 
 ## 5. 디렉토리와 파일 구성
 
@@ -473,8 +475,8 @@ TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 �
   전용 Redis container를 준비하고, 샘플 종료 시 자신이 만든 container만 정리한다.
 - Redis client dependency는 Matchmaking reservation adapter 안에만 둔다. Handler, actor, Room Spot, Domain
   코드가 Redis client 타입을 직접 참조하면 안 된다.
-- Reservation Redis는 waiting room state 공유에만 사용한다. Spot owner lookup,
-  actor route, session route, Logical Multicast peer discovery는 Location Store가 맡는다.
+- Reservation Redis는 waiting room state 공유에만 사용한다. Spot·Actor owner lookup과 Logical Multicast
+  peer discovery는 Location Store가 맡는다. Session binding route는 Session owner가 보관한다.
 - actor가 room에 join하는 흐름은 public actor/Spot API와 global `RoomId`를 사용한다.
   Framework가 Location Store에서 current owner를 확인한다. Internal runtime 객체나
   sample-local route helper로 remote join을 우회하면 안 된다.
@@ -1182,22 +1184,21 @@ actor 객체와 native actor ref를 제거하는 종료 작업이다. Session �
 
 ### 15.1 Disconnect 흐름
 
-client stream이 끊기면 Session 서버는 현재 stream session에 묶인 actor binding을 닫는다.
-이때 Play 서버 actor는 즉시 destroy되지 않는다. actor가 room에 들어가 있었다면 room state는
-그대로 유지되고, Play 서버는 actor가 다시 bound session을 얻을 수 있는 상태로 둔다.
-disconnect callback은 logging, bound session cleanup, 재접속 가능 상태 표시처럼 stream
-연결에 한정된 작업만 맡는다.
+client stream이 끊기면 Framework는 current binding snapshot을 고정하고 각 exact binding identity에
+disconnect를 자동 제출한다. Framework가 binding route와 generation을 검증하고 tombstone과 local cleanup을
+완료하므로 Session disconnect callback이 bound Actor를 순회하거나 binding을 직접 제거하지 않는다.
 
-언어별 샘플은 disconnect hook을 비워 두지 말고, 적어도 현재 actor/session 정리가 실행되는
-경로가 드러나게 해야 한다. disconnect hook 안에서 room leave와 actor destroy를 직접 호출하지
-않는다. room leave와 actor destroy는 아래의 게임 종료 흐름에서만 실행한다.
+Play 서버의 current Spot은 `OnDisconnectActorAsync`에서 해당 actor가 이 stream으로 push를 받을 수 없다는
+domain 상태만 반영한다. Actor와 room membership은 유지한다. Session callback은 connection 단위 logging처럼
+application에 필요한 local 작업만 수행하며 room leave와 actor destroy를 호출하지 않는다.
 
 ### 15.2 게임 종료 후 actor destroy 흐름
 
 room Spot이 `BingoGameEndedNotify`를 양쪽 client에 전송한 뒤에는 room에 남아 있는 player
 actor를 정리한다. 정리 순서는 모든 언어 샘플에서 아래와 같아야 한다.
 
-1. actor 객체 생성이 끝나면 framework는 create payload와 함께 `onCreateActor`를 한 번 호출한다.
+1. Framework는 create payload로 `onCreateActor`를 실행한다. 같은 생성 attempt를 recovery하면 callback을
+   다시 호출할 수 있으므로 초기화와 외부 효과는 retry-safe해야 한다.
 2. room Spot은 종료 cleanup이 한 번만 시작되도록 guard를 둔다.
 3. room Spot은 각 player actor에 “Entry Spot으로 돌아오면 destroy한다”는 표시를 남긴다.
 4. room Spot은 `leaveActor`로 actor를 room에서 내보낸다.
@@ -1209,8 +1210,9 @@ actor를 정리한다. 정리 순서는 모든 언어 샘플에서 아래와 같
    Entry Spot context의 `destroyActor`를 호출한다.
 7. `destroyActor`는 `onLeaveActor`나 다른 lifecycle callback을 호출하지 않고 actor 객체,
    native actor ref, framework registry, bound session binding을 정리한다.
-8. 같은 actor에 대한 중복 destroy나 destroy 중 재진입은 성공 no-op이어야 하며,
-   lifecycle callback을 다시 호출하면 안 된다.
+8. 같은 incarnation이 이미 없으면 destroy는 idempotent `false`를 반환하고 lifecycle callback을 다시
+   호출하지 않는다. 같은 `ActorId`의 다른 generation이면 `InvalidOperation`, relocation seal 중이면
+   `Unavailable`로 끝난다.
 
 ```mermaid
 sequenceDiagram
@@ -1399,8 +1401,8 @@ aggregate owner commit을 실행하지 않는다. 일부 Actor만 새 owner로 �
 | service interruption | unit의 source admission seal부터 target admission open까지 | 1초 이내를 목표로 계측한다. 1초를 넘겨도 relocation을 취소하거나 source로 rollback하지 않는다. |
 | 병렬 payload I/O | Actor payload가 여러 chunk로 나뉜다. | write와 read·restore가 bounded parallelism을 사용하고 in-flight byte 한도를 넘지 않는다. |
 | service continuity | 다른 room과 actor에 지속적으로 request를 보낸다. | 대상 unit이 이동하는 동안 다른 unit의 handler와 timer가 계속 처리된다. |
-| Message Follow | commit 직후 이전 physical route로 Spot·Actor send/request를 보낸다. | 이전 owner는 application handler를 실행하지 않고 relocation 때 기록한 target으로 전달한다. Operation ID, deadline, FIFO와 reply route를 유지하고 target은 operation ID로 중복 delivery를 제거한다. 최대 8 hops, message 1,024개와 16 MiB 경계를 넘으면 typed stale-route 또는 overload 결과로 끝난다. |
-| Ready callback | safe turn에서 `RelocationReady().Defer()`를 호출한다. | `Continued` 또는 `Relocated` callback이 정확히 한 번 끝난 뒤 다음 round를 시작한다. |
+| Message Follow | commit 직후 이전 physical route로 Spot·Actor send/request를 보낸다. | 이전 owner는 application handler를 실행하지 않고 relocation 때 기록한 target으로 전달한다. Operation ID, deadline, FIFO와 reply route를 유지한다. Route missing·만료·loop는 `Unavailable`, generation mismatch는 `InvalidOperation`, message·byte 한도 초과는 `CapacityExceeded`로 끝난다. |
+| Ready callback | safe turn에서 `RelocationReady().Defer()`를 호출한다. | 정상 실행에서는 `Continued` 또는 `Relocated`의 logical completion 하나가 끝난 뒤 다음 round를 시작한다. Recovery에서 callback이 다시 호출돼도 같은 결과로 수렴해야 한다. |
 
 여기서 1초는 전체 Play node drain 시간이 아니다. Actor 1개, Instance Spot 1개 또는
 User Spot 1개처럼 application이 서비스 단위로 보는 relocation unit 하나의 중단 시간 목표다.

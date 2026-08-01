@@ -51,8 +51,7 @@ wrapper `await`, Java·C++ `submit`을 사용한다. Node는 raw response에 `su
 callback에 `async`, one-way에 `submit`을 사용한다.
 Awaitable을 쓰지 않는 호출자를 위한 callback
 완료 경로도 함께 제공한다([12 HTTP client](12-http-client.ko.md)).
-아래는 **목표 계약**이며 현재 구현과의 차이는
-[구현 차이 §12.22](../30-implementation-gap.ko.md)가 소유한다.
+아래는 **목표 계약**이다. 현재 구현과의 차이와 수정 증거는 언어별 audit·실행 ledger가 소유한다.
 
 | 개념 | cpp | dotnet | java | kotlin | node |
 | --- | --- | --- | --- | --- | --- |

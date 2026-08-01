@@ -18,12 +18,6 @@ contract test에 필요한 입력, 상태, 정상 흐름, 실패와 완료 조�
 - [05 비동기 실행 정책](05-async-execution-policy.ko.md)
 - [06 Framework API](06-framework-api.ko.md)
 
-`30-implementation-gap.ko.md`는 공개 계약이 아니다. 언어별 구현과 목표 계약의
-차이를 기록하는 진행 문서이며, 현재 구현을 공통 계약으로 바꾸는 근거로 사용하지
-않는다.
-
-- [30 언어별 구현 차이](30-implementation-gap.ko.md)
-
 ## Channel과 network
 
 - [07 RouteMesh topology](07-channel-topology.ko.md)

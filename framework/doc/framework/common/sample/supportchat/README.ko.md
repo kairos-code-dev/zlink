@@ -90,7 +90,7 @@ SupportChat은 공유 location store 기반 자동 연결을 사용한다.
 | Support -> `supportchat.api` | location store 기반 자동 연결 | Support actor가 상담 시작 orchestration을 API 서버에 요청한다. |
 | API -> conversation Spot | location store 기반 Spot placement | API 서버가 새 conversation의 `SpotId`와 owner node를 직접 정하지 않게 한다. |
 | Session -> Support actor | location store 기반 actor locator | Session 서버가 `ActorId`만 사용해 actor를 만들거나 기존 actor를 찾는다. |
-| Support -> Session bound push | location store 기반 session route | Support 서버가 현재 client session 위치를 framework route로 찾는다. |
+| Support -> Session bound push | Session owner가 보관하는 binding route | Support 서버가 current binding token과 route를 통해 client에 push한다. Location Store를 message마다 조회하지 않는다. |
 
 이 샘플은 자동 연결, actor binding, bound session push를 함께 보여 주는 역할을 맡는다.
 
@@ -118,7 +118,7 @@ SupportChat은 client 요청을 세 서버가 나눠 처리하는 session gatewa
 | `SupportChat.Support` | actor runtime | customer actor와 상담원 actor(roster·conversation)를 만들어 해당 Spot에 join시킨다. |
 | `SupportChat.Support` | `SupportEntrySpot` | actor가 conversation에 들어가기 전 admission 지점을 맡는다. |
 | `SupportChat.Support` | `ConversationSpot` | 참여자, 메시지 순서, typing 상태, idle timer, close 상태를 소유한다. |
-| `Location Store` | framework location store 계약의 공유 저장소 구현체(예: Redis) | Session·API·Support peer discovery(자동 연결)와 actor/session 위치 조회를 담으며, 등록·조회·lifecycle 정책은 framework가 소유. |
+| `Location Store` | framework location store 계약의 공유 저장소 구현체(예: Redis) | Session·API·Support peer discovery와 actor·Spot authority를 저장한다. Session binding route는 Session owner가 보관한다. |
 
 ## 6. Support 서버 디렉토리 구조
 
@@ -402,10 +402,11 @@ Framework는 Location Store에서 현재 owner를 확인한다. `Existing`이면
 creation reply를 반환한다. `Rejected`이면 Session 서버는 actor를 bind하지 않고 인증 또는
 conversation join을 실패로 끝낸다.
 
-상담원 stream session이 끊기면 별도 메시지 없이 framework의 actor disconnect 생명주기로
-정리한다: Session 서버가 bound roster actor에 `NotifyDisconnectedAsync`를 보내면 Support
-서버의 `SupportEntrySpot.OnDisconnectActorAsync`가 발화해 roster를 배정 가능 목록에서
-제거한다(§9). 재접속 시 `SetAgentAvailableReq(true)`로 다시 등록한다.
+상담원 stream session이 끊기면 Framework가 current binding snapshot의 exact route로 disconnect를 자동
+제출한다. Support 서버의 `SupportEntrySpot.OnDisconnectActorAsync`는 이 lifecycle 통지를 받아 roster를
+배정 가능 목록에서 제거한다(§9). Session callback이 bound Actor를 순회하거나 public
+`NotifyDisconnectedAsync`를 호출하지 않는다. 이 public operation은 physical connection이 유지된 상태에서
+보내는 논리적 통지다. 재접속 시 `SetAgentAvailableReq(true)`로 다시 등록한다.
 
 API orchestration 메시지:
 

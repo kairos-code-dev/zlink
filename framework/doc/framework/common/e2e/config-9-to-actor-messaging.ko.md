@@ -2,169 +2,196 @@
 [E2E 목차](README.ko.md) | [이전: 실행 turn과 terminator](config-8-execution-turn.ko.md) | [다음: Spot actor join/relocation](config-10-spot-actor-relocation.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# Config 9 — To-actor 메시징 배포
+# Config 9 — ActorId로 직접 메시지 보내기
 
-서버 측 caller가 session을 통하지 않고 global `ActorId`로 actor에게 message를 보내거나 request를 보낼 때,
-actor의 현재 bind 상태와 무관하게 같은 의미로 처리되는지 본다. 이 config는 모든 framework 언어가
-같은 의미로 통과해야 하는 공통 검증이다. 구현 스위트와 API 이름은 언어별 idiom을 따르지만, 검증
-조건과 evidence marker는 다섯 언어에서 같은 의미로 유지한다.
+Server application은 Session을 거치지 않고 global `ActorId`로 Actor에게 send 또는 request를 보낼 수 있다.
+이 호출은 Actor가 Session에 bind되어 있는지와 관계없이 current Ready Actor를 대상으로 한다. 또한 direct
+message를 보냈다는 이유로 Session binding이 새로 생기거나 기존 binding이 바뀌어서는 안 된다.
 
-이 문서는 e2e 시나리오 정의만 둔다. actor client의 공개 계약은
-[Actor 모델 §5](../spec/14-actor-model.ko.md#5-actor-메시징)을 기준으로 하며 여기서 다시 정의하지 않는다.
-언어별 구현은 public API만 사용하고, 내부 helper나 raw frame 조작으로 이 config를 통과시키면 안 된다.
+이 config는 caller와 Actor가 서로 다른 process에 있는 배포에서 이 계약을 검증한다. E2E client는 역할
+server의 application endpoint를 호출하고, 역할 server는 public Framework API로 operation을 실행한다.
+Framework 내부 queue, location record와 private route 정보는 판정에 사용하지 않는다.
 
-## 1. 목적과 범위
+## 1. 확인 범위
 
-- 다룬다: bind된 actor, bind되지 않은 actor, no-bind 전달 뒤 session bind가 생기는 actor,
-  bind가 사라진 actor에 대한 to-actor send/request, bind 비오염, mailbox 인계, handler reply,
-  actor 부재·stale location·route 미연결 실패 분류.
-- 여기서 다루지 않는다: actor 생성·join 자체의 기본 동작(Config 2), 비동기 handler와 actor mailbox 격리(Config 8),
-  일반 channel location resolve(Config 1), store 장애·복구(Config 6), actor client API 설계.
-- 계약 근거: send-to-actor/request-to-actor는 global `ActorId`만 받고, send 완료는 source의 local outbound
-  admission 성공을 뜻한다. Missing Actor와 route 미연결 실패는 각각 `NotFound`,
-  `Unavailable`로 분류한다. Resolve 뒤 generation이 바뀐 operation은 새 incarnation으로 retarget하지 않는다.
-- 계약 근거: Actor direct 메시징은 session binding을 만들거나 바꾸지 않으며, request reply는 bound
-  session이 아니라 caller에게 반환된다. Actor queue 인계와 request completion은
-  [Actor 모델 §5](../spec/14-actor-model.ko.md#5-actor-메시징)의 공개 계약을 따른다.
+- Session에 bind된 Actor와 bind되지 않은 Actor의 direct send·request
+- Direct message와 이후 Session bind 사이의 독립성
+- Session unbind 뒤 유지되는 Actor와 Actor 제거 뒤의 결과
+- 존재하지 않는 Actor와 연결할 수 없는 owner의 오류 구분
+- 같은 `ActorId`로 다시 만든 Actor에 대한 ID-only message와 이전 `ActorRef` lifecycle operation의 차이
 
-## 2. 서버 구성 (한 번 구동, 공유)
+## 2. 배포 구성
 
-| 역할 | 수 | 구성 |
-|------|----|------|
-| location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix. Actor authority와 owner lease는 framework lifecycle이 관리한다. |
-| actor 노드 | 2 (`actor-a`, `actor-b`) | Location Store를 등록한 Object Server. Entry Spot과 stable Actor type `to-actor.probe` factory를 명시적 `DisableRelocation` policy로 등록하고 placement weight `100`, Actor 전체 population limit `128`, activation concurrency limit `32`를 사용한다. actor handler는 no-bind send/request 수신 evidence와 reply를 남기고 actor→bound session push를 발생시킨다. |
-| session gateway | 2 (`session-a`, `session-b`) | Location Store를 등록한 Object Client. stream session을 받고 global Actor binding을 만들며 client connector와 actor bound-session push 경로를 검증한다. factory와 placement target은 제공하지 않는다. |
-| 외부 caller 서버 | 1 | Location Store를 등록한 Object Client. session을 만들지 않고 app endpoint 안에서 언어별 public actor client로 global Actor ID 기반 send/request를 실행한다. factory와 placement target은 제공하지 않는다. |
-| consumer | 시나리오별 | stream connector로 session gateway에 연결해 bind와 push를 관찰하고, HTTP client wrapper로 외부 caller 서버의 app endpoint를 호출한다. framework actor client를 직접 들고 호출하지 않는다. |
+| 역할 | 수 | 하는 일과 분리 이유 |
+|---|---:|---|
+| Location Store | 1 | 두 Actor node, Session gateway와 caller server가 같은 global Actor 위치를 조회하도록 한다. 실행마다 전용 namespace를 사용한다. |
+| Actor node | 2 | `to-actor.probe` Actor를 생성하고 direct send·request handler를 실행한다. 두 번째 node는 owner route를 사용할 수 없는 조건을 만드는 데 사용한다. |
+| Session gateway | 2 | Stream Session을 수용하고 public binding API로 Actor를 bind·unbind한다. Actor가 보낸 bound-session push를 client에게 전달한다. |
+| Caller server | 1 | Client의 HTTP 요청을 받아 public Actor client API로 global `ActorId` send·request를 시작한다. Session을 생성하거나 Actor를 bind하지 않는다. |
+| E2E client | 1 | 역할 server의 public application endpoint와 Stream endpoint만 사용한다. Framework 내부 API를 직접 호출하지 않는다. |
 
-이 config는 cross-node Actor relocation을 검증하지 않는다. 두 actor 노드는 같은 stable type capability를
-게시하지만 모든 factory가 `DisableRelocation`이므로 Relocation Store와 Actor relocation adapter를 등록하지 않는다.
-TA-B2는 destroy 뒤 같은 ID를 새 incarnation으로 recreate하는 경로를 사용해 generation fence를 만든다.
+Actor handler는 받은 packet 이름, request ID와 application payload를 application state에 기록한다. Session
+gateway는 public binding 조회 결과를, Stream client는 실제로 받은 push payload를 evidence로 제공한다.
+이 evidence는 역할 server의 public endpoint에서 조회하며 internal mailbox, binding token과 route record를
+노출하지 않는다.
 
-actor 노드는 아래 evidence를 공통으로 남긴다.
+## 3. 공통 실행과 판정 방법
 
-- actor id, resolve에서 선택한 actor generation과 owner fence, 처리 노드, handler packet 이름, request id.
-- no-bind send가 actor mailbox에 인계되었는지 나타내는 marker.
-- no-bind request handler reply가 caller 서버로 돌아갔는지 나타내는 marker.
-- actor의 bound-session 대상이 바뀌었는지 확인할 수 있는 bind snapshot marker.
-- actor가 자기 bound session으로 push를 보냈을 때 어느 session gateway와 client connector가 받았는지
-  나타내는 marker.
+Runner는 scenario마다 process, Store namespace와 evidence marker를 새로 만든다. 역할 server의 health와
+public RouteMesh status가 ready가 된 뒤 operation을 시작한다. Process 종료나 network 차단이 필요한
+scenario에서만 runner가 외부 조건을 변경한다.
 
-외부 caller 서버는 시나리오 실행 전용 driver가 아니다. consumer는 caller 서버의 app endpoint를 호출해
-실제 사용자 동작을 트리거하고, caller 서버 endpoint 내부에서 public actor client 호출이 실행되어야 한다.
-session bind와 push 검증은 client stream connector가 받은 payload와 actor/session gateway evidence를
-함께 대조한다.
+Send의 API 완료와 remote handler 실행은 구분한다. Send 호출 결과는 public send terminal로 확인하고,
+실제 전달은 Actor handler의 application evidence로 확인한다. Request는 caller server가 받은 reply 또는
+public error kind로 판정한다. File log는 실패 원인을 찾는 데만 사용한다.
 
-## 3. 실행 모델
+## 4. Scenario
 
-`run_e2e.sh`가 Redis(전용 key prefix) 준비 → actor 노드 → session gateway → 외부 caller 서버 순으로
-시작한 뒤 client 시나리오를 순차 실행한다. 각 시나리오는 필요한 actor를 만들고, 필요한 경우 stream
-connector로 session을 bind한 뒤, caller 서버 endpoint를 호출해 to-actor send/request를 발생시킨다.
+### Track A — Session binding과 direct message를 분리
 
-로그는 [README](README.ko.md) §6(로깅과 메시지 흐름 추적, 필수 공통)대로 모든 프로세스가 `log/`
-폴더에 파일로 남기고, message flow 추적을 지원하는 언어는 최소 `key_transitions`로 켠다. 실패 시에는
-caller 서버의 request id, actor 노드의 mailbox marker, session gateway의 push marker, client connector가
-받은 payload를 함께 남긴다.
-
-## 4. 시나리오
-
-### Track A — bind 상태 매트릭스
-
-#### TA-A1 bind된 actor에게 no-bind send/request
+#### TA-A1 Bind된 Actor에게 direct send·request를 보낸다
 
 우선순위: `P0`
 
-**검증 질문:** 이미 session에 bind된 actor에게 외부 caller 서버가 to-actor send/request를 보내도, actor는 처리하고 기존 bound session은 바뀌지 않는가.
+Actor가 이미 Session에 bind되어 있어도 server 간 direct message는 같은 Actor handler에서 처리되어야
+한다. Direct message가 기존 binding을 바꾸면 이후 Actor push가 엉뚱한 client로 전달될 수 있다.
 
-- 절차: consumer가 `session-a`에 stream connector로 연결하고 actor `actor-bound`를 bind한다. actor가 자기 bound session으로 `BeforeNotify`를 push해 원래 client가 받는지 확인한다. 그 뒤 외부 caller 서버 endpoint를 호출해 해당 global `ActorId`로 send와 request를 각각 보낸다. 마지막으로 actor가 다시 `AfterNotify`를 bound session으로 push한다.
-- 검증: send는 actor handler evidence에 기록되고 request는 caller 서버가 handler reply를 받는다. `BeforeNotify`와 `AfterNotify`는 모두 처음 bind한 client connector로만 도착한다. no-bind 전달 전후 actor의 bound-session snapshot은 같은 session을 가리킨다. caller 서버가 session으로 새 bind를 만들거나 기존 bind를 갱신한 evidence가 없어야 한다.
-- 세부 동작: bind된 actor에 대한 no-bind 전달 + bound-session 비오염.
+**검증 질문:** Bind된 Actor에게 direct send·request를 보내도 handler가 처리하고 기존 Session binding이
+유지되는가.
 
-#### TA-A2 bind 안 된 actor에게 no-bind send/request
+- 시작 조건: Client가 `session-a`에 연결하고 `actor-bound`를 생성하여 bind한다. Session gateway의 public
+  binding 조회에서 해당 Actor가 확인되고, Actor가 보낸 `BeforeNotify` push를 client가 받는다.
+- 절차: Caller server가 `actor-bound`로 direct send와 request를 각각 한 번 보낸다. 처리가 끝난 뒤 Actor가
+  bound-session API로 `AfterNotify`를 보낸다.
+- 검증: Actor handler는 send와 request를 각각 한 번 처리하고 request는 입력 marker가 포함된 reply를
+  반환한다. Public binding 조회 결과는 전후가 같으며 `BeforeNotify`와 `AfterNotify`는 처음 연결한 client만
+  받는다.
+- 세부 동작: [Actor model §5](../spec/14-actor-model.ko.md)와
+  [Session Actor dispatch §4](../spec/20-session-actor-dispatch.ko.md)의 direct message와
+  binding 분리를 검증한다.
 
-우선순위: `P0`
-
-**검증 질문:** bound session이 없는 actor에게도 외부 caller 서버가 actor mailbox로 메시지를 넘기고 request reply를 받을 수 있는가.
-
-- 절차: actor `actor-unbound`를 만들되 stream session bind는 만들지 않는다. 외부 caller 서버 endpoint를 호출해 global `ActorId`로 send와 request를 각각 보낸다.
-- 검증: actor handler가 send를 처리했다는 evidence를 남긴다. request reply는 caller 서버로 돌아온다. actor의 bound-session snapshot은 비어 있는 상태로 유지된다. session gateway나 client connector에는 해당 actor의 push 또는 bind 갱신 marker가 생기지 않는다.
-- 세부 동작: bound session 없는 actor의 mailbox 인계와 handler reply.
-
-#### TA-A3 no-bind 전달 뒤 이후 bind
-
-우선순위: `P0`
-
-**검증 질문:** bind되지 않은 actor가 no-bind send/request를 받은 뒤 나중에 session bind를 만들어도, 두 경로가 서로 오염되지 않는가.
-
-- 절차: `actor-late-bind`를 bind 없이 만든다. 외부 caller 서버에서 send와 request를 보낸다. 이후 consumer가 `session-b`에 stream connector로 연결하고 같은 actor를 bind한다. bind 뒤 caller 서버에서 다시 send와 request를 보내고, actor가 자기 bound session으로 `LateBindNotify`를 push한다.
-- 검증: bind 전 send/request와 bind 후 send/request가 모두 actor handler evidence와 caller 서버 reply로 확인된다. bind 전에는 bound-session snapshot이 비어 있고, bind 후에는 새 session을 가리킨다. `LateBindNotify`는 새로 bind한 client connector로 도착한다. no-bind 호출이 bind 생성을 대신했다는 marker가 없어야 한다.
-- 세부 동작: no-bind 전달과 이후 session bind의 독립성.
-
-#### TA-A4 unbind/disconnect 뒤 actor 생존과 destroy 분리
+#### TA-A2 Bind되지 않은 Actor에게 direct send·request를 보낸다
 
 우선순위: `P0`
 
-**검증 질문:** actor의 session 연결이 해제되어도 actor가 유지되면 to-actor 전달은 계속 성공하고,
-actor 제거 후에는 actor 부재 실패로 분류되는가.
+Direct Actor messaging은 Session binding을 전제로 하지 않는다. 이 경로가 binding을 요구하면 backend
+작업이나 다른 server가 Actor를 직접 호출할 수 없다.
 
-- 절차: consumer가 actor `actor-disconnected`를 bind한 뒤 stream connection을 정상 unbind 또는
-  disconnect한다. actor lifecycle 정책에 따라 actor는 유지한다. 외부 caller 서버가 보관한
-  global `ActorId`로 send와 request를 보낸다. 그 뒤 actor를 명시적으로 destroy하거나 actor owner에서
-  제거한 뒤 같은 ID로 request를 다시 보낸다.
-- 검증: disconnect 뒤 actor가 유지되는 동안 send/request는 actor handler evidence와 caller 서버
-  reply로 성공한다. bound-session snapshot은 비어 있거나 해제된 session을 유효 대상으로 사용하지
-  않는 상태로 관측된다. actor destroy 뒤 같은 ID 호출은 `NotFound`로 분류된다.
-- 세부 동작: session 생명주기와 actor 생명주기 분리 + actor 부재 실패 분류.
+**검증 질문:** Bound Session이 없는 Actor도 direct send를 처리하고 direct request에 reply하는가.
 
-### Track B — 실패 분류
+- 시작 조건: Actor node에 `actor-unbound`를 생성한다. 두 Session gateway의 public binding 조회에는 이
+  Actor가 없다.
+- 절차: Caller server가 `actor-unbound`로 direct send와 request를 각각 한 번 보낸다.
+- 검증: Actor handler가 두 message를 각각 한 번 처리하고 caller server가 request reply를 받는다. 실행
+  뒤에도 Session binding은 생기지 않으며 Stream client가 받은 push도 없다.
+- 세부 동작: [Actor model §2.3](../spec/14-actor-model.ko.md)과
+  [§5](../spec/14-actor-model.ko.md)의 binding 독립성을 검증한다.
 
-#### TA-B1 없는 actor
-
-우선순위: `P0`
-
-**검증 질문:** 존재하지 않는 global `ActorId`로 호출하면 actor가 자동 생성되거나 메시지가 보관되지 않고 `NotFound`로 실패하는가.
-
-- 절차: live actor authority가 없는 global `ActorId`로 외부 caller 서버가 request와 send를 시도한다.
-- 검증: Source가 outbound queue에 넣기 전에 Actor authority가 없음을 확인하므로 request와 send는 모두
-  `NotFound`로 실패한다. Actor node에는 해당 Actor ID의 handler evidence가 없고 Actor authority도 새로
-  만들어지지 않는다. Auto-create나 message parking이 없어야 한다.
-- 세부 동작: Actor authority 없음 실패 분류.
-
-#### TA-B2 같은 process에서 resolve 뒤 generation 교체
+#### TA-A3 Direct message 뒤에 Session을 bind한다
 
 우선순위: `P0`
 
-**검증 질문:** global `ActorId`를 resolve한 뒤 같은 process에서 Actor를 다시 만들면 ID-only Application
-message를 새 Actor가 처리하는가.
+Bind되지 않은 Actor가 direct message를 먼저 처리해도 Application은 나중에 그 Actor를 Session에 bind할
+수 있어야 한다. 앞선 direct 호출이 암묵적인 binding을 남기면 명시적 bind 결과가 달라진다.
 
-- 절차: actor를 만들고 caller 서버의 global `ActorId` request를 resolve와 outbound admission 사이에서
-  정지한다. 그 사이 current `ActorRef`로 actor를 destroy하고 같은 ID·stable type으로 recreate한 뒤 barrier를 해제한다. 이후 같은
-  `ActorId`로 새 operation을 제출한다.
-- 검증: 같은 process와 route가 유지된 상태에서는 이전 operation과 새 operation을 새 Actor가 각각 한 번
-  처리한다. Application message의 target 조건에는 `ObjectGeneration`을 사용하지 않는다. 반면 이전
-  `ActorRef`로 시작한 destroy나 session bind 같은 lifecycle operation은 `InvalidOperation`으로 끝나고 새
-  Actor의 상태를 바꾸지 않는다.
-- 세부 동작: ID-only Application message와 exact-ref lifecycle operation의 target 조건 분리.
+**검증 질문:** Direct message를 먼저 처리한 Actor를 이후 Session에 bind해도 두 경로가 서로 영향을
+주지 않는가.
 
-#### TA-B3 route 미연결
+- 시작 조건: `actor-late-bind`를 생성하고 Session에는 bind하지 않는다.
+- 절차: Caller server가 send와 request를 각각 한 번 보낸다. 처리가 확인되면 client가 `session-b`에
+  연결하여 같은 Actor를 bind한다. Caller server가 다시 send와 request를 보내고, Actor는
+  `LateBindNotify`를 bound Session으로 보낸다.
+- 검증: Bind 전후의 direct send·request를 Actor handler가 각각 한 번 처리한다. Public binding 조회는
+  bind 전에는 Actor를 반환하지 않고 bind 완료 뒤에는 `session-b`의 binding을 반환한다.
+  `LateBindNotify`는 `session-b` client만 받는다.
+- 세부 동작: [Session Actor dispatch §2](../spec/20-session-actor-dispatch.ko.md)의
+  explicit bind와 direct message의 독립성을 검증한다.
+
+#### TA-A4 Unbind 뒤에는 direct message가 계속되고 Actor 제거 뒤에는 실패한다
 
 우선순위: `P0`
 
-**검증 질문:** 대상 actor node rid는 알려졌지만 routed plane으로 보낼 수 없으면 `Unavailable`로 분류되는가.
+Session binding과 Actor lifecycle은 별개다. Binding만 해제했다면 Actor가 유지되는 동안 direct message는
+계속 처리되어야 하고, Actor를 명시적으로 제거한 뒤에는 같은 호출이 성공해서는 안 된다.
 
-- 절차: actor를 만든 뒤 caller 서버에서 current actor owner node로 가는 route 연결을 끊는다. 외부 caller 서버가 global `ActorId`로 request를 보낸다. 연결 복구 뒤 같은 ID로 새 request를 보낸다.
-- 검증: 단절 구간의 실패는 `Unavailable`로 분류되고 public retry hint는 제공되지 않으며, actor handler evidence는 남지 않는다. 연결 복구 뒤 client가 새로 시작한 follow-up request는 같은 actor handler에서 처리되고 reply가 caller 서버로 돌아온다. 이 시나리오는 actor row 없음으로 판정하면 안 된다.
-- 세부 동작: route 미연결 실패 분류와 복구 뒤 성공.
+**검증 질문:** Unbind 뒤에는 direct message가 성공하고 Actor를 제거한 뒤에는 `NotFound`로 끝나는가.
+
+- 시작 조건: `actor-unbound-lifecycle`을 생성하여 Session에 bind한다. 이 scenario의 Application lifecycle
+  정책은 unbind 때 Actor를 제거하지 않는다.
+- 절차: Session gateway의 public API로 Actor를 unbind하고 binding이 없음을 확인한다. Caller server가
+  send와 request를 각각 한 번 보낸다. 이후 public Actor lifecycle API로 Actor를 제거하고 같은
+  `ActorId`로 새 request를 보낸다.
+- 검증: Unbind 뒤의 두 message는 Actor handler에서 각각 한 번 처리된다. Actor 제거 뒤의 request는
+  `NotFound`로 끝나며 handler evidence가 추가되지 않는다.
+- 세부 동작: [Actor model §2.3](../spec/14-actor-model.ko.md)과
+  [오류 모델 §2](../spec/32-framework-error-model.ko.md)의 lifecycle 분리를 검증한다.
+
+### Track B — Logical target과 실패 결과를 구분
+
+#### TA-B1 존재하지 않는 Actor를 호출한다
+
+우선순위: `P0`
+
+Global `ActorId`에 current Actor가 없으면 Framework가 임의로 Actor를 만들거나 message를 보관해서는 안
+된다. Application은 대상 부재를 `NotFound`로 구분할 수 있어야 한다.
+
+**검증 질문:** 존재하지 않는 `ActorId`의 direct send·request가 `NotFound`로 끝나고 handler가 실행되지
+않는가.
+
+- 시작 조건: 실행 namespace에서 한 번도 생성하지 않은 `actor-missing`을 사용한다.
+- 절차: Caller server가 `actor-missing`으로 send와 request를 각각 한 번 시도한다.
+- 검증: 두 operation의 public error kind는 `NotFound`다. 두 Actor node의 application evidence에는 해당
+  Actor ID와 marker가 없다.
+- 세부 동작: [오류 모델 §2](../spec/32-framework-error-model.ko.md)의 target 부재
+  분류를 검증한다.
+
+#### TA-B2 같은 ActorId로 다시 만든 Actor가 새 direct message를 처리한다
+
+우선순위: `P0`
+
+Application message의 target은 logical `ActorId`다. 따라서 Actor를 제거한 뒤 같은 owner에 같은 ID로
+새 Actor를 만들면 이후 direct message는 새 Actor가 처리한다. 반면 이전 `ActorRef`는 특정 incarnation을
+가리키므로 새 Actor의 lifecycle이나 binding을 변경해서는 안 된다.
+
+**검증 질문:** 새 Actor가 ID-only message를 처리하면서 이전 `ActorRef`의 lifecycle operation은 거부되는가.
+
+- 시작 조건: Actor node에 `actor-recreated`를 만들고 public API가 반환한 첫 `ActorRef`를 보관한다.
+- 절차: 첫 `ActorRef`로 Actor를 제거한 뒤 같은 node에 같은 `ActorId`로 새 Actor를 생성한다. Caller
+  server가 `ActorId`로 send와 request를 각각 한 번 보낸다. 그다음 보관한 이전 `ActorRef`로 bind 또는
+  destroy를 시도한다.
+- 검증: 새 Actor handler가 send와 request를 각각 한 번 처리하고 request reply를 반환한다. 이전
+  `ActorRef`의 operation은 `InvalidOperation`으로 끝나며 새 Actor의 binding과 lifecycle은 바뀌지 않는다.
+- 세부 동작: [Failover policy §4.1](../spec/31-failure-failover-policy.ko.md)의
+  ID-only application message와 exact-reference control 구분을 검증한다.
+
+#### TA-B3 Current owner에 연결할 수 없으면 Unavailable로 끝난다
+
+우선순위: `P0`
+
+Actor가 존재하더라도 caller에서 current owner로 message를 보낼 수 없는 동안에는 대상 부재가 아니라
+현재 사용할 수 없는 상태다. Framework는 이 operation을 다른 Actor로 바꾸거나 내부에서 다시 제출하지
+않는다.
+
+**검증 질문:** Actor의 current owner route를 사용할 수 없을 때 request가 `Unavailable`로 끝나고, 연결
+복구 뒤 새 request가 성공하는가.
+
+- 시작 조건: `actor-route-down`을 `actor-b`에 생성한다. Caller server의 public status가 해당 route를
+  ready로 보고 정상 대조 request가 성공한 상태다.
+- 절차: Runner가 caller server와 `actor-b` 사이의 network를 차단하고 public status에서 route가 ready가
+  아님을 확인한다. Caller server가 request를 한 번 보낸다. 차단을 해제하고 public status가 다시 ready가
+  된 뒤 Application이 새 request를 보낸다.
+- 검증: 차단 중 request는 `Unavailable`로 한 번 끝나고 Actor handler는 그 marker를 처리하지 않는다.
+  Framework가 다른 Actor나 owner로 자동 전환한 evidence가 없어야 한다. 복구 뒤 새 request는 같은
+  Actor가 한 번 처리하고 reply를 반환한다.
+- 세부 동작: [Failover policy §2](../spec/31-failure-failover-policy.ko.md)와
+  [오류 모델 §4](../spec/32-framework-error-model.ko.md)의 route 실패를 검증한다.
 
 ## 5. 완료 기준
 
-- Track A와 Track B의 모든 `P0` 시나리오가 각 언어에서 public API만으로 구현되어야 한다.
-- send와 request는 모두 검증한다. send terminal은 source local outbound admission evidence로 판정하고,
-  실제 handler delivery는 별도 actor evidence로 확인한다. Request는 actor handler reply가 caller 서버로
-  돌아온 evidence로 판정한다.
-- bind 비오염은 client connector가 받은 push payload, actor bound-session snapshot, session gateway
-  evidence를 함께 대조한다.
-- 실패 분류는 caller 서버가 받은 public error kind와 역할 서버 evidence를 함께 확인한다. Missing Actor와
-  route 미연결은 각각 `NotFound`, `Unavailable`을 사용한다. Exact `ActorRef`의 stale location도 `Unavailable`이지만
-  사용하는 lifecycle·binding operation의 계약이며 global `ActorId` messaging target으로 만들지 않는다.
-- actor client가 있는 모든 언어는 이 시나리오를 skip 없이 구현한다.
+- 모든 scenario는 역할 server의 public Framework API와 public application endpoint만 사용한다.
+- Send 완료, remote handler 처리, request reply와 Session binding을 서로 다른 public evidence로 판정한다.
+- `ActorId` direct message에는 `ObjectGeneration`을 target 조건으로 추가하지 않는다. Exact `ActorRef`를
+  사용하는 lifecycle·binding operation에는 해당 reference의 generation 규칙을 적용한다.
+- 고정 sleep으로 상태 전파를 추정하지 않는다. Health와 public status를 다음 operation의 시작 조건으로
+  사용하며, 각 operation은 spec에 정한 timeout 안에서 terminal 결과를 하나만 가져야 한다.
+- Actor direct messaging을 제공하는 모든 언어가 같은 scenario ID와 application marker를 사용한다.

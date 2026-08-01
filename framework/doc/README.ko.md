@@ -122,8 +122,7 @@ Java와 Kotlin은 같은 JVM connector runtime을 사용한다. Java guide는 `C
 Kotlin guide는 coroutine과 `Flow` 사용법을 설명한다.
 
 > TypeScript package root는 browser-only WebSocket transport와 명시적 flow 전달을 제공한다.
-> 실제 browser와 package 검증 상태는
-> [implementation gap §4.10](framework/common/spec/30-implementation-gap.ko.md)에서 확인한다.
+> 실제 browser와 package 검증 상태는 TypeScript package의 test와 E2E 결과에서 확인한다.
 
 ---
 

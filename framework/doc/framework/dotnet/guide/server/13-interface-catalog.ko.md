@@ -300,7 +300,7 @@ relocation staging과 mailbox 내부 상태는 log·trace 또는 Framework 내�
 
 - [공개 계약 관리 원칙](../../../common/spec/00-public-contract-governance.ko.md)
 - [.NET exact interface 목차](../../../common/spec/server/languages/dotnet/interfaces/README.ko.md)
-- [구현 차이](../../../common/spec/30-implementation-gap.ko.md)
+- [.NET spec gap audit와 수정 ledger](../../../../plan/dotnet-framework-spec-gap-ledger/dotnet-framework-spec-gap-ledger.ko.md)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

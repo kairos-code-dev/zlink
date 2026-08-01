@@ -193,8 +193,9 @@ owner 변경 직후 이전 node에 도착한 Actor·Spot message를 current owne
   조회하지 않는다.
 - `MessageFollowDuration` 기본값은 30초이고 0이면 relay를 사용하지 않는다. Sample이 더 짧은
   값을 설정하면 실제 설정값과 만료 시각을 evidence에 남긴다.
-- Relay는 최대 8번, 이동 하나당 message 1,024개와 16 MiB 이내에서만 동작한다. 기간·hop·용량 또는
-  generation 검증에 실패하면 typed stale-route error를 확인한다.
+- Relay는 최대 8번, 이동 하나당 message 1,024개와 16 MiB 이내에서만 동작한다. Route missing·기간
+  만료·loop·hop 초과는 `Unavailable`, generation mismatch는 `InvalidOperation`, message·byte 한도 초과는
+  `CapacityExceeded`인지 각각 확인한다.
 - Relay 실패나 target admission 뒤 실행 여부가 불명확한 failure를 fresh owner에게 자동
   재제출하지 않는다. 실패한 operation은 terminal로 끝나며 다음 call만 fresh resolve한다.
 - Message Follow 기간이 끝난 뒤 시작한 새 call은 Location Store에서 current owner를 찾으며
@@ -326,19 +327,22 @@ scale-out 흐름을 보여 준다.
 등록되지 않은 request, payload decode 실패, handler 예외처럼 dispatch 단계에서
 처리할 수 없는 메시지는 샘플 실행 중 바로 확인할 수 있어야 하기 때문이다.
 
-샘플마다 자기 샘플 안에 observer 또는 handler를 둔다. Bingo, TicTacToe,
-SupportChat 같은 서로 다른 샘플이 같은 helper 파일을 공유하지 않는다. 샘플은 독립적으로
-읽고 옮길 수 있어야 하며, dispatch 오류 로그 코드가 다른 샘플의 디렉토리에 의존하면
-그 기준이 깨진다.
+샘플마다 `AddZLinkFramework(...)`에서 Framework diagnostics를 설정하고 자기 logger로 기록한다. Bingo,
+TicTacToe, SupportChat 같은 서로 다른 샘플이 logging 설정 helper를 공유하지 않는다. 샘플은 독립적으로
+읽고 옮길 수 있어야 하며, logging 설정이 다른 샘플의 디렉토리에 의존하면 그 기준이 깨진다.
 
 로그 출력은 새 logging 체계를 만들지 않고 각 샘플이 이미 쓰는 logger를 따른다.
 파일 로그를 이미 직접 쓰는 샘플은 그 파일 logger에 기록하고, 실행 스크립트가
 stdout/stderr를 `logs/*.log`로 저장하는 샘플은 그 샘플의 console logger에 기록하면 된다.
-로그 한 줄에는 적어도 `surface`, `messageKind`, `reason`, `action`, `packetName`,
-`correlationId` 값을 포함한다. channel 경로에서는 `channelName`, Spot 경로에서는
-`spotId`, actor 경로에서는 `actorId`처럼 surface에 맞는 식별자를 함께 남긴다. 운영자가
-메시지 등록 누락인지, payload decode 실패인지, handler 예외인지 빠르게 구분할 수 있어야
-하기 때문이다.
+Trace attribute는 [Message flow tracing](../spec/26-message-flow-tracing.ko.md)의 정확한 snake_case 이름과
+포함 조건을 따른다. `surface`, `message_kind`, `outcome`은 message-flow 기록에 포함하고, 원인이 있을 때
+`reason`, dispatch error에는 `action`을 포함한다. Typed packet name이 있을 때만 `packet_name`,
+request와 terminal reply를 연결할 때만 `correlation_id`를 기록한다. Channel 경로는 `channel_name`, Spot
+경로는 `spot_id`, Actor 경로는 `actor_id`처럼 실제 논리 target이 있는 식별자만 남긴다.
+
+Structured log로 제공하는 구현은 같은 spec의 fallback key인 `event`, `kind`, `channel`, `packet`, `spot`,
+`actor`, `corr` 등을 그대로 사용한다. 두 schema를 camelCase 이름으로 바꾸거나 값이 없는 field를 빈
+문자열로 강제하지 않는다.
 
 샘플은 각 서버 프로세스의 `AddZLinkFramework(...)` 설정에서 diagnostics level과 sampling을
 설정한다. Framework가 표준 tracing과 structured logging provider에 기록을 전달하며 application이
@@ -349,8 +353,8 @@ stdout/stderr를 `logs/*.log`로 저장하는 샘플은 그 샘플의 console lo
 샘플 handler는 framework가 처리하는 dispatch 오류를 handler 안에서 다시 잘게
 처리하지 않는다. request, actor request, session packet handler 안에서 예외를 잡아
 로그만 남긴 뒤 다시 던지거나, domain 예외를 임의의 `error` 필드 응답으로 바꾸지
-않는다. 그런 예외는 framework dispatch 경계가 error reply, drop, dispatch error
-observer, 기본 로그로 처리하게 둔다. 샘플 handler는 성공 경로와 도메인 동작을
+않는다. 그런 예외는 Framework dispatch 경계가 error reply, drop과 표준 diagnostics 기록으로
+처리하게 둔다. 샘플 handler는 성공 경로와 도메인 동작을
 보여 주는 데 집중해야 하며, 실패를 정상 업무 응답으로 바꾸는 코드는 해당 메시지
 계약이 명시적으로 그런 실패 상태를 정의할 때만 둔다.
 

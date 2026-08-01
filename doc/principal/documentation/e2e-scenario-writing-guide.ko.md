@@ -47,7 +47,7 @@ process와 service가 어떻게 함께 동작하는지 설명하고, 그 동작�
 | 어떤 배포가 필요한가? | 역할, process 수, 연결 관계와 필수 외부 resource를 설명한다. |
 | 무엇을 먼저 준비하는가? | 시작 상태, fixture, readiness와 scenario별 입력을 설명한다. |
 | 어떤 순서로 실행하는가? | 동작 주체, 호출, 장애 주입과 상태 변경 순서를 설명한다. |
-| 무엇을 보고 판정하는가? | Client 결과, public status, 역할 server의 evidence와 log marker를 구분한다. |
+| 무엇을 보고 판정하는가? | Client 결과, public status와 역할 server가 public endpoint로 제공하는 application 결과를 구분한다. |
 | 언제 성공하거나 실패하는가? | 기대 값, 허용 범위, terminal 결과와 금지되는 결과를 명시한다. |
 | 다른 언어도 같은 것을 검증하는가? | 언어별 API 모양과 무관하게 유지해야 하는 의미와 marker를 고정한다. |
 
@@ -65,12 +65,12 @@ E2E 문서는 정식 spec의 공개 계약이 실제 배포 조건에서도 유�
 
 - 계약을 실행할 역할과 topology
 - 재현할 정상·실패·경합 조건
-- 언어 구현이 공통으로 남길 evidence
+- 언어 구현이 public contract를 통해 공통으로 제공할 evidence
 - 통과와 실패를 나누는 관찰 가능한 조건
 - scenario ID, priority와 언어별 구현 범위
 
 E2E 문서는 새 public API나 새 공개 동작을 정하는 문서가 아니다. 계약의 출처는 정식 spec과
-언어별 exact interface다. E2E를 설계하다 계약에 없는 public API가 필요하다는 사실을 발견하면
+언어별 interface다. E2E를 설계하다 계약에 없는 public API가 필요하다는 사실을 발견하면
 scenario에 기대 API를 만들어 넣지 않는다. 먼저 정식 계약으로 받아들일지 별도 설계 대상으로
 분리하고, 확정 전에는 feature map에 public contract gap으로 기록한다.
 
@@ -79,19 +79,45 @@ scenario에 기대 API를 만들어 넣지 않는다. 먼저 정식 계약으로
 | 문서 | 답하는 질문 |
 |---|---|
 | 정식 spec | Application이 의존할 수 있는 공개 동작은 무엇인가? |
-| 언어별 exact interface | 그 계약을 해당 언어에서 어떤 signature로 호출하는가? |
+| 언어별 interface | 그 계약을 해당 언어에서 어떤 signature로 호출하는가? |
 | E2E 시나리오 문서 | 어떤 실제 배포와 evidence로 그 계약을 검증하는가? |
 | E2E test code와 runner | 문서의 절차와 판정을 어떻게 자동 실행하는가? |
 | feature map | 어느 언어가 어떤 scenario를 구현했고 어떤 gap이 남았는가? |
 
+### 2.1 Framework public contract 검증
+
+E2E가 Framework 동작을 시작하고 결과를 판정할 때는 정식 spec과 언어별 interface에 정의된
+public API만 사용한다. E2E라는 이유로 internal helper, private protocol, Store 내부 record나 runtime
+자료구조를 직접 읽지 않는다.
+
+Client는 역할 server의 public application endpoint를 호출한다. 역할 server는 그 요청을 받은 뒤 public
+Framework API로 operation을 시작하고, public reply·error·status 또는 application handler 결과를 client가
+확인할 수 있는 응답으로 제공한다. Handler 호출 횟수나 받은 payload가 필요하면 역할 server가
+application state로 기록하고 public evidence endpoint로 제공할 수 있다. 이 evidence는 Framework 내부
+queue, connection, descriptor나 private counter를 노출해서는 안 된다.
+
+Runner는 검증 조건을 만들기 위해 process를 시작·종료하거나 crash시키고, 공개 설정으로 port, timeout,
+HWM과 Store를 구성할 수 있다. 하지만 다음 값은 일반 E2E의 통과 조건으로 사용하지 않는다.
+
+- 내부 connect attempt, reconnect와 liveness probe 횟수
+- Physical connection ID, socket write와 private handshake 단계
+- Framework 내부 queue 길이, reservation, descriptor record와 CAS 횟수
+- Private frame, internal callback과 test-only hook 결과
+- 특정 internal log line의 존재 또는 부재
+
+이 값이 구현 정확성에 필요하면 contract test나 internal protocol test에서 검증한다. Public monitoring,
+tracing이나 observer 자체가 정식 public contract이고 그 기능을 검증하는 scenario라면 해당 public API가
+반환한 값은 통과 조건으로 사용할 수 있다. 일반 scenario의 file log는 실패 원인을 찾는 진단 자료일
+뿐, public 결과를 대신하지 않는다.
+
 ## 3. 작업 순서
 
-### 3.1 계약 근거를 먼저 확인한다
+### 3.1 계약 근거 확인
 
 시나리오를 쓰기 전에 다음 순서로 근거를 확인한다.
 
 1. 검증할 공통 Framework spec과 package spec을 확인한다.
-2. 언어별 exact interface에서 호출 가능한 public API를 확인한다.
+2. 언어별 interface에서 호출 가능한 public API를 확인한다.
 3. [공통 E2E README](../../../framework/doc/framework/common/e2e/README.ko.md)에서 config의
    범위, 공통 실행 원칙, scenario ID와 priority 규칙을 확인한다.
 4. 기존 언어 구현과 E2E test는 누락과 실제 제약을 찾는 증거로 사용한다.
@@ -101,7 +127,7 @@ scenario에 기대 API를 만들어 넣지 않는다. 먼저 정식 계약으로
 않는다. 반대로 정식 spec에 있는 공통 기능이 특정 언어에 없으면 그 언어의 E2E에서 조용히
 제외하지 않고 feature map에 gap과 후속 조건을 기록한다.
 
-### 3.2 검증할 동작을 쉬운 말로 먼저 설명한다
+### 3.2 검증 동작의 쉬운 설명
 
 계약을 확인했으면 API, state와 error 이름을 잠시 내려놓고 동작을 쉬운 문장으로 정리한다. 다음
 네 문장을 채우면 scenario의 기본 설명이 된다.
@@ -120,7 +146,7 @@ Application이 ______하면 Framework는 ______해야 한다.
 쉬운 설명은 정확한 계약을 줄이는 요약이 아니다. 먼저 전체 흐름을 이해시키고, 뒤의 절차와 검증
 항목에서 identity, 횟수, error와 완료 시점을 정확하게 고정한다.
 
-### 3.3 하나의 검증 질문을 정한다
+### 3.3 단일 검증 질문
 
 각 scenario는 하나의 주된 질문에 답한다. 질문은 실행 결과를 보고 `예` 또는 `아니요`로
 판정할 수 있게 쓴다.
@@ -138,7 +164,7 @@ Application이 ______하면 Framework는 ______해야 한다.
 어렵고 언어별 구현 범위도 달라진다. 입력, 장애 조건, 기대 terminal 결과가 다르면 scenario를
 나눈다. 다만 하나의 업무 흐름을 끝까지 확인해야 의미가 있는 여러 hop은 한 scenario로 유지한다.
 
-### 3.4 E2E에서만 드러나는 경계를 정한다
+### 3.4 E2E에서 드러나는 경계
 
 검증 질문을 정한 뒤 왜 이 검증이 E2E여야 하는지 확인한다. 다음 중 하나 이상이 있어야 한다.
 
@@ -152,18 +178,19 @@ Application이 ______하면 Framework는 ______해야 한다.
 한 process의 함수 반환값만으로 충분히 검증할 수 있다면 contract test나 unit test가 더 적합하다.
 그 경우 E2E에 같은 검증을 반복하기보다 해당 test의 책임으로 보낸다.
 
-### 3.5 통제할 조건과 관찰할 결과를 분리한다
+### 3.5 통제 조건과 관찰 결과의 분리
 
 초안을 쓰기 전에 다음 두 목록을 만든다.
 
 | 구분 | 포함할 내용 |
 |---|---|
 | 통제할 조건 | 역할 수, 배치, fixture, 기동 순서, readiness, 요청 값, 장애 주입 시점 |
-| 관찰할 결과 | Client 반환값, public status, server evidence, log marker, process 종료 상태 |
+| 관찰할 결과 | Client 반환값, public status, public 역할 endpoint의 application evidence, process 종료 상태 |
 
-내부 field를 직접 바꾸거나 store record를 해석해야만 만들 수 있는 조건은 E2E fixture로 적합한지
-다시 검토한다. Application과 E2E client가 접근할 수 없는 내부 상태를 성공 기준으로 쓰지 않는다.
-장애 주입에 내부 hook이 꼭 필요하다면 공개 계약 검증과 internal protocol test를 분리한다.
+내부 field를 직접 바꾸거나 Store record를 해석해야만 만들 수 있는 조건은 E2E fixture로 적합한지
+다시 검토한다. Application과 E2E client가 public contract로 접근할 수 없는 내부 상태를 성공 기준으로
+쓰지 않는다. 장애 주입에 내부 hook이 꼭 필요하다면 공개 계약 검증과 internal protocol test를
+분리한다.
 
 ### 3.6 최소 배포로 정상 경로를 먼저 쓴다
 
@@ -174,7 +201,7 @@ Application이 ______하면 Framework는 ______해야 한다.
 영향을 주지 않는 역할과 변형을 제거한다는 뜻이다. Remote routing을 검증하면서 caller와 target을
 같은 process에 두면 필요한 경계가 사라지므로 최소 배포가 아니다.
 
-### 3.7 문서와 계약을 다시 대조한다
+### 3.7 문서와 계약 재대조
 
 초안 뒤에는 다음 항목을 근거 문서와 대조한다.
 
@@ -222,7 +249,7 @@ scenario ID와 test 개수부터 나열하지 않는다. 첫 단락만 읽어도
 범위 절에는 `다룬다`와 `다루지 않는다`를 함께 둔다. 비슷한 config나 contract test가 소유하는
 검증을 링크하면 중복 scenario와 책임 충돌을 줄일 수 있다.
 
-### 4.2 서버 구성은 역할과 이유를 함께 설명한다
+### 4.2 서버 구성의 역할과 이유
 
 역할 표에는 이름과 개수만 쓰지 않는다. 각 역할이 제공하거나 소비하는 공개 기능, 다른 process로
 분리해야 하는 이유와 scenario에서 남기는 evidence를 설명한다.
@@ -240,14 +267,15 @@ scenario ID와 test 개수부터 나열하지 않는다. 첫 단락만 읽어도
 복잡한 topology는 Mermaid로 나타낼 수 있다. Diagram에는 process와 논리 message 방향을 보여주고,
 상세 field와 모든 scenario 분기를 한 그림에 넣지 않는다.
 
-### 4.3 공통 실행 모델은 한 번만 설명한다
+### 4.3 공통 실행 모델
 
 모든 scenario가 공유하는 다음 조건은 scenario마다 반복하지 않고 실행 모델 절에 둔다.
 
 - Process 기동과 readiness 확인 방법
 - 실행별 port, routing ID, key prefix와 log 경로 격리
 - 공통 fixture와 baseline 상태
-- Evidence endpoint, file log와 client 결과 수집 방법
+- Public application evidence endpoint와 client 결과 수집 방법
+- 실패 진단용 file log 보존 방법
 - 실패 시 보존할 artifact
 - 종료와 resource 정리 방법
 
@@ -278,9 +306,10 @@ request를 보내고 reply를 받는가.
   같은 identity로 다시 시작한다. Public status에서 이전 connection 제거와 새 connection의
   ready 전이를 확인한 직후 request를 보낸다.
 - 검증: baseline과 재시작 뒤 request가 각각 한 번 처리된다. 두 번째 request는 application
-  retry 없이 새 provider의 evidence에 기록되고, client는 정해진 reply를 받는다. 이전
-  connection으로 전송한 기록이나 중복 handler 실행이 있으면 실패다.
-- 세부 동작: [관련 정식 spec](...)의 reconnect와 target readiness 계약을 검증한다.
+  retry 없이 새 provider의 public application evidence에 기록되고, client는 정해진 reply를 받는다.
+  Public status에 이전 peer가 ready 상태로 남거나 handler가 중복 실행되면 실패다.
+- 세부 동작: [Transport liveness §6](../../../framework/doc/framework/common/spec/29-transport-liveness.ko.md#6-connection-loss와-reconnect)의
+  reconnect와 target readiness 계약을 검증한다.
 ```
 
 제목과 priority 다음의 설명은 생략하지 않는다. 이 설명은 `무엇을 시험하는가`만 반복하지 않고,
@@ -362,17 +391,17 @@ Evidence는 test가 본 값을 다른 개발자가 같은 뜻으로 해석할 �
 | Client 반환값 | Caller가 받은 reply, error와 완료 시점 | Remote handler가 중복 실행되지 않았는지 |
 | 역할 server evidence | Handler 호출 횟수, 입력 값과 application state | Caller가 실제 reply를 받았는지 |
 | Public status | Ready target, peer와 lifecycle 상태 | 특정 request의 handler 완료 여부 |
-| Structured log | Message 단계, correlation과 실패 위치 | 로그에 없는 업무 결과 전체 |
+| Structured log | 실패 원인을 조사할 때 message 단계와 correlation을 참고할 수 있다. | 일반 scenario의 통과 여부. Public tracing 계약을 직접 검증할 때만 예외다. |
 | Process exit status | 기동 또는 종료 성공 여부 | Message 처리의 정확성 |
 
 하나의 evidence로 확인할 수 없는 계약은 두 출처를 조합한다. 예를 들어 request 성공은 client reply와
 provider의 handler evidence를 함께 확인해야 중간 transport 성공과 중복 실행을 구분할 수 있다.
 
-Application과 E2E client는 provider의 private store record, 내부 queue와 private protocol frame을 직접
-읽어 성공을 판정하지 않는다. 공개 결과가 부족하다면 test-only 우회부터 만들지 말고 public contract와
-관측 책임을 다시 검토한다.
+Application과 E2E client는 provider의 private Store record, 내부 queue, connection counter와 private
+protocol frame을 직접 읽어 성공을 판정하지 않는다. 공개 결과가 부족하다면 test-only 우회부터 만들지
+말고 public contract와 관측 책임을 다시 검토한다.
 
-### 5.7 `세부 동작`은 추적 근거를 제공한다
+### 5.7 `세부 동작`의 추적 근거
 
 `세부 동작`에는 scenario를 짧게 다시 말하는 label만 두지 않는다. 어떤 정식 계약의 어느 결과를
 검증하는지 링크한다. 여러 계약이 한 흐름에서 만나는 경우에도 scenario의 주된 판정 근거를 먼저
@@ -380,8 +409,8 @@ Application과 E2E client는 provider의 private store record, 내부 queue와 p
 
 이렇게 쓴다.
 
-> 세부 동작: [Host lifecycle §6](...)의 신규 admission 차단과 이미 수락한 request의 완료 경계를
-> 검증한다.
+> 세부 동작: [Host Relocate와 Shutdown §12](../../../framework/doc/framework/common/spec/28-graceful-drain-handoff.ko.md#12-state별-admission)의
+> 신규 admission 차단과 이미 수락한 request의 완료 경계를 검증한다.
 
 이렇게 쓰지 않는다.
 
@@ -400,11 +429,11 @@ Application과 E2E client는 provider의 private store record, 내부 queue와 p
 - Handler 실행 횟수
 - Request와 reply payload
 - Public status의 시작값과 완료값
-- 관련 counter와 log marker
+- Public status와 application evidence marker
 
 실패 scenario는 같은 값을 사용해 무엇이 달라지고 무엇이 유지되는지 설명한다.
 
-### 6.2 실패는 발생 위치와 caller 결과를 연결한다
+### 6.2 Failure 위치와 caller 결과
 
 실패 scenario에는 다음 경계를 함께 쓴다.
 
@@ -417,7 +446,7 @@ Application과 E2E client는 provider의 private store record, 내부 queue와 p
 `실패하면 retry한다`고만 쓰지 않는다. Runtime의 자동 retry인지 application이 새 operation을 시작하는
 것인지 구분하고, 자동 replay가 금지되는 경로에서는 중복 실행이 없다는 evidence를 요구한다.
 
-### 6.3 경합은 barrier와 terminal 수를 고정한다
+### 6.3 경합 barrier와 terminal 수
 
 Race scenario는 운에 맡긴 반복 실행으로 작성하지 않는다. 경쟁하는 각 작업이 어느 지점에 도달했는지
 확인하는 barrier를 두고, 그 뒤 동시에 진행시킨다.
@@ -471,7 +500,7 @@ Track은 독자가 비슷한 질문을 함께 찾게 하는 분류다. 파일 �
 - 성공·실패 판정
 
 언어별 문서나 test code에서는 실제 public API 이름을 사용할 수 있다. 공통 문서의 산문에 여러 언어의
-method 이름을 나열하지 않는다. 호출 방식의 차이가 검증에 영향을 줄 때만 언어별 exact interface를
+method 이름을 나열하지 않는다. 호출 방식의 차이가 검증에 영향을 줄 때만 언어별 interface를
 링크한다.
 
 특정 언어에서 scenario를 구현할 수 없으면 skip만 추가하지 않는다. Feature map에 다음 내용을 남긴다.
@@ -511,7 +540,7 @@ method 이름을 나열하지 않는다. 호출 방식의 차이가 검증에 �
 
 각 문장에서 runner, client, provider 중 누가 동작하는지 확인할 수 있다.
 
-### 9.3 용어는 하는 일을 먼저 설명한다
+### 9.3 용어 설명 순서
 
 처음 나오는 제품 용어는 현재 scenario에서 하는 일을 설명한 뒤 이름을 붙이고 관련 glossary나 spec을
 링크한다. `admission`, `fence`, `authority`, `generation` 같은 명사만으로 절차를 대신하지 않는다.
@@ -532,12 +561,12 @@ Server 개발자가 일상적으로 사용하는 request, handler, timeout과 re
 제품에만 있는 개념이나 문맥에 따라 뜻이 달라지는 용어는 독자가 이름을 외우기 전에 역할과 필요성을
 이해할 수 있게 설명한다.
 
-### 9.4 축약한 영어 명사구를 피한다
+### 9.4 축약 영어 명사구
 
 `restart convergence validation`, `owner failover evidence`처럼 영어 명사를 이어 붙이지 않는다.
 무엇이 언제 바뀌고 어떤 값으로 확인되는지 문장으로 쓴다.
 
-### 9.5 표와 diagram은 비교할 때만 사용한다
+### 9.5 표와 diagram 사용 조건
 
 역할, 상태별 기대 결과와 언어별 구현 범위는 표가 적합하다. 시간 순서와 경합 단계는 번호 목록이나
 Mermaid sequence diagram이 적합하다. 짧은 scenario 하나를 표로 바꾸면 주체와 흐름이 오히려 끊기므로
@@ -553,32 +582,98 @@ Diagram은 정상 흐름 또는 특정 경합 하나만 보여준다. Diagram �
 | 기능 목록만 나열한다 | 무엇을 실행하고 어떻게 판정하는지 알 수 없다. | 각 항목을 검증 질문·절차·검증으로 연결한다. |
 | 절차가 `request를 보내 확인한다`로 끝난다 | 시작 상태와 evidence가 없다. | 주체, readiness, 입력, 관측 위치와 기대 값을 쓴다. |
 | 검증이 `정상 동작한다`로 끝난다 | 자동화할 assertion을 정할 수 없다. | 값, 횟수, terminal 결과와 금지 결과를 쓴다. |
-| 내부 store record를 성공 기준으로 쓴다 | Public contract가 아니라 구현을 고정한다. | Client 결과와 public status, 역할 server evidence로 바꾼다. |
+| 내부 Store record를 성공 기준으로 쓴다 | Public contract가 아니라 구현을 고정한다. | Client 결과, public status와 역할 server의 public application evidence로 바꾼다. |
 | Sleep으로 race를 만든다 | 실행 환경에 따라 결과가 달라진다. | Readiness, handler-start marker나 barrier를 사용한다. |
 | 실패마다 application retry를 넣는다 | Runtime 결함과 첫 시도 실패를 가린다. | 첫 operation의 terminal 결과를 먼저 판정하고 retry는 별도 scenario로 둔다. |
 | 다른 언어 API를 근거로 기능을 추가한다 | E2E가 계약 출처가 된다. | Spec 근거를 확인하고 없으면 설계 gap으로 분리한다. |
 | Scenario 하나가 여러 독립 실패를 주입한다 | 어느 조건이 결과를 만들었는지 알 수 없다. | 장애 조건과 terminal 결과별로 scenario를 나눈다. |
-| 로그 한 줄만으로 성공을 판정한다 | 업무 결과와 중복 실행을 확인할 수 없다. | Client 결과와 bounded server evidence를 함께 검증한다. |
+| 내부 counter나 로그 한 줄로 성공을 판정한다 | Public contract가 아닌 구현 상세를 고정하고 업무 결과도 확인할 수 없다. | Client 결과, public status와 public 역할 endpoint의 application evidence로 바꾼다. |
 | 구현 class와 helper 이름으로 흐름을 설명한다 | 다른 언어에서 같은 의미로 옮기기 어렵다. | 역할, public operation과 관찰 결과로 설명한다. |
 
 ## 11. 작성 후 검증
 
-문서 작성이 끝나면 다음 순서로 다시 읽는다.
+초안을 다 썼다는 사실만으로 scenario가 완성되지는 않는다. 작성자는 아래 네 단계를 순서대로 다시
+검토한다. 문장이 자연스러운지를 보기 전에, 정식 spec의 기능을 실제로 실행하고 그 결과를 판정할 수
+있는지부터 확인한다.
+
+### 11.1 정식 spec과 assertion 대조
+
+Scenario가 주장하는 정상 결과, 실패 결과와 완료 시점을 관련 정식 spec에서 다시 찾는다. Spec 링크가
+문서에 있다는 사실만 확인하지 않고, 각 assertion이 링크한 절의 문장으로 직접 뒷받침되는지 확인한다.
+
+다음 표를 scenario별로 작성하면 빠진 근거를 찾기 쉽다.
+
+| 항목 | 리뷰할 질문 |
+|---|---|
+| Spec의 기능 | 어떤 public 동작을 보장하는가? |
+| 시작 조건 | 그 기능이 실행되는 정확한 조건을 만들었는가? |
+| Public operation | 어느 public API 호출이 기능을 실제로 시작하는가? |
+| 완료 조건 | Spec이 정의한 reply, error, status 또는 callback 중 무엇으로 끝나는가? |
+| 금지 결과 | 자동 replay, 중복 실행이나 stale target처럼 나오면 안 되는 결과는 무엇인가? |
+
+Spec이 `허용한다`, `보장하지 않는다` 또는 여러 terminal 결과 중 하나를 허용한다고 쓴 부분을 E2E가
+하나의 결과로 좁히지 않는다. 반대로 spec이 반드시 보장하는 결과를 `A 또는 B`처럼 느슨하게 만들지
+않는다. E2E가 spec보다 강하거나 약한 계약을 새로 만들면 리뷰 실패다.
+
+### 11.2 Spec 기능 실행 여부
+
+API를 한 번 호출했다는 사실만으로 해당 기능을 검증했다고 판단하지 않는다. Procedure가 검증하려는
+분기를 실제로 지나야 한다.
+
+예를 들어 automatic discovery를 검증한다면 consumer 구성에 provider endpoint가 없어야 하고, provider와
+consumer는 서로 다른 process여야 한다. Timeout을 검증한다면 handler 시작을 확인한 뒤 deadline이 먼저
+끝나는 조건을 만들어야 한다. Weight 분포를 검증한다면 두 target이 모두 ready인 상태에서 충분한 수의
+operation을 보내고 의미 있는 허용 범위로 결과를 판정해야 한다.
+
+다음 질문 중 하나라도 `아니요`이면 scenario를 다시 설계한다.
+
+1. 시작 조건을 public 설정, 역할 server의 application state와 runner의 process 제어만으로 만들 수 있는가?
+2. 검증할 기능이 실행됐다는 사실을 public status, public result 또는 application handler evidence로
+   확인할 수 있는가?
+3. 해당 기능을 고의로 깨뜨린 구현이라면 적어도 하나의 assertion이 반드시 실패하는가?
+4. 다른 기능이 우연히 같은 결과를 만들어 scenario가 잘못 통과할 가능성이 없는가?
+5. 모든 지원 언어가 private helper나 raw frame 없이 같은 조건과 판정을 구현할 수 있는가?
+
+Public API로 기능 진입 여부를 확인할 수 없으면 내부 counter를 E2E에 추가하지 않는다. Contract test나
+internal protocol test로 옮기거나, public 관측 계약이 필요한 별도 설계 문제로 분리한다.
+
+### 11.3 Flaky 조건
+
+정상 구현이 같은 입력에서 반복적으로 같은 판정을 받는지 검토한다. 다음 조건에 의존하면 E2E가
+간헐적으로 실패할 수 있다.
+
+- 고정 sleep이 끝날 때까지 상태가 바뀔 것이라는 가정
+- Thread scheduling, handler 실행 순서나 process 시작 순서
+- Core·OS socket buffer 크기처럼 public contract가 정하지 않은 내부 capacity
+- Public status에 없는 값이 전파됐을 것이라는 추정
+- Message마다 정확히 번갈아 target을 선택한다는 가정
+- 표본 수가 너무 작거나 정상 변동보다 좁은 통계 허용 범위
+- Log가 특정 시각에 flush되거나 특정 순서로 기록된다는 가정
+
+시간이 아니라 사건의 순서가 중요하면 public status sequence, handler-start evidence와 bounded wait를
+barrier로 사용한다. 통계적 분포를 검증할 때는 충분한 표본과 계약을 위반한 구현을 걸러낼 수 있을 만큼
+의미 있으면서 정상 변동은 수용하는 범위를 함께 정한다. 실패할 때까지 같은 scenario를 반복 실행하여
+우연히 통과한 결과를 채택하지 않는다.
+
+내부 capacity를 알아야만 만들 수 있는 backpressure, race나 exact boundary는 E2E에 억지로 넣지 않는다.
+Public 설정과 status로 조건 도달을 확인할 수 있는 범위만 E2E에 남기고 나머지는 통제 가능한 contract
+test가 담당한다.
+
+### 11.4 문서와 자동 검사
+
+계약과 실행 가능성 리뷰를 통과한 뒤 다음 순서로 문서를 다시 읽는다.
 
 1. 첫 설명만 읽고 사용자가 겪는 상황, 정상 동작과 실패했을 때의 문제를 말할 수 있는지 본다.
 2. 제목과 검증 질문만 읽고 scenario 하나가 판정하는 결과를 설명할 수 있는지 본다.
-3. 처음 나온 용어가 그 자리의 설명만으로 이해되는지 확인한다.
-4. 서버 구성과 절차만 읽고 필요한 process와 실행 순서를 재현할 수 있는지 본다.
-5. 검증 항목만 읽고 자동 assertion과 필요한 evidence를 정할 수 있는지 본다.
-6. 각 scenario의 정식 spec 링크가 실제 공개 계약을 가리키는지 확인한다.
-7. 공통 E2E README의 ID, priority, runner와 evidence 규칙에 맞는지 확인한다.
-8. 다른 언어 개발자가 특정 구현 내부 구조 없이 같은 scenario를 구현할 수 있는지 확인한다.
-9. [기술문서 작성 원칙](documentation-principles.ko.md)에 따라 독자, 용어, 문체와 표 사용을 다시
+3. 서버 구성과 절차만 읽고 필요한 process와 실행 순서를 재현할 수 있는지 본다.
+4. 검증 항목만 읽고 자동 assertion과 필요한 public evidence를 정할 수 있는지 본다.
+5. 공통 E2E README의 ID, priority, runner와 evidence 규칙에 맞는지 확인한다.
+6. [기술문서 작성 원칙](documentation-principles.ko.md)에 따라 독자, 용어, 문체와 표 사용을 다시
    검토한다.
-10. 상대 링크, Markdown 표, code fence와 diagram 문법을 확인한다.
-11. `git diff --check`를 실행한다.
+7. 상대 링크, Markdown 표, code fence와 diagram 문법을 확인한다.
+8. `git diff --check`와 문서 링크 검사를 실행한다.
 
-자동 검사가 통과해도 독자가 §1의 질문에 답할 수 없으면 문장을 다시 작성한다.
+자동 검사가 통과해도 spec 기능을 실행하지 못하거나 public 결과로 판정할 수 없으면 완료로 보지 않는다.
 
 ## 12. 완료 점검표
 
@@ -588,16 +683,22 @@ Diagram은 정상 흐름 또는 특정 경합 하나만 보여준다. Diagram �
 - [ ] 동작이 깨졌을 때 사용자에게 어떤 문제가 보이는지 설명했다.
 - [ ] 다루는 범위와 다른 config 또는 test가 소유하는 범위를 구분했다.
 - [ ] 모든 public 동작에 정식 spec 근거가 있다.
+- [ ] 각 assertion을 정식 spec의 구체적인 문장과 대조했다.
+- [ ] Spec이 허용한 결과를 임의로 좁히거나 보장한 결과를 느슨하게 만들지 않았다.
 - [ ] E2E나 다른 언어 구현만 근거로 새 public contract를 추가하지 않았다.
 - [ ] E2E에서만 확인할 process, transport, store 또는 언어 경계가 분명하다.
+- [ ] Framework 동작의 실행과 판정에 정식 public API만 사용한다.
+- [ ] Internal helper, private protocol, Store record와 내부 counter를 통과 조건으로 사용하지 않는다.
 
 ### 구성과 실행
 
 - [ ] 역할별 수, public 기능과 분리 배치 이유를 설명했다.
 - [ ] 외부 resource와 실행별 격리 방법을 설명했다.
 - [ ] Readiness를 sleep이 아닌 관찰 가능한 조건으로 판정한다.
+- [ ] Procedure가 이름만 언급하지 않고 검증하려는 spec 기능을 실제로 실행한다.
+- [ ] 조건 도달을 public status, result 또는 application evidence로 확인한다.
 - [ ] 공통 실행 모델과 scenario별 변형을 구분했다.
-- [ ] 실패 시 남길 log, client 결과와 server evidence를 정했다.
+- [ ] 실패 시 남길 client 결과와 public application evidence를 정하고 진단용 log를 구분했다.
 
 ### Scenario
 
@@ -605,10 +706,13 @@ Diagram은 정상 흐름 또는 특정 경합 하나만 보여준다. Diagram �
 - [ ] 검증 질문 전에 시작 상황, 정상 동작과 확인 이유를 쉬운 문장으로 설명했다.
 - [ ] 절차에 시작 상태, 동작 주체, 입력, 순서와 barrier가 있다.
 - [ ] 검증에 기대 값, 횟수, terminal 결과와 금지 결과가 있다.
-- [ ] 성공과 실패를 public 결과와 역할 server evidence로 판정한다.
+- [ ] 성공과 실패를 public 결과와 역할 server의 public application evidence로 판정한다.
 - [ ] `세부 동작`이 관련 정식 계약을 정확히 가리킨다.
 - [ ] Timeout, cancellation과 retry의 적용 구간을 구분했다.
 - [ ] Race scenario의 참여자, barrier와 terminal 수를 고정했다.
+- [ ] 검증 대상 기능을 깨뜨린 구현이 이 assertion을 그대로 통과할 수 없는지 확인했다.
+- [ ] 내부 buffer 크기, scheduler 순서와 status에 없는 전파 시점에 의존하지 않는다.
+- [ ] 통계 scenario는 충분한 표본 수와 정상 변동을 수용하는 허용 범위를 사용한다.
 
 ### 언어 parity와 설명
 

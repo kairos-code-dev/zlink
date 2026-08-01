@@ -23,7 +23,7 @@ API 서버와 주문 처리 owner를 서로 다른 서버로 나눠도 상태 �
 **범위**: 이 샘플은 장바구니 구성이 끝나고 사용자가 **결제하기 버튼을 누른 시점**(`StartOrderReq`
 전송)부터 시작한다. `CartId`가 가리키는 장바구니, 상품 조회, 담기/빼기 같은 장바구니 조작은 범위
 밖이며 이미 존재한다고 전제한다. 어렵고 되돌리기 까다로운 문제(중복 클릭, 재고 경합, 결제 실패
-보상, 서버 장애 뒤 재개)는 결제하기를 누른 이후에 생기고, 그 이전의 장바구니 관리는 되돌리기 쉬운
+보상, 중단된 workflow 재개)는 결제하기를 누른 이후에 생기고, 그 이전의 장바구니 관리는 되돌리기 쉬운
 단순 CRUD라 이 정도 장치가 필요 없다.
 
 주문 도메인이 이 목적에 잘 맞는 이유는 상태 전이가 뚜렷하고 보상이 자연스럽기 때문이다. 재고를
@@ -34,8 +34,8 @@ API 서버와 주문 처리 owner를 서로 다른 서버로 나눠도 상태 �
 
 ShoppingMall은 GameQuest와 달리 **유실이 허용되지 않는 도메인**이다. 재고·결제·확정은 잃거나
 중복 지급되면 안 되므로, GameQuest의 진행 tier가 쓰는 "유실을 허용하는 전달 + reset 보정"을
-쓰지 않는다. 대신 이벤트 스트림을 유실 없이 저장하고, 기대 버전으로 이전 owner를 막고(fencing),
-멈춘 주문은 명시적으로 재개해서 무손실을 얻는다. 이 차이가 두 샘플의 설계를 가른다 — §5의 대비를
+쓰지 않는다. 대신 이벤트 스트림을 유실 없이 저장하고, 기대 버전으로 timeout 뒤 재시도와 stale 작업을
+막으며, 처리 가능한 owner가 있는 중단 주문은 명시적으로 재개한다. 이 차이가 두 샘플의 설계를 가른다 — §5의 대비를
 참고한다.
 
 정리하면 [GameQuest](gamequest.ko.md)가 **대량 이벤트를 owner spot이 순서대로 처리해 실시간
@@ -64,9 +64,10 @@ ShoppingMall은 GameQuest와 달리 **유실이 허용되지 않는 도메인**�
 |------|------|------|
 | 확장성 | 주문 수에 맞춰 수평 확장, 단일 병목 없음 | `OrderId`별 owner spot을 노드에 분산(MeshNode) |
 | 순서·일관성 | 같은 주문의 전이를 순서대로, 충돌 없이 | 주문당 owner 하나가 순서대로 처리 |
-| 무손실 | 확정·재고·결제 상태를 잃지 않음 | `OrderEventStore`에 유실 없이 저장 + 기대 버전으로 이전 owner 차단 |
+| 무손실 | 확정·재고·결제 상태를 잃지 않음 | `OrderEventStore`에 유실 없이 저장 + 기대 버전으로 중복·stale 기록 차단 |
 | 중복 방지 | 중복 시작·중복 지급 0 | `IdempotencyKey` 매핑 + 스트림 안 `SourceCommandId` 중복 제거 |
-| 복구 | 처리 중 프로세스가 비정상 종료되어도 주문을 재개 | 이벤트 접기(fold)로 다음 단계 판정 + 명시적 재개 명령 |
+| 재개 | Explicit close 뒤 재활성화나 planned relocation 뒤 주문을 계속 처리 | 이벤트 접기(fold)로 다음 단계 판정 + 명시적 재개 명령 |
+| crash 경계 | `Ready` owner process가 종료되면 자동 복구하지 않음 | 다음 call은 `Unavailable`; 무손실 failover는 production 확장으로 분리 |
 | 이력·조회 | 왜 바뀌었는지 남기고 조회 | 이벤트 스트림(SoR) + 다시 재생 가능한 조회 모델 |
 
 ## 3. 비교 배경: 견고한 주문 workflow를 web backend로 지으면
@@ -220,7 +221,7 @@ serving node를 찾고, Location Store의 generic reservation으로 owner 하나
 | 주문 상태 DB + 주문별 락 | 여러 서버가 같은 주문을 동시에 수정 | 같은 `OrderId`는 owner spot 하나가 순서대로 처리 |
 | saga 오케스트레이터 / 단계 소비자 | 여러 단계 전이·보상을 순서대로 조율 | owner spot이 이벤트 접기로 다음 단계를 판정해 직접 진행(§9) |
 | 이벤트 로그 + outbox | 상태와 이벤트 발행의 이중 쓰기 방지 | 상태 = `OrderEventStore` 이벤트의 접기라, 상태 변경과 이벤트가 한 번의 기록으로 끝난다. 조회 모델·바깥 효과(재고·결제)와의 이중 쓰기는 남지만, 다시 재생·결정적 id·재개로 그 틈을 닫는다(§9.4) |
-| 버전 검사 / 분산 락 | 동시·재진입 수정 방지 | owner 하나 + 기록 시 기대 `Version` 검사로 이전 owner 차단(re-home 순간 방어) |
+| 버전 검사 / 분산 락 | 동시·재진입 수정 방지 | owner 하나 + 기록 시 기대 `Version` 검사로 timeout 뒤 재시도와 stale application 작업을 차단 |
 | 멱등 저장소 | 결제 재클릭·재시도 걸러내기 | `CommerceStateStore` 매핑 + 스트림 안 `SourceCommandId` 중복 제거 |
 | 조회 모델 | 상태 조회 | `OrderReadModelStore` 조회 모델(그대로 유지 — 다시 재생으로 재생성 가능) |
 | 스케줄러/타이머 | 멈춘 saga 재개 | 명시적 재개 명령 + 복구 훑기(§9) |
@@ -251,9 +252,9 @@ ShoppingMall은 유실이 허용되지 않는 도메인이라 [GameQuest](gamequ
 | 축 | ShoppingMall (무손실 주문 처리) | GameQuest (진행 tier, 참고) |
 |------|------|------|
 | 전달 | 명령을 owner에 유실 없이 기록(유실 불가) | 유실을 허용하는 전달 |
-| 동시성 | owner 하나 + 기대 버전으로 이전 owner 차단 | owner 하나(차단 불필요, 유실 허용) |
+| 동시성 | owner 하나 + 기대 버전으로 timeout 뒤 재시도와 stale application 작업 차단 | owner 하나(차단 불필요, 유실 허용) |
 | 이벤트당 비용 | 상태 = 이벤트 접기. 기록이 곧 상태 전이 | 메모리에 반영 + 기록 |
-| 노드 장애 | 다른 노드가 이어받아(re-home) 다시 재생으로 복원, 기대 버전이 두 owner가 겹치는 순간을 차단 | 이어받아 다시 재생, 유실은 reset으로 보정 |
+| 노드 장애 | `Ready` owner process가 종료되면 자동 복구하지 않는다. 무손실 crash failover는 현재 Framework 계약 밖의 production 확장이다. | `Ready` owner process가 종료되면 자동 복구하지 않으며 다음 call은 `Unavailable`로 끝난다. |
 | 멈춘 작업 | 명시적 재개 명령으로 잇는다(§9) — 재고가 묶이므로 필수 | 유실은 reset/reconcile로 흡수 |
 | 조회 | 조회 모델 폴링(`GetOrderStateReq`) | 실시간 전송(push) |
 
@@ -465,9 +466,9 @@ owner spot을 무엇에 매칭할지는 "가장 자연스러운 엔티티"가 �
   `StartOrderWorkflowReq` direct call을 시작하고 `InstanceSpot("shoppingmall.order-workflow")` marker를 명시한다.
 - 주문 시작·재개·조회 모델 재생성은 `OrderWorkflowSpot`으로 보내는 명시적 request/reply로
   처리한다. `StartOrderWorkflowReq`, `ContinueOrderWorkflowReq`와
-  `RebuildOrderProjectionReq`는 모두 Instance intent를 포함한다. 따라서 terminal·idle close나
-  process failure 뒤 runtime Instance가 없어도 유효한 command가 같은 `SpotId`를 새 generation으로
-  활성화할 수 있다.
+  `RebuildOrderProjectionReq`는 모두 Instance intent를 포함한다. 따라서 terminal·idle close가 authority
+  release까지 완료된 뒤에는 유효한 command가 같은 `SpotId`를 새 generation으로 활성화할 수 있다.
+  `Ready` owner process 종료는 authority를 `Missing`으로 바꾸지 않으므로 이 경로로 복구하지 않는다.
 - Caller는 `GetOrCreate`, 별도 위치 조회나 owner node 선택을 수행하지 않는다. 첫 업무 message는 activation
   payload로 소비하지 않고 Ready 뒤 일반 handler에서 처리한다.
 - `OrderWorkflowSpot.OnCreate`는 업무 상태 전이를 실행하지 않는다. 전이는 명령 handler에서 시작한다.
@@ -542,9 +543,9 @@ step 3에서 종료 상태여도 조회 모델을 fold와 맞추는 이유가 �
 |------|------|------|
 | 오케스트레이터 / 단계 소비자 | 현재 단계와 다음 단계를 결정 | **다음 단계 = 이벤트 접기 결과.** 별도 조율 주체 없이 aggregate가 다음 단계를 결정한다 |
 | durable 조율 상태(saga instance) | crash 뒤에도 "이 주문이 결제 대기였다"를 알아야 함 | **상태 = 이벤트 스트림.** 조율 상태를 따로 저장하지 않는다. 스트림 자체가 진행 지점이다 |
-| 스케줄러 / 타이머 | 중단된 saga의 다음 단계를 재개 | **재개 = 스트림 재생.** 재개 명령 또는 재활성화가 같은 루프를 실행하면 fold가 중단된 지점부터 이어진다(§9.5) |
+| 스케줄러 / 타이머 | 중단된 saga의 다음 단계를 재개 | **재개 = 스트림 재생.** Explicit close 뒤 재활성화나 planned relocation에서 같은 루프를 실행하면 fold가 중단된 지점부터 이어진다(§9.5). Ready owner crash의 자동 복구는 포함하지 않는다. |
 | outbox | 상태 DB 쓰기와 이벤트 발행의 이중 쓰기 방지 | **기록 = 상태 전이라 이중 쓰기가 없다.** 외부 발행이 필요한 경우만 §14 확장 |
-| 주문별 락 / 낙관적 버전 재시도 | 여러 소비자의 같은 주문 동시 처리 방지 | **owner 하나가 소유** → 정상 경로엔 경쟁 writer가 없다. re-home 순간만 기대 버전으로 차단(§9.4) |
+| 주문별 락 / 낙관적 버전 재시도 | 여러 소비자의 같은 주문 동시 처리 방지 | **owner 하나가 소유** → 정상 경로에는 경쟁 writer가 없다. 재시도된 바깥 효과와 stale application 작업은 기대 버전으로 차단한다(§9.4). |
 
 정리하면 웹 saga는 진행 지점 저장, 다음 단계 결정과 중단 뒤 재개를 모두 외부 인프라로 구성해야 한다.
 ShoppingMall은 그 셋을 각각 **이벤트 스트림·이벤트 접기·스트림 재생**
@@ -616,11 +617,10 @@ loop를 끝까지 실행하고 최종 `OrderState`를 돌려주면 된다. 다�
 
 ### 9.4 무손실을 떠받치는 규칙
 
-- **기대 버전으로 이전 owner 차단**: 기록할 때 기대 `Version`을 함께 넣는다. 노드 장애로 owner가
-  다른 노드로 넘어가는(re-home) 순간 이전 owner가 일시적으로 실행을 계속해도 두 owner의 기록 중 하나만
-  성공하고 다른 하나는 버전 충돌로 거부된다. 거부당한 owner는 스트림을 다시 읽어 aggregate를
-  재구성한 뒤 종료·중복 여부를 다시 판정한다. GameQuest는 유실을 허용해서 owner 하나로 순서만
-  보장하면 충분했지만, 무손실 도메인인 ShoppingMall은 이 차단을 추가한다(§5).
+- **기대 버전으로 stale 작업 차단**: 기록할 때 기대 `Version`을 함께 넣는다. Timeout 뒤 같은 바깥 효과를
+  확인하거나 application 작업을 재시도할 때 두 기록이 경쟁하면 하나만 성공하고 다른 하나는 version
+  conflict로 거부된다. 거부된 작업은 스트림을 다시 읽어 종료·중복 여부를 다시 판정한다. 이 규칙은
+  domain 기록의 무손실과 idempotency를 보강하지만 `Ready` owner crash failover를 제공하지 않는다.
 - **명령 중복 제거**: 반영한 `SourceCommandId`를 스트림에 기록해, 같은 명령이 다시 와도 중복
   반영하지 않는다. 같은 `IdempotencyKey`의 시작 요청은 같은 `SourceCommandId`를 만든다.
 - **결정적인 바깥 효과 id**: 재고 예약·결제 승인은 `CommerceStateStore`(바깥 상태)에 쓰고 그 결과
@@ -635,23 +635,25 @@ loop를 끝까지 실행하고 최종 `OrderState`를 돌려주면 된다. 다�
 - **조회 모델 재생성**: `OrderReadModelStore`를 지워도 `OrderEventStore`를 다시 재생해 같은 상태를
   복원한다. 조회 모델은 기준이 아니라 파생물이다.
 
-### 9.5 비정상 종료 후 복구와 재개
+### 9.5 중단 경계와 재개
 
 owner spot이 checkout 도중에 멈추면 그 주문은 스트림상 아직 종료(Confirmed/Failed)가 아닌 채로
 남는다. 결제 단계 주변에서 이런 중단이 실제로 생기는 경우는 다음과 같다.
 
 - **owner 노드의 비정상 종료 또는 재시작**: `InventoryReserved` 기록 직후~결제 호출 사이, 또는 결제 호출
-뒤 `PaymentAuthorized` 기록 전에 노드가 비정상 종료되면 주문이 `InventoryReserved` 상태에서 진행되지 않는다.
-- **spot re-home**(배포·리밸런스·노드 드레인): 배포로 노드를 내리거나 MeshNode가 재배치되는
-  순간 owner가 다른 노드로 넘어가면, 새 owner가 스트림을 재생해 이어야 한다.
+  뒤 `PaymentAuthorized` 기록 전에 노드가 비정상 종료되면 주문이 `InventoryReserved` 상태에서 진행되지
+  않는다. 현재 Framework는 `Ready` owner를 다른 node에서 자동 복원하지 않으므로 operation은
+  `Unavailable`로 끝난다. 이 상태의 무손실 복구는 production failover 확장으로 분리한다.
+- **planned relocation**(배포·리밸런스·node drain): 실행 중인 source와 target이 graceful handoff를
+  완료하면 같은 `ObjectGeneration`의 target owner가 스트림을 재생해 처리를 이어간다.
 - **PSP 호출 중 연결 종료**: 결제 승인을 PSP에 호출했는데 응답을 받기 전에 프로세스가 비정상
   종료되거나 timeout이 발생하면, owner는 **결제의 실제 완료 여부를 확인할 수 없는** 상태로 중단된다.
 
-결제 단계의 "다시 시작"은 두 하위 경우로 갈린다. **PSP를 부르기 전에 멈췄으면** 쉽다 — 재개가
-fold로 "아직 결제 안 함"을 보고 결제부터 부른다. **PSP를 불렀는데 결과를 모르면**(위 세 번째)
-어렵고, 이것이 §9.4의 결정적 `PaymentId`가 존재하는 이유다. 재개한 owner가 같은 `PaymentId`로
-PSP를 다시 호출하면 PSP가 최초 결과(승인/거절)를 그대로 돌려주므로, owner가 실제 결과를 알아내
-그에 맞는 이벤트만 기록한다 — **이중 청구가 나지 않는다.**
+Workflow를 처리할 수 있는 owner가 준비된 뒤 결제 단계를 다시 시작하면 두 하위 경우로 갈린다.
+**PSP를 부르기 전에 멈췄으면** fold가 "아직 결제 안 함"을 확인하고 결제부터 요청한다. **PSP를
+불렀는데 결과를 모르면**(위 세 번째) 같은 `PaymentId`로 PSP를 다시 호출한다. PSP가 최초 결과를
+그대로 반환하므로 owner는 승인 또는 거절에 맞는 이벤트만 기록하고 이중 청구를 막는다. 이 domain
+recovery가 `Ready` owner crash 뒤 새 owner를 자동으로 만드는 것은 아니다.
 
 이 중단들은 모두 "장애로 인한" 것이다. 장애가 없어도 본질적으로 재개가 필요한 결제(계좌이체, 3DS
 인증, "pending"으로 응답하는 비동기 승인 등)는 PSP가 즉시 성패를 주지 않고 나중에 확정하므로 그
@@ -664,15 +666,15 @@ PSP를 다시 호출하면 PSP가 최초 결과(승인/거절)를 그대로 돌�
 - **정상 진행**: §9.3에서 본 것처럼, `Created`를 응답한 owner spot의 application service가
   background continuation을 실행하고 완료·실패를 관찰한다. 이게 이 샘플의 기본 경로이며,
   대부분의 진행은 crash 없이 완료된다.
-- **crash 뒤 복구 시작 조건**: background continuation을 처리하는 프로세스가 중간에 비정상 종료되면(위 세 가지 경우)
-  해당 주문은 외부에서 재개 요청을 보내기 전까지 진행되지 않는다. 기본 샘플은 클라이언트 재시도(같은 `IdempotencyKey`의
-  `StartOrderReq`, 또는 `GetOrderState` 뒤 사용자 재시도)가 이 복구 재개를 부른다.
-  production에서는 아직 종료가 아닌 주문을 주기적으로 훑어 `ContinueOrderWorkflowReq`를 보내는
-  **복구 훑기**를 둔다(재고가 묶이므로 방치할 수 없다). 샘플은 클라이언트가 부르는 복구 재개만
-  검증하고, 훑기는 확장으로 둔다.
+- **explicit close 또는 planned relocation 뒤 재개**: 새 generation의 cold activation이나 relocation target이
+  준비되면 client 재시도와 `ContinueOrderWorkflowReq`가 같은 workflow loop를 실행한다. Production에서는
+  아직 종료되지 않은 주문을 주기적으로 찾아 같은 request를 보내는 recovery scan을 둘 수 있다.
+- **`Ready` owner crash 뒤 요청**: owner lease가 만료돼도 authority가 `Missing`으로 바뀌지 않는다. Client
+  재시도와 recovery scan은 `Unavailable`로 끝나며 새 owner를 만들지 않는다. Crash 뒤 authority와 state를
+  안전하게 인계하는 기능은 별도의 production failover 계약이 필요하다.
 
-fold가 다음 단계를 "결제 승인 시도"처럼 정확히 판정하므로, 정상 진행이든 crash 복구든 예약이
-끝난 주문은 예약 단계를 건너뛰고 다음부터 잇는다 — 코드 경로는 항상 하나다.
+fold가 다음 단계를 "결제 승인 시도"처럼 정확히 판정하므로, 정상 진행이나 explicit close 뒤 재활성화,
+planned relocation에서는 예약이 끝난 주문이 예약 단계를 건너뛰고 다음부터 이어진다. 코드 경로는 하나다.
 
 재개가 무손실인 근거는 9.4의 결정적 id와 명령 중복 제거다. 재개는 이미 기록된 이벤트를 다시 쓰지
 않고(fold가 건너뛴다), 바깥 효과는 같은 id로 최초 결과를 돌려받으므로, 몇 번을 재개해도 결과가
@@ -793,8 +795,8 @@ RebuildOrderProjectionRes { State: OrderState }
 `CommerceApi`는 `OrderId`의 Instance address로 message를 보내고, Framework가 owner claim과 activation 뒤
 일반 Spot handler에 전달한다. `CommerceApi`는 별도 위치 정보, owner `NodeRid`나 endpoint를 조립하지 않는다.
 `StartOrderWorkflowReq`는 activation payload가 아니라 Ready 뒤 처리되는 명시적인 업무 명령이다.
-`ContinueOrderWorkflowReq`는 대기 매핑 복구나 비정상 종료 후 재개처럼 기존 주문을 다시 진행할 때
-쓴다. `RebuildOrderProjectionReq`는 조회 모델 재생성 검증용이다. 세 request는 모두
+`ContinueOrderWorkflowReq`는 대기 매핑 복구, explicit close 뒤 재활성화나 planned relocation처럼 기존
+주문을 다시 진행할 때 쓴다. `RebuildOrderProjectionReq`는 조회 모델 재생성 검증용이다. 세 request는 모두
 `InstanceSpot("shoppingmall.order-workflow")`를 명시한다. `InMesh`는 authority가 Missing일 때만
 최초 배치 Mesh를 고르며 Existing owner의 placement는 바꾸지 않는다.
 
@@ -911,8 +913,9 @@ sequenceDiagram
 그 작업이 응답 반환과 별개로 진행한다. 응답보다 먼저 일부 진행되거나 나중에 진행될 수 있고, 이
 순서는 보장하지 않는다.
 클라이언트는 `GetOrderStateReq` 폴링으로 진행을 확인한다. 재고/결제 실패 분기는 §13의 이벤트
-순서를 따른다. 배경 재개를 처리하는 프로세스가 중간에 비정상 종료되면 §9.5의 복구 재개가 같은 `ContinueOrderWorkflowReq`로
-같은 workflow loop를 다시 실행한다.
+순서를 따른다. Self-check가 background continuation을 정해진 중간 상태에서 중단하면 §9.5의 명시적
+`ContinueOrderWorkflowReq`가 같은 workflow loop를 다시 실행한다. 실제 `Ready` owner process 종료는
+자동 복구하지 않는다.
 
 ## 13. 보정과 중복 처리
 
@@ -1022,14 +1025,14 @@ gate와 같은 조건을 사용한다.
   재고 실패 → 결제 미실행 검증.
 - **결제 실패·보상**: 결제 실패 결제수단 → `GetOrderStateReq` 반복 조회로 `Failed` 도달 →
   `InventoryReleased`·`OrderFailed` 기록 검증 → `Reason`이 결제 실패.
-- **비정상 종료 뒤 재개**: test hook으로 배경 재개를 `InventoryReserved`까지만 진행하고 중단(중간 상태
+- **workflow 중단 뒤 재개**: test hook으로 background continuation을 `InventoryReserved`까지만 진행하고 중단(중간 상태
   생성) → 복구용 `ContinueOrderWorkflowReq` → 예약 단계 건너뛰고 결제부터 재개해 `Confirmed`
   도달, 결정적 id로 중복 예약 없음 검증. 종료 이벤트 기록 후 조회 모델 갱신을 중단한 경우도
   재개가 조회 모델을 치유하는지 검증. 이 흐름은 중단 지점을 만드는 self-check hook과
   `ContinueOrderWorkflowReq`를 사용해 실제 runner에서 검증한다.
 - **조회 모델 재생성**: 대상 `OrderId` 조회 모델 삭제 → `RebuildOrderProjectionReq` →
   `OrderEventStore` 재생만으로 조회 모델 복원 검증.
-- **runtime state 복구**: 기존 주문의 runtime Instance를 제거 → `ContinueOrderWorkflowReq`와
+- **runtime state 복구**: 기존 주문의 runtime Instance를 explicit close로 제거 → `ContinueOrderWorkflowReq`와
   `RebuildOrderProjectionReq`가 새 generation을 활성화 → `OrderEventStore`에서 workflow 상태를 복구한 뒤
   각각 진행과 projection 재생성을 수행하는지 검증.
 - **없는 주문 거부**: runtime Instance와 domain workflow가 모두 없는 `OrderId`로
@@ -1060,7 +1063,8 @@ gate와 같은 조건을 사용한다.
 - 주문 상태는 `OrderReadModelStore` 조회 모델로 조회하고, 조회 모델은 삭제 후 재생으로 재생성 가능하다.
 - 멱등 매핑은 대기(pending)/확정(started)을 구분하고, 대기 재시도는 같은 `OrderId`에서 복구한다.
 - 결제 실패 후 재고 예약 해제 보상 이벤트가 기록된다.
-- 비정상 종료 뒤 재개는 이벤트 접기로 다음 단계를 판정해 중복 없이 이어진다.
+- Explicit close 뒤 재활성화와 planned relocation 뒤 재개는 이벤트 접기로 다음 단계를 판정해 중복 없이 이어진다.
+- `Ready` owner process 종료 뒤에는 새 generation을 자동 활성화하지 않고 `Unavailable`로 끝난다.
 - Runtime Instance가 없는 기존 주문의 continue·rebuild는 event stream에서 workflow 상태를 복구한다.
 - Runtime Instance와 domain workflow가 모두 없는 ID의 continue·rebuild는 빈 workflow를 만들지 않고 domain
   not-found로 끝난다.

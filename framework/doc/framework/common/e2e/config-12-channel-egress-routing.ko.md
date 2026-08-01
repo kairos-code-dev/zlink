@@ -1,262 +1,347 @@
 <!-- framework-adapter-nav:start -->
-[E2E 목차](README.ko.md) | [이전: 관측·운영 배포](config-11-observability-ops.ko.md)
+[E2E 목차](README.ko.md) | [이전: 관측·운영 배포](config-11-observability-ops.ko.md) | [다음: One-way submit admission](config-13-submit-admission.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# Config 12 — Channel egress routing
+# Config 12 — ChannelName에 맞는 송신 경로 선택
 
-ChannelName 하나가 process 안의 정확한 RouteMesh 또는 ClientServer 송신 경로를 선택하는지 실제 다중
-process 배포에서 검증한다. 이 config는 새 공개 API의 근거가 아니다. 공개 계약은
-[Channel topology](../spec/07-channel-topology.ko.md),
-[Channel messaging](../spec/08-channel-messaging.ko.md),
-[ClientServer Channel](../spec/09-client-server-channel.ko.md),
-[network listener identity](../spec/10-network-listener-identity.ko.md)가 소유한다.
+Application은 `ChannelName`으로 message를 보낼 논리 대상을 지정한다. 한 process가 여러 RouteMesh와
+ClientServer Channel을 함께 사용해도 Framework는 그 이름에 등록된 송신 경로 하나만 선택해야 한다.
+같은 이름을 다른 송신 경로에 중복 등록하거나 준비되지 않은 경로를 다른 topology로 우회하면
+Application이 의도하지 않은 server가 request를 처리할 수 있다.
 
-## 1. 목적과 범위
+이 config는 여러 process와 topology가 함께 있는 배포에서 Channel send·request, target 선택과 reply가
+서로 섞이지 않는지 검증한다. Client는 역할 server의 application endpoint만 호출하며 private egress
+index, descriptor record와 physical connection은 판정에 사용하지 않는다.
 
-이 config는 다음 경계를 함께 검증한다.
+## 1. 확인 범위
 
-- Channel 호출자는 MeshName이나 endpoint가 아니라 ChannelName 하나로 논리 대상을 지정한다.
-- Framework는 같은 process에 등록된 송신 경로 중 정확히 하나를 고르며 다른 RouteMesh나
-  ClientServer 경로로 fallback하거나 relay하지 않는다.
-- RouteMesh의 `Client` 역할은 송신 경로만 등록하고, `Server` 역할만 handler와 weight를 제공한다.
-- ClientServer에서는 client만 업무 send와 request를 시작하고 server는 handler와 reply만 담당한다.
-- 다른 송신 경로에서 온 reply도 원래 request를 정확히 한 번 완료한다. Spot의 `async`와 `yield`는
-  기존 serial turn 계약을 유지한다.
-- Listener의 실제 bind 주소와 remote에 제공하는 advertised endpoint가 구분되고 topology별 descriptor가
-  섞이지 않는다.
+- RouteMesh에서 양방향 Channel request와 remote Channel 선택
+- Handler, Spot callback과 timer에서 시작하는 다른 Channel request
+- ClientServer weight, drain, restart와 같은 process의 Client·Server 조합
+- Channel role이 없거나 connection이 준비되지 않았을 때의 public 오류
+- Process 안에서 같은 `ChannelName`을 여러 송신 경로에 등록한 startup 오류
+- Listener의 port `0` bind와 advertised endpoint
+- ClientServer one-way send
 
-Node direct, Spot direct, Actor direct와 Logical Multicast의 자체 기능은 기존 config가 소유한다. 이
-config에서는 Channel egress index가 그 경로를 가로채지 않는 회귀만 확인한다.
+## 2. 배포 구성
 
-## 2. 서버 구성
-
-한 번의 실행에서 다음 역할을 사용한다. Redis는 실행마다 runner가 만든 전용 container를 사용한다.
-
-| 역할 | 수 | 물리 topology와 Channel 역할 |
+| 역할 | 수 | 하는 일과 분리 이유 |
 |---|---:|---|
-| location store | 1 | Automatic RouteMesh·ClientServer discovery와 Object Client·Server authority가 공유하는 공식 Redis Location Store. 실행마다 전용 key prefix를 사용한다. |
-| relocation store | 1 | CH-REG-02의 `PreserveStateWith` Actor join에 사용하는 공식 Redis Relocation Store. Location Store와 별도 key prefix를 사용하며 `Session`·`Play` root가 등록한다. |
-| `Session` | 1 | `game` RouteMesh의 `game.session` Server, `game.play` Client, `game.api` Client. Location Store와 Relocation Store를 등록하고 `game` MeshNode를 Object Server로 구성한다. Entry Spot과 stable Actor type `channel.player` factory를 명시적 `PreserveStateWith` policy, Actor relocation adapter, placement weight `100`, Actor total·Spot total limit `128`, activation concurrency `32`로 제공한다. |
-| `Play` | 1 | `game` RouteMesh의 `game.play` Server, `game.session` Client, `game.api` Client, `audit` RouteMesh의 `audit.record` Client, `workflow.command` ClientServer Client. Location Store와 Relocation Store를 등록하고 `game` MeshNode만 Object Server로 구성한다. Entry Spot, stable Actor type `channel.player`과 User Spot type `channel.room` factory를 명시적 `PreserveStateWith` policy로 제공한다. Actor·Spot factory에는 kind에 맞는 relocation adapter를 지정하고 placement weight `100`, Actor total·Spot total limit `128`, activation concurrency `32`를 사용한다. `audit` MeshNode의 object role은 `None`이다. |
-| `Api` | 2 | `game` RouteMesh의 `game.api` Server. 서로 다른 weight와 lifecycle generation 사용 |
-| `WorkflowClient` | 1 | `workflow.command` ClientServer Client |
-| `WorkflowServer` | 2 | 같은 `workflow.command`에 ClientServer Client와 Server를 각각 한 번 등록한다. 같은 process의 Server도 local 우선권 없이 remote Server와 같은 weight 후보가 된다. `game` RouteMesh membership은 0개다. Location Store를 등록하고 `game` MeshNode를 Object Client로 구성해 Spot·Actor direct 호출을 시작하지만 factory와 placement target은 제공하지 않는다. 서로 다른 weight와 `Draining` 상태를 사용한다. |
-| `Audit` | 1 | 별도 `audit` RouteMesh의 `audit.record` Server |
+| Location Store | 1 | Automatic RouteMesh와 ClientServer discovery가 같은 실행 namespace를 사용하게 한다. |
+| Session server | 1 | `game` RouteMesh에서 `game.session` Server와 `game.play`, `game.api` 호출을 제공한다. |
+| Play server | 1 | `game.play` Server이며 별도 `audit` RouteMesh의 `audit.record`와 ClientServer `workflow.command`를 호출한다. Spot callback과 timer도 제공한다. |
+| API server | 2 | `game.api` Server membership을 구성하고 서로 다른 weight를 사용한다. |
+| Workflow server | 2 | ClientServer `workflow.command` Server다. 한 variant는 같은 이름의 Client role도 함께 등록한다. |
+| Workflow caller | 1 | ClientServer `workflow.command` Client다. |
+| Audit server | 1 | `audit` RouteMesh의 `audit.record` Server다. |
+| E2E client | 1 | 각 역할의 public application endpoint를 호출하고 reply와 application evidence를 수집한다. |
 
-`Play`는 두 RouteMesh를 등록한다. `game`은 Session·Play·Api의 공통 물리 연결이고, `audit`은 분리된
-물리 연결이다. `Play`의 handler와 Spot timer가 `audit.record`를 호출해 다른 egress 선택을 검증한다.
-Session에서 Api로 가는 정상 호출은 Play를 거치지 않고 같은 `game` RouteMesh에서 직접 선택한다.
+각 handler는 operation ID, 역할 이름, 받은 payload와 reply 값을 application state에 기록한다. Client는
+이 값을 public evidence endpoint에서 조회한다. Listener endpoint와 Channel ready 상태는 정식 public
+status API가 반환한 값만 사용한다.
 
-ClientServer 역할은 RouteMesh descriptor를 사용하지 않는다. `WorkflowServer`는 전용 ClientServer
-server descriptor를 게시하고 `WorkflowClient`는 location store에서 이를 발견한다.
+## 3. 공통 실행과 판정 방법
 
-Object role을 지정하지 않은 `Api`, `WorkflowClient`, `Audit`의 object role은 `None`이다. Automatic
-discovery에 참여하는 역할은 object role과 무관하게 Location Store를 등록한다. CH-REG-02의 cross-node
-Actor join은 `Session` Entry Spot에서 `Play` User Spot으로 진행하며 두 Object Server의 같은 stable Actor
-type·relocation adapter capability와 충분한 target headroom을 사용한다. Channel egress 검증과 무관한 host에
-object factory를 추가하지 않는다.
+Runner는 scenario마다 process, port와 Store namespace를 새로 만든다. 역할 server의 health와 해당
+Channel의 public ready status를 확인한 뒤 message를 보낸다. Network 차단, process 종료와 재시작은
+runner가 외부에서 수행한다.
 
-## 3. 공통 fixture와 관측 값
+Weighted selection은 적은 요청의 정확한 순서를 비교하지 않는다. 각 target이 100과 300 weight를 가질
+때 800개의 서로 다른 request를 보내고 weight 300 target의 처리 비율이 65~85%이면 통과한다. 모든
+request는 reply를 하나만 가져야 하며 handler count 합계도 800이어야 한다. 고정 sleep, exact alternation,
+internal retry count와 log 순서는 판정에 사용하지 않는다.
 
-언어별 구현은 다음 파일을 자기 소스에 복사해 소유하지 않는다. 저장소 공통 fixture의 같은 JSON을
-읽고 Channel topology projection과 비교한다. Object role·factory·Store prerequisite는 §2의 role 설정과
-role server startup evidence로 별도 확인하며 Channel-only fixture에 중복하지 않는다.
+## 4. Scenario
 
-```text
-framework/doc/framework/common/e2e/fixtures/
-`-- config-12-channel-egress-routing.json
-```
+### Track A — ChannelName에 등록된 RouteMesh 경로를 사용
 
-Fixture는 최소한 다음 정보를 가진다.
+#### CH-E2E-01 같은 RouteMesh에서 양방향 request를 보낸다
 
-```json
-{
-  "config": "ChannelEgressRouting",
-  "roles": {
-    "session": {"routeMeshes": ["game"], "channels": {"game.session": "server", "game.play": "client", "game.api": "client"}},
-    "play": {"routeMeshes": ["game", "audit"], "channels": {"game.play": "server", "game.session": "client", "game.api": "client", "audit.record": "client"}, "clientServer": {"workflow.command": "client"}},
-    "api": {"routeMeshes": ["game"], "channels": {"game.api": "server"}},
-    "workflowClient": {"clientServer": {"workflow.command": "client"}},
-    "workflowServer": {"routeMeshes": ["game"], "channels": {}, "clientServer": {"workflow.command": "client_and_server"}},
-    "audit": {"routeMeshes": ["audit"], "channels": {"audit.record": "server"}}
-  }
-}
-```
+우선순위: `P0`
 
-각 역할 server는 `/health`와 `/evidence`를 제공한다. Evidence는 업무 결과뿐 아니라 다음 관측 정보를
-포함한다.
+두 process가 같은 RouteMesh에서 서로 다른 Server Channel을 제공하면 어느 쪽도 별도 reverse connection을
+구성하지 않고 상대 Channel을 호출할 수 있어야 한다.
 
-- process-local ChannelName과 선택한 egress 종류
-- RouteMesh peer의 논리 RID와 실제 connection 수
-- ClientServer ready server Node RID, weight와 `Draining` state
-- request correlation의 시작·terminal 횟수
-- listener의 configured bind endpoint, actual bound endpoint와 advertised endpoint
-- handler 실행 횟수와 unsolicited message drop·protocol 오류 수
+**검증 질문:** Session과 Play가 서로의 ChannelName으로 보낸 request를 상대 handler가 각각 한 번
+처리하는가.
 
-## 4. 시나리오
+- 시작 조건: Session의 `game.session`과 Play의 `game.play`가 public status에서 ready다.
+- 절차: Session이 `game.play` request를, Play가 `game.session` request를 각각 한 번 보낸다.
+- 검증: 각 request는 상대 역할의 marker가 포함된 reply를 하나만 받는다. 두 handler는 자기 request를
+  각각 한 번 처리하며 다른 역할의 handler에는 같은 operation ID가 기록되지 않는다.
+- 세부 동작: [Channel topology §4.2](../spec/07-channel-topology.ko.md)와
+  [Channel messaging §3.2](../spec/08-channel-messaging.ko.md)를 검증한다.
 
-### CH-E2E-01 — 하나의 RouteMesh에서 양방향 Channel request
+#### CH-E2E-02 Handler가 다른 topology의 Channel을 호출한다
 
-Session이 `game.play`를 요청하고 Play가 `game.session`을 요청한다. 두 호출은 같은 Session↔Play 물리
-peer 연결을 사용하면서 각 Channel의 Server handler에서 처리되고 reply로 한 번씩 완료되어야 한다.
-역할 반대 방향을 위해 두 번째 물리 peer를 만들면 실패다.
+우선순위: `P0`
 
-### CH-E2E-02 — handler에서 다른 egress 호출
+Play handler는 원래 request를 처리하는 중에 Audit RouteMesh와 Workflow ClientServer를 호출한다. 세
+request의 reply가 섞이면 원래 caller가 다른 operation의 결과를 받을 수 있다.
 
-Play의 `game.play` handler가 별도 `audit` RouteMesh의 `audit.record`와 ClientServer
-`workflow.command`를 순서대로 요청한다. 각 ChannelName이 process-local egress 하나를 선택하고 원래
-`game.play` request는 downstream 결과를 포함한 reply 하나로 완료되어야 한다. Reply를 새 application
-packet으로 dispatch하거나 downstream correlation을 원래 correlation으로 재사용하면 실패다.
+**검증 질문:** Handler가 두 downstream Channel을 호출해도 각 reply가 원래 operation에 한 번만
+연결되는가.
 
-### CH-E2E-03 — Spot handler와 timer의 ClientServer 호출
+- 시작 조건: `game.play`, `audit.record`와 `workflow.command`가 모두 public status에서 ready다.
+- 절차: Session이 Play에 operation ID가 포함된 request를 보낸다. Play handler는 같은 ID로 Audit과
+  Workflow를 순서대로 요청하고 두 결과를 원래 reply에 넣는다.
+- 검증: Audit과 Workflow handler는 해당 ID를 각각 한 번 처리한다. Session은 두 downstream 결과가
+  포함된 reply 하나를 받고 별도 unsolicited message를 받지 않는다.
+- 세부 동작: [ClientServer Channel §6.2](../spec/09-client-server-channel.ko.md)의
+  nested request와 reply 구분을 검증한다.
 
-Play Entry Spot의 packet handler는 `workflow.command` request를 `async`로 기다린 뒤 같은 Spot 상태를
-변경한다. Timer callback도 같은 Channel을 `Async`로 기다리고 automatic continuation에서 필요한 상태를
-다시 확인한다. Entry Spot과 `PerActor` User Spot은 Actor별 또는 timer별 lane을 사용하므로 `Yield`를
-허용하지 않는다. Shared Spot turn을 반납하는 `Yield` 검증은 `SpotWide` User Spot 시나리오가 소유한다.
-두 호출의 serial turn 순서, timeout, cancellation과 shutdown 경쟁이 공통 실행 정책과 일치해야 한다.
-다른 egress의 reply를 Spot application queue에 새 packet으로 넣으면 실패다.
+#### CH-E2E-03 Spot callback과 timer에서 ClientServer request를 보낸다
 
-### CH-E2E-04 — ClientServer server 선택, Shutdown과 재시작
+우선순위: `P1`
 
-두 WorkflowServer를 `100`, `300` weight로 시작해 장기 선택 비율이 `1:3`에 수렴하는지 확인한다. Startup과
-runtime update에서 `0`, 기본값 `100`, 상한 `10000`을 허용하고 `-1`, `10001`은 descriptor mutation 전
-configuration error로 거부한다. 많은 `10000` member를 사용해 합계가 32-bit 범위를 넘더라도 최소 64-bit
-합산으로 overflow하지 않는지 확인한다. 한 server의 weight를 0으로 바꾸고 `Shutdown`하면 새 request
-대상에서 제외되지만 이미 수락한 request는 deadline 안에서 끝나야 한다. 같은 논리 역할을 다시 시작하면
-automatic topology가 새 RID와 lifecycle generation을 발급하고 이전 generation의 늦은 reply가 새 request를
-완료하지 않아야 한다.
+Spot callback이 request를 기다리거나 timer가 같은 Spot 상태를 변경해도 Spot의 serial turn 계약은
+유지되어야 한다. Downstream reply를 새 업무 packet처럼 dispatch하면 상태 변경 순서가 달라진다.
 
-### CH-E2E-05 — ClientServer 방향 제한
+**검증 질문:** Spot callback과 timer가 ClientServer reply를 기다린 뒤 정해진 application state 순서로
+완료되는가.
 
-언어별 public API snapshot과 compile-negative test에서 server가 client를 대상으로 새 업무 send/request를
-시작하는 표면이 없어야 한다. Protocol integration 단계에서 unsolicited server message를 주입하면 client
-업무 handler로 전달하지 않고 protocol 오류 evidence만 증가해야 한다.
+- 시작 조건: Play의 Spot, timer와 `workflow.command`가 ready다. Application state의 sequence는 `0`이다.
+- 절차: Client가 Spot handler를 호출하여 Workflow request를 기다리게 한다. Handler 완료 뒤 public
+  application endpoint로 timer를 예약하고 timer evidence가 나올 때까지 bounded polling한다.
+- 검증: Application evidence는 `handler-start, workflow-reply, handler-end, timer-start,
+  workflow-reply, timer-end` 순서이며 sequence는 단계마다 한 번 증가한다. Timer 결과를 고정 sleep으로
+  추정하지 않는다.
+- 세부 동작: [비동기 실행 정책 §2](../spec/05-async-execution-policy.ko.md)과
+  [ClientServer Channel §6.2](../spec/09-client-server-channel.ko.md)를
+  검증한다.
 
-### CH-E2E-06 — process-local ChannelName 충돌
+#### CH-E2E-06 같은 ChannelName을 여러 송신 경로에 등록하면 시작하지 못한다
 
-같은 process에서 같은 ChannelName을 서로 다른 RouteMesh와 ClientServer에 각각 중복 등록한다. Host는
-listener bind와 dispatch 시작 전에 설정 오류로 종료하고, 진단에는 ChannelName과 두 등록 위치가 모두
-포함되어야 한다. 서로 다른 process의 같은 Server ChannelName은 정상 scale-out이므로 충돌로 처리하지
-않는다.
+우선순위: `P0`
 
-### CH-E2E-07 — egress 등록과 연결 상태별 즉시 결과
+한 process에서 같은 `ChannelName`이 RouteMesh와 ClientServer를 모두 가리키면 호출 시점에 어느 경로를
+선택해야 하는지 결정할 수 없다. Framework는 listener를 공개하기 전에 구성을 거부해야 한다.
 
-세 상태를 별도로 검증한다.
+**검증 질문:** 중복 egress registration이 있는 host가 configuration error로 종료되는가.
 
-1. 등록하지 않은 ChannelName 호출은 process-local 송신 경로가 없으므로 즉시
-   `NotFound`로 끝나야 한다.
-2. `Api`의 `game.api` Server는 Client를 중복 등록하지 않은 상태에서 다른 ready `Api`를 대상으로
-   outbound request를 시작한다. 같은 RouteMesh peer 연결의 target membership을 선택해 정상 reply 하나로
-   완료되어야 한다.
-3. 등록한 ChannelName의 target identity는 알려져 있지만 해당 pipe가 아직 ready가 아닌 상태에서 호출하면
-   즉시 `Unavailable`로 끝나야 한다. 이 검증을 위해 known target의 연결을 시작 전에 차단하고,
-   descriptor나 manual intent가 없는 상태와 섞지 않는다.
+- 시작 조건: Negative host가 `duplicate.channel`을 RouteMesh와 ClientServer Client에 public builder로
+  각각 등록한다.
+- 절차: Runner가 negative host를 시작하여 process terminal과 health를 확인한다. 이어서 서로 다른 이름을
+  사용하는 정상 host를 시작한다.
+- 검증: Negative host는 ready가 되지 않고 public configuration error로 종료된다. 정상 host는 두
+  Channel이 ready가 되고 각각 한 번 호출할 수 있다.
+- 세부 동작: [Channel topology §4.4](../spec/07-channel-topology.ko.md)를
+  검증한다.
 
-세 경우 모두 다른 MeshNode, ClientServer client 또는 handler를 relay로 사용하면 실패다. 오류는 operation의
-terminal completion 하나로 관측하며 timeout 증가, settle 대기나 반복 retry로 결과를 늦추면 실패다.
+#### CH-E2E-07A 등록하지 않은 ChannelName은 NotFound다
 
-### CH-E2E-08 — ClientServer에서 RouteMesh 상태 주소로 연속 호출
+우선순위: `P0`
 
-WorkflowServer handler가 server membership 0개인 `game` RouteMesh에서 Spot과 Actor를 요청하고 그 결과로 원래 ClientServer request에
-reply한다. ClientServer correlation, Spot·Actor generation과 RouteMesh reply token이 섞이지 않아야 하며,
-원래 client completion은 reply·timeout·cancellation 경쟁에서도 한 번만 발생해야 한다.
+Process에 송신 경로가 없는 이름을 호출할 때 다른 RouteMesh나 ClientServer를 대신 사용하면 잘못된
+업무 handler가 실행된다.
 
-### CH-E2E-09 — 자동 port와 advertised host
+**검증 질문:** 등록하지 않은 ChannelName의 request가 `NotFound`로 끝나는가.
 
-RouteMesh, ClientServer server, classic fanout publisher와 STREAM server를 port 0으로 bind한다. 실제 bound
-port와 AdvertiseHost로 만든 endpoint가 해당 topology의 record 또는 설정에만 기록되고 remote client가
-모두 연결되어야 한다. Wildcard BindHost와 port 0이 advertised endpoint에 남거나 MeshNode와
-ClientServer descriptor가 섞이면 실패다.
+- 시작 조건: Caller process에 `missing.channel`을 어떤 topology에도 등록하지 않는다.
+- 절차: Caller endpoint가 `missing.channel` request를 한 번 시작한다.
+- 검증: Public error kind는 `NotFound`이며 모든 역할 handler evidence에 operation ID가 없다.
+- 세부 동작: [Channel messaging §3.3](../spec/08-channel-messaging.ko.md)을 검증한다.
 
-### CH-E2E-10 — 응답 없는 ClientServer send
+#### CH-E2E-07B Local Server role만 있어도 remote member를 호출한다
 
-WorkflowClient가 `workflow.command`에 one-way send를 제출한다. Ready server 하나의 send handler만 한 번
-실행되고 reply token, client 수신 packet과 request completion을 만들지 않아야 한다.
+우선순위: `P0`
 
-### CH-E2E-11 — ToChannel 다른 MeshNode Server 호출
+RouteMesh Channel의 Server role은 handler를 제공하면서 같은 Channel membership에 request를 시작할 수
+있다. 별도 Client role이 없다는 이유로 local handler를 직접 호출하거나 실패해서는 안 된다.
 
-`Session`과 `Api` Server를 같은 `game` RouteMesh의 서로 다른 process·MeshNode로 시작한다.
-`Session`은 MeshName, target RID와 endpoint를 전달하지 않고 process-local `game.api` ChannelName만으로
-`RequestToChannel`·`SendToChannel`을 제출한다.
+**검증 질문:** API server가 같은 ChannelName의 다른 ready API server를 정상 호출하는가.
 
-Framework는 `game.api` Server membership의 positive-weight ready member 중 remote `Api` MeshNode를 선택해야
-한다. Request는 해당 remote handler reply로 terminal-once 완료되고 send는 outbound admission으로
-완료된다. Remote evidence에 packet이 각각 한 번 기록되고 source·target이 동일 peer connection을
-공유하되 ChannelName handler namespace와 reply correlation이 유지되어야 한다. 등록하지 않은 다른
-RouteMesh나 ClientServer egress를 fallback·relay로 사용하면 실패다.
+- 시작 조건: 두 API server가 `game.api` Server로 ready이며 호출을 시작할 server에는 같은 이름의
+  Client role을 추가하지 않는다.
+- 절차: 첫 API server의 application endpoint가 `game.api` request를 20번 시작한다.
+- 검증: 각 request는 reply 하나를 받고, 적어도 하나는 다른 process의 handler가 처리한다. Handler count
+  합계는 20이며 operation ID 중복이 없다.
+- 세부 동작: [Channel topology §4.2](../spec/07-channel-topology.ko.md)를
+  검증한다.
 
-### CH-E2E-12 — 같은 process의 ClientServer Client·Server
+#### CH-E2E-07C Known target에 연결할 수 없으면 Unavailable이다
 
-`WorkflowServer` 하나가 같은 `workflow.command` ChannelName의 Client와 Server를 역할별로 한 번씩
-등록한 상태에서 request를 시작한다. Local Server와 다른 process의 remote Server는 Ready, positive
-weight, non-draining 조건을 만족하면 모두 같은 선택 후보에 들어가야 한다.
+우선순위: `P0`
 
-Local Server를 특별히 우선하거나 제외하지 않고 장기 선택 비율이 각 Server weight에 수렴해야 한다.
-Local Server가 선택되어도 handler 직접 호출이나 queue·transport 경계 우회를 만들지 않으며 remote
-Server와 같은 request/reply terminal 의미를 적용한다. Local weight를 `0`으로 바꾸거나 local Server가
-`Draining`이면 신규 선택에서 제외하되 이미 수락한 request는 완료해야 한다.
+Target membership은 알려졌지만 connection이 ready가 아니면 현재 사용할 수 없는 상태다. Framework는
+다른 topology로 우회하거나 timeout까지 반복 제출하지 않는다.
 
-같은 ChannelName의 Client 또는 Server 역할을 같은 process에 두 번 등록한 negative variant는 listener
-bind 전에 startup configuration error로 끝나야 한다. 같은 ChannelName의 Client+Server 조합은 정상이며
-RouteMesh와 같은 ChannelName을 함께 등록하는 충돌은 CH-E2E-06처럼 실패해야 한다.
+**검증 질문:** Known target의 connection이 준비되지 않은 request가 `Unavailable`로 끝나는가.
 
-## 5. 회귀 gate
+- 시작 조건: Caller가 target descriptor를 발견한 뒤 runner가 해당 target으로 가는 network를 차단한다.
+  Public status에서 Channel이 ready가 아님을 확인한다.
+- 절차: Caller가 operation ID가 포함된 request를 한 번 보낸다.
+- 검증: Request는 `Unavailable` terminal 하나로 끝나고 어느 handler에도 operation ID가 기록되지 않는다.
+  다른 RouteMesh나 ClientServer가 처리하면 실패다.
+- 세부 동작: [오류 모델 §4](../spec/32-framework-error-model.ko.md)와
+  [§5](../spec/32-framework-error-model.ko.md)를 검증한다.
 
-Config 12 구현과 함께 다음 회귀를 실행한다.
+#### CH-E2E-11 ChannelName만으로 다른 MeshNode의 Server를 호출한다
 
-| ID | 검증 범위 | 실패 조건 |
-|---|---|---|
-| `CH-REG-01` | 기존 같은 RouteMesh Channel send/request와 weighted routing | handler, weight 또는 reply 의미가 바뀐다 |
-| `CH-REG-02` | `Session`·`Play` Object Server의 Node·Spot·Actor direct, `PreserveStateWith` Actor join과 bound-session push. 두 root의 Location·Relocation Store, stable factory type, adapter capability와 target capacity를 startup evidence로 먼저 확인한다. | Channel egress index가 상태 주소 route를 가로채거나 stateful prerequisite 없이 scenario를 시작한다. |
-| `CH-REG-03` | Logical Multicast와 classic Pub/Sub | ClientServer 경로로 잘못 선택되거나 대상 수가 바뀐다 |
-| `CH-REG-04` | reply·timeout·cancellation·disconnect·Spot shutdown 경쟁 | completion이 누락·중복되거나 늦은 reply가 새 generation에 전달된다 |
-| `CH-REG-05` | 같은 endpoint의 automatic 역할 교체, 새 RID·generation과 reciprocal handover | 재연결 뒤 request가 소실되거나 이전 RID·generation을 선택한다 |
-| `CH-REG-06` | local 정상 완료 시간 | timeout 증가나 반복 retry가 있어야 통과한다 |
-| `CH-REG-07` | 7개 공통 sample 구성 snapshot | 공통 sample topology fixture와 다르다 |
-| `CH-REG-08` | 물리 peer와 listener 수 | 같은 peer pair에 반대 방향 또는 RouteMesh·ClientServer 중복 연결이 생긴다 |
-| `CH-REG-09` | sample 공개 API source | MeshName 은닉 helper, weight 0 client 표현, 가짜 membership 또는 언어별 예외가 남는다 |
-| `CH-REG-10` | 같은 ClientServer ChannelName의 Client+Server 역할별 1회 등록, local Server의 동일 weight 선택과 일반 transport 의미 | Client+Server를 중복 오류로 거부하거나 local Server를 우선·제외하거나 handler를 직접 호출한다 |
+우선순위: `P0`
 
-## 6. 언어별 feature map과 runner inventory
+Application은 target RID와 endpoint를 전달하지 않고 `ChannelName`으로 remote membership을 선택한다.
+호출자에게 physical route 선택을 요구하면 Channel의 위치 투명성이 깨진다.
 
-각 언어 feature map은 `CH-E2E-01~12`, `CH-REG-01~10`을 한 행씩 대응시킨다.
-구현 전에는 `planned` 또는 구체적 gap으로 표시하고 runner·assertion·evidence 경로없이
-`implemented`로 표시하지 않는다. Java와 Kotlin은 binding/runtime을 공유하지만 각 언어의
-public builder와 handler 문법을 compile fixture로 검증한다. Runtime E2E는 JVM lane에서 한
-구성을 공유할 수 있다.
+**검증 질문:** Session이 `game.api`라는 이름만 지정하여 remote API handler의 reply와 send 처리를
+받는가.
 
-| lane | feature map | config runner | 필수 보충 검증 |
-|---|---|---|---|
-| `.NET` | `framework/languages/dotnet/e2e/ChannelEgressRouting/feature-map.ko.md` | `framework/languages/dotnet/e2e/ChannelEgressRouting/run_e2e.sh` | C# public compile·negative surface fixture |
-| Java | `framework/languages/java/e2e/ChannelEgressRouting/feature-map.ko.md` | `framework/languages/java/e2e/ChannelEgressRouting/run_e2e.sh` | Java public compile·negative surface fixture |
-| Kotlin | `framework/languages/java/e2e-kotlin/ChannelEgressRouting/feature-map.ko.md` | JVM runtime runner를 재사용하면 해당 경로를 feature map에 명시 | Kotlin DSL public compile·negative surface fixture |
-| Node.js | `framework/languages/node/e2e/ChannelEgressRouting/feature-map.ko.md` | `framework/languages/node/e2e/ChannelEgressRouting/run_e2e.sh` | TypeScript·NestJS public compile·negative surface fixture |
-| C++ | `framework/languages/cpp/e2e/ChannelEgressRouting/feature-map.ko.md` | `framework/languages/cpp/e2e/ChannelEgressRouting/run_e2e.sh` | 설치 public header compile·negative surface fixture |
+- 시작 조건: Session과 두 API server가 같은 `game` RouteMesh에서 ready다.
+- 절차: Session이 `game.api` request와 send를 각각 한 번 시작한다.
+- 검증: Request는 API 역할 marker가 포함된 reply를 받고 send marker는 API handler 한 곳에 한 번
+  기록된다. Caller endpoint는 MeshName, RID와 endpoint를 입력으로 받지 않는다.
+- 세부 동작: [Channel messaging §3.2](../spec/08-channel-messaging.ko.md)의
+  ChannelName select-one을 검증한다.
 
-각 config runner는 공통 JSON fixture를 직접 읽고 role별 설정 snapshot을 비교한다. 언어별
-fixture 복사본을 두지 않는다. 통합 runner inventory에는 `ChannelEgressRouting`과 config runner
-경로를 추가하고, 선택 실행에서 `ChannelEgressRouting:<scenario-id>`를 전달할 수 있어야 한다.
+### Track B — ClientServer target을 선택하고 lifecycle을 처리
 
-개별 runner는 다음 selector를 지원한다.
+#### CH-E2E-04A ClientServer weight에 따라 target을 선택한다
 
-```text
-all
-CH-E2E-01 ... CH-E2E-12
-CH-REG-01 ... CH-REG-10
-```
+우선순위: `P0`
 
-Runner는 build, 실행 전용 Redis 준비, role별 typed 설정 파일 생성, server readiness, scenario client,
-evidence 수집과 자신이 시작한 process·Redis 정리를 담당한다. Native abort, semantic assertion,
-descriptor 불일치와 completion 중복은 retry하지 않는다. Local readiness·route settle·scenario settle은
-[E2E README §2.1](README.ko.md#21-로컬-e2e-대기-기준)의 기본값 안에서 통과해야 하며 timeout을 늘려
-완료 처리하지 않는다.
+여러 ClientServer Server가 ready이면 weight는 신규 request가 각 target을 선택하는 상대 비율을 정한다.
+짧은 구간의 정확한 순서는 보장하지 않는다.
 
-## 7. 완료 조건
+**검증 질문:** Weight `100:300`인 두 server가 충분한 request에서 대략 `1:3` 비율로 선택되는가.
 
-- 네 framework lane과 Java/Kotlin public compile fixture가 `CH-E2E-01~12`, `CH-REG-01~10`을 모두 통과한다.
-- 공통 fixture와 언어별 구성의 Channel topology projection에 차이가 없다. Object prerequisite는 §2의
-  role server startup evidence와 일치한다.
-- 종료 뒤 남은 server/client/Redis process가 없고 native assertion과 timeout이 없다.
-- Public API snapshot, 정식 exact interface, sample source와 실제 package가 같은 signature를 사용한다.
-- 같은 peer pair의 중복 물리 연결과 topology descriptor 혼용이 없다.
+- 시작 조건: 두 Workflow server가 각각 weight 100과 300으로 ready다.
+- 절차: Workflow caller가 서로 다른 operation ID의 request 800개를 순차 또는 제한된 concurrency로 보낸다.
+- 검증: 800개가 모두 reply 하나를 받고 handler count 합계가 800이다. Weight 300 server의 처리 비율은
+  65~85%다.
+- 세부 동작: [ClientServer Channel §5](../spec/09-client-server-channel.ko.md)를
+  검증한다.
+
+#### CH-E2E-04B Draining server는 신규 request에서 제외한다
+
+우선순위: `P0`
+
+Drain은 이미 받은 request를 마치게 하면서 신규 request 선택을 중단한다. 진행 중인 request까지 즉시
+실패시키거나 새 request를 계속 받으면 무중단 종료가 불가능하다.
+
+**검증 질문:** Drain 전에 수락한 request는 완료되고 drain 뒤의 신규 request는 다른 server가 처리하는가.
+
+- 시작 조건: 두 Workflow server가 ready다. Server A handler는 application signal을 받을 때까지 첫
+  request reply를 보류하도록 구성한다.
+- 절차: 첫 request가 A handler에 도착한 것을 public evidence로 확인한다. A에 public drain operation을
+  시작한 뒤 신규 request 50개를 보낸다. 마지막으로 A handler signal을 해제한다.
+- 검증: 첫 request는 A의 reply로 한 번 완료된다. 신규 50개는 모두 B가 처리하며 A에는 추가 marker가
+  없다.
+- 세부 동작: [ClientServer Channel §7](../spec/09-client-server-channel.ko.md)을
+  검증한다.
+
+#### CH-E2E-04C Server 재시작 뒤 신규 request를 처리한다
+
+우선순위: `P0`
+
+Server process가 재시작되면 이전 lifecycle의 connection과 reply는 더 이상 current가 아니다. Client는
+새 server가 ready가 된 뒤 시작한 request를 새 lifecycle에서 처리해야 한다.
+
+**검증 질문:** Workflow server 재시작 뒤 application retry나 고정 settle 없이 첫 신규 request가
+성공하는가.
+
+- 시작 조건: Server A만 실행하고 정상 대조 request가 성공한 상태다.
+- 절차: Runner가 A를 종료하고 public status에서 not-ready를 확인한다. 같은 역할을 새 process로
+  시작하고 ready가 확인되는 즉시 새 operation ID의 request를 한 번 보낸다.
+- 검증: 새 request는 재시작한 server의 lifecycle marker가 포함된 reply 하나를 받는다. 이전 process의
+  marker가 새 request evidence에 나타나지 않는다.
+- 세부 동작: [ClientServer Channel §8](../spec/09-client-server-channel.ko.md)을 검증한다.
+
+#### CH-E2E-05 Client role이 없는 process는 ClientServer request를 시작하지 못한다
+
+우선순위: `P1`
+
+ClientServer에서는 Client role을 등록한 process만 server connection과 송신 경로를 가진다. Server role만
+있는 process가 같은 이름을 호출해 local handler를 직접 실행해서는 안 된다.
+
+**검증 질문:** Server role만 등록한 process의 ClientServer request가 `NotFound`로 끝나는가.
+
+- 시작 조건: Negative Workflow process에는 `workflow.command` Server role만 등록한다. 별도 정상 caller는
+  Client role로 ready다.
+- 절차: Negative process와 정상 caller가 각각 request를 한 번 시작한다.
+- 검증: Negative process의 request는 `NotFound`이며 handler가 실행되지 않는다. 정상 caller의 request는
+  Workflow handler에서 한 번 처리된다.
+- 세부 동작: [ClientServer Channel §3](../spec/09-client-server-channel.ko.md)의
+  role 책임을 검증한다.
+
+#### CH-E2E-10 ClientServer one-way send는 reply를 만들지 않는다
+
+우선순위: `P0`
+
+One-way send는 ready server 하나에 message를 제출하며 request reply를 기다리지 않는다.
+
+**검증 질문:** ClientServer send가 handler 한 곳에서 한 번 처리되고 client reply를 만들지 않는가.
+
+- 시작 조건: 두 Workflow server와 caller가 ready다.
+- 절차: Caller가 고유 marker의 send를 한 번 제출하고 public handler evidence를 bounded polling한다.
+- 검증: Send public terminal은 성공하고 server 한 곳의 handler에 marker가 한 번 기록된다. Client에는
+  request completion이나 unsolicited payload가 없다.
+- 세부 동작: [ClientServer Channel §6](../spec/09-client-server-channel.ko.md)을
+  검증한다.
+
+#### CH-E2E-12 같은 process의 Client와 Server도 일반 후보로 선택한다
+
+우선순위: `P0`
+
+한 process가 같은 ClientServer Channel의 Client와 Server를 역할별로 한 번씩 등록할 수 있다. Local
+Server도 remote Server와 같은 weight 규칙을 적용하며 무조건 우선하거나 제외하지 않는다.
+
+**검증 질문:** Local과 remote Server가 같은 weight이면 충분한 request에서 둘 다 선택되는가.
+
+- 시작 조건: Workflow process A가 `workflow.command` Client와 Server를 함께 등록하고, process B가 같은
+  이름의 Server를 등록한다. 두 server의 weight는 100이다.
+- 절차: A의 application endpoint가 request 400개를 보낸다.
+- 검증: 400개가 모두 reply 하나를 받고 local과 remote handler가 각각 35~65%를 처리한다. Handler count
+  합계는 400이며 local 호출에도 remote와 같은 application result가 적용된다.
+- 세부 동작: [ClientServer Channel §5.1](../spec/09-client-server-channel.ko.md)을
+  검증한다.
+
+### Track C — Channel handler가 다른 public target을 호출
+
+#### CH-E2E-08 ClientServer handler가 Spot과 Actor를 연속 호출한다
+
+우선순위: `P1`
+
+ClientServer handler는 RouteMesh에 등록된 Spot과 Actor를 public state-address API로 호출할 수 있다. 각
+operation의 identity와 reply가 섞이면 원래 ClientServer request가 잘못 완료된다.
+
+**검증 질문:** Workflow handler가 Spot과 Actor request를 마친 뒤 두 결과로 원래 reply를 한 번
+완료하는가.
+
+- 시작 조건: Workflow server는 `game` RouteMesh의 Object Client이고, ready Spot과 Actor의 ID를
+  application fixture로 가진다.
+- 절차: Workflow caller가 operation ID가 포함된 request를 보낸다. Handler는 Spot request와 Actor
+  request를 순서대로 실행한다.
+- 검증: Spot과 Actor handler는 같은 operation ID를 각각 한 번 처리한다. Workflow caller는 두 결과가
+  포함된 reply 하나를 받으며 별도 payload를 받지 않는다.
+- 세부 동작: [ClientServer Channel §6.2](../spec/09-client-server-channel.ko.md)와
+  [Spot messaging](../spec/12-spot-messaging.ko.md)을 검증한다.
+
+### Track D — Remote listener 주소 확정
+
+#### CH-E2E-09 Port 0과 advertised host로 remote connection을 만든다
+
+우선순위: `P0`
+
+Port `0`으로 bind하면 OS가 실제 port를 정한다. Wildcard bind 주소는 remote가 접속할 주소가 아니므로
+Framework는 확정된 port와 `AdvertiseHost`를 조합하여 공개해야 한다.
+
+**검증 질문:** 네 listener 종류가 port 0으로 시작해 public endpoint를 제공하고 remote client가 실제로
+연결되는가.
+
+- 시작 조건: RouteMesh, ClientServer, classic fanout publisher와 Stream server를 port 0, wildcard
+  BindHost와 접근 가능한 AdvertiseHost로 구성한다.
+- 절차: 각 listener의 public status가 ready가 된 뒤 실제 bound port와 advertised endpoint를 읽는다.
+  대응하는 remote client가 각 topology의 정상 message를 한 번 보낸다.
+- 검증: 모든 actual port는 0이 아니며 advertised endpoint에는 wildcard host와 port 0이 없다. 각 remote
+  client가 대응 handler 또는 subscriber result를 받으며 다른 topology의 endpoint로 연결되지 않는다.
+- 세부 동작: [Network listener identity §4](../spec/10-network-listener-identity.ko.md)와
+  [§5](../spec/10-network-listener-identity.ko.md)를 검증한다.
+
+## 5. 완료 기준
+
+- 모든 절차와 판정은 public Framework API, public status와 역할 server의 application evidence만 사용한다.
+- Internal egress index, descriptor record, reply token, socket 수와 physical connection ID는 통과 조건이
+  아니다.
+- Weighted scenario는 충분한 표본과 명시한 허용 범위를 사용하며 exact selection 순서를 요구하지 않는다.
+- Readiness와 handler 완료는 bounded polling으로 확인하고 고정 sleep이나 log flush 순서에 의존하지 않는다.
+- 모든 request는 reply, public error, timeout 또는 cancellation 중 terminal 결과 하나만 가져야 한다.

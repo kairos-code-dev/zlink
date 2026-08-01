@@ -337,8 +337,9 @@ generation은 [41 Redis location store](../../spec/22-location-store-redis.ko.md
 Framework가 owner route와 generation을 관리한다. 샘플 코드가 owner NodeRid를 읽거나
 보관하지 않는다([Spot 주소 메시징](../../spec/16-spot-address-messaging.ko.md)).
 
-Redis에 없는 room id는 재시도 가능한 route-not-found 오류로 처리한다. 없는 room을 샘플
-전용 fallback으로 새로 만들면 scale-out routing 오류가 숨겨지므로 금지한다.
+Redis에 없는 room id는 `NotFound`로 처리한다. Framework는 이 결과에 retry 가능 여부를 붙이지 않는다.
+Application이 새 operation을 시작하려면 요청의 idempotency와 현재 상태를 확인해 별도로 결정한다. 없는
+room을 샘플 전용 fallback으로 새로 만들면 scale-out routing 오류가 숨겨지므로 금지한다.
 
 ### 6.3 Logical Multicast 연결
 
@@ -839,16 +840,16 @@ stream 연결 정리이고, actor destroy는 room lifecycle이 끝난 뒤 Entry 
 
 ### 16.1 Disconnect 흐름
 
-client stream이 끊기면 Play session은 현재 session과 연결된 actor client reference나
-bound session을 정리한다. disconnect callback은 actor가 더 이상 이 stream으로 push를 받을
-수 없다는 사실만 actor에 반영한다. disconnect callback이 room leave나 actor destroy를 직접
-실행하면 안 된다.
+client stream이 끊기면 Framework는 current binding snapshot의 각 exact binding identity에 disconnect를
+자동 제출하고 tombstone과 local cleanup을 완료한다. Play session callback이 actor binding이나 client
+reference를 직접 제거하지 않는다. Current Spot의 `OnDisconnectActorAsync`는 actor가 더 이상 이 stream으로
+push를 받을 수 없다는 domain 상태만 반영하며 room leave나 actor destroy를 실행하지 않는다.
 
 이 샘플은 disconnect cleanup을 눈에 보이게 구현해야 한다. 언어별 표현은 달라도 아래 동작은
 같아야 한다.
 
-- Play session은 disconnect callback에서 현재 session의 actor binding 또는 client reference를
-  제거한다.
+- Framework가 current session의 actor binding을 정리하며, Play session callback은 bound Actor를
+  순회하거나 binding을 직접 제거하지 않는다.
 - actor 객체는 actor runtime에 남아 있고, room에 들어가 있었다면 room membership도 유지된다.
 - 이후 같은 actor id로 다시 인증하면 기존 actor를 재사용하거나 같은 의미의 actor 상태로
   복구할 수 있어야 한다.
@@ -860,7 +861,8 @@ room Spot이 승리 또는 draw를 감지해 최종 `GameStateNotify`를 전송�
 돌려보내고, Entry Spot은 actor를 정리한다. 정리 순서는 모든 언어 샘플에서 아래와 같아야
 한다.
 
-1. actor 객체 생성이 끝나면 framework는 create payload와 함께 `onCreateActor`를 한 번 호출한다.
+1. Framework는 create payload로 `onCreateActor`를 실행한다. 같은 생성 attempt를 recovery하면 callback을
+   다시 호출할 수 있으므로 초기화와 외부 효과는 retry-safe해야 한다.
 2. client는 최종 `GameState`를 확인한 뒤 `LeaveGameReq`를 보낸다.
 3. room Spot은 요청한 actor에 “Entry Spot으로 돌아오면 destroy한다”는 표시를 남긴다.
 4. room Spot은 `leaveActor`로 actor를 room에서 내보낸다.
@@ -870,8 +872,9 @@ room Spot이 승리 또는 draw를 감지해 최종 `GameStateNotify`를 전송�
    Entry Spot context의 `destroyActor`를 호출한다.
 7. `destroyActor`는 `onLeaveActor`나 다른 lifecycle callback을 호출하지 않고 actor 객체,
    native actor ref, framework registry, bound session binding을 정리한다.
-8. 같은 actor에 대한 중복 destroy나 destroy 중 재진입은 성공 no-op이어야 하며,
-   lifecycle callback을 다시 호출하면 안 된다.
+8. 같은 incarnation이 이미 없으면 destroy는 idempotent `false`를 반환하고 lifecycle callback을 다시
+   호출하지 않는다. 같은 `ActorId`의 다른 generation이면 `InvalidOperation`, relocation seal 중이면
+   `Unavailable`로 끝난다.
 
 ```mermaid
 sequenceDiagram
@@ -897,7 +900,7 @@ client self-check는 최종 `GameStateNotify`를 검증한 뒤 양쪽 client가 
 evidence로 확인한다. 언어별 `run_sample` 또는 sample regression은 Play 서버 로그, fake
 backend call, runtime event, 또는 framework 테스트 중 하나로 아래 사실을 확인해야 한다.
 
-- disconnect callback이 actor의 current stream binding을 정리한다.
+- Framework가 actor의 current stream binding을 정리하고 disconnect callback은 bound Actor를 순회하지 않는다.
 - disconnect cleanup만으로 actor destroy가 실행되지 않는다.
 - 게임 종료 후 client가 `LeaveGameReq`를 보낼 때 room Spot `onLeaveActor`가 각 actor마다
   실행된다.

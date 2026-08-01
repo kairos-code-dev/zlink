@@ -4,278 +4,565 @@
 
 # Config 14 — Instance Spot activation
 
-이 config는 global Spot ID를 받는 Spot direct call에 Instance intent를 명시한 첫 send/request가 Location
-authority owner 하나와
-언어별 Framework runtime의 Instance Spot 하나로 수렴하는지 검증한다. Location row가
-`Ready`가 되기 전에는 application handler를 실행하지 않고, `Ready` commit 뒤에는 첫
-message부터 Instance Spot queue에서 순서대로 처리해야 한다.
+Instance Spot은 Application이 global Spot ID로 처음 message를 보낼 때 필요한 Spot을 만든다. Caller는 owner
+node를 선택하거나 Spot을 먼저 만들지 않는다. Framework는 공개 Instance intent를 확인하고 적합한 node에
+Spot 하나를 준비한 뒤 첫 message부터 같은 Spot의 execution queue에서 처리한다.
 
-일반 Spot direct call은 existing-only이며 Missing Spot ID에서 Instance intent를 명시한 call만 cold activation을
-시작한다. Spot manager는 User Spot Create·GetOrCreate만 제공하고 Instance Spot create operation을
-제공하지 않는다. Core와 bindings는 raw socket transport만 제공하며 Instance
-activation, owner claim, barrier와 queue를 해석하지 않는다.
+이 config는 이 공개 동작이 여러 process와 실제 Store를 사용하는 배포에서도 유지되는지 검증한다. Location
+Store row, activation barrier, claim token, recovery cursor와 Core frame은 판정에 사용하지 않는다. Application
+factory·handler·lifecycle callback이 실행된 결과는 역할 server의 public evidence endpoint로 확인한다.
 
-공개 계약은 [비동기 실행 정책](../spec/05-async-execution-policy.ko.md),
-[Spot 메시징](../spec/12-spot-messaging.ko.md),
-[Spot 주소 메시징](../spec/16-spot-address-messaging.ko.md),
-[Location runtime](../spec/21-location-runtime.ko.md)과
-[Redis location store](../spec/22-location-store-redis.ko.md)가 소유한다.
+## 1. 확인 범위
 
-## 1. 검증 범위
+- Missing global Spot ID에 Instance intent를 지정한 첫 request와 send
+- Concurrent first call이 Instance Spot 하나로 수렴하는 동작
+- First message와 후속 message의 처리 순서
+- Capacity, stable type, initial Mesh와 기존 owner routing
+- Crash, Store 장애, deadline과 relocation 뒤의 공개 결과
+- Instance Spot에서 허용하지 않는 Actor와 Logical Multicast 기능
+- 서로 다른 Framework 언어 사이의 같은 payload와 terminal 의미
 
-- Spot direct 시작 method는 global Spot ID와 typed payload만 받는다. Instance intent를 명시한 call
-  builder에서만 optional stable type과 initial Mesh를 설정한다.
-- 선택한 Object Mesh에서 stable type을 제공하고 `Serving` 상태이며 capacity가 남은 node만 placement
-  후보가 되고 node-wide weight를 적용한다.
-- Source runtime은 public send deadline 안에서 Location Store resolve와 eligible target 선택을 끝내고, global
-  Spot ID·stable type·target descriptor fence·operation identity·reply correlation·deadline과 first message를
-  포함한 activation envelope를 target transport에 제출한다. Source는 owner claim이나 `Creating` authority를
-  만들지 않으며 caller에게 endpoint, node RID, owner token과 generation을 요구하지 않는다.
-- Target runtime은 current authority와 local Instance registry를 확인한다. Missing이면 complete activation
-  envelope를 Relocation Store에 먼저 저장하고 target 자신을 owner로 generic reservation을 획득한다. CAS winner
-  하나만 factory를 실행한다. Factory·initialize 뒤 durable activation inbox first record를 확정하되 handler는
-  barrier로 막고, recovery root·cursor를 유지한 `Ready` commit 뒤 queue head를 복원해 barrier를 연다.
-- Target이 reservation을 획득한 뒤 종료되면 exact target owner는 initial·background bounded authority scan으로
-  자신의 기존 claim과 immutable first-message reference를 발견해 같은 activation barrier를 idempotent하게
-  재개한다. Source가 envelope admission 전에 종료된 경우에는 authority row가 없으며 다음 call만 activation을
-  새로 시작한다.
-- Internal activation barrier가 닫혀 있는 동안 업무 message와 timer를 application handler에 전달하지
-  않는다.
-- `Ready` owner에 보낸 후속 message는 cold first message를 추월하지 않는다.
-- Actor membership과 Logical Multicast subscription은 Instance Spot에 등록할 수 없다.
-- CAS loser의 application pre-admission redirect 한 번 외에는 send/request를 다른 owner에게 재제출하지
-  않는다.
-- Instance one-way call은 source outbound admission으로 완료하며 remote handler 실행 완료를
-  기다리지 않는다.
-- Process pause 뒤 재개한 stale owner는 local monotonic authority deadline을 확인하고 message,
-  timer, factory completion과 Store CAS를 모두 거부한다.
+일반 Spot direct call은 existing-only다. Instance intent가 없는 Missing Spot 호출은 Spot을 만들지 않는다.
+Instance Spot 생성은 Spot manager의 public Create·GetOrCreate 기능으로 노출하지 않는다.
 
-HTTP client package와 stream connector package에는 Instance Spot API를 추가하지 않는다. Client는 실제
-역할 server의 HTTP endpoint를 호출하고, 역할 server가 Framework 공개 API로 Instance Spot을 호출한다.
+## 2. 배포 구성과 판정 방법
 
-## 2. 서버 구성
-
-```mermaid
-flowchart LR
-    C1[Caller A] --> L[(Redis Location Store)]
-    C2[Caller B] --> L
-    C1 --> O1[Instance Owner A]
-    C1 --> O2[Instance Owner B]
-    C2 --> O1
-    C2 --> O2
-    O1 --> T[(Redis Relocation Store)]
-    O2 --> T
-    O1 --> S[(External State Store)]
-    O2 --> S
-    A[Admin and Evidence] --> C1
-    A --> C2
-    A --> O1
-    A --> O2
-```
-
-다이어그램의 화살표는 검증에서 사용하는 호출·제어 관계다. Actual owner는 caller가
-endpoint를 지정해 선택하지 않고 Location authority CAS가 결정한다.
-
-| 역할 | 수 | 책임 |
+| 역할 | 수 | 하는 일 |
 |---|---:|---|
-| `InstanceCaller` | 2 | Object Client 역할과 Location Store를 등록한다. 서로 다른 process에서 같은 global Spot ID로 send/request를 시작한다. |
-| `InstanceOwner` | 2 | Object Server 역할, Location Store와 Relocation Store를 등록한다. Stable type `PlayerQuestSpot`·`OrderWorkflowSpot`은 `PreserveStateWith` policy와 각 `IZLinkSpotRelocationAdapter<TSpot>`을 사용하고, 별도 negative type은 `DisableRelocation`, recovery 비교 type은 `RecreateOnRelocation`을 사용한다. 모든 factory는 explicit policy와 양수 placement weight를 제공하고, node의 Spot 전체와 각 Instance Spot stable-type population limit 및 별도 activation concurrency limit을 설정한다. Activation·handler·timer evidence도 기록한다. |
-| `SpotOwner` | 1 | Object Server 역할과 Location Store를 등록하고 User Spot factory에는 stable type과 explicit `DisableRelocation` policy를 제공한다. Entry Spot과 같은 Spot ID의 User Spot 충돌, existing-only Spot 회귀를 검증하며 relocation은 시작하지 않는다. |
-| `MultiMeshCaller` | 1 | 다른 Object Mesh를 initial placement으로 지정하되 global Spot ID 중복이 하나의 authority로 수렴함을 검증한다 |
-| Redis Location Store | 1 | Descriptor, owner lease, Instance authority와 CAS를 제공한다 |
-| Redis Relocation Store | 1 | Relocate의 immutable application state·accepted journal payload와 cold activation의 complete first-message recovery root·durable inbox first record를 보존한다. External State Store를 대신하지 않으며 별도 Store instance와 key prefix를 사용한다. |
-| External State Store | 1 | Factory 복구와 reference sample의 domain state를 보존한다 |
-| `AdminAndEvidence` | 1 | Process pause·resume·crash, barrier와 bounded evidence wait를 제어하며 Framework message를 대신 보내지 않는다 |
+| Instance caller | 2 | 서로 다른 process에서 public Spot request·send를 시작한다. |
+| Instance owner | 2 | 같은 stable type의 Instance factory와 packet·timer handler를 제공한다. |
+| User Spot owner | 1 | 같은 ID에 다른 kind의 Spot을 만드는 경합과 existing-only 회귀를 검증한다. |
+| Location Store | 1 | Global Spot location과 node 상태를 제공한다. |
+| Relocation Store | 1 | Instance relocation과 activation 복구에 필요한 Framework state를 보존한다. |
+| External state store | 1 | Application domain state를 보존한다. |
+| E2E runner | 1 | Process와 network·Store 장애만 제어하고 Framework operation은 역할 server의 public endpoint로 시작한다. |
 
-Runner는 자신이 시작한 Redis와 child process만 정리한다. Readiness와 evidence 대기는
-[E2E 공통 로컬 대기 기준](README.ko.md#21-로컬-e2e-대기-기준)을 따른다. 로컬 실패를
-통과시키기 위해 timeout과 settle 값을 늘리지 않는다.
+각 factory와 handler는 Spot ID, operation ID, 실행 순서, process ID와 domain state version을 Application
+state에 기록한다. E2E는 client result, public Spot 조회·status와 이 Application evidence만 사용한다.
+Readiness는 public startup evidence를 bounded polling하여 확인한다. Fixed sleep으로 lease나 복구 완료를
+추정하지 않는다.
 
-## 3. 결정적 경합 제어
+## 3. Scenario
 
-### 3.1 Lease와 Store 시각
+### Track A — 첫 call과 기본 routing
 
-Lease 시나리오는 장시간 `sleep`으로 만료를 추정하지 않는다. Redis script는 authority row,
-owner lease와 Redis `TIME`을 한 operation에서 반환한다. 검증 전용 clock hook은 expiry 경계를
-앞당길 수 있지만 CAS 결과를 만들거나 authority 검증을 우회하지 않는다.
+#### IS-E2E-01 Cold request
 
-Evidence는 operation ID, Store call 시작·완료의 local monotonic 시각, `StoreNow`,
-`LeaseExpiresAt`, fencing margin, owner ID, authority owner generation, object generation, opaque store version과 CAS
-status를 같이 기록한다.
+우선순위: `P0`
 
-### 3.2 Activation barrier
+Missing Spot에 Instance intent를 지정한 첫 request는 Spot 준비와 첫 업무 처리를 하나의 public operation으로
+제공해야 한다.
 
-Factory 초기화 뒤와 `Ready` CAS 전에 internal test barrier를 둔다. 이 barrier는 public API가
-아니며 activation 결과를 변경하거나 handler를 직접 호출하지 않는다. Barrier가 닫혀 있을
-때는 application handler count 0, activation concurrency active 1, `Reserved` allocation 1과 Spot 전체·stable
-type capacity의 reserved count 증가를 확인한다. Barrier를 열면 `Ready` CAS를 먼저 확인한 뒤 allocation과
-두 capacity count가 `Active`로 전환되고 admission sequence 순서로 handler가
-실행되어야 한다.
+**검증 질문:** Caller가 Spot을 미리 만들지 않아도 첫 request가 한 번 처리되고 reply를 받는가.
 
-### 3.3 Process pause·crash
+- 시작 조건: 두 owner가 stable type을 제공하며 해당 Spot ID는 public 조회에서 Missing이다.
+- 절차: Caller A가 Instance intent와 함께 request를 한 번 보낸다.
+- 검증: Factory와 request handler가 각각 한 번 실행되고 reply의 Spot ID와 operation ID가 입력과 같다. 이후 public 조회는 Ready Spot ref를 반환한다.
+- 계약 근거: [Spot 주소 메시징](../spec/16-spot-address-messaging.ko.md), [Location runtime](../spec/21-location-runtime.ko.md)
 
-Stale owner 검증은 owner process를 실제로 중지했다가 local monotonic authority deadline 뒤에
-재개한다. Crash 시나리오는 정상 maintenance endpoint를 사용하지 않고 process를 종료한다.
-정상 `Relocate`·`Shutdown` 결과와 crash recovery evidence를 섞지 않는다.
+#### IS-E2E-02 Cold send
 
-### 3.4 Call deadline
+우선순위: `P0`
 
-짧은 request와 긴 request는 같은 activation group에 제출하되 각 public deadline을 유지한다. Spot ID
-resolve·claim에 사용한 시간도 각 deadline에 포함한다. 짧은 request가 만료되어도 shared
-activation, 긴 request와 one-way send를 취소하지 않는다.
+One-way send의 성공은 Framework가 message를 전송 경로에 수락했다는 뜻이다. Remote handler 완료를 기다린다는
+뜻은 아니다.
 
-## 4. Contract test matrix
+**검증 질문:** Cold send가 public send 의미로 완료되고 수락된 message가 최종 owner에서 한 번 처리되는가.
 
-### 4.1 Raw Core·bindings 경계
+- 시작 조건: 대상 Spot은 Missing이고 owner factory의 진행을 Application gate로 지연할 수 있다.
+- 절차: Gate를 닫고 Instance intent send를 호출한 뒤 send result를 확인하고 gate를 연다.
+- 검증: Send는 handler 완료 전 성공할 수 있으며, gate 해제 뒤 handler evidence가 한 건 생긴다. Activation 실패를 주입한 별도 입력은 이미 반환한 send result를 바꾸지 않는다.
+- 계약 근거: [비동기 실행 정책](../spec/05-async-execution-policy.ko.md), [Spot messaging](../spec/12-spot-messaging.ko.md)
 
-| ID | 검증 대상 | 완료 조건 |
-|---|---|---|
-| `IS-R01` | 제거 표면 | Core install header·export와 네 bindings public package에 Instance target·token·activation·claim·barrier type·function이 0건 |
-| `IS-R02` | Raw capability | 네 bindings의 공개 raw socket API만으로 multipart, routing ID, monitor, bounded send·receive와 close를 구현할 수 있음 |
-| `IS-R03` | Package boundary | Framework가 binding private symbol, reflection, generated native service symbol과 Core private header를 사용하지 않음 |
+#### IS-E2E-03 Concurrent first call
 
-### 4.2 Framework public contract
+우선순위: `P0`
 
-| ID | 검증 대상 | 완료 조건 |
-|---|---|---|
-| `IS-F01` | Direct fluent target | 시작 method는 global Spot ID와 payload만 받고 Instance intent의 stable type과 initial Mesh는 Missing authority에만 적용 |
-| `IS-F02` | Factory | Actor-free Instance lifecycle과 packet·timer handler registry만 제공하고 잘못된 capability를 startup에서 거부 |
-| `IS-F03` | Builder | Existing-only·Instance marker, optional type inference, `InMesh`와 send/request terminal이 다섯 public 언어에서 같은 의미를 가짐 |
-| `IS-F04` | Descriptor | Instance type set을 정렬·중복 제거해 게시하고 runtime 중 변경하지 않음 |
-| `IS-F05` | Placement | 선택한 initial Mesh, valid lease·generation, `Serving`, stable type·capacity를 모두 만족하는 node에 node-wide weight를 적용 |
-| `IS-F06` | Location authority | Target-owned claim, `Ready`, `Closing`, release가 opaque expected-version CAS와 같은 state transition을 사용 |
-| `IS-F07` | Activation leader | 같은 global Spot ID의 concurrent envelope가 target CAS winner, factory, DI scope과 type slot 하나로 수렴 |
-| `IS-F08` | Ordering | Activation envelope admission, immutable recovery root Put·verify, target reservation, Configure, message 없는 initialize, durable activation inbox first record, recovery root·cursor를 유지한 `Ready` CAS, local queue head restore, barrier open 순서를 지킴. First record 확정 전 handler count는 0이고 Ready 뒤 후속 message는 이 queue head를 추월하지 않는다. 첫 handler terminal completion의 durable 기록과 cursor 갱신 전에는 recovery pointer를 release하지 않음 |
-| `IS-F09` | Failure cleanup | Factory·initialize·`Ready`·barrier 실패에서 local barrier를 닫고 request를 typed terminal-once로 완료하며 one-way drop·event를 기록한다. Exact owner fence로 row를 삭제한 뒤 Missing 또는 current replacement를 확인하고 queue·scope·slot을 한 번 정리하며 같은 registry에서 hidden rerun을 하지 않음 |
-| `IS-F10` | 재제출 경계 | CAS loser redirect 한 번 외의 hidden retry·replay가 없음 |
-| `IS-F11` | Lease fence | Local monotonic deadline 뒤 stale message·timer·factory completion·CAS를 application admission 전에 거부 |
-| `IS-F12` | Takeover | Background cleanup이 owner를 선택하지 않고 expiry 뒤 새 caller claim만 더 높은 authority owner generation과 store version으로 교체. Exact owner의 recovery scan은 기존 `Creating` claim만 재개 |
-| `IS-F13` | Maintenance | `Relocate`는 compatible target에 Instance authority·state를 이전하고 source에 `OnClosing(RelocationOut)`을 전달함. `Shutdown`은 새 relocation 없이 `OnClosing(HostShutdown)`과 bounded release를 수행하며 두 경로 모두 host deadline과 terminal-once를 지킴 |
-| `IS-F14` | Observability | Activation 결과·시간, bounded pending, conflict, takeover과 one-way drop을 bounded label로 기록 |
-| `IS-F15` | Async-only | Instance send에도 async submit 하나만 제공하고 `TrySubmit` 계열을 제공하지 않음 |
+서로 다른 caller가 같은 Missing ID를 동시에 호출해도 Application에는 Spot 하나만 보여야 한다.
 
-### 4.3 Internal protocol·runtime contract
+**검증 질문:** Concurrent requests가 factory 하나와 serial handler 하나로 수렴하는가.
 
-| ID | 검증 대상 | 완료 조건 |
-|---|---|---|
-| `IS-P01` | Cold target | Activation recovery envelope가 global Spot ID, selected initial Mesh, target descriptor fence, Instance type, source node RID·lifecycle generation·optional source Spot ID, first packet contract, operation identity·request correlation과 deadline을 보존 |
-| `IS-P02` | Authority fence | Source claim은 0건이다. Target은 envelope의 descriptor lifecycle·owner lease와 current Store state를 exact 확인하고 자신을 owner로 reservation을 획득하며 CAS winner만 object·authority owner generation을 발급함 |
-| `IS-P03` | Bounded queue | Activation 중 message·byte 상한, FIFO과 request terminal-once를 보존 |
-| `IS-P04` | Barrier | Durable inbox first record는 `Ready` CAS 전에 확정하지만 application handler count는 0이다. Ready payload가 recovery root·cursor를 유지하고 local queue head restore 뒤 barrier를 열어 admission sequence를 보존 |
-| `IS-P05` | Failure code | Stable wire code, payload presence과 unknown code를 네 decoder가 같게 검증 |
-| `IS-P06` | Resource cleanup | Close, lease expiry, activation abort과 host terminal 뒤 pending operation·timer·scope·socket이 남지 않음 |
-| `IS-P07` | Activation crash recovery | Envelope admission 전 source crash는 authority를 남기지 않는다. Relocation Put 뒤 Reserve 전 crash는 unpublished orphan만 남기며 retention 또는 delete로 정리한다. Target reservation 뒤 crash는 Pending snapshot의 provider-issued reservation과 complete first-message receipt를 exact owner의 bounded recovery scan이 복원해 같은 generation·barrier로 수렴시킴 |
-| `IS-P08` | Activation failure release | Factory·initialize·`Ready` 실패는 current Store version, object generation, authority owner generation과 owner lease를 모두 확인한 delete로만 `Creating` row를 제거한다. 결과가 불명확하면 exact read로 수렴하고 Missing 뒤 다음 caller만 새 generation으로 claim함 |
-| `IS-P09` | Recovery pointer release | Ready Instance의 first handler가 terminal completion을 durable하게 기록하고 replay cursor가 inbox sequence에 도달한 뒤에만 Preserve CAS로 pointer를 제거한다. Queue admission·handler 시작·실행 중 crash에서는 pointer와 root를 유지함 |
+- 시작 조건: 같은 stable type을 제공하는 owner 두 개가 Ready다.
+- 절차: Caller A와 B가 같은 Spot ID에 고유 operation ID request를 충분한 수로 동시에 보낸다.
+- 검증: 모든 성공 reply가 같은 Spot identity를 가리키며 factory 실행은 한 번이다. 모든 operation ID는 중복 없이 한 번씩 처리되고 handler active count는 1을 넘지 않는다.
+- 계약 근거: [Spot 주소 메시징](../spec/16-spot-address-messaging.ko.md)
 
-## 5. 회귀 시나리오
+#### IS-E2E-04 Different Spot ID
 
-| ID | 검증 대상 | 완료 조건 |
-|---|---|---|
-| `IS-REG-01` | Missing existing-only call | Instance marker 없는 Spot ID 호출은 `NotFound`이며 activation·creation intent를 시작하지 않음 |
-| `IS-REG-02` | Generation fence | Direct Spot generation 0·stale generation을 거부하고 create-if-missing으로 해석하지 않음 |
-| `IS-REG-03` | User Spot creation | User Spot Create·GetOrCreate가 global authority·factory 하나로 수렴하고 Instance kind를 만들지 않음 |
-| `IS-REG-04` | Entry Spot | Startup Entry Spot, Actor 기본 위치와 shutdown 순서가 유지됨 |
-| `IS-REG-05` | Actor membership | Entry·User Spot의 Actor join·leave·relocation은 유지되고 Instance target에서만 거부됨 |
-| `IS-REG-06` | 일반 Spot maintenance | Entry·User Spot authority를 Instance kind로 변경하거나 자동 activation하지 않음 |
-| `IS-REG-07` | Channel messaging | Channel handler 선택·reply correlation이 Instance resolve의 영향을 받지 않음 |
-| `IS-REG-08` | Row compatibility | `Creating`·`Closing` Instance row를 manager `Find`의 Ready `SpotRef`로 반환하지 않음 |
-| `IS-REG-09` | Kind·type conflict | 유지 중인 Entry·User Spot 또는 다른 Instance type을 변경하지 않고 activation 전에 실패 |
-| `IS-REG-10` | Existing send | `Ready` Instance를 포함한 existing-only send가 exact direct route와 source submit 의미를 사용 |
-| `IS-REG-11` | Existing request | Request deadline·cancellation·terminal-once가 Instance hidden retry로 바뀌지 않음 |
-| `IS-REG-12` | Public surface | Spot ID fluent call·factory·async send/request만 노출하고 Instance address·manager create·raw placement·token·phase helper를 노출하지 않음 |
-| `IS-REG-13` | Global identity | 같은 Spot ID를 다른 Mesh에 동시 생성해도 authority·kind·type·generation 하나로 수렴하고 Mesh별 row를 만들지 않음 |
-| `IS-REG-14` | Core·binding removal | Core·binding public surface에 Instance service API를 복구하지 않음 |
+우선순위: `P1`
 
-## 6. E2E 시나리오
+서로 다른 Instance Spot은 각자의 execution queue를 사용하므로 한 Spot의 handler가 다른 Spot의 처리를 막지
+않아야 한다.
 
-| ID | 시나리오 | 완료 조건 |
-|---|---|---|
-| `IS-E2E-01` | Cold request | Row가 없는 global Spot ID의 Instance-intent request envelope가 target-owned claim·factory·`Ready` 뒤 handler에서 한 번 실행되고 reply를 반환 |
-| `IS-E2E-02` | Cold send | Resolve·selection과 activation envelope outbound admission은 같은 send deadline 안에서 끝나고 Submit은 outbound admission으로 완료되며 target reservation·factory·Ready를 기다리지 않음. Target activation 실패는 이미 반환한 결과를 바꾸지 않고 drop·flow event로 관측 |
-| `IS-E2E-03` | Concurrent first call | 두 caller의 request 100개가 authority owner·runtime object·factory 하나와 handler concurrency 1로 수렴 |
-| `IS-E2E-04` | Different Spot ID | 여러 Spot ID가 eligible node에 분산되고 Spot ID별 serial queue가 서로를 차단하지 않음 |
-| `IS-E2E-05` | `Ready` owner crash | Lease 만료 전에는 새 owner가 없고 expiry 뒤 새 call만 같은 object generation과 더 높은 authority owner generation으로 복구 |
-| `IS-E2E-06` | `Creating` owner crash | Pending request가 claim에서 발급한 같은 nonzero object generation과 owner fence의 terminal failure로 완료되고 lease expiry 뒤 새 call만 activation을 시작 |
-| `IS-E2E-07` | Normal `Relocate` | 신규 placement에서 A를 제외하고 accepted turn·owner commit 뒤 B가 같은 object generation과 더 높은 authority owner generation으로 materialize |
-| `IS-E2E-08` | Close and reactivate | `Closing` 중 신규 activation을 막고 release 뒤 새 call만 더 높은 object·authority owner generation을 사용 |
-| `IS-E2E-09` | Concurrent takeover | 만료 row를 신고한 두 caller 중 CAS winner의 factory·handler만 실행 |
-| `IS-E2E-10` | Stale owner resume | A를 deadline 뒤 재개해도 message·timer·factory completion·CAS·release를 수행하지 못함 |
-| `IS-E2E-11` | Confirmed not admitted | Target 미수락이 확정되어도 같은 request를 다른 owner에 재제출하지 않고 terminal 하나로 완료 |
-| `IS-E2E-12` | Ambiguous result | Target 수락 뒤 connection을 종료해도 다른 owner로 재제출하지 않음 |
-| `IS-E2E-13` | Accepted send then failure | 다른 owner에서 replay하지 않고 runtime error·trace·drop metric으로 관측 |
-| `IS-E2E-14` | Store outage | Authority deadline 뒤 cached route와 target admission을 막고 Missing Spot ID를 local 상태로 추측하지 않음 |
-| `IS-E2E-15` | Kind·type atomic conflict | 같은 global Spot ID의 User Spot `GetOrCreate`와 Instance cold request를 동시에 제출해 authority CAS winner의 kind·type·factory 하나만 성공하고 loser가 Mesh별 location row·generation을 남기지 않음. Winner close 뒤 다른 kind를 만들면 더 높은 object generation을 사용 |
-| `IS-E2E-16` | No eligible node | Stable type을 제공하는 node가 없으면 request와 send가 `NotFound`, capability는 있지만 capacity가 모두 소진됐으면 `CapacityExceeded`로 종료하며 authority row를 남기지 않음 |
-| `IS-E2E-17` | Activation backpressure | Message·byte 상한 초과가 bounded 결과로 종료하고 accepted order와 serial handler를 유지 |
-| `IS-E2E-18` | Cross-language | 다른 Framework 언어 caller·owner 조합이 authority, queue, failure code와 timeout을 같게 해석 |
-| `IS-E2E-19` | `Ready` ordering | Durable activation inbox first record가 Ready CAS 전에 확정되지만 handler는 실행되지 않는다. Ready를 본 뒤의 message는 restored local queue head 뒤에 admit되어 cold first message를 추월하지 않음 |
-| `IS-E2E-20` | `Closing` owner crash | Lease 전 takeover를 막고 expiry 뒤 높은 authority owner generation으로 close recovery를 끝낸 뒤 다음 activation이 높은 object generation을 사용하며 A의 늦은 release를 거부 |
-| `IS-E2E-21` | Multi-Mesh initial placement | Missing Spot ID에서만 `InMesh` 선택이 적용되고 Ready authority에 다른 Mesh를 지정한 후속 call이 current owner를 이동시키지 않음 |
-| `IS-E2E-22` | Monotonic owner deadline | Process pause를 authority deadline 뒤 재개해도 target runtime이 신규 message·timer admission을 거부 |
-| `IS-E2E-23` | Handler capability | Actor handler·Logical Multicast subscription 등록이 `Ready` 전에 실패하고 authority·scope·slot을 정리 |
-| `IS-E2E-24` | Late lease response | Store call 중 pause 시간이 deadline을 넘으면 과거 응답으로 admission을 다시 열지 않음 |
-| `IS-E2E-25` | `Ready` 후 barrier 실패 | Claim에서 발급한 nonzero object generation을 바꾸지 않고 authority를 `Closing`·release하며 runtime object·scope·slot을 한 번 정리해 dangling `Ready` row를 남기지 않음 |
-| `IS-E2E-26` | Concurrent claim | 서로 다른 target에 도착한 envelope 중 Store CAS winner 하나만 factory·`Ready`·barrier open을 수행하고 loser target은 local instance를 만들지 않음 |
-| `IS-E2E-27` | Deadline isolation | 짧은 request만 timeout되고 긴 request·send와 shared activation은 계속됨 |
-| `IS-E2E-28` | Close·admission 경쟁 | Internal seal과 `Closing` CAS 사이 cached submit을 handler queue에 수락하지 않음 |
-| `IS-E2E-29` | Cross-Mesh in-flight `Relocate` | Mesh B가 수락한 completion·claim release 뒤 Mesh A의 원래 Spot turn이 재개 |
-| `IS-E2E-30` | Multi-Mesh concurrent `Relocate` | 새 dependency 없이 shared deadline 안에 완료하거나 각 terminal result를 한 번만 반환 |
-| `IS-E2E-31` | Remote CAS loser | 서로 다른 target의 reservation 경쟁에서 loser가 별도 owner object를 만들지 않고 `Ready` winner route로 한 번만 redirect하며 operation identity·correlation·payload·deadline을 보존 |
-| `IS-E2E-32` | Activation crash boundary | Source가 activation envelope admission 전에 종료되면 authority row와 factory가 0건이다. Target이 reservation을 획득한 뒤 종료되면 exact target owner의 bounded scan이 Pending creation projection과 complete recovery envelope로 factory·durable inbox·Ready barrier를 한 번 재개하고 row가 고착되지 않음 |
-| `IS-E2E-33` | Cold activation failure release | Factory·initialize·`Ready` 각 실패에서 current request는 typed terminal 하나, accepted one-way는 drop·event 하나로 끝나고 application handler는 실행되지 않음. Exact fenced delete의 응답 손실은 row read로 재확인하며 Missing 또는 current replacement가 확인될 때까지 registry는 failed·sealed를 유지한다. Missing 뒤의 다음 caller만 새 object·authority owner generation으로 새 factory를 시작하고 이전 registry는 hidden rerun하지 않음 |
-| `IS-E2E-34` | Activation root orphan | Complete recovery root Put 뒤 Reserve 전 process 종료와 Reserve conflict loser가 authority reference를 게시하지 않는다. Orphan은 retention 또는 idempotent delete로 정리되고 다른 activation의 receipt로 사용되지 않음 |
-| `IS-E2E-35` | Ready 후 queue restore crash | Durable inbox first record와 Ready commit 뒤 local queue head restore 전에 owner를 종료한다. Restart의 initial complete scan이 Serving을 열기 전에 recovery root·cursor로 같은 operation을 queue head에 복원하고, follow-up과 timer가 이를 추월하거나 handler가 중복 실행되지 않음 |
-| `IS-E2E-36` | First handler terminal release | Queue head admission 직후와 first handler 실행 중에 각각 owner를 종료해 recovery pointer와 root가 유지되는지 확인한다. Handler terminal result를 durable하게 기록하고 replay cursor를 inbox sequence까지 CAS한 경우에만 다음 Preserve CAS가 pointer를 제거하고 그 뒤 root를 삭제함 |
+**검증 질문:** Spot A handler가 대기하는 동안 Spot B request가 완료되는가.
 
-## 7. Reference sample gate
+- 시작 조건: 서로 다른 ID의 Instance Spot A와 B가 Ready다.
+- 절차: A handler를 Application gate에서 대기시키고 B에 request를 보낸다.
+- 검증: Gate를 열기 전에 B reply를 받고, A와 B evidence의 Spot ID가 섞이지 않는다.
+- 계약 근거: [Spot messaging](../spec/12-spot-messaging.ko.md)
 
-### 7.1 GameQuest
+### Track B — owner 상실과 다시 활성화
 
-`PlayerQuestSpot`은 Instance Spot으로 등록한다. Caller는 Player ID를 global Spot ID로 사용하고
-gameplay send와 quest progress request의 Spot direct fluent call에 Instance intent를 명시한다. Spot manager
-`GetOrCreate`, Instance address, owner node 선택 코드를 두지 않는다.
+#### IS-E2E-05 Ready owner crash
 
-- 다른 QuestMission node에 동시에 도착한 첫 message가 authority owner·factory 하나로 수렴한다.
-- 같은 Player ID의 gameplay send와 progress request가 같은 queue에서 순서대로 실행된다.
-- Explicit close가 authority를 완전히 release한 뒤의 다음 activation은 더 높은 object generation을 사용한다.
-- Ready owner crash 뒤 takeover는 같은 object generation을 유지하고 authority owner generation만 높이며,
-  event stream과 projection store에서 domain state를 복구한다.
-- 이미 적용한 gameplay event를 다시 적용하지 않는다.
+우선순위: `P0`
 
-### 7.2 ShoppingMall
+Ready owner가 종료되면 이전 route를 계속 사용해서는 안 된다. Framework가 새 call을 처리할 수 있는 상태가
+되면 Application은 같은 ID로 다시 호출할 수 있어야 한다.
 
-`OrderWorkflowSpot`은 Instance Spot으로 등록한다. `StartOrderWorkflowReq`,
-`ContinueOrderWorkflowReq`와 `RebuildOrderProjectionReq`는 Order ID를 global Spot ID로 사용한다. Caller에는
-Spot manager `GetOrCreate`, Instance address와 owner node 선택 코드를 두지 않는다.
+**검증 질문:** 이전 owner 종료 뒤 public status가 갱신되고 새 request가 새 owner에서 처리되는가.
 
-- 첫 start가 runtime Instance와 domain workflow를 각각 한 번만 만든다.
-- Runtime Spot이 없는 기존 주문은 event stream에서 domain state를 복구한다.
-- Runtime과 domain workflow가 모두 없는 ID의 continue·rebuild는 빈 workflow를 만들지 않는다.
-- Terminal·idle close 뒤 다음 유효 command만 새 object generation을 activation한다.
+- 시작 조건: Spot이 owner A에서 Ready이고 domain state는 external store에 저장되어 있다.
+- 절차: A를 crash하고 public 조회가 이전 location을 반환하지 않을 때까지 기다린 뒤 request를 보낸다.
+- 검증: Request는 A에서 실행되지 않고 owner B에서 한 번 처리된다. 복구된 domain state version은 crash 전 값 이상이다.
+- 계약 근거: [Failure와 failover](../spec/31-failure-failover-policy.ko.md)
 
-## 8. 금지 표면과 완료 gate
+#### IS-E2E-06 Creating owner crash
 
-다음 표면이나 우회가 남으면 config를 완료로 판정하지 않는다.
+우선순위: `P0`
 
-- Public `TrySubmit`, cache-hit 전용 동기 submit 또는 caller retry option
-- `createIfMissing`, target node RID, endpoint, Spot generation, owner ID·store version input
-- Public Instance target·mode·token과 begin·commit·close activation lifecycle
-- Core·binding service symbol, native Instance driver, raw frame과 private binding helper
-- Spot manager에 Instance Create·GetOrCreate를 추가하거나 Instance marker 없는 existing-only call에 숨은
-  cold activation을 추가하는 동작
-- Background cleanup이 owner를 선택하거나 새 `Creating` row를 만드는 동작. Exact target owner가 기존
-  durable claim을 bounded recovery scan으로 materialize하는 것은 허용한다.
-- Actor lifecycle이나 Logical Multicast registry를 Instance context에 노출하고 runtime 거부로만 막는 표면
-- Reflection, private symbol, test-only adapter, timeout·settle 증가와 반복 submit으로 race를 우회하는 동작
+첫 request를 처리할 Spot이 아직 준비되지 않은 상태에서 owner가 종료되면 기존 call은 성공으로 보이면 안 된다.
 
-Config 14 완료에는 다음 증거가 모두 필요하다.
+**검증 질문:** Factory 진행 중 owner crash가 기존 request를 terminal failure로 끝내고 다음 call과 섞이지 않는가.
 
-1. `IS-R01~03`, `IS-F01~15`, `IS-P01~08`이 네 Framework runtime과 최종 internal Core·binding
-   package 조합에서 통과한다.
-2. 각 지원 언어 feature map이 `IS-REG-01~14`, `IS-E2E-01~36`과 실제 process log를 연결한다.
-3. 최소 두 Framework 언어를 사용한 caller·owner 조합이 같은 authority·queue·failure code로
-   수렴한다.
-4. GameQuest와 ShoppingMall이 같은 global Spot ID + Instance fluent intent 계약으로 동작하고 기존 Spot·Actor·Channel
-   회귀가 통과한다.
-5. Public source, exact interface, sample과 E2E에서 금지 표면이 0건이다.
+- 시작 조건: Factory가 Application gate에서 대기한다.
+- 절차: 첫 request를 시작해 factory 진입을 확인하고 owner를 crash한다. 이전 call의 terminal을 받은 뒤 새 request를 보낸다.
+- 검증: 이전 request는 reply 없이 한 번 실패한다. 새 request는 가용 owner의 새 factory와 handler에서 한 번 처리된다.
+- 계약 근거: [Framework error model](../spec/32-framework-error-model.ko.md)
+
+#### IS-E2E-07 Normal Relocate
+
+우선순위: `P0`
+
+정상 relocation은 같은 Instance identity와 domain state를 target owner로 옮기며 처리 중인 message를 중복
+실행하지 않아야 한다.
+
+**검증 질문:** Public Relocate 완료 뒤 후속 request가 target에서 복원된 state를 사용하는가.
+
+- 시작 조건: Spot은 A에서 Ready이고 state version을 조회할 수 있다.
+- 절차: Public host relocation을 B로 시작하고 terminal success를 기다린 뒤 state request를 보낸다.
+- 검증: 후속 handler는 B에서만 실행되고 Spot identity와 state version이 유지된다. Relocation 전 수락된 operation ID도 전체 evidence에서 한 번만 처리된다.
+- 계약 근거: [Spot actor](../spec/15-spot-actor.ko.md)
+
+#### IS-E2E-08 Close and reactivate
+
+우선순위: `P1`
+
+Spot을 명시적으로 닫은 뒤 같은 ID에 Instance intent call을 보내면 이전 runtime object를 재사용하지 않고 새
+instance를 준비해야 한다.
+
+**검증 질문:** Close 완료 뒤 첫 call이 새 factory instance에서 처리되는가.
+
+- 시작 조건: Spot이 Ready이고 factory instance ID를 조회할 수 있다.
+- 절차: Public close operation의 완료를 기다린 뒤 같은 ID로 Instance request를 보낸다.
+- 검증: 새 factory instance ID는 이전 값과 다르고 handler는 새 instance에서 한 번 실행된다.
+- 계약 근거: [Location runtime](../spec/21-location-runtime.ko.md)
+
+#### IS-E2E-09 Concurrent takeover
+
+우선순위: `P0`
+
+이전 owner가 무효화된 뒤 여러 caller가 동시에 요청해도 새 owner와 factory는 하나여야 한다.
+
+**검증 질문:** Crash 복구 시 concurrent requests가 새 factory 하나로 수렴하는가.
+
+- 시작 조건: 이전 owner crash가 public location에서 무효화되었다.
+- 절차: 두 caller가 같은 ID로 requests를 동시에 보낸다.
+- 검증: 성공한 requests는 같은 owner의 handler에서 각각 한 번 처리되고 새 factory evidence는 한 건이다.
+- 계약 근거: [Failure와 failover](../spec/31-failure-failover-policy.ko.md)
+
+#### IS-E2E-10 Stale owner resume
+
+우선순위: `P0`
+
+오래 중지되었던 이전 owner가 다시 실행되어도 current owner의 message를 처리해서는 안 된다.
+
+**검증 질문:** 이전 owner 재개 뒤 모든 신규 request가 current owner에서만 처리되는가.
+
+- 시작 조건: A를 pause한 뒤 B가 같은 Spot의 current owner가 되었다.
+- 절차: A를 resume하고 고유 operation ID requests와 timer 관찰 request를 보낸다.
+- 검증: 신규 handler와 timer evidence는 B에만 있고 A에는 없다.
+- 계약 근거: [Location runtime](../spec/21-location-runtime.ko.md)
+
+### Track C — 실패 결과와 재제출 경계
+
+#### IS-E2E-11 Confirmed not admitted
+
+우선순위: `P1`
+
+Target이 request를 수락하지 않았다는 결과는 caller에게 하나의 failure로 전달되어야 한다.
+
+**검증 질문:** 확정된 admission failure가 다른 owner의 handler 실행 없이 한 번 반환되는가.
+
+- 시작 조건: 선택 가능한 target이 request admission을 거부하도록 공개 capacity를 구성한다.
+- 절차: 고유 operation ID request를 한 번 보낸다.
+- 검증: Request는 계약된 failure 한 번으로 끝나고 모든 owner의 handler evidence에는 operation ID가 없다.
+- 계약 근거: [Framework error model](../spec/32-framework-error-model.ko.md)
+
+#### IS-E2E-12 Ambiguous result
+
+우선순위: `P1`
+
+Target 수락 직후 connection이 끊기면 Framework는 같은 request를 다른 owner에서 몰래 다시 실행하지 않아야 한다.
+
+**검증 질문:** Connection failure가 발생해도 operation ID의 handler 실행 수가 최대 한 번인가.
+
+- 시작 조건: Handler가 operation ID를 durable application state에 기록한다.
+- 절차: Target이 request를 수락한 직후 network proxy로 connection을 종료한다.
+- 검증: Caller는 reply 또는 하나의 terminal failure만 받고, 모든 owner를 합친 handler 실행 수는 최대 한 번이다.
+- 계약 근거: [Framework error model](../spec/32-framework-error-model.ko.md)
+
+#### IS-E2E-13 Accepted send then failure
+
+우선순위: `P1`
+
+Send 성공 뒤 target이 종료되어도 Framework가 다른 owner에서 같은 one-way message를 replay한다는 보장은 없다.
+
+**검증 질문:** Accepted send가 target failure 뒤 다른 owner에서 중복 처리되지 않는가.
+
+- 시작 조건: Send operation ID를 handler evidence로 확인할 수 있다.
+- 절차: Send 성공 직후 target을 종료하고 대체 owner를 준비한다.
+- 검증: 전체 owner에서 operation ID 처리 수는 0 또는 1이며 2가 되지 않는다.
+- 계약 근거: [비동기 실행 정책](../spec/05-async-execution-policy.ko.md)
+
+#### IS-E2E-14 Store outage
+
+우선순위: `P0`
+
+Location Store에서 current owner를 확인할 수 없으면 Framework는 local 추측으로 Missing Spot을 만들거나 오래된
+route에 신규 message를 보내서는 안 된다.
+
+**검증 질문:** Store 장애 중 신규 request가 handler 실행 없이 bounded failure로 끝나는가.
+
+- 시작 조건: Spot을 Ready로 만든 뒤 Location Store 접근을 차단한다.
+- 절차: Cached location의 유효 기간이 끝난 뒤 request를 보낸다.
+- 검증: Request는 계약된 Store·route failure로 끝나고 모든 owner의 handler 실행 수는 0이다.
+- 계약 근거: [Location runtime](../spec/21-location-runtime.ko.md), [Framework error model](../spec/32-framework-error-model.ko.md)
+
+#### IS-E2E-15 Kind·type atomic conflict
+
+우선순위: `P0`
+
+같은 global Spot ID는 동시에 서로 다른 Spot kind나 stable type이 될 수 없다.
+
+**검증 질문:** User Spot 생성과 Instance cold request의 경합에서 한 종류만 성공하는가.
+
+- 시작 조건: 해당 ID는 Missing이고 User Spot owner와 Instance owners가 Ready다.
+- 절차: User Spot GetOrCreate와 다른 type의 Instance request를 동시에 시작한다.
+- 검증: 한 operation만 성공하고 public 조회의 kind·type은 성공한 operation과 같다. 실패한 쪽 factory와 handler는 실행되지 않는다.
+- 계약 근거: [Spot 주소 메시징](../spec/16-spot-address-messaging.ko.md)
+
+#### IS-E2E-16 No eligible node
+
+우선순위: `P0`
+
+Stable type을 제공하는 node가 없거나 모든 capacity가 소진되면 caller가 원인을 구분할 수 있는 공개 failure를
+받아야 한다.
+
+**검증 질문:** Type 미제공과 capacity 소진이 각각 계약된 terminal로 끝나는가.
+
+- 시작 조건: Type 미제공 topology와 capacity 0 topology를 별도 실행으로 준비한다.
+- 절차: 각 topology에서 같은 형태의 cold request와 send를 호출한다.
+- 검증: Request와 send가 각 조건에 맞는 terminal을 반환하고 factory·handler evidence는 없다.
+- 계약 근거: [Framework error model](../spec/32-framework-error-model.ko.md)
+
+#### IS-E2E-17 Activation backpressure
+
+우선순위: `P0`
+
+Cold activation 중 입력이 제한을 넘으면 Framework는 process memory를 무한히 사용하지 않고 초과 operation을
+bounded failure로 끝내야 한다.
+
+**검증 질문:** 공개 pending limit을 넘긴 requests가 성공 operation의 순서와 exactly-once 처리를 깨지 않는가.
+
+- 시작 조건: 작은 public pending limit을 설정하고 factory를 Application gate에서 대기시킨다.
+- 절차: 서로 다른 operation ID requests를 limit보다 많이 보낸 뒤 gate를 연다.
+- 검증: 각 request는 reply 또는 하나의 terminal failure로 끝난다. 성공한 ID는 admission 순서대로 한 번씩 처리되고 active handler count는 1이다.
+- 계약 근거: [비동기 실행 정책](../spec/05-async-execution-policy.ko.md)
+
+#### IS-E2E-18 Cross-language
+
+우선순위: `P1`
+
+Caller와 owner의 구현 언어가 달라도 typed payload, reply와 failure 의미는 같아야 한다.
+
+**검증 질문:** 지원 언어 조합이 같은 cold request와 failure case를 같은 결과로 해석하는가.
+
+- 시작 조건: 서로 다른 Framework 언어의 caller와 owner가 같은 public contract와 stable type을 등록한다.
+- 절차: 각 방향 조합에서 성공 request와 type 미제공 request를 실행한다.
+- 검증: 성공 payload와 reply가 같고 failure category도 같다. 별도 raw frame이나 test adapter를 사용하지 않는다.
+- 계약 근거: [Public contract governance](../spec/00-public-contract-governance.ko.md)
+
+### Track D — ordering과 concurrency
+
+#### IS-E2E-19 Ready ordering
+
+우선순위: `P0`
+
+Cold first message는 Spot을 만들게 한 업무 입력이다. Spot 준비 중 도착한 후속 message가 이를 추월하면 안 된다.
+
+**검증 질문:** First request가 후속 requests보다 먼저 handler에서 처리되는가.
+
+- 시작 조건: Factory를 Application gate에서 지연할 수 있다.
+- 절차: First request를 시작하고 factory 진입을 확인한 뒤 후속 messages를 보내고 gate를 연다.
+- 검증: Handler evidence의 첫 operation ID는 first request이며 나머지는 수락 순서를 유지한다.
+- 계약 근거: [Spot messaging](../spec/12-spot-messaging.ko.md)
+
+#### IS-E2E-20 Closing owner crash
+
+우선순위: `P1`
+
+Close 진행 중 owner가 종료되어도 이전 owner가 다시 release하거나 신규 업무를 처리해서는 안 된다.
+
+**검증 질문:** Closing owner crash 뒤 다음 유효 call이 current owner 하나에서 처리되는가.
+
+- 시작 조건: Close callback을 Application gate에서 지연한다.
+- 절차: Close가 시작된 뒤 owner를 crash하고 public location이 이전 owner를 제거할 때까지 기다린 뒤 Instance request를 보낸다.
+- 검증: 새 request는 가용 owner의 새 factory에서 한 번 처리되고 이전 owner를 재개해도 handler evidence가 생기지 않는다.
+- 계약 근거: [Failure와 failover](../spec/31-failure-failover-policy.ko.md)
+
+#### IS-E2E-21 Multi-Mesh initial placement
+
+우선순위: `P0`
+
+Initial Mesh 선택은 Spot이 없을 때 어디에서 처음 만들지 정한다. 이미 Ready인 Spot을 다른 Mesh로 옮기는 요청은
+아니다.
+
+**검증 질문:** Cold call의 Mesh 선택은 적용되고 Ready 뒤 다른 Mesh를 지정한 call은 current owner로 가는가.
+
+- 시작 조건: Mesh A와 B가 같은 type을 제공하고 Spot은 Missing이다.
+- 절차: Mesh A를 지정해 cold request를 보낸 뒤 Mesh B를 지정한 후속 request를 보낸다.
+- 검증: 두 handler 모두 최초 owner에서 실행되고 factory는 한 번이다.
+- 계약 근거: [Spot 주소 메시징](../spec/16-spot-address-messaging.ko.md)
+
+#### IS-E2E-22 Monotonic owner deadline
+
+우선순위: `P0`
+
+Owner process가 긴 시간 중지되었다가 재개되면 이전에 계산한 local 유효 상태로 신규 업무를 처리하면 안 된다.
+
+**검증 질문:** Deadline 뒤 재개한 owner가 message와 timer handler를 실행하지 않는가.
+
+- 시작 조건: Spot은 A에서 Ready이고 A를 process pause할 수 있다.
+- 절차: A를 pause하고 public location에서 A가 무효화된 뒤 resume한다.
+- 검증: Resume 뒤 A의 신규 message·timer evidence는 0건이고 caller operation은 current topology에 맞는 결과로 끝난다.
+- 계약 근거: [Failure와 failover](../spec/31-failure-failover-policy.ko.md)
+
+#### IS-E2E-23 Handler capability
+
+우선순위: `P1`
+
+Instance Spot은 Actor membership과 Logical Multicast subscription을 제공하지 않는다. 잘못된 factory 구성은
+업무 message를 받기 전에 드러나야 한다.
+
+**검증 질문:** 금지된 handler capability를 등록한 type의 cold request가 application handler 실행 없이 실패하는가.
+
+- 시작 조건: Negative type factory가 public registration API로 금지된 capability를 구성한다.
+- 절차: 해당 type의 Instance request를 보낸다.
+- 검증: Request는 configuration failure로 끝나고 packet handler와 Actor lifecycle callback은 실행되지 않는다.
+- 계약 근거: [Spot actor](../spec/15-spot-actor.ko.md)
+
+#### IS-E2E-24 Late Store response
+
+우선순위: `P0`
+
+Store 응답이 operation deadline 뒤 도착해도 만료된 request의 handler를 뒤늦게 실행해서는 안 된다.
+
+**검증 질문:** 늦은 location 응답 뒤에도 request가 timeout 하나로 끝나고 handler가 실행되지 않는가.
+
+- 시작 조건: Network proxy가 Location Store response를 request deadline보다 길게 지연한다.
+- 절차: 짧은 deadline request를 보내고 timeout 뒤 proxy를 복구한다.
+- 검증: Caller는 timeout 한 번만 받고 해당 operation ID의 factory·handler evidence는 없다.
+- 계약 근거: [Framework error model](../spec/32-framework-error-model.ko.md)
+
+#### IS-E2E-25 Activation completion failure
+
+우선순위: `P1`
+
+Factory는 끝났지만 Spot을 사용 가능하게 만드는 마지막 단계가 실패하면 caller에게 Ready Spot으로 보이면 안 된다.
+
+**검증 질문:** Activation completion failure 뒤 public 조회가 Ready를 반환하지 않고 다음 call이 정상적으로 수렴하는가.
+
+- 시작 조건: Owner의 application initialization callback이 한 번 실패하도록 구성한다.
+- 절차: 첫 request의 terminal을 확인한 뒤 failure 설정을 제거하고 같은 ID로 다시 요청한다.
+- 검증: 첫 handler는 실행되지 않고 첫 request는 한 번 실패한다. 다음 request는 factory와 handler 한 번으로 성공한다.
+- 계약 근거: [Location runtime](../spec/21-location-runtime.ko.md)
+
+#### IS-E2E-26 Concurrent claim
+
+우선순위: `P0`
+
+서로 다른 target에 같은 cold call이 도착하더라도 Application object는 한 target에만 만들어져야 한다.
+
+**검증 질문:** Network 경합에서도 factory와 handler가 owner 하나에서만 실행되는가.
+
+- 시작 조건: 두 owner가 같은 type과 capacity를 제공한다.
+- 절차: 두 caller가 같은 ID의 first requests를 동시에 보낸다.
+- 검증: Factory evidence는 한 owner에만 한 건이고 모든 성공 handler evidence도 그 owner에만 있다.
+- 계약 근거: [Location runtime](../spec/21-location-runtime.ko.md)
+
+#### IS-E2E-27 Deadline isolation
+
+우선순위: `P0`
+
+같은 activation을 기다리는 operation도 각 caller의 deadline을 독립적으로 지켜야 한다.
+
+**검증 질문:** 짧은 request만 timeout되고 긴 request와 send는 계속 처리되는가.
+
+- 시작 조건: Factory gate 지연이 짧은 deadline보다 길고 긴 deadline보다 짧다.
+- 절차: 짧은 request, 긴 request와 send를 같은 Spot에 순서대로 시작한 뒤 gate를 연다.
+- 검증: 짧은 request는 timeout, 긴 request는 reply를 받는다. Send와 긴 request의 operation ID는 각각 한 번 처리된다.
+- 계약 근거: [Framework error model](../spec/32-framework-error-model.ko.md)
+
+#### IS-E2E-28 Close·admission 경쟁
+
+우선순위: `P1`
+
+Close가 시작된 Spot은 새 업무를 기존 instance queue에 수락해서는 안 된다.
+
+**검증 질문:** Close와 동시에 보낸 request가 이전 handler에서 처리되지 않는가.
+
+- 시작 조건: Close callback 진입을 public Application evidence로 확인할 수 있다.
+- 절차: Close 진입 직후 고유 operation ID request를 보낸다.
+- 검증: 이전 instance의 handler에는 operation ID가 없고 request는 하나의 failure 또는 close 뒤 새 instance의 한 번 처리로 끝난다.
+- 계약 근거: [Location runtime](../spec/21-location-runtime.ko.md)
+
+### Track E — relocation 경합과 복구
+
+#### IS-E2E-29 Cross-Mesh in-flight Relocate
+
+우선순위: `P1`
+
+다른 Mesh로 relocation 중인 Spot에 도착한 message도 한 owner의 queue에서 한 번만 처리되어야 한다.
+
+**검증 질문:** Relocate와 concurrent request가 중복 없이 terminal 하나로 끝나는가.
+
+- 시작 조건: Spot은 Mesh A에서 Ready이고 Mesh B가 compatible target을 제공한다.
+- 절차: B로 Relocate를 시작하고 동시에 고유 operation ID request를 보낸다.
+- 검증: Relocate와 request가 각각 terminal 하나로 끝나며 request handler는 A 또는 B 한 곳에서만 한 번 실행된다.
+- 계약 근거: [Spot actor](../spec/15-spot-actor.ko.md)
+
+#### IS-E2E-30 Multi-Mesh concurrent Relocate
+
+우선순위: `P1`
+
+같은 Spot을 서로 다른 target으로 동시에 옮기려는 요청은 owner를 둘로 만들면 안 된다.
+
+**검증 질문:** Concurrent Relocate operations 뒤 public 조회가 owner 하나를 반환하는가.
+
+- 시작 조건: Source와 compatible targets 두 개가 Ready다.
+- 절차: 서로 다른 target을 지정한 Relocate operations를 동시에 시작한다.
+- 검증: 각 operation은 terminal 하나를 받고 최종 public 조회는 Ready owner 하나다. 후속 request handler도 그 owner에서만 실행된다.
+- 계약 근거: [Location runtime](../spec/21-location-runtime.ko.md)
+
+#### IS-E2E-31 Remote selection loser
+
+우선순위: `P1`
+
+Cold activation target 경합에서 선택되지 않은 target은 별도 Application instance를 만들거나 request를 처리하면
+안 된다.
+
+**검증 질문:** 경합 뒤 factory·handler evidence가 final owner 한 곳에만 존재하는가.
+
+- 시작 조건: 두 target에 동일한 type과 weight를 구성한다.
+- 절차: 여러 caller에서 같은 first operation ID를 전달하지 않도록 고유 requests를 동시에 시작한다.
+- 검증: Public 조회의 owner와 factory·handler evidence가 일치하며 다른 target의 factory count는 0이다.
+- 계약 근거: [Spot 주소 메시징](../spec/16-spot-address-messaging.ko.md)
+
+#### IS-E2E-32 Activation crash boundary
+
+우선순위: `P0`
+
+Cold activation 중 process가 종료되어도 다음 request가 영구 대기하거나 같은 first operation을 중복 처리하면
+안 된다.
+
+**검증 질문:** Source 또는 target crash 뒤 기존 call이 terminal로 끝나고 후속 call이 bounded 시간 안에 처리되는가.
+
+- 시작 조건: Source call 전과 target factory 진입을 구분해 crash할 수 있다.
+- 절차: 두 경계를 별도 실행으로 crash하고 기존 call terminal 뒤 후속 request를 보낸다.
+- 검증: 각 기존 call은 reply 또는 failure 하나로 끝난다. 후속 request는 한 owner에서 한 번 처리되고 모든 operation ID의 처리 수는 최대 한 번이다.
+- 계약 근거: [Failure와 failover](../spec/31-failure-failover-policy.ko.md)
+
+#### IS-E2E-33 Cold activation failure release
+
+우선순위: `P0`
+
+Factory나 initialize가 실패한 Spot ID는 보이지 않는 failed instance에 고정되어서는 안 된다.
+
+**검증 질문:** 실패 원인을 제거한 다음 call이 새 factory에서 성공하는가.
+
+- 시작 조건: Factory failure와 initialize failure를 별도 type 또는 입력으로 재현할 수 있다.
+- 절차: 각 실패 request의 terminal을 확인하고 failure를 제거한 뒤 같은 ID로 다시 요청한다.
+- 검증: 실패한 operation의 handler 실행은 0이고 terminal은 하나다. 후속 request는 factory와 handler 한 번으로 성공한다.
+- 계약 근거: [Framework error model](../spec/32-framework-error-model.ko.md)
+
+#### IS-E2E-34 Unpublished activation cleanup
+
+우선순위: `P1`
+
+Owner가 factory를 완료하기 전에 종료된 activation은 다음 call의 payload나 result와 섞이면 안 된다.
+
+**검증 질문:** Crash 뒤 새 payload를 보낸 request가 새 payload만 처리하는가.
+
+- 시작 조건: Factory가 payload A와 함께 진입 evidence를 남긴 뒤 Application gate에서 대기한다.
+- 절차: Factory 진입을 확인한 뒤 target을 crash하고 request terminal을 확인한다. 가용 owner에 payload B request를 보낸다.
+- 검증: Handler evidence에는 B가 한 번 있고 A는 0 또는 한 번이다. A와 B payload가 합쳐지거나 B 대신 A가 reply에 사용되지 않는다.
+- 계약 근거: [Location runtime](../spec/21-location-runtime.ko.md)
+
+#### IS-E2E-35 Ready 후 queue 복구
+
+우선순위: `P0`
+
+Spot 준비 직후 owner가 종료되어도 first request와 follow-up의 순서가 바뀌거나 handler가 중복 실행되면 안 된다.
+
+**검증 질문:** Restart 뒤 operation ID 순서와 최대 한 번 처리가 유지되는가.
+
+- 시작 조건: Factory 완료 evidence와 first handler 시작 사이를 Application gate로 넓힌다.
+- 절차: First와 follow-up requests를 보낸 뒤 gate 구간에서 owner를 crash하고 restart한다.
+- 검증: 각 caller는 terminal 하나를 받는다. 성공 처리된 ID는 first가 follow-up보다 앞서며 각 ID의 handler count는 최대 한 번이다.
+- 계약 근거: [Spot messaging](../spec/12-spot-messaging.ko.md)
+
+#### IS-E2E-36 First handler terminal recovery
+
+우선순위: `P0`
+
+First handler가 시작된 상태에서 owner가 종료되면 Framework가 같은 operation을 반드시 재실행한다고 가정할 수
+없다. 다만 다른 owner에서 중복 실행하거나 call을 무기한 유지해서는 안 된다.
+
+**검증 질문:** Handler 시작 전·후 crash에서 caller terminal과 operation 처리 수가 bounded되는가.
+
+- 시작 조건: Handler 진입과 domain commit을 별도 Application evidence로 기록한다.
+- 절차: Handler 진입 직전과 진입 뒤를 별도 실행으로 crash하고 caller와 후속 request 결과를 확인한다.
+- 검증: 각 caller는 reply 또는 failure 하나로 끝난다. 각 operation ID의 domain commit은 최대 한 번이고 후속 request는 current owner에서 처리된다.
+- 계약 근거: [Framework error model](../spec/32-framework-error-model.ko.md)
+
+## 4. Reference sample 확인
+
+### 4.1 GameQuest {#71-gamequest}
+
+GameQuest는 Player ID를 global Spot ID로 사용하고 quest message에 public Instance intent를 지정한다. Sample
+code가 owner node를 선택하거나 Spot manager로 Instance Spot을 먼저 만들면 안 된다.
+
+- 서로 다른 Quest node에 동시에 도착한 첫 message가 factory 하나와 serial handler 하나로 수렴한다.
+- 같은 Player ID의 gameplay send와 progress request가 first-message 순서를 유지한다.
+- Ready owner crash 뒤 후속 call은 current owner에서 처리되고 domain state는 sample의 external state
+  경계에서 복구한다.
+- Sample E2E는 client reply, handler operation ID와 domain state만 판정하며 activation 내부 상태를 읽지 않는다.
+
+### 4.2 ShoppingMall {#72-shoppingmall}
+
+ShoppingMall은 Order ID를 global Spot ID로 사용하고 workflow message에 public Instance intent를 지정한다.
+Caller는 Instance address, owner node와 activation phase를 다루지 않는다.
+
+- 첫 start request가 runtime Instance와 domain workflow를 각각 한 번 만든다.
+- Runtime Spot이 없고 domain workflow가 있는 주문은 external state에서 복구한 뒤 command를 처리한다.
+- Runtime과 domain workflow가 모두 없는 ID의 continue·rebuild는 빈 workflow를 성공으로 만들지 않는다.
+- Close 뒤 다음 유효 command는 새 factory instance에서 처리되며 이전 operation을 중복 실행하지 않는다.
+
+## 5. 완료 기준
+
+- 36개 scenario가 역할 server의 public Framework API로 operation을 시작한다.
+- 통과 판정은 client result, public Spot 조회·status와 Application factory·handler·callback evidence만 사용한다.
+- Fixed sleep, Store record, private activation phase, raw frame와 internal counter를 통과 조건으로 사용하지 않는다.
+- 지원 언어가 scenario를 구현하지 못하면 skip으로 완료하지 않고 feature map에 public contract gap을 기록한다.
+- 최소 두 Framework 언어의 caller·owner 조합이 성공 payload와 terminal failure를 같은 의미로 해석한다.

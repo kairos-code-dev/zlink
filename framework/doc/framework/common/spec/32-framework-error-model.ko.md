@@ -1,7 +1,6 @@
 # Framework 오류 모델
 
-[스펙 목차](README.ko.md) · [이전: 장애 대응과 failover 범위](31-failure-failover-policy.ko.md) ·
-[다음: Framework 언어별 구현 차이](30-implementation-gap.ko.md)
+[스펙 목차](README.ko.md) · [이전: 장애 대응과 failover 범위](31-failure-failover-policy.ko.md)
 
 ## 1. 범위
 

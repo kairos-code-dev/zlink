@@ -209,7 +209,7 @@ ClientServer다. Dispatch는 courier Object Client이므로 같은 RouteMesh에 
 | `DeliveryDispatch.Tracking` | customer Object Client, 독립 `deliverydispatch.tracking` Server, evidence store | 상태 event 기록과 global `CustomerId` 대상 고객 알림 생성을 맡는다. |
 | `DeliveryDispatch.CustomerGateway` | stream server, customer Object Server, customer entry spot, customer actor | 고객 연결을 받고 `ActorManager.GetOrCreate`로 customer actor를 보장한 뒤 session bind와 status push를 맡는다. |
 | `DeliveryDispatch.Client` | HTTP client, stream connector | 배송 생성, subscription, status notify 검증을 수행한다. |
-| `Location Store` | framework location store 계약의 공유 저장소 구현체(예: Redis) | 서버 endpoint peer discovery(자동 연결)와 actor/session 위치 조회를 담으며, 등록·조회·lifecycle 정책은 framework가 소유. |
+| `Location Store` | framework location store 계약의 공유 저장소 구현체(예: Redis) | 서버 endpoint peer discovery와 actor·Spot authority를 저장한다. Session binding route는 각 Session owner가 보관한다. |
 
 언어별 샘플은 프로세스 이름과 프로젝트 이름을 언어 관용에 맞게 바꿀 수 있다. 다만 위 역할
 분리는 유지해야 한다. `Dispatch server`는 HTTP edge와 dispatch worker를 한 server에 둘 수
@@ -244,7 +244,8 @@ MeshNode의 ChannelName membership이 아니다. 따라서 Object Client에 Chan
 
 `deliverydispatch.courier`는 배송원마다 하나씩 늘어나는 Channel이 아니다. 모든 배송원 actor가
 같은 mesh 안에 있고, courier id가 어느 MeshNode의 actor에 들어갈지는 framework 배치가 정한다.
-courier별 session binding은 Framework가 해당 courier actor와 함께 관리한다.
+courier별 session binding은 해당 STREAM connection의 Session owner가 보관한다. Actor relocation 때 target
+runtime이 같은 binding route를 current actor owner로 갱신한다.
 
 `DispatchWorker module`은 courier id를 전역 `ActorId`로 사용해 actor를 보장하고 offer를
 보낸다. 어느 CourierActorNode에서 actor를 materialize할지는 framework의 capacity와 node weight,
@@ -617,7 +618,7 @@ Server/CustomerGateway/
   `SubscribeDeliveryRes`의 `DeliveryId`를 확인한다.
 - `delivery-success` 생성 응답이 같은 `DeliveryId`를 반환하는지 확인한다.
 - `courier-a`와 `courier-b` actor가 전역 `ActorId`로 생성되고 두 actor가 `CourierSession server`의
-  session route로 client에 offer를 push하는지 확인한다. 어느 physical node가 owner인지는 성공
+  binding route로 client에 offer를 push하는지 확인한다. 어느 physical node가 owner인지는 성공
   조건으로 사용하지 않는다.
 - `OnCreateActorAsync`는 callback 인자로 받은 actor만 초기화하며, Ready 전 `FindAsync`를
   호출하거나 `ActorRef`를 application cache에 저장하지 않는지 확인한다.

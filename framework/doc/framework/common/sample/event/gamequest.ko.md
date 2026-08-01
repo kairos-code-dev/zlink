@@ -165,7 +165,7 @@ session binding lifecycle, bound session notify routing이다.
 | 이벤트마다 DB load-modify-store | 상태 조회와 갱신 | hot state는 owner spot 메모리에 두고, `QuestEventStore`는 append/replay 경계로 사용한다. |
 | optimistic version / 분산 lock | 중복 입력과 경쟁 writer 방지 | 같은 player는 single owner에서 처리하고, `EventId` dedupe로 재전달을 막는다. |
 | Redis cache | 반복 DB 읽기 회피 | owner spot이 player별 hot state를 가진다. |
-| pub/sub + presence store | 연결 노드로 notify 전달 | location store session binding과 bound session notify를 사용한다. |
+| pub/sub + presence store | 연결 노드로 notify 전달 | Session owner가 보관하는 binding route와 bound session notify를 사용한다. Location Store는 actor·Spot owner와 peer discovery를 관리한다. |
 
 ## 5. 운영 특성
 
@@ -180,9 +180,9 @@ GameQuest는 유실을 허용하는 대신 실시간성을 얻는 도메인이�
 | 축 | GameQuest (진행 tier) | ShoppingMall (무손실 주문 처리, 참고) |
 |------|------|------|
 | 전달 | gameplay event 전달은 best-effort다. 유실은 `GameplayStateStore` snapshot 기반 reconcile로 보정한다. | 명령을 owner에 유실 없이 기록(유실 불가) |
-| 동시성 | owner 하나(차단 불필요, 유실 허용) | owner 하나 + 기대 버전으로 이전 owner 차단 |
+| 동시성 | owner 하나(차단 불필요, 유실 허용) | owner 하나 + 기대 버전으로 timeout 뒤 재시도와 stale application 작업 차단 |
 | 이벤트당 비용 | owner spot 메모리 상태에 적용하고 domain event를 append한다. | 상태 = 이벤트 접기. 기록이 곧 상태 전이 |
-| 노드 장애 | 다음 owner messaging 또는 reconcile에서 owner spot을 다시 활성화하고 `QuestEventStore` replay로 복원한다. 복구 전까지 짧은 공백이 있을 수 있다. | 다른 노드가 이어받아(re-home) 다시 재생으로 복원, 기대 버전이 두 owner가 겹치는 순간을 차단 |
+| 노드 장애 | `Ready` owner process가 종료되면 자동 복구하지 않으며 다음 call은 `Unavailable`로 끝난다. `QuestEventStore` replay는 explicit close 뒤 재활성화와 planned relocation에서 사용한다. | `Ready` owner process가 종료되면 자동 복구하지 않는다. 무손실 crash failover는 현재 Framework 계약 밖의 production 확장이다. |
 | 멈춘 작업 | 유실은 reset/reconcile로 흡수 | 명시적 재개 명령으로 잇는다 — 재고가 묶이므로 필수 |
 | 조회 | 실시간 전송(push). session binding이 없으면 상태만 기록하고 reconnect 후 조회로 복원한다. | 조회 모델 폴링(`GetOrderStateReq`) |
 
@@ -258,9 +258,9 @@ graph LR
 authoritative gameplay 처리 후 gameplay event를 만들어 **그 player에 할당된 `PlayerQuestSpot`
 (owner spot)으로 owner routing**한다. owner spot이 아직 없으면 첫 메시징에서 활성(생성)된다.
 `PlayerQuestSpot`은 조건 평가·상태 기록·notify를 소유하며, notify는 bound session을 통해 연결을
-소유한 session actor로 전달된다. session binding(`PlayerId` ↔ 연결 노드) 등록·조회는 framework의
-location store 계약(route location)을 쓴다 — 공유 저장소 구현체(예: Redis)만 꽂으면 등록·조회·
-lifecycle은 framework가 처리한다.
+소유한 session actor로 전달된다. Framework는 Session owner에 `PlayerId`의 exact binding route와 token을
+보관한다. Location Store는 actor·Spot authority와 peer discovery를 관리하며 session binding route를
+저장하거나 message마다 선택하지 않는다.
 
 owner spot은 연결(session actor)과 분리돼 있어 어느 `Session Server`에 붙든 같은 `PlayerId`는
 항상 같은 owner spot으로 간다. owner spot의 호스팅은 MeshNode에 맡기며 연결 노드와 같은 노드일
@@ -270,8 +270,8 @@ endpoint를 직접 연결하지 않는다.
 
 | 구성 | 책임 |
 |------|------|
-| `Location Store` | framework location store 계약의 공유 저장소 구현체(예: Redis). peer discovery(자동 연결)와 `PlayerId` 세션 binding row를 담으며, 등록·조회·lifecycle 정책은 framework가 소유. |
-| `Session Server` | WebSocket 종단, session actor 생성·entry-spot 할당·bind, authoritative gameplay 처리(event 생성), owner spot으로 메시징, notify push. |
+| `Location Store` | framework location store 계약의 공유 저장소 구현체(예: Redis). Peer discovery와 actor·Spot authority를 저장하며 등록·조회·lifecycle 정책은 Framework가 소유한다. |
+| `Session Server` | WebSocket 종단, session actor 생성·entry-spot 할당·bind, exact binding route 보관, authoritative gameplay 처리(event 생성), owner spot으로 메시징, notify push. |
 | `PlayerQuestSpot` (owner spot) | player당 owner. event 적용, 조건 평가, 완료/보상 결정, 상태 기록. MeshNode에 호스팅. |
 
 | 저장소 | 성격 | 책임 |
@@ -313,12 +313,14 @@ scale-out 검증:
   Framework가 등록된 type capability와 내부 placement 정책으로 eligible node를 선택한다. Caller는 `NodeRid`나
   endpoint를 placement 입력으로 제공하지 않는다.
 
-샘플 self-check의 복구 시나리오는 `ClosePlayerQuestMsg` handler가 `Context.CloseAsync()`를 호출하게 하거나
-process를 종료한다. 다음 gameplay call은 다른
-QuestMission node에서 같은 논리 주소를 새 generation으로 활성화하고 `QuestEventStore`와
-`QuestReadModelStore`에서 상태를 복구한다. 복구 뒤 이미 반영한 `EventId`를 다시 보내도 진행과 reward 결정
-event가 중복으로 적용되지 않아야 한다. 이 시나리오는 Instance Spot의 reference sample gate이므로 공통 E2E
-Config 14에서도 같은 조건으로 검증한다.
+샘플 self-check의 재활성화 시나리오는 `ClosePlayerQuestMsg` handler가 `Context.CloseAsync()`를 호출해
+authority release를 완료하게 한다. 다음 gameplay call은 다른 QuestMission node에서 같은 논리 주소를 새
+generation으로 활성화하고 `QuestEventStore`와 `QuestReadModelStore`에서 상태를 복구한다. 복구 뒤 이미
+반영한 `EventId`를 다시 보내도 진행과 reward 결정 event가 중복으로 적용되지 않아야 한다. 이 시나리오는
+Instance Spot의 reference sample gate이므로 공통 E2E Config 14에서도 같은 조건으로 검증한다.
+
+Owner process 종료는 별도 failure 시나리오다. 이미 `Ready`인 Instance Spot은 lease 만료만으로 `Missing`이
+되지 않으며, 다음 gameplay call이 다른 node에서 cold activation을 시작해서도 안 된다.
 
 ## 7. 책임 분리
 
@@ -346,9 +348,8 @@ player를 가로지르는 집계뿐이다(13절).
 | quest 판정·기록 | `PlayerId`, `QuestId` | `PlayerQuestSpot`만 상태·결정을 기록하며 idempotent. |
 | notify | `PlayerId` | 현재 session binding을 가진 노드의 entry-spot으로 route. binding 없으면 생략. |
 
-client가 하나의 WebSocket으로 연결하면 entry-spot이 세션 actor를 만들고 `PlayerId`↔connection↔
-노드 binding을 location store에 등록한다(등록·갱신은 framework lifecycle이 수행). action은 같은
-연결로 들어와 entry-spot을 거쳐
+client가 하나의 WebSocket으로 연결하면 entry-spot이 세션 actor를 만들고 Framework가 Session owner에
+`PlayerId`의 binding route를 등록한다. action은 같은 연결로 들어와 entry-spot을 거쳐
 owner Spot으로 라우팅되고, notify는 binding을 통해 실제 연결을 소유한 노드로 전달된다. reconnect가
 다른 노드에 다시 연결하면 binding이 갱신되고 이후 notify는 새 노드로 간다. binding이 없는 동안의
 notify는 drop해도 되며, client는 재접속 후 `GetQuestProgressReq` 조회로 보정한다.
@@ -388,10 +389,10 @@ event stream이고, `QuestReadModelStore`는 언제든 replay로 다시 만들 �
 `PlayerQuestSpot`이 owner이므로 append는 직렬화되고, 웹 방식의 optimistic version이나 분산 락이
 필요 없다.
 
-- **replay·snapshot**: 활성화 시 stream을 replay해 aggregate를 복원한다. stream이 길면 주기적
-snapshot을 두어 `snapshot + 꼬리`만 replay한다. 노드가 비정상 종료되면 owner lease 만료 후 다음 owner
-  routing 메시징(또는 reconcile)이 다른 노드에서 spot을 재활성(re-home)해 같은 방식으로
-  복원한다. 운영자 개입은 필요 없지만 복구 전까지 짧은 공백이 있을 수 있다(§5의 "노드 장애").
+- **replay·snapshot**: explicit close 뒤 새 generation을 활성화하거나 planned relocation으로 target을
+  준비할 때 stream을 replay해 aggregate를 복원한다. Stream이 길면 주기적 snapshot을 두어
+  `snapshot + 꼬리`만 replay한다. `Ready` owner process가 비정상 종료되면 lease 만료만으로 이 replay
+  경로를 시작하지 않는다(§5의 "노드 장애").
 - **idempotency**: 적용한 source `EventId`를 stream에 함께 기록해, 재전달·재시도를 중복 반영하지
   않는다. 같은 `IdempotencyKey`의 action은 같은 gameplay `EventId`를 낳는다.
 - **reward idempotency**: 샘플 기본 경로에서는 `QuestCompleted`/`QuestRewardGranted`가 stream에 이미
@@ -589,8 +590,8 @@ QuestProgress {
 }
 ```
 
-세션 binding(`PlayerId` ↔ 연결 노드)은 framework location store 계약이 관리하므로 별도
-메시지·스키마를 두지 않는다.
+세션 binding(`PlayerId` ↔ 연결 노드)은 Session owner가 Framework 내부 route와 token으로 관리하므로
+application message나 별도 저장소 스키마를 두지 않는다.
 
 ## 12. 메시지 흐름
 
@@ -603,7 +604,7 @@ sequenceDiagram
     participant RM as QuestReadModelStore
 
     C->>ES: WebSocket JoinSessionReq
-    ES->>ES: session actor bind (PlayerId, location store 등록)
+    ES->>ES: session actor bind (PlayerId, binding route 보관)
     ES-->>C: JoinSessionRes(PlayerId, ActiveQuests)
 
     C->>ES: KillMonsterReq
@@ -655,9 +656,9 @@ GameQuest reference sample gate와 같은 조건을 사용한다.
 - **owner close 뒤 복구**: `ClosePlayerQuestMsg` 처리 중 `Context.CloseAsync()` 호출 → 다른 QuestMission node의 새 generation 활성화 →
   `QuestEventStore`와 `QuestReadModelStore`에서 aggregate와 projection 복원 → 같은 `EventId` 재전송에도 진행과
   reward 결정 event가 중복으로 적용되지 않는지 검증.
-- **owner crash 뒤 복구**: owner process 종료 → lease 만료 전 replacement가 없는지 확인 → 만료 뒤 다음
-  gameplay call이 다른 node에서 새 generation을 활성화하고 상태를 복구하는지 검증. 복구 뒤 같은 `EventId`를
-  재전송해도 진행과 reward 결정 event를 중복으로 적용하지 않는다.
+- **owner crash 경계**: `Ready` owner process 종료 → lease 만료 전후 replacement가 없는지 확인 → 다음
+  gameplay call이 `Unavailable`로 끝나고 다른 node에서 새 generation이나 handler 실행이 생기지 않는지
+  검증한다. 저장된 quest event와 projection은 변경되지 않아야 한다.
 - **reconnect**: 연결 끊고 binding 해제 → 다른 노드로 재접속 → 조회로 복원 → 이후 notify가 새
   노드로.
 - **reset 보정**: owner 메시징 없이 `GameplayStateStore`만 kill count 증가시킨 뒤 SyncQuestProgress →
@@ -673,8 +674,8 @@ GameQuest reference sample gate와 같은 조건을 사용한다.
 - `PlayerQuestSpot`은 event-sourced aggregate다: `QuestEventStore`에 domain event를 append하고
   replay로 상태를 복원하며, 진행 카운트는 event fold의 결과다.
 - `QuestReadModelStore` projection은 event stream replay로 재생성된다.
-- Owner close·crash 뒤 다른 QuestMission node가 새 generation을 활성화하고 event stream과 projection
-  store에서 상태를 복구한다.
+- Owner close 뒤 다른 QuestMission node가 새 generation을 활성화하고 event stream과 projection store에서
+  상태를 복구한다. `Ready` owner crash 뒤에는 자동 활성화하지 않고 `Unavailable`로 끝낸다.
 - 복구 뒤 이미 적용한 gameplay event를 다시 보내도 진행과 reward 결정 event가 중복으로 적용되지 않는다.
 - reward 결정 event는 중복 append되지 않는다. 실제 재화 지급의 durable/outbox 경로는 production
   확장 tier로 분리한다.

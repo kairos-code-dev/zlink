@@ -249,6 +249,10 @@ internal sealed class ZLinkSessionRouteUnsealHandler(ZLinkFrameworkRuntime runti
     {
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
+        //  Paired with the commit handler's own arrival mark: without it a
+        //  stalled unseal cannot be told from one that never arrived.
+        Zlink.Framework.Runtime.Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"route_unseal_received actor={message.ActorId} handoff={message.HandoffId}");
         var request = new ZLinkSessionRouteCommit(
             message.ActorId,
             message.BindingToken,

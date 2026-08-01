@@ -221,10 +221,24 @@ pipeline에 도달하지 못한다.
    던졌을 것이다. Timeout이 온다는 것은 **handler의 판정에 도달하기 전에** deadline이 소진된다는
    뜻이다. 남은 후보는 unseal 요청 자체가 session node에 닿지 못하는 것이다.
 
-   그러므로 다음 확인은 unseal handler 진입을 찍는 것이다. Commit handler에는 `route_commit_received`를
-   넣었지만 unseal handler에는 아직 없다. 그 한 줄이 "닿지 않는다"와 "닿았는데 거부한다"를 가른다.
-   Commit 때 같은 착각을 한 적이 있으므로(없는 trace를 세어 "도달 0"으로 판정했다) 이번에는 먼저
-   표시를 넣고 세야 한다.
+   Unseal handler에 진입 표시를 넣어 확인했다. **요청은 도착하고 handler는 실행된다. 응답이 돌아오지
+   않는다.**
+
+```
+play-b    route_control_sent ...UnsealRequest   1회
+session-a route_unseal_received                 1회   ← handler 실행
+play-b    응답 없음 → 한 번의 요청이 deadline 전체를 소진
+handoff_completion                              0회
+```
+
+   같은 실행에서 commit은 141회 재시도한다. Unseal이 1회뿐인 것은 재시도할 기회조차 없이 첫 요청이
+   deadline을 다 쓴다는 뜻이다. 그러므로 고칠 자리는 unseal의 판정 로직이 아니라 **node 간 request의
+   응답 경로**다.
+
+   이 증상은 오늘 core에서 고친 reply 정합 결함과 같은 계열이다(요청은 도달하고 handler는 돌지만
+   응답이 caller에 닿지 않는다). 그때 원인은 pending을 intent rid로 걸고 응답은 정착한 rid로 오는
+   것이었다. Unseal은 target node가 session node에 보내는 요청이므로 같은 조건이 성립할 수 있다.
+   다음은 play-b가 session-a를 어떤 rid로 addressing하는지 확인하는 것이다.
 2. **Disconnect 통지를 application frame FIFO 뒤에 세우지 않는다.** 이것은 lifecycle 통지이지
    application 순서를 지켜야 하는 message가 아니다. Spec 23 §10.2가 요구하는 FIFO의 대상인지
    먼저 판정할 것.

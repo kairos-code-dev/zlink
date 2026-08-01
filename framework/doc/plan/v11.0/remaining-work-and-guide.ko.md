@@ -175,10 +175,23 @@ route_commit_rejected entry=False 120건 ← binding 삭제 뒤의 재시도
 따라서 남은 질문은 **commit이 성립했는데도 handoff completion이 끝나지 않는 이유**다. Completion이
 끝나지 않으니 join dispatch가 pending으로 남고, 그 뒤에 선 disconnect가 pipeline에 도달하지 못한다.
 
+그 분기를 측정했다.
+
+```
+target_completion_entered                 121
+target_completion_before_session_commit   117
+session_route_commit_acknowledged           1   ← 첫 시도만 통과한다
+target_completion_reply_rejected          120
+```
+
+첫 시도는 commit을 통과해 그 뒤로 계속 간다. 그런데도 deadline 안에 끝나지 못한다. 이후 시도는
+cleanup이 binding을 지운 뒤라 commit에서 멈추고, 그래서 117번이 commit 호출까지만 도달한다.
+
 두 방향이 있다.
 
-1. Completion이 commit 성공 뒤 어디서 멈추는지 본다. `target_completion_before_session_commit`
-   다음에 `session_route_commit_acknowledged`가 찍히는지가 첫 분기다.
+1. 첫 시도가 commit 뒤 어디서 시간을 쓰는지 본다. `CompleteRoutedActorHandoffAsync`에서
+   `session_route_commit_acknowledged` 다음 단계들에 표시를 넣으면 갈린다. Deadline은
+   `DefaultRequestTimeout`이다.
 2. Disconnect 통지를 application frame FIFO 뒤에 세우지 않는다. 이것은 lifecycle 통지이지
    application 순서를 지켜야 하는 message가 아니다. Spec 23 §10.2가 요구하는 FIFO의 대상인지
    먼저 판정할 것. 이 쪽은 completion 문제와 독립적으로 disconnect를 살린다.

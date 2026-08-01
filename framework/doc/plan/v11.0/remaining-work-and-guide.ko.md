@@ -128,10 +128,24 @@ callback이나 evidence가 나른다. SM-B6와 ST-C3가 같은 이유로 막혀 
 **SM-B6.** Cross-node join은 통과한다. 남은 것은 actor가 handoff로 다른 node로 옮겨간 뒤
 bound session이 따라가지 않는 것이다. 그래서 disconnect 통지가 actor가 join한 spot에 닿지 못한다.
 
-**RM-B2.** Provider가 drain 중일 때 select-one이 그 member를 고르고 `Rejected`(admission sealed)를
-그대로 caller에게 돌려준다. Config 1 RM-B2는 "`Draining` 전파 구간을 포함해 모두 정상 reply로
-끝난다"를 요구하므로, admission 전 거부에서는 다시 골라야 한다. Spec 06 §679도 성공한 admission
-전까지 재선택을 허용한다.
+**RM-B2 — mesh 계층에 drain 표시가 구현되어 있지 않다.** Provider가 drain 중일 때 select-one이 그
+member를 고르고 `Rejected`(admission sealed)를 caller에게 그대로 돌려준다. 원인을 끝까지 보면 표시
+자체가 없다.
+
+```
+MeshNodeState.Draining  — 대입하는 코드 0곳 (읽는 곳만 있음)
+MeshPeerState.Draining  — 대입하는 코드 0곳 (읽는 곳만 있음)
+```
+
+두 enum 값 모두 정의되어 있고 status 매핑과 wrapper에서 읽히지만, 어디에서도 설정되지 않는다.
+그래서 `ChannelSelectionFailureReason`의 `_state == MeshNodeState.Draining` 분기는 죽은 코드이고,
+`SnapshotChannelTargets`는 `peer.Admitted`만 보므로 drain 중인 peer가 후보로 남는다.
+
+Spec 28 §567은 "`Draining` descriptor를 게시해 새 selection과 placement에서 제외한다"고 정한다.
+Config 1 RM-B2는 "`Draining` 전파 구간을 포함해 모두 정상 reply로 끝난다"를 요구한다. 따라서 필요한
+것은 세 가지다. 종료를 시작한 node가 자신을 `Draining`으로 표시하고, 그 사실을 peer에게 알리고,
+select-one 후보에서 제외하는 것이다. 전파 구간의 경합까지 덮으려면 admission 전 거부에서 재선택도
+필요하다. Spec 06 §679가 성공한 admission 전까지 재선택을 허용한다.
 
 **TA-A4.** Actor destroy 뒤 같은 ID 호출이 `Unavailable`로 끝난다. Config 9는 `NotFound`로 분류할
 것을 요구하고, spec 06 결과표도 authority가 없으면 `NotFound`다.

@@ -24,8 +24,8 @@ internal static class TdA1TerminatorSurfaceScenario
             "TD-A1 standalone HTTP request builder is missing Async.");
         ZlinkStreamAssert.Ensure(!methods.Contains("Submit") && !methods.Contains("Yield"),
             "TD-A1 standalone HTTP request builder exposes server-only terminators.");
-        ZlinkStreamAssert.Ensure(!methods.Contains("Fetch"),
-            "TD-A1 standalone HTTP request builder exposes blocking Fetch.");
+        // Spec http-client 05 §5.2 uses Fetch<T> inside an I/O Worker, so it is
+        // part of the builder contract; only Yield and Submit are withheld.
         return Task.CompletedTask;
     }
 
@@ -34,7 +34,7 @@ internal static class TdA1TerminatorSurfaceScenario
         var methods = type.GetMethods().Select(method => method.Name).ToHashSet(StringComparer.Ordinal);
         ZlinkStreamAssert.Ensure(methods.Contains("Async"),
             $"TD-A1 {type.Name} is missing Async.");
-        foreach (var name in new[] { "Submit", "Yield", "Fetch" })
+        foreach (var name in new[] { "Submit", "Yield" })
             ZlinkStreamAssert.Ensure(!methods.Contains(name), $"TD-A1 {type.Name} exposes {name}.");
     }
 
@@ -45,7 +45,7 @@ internal static class TdA1TerminatorSurfaceScenario
             ZlinkStreamAssert.Ensure(methods.Contains(name), $"TD-A1 {type.Name} is missing {name}.");
         ZlinkStreamAssert.Ensure(!methods.Contains("Submit"),
             $"TD-A1 {type.Name} exposes the fire-and-forget Submit terminator.");
-        ZlinkStreamAssert.Ensure(!methods.Contains("Fetch"), $"TD-A1 {type.Name} exposes blocking Fetch.");
+
     }
 
     private static void AssertTerminators(Type type)
@@ -53,7 +53,7 @@ internal static class TdA1TerminatorSurfaceScenario
         var methods = type.GetMethods().Select(method => method.Name).ToHashSet(StringComparer.Ordinal);
         foreach (var name in new[] { "Submit", "Async", "Yield" })
             ZlinkStreamAssert.Ensure(methods.Contains(name), $"TD-A1 {type.Name} is missing {name}.");
-        ZlinkStreamAssert.Ensure(!methods.Contains("Fetch"), $"TD-A1 {type.Name} exposes blocking Fetch.");
+
     }
 
     private static void AssertDeferredJoinTerminators(Type type)

@@ -187,14 +187,37 @@ target_completion_reply_rejected          120
 첫 시도는 commit을 통과해 그 뒤로 계속 간다. 그런데도 deadline 안에 끝나지 못한다. 이후 시도는
 cleanup이 binding을 지운 뒤라 commit에서 멈추고, 그래서 117번이 commit 호출까지만 도달한다.
 
-두 방향이 있다.
+첫 시도가 commit 뒤 어디까지 가는지도 측정했다.
 
-1. 첫 시도가 commit 뒤 어디서 시간을 쓰는지 본다. `CompleteRoutedActorHandoffAsync`에서
-   `session_route_commit_acknowledged` 다음 단계들에 표시를 넣으면 갈린다. Deadline은
-   `DefaultRequestTimeout`이다.
+```
+session_route_commit_acknowledged       1
+target_completion_join_callback_done    1
+target_completion_before_replay         1     ← 여기까지 가고 반환하지 않는다
+```
+
+Commit도 join completion callback도 끝낸다. `ReplayFinalTransferredActorHandoffAsync`에서 멈춘다.
+
+여기까지가 측정이고, 아래는 그 관측에 맞는 가장 단순한 설명이다. **순환 대기로 보인다.**
+
+- Deferred join frame의 dispatch가 handoff를 일으키고, target에서 completion이 돈다.
+- Completion의 마지막이 captured frame replay다.
+- Replay도 actor별 FIFO 체인(`_remoteFrameChains`)을 탄다.
+- 그 체인의 앞에는 아직 끝나지 않은 join frame dispatch가 있다.
+- Join frame dispatch는 completion이 돌아와야 끝난다.
+
+Disconnect는 그 뒤에 선다. 그래서 도착은 하는데 pipeline에 오지 않는다.
+
+다음 확인은 replay가 실제로 같은 체인을 기다리는지다. `DispatchRemoteFrameAfterAsync`가 기다리는
+`prior` task의 정체를 replay 시점에 찍으면 갈린다.
+
+수정 방향은 둘이다.
+
+1. Replay를 join frame dispatch와 같은 체인에 세우지 않는다. Replay는 그 join의 후속 단계이지
+   뒤에 온 frame이 아니다.
 2. Disconnect 통지를 application frame FIFO 뒤에 세우지 않는다. 이것은 lifecycle 통지이지
    application 순서를 지켜야 하는 message가 아니다. Spec 23 §10.2가 요구하는 FIFO의 대상인지
-   먼저 판정할 것. 이 쪽은 completion 문제와 독립적으로 disconnect를 살린다.
+   먼저 판정할 것. 이 쪽은 순환 대기와 독립적으로 disconnect를 살린다.
+
 
 **RM-B2 — mesh 계층에 drain 표시가 구현되어 있지 않다.** Provider가 drain 중일 때 select-one이 그
 member를 고르고 `Rejected`(admission sealed)를 caller에게 그대로 돌려준다. 원인을 끝까지 보면 표시

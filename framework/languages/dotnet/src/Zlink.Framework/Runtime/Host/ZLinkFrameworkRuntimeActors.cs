@@ -929,12 +929,16 @@ internal sealed partial class ZLinkFrameworkRuntime
                             token),
                         cancellationToken)
                     .ConfigureAwait(false);
+                LogActorHandoff(
+                    $"target_completion_join_callback_done actor={request.ActorId}");
                 if (completionRoot is not null)
                     completionRoot = await completionJournal!.MarkDeliveredAsync(
                             completionRoot,
                             cancellationToken)
                         .ConfigureAwait(false);
             }
+            LogActorHandoff(
+                $"target_completion_before_replay actor={request.ActorId}");
             await ReplayFinalTransferredActorHandoffAsync(
                     target,
                     actorState,

@@ -193,10 +193,17 @@ select-one 후보에서 제외하는 것이다. 전파 구간의 경합까지 �
 아무 변화가 없어 "이건 원인이 아니다"로 잘못 지운다. 실제로 HWM만 올렸을 때와 gate만 우회했을 때
 모두 실패했고, 둘을 함께 뺐을 때 통과했다. **조합으로 시험할 것.**
 
-남은 판단은 오전에 적은 것과 같다. Suite가 backpressure를 시험하려고 고른 값(HWM 1, 좁은 gate)이
-handshake까지 막는 것이 옳은지, 아니면 handshake·admission frame이 그 둘의 영향을 받지 않아야
-하는지다. 후자라면 completion pair 분리만으로는 부족하고, application lane에 남아 있는 의존을
-찾아야 한다.
+배포는 정상임을 확인했다. 실행 중인 native는 package·install prefix와 md5가 같으므로 completion
+pair budget 수정은 실제로 로드된다. 그런데도 HWM 1에서 admission이 성립하지 않는다.
+
+남는 설명은 **bootstrap 구간**이다. Completion pair는 transport pair 협상의 결과로 생긴다. 그
+협상이 끝나기 전의 첫 frame은 completion lane이 아직 없으므로 application lane으로 나갈 수밖에
+없고, 그 lane의 `SendHighWaterMark = 1`에 걸린다. Completion pair에 자기 budget을 준 것은 pair가
+선 뒤에만 효과가 있다.
+
+이것이 맞다면 필요한 것은 두 가지다. Pair 협상 frame이 application HWM에 걸리지 않아야 하고,
+`ReceiverGate` 같은 좁은 proxy에서도 두 연결이 모두 서야 한다(후자는 accept loop으로 해결했다).
+확인 방법은 pair 협상 frame이 어느 lane으로 나가는지 core에서 찍는 것이다.
 
 **OBS-C1.** `host-state|` evidence가 관측되지 않는다. Observer는 등록되어 있고 host status stream은
 구독 시 현재 상태를 한 번 쓴다. Evidence는 HTTP로만 노출되므로 로그 파일 grep으로는 판정할 수

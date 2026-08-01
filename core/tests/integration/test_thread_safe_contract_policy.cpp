@@ -162,11 +162,11 @@ void test_docs_reflect_tiered_thread_safe_contract ()
 
     const std::string socket_doc =
       read_text_file (
-        (std::string (TEST_REPO_ROOT) + "/core/doc/spec/core/socket/README.md").c_str ());
+        (std::string (TEST_REPO_ROOT) + "/core/doc/spec/core/socket/README.en.md").c_str ());
     const std::string socket_doc_ko = read_text_file (
       (std::string (TEST_REPO_ROOT) + "/core/doc/spec/core/socket/README.ko.md").c_str ());
     const std::string threading_doc = read_text_file (
-      (std::string (TEST_REPO_ROOT) + "/core/doc/internals/threading-model.md").c_str ());
+      (std::string (TEST_REPO_ROOT) + "/core/doc/internals/threading-model.en.md").c_str ());
     const std::string threading_doc_ko = read_text_file (
       (std::string (TEST_REPO_ROOT) + "/core/doc/internals/threading-model.ko.md").c_str ());
 

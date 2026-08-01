@@ -314,7 +314,7 @@ pymdown-extensions>=10.0
 - Python 3.12 + pip install
 - `mkdocs build --strict`
 - `actions/upload-pages-artifact` + `actions/deploy-pages`
-- URL: `https://zlink.systems/`
+- URL: `https://kairos-code-dev.github.io/zlink/`
 
 ## 로컬 개발
 

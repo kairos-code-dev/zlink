@@ -1,6 +1,6 @@
 [English](README.md) | [한국어](README.ko.md)
 
-[스펙 목차](https://zlink.systems/core/ko/spec/) · [바인딩 정책](../README.ko.md)
+[스펙 목차](https://kairos-code-dev.github.io/zlink/core/ko/spec/) · [바인딩 정책](../README.ko.md)
 
 # C++ 바인딩 최종 구조
 

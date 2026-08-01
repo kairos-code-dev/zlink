@@ -334,10 +334,16 @@ framework를 **최상위**로 올리고 core를 같은 도메인의 **`/core/` �
 
 | | framework | core |
 | --- | --- | --- |
-| 주소 | **`zlink.systems`** | **`zlink.systems/core/`** |
+| 주소 | 사이트 루트 | 루트의 **`core/`** |
 | mkdocs 프로젝트 | `framework/doc/site/` | `doc/site/` |
 | 담는 것 | 공통 12장 · 언어별 5장 · cpp 전용 4장 · 샘플 · 공통 스펙 | 소켓 패턴 · C API · binding · internals |
 | 상대편 참조 | core 구역으로 절대 URL | framework로 절대 URL |
+
+**도메인은 아직 붙지 않았다.** `zlink.systems`는 Squarespace "Coming Soon"
+페이지이고, 문서는 GitHub Pages 기본 주소 `https://kairos-code-dev.github.io/zlink/`로
+나간다. 트리를 넘는 절대 URL 161곳이 이 주소를 쓴다. 커스텀 도메인을 붙이는 날
+그 문자열을 한 번에 바꾸면 된다 — 사이트 안 링크와 리다이렉트 stub은 상대 경로라
+영향받지 않는다.
 
 두 사이트는 각자 nav·검색 색인·i18n을 갖는다. 도메인만 공유하므로 독자에게는 상단
 링크로 오가는 두 구역으로 보인다. framework 가이드가 transport·TLS·socket option을

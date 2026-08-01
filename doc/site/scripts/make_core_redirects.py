@@ -58,7 +58,10 @@ def main() -> int:
             skipped += 1                  # framework 페이지를 덮지 않는다
             continue
         old.parent.mkdir(parents=True, exist_ok=True)
-        old.write_text(STUB.format(target=f"/core/{rel.as_posix()}/"),
+        #  상대 경로로 적는다. 사이트가 도메인 루트에 있든 `/zlink/` 아래에 있든
+        #  같은 자리를 가리킨다. `/core/...`로 적으면 Pages 기본 주소에서 깨진다.
+        up = "../" * len(rel.parts)
+        old.write_text(STUB.format(target=f"{up}core/{rel.as_posix()}/"),
                        encoding="utf-8")
         written += 1
 

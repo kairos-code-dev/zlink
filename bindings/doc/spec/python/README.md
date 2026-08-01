@@ -1,4 +1,4 @@
-[Spec Index](https://zlink.systems/core/spec/) · [Bindings Policy](../README.md)
+[Spec Index](https://kairos-code-dev.github.io/zlink/core/spec/) · [Bindings Policy](../README.md)
 
 # Python Binding Implementation Blueprint
 

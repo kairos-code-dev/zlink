@@ -880,7 +880,10 @@ public sealed class HttpClientContractTests
     {
         Assert.Null(typeof(ZLinkHttpRequestBuilder).GetMethod("Yield"));
         Assert.Null(typeof(ZLinkHttpRequestBuilder).GetMethod("Submit"));
-        Assert.Null(typeof(ZLinkHttpServerRequestBuilder).GetMethod("Yield"));
+        //  Spec http-client 05 §5.1: the server builder returns the shared Spot
+        //  gate with Yield where the framework allows it; the standalone client
+        //  has no gate to return.
+        Assert.NotNull(typeof(ZLinkHttpServerRequestBuilder).GetMethod("Yield"));
         Assert.Contains(
             typeof(ZLinkHttpServerRequestBuilder).GetMethods(),
             method => method.Name == "Async"

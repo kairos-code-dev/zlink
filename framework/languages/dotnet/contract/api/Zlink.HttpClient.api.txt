@@ -108,3 +108,5 @@ assembly Zlink.HttpClient
     method virtual Zlink.HttpClient.ZLinkHttpServerRequestBuilder Multipart(System.String name [nullability=read:not-null,write:not-null], System.String value [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method virtual Zlink.HttpClient.ZLinkHttpServerRequestBuilder Query(System.String name [nullability=read:not-null,write:not-null], System.String value [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method virtual Zlink.HttpClient.ZLinkHttpServerRequestBuilder Timeout(System.TimeSpan value [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method System.Threading.Tasks.ValueTask<Zlink.HttpClient.HttpResponse<T>> Yield<T>(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+      generic T variance=invariant nullable=unspecified

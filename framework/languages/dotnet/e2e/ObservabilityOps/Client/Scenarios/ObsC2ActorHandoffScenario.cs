@@ -12,13 +12,45 @@ internal static class ObsC2ActorHandoffScenario
         var suffix = Guid.NewGuid().ToString("N");
         var actorId = $"obs-c2-{suffix}";
         var roomRid = $"room-c2-{suffix}";
-        await context.PlayA.Post("/rooms").Body(new CreateRoomReq(roomRid)).AsyncRaw();
+        //  `start_play_b`는 play-b를 항상 `--metrics-enabled false`로 띄운다.
+        //  Actor가 play-b에 착지하면 source의 `/evidence` metric이 통째로 비어
+        //  이 scenario의 metric 검증이 배치 운에 좌우된다. 첫 room을 play-a에
+        //  고정해 source를 metric이 있는 쪽으로 못 박는다.
+        var playANode = await context.PlayNodeIdAsync("play-a");
+        var room = await context.CreateRoomOnObservedNodeAsync(
+            playANode, $"room-c2-{suffix}");
+        roomRid = room.RoomRid;
         await using var connector = await context.ConnectAsync();
         await connector.Request(new AuthenticateReq(actorId)).Async<AuthenticateRes>();
         await context.JoinRoomAsync(connector, actorId, roomRid);
+        //  Room join은 actor를 room spot 소유 node로 옮기므로, join completion 직후
+        //  창에서는 binding admission이 `RetryAfterBackoff`로 거절할 수 있다.
+        //  런타임이 재시도를 지시하는 상태이므로 예산 안에서 다시 보낸다.
+        async Task<GameActionRes> SendPendingAsync(int index)
+        {
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+            Exception? last = null;
+            while (DateTime.UtcNow < deadline)
+            {
+                try
+                {
+                    return await connector
+                        .Request(new GameActionReq($"obs-c2-pending-{index}", 100))
+                        .Async<GameActionRes>();
+                }
+                catch (Exception error)
+                {
+                    last = error;
+                    await Task.Delay(TimeSpan.FromMilliseconds(200));
+                }
+            }
+
+            throw new InvalidOperationException(
+                $"OBS-C2 pending request {index} was never admitted: {last?.Message}");
+        }
+
         var requests = Enumerable.Range(0, 3)
-            .Select(index => connector.Request(new GameActionReq($"obs-c2-pending-{index}", 100))
-                .Async<GameActionRes>().AsTask()).ToArray();
+            .Select(index => SendPendingAsync(index)).ToArray();
         var replies = await Task.WhenAll(requests);
         ZlinkStreamAssert.Ensure(replies.All(reply => reply.ActorId == actorId),
             "OBS-C2 a request lost its original reply during handoff.");
@@ -27,7 +59,9 @@ internal static class ObsC2ActorHandoffScenario
         ZlinkStreamAssert.Ensure(lobby.SpotId is null,
             "OBS-C2 actor did not leave the completed room.");
         var sourceNode = lobby.NodeRid;
-        _ = await context.PlayNodeIdAsync("play-a");
+        ZlinkStreamAssert.Ensure(sourceNode == playANode,
+            $"OBS-C2 actor did not stay on the metrics-enabled node: "
+            + $"{sourceNode} != {playANode}.");
         _ = await context.PlayNodeIdAsync("play-b");
         var targetNode = context.OtherPlayNode(sourceNode);
         var source = context.Play(sourceNode);
@@ -53,7 +87,9 @@ internal static class ObsC2ActorHandoffScenario
                 row.ActorId == actorId && row.NodeRid == targetNode),
             "OBS-C2 actor location did not commit to the eligible peer.");
         var result = relocation;
-        var metrics = (await source.Get("/evidence")
+        //  In-flight histogram은 관측 창이 지나면 사라진다. 이동 직후의 스냅샷에서
+        //  읽어 둔다. Terminal counter는 아래에서 따로 예산을 두고 읽는다.
+        var servingMetrics = (await source.Get("/evidence")
             .Async<EvidenceSnapshot>()).Body.Metrics;
         ZlinkStreamAssert.Ensure(result.Result == "Relocated",
             $"OBS-C2 serving target handoff failed: {result.Result}/{result.Reason}.");
@@ -85,9 +121,23 @@ internal static class ObsC2ActorHandoffScenario
                 await Task.Delay(TimeSpan.FromMilliseconds(500));
             }
         }
-        ZlinkStreamAssert.Ensure(rejoined is not null,
-            $"OBS-C2 bound session could not reach the relocated actor: "
-            + $"{lastRejoinError?.Message}");
+        if (rejoined is null)
+        {
+            //  실패하면 actor와 room이 실제로 어디에 있는지 함께 드러낸다.
+            var placement = (await context.Play(targetNode).Get("/evidence")
+                .Async<EvidenceSnapshot>()).Body;
+            var actorRows = string.Join(
+                ",",
+                placement.ActorRows.Select(row => $"{row.ActorId}@{row.NodeRid}"));
+            var spotRows = string.Join(
+                ",",
+                placement.SpotRows.Select(row => $"{row.SpotRid}@{row.NodeRid}"));
+            ZlinkStreamAssert.Ensure(false,
+                $"OBS-C2 bound session could not reach the relocated actor: "
+                + $"{lastRejoinError?.Message} source={sourceNode} target={targetNode} "
+                + $"room={movedRoom.RoomRid}@{movedRoom.NodeRid} "
+                + $"actors=[{actorRows}] spots=[{spotRows}]");
+        }
         ZlinkStreamAssert.Ensure(rejoined!.NodeRid == targetNode,
             $"OBS-C2 bound session did not continue to the relocated actor: "
             + $"{rejoined.NodeRid} != {targetNode}.");
@@ -96,13 +146,39 @@ internal static class ObsC2ActorHandoffScenario
             movedLocation.ActorRows.Any(row =>
                 row.ActorId == actorId && row.NodeRid == targetNode),
             "OBS-C2 relocated actor did not stay committed on the target owner.");
+        //  Metric은 relocation의 마지막에 기록된다. `/relocate`가 terminal 결과를
+        //  돌려준 직후 한 번만 읽으면 아직 안 올라와 있을 수 있으므로, 여기서
+        //  예산을 두고 다시 읽는다.
+        var metrics = Array.Empty<MetricSample>() as IReadOnlyList<MetricSample>;
+        var metricDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
+        while (DateTime.UtcNow < metricDeadline)
+        {
+            metrics = (await source.Get("/evidence")
+                .Async<EvidenceSnapshot>()).Body.Metrics;
+            if (metrics.Any(sample =>
+                    sample.Name == "zlink.relocation.completed"
+                    && sample.Tags.GetValueOrDefault("object_kind") == "actor"
+                    && sample.Tags.GetValueOrDefault("outcome") == "completed"
+                    && sample.Value >= 1))
+                break;
+            await Task.Delay(TimeSpan.FromMilliseconds(500));
+        }
         ZlinkStreamAssert.Ensure(metrics.Any(sample =>
                 sample.Name == "zlink.relocation.completed"
                 && sample.Tags.GetValueOrDefault("object_kind") == "actor"
                 && sample.Tags.GetValueOrDefault("outcome") == "completed"
                 && sample.Value >= 1),
-            "OBS-C2 Actor relocation completion metric did not increase.");
-        ZlinkStreamAssert.Ensure(metrics.Any(sample =>
+            "OBS-C2 Actor relocation completion metric did not increase. observed=["
+            + string.Join(
+                ";",
+                metrics.Where(sample => sample.Name.StartsWith("zlink.relocation"))
+                    .Select(sample =>
+                        $"{sample.Name}{{"
+                        + string.Join(
+                            ",", sample.Tags.Select(tag => $"{tag.Key}={tag.Value}"))
+                        + $"}}={sample.Value}"))
+            + "]");
+        ZlinkStreamAssert.Ensure(servingMetrics.Any(sample =>
                 sample.Name == "zlink.mesh_node.requests.inflight"
                 && sample.Tags.GetValueOrDefault("surface") == "actor"
                 && sample.Count >= 1),

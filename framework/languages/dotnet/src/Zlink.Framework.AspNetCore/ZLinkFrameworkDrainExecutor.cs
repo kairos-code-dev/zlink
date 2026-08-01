@@ -52,6 +52,8 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
             throw new ArgumentOutOfRangeException(nameof(deadline));
         if (Interlocked.Exchange(ref _shutdownRequested, 1) != 0)
             return;
+        Zlink.Framework.Runtime.Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            "admission_sealed site=request_shutdown");
         _operations.SealApplicationAdmissions();
         _shutdownDeadline.CancelAfter(deadline);
     }
@@ -92,23 +94,40 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
         ulong committedUnitCount = 0;
         try
         {
-            if (intent == ZLinkFrameworkLifecycleIntent.Shutdown)
-                _operations.SealApplicationAdmissions();
-
+            //  Shutdown 경로는 단계별 흔적이 없어 deadline이 어디서 소진되는지
+            //  알 수 없었다. 각 단계의 시작을 남긴다.
+            void ShutdownStep(string step) =>
+                Zlink.Framework.Runtime.Diagnostics.ZLinkFrameworkDebugLog
+                    .SpotDiscovery($"shutdown_step step={step} intent={intent}");
             if (intent == ZLinkFrameworkLifecycleIntent.Shutdown)
             {
-                if (!await PublishDrainingMarkerAsync(deadlineToken).ConfigureAwait(false))
-                    return Result(ZLinkDrainForceReason.DrainingStatePublishFailed);
-                if (!await PublishServingWeightAsync(deadlineToken).ConfigureAwait(false))
-                    return Result(ZLinkDrainForceReason.DrainingStatePublishFailed);
-                await WaitForDescriptorPropagationAsync(deadlineToken).ConfigureAwait(false);
+                ShutdownStep("seal_admissions");
+                Zlink.Framework.Runtime.Diagnostics.ZLinkFrameworkDebugLog
+                    .SpotDiscovery("admission_sealed site=shutdown_intent");
+                _operations.SealApplicationAdmissions();
             }
 
             if (intent == ZLinkFrameworkLifecycleIntent.Shutdown)
             {
+                ShutdownStep("publish_draining_marker");
+                if (!await PublishDrainingMarkerAsync(deadlineToken).ConfigureAwait(false))
+                    return Result(ZLinkDrainForceReason.DrainingStatePublishFailed);
+                ShutdownStep("publish_serving_weight");
+                if (!await PublishServingWeightAsync(deadlineToken).ConfigureAwait(false))
+                    return Result(ZLinkDrainForceReason.DrainingStatePublishFailed);
+                ShutdownStep("wait_descriptor_propagation");
+                await WaitForDescriptorPropagationAsync(deadlineToken).ConfigureAwait(false);
+                ShutdownStep("descriptor_propagated");
+            }
+
+            if (intent == ZLinkFrameworkLifecycleIntent.Shutdown)
+            {
+                ShutdownStep("wait_accepted_operations");
                 await _operations.WaitForAcceptedOperations().WaitAsync(deadlineToken)
                     .ConfigureAwait(false);
+                ShutdownStep("wait_accepted_actor_handoffs");
                 await _operations.WaitForAcceptedActorHandoffs(deadlineToken).ConfigureAwait(false);
+                ShutdownStep("accepted_drained");
             }
 
             if (intent == ZLinkFrameworkLifecycleIntent.Relocate)
@@ -166,6 +185,8 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
                         .ConfigureAwait(false);
                 }
 
+                Zlink.Framework.Runtime.Diagnostics.ZLinkFrameworkDebugLog
+                    .SpotDiscovery("admission_sealed site=relocate_completed");
                 _operations.SealApplicationAdmissions();
                 relocationDetached?.Invoke();
                 return Result(null);
@@ -174,6 +195,7 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
             var actorsDrained = false;
             while (!actorsDrained)
             {
+                ShutdownStep("drain_actors");
                 var actorDrain = await _operations.DrainActors(deadlineToken)
                     .ConfigureAwait(false);
                 committedUnitCount = checked(
@@ -195,12 +217,24 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
             {
                 try
                 {
+                    ShutdownStep("drain_spots");
                     var spotDrain = await _operations.DrainSpots(
                             false,
+                            intent == ZLinkFrameworkLifecycleIntent.Shutdown,
                             deadlineToken)
                         .ConfigureAwait(false);
                     committedUnitCount = checked(
                         committedUnitCount + spotDrain.CommittedUnitCount);
+                    //  Actor 루프와 달리 여기에는 terminal reason 탈출구가 없었다.
+                    //  Spot drain이 더 진행할 수 없다고 알려도 루프가 그대로 돌아
+                    //  deadline을 소진했고, 호출자는 이유 없이 ForceStopped만 받았다.
+                    if (spotDrain.TerminalReason is not null)
+                        return intent == ZLinkFrameworkLifecycleIntent.Relocate
+                               && committedUnitCount == 0
+                            ? await RollBackBlockedRetireAsync(
+                                    spotDrain.TerminalReason.Value)
+                                .ConfigureAwait(false)
+                            : Result(ZLinkDrainForceReason.RelocationFailed);
                     spotsDrained = spotDrain.Completed;
                 }
                 catch (ZLinkAuthorityGenerationExhaustedException)
@@ -216,9 +250,11 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
                     await Task.Delay(_locationOptions.PollingInterval, deadlineToken).ConfigureAwait(false);
             }
 
+            ShutdownStep("drain_stream_sessions");
             if (!await _operations.DrainStreamSessions(deadlineToken).ConfigureAwait(false))
                 return Result(ZLinkDrainForceReason.TeardownFailed);
 
+            ShutdownStep("freeze_owner_writes");
             if (_operations.HasAutoConnect)
                 await _operations.FreezeOwnerWrites(deadlineToken).ConfigureAwait(false);
             if (_operations.HasAutoConnect)
@@ -458,7 +494,7 @@ internal sealed record ZLinkDrainExecutionOperations(
     Func<Task> WaitForAcceptedOperations,
     Func<CancellationToken, Task> WaitForAcceptedActorHandoffs,
     Func<CancellationToken, ValueTask<ZLinkActorDrainResult>> DrainActors,
-    Func<bool, CancellationToken, ValueTask<ZLinkSpotDrainResult>> DrainSpots,
+    Func<bool, bool, CancellationToken, ValueTask<ZLinkSpotDrainResult>> DrainSpots,
     Func<ZLinkRelocationWorkloadDrainControl,
         ValueTask<ZLinkRelocationWorkloadDrainResult>>
         DrainRelocationWorkloads,

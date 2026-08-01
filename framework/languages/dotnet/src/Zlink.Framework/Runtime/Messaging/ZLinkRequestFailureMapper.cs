@@ -18,12 +18,19 @@ internal static class ZLinkRequestFailureMapper
                 ZLinkFrameworkErrorKind.NotFound,
                 $"{operationName} failed because the target was not found.",
                 innerException: CreateRequestException(result)),
-            RequestResult.Rejected or RequestResult.Conflict or RequestResult.Busy => new ZLinkFrameworkException(
+            //  Spec 06 §13.1의 `Rejected`는 application admission 정책이 거절했다는
+            //  뜻이다. `Conflict`와 `Busy`는 재시도하면 풀리는 일시 상태이므로 같은
+            //  kind로 뭉치면 안 된다. Kind만 실어 나르는 경로(예: Actor join 완료
+            //  통지)에서는 retry advice가 사라져 일시 충돌이 정책 거절로 도착한다.
+            RequestResult.Conflict or RequestResult.Busy => new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.Unavailable,
+                $"{operationName} was refused with a transient result '{result}'.",
+                ZLinkRetryAdvice.RetryAfterBackoff,
+                CreateRequestException(result)),
+            RequestResult.Rejected => new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.Rejected,
                 $"{operationName} was rejected with result '{result}'.",
-                result is RequestResult.Busy or RequestResult.Conflict
-                    ? ZLinkRetryAdvice.RetryAfterBackoff
-                    : ZLinkRetryAdvice.DoNotRetry,
+                ZLinkRetryAdvice.DoNotRetry,
                 CreateRequestException(result)),
             RequestResult.ProtocolError => new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ProtocolError,

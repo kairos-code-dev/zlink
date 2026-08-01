@@ -1022,7 +1022,34 @@ internal sealed partial class ZLinkFrameworkRuntime
     //  Relocation의 bound session route는 target 쪽에서만 풀린다. 완료 명령과
     //  reconcile 두 경로가 같은 꼬리를 부르지 않으면, 한쪽이 stage를 먼저
     //  치웠을 때 seal이 영구히 남아 이후 frame이 전부 거절된다.
-    internal async ValueTask FinishRelocationSessionRouteAsync(
+    internal async ValueTask FinishRelocationTargetAsync(
+        ZLinkActorRuntimeState actorState,
+        string meshName,
+        string handoffId,
+        CancellationToken cancellationToken)
+    {
+        //  Staged relocation은 target에서 claim을 건너뛴다(`ZLinkActorClaimMode
+        //  .StagedRelocation`). 이동이 끝난 뒤에도 아무도 adopt하지 않으면 target의
+        //  location owner가 그 actor를 모르는 채로 남아, 이후 spot join이
+        //  `not tracked by this location owner`로 실패한다.
+        if (LocationLifecycle is { } locations
+            && actorState.ActorType is { } actorType
+            && actorState.NativeActorRef is { } nativeActor)
+            await locations.ActorOwnership.AdoptCommittedActorAuthorityAsync(
+                    actorState.ActorId,
+                    actorType,
+                    nativeActor.ToNative(meshName),
+                    _ => DeactivateActorOnOwnershipLossAsync(actorState.ActorId),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        await FinishRelocationSessionRouteAsync(
+                actorState,
+                handoffId,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask FinishRelocationSessionRouteAsync(
         ZLinkActorRuntimeState actorState,
         string handoffId,
         CancellationToken cancellationToken)

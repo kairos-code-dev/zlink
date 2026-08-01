@@ -868,16 +868,19 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     internal ValueTask<ZLinkSpotDrainResult> TryDrainSpotsAsync(
         bool relocate,
+        bool hostShutdown,
         ZLinkRelocationTargetSelection selection,
         CancellationToken cancellationToken) =>
         TryDrainSpotsAsync(
             relocate,
+            hostShutdown,
             selection,
             ZLinkSpotRelocationPhase.Aggregates,
             cancellationToken);
 
     internal async ValueTask<ZLinkSpotDrainResult> TryDrainSpotsAsync(
         bool relocate,
+        bool hostShutdown,
         ZLinkRelocationTargetSelection selection,
         ZLinkSpotRelocationPhase phase,
         CancellationToken cancellationToken)
@@ -889,7 +892,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                     cancellationToken)
                 .ConfigureAwait(false);
         return new ZLinkSpotDrainResult(
-            await _spots.TryDrainAsync(cancellationToken).ConfigureAwait(false),
+            await _spots.TryDrainAsync(hostShutdown, cancellationToken)
+                .ConfigureAwait(false),
             0);
     }
 

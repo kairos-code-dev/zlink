@@ -709,12 +709,18 @@ internal sealed partial class ZLinkSpotActivation
     internal async ValueTask<bool> TryCloseIfNoActorsAsync(
         ZLinkSpotCloseReason reason,
         DateTimeOffset deadline,
+        bool requireNoActors,
         CancellationToken cancellationToken)
     {
         return await _serial.ExecuteQuiescentLifecycleAsync(
                 async (activation, ct) =>
                 {
-                    if (activation._actors.Count > 0) return false;
+                    //  Shutdown은 member actor가 남아 있어도 closing callback을
+                    //  알리고 정리해야 한다(spec 28 §178). 가드를 무조건 걸면
+                    //  callback조차 불리지 않는다. Relocate와 일반 close는
+                    //  actor를 옮긴 뒤 닫으므로 가드를 그대로 유지한다.
+                    if (requireNoActors && activation._actors.Count > 0)
+                        return false;
 
                     if (Interlocked.Exchange(ref activation._closingInvoked, 1) == 0)
                         await activation.InvokeClosingAsync(reason, deadline)

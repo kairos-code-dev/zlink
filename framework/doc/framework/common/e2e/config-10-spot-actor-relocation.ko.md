@@ -331,11 +331,16 @@ Session relay message와 direct Actor message는 relocation 경계에서도 Acto
 우선순위: `P0`
 
 연속 relocation에서 첫 이동의 늦은 route 갱신이 두 번째 이동의 current location을 덮어쓰면 안 된다.
+이 scenario는 내부 packet을 식별하지 않고 target runtime과 Session owner 사이의 public route 경계를
+지연시켜 실행한다.
 
 **검증 질문:** A→B→C 뒤 B에 대한 늦은 update가 있어도 bound push가 C에서 도착하는가.
 
-- 시작 조건: 첫 relocation의 Session update response를 proxy에서 지연한다.
-- 절차: A→B Join 뒤 바로 B→C Join을 완료하고 지연을 해제한 다음 C에서 push한다.
+- 시작 조건: Network proxy가 B runtime에서 Session owner로 가는 연결의 한 방향만 지연할 수 있다. C
+  runtime의 연결은 지연하지 않는다. Proxy는 packet name, frame과 payload를 읽거나 생성하지 않는다.
+- 절차: A→B Join을 완료한 뒤 B→Session owner 방향을 유지한 상태에서 B→C Join을 완료한다. Bound
+  Session의 public ActorRef location snapshot이 C를 가리키는 것을 bounded wait로 확인하고 B 방향의
+  지연을 해제한 다음 C에서 push를 보낸다.
 - 검증: Client는 C push를 한 번 받고 B에서 같은 sequence를 받지 않는다.
 - 계약 근거: [Session Actor dispatch](../spec/20-session-actor-dispatch.ko.md)
 
@@ -350,7 +355,8 @@ Session relay message와 direct Actor message는 relocation 경계에서도 Acto
 
 - 시작 조건: 짧지만 test deadline보다 충분한 Message Follow duration을 공개 설정하고 proxy가 old-route message를 보관한다.
 - 절차: Join 완료 뒤 첫 old-route message를 duration 안에 전달한다. 두 번째 message는 duration과 scheduler 허용 오차가 지난 뒤 전달한다.
-- 검증: 첫 operation ID는 target에서 최대 한 번 처리된다. 두 번째 ID는 처리되지 않고 caller가 route-related result를 받는다.
+- 검증: 첫 operation ID는 target에서 최대 한 번 처리된다. 두 번째 ID는 처리되지 않고 caller는
+  `Unavailable`을 받는다.
 - 계약 근거: [Spot actor](../spec/15-spot-actor.ko.md)
 
 #### ST-F5 Message Follow route cleanup
@@ -495,14 +501,19 @@ Deferred Join completion은 해당 operation의 Accepted, Rejected 또는 failur
 
 우선순위: `P1`
 
-Join callback에서 제공하는 public context는 대상 Actor·Spot과 operation을 식별할 수 있어야 하며 내부 owner
-token을 Application에 요구하지 않는다.
+Join admission callback은 Actor ID와 join request를 받고, Join completion callback은 Operation ID와
+terminal result를 받는다. Application은 이 두 callback의 값을 섞어 해석하거나 내부 owner token을
+요구하지 않는다.
 
 **검증 질문:** Callback context의 public identity가 실제 Join 입력과 일치하는가.
 
-- 시작 조건: Callback이 public context 값을 Application evidence에 기록한다.
-- 절차: 서로 다른 Actor와 target Spot으로 Join을 실행한다.
-- 검증: Actor ID, target Spot ID와 operation ID가 각 입력과 일치하고 다른 operation의 값이 섞이지 않는다.
+- 시작 조건: `OnActorJoin` admission callback과 Join completion callback이 각각 public evidence를
+  기록한다.
+- 절차: 서로 다른 Actor와 target Spot으로 Join을 실행하고 admission callback과 completion callback의
+  evidence를 따로 수집한다.
+- 검증: Admission evidence의 Actor ID와 request가 입력과 일치한다. Completion evidence의 Operation ID,
+  result와 Accepted ActorRef가 해당 Join과 일치한다. Target Spot은 callback에 없는 값을 억지로 읽지 않고
+  public Actor context 또는 ref 조회로 확인한다.
 - 계약 근거: [Spot actor](../spec/15-spot-actor.ko.md)
 
 #### ST-H4 Invalid context and duplicate registration
@@ -519,18 +530,25 @@ Join defer를 허용하지 않는 callback이나 같은 handler turn의 중복 �
 - 검증: Public call 또는 host startup이 하나의 configuration·operation failure로 끝나고 target Join callback은 실행되지 않는다.
 - 계약 근거: [Framework error model](../spec/32-framework-error-model.ko.md)
 
-#### ST-H4A Registration limit and timeout race
+#### ST-H4A Completion and timeout race
 
 우선순위: `P0`
 
-Deferred operation 수와 timeout은 bounded되어야 하며 timeout과 accept가 경합해도 completion은 한 번이어야 한다.
+Deferred Join의 timeout과 accept가 경합해도 completion은 operation마다 한 번이어야 한다. 이 scenario는
+공개 pending limit을 가정하지 않는다.
 
-**검증 질문:** Limit 초과와 timeout 경합에서 operation마다 terminal 하나만 전달되는가.
+**검증 질문:** Timeout 경계에서 모든 deferred Join이 Accepted, Rejected 또는 failure 중 하나로 한 번
+끝나는가.
 
-- 시작 조건: 작은 public pending limit과 bounded timeout을 설정한다.
-- 절차: Limit보다 많은 deferred Joins를 시작하고 한 operation의 accept를 timeout 경계와 겹치게 한다.
-- 검증: 모든 operation이 Accepted, Rejected 또는 failure 하나로 끝난다. Completion count는 operation당 1이고 limit 초과 operation은 target callback에서 실행되지 않는다.
-- 계약 근거: [비동기 실행 정책](../spec/05-async-execution-policy.ko.md)
+- 시작 조건: 소수의 deferred Join과 각 operation의 bounded timeout을 준비하고 target admission callback을
+  application gate로 제어한다.
+- 절차: 한 operation의 accept를 timeout 경계와 겹치게 하고 다른 operation은 명시적으로 reject하거나
+  정상 accept한다.
+- 검증: 모든 operation이 Accepted, Rejected 또는 failure 하나로 끝난다. Completion count는 operation당
+  1이고 timeout이 확정된 뒤 새 target callback이 실행되지 않는다. Timeout 전에 시작한 callback이 끝나는
+  시점은 별도 성공 조건으로 사용하지 않는다.
+- 계약 근거: [비동기 실행 정책](../spec/05-async-execution-policy.ko.md)과
+  [Spot actor](../spec/15-spot-actor.ko.md)
 
 #### ST-H4B Yield and reply terminal
 

@@ -101,9 +101,15 @@ internal sealed class ZLinkLocationRuntimeQueryService :
             {
                 var live = await _leaseTracker.IsOwnerLiveAsync(row.OwnerId, cancellationToken)
                     .ConfigureAwait(false);
+                //  Spec 13 §365는 relocate가 unit seal을 마치면 source가 draining으로
+                //  넘어간다고 정하고, §409는 draining node가 새 placement target이
+                //  되지 않는다고 정한다. Host lifecycle의 `Draining`만 보면 relocate로
+                //  빠지는 node가 계속 accepting으로 보인다.
                 var entry = new ZLinkLocationTopologyEntry(
                     row.MeshName, row.Rid, row.Endpoint,
-                    row.State == ZLinkFrameworkRuntimeState.Draining,
+                    row.State is ZLinkFrameworkRuntimeState.Draining
+                        or ZLinkFrameworkRuntimeState.Relocating
+                        or ZLinkFrameworkRuntimeState.Relocated,
                     live ? ZLinkLocationTopologyState.Ready : ZLinkLocationTopologyState.Lost,
                     row.UpdatedAt);
                 if (Matches(entry, filter)) entries.Add(entry);

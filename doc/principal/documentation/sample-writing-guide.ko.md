@@ -1,7 +1,8 @@
 # 샘플 문서 작성 가이드
 
 > 이 문서는 Framework 공통 sample 문서를 작성하거나 수정하는 작업자가 따르는 절차다.
-> 주 독자는 문서 작업을 수행하는 AI다.
+> 주 독자는 문서를 작성하는 AI와 사람 작업자다. 이들이 만드는 sample 문서는 구현하거나 review하는
+> 개발자가 시스템 구조, 업무 흐름과 언어별 공통 기준을 파악할 수 있어야 한다.
 >
 > 목표는 처음 읽는 개발자가 **어떤 업무 문제를 보여 주는 sample인지 이해하고**, 각 언어
 > 구현자가 **같은 역할·message·흐름·검증 기준으로 구현할 수 있게 하는 것**이다. 기존 문서의
@@ -205,7 +206,7 @@ public export를 각각 대조한다. 근거가 없는 기능을 발견하면 �
 
 1. 목적과 범위
 2. 요구사항
-3. Sample 구조와 topology
+3. 시스템 구성과 topology
 4. 역할과 책임
 5. 사용하는 Framework 요소와 선택 이유
 6. Message 계약
@@ -216,8 +217,10 @@ public export를 각각 대조한다. 근거가 없는 기능을 발견하면 �
 11. 완료 기준
 
 비교 배경, 상세 도메인 규칙, event sourcing, 복구, UI와 운영 기능은 필요한 sample에만 추가한다.
-조건부 절은 가장 관련 있는 기본 절 바로 뒤에 둔다. 예를 들어 event sourcing은 상태 소유권을 설명한
-뒤에, UI 규격은 client 구조 뒤에 둔다.
+기존 방식과의 비교가 sample의 선택 조건과 책임 경계를 이해하는 데 필요하면 비교 배경을 유지한다.
+통일된 기본 절에 포함되지 않았다는 이유로 기존 비교 절을 삭제하거나 축약하지 않는다. 조건부 절은
+가장 관련 있는 기본 절 바로 뒤에 둔다. 예를 들어 비교 배경은 요구사항 뒤에, event sourcing은 상태
+소유권을 설명한 뒤에, UI 규격은 client 구조 뒤에 둔다.
 
 번호와 제목은 다음 template을 출발점으로 삼는다. 내용이 없는 절을 형식 때문에 만들지 않는다.
 
@@ -234,7 +237,7 @@ public export를 각각 대조한다. 근거가 없는 기능을 발견하면 �
 
 ### 2.2 운영·품질 요구사항
 
-## 3. Sample 구조와 topology
+## 3. 시스템 구성과 topology
 
 ## 4. 역할과 책임
 
@@ -301,6 +304,12 @@ spec 근거가 있어야 한다. Domain 정책은 sample이 선택한 규칙임�
 비교는 해당 sample을 선택하는 이유를 이해하는 데 필요할 때만 둔다. 비교 대상을 일부러 불리하게
 만들지 말고, 가장 단순하게 해결되는 조건과 추가 장치가 필요한 조건을 먼저 구분한다.
 
+`framework/doc/framework/common/sample/event/`의 sample처럼 기존 방식의 구성 요소와 처리 흐름을
+보여 주어야 Framework가 맡는 책임을 이해할 수 있으면 비교 절을 문서의 일부로 유지한다. 기존 문서를
+가이드 구조에 맞춰 개정할 때도 이 비교가 답하는 질문과 비교 축을 보존한다. 계약 오류를 바로잡거나
+중복을 줄이는 수정은 할 수 있지만, 절을 선택 사항으로 분류했다는 이유만으로 비교 내용이나 diagram을
+제거하지 않는다.
+
 비교 절은 다음 질문에 답해야 한다.
 
 1. 기존 방식만으로 충분한 조건은 무엇인가?
@@ -311,10 +320,24 @@ spec 근거가 있어야 한다. Domain 정책은 sample이 선택한 규칙임�
 제품이 모든 복잡성을 없앤다고 쓰지 않는다. 형태가 바뀌거나 다른 module로 이동한 책임도 정확히
 남긴다.
 
-### 5.4 Sample 구조와 topology
+비교 diagram은 기본 시스템 topology와 목적이 다르다. 기존 구성에서 순서, 일관성, 전달과 복구를
+담당하는 component를 보여 주는 데 필요하면 Load Balancer, log, database, cache와 scheduler 같은
+외부 component와 message 흐름을 포함할 수 있다. Diagram 제목과 앞 문단에서 기존 방식의 비교
+구성임을 밝히고, sample 자체의 기본 topology로 오해되지 않게 구분한다.
 
-Topology는 process, 외부 resource와 논리 message 방향을 보여준다. 흐름은 Mermaid를 사용하고,
-계층이나 디렉터리 구조는 ASCII를 사용한다.
+### 5.4 시스템 구성과 topology
+
+기본 topology diagram은 Client와 server component의 배치와 구조적 연결 관계를 보여준다. STREAM,
+Channel과 RouteMesh는 별도 component로 배치하지 않고 component 사이의 connection label로 표시한다.
+Request, response, push와 publish의 시간 방향도 topology에 화살표로 그리지 않는다. 이 정보는 업무
+흐름의 sequence diagram이 소유한다.
+
+이 제한은 sample 자체의 기본 topology에 적용한다. 기존 방식이 어떤 외부 component로 같은 문제를
+해결하는지 보여 주는 비교 diagram에는 [비교 배경](#53-비교-배경)의 기준을 적용한다.
+
+Redis, database와 외부 API가 component 관계를 이해하는 데 꼭 필요하면 diagram 아래의 resource 표로
+설명한다. 배포 resource 자체의 관계가 핵심인 sample만 별도 deployment diagram을 사용한다. 기본 시스템
+구성도에 Framework connection과 외부 Store를 server component처럼 섞지 않는다.
 
 Diagram 뒤에는 반드시 다음을 산문으로 설명한다.
 
@@ -361,15 +384,43 @@ Public API를 설명해야 하면 산문에 함수 이름을 이어 쓰지 않�
 Framework의 새 public contract를 정의하는 절이 아니다. Message 표는 호출자가 무엇을 기다리고
 수신자가 무엇을 판단하는지 보여준다.
 
-| Message | 방향·호출 방식 | field | 의미와 완료 결과 |
-|---|---|---|---|
-| `<NameReq>` | `<Caller> -> <Target>, request` | `<Field>` | `<요청 목적과 reply가 뜻하는 완료 경계>` |
+먼저 sample이 선택한 codec에 맞는 언어 중립 message declaration으로 wire 구조를 고정한다. 그다음
+표에는 field를 반복하지 않고 방향, 호출 방식과 완료 의미를 적는다.
+
+Protobuf sample은 실제 `.proto` 문법을 사용한다. Message 이름, field 이름과 type, tag,
+`optional`, `repeated`, `oneof`와 `reserved`를 생략하지 않는다. 언어별 생성 option이나 package 이름은
+공통 wire 구조에 영향을 줄 때만 포함한다.
+
+JSON sample은 특정 언어의 class, record, interface 또는 type alias를 사용하지 않는다. 다음과 같은
+언어 중립 선언으로 JSON wire 이름과 type을 고정한다.
+
+```text
+message JoinRoomReq {
+  roomId: string
+  playerId: string
+  expectedVersion?: int64
+}
+
+message RoomState {
+  status: "Waiting" | "Running" | "Finished"
+  players: Player[]
+  winnerId?: string | null
+}
+```
+
+JSON 선언은 required와 optional, `null` 허용 여부, 배열 원소 type, 중첩 message와 enum의 wire 값을
+구분해야 한다. 실제 JSON payload 예제는 serialization 결과를 설명할 때만 추가하며 declaration을
+대신하지 않는다.
+
+| Message | 방향·호출 방식 | 의미와 완료 결과 |
+|---|---|---|
+| `<NameReq/Res>` | `<Caller> -> <Target>, request` | `<요청 목적과 reply가 뜻하는 완료 경계>` |
 
 Message 이름은 [공통 message 이름 원칙](../../../framework/doc/framework/common/sample/README.ko.md#메시지-이름-원칙)을
 따른다. Request/reply, one-way send, client push와 publish를 구분하고, 호출 방식과 접미어가 맞아야
 한다. Enum과 state 값은 별도 표에서 각 값이 되는 조건을 설명한다.
 
-Field 표만으로 끝내지 않는다. Identity field, idempotency key, attempt와 version처럼 처리 결과를
+Declaration만으로 끝내지 않는다. Identity field, idempotency key, attempt와 version처럼 처리 결과를
 가르는 값은 어느 역할이 만들고 검증하는지 업무 흐름에서 다시 연결한다.
 
 ### 5.8 업무 흐름
@@ -386,37 +437,92 @@ Field 표만으로 끝내지 않는다. Identity field, idempotency key, attempt
 정상 흐름을 먼저 작성하고, 정상 흐름과 비교해야 의미가 분명한 timeout, 중복, disconnect, restart와
 복구 흐름을 뒤에 둔다. 실패 흐름에는 실패가 발생한 위치와 caller가 받는 terminal 결과를 함께 쓴다.
 
-시간 순서가 중요하면 Mermaid sequence diagram을 사용한다. Diagram에는 역할과 주요 message만 두고,
-state 변경과 timeout 조건은 바로 아래 산문에서 설명한다.
+세 역할 이상을 거치거나 request, response, push와 publish가 이어지는 주요 정상 흐름은 Mermaid
+sequence diagram으로 표현한다. 하나의 큰 diagram에 전체 scenario를 넣지 않고, 인증, 업무 시작,
+상태 변경과 종료처럼 사용자가 구분할 수 있는 단계로 나눈다. Participant는 topology의 Client와 server
+component 이름을 기준으로 표시한다. 같은 server 안의 logical object를 구분해야 흐름을 이해할 수 있으면
+`Play / Player Actor`처럼 소유 component와 object 역할을 함께 쓴다. 역할 사이의 주요 message와 의미
+있는 Framework operation만 표시하고, internal class, socket과 helper는 participant로 추가하지 않는다.
+
+Sequence diagram은 사람이 역할 간 상호작용과 시간 순서를 빠르게 이해하도록 돕는다. Diagram만으로
+계약을 정의하지는 않는다. 각 diagram 아래의 산문이나 번호 목록에서 시작 상태, application state 변경,
+완료 결과, timeout과 실패 조건을 설명해야 한다. Diagram에서 message identifier로 표시한 이름은 message
+declaration과 일치해야 하며, 같은 흐름의 Client self-check와도 대응해야 한다. 실패·복구 흐름은 발생
+순서 자체가 판정에 중요할 때만 별도 sequence diagram으로 작성하고, 그렇지 않으면 정상 흐름과
+대조하는 산문이나 표로 설명한다.
 
 ### 5.9 구현 구조
 
 구현 구조는 역할과 책임이 code에서 어디에 놓이는지 찾게 한다. 언어별 문법을 고정하지 않고 logical
-module을 기준으로 설명한다.
+module을 기준으로 설명한다. 모든 지원 언어에서 같은 역할을 같은 순서로 찾을 수 있어야 한다. “같은
+업무 결과를 만든다”는 조건만으로는 충분하지 않다.
 
 ```text
-+-------------------+
-| SampleRole        |
-+-------------------+
-| Domain            |
-| Application       |
-| Infrastructure    |
-| Program           |
-+-------------------+
+Sample
++-- Client
+|   +-- Program
+|   +-- Scenario
++-- Shared
+|   +-- Configuration
+|   +-- Contracts
++-- Server
+    +-- Stateless Role
+    |   +-- Program
+    |   +-- Handlers
+    +-- Stateful Role
+        +-- Program
+        +-- Domain
+        +-- Application
+        +-- Infrastructure
 ```
 
 ASCII diagram 안에는 영문만 사용하고 모든 행의 가시 폭을 맞춘다. Directory tree 아래에는 각
 module이 소유하는 판단과 의존성 방향을 설명한다. 단순한 file 목록이나 아직 없는 class 이름을
 완성 기준처럼 적지 않는다.
 
+파일명을 고정하지 않더라도 다음 logical location은 sample에 필요한 범위에서 명시한다.
+
+- Client entry point와 self-check scenario
+- Shared configuration과 wire contract
+- 각 server 역할의 entry point
+- Domain, Application과 Infrastructure 경계
+- Handler, session, Actor, Spot과 외부 Store adapter의 소유 module
+- State 또는 Actor relocation을 사용하는 경우 해당 adapter의 위치
+
+언어별 구현은 역할을 생략하거나 다른 역할과 합쳐 탐색 구조를 바꾸지 않는다. 한 언어가 여러 type을
+한 파일에 둘 수는 있지만 module, namespace, package 또는 type 이름에서 같은 logical component를 찾을
+수 있어야 한다. 언어별 build tool 때문에 directory가 추가되더라도 공통 component 사이에 새로운
+업무 layer를 만들지 않는다.
+
+공통 sample 문서의 구현 구조는 다음 parity contract를 함께 고정한다.
+
+1. 최상위 logical module은 `Client`, `Shared`, `Server` 순서를 유지한다.
+2. `Client/Program`, `Client/Scenario`, `Shared/Configuration`, `Shared/Contracts`는 sample에 필요한
+   범위에서 모든 언어가 같은 위치와 책임으로 제공한다.
+3. `Server/<Role>/Program`과 각 역할의 `Domain`, `Application`, `Infrastructure` 경계는 공통 문서의
+   역할 표와 같은 이름으로 대응한다. 한 언어가 여러 역할을 하나의 process에 배치할 수는 있지만
+   module과 type에서 각 역할을 따로 찾을 수 있어야 한다.
+4. 언어별 문서는 공통 sample의 operation 순서, message 선언, state 전이와 self-check 항목을 다시
+   설계하지 않는다. 문법·package·host 구성만 해당 언어의 public API로 표현한다.
+
+따라서 각 sample의 `구현 구조` 절에는 위 tree와 함께 logical component별 책임 표를 둔다. 이 표가
+없으면 구현자가 같은 업무 결과만 유지하고 handler, state owner와 adapter 위치를 임의로 바꿀 수
+있으므로 언어 parity가 확인된 것으로 보지 않는다.
+
+구현 구조를 `Client`, `Server`, `Domain`처럼 한 단계 이름만 나열해 끝내지 않는다. sample에서
+실제로 필요한 역할마다 `Program`, `Handlers` 또는 `Session`, `Domain`, `Application`,
+`Infrastructure` 중 해당 책임이 있는 위치를 tree에 표시하고, 표에서 입력·출력과 의존 방향을
+설명한다. 외부 Store와 runtime resource는 server module로 오인하지 않도록 resource 표에서 별도로
+소유자를 적는다.
+
 상태를 소유하는 server의 상세 책임과 의존 방향은
 [상태 소유 server 공통 구조](../../../framework/doc/framework/common/sample/README.ko.md#상태-소유-서버-공통-디렉토리-구조)를
 따른다. Framework handler, session과 Spot adapter는 `Infrastructure`가 소유하며 `Domain`은 Framework
 type과 transport에 의존하지 않는다.
 
-언어별 package layout이 실제로 다르면 공통 문서에는 역할별 logical structure만 두고, 필요한 언어만
-[언어별 표현 기준](../../../framework/doc/framework/common/sample/languages/README.ko.md)에 따라 별도
-문서를 작성한다.
+언어별 package layout이 실제로 다르면 공통 문서의 logical structure와 실제 package의 대응 관계를
+[언어별 표현 기준](../../../framework/doc/framework/common/sample/languages/README.ko.md)에 따라 기록한다.
+별도 언어 문서는 공통 component를 대체하거나 줄이는 근거가 아니다.
 
 ### 5.10 Client self-check
 
@@ -498,9 +604,13 @@ request, handler, timeout, retry, payload와 routing 같은 용어는 영어로 
 시간 순서는 번호 목록이나 Mermaid sequence diagram으로 설명한다. 짧은 사실을 한 행 표로 만들지
 않는다.
 
-Diagram은 한 가지 질문에만 답한다. Topology diagram은 배치와 연결을, sequence diagram은 시간 순서를
+Diagram은 한 가지 질문에만 답한다. 시스템 topology diagram은 Client와 server component의 배치와
+구조적 연결을 보여 준다. Connection 종류는 선의 label로 표시하며 Channel, RouteMesh와 Store를 server
+component처럼 배치하지 않는다. Sequence diagram은 request, response, push와 publish의 시간 순서를
 보여 준다. ASCII diagram은 영문 전용, 고정 폭과 80자 이하 규칙을 따른다. Diagram 아래에는 독자가
-그림에서 판단해야 하는 내용을 산문으로 설명한다.
+그림에서 판단해야 하는 내용을 산문으로 설명한다. Topology와 sequence diagram에서 component 이름과
+소유 관계를 일치시키고, sequence diagram에서 message identifier로 표시한 이름은 message 계약의
+declaration과 일치시킨다.
 
 ### 6.5 소유 문서 연결
 
@@ -517,7 +627,7 @@ Diagram은 한 가지 질문에만 답한다. Topology diagram은 배치와 연�
 | 첫 절이 기능과 API 목록이다 | 어떤 문제에 쓸 sample인지 판단할 수 없다. | 업무 상황, Framework가 맡는 책임과 결과를 먼저 쓴다. |
 | 모든 기존 문서의 절을 합쳐 template으로 만든다 | Sample마다 빈 절과 중복이 늘어난다. | 공통 기본 절만 두고 조건부 절은 필요한 위치에 추가한다. |
 | 역할 표에 server 이름만 있다 | 상태 소유자와 분리 이유를 알 수 없다. | 책임, 소유 상태와 process 분리 이유를 함께 쓴다. |
-| Message field 표만 있다 | Message가 언제 쓰이고 무엇을 완료하는지 알 수 없다. | 호출 방식, 상태 전이와 caller 결과를 업무 흐름에 연결한다. |
+| Message declaration만 있다 | Message가 언제 쓰이고 무엇을 완료하는지 알 수 없다. | 호출 방식과 완료 의미 표를 추가하고 상태 전이를 업무 흐름에 연결한다. |
 | Internal helper로 기능을 메운다 | Sample이 계약 밖의 사용법을 정본으로 만든다. | 근거가 없으면 contract gap으로 분리한다. |
 | Domain code가 raw payload를 해석한다 | Framework의 codec 책임이 호출자에게 노출된다. | Framework의 기본 typed codec 경로가 끊긴 지점을 수정한다. |
 | 물리 node ID를 업무 message에 넣는다 | Routing이 application 계약으로 노출된다. | 업무 ID로 호출하고 Framework가 owner를 찾게 한다. |
@@ -713,13 +823,21 @@ review와 문서 원칙 검토를 다시 수행한다.
 - [ ] 공통 sample이 새 public contract를 만들지 않는다.
 - [ ] Framework 책임과 Application 책임을 구분했다.
 - [ ] 비슷한 sample과의 차이를 선택 기준으로 설명했다.
+- [ ] 기존 방식과의 비교가 선택 조건과 책임 경계를 설명한다면 비교 절과 diagram을 유지했다.
 
 ### 구조와 흐름
 
 - [ ] 기본 절을 필요한 범위에서 같은 순서로 배치했다.
 - [ ] 조건부 절을 관련 기본 절 가까이에 두고 빈 절을 만들지 않았다.
 - [ ] 역할마다 책임, 상태 소유권과 분리 이유가 있다.
-- [ ] Topology가 process, 외부 resource와 논리 message 방향을 정확히 보여 준다.
+- [ ] 시스템 topology가 Client와 server component 및 구조적 연결만 보여 준다.
+- [ ] 기존 방식의 비교 diagram과 sample 자체의 기본 topology를 구분했다.
+- [ ] Message 방향은 topology가 아니라 업무 흐름이나 sequence diagram에서 설명한다.
+- [ ] 세 역할 이상을 거치는 주요 정상 흐름을 단계별 sequence diagram으로 표현했다.
+- [ ] Sequence diagram의 component 소유 관계와 표시한 message identifier가 topology 및 message 계약과 일치한다.
+- [ ] Diagram 아래의 산문이 시작 상태, state 변경, 완료 결과와 실패 조건을 설명한다.
+- [ ] 모든 지원 언어에서 같은 logical component를 같은 순서로 찾을 수 있다.
+- [ ] Client, Shared contract, server entry point와 Domain·Application·Infrastructure 대응이 명시돼 있다.
 - [ ] 정상 흐름을 먼저 쓰고 실패·복구 흐름을 대조할 수 있게 배치했다.
 - [ ] 각 흐름에 시작 상태, 주체, message, state 변경과 client 결과가 있다.
 
@@ -732,6 +850,8 @@ review와 문서 원칙 검토를 다시 수행한다.
 - [ ] 현재 package의 public export 확인을 목표 계약 확인과 별도로 수행했다.
 - [ ] Spec이 허용한 결과를 좁히거나 반드시 보장한 결과를 느슨하게 만들지 않았다.
 - [ ] Sample이 선택한 codec, timeout, retry와 Store를 Framework의 일반 보장처럼 쓰지 않았다.
+- [ ] Codec에 맞는 언어 중립 declaration으로 wire 이름, type과 cardinality를 고정했다.
+- [ ] Protobuf의 tag·reserved 또는 JSON의 optional·null·배열 의미를 생략하지 않았다.
 - [ ] Message 이름, 호출 방식, field와 완료 의미가 일치한다.
 - [ ] Transport identity와 private route를 application message에 노출하지 않는다.
 - [ ] 언어별 sample은 public API만 사용한다.

@@ -100,7 +100,7 @@ internal sealed class ZLinkFrameworkActorFacade(
         var reply = joinResult.Reply ?? ZLinkMessage.Empty;
         return joinResult.Accepted
             ? new ZLinkActorJoinResult.Accepted(ToActorRef(actorState), reply)
-            : new ZLinkActorJoinResult.Rejected(reply);
+            : RejectedWithTrace(reply, "facade");
     }
 
     public async ValueTask<ZLinkActorJoinResult> JoinActorEntrySpotAsync(
@@ -190,5 +190,14 @@ internal sealed class ZLinkFrameworkActorFacade(
                            ZLinkFrameworkErrorKind.NotFound,
                            $"Actor '{actorState.ActorId}' does not have an owner Mesh.");
         return actorRef.ToNative(meshName);
+    }
+
+    private static ZLinkActorJoinResult.Rejected RejectedWithTrace(
+        ZLinkMessage? reply,
+        string site)
+    {
+        Zlink.Framework.Runtime.Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"actor_join_rejected site={site}");
+        return new ZLinkActorJoinResult.Rejected(reply);
     }
 }

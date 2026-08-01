@@ -2,979 +2,531 @@
 
 [샘플 목록](../README.ko.md)
 
-> 이 문서는 모든 framework 언어가 공유하는 TicTacToe 샘플 시나리오를 정의한다.
-> TicTacToe는 2개 API와 2개 Play 역할로 수동 endpoint 기반 scale-out 실시간 게임
-> 흐름을 보여 준다.
-
-## 1. 목적
-
-TicTacToe는 자동 peer discovery 없이 endpoint를 직접 설정해 scale-out을 구성하는
-기본 샘플이다. API 역할은 framework의 User Spot 생성 API로 room을 만들고 인증을 발급한다. Play 역할은 client stream
-session, actor, room Spot을 함께 호스팅한다. 샘플은 `api-a`, `api-b`, `play-a`,
-`play-b`를 실행해 API와 Play가 모두 2개 이상일 때도 같은 게임 흐름이 유지되는지
-보여 준다.
-
-별도 Session 서버는 없다. 대신 각 Play 서버가 자기 stream session과 session relay를
-소유한다. Room과 actor의 현재 위치는 공식 Location Store가 관리한다. 이 구조는
-framework가 stream, actor, Spot 경계를 어떻게 연결하는지 보여 주면서, 위치 조회와
-owner 선택을 application 코드에서 숨긴다.
-
-이 샘플에서 확인해야 하는 핵심은 아래와 같다.
-
-- 2개 API 서버가 같은 client-facing HTTP API를 제공한다.
-- 각 API 서버의 Object Client RouteMesh가 2개 Play Object Server의 peer endpoint에 수동으로 연결한다.
-- Play가 API에 보내는 인증 request는 object routing과 분리한 ClientServer Channel을 사용한다.
-- 2개 Play 서버가 각각 stream session, actor runtime, MeshNode, room Spot factory를
-  호스팅한다.
-- Play 서버끼리는 MeshNode router endpoint를 수동으로 연결한다.
-- API 서버는 `IZLinkSpotManager.Create(spotType)`로 새 room을 만든다. Framework가
-  `RoomId`를 발급하고 owner를 선택하며 Location Store를 갱신한다.
-- Play 서버는 stream 인증 시 API 서버에서 user 정보를 받아 actor에 설정한다.
-- actor가 `JoinSpot(roomId)` 같은 public actor API를 사용할 때 framework가
-  Location Store에서 current owner를 확인한다.
-- actor는 room join payload에 user 정보를 함께 보내고, room Spot은 level 조건을 확인한 뒤
-  join을 허용한다.
-- 승리로 player win count가 100이 되면 room Spot이 Logical Multicast topic으로 milestone
-  event를 publish하고, 다른 Play 서버의 `PlayEntrySpot` 안에 등록된 observer handler가
-  같은 event를 받아 observer client로 push한다. 이 handler는 `PlayEntrySpot`의 내부 책임이지
-  별도 Spot 타입이 아니다.
-- client는 API 서버에서 받은 Play endpoint 목록으로 직접 stream 연결을 만든다.
-- Play session은 인증 후 actor를 만들고 현재 stream session에 bind한다.
-- room Spot은 board, turn, 승패 판정을 소유한다.
-- peer 연결은 수동 endpoint 설정으로 구성하고 object 위치는 공식 Location Store에서 찾는다.
-- handler는 annotation·attribute·decorator로 선언하고 assembly·module scan으로 **자동 등록**한다.
-- TicTacToe의 stream, channel, actor, room Spot payload는 JSON을 사용한다.
-
-Client self-check도 샘플의 일부다. client는 `.NET` 샘플처럼 request에 넣은 값과 response,
-server push payload가 맞는지 확인한다. `PlayerJoinedNotify`, `GameStateNotify`,
-`WinMilestoneNotify` 대기는 stream connector의 public wait interface를 직접 사용한다.
-sample-local queue polling은 결과 출력이나 추가 검증에는 사용할 수 있지만 push 대기의 기준
-경로가 되면 안 된다.
-
-TicTacToe는 scale-out 연결 흐름을 보여 주는 샘플이지만 payload codec은 읽기 쉬운 JSON으로
-둔다. room 생성, 인증, join, move, notify 흐름을 여러 언어에서 바로 비교할 수 있어야
-한다. schema 중심의 binary 계약은 Bingo의 Protobuf 샘플이 맡는다.
-
-## 2. 서버 구성
-
-TicTacToe의 역할과 수동 peer 방향은
-[공통 topology 기준](../README.ko.md#channel-역할과-물리-topology-기준)을 따른다.
-Object Client인 API와 Object Server인 Play는 `tictactoe` RouteMesh를 사용한다. Room 생성,
-actor와 Spot messaging은 이 RouteMesh의 logical object routing을 사용한다.
-
-Play가 API에 보내는 인증 request는 독립 `tictactoe.api` ClientServer Channel을 사용한다.
-Object Client와 ClientServer Server를 같은 RouteMesh에 섞지 않는다. Object Client끼리는
-연결할 필요가 없으므로 API끼리 RouteMesh peer를 만들지 않는다.
-
-```mermaid
-graph LR
-    C[Client]
-    APIA[Api A]
-    APIB[Api B]
-    PLAYA[Play A]
-    PLAYB[Play B]
-    REDIS[(Redis Location Store)]
-
-    C -->|HTTP CreateGameHttpReq| APIA
-    C -.->|HTTP CreateGameHttpReq| APIB
-    APIA -->|Object RouteMesh| PLAYA
-    APIA -->|Object RouteMesh| PLAYB
-    APIB -->|Object RouteMesh| PLAYA
-    APIB -->|Object RouteMesh| PLAYB
-    PLAYA -->|Object RouteMesh| PLAYB
-    PLAYA -->|Independent API channel| APIA
-    PLAYB -->|Independent API channel| APIB
-    PLAYA -->|Global room location| REDIS
-    PLAYB -->|Global room location| REDIS
-    C -->|STREAM host packets| PLAYA
-    C -->|STREAM guest packets| PLAYB
-    C -->|STREAM observer packets| PLAYB
-    PLAYA <-->|Manual Logical Multicast| PLAYB
-```
-
-다이어그램의 흐름은 아래와 같다.
-
-- 위 다이어그램의 stream 연결은 room owner를 뜻하지 않는다.
-- client는 `CreateGameHttpReq`를 API 서버 HTTP endpoint 중 하나로 보낸다.
-- API 서버는 `IZLinkSpotManager.Create`에 stable Spot type과 초기 room 설정을 전달한다.
-  새 room은 caller가 재사용할 ID가 없으므로 `GetOrCreate`를 사용하지 않는다.
-- Framework가 global `RoomId`를 발급하고 stable type, capacity와 node weight로 owner를 선택한다.
-  API는 Play process, endpoint 또는 NodeRid를 배치 입력으로 전달하지 않는다.
-- API 응답은 room id와 Play stream endpoint 목록을 반환한다. NodeRid는 응답에 포함하지 않는다.
-- client는 응답에 들어 있는 Play stream endpoint만 사용한다. client 설정에 Play endpoint를
-  미리 넣지 않는다.
-- host client는 응답의 첫 Play endpoint에 연결하고, guest와 observer는 다른 Play endpoint에
-  연결한다. 이 선택은 ingress를 나눌 뿐 room placement를 결정하지 않는다.
-- guest actor가 같은 `RoomId`로 join하면 framework가 Location Store에서 current owner를
-  확인해 remote room Spot으로 라우팅한다.
-- observer actor는 host와 다른 Play 서버의 well-known local `PlayEntrySpot`에 observer로
-  등록되고, `PlayEntrySpot`이 milestone topic을 구독한다. 별도 Spot 타입을 새로 만들라는
-  뜻이 아니다.
-- 게임에서 host가 승리해 누적 승수가 100이 되면 owner room Spot이 milestone event를
-  publish하고, observer actor가 존재하는 Play 서버의 `PlayEntrySpot` observer handler가 이
-  event를 받아 observer client로 push한다.
-- Play 서버는 stream 인증 시 독립 `tictactoe.api` ClientServer Channel로 API에 요청한다.
-
-## 3. 프로세스와 책임
-
-| 프로세스 | 구성 요소 | 책임 |
-|----------|-----------|------|
-| `TicTacToe.ApiA` / `TicTacToe.ApiB` | HTTP endpoint와 `IZLinkSpotManager` | 새 room을 생성하고 client에 `RoomId`와 stream endpoint 목록을 반환한다. |
-| `TicTacToe.ApiA` / `TicTacToe.ApiB` | 독립 `tictactoe.api` ClientServer Server | Play 서버의 인증 요청을 처리하고 user 정보를 반환한다. |
-| `TicTacToe.ApiA` / `TicTacToe.ApiB` | Object Client RouteMesh | User Spot 생성을 요청한다. 물리 node는 선택하지 않는다. |
-| `TicTacToe.PlayA` / `TicTacToe.PlayB` | 독립 `tictactoe.api` ClientServer Client | ready API server에 인증을 요청한다. |
-| `TicTacToe.PlayA` / `TicTacToe.PlayB` | stream server | client 연결과 session dispatch를 처리한다. |
-| `TicTacToe.PlayA` / `TicTacToe.PlayB` | actor runtime | 인증된 actor를 user 정보로 설정하고 room에 join한다. |
-| `TicTacToe.PlayA` / `TicTacToe.PlayB` | Object Server RouteMesh | Spot·Actor와 Logical Multicast를 제공한다. |
-| `TicTacToe.PlayA` / `TicTacToe.PlayB` | Redis location store | room Spot 위치와 actor 위치를 저장하고 읽는다. |
-| `TicTacToe.PlayA` / `TicTacToe.PlayB` | spot/room | 입장 level 조건, board, turn, 승패 판정을 소유한다. |
-
-Play 서버 안에서 stream session과 actor, room이 함께 움직인다. 두 Play 서버는 같은 역할을
-수행하지만, room Spot은 한 owner MeshNode에만 존재한다. 다른 Play 서버에 존재하는 actor가 같은
-room에 join할 때는 framework가 `RoomId`로 current owner를 확인한다.
-
-## 4. 디렉토리와 파일 구성
-
-TicTacToe 샘플은 작은 게임이지만 DDD와 헥사고날 아키텍처의 경계를 드러내도록 구성한다.
-이 구조는 C++, Java, Kotlin, TypeScript, .NET 샘플을 작성할 때 함께 따라야 하는
-공통 기준이다. 언어별 빌드 도구, 파일 확장자, package/module 표현은 달라질 수 있지만,
-`Client`, `Shared`, `Server/Api`, `Server/Play/Domain`, `Server/Play/Application`,
-`Server/Play/Infrastructure` 경계와 각 책임은 유지해야 한다.
-
-`Client`는 외부 사용자가 수행하는 self-check 시나리오이고, `Shared`는 client와 server가
-공유하는 메시지 계약이다. `Server` 안에서는 HTTP API adapter와 Play runtime adapter가
-같은 프로세스에 있어도 코드 경계는 분리한다.
-
-```text
-TicTacToe/
-  README
-  build files
-  Client/
-    Program
-    TicTacToeClientScenario
-    client build/module files
-    README
-  Shared/
-    shared build/module files
-    Contracts/
-      Messages
-  Server/
-    server build/module files
-    Program
-      Configuration/
-      SampleNames
-      SampleSettings
-      RedisLocationStore
-    Api/
-      ApiServer
-      Handlers/
-        AuthenticatePlayerHandler
-        CreateGameHttpHandler
-    Play/
-      PlayServer
-      Domain/
-        TicTacToe/
-          TicTacToeBoard
-          TicTacToeMatch
-      Infrastructure/
-        ZLink/
-          Actors/
-            PlayActor
-            PlayActorFactory
-          Sessions/
-            PlaySession
-          Spots/
-            EntrySpot/
-              PlayEntrySpot
-              Handlers/
-                PlayActorObserveMilestoneHandler
-                PlayActorJoinGameHandler
-                PlayerWinMilestoneEventHandler
-            TicTacToeGameSpot/
-              TicTacToeGame
-              Handlers/
-                PlayActorLeaveGameHandler
-                PlayActorPlaceMarkHandler
-                TicTacToeGameTimerHandler
-```
-
-위 구조는 파일명 고정 규칙이 아니라 역할과 경계의 기준이다. 예를 들어 Java/Kotlin은
-package와 class 이름으로, TypeScript는 module과 file 이름으로, C++은 header/source
-쌍과 namespace로, .NET은 project와 class 이름으로 같은 구조를 표현할 수 있다. 중요한
-점은 같은 책임의 코드가 같은 위치에 있고, 다른 레이어로 섞이지 않는 것이다.
-
-각 영역의 역할은 아래와 같다.
-
-| 위치 | 공통 아키텍처 역할 | 책임 |
-|------|----------------------|------|
-| `Client/Program` | 외부 driving adapter | client 설정을 읽고 self-check 시나리오를 실행한다. 서버 실행이나 Play stream 연결 생성은 맡지 않는다. |
-| `Client/TicTacToeClientScenario` | sample scenario | HTTP `POST /games`로 room을 만들고, 응답의 Play stream endpoint 목록으로 host, guest, observer connector를 만든 뒤 인증, join, move, push 검증을 순서대로 수행한다. |
-| `Shared/Contracts/*` | shared contract | HTTP, channel, stream, actor, Spot payload 계약을 정의한다. |
-| `Server/Configuration/*` | composition settings | 샘플 endpoint, Redis endpoint, instance 이름, routing id, timeout, logging 설정을 한 곳에 모은다. |
-| `Server/Api/*` | inbound HTTP adapter, framework adapter | client의 room 생성 요청을 `IZLinkSpotManager.Create`로 처리하고 Play 서버의 인증 요청에 응답한다. |
-| `Server/Play/Domain/TicTacToe/*` | domain model | board, player, turn, 승패 판정 같은 게임 규칙을 framework 타입 없이 표현한다. |
-| `Server/Play/Infrastructure/ZLink/*` | ZLink adapter | stream session, actor, Spot callback을 application/domain 호출로 변환한다. |
-
-observer milestone 알림 처리는 `PlayEntrySpot` 안의 observer handler와 private registry
-책임으로 둔다. 언어별 framework 제약 때문에 helper class나 private registry 객체를 둘 수는
-있지만, `PlayerNotificationSpot` 같은 별도 public sample Spot 타입을 만들어 room Spot과
-나란히 노출하지 않는다. 이 규칙은 C++, Node, Kotlin, Java 샘플을 같은 구조로 읽게 하기
-위한 것이다.
-
-의존 방향은 `Infrastructure -> Application -> Domain`이다. Domain은 ZLink framework, HTTP,
-stream connector, logger를 알지 않는다. Application은 use case 조율을 맡고, 외부 입출력
-세부 사항은 adapter에 둔다. 이 규칙 덕분에 샘플은 작아도 게임 규칙과 framework 배선이
-섞이지 않는다.
-
-## 5. 언어별 구현 기준
-
-TicTacToe 샘플은 모든 framework 언어에서 같은 public framework 모델로 작성되어야 한다.
-언어 문법과 빌드 도구는 달라도 사용자가 샘플을 열었을 때 같은 역할, 같은 흐름, 같은
-검증 지점을 찾을 수 있어야 한다.
-
-언어별 구현은 아래 기준을 만족해야 한다.
-
-- 샘플 루트에는 client, shared contracts, server 역할이 한 번만 보이게 구성한다. IDE나
-  build tool에서 같은 역할의 프로젝트나 module이 중복으로 보이면 안 된다.
-- client와 server는 각각 명시적인 entry point를 가진다. 실행 시작 코드는 짧게 두고,
-  실제 시나리오 검증은 `TicTacToeClientScenario` 같은 client scenario 구성 요소에 둔다.
-- client scenario는 API HTTP endpoint만 입력으로 받아야 한다. Play stream endpoint 목록은
-  `CreateGameHttpRes`에서 받은 값을 사용해 connector를 만든다. client 설정 파일이나
-  entry point가 Play stream endpoint를 미리 주입하면 실제 사용자 흐름과 달라진다.
-- `Shared/Contracts`에는 HTTP, channel, stream, actor, Spot payload 계약을 모은다.
-  packet name 문자열이나 동적 payload 구조를 handler와 client 코드에 흩어 놓지 않는다.
-  client와 server는 message 객체의 public interface만 사용해야 하며, 샘플 전용 helper로
-  payload 계약을 감추면 안 된다.
-- TicTacToe의 payload codec은 JSON이다. 각 언어는 같은 field 이름을 가진 typed message
-  정의를 사용하고, MessagePack이나 Protobuf로 바꾸지 않는다.
-- client self-check는 별도 테스트 프로젝트가 아니라 샘플 client 실행 흐름 안에 둔다.
-  샘플 실행은 실제 server를 시작하고 client가 접속해 `tictactoe=completed`에 해당하는
-  성공 결과를 만들 수 있어야 한다.
-- 샘플 실행에는 Redis가 필요하다. 애플리케이션 코드는 Redis endpoint만 설정으로 받고,
-  Docker container 생성이나 종료를 직접 맡지 않는다. `run_sample`은 실행마다 자기 실행에만
-  쓰는 전용 Docker Redis container를 준비하고, 샘플 종료 시 자신이 만든 container만 정리한다.
-- `run_sample`이 Redis container를 직접 준비할 때는 실행마다 고유한 container 이름, Docker가
-  배정한 localhost port, 실행별 key prefix를 사용해야 한다. 외부 Redis endpoint 재사용 mode는
-  제공하지 않는다. 이렇게 해야 동시에 실행되는 다른 테스트나 다른 샘플의 room route와 섞이지 않는다.
-- Redis client dependency는 Location Store provider 안에만 둔다. Handler, actor, Spot,
-  Domain 코드가 Redis client 타입을 직접 참조하면 안 된다.
-- actor가 room에 join하는 흐름은 각 언어 framework의 public actor/Spot API와 public spot
-  handle resolver 계약을 사용해야 한다. 샘플을 통과시키기 위해 framework의
-  internal runtime 객체나 sample-local route helper로 remote join 경로를 우회하면 안 된다.
-- Logical Multicast 흐름은 각 언어 framework의 public Logical Multicast API를 사용해야 한다. Spot은
-  public subscribe 등록 API로 milestone topic을 구독하고, room Spot은 public publish API로
-  milestone event를 발행한다. 샘플 전용 fan-out helper나 channel publish 우회로 대체하면
-  안 된다.
-- push 대기는 connector 객체의 public wait interface를 직접 사용한다. 필요한 push를 고를
-  때는 connector wait API의 filter 기능을 사용하고, 받은 message 객체의 public interface로
-  payload를 읽어 `Ensure(condition)`처럼 조건식이 직접 보이는 방식으로 검증한다.
-- client는 API 응답으로 받은 Play stream endpoint 목록에서 host, guest, observer connector를
-  만든 직후, `connect` 전에 inbound observer를 등록해 `stream-inbound` marker가 포함된 수신
-  로그를 남긴다.
-  이 로그는 request 응답과 server push 수신을 관찰하기 위한 것이며, payload 검증이나
-  push 대기를 대신하지 않는다. observer callback에서는 connector send/request/wait를
-  다시 호출하지 않는다.
-- Java와 Kotlin client scenario의 `submit`과 `await` 의미는
-  [framework 공통 비동기 정책](../../spec/05-async-execution-policy.ko.md)을 따른다.
-  `submit`은 작업을 시작하고 future를 반환하는 이름으로, `await`는 완료를 기다려
-  결과를 받는 이름으로 사용한다.
-- sample-local inbox, sleep, 임시 polling 함수로 준비 상태나 push 도착을 숨기면 안 된다.
-  대기와 검증은 connector와 message 객체 인터페이스를 사용하는 샘플 시나리오 코드에서
-  드러나야 한다.
-- Domain에는 board, turn, win/draw 판정만 둔다. stream session, actor context,
-  handler, logger, codec, endpoint 설정은 Domain으로 들어오면 안 된다.
-- Infrastructure는 HTTP, channel, stream session, actor, Spot, timer, codec 연결을 맡는다.
-  handler나 Spot adapter가 board 판정, turn 판정, winner 판정을 직접 구현하면 안 된다.
-
-이 기준은 샘플의 모양을 통일하려는 목적만이 아니다. 같은 시나리오를 여러 언어에서
-나란히 읽었을 때 framework 기능 차이와 언어 차이만 보이고, 샘플 구조 차이 때문에
-흐름을 다시 해석하지 않아도 되게 하기 위한 기준이다.
-
-## 6. 수동 연결 방식
-
-TicTacToe는 automatic discovery를 사용하지 않는다. API와 Play는 샘플 설정의 endpoint로
-Object RouteMesh peer를 직접 구성한다. Room 위치는 공식 Location Store에서 찾는다.
-
-| 연결 | 설정 주체 | 예시 의미 |
-|------|-----------|-----------|
-| client -> API HTTP | client 설정 | room 생성 API endpoint |
-| API Object Client -> Play Object Server | API 설정 | User Spot create와 logical object routing에 쓰는 수동 RouteMesh peer |
-| Play -> API 인증 | 독립 `tictactoe.api` ClientServer Channel | object routing과 분리한 request/reply 연결 |
-| Play Object Server -> Play Object Server | Play 설정 | remote Spot·Actor와 Logical Multicast가 공유하는 수동 RouteMesh peer |
-| framework -> Redis | Location Store 설정 | room과 actor의 current owner를 저장하고 조회한다. |
-| client -> Play stream | API 응답 | client ingress를 분산할 Play stream endpoint 목록 |
-
-이 샘플이 수동 연결을 쓰는 이유는 자동 발견이 없는 기본 배선도 framework로 표현할 수
-있음을 보여 주기 위해서다. 공유 location store 기반 자동 연결은 Bingo 샘플이 맡는다.
-
-Redis는 automatic discovery를 대신하지 않는다. Endpoint 목록과 연결 방향은 샘플 설정과
-runner가 제공한다. Object Client끼리는 연결하지 않는다. API-A와 API-B 사이에는 object
-routing용 peer가 필요하지 않다.
-
-### 6.1 Room owner 선택
-
-API 서버는 새 room 요청을 받으면 `IZLinkSpotManager.Create(spotType)`에 초기 설정을
-전달한다. `Create`는 Framework가 새 global `RoomId`를 발급하는 API다. Caller가 소유한
-stable ID로 같은 room을 여러 요청에서 보장해야 할 때만 `GetOrCreate(spotId, spotType)`를
-사용한다. TicTacToe의 새 game에는 재사용할 caller ID가 없으므로 `Create`가 맞다.
-
-Framework는 eligible Object Server의 stable type, capacity와 node weight로 owner를 정한다.
-수동 endpoint는 peer 연결과 client stream 접속에만 사용한다.
-
-검증 기준은 특정 Play 이름이나 NodeRid가 아니다. 두 client ingress에서 같은 `RoomId`로 join하고
-동일한 game state와 notify를 확인하면 된다. HTTP 응답에는 owner endpoint를 두지 않는다.
-`PlayEndpoints`는 client ingress 선택용이며 Spot owner를 나타내지 않는다.
-
-### 6.2 room 위치 조회
-
-**샘플이 자체 Redis 스키마를 만들지 않는다.** Play 서버는 공식 Redis location store를
-`AddLocationStore(new ZLinkRedisLocationStore(...))`로 등록하고, room Spot을 만들면 framework
-lifecycle이 **spot location row**를 자동으로 기록한다. row schema, key 규약, owner lease와
-generation은 [41 Redis location store](../../spec/22-location-store-redis.ko.md)가 소유하며
-샘플이 다시 정의하지 않는다.
-
-다른 node에서 room으로 보낼 때는 public Spot·Actor API에 global `RoomId`를 전달한다.
-Framework가 owner route와 generation을 관리한다. 샘플 코드가 owner NodeRid를 읽거나
-보관하지 않는다([Spot 주소 메시징](../../spec/16-spot-address-messaging.ko.md)).
-
-Redis에 없는 room id는 `NotFound`로 처리한다. Framework는 이 결과에 retry 가능 여부를 붙이지 않는다.
-Application이 새 operation을 시작하려면 요청의 idempotency와 현재 상태를 확인해 별도로 결정한다. 없는
-room을 샘플 전용 fallback으로 새로 만들면 scale-out routing 오류가 숨겨지므로 금지한다.
-
-### 6.3 Logical Multicast 연결
-
-Play 서버끼리 연결하는 Object RouteMesh는 remote room Spot request, actor join과
-Logical Multicast가 함께 사용한다. milestone 알림을 위해 별도 endpoint를 만들지 않는다. 두 Play
-서버는 설정에 적힌 peer MeshNode endpoint로 한 번만 연결한다.
-
-Logical Multicast는 개별 room 위치를 조회하지 않는다. Publish 대상은 특정 room Spot
-위치가 아니라 topic이다. 이 샘플의 topic은 `tictactoe.player.milestone`처럼 모든 언어에서
-같은 문자열 의미를 유지해야 한다. 각 Play 서버는 시작할 때 자기 MeshNode의 local
-`PlayEntrySpot`에 milestone topic subscribe handler를 등록한다. observer actor는
-`ObserveMilestoneReq`를 보내 현재 연결된 Play 서버의 `PlayEntrySpot`에 observer로
-등록된다. `PlayEntrySpot`은 publish event를 받으면 업무 payload만 담은
-`WinMilestoneNotify` client push로 바꾼다. 현재 NodeRid는 application DTO에 넣지 않는다.
-
-여기서 observer handler는 별도 Spot lifecycle을 뜻하지 않는다. C++, Node, Kotlin, Java처럼
-파일 구조와 framework callback 표현이 다른 언어도 observer 목록 관리와 `WinMilestoneNotify`
-전송 책임을 `PlayEntrySpot` 또는 그 안의 private helper에 둔다.
-room 상태를 소유하는 `TicTacToeGame`에 observer를 등록하면 다른 Play 서버에서
-milestone을 받는 흐름을 설명하기 어렵고, 별도 public Spot 타입을 만들면 샘플의 Spot 구조가
-언어마다 달라지므로 피한다.
-
-room Spot은 승리 처리 중 player win count가 100이 되는 순간 `PlayerWinMilestoneEvent`를
-publish한다. 샘플에서는 API fake user store가 host player를 `Wins = 99`로 인증하고,
-room Spot은 이번 판의 승리 결과로 event payload의 `Wins`만 100으로 계산한다. 이 샘플은
-영속 user profile 갱신을 구현하지 않는다. profile 갱신까지 보여 주면 Logical Multicast 검증보다
-외부 저장소 흐름이 더 커지기 때문이다.
-
-Publish terminal은 source runtime이 publish 작업을 시작했다는 뜻이다. Subscriber 수,
-remote Spot queue 수락, handler 시작이나 완료를 반환하거나 집계하지 않는다. Publish가
-시작된 뒤 개별 target 전달 실패로 전체 operation을 실패시키거나 자동 재전송하지 않는다.
-따라서 샘플은 publish 반환값으로 fan-out 성공을 판단하지 않는다. Observer가 받은
-`WinMilestoneNotify`를 별도로 기다려 이 시나리오의 업무 결과를 검증한다.
-
-언어별 public API 이름은 다를 수 있지만 의미는 같아야 한다. Object Server는 하나의 RouteMesh endpoint와
-object capability를 등록한다. Local `PlayEntrySpot`은 topic subscription을 등록하고 room
-Spot은 public Logical Multicast API로 event를 제출한다.
-
-이 흐름은 알림과 projection에 사용하는 event fan-out 예시다. turn 처리, board mutation,
-join admission처럼 반드시 한 owner room Spot에서 결정해야 하는 상태 변경을 Logical Multicast로
-처리하면 안 된다.
-
-### 6.4 언어별 Redis client
-
-각 언어 샘플은 널리 쓰이고 dependency 관리가 쉬운 Redis client를 사용한다. Redis client는
-샘플의 공개 흐름이 아니라 저장소 adapter의 구현 세부 사항이므로, client 선택이 handler,
-actor, Spot, Domain 코드에 드러나면 안 된다.
-
-| 언어 | Redis client 기준 | 적용 위치 |
-|------|-------------------|-----------|
-| .NET | `StackExchange.Redis` | 공식 Redis Location Store provider |
-| Java/Kotlin | Lettuce 또는 같은 수준의 비동기 Redis client | 공식 Redis Location Store provider |
-| Node.js | `ioredis` 또는 `redis` package | 공식 Redis Location Store provider |
-| C++ | `redis-plus-plus` | Framework `redis_location_store_t`를 등록하는 `Configuration/location_store.hpp` |
-
-C++ 샘플은 `redis-plus-plus`를 사용한다. C++ framework는 이미 C++20과 vcpkg manifest를
-기준으로 빌드하므로, C++ TicTacToe 샘플은 `framework/languages/cpp/vcpkg.json`에
-`redis-plus-plus` dependency를 사용하고 Location Store target에 link한다. Redis protocol을
-직접 구현하거나 raw TCP command helper를 샘플에 넣지 않는다. 샘플 코드가 Redis 사용법을
-보여 주는 예제로 바뀌면 framework resolver 흐름이 흐려지기 때문이다.
-
-### 6.5 Redis 실행 책임
-
-샘플 애플리케이션은 Docker를 직접 호출하지 않는다. Docker container 준비는 runner의
-책임이다.
-
-- `run_sample`은 실행마다 전용 Redis container를 시작하고 ready 상태를 확인한 뒤 endpoint를
-  API/Play 프로세스에 전달한다.
-- runner는 정상 종료와 실패 종료 모두에서 자신이 만든 Redis container를 정리한다.
-- Docker를 사용할 수 없으면 runner는 명확한 오류를 출력하고 중단한다.
-- 외부 Redis endpoint 재사용 mode는 제공하지 않는다. Redis endpoint는 runner가 만든 container에서
-  파생한 값을 사용한다.
-- C++, .NET, Java, Kotlin, Node 샘플은 모두 같은 runner-owned Redis container 계약을 사용한다.
-
-## 7. Handler 등록 방식
-
-TicTacToe는 다른 샘플과 같은 자동 등록 방식을 사용한다. handler는
-attribute(.NET)·annotation(Java·Kotlin)·decorator(Node)로 packet kind와 이름을 선언한다.
-Framework integration은 지정한 assembly·module을 scan해 handler를 등록한다.
-
-수동 endpoint topology는 handler 등록 방식을 바꾸지 않는다. 구성 코드에는 handler 타입 목록을
-반복하지 않는다. C++만 reflection이 없으므로 compile-time 등록을 사용한다.
-([샘플 규약](../README.ko.md)). 이 대비 자체가 TicTacToe의 목적 중 하나다.
-
-**C++ 샘플은 예외다.** runtime 스캔도 annotation 기반 선언도 쓰지 않고 compile-time 타입과 명시
-builder 호출로 등록하므로, TicTacToe에서 특별히 달라지는 것이 없다.
-
-등록 방식이 달라도 handler 역할은 같아야 한다. room 생성, 인증, join, leave, move 처리 handler는
-같은 메시지 이름과 같은 책임을 유지한다.
-
-## 8. Play 서버 내부 레이어
-
-TicTacToe Play 서버는 작은 샘플이지만 domain logic과 framework adapter를 분리해야
-한다. 다른 언어 framework로 구현할 때도 아래 구조와 책임 분리를 유지한다.
-
-```text
-Server/Play/
-  Domain/
-    TicTacToe/
-      TicTacToeBoard
-      TicTacToeMatch
-  Infrastructure/
-    ZLink/
-      Actors/
-        PlayActor
-        PlayActorFactory
-      Sessions/
-        PlaySession
-      Spots/
-        EntrySpot/
-          PlayEntrySpot
-          Handlers/
-            PlayActorObserveMilestoneHandler
-            PlayActorJoinGameHandler
-            PlayerWinMilestoneEventHandler
-        TicTacToeGameSpot/
-          TicTacToeGame
-          Handlers/
-            PlayActorLeaveGameHandler
-            PlayActorPlaceMarkHandler
-            TicTacToeGameTimerHandler
-```
-
-역할은 아래처럼 나눈다.
-
-| 위치 | 책임 |
-|------|------|
-| `Domain/TicTacToe/TicTacToeBoard` | 9칸 board, cell 범위 검증, 이미 사용한 cell 검증, 승리 라인 판정을 소유한다. |
-| `Domain/TicTacToe/TicTacToeMatch` | player join, X/O 배정, turn, timeout, win/draw 상태 전이, snapshot 생성을 소유한다. |
-| `Infrastructure/ZLink/Sessions/PlaySession` | stream 연결, 첫 packet 인증, actor 생성, session binding, client packet dispatch를 맡는다. |
-| `Infrastructure/ZLink/Spots/EntrySpot/PlayEntrySpot` | actor entry lifecycle, room join request dispatch, observer milestone subscription, actor destroy 진입점을 맡는다. |
-| `Infrastructure/ZLink/Spots/TicTacToeGameSpot/TicTacToeGame` | ZLink Spot lifecycle, actor join callback, timer 등록, domain 호출, room member push 전송을 맡는다. |
-| `Infrastructure/ZLink/Spots/EntrySpot/Handlers/*` | actor request를 받아 entry Spot에서 room Spot으로 join시킨다. |
-| `Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/*` | actor request와 timer callback을 받아 room domain operation을 호출한다. |
-
-observer milestone 처리는 `PlayEntrySpot`의 local notification responsibility다. 언어별로
-private helper, nested class, closure, actor map 같은 구현 세부 표현은 달라도 외부에서 볼 수
-있는 sample Spot은 `PlayEntrySpot`과 `TicTacToeGame` 두 종류로 유지한다.
-
-Domain 객체는 ZLink framework 타입, stream session, actor context, logger를 알면 안 된다.
-`TicTacToeGame` Spot은 actor와 session을 알고 있어도 board cell 검증, turn 검증,
-승리 판정을 직접 구현하지 않는다. 이 규칙들이 handler나 Spot adapter에 들어가면
-다른 언어 샘플에서 구조가 쉽게 달라지므로 공통 샘플 기준을 만족하지 못한다.
-
-## 9. 게임 규칙
-
-TicTacToe는 같은 규칙을 모든 언어 샘플에서 사용한다.
-
-- 한 room에는 두 actor가 참가한다.
-- 첫 actor는 `X`, 두 번째 actor는 `O`를 받는다.
-- board는 0부터 8까지의 cell index로 표현한다.
-- 같은 cell에는 두 번 둘 수 없다.
-- 현재 turn의 actor만 `PlaceMarkReq`를 보낼 수 있다.
-- 가로, 세로, 대각선 중 한 줄을 먼저 완성한 actor가 이긴다.
-- 모든 cell이 찼고 승자가 없으면 draw다.
-
-## 10. Client 검증 흐름
-
-TicTacToe client는 아래 순서로 scenario를 실행하고 각 단계의 값을 확인한다.
-
-1. HTTP `CreateGameHttpReq`에 넣은 `GameName`이 `CreateGameHttpRes.GameName`으로
-   돌아오는지 확인한다. `RoomId`, `PlayEndpoints`, `PlayNodes`가 비어
-   있지 않고 `PlayEndpoints`에 서로 다른 Play endpoint가 2개 이상 있는지도 확인한다.
-   `PlayNodes`에는 각 Play stream endpoint가 한 번씩 들어 있어야 하며 NodeRid는 포함하지 않는다.
-2. host는 첫 Play endpoint로 connector를 만든다. Guest와 observer는 다른 endpoint를
-   사용한다. 이 선택은 client ingress만 나누며 room owner를 나타내지 않는다.
-3. host, guest, observer가 각각 stream 인증을 요청하고,
-   `AuthenticateRes.Player.ActorId`가 요청한 actor id와 같은지 확인한다. 응답에는 display
-   name, level, wins가 함께 들어 있어야 하며, host와 guest의 level은 room 입장 조건
-   이상이어야 한다.
-4. observer가 `ObserveMilestoneReq`를 보내고 `ObserveMilestoneRes.Subscribed = true`를
-   확인한다. 이 응답을 받은 뒤에 게임 join과 move를 진행해야 milestone event를 놓치지 않는다.
-5. host가 `JoinGameReq(RoomId)`를 보내고 response state의 `RoomId`, `WaitingForPlayers`,
-   `X` 배정을 확인한다. host는 자기 join notify를 받지 않아야 한다.
-6. guest가 다른 Play 서버에서 같은 `RoomId`로 join하고 response state의 `InProgress`,
-   `O` 배정을 확인한다. 이 join은 framework가 Location Store에서 current owner를 찾는
-   경로를 통과해야 한다. join payload에는 actor id뿐 아니라 인증 때 받은 user 정보가
-   들어가며, owner room Spot은 level 조건을 만족하는지 확인한다.
-7. host는 connector wait API로 `PlayerJoinedNotify`를 기다리고, payload의 `ActorId`,
-   `DisplayName`, `Level`, `Mark`, `RoomId`, state status가 guest join을 뜻하는지 확인한다.
-   guest는 자기 join notify를 받지 않아야 한다.
-8. host는 connector wait API로 game start `GameStateNotify`를 기다리고 첫 turn이 `X`인지
-   확인한다.
-9. 각 `PlaceMarkReq` response는 board, next turn, last move actor, last move cell을
-   확인한다. 상대 client는 connector wait API로 같은 state를 담은 `GameStateNotify`를
-   기다려 확인한다.
-10. 마지막 host move는 `Won`, winner가 host actor id, board가 deterministic final board인지
-   확인한다. guest는 같은 winner를 담은 final `GameStateNotify`를 받아야 한다.
-11. host의 인증 정보는 `Wins = 99`에서 시작한다. 마지막 승리로 host의 누적 승수가 100이
-   되면 owner room Spot은 `PlayerWinMilestoneEvent`를 publish해야 한다. host와 다른 Play
-   서버에 연결된 observer client는 connector wait API로 `WinMilestoneNotify`를 기다리고,
-   `ActorId`, `DisplayName`, `Wins = 100`, `RoomId`를 확인한다. 특정 수신 NodeRid는 성공 조건이 아니다.
-12. host, guest, observer는 inbound observer 로그에 `stream-inbound` marker가 남았는지
-   확인한다. 로그에는 sample 이름, client 역할, message kind, packet name, request sequence,
-   payload byte length가 포함되어야 한다. heartbeat control frame은 observer 기능
-   검증에는 포함할 수 있지만 기본 sample output에서는 낮은 log level로 두거나 걸러낸다.
-
-이 검증은 성공 로그가 아니라 sample release gate다. 언어별 client가 위 값을 확인하지
-않으면 공통 sample 기준을 만족하지 못한다.
-
-## 11. 메시지 계약
-
-아래 계약은 언어 중립 schema다. 언어별 샘플은 같은 이름과 필드를 자기 언어의
-record, class, struct, type alias 등으로 구현한다.
-
-공통 user 모델:
-
-```text
-PlayerInfo {
-  ActorId: string
-  DisplayName: string
-  Level: int
-  Wins: int
-}
-
-PlayNodeInfo {
-  StreamEndpoint: string
-}
-```
-
-HTTP와 server channel에서 사용하는 메시지:
-
-```text
-CreateGameHttpReq {
-  GameName: string?
-}
-
-CreateGameHttpRes {
-  RoomId: string
-  PlayEndpoints: string[]
-  PlayNodes: PlayNodeInfo[]
-  GameName: string
-  RequiredLevel: int
-}
-
-AuthenticatePlayerReq {
-  AccessToken: string
-}
-
-AuthenticatePlayerRes {
-  Player: PlayerInfo
-}
-```
-
-client stream에서 사용하는 request/response:
-
-```text
-AuthenticateReq {
-  AccessToken: string
-}
-
-AuthenticateRes {
-  Player: PlayerInfo
-}
-
-JoinGameReq {
-  RoomId: string
-}
-
-JoinGameRes {
-  State: GameState
-}
-
-ObserveMilestoneReq {
-}
-
-ObserveMilestoneRes {
-  Subscribed: bool
-}
-
-PlaceMarkReq {
-  Cell: int
-}
-
-PlaceMarkRes {
-  State: GameState
-}
-
-LeaveGameReq {
-  RoomId: string
-}
-```
-
-Play actor가 room Spot에 join할 때 사용하는 내부 request/response:
-
-```text
-TicTacToeGameJoinReq {
-  RoomId: string
-  Player: PlayerInfo
-}
-
-TicTacToeGameJoinRes {
-  State: GameState
-}
-```
-
-server push 메시지:
-
-```text
-PlayerJoinedNotify {
-  RoomId: string
-  ActorId: string
-  DisplayName: string
-  Level: int
-  Mark: string
-  State: GameState
-}
-
-GameStateNotify {
-  State: GameState
-}
-
-WinMilestoneNotify {
-  RoomId: string
-  ActorId: string
-  DisplayName: string
-  Wins: int
-}
-```
-
-Logical Multicast으로 전달하는 event:
-
-```text
-PlayerWinMilestoneEvent {
-  RoomId: string
-  ActorId: string
-  DisplayName: string
-  Wins: int
-}
-```
-
-공통 state 모델:
-
-```text
-GameState {
-  RoomId: string
-  Board: string
-  Status: string
-  Winner: string?
-  NextTurn: string
-  XActorId: string?
-  OActorId: string?
-  LastMoveActorId: string?
-  LastMoveCell: int?
-}
-```
-
-`Board`는 9글자 문자열이다. 빈 칸은 `.`, `X` actor의 mark는 `X`, `O` actor의
-mark는 `O`로 표현한다. 예를 들어 `"X.O...X.."`는 0번과 6번 cell에 `X`, 2번 cell에
-`O`가 놓인 상태다.
-
-## 12. Room 생성 흐름
-
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant API as Api Server
-    participant ROOMS as Room Spot Manager
-    participant REDIS as Redis Location Store
-
-    C->>API: HTTP CreateGameHttpReq
-    API->>ROOMS: Create(roomType) with initial settings
-    ROOMS->>REDIS: Reserve generated RoomId and select owner
-    REDIS-->>ROOMS: Ready room reference
-    ROOMS-->>API: Created RoomId
-    API-->>C: HTTP CreateGameHttpRes
-```
-
-API 서버는 HTTP 요청을 받아 `IZLinkSpotManager.Create`로 room 생성을 요청한다.
-Framework는 global `RoomId`를 발급하고 owner를 선택한다. API는 Play process,
-owner NodeRid 또는 preferred endpoint를 전달하지 않는다. 응답에는 logical `RoomId`,
-client stream endpoint 목록과 최소 입장 level만 포함한다.
-
-TicTacToe 샘플의 기본 room은 `RequiredLevel = 3`을 사용한다. 이 값은 복잡한 매칭 규칙을
-보여 주려는 목적이 아니라, room Spot이 actor/user snapshot을 보고 join admission을
-판단한다는 점을 드러내기 위한 최소 정책이다.
-
-## 13. 인증과 입장 흐름
-
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant S as Play Session
-    participant API as Api Channel
-    participant ACT as Play Actor
-    participant ROOM as Room
-    participant OACT as Opponent Actor
-    participant OC as Opponent Client
-
-    C->>S: Stream AuthenticateReq
-    S->>API: Manual request AuthenticatePlayerReq
-    API-->>S: AuthenticatePlayerRes(PlayerInfo)
-    S->>ACT: Create actor(actorId=PlayerInfo.ActorId)
-    S->>ACT: Apply PlayerInfo
-    S-->>C: AuthenticateRes
-    C->>S: Stream JoinGameReq
-    S->>ACT: Dispatch JoinGameReq
-    ACT->>ROOM: Join actor with PlayerInfo
-    ROOM->>ROOM: Check required level
-    ROOM-->>ACT: Mark + state
-    ACT-->>S: JoinGameRes
-    S-->>C: Stream JoinGameRes
-    ROOM-->>OACT: PlayerJoinedNotify for existing member
-    ROOM-->>OACT: GameStateNotify for in-progress state
-    OACT-->>OC: Stream PlayerJoinedNotify
-    OACT-->>OC: Stream GameStateNotify
-```
-
-첫 packet은 반드시 `AuthenticateReq`여야 한다. 인증이 끝나기 전에 `JoinGameReq`나
-`PlaceMarkReq`를 받으면 session은 오류 response를 반환하고 actor를 생성하지 않는다.
-
-Play session은 인증 요청을 API 서버 channel로 보내고, API 서버는 `PlayerInfo`를 반환한다.
-`PlayerInfo`에는 actor id, 화면에 보여 줄 이름, level, wins가 들어 있다. Play session은
-actor를 만든 뒤 이 user 정보를 actor에 설정하고 현재 stream session에 bind한다.
-
-room 생성 응답에는 `RequiredLevel`이 들어 있다. actor가 `JoinSpot(RoomId)`를 호출할 때는
-인증 때 받은 `PlayerInfo`를 `TicTacToeGameJoinReq`에 함께 넣는다. room owner가 다른 Play
-서버에 있으면 이 join payload가 MeshNode router 경로를 통해 owner room Spot으로 전달된다.
-owner room Spot은 `PlayerInfo.Level`이 `RequiredLevel` 이상인지 확인한 뒤 join을 허용한다.
-조건을 만족하지 못하면 join을 거부하거나 오류 response를 반환해야 하며, 샘플 기본
-self-check는 level 조건을 만족하는 host와 guest로 성공 경로를 검증한다.
-
-첫 actor가 join할 때는 self-join notify를 보내지 않는다. 두 번째 actor가 join하면 기존
-room member에게 새 actor의 user 정보를 담은 `PlayerJoinedNotify`와 `InProgress` state를
-담은 `GameStateNotify`를 보낸다. 두 번째 actor는 자기 join 결과를 `JoinGameRes`로 확인한다.
-
-## 14. 수 두기와 Notify 흐름
+> TicTacToe는 두 API와 두 Play server가 수동 endpoint로 연결된 환경에서,
+> Framework가 room Spot routing, stream session과 Logical Multicast를 제공해 Application이
+> board와 turn 규칙에 집중할 수 있음을 보여 준다.
+
+## 1. 목적과 범위
+
+이 sample은 별도 Session process 없이 Play server가 stream session, player Actor와 room
+User Spot을 함께 제공하는 scale-out 게임을 다룬다. API A/B는 HTTP room creation과
+인증을 제공하고, Play A/B는 수동 RouteMesh peer로 연결된다. Client는 room creation response에서
+받은 stream endpoint를 선택해 host, guest와 observer connection을 만든다.
+
+Framework가 맡는 책임은 User Spot 생성과 global RoomId routing, Actor lifecycle, stream binding,
+Logical Multicast와 Location Store 기반 current owner resolve다. Application은 level admission,
+board, turn, win/draw 판정과 actor destroy 정책을 소유한다.
+
+room creation부터 host·guest가 한 판을 완료하고 observer가 Wins 100 milestone을 확인한 뒤
+LeaveGameMsg를 보내는 시점까지를 범위로 한다. 다음 기능은 제외한다.
+
+- 실제 account provider, ranking과 persistent match history
+- 자동 peer discovery와 service registry
+- spectator가 game state를 변경하는 기능
+- room owner 장애 뒤 자동 crash failover
+- 여러 room을 가로지르는 global leaderboard
+
+수동 endpoint는 object placement를 정하는 값이 아니다. API가 특정 Play process나 NodeRid를
+선택하지 않고, Framework가 Location Store에서 RoomId current owner를 resolve한다.
+
+## 2. 요구사항
+
+### 2.1 기능 요구사항
+
+- Api A와 Api B가 같은 HTTP room creation과 authentication contract를 제공한다.
+- Play A와 Play B가 수동 RouteMesh peer로 연결되고 두 Play가 같은 object capability를 제공한다.
+- CreateGameHttpReq가 RoomId, RequiredLevel과 Play stream endpoint 목록을 반환한다.
+- host와 guest가 서로 다른 Play ingress에서 인증하고 같은 RoomId에 join한다.
+- room Spot이 level admission, board, turn, win과 draw를 판정한다.
+- 요청 client는 PlaceMarkRes, 상대 client는 GameStateNotify로 동일한 state를 받는다.
+- host 승리로 Wins가 100이 되면 observer가 WinMilestoneNotify를 받는다.
+- game 종료 뒤 LeaveGameMsg가 actor를 Entry Spot으로 이동시키고 destroy evidence가 남는다.
+
+### 2.2 운영·품질 요구사항
+
+| 구분 | 요구사항 | 소유자 |
+|---|---|---|
+| topology | Object Client/Server peer와 ClientServer API channel을 분리한다. | Framework configuration |
+| placement | RoomId와 global ActorId만 사용하고 owner NodeRid를 client에 노출하지 않는다. | Framework contract |
+| join | join payload의 PlayerInfo.Level이 RequiredLevel 이상인지 room owner가 판정한다. | Sample policy |
+| multicast | milestone은 publish이며 publish 완료를 game result로 사용하지 않는다. | Framework + Sample |
+| disconnect | stream disconnect는 binding cleanup이며 actor destroy와 분리한다. | Framework lifecycle |
+| 검증 | response, notify, milestone과 destroy evidence를 직접 assert한다. | Sample self-check |
+
+### 2.3 Bingo와의 선택 기준
+
+두 sample 모두 game state를 Spot에 모으지만 연결 경계가 다르다.
+
+| 축 | TicTacToe | Bingo |
+|---|---|---|
+| client edge | API HTTP와 Play STREAM을 client가 직접 선택 | Session STREAM 하나 |
+| topology | 수동 endpoint RouteMesh와 Redis Location Store | Location Store 기반 automatic discovery |
+| server 분리 | Play가 stream과 room을 함께 소유 | Session, API, Matchmaking과 Play 분리 |
+| event 사용 | Logical Multicast milestone | room state와 reward observer |
+| 선택 조건 | 수동 peer와 room routing을 확인할 때 | session gateway와 matchmaking을 확인할 때 |
+
+## 3. 시스템 구성과 topology
+
+기본 topology는 Client와 server component의 구조적 연결만 보여 준다. Redis Location Store는
+resource 표에서 설명하며 HTTP, stream, join과 publish의 시간 순서는 §7 sequence diagram에
+둔다.
 
 ```mermaid
 flowchart LR
-    CA[Client A]
-    SA[Session A]
-    AA[Actor A]
-    ROOM[Room]
-    AB[Actor B]
-    CB[Client B]
-
-    CA -->|PlaceMarkReq| SA
-    SA -->|Dispatch request| AA
-    AA -->|Place mark| ROOM
-    ROOM -->|Accepted state| AA
-    AA -->|PlaceMarkRes| SA
-    SA -->|PlaceMarkRes| CA
-    ROOM -->|GameStateNotify| AB
-    AB -->|Notify| CB
+    subgraph Clients[Clients]
+        H[Host Client]
+        G[Guest Client]
+        O[Observer Client]
+    end
+    subgraph Servers[Servers]
+        A1[Api A]
+        A2[Api B]
+        P1[Play A]
+        P2[Play B]
+    end
+    H ---|HTTP| A1
+    G ---|HTTP| A2
+    O ---|HTTP| A2
+    H ---|STREAM| P1
+    G ---|STREAM| P2
+    O ---|STREAM| P2
+    A1 ---|tictactoe RouteMesh| P1
+    A1 ---|tictactoe RouteMesh| P2
+    A2 ---|tictactoe RouteMesh| P1
+    A2 ---|tictactoe RouteMesh| P2
+    P1 ---|tictactoe RouteMesh| P2
+    P1 ---|tictactoe.api ClientServer| A1
+    P2 ---|tictactoe.api ClientServer| A2
 ```
 
-승리 또는 draw가 만들어지면 `GameState.Status`와 `GameState.Winner`에 결과를 담은
-최종 state가 양쪽 client에게 전달되어야 한다. 요청을 보낸 client는 `PlaceMarkRes`에서
-최종 state를 받고, 상대 client는 `GameStateNotify`에서 같은 최종 state를 받는다.
-잘못된 turn, 이미 사용한 cell, 끝난 room에
-대한 요청은 `PlaceMarkRes` 대신 오류 response를 반환한다.
+- Api A/B는 object client이며 room create request를 Play object server로 보낸다.
+- Play A/B는 object server이고 같은 object type, Entry Spot과 Logical Multicast membership을
+  제공한다.
+- Play→Api authentication request는 tictactoe.api 독립 ClientServer를 사용한다.
+- Api A와 Api B 사이에는 object peer를 만들지 않는다. Play A/B와 Api의 peer 방향은 runner가
+  제공하는 수동 endpoint 설정으로 구성한다.
+- CreateGameHttpRes의 PlayEndpoints는 ingress 선택용이다. Room placement나 owner 증거가 아니다.
+- Location Store는 RoomId와 ActorId의 current owner를 기록한다. Application은 API response에
+  NodeRid, ActorRef와 private route를 넣지 않는다.
 
-## 15. 승리 milestone Logical Multicast 흐름
+| Resource | 책임 | 준비 |
+|---|---|---|
+| Redis Location Store | peer descriptor와 global RoomId·ActorId authority | 실행별 전용 Redis |
+| Fake user source | access token, PlayerInfo와 Wins | Api application seed |
+| Room state | board, turn, player membership | room Spot domain |
+| Milestone topic | observer subscription과 publish target | Play Entry Spot |
 
-TicTacToe 샘플은 Logical Multicast를 단순한 별도 예제가 아니라 게임 흐름 안의 알림 기능으로
-사용한다. API의 fake user store는 host player를 `Wins = 99`로 인증한다. host가 이번 판에서
-승리하면 room Spot은 새 승수를 100으로 계산하고 milestone event를 publish한다.
+## 4. 역할과 책임
+
+| 역할 | 수 | 책임 | 분리 이유와 소유 상태 |
+|---|---:|---|---|
+| Host/Guest/Observer Client | scenario별 3 | HTTP create, stream auth, join, move, observe와 self-check | Play owner를 알지 않는다. |
+| Api | 2 | HTTP room creation, user authentication과 Spot manager 호출 | client API와 Play runtime을 분리한다. |
+| Play | 2 | STREAM, session Actor, Entry Spot, room Spot과 Logical Multicast | 동일 capability를 두 ingress에 제공한다. |
+| Play session | Play별 1 | stream lifecycle, authentication relay와 Actor binding | 연결 수명과 game rule을 분리한다. |
+| Entry Spot | Play별 1 | player Actor admission과 observer milestone handler | actor의 최초 logical 위치를 제공한다. |
+| Room Spot | RoomId별 1 | PlayerInfo admission, board, turn, win/draw | 게임 state의 단일 소유자다. |
+| Location Store | logical 1 | peer discovery와 global object authority | physical owner 선택을 숨긴다. |
+
+Observer는 room member가 아니다. Observer의 local Entry Spot handler가 milestone topic을
+구독하고 WinMilestoneNotify를 현재 observer session에 보낸다. 별도 observer Spot type을
+추가하지 않는다.
+
+## 5. 사용하는 Framework 요소와 선택 이유
+
+| 필요한 동작 | 선택한 요소 | 선택 이유와 계약 근거 |
+|---|---|---|
+| 수동 peer로 object route를 구성한다. | RouteMesh manual endpoint | automatic discovery와 구분되는 topology를 보여 준다. [Channel topology](../../spec/07-channel-topology.ko.md) |
+| room을 새로 만든다. | User Spot manager Create | Framework가 global RoomId를 발급하고 owner를 선택한다. [상호작용 모델 §2.1](../../spec/03-interaction-model.ko.md#21-상호작용을-시작하는-public-interface) |
+| remote room에 join한다. | global Spot·Actor message | Caller는 RoomId·ActorId를 지정하고 current owner를 Framework가 resolve한다. [Spot address messaging](../../spec/16-spot-address-messaging.ko.md) |
+| client connection을 actor에 연결한다. | STREAM session binding | current session으로 server push를 보낸다. [STREAM session](../../spec/19-stream-session.ko.md) |
+| milestone을 여러 Play ingress에 알린다. | Logical Multicast | publisher가 subscriber node 목록을 관리하지 않는다. [상호작용 모델 §5](../../spec/03-interaction-model.ko.md#5-spot-logical-multicast) |
+| game 종료 뒤 actor를 정리한다. | public leave와 Entry Spot destroy | disconnect cleanup과 explicit destroy를 분리한다. [Spot·Actor membership](../../spec/15-spot-actor.ko.md) |
+| owner 장애를 표현한다. | failure/failover policy | Ready owner 장애는 자동 replacement가 아니다. [Failure policy](../../spec/31-failure-failover-policy.ko.md#42-기존-actor와-spot) |
+
+Room creation의 Create call에는 initial room settings와 필요하면 최초 placement Mesh를
+전달할 수 있지만, Play endpoint나 NodeRid를 업무 값으로 전달하지 않는다. 이미 존재하는
+RoomId의 direct message에는 placement intent를 다시 붙이지 않는다.
+
+## 6. Message 계약
+
+TicTacToe는 typed JSON codec을 사용한다. 아래 declaration은 공통 wire field와 optional·null
+의미를 고정한다.
+
+### 6.1 User, HTTP와 authentication
+
+```text
+message PlayerInfo {
+  actorId: string
+  displayName: string
+  level: int32
+  wins: int32
+}
+
+message PlayNodeInfo {
+  streamEndpoint: string
+}
+
+message CreateGameHttpReq {
+  gameName?: string | null
+}
+
+message CreateGameHttpRes {
+  roomId: string
+  playEndpoints: string[]
+  playNodes: PlayNodeInfo[]
+  gameName: string
+  requiredLevel: int32
+}
+
+message TicTacToeGameCreateReq {
+  gameName: string
+  requiredLevel: int32
+}
+
+message AuthenticatePlayerReq {
+  accessToken: string
+}
+
+message AuthenticatePlayerRes {
+  player: PlayerInfo
+}
+
+message AuthenticateReq {
+  accessToken: string
+}
+
+message AuthenticateRes {
+  player: PlayerInfo
+}
+```
+
+PlayEndpoints와 PlayNodes는 stream ingress를 고르는 정보다. owner NodeRid와 object
+location snapshot은 포함하지 않는다.
+
+### 6.2 Room request와 publish event
+
+```text
+message TicTacToeGameJoinReq {
+  roomId: string
+  player: PlayerInfo
+}
+
+message TicTacToeGameJoinRes {
+  state: GameState
+}
+
+message JoinGameReq {
+  roomId: string
+}
+
+message JoinGameRes {
+  state: GameState
+}
+
+message JoinGameFailedNotify {
+  roomId: string
+  error: string
+  isRetriable: bool
+}
+
+message ObserveMilestoneReq {}
+
+message ObserveMilestoneRes {
+  subscribed: bool
+}
+
+message PlaceMarkReq {
+  cell: int32
+}
+
+message PlaceMarkRes {
+  state: GameState
+}
+
+message LeaveGameMsg {
+  roomId: string
+}
+
+message PlayerWinMilestoneEvent {
+  roomId: string
+  actorId: string
+  displayName: string
+  wins: int32
+}
+```
+
+TicTacToeGameJoinReq는 Play Actor가 Room Spot에 보내는 request/reply다. LeaveGameMsg는 actor가
+Entry Spot 복귀와 destroy를 시작하는 one-way send이며 response를 기다리지 않는다.
+PlayerWinMilestoneEvent는 Logical Multicast publish payload이므로 Event 접미어를 사용한다.
+ObserveMilestoneReq/Res는 observer local Entry Spot subscription 완료를 확인한다.
+
+### 6.3 Push와 state
+
+```text
+message PlayerJoinedNotify {
+  roomId: string
+  actorId: string
+  displayName: string
+  level: int32
+  mark: string
+  state: GameState
+}
+
+message GameStateNotify {
+  state: GameState
+}
+
+message WinMilestoneNotify {
+  roomId: string
+  actorId: string
+  displayName: string
+  wins: int32
+}
+
+message GameState {
+  roomId: string
+  board: string
+  status: string
+  winner?: string | null
+  nextTurn: string
+  xActorId?: string | null
+  oActorId?: string | null
+  lastMoveActorId?: string | null
+  lastMoveCell?: int32 | null
+}
+
+enum GameStatus {
+  WaitingForPlayers
+  InProgress
+  Won
+  Draw
+  TurnTimedOut
+}
+```
+
+Board는 9글자 ASCII 문자열이며 빈 칸은 점, X와 O mark는 각 문자로 표현한다. status와
+winner는 Room Spot domain rule이 결정한다. 첫 actor의 self-join notify는 보내지 않으며,
+두 번째 actor가 join하면 기존 member에게 PlayerJoinedNotify를 보낸다.
+
+## 7. 업무 흐름
+
+### 7.1 Room 생성과 인증·입장
+
+시작 상태는 Api A/B와 Play A/B가 수동 peer readiness를 완료하고 Redis Location Store가
+준비된 상태다. API는 RoomId를 발급받아 Play endpoint 목록과 함께 반환한다. Client가 어떤
+Play ingress를 선택해도 room owner는 바뀌지 않는다.
 
 ```mermaid
 sequenceDiagram
-    participant HOST as Host Client
-    participant ROOM as Owner Room Spot
-    participant MULTICAST as Logical Multicast
-    participant ENTRY as Entry Spot
-    participant OBS as Observer Client
+    participant C as Client
+    participant API as Api
+    participant P as Play Session
+    participant R as Room Spot
 
-    OBS->>ENTRY: ObserveMilestoneReq
-    ENTRY-->>OBS: ObserveMilestoneRes(Subscribed=true)
-    HOST->>ROOM: Final PlaceMarkReq
-    ROOM->>ROOM: Apply win and compute Wins=100
-    ROOM->>MULTICAST: Publish PlayerWinMilestoneEvent
-    MULTICAST-->>ENTRY: PlayerWinMilestoneEvent
-    ENTRY-->>OBS: WinMilestoneNotify
+    C->>API: CreateGameHttpReq
+    API->>R: TicTacToeGameCreateReq
+    R-->>API: framework result (RoomId)
+    API-->>C: CreateGameHttpRes(RoomId, PlayEndpoints)
+    C->>P: AuthenticateReq
+    P->>API: AuthenticatePlayerReq
+    API-->>P: AuthenticatePlayerRes(PlayerInfo)
+    P-->>C: AuthenticateRes(PlayerInfo)
+    C->>P: JoinGameReq(RoomId)
+    P->>R: TicTacToeGameJoinReq(PlayerInfo)
+    R->>R: check Level >= RequiredLevel
+    R-->>P: TicTacToeGameJoinRes
+    P-->>C: JoinGameRes
+    R-->>P: PlayerJoinedNotify for existing member
 ```
 
-observer client는 게임 참가자가 아니다. observer는 host와 다른 Play 서버 stream endpoint에
-연결해 인증한 뒤 `ObserveMilestoneReq`를 보낸다. Play actor는 현재 연결된 Play 서버의
-local `PlayEntrySpot`에 observer로 등록되고, `ObserveMilestoneRes`를 받은 뒤 observer
-client는 milestone push를 기다린다. 이 Entry Spot은 `tictactoe.player.milestone` topic을
-구독하고, publish event를 받으면 `WinMilestoneNotify`를 client로 보낸다. self-check는 observer
-client가 host와 다른 Play server ingress에 연결되어 있었고 같은 업무 event를 받았는지 확인한다.
-현재 NodeRid는 이 검증의 입력이나 성공 조건으로 사용하지 않는다.
+Join failure는 JoinGameFailedNotify 또는 typed error response로 끝난다. 인증 전에 JoinGameReq나
+PlaceMarkReq를 보내면 actor를 만들지 않고 오류로 완료한다.
 
-이 시나리오는 remote join과 다른 기능을 검증한다. Guest join은 Location Store 기반
-logical object request/reply를 검증하고, milestone 알림은 Logical Multicast fan-out을
-검증한다. multicast event는 알림 전달용이므로 event 수신을 게임 승패 확정 조건으로 삼으면
-안 된다. 게임 결과와 누적 승수 계산은 owner room Spot 또는 그 뒤의 application service가
-결정하고, Logical Multicast는 이미 결정된 milestone을 다른 Spot에 알리는 데만 사용한다.
+### 7.2 수 두기와 최종 state
 
-## 16. Disconnect와 actor destroy 흐름
-
-TicTacToe 샘플은 Play 서버가 stream session, actor, room Spot을 함께 호스팅한다. 따라서
-disconnect와 actor destroy 흐름도 Play 서버 안에서 짧게 드러나야 한다. disconnect는
-stream 연결 정리이고, actor destroy는 room lifecycle이 끝난 뒤 Entry Spot에서 actor를
-제거하는 작업이다. 두 동작을 같은 callback에서 섞으면 재접속 가능 상태와 actor lifetime을
-구분하기 어렵다.
-
-### 16.1 Disconnect 흐름
-
-client stream이 끊기면 Framework는 current binding snapshot의 각 exact binding identity에 disconnect를
-자동 제출하고 tombstone과 local cleanup을 완료한다. Play session callback이 actor binding이나 client
-reference를 직접 제거하지 않는다. Current Spot의 `OnDisconnectActorAsync`는 actor가 더 이상 이 stream으로
-push를 받을 수 없다는 domain 상태만 반영하며 room leave나 actor destroy를 실행하지 않는다.
-
-이 샘플은 disconnect cleanup을 눈에 보이게 구현해야 한다. 언어별 표현은 달라도 아래 동작은
-같아야 한다.
-
-- Framework가 current session의 actor binding을 정리하며, Play session callback은 bound Actor를
-  순회하거나 binding을 직접 제거하지 않는다.
-- actor 객체는 actor runtime에 남아 있고, room에 들어가 있었다면 room membership도 유지된다.
-- 이후 같은 actor id로 다시 인증하면 기존 actor를 재사용하거나 같은 의미의 actor 상태로
-  복구할 수 있어야 한다.
-
-### 16.2 게임 종료 후 actor destroy 흐름
-
-room Spot이 승리 또는 draw를 감지해 최종 `GameStateNotify`를 전송한 뒤 client는
-`LeaveGameReq`를 보낸다. room Spot은 이 명시적인 나가기 요청을 받아 actor를 Entry Spot으로
-돌려보내고, Entry Spot은 actor를 정리한다. 정리 순서는 모든 언어 샘플에서 아래와 같아야
-한다.
-
-1. Framework는 create payload로 `onCreateActor`를 실행한다. 같은 생성 attempt를 recovery하면 callback을
-   다시 호출할 수 있으므로 초기화와 외부 효과는 retry-safe해야 한다.
-2. client는 최종 `GameState`를 확인한 뒤 `LeaveGameReq`를 보낸다.
-3. room Spot은 요청한 actor에 “Entry Spot으로 돌아오면 destroy한다”는 표시를 남긴다.
-4. room Spot은 `leaveActor`로 actor를 room에서 내보낸다.
-5. framework는 room `onLeaveActor`를 호출한 뒤 actor를 Entry Spot으로 이동시키고 Entry
-   Spot `onJoinedActor`를 호출한다.
-6. Entry Spot `onJoinedActor` 또는 Entry Spot handler는 actor의 destroy 표시를 확인하고
-   Entry Spot context의 `destroyActor`를 호출한다.
-7. `destroyActor`는 `onLeaveActor`나 다른 lifecycle callback을 호출하지 않고 actor 객체,
-   native actor ref, framework registry, bound session binding을 정리한다.
-8. 같은 incarnation이 이미 없으면 destroy는 idempotent `false`를 반환하고 lifecycle callback을 다시
-   호출하지 않는다. 같은 `ActorId`의 다른 generation이면 `InvalidOperation`, relocation seal 중이면
-   `Unavailable`로 끝난다.
+request client는 PlaceMarkRes를 받고 상대 client는 GameStateNotify를 받는다. 잘못된 turn,
+사용한 cell과 종료된 room은 오류 response로 끝난다. 최종 state의 status와 winner는 양쪽
+client에서 같아야 한다.
 
 ```mermaid
 sequenceDiagram
-    participant S as Play Session
-    participant A as Play Actor
-    participant R as Game Room
+    participant H as Host Client
+    participant P1 as Play Session A
+    participant R as Room Spot
+    participant P2 as Play Session B
+    participant G as Guest Client
+
+    H->>P1: PlaceMarkReq(cell)
+    P1->>R: request mark
+    R-->>P1: PlaceMarkRes(GameState)
+    P1-->>H: PlaceMarkRes
+    R-->>P2: GameStateNotify
+    P2-->>G: GameStateNotify
+    G->>P2: PlaceMarkReq(cell)
+    P2->>R: request mark
+    R-->>P2: PlaceMarkRes(GameState)
+    P2-->>G: PlaceMarkRes
+    R-->>P1: GameStateNotify
+    P1-->>H: GameStateNotify
+```
+
+### 7.3 Wins 100 milestone
+
+Fake user source는 host의 Wins를 99로 제공한다. host가 이번 game에서 승리해 100이 되면
+Room Spot이 PlayerWinMilestoneEvent를 publish한다. Observer는 host와 다른 Play ingress의
+local Entry Spot에서 topic subscription을 완료한 뒤 WinMilestoneNotify를 기다린다.
+
+```mermaid
+sequenceDiagram
+    participant O as Observer Client
+    participant E as Play Entry Spot
+    participant R as Room Spot
+    participant H as Host Client
+
+    O->>E: ObserveMilestoneReq
+    E-->>O: ObserveMilestoneRes(subscribed=true)
+    H->>R: final PlaceMarkReq
+    R->>R: compute Wins=100
+    R-->>E: PlayerWinMilestoneEvent
+    E-->>O: WinMilestoneNotify
+```
+
+Multicast publish 완료는 subscriber handler의 처리 완료나 game win 확정을 뜻하지 않는다.
+win과 board state는 Room Spot이 결정하고 milestone은 이미 결정된 값을 알리는 용도다.
+
+### 7.4 Disconnect와 destroy
+
+STREAM disconnect는 current binding을 정리하지만 Actor와 Room membership을 즉시 destroy하지
+않는다. client가 최종 GameState를 확인한 뒤 LeaveGameMsg를 보내면 Room Spot은 actor를 Entry
+Spot으로 이동시키고 Entry Spot handler가 destroy evidence를 남긴다. destroy는 idempotent하며
+이미 다른 generation이면 typed error를 반환한다.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant P as Play Session
+    participant R as Room Spot
     participant E as Entry Spot
 
-    S->>A: Disconnect stream client
-    S->>A: Clear current client binding
-    S->>R: LeaveGameReq
-    R->>A: Mark destroy after Entry Spot join
-    R->>R: leaveActor(A)
-    R->>R: onLeaveActor(A)
-    A->>E: onJoinedActor(A)
-    E->>E: destroyActor(A)
-    E->>E: Remove actor registry and session binding
+    C->>P: STREAM disconnect
+    P->>P: framework binding cleanup
+    C->>P: LeaveGameMsg
+    P->>R: leave actor
+    R->>E: actor joins Entry Spot
+    E->>E: destroy actor
 ```
 
-client self-check는 최종 `GameStateNotify`를 검증한 뒤 양쪽 client가 `LeaveGameReq`를
-보낸다. `LeaveGameReq`는 actor를 Entry Spot으로 돌려보내는 send command라서 별도 reply를
-기다리지 않는다. actor destroy 완료는 client protocol 메시지가 아니므로 server-side
-evidence로 확인한다. 언어별 `run_sample` 또는 sample regression은 Play 서버 로그, fake
-backend call, runtime event, 또는 framework 테스트 중 하나로 아래 사실을 확인해야 한다.
+## 8. 구현 구조
 
-- Framework가 actor의 current stream binding을 정리하고 disconnect callback은 bound Actor를 순회하지 않는다.
-- disconnect cleanup만으로 actor destroy가 실행되지 않는다.
-- 게임 종료 후 client가 `LeaveGameReq`를 보낼 때 room Spot `onLeaveActor`가 각 actor마다
-  실행된다.
-- Entry Spot destroy가 각 actor마다 완료된다.
-- Entry Spot destroy 과정에서 Entry Spot `onLeaveActor`나 다른 lifecycle callback이
-  추가로 실행되지 않는다.
+모든 지원 언어는 `Client`, `Shared`, `Server`를 같은 순서로 두고 아래 logical component를 같은
+책임으로 구현한다. Api는 HTTP와 user source를, Play는 stream과 game state를 소유한다. 두 Play
+process가 같은 capability를 제공한다는 점도 언어별 sample에서 유지한다.
 
-## 17. Bingo와의 차이
+```text
+TicTacToe
++-- Client
+|   +-- Program
+|   +-- Scenario
++-- Shared
+|   +-- Configuration
+|   +-- JSON Contracts
++-- Server
+    +-- Api
+    |   +-- Program
+    |   +-- Application
+    |   |   +-- CreateGame
+    |   |   +-- AuthenticatePlayer
+    |   +-- Infrastructure
+    |       +-- HttpHandlers
+    |       +-- UserSourceAdapter
+    |       +-- SpotManagerAdapter
+    +-- Play
+        +-- Program
+        +-- Domain
+        |   +-- Board
+        |   +-- Match
+        |   +-- TurnPolicy
+        +-- Application
+        |   +-- JoinGame
+        |   +-- PlaceMark
+        |   +-- LeaveGame
+        |   +-- MilestonePublisher
+        +-- Infrastructure
+            +-- StreamSession
+            +-- EntrySpot
+            +-- PlayerActorAdapter
+            +-- RoomSpot
+            +-- MulticastHandlers
+```
 
-| 항목 | TicTacToe | Bingo |
-|------|-----------|-------|
-| 연결 방식 | 수동 RouteMesh endpoint + 공식 Location Store | 공유 Location Store 기반 automatic discovery |
-| client API 요청 | API 서버로 직접 보낸다. | Session stream 하나로 보낸다. |
-| 게임 stream 연결 | API 응답의 Play endpoint 목록으로 서로 다른 Play 서버에 직접 연결한다. | Session 서버 연결 하나만 유지한다. |
-| Session 서버 | 별도 프로세스 없음. Play 서버가 session과 room을 함께 소유한다. | 별도 Session 서버가 client stream과 actor binding을 소유한다. |
-| Play 서버 | 2개 Play가 stream session, actor, Entry Spot, room Spot, MeshNode route, Logical Multicast를 함께 호스팅한다. | actor, Entry Spot, room Spot을 호스팅한다. |
-| 주요 목적 | 수동 endpoint scale-out, room Spot route 조회, Logical Multicast fan-out | 분리된 session gateway 구조 |
-| Handler 등록 | 자동 등록(scan) | 자동 등록(scan) |
+| Logical component | 모든 언어에서 유지할 책임 | 의존 방향과 금지 경계 |
+|---|---|---|
+| `Client/Program` | HTTP client와 stream connector를 구성하고 scenario를 시작한다. | Play owner나 private route를 설정하지 않는다. |
+| `Client/Scenario` | HTTP create, auth, join, move, observe, leave와 §9 assertion을 실행한다. | Play endpoint를 owner identity로 해석하지 않는다. |
+| `Shared/Configuration` | Api·Play role, manual endpoint, Channel과 runner marker를 고정한다. | NodeRid와 ActorRef를 설정값으로 고정하지 않는다. |
+| `Shared/JSON Contracts` | HTTP, stream, room, milestone message와 state 값을 소유한다. | 언어별 DTO를 공통 wire 선언 대신 사용하지 않는다. |
+| `Server/Api/Application` | room 생성과 player authentication의 업무 결과를 조정한다. | board, turn과 room membership을 변경하지 않는다. |
+| `Server/Api/Infrastructure` | HTTP handler, User Source와 Spot Manager adapter를 연결한다. | Play endpoint를 room owner로 선택하지 않는다. |
+| `Server/Play/Domain` | board, turn, player membership, win·draw 규칙을 계산한다. | Zlink type, stream connector, Redis client를 참조하지 않는다. |
+| `Server/Play/Application` | join, mark, leave, milestone publish의 순서를 조정한다. | HTTP lifecycle과 user source를 소유하지 않는다. |
+| `Server/Play/Infrastructure` | STREAM, Entry Spot, Player Actor, Room Spot과 Logical Multicast를 연결한다. | raw frame, private runtime API와 별도 codec registry를 사용하지 않는다. |
 
-## 18. 완료 기준
+Client scenario는 HTTP response에서 받은 Play endpoint로 connector를 만들고, Play endpoint를
+설정 파일에 미리 넣지 않는다. Domain은 board와 winner를 판단하고 Zlink type과 transport에
+의존하지 않는다. Infrastructure는 stream, actor, Spot, timer와 Logical Multicast adapter를
+소유한다. Redis client는 Location Store provider 안에 둔다.
 
-- API 역할 2개와 Play 역할 2개가 별도 실행 모드 또는 별도 프로세스로 구분되어 있다.
-- 별도 Session 서버 프로세스는 없다.
-- automatic discovery를 사용하지 않는다. Object Client와 Object Server의 RouteMesh
-  endpoint를 수동으로 연결한다.
-- Play→API 인증은 object RouteMesh와 분리한 ClientServer Channel을 사용한다.
-- API의 Object Client끼리는 연결하지 않는다.
-- Play 서버끼리는 하나의 MeshNode ROUTER endpoint를 수동으로 연결하고 remote room Spot request와
-  Logical Multicast를 모두 이 peer 연결로 검증한다.
-- 공식 Redis location store를 `AddLocationStore(...)`로 등록한다. room Spot의 위치는 framework가
-  spot location row로 자동 기록하며, 샘플이 자체 Redis 스키마를 만들지 않는다.
-- 모든 언어 샘플은 actor room join에 public actor/Spot API와 global `RoomId`를 사용한다.
-  internal runtime 객체나 샘플 전용 route helper로 remote join을 우회하지 않는다.
-- 모든 언어 샘플은 milestone 알림에 public Logical Multicast API를 사용한다. internal socket,
-  channel publish 우회, 샘플 전용 fan-out helper로 대체하지 않는다.
-- `run_sample`은 실행마다 전용 Docker Redis container를 준비하고 종료 시 자신이 만든 container만
-  정리한다.
-- client는 room 생성 같은 API 요청만 API 서버로 보낸다.
-- API는 `IZLinkSpotManager.Create`로 새 room을 만들고 Framework가 발급한 `RoomId`를
-  반환한다. Channel 기반 room 생성 request를 두지 않는다.
-- client는 API 응답으로 받은 Play 서버 stream endpoint 목록에만 직접 연결한다.
-- API 응답은 각 Play stream endpoint를 `PlayNodes`로 제공하며 NodeRid를 포함하지 않는다.
-- host와 guest는 서로 다른 Play stream endpoint에 연결한다. Endpoint 선택은 room
-  placement 입력이나 owner 증거로 사용하지 않는다.
-- Play session은 `AuthenticateReq`에서 API 서버로 인증 request를 보낸다.
-- 인증 응답의 `PlayerInfo.ActorId`를 actor의 `ActorId`로 사용하고, display name과 level을
-  actor에 설정한다.
-- `JoinGameReq` 이후 actor가 room에 join한다. Guest가 host와 다른 Play 서버에 연결되어 있어도
-  framework가 Location Store에서 current owner를 확인해 room Spot에 join해야 한다.
-- `JoinSpot` payload에는 `PlayerInfo`가 들어가고, owner room Spot은
-  `PlayerInfo.Level >= RequiredLevel` 조건을 확인한 뒤 join을 허용한다.
-- host player는 `Wins = 99`로 인증되고, host 승리 후 room Spot은 `Wins = 100` milestone
-  event를 publish한다.
-- observer client는 host와 다른 Play 서버에 존재하는 actor로 `ObserveMilestoneReq`를 보내
-  well-known local `PlayEntrySpot`에 observer로 등록되고, `PlayEntrySpot`이 milestone topic을
-  구독한다.
-- observer client는 `ObserveMilestoneRes.Subscribed = true`를 확인한 뒤 game move를
-  진행한다.
-- observer client는 milestone publish 후
-  `WinMilestoneNotify`를 받아 actor id, display name, wins와 room id를 검증한다.
-- 두 번째 actor가 join하면 기존 room member에게 `PlayerJoinedNotify`가 전달된다.
-- `PlayerJoinedNotify`에는 join한 actor의 display name과 level이 들어간다.
-- join한 actor 자신에게 self-join notify를 보내지 않는다.
-- 정상 move마다 요청한 client에는 `PlaceMarkRes`가, 상대 client에는 `GameStateNotify`가 전달된다.
-- 게임 종료 시 `GameState.Status`와 `GameState.Winner`가 양쪽 client에 전달된다.
-- 게임 종료 후 양쪽 client는 `LeaveGameReq`를 보낸다.
-- host, guest, observer inbound observer 로그에 request 응답과 server push 수신을 나타내는
-  `stream-inbound` marker가 남는다.
-- stream disconnect는 current client binding을 정리하지만 actor를 즉시 destroy하지 않는다.
-- `LeaveGameReq` 후 room Spot은 actor를 Entry Spot으로 leave시키고, Entry Spot은 actor를
-  destroy한다.
-- actor destroy는 `onLeaveActor`를 호출하지 않고 actor registry와 native actor ref를
-  정리한다.
-- request/reply는 message name이 아니라 stream request sequence로 매칭된다.
-- handler는 annotation·attribute·decorator로 선언하고 assembly·module scan으로 자동 등록한다(C++은 compile-time 등록).
-- smoke test는 room 생성, 세 client 인증, join, milestone 구독, 최소 한 판 종료까지
-  검증한다.
+언어별 구현은 Api와 Play를 하나의 process module로 합치거나, board·turn state를 Client 또는 Api에
+복제하지 않는다. 같은 logical component를 한 파일에 배치할 수는 있지만 package·namespace·module
+이름에서 component와 의존 방향을 찾을 수 있어야 한다. 언어별로 달라질 수 있는 것은 HTTP host,
+DI·async 구성과 connector wrapper이며, manual topology, room owner 규칙, milestone 순서와 self-check는
+공통 문서와 같아야 한다.
+
+## 9. Client self-check
+
+1. Api A 또는 B로 CreateGameHttpReq를 보내 RoomId, RequiredLevel과 PlayEndpoints를 확인한다.
+2. host, guest와 observer가 response의 서로 다른 Play endpoint를 선택해 인증한다.
+3. observer가 ObserveMilestoneRes.subscribed=true를 확인한다.
+4. host와 guest가 같은 RoomId로 join하고 RequiredLevel admission을 통과하는지 확인한다.
+5. 두 번째 join 뒤 기존 member가 PlayerJoinedNotify를 받고 self-join notify는 받지 않는지 확인한다.
+6. 번갈아 PlaceMarkReq를 보내 request client의 PlaceMarkRes와 상대 client의 GameStateNotify가
+   같은 Board, Status와 Winner를 갖는지 확인한다.
+7. host Wins=99에서 승리한 뒤 observer가 WinMilestoneNotify의 Wins=100, RoomId와 ActorId를
+   확인한다.
+8. 잘못된 turn, occupied cell과 종료 room 요청이 오류로 끝나는지 확인한다.
+9. stream disconnect 뒤 actor가 즉시 destroy되지 않고 재인증 시 같은 state를 사용하는지 확인한다.
+10. 최종 state 뒤 LeaveGameMsg를 보내 Entry Spot destroy evidence를 확인한다.
+11. response와 push에 NodeRid, ActorRef, endpoint route가 포함되지 않는지 확인한다.
+12. push 대기는 connector public wait interface와 bounded timeout을 사용한다.
+
+## 10. Smoke 실행
+
+1. 실행별 Docker Redis와 key prefix를 준비한다.
+2. Api A/B와 Play A/B를 수동 endpoint 설정으로 시작한다.
+3. 각 process의 public readiness와 RouteMesh peer readiness를 확인한다.
+4. Client가 room create, three authentication, join, move, milestone, disconnect와 destroy를 실행한다.
+5. server evidence와 completion marker를 확인한다.
+6. 성공·실패 모두에서 이번 실행이 만든 Redis와 process resource를 정리한다.
+
+```text
+topology=ready
+tictactoe-room=completed
+tictactoe-multicast=completed
+tictactoe-lifecycle=completed
+tictactoe=completed
+```
+
+## 11. 완료 기준
+
+- Api 2개와 Play 2개가 같은 public contract와 object capability를 제공한다.
+- automatic discovery가 아니라 수동 RouteMesh endpoint와 독립 tictactoe.api channel을 사용한다.
+- 기본 topology가 Client와 server component 및 구조적 연결만 보여 준다.
+- Redis Location Store가 RoomId와 ActorId의 current owner를 관리한다.
+- client가 API response의 Play endpoint를 사용하며 owner NodeRid를 받지 않는다.
+- room Spot이 level admission, board, turn, win과 draw를 단일 state owner로 판정한다.
+- remote join이 global RoomId로 동작하고 private runtime 또는 raw frame 우회가 없다.
+- milestone이 public Logical Multicast로 publish되고 observer push가 payload를 검증한다.
+- disconnect cleanup과 LeaveGameMsg 뒤 actor destroy가 구분된다.
+- Framework public API와 typed JSON codec만 사용하며 message별 codec registry를 추가하지 않는다.
+- runner가 build, readiness, self-check, evidence와 cleanup을 수행한다.

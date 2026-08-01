@@ -376,6 +376,16 @@ internal sealed class ZLinkActorInboundPipeline(
             return;
         }
 
+        //  Spec 25는 `zlink.mesh_node.requests.inflight`를 surface별로 요구하고,
+        //  가이드 07-actor-spot은 actor가 처리 중인 request 수를 `surface=actor`로
+        //  관측한다고 정한다. Channel·spot surface만 계측돼 있어 actor request는
+        //  어느 값에도 잡히지 않았다.
+        var requestMetric = frame.RequestId != 0
+            ? Diagnostics.ZLinkRuntimeMetrics.StartRequest(
+                actor.Context.MeshName,
+                "actor")
+            : null;
+        var requestOutcome = "completed";
         try
         {
             await DispatchCurrentActorAsync(
@@ -387,6 +397,16 @@ internal sealed class ZLinkActorInboundPipeline(
                     relocationReplay,
                     cancellationToken)
                 .ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            requestOutcome = "timed_out";
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            requestOutcome = "cancelled";
+            throw;
         }
         catch (ZLinkFrameworkException exception)
             when (allowCapture
@@ -407,6 +427,15 @@ internal sealed class ZLinkActorInboundPipeline(
                     acknowledgeHandledFrame,
                     cancellationToken)
                 .ConfigureAwait(false);
+        }
+        catch
+        {
+            requestOutcome = "failed";
+            throw;
+        }
+        finally
+        {
+            requestMetric?.Complete(requestOutcome);
         }
     }
 

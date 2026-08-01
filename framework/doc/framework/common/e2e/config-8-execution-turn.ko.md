@@ -320,18 +320,25 @@ Actor가 Yield해도 자기 FIFO claim은 유지한다. 같은 Actor의 다음 m
 - 세부 동작: [비동기 실행 정책 §7](../spec/05-async-execution-policy.ko.md)을
   검증한다.
 
-#### TD-D3 Timer callback의 Yield 중 다음 timer record를 처리한다
+#### TD-D3 Timer overrun 중 callback을 겹쳐 실행하지 않는다
 
 우선순위: `P0`
 
-Timer callback이 Yield하면 shared Spot gate를 반납하므로 다음 due record가 별도 turn에서 실행될 수 있다.
+Timer handler가 public async operation을 기다리는 동안에도 같은 timer key의 callback은 동시에 실행되지
+않는다. 다음 due가 겹치면 Framework는 선택한 overrun policy에 따라 tick을 건너뛰거나 제한적으로 합치거나
+다음 tick을 늦출 수 있지만 callback 실행 구간을 겹치게 만들면 안 된다.
 
-**검증 질문:** 첫 timer continuation이 대기하는 동안 다음 timer record가 실행되는가.
+**검증 질문:** 첫 timer handler가 비동기 operation을 기다리는 동안 다음 due가 같은 timer callback을 동시에
+실행하지 않고 설정한 overrun policy를 따르는가.
 
-- 시작 조건: 첫 timer callback의 remote reply가 보류되고 같은 timer의 다음 due 시각이 설정되어 있다.
-- 절차: 첫 callback이 Yield-held가 된 뒤 다음 timer evidence를 기다리고 remote reply를 해제한다.
-- 검증: 다음 timer record가 첫 continuation보다 먼저 실행될 수 있으며 두 callback 실행 구간은 겹치지
-  않는다. 같은 timer key의 overrun 합치기는 timer 계약의 허용 범위로 판정한다.
+- 시작 조건: 반복 timer의 period를 첫 callback이 기다리는 public async operation보다 짧게 설정하고, 첫
+  callback의 operation completion을 application gate에서 보류한다. Application evidence에는 timer key,
+  callback generation과 delivery index를 기록한다.
+- 절차: 첫 callback 진입을 확인한 뒤 monotonic deadline으로 적어도 한 번의 due 경계를 지난 것을 확인하고
+  operation completion gate를 해제한다. 이후 bounded wait로 같은 timer의 다음 evidence를 수집한다.
+- 검증: 같은 timer key의 callback active count는 항상 1이다. 수집된 delivery·scheduled index는 선택한
+  overrun policy의 skip, bounded catch-up 또는 delayed-next 규칙을 따른다. Timer를 다시 등록하거나
+  취소한 뒤 이전 generation callback은 실행되지 않는다.
 - 세부 동작: [비동기 실행 정책 §5](../spec/05-async-execution-policy.ko.md)을
   검증한다.
 

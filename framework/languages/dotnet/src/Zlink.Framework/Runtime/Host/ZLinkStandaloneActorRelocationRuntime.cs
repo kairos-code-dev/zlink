@@ -115,6 +115,16 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
         {
             var relocationId = Guid.NewGuid();
             var handoffId = relocationId.ToString("N");
+            //  Drain이 끄는 per-actor relocation도 remote-join 경로와 같은 terminal
+            //  metric을 남겨야 한다. 여기가 없으면 `zlink.relocation.completed`는
+            //  application이 직접 옮긴 경우에만 올라간다.
+            var relocationMetric = ZLinkRuntimeMetrics.CreateRelocation(
+                actor.Context.MeshName,
+                ZLinkRelocationMetricObjectKind.Actor,
+                relocation.PolicyKind != 2
+                    ? ZLinkRelocationMetricPolicy.Recreate
+                    : ZLinkRelocationMetricPolicy.Snapshot);
+            relocationMetric.Start();
             var captureStarted = false;
             var committed = false;
             ZLinkActorBoundSession? sealedSession = null;
@@ -343,6 +353,8 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                         committedTarget.AuthorityOwnerGeneration,
                         interruption)
                     .ConfigureAwait(false);
+                relocationMetric.Complete(
+                    ZLinkRelocationMetricOutcome.Completed);
                 return ZLinkStandaloneActorRelocationResult.Committed;
             }
             catch
@@ -425,7 +437,9 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                                 committedTarget.AuthorityOwnerGeneration,
                                 interruption)
                             .ConfigureAwait(false);
-                        return ZLinkStandaloneActorRelocationResult.Committed;
+                        relocationMetric.Complete(
+                    ZLinkRelocationMetricOutcome.Completed);
+                return ZLinkStandaloneActorRelocationResult.Committed;
                     }
                     var cleanup = new ZLinkRelocationPublicationCoordinator(
                         authorityStore,
@@ -453,6 +467,10 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                                 handoffId)
                             .ConfigureAwait(false);
                 }
+                relocationMetric.Complete(
+                    committed
+                        ? ZLinkRelocationMetricOutcome.Completed
+                        : ZLinkRelocationMetricOutcome.Aborted);
                 throw;
             }
         }
@@ -2106,8 +2124,9 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
             //  Authority가 steady여도 bound session route는 아직 봉인돼 있을 수
             //  있다. 여기서 stage를 지우면 뒤늦게 도착하는 완료 명령은 stage를
             //  못 찾고 조용히 반환하므로, 그 seal을 풀 주체가 사라진다.
-            await runtime.FinishRelocationSessionRouteAsync(
+            await runtime.FinishRelocationTargetAsync(
                     stage.ActorState,
+                    stage.TargetAuthority.MeshName,
                     stage.Envelope.AggregateId.ToString("N"),
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -2636,8 +2655,9 @@ internal sealed partial class ZLinkFrameworkRuntime
                        ?? throw new ZLinkFrameworkException(
                            ZLinkFrameworkErrorKind.NotFound,
                            $"Actor '{actorState.ActorId}' target reference is unavailable.");
-        await FinishRelocationSessionRouteAsync(
+        await FinishRelocationTargetAsync(
                 actorState,
+                targetAuthority.MeshName,
                 handoffId,
                 cancellationToken)
             .ConfigureAwait(false);

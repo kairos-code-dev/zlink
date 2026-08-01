@@ -637,6 +637,11 @@ operation을 보내고 의미 있는 허용 범위로 결과를 판정해야 한
 Public API로 기능 진입 여부를 확인할 수 없으면 내부 counter를 E2E에 추가하지 않는다. Contract test나
 internal protocol test로 옮기거나, public 관측 계약이 필요한 별도 설계 문제로 분리한다.
 
+Ready Actor·Spot·Instance Spot owner process가 종료된 경우에는 다른 node가 자동으로 새 owner가 된다고
+가정하지 않는다. 정식 failover 정책이 자동 복원을 제공하지 않으면 E2E는 `Unavailable`과 handler 미실행을
+확인하고, Application의 explicit recreate·rebind를 별도 operation으로 검증한다. `Creating` 상태의
+recovery는 같은 generation을 계속하거나 취소할 수 있으므로 하나의 결과로 임의로 좁히지 않는다.
+
 ### 11.3 Flaky 조건
 
 정상 구현이 같은 입력에서 반복적으로 같은 판정을 받는지 검토한다. 다음 조건에 의존하면 E2E가
@@ -645,8 +650,10 @@ internal protocol test로 옮기거나, public 관측 계약이 필요한 별도
 - 고정 sleep이 끝날 때까지 상태가 바뀔 것이라는 가정
 - Thread scheduling, handler 실행 순서나 process 시작 순서
 - Core·OS socket buffer 크기처럼 public contract가 정하지 않은 내부 capacity
+- public 설정으로 노출되지 않은 pending waiter·queue limit을 정확한 경계로 사용하는 조건
 - Public status에 없는 값이 전파됐을 것이라는 추정
 - Message마다 정확히 번갈아 target을 선택한다는 가정
+- Classic fanout에서 subscriber 간 동일한 event 순서나 lossless delivery를 가정하는 조건
 - 표본 수가 너무 작거나 정상 변동보다 좁은 통계 허용 범위
 - Log가 특정 시각에 flush되거나 특정 순서로 기록된다는 가정
 
@@ -689,6 +696,9 @@ test가 담당한다.
 - [ ] E2E에서만 확인할 process, transport, store 또는 언어 경계가 분명하다.
 - [ ] Framework 동작의 실행과 판정에 정식 public API만 사용한다.
 - [ ] Internal helper, private protocol, Store record와 내부 counter를 통과 조건으로 사용하지 않는다.
+- [ ] Ready owner crash를 자동 takeover로 해석하지 않고 정식 failover 결과와 explicit recreate 경계를
+  분리했다.
+- [ ] Public activation concurrency와 내부 pending capacity를 구분했다.
 
 ### 구성과 실행
 

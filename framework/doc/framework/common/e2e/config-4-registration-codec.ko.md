@@ -81,12 +81,12 @@ Runtime reflection을 제공하는 언어는 application이 지정한 assembly, 
 Annotation이나 attribute를 handler scan의 표식으로 사용하는 언어는 그 metadata가 dispatch key로
 정확히 변환되는지 확인해야 한다. 해당 표면이 없는 언어에 같은 문법을 요구하지 않는다.
 
-**검증 질문:** Exact interface가 annotation·attribute scan을 제공하는 언어에서 표시한 handler가 지정한
+**검증 질문:** 언어별 public interface가 annotation·attribute scan을 제공하는 언어에서 표시한 handler가 지정한
 packet name의 request와 send를 처리하는가.
 
 - 시작 조건: 해당 언어의 public annotation·attribute를 사용한 handler와 scan 범위를 등록한다.
 - 절차: Client가 annotation variant의 request와 send를 각각 한 번 보낸다.
-- 검증: Request reply와 send evidence의 marker·payload가 입력과 일치한다. Exact interface에 이 등록
+- 검증: Request reply와 send evidence의 marker·payload가 입력과 일치한다. 언어별 public interface에 이 등록
   방식이 없는 언어는 `not-applicable`이며 대체 annotation helper를 추가하지 않는다.
 - 세부 동작: [Public contract governance](../spec/00-public-contract-governance.ko.md)의 언어별 표현과
   공통 dispatch 의미를 검증한다.

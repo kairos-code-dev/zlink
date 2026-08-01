@@ -193,8 +193,9 @@ Logical Multicast는 target별 delivery report를 반환하지 않는다. 한 re
 **검증 질문:** 수락 가능한 target은 message를 처리하고 topology status는 실제 connection 상태를
 그대로 유지하는가.
 
-- 시작 조건: 두 remote matching target이 ready다. 한 target의 application handler를 막고 public HWM
-  설정으로 더 받을 수 없는 조건을 만든다.
+- 시작 조건: 서로 다른 service node process에 있는 두 remote matching target이 ready다. 한 target의
+  handler를 application gate에서 막고 public HWM보다 큰 deterministic blocker payload를 먼저 보내 handler
+  진입과 public status의 Application receive paused가 `true`인 것을 확인한다.
 - 절차: Source가 고유 marker를 Logical Multicast로 한 번 제출하고, 수락 가능한 target evidence와 전후
   RouteMesh status를 읽는다.
 - 검증: Public submit은 target별 결과 없이 정식 terminal 의미로 끝나며 수락 가능한 target은 marker를
@@ -202,20 +203,21 @@ Logical Multicast는 target별 delivery report를 반환하지 않는다. 한 re
 - 세부 동작: [Spot messaging §4](../spec/12-spot-messaging.ko.md)와
   [Runtime monitoring §2.2](../spec/24-runtime-monitoring.ko.md)를 검증한다.
 
-#### MON-B2 Local target 일부가 받지 못해도 다른 target 전달을 취소하지 않는다
+#### MON-B2 Local target handler 대기가 다른 target 전달을 막지 않는다
 
 우선순위: `P0`
 
-한 local target의 bounded queue가 가득 차도 이미 수락 가능한 다른 target까지 rollback해서는 안 된다.
-Topology status는 queue별 delivery count를 대신하지 않는다.
+한 local target의 handler가 대기해도 이미 처리할 수 있는 다른 target까지 rollback해서는 안 된다.
+Topology status는 target별 delivery count를 대신하지 않는다.
 
-**검증 질문:** Local target 하나가 수락하지 못해도 다른 matching target이 message를 한 번 처리하는가.
+**검증 질문:** Local target 하나의 handler가 대기해도 다른 matching target이 message를 먼저 처리하는가.
 
-- 시작 조건: 같은 process에 matching target 두 개가 있고 하나의 handler는 application gate와 public HWM
-  설정으로 capacity가 없는 상태다.
-- 절차: Source가 고유 marker를 한 번 publish하고 수락 가능한 target의 evidence를 기다린다.
-- 검증: 수락 가능한 target은 marker를 한 번 처리하고 막힌 target은 처리하지 않는다. Publish는
-  target별 결과 payload를 반환하지 않으며 RouteMesh의 peer·Channel status는 변하지 않는다.
+- 시작 조건: 같은 process에 matching target 두 개가 있고 하나의 handler는 application gate에서 대기한다.
+  Network block이나 public HWM 경계는 사용하지 않는다.
+- 절차: Source가 고유 marker를 한 번 publish하고 gate를 닫은 target과 다른 target의 application
+  evidence를 수집한다. 다른 target의 evidence를 확인한 뒤 gate를 연다.
+- 검증: 다른 target은 marker를 gate가 닫힌 동안 한 번 처리하고, gate를 연 target도 이후 한 번 처리한다.
+  Publish는 target별 결과 payload를 반환하지 않으며 RouteMesh의 peer·Channel status는 변하지 않는다.
 - 세부 동작: [Spot messaging §4](../spec/12-spot-messaging.ko.md)를
   검증한다.
 
@@ -278,6 +280,6 @@ Observer가 한 번의 장애만 처리하고 이후 변화를 놓치면 장시�
 - Observer가 모든 중간 state와 연속 sequence를 전달한다고 가정하지 않는다. 마지막에는 항상
   `GetStatus`로 current 상태를 확인한다.
 - Readiness, Store 복구와 handler 완료는 bounded polling하며 고정 sleep이나 log flush에 의존하지 않는다.
-- Schema에 없는 private field가 없다는 검사는 E2E assertion으로 만들지 않는다. Exact interface와 contract
+- Schema에 없는 private field가 없다는 검사는 E2E assertion으로 만들지 않는다. 언어별 public interface와 contract
   test가 public type shape를 검증한다.
 - 한 observer의 지연과 예외가 다른 observer, message dispatch와 request reply를 바꾸지 않아야 한다.

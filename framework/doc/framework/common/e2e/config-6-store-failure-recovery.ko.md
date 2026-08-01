@@ -354,8 +354,8 @@ Relocation은 같은 logical incarnation을 유지하고 explicit close 뒤 recr
 
 우선순위: `P0`
 
-Instance Spot cold activation 중 owner가 crash해도 stale owner가 신규 업무를 받지 않아야 하고, spec이
-허용한 recovery 시점 뒤 새 request는 current owner로 수렴해야 한다.
+Instance Spot cold activation 중 owner가 crash해도 stale owner가 신규 업무를 받지 않아야 한다. 생성이
+`Ready`가 되기 전에는 같은 generation의 생성 record를 계속 사용하거나 정확히 취소할 수 있다.
 
 **검증 질문:** Creating owner crash 뒤 pending request와 follow-up request가 각각 terminal 하나를
 가지는가.
@@ -363,9 +363,11 @@ Instance Spot cold activation 중 owner가 crash해도 stale owner가 신규 업
 - 시작 조건: Instance factory initialize를 application gate에서 보류한다.
 - 절차: Cold request가 factory-held인 것을 확인하고 owner process를 강제 종료한다. Pending terminal을
   수집하고 recovery 조건이 갖춰진 뒤 새 request를 보낸다.
-- 검증: Pending request는 success 또는 정식 failure 중 하나로 한 번 끝난다. Follow-up request는 current
-  ready owner에서 한 번 처리되며 old owner evidence는 증가하지 않는다.
-- 세부 동작: [Spot messaging §3.2](../spec/12-spot-messaging.ko.md)를
+- 검증: Pending request는 success 또는 정식 failure 중 하나로 한 번 끝난다. Recovery가 같은 generation을
+  계속하면 follow-up request는 그 결과에 합류하고, 취소되어 public resolve가 Ready object를 반환하지 않으면
+  다음 call이 새 activation을 시작한다. 어느 경우에도 old owner evidence는 증가하지 않는다.
+- 세부 동작: [Location runtime §6.1](../spec/21-location-runtime.ko.md)과
+  [Failure와 failover §4.4](../spec/31-failure-failover-policy.ko.md)를
   검증한다.
 
 #### SF-F6 Operational query 중 concurrent 변경을 다음 page cycle에 반영한다
@@ -418,19 +420,21 @@ Target preparation 중 target owner가 current가 아니게 되면 stale complet
   request가 성공하며 target handler는 신규 workload를 받지 않는다.
 - 세부 동작: [Failover policy §5](../spec/31-failure-failover-policy.ko.md)을 검증한다.
 
-#### SF-F9 Old lifecycle cleanup이 replacement roles를 제거하지 않는다
+#### SF-F9 Old lifecycle cleanup이 replacement service roles를 제거하지 않는다
 
 우선순위: `P0`
 
-빠른 restart에서 old process의 늦은 cleanup이 replacement descriptor와 object location을 삭제하면 service가
-다시 unavailable해진다.
+빠른 restart에서 old process의 늦은 cleanup이 replacement service descriptor를 삭제하면 stateless service가
+다시 unavailable해진다. 이 scenario는 Stateful Actor·Spot owner를 자동으로 replacement하지 않는 정책과
+분리한다.
 
-**검증 질문:** Old process 재개 뒤에도 replacement의 Channel과 object requests가 계속 성공하는가.
+**검증 질문:** Old process 재개 뒤에도 replacement Channel이 계속 선택되는가.
 
-- 시작 조건: Old host를 pause하여 lease를 만료시키고 same-role replacement를 ready로 만든다.
-- 절차: Replacement Channel·Actor requests를 확인한 뒤 old host를 재개하고 같은 requests를 반복한다.
-- 검증: Public status와 current object location은 replacement를 유지하고 모든 follow-up marker를
-  replacement가 한 번 처리한다.
+- 시작 조건: Old Channel provider를 pause하여 lease를 만료시키고 same-role replacement provider를 ready로
+  만든다.
+- 절차: Replacement Channel request를 확인한 뒤 old provider를 재개하고 같은 request를 반복한다.
+- 검증: Public status는 replacement provider를 current ready target으로 유지하고 모든 follow-up marker를
+  replacement가 한 번 처리한다. 이 scenario에서는 Actor·Spot object location을 판정하지 않는다.
 - 세부 동작: [Failover policy §3](../spec/31-failure-failover-policy.ko.md)을 검증한다.
 
 #### SF-F10 많은 accepted requests와 relocation completion을 함께 처리한다

@@ -49,19 +49,22 @@ event가 나중에 도착하면 실패다.
 
 ### Track A — Event를 준비된 subscriber에게 전달
 
-#### PS-A1 세 subscriber가 같은 event 순서를 받는다
+#### PS-A1 준비된 subscriber가 같은 event를 받는다
 
 우선순위: `P0`
 
-Publisher가 여러 subscriber에게 fanout할 때 각 subscriber는 측정 구간의 event 순서를 동일하게
-관찰해야 한다.
+Publisher가 여러 subscriber에게 fanout할 때 준비된 각 subscriber가 event를 받을 수 있어야 한다. Classic
+fanout은 subscriber 간 동일한 순서나 lossless delivery를 보장하지 않으므로 이 scenario는 cross-subscriber
+순서를 판정하지 않는다.
 
-**검증 질문:** 세 subscriber가 ready인 뒤 발행한 연속 sequence를 모두 같은 순서로 받는가.
+**검증 질문:** 세 subscriber가 ready인 뒤 발행한 event marker를 각각 관찰하는가.
 
-- 시작 조건: 세 subscriber의 public status에서 같은 publisher가 ready다.
-- 절차: Publisher가 이 scenario 전용 sequence 1~100을 순서대로 publish한다.
-- 검증: 세 handler evidence가 모두 1~100을 중복 없이 같은 순서로 포함한다. Publish terminal만으로
-  delivery를 판정하지 않는다.
+- 시작 조건: 세 subscriber의 public status에서 같은 publisher가 ready이고 각 handler gate가 열려 있다.
+  작은 marker 하나를 사용하며 network block이나 의도적인 backpressure는 넣지 않는다.
+- 절차: Publisher가 이 scenario 전용 `fanout-ready` marker를 publish한다. 각 subscriber의 application
+  evidence를 bounded wait로 확인한다.
+- 검증: 세 subscriber가 `fanout-ready` marker를 각각 기록한다. Publish terminal만으로 delivery를 판정하지
+  않으며 subscriber 간 수신 순서와 누락되지 않은 전체 sequence는 요구하지 않는다.
 - 세부 동작: [Framework API §11](../spec/06-framework-api.ko.md)의 fanout delivery를
   검증한다.
 
@@ -129,10 +132,10 @@ Subscriber는 각자 별도 process에서 event를 처리한다. 한 handler가 
 **검증 질문:** Subscriber A handler가 대기 중이어도 subscriber B가 후속 event를 처리하는가.
 
 - 시작 조건: A와 B가 ready이며 A handler는 첫 marker에서 application signal을 기다리도록 구성한다.
-- 절차: Gate marker를 publish하여 A가 handler에 들어간 것을 확인하고 후속 event 20개를 publish한다.
+- 절차: Gate marker를 publish하여 A가 handler에 들어간 것을 확인하고 `B-follow-up` marker를 publish한다.
   B의 evidence를 확인한 뒤 A gate를 해제한다.
-- 검증: A가 대기 중인 동안 B는 후속 event 20개를 순서대로 처리한다. A의 catch-up이나 drop 수는 이
-  scenario의 통과 조건으로 정하지 않는다.
+- 검증: A가 대기 중인 동안 B는 `B-follow-up` marker를 처리한다. B의 수신 순서와 A의 catch-up 또는 drop
+  수는 이 scenario의 통과 조건으로 정하지 않는다.
 - 세부 동작: [Channel topology](../spec/07-channel-topology.ko.md)의 subscriber process와 handler dispatch
   격리를 검증한다.
 

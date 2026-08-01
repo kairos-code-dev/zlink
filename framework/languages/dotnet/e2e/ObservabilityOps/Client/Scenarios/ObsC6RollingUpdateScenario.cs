@@ -61,11 +61,31 @@ internal static class ObsC6RollingUpdateScenario
                 && row.NodeRid == targetNode),
             "OBS-C6 Instance Spot did not move to application version 2.");
 
-        var action = await workload.Connector.Request(
-                new GameActionReq("obs-c6-after"))
-            .Async<GameActionRes>();
+        //  이동이 막 끝난 창에서는 `Actor is moving`이 `Unavailable`로 돌아올 수
+        //  있다. 런타임이 일시 상태로 분류하는 값이므로 예산 안에서 재시도한다.
+        GameActionRes? action = null;
+        var actionDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
+        Exception? lastActionError = null;
+        while (DateTime.UtcNow < actionDeadline)
+        {
+            try
+            {
+                action = await workload.Connector.Request(
+                        new GameActionReq("obs-c6-after"))
+                    .Async<GameActionRes>();
+                break;
+            }
+            catch (Exception error)
+            {
+                lastActionError = error;
+                await Task.Delay(TimeSpan.FromMilliseconds(250));
+            }
+        }
+
+        ZlinkStreamAssert.Ensure(action is not null,
+            $"OBS-C6 bound session never reached the new version: {lastActionError?.Message}");
         ZlinkStreamAssert.Ensure(
-            action.NodeRid == targetNode,
+            action!.NodeRid == targetNode,
             "OBS-C6 bound session did not continue on the new version.");
         var status = (await context.PlayA.Get("/runtime/status")
             .Async<RuntimeStatusRes>()).Body;

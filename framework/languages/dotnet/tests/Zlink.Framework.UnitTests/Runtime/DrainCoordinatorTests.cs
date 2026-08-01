@@ -954,6 +954,8 @@ public sealed class DrainCoordinatorTests
 
         public bool LastSpotDrainWasRelocation { get; private set; }
 
+    public bool LastSpotDrainWasHostShutdown { get; private set; }
+
         public ZLinkDrainExecutionOperations Operations => new(
             HasAutoConnect: true,
             HasLocationRuntime: true,
@@ -993,9 +995,10 @@ public sealed class DrainCoordinatorTests
                 return ValueTask.FromResult(
                     new ZLinkActorDrainResult(true, null, 0));
             },
-            DrainSpots: (relocate, _) =>
+            DrainSpots: (relocate, hostShutdown, _) =>
             {
                 LastSpotDrainWasRelocation = relocate;
+                LastSpotDrainWasHostShutdown = hostShutdown;
                 Events.Add("drain-spots");
                 return ValueTask.FromResult(new ZLinkSpotDrainResult(true, 0));
             },

@@ -217,15 +217,18 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
 
     internal async ValueTask<ZLinkSpotDrainResult> TryDrainSpotsAsync(
         bool relocate,
+        bool hostShutdown,
         CancellationToken cancellationToken)
         => await TryDrainSpotsAsync(
                 relocate,
+                hostShutdown,
                 ZLinkSpotRelocationPhase.Aggregates,
                 cancellationToken)
             .ConfigureAwait(false);
 
     private async ValueTask<ZLinkSpotDrainResult> TryDrainSpotsAsync(
         bool relocate,
+        bool hostShutdown,
         ZLinkSpotRelocationPhase phase,
         CancellationToken cancellationToken)
     {
@@ -238,6 +241,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         {
             var result = await spotNode.TryDrainSpotsAsync(
                     relocate,
+                    hostShutdown,
                     _relocationTargetSelection,
                     phase,
                     cancellationToken)
@@ -259,6 +263,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         => await new ZLinkRelocationWorkloadCoordinator(
                 (phase, token) => TryDrainSpotsAsync(
                     relocate: true,
+                    hostShutdown: false,
                     phase,
                     token),
                 DrainActorsAsync)

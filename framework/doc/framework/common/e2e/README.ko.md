@@ -183,8 +183,8 @@ client는 publisher/subscriber/main 같은 실제 역할 server의 endpoint를 �
 |------|--------|------|
 | local readiness timeout | 3초 | 새로 시작한 로컬 process의 port, health, readiness가 준비될 때까지 기다리는 최대 시간 |
 | local readiness poll interval | 0.1초 | readiness를 다시 확인하는 간격 |
-| route settle | 5초 | location row 등록, route 연결, peer 연결처럼 서버가 시작된 뒤 라우팅이 보이기까지 기다리는 시간 |
-| scenario settle | 3초 | 시나리오 사이에 이전 작업의 비동기 evidence와 정리 작업이 끝나도록 기다리는 시간 |
+| route settle | 5초 | public readiness를 확인한 뒤 route status와 application evidence가 안정화되는지 확인하는 bounded wait 상한. sleep만으로 성공을 판정하지 않는다 |
+| scenario settle | 3초 | 이전 operation의 terminal과 evidence 정리 뒤 사용하는 cleanup grace 상한. 다음 시나리오의 준비나 성공을 판정하지 않는다 |
 | HTTP probe/admin/evidence request timeout | 3초 | `/health`, `/evidence`, `/admin/*`, control ping 같은 로컬 HTTP probe 한 번의 최대 시간 |
 
 이 값 안에 준비되지 않는 로컬 e2e는 대기 시간을 늘려서 통과시키지 않는다. startup 순서, readiness
@@ -588,10 +588,10 @@ e2e가 있었지만 그 구성 조합을 아무도 돌리지 않았던" 경로�
   runner는 언어·e2e 범위 prefix로 container를 만들고 자신이 만든 container id만 정리한다.
   통합 runner도 같은 prefix의 다른 실행 container를 제거하지 않는다.
 - 서버 준비 여부는 sleep만으로 판단하지 않고, 포트 readiness 또는 readiness marker로 확인한다.
-- 성공 기준은 client 반환값, client stream connector가 받은 push, server evidence endpoint, 로그
-  marker를 조합한다. Location Store를 쓰는 config는 public RouteMesh status와 Actor·Spot manager의
-  resolve 결과도 성공 기준에 넣는다. Application과 E2E client는 Store provider record를 직접 읽거나
-  해석하지 않는다.
+- 성공 기준은 client 반환값, client stream connector가 받은 push, server의 public application evidence와
+  정식 public flow·metric record를 조합한다. 일반 diagnostic log는 실패 조사 자료이며 성공 조건이 아니다.
+  Location Store를 쓰는 config는 public RouteMesh status와 Actor·Spot manager의 resolve 결과도 성공
+  기준에 넣는다. Application과 E2E client는 Store provider record를 직접 읽거나 해석하지 않는다.
 - 실패하면 각 프로세스의 stdout/stderr, framework 로그, client 마지막 요청 정보를 남긴다.
 - 실패 시 먼저 원인 레이어를 분리한다. `core-capi`, `bindings`, `framework`, `sample`, 테스트 실행
   스크립트 중 어디인지 evidence로 판정하고, 고친 레이어에 회귀 테스트를 둔다. framework 테스트를

@@ -147,8 +147,11 @@ internal sealed class ScenarioContext(ClientOptions options) : IDisposable
     public async Task<ActorJoinCompletedNotify> ReturnToEntrySpotAsync(
         IZlinkStreamConnector connector,
         string actorId,
-        string marker)
+        string marker,
+        DateTimeOffset? retryUntil = null)
     {
+        var retryDeadline = retryUntil
+                            ?? DateTimeOffset.UtcNow + TimeSpan.FromSeconds(15);
         var completion = connector.WaitFor<ActorJoinCompletedNotify>()
             .Where(message => message.Payload.ActorId == actorId
                               && message.Payload.SpotId is null
@@ -160,8 +163,22 @@ internal sealed class ScenarioContext(ClientOptions options) : IDisposable
             .Async<ReturnToLobbyRes>();
         var result = (await completion).Payload;
         if (!result.Accepted)
+        {
+            //  런타임은 일시 상태를 재시도 가능한 kind로 알려준다. 완료 통지가
+            //  retriable 플래그를 나르지 않으므로 kind 이름으로 판별해 예산 안에서
+            //  다시 시도한다. 정책 거절(`Rejected`)은 그대로 종단 실패다.
+            if (result.Error is "Unavailable" or "DeadlineExceeded"
+                && DateTimeOffset.UtcNow < retryDeadline)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(250));
+                return await ReturnToEntrySpotAsync(
+                    connector, actorId, marker, retryDeadline);
+            }
+
             throw new InvalidOperationException(
                 $"Actor '{actorId}' could not return to its Entry Spot: {result.Error}.");
+        }
+
         return result;
     }
 

@@ -2,660 +2,563 @@
 
 [샘플 목록](../README.ko.md)
 
-> 이 문서는 모든 framework 언어가 공유하는 DeliveryDispatch 샘플 시나리오를 정의한다.
-> 언어별 샘플은 이 문서를 기준으로 서버 역할, 메시지 흐름, message 계약,
-> ZLink 요소, smoke 검증 기준을 맞춘다.
+> DeliveryDispatch는 고객이 배송을 생성하고 배송원이 제안을 수락하는 동안,
+> Framework가 global object routing과 bound session push를 제공해 Application이
+> 배차 정책과 timeout 재배정에 집중할 수 있음을 보여 준다.
 
-## 1. 목적
+## 1. 목적과 범위
 
-DeliveryDispatch는 배송 배차와 배송 상태 추적을 보여 주는 실시간 업무형 샘플이다.
-고객 client는 HTTP로 배송을 만들고 WebSocket 또는 stream session으로 상태 변경을
-기다린다. 내부 서버들은 ZLink channel, entry spot, actor, stream session을 사용해서
-배차 요청, 배송원 제안, timeout 재배정, 고객별 상태 push를 처리한다.
+이 sample은 배송 요청을 접수한 뒤 배송원을 순서대로 제안하고, 고객에게 DeliveryStatusNotify를
+실시간으로 전달하는 최소 업무 구간을 다룬다. 고객은 HTTP로 배송을 생성하고 Customer STREAM으로
+상태를 받는다. 배송원은 Courier STREAM으로 제안을 받고 결정 메시지를 보낸다.
 
-이 샘플은 실제 배송 플랫폼을 그대로 구현하는 것을 목표로 하지 않는다. 실무에서 자주
-만나는 "요청 생성, 수행자 선택, 특정 사용자 연결로 push, 응답 timeout 후 재시도" 같은
-기능을 구현할 때 각 책임이 ZLink framework의 어떤 기능에 대응되는지 보여 주는 것이
-목적이다. 따라서 배송 업무 규칙 자체보다 HTTP 경계, channel, entry spot, actor,
-stream session binding이 하나의 업무 흐름 안에서 어떻게 연결되는지를 기준으로 읽어야
-한다.
+Framework가 맡는 책임은 배송원·고객 Actor의 global ID routing, Entry Spot에서의 최초 생성,
+STREAM session binding과 현재 binding으로의 push 전달이다. Application은 후보 선택, 제안
+deadline, Attempt 검증, 상태 event와 외부 evidence 기록을 소유한다. 상태를 여러 process에
+복제하지 않고, 배송 하나의 재시도 정책을 Dispatch worker가 결정한다.
 
-이 샘플의 직접 모델은 음식 배달, 퀵 배송, 택배 같은 배송 서비스다. 같은 구조는
-택시 호출, 현장 출동, 방문 서비스처럼 "요청을 만들고 수행자를 배정한 뒤 상태를
-실시간으로 고객에게 보여 주는" 도메인에도 적용할 수 있다.
+시작할 때 다음 조건이 이미 준비되어 있다고 가정한다.
 
-샘플로 구현할 때 확인할 핵심은 아래와 같다.
+- CustomerId와 CourierId가 정해져 있다.
+- Dispatch가 사용할 배송 후보와 배송 정보가 client 입력으로 제공된다.
+- 공유 Location Store와 실행별 Application evidence store를 runner가 준비한다.
 
-- 고객 client는 배송 생성 HTTP API와 상태 수신 stream endpoint를 사용한다.
-- Dispatch server는 외부 HTTP 요청을 내부 dispatch channel message로 바꾸고, 같은 server
-  안의 worker가 배송원 선택, timeout, 재배정을 처리한다.
-- CourierSession server는 배송원 client의 stream 연결을 받고, courier id를 global
-  `ActorId`로 사용해 `ActorManager.GetOrCreate`를 호출한다. Actor가 Ready가 되면 같은
-  operation에서 받은 `ActorRef`에 현재 session을 bind한다.
-- CourierActorNode는 배송원 actor와 entry spot을 가지며, 배송 제안을 actor로
-  전달한다. 배송원 actor는 자기 courier id로 bound session에 제안을 push한다.
-- Tracking 서버는 배송 상태 event를 기록하고 고객 actor에 보낼 상태 알림을 만든다.
-- CustomerGateway server는 고객 stream 연결을 받으면 customer id를 global `ActorId`로 사용해
-  `ActorManager.GetOrCreate`를 호출한다. Actor가 Ready가 되면 현재 session을 bind하고
-  상태 알림을 client에 push한다.
-- client scenario는 성공 배차와 timeout 재배차를 모두 검증한다.
+배송 생성 접수부터 Delivered 상태 push와 evidence 기록까지를 정상 종료로 본다. 다음 기능은
+Framework 조합의 경계를 확인하는 데 필요하지 않아 제외한다.
 
-DeliveryDispatch는 CRUD API 샘플이 아니다. 중요한 상태가 여러 역할 사이를 바로 이동하고
-고객 session까지 도달하는지를 보여 주는 샘플이다.
+- 결제, 요금 계산, 실제 지도·거리 계산
+- 배송원의 물리 위치를 계산하는 기능
+- 읽음 확인과 배송 상태 조회 UI
+- Ready owner process 장애 뒤 다른 node에 Actor를 자동으로 다시 만드는 crash failover
+- Actor relocation과 Message Follow
 
-## 2. 왜 실시간성이 중요한가
+Actor failure와 planned relocation은 서로 다른 정책이다. 이 sample의 Actor factory는
+relocation을 사용하지 않도록 설정하며, Ready owner 장애의 terminal 결과는 공통 failure spec의
+Unavailable 경계를 따른다.
 
-배송 배차에서 메시지 지연은 단순한 화면 갱신 지연이 아니다. 가까운 배송원이 다른 일을
-잡기 전에 제안을 보내야 하고, 배송원이 응답하지 않으면 빠르게 다음 배송원에게 넘겨야 한다.
-고객도 배정, 픽업, 배송 완료 상태가 늦게 보이면 문제가 생겼다고 느낀다.
+## 2. 요구사항
 
-| 늦게 전달된 메시지 | 생기는 문제 |
-|--------------------|-------------|
-| 배송 제안 | 가까운 배송원이 다른 일을 잡아 배차 기회를 놓친다. |
-| 수락 또는 timeout | 재배정이 늦어져 고객 대기 시간이 늘어난다. |
-| 픽업 완료 | 고객과 운영자가 아직 준비 중이라고 오해한다. |
-| 배송 완료 | 정산, 리뷰 요청, 다음 작업 배정이 늦어진다. |
+### 2.1 기능 요구사항
 
-샘플은 위 지점을 보여 주기 위해 `delivery-success`와 `delivery-reassign` 두 흐름을
-반드시 포함한다.
+- Courier A와 B가 각각 Courier STREAM에 연결하고 session을 binding한다.
+- Customer가 Customer STREAM에 연결해 delivery-success와 delivery-reassign을 구독한다.
+- CreateDeliveryReq의 접수 응답은 같은 DeliveryId를 반환한다.
+- 정상 흐름은 Assigned → Accepted → PickedUp → Delivered 순서로 고객에게 push한다.
+- 첫 제안의 deadline이 지나면 Reassigned를 push하고 다음 Attempt를 보낸다.
+- 늦게 도착한 이전 Attempt의 결정은 현재 배송 상태를 바꾸지 않는다.
 
-## 3. 기존 웹 방식
+### 2.2 운영·품질 요구사항
 
-배송 시스템을 일반적인 웹 방식으로 만들면 client side와 server side를 나누어 구성한다.
-client side는 사용자가 직접 보는 화면이고, server side는 HTTP API, WebSocket/SSE 서버,
-worker, 저장소처럼 client 요청을 받아 처리하는 서버 역할이다.
+| 구분 | 요구사항 | 소유자 |
+|---|---|---|
+| 전역 주소 | Application은 owner NodeRid, endpoint와 ActorRef를 message에 넣지 않는다. | Framework contract |
+| 순서 | 같은 DeliveryId의 제안과 결과를 DispatchWorker가 순서대로 결정한다. | Sample policy |
+| session | 다시 연결한 client에는 같은 logical Actor의 현재 session만 사용한다. | Framework contract + Session application |
+| deadline | 제안 만료 시점과 다음 Attempt 선택은 Dispatch가 관리한다. | Sample policy |
+| 전달 의미 | one-way send의 완료는 source-local admission이며 target handler 완료를 뜻하지 않는다. | Framework contract |
+| 장애 경계 | Ready owner 장애는 자동 failover가 아니며 현재 operation은 terminal error가 된다. | Framework contract |
+| 검증 | Client는 response, push payload와 순서를 직접 확인한다. | Sample self-check |
 
-```mermaid
-flowchart LR
-    subgraph ClientSide[Client side: user-facing screens]
-        direction TB
-        CustomerScreen[Customer screen]
-        CourierScreen[Courier screen]
-        OperatorScreen[Operator screen]
-    end
+### 2.3 기존 웹 방식과 비교
 
-    subgraph ServerSide[Server side]
-        DeliveryApi[Delivery API]
-        CourierApi[Courier API]
-        CourierRealtime[Courier Realtime Server]
-        Realtime[WebSocket/SSE Server]
-        DispatchQueue[Dispatch Queue]
-        Worker[Dispatch Worker]
-        RetryJob[Timeout and Retry Job]
-        CourierRegistry[Courier Session Registry]
-        OfferStore[Courier Offer Store]
-        EventBus[Status Event Bus]
-        Database[(Delivery Database)]
-    end
-
-    CustomerScreen -->|create delivery| DeliveryApi
-    CustomerScreen <-->|status stream| Realtime
-    CourierScreen -->|decision and status API| CourierApi
-    CourierScreen <-->|offer stream| CourierRealtime
-    OperatorScreen -->|manual review| DeliveryApi
-
-    DeliveryApi -->|write delivery| Database
-    DeliveryApi -->|enqueue assignment| DispatchQueue
-    DispatchQueue --> Worker
-    Worker -->|select courier| Database
-    Worker -->|create offer| CourierApi
-    CourierApi -->|write offer| OfferStore
-    CourierApi -->|push command| CourierRealtime
-    CourierRealtime -->|lookup connection| CourierRegistry
-    CourierRealtime -->|push offer| CourierScreen
-    CourierApi -->|decision and status| Database
-    CourierApi -->|decision event| EventBus
-    RetryJob -->|timeout check| Database
-    RetryJob -->|timeout check| OfferStore
-    RetryJob -->|reassign| DispatchQueue
-    Worker -->|status event| EventBus
-    EventBus --> Realtime
-```
-
-이 그림에서 courier 관련 구성은 배송원 화면에 offer를 push하기 위한 일반적인 웹
-구조를 뜻한다. `Courier Session Registry`는 courier id와 현재 연결을 매핑하고,
-`Courier Realtime Server`는 그 매핑을 사용해 특정 배송원 화면에 offer를 보낸다.
-배송원 응답과 상태 변경은 다시 `Courier API`를 통해 저장소와 event 흐름으로 들어간다.
-
-이 방식은 익숙하고 운영 도구가 많다. 다만 배차 결정, 배송원 응답, timeout 재시도,
-고객 push가 서로 다른 계층에 흩어지면 한 배송의 흐름을 여러 로그와 저장소 상태로
-따라가야 한다. 고객 WebSocket만 빠르게 만들어도 배차 worker가 수락 실패를 늦게 알거나
-상태 이벤트가 WebSocket 서버까지 늦게 도달하면 실시간성 문제는 남는다.
-
-## 4. ZLink 샘플의 대체 지점
-
-ZLink는 고객의 HTTP 요청이나 WebSocket 연결을 없애지 않는다. 외부 경계는 그대로 웹 기술을
-사용한다. 대신 내부 배차 메시징, 배송원별 offer push, 고객별 상태 push를 ZLink 역할
-메시지로 구성한다.
-
-| 기존 웹 시스템 구성 | ZLink 샘플의 대응 | 설명 |
-|--------------------|------------------|------|
-| Delivery API + dispatch worker | `Dispatch server` | 고객 HTTP 요청을 받고, 같은 server 안의 worker가 후보 배송원을 고른 뒤 courier actor route로 제안을 보낸다. |
-| Courier API 또는 worker | `CourierSession server` + `CourierActorNode` | CourierSession이 global `ActorId`로 courier actor를 보장하고 같은 operation에서 받은 `ActorRef`에 session을 bind한다. courier actor는 framework가 유지하는 bound session으로 제안을 push한다. |
-| Delivery event table | `Tracking server` + evidence store | 상태 이벤트를 기록하고 고객에게 보낼 알림을 만든다. |
-| Session map 또는 socket registry | `CustomerActor` + bound session | 고객 actor가 현재 stream session을 기억해 특정 고객에게만 status를 push한다. |
-| WebSocket/SSE server | `CustomerGateway server` | 고객 stream 연결을 받고 global `ActorId`로 customer actor를 보장한 뒤 현재 session을 bind한다. |
-| Actor entry point | `CustomerEntrySpot`, `CourierEntrySpot` | Framework가 새 actor의 initial membership을 승인받는 lifecycle 지점이다. 위치 조회나 directory 역할을 하지 않는다. |
-| Courier placement | `ActorManager` + `CourierActor` | Framework가 stable type, capacity와 node weight로 owner를 선택한다. Application은 NodeRid를 고르지 않는다. |
+작은 시스템에서 배송과 배송원 응답이 하나의 transaction 안에서 끝나면 상태 table과
+unique key만으로 충분하다. 별도 stream, worker와 외부 effect가 생기면 다음 책임을 추가로
+조정해야 한다.
 
 ```mermaid
 flowchart LR
-    subgraph ClientSide[Client side]
-        Customer[Customer screen]
-        CourierClientA[Courier screen A]
-        CourierClientB[Courier screen B]
+    C[Customer and Courier Clients] --> LB[Load Balancer]
+    LB --> API[Delivery API]
+    subgraph Backend[Stateless Web Backend]
+        DB[(Delivery DB)]
+        Q[Dispatch Queue]
+        W[Dispatch Worker]
+        R[Session Registry]
+        E[Event Bus]
+        J[Timeout Job]
     end
-
-    subgraph ServerSide[Server side]
-        DispatchServer["Dispatch<br/>server"]
-        CourierSessionServer["CourierSession<br/>server"]
-        CourierActorServer1["Courier actor MeshNode 1<br/>server"]
-        CourierActorServer2["Courier actor MeshNode 2<br/>server"]
-        CustomerGatewayServer["CustomerGateway<br/>server"]
-        TrackingServer["Tracking<br/>server"]
-        Evidence[(Evidence log)]
-    end
-
-    Customer --> DispatchServer
-    Customer --> CustomerGatewayServer
-    CourierClientA --> CourierSessionServer
-    CourierClientB --> CourierSessionServer
-
-    DispatchServer -->|DispatchWorker module targets courier actor| CourierActorServer1
-    DispatchServer -->|DispatchWorker module targets courier actor| CourierActorServer2
-    DispatchServer -->|DispatchWorker module emits status| TrackingServer
-
-    CourierSessionServer -->|bind session to courier actor| CourierSpotServer1
-    CourierSessionServer -->|bind session to courier actor| CourierSpotServer2
-    CourierSpotServer1 -->|actor pushes through bound session| CourierSessionServer
-    CourierSpotServer2 -->|actor pushes through bound session| CourierSessionServer
-    CourierSessionServer -->|offer push| CourierClientA
-    CourierSessionServer -->|offer push| CourierClientB
-
-    TrackingServer -->|EvidenceStore module writes| Evidence
-    TrackingServer -->|Tracking module notifies customer actor| CustomerGatewayServer
-    CustomerGatewayServer -->|status stream push| Customer
+    API --> DB
+    API --> Q
+    Q --> W
+    W --> R
+    W --> E
+    J --> DB
+    J --> Q
+    E --> API
 ```
 
-위 그림은 server 배치와 server 사이의 의존성 방향만 보여준다. 각 server 안의 module 구성은
-아래 표와 도메인 흐름에서 설명한다. 각 요청의 시간 순서와 응답 흐름은 아래 도메인 흐름에서
-따로 설명한다.
+이 비교 구성에서 queue, registry, timeout job과 event bus는 별도 component다. DeliveryDispatch는
+이 책임을 없애지 않는다. DispatchWorker가 제안 상태와 deadline을 소유하고, Framework가
+Actor routing과 session binding을 맡는 방식으로 책임의 경계를 바꾼다.
 
-`CourierSession server`는 배송원 client의 stream 연결을 받는 server다.
-`CourierActorNode 1/2`는 실제 actor와 entry spot을 가진 node다. 두 역할은 한 프로세스에 함께
-배치할 수도 있지만, 아키텍처 설명에서는 논리적으로 분리한다. 그래야 client 연결을 받는
-책임과 actor placement, actor 메시지 진입점 책임이 섞이지 않는다.
+| 기존 구성 | DeliveryDispatch 대응 | 여전히 Application이 맡는 책임 |
+|---|---|---|
+| session registry | Courier·Customer Actor와 bound session | 재연결 시 동일 ID를 선택하는 정책 |
+| dispatch queue와 worker | Dispatch server의 DispatchWorker | 후보 선택, deadline, retry |
+| event bus | Tracking server의 status request와 evidence | 상태 event 저장과 외부 소비자 연동 |
+| websocket push gateway | CustomerGateway와 CourierSession | push payload와 client 표시 정책 |
+| timeout job | worker sweeper | sweep 주기와 terminal Failed 정책 |
 
-## 5. 서버 구성
+## 3. 시스템 구성과 topology
 
-DeliveryDispatch의 Channel 역할과 물리 연결은 [공통 topology 기준](../README.ko.md#channel-역할과-물리-topology-기준)을
-따른다. Object routing은 두 RouteMesh로 나눈다.
+기본 topology는 Client와 server component의 배치와 구조적 연결만 보여 준다. Store와 evidence는
+resource 표에서 설명하며 diagram의 server component로 배치하지 않는다. request, response와
+timeout의 시간 순서는 §7 sequence diagram이 소유한다.
 
-- `deliverydispatch.courier`: Dispatch·CourierSession은 Object Client이고
-  CourierActorNode 1/2는 Object Server다.
-- `deliverydispatch.customer`: Tracking은 Object Client이고 CustomerGateway는 Object Server다.
+```mermaid
+flowchart LR
+    subgraph Clients[Clients]
+        CC[Customer Client]
+        CA[Courier Client A]
+        CB[Courier Client B]
+    end
+    subgraph Servers[Servers]
+        D[Dispatch]
+        CS[CourierSession]
+        CN1[CourierActorNode 1]
+        CN2[CourierActorNode 2]
+        T[Tracking]
+        CG[CustomerGateway]
+    end
+    CC ---|HTTP| D
+    CC ---|STREAM| CG
+    CA ---|STREAM| CS
+    CB ---|STREAM| CS
+    D ---|deliverydispatch.courier RouteMesh| CN1
+    D ---|deliverydispatch.courier RouteMesh| CN2
+    CS ---|deliverydispatch.courier RouteMesh| CN1
+    CS ---|deliverydispatch.courier RouteMesh| CN2
+    D ---|deliverydispatch.dispatch ClientServer| CN1
+    D ---|deliverydispatch.dispatch ClientServer| CN2
+    D ---|deliverydispatch.tracking ClientServer| T
+    T ---|deliverydispatch.customer RouteMesh| CG
+```
 
-업무 Channel은 Object RouteMesh와 분리한다. `deliverydispatch.dispatch`는
-CourierActorNode가 Client이고 Dispatch가 Server인 독립 ClientServer다.
-`deliverydispatch.tracking`도 Dispatch가 Client이고 Tracking이 Server인 독립
-ClientServer다. Dispatch는 courier Object Client이므로 같은 RouteMesh에 Channel Server를
-등록하지 않는다.
+- Dispatch는 HTTP edge와 배차 worker를 제공한다.
+- CourierSession은 배송원 STREAM을 받고 배송원 Actor에 현재 session을 bind한다.
+- CourierActorNode 1/2는 같은 Actor type과 Entry Spot을 제공하는 eligible server다.
+- Tracking은 상태 event를 기록하고 Customer Actor에 상태 변경을 보낸다.
+- CustomerGateway는 고객 STREAM을 받고 Customer Actor에 현재 session을 bind한다.
+- deliverydispatch.courier와 deliverydispatch.customer는 object routing용 RouteMesh다.
+  deliverydispatch.dispatch와 deliverydispatch.tracking은 방향이 정해진 독립 ClientServer Channel이다.
+- 서버 수와 actor owner는 Application 설정으로 고정하지 않는다. Location Store가 current
+  authority를 제공하고 Framework가 target을 선택한다.
 
-| 프로세스 | 구성 요소 | 책임 |
-|----------|-----------|------|
-| `DeliveryDispatch.Dispatch` | courier Object Client, 독립 `deliverydispatch.dispatch` Server, 독립 `deliverydispatch.tracking` Client, HTTP API, dispatch worker | `POST /deliveries`를 받고 배차 요청 접수, 배송원 제안, timeout, 재배정, 상태 event 생성을 맡는다. |
-| `DeliveryDispatch.CourierSession` | stream server, courier session, courier Object Client | 배송원 client stream 연결을 받고 `ActorManager.GetOrCreate`로 courier actor를 보장한 뒤 현재 session route를 bind한다. |
-| `DeliveryDispatch.CourierActorNode1/2` | courier Object Server, 독립 `deliverydispatch.dispatch` Client, courier entry spot, courier actor | Framework가 선택한 node에서 배송원 actor를 만들고, actor가 bound session으로 제안을 push한다. |
-| `DeliveryDispatch.Tracking` | customer Object Client, 독립 `deliverydispatch.tracking` Server, evidence store | 상태 event 기록과 global `CustomerId` 대상 고객 알림 생성을 맡는다. |
-| `DeliveryDispatch.CustomerGateway` | stream server, customer Object Server, customer entry spot, customer actor | 고객 연결을 받고 `ActorManager.GetOrCreate`로 customer actor를 보장한 뒤 session bind와 status push를 맡는다. |
-| `DeliveryDispatch.Client` | HTTP client, stream connector | 배송 생성, subscription, status notify 검증을 수행한다. |
-| `Location Store` | framework location store 계약의 공유 저장소 구현체(예: Redis) | 서버 endpoint peer discovery와 actor·Spot authority를 저장한다. Session binding route는 각 Session owner가 보관한다. |
+| Resource | 책임 | 기본 준비 |
+|---|---|---|
+| Location Store | peer discovery와 Actor·Spot authority | 실행별 공유 Redis |
+| Delivery evidence store | 상태 event와 Attempt 결과 | runner가 생성한 실행별 store |
+| Candidate source | 배송원 후보와 순서 | Dispatch application 설정 |
+| Session binding | 현재 STREAM route와 binding token | Session owner가 Framework 경로로 관리 |
 
-언어별 샘플은 프로세스 이름과 프로젝트 이름을 언어 관용에 맞게 바꿀 수 있다. 다만 위 역할
-분리는 유지해야 한다. `Dispatch server`는 HTTP edge와 dispatch worker를 한 server에 둘 수
-있지만, `CourierSession server`와 `CourierActorNode`는 논리 책임을 분리해서 설명해야
-한다. 한 프로세스에 함께 배치하더라도 문서와 코드 책임은 client stream 연결, actor placement,
-actor 실행 위치가 섞이지 않게 나눈다.
+## 4. 역할과 책임
 
-## 6. 사용하는 ZLink 요소
+| 역할 | 수 | 책임 | 분리 이유와 소유 상태 |
+|---|---:|---|---|
+| Customer Client | 1 | 배송 생성, subscription과 상태 self-check | Framework 내부 route를 알지 않는다. |
+| Courier Client | 2 | 제안 수신과 결정 제출 | 사람의 응답 시간은 Dispatch turn을 점유하지 않는다. |
+| Dispatch | 1 이상 | HTTP 접수, 후보 선택, deadline, 재배정과 status command | DeliveryOffer와 현재 Attempt를 소유한다. |
+| CourierSession | 1 이상 | 배송원 STREAM, courier Actor 생성·binding과 decision relay | 연결 수명과 배차 규칙을 분리한다. |
+| CourierActorNode | 2 이상 | Courier Entry Spot과 Courier Actor 실행 | Framework가 actor owner를 선택할 수 있는 object server다. |
+| Tracking | 1 이상 | status event 기록과 Customer Actor 전송 | 상태 기록을 배차 worker와 분리한다. |
+| CustomerGateway | 1 이상 | 고객 STREAM, customer Actor 생성·binding과 push relay | 고객 connection 수명을 domain worker와 분리한다. |
+| Location Store | logical 1 | current authority와 peer discovery | physical node를 업무 계약에 노출하지 않는다. |
 
-| 역할 | 사용하는 요소 |
-|------|---------------|
-| `Location Store` | 공유 저장소 기반 peer discovery와 readiness 확인 |
-| `Dispatch server` | HTTP endpoint, courier Object Client, 두 독립 ClientServer의 handler/client, background dispatch worker |
-| `CourierSession server` | stream node, courier Object Client, courier session callback |
-| `CourierActorNode 1/2` | courier Object Server, 독립 dispatch ClientServer client, courier entry spot, courier actor |
-| `Tracking server` | customer Object Client, 독립 tracking ClientServer handler, evidence store |
-| `CustomerGateway server` | stream node, customer Object Server, customer entry spot, customer actor |
-| Client | HTTP client와 stream connector wait API |
+Dispatch는 고객과 배송원의 session을 직접 보관하지 않는다. CourierSession과 CustomerGateway가
+각 Actor의 현재 binding을 관리하고, actor가 bound session으로 push한다. Tracking은 CustomerId를
+사용해 Customer Actor를 찾지만 owner를 직접 선택하지 않는다.
 
-역할 간 channel은 다음 이름을 기준으로 둔다.
+## 5. 사용하는 Framework 요소와 선택 이유
 
-| 이름 | Framework 요소 | 연결 |
-|------|----------------|------|
-| `deliverydispatch.dispatch` | 독립 ClientServer Channel | `CourierActorNode` Client → ready `Dispatch` Server |
-| `deliverydispatch.tracking` | 독립 ClientServer Channel | `Dispatch` Client → ready `Tracking` Server |
-| `deliverydispatch.customer` | RouteMesh | `CustomerEntrySpot`에서 customer actor 관리 |
-| `deliverydispatch.courier` | RouteMesh | `CourierSession/DispatchWorker module -> global ActorId -> CourierActor` |
+| 필요한 동작 | 선택한 요소 | 선택 이유와 계약 근거 |
+|---|---|---|
+| 배송원·고객 ID로 현재 object를 찾는다. | Actor direct message | Global Actor ID를 사용하면 Framework가 current Ready owner를 resolve한다. [상호작용 모델 §2](../../spec/03-interaction-model.ko.md#2-공통-모델) |
+| Actor를 처음 준비하고 같은 session에 bind한다. | Actor GetOrCreate와 bound session | 생성 결과의 exact ActorRef를 해당 bind operation에만 사용한다. [Actor model](../../spec/14-actor-model.ko.md) · [Session–Actor dispatch](../../spec/20-session-actor-dispatch.ko.md) |
+| 최초 Actor membership을 승인한다. | Entry Spot | 생성 callback은 local initial state만 설정하고 짧게 끝낸다. [Spot model §4](../../spec/11-spot-model.ko.md#4-entry-spot) |
+| worker와 Tracking 사이의 독립 요청 | ClientServer Channel | object RouteMesh와 channel Server membership을 섞지 않는다. [Channel topology](../../spec/07-channel-topology.ko.md) |
+| 고객·배송원에게 server push | STREAM bound session | current binding FIFO를 통해 연결을 교체해도 같은 logical Actor로 push한다. [STREAM session §8](../../spec/03-interaction-model.ko.md#8-stream-session) |
+| one-way 제안·결정 전송 | Actor send | send admission은 handler 실행 완료나 상대 수신을 보장하지 않는다. [Send와 request §4](../../spec/03-interaction-model.ko.md#4-send와-request) |
+| owner 장애 경계 | failure/failover policy | Ready owner 장애는 자동 cold activation이나 다른 owner 선택으로 바뀌지 않는다. [Failure policy §4.4](../../spec/31-failure-failover-policy.ko.md#44-instance-spot-cold-activation과-owner-장애를-구분한다) |
 
-두 ClientServer Channel은 `deliverydispatch.courier`나 `deliverydispatch.customer`
-MeshNode의 ChannelName membership이 아니다. 따라서 Object Client에 Channel Server를
-등록하지 않는다.
+Courier와 Customer Actor factory는 sample 범위에서 relocation을 사용하지 않는다. planned
+relocation을 추가하더라도 같은 Actor identity와 binding 갱신을 검증해야 하며, Ready owner
+crash를 failover로 해석하지 않는다.
 
-`deliverydispatch.courier`는 배송원마다 하나씩 늘어나는 Channel이 아니다. 모든 배송원 actor가
-같은 mesh 안에 있고, courier id가 어느 MeshNode의 actor에 들어갈지는 framework 배치가 정한다.
-courier별 session binding은 해당 STREAM connection의 Session owner가 보관한다. Actor relocation 때 target
-runtime이 같은 binding route를 current actor owner로 갱신한다.
+## 6. Message 계약
 
-`DispatchWorker module`은 courier id를 전역 `ActorId`로 사용해 actor를 보장하고 offer를
-보낸다. 어느 CourierActorNode에서 actor를 materialize할지는 framework의 capacity와 node weight,
-Location Store가 결정한다. application request와 설정에는 owner NodeRid가 없으며, 전송할 때도
-physical node를 먼저 선택하지 않는다
-([10 §5](../../spec/07-channel-topology.ko.md), [24 §3](../../spec/16-spot-address-messaging.ko.md)).
-`CourierEntrySpot`은 actor 생성과 session bind를 framework 경로에 연결하지만, 호출자에게 owner
-node 선택 책임을 노출하지 않는다.
+DeliveryDispatch는 typed JSON codec을 사용한다. 아래 선언은 특정 언어의 class나 record가
+아니며, 모든 지원 언어가 동일한 JSON wire 이름과 optional·null 의미를 유지하기 위한
+언어 중립 계약이다.
 
-stream client가 다시 연결될 때 두 역할은 같은 규칙을 사용한다.
-
-- **courier**는 전역 `ActorId`로 `GetOrCreate`한다. Framework가 반환한 exact `ActorRef`는
-  새 session bind에 그대로 사용할 수 있지만, 이 값은 placement 입력이 아니다.
-- **customer**도 전역 `ActorId`로 `GetOrCreate`하고 같은 operation의 `ActorRef`에 session을 bind한다.
-
-이렇게 해야 재연결해도 사용자가 보던 actor 상태가 유지되고, binding만 최신 연결로 바뀐다.
-
-일반 message 전송은 `ActorId`만 받는 Actor Client를 사용한다. Application은 `ActorRef`,
-owner `NodeRid`나 위치 snapshot을 보관하지 않는다. Framework가 Location Store에서 current
-owner를 찾는다. Client wire에도 `ActorRef`, `NodeRid`와 session route를 노출하지 않는다.
-
-`ActorManager`나 Actor Client를 호출하는 host에는 해당 RouteMesh의 Object Client role이
-필요하다. CourierSession·Dispatch는 courier Object Client를, Tracking은 customer Object
-Client를 등록한다. Object Server role을 가진 CustomerGateway와 CourierActorNode는 자기
-Actor factory와 Entry Spot을 등록한다.
-
-이 샘플의 courier·customer Actor factory는 relocation policy를 `DisableRelocation`으로 등록한다.
-DeliveryDispatch는 actor 생성, direct messaging과 session bind를 설명하는 샘플이며,
-relocation이나 Message Follow 동작을 시연하거나 검증하지 않는다.
-
-### 6.1 Entry Spot 대기 규칙
-
-`CustomerEntrySpot`과 `CourierEntrySpot`은 Actor가 처음 진입하는 lifecycle 지점이다.
-Entry Spot과 Entry Spot Actor에서는 `Yield`를 사용할 수 없다. Request나 worker 결과를
-기다려야 하면 `Async`로 현재 job 안에서 완료한다. `Yield`를 호출하면 operation을 제출하지
-않고 `InvalidOperation`으로 끝난다.
-
-Entry Spot callback은 짧게 유지한다. Actor 생성에 필요하지 않은 외부 I/O는
-`ActorManager.GetOrCreate`를 호출하기 전에 caller가 처리하거나, Actor가 Ready가 된 뒤
-Actor handler에서 처리한다. 생성 callback 안에 장기 HTTP·DB·다른 service 왕복을 넣어
-Entry lifecycle을 지연시키지 않는다.
-
-이 샘플의 Entry Spot은 생성 중인 Actor를 `OnCreateActorAsync` 인자로 직접 받는다. Callback은
-그 Actor의 local initial state만 설정하고 승인 또는 거절을 반환한다. 아직 Ready가 아니므로
-callback 안에서 `ActorManager.FindAsync`를 호출하면 안 된다. Session bind는
-`ActorManager.GetOrCreate`가 Ready 결과를 반환한 뒤 caller가 수행한다.
-
-`Yield` 예제는 `SpotWide` User Spot의 shared turn을 반납할 수 있는
-[Bingo §7.1](../bingo/README.ko.md)에만 둔다.
-
-## 7. Message 계약
-
-공통 message 계약은 언어 중립 schema로 읽는다. 언어별 구현은 record, class, struct,
-interface, type alias처럼 자기 언어에 맞는 표현으로 같은 필드와 의미를 구현한다.
-이 표의 message 이름과 필드는 .NET 샘플을 다른 framework 언어 샘플로 포팅할 때 맞춰야
-하는 공통 샘플 계약이다. 언어별 타입 표현과 파일 배치는 달라도 message 의미, 필드,
-성공/timeout 흐름에서의 역할은 유지한다.
-
-### 7.1 고객 HTTP와 stream
-
-| Message | 방향 | 필드 | 의미 |
-|---------|------|------|------|
-| `CreateDeliveryReq` | Client -> Dispatch server HTTP | `DeliveryId`, `CustomerId`, `PickupAddress`, `DropoffAddress` | 새 배송 생성을 요청한다. |
-| `CreateDeliveryRes` | Dispatch server HTTP -> Client | `DeliveryId` | Dispatch server 접수 결과를 반환한다. |
-| `SubscribeDeliveryReq` | Client -> CustomerGateway stream | `DeliveryId` | 현재 stream session이 특정 delivery 상태를 받겠다고 요청한다. |
-| `SubscribeDeliveryRes` | CustomerGateway stream -> Client | `DeliveryId` | subscription이 등록됐음을 알린다. |
-| `DeliveryStatusNotify` | CustomerGateway stream -> Client | `DeliveryId`, `Status`, `CourierId`, `OccurredAt` | delivery 상태 변경을 push한다. |
-
-### 7.2 Dispatch와 Courier
-
-| Message | 방향 | 필드 | 의미 |
-|---------|------|------|------|
-| `AssignDeliveryMsg` | Dispatch server HTTP API module -> dispatch channel module | `DeliveryId`, `CustomerId`, `PickupAddress`, `DropoffAddress` | 배차 대상 배송을 내부 dispatch 흐름에 넣는다(응답 없는 one-way send). |
-| `BindCourierSessionReq` | Courier client -> CourierSession server stream | `CourierId` | courier id의 actor를 보장하고 현재 stream session에 bind하도록 요청한다. |
-| `BindCourierSessionRes` | CourierSession server -> Courier client | `CourierId` | Actor가 Ready이고 session bind가 완료됐음을 반환한다. Actor 위치는 반환하지 않는다. |
-| `OfferDeliveryMsg` | DispatchWorker module -> CourierActor direct | `DeliveryId`, `CourierId`, `Attempt`, `PickupAddress`, `DropoffAddress` | Global `CourierId`로 특정 배송원 actor에게 제안을 보낸다(**응답 없는 one-way send**). `Attempt`는 이 배송의 몇 번째 제안인지다. |
-| `CourierDecisionMsg` | Courier client -> CourierSession server -> CourierActor | `DeliveryId`, `CourierId`, `Accepted`, `Reason` | 배송원 client가 stream session을 통해 수락 또는 거절 결정을 보낸다. actor는 현재 제안의 `Attempt`와 결합해 배차 결과를 만든다. |
-| `OfferDeliveryResultMsg` | CourierActor -> DispatchWorker module | `DeliveryId`, `CourierId`, `Attempt`, `Accepted`, `Reason` | 배송원의 결정을 배차 쪽으로 돌려준다(**응답 없는 one-way send**). `Attempt`가 현재 제안과 다르면 늦게 도착한 결정이므로 버린다. |
-
-### 7.3 Tracking과 actor/session bind
-
-| Message | 방향 | 필드 | 의미 |
-|---------|------|------|------|
-| `DeliveryStatusChangedReq` | DispatchWorker module -> Tracking server | `DeliveryId`, `CustomerId`, `Status`, `CourierId`, `OccurredAt` | 상태 event를 Tracking 서버에 기록한다. `CustomerId`는 Tracking이 `DeliveryStatusUpdatedMsg`를 **어느 고객 actor에게** 보낼지 정하는 값이다 — 이 필드가 없으면 Tracking이 고객을 out-of-band로 추측해야 하고(하드코딩), 그건 계약 위반이다. |
-| `DeliveryStatusChangedRes` | Tracking server -> DispatchWorker module | `DeliveryId`, `Status` | Tracking 서버가 상태 event를 처리했음을 반환한다. |
-| `DeliveryStatusUpdatedMsg` | Tracking server -> CustomerActor direct | `DeliveryId`, `CustomerId`, `Status`, `CourierId`, `OccurredAt` | Global `CustomerId`로 고객 actor에 상태 변경을 전달한다(응답 없는 one-way send). |
-
-`ActorRef`, owner `NodeRid`와 session route는 application message 계약에 포함하지 않는다.
-CourierSession과 CustomerGateway는 `ActorManager.GetOrCreate`의 Ready 결과에 포함된 exact
-`ActorRef`를 해당 session bind 호출에만 사용하고 저장하거나 client에 반환하지 않는다.
-
-`Status` 값은 최소한 아래 값을 포함한다.
-
-| 값 | 의미 |
-|----|------|
-| `Assigned` | 첫 배송원에게 제안이 전달됐다. |
-| `Reassigned` | 이전 배송원이 timeout되어 다른 배송원에게 다시 제안됐다. |
-| `Accepted` | 배송원이 제안을 수락했다. |
-| `PickedUp` | 배송원이 물건을 픽업했다. |
-| `Delivered` | 배송이 완료됐다. |
-
-## 7.4 배송 제안은 왜 request/reply가 아닌가 (구현 지침)
-
-**배송원의 결정을 request의 응답으로 받으면 안 된다.** 제안과 결정 사이에는 사람이 화면을 보고
-버튼을 누르는 시간이 들어간다. 그 시간을 응답 시간에 묶으면 요청 하나가 그동안 **열린 채로 남고**,
-그 요청을 처리하던 실행 줄(spot의 직렬 줄)이 결정이 올 때까지 잡힌다. 서버는 client에게 request를
-걸 수 없고 push만 할 수 있으므로, 결정은 애초에 **client가 자기 타이밍에 보내는 별개의 in-bound
-메시지**다. 인과가 이미 끊겨 있는 것을 하나의 RPC로 위장하는 셈이다.
-
-그래서 제안(`OfferDeliveryMsg`)도, 결정 결과(`OfferDeliveryResultMsg`)도 **둘 다 one-way send**로
-보낸다. 어느 쪽도 상대의 응답을 기다리지 않는다.
-
-기다리지 않는 대신, 진행 중인 제안의 **상태를 store에 기록**하고 그 기록이 다음 단계를 정한다.
-`DispatchWorker`가 소유하는 상태는 배송마다 아래 한 줄이다.
+### 6.1 Client와 edge message
 
 ```text
-DeliveryOffer {
-  DeliveryId, CourierId, Attempt: int, Deadline: timestamp,
-  Status: Offered | Accepted | Rejected | Expired
+message CreateDeliveryReq {
+  deliveryId: string
+  customerId: string
+  pickupAddress: string
+  dropoffAddress: string
+}
+
+message CreateDeliveryRes {
+  deliveryId: string
+}
+
+message SubscribeDeliveryReq {
+  deliveryId: string
+}
+
+message SubscribeDeliveryRes {
+  deliveryId: string
+}
+
+message BindCourierSessionReq {
+  courierId: string
+}
+
+message BindCourierSessionRes {
+  courierId: string
+}
+
+message OfferDeliveryNotify {
+  courierId: string
+  deliveryId: string
+  pickupAddress: string
+  dropoffAddress: string
 }
 ```
 
-처리 루프는 다음 순서로 실행된다.
+CreateDeliveryReq.deliveryId는 scenario가 재시도할 때 유지하는 logical ID다. Server가
+새 ID를 발급하는 변형을 구현하더라도 response의 ID가 다음 message와 같은 기준을 갖도록
+sample runner가 하나의 계약을 선택해야 한다. BindCourierSessionRes는 session binding
+완료를 뜻하며 owner 위치나 ActorRef를 반환하지 않는다.
 
-```mermaid
-flowchart TD
-    A[Receive AssignDeliveryMsg] --> B[Select first courier]
-    B --> C[Store offered attempt and Assigned event]
-    C --> D[Send OfferDeliveryMsg]
-    D --> E[Target MeshNode relays to courier actor]
-    E --> F[Actor pushes offer to bound session]
-    F --> G{Courier decision arrives?}
-    G -->|Accepted| H[Store Accepted, PickedUp, Delivered events]
-    G -->|Rejected| I[Select next courier]
-    G -->|Deadline expired| J[Mark attempt Expired]
-    I --> K{Candidate remains?}
-    J --> K
-    K -->|Yes| L[Store Reassigned event and next attempt]
-    L --> D
-    K -->|No| M[Store Failed event]
-    G -->|Stale attempt| N[Discard late decision]
-```
-
-**지켜야 할 것:**
-
-- **어느 handler도 배송원의 결정을 기다리지 않는다.** 결정 대기를 위해 스레드를 재우거나
-  (`condition_variable`, `Future.get()`) task를 붙잡고 있으면 안 된다. 그러면 그 실행 줄로 오는
-  다른 제안·조회가 전부 그 배송원의 반응 시간만큼 밀린다.
-- **제안 시한은 `DispatchWorker`가 소유한다.** MeshNode가 시한을 세고 "거절"을 만들어 돌려주면
-  배차 정책이 노드에 숨는다. 노드는 제안을 전달하고 결정을 돌려줄 뿐이다.
-- **`Attempt`로 늦은 결정을 막는다.** 시한이 지나 재제안한 뒤 이전 배송원의 결정이 도착할 수 있다.
-  기록된 현재 `Attempt`와 다른 결정은 버린다.
-- **상태 기록이 곧 재개 지점이다.** 노드가 비정상 종료된 뒤 재시작되어도 `Offered`와 지난 `Deadline` 기록으로
-  같은 sweeper 경로로 이어서 진행된다.
-
-## 8. 도메인 흐름
-
-### 8.1 성공 배차
-
-```mermaid
-sequenceDiagram
-    participant CustomerClient as Customer Client
-    participant CourierClient as Courier Client A
-    participant CourierSession as CourierSession
-    participant ObjectRuntime as Framework object runtime
-    participant CourierEntry as CourierEntrySpot
-    participant CourierActor as CourierActor courier-a
-    participant CustomerSession as CustomerSession
-    participant CustomerEntry as CustomerEntrySpot
-    participant CustomerActor as CustomerActor
-    participant DispatchHttp as Dispatch HTTP
-    participant DispatchWorker as DispatchWorker
-    participant Tracking as Tracking
-
-    CourierClient->>CourierSession: connect stream
-    CourierClient->>CourierSession: BindCourierSessionReq(courier-a)
-    CourierSession->>ObjectRuntime: ActorManager.GetOrCreate(courier-a)
-    ObjectRuntime->>CourierEntry: OnCreateActorAsync(actor, create request)
-    CourierEntry-->>ObjectRuntime: Accept
-    ObjectRuntime-->>CourierSession: Ready ActorRef
-    CourierSession->>ObjectRuntime: Bind session to exact ActorRef
-    CourierSession-->>CourierClient: BindCourierSessionRes
-    CustomerClient->>CustomerSession: SubscribeDeliveryReq(delivery-success)
-    CustomerSession->>ObjectRuntime: ActorManager.GetOrCreate(customer id)
-    ObjectRuntime->>CustomerEntry: OnCreateActorAsync(actor, create request)
-    CustomerEntry-->>ObjectRuntime: Accept
-    ObjectRuntime-->>CustomerSession: Ready ActorRef
-    CustomerSession->>ObjectRuntime: Bind session to exact ActorRef
-    CustomerSession-->>CustomerClient: SubscribeDeliveryRes(delivery-success)
-    CustomerClient->>DispatchHttp: POST /deliveries
-    DispatchHttp->>DispatchWorker: AssignDeliveryMsg (enqueue work)
-    DispatchHttp-->>CustomerClient: CreateDeliveryRes(deliveryId)
-    DispatchWorker->>ObjectRuntime: SendToActor(courier-a, OfferDeliveryMsg)
-    ObjectRuntime->>CourierActor: dispatch offer (one-way)
-    CourierActor->>CourierSession: push offer by bound session
-    CourierSession->>CourierClient: push offer
-    Note over DispatchWorker,CourierClient: 서버는 아무 실행 줄도 잡지 않고 결정을 기다린다
-    CourierClient-->>CourierSession: accepted
-    CourierSession->>ObjectRuntime: SendToActor(courier-a, CourierDecisionMsg)
-    ObjectRuntime-->>CourierActor: dispatch decision
-    CourierActor-->>DispatchWorker: OfferDeliveryResultMsg(Attempt=1, Accepted) (one-way)
-    DispatchWorker->>Tracking: DeliveryStatusChangedReq Assigned
-    Tracking-->>DispatchWorker: DeliveryStatusChangedRes Assigned
-    DispatchWorker->>Tracking: DeliveryStatusChangedReq Accepted
-    Tracking-->>DispatchWorker: DeliveryStatusChangedRes Accepted
-    DispatchWorker->>Tracking: DeliveryStatusChangedReq PickedUp
-    Tracking-->>DispatchWorker: DeliveryStatusChangedRes PickedUp
-    DispatchWorker->>Tracking: DeliveryStatusChangedReq Delivered
-    Tracking-->>DispatchWorker: DeliveryStatusChangedRes Delivered
-    Note over Tracking,CustomerClient: 각 상태 변경을 global CustomerId로 CustomerActor에 보낸다
-    Tracking->>ObjectRuntime: SendToActor(customer id, DeliveryStatusUpdatedMsg)
-    ObjectRuntime->>CustomerActor: dispatch notify
-    CustomerActor->>CustomerSession: DeliveryStatusNotify(Delivered)
-    CustomerSession->>CustomerClient: status stream notify(Delivered)
-```
-
-### 8.2 Timeout 재배차
-
-```mermaid
-sequenceDiagram
-    participant CustomerClient as Customer Client
-    participant CourierClientA as Courier Client A
-    participant CourierClientB as Courier Client B
-    participant CourierSession as CourierSession
-    participant ObjectRuntime as Framework object runtime
-    participant CourierActorA as CourierActor courier-a
-    participant CourierActorB as CourierActor courier-b
-    participant CustomerSession as CustomerSession
-    participant CustomerActor as CustomerActor
-    participant DispatchHttp as Dispatch HTTP
-    participant DispatchWorker as DispatchWorker
-    participant Tracking as Tracking
-
-    CourierClientA->>CourierSession: connect stream
-    CourierClientA->>CourierSession: BindCourierSessionReq(courier-a)
-    CourierSession->>ObjectRuntime: GetOrCreate(courier-a) and bind
-    CourierSession-->>CourierClientA: BindCourierSessionRes
-    CourierClientB->>CourierSession: connect stream
-    CourierClientB->>CourierSession: BindCourierSessionReq(courier-b)
-    CourierSession->>ObjectRuntime: GetOrCreate(courier-b) and bind
-    CourierSession-->>CourierClientB: BindCourierSessionRes
-    CustomerClient->>CustomerSession: SubscribeDeliveryReq(delivery-reassign)
-    CustomerSession->>ObjectRuntime: GetOrCreate(customer id) and bind
-    CustomerSession-->>CustomerClient: SubscribeDeliveryRes(delivery-reassign)
-    CustomerClient->>DispatchHttp: POST /deliveries
-    DispatchHttp->>DispatchWorker: AssignDeliveryMsg (enqueue work)
-    DispatchHttp-->>CustomerClient: CreateDeliveryRes(deliveryId)
-    DispatchWorker->>DispatchWorker: DeliveryOffer{Attempt=1, Deadline} 기록
-    DispatchWorker->>Tracking: DeliveryStatusChangedReq Assigned
-    Tracking-->>DispatchWorker: DeliveryStatusChangedRes Assigned
-    DispatchWorker->>ObjectRuntime: SendToActor(courier-a, OfferDeliveryMsg)
-    ObjectRuntime->>CourierActorA: dispatch offer (one-way)
-    CourierActorA->>CourierSession: push offer by bound session
-    CourierSession->>CourierClientA: push offer
-    CourierClientA--x CourierSession: 시한까지 응답 없음
-    Note over DispatchWorker: sweeper가 Deadline 지난 Offered 기록을 훑어 Expired 처리
-    DispatchWorker->>Tracking: DeliveryStatusChangedReq Reassigned
-    Tracking-->>DispatchWorker: DeliveryStatusChangedRes Reassigned
-    Tracking->>ObjectRuntime: SendToActor(customer id, DeliveryStatusUpdatedMsg)
-    ObjectRuntime->>CustomerActor: dispatch notify
-    CustomerActor->>CustomerSession: DeliveryStatusNotify(Reassigned)
-    CustomerSession->>CustomerClient: status stream notify(Reassigned)
-    DispatchWorker->>ObjectRuntime: SendToActor(courier-b, OfferDeliveryMsg)
-    ObjectRuntime->>CourierActorB: dispatch offer (one-way)
-    CourierActorB->>CourierSession: push offer by bound session
-    CourierSession->>CourierClientB: push offer
-    CourierClientB-->>CourierSession: accepted
-    CourierSession->>ObjectRuntime: SendToActor(courier-b, CourierDecisionMsg)
-    ObjectRuntime-->>CourierActorB: dispatch decision
-    CourierActorB-->>DispatchWorker: OfferDeliveryResultMsg(Attempt=2, Accepted) (one-way)
-    DispatchWorker->>Tracking: DeliveryStatusChangedReq Accepted
-    Tracking-->>DispatchWorker: DeliveryStatusChangedRes Accepted
-    DispatchWorker->>Tracking: DeliveryStatusChangedReq Delivered
-    Tracking-->>DispatchWorker: DeliveryStatusChangedRes Delivered
-    Note over Tracking,CustomerClient: Accepted·Delivered도 위와 같은 push 체인을 개별로 탄다 (마지막 Delivered push만 표시)
-    Tracking->>ObjectRuntime: SendToActor(customer id, DeliveryStatusUpdatedMsg)
-    ObjectRuntime->>CustomerActor: dispatch notify
-    CustomerActor->>CustomerSession: DeliveryStatusNotify(Delivered)
-    CustomerSession->>CustomerClient: status stream notify(Delivered)
-```
-
-## 9. 구현 구조
-
-DeliveryDispatch는 업무형 샘플이므로 domain 흐름과 framework adapter가 뒤섞이지 않게 한다.
-언어별 문법과 build system은 달라도 아래 책임 분리를 기준으로 둔다.
+### 6.2 내부 dispatch와 상태 message
 
 ```text
-Server/Dispatch/
-  Application/
-    Dispatch/
-      DispatchWorker
-      DispatchWorkQueue
-      CourierSelectionPolicy
-  Infrastructure/
-    Http/
-      DeliveryEndpoint
-    ZLink/
-      Handlers/
-        AssignDeliveryHandler
-      Clients/
-        CourierClient
-        TrackingClient
+message AssignDeliveryMsg {
+  deliveryId: string
+  customerId: string
+  pickupAddress: string
+  dropoffAddress: string
+}
 
-Server/CourierSession/
-  Infrastructure/
-    ZLink/
-      Sessions/
-        CourierSession
-      Clients/
-        CourierActorClient
+message OfferDeliveryMsg {
+  deliveryId: string
+  courierId: string
+  attempt: int32
+  pickupAddress: string
+  dropoffAddress: string
+}
 
-Server/CourierActorNode/
-  Infrastructure/
-    ZLink/
-      Actors/
-        CourierActor
-      Spots/
-        CourierEntrySpot
+message CourierDecisionMsg {
+  deliveryId: string
+  courierId: string
+  accepted: bool
+  reason?: string | null
+}
 
-Server/Tracking/
-  Domain/
-    DeliveryTracking/
-      DeliveryStatusHistory
-      DeliveryTrackingState
-  Infrastructure/
-    ZLink/
-      Handlers/
-        DeliveryStatusChangedHandler
-      Stores/
-        EvidenceStore
+message OfferDeliveryResultMsg {
+  deliveryId: string
+  courierId: string
+  attempt: int32
+  accepted: bool
+  reason?: string | null
+}
 
-Server/CustomerGateway/
-  Infrastructure/
-    ZLink/
-      Actors/
-        CustomerActor
-      Spots/
-        CustomerEntrySpot
-      Sessions/
-        CustomerSession
-      Clients/
-        CustomerActorClient
-      Handlers/
-        SubscribeDeliveryHandler
-        DeliveryStatusUpdatedHandler
-      Stores/
-        CustomerSessionDirectory
+message DeliveryStatusChangedReq {
+  deliveryId: string
+  customerId: string
+  status: DeliveryStatus
+  courierId?: string | null
+  occurredAtUnixMs: int64
+}
+
+message DeliveryStatusChangedRes {
+  deliveryId: string
+  status: DeliveryStatus
+}
+
+message DeliveryStatusUpdatedMsg {
+  deliveryId: string
+  customerId: string
+  status: DeliveryStatus
+  courierId?: string | null
+  occurredAtUnixMs: int64
+}
 ```
 
-작은 언어별 샘플은 디렉토리를 더 단순하게 둘 수 있다. 그래도 아래 기준은 유지한다.
+AssignDeliveryMsg, OfferDeliveryMsg, CourierDecisionMsg, OfferDeliveryResultMsg와
+DeliveryStatusUpdatedMsg는 reply를 기다리지 않는 send다. DeliveryStatusChangedReq/Res는
+Tracking이 상태 event를 접수했음을 확인하는 request/reply다.
 
-- Dispatch server는 HTTP 변환, dispatch channel, worker를 한 server 안에 둘 수 있다.
-- DispatchWorker module은 배차 흐름과 timeout 재시도를 소유한다.
-- CourierSession server는 배송원 stream 연결을 받고 `ActorManager.GetOrCreate`가 반환한
-  Ready `ActorRef`에 session을 bind한다.
-- CourierActorNode는 actor 생성과 actor 메시지 처리를 맡는다. Session binding은
-  Framework가 관리한다.
-- Tracking은 상태 event 기록과 고객 알림 생성을 맡는다.
-- CustomerGateway server는 고객 stream 연결을 받고 `ActorManager.GetOrCreate`가 반환한
-  Ready `ActorRef`에 session을 bind한다.
+### 6.3 Customer push와 상태 값
 
-## 10. Client self-check 기준
+```text
+message DeliveryStatusNotify {
+  deliveryId: string
+  status: DeliveryStatus
+  courierId?: string | null
+  occurredAtUnixMs: int64
+}
 
-언어별 client scenario는 성공 로그만 출력하면 안 된다. request 응답과 push payload를
-직접 검증해야 한다.
+enum DeliveryStatus {
+  Created
+  Assigned
+  Reassigned
+  Accepted
+  PickedUp
+  Delivered
+  Failed
+}
+```
 
-필수 검증은 아래와 같다.
+Assigned는 첫 제안 기록, Reassigned는 deadline 만료 뒤 다음 제안 기록, Accepted는
+배송원 수락, PickedUp은 픽업 완료, Delivered는 업무 종료를 뜻한다. Failed는 후보가
+더 이상 없거나 application policy가 terminal 실패를 결정한 상태다. Attempt는 Dispatch
+application state이며 transport identity가 아니다. ActorRef, NodeRid와 session route는
+어떤 message에도 넣지 않는다.
 
-- client가 stream endpoint에 연결한 뒤 `SubscribeDeliveryReq`를 보내고
-  `SubscribeDeliveryRes`의 `DeliveryId`를 확인한다.
-- `delivery-success` 생성 응답이 같은 `DeliveryId`를 반환하는지 확인한다.
-- `courier-a`와 `courier-b` actor가 전역 `ActorId`로 생성되고 두 actor가 `CourierSession server`의
-  binding route로 client에 offer를 push하는지 확인한다. 어느 physical node가 owner인지는 성공
-  조건으로 사용하지 않는다.
-- `OnCreateActorAsync`는 callback 인자로 받은 actor만 초기화하며, Ready 전 `FindAsync`를
-  호출하거나 `ActorRef`를 application cache에 저장하지 않는지 확인한다.
-- CourierSession·Dispatch·Tracking host가 자신이 호출하는 Actor RouteMesh에 Object Client
-  role을 등록했는지 startup contract test로 확인한다.
-- Client request와 response에 `ActorRef`, owner `NodeRid`와 session route가 포함되지 않는지
-  wire contract test로 확인한다.
-- `delivery-success`에 대해 `Assigned`, `Accepted`, `PickedUp`, `Delivered`가 순서대로
-  도착하는지 확인한다.
-- `delivery-reassign` 생성 응답이 같은 `DeliveryId`를 반환하는지 확인한다.
-- `delivery-reassign`에 대해 `Assigned`, `Reassigned`, `Accepted`, `Delivered`가 순서대로
-  도착하는지 확인한다.
-- `delivery-reassign`의 `Accepted`와 `Delivered` 상태는 `courier-b`가 처리했음을 확인한다.
-- server evidence check가 두 delivery의 상태 순서를 누락 없이 기록했는지 확인한다.
+## 7. 업무 흐름
 
-push message 대기는 stream connector의 public wait interface를 사용한다. notification
-수집용 inbox나 로그 queue는 결과 출력과 추가 검증을 위해 둘 수 있지만, push 도착을 기다리는
-기준 경로가 되어서는 안 된다.
+### 7.1 정상 흐름
 
-## 11. Smoke 실행 기준
+시작 상태는 Courier A와 Customer가 STREAM에 연결하고 binding response를 받은 상태다.
+CreateDeliveryReq가 접수되면 Dispatch는 Attempt = 1을 기록하고 A에게 제안을 보낸다.
+배송원 응답을 기다리는 동안 Dispatch handler는 실행 줄을 점유하지 않는다.
 
-언어별 runner는 아래 순서를 따른다.
+```mermaid
+sequenceDiagram
+    participant C as Customer Client
+    participant CG as CustomerGateway
+    participant CA as Courier Client
+    participant CS as CourierSession
+    participant D as Dispatch
+    participant ACT as CourierActor
+    participant T as Tracking
+    participant CU as CustomerActor
 
-1. 공유 location store(예: Redis)가 준비됐는지 확인한다.
-2. Tracking 서버를 시작하고 `deliverydispatch.tracking`의 public runtime readiness가 ready인지 확인한다.
-3. CustomerGateway 서버를 시작한다.
-4. CourierSession 서버를 시작한다.
-5. CourierActorNode 1과 2를 시작한다.
-6. Dispatch 서버를 시작한다.
-7. Client scenario가 배송원 A/B stream 연결, 성공 배차, timeout 재배차를 실행한다.
-8. Evidence check가 상태 순서를 검증한다.
+    C->>CG: SubscribeDeliveryReq
+    CG-->>C: SubscribeDeliveryRes
+    CA->>CS: BindCourierSessionReq
+    CS-->>CA: BindCourierSessionRes
+    C->>D: CreateDeliveryReq
+    D-->>C: CreateDeliveryRes
+    D->>ACT: OfferDeliveryMsg (attempt=1)
+    ACT->>CS: OfferDeliveryNotify
+    CS-->>CA: OfferDeliveryNotify
+    CA->>CS: CourierDecisionMsg(accepted=true)
+    CS->>ACT: CourierDecisionMsg
+    ACT->>D: OfferDeliveryResultMsg
+    D->>T: DeliveryStatusChangedReq(Assigned)
+    T-->>D: DeliveryStatusChangedRes
+    D->>T: DeliveryStatusChangedReq(Accepted)
+    T-->>D: DeliveryStatusChangedRes
+    D->>T: DeliveryStatusChangedReq(PickedUp)
+    T-->>D: DeliveryStatusChangedRes
+    D->>T: DeliveryStatusChangedReq(Delivered)
+    T-->>D: DeliveryStatusChangedRes
+    T->>CU: DeliveryStatusUpdatedMsg
+    CU-->>CG: DeliveryStatusNotify
+    CG-->>C: DeliveryStatusNotify(Delivered)
+```
 
-샘플 성공 로그는 아래 의미를 포함해야 한다.
+DeliveryStatusNotify가 Assigned, Accepted, PickedUp, Delivered 순서로 도착하고 각 payload의
+DeliveryId가 subscription과 같은지 확인한다. 상태 event 기록과 push가 순서대로 완료되는
+것은 Application의 sample 정책이며, Framework의 일반적인 channel 전역 순서를 의미하지 않는다.
+
+### 7.2 Timeout 재배정
+
+A가 OfferDeliveryMsg(attempt=1)을 받은 뒤 deadline 안에 결정을 보내지 않으면 Dispatch
+sweeper가 현재 기록을 Expired로 바꾸고 B를 다음 후보로 선택한다. 이전 A의 늦은 결정은
+현재 Attempt=2와 일치하지 않으므로 버린다.
+
+```mermaid
+sequenceDiagram
+    participant C as Customer Client
+    participant D as Dispatch
+    participant T as Tracking
+    participant A as CourierActor A
+    participant B as CourierActor B
+    participant CB as Courier Client B
+    participant CS as CourierSession
+    participant CG as CustomerGateway
+
+    C->>D: CreateDeliveryReq(delivery-reassign)
+    D->>A: OfferDeliveryMsg(attempt=1)
+    Note over D: deadline expires; mark attempt 1 expired
+    D->>T: DeliveryStatusChangedReq(Reassigned)
+    T-->>D: DeliveryStatusChangedRes
+    T->>CG: DeliveryStatusUpdatedMsg
+    CG-->>C: DeliveryStatusNotify(Reassigned)
+    D->>B: OfferDeliveryMsg(attempt=2)
+    B->>CS: OfferDeliveryNotify
+    CS-->>CB: OfferDeliveryNotify
+    CB->>CS: CourierDecisionMsg(accepted=true)
+    CS->>B: CourierDecisionMsg
+    B->>D: OfferDeliveryResultMsg(attempt=2)
+    D->>T: DeliveryStatusChangedReq(Accepted)
+    T-->>D: DeliveryStatusChangedRes
+    D->>T: DeliveryStatusChangedReq(Delivered)
+    T-->>D: DeliveryStatusChangedRes
+    T->>CG: DeliveryStatusUpdatedMsg(Delivered)
+    CG-->>C: DeliveryStatusNotify(Delivered)
+```
+
+A decision that arrives after attempt 2 starts is recorded as a stale decision and has no status
+effect. If no candidate remains, Dispatch records Failed and sends the terminal status.
+
+### 7.3 재연결과 장애 경계
+
+Courier 또는 Customer가 다시 연결하면 Session server는 stable Actor ID로 GetOrCreate를
+호출하고, 같은 operation 결과의 exact ActorRef를 새 session bind에 사용한다. Application은
+ActorRef를 cache에 보관하거나 client에 반환하지 않는다. 새 binding 이후 push는 새 연결로
+전달되며, 이전 binding token으로 늦게 도착한 relay는 Framework가 거부한다.
+
+Ready Actor owner process가 종료되면 현재 operation은 Unavailable로 끝난다. Framework는
+실패한 operation을 다른 node에 자동 재제출하지 않는다. Missing Instance Spot을 다음
+message로 cold activation하는 규칙이나 planned relocation은 이 sample의 성공 기준이 아니다.
+
+## 8. 구현 구조
+
+모든 지원 언어는 아래 logical module을 같은 순서로 찾을 수 있어야 한다. 실제 directory와
+type 표현은 언어별로 달라도 `Client`, `Shared`, `Server`의 경계와 server 역할별 책임은 바꾸지
+않는다. `Program`은 host와 public endpoint를 구성하고, 업무 판단은 `Application`과 `Domain`,
+Framework 연결은 `Infrastructure`에 둔다.
+
+```text
+DeliveryDispatch
++-- Client
+|   +-- Program
+|   +-- Scenario
++-- Shared
+|   +-- Configuration
+|   +-- JSON Contracts
++-- Server
+    +-- Dispatch
+    |   +-- Program
+    |   +-- Application
+    |   |   +-- DispatchWorker
+    |   |   +-- OfferPolicy
+    |   +-- Infrastructure
+    |       +-- HttpHandlers
+    |       +-- RouteMeshClients
+    |       +-- DispatchEvidenceAdapter
+    +-- CourierSession
+    |   +-- Program
+    |   +-- Infrastructure
+    |       +-- StreamSession
+    |       +-- CourierBindingAdapter
+    |       +-- CourierActorClient
+    +-- CourierActorNode
+    |   +-- Program
+    |   +-- Domain
+    |   |   +-- CourierState
+    |   |   +-- OfferDecision
+    |   +-- Application
+    |   |   +-- OfferHandler
+    |   |   +-- AttemptGuard
+    |   +-- Infrastructure
+    |       +-- EntrySpot
+    |       +-- CourierActorAdapter
+    +-- Tracking
+    |   +-- Program
+    |   +-- Domain
+    |   |   +-- DeliveryStatus
+    |   |   +-- StatusTransition
+    |   +-- Application
+    |   |   +-- StatusWorkflow
+    |   |   +-- EvidenceWriter
+    |   +-- Infrastructure
+    |       +-- TrackingHandler
+    |       +-- StatusStoreAdapter
+    +-- CustomerGateway
+        +-- Program
+        +-- Infrastructure
+            +-- StreamSession
+            +-- CustomerBindingAdapter
+            +-- CustomerActorClient
+```
+
+| Logical component | 모든 언어에서 유지할 책임 | 의존 방향과 금지 경계 |
+|---|---|---|
+| `Client/Program` | 설정을 읽고 client connector와 scenario 실행 진입점을 구성한다. | server host나 private runtime type을 직접 만들지 않는다. |
+| `Client/Scenario` | customer·courier 흐름과 §9 assertion 순서를 실행한다. | server 내부 type과 owner node를 참조하지 않는다. |
+| `Shared/Configuration` | role, Mesh·Channel, timeout과 runner marker를 고정한다. | 언어별 host option을 wire contract로 노출하지 않는다. |
+| `Shared/JSON Contracts` | 표준 message 이름, field, enum과 optional 의미를 소유한다. | class·record를 공통 계약으로 복사하지 않는다. |
+| `Server/Dispatch/Application` | 후보 선택, deadline, Attempt와 terminal 상태를 결정한다. | STREAM binding이나 ActorRef를 저장하지 않는다. |
+| `Server/Dispatch/Infrastructure` | HTTP handler, RouteMesh request와 evidence adapter를 연결한다. | domain 규칙을 다시 판단하지 않는다. |
+| `Server/CourierSession/Infrastructure` | courier STREAM을 받고 현재 binding으로 Actor message와 push를 중계한다. | offer acceptance나 Attempt policy를 소유하지 않는다. |
+| `Server/CourierActorNode/Domain` | courier 상태와 offer decision의 순수 규칙을 계산한다. | Framework type, socket과 store client를 참조하지 않는다. |
+| `Server/CourierActorNode/Application` | offer를 검증하고 늦은·중복 decision을 차단한다. | transport identity를 message field로 만들지 않는다. |
+| `Server/CourierActorNode/Infrastructure` | Entry Spot, Courier Actor와 typed handler를 연결한다. | raw frame과 private runtime object를 사용하지 않는다. |
+| `Server/Tracking/Domain` | DeliveryStatus 전이와 terminal 조건을 계산한다. | customer push를 직접 전송하지 않는다. |
+| `Server/Tracking/Application` | 상태 request, evidence 기록과 CustomerGateway 전달 순서를 조정한다. | Dispatch의 candidate 선택을 대신하지 않는다. |
+| `Server/Tracking/Infrastructure` | status handler와 status store adapter를 제공한다. | event store를 client-facing 계약으로 노출하지 않는다. |
+| `Server/CustomerGateway/Infrastructure` | customer STREAM과 Customer Actor binding을 제공한다. | 배송 상태의 권위 판단을 하지 않는다. |
+
+DispatchWorker는 후보 선택, deadline, Attempt와 terminal 상태를 변경한다. CourierSession과
+CustomerGateway는 session binding과 stream packet adapter를 소유한다. CourierActor와
+CustomerActor는 Framework message를 domain operation으로 변환하고 bound push를 제출한다.
+Tracking은 status event와 evidence store를 관리한다. 모든 Application code는 기본 typed JSON
+codec 경로를 사용하며 raw frame, private runtime object와 message별 codec registry를 사용하지
+않는다.
+
+언어별 구현은 위 component를 다른 layer로 합치거나 생략하지 않는다. 여러 type을 한 파일에 둘 수
+있지만 같은 이름의 logical component를 namespace, package 또는 module에서 찾을 수 있어야 한다.
+언어별로 달라질 수 있는 것은 `Program`의 host 구성, async 문법, DI 등록과 파일 확장자뿐이며,
+message declaration·state owner·handler와 adapter의 책임은 공통 문서와 같아야 한다.
+
+## 9. Client self-check
+
+Client self-check는 response와 push payload를 직접 assert한다.
+
+1. Courier A·B가 각각 BindCourierSessionReq/Res를 완료했는지 확인한다.
+2. Customer가 SubscribeDeliveryReq/Res를 완료했는지 확인한다.
+3. delivery-success의 response ID와 push ID가 같은지 확인한다.
+4. 성공 흐름에서 Assigned, Accepted, PickedUp, Delivered의 순서와 CourierId를 확인한다.
+5. delivery-reassign에서 Assigned, Reassigned, Accepted, Delivered의 순서를 확인하고
+   Accepted 이후 courier가 B인지 확인한다.
+6. A의 늦은 CourierDecisionMsg가 도착해도 상태가 Accepted로 다시 바뀌지 않는지 확인한다.
+7. 후보가 없을 때 Failed가 terminal 상태로 한 번만 도착하는지 확인한다.
+8. response와 push에 ActorRef, NodeRid, session route가 포함되지 않는지 wire assertion으로
+   확인한다.
+9. Server evidence가 DeliveryId별 상태와 attempt sequence를 직접 검증하는지 확인한다.
+10. Push 대기는 stream connector의 public wait interface와 bounded timeout을 사용한다. sleep과
+    log line을 성공 기준으로 사용하지 않는다.
+
+## 10. Smoke 실행
+
+언어별 runner는 공통 sample 정책에 따라 실행별 resource를 만들고 정리한다.
+
+1. 실행별 Location Store와 evidence store를 준비한다.
+2. Tracking의 public readiness를 확인한다.
+3. CustomerGateway와 CourierSession을 시작하고 STREAM readiness를 확인한다.
+4. CourierActorNode 1·2를 시작하고 actor capability readiness를 확인한다.
+5. Dispatch를 시작하고 HTTP readiness를 확인한다.
+6. Client self-check가 성공·재배정 흐름을 실행한다.
+7. Server evidence와 completion marker를 확인한다.
+8. 성공·실패 모두에서 이번 실행이 만든 resource만 정리한다.
+
+고정 sleep으로 readiness를 대신하지 않는다.
 
 ```text
 topology=ready
+deliverydispatch-success=completed
 deliverydispatch-reassignment=completed
-deliverydispatch-server-evidence=completed
+deliverydispatch-evidence=completed
 deliverydispatch=completed
 ```
+
+## 11. 완료 기준
+
+- 모든 지원 언어가 같은 역할, JSON message declaration, 상태 값과 self-check 순서를 구현한다.
+- 기본 topology가 Client와 server component 및 구조적 연결만 보여 준다.
+- 정상 배차와 timeout 재배정이 각각 sequence diagram과 client assertion으로 확인된다.
+- Attempt와 deadline은 Dispatch application state로 유지되고 늦은 결정은 효과를 만들지 않는다.
+- global Actor ID와 bound session을 사용하며 owner NodeRid, ActorRef와 endpoint를 application
+  message에 넣지 않는다.
+- Framework public API만 사용하고 private runtime, raw frame, sample 전용 routing helper와
+  message별 codec 등록을 추가하지 않는다.
+- Ready owner 장애를 crash failover로 표시하지 않으며, 해당 범위는 Unavailable로 검증한다.
+- runner가 build, resource, readiness, self-check, evidence와 cleanup을 수행한다.

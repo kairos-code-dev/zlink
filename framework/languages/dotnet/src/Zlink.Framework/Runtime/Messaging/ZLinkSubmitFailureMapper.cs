@@ -23,6 +23,11 @@ internal static class ZLinkSubmitFailureMapper
             SubmitResult.NotFound => ZLinkFrameworkErrorKind.NotFound,
             SubmitResult.NotConnected => ZLinkFrameworkErrorKind.Unavailable,
             SubmitResult.NotAdmitted => ZLinkFrameworkErrorKind.Unavailable,
+            //  Terminated는 대상 object의 context가 사라졌다는 뜻이다. 이 mapper는
+            //  target object를 지정한 mesh submit에만 쓰이므로, 호출자 입장에서는
+            //  대상이 없어진 것이다. 분류를 InternalFailure로 두면 없어진 global
+            //  Spot ID로 보낸 request가 framework 내부 오류처럼 보인다.
+            SubmitResult.Terminated => ZLinkFrameworkErrorKind.NotFound,
             _ => ZLinkFrameworkErrorKind.InternalFailure
         };
         return new ZLinkFrameworkException(

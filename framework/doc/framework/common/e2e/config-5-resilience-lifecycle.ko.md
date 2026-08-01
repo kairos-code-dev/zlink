@@ -290,17 +290,24 @@ Established connection의 liveness는 Store polling과 별개다.
 
 ### Track D — 부하와 observability failure를 격리
 
-#### RL-D1 High fanout에서 ready subscribers가 같은 sequence를 받는다
+#### RL-D1 High fanout에서 subscriber를 서로 격리한다
 
 우선순위: `P2`
 
-모호한 “높은 부하에서 안정적” 대신 subscriber 수와 event sequence를 고정한다.
+모호한 “높은 부하에서 안정적” 대신 subscriber 수와 application marker를 고정한다. Classic fanout의
+subscriber 간 순서와 lossless delivery는 이 scenario의 계약이 아니다.
 
-**검증 질문:** Ready subscriber 20개가 sequence 1~500을 중복 없이 같은 순서로 받는가.
+**검증 질문:** Ready subscriber 20개가 같은 marker를 독립적으로 관찰하고 한 subscriber의 처리가 다른
+subscriber를 막지 않는가.
 
-- 시작 조건: 20 subscribers가 publisher를 ready로 보고 있다.
-- 절차: Publisher가 500 events를 bounded rate로 보낸다.
-- 검증: 각 subscriber evidence는 1~500을 한 번씩 같은 순서로 포함한다.
+- 시작 조건: 20 subscribers가 publisher를 ready로 보고 있다. 한 subscriber의 `fanout-start` handler만
+  application gate에서 대기시키고 나머지 gate는 열어 둔다. 시작 marker는 작게 유지하며 network block은
+  넣지 않는다.
+- 절차: Publisher가 `fanout-start` marker를 보낸 뒤 선택한 subscriber의 gate가 대기 중인 것을 확인하고
+  bounded rate로 부하 event를 보낸다. 다른 subscribers의 marker evidence를 확인한 뒤 gate를 연다.
+- 검증: 각 subscriber evidence가 `fanout-start` marker를 기록하고, 한 subscriber의 처리 지연이 다른
+  subscriber의 public ready 상태나 marker 처리를 막지 않는다. Event sequence의 완전성·순서와 drop 수는
+  판정하지 않는다.
 - 세부 동작: [Framework API §11](../spec/06-framework-api.ko.md)을 검증한다.
 
 #### RL-D2 Observer failure를 messaging에서 격리한다
@@ -524,7 +531,8 @@ Target restore가 진행 중이면 incoming messages를 application handler에 �
 - 절차: Relocate를 시작하여 restore-held를 확인하고 H1·H2를 같은 logical IDs로 보낸다. Gate를 해제한다.
 - 검증: Target handler evidence는 `Q1,Q2,H1,H2` 순서이고 각 marker가 한 번만 나타난다. Restore-held
   구간에는 application handler evidence가 없다.
-- 세부 동작: [Spot actor §8](../spec/15-spot-actor.ko.md)을 검증한다.
+- 세부 동작: [Location runtime §8](../spec/21-location-runtime.ko.md)과
+  [Graceful drain과 handoff §8](../spec/28-graceful-drain-handoff.ko.md)을 검증한다.
 
 #### RL-F6 Runtime mutable update와 invalid mutation을 구분한다
 
@@ -558,22 +566,24 @@ Relocation 전에 accepted된 request의 reply가 connection loss와 겹쳐도 c
   application handler에서 중복 실행되지 않고 follow-up request는 current target에서 성공한다.
 - 세부 동작: [Spot actor §8](../spec/15-spot-actor.ko.md)을 검증한다.
 
-#### RL-F8 Manual-source accepted work를 precommit에서 끝낸다
+#### RL-F8 Manual topology에서는 Host Relocate를 시작하지 않는다
 
 우선순위: `P0`
 
-Manual connection의 accepted work는 durable owner fence가 없으므로 relocation capture 전에 bounded하게
-끝나야 한다.
+Manual RouteMesh peer, ClientServer client endpoint 또는 manual fanout endpoint가 등록된 Host는
+replacement readiness를 자동으로 확인할 수 없으므로 Host Relocate의 preflight에서 차단한다. 이 경우
+source의 accepted work와 Host admission을 바꾸지 않는다.
 
-**검증 질문:** Manual-source request가 deadline 안에 끝나면 Relocate가 진행하고 아니면 source를
-복원하는가.
+**검증 질문:** Manual-only topology의 Relocate가 `ManualTopologyUnsupported`로 끝나고 source를 유지하는가.
 
-- 시작 조건: Fixed manual peer가 target object에 slow request와 send를 accepted시킨다.
-- 절차: Success variant는 gates를 deadline 전에 해제하고 failure variant는 deadline 뒤까지 유지한 채 Host
-  Relocate를 호출한다.
-- 검증: Success variant는 requests terminal 뒤 relocation이 완료된다. Failure variant는
-  `Blocked/DeadlineExceeded`이고 source current location과 admission이 유지된다.
-- 세부 동작: [Host maintenance §6](../spec/28-graceful-drain-handoff.ko.md)을 검증한다.
+- 시작 조건: Manual RouteMesh 또는 ClientServer endpoint만 가진 fresh Host에 stateful source object와
+  application gate에서 대기하는 accepted request를 준비한다.
+- 절차: Public Host Relocate를 호출하고 terminal을 확인한다. 이어서 request gate를 해제하고 source object의
+  follow-up request를 보낸다.
+- 검증: Relocate는 `Blocked/ManualTopologyUnsupported`이고 Host는 `Serving`을 유지한다. Accepted request와
+  follow-up request는 source에서 한 번씩 처리되며 target restore·factory evidence는 없다.
+- 세부 동작: [Host maintenance §4](../spec/28-graceful-drain-handoff.ko.md)와
+  [§10](../spec/28-graceful-drain-handoff.ko.md)을 검증한다.
 
 #### RL-F9 Preflight timeout과 post-seal deadline을 구분한다
 

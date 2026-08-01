@@ -456,6 +456,8 @@ internal sealed class ZLinkActorRemoteJoiner(
         {
             ZLinkFrameworkDebugLog.SpotDiscovery(
                 $"source_rejected site={1} token_empty={{string.IsNullOrEmpty(admissionReply.ReservationToken)}}");
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                "actor_join_rejected site=remote_admission");
             return new ZLinkActorJoinResult.Rejected(admissionReplyMessage);
         }
         if (string.IsNullOrEmpty(admissionReply.ReservationToken)
@@ -732,6 +734,8 @@ internal sealed class ZLinkActorRemoteJoiner(
                         handoffId,
                         CancellationToken.None)
                     .ConfigureAwait(false);
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                "actor_join_rejected site=remote_admission");
             return new ZLinkActorJoinResult.Rejected(admissionReplyMessage);
         }
 
@@ -1495,7 +1499,7 @@ internal sealed class ZLinkActorRemoteJoiner(
             ? new ZLinkActorJoinResult.Accepted(
                 joinResult.Actor.ToNative(node.MeshStatus().MeshName),
                 reply)
-            : new ZLinkActorJoinResult.Rejected(reply);
+            : RejectedWithTrace(reply);
     }
 
     private ZLinkMessage DecodeNativeJoinReply(
@@ -1524,6 +1528,14 @@ internal sealed class ZLinkActorRemoteJoiner(
         {
             ZLinkMessageParts.DisposeAll(replyParts);
         }
+    }
+
+    private static ZLinkActorJoinResult.Rejected RejectedWithTrace(
+        ZLinkMessage? reply)
+    {
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            "actor_join_rejected site=remote_joiner_tail");
+        return new ZLinkActorJoinResult.Rejected(reply);
     }
 }
 

@@ -184,7 +184,13 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
             reply,
             registration.Codecs);
         if (!reply.Accepted)
+        {
+            //  Application 정책이 거절한 것인지, framework가 다른 이유로 만든
+            //  Accepted=false인지 밖에서 구분할 수 없다.
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"entry_join_rejected path=remote actor={actor.Context.ActorId}");
             return new ZLinkActorJoinResult.Rejected(replyMessage);
+        }
 
         var targetRef = ZLinkActorEntrySpotRoutePackets.ToActorRef(reply);
         actorState.BindNativeActorRef(targetRef);
@@ -268,6 +274,9 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                         targetRef,
                         "local-entry-spot-rejection")
                     .ConfigureAwait(false);
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"entry_join_rejected path=local actor={actorState.ActorId} "
+                + $"created_here={createdHere}");
             return new ZLinkActorJoinResult.Rejected(reply);
         }
 

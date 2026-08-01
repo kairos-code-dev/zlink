@@ -43,11 +43,11 @@ Framework 내부 waiter나 queue length를 노출하지 않는다.
 
 ## 3. 공통 backpressure와 판정 방법
 
-Backpressure scenario는 Framework가 공개한 Application HWM과 pending admission capacity를 작은 양수로
-설정한다. Handler는 application signal에서 대기하여 이미 수락한 operation을 유지한다. Source endpoint가
-시작한 public awaitable이 terminal이 아닌 상태인지를 bounded polling하여 pending을 확인한다. 필요한
-pending 상태가 common setup timeout 안에 만들어지지 않으면 scenario setup 실패로 끝내며 payload 크기,
-socket buffer와 반복 횟수를 실행 중에 늘리지 않는다.
+Backpressure scenario는 public `ApplicationHwmBytes`, deterministic payload 크기와 application gate로
+수신 중단 조건을 만든다. 내부 waiter나 queue limit은 설정하거나 읽지 않는다. Source endpoint가 시작한
+public awaitable이 terminal이 아닌 상태인지를 bounded polling하여 pending을 확인한다. 필요한 pending 상태가
+common setup timeout 안에 만들어지지 않으면 scenario setup 실패로 끝내며 payload 크기, socket buffer와 반복
+횟수를 실행 중에 늘리지 않는다.
 
 Send terminal과 remote 실행은 별도 evidence로 판정한다. 정상 send terminal을 먼저 확인하고 handler
 completion은 application gate를 연 뒤 확인한다. Deadline 또는 cancellation으로 끝난 operation은 gate와
@@ -76,38 +76,41 @@ Queue에 capacity가 있으면 one-way call은 payload 없는 정상 terminal을
 - 세부 동작: [오류 모델 §4](../spec/32-framework-error-model.ko.md)의 정상 send 완료를
   검증한다.
 
-#### SA-E2E-02 Capacity가 생기면 pending send를 수락한다
+#### SA-E2E-02 HWM이 회복되면 pending send를 수락한다
 
 우선순위: `P0`
 
-Admission queue가 잠시 가득 차도 deadline 전에 capacity가 생기면 Application이 같은 operation을 다시
-호출하지 않고 원래 awaitable이 완료되어야 한다.
+Target의 application handler가 대기해 HWM에 도달해도 deadline 전에 handler가 끝나면 Application이 같은
+operation을 다시 호출하지 않고 원래 awaitable이 완료되어야 한다.
 
-**검증 질문:** Pending send가 capacity 회복 뒤 정상 완료되고 handler에서 최대 한 번 처리되는가.
+**검증 질문:** HWM 회복 뒤 pending send가 정상 완료되고 handler에서 최대 한 번 처리되는가.
 
-- 시작 조건: Public HWM과 pending capacity를 작게 설정하고 handler gate로 blocker operation을 유지한다.
-- 절차: Source endpoint가 다음 send를 시작하고 awaitable이 pending임을 확인한다. Handler gate를 열어
-  capacity를 만든다.
+- 시작 조건: Public HWM을 작은 값으로 설정하고 HWM보다 큰 deterministic payload를 처리하는 blocker
+  handler를 application gate에서 유지한다. 먼저 blocker payload를 보내 handler 진입을 확인한 뒤 public
+  status의 Application receive paused가 `true`인 것을 확인한다.
+- 절차: Source endpoint가 HWM보다 큰 다음 payload를 send하고 awaitable이 pending임을 확인한다. Blocker
+  handler gate를 열어 HWM을 회복한다.
 - 검증: 원래 send가 결과 payload 없이 정상 완료하고 marker는 handler evidence에 한 번만 나타난다.
   Application은 send를 다시 호출하지 않는다.
 - 세부 동작: [오류 모델 §4](../spec/32-framework-error-model.ko.md)의 send-ready 대기를
   검증한다.
 
-#### SA-E2E-03 Pending admission capacity를 bounded하게 유지한다
+#### SA-E2E-03 Pending send를 bounded terminal로 끝낸다
 
 우선순위: `P0`
 
-Queue와 pending waiter가 모두 가득 찬 경우에도 Framework가 operation을 무제한 보관해서는 안 된다. 각
-call은 자기 deadline 안에서 terminal 결과를 가져야 한다.
+HWM으로 remote application 수신이 중단된 동안에도 유한한 send 집합은 각자의 deadline 안에서 terminal
+결과를 가져야 한다. 이 scenario는 내부 pending waiter의 크기를 검증하지 않는다.
 
-**검증 질문:** Pending capacity를 넘긴 sends가 무기한 남지 않고 success 또는 `DeadlineExceeded`로 한 번씩
-끝나는가.
+**검증 질문:** HWM으로 pending된 sends가 무기한 남지 않고 success 또는 `DeadlineExceeded`로 한 번씩 끝나는가.
 
-- 시작 조건: HWM 1, pending capacity 1과 blocker handler를 사용한다.
-- 절차: 서로 다른 operation ID의 send를 capacity보다 많이 시작하고 일부는 deadline 전 gate를 열어
-  수락하며 나머지는 gate를 닫은 채 deadline까지 둔다.
-- 검증: 모든 awaitable이 bounded 시간 안에 terminal 하나를 가진다. 성공 marker는 최대 한 번이고 timeout
-  marker는 handler evidence에 없다.
+- 시작 조건: 서로 다른 target process 두 개를 준비하고 각 target에 public HWM, HWM보다 큰 deterministic
+  payload와 blocker handler gate를 설정한다. 각 target에 blocker payload를 먼저 보내 handler 진입과
+  Application receive paused 상태를 확인한다. 두 target의 send deadline은 짧고 유한하게 정한다.
+- 절차: 각 target으로 서로 다른 operation ID의 send를 시작한다. 첫 target의 gate는 deadline 전에 열고
+  두 번째 target의 gate는 deadline까지 유지한다.
+- 검증: 모든 awaitable이 bounded 시간 안에 terminal 하나를 가진다. 첫 target의 marker는 최대 한 번이고
+  두 번째 target의 operation은 `DeadlineExceeded`로 끝나며 handler evidence에 없다.
 - 세부 동작: [오류 모델 §4](../spec/32-framework-error-model.ko.md)를 검증한다.
 
 #### SA-E2E-04 Deadline 뒤 늦은 capacity가 operation을 되살리지 않는다
@@ -201,11 +204,13 @@ RouteMesh Channel send도 queue capacity가 없으면 family send deadline까지
 
 **검증 질문:** Channel send가 capacity 회복 전에는 pending이고 deadline 전 회복 시 성공하는가.
 
-- 시작 조건: 유일한 Channel target의 HWM과 handler gate로 pending send를 만든다.
-- 절차: Pending을 확인한 뒤 deadline 전에 gate를 연다. 별도 fresh operation은 gate를 deadline까지
-  유지한다.
-- 검증: 첫 send는 정상 완료하고 handler가 한 번 실행된다. 두 번째 send는 `DeadlineExceeded`이고 handler
-  marker가 없다.
+- 시작 조건: 성공 variant와 timeout variant를 서로 다른 ChannelName과 target process로 구성한다. 각
+  target에 public HWM과 handler gate를 설정하고 blocker payload를 먼저 보내 pending과 Application receive
+  paused 상태를 확인한다.
+- 절차: 성공 target으로 send를 시작해 deadline 전에 gate를 열고, timeout target으로 별도 operation을
+  시작해 gate를 deadline까지 유지한다.
+- 검증: 성공 target의 send는 정상 완료하고 handler가 한 번 실행된다. Timeout target의 send는
+  `DeadlineExceeded`이고 handler marker가 없다.
 - 세부 동작: [Channel messaging §7](../spec/08-channel-messaging.ko.md)을 검증한다.
 
 #### SA-E2E-10 ClientServer Channel send deadline을 적용한다
@@ -216,8 +221,11 @@ ClientServer도 RouteMesh와 같은 public send terminal을 사용한다.
 
 **검증 질문:** ClientServer send의 capacity 회복과 deadline 결과가 RouteMesh Channel과 같은가.
 
-- 시작 조건: ClientServer target 하나를 handler gate와 작은 public HWM으로 구성한다.
-- 절차: SA-E2E-09의 success와 timeout variant를 ClientServer send로 반복한다.
+- 시작 조건: 성공 variant와 timeout variant를 서로 다른 ClientServer ChannelName과 target process로 구성하고
+  각 target에 handler gate와 작은 public HWM을 설정한다. 각 target에 blocker payload를 먼저 보내 handler
+  진입과 Application receive paused 상태를 확인한다.
+- 절차: 성공 target의 gate를 deadline 전에 열고 timeout target의 gate는 deadline까지 유지한 채 각 target에
+  별도 send를 시작한다.
 - 검증: Success는 payload 없는 terminal과 handler 1회, timeout은 `DeadlineExceeded`와 handler 0회다.
 - 세부 동작: [ClientServer Channel §6](../spec/09-client-server-channel.ko.md)를
   검증한다.
@@ -295,7 +303,9 @@ Session owner와 Actor owner가 local인지 remote인지에 따라 one-way termi
 **검증 질문:** Local·remote bound Session send와 Actor relay가 같은 deadline과 non-replay 규칙을
 사용하는가.
 
-- 시작 조건: Local binding과 remote binding을 fresh Session으로 각각 구성한다.
+- 시작 조건: Local binding과 remote binding을 fresh Session으로 각각 구성한다. Pending 변형은 각 Session을
+  별도 gateway process에 배치하여 host 전체에 적용되는 public HWM 경계를 공유하지 않게 하고, 해당 gateway의
+  HWM과 application gate로 capacity 대기를 만든다.
 - 절차: 네 조합에서 정상 send를 한 번 실행하고, 별도 pending send는 deadline까지 capacity를 열지 않는다.
 - 검증: 정상 sends는 결과 payload 없이 완료하고 target evidence가 한 번씩 나타난다. Pending sends는
   `DeadlineExceeded`이며 이후 capacity 복구 뒤 replay되지 않는다.
@@ -312,10 +322,12 @@ send는 나중에 client에게 나타나면 안 된다.
 **검증 질문:** Stream client가 성공한 sequence만 제출 순서로 받는가.
 
 - 시작 조건: Public stream connector가 server Session에 연결되어 있고 server send HWM을 작게 설정한다.
-- 절차: Sequence 1~10을 보내며 일부 pending send는 capacity를 열어 성공시키고 별도 marker는 deadline으로
-  실패시킨다.
-- 검증: Client가 받은 성공 sequence는 source의 successful terminal 순서와 같고 중복이 없다. Timeout
-  marker는 client에게 도착하지 않는다.
+  Server send gate는 닫아 두고 성공 marker에는 긴 deadline, `timeout` marker에는 더 짧은 deadline을
+  설정한다.
+- 절차: `1`, `timeout`, `2`, `3` 순서로 server send를 시작한다. `timeout` operation이 deadline으로
+  끝난 것을 확인한 뒤 긴 deadline이 끝나기 전에 gate를 연다.
+- 검증: Client가 받은 성공 sequence `1,2,3`은 source의 successful terminal 순서와 같고 중복이 없다.
+  `timeout` marker는 client에게 도착하지 않는다.
 - 세부 동작: [Stream session §5](../spec/19-stream-session.ko.md)를 검증한다.
 
 #### SA-E2E-17 Stream reply token은 한 번만 사용한다
@@ -394,8 +406,8 @@ Application이 send terminal을 remote 업무 완료로 해석하면 실제 hand
 - 모든 절차는 public one-way call, public Host·route status와 역할 server의 application evidence만 사용한다.
 - Transport attempt, send-ready signal, private waiter, snapshot pass, socket buffer와 raw frame은 E2E 통과
   조건이 아니다.
-- Pending 상태는 public awaitable의 미완료 상태와 공개 HWM 설정으로 만들며 setup timeout 안에 재현되지
-  않으면 실패한다. Runtime 값을 바꾸어 재시도하지 않는다.
+- Pending 상태는 public awaitable의 미완료 상태와 공개 HWM·payload·application gate 조합으로 만들며 setup
+  timeout 안에 재현되지 않으면 실패한다. Runtime 값을 바꾸어 재시도하지 않는다.
 - 정상 terminal, timeout, cancellation과 Shutdown 결과는 operation마다 하나만 발생한다.
 - Terminal 뒤 capacity·route 복구가 기존 operation을 자동 재제출하지 않는다.
 - Public API 형태와 internal resource cleanup은 언어별 interface·contract test가 별도로 검증한다.

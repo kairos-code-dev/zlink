@@ -73,13 +73,45 @@ internal sealed class ZLinkSpotNodeCatalog(
         }
     }
 
-    internal async ValueTask<bool> TryDrainAsync(CancellationToken cancellationToken)
+    internal async ValueTask<bool> TryDrainAsync(
+        bool hostShutdown,
+        CancellationToken cancellationToken)
     {
         var activations = SnapshotActivations();
         foreach (var activation in activations)
-            await CloseAsync(activation.SpotId, cancellationToken).ConfigureAwait(false);
+        {
+            //  Close의 반환값을 버리면 "닫으라고 했는데 안 닫혔다"를 구분할 수 없다.
+            //  Spec 28 §178은 Shutdown이 "이미 수락한 work와 resource를 정리한다"고
+            //  정하고, config-11 OBS-C4는 "Spot에 closing callback을 알린 뒤"를
+            //  요구한다. Member actor가 남았다고 close를 거부하면 그 callback조차
+            //  불리지 않고 drain 루프가 deadline만 태운다.
+            var closed = await CloseCoreAsync(
+                    activation.SpotId,
+                    null,
+                    releaseLocation: true,
+                    //  Shutdown만 member를 가진 채 닫는다. Relocate 배수는 actor를
+                    //  옮긴 뒤 닫아야 하므로 가드를 유지해야 한다.
+                    requireNoActors: !hostShutdown,
+                    hostShutdown
+                        ? ZLinkSpotCloseReason.HostShutdown
+                        : ZLinkSpotCloseReason.ExplicitClose,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!closed)
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"spot_close_refused spot={activation.SpotId}");
+        }
 
-        lock (_gate) return _spots.Count == 0;
+        lock (_gate)
+        {
+            //  Drain 루프는 이 bool만 보고 다시 돈다. 안 닫히는 spot이 무엇인지
+            //  남기지 않으면 deadline 소진의 이유를 밖에서 알 수 없다.
+            if (_spots.Count != 0)
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"spot_drain_pending count={_spots.Count} "
+                    + $"spots={string.Join(",", _spots.Keys)}");
+            return _spots.Count == 0;
+        }
     }
 
     internal ValueTask<ZLinkFrameworkRelocationReason?> PreflightRetireAsync(
@@ -1069,6 +1101,8 @@ internal sealed class ZLinkSpotNodeCatalog(
                 spotId,
                 deadline,
                 releaseLocation: true,
+                requireNoActors: true,
+                ZLinkSpotCloseReason.ExplicitClose,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -1081,12 +1115,16 @@ internal sealed class ZLinkSpotNodeCatalog(
             spotId,
             deadline,
             releaseLocation: false,
+            requireNoActors: true,
+            ZLinkSpotCloseReason.ExplicitClose,
             cancellationToken);
 
     private async ValueTask<bool> CloseCoreAsync(
         string spotId,
         DateTimeOffset? deadline,
         bool releaseLocation,
+        bool requireNoActors,
+        ZLinkSpotCloseReason reason,
         CancellationToken cancellationToken)
     {
         ZLinkSpotActivation? activation;
@@ -1123,9 +1161,10 @@ internal sealed class ZLinkSpotNodeCatalog(
                                 spotId,
                                 activation!,
                                 transaction!,
-                                ZLinkSpotCloseReason.ExplicitClose,
+                                reason,
                                 deadline,
-                                releaseLocation)
+                                releaseLocation,
+                                requireNoActors)
                             .ConfigureAwait(false);
                     }))
             {
@@ -1142,9 +1181,10 @@ internal sealed class ZLinkSpotNodeCatalog(
                 spotId,
                 activation!,
                 transaction!,
-                ZLinkSpotCloseReason.ExplicitClose,
+                reason,
                 deadline,
-                releaseLocation)
+                releaseLocation,
+                requireNoActors)
             .ConfigureAwait(false);
     }
 
@@ -1218,13 +1258,15 @@ internal sealed class ZLinkSpotNodeCatalog(
         TaskCompletionSource<bool> transaction,
         ZLinkSpotCloseReason reason,
         DateTimeOffset? deadline,
-        bool releaseLocation = true)
+        bool releaseLocation = true,
+        bool requireNoActors = true)
     {
         try
         {
             if (!await activation.TryCloseIfNoActorsAsync(
                     reason,
                     deadline ?? DateTimeOffset.UtcNow + activation.DefaultRequestTimeout,
+                    requireNoActors,
                     CancellationToken.None)
                     .ConfigureAwait(false))
             {

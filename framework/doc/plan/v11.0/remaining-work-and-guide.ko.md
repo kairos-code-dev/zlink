@@ -175,6 +175,14 @@ select-one 후보에서 제외하는 것이다. 전파 구간의 경합까지 �
 **TA-A4.** Actor destroy 뒤 같은 ID 호출이 `Unavailable`로 끝난다. Config 9는 `NotFound`로 분류할
 것을 요구하고, spec 06 결과표도 authority가 없으면 `NotFound`다.
 
+Client의 매핑 자체는 정확하다. `MapSubmitException`은 `NotConnected`를 `Unavailable`로,
+`NotFound`를 `NotFound`로 옮긴다. 따라서 submit이 `NotConnected`를 돌려준다는 뜻이고, 이는
+"actor가 없다"가 아니라 "경로가 연결되어 있지 않다"이다.
+
+다음은 destroy 뒤 caller가 그 actor를 어떤 target으로 해석하는지다. Authority가 사라졌다면
+resolve 단계에서 `NotFound`로 끝나야 하는데 submit까지 갔다는 것은 아직 target을 찾았다는 뜻이다.
+`eligible_target_check`와 resolve 경로를 그 시점에 찍으면 갈린다.
+
 **SubmitAdmission — 두 원인이 여전히 겹쳐 있고, 각각 단독으로는 readiness를 막는다.**
 
 조합으로 확인했다.

@@ -216,9 +216,15 @@ pipeline에 도달하지 못한다.
    `UnsealCompletedSessionRouteAsync`는 응답이 `Acknowledged=false`면 `InvalidOperation`으로 바로
    던진다. Timeout이 온다는 것은 그 지점까지 가지 못하고 `RequestSessionRouteUnsealAsync`의 재시도
    loop이 deadline을 다 쓴다는 뜻이며, 그 loop은 `Unavailable`·`RetryAfterBackoff`에만 재시도한다.
-   따라서 session node가 binding 부재를 `Unavailable`로 답하고 있다. 고칠 자리는 두 곳 중 하나다.
-   Session node가 그 경우를 재시도 대상이 아닌 종료로 답하게 하거나, 호출 측이 commit 성공 뒤의
-   부재를 정상으로 받아들이게 하는 것이다. 둘을 혼동하면 진짜 일시적 오류까지 삼키게 된다.
+   그런데 session node 쪽 `UnsealCommittedRoute`는 binding이 없으면 `Unavailable`이 아니라 `false`를
+   반환한다. 즉 handler까지 갔다면 `Acknowledged=false`가 돌아오고 호출 측이 즉시 `InvalidOperation`을
+   던졌을 것이다. Timeout이 온다는 것은 **handler의 판정에 도달하기 전에** deadline이 소진된다는
+   뜻이다. 남은 후보는 unseal 요청 자체가 session node에 닿지 못하는 것이다.
+
+   그러므로 다음 확인은 unseal handler 진입을 찍는 것이다. Commit handler에는 `route_commit_received`를
+   넣었지만 unseal handler에는 아직 없다. 그 한 줄이 "닿지 않는다"와 "닿았는데 거부한다"를 가른다.
+   Commit 때 같은 착각을 한 적이 있으므로(없는 trace를 세어 "도달 0"으로 판정했다) 이번에는 먼저
+   표시를 넣고 세야 한다.
 2. **Disconnect 통지를 application frame FIFO 뒤에 세우지 않는다.** 이것은 lifecycle 통지이지
    application 순서를 지켜야 하는 message가 아니다. Spec 23 §10.2가 요구하는 FIFO의 대상인지
    먼저 판정할 것.

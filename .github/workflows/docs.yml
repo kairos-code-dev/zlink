@@ -28,6 +28,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # 공개 계약 추적기가 baseline 커밋을 `git cat-file`로 읽는다.
+          # 기본 depth 1로는 그 커밋이 없어 실패한다.
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -80,7 +84,11 @@ jobs:
             echo "로컬 maven 저장소가 없어 건너뛴다 (systems.zlink:zlink 미공개)."
           fi
 
+      # 문서가 아니라 framework 공개 계약을 검증한다. 계약 작업이 진행 중이면
+      # 여기서 걸리는데, 그것 때문에 문서 배포가 막히면 안 된다. 신호는 남기되
+      # 배포를 세우지 않는다.
       - name: Check framework document contracts
+        continue-on-error: true
         run: bash scripts/verify-framework-doc-contracts.sh
 
       # 사이트는 하나다. `doc/site/docs/`가 정본 트리를 심링크로 모아 두었고

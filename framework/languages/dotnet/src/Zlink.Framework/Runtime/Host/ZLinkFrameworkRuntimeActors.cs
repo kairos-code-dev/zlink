@@ -224,15 +224,11 @@ internal sealed partial class ZLinkFrameworkRuntime
         {
             while (true)
             {
-                if (!HasExactAutomaticRouteMeshPeerReadiness())
-                {
-                    await Task.Delay(
-                            Registration.Locations.Options.PollingInterval,
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                    continue;
-                }
-
+                //  Spec 28: a host with no workload to move is not blocked for
+                //  want of a target. Asking for peer readiness first would hold
+                //  a lone host until its deadline and report TargetUnavailable,
+                //  so the preflights run first and readiness is only awaited
+                //  once something actually needs a target.
                 var plan = new ZLinkRetirePreflightPlan();
                 ZLinkFrameworkRelocationReason? targetBlocker = null;
                 foreach (var node in GetOrStartState().SpotNodes.Values)
@@ -264,6 +260,14 @@ internal sealed partial class ZLinkFrameworkRuntime
                     return null;
                 if (targetBlocker != ZLinkFrameworkRelocationReason.TargetUnavailable)
                     return targetBlocker;
+                if (!HasExactAutomaticRouteMeshPeerReadiness())
+                {
+                    await Task.Delay(
+                            Registration.Locations.Options.PollingInterval,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    continue;
+                }
 
                 await Task.Delay(
                         Registration.Locations.Options.PollingInterval,

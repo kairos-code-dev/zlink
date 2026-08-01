@@ -183,11 +183,14 @@ internal static class ProviderEndpoints
                 : new ZLinkFrameworkTerminationResult(
                     ZLinkFrameworkTerminationOutcome.ForceStopped,
                     ZLinkFrameworkTerminationReason.TeardownFailed);
-            return Results.Ok(new DrainResultRes(
-                result.Outcome.ToString(),
-                result.Reason == ZLinkFrameworkTerminationReason.None
+            //  A blocked relocation collapses into one reason enum, which does
+            //  not say what blocked it; carry the relocation reason through.
+            var reason = relocation.Outcome == ZLinkFrameworkRelocationOutcome.Relocated
+                ? result.Reason == ZLinkFrameworkTerminationReason.None
                     ? null
-                    : result.Reason.ToString()));
+                    : result.Reason.ToString()
+                : $"{result.Reason}:{relocation.Reason}";
+            return Results.Ok(new DrainResultRes(result.Outcome.ToString(), reason));
         });
         app.MapPost("/evidence/clear", (EvidenceStore evidence) =>
         {

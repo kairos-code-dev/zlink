@@ -1,5 +1,9 @@
 # RouteMesh 11.0.0 blocked issue log
 
+> **2026-08-01부터 이 문서는 진행 기준이 아니다.** 남은 작업과 진행 가이드는
+> [remaining-work-and-guide.ko.md](remaining-work-and-guide.ko.md)가 소유한다. 이 log는 blocker의
+> 원인과 수정 이력을 담은 지나온 근거로 보존한다.
+
 이 문서는 [통합 execution ledger](route-mesh-11.0.0-execution-ledger.ko.md) §2.2의 자율 실행 중 발생한
 blocked issue와 그 해결 내용을 기록한다. 진행 상태와 완료 증거의 단일 기준은 계속 ledger의 담당 행이며,
 이 문서는 blocker의 원인과 수정 이력만 남긴다.

@@ -6,6 +6,10 @@
 Node.js Framework runtime, stateful maintenance, socket liveness 정책, Core·bindings 제거, package와 smoke를
 하나의 선행 조건 구조로 관리한다.
 
+> **2026-08-01부터 이 문서는 진행 기준이 아니다.** 남은 작업과 진행 가이드는
+> [remaining-work-and-guide.ko.md](remaining-work-and-guide.ko.md)가 소유한다. 이 ledger는 지나온
+> 근거로 보존하며, 과거 판단의 출처를 확인할 때만 읽는다.
+
 작업 상태, 담당 lane, 기준 revision, 이후 변경 목록, artifact hash, test와 review 증거는 이 ledger의 담당
 행에만 기록한다. 다른 문서에 진행표나 완료 증거를 만들지 않는다. 예외는 §2.2가 정의한
 [blocked issue log](blocked-issue-log.md) 하나이며, 이 log는 진행 상태가 아니라 blocker의 원인과 수정

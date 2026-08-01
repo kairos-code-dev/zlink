@@ -74,19 +74,25 @@ Flow listener가 없는 스위트가 아직 있다. 조사 전에 해당 host에
 
 `PubSub`와 `RegistrationCodec`는 전량 통과한다.
 
-| 스위트 | 통과 | 막힌 지점 | 성격 |
+| 스위트 | 진행 | 막힌 지점 | 성격 |
 |---|---|---|---|
-| AutomaticTurnDispatch | 19 | `ExecutionTurnScenario`에서 play-b node request timeout | 미조사 |
-| SpotActorTransfer | 7 | ST-C3 transfer-out 실패가 accepted를 반환 | 미조사 |
-| SpotService | 7 | SM-B6 cross-node join이 seal 단계에서 fenced | 원인 확인됨 |
-| ToActorMessaging | — | TA-A4 destroy 뒤 요청이 `NotFound` 대신 `Unavailable` | 계약 대조 필요 |
-| ObservabilityOps | 8 | OBS-C1 draining marker evidence | 미조사 |
-| RuntimeMonitoring | 2 | HTTP 500 | 미조사 |
-| ResilienceLifecycle | 0 | RL-A1 재시작 뒤 같은 endpoint·새 owner generation이 안 나온다 | 미조사 |
-| LocationMessaging | 0 | RM-A4 v1이 terminal `Stopped`에 도달하지 않는다 | 미조사 |
-| StoreFailure | 0 | SF-B1 store 정지 중 요청이 408 | fail-static 위반 |
-| SubmitAdmission | 0 | readiness에서 peer를 모른다 | 원인 좁혀짐 |
-| ChannelEgressRouting | 부분 | 선택자 4개 미구현 (CH-E2E-03, CH-E2E-08, CH-REG-02, CH-REG-05) | 구현 필요 |
+| PubSub | 7 / 7 | — | 완료 |
+| RegistrationCodec | 11 / 11 | — | 완료 |
+| AutomaticTurnDispatch | 19 / 27 | TD-E3 동시 반대 join 중 하나가 `accepted=False`로 거부 | 조사 중 |
+| SpotActorTransfer | 7 / 36 | ST-C3 transfer-out 실패가 accepted를 반환 | 미조사 |
+| SpotService | 7 / 58 | SM-B6 cross-node join이 seal 단계에서 fenced | 원인 확인됨 |
+| ObservabilityOps | 8 / 21 | OBS-C1 draining marker evidence | 미조사 |
+| RuntimeMonitoring | 2 / 8 | HTTP 500 | 미조사 |
+| ToActorMessaging | 3 / 7 | TA-A4 destroy 뒤 요청이 `NotFound` 대신 `Unavailable` | 계약 대조 필요 |
+| ResilienceLifecycle | 0 / 20 | RL-A1 재시작 뒤 같은 endpoint·새 owner generation이 안 나온다 | 미조사 |
+| LocationMessaging | 0 / 15 | RM-A4 v1이 terminal `Stopped`에 도달하지 않는다 | 미조사 |
+| StoreFailure | 0 / 10 | SF-B1 store 정지 중 요청이 408 | fail-static 위반 |
+| SubmitAdmission | 0 / 8 | readiness에서 peer를 모른다 | 원인 좁혀짐 |
+| ChannelEgressRouting | 부분 / 6 | 선택자 4개 미구현 (CH-E2E-03, CH-E2E-08, CH-REG-02, CH-REG-05) | 구현 필요 |
+
+합계는 시나리오 **64 / 234** 통과다. 통과 수는 시나리오 파일 수 기준이며, feature map의 요구
+ID 수는 스위트에 따라 더 많다(예: `StoreFailure` 28, `ResilienceLifecycle` 39). 즉 시나리오가
+전부 통과해도 feature map 기준으로는 추가 검증이 남는 스위트가 있다.
 
 단위 테스트는 1375/1376이다. 남은 1건
 (`LocationRuntimeQueryTests.Status_Reports_The_Most_Recent_Success_Across_Reads_And_Lease_Renewal`)은

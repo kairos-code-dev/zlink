@@ -175,9 +175,28 @@ select-one 후보에서 제외하는 것이다. 전파 구간의 경합까지 �
 **TA-A4.** Actor destroy 뒤 같은 ID 호출이 `Unavailable`로 끝난다. Config 9는 `NotFound`로 분류할
 것을 요구하고, spec 06 결과표도 authority가 없으면 `NotFound`다.
 
-**SubmitAdmission.** `ReceiverGate`가 transport pair 두 연결을 모두 나르도록 고쳤으나 readiness는
-아직 통과하지 않는다. 남은 용의자는 caller router socket의 `SendHighWaterMark = 1`이 application
-lane에 그대로 남아 있는 것이다.
+**SubmitAdmission — 두 원인이 여전히 겹쳐 있고, 각각 단독으로는 readiness를 막는다.**
+
+조합으로 확인했다.
+
+| 구성 | 결과 |
+|---|---|
+| gate + HWM 1 (원래) | readiness 실패 |
+| gate 우회 + HWM 1 | readiness 실패 |
+| gate + HWM 1000 | readiness 실패 |
+| **gate 우회 + HWM 1000** | **readiness 통과**, client가 다음 단계로 진행 |
+
+즉 `ReceiverGate`의 accept loop 수정과 core의 completion pair budget 분리는 **필요했지만 충분하지
+않다.** Handshake·admission 경로가 아직 application lane과 좁은 gate 양쪽에 의존한다.
+
+여기서 나는 이 문서가 이미 경고한 함정을 그대로 반복했다. 두 원인이 겹쳐 있을 때 하나씩만 빼면
+아무 변화가 없어 "이건 원인이 아니다"로 잘못 지운다. 실제로 HWM만 올렸을 때와 gate만 우회했을 때
+모두 실패했고, 둘을 함께 뺐을 때 통과했다. **조합으로 시험할 것.**
+
+남은 판단은 오전에 적은 것과 같다. Suite가 backpressure를 시험하려고 고른 값(HWM 1, 좁은 gate)이
+handshake까지 막는 것이 옳은지, 아니면 handshake·admission frame이 그 둘의 영향을 받지 않아야
+하는지다. 후자라면 completion pair 분리만으로는 부족하고, application lane에 남아 있는 의존을
+찾아야 한다.
 
 **OBS-C1.** `host-state|` evidence가 관측되지 않는다. Observer는 등록되어 있고 host status stream은
 구독 시 현재 상태를 한 번 쓴다. Evidence는 HTTP로만 노출되므로 로그 파일 grep으로는 판정할 수

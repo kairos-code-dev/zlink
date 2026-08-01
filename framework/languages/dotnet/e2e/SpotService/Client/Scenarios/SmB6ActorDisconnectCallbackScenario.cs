@@ -99,6 +99,13 @@ internal static class SmB6ActorDisconnectCallbackScenario
             await disconnectClient.Request(new JoinUserSpotActorReq(spotRid, disconnectActorId))
                 .PacketName("JoinUserSpotActorReq")
                 .Async<JoinUserSpotActorRes>();
+            // The join is deferred: the reply only acknowledges the intent. The
+            // document verifies disconnect for an Actor that has joined, so wait
+            // for the Spot to record the join before cutting the transport.
+            await owner.Post("/evidence/wait")
+                .Body(new EvidenceWaitReq(
+                    [$"spot-actor-joined|rid={ownerRid}|spot={spotRid}|actor={disconnectActorId}"]))
+                .Async<string[]>();
             await fault.WaitForConnectionAsync();
             fault.DropConnection();
         }

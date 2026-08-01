@@ -227,6 +227,9 @@ internal sealed class ZLinkSessionActorBindingTable
                 route,
                 sessionOwnerNodeGeneration,
                 AcceptedHighWater: 0);
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"session_binding_added actor={actorId} token={bindingToken} "
+                + $"replaced={replaced.Length} target_node={route.Ref.NodeRid}");
             return replaced;
         }
     }
@@ -625,6 +628,10 @@ internal sealed class ZLinkSessionActorBindingTable
                 && string.Equals(existing.BindingToken, bindingToken, StringComparison.Ordinal))
             {
                 _entries.Remove(key);
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"session_binding_removed actor={actorId} token={bindingToken} "
+                    + $"by={new System.Diagnostics.StackTrace(1, false).GetFrame(1)?.GetMethod()?.Name}"
+                    + $"<-{new System.Diagnostics.StackTrace(1, false).GetFrame(2)?.GetMethod()?.Name}");
                 existing.DrainSignal?.TrySetResult();
             }
         }

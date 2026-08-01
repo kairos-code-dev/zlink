@@ -341,7 +341,7 @@ framework를 **최상위**로 올리고 core를 같은 도메인의 **`/core/` �
 
 두 사이트는 각자 nav·검색 색인·i18n을 갖는다. 도메인만 공유하므로 독자에게는 상단
 링크로 오가는 두 구역으로 보인다. framework 가이드가 transport·TLS·socket option을
-설명할 때는 `https://zlink.systems/core/ko/guide/04-transports/`로 건다.
+설명할 때는 `https://kairos-code-dev.github.io/zlink/core/ko/guide/04-transports/`로 건다.
 
 ### 7.2 기존 링크 처리
 
@@ -391,7 +391,7 @@ core 사이트는 `doc/site/docs`로 복사하는 미러라 양방향 drift가 �
 - 문서끼리의 상대 링크가 repo에서든 사이트에서든 같은 대상을 가리킨다. 이번에 고친
   spec·sample 교차 링크가 사이트에서도 그대로 산다.
 - 정본 트리 밖으로 나가는 링크(core guide, repo 루트 license)는 사이트 페이지가 없으므로
-  **절대 URL로 적는다.** `https://zlink.systems/core/ko/guide/...` 형태다.
+  **절대 URL로 적는다.** `https://kairos-code-dev.github.io/zlink/core/ko/guide/...` 형태다.
 - 사이트에 올리지 않을 디렉터리는 `exclude_docs`로 뺀다. 현재 `perf/`가 그렇다.
 
 i18n은 `mkdocs-static-i18n` suffix 구조를 쓰되 framework 가이드는 한국어만 있으므로

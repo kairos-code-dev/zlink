@@ -6561,3 +6561,37 @@ owner node는 actor-b다. 그래서 stale binding을 들고 있는 것은 actor-
 
 다음은 actor-b의 inbound에서 이 frame이 어디서 사라지는지다. SM-B6도 "owner node가 disconnect를
 모른다"는 같은 모양이므로 함께 볼 것.
+
+### TA-A4·SM-B6 근본 원인: 원격 disconnect 통지는 relay가 요구하는 신원을 싣지 않는다
+
+삼켜지던 예외를 찍자 한 줄로 나왔다. 그리고 ta-a4만이 아니라 **모든 actor에서** 나온다.
+
+```
+session_disconnect_notify_failed actor=ta-a1 ... bound-session relay source identity is stale.
+session_disconnect_notify_failed actor=ta-a3 ... bound-session relay source identity is stale.
+session_disconnect_notify_failed actor=ta-a4 ... bound-session relay source identity is stale.
+```
+
+`ValidateRemoteActorFrameSource`는 direct route가 아닌 relay frame에 대해 `RequestSourceFence`를
+요구한다. Node rid·generation이 일치하고 `OwnerId`가 비어 있지 않으며 `LeaseGeneration`이 0이
+아니어야 한다. 이 검증은 **보내는 쪽**에서도 돌아서, 조건을 못 채우면 frame이 나가기 전에
+throw한다.
+
+`NotifyRemoteDisconnectedAsync`의 `ForwardPart` 호출은 `routeContext`·`sourceNodeGeneration`·
+`requestSource`·`applicationMetadata`를 하나도 넘기지 않는다. 전부 기본값이므로
+`requestSource`가 null이고 검증은 반드시 실패한다.
+
+정상 동작하는 relay와 비교하면 차이가 분명하다. `ZLinkActorMessageFollower`는 같은
+`ForwardActorBoundSessionPart`에 `frame.MessageFollowRouteContext`·`frame.SourceNodeGeneration`·
+`frame.RequestSource`·`frame.ApplicationMetadata`를 모두 실어 보낸다.
+
+그리고 이 실패는 `NotifyBestEffortAsync`의 all-settled catch가 통째로 삼킨다. 그래서 지금까지
+"통지가 도착하지 않는다"로만 보였다.
+
+Session과 actor가 같은 node에 있으면 `NotifyActorDisconnectedAsync`의 local 분기가 타고
+`RemoveActorSessionBinding`이 양쪽을 정리한다. 이 경로는 원격일 때만 깨진다. SM-B6에서 leave는
+되고 disconnect는 안 되던 것, TA-A4에서 끊긴 뒤에도 send가 성공하던 것이 같은 이유다.
+
+수정 방향은 disconnect frame도 다른 session relay frame과 같은 신원을 싣게 하는 것이다. 받는
+쪽 비-direct 분기는 `applicationMetadata`의 bound-session fence까지 요구하므로 그것도 함께
+채워야 한다. Fence를 느슨하게 푸는 방향은 택하지 않는다.

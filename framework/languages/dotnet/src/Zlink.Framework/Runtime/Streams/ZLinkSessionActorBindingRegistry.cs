@@ -122,10 +122,16 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
                     .WaitAsync(runtime.Registration.DefaultRequestTimeout, cancellationToken)
                     .ConfigureAwait(false);
             }
-            catch (Exception)
+            catch (Exception failure)
             {
                 // Cleanup is all-settled. The exact binding token prevents a
                 // stale or duplicate notification from affecting a replacement.
+                // Settling quietly also hides a notification that never reached
+                // the Actor's owner node, which leaves a binding whose session
+                // is gone, so name the failure.
+                Zlink.Framework.Runtime.Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"session_disconnect_notify_failed actor={actor.ActorId} "
+                    + $"binding={actor.BindingToken} {failure}");
             }
         }
     }

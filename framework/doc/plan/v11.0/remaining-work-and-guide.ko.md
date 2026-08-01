@@ -146,7 +146,23 @@ route_commit_result actor=actor-sm-b6-disconnected-... ack=True
 actor에 대해서는 `session_disconnect_applied`도 `_ignored`도 찍히지 않는다. 같은 실행의 다른 actor
 다섯은 모두 `applied`가 찍힌다.
 
-의심되는 지점은 cleanup이 도는 대상이다. `ZLinkSessionActorBindingRegistry.CleanupAsync`는 시작
+Cleanup 자체는 그 actor를 순회한다. 그러므로 앞서 적은 "snapshot에 없다"는 의심은 아니다.
+
+```
+session-a : session_cleanup_entered session=7 actors=1 [actor-sm-b6-disconnected-...]
+session-a : forward_part  ×4        (2개 message: join relay 1, disconnect 1)
+session-a : session_disconnect_skipped   0건
+play-a    : remote_frame_dispatch   1건
+play-b    : remote_frame_dispatch   1건
+어느 쪽도 session_disconnect_applied / _ignored / relay_identity_stale 0건
+```
+
+즉 통지는 forward되고, 어느 play node에서 dispatch까지 가는데, disconnect frame으로 처리된 흔적이
+양쪽 모두 없다. Frame이 두 node 중 어디로 갔는지, 그리고 dispatch 뒤 어디서 사라지는지가 남은
+질문이다. 다음은 `forward_part`가 고른 target node를 disconnect frame에 대해 직접 찍어 join relay와
+구분하는 것이다.
+
+이전에 적었던 다음 의심은 아래와 같으며, 위 관측으로 아직 배제되지 않았다. `ZLinkSessionActorBindingRegistry.CleanupAsync`는 시작
 시점에 `SnapshotSessionActors(context)`로 actor 목록을 뜨고, 각 `ZLinkSessionActor`는 bind 시점의
 `Ref`를 들고 있다. Handoff 뒤에는 binding table의 `Route`만 target node로 갱신되고
 (`CommitRoute`가 entry의 `Route`를 바꾼다) snapshot이 들고 있는 `Ref`는 원래 node를 가리킨 채일 수

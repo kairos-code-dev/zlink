@@ -587,13 +587,22 @@ internal sealed class ZLinkSessionActorCoordinator(
         if (actor is not ZLinkSessionActor actorRef)
             throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
 
-        if (!runtime.TryGetSessionActorBinding(
-                actorRef.ActorId,
-                actorRef.BindingToken,
-                out var binding)
+        var found = runtime.TryGetSessionActorBinding(
+            actorRef.ActorId,
+            actorRef.BindingToken,
+            out var binding);
+        if (!found
             || !ReferenceEquals(binding.ActorRef, actorRef)
             || binding.Context.RoutingId is null)
+        {
+            //  Returning quietly here is indistinguishable from a disconnect
+            //  that was delivered, so name the condition that skipped it.
+            Zlink.Framework.Runtime.Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"session_disconnect_skipped actor={actorRef.ActorId} found={found} "
+                + $"same_ref={found && ReferenceEquals(binding.ActorRef, actorRef)} "
+                + $"has_session_rid={found && binding.Context.RoutingId is not null}");
             return ValueTask.CompletedTask;
+        }
         return runtime.NotifyActorDisconnectedAsync(
             binding,
             cancellationToken);

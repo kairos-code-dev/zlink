@@ -82,19 +82,19 @@ Flow listener가 없는 스위트가 아직 있다. 조사 전에 해당 host에
 | PubSub | 7 / 7 | — | — |
 | RegistrationCodec | 11 / 11 | — | — |
 | AutomaticTurnDispatch | 19 / 27 | **TD-E3** 동시 반대 join 중 하나가 `accepted=False` | TD-F1~F6, TD-G1 |
-| SpotActorTransfer | 7 / 31 | **ST-C3** transfer-out 실패가 accepted를 반환 | ST-B2·B5, ST-C1·C2, ST-D2, ST-E1·E2, ST-F1~F6, ST-G3·G5·G6, ST-H1, ST-I1~I6 |
-| SpotService | 7 / 55 | **SM-B6** cross-node join이 seal에서 fenced | SM-A1~A8·A11, SM-B4·B7~B9, SM-C1~C6, SM-D1~D15, SM-E1~E4, SM-F1~F6, SM-G1~G5 |
-| ObservabilityOps | 8 / 21 | **OBS-C1** draining marker evidence | OBS-C2~C12 |
-| RuntimeMonitoring | 2 / 7 | **MON-A5** HTTP 500 | MON-C1, MON-D1 |
+| ObservabilityOps | 8 / 21 | **OBS-C1** `host-state` evidence 미관측 | OBS-C2~C12 |
+| SpotActorTransfer | 7 / 31 | **ST-C3** leave 실패 case의 완료 판정 | ST-B2~I6 |
+| SpotService | 7 / 55 | **SM-B6** bound session이 handoff를 따라가지 않음 | SM-A1~G5 |
+| LocationMessaging | 5 / 15 | **RM-B2** drain 중 select-one이 재선택하지 않음 | RM-B3, RM-C1~C9 |
 | ToActorMessaging | 3 / 7 | **TA-A4** destroy 뒤 `NotFound` 대신 `Unavailable` | TA-B1~B3 |
-| ResilienceLifecycle | 0 / 20 | **RL-A1** 재시작 뒤 owner generation이 갱신되지 않음 | RL-A2~A5, RL-B1~B6, RL-C1~C4, RL-D1~D5 |
-| LocationMessaging | 0 / 15 | **RM-A4** v1이 terminal `Stopped`에 도달하지 않음 | RM-A1·A2·A6, RM-B1~B3, RM-C1~C5·C7~C9 |
-| StoreFailure | 0 / 10 | **SF-B1** store 정지 중 요청이 408 | SF-A1·A2, SF-B2, SF-C1·C2, SF-D1~D3, SF-E1 |
+| RuntimeMonitoring | 2 / 7 | **MON-A5** location store 이벤트 미관측 | MON-C1, MON-D1 |
+| ResilienceLifecycle | 1 / 20 | **RL-A2** SIGKILL 뒤 descriptor가 lease 만료로 제외되지 않음 | RL-A3~D5 |
+| StoreFailure | 0 / 10 | **SF-B1** store 정지 중 요청이 408 | SF-A1~E1 |
 | SubmitAdmission | 0 / 8 | readiness에서 peer를 모름 | 전체 |
 | ChannelEgressRouting | 부분 | 선택자 4개 미구현 | CH-E2E-03, CH-E2E-08, CH-REG-02, CH-REG-05 |
 
-합계 **64 / 234** 통과다. 막고 있는 시나리오는 11개이므로, 그 11개를 풀면 나머지 170개가
-비로소 검증 대상이 된다. 지금 수치는 "170개가 실패한다"는 뜻이 아니다.
+합계 **70 / 234** 통과다(2026-08-01 검증 실행 기준). 막고 있는 시나리오는 11개이므로, 그 11개를
+풀면 나머지 164개가 비로소 검증 대상이 된다. 지금 수치는 "164개가 실패한다"는 뜻이 아니다.
 
 Feature map의 요구 ID 수가 시나리오 파일 수보다 많은 스위트가 있다(`StoreFailure` 28,
 `ResilienceLifecycle` 39, `PubSub` 21). 시나리오가 전부 통과해도 그 차이는 별도 검증으로 남는다.

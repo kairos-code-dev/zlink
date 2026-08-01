@@ -6650,3 +6650,17 @@ admission은 되고 actor 쪽 join completion이 `InvalidOperation`으로 끝난
 
 배치가 우연이 아니라는 점도 적어 둔다. 두 번의 실행에서 모두 leave actor는 play-b, disconnect
 actor는 play-a에 생겼다. 두 play node 사이의 결정적 배치다.
+
+### 단위 테스트 1건은 내 변경 탓이 아니다 (순서 의존)
+
+Disconnect 수정 뒤 단위 테스트가 1375/1376이 되어 회귀를 의심했다. 아니었다.
+
+`LocationRuntimeQueryTests.Status_Reports_The_Most_Recent_Success_Across_Reads_And_Lease_Renewal`을
+단독으로 돌리면 **수정 전 커밋(`88f935a265`)에서도 똑같이 실패한다.** 별도 worktree를 만들어
+같은 필터로 확인했다. 전체 실행에서는 08:33에 통과했고 지금은 실패하므로, 실행 순서에 의존하는
+기존 결함이다. Location lease 갱신 경로이고 이번 변경은 actor bound-session relay 쪽이라 접점도
+없다.
+
+측정 함정 하나를 같이 적는다. `dotnet test`를 끝내지 않고 남겨 두면 프로세스가 매달린 채
+남아서 다음 실행과 경합하고, 그때 나오는 것이 `Test Run Aborted`와 잘린 통과 수(405, 517)다.
+전체 수를 볼 때는 남은 test host가 없는지 먼저 확인할 것.

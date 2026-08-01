@@ -530,9 +530,19 @@ internal sealed class ZLinkSessionActorBindingTable
                 || entry.SessionOwnerNodeGeneration
                 != request.SessionOwnerNodeGeneration
                 || entry.AcceptedHighWater != request.AcceptedHighWater)
+            {
+                //  A refused commit is retried until the deadline and reported
+                //  as a timeout, so name the half that disagreed.
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"route_commit_rejected actor={request.ActorId} entry={entry is not null} "
+                    + $"binding_gen={entry?.BindingGeneration}/{request.BindingGeneration} "
+                    + $"obj_gen={entry?.ObjectGeneration}/{request.ObjectGeneration} "
+                    + $"session_owner_gen={entry?.SessionOwnerNodeGeneration}/{request.SessionOwnerNodeGeneration} "
+                    + $"high_water={entry?.AcceptedHighWater}/{request.AcceptedHighWater}");
                 return new ZLinkSessionRouteCommitResult(
                     false,
                     entry?.AcceptedHighWater ?? 0);
+            }
             if (!ZLinkSessionBindingRoute.TryCreate(
                     request.TargetActor,
                     request.TargetMeshName,

@@ -125,62 +125,31 @@ callback이나 evidence가 나른다. SM-B6와 ST-C3가 같은 이유로 막혀 
 
 ### 2.2 원인이 확정된 미해결 항목
 
-**SM-B6 — cross-node join이 session route commit을 거치지 않는다.** Join 자체는 통과한다. Actor는
-entry node를 떠나 target node에서 `spot-actor-joined`까지 간다. Session route seal도 성립한다.
+**SM-B6 — session route commit까지 통과했고, 남은 것은 disconnect 통지가 시도조차 되지 않는 것이다.**
+
+원인을 두 단계로 걷어냈다. 첫째는 시나리오였다. Cross-node join은 spot이 `spot-actor-joined`를
+기록한 뒤에도 계속 진행된다. Handoff가 session route를 commit해야 끝난다. 시나리오가 그 전에
+연결을 끊으면 session cleanup이 binding을 지우고, 뒤늦게 도착한 commit이 대상을 찾지 못한다.
 
 ```
-session-a : route_seal_drain    active_frames=0 waits=False
-session-a : route_seal_replying ack=True
-session-a : session_binding_removed  by=UnbindSessionActor   (transport 절단 뒤 cleanup)
+route_commit_rejected entry=False   ← binding이 이미 지워짐
+route_commit_result   ack=False  ×121  (deadline까지 재시도)
 ```
 
-Seal 뒤에 commit이 오지 않는다. Session 쪽 binding은 sealed 상태로 남고 계속 source node를
-가리킨다. 그래서 disconnect 통지가 actor가 실제로 join한 spot이 아니라 원래 node로 간다.
-
-Commit을 보내는 곳은 `CompleteRoutedActorHandoffAsync`이고, 이 메서드는 결과를
-`session_route_commit_acknowledged` 또는 `_not_required`로 남긴다. Target node의 handoff log에는
-`capture_entry`와 `location_committed`는 있는데 이 표시가 **없다.** 즉 cross-node join은
-`CompleteRoutedActorHandoffAsync`를 거치지 않는 다른 경로로 actor를 옮긴다.
-
-경로를 끝까지 따라가면 호출은 있고 **완료되지 않는다.**
+기다리는 대상을 actor의 join completion으로 바꾸자 commit이 성립한다.
 
 ```
-play-a : target_completion_requesting     target_node=play-b
-play-a : target_completion_replied        parts=2
-play-a : target_completion_reply_rejected ZLinkFrameworkException: The operation has timed out.
-play-a : target_completion_requesting     (재시도, 끝나지 않음)
+route_commit_result actor=actor-sm-b6-disconnected-... ack=True
 ```
 
-Source는 handoff completion을 target에 요청하고, target은 응답한다. 그 응답이 error envelope이며
-내용은 timeout이다. 즉 target의 `CompleteRoutedActorHandoffAsync`가 시작은 하지만 deadline 안에
-끝나지 못한다. 그래서 그 안에 있는 session route commit까지 도달하지 못하고,
-`ZLinkReconciliationRunner`가 같은 요청을 계속 재시도한다.
+둘째가 남았다. Commit으로 session binding은 target node를 가리키게 됐는데, 연결을 끊어도 그
+actor에 대해서는 `session_disconnect_applied`도 `_ignored`도 `_notify_failed`도 찍히지 않는다.
+다른 actor 다섯은 모두 `applied`가 찍힌다. 즉 통지가 실패하는 것이 아니라 **시도되지 않는다.**
+Cleanup은 session context의 bound actor snapshot을 순회하므로, 다음은 그 snapshot에 이 actor가
+남아 있는지다.
 
-단계 표시를 넣자 어디서 멈추는지 나왔다.
-
-```
-target_completion_entered                104
-target_completion_before_session_commit  100   ← 여기까지 도달한다
-session_route_commit_*                     0   ← 여기서 멈춘다
-```
-
-`CompleteRoutedActorHandoffAsync`는 commit을 위해 session node로 다시 요청을 보낸다
-(`RequestSessionRouteCommitAsync`). 그 중첩 요청이 **도착하지 않는다.**
-
-```
-play-b    route_control_sent type=ZLinkSessionRouteCommitRequest   120회
-session-a 수신                                                        0회
-```
-
-Target node는 actor가 옮겨온 곳이지 session과 연결을 세운 적이 없다. `RequestSessionRouteControlAsync`는
-`DefaultRequestTimeout`까지 10ms 간격으로 재시도하므로 그 사이 120회를 보내고 모두 사라진다. 그러면
-completion이 timeout으로 끝나고, source의 `ZLinkReconciliationRunner`가 completion 요청을 다시 보내며,
-이 순환이 끝나지 않는다.
-
-Commit 구현 자체는 있다(`ZLinkSessionRouteCommitHandler` → `CommitSessionActorRoute`, target actor
-ref로 binding route 갱신). 빠진 것은 **target에서 session node로 가는 경로**다. 선택지는 둘이다.
-Handoff 과정에서 target이 session node와 연결을 세우게 하거나, commit을 source를 거쳐 relay하는
-것이다. 어느 쪽이든 spec 28의 route commit 계약을 바꾸지 않고 전달 경로만 채우면 된다.
+Handoff 경로에 심은 표시(`target_completion_entered`·`_before_session_commit`·`_requesting`·
+`_replied`·`_reply_rejected`, `route_commit_received`·`_result`·`_rejected`)가 이 두 단계를 갈랐다.
 
 **RM-B2 — mesh 계층에 drain 표시가 구현되어 있지 않다.** Provider가 drain 중일 때 select-one이 그
 member를 고르고 `Rejected`(admission sealed)를 caller에게 그대로 돌려준다. 원인을 끝까지 보면 표시

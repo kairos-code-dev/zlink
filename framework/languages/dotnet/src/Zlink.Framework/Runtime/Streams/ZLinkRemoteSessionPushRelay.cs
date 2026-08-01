@@ -194,6 +194,21 @@ internal sealed class ZLinkSessionRouteCommitHandler(ZLinkFrameworkRuntime runti
     {
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
+        //  Paired with route_control_sent on the requester: the seal handler
+        //  already traces its arrival, and without the same mark here a stalled
+        //  commit cannot be told from one that never arrived.
+        Zlink.Framework.Runtime.Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"route_commit_received actor={message.ActorId} handoff={message.HandoffId}");
+        var result = CommitAndTrace(runtime, message);
+        return ValueTask.FromResult(new ZLinkSessionRouteCommitReply(
+            result.Acknowledged,
+            result.AcceptedHighWater));
+    }
+
+    private static ZLinkSessionRouteCommitResult CommitAndTrace(
+        ZLinkFrameworkRuntime runtime,
+        ZLinkSessionRouteCommitRequest message)
+    {
         var result = runtime.CommitSessionActorRoute(
             new ZLinkSessionRouteCommit(
                 message.ActorId,
@@ -216,10 +231,9 @@ internal sealed class ZLinkSessionRouteCommitHandler(ZLinkFrameworkRuntime runti
                     message.ObjectGeneration,
                     message.TargetMeshName,
                     RoutingId.FromHex(message.TargetNodeRid))));
-        return ValueTask.FromResult(
-            new ZLinkSessionRouteCommitReply(
-                result.Acknowledged,
-                result.AcceptedHighWater));
+        Zlink.Framework.Runtime.Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"route_commit_result actor={message.ActorId} ack={result.Acknowledged}");
+        return result;
     }
 }
 

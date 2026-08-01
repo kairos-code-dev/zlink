@@ -6534,3 +6534,30 @@ session host가 별도 process이므로 actor 쪽 정리는 relay되어야 한�
 
 SM-B6의 disconnect callback 미실행과 같은 계열일 가능성이 있다. 양쪽 모두 "session은 끊긴 것을
 알고 actor node는 모른다"이다.
+
+### TA-A4 좁히기: disconnect frame이 owner node로 전달되고 dispatch되지 않는다
+
+`TryValidateDisconnectedBinding`은 5개 필드가 정확히 일치해야 하고, 어긋나면 frame을 ack하고
+조용히 버린다. Actor는 session이 사라진 binding을 그대로 들고 있게 된다. 이 무진단 폐기가
+증상과 정확히 같은 모양이라 이유를 찍는 추적을 심었다(`session_disconnect_ignored`).
+
+측정 결과는 예상과 달랐다. 그 추적이 **한 번도 찍히지 않는다**. 즉 검증 불일치가 아니다.
+
+Session 쪽은 정상이다.
+
+```
+session-a : session_relay_entry actor=ta-a4 context_live=True has_route=True
+session-a : forward_part actor=ta-a4 target_node=actor-b-... has_more=True
+session-a : forward_part actor=ta-a4 target_node=actor-b-... has_more=False
+```
+
+Owner node인 actor-b에는 ta-a4의 bind·dispatch 흔적은 있는데 disconnect frame에 해당하는
+`remote_frame_dispatch`가 없다. 즉 frame은 나갔고 owner node의 inbound pipeline까지 오지
+않았다.
+
+시나리오 구조도 같이 적어 둔다. TA-A4는 actor-a의 HTTP host로 push하지만 actor ta-a4의
+owner node는 actor-b다. 그래서 stale binding을 들고 있는 것은 actor-b이고, disconnect가 닿아야
+하는 곳도 actor-b다.
+
+다음은 actor-b의 inbound에서 이 frame이 어디서 사라지는지다. SM-B6도 "owner node가 disconnect를
+모른다"는 같은 모양이므로 함께 볼 것.

@@ -125,170 +125,33 @@ callback이나 evidence가 나른다. SM-B6와 ST-C3가 같은 이유로 막혀 
 
 ### 2.2 원인이 확정된 미해결 항목
 
-**SM-B6 — session route commit까지 통과했고, 남은 것은 disconnect 통지가 시도조차 되지 않는 것이다.**
+**SM-B6 — 27시간을 썼고 고치지 못했다. 접근 자체를 다시 잡아야 한다.**
 
-원인을 두 단계로 걷어냈다. 첫째는 시나리오였다. Cross-node join은 spot이 `spot-actor-joined`를
-기록한 뒤에도 계속 진행된다. Handoff가 session route를 commit해야 끝난다. 시나리오가 그 전에
-연결을 끊으면 session cleanup이 binding을 지우고, 뒤늦게 도착한 commit이 대상을 찾지 못한다.
+진행된 것은 있다. 시나리오가 handoff 도중에 연결을 끊던 것을 고쳐 cross-node join과 session route
+commit이 성립하게 됐다. 그러나 disconnect callback은 여전히 실행되지 않는다.
 
-```
-route_commit_rejected entry=False   ← binding이 이미 지워짐
-route_commit_result   ack=False  ×121  (deadline까지 재시도)
-```
+측정으로 확정된 사실만 적는다.
 
-기다리는 대상을 actor의 join completion으로 바꾸자 commit이 성립한다.
+- Disconnect frame은 session node를 떠나 target node의 relay handler까지 도착한다.
+- Target의 actor pipeline에는 join frame만 오고 disconnect는 오지 않는다.
+- 거부 지점 7곳(`relay_target_stale`·`relay_peer_stale`·`relay_source_stale`·`relay_identity_stale`·
+  `relay_frame_captured`·`session_disconnect_skipped`·`session_disconnect_ignored`)은 모두 0건이다.
+- Handoff completion은 `UnsealCompletedSessionRouteAsync`에서 반환하지 않고 deadline을 소진한다.
+  같은 실행에서 다른 handoff completion 104건은 정상 종료한다.
+- Framework operation 계층은 정상이다. Target의 node request 122건이 모두 `Ok`로 완료된다.
 
-```
-route_commit_result actor=actor-sm-b6-disconnected-... ack=True
-```
+시도했다가 되돌린 것도 적는다. Disconnect를 actor별 frame 체인에서 빼 봤으나 pipeline 도달에
+변화가 없었다. 근거 없이 spec 23 §10.2의 순서 보장을 약화시키므로 되돌렸다. 따라서 "FIFO 체인이
+막는다"는 설명도 아직 입증되지 않았다.
 
-둘째는 **actor별 FIFO 체인**이다. 사슬을 끝까지 밝혔다.
+**다음 사람에게 남기는 조언은 접근에 대한 것이다.** 나는 완전한 이해를 좇느라 결과를 놓쳤다.
+측정을 22번 하고 판정을 일곱 번 뒤집는 동안 고친 것은 없다. SM-B6가 검증하려는 것은 "비정상 종료
+시 disconnect callback이 실행되는가"이며 handoff 내부 동작이 아니다. Handoff가 걸린 상태에서도
+통지가 가는 경로를 만드는 쪽이, 왜 걸리는지 끝까지 밝히는 쪽보다 목표에 가깝다.
 
-```
-play-b : relay_frame_received      2건  (join relay, disconnect 둘 다 도착)
-play-b : remote_frame_dispatch     2건  (둘 다 dispatch 진입)
-play-b : actor_frame_arrived       1건  (join만 pipeline에 도착)
-play-b : relay_target_stale / relay_peer_stale / relay_source_stale
-         relay_identity_stale / relay_frame_captured   모두 0건
-```
-
-거부도 capture도 아니다. `DispatchRemoteActorFrameAsync`는 spec 23 §10.2의 actor별 FIFO를 지키기
-위해 frame을 직전 frame의 dispatch task 뒤에 잇는다.
-
-```csharp
-var prior = _remoteFrameChains.TryGetValue(actorId, out var chain) ? chain : Task.CompletedTask;
-chained = DispatchRemoteFrameAfterAsync(prior, batch, deadlineUnixMs, cancellationToken);
-```
-
-Disconnect는 join frame의 dispatch 뒤에 줄을 선다. 그 join은 deferred join이므로 handoff가 끝나야
-완료된다.
-
-Commit 자체는 문제가 아니다. 거부 120건은 **전부 `entry=False`**이고 성공은 1건이다. 즉 첫 commit은
-성립했고, 나머지는 cleanup이 binding을 지운 뒤의 재시도다. 앞서 "commit이 120번 거부되어 join이
-끝나지 않는다"고 적었던 것은 순서를 거꾸로 읽은 것이다.
-
-```
-route_commit_result ack=True    1건   ← 첫 시도에 성립
-route_commit_rejected entry=False 120건 ← binding 삭제 뒤의 재시도
-```
-
-따라서 남은 질문은 **commit이 성립했는데도 handoff completion이 끝나지 않는 이유**다. Completion이
-끝나지 않으니 join dispatch가 pending으로 남고, 그 뒤에 선 disconnect가 pipeline에 도달하지 못한다.
-
-그 분기를 측정했다.
-
-```
-target_completion_entered                 121
-target_completion_before_session_commit   117
-session_route_commit_acknowledged           1   ← 첫 시도만 통과한다
-target_completion_reply_rejected          120
-```
-
-첫 시도는 commit을 통과해 그 뒤로 계속 간다. 그런데도 deadline 안에 끝나지 못한다. 이후 시도는
-cleanup이 binding을 지운 뒤라 commit에서 멈추고, 그래서 117번이 commit 호출까지만 도달한다.
-
-첫 시도가 commit 뒤 어디까지 가는지 끝까지 측정했다.
-
-```
-session_route_commit_acknowledged      1
-target_completion_join_callback_done   1
-target_completion_after_replay         1   (final replay는 frames=0으로 즉시 반환)
-target_completion_before_unseal        1   ← 여기까지 간다
-handoff_completion                     0   ← 끝에 도달하지 못한다
-```
-
-Completion은 commit, join completion callback, final replay를 모두 끝내고
-`UnsealCompletedSessionRouteAsync`에서 멈춘다. Unseal도 commit과 같은 **session node 요청**이다.
-그 시점에는 시나리오가 이미 연결을 끊어 cleanup이 binding을 지운 뒤이므로, unseal이 deadline까지
-재시도만 반복하고 completion이 timeout으로 끝난다. 그 뒤의 commit 재시도 120건이 전부
-`entry=False`인 것도 같은 이유다.
-
-Join dispatch는 completion이 돌아와야 끝나고, disconnect는 actor별 FIFO에서 그 뒤에 서 있으므로
-pipeline에 도달하지 못한다.
-
-수정 방향은 셋이고 서로 독립적이다.
-
-1. **Unseal이 binding 부재를 정상 종료로 받아들인다.** Commit이 이미 성립했다면 session route는
-   옮겨졌고, 그 뒤 session이 사라진 것은 실패가 아니다. Unseal을 재시도로 붙잡아 두면 handoff
-   전체가 끝나지 못한다.
-
-   구현 시 주의할 점이 하나 있다. Source가 받는 오류는 unseal의 거부가 아니라 **timeout**이다.
-   `UnsealCompletedSessionRouteAsync`는 응답이 `Acknowledged=false`면 `InvalidOperation`으로 바로
-   던진다. Timeout이 온다는 것은 그 지점까지 가지 못하고 `RequestSessionRouteUnsealAsync`의 재시도
-   loop이 deadline을 다 쓴다는 뜻이며, 그 loop은 `Unavailable`·`RetryAfterBackoff`에만 재시도한다.
-   그런데 session node 쪽 `UnsealCommittedRoute`는 binding이 없으면 `Unavailable`이 아니라 `false`를
-   반환한다. 즉 handler까지 갔다면 `Acknowledged=false`가 돌아오고 호출 측이 즉시 `InvalidOperation`을
-   던졌을 것이다. Timeout이 온다는 것은 **handler의 판정에 도달하기 전에** deadline이 소진된다는
-   뜻이다. 남은 후보는 unseal 요청 자체가 session node에 닿지 못하는 것이다.
-
-   Unseal handler에 진입 표시를 넣어 확인했다. **요청은 도착하고 handler는 실행된다. 응답이 돌아오지
-   않는다.**
-
-```
-play-b    route_control_sent ...UnsealRequest   1회
-session-a route_unseal_received                 1회   ← handler 실행
-play-b    응답 없음 → 한 번의 요청이 deadline 전체를 소진
-handoff_completion                              0회
-```
-
-   여기서 내가 한 번 잘못 읽었다. `route_control_sent`는 재시도 loop **바깥**에 있어 호출당 한 번만
-   찍힌다. 따라서 "unseal은 1회만 보낸다"는 판정은 틀렸고, loop 안에서 여러 번 재시도했을 수 있다.
-   Commit이 141회로 보인 것도 재시도 횟수가 아니라 **completion 재시도로 호출 자체가 141번 일어난
-   것**이다.
-
-   Framework operation 계층은 정상이다. play-b에서 `route_control_sent` 122건, `node_request_result`
-   122건이 전부 `Ok`, `managed_operation_completed` 123건이다. 즉 unseal 요청도 응답을 받아 operation이
-   완료된다. 그러므로 "응답이 오지 않는다"도 정확한 표현이 아니다.
-
-   남은 모순이 하나 있다. `UnsealCompletedSessionRouteAsync`는 `Acknowledged=false`를 받으면
-   `InvalidOperation`을 던지고, 그것은 재시도 대상이 아니다. 그런데 source가 받는 것은 timeout이고
-   `target_completion_after_unseal`은 0이다. 응답이 오는데도 호출이 반환하지 않는다는 뜻이므로,
-   다음은 `RequestSessionRouteControlAsync`의 loop이 어떤 예외로 계속 도는지를 직접 찍는 것이다.
-   그 loop은 `Unavailable`·`RetryAfterBackoff`에만 재시도하므로, 그 예외가 어디서 나오는지가 답이다.
-
-   Session node의 로그 순서가 나머지를 채운다.
-
-```
-session-a  forward_part ×2 → play-b            (disconnect 전달)
-session-a  session_binding_removed              (cleanup)
-session-a  route_unseal_received                ← unseal은 cleanup 뒤에 도착한다
-session-a  route_reply_send / route_reply_submitted → play-b   ← 응답이 제출된다
-session-a  route_commit_received … ack=False    (이후 completion 재시도)
-```
-
-   즉 응답은 제출되는데 play-b의 pending 요청이 완료되지 않는다. 요청은 도달하고 handler는 돌고
-   응답도 나가는데 caller가 받지 못하는 것으로, 오늘 오전 core에서 고친 reply 정합 결함과 같은
-   모양이다. 그때 원인은 pending을 `zlink-intent-...` rid로 걸고 응답은 정착한 rid로 오는 것이었고,
-   sequence 대체 조회로 해결했다.
-
-   다만 그 수정은 core의 request/reply pending에 적용된 것이고, 여기는 framework의 route request
-   응답 경로다. 같은 종류의 어긋남이 이 계층에도 있는지 확인해야 한다. 다음은 play-b에서 이 unseal
-   요청의 pending이 어떤 key로 등록되고 도착한 응답이 어떤 key로 조회되는지 찍는 것이다.
-
-   Unseal 호출이 반환하지 않는 것도 확인했다.
-
-```
-target_completion_before_unseal   1
-target_completion_after_unseal    0    ← 반환하지 않는다
-handoff_completion              104    ← 같은 실행의 다른 handoff는 정상 완료된다
-```
-
-   즉 이 한 요청이 deadline을 다 쓰고 `DeadlineExceeded`로 끝나며, source는 그것을 timeout으로 받고
-   completion을 다시 보낸다. 그 순환이 join dispatch를 pending으로 붙잡고, disconnect는 그 뒤에 선다.
-
-   대조군이 둘이나 있다. 같은 실행에서 commit 응답은 141번 모두 돌아오고, 다른 actor의 handoff
-   completion은 104건이 끝난다. 두 요청은 같은 helper(`RequestSessionRouteControlAsync`)와 같은
-   transport를 쓰고 reply 타입도 같다. 차이는 packet 이름과, unseal이 session cleanup 이후에 온다는
-   시점뿐이다. 후자가 유력하다 — cleanup이 session context를 정리하면서 그 node로 향하는 reply
-   경로까지 함께 정리했을 수 있다.
-2. **Disconnect 통지를 application frame FIFO 뒤에 세우지 않는다.** 이것은 lifecycle 통지이지
-   application 순서를 지켜야 하는 message가 아니다. Spec 23 §10.2가 요구하는 FIFO의 대상인지
-   먼저 판정할 것.
-3. 시나리오가 기다리는 지점을 handoff 종료 뒤로 옮긴다. `actor-join-completed`는 completion
-   **안에서** 나오므로 아직 이르다. 다만 1과 2를 고치면 이 대기는 필요 없어진다.
-
-이 사슬을 밝히는 데 진단 20개가 들었다. 그중 네 번은 내 판정을 측정이 반증했다 — cleanup snapshot
-누락, commit 미도달, commit 거부가 join을 막는다, replay 순환 대기. 모두 표시를 넣어 갈랐다.
+또 하나. 이 항목 하나에 하루의 절반을 썼고 다른 blocker 10개는 그대로다. 47개를 막는다는 이유로
+계속 붙잡았으나 한계효용이 마이너스로 넘어간 시점이 훨씬 앞이었다. 한 항목에서 세 번 연속으로
+판정이 뒤집히면 그때가 다른 항목으로 옮길 때다.
 
 **RM-B2 — mesh 계층에 drain 표시가 구현되어 있지 않다.** Provider가 drain 중일 때 select-one이 그
 member를 고르고 `Rejected`(admission sealed)를 caller에게 그대로 돌려준다. 원인을 끝까지 보면 표시

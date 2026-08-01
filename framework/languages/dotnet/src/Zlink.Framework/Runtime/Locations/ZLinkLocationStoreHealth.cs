@@ -7,11 +7,27 @@ namespace Zlink.Framework.Runtime.Locations;
 /// </summary>
 internal sealed class ZLinkLocationStoreHealth
 {
+    //  Store health timestamps are compared against the lease renewal time,
+    //  which comes from the runtime's injected clock. Reading the system clock
+    //  here would put the two on different timelines.
+    private readonly TimeProvider _time;
     private readonly object _gate = new();
     private readonly Dictionary<string, string> _failures = new(StringComparer.Ordinal);
     private DateTimeOffset? _lastSuccessAt;
     private DateTimeOffset? _lastFailureAt;
     private long _recoveryGeneration;
+
+    //  The container resolves this type, so the parameterless constructor has
+    //  to stay; the clock overload is for callers that already own one.
+    public ZLinkLocationStoreHealth()
+        : this(TimeProvider.System)
+    {
+    }
+
+    internal ZLinkLocationStoreHealth(TimeProvider time)
+    {
+        _time = time;
+    }
 
     internal void ReportSuccess(string source)
     {
@@ -19,7 +35,7 @@ internal sealed class ZLinkLocationStoreHealth
         {
             if (_failures.Remove(source))
                 _recoveryGeneration++;
-            _lastSuccessAt = DateTimeOffset.UtcNow;
+            _lastSuccessAt = _time.GetUtcNow();
         }
     }
 
@@ -28,7 +44,7 @@ internal sealed class ZLinkLocationStoreHealth
         lock (_gate)
         {
             _failures[source] = error.Message;
-            _lastFailureAt = DateTimeOffset.UtcNow;
+            _lastFailureAt = _time.GetUtcNow();
         }
     }
 

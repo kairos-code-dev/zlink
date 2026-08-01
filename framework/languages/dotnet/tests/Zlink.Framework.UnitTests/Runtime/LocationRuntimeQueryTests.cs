@@ -188,7 +188,7 @@ public sealed class LocationRuntimeQueryTests
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var runtime = new ZLinkLocationRuntime(options, store, time);
-        var health = new ZLinkLocationStoreHealth();
+        var health = new ZLinkLocationStoreHealth(time);
         var query = new ZLinkLocationRuntimeQueryService(
             options,
             store,
@@ -216,7 +216,7 @@ public sealed class LocationRuntimeQueryTests
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var runtime = new ZLinkLocationRuntime(
             options, store, time);
-        var health = new ZLinkLocationStoreHealth();
+        var health = new ZLinkLocationStoreHealth(time);
         var query = new ZLinkLocationRuntimeQueryService(
             options,
             store,
@@ -228,11 +228,15 @@ public sealed class LocationRuntimeQueryTests
         health.ReportSuccess("mesh-node-query-read");
         var readSuccessAt = health.GetSnapshot().LastSuccessAt;
         time.Advance(TimeSpan.FromDays(30));
-        Assert.True(await runtime.RenewOwnerLeaseOnceAsync());
+        var renewed = await runtime.RenewOwnerLeaseOnceAsync();
+        Assert.True(renewed, $"owner lease renewal failed: {runtime.LastError}");
 
         var status = await query.GetStatusAsync();
 
-        Assert.True(status.LastRefreshAt > readSuccessAt);
+        Assert.True(
+            status.LastRefreshAt > readSuccessAt,
+            $"lastRefresh={status.LastRefreshAt:O} readSuccess={readSuccessAt:O} "
+            + $"leaseRenewed={status.OwnerLeaseRenewedAt:O} now={time.GetUtcNow():O}");
         Assert.Equal(time.GetUtcNow(), status.LastRefreshAt);
     }
 

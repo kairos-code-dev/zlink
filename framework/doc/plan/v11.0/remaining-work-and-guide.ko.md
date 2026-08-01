@@ -142,38 +142,26 @@ route_commit_result   ack=False  ×121  (deadline까지 재시도)
 route_commit_result actor=actor-sm-b6-disconnected-... ack=True
 ```
 
-둘째가 남았다. Commit으로 session binding은 target node를 가리키게 됐는데, 연결을 끊어도 그
-actor에 대해서는 `session_disconnect_applied`도 `_ignored`도 찍히지 않는다. 같은 실행의 다른 actor
-다섯은 모두 `applied`가 찍힌다.
-
-Cleanup 자체는 그 actor를 순회한다. 그러므로 앞서 적은 "snapshot에 없다"는 의심은 아니다.
+둘째가 남았다. 통지가 **session node를 떠나 target node의 pipeline에 도착하지 않는다.** 그 사이
+구간을 전부 밝혔고 모두 정상이다.
 
 ```
-session-a : session_cleanup_entered session=7 actors=1 [actor-sm-b6-disconnected-...]
-session-a : forward_part  ×4        (2개 message: join relay 1, disconnect 1)
-session-a : session_disconnect_skipped   0건
-play-a    : remote_frame_dispatch   1건
-play-b    : remote_frame_dispatch   1건
-어느 쪽도 session_disconnect_applied / _ignored / relay_identity_stale 0건
+session-a : session_cleanup_entered  actors=1 [actor-sm-b6-disconnected-...]
+session-a : session_disconnect_skipped   0건   (가드가 건너뛰지 않았다)
+session-a : session_disconnect_notify_failed 0건 (송신이 실패하지 않았다)
+session-a : forward_part ×4  → target_node=play-a(join relay), play-b(disconnect)
+play-b    : relay_source_stale        0건   (신원 검증에서 버려지지 않았다)
+play-b    : actor_frame_arrived       이 actor는 JoinUserSpotActorReq 1건뿐
+play-*    : 같은 실행의 다른 actor 5개는 disconnect frame이 도착하고 applied까지 간다
 ```
 
-즉 통지는 forward되고, 어느 play node에서 dispatch까지 가는데, disconnect frame으로 처리된 흔적이
-양쪽 모두 없다. Frame이 두 node 중 어디로 갔는지, 그리고 dispatch 뒤 어디서 사라지는지가 남은
-질문이다. 다음은 `forward_part`가 고른 target node를 disconnect frame에 대해 직접 찍어 join relay와
-구분하는 것이다.
+즉 commit 뒤 route는 play-b로 정확히 갱신되고, session node는 그리로 forward하고, 송신도
+성공하는데, target의 actor pipeline에는 오지 않는다. 남은 미조명 구간은
+session node의 `SendToNode`와 target의 relay handler 사이 한 hop뿐이다.
 
-이전에 적었던 다음 의심은 아래와 같으며, 위 관측으로 아직 배제되지 않았다. `ZLinkSessionActorBindingRegistry.CleanupAsync`는 시작
-시점에 `SnapshotSessionActors(context)`로 actor 목록을 뜨고, 각 `ZLinkSessionActor`는 bind 시점의
-`Ref`를 들고 있다. Handoff 뒤에는 binding table의 `Route`만 target node로 갱신되고
-(`CommitRoute`가 entry의 `Route`를 바꾼다) snapshot이 들고 있는 `Ref`는 원래 node를 가리킨 채일 수
-있다. 그러면 disconnect가 옛 owner로 가고, 그 node는 actor를 더 이상 갖고 있지 않으므로 조용히
-끝난다.
-
-다음은 그 `Ref`가 commit 뒤 무엇을 가리키는지 확인하는 것이다. Commit이 entry의 route를 갱신할 때
-같은 entry의 `ActorRef`도 함께 갱신되어야 하는지가 판정 지점이다.
-
-Handoff 경로에 심은 표시(`target_completion_entered`·`_before_session_commit`·`_requesting`·
-`_replied`·`_reply_rejected`, `route_commit_received`·`_result`·`_rejected`)가 이 두 단계를 갈랐다.
+같은 실행에서 다른 actor 5개의 disconnect는 같은 경로로 도착한다는 점이 중요하다. 그 5개는
+handoff를 겪지 않았다. 따라서 다음은 handoff를 겪은 actor의 relay가 어떤 점에서 다른지다.
+`ZLinkRemoteActorFrameRelayHandler` 진입을 찍으면 그 한 hop이 갈린다.
 
 **RM-B2 — mesh 계층에 drain 표시가 구현되어 있지 않다.** Provider가 drain 중일 때 select-one이 그
 member를 고르고 `Rejected`(admission sealed)를 caller에게 그대로 돌려준다. 원인을 끝까지 보면 표시

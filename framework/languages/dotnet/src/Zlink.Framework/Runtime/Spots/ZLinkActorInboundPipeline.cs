@@ -533,6 +533,12 @@ internal sealed class ZLinkActorInboundPipeline(
         bool? relocationReplay,
         CancellationToken cancellationToken)
     {
+        //  Between the relay dispatch and this branch there is no record of
+        //  what arrived, so a frame that is not recognised as a disconnect
+        //  simply continues as ordinary traffic.
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"actor_frame_arrived actor={actor.Context.ActorId} packet={frame.Header.Name} "
+            + $"disconnect={ZLinkActorBoundSessionRelay.IsSessionDisconnectedPacket(frame.Header)}");
         if (ZLinkActorBoundSessionRelay.IsSessionDisconnectedPacket(frame.Header))
         {
             if (!ZLinkActorBoundSessionRelay.TryValidateDisconnectedBinding(

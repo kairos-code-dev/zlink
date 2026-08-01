@@ -3836,9 +3836,18 @@ internal sealed partial class ZLinkFrameworkRuntime
                 || boundSource.NodeGeneration != sourceNodeGeneration
                 || string.IsNullOrWhiteSpace(boundSource.OwnerId)
                 || boundSource.LeaseGeneration == 0)
+            {
+                //  This runs inside a one-way route send handler, so the throw
+                //  reaches no caller and the frame simply disappears.
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"relay_source_stale actor={actorId} source_node={sourceNodeRid} "
+                    + $"source_gen={sourceNodeGeneration} has_fence={requestSource is not null} "
+                    + $"fence_node={requestSource?.NodeRid} fence_gen={requestSource?.NodeGeneration} "
+                    + $"owner={requestSource?.OwnerId} lease={requestSource?.LeaseGeneration}");
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.Unavailable,
                     $"Actor '{actorId}' bound-session relay source identity is stale.");
+            }
             return;
         }
 

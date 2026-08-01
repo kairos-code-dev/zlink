@@ -160,17 +160,28 @@ var prior = _remoteFrameChains.TryGetValue(actorId, out var chain) ? chain : Tas
 chained = DispatchRemoteFrameAfterAsync(prior, batch, deadlineUnixMs, cancellationToken);
 ```
 
-Disconnect는 join frame의 dispatch 뒤에 줄을 선다. 그 join은 deferred join이므로 handoff·seal·
-commit이 끝나야 완료된다. Commit이 `AcceptedHighWater` 불일치로 120번 거부되는 동안 join dispatch가
-끝나지 않고, 그 뒤에 선 disconnect는 pipeline에 도달하지 못한다.
+Disconnect는 join frame의 dispatch 뒤에 줄을 선다. 그 join은 deferred join이므로 handoff가 끝나야
+완료된다.
 
-그래서 SM-B6는 두 지점 중 어느 쪽을 고쳐도 달라진다.
+Commit 자체는 문제가 아니다. 거부 120건은 **전부 `entry=False`**이고 성공은 1건이다. 즉 첫 commit은
+성립했고, 나머지는 cleanup이 binding을 지운 뒤의 재시도다. 앞서 "commit이 120번 거부되어 join이
+끝나지 않는다"고 적었던 것은 순서를 거꾸로 읽은 것이다.
 
-1. Commit이 첫 시도에 성립하게 한다. `route_commit_rejected`가 매번 `high_water`에서 갈리는지
-   확인할 것. Seal이 돌려준 값과 commit이 보내는 값 사이에 frame이 더 수락되면 어긋난다.
+```
+route_commit_result ack=True    1건   ← 첫 시도에 성립
+route_commit_rejected entry=False 120건 ← binding 삭제 뒤의 재시도
+```
+
+따라서 남은 질문은 **commit이 성립했는데도 handoff completion이 끝나지 않는 이유**다. Completion이
+끝나지 않으니 join dispatch가 pending으로 남고, 그 뒤에 선 disconnect가 pipeline에 도달하지 못한다.
+
+두 방향이 있다.
+
+1. Completion이 commit 성공 뒤 어디서 멈추는지 본다. `target_completion_before_session_commit`
+   다음에 `session_route_commit_acknowledged`가 찍히는지가 첫 분기다.
 2. Disconnect 통지를 application frame FIFO 뒤에 세우지 않는다. 이것은 lifecycle 통지이지
    application 순서를 지켜야 하는 message가 아니다. Spec 23 §10.2가 요구하는 FIFO의 대상인지
-   먼저 판정할 것.
+   먼저 판정할 것. 이 쪽은 completion 문제와 독립적으로 disconnect를 살린다.
 
 **RM-B2 — mesh 계층에 drain 표시가 구현되어 있지 않다.** Provider가 drain 중일 때 select-one이 그
 member를 고르고 `Rejected`(admission sealed)를 caller에게 그대로 돌려준다. 원인을 끝까지 보면 표시

@@ -1,4 +1,4 @@
-[스펙 목차](../../../core/doc/spec/README.ko.md) | [바인딩 API 정책](README.ko.md)
+[스펙 목차](https://zlink.systems/core/ko/spec/) | [바인딩 API 정책](README.ko.md)
 
 # 바인딩 비동기 완료 표면 정책
 

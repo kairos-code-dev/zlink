@@ -109,10 +109,7 @@ exclude_docs: |
   guide/STYLE.ko.md
   # 확정 전 초안.
   spec/draft/
-  # binding spec은 구현자용 target blueprint다. 사이트에 실은 적이 없고,
-  # 트리 밖(core/doc, 각 binding 소스)을 상대 경로로 가리키는 자리가 많아
-  # 실으면 링크 경고 200건이 따라온다.
-  bindings/spec/
+  bindings/spec/draft/
 
 nav:
   - Home: index.md
@@ -152,6 +149,17 @@ nav:
     - Python: bindings/guide/python/index.ko.md
     - Go: bindings/guide/go/index.ko.md
     - Rust: bindings/guide/rust/index.ko.md
+  - Binding Spec:
+    - Overview: bindings/spec/README.md
+    - Async & Coroutine Policy: bindings/spec/async-coroutine-policy.ko.md
+    - C: bindings/spec/c/README.md
+    - .NET: bindings/spec/dotnet/README.md
+    - C++: bindings/spec/cpp/README.md
+    - Java: bindings/spec/java/README.md
+    - Node.js: bindings/spec/node/README.md
+    - Python: bindings/spec/python/README.md
+    - Go: bindings/spec/go/README.md
+    - Rust: bindings/spec/rust/README.md
   - API Reference:
     - Overview: spec/core/README.md
     - Public Contract Governance: spec/core/00-public-contract-governance.md

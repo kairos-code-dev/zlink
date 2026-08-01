@@ -1,4 +1,4 @@
-[Spec Index](../../../../core/doc/spec/README.md) · [Bindings Policy](../README.md)
+[Spec Index](https://zlink.systems/core/spec/) · [Bindings Policy](../README.md)
 
 # Go Binding Implementation Blueprint
 

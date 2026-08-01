@@ -1,6 +1,6 @@
 [English](README.md) | [한국어](README.ko.md)
 
-[Spec Index](../../../../core/doc/spec/README.md) · [Bindings Policy](../README.md)
+[Spec Index](https://zlink.systems/core/spec/) · [Bindings Policy](../README.md)
 
 # .NET Binding Implementation Blueprint
 

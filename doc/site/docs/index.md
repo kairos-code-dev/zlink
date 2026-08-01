@@ -19,7 +19,7 @@ socket API.
 
 ## Bindings
 
-- [Language bindings](bindings/guide/README.ko.md) — .NET · C++ · Java · Node.js · Python · Go · Rust
+- [Language bindings](bindings/spec/README.md) — .NET · C++ · Java · Node.js · Python · Go · Rust
 
 ## Code Examples
 

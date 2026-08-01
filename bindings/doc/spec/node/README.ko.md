@@ -1,6 +1,6 @@
 [English](README.md) | [한국어](README.ko.md)
 
-[스펙 목차](../../../../core/doc/spec/README.ko.md) · [바인딩 정책](../README.ko.md)
+[스펙 목차](https://zlink.systems/core/ko/spec/) · [바인딩 정책](../README.ko.md)
 
 # Node / TypeScript 바인딩 구현 청사진
 

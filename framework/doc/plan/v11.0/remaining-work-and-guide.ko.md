@@ -254,9 +254,22 @@ session-a  route_commit_received … ack=False    (이후 completion 재시도)
    응답 경로다. 같은 종류의 어긋남이 이 계층에도 있는지 확인해야 한다. 다음은 play-b에서 이 unseal
    요청의 pending이 어떤 key로 등록되고 도착한 응답이 어떤 key로 조회되는지 찍는 것이다.
 
-   같은 실행에서 commit 응답은 141번 모두 정상적으로 돌아온다는 점이 중요한 대조군이다. 두 요청은
-   같은 helper(`RequestSessionRouteControlAsync`)와 같은 transport를 쓰고 reply 타입도 같다. 차이는
-   packet 이름과, unseal이 cleanup 이후에 온다는 시점뿐이다.
+   Unseal 호출이 반환하지 않는 것도 확인했다.
+
+```
+target_completion_before_unseal   1
+target_completion_after_unseal    0    ← 반환하지 않는다
+handoff_completion              104    ← 같은 실행의 다른 handoff는 정상 완료된다
+```
+
+   즉 이 한 요청이 deadline을 다 쓰고 `DeadlineExceeded`로 끝나며, source는 그것을 timeout으로 받고
+   completion을 다시 보낸다. 그 순환이 join dispatch를 pending으로 붙잡고, disconnect는 그 뒤에 선다.
+
+   대조군이 둘이나 있다. 같은 실행에서 commit 응답은 141번 모두 돌아오고, 다른 actor의 handoff
+   completion은 104건이 끝난다. 두 요청은 같은 helper(`RequestSessionRouteControlAsync`)와 같은
+   transport를 쓰고 reply 타입도 같다. 차이는 packet 이름과, unseal이 session cleanup 이후에 온다는
+   시점뿐이다. 후자가 유력하다 — cleanup이 session context를 정리하면서 그 node로 향하는 reply
+   경로까지 함께 정리했을 수 있다.
 2. **Disconnect 통지를 application frame FIFO 뒤에 세우지 않는다.** 이것은 lifecycle 통지이지
    application 순서를 지켜야 하는 message가 아니다. Spec 23 §10.2가 요구하는 FIFO의 대상인지
    먼저 판정할 것.

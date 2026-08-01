@@ -970,6 +970,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                         sessionRouteCommit.Value.SessionOwnerNode,
                         cancellationToken)
                     .ConfigureAwait(false);
+                LogActorHandoff($"target_completion_after_unseal actor={request.ActorId}");
             }
             actorState.Handoff.Complete(request.HandoffId);
             if (completionRoot is

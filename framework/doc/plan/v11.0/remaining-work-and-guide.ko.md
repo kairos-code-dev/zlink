@@ -107,23 +107,42 @@ Feature map의 요구 ID 수가 시나리오 파일 수보다 많은 스위트�
 (`LocationRuntimeQueryTests.Status_Reports_The_Most_Recent_Success_Across_Reads_And_Lease_Renewal`)은
 순서 의존 기존 결함이며 오늘 변경과 무관함을 별도 worktree에서 확인했다.
 
-### 2.1 원인이 확인된 항목
+### 2.1 남은 blocker의 성격
 
-**SM-B6 cross-node join.** Entry actor는 한 play node에, spot은 다른 play node에 생긴다. Spot
-쪽은 `spot-actor-admitted`까지 진행하고 join completion이 실패한다.
+오늘 하루 원인을 열어본 결과, 성격이 셋으로 갈린다. **시나리오 코드가 v11 이전 기대를 들고 있는
+경우가 가장 많다.** v11 전환에서 runtime과 시나리오 spec만 갱신했고 e2e 코드는 그대로 남았기
+때문이다. 그래서 새 blocker를 만나면 runtime을 파기 전에 해당 config 문서와 코드를 먼저 대조한다.
 
-```
-deferred_join_failed kind=InvalidOperation retriable=False
-  Actor '...' session ingress seal was fenced by its binding identity.
-```
+| 성격 | 오늘 확인 | 예 |
+|---|---|---|
+| 시나리오 코드가 낡음 | 6건 | endpoint로 peer 식별(spec 24 §7이 감춤), deferred ack에 caller success 단언, `Fetch`를 금지 terminator로 오인, deferred join 완료 전 연결 절단 |
+| runtime 결함 | 4건 | reply 정합, completion pair budget, 원격 disconnect 신원, 이동할 unit이 없는 host를 target 없다고 차단 |
+| e2e 문서가 spec과 충돌 | 1건 | config 5가 `Unavailable`, spec 06 결과표는 `NotFound` |
 
-`ZLinkSessionActorBindingTable.SealRouteAsync`가 binding generation·route fence·session owner
-generation 일치를 요구하고, 어긋나면 `Acknowledged=false`로 답한다.
+특히 되풀이된 함정 하나를 적어 둔다. **join과 destroy 요청의 응답은 deferred intent의 확인일
+뿐이다.** 거기에 대고 성공·실패를 단언하면 항상 통과하거나 항상 실패한다. 실제 결과는 completion
+callback이나 evidence가 나른다. SM-B6와 ST-C3가 같은 이유로 막혀 있었다.
 
-**SubmitAdmission readiness.** 원인이 둘이었고 각각 단독으로 handshake를 막았다. 하나는
-`ReceiverGate`가 TCP 연결을 하나만 accept하던 것이고(수정 완료 — mesh peer 하나는 application과
-completion 두 연결이다), 다른 하나는 caller router socket의 `SendHighWaterMark = 1`이다.
-completion pair의 budget은 분리했으므로 남은 것은 application lane 쪽이다.
+### 2.2 원인이 확정된 미해결 항목
+
+**SM-B6.** Cross-node join은 통과한다. 남은 것은 actor가 handoff로 다른 node로 옮겨간 뒤
+bound session이 따라가지 않는 것이다. 그래서 disconnect 통지가 actor가 join한 spot에 닿지 못한다.
+
+**RM-B2.** Provider가 drain 중일 때 select-one이 그 member를 고르고 `Rejected`(admission sealed)를
+그대로 caller에게 돌려준다. Config 1 RM-B2는 "`Draining` 전파 구간을 포함해 모두 정상 reply로
+끝난다"를 요구하므로, admission 전 거부에서는 다시 골라야 한다. Spec 06 §679도 성공한 admission
+전까지 재선택을 허용한다.
+
+**TA-A4.** Actor destroy 뒤 같은 ID 호출이 `Unavailable`로 끝난다. Config 9는 `NotFound`로 분류할
+것을 요구하고, spec 06 결과표도 authority가 없으면 `NotFound`다.
+
+**SubmitAdmission.** `ReceiverGate`가 transport pair 두 연결을 모두 나르도록 고쳤으나 readiness는
+아직 통과하지 않는다. 남은 용의자는 caller router socket의 `SendHighWaterMark = 1`이 application
+lane에 그대로 남아 있는 것이다.
+
+**OBS-C1.** `host-state|` evidence가 관측되지 않는다. Observer는 등록되어 있고 host status stream은
+구독 시 현재 상태를 한 번 쓴다. Evidence는 HTTP로만 노출되므로 로그 파일 grep으로는 판정할 수
+없다. 다음은 `/evidence`를 직접 읽어 host-state 항목 유무를 확인하는 것이다.
 
 ### 2.2 배포 경로 복구
 

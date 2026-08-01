@@ -6664,3 +6664,32 @@ Disconnect 수정 뒤 단위 테스트가 1375/1376이 되어 회귀를 의심�
 측정 함정 하나를 같이 적는다. `dotnet test`를 끝내지 않고 남겨 두면 프로세스가 매달린 채
 남아서 다음 실행과 경합하고, 그때 나오는 것이 `Test Run Aborted`와 잘린 통과 수(405, 517)다.
 전체 수를 볼 때는 남은 test host가 없는지 먼저 확인할 것.
+
+### Core 수정 2건이 release 파이프라인에 들어가지 못한 상태다
+
+오늘 넣은 Core 수정 두 건은 소스에만 있고 package에는 없다. 절차를 건너뛴 결과다.
+
+- `core/src/api/socket/socket_request_reply_internal.hpp` — reply 정합
+- `core/src/runtime/core/transport_pair_policy.hpp` — completion pair budget
+
+`AGENTS.md`의 "Bindings Local Package 배포 규칙"과 `scripts/local-package/README.ko.md`가 정한
+경로는 core 빌드 → `native/sync-local-core-libs.sh` → 언어별 package 생성 → framework 참조 버전이다.
+나는 이 경로 대신 `~/.nuget/packages/systems.zlink/11.1.0/runtimes/`에 이미 풀린 native를 직접
+덮어썼다. e2e는 새 라이브러리를 실제로 로드했으므로 측정 결과 자체는 유효하지만, `.artifacts`의
+nupkg에는 옛 native가 그대로 있어 restore 한 번이면 재현되지 않는다.
+
+`native/sync-local-core-libs.sh dotnet`은 실행했다. 그 다음 단계가 막힌다.
+`scripts/local-package/dotnet/build-wsl.sh`는 Core package prefix와 review를 통과한
+`V11-M3-CORE-VERIFY` candidate manifest를 요구하고, candidate에 봉인된 파일 hash가 현재 worktree와
+정확히 같아야 한다. 최신 candidate는 이 수정들보다 앞서 봉인됐다.
+
+```
+candidate  V11-M3-CORE-VERIFY-20260731-completion-control-v9
+sealed     b8d3d8a4...  core/src/api/socket/socket_request_reply_internal.hpp
+worktree   e5957434...
+```
+
+`transport_pair_policy.hpp`는 그 candidate의 `ownedPaths`에 없다.
+
+따라서 배포에는 **새 Core candidate 작성과 V11-R2 review**가 선행되어야 한다. 이 증거는 임의로
+만들 수 없으므로 별도 항목으로 남긴다. Core를 고칠 때마다 이 절차를 먼저 확인할 것.

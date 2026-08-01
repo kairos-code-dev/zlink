@@ -597,10 +597,6 @@ internal sealed class ZLinkSessionActorCoordinator(
         {
             //  Returning quietly here is indistinguishable from a disconnect
             //  that was delivered, so name the condition that skipped it.
-            Zlink.Framework.Runtime.Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"session_disconnect_skipped actor={actorRef.ActorId} found={found} "
-                + $"same_ref={found && ReferenceEquals(binding.ActorRef, actorRef)} "
-                + $"has_session_rid={found && binding.Context.RoutingId is not null}");
             return ValueTask.CompletedTask;
         }
         return runtime.NotifyActorDisconnectedAsync(

@@ -25,7 +25,7 @@ Usage:
     --maven-repository ABSOLUTE_DIR --evidence ABSOLUTE_JSON
 
 Self-test validates the package gate without publishing. Actual mode publishes
-11.0.2 to an empty local Maven repository, then resolves, compiles, and runs an
+11.1.0 to an empty local Maven repository, then resolves, compiles, and runs an
 isolated public-only Gradle consumer.
 EOF
 }
@@ -68,14 +68,14 @@ has_no_match() { ! grep -Eq -- "$1" "$2"; }
 
 static_checks() {
   check package-coordinate has_literal "group = 'systems.zlink'" "$project"
-  check package-version has_literal "version = '11.0.2'" "$project"
-  check exact-core-version has_literal "metadata.version != '11.0.0'" "$project"
+  check package-version has_literal "version = '11.1.0'" "$project"
+  check exact-core-version has_literal "metadata.version != '11.1.0'" "$project"
   check exact-provenance has_literal 'zlink.core.provenance-sha256' "$project"
   check exact-candidate has_literal 'zlink.core.candidate-manifest-sha256' "$project"
   check exact-soname has_literal "approved.runtime.soname != 'libzlink.so.11'" "$project"
   check no-core-source-include has_no_match 'core/(src|include|external/boost)|ZLINK_CORE_BUILD_DIR' "$project"
   check approved-core-evidence has_literal '--core-package-evidence' "$build_script"
-  check package-dependency has_literal "implementation 'systems.zlink:zlink:11.0.2'" "$fixture_project"
+  check package-dependency has_literal "implementation 'systems.zlink:zlink:11.1.0'" "$fixture_project"
   check local-maven-resolver has_literal 'ZLINK_LOCAL_MAVEN_REPOSITORY' "$fixture_project"
   check no-project-reference has_no_match 'project\(|bindings/java|sourceSets' "$fixture_project"
   check public-only-source has_no_match 'systems\.zlink\.(runtime|internal)|java\.lang\.foreign|Native[A-Z]|System\.load' "$fixture_source"
@@ -137,8 +137,8 @@ void zlink_version(int *major, int *minor, int *patch) {
 }
 EOF
   cc -fPIC -shared "$workspace/zlink.c" -Wl,-soname,libzlink.so.11 \
-    -o "$prefix/lib/libzlink.so.11.0.0"
-  ln -s libzlink.so.11.0.0 "$prefix/lib/libzlink.so.11"
+    -o "$prefix/lib/libzlink.so.11.1.0"
+  ln -s libzlink.so.11.1.0 "$prefix/lib/libzlink.so.11"
   ln -s libzlink.so.11 "$prefix/lib/libzlink.so"
   fixture_evidence="$workspace/core-package.json"
   PREFIX="$prefix" EVIDENCE="$fixture_evidence" node <<'NODE'
@@ -157,18 +157,18 @@ const approval = {
   candidateManifestSha256: candidate.manifestSha256,
 };
 const provenance = {
-  schema: 1, package: 'zlink-core', version: '11.0.0',
+  schema: 1, package: 'zlink-core', version: '11.1.0',
   candidate: {...candidate, approvalEvidenceSha256: approval.evidenceSha256},
   createdAt: new Date().toISOString(),
-  files: [{path: 'lib/libzlink.so.11.0.0', sha256: digest(runtime)}],
+  files: [{path: 'lib/libzlink.so.11.1.0', sha256: digest(runtime)}],
 };
 const provenancePath = path.join(prefix, 'share/zlink/core-package-provenance.json');
 fs.writeFileSync(provenancePath, `${JSON.stringify(provenance, null, 2)}\n`);
 const provenanceSha = digest(provenancePath);
-const runtimeInfo = {path: runtime, sha256: digest(runtime), version: '11.0.0', soname: 'libzlink.so.11'};
+const runtimeInfo = {path: runtime, sha256: digest(runtime), version: '11.1.0', soname: 'libzlink.so.11'};
 const evidence = {
   schema: 1, ledgerId: 'V11-M3-CORE-PKG', command: 'CORE-PKG', status: 'pass',
-  version: '11.0.0', candidate, approval,
+  version: '11.1.0', candidate, approval,
   output: {prefix, provenanceManifest: provenancePath, provenanceSha256: provenanceSha},
   consumer: {candidate, approval, provenance: {path: provenancePath, sha256: provenanceSha}, runtime: runtimeInfo},
 };
@@ -204,7 +204,7 @@ NODE
 const fs = require('node:fs');
 const file = process.argv[2];
 const value = JSON.parse(fs.readFileSync(file, 'utf8'));
-value.version = '11.0.2';
+value.version = '11.1.0';
 fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 NODE
   if node "$validator" --prefix "$prefix" --core-package-evidence "$fixture_evidence" >/dev/null 2>&1; then
@@ -257,10 +257,10 @@ node "$validator" --prefix "$core_prefix" \
   --core-package-evidence "$core_package_evidence" \
   --maven-repository "$maven_repository"
 
-coordinate_dir="$maven_repository/systems/zlink/zlink/11.0.2"
-jar="$coordinate_dir/zlink-11.0.2.jar"
-pom="$coordinate_dir/zlink-11.0.2.pom"
-module="$coordinate_dir/zlink-11.0.2.module"
+coordinate_dir="$maven_repository/systems/zlink/zlink/11.1.0"
+jar="$coordinate_dir/zlink-11.1.0.jar"
+pom="$coordinate_dir/zlink-11.1.0.pom"
+module="$coordinate_dir/zlink-11.1.0.module"
 for artifact in "$jar" "$pom" "$module"; do
   [[ -f "$artifact" ]] || { echo "Published Maven metadata is missing: $artifact" >&2; exit 1; }
 done
@@ -277,9 +277,9 @@ unzip -p "$jar" native/linux-x86_64/libzlink.so >"$packaged_runtime"
 [[ "$(sha256sum "$packaged_runtime" | awk '{print $1}')" == "$expected_runtime_sha" ]] || {
   echo "Published jar contains a different Core runtime" >&2; exit 1;
 }
-grep -Fq '<zlink.core.version>11.0.0</zlink.core.version>' "$pom"
+grep -Fq '<zlink.core.version>11.1.0</zlink.core.version>' "$pom"
 grep -Fq "<zlink.core.provenance-sha256>$expected_provenance_sha</zlink.core.provenance-sha256>" "$pom"
-grep -Fq 'zlink-11.0.2.jar' "$module"
+grep -Fq 'zlink-11.1.0.jar' "$module"
 grep -Fq "\"systems.zlink.core.provenance-sha256\": \"$expected_provenance_sha\"" "$module"
 grep -Fq '"systems.zlink.core.soname": "libzlink.so.11"' "$module"
 
@@ -289,7 +289,7 @@ env -u ZLINK_LIBRARY_PATH -u LD_LIBRARY_PATH -u CLASSPATH \
   GRADLE_USER_HOME="$gradle_home" \
   "$repo_root/bindings/java/gradlew" --no-daemon --refresh-dependencies \
   -p "$consumer" clean run >"$run_output"
-grep -Fq 'ZLINK_CORE_VERSION=11.0.0' "$run_output"
+grep -Fq 'ZLINK_CORE_VERSION=11.1.0' "$run_output"
 
 checks+=(
   "actualMavenArtifact=pass"
@@ -312,12 +312,12 @@ process.stdout.write(`${JSON.stringify({
   core,
   maven: {
     repository: process.env.MAVEN_REPOSITORY,
-    coordinate: 'systems.zlink:zlink:11.0.2',
+    coordinate: 'systems.zlink:zlink:11.1.0',
     jar: {path: process.env.JAR, sha256: digest(process.env.JAR)},
     pom: {path: process.env.POM, sha256: digest(process.env.POM)},
     module: {path: process.env.MODULE, sha256: digest(process.env.MODULE)},
   },
-  consumer: {isolatedGradleUserHome: true, projectReferenceCount: 0, runtimeVersion: '11.0.0'},
+  consumer: {isolatedGradleUserHome: true, projectReferenceCount: 0, runtimeVersion: '11.1.0'},
 }, null, 2)}\n`);
 NODE
 write_evidence pass actual-local true "$details"

@@ -12,12 +12,12 @@ final class PublicConsumer {
     public static void main(String[] args) {
         int[] version = Zlink.version();
         if (version.length != 3 || version[0] != 11
-                || version[1] != 0 || version[2] != 0) {
+                || version[1] != 1 || version[2] != 0) {
             throw new IllegalStateException(
-                "Expected packaged Core 11.0.0, found "
+                "Expected packaged Core 11.1.0, found "
                     + java.util.Arrays.toString(version));
         }
-        System.out.println("ZLINK_CORE_VERSION=11.0.0");
+        System.out.println("ZLINK_CORE_VERSION=11.1.0");
     }
 
     static void verify(Context context, Socket socket, StreamSocket stream,

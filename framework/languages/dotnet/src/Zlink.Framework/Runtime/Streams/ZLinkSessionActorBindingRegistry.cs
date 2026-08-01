@@ -92,9 +92,6 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
             .ToArray();
         //  A session that ends with no bound actors and one that never reached
         //  cleanup look the same from the outside.
-        ZLinkFrameworkDebugLog.SpotDiscovery(
-            $"session_cleanup_entered session={context.RoutingId} actors={actors.Length} "
-            + $"[{string.Join(",", actors.Select(a => a.ActorId))}]");
 
         // The transport disconnect owns one fixed binding snapshot. Notify
         // every exact binding concurrently, but bound each callback by the

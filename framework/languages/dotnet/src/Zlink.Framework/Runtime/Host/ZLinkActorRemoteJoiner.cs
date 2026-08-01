@@ -1091,9 +1091,6 @@ internal sealed class ZLinkActorRemoteJoiner(
         //  The reconciliation runner retries this, so a request that never
         //  succeeds leaves the target completion - and with it the session
         //  route commit - simply absent. Name each attempt and its outcome.
-        runtime.LogActorHandoff(
-            $"target_completion_requesting actor={actorId} "
-            + $"target_node={targetNodeRid} target_spot={targetSpotId}");
         IReadOnlyList<Systems.Zlink.Message> replyParts;
         try
         {
@@ -1112,13 +1109,8 @@ internal sealed class ZLinkActorRemoteJoiner(
         }
         catch (Exception failure)
         {
-            runtime.LogActorHandoff(
-                $"target_completion_request_failed actor={actorId} {failure.GetType().Name}: "
-                + failure.Message);
             throw;
         }
-        runtime.LogActorHandoff(
-            $"target_completion_replied actor={actorId} parts={replyParts.Count}");
         try
         {
             _ = ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<ZLinkRemoteActorHandoffCompletionRequest>(
@@ -1129,9 +1121,6 @@ internal sealed class ZLinkActorRemoteJoiner(
         }
         catch (Exception decodeFailure)
         {
-            runtime.LogActorHandoff(
-                $"target_completion_reply_rejected actor={actorId} "
-                + $"{decodeFailure.GetType().Name}: {decodeFailure.Message}");
             throw;
         }
     }

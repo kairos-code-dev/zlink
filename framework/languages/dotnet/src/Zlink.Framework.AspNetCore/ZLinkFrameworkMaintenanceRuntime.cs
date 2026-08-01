@@ -411,8 +411,6 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
         {
             //  A swallowed teardown failure leaves only the reason enum, which
             //  cannot tell one throw site from another.
-            Zlink.Framework.Runtime.Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"teardown_failed {teardownFailure}");
             drained = new ForceStopped(ZLinkDrainForceReason.TeardownFailed);
         }
 

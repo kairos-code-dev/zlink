@@ -2,8 +2,8 @@ using Systems.Zlink;
 using System.Text.Json;
 
 var version = Zlink.Version();
-if (version != (11, 0, 0))
-    throw new InvalidOperationException($"Expected Core 11.0.0, loaded {version}.");
+if (version != (11, 1, 0))
+    throw new InvalidOperationException($"Expected Core 11.1.0, loaded {version}.");
 
 var loadedRuntime = File.ReadLines("/proc/self/maps")
     .Select(line => line.Split(' ', StringSplitOptions.RemoveEmptyEntries).LastOrDefault())

@@ -127,10 +127,6 @@ internal sealed class ZLinkRemoteSessionOwnerTombstoneRouteHandler(
         ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
-        //  Receiving side of the tombstone, paired with the requester's
-        //  tombstone_request_sent.
-        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-            $"tombstone_received actor={request.ActorId} source={context.SourceNodeRid}");
         return runtime.TombstoneRemoteSessionOwnerBindingAsync(
             request,
             context.SourceNodeRid,

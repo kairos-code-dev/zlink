@@ -197,8 +197,6 @@ internal sealed class ZLinkSessionRouteCommitHandler(ZLinkFrameworkRuntime runti
         //  Paired with route_control_sent on the requester: the seal handler
         //  already traces its arrival, and without the same mark here a stalled
         //  commit cannot be told from one that never arrived.
-        Zlink.Framework.Runtime.Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-            $"route_commit_received actor={message.ActorId} handoff={message.HandoffId}");
         var result = CommitAndTrace(runtime, message);
         return ValueTask.FromResult(new ZLinkSessionRouteCommitReply(
             result.Acknowledged,
@@ -231,8 +229,6 @@ internal sealed class ZLinkSessionRouteCommitHandler(ZLinkFrameworkRuntime runti
                     message.ObjectGeneration,
                     message.TargetMeshName,
                     RoutingId.FromHex(message.TargetNodeRid))));
-        Zlink.Framework.Runtime.Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-            $"route_commit_result actor={message.ActorId} ack={result.Acknowledged}");
         return result;
     }
 }
@@ -251,8 +247,6 @@ internal sealed class ZLinkSessionRouteUnsealHandler(ZLinkFrameworkRuntime runti
         cancellationToken.ThrowIfCancellationRequested();
         //  Paired with the commit handler's own arrival mark: without it a
         //  stalled unseal cannot be told from one that never arrived.
-        Zlink.Framework.Runtime.Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-            $"route_unseal_received actor={message.ActorId} handoff={message.HandoffId}");
         var request = new ZLinkSessionRouteCommit(
             message.ActorId,
             message.BindingToken,
@@ -327,9 +321,6 @@ internal sealed class ZLinkRemoteActorFrameRelayHandler(ZLinkFrameworkRuntime ru
         var requestSource = DecodeRequestSource(message);
         //  The only unlit hop on the relay: a frame that never gets here and one
         //  that is dropped after dispatch look identical from the sender.
-        Zlink.Framework.Runtime.Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-            $"relay_frame_received actor={message.ActorId} "
-            + $"target_node={message.TargetNodeRid} relay={message.RelayNodeRid}");
         await runtime.DispatchRemoteActorFrameAsync(
                 message.ActorId,
                 message.ActorGeneration,

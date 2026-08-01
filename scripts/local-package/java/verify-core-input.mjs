@@ -52,7 +52,7 @@ if (evidence.schema !== 1 || evidence.ledgerId !== 'V11-M3-CORE-PKG'
     || evidence.command !== 'CORE-PKG' || evidence.status !== 'pass') {
   fail('Core package evidence is not a passed V11-M3-CORE-PKG result');
 }
-if (evidence.version !== '11.0.0') fail('Core package evidence must report version 11.0.0');
+if (evidence.version !== '11.1.0') fail('Core package evidence must report version 11.1.0');
 if (fs.realpathSync(evidence.output?.prefix ?? '') !== prefix) {
   fail('Core package prefix does not match the approved evidence');
 }
@@ -66,8 +66,8 @@ if (provenanceSha256 !== evidence.output?.provenanceSha256
 }
 const provenance = JSON.parse(fs.readFileSync(provenancePath, 'utf8'));
 if (provenance.schema !== 1 || provenance.package !== 'zlink-core'
-    || provenance.version !== '11.0.0') {
-  fail('Core package provenance must identify zlink-core 11.0.0');
+    || provenance.version !== '11.1.0') {
+  fail('Core package provenance must identify zlink-core 11.1.0');
 }
 if (!sameCandidate(provenance.candidate, evidence.candidate)
     || !sameCandidate(provenance.candidate, evidence.consumer?.candidate)
@@ -83,10 +83,10 @@ if (relativeRuntime.startsWith('..') || path.isAbsolute(relativeRuntime)) {
   fail('Core runtime resolves outside the approved package prefix');
 }
 const runtimeSha256 = sha256(runtimePath);
-const runtimeRecord = provenance.files?.find(record => record.path === 'lib/libzlink.so.11.0.0');
+const runtimeRecord = provenance.files?.find(record => record.path === 'lib/libzlink.so.11.1.0');
 if (!runtimeRecord || runtimeRecord.sha256 !== runtimeSha256
     || evidence.consumer?.runtime?.sha256 !== runtimeSha256
-    || evidence.consumer?.runtime?.version !== '11.0.0') {
+    || evidence.consumer?.runtime?.version !== '11.1.0') {
   fail('Core runtime SHA-256 or version does not match the approved package');
 }
 const sonameOutput = childProcess.execFileSync('readelf', ['-d', runtimePath], {encoding: 'utf8'});

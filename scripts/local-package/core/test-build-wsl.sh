@@ -33,7 +33,7 @@ fixture="$(mktemp -d)"
 direct_input_rel=".artifacts/v11/tmp/core-package-selftest-direct-input-$$"
 direct_input="$repo_root/$direct_input_rel"
 trap 'rm -rf "$fixture"; rm -f "$direct_input"' EXIT
-prefix="$fixture/install/zlink-core/11.0.0"
+prefix="$fixture/install/zlink-core/11.1.0"
 mkdir -p "$prefix/include" "$prefix/lib" "$prefix/share/zlink"
 mkdir -p "$(dirname "$direct_input")"
 printf '%s\n' 'sealed review state' >"$direct_input"
@@ -168,8 +168,8 @@ void zlink_version(int *major, int *minor, int *patch)
 }
 EOF
 cc -std=c11 -fPIC -shared -I"$prefix/include" "$fixture/zlink.c" \
-  -Wl,-soname,libzlink.so.11 -o "$prefix/lib/libzlink.so.11.0.0"
-ln -s libzlink.so.11.0.0 "$prefix/lib/libzlink.so.11"
+  -Wl,-soname,libzlink.so.11 -o "$prefix/lib/libzlink.so.11.1.0"
+ln -s libzlink.so.11.1.0 "$prefix/lib/libzlink.so.11"
 ln -s libzlink.so.11 "$prefix/lib/libzlink.so"
 
 PREFIX="$prefix" CANDIDATE_SUMMARY="$candidate_summary" node <<'NODE'
@@ -191,7 +191,7 @@ const records = files(root).map(file => ({
 const manifest = {
   schema: 1,
   package: 'zlink-core',
-  version: '11.0.0',
+  version: '11.1.0',
   candidate: {
     ledgerId: candidate.ledgerId,
     baseRevision: candidate.baseRevision,
@@ -211,16 +211,16 @@ positive="$fixture/positive.json"
   --review-evidence "$review_evidence" \
   --evidence "$positive"
 
-cp "$prefix/lib/libzlink.so.11.0.0" "$fixture/libzlink.so.11.0.0.saved"
+cp "$prefix/lib/libzlink.so.11.1.0" "$fixture/libzlink.so.11.1.0.saved"
 cp "$prefix/share/zlink/core-package-provenance.json" "$fixture/manifest-soname.saved"
 cc -std=c11 -fPIC -shared -I"$prefix/include" "$fixture/zlink.c" \
-  -Wl,-soname,libzlink.so.10 -o "$prefix/lib/libzlink.so.11.0.0"
-RUNTIME_SHA256="$(sha256sum "$prefix/lib/libzlink.so.11.0.0" | awk '{print $1}')" \
+  -Wl,-soname,libzlink.so.10 -o "$prefix/lib/libzlink.so.11.1.0"
+RUNTIME_SHA256="$(sha256sum "$prefix/lib/libzlink.so.11.1.0" | awk '{print $1}')" \
 node - "$prefix/share/zlink/core-package-provenance.json" <<'NODE'
 const fs = require('node:fs');
 const file = process.argv[2];
 const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
-const runtime = manifest.files.find(record => record.path === 'lib/libzlink.so.11.0.0');
+const runtime = manifest.files.find(record => record.path === 'lib/libzlink.so.11.1.0');
 if (!runtime) throw new Error('fixture runtime is missing from provenance');
 runtime.sha256 = process.env.RUNTIME_SHA256;
 fs.writeFileSync(file, `${JSON.stringify(manifest, null, 2)}\n`);
@@ -232,7 +232,7 @@ if "$repo_root/scripts/v11/verify-core-package-consumer.sh" \
   echo "Verifier accepted a runtime SONAME that differs from the package major" >&2
   exit 1
 fi
-mv "$fixture/libzlink.so.11.0.0.saved" "$prefix/lib/libzlink.so.11.0.0"
+mv "$fixture/libzlink.so.11.1.0.saved" "$prefix/lib/libzlink.so.11.1.0"
 mv "$fixture/manifest-soname.saved" "$prefix/share/zlink/core-package-provenance.json"
 
 mkdir -p "$prefix/include/zlink/service"

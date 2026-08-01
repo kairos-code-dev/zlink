@@ -711,10 +711,6 @@ internal sealed partial class ZLinkFrameworkRuntime
         ZLinkRemoteActorHandoffCompletionRequest request,
         CancellationToken cancellationToken)
     {
-        //  This runs inside the source's completion request, so exceeding the
-        //  deadline here is reported to the source as a timeout with no hint of
-        //  how far it got. Mark the boundaries.
-        LogActorHandoff($"target_completion_entered actor={request.ActorId}");
         var authorityStore = Registration.Locations.ResolveStore()
                              ?? throw new ZLinkConfigurationException(
                                  "Actor relocation completion requires an Authority Store.");
@@ -880,12 +876,6 @@ internal sealed partial class ZLinkFrameworkRuntime
                         completionRoot,
                         cancellationToken)
                     .ConfigureAwait(false);
-            // Switch the session owner to the authority-committed target
-            // before invoking any target-side application callback. Both Spot
-            // membership callbacks and Actor completion can send through
-            // BoundSession, so the session owner must accept the new route
-            // while its inbound side remains sealed.
-            LogActorHandoff($"target_completion_before_session_commit actor={request.ActorId}");
             var sessionRouteCommit =
                 await CommitCompletedSessionRouteAsync(
                         actorState,
@@ -929,22 +919,17 @@ internal sealed partial class ZLinkFrameworkRuntime
                             token),
                         cancellationToken)
                     .ConfigureAwait(false);
-                LogActorHandoff(
-                    $"target_completion_join_callback_done actor={request.ActorId}");
                 if (completionRoot is not null)
                     completionRoot = await completionJournal!.MarkDeliveredAsync(
                             completionRoot,
                             cancellationToken)
                         .ConfigureAwait(false);
             }
-            LogActorHandoff(
-                $"target_completion_before_replay actor={request.ActorId}");
             await ReplayFinalTransferredActorHandoffAsync(
                     target,
                     actorState,
                     cancellationToken)
                 .ConfigureAwait(false);
-            LogActorHandoff($"target_completion_after_replay actor={request.ActorId}");
             if (!authorityWasSteady)
                 await actorLocations.AdvanceTransferredActorAuthorityPhaseAsync(
                         request.ActorId,
@@ -964,13 +949,11 @@ internal sealed partial class ZLinkFrameworkRuntime
             if (sessionRouteCommit is not null)
             {
                 actorState.CompleteRelocationSessionRoute(request.HandoffId);
-                LogActorHandoff($"target_completion_before_unseal actor={request.ActorId}");
                 await UnsealCompletedSessionRouteAsync(
                         sessionRouteCommit.Value.Request,
                         sessionRouteCommit.Value.SessionOwnerNode,
                         cancellationToken)
                     .ConfigureAwait(false);
-                LogActorHandoff($"target_completion_after_unseal actor={request.ActorId}");
             }
             actorState.Handoff.Complete(request.HandoffId);
             if (completionRoot is
@@ -2651,10 +2634,6 @@ internal sealed partial class ZLinkFrameworkRuntime
             request.AcceptedHighWater,
             ZLinkSessionBindingReplacement.CreateFence(
                 request.PreviousBinding));
-        //  A non-owning attempt waits on another attempt's completion; if that
-        //  never signals, every retry parks here.
-        ZLinkFrameworkDebugLog.SpotDiscovery(
-            $"bind_replacement actor={request.ActorId} owns={replacement.OwnsExecution}");
         if (!replacement.OwnsExecution)
         {
             var joinedFailure = await replacement.Completion
@@ -2699,8 +2678,6 @@ internal sealed partial class ZLinkFrameworkRuntime
                 _actorBoundSessionCoordinator.PublishActorSessionReplacement(
                     request.ActorId,
                     replacement);
-                ZLinkFrameworkDebugLog.SpotDiscovery(
-                    $"bind_tombstone_begin actor={request.ActorId}");
                 await TombstoneReplacedSessionOwnerAsync(
                         request.ActorId,
                         targetNodeRid,
@@ -2723,8 +2700,6 @@ internal sealed partial class ZLinkFrameworkRuntime
                 throw;
             }
         }
-        ZLinkFrameworkDebugLog.SpotDiscovery(
-            $"bind_done actor={request.ActorId}");
         return new ZLinkRemoteSessionBindResponse(
             true,
             request.ObjectGeneration,
@@ -2847,18 +2822,12 @@ internal sealed partial class ZLinkFrameworkRuntime
         }
         else
         {
-            ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"tombstone_request_sent target={sessionNodeRid} "
-                + $"mesh={previous.MeshName} local={localNodeRid} "
-                + $"peers=[{string.Join(",", GetMeshNodeRuntime(previous.MeshName).Node.MeshPeers().Select(p => $"{p.RoutingId}:{p.State}"))}]");
             response = await Services.GetRequiredService<IZLinkRouteClient>()
                 .RequestToNode(previous.MeshName, sessionNodeRid, request)
                 .Timeout(Registration.DefaultRequestTimeout)
                 .Async<ZLinkRemoteSessionOwnerTombstoneResponse>(cancellationToken)
                 .ConfigureAwait(false);
         }
-        ZLinkFrameworkDebugLog.SpotDiscovery(
-            $"tombstone_response ack={response.Acknowledged}");
         if (!response.Acknowledged)
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.Unavailable,
@@ -3531,10 +3500,6 @@ internal sealed partial class ZLinkFrameworkRuntime
             || authorityOwnerGeneration == 0
             || ownerLeaseGeneration == 0)
         {
-            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"relay_target_stale actor={actorId} "
-                + $"node_gen={targetNode.MeshStatus().LifecycleGeneration}/{targetNodeGeneration} "
-                + $"authority_gen={authorityOwnerGeneration} lease_gen={ownerLeaseGeneration}");
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.Unavailable,
                 $"Actor '{actorId}' session relay target lifecycle is stale.");
@@ -3548,10 +3513,6 @@ internal sealed partial class ZLinkFrameworkRuntime
                 && peer.RoutingId == authenticatedRelayNodeRid
                 && peer.LifecycleGeneration == relayNodeGeneration))
         {
-            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"relay_peer_stale actor={actorId} authenticated={authenticatedRelayNodeRid} "
-                + $"claimed={relayNodeRid} relay_gen={relayNodeGeneration} "
-                + $"admitted=[{string.Join(",", targetNode.MeshPeers().Where(p => p.State == MeshPeerState.Admitted).Select(p => $"{p.RoutingId}:{p.LifecycleGeneration}"))}]");
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.Unavailable,
                 $"Actor '{actorId}' relay peer identity is stale.");
@@ -3627,17 +3588,6 @@ internal sealed partial class ZLinkFrameworkRuntime
         {
             //  Nine fields decide this and the frame is gone either way, so
             //  name what the relay claimed against what the binding holds.
-            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"relay_identity_stale actor={actorId} fence={hasBoundSessionFence} "
-                + $"hop={messageFollowHopCount} reply={replyRequestId}/{replyFlags} "
-                + $"bound={state.TryGetBoundSession(out var stale)} "
-                + $"token={(stale.BindingToken ?? "-")}/{boundSessionFence?.BindingToken ?? "-"} "
-                + $"binding_gen={stale.BindingGeneration}/{boundSessionFence?.BindingGeneration} "
-                + $"obj_gen={stale.ObjectGeneration}/{actorGeneration} "
-                + $"mesh={stale.MeshName}/{ResolveSpotNodeMeshName(GetSpotNodeRuntime(targetNodeRid))} "
-                + $"target_gen={stale.TargetNodeGeneration}/{targetNodeGeneration} "
-                + $"authority_gen={stale.AuthorityOwnerGeneration}/{authorityOwnerGeneration} "
-                + $"lease_gen={stale.OwnerLeaseGeneration}/{ownerLeaseGeneration}");
             //  A replaced incarnation never comes back, so this is NotFound
             //  (DoNotRetry) rather than Unavailable (RetryAfterBackoff).
             var staleIdentity = new ZLinkFrameworkException(
@@ -3683,9 +3633,6 @@ internal sealed partial class ZLinkFrameworkRuntime
             //  of dispatched. Returning quietly makes that indistinguishable
             //  from delivery, and the frame is lost outright if the handoff
             //  never completes.
-            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"relay_frame_captured actor={actorId} "
-                + $"packet={ZLinkStreamProtocolDefaults.DecodeHeader(header).Name}");
             return;
         }
         if (!routeContext.IsDirectRoute)
@@ -3865,11 +3812,6 @@ internal sealed partial class ZLinkFrameworkRuntime
             {
                 //  This runs inside a one-way route send handler, so the throw
                 //  reaches no caller and the frame simply disappears.
-                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-                    $"relay_source_stale actor={actorId} source_node={sourceNodeRid} "
-                    + $"source_gen={sourceNodeGeneration} has_fence={requestSource is not null} "
-                    + $"fence_node={requestSource?.NodeRid} fence_gen={requestSource?.NodeGeneration} "
-                    + $"owner={requestSource?.OwnerId} lease={requestSource?.LeaseGeneration}");
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.Unavailable,
                     $"Actor '{actorId}' bound-session relay source identity is stale.");

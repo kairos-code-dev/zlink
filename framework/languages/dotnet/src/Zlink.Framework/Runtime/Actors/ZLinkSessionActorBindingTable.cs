@@ -227,9 +227,6 @@ internal sealed class ZLinkSessionActorBindingTable
                 route,
                 sessionOwnerNodeGeneration,
                 AcceptedHighWater: 0);
-            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"session_binding_added actor={actorId} token={bindingToken} "
-                + $"replaced={replaced.Length} target_node={route.Ref.NodeRid}");
             return replaced;
         }
     }
@@ -387,17 +384,6 @@ internal sealed class ZLinkSessionActorBindingTable
             {
                 //  A refused seal ends the join with one kind and no field, so
                 //  name which half of the binding identity disagreed.
-                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-                    $"route_seal_rejected actor={request.ActorId} entry={entry is not null} "
-                    + $"want_token={request.BindingToken} "
-                    + $"have_tokens=[{string.Join(",", _entries.Keys.Where(k => k.ActorId == request.ActorId).Select(k => k.BindingToken))}] "
-                    + $"binding_gen={entry?.BindingGeneration}/{request.BindingGeneration} "
-                    + $"obj_gen={entry?.ObjectGeneration}/{request.ObjectGeneration} "
-                    + $"authority_gen={entry?.AuthorityOwnerGeneration}/{request.AuthorityOwnerGeneration} "
-                    + $"mesh={entry?.MeshName}/{request.MeshName} "
-                    + $"target_gen={entry?.Route.TargetNodeGeneration}/{request.TargetNodeGeneration} "
-                    + $"lease_gen={entry?.Route.OwnerLeaseGeneration}/{request.OwnerLeaseGeneration} "
-                    + $"session_owner_gen={entry?.SessionOwnerNodeGeneration}/{request.SessionOwnerNodeGeneration}");
                 return new ZLinkSessionRouteSealResult(
                     false,
                     entry?.AcceptedHighWater ?? 0);
@@ -533,12 +519,6 @@ internal sealed class ZLinkSessionActorBindingTable
             {
                 //  A refused commit is retried until the deadline and reported
                 //  as a timeout, so name the half that disagreed.
-                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-                    $"route_commit_rejected actor={request.ActorId} entry={entry is not null} "
-                    + $"binding_gen={entry?.BindingGeneration}/{request.BindingGeneration} "
-                    + $"obj_gen={entry?.ObjectGeneration}/{request.ObjectGeneration} "
-                    + $"session_owner_gen={entry?.SessionOwnerNodeGeneration}/{request.SessionOwnerNodeGeneration} "
-                    + $"high_water={entry?.AcceptedHighWater}/{request.AcceptedHighWater}");
                 return new ZLinkSessionRouteCommitResult(
                     false,
                     entry?.AcceptedHighWater ?? 0);
@@ -638,10 +618,6 @@ internal sealed class ZLinkSessionActorBindingTable
                 && string.Equals(existing.BindingToken, bindingToken, StringComparison.Ordinal))
             {
                 _entries.Remove(key);
-                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-                    $"session_binding_removed actor={actorId} token={bindingToken} "
-                    + $"by={new System.Diagnostics.StackTrace(1, false).GetFrame(1)?.GetMethod()?.Name}"
-                    + $"<-{new System.Diagnostics.StackTrace(1, false).GetFrame(2)?.GetMethod()?.Name}");
                 existing.DrainSignal?.TrySetResult();
             }
         }

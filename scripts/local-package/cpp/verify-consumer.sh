@@ -97,14 +97,14 @@ add_library(libzlink INTERFACE IMPORTED)
 set_target_properties(libzlink PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${_zlink_core_prefix}/include")
 EOF
   cat >"$fixture_prefix/lib/cmake/zlink/zlinkConfigVersion.cmake" <<'EOF'
-set(PACKAGE_VERSION "11.0.2")
+set(PACKAGE_VERSION "11.1.0")
 set(PACKAGE_VERSION_COMPATIBLE TRUE)
 set(PACKAGE_VERSION_EXACT TRUE)
 EOF
   sed 's/@PACKAGE_INIT@//' "$repo_root/bindings/cpp/cmake/zlink_cppConfig.cmake.in" \
     >"$fixture_prefix/lib/cmake/zlink_cpp/zlink_cppConfig.cmake"
   cat >"$fixture_prefix/lib/cmake/zlink_cpp/zlink_cppConfigVersion.cmake" <<'EOF'
-set(PACKAGE_VERSION "11.0.2")
+set(PACKAGE_VERSION "11.1.0")
 set(PACKAGE_VERSION_COMPATIBLE TRUE)
 set(PACKAGE_VERSION_EXACT TRUE)
 EOF
@@ -118,7 +118,7 @@ EOF
   cat >"$fixture/CMakeLists.txt" <<'EOF'
 cmake_minimum_required(VERSION 3.20)
 project(zlink_cpp_clean_consumer LANGUAGES CXX)
-find_package(zlink_cpp 11.0.2 EXACT CONFIG REQUIRED)
+find_package(zlink_cpp 11.1.0 EXACT CONFIG REQUIRED)
 add_executable(consumer consumer.cpp)
 target_link_libraries(consumer PRIVATE zlink::cpp)
 target_compile_features(consumer PRIVATE cxx_std_20)

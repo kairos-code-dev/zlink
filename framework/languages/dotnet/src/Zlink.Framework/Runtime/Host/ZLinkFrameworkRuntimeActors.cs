@@ -711,6 +711,10 @@ internal sealed partial class ZLinkFrameworkRuntime
         ZLinkRemoteActorHandoffCompletionRequest request,
         CancellationToken cancellationToken)
     {
+        //  This runs inside the source's completion request, so exceeding the
+        //  deadline here is reported to the source as a timeout with no hint of
+        //  how far it got. Mark the boundaries.
+        LogActorHandoff($"target_completion_entered actor={request.ActorId}");
         var authorityStore = Registration.Locations.ResolveStore()
                              ?? throw new ZLinkConfigurationException(
                                  "Actor relocation completion requires an Authority Store.");
@@ -881,6 +885,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             // membership callbacks and Actor completion can send through
             // BoundSession, so the session owner must accept the new route
             // while its inbound side remains sealed.
+            LogActorHandoff($"target_completion_before_session_commit actor={request.ActorId}");
             var sessionRouteCommit =
                 await CommitCompletedSessionRouteAsync(
                         actorState,

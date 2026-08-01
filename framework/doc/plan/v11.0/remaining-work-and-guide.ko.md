@@ -156,12 +156,31 @@ Source는 handoff completion을 target에 요청하고, target은 응답한다. 
 끝나지 못한다. 그래서 그 안에 있는 session route commit까지 도달하지 못하고,
 `ZLinkReconciliationRunner`가 같은 요청을 계속 재시도한다.
 
-`CompleteRoutedActorHandoffAsync`는 commit을 위해 **session node로 다시 요청을 보낸다**
-(`RequestSessionRouteCommitAsync`). Cross-node join에서는 target → session node 중첩 요청이 되므로,
-다음은 그 중첩 요청이 응답을 받는지 확인하는 것이다. Target 쪽에서 이 단계를 찍으면 바로 갈린다.
+단계 표시를 넣자 어디서 멈추는지 나왔다.
+
+```
+target_completion_entered                104
+target_completion_before_session_commit  100   ← 여기까지 도달한다
+session_route_commit_*                     0   ← 여기서 멈춘다
+```
+
+`CompleteRoutedActorHandoffAsync`는 commit을 위해 session node로 다시 요청을 보낸다
+(`RequestSessionRouteCommitAsync`). 그 중첩 요청이 **도착하지 않는다.**
+
+```
+play-b    route_control_sent type=ZLinkSessionRouteCommitRequest   120회
+session-a 수신                                                        0회
+```
+
+Target node는 actor가 옮겨온 곳이지 session과 연결을 세운 적이 없다. `RequestSessionRouteControlAsync`는
+`DefaultRequestTimeout`까지 10ms 간격으로 재시도하므로 그 사이 120회를 보내고 모두 사라진다. 그러면
+completion이 timeout으로 끝나고, source의 `ZLinkReconciliationRunner`가 completion 요청을 다시 보내며,
+이 순환이 끝나지 않는다.
 
 Commit 구현 자체는 있다(`ZLinkSessionRouteCommitHandler` → `CommitSessionActorRoute`, target actor
-ref로 binding route 갱신).
+ref로 binding route 갱신). 빠진 것은 **target에서 session node로 가는 경로**다. 선택지는 둘이다.
+Handoff 과정에서 target이 session node와 연결을 세우게 하거나, commit을 source를 거쳐 relay하는
+것이다. 어느 쪽이든 spec 28의 route commit 계약을 바꾸지 않고 전달 경로만 채우면 된다.
 
 **RM-B2 — mesh 계층에 drain 표시가 구현되어 있지 않다.** Provider가 drain 중일 때 select-one이 그
 member를 고르고 `Rejected`(admission sealed)를 caller에게 그대로 돌려준다. 원인을 끝까지 보면 표시

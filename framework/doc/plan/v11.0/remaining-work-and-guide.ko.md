@@ -74,25 +74,34 @@ Flow listener가 없는 스위트가 아직 있다. 조사 전에 해당 host에
 
 `PubSub`와 `RegistrationCodec`는 전량 통과한다.
 
-| 스위트 | 진행 | 막힌 지점 | 성격 |
-|---|---|---|---|
-| PubSub | 7 / 7 | — | 완료 |
-| RegistrationCodec | 11 / 11 | — | 완료 |
-| AutomaticTurnDispatch | 19 / 27 | TD-E3 동시 반대 join 중 하나가 `accepted=False`로 거부 | 조사 중 |
-| SpotActorTransfer | 7 / 36 | ST-C3 transfer-out 실패가 accepted를 반환 | 미조사 |
-| SpotService | 7 / 58 | SM-B6 cross-node join이 seal 단계에서 fenced | 원인 확인됨 |
-| ObservabilityOps | 8 / 21 | OBS-C1 draining marker evidence | 미조사 |
-| RuntimeMonitoring | 2 / 8 | HTTP 500 | 미조사 |
-| ToActorMessaging | 3 / 7 | TA-A4 destroy 뒤 요청이 `NotFound` 대신 `Unavailable` | 계약 대조 필요 |
-| ResilienceLifecycle | 0 / 20 | RL-A1 재시작 뒤 같은 endpoint·새 owner generation이 안 나온다 | 미조사 |
-| LocationMessaging | 0 / 15 | RM-A4 v1이 terminal `Stopped`에 도달하지 않는다 | 미조사 |
-| StoreFailure | 0 / 10 | SF-B1 store 정지 중 요청이 408 | fail-static 위반 |
-| SubmitAdmission | 0 / 8 | readiness에서 peer를 모른다 | 원인 좁혀짐 |
-| ChannelEgressRouting | 부분 / 6 | 선택자 4개 미구현 (CH-E2E-03, CH-E2E-08, CH-REG-02, CH-REG-05) | 구현 필요 |
+`.NET` e2e는 첫 실패에서 중단한다. 따라서 실패 시나리오 뒤의 항목은 "실패"가 아니라
+**아직 검증되지 않음**이다. 아래 표는 그 구분을 유지한다.
 
-합계는 시나리오 **64 / 234** 통과다. 통과 수는 시나리오 파일 수 기준이며, feature map의 요구
-ID 수는 스위트에 따라 더 많다(예: `StoreFailure` 28, `ResilienceLifecycle` 39). 즉 시나리오가
-전부 통과해도 feature map 기준으로는 추가 검증이 남는 스위트가 있다.
+| 스위트 | 통과 | 막고 있는 시나리오 | 그 뒤 미검증 |
+|---|---|---|---|
+| PubSub | 7 / 7 | — | — |
+| RegistrationCodec | 11 / 11 | — | — |
+| AutomaticTurnDispatch | 19 / 27 | **TD-E3** 동시 반대 join 중 하나가 `accepted=False` | TD-F1~F6, TD-G1 |
+| SpotActorTransfer | 7 / 31 | **ST-C3** transfer-out 실패가 accepted를 반환 | ST-B2·B5, ST-C1·C2, ST-D2, ST-E1·E2, ST-F1~F6, ST-G3·G5·G6, ST-H1, ST-I1~I6 |
+| SpotService | 7 / 55 | **SM-B6** cross-node join이 seal에서 fenced | SM-A1~A8·A11, SM-B4·B7~B9, SM-C1~C6, SM-D1~D15, SM-E1~E4, SM-F1~F6, SM-G1~G5 |
+| ObservabilityOps | 8 / 21 | **OBS-C1** draining marker evidence | OBS-C2~C12 |
+| RuntimeMonitoring | 2 / 7 | **MON-A5** HTTP 500 | MON-C1, MON-D1 |
+| ToActorMessaging | 3 / 7 | **TA-A4** destroy 뒤 `NotFound` 대신 `Unavailable` | TA-B1~B3 |
+| ResilienceLifecycle | 0 / 20 | **RL-A1** 재시작 뒤 owner generation이 갱신되지 않음 | RL-A2~A5, RL-B1~B6, RL-C1~C4, RL-D1~D5 |
+| LocationMessaging | 0 / 15 | **RM-A4** v1이 terminal `Stopped`에 도달하지 않음 | RM-A1·A2·A6, RM-B1~B3, RM-C1~C5·C7~C9 |
+| StoreFailure | 0 / 10 | **SF-B1** store 정지 중 요청이 408 | SF-A1·A2, SF-B2, SF-C1·C2, SF-D1~D3, SF-E1 |
+| SubmitAdmission | 0 / 8 | readiness에서 peer를 모름 | 전체 |
+| ChannelEgressRouting | 부분 | 선택자 4개 미구현 | CH-E2E-03, CH-E2E-08, CH-REG-02, CH-REG-05 |
+
+합계 **64 / 234** 통과다. 막고 있는 시나리오는 11개이므로, 그 11개를 풀면 나머지 170개가
+비로소 검증 대상이 된다. 지금 수치는 "170개가 실패한다"는 뜻이 아니다.
+
+Feature map의 요구 ID 수가 시나리오 파일 수보다 많은 스위트가 있다(`StoreFailure` 28,
+`ResilienceLifecycle` 39, `PubSub` 21). 시나리오가 전부 통과해도 그 차이는 별도 검증으로 남는다.
+
+`SpotService`와 `ToActorMessaging`은 시나리오별 통과를 stdout에 남기지 않는다. 두 스위트의 통과
+수는 evidence와 실행 관찰에서 얻은 값이다. 진행 상황을 파일에서 바로 읽으려면 다른 스위트처럼
+시나리오마다 한 줄씩 남기도록 harness를 맞추는 편이 낫다.
 
 단위 테스트는 1375/1376이다. 남은 1건
 (`LocationRuntimeQueryTests.Status_Reports_The_Most_Recent_Success_Across_Reads_And_Lease_Renewal`)은

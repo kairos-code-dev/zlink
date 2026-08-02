@@ -1782,9 +1782,9 @@ int main ()
     ok &= file_contains (root / "framework/include/zlink/framework/contracts/actors/actor.hpp",
                          "class actor_client_t");
     ok &= file_contains (root / "framework/include/zlink/framework/contracts/actors/actor.hpp",
-                         "send_to_actor (actor_ref_t actor_ref");
+                         "actor_send_call_t send (actor_id_t actor_id");
     ok &= file_contains (root / "framework/include/zlink/framework/contracts/actors/actor.hpp",
-                         "request_to_actor (actor_ref_t actor_ref");
+                         "actor_request_call_t request (actor_id_t actor_id");
     ok &= file_contains (root / "framework/src/runtime/actors/actor_client.cpp",
                          "authority_key_t{\"1:\" + actor_id}");
     ok &= file_contains (root / "CMakeLists.txt",

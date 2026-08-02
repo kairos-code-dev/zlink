@@ -1008,9 +1008,10 @@ int main ()
                   "ST-F4 still changes G2 from send to request or omits stale evidence");
     const auto actor_client_runtime =
       read_file (root / "framework/src/runtime/actors/actor_client.cpp");
-    const auto send_begin = actor_client_runtime.find ("task_t<void> send_to_actor_erased");
+    const auto send_begin = actor_client_runtime.find (
+      "task_t<void> send_erased (actor_id_t actor_id");
     const auto send_end = actor_client_runtime.find (
-      "task_t<message_t> request_to_actor_erased", send_begin);
+      "task_t<message_t> request_erased (actor_id_t actor_id", send_begin);
     const auto actor_send = send_begin != std::string::npos && send_end != std::string::npos
                               ? actor_client_runtime.substr (send_begin, send_end - send_begin)
                               : std::string{};

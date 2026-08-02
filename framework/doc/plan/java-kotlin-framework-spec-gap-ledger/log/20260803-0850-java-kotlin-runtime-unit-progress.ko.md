@@ -74,6 +74,13 @@ Java와 Kotlin packaged clean consumer 및 API snapshot도 각각 exit 0이다.
 source·runner inventory 누락이다. 따라서 runtime unit gate와 process/E2E gate를
 분리해 기록한다.
 
+## publish 상태
+
+runtime ledger와 현재 worktree 변경은 `ab79dc36e45` (`framework: complete runtime gap
+unit gates`)로 먼저 commit하고 origin branch에 push했다. push 직후 다른 workstream이
+수정한 C++ contract assertion 3개는 사용자 요청의 전체 변경 범위에 맞춰 후속 commit에
+포함한다.
+
 ## 현재 판정
 
 JK-IMP-001~012의 source/runtime unit 또는 contract regression 범위는 이번 실행으로

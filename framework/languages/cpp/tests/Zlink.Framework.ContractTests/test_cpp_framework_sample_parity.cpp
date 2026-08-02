@@ -1555,7 +1555,12 @@ TEST (CppFrameworkSampleParity, SupportChatConversationJoinIsDeferred)
     EXPECT_NE (contracts.find ("JoinConversationFailedNotify"), std::string::npos);
     EXPECT_NE (support.find (".defer ();"), std::string::npos);
     EXPECT_NE (support.find ("on_join_completed"), std::string::npos);
-    EXPECT_NE (support.find ("request_to_actor"), std::string::npos)
+    EXPECT_NE (
+      support.find (
+        "add_actor_request<&support_entry_spot_t::schedule_conversation_join>"),
+      std::string::npos)
+      << "The conversation join handler must be registered on the Actor request surface";
+    EXPECT_NE (support.find ("actor.schedule_conversation_join"), std::string::npos)
       << "Channel handlers must enter an Actor turn before they defer a Join";
     EXPECT_NE (session.find ("joined.scheduled"), std::string::npos);
     EXPECT_NE (scenario.find ("expect (agent_joined.scheduled"), std::string::npos);

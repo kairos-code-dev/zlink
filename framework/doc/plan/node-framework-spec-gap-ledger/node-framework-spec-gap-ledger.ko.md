@@ -429,7 +429,7 @@ aggregate가 아니다.
 | 좁은 runtime lifecycle·authority·deadline·cleanup·replay 범위 | 충족 | M5/M6 153개 test와 actor handoff focused test가 통과. 공통 전체 contract와 process evidence를 대체하지 않음. |
 | browser transport smoke | 충족 | Chromium 1/1. Node server public API parity와 전체 stream connector E2E는 별도. |
 | E2E client의 reflection/raw-frame 사용 여부 | 충족(정적 scan 범위) | 조사한 Client 경로에서 reflection과 raw-frame 호출은 찾지 못함. 다만 server Framework package 직접 import가 발견되어 client-only architecture 전체는 미충족. |
-| Nest exact builder contract | runtime 충족, package·E2E 후속 | `configureInboundDispatch` declaration·runtime·Nest contract test가 통과했다. exact extra member governance와 process evidence는 ND-IMP-001 후속 조건이다. |
+| Nest exact builder contract | 비-E2E 충족, process E2E 후속 | `configureInboundDispatch` declaration·runtime·Nest contract test와 checked-in exact member snapshot이 통과했다. process evidence만 ND-IMP-001 후속 조건이다. |
 | common error model | runtime 충족, process E2E 후속 | public 13-kind enum, 내부 mapping과 ProtocolError terminal mapping이 unit/runtime test를 통과했다. client-visible process evidence는 ND-IMP-002 후속 조건이다. |
 | unknown content type 처리 | runtime 충족, process E2E 후속 | unknown non-JSON payload가 handler에 Buffer로 전달되지 않고 public ProtocolError로 종료된다. ND-IMP-003의 process evidence는 후속 범위다. |
 | package consumer parity | 비-E2E 충족 | `npm ls`가 11.1.0으로 clean하고 packaged contract가 통과했다. process E2E와 native role-server evidence는 제외 범위다. |
@@ -483,10 +483,10 @@ runtime queue와 worker pool의 POSD·DDD 검토, 선택한 대안과 재검증 
 
 - 공통 spec 또는 E2E 문서 경로: framework/doc/framework/common/spec/server/languages/node/interfaces/07-nestjs-host.ko.md:169-186, framework/doc/framework/common/spec/00-public-contract-governance.ko.md:8-21
 - Node source·test 경로: framework/languages/node/packages/nestjs/src/contracts.ts:192-210, framework/languages/node/packages/nestjs/src/options-builder.ts:101-132, framework/languages/node/packages/framework/src/contracts/Configuration/Builders.ts:32-55, framework/languages/node/packages/framework/src/contracts/Configuration/RegistrationBuilders.ts:128-140 및 169-176, framework/languages/node/test/contract/contract-surface.test.js
-- 현재 동작: Nest builder declaration과 runtime build 결과에 `configureInboundDispatch`가 포함되고, 해당 options가 inbound dispatch 설정 경로에 전달된다. exact interface 밖의 setter 두 개는 governance와 package evidence가 닫힐 때까지 별도 public-surface 검토 대상으로 남긴다.
-- 기대 동작: Node exact interface의 builder member를 public contract로 사용하고, configureInboundDispatch를 같은 계약으로 제공한다. exact interface에 없는 setter는 public surface에 남길지 먼저 governance 절차로 확정해야 하며, 현재 source만으로 이를 정식 계약으로 간주하지 않는다.
-- 기존 gap 판정 근거: 수정 전 build 결과에서 `configureInboundDispatch`가 없었다. 현재는 `contract-surface.test.js`와 `nestjs-module.test.js`가 declaration·runtime member와 실제 builder path를 확인한다. package consumer와 process E2E 증거는 후속 범위다.
-- 구체적인 수정 목록: (1) exact interface와 현재 setter의 계약 여부를 contract 선행 항목으로 확정한다. (2) 목표 계약에 맞춰 Nest builder declaration·implementation·generated dist를 정렬한다. (3) configureInboundDispatch가 worker/admission/preflight 순서를 보존하는지 production call path에서 확인한다. (4) package export와 consumer compile을 다시 검증한다.
+- 현재 동작: Nest builder declaration과 runtime build 결과에 `configureInboundDispatch`가 포함되고, 해당 options가 inbound dispatch 설정 경로에 전달된다. checked-in snapshot과 runtime member 비교에서 exact interface 밖의 내부 helper가 노출되지 않는다.
+- 기대 동작: Node exact interface의 builder member를 public contract로 사용하고, `configureInboundDispatch`를 같은 계약으로 제공한다. 내부 codec·중복 이름 helper는 public builder 표면에 노출하지 않는다.
+- 기존 gap 판정 근거: 수정 전 build 결과에서 `configureInboundDispatch`가 없었고 내부 helper가 runtime prototype에 남아 있었다. 현재는 `contract-surface.test.js`와 `nestjs-module.test.js`가 declaration·runtime member와 실제 builder path를 확인한다. process E2E 증거는 후속 범위다.
+- 구체적인 수정 목록: (1) exact interface snapshot과 builder declaration·implementation을 정렬한다. (2) 내부 helper를 module-local로 숨긴다. (3) `configureInboundDispatch`가 worker/admission/preflight 순서를 보존하는지 production call path에서 확인한다. (4) package export와 consumer compile을 검증한다. 비-E2E 항목은 완료했고 process evidence만 후속이다.
 - 필요한 회귀 test: ND-REG-001. configureInboundDispatch의 declaration 및 runtime 존재, exact parameter/return type, exact interface 밖 setter의 처리, build 후 package root export를 함께 검사한다.
 - 선행 조건과 작업 순서: contract 선행 → ND-IMP-002 error contract 확인 → Nest source 수정 → ND-REG-001 → ToActor/SpotService process build 순서로 진행한다.
 - 구현 완료 evidence: exact interface member 비교가 missing/extra 없이 통과하고, configureInboundDispatch를 사용한 real builder path가 admission/preflight 순서를 보이는 test와 process E2E를 통과한다. 과거 source type 존재만으로 완료하지 않는다.

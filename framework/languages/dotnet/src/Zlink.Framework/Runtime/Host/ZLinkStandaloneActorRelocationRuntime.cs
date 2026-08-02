@@ -44,6 +44,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
     internal async ValueTask<ZLinkStandaloneActorRelocationResult> RelocateSourceAsync(
         ZLinkActorRuntimeState actorState,
         ZLinkMeshNodeDescriptor target,
+        DateTimeOffset absoluteDeadline,
         CancellationToken cancellationToken)
     {
         var sourceActivation = actorState.LiveActivation;
@@ -127,6 +128,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
             relocationMetric.Start();
             var captureStarted = false;
             var committed = false;
+            var sourceTerminalized = false;
             ZLinkActorBoundSession? sealedSession = null;
             ZLinkPreparedRelocation? initialPrepared = null;
             ZLinkPreparedRelocation? prepared = null;
@@ -185,7 +187,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                         sourceNode.Node.MeshStatus(),
                         sourceNode.Node.MeshPeers(),
                         semanticSealRecords,
-                        registration.DefaultRequestTimeout,
+                        RemainingTimeout(absoluteDeadline),
                         cancellationToken)
                     .ConfigureAwait(false);
                 precommitSnapshot = await precommit.BeginPreparingAsync(
@@ -246,7 +248,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                 _ = await canonical.ReserveCanonicalRelocationAsync(
                         target.Rid,
                         prepare,
-                        registration.DefaultRequestTimeout,
+                        RemainingTimeout(absoluteDeadline),
                         cancellationToken)
                     .ConfigureAwait(false);
                 var commitBoundary = actorState.Handoff
@@ -260,7 +262,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                         sourceNode.Node.MeshStatus(),
                         sourceNode.Node.MeshPeers(),
                         acceptedRecords,
-                        registration.DefaultRequestTimeout,
+                        RemainingTimeout(absoluteDeadline),
                         cancellationToken)
                     .ConfigureAwait(false);
                 envelope = ZLinkCanonicalActorRelocationWriter.CreateInitial(
@@ -316,7 +318,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                         target.Rid,
                         prepare,
                         data,
-                        registration.DefaultRequestTimeout,
+                        RemainingTimeout(absoluteDeadline),
                         cancellationToken)
                     .ConfigureAwait(false);
                 var committedTarget = await WaitForCommittedTargetAuthorityAsync(
@@ -351,13 +353,15 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                         canonical,
                         prepare,
                         committedTarget.AuthorityOwnerGeneration,
-                        interruption)
+                        interruption,
+                        cancellationToken)
                     .ConfigureAwait(false);
+                sourceTerminalized = true;
                 relocationMetric.Complete(
                     ZLinkRelocationMetricOutcome.Completed);
                 return ZLinkStandaloneActorRelocationResult.Committed;
             }
-            catch
+            catch (Exception error)
             {
                 if (!committed)
                 {
@@ -370,7 +374,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                     var authority = await authorityStore.ReadAuthorityAsync(
                             ZLinkActorAuthorityPayloadCodec.AuthorityKey(
                                 actorState.ActorId),
-                            CancellationToken.None)
+                            cancellationToken)
                         .ConfigureAwait(false);
                     var restoredPrecommit = false;
                     if (authority is ZLinkAuthorityReadResult.Found current
@@ -381,7 +385,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                                 ZLinkActorAuthorityPayloadCodec.AuthorityKey(
                                     actorState.ActorId),
                                 relocationId,
-                                CancellationToken.None)
+                                cancellationToken)
                             .ConfigureAwait(false);
                         authority = new ZLinkAuthorityReadResult.Found(restored);
                         restoredPrecommit = true;
@@ -420,7 +424,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                                 relocationId,
                                 target,
                                 prepare.TargetAttemptGeneration,
-                                CancellationToken.None)
+                                cancellationToken)
                             .ConfigureAwait(false);
                         await CompleteCommittedSourceAsync(
                                 actor,
@@ -435,11 +439,13 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                                 canonical,
                                 prepare,
                                 committedTarget.AuthorityOwnerGeneration,
-                                interruption)
+                                interruption,
+                                cancellationToken)
                             .ConfigureAwait(false);
+                        sourceTerminalized = true;
                         relocationMetric.Complete(
-                    ZLinkRelocationMetricOutcome.Completed);
-                return ZLinkStandaloneActorRelocationResult.Committed;
+                            ZLinkRelocationMetricOutcome.Completed);
+                        return ZLinkStandaloneActorRelocationResult.Committed;
                     }
                     var cleanup = new ZLinkRelocationPublicationCoordinator(
                         authorityStore,
@@ -464,13 +470,34 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                         await AbortSessionRouteBestEffortAsync(
                                 actorState.ActorId,
                                 session,
-                                handoffId)
+                                handoffId,
+                                cancellationToken)
                             .ConfigureAwait(false);
+                    sourceTerminalized = true;
                 }
                 relocationMetric.Complete(
-                    committed
-                        ? ZLinkRelocationMetricOutcome.Completed
-                        : ZLinkRelocationMetricOutcome.Aborted);
+                    error is OperationCanceledException
+                        && runtime.ShutdownToken.IsCancellationRequested
+                        ? ZLinkRelocationMetricOutcome.Shutdown
+                        : committed
+                            ? ZLinkRelocationMetricOutcome.Failed
+                            : error is OperationCanceledException
+                                ? ZLinkRelocationMetricOutcome.Shutdown
+                                : ZLinkRelocationMetricOutcome.Aborted);
+                if (committed
+                    || (error is not OperationCanceledException
+                        && !ZLinkActorRelocationFailureException
+                            .IsRetryableTargetFailure(error)))
+                    throw new ZLinkActorRelocationFailureException(
+                        committed
+                            ? ZLinkFrameworkRelocationReason.RelocationFailed
+                            : ZLinkActorRelocationFailureException.MapReason(
+                                error),
+                        committed
+                            ? ZLinkRelocationCommitKnowledge.Committed
+                            : ZLinkRelocationCommitKnowledge.NotCommitted,
+                        sourceTerminalized,
+                        error);
                 throw;
             }
         }
@@ -599,7 +626,8 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
         IZLinkBackendCanonicalRelocationReservation canonical,
         ZLinkServiceWireCodec.RelocationPrepareRecord prepare,
         ulong targetAuthorityOwnerGeneration,
-        ZLinkRelocationInterruptionOperation interruption)
+        ZLinkRelocationInterruptionOperation interruption,
+        CancellationToken cancellationToken)
     {
         var targetRef = new ZLinkBackendActorRef(
             target.Rid, actorState.ActorId, sourceRef.Generation);
@@ -624,7 +652,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                 ZLinkActorRelocationAuthorityPhase.Activated,
                 ZLinkActorRelocationAuthorityPhase.Cleaning,
                 targetOwner,
-                CancellationToken.None)
+                cancellationToken)
             .ConfigureAwait(false);
         var trailing = actorState.Handoff.CutoverCaptureToMessageFollow(
             acceptedCount,
@@ -650,7 +678,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
         _ = await progress.PublishAdmissionReadyAuthorityAsync(
                 envelope,
                 targetOwner,
-                CancellationToken.None)
+                cancellationToken)
             .ConfigureAwait(false);
         await canonical.CompleteCanonicalRelocationAsync(
                 target.Rid,
@@ -665,7 +693,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                         prepare.SourceNodeRid,
                         prepare.SourceNodeGeneration),
                     1),
-                CancellationToken.None)
+                cancellationToken)
             .ConfigureAwait(false);
         interruption.Complete();
         await runtime.CompleteStandaloneActorRelocationSourceAsync(
@@ -673,8 +701,16 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                 actorState,
                 sourceRef,
                 targetRef,
-                CancellationToken.None)
+                cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private static TimeSpan RemainingTimeout(DateTimeOffset absoluteDeadline)
+    {
+        var remaining = absoluteDeadline - DateTimeOffset.UtcNow;
+        return remaining > TimeSpan.Zero
+            ? remaining
+            : TimeSpan.FromTicks(1);
     }
 
     internal static ZLinkRelocationEnvelope CreateImmutableRoot(
@@ -981,7 +1017,8 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
     private async ValueTask AbortSessionRouteBestEffortAsync(
         string actorId,
         ZLinkActorBoundSession session,
-        string handoffId)
+        string handoffId,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -1017,7 +1054,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                         session.OwnerLeaseGeneration,
                         session.SessionOwnerNodeGeneration,
                         handoffId),
-                    CancellationToken.None)
+                    cancellationToken)
                 .ConfigureAwait(false);
         }
         catch

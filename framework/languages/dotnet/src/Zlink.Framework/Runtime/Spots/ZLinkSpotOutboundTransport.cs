@@ -200,7 +200,7 @@ internal sealed class ZLinkSpotOutboundTransport(
                         return;
                     }
 
-                    fail(ZLinkRequestFailureMapper.CreateCompletionException(
+                    fail(ZLinkRequestFailureMapper.CreateChannelCompletionException(
                         result,
                         $"Channel request to '{channelName}' failed with result '{result}'."));
                     ZLinkMessageParts.DisposeAll(reply);

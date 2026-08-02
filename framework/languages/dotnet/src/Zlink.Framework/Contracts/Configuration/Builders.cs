@@ -23,6 +23,8 @@ public interface IZLinkStreamNodeBuilder
 
     IZLinkStreamNodeBuilder SetAdvertiseHost(string advertiseHost);
 
+    IZLinkSocketConfig ConfigureSocket();
+
     IZLinkStreamNodeBuilder EnableActorDispatch();
 
     IZLinkStreamNodeBuilder SetTlsServer(

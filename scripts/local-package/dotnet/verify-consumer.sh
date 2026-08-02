@@ -43,7 +43,7 @@ fixture_source="$script_dir/fixtures/public-consumer/Program.cs"
 if $self_test; then
   $dry_run || { echo "--dry-run is required with --self-test" >&2; exit 2; }
   grep -Fq '<PackageId>Systems.Zlink</PackageId>' "$project"
-  grep -Fq '<Version>11.1.0</Version>' "$project"
+  grep -Fq '<Version>11.1.2</Version>' "$project"
   ! grep -Eq '<ProjectReference|bindings/dotnet/src' "$fixture_project"
   ! grep -Eq 'Runtime\.Native|DllImport|System\.Reflection|BindingFlags|NativeMethods' "$fixture_source"
   grep -Fq 'Zlink.Version()' "$fixture_source"

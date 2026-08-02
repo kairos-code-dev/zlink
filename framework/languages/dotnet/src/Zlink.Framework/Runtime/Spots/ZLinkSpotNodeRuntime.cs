@@ -882,6 +882,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             hostShutdown,
             selection,
             ZLinkSpotRelocationPhase.Aggregates,
+            DateTimeOffset.UtcNow + _frameworkRegistration.DefaultRequestTimeout,
             cancellationToken);
 
     internal async ValueTask<ZLinkSpotDrainResult> TryDrainSpotsAsync(
@@ -889,13 +890,15 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         bool hostShutdown,
         ZLinkRelocationTargetSelection selection,
         ZLinkSpotRelocationPhase phase,
+        DateTimeOffset absoluteDeadline,
         CancellationToken cancellationToken)
     {
         if (relocate)
             return await _spots.TryRelocateForRetireAsync(
                     selection,
                     phase,
-                    cancellationToken)
+                    cancellationToken,
+                    absoluteDeadline)
                 .ConfigureAwait(false);
         return new ZLinkSpotDrainResult(
             await _spots.TryDrainAsync(hostShutdown, cancellationToken)

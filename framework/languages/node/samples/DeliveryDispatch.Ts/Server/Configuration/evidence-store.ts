@@ -46,7 +46,7 @@ class EvidenceStore {
 
   readLines(): string[] {
     return this.readEvents().map((event) =>
-      `${event.deliveryId}:${event.status}:${event.courierId ?? '-'}:${event.occurredAt}`
+      `${event.deliveryId}:${event.status}:${event.courierId ?? '-'}:${event.occurredAtUnixMs}`
     );
   }
 

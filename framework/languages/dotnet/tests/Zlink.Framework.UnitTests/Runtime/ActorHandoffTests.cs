@@ -1356,6 +1356,37 @@ public sealed class ActorHandoffTests
     }
 
     [Fact]
+    public async Task ExpiredAdmission_DoesNotInvokeCallbackOrCreateReservation()
+    {
+        var time = new ManualTimeProvider();
+        var admissions = new ZLinkActorHandoffAdmissions(time);
+        var request = AdmissionRequest(time, "handoff-expired-before-callback");
+        var callbackCount = 0;
+        time.Advance(TimeSpan.FromSeconds(6));
+
+        var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(() =>
+            admissions.AdmitAsync(
+                    request,
+                    "target-spot",
+                    _ =>
+                    {
+                        Interlocked.Increment(ref callbackCount);
+                        return ValueTask.FromResult(
+                            new ZLinkRemoteActorAdmissionReply(
+                                true,
+                                "application/json",
+                                [],
+                                request.DeadlineUnixTimeMilliseconds));
+                    },
+                    CancellationToken.None)
+                .AsTask());
+
+        Assert.Equal(ZLinkFrameworkErrorKind.DeadlineExceeded, error.Kind);
+        Assert.Equal(0, callbackCount);
+        Assert.True(admissions.SnapshotDrain().IsSafe);
+    }
+
+    [Fact]
     public async Task TargetReservationValidatesExactCommitShrinksAndReleases()
     {
         var time = new ManualTimeProvider();

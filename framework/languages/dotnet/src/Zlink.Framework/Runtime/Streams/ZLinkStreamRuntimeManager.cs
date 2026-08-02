@@ -26,11 +26,26 @@ internal sealed class ZLinkStreamRuntimeManager(
                 if (streamNodeRegistration.TlsServer is { } tlsServer)
                     socket.SetTlsServer(tlsServer.CertPath, tlsServer.KeyPath, tlsServer.RequireClientCert);
 
-                socket.Bind(ZLinkNetworkEndpointResolver.Bind(
+                socket.ApplySocketConfig(streamNodeRegistration.SocketConfig);
+                var bindEndpoint = ZLinkNetworkEndpointResolver.Bind(
                     streamNodeRegistration.BindEndpoint,
                     streamNodeRegistration.ListenPort,
                     streamNodeRegistration.BindHost,
-                    registration.NetworkOptions));
+                    registration.NetworkOptions);
+                socket.Bind(bindEndpoint);
+                var boundEndpoint = socket.GetLastEndpoint();
+                if (string.IsNullOrWhiteSpace(boundEndpoint))
+                {
+                    if (streamNodeRegistration.ListenPort == 0)
+                        throw new ZLinkConfigurationException(
+                            $"STREAM node '{streamNodeRegistration.StreamNodeName}' did not report the endpoint selected for port 0.");
+                    boundEndpoint = bindEndpoint;
+                }
+                var advertisedEndpoint = ZLinkNetworkEndpointResolver.Advertise(
+                    boundEndpoint,
+                    streamNodeRegistration.AdvertiseHost,
+                    streamNodeRegistration.BindHost,
+                    registration.NetworkOptions);
                 monitor = monitoringAdapter.OpenSocketMonitor(socket);
 
                 runtime = new ZLinkStreamNodeRuntime(
@@ -41,7 +56,12 @@ internal sealed class ZLinkStreamRuntimeManager(
                     streamNodeRegistration.HeaderSessionType,
                     state.TaskRunner,
                     streamNodeRegistration.TlsServer is null ? "tcp" : "tls",
-                    actorDispatchEnabled: streamNodeRegistration.ActorDispatchEnabled);
+                    actorDispatchEnabled: streamNodeRegistration.ActorDispatchEnabled,
+                    boundEndpoint: boundEndpoint,
+                    advertisedEndpoint: advertisedEndpoint,
+                    inboundDispatchBudget: state.InboundDispatchBudget,
+                    completionAdmission: state.CompletionAdmission,
+                    maxMessageSize: streamNodeRegistration.SocketConfig.MaxMessageSize);
                 state.StreamNodes.Add(streamNodeRegistration.StreamNodeName, runtime);
                 runtime.Start();
             }

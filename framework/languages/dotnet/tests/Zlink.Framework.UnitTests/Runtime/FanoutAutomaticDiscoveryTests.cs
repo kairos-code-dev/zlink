@@ -246,7 +246,12 @@ public sealed class FanoutAutomaticDiscoveryTests
             ],
             location);
         Assert.True(SpinWait.SpinUntil(
-            () => factory.Subscribers.Count >= 2,
+            () => factory.Subscribers
+                .SelectMany(static socket => socket.Endpoints)
+                .Order(StringComparer.Ordinal)
+                .SequenceEqual(
+                    ["tcp://127.0.0.1:7001", "tcp://127.0.0.1:7002"],
+                    StringComparer.Ordinal),
             TimeSpan.FromSeconds(1)));
         Assert.Equal(
             new[] { "tcp://127.0.0.1:7001", "tcp://127.0.0.1:7002" },
@@ -355,6 +360,9 @@ public sealed class FanoutAutomaticDiscoveryTests
             TopicMessage result,
             RecvFlags flags = RecvFlags.None) => false;
 
+        public IZLinkBackendSocketPoller CreateReceivePoller() =>
+            new EmptyReceivePoller();
+
         public void SetSubscription(string topic) { }
         public void SetRoutingId(RoutingId routingId) { }
         public void Bind(string endpoint) { }
@@ -364,6 +372,19 @@ public sealed class FanoutAutomaticDiscoveryTests
         public void SetSendHighWaterMark(ulong value) { }
         public void SetReceiveHighWaterMark(ulong value) { }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        private sealed class EmptyReceivePoller : IZLinkBackendSocketPoller
+        {
+            private readonly ManualResetEventSlim _stop = new(false);
+
+            public PollEventFlags Wait(TimeSpan timeout)
+            {
+                _stop.Wait(timeout);
+                return PollEventFlags.None;
+            }
+
+            public void Dispose() => _stop.Set();
+        }
     }
 
     private sealed class TestBackendContext : IZLinkBackendContext

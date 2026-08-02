@@ -349,8 +349,8 @@ public sealed class SerialExecutorTests
             await using var executor = new ZLinkStreamSessionSerialExecutor(new object(), errorSink);
             var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            Assert.True(executor.Enqueue(() => throw new InvalidOperationException("stream failure")));
-            Assert.True(executor.Enqueue(() =>
+            Assert.True(executor.EnqueueInfrastructure(() => throw new InvalidOperationException("stream failure")));
+            Assert.True(executor.EnqueueInfrastructure(() =>
             {
                 completed.SetResult();
                 return ValueTask.CompletedTask;
@@ -639,6 +639,43 @@ public sealed class SerialExecutorTests
             out _));
 
         releaseFirst.SetResult();
+    }
+
+    [Fact]
+    public async Task SerialExecutionQueue_Distinguishes_QueueFull_From_Closed()
+    {
+        await using var queue = new ZLinkSerialExecutionQueue(
+            new ZLinkRuntimeTaskRunner(
+                new ZLinkRuntimeErrorSink(),
+                CancellationToken.None),
+            new ZLinkRuntimeErrorSink(),
+            CancellationToken.None,
+            capacity: 2,
+            reservedPrioritySlots: 1);
+        var releaseFirst = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.True(queue.TryPost(
+            async _ => await releaseFirst.Task.ConfigureAwait(false),
+            out _));
+        Assert.Equal(
+            ZLinkSerialPostAdmission.QueueFull,
+            queue.TryPostApplicationWithAdmission(
+                static _ => ValueTask.CompletedTask,
+                out _));
+        Assert.Equal(
+            ZLinkSerialPostAdmission.Accepted,
+            queue.TryPostNextWithAdmission(
+                static _ => ValueTask.CompletedTask,
+                out _));
+
+        releaseFirst.TrySetResult();
+        queue.Complete();
+        Assert.Equal(
+            ZLinkSerialPostAdmission.Closed,
+            queue.TryPostNextWithAdmission(
+                static _ => ValueTask.CompletedTask,
+                out _));
     }
 
     [Fact]

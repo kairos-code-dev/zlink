@@ -542,6 +542,54 @@ public sealed class RegressionTests
     }
 
     [Fact]
+    public void EveryCommonE2EConfigHasAnExplicitAggregateRunnerEntry()
+    {
+        var dotNetE2ERoot = Path.GetFullPath(Path.Combine(
+            GetDotNetDocRoot(),
+            "..",
+            "..",
+            "..",
+            "languages",
+            "dotnet",
+            "e2e"));
+        var allRunner = File.ReadAllText(Path.Combine(
+            dotNetE2ERoot,
+            "run_e2e_all.sh"));
+        var configs = new Dictionary<int, string>
+        {
+            [1] = "LocationMessaging",
+            [2] = "SpotService",
+            [3] = "PubSub",
+            [4] = "RegistrationCodec",
+            [5] = "ResilienceLifecycle",
+            [6] = "StoreFailure",
+            [7] = "RuntimeMonitoring",
+            [8] = "AutomaticTurnDispatch",
+            [9] = "ToActorMessaging",
+            [10] = "SpotActorTransfer",
+            [11] = "ObservabilityOps",
+            [12] = "ChannelEgressRouting",
+            [13] = "SubmitAdmission",
+            [14] = "InstanceSpot"
+        };
+
+        foreach (var (number, name) in configs)
+        {
+            var directory = Path.Combine(dotNetE2ERoot, name);
+            Assert.True(
+                File.Exists(Path.Combine(directory, "feature-map.ko.md")),
+                $"Config {number} has no .NET feature map.");
+            Assert.True(
+                File.Exists(Path.Combine(directory, "run_e2e.sh")),
+                $"Config {number} has no process runner.");
+            Assert.Single(Regex.Matches(
+                    allRunner,
+                    $@"(?m)^\s{{2}}{Regex.Escape(name)}$")
+                .Cast<Match>());
+        }
+    }
+
+    [Fact]
     public void CommonE2EConfigsHaveCompleteDotNetFeatureMapInventories()
     {
         var commonE2ERoot = Path.GetFullPath(Path.Combine(

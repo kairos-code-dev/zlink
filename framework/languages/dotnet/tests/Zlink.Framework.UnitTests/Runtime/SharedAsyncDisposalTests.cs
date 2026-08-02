@@ -238,7 +238,7 @@ public sealed class SharedAsyncDisposalTests
         var executor = new ZLinkStreamSessionSerialExecutor(new object(), errors);
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        Assert.True(executor.Enqueue(async () =>
+        Assert.True(executor.EnqueueInfrastructure(async () =>
         {
             entered.TrySetResult();
             await release.Task.ConfigureAwait(false);

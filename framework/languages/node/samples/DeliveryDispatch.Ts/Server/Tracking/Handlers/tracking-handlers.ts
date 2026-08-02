@@ -26,7 +26,7 @@ class DeliveryStatusChangedHandler implements ZLinkRequestHandler<DeliveryStatus
       request.deliveryId,
       request.customerId,
       request.status,
-      request.occurredAt,
+      request.occurredAtUnixMs,
       request.courierId
     )).submit();
     console.error(`deliverydispatch tracking: status delivery=${request.deliveryId} status=${request.status} courier=${request.courierId ?? '-'}`);

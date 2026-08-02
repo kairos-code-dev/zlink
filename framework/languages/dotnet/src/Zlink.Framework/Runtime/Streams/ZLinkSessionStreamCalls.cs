@@ -36,7 +36,8 @@ internal abstract class ZLinkSessionStreamCallBase<TMessage>(
 
     protected async ValueTask<ZLinkOneWaySubmitResult> ExecuteAsync(
         CancellationToken cancellationToken,
-        bool validateBeforeCancellation = false)
+        bool validateBeforeCancellation = false,
+        bool isReply = false)
     {
         if (!validateBeforeCancellation) cancellationToken.ThrowIfCancellationRequested();
         var frame = _builder.Build(
@@ -52,7 +53,7 @@ internal abstract class ZLinkSessionStreamCallBase<TMessage>(
             frame.Dispose();
             cancellationToken.ThrowIfCancellationRequested();
         }
-        var result = await context.SubmitAsync(frame, cancellationToken).ConfigureAwait(false);
+        var result = await context.SubmitAsync(frame, cancellationToken, isReply).ConfigureAwait(false);
         if (result.Status == ZLinkOneWaySubmitStatus.Submitted) context.TraceWritten(header);
         return result;
     }
@@ -128,7 +129,10 @@ internal sealed class ZLinkSessionReplyCall<TMessage>(
         CancellationToken cancellationToken = default)
     {
         ClaimSubmission();
-        return ExecuteAsync(cancellationToken, validateBeforeCancellation: true)
+        return ExecuteAsync(
+                cancellationToken,
+                validateBeforeCancellation: true,
+                isReply: true)
             .EnsureAcceptedAsync("Session reply");
     }
 

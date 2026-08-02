@@ -2,6 +2,8 @@ namespace Zlink.Framework.Runtime.Backend.Contracts;
 
 internal interface IZLinkBackendSpotNode : IAsyncDisposable
 {
+    void SetInboundDispatchBudget(ZLinkInboundDispatchBudget budget) { }
+
     ValueTask ForceStopAsync(CancellationToken cancellationToken) => DisposeAsync();
 
     RoutingId RoutingId { get; }

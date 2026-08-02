@@ -16,7 +16,7 @@ class CustomerStatusHandler {
     actor.context.boundSession.send(new DeliveryStatusNotify(
       message.deliveryId,
       message.status,
-      message.occurredAt,
+      message.occurredAtUnixMs,
       message.courierId
     )).submit();
   }

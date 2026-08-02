@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Runtime.Dispatch;
 
 namespace Zlink.Framework.Runtime.Streams;
 
@@ -10,10 +11,13 @@ internal sealed class ZLinkStreamSessionTable(
     string transport,
     TimeProvider timeProvider,
     bool actorDispatchEnabled,
-    ZLinkAsyncSubmitter sendSubmitter)
+    ZLinkAsyncSubmitter sendSubmitter,
+    ZLinkCompletionAdmissionOwner? completionAdmission)
 {
     private readonly object _gate = new();
     private readonly Dictionary<string, ZLinkStreamSessionRuntime> _sessions = [];
+    private readonly Dictionary<string, TaskCompletionSource<ZLinkStreamSessionRuntime?>>
+        _sessionCreations = [];
     private bool _rejectNewSessions;
     private bool _stopping;
 
@@ -63,6 +67,8 @@ internal sealed class ZLinkStreamSessionTable(
     {
         var sessionId = routingId.ToHex();
         var reject = false;
+        var creator = false;
+        TaskCompletionSource<ZLinkStreamSessionRuntime?>? creation = null;
         lock (_gate)
         {
             if (_stopping) return null;
@@ -70,6 +76,16 @@ internal sealed class ZLinkStreamSessionTable(
             if (_sessions.TryGetValue(sessionId, out var existing))
                 return existing;
             reject = _rejectNewSessions || drainAdmission.IsDraining;
+            if (!reject)
+            {
+                if (!_sessionCreations.TryGetValue(sessionId, out creation))
+                {
+                    creation = new TaskCompletionSource<ZLinkStreamSessionRuntime?>(
+                        TaskCreationOptions.RunContinuationsAsynchronously);
+                    _sessionCreations.Add(sessionId, creation);
+                    creator = true;
+                }
+            }
         }
         if (reject)
         {
@@ -77,46 +93,77 @@ internal sealed class ZLinkStreamSessionTable(
             return null;
         }
 
-        var created = await ZLinkStreamSessionRuntime.CreateAsync(
-                services,
-                socket,
-                routingId,
-                headerSessionType,
-                Remove,
-                transport,
-                timeProvider,
-                actorDispatchEnabled,
-                sendSubmitter,
-                requireConnectionReady: true)
-            .ConfigureAwait(false);
-        ZLinkStreamSessionRuntime? duplicate = null;
-        lock (_gate)
+        if (creator)
         {
-            if (_stopping)
+            try
             {
-                duplicate = created;
-                created = null!;
+                var created = await ZLinkStreamSessionRuntime.CreateAsync(
+                        services,
+                        socket,
+                        routingId,
+                        headerSessionType,
+                        Remove,
+                        transport,
+                        timeProvider,
+                        actorDispatchEnabled,
+                        sendSubmitter,
+                        requireConnectionReady: true,
+                        completionAdmission: completionAdmission)
+                    .ConfigureAwait(false);
+                var result = created;
+                var disposeCreated = false;
+                var rejectCreated = false;
+                lock (_gate)
+                {
+                    _sessionCreations.Remove(sessionId);
+                    if (_stopping)
+                    {
+                        result = null;
+                        disposeCreated = true;
+                    }
+                    else if (_sessions.TryGetValue(sessionId, out var existing))
+                    {
+                        result = existing;
+                        disposeCreated = true;
+                    }
+                    else if (_rejectNewSessions || drainAdmission.IsDraining)
+                    {
+                        result = null;
+                        disposeCreated = true;
+                        rejectCreated = true;
+                    }
+                    else
+                        _sessions.Add(sessionId, created);
+                }
+
+                if (disposeCreated)
+                    await created.DisposeUncommittedAsync().ConfigureAwait(false);
+                if (rejectCreated) RejectNewSession(routingId);
+                creation!.TrySetResult(result);
             }
-            else if (_sessions.TryGetValue(sessionId, out var existing))
+            catch (Exception exception)
             {
-                duplicate = created;
-                created = existing;
-            }
-            else if (_rejectNewSessions || drainAdmission.IsDraining)
-            {
-                duplicate = created;
-                created = null!;
-                reject = true;
-            }
-            else
-            {
-                _sessions.Add(sessionId, created);
+                lock (_gate) _sessionCreations.Remove(sessionId);
+                creation!.TrySetException(exception);
             }
         }
 
-        if (duplicate is not null) await duplicate.DisposeUncommittedAsync().ConfigureAwait(false);
-        if (reject) RejectNewSession(routingId);
-        return created;
+        return await creation!.Task.ConfigureAwait(false);
+    }
+
+    public bool TryGet(RoutingId routingId, out ZLinkStreamSessionRuntime session)
+    {
+        lock (_gate)
+        {
+            if (_sessions.TryGetValue(routingId.ToHex(), out var existing))
+            {
+                session = existing;
+                return true;
+            }
+        }
+
+        session = null!;
+        return false;
     }
 
     public async ValueTask<bool> DrainSessionsAsync(CancellationToken cancellationToken)
@@ -191,8 +238,7 @@ internal sealed class ZLinkStreamSessionTable(
                 message => socket.Send(routingId, message, SendFlags.None),
                 ZLinkStreamSessionClosingCodec.CreateHeader(),
                 payload,
-                "Could not submit the session-closing control packet.",
-                transport);
+                "Could not submit the session-closing control packet.");
         }
         catch
         {

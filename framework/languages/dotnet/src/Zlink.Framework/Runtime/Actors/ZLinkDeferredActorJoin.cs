@@ -110,6 +110,8 @@ internal sealed class ZLinkDeferredActorJoin(
     TimeSpan timeout)
 {
     private readonly long _registeredTimestamp = Stopwatch.GetTimestamp();
+    private readonly DateTimeOffset _absoluteDeadline =
+        DateTimeOffset.UtcNow + timeout;
     private readonly ZLinkActorJoinOperationId _operationId = CreateOperationId();
 
     // The deferred Join runs after the submitting callback, so the causal flow of
@@ -216,13 +218,15 @@ internal sealed class ZLinkDeferredActorJoin(
                             actor,
                             request,
                             _operationId,
-                            deadline.Token)
+                            deadline.Token,
+                            _absoluteDeadline)
                         .ConfigureAwait(false)
                     : await runtime.JoinActorEntrySpotAsync(
                             actor,
                             request,
                             _operationId,
-                            deadline.Token)
+                            deadline.Token,
+                            _absoluteDeadline)
                         .ConfigureAwait(false);
 
                 switch (result)

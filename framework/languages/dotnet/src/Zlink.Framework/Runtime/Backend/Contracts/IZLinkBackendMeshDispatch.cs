@@ -1,4 +1,5 @@
 using Zlink.Framework.Contracts.Streams;
+using Zlink.Framework.Runtime.Dispatch;
 
 namespace Zlink.Framework.Runtime.Backend.Contracts;
 
@@ -39,7 +40,8 @@ internal sealed class ZLinkBackendRouteReceived : IDisposable
         byte messageFollowHopCount = 0,
         ulong sourceNodeGeneration = 0,
         ZLinkServiceWireCodec.RequestSourceFence? requestSource = null,
-        ulong deadlineUnixMs = 0)
+        ulong deadlineUnixMs = 0,
+        ZLinkInboundDispatchLease? inboundDispatchLease = null)
     {
         Parts = parts;
         SourceNodeRid = sourceNodeRid;
@@ -56,6 +58,7 @@ internal sealed class ZLinkBackendRouteReceived : IDisposable
         SourceNodeGeneration = sourceNodeGeneration;
         RequestSource = requestSource;
         DeadlineUnixMs = deadlineUnixMs;
+        InboundDispatchLease = inboundDispatchLease;
     }
 
     public IReadOnlyList<Message> Parts { get; }
@@ -91,6 +94,10 @@ internal sealed class ZLinkBackendRouteReceived : IDisposable
 
     public ulong DeadlineUnixMs { get; }
 
+    internal ZLinkInboundDispatchLease? InboundDispatchLease { get; }
+
+    internal void StartDispatch() => InboundDispatchLease?.StartDispatch();
+
     public bool CanReply => _reply is not null;
 
     public SubmitResult Reply(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
@@ -105,7 +112,14 @@ internal sealed class ZLinkBackendRouteReceived : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        ZLinkMessageParts.DisposeAll(Parts);
+        try
+        {
+            ZLinkMessageParts.DisposeAll(Parts);
+        }
+        finally
+        {
+            InboundDispatchLease?.Dispose();
+        }
     }
 }
 
@@ -122,12 +136,14 @@ internal sealed class ZLinkBackendSubscribeMessage : IDisposable
         string channelName,
         string topic,
         IReadOnlyList<Message> parts,
-        ZLinkMessageMetadata? metadata = null)
+        ZLinkMessageMetadata? metadata = null,
+        ZLinkInboundDispatchLease? inboundDispatchLease = null)
     {
         ChannelName = channelName;
         Topic = topic;
         Parts = parts;
         Metadata = metadata ?? ZLinkMessageMetadata.Empty;
+        InboundDispatchLease = inboundDispatchLease;
     }
 
     public string ChannelName { get; }
@@ -140,10 +156,21 @@ internal sealed class ZLinkBackendSubscribeMessage : IDisposable
     // multicast record's application-metadata frame (S8-06A). Empty when none.
     public ZLinkMessageMetadata Metadata { get; }
 
+    internal ZLinkInboundDispatchLease? InboundDispatchLease { get; }
+
+    internal void StartDispatch() => InboundDispatchLease?.StartDispatch();
+
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        ZLinkMessageParts.DisposeAll(Parts);
+        try
+        {
+            ZLinkMessageParts.DisposeAll(Parts);
+        }
+        finally
+        {
+            InboundDispatchLease?.Dispose();
+        }
     }
 }

@@ -351,9 +351,12 @@ internal sealed partial class ZLinkSpotActivation
                     activation._dispatcher.DispatchActorJoinDrainAsync(ct)),
                 () => QueueSerialized(static (activation, ct) =>
                     activation.DispatchActorLifecycleDrainAsync(ct)),
-                actorParts =>
+                (actorParts, inboundDispatchLease) =>
                 {
-                    var dispatchable = ZLinkActorHandoffIngress.CaptureMovingFrames(_runtime, actorParts);
+                    var dispatchable = ZLinkActorHandoffIngress.CaptureMovingFrames(
+                        _runtime,
+                        actorParts,
+                        inboundDispatchLease);
                     if (dispatchable.Count == 0)
                     {
                         dispatchable.Dispose();

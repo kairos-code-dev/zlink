@@ -73,7 +73,7 @@ internal sealed class ZLinkChannelRuntimeManager(
                         channel)
                     .ConfigureAwait(false);
                 state.ClientServerServerBundles.Add(channelName, bundle);
-                state.ListenerTasks.Add(state.TaskRunner.Run(
+                state.ListenerTasks.Add(state.TaskRunner.RunLongRunning(
                     $"client-server:{channelName}",
                     ct => new ValueTask(receiveLoop.RunClientServerLoopAsync(
                         channelName,
@@ -109,7 +109,7 @@ internal sealed class ZLinkChannelRuntimeManager(
                 var bundle = await _bundleFactory.CreateSubscriberBundleAsync(state, adapter, channelName, channel)
                     .ConfigureAwait(false);
                 state.SubscriberBundles.Add(channelName, bundle);
-                state.ListenerTasks.Add(state.TaskRunner.Run(
+                state.ListenerTasks.Add(state.TaskRunner.RunLongRunning(
                     $"channel-subscriber:{channelName}",
                     ct => new ValueTask(receiveLoop.RunSubscriberLoopAsync(
                         channelName,

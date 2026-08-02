@@ -147,7 +147,10 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetRequiredService<ZLinkFrameworkRuntime>().PublishRetiringAsync,
                 registration.ApplicationVersion,
                 inboundDispatchSnapshot: provider.GetRequiredService<
-                    ZLinkFrameworkRuntime>().SnapshotInboundDispatch));
+                    ZLinkFrameworkRuntime>().SnapshotInboundDispatch,
+                acceptingWorkSnapshot: () => provider.GetRequiredService<
+                    ZLinkFrameworkRuntime>().IsAcceptingApplicationWork,
+                logger: provider.GetService<ILogger<ZLinkFrameworkMaintenanceRuntime>>()));
         services.TryAddSingleton<IZLinkFrameworkRuntime>(static provider =>
             provider.GetRequiredService<ZLinkFrameworkMaintenanceRuntime>());
         services.TryAddSingleton<IZLinkRuntimeTerminalFailureSink>(static provider =>

@@ -104,7 +104,7 @@ public sealed class DrainCoordinatorTests
                         ZLinkRelocationCommitKnowledge.Committed,
                         true));
             },
-            _ =>
+            (_, _) =>
             {
                 events.Add("actors");
                 return ValueTask.FromResult(
@@ -149,7 +149,7 @@ public sealed class DrainCoordinatorTests
                         ZLinkFrameworkRelocationReason.RelocationFailed,
                         ZLinkRelocationCommitKnowledge.NotCommitted,
                         true)),
-            _ => ValueTask.FromResult(
+            (_, _) => ValueTask.FromResult(
                 new ZLinkActorDrainResult(
                     true,
                     null,
@@ -188,7 +188,7 @@ public sealed class DrainCoordinatorTests
                 return ValueTask.FromResult(
                     new ZLinkSpotDrainResult(true, 1));
             },
-            _ =>
+            (_, _) =>
             {
                 events.Add("actors");
                 return ValueTask.FromResult(
@@ -1020,6 +1020,47 @@ public sealed class DrainCoordinatorTests
     }
 
     [Fact]
+    public void Spot_relocation_failure_mapping_preserves_precommit_reason_and_commit_boundary()
+    {
+        var cases = new (Exception Error, ZLinkFrameworkRelocationReason Expected)[]
+        {
+            (
+                new OperationCanceledException(),
+                ZLinkFrameworkRelocationReason.DeadlineExceeded),
+            (
+                new ZLinkRelocationDataLostException("invalid relocation payload"),
+                ZLinkFrameworkRelocationReason.StateIncompatible),
+            (
+                new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.DeadlineExceeded,
+                    "deadline expired"),
+                ZLinkFrameworkRelocationReason.DeadlineExceeded),
+            (
+                new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.DataLost,
+                    "durable state is unavailable"),
+                ZLinkFrameworkRelocationReason.StateIncompatible),
+            (
+                new InvalidOperationException("callback failed"),
+                ZLinkFrameworkRelocationReason.RelocationFailed)
+        };
+
+        foreach (var (error, expected) in cases)
+        {
+            Assert.Equal(
+                expected,
+                ZLinkSpotRetireScheduler.MapFailureReason(
+                    error,
+                    committed: false));
+            Assert.Equal(
+                ZLinkFrameworkRelocationReason.RelocationFailed,
+                ZLinkSpotRetireScheduler.MapFailureReason(
+                    error,
+                    committed: true));
+        }
+    }
+
+    [Fact]
     public async Task Drain_Health_Check_Projects_Readiness_Without_Starting_Drain()
     {
         var runtime = new MutableFrameworkRuntime();
@@ -1270,13 +1311,13 @@ public sealed class DrainCoordinatorTests
                 Events.Add("wait-accepted-handoffs");
                 return Task.CompletedTask;
             },
-            DrainActors: _ =>
+            DrainActors: (_, _) =>
             {
                 Events.Add("drain-actors");
                 return ValueTask.FromResult(
                     new ZLinkActorDrainResult(true, null, 0));
             },
-            DrainSpots: (relocate, hostShutdown, _) =>
+            DrainSpots: (relocate, hostShutdown, _, _) =>
             {
                 LastSpotDrainWasRelocation = relocate;
                 LastSpotDrainWasHostShutdown = hostShutdown;

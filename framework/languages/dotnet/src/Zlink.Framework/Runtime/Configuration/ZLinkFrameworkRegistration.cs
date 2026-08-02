@@ -273,6 +273,8 @@ internal sealed class ZLinkStreamNodeRegistration
 
     public string? AdvertiseHost { get; set; }
 
+    public ZLinkSocketConfig SocketConfig { get; } = new();
+
     public bool ActorDispatchEnabled { get; set; }
 
     public ZLinkStreamTlsServerRegistration? TlsServer { get; set; }

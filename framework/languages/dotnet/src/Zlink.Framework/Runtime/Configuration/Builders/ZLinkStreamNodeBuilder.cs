@@ -38,6 +38,8 @@ internal sealed class ZLinkStreamNodeBuilder(ZLinkStreamNodeRegistration registr
         return this;
     }
 
+    public IZLinkSocketConfig ConfigureSocket() => registration.SocketConfig;
+
     public IZLinkStreamNodeBuilder EnableActorDispatch()
     {
         if (registration.ActorDispatchEnabled)

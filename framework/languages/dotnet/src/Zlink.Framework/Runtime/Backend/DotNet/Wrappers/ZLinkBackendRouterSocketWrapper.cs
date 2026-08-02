@@ -10,6 +10,9 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
 
     internal IRouterSocket NativeSocket => nativeSocket;
 
+    public IZLinkBackendSocketPoller CreateReceivePoller() =>
+        ZLinkBackendSocketPoller.Create(nativeSocket);
+
     public void Bind(string endpoint)
     {
         nativeSocket.Bind(endpoint);

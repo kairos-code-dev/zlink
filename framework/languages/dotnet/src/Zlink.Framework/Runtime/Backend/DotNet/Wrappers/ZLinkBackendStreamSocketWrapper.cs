@@ -35,6 +35,14 @@ internal sealed class ZLinkBackendStreamSocketWrapper : IZLinkBackendStreamSocke
 
     internal IStreamSocket NativeSocket => _socket;
 
+    public IZLinkBackendSocketPoller CreateReceivePoller() =>
+        ZLinkBackendSocketPoller.Create(_socket);
+
+    public void ApplySocketConfig(IZLinkSocketConfig config) =>
+        ZLinkBackendSocketOptionsMapper.Apply(_socket.Options, config);
+
+    public string GetLastEndpoint() => _socket.Options.LastEndpoint;
+
     private IStreamSessionService Session()
     {
         if (_session is { } existing) return existing;
@@ -66,10 +74,12 @@ internal sealed class ZLinkBackendStreamSocketWrapper : IZLinkBackendStreamSocke
         _socket.SetTlsServer(certPath, keyPath, requireClientCert);
     }
 
-    public void OnFramedPacket(Action<RoutingId, Message, Message> handler)
-    {
-        _socket.OnPacket((routingId, header, body) => handler(routingId, header, body));
-    }
+    public bool RecvPart(
+        out RoutingId? sourceRoutingId,
+        out Message? part,
+        out bool hasMore,
+        RecvFlags flags = RecvFlags.None) =>
+        _socket.RecvPart(out sourceRoutingId, out part, out hasMore, flags);
 
     public void OnSendReady(Action handler)
     {

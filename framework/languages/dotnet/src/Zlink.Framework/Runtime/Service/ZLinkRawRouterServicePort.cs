@@ -3,11 +3,14 @@ using Systems.Zlink;
 namespace Zlink.Framework.Runtime.Service;
 
 // Private transport seam for the Framework service runtime. This type owns a
-// raw ROUTER socket only; service state machines and operation completion stay
-// in the runtime owners that will consume this port.
+// raw ROUTER socket only; service state machines stay in the runtime owners that
+// consume this port. Its public poller owns both receive readiness and request
+// completion, so one native socket does not have two progress owners.
 internal sealed class ZLinkRawRouterServicePort : IDisposable, IAsyncDisposable
 {
     private readonly IRouterSocket _socket;
+    private IPoller? _receivePoller;
+    private readonly PollEvent[] _receiveEvents = new PollEvent[1];
     private bool _started;
     private bool _disposed;
 
@@ -37,6 +40,20 @@ internal sealed class ZLinkRawRouterServicePort : IDisposable, IAsyncDisposable
         ThrowIfDisposed();
         if (_started) return;
         _socket.Bind(BindEndpoint);
+        var poller = Systems.Zlink.Zlink.CreatePoller();
+        try
+        {
+            poller.Add(
+                _socket,
+                PollEventFlags.PollIn | PollEventFlags.PollCompletion,
+                1);
+            _receivePoller = poller;
+        }
+        catch
+        {
+            poller.Dispose();
+            throw;
+        }
         _started = true;
     }
 
@@ -78,6 +95,20 @@ internal sealed class ZLinkRawRouterServicePort : IDisposable, IAsyncDisposable
     internal bool TryReceive(out ZLinkRawRouterEnvelope? envelope)
     {
         EnsureStarted();
+        if (_receivePoller!.Wait(_receiveEvents, TimeSpan.Zero) == 0)
+        {
+            envelope = null;
+            return false;
+        }
+
+        var readiness = _receiveEvents[0].Revents;
+        if ((readiness & (PollEventFlags.PollIn
+                          | PollEventFlags.PollErr
+                          | PollEventFlags.PollPri)) == 0)
+        {
+            envelope = null;
+            return false;
+        }
         var received = Received.Create();
         try
         {
@@ -131,6 +162,7 @@ internal sealed class ZLinkRawRouterServicePort : IDisposable, IAsyncDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _receivePoller?.Dispose();
         _socket.Dispose();
     }
 
@@ -138,6 +170,7 @@ internal sealed class ZLinkRawRouterServicePort : IDisposable, IAsyncDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _receivePoller?.Dispose();
         await _socket.DisposeAsync().ConfigureAwait(false);
     }
 

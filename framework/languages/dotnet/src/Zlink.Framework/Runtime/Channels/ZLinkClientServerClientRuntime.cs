@@ -4,6 +4,8 @@ namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
 {
+    private static readonly TimeSpan ControlReceivePollInterval =
+        TimeSpan.FromMilliseconds(100);
     private readonly string _channelName;
     private readonly IZLinkChannelBackendAdapter _adapter;
     private readonly IZLinkMonitoringBackendAdapter _monitoring;
@@ -149,22 +151,28 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref _pendingRequests);
+        using var readyWaitCancellation =
+            CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                _stopToken);
         try
         {
             var deadline = DateTime.UtcNow + timeout;
-            var target = await WaitForReadyAsync(timeout, cancellationToken)
+            var target = await WaitForReadyAsync(
+                    timeout,
+                    readyWaitCancellation.Token)
                 .ConfigureAwait(false);
             if (target is null)
             {
                 ZLinkMessageParts.DisposeAll(parts);
-                throw new TimeoutException(
+                throw ZLinkRequestFailureMapper.CreateTimedOutRequestException(
                     $"ClientServer channel '{_channelName}' had no ready server before the request deadline.");
             }
             var remaining = deadline - DateTime.UtcNow;
             if (remaining <= TimeSpan.Zero)
             {
                 ZLinkMessageParts.DisposeAll(parts);
-                throw new TimeoutException(
+                throw ZLinkRequestFailureMapper.CreateTimedOutRequestException(
                     $"ClientServer channel '{_channelName}' had no request time remaining after route admission.");
             }
             return await ZLinkRawRequestSubmitter.SubmitAsync(
@@ -179,6 +187,13 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
                     $"ClientServer request failed for '{_channelName}': {{0}}.",
                     cancellationToken)
                 .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+            when (_stopToken.IsCancellationRequested
+                  && !cancellationToken.IsCancellationRequested)
+        {
+            throw ZLinkRequestFailureMapper.CreateShutdownRequestException(
+                $"ClientServer channel '{_channelName}' request was interrupted by runtime shutdown.");
         }
         finally
         {
@@ -900,6 +915,11 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
             ulong attempt,
             CancellationToken cancellationToken)
         {
+            // TryStartAdmission invokes this method while holding the
+            // connection state lock. Keep a synchronously completing request
+            // from re-entering ApplyAdmission and the parent runtime callback
+            // before that lock has been released.
+            await Task.Yield();
             var retry = false;
             try
             {
@@ -1071,8 +1091,14 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
                             DateTimeOffset.UtcNow + TimeSpan.FromSeconds(15);
                         admittedIdentity = _admittedIdentity;
                         _diagnostics = "ready";
-                        _controlTask ??=
-                            RunControlLoopAsync(_admissionStop.Token);
+                        _controlTask ??= Task.Factory.StartNew(
+                                static state =>
+                                    ((Connection)state!).RunControlLoopAsync(),
+                                this,
+                                CancellationToken.None,
+                                TaskCreationOptions.LongRunning,
+                                TaskScheduler.Default)
+                            .Unwrap();
                         _livenessTask ??=
                             RunLivenessLoopAsync(_admissionStop.Token);
                     }
@@ -1098,13 +1124,19 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
             return true;
         }
 
-        private async Task RunControlLoopAsync(
-            CancellationToken cancellationToken)
+        private async Task RunControlLoopAsync()
         {
+            var cancellationToken = _admissionStop.Token;
+            using var receivePoller = Socket.CreateReceivePoller();
             while (!cancellationToken.IsCancellationRequested)
             {
                 try
                 {
+                    var readiness = receivePoller.Wait(ControlReceivePollInterval);
+                    if ((readiness & (PollEventFlags.PollIn
+                                      | PollEventFlags.PollErr
+                                      | PollEventFlags.PollPri)) == 0)
+                        continue;
                     using var received = Socket.Recv(RecvFlags.DontWait);
                     if (received is null)
                     {

@@ -1,11 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ZLINK_ACTOR_CLIENT, ZLINK_ACTOR_MANAGER } from '@zlink-systems/nestjs';
+import { ZLINK_ACTOR_MANAGER } from '@zlink-systems/nestjs';
 import { SampleNames, SampleTimings } from '../../Shared/Configuration/sample-names';
-import { bindCourier, ensureCourierActor, PacketNames } from '../../Shared/Contracts/messages';
+import { ensureCourierActor, PacketNames } from '../../Shared/Contracts/messages';
 import {
   ZLinkPacket,
   type ActorRef,
-  type ZLinkActorClient,
   type ZLinkActorManager,
   type ZLinkMessage,
   type ZLinkSession,
@@ -13,7 +12,7 @@ import {
   type ZLinkSessionDispatchContext,
   type ZLinkSessionFactory
 } from '@zlink-systems/framework';
-import type { BindCourierRes, BindCourierSessionReq } from '../../Shared/Contracts/messages';
+import type { BindCourierSessionReq } from '../../Shared/Contracts/messages';
 
 class CourierSession implements ZLinkSession {
   constructor(readonly context: ZLinkSessionContext) {}
@@ -30,7 +29,6 @@ class CourierSession implements ZLinkSession {
 @ZLinkPacket(PacketNames.bindCourierSession)
 class BindCourierSessionHandler {
   constructor(
-    @Inject(ZLINK_ACTOR_CLIENT) private readonly actors: ZLinkActorClient,
     @Inject(ZLINK_ACTOR_MANAGER) private readonly actorManager: ZLinkActorManager
   ) {}
 
@@ -38,12 +36,6 @@ class BindCourierSessionHandler {
     const request = payload.decode<BindCourierSessionReq>(Object as never);
     const actorRef = await this.findOrEnsureActor(request.courierId);
     const actor = await context.actors.bindOrGet(actorRef);
-    await this.actors.requestToActor(
-      actorRef.actorId,
-      bindCourier(request.courierId, context.sessionId)
-    )
-      .timeout(SampleTimings.requestTimeout)
-      .submit<BindCourierRes>();
     console.error(`deliverydispatch courier-session: bound courier=${request.courierId} actor=${actorRef.actorId}`);
     await actor.relay(payload);
   }

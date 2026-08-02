@@ -20,6 +20,19 @@ internal sealed class StreamSocket : RoutedMessageSocketBase, IStreamSocket
         Kernel.AttachStreamPacket(handler);
     }
 
+    public bool RecvPart(
+        out RoutingId? sourceRoutingId,
+        out Message? part,
+        out bool hasMore,
+        RecvFlags flags = RecvFlags.None)
+    {
+        return Kernel.ReceiveStreamPart(
+            out sourceRoutingId,
+            out part,
+            out hasMore,
+            flags);
+    }
+
     public void DisconnectRid(RoutingId peerRid)
     {
         Kernel.DisconnectRid(peerRid);

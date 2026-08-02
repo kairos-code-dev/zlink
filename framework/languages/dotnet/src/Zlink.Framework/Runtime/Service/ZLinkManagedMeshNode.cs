@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Systems.Zlink.Framework.Runtime.Protocol;
 using Zlink.Framework.Runtime.Diagnostics;
+using Zlink.Framework.Runtime.Dispatch;
 
 namespace Zlink.Framework.Runtime.Service;
 
@@ -106,6 +107,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     private int _disposed;
     private bool _inboundOperationAdmissionClosed;
     private ulong _activeSocketGeneration;
+    private ZLinkInboundDispatchBudget? _inboundDispatchBudget;
 
     internal ZLinkManagedMeshNode(
         IContext context,
@@ -143,6 +145,19 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     public ulong MailboxMessageBudget { get; set; } = 10_000;
     public ulong MailboxByteBudget { get; set; } = 64 * 1024 * 1024;
     public TimeSpan? SendTimeout { get; set; }
+
+    public void SetInboundDispatchBudget(ZLinkInboundDispatchBudget budget)
+    {
+        ArgumentNullException.ThrowIfNull(budget);
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            if (_state != MeshNodeState.Created)
+                throw new InvalidOperationException(
+                    "The inbound dispatch budget must be configured before Start.");
+            _inboundDispatchBudget = budget;
+        }
+    }
 
     public void SetRoutingId(RoutingId routingId)
     {
@@ -195,6 +210,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             }
 
             var socket = _context.CreateRouterSocket();
+            IPoller? poller = null;
             try
             {
                 socket.Options.Mandatory = true;
@@ -217,7 +233,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                         StringComparison.Ordinal))
                     _advertisedEndpoint = _bindEndpoint;
 
-                var poller = Systems.Zlink.Zlink.CreatePoller();
+                poller = Systems.Zlink.Zlink.CreatePoller();
                 // One poller owns both inbound frames and request completion.
                 // Registering only PollIn lets the binding create a second
                 // completion worker, which can process the same socket command
@@ -229,6 +245,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 _socket = socket;
                 _activeSocketGeneration = _lifecycleGeneration;
                 _poller = poller;
+                poller = null;
                 _stop = new CancellationTokenSource();
                 _state = MeshNodeState.Started;
                 Publish(MeshMonitorEventKind.StateChanged);
@@ -243,11 +260,12 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             }
             catch
             {
+                _poller?.Dispose();
+                _poller = null;
+                poller?.Dispose();
                 socket.Dispose();
                 _socket = null;
                 _activeSocketGeneration = 0;
-                _poller?.Dispose();
-                _poller = null;
                 _state = MeshNodeState.Error;
                 throw;
             }
@@ -1324,7 +1342,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                          .ThenBy(static entry => entry.Key.OwnerKind)
                          .ThenBy(static entry => entry.Key.Identity, StringComparer.Ordinal))
             {
-                if (!entry.Value.TryClaim())
+                if (!entry.Value.TryClaim(_inboundDispatchBudget))
                     continue;
                 var mailbox = entry.Value;
                 batch.Add(
@@ -3425,13 +3443,31 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     {
         for (var index = 0; index < ReceiveBatchSize; index++)
         {
-            using var received = Received.Create();
-            bool available;
-            lock (_socketGate)
-                available = _socket!.Recv(received, RecvFlags.DontWait);
-            if (!available)
-                return;
-            ProcessReceived(received);
+            var ownsResumePermit = false;
+            try
+            {
+                if (_inboundDispatchBudget is { } budget
+                    && !budget.CanStartApplicationReceive)
+                {
+                    ownsResumePermit = budget.WaitForReceiveCapacityAsync(
+                            _stop?.Token ?? CancellationToken.None)
+                        .AsTask()
+                        .GetAwaiter()
+                        .GetResult();
+                }
+
+                using var received = Received.Create();
+                bool available;
+                lock (_socketGate)
+                    available = _socket!.Recv(received, RecvFlags.DontWait);
+                if (!available)
+                    return;
+                ProcessReceived(received);
+            }
+            finally
+            {
+                _inboundDispatchBudget?.CompleteReceiveAttempt(ownsResumePermit);
+            }
         }
     }
 
@@ -3736,7 +3772,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                         0,
                         0,
                         null),
-                    multicastParts);
+                    multicastParts,
+                    admitApplication: true);
             }
             return;
         }
@@ -3823,7 +3860,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 0,
                 null,
                 replyHandler),
-            parts);
+            parts,
+            admitApplication: true);
     }
 
     private void ProcessRelocationPrepare(RoutingId sourceNodeRid,
@@ -3929,13 +3967,13 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         //  남아 "key를 못 찾았는지" "찾았는데 내용이 안 맞는지" 구분할 수 없다.
         //  둘을 나눠 남긴다.
         var found = _pendingRelocationReservations.TryGetValue(key, out var pending);
-        var matches = found && pending.MatchesReserved(reserved);
+        var matches = pending is not null && pending.MatchesReserved(reserved);
         ZLinkFrameworkDebugLog.SpotDiscovery(
             $"canonical_reserved_applied found={found} matches={matches} "
             + $"source={sourceNodeRid} "
             + $"relocation={reserved.RelocationId.High:x16}{reserved.RelocationId.Low:x16} "
             + $"attempt={reserved.TargetAttemptGeneration}");
-        if (matches)
+        if (pending is not null && matches)
             pending.Reserved.TrySetResult(reserved);
         else
             Publish(MeshMonitorEventKind.ProtocolError, peerRid: sourceNodeRid);
@@ -4589,7 +4627,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 messageFollowHopCount: stateful.MessageFollowHopCount,
                 replyRouteId: stateful.Correlation,
                 deadlineUnixMs: stateful.DeadlineUnixMs),
-            parts);
+            parts,
+            admitApplication: true);
     }
 
     private void ProcessUserSpotOperation(
@@ -6460,9 +6499,15 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     private void EnqueueOwned(
         MailboxKey key,
         MeshReceiveRecord record,
-        IReadOnlyList<Message> parts)
+        IReadOnlyList<Message> parts,
+        bool admitApplication = false)
     {
         var queued = new QueuedRecord(record, parts);
+        if (admitApplication
+            && record.RequiresApplicationDispatchLease
+            && _inboundDispatchBudget is not null)
+            queued.AttachLease(AdmitApplication(queued.PendingBytes));
+
         var mailbox = _ownedMailboxes.GetOrAdd(key, static _ => new OwnedMailbox());
         if (!mailbox.TryEnqueue(
                 queued,
@@ -6477,6 +6522,25 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         Interlocked.Increment(ref _queuedMessages);
         Interlocked.Add(ref _queuedBytes, checked((long)queued.PendingBytes));
         SignalReadyIfNeeded();
+    }
+
+    private ZLinkInboundDispatchLease AdmitApplication(ulong payloadBytes)
+    {
+        var budget = _inboundDispatchBudget
+            ?? throw new InvalidOperationException(
+                "An inbound dispatch budget is required for application admission.");
+        while (true)
+        {
+            if (budget.TryTrack(payloadBytes, out var lease))
+                return lease!;
+
+            var ownsResumePermit = budget.WaitForReceiveCapacityAsync(
+                    _stop?.Token ?? CancellationToken.None)
+                .AsTask()
+                .GetAwaiter()
+                .GetResult();
+            budget.CompleteReceiveAttempt(ownsResumePermit);
+        }
     }
 
     private void RecordInboundBackpressureDrop(MeshRecordKind kind)
@@ -6504,7 +6568,9 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         RecvFlags flags)
     {
         var count = 0;
-        while (count < ReceiveBatchSize && mailbox.TryDequeue(out var queued))
+        var maximumRecords = Math.Min(ReceiveBatchSize, batch.MaximumRecords);
+        while (count < maximumRecords
+               && mailbox.TryDequeue(out var queued))
         {
             Interlocked.Decrement(ref _queuedMessages);
             Interlocked.Add(ref _queuedBytes, -checked((long)queued.PendingBytes));
@@ -6545,10 +6611,11 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         return true;
     }
 
-    //  Spec 08 §7 separates two outcomes. A ChannelName with no selectable
-    //  target ends as NotFound, while a known target that is not ready yet is a
-    //  connection error the caller may wait on. ChannelSelectionFailureReason
-    //  already tells the two apart, so the submit result follows it.
+    //  Spec 08 §7 separates two outcomes. A ChannelName with no declared
+    //  target ends as NotFound, while a declared target that is currently not
+    //  selectable (including a weight-zero member) is a connection error the
+    //  caller may observe as Unavailable. The declaration check must therefore
+    //  retain channel membership independently of its current weight.
     private SubmitResult ChannelSelectionFailureResult(string channelName)
     {
         var reason = ChannelSelectionFailureReason(channelName);
@@ -6568,15 +6635,13 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             if (_state == MeshNodeState.Draining)
                 return "draining";
             //  Spec 08 §3.2 step 4 removes a weight-zero target from selection,
-            //  so such a member is not a target waiting to become ready - it is
-            //  deliberately excluded. Only a member that could be selected once
-            //  ready counts as declared here.
+            //  but the target remains a declared member. This lets callers
+            //  distinguish deliberate exclusion or a not-ready route from an
+            //  unknown ChannelName.
             var declared =
-                (_channels.TryGetValue(channelName, out var localWeight)
-                 && localWeight > 0)
+                _channels.ContainsKey(channelName)
                 || _peersByRid.Values.Any(peer =>
-                    peer.Channels.TryGetValue(channelName, out var peerWeight)
-                    && peerWeight > 0);
+                    peer.Channels.ContainsKey(channelName));
             return declared ? "not_ready" : "no_member";
         }
     }
@@ -7066,13 +7131,45 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             }
         }
 
-        internal bool TryClaim()
+        internal bool TryClaim(ZLinkInboundDispatchBudget? inboundDispatchBudget)
         {
+            QueuedRecord? candidate;
             lock (_gate)
             {
                 if (_claimed || _records.Count == 0)
                     return false;
                 _claimed = true;
+                candidate = _records.Peek();
+                if (!candidate.Record.RequiresApplicationDispatchLease
+                    || candidate.Record.InboundDispatchLease is not null
+                    || inboundDispatchBudget is null)
+                    return true;
+            }
+
+            if (!inboundDispatchBudget.TryTrack(
+                    candidate.PendingBytes,
+                    out var lease))
+            {
+                lock (_gate)
+                {
+                    if (_records.Count != 0
+                        && ReferenceEquals(_records.Peek(), candidate))
+                        _claimed = false;
+                }
+                return false;
+            }
+
+            lock (_gate)
+            {
+                if (_records.Count == 0
+                    || !ReferenceEquals(_records.Peek(), candidate))
+                {
+                    _claimed = false;
+                    lease!.Dispose();
+                    return false;
+                }
+
+                candidate.AttachLease(lease!);
                 return true;
             }
         }
@@ -7748,18 +7845,26 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         IReadOnlyList<Message> parts) : IDisposable
     {
         private IReadOnlyList<Message>? _parts = parts;
-        internal MeshReceiveRecord Record { get; } = record;
+        internal MeshReceiveRecord Record { get; private set; } = record;
         internal ulong PendingBytes =>
             checked((ulong)(_parts?.Sum(static part => part.Size) ?? 0));
         internal IReadOnlyList<Message> TakeParts() =>
             Interlocked.Exchange(ref _parts, null) ?? Array.Empty<Message>();
+
+        internal void AttachLease(ZLinkInboundDispatchLease lease)
+        {
+            var current = Record;
+            current.InboundDispatchLease = lease;
+            Record = current;
+        }
+
         public void Dispose()
         {
             var owned = Interlocked.Exchange(ref _parts, null);
-            if (owned is null)
-                return;
-            foreach (var part in owned)
-                part.Dispose();
+            if (owned is not null)
+                foreach (var part in owned)
+                    part.Dispose();
+            Record.InboundDispatchLease?.Dispose();
         }
     }
 }

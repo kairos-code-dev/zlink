@@ -12,7 +12,8 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
     Func<ZLinkSpotHandlerInvoker> handlerInvoker,
     ILogger<ZLinkSpotActorJoinDispatcher>? logger = null,
     Func<IZLinkActor, CancellationToken, ValueTask>? commitAcceptedActorJoin = null,
-    ZLinkDispatchErrorReporter? dispatchErrors = null)
+    ZLinkDispatchErrorReporter? dispatchErrors = null,
+    bool acceptActorJoinWithoutHandler = false)
 {
     private readonly ILogger<ZLinkSpotActorJoinDispatcher> _logger =
         logger ?? NullLogger<ZLinkSpotActorJoinDispatcher>.Instance;
@@ -27,7 +28,9 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
             payload.FlowOrigin,
             runtime.Flow.CaptureEnabled,
             ZLinkFlowOrigin.Inbound);
-        if (!actorJoins.TryResolve(out var descriptor) || descriptor is null)
+        var hasHandler = actorJoins.TryResolve(out var descriptor)
+                         && descriptor is not null;
+        if (!hasHandler && !acceptActorJoinWithoutHandler)
         {
             ReplyRejected(joinRequest, payload.MessageName, "no-join-handler", LogLevel.Debug);
             return;
@@ -50,16 +53,22 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
                 "payload-decode-failed",
                 LogLevel.Warning,
                 payloadError,
-                descriptor.ActorType);
+                descriptor?.ActorType);
             return;
         }
 
         ZLinkSpotActorJoinResult result;
         try
         {
-            result = await handlerInvoker()
-                .InvokeActorJoinAsync(descriptor, actor.Context.ActorId, payload.Request, cancellationToken)
-                .ConfigureAwait(false);
+            result = hasHandler
+                ? await handlerInvoker()
+                    .InvokeActorJoinAsync(
+                        descriptor!,
+                        actor.Context.ActorId,
+                        payload.Request,
+                        cancellationToken)
+                    .ConfigureAwait(false)
+                : ZLinkSpotActorJoinResult.Accept();
         }
         catch (Exception ex)
         {
@@ -69,7 +78,7 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
                 "handler-exception",
                 LogLevel.Warning,
                 ex,
-                descriptor.ActorType);
+                descriptor?.ActorType);
             return;
         }
 
@@ -88,7 +97,7 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
                     "join-commit-failed",
                     LogLevel.Warning,
                     ex,
-                    descriptor.ActorType);
+                    descriptor?.ActorType);
                 return;
             }
         }

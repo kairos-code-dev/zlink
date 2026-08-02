@@ -68,12 +68,13 @@ internal readonly record struct ZLinkRelocationUnitResult
 
 internal readonly record struct ZLinkRelocationWorkloadDrainControl(
     Func<bool> StopRequested,
-    CancellationToken CancellationToken);
+    CancellationToken CancellationToken,
+    DateTimeOffset AbsoluteDeadline = default);
 
 internal sealed class ZLinkRelocationWorkloadCoordinator(
     Func<ZLinkSpotRelocationPhase, CancellationToken,
         ValueTask<ZLinkSpotDrainResult>> drainSpots,
-    Func<CancellationToken, ValueTask<ZLinkActorDrainResult>> drainActors)
+    Func<DateTimeOffset, CancellationToken, ValueTask<ZLinkActorDrainResult>> drainActors)
 {
     internal async ValueTask<ZLinkRelocationWorkloadDrainResult> DrainAsync(
         ZLinkRelocationWorkloadDrainControl control)
@@ -92,7 +93,9 @@ internal sealed class ZLinkRelocationWorkloadCoordinator(
                 shells.SourceTerminalized,
                 shells.CommitKnowledge);
 
-        var actors = await drainActors(control.CancellationToken)
+        var actors = await drainActors(
+                control.AbsoluteDeadline,
+                control.CancellationToken)
             .ConfigureAwait(false);
         ZLinkFrameworkDebugLog.SpotDiscovery(
             $"relocation_phase_actors completed={actors.Completed} committed={actors.CommittedUnitCount} reason={actors.TerminalReason}");

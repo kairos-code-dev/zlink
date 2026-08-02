@@ -150,8 +150,15 @@ internal sealed class ZLinkEntrySpotDispatchPump(
             || info.ActorParts is not { Count: > 0 } actorParts)
             return;
 
-        var dispatchable = ZLinkActorHandoffIngress.CaptureMovingFrames(runtime, actorParts);
-        if (dispatchable.Count == 0) return;
+        var dispatchable = ZLinkActorHandoffIngress.CaptureMovingFrames(
+            runtime,
+            actorParts,
+            info.ActorDispatchLease);
+        if (dispatchable.Count == 0)
+        {
+            dispatchable.Dispose();
+            return;
+        }
 
         if (!runtime.TryEnterInboundOperation(countAsRequest: false, out var actorOperation))
         {

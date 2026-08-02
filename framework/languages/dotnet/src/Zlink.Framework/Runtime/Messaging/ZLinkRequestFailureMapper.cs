@@ -2,13 +2,24 @@ namespace Zlink.Framework.Runtime.Messaging;
 
 internal static class ZLinkRequestFailureMapper
 {
+    public static Exception CreateChannelCompletionException(
+        RequestResult result,
+        string operationName)
+    {
+        return CreateCompletionException(result, operationName);
+    }
+
     public static Exception CreateCompletionException(
         RequestResult result,
         string operationName)
     {
         return result switch
         {
-            RequestResult.TimedOut => new TimeoutException($"{operationName} timed out."),
+            RequestResult.TimedOut => new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.DeadlineExceeded,
+                $"{operationName} timed out.",
+                ZLinkRetryAdvice.RetryAfterBackoff,
+                CreateRequestException(result)),
             RequestResult.NotConnected => new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.Unavailable,
                 $"{operationName} failed because the target route is not connected.",
@@ -36,8 +47,12 @@ internal static class ZLinkRequestFailureMapper
                 ZLinkFrameworkErrorKind.ProtocolError,
                 $"{operationName} failed with a protocol error.",
                 innerException: CreateRequestException(result)),
+            RequestResult.Terminated => new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ShuttingDown,
+                $"{operationName} failed because the runtime is shutting down.",
+                innerException: CreateRequestException(result)),
             RequestResult.InvalidArgument or RequestResult.InvalidState or RequestResult.NotSupported
-                or RequestResult.Terminated or RequestResult.InternalError => new ZLinkFrameworkException(
+                or RequestResult.InternalError => new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.InternalFailure,
                     $"{operationName} failed with result '{result}'.",
                     innerException: CreateRequestException(result)),
@@ -111,6 +126,23 @@ internal static class ZLinkRequestFailureMapper
                 ZLinkRetryAdvice.RetryAfterBackoff,
                 lastSubmitFailure);
     }
+
+    public static ZLinkFrameworkException CreateTimedOutRequestException(
+        string operationName,
+        Exception? innerException = null) =>
+        new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.DeadlineExceeded,
+            operationName,
+            ZLinkRetryAdvice.RetryAfterBackoff,
+            innerException);
+
+    public static ZLinkFrameworkException CreateShutdownRequestException(
+        string operationName,
+        Exception? innerException = null) =>
+        new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.ShuttingDown,
+            operationName,
+            innerException: innerException);
 
     private static ZlinkRequestException CreateRequestException(RequestResult result)
     {

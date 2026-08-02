@@ -314,7 +314,6 @@ internal sealed partial class ZLinkActorSessionManager(
             }
         }
 
-        runtime.ScheduleDeferredJoinCompletionRecovery(state);
         return context;
     }
 

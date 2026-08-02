@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Zlink.Framework.Contracts.Streams;
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Dispatch;
 
 namespace Zlink.Framework.Runtime.Backend.DotNet;
 
@@ -31,6 +32,9 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
     private readonly SemaphoreSlim _signal = new(0);
     private CancellationTokenSource? _stop;
     private Task? _loop;
+    private IDisposable? _capacityRegistration;
+    private ZLinkInboundDispatchBudget? _inboundDispatchBudget;
+    private MeshReadyDomains _pendingReadyDomains;
     private bool _started;
     private bool _disposed;
 
@@ -92,6 +96,19 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
         EnsureStarted();
     }
 
+    public void SetInboundDispatchBudget(ZLinkInboundDispatchBudget budget)
+    {
+        ArgumentNullException.ThrowIfNull(budget);
+        lock (_lifecycleGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _capacityRegistration?.Dispose();
+            _inboundDispatchBudget = budget;
+            _capacityRegistration = budget.RegisterCapacityAvailable(
+                SignalApplicationCapacityAvailable);
+        }
+    }
+
     // Registers the node-level route/channel dispatch sink. Node-addressed
     // (NodeSend/NodeRequest) and channel-addressed (ChannelSend/ChannelRequest)
     // records are owned by the node (ready-record OwnerKind == Node) — their
@@ -112,8 +129,38 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
 
     private MeshReadyDomains OnReady(MeshReadyDomains readyDomains)
     {
-        _signal.Release();
+        SignalReady(readyDomains);
         return readyDomains;
+    }
+
+    private void SignalApplicationCapacityAvailable() =>
+        SignalReady(MeshReadyDomains.Application);
+
+    private void SignalReady(MeshReadyDomains readyDomains)
+    {
+        if (readyDomains == MeshReadyDomains.None) return;
+        lock (_lifecycleGate)
+        {
+            if (_disposed) return;
+            _pendingReadyDomains |= readyDomains;
+        }
+        try
+        {
+            _signal.Release();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private MeshReadyDomains TakePendingReadyDomains()
+    {
+        lock (_lifecycleGate)
+        {
+            var pending = _pendingReadyDomains;
+            _pendingReadyDomains = MeshReadyDomains.None;
+            return pending;
+        }
     }
 
     private async Task RunAsync(CancellationToken cancellationToken)
@@ -137,9 +184,10 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
 
     private void DrainResidue(MeshReadyBatch readyBatch, MeshReceiveBatch receiveBatch)
     {
-        var more = true;
-        while (more)
+        var requestedDomains = TakePendingReadyDomains();
+        while (requestedDomains != MeshReadyDomains.None)
         {
+            var domains = requestedDomains;
             readyBatch.Reset();
             bool residue;
             try
@@ -149,7 +197,7 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
                 // and starve every other owner. The signal semaphore provides the
                 // wakeups; the pump itself must never wait inside the native API.
                 residue = _node.DrainReady(
-                    MeshReadyDomains.All, readyBatch, RecvFlags.DontWait);
+                    domains, readyBatch, RecvFlags.DontWait);
             }
             catch (ObjectDisposedException)
             {
@@ -163,7 +211,9 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             for (var i = 0; i < readyBatch.Count; i++)
                 DrainClaim(readyBatch, i, receiveBatch);
 
-            more = residue;
+            requestedDomains = TakePendingReadyDomains();
+            if (residue)
+                requestedDomains |= domains;
         }
     }
 
@@ -204,6 +254,8 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             while (true)
             {
                 receiveBatch.Reset();
+                receiveBatch.MaximumRecords =
+                    readyRecord.Domain == MeshReadyDomains.Application ? 1 : int.MaxValue;
                 var got = claim.Receive(receiveBatch, RecvFlags.DontWait);
                 if (!got)
                     return;
@@ -211,6 +263,14 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
                 var count = receiveBatch.Count;
                 for (var record = 0; record < count; record++)
                     DispatchRecord(receiveBatch, record, ownerSpotId, readyRecord.Actor);
+
+                // Application records consume host-wide admission budget. End
+                // this claim after the bounded batch so the mailbox can release
+                // the claim and pre-admit the next record only after capacity
+                // has returned. Infrastructure domains may continue draining
+                // under the same claim because they do not consume that budget.
+                if (readyRecord.Domain == MeshReadyDomains.Application)
+                    return;
             }
         }
         catch (Exception)
@@ -278,8 +338,7 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             return;
 
         var state = ResolveSpotState(
-            string.IsNullOrEmpty(ownerSpotId) ? record.SourceSpotId : ownerSpotId,
-            targetOwner: true, record);
+            string.IsNullOrEmpty(ownerSpotId) ? record.SourceSpotId : ownerSpotId);
         var replyRecord = record;
         var reply = record.Kind is MeshRecordKind.NodeRequest
             or MeshRecordKind.ChannelRequest or MeshRecordKind.SpotRequest
@@ -289,8 +348,10 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
         _requestSources.TryGetValue(
             (record.SourceNodeRid, record.SourceBindingGeneration),
             out var requestSource);
+        var parts = RetainParts(batch, index);
+        var inboundDispatchLease = TrackApplication(batch, index, record.Domain, parts);
         var route = new ZLinkBackendRouteReceived(
-            RetainParts(batch, index),
+            parts,
             record.SourceNodeRid,
             record.SourceSpotId,
             record.OperationId == default ? null : record.OperationId.Low,
@@ -304,7 +365,8 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             sourceNodeGeneration: record.SourceBindingGeneration,
             requestSource: requestSource == default ? null : requestSource,
             deadlineUnixMs:
-                ZLinkMeshRecordAdapters.NormalizeDeadline(record.DeadlineUnixMs));
+                ZLinkMeshRecordAdapters.NormalizeDeadline(record.DeadlineUnixMs),
+            inboundDispatchLease: inboundDispatchLease);
         state.Routes.Enqueue(route);
         state.Raise(ZLinkBackendSpotDispatchEvent.RouteReadable);
     }
@@ -327,8 +389,10 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             ? new Func<IReadOnlyList<Message>, SendFlags, SubmitResult>(
                 (parts, flags) => replyRecord.Reply(parts, flags))
             : null;
+        var parts = RetainParts(batch, index);
+        var inboundDispatchLease = TrackApplication(batch, index, record.Domain, parts);
         var received = new ZLinkBackendRouteReceived(
-            RetainParts(batch, index),
+            parts,
             record.SourceNodeRid,
             record.SourceSpotId,
             record.OperationId == default ? null : record.OperationId.Low,
@@ -342,7 +406,8 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             record.AuthorityOwnerGeneration,
             record.OwnerLeaseGeneration,
             record.MessageFollowHopCount,
-            record.SourceBindingGeneration);
+            record.SourceBindingGeneration,
+            inboundDispatchLease: inboundDispatchLease);
         var handler = _nodeRouteHandler;
         if (handler is null)
         {
@@ -362,13 +427,15 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             return;
 
         var state = ResolveSpotState(
-            string.IsNullOrEmpty(ownerSpotId) ? record.SourceSpotId : ownerSpotId,
-            targetOwner: true, record);
+            string.IsNullOrEmpty(ownerSpotId) ? record.SourceSpotId : ownerSpotId);
+        var parts = RetainParts(batch, index);
+        var inboundDispatchLease = TrackApplication(batch, index, record.Domain, parts);
         var message = new ZLinkBackendSubscribeMessage(
             record.ChannelName ?? string.Empty,
             record.Topic ?? string.Empty,
-            RetainParts(batch, index),
-            metadata);
+            parts,
+            metadata,
+            inboundDispatchLease);
         state.Subscriptions.Enqueue(message);
         state.Raise(ZLinkBackendSpotDispatchEvent.SubscribeReadable);
     }
@@ -392,12 +459,16 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
     private void EnqueueSpotControl(MeshReceiveBatch batch, int index, MeshReceiveRecord record, string ownerSpotId)
     {
         var state = ResolveSpotState(
-            string.IsNullOrEmpty(ownerSpotId) ? record.SourceSpotId : ownerSpotId,
-            targetOwner: true, record);
+            string.IsNullOrEmpty(ownerSpotId) ? record.SourceSpotId : ownerSpotId);
         if (record.OperationKind == MeshOperationKind.ActorJoin)
         {
             // Actor-join admission record: build a framework join request.
             var join = ZLinkMeshRecordAdapters.ToActorJoinRequest(batch, index, record);
+            join.DispatchLease = TrackApplication(
+                batch,
+                index,
+                record.Domain,
+                join.Parts);
             state.ActorJoins.Enqueue(join);
             state.Raise(ZLinkBackendSpotDispatchEvent.ActorJoinReadable);
             return;
@@ -422,8 +493,7 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             ? record.ReplyRouteId
             : 0;
         var state = ResolveSpotState(
-            string.IsNullOrEmpty(ownerSpotId) ? record.SourceSpotId : ownerSpotId,
-            targetOwner: true, record);
+            string.IsNullOrEmpty(ownerSpotId) ? record.SourceSpotId : ownerSpotId);
         _requestSources.TryGetValue(
             (record.SourceNodeRid, record.SourceBindingGeneration),
             out var requestSource);
@@ -439,7 +509,26 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             requestSource == default ? null : requestSource,
             directReply);
         if (parts.Count == 0) return;
-        state.RaiseActor(parts);
+        state.RaiseActor(
+            parts,
+            TrackApplication(
+                batch,
+                index,
+                record.Domain,
+                parts.Select(static part => part.Message).ToArray()));
+    }
+
+    private ZLinkInboundDispatchLease? TrackApplication(
+        MeshReceiveBatch batch,
+        int index,
+        MeshReadyDomains domain,
+        IReadOnlyList<Message> parts)
+    {
+        var admitted = batch.TakeInboundDispatchLease(index);
+        return admitted
+            ?? (domain == MeshReadyDomains.Application
+                ? _inboundDispatchBudget?.Track(parts)
+                : null);
     }
 
     private void RaiseSendReady(MeshReceiveRecord record)
@@ -454,8 +543,7 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
         state?.RaiseSendReady();
     }
 
-    private SpotDispatchState ResolveSpotState(
-        string spotId, bool targetOwner, MeshReceiveRecord record)
+    private SpotDispatchState ResolveSpotState(string spotId)
     {
         return _spots.GetOrAdd(spotId, static _ => new SpotDispatchState());
     }
@@ -474,6 +562,8 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             _disposed = true;
             _stop?.Cancel();
             loop = _loop;
+            _capacityRegistration?.Dispose();
+            _capacityRegistration = null;
         }
 
         if (loop is not null)
@@ -510,10 +600,14 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             DispatchHandler?.Invoke(new ZLinkBackendSpotDispatchInfo(kind));
         }
 
-        public void RaiseActor(IReadOnlyList<ZLinkBackendActorPart> parts)
+        public void RaiseActor(
+            IReadOnlyList<ZLinkBackendActorPart> parts,
+            ZLinkInboundDispatchLease? inboundDispatchLease)
         {
             DispatchHandler?.Invoke(new ZLinkBackendSpotDispatchInfo(
-                ZLinkBackendSpotDispatchEvent.ActorReadable, ActorParts: parts));
+                ZLinkBackendSpotDispatchEvent.ActorReadable,
+                ActorParts: parts,
+                ActorDispatchLease: inboundDispatchLease));
         }
 
         public void RaiseSendReady()

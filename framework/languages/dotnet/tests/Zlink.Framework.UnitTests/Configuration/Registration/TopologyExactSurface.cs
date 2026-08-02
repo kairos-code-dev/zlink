@@ -33,6 +33,9 @@ public sealed class TopologyExactSurfaceTests
             streamMethods,
             static method => method.Name == nameof(IZLinkStreamNodeBuilder.EnableActorDispatch));
         Assert.Empty(actorDispatch.GetParameters());
+        Assert.Contains(streamMethods, static method =>
+            method.Name == nameof(IZLinkStreamNodeBuilder.ConfigureSocket)
+            && method.ReturnType == typeof(IZLinkSocketConfig));
     }
 
     [Fact]
@@ -49,11 +52,12 @@ public sealed class TopologyExactSurfaceTests
                 .Listen()
                 .SetBindHost("127.0.0.2")
                 .SetAdvertiseHost("mesh.example.net");
-            options.AddStreamNode("stream")
+            var stream = options.AddStreamNode("stream")
                 .Bind()
                 .SetBindHost("127.0.0.3")
-                .SetAdvertiseHost("stream.example.net")
-                .AddSession<TestSession>();
+                .SetAdvertiseHost("stream.example.net");
+            stream.ConfigureSocket().MaxMessageSize = 4096;
+            stream.AddSession<TestSession>();
         });
 
         using var provider = services.BuildServiceProvider();
@@ -70,6 +74,7 @@ public sealed class TopologyExactSurfaceTests
         Assert.Equal(0, stream.ListenPort);
         Assert.Equal("127.0.0.3", stream.BindHost);
         Assert.Equal("stream.example.net", stream.AdvertiseHost);
+        Assert.Equal(4096, stream.SocketConfig.MaxMessageSize);
     }
 
     private static HashSet<string> MethodNames<T>() =>

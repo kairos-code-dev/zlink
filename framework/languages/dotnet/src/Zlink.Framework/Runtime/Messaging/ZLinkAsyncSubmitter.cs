@@ -183,6 +183,43 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         }
     }
 
+    // The single-message path is common for STREAM sends and replies. Keep the
+    // message in SingleMessageParts so a one-part submit does not allocate an
+    // array merely to satisfy the multipart callback shape.
+    internal async ValueTask<ZLinkOneWaySubmitResult> SubmitSingleAsync(
+        Message message,
+        Func<Message, bool> attemptSubmit,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await Async(message, attemptSubmit, cancellationToken)
+                .ConfigureAwait(false);
+            return new ZLinkOneWaySubmitResult(ZLinkOneWaySubmitStatus.Submitted);
+        }
+        catch (ZLinkPendingAdmissionFullException)
+        {
+            return new ZLinkOneWaySubmitResult(ZLinkOneWaySubmitStatus.Backpressured);
+        }
+        catch (TimeoutException)
+        {
+            return new ZLinkOneWaySubmitResult(ZLinkOneWaySubmitStatus.TimedOut);
+        }
+        catch (ZLinkSubmitShutdownException)
+        {
+            return new ZLinkOneWaySubmitResult(ZLinkOneWaySubmitStatus.Shutdown);
+        }
+        catch (ObjectDisposedException)
+        {
+            return new ZLinkOneWaySubmitResult(ZLinkOneWaySubmitStatus.Shutdown);
+        }
+        catch (ZLinkFrameworkException failure)
+            when (ZLinkMeshCallSupport.TryMapSubmitFailure(failure, out var result))
+        {
+            return result;
+        }
+    }
+
     public ValueTask Async(
         IReadOnlyList<Message> parts,
         Func<IReadOnlyList<Message>, bool> trySubmit,
@@ -308,7 +345,9 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
                 completionTimeout,
                 "ZLink request timed out before completion.",
                 discardResult,
-                Drain)
+                Drain,
+                static operation =>
+                    ZLinkRequestFailureMapper.CreateTimedOutRequestException(operation))
             : new ZLinkRequestCompletion<T>(
                 cancellationToken,
                 _stopToken,
@@ -373,6 +412,27 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
             {
                 EndInitialAttempt();
             }
+        }
+        catch (TimeoutException timeoutError)
+        {
+            if (ownsParts) ZLinkMessageParts.DisposeAll(parts);
+            throw ZLinkRequestFailureMapper.CreateTimedOutRequestException(
+                "ZLink request timed out before local admission completed.",
+                timeoutError);
+        }
+        catch (ZLinkSubmitShutdownException shutdown)
+        {
+            if (ownsParts) ZLinkMessageParts.DisposeAll(parts);
+            throw ZLinkRequestFailureMapper.CreateShutdownRequestException(
+                "ZLink request was interrupted by runtime shutdown.",
+                shutdown);
+        }
+        catch (ObjectDisposedException disposed)
+        {
+            if (ownsParts) ZLinkMessageParts.DisposeAll(parts);
+            throw ZLinkRequestFailureMapper.CreateShutdownRequestException(
+                "ZLink request was interrupted by runtime shutdown.",
+                disposed);
         }
         catch
         {

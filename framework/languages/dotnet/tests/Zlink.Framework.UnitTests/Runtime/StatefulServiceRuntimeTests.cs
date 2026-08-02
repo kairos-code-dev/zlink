@@ -7,6 +7,7 @@ using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Backend.DotNet;
 using Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 using Zlink.Framework.Runtime.Codecs;
+using Zlink.Framework.Runtime.Dispatch;
 using Zlink.Framework.Runtime.Locations;
 using Zlink.Framework.Runtime.Service;
 
@@ -403,6 +404,122 @@ public sealed class StatefulServiceRuntimeTests
         Assert.Equal(authorityOwnerGeneration, received[0].AuthorityOwnerGeneration);
         Assert.Equal(ownerLeaseGeneration, received[0].OwnerLeaseGeneration);
         Assert.Equal(1UL, ownerLeaseGeneration);
+    }
+
+    [Fact]
+    public async Task RouteMesh_ApplicationHwm_AdmitsOneMailboxAndResumesAfterRelease()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var node = NewNode(context, "route-hwm-node");
+        var budget = new ZLinkInboundDispatchBudget(1);
+        node.SetInboundDispatchBudget(budget);
+        var firstActor = node.CreateActor("route-hwm-first");
+        var secondActor = node.CreateActor("route-hwm-second");
+        DrainAndDispose(node);
+
+        using var firstPayload = Message.From(new byte[] { 1 });
+        using var secondPayload = Message.From(new byte[] { 2 });
+        Assert.Equal(
+            SubmitResult.Ok,
+            node.SendToActor(firstActor, [firstPayload]));
+        Assert.Equal(
+            SubmitResult.Ok,
+            node.SendToActor(secondActor, [secondPayload]));
+
+        using (var ready = new MeshReadyBatch())
+        {
+            node.DrainReady(
+                MeshReadyDomains.Application,
+                ready,
+                RecvFlags.DontWait);
+            Assert.Equal(1, ready.Count);
+            using var claim = ready.TakeClaim(0);
+            using var received = new MeshReceiveBatch();
+            Assert.True(claim.Receive(received, RecvFlags.DontWait));
+            Assert.Equal(MeshRecordKind.ActorSend, received[0].Kind);
+            Assert.Equal(1UL, budget.PendingPayloadBytes);
+        }
+
+        Assert.Equal(0UL, budget.PendingPayloadBytes);
+        using var resumed = new MeshReadyBatch();
+        node.DrainReady(
+            MeshReadyDomains.Application,
+            resumed,
+            RecvFlags.DontWait);
+        Assert.Equal(1, resumed.Count);
+        using var resumedClaim = resumed.TakeClaim(0);
+        using var resumedReceive = new MeshReceiveBatch();
+        Assert.True(resumedClaim.Receive(resumedReceive, RecvFlags.DontWait));
+        Assert.Equal(MeshRecordKind.ActorSend, resumedReceive[0].Kind);
+    }
+
+    [Fact]
+    public async Task RouteMesh_Pump_DoesNotDrainSecondApplicationRecordAboveHwm()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var node = NewNode(context, "route-pump-hwm-node");
+        var budget = new ZLinkInboundDispatchBudget(1);
+        node.SetInboundDispatchBudget(budget);
+        var entrySpot = node.EntrySpot();
+        var firstActor = node.CreateActor("route-pump-hwm-first");
+        var secondActor = node.CreateActor("route-pump-hwm-second");
+        DrainAndDispose(node);
+
+        await using var pump = new ZLinkMeshDispatchPump(
+            node,
+            new ZLinkMeshCompletionTable());
+        pump.SetInboundDispatchBudget(budget);
+
+        using var firstPayload = Message.From(new byte[] { 1 });
+        using var secondPayload = Message.From(new byte[] { 2 });
+        Assert.Equal(
+            SubmitResult.Ok,
+            node.SendToActor(firstActor, [firstPayload]));
+        Assert.Equal(
+            SubmitResult.Ok,
+            node.SendToActor(secondActor, [secondPayload]));
+
+        var dispatchCount = 0;
+        var maximumPendingBytes = 0L;
+        var dispatched = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        pump.SetDispatchHandler(
+            entrySpot.RoutingId.ToString(),
+            info =>
+            {
+                if (info.Event != ZLinkBackendSpotDispatchEvent.ActorReadable
+                    || info.ActorParts is not { Count: > 0 } parts)
+                    return;
+
+                try
+                {
+                    var pendingBytes = checked((long)budget.PendingPayloadBytes);
+                    while (true)
+                    {
+                        var observed = Volatile.Read(ref maximumPendingBytes);
+                        if (pendingBytes <= observed
+                            || Interlocked.CompareExchange(
+                                ref maximumPendingBytes,
+                                pendingBytes,
+                                observed) == observed)
+                            break;
+                    }
+                    Interlocked.Increment(ref dispatchCount);
+                }
+                finally
+                {
+                    foreach (var part in parts)
+                        part.Message.Dispose();
+                    info.ActorDispatchLease?.Dispose();
+                    if (Volatile.Read(ref dispatchCount) == 2)
+                        dispatched.TrySetResult(true);
+                }
+            });
+
+        await dispatched.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Equal(2, dispatchCount);
+        Assert.Equal(1L, maximumPendingBytes);
+        Assert.Equal(0UL, budget.PendingPayloadBytes);
     }
 
     [Fact]

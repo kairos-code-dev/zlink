@@ -99,6 +99,40 @@ public sealed class RequestFailureMappingTests
     }
 
     [Fact]
+    public void ChannelCompletion_Preserves_Native_NotFound()
+    {
+        var error = Assert.IsType<ZLinkFrameworkException>(
+            ZLinkRequestFailureMapper.CreateChannelCompletionException(
+                RequestResult.NotFound,
+                "channel request"));
+
+        Assert.Equal(ZLinkFrameworkErrorKind.NotFound, error.Kind);
+        Assert.IsType<ZlinkRequestException>(error.InnerException);
+    }
+
+    [Fact]
+    public void ChannelSubmit_Preserves_Native_NotFound()
+    {
+        var error = ZLinkSubmitFailureMapper.CreateChannelException(
+            SubmitResult.NotFound,
+            "channel 'game.api'");
+
+        Assert.Equal(ZLinkFrameworkErrorKind.NotFound, error.Kind);
+        Assert.Equal(ZLinkRetryAdvice.DoNotRetry, error.RetryAdvice);
+    }
+
+    [Fact]
+    public void ChannelSubmit_Maps_Native_NotConnected_To_Unavailable_Route()
+    {
+        var error = ZLinkSubmitFailureMapper.CreateChannelException(
+            SubmitResult.NotConnected,
+            "channel 'game.api'");
+
+        Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, error.Kind);
+        Assert.Equal(ZLinkRetryAdvice.RetryAfterBackoff, error.RetryAdvice);
+    }
+
+    [Fact]
     public void RawCompletion_Maps_NotFound_To_RequestTargetNotFound()
     {
         Exception? observed = null;
@@ -117,7 +151,7 @@ public sealed class RequestFailureMappingTests
     }
 
     [Fact]
-    public void RawCompletion_Maps_TimedOut_To_TimeoutException()
+    public void RawCompletion_Maps_TimedOut_To_DeadlineExceeded()
     {
         Exception? observed = null;
         var reply = Array.Empty<Message>();
@@ -129,7 +163,37 @@ public sealed class RequestFailureMappingTests
             error => observed = error,
             "raw request");
 
-        Assert.IsType<TimeoutException>(observed);
+        var error = Assert.IsType<ZLinkFrameworkException>(observed);
+        Assert.Equal(ZLinkFrameworkErrorKind.DeadlineExceeded, error.Kind);
+    }
+
+    [Theory]
+    [InlineData(RequestResult.Terminated, ZLinkFrameworkErrorKind.ShuttingDown)]
+    [InlineData(RequestResult.NotFound, ZLinkFrameworkErrorKind.NotFound)]
+    [InlineData(RequestResult.TimedOut, ZLinkFrameworkErrorKind.DeadlineExceeded)]
+    public void Completion_Maps_Native_Result_To_Framework_Error(
+        RequestResult result,
+        ZLinkFrameworkErrorKind expected)
+    {
+        var error = Assert.IsType<ZLinkFrameworkException>(
+            ZLinkRequestFailureMapper.CreateCompletionException(
+                result,
+                "request"));
+
+        Assert.Equal(expected, error.Kind);
+    }
+
+    [Theory]
+    [InlineData(SubmitResult.NotAdmitted, ZLinkFrameworkErrorKind.Rejected)]
+    [InlineData(SubmitResult.Terminated, ZLinkFrameworkErrorKind.ShuttingDown)]
+    [InlineData(SubmitResult.NotFound, ZLinkFrameworkErrorKind.NotFound)]
+    public void Submit_Maps_Native_Result_To_Framework_Error(
+        SubmitResult result,
+        ZLinkFrameworkErrorKind expected)
+    {
+        var error = ZLinkSubmitFailureMapper.CreateException(result, "request");
+
+        Assert.Equal(expected, error.Kind);
     }
 
     [Fact]

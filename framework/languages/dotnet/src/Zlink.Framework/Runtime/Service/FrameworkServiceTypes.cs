@@ -387,6 +387,7 @@ internal sealed class MeshReadyBatch : IDisposable
 internal sealed class MeshReceiveBatch : IDisposable
 {
     private readonly List<(MeshReceiveRecord Record, IReadOnlyList<Message> Parts)> _entries = new();
+    internal int MaximumRecords { get; set; } = int.MaxValue;
     public int Count => _entries.Count;
     public MeshReceiveRecord this[int index] => _entries[index].Record;
     public IReadOnlyList<Message> RetainMessage(int index) =>
@@ -395,11 +396,24 @@ internal sealed class MeshReceiveBatch : IDisposable
         _entries.Add((record, parts));
     public void Reset()
     {
-        foreach (var (_, parts) in _entries)
+        foreach (var (record, parts) in _entries)
+        {
             foreach (var part in parts)
                 part.Dispose();
+            record.InboundDispatchLease?.Dispose();
+        }
         _entries.Clear();
     }
+
+    internal ZLinkInboundDispatchLease? TakeInboundDispatchLease(int index)
+    {
+        var entry = _entries[index];
+        var lease = entry.Record.InboundDispatchLease;
+        entry.Record.InboundDispatchLease = null;
+        _entries[index] = entry;
+        return lease;
+    }
+
     public void Dispose() => Reset();
 }
 
@@ -417,7 +431,7 @@ internal sealed class MeshClaim : IDisposable
     }
 }
 
-internal readonly struct MeshReceiveRecord
+internal struct MeshReceiveRecord
 {
     private readonly Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? _reply;
     private readonly Func<ActorJoinResult, IReadOnlyList<Message>, SendFlags, SubmitResult>?
@@ -475,6 +489,22 @@ internal readonly struct MeshReceiveRecord
     public ulong ReplyRouteId { get; }
     public ulong DeadlineUnixMs { get; }
     public MeshRecordPayload? KindData { get; }
+    internal ZLinkInboundDispatchLease? InboundDispatchLease { get; set; }
+
+    internal bool RequiresApplicationDispatchLease =>
+        Domain == MeshReadyDomains.Application
+        && (Kind is MeshRecordKind.NodeSend
+            or MeshRecordKind.NodeRequest
+            or MeshRecordKind.ChannelSend
+            or MeshRecordKind.ChannelRequest
+            or MeshRecordKind.SpotSend
+            or MeshRecordKind.SpotRequest
+            or MeshRecordKind.SpotMulticast
+            or MeshRecordKind.ActorSend
+            or MeshRecordKind.ActorRequest
+            || Kind == MeshRecordKind.SpotControl
+               && OperationKind == MeshOperationKind.ActorJoin);
+
     public ActorControlRecord? ActorControl => KindData as ActorControlRecord;
     public ActorJoinCompletion? JoinCompletion => KindData as ActorJoinCompletion;
     public UserSpotCreateCompletion? UserSpotCreateCompletion =>
@@ -520,6 +550,8 @@ internal readonly struct MeshReceiveRecord
 
 internal interface IMeshNode : IDisposable, IAsyncDisposable
 {
+    void SetInboundDispatchBudget(ZLinkInboundDispatchBudget budget) { }
+
     ValueTask ForceStopAsync(CancellationToken cancellationToken);
     RoutingId RoutingId { get; }
     MeshOperationId AllocateOperationId();

@@ -7,8 +7,6 @@ internal sealed partial class ZLinkFrameworkRuntime
     private readonly ZLinkActorMessageFollower _actorMessageFollower;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<
         Guid, byte> _publishedActorRecoveryWatches = new();
-    private ZLinkDeferredActorJoinCompletionJournal?
-        _deferredJoinCompletionJournal;
 
     internal ZLinkActorMessageFollower ActorMessageFollower
         => _actorMessageFollower;
@@ -143,7 +141,8 @@ internal sealed partial class ZLinkFrameworkRuntime
         IZLinkActor actor,
         ZLinkMessage request,
         ZLinkActorJoinOperationId? operationId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        DateTimeOffset? absoluteDeadline = null)
     {
         _drainAdmission.RequireSpotAdmission();
         return _actors.JoinActorAsync(
@@ -151,7 +150,8 @@ internal sealed partial class ZLinkFrameworkRuntime
             actor,
             request,
             operationId,
-            cancellationToken);
+            cancellationToken,
+            absoluteDeadline);
     }
 
     internal ValueTask<ZLinkActorJoinResult> JoinActorAsync(
@@ -168,14 +168,16 @@ internal sealed partial class ZLinkFrameworkRuntime
         IZLinkActor actor,
         ZLinkMessage request,
         ZLinkActorJoinOperationId? operationId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        DateTimeOffset? absoluteDeadline = null)
     {
         _drainAdmission.RequireSpotAdmission();
         return _actors.JoinActorEntrySpotAsync(
             actor,
             request,
             operationId,
-            cancellationToken);
+            cancellationToken,
+            absoluteDeadline);
     }
 
     internal ValueTask<ZLinkActorJoinResult> JoinActorEntrySpotAsync(
@@ -203,9 +205,11 @@ internal sealed partial class ZLinkFrameworkRuntime
     }
 
     internal ValueTask<ZLinkActorDrainResult> DrainActorsAsync(
+        DateTimeOffset absoluteDeadline,
         CancellationToken cancellationToken) =>
         _actorDrainCoordinator.DrainAsync(
             _relocationTargetSelection,
+            absoluteDeadline,
             cancellationToken);
 
     internal async ValueTask<ZLinkFrameworkRelocationReason?> PreflightRetireAsync(
@@ -742,27 +746,14 @@ internal sealed partial class ZLinkFrameworkRuntime
         var relocationStore = Registration.Locations.ResolveRelocationStore()
                               ?? throw new ZLinkConfigurationException(
                                   "Actor relocation completion requires a Relocation Store.");
-        var completionJournal = CreateDeferredJoinCompletionJournal();
-        ZLinkDeferredJoinCompletionRoot? completionRoot = null;
-        if (completionJournal is not null
-            && (request.OperationIdHigh != 0 || request.OperationIdLow != 0))
-            completionRoot = await completionJournal.RecoverAsync(
-                    request.ActorId,
-                    cancellationToken)
-                .ConfigureAwait(false);
-
-        var ownsRecordedCompletion = false;
-        try
-        {
-            ownsRecordedCompletion = _actorHandoffAdmissions.TryBeginCompletion(request, spotId);
-        }
-        catch (ZLinkFrameworkException) when (completionRoot is not null)
-        {
-            // A restarted target reconstructs post-commit work from the
-            // published relocation root instead of its process-local
-            // admission table.
-        }
-        if (!ownsRecordedCompletion && completionRoot is null) return;
+        var ownsRecordedCompletion = _actorHandoffAdmissions.TryBeginCompletion(
+            request,
+            spotId);
+        // Completion state is process-local. A restarted target does not
+        // reconstruct the Actor callback or replay frames from a durable
+        // completion journal; the object remains unavailable until an
+        // explicit application operation recreates it.
+        if (!ownsRecordedCompletion) return;
         var publishedRead = await authorityStore.ReadAuthorityAsync(
                 ZLinkActorAuthorityPayloadCodec.AuthorityKey(request.ActorId),
                 cancellationToken)
@@ -876,49 +867,12 @@ internal sealed partial class ZLinkFrameworkRuntime
                     committedAuthority.NodeGeneration,
                     committedAuthority.OwnerLeaseGeneration);
             }
-            if (completionJournal is not null
-                && (request.OperationIdHigh != 0 || request.OperationIdLow != 0)
-                && completionRoot is null)
-                completionRoot = await completionJournal.PrepareAsync(
-                        request.ActorId,
-                        new ZLinkActorJoinOperationId(
-                            request.OperationIdHigh,
-                            request.OperationIdLow),
-                        actorRef.ToNative(publishedActorAuthority.MeshName),
-                        request.ReplyContentType,
-                        request.Reply ?? [],
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            // Import the accepted journal while target admission remains
-            // closed. Application dispatch starts only after the durable Join
-            // completion callback succeeds.
+            // Import while target admission remains closed. Application
+            // dispatch starts only after the Join completion callback succeeds.
             actorState.Handoff.PrepareImportedReplay(request.Frames);
-            if (completionRoot is
-                {
-                    Completion.Cursor: ZLinkDeferredJoinCompletionCursor.Prepared
-                })
-                completionRoot = await completionJournal!.MarkCommittedAsync(
-                        completionRoot,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            var sessionRouteCommit =
-                await CommitCompletedSessionRouteAsync(
-                        actorState,
-                        request.HandoffId,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            LogActorHandoff(
-                $"session_route_commit_{(sessionRouteCommit is null ? "not_required" : "acknowledged")} "
-                + $"actor={request.ActorId}");
-            if (completionRoot is
-                {
-                    Completion.Cursor: ZLinkDeferredJoinCompletionCursor.Delivered
-                })
-            {
-                // The callback succeeded before a crash or reply loss. The
-                // durable cursor prevents an unnecessary duplicate attempt.
-            }
-            else if (request.OperationIdHigh != 0 || request.OperationIdLow != 0)
+            (ZLinkSessionRouteCommitRequest Request, RoutingId SessionOwnerNode)?
+                sessionRouteCommit = null;
+            if (request.OperationIdHigh != 0 || request.OperationIdLow != 0)
             {
                 var actor = actorState.Actor
                             ?? throw new ZLinkFrameworkException(
@@ -944,17 +898,23 @@ internal sealed partial class ZLinkFrameworkRuntime
                             token),
                         cancellationToken)
                     .ConfigureAwait(false);
-                if (completionRoot is not null)
-                    completionRoot = await completionJournal!.MarkDeliveredAsync(
-                            completionRoot,
-                            cancellationToken)
-                        .ConfigureAwait(false);
             }
             await ReplayFinalTransferredActorHandoffAsync(
                     target,
                     actorState,
                     cancellationToken)
                 .ConfigureAwait(false);
+            // The target Actor callback and replay must complete before the
+            // session route receives its commit ACK. This keeps session
+            // delivery from observing a route that points at an unready Actor.
+            sessionRouteCommit = await CommitCompletedSessionRouteAsync(
+                    actorState,
+                    request.HandoffId,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            LogActorHandoff(
+                $"session_route_commit_{(sessionRouteCommit is null ? "not_required" : "acknowledged")} "
+                + $"actor={request.ActorId}");
             if (!authorityWasSteady)
                 await actorLocations.AdvanceTransferredActorAuthorityPhaseAsync(
                         request.ActorId,
@@ -981,21 +941,6 @@ internal sealed partial class ZLinkFrameworkRuntime
                     .ConfigureAwait(false);
             }
             actorState.Handoff.Complete(request.HandoffId);
-            if (completionRoot is
-                {
-                    Completion.Cursor: ZLinkDeferredJoinCompletionCursor.Delivered
-                })
-            {
-                var released = await completionJournal!.ReleaseAsync(
-                            completionRoot,
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                if (released is { } releasedSnapshot)
-                    actorLocations.UpdateTrackedSnapshot(
-                        request.ActorId,
-                        releasedSnapshot);
-            }
-            else if (completionRoot is null)
             {
                 var released = await new ZLinkRelocationPublicationCoordinator(
                             authorityStore,
@@ -1246,25 +1191,6 @@ internal sealed partial class ZLinkFrameworkRuntime
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.InvalidOperation,
                 $"Actor '{request.ActorId}' session ingress could not unseal before steady normalization.");
-    }
-
-    private ZLinkDeferredActorJoinCompletionJournal? CreateDeferredJoinCompletionJournal()
-    {
-        var current = Volatile.Read(ref _deferredJoinCompletionJournal);
-        if (current is not null)
-            return current;
-        if (Registration.Locations.ResolveStore() is not { } locationStore
-            || Registration.Locations.ResolveRelocationStore()
-            is not { } relocationStore)
-            return null;
-        var created = new ZLinkDeferredActorJoinCompletionJournal(
-            locationStore,
-            relocationStore);
-        return Interlocked.CompareExchange(
-                   ref _deferredJoinCompletionJournal,
-                   created,
-                   null)
-               ?? created;
     }
 
     private void SchedulePublishedActorRelocationRecovery(
@@ -1668,20 +1594,9 @@ internal sealed partial class ZLinkFrameworkRuntime
             retryAdvice: ZLinkRetryAdvice.DoNotRetry,
             innerException: error);
 
-    internal void ScheduleDeferredJoinCompletionRecovery(
-        ZLinkActorRuntimeState actorState)
-    {
-        if (CreateDeferredJoinCompletionJournal() is null) return;
-        _ = TryRunDetached(
-            "actor-deferred-join-completion-recovery",
-            token => RunDeferredJoinCompletionRecoveryAsync(
-                retryToken => RecoverDeferredJoinCompletionAsync(
-                    actorState, retryToken),
-                exception => ZLinkFrameworkDebugLog.SpotDiscovery(
-                    $"deferred Join completion retry actor={actorState.ActorId}: {exception.Message}"),
-                token));
-    }
-
+    // Kept as a small reconciliation primitive for protocol tests and
+    // same-process callers. Runtime startup and Actor activation no longer
+    // schedule this operation from durable completion state.
     internal static async ValueTask RunDeferredJoinCompletionRecoveryAsync(
         Func<CancellationToken, ValueTask> recover,
         Action<Exception> report,
@@ -1695,17 +1610,13 @@ internal sealed partial class ZLinkFrameworkRuntime
                 cancellationToken,
                 static exception =>
                     exception is OperationCanceledException
-                    || IsDeferredJoinCompletionTerminal(exception))
+                    || exception is ZLinkRelocationDataLostException
+                    || exception is ZLinkFrameworkException
+                    {
+                        RetryAdvice: ZLinkRetryAdvice.DoNotRetry
+                    })
             .ConfigureAwait(false);
     }
-
-    private static bool IsDeferredJoinCompletionTerminal(
-        Exception exception) =>
-        exception is ZLinkRelocationDataLostException
-        || exception is ZLinkFrameworkException
-        {
-            RetryAdvice: ZLinkRetryAdvice.DoNotRetry
-        };
 
     internal async ValueTask RecoverPublishedRelocationsAsync(
         CancellationToken cancellationToken)
@@ -1984,63 +1895,6 @@ internal sealed partial class ZLinkFrameworkRuntime
         System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(
             bytes[8..], projection.RelocationLow);
         return new Guid(bytes, bigEndian: true);
-    }
-
-    private async ValueTask RecoverDeferredJoinCompletionAsync(
-        ZLinkActorRuntimeState actorState,
-        CancellationToken cancellationToken)
-    {
-        var journal = CreateDeferredJoinCompletionJournal();
-        if (journal is null) return;
-        var root = await journal.RecoverAsync(actorState.ActorId, cancellationToken)
-            .ConfigureAwait(false);
-        if (root is null
-            || root.Completion.Cursor == ZLinkDeferredJoinCompletionCursor.Prepared)
-            return;
-        if (root.Completion.Cursor == ZLinkDeferredJoinCompletionCursor.Delivered)
-            return;
-
-        await actorState.ExecuteRelocationCompletionAsync(
-                root.Completion.ObjectGeneration,
-                async token =>
-                {
-                    // Another reconciliation attempt may have delivered while
-                    // this mailbox turn was pending.
-                    var current = await journal.RecoverAsync(
-                            actorState.ActorId,
-                            token)
-                        .ConfigureAwait(false);
-                    if (current is null) return;
-                    if (current.Completion.Cursor
-                        == ZLinkDeferredJoinCompletionCursor.Delivered)
-                        return;
-                    if (current.Completion.Cursor
-                        != ZLinkDeferredJoinCompletionCursor.Committed)
-                        return;
-
-                    var actor = actorState.Actor
-                                ?? throw new ZLinkFrameworkException(
-                                    ZLinkFrameworkErrorKind.NotFound,
-                                    $"Actor '{actorState.ActorId}' is not materialized for Join completion recovery.");
-                    var reply = current.Completion.Reply.Length > 0
-                                && current.Completion.ReplyContentType is { } contentType
-                        ? ZLinkMessage.FromEncoded(
-                            contentType,
-                            current.Completion.Reply,
-                            Registration.Codecs)
-                        : null;
-                    await actor.OnJoinCompletedAsync(
-                            new ZLinkActorJoinCompletion.Accepted(
-                                current.Completion.OperationId,
-                                current.Completion.Actor,
-                                reply),
-                            token)
-                        .ConfigureAwait(false);
-                    current = await journal.MarkDeliveredAsync(current, token)
-                        .ConfigureAwait(false);
-                },
-                cancellationToken)
-            .ConfigureAwait(false);
     }
 
     private async ValueTask RollbackPreparedTransferredActorAsync(
@@ -2333,7 +2187,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                             ZLinkRelocationCapacityReserveResult
                                 .TargetUnavailable =>
                                 throw new ZLinkFrameworkException(
-                                    ZLinkFrameworkErrorKind.NotFound,
+                                    ZLinkFrameworkErrorKind.Unavailable,
                                     $"Actor '{request.ActorId}' target became unavailable.",
                                     ZLinkRetryAdvice.RetryAfterBackoff),
                             _ => throw new ZLinkFrameworkException(
@@ -2398,15 +2252,8 @@ internal sealed partial class ZLinkFrameworkRuntime
                                     payload,
                                     ct)
                                 .ConfigureAwait(false);
-                        else if (target.EntrySpot is { } entrySpot
-                                 && entrySpot.TryResolveActorJoin(out var descriptor)
-                                 && descriptor is not null)
-                            result = await entrySpot.AdmitActorJoinAsync(
-                                    descriptor,
-                                    request.ActorId,
-                                    payload,
-                                    ct)
-                                .ConfigureAwait(false);
+                        else if (target.EntrySpot is not null)
+                            result = ZLinkSpotActorJoinResult.Accept();
                         else
                             result = ZLinkSpotActorJoinResult.Reject();
                         ZLinkFrameworkDebugLog.SpotDiscovery(

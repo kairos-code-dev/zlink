@@ -205,6 +205,12 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
             _node.MailboxByteBudget = byteBudget;
     }
 
+    public void SetInboundDispatchBudget(ZLinkInboundDispatchBudget budget)
+    {
+        _node.SetInboundDispatchBudget(budget);
+        _pump.SetInboundDispatchBudget(budget);
+    }
+
     // Explicit host-startup Start (spec 21 §3): the runtime calls this after
     // routing id, bind and channels are configured, so the node is not started
     // lazily on first spot use. Idempotent; EnsureStarted stays as a defensive

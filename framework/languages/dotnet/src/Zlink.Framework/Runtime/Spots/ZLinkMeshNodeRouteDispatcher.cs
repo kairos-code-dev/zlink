@@ -346,6 +346,7 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
         ZLinkBackendRouteReceived received,
         CancellationToken cancellationToken)
     {
+        received.StartDispatch();
         using (received)
         using (var completionPermit = received.CanReply
                    && !IsInfrastructureRelay(received)

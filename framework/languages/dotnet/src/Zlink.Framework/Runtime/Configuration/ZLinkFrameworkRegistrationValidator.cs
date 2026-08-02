@@ -79,6 +79,10 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             if (node.Router is not null)
                 yield return ($"RouteMesh:{node.SpotNodeName}",
                     node.Router.SocketConfig.MaxMessageSize);
+
+        foreach (var streamNode in registration.StreamNodes.Values)
+            yield return ($"STREAM:{streamNode.StreamNodeName}",
+                streamNode.SocketConfig.MaxMessageSize);
     }
 
     private static void ValidateRelocationStoreRequirement(

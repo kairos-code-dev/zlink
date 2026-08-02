@@ -321,7 +321,10 @@ internal sealed class ZLinkInstanceSpotRequestCall<TRequest>(
     {
         var remaining = deadline - DateTimeOffset.UtcNow;
         if (remaining <= TimeSpan.Zero)
-            throw new TimeoutException("Instance Spot request deadline elapsed.");
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.DeadlineExceeded,
+                "Instance Spot request deadline elapsed.",
+                ZLinkRetryAdvice.RetryAfterBackoff);
         return remaining;
     }
 }

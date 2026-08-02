@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Dispatch;
+
 namespace Zlink.Framework.Runtime.Backend.Contracts;
 
 internal enum ZLinkBackendSpotDispatchEvent
@@ -154,13 +156,16 @@ internal class ZLinkBackendActorJoinRequest(
     public Message Message { get; } = message;
 
     public IReadOnlyList<Message> Parts { get; } = parts;
+
+    internal ZLinkInboundDispatchLease? DispatchLease { get; set; }
 }
 
 internal readonly record struct ZLinkBackendSpotDispatchInfo(
     ZLinkBackendSpotDispatchEvent Event,
     Action? DrainChannelReply = null,
     IReadOnlyList<ZLinkBackendActorPart>? ActorParts = null,
-    IReadOnlyList<ZLinkBackendRouteReceived>? RoutedMessages = null);
+    IReadOnlyList<ZLinkBackendRouteReceived>? RoutedMessages = null,
+    ZLinkInboundDispatchLease? ActorDispatchLease = null);
 
 internal readonly record struct ZLinkBackendSocketMonitorEvent(
     ZLinkSocketNativeEventType NativeEvent,

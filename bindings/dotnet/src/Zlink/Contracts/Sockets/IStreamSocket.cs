@@ -28,6 +28,18 @@ public interface IStreamSocket : IRoutedMessageSocket
     void OnPacket(StreamPacketHandler handler);
 
     /// <summary>
+    ///     Receives one raw STREAM part and its source routing id. The returned
+    ///     message is owned by the caller and must be disposed. The first
+    ///     receive operation fixes this socket to receive mode; it cannot be
+    ///     combined with packet callback registration.
+    /// </summary>
+    bool RecvPart(
+        out RoutingId? sourceRoutingId,
+        out Message? part,
+        out bool hasMore,
+        RecvFlags flags = RecvFlags.None);
+
+    /// <summary>
     ///     Disconnects the peer identified by <paramref name="peerRid" />.
     /// </summary>
     void DisconnectRid(RoutingId peerRid);

@@ -242,10 +242,10 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
         ZLinkSpotActorJoinResult admission;
         try
         {
-            admission = activation.TryResolveActorJoin(out var descriptor) && descriptor is not null
-                ? await activation.InvokeActorJoinAsync(descriptor, actor, joinRequest, cancellationToken)
-                    .ConfigureAwait(false)
-                : ZLinkSpotActorJoinResult.Reject();
+            // Entry Spot admission does not require an OnActorJoin callback.
+            // The lifecycle callback remains available for user-defined work,
+            // while the standard Entry Spot join contract accepts the actor.
+            admission = ZLinkSpotActorJoinResult.Accept();
         }
         catch (Exception admissionFailure)
         {

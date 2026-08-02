@@ -36,6 +36,10 @@ internal interface IZLinkBackendWeightedSocket : IZLinkBackendSocket
 internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket, IZLinkBackendWeightedSocket,
     IZLinkBackendSocketOptions
 {
+    IZLinkBackendSocketPoller CreateReceivePoller() =>
+        throw new NotSupportedException(
+            "The backend dealer socket does not provide a receive poller.");
+
     void SetRoutingId(RoutingId routingId);
 
     void SetProbe(bool enabled);
@@ -73,6 +77,10 @@ internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket, I
 internal interface IZLinkBackendRouterSocket : IZLinkBackendConnectableSocket, IZLinkBackendWeightedSocket,
     IZLinkBackendSocketOptions
 {
+    IZLinkBackendSocketPoller CreateReceivePoller() =>
+        throw new NotSupportedException(
+            "The backend router socket does not provide a receive poller.");
+
     string GetLastEndpoint() => string.Empty;
 
     void OnSendReady(Action handler);
@@ -147,6 +155,10 @@ internal interface IZLinkBackendPublisherSocket : IZLinkBackendSocket, IZLinkBac
 
 internal interface IZLinkBackendSubscriberSocket : IZLinkBackendConnectableSocket, IZLinkBackendSocketOptions
 {
+    IZLinkBackendSocketPoller CreateReceivePoller() =>
+        throw new NotSupportedException(
+            "The backend subscriber socket does not provide a receive poller.");
+
     void SetRoutingId(RoutingId routingId);
 
     void SetSubscription(string topic);
@@ -156,11 +168,23 @@ internal interface IZLinkBackendSubscriberSocket : IZLinkBackendConnectableSocke
 
 internal interface IZLinkBackendStreamSocket : IZLinkBackendSocket
 {
+    IZLinkBackendSocketPoller CreateReceivePoller() =>
+        throw new NotSupportedException(
+            "The backend stream socket does not provide a receive poller.");
+
+    void ApplySocketConfig(IZLinkSocketConfig config) { }
+
+    string GetLastEndpoint() => string.Empty;
+
     void SetTlsServer(string certPath, string keyPath, bool requireClientCert);
 
     void OnSendReady(Action handler);
 
-    void OnFramedPacket(Action<RoutingId, Message, Message> handler);
+    bool RecvPart(
+        out RoutingId? sourceRoutingId,
+        out Message? part,
+        out bool hasMore,
+        RecvFlags flags = RecvFlags.None);
 
     bool Send(
         RoutingId routingId,
@@ -195,6 +219,10 @@ internal interface IZLinkBackendStreamSocket : IZLinkBackendSocket
 
 internal interface IZLinkBackendSocketMonitor : IAsyncDisposable
 {
+    bool Wait(TimeSpan timeout) =>
+        throw new NotSupportedException(
+            "The backend socket monitor does not provide a poll wait.");
+
     void OnEvent(Action<ZLinkBackendSocketMonitorEvent> handler);
 
     bool TryRecv(out ZLinkBackendSocketMonitorEvent monitorEvent);

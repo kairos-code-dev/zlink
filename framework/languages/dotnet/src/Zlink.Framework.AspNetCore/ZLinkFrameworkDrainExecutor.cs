@@ -98,6 +98,7 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
         Action? relocationDetached,
         CancellationToken deadlineToken)
     {
+        var absoluteDeadline = DateTimeOffset.UtcNow + deadline;
         ulong committedUnitCount = 0;
         var relocationFence = intent == ZLinkFrameworkLifecycleIntent.Relocate
             ? _operations.CaptureRelocationFence?.Invoke()
@@ -160,7 +161,8 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
                             .DrainRelocationWorkloads(
                                 new ZLinkRelocationWorkloadDrainControl(
                                     ShutdownRequested,
-                                    unitCancellation.Token))
+                                    unitCancellation.Token,
+                                    absoluteDeadline))
                             .ConfigureAwait(false);
                     }
                     catch (OperationCanceledException)
@@ -217,7 +219,9 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
             while (!actorsDrained)
             {
                 ShutdownStep("drain_actors");
-                var actorDrain = await _operations.DrainActors(deadlineToken)
+                var actorDrain = await _operations.DrainActors(
+                        absoluteDeadline,
+                        deadlineToken)
                     .ConfigureAwait(false);
                 committedUnitCount = checked(
                     committedUnitCount + actorDrain.CommittedUnitCount);
@@ -243,6 +247,7 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
                     var spotDrain = await _operations.DrainSpots(
                             false,
                             intent == ZLinkFrameworkLifecycleIntent.Shutdown,
+                            absoluteDeadline,
                             deadlineToken)
                         .ConfigureAwait(false);
                     committedUnitCount = checked(
@@ -482,11 +487,14 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
         await CaptureAsync(() => _operations.ForceStopRuntime(cancellationToken), failures)
             .ConfigureAwait(false);
         if (_operations.HasAutoConnect)
-            await CaptureAsync(() => _operations.StopAutoConnect(CancellationToken.None), failures).ConfigureAwait(false);
+            await CaptureAsync(() => _operations.StopAutoConnect(cancellationToken), failures)
+                .ConfigureAwait(false);
         var ownerCleanupFailed = false;
         if (_operations.HasLocationRuntime)
         {
-            using var cleanupBound = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            using var cleanupBound = CancellationTokenSource
+                .CreateLinkedTokenSource(cancellationToken);
+            cleanupBound.CancelAfter(TimeSpan.FromSeconds(2));
             try
             {
                 await _operations.CleanupOwner(cleanupBound.Token).ConfigureAwait(false);
@@ -496,7 +504,8 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
                 ownerCleanupFailed = true;
                 failures.Add(error);
             }
-            await CaptureAsync(() => _operations.StopLocation(CancellationToken.None), failures).ConfigureAwait(false);
+            await CaptureAsync(() => _operations.StopLocation(cancellationToken), failures)
+                .ConfigureAwait(false);
         }
         if (ownerCleanupFailed)
             throw new ZLinkDrainForceException(ZLinkDrainForceReason.OwnerCleanupFailed, failures);
@@ -622,8 +631,9 @@ internal sealed record ZLinkDrainExecutionOperations(
     Action PublishDrainingToPeers,
     Func<Task> WaitForAcceptedOperations,
     Func<CancellationToken, Task> WaitForAcceptedActorHandoffs,
-    Func<CancellationToken, ValueTask<ZLinkActorDrainResult>> DrainActors,
-    Func<bool, bool, CancellationToken, ValueTask<ZLinkSpotDrainResult>> DrainSpots,
+    Func<DateTimeOffset, CancellationToken, ValueTask<ZLinkActorDrainResult>> DrainActors,
+    Func<bool, bool, DateTimeOffset, CancellationToken,
+        ValueTask<ZLinkSpotDrainResult>> DrainSpots,
     Func<ZLinkRelocationWorkloadDrainControl,
         ValueTask<ZLinkRelocationWorkloadDrainResult>>
         DrainRelocationWorkloads,

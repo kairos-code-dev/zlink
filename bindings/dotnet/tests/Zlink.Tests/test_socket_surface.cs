@@ -66,5 +66,12 @@ public sealed class test_socket_surface
             typeof(IStreamSocket),
             nameof(IStreamSocket.OnPacket),
             typeof(StreamPacketHandler)));
+        Assert.True(HasPublicInstanceMethod(
+            typeof(IStreamSocket),
+            nameof(IStreamSocket.RecvPart),
+            typeof(RoutingId?).MakeByRefType(),
+            typeof(Message).MakeByRefType(),
+            typeof(bool).MakeByRefType(),
+            typeof(RecvFlags)));
     }
 }

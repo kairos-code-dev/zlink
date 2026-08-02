@@ -117,6 +117,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
         try
         {
+            EnsureDeadlineAndCancellation(request, cancellationToken);
             var decision = await admit(cancellationToken).ConfigureAwait(false);
             await RegisterReservedAsync(
                     request,
@@ -384,6 +385,19 @@ internal sealed class ZLinkActorHandoffAdmissions(
             }
             throw;
         }
+    }
+
+    private void EnsureDeadlineAndCancellation(
+        ZLinkRemoteActorAdmissionRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (DateTimeOffset.FromUnixTimeMilliseconds(
+                request.DeadlineUnixTimeMilliseconds)
+            <= _timeProvider.GetUtcNow())
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.DeadlineExceeded,
+                $"Actor '{request.ActorId}' handoff admission deadline has expired.");
     }
 
     public async ValueTask OwnAndAbortCapacityAsync(

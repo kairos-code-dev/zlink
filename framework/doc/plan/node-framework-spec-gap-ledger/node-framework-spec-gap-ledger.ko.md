@@ -976,6 +976,16 @@ response 없는 send 의미는 유지했다. 정적 regression 2/2와 typecheck�
 process evidence는 E2E 제외 범위로 남긴다. 상세 내용은
 [`log/2026-08-02-sample-wire-parity.ko.md`](log/2026-08-02-sample-wire-parity.ko.md)에 기록한다.
 
+#### 2026-08-02 NS-IMP-002 비-E2E 갱신
+
+DeliveryDispatch의 session binding response에서 `sessionRoute`와 이전 `BindCourierReq/Res`를
+제거하고, `OfferDeliveryNotify`와 `CourierDecisionMsg`에서 client-facing `attempt`를 제거했다.
+Actor가 offer별 attempt를 보관해 `OfferDeliveryResultMsg`에만 전달하며, status message의
+timestamp는 `occurredAtUnixMs: number`로 통일했다. Courier session은 bound Actor context를
+통해 relay한다. 관련 정적 regression 2/2와 typecheck가 통과했다. 실제 sample process evidence는
+E2E 제외 범위로 남긴다. 상세 내용은
+[`log/2026-08-02-sample-wire-parity.ko.md`](log/2026-08-02-sample-wire-parity.ko.md)에 기록한다.
+
 #### 11.3.3 현재 계약 목록과 구현 차이
 
 | ID | 현재 근거 | 초기 판정 |

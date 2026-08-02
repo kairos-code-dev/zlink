@@ -6,8 +6,7 @@ internal static class ZLinkStreamFrameWriter
         Func<Message, bool> write,
         ZlinkStreamHeader header,
         ReadOnlySpan<byte> payload,
-        string failureMessage,
-        string transport = "tcp")
+        string failureMessage)
     {
         var frame = ZLinkStreamFrameCodec.Encode(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span, payload);
         using var payloadMessage = Message.From(frame);
@@ -24,8 +23,7 @@ internal static class ZLinkStreamFrameWriter
             message => WriteRaw(stream, message),
             header,
             payload.Span,
-            failureMessage,
-            ResolveTransport(stream));
+            failureMessage);
     }
 
     public static void Write(
@@ -38,8 +36,7 @@ internal static class ZLinkStreamFrameWriter
             message => WriteRaw(stream, message),
             header,
             payload,
-            failureMessage,
-            ResolveTransport(stream));
+            failureMessage);
     }
 
     private static bool WriteRaw(IZLinkStream stream, Message message)
@@ -49,7 +46,4 @@ internal static class ZLinkStreamFrameWriter
 
         return stream.Write(ZLinkMessage.From(message.ToArray()), SendFlags.DontWait);
     }
-
-    private static string ResolveTransport(IZLinkStream stream) =>
-        stream is ZLinkManagedStream managed ? managed.Transport : "tcp";
 }

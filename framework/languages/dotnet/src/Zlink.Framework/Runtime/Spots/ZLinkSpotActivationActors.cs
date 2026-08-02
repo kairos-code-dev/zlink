@@ -48,7 +48,8 @@ internal sealed partial class ZLinkSpotActivation
     public async ValueTask<ZLinkSpotActorJoinResult> JoinActorAsync(
         IZLinkActor actor,
         ZLinkMessage request,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DateTimeOffset? absoluteDeadline = null)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -58,7 +59,11 @@ internal sealed partial class ZLinkSpotActivation
                 $"SPOT '{Spot.GetType()}' does not declare an actor join callback.");
 
         TraceActorJoin(ZLinkMessageFlowOutcome.Received, actor.Context.ActorId);
-        var state = new ActorJoinCallState(actor, request, descriptor);
+        var state = new ActorJoinCallState(
+            actor,
+            request,
+            descriptor,
+            absoluteDeadline);
         if (ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this))
         {
             state.Result = await InvokeActorJoinAsync(
@@ -68,7 +73,10 @@ internal sealed partial class ZLinkSpotActivation
                     cancellationToken)
                 .ConfigureAwait(false);
             if (state.Result.Accepted)
-                await CommitActorJoinCoreAsync(state.Actor, cancellationToken)
+                await CommitActorJoinCoreAsync(
+                        state.Actor,
+                        cancellationToken,
+                        state.AbsoluteDeadline)
                     .ConfigureAwait(false);
 
             TraceActorJoin(ZLinkMessageFlowOutcome.Replied, actor.Context.ActorId);
@@ -84,7 +92,10 @@ internal sealed partial class ZLinkSpotActivation
                     state.Request,
                     ct);
                 if (state.Result.Accepted)
-                    await activation.CommitActorJoinCoreAsync(state.Actor, ct)
+                    await activation.CommitActorJoinCoreAsync(
+                            state.Actor,
+                            ct,
+                            state.AbsoluteDeadline)
                         .ConfigureAwait(false);
             },
             state,
@@ -167,10 +178,14 @@ internal sealed partial class ZLinkSpotActivation
 
     internal ValueTask CommitActorJoinFromCallerTurnAsync(
         IZLinkActor actor,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DateTimeOffset? absoluteDeadline = null)
     {
         ArgumentNullException.ThrowIfNull(actor);
-        return CommitActorJoinCoreAsync(actor, cancellationToken);
+        return CommitActorJoinCoreAsync(
+            actor,
+            cancellationToken,
+            absoluteDeadline);
     }
 
     internal void StageRelocatedPerActorMember(
@@ -456,7 +471,8 @@ internal sealed partial class ZLinkSpotActivation
 
     private async ValueTask CommitActorJoinCoreAsync(
         IZLinkActor actor,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DateTimeOffset? absoluteDeadline = null)
     {
         await _membershipPublicationGate.WaitAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -507,39 +523,66 @@ internal sealed partial class ZLinkSpotActivation
         if (ReferenceEquals(previousActivation, this)) return;
 
         await RetryCommittedMembershipCallbackAsync(
-                ct => NotifyJoinedActorCoreAsync(actor, ct))
+                ct => NotifyJoinedActorCoreAsync(actor, ct),
+                cancellationToken,
+                absoluteDeadline)
             .ConfigureAwait(false);
         if (previousActivation is null)
             await RetryCommittedMembershipCallbackAsync(
                     ct => _runtime.NotifyEntrySpotActorLeftAsync(
                         actor,
                         NodeRid,
-                        ct))
+                        ct),
+                    cancellationToken,
+                    absoluteDeadline)
                 .ConfigureAwait(false);
         else if (!ReferenceEquals(previousActivation, this)
                  && !previousActivation.IsDisposed)
             await RetryCommittedMembershipCallbackAsync(
                     ct => previousActivation
-                        .NotifyActorLeftAfterCommittedMembershipAsync(actor, ct))
+                        .NotifyActorLeftAfterCommittedMembershipAsync(actor, ct),
+                    cancellationToken,
+                    absoluteDeadline)
                 .ConfigureAwait(false);
     }
 
     private static async ValueTask RetryCommittedMembershipCallbackAsync(
-        Func<CancellationToken, ValueTask> callback)
+        Func<CancellationToken, ValueTask> callback,
+        CancellationToken cancellationToken,
+        DateTimeOffset? absoluteDeadline)
     {
         while (true)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (absoluteDeadline is { } deadline
+                && deadline <= DateTimeOffset.UtcNow)
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.DeadlineExceeded,
+                    "Actor membership post-commit lifecycle did not finish before the deadline.",
+                    ZLinkRetryAdvice.DoNotRetry);
             try
             {
-                await callback(CancellationToken.None).ConfigureAwait(false);
+                await callback(cancellationToken).ConfigureAwait(false);
                 return;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch
             {
-                // Same-node membership is already durable. Keep the current
-                // serial turn sealed and retry post-commit lifecycle work;
-                // caller cancellation cannot turn Accepted back into Failed.
-                await Task.Delay(TimeSpan.FromMilliseconds(10), CancellationToken.None)
+                var delay = TimeSpan.FromMilliseconds(10);
+                if (absoluteDeadline is { } deadlineValue)
+                {
+                    var remaining = deadlineValue - DateTimeOffset.UtcNow;
+                    if (remaining <= TimeSpan.Zero)
+                        throw new ZLinkFrameworkException(
+                            ZLinkFrameworkErrorKind.DeadlineExceeded,
+                            "Actor membership post-commit lifecycle did not finish before the deadline.",
+                            ZLinkRetryAdvice.DoNotRetry);
+                    if (remaining < delay) delay = remaining;
+                }
+                await Task.Delay(delay, cancellationToken)
                     .ConfigureAwait(false);
             }
         }
@@ -681,13 +724,16 @@ internal sealed partial class ZLinkSpotActivation
     private sealed class ActorJoinCallState(
         IZLinkActor actor,
         ZLinkMessage request,
-        ZLinkSpotActorJoinDescriptor descriptor)
+        ZLinkSpotActorJoinDescriptor descriptor,
+        DateTimeOffset? absoluteDeadline)
     {
         public IZLinkActor Actor { get; } = actor;
 
         public ZLinkMessage Request { get; } = request;
 
         public ZLinkSpotActorJoinDescriptor Descriptor { get; } = descriptor;
+
+        public DateTimeOffset? AbsoluteDeadline { get; } = absoluteDeadline;
 
         public ZLinkSpotActorJoinResult Result { get; set; }
     }

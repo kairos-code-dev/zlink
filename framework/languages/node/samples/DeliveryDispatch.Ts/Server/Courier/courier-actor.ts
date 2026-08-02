@@ -2,11 +2,11 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
 import { OfferDeliveryNotify, OfferDeliveryResultMsg } from '../../Shared/Contracts/messages';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
-import type { BindCourierReq, BindCourierRes, BindCourierSessionReq, BindCourierSessionRes, CourierDecisionMsg, OfferDeliveryMsg } from '../../Shared/Contracts/messages';
+import type { BindCourierSessionReq, BindCourierSessionRes, CourierDecisionMsg, OfferDeliveryMsg } from '../../Shared/Contracts/messages';
 import type { ZLinkActor, ZLinkActorContext, ZLinkActorFactory, ZLinkChannelClient } from '@zlink-systems/framework';
 
 class CourierActor implements ZLinkActor {
-  private sessionRoute: string | undefined;
+  private readonly offers = new Map<string, number>();
 
   constructor(
     readonly actorId: string,
@@ -14,40 +14,34 @@ class CourierActor implements ZLinkActor {
     private readonly channels: ZLinkChannelClient
   ) {}
 
-  bindSession(request: BindCourierReq): BindCourierRes {
-    this.sessionRoute = request.sessionRoute;
-    return {
-      courierId: request.courierId,
-      sessionRoute: request.sessionRoute
-    };
-  }
-
-  bindRelayedSession(request: BindCourierSessionReq): BindCourierSessionRes {
-    const sessionRoute = request.sessionRoute ?? this.sessionRoute;
-    if (sessionRoute === undefined) throw new Error(`Courier actor '${this.actorId}' has no bound session route.`);
-    return {
-      courierId: request.courierId,
-      sessionRoute
-    };
+  confirmSessionBinding(request: BindCourierSessionReq): BindCourierSessionRes {
+    if (request.courierId !== this.actorId) {
+      throw new Error(`Courier session '${request.courierId}' does not match actor '${this.actorId}'.`);
+    }
+    return { courierId: this.actorId };
   }
 
   offer(request: OfferDeliveryMsg): void {
+    this.offers.set(request.deliveryId, request.attempt);
     this.context.boundSession.send(new OfferDeliveryNotify(
       request.courierId,
       request.deliveryId,
-      request.attempt,
       request.pickupAddress,
       request.dropoffAddress
     )).submit();
   }
 
   async decide(decision: CourierDecisionMsg): Promise<void> {
+    const attempt = this.offers.get(decision.deliveryId);
+    if (attempt === undefined) {
+      throw new Error(`Courier actor '${this.actorId}' has no active offer for '${decision.deliveryId}'.`);
+    }
     await this.channels.sendToChannel(
       SampleNames.dispatchChannel,
       new OfferDeliveryResultMsg(
         decision.deliveryId,
         decision.courierId,
-        decision.attempt,
+        attempt,
         decision.accepted,
         decision.reason
       )

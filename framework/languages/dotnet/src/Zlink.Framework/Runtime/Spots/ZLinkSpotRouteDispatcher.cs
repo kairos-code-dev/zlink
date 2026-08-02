@@ -23,6 +23,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
         ZLinkBackendRouteReceived received,
         CancellationToken cancellationToken)
     {
+        received.StartDispatch();
         using (received)
         {
         if (received.Parts.Count == 0)

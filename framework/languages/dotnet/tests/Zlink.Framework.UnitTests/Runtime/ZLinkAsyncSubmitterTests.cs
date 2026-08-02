@@ -295,7 +295,9 @@ public sealed class ZLinkAsyncSubmitterTests : IDisposable
             Message.From("payload"),
             _ => false);
 
-        await Assert.ThrowsAsync<TimeoutException>(async () => await task.AsTask());
+        var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(
+            async () => await task.AsTask());
+        Assert.Equal(ZLinkFrameworkErrorKind.DeadlineExceeded, error.Kind);
     }
 
     [Fact]
@@ -318,7 +320,9 @@ public sealed class ZLinkAsyncSubmitterTests : IDisposable
                 return writable;
             });
 
-        await Assert.ThrowsAsync<TimeoutException>(() => pending.AsTask());
+        var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(
+            () => pending.AsTask());
+        Assert.Equal(ZLinkFrameworkErrorKind.DeadlineExceeded, error.Kind);
         writable = true;
         Assert.NotNull(ready);
         ready();
@@ -346,8 +350,17 @@ public sealed class ZLinkAsyncSubmitterTests : IDisposable
             _ => false);
 
         Assert.False(second.IsCompleted);
-        await Assert.ThrowsAsync<TimeoutException>(() => second.AsTask());
-        await Assert.ThrowsAsync<TimeoutException>(() => first.AsTask());
+        var secondError = await Assert.ThrowsAnyAsync<Exception>(() => second.AsTask());
+        var firstError = await Assert.ThrowsAnyAsync<Exception>(() => first.AsTask());
+        AssertTimeout(firstError);
+        AssertTimeout(secondError);
+
+        static void AssertTimeout(Exception error)
+        {
+            if (error is TimeoutException) return;
+            var deadlineError = Assert.IsType<ZLinkFrameworkException>(error);
+            Assert.Equal(ZLinkFrameworkErrorKind.DeadlineExceeded, deadlineError.Kind);
+        }
     }
 
     [Fact]

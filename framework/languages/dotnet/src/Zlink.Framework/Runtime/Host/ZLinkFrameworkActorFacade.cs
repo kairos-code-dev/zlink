@@ -46,8 +46,12 @@ internal sealed class ZLinkFrameworkActorFacade(
         IZLinkActor actor,
         ZLinkMessage request,
         ZLinkActorJoinOperationId? operationId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DateTimeOffset? absoluteDeadline = null)
     {
+        var effectiveDeadline = absoluteDeadline
+                                ?? DateTimeOffset.UtcNow
+                                   + registration.DefaultRequestTimeout;
         var state = getState();
         var actorState = actorSessionManager.GetOrCreateState(actor.Context.ActorId);
         var node = getActorSpotNode();
@@ -64,7 +68,8 @@ internal sealed class ZLinkFrameworkActorFacade(
                 node,
                 request,
                 operationId,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                effectiveDeadline).ConfigureAwait(false);
 
         ZLinkSpotActorJoinResult joinResult;
         var sourceActivation = actorState.Activation;
@@ -84,11 +89,18 @@ internal sealed class ZLinkFrameworkActorFacade(
                     cancellationToken)
                 .ConfigureAwait(false);
             if (joinResult.Accepted)
-                await localActivation.CommitActorJoinFromCallerTurnAsync(actor, cancellationToken)
+                await localActivation.CommitActorJoinFromCallerTurnAsync(
+                        actor,
+                        cancellationToken,
+                        effectiveDeadline)
                     .ConfigureAwait(false);
         }
         else if (localActivation is not null)
-            joinResult = await localActivation.JoinActorAsync(actor, request, cancellationToken)
+            joinResult = await localActivation.JoinActorAsync(
+                    actor,
+                    request,
+                    cancellationToken,
+                    effectiveDeadline)
                 .ConfigureAwait(false);
         else
             joinResult = await spots.JoinActorAsync(
@@ -96,7 +108,8 @@ internal sealed class ZLinkFrameworkActorFacade(
                 spotId,
                 actor,
                 request,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                effectiveDeadline).ConfigureAwait(false);
         var reply = joinResult.Reply ?? ZLinkMessage.Empty;
         return joinResult.Accepted
             ? new ZLinkActorJoinResult.Accepted(ToActorRef(actorState), reply)
@@ -107,7 +120,8 @@ internal sealed class ZLinkFrameworkActorFacade(
         IZLinkActor actor,
         ZLinkMessage request,
         ZLinkActorJoinOperationId? operationId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DateTimeOffset? absoluteDeadline = null)
     {
         var actorState = actorSessionManager.GetOrCreateState(actor.Context.ActorId);
         if (actorState.LiveActivation is null)
@@ -164,7 +178,8 @@ internal sealed class ZLinkFrameworkActorFacade(
                 actorRef,
                 request,
                 operationId,
-                cancellationToken)
+                cancellationToken,
+                absoluteDeadline)
             .ConfigureAwait(false);
     }
 
@@ -193,7 +208,7 @@ internal sealed class ZLinkFrameworkActorFacade(
     }
 
     private static ZLinkActorJoinResult.Rejected RejectedWithTrace(
-        ZLinkMessage? reply,
+        ZLinkMessage reply,
         string site)
     {
         Zlink.Framework.Runtime.Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(

@@ -234,7 +234,20 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         => await TryDrainSpotsAsync(
                 relocate,
                 hostShutdown,
+                DateTimeOffset.UtcNow + Registration.DefaultRequestTimeout,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+    internal async ValueTask<ZLinkSpotDrainResult> TryDrainSpotsAsync(
+        bool relocate,
+        bool hostShutdown,
+        DateTimeOffset absoluteDeadline,
+        CancellationToken cancellationToken)
+        => await TryDrainSpotsAsync(
+                relocate,
+                hostShutdown,
                 ZLinkSpotRelocationPhase.Aggregates,
+                absoluteDeadline,
                 cancellationToken)
             .ConfigureAwait(false);
 
@@ -242,6 +255,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         bool relocate,
         bool hostShutdown,
         ZLinkSpotRelocationPhase phase,
+        DateTimeOffset absoluteDeadline,
         CancellationToken cancellationToken)
     {
         var state = _state;
@@ -264,6 +278,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
                     hostShutdown,
                     _relocationTargetSelection,
                     phase,
+                    absoluteDeadline,
                     cancellationToken)
                 .ConfigureAwait(false);
             drained &= result.Completed;
@@ -307,6 +322,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
                     relocate: true,
                     hostShutdown: false,
                     phase,
+                    control.AbsoluteDeadline,
                     token),
                 DrainActorsAsync)
             .DrainAsync(control)
@@ -819,6 +835,15 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         return GetStartedStateAsync(cancellationToken);
     }
 
+    internal bool IsAcceptingApplicationWork
+    {
+        get
+        {
+            lock (_operationGate)
+                return _acceptingOperations;
+        }
+    }
+
     internal RoutingId PrepareLocationNodeRoutingId()
     {
         var registration = Registration.SpotNodes.Values.FirstOrDefault();
@@ -838,8 +863,10 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             try
             {
                 _state = await _stateFactory.CreateAsync().ConfigureAwait(false);
-                await RecoverPublishedRelocationsAsync(cancellationToken)
-                    .ConfigureAwait(false);
+                // A published relocation is not replayed during process startup.
+                // Recovery remains an explicit same-process operation; a new
+                // process must rediscover the current owner through the normal
+                // location lifecycle instead of taking over a prior journal.
                 lock (_operationGate) _acceptingOperations = true;
                 Volatile.Write(ref _lifecyclePhase, (int)ZLinkRuntimeLifecyclePhase.Running);
                 _locationLifecycle?.ResumeBackgroundWork();

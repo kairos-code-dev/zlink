@@ -8,6 +8,7 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
     private const int RelocationJournalRecordHeaderBytes =
         sizeof(ulong) + sizeof(int);
     private readonly int _capacity;
+    private readonly int _applicationCapacity;
     private readonly object _admissionGate = new();
     private readonly object _disposeGate = new();
 
@@ -37,7 +38,8 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         ZLinkRuntimeTaskRunner taskRunner,
         IZLinkRuntimeFailureReporter errorSink,
         CancellationToken executionToken,
-        int capacity = DefaultCapacity)
+        int capacity = DefaultCapacity,
+        int reservedPrioritySlots = 0)
     {
         _taskRunner = taskRunner;
         _errorSink = errorSink;
@@ -45,6 +47,9 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         _capacity = capacity > 0
             ? capacity
             : throw new ArgumentOutOfRangeException(nameof(capacity));
+        if (reservedPrioritySlots < 0 || reservedPrioritySlots >= _capacity)
+            throw new ArgumentOutOfRangeException(nameof(reservedPrioritySlots));
+        _applicationCapacity = _capacity - reservedPrioritySlots;
     }
 
     public ValueTask DisposeAsync()
@@ -132,16 +137,57 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         }
     }
 
-    public bool TryPostNext(
+    public bool TryPostApplication(
+        Func<CancellationToken, ValueTask> callback,
+        out ZLinkSerialWorkItem item)
+        => TryPostApplicationWithAdmission(callback, out item)
+            == ZLinkSerialPostAdmission.Accepted;
+
+    internal ZLinkSerialPostAdmission TryPostApplicationWithAdmission(
         Func<CancellationToken, ValueTask> callback,
         out ZLinkSerialWorkItem item)
     {
         lock (_admissionGate)
         {
-            if (Volatile.Read(ref _completed) != 0 || !TryReserveSlot())
+            if (Volatile.Read(ref _completed) != 0)
             {
                 item = null!;
-                return false;
+                return ZLinkSerialPostAdmission.Closed;
+            }
+            if (!TryReserveSlot(_applicationCapacity))
+            {
+                item = null!;
+                return ZLinkSerialPostAdmission.QueueFull;
+            }
+
+            item = new ZLinkSerialWorkItem(callback);
+            _queue.Enqueue(item);
+            ScheduleDrain();
+            return ZLinkSerialPostAdmission.Accepted;
+        }
+    }
+
+    public bool TryPostNext(
+        Func<CancellationToken, ValueTask> callback,
+        out ZLinkSerialWorkItem item)
+        => TryPostNextWithAdmission(callback, out item)
+            == ZLinkSerialPostAdmission.Accepted;
+
+    internal ZLinkSerialPostAdmission TryPostNextWithAdmission(
+        Func<CancellationToken, ValueTask> callback,
+        out ZLinkSerialWorkItem item)
+    {
+        lock (_admissionGate)
+        {
+            if (Volatile.Read(ref _completed) != 0)
+            {
+                item = null!;
+                return ZLinkSerialPostAdmission.Closed;
+            }
+            if (!TryReserveSlot())
+            {
+                item = null!;
+                return ZLinkSerialPostAdmission.QueueFull;
             }
 
             item = new ZLinkSerialWorkItem(callback);
@@ -151,7 +197,7 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
             foreach (var existing in queued)
                 _queue.Enqueue(existing);
             ScheduleDrain();
-            return true;
+            return ZLinkSerialPostAdmission.Accepted;
         }
     }
 
@@ -516,12 +562,13 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
                && _relocation.Serial == seal.Serial;
     }
 
-    private bool TryReserveSlot()
+    private bool TryReserveSlot(int capacity = -1)
     {
+        if (capacity < 0) capacity = _capacity;
         while (true)
         {
             var current = Volatile.Read(ref _pendingCount);
-            if (current >= _capacity) return false;
+            if (current >= capacity) return false;
 
             if (Interlocked.CompareExchange(ref _pendingCount, current + 1, current) == current) return true;
         }
@@ -850,4 +897,11 @@ internal enum ZLinkAcceptedWorkAdmission
     Closed = 1,
     QueueFull = 2,
     RelocationMoving = 3
+}
+
+internal enum ZLinkSerialPostAdmission
+{
+    Accepted = 0,
+    QueueFull = 1,
+    Closed = 2
 }

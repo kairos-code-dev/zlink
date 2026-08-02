@@ -52,14 +52,37 @@ internal sealed class ZLinkRuntimeTaskRunner
         string name,
         Func<CancellationToken, ValueTask> callback)
     {
-        return TryStart(name, callback, out _);
+        return TryStart(
+            name,
+            callback,
+            TaskCreationOptions.None,
+            out _);
     }
 
     public Task Run(
         string name,
         Func<CancellationToken, ValueTask> callback)
     {
-        return TryStart(name, callback, out var task) ? task : Task.CompletedTask;
+        return TryStart(
+                   name,
+                   callback,
+                   TaskCreationOptions.None,
+                   out var task)
+            ? task
+            : Task.CompletedTask;
+    }
+
+    public Task RunLongRunning(
+        string name,
+        Func<CancellationToken, ValueTask> callback)
+    {
+        return TryStart(
+                   name,
+                   callback,
+                   TaskCreationOptions.LongRunning,
+                   out var task)
+            ? task
+            : Task.CompletedTask;
     }
 
     public async ValueTask StopAsync()
@@ -96,6 +119,7 @@ internal sealed class ZLinkRuntimeTaskRunner
     private bool TryStart(
         string name,
         Func<CancellationToken, ValueTask> callback,
+        TaskCreationOptions creationOptions,
         out Task task)
     {
         lock (_gate)
@@ -114,7 +138,7 @@ internal sealed class ZLinkRuntimeTaskRunner
                         static state => RunDetachedCoreAsync((TaskState)state!),
                         new TaskState(this, name, callback, _errorSink, _shutdownToken),
                         CancellationToken.None,
-                        TaskCreationOptions.DenyChildAttach,
+                        TaskCreationOptions.DenyChildAttach | creationOptions,
                         TaskScheduler.Default).Unwrap(),
                     out task))
                 return false;

@@ -184,8 +184,10 @@ internal sealed class ZLinkActorClient(
         var remaining = timeout.Value
                         - Stopwatch.GetElapsedTime(started);
         if (remaining <= TimeSpan.Zero)
-            throw new TimeoutException(
-                "Actor request timed out before transport delivery.");
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.DeadlineExceeded,
+                "Actor request timed out before transport delivery.",
+                ZLinkRetryAdvice.RetryAfterBackoff);
         return remaining;
     }
 

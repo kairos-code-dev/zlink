@@ -144,7 +144,8 @@ internal sealed class ZLinkSpotNodeCatalog(
     internal async ValueTask<ZLinkSpotDrainResult> TryRelocateForRetireAsync(
         ZLinkRelocationTargetSelection selection,
         ZLinkSpotRelocationPhase phase,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DateTimeOffset? absoluteDeadline = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         (ZLinkSpotActivation Activation, bool Instance)[] units;
@@ -188,11 +189,12 @@ internal sealed class ZLinkSpotNodeCatalog(
                 ZLinkRelocationCommitKnowledge.NotCommitted,
                 true);
 
-        var deadline = DateTimeOffset.UtcNow
-                       + units.Select(static unit =>
-                               unit.Activation.DefaultRequestTimeout)
-                           .DefaultIfEmpty(TimeSpan.FromSeconds(30))
-                           .Max();
+        var deadline = absoluteDeadline
+                       ?? DateTimeOffset.UtcNow
+                          + units.Select(static unit =>
+                                  unit.Activation.DefaultRequestTimeout)
+                              .DefaultIfEmpty(TimeSpan.FromSeconds(30))
+                              .Max();
         var moves = units.Select(unit => RelocateAsync(unit).AsTask()).ToArray();
         var results = await Task.WhenAll(moves).ConfigureAwait(false);
         var committedUnitCount = checked((ulong)results.Sum(static result =>

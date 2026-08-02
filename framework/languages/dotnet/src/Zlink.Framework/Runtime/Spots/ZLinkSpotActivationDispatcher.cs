@@ -33,7 +33,8 @@ internal sealed class ZLinkSpotActivationDispatcher
         Func<ZLinkSpotHandlerInvoker> handlerInvoker,
         Func<IZLinkActor, CancellationToken, ValueTask>? commitAcceptedActorJoin = null,
         ZLinkAsyncSubmitter? replySubmitter = null,
-        ZLinkCompletionAdmissionOwner? completionAdmission = null)
+        ZLinkCompletionAdmissionOwner? completionAdmission = null,
+        bool acceptActorJoinWithoutHandler = false)
     {
         this.runtime = runtime;
         this.nativeSpot = nativeSpot;
@@ -67,7 +68,8 @@ internal sealed class ZLinkSpotActivationDispatcher
             handlerInvoker,
             runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkSpotActorJoinDispatcher>(),
             commitAcceptedActorJoin,
-            _dispatchErrors);
+            _dispatchErrors,
+            acceptActorJoinWithoutHandler);
         _routeDispatcher = new ZLinkSpotRouteDispatcher(
             channelName,
             spotId,
@@ -102,11 +104,13 @@ internal sealed class ZLinkSpotActivationDispatcher
 
             try
             {
+                request.DispatchLease?.StartDispatch();
                 await _actorJoinDispatcher.DispatchAsync(request, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
                 ZLinkMessageParts.DisposeAll(request.Parts);
+                request.DispatchLease?.Dispose();
             }
         }
     }

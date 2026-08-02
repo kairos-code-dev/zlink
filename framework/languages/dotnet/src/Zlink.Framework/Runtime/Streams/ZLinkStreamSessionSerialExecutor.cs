@@ -13,12 +13,16 @@ internal sealed class ZLinkStreamSessionSerialExecutor : IAsyncDisposable
 
     public ZLinkStreamSessionSerialExecutor(
         object executionOwner,
-        IZLinkRuntimeFailureReporter errorSink)
+        IZLinkRuntimeFailureReporter errorSink,
+        int capacity = 4096,
+        int reservedControlSlots = 16)
     {
         _queue = new ZLinkSerialExecutionQueue(
             new ZLinkRuntimeTaskRunner(errorSink, _stopSource.Token, executionOwner),
             errorSink,
-            _stopSource.Token);
+            _stopSource.Token,
+            capacity,
+            reservedControlSlots);
     }
 
     public ValueTask DisposeAsync()
@@ -69,14 +73,21 @@ internal sealed class ZLinkStreamSessionSerialExecutor : IAsyncDisposable
         }
     }
 
-    public bool Enqueue(Func<ValueTask> work)
+    public bool EnqueueInfrastructure(Func<ValueTask> work)
     {
         return _queue.TryPost(_ => work(), out _);
     }
 
-    public bool Enqueue(Func<CancellationToken, ValueTask> work)
+    public ZLinkSerialPostAdmission EnqueueApplication(
+        Func<CancellationToken, ValueTask> work)
     {
-        return _queue.TryPost(work, out _);
+        return _queue.TryPostApplicationWithAdmission(work, out _);
+    }
+
+    public ZLinkSerialPostAdmission EnqueueControl(
+        Func<CancellationToken, ValueTask> work)
+    {
+        return _queue.TryPostNextWithAdmission(work, out _);
     }
 
     public bool EnqueueFinal(Func<ValueTask> work)

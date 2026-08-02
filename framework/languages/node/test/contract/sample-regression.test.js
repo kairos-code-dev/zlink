@@ -565,6 +565,12 @@ test('DeliveryDispatch TypeScript sample uses framework channel topology', () =>
   assert.match(messages, /class OfferDeliveryMsg/);
   assert.match(messages, /class OfferDeliveryResultMsg/);
   assert.doesNotMatch(messages, /\bOfferDeliveryReq\b|\bOfferDeliveryRes\b/);
+  assert.match(messages, /class BindCourierSessionReq \{[\s\S]*?courierId: string/);
+  assert.match(messages, /type BindCourierSessionRes = \{ courierId: string \}/);
+  assert.doesNotMatch(messages, /sessionRoute|BindCourierReq|BindCourierRes/);
+  assert.doesNotMatch(messages, /class CourierDecisionMsg \{[^}]*attempt/);
+  assert.doesNotMatch(messages, /class OfferDeliveryNotify \{[^}]*attempt/);
+  assert.match(messages, /occurredAtUnixMs: number/);
   assert.match(dispatchWorker, /offerDecisionTimeout/);
   assert.match(dispatchWorker, /sweepExpiredOffers/);
   assert.match(dispatchWorker, /current\.attempt !== result\.attempt/);

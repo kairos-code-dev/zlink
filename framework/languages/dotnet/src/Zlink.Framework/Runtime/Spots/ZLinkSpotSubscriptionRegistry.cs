@@ -169,6 +169,7 @@ internal sealed class ZLinkSpotSubscriptionRegistry
             dispatchAsync,
         CancellationToken cancellationToken)
     {
+        message.StartDispatch();
         if (message.Parts.Count == 0)
         {
             using var invalidFlow = ZLinkFlowContext.Enter(

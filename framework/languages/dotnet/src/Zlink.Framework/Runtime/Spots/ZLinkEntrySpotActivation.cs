@@ -129,7 +129,8 @@ internal sealed partial class ZLinkEntrySpotActivation :
             () => _actorHandlers,
             () => _invoker,
             replySubmitter: _outbound.Submitter,
-            completionAdmission: completionAdmission);
+            completionAdmission: completionAdmission,
+            acceptActorJoinWithoutHandler: true);
         var errorSink = _runtime.ErrorSink;
         _serial = new ZLinkSerialExecutionQueue(
             new ZLinkRuntimeTaskRunner(
@@ -287,7 +288,6 @@ internal sealed partial class ZLinkEntrySpotActivation :
         _configurationOpen = false;
         _packets.Bind(EntrySpot);
         _subscriptions.Bind(EntrySpot, _nativeSpot);
-        _actorJoins.Bind(EntrySpot);
         _actorHandlers.Bind();
     }
 
@@ -338,49 +338,6 @@ internal sealed partial class ZLinkEntrySpotActivation :
         out ZLinkSpotDescriptor? descriptor)
     {
         return _packets.TryResolve(header, out descriptor);
-    }
-
-    public bool TryResolveActorJoin(
-        out ZLinkSpotActorJoinDescriptor? descriptor)
-    {
-        return _actorJoins.TryResolve(out descriptor);
-    }
-
-    public async ValueTask<ZLinkSpotActorJoinResult> InvokeActorJoinAsync(
-        ZLinkSpotActorJoinDescriptor descriptor,
-        IZLinkActor actor,
-        ZLinkMessage request,
-        CancellationToken cancellationToken)
-    {
-        return await AdmitActorJoinAsync(
-                descriptor,
-                actor.Context.ActorId,
-                request,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    internal async ValueTask<ZLinkSpotActorJoinResult> AdmitActorJoinAsync(
-        ZLinkSpotActorJoinDescriptor descriptor,
-        string actorId,
-        ZLinkMessage request,
-        CancellationToken cancellationToken)
-    {
-        var call = new ActorJoinCallState(descriptor, actorId, request);
-        await ExecuteAsync(
-            static async (activation, state, ct) =>
-            {
-                state.Result = await activation._invoker.InvokeActorJoinAsync(
-                        state.Descriptor,
-                        state.ActorId,
-                        state.Request,
-                        ct)
-                    .ConfigureAwait(false);
-            },
-            call,
-            cancellationToken).ConfigureAwait(false);
-
-        return call.Result;
     }
 
     public async ValueTask InvokePacketAsync(
@@ -574,17 +531,4 @@ internal sealed partial class ZLinkEntrySpotActivation :
             ZLinkActorCreateResponse.Accept();
     }
 
-    private sealed class ActorJoinCallState(
-        ZLinkSpotActorJoinDescriptor descriptor,
-        string actorId,
-        ZLinkMessage request)
-    {
-        public ZLinkSpotActorJoinDescriptor Descriptor { get; } = descriptor;
-
-        public string ActorId { get; } = actorId;
-
-        public ZLinkMessage Request { get; } = request;
-
-        public ZLinkSpotActorJoinResult Result { get; set; }
-    }
 }

@@ -6,6 +6,9 @@ internal sealed class ZLinkChannelReceiveLoop(
     ZLinkFanoutPacketDispatcher dispatcher,
     ZLinkClientServerDispatcher clientServerDispatcher)
 {
+    private static readonly TimeSpan ReceivePollInterval =
+        TimeSpan.FromMilliseconds(100);
+
     public async Task RunClientServerLoopAsync(
         string channelName,
         IZLinkBackendRouterSocket router,
@@ -14,7 +17,7 @@ internal sealed class ZLinkChannelReceiveLoop(
         ZLinkInboundDispatchBudget inboundDispatchBudget,
         CancellationToken cancellationToken)
     {
-        var backoff = new ZLinkPollingBackoff();
+        using var receivePoller = router.CreateReceivePoller();
         await using var applicationDispatch =
             new ZLinkChannelApplicationDispatchQueue(
                 $"client-server-application:{channelName}",
@@ -30,17 +33,15 @@ internal sealed class ZLinkChannelReceiveLoop(
                 try
                 {
                     identity.TickLiveness(router);
+                    if (!IsReadable(receivePoller.Wait(ReceivePollInterval)))
+                        continue;
                     ownsResumePermit = await inboundDispatchBudget.WaitForReceiveCapacityAsync(
                             cancellationToken)
                         .ConfigureAwait(false);
                     received = router.Recv(RecvFlags.DontWait);
                     if (received is null)
-                    {
-                        await backoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
                         continue;
-                    }
 
-                    backoff.Reset();
                     if (received.RequestSeq is null
                         && received.Parts.Count == 1
                         && received.Parts[0].Size == 0)
@@ -230,7 +231,7 @@ internal sealed class ZLinkChannelReceiveLoop(
         ZLinkInboundDispatchBudget inboundDispatchBudget,
         CancellationToken cancellationToken)
     {
-        var backoff = new ZLinkPollingBackoff();
+        using var receivePoller = subscriber.CreateReceivePoller();
         await using var applicationDispatch =
             new ZLinkChannelApplicationDispatchQueue(
                 $"fanout-application:{channelName}",
@@ -242,16 +243,14 @@ internal sealed class ZLinkChannelReceiveLoop(
             var ownsResumePermit = false;
             try
             {
+                if (!IsReadable(receivePoller.Wait(ReceivePollInterval)))
+                    continue;
                 ownsResumePermit = await inboundDispatchBudget.WaitForReceiveCapacityAsync(
                         cancellationToken)
                     .ConfigureAwait(false);
                 if (!subscriber.Subscribe(topicMessage, RecvFlags.DontWait))
-                {
-                    await backoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
                     continue;
-                }
 
-                backoff.Reset();
                 //  The beacon shares the publisher's PUB socket, so a manual
                 //  subscriber receives it alongside application records. It is
                 //  not an application event: it never reaches the queue, a
@@ -310,7 +309,7 @@ internal sealed class ZLinkChannelReceiveLoop(
         ZLinkInboundDispatchBudget inboundDispatchBudget,
         CancellationToken cancellationToken)
     {
-        var backoff = new ZLinkPollingBackoff();
+        using var receivePoller = subscriber.CreateReceivePoller();
         await using var applicationDispatch =
             new ZLinkChannelApplicationDispatchQueue(
                 $"fanout-automatic-application:{channelName}",
@@ -322,17 +321,14 @@ internal sealed class ZLinkChannelReceiveLoop(
             var ownsResumePermit = false;
             try
             {
+                if (!IsReadable(receivePoller.Wait(ReceivePollInterval)))
+                    continue;
                 ownsResumePermit = await inboundDispatchBudget.WaitForReceiveCapacityAsync(
                         cancellationToken)
                     .ConfigureAwait(false);
                 if (!subscriber.Subscribe(topicMessage, RecvFlags.DontWait))
-                {
-                    await backoff.NoDataAsync(cancellationToken)
-                        .ConfigureAwait(false);
                     continue;
-                }
 
-                backoff.Reset();
                 if (ZLinkFanoutLivenessProtocol.IsReservedTopic(
                         topicMessage.Topic))
                 {
@@ -396,4 +392,9 @@ internal sealed class ZLinkChannelReceiveLoop(
             total = checked(total + checked((ulong)part.Size));
         return total;
     }
+
+    private static bool IsReadable(PollEventFlags readiness) =>
+        (readiness & (PollEventFlags.PollIn
+                      | PollEventFlags.PollErr
+                      | PollEventFlags.PollPri)) != 0;
 }

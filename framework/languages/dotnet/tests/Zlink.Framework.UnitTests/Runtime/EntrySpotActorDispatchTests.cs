@@ -4146,7 +4146,7 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
-    public async Task LocalEntrySpotJoin_Rejection_DestroysTheNativeActorCreatedByThisAttempt()
+    public async Task LocalEntrySpotJoin_DoesNotUseAConcreteOnActorJoinMethod()
     {
         var node = new CapturingSpotNode();
         ConfigureNotConnectedEntryJoin(node);
@@ -4161,9 +4161,9 @@ public sealed partial class EntrySpotActorDispatchTests
                 ZLinkMessage.Empty,
                 CancellationToken.None);
 
-            Assert.IsType<ZLinkActorJoinResult.Rejected>(result);
+            Assert.IsType<ZLinkActorJoinResult.Accepted>(result);
             Assert.Single(node.CreatedActors);
-            Assert.Equal(node.CreatedActors, node.DestroyedActors);
+            Assert.Empty(node.DestroyedActors);
         }
         finally
         {
@@ -4204,7 +4204,7 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
-    public async Task LocalEntrySpotJoin_HandlerFailure_DestroysTheNativeActorBeforePropagating()
+    public async Task LocalEntrySpotJoin_IgnoresConcreteOnActorJoinFailure()
     {
         var node = new CapturingSpotNode();
         ConfigureNotConnectedEntryJoin(node);
@@ -4217,15 +4217,15 @@ public sealed partial class EntrySpotActorDispatchTests
         {
             var actor = RegisterProbeActor(runtime, actorRef);
 
-            var failure = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-                await runtime.JoinActorEntrySpotAsync(
-                    RoutingId.From("entry-node"),
-                    actor,
-                    ZLinkMessage.Empty,
-                    CancellationToken.None));
+            var result = await runtime.JoinActorEntrySpotAsync(
+                RoutingId.From("entry-node"),
+                actor,
+                ZLinkMessage.Empty,
+                CancellationToken.None);
 
-            Assert.Equal("admission failed", failure.Message);
-            Assert.Equal(node.CreatedActors, node.DestroyedActors);
+            Assert.IsType<ZLinkActorJoinResult.Accepted>(result);
+            Assert.Single(node.CreatedActors);
+            Assert.Empty(node.DestroyedActors);
         }
         finally
         {
@@ -4234,7 +4234,7 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
-    public async Task LocalEntrySpotJoin_HandlerCancellation_DestroysTheNativeActorBeforePropagating()
+    public async Task LocalEntrySpotJoin_IgnoresConcreteOnActorJoinCancellation()
     {
         var node = new CapturingSpotNode();
         ConfigureNotConnectedEntryJoin(node);
@@ -4247,14 +4247,15 @@ public sealed partial class EntrySpotActorDispatchTests
         {
             var actor = RegisterProbeActor(runtime, actorRef);
 
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
-                await runtime.JoinActorEntrySpotAsync(
-                    RoutingId.From("entry-node"),
-                    actor,
-                    ZLinkMessage.Empty,
-                    CancellationToken.None));
+            var result = await runtime.JoinActorEntrySpotAsync(
+                RoutingId.From("entry-node"),
+                actor,
+                ZLinkMessage.Empty,
+                CancellationToken.None);
 
-            Assert.Equal(node.CreatedActors, node.DestroyedActors);
+            Assert.IsType<ZLinkActorJoinResult.Accepted>(result);
+            Assert.Single(node.CreatedActors);
+            Assert.Empty(node.DestroyedActors);
         }
         finally
         {
@@ -4263,7 +4264,7 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
-    public async Task LocalEntrySpotJoin_CleanupFailure_UsesGenerationOwnedReconciliation()
+    public async Task LocalEntrySpotJoin_DoesNotEnterConcreteCleanupOnRejection()
     {
         var node = new CapturingSpotNode();
         ConfigureNotConnectedEntryJoin(node);
@@ -4276,16 +4277,14 @@ public sealed partial class EntrySpotActorDispatchTests
         {
             var actor = RegisterProbeActor(runtime, actorRef);
 
-            var failure = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-                await runtime.JoinActorEntrySpotAsync(
-                    RoutingId.From("entry-node"),
-                    actor,
-                    ZLinkMessage.Empty,
-                    CancellationToken.None));
+            var result = await runtime.JoinActorEntrySpotAsync(
+                RoutingId.From("entry-node"),
+                actor,
+                ZLinkMessage.Empty,
+                CancellationToken.None);
 
-            Assert.Contains("quarantined", failure.Message, StringComparison.Ordinal);
-            Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref attempts) >= 2, TimeSpan.FromSeconds(5)));
-            Assert.Equal(2, attempts);
+            Assert.IsType<ZLinkActorJoinResult.Accepted>(result);
+            Assert.Equal(0, Volatile.Read(ref attempts));
         }
         finally
         {
@@ -7306,7 +7305,17 @@ public sealed partial class EntrySpotActorDispatchTests
 
         public void OnSendReady(Action handler) { }
 
-        public void OnFramedPacket(Action<RoutingId, Message, Message> handler) { }
+        public bool RecvPart(
+            out RoutingId? sourceRoutingId,
+            out Message? part,
+            out bool hasMore,
+            RecvFlags flags = RecvFlags.None)
+        {
+            sourceRoutingId = null;
+            part = null;
+            hasMore = false;
+            return false;
+        }
 
         public bool Send(
             RoutingId routingId,

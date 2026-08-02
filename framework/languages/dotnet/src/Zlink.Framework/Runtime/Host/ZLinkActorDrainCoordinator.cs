@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Runtime.Locations;
 
 namespace Zlink.Framework.Runtime.Host;
 
@@ -58,6 +59,7 @@ internal sealed class ZLinkActorDrainCoordinator(
 
     public async ValueTask<ZLinkActorDrainResult> DrainAsync(
         ZLinkRelocationTargetSelection selection,
+        DateTimeOffset absoluteDeadline,
         CancellationToken cancellationToken)
     {
         var states = ActorsForDrain(actorSessions.SnapshotStates());
@@ -175,6 +177,7 @@ internal sealed class ZLinkActorDrainCoordinator(
                     var result = await relocation.RelocateSourceAsync(
                             actorState,
                             candidate.Descriptor,
+                            absoluteDeadline,
                             cancellationToken)
                         .ConfigureAwait(false);
                     //  Deferred는 "지금은 못 옮긴다"이므로 재시도가 의도된
@@ -213,6 +216,20 @@ internal sealed class ZLinkActorDrainCoordinator(
                 {
                     throw;
                 }
+                catch (ZLinkActorRelocationFailureException error)
+                {
+                    ZLinkFrameworkDebugLog.SpotDiscovery(
+                        $"drain handoff terminal actor={actorState.ActorId} target={target.NodeRid} reason={error.Reason} commit={error.CommitKnowledge} message={error.Message}");
+                    return new ZLinkActorDrainResult(
+                        false,
+                        error.Reason,
+                        error.CommitKnowledge
+                            == ZLinkRelocationCommitKnowledge.Committed
+                            ? 1UL
+                            : 0UL,
+                        error.CommitKnowledge,
+                        error.SourceTerminalized);
+                }
                 catch (ZLinkFrameworkException error)
                 {
                     ZLinkFrameworkDebugLog.SpotDiscovery(
@@ -220,10 +237,10 @@ internal sealed class ZLinkActorDrainCoordinator(
                     if (!IsTargetLocalRetriable(error))
                         return new ZLinkActorDrainResult(
                             false,
-                            ZLinkFrameworkRelocationReason.RelocationFailed,
+                            ZLinkActorRelocationFailureException.MapReason(error),
                             0,
-                            ZLinkRelocationCommitKnowledge.Unknown,
-                            false);
+                            ZLinkActorRelocationFailureException.MapCommitKnowledge(error),
+                            ZLinkActorRelocationFailureException.GetSourceTerminalized(error));
                 }
                 catch (ZlinkSubmitException error)
                 {
@@ -253,10 +270,10 @@ internal sealed class ZLinkActorDrainCoordinator(
                         $"drain handoff terminal actor={actorState.ActorId} target={target.NodeRid} message={error.Message}");
                     return new ZLinkActorDrainResult(
                         false,
-                        ZLinkFrameworkRelocationReason.RelocationFailed,
+                        ZLinkActorRelocationFailureException.MapReason(error),
                         0,
-                        ZLinkRelocationCommitKnowledge.Unknown,
-                        false);
+                        ZLinkActorRelocationFailureException.MapCommitKnowledge(error),
+                        ZLinkActorRelocationFailureException.GetSourceTerminalized(error));
                 }
             }
 
@@ -291,12 +308,8 @@ internal sealed class ZLinkActorDrainCoordinator(
     internal static bool IsTargetLocalRetriable(ZLinkFrameworkException error) =>
         error.RetryAdvice != ZLinkRetryAdvice.DoNotRetry
         && error.Kind is ZLinkFrameworkErrorKind.Unavailable
-            or ZLinkFrameworkErrorKind.Unavailable
-            or ZLinkFrameworkErrorKind.Unavailable
             or ZLinkFrameworkErrorKind.DeadlineExceeded
-            or ZLinkFrameworkErrorKind.CapacityExceeded
-            or ZLinkFrameworkErrorKind.Unavailable
-            or ZLinkFrameworkErrorKind.Unavailable;
+            or ZLinkFrameworkErrorKind.CapacityExceeded;
 
     internal static ZLinkActorRuntimeState[] StandaloneActors(
         IEnumerable<ZLinkActorRuntimeState> states) =>
@@ -409,6 +422,72 @@ internal readonly record struct ZLinkActorDrainResult(
 
     internal bool HasUnknownCommit =>
         CommitKnowledge == ZLinkRelocationCommitKnowledge.Unknown;
+}
+
+internal sealed class ZLinkActorRelocationFailureException : Exception
+{
+    internal ZLinkActorRelocationFailureException(
+        ZLinkFrameworkRelocationReason reason,
+        ZLinkRelocationCommitKnowledge commitKnowledge,
+        bool sourceTerminalized,
+        Exception innerException)
+        : base(
+            $"Actor relocation failed. reason={reason} commit={commitKnowledge}.",
+            innerException)
+    {
+        Reason = reason;
+        CommitKnowledge = commitKnowledge;
+        SourceTerminalized = sourceTerminalized;
+    }
+
+    internal ZLinkFrameworkRelocationReason Reason { get; }
+
+    internal ZLinkRelocationCommitKnowledge CommitKnowledge { get; }
+
+    internal bool SourceTerminalized { get; }
+
+    internal static bool IsRetryableTargetFailure(Exception error) =>
+        error switch
+        {
+            ZLinkFrameworkException framework =>
+                framework.RetryAdvice != ZLinkRetryAdvice.DoNotRetry,
+            ZlinkSubmitException => true,
+            TimeoutException => true,
+            ZLinkActorHandoffRejectedException => true,
+            _ => false
+        };
+
+    internal static ZLinkFrameworkRelocationReason MapReason(Exception error) =>
+        error switch
+        {
+            ZLinkActorRelocationFailureException failure => failure.Reason,
+            OperationCanceledException => ZLinkFrameworkRelocationReason.DeadlineExceeded,
+            ZLinkRelocationDataLostException => ZLinkFrameworkRelocationReason.StateIncompatible,
+            ZLinkFrameworkException { Kind: ZLinkFrameworkErrorKind.DeadlineExceeded } =>
+                ZLinkFrameworkRelocationReason.DeadlineExceeded,
+            ZLinkFrameworkException { Kind: ZLinkFrameworkErrorKind.Unavailable
+                or ZLinkFrameworkErrorKind.NotFound } =>
+                ZLinkFrameworkRelocationReason.StoreUnavailable,
+            ZLinkFrameworkException { Kind: ZLinkFrameworkErrorKind.DataLost
+                or ZLinkFrameworkErrorKind.ProtocolError
+                or ZLinkFrameworkErrorKind.TypeMismatch
+                or ZLinkFrameworkErrorKind.InvalidOperation
+                or ZLinkFrameworkErrorKind.Rejected } =>
+                ZLinkFrameworkRelocationReason.StateIncompatible,
+            ZLinkConfigurationException => ZLinkFrameworkRelocationReason.StateIncompatible,
+            _ => ZLinkFrameworkRelocationReason.RelocationFailed
+        };
+
+    internal static ZLinkRelocationCommitKnowledge MapCommitKnowledge(
+        Exception error) =>
+        error is ZLinkActorRelocationFailureException failure
+            ? failure.CommitKnowledge
+            : ZLinkRelocationCommitKnowledge.Unknown;
+
+    internal static bool GetSourceTerminalized(Exception error) =>
+        error is ZLinkActorRelocationFailureException failure
+            ? failure.SourceTerminalized
+            : false;
 }
 
 internal readonly record struct ZLinkRelocationWorkloadDrainResult(

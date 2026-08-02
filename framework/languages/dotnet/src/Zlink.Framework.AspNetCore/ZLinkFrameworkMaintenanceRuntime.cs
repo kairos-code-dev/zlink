@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
 
 using Zlink.Framework.Runtime.Diagnostics;
 
@@ -11,6 +12,7 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
     IDisposable
 {
     private static readonly TimeSpan DefaultDeadline = TimeSpan.FromSeconds(30);
+    private const int ObserverMailboxCapacity = 16;
 
     private readonly ZLinkDrainCoordinator _lifecycle;
     private readonly ZLinkFrameworkHostLifecycleState _hostLifecycle;
@@ -25,8 +27,10 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
     private readonly IDisposable _metricRegistration;
     private readonly IDisposable _inboundMetricRegistration;
     private readonly Func<ZLinkInboundDispatchStatus> _inboundDispatchSnapshot;
+    private readonly Func<bool> _acceptingWorkSnapshot;
+    private readonly ILogger<ZLinkFrameworkMaintenanceRuntime>? _logger;
     private readonly object _gate = new();
-    private readonly List<Channel<ZLinkFrameworkRuntimeStatus>> _observers = [];
+    private readonly List<ObserverMailbox> _observers = [];
 
     private Task<ZLinkFrameworkRelocationResult>? _relocationOperation;
     private Task<ZLinkFrameworkTerminationResult>? _shutdownOperation;
@@ -51,7 +55,9 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
             relocationPreflight,
         Func<CancellationToken, ValueTask<bool>> publishRelocating,
         long sourceApplicationVersion = 0,
-        Func<ZLinkInboundDispatchStatus>? inboundDispatchSnapshot = null)
+        Func<ZLinkInboundDispatchStatus>? inboundDispatchSnapshot = null,
+        Func<bool>? acceptingWorkSnapshot = null,
+        ILogger<ZLinkFrameworkMaintenanceRuntime>? logger = null)
     {
         _lifecycle = lifecycle;
         _hostLifecycle = hostLifecycle;
@@ -59,6 +65,8 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
         _publishRelocating = publishRelocating;
         _sourceApplicationVersion = sourceApplicationVersion;
         _inboundDispatchSnapshot = inboundDispatchSnapshot ?? EmptyInboundDispatchSnapshot;
+        _acceptingWorkSnapshot = acceptingWorkSnapshot ?? (() => true);
+        _logger = logger;
         _metricRegistration = ZLinkRuntimeMetrics.RegisterHostState(
             () => HostStateMetricValue(_hostLifecycle.State));
         _inboundMetricRegistration = ZLinkRuntimeMetrics.RegisterHostInboundDispatch(
@@ -101,23 +109,16 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
     public async IAsyncEnumerable<ZLinkFrameworkRuntimeStatus> ObserveAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var observer = Channel.CreateBounded<ZLinkFrameworkRuntimeStatus>(
-            new BoundedChannelOptions(1024)
-            {
-                SingleReader = true,
-                SingleWriter = false,
-                FullMode = BoundedChannelFullMode.DropOldest,
-                AllowSynchronousContinuations = false
-            });
+        var observer = new ObserverMailbox(ObserverMailboxCapacity);
         lock (_gate)
         {
             ThrowIfDisposed();
             _observers.Add(observer);
-            observer.Writer.TryWrite(CreateStatusUnderLock(DateTimeOffset.UtcNow));
+            observer.Publish(CreateStatusUnderLock(DateTimeOffset.UtcNow));
         }
         try
         {
-            await foreach (var status in observer.Reader.ReadAllAsync(cancellationToken)
+            await foreach (var status in observer.ReadAllAsync(cancellationToken)
                                .ConfigureAwait(false))
                 yield return status;
         }
@@ -400,6 +401,7 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
                 TransitionUnderLock(ZLinkFrameworkRuntimeState.Relocated);
             else
                 PublishUnderLock();
+            LogRelocationChanged(completed);
             RecordRelocationCompletion(metricStarted, completed);
             return completed;
         }
@@ -439,7 +441,7 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
                     teardownBound)
                 .ConfigureAwait(false);
         }
-        catch (Exception teardownFailure)
+        catch
         {
             //  A swallowed teardown failure leaves only the reason enum, which
             //  cannot tell one throw site from another.
@@ -465,6 +467,7 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
             _terminationResult = result;
             _deadline = null;
             TransitionUnderLock(ZLinkFrameworkRuntimeState.Stopped);
+            LogTerminationChanged(result);
             metricStarted.Complete(
                 result.Outcome == ZLinkFrameworkTerminationOutcome.Stopped
                     ? "stopped"
@@ -507,6 +510,7 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
             _relocationCancellation = null;
             _relocationOriginState = null;
             TransitionUnderLock(ZLinkFrameworkRuntimeState.Stopped);
+            LogRelocationChanged(result);
             RecordRelocationCompletion(metricStarted, result);
             return result;
         }
@@ -537,6 +541,16 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
                 TransitionUnderLock(originState);
             else
                 PublishUnderLock();
+            LogRelocationChanged(result);
+            if (reason != ZLinkFrameworkRelocationReason.ShutdownRequested)
+            {
+                _sequence = checked(_sequence + 1);
+                PublishStatusUnderLock(
+                    CreateStatusUnderLock(DateTimeOffset.UtcNow) with
+                    {
+                        RelocationResult = result
+                    });
+            }
             RecordRelocationCompletion(metricStarted, result);
             return result;
         }
@@ -600,7 +614,8 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
     private ZLinkFrameworkRuntimeStatus CreateStatusUnderLock(DateTimeOffset observedAt)
     {
         var state = _hostLifecycle.State;
-        var accepting = state == ZLinkFrameworkRuntimeState.Serving;
+        var accepting = state == ZLinkFrameworkRuntimeState.Serving
+                        && _acceptingWorkSnapshot();
         return new ZLinkFrameworkRuntimeStatus(
             state,
             state == ZLinkFrameworkRuntimeState.Serving,
@@ -623,8 +638,126 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
     {
         _sequence = checked(_sequence + 1);
         var status = CreateStatusUnderLock(DateTimeOffset.UtcNow);
+        PublishStatusUnderLock(status);
+    }
+
+    private void PublishStatusUnderLock(ZLinkFrameworkRuntimeStatus status)
+    {
         foreach (var observer in _observers)
-            observer.Writer.TryWrite(status);
+            observer.Publish(status);
+    }
+
+    private sealed class ObserverMailbox
+    {
+        private readonly object _gate = new();
+        private readonly Queue<ZLinkFrameworkRuntimeStatus> _terminalStatuses = [];
+        private readonly Channel<bool> _signal = Channel.CreateBounded<bool>(
+            new BoundedChannelOptions(1)
+            {
+                SingleReader = true,
+                SingleWriter = false,
+                AllowSynchronousContinuations = false,
+                FullMode = BoundedChannelFullMode.DropWrite
+            });
+        private ZLinkFrameworkRuntimeStatus? _latestSnapshot;
+
+        internal ObserverMailbox(int snapshotCapacity)
+        {
+            if (snapshotCapacity <= 0)
+                throw new ArgumentOutOfRangeException(nameof(snapshotCapacity));
+        }
+
+        internal void Publish(ZLinkFrameworkRuntimeStatus status)
+        {
+            lock (_gate)
+            {
+                if (IsTerminal(status))
+                    _terminalStatuses.Enqueue(status);
+                else
+                    _latestSnapshot = status;
+            }
+            _signal.Writer.TryWrite(true);
+        }
+
+        internal async IAsyncEnumerable<ZLinkFrameworkRuntimeStatus> ReadAllAsync(
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            // The signal channel is only a wake-up mechanism. The mailbox keeps
+            // one coalesced non-terminal snapshot and every terminal result, so
+            // a slow observer cannot lose a relocation or shutdown outcome.
+            while (await _signal.Reader.WaitToReadAsync(cancellationToken)
+                             .ConfigureAwait(false))
+            {
+                while (_signal.Reader.TryRead(out _))
+                {
+                }
+
+                while (TryTakeNext(out var status))
+                    yield return status;
+            }
+        }
+
+        internal void Complete() => _signal.Writer.TryComplete();
+
+        private bool TryTakeNext(out ZLinkFrameworkRuntimeStatus status)
+        {
+            lock (_gate)
+            {
+                if (_terminalStatuses.Count != 0
+                    && (_latestSnapshot is not { } latest
+                        || _terminalStatuses.Peek().Sequence <= latest.Sequence))
+                {
+                    status = _terminalStatuses.Dequeue();
+                    return true;
+                }
+
+                if (_latestSnapshot is { } snapshot)
+                {
+                    _latestSnapshot = null;
+                    status = snapshot;
+                    return true;
+                }
+            }
+
+            status = default!;
+            return false;
+        }
+
+        private static bool IsTerminal(ZLinkFrameworkRuntimeStatus status) =>
+            status.RelocationResult is not null
+            || status.TerminationResult is not null;
+    }
+
+    private void LogRelocationChanged(ZLinkFrameworkRelocationResult result)
+    {
+        try
+        {
+            _logger?.LogInformation(
+                "zlink.runtime.host.relocation_changed mode={Mode} targetApplicationVersion={TargetApplicationVersion} state={State} outcome={Outcome} reason={Reason}",
+                result.Mode,
+                result.TargetApplicationVersion,
+                _hostLifecycle.State,
+                result.Outcome,
+                result.Reason);
+        }
+        catch
+        {
+        }
+    }
+
+    private void LogTerminationChanged(ZLinkFrameworkTerminationResult result)
+    {
+        try
+        {
+            _logger?.LogInformation(
+                "zlink.runtime.host.termination_changed state={State} outcome={Outcome} reason={Reason}",
+                _hostLifecycle.State,
+                result.Outcome,
+                result.Reason);
+        }
+        catch
+        {
+        }
     }
 
     private static void RecordRelocationCompletion(
@@ -679,7 +812,7 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
         lock (_gate)
         {
             foreach (var observer in _observers)
-                observer.Writer.TryComplete();
+                observer.Complete();
             _observers.Clear();
         }
         _metricRegistration.Dispose();

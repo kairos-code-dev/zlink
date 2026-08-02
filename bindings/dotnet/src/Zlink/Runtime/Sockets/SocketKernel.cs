@@ -10,6 +10,7 @@ internal sealed partial class SocketKernel : IDisposable
     private const int DontWaitFlag = 1;
     private readonly SocketCallbackRegistry _callbacks = new();
     private readonly object _completionControlRegistrationSync = new();
+    private readonly object _streamModeGate = new();
 
     private readonly SocketHandle _handle;
     private readonly SocketOptionAccessor _options;
@@ -17,6 +18,7 @@ internal sealed partial class SocketKernel : IDisposable
     private string? _publishTopicCacheKey;
     private byte[]? _publishTopicCacheUtf8;
     private bool _streamAttached;
+    private int _streamReceiveMode;
 
     public SocketKernel(Context context, SocketType type)
     {

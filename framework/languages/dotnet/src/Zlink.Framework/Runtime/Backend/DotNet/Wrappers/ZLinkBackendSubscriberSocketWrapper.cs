@@ -6,6 +6,9 @@ internal sealed class ZLinkBackendSubscriberSocketWrapper(ISubSocket nativeSocke
         ZLinkBackendSocketOptionsMapper.Apply(nativeSocket.Options, config);
     internal ISubSocket NativeSocket => nativeSocket;
 
+    public IZLinkBackendSocketPoller CreateReceivePoller() =>
+        ZLinkBackendSocketPoller.Create(nativeSocket);
+
     public void Bind(string endpoint)
     {
         nativeSocket.Bind(endpoint);

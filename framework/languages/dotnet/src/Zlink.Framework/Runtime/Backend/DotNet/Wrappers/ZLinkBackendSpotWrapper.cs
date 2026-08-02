@@ -138,7 +138,7 @@ internal sealed class ZLinkBackendSpotWrapper :
         var submit = _spot.RequestToChannel(
             channelName, parts, callback, timeout ?? default, flags,
             metadata);
-        return AcceptRequestSubmit(submit, $"channel '{channelName}'");
+        return AcceptChannelRequestSubmit(submit, $"channel '{channelName}'");
     }
 
     public SubmitResult SendToChannel(
@@ -296,6 +296,24 @@ internal sealed class ZLinkBackendSpotWrapper :
             SubmitResult.NotConnected =>
                 throw new ZlinkSubmitException(ZlinkSubmitException.ErrorCode.NotConnected),
             _ => throw ZLinkSubmitFailureMapper.CreateException(submit, targetDescription)
+        };
+    }
+
+    private static bool AcceptChannelRequestSubmit(
+        SubmitResult submit,
+        string targetDescription)
+    {
+        return submit switch
+        {
+            SubmitResult.Ok => true,
+            SubmitResult.Backpressured => false,
+            SubmitResult.NotConnected =>
+                throw ZLinkSubmitFailureMapper.CreateChannelException(
+                    submit,
+                    targetDescription),
+            _ => throw ZLinkSubmitFailureMapper.CreateChannelException(
+                submit,
+                targetDescription)
         };
     }
 

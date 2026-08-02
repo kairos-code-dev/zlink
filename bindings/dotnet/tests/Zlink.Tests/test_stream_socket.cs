@@ -378,6 +378,119 @@ public sealed class test_stream_socket
     }
 
     [Fact]
+    public void stream_recv_part_returns_raw_part_and_routing_id()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
+
+        string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-recv-part");
+        int port = CoreTestSupport.ExtractPort(endpoint);
+        stream.Bind(endpoint);
+
+        using var client = ConnectRawClient(port);
+        NetworkStream clientStream = client.GetStream();
+        byte[] incoming = "raw-part"u8.ToArray();
+        SendAll(clientStream, incoming);
+
+        Assert.True(stream.RecvPart(
+            out RoutingId? sourceRoutingId,
+            out Message? part,
+            out bool hasMore,
+            RecvFlags.None));
+        RoutingId routingId = sourceRoutingId
+            ?? throw new InvalidOperationException("missing routing id");
+        Assert.False(routingId.IsEmpty);
+        Assert.False(hasMore);
+        using (part ?? throw new InvalidOperationException("missing raw part"))
+            Assert.Equal(incoming, part!.ToArray());
+
+        using var reply = Message.From("raw-reply"u8);
+        stream.Send(routingId).Message(reply).Submit();
+        Assert.Equal("raw-reply"u8.ToArray(),
+            ReceiveExact(clientStream, "raw-reply"u8.Length));
+    }
+
+    [Fact]
+    public void stream_recv_part_is_gated_by_socket_poller()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
+        using var poller = Zlink.CreatePoller();
+
+        string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-poller");
+        int port = CoreTestSupport.ExtractPort(endpoint);
+        stream.Bind(endpoint);
+        poller.Add(stream, PollEventFlags.PollIn, 17);
+
+        using var client = ConnectRawClient(port);
+        SendAll(client.GetStream(), "poller-part"u8);
+
+        var events = new PollEvent[1];
+        Assert.Equal(1, poller.Wait(events, TimeSpan.FromSeconds(3)));
+        Assert.Equal(PollSourceKind.Socket, events[0].SourceKind);
+        Assert.Equal((nuint)17, events[0].Slot);
+        Assert.NotEqual(PollEventFlags.None, events[0].Revents & PollEventFlags.PollIn);
+
+        Assert.True(stream.RecvPart(
+            out _,
+            out var part,
+            out _,
+            RecvFlags.DontWait));
+        using (part ?? throw new InvalidOperationException("missing raw part"))
+            Assert.Equal("poller-part"u8.ToArray(), part!.ToArray());
+    }
+
+    [Fact]
+    public void stream_receive_and_packet_callback_modes_are_exclusive()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
+        stream.Bind(CoreTestSupport.NewEndpoint("tcp", "stream-recv-mode"));
+
+        Assert.False(stream.RecvPart(
+            out RoutingId? sourceRoutingId,
+            out Message? part,
+            out bool hasMore,
+            RecvFlags.DontWait));
+        Assert.Null(sourceRoutingId);
+        Assert.Null(part);
+        Assert.False(hasMore);
+
+        var error = Assert.Throws<ZlinkHandlerException>(() =>
+            stream.OnPacket((StreamPacketHandler)((_, header, payload) =>
+            {
+                header.Dispose();
+                payload.Dispose();
+            })));
+        Assert.Equal(ZlinkHandlerException.ErrorCode.Busy, error.Result);
+
+        using var callbackFirst = ctx.CreateStreamSocket();
+        callbackFirst.Bind(CoreTestSupport.NewEndpoint("tcp", "stream-callback-mode"));
+        callbackFirst.OnPacket((StreamPacketHandler)((_, header, payload) =>
+        {
+            header.Dispose();
+            payload.Dispose();
+        }));
+
+        var receiveError = Assert.Throws<ZlinkHandlerException>(() =>
+            callbackFirst.RecvPart(
+                out RoutingId? callbackRoutingId,
+                out Message? callbackPart,
+                out bool callbackHasMore,
+                RecvFlags.DontWait));
+        Assert.Equal(ZlinkHandlerException.ErrorCode.Busy, receiveError.Result);
+    }
+
+    [Fact]
     public void stream_receive_surfaces_public_routing_id()
     {
         if (!CoreTestSupport.IsNativeAvailable())

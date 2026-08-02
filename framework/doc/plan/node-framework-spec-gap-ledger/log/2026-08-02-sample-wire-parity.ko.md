@@ -31,3 +31,35 @@ npm run typecheck
 
 실제 sample process와 browser runner는 실행하지 않았다. 해당 evidence는 E2E 제외 범위의
 후속 조건이다.
+
+## NS-IMP-002
+
+DeliveryDispatch의 공통 계약은 application message에서 session route와 Actor 위치를 숨기고,
+제안 시도의 `attempt`를 Dispatch가 소유하도록 정의한다. Node sample은 이전에
+`BindCourierReq/Res`와 `BindCourierSessionRes.sessionRoute`를 노출했고, client-facing
+`OfferDeliveryNotify`와 `CourierDecisionMsg`에 `attempt`를 넣었으며 상태 timestamp를 ISO
+문자열로 전송했다.
+
+다음 경로를 공통 계약으로 정렬했다.
+
+- session binding response는 `courierId`만 반환하고 session route와 별도 bind request를 제거
+- `OfferDeliveryNotify`와 `CourierDecisionMsg`에서는 `attempt`를 제거
+- `CourierActor`가 offer별 attempt를 보관해 `OfferDeliveryResultMsg`에만 복원
+- 상태 message의 timestamp를 `occurredAtUnixMs: number`로 통일
+- Courier session은 bound Actor context를 통해 relay하고 application route를 전달하지 않음
+
+호환 alias나 route wrapper는 추가하지 않았다. stale decision 검사는 Dispatch의 기존
+`deliveryId`·`courierId`·`attempt` 비교를 그대로 사용한다.
+
+## NS-IMP-002 검증
+
+```text
+node --test --test-force-exit --test-name-pattern='DeliveryDispatch TypeScript sample uses framework channel topology|DeliveryDispatch uses public Actor APIs' \
+  test/contract/sample-regression.test.js test/contract/sample-deliverydispatch-spot-handle-gate.test.js
+  2/2 PASS
+npm run typecheck
+  PASS
+```
+
+실제 DeliveryDispatch process와 browser runner는 실행하지 않았다. 해당 evidence는 E2E 제외
+범위의 후속 조건이다.

@@ -2,11 +2,19 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Zlink.Framework.Runtime.Handlers;
 using Zlink.Framework.Runtime.Messaging;
+using Zlink.Framework.Runtime.Dispatch;
 
 namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
 {
+    private enum InboundLivenessSignal
+    {
+        None,
+        Application,
+        HeartbeatPong
+    }
+
     private readonly ZLinkSessionContext _context;
     private readonly ZLinkMessageFlowTracer _flow;
     private readonly ZLinkStreamSessionLiveness _liveness;
@@ -14,6 +22,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     private IZLinkSession _handler = null!;
     private readonly Action<string> _removeSession;
     private readonly ZLinkFrameworkRuntime _runtime;
+    private readonly ZLinkCompletionAdmissionOwner? _completionAdmission;
     private readonly AsyncServiceScope _scope;
     private readonly ZLinkStreamSessionSerialExecutor _serial;
     private readonly IZLinkBackendStreamSocket _socket;
@@ -51,7 +60,8 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         TimeProvider timeProvider,
         bool actorDispatchEnabled = true,
         ZLinkAsyncSubmitter? sendSubmitter = null,
-        bool requireConnectionReady = false)
+        bool requireConnectionReady = false,
+        ZLinkCompletionAdmissionOwner? completionAdmission = null)
     {
         AsyncServiceScope scope = default;
         var scopeCreated = false;
@@ -69,7 +79,8 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                 timeProvider,
                 actorDispatchEnabled,
                 sendSubmitter,
-                requireConnectionReady);
+                requireConnectionReady,
+                completionAdmission);
             session.Initialize(headerSessionType);
             return session;
         }
@@ -94,13 +105,15 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         TimeProvider timeProvider,
         bool actorDispatchEnabled,
         ZLinkAsyncSubmitter? sendSubmitter,
-        bool requireConnectionReady)
+        bool requireConnectionReady,
+        ZLinkCompletionAdmissionOwner? completionAdmission)
     {
         _scope = scope;
         _socket = socket;
         _transport = transport;
         _removeSession = removeSession;
         _runtime = scope.ServiceProvider.GetRequiredService<ZLinkFrameworkRuntime>();
+        _completionAdmission = completionAdmission;
         _requireConnectionReady = requireConnectionReady;
         _handlerInstances = new ZLinkScopedHandlerInstanceOwner(scope.ServiceProvider);
         Stream = new ZLinkManagedStream(socket, routingId, _runtime.Registration.Codecs, transport);
@@ -227,19 +240,52 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     public void EnqueueConnected(string localAddr, string remoteAddr)
     {
         _connectionReady.TrySetResult((localAddr, remoteAddr));
-        Enqueue(cancellationToken => MarkConnectedAsync(localAddr, remoteAddr, cancellationToken));
+        _ = _serial.EnqueueControl(
+            cancellationToken => MarkConnectedAsync(localAddr, remoteAddr, cancellationToken));
     }
 
-    public void EnqueuePacket(Message header, Message payload)
+    public void EnqueuePacket(
+        Message header,
+        Message payload,
+        ZLinkInboundDispatchLease? inboundDispatchLease = null)
     {
-        RecordInboundLiveness(header, payload);
-        Enqueue(
-            cancellationToken => DispatchPacketAsync(header, payload, cancellationToken),
-            () =>
-            {
-                header.Dispose();
-                payload.Dispose();
-            });
+        if (TryEnqueuePacket(header, payload, inboundDispatchLease)
+            == ZLinkSerialPostAdmission.Accepted)
+            return;
+        DisposeRejectedPacket(header, payload, inboundDispatchLease);
+    }
+
+    public ZLinkSerialPostAdmission TryEnqueuePacket(
+        Message header,
+        Message payload,
+        ZLinkInboundDispatchLease? inboundDispatchLease = null)
+    {
+        var signal = ClassifyInboundLiveness(header, payload);
+        var admission = _serial.EnqueueApplication(
+            cancellationToken => DispatchPacketAsync(
+                header,
+                payload,
+                inboundDispatchLease,
+                cancellationToken));
+        if (admission == ZLinkSerialPostAdmission.Accepted)
+            ApplyInboundLiveness(signal);
+        return admission;
+    }
+
+    public ZLinkSerialPostAdmission TryEnqueueControlPacket(
+        Message header,
+        Message payload)
+    {
+        var signal = ClassifyInboundLiveness(header, payload);
+        var admission = _serial.EnqueueControl(
+            cancellationToken => DispatchPacketAsync(
+                header,
+                payload,
+                inboundDispatchLease: null,
+                cancellationToken: cancellationToken));
+        if (admission == ZLinkSerialPostAdmission.Accepted)
+            ApplyInboundLiveness(signal);
+        return admission;
     }
 
     public void CheckLiveness()
@@ -383,85 +429,103 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     private async ValueTask DispatchPacketAsync(
         Message header,
         Message payload,
+        ZLinkInboundDispatchLease? inboundDispatchLease,
         CancellationToken cancellationToken)
     {
-        using (header)
-        using (payload)
+        inboundDispatchLease?.StartDispatch();
+        try
         {
-            if (IsClosing) return;
-            if (!await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false))
-                return;
-            ZlinkStreamHeader decoded;
-            try
+            using (header)
+            using (payload)
             {
-                decoded = ZLinkStreamProtocolDefaults.DecodeHeader(header.AsReadOnlyMemory());
-                if (decoded.Kind == ZlinkStreamMessageKind.Control)
-                {
-                    ZLinkStreamControlFrames.Dispatch(Stream, decoded, payload.AsReadOnlyMemory());
+                if (IsClosing) return;
+                if (!await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false))
                     return;
-                }
-            }
-            catch (Exception protocolError)
-            {
-                await CloseForProtocolErrorAsync(protocolError).ConfigureAwait(false);
-                return;
-            }
-
-            using var currentFlow = ZLinkFlowContext.Enter(
-                decoded.FlowId,
-                decoded.FlowOrigin is { } streamOrigin ? (ZLinkFlowOrigin)(byte)streamOrigin : null,
-                _flow.CaptureEnabled,
-                ZLinkFlowOrigin.Inbound);
-
-            if (_flow.Enabled(ZLinkMessageFlowOutcome.Received))
-                _flow.Trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowOutcome.Received,
-                    ZLinkDispatchErrorSurface.StreamSession,
-                    decoded.RequestSeq.HasValue
-                        ? ZLinkDispatchMessageKind.Request
-                        : ZLinkDispatchMessageKind.Send,
-                    decoded.Name,
-                    CorrelationId: decoded.CorrelationId));
-
-            var dispatch = _context.EnterDispatch(decoded);
-            try
-            {
-                await _handler.OnDispatchAsync(
-                    dispatch,
-                    ZLinkStreamPacketPayloadCodec.DecodeMessage(
-                        decoded,
-                        payload,
-                        _runtime.Registration.Codecs,
-                        _runtime.Registration.StreamCompressionCodec),
-                    cancellationToken);
-
-                if (!decoded.RequestSeq.HasValue
-                    && _flow.Enabled(ZLinkMessageFlowOutcome.Dispatched))
-                    _flow.Trace(new ZLinkMessageFlowEvent(
-                        ZLinkMessageFlowOutcome.Dispatched,
-                        ZLinkDispatchErrorSurface.StreamSession,
-                        ZLinkDispatchMessageKind.Send,
-                        decoded.Name,
-                        CorrelationId: decoded.CorrelationId));
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-            }
-            catch (Exception ex)
-            {
+                ZlinkStreamHeader decoded;
                 try
                 {
-                    await _context.ReplyErrorAsync(decoded, ex, cancellationToken)
-                        .ConfigureAwait(false);
+                    decoded = ZLinkStreamProtocolDefaults.DecodeHeader(header.AsReadOnlyMemory());
+                    if (decoded.Kind == ZlinkStreamMessageKind.Control)
+                    {
+                        ZLinkStreamControlFrames.Dispatch(Stream, decoded, payload.AsReadOnlyMemory());
+                        return;
+                    }
                 }
-                catch (Exception replyException) when (IsClosedReplyFailure(replyException))
+                catch (Exception protocolError)
+                {
+                    await CloseForProtocolErrorAsync(protocolError).ConfigureAwait(false);
+                    return;
+                }
+
+                using var completionPermit = decoded.RequestSeq.HasValue
+                    && _completionAdmission is not null
+                    ? await _completionAdmission.AcquireResponderAsync(cancellationToken)
+                        .ConfigureAwait(false)
+                    : null;
+
+                using var currentFlow = ZLinkFlowContext.Enter(
+                    decoded.FlowId,
+                    decoded.FlowOrigin is { } streamOrigin ? (ZLinkFlowOrigin)(byte)streamOrigin : null,
+                    _flow.CaptureEnabled,
+                    ZLinkFlowOrigin.Inbound);
+
+                if (_flow.Enabled(ZLinkMessageFlowOutcome.Received))
+                    _flow.Trace(new ZLinkMessageFlowEvent(
+                        ZLinkMessageFlowOutcome.Received,
+                        ZLinkDispatchErrorSurface.StreamSession,
+                        decoded.RequestSeq.HasValue
+                            ? ZLinkDispatchMessageKind.Request
+                            : ZLinkDispatchMessageKind.Send,
+                        decoded.Name,
+                        CorrelationId: decoded.CorrelationId));
+
+                var dispatch = _context.EnterDispatch(decoded, completionPermit);
+                try
+                {
+                    await _handler.OnDispatchAsync(
+                        dispatch,
+                        ZLinkStreamPacketPayloadCodec.DecodeMessage(
+                            decoded,
+                            payload,
+                            _runtime.Registration.Codecs,
+                            _runtime.Registration.StreamCompressionCodec),
+                        cancellationToken);
+
+                    if (!decoded.RequestSeq.HasValue
+                        && _flow.Enabled(ZLinkMessageFlowOutcome.Dispatched))
+                        _flow.Trace(new ZLinkMessageFlowEvent(
+                            ZLinkMessageFlowOutcome.Dispatched,
+                            ZLinkDispatchErrorSurface.StreamSession,
+                            ZLinkDispatchMessageKind.Send,
+                            decoded.Name,
+                            CorrelationId: decoded.CorrelationId));
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
                 }
+                catch (Exception ex)
+                {
+                    if (decoded.RequestSeq.HasValue && dispatch.TryClaimReply())
+                    {
+                        try
+                        {
+                            await _context.ReplyErrorAsync(decoded, ex, cancellationToken)
+                                .ConfigureAwait(false);
+                        }
+                        catch (Exception replyException) when (IsClosedReplyFailure(replyException))
+                        {
+                        }
+                    }
+                }
+                finally
+                {
+                    _context.ExitDispatch();
+                }
             }
-            finally
-            {
-                _context.ExitDispatch();
-            }
+        }
+        finally
+        {
+            inboundDispatchLease?.Dispose();
         }
     }
 
@@ -643,31 +707,57 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         }
     }
 
-    private void RecordInboundLiveness(Message header, Message payload)
+    private static InboundLivenessSignal ClassifyInboundLiveness(
+        Message header,
+        Message payload)
     {
         try
         {
-            var decoded = ZLinkStreamProtocolDefaults.DecodeHeader(header.AsReadOnlyMemory());
-            if (decoded.Kind != ZlinkStreamMessageKind.Control)
-            {
-                _liveness.RecordApplicationInbound();
-                return;
-            }
+            var headerBytes = header.AsReadOnlySpan();
+            if (headerBytes.Length < 2) return InboundLivenessSignal.None;
+            var kind = (ZlinkStreamMessageKind)headerBytes[1];
+            if (kind != ZlinkStreamMessageKind.Control)
+                return InboundLivenessSignal.Application;
 
+            var decoded = ZLinkStreamProtocolDefaults.DecodeHeader(header.AsReadOnlyMemory());
             if (payload.AsReadOnlyMemory().Length == 0
                 && ZLinkStreamControlFrames.IsHeartbeatPong(decoded))
-                _liveness.RecordHeartbeatPong();
+                return InboundLivenessSignal.HeartbeatPong;
         }
         catch
         {
         }
+
+        return InboundLivenessSignal.None;
     }
 
-    private void Enqueue(
-        Func<CancellationToken, ValueTask> work,
-        Action? onRejected = null)
+    private void ApplyInboundLiveness(InboundLivenessSignal signal)
     {
-        if (!_serial.Enqueue(work)) onRejected?.Invoke();
+        switch (signal)
+        {
+            case InboundLivenessSignal.Application:
+                _liveness.RecordApplicationInbound();
+                break;
+            case InboundLivenessSignal.HeartbeatPong:
+                _liveness.RecordHeartbeatPong();
+                break;
+        }
+    }
+
+    private static void DisposeRejectedPacket(
+        Message header,
+        Message payload,
+        ZLinkInboundDispatchLease? inboundDispatchLease)
+    {
+        try
+        {
+            header.Dispose();
+            payload.Dispose();
+        }
+        finally
+        {
+            inboundDispatchLease?.Dispose();
+        }
     }
 
     private async ValueTask<bool> EnsureConnectedAsync(CancellationToken cancellationToken)

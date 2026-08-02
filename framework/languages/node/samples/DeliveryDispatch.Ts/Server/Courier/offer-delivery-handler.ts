@@ -5,7 +5,7 @@ import {
 import type {
   ZLinkMessageContext
 } from '@zlink-systems/framework';
-import type { BindCourierReq, BindCourierRes, BindCourierSessionReq, BindCourierSessionRes, CourierDecisionMsg, OfferDeliveryMsg } from '../../Shared/Contracts/messages';
+import type { BindCourierSessionReq, BindCourierSessionRes, CourierDecisionMsg, OfferDeliveryMsg } from '../../Shared/Contracts/messages';
 import { CourierActor } from './courier-actor';
 import { CourierEntrySpot } from './courier-entry-spot';
 
@@ -23,17 +23,6 @@ class CourierActorOfferHandler {
 @zlinkEntrySpotActorRequestHandler({
   entrySpot: () => CourierEntrySpot,
   actor: () => CourierActor,
-  packetName: PacketNames.bindCourier
-})
-class CourierActorBindHandler {
-  handle(actor: CourierActor, _context: ZLinkMessageContext, request: BindCourierReq): BindCourierRes {
-    return actor.bindSession(request);
-  }
-}
-
-@zlinkEntrySpotActorRequestHandler({
-  entrySpot: () => CourierEntrySpot,
-  actor: () => CourierActor,
   packetName: PacketNames.bindCourierSession
 })
 class CourierActorSessionBindHandler {
@@ -42,7 +31,7 @@ class CourierActorSessionBindHandler {
     _context: ZLinkMessageContext,
     request: BindCourierSessionReq
   ): BindCourierSessionRes {
-    return actor.bindRelayedSession(request);
+    return actor.confirmSessionBinding(request);
   }
 }
 
@@ -59,7 +48,6 @@ class CourierActorDecisionHandler {
 
 export {
   CourierActorOfferHandler,
-  CourierActorBindHandler,
   CourierActorSessionBindHandler,
   CourierActorDecisionHandler
 };

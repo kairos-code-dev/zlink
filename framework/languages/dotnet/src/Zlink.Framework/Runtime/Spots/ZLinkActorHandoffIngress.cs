@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Dispatch;
+
 namespace Zlink.Framework.Runtime.Spots;
 
 internal static class ZLinkActorHandoffIngress
@@ -83,7 +85,8 @@ internal static class ZLinkActorHandoffIngress
 
     public static ZLinkSpotActorFrameBatch CaptureMovingFrames(
         ZLinkFrameworkRuntime runtime,
-        IReadOnlyList<ZLinkBackendActorPart> parts)
+        IReadOnlyList<ZLinkBackendActorPart> parts,
+        ZLinkInboundDispatchLease? inboundDispatchLease = null)
     {
         var dispatchable = new List<ZLinkSpotActorFrame>(parts.Count / 2);
         var index = 0;
@@ -151,6 +154,8 @@ internal static class ZLinkActorHandoffIngress
             }
         }
 
-        return new ZLinkSpotActorFrameBatch(dispatchable);
+        return new ZLinkSpotActorFrameBatch(
+            dispatchable,
+            inboundDispatchLease: inboundDispatchLease);
     }
 }

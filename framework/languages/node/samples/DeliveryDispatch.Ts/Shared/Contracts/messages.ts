@@ -15,24 +15,9 @@ class SubscribeDeliveryReq { constructor(readonly deliveryId: string) {} }
 
 class SubscribeDeliveryRes { constructor(readonly deliveryId: string) {} }
 
-class BindCourierReq { constructor(readonly courierId: string, readonly sessionRoute: string) {} }
+class BindCourierSessionReq { constructor(readonly courierId: string) {} }
 
-type BindCourierRes = {
-  courierId: string;
-  sessionRoute: string;
-};
-
-class BindCourierSessionReq {
-  constructor(
-    readonly courierId: string,
-    readonly sessionRoute?: string
-  ) {}
-}
-
-type BindCourierSessionRes = {
-  courierId: string;
-  sessionRoute: string;
-};
+type BindCourierSessionRes = { courierId: string };
 
 class EnsureCourierActorReq { constructor(readonly courierId: string) {} }
 
@@ -48,8 +33,8 @@ class AssignDeliveryMsg {
 
 class OfferDeliveryMsg {
   constructor(
-    readonly courierId: string,
     readonly deliveryId: string,
+    readonly courierId: string,
     readonly attempt: number,
     readonly pickupAddress: string,
     readonly dropoffAddress: string
@@ -70,7 +55,6 @@ class OfferDeliveryNotify {
   constructor(
     readonly courierId: string,
     readonly deliveryId: string,
-    readonly attempt: number,
     readonly pickupAddress: string,
     readonly dropoffAddress: string
   ) {}
@@ -80,7 +64,6 @@ class CourierDecisionMsg {
   constructor(
     readonly deliveryId: string,
     readonly courierId: string,
-    readonly attempt: number,
     readonly accepted: boolean,
     readonly reason?: string
   ) {}
@@ -91,7 +74,7 @@ class DeliveryStatusChangedReq {
     readonly deliveryId: string,
     readonly customerId: string,
     readonly status: Exclude<DeliveryStatus, 'Created'>,
-    readonly occurredAt: string,
+    readonly occurredAtUnixMs: number,
     readonly courierId?: string
   ) {}
 }
@@ -105,7 +88,7 @@ class DeliveryStatusNotify {
   constructor(
     readonly deliveryId: string,
     readonly status: DeliveryStatus,
-    readonly occurredAt: string,
+    readonly occurredAtUnixMs: number,
     readonly courierId?: string
   ) {}
 }
@@ -115,7 +98,7 @@ class DeliveryStatusUpdatedMsg {
     readonly deliveryId: string,
     readonly customerId: string,
     readonly status: Exclude<DeliveryStatus, 'Created'>,
-    readonly occurredAt: string,
+    readonly occurredAtUnixMs: number,
     readonly courierId?: string
   ) {}
 }
@@ -132,8 +115,6 @@ type ServerAssertionRes = {
 
 const PacketNames = {
   assignDelivery: 'AssignDeliveryMsg',
-  bindCourier: 'BindCourierReq',
-  bindCourierResult: 'BindCourierRes',
   bindCourierSession: 'BindCourierSessionReq',
   bindCourierSessionResult: 'BindCourierSessionRes',
   createDeliveryRequest: 'CreateDeliveryReq',
@@ -169,10 +150,6 @@ function assignDelivery(
   return new AssignDeliveryMsg(deliveryId, customerId, pickupAddress, dropoffAddress);
 }
 
-function bindCourier(courierId: string, sessionRoute: string): BindCourierReq {
-  return new BindCourierReq(courierId, sessionRoute);
-}
-
 function bindCourierSession(courierId: string): BindCourierSessionReq {
   return new BindCourierSessionReq(courierId);
 }
@@ -183,7 +160,7 @@ function deliveryStatusChanged(
   status: DeliveryStatusChangedReq['status'],
   courierId?: string
 ): DeliveryStatusChangedReq {
-  return new DeliveryStatusChangedReq(deliveryId, customerId, status, new Date().toISOString(), courierId);
+  return new DeliveryStatusChangedReq(deliveryId, customerId, status, Date.now(), courierId);
 }
 
 function ensureCourierActor(courierId: string): EnsureCourierActorReq {
@@ -197,7 +174,7 @@ function offerDelivery(
   pickupAddress: string,
   dropoffAddress: string
 ): OfferDeliveryMsg {
-  return new OfferDeliveryMsg(courierId, deliveryId, attempt, pickupAddress, dropoffAddress);
+  return new OfferDeliveryMsg(deliveryId, courierId, attempt, pickupAddress, dropoffAddress);
 }
 
 function subscribeDelivery(deliveryId: string): SubscribeDeliveryReq {
@@ -210,7 +187,6 @@ export {
   DeliveryStatusUpdatedMsg,
   SubscribeDeliveryReq,
   SubscribeDeliveryRes,
-  BindCourierReq,
   BindCourierSessionReq,
   EnsureCourierActorReq,
   AssignDeliveryMsg,
@@ -220,7 +196,6 @@ export {
   CourierDecisionMsg,
   PacketNames,
   assignDelivery,
-  bindCourier,
   bindCourierSession,
   deliveryStatusChanged,
   ensureCourierActor,
@@ -229,7 +204,6 @@ export {
 };
 
 export type {
-  BindCourierRes,
   BindCourierSessionRes,
   CreateDeliveryReq,
   CreateDeliveryRes,

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Dispatch;
 
 namespace Zlink.Framework.UnitTests;
 
@@ -203,9 +204,9 @@ public sealed class StreamSessionForcedCleanupTests
         try
         {
             node.Start();
-            for (var attempt = 0; attempt < 200 && monitor.EmptyPollCount == 0; attempt++)
+            for (var attempt = 0; attempt < 200 && monitor.WaitCount == 0; attempt++)
                 await Task.Delay(5);
-            Assert.True(monitor.EmptyPollCount > 0);
+            Assert.True(monitor.WaitCount > 0);
             monitor.Emit(new ZLinkBackendSocketMonitorEvent(
                 ZLinkSocketNativeEventType.ConnectionReady,
                 first,
@@ -316,6 +317,318 @@ public sealed class StreamSessionForcedCleanupTests
         }
         finally
         {
+            await node.DisposeAsync();
+            await runner.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Malformed_stream_frame_disconnects_only_the_offending_peer()
+    {
+        var registration = new ZLinkFrameworkRegistration();
+        var lifetime = new SessionOrderingLifetime();
+        ZLinkFrameworkRuntime runtime = null!;
+        var services = new ServiceCollection()
+            .AddSingleton(registration)
+            .AddSingleton(lifetime)
+            .AddSingleton(_ => runtime);
+        await using var provider = services.BuildServiceProvider();
+        runtime = CreateRuntime(provider, registration);
+        var socket = new TestStreamSocket();
+        var monitor = new TestSocketMonitor();
+        var runner = new ZLinkRuntimeTaskRunner(
+            new ZLinkRuntimeErrorSink(),
+            CancellationToken.None,
+            runtime.ExecutionOwner);
+        var node = new ZLinkStreamNodeRuntime(
+            "malformed-peer",
+            provider,
+            socket,
+            monitor,
+            typeof(SessionOrderingSession),
+            runner,
+            "test");
+        var badPeer = RoutingId.From("malformed-peer");
+        var goodPeer = RoutingId.From("good-peer");
+        try
+        {
+            node.Start();
+            socket.EnqueueRawPart(
+                badPeer,
+                [0, 0, 0xff, 0xff, 0xff, 0xff]);
+            await socket.DisconnectStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+            monitor.Emit(new ZLinkBackendSocketMonitorEvent(
+                ZLinkSocketNativeEventType.ConnectionReady,
+                goodPeer,
+                "local-good",
+                "remote-good",
+                0));
+            EmitJson(socket, goodPeer, new SessionOrderingMessage());
+
+            await lifetime.WaitDispatchCompletedAsync(goodPeer);
+            Assert.Equal(1, socket.DisconnectCount);
+            Assert.Equal(
+                new[] { "connected", "dispatch-start", "dispatch-end" },
+                lifetime.Events(goodPeer));
+        }
+        finally
+        {
+            await node.DisposeAsync();
+            await runner.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Unidentified_stream_part_does_not_stop_ingress_for_other_peers()
+    {
+        var registration = new ZLinkFrameworkRegistration();
+        var lifetime = new SessionOrderingLifetime();
+        ZLinkFrameworkRuntime runtime = null!;
+        var services = new ServiceCollection()
+            .AddSingleton(registration)
+            .AddSingleton(lifetime)
+            .AddSingleton(_ => runtime);
+        await using var provider = services.BuildServiceProvider();
+        runtime = CreateRuntime(provider, registration);
+        var socket = new TestStreamSocket();
+        var monitor = new TestSocketMonitor();
+        var runner = new ZLinkRuntimeTaskRunner(
+            new ZLinkRuntimeErrorSink(),
+            CancellationToken.None,
+            runtime.ExecutionOwner);
+        var node = new ZLinkStreamNodeRuntime(
+            "unidentified-part",
+            provider,
+            socket,
+            monitor,
+            typeof(SessionOrderingSession),
+            runner,
+            "test");
+        var goodPeer = RoutingId.From("good-peer-after-unidentified-part");
+        try
+        {
+            node.Start();
+            socket.EnqueueUnidentifiedRawPart([0, 0, 0xff]);
+            await socket.UnidentifiedPartConsumed.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+
+            monitor.Emit(new ZLinkBackendSocketMonitorEvent(
+                ZLinkSocketNativeEventType.ConnectionReady,
+                goodPeer,
+                "local-good",
+                "remote-good",
+                0));
+            EmitJson(socket, goodPeer, new SessionOrderingMessage());
+
+            await lifetime.WaitDispatchCompletedAsync(goodPeer);
+            Assert.Equal(0, socket.DisconnectCount);
+        }
+        finally
+        {
+            await node.DisposeAsync();
+            await runner.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Stream_receive_reassembles_a_frame_across_multipart_parts()
+    {
+        var registration = new ZLinkFrameworkRegistration();
+        var lifetime = new SessionOrderingLifetime();
+        ZLinkFrameworkRuntime runtime = null!;
+        var services = new ServiceCollection()
+            .AddSingleton(registration)
+            .AddSingleton(lifetime)
+            .AddSingleton(_ => runtime);
+        await using var provider = services.BuildServiceProvider();
+        runtime = CreateRuntime(provider, registration);
+        var socket = new TestStreamSocket();
+        var monitor = new TestSocketMonitor();
+        var runner = new ZLinkRuntimeTaskRunner(
+            new ZLinkRuntimeErrorSink(),
+            CancellationToken.None,
+            runtime.ExecutionOwner);
+        var node = new ZLinkStreamNodeRuntime(
+            "multipart-stream",
+            provider,
+            socket,
+            monitor,
+            typeof(SessionOrderingSession),
+            runner,
+            "test");
+        var routingId = RoutingId.From("multipart-peer");
+        try
+        {
+            node.Start();
+            monitor.Emit(new ZLinkBackendSocketMonitorEvent(
+                ZLinkSocketNativeEventType.ConnectionReady,
+                routingId,
+                "local",
+                "remote",
+                0));
+            var encoded = ZLinkStreamFrameCodec.Encode(
+                ZLinkStreamProtocolDefaults.EncodeHeader(
+                    new ZlinkStreamHeader(
+                        ZlinkStreamMessageKind.Send,
+                        ZlinkStreamCodec.Json,
+                        ZlinkStreamHeaderFlags.None,
+                        null,
+                        nameof(SessionOrderingMessage),
+                        ZlinkStreamMetadata.Empty)).Span,
+                ZLinkStreamPacketPayloadCodec.EncodeJson(
+                    new SessionOrderingMessage(),
+                    typeof(SessionOrderingMessage)));
+            socket.EnqueueRawPart(routingId, encoded.AsSpan(0, 3), hasMore: true);
+            socket.EnqueueRawPart(routingId, encoded.AsSpan(3), hasMore: false);
+
+            await lifetime.WaitDispatchCompletedAsync(routingId);
+            Assert.Equal(0, socket.DisconnectCount);
+        }
+        finally
+        {
+            await node.DisposeAsync();
+            await runner.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Stream_receive_stops_before_next_recv_when_application_hwm_is_paused()
+    {
+        var registration = new ZLinkFrameworkRegistration();
+        var lifetime = new SessionOrderingLifetime();
+        var budget = new ZLinkInboundDispatchBudget(1);
+        ZLinkFrameworkRuntime runtime = null!;
+        var services = new ServiceCollection()
+            .AddSingleton(registration)
+            .AddSingleton(lifetime)
+            .AddSingleton(_ => runtime);
+        await using var provider = services.BuildServiceProvider();
+        runtime = CreateRuntime(provider, registration);
+        var socket = new TestStreamSocket();
+        var monitor = new TestSocketMonitor();
+        var runner = new ZLinkRuntimeTaskRunner(
+            new ZLinkRuntimeErrorSink(),
+            CancellationToken.None,
+            runtime.ExecutionOwner);
+        var node = new ZLinkStreamNodeRuntime(
+            "stream-hwm-recv",
+            provider,
+            socket,
+            monitor,
+            typeof(SessionOrderingSession),
+            runner,
+            "test",
+            inboundDispatchBudget: budget);
+        var routingId = RoutingId.From("session-a");
+        try
+        {
+            node.Start();
+            monitor.Emit(new ZLinkBackendSocketMonitorEvent(
+                ZLinkSocketNativeEventType.ConnectionReady,
+                routingId,
+                "local",
+                "remote",
+                0));
+            EmitJson(socket, routingId, new SessionOrderingMessage());
+            // Queue a second raw part before the first handler releases. The
+            // receive batch must stop at the HWM instead of pulling it too.
+            EmitJson(socket, routingId, new SessionOrderingMessage());
+            await lifetime.WaitDispatchStartedAsync(routingId);
+            Assert.False(budget.CanStartApplicationReceive);
+
+            var receivedBeforePausedSend = socket.RecvPartCount;
+            await Task.Delay(100);
+            Assert.Equal(receivedBeforePausedSend, socket.RecvPartCount);
+
+            lifetime.ReleaseFirst.TrySetResult();
+            await WaitUntilAsync(() => socket.RecvPartCount > receivedBeforePausedSend);
+            await WaitUntilAsync(
+                () => lifetime.Events(routingId)
+                    .Count(static value => value == "dispatch-end") >= 2);
+        }
+        finally
+        {
+            lifetime.ReleaseFirst.TrySetResult();
+            await node.DisposeAsync();
+            await runner.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Stream_receive_finishes_active_multipart_after_hwm_fills_at_batch_boundary()
+    {
+        var registration = new ZLinkFrameworkRegistration();
+        var lifetime = new SessionOrderingLifetime();
+        var budget = new ZLinkInboundDispatchBudget(1);
+        ZLinkFrameworkRuntime runtime = null!;
+        var services = new ServiceCollection()
+            .AddSingleton(registration)
+            .AddSingleton(lifetime)
+            .AddSingleton(_ => runtime);
+        await using var provider = services.BuildServiceProvider();
+        runtime = CreateRuntime(provider, registration);
+        var socket = new TestStreamSocket();
+        var monitor = new TestSocketMonitor();
+        var runner = new ZLinkRuntimeTaskRunner(
+            new ZLinkRuntimeErrorSink(),
+            CancellationToken.None,
+            runtime.ExecutionOwner);
+        var node = new ZLinkStreamNodeRuntime(
+            "stream-hwm-multipart-batch",
+            provider,
+            socket,
+            monitor,
+            typeof(SessionOrderingSession),
+            runner,
+            "test",
+            inboundDispatchBudget: budget);
+        var routingId = RoutingId.From("session-a");
+        try
+        {
+            var firstFrame = EncodeJsonFrame(new SessionOrderingMessage());
+            var secondFrame = EncodeJsonFrame(new SessionOrderingMessage());
+            var thirdFrame = EncodeJsonFrame(new SessionOrderingMessage());
+            var firstPart = new byte[firstFrame.Length + 1];
+            firstFrame.CopyTo(firstPart, 0);
+            secondFrame.AsSpan(0, 1).CopyTo(firstPart.AsSpan(firstFrame.Length));
+
+            node.Start();
+            monitor.Emit(new ZLinkBackendSocketMonitorEvent(
+                ZLinkSocketNativeEventType.ConnectionReady,
+                routingId,
+                "local",
+                "remote",
+                0));
+            socket.EnqueueRawPart(routingId, firstPart, hasMore: true);
+            for (var part = 1; part < 64; part++)
+                socket.EnqueueRawPart(routingId, [], hasMore: true);
+
+            await WaitUntilAsync(() => socket.DequeuedPartCount >= 1);
+            await lifetime.WaitDispatchStartedAsync(routingId);
+            await WaitUntilAsync(() => socket.DequeuedPartCount >= 64);
+            Assert.Equal(64, socket.DequeuedPartCount);
+            Assert.False(budget.CanStartApplicationReceive);
+
+            socket.EnqueueRawPart(routingId, secondFrame.AsSpan(1), hasMore: false);
+            socket.EnqueueRawPart(routingId, thirdFrame, hasMore: false);
+            await WaitUntilAsync(() => socket.DequeuedPartCount >= 65);
+            Assert.Equal(65, socket.DequeuedPartCount);
+            var dequeuedBeforePausedSend = socket.DequeuedPartCount;
+            await Task.Delay(100);
+            Assert.Equal(dequeuedBeforePausedSend, socket.DequeuedPartCount);
+            Assert.Equal(
+                1,
+                lifetime.Events(routingId).Count(static value => value == "dispatch-start"));
+
+            lifetime.ReleaseFirst.TrySetResult();
+            await WaitUntilAsync(
+                () => lifetime.Events(routingId)
+                    .Count(static value => value == "dispatch-end") >= 2);
+        }
+        finally
+        {
+            lifetime.ReleaseFirst.TrySetResult();
             await node.DisposeAsync();
             await runner.StopAsync();
         }
@@ -918,6 +1231,16 @@ public sealed class StreamSessionForcedCleanupTests
         Assert.Same(marker, await Task.WhenAny(task, marker));
     }
 
+    private static async Task WaitUntilAsync(Func<bool> predicate)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+        while (!predicate())
+        {
+            Assert.True(DateTime.UtcNow < deadline);
+            await Task.Delay(5);
+        }
+    }
+
     private static ZlinkStreamHeader DecodeStreamHeader(byte[] frame)
     {
         Assert.True(ZLinkStreamFrameCodec.TryDecode(frame, out var headerBytes, out _));
@@ -986,6 +1309,20 @@ public sealed class StreamSessionForcedCleanupTests
             routingId,
             Message.From(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span),
             Message.From(ZLinkStreamPacketPayloadCodec.EncodeJson(message, typeof(TMessage))));
+    }
+
+    private static byte[] EncodeJsonFrame<TMessage>(TMessage message)
+    {
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Send,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.None,
+            null,
+            typeof(TMessage).Name,
+            ZlinkStreamMetadata.Empty);
+        return ZLinkStreamFrameCodec.Encode(
+            ZLinkStreamProtocolDefaults.EncodeHeader(header).Span,
+            ZLinkStreamPacketPayloadCodec.EncodeJson(message, typeof(TMessage)));
     }
 
     private sealed class BlockingSession(
@@ -1547,8 +1884,14 @@ public sealed class StreamSessionForcedCleanupTests
 
     private sealed class TestStreamSocket : IZLinkBackendStreamSocket
     {
-        private Action<RoutingId, Message, Message>? _handler;
-
+        private readonly System.Collections.Concurrent.ConcurrentQueue<(
+            RoutingId? RoutingId,
+            Message Part,
+            bool HasMore)>
+            _receivedParts = new();
+        private readonly AutoResetEvent _receiveSignal = new(false);
+        private int _recvPartCount;
+        private int _dequeuedPartCount;
         public bool BlockDisconnect { get; init; }
         public bool BlockDispose { get; init; }
         public Exception? DisposeFailure { get; init; }
@@ -1568,25 +1911,83 @@ public sealed class StreamSessionForcedCleanupTests
         public TaskCompletionSource<byte[]> SentFrame { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        public TaskCompletionSource UnidentifiedPartConsumed { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int RecvPartCount => Volatile.Read(ref _recvPartCount);
+
+        public int DequeuedPartCount => Volatile.Read(ref _dequeuedPartCount);
+
         public void Bind(string endpoint) { }
 
         public void SetChannelName(string channelName) { }
 
         public void SetTlsServer(string certPath, string keyPath, bool requireClientCert) { }
 
-        public void OnFramedPacket(Action<RoutingId, Message, Message> handler)
+        public void OnSendReady(Action handler) { }
+
+        public IZLinkBackendSocketPoller CreateReceivePoller() =>
+            new TestStreamSocketPoller(
+                () => !_receivedParts.IsEmpty,
+                _receiveSignal);
+
+        public bool RecvPart(
+            out RoutingId? sourceRoutingId,
+            out Message? part,
+            out bool hasMore,
+            RecvFlags flags = RecvFlags.None)
         {
-            _handler = handler;
+            Interlocked.Increment(ref _recvPartCount);
+            if (_receivedParts.TryDequeue(out var received))
+            {
+                Interlocked.Increment(ref _dequeuedPartCount);
+                if (_receivedParts.IsEmpty)
+                    _receiveSignal.Reset();
+                sourceRoutingId = received.RoutingId;
+                if (received.RoutingId is null)
+                    UnidentifiedPartConsumed.TrySetResult();
+                part = received.Part;
+                hasMore = received.HasMore;
+                return true;
+            }
+
+            sourceRoutingId = null;
+            part = null;
+            hasMore = false;
+            return false;
         }
 
-        public void OnSendReady(Action handler) { }
+        public void EnqueueRawPart(
+            RoutingId routingId,
+            ReadOnlySpan<byte> bytes,
+            bool hasMore = false) =>
+            EnqueuePart(routingId, Message.From(bytes), hasMore);
+
+        public void EnqueueUnidentifiedRawPart(ReadOnlySpan<byte> bytes) =>
+            EnqueuePart(null, Message.From(bytes), false);
+
+        private void EnqueuePart(
+            RoutingId? routingId,
+            Message part,
+            bool hasMore)
+        {
+            _receivedParts.Enqueue((routingId, part, hasMore));
+            _receiveSignal.Set();
+        }
 
         public void Emit(RoutingId routingId, Message header, Message payload)
         {
-            (_handler ?? throw new InvalidOperationException("Stream packet handler is not registered."))(
-                routingId,
-                header,
-                payload);
+            try
+            {
+                var frame = ZLinkStreamFrameCodec.Encode(
+                    header.AsReadOnlySpan(), payload.AsReadOnlySpan());
+                EnqueuePart(routingId, Message.From(frame), false);
+            }
+            finally
+            {
+                header.Dispose();
+                payload.Dispose();
+            }
         }
 
         public bool Send(RoutingId routingId, Message payload, SendFlags flags)
@@ -1629,22 +2030,55 @@ public sealed class StreamSessionForcedCleanupTests
             Interlocked.Increment(ref _disposeCount);
             DisposeStarted.TrySetResult();
             if (BlockDispose) await AllowDispose.Task.ConfigureAwait(false);
+            while (_receivedParts.TryDequeue(out var received))
+                received.Part.Dispose();
+            _receiveSignal.Set();
             if (DisposeFailure is not null)
                 System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(DisposeFailure).Throw();
         }
     }
 
+    private sealed class TestStreamSocketPoller(
+        Func<bool> isReadable,
+        AutoResetEvent signal) : IZLinkBackendSocketPoller
+    {
+        public PollEventFlags Wait(TimeSpan timeout)
+        {
+            if (!isReadable() && timeout > TimeSpan.Zero)
+                signal.WaitOne(timeout);
+            return isReadable() ? PollEventFlags.PollIn : PollEventFlags.None;
+        }
+
+        public void Dispose() => signal.Set();
+    }
+
     private sealed class TestSocketMonitor : IZLinkBackendSocketMonitor
     {
         private readonly System.Collections.Concurrent.ConcurrentQueue<ZLinkBackendSocketMonitorEvent> _events = new();
+        private readonly AutoResetEvent _eventSignal = new(false);
+        private int _waitCount;
         private int _emptyPollCount;
         private int _receivedCount;
 
+        public int WaitCount => Volatile.Read(ref _waitCount);
+
         public int EmptyPollCount => Volatile.Read(ref _emptyPollCount);
+
+        public bool Wait(TimeSpan timeout)
+        {
+            Interlocked.Increment(ref _waitCount);
+            if (_events.IsEmpty && timeout > TimeSpan.Zero)
+                _eventSignal.WaitOne(timeout);
+            return !_events.IsEmpty;
+        }
 
         public void OnEvent(Action<ZLinkBackendSocketMonitorEvent> handler) { }
 
-        public void Emit(ZLinkBackendSocketMonitorEvent monitorEvent) => _events.Enqueue(monitorEvent);
+        public void Emit(ZLinkBackendSocketMonitorEvent monitorEvent)
+        {
+            _events.Enqueue(monitorEvent);
+            _eventSignal.Set();
+        }
 
         public async Task WaitReceivedAsync(int count)
         {
@@ -1657,6 +2091,8 @@ public sealed class StreamSessionForcedCleanupTests
         {
             if (_events.TryDequeue(out monitorEvent))
             {
+                if (_events.IsEmpty)
+                    _eventSignal.Reset();
                 Interlocked.Increment(ref _receivedCount);
                 return true;
             }
@@ -1664,6 +2100,10 @@ public sealed class StreamSessionForcedCleanupTests
             return false;
         }
 
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public ValueTask DisposeAsync()
+        {
+            _eventSignal.Set();
+            return ValueTask.CompletedTask;
+        }
     }
 }

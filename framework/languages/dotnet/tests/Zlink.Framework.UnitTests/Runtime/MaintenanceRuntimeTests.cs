@@ -215,6 +215,38 @@ public sealed class MaintenanceRuntimeTests
     }
 
     [Fact]
+    public async Task Observe_preserves_transient_blocked_relocation_result()
+    {
+        using var fixture = Create(
+            static (_, _, _) => ValueTask.FromResult<ZLinkFrameworkRelocationReason?>(
+                ZLinkFrameworkRelocationReason.TargetUnavailable));
+        fixture.Runtime.MarkServing();
+        await using var observer = fixture.Runtime.ObserveAsync().GetAsyncEnumerator();
+
+        Assert.True(await observer.MoveNextAsync());
+        var relocation = fixture.Runtime.RelocateAsync(
+            new ZLinkFrameworkRelocationOptions
+            {
+                Mode = ZLinkFrameworkRelocationMode.PlannedMaintenance
+            });
+
+        ZLinkFrameworkRuntimeStatus terminal;
+        do
+        {
+            Assert.True(await observer.MoveNextAsync());
+            terminal = observer.Current;
+        }
+        while (terminal.RelocationResult is null);
+
+        var result = await relocation;
+        Assert.Equal(ZLinkFrameworkRelocationReason.TargetUnavailable, result.Reason);
+        Assert.Equal(ZLinkFrameworkRuntimeState.Serving, fixture.Runtime.Status.State);
+        Assert.Null(fixture.Runtime.Status.RelocationResult);
+        Assert.Equal(result, terminal.RelocationResult);
+        Assert.True(terminal.Sequence > 0);
+    }
+
+    [Fact]
     public async Task Relocated_runtime_replays_the_first_terminal_result_for_every_intent()
     {
         using var fixture = Create(sourceApplicationVersion: 7);

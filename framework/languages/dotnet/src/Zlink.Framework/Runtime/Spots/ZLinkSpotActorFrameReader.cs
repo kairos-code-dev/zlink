@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Dispatch;
+
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotActorFrame(
@@ -78,7 +80,8 @@ internal sealed class ZLinkSpotActorFrame(
 
 internal sealed class ZLinkSpotActorFrameBatch(
     IReadOnlyList<ZLinkSpotActorFrame> frames,
-    Action? completion = null) : IDisposable
+    Action? completion = null,
+    ZLinkInboundDispatchLease? inboundDispatchLease = null) : IDisposable
 {
     private int _disposed;
 
@@ -87,7 +90,7 @@ internal sealed class ZLinkSpotActorFrameBatch(
     public ZLinkSpotActorFrame this[int index] => frames[index];
 
     public ZLinkSpotActorFrameBatch WithCompletion(Action onCompleted) =>
-        new(frames, onCompleted);
+        new(frames, onCompleted, inboundDispatchLease);
 
     public void Dispose()
     {
@@ -99,7 +102,14 @@ internal sealed class ZLinkSpotActorFrameBatch(
         }
         finally
         {
-            completion?.Invoke();
+            try
+            {
+                completion?.Invoke();
+            }
+            finally
+            {
+                inboundDispatchLease?.Dispose();
+            }
         }
     }
 }

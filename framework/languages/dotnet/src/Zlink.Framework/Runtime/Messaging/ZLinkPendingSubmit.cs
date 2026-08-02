@@ -169,11 +169,9 @@ internal sealed class PendingSubmit : IDisposable
 
     private static Exception CreateCommandDeadlineException(Exception? lastSubmitFailure)
     {
-        return lastSubmitFailure is null
-            ? new TimeoutException("ZLink async submit timed out before the socket became writable.")
-            : new TimeoutException(
-                "ZLink async submit timed out before the socket became writable.",
-                lastSubmitFailure);
+        return ZLinkRequestFailureMapper.CreateSubmitTimeoutException(
+            lastSubmitFailure,
+            "ZLink async submit");
     }
 
     private void RegisterCancellation(CancellationToken cancellationToken, CancellationToken stopToken)

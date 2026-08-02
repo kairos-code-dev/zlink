@@ -1668,6 +1668,7 @@ final class ZLinkJavaRawSpotNode
             return false;
         }
         List<Message> copied = ZLinkJavaRawSpot.copy(parts);
+        String contentType = ZLinkChannelContentTypeFrame.decode(parts);
         byte[] acceptedRecord = owner.encodeLocalActorAccepted(
             actor,
             sourceNodeRid,
@@ -1690,7 +1691,9 @@ final class ZLinkJavaRawSpotNode
                 index + 1 < copied.size(),
                 index == 0
                     ? acceptedRecord
-                    : new byte[0]));
+                    : new byte[0],
+                contentType,
+                null));
         }
         target.enqueueActor(messages);
         return true;

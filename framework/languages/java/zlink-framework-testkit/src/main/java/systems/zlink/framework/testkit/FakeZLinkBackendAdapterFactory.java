@@ -1540,6 +1540,9 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             record("setTlsServer." + certificatePath + "." + keyPath + "."
                 + requireClientCertificate);
         }
+        @Override public void setMaxMessageSize(long value) {
+            record("setMaxMessageSize." + value);
+        }
         @Override public void enableNotifications() { record("enableNotifications"); }
         @Override public boolean waitForReadable(Duration timeout) {
             try {

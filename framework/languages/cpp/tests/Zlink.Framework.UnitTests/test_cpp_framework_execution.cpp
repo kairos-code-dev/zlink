@@ -11,6 +11,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <exception>
 #include <functional>
 #include <iostream>
@@ -1148,6 +1149,80 @@ int main ()
                 != std::vector<std::string>{"after-source-close"}) {
                 return 39;
             }
+        }
+    }
+
+    {
+        zlink::framework::runtime::offload_executor_t bounded_executor (1);
+        std::mutex state_mutex;
+        std::condition_variable state_changed;
+        bool entered = false;
+        if (!bounded_executor.try_submit_cancellable (
+              [&] (std::stop_token token) {
+                  std::unique_lock lock (state_mutex);
+                  entered = true;
+                  state_changed.notify_all ();
+                  std::stop_callback notify_stop (token, [&] {
+                      state_changed.notify_all ();
+                  });
+                  state_changed.wait (lock, [&] {
+                      return token.stop_requested ();
+                  });
+              })) {
+            return 46;
+        }
+        {
+            std::unique_lock lock (state_mutex);
+            if (!state_changed.wait_for (
+                  lock, std::chrono::seconds (1), [&] { return entered; })) {
+                return 47;
+            }
+        }
+        if (!bounded_executor.drain_until (
+              std::chrono::steady_clock::now () + std::chrono::milliseconds (250))) {
+            return 48;
+        }
+        if (!bounded_executor.drained ()
+            || bounded_executor.live_worker_count () != 0) {
+            return 49;
+        }
+    }
+
+    {
+        zlink::framework::runtime::offload_executor_t bounded_executor (1);
+        std::mutex state_mutex;
+        std::condition_variable state_changed;
+        bool entered = false;
+        bool release = false;
+        if (!bounded_executor.try_submit_cancellable (
+              [&] (std::stop_token) {
+                  std::unique_lock lock (state_mutex);
+                  entered = true;
+                  state_changed.notify_all ();
+                  state_changed.wait (lock, [&] { return release; });
+              })) {
+            return 50;
+        }
+        {
+            std::unique_lock lock (state_mutex);
+            if (!state_changed.wait_for (
+                  lock, std::chrono::seconds (1), [&] { return entered; })) {
+                return 51;
+            }
+        }
+        if (bounded_executor.drain_until (
+              std::chrono::steady_clock::now () + std::chrono::milliseconds (20))) {
+            return 52;
+        }
+        {
+            std::lock_guard lock (state_mutex);
+            release = true;
+        }
+        state_changed.notify_all ();
+        bounded_executor.drain ();
+        if (!bounded_executor.drained ()
+            || bounded_executor.live_worker_count () != 0) {
+            return 53;
         }
     }
 

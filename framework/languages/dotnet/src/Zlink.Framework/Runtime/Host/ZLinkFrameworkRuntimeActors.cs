@@ -551,15 +551,11 @@ internal sealed partial class ZLinkFrameworkRuntime
                     .ConfigureAwait(false);
                 if (!import.Owned)
                 {
-                    if (!actorState.Handoff.IsAuthorityCommitted(request.HandoffId))
-                        return await import.Preparation.WaitAsync(cancellationToken).ConfigureAwait(false);
-                    return await CompleteCommittedActorJoinTargetAsync(
-                            target,
-                            actorState,
-                            request,
-                            spotId,
-                            import.Preparation,
-                            cancellationToken)
+                    // A duplicate admission request only observes the
+                    // already published preparation. It must not run the
+                    // target lifecycle before source cutover; that work belongs
+                    // to the separate completion request.
+                    return await import.Preparation.WaitAsync(cancellationToken)
                         .ConfigureAwait(false);
                 }
                 ownsImport = true;
@@ -635,14 +631,16 @@ internal sealed partial class ZLinkFrameworkRuntime
                     committedAuthority.OwnerLeaseGeneration);
                 authorityCommitted = true;
                 SchedulePublishedActorRelocationRecovery(durableEnvelope);
-                return await CompleteCommittedActorJoinTargetAsync(
-                        target,
-                        actorState,
-                        request,
-                        spotId,
-                        import.Preparation,
-                        cancellationToken)
-                    .ConfigureAwait(false);
+                var reply = ZLinkRemoteActorJoinPackets.CreateJoinReply(true, actorRef);
+                _actorHandoffAdmissions.RecordJoinOutcome(
+                    request,
+                    spotId,
+                    reply,
+                    Registration.DefaultRequestTimeout);
+                actorState.Handoff.AcceptCommittedPreparation(
+                    request.HandoffId,
+                    reply);
+                return reply;
             }
             catch (Exception commitFailure)
             {
@@ -694,44 +692,6 @@ internal sealed partial class ZLinkFrameworkRuntime
                     $"Actor '{request.ActorId}' handoff commit was rejected.",
                     commitFailure);
             }
-        }
-    }
-
-    private async ValueTask<ZLinkRemoteActorJoinReply> CompleteCommittedActorJoinTargetAsync(
-        ActorHandoffTarget target,
-        ZLinkActorRuntimeState actorState,
-        ZLinkRemoteActorJoinRequest request,
-        string spotId,
-        Task<ZLinkRemoteActorJoinReply> preparation,
-        CancellationToken cancellationToken)
-    {
-        if (!actorState.Handoff.TryBeginJoinedNotification(request.HandoffId))
-            return await preparation.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-        try
-        {
-            await CompleteTransferredActorTargetAsync(
-                    target,
-                    actorState,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            var actorRef = actorState.NativeActorRef
-                           ?? throw new ZLinkFrameworkException(
-                               ZLinkFrameworkErrorKind.NotFound,
-                               $"Actor '{request.ActorId}' does not have a native Actor ref.");
-            var reply = ZLinkRemoteActorJoinPackets.CreateJoinReply(true, actorRef);
-            _actorHandoffAdmissions.RecordJoinOutcome(
-                request,
-                spotId,
-                reply,
-                Registration.DefaultRequestTimeout);
-            actorState.Handoff.AcceptPreparation(request.HandoffId, reply);
-            return reply;
-        }
-        catch
-        {
-            actorState.Handoff.RetryJoinedNotification(request.HandoffId);
-            throw;
         }
     }
 
@@ -868,7 +828,38 @@ internal sealed partial class ZLinkFrameworkRuntime
                     committedAuthority.OwnerLeaseGeneration);
             }
             // Import while target admission remains closed. Application
-            // dispatch starts only after the Join completion callback succeeds.
+            // dispatch starts only after the target joined callback and Join
+            // completion callback succeed.
+            try
+            {
+                await CompleteTransferredActorTargetLifecycleAsync(
+                        target,
+                        actorState,
+                        request.HandoffId,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception lifecycleFailure)
+            {
+                // Authority has already moved. A target lifecycle failure is
+                // therefore terminal at the target and must not make the
+                // source reopen or roll back its old membership.
+                await DeliverFailedTransferredActorJoinAsync(
+                        actorState,
+                        request,
+                        lifecycleFailure,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (ownsRecordedCompletion)
+                {
+                    _actorHandoffAdmissions.RecordCompletion(request, spotId);
+                    _actorHandoffAdmissions.Complete(request.HandoffId);
+                }
+                LogActorHandoff(
+                    $"handoff_completion_failed_after_commit actor={request.ActorId} "
+                    + $"kind={MapPostCommitActorJoinFailure(lifecycleFailure)}");
+                return;
+            }
             actorState.Handoff.PrepareImportedReplay(request.Frames);
             (ZLinkSessionRouteCommitRequest Request, RoutingId SessionOwnerNode)?
                 sessionRouteCommit = null;
@@ -2418,23 +2409,106 @@ internal sealed partial class ZLinkFrameworkRuntime
         }
     }
 
-    private async ValueTask CompleteTransferredActorTargetAsync(
+    private async ValueTask CompleteTransferredActorTargetLifecycleAsync(
         ActorHandoffTarget target,
         ZLinkActorRuntimeState actorState,
+        string handoffId,
         CancellationToken cancellationToken)
     {
         if (target.UserSpot is { } userSpot)
         {
-            await userSpot.CompleteTransferredActorJoinAsync(actorState, cancellationToken)
+            await userSpot.CompleteTransferredActorJoinLifecycleAsync(
+                    actorState,
+                    handoffId,
+                    cancellationToken)
                 .ConfigureAwait(false);
             return;
         }
 
-        _ = actorState.Actor
-            ?? throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.NotFound,
-                $"Actor '{actorState.ActorId}' has no transferred instance at commit.");
+        if (target.EntrySpot is not null)
+        {
+            var state = _state
+                        ?? throw new ZLinkFrameworkException(
+                            ZLinkFrameworkErrorKind.InvalidOperation,
+                            "Framework runtime state is not available during Actor Join completion.");
+            var actor = actorState.Actor
+                        ?? throw new ZLinkFrameworkException(
+                            ZLinkFrameworkErrorKind.NotFound,
+                            $"Actor '{actorState.ActorId}' has no transferred instance at commit.");
+            if (!actorState.Handoff.TryBeginJoinedNotification(handoffId)) return;
+            try
+            {
+                await _spots.EntrySpotActors.NotifyJoinedForRelocationAsync(
+                        state,
+                        actor,
+                        target.NodeRid,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                actorState.Handoff.CompleteJoinedNotification(handoffId);
+            }
+            catch
+            {
+                actorState.Handoff.RetryJoinedNotification(handoffId);
+                throw;
+            }
+            return;
+        }
+
+        throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.NotFound,
+            $"Actor '{actorState.ActorId}' has no active handoff target.");
     }
+
+    private async ValueTask DeliverFailedTransferredActorJoinAsync(
+        ZLinkActorRuntimeState actorState,
+        ZLinkRemoteActorHandoffCompletionRequest request,
+        Exception failure,
+        CancellationToken cancellationToken)
+    {
+        if (!actorState.Handoff.FailJoinedNotification(request.HandoffId)) return;
+        if (request.OperationIdHigh == 0 && request.OperationIdLow == 0) return;
+
+        var actor = actorState.Actor
+                    ?? throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.NotFound,
+                        $"Actor '{request.ActorId}' has no transferred instance for failure completion.");
+        var actorRef = actorState.NativeActorRef
+                       ?? throw new ZLinkFrameworkException(
+                           ZLinkFrameworkErrorKind.NotFound,
+                           $"Actor '{request.ActorId}' has no current reference for failure completion.");
+        var kind = MapPostCommitActorJoinFailure(failure);
+        try
+        {
+            await actorState.ExecuteRelocationCompletionAsync(
+                    actorRef.Generation,
+                    token => actor.OnJoinCompletedAsync(
+                        new ZLinkActorJoinCompletion.Failed(
+                            new ZLinkActorJoinOperationId(
+                                request.OperationIdHigh,
+                                request.OperationIdLow),
+                            kind),
+                        token),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception deliveryFailure)
+        {
+            ZLinkFrameworkDebugLog.TaskFailure(
+                "actor-target-failed-completion",
+                deliveryFailure);
+        }
+    }
+
+    private ZLinkFrameworkErrorKind MapPostCommitActorJoinFailure(
+        Exception failure) =>
+        failure switch
+        {
+            ZLinkFrameworkException framework => framework.Kind,
+            OperationCanceledException when ShutdownToken.IsCancellationRequested
+                => ZLinkFrameworkErrorKind.ShuttingDown,
+            TimeoutException => ZLinkFrameworkErrorKind.DeadlineExceeded,
+            _ => ZLinkFrameworkErrorKind.InternalFailure
+        };
 
     private async ValueTask ReplayTransferredActorHandoffAsync(
         ActorHandoffTarget target,
@@ -2727,6 +2801,18 @@ internal sealed partial class ZLinkFrameworkRuntime
             || sessionNodeRid.IsEmpty)
             return;
 
+        // A disconnected Session owner has already removed its local binding
+        // during the stream terminal path. There is no remote node to ACK the
+        // owner tombstone after that lifecycle is no longer admitted, so the
+        // replacement must not wait for an unreachable cleanup request. An
+        // admitted exact lifecycle still requires the normal tombstone ACK.
+        var meshNode = GetMeshNodeRuntime(previous.MeshName).Node;
+        if (!HasExactAdmittedNodeLifecycle(
+                meshNode,
+                sessionNodeRid,
+                previous.SessionOwnerNodeGeneration))
+            return;
+
         var request = new ZLinkRemoteSessionOwnerTombstoneRequest(
             actorId,
             actorNodeRid.ToBytes().ToArray(),
@@ -2741,21 +2827,33 @@ internal sealed partial class ZLinkFrameworkRuntime
             previous.SessionOwnerNodeGeneration);
         ZLinkRemoteSessionOwnerTombstoneResponse response;
         var localNodeRid = GetMeshNodeRuntime(previous.MeshName).Node.RoutingId;
-        if (sessionNodeRid == localNodeRid)
+        try
         {
-            response = await TombstoneRemoteSessionOwnerBindingAsync(
-                    request,
-                    actorNodeRid,
-                    cancellationToken)
-                .ConfigureAwait(false);
+            if (sessionNodeRid == localNodeRid)
+            {
+                response = await TombstoneRemoteSessionOwnerBindingAsync(
+                        request,
+                        actorNodeRid,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                response = await Services.GetRequiredService<IZLinkRouteClient>()
+                    .RequestToNode(previous.MeshName, sessionNodeRid, request)
+                    .Timeout(Registration.DefaultRequestTimeout)
+                    .Async<ZLinkRemoteSessionOwnerTombstoneResponse>(cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
-        else
+        catch (ZLinkFrameworkException exception)
+            when (exception.Kind == ZLinkFrameworkErrorKind.NotFound)
         {
-            response = await Services.GetRequiredService<IZLinkRouteClient>()
-                .RequestToNode(previous.MeshName, sessionNodeRid, request)
-                .Timeout(Registration.DefaultRequestTimeout)
-                .Async<ZLinkRemoteSessionOwnerTombstoneResponse>(cancellationToken)
-                .ConfigureAwait(false);
+            // A RouteMesh can lose the old Session owner between the
+            // replacement read and this cleanup request. The disconnected
+            // Session has already discarded its local binding, so an absent
+            // owner is an idempotent terminal cleanup result.
+            return;
         }
         if (!response.Acknowledged)
             throw new ZLinkFrameworkException(

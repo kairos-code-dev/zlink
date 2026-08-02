@@ -466,6 +466,104 @@ public sealed class LocationLifecycleTests
     }
 
     [Fact]
+    public async Task Moved_Actor_Uses_The_Source_Fence_After_Local_Ownership_Is_Lost()
+    {
+        await using var fixture = await LifecycleFixture.CreateAsync();
+        var controlled = new ControlledActorStore(fixture.Store);
+        var nodeA = await fixture.NodeAsync("node-a", controlled);
+        var nodeB = await fixture.NodeAsync("node-b");
+        var deactivated = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await CreateTrackedActorAsync(
+            nodeA,
+            _ =>
+            {
+                deactivated.TrySetResult();
+                return ValueTask.CompletedTask;
+            });
+        var sourceSnapshot = Assert.IsType<ZLinkAuthorityReadResult.Found>(
+            await fixture.Store.ReadAuthorityAsync(
+                ZLinkActorAuthorityPayloadCodec.AuthorityKey(ActorId))).Snapshot;
+        Assert.True(
+            ZLinkActorAuthorityPayloadCodec.TryDecodeRelocating(
+                sourceSnapshot.Payload.Span,
+                out var sourceAuthority));
+        var sourceOwner = new ZLinkLocationOwnerToken(
+            sourceSnapshot.OwnerId,
+            sourceSnapshot.OwnerLeaseGeneration);
+        var targetOwner = nodeB.Runtime.OwnerToken;
+        var capacity = Assert.IsType<ZLinkRelocationCapacityReserveResult.Reserved>(
+            await fixture.Store.ReserveRelocationCapacityAsync(
+                new ZLinkRelocationCapacityReservationRequest(
+                    Guid.NewGuid(),
+                    ZLinkActorAuthorityPayloadCodec.AuthorityKey(ActorId),
+                    sourceSnapshot.StoreVersion,
+                    ZLinkPlacementObjectKind.Actor,
+                    sourceAuthority.StableType,
+                    new ZLinkMeshNodeDescriptorKey(MeshName, nodeA.NodeRid),
+                    1,
+                    sourceOwner,
+                    new ZLinkMeshNodeDescriptorKey(MeshName, nodeB.NodeRid),
+                    1,
+                    targetOwner,
+                    sourceSnapshot.Allocation.Capacity)));
+        var targetPayload = ZLinkActorAuthorityPayloadCodec.Encode(
+            sourceAuthority with
+            {
+                NodeRid = nodeB.NodeRid,
+                NodeGeneration = 1,
+                OwnerId = targetOwner.OwnerId,
+                OwnerLeaseGeneration = checked((ulong)targetOwner.LeaseGeneration)
+            });
+
+        Assert.IsType<ZLinkAuthorityCompareExchangeResult.Stored>(
+            await fixture.Store.CompareExchangeAuthorityAsync(
+                ZLinkActorAuthorityPayloadCodec.AuthorityKey(ActorId),
+                sourceSnapshot.StoreVersion,
+                new ZLinkAuthorityMutation.Put(
+                    targetPayload,
+                    ZLinkAuthorityGenerationTransition.NewOwner,
+                    targetOwner,
+                    capacity.Fence)));
+
+        await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
+            await nodeA.ActorOwnership.NotifyActorJoinedSpotAsync(
+                ActorId, "spot-1", spotGeneration: 1));
+        await deactivated.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(nodeA.ActorOwnership.OwnsActor(ActorId));
+        var currentSnapshot = Assert.IsType<ZLinkAuthorityReadResult.Found>(
+            await fixture.Store.ReadAuthorityAsync(
+                ZLinkActorAuthorityPayloadCodec.AuthorityKey(ActorId))).Snapshot;
+        Assert.True(
+            currentSnapshot.AuthorityOwnerGeneration
+                > sourceSnapshot.AuthorityOwnerGeneration,
+            $"source={sourceSnapshot.AuthorityOwnerGeneration}, current={currentSnapshot.AuthorityOwnerGeneration}");
+        Assert.Equal(sourceSnapshot.ObjectGeneration, currentSnapshot.ObjectGeneration);
+        Assert.True(
+            ZLinkActorAuthorityPayloadCodec.TryDecodeRelocating(
+                currentSnapshot.Payload.Span,
+                out var currentAuthority));
+        Assert.NotEqual(sourceAuthority.NodeRid, currentAuthority.NodeRid);
+        var removeCallsBeforeCleanup = controlled.RemoveCalls;
+
+        // The ownership-loss callback removed local tracking before the
+        // committed handoff cleanup ran. Cleanup must still submit the old
+        // conditional delete and let the Store fence it against node B.
+        await nodeA.ActorOwnership.ReleaseActorAfterMoveAsync(
+            ActorId,
+            sourceSnapshot);
+
+        Assert.True(
+            controlled.RemoveCalls - removeCallsBeforeCleanup == 1,
+            $"before={removeCallsBeforeCleanup}, after={controlled.RemoveCalls}");
+        var row = await nodeB.Resolvers.ResolveActorRowAsync(
+            new ZLinkActorLocationKey(ActorId));
+        Assert.Equal(nodeB.Runtime.OwnerId, row!.OwnerId);
+        Assert.Equal(RoutingId.From("node-b"), row.OwnerNodeRid);
+    }
+
+    [Fact]
     public async Task OwnershipLost_Deactivates_The_Hosted_Actor_Exactly_Once()
     {
         await using var fixture = await LifecycleFixture.CreateAsync();

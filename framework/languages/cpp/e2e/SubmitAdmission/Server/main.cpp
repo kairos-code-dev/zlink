@@ -672,10 +672,10 @@ class submit_admission_stream_session_t final :
 
     zlink::framework::task_t<void> on_packet (
       zlink::framework::stream_t &stream,
-      const zlink::framework::stream_dispatch_context_t &dispatch,
+      const zlink::framework::session_message_context_t &dispatch,
       const zlink::message_t &payload) override
     {
-        const auto packet_name = std::string (dispatch.packet_name ());
+        const auto packet_name = std::string (dispatch.packet_name);
         if (packet_name == "admission-bind-actor") {
             const auto target = payload.parse_json<sa::actor_target_t> ();
             zlink::framework::actor_ref_t ref (
@@ -719,7 +719,7 @@ class submit_admission_stream_session_t final :
             _state.record_reply_race (message.operation_id, std::move (terminals));
             co_return;
         }
-        if (!dispatch.can_reply ()) {
+        if (!dispatch.can_reply) {
             co_return;
         }
         const auto message = payload.parse_json<sa::admission_message_t> ();

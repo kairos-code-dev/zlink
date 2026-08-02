@@ -231,11 +231,11 @@ actor_manager_t detail::actor_manager_access_t::create (
 }
 
 actor_send_call_t::actor_send_call_t (actor_client_t &client,
-                                      actor_ref_t actor_ref,
+                                      actor_id_t actor_id,
                                       std::string packet_name,
                                       message_t message) :
     _client (&client),
-    _actor_ref (std::move (actor_ref)),
+    _actor_id (std::move (actor_id)),
     _packet_name (std::move (packet_name)),
     _message (std::move (message))
 {
@@ -260,19 +260,19 @@ task_t<void> actor_send_call_t::submit ()
           "actor send call is not bound to an actor client"));
     }
     return detail::submit_one_way_task (
-      [client = _client, actor_ref = _actor_ref, packet_name = _packet_name,
+      [client = _client, actor_id = _actor_id, packet_name = _packet_name,
        message = _message, metadata = _metadata] () mutable {
-          return client->send_to_actor_erased (actor_ref, packet_name, message, metadata)
+          return client->send_erased (actor_id, packet_name, message, metadata)
             .result ();
       });
 }
 
 actor_request_call_t::actor_request_call_t (actor_client_t &client,
-                                            actor_ref_t actor_ref,
+                                            actor_id_t actor_id,
                                             std::string packet_name,
                                             message_t request) :
     _client (&client),
-    _actor_ref (std::move (actor_ref)),
+    _actor_id (std::move (actor_id)),
     _packet_name (std::move (packet_name)),
     _request (std::move (request))
 {
@@ -306,16 +306,20 @@ task_t<message_t> actor_request_call_t::start (bool release_turn)
     if (release_turn && !detail::current_serial_turn_allows_yield ()) {
         return detail::unsupported_yield_task<message_t> ();
     }
-    const auto target_key = std::string (_actor_ref.actor_type ())
-                            + ":" + std::string (_actor_ref.actor_id ());
-    if (!runtime::current_actor_execution.actor_key.empty ()
-        && runtime::current_actor_execution.actor_key == target_key) {
-        return task_t<message_t> (result_t<message_t>::failure (
-          framework_error_kind_t::not_configured,
-          "awaited request to the current Actor cannot complete while its FIFO claim is held"));
+    if (!runtime::current_actor_execution.actor_key.empty ()) {
+        const auto separator = runtime::current_actor_execution.actor_key.rfind (':');
+        const auto current_actor_id = separator == std::string::npos
+                                        ? runtime::current_actor_execution.actor_key
+                                        : runtime::current_actor_execution.actor_key.substr (
+                                            separator + 1);
+        if (current_actor_id == _actor_id.value ()) {
+            return task_t<message_t> (result_t<message_t>::failure (
+              framework_error_kind_t::not_configured,
+              "awaited request to the current Actor cannot complete while its FIFO claim is held"));
+        }
     }
-    auto task = _client->request_to_actor_erased (std::move (_actor_ref), std::move (_packet_name),
-                                                  std::move (_request), _timeout, _metadata);
+    auto task = _client->request_erased (std::move (_actor_id), std::move (_packet_name),
+                                         std::move (_request), _timeout, _metadata);
     auto turn_plan = detail::prepare_serial_turn_await (release_turn);
     if (!turn_plan) {
         return task;
@@ -377,38 +381,18 @@ class actor_client_impl_t final : public actor_client_t
     }
 
   protected:
-    task_t<void> send_to_actor_erased (actor_ref_t actor_ref,
-                                       std::string packet_name,
-                                       message_t message,
-                                       const actor_send_call_t::metadata_map_t &metadata) override
+    task_t<void> send_erased (actor_id_t actor_id,
+                              std::string packet_name,
+                              message_t message,
+                              const actor_send_call_t::metadata_map_t &metadata) override
     {
-        auto runtime = first_mesh_node ();
-        if (!runtime) {
+        if (!first_mesh_node ()) {
             return task_t<void> (result_t<void>::failure (
               framework_error_kind_t::unavailable,
               "actor send requires a running MeshNode"));
         }
-        auto actor = resolve_explicit_actor (actor_ref);
-        auto current = resolve_actor (
-          std::string (actor_ref.actor_id ()), stale_policy_t::route_not_found);
-        if (current
-            && (current.value ().framework_ref.node_rid ().value ()
-                  != actor_ref.node_rid ().value ()
-                || current.value ().framework_ref.generation ()
-                     != actor_ref.generation ())) {
-            const auto followed = runtime->follow_relocated_actor (actor_ref);
-            if (!followed) {
-                return task_t<void> (result_t<void>::failure (
-                  framework_error_kind_t::unavailable,
-                  "actor ref is outside the Message Follow duration"));
-            }
-            actor = resolve_explicit_actor (*followed);
-        } else if (current) {
-            // A public ActorRef intentionally omits the private authority
-            // fence. Recover that fence from the authority store before a
-            // remote send instead of guessing it from object generation.
-            actor = std::move (current);
-        }
+        auto actor = resolve_actor (std::string (actor_id.value ()),
+                                    stale_policy_t::route_not_found);
         if (!actor) {
             return task_t<void> (
               detail::propagate_failure<void> (actor, "actor route was not found"));
@@ -417,8 +401,8 @@ class actor_client_impl_t final : public actor_client_t
           submit_send (actor.value (), std::move (packet_name), std::move (message), metadata));
     }
 
-    task_t<message_t> request_to_actor_erased (
-      actor_ref_t actor_ref,
+    task_t<message_t> request_erased (
+      actor_id_t actor_id,
       std::string packet_name,
       message_t request,
       std::optional<std::chrono::milliseconds> timeout,
@@ -427,7 +411,7 @@ class actor_client_impl_t final : public actor_client_t
         if (detail::current_serial_turn_allows_yield ()
             && !runtime::current_actor_execution.spot_id.empty ()) {
             const auto target =
-              resolve_actor (std::string (actor_ref.actor_id ()),
+              resolve_actor (std::string (actor_id.value ()),
                              stale_policy_t::route_not_found);
             if (target
                 && target.value ().spot_id
@@ -441,11 +425,7 @@ class actor_client_impl_t final : public actor_client_t
         // while the actor is moving fails fast as retriable, and the sender
         // re-resolves and retries. The caller's timeout keeps running across
         // retries — the move does not reset it (10.5-2).
-        const auto actor_id = std::string (actor_ref.actor_id ());
-        const auto caller_node_rid =
-          actor_ref.node_rid ().empty () ? std::string{}
-                                         : std::string (actor_ref.node_rid ().value ());
-        const auto caller_generation = actor_ref.generation ();
+        const auto actor_id_value = std::string (actor_id.value ());
         // Stable across every retry and the commit replay so the target
         // dispatches this request exactly once (§10.2-1). Scoped by the client
         // instance so ids do not collide across nodes.
@@ -454,8 +434,6 @@ class actor_client_impl_t final : public actor_client_t
         const auto budget = timeout.value_or (_default_timeout);
         const auto deadline = std::chrono::steady_clock::now () + budget;
         auto policy = stale_policy_t::route_not_found;
-        bool first_resolve = true;
-        bool ref_was_current = false;
         result_t<message_t> last = result_t<message_t>::failure (
           framework_error_kind_t::unavailable, "actor location is stale");
         // The loop only ever retries a "transfer is in progress" stale (the actor
@@ -483,33 +461,8 @@ class actor_client_impl_t final : public actor_client_t
                         != std::string_view::npos;
         };
         while (true) {
-            auto actor = resolve_actor (actor_id, policy);
+            auto actor = resolve_actor (actor_id_value, policy);
             if (actor) {
-                const bool ref_matches =
-                  caller_node_rid.empty ()
-                  || (actor.value ().node_rid.value () == caller_node_rid
-                      && actor.value ().framework_ref.generation () == caller_generation);
-                if (first_resolve) {
-                    // Whether the ref was current when the request was issued
-                    // decides the two in-flight cases (spot-actor.ko.md §10.2-5/6):
-                    //   - ref already stale at issue (actor is elsewhere) → this is
-                    //     a cross-node delayed message; after Message Follow it
-                    //     fails fast so the sender re-resolves (§10.2-6, ST-F4/F5).
-                    //   - ref current at issue but the actor moves mid-request →
-                    //     follow it to the committed location so the reply still
-                    //     correlates to this caller (§10.5 in-flight, ST-F6).
-                    ref_was_current = ref_matches;
-                    first_resolve = false;
-                }
-                if (!ref_was_current && !ref_matches) {
-                    co_return result_t<message_t>::failure (
-                      framework_error_kind_t::unavailable,
-                      "actor ref is stale: current node/generation='"
-                        + std::string (actor.value ().node_rid.value ()) + "/"
-                        + std::to_string (actor.value ().framework_ref.generation ())
-                        + "', supplied node/generation='" + caller_node_rid + "/"
-                        + std::to_string (caller_generation) + "'. actor=" + actor_id);
-                }
                 const auto now = std::chrono::steady_clock::now ();
                 if (now >= deadline) {
                     co_return on_deadline ();
@@ -694,9 +647,14 @@ class actor_client_impl_t final : public actor_client_t
                         const std::string &request_id = {},
                         const actor_send_call_t::metadata_map_t &metadata = {})
     {
-        (void) request_id;
         runtime::messaging::client_call_codec_t codec;
         auto header = codec.create_envelope (kind, "actor", packet_name, timeout);
+        if (!request_id.empty ()) {
+            // A request keeps one correlation id across route re-resolution and
+            // transfer replay. The native operation id is local to one runtime;
+            // this wire id is the idempotency boundary across retries.
+            header.correlation_id = request_id;
+        }
         header.metadata = metadata;
         auto parts = runtime::messaging::envelope_codec_t{}.encode_raw_body_parts (
           header, detail::message_to_raw (message, *_serializers));

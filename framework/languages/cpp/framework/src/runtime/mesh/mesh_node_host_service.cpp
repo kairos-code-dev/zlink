@@ -944,7 +944,7 @@ mesh_node_host_service_t::find_actor (
       _location_store
         ->read_authority (
           authority_key_t{
-            "1:" + actor_id})
+            "1:" + std::string (actor_id)})
         .result ()
         .value ();
     const auto *snapshot =
@@ -958,9 +958,10 @@ mesh_node_host_service_t::find_actor (
     return task_t<std::optional<actor_ref_t>> (
       result_t<std::optional<actor_ref_t>>::success (
         actor_ref_t{
-          snapshot->allocation.target.node_rid,
-          snapshot->allocation.stable_type,
-          actor_id, snapshot->object_generation}));
+          actor_id,
+          snapshot->object_generation,
+          snapshot->allocation.target.mesh_name,
+          snapshot->allocation.target.node_rid}));
 }
 
 task_t<std::optional<spot_ref_t>>

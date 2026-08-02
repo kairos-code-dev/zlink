@@ -414,6 +414,38 @@ public sealed class test_stream_socket
     }
 
     [Fact]
+    public void stream_recv_part_emits_connection_ready_monitor_event()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
+        string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-recv-part-monitor");
+        int port = CoreTestSupport.ExtractPort(endpoint);
+        stream.Bind(endpoint);
+
+        using ISocketMonitor monitor = stream.MonitorOpen(SocketEvent.ConnectionReady);
+        using var client = ConnectRawClient(port);
+        SendAll(client.GetStream(), "raw-part-monitor"u8);
+
+        Assert.True(stream.RecvPart(
+            out RoutingId? sourceRoutingId,
+            out Message? part,
+            out bool hasMore,
+            RecvFlags.None));
+        using (part ?? throw new InvalidOperationException("missing raw part"))
+            Assert.Equal("raw-part-monitor"u8.ToArray(), part!.ToArray());
+        Assert.False(sourceRoutingId is null || sourceRoutingId.Value.IsEmpty);
+        Assert.False(hasMore);
+
+        Assert.Equal(1, ZlinkPoll.Poll(new[] { monitor }, 3000));
+        SocketMonitorEvent evt = monitor.Recv(RecvFlags.DontWait)
+            ?? throw new TimeoutException("STREAM monitor event was not queued.");
+        Assert.Equal(MonitorEventType.ConnectionReady, evt.Event);
+    }
+
+    [Fact]
     public void stream_recv_part_is_gated_by_socket_poller()
     {
         if (!CoreTestSupport.IsNativeAvailable())

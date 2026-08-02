@@ -33,6 +33,7 @@
 #include <cstring>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <netdb.h>
 #include <iostream>
 #include <limits>
 #include <mutex>
@@ -184,6 +185,75 @@ parsed_tcp_endpoint_t parse_stream_endpoint (const stream_snapshot_t &stream)
         return parse_websocket_endpoint (stream.bind_endpoint);
     }
     return parse_tcp_endpoint (stream.bind_endpoint);
+}
+
+std::optional<std::string> socket_endpoint_text (const tcp::endpoint &endpoint)
+{
+    boost::system::error_code address_error;
+    const auto address = endpoint.address ().to_string (address_error);
+    if (address_error) {
+        return std::nullopt;
+    }
+    return address + ":" + std::to_string (endpoint.port ());
+}
+
+std::optional<std::string> local_endpoint_text (tcp::socket &socket)
+{
+    boost::system::error_code error;
+    const auto endpoint = socket.local_endpoint (error);
+    return error ? std::nullopt : socket_endpoint_text (endpoint);
+}
+
+std::optional<std::string> remote_endpoint_text (tcp::socket &socket)
+{
+    boost::system::error_code error;
+    const auto endpoint = socket.remote_endpoint (error);
+    return error ? std::nullopt : socket_endpoint_text (endpoint);
+}
+
+std::optional<std::string> native_endpoint_text (const sockaddr_storage &address)
+{
+    char host[NI_MAXHOST]{};
+    char service[NI_MAXSERV]{};
+    const auto *sockaddr = reinterpret_cast<const struct sockaddr *> (&address);
+    const auto length = address.ss_family == AF_INET
+                          ? sizeof (sockaddr_in)
+                          : sizeof (sockaddr_in6);
+    if (::getnameinfo (sockaddr, length, host, sizeof (host), service, sizeof (service),
+                       NI_NUMERICHOST | NI_NUMERICSERV)
+        != 0) {
+        return std::nullopt;
+    }
+    return std::string (host) + ":" + service;
+}
+
+std::optional<std::string> native_local_endpoint_text (int fd)
+{
+    sockaddr_storage address{};
+    socklen_t length = sizeof (address);
+    if (::getsockname (fd, reinterpret_cast<sockaddr *> (&address), &length) != 0) {
+        return std::nullopt;
+    }
+    return native_endpoint_text (address);
+}
+
+std::optional<std::string> native_remote_endpoint_text (int fd)
+{
+    sockaddr_storage address{};
+    socklen_t length = sizeof (address);
+    if (::getpeername (fd, reinterpret_cast<sockaddr *> (&address), &length) != 0) {
+        return std::nullopt;
+    }
+    return native_endpoint_text (address);
+}
+
+template <typename TStream> tcp::socket &tcp_socket (TStream &stream)
+{
+    if constexpr (std::is_same_v<TStream, tcp::socket>) {
+        return stream;
+    } else {
+        return stream.next_layer ();
+    }
 }
 
 bool stream_trace_enabled ()
@@ -1027,6 +1097,7 @@ class stream_host_service_t::listener_t
         auto &session = _session_factory (scope.provider ());
         auto &actors = scope.provider ().get_required<session_actor_manager_t> ();
         auto stream = _runtime.open_session (_stream.name);
+        _runtime.set_session_identity (stream, rid);
         auto transport_connection =
           _mesh_node->native_node ().sessions ().open (key);
         detail::session_actor_manager_access_t::attach (actors, stream);
@@ -1940,6 +2011,9 @@ class stream_host_service_t::listener_t
           *_services, detail::service_scope_kind_t::stream_session);
         auto &session = _session_factory (scope.provider ());
         auto stream = _runtime.open_session (_stream.name);
+        _runtime.set_session_identity (
+          stream, std::nullopt, local_endpoint_text (tcp_socket (*connection)),
+          remote_endpoint_text (tcp_socket (*connection)));
         auto &session_actors = scope.provider ().get_required<session_actor_manager_t> ();
         detail::session_actor_manager_access_t::attach (session_actors, stream);
         session_actor_disconnect_guard_t actor_disconnect (session_actors);
@@ -2127,6 +2201,9 @@ class stream_host_service_t::listener_t
           *_services, detail::service_scope_kind_t::stream_session);
         auto &session = _session_factory (scope.provider ());
         auto stream = _runtime.open_session (_stream.name);
+        _runtime.set_session_identity (
+          stream, std::nullopt, native_local_endpoint_text (connection->fd),
+          native_remote_endpoint_text (connection->fd));
         auto &session_actors = scope.provider ().get_required<session_actor_manager_t> ();
         detail::session_actor_manager_access_t::attach (session_actors, stream);
         session_actor_disconnect_guard_t actor_disconnect (session_actors);

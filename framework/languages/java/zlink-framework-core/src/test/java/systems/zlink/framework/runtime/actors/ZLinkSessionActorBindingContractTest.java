@@ -268,6 +268,7 @@ final class ZLinkSessionActorBindingContractTest {
         @Override public void bind(String endpoint) { }
         @Override public void setTlsServer(String certificatePath, String keyPath,
                                            boolean requireClientCertificate) { }
+        @Override public void setMaxMessageSize(long value) { }
         @Override public void enableNotifications() { }
         @Override public boolean waitForReadable(Duration timeout) { return false; }
         @Override public ZLinkBackendStreamReceived recv() { return null; }

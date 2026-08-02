@@ -1133,9 +1133,9 @@ int main ()
                   "E2E-CP-14",
                   "SpotService Play/Session roles still register route mesh unconditionally");
     const auto stream_auth_begin =
-      spot_service_session_handlers.find ("dispatch.packet_name () == \"StreamAuthReq\"");
+      spot_service_session_handlers.find ("dispatch.packet_name == \"StreamAuthReq\"");
     const auto stream_auth_end = spot_service_session_handlers.find (
-      "dispatch.packet_name () == \"StreamEnsureAuthReq\"", stream_auth_begin);
+      "dispatch.packet_name == \"StreamEnsureAuthReq\"", stream_auth_begin);
     const auto stream_auth_block =
       stream_auth_begin != std::string::npos && stream_auth_end != std::string::npos
         ? spot_service_session_handlers.substr (stream_auth_begin,

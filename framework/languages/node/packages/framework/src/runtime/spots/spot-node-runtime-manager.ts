@@ -536,9 +536,10 @@ export class ZLinkSpotNodeRuntimeManager {
         `Mesh '${meshName}' runtime placement weight requires a started MeshNode.`
       );
     }
-    if (this.placementWeight(meshName) === weight) return;
-    node.setPlacementWeight(weight);
-    this.runtimePlacementWeights.set(meshName, weight);
+    const validated = requirePublicRuntimeWeight(weight, 'Placement weight');
+    if (this.placementWeight(meshName) === validated) return;
+    node.setPlacementWeight(validated);
+    this.runtimePlacementWeights.set(meshName, validated);
     this.scheduleRuntimeWeightPublication(meshName);
   }
 
@@ -550,14 +551,15 @@ export class ZLinkSpotNodeRuntimeManager {
         `Channel '${channelName}' runtime weight requires a started MeshNode.`
       );
     }
-    if (this.effectiveChannelWeight(match.meshName, channelName, match.configuredWeight) === weight) return;
-    node.setChannelWeight(channelName, weight);
+    const validated = requirePublicRuntimeWeight(weight, 'Channel weight');
+    if (this.effectiveChannelWeight(match.meshName, channelName, match.configuredWeight) === validated) return;
+    node.setChannelWeight(channelName, validated);
     let weights = this.runtimeChannelWeights.get(match.meshName);
     if (weights === undefined) {
       weights = new Map();
       this.runtimeChannelWeights.set(match.meshName, weights);
     }
-    weights.set(channelName, weight);
+    weights.set(channelName, validated);
     this.scheduleRuntimeWeightPublication(match.meshName);
   }
 
@@ -1299,6 +1301,15 @@ function requireEntrySpotReply(result: number): void {
       `MeshNode Entry Spot reply was not accepted (submit result ${result}).`
     );
   }
+}
+
+function requirePublicRuntimeWeight(value: number, label: string): number {
+  if (!Number.isInteger(value) || value < 0 || value > 10_000) {
+    throw new ZLinkConfigurationException(
+      `${label} must be an integer in 0..10000.`
+    );
+  }
+  return value;
 }
 
 function toBackendRoutingId(routingId: RoutingId) {

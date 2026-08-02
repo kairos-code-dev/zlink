@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime.streams;
 
 import systems.zlink.framework.configuration.ZLinkStreamNodeBuilder;
+import systems.zlink.framework.configuration.ZLinkStreamSocketConfig;
 import systems.zlink.framework.streams.ZLinkSession;
 
 public final class StreamBuilders {
@@ -65,6 +66,11 @@ public final class StreamBuilders {
         public ZLinkStreamNodeBuilder setAdvertiseHost(String host) {
             registration.setAdvertiseHost(requireHost(host, "advertise host"));
             return this;
+        }
+
+        @Override
+        public ZLinkStreamSocketConfig configureSocket() {
+            return registration.socketConfig();
         }
 
         private void applyBind() {

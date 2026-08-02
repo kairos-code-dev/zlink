@@ -18,7 +18,9 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 
 /**
  * Accounts application payloads that have been received but have not reached
- * a terminal handler result.
+ * a terminal handler result. The receive pause threshold applies only to
+ * payloads whose handler has not started; active payloads remain observable
+ * until their terminal result releases them.
  *
  * <p>The budget is shared by every application ingress owned by one Framework
  * runtime. A lease is acquired when a payload enters application dispatch and
@@ -45,6 +47,7 @@ public final class ZLinkInboundDispatchBudget {
     private long pendingCompletionSends;
     private int activeCompletionSends;
     private boolean completionAdmissionClosed;
+    private boolean closed;
     private boolean receivePaused;
 
     public ZLinkInboundDispatchBudget(long applicationHwmBytes) {
@@ -66,8 +69,8 @@ public final class ZLinkInboundDispatchBudget {
 
     public boolean canStartApplicationReceive() {
         synchronized (lock) {
-            return applicationHwmBytes == 0
-                || pendingPayloadBytes < applicationHwmBytes;
+            return !closed && (applicationHwmBytes == 0
+                || queuedPayloadBytesUnderLock() < applicationHwmBytes);
         }
     }
 
@@ -76,6 +79,9 @@ public final class ZLinkInboundDispatchBudget {
             throw new IllegalArgumentException("payloadBytes must not be negative");
         }
         synchronized (lock) {
+            if (closed) {
+                throw new IllegalStateException("inbound dispatch budget is closed");
+            }
             pendingPayloadBytes = addExact(
                 pendingPayloadBytes, payloadBytes, "pending payload bytes");
             updatePauseUnderLock();
@@ -94,8 +100,11 @@ public final class ZLinkInboundDispatchBudget {
             throw new IllegalArgumentException("payloadBytes must not be negative");
         }
         synchronized (lock) {
+            if (closed) {
+                return null;
+            }
             if (applicationHwmBytes != 0
-                && pendingPayloadBytes >= applicationHwmBytes) {
+                && queuedPayloadBytesUnderLock() >= applicationHwmBytes) {
                 return null;
             }
             pendingPayloadBytes = addExact(
@@ -108,6 +117,9 @@ public final class ZLinkInboundDispatchBudget {
     public AutoCloseable onCapacityAvailable(Runnable handler) {
         Objects.requireNonNull(handler, "handler");
         synchronized (lock) {
+            if (closed) {
+                return () -> { };
+            }
             capacityHandlers.add(handler);
         }
         return () -> {
@@ -163,31 +175,53 @@ public final class ZLinkInboundDispatchBudget {
         return completionSendLimit;
     }
 
-    /** Stops new completion admission and releases waiters during runtime shutdown. */
+    /**
+     * Stops new payload and completion admission and releases waiters during
+     * runtime shutdown. Existing payload leases remain accounted until they
+     * reach their terminal result.
+     */
     public void close() {
         List<CompletableFuture<CompletionPermit>> waiters;
         synchronized (lock) {
             completionAdmissionClosed = true;
+            closed = true;
             waiters = List.copyOf(completionWaiters);
             completionWaiters.clear();
             pendingCompletionSends = 0;
             activeCompletionSends = 0;
+            capacityHandlers.clear();
+            receivePaused = true;
         }
         IllegalStateException failure = new IllegalStateException(
             "inbound completion admission is closed");
         waiters.forEach(waiter -> waiter.completeExceptionally(failure));
     }
 
-    private void handlerStarted(long payloadBytes) {
-        synchronized (lock) {
-            activePayloadBytes = addExact(
-                activePayloadBytes, payloadBytes, "active payload bytes");
+    private List<Runnable> handlerStartedUnderLock(long payloadBytes) {
+        List<Runnable> handlers = List.of();
+        boolean wasPaused = receivePaused;
+        if (closed) {
+            return handlers;
         }
+        activePayloadBytes = addExact(
+            activePayloadBytes, payloadBytes, "active payload bytes");
+        updatePauseUnderLock();
+        if (wasPaused && !receivePaused) {
+            handlers = List.copyOf(capacityHandlers);
+        }
+        return handlers;
     }
 
     private void completed(long payloadBytes, boolean handlerStarted) {
         List<Runnable> handlers = List.of();
         synchronized (lock) {
+            if (closed) {
+                if (handlerStarted) {
+                    activePayloadBytes = Math.max(0, activePayloadBytes - payloadBytes);
+                }
+                pendingPayloadBytes = Math.max(0, pendingPayloadBytes - payloadBytes);
+                return;
+            }
             if (handlerStarted) {
                 if (payloadBytes > activePayloadBytes) {
                     throw new IllegalStateException(
@@ -217,7 +251,11 @@ public final class ZLinkInboundDispatchBudget {
 
     private void updatePauseUnderLock() {
         receivePaused = applicationHwmBytes != 0
-            && pendingPayloadBytes >= applicationHwmBytes;
+            && queuedPayloadBytesUnderLock() >= applicationHwmBytes;
+    }
+
+    private long queuedPayloadBytesUnderLock() {
+        return pendingPayloadBytes - activePayloadBytes;
     }
 
     private static long addExact(long current, long value, String label) {
@@ -300,14 +338,27 @@ public final class ZLinkInboundDispatchBudget {
         }
 
         public void handlerStarted() {
+            List<Runnable> handlers;
             synchronized (owner.lock) {
                 if (closed) {
                     throw new IllegalStateException(
                         "inbound dispatch lease is already closed");
                 }
+                if (owner.closed) {
+                    return;
+                }
                 if (!handlerStarted) {
                     handlerStarted = true;
-                    owner.handlerStarted(payloadBytes);
+                    handlers = owner.handlerStartedUnderLock(payloadBytes);
+                } else {
+                    handlers = List.of();
+                }
+            }
+            for (Runnable handler : handlers) {
+                try {
+                    handler.run();
+                } catch (RuntimeException ignored) {
+                    // A wake-up callback must not change accounting or terminal state.
                 }
             }
         }

@@ -28,12 +28,16 @@ class stream_builder_state_t
     explicit stream_builder_state_t (std::string name) : snapshot{.name = std::move (name)} {}
 
     stream_snapshot_t snapshot;
+    std::optional<std::string> advertise_host;
 };
 
 class stream_state_t
 {
   public:
     std::string session_id;
+    std::optional<zlink::routing_id_t> routing_id;
+    std::optional<std::string> local_address;
+    std::optional<std::string> remote_address;
     std::atomic_bool closed{false};
     std::deque<std::string> serial_log;
     std::vector<stream_header_t> written_headers;
@@ -80,6 +84,10 @@ class stream_runtime_t
     result_t<void> validate_header (const stream_header_t &header) const;
 
     stream_t open_session (std::string stream_name) const;
+    void set_session_identity (stream_t &stream,
+                               std::optional<zlink::routing_id_t> routing_id,
+                               std::optional<std::string> local_address = std::nullopt,
+                               std::optional<std::string> remote_address = std::nullopt) const;
     std::size_t pending_limit () const noexcept { return _state->max_pending; }
     result_t<void> dispatch_connected (packet_stream_session_t &session, stream_t &stream) const;
     result_t<void> dispatch_packet (packet_stream_session_t &session,

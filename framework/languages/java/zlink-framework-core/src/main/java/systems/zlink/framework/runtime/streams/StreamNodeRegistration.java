@@ -2,6 +2,7 @@ package systems.zlink.framework.runtime.streams;
 
 import java.util.List;
 import java.util.ArrayList;
+import systems.zlink.framework.configuration.ZLinkStreamSocketConfig;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.mesh.MeshNodeRegistration;
 import systems.zlink.framework.streams.ZLinkSession;
@@ -13,6 +14,7 @@ public final class StreamNodeRegistration {
     private TlsServerRegistration tlsServer;
     private Class<? extends ZLinkSession> sessionType;
     private boolean actorDispatchEnabled;
+    private final StreamSocketConfig socketConfig = new StreamSocketConfig();
     private final List<Class<?>> sessionPacketHandlers =
         new ArrayList<>();
 
@@ -46,6 +48,10 @@ public final class StreamNodeRegistration {
 
     public boolean actorDispatchEnabled() {
         return actorDispatchEnabled;
+    }
+
+    public ZLinkStreamSocketConfig socketConfig() {
+        return socketConfig;
     }
 
     public List<Class<?>> applicationTypes() {
@@ -142,6 +148,36 @@ public final class StreamNodeRegistration {
         if (actorDispatchEnabled && meshNodes.isEmpty()) {
             throw new ZLinkConfigurationException(
                 "stream actor dispatch requires a configured RouteMesh: " + name);
+        }
+    }
+
+    /** Validates the finite listener bound required by a process-wide HWM. */
+    public void validateApplicationHwm(long applicationHwmBytes) {
+        if (applicationHwmBytes == 0) {
+            return;
+        }
+        if (socketConfig.maxMessageSize() <= 0) {
+            throw new ZLinkConfigurationException(
+                "Application HWM requires a finite positive MaxMessageSize on STREAM node: "
+                    + name);
+        }
+    }
+
+    private static final class StreamSocketConfig implements ZLinkStreamSocketConfig {
+        private long maxMessageSize = 16_777_216L;
+
+        @Override
+        public long maxMessageSize() {
+            return maxMessageSize;
+        }
+
+        @Override
+        public void setMaxMessageSize(long value) {
+            if (value < 0) {
+                throw new ZLinkConfigurationException(
+                    "MaxMessageSize must be zero or a positive byte count.");
+            }
+            maxMessageSize = value;
         }
     }
 

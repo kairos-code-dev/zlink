@@ -285,6 +285,7 @@ public final class ZLinkFrameworkRegistration {
         }
         for (StreamNodeRegistration streamNode : streamNodes) {
             streamNode.validate(meshNodes);
+            streamNode.validateApplicationHwm(applicationHwmBytes);
         }
     }
 

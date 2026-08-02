@@ -1468,6 +1468,7 @@ test('Promise authority resumes the retained activation envelope after Store com
   const runtime = new ServiceStatefulRuntime(raw, 'target', 3n);
   const events: string[] = [];
   let committedRoute: ServiceInstanceRouteFence | undefined;
+  let completedRoute: ServiceInstanceRouteFence | undefined;
   let releaseRead!: () => void;
   const readBarrier = new Promise<void>(resolve => {
     releaseRead = resolve;
@@ -1514,7 +1515,8 @@ test('Promise authority resumes the retained activation envelope after Store com
     },
     complete: async (_target, route) => {
       events.push('complete');
-      return route;
+      completedRoute = { ...route, storeVersion: '21' };
+      return completedRoute;
     },
     abort: async () => {
       assert.fail('successful activation must not abort');
@@ -1575,6 +1577,7 @@ test('Promise authority resumes the retained activation envelope after Store com
   await firstRecord.stateful!.onTerminalCompletion!();
   assert.deepEqual(events, ['read', 'reserve', 'commit', 'complete']);
   if (committedRoute === undefined) throw new Error('Ready route was not committed.');
+  if (completedRoute === undefined) throw new Error('Terminal route was not committed.');
   const instanceIntent = (
     runtime as unknown as {
       readonly instanceIntents: ReadonlyMap<
@@ -1583,9 +1586,9 @@ test('Promise authority resumes the retained activation envelope after Store com
       >
     }
   ).instanceIntents.get('tenant-async');
-  assert.deepEqual(instanceIntent?.route, committedRoute);
+  assert.deepEqual(instanceIntent?.route, completedRoute);
   const followingHeader = encodeInstanceSpotHeader(
-    committedRoute,
+    completedRoute,
     7n,
     'source',
     undefined,
@@ -2213,6 +2216,10 @@ test('production Instance authority adapter writes schema ColdActivating then Re
   assert.equal(releasedSnapshot.kind, 'snapshot');
   if (releasedSnapshot.kind !== 'snapshot') throw new Error('Released authority is missing.');
   assert.notEqual(releasedSnapshot.storeVersion.value, committed.route.storeVersion);
+  assert.equal(
+    recoveryNode.remembered.at(-1)!.route.storeVersion,
+    releasedSnapshot.storeVersion.value
+  );
   assert.equal(
     decodeServiceReadySpotAuthority(releasedSnapshot.payload)?.activationRecovery,
     undefined

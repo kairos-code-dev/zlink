@@ -1214,6 +1214,27 @@ public sealed class ActorHandoffTests
     }
 
     [Fact]
+    public async Task TargetAuthorityCommit_ReturnsPreparationBeforeJoinedNotification()
+    {
+        var state = new ZLinkActorRuntimeState("actor-1");
+        var commit = CommitRequest("handoff-commit-boundary", []);
+        Assert.True(state.Handoff.Import(commit, out var preparation));
+
+        state.Handoff.MarkAuthorityCommitted("handoff-commit-boundary", 7, 7);
+        var reply = ZLinkRemoteActorJoinPackets.CreateJoinReply(
+            true,
+            ActorRef("node-b", 7));
+        state.Handoff.AcceptCommittedPreparation(
+            "handoff-commit-boundary",
+            reply);
+
+        Assert.Same(reply, await preparation);
+        Assert.True(state.Handoff.IsAuthorityCommitted("handoff-commit-boundary"));
+        Assert.True(state.Handoff.TryBeginJoinedNotification("handoff-commit-boundary"));
+        state.Handoff.CompleteJoinedNotification("handoff-commit-boundary");
+    }
+
+    [Fact]
     public void TargetAuthorityCommit_RejectsObjectGenerationChange()
     {
         var state = new ZLinkActorRuntimeState("actor-1");

@@ -110,6 +110,12 @@ void offload_executor_t::request_stop () noexcept
 
 void offload_executor_t::drain ()
 {
+    (void) drain_until (std::chrono::steady_clock::time_point::max ());
+}
+
+bool offload_executor_t::drain_until (
+  std::chrono::steady_clock::time_point deadline)
+{
     const char *trace_value = std::getenv ("ZLINK_CPP_HOST_STOP_TRACE");
     const bool trace_enabled = trace_value != nullptr && std::string_view (trace_value) != "0"
                                && std::string_view (trace_value) != "";
@@ -125,7 +131,14 @@ void offload_executor_t::drain ()
     _ready.notify_all ();
     {
         std::unique_lock lock (_mutex);
-        _empty.wait (lock, [this] { return _queue.empty () && _active == 0; });
+        if (!_empty.wait_until (
+              lock, deadline, [this] { return _queue.empty () && _active == 0; })) {
+            if (trace_enabled) {
+                std::cerr << "zlink-cpp-host-stop stage=offload-drain-timeout name="
+                          << _thread_name << std::endl;
+            }
+            return false;
+        }
     }
     for (auto &worker : _workers) {
         if (worker.joinable ()) {
@@ -136,6 +149,7 @@ void offload_executor_t::drain ()
         std::cerr << "zlink-cpp-host-stop stage=offload-drain-end name="
                   << _thread_name << std::endl;
     }
+    return true;
 }
 
 bool offload_executor_t::drained () const

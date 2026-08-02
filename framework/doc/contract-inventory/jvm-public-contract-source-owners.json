@@ -1,5 +1,12 @@
 {
   "schemaVersion": 1,
+  "providerPublicOwners": [
+    "systems.zlink.framework.locationprovider"
+  ],
+  "apiSnapshots": {
+    "java": "framework/doc/contract-inventory/jvm-api-snapshots/java.api.sha256",
+    "kotlin": "framework/doc/contract-inventory/jvm-api-snapshots/kotlin.api.sha256"
+  },
   "serverArtifacts": {
     "java": {
       "artifact": "systems.zlink:zlink-framework-core",

@@ -475,6 +475,17 @@ export class ZLinkChannelSocketRegistry {
     await this.disposeClientServerPhysical(connectionId, current);
   }
 
+  async disconnectClientServerConnection(connectionId: string): Promise<void> {
+    const current = this.clientServerConnections.get(connectionId);
+    if (current === undefined) return;
+    this.clientServerConnections.delete(connectionId);
+    current.aliases.delete(connectionId);
+    current.callbacksByAlias.delete(connectionId);
+    this.clientServerReadyIdentities.delete(connectionId);
+    if (current.aliases.size > 0) return;
+    await this.disposeClientServerPhysical(connectionId, current);
+  }
+
   private async disposeClientServerPhysical(
     connectionId: string,
     current: ClientServerPhysicalConnection
@@ -709,6 +720,10 @@ export class ZLinkChannelSocketRegistry {
     channelName: string
   ): readonly Parameters<ServiceDiscoveryRegistry['admitClientServer']>[0][] {
     return this.clientServerDiscovery.clientServerDescriptors(channelName);
+  }
+
+  hasKnownClientServerTargets(channelName: string): boolean {
+    return this.clientServerDiscovery.clientServerDescriptors(channelName).length > 0;
   }
 
   fanoutActiveTargets(channelName: string) {
@@ -1236,7 +1251,7 @@ export class ZLinkChannelSocketRegistry {
   private removeReadyConnection(connectionId: string): void {
     const identity = this.clientServerReadyIdentities.get(connectionId);
     if (identity === undefined) return;
-    this.clientServerDiscovery.removeClientServer(
+    this.clientServerDiscovery.markClientServerDisconnected(
       identity.channelName,
       identity.serverRoutingId,
       connectionId
@@ -1637,8 +1652,8 @@ function runtimeStateName(
 }
 
 function sameClientServerDiscoveryDescriptor(
-  left: ReturnType<typeof admissionToDiscoveryDescriptor>,
-  right: ReturnType<typeof admissionToDiscoveryDescriptor>
+  left: ClientServerDiscoveryDescriptor,
+  right: ClientServerDiscoveryDescriptor
 ): boolean {
   return left.channelName === right.channelName
     && left.serverRoutingId === right.serverRoutingId

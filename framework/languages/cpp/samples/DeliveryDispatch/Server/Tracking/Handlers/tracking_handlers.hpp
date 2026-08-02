@@ -43,7 +43,7 @@ class delivery_status_changed_handler_t
               "customer actor route was not found");
         }
         _actors
-          .send_to_actor (*actor_ref,
+          .send (actor_ref->actor_id (),
                           delivery_status_updated_msg_t{request.delivery_id,
                                                         request.customer_id,
                                                         request.status, request.courier_id,

@@ -50,6 +50,7 @@ internal sealed class ZLinkActorHandoffState(
                 || _targetPhase is ZLinkActorTargetHandoffPhase.Importing
                     or ZLinkActorTargetHandoffPhase.Replaying
                     or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining
+                    or ZLinkActorTargetHandoffPhase.Failed
                     or ZLinkActorTargetHandoffPhase.Quarantined)
                 throw new InvalidOperationException(
                     $"Actor '{actorId}' already has an active handoff transaction.");
@@ -109,6 +110,7 @@ internal sealed class ZLinkActorHandoffState(
                 || _targetPhase is ZLinkActorTargetHandoffPhase.Importing
                     or ZLinkActorTargetHandoffPhase.Replaying
                     or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining
+                    or ZLinkActorTargetHandoffPhase.Failed
                     or ZLinkActorTargetHandoffPhase.Quarantined)
                 throw new InvalidOperationException(
                     $"Actor '{actorId}' already has an active handoff transaction.");
@@ -189,6 +191,7 @@ internal sealed class ZLinkActorHandoffState(
                            or ZLinkActorTargetHandoffPhase.NotifyingJoined
                            or ZLinkActorTargetHandoffPhase.Prepared
                            or ZLinkActorTargetHandoffPhase.Replaying
+                           or ZLinkActorTargetHandoffPhase.Failed
                            or ZLinkActorTargetHandoffPhase.Quarantined;
         }
     }
@@ -361,6 +364,7 @@ internal sealed class ZLinkActorHandoffState(
                 or ZLinkActorTargetHandoffPhase.Prepared
                 or ZLinkActorTargetHandoffPhase.Replaying
                 or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining
+                or ZLinkActorTargetHandoffPhase.Failed
                 or ZLinkActorTargetHandoffPhase.Quarantined)
                 throw new InvalidOperationException(
                     $"Actor '{actorId}' already has an active handoff '{_handoffId}'.");
@@ -411,6 +415,7 @@ internal sealed class ZLinkActorHandoffState(
                     or ZLinkActorTargetHandoffPhase.AuthorityCommitted
                     or ZLinkActorTargetHandoffPhase.Replaying
                     or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining
+                    or ZLinkActorTargetHandoffPhase.Failed
                     or ZLinkActorTargetHandoffPhase.Completed)
                 return;
             if (!adoptingPreparedRemoteJoin
@@ -423,6 +428,7 @@ internal sealed class ZLinkActorHandoffState(
                     or ZLinkActorTargetHandoffPhase.Prepared
                     or ZLinkActorTargetHandoffPhase.Replaying
                     or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining
+                    or ZLinkActorTargetHandoffPhase.Failed
                     or ZLinkActorTargetHandoffPhase.Quarantined))
                 throw new InvalidOperationException(
                     $"Actor '{actorId}' already has an active handoff transaction.");
@@ -544,6 +550,37 @@ internal sealed class ZLinkActorHandoffState(
         }
     }
 
+    public void AcceptCommittedPreparation(
+        string handoffId,
+        ZLinkRemoteActorJoinReply reply)
+    {
+        lock (_gate)
+        {
+            if (!string.Equals(_handoffId, handoffId, StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    $"Actor '{actorId}' cannot accept an inactive handoff preparation.");
+            if (_targetPhase != ZLinkActorTargetHandoffPhase.AuthorityCommitted)
+                throw new InvalidOperationException(
+                    $"Actor '{actorId}' handoff authority is not committed.");
+            // Authority is the admission boundary. Keep the target sealed until
+            // the post-commit joined callback completes, but let the source
+            // proceed with its cutover and source-side cleanup.
+            _preparation!.TrySetResult(reply);
+        }
+    }
+
+    public void CompleteJoinedNotification(string handoffId)
+    {
+        lock (_gate)
+        {
+            if (!string.Equals(_handoffId, handoffId, StringComparison.Ordinal)
+                || _targetPhase != ZLinkActorTargetHandoffPhase.NotifyingJoined)
+                throw new InvalidOperationException(
+                    $"Actor '{actorId}' handoff joined notification is not active.");
+            _targetPhase = ZLinkActorTargetHandoffPhase.Prepared;
+        }
+    }
+
     public void MarkAuthorityCommitted(
         string handoffId,
         ulong sourceObjectGeneration,
@@ -574,6 +611,7 @@ internal sealed class ZLinkActorHandoffState(
                        or ZLinkActorTargetHandoffPhase.Prepared
                        or ZLinkActorTargetHandoffPhase.Replaying
                        or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining
+                       or ZLinkActorTargetHandoffPhase.Failed
                        or ZLinkActorTargetHandoffPhase.Completed;
     }
 
@@ -599,6 +637,29 @@ internal sealed class ZLinkActorHandoffState(
                 || _targetPhase != ZLinkActorTargetHandoffPhase.NotifyingJoined)
                 return;
             _targetPhase = ZLinkActorTargetHandoffPhase.AuthorityCommitted;
+        }
+    }
+
+    public bool FailJoinedNotification(string handoffId)
+    {
+        lock (_gate)
+        {
+            if (!string.Equals(_handoffId, handoffId, StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    $"Actor '{actorId}' cannot fail an inactive handoff.");
+            if (_targetPhase == ZLinkActorTargetHandoffPhase.Failed) return false;
+            if (_targetPhase is not (ZLinkActorTargetHandoffPhase.AuthorityCommitted
+                or ZLinkActorTargetHandoffPhase.NotifyingJoined))
+                throw new InvalidOperationException(
+                    $"Actor '{actorId}' handoff joined notification cannot become terminally failed.");
+            _targetPhase = ZLinkActorTargetHandoffPhase.Failed;
+            _targetIngressAdmission.ReleaseAll();
+            _frames.Clear();
+            _sourceHoldFrames.Clear();
+            _importedFrameCount = 0;
+            _sourceTrailingImported = false;
+            _canonicalMaintenanceReplayReservations.Clear();
+            return true;
         }
     }
 
@@ -1377,7 +1438,8 @@ internal sealed class ZLinkActorHandoffState(
         out ZLinkBackendActorRef targetActor)
     {
         targetActor = currentActor ?? frameActor;
-        if (_targetPhase == ZLinkActorTargetHandoffPhase.Quarantined)
+        if (_targetPhase is ZLinkActorTargetHandoffPhase.Failed
+            or ZLinkActorTargetHandoffPhase.Quarantined)
             return ZLinkActorFrameRoute.Stale;
         if (_messageFollowRoute is { } messageFollowRoute)
         {
@@ -1534,6 +1596,7 @@ internal enum ZLinkActorTargetHandoffPhase
     Prepared,
     Replaying,
     AdmissionOpenDraining,
+    Failed,
     Completed,
     Quarantined,
     RolledBack

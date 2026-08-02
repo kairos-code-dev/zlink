@@ -378,7 +378,7 @@ class actor_ping_handler_t
             throw fw::framework_exception_t (fw::framework_error_kind_t::not_found,
                                              "player actor route was not found");
         }
-        co_return co_await _actors.request_to_actor (*actor_ref, request)
+        co_return co_await _actors.request (fw::actor_id_t (request.actor_id), request)
           .timeout (std::chrono::milliseconds (5000))
           .submit<obs::actor_ping_res_t> ();
     }
@@ -407,13 +407,13 @@ class obs_session_t final : public fw::packet_stream_session_t
     fw::task_t<void> on_error (fw::stream_t &, const fw::stream_error_t &) override { co_return; }
 
     fw::task_t<void> on_packet (fw::stream_t &stream,
-                                const fw::stream_dispatch_context_t &dispatch,
+                                const fw::session_message_context_t &dispatch,
                                 const zlink::message_t &payload) override
     {
-        if (dispatch.packet_name () != obs::obs_action_req_t::packet_name) {
+        if (dispatch.packet_name != obs::obs_action_req_t::packet_name) {
             throw fw::framework_exception_t (fw::framework_error_kind_t::not_found,
                                              "ObservabilityOps session has no handler for "
-                                               + std::string (dispatch.packet_name ()));
+                                               + std::string (dispatch.packet_name));
         }
         auto request = payload.parse_json<obs::obs_action_req_t> ();
         auto reply = co_await _routes.request_to_spot (request.spot_id, request)

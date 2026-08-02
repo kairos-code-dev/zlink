@@ -94,6 +94,9 @@ final class ZLinkJavaStreamSocket implements ZLinkBackendStreamSocket, ZLinkJava
         boolean requireClientCertificate) {
         socket.setTlsServer(certificatePath, keyPath, requireClientCertificate);
     }
+    @Override public synchronized void setMaxMessageSize(long value) {
+        socket.options().maxMessageSize(value == 0 ? -1 : value);
+    }
     @Override public synchronized void bind(String endpoint) { socket.bind(endpoint); }
     @Override public synchronized void enableNotifications() {
         socket.options().notify(true);

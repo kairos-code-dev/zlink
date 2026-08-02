@@ -138,7 +138,8 @@ test('ZLinkChannelClient rejects calls to channels without client capability', a
 
   await assert.rejects(
     () => client.sendToChannel('api', { ok: true }).submit(),
-    framework.ZLinkConfigurationException
+    (error) => error instanceof framework.ZLinkFrameworkException
+      && error.kind === framework.ZLinkFrameworkErrorKind.NotFound
   );
 });
 
@@ -655,7 +656,8 @@ test('one-way call validation wins over a pre-aborted signal', async () => {
 
   await assert.rejects(
     () => channel.sendToChannel('missing-channel', 'hello').submit(controller.signal),
-    framework.ZLinkConfigurationException
+    (error) => error instanceof framework.ZLinkFrameworkException
+      && error.kind === framework.ZLinkFrameworkErrorKind.NotFound
   );
   await assert.rejects(
     () => fanout.publish('missing-fanout', typedPacket('Event', 'event')).submit(controller.signal),

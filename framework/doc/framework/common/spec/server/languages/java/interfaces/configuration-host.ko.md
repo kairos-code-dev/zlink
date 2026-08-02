@@ -516,11 +516,16 @@ public interface systems.zlink.framework.configuration.ZLinkStreamNodeBuilder {
   public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder bind(int);
   public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder setBindHost(java.lang.String);
   public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder setAdvertiseHost(java.lang.String);
+  public abstract systems.zlink.framework.configuration.ZLinkStreamSocketConfig configureSocket();
   public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder setTlsServer(java.lang.String, java.lang.String);
   public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder setTlsServer(java.lang.String, java.lang.String, boolean);
   public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder registerSession(java.lang.Class<? extends systems.zlink.framework.streams.ZLinkSession>);
   public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder enableActorDispatch();
   public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder addSessionPacketHandler(java.lang.Class<?>);
+}
+public interface systems.zlink.framework.configuration.ZLinkStreamSocketConfig {
+  public abstract long maxMessageSize();
+  public abstract void setMaxMessageSize(long);
 }
 public final class systems.zlink.framework.configuration.ZLinkUnhandledDispatchAction extends java.lang.Enum<systems.zlink.framework.configuration.ZLinkUnhandledDispatchAction> {
   public static final systems.zlink.framework.configuration.ZLinkUnhandledDispatchAction REPLY_ERROR;

@@ -103,6 +103,18 @@ final class JavaTargetContractGapTest {
     }
 
     @Test
+    void streamNodeExposesTheBoundedMessageSizeContract() throws Exception {
+        Class<?> builder = Class.forName(
+            "systems.zlink.framework.configuration.ZLinkStreamNodeBuilder");
+        Class<?> socketConfig = Class.forName(
+            "systems.zlink.framework.configuration.ZLinkStreamSocketConfig");
+        assertEquals(socketConfig, builder.getMethod("configureSocket").getReturnType());
+        assertEquals(long.class, socketConfig.getMethod("maxMessageSize").getReturnType());
+        assertEquals(void.class, socketConfig.getMethod("setMaxMessageSize", long.class)
+            .getReturnType());
+    }
+
+    @Test
     void spotAddressIsHiddenBehindOpaqueHandle() throws Exception {
         assertNotNull(Class.forName("systems.zlink.framework.spots.SpotHandle"));
         assertNotNull(Class.forName("systems.zlink.framework.spots.SpotHandleResolver"));

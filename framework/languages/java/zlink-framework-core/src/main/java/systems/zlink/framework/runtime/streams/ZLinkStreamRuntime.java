@@ -251,6 +251,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                     streamNode.tlsServer().keyPath(),
                     streamNode.tlsServer().requireClientCertificate());
             }
+            stream.setMaxMessageSize(streamNode.socketConfig().maxMessageSize());
             // Notification records must be enabled before bind. Framework
             // ingress below uses recv mode and never registers onPacket.
             stream.enableNotifications();
@@ -687,7 +688,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             private final RoutingId routingId;
             private final ZLinkStreamReceiveBuffer buffer =
                 new ZLinkStreamReceiveBuffer(
-                    ZLinkInboundDispatchBudget.defaultMaxMessageSize());
+                    streamNode.socketConfig().maxMessageSize());
             private ZLinkStreamInboundFrame pending;
             private boolean closed;
 

@@ -806,10 +806,10 @@ class transfer_session_t final : public fw::packet_stream_session_t
     fw::task_t<void> on_error (fw::stream_t &, const fw::stream_error_t &) override { co_return; }
 
     fw::task_t<void> on_packet (fw::stream_t &stream,
-                                const fw::stream_dispatch_context_t &dispatch,
+                                const fw::session_message_context_t &dispatch,
                                 const zlink::message_t &payload) override
     {
-        if (dispatch.packet_name () == e2e::bind_actor_session_req_t::packet_name) {
+        if (dispatch.packet_name == e2e::bind_actor_session_req_t::packet_name) {
             const auto request = payload.parse_json<e2e::bind_actor_session_req_t> ();
             auto actor_ref = co_await _directory.find (request.actor_id);
             fw::actor_ref_t resolved;
@@ -845,7 +845,7 @@ class transfer_session_t final : public fw::packet_stream_session_t
             throw fw::framework_exception_t (fw::framework_error_kind_t::not_found,
                                              "bound actor was not found");
         }
-        if (dispatch.can_reply ()) {
+        if (dispatch.can_reply) {
             auto reply = co_await actor->relay_request (payload).submit ();
             stream.reply_packet (reply).submit ();
             co_return;
@@ -1127,11 +1127,10 @@ class join_actor_handler_t
         const auto actor_id = route_value (http_request, "actorId");
         const auto request = parse_body (http_request).get<e2e::join_target_req_t> ();
         try {
-            const auto ref = require_actor_ref (_directory, actor_id);
             const auto request_timeout = request.scenario == "ST-C3"
                                            ? std::chrono::seconds (5)
                                            : std::chrono::seconds (12);
-            auto result = co_await _actors.request_to_actor (ref, request)
+            auto result = co_await _actors.request (fw::actor_id_t (actor_id), request)
                             .timeout (request_timeout)
                             .submit<e2e::join_target_res_t> ();
             _evidence.add (request.scenario, actor_id,
@@ -1178,8 +1177,7 @@ class probe_actor_handler_t
     {
         const auto actor_id = route_value (http_request, "actorId");
         const auto request = parse_body (http_request).get<e2e::probe_req_t> ();
-        const auto ref = require_actor_ref (_directory, actor_id);
-        auto response = co_await _actors.request_to_actor (ref, request)
+        auto response = co_await _actors.request (fw::actor_id_t (actor_id), request)
                           .timeout (std::chrono::seconds (10))
                           .submit<e2e::probe_res_t> ();
         co_return json_response (nlohmann::json (response));
@@ -1202,11 +1200,8 @@ class probe_ref_handler_t
         const auto actor_id = route_value (http_request, "actorId");
         const auto request = parse_body (http_request).get<e2e::actor_ref_probe_req_t> ();
         try {
-            const auto ref = fw::actor_ref_t (
-              fw::node_rid_t::from_string (request.node_rid), e2e::actor_type_stateful, actor_id,
-              static_cast<std::uint64_t> (request.generation));
             auto reply = co_await _actors
-                           .request_to_actor (ref,
+                           .request (fw::actor_id_t (actor_id),
                                               e2e::probe_req_t{request.scenario, request.marker})
                            .timeout (std::chrono::milliseconds (request.timeout_ms))
                            .submit<e2e::probe_res_t> ();
@@ -1234,10 +1229,8 @@ class send_ref_handler_t
     {
         const auto actor_id = route_value (http_request, "actorId");
         const auto request = parse_body (http_request).get<e2e::actor_ref_probe_req_t> ();
-        const auto ref = fw::actor_ref_t (fw::node_rid_t::from_string (request.node_rid),
-                                          e2e::actor_type_stateful, actor_id,
-                                          static_cast<std::uint64_t> (request.generation));
-        _actors.send_to_actor (ref, e2e::handoff_packet_msg_t{request.scenario, request.marker})
+        _actors.send (fw::actor_id_t (actor_id),
+                      e2e::handoff_packet_msg_t{request.scenario, request.marker})
           .submit ();
         co_return json_response (nlohmann::json::object ());
     }
@@ -1260,8 +1253,7 @@ class bound_push_handler_t
     {
         const auto actor_id = route_value (http_request, "actorId");
         const auto request = parse_body (http_request).get<e2e::bound_push_req_t> ();
-        const auto ref = require_actor_ref (_directory, actor_id);
-        auto response = co_await _actors.request_to_actor (ref, request)
+        auto response = co_await _actors.request (fw::actor_id_t (actor_id), request)
                           .timeout (std::chrono::seconds (10))
                           .submit<e2e::bound_push_res_t> ();
         co_return json_response (nlohmann::json (response));

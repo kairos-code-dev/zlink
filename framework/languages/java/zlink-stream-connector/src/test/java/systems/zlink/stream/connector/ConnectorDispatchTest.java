@@ -178,6 +178,68 @@ final class ConnectorDispatchTest {
     }
 
     @Test
+    void processDropPublishesExactlyOnceAndPreservesOlderQueueItem() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
+            ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(
+                server.options(ZLinkStreamDispatchMode.MANUAL, 1));
+            try {
+                AtomicInteger dropped = new AtomicInteger();
+                connector.onErrorReceived(error -> {
+                    if (error.code() == ZLinkStreamErrorCode.RECEIVED_MESSAGE_DROPPED) {
+                        dropped.incrementAndGet();
+                    }
+                    return CompletableFuture.completedFuture(null);
+                });
+                ConnectorTestAwait.await(connector.connect());
+
+                server.sendAsync(new ZLinkStreamWireProtocol.Header(
+                        ZLinkStreamWireProtocol.KIND_SEND,
+                        ZLinkStreamWireProtocol.CODEC_RAW,
+                        0,
+                        null,
+                        "Drop",
+                        Map.of(),
+                        null),
+                    TcpStreamConnectorTestServer.bytes("first")).join();
+                server.sendAsync(new ZLinkStreamWireProtocol.Header(
+                        ZLinkStreamWireProtocol.KIND_SEND,
+                        ZLinkStreamWireProtocol.CODEC_RAW,
+                        0,
+                        null,
+                        "Drop",
+                        Map.of(),
+                        null),
+                    TcpStreamConnectorTestServer.bytes("second")).join();
+
+                TcpStreamConnectorTestServer.awaitCondition(
+                    () -> connector.receivedCount("Drop") == 1
+                        && connector.pendingDispatchCount() >= 2);
+                ConnectorTestAwait.await(connector.dispatch());
+                TcpStreamConnectorTestServer.awaitCondition(() -> dropped.get() == 1);
+                assertEquals(1, dropped.get());
+                assertEquals(1, connector.receivedCount("Drop"));
+                var retained = connector.waitFor("Drop")
+                    .timeout(java.time.Duration.ofSeconds(1))
+                    .submit()
+                    .toCompletableFuture()
+                    .get();
+                try {
+                    assertEquals(
+                        "first",
+                        new String(
+                            retained.payload().payload().toByteArray(),
+                            StandardCharsets.UTF_8));
+                } finally {
+                    retained.payload().payload().close();
+                }
+                assertEquals(0, connector.receivedCount("Drop"));
+            } finally {
+                ConnectorTestAwait.await(connector.close());
+            }
+        }
+    }
+
+    @Test
     void cancelledQueuedWaiterClosesTheMessageItCannotReceive() {
         ZLinkStreamDispatchQueue queue = new ZLinkStreamDispatchQueue(1);
         ZLinkStreamMessage<ZLinkStreamEncodedPayload> queued = message("queued");

@@ -2025,7 +2025,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
             std::string actor_id,
             const std::optional<zlink::message_t> &creation_payload) mutable {
               auto call = actor_manager.get_or_create (
-                std::move (actor_id), std::move (actor_type));
+                actor_id_t (std::move (actor_id)), std::move (actor_type));
               if (creation_payload)
                   call.creation_request (
                     message_t::from_raw (*creation_payload, serializers));

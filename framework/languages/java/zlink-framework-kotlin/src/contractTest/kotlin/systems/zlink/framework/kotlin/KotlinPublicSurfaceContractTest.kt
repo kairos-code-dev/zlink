@@ -449,6 +449,30 @@ class KotlinPublicSurfaceContractTest {
     }
 
     @Test
+    fun `RouteMesh runtime options use the contracted Java projection`() {
+        val type = Class.forName(
+            "systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions",
+        )
+        assertEquals(
+            "systems.zlink.framework.channels.ZLinkMeshNodeRuntimeOptions",
+            type.getMethod("meshNode", String::class.java).returnType.name,
+        )
+        assertEquals(
+            "systems.zlink.framework.channels.ZLinkMeshChannelRuntimeOptions",
+            type.getMethod("channel", String::class.java, String::class.java)
+                .returnType.name,
+        )
+        assertEquals(
+            "systems.zlink.framework.channels.ZLinkMeshPlacementRuntimeOptions",
+            type.getMethod("mesh", String::class.java).returnType.name,
+        )
+        assertEquals(
+            "systems.zlink.framework.channels.ZLinkMeshChannelRuntimeOptions",
+            type.getMethod("channel", String::class.java).returnType.name,
+        )
+    }
+
+    @Test
     fun `documented Kotlin APIs retain their exact JVM descriptors`() {
         val expectedHashes = mapOf(
             "ZLinkConnectorExtensionsKt" to "a83aa6550a9fd806bd21496bfd1eafac476f4ae368cd99fb624b22bc1931a76f",

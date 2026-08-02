@@ -49,7 +49,7 @@ class bingo_session_t final : public packet_stream_session_t
     }
 
     task_t<void> on_packet (stream_t &stream,
-                            const stream_dispatch_context_t &dispatch,
+                            const session_message_context_t &dispatch,
                             const zlink::message_t &payload) override
     {
         if (_authenticate.can_handle (dispatch)) {
@@ -59,11 +59,11 @@ class bingo_session_t final : public packet_stream_session_t
         }
 
         auto actor = require_bound_actor (std::string ("relaying packet '")
-                                          + std::string (dispatch.packet_name ()) + "'");
+                                          + std::string (dispatch.packet_name) + "'");
         if (!actor) {
             co_return;
         }
-        if (dispatch.can_reply ()) {
+        if (dispatch.can_reply) {
             auto reply = co_await actor.value ().relay_request (payload).submit ();
             stream.reply_packet (reply).submit ();
             co_return;

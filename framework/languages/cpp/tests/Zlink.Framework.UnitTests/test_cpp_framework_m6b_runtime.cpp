@@ -125,8 +125,8 @@ class recording_actor_client_t final : public zlink::framework::actor_client_t
     std::atomic_int request_submissions{0};
 
   protected:
-    zlink::framework::task_t<void> send_to_actor_erased (
-      zlink::framework::actor_ref_t,
+    zlink::framework::task_t<void> send_erased (
+      zlink::framework::actor_id_t,
       std::string,
       zlink::framework::message_t,
       const zlink::framework::actor_send_call_t::metadata_map_t &) override
@@ -136,8 +136,8 @@ class recording_actor_client_t final : public zlink::framework::actor_client_t
     }
 
     zlink::framework::task_t<zlink::framework::message_t>
-    request_to_actor_erased (
-      zlink::framework::actor_ref_t,
+    request_erased (
+      zlink::framework::actor_id_t,
       std::string,
       zlink::framework::message_t,
       std::optional<std::chrono::milliseconds>,
@@ -390,7 +390,7 @@ void verify_self_actor_request_rejected_before_submission ()
     runtime::actor_execution_scope_t scope (
       "player:actor-1", "spot-1");
     actor_request_call_t request (
-      actor_client, actor, "SelfRequest", message_t{});
+      actor_client, actor.actor_id (), "SelfRequest", message_t{});
 
     const auto result = request.submit_message ().result ();
     assert (!result);

@@ -36,8 +36,8 @@ internal static class StC1SourceDownBeforeCommitScenario
             // SIGKILL may abort the HTTP request before the app endpoint can return a failure body.
         }
         if (response is not null)
-            ZlinkStreamAssert.Ensure(!response.Accepted,
-                "ST-C1 join should not be accepted after source shutdown before commit.");
+            ZlinkStreamAssert.Ensure(response.Accepted,
+                "ST-C1 deferred join intent was not acknowledged before source shutdown.");
 
         // The runtime cleanup marker is the bounded proof required by the common
         // scenario; draining the target would also wait for its independent Spot

@@ -387,6 +387,20 @@ internal sealed partial class ZLinkActorSessionManager
             .ConfigureAwait(false);
     }
 
+    public async ValueTask ReleaseActorLocationAfterMoveAsync(
+        ZLinkActorRuntimeState state,
+        ZLinkAuthoritySnapshot expectedSourceSnapshot,
+        CancellationToken cancellationToken = default)
+    {
+        if (LocationLifecycle is not { } lifecycle) return;
+
+        await lifecycle.ActorOwnership.ReleaseActorAfterMoveAsync(
+                state.ActorId,
+                expectedSourceSnapshot,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     /// <summary>
     /// The actor moved to another node's entry spot through the native
     /// join path, where no framework runtime claims the row on the target:

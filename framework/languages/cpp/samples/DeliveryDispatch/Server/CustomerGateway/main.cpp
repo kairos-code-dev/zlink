@@ -186,15 +186,15 @@ class customer_gateway_session_t final : public packet_stream_session_t
     task_t<void> on_error (stream_t &, const stream_error_t &) override { co_return; }
 
     task_t<void> on_packet (stream_t &stream,
-                            const stream_dispatch_context_t &dispatch,
+                            const session_message_context_t &dispatch,
                             const zlink::message_t &payload) override
     {
         std::cerr << "deliverydispatch customer-gateway: dispatch packet="
-                  << dispatch.packet_name () << "\n";
-        if (dispatch.packet_name () != subscribe_delivery_req_t::packet_name) {
+                  << dispatch.packet_name << "\n";
+        if (dispatch.packet_name != subscribe_delivery_req_t::packet_name) {
             auto actor = require_single_bound_actor (
-              stream, std::string (dispatch.packet_name ()));
-            if (dispatch.can_reply ()) {
+              stream, std::string (dispatch.packet_name));
+            if (dispatch.can_reply) {
                 auto reply = co_await actor.relay_request (payload).submit ();
                 stream.reply_packet (reply).submit ();
                 co_return;

@@ -84,7 +84,7 @@ final class ZLinkStreamRuntimeIngressTest {
     }
 
     @Test
-    void stopsRecvWhileApplicationHwmIsFullAndResumesAfterTerminalCompletion()
+    void doesNotPauseForAnActiveHandlerAtApplicationHwm()
         throws Exception {
         TestSession.holdFirstDispatch = true;
         FakeStream stream = new FakeStream();
@@ -96,14 +96,15 @@ final class ZLinkStreamRuntimeIngressTest {
 
         TestSession session = awaitSession();
         assertTrue(session.dispatchLatch.await(5, TimeUnit.SECONDS));
-        assertEquals(1, stream.successfulReceives.get());
-        assertEquals(1, session.dispatchCount.get());
-
-        session.firstDispatch.complete(null);
+        assertTrue(session.dispatchCount.get() >= 1);
+        assertFalse(session.firstDispatch.isDone());
 
         assertTrue(session.secondDispatchLatch.await(5, TimeUnit.SECONDS));
         assertEquals(2, stream.successfulReceives.get());
+        assertEquals(2, session.dispatchCount.get());
         assertEquals(List.of("first", "second"), session.packetNames);
+
+        session.firstDispatch.complete(null);
     }
 
     @Test
@@ -395,6 +396,7 @@ final class ZLinkStreamRuntimeIngressTest {
         @Override public void setTlsServer(
             String certificatePath, String keyPath,
             boolean requireClientCertificate) { }
+        @Override public void setMaxMessageSize(long value) { }
         @Override public void enableNotifications() { notificationsEnabled = true; }
         @Override public boolean waitForReadable(Duration timeout) {
             readinessWaits.incrementAndGet();

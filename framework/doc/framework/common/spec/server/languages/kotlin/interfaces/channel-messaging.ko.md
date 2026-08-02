@@ -159,6 +159,13 @@ event의 packet name을 사용하므로 이 내부 topic을 만들지 않는다.
 RouteMesh DSL은 Java builder의 의미를 바꾸지 않고 receiver와 lambda만 제공한다. MeshNode 하나의 physical
 connection 위에 [ChannelName](../../../../01-glossary.ko.md#channelname)별 role을 구성한다.
 
+Kotlin runtime이 Java의 `ZLinkRouteMeshRuntimeOptions`를 직접 사용할 때는 네 가지 public
+선택을 그대로 투영한다. `meshNode(meshName)`과 `channel(meshName, channelName)`은 대상
+Mesh를 명시하고, `mesh(meshName)`과 `channel(channelName)`은 현재 runtime context의
+Mesh를 사용한다. Kotlin DSL의 `routeMesh`와 `channel`은 이 runtime option에 새로운
+overload를 추가하지 않는다. 따라서 이 네 method는 Java exact interface와 Kotlin
+package consumer에서 같은 이름·인자·반환 type으로 확인해야 한다.
+
 RouteMesh Channel Server와 ClientServer Server weight는 Java builder의 signed `int`를 사용한다. 허용 범위는
 `0..10000`, 기본값은 `100`이며 0은 새 target 선택에서 제외한다. Logical Multicast는 positive member를
 각각 한 번만 포함하고 weight 크기로 제출 횟수를 늘리지 않는다. 범위 밖 startup·runtime 설정은

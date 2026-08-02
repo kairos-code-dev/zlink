@@ -734,7 +734,7 @@ export class ServiceStatefulRuntime {
     const authorityReleased = await this.instanceApplicationLifecycle?.completeTerminal(target)
       ?? false;
     if (!authorityReleased) {
-      this.publishCommittedInstanceRoute(target.stableType, released);
+      this.replaceCommittedInstanceRoute(target.stableType, route, released);
     } else {
       this.forgetClosedInstanceRoute(released);
     }
@@ -1675,7 +1675,7 @@ export class ServiceStatefulRuntime {
         const authorityReleased = await this.instanceApplicationLifecycle?.completeTerminal(target)
           ?? false;
         if (!authorityReleased) {
-          this.publishCommittedInstanceRoute(target.stableType, released);
+          this.replaceCommittedInstanceRoute(target.stableType, route, released);
         } else {
           this.forgetClosedInstanceRoute(released);
         }
@@ -2026,6 +2026,27 @@ export class ServiceStatefulRuntime {
       storeVersion: route.storeVersion
     });
     this.registerInstanceIntent(stableType, route);
+  }
+
+  private replaceCommittedInstanceRoute(
+    stableType: string,
+    previous: ServiceInstanceRouteFence,
+    next: ServiceInstanceRouteFence
+  ): void {
+    // A terminal completion can advance only the durable StoreVersion while
+    // the same authority owner continues to serve the same Instance. Remove
+    // the exact previous cache entry before publishing that validated result;
+    // rememberSpotRoute must continue rejecting an unrelated same-generation
+    // stale route.
+    this.forgetSpotRoute(
+      {
+        spotId: previous.targetSpotId,
+        generation: previous.objectGeneration
+      },
+      previous.authorityOwnerGeneration,
+      previous.storeVersion
+    );
+    this.publishCommittedInstanceRoute(stableType, next);
   }
 
   private forgetClosedInstanceRoute(route: ServiceInstanceRouteFence): void {

@@ -141,9 +141,7 @@ class send_handler_t
     {
         try {
             e2e::actor_notify_t notify{request.scenario, request.actor_id, request.value};
-            auto actor_ref = co_await candidate_actor_ref (_directory, _configuration,
-                                                           request.actor_id);
-            _actors.send_to_actor (actor_ref, notify)
+            _actors.send (zlink::framework::actor_id_t (request.actor_id), notify)
               .submit ();
             co_return e2e::actor_call_response_t{request.scenario, request.actor_id, "sent", ""};
         }
@@ -180,9 +178,7 @@ class request_handler_t
     {
         try {
             e2e::actor_ask_t ask{request.scenario, request.actor_id, request.value};
-            auto actor_ref = co_await candidate_actor_ref (_directory, _configuration,
-                                                           request.actor_id);
-            auto reply = co_await _actors.request_to_actor (actor_ref, ask)
+            auto reply = co_await _actors.request (zlink::framework::actor_id_t (request.actor_id), ask)
                            .timeout (std::chrono::seconds (5))
                            .submit<e2e::actor_reply_t> ();
             co_return e2e::actor_call_response_t{
@@ -281,7 +277,7 @@ class request_captured_handler_t
         }
         try {
             auto reply = co_await _actors
-                           .request_to_actor (*actor_ref,
+                           .request (zlink::framework::actor_id_t (request.actor_id),
                                               e2e::actor_ask_t{request.scenario,
                                                                request.actor_id, request.value})
                            .timeout (std::chrono::seconds (5))

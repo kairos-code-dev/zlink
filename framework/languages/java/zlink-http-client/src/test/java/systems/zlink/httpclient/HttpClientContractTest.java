@@ -668,6 +668,51 @@ final class HttpClientContractTest {
     }
 
     @Test
+    void bodyReadUsesTheRemainingRequestDeadline() throws Exception {
+        ServerSocket serverSocket = new ServerSocket(
+            0, 0, java.net.InetAddress.getLoopbackAddress());
+        Thread serverThread = new Thread(() -> {
+            try (Socket socket = serverSocket.accept()) {
+                java.io.BufferedReader request = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(socket.getInputStream(), StandardCharsets.US_ASCII));
+                String line;
+                while ((line = request.readLine()) != null && !line.isEmpty()) {
+                    // Consume the request headers before writing the response.
+                }
+                OutputStream out = socket.getOutputStream();
+                out.write((
+                    "HTTP/1.1 200 OK\r\n"
+                        + "Content-Length: 1024\r\n"
+                        + "Connection: keep-alive\r\n\r\n"
+                        + "x").getBytes(StandardCharsets.US_ASCII));
+                out.flush();
+                Thread.sleep(1_000);
+            } catch (Exception ignored) {
+                // The client closes the body stream when the deadline expires.
+            }
+        }, "zlink-http-stalled-body-test");
+        serverThread.setDaemon(true);
+        serverThread.start();
+        try (ZLinkHttpClient client = ZLinkHttpClient.create(
+                "http://127.0.0.1:" + serverSocket.getLocalPort())
+            .timeout(Duration.ofMillis(120))
+            .build()) {
+            CompletionException error = assertThrows(
+                CompletionException.class,
+                () -> client.get("/stalled")
+                    .submitRaw()
+                    .toCompletableFuture()
+                    .orTimeout(2, java.util.concurrent.TimeUnit.SECONDS)
+                    .join());
+            assertTrue(error.getCause() instanceof ZLinkFrameworkException);
+        } finally {
+            serverSocket.close();
+            serverThread.interrupt();
+            serverThread.join(1_000);
+        }
+    }
+
+    @Test
     void maxResponseBodySizeEnforced() throws Exception {
         TestSupport.Server server = TestSupport.httpServer(exchange ->
             TestSupport.respond(exchange, 200, "x".repeat(4096)));

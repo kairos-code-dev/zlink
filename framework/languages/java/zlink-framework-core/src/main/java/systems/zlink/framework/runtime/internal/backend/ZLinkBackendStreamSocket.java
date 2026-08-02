@@ -10,6 +10,8 @@ public interface ZLinkBackendStreamSocket
     extends ZLinkBackendSocket, ZLinkBackendReceiveSocket {
     void setTlsServer(String certificatePath, String keyPath, boolean requireClientCertificate);
 
+    void setMaxMessageSize(long value);
+
     /** Enables Core STREAM connect/disconnect notifications before bind. */
     void enableNotifications();
 

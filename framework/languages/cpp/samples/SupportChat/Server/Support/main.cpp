@@ -874,16 +874,16 @@ class ensure_agent_conversation_handler_t
         if (already_exists) {
             joined =
               co_await _actor_client
-                .request_to_actor (
-                  actor,
+                .request (
+                  actor.actor_id (),
                   join_conversation_req_t{
                     request.roster_actor_id, role_t::agent, request.display_name})
                 .submit<join_conversation_res_t> ();
         } else {
             joined =
               co_await _actor_client
-                .request_to_actor (
-                  actor,
+                .request (
+                  actor.actor_id (),
                   schedule_conversation_join_req_t{request.conversation_id})
                 .submit<join_conversation_res_t> ();
         }

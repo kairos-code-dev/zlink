@@ -100,7 +100,12 @@ public interface systems.zlink.framework.configuration.ZLinkMeshObjectRoleBuilde
   public abstract systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder server();
 }
 public interface systems.zlink.framework.configuration.ZLinkStreamNodeBuilder {
+  public abstract systems.zlink.framework.configuration.ZLinkStreamSocketConfig configureSocket();
   public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder enableActorDispatch();
+}
+public interface systems.zlink.framework.configuration.ZLinkStreamSocketConfig {
+  public abstract long maxMessageSize();
+  public abstract void setMaxMessageSize(long);
 }
 ```
 

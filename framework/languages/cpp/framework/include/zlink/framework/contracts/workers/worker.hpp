@@ -22,6 +22,8 @@
 namespace zlink::framework
 {
 
+class spot_context_t;
+
 class worker_options_t
 {
   public:
@@ -402,9 +404,8 @@ template <typename TResult> class worker_call_t
     using executor_t = std::function<task_t<TResult> (std::stop_token)>;
 
     worker_call_t () = default;
-    explicit worker_call_t (executor_t executor,
-                            std::stop_token host_cancellation = {}) :
-        _executor (std::move (executor)), _host_cancellation (host_cancellation)
+    explicit worker_call_t (executor_t executor) :
+        worker_call_t (std::move (executor), {})
     {
     }
 
@@ -471,6 +472,13 @@ template <typename TResult> class worker_call_t
     std::optional<std::chrono::milliseconds> _timeout;
     std::stop_token _host_cancellation;
     bool _started = false;
+
+    friend class spot_context_t;
+    explicit worker_call_t (executor_t executor,
+                            std::stop_token host_cancellation) :
+        _executor (std::move (executor)), _host_cancellation (host_cancellation)
+    {
+    }
 };
 
 } // namespace zlink::framework

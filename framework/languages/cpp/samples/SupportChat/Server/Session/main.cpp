@@ -45,10 +45,10 @@ class supportchat_session_t final : public packet_stream_session_t
     task_t<void> on_error (stream_t &, const stream_error_t &) override { co_return; }
 
     task_t<void> on_packet (stream_t &stream,
-                            const stream_dispatch_context_t &dispatch,
+                            const session_message_context_t &dispatch,
                             const zlink::message_t &payload) override
     {
-        if (dispatch.packet_name () == authenticate_req_t::packet_name) {
+        if (dispatch.packet_name == authenticate_req_t::packet_name) {
             /* 인증은 API 서버가 소유한다(공통 sample spec §11). Session은 access token을
              * 그대로 넘기고 사용자 프로필을 만들어 내지 않는다. */
             auto verified =
@@ -77,7 +77,7 @@ class supportchat_session_t final : public packet_stream_session_t
             stream.reply_packet (zlink::message_t::from_json (authenticated)).submit ();
             co_return;
         }
-        if (dispatch.packet_name () == join_conversation_req_t::packet_name
+        if (dispatch.packet_name == join_conversation_req_t::packet_name
             && _identity_role == role_t::agent) {
             auto joined = co_await ensure_agent_conversation_actor (stream, dispatch);
             stream.reply_packet (
@@ -87,7 +87,7 @@ class supportchat_session_t final : public packet_stream_session_t
             co_return;
         }
         auto actor = co_await select_actor (stream, dispatch);
-        if (dispatch.can_reply ()) {
+        if (dispatch.can_reply) {
             auto reply = co_await actor.relay_request (payload).submit ();
             stream.reply_packet (reply).submit ();
             co_return;
@@ -97,27 +97,27 @@ class supportchat_session_t final : public packet_stream_session_t
 
   private:
     task_t<session_actor_t> select_actor (stream_t &stream,
-                                          const stream_dispatch_context_t &dispatch)
+                                          const session_message_context_t &dispatch)
     {
-        if (auto conversation_id = dispatch.metadata ().find (conversation_id_metadata_key)) {
+        if (auto conversation_id = dispatch.metadata.find (conversation_id_metadata_key)) {
             const auto found = _conversation_actor_ids.find (std::string (*conversation_id));
             if (found != _conversation_actor_ids.end ()) {
-                co_return require_actor (found->second, std::string (dispatch.packet_name ()));
+                co_return require_actor (found->second, std::string (dispatch.packet_name));
             }
         }
-        co_return require_actor (_identity_actor_id, std::string (dispatch.packet_name ()));
+        co_return require_actor (_identity_actor_id, std::string (dispatch.packet_name));
     }
 
     task_t<ensure_agent_conversation_res_t>
     ensure_agent_conversation_actor (stream_t &stream,
-                                     const stream_dispatch_context_t &dispatch)
+                                     const session_message_context_t &dispatch)
     {
         const auto conversation_id = require_conversation_id (dispatch);
         const auto existing = _conversation_actor_ids.find (conversation_id);
         if (existing != _conversation_actor_ids.end ()) {
-            auto actor = require_actor (existing->second, std::string (dispatch.packet_name ()));
+            auto actor = require_actor (existing->second, std::string (dispatch.packet_name));
             auto refreshed =
-              co_await actor.relay_request (std::string (dispatch.packet_name ()),
+              co_await actor.relay_request (std::string (dispatch.packet_name),
                                             zlink::message_t::from_json (join_conversation_req_t {}))
                 .submit ();
             co_return ensure_agent_conversation_res_t{
@@ -139,9 +139,9 @@ class supportchat_session_t final : public packet_stream_session_t
         co_return ensured;
     }
 
-    static std::string require_conversation_id (const stream_dispatch_context_t &dispatch)
+    static std::string require_conversation_id (const session_message_context_t &dispatch)
     {
-        if (auto conversation_id = dispatch.metadata ().find (conversation_id_metadata_key)) {
+        if (auto conversation_id = dispatch.metadata.find (conversation_id_metadata_key)) {
             return std::string (*conversation_id);
         }
         throw framework_exception_t (framework_error_kind_t::protocol_error,

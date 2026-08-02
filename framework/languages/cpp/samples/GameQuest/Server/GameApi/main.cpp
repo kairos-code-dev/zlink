@@ -288,10 +288,10 @@ class gamequest_session_t final : public packet_stream_session_t
     task_t<void> on_error (stream_t &, const stream_error_t &) override { co_return; }
 
     task_t<void> on_packet (stream_t &stream,
-                            const stream_dispatch_context_t &dispatch,
+                            const session_message_context_t &dispatch,
                             const zlink::message_t &payload) override
     {
-        const auto packet = std::string (dispatch.packet_name ());
+        const auto packet = std::string (dispatch.packet_name);
         if (packet == join_session_req_t::packet_name) {
             const auto request = payload.parse_json<join_session_req_t> ();
             auto actor = _actors.get_or_create (gamequest_player_actor_type, request.player_id);

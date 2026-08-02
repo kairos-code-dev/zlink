@@ -207,6 +207,18 @@ export class ZLinkStatefulAuthorityRouteRuntime {
                 const { activationRecovery: _, ...routeWithoutRecovery } = route;
                 const completed: AppliedAuthorityRoute = {
                   ...routeWithoutRecovery,
+                  spotRoute: {
+                    ...route.spotRoute,
+                    spot: {
+                      spotId: released.targetSpotId,
+                      generation: released.objectGeneration
+                    },
+                    targetNodeRid: released.targetNodeRid,
+                    targetNodeGeneration: released.targetNodeGeneration,
+                    authorityOwnerGeneration: released.authorityOwnerGeneration,
+                    ownerLeaseGeneration: released.leaseGeneration,
+                    storeVersion: released.storeVersion
+                  },
                   instanceRoute: released
                 };
                 current.set(key, completed);

@@ -242,6 +242,58 @@ final class KotlinConnectorWrapperTest {
     }
 
     @Test
+    fun boundedQueueDropsNewestProcessMessageOnceAndRetainsOlderMessage() = runBlocking {
+        TcpServer().use { server ->
+            val connector = ZLinkStreamConnectorFactory.create(
+                options(server.endpoint(), maxReceivedMessages = 1),
+            ).kotlin()
+            try {
+                connector.connect().await()
+                val dropped = CompletableDeferred<ZLinkStreamError>()
+                val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+                    connector.errors().collect { error ->
+                        if (error.code() == ZLinkStreamErrorCode.RECEIVED_MESSAGE_DROPPED) {
+                            dropped.complete(error)
+                        }
+                    }
+                }
+
+                server.sendFrame(Frame(
+                    kind = 1,
+                    codec = 1,
+                    requestSeq = null,
+                    name = "Drop",
+                    payload = "\"first\"".toByteArray(StandardCharsets.UTF_8),
+                ))
+                server.sendFrame(Frame(
+                    kind = 1,
+                    codec = 1,
+                    requestSeq = null,
+                    name = "Drop",
+                    payload = "\"second\"".toByteArray(StandardCharsets.UTF_8),
+                ))
+
+                withTimeout(1_000) {
+                    while (connector.pendingDispatchCount < 2) {
+                        yield()
+                    }
+                }
+                connector.dispatch().await()
+                assertEquals(ZLinkStreamErrorCode.RECEIVED_MESSAGE_DROPPED, dropped.await().code())
+
+                val retained = connector.waitFor<String>("Drop")
+                    .timeout(ofSeconds(1))
+                    .await()
+                assertEquals("first", retained.payload())
+                assertEquals(0, connector.pendingDispatchCount)
+                collector.cancel()
+            } finally {
+                connector.close().await()
+            }
+        }
+    }
+
+    @Test
     fun kotlinObservationBuildersPreserveJavaQueueSemantics() = runBlocking {
         TcpServer().use { server ->
             val connector = ZLinkStreamConnectorFactory.create(options(server.endpoint())).kotlin()
@@ -385,12 +437,34 @@ final class KotlinConnectorWrapperTest {
         }
     }
 
-    private fun options(endpoint: URI = URI.create("tcp://127.0.0.1:7200")) =
+    private fun options(
+        endpoint: URI = URI.create("tcp://127.0.0.1:7200"),
+        maxReceivedMessages: Int = 1024,
+    ) =
         ZLinkStreamConnectorOptions(
             endpoint,
             ZLinkStreamDispatchMode.MANUAL,
             ofSeconds(1),
+            ofSeconds(1),
             1,
+            ofSeconds(1),
+            64 * 1024,
+            64 * 1024,
+            maxReceivedMessages,
+            1024,
+            0,
+            true,
+            ofSeconds(1),
+            ofSeconds(5),
+            true,
+            ofMillis(250),
+            ofSeconds(5),
+            2.0,
+            false,
+            ZLinkStreamCompression.LZ4,
+            null,
+            null,
+            null,
         )
 
     private fun payload(packetName: String, body: String) =

@@ -64,14 +64,25 @@ std::optional<stream_header_t> current_stream_relay_dispatch ()
 
 } // namespace detail
 
+actor_ref_t::actor_ref_t (actor_id_t actor_id,
+                          std::uint64_t object_generation,
+                          std::string mesh_name,
+                          node_rid_t node_rid) :
+    _actor_id (std::move (actor_id)),
+    _object_generation (object_generation),
+    _mesh_name (std::move (mesh_name)),
+    _node_rid (std::move (node_rid))
+{
+}
+
 actor_ref_t::actor_ref_t (node_rid_t node_rid,
                           std::string actor_type,
                           std::string actor_id,
                           std::uint64_t generation) :
+    _actor_id (actor_id_t (std::move (actor_id))),
+    _object_generation (generation),
     _node_rid (std::move (node_rid)),
-    _actor_type (std::move (actor_type)),
-    _actor_id (std::move (actor_id)),
-    _generation (generation)
+    _actor_type (std::move (actor_type))
 {
 }
 
@@ -80,24 +91,34 @@ const node_rid_t &actor_ref_t::node_rid () const noexcept
     return _node_rid;
 }
 
+const actor_id_t &actor_ref_t::actor_id () const noexcept
+{
+    return _actor_id;
+}
+
+std::uint64_t actor_ref_t::object_generation () const noexcept
+{
+    return _object_generation;
+}
+
+std::string_view actor_ref_t::mesh_name () const noexcept
+{
+    return _mesh_name;
+}
+
 std::string_view actor_ref_t::actor_type () const noexcept
 {
     return _actor_type;
 }
 
-std::string_view actor_ref_t::actor_id () const noexcept
-{
-    return _actor_id;
-}
-
 std::uint64_t actor_ref_t::generation () const noexcept
 {
-    return _generation;
+    return _object_generation;
 }
 
 bool actor_ref_t::empty () const noexcept
 {
-    return _actor_id.empty () || _actor_type.empty ();
+    return _actor_id.empty ();
 }
 
 bound_session_t::bound_session_t () : _state (std::make_shared<detail::actor_gateway_state_t> ())
@@ -190,7 +211,9 @@ task_t<void> bound_session_t::disconnect ()
     const auto found = _state->actors_by_id.find (std::string (_actor_ref.actor_id ()));
     if (found != _state->actors_by_id.end ()) {
         if (found->second.ref.generation () != _actor_ref.generation ()) {
-            return task_t<void> (detail::boundary_failure<void> (detail::boundary_error_t::stale_generation, "actor generation is stale"));
+            return task_t<void> (result_t<void>::failure (
+              framework_error_kind_t::invalid_operation,
+              "actor generation is stale"));
         }
         found->second.bound = false;
         found->second.disconnected = true;
@@ -227,7 +250,9 @@ bound_session_send_call_t bound_session_t::send_erased (std::string packet_name,
                                                     "actor id is already bound to another type")));
         }
         else if (found->second.ref.generation () != _actor_ref.generation ()) {
-            return bound_session_send_call_t (send_call_t (detail::boundary_failure<void> (detail::boundary_error_t::stale_generation, "actor generation is stale")));
+            return bound_session_send_call_t (send_call_t (result_t<void>::failure (
+              framework_error_kind_t::invalid_operation,
+              "actor generation is stale")));
         }
         else {
             found->second.ref = _actor_ref;
@@ -292,7 +317,7 @@ const actor_ref_t &actor_context_t::actor_ref () const noexcept
     return *_actor_ref;
 }
 
-std::string_view actor_context_t::actor_id () const noexcept
+const actor_id_t &actor_context_t::actor_id () const noexcept
 {
     return _actor_ref->actor_id ();
 }
@@ -569,7 +594,9 @@ task_t<void> session_actor_t::relay_internal (const zlink::message_t &payload)
               "actor session binding is stale"));
         }
         if (found->second.ref.generation () != _ref.generation ()) {
-            return task_t<void> (detail::boundary_failure<void> (detail::boundary_error_t::stale_generation, "actor generation is stale"));
+            return task_t<void> (result_t<void>::failure (
+              framework_error_kind_t::invalid_operation,
+              "actor generation is stale"));
         }
         _ref = found->second.ref;
         if (!_state->relay_dispatcher) {
@@ -637,7 +664,9 @@ relay_request_call_t session_actor_t::relay_request (const zlink::message_t &pay
               "actor session binding is stale"));
         }
         if (found->second.ref.generation () != _ref.generation ()) {
-            return relay_request_call_t (detail::boundary_failure<zlink::message_t> (detail::boundary_error_t::stale_generation, "actor generation is stale"));
+            return relay_request_call_t (result_t<zlink::message_t>::failure (
+              framework_error_kind_t::invalid_operation,
+              "actor generation is stale"));
         }
         _ref = found->second.ref;
         if (!_state->relay_dispatcher) {
@@ -696,7 +725,9 @@ task_t<void> session_actor_t::notify_disconnected ()
                   "actor session binding is stale"));
             }
             if (found->second.ref.generation () != _ref.generation ()) {
-                return task_t<void> (detail::boundary_failure<void> (detail::boundary_error_t::stale_generation, "actor generation is stale"));
+                return task_t<void> (result_t<void>::failure (
+                  framework_error_kind_t::invalid_operation,
+                  "actor generation is stale"));
             }
             if (found->second.disconnected)
                 return task_t<void> (result_t<void>::success ());
@@ -904,6 +935,12 @@ request_call_t<session_actor_t> session_actor_manager_t::bind (actor_ref_t actor
                   result_t<session_actor_t>::failure (
                     framework_error_kind_t::type_mismatch,
                     "actor id is already bound to another type"));
+            }
+            if (found->second.ref.generation () != actor_ref.generation ()) {
+                return request_call_t<session_actor_t> (
+                  result_t<session_actor_t>::failure (
+                    framework_error_kind_t::invalid_operation,
+                    "actor generation is stale"));
             }
             found->second.ref = actor_ref;
             found->second.bound = true;
@@ -1174,12 +1211,11 @@ result_t<void> actor_gateway_runtime_t::update_actor_ref (const actor_ref_t &act
                                         "actor id is already bound to another type");
     }
     if (found->second.ref.generation () != actor_ref.generation ()) {
-        return detail::boundary_failure<void> (detail::boundary_error_t::stale_generation,
-                                        "actor generation is stale. actor="
-                                          + std::string (actor_ref.actor_id ()) + ", current="
-                                          + std::to_string (found->second.ref.generation ())
-                                          + ", received="
-                                          + std::to_string (actor_ref.generation ()));
+        return result_t<void>::failure (
+          framework_error_kind_t::invalid_operation,
+          "actor generation is stale. actor=" + std::string (actor_ref.actor_id ())
+            + ", current=" + std::to_string (found->second.ref.generation ())
+            + ", received=" + std::to_string (actor_ref.generation ()));
     }
     found->second.ref = actor_ref;
     return result_t<void>::success ();
@@ -1397,7 +1433,7 @@ result_t<void> actor_gateway_runtime_t::dispatch_bound_session_send (
                                             "actor id is already bound to another type");
         }
         if (found->second.ref.generation () != actor_ref.generation ()) {
-            return detail::boundary_failure<void> (detail::boundary_error_t::stale_generation,
+            return result_t<void>::failure (framework_error_kind_t::invalid_operation,
                                             "actor generation is stale");
         }
         if (found->second.bound_session_route) {

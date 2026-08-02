@@ -287,6 +287,51 @@ internal sealed partial class ZLinkSpotActivation
                 cancellationToken);
     }
 
+    internal ValueTask CompleteTransferredActorJoinLifecycleAsync(
+        ZLinkActorRuntimeState actorState,
+        string handoffId,
+        CancellationToken cancellationToken)
+    {
+        var actor = actorState.Actor
+                    ?? throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.NotFound,
+                        $"Actor '{actorState.ActorId}' has no transferred instance at commit.");
+        return ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this)
+            ? CompleteTransferredActorJoinLifecycleCoreAsync(
+                actor,
+                actorState,
+                handoffId,
+                cancellationToken)
+            : ExecuteSerializedAsync(
+                static (activation, state, ct) => activation.CompleteTransferredActorJoinLifecycleCoreAsync(
+                    state.Actor,
+                    state.ActorState,
+                    state.HandoffId,
+                    ct),
+                (Actor: actor, ActorState: actorState, HandoffId: handoffId),
+                cancellationToken);
+    }
+
+    private async ValueTask CompleteTransferredActorJoinLifecycleCoreAsync(
+        IZLinkActor actor,
+        ZLinkActorRuntimeState actorState,
+        string handoffId,
+        CancellationToken cancellationToken)
+    {
+        if (!actorState.Handoff.TryBeginJoinedNotification(handoffId)) return;
+        try
+        {
+            await NotifyJoinedActorCoreAsync(actor, cancellationToken)
+                .ConfigureAwait(false);
+            actorState.Handoff.CompleteJoinedNotification(handoffId);
+        }
+        catch
+        {
+            actorState.Handoff.RetryJoinedNotification(handoffId);
+            throw;
+        }
+    }
+
     internal ValueTask CompleteTransferredActorJoinSealedAsync(
         ZLinkActorRuntimeState actorState,
         ZLinkSpotRelocationSeal seal,

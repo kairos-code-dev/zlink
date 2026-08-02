@@ -452,12 +452,14 @@ process 완료를 판정하지 않았다. 상세 명령과 candidate 경계는
 
 이번 phase의 범위는 production runtime gap과 Node production unit·contract test이다. E2E process와
 sample 구현·실행은 후속 범위로 유지한다. ND-IMP-001의 Nest `configureInboundDispatch`, ND-IMP-002의
-공통 public error mapping, ND-IMP-003의 unknown content type 처리는 현재 source와 회귀 test에서
-runtime 기준을 충족했다. 후속 fresh run에서 ND-IMP-004의 비-E2E package parity도 충족했지만,
-process E2E·sample gap은 아직 완료로 표시하지 않는다.
+공통 public error mapping, ND-IMP-003의 unknown content type, ND-IMP-005의 Instance StoreVersion
+route replacement와 ND-IMP-006의 weight validation은 현재 source와 회귀 test에서 runtime 기준을
+충족했다. 후속 fresh run에서 ND-IMP-004의 비-E2E package parity도 충족했지만, process E2E·sample
+gap은 아직 완료로 표시하지 않는다.
 
-M5/M6 runtime 회귀는 153/153이다. 초기 production unit·contract 범위는 58/58이었고, 후속
-비-E2E inventory는 59개 파일 1001/1001이다. 전체 Node test inventory는
+M5/M6 runtime 회귀는 153/153이다. 현재 production unit·contract 범위는 59개 파일 1003/1003이다.
+이전 59개 파일 1001/1001 결과는 이번 후속 test 추가 전의 historical count이며 현재 수치로 대체한다.
+전체 Node test inventory는
 123개이며, browser·integration, E2E 또는 sample 소스를 읽는 test, native child process test를 후속
 범위로 제외했다. 정확한 제외 기준과 명령 결과는
 [`log/2026-08-02-runtime-unit-completion.ko.md`](log/2026-08-02-runtime-unit-completion.ko.md)에 기록한다.
@@ -482,9 +484,11 @@ Node production runtime, public contract, package와 unit·contract gate를 갱�
 | ND-IMP-002 common error surface | 비-E2E 충족 | public 13-kind/error mapping contract와 runtime suite 통과 |
 | ND-IMP-003 unknown content type | 비-E2E 충족 | handler 호출 전 `ProtocolError`와 empty reply 회귀 통과 |
 | ND-IMP-004 package pin·consumer surface | 비-E2E 충족 | `npm ls` clean at 11.1.0, packaged contract PASS |
+| ND-IMP-005 Instance terminal StoreVersion route replacement | 비-E2E runtime·unit 충족 | fresh CH03에서 수정 전 stale-generation 재현, 수정 후 process PASS; M6B 43/43과 recovery StoreVersion assertion 통과 |
+| ND-IMP-006 RouteMesh weight validation | 비-E2E runtime·unit 충족 | Nest 62/62, backend 37/37; builder와 runtime setter가 `0..10000` 및 public configuration error를 적용 |
 | ND-TEST-001 public snapshot·negative comparison | 비-E2E 충족 | checked-in `node-public-contract.json`, exact Nest member test와 current contract-surface 38/38 통과; 전체 E2E/process surface는 후속 |
 | ND-TEST-002 documentation regression | 충족 | live Node ledger path 기준 17/17 PASS |
-| ND-TEST-003 CI path·non-E2E gate | 비-E2E 충족 | common guide path filter 추가, build/typecheck/lint와 59 contract files 1001/1001 PASS |
+| ND-TEST-003 CI path·non-E2E gate | 비-E2E 충족 | common guide path filter 추가, build/typecheck/lint와 59 contract files 1003/1003 PASS |
 
 runtime queue와 worker pool의 POSD·DDD 검토, 선택한 대안과 재검증 결과는
 [`log/2026-08-02-posd-ddd-review.ko.md`](log/2026-08-02-posd-ddd-review.ko.md)에 기록했다. E2E inventory
@@ -526,13 +530,18 @@ native artifact와 CI 범위다.
 
 | 범위 | 현재 결과 | 현재 gap |
 |---|---|---|
-| production contract·runtime | `build`와 `typecheck` 통과, `contract-surface` 38/38, backend boundary 6/6 | ND-IMP-001~003의 실제 process error·ownership evidence |
+| production contract·runtime | `build`와 `typecheck` 통과, `contract-surface` 38/38, backend boundary 6/6 | ND-IMP-001~006의 실제 process error·ownership·recovery evidence |
 | package | `npm ls` 11.1.0 clean, packaged contract 7개 통과 | ND-IMP-004 native artifact와 role-server process |
 | common E2E exact set | common 374 / Node 207 / missing 171 / extra 4 | ND-E2E-IMP-001의 exact map·selector 정렬 |
 | aggregate·Config | Config 1-14 목록은 존재하지만 Config 12·14는 `BLOCKED` | ND-E2E-IMP-002의 status·evidence 기반 PASS 판정 |
 | selector·client boundary | Client 직접 Framework/binding import 정적 scan은 0개 | ND-E2E-IMP-003·004의 current process와 selector evidence |
 | process call path | TA-A1 route fence 실패, SA-E2E-14 native artifact 실패 | ND-E2E-IMP-005 owner fix와 fresh package process |
 | full verification | documentation regression은 17/17이지만 full E2E/coverage/CI는 미충족 | ND-TEST-003 |
+
+2026-08-03 후속 runtime audit에서 Instance terminal StoreVersion route 교체와 RouteMesh runtime
+weight validation 차이를 추가로 확인해 owner layer에서 수정했다. 현재 production source와 unit 범위의
+runtime gap은 수정됐고, process·native artifact·E2E evidence만 후속 조건으로 남아 있다. 상세 결과는
+[`2026-08-03 runtime gap 후속 구현`](log/2026-08-03-framework-runtime-spec-gap-audit.ko.md)을 따른다.
 
 Common ID별 누락 목록과 fresh command 결과는
 [`2026-08-03 framework runtime-spec gap audit`](log/2026-08-03-framework-runtime-spec-gap-audit.ko.md)에
@@ -595,6 +604,26 @@ Common ID별 누락 목록과 fresh command 결과는
 workspace manifests와 lockfile은 11.1.0으로 정렬되었고, `npm ls @zlink-systems/zlink --all`가
 clean으로 끝난다. `scripts/verify_packaged_contract.sh`도 7개 package, browser ESM과 server
 CommonJS consumer를 통과했다. process E2E의 native role-server evidence는 이 범위에 포함하지 않았다.
+
+### ND-IMP-005 — Instance terminal completion의 StoreVersion route cache 교체 누락 (비-E2E runtime·unit 완료, process 후속)
+
+- 공통 spec 경로: `framework/doc/framework/common/spec/21-location-runtime.ko.md:684-689`, `framework/doc/framework/common/spec/16-spot-address-messaging.ko.md:351-355`
+- Node source·test 경로: `framework/languages/node/packages/framework/src/runtime/foundation/service-stateful-runtime.ts`, `framework/languages/node/packages/framework/src/runtime/host/stateful-authority-route-runtime.ts`, `framework/languages/node/test/m6b/m6b-runtime.contract.ts`
+- 기존 실제 동작: 같은 authority owner와 object generation을 유지한 Instance terminal completion이 StoreVersion만 갱신하면 이전 direct spot route가 cache에 남았다. 새 route를 바로 publish하면서 같은 generation의 이전 route로 판정되어 `ServiceStaleGenerationError`가 발생했다. Recovery completion도 반환된 Instance route와 이전 `spotRoute`의 StoreVersion이 달라질 수 있었다.
+- 기대 동작: Ready cache에는 현재 `StoreVersion`, owner lease와 route fence가 함께 있어야 한다. Preserve 또는 terminal completion이 같은 object를 계속 유지하면 exact 이전 cache entry를 제거한 뒤 새 StoreVersion route를 publish하고, recovery 결과에도 같은 fence를 반영해야 한다.
+- 구현 내용: `completeRecoveredInstanceActivation`과 `activationTerminalCompletion`은 `replaceCommittedInstanceRoute`를 통해 이전 fence를 조건부 제거한 뒤 validated successor를 publish한다. authority route recovery는 반환된 `released` route로 `spotRoute`를 재구성한다. unrelated same-generation stale route는 기존 rejection을 유지한다.
+- 회귀 test와 evidence: 수정 전 fresh `CH03`에서 `ServiceStaleGenerationError`를 재현했고 수정 후 `./run_e2e.sh CH03`이 통과했다. `m6b-runtime.contract.ts`는 Promise activation completion이 새 StoreVersion route를 instance intent에 반영하는지, authority recovery가 released StoreVersion을 기억하는지 직접 검사한다. `npm run verify:m6b-runtime`는 43/43이다.
+- 남은 조건: 같은 변경의 role-server와 restart process evidence는 E2E 후속 범위다. 비-E2E production runtime과 unit 회귀는 완료로 판정한다.
+
+### ND-IMP-006 — RouteMesh weight validation의 builder·runtime error surface 불일치 (비-E2E runtime·unit 완료)
+
+- 공통 spec 경로: `framework/doc/framework/common/spec/06-framework-api.ko.md:191-194`, `framework/doc/framework/common/spec/server/languages/node/interfaces/01-foundation-configuration.ko.md:395-398`
+- Node source·test 경로: `framework/languages/node/packages/nestjs/src/options-builder.ts`, `framework/languages/node/packages/framework/src/runtime/spots/spot-node-runtime-manager.ts`, `framework/languages/node/test/contract/nestjs-module.test.js`, `framework/languages/node/test/contract/backend-contract.test.js`
+- 기존 실제 동작: Nest RouteMesh Server builder의 `setWeight`가 범위 검증 없이 값을 저장했다. startup registration validation이 뒤에서 값을 거부하더라도 ClientServer와 formal Framework builder의 public validation 시점과 달랐다. 실행 중 RouteMesh placement/channel weight의 잘못된 값은 backend `RangeError`까지 노출될 수 있었다.
+- 기대 동작: RouteMesh Channel Server와 node placement weight는 정수 `0..10000`이어야 하며 범위 밖 runtime 변경은 public configuration error로 거부하고 backend 상태를 바꾸지 않아야 한다.
+- 구현 내용: Nest builder가 `0..10000`을 즉시 검증한다. `ZLinkSpotNodeRuntimeManager`는 backend 호출 전에 같은 범위를 검증하고 `ZLinkConfigurationException`을 반환한다. valid value만 descriptor publication과 runtime map에 기록한다.
+- 회귀 test와 evidence: Nest module suite는 RouteMesh builder의 `0`, `10000`, `-1`, `10001`, fractional value를 검사하고 62/62로 통과했다. backend contract는 placement/channel runtime setter의 invalid input이 public configuration exception이고 backend 호출이 0회인지 검사하며 37/37로 통과했다.
+- 남은 조건: process에서 runtime weight descriptor가 remote selector에 반영되는 evidence는 E2E/aggregate 후속 범위다. local production validation과 unit regression은 완료로 판정한다.
 
 ## 6. ND-E2E-IMP-* Node E2E implementation gap
 
@@ -663,7 +692,7 @@ scenario를 완료할 수 없다.
 - 현재 실제 동작: TA-A1은 세 role의 readiness와 browser client 실행까지 진행했지만, Actor `ta-a1`의 native session bind가 `expected to-actor-owner/1, resolved none, terminal=109` route fence 오류로 exit 1이 됐다. SA-E2E-14는 package version 11.1.0을 확인한 뒤 candidate native artifact incomplete로 exit 2가 됐다.
 - 기대 동작: public Node API를 사용하는 role server와 public HTTP/stream client가 실제 endpoint를 호출하고, process 종료·recovery·takeover·replay와 terminal evidence를 common scenario 계약대로 확인해야 한다.
 - gap 판정 근거: current TA-A1은 compile blocker를 넘어 runtime bind 단계에서 실패했지만 client-visible success와 role-server evidence를 만들지 못했다. SA-E2E-14는 native artifact 준비 단계에서 멈췄다. 따라서 feature-map의 implemented 표시는 현재 process evidence가 아니다.
-- 구체적인 수정 목록: (1) ND-IMP-001부터 ND-IMP-004를 먼저 정리한다. (2) E2E server/caller/session/client를 현재 exact public API에 맞춘다. (3) stale internal type과 private workaround를 추가하지 않고 public contract가 부족하면 contract 선행으로 분리한다. (4) local package와 native artifact를 재생성·검증한다. (5) process별 role evidence와 client assertion을 추가한다.
+- 구체적인 수정 목록: (1) ND-IMP-001부터 ND-IMP-006을 먼저 정리한다. (2) E2E server/caller/session/client를 현재 exact public API에 맞춘다. (3) stale internal type과 private workaround를 추가하지 않고 public contract가 부족하면 contract 선행으로 분리한다. (4) local package와 native artifact를 재생성·검증한다. (5) process별 role evidence와 client assertion을 추가한다.
 - 필요한 회귀 test: ND-REG-007과 ND-REG-008. real process call path, bounded timeout, build failure, hang, skip, role evidence 누락을 PASS로 계산하지 않는지 검사한다.
 - 선행 조건과 작업 순서: production contract/package → E2E compile → client architecture → process startup/readiness → failure/recovery/cleanup assertion → aggregate 순서로 진행한다.
 - 구현 완료 evidence: TA-A1과 SA-E2E-14를 포함한 관련 process runner가 현재 working tree에서 exit 0이고, 각 role endpoint 호출, client-visible result, terminal reason, callback count, owner, generation, cleanup evidence가 출력·assert된다. source compile만 통과한 경우는 부족하다.
@@ -790,7 +819,7 @@ documentation-regression fixture는 현재 Node gap ledger 경로를 읽도록 �
 #### 2026-08-02 비-E2E 갱신
 
 Node workflow push·pull request filter에 common guide path를 추가했고, build·typecheck·lint와
-E2E·sample·native integration을 제외한 contract inventory 59개 파일(1001/1001)을 통과했다.
+E2E·sample·native integration을 제외한 contract inventory 59개 파일(1003/1003)을 통과했다.
 전체 `verify:ci`는 사용자 요청으로 제외한 E2E scenario inventory 171개 누락에서 exit 1이므로
 ND-TEST-003의 E2E/aggregate 부분은 unresolved로 유지한다.
 
@@ -809,6 +838,8 @@ ND-TEST-003의 E2E/aggregate 부분은 unresolved로 유지한다.
 | ND-REG-006 | aggregate all의 Config 1-14 범위와 partial/diagnostic/source-only/N/A 제외, client·role evidence gate를 검사 | ND-E2E-IMP-002, ND-E2E-IMP-003 | 374개 ID 결과가 status와 evidence를 갖고 PASS가 정확히 계산됨 |
 | ND-REG-007 | Client public package allowlist, role endpoint call, client result와 role evidence, terminal/callback/owner/generation/cleanup assertion을 검사 | ND-E2E-IMP-004, ND-E2E-IMP-005 | 실제 process에서 client가 Framework 내부 API를 호출하지 않음 |
 | ND-REG-008 | documentation fixture, bounded full test, coverage, skip/timeout/hang, aggregate child exit policy를 검사 | ND-TEST-002, ND-TEST-003, ND-E2E-IMP-005 | ENOENT·timeout·skip·partial을 성공으로 숨기지 않고 CI가 종료 |
+| ND-REG-009 | Instance terminal·recovery completion의 StoreVersion route replacement와 stale-generation fence를 검사 | ND-IMP-005 | M6B 43/43, completion·recovery route StoreVersion assertion 통과; process evidence는 후속 |
+| ND-REG-010 | Nest RouteMesh builder와 runtime placement/channel weight의 `0..10000` 및 public configuration error를 검사 | ND-IMP-006 | Nest 62/62, backend 37/37, invalid input에서 backend 호출 0회 |
 
 ## 9. 완료 판정 checklist
 
@@ -890,10 +921,11 @@ ND-TEST-003의 E2E/aggregate 부분은 unresolved로 유지한다.
   environment blocker를 서로 구분한다.
 
 전체 checklist는 E2E·sample·process evidence가 남아 있어 완료로 표시하지 않는다. 다만
-비-E2E 반영 후 ND-IMP-001~004와 ND-TEST-002, ND-TEST-003의 비-E2E 조건은 fresh evidence로
+비-E2E 반영 후 ND-IMP-001~006과 ND-TEST-002, ND-TEST-003의 비-E2E 조건은 fresh evidence로
 확인했고, ND-TEST-001은 checked-in snapshot과 exact member 비교를 확보했다. ND-E2E-IMP-001~005,
 ND-TEST-003의 E2E/aggregate 조건과 ND-REG-005~008은 사용자가 제외한 후속 범위로 유지한다.
-ND-REG-001~004는 현재 contract, error, content-type과 package gate의 회귀 입력으로 반영했다.
+ND-REG-001~004와 ND-REG-009~010은 현재 contract, error, content-type, package, StoreVersion route와
+weight validation 회귀 입력으로 반영했다.
 
 ## 10. Framework spec 완료 gate와 sample 착수 조건
 
@@ -902,9 +934,9 @@ Framework spec 작업과 sample 작업은 한 문서에서 관리하지만 동�
 candidate에서만 sample 단계를 시작한다.
 
 - 9절 Contract, Runtime, E2E, POSD·DDD review와 Verification checklist가 모두 완료됐다.
-- `ND-IMP-001`~`004`, `ND-E2E-IMP-001`~`005`, `ND-TEST-001`~`003`이 완료 evidence와
+- `ND-IMP-001`~`006`, `ND-E2E-IMP-001`~`005`, `ND-TEST-001`~`003`이 완료 evidence와
   함께 닫혔다.
-- `ND-REG-001`~`008`이 통과하고 full test, coverage, CI, package consumer와 aggregate process E2E가
+- `ND-REG-001`~`010`이 통과하고 full test, coverage, CI, package consumer와 aggregate process E2E가
   같은 candidate에서 성공했다.
 - R3 final review의 미해결 Critical·High·Medium finding이 0개이고 최종 decision이 `CLEAN`이다.
 - 기준 commit 또는 immutable candidate SHA, 전체 변경 manifest와 실행 artifact가 기록됐다.

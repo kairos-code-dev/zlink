@@ -2785,6 +2785,20 @@ task_t<spot_create_result_t> spot_create_call_t::submit ()
                                     std::move (turn_plan->scheduler));
 }
 
+task_t<spot_create_result_t> spot_create_call_t::yield ()
+{
+    if (!detail::current_serial_turn_allows_yield ()) {
+        return detail::unsupported_yield_task<spot_create_result_t> ();
+    }
+    auto turn_plan = detail::prepare_serial_turn_await (true);
+    auto task = submit ();
+    if (!turn_plan) {
+        return task;
+    }
+    return detail::reschedule_task (
+      std::move (task), std::move (turn_plan->scheduler));
+}
+
 spot_create_call_t spot_manager_t::create (std::string stable_type)
 {
     auto state = std::make_shared<detail::spot_create_call_state_t> ();

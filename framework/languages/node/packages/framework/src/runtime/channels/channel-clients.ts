@@ -16,6 +16,10 @@ import {
   type ZLinkFrameworkRegistration
 } from '../configuration';
 import {
+  ZLinkFrameworkInternalErrorKind,
+  createInternalFrameworkException
+} from '../framework-errors-internal';
+import {
   requireOneWayCompletion,
   requirePublishCompletion,
   throwAlreadySubmitted,
@@ -84,7 +88,10 @@ export class DefaultZLinkChannelClient implements ZLinkChannelClient {
 
   private requireChannel(channelName: string): void {
     if (!this.registration.channelClients.has(channelName)) {
-      throw new ZLinkConfigurationException(`Channel client '${channelName}' is not registered.`);
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RequestTargetNotFound,
+        `Channel client '${channelName}' is not registered.`
+      );
     }
   }
 
@@ -257,7 +264,10 @@ export class DefaultZLinkRouteClient implements ZLinkRouteClient {
       .filter(([, mesh]) => Object.prototype.hasOwnProperty.call(mesh.meshChannels ?? {}, channelName))
       .map(([meshName]) => meshName);
     if (matches.length === 0) {
-      throw new ZLinkConfigurationException(`RouteMesh channel '${channelName}' is not registered.`);
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RequestTargetNotFound,
+        `RouteMesh channel '${channelName}' is not registered.`
+      );
     }
     if (matches.length !== 1) {
       throw new ZLinkConfigurationException(

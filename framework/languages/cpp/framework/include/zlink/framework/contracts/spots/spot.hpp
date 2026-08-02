@@ -1804,6 +1804,7 @@ class spot_create_call_t
     }
     spot_create_call_t &timeout (std::chrono::milliseconds timeout);
     task_t<spot_create_result_t> submit ();
+    task_t<spot_create_result_t> yield ();
 
   private:
     friend class spot_manager_t;

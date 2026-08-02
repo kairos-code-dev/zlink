@@ -13,10 +13,12 @@
 #include <cstdint>
 #include <climits>
 #include <chrono>
+#include <compare>
 #include <concepts>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <variant>
 #include <string>
 #include <string_view>
@@ -27,7 +29,40 @@
 namespace zlink::framework
 {
 
-using actor_id_t = std::string;
+class actor_id_t final
+{
+  public:
+    actor_id_t () = default;
+    explicit actor_id_t (std::string value) : _value (std::move (value)) {}
+
+    std::string_view value () const noexcept { return _value; }
+    bool empty () const noexcept { return _value.empty (); }
+    auto operator<=> (const actor_id_t &) const = default;
+
+    /* Internal framework call sites still cross std::string-owned maps. This
+     * conversion is removed from the installed compatibility surface once all
+     * runtime storage uses actor_id_t directly. */
+    operator std::string_view () const noexcept { return _value; }
+    operator std::string () const { return _value; }
+
+  private:
+    std::string _value;
+};
+
+inline bool operator== (const actor_id_t &lhs, std::string_view rhs) noexcept
+{
+    return lhs.value () == rhs;
+}
+
+inline bool operator== (std::string_view lhs, const actor_id_t &rhs) noexcept
+{
+    return lhs == rhs.value ();
+}
+
+inline std::ostream &operator<< (std::ostream &stream, const actor_id_t &actor_id)
+{
+    return stream << actor_id.value ();
+}
 
 namespace detail
 {
@@ -45,22 +80,34 @@ class actor_ref_t
 {
   public:
     actor_ref_t () = default;
+    actor_ref_t (actor_id_t actor_id,
+                 std::uint64_t object_generation,
+                 std::string mesh_name,
+                 node_rid_t node_rid);
+
+    /* Kept private to the current runtime migration path. New application
+     * code uses the exact actor_id/generation/mesh/node declaration above. */
     actor_ref_t (node_rid_t node_rid,
                  std::string actor_type,
                  std::string actor_id,
                  std::uint64_t generation = 1);
 
     const node_rid_t &node_rid () const noexcept;
+    const actor_id_t &actor_id () const noexcept;
+    std::uint64_t object_generation () const noexcept;
+    std::string_view mesh_name () const noexcept;
+
+    /* Runtime migration aliases. */
     std::string_view actor_type () const noexcept;
-    std::string_view actor_id () const noexcept;
     std::uint64_t generation () const noexcept;
     bool empty () const noexcept;
 
   private:
+    actor_id_t _actor_id;
+    std::uint64_t _object_generation = 0;
+    std::string _mesh_name;
     node_rid_t _node_rid;
     std::string _actor_type;
-    std::string _actor_id;
-    std::uint64_t _generation = 0;
 };
 
 struct actor_ref_snapshot_t
@@ -270,7 +317,7 @@ class actor_send_call_t
     using metadata_map_t = std::map<std::string, std::string>;
 
     actor_send_call_t (actor_client_t &client,
-                       actor_ref_t actor_ref,
+                       actor_id_t actor_id,
                        std::string packet_name,
                        message_t message);
 
@@ -279,7 +326,7 @@ class actor_send_call_t
 
   private:
     actor_client_t *_client;
-    actor_ref_t _actor_ref;
+    actor_id_t _actor_id;
     std::string _packet_name;
     message_t _message;
     metadata_map_t _metadata;
@@ -293,7 +340,7 @@ class actor_request_call_t
     using metadata_map_t = std::map<std::string, std::string>;
 
     actor_request_call_t (actor_client_t &client,
-                          actor_ref_t actor_ref,
+                          actor_id_t actor_id,
                           std::string packet_name,
                           message_t request);
 
@@ -320,7 +367,7 @@ class actor_request_call_t
     serializer_registry_t &serializers () const;
 
     actor_client_t *_client;
-    actor_ref_t _actor_ref;
+    actor_id_t _actor_id;
     std::string _packet_name;
     message_t _request;
     std::optional<std::chrono::milliseconds> _timeout;
@@ -333,30 +380,30 @@ class actor_client_t
     virtual ~actor_client_t () = default;
 
     template <typename TMessage>
-    actor_send_call_t send_to_actor (actor_ref_t actor_ref, TMessage message)
+    actor_send_call_t send (actor_id_t actor_id, TMessage message)
     {
         using message_type = std::remove_cvref_t<TMessage>;
-        return actor_send_call_t (*this, std::move (actor_ref),
+        return actor_send_call_t (*this, std::move (actor_id),
                                   detail::message_name<message_type> (),
                                   message_t::from (std::move (message)));
     }
 
     template <typename TRequest>
-    actor_request_call_t request_to_actor (actor_ref_t actor_ref, TRequest request)
+    actor_request_call_t request (actor_id_t actor_id, TRequest request)
     {
         using request_type = std::remove_cvref_t<TRequest>;
-        return actor_request_call_t (*this, std::move (actor_ref),
+        return actor_request_call_t (*this, std::move (actor_id),
                                      detail::message_name<request_type> (),
                                      message_t::from (std::move (request)));
     }
 
   protected:
-    virtual task_t<void> send_to_actor_erased (actor_ref_t actor_ref,
-                                               std::string packet_name,
-                                               message_t message,
-                                               const actor_send_call_t::metadata_map_t &metadata) = 0;
-    virtual task_t<message_t> request_to_actor_erased (
-      actor_ref_t actor_ref,
+    virtual task_t<void> send_erased (actor_id_t actor_id,
+                                      std::string packet_name,
+                                      message_t message,
+                                      const actor_send_call_t::metadata_map_t &metadata) = 0;
+    virtual task_t<message_t> request_erased (
+      actor_id_t actor_id,
       std::string packet_name,
       message_t request,
       std::optional<std::chrono::milliseconds> timeout,
@@ -649,7 +696,7 @@ class actor_context_t
     actor_context_t &operator= (const actor_context_t &) = delete;
 
     const actor_ref_t &actor_ref () const noexcept;
-    std::string_view actor_id () const noexcept;
+    const actor_id_t &actor_id () const noexcept;
     std::uint64_t object_generation () const noexcept;
     std::string_view mesh_name () const noexcept;
     std::optional<spot_id_t> spot_id () const;

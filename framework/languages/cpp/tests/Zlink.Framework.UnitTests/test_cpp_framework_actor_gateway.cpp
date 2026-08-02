@@ -51,8 +51,8 @@ class recording_actor_client_t final : public zlink::framework::actor_client_t
     std::atomic_int attempts{0};
 
   protected:
-    zlink::framework::task_t<void> send_to_actor_erased (
-      zlink::framework::actor_ref_t,
+    zlink::framework::task_t<void> send_erased (
+      zlink::framework::actor_id_t,
       std::string,
       zlink::framework::message_t,
       const zlink::framework::actor_send_call_t::metadata_map_t &) override
@@ -62,8 +62,8 @@ class recording_actor_client_t final : public zlink::framework::actor_client_t
           zlink::framework::result_t<void>::success ());
     }
 
-    zlink::framework::task_t<zlink::framework::message_t> request_to_actor_erased (
-      zlink::framework::actor_ref_t,
+    zlink::framework::task_t<zlink::framework::message_t> request_erased (
+      zlink::framework::actor_id_t,
       std::string,
       zlink::framework::message_t,
       std::optional<std::chrono::milliseconds>,
@@ -137,7 +137,7 @@ int actor_send_is_one_shot ()
     recording_actor_client_t client;
     actor_send_call_t call (
       client,
-      actor_ref_t (node_rid_t::from_string ("actor-node"), "player", "actor-2", 1),
+      actor_id_t ("actor-2"),
       "message", message_t{});
     auto copied = call;
     call.submit ().result ().value ();
@@ -292,18 +292,43 @@ int route_update_preserves_object_generation ()
     const actor_ref_t new_incarnation (
       node_rid_t::from_string ("actor-node-c"), "player", "actor-route", 8);
     const auto rejected = gateway.update_actor_ref (new_incarnation);
-    if (rejected)
+    if (rejected || rejected.error_kind () != framework_error_kind_t::invalid_operation)
         return 2;
-    auto explicit_binding =
-      manager.bind (new_incarnation).submit ().result ().value ();
-    if (explicit_binding.ref ().generation () != 8)
+    const auto rejected_bind = manager.bind (new_incarnation).submit ().result ();
+    if (rejected_bind || rejected_bind.error_kind ()
+                           != framework_error_kind_t::invalid_operation)
         return 3;
-    const auto stale = original_binding.notify_disconnected ().result ();
-    if (stale
-        || stale.error_kind ()
-             != framework_error_kind_t::not_configured
-        || !gateway.actor_bound ("actor-route")) {
+    const auto disconnected = original_binding.notify_disconnected ().result ();
+    if (!disconnected || gateway.actor_bound ("actor-route")) {
         return 4;
+    }
+    return 0;
+}
+
+int exact_session_generation_mismatch_is_invalid_operation ()
+{
+    using namespace zlink::framework;
+    using namespace zlink::framework::detail;
+
+    actor_gateway_runtime_t gateway;
+    auto manager = gateway.manager ();
+    session_actor_manager_access_t::attach (manager, stream_t{});
+    const actor_ref_t current (
+      node_rid_t::from_string ("actor-node"), "player", "exact-actor", 3);
+    const actor_ref_t stale (
+      node_rid_t::from_string ("actor-node"), "player", "exact-actor", 2);
+    if (!manager.bind (current).submit ().result ()) {
+        return 1;
+    }
+    const auto bind_result = manager.bind (stale).submit ().result ();
+    if (bind_result || bind_result.error_kind ()
+                         != framework_error_kind_t::invalid_operation) {
+        return 2;
+    }
+    const auto update_result = gateway.update_actor_ref (stale);
+    if (update_result || update_result.error_kind ()
+                              != framework_error_kind_t::invalid_operation) {
+        return 3;
     }
     return 0;
 }
@@ -399,6 +424,9 @@ int main ()
     }
     if (const auto stale = stale_session_unbind_preserves_rebind (); stale != 0) {
         return stale;
+    }
+    if (const auto exact = exact_session_generation_mismatch_is_invalid_operation (); exact != 0) {
+        return exact;
     }
     const auto one_shot = actor_send_is_one_shot ();
     if (one_shot != 0)

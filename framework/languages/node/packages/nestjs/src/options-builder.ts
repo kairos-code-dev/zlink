@@ -497,9 +497,9 @@ class DefaultZLinkNestClientServerChannelServerBuilder extends ZLinkNestOptionsB
   }
 
   setWeight(weight: number): this {
-    if (!Number.isInteger(weight) || weight < 0 || weight > 100) {
+    if (!Number.isInteger(weight) || weight < 0 || weight > 10_000) {
       throw new framework.ZLinkConfigurationException(
-        `ClientServer channel '${this.name}' weight must be between 0 and 100.`
+        `ClientServer channel '${this.name}' weight must be between 0 and 10000.`
       );
     }
     this.updateServer({ weight });
@@ -559,6 +559,15 @@ function requireListenerPort(port: number | undefined, label: string): number {
     throw new framework.ZLinkConfigurationException(`${label} port must be between 0 and 65535.`);
   }
   return normalized;
+}
+
+function requirePublicWeight(value: number, label: string): number {
+  if (!Number.isInteger(value) || value < 0 || value > 10_000) {
+    throw new framework.ZLinkConfigurationException(
+      `${label} must be an integer in 0..10000.`
+    );
+  }
+  return value;
 }
 
 function rejectFixedRoutingId(routingId: string | undefined, memberName: string): void {
@@ -1225,7 +1234,7 @@ class DefaultZLinkNestMeshChannelServerBuilder extends ZLinkNestOptionsBuilder
   }
 
   setWeight(weight: number): this {
-    this.channel.weight = weight;
+    this.channel.weight = requirePublicWeight(weight, 'Mesh channel weight');
     return this;
   }
 

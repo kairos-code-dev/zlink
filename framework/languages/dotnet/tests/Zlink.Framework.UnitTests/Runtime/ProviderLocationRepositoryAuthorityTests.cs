@@ -477,6 +477,84 @@ public sealed class ProviderLocationRepositoryAuthorityTests
     }
 
     [Fact]
+    public async Task Stale_Authority_Delete_Submits_The_Expected_Version_Fence()
+    {
+        var inner = new ZLinkInMemoryProviderLocationStore();
+        var provider = new ApplyThenThrowLocationStore(inner);
+        var source = new ZLinkProviderLocationRepository(provider);
+        var target = new ZLinkProviderLocationRepository(provider);
+        var sourceOwner = await ClaimAsync(source, "source-owner");
+        var targetOwner = await ClaimAsync(target, "target-owner");
+        var sourceDescriptor = Descriptor("source", sourceOwner);
+        var targetDescriptor = Descriptor("target", targetOwner);
+        Assert.Equal(
+            ZLinkLocationWriteStatus.Stored,
+            (await source.UpdateMeshNodeAsync(
+                sourceDescriptor,
+                ZLinkLocationWriteIntent.NewClaim)).Status);
+        Assert.Equal(
+            ZLinkLocationWriteStatus.Stored,
+            (await target.UpdateMeshNodeAsync(
+                targetDescriptor,
+                ZLinkLocationWriteIntent.NewClaim)).Status);
+
+        var createRequest = Reservation(
+            "actor:stale-delete",
+            sourceDescriptor,
+            sourceOwner);
+        var reserved = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+            await source.ReserveAsync(createRequest));
+        var created = Assert.IsType<ZLinkObjectCommitResult.Committed>(
+            await source.CommitAsync(
+                reserved.Reservation,
+                new byte[] { 0x31 })).Snapshot;
+        var relocation = new ZLinkRelocationCapacityReservationRequest(
+            Guid.NewGuid(),
+            createRequest.Key,
+            created.StoreVersion,
+            ZLinkPlacementObjectKind.Actor,
+            "player",
+            new ZLinkMeshNodeDescriptorKey(
+                "play",
+                sourceDescriptor.Rid),
+            sourceDescriptor.LifecycleGeneration,
+            sourceOwner,
+            new ZLinkMeshNodeDescriptorKey(
+                "play",
+                targetDescriptor.Rid),
+            targetDescriptor.LifecycleGeneration,
+            targetOwner,
+            new ZLinkCapacityVector(1, 0, null));
+        var capacity = Assert.IsType<
+            ZLinkRelocationCapacityReserveResult.Reserved>(
+            await target.ReserveRelocationCapacityAsync(relocation));
+        _ = Assert.IsType<ZLinkAuthorityCompareExchangeResult.Stored>(
+            await source.CompareExchangeAuthorityAsync(
+                createRequest.Key,
+                created.StoreVersion,
+                new ZLinkAuthorityMutation.Put(
+                    new byte[] { 0x32 },
+                    ZLinkAuthorityGenerationTransition.NewOwner,
+                    targetOwner,
+                    capacity.Fence)));
+
+        var deleteBatchesBefore = provider.DeleteBatchCalls;
+        var stale = await source.CompareExchangeAuthorityAsync(
+            createRequest.Key,
+            created.StoreVersion,
+            new ZLinkAuthorityMutation.Delete());
+
+        Assert.IsType<ZLinkAuthorityCompareExchangeResult.Conflict>(stale);
+        Assert.Equal(deleteBatchesBefore + 1, provider.DeleteBatchCalls);
+        var current = Assert.IsType<ZLinkAuthorityReadResult.Found>(
+            await target.ReadAuthorityAsync(createRequest.Key));
+        Assert.Equal(targetOwner.OwnerId, current.Snapshot.OwnerId);
+        Assert.Equal(
+            created.ObjectGeneration,
+            current.Snapshot.ObjectGeneration);
+    }
+
+    [Fact]
     public async Task SharedOpaqueProvider_AbortedReservationBurnsIssuedGeneration()
     {
         var provider = new ZLinkInMemoryProviderLocationStore();
@@ -2397,6 +2475,7 @@ public sealed class ProviderLocationRepositoryAuthorityTests
         public int SkipWritesBeforeThrow { get; set; }
         public bool BlockWritesAfterThrownResponse { get; set; }
         public bool BlockWrites { get; set; }
+        public int DeleteBatchCalls { get; private set; }
         private int _inventoryReadCount;
 
         public int InventoryReadCount =>
@@ -2420,6 +2499,9 @@ public sealed class ProviderLocationRepositoryAuthorityTests
         {
             if (BlockWrites)
                 throw new IOException("The provider is unavailable.");
+            if (request.Mutations.Any(static mutation =>
+                    mutation is ZLinkStoreMutation.Delete))
+                DeleteBatchCalls++;
             var result = await inner.WriteAsync(request, cancellationToken);
             if (ThrowAfterNextWrite)
             {

@@ -29,6 +29,7 @@ namespace zlink::framework
 
 using detail::stream_header_flags_t;
 using detail::stream_header_t;
+using detail::stream_metadata_t;
 using detail::stream_message_kind_t;
 
 namespace detail
@@ -308,7 +309,7 @@ task_t<void> dispatch_packet_session (
   packet_stream_session_t *session,
   stream_t stream,
   std::shared_ptr<stream_header_t> header,
-  std::shared_ptr<stream_dispatch_context_t> context,
+  std::shared_ptr<session_message_context_t> context,
   std::shared_ptr<zlink::message_t> payload)
 {
     auto task = [&] {
@@ -578,30 +579,6 @@ std::optional<std::string_view> stream_header_t::content_type () const
     return metadata ("content_type");
 }
 
-stream_dispatch_context_t::stream_dispatch_context_t () = default;
-
-stream_dispatch_context_t::stream_dispatch_context_t (const stream_header_t &header) :
-    _packet_name (header.packet_name ()),
-    _metadata (header.metadata ()),
-    _can_reply (header.request_seq ().has_value ())
-{
-}
-
-std::string_view stream_dispatch_context_t::packet_name () const noexcept
-{
-    return _packet_name;
-}
-
-const stream_metadata_t &stream_dispatch_context_t::metadata () const noexcept
-{
-    return _metadata;
-}
-
-bool stream_dispatch_context_t::can_reply () const noexcept
-{
-    return _can_reply;
-}
-
 stream_t::stream_t () : _state (std::make_shared<detail::stream_state_t> ())
 {
 }
@@ -617,6 +594,21 @@ stream_t &stream_t::operator= (stream_t &&) noexcept = default;
 std::string stream_t::session_id () const
 {
     return _state->session_id;
+}
+
+std::optional<zlink::routing_id_t> stream_t::routing_id () const
+{
+    return _state->routing_id;
+}
+
+std::optional<std::string> stream_t::local_address () const
+{
+    return _state->local_address;
+}
+
+std::optional<std::string> stream_t::remote_address () const
+{
+    return _state->remote_address;
 }
 
 session_actor_manager_t &stream_t::actors ()
@@ -737,6 +729,40 @@ stream_builder_t &stream_builder_t::bind (std::string endpoint)
                                      "STREAM bind endpoint must not be empty");
     }
     _state->snapshot.bind_endpoint = std::move (endpoint);
+    return *this;
+}
+
+stream_builder_t &stream_builder_t::bind (std::uint16_t port)
+{
+    return bind ("tcp://0.0.0.0:" + std::to_string (port));
+}
+
+stream_builder_t &stream_builder_t::set_bind_host (std::string host)
+{
+    if (host.empty ()) {
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
+                                     "STREAM bind host must not be empty");
+    }
+    auto endpoint = _state->snapshot.bind_endpoint;
+    const auto separator = endpoint.rfind (':');
+    const auto port = separator == std::string::npos
+                        ? std::string ("0")
+                        : endpoint.substr (separator + 1);
+    const auto scheme = endpoint.rfind ("ws://", 0) == 0
+                          ? std::string ("ws://")
+                          : endpoint.rfind ("tls://", 0) == 0
+                              ? std::string ("tls://")
+                              : std::string ("tcp://");
+    return bind (scheme + std::move (host) + ":" + port);
+}
+
+stream_builder_t &stream_builder_t::set_advertise_host (std::string host)
+{
+    if (host.empty ()) {
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
+                                     "STREAM advertise host must not be empty");
+    }
+    _state->advertise_host = std::move (host);
     return *this;
 }
 
@@ -1271,6 +1297,17 @@ stream_t stream_runtime_t::open_session (std::string stream_name) const
     return stream_t (state);
 }
 
+void stream_runtime_t::set_session_identity (
+  stream_t &stream,
+  std::optional<zlink::routing_id_t> routing_id,
+  std::optional<std::string> local_address,
+  std::optional<std::string> remote_address) const
+{
+    stream._state->routing_id = std::move (routing_id);
+    stream._state->local_address = std::move (local_address);
+    stream._state->remote_address = std::move (remote_address);
+}
+
 result_t<void> stream_runtime_t::dispatch_serial (stream_t &stream,
                                                   std::string operation,
                                                   std::function<task_t<void> ()> callback) const
@@ -1371,8 +1408,10 @@ result_t<void> stream_runtime_t::dispatch_packet (packet_stream_session_t &sessi
     dispatch_stream._reply_header = header;
     dispatch_stream._reply_submission = std::make_shared<submit_once_t> ();
     auto dispatch_header = std::make_shared<stream_header_t> (header);
-    auto dispatch_context = std::shared_ptr<stream_dispatch_context_t> (
-      new stream_dispatch_context_t (header));
+    auto dispatch_context = std::make_shared<session_message_context_t> ();
+    dispatch_context->packet_name = std::string (header.packet_name ());
+    dispatch_context->metadata = message_metadata_t (header.metadata ().values ());
+    dispatch_context->can_reply = header.request_seq ().has_value ();
     auto dispatch_payload = std::make_shared<zlink::message_t> (std::move (handler_payload));
     return dispatch_serial (stream, "packet:" + std::string (header.packet_name ()),
                             [session = &session,
@@ -1452,8 +1491,10 @@ result_t<void> stream_runtime_t::dispatch_packet_async (
     dispatch_stream._reply_header = header;
     dispatch_stream._reply_submission = std::make_shared<submit_once_t> ();
     auto dispatch_header = std::make_shared<stream_header_t> (header);
-    auto dispatch_context = std::shared_ptr<stream_dispatch_context_t> (
-      new stream_dispatch_context_t (header));
+    auto dispatch_context = std::make_shared<session_message_context_t> ();
+    dispatch_context->packet_name = std::string (header.packet_name ());
+    dispatch_context->metadata = message_metadata_t (header.metadata ().values ());
+    dispatch_context->can_reply = header.request_seq ().has_value ();
     auto dispatch_payload =
       std::make_shared<zlink::message_t> (std::move (handler_payload));
     return dispatch_serial_async (

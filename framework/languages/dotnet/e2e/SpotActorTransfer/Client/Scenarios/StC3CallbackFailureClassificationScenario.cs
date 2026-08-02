@@ -53,18 +53,21 @@ internal static class StC3CallbackFailureClassificationScenario
         _ = await context.JoinRawAsync(context.NodeA, actorId, new JoinTargetReq("ST-C3", spotId));
         await context.WaitEvidenceAsync(context.NodeA, [
             $"transfer|{actorId}|transfer_out|72",
-            $"ST-C3|{actorId}|leave_failed|72",
-            $"ST-C3|{actorId}|join_failed|"
+            $"ST-C3|{actorId}|leave_failed|72"
         ]);
-        var targetEvidence = await context.GetEvidenceAsync(context.NodeB);
+        // The common Actor Join contract makes source OnLeaveActor a one-way
+        // notification. Its failure does not roll back a target commit or
+        // change an Accepted completion into Failed.
+        await context.WaitEvidenceAsync(context.NodeB, [
+            $"transfer|{actorId}|transfer_in|72",
+            $"transfer|{actorId}|joined|{spotId}",
+            $"ST-C3|{actorId}|success_reply|{spotId}"
+        ]);
+        var sourceEvidence = await context.GetEvidenceAsync(context.NodeA);
         ZlinkStreamAssert.Ensure(
-            !targetEvidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)
-                .Contains($"transfer|{actorId}|transfer_in|72", StringComparison.Ordinal)),
-            "ST-C3 source leave failure should not transfer in target.");
-        ZlinkStreamAssert.Ensure(
-            !targetEvidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)
-                .Contains($"transfer|{actorId}|joined|{spotId}", StringComparison.Ordinal)),
-            "ST-C3 source leave failure should not join target.");
+            !sourceEvidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)
+                .Contains($"ST-C3|{actorId}|join_failed|", StringComparison.Ordinal)),
+            "ST-C3 source leave failure must not fail a committed Join.");
     }
 
     private static async Task RunTransferInFailureAsync(SpotActorTransferScenarioContext context)
@@ -80,11 +83,14 @@ internal static class StC3CallbackFailureClassificationScenario
         await context.WaitEvidenceAsync(context.NodeB, [
             $"ST-C3|{actorId}|transfer_in_failed|73"
         ]);
-        await context.WaitEvidenceAsync(context.NodeA, [
+        var sourceEvidence = await context.WaitEvidenceAsync(context.NodeA, [
             $"transfer|{actorId}|transfer_out|73",
-            $"transfer|{actorId}|leave|73",
             $"ST-C3|{actorId}|join_failed|"
         ]);
+        ZlinkStreamAssert.Ensure(
+            !sourceEvidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)
+                .Contains($"transfer|{actorId}|leave|73", StringComparison.Ordinal)),
+            "ST-C3 transfer-in failure must retain source membership.");
         var targetEvidence = await context.GetEvidenceAsync(context.NodeB);
         ZlinkStreamAssert.Ensure(
             !targetEvidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)
@@ -107,9 +113,16 @@ internal static class StC3CallbackFailureClassificationScenario
         ]);
         await context.WaitEvidenceAsync(context.NodeA, [
             $"transfer|{actorId}|transfer_out|74",
-            $"transfer|{actorId}|leave|74",
-            $"ST-C3|{actorId}|join_failed|"
+            $"transfer|{actorId}|leave|74"
         ]);
+        var failedEvidence = await context.WaitEvidenceAsync(context.NodeB, [
+            $"unknown|{actorId}|join_failed|InternalFailure"
+        ]);
+        ZlinkStreamAssert.Ensure(
+            failedEvidence.Count(item => SpotActorTransferScenarioContext.EvidenceText(item)
+                .Contains($"unknown|{actorId}|join_failed|InternalFailure", StringComparison.Ordinal))
+            == 1,
+            "ST-C3 joined failure should deliver one typed target completion.");
         var targetEvidence = await context.GetEvidenceAsync(context.NodeB);
         ZlinkStreamAssert.Ensure(
             !targetEvidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)

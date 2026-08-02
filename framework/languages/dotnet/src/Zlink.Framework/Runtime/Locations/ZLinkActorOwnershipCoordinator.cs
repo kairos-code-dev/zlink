@@ -895,6 +895,64 @@ internal sealed class ZLinkActorOwnershipCoordinator(
         await releaseTask.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Releases the source side of a committed actor move with the source
+    /// authority snapshot as a fallback fence. Ownership-loss notification
+    /// can remove the source from the local tracking map before the explicit
+    /// handoff cleanup runs; that cleanup still has to submit the old
+    /// conditional delete so the Store, rather than local timing, decides
+    /// whether the source row may be removed.
+    /// </summary>
+    internal async ValueTask ReleaseActorAfterMoveAsync(
+        string actorId,
+        ZLinkAuthoritySnapshot expectedSourceSnapshot,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (OwnsActor(actorId))
+        {
+            await ReleaseActorAsync(actorId, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var key = ZLinkActorAuthorityPayloadCodec.AuthorityKey(actorId);
+        var result = await runtime.Store.CompareExchangeAuthorityAsync(
+                key,
+                expectedSourceSnapshot.StoreVersion,
+                new ZLinkAuthorityMutation.Delete(),
+                cancellationToken)
+            .ConfigureAwait(false);
+        switch (result)
+        {
+            case ZLinkAuthorityCompareExchangeResult.Deleted:
+                return;
+
+            case ZLinkAuthorityCompareExchangeResult.Conflict
+                {
+                    Current: ZLinkAuthorityReadResult.Missing
+                }:
+                return;
+
+            case ZLinkAuthorityCompareExchangeResult.Conflict
+                {
+                    Current: ZLinkAuthorityReadResult.Found current
+                } when IsTransferredAuthority(
+                    expectedSourceSnapshot,
+                    current.Snapshot):
+                return;
+
+            case ZLinkAuthorityCompareExchangeResult.GenerationExhausted:
+                throw new ZLinkAuthorityGenerationExhaustedException(
+                    $"releasing moved Actor '{actorId}' source authority");
+
+            default:
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.Unavailable,
+                    $"Actor '{actorId}' source authority changed before handoff cleanup.",
+                    ZLinkRetryAdvice.RetryAfterBackoff);
+        }
+    }
+
     internal bool OwnsActor(string actorId)
     {
         lock (_gate)
@@ -1286,6 +1344,23 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                    authority.CurrentSpotId,
                    expectedAuthority.CurrentSpotId,
                    StringComparison.Ordinal);
+    }
+
+    private static bool IsTransferredAuthority(
+        ZLinkAuthoritySnapshot expectedSourceSnapshot,
+        ZLinkAuthoritySnapshot currentSnapshot)
+    {
+        return currentSnapshot.ObjectGeneration
+                   == expectedSourceSnapshot.ObjectGeneration
+               && currentSnapshot.AuthorityOwnerGeneration
+                   > expectedSourceSnapshot.AuthorityOwnerGeneration
+               && TryDecodeCurrentActorAuthority(
+                   expectedSourceSnapshot.Payload.Span,
+                   out var sourceAuthority)
+               && TryDecodeCurrentActorAuthority(
+                   currentSnapshot.Payload.Span,
+                   out var currentAuthority)
+               && currentAuthority.NodeRid != sourceAuthority.NodeRid;
     }
 
     private static bool TryDecodeCurrentActorAuthority(

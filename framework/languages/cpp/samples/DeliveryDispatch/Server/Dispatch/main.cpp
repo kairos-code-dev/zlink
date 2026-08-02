@@ -155,7 +155,7 @@ class courier_offer_port_t
                                          "courier actor route was not found: " + courier_id);
         }
         co_await _actors
-          .send_to_actor (*actor,
+          .send (actor->actor_id (),
                           offer_delivery_msg_t{courier_id, delivery.delivery_id, attempt,
                                                delivery.pickup_address, delivery.dropoff_address})
           .submit ();

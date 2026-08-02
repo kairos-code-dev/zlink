@@ -100,10 +100,10 @@ class actor_session_t final : public fw::packet_stream_session_t
     fw::task_t<void> on_error (fw::stream_t &, const fw::stream_error_t &) override { co_return; }
 
     fw::task_t<void> on_packet (fw::stream_t &stream,
-                                const fw::stream_dispatch_context_t &dispatch,
+                                const fw::session_message_context_t &dispatch,
                                 const zlink::message_t &payload) override
     {
-        if (dispatch.packet_name () != e2e::bind_actor_session_req_t::packet_name) {
+        if (dispatch.packet_name != e2e::bind_actor_session_req_t::packet_name) {
             throw fw::framework_exception_t (fw::framework_error_kind_t::protocol_error,
                                              "actor session expects BindActorSessionReq");
         }

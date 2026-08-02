@@ -127,7 +127,8 @@ class gateway_actor_push_handler_t
                 return response;
             }
             auto reply =
-              _actors.request_to_actor (*actor_ref.value (), e2e::actor_push_req_t{request.value})
+              _actors.request (zlink::framework::actor_id_t (request.actor_id),
+                               e2e::actor_push_req_t{request.value})
                 .timeout (std::chrono::milliseconds (10000))
                 .submit<e2e::actor_push_res_t> ()
                 .result ();

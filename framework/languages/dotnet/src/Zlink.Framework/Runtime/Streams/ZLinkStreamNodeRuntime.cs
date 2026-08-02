@@ -801,15 +801,18 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
 
     private async Task RunMonitorLoopAsync(CancellationToken cancellationToken)
     {
+        var backoff = new ZLinkPollingBackoff();
         while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
-                if (!Monitor.Wait(TimeSpan.FromMilliseconds(100)))
-                    continue;
                 if (!Monitor.TryRecv(out var monitorEvent))
+                {
+                    await backoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
                     continue;
+                }
 
+                backoff.Reset();
                 OnMonitorEvent(monitorEvent);
             }
             catch (Exception) when (cancellationToken.IsCancellationRequested)

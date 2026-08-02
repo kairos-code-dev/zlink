@@ -30,6 +30,15 @@ final class JvmPublicContractSourceOwnerTest {
             Files.readString(inventoryPath, StandardCharsets.UTF_8));
 
         assertEquals(1, inventory.path("schemaVersion").asInt());
+        assertFieldNames(
+            inventory.path("apiSnapshots"),
+            Set.of("java", "kotlin"));
+        for (JsonNode snapshot : inventory.path("apiSnapshots")) {
+            assertTrue(
+                Files.isRegularFile(root.resolve(snapshot.asText())),
+                "API snapshot artifact is missing: " + snapshot.asText());
+        }
+        assertTrue(inventory.path("providerPublicOwners").isArray());
         assertFieldNames(inventory.path("serverArtifacts"), SERVER_KEYS);
         assertFieldNames(inventory.path("clientArtifacts"), CLIENT_KEYS);
 

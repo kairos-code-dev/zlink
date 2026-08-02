@@ -36,6 +36,7 @@ class offload_executor_t
     void submit (std::function<void ()> work);
     void request_stop () noexcept;
     void drain ();
+    bool drain_until (std::chrono::steady_clock::time_point deadline);
     bool drained () const;
     std::size_t live_worker_count () const;
 

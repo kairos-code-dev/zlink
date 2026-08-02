@@ -29,9 +29,9 @@ class authenticate_play_session_handler_t
     {
     }
 
-    bool can_handle (const stream_dispatch_context_t &dispatch) const
+    bool can_handle (const session_message_context_t &dispatch) const
     {
-        return dispatch.packet_name () == authenticate_req_t::packet_name;
+        return dispatch.packet_name == authenticate_req_t::packet_name;
     }
 
     task_t<session_actor_t>

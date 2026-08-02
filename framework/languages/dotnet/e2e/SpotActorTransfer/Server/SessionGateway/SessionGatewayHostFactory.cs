@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using SpotActorTransfer.Shared;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Locations.Redis;
 
 namespace SpotActorTransfer.SessionGateway;
@@ -30,11 +31,23 @@ internal static class SessionGatewayHostFactory
             mesh27.Objects().Client();
             framework.AddStreamNode($"{SpotActorTransferNames.Mesh}-stream-{options.Rid}")
                 .Bind(options.StreamEndpoint)
+                .SetAdvertiseHost("127.0.0.1")
                 .EnableActorDispatch()
                 .AddSession<TransferSession>();
         });
         var app = builder.Build();
         app.MapGet("/health", () => Results.Ok(new { status = "ok", options.Rid }));
+        app.MapGet("/mesh/ready", (IZLinkRouteMeshRuntime meshRuntime) =>
+        {
+            var status = meshRuntime.GetStatus(SpotActorTransferNames.Mesh);
+            return Results.Ok(new MeshReadyRes(
+                options.Rid,
+                status.Peers
+                    .Where(static peer => peer.State == ZLinkPeerState.Ready)
+                    .Select(static peer => peer.NodeRid.ToString())
+                    .ToArray(),
+                []));
+        });
         return app;
     }
 }

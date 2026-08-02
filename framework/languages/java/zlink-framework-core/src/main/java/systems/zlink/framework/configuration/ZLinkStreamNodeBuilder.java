@@ -13,6 +13,8 @@ public interface ZLinkStreamNodeBuilder {
 
     ZLinkStreamNodeBuilder setAdvertiseHost(String host);
 
+    ZLinkStreamSocketConfig configureSocket();
+
     ZLinkStreamNodeBuilder setTlsServer(String certificatePath, String keyPath);
 
     ZLinkStreamNodeBuilder setTlsServer(

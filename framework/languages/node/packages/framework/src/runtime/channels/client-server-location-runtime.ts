@@ -352,8 +352,8 @@ export class ZLinkClientServerLocationRuntime {
   }
 
   private async handleConnectionTerminated(connectionId: string): Promise<void> {
-    if (!this.connections.has(connectionId)) return;
-    await this.closeConnection(connectionId);
+    if (!this.connections.delete(connectionId)) return;
+    await this.sockets.disconnectClientServerConnection(connectionId);
   }
 
   private async closeConnection(connectionId: string): Promise<void> {

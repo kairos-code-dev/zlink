@@ -171,6 +171,24 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
             cancellationToken).ConfigureAwait(false);
     }
 
+    public async ValueTask NotifyJoinedForRelocationAsync(
+        ZLinkFrameworkComponentState state,
+        IZLinkActor actor,
+        RoutingId targetNodeRid,
+        CancellationToken cancellationToken)
+    {
+        await NotifyLifecycleAsync(
+                state,
+                actor,
+                targetNodeRid,
+                static (ZLinkEntrySpotActivation activation, Type actorType,
+                        out ZLinkSpotActorLifecycleDescriptor? descriptor) =>
+                    activation.TryResolveActorJoined(actorType, out descriptor),
+                throwOnFailure: true,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async ValueTask<ZLinkActorCreateResponse> NotifyCreatedAsync(
         ZLinkFrameworkComponentState state,
         IZLinkActor actor,

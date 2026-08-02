@@ -7,6 +7,7 @@
 #include <zlink/framework/contracts/dispatch/execution.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/messaging/message.hpp>
+#include <zlink/framework/contracts/messaging/message_context.hpp>
 
 #include <concepts>
 #include <cstdint>
@@ -79,8 +80,7 @@ enum class stream_codec_t : std::uint8_t
 enum class stream_session_error_t
 {
     internal = 0,
-    transport_error = 1,
-    handshake_failed = 2
+    transport_error = 1
 };
 
 /* Closed set of session close reasons (graceful-drain-handoff §7.1). The
@@ -121,6 +121,12 @@ class stream_error_t
     std::string _message;
 };
 
+namespace detail
+{
+
+/* Transport headers retain a mutable map internally. The public session
+ * callback exposes message_metadata_t instead, so the header storage does not
+ * become a public transport type. */
 class stream_metadata_t
 {
   public:
@@ -135,9 +141,6 @@ class stream_metadata_t
   private:
     std::map<std::string, std::string> _values;
 };
-
-namespace detail
-{
 
 class stream_header_t
 {
@@ -185,22 +188,11 @@ class stream_header_t
 
 } // namespace detail
 
-class stream_dispatch_context_t
+struct session_message_context_t
 {
-  public:
-    stream_dispatch_context_t ();
-
-    std::string_view packet_name () const noexcept;
-    const stream_metadata_t &metadata () const noexcept;
-    bool can_reply () const noexcept;
-
-  private:
-    friend class detail::stream_runtime_t;
-    explicit stream_dispatch_context_t (const detail::stream_header_t &header);
-
-    std::string _packet_name;
-    stream_metadata_t _metadata;
-    bool _can_reply = false;
+    std::string packet_name;
+    message_metadata_t metadata;
+    bool can_reply = false;
 };
 
 class stream_t
@@ -215,6 +207,9 @@ class stream_t
     stream_t &operator= (const stream_t &) = default;
 
     std::string session_id () const;
+    std::optional<zlink::routing_id_t> routing_id () const;
+    std::optional<std::string> local_address () const;
+    std::optional<std::string> remote_address () const;
     session_actor_manager_t &actors ();
     task_t<void> close ();
     stream_send_call_t write_packet (const zlink::message_t &payload);
@@ -262,11 +257,11 @@ class packet_stream_session_t
     virtual task_t<void> on_disconnected (stream_t &stream) = 0;
     virtual task_t<void> on_error (stream_t &stream, const stream_error_t &error) = 0;
     virtual task_t<void> on_packet (stream_t &stream,
-                                    const stream_dispatch_context_t &dispatch,
+                                    const session_message_context_t &context,
                                     const zlink::message_t &payload)
     {
         (void) stream;
-        (void) dispatch;
+        (void) context;
         (void) payload;
         return task_t<void> (result_t<void>::failure (framework_error_kind_t::not_found,
                                                       "stream packet handler is not implemented"));
@@ -295,6 +290,9 @@ class stream_builder_t
     stream_builder_t &operator= (const stream_builder_t &) = default;
 
     stream_builder_t &bind (std::string endpoint);
+    stream_builder_t &bind (std::uint16_t port = 0);
+    stream_builder_t &set_bind_host (std::string host);
+    stream_builder_t &set_advertise_host (std::string host);
     stream_builder_t &register_session (std::string session_name);
     stream_snapshot_t snapshot () const;
 

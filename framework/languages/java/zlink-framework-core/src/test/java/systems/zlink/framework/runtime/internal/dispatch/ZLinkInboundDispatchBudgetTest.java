@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime.internal.dispatch;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -19,7 +20,7 @@ import systems.zlink.framework.runtime.configuration.ZLinkInboundDispatchRegistr
 
 final class ZLinkInboundDispatchBudgetTest {
     @Test
-    void pausesAtTheHostWideByteLimitAndWakesAfterTerminalCompletion() {
+    void pausesQueuedBytesAndWakesWhenHandlerStarts() {
         ZLinkInboundDispatchBudget budget = new ZLinkInboundDispatchBudget(10);
         AtomicInteger wakeups = new AtomicInteger();
         budget.onCapacityAvailable(wakeups::incrementAndGet);
@@ -32,8 +33,10 @@ final class ZLinkInboundDispatchBudgetTest {
 
         lease.handlerStarted();
         assertEquals(
-            new ZLinkInboundDispatchBudget.Snapshot(10, 10, 0, 10, true),
+            new ZLinkInboundDispatchBudget.Snapshot(10, 10, 0, 10, false),
             budget.snapshot());
+        assertTrue(budget.canStartApplicationReceive());
+        assertEquals(1, wakeups.get());
 
         lease.close();
         lease.close();
@@ -69,6 +72,25 @@ final class ZLinkInboundDispatchBudgetTest {
             budget.snapshot());
 
         lease.close();
+        assertTrue(budget.canStartApplicationReceive());
+    }
+
+    @Test
+    void admitsOnePreciseOvershootThenRejectsTheNextPayload() {
+        ZLinkInboundDispatchBudget budget = new ZLinkInboundDispatchBudget(10);
+
+        ZLinkInboundDispatchBudget.Lease first = budget.tryTrack(8);
+        ZLinkInboundDispatchBudget.Lease overshoot = budget.tryTrack(5);
+
+        assertTrue(first != null);
+        assertTrue(overshoot != null);
+        assertEquals(13, budget.snapshot().pendingPayloadBytes());
+        assertTrue(budget.snapshot().applicationReceivePaused());
+        assertNull(budget.tryTrack(1));
+
+        overshoot.close();
+        first.close();
+        assertEquals(0, budget.snapshot().pendingPayloadBytes());
         assertTrue(budget.canStartApplicationReceive());
     }
 
@@ -346,5 +368,28 @@ final class ZLinkInboundDispatchBudgetTest {
             () -> budget.acquireCompletionPermit().toCompletableFuture().join());
         active.close();
         assertEquals(0, budget.pendingCompletionSends());
+    }
+
+    @Test
+    void shutdownClosesExistingPayloadLeasesWithoutReopeningReceive() {
+        ZLinkInboundDispatchBudget budget = new ZLinkInboundDispatchBudget(8);
+        ZLinkInboundDispatchBudget.Lease lease = budget.track(8);
+        lease.handlerStarted();
+
+        budget.close();
+
+        assertFalse(budget.canStartApplicationReceive());
+        assertEquals(
+            new ZLinkInboundDispatchBudget.Snapshot(8, 8, 0, 8, true),
+            budget.snapshot());
+        assertDoesNotThrow(lease::close);
+        assertDoesNotThrow(lease::close);
+        assertEquals(
+            new ZLinkInboundDispatchBudget.Snapshot(8, 0, 0, 0, true),
+            budget.snapshot());
+        assertNull(budget.tryTrack(1));
+        assertThrows(
+            IllegalStateException.class,
+            () -> budget.track(1));
     }
 }

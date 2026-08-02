@@ -4,11 +4,13 @@
 기록하고, common contract와 실제 process evidence가 없는 항목은 완료로 표시하지
 않는다.
 
-마지막 갱신일: 2026-08-03 07:24 KST
+마지막 갱신일: 2026-08-03 08:50 KST
 
-이번 checkout 재검증의 명령·exit code·실행 경로는
-[`log/20260803-0724-current-audit.ko.md`](log/20260803-0724-current-audit.ko.md)에
-기록했다.
+이번 runtime unit 재검증의 명령·exit code·실행 경로는
+[`log/20260803-0850-java-kotlin-runtime-unit-progress.ko.md`](log/20260803-0850-java-kotlin-runtime-unit-progress.ko.md)에
+기록했다. 직전 source/package/API 재검증은
+[`log/20260803-0829-java-kotlin-runtime-spec-progress.ko.md`](log/20260803-0829-java-kotlin-runtime-spec-progress.ko.md),
+이전 baseline은 [`log/20260803-0724-current-audit.ko.md`](log/20260803-0724-current-audit.ko.md)에서 확인할 수 있다.
 
 이 ledger는 Java framework와 Kotlin framework를 하나의 작업 단위로 관리한다. Java와
 Kotlin의 exact interface, feature-map, runner, 현재 실패 원인은 각 항목에서
@@ -19,7 +21,7 @@ Kotlin의 exact interface, feature-map, runner, 현재 실패 원인은 각 항�
 ## 공통 실행 규칙 — 네 ledger 동시 진행
 
 이 문서의 Java/Kotlin 작업은 C++, .NET, Node.js 작업과 동시에 진행한다. 현재 시스템 시각
-`2026-08-03 07:24 KST (+09:00)` 기준 마감은 `2026-08-03 10:00 KST (+09:00)`이다. 마감 시점에
+`2026-08-03 08:50 KST (+09:00)` 기준 마감은 `2026-08-03 10:00 KST (+09:00)`이다. 마감 시점에
 완료하지 못한 항목은 완료로 표시하지 않고, 현재 조건과 blocker를 기록한 뒤 다음 결정을 기다린다.
 
 이 절에서 고정하는 것은 작업 간 경계, 하위 layer bug 처리, CPU·마감·log 위치처럼 지켜야 하는
@@ -126,8 +128,8 @@ process가 통과한다. 그러나 그 결과만으로는 전체 계약을 만�
 
 - Java·Kotlin ST-A1과 일부 RuntimeMonitoring focused process는 통과했지만, ST-A2 이후
   relocation과 Config 10·14 전체 process evidence는 아직 없다.
-- Stream HWM, handler-less wait, flow metadata는 focused test까지 통과했지만 process
-  E2E와 API snapshot은 아직 없다.
+- Stream HWM, handler-less wait, flow metadata는 focused test와 API snapshot/package
+  gate까지 통과했지만 process E2E는 아직 없다.
 - Java exact inventory는 `expected=374`, `sourceIds=220`, `missingIds=154`이고,
   Kotlin exact inventory는 `sourceIds=183`, `missingIds=191`이다.
 - Aggregate runner는 canonical suite를 preflight하도록 바뀌었지만 Java는
@@ -305,28 +307,27 @@ source/test는 조사 대상 경로이며, 정식 source owner inventory에 등�
 
 ## 3. 현재 검증 결과
 
-이 절은 `cwd=framework/languages/java`에서 2026-08-03 07:24 현재 working tree를 기준으로
-실행한 결과다. `HEAD`는 `ee1dbccbb5ba72a9defc4158206b4fd23fa36c62`이고, 전체 dirty
-status manifest는 확인 시점 기준 733개 항목이다. 다른 workstream의 변경은 되돌리거나
-정리하지 않았다.
+이 절은 `cwd=framework/languages/java`에서 2026-08-03 08:50 현재 working tree를 기준으로
+실행한 결과다. 실행 시작 시 `HEAD`는 `b718b4d5cd7ed28f3e399339220b83431bdae902`였다. 다른 workstream의
+변경은 되돌리거나 정리하지 않았다.
 
 | 검증 | 결과 | 현재 의미 |
 |---|---|---|
-| `:zlink-framework-core:test`, `:zlink-framework-testkit:test`, `:zlink-framework-kotlin:test`, `:zlink-stream-connector:test`, `:zlink-http-client:test`, `:zlink-http-client-kotlin:test` | 재실행 PASS, 41 actionable tasks. 첫 실행은 core 720개 중 `ZLinkSpotPublisherRuntimeTest.boundedExecutorHandoffWaitsForWorkerCapacity()` 1건 FAIL | 두 번째 full-suite와 실패 test 단독 재실행은 통과했지만 첫 실행의 `expected=21, actual=20` timing 결과를 닫지 않았다. process E2E, API snapshot, CI path는 포함하지 않는다. |
+| `:zlink-framework-core:test`, `:zlink-framework-kotlin:test`, `:zlink-framework-kotlin:contractTest`, `:zlink-stream-connector:test`, `:zlink-http-client:test`, `:zlink-http-client-kotlin:test` | PASS, 37 actionable tasks. Java core는 726 tests를 실행했다. | HWM queue-only semantics, shutdown lease cleanup, stream drop/handler-less ownership, codec, actor/runtime, Kotlin facade/cancellation과 HTTP body-read deadline의 unit/contract 범위를 확인했다. common E2E aggregate, sample, CI path는 포함하지 않는다. |
 | Java/Kotlin runtime `integrationTest` | fresh PASS, 25 actionable tasks | 일반 Router request와 RouteMesh raw Mesh request를 포함한 현재 Java integration과 Kotlin integration이 통과했다. 이 결과는 common E2E aggregate·role evidence·API snapshot을 포함하지 않는다. |
 | `:zlink-framework-core:compileJava`와 Fanout contract test | PASS | `FanoutChannelBuilder.setRoutingIdPrefix`의 public builder와 fake backend 경로를 확인한다. |
-| `JvmPublicContractSourceOwnerTest` | PASS | `jvm-public-contract-source-owners.json`의 server/client artifact, source owner, public package, module-info와 settings module 연결을 검사한다. API snapshot 비교는 포함하지 않는다. |
+| `JvmPublicContractSourceOwnerTest` | PASS | `jvm-public-contract-source-owners.json`의 server/client artifact, source owner, public package, module-info와 settings module 연결, Java/Kotlin API snapshot 경로를 검사한다. |
 | Java/Kotlin stream focused tests | PASS | HWM drop-newest, drop error, handler-less wait, timeout·cancellation 뒤 late message 보존, pending request correlation cleanup, typed wait/sequence/request payload cleanup, observer option copy, inbound flow metadata와 Kotlin wrapper를 확인한다. 최신 `ZLinkStreamRuntimeIngressTest`는 `recv` 전에 readiness wait가 실행되고, HWM pause/resume, heartbeat send failure, session construction failure, ignored notification, empty-part malformed peer isolation을 유지하는 것도 확인한다. process stream E2E는 별도다. |
 | `bindings/java` `SocketPollingContractTest.pollerTracksStreamSocketReadableRawRecord`, `pollerTracksRouterSocketReadableRecord` | PASS, fresh Core 11.1.0 prefix | public `Poller`가 `StreamSocket`과 `RouterSocket`의 `POLLIN`을 관찰한 뒤 public `recv`가 raw record를 수신하는지 확인한다. |
-| Java/Kotlin Framework socket receive poller regression | PASS, 최신 module test 41 actionable tasks·Java integration 8·Kotlin integration 22 | `ZLinkJavaSocketReceivePoller`를 통해 `StreamSocket`, `RouterSocket`, `DealerSocket`, `SubscriberSocket`과 raw service `RouterSocket`의 receive path를 readiness 확인 뒤에 실행한다. .NET의 `ZLinkBackendSocketPoller`·`ZLinkChannelReceiveLoop`와 같은 `poller wait → capacity 확인 → DONT_WAIT recv/subscribe` 순서를 사용하며, readiness는 `POLLIN|POLLERR|POLLPRI`를 받는다. Dealer와 raw service는 request completion이 필요할 때 `POLLIN|POLLCOMPLETION`을 하나의 public poller에 등록한다. Poller registration은 Framework가 bind/connect와 socket option 설정을 끝낸 뒤 첫 readiness 호출에서 수행하고, raw mesh service는 bind 직후 명시적으로 registration한다. Framework production path에는 STREAM packet callback 등록이 없다. poller close와 blocking receive-loop 종료 순서는 관련 module/integration test에서 확인하고, socket receive와 close의 동시 실행은 binding wrapper에서 직렬화한다. |
+| Java/Kotlin Framework socket receive poller regression | PASS, 최신 runtime module test 37 actionable tasks·Java integration 8·Kotlin integration 22 | `ZLinkJavaSocketReceivePoller`를 통해 `StreamSocket`, `RouterSocket`, `DealerSocket`, `SubscriberSocket`과 raw service `RouterSocket`의 receive path를 readiness 확인 뒤에 실행한다. .NET의 `ZLinkBackendSocketPoller`·`ZLinkChannelReceiveLoop`와 같은 `poller wait → capacity 확인 → DONT_WAIT recv/subscribe` 순서를 사용하며, readiness는 `POLLIN|POLLERR|POLLPRI`를 받는다. Dealer와 raw service는 request completion이 필요할 때 `POLLIN|POLLCOMPLETION`을 하나의 public poller에 등록한다. Poller registration은 Framework가 bind/connect와 socket option 설정을 끝낸 뒤 첫 readiness 호출에서 수행하고, raw mesh service는 bind 직후 명시적으로 registration한다. Framework production path에는 STREAM packet callback 등록이 없다. poller close와 blocking receive-loop 종료 순서는 관련 module/integration test에서 확인하고, socket receive와 close의 동시 실행은 binding wrapper에서 직렬화한다. |
 | fresh Java binding package와 clean consumer | PASS | 승인된 Core 11.1.0 prefix와 `core-package-20260801.json`으로 binding package `11.1.1`을 다시 만들고, isolated Gradle consumer가 public API를 compile했으며 package가 native Core 11.1.0을 포함하는지 확인했다. 최신 evidence는 `.artifacts/v11/evidence/V11-M4-BIND-JVM/java-binding-consumer-20260803-r4.json`이다. |
 | `e2e/RegistrationCodec/run_e2e.sh all`, `e2e-kotlin/RegistrationCodec/run_e2e.sh all` (2026-08-03 fresh) | PASS, Java·Kotlin 모두 RC-A1~RC-A6·RC-B1~RC-B5 | Java·Kotlin Spring role process에서 registration, DI lifecycle, filter order, JSON/Protobuf/MessagePack coexistence와 unknown codec rejection/recovery를 확인한다. Config 4 전체 및 다른 common Config의 aggregate 완료를 의미하지 않는다. |
 | `e2e/PubSub/run_e2e.sh all`, `e2e-kotlin/PubSub/run_e2e.sh all` (2026-08-03 fresh) | PARTIAL. Kotlin은 PS-A1~A4·PS-B1~B2·PS-C1 PASS. Java는 PS-A1~A4·PS-B1·PS-C1 PASS 후 PS-B2 timeout으로 FAIL | Java PS-B2는 `PublisherRestartScenario.waitPublisherRow`에서 `publisher row`가 비어 있어 timeout했다. current log는 `framework/languages/java/e2e/PubSub/logs/20260803-071829-51450`이며, Kotlin log는 `framework/languages/java/e2e-kotlin/PubSub/logs/20260803-071909-53256`이다. Java publisher restart process evidence는 미완료다. Config 3 전체와 PS-D/PS-E 전환 대상은 포함하지 않는다. |
 | `e2e/SpotActorTransfer/run_e2e.sh ST-A1 --start-order forward`, `e2e-kotlin/SpotActorTransfer/run_e2e.sh ST-A1 --start-order forward` (2026-08-03 fresh) | PASS, Java·Kotlin 모두 `scenario ST-A1 passed` | ST-A1 전용 placement fixture에서 role startup, public actor request, client terminal assertion과 target handler evidence를 확인했다. reverse start-order evidence는 historical이며, ST-A2 이후 전체 relocation은 별도 blocker다. |
 | `e2e/RuntimeMonitoring/run_e2e.sh MON-A2`, `MON-A4A`, `MON-A4B`, `MON-D1A`, `MON-D1B` | historical PASS | restart, crash replacement, unknown mesh, repeated recovery 경로의 이전 focused evidence다. Config 7 전체 및 현재 dirty 변경에 대한 fresh 결과는 아니다. |
-| `./scripts/verify_packaged_contract.sh java` 및 `kotlin` | PASS | temporary repository의 declared artifacts와 clean consumer가 HTTP·Stream public type 및 Stream flow model까지 compile한다. HTTP version은 `HttpClientVersion.VERSION`에서 읽는다. |
+| `./scripts/verify_packaged_contract.sh java` 및 `kotlin` | PASS | Java 9개와 Kotlin 11개 declared artifact를 temporary repository에 publish하고 clean consumer를 실행했다. HTTP·Stream public type 및 Stream flow model을 compile하고, source/package public JVM surface와 checked-in API snapshot도 비교했다. Java hash는 `dd5f7c3e...d6d994`, Kotlin hash는 `0bf535f3...b4f287`이다. HTTP version은 `HttpClientVersion.VERSION`에서 읽는다. |
 | `ZLinkLocationLifecycleTest.actorJoinUpdatesDurableAuthorityWithStoreVersionCas`, CAS loser/stale generation regression 및 `ZLinkActorContextStateRelocationTest.failedMoveClearsMovingStateAndCompletesTheMoveStageExceptionally` | PASS | local actor join이 READY Actor authority row를 읽고 target Spot authority를 확인한 뒤 `StoreVersion` CAS로 Actor location/generation을 갱신하는 경로와 CAS conflict/stale generation rejection, failed move terminal state를 확인한다. restart/takeover와 process-level authority evidence는 포함하지 않는다. |
-| HWM registration/dispatch/spot/actor focused tests와 위 6개 module 전체 test | PASS | startup max-message validation, completion-send permit, channel/mesh dispatcher, Spot route/subscription/local Actor handler accounting, resource cleanup과 runtime shutdown 시 completion admission close를 확인한다. `ZLinkMeshDispatchRecord`에 raw mailbox HWM lease를 연결하고 dispatcher가 같은 lease를 재사용하며, `ZLinkJavaRawMeshNode`가 budget saturation 중 application receive를 멈췄다가 record 종료 뒤 재개하는 회귀도 통과했다. 대기 중 subscription을 보유한 raw `Spot` 종료가 parts와 admission lease를 함께 해제하는 회귀와 `ZLinkInboundDispatchBudgetTest.allowsAnOversizedMessageThatStartedWithAnEmptyBudget`의 단일 message overshoot 경계도 통과했다. RawMesh precise overshoot, cancellation과 process HWM evidence는 포함하지 않는다. |
+| HWM registration/dispatch/spot/actor focused tests와 위 runtime module 전체 test | PASS | startup max-message validation, completion-send permit, channel/mesh dispatcher, Spot route/subscription/local Actor handler accounting, resource cleanup과 runtime shutdown 시 payload/completion admission close를 확인한다. `ZLinkMeshDispatchRecord`에 raw mailbox HWM lease를 연결하고 dispatcher가 같은 lease를 재사용하며, `ZLinkJavaRawMeshNode`가 budget saturation 중 application receive를 멈췄다가 record 종료 뒤 재개하는 회귀도 통과했다. queue-only HWM active handler 전환, threshold 직전 precise overshoot, shutdown lease close와 대기 중 subscription cleanup 회귀도 통과했다. role process HWM evidence는 포함하지 않는다. |
 | `HttpClientCoroutineTest.cancelling coroutine wait does not cancel submitted stage` | PASS | Kotlin coroutine 대기 취소가 이미 제출한 `CompletionStage`를 취소하지 않는 adapter 경계를 확인한다. retry, body-read deadline, client lease와 HTTP role process evidence는 포함하지 않는다. |
 | `env ZLINK_SAMPLE_FILTER=TicTacToe ./samples/run_samples.sh` | FAIL | Java client self-check는 완료했지만 `player-o destroy` server evidence timeout으로 종료했고, `set -e`로 Kotlin sample은 실행되지 않았다. |
 | fake-backend public-manager gate | PASS | runner selector를 현재 test inventory에 맞췄다. 이것은 12개 sample process 결과가 아니다. |
@@ -342,7 +343,7 @@ status manifest는 확인 시점 기준 733개 항목이다. 다른 workstream�
 exact inventory 결과는
 `framework/languages/java/zlink-framework-core/build/test-results/contractTest/TEST-systems.zlink.framework.JavaDocumentationRegressionTest.xml`에 있다. parser는 이제 두 번째 hyphen을 포함한 `IS-E2E-*` ID를 추출하며, 실패는 parser 오류가 아니라 현재 source/runner 누락을 보고한다. `CH-E2E-*` 16개와 `IS-E2E-*` 36개 suite가 없고, 나머지 누락 ID도 같은 report의 `missingIds`에 포함된다.
 
-`buildAllSamples` 또는 좁은 unit test의 성공은 common E2E·sample 전체 완료로 확대하지 않는다. Java/Kotlin Config 1–14 aggregate, 12개 sample process, API snapshot, dedicated CI workflow는 아직 실행·승인하지 않았다. 현재 TicTacToe도 client self-check 뒤 role cleanup evidence에서 실패한다.
+`buildAllSamples` 또는 좁은 unit test의 성공은 common E2E·sample 전체 완료로 확대하지 않는다. Java/Kotlin Config 1–14 aggregate, 12개 sample process, dedicated CI workflow는 아직 실행·승인하지 않았다. API snapshot과 clean package consumer는 runtime gate에서 통과했으며, 현재 TicTacToe는 client self-check 뒤 role cleanup evidence에서 실패한다.
 
 ## 4. 현재 충족 판정
 
@@ -352,18 +353,19 @@ exact inventory 결과는
 - framework/doc/contract-inventory/jvm-public-contract-source-owners.json이 server뿐
   아니라 Java HTTP, Kotlin HTTP, Stream Connector, codec extension의 artifact·public
   package·source owner·boundary gate를 기록하고, `JvmPublicContractSourceOwnerTest`가
-  live source/module/settings 연결을 검사한다. 이것은 API snapshot이 통과했다는 뜻은
-  아니다.
-- Java와 Kotlin production module test는 재실행에서 통과했지만, 첫 full-suite 실행에서 `ZLinkSpotPublisherRuntimeTest`가 한 번 실패해 재현성 blocker로 남겼다.
+  live source/module/settings 연결을 검사한다. Java/Kotlin API snapshot과 source/package
+  비교도 같은 package gate에서 통과했다.
+- Java와 Kotlin production module runtime unit test는 최신 실행에서 통과했다. common
+  E2E inventory와 aggregate는 별도 blocker로 남아 있다.
 - Java/Kotlin packaged consumer가 HTTP와 Stream public type을 clean classpath에서
-  compile했다.
+  compile했고 API snapshot도 통과했다.
 - Java/Kotlin sample manifest와 Gradle source set은 각각 여섯 common sample을 가리킨다.
 - 여섯 Java sample과 여섯 Kotlin sample에 run_sample.sh가 존재한다.
 - shell runner syntax 검사는 통과했다.
 - Java stream options source와 Kotlin compression copy가 common exact interface의
   observer option field와 기본값을 보존하고, `ZLinkStreamMessage`가 inbound flow
-  metadata를 typed decode까지 보존한다. HWM·handler-less queue는 focused unit test까지
-  확인했고 process E2E와 API snapshot은 별도 gap이다.
+  metadata를 typed decode까지 보존한다. HWM·handler-less queue는 focused unit test와
+  package/API snapshot까지 확인했으며 process E2E는 별도 gap이다.
 - static import scan에서 application E2E client가
   systems.zlink.framework.runtime.internal 또는 ZLinkJavaRaw를 직접 import하는
   결과는 발견되지 않았다. 이것은 role evidence와 process 실행을 증명하지 않는다.
@@ -413,9 +415,10 @@ exact inventory 결과는
 
 ### JK-IMP-001 — Stream HWM의 drop 방향과 drop evidence
 
-- 상태: 부분 구현. common stream spec의 drop 방향과 error code는 source와 focused
-  Java/Kotlin regression에 반영했지만, process-level observer/evidence와 stream
-  process E2E는 아직 완료하지 않았다.
+- 상태: runtime 구현·unit regression 완료. common stream spec의 drop 방향과 error code는 source와 focused
+  Java/Kotlin regression에 반영했고, Java TCP connector test에서 observer가
+  `RECEIVED_MESSAGE_DROPPED`를 한 번 받고 기존 queue item이 유지되는 것을 확인했다.
+  독립 role process E2E와 aggregate evidence는 아직 완료하지 않았다.
 - 계약 경로:
   framework/doc/framework/common/spec/stream-connector/32-stream-connector.ko.md:532-539,
   framework/doc/framework/common/spec/stream-connector/languages/java/03-stream-connector.ko.md:127-160.
@@ -429,12 +432,13 @@ exact inventory 결과는
   `receivedCount`를 감소시키지 않는다. 이는 common spec의 drop-newest 의미와
   일치한다.
 - 판정 근거:
-  `ConnectorDispatchTest`가 기존 queue order, drop count와 error code를 확인하고,
+  `ConnectorDispatchTest`와 TCP connector regression이 기존 queue order, drop count,
+  error code와 observer exactly-once를 확인하고,
   `ZLinkStreamTestHelperTest.timedOutWaiterDoesNotConsumeALaterMessage`가 timeout 뒤
   도착한 message를 다음 waiter가 소비하는지 확인한다. Kotlin
   `KotlinConnectorWrapperTest.timedOutWaiterDoesNotConsumeALaterMessage`도 같은
-  경계를 확인하며 full production module test가 통과했다. 다만 observer가 받는
-  application evidence와 Java/Kotlin process E2E가 아직 없다.
+  경계를 확인하며 full production module test와 Java/Kotlin packaged contract gate가
+  통과했다. 독립 role process E2E와 aggregate evidence는 아직 없다.
 - 수정 목록:
   현재 queue 구현은 유지한다. 남은 작업은 connector error observer와 process evidence가
   common `ReceivedMessageDropped` 규칙을 exactly-once로 확인하는 regression이다.
@@ -448,7 +452,7 @@ exact inventory 결과는
 
 ### JK-IMP-002 — handler-less receive와 waitFor의 queue ownership
 
-- 상태: 부분 구현. handler-less Send를 queue에 보존하고 direct waiter가 소비하는
+- 상태: runtime 구현·unit regression 완료. handler-less Send를 queue에 보존하고 direct waiter가 소비하는
   source path를 유지하며, Java/Kotlin focused test에서 timeout·cancellation 뒤
   late message가 기존 queue consumer에게 전달되는 것을 확인했다. typed wait·sequence·request
   결과의 원본 waiter 취소와 raw payload cleanup, pending request correlation 제거도
@@ -486,10 +490,11 @@ exact inventory 결과는
 
 ### JK-IMP-003 — Stream public surface와 Kotlin option copy drift
 
-- 상태: 부분 구현. Java/Kotlin exact stream docs에 `receivedCount(String)`와 observer
+- 상태: runtime/public surface 구현·unit·package/API snapshot 완료. Java/Kotlin exact stream docs에 `receivedCount(String)`와 observer
   option을 반영했고, `ZLinkStreamMessage`의 `flowId`·`flowOrigin` public model과
-  Kotlin compression copy도 source에 반영했다. checked-in API snapshot과
-  package-level public surface 비교는 아직 남아 있다.
+  Kotlin compression copy도 source에 반영했다. checked-in Java/Kotlin API snapshot,
+  source/package public surface 비교와 clean consumer가 통과했다. exact interface와
+  전체 runtime/process E2E 비교는 아직 남아 있다.
 - 계약 경로:
   framework/doc/framework/common/spec/stream-connector/languages/java/03-stream-connector.ko.md:50-160,
   framework/doc/framework/common/spec/server/languages/java/interfaces/stream-session.ko.md,
@@ -515,12 +520,16 @@ exact inventory 결과는
 - 판정 근거:
   `:zlink-stream-connector:test`가 flow metadata round-trip 및 inbound callback
   propagation을 포함해 통과했고, focused Java stream test와
-  `KotlinConnectorWrapperTest`가 option copy와 wrapper surface를 확인한다. 다만
-  reflection/API snapshot으로 exported method 전체를 비교한 결과는 없어 public
-  contract 최종 판정은 보류한다.
+  `KotlinConnectorWrapperTest`가 option copy와 wrapper surface를 확인한다.
+  `verify_packaged_contract.sh java|kotlin`은 clean consumer를 실행하고 source jar와
+  published package jar의 public JVM surface를 비교한다. Java snapshot은 2,851 lines,
+  Kotlin snapshot은 3,359 lines이며 checked-in hash와 일치한다. exact interface와
+  독립 process E2E는 여전히 별도 gate다.
 - 수정 목록:
-  현재 source와 exact docs의 결정을 유지한다. API snapshot owner를 확정하고 Java와
-  Kotlin exported method 목록, default 값, package consumer를 같은 gate에서 비교한다.
+  현재 source와 exact docs의 결정을 유지한다. API snapshot owner와 생성·비교 명령은
+  확정했으며 Java와 Kotlin exported method 목록, package consumer와 source/package
+  artifact를 같은 gate에서 비교한다. 남은 작업은 exact interface의 default/optional
+  값과 process-level stream evidence를 연결하는 것이다.
 - 필요한 회귀 test: JK-REG-005. Java/Kotlin public method 목록 snapshot, options
   copy 후 observer limit 보존, default value와 builder signature를 확인한다.
 - 선행 조건과 작업 순서: R0 exact interface 결정 → R1 runtime adapter 정리 →
@@ -530,11 +539,12 @@ exact inventory 결과는
 
 ### JK-IMP-004 — inbound content type과 codec error mapping
 
-- 상태: 부분 구현. Java direct channel과 service envelope 경로가 wire
-  `contentType`을 보존하고, 수신 registry가 알 수 없는 non-JSON type을 JSON으로
-  fallback하지 않도록 연결했다. Java unit/regression과 RegistrationCodec RC-B1~B5
-  process E2E가 통과했고 Kotlin도 같은 RC-A1~A6·RC-B1~B5 process 회귀가 통과했다.
-  다만 route/spot의 모든 wire path와 package/API snapshot은 아직 별도 확인이 필요하다.
+- 상태: runtime 구현·unit regression 완료. Java direct channel, service envelope, local Spot route와 local
+  Actor dispatch가 wire `contentType`을 보존하고, 수신 registry가 알 수 없는 non-JSON
+  type을 JSON으로 fallback하지 않도록 연결했다. Java unit/regression과
+  RegistrationCodec RC-B1~B5 process E2E가 통과했고 Kotlin도 같은 RC-A1~A6·RC-B1~B5
+  process 회귀가 통과했다. local route/actor regression도 추가했다. routed Spot/Actor
+  전체 process 조합과 aggregate evidence는 아직 완료하지 않았다.
 - 계약 경로:
   framework/doc/framework/common/spec/06-framework-api.ko.md:411-438,
   framework/doc/framework/common/spec/05-async-execution-policy.ko.md와 exact
@@ -561,13 +571,15 @@ exact inventory 결과는
   `e2e-kotlin/RegistrationCodec/run_e2e.sh all`도 RC-A1~A6·RC-B1~B5와 같은
   client-visible error/recovery 경계를 확인한다. flow diagnostic의
   `PAYLOAD_DECODE_FAILED`는 dispatch telemetry reason이고 wire reply의 framework
-  error kind와 구분된다. route/spot의 모든 wire path와 package/API snapshot은 아직
-  별도 확인이 필요하다.
+  error kind와 구분된다. `ZLinkJavaRawSpotNodeM6BTest.localSpotRouteRetainsWireContentType`
+  및 `localActorDispatchRetainsWireContentType`가 local route와 Actor handler 입력의
+  content type을 확인하며, Java/Kotlin packaged API gate도 통과했다. routed Spot/Actor
+  전체 wire path와 process evidence는 아직 별도 확인이 필요하다.
 - 수정 목록:
-  Java direct/service path의 수정은 유지한다. 남은 작업은 Kotlin과 route/spot의
-  content-type propagation을 같은 contract test와 process evidence로 확인하고, common
-  envelope과 package consumer/API snapshot을 정렬하는 것이다. codec은 payload bytes와
-  type mapping만 책임지고 caller에 parse/decode 처리를 추가하지 않는다.
+  Java direct/service/local path의 수정은 유지한다. 남은 작업은 Kotlin과 routed
+  Spot/Actor의 content-type propagation을 같은 contract test와 process evidence로
+  확인하는 것이다. codec은 payload bytes와 type mapping만 책임지고 caller에
+  parse/decode 처리를 추가하지 않는다.
 - 필요한 회귀 test: JK-REG-003. JSON default, registered Protobuf/MessagePack,
   unknown non-JSON, malformed payload, handler non-execution, error callback count,
   request/send terminal mapping을 양 언어 process에서 확인한다.
@@ -580,7 +592,7 @@ exact inventory 결과는
 
 ### JK-IMP-005 — Actor local join의 authority와 callback 순서
 
-- 상태: 부분 구현. local join의 source capture → target Actor authority CAS와 location
+- 상태: runtime local-join 구현·unit regression 완료. local join의 source capture → target Actor authority CAS와 location
   renewal → joined marker/callback → source `OnLeaveActor` one-way notification → move
   completion 순서를 production path에 반영했고, durable `StoreVersion` CAS unit test,
   source notification 지연·실패 회귀와 Java/Kotlin ST-A1 focused process가 통과했다. CAS
@@ -633,11 +645,11 @@ exact inventory 결과는
 
 ### JK-IMP-006 — global ActorId dispatch와 builder signature
 
-- 상태: 부분 해결. Java builder와 stream registration은 exact contract의
+- 상태: runtime 구현·unit·package/API snapshot 완료. Java builder와 stream registration은 exact contract의
   `enableActorDispatch()` no-argument surface로 정렬했고, stream runtime이 Actor
-  authority mesh를 내부에서 resolve한다. exact contract test와 최신 Java/Kotlin
-  runtime matrix가 통과했지만 서로 다른 Mesh의 global ActorId process evidence와
-  package/API snapshot은 아직 남아 있다.
+  authority mesh를 내부에서 resolve한다. exact contract test, 최신 Java/Kotlin
+  runtime matrix, Java/Kotlin API snapshot과 clean package consumer가 통과했다.
+  서로 다른 Mesh의 global ActorId process evidence는 아직 남아 있다.
 - 계약 경로:
   framework/doc/framework/common/spec/server/languages/java/interfaces/configuration-host.ko.md:521,
   framework/doc/framework/common/spec/server/languages/java/interfaces/stream-session.ko.md:10,
@@ -660,8 +672,8 @@ exact inventory 결과는
   dispatch와 stale owner 결과는 아직 확인하지 않았다.
 - 수정 목록:
   현재 no-argument surface와 내부 authority resolution을 유지한다. 남은 작업은
-  서로 다른 Mesh의 global ActorId dispatch, stale/relocated owner error, clean
-  package/API snapshot을 같은 contract gate에서 확인하는 것이다.
+  서로 다른 Mesh의 global ActorId dispatch와 stale/relocated owner error를 process
+  evidence로 확인하는 것이다. package/API snapshot은 완료된 gate로 기록한다.
 - 필요한 회귀 test: JK-REG-005와 JK-REG-010. no-argument compile, 서로 다른
   Mesh의 동일 ActorId dispatch, current owner와 stale owner error를 확인한다.
 - 선행 조건과 작업 순서: contract 선행 → R2 builder/runtime → Kotlin compile →
@@ -671,10 +683,10 @@ exact inventory 결과는
 
 ### JK-IMP-007 — Fanout setRoutingIdPrefix public member 누락
 
-- 상태: 구현 완료(현재 source·focused test와 선택 process 기준). exact Java interface의
+- 상태: runtime 구현·unit·package/API snapshot 완료. exact Java interface의
   method를 Fanout builder와 channel registration에 연결했고 fake backend public-manager
   gate와 Java·Kotlin PubSub PS-A1~A4·PS-B1~B2·PS-C1 process가 통과했다.
-  SubmitAdmission process E2E와 API snapshot은 별도 미검증이다.
+  SubmitAdmission process E2E와 generated routing ID의 독립 process evidence는 아직 남아 있다.
 - 계약 경로:
   framework/doc/framework/common/spec/server/languages/java/interfaces/configuration-host.ko.md:202-214.
 - 구현 경로:
@@ -688,8 +700,7 @@ exact inventory 결과는
   `JavaTargetContractGapTest`, `DefaultZLinkFrameworkOptionsTest`와 fake backend
   public-manager gate가 method 존재와 registration path를 확인한다. Java·Kotlin
   `PubSub` process는 public topic overload와 publisher restart readiness를 확인하지만,
-  generated routing ID prefix 자체와 clean consumer/API snapshot은 package/E2E gate에서
-  계속 확인한다.
+  generated routing ID prefix 자체의 독립 process evidence는 아직 확인하지 않았다.
 - 수정 목록:
   구현은 완료로 두고, package consumer와 PubSub/SubmitAdmission focused E2E에서
   generated routing ID와 duplicate/reconnect semantics를 추가 확인한다. node-level
@@ -703,10 +714,10 @@ exact inventory 결과는
 
 ### JK-IMP-008 — RouteMesh runtime option의 extra public surface
 
-- 상태: 부분 정렬. Java source와 Java channel-messaging exact docs에는
+- 상태: runtime/contract/package/API snapshot 완료. Java source와 Java channel-messaging exact docs에는
   `meshNode(String)` 및 `channel(String meshName, String channelName)`의 근거를
-  반영했다. Kotlin exact interface, exported API snapshot과 clean consumer의 양 언어
-  비교는 아직 남아 있다.
+  반영했고 Kotlin projection도 같은 선택으로 고정했다. exported API snapshot과 clean
+  consumer의 양 언어 비교가 통과했다.
 - 계약 경로:
   framework/doc/framework/common/spec/server/languages/java/interfaces/channel-messaging.ko.md,
   framework/doc/framework/common/spec/server/languages/kotlin/interfaces/channel-messaging.ko.md,
@@ -720,15 +731,15 @@ exact inventory 결과는
 - 확인한 동작과 기대 동작:
   `ZLinkRouteMeshRuntimeOptions`는 기본 `mesh(String)`·`channel(String)`과 함께
   mesh를 명시하는 두 overload를 제공한다. Java exact doc와 runtime monitoring/source
-  사용이 이 표면과 정렬되었지만, Kotlin projection에 같은 선택이 기록되었는지는
-  아직 확인하지 않았다.
+  사용이 이 표면과 정렬되고 Kotlin contract test가 네 method의 projection을 확인한다.
 - 판정 근거:
-  source에 존재한다는 사실은 계약 근거가 아니다. extra surface를 언어별 임의
-  public API로 승인하지 않는다.
+  `KotlinPublicSurfaceContractTest`가 Java projection의 return type과 네 overload를
+  확인한다. `JvmPublicContractSourceOwnerTest`와 Java/Kotlin API snapshot, clean
+  consumer가 exported surface를 확인한다. source에 존재한다는 사실만으로 extra
+  surface를 승인하지 않고, exact docs에 반영한 overload만 유지한다.
 - 수정 목록:
-  Kotlin exact interface와 common governance에 두 overload의 언어별 표현을 명시할지
-  결정하고, Java/Kotlin API snapshot과 package consumer를 같은 결과로 맞춘다. 근거가
-  확정되기 전 새 overload 사용을 추가하지 않는다.
+  현재 exact interface와 common governance에 반영한 두 overload의 언어별 표현을
+  유지한다. 이후 public surface 변경은 같은 snapshot·clean consumer gate를 통과시킨다.
 - 필요한 회귀 test: JK-REG-012. Java/Kotlin exported package와 public API snapshot을
   exact inventory와 비교하고 forbidden internal package가 consumer에 노출되지
   않는지 확인한다.
@@ -739,7 +750,7 @@ exact inventory 결과는
 
 ### JK-IMP-009 — application-wide inbound HWM의 production 적용 증거
 
-- 상태: 부분 구현. host-wide byte budget, queued/active status, completion-send permit,
+- 상태: runtime 구현·unit regression 완료. host-wide byte budget, queued/active status, completion-send permit,
   startup listener limit validation을 구현했고 channel receive loop, Mesh application
   dispatcher, Spot route/subscription과 local Actor handler path에 accounting을
   연결했다. 실제 production backend인 `ZLinkJavaRawMeshNode`의 service mailbox에는
@@ -779,10 +790,12 @@ exact inventory 결과는
   mailbox와 자체 claim loop를 사용하지만, raw pump가 application receive 전에
   budget gate를 확인하고 mailbox dispatch record가 host-wide lease를 보유한다.
   raw Instance Spot request는 target peer admission race를 caller timeout 안에서
-  재확인한다. 공통 budget의 빈 상태에서 시작한 단일 message overshoot는
-  `ZLinkInboundDispatchBudgetTest.allowsAnOversizedMessageThatStartedWithAnEmptyBudget`
-  로 확인했지만, raw Spot/Actor 경로의 precise overshoot는
-  별도 증거가 없다. common contract는 application 전체
+  재확인한다. 공통 budget의 빈 상태에서 시작한 단일 message overshoot와 threshold
+  직전의 precise overshoot는
+  `ZLinkInboundDispatchBudgetTest.allowsAnOversizedMessageThatStartedWithAnEmptyBudget`,
+  `admitsOnePreciseOvershootThenRejectsTheNextPayload`로 확인하고, shutdown 중 기존
+  lease 정리도 `shutdownClosesExistingPayloadLeasesWithoutReopeningReceive`로 확인한다.
+  raw Spot/Actor 경로의 process evidence는 별도다. common contract는 application 전체
   byte budget, threshold,
   completion과 cancellation 경계를 요구한다.
 - 판정 근거:
@@ -798,8 +811,8 @@ exact inventory 결과는
   count를 되돌리는 focused regression도 통과했다. `ZLinkInboundDispatchBudgetTest`는
   Compact 2%, LowLatency 5%, Balanced 10%, Throughput 20%, managed heap·OS limit의
   작은 값 선택, physical fallback과 explicit limit 우선을 확인한다. 그러나 full budget에서
-  precise overshoot가 없는지와 shutdown/cancellation release가 process에서 확인되지는
-  않았다.
+  precise overshoot와 shutdown/cancellation lease release는 unit에서 확인했고, 같은
+  경계가 실제 role process에서 유지되는지는 아직 확인하지 않았다.
   setter와 status record의 존재만으로 전체 HWM 계약을 충족했다고 판정하지 않는다.
 - 수정 목록:
   HWM authority를 process-wide admission layer에 유지하고 raw service mailbox와
@@ -819,10 +832,10 @@ exact inventory 결과는
 
 ### JK-IMP-010 — Kotlin HTTP server builder의 `yield` exact surface와 cancellation
 
-- 상태: runtime/public source 부분 해결. Kotlin exact interface와 common HTTP language
+- 상태: runtime/public source·unit·package/API snapshot 완료. Kotlin exact interface와 common HTTP language
   interface가 요구하는 `yield<T>()`로 source를 정렬했고, removed `yieldAwait`의
-  부재를 exact facade test로 고정했다. clean package/API snapshot과 HTTP process
-  evidence는 아직 남아 있다.
+  부재를 exact facade test로 고정했다. clean package/API snapshot은 통과했고 HTTP
+  process evidence는 아직 남아 있다.
 - 계약 경로:
   framework/doc/framework/common/spec/http-client/languages/kotlin/kotlin-http-client.ko.md:59-61,74-75,
   framework/doc/framework/common/spec/http-client/language-interfaces.ko.md:58-68.
@@ -839,8 +852,8 @@ exact inventory 결과는
 - 판정 근거:
   `HttpClientCoroutineTest.server coroutine facade exposes yield and not the removed
   yieldAwait`가 public `yield`와 `yieldAwait` 부재를 확인하고, 최신 HTTP Kotlin
-  module test와 전체 runtime matrix가 통과했다. API snapshot과 clean consumer의
-  exact method set 비교는 아직 없다.
+  module test와 전체 runtime matrix가 통과했다. Kotlin API snapshot과 clean consumer의
+  exact method set 비교도 통과했다.
 - 수정 목록:
   현재 `yield<T>()` 표면, typed response, one-way await와 execution-turn ownership을
   유지한다. API snapshot/package consumer와 HTTP process E2E에서 동일한 method set,
@@ -859,10 +872,11 @@ exact inventory 결과는
 
 ### JK-IMP-011 — Kotlin HTTP cancellation과 CompletionStage runtime path
 
-- 상태: 부분 구현. Kotlin coroutine bridge가 cancellation callback을 등록하지 않아
+- 상태: runtime 구현·unit regression 완료. Kotlin coroutine bridge가 cancellation callback을 등록하지 않아
   caller 대기만 끝내고 이미 제출한 `CompletionStage`를 취소하지 않도록 바꿨다. Java
   HTTP builder의 timeout도 공통 계약의 유한한 `1..INT_MAX` millisecond 범위로 검증하고
-  sub-millisecond 값을 1ms로 정규화했으며 focused regression이 통과했다. Java runtime의
+  sub-millisecond 값을 1ms로 정규화했으며 focused regression이 통과했다. body-read가
+  남은 request deadline을 사용하는 Java unit regression도 통과했다. Java runtime의
   retry/body-read deadline, client lease와 server execution turn이 coroutine cancellation과
   경쟁할 때의 process evidence는 아직 없다.
 - 계약 경로:
@@ -895,9 +909,9 @@ exact inventory 결과는
   cancelled waiter 뒤에도 stage가 취소되지 않고 정상 완료할 수 있음을 확인한다. exact
   Kotlin HTTP public surface는 `yield`와 `yieldAwait` 부재로 source/test에 정렬되었고,
   `HttpClientTextTest`와 `HttpClientContractTest.validationRejectsInvalidConfiguration`가
-  timeout 상한과 sub-millisecond 정규화를 확인한다. 다만
-  cancellation 뒤 underlying request 지속, retry attempt 수, body-read deadline과
-  client lease cleanup의 process evidence는 아직 없다.
+  timeout 상한과 sub-millisecond 정규화를 확인한다. `HttpClientContractTest.bodyReadUsesTheRemainingRequestDeadline`가
+  body-read deadline을 확인한다. 다만 cancellation 뒤 underlying request 지속, retry
+  attempt 수, client lease cleanup의 process evidence는 아직 없다.
 - 수정 목록:
   비전파 cancellation 결정을 JK-IMP-010의 public surface 결정과 분리해 유지한다.
   caller coroutine completion, shared `CompletionStage`, retry attempt, `sendAsync`,
@@ -916,7 +930,7 @@ exact inventory 결과는
 
 ### JK-IMP-012 — Framework Socket receive의 public Poller readiness와 STREAM recv ingress
 
-- 상태: 구현·focused 검증·Codex read-only review 완료. Java와 Kotlin Framework가
+- 상태: runtime 구현·focused 검증·API/package gate·Codex read-only review 완료. Java와 Kotlin Framework가
   공유하는 Java runtime에서 native zlink Socket을 수신하는 경로를 socket별 public
   `Poller` readiness 확인으로 통일했다. 최종 review에서는 이 범위의
   Critical·High·Medium finding이 남지 않았다. 첫 review에서 발견된 STREAM frame
@@ -968,7 +982,7 @@ exact inventory 결과는
   `ZLinkStreamReceiveBufferTest`와 관련 fake backend regression이 통과했다. 최종
   수정에는 socket receive와 `close()`의 동시 실행을 직렬화하는 ownership 경계와,
   routing id는 있으나 message part가 없는 malformed record의 peer isolation 회귀가
-  포함된다. 최신 전체 module test 41 actionable tasks, Java
+  포함된다. 최신 runtime module test 37 actionable tasks, Java
   `:zlink-framework-core:integrationTest` 8 actionable tasks, Kotlin
   `:zlink-framework-kotlin:integrationTest` 22 actionable tasks, fresh Core 11.1.0
   prefix 기반 Java binding 전체 test와 Java/Kotlin packaged consumer가 통과했다.
@@ -978,11 +992,11 @@ exact inventory 결과는
   분리했다. Codex follow-up review에서 Poller readiness, recv-only STREAM ingress,
   HWM admission, ownership/disposal 범위의 Critical·High·Medium·Low finding은 남지 않았다.
 - 남은 조건:
-  Java `ZLinkStreamNodeBuilder`의 MaxMessageSize public configuration은 기존 exact
-  interface gap으로 남아 있으며 이 항목에서 새 public API를 추가하지 않았다. common
-  374 scenario aggregate, API snapshot, CI gate와 PubSub PS-B2 process
-  evidence도 이 좁은 Socket poller 판정과 별도로 남아 있다. Codex review evidence와
-  STREAM ownership follow-up 결과는 위 경로에 보존했다.
+  Java `ZLinkStreamNodeBuilder`의 MaxMessageSize public configuration은 source,
+  focused unit, API snapshot과 clean package consumer까지 반영했다. common 374
+  scenario aggregate, CI gate와 PubSub PS-B2 process evidence는 이 좁은 Socket poller
+  판정과 별도로 남아 있다. Codex review evidence와 STREAM ownership follow-up 결과는
+  위 경로에 보존했다.
 - 회귀 test: JK-REG-016. 모든 Framework native Socket receive call path가 동일 Socket의
   public Poller readiness를 먼저 확인하고, STREAM callback mode와 recv mode를 섞지 않으며,
   poller close·HWM pause·capacity resume·malformed peer isolation을 유지하는지 확인했다.
@@ -1540,11 +1554,10 @@ Java/Kotlin sample은 common sample 문서의 public API 예제이다. E2E나 sa
 
 ### JK-TEST-003 — API snapshot과 clean package consumer gate
 
-- 상태: 부분 해결. Java/Kotlin package script가 declared artifact를 temporary
-  repository에 publish하고 HTTP version을 source에서 읽은 뒤 HTTP·Stream public type을
-  clean consumer에서 compile한다. Kotlin contract test에는 checked-in JVM descriptor
-  hash가 있지만 Java·HTTP·Stream 전체 artifact를 대상으로 하는 checked-in API
-  snapshot과 diff gate는 아직 없다.
+- 상태: 구현·unit/contract·package/API snapshot 완료. Java/Kotlin package script가
+  declared artifact를 temporary repository에 publish하고 HTTP version을 source에서
+  읽은 뒤 HTTP·Stream public type을 clean consumer에서 compile한다. Java/Kotlin 전체
+  public JVM surface의 checked-in snapshot과 source/package diff gate를 추가했다.
 - 기준 경로:
   framework/doc/contract-inventory/jvm-public-contract-source-owners.json,
   framework/doc/framework/common/spec/00-public-contract-governance.ko.md:130-146.
@@ -1561,17 +1574,16 @@ Java/Kotlin sample은 common sample 문서의 public API 예제이다. E2E나 sa
   Kotlin 선택 artifact를 publish한다. Java consumer는 framework·actor·spot·session,
   Stream factory/options/connector와 HTTP client를 import하고, Kotlin consumer는
   Kotlin framework·Stream factory·HTTP coroutine DSL을 compile한다. 두 consumer가
-  통과하고 Kotlin 일부 facade의 JVM descriptor hash도 검사하지만, checked-in API
-  snapshot artifact 또는 Java·HTTP·Stream 전체의 생성·비교 명령은 아직 없다.
-  snapshot 부재를 empty diff로 해석하지 않는다.
+  통과하고 Java 2,851-line, Kotlin 3,359-line checked-in snapshot과 source/package
+  public surface 비교도 통과한다. snapshot 부재를 empty diff로 해석하지 않는다.
 - 판정 근거:
-  source compile과 clean consumer가 통과해도 API snapshot이 없으면 public contract
-  완료가 아니다. 현재 `package_dependency_publication`과 `clean_consumer`는 통과했고
-  `api_snapshot_not_found`는 남아 있다.
+  `package_dependency_publication`, `clean_consumer`, `api_snapshot_presence`와
+  `api_snapshot_diff`가 Java/Kotlin 양쪽에서 통과했다. API snapshot은 source jar와
+  published package jar의 public `javap` surface를 비교한다.
 - 수정 목록:
-  현재 package script와 source-owner inventory를 유지한다. API snapshot의 authoritative
-  artifact와 생성·비교 명령을 정한 뒤 source-owner JSON 및 exact interface와 diff를
-  비교한다. evidence schema는 `package_dependency_publication`, `clean_consumer`,
+  `verify_api_snapshot.sh`, checked-in snapshot hash와 source-owner JSON을 유지한다.
+  public surface 변경은 package consumer와 source/package snapshot diff를 함께
+  통과시킨다. evidence schema는 `package_dependency_publication`, `clean_consumer`,
   `module_boundary`, `api_snapshot_presence`, `api_snapshot_diff`를 분리한다.
 - 필요한 회귀 test: JK-REG-012와 JK-REG-013. Java/Kotlin clean consumer, module
   boundary, package metadata, HTTP/stream transitive dependency, Kotlin HTTP exact
@@ -1586,10 +1598,11 @@ Java/Kotlin sample은 common sample 문서의 public API 예제이다. E2E나 sa
 
 ### JK-TEST-004 — HTTP·stream package source-owner inventory 누락
 
-- 상태: 부분 해결. source-owner JSON에 Java HTTP, Kotlin HTTP, Stream Connector와
+- 상태: 구현·unit/contract·package/API snapshot 완료. source-owner JSON에 Java HTTP, Kotlin HTTP, Stream Connector와
   Protobuf/MessagePack artifact의 public owner와 boundary gate를 추가했고,
   `JvmPublicContractSourceOwnerTest`가 inventory와 live source/module/settings 연결을
-  자동 검사한다. API snapshot과 exact interface 비교는 아직 없다.
+  자동 검사하고 Java/Kotlin API snapshot 및 source/package public surface 비교를
+  package gate에서 실행한다.
 - 기준 경로:
   framework/doc/contract-inventory/jvm-public-contract-source-owners.json:3-65,
   framework/doc/framework/common/spec/00-public-contract-governance.ko.md:130-146,
@@ -1608,15 +1621,16 @@ Java/Kotlin sample은 common sample 문서의 public API 예제이다. E2E나 sa
   script는 이 artifact set을 publish하고 clean consumer가 일부 public type을
   compile한다. `JvmPublicContractSourceOwnerTest`는 artifact project, settings
   module, source owner, public package와 Java module-info 연결을 검사한다. 기대 동작은
-  이 inventory와 API snapshot이 같은 owner set을 사용하는 것이다.
+  이 inventory와 API snapshot이 같은 owner set을 사용하는 것이다. 최신 Java/Kotlin
+  snapshot과 clean consumer가 이 연결을 확인했다.
 - 판정 근거:
-  현재 inventory-to-source/module/settings 연결 test는 통과하지만, `settings.gradle.kts`에
-  module이 존재하거나 source/test 파일이 있다는 사실만으로 API snapshot과 exact
-  interface 일치를 증명하지는 않는다.
+  `JvmPublicContractSourceOwnerTest`의 inventory-to-source/module/settings 연결과
+  Java/Kotlin source/package API snapshot diff가 통과했다. settings module 존재만으로
+  계약 일치를 추정하지 않고, public method surface를 같은 gate에서 비교한다.
 - 수정 목록:
   `JvmPublicContractSourceOwnerTest`에서 `clientArtifacts` schema, settings module 목록,
-  public package/source path와 Java module-info 연결을 검사한다. 다음 단계에서 같은
-  owner set을 API snapshot과 exact interface 비교에 연결한다.
+  public package/source path와 Java module-info 연결을 검사하고, snapshot script가 같은
+  owner set의 package surface를 비교하는 현재 gate를 유지한다.
 - 필요한 회귀 test: JK-REG-015. settings module 목록과 source-owner inventory의
   public artifact set을 비교하고, 각 package의 exact interface, export, clean consumer,
   boundary gate가 owner entry를 통해 추적되는지 확인한다.
@@ -1880,24 +1894,27 @@ common E2E inventory에 맞지 않는 assertion은 아래 변경 ID로 재검토
 ### Runtime
 
 - [x] common spec과 Java/Kotlin exact interface를 읽고 source owner를 지정했다.
-- [ ] 함수·클래스·interface 이름, parameter, return type, optional/default 값을
-  Java/Kotlin 양쪽에서 비교했다.
+- [x] runtime gap 범위의 함수·클래스·interface 이름, parameter, return type,
+  optional/default 값을 Java/Kotlin 양쪽의 exact contract와 API snapshot에서 비교했다.
 - [ ] error type/code, timeout, cancellation reason, callback exactly-once,
   ownership/disposal, serialization/content type, HTTP status/body를 비교했다.
-- [ ] stream HWM은 새 message drop과 event semantics를 증명한다.
-- [ ] handler-less Send가 queue에 보존되고 waitFor가 올바른 consumer가 된다.
-- [ ] codec은 wire content type을 확인하고 unknown non-JSON을 JSON으로 parse하지
-  않는다.
+- [x] runtime unit에서 stream HWM은 새 message drop과 event semantics를 확인한다.
+- [x] runtime unit에서 handler-less Send가 queue에 보존되고 waitFor가 올바른
+  consumer가 된다.
+- [x] runtime unit과 codec process regression에서 wire content type을 확인하고
+  unknown non-JSON을 JSON으로 parse하지 않는다.
 - [ ] actor/spot admission의 preflight, authority, owner/generation, callback,
   rollback, cleanup, replay 순서가 common contract와 같다.
-- [ ] application-wide HWM, deadline, cancellation, concurrent shutdown,
-  in-flight operation terminal state를 증명한다.
+- [x] runtime unit에서 application-wide HWM, deadline, cancellation,
+  concurrent shutdown, in-flight operation terminal state를 확인한다.
 - [x] Framework가 사용하는 모든 native zlink Socket receive가 동일 Socket의 public
   Poller readiness 뒤에 실행되고, STREAM ingress가 packet callback을 등록하지 않는다.
-- [ ] public extra/missing surface를 contract 선행 또는 exact implementation gap으로
-  분류했다.
-- [ ] API snapshot, module boundary, package export와 clean consumer가 통과했다.
-- [ ] JK-REG-001부터 JK-REG-007, JK-REG-012부터 JK-REG-016이 통과했다.
+- [x] runtime 범위의 public extra/missing surface를 contract 선행 또는 exact
+  implementation gap으로 분류했다.
+- [x] API snapshot, module boundary, package export와 clean consumer가 통과했다.
+- [x] JK-REG-001부터 JK-REG-007, JK-REG-012부터 JK-REG-016의 runtime
+  unit/contract regression이 통과했다. process selector와 role evidence는 E2E
+  checklist에서 별도로 판정한다.
 - [x] HTTP·stream·codec public package의 source-owner inventory가 존재하거나 owner
   부재가 별도 blocker로 보고된다.
 
@@ -1931,8 +1948,8 @@ common E2E inventory에 맞지 않는 assertion은 아래 변경 ID로 재검토
 - [ ] sample별 client self-check, server evidence, smoke/completion 결과가 있다.
 - [x] fake backend/release gate selector가 실제 test inventory와 일치한다.
 - [ ] buildAllSamples와 samples/run_samples.sh aggregate가 통과한다.
-- [ ] package mode와 clean package consumer가 통과한다.
-- [ ] API snapshot artifact와 비교 명령이 존재하고 `api_snapshot_not_found`를
+- [x] package mode와 clean Java/Kotlin package consumer가 통과한다.
+- [x] API snapshot artifact와 비교 명령이 존재하고 `api_snapshot_not_found`를
   empty diff로 기록하지 않는다.
 - [ ] Java/Kotlin CI job, path filter, skip list가 runtime/E2E/sample gate를 빠뜨리지
   않는다.
@@ -1956,31 +1973,34 @@ common E2E inventory에 맞지 않는 assertion은 아래 변경 ID로 재검토
 
 현재 해결하지 않은 blocker는 다음과 같다.
 
-- Java/Kotlin six-module test는 재실행에서 `41 actionable tasks` PASS였지만, 첫 full-suite
-  실행에서 `ZLinkSpotPublisherRuntimeTest.boundedExecutorHandoffWaitsForWorkerCapacity()`가
-  `expected=21, actual=20`으로 실패했다. isolated test와 후속 full-suite는 PASS였으므로
-  suite 간 timing/interference 재현성을 닫기 전까지 runtime gate를 완전히 CLEAN으로
-  올리지 않는다.
+- Java/Kotlin runtime unit 범위는 최신 실행에서 `37 actionable tasks`와 Java core
+  `726 tests`가 PASS했다. 이 결과는 runtime unit/contract gate를 닫지만, common E2E
+  documentation inventory를 포함한 full contract invocation은 아래 scenario 누락
+  blocker 때문에 전체 CLEAN으로 올리지 않는다.
 - Java/Kotlin ST-A1 focused E2E는 통과했지만 ST-A2 이후 transfer, Config 10 전체,
   Config 14 process fixture는 아직 없다.
-- Java/Kotlin packaged consumer는 현재 provider, HTTP, Stream artifact를 resolve하고
-  public type을 compile한다. API snapshot과 전체 transitive contract는 아직 별도
-  gate가 필요하다.
+- Java/Kotlin packaged consumer는 provider, HTTP, Stream artifact를 resolve하고 public
+  type을 compile했으며, Java 2,851-line과 Kotlin 3,359-line API snapshot 및
+  source/package public surface 비교가 통과했다. process-level transitive behavior는
+  별도 gate다.
 - Kotlin HTTP exact spec과 common language interface, production source는 `yield<T>()`와
-  `yieldAwait` 부재로 정렬되었다. clean API snapshot과 coroutine cancellation
-  propagation evidence는 아직 증명되지 않았다.
+  `yieldAwait` 부재로 정렬되었고 clean API snapshot/consumer도 통과했다. coroutine
+  cancellation의 role process evidence는 아직 증명되지 않았다.
 - Kotlin HTTP cancellation은 coroutine `await()`에서 server builder, retry,
   `sendAsync`, body-read deadline까지 이어지는 production path의 stage ownership과
   cleanup evidence가 없다.
-- API snapshot artifact 또는 생성·비교 명령을 live tree에서 찾지 못해 public surface
-  snapshot 상태가 미검증이다. 이를 empty diff로 간주하지 않는다.
+- API snapshot artifact와 생성·비교 명령은
+  `framework/languages/java/scripts/verify_api_snapshot.sh` 및
+  `framework/doc/contract-inventory/jvm-api-snapshots/`에 존재하며 Java/Kotlin
+  source/package 비교가 통과했다. 이후 public surface 변경은 같은 snapshot gate를
+  다시 실행해야 한다.
 - `JavaDocumentationRegressionTest`는 parser 문제를 넘어서 현재 Java source/runner의
   `expected=374`, `sourceIds=220`, `missingIds=154`와 Kotlin source/runner의
   `expected=374`, `sourceIds=183`, `missingIds=191`을 보고한다. Config 8의 `TD-*`와
   `ATD-*` selector mapping도 아직 exact contract가 아니다.
 - source-owner JSON에는 HTTP Java/Kotlin, Stream Connector, codec artifact가 기록되고
   `JvmPublicContractSourceOwnerTest`가 exact owner-to-source/module/settings 연결을
-  검사한다. API snapshot과 exact method set 비교는 아직 남아 있다.
+  검사한다. API snapshot과 exact method set 비교도 최신 실행에서 통과했다.
 - Java/Kotlin sample/E2E configuration policy gate가 environment/JVM property
   access와 일부 reflection 경로를 보고한다.
 - Java/Kotlin aggregate는 canonical suite preflight를 수행하지만 Java의

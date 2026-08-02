@@ -509,6 +509,39 @@ test('ClientServer selection uses overflow-safe weights and excludes zero-weight
   assert.throws(() => add('invalid-high', 10_001), /0\.\.10000/);
 });
 
+test('ClientServer keeps a known target observable while its transport is disconnected', () => {
+  const discovery = new ServiceDiscoveryRegistry();
+  const descriptor = {
+    channelName: 'orders',
+    serverRoutingId: 'server-a',
+    lifecycleGeneration: 1n,
+    descriptorRevision: 1n,
+    weight: 100,
+    state: 'serving' as const,
+    securityIdentity: 'default',
+    effectiveMaxMessageBytes: 1024,
+    advertisedEndpoint: 'tcp://server-a:7001'
+  };
+
+  assert.equal(discovery.admitClientServer(descriptor, 'connection-a'), true);
+  assert.equal(
+    discovery.markClientServerDisconnected('orders', 'server-a', 'connection-a'),
+    true
+  );
+  assert.equal(discovery.selectClientServer('orders'), undefined);
+  assert.equal(discovery.clientServerDescriptors('orders')[0]?.state, 'disconnected');
+
+  assert.equal(
+    discovery.admitClientServer({ ...descriptor, state: 'serving' }, 'connection-b'),
+    true
+  );
+  assert.equal(discovery.selectClientServer('orders')?.serverRoutingId, 'server-a');
+  assert.equal(
+    discovery.markClientServerDisconnected('orders', 'server-a', 'connection-a'),
+    false
+  );
+});
+
 test('runtime weight changes increment the local descriptor revision and preserve public bounds', () => {
   const runtime = new RawServiceMeshRuntime({
     descriptor: {

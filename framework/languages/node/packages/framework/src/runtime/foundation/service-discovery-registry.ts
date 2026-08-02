@@ -4,7 +4,7 @@ export interface ClientServerDescriptor {
   readonly lifecycleGeneration: bigint;
   readonly descriptorRevision: bigint;
   readonly weight: number;
-  readonly state: 'preparing' | 'serving' | 'retiring' | 'stopped' | 'error';
+  readonly state: 'preparing' | 'serving' | 'retiring' | 'stopped' | 'error' | 'disconnected';
   readonly securityIdentity: string;
   readonly effectiveMaxMessageBytes: number;
   readonly advertisedEndpoint: string;
@@ -37,12 +37,32 @@ export class ServiceDiscoveryRegistry {
 
   admitClientServer(descriptor: ClientServerDescriptor, connectionId: string): boolean {
     validateClientServer(descriptor);
-    return this.admit(
-      this.clientServers,
-      `${descriptor.channelName}\0${descriptor.serverRoutingId}`,
-      descriptor,
-      connectionId
-    );
+    const key = `${descriptor.channelName}\0${descriptor.serverRoutingId}`;
+    const current = this.clientServers.get(key);
+    if (current !== undefined
+      && current.descriptor.state === 'disconnected'
+      && sameClientServerDescriptorExceptState(current.descriptor, descriptor)) {
+      this.clientServers.set(key, { descriptor: { ...descriptor }, connectionId });
+      return true;
+    }
+    return this.admit(this.clientServers, key, descriptor, connectionId);
+  }
+
+  markClientServerDisconnected(
+    channelName: string,
+    serverRoutingId: string,
+    connectionId: string
+  ): boolean {
+    const key = `${channelName}\0${serverRoutingId}`;
+    const current = this.clientServers.get(key);
+    if (current === undefined || current.connectionId !== connectionId) return false;
+    if (current.descriptor.state !== 'disconnected') {
+      this.clientServers.set(key, {
+        descriptor: { ...current.descriptor, state: 'disconnected' },
+        connectionId
+      });
+    }
+    return true;
   }
 
   removeClientServer(
@@ -173,6 +193,20 @@ function sameDescriptor<T extends { readonly lifecycleGeneration: bigint; readon
     lifecycleGeneration: right.lifecycleGeneration.toString(),
     descriptorRevision: right.descriptorRevision.toString()
   });
+}
+
+function sameClientServerDescriptorExceptState(
+  left: ClientServerDescriptor,
+  right: ClientServerDescriptor
+): boolean {
+  return left.channelName === right.channelName
+    && left.serverRoutingId === right.serverRoutingId
+    && left.lifecycleGeneration === right.lifecycleGeneration
+    && left.descriptorRevision === right.descriptorRevision
+    && left.weight === right.weight
+    && left.securityIdentity === right.securityIdentity
+    && left.effectiveMaxMessageBytes === right.effectiveMaxMessageBytes
+    && left.advertisedEndpoint === right.advertisedEndpoint;
 }
 
 function removeCurrent<T>(

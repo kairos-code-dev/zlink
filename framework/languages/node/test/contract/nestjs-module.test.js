@@ -3714,6 +3714,33 @@ test('framework runtime host defers Entry Spot lifecycle until Core materializes
   ]);
 });
 
+test('Nest ClientServer builder accepts the common 0..10000 weight contract', () => {
+  const builder = nestjs.zlinkFramework();
+  builder.addClientServerChannel('weighted').server().setWeight(300);
+  assert.throws(
+    () => builder.addClientServerChannel('invalid').server().setWeight(10001),
+    /between 0 and 10000/
+  );
+});
+
+test('Nest RouteMesh Server builder accepts the common 0..10000 weight contract', () => {
+  const builder = nestjs.zlinkFramework();
+  const server = builder.addRouteMesh('mesh').channel('events').server();
+  server.setWeight(0).setWeight(10_000);
+  assert.throws(
+    () => server.setWeight(-1),
+    /0\.\.10000/
+  );
+  assert.throws(
+    () => server.setWeight(10_001),
+    /0\.\.10000/
+  );
+  assert.throws(
+    () => server.setWeight(1.5),
+    /0\.\.10000/
+  );
+});
+
 async function waitForCondition(predicate, label, timeoutMs = 3000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {

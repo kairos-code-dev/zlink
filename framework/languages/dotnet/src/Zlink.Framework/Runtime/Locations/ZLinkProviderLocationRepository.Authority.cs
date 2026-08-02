@@ -62,6 +62,8 @@ internal sealed partial class ZLinkProviderLocationRepository
         ArgumentNullException.ThrowIfNull(mutation);
         ValidateAuthorityMutation(mutation);
 
+        var metaKey = AuthorityMetaKey(key);
+        var payloadKey = AuthorityPayloadKey(key);
         var current = await ReadAuthorityRecordAsync(key, cancellationToken)
             .ConfigureAwait(false);
         if (current is null
@@ -70,6 +72,29 @@ internal sealed partial class ZLinkProviderLocationRepository
             || current.Version.Value != expectedStoreVersion
             || current.Meta.AggregateFence is not null)
         {
+            if (mutation is ZLinkAuthorityMutation.Delete
+                && current is not null
+                && current.Version.Value != expectedStoreVersion)
+            {
+                // A source handoff cleanup can arrive after the target has
+                // published a newer authority version. Submit the old
+                // metadata fence to the opaque provider so an in-flight
+                // cleanup remains observable and retryable. The expected
+                // version cannot match the target row, so this batch cannot
+                // delete the target metadata or payload.
+                await provider.WriteAsync(
+                        new ZLinkStoreWriteRequest(
+                            [new ZLinkStoreCondition.Version(
+                                metaKey,
+                                new ZLinkStoreVersion(expectedStoreVersion))],
+                            [
+                                new ZLinkStoreMutation.Delete(metaKey),
+                                new ZLinkStoreMutation.Delete(payloadKey)
+                            ]),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             //  Four separate reasons collapse into one Conflict, and the caller
             //  reports all of them as "authority changed".
             Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
@@ -80,8 +105,6 @@ internal sealed partial class ZLinkProviderLocationRepository
             return Conflict(current);
         }
 
-        var metaKey = AuthorityMetaKey(key);
-        var payloadKey = AuthorityPayloadKey(key);
         if (mutation is ZLinkAuthorityMutation.Restore restore)
         {
             ValidateAuthorityPayload(restore.Payload);

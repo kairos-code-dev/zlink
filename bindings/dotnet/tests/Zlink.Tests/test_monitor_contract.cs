@@ -92,6 +92,27 @@ public sealed class test_monitor_contract
     }
 
     [Fact]
+    public void socket_monitor_poll_reports_pending_event()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var server = ctx.CreatePairSocket();
+        using var client = ctx.CreatePairSocket();
+        string endpoint = CoreTestSupport.NewEndpoint("tcp", "monitor-poll");
+        server.Bind(endpoint);
+
+        using ISocketMonitor monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
+        client.Connect(endpoint);
+
+        Assert.Equal(1, ZlinkPoll.Poll(new[] { monitor }, 3000));
+        SocketMonitorEvent evt = monitor.Recv(RecvFlags.DontWait)
+            ?? throw new TimeoutException("Poll reported a monitor event but Recv was empty.");
+        Assert.Equal(MonitorEventType.ConnectionReady, evt.Event);
+    }
+
+    [Fact]
     public void socket_monitor_ignore_handler_switches_to_callback_only_model()
     {
         if (!CoreTestSupport.IsNativeAvailable())

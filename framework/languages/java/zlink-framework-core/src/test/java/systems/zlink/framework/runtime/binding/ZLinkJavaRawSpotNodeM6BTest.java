@@ -27,6 +27,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotDispatchEvent;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
+import systems.zlink.framework.runtime.channels.ZLinkChannelContentTypeFrame;
 
 final class ZLinkJavaRawSpotNodeM6BTest {
     @Test
@@ -239,6 +240,73 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                 assertEquals(
                     "current",
                     received.parts().getFirst().toUtf8String());
+            }
+        }
+    }
+
+    @Test
+    void localSpotRouteRetainsWireContentType() {
+        try (var context = Zlink.createContext();
+             var node = new ZLinkJavaRawMeshNode(context, "mesh")) {
+            RoutingId nodeRid = RoutingId.from("jvm-m6b-content-type-node");
+            node.setRoutingId(nodeRid);
+            ZLinkBackendSpot source = node.spotNode().createSpot("source");
+            ZLinkBackendSpot target = node.spotNode().createSpot("target");
+            try (Message packet = Message.from("Payload");
+                 Message payload = Message.from("value");
+                 Message contentType = ZLinkChannelContentTypeFrame.encode(
+                     "application/example")) {
+                assertTrue(source.sendToSpot(
+                    nodeRid,
+                    target.spotId(),
+                    target.lifecycleGeneration(),
+                    List.of(packet, payload, contentType),
+                    SendFlags.DONT_WAIT));
+                try (var received = target.recvRoute(
+                    ZLinkBackendRecvMode.DONT_WAIT)) {
+                    assertNotNull(received);
+                    assertEquals("application/example", received.contentType());
+                }
+            }
+        }
+    }
+
+    @Test
+    void localActorDispatchRetainsWireContentType() throws Exception {
+        try (var context = Zlink.createContext();
+             var node = new ZLinkJavaRawMeshNode(context, "mesh")) {
+            RoutingId nodeRid = RoutingId.from("jvm-m6b-actor-content-type-node");
+            node.setRoutingId(nodeRid);
+            CompletableFuture<String> receivedContentType = new CompletableFuture<>();
+            ZLinkBackendSpot entry = node.spotNode().entrySpot();
+            entry.onDispatchEvent(info -> {
+                if (info.event() != ZLinkBackendSpotDispatchEvent.ACTOR_READABLE) {
+                    return;
+                }
+                try {
+                    receivedContentType.complete(
+                        info.actorMessages().getFirst().contentType());
+                } finally {
+                    info.actorMessages().forEach(
+                        systems.zlink.framework.runtime.internal.backend
+                            .ZLinkBackendActorReceived::close);
+                }
+            });
+            systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef actor;
+            try (Message create = Message.from("create")) {
+                actor = node.spotNode().createActor("actor-content-type", create);
+            }
+            try (Message packet = Message.from("Payload");
+                 Message payload = Message.from("value");
+                 Message contentType = ZLinkChannelContentTypeFrame.encode(
+                     "application/example")) {
+                assertTrue(node.spotNode().sendToActor(
+                    actor,
+                    List.of(packet, payload, contentType),
+                    SendFlags.DONT_WAIT));
+                assertEquals(
+                    "application/example",
+                    receivedContentType.get(1, TimeUnit.SECONDS));
             }
         }
     }

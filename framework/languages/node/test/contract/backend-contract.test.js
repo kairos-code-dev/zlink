@@ -79,6 +79,34 @@ test('backend adapter factory exposes the supported backend adapters', () => {
   assert.equal(factory.createRegistryAdapter, undefined);
 });
 
+test('RouteMesh runtime weight changes reject invalid values as configuration errors', () => {
+  const registration = framework.createFrameworkRegistrationWithBuilder((builder) => {
+    builder.addRouteMesh('game')
+      .channel('events')
+      .server()
+      .setWeight(100);
+  });
+  const calls = [];
+  const manager = Object.create(framework.ZLinkSpotNodeRuntimeManager.prototype);
+  manager.options = { registration };
+  manager.meshNodes = new Map([['game', {
+    setPlacementWeight() { calls.push('placement'); },
+    setChannelWeight() { calls.push('channel'); }
+  }]]);
+
+  for (const invalid of [-1, 10_001, 1.5, Number.NaN]) {
+    assert.throws(
+      () => manager.setRuntimePlacementWeight('game', invalid),
+      (error) => error instanceof framework.ZLinkConfigurationException
+    );
+    assert.throws(
+      () => manager.setRuntimeChannelWeight('events', invalid),
+      (error) => error instanceof framework.ZLinkConfigurationException
+    );
+  }
+  assert.deepEqual(calls, []);
+});
+
 test('backend raw STREAM does not expose the removed bindings Session Actor service API', async () => {
   const factory = new backend.ZLinkNodeBackendAdapterFactory();
   const channel = factory.createChannelAdapter();

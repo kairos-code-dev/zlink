@@ -54,16 +54,20 @@ class sample_session_t final : public zlink::framework::packet_stream_session_t
     }
 
     zlink::framework::task_t<void> on_packet (zlink::framework::stream_t &stream,
-                                              const zlink::framework::stream_dispatch_context_t &dispatch,
+                                              const zlink::framework::session_message_context_t &dispatch,
                                               const zlink::message_t &payload) override
     {
-        events.push_back ("packet:" + std::string (dispatch.packet_name ()) + ":"
+        events.push_back ("packet:" + std::string (dispatch.packet_name) + ":"
                           + payload.to_string ());
+        last_can_reply = dispatch.can_reply;
+        last_metadata = dispatch.metadata;
         stream.reply_packet (payload).submit ().result ().value ();
         return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
     }
 
     std::vector<std::string> events;
+    bool last_can_reply = false;
+    zlink::framework::message_metadata_t last_metadata;
 };
 
 class duplicate_reply_session_t final : public zlink::framework::packet_stream_session_t
@@ -88,7 +92,7 @@ class duplicate_reply_session_t final : public zlink::framework::packet_stream_s
 
     zlink::framework::task_t<void> on_packet (
       zlink::framework::stream_t &stream,
-      const zlink::framework::stream_dispatch_context_t &,
+      const zlink::framework::session_message_context_t &,
       const zlink::message_t &payload) override
     {
         auto winner = stream.reply_packet (payload);
@@ -132,7 +136,7 @@ class failed_reply_session_t final : public zlink::framework::packet_stream_sess
 
     zlink::framework::task_t<void> on_packet (
       zlink::framework::stream_t &stream,
-      const zlink::framework::stream_dispatch_context_t &,
+      const zlink::framework::session_message_context_t &,
       const zlink::message_t &payload) override
     {
         const auto first = stream.reply_packet (payload).submit ().result ();
@@ -171,7 +175,7 @@ class throwing_packet_session_t final : public zlink::framework::packet_stream_s
     }
 
     zlink::framework::task_t<void> on_packet (zlink::framework::stream_t &,
-                                              const zlink::framework::stream_dispatch_context_t &,
+                                              const zlink::framework::session_message_context_t &,
                                               const zlink::message_t &) override
     {
         return zlink::framework::task_t<void> (zlink::framework::result_t<void>::failure (
@@ -215,7 +219,7 @@ class delayed_reply_session_t final : public zlink::framework::packet_stream_ses
 
     zlink::framework::task_t<void> on_packet (
       zlink::framework::stream_t &stream,
-      const zlink::framework::stream_dispatch_context_t &,
+      const zlink::framework::session_message_context_t &,
       const zlink::message_t &payload) override
     {
         _entered.set_value ();
@@ -302,8 +306,17 @@ class oversized_stream_compression_codec_t final
 class transport_error_session_t final : public zlink::framework::packet_stream_session_t
 {
   public:
-    zlink::framework::task_t<void> on_connected (zlink::framework::stream_t &) override
+    zlink::framework::task_t<void> on_connected (zlink::framework::stream_t &stream) override
     {
+        {
+            const std::lock_guard lock (_mutex);
+            _identity_available = stream.local_address ().has_value ()
+                                  && stream.remote_address ().has_value ();
+            if (_identity_available) {
+                _last_local = *stream.local_address ();
+                _last_remote = *stream.remote_address ();
+            }
+        }
         record (_connected);
         co_return;
     }
@@ -329,11 +342,11 @@ class transport_error_session_t final : public zlink::framework::packet_stream_s
 
     zlink::framework::task_t<void> on_packet (
       zlink::framework::stream_t &stream,
-      const zlink::framework::stream_dispatch_context_t &dispatch,
+      const zlink::framework::session_message_context_t &dispatch,
       const zlink::message_t &payload) override
     {
         record (_packets);
-        if (dispatch.can_reply ()) {
+        if (dispatch.can_reply) {
             (void) co_await stream.reply_packet (payload).submit ();
         }
         co_return;
@@ -343,6 +356,24 @@ class transport_error_session_t final : public zlink::framework::packet_stream_s
     bool wait_disconnected (int count) { return wait_for (_disconnected, count); }
     bool wait_errors (int count) { return wait_for (_errors, count); }
     bool wait_packets (int count) { return wait_for (_packets, count); }
+
+    bool identity_available () const
+    {
+        const std::lock_guard lock (_mutex);
+        return _identity_available;
+    }
+
+    std::string last_local () const
+    {
+        const std::lock_guard lock (_mutex);
+        return _last_local;
+    }
+
+    std::string last_remote () const
+    {
+        const std::lock_guard lock (_mutex);
+        return _last_remote;
+    }
 
     int errors () const
     {
@@ -379,6 +410,9 @@ class transport_error_session_t final : public zlink::framework::packet_stream_s
     int _disconnected = 0;
     int _errors = 0;
     int _packets = 0;
+    bool _identity_available = false;
+    std::string _last_local;
+    std::string _last_remote;
     zlink::framework::stream_session_error_t _last_error =
       zlink::framework::stream_session_error_t::internal;
 };
@@ -532,7 +566,7 @@ int main ()
         return 1;
 
     auto runtime = zlink::framework::detail::stream_runtime_t::from (zlink);
-    zlink::framework::stream_metadata_t metadata;
+    zlink::framework::detail::stream_metadata_t metadata;
     metadata.with ("trace", "42").with ("content_type", "application/json");
     zlink::framework::detail::stream_header_t request_header (
       stream_message_kind_t::request, stream_codec_t::json, stream_header_flags_t::has_request_seq,
@@ -614,7 +648,7 @@ int main ()
         || runtime.validate_header (invalid_error) || runtime.validate_header (invalid_control)) {
         return 20;
     }
-    zlink::framework::stream_metadata_t large_metadata;
+    zlink::framework::detail::stream_metadata_t large_metadata;
     large_metadata.with ("trace", std::string (65536, 'x'));
     zlink::framework::detail::stream_header_t too_large_metadata (
       stream_message_kind_t::send, stream_codec_t::json, stream_header_flags_t::none, std::nullopt,
@@ -712,6 +746,17 @@ int main ()
     }
 
     auto stream = runtime.open_session ("client-stream");
+    if (stream.routing_id () || stream.local_address () || stream.remote_address ()) {
+        return 226;
+    }
+    runtime.set_session_identity (
+      stream, zlink::routing_id_t::from ("stream-rid"),
+      std::string ("127.0.0.1:7101"), std::string ("127.0.0.1:48210"));
+    if (!stream.routing_id () || stream.routing_id ()->to_string () != "stream-rid"
+        || !stream.local_address () || *stream.local_address () != "127.0.0.1:7101"
+        || !stream.remote_address () || *stream.remote_address () != "127.0.0.1:48210") {
+        return 227;
+    }
     sample_session_t session;
     if (!runtime.dispatch_connected (session, stream)) {
         return 7;
@@ -719,6 +764,10 @@ int main ()
     if (!runtime.dispatch_packet (session, stream, request_header,
                                   zlink::message_t::from (std::string ("payload")))) {
         return 8;
+    }
+    if (!session.last_can_reply || session.last_metadata.find ("trace") != "42"
+        || session.last_metadata.find ("content_type") != "application/json") {
+        return 228;
     }
     if (!runtime.dispatch_disconnected (session, stream)) {
         return 9;
@@ -1129,7 +1178,10 @@ int main ()
     transport_host.start (transport_provider);
 
     const int graceful_client = connect_loopback (transport_port);
-    if (graceful_client < 0 || !transport_session.wait_connected (1)) {
+    if (graceful_client < 0 || !transport_session.wait_connected (1)
+        || !transport_session.identity_available ()
+        || transport_session.last_local ().find (":") == std::string::npos
+        || transport_session.last_remote ().find (":") == std::string::npos) {
         transport_host.stop ();
         return 29;
     }

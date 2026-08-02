@@ -246,10 +246,10 @@ class raw_stream_session_t final : public fw::packet_stream_session_t
     fw::task_t<void> on_error (fw::stream_t &, const fw::stream_error_t &) override { co_return; }
 
     fw::task_t<void> on_packet (fw::stream_t &stream,
-                                const fw::stream_dispatch_context_t &dispatch,
+                                const fw::session_message_context_t &dispatch,
                                 const zlink::message_t &payload) override
     {
-        _sink.append ("raw|" + std::string (dispatch.packet_name ()) + "|"
+        _sink.append ("raw|" + std::string (dispatch.packet_name) + "|"
                       + payload.to_string ());
         stream.reply_packet (zlink::message_t::from_json (std::string ("pong"))).submit ();
         co_return;

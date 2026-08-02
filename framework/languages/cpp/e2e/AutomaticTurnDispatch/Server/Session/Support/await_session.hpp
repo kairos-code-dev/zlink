@@ -49,10 +49,10 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
 
     zlink::framework::task_t<void> on_packet (
       zlink::framework::stream_t &stream,
-      const zlink::framework::stream_dispatch_context_t &dispatch,
+      const zlink::framework::session_message_context_t &dispatch,
       const zlink::message_t &payload) override
     {
-        const auto packet = std::string (dispatch.packet_name ());
+        const auto packet = std::string (dispatch.packet_name);
         if (packet == yd::bind_await_actors_req_t::packet_name) {
             auto request = payload.parse_json<yd::bind_await_actors_req_t> ();
             auto reply = co_await request_control<yd::bind_await_actors_res_t> (
@@ -196,7 +196,7 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
               actor.error_kind (), actor.error () ? actor.error ()->what ()
                                                   : "bound actor route is not found");
         }
-        if (dispatch.can_reply ()) {
+        if (dispatch.can_reply) {
             auto actor_value = actor.value ();
             auto stream_copy = stream;
             auto payload_copy = payload;
@@ -227,7 +227,7 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
     }
 
     zlink::framework::result_t<zlink::framework::session_actor_t>
-    require_bound_actor (const zlink::framework::stream_dispatch_context_t &dispatch,
+    require_bound_actor (const zlink::framework::session_message_context_t &dispatch,
                          const std::string &packet) const
     {
         if (_bound_actors.empty ()) {
@@ -236,7 +236,7 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
               "stream session is not bound before " + packet);
         }
         std::string actor_id;
-        if (auto selected = dispatch.metadata ().find (yd::actor_id_metadata)) {
+        if (auto selected = dispatch.metadata.find (yd::actor_id_metadata)) {
             actor_id = std::string (*selected);
         } else if (_bound_actors.size () == 1) {
             actor_id = _bound_actors.begin ()->first;
@@ -395,17 +395,17 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
     }
 
     static zlink::routing_id_t
-    target_or_default (const zlink::framework::stream_dispatch_context_t &dispatch)
+    target_or_default (const zlink::framework::session_message_context_t &dispatch)
     {
-        if (auto target = dispatch.metadata ().find (yd::target_node_rid_metadata)) {
+        if (auto target = dispatch.metadata.find (yd::target_node_rid_metadata)) {
             return zlink::routing_id_t::from (std::string (*target));
         }
         return zlink::routing_id_t::from ("play-a");
     }
 
-    static std::string spot_id (const zlink::framework::stream_dispatch_context_t &dispatch)
+    static std::string spot_id (const zlink::framework::session_message_context_t &dispatch)
     {
-        if (auto value = dispatch.metadata ().find (yd::spot_id_metadata)) {
+        if (auto value = dispatch.metadata.find (yd::spot_id_metadata)) {
             return std::string (*value);
         }
         throw zlink::framework::framework_exception_t (

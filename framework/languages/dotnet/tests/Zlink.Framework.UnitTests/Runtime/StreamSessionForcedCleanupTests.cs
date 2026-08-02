@@ -2089,6 +2089,10 @@ public sealed class StreamSessionForcedCleanupTests
 
         public bool TryRecv(out ZLinkBackendSocketMonitorEvent monitorEvent)
         {
+            // The production monitor loop uses non-blocking receive with a
+            // bounded backoff; count each receive attempt for the startup
+            // assertion below.
+            Interlocked.Increment(ref _waitCount);
             if (_events.TryDequeue(out monitorEvent))
             {
                 if (_events.IsEmpty)

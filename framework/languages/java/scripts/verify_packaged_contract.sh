@@ -176,4 +176,5 @@ fi
 sed -i "s/HTTP_CLIENT_VERSION/$http_client_version/g" "$consumer_dir/build.gradle.kts"
 
 "$root_dir/gradlew" --no-daemon -p "$consumer_dir" clean run
+"$root_dir/scripts/verify_api_snapshot.sh" "$language"
 echo "$language packaged contract verification passed"

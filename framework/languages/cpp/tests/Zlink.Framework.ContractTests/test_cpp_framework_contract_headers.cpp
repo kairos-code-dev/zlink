@@ -322,12 +322,12 @@ static_assert (
                  zlink::framework::task_t<zlink::framework::message_t>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::actor_client_t &> ()
-                             .send_to_actor (std::declval<zlink::framework::actor_ref_t> (),
+                             .send (std::declval<zlink::framework::actor_id_t> (),
                                              std::declval<zlink::framework::message_t> ())),
                  zlink::framework::actor_send_call_t>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::actor_client_t &> ()
-                             .request_to_actor (std::declval<zlink::framework::actor_ref_t> (),
+                             .request (std::declval<zlink::framework::actor_id_t> (),
                                                 std::declval<zlink::framework::message_t> ())),
                  zlink::framework::actor_request_call_t>);
 static_assert (std::is_same_v<
@@ -961,7 +961,7 @@ class named_session_t final : public zlink::framework::packet_stream_session_t
     }
 
     zlink::framework::task_t<void> on_packet (zlink::framework::stream_t &,
-                                              const zlink::framework::stream_dispatch_context_t &,
+                                              const zlink::framework::session_message_context_t &,
                                               const zlink::message_t &) override
     {
         return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
@@ -1410,10 +1410,6 @@ static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::stream_t &> ().actors ()),
                  zlink::framework::session_actor_manager_t &>);
 static_assert (
-  std::is_same_v<decltype (zlink::framework::actor_ref_snapshot_t::from (
-                              std::declval<const zlink::framework::actor_ref_t &> ())),
-                 zlink::framework::actor_ref_snapshot_t>);
-static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_node_builder_t &> ().snapshot ()),
                  zlink::framework::spot_node_snapshot_t>);
 static_assert (
@@ -1530,7 +1526,7 @@ static_assert (
                  zlink::framework::actor_join_call_t>);
 static_assert (std::is_same_v<decltype (std::declval<const zlink::framework::actor_context_t &> ()
                                          .actor_id ()),
-                              std::string_view>);
+                              const zlink::framework::actor_id_t &>);
 static_assert (std::is_same_v<decltype (std::declval<const zlink::framework::actor_context_t &> ()
                                          .object_generation ()),
                               std::uint64_t>);

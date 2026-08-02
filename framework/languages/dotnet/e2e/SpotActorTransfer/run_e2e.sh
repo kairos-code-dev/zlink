@@ -95,6 +95,64 @@ PY
   return 1
 }
 
+wait_mesh_ready() {
+  local url="$1"
+  local name="$2"
+  local expected_csv="$3"
+  local attempts=$((15 * 10))
+  for _ in $(seq 1 "$attempts"); do
+    snapshot="$(curl --max-time 2 --connect-timeout 2 -fsS "$url/mesh/ready" 2>/dev/null || true)"
+    if python3 - "$snapshot" "$expected_csv" <<'PY'
+import json
+import sys
+
+try:
+    snapshot = json.loads(sys.argv[1])
+except json.JSONDecodeError:
+    raise SystemExit(1)
+expected = [item for item in sys.argv[2].split(",") if item]
+peers = snapshot.get("readyPeerRids", [])
+if all(any(peer == rid or peer.startswith(rid + "-") for peer in peers) for rid in expected):
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+    then
+      return 0
+    fi
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
+  done
+  echo "Timed out waiting for $name RouteMesh readiness at $url snapshot=$snapshot" >&2
+  return 1
+}
+
+wait_tcp_endpoint() {
+  local endpoint="$1"
+  local name="$2"
+  if python3 - "$endpoint" "$name" <<'PY'
+import socket
+import sys
+import time
+from urllib.parse import urlparse
+
+endpoint, name = sys.argv[1:]
+parsed = urlparse(endpoint)
+if parsed.scheme != "tcp" or parsed.hostname is None or parsed.port is None:
+    raise SystemExit(f"invalid TCP endpoint for {name}: {endpoint}")
+deadline = time.monotonic() + 15
+while time.monotonic() < deadline:
+    try:
+        with socket.create_connection((parsed.hostname, parsed.port), timeout=1):
+            raise SystemExit(0)
+    except OSError:
+        time.sleep(0.1)
+raise SystemExit(f"Timed out waiting for {name} TCP endpoint {endpoint}")
+PY
+  then
+    return 0
+  fi
+  return 1
+}
+
 wait_process_exit() {
   local pid="$1"
   local name="$2"
@@ -186,6 +244,8 @@ run_client() {
     --node-a-stream-endpoint "$SESSION_A_STREAM" \
     --node-b-stream-endpoint "$SESSION_B_STREAM" \
     --scenario "$scenario"
+  echo "client_config=$config node-a-stream=$SESSION_A_STREAM node-b-stream=$SESSION_B_STREAM" >&2
+  cp "$config" "$LOG_DIR/client-$scenario.config.json"
   dotnet run --no-build --project "$CLIENT_PROJECT" -- --config "$config" \
     9>&- \
     >>"$LOG_DIR/client.stdout.log" 2>>"$LOG_DIR/client.stderr.log"
@@ -275,6 +335,10 @@ start_session_gateway session-a "$SESSION_A_URL" "$SESSION_A_ROUTER" "$SESSION_A
 wait_health "$SESSION_A_URL" session-a
 start_session_gateway session-b "$SESSION_B_URL" "$SESSION_B_ROUTER" "$SESSION_B_STREAM"
 wait_health "$SESSION_B_URL" session-b
+wait_tcp_endpoint "$SESSION_A_STREAM" session-a-stream
+wait_tcp_endpoint "$SESSION_B_STREAM" session-b-stream
+wait_mesh_ready "$SESSION_A_URL" session-a "actor-a,actor-b,actor-c"
+wait_mesh_ready "$SESSION_B_URL" session-b "actor-a,actor-b,actor-c"
 
 : >"$LOG_DIR/client.stdout.log"
 : >"$LOG_DIR/client.stderr.log"

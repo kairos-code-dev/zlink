@@ -392,7 +392,7 @@ aggregate가 아니다.
 |---|---|---|
 | framework/languages/node에서 npm run build | 통과 | production TypeScript compile은 통과하지만 exact member parity나 process E2E를 증명하지 않음. |
 | npm run test:browser | 통과, Chromium 1/1 | browser transport의 좁은 검증은 충족. 전체 stream connector 계약의 증거는 아님. |
-| node --test --test-force-exit test/contract/contract-surface.test.js | 통과, 33/33 | 선언과 일부 runtime export 및 package root 검증은 충족. immutable API snapshot과 exact member negative check는 없음. |
+| node --test --test-force-exit test/contract/contract-surface.test.js | 초기 audit 33/33 | 수정 전에는 선언과 일부 runtime export만 확인했고 snapshot·exact negative comparison이 없었다. 후속 결과는 38/38이다. |
 | node --test --test-force-exit test/contract/backend-public-api-only.test.js | 통과, 5/5 | backend public API-only 검증은 충족. 모든 E2E client의 import 경계를 증명하지 않음. |
 | npm run verify:m5-foundation | 통과, 5/5 | M5 foundation 회귀 범위는 충족. |
 | npm run verify:m6a-runtime | 통과, 26/26 | topology, endpoint-only upgrade, admission, reconnect/liveness와 HWM의 좁은 runtime 범위는 충족. |
@@ -443,7 +443,8 @@ sample 구현·실행은 후속 범위로 유지한다. ND-IMP-001의 Nest `conf
 runtime 기준을 충족했다. 후속 fresh run에서 ND-IMP-004의 비-E2E package parity도 충족했지만,
 process E2E·sample gap은 아직 완료로 표시하지 않는다.
 
-M5/M6 runtime 회귀는 153/153, production unit·contract 범위는 58/58이다. 전체 Node test inventory는
+M5/M6 runtime 회귀는 153/153이다. 초기 production unit·contract 범위는 58/58이었고, 후속
+비-E2E inventory는 59개 파일 1001/1001이다. 전체 Node test inventory는
 123개이며, browser·integration, E2E 또는 sample 소스를 읽는 test, native child process test를 후속
 범위로 제외했다. 정확한 제외 기준과 명령 결과는
 [`log/2026-08-02-runtime-unit-completion.ko.md`](log/2026-08-02-runtime-unit-completion.ko.md)에 기록한다.
@@ -468,7 +469,7 @@ Node production runtime, public contract, package와 unit·contract gate를 갱�
 | ND-IMP-002 common error surface | 비-E2E 충족 | public 13-kind/error mapping contract와 runtime suite 통과 |
 | ND-IMP-003 unknown content type | 비-E2E 충족 | handler 호출 전 `ProtocolError`와 empty reply 회귀 통과 |
 | ND-IMP-004 package pin·consumer surface | 비-E2E 충족 | `npm ls` clean at 11.1.0, packaged contract PASS |
-| ND-TEST-001 public snapshot·negative comparison | 비-E2E 부분 충족 | `node-public-contract.json`, exact Nest member test와 contract-surface 검증 통과; 전체 E2E/process surface는 후속 |
+| ND-TEST-001 public snapshot·negative comparison | 비-E2E 충족 | `node-public-contract.json`, exact Nest member test와 contract-surface 38/38 통과; 전체 E2E/process surface는 후속 |
 | ND-TEST-002 documentation regression | 충족 | live Node ledger path 기준 17/17 PASS |
 | ND-TEST-003 CI path·non-E2E gate | 비-E2E 충족 | common guide path filter 추가, build/typecheck/lint와 59 contract files 1001/1001 PASS |
 
@@ -661,7 +662,7 @@ gap은 다음 순서로 처리한다. 앞 단계가 확정되지 않으면 뒤 �
 
 | 기존 검증 | 현재 결과 | 유지 목적과 한계 |
 |---|---|---|
-| test/contract/contract-surface.test.js | 33/33 | package root와 일부 선언/export 경계를 유지. exact member negative check와 immutable snapshot으로 확장 필요. |
+| test/contract/contract-surface.test.js | 38/38 | checked-in snapshot, exact member negative comparison과 package/runtime export 경계를 유지한다. |
 | test/contract/backend-public-api-only.test.js | 5/5 | backend public API 사용 경계 유지. E2E Client 전체 import scan을 대체하지 않음. |
 | verify:m5-foundation | 5/5 | foundation admission과 topology 회귀 유지. |
 | verify:m6a-runtime | 26/26 | HWM, endpoint-only upgrade, reconnect/liveness와 admission 회귀 유지. |
@@ -672,11 +673,11 @@ gap은 다음 순서로 처리한다. 앞 단계가 확정되지 않으면 뒤 �
 
 ### 8.2 ND-TEST-* audit 또는 gate gap
 
-#### ND-TEST-001 — public API snapshot과 exact negative comparison 부재
+#### ND-TEST-001 — public API snapshot과 exact negative comparison 부재 (수정 전 audit)
 
 - 공통 spec 또는 E2E 문서 경로: framework/doc/framework/common/spec/server/languages/node/interfaces/01-foundation-configuration.ko.md 및 07-nestjs-host.ko.md, framework/doc/framework/common/spec/00-public-contract-governance.ko.md:75-88
 - Node test/source 경로: framework/languages/node/test/contract/contract-surface.test.js:31-61 및 319-346 및 536-599, framework/languages/node/packages/*/dist/
-- 실제 동작: checked-in Node public API snapshot 파일을 찾지 못했다. contract-surface test는 exact interface 문서를 동적으로 읽어 누락 이름과 일부 runtime export를 검사하고, public error enum은 현재 13개 common kind를 검사한다. 내부 detailed failure mapping과 Nest builder extra public member를 한 번에 비교하는 snapshot은 없다.
+- 수정 전 실제 동작: checked-in Node public API snapshot 파일을 찾지 못했다. contract-surface test는 exact interface 문서를 동적으로 읽어 누락 이름과 일부 runtime export를 검사하고, public error enum은 현재 13개 common kind를 검사했다. 내부 detailed failure mapping과 Nest builder extra public member를 한 번에 비교하는 snapshot은 없었다.
 - 기대 동작: release contract를 재현할 수 있는 exact Node API snapshot 또는 동등한 구조화된 manifest가 있어야 하며, 이름·signature·optional/default·error·ownership·export의 missing과 extra를 모두 비교해야 한다.
 - gap 판정 근거: dynamic presence check는 source와 문서가 동시에 잘못 갱신되는 drift를 잡지 못하고, public·internal error mapping과 extra member의 snapshot drift를 닫지 않는다.
 - 구체적인 수정 목록: (1) exact interface에서 machine-readable contract를 생성하거나 checked-in snapshot을 만든다. (2) missing뿐 아니라 extra member와 member signature를 비교한다. (3) error enum과 exception surface를 common target과 비교한다. (4) package root export와 clean consumer API를 snapshot gate에 연결한다.
@@ -730,15 +731,15 @@ ND-TEST-003의 E2E/aggregate 부분은 unresolved로 유지한다.
 
 ### 8.3 추가 또는 변경할 ND-REG-* regression ID
 
-아래 ID는 이번 audit에서 새로 제안한 회귀 test 목록이다. 실제 test 파일은
-수정하지 않았다.
+아래 ID는 이번 audit에서 제안했고, 비-E2E 범위의 기존 contract/runtime test에 반영한 회귀
+검증 목록이다. E2E/process evidence가 필요한 부분은 별도 후속 범위로 남긴다.
 
 | ID | 유지·변경·추가 내용 | 관련 gap | 완료 evidence |
 |---|---|---|---|
-| ND-REG-001 | Nest exact builder member, parameter/return type, missing configureInboundDispatch와 extra member를 declaration·runtime·package에서 비교 | ND-IMP-001, ND-TEST-001 | exact interface와 source/runtime/package가 same set으로 통과 |
-| ND-REG-002 | 13개 common error kind와 numeric value, exception surface, ProtocolError/cancellation/deadline mapping을 비교 | ND-IMP-002, ND-TEST-001 | client-visible terminal error와 role server evidence의 kind/reason 일치 |
-| ND-REG-003 | unknown content type send/request의 ProtocolError, handler count 0, callback exactly-once, response body/status를 검사 | ND-IMP-003 | real dispatch path에서 no Buffer fallback이 확인됨 |
-| ND-REG-004 | root/workspace/lock/archive/native artifact version consistency와 clean consumer install을 검사 | ND-IMP-004 | npm ls clean, consumer build/run, native load 성공 |
+| ND-REG-001 | Nest exact builder member, parameter/return type, missing configureInboundDispatch와 extra member를 declaration·runtime·package에서 비교 | ND-IMP-001, ND-TEST-001 | exact interface와 source/runtime/package same-set 검증 통과; process evidence는 E2E 후속 |
+| ND-REG-002 | 13개 common error kind와 numeric value, exception surface, ProtocolError/cancellation/deadline mapping을 비교 | ND-IMP-002, ND-TEST-001 | public enum·exception·terminal mapping unit/runtime 검증 통과; client process evidence는 E2E 후속 |
+| ND-REG-003 | unknown content type send/request의 ProtocolError, handler count 0, callback exactly-once, response body/status를 검사 | ND-IMP-003 | production dispatch unit path에서 no Buffer fallback과 no-handler 경로 확인; process evidence는 E2E 후속 |
+| ND-REG-004 | root/workspace/lock/archive/native artifact version consistency와 clean consumer install을 검사 | ND-IMP-004 | `npm ls` clean 및 packaged consumer PASS; native role-server evidence는 E2E 후속 |
 | ND-REG-005 | common 374 ID와 feature-map·selector exact set, alias, status를 비교 | ND-E2E-IMP-001, ND-E2E-IMP-003 | 누락·alias·중복·소유권 불일치 0 |
 | ND-REG-006 | aggregate all의 Config 1-14 범위와 partial/diagnostic/source-only/N/A 제외, client·role evidence gate를 검사 | ND-E2E-IMP-002, ND-E2E-IMP-003 | 374개 ID 결과가 status와 evidence를 갖고 PASS가 정확히 계산됨 |
 | ND-REG-007 | Client public package allowlist, role endpoint call, client result와 role evidence, terminal/callback/owner/generation/cleanup assertion을 검사 | ND-E2E-IMP-004, ND-E2E-IMP-005 | 실제 process에서 client가 Framework 내부 API를 호출하지 않음 |

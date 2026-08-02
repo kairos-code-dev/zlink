@@ -87,13 +87,13 @@ class actor_route_connections_t
 std::string kind_name (zlink::framework::framework_error_kind_t kind)
 {
     switch (kind) {
-        case zlink::framework::framework_error_kind_t::actor_route_not_found:
+        case zlink::framework::framework_error_kind_t::not_found:
             return "actor_route_not_found";
-        case zlink::framework::framework_error_kind_t::actor_location_stale:
+        case zlink::framework::framework_error_kind_t::unavailable:
             return "actor_location_stale";
-        case zlink::framework::framework_error_kind_t::route_not_connected:
+        case zlink::framework::framework_error_kind_t::unavailable:
             return "route_not_connected";
-        case zlink::framework::framework_error_kind_t::request_failed:
+        case zlink::framework::framework_error_kind_t::internal_failure:
             return "request_failed";
         default:
             return "framework_error_" + std::to_string (static_cast<int> (kind));

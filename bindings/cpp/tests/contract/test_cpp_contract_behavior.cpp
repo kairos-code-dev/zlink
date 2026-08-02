@@ -186,6 +186,40 @@ void test_stream_receive_returns_busy_in_packet_callback_mode ()
         assert (errno == EBUSY);
 }
 
+void test_stream_receive_with_poller_readiness ()
+{
+    zlink::context_t ctx;
+    zlink::stream_socket_t server (ctx);
+    zlink::socket_monitor_t monitor = server.monitor_open ();
+    server.options ().notify (false);
+    server.bind ("tcp://127.0.0.1:0");
+    const std::string endpoint = server.options ().last_endpoint ();
+    assert (!endpoint.empty ());
+
+    zlink::poller_t poller;
+    poller.add (server, zlink::poll_event_flag_t::pollin, 1);
+    zlink_cpp_contract::raw_tcp_client_t client (endpoint);
+    assert (zlink_cpp_contract::wait_stream_connected (monitor));
+
+    const std::vector<unsigned char> frame =
+      zlink_cpp_contract::encode_stream_packet_frame ("poller-recv");
+    client.send_all (reinterpret_cast<const char *> (frame.data ()), frame.size ());
+
+    zlink::poll_event_t event;
+    assert (poller.wait (&event, 1, std::chrono::seconds (2)) == 1);
+    assert (event.slot == 1);
+    assert ((static_cast<short> (event.revents)
+             & static_cast<short> (zlink::poll_event_flag_t::pollin))
+            != 0);
+
+    zlink::received_t received;
+    assert (server.recv (received, zlink::recv_flags_t::dontwait) == 0);
+    assert (received.routing_id ().has_value ());
+    assert (received.parts ().size () == 1);
+    assert (received.parts ()[0].to_bytes ()
+            == std::vector<std::uint8_t> (frame.begin (), frame.end ()));
+}
+
 void test_stream_packet_handler_survives_move_and_source_destruction ()
 {
     zlink::context_t ctx;
@@ -409,6 +443,7 @@ int main ()
     test_send_throws_on_general_error ();
     test_publish_throws_on_general_error ();
     test_stream_receive_returns_busy_in_packet_callback_mode ();
+    test_stream_receive_with_poller_readiness ();
     test_stream_packet_handler_survives_move_and_source_destruction ();
     test_stream_send_ready_handler_survives_move_and_source_destruction ();
     test_socket_monitor_receive_returns_empty_without_event ();

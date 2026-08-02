@@ -1330,7 +1330,8 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointScaleOutWithActor
     EXPECT_EQ (play_factory.find (".use_registry_spot_resolver"), std::string::npos);
     EXPECT_EQ (api_factory.find (".enable_client ()"), std::string::npos);
     EXPECT_EQ (play_factory.find (".enable_client ()"), std::string::npos);
-    EXPECT_NE (api_factory.find ("topology.all_play_route_endpoints ()"), std::string::npos);
+    EXPECT_NE (api_factory.find ("topology.play_a_route_endpoint"), std::string::npos);
+    EXPECT_NE (api_factory.find ("topology.play_b_route_endpoint"), std::string::npos);
     EXPECT_NE (play_factory.find ("topology.all_api_endpoints ()"), std::string::npos);
     EXPECT_NE (api_factory.find ("options.add_route_mesh (sample_names_t::game_spot_node)"),
                std::string::npos);
@@ -1338,7 +1339,7 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointScaleOutWithActor
                std::string::npos);
     EXPECT_NE (play_factory.find ("auto api_client = api_peers.client ()"),
                std::string::npos);
-    EXPECT_NE (api_factory.find ("mesh.peer_connections ().connect (endpoint)"),
+    EXPECT_NE (api_factory.find ("mesh.peer_connections ().connect ("),
                std::string::npos);
     EXPECT_NE (play_factory.find ("api_client.connect (endpoint)"),
                std::string::npos);

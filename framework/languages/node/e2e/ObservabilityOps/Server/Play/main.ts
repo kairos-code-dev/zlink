@@ -495,7 +495,7 @@ Module({
           TransferActorFactory,
           (factory) => factory.preserveStateWith(TransferActorAdapter)
         );
-        mesh.channelName(ObservabilityOpsNames.mesh);
+        mesh.channel(ObservabilityOpsNames.mesh).server();
         return {
           ...builder.build(),
           monitoring: {

@@ -422,7 +422,7 @@ public sealed partial class RegressionTests
         Assert.DoesNotMatch("(?:public|internal)\\s+IZlinkStreamConnector\\s+\\w+", context);
 
         var scenarioFiles = Directory.EnumerateFiles(scenarios, "Td*.cs").OrderBy(path => path).ToArray();
-        Assert.Equal(27, scenarioFiles.Length);
+        Assert.Equal(32, scenarioFiles.Length);
         foreach (var path in scenarioFiles)
         {
             var source = File.ReadAllText(path);

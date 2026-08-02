@@ -1,4 +1,4 @@
-// ST-F2: direct overtakes prevented 시나리오를 검증한다.
+// ST-F2: Direct message cannot overtake 시나리오를 검증한다.
 import { SpotActorTransferNames, nodeA, nodeB, createSpot, createActor, joinActor, sendHandoff, waitEvidence, post, assertOrder, unique, require } from '../Support/scenario-support';
 
 export async function runStF2(): Promise<void> {

@@ -1,4 +1,4 @@
-// RM-A6: 다중 channel 격리 (같은 store, 다른 mesh) 시나리오를 검증한다.
+// RM-A6: 서로 다른 RouteMesh를 격리한다 시나리오를 검증한다.
 import type { ProfileRes, WorkflowRes } from '../../Shared/messages';
 import { postJson } from '../../../http-client';
 import { ensure, uniqueMarker } from '../Support/scenario-assert';

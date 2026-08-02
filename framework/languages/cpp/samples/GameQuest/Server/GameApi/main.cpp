@@ -226,13 +226,13 @@ class player_entry_spot_t : public entry_spot_t<player_actor_t>
                                   message_context_t &,
                                   const notify_quest_progress_msg_t &notify)
     {
-        const auto session_id = _store.record_notify (notify);
-        if (!session_id) {
-            return;
-        }
+        /* The actor may be hosted by another GameApi process. The local store
+         * records the projection, while Framework bound_session() routes the
+         * push to the current session owner. */
+        const auto session_id = _store.record_notify (notify).value_or ("");
         for (const auto &progress : notify.projection) {
             actor.actor_context.bound_session ()
-              .send (quest_progress_notify_t{notify.player_id, *session_id, progress})
+              .send (quest_progress_notify_t{notify.player_id, session_id, progress})
               .submit ();
         }
         if (!notify.completed_quest_id.empty ()) {
@@ -244,7 +244,7 @@ class player_entry_spot_t : public entry_spot_t<player_actor_t>
             if (completed != notify.projection.end ()) {
                 actor.actor_context.bound_session ()
                   .send (quest_completed_notify_t{
-                    notify.player_id, *session_id, *completed, true})
+                    notify.player_id, session_id, *completed, true})
                   .submit ();
             }
         }
@@ -307,7 +307,7 @@ class gamequest_session_t final : public packet_stream_session_t
             _store.merge_projection (request.player_id, synced.updated_quests);
             auto current = _actors.find (std::string (bound.actor_id ()));
             if (!current) {
-                throw framework_exception_t (framework_error_kind_t::actor_route_not_found,
+                throw framework_exception_t (framework_error_kind_t::not_found,
                                              "joined player actor route is not found");
             }
             auto reply = co_await current
@@ -400,7 +400,7 @@ class gamequest_session_t final : public packet_stream_session_t
               .submit ();
             co_return;
         }
-        throw framework_exception_t (framework_error_kind_t::request_failed,
+        throw framework_exception_t (framework_error_kind_t::internal_failure,
                                      "Unsupported GameQuest packet: " + packet);
     }
 
@@ -493,16 +493,14 @@ int main (int argc, char **argv)
         options.services ().add_singleton<game_api_store_t> (std::move (api_store));
         add_gamequest_json_codecs (options.codecs ());
         add_gamequest_location_store (options, topology);
-        /* 같은 spot route mesh를 양방향으로 쓴다: API는 owner spot으로 gameplay를 보내고, owner
-         * spot은 같은 mesh로 이 노드의 entry spot에 notify를 보낸다. */
-        auto quest_spot_route = options.add_route_mesh (sample_names_t::quest_spot_route);
-        quest_spot_route.listen (topology.selected_api_spot_route_endpoint ())
-          .channel_name (sample_names_t::quest_spot_route);
-        options.configure_locations ().spot_router_channels[sample_names_t::quest_spot_discovery] =
-          sample_names_t::quest_spot_route;
-        auto api_spot = options.add_route_mesh (api_spot_mesh_for (topology.api_name));
-        api_spot.channel_name (sample_names_t::quest_spot_route);
-        api_spot.listen (topology.selected_api_spot_router_endpoint ())
+        /* GameApi는 player entry Spot을 제공하는 Object Server다. API와 QuestMission은
+         * 같은 RouteMesh에서 global Spot routing을 사용한다. */
+        auto gamequest = options.add_route_mesh ("gamequest");
+        gamequest
+          .set_routing_id (zlink::routing_id_t::from (
+            "gamequest-" + topology.api_name + "-spot"))
+          .set_object_role (object_role_t::server)
+          .listen (topology.selected_api_spot_route_endpoint ())
           .add_entry_spot<player_entry_spot_t> ([store_ptr] (
                                                   entry_spot_context_t context) {
               return std::make_shared<player_entry_spot_t> (

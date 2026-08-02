@@ -1,4 +1,4 @@
-// OBS-C1: relocating·relocated 마커 — 연결 유지 + 배치 제외 시나리오를 검증한다.
+// OBS-C1: Relocating host를 신규 placement에서 제외한다 시나리오를 검증한다.
 import type { BoundPushNotify, BoundPushReq, BoundPushRes } from '../../Shared/messages.js';
 import {
   ObservabilityOpsNames,

@@ -20,9 +20,9 @@ template <typename T> class result_t
     static result_t success (T value) { return result_t (std::move (value)); }
 
     static result_t
-    failure (framework_error_kind_t kind, std::string message, bool retriable = false)
+    failure (framework_error_kind_t kind, std::string message)
     {
-        return result_t (framework_exception_t (kind, std::move (message), retriable));
+        return result_t (framework_exception_t (kind, std::move (message)));
     }
 
     bool has_value () const noexcept { return _value.has_value (); }
@@ -50,7 +50,7 @@ template <typename T> class result_t
     framework_error_kind_t error_kind () const
     {
         if (!_error) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "successful result has no error");
         }
         return _error->kind ();
@@ -72,9 +72,9 @@ template <> class result_t<void>
     static result_t success () { return result_t (); }
 
     static result_t
-    failure (framework_error_kind_t kind, std::string message, bool retriable = false)
+    failure (framework_error_kind_t kind, std::string message)
     {
-        return result_t (framework_exception_t (kind, std::move (message), retriable));
+        return result_t (framework_exception_t (kind, std::move (message)));
     }
 
     bool has_value () const noexcept { return !_error.has_value (); }
@@ -93,7 +93,7 @@ template <> class result_t<void>
     framework_error_kind_t error_kind () const
     {
         if (!_error) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "successful result has no error");
         }
         return _error->kind ();
@@ -120,13 +120,13 @@ struct result_access_t
 };
 
 template <typename T>
-result_t<T> boundary_failure (boundary_error_t state, std::string message, bool retriable = false)
+result_t<T> boundary_failure (boundary_error_t state, std::string message)
 {
     return result_access_t::failure<T> (
-      make_boundary_exception (state, std::move (message), retriable));
+      make_boundary_exception (state, std::move (message)));
 }
 
-/* Copies the source failure (kind, retriable, message AND boundary state) into
+/* Copies the source failure (kind, message and internal boundary state) into
  * a result of another value type, so awaited-boundary information survives
  * cross-type propagation. */
 template <typename T, typename U>
@@ -137,7 +137,7 @@ result_t<T> propagate_failure (const result_t<U> &from, std::string fallback_mes
         return result_access_t::failure<T> (*error);
     }
     return result_access_t::failure<T> (framework_exception_t (
-      framework_error_kind_t::request_failed, std::move (fallback_message)));
+      framework_error_kind_t::internal_failure, std::move (fallback_message)));
 }
 
 } // namespace detail

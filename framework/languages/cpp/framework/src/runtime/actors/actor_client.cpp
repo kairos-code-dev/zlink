@@ -62,7 +62,7 @@ void require_call_option (bool &flag, const char *name)
 {
     if (flag)
         throw framework_exception_t (
-          framework_error_kind_t::invalid_configuration,
+          framework_error_kind_t::invalid_operation,
           std::string ("Actor create option was set more than once: ") + name);
     flag = true;
 }
@@ -102,7 +102,7 @@ actor_create_call_t::timeout (std::chrono::milliseconds timeout)
     require_call_option (_state->timeout_set, "timeout");
     if (timeout <= std::chrono::milliseconds::zero ())
         throw framework_exception_t (
-          framework_error_kind_t::invalid_configuration,
+          framework_error_kind_t::invalid_operation,
           "Actor create timeout must be positive");
     _state->timeout = timeout;
     return *this;
@@ -114,13 +114,13 @@ task_t<actor_create_result_t> actor_create_call_t::submit ()
     if (_state->submitted)
         return task_t<actor_create_result_t> (
           result_t<actor_create_result_t>::failure (
-            framework_error_kind_t::already_submitted,
+            framework_error_kind_t::invalid_operation,
             "Actor create call was already submitted"));
     _state->submitted = true;
     if (!_state->manager || !_state->manager->create_actor)
         return task_t<actor_create_result_t> (
           result_t<actor_create_result_t>::failure (
-            framework_error_kind_t::object_client_not_configured,
+            framework_error_kind_t::not_configured,
             "Actor manager is not bound to an object runtime"));
     const auto sequence =
       _state->manager->operation_sequence.fetch_add (1);
@@ -133,6 +133,20 @@ task_t<actor_create_result_t> actor_create_call_t::submit ()
       _state->exclusive, _state->actor_id, _state->stable_type,
       _state->mesh_name, _state->request,
       _state->timeout, operation);
+}
+
+task_t<actor_create_result_t> actor_create_call_t::yield ()
+{
+    if (!detail::current_serial_turn_allows_yield ()) {
+        return detail::unsupported_yield_task<actor_create_result_t> ();
+    }
+    auto turn_plan = detail::prepare_serial_turn_await (true);
+    auto task = submit ();
+    if (!turn_plan) {
+        return task;
+    }
+    return detail::reschedule_task (
+      std::move (task), std::move (turn_plan->scheduler));
 }
 
 actor_manager_t::actor_manager_t () :
@@ -177,7 +191,7 @@ actor_manager_t::find (actor_id_t actor_id) const
     if (!_state || !_state->find_actor)
         return task_t<std::optional<actor_ref_t>> (
           result_t<std::optional<actor_ref_t>>::failure (
-            framework_error_kind_t::object_client_not_configured,
+            framework_error_kind_t::not_configured,
             "Actor manager is not bound to an object runtime"));
     return _state->find_actor (std::move (actor_id));
 }
@@ -188,7 +202,7 @@ actor_manager_t::find_spot (actor_id_t actor_id) const
     if (!_state || !_state->find_spot)
         return task_t<std::optional<spot_ref_t>> (
           result_t<std::optional<spot_ref_t>>::failure (
-            framework_error_kind_t::object_client_not_configured,
+            framework_error_kind_t::not_configured,
             "Actor manager is not bound to an object runtime"));
     return _state->find_spot (std::move (actor_id));
 }
@@ -197,7 +211,7 @@ task_t<bool> actor_manager_t::destroy (actor_ref_t actor)
 {
     if (!_state || !_state->destroy_actor)
         return task_t<bool> (result_t<bool>::failure (
-          framework_error_kind_t::object_client_not_configured,
+          framework_error_kind_t::not_configured,
           "Actor manager is not bound to an object runtime"));
     return _state->destroy_actor (std::move (actor));
 }
@@ -237,12 +251,12 @@ task_t<void> actor_send_call_t::submit ()
 {
     if (!_submission->try_claim ()) {
         return task_t<void> (result_t<void>::failure (
-          framework_error_kind_t::request_protocol_error,
+          framework_error_kind_t::protocol_error,
           "actor send call has already been submitted"));
     }
     if (_client == nullptr) {
         return task_t<void> (result_t<void>::failure (
-          framework_error_kind_t::request_protocol_error,
+          framework_error_kind_t::protocol_error,
           "actor send call is not bound to an actor client"));
     }
     return detail::submit_one_way_task (
@@ -270,6 +284,13 @@ actor_request_call_t &actor_request_call_t::timeout (std::chrono::milliseconds t
     return *this;
 }
 
+actor_request_call_t &actor_request_call_t::metadata (
+  std::string key, std::string value)
+{
+    _metadata.insert_or_assign (std::move (key), std::move (value));
+    return *this;
+}
+
 task_t<message_t> actor_request_call_t::submit_message ()
 {
     return start (false);
@@ -290,11 +311,11 @@ task_t<message_t> actor_request_call_t::start (bool release_turn)
     if (!runtime::current_actor_execution.actor_key.empty ()
         && runtime::current_actor_execution.actor_key == target_key) {
         return task_t<message_t> (result_t<message_t>::failure (
-          framework_error_kind_t::invalid_configuration,
+          framework_error_kind_t::not_configured,
           "awaited request to the current Actor cannot complete while its FIFO claim is held"));
     }
     auto task = _client->request_to_actor_erased (std::move (_actor_ref), std::move (_packet_name),
-                                                  std::move (_request), _timeout);
+                                                  std::move (_request), _timeout, _metadata);
     auto turn_plan = detail::prepare_serial_turn_await (release_turn);
     if (!turn_plan) {
         return task;
@@ -322,14 +343,12 @@ result_t<messaging::message_parts_t> wait_for_actor_completion (
 {
     auto completion = node.wait_for_completion (operation_id, timeout);
     if (!completion) {
-        return result_t<messaging::message_parts_t>::failure (
-          completion.error_kind (),
-          completion.error () ? completion.error ()->what () : "actor request timed out",
-          true);
+        return detail::propagate_failure<messaging::message_parts_t> (
+          completion, "actor request timed out");
     }
     if (completion.value ().record.terminal_result != 0) {
         return result_t<messaging::message_parts_t>::failure (
-          framework_error_kind_t::request_failed,
+          framework_error_kind_t::internal_failure,
           "actor request completed with terminal result "
             + std::to_string (completion.value ().record.terminal_result)
             + " (errno "
@@ -366,8 +385,8 @@ class actor_client_impl_t final : public actor_client_t
         auto runtime = first_mesh_node ();
         if (!runtime) {
             return task_t<void> (result_t<void>::failure (
-              framework_error_kind_t::route_not_connected,
-              "actor send requires a running MeshNode", true));
+              framework_error_kind_t::unavailable,
+              "actor send requires a running MeshNode"));
         }
         auto actor = resolve_explicit_actor (actor_ref);
         auto current = resolve_actor (
@@ -380,16 +399,19 @@ class actor_client_impl_t final : public actor_client_t
             const auto followed = runtime->follow_relocated_actor (actor_ref);
             if (!followed) {
                 return task_t<void> (result_t<void>::failure (
-                  framework_error_kind_t::actor_location_stale,
+                  framework_error_kind_t::unavailable,
                   "actor ref is outside the Message Follow duration"));
             }
             actor = resolve_explicit_actor (*followed);
+        } else if (current) {
+            // A public ActorRef intentionally omits the private authority
+            // fence. Recover that fence from the authority store before a
+            // remote send instead of guessing it from object generation.
+            actor = std::move (current);
         }
         if (!actor) {
-            return task_t<void> (result_t<void>::failure (
-              actor.error_kind (),
-              actor.error () ? actor.error ()->what () : "actor route was not found",
-              actor.error () && actor.error ()->is_retriable ()));
+            return task_t<void> (
+              detail::propagate_failure<void> (actor, "actor route was not found"));
         }
         return task_t<void> (
           submit_send (actor.value (), std::move (packet_name), std::move (message), metadata));
@@ -399,7 +421,8 @@ class actor_client_impl_t final : public actor_client_t
       actor_ref_t actor_ref,
       std::string packet_name,
       message_t request,
-      std::optional<std::chrono::milliseconds> timeout) override
+      std::optional<std::chrono::milliseconds> timeout,
+      const actor_request_call_t::metadata_map_t &metadata) override
     {
         if (detail::current_serial_turn_allows_yield ()
             && !runtime::current_actor_execution.spot_id.empty ()) {
@@ -410,7 +433,7 @@ class actor_client_impl_t final : public actor_client_t
                 && target.value ().spot_id
                      == runtime::current_actor_execution.spot_id) {
                 co_return result_t<message_t>::failure (
-                  framework_error_kind_t::invalid_configuration,
+                  framework_error_kind_t::not_configured,
                   "awaited request requires the current Spot execution gate");
             }
         }
@@ -434,7 +457,7 @@ class actor_client_impl_t final : public actor_client_t
         bool first_resolve = true;
         bool ref_was_current = false;
         result_t<message_t> last = result_t<message_t>::failure (
-          framework_error_kind_t::actor_location_stale, "actor location is stale", true);
+          framework_error_kind_t::unavailable, "actor location is stale");
         // The loop only ever retries a "transfer is in progress" stale (the actor
         // is mid-move and re-resolving will land the committed location). If such
         // a request never lands within the budget it reports a plain timeout —
@@ -442,7 +465,7 @@ class actor_client_impl_t final : public actor_client_t
         // stale is terminal and already returned from the loop body below.
         const auto on_deadline = [] () -> result_t<message_t> {
             return detail::boundary_failure<message_t> (detail::boundary_error_t::timed_out,
-                                                 "actor request timed out", true);
+                                                 "actor request timed out");
         };
         // A stale means "retry" only while the actor is moving/committing; a
         // terminally wrong record (e.g. the generation does not match, config-9
@@ -480,13 +503,12 @@ class actor_client_impl_t final : public actor_client_t
                 }
                 if (!ref_was_current && !ref_matches) {
                     co_return result_t<message_t>::failure (
-                      framework_error_kind_t::actor_location_stale,
+                      framework_error_kind_t::unavailable,
                       "actor ref is stale: current node/generation='"
                         + std::string (actor.value ().node_rid.value ()) + "/"
                         + std::to_string (actor.value ().framework_ref.generation ())
                         + "', supplied node/generation='" + caller_node_rid + "/"
-                        + std::to_string (caller_generation) + "'. actor=" + actor_id,
-                      false);
+                        + std::to_string (caller_generation) + "'. actor=" + actor_id);
                 }
                 const auto now = std::chrono::steady_clock::now ();
                 if (now >= deadline) {
@@ -494,15 +516,16 @@ class actor_client_impl_t final : public actor_client_t
                 }
                 const auto remaining =
                   std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now);
-                last = submit_request (actor.value (), packet_name, request, remaining, request_id);
+                last = submit_request (
+                  actor.value (), packet_name, request, remaining, request_id,
+                  metadata);
                 if (!is_moving_stale (last)) {
                     co_return last;
                 }
-            } else if (!actor.error () || !actor.error ()->is_retriable ()) {
-                co_return result_t<message_t>::failure (
-                  actor.error_kind (),
-                  actor.error () ? actor.error ()->what () : "actor route was not found",
-                  actor.error () && actor.error ()->is_retriable ());
+            } else if (!actor.error ()
+                       || !detail::is_transient_error (actor.error ()->kind ())) {
+                co_return detail::propagate_failure<message_t> (
+                  actor, "actor route was not found");
             }
             policy = stale_policy_t::location_stale;
             if (std::chrono::steady_clock::now () + std::chrono::milliseconds (50) >= deadline) {
@@ -527,19 +550,21 @@ class actor_client_impl_t final : public actor_client_t
         actor_ref_t native_ref;
         node_rid_t node_rid;
         spot_id_t spot_id;
+        std::string mesh_name;
+        std::uint64_t authority_owner_generation = 0;
     };
 
     result_t<resolved_actor_t> resolve_explicit_actor (const actor_ref_t &actor_ref)
     {
         if (actor_ref.empty () || actor_ref.node_rid ().empty ()) {
             return result_t<resolved_actor_t>::failure (
-              framework_error_kind_t::actor_route_not_found,
+              framework_error_kind_t::not_found,
               "actor send requires a non-empty actor ref and node rid");
         }
         return result_t<resolved_actor_t>::success (
           resolved_actor_t{
             actor_ref, actor_ref, actor_ref.node_rid (),
-            spot_id_t (std::string (actor_ref.node_rid ().value ())) });
+            spot_id_t (std::string (actor_ref.node_rid ().value ())), {}, 0});
     }
 
     result_t<resolved_actor_t> resolve_actor (const std::string &actor_id, stale_policy_t policy)
@@ -547,8 +572,8 @@ class actor_client_impl_t final : public actor_client_t
         const auto runtime = first_mesh_node ();
         if (!runtime) {
             return result_t<resolved_actor_t>::failure (
-              framework_error_kind_t::route_not_connected,
-              "actor lookup requires a running MeshNode", true);
+              framework_error_kind_t::unavailable,
+              "actor lookup requires a running MeshNode");
         }
         if (_location_options.route_cache_max_age > std::chrono::milliseconds::zero ()) {
             std::lock_guard lock (_route_cache_gate);
@@ -562,10 +587,8 @@ class actor_client_impl_t final : public actor_client_t
         }
         auto read = _store->read_authority (authority_key_t{"1:" + actor_id}).result ();
         if (!read) {
-            return result_t<resolved_actor_t>::failure (
-              framework_error_kind_t::request_failed,
-              read.error () ? read.error ()->what () : "actor authority lookup failed",
-              read.error () && read.error ()->is_retriable ());
+            return detail::propagate_failure<resolved_actor_t> (
+              read, "actor authority lookup failed");
         }
         const auto *snapshot = std::get_if<authority_snapshot_t> (&read.value ());
         const auto projection = snapshot
@@ -576,25 +599,25 @@ class actor_client_impl_t final : public actor_client_t
             || !projection || projection->actor.actor_id () != actor_id) {
             return result_t<resolved_actor_t>::failure (
               policy == stale_policy_t::route_not_found
-                ? framework_error_kind_t::actor_route_not_found
-                : framework_error_kind_t::actor_location_stale,
+                ? framework_error_kind_t::not_found
+                : framework_error_kind_t::unavailable,
               policy == stale_policy_t::route_not_found ? "actor route was not found"
-                                                        : "actor location became stale",
-              policy == stale_policy_t::location_stale);
+                                                        : "actor location became stale");
         }
         if (projection->spot_id.empty ()) {
             return result_t<resolved_actor_t>::failure (
               policy == stale_policy_t::route_not_found
-                ? framework_error_kind_t::actor_route_not_found
-                : framework_error_kind_t::actor_location_stale,
+                ? framework_error_kind_t::not_found
+                : framework_error_kind_t::unavailable,
               policy == stale_policy_t::route_not_found ? "actor SPOT route was not found"
-                                                        : "actor SPOT location became stale",
-              policy == stale_policy_t::location_stale);
+                                                        : "actor SPOT location became stale");
         }
         auto resolved = resolved_actor_t{
           projection->actor, projection->actor,
           snapshot->allocation.target.node_rid,
-          projection->spot_id};
+          projection->spot_id,
+          snapshot->allocation.target.mesh_name,
+          snapshot->authority_owner_generation};
         const auto lease_lifetime = _store->owner_admission_lifetime (snapshot->owner);
         if (_location_options.route_cache_max_age > std::chrono::milliseconds::zero ()
             && lease_lifetime) {
@@ -616,21 +639,18 @@ class actor_client_impl_t final : public actor_client_t
                                 message_t message,
                                 const actor_send_call_t::metadata_map_t &metadata)
     {
-        auto runtime = first_mesh_node ();
+        auto runtime = mesh_node (actor.mesh_name);
         if (!runtime) {
-            return result_t<void>::failure (framework_error_kind_t::route_not_connected,
-                                            "actor send requires a running MeshNode", true);
+            return result_t<void>::failure (framework_error_kind_t::unavailable,
+                                            "actor send requires a running MeshNode");
         }
         auto relayed = relay_actor_packet (*runtime, actor,
                                            runtime::messaging::message_kind_t::command,
                                            std::move (packet_name), std::move (message),
-                                           std::chrono::milliseconds (0), {}, metadata);
+                                           _default_timeout, {}, metadata);
         if (!relayed) {
             invalidate_cached_route_on_stale (actor, relayed.error_kind ());
-            return result_t<void>::failure (
-              relayed.error_kind (),
-              relayed.error () ? relayed.error ()->what () : "actor send failed",
-              relayed.error () && relayed.error ()->is_retriable ());
+            return detail::propagate_failure<void> (relayed, "actor send failed");
         }
         return result_t<void>::success ();
     }
@@ -639,27 +659,25 @@ class actor_client_impl_t final : public actor_client_t
                                         std::string packet_name,
                                         message_t request,
                                         std::chrono::milliseconds timeout,
-                                        const std::string &request_id)
+                                        const std::string &request_id,
+                                        const actor_request_call_t::metadata_map_t &metadata)
     {
-        auto runtime = first_mesh_node ();
+        auto runtime = mesh_node (actor.mesh_name);
         if (!runtime) {
-            return result_t<message_t>::failure (framework_error_kind_t::route_not_connected,
-                                                 "actor request requires a running MeshNode",
-                                                 true);
+            return result_t<message_t>::failure (
+              framework_error_kind_t::unavailable,
+              "actor request requires a running MeshNode");
         }
         auto relayed = relay_actor_packet (*runtime, actor,
                                            runtime::messaging::message_kind_t::request,
                                            std::move (packet_name), std::move (request), timeout,
-                                           request_id);
+                                           request_id, metadata);
         if (!relayed) {
             invalidate_cached_route_on_stale (actor, relayed.error_kind ());
-            return result_t<message_t>::failure (
-              relayed.error_kind (),
-              relayed.error () ? relayed.error ()->what () : "actor request failed",
-              relayed.error () && relayed.error ()->is_retriable ());
+            return detail::propagate_failure<message_t> (relayed, "actor request failed");
         }
         if (!relayed.value ()) {
-            return result_t<message_t>::failure (framework_error_kind_t::request_failed,
+            return result_t<message_t>::failure (framework_error_kind_t::internal_failure,
                                                  "actor request reply body is missing");
         }
         return result_t<message_t>::success (
@@ -685,26 +703,38 @@ class actor_client_impl_t final : public actor_client_t
         try {
             auto copied = parts.items ();
             if (kind == runtime::messaging::message_kind_t::command) {
-                const auto submit = runtime.send_to_actor (actor.native_ref, copied);
+                const auto deadline = std::chrono::steady_clock::now () + timeout;
+                auto submit = runtime.send_to_actor (
+                  actor.native_ref, copied, {}, actor.authority_owner_generation);
+                while (submit == zlink::submit_result_t::not_connected
+                       && std::chrono::steady_clock::now () < deadline) {
+                    // Actor creation and binding complete before every peer has
+                    // necessarily observed the new route. Keep this transient
+                    // transport state inside the framework so the first public
+                    // send has the same semantics as later sends.
+                    std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                    submit = runtime.send_to_actor (
+                      actor.native_ref, copied, {}, actor.authority_owner_generation);
+                }
                 if (submit != zlink::submit_result_t::ok) {
                     if (submit == zlink::submit_result_t::backpressured) {
                         return result_t<std::optional<zlink::message_t>>::failure (
-                          framework_error_kind_t::worker_queue_full,
-                          "actor send is backpressured", true);
+                          framework_error_kind_t::capacity_exceeded,
+                          "actor send is backpressured");
                     }
                     if (submit == zlink::submit_result_t::not_connected) {
                         return result_t<std::optional<zlink::message_t>>::failure (
-                          framework_error_kind_t::route_not_connected,
-                          "actor route is not connected", true);
+                          framework_error_kind_t::unavailable,
+                          "actor route is not connected");
                     }
                     if (submit == zlink::submit_result_t::not_found
                         || submit == zlink::submit_result_t::not_admitted) {
                         return result_t<std::optional<zlink::message_t>>::failure (
-                          framework_error_kind_t::actor_route_not_found,
+                          framework_error_kind_t::not_found,
                           "actor route was not found");
                     }
                     return result_t<std::optional<zlink::message_t>>::failure (
-                      framework_error_kind_t::request_failed,
+                      framework_error_kind_t::internal_failure,
                       "actor send was not accepted (result "
                         + std::to_string (static_cast<int> (submit)) + ", errno "
                         + std::to_string (errno) + ")");
@@ -713,21 +743,20 @@ class actor_client_impl_t final : public actor_client_t
             }
             detail::host::operation_id_t operation_id;
             const auto submit =
-              runtime.request_to_actor (actor.native_ref, copied, operation_id, timeout);
+              runtime.request_to_actor (actor.native_ref, copied, operation_id, timeout, {},
+                                        actor.authority_owner_generation);
             if (submit != zlink::submit_result_t::ok) {
                 return result_t<std::optional<zlink::message_t>>::failure (
-                  framework_error_kind_t::request_failed,
+                  framework_error_kind_t::internal_failure,
                       "actor request was not accepted");
             }
             auto reply = wait_for_actor_completion (runtime, operation_id, timeout);
             if (!reply) {
-                return result_t<std::optional<zlink::message_t>>::failure (
-                  reply.error_kind (),
+                return detail::propagate_failure<std::optional<zlink::message_t>> (
+                  reply,
                   std::string ("actor request completion failed for node/generation '")
                     + std::string (actor.native_ref.node_rid ().value ()) + "/"
-                    + std::to_string (actor.native_ref.generation ()) + "': "
-                    + (reply.error () ? reply.error ()->what () : "unknown failure"),
-                  reply.error () && reply.error ()->is_retriable ());
+                    + std::to_string (actor.native_ref.generation ()) + "'");
             }
             runtime::messaging::envelope_codec_t reply_codec;
             auto reply_header = reply_codec.decode_header (reply.value ());
@@ -745,8 +774,7 @@ class actor_client_impl_t final : public actor_client_t
                   reply_header.value ().error_code.value_or ("request_failed"), message,
                   "actor mesh request");
                 return result_t<std::optional<zlink::message_t>>::failure (
-                  map_actor_route_reply_error (mapped.kind (), message), message,
-                  mapped.is_retriable ());
+                  map_actor_route_reply_error (mapped.kind (), message), message);
             }
             auto body = reply_codec.decode_body (reply.value ());
             if (!body)
@@ -764,9 +792,9 @@ class actor_client_impl_t final : public actor_client_t
     void invalidate_cached_route_on_stale (const resolved_actor_t &actor,
                                            framework_error_kind_t kind)
     {
-        if (kind != framework_error_kind_t::actor_location_stale
-            && kind != framework_error_kind_t::actor_route_not_found
-            && kind != framework_error_kind_t::route_not_connected) {
+        if (kind != framework_error_kind_t::unavailable
+            && kind != framework_error_kind_t::not_found
+            && kind != framework_error_kind_t::unavailable) {
             return;
         }
         std::lock_guard lock (_route_cache_gate);
@@ -781,10 +809,23 @@ class actor_client_impl_t final : public actor_client_t
         return {};
     }
 
+    std::shared_ptr<detail::mesh_node_runtime_t>
+    mesh_node (const std::string &mesh_name) const
+    {
+        if (!mesh_name.empty ()) {
+            for (const auto &mesh_node : _mesh_nodes) {
+                if (mesh_node && mesh_node->mesh_name () == mesh_name)
+                    return mesh_node;
+            }
+            return {};
+        }
+        return first_mesh_node ();
+    }
+
     static bool is_stale_actor_error (framework_error_kind_t kind)
     {
-        return kind == framework_error_kind_t::actor_route_not_found
-               || kind == framework_error_kind_t::actor_location_stale;
+        return kind == framework_error_kind_t::not_found
+               || kind == framework_error_kind_t::unavailable;
     }
 
     static framework_error_kind_t map_actor_route_reply_error (framework_error_kind_t kind,
@@ -793,16 +834,16 @@ class actor_client_impl_t final : public actor_client_t
         if (message.find ("stale") != std::string::npos
             || message.find ("conflict") != std::string::npos
             || message.find ("transfer is in progress") != std::string::npos) {
-            return framework_error_kind_t::actor_location_stale;
+            return framework_error_kind_t::unavailable;
         }
         if (message.find ("not found") != std::string::npos
             || message.find ("not joined") != std::string::npos) {
-            return framework_error_kind_t::actor_route_not_found;
+            return framework_error_kind_t::not_found;
         }
         if (message.find ("not connected") != std::string::npos
             || message.find ("No such file or directory") != std::string::npos
             || message.find ("errno=113") != std::string::npos) {
-            return framework_error_kind_t::route_not_connected;
+            return framework_error_kind_t::unavailable;
         }
         return kind;
     }
@@ -816,21 +857,21 @@ class actor_client_impl_t final : public actor_client_t
             || message.find ("NotConnected") != std::string::npos
             || message.find ("No such file or directory") != std::string::npos
             || message.find ("errno=113") != std::string::npos) {
-            return result_t<TResult>::failure (framework_error_kind_t::route_not_connected,
-                                               message, true);
+            return result_t<TResult>::failure (framework_error_kind_t::unavailable,
+                                               message);
         }
         if (message.find ("not found") != std::string::npos
             || message.find ("NotFound") != std::string::npos) {
-            return result_t<TResult>::failure (framework_error_kind_t::actor_route_not_found,
+            return result_t<TResult>::failure (framework_error_kind_t::not_found,
                                                message);
         }
         if (message.find ("conflict") != std::string::npos
             || message.find ("stale") != std::string::npos
             || message.find ("transfer is in progress") != std::string::npos) {
-            return result_t<TResult>::failure (framework_error_kind_t::actor_location_stale,
-                                               message, true);
+            return result_t<TResult>::failure (framework_error_kind_t::unavailable,
+                                               message);
         }
-        return result_t<TResult>::failure (framework_error_kind_t::request_failed, message);
+        return result_t<TResult>::failure (framework_error_kind_t::internal_failure, message);
     }
 
     live_location_reader_t *_store;

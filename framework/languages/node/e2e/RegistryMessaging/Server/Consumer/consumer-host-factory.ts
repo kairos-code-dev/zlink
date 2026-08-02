@@ -3,12 +3,13 @@ import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import {
-  ZLINK_CHANNEL_CLIENT,
+  ZLINK_ROUTE_CLIENT,
+  ZLINK_ROUTE_MESH_RUNTIME,
   ZLINK_LOCATION_RUNTIME_QUERY,
   ZLinkModule,
   zlinkFramework
 } from '@zlink-systems/nestjs';
-import type { ZLinkChannelClient, ZLinkLocationRuntimeQuery } from '@zlink-systems/framework';
+import type { ZLinkLocationRuntimeQuery, ZLinkRouteClient, ZLinkRouteMeshRuntime } from '@zlink-systems/framework';
 import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
 import { validateConsumerOptions } from './Configuration/consumer-options';
 import type { ConsumerOptions } from './Configuration/consumer-options';
@@ -21,11 +22,12 @@ export async function startConsumerHost(): Promise<void> {
   const ConsumerModule = createConsumerModule();
   const app = await NestFactory.createApplicationContext(ConsumerModule, { logger: false, abortOnError: false });
   const options = app.get(REGISTRY_MESSAGING_OPTIONS, { strict: false }) as ConsumerOptions;
-  const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
-  const locationQuery = app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }) as ZLinkLocationRuntimeQuery;
+  const channel = app.get(ZLINK_ROUTE_CLIENT, { strict: false }) as ZLinkRouteClient;
+  const locationQuery = app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }) as ZLinkLocationRuntimeQuery | null;
+  const routeRuntime = app.get(ZLINK_ROUTE_MESH_RUNTIME, { strict: false }) as ZLinkRouteMeshRuntime;
   const server = await startHttpServer(
     options.httpUrl,
-    createConsumerEndpoints(channel, locationQuery, () => { stopping = true; })
+    createConsumerEndpoints(channel, locationQuery ?? undefined, routeRuntime, () => { stopping = true; })
   );
 
   while (!stopping) {
@@ -54,12 +56,13 @@ function createConsumerModule(): Function {
               .traceLabel(options.traceLabel);
 
           const profile = builder.addRouteMesh('profile');
+          profile.channel('profile').client();
           if (options.redisEndpoint !== undefined && options.redisKeyPrefix !== undefined) {
             builder.addLocationStore(createRedisLocationStore({
               redisEndpoint: options.redisEndpoint,
               redisKeyPrefix: options.redisKeyPrefix
             }));
-            Object.assign(builder.configureLocations(), locationMessagingOptions());
+            locationMessagingOptions(builder.configureLocations());
             profile.peerConnections();
           } else {
             for (const endpoint of options.providerEndpoints) profile.peerConnections().connect(endpoint);

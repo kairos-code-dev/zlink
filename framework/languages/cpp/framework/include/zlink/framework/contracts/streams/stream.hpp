@@ -268,7 +268,7 @@ class packet_stream_session_t
         (void) stream;
         (void) dispatch;
         (void) payload;
-        return task_t<void> (result_t<void>::failure (framework_error_kind_t::handler_not_found,
+        return task_t<void> (result_t<void>::failure (framework_error_kind_t::not_found,
                                                       "stream packet handler is not implemented"));
     }
 };

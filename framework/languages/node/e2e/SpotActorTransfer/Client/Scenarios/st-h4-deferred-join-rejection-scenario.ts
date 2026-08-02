@@ -1,4 +1,4 @@
-// ST-H4: 같은 Actor turn에서 중복 Defer와 두 번째 pending transition을 거부하는지 검증한다.
+// ST-H4: Invalid context and duplicate registration 시나리오를 검증한다.
 import {
   SpotActorTransferNames,
   actorNode,

@@ -9,6 +9,7 @@ public static class AutomaticTurnDispatchNames
     public const string StreamNode = "await.stream";
     public const string ActorType = "await.actor";
     public const string SpotType = "await.spot.user";
+    public const string PerActorSpotType = "await.spot.per-actor";
     public const string ActorIdMetadata = "actor-id";
     public const string SpotRidMetadata = "spot-rid";
     public const string TargetNodeRidMetadata = "target-node-rid";
@@ -18,7 +19,10 @@ public sealed record AwaitShutdownScenarioReq(string RequestId, string SpotRid, 
 
 public sealed record AwaitShutdownRecoveryReq(string RequestId, string SpotRid);
 
-public sealed record BindAwaitActorsReq(string SpotRid, string[] ActorIds);
+public sealed record BindAwaitActorsReq(
+    string SpotRid,
+    string[] ActorIds,
+    string SpotType = AutomaticTurnDispatchNames.SpotType);
 
 public sealed record BindAwaitActorsRes(string SpotRid, AwaitActorBinding[] Actors);
 
@@ -67,7 +71,20 @@ public sealed record IoWorkerAwaitMsg(string RequestId, string OperationId, int 
 
 public sealed record CpuWorkerAwaitMsg(string RequestId, int DelayMs, string Terminator);
 
-public sealed record SelfCycleMsg(string RequestId, int TimeoutMs);
+public sealed record SelfCycleMsg(
+    string RequestId,
+    int TimeoutMs,
+    string Terminator = "async");
+
+public sealed record SelfSendMsg(string RequestId, string Marker);
+
+public sealed record DeferredJoinFailureMsg(
+    string RequestId,
+    string FirstActorId,
+    string SecondActorId,
+    string FirstTargetSpotRid,
+    string SecondTargetSpotRid,
+    string FailureMode);
 
 public sealed record WorkerAwaitReq(string RequestId, int DelayMs);
 
@@ -85,9 +102,15 @@ public sealed record RemoteSpotAwaitReq(string RequestId, string TargetSpotRid, 
 
 public sealed record RemoteSpotAwaitMsg(string RequestId, string TargetSpotRid, int DelayMs);
 
-public sealed record EnsureSpotReq(string SpotRid);
+public sealed record EnsureSpotReq(
+    string SpotRid,
+    string SpotType = AutomaticTurnDispatchNames.SpotType);
 
 public sealed record EnsureSpotRes(string SpotRid, string NodeRid);
+
+public sealed record PlacementWeightReq(int Weight, bool VerifyLocal = true);
+
+public sealed record PlacementWeightRes(int Weight);
 
 public sealed record ProbeReq(string RequestId, string Marker);
 
@@ -104,6 +127,10 @@ public sealed record TimerStopMsg(string RequestId);
 public sealed record ActorAwaitReq(string RequestId, int DelayMs, string Terminator = "async");
 
 public sealed record ActorFastReq(string RequestId, string Marker);
+
+public sealed record PerActorAwaitReq(string RequestId, int DelayMs, string Terminator = "async");
+
+public sealed record PerActorFastReq(string RequestId, string Marker);
 
 public sealed record ActorJoinAwaitReq(string RequestId, string TargetSpotRid);
 

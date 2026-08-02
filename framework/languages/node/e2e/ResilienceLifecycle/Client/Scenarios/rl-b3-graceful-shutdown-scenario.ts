@@ -1,4 +1,4 @@
-// RL-B3: graceful shutdown 시나리오를 검증한다.
+// RL-B3: Graceful Shutdown 뒤 topology에서 제거한다 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../../../http-client';

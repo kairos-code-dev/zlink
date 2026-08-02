@@ -33,7 +33,7 @@ mesh_record_dispatcher_t::dispatch (
         && record.kind != record_kind_t::node_request
         && record.kind != record_kind_t::channel_send
         && record.kind != record_kind_t::channel_request) {
-        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+        return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                         "record kind is not node or ChannelName messaging");
     }
 
@@ -64,13 +64,13 @@ mesh_record_dispatcher_t::dispatch (
         return result_t<void>::success ();
     if (record.kind != record_kind_t::node_request
         && record.kind != record_kind_t::channel_request) {
-        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+        return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                         "send handler produced a reply");
     }
     const auto submit = runtime::host::reply (
       record.reply_token, dispatched.value ()->parts.items ());
     if (submit != zlink::submit_result_t::ok) {
-        return result_t<void>::failure (framework_error_kind_t::request_failed,
+        return result_t<void>::failure (framework_error_kind_t::internal_failure,
                                         "MeshNode reply submit failed");
     }
     return result_t<void>::success ();

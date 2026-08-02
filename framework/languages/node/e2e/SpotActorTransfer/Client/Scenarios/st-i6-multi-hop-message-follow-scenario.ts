@@ -1,4 +1,4 @@
-// ST-I6: Actor·Spot multi-hop Message Follow와 route 정리 시나리오를 검증한다.
+// ST-I6: Multi-hop relocation 시나리오를 검증한다.
 import { runStF5 } from './st-f5-external-route-scenario';
 
 export async function runStI6(): Promise<void> {

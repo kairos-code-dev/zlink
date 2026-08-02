@@ -70,17 +70,23 @@ public final class Program {
 
             String apiEndpoint = server.apiEndpoint();
             if (!apiEndpoint.isBlank()) {
-                options.addClientServerChannel(Contracts.API_CHANNEL)
-                    .enableServer(apiEndpoint)
-                    .setRoutingId(RoutingId.from(state.providerRid()))
+                var api = options.addClientServerChannel(Contracts.API_CHANNEL);
+                var endpoint = java.net.URI.create(apiEndpoint);
+                api.server()
+                    .setBindHost(endpoint.getHost())
+                    .setAdvertiseHost(endpoint.getHost())
+                    .listen(endpoint.getPort())
                     .addHandlerGroup(Contracts.HANDLER_GROUP);
             }
 
             String workflowEndpoint = server.workflowEndpoint();
             if (!workflowEndpoint.isBlank()) {
-                options.addClientServerChannel(Contracts.WORKFLOW_CHANNEL)
-                    .enableServer(workflowEndpoint)
-                    .setRoutingId(RoutingId.from(state.providerRid()))
+                var workflow = options.addClientServerChannel(Contracts.WORKFLOW_CHANNEL);
+                var endpoint = java.net.URI.create(workflowEndpoint);
+                workflow.server()
+                    .setBindHost(endpoint.getHost())
+                    .setAdvertiseHost(endpoint.getHost())
+                    .listen(endpoint.getPort())
                     .addHandlerGroup(Contracts.HANDLER_GROUP);
             }
 
@@ -89,7 +95,7 @@ public final class Program {
                 var route = options.addRouteMesh(Contracts.ROUTE_CHANNEL)
                     .listen(routeEndpoint)
                     .setRoutingId(RoutingId.from(state.providerRid()));
-                route.channelName(Contracts.ROUTE_CHANNEL);
+                route.channelName(Contracts.ROUTE_CHANNEL).server();
                 route.addRouteRequestHandler(
                     RouteReqHandler.class,
                     Contracts.RouteReq.class,

@@ -1,4 +1,4 @@
-// TA-A2: bind 안 된 actor에게 no-bind send/request 시나리오를 검증한다.
+// TA-A2: Bind되지 않은 Actor에게 direct send·request를 보낸다 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
 import { getJson } from '../../../http-client';
 import { type ActorEvidence, assertCall, assertUnbound, bindingSnapshot, ensureActor, requireEvidence } from '../Support/actor-scenario-support';

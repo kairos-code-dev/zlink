@@ -126,8 +126,10 @@ class matchmaking_server_host_factory_t
 
             auto mesh =
               options.add_route_mesh (sample_names_t::matchmaking_mesh);
-            mesh.set_object_role (object_role_t::server);
-            mesh.channel_name (sample_names_t::matchmaking_mesh);
+            mesh
+              .set_routing_id (zlink::routing_id_t::from ("bingo-matchmaking"))
+              .set_object_role (object_role_t::server);
+            mesh.channel_name (sample_names_t::matchmaking_mesh).server ();
             mesh.listen (topology.matchmaking_route_endpoint)
               .add_instance_spot_factory<bingo_matchmaker_t> (
                 sample_names_t::matchmaker_spot,

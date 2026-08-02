@@ -24,7 +24,7 @@ class push_bound_session_handler_t
         auto actor = _actors.find (request.actor_id);
         if (!actor) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              zlink::framework::framework_error_kind_t::not_found,
               "push actor route was not found");
         }
         auto reply =

@@ -1,4 +1,4 @@
-// SF-B2: store failure grace 초과 시나리오를 검증한다.
+// SF-B2: Failure grace를 넘겨도 기존 connection과 신규 discovery를 구분한다 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../../../http-client';

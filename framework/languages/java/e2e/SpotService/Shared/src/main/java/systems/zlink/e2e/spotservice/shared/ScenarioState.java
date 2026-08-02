@@ -56,7 +56,7 @@ public final class ScenarioState {
         List<String> lines = snapshot.entries().stream()
             .map(entry -> entry.marker()
                 + "|" + entry.nodeRid()
-                + "|" + entry.spotRid()
+                + "|" + entry.spotId()
                 + "|" + entry.value())
             .toList();
         return fragments.stream().allMatch(fragment ->
@@ -69,7 +69,7 @@ public final class ScenarioState {
                 + "|"
                 + entry.nodeRid()
                 + "|"
-                + entry.spotRid()
+                + entry.spotId()
                 + "|"
                 + entry.value())
             .toList();

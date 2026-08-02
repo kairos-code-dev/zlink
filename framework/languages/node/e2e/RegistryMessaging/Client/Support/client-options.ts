@@ -6,6 +6,7 @@ export interface ClientOptions {
   readonly singleConsumerUrl: string;
   readonly backpressureConsumerUrl: string;
   readonly locationConsumerUrl: string;
+  readonly manualConsumerUrl?: string;
   readonly providerMain: string;
   readonly consumerMain: string;
   readonly redisEndpoint: string;
@@ -31,6 +32,7 @@ export function parseClientOptions(args: readonly string[]): ClientOptions {
     singleConsumerUrl: required(values, 'singleConsumerUrl'),
     backpressureConsumerUrl: required(values, 'backpressureConsumerUrl'),
     locationConsumerUrl: required(values, 'locationConsumerUrl'),
+    manualConsumerUrl: optional(values, 'manualConsumerUrl'),
     providerMain: required(values, 'providerMain'),
     consumerMain: required(values, 'consumerMain'),
     redisEndpoint: required(values, 'redisEndpoint'),

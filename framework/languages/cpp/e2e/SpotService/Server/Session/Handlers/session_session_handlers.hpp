@@ -60,7 +60,7 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
                 || (request.target_node_rid != "play-a" && request.target_node_rid != "play-b")) {
                 _state.record ("StreamAuthFailed", request.actor_id, {}, request.target_node_rid);
                 throw zlink::framework::framework_exception_t (
-                  zlink::framework::framework_error_kind_t::request_protocol_error,
+                  zlink::framework::framework_error_kind_t::protocol_error,
                   "stream auth target or actor ref is invalid");
             }
             _state.record ("StreamAuthEnsured", request.actor_id, {}, request.target_node_rid);
@@ -97,7 +97,7 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
             if (request.target_node_rid != "play-a" && request.target_node_rid != "play-b") {
                 _state.record ("StreamAuthFailed", request.actor_id, {}, request.target_node_rid);
                 throw zlink::framework::framework_exception_t (
-                  zlink::framework::framework_error_kind_t::request_protocol_error,
+                  zlink::framework::framework_error_kind_t::protocol_error,
                   "stream ensure auth target is invalid");
             }
             auto ensured_result =
@@ -175,7 +175,7 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
     {
         if (_bound_actors.empty ()) {
             return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
-              zlink::framework::framework_error_kind_t::actor_session_not_bound,
+              zlink::framework::framework_error_kind_t::not_configured,
               "stream session is not bound before " + packet_name);
         }
         std::string actor_id;
@@ -185,18 +185,18 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
             actor_id = _bound_actors.begin ()->first;
         } else {
             return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
-              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              zlink::framework::framework_error_kind_t::not_found,
               "actor-id metadata is required when multiple actors are bound for " + packet_name);
         }
         if (!_bound_actors.contains (actor_id)) {
             return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
-              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              zlink::framework::framework_error_kind_t::not_found,
               "bound actor route is not found for " + actor_id + " / " + packet_name);
         }
         auto actor = _actors.find (actor_id);
         if (!actor) {
             return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
-              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              zlink::framework::framework_error_kind_t::not_found,
               "bound actor route is not found for " + packet_name);
         }
         return zlink::framework::result_t<zlink::framework::session_actor_t>::success (

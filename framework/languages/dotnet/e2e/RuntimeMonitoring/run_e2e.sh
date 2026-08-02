@@ -12,7 +12,7 @@ else
 fi
 if [[ "$SCENARIO" == "all" ]]; then
   for scenario in \
-    MON-A1 MON-A2 MON-A3 MON-A4 MON-A5 MON-C1 MON-D1; do
+    MON-A1 MON-A2 MON-A3 MON-A4A MON-A4B MON-A5 MON-B1 MON-B2 MON-C1 MON-D1A MON-D1B; do
     "$0" "$scenario"
   done
   echo "runtime-monitoring all scenarios passed"
@@ -200,7 +200,7 @@ start_service svc-a "$SERVICE_PROJECT" \
 wait_health "$SVC_URL" svc-a
 
 SERVICE_B_PID=0
-if [[ "$SCENARIO" != "MON-A1" && "$SCENARIO" != "MON-A2" ]]; then
+if [[ "$SCENARIO" != "MON-A1" && "$SCENARIO" != "MON-A2" && "$SCENARIO" != "MON-D1A" ]]; then
   start_service svc-b "$SERVICE_PROJECT" \
     --rid svc-b \
     --http-url "$SVC_B_URL" \

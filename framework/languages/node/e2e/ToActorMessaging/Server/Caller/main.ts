@@ -6,13 +6,15 @@ import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   ZLinkMessageFlowLogMode,
-  type ActorRef,
-  type ZLinkActorClient
+  type ZLinkActorClient,
+  type ZLinkLocationRuntimeQuery,
+  type ZLinkRouteMeshRuntime
 } from '@zlink-systems/framework';
-import { ZLINK_ACTOR_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLINK_ACTOR_CLIENT, ZLINK_LOCATION_RUNTIME_QUERY, ZLINK_ROUTE_MESH_RUNTIME, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
-import { actorAsk, actorNotify, actorPush, type ActorCallRequest, type ActorCallResponse, type ActorRefPayload, type ActorReply } from '../../Shared/messages';
+import { actorAsk, actorNotify, actorPush, type ActorCallRequest, type ActorCallResponse, type ActorReply } from '../../Shared/messages';
 import { closeHttpServer, startHttpServer } from '../Support/http-server';
+import { createLocationTopologyRoute } from '../Support/location-topology-route';
 import { TO_ACTOR_OPTIONS, createToActorConfigurationModule } from '../../configuration';
 import type { ServerOptions } from '../../configuration';
 
@@ -43,10 +45,11 @@ Module({
           .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
           .traceLogFile(path.join(options.logDir, 'caller-flow.log'))
           .traceLabel(options.rid);
-        builder
+        const mesh = builder
           .addRouteMesh('to-actor')
-          .listen(options.routerEndpoint).routingId(options.rid)
-          .channelName('to-actor');
+          .listen(options.routerEndpoint).routingId(options.rid);
+        mesh.objects().client();
+        mesh.channel('to-actor').client();
         return builder.build();
       }
     })
@@ -56,8 +59,11 @@ Module({
 async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(CallerModule, { logger: false, abortOnError: false });
   const actors = app.get(ZLINK_ACTOR_CLIENT, { strict: false }) as ZLinkActorClient;
+  const locations = app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }) as ZLinkLocationRuntimeQuery;
+  const routeMeshRuntime = app.get(ZLINK_ROUTE_MESH_RUNTIME, { strict: false }) as ZLinkRouteMeshRuntime;
   const server = await startHttpServer(options.httpUrl, [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ok' }) },
+    createLocationTopologyRoute(locations, routeMeshRuntime),
     {
       method: 'POST',
       path: '/send',
@@ -65,7 +71,7 @@ async function main(): Promise<void> {
         const request = body as ActorCallRequest;
         try {
           await actors
-            .sendToActor('to-actor', requireActorRef(request), actorNotify(request.scenario, request.actorId, request.value))
+            .sendToActor(request.actorId, actorNotify(request.scenario, request.actorId, request.value))
             .submit();
           return { scenario: request.scenario, actorId: request.actorId, result: 'sent' } satisfies ActorCallResponse;
         } catch (error) {
@@ -80,7 +86,7 @@ async function main(): Promise<void> {
         const request = body as ActorCallRequest;
         try {
           const reply = await actors
-            .requestToActor('to-actor', requireActorRef(request), actorAsk(request.scenario, request.actorId, request.value))
+            .requestToActor(request.actorId, actorAsk(request.scenario, request.actorId, request.value))
             .timeout(callTimeoutMs)
             .submit<ActorReply>();
           return { scenario: request.scenario, actorId: request.actorId, result: reply.value } satisfies ActorCallResponse;
@@ -96,7 +102,7 @@ async function main(): Promise<void> {
         const request = body as ActorCallRequest;
         try {
           const reply = await actors
-            .requestToActor('to-actor', requireActorRef(request), actorPush(request.scenario, request.actorId, request.value))
+            .requestToActor(request.actorId, actorPush(request.scenario, request.actorId, request.value))
             .timeout(5000)
             .submit<ActorReply>();
           return { scenario: request.scenario, actorId: request.actorId, result: reply.value } satisfies ActorCallResponse;
@@ -119,31 +125,16 @@ async function main(): Promise<void> {
   await app.close();
 }
 
-function requireActorRef(request: ActorCallRequest): ActorRef {
-  if (request.actor === undefined) {
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.ActorRouteNotFound,
-      `Actor route '${request.actorId}' was not found.`
-    );
-  }
-  return actorRefFromSnapshot(request.actor);
-}
-
-function actorRefFromSnapshot(actor: ActorRefPayload): ActorRef {
-  return {
-    nodeRid: actor.nodeRid,
-    actorId: actor.actorId,
-    objectGeneration: BigInt(actor.objectGeneration),
-    meshName: actor.meshName
-  } as ActorRef;
-}
-
 function failure(request: ActorCallRequest, error: unknown): ActorCallResponse {
   return {
     scenario: request.scenario,
     actorId: request.actorId,
     result: 'failed',
-    errorKind: error instanceof ZLinkFrameworkException ? error.kind : error instanceof Error ? error.name : String(error)
+    errorKind: error instanceof ZLinkFrameworkException
+      ? ZLinkFrameworkErrorKind[error.kind]
+      : error instanceof Error
+        ? error.name
+        : String(error)
   };
 }
 

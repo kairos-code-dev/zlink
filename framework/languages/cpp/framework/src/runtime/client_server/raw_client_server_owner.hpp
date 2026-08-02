@@ -22,6 +22,7 @@ namespace zlink
 {
 class context_t;
 class dealer_socket_t;
+class poller_t;
 class router_socket_t;
 class socket_monitor_t;
 }
@@ -98,9 +99,11 @@ class raw_client_server_server_t
     std::mutex _socket_mutex;
     std::unique_ptr<zlink::context_t> _context;
     std::unique_ptr<zlink::router_socket_t> _router;
+    std::unique_ptr<zlink::poller_t> _monitor_poller;
     std::unique_ptr<zlink::socket_monitor_t> _monitor;
     std::shared_ptr<detail::backend::raw_route_port_t> _port;
     mesh::service_mailbox_t _mailbox;
+    std::optional<detail::backend::raw_received_t> _pending_hello;
     std::optional<mesh::service_mailbox_record_t> _pending_received;
     mesh::service_liveness_registry_t _liveness;
     std::map<std::vector<std::uint8_t>, std::vector<std::uint8_t>,
@@ -151,6 +154,7 @@ class raw_client_server_client_t
     std::mutex _socket_mutex;
     std::unique_ptr<zlink::context_t> _context;
     std::unique_ptr<zlink::dealer_socket_t> _dealer;
+    std::unique_ptr<zlink::poller_t> _monitor_poller;
     std::unique_ptr<zlink::socket_monitor_t> _monitor;
     std::shared_ptr<detail::backend::raw_dealer_port_t> _port;
     std::shared_ptr<foundation::operation_registry_t> _operations;

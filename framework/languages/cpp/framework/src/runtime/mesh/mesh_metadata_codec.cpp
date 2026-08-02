@@ -73,7 +73,7 @@ bool valid_utf8 (std::string_view value)
 
 [[noreturn]] void invalid_metadata (std::string message)
 {
-    throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+    throw framework_exception_t (framework_error_kind_t::protocol_error,
                                  std::move (message));
 }
 

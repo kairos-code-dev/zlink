@@ -21,7 +21,7 @@ public final class SmA5Scenario extends SpotServiceScenarioContext {
             "/spot/create",
             new Contracts.CreateSpotReq(spotRid),
             Contracts.CreateSpotRes.class);
-        ensure(spotRid.equals(created.spotRid()), "SM-A5 created spot mismatch");
+        ensure(spotRid.equals(created.spotId()), "SM-A5 created spot mismatch");
         ensure("play-a".equals(created.nodeRid()), "SM-A5 created spot owner mismatch");
 
         Contracts.StateRes ready = postJson(
@@ -29,7 +29,7 @@ public final class SmA5Scenario extends SpotServiceScenarioContext {
             "/spot/state/request",
             new Contracts.SpotStateRouteReq(spotRid, "sm-a5-ready", 0),
             Contracts.StateRes.class);
-        ensure(spotRid.equals(ready.spotRid()), "SM-A5 route readiness spot mismatch");
+        ensure(spotRid.equals(ready.spotId()), "SM-A5 route readiness spot mismatch");
         ensure("play-a".equals(ready.nodeRid()), "SM-A5 route readiness owner mismatch");
 
         Contracts.StateRes stageReply = postJson(
@@ -37,7 +37,7 @@ public final class SmA5Scenario extends SpotServiceScenarioContext {
             "/spot/stage/request",
             new Contracts.SpotStageProbeRouteReq(spotRid, "sm-a5-stage", 9),
             Contracts.StateRes.class);
-        ensure(spotRid.equals(stageReply.spotRid()), "SM-A5 stage request spot mismatch");
+        ensure(spotRid.equals(stageReply.spotId()), "SM-A5 stage request spot mismatch");
         ensure("play-a".equals(stageReply.nodeRid()), "SM-A5 stage request owner mismatch");
         ensure(stageReply.value().contains("sm-a5-stage-9"), "SM-A5 stage request state mismatch");
 
@@ -46,7 +46,7 @@ public final class SmA5Scenario extends SpotServiceScenarioContext {
             "/spot/stage/timer",
             new Contracts.SpotStageTimerRouteReq(spotRid, "sm-a5-stage-timer", 50),
             Contracts.StageTimerStartRes.class);
-        ensure(spotRid.equals(timer.spotRid()) && timer.started(), "SM-A5 stage timer did not start");
+        ensure(spotRid.equals(timer.spotId()) && timer.started(), "SM-A5 stage timer did not start");
 
         waitForPlayAEvidence(List.of(
             "SpotInitialized|play-a|" + spotRid,

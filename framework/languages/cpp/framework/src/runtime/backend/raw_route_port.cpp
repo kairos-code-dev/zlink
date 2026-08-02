@@ -54,11 +54,17 @@ raw_request_result_t map_request_result (zlink::request_result_t result) noexcep
 } // namespace
 
 raw_route_port_t::raw_route_port_t (zlink::router_socket_t &socket,
-                                    std::mutex *shared_socket_mutex) noexcept :
+                                    std::mutex *shared_socket_mutex,
+                                    zlink::poll_event_flag_t receive_events) :
+    _poller (),
     _socket (&socket),
     _socket_mutex (shared_socket_mutex != nullptr ? shared_socket_mutex
-                                                  : &_owned_socket_mutex)
+                                                  : &_owned_socket_mutex),
+    _receive_events (receive_events)
 {
+    if (_receive_events != zlink::poll_event_flag_t::none) {
+        _poller.add (socket, _receive_events, 1);
+    }
 }
 
 bool raw_route_port_t::send (const raw_bytes_t &target_routing_id,
@@ -158,10 +164,26 @@ bool raw_route_port_t::request (const raw_bytes_t &target_routing_id,
     }
 }
 
-std::optional<raw_received_t> raw_route_port_t::try_receive ()
+zlink::poll_event_flag_t raw_route_port_t::poll (
+  std::chrono::milliseconds timeout)
 {
     std::lock_guard lock (*_socket_mutex);
-    if (_socket == nullptr) {
+    if (_socket == nullptr || _receive_events == zlink::poll_event_flag_t::none)
+        return zlink::poll_event_flag_t::none;
+    zlink::poll_event_t event;
+    if (_poller.wait (&event, 1, timeout) != 1 || event.slot != 1)
+        return zlink::poll_event_flag_t::none;
+    return event.revents;
+}
+
+std::optional<raw_received_t> raw_route_port_t::receive_if_ready (
+  zlink::poll_event_flag_t revents)
+{
+    std::lock_guard lock (*_socket_mutex);
+    if (_socket == nullptr
+        || (static_cast<short> (revents)
+            & static_cast<short> (zlink::poll_event_flag_t::pollin))
+             == 0) {
         return std::nullopt;
     }
     zlink::received_t received;
@@ -183,6 +205,11 @@ std::optional<raw_received_t> raw_route_port_t::try_receive ()
     }
     return raw_received_t{received.routing_id ()->to_bytes (), received.request_seq (),
                           copy_parts (received.parts ())};
+}
+
+std::optional<raw_received_t> raw_route_port_t::try_receive ()
+{
+    return receive_if_ready (poll (std::chrono::milliseconds::zero ()));
 }
 
 bool raw_route_port_t::reply (const raw_received_t &request, const raw_message_t &parts)
@@ -215,6 +242,13 @@ void raw_route_port_t::close () noexcept
 {
     std::lock_guard lock (*_socket_mutex);
     _socket = nullptr;
+    if (_receive_events != zlink::poll_event_flag_t::none) {
+        try {
+            _poller.close ();
+        }
+        catch (...) {
+        }
+    }
 }
 
 } // namespace zlink::framework::detail::backend

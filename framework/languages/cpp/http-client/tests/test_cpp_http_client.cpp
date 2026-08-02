@@ -765,7 +765,7 @@ bool throws_protocol_error (TAction &&action, const std::string &message_part)
         action ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        return error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
+        return error.kind () == zlink::framework::framework_error_kind_t::protocol_error
                && std::string (error.what ()).find (message_part) != std::string::npos;
     }
     return false;
@@ -883,7 +883,7 @@ TEST (ZLinkHttpClient, AsyncMapsFailureStatus)
     const auto response = client.get ("/bad-request").submit<create_game_reply_t> ().result ();
     ASSERT_FALSE (response);
     EXPECT_EQ (response.error_kind (),
-               zlink::framework::framework_error_kind_t::request_failed);
+               zlink::framework::framework_error_kind_t::internal_failure);
 }
 
 TEST (ZLinkHttpClient, SupportsCoroutineSubmit)
@@ -1159,7 +1159,7 @@ TEST (ZLinkHttpClient, SupportsCommonMethodsAndCallbackSubmit)
     const auto failure_callback = failure_callback_result.get_future ().get ();
     ASSERT_FALSE (failure_callback);
     EXPECT_EQ (failure_callback.error_kind (),
-               zlink::framework::framework_error_kind_t::payload_decode_failed);
+               zlink::framework::framework_error_kind_t::protocol_error);
 }
 
 TEST (ZLinkHttpClient, ServerClientDelegatesTurnPolicyToInjectedExecutionTurn)
@@ -1220,21 +1220,21 @@ TEST (ZLinkHttpClient, MapsStatusDecodeAndTimeoutFailures)
 
     const auto missing = client.get ("/missing").submit<create_game_reply_t> ().result ();
     ASSERT_FALSE (missing);
-    EXPECT_EQ (missing.error_kind (), zlink::framework::framework_error_kind_t::request_failed);
+    EXPECT_EQ (missing.error_kind (), zlink::framework::framework_error_kind_t::internal_failure);
 
     const auto bad_request = client.get ("/bad-request").submit<create_game_reply_t> ().result ();
     ASSERT_FALSE (bad_request);
-    EXPECT_EQ (bad_request.error_kind (), zlink::framework::framework_error_kind_t::request_failed);
+    EXPECT_EQ (bad_request.error_kind (), zlink::framework::framework_error_kind_t::internal_failure);
 
     const auto server_error = client.get ("/server-error").submit<create_game_reply_t> ().result ();
     ASSERT_FALSE (server_error);
     EXPECT_EQ (server_error.error_kind (),
-               zlink::framework::framework_error_kind_t::request_failed);
+               zlink::framework::framework_error_kind_t::internal_failure);
 
     const auto invalid_json = client.get ("/invalid-json").submit<create_game_reply_t> ().result ();
     ASSERT_FALSE (invalid_json);
     EXPECT_EQ (invalid_json.error_kind (),
-               zlink::framework::framework_error_kind_t::payload_decode_failed);
+               zlink::framework::framework_error_kind_t::protocol_error);
 
     const auto timeout = client.get ("/slow").submit_raw ().result ();
     ASSERT_FALSE (timeout);
@@ -1481,7 +1481,9 @@ TEST (ZLinkHttpClient, DoesNotInternallyRetryNonIdempotentRequestsOnStaleConnect
                           .result ();
 
     ASSERT_FALSE (result);
-    EXPECT_TRUE (result.error ()->is_retriable ());
+    ASSERT_NE (result.error (), nullptr);
+    EXPECT_EQ (result.error_kind (),
+               zlink::framework::framework_error_kind_t::unavailable);
 }
 
 TEST (ZLinkHttpClient, StoresAndSendsCookies)
@@ -1569,7 +1571,8 @@ TEST (ZLinkHttpClient, RejectsDecompressedResponseAboveBodyLimit)
     const auto result = client.get ("/gzip-large").submit_raw ().result ();
 
     ASSERT_FALSE (result);
-    EXPECT_EQ (result.error_kind (), zlink::framework::framework_error_kind_t::request_failed);
+    EXPECT_EQ (result.error_kind (),
+               zlink::framework::framework_error_kind_t::capacity_exceeded);
 }
 
 TEST (ZLinkHttpClient, DownloadStreamsResponseBody)
@@ -1604,7 +1607,8 @@ TEST (ZLinkHttpClient, RejectsBufferedResponseAboveBodyLimit)
     const auto result = client.get ("/big").submit_raw ().result ();
 
     ASSERT_FALSE (result);
-    EXPECT_EQ (result.error_kind (), zlink::framework::framework_error_kind_t::request_failed);
+    EXPECT_EQ (result.error_kind (),
+               zlink::framework::framework_error_kind_t::capacity_exceeded);
 }
 
 TEST (ZLinkHttpClient, RejectsDownloadResponseAboveBodyLimit)
@@ -1621,7 +1625,8 @@ TEST (ZLinkHttpClient, RejectsDownloadResponseAboveBodyLimit)
                           .result ();
 
     ASSERT_FALSE (result);
-    EXPECT_EQ (result.error_kind (), zlink::framework::framework_error_kind_t::request_failed);
+    EXPECT_EQ (result.error_kind (),
+               zlink::framework::framework_error_kind_t::capacity_exceeded);
     EXPECT_LT (received.size (), big_download_body ().size ());
 }
 
@@ -1933,7 +1938,7 @@ TEST (ZLinkHttpClient, RejectsUntrustedHttpsCertificate)
     auto result = client.get ("/games").submit<create_game_reply_t> ().result ();
 
     ASSERT_FALSE (result);
-    EXPECT_EQ (result.error_kind (), zlink::framework::framework_error_kind_t::request_failed);
+    EXPECT_EQ (result.error_kind (), zlink::framework::framework_error_kind_t::internal_failure);
 }
 
 TEST (ZLinkHttpClient, RejectsHttpsHostnameMismatch)
@@ -1945,7 +1950,7 @@ TEST (ZLinkHttpClient, RejectsHttpsHostnameMismatch)
     auto result = client.get ("/games").submit<create_game_reply_t> ().result ();
 
     ASSERT_FALSE (result);
-    EXPECT_EQ (result.error_kind (), zlink::framework::framework_error_kind_t::request_failed);
+    EXPECT_EQ (result.error_kind (), zlink::framework::framework_error_kind_t::internal_failure);
 }
 #endif
 

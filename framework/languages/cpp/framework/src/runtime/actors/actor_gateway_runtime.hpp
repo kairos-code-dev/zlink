@@ -24,8 +24,16 @@ inline bool is_local_actor_ref (const actor_ref_t &actor_ref)
     return actor_ref.node_rid ().value () == local_actor_node_placeholder;
 }
 
-void enter_stream_relay_dispatch (const stream_header_t &header);
-void exit_stream_relay_dispatch () noexcept;
+class stream_relay_dispatch_scope_t final
+{
+  public:
+    explicit stream_relay_dispatch_scope_t (stream_header_t header);
+    ~stream_relay_dispatch_scope_t () noexcept;
+
+    stream_relay_dispatch_scope_t (const stream_relay_dispatch_scope_t &) = delete;
+    stream_relay_dispatch_scope_t &operator= (const stream_relay_dispatch_scope_t &) = delete;
+};
+
 std::optional<stream_header_t> current_stream_relay_dispatch ();
 
 struct actor_bound_session_route_t

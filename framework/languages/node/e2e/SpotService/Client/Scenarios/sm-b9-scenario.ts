@@ -1,4 +1,4 @@
-// SM-B9: Spot join admission accept와 reject 시나리오를 검증한다.
+// SM-B9: Target Spot의 Join accept와 reject를 구분한다 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

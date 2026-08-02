@@ -1,4 +1,4 @@
-// ST-I1: payload 크기와 relocation gate 측정 시나리오를 검증한다.
+// ST-I1: Payload size profile 시나리오를 검증한다.
 import {
   SpotActorTransferNames,
   actorNode,

@@ -13,6 +13,7 @@ import org.springframework.context.SmartLifecycle;
 import systems.zlink.e2e.registrationcodec.codecrequester.Configuration.CodecRequesterOptions;
 import systems.zlink.e2e.registrationcodec.shared.Contracts;
 import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.framework.errors.ZLinkFrameworkException;
 
 public final class CodecRequesterEndpoints implements SmartLifecycle {
     private final CodecRequesterOptions options;
@@ -69,7 +70,19 @@ public final class CodecRequesterEndpoints implements SmartLifecycle {
                 .submit(StringValue.class)
             .handle((reply, error) -> error == null
                 ? new Contracts.CodecMismatchProbeRes(false, null, reply.getValue())
-                : new Contracts.CodecMismatchProbeRes(true, error.getClass().getSimpleName(), null));
+                : new Contracts.CodecMismatchProbeRes(
+                    true,
+                    protocolErrorName(error),
+                    null));
+    }
+
+    private static String protocolErrorName(Throwable error) {
+        Throwable cause = error instanceof CompletionException && error.getCause() != null
+            ? error.getCause()
+            : error;
+        return cause instanceof ZLinkFrameworkException frameworkError
+            ? frameworkError.kind().name()
+            : cause.getClass().getSimpleName();
     }
 
     private CompletionStage<Contracts.EchoRes> jsonRequest() {

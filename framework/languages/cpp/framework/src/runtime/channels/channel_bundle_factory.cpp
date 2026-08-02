@@ -41,7 +41,7 @@ channel_bundle_factory_t::create_bundle (const std::string &channel_name,
                                          bool attach_bind_endpoints)
 {
     if (!capability.enabled) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "channel capability '" + channel_name + "' is not enabled");
     }
 

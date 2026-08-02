@@ -4,12 +4,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
 CPP_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+source "$CPP_ROOT/samples/sample-build-common.sh"
 FLOW_LOG_DIR="${SCRIPT_DIR}/logs"
 mkdir -p "$FLOW_LOG_DIR"
 rm -f "$FLOW_LOG_DIR"/*.log
-BUILD_DIR="$CPP_ROOT/build"
-BIN_DIR="$BUILD_DIR"
-cmake -S "$CPP_ROOT" -B "$BUILD_DIR" -DZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=ON >/dev/null
+zlink_cpp_sample_prepare_build "$CPP_ROOT"
 if [[ ! -x "$BIN_DIR/sample_cpp_framework_gamequest_client" && -x "$BIN_DIR/linux-ninja-debug/sample_cpp_framework_gamequest_client" ]]; then
   BIN_DIR="$BIN_DIR/linux-ninja-debug"
 fi
@@ -87,7 +86,7 @@ if [[ -z "$GAMEQUEST_RESERVED_PORT" || -z "$GAMEQUEST_API_B_SPOT_ROUTER_PORT" ]]
   exit 1
 fi
 
-cmake --build "$BUILD_DIR" --target \
+cmake --build "$BUILD_DIR" --parallel 2 --target \
   sample_cpp_framework_gamequest_game_api \
   sample_cpp_framework_gamequest_quest_mission \
   sample_cpp_framework_gamequest_client >/dev/null
@@ -225,20 +224,14 @@ start_role mission-b "$BIN_DIR/sample_cpp_framework_gamequest_quest_mission" --c
 start_role api-a "$BIN_DIR/sample_cpp_framework_gamequest_game_api" --config="$CONFIG_DIR/api-a.json"
 start_role api-b "$BIN_DIR/sample_cpp_framework_gamequest_game_api" --config="$CONFIG_DIR/api-b.json"
 
-wait_port mission-a-route "$GAMEQUEST_MISSION_A_ROUTE_ENDPOINT"
-wait_port mission-a-spot-route "$GAMEQUEST_MISSION_A_SPOT_ROUTE_ENDPOINT"
-wait_port mission-a-spot-router "$GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT"
-wait_port mission-a-spot-pub "$GAMEQUEST_MISSION_A_SPOT_ENDPOINT"
-wait_port mission-b-route "$GAMEQUEST_MISSION_B_ROUTE_ENDPOINT"
-wait_port mission-b-spot-route "$GAMEQUEST_MISSION_B_SPOT_ROUTE_ENDPOINT"
-wait_port mission-b-spot-router "$GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT"
-wait_port mission-b-spot-pub "$GAMEQUEST_MISSION_B_SPOT_ENDPOINT"
+wait_port mission-a-route "$GAMEQUEST_MISSION_A_SPOT_ROUTE_ENDPOINT"
+wait_port mission-b-route "$GAMEQUEST_MISSION_B_SPOT_ROUTE_ENDPOINT"
+wait_port api-a-route "$GAMEQUEST_API_A_SPOT_ROUTE"
+wait_port api-b-route "$GAMEQUEST_API_B_SPOT_ROUTE"
 wait_port api-a-stream "$GAMEQUEST_API_A_STREAM_ENDPOINT"
 wait_port api-a-http "$GAMEQUEST_API_A_HTTP_URL"
-wait_port api-a-spot-router "$GAMEQUEST_API_A_SPOT_ROUTER_ENDPOINT"
 wait_port api-b-stream "$GAMEQUEST_API_B_STREAM_ENDPOINT"
 wait_port api-b-http "$GAMEQUEST_API_B_HTTP_URL"
-wait_port api-b-spot-router "$GAMEQUEST_API_B_SPOT_ROUTER_ENDPOINT"
 
 echo "topology=ready"
 

@@ -1,4 +1,4 @@
-// RC-B5: codec registry 불일치 (peer 간) 시나리오를 검증한다.
+// RC-B5: 수신 codec이 없으면 `ProtocolError`로 끝난다 시나리오를 검증한다.
 import type { EchoRes } from '../../Shared/messages';
 import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';

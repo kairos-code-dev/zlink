@@ -1,4 +1,4 @@
-// SF-D2: 긴 장애 복구 — 재등록 우선과 owner lease renew 유예 시나리오를 검증한다.
+// SF-D2: 긴 장애 뒤 재등록한 provider만 유지한다 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, getStatus, postJson } from '../../../http-client';

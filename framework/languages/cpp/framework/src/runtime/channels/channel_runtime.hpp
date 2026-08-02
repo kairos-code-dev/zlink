@@ -59,7 +59,7 @@ class route_client_runtime_t
     {
         if (client._serializers == nullptr) {
             co_return result_t<TReply>::failure (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               "route client has no serializer registry");
         }
         auto request_value = std::make_shared<TRequest> (std::move (request));

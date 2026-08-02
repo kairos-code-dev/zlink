@@ -20,7 +20,8 @@ var scenarios = new (string Name, Func<Task> Run)[]
     ("RC-B2", () => RcB2ProtobufCodecScenario.RunAsync(server)),
     ("RC-B3", () => RcB3MessagePackCodecScenario.RunAsync(server)),
     ("RC-B4", () => RcB4CodecCoexistenceScenario.RunAsync(server)),
-    ("RC-B5", () => RcB5CodecMismatchScenario.RunAsync(codecRequester))
+    ("RC-B5", () => RcB5CodecMismatchScenario.RunAsync(codecRequester)),
+    ("RC-B6", () => RcB6JsonGoldenScenario.RunAsync(server))
 };
 
 foreach (var name in SelectedScenarioNames(options.Scenario, scenarios.Select(scenario => scenario.Name)))

@@ -1,4 +1,4 @@
-// SM-A6: spot lifecycle (initialize·close) 시나리오를 검증한다.
+// SM-A6: User Spot initialize와 close lifecycle을 실행한다 시나리오를 검증한다.
 import type { CloseSpotRes, CloseSpotReq, CreateSpotRes, CreateSpotReq, EvidenceWaitReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../../../http-client';

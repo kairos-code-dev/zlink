@@ -16,16 +16,14 @@ template <typename T> std::string public_error_type (const result_t<T> &result)
         return "TimeoutException";
     }
     switch (result.error_kind ()) {
-        case framework_error_kind_t::route_not_connected:
-            return "RouteNotConnected";
-        case framework_error_kind_t::request_target_not_found:
-            return "RequestTargetNotFound";
-        case framework_error_kind_t::request_rejected:
-            return "RequestRejected";
-        case framework_error_kind_t::request_failed:
-            return "RequestFailed";
-        case framework_error_kind_t::handler_not_found:
-            return "HandlerNotFound";
+        case framework_error_kind_t::unavailable:
+            return "Unavailable";
+        case framework_error_kind_t::not_found:
+            return "NotFound";
+        case framework_error_kind_t::rejected:
+            return "Rejected";
+        case framework_error_kind_t::internal_failure:
+            return "InternalFailure";
         default:
             return "UnexpectedFrameworkError";
     }

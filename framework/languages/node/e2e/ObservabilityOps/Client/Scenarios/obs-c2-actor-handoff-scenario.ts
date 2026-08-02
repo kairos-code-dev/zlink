@@ -1,4 +1,4 @@
-// OBS-C2: actor 핸드오프 + bound session 연속성 시나리오를 검증한다.
+// OBS-C2: Actor handoff 뒤 bound Session push를 유지한다 시나리오를 검증한다.
 import {
   ObservabilityOpsNames,
   assertBoundPush,

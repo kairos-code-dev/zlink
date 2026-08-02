@@ -10,6 +10,7 @@
 #include "runtime/mesh/mesh_node_runtime.hpp"
 
 #include <nlohmann/json.hpp>
+#include <zlink/Contracts/Eventing/poller.hpp>
 #include <zlink/Contracts/Messaging/operation_contracts.hpp>
 #include <zlink/Contracts/Sockets/stream_socket.hpp>
 
@@ -33,12 +34,14 @@
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <iostream>
+#include <limits>
 #include <mutex>
 #include <optional>
 #include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <stdexcept>
+#include <span>
 #include <thread>
 #include <utility>
 #include <unordered_set>
@@ -111,14 +114,14 @@ parsed_tcp_endpoint_t parse_tcp_endpoint (const std::string &endpoint)
 {
     constexpr std::string_view prefix = "tcp://";
     if (endpoint.rfind (prefix, 0) != 0) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "STREAM host currently supports tcp endpoints only");
     }
     const auto host_start = prefix.size ();
     const auto separator = endpoint.rfind (':');
     if (separator == std::string::npos || separator <= host_start
         || separator + 1 >= endpoint.size ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "STREAM tcp endpoint must be tcp://host:port");
     }
     return {endpoint.substr (host_start, separator - host_start), endpoint.substr (separator + 1)};
@@ -128,14 +131,14 @@ parsed_tcp_endpoint_t parse_tls_endpoint (const std::string &endpoint)
 {
     constexpr std::string_view prefix = "tls://";
     if (endpoint.rfind (prefix, 0) != 0) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "STREAM TLS host requires tls://host:port endpoint");
     }
     const auto host_start = prefix.size ();
     const auto separator = endpoint.rfind (':');
     if (separator == std::string::npos || separator <= host_start
         || separator + 1 >= endpoint.size ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "STREAM tls endpoint must be tls://host:port");
     }
     return {endpoint.substr (host_start, separator - host_start), endpoint.substr (separator + 1)};
@@ -145,7 +148,7 @@ parsed_tcp_endpoint_t parse_websocket_endpoint (const std::string &endpoint)
 {
     constexpr std::string_view prefix = "ws://";
     if (endpoint.rfind (prefix, 0) != 0) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "STREAM WebSocket host requires ws://host:port endpoint");
     }
     const auto authority_start = prefix.size ();
@@ -155,7 +158,7 @@ parsed_tcp_endpoint_t parse_websocket_endpoint (const std::string &endpoint)
     const auto separator = authority.rfind (':');
     if (separator == std::string::npos || separator == 0
         || separator + 1 >= authority.size ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "STREAM WebSocket endpoint must be ws://host:port[/path]");
     }
     return {authority.substr (0, separator), authority.substr (separator + 1)};
@@ -206,64 +209,45 @@ const char *stream_kind_name (stream_message_kind_t kind)
     return "unknown";
 }
 
-/* stream connector §5.3: Error payload는 항상 `{"code":"...","message":"..."}` JSON object다.
- * code는 framework error kind의 이름을 그대로 쓴다. */
+/* The stream error payload uses the stable public framework error name. */
 const char *stream_error_code (framework_error_kind_t kind)
 {
     switch (kind) {
-    case framework_error_kind_t::actor_route_not_found:
-        return "actor_route_not_found";
-    case framework_error_kind_t::actor_create_failed:
-        return "actor_create_failed";
-    case framework_error_kind_t::actor_already_exists:
-        return "actor_already_exists";
-    case framework_error_kind_t::actor_type_mismatch:
-        return "actor_type_mismatch";
-    case framework_error_kind_t::spot_create_failed:
-        return "spot_create_failed";
-    case framework_error_kind_t::spot_route_not_found:
-        return "spot_route_not_found";
-    case framework_error_kind_t::spot_type_mismatch:
-        return "spot_type_mismatch";
-    case framework_error_kind_t::actor_session_not_bound:
-        return "actor_session_not_bound";
-    case framework_error_kind_t::handler_not_found:
-        return "handler_not_found";
-    case framework_error_kind_t::route_handler_not_found:
-        return "route_handler_not_found";
-    case framework_error_kind_t::actor_dispatch_handler_not_found:
-        return "actor_dispatch_handler_not_found";
-    case framework_error_kind_t::payload_decode_failed:
-        return "payload_decode_failed";
-    case framework_error_kind_t::route_not_connected:
-        return "route_not_connected";
-    case framework_error_kind_t::request_target_not_found:
-        return "request_target_not_found";
-    case framework_error_kind_t::request_rejected:
-        return "request_rejected";
-    case framework_error_kind_t::request_protocol_error:
-        return "request_protocol_error";
-    case framework_error_kind_t::request_failed:
-        return "request_failed";
-    case framework_error_kind_t::worker_queue_full:
-        return "worker_queue_full";
-    case framework_error_kind_t::worker_timed_out:
-        return "worker_timed_out";
-    case framework_error_kind_t::worker_failed:
-        return "worker_failed";
-    case framework_error_kind_t::actor_location_stale:
-        return "actor_location_stale";
-    case framework_error_kind_t::actor_create_rejected:
-        return "actor_create_rejected";
+    case framework_error_kind_t::not_found:
+        return "not_found";
+    case framework_error_kind_t::already_exists:
+        return "already_exists";
+    case framework_error_kind_t::type_mismatch:
+        return "type_mismatch";
+    case framework_error_kind_t::not_configured:
+        return "not_configured";
+    case framework_error_kind_t::rejected:
+        return "rejected";
+    case framework_error_kind_t::unavailable:
+        return "unavailable";
+    case framework_error_kind_t::capacity_exceeded:
+        return "capacity_exceeded";
+    case framework_error_kind_t::deadline_exceeded:
+        return "deadline_exceeded";
+    case framework_error_kind_t::shutting_down:
+        return "shutting_down";
+    case framework_error_kind_t::protocol_error:
+        return "protocol_error";
+    case framework_error_kind_t::invalid_operation:
+        return "invalid_operation";
+    case framework_error_kind_t::data_lost:
+        return "data_lost";
+    case framework_error_kind_t::internal_failure:
+        return "internal_failure";
     }
-    return "request_failed";
+    return "internal_failure";
 }
 
 zlink::message_t stream_error_payload (const result_t<void> &error)
 {
     const auto *failure = error.error ();
     nlohmann::json payload;
-    payload["code"] = failure ? stream_error_code (failure->kind ()) : "request_failed";
+    payload["code"] = failure ? stream_error_code (failure->kind ()) : "internal_failure";
     payload["message"] = failure ? failure->what () : "STREAM request failed";
     return zlink::message_t::from (payload.dump ());
 }
@@ -316,6 +300,69 @@ zlink::message_t message_from_bytes (const std::vector<std::uint8_t> &bytes)
     return zlink::message_t::from (bytes);
 }
 
+constexpr std::size_t default_stream_max_frame_bytes = 16u * 1024u * 1024u;
+
+struct raw_core_stream_frame_t
+{
+    std::vector<std::uint8_t> header;
+    zlink::message_t payload;
+};
+
+class malformed_core_stream_frame_t final : public std::runtime_error
+{
+  public:
+    explicit malformed_core_stream_frame_t (const char *message) : std::runtime_error (message) {}
+};
+
+class core_stream_frame_assembler_t
+{
+  public:
+    void append (std::span<const std::byte> part)
+    {
+        if (part.empty ()) {
+            return;
+        }
+        const auto *begin = reinterpret_cast<const std::uint8_t *> (part.data ());
+        _bytes.insert (_bytes.end (), begin, begin + part.size ());
+    }
+
+    std::optional<raw_core_stream_frame_t> next ()
+    {
+        if (_bytes.size () < 6) {
+            return std::nullopt;
+        }
+
+        const auto header_size = (static_cast<std::size_t> (_bytes[0]) << 8)
+                                 | static_cast<std::size_t> (_bytes[1]);
+        const auto payload_size = (static_cast<std::size_t> (_bytes[2]) << 24)
+                                  | (static_cast<std::size_t> (_bytes[3]) << 16)
+                                  | (static_cast<std::size_t> (_bytes[4]) << 8)
+                                  | static_cast<std::size_t> (_bytes[5]);
+        if (header_size + payload_size > default_stream_max_frame_bytes - 6) {
+            throw malformed_core_stream_frame_t (
+              "STREAM frame exceeds the configured message size");
+        }
+        const auto frame_size = 6u + header_size + payload_size;
+        if (_bytes.size () < frame_size) {
+            return std::nullopt;
+        }
+
+        std::vector<std::uint8_t> header (_bytes.begin () + 6,
+                                          _bytes.begin () + 6 + header_size);
+        const auto payload_begin = reinterpret_cast<const std::byte *> (
+          _bytes.data () + 6 + header_size);
+        auto payload = zlink::message_t::from (
+          std::span<const std::byte> (payload_begin, payload_size));
+        _bytes.erase (_bytes.begin (), _bytes.begin () + frame_size);
+        return raw_core_stream_frame_t{std::move (header), std::move (payload)};
+    }
+
+    void reset () noexcept { _bytes.clear (); }
+
+  private:
+    std::vector<std::uint8_t> _bytes;
+};
+
 } // namespace
 
 class stream_host_service_t::listener_t
@@ -328,7 +375,8 @@ class stream_host_service_t::listener_t
                 std::atomic_bool &stop,
                 std::shared_ptr<std::atomic_bool> drain_flag,
                 std::shared_ptr<framework::detail::monitoring_runtime_state_t> monitoring,
-                std::shared_ptr<detail::mesh_node_runtime_t> mesh_node) :
+                std::shared_ptr<detail::mesh_node_runtime_t> mesh_node,
+                std::shared_ptr<inbound_dispatch_budget_t> inbound_budget) :
         _runtime (std::move (runtime)),
         _stream (std::move (stream)),
         _session_factory (std::move (session_factory)),
@@ -337,6 +385,7 @@ class stream_host_service_t::listener_t
         _drain_flag (std::move (drain_flag)),
         _monitoring (std::move (monitoring)),
         _mesh_node (std::move (mesh_node)),
+        _inbound_budget (std::move (inbound_budget)),
         _acceptor (_io)
     {
     }
@@ -639,12 +688,12 @@ class stream_host_service_t::listener_t
         std::unique_lock<std::mutex> lock (_ready_mutex);
         const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (30);
         if (!_ready_cv.wait_until (lock, deadline, [&] { return _started || _start_failed; })) {
-            throw framework_exception_t (framework_error_kind_t::request_failed,
+            throw framework_exception_t (framework_error_kind_t::internal_failure,
                                          "STREAM listener did not become ready: " + _stream.name);
         }
         if (_start_failed) {
             throw framework_exception_t (
-              framework_error_kind_t::request_failed,
+              framework_error_kind_t::internal_failure,
               _start_error.empty () ? "STREAM listener failed to start: " + _stream.name
                                     : _start_error);
         }
@@ -652,8 +701,12 @@ class stream_host_service_t::listener_t
 
     void request_stop () noexcept
     {
+        if (_inbound_budget) {
+            _inbound_budget->wake_waiters ();
+        }
         if (!stream_uses_tls (_stream) && !stream_uses_websocket (_stream)) {
             wake_native_accept ();
+            close_core_socket ();
             return;
         }
         asio::post (_io, [this] {
@@ -759,6 +812,103 @@ class stream_host_service_t::listener_t
         return rid.to_hex ();
     }
 
+    void close_core_socket () noexcept
+    {
+        std::lock_guard lock (_core_socket_mutex);
+        if (_core_socket) {
+            try {
+                (void) _core_socket->close ();
+            }
+            catch (...) {
+            }
+        }
+    }
+
+    result_t<void> send_core_frame (const zlink::routing_id_t &rid,
+                                    const stream_header_t &header,
+                                    const zlink::message_t &payload)
+    {
+        auto encoded = _runtime.encode_header (header);
+        if (!encoded) {
+            return result_t<void>::failure (
+              encoded.error_kind (),
+              encoded.error () ? encoded.error ()->what () : "STREAM header encode failed");
+        }
+
+        const auto payload_bytes = payload.to_bytes ();
+        if (encoded.value ().size () > std::numeric_limits<std::uint16_t>::max ()
+            || payload_bytes.size () > std::numeric_limits<std::uint32_t>::max ()) {
+            return result_t<void>::failure (
+              framework_error_kind_t::protocol_error,
+              "Core STREAM frame is too large");
+        }
+
+        std::vector<std::uint8_t> bytes;
+        bytes.reserve (6 + encoded.value ().size () + payload_bytes.size ());
+        const auto header_size = encoded.value ().size ();
+        bytes.push_back (static_cast<std::uint8_t> ((header_size >> 8) & 0xff));
+        bytes.push_back (static_cast<std::uint8_t> (header_size & 0xff));
+        bytes.push_back (
+          static_cast<std::uint8_t> ((payload_bytes.size () >> 24) & 0xff));
+        bytes.push_back (
+          static_cast<std::uint8_t> ((payload_bytes.size () >> 16) & 0xff));
+        bytes.push_back (
+          static_cast<std::uint8_t> ((payload_bytes.size () >> 8) & 0xff));
+        bytes.push_back (static_cast<std::uint8_t> (payload_bytes.size () & 0xff));
+        bytes.insert (bytes.end (), encoded.value ().begin (), encoded.value ().end ());
+        bytes.insert (bytes.end (), payload_bytes.begin (), payload_bytes.end ());
+        auto frame = zlink::message_t::from (bytes);
+
+        std::lock_guard socket_lock (_core_socket_mutex);
+        if (!_core_socket) {
+            return detail::boundary_failure<void> (
+              detail::boundary_error_t::disconnected,
+              "Core STREAM socket is stopped");
+        }
+        runtime::messaging::note_submit_attempt (
+          "stream:" + rid.to_hex (), _core_socket.get (), std::chrono::seconds (1),
+          _runtime.pending_limit ());
+        const bool sent = _core_socket->send (rid)
+                            .message (frame)
+                            .flags (static_cast<int> (zlink::send_flags_t::dontwait))
+                            .submit ();
+        trace_stream_host (
+          "core-write", _stream, header,
+          "rid=" + rid.to_hex () + " bytes=" + std::to_string (frame.size ())
+            + " result=" + (sent ? "success" : "rejected"));
+        return sent ? result_t<void>::success ()
+                    : result_t<void>::failure (
+                        framework_error_kind_t::capacity_exceeded,
+                        "Core STREAM packet send is backpressured");
+    }
+
+    void send_core_error_frame (const zlink::routing_id_t &rid,
+                                const stream_header_t &request_header,
+                                const result_t<void> &error) noexcept
+    {
+        if (request_header.kind () != stream_message_kind_t::request
+            || !request_header.request_seq ()) {
+            return;
+        }
+
+        stream_header_t error_header (stream_message_kind_t::error, stream_codec_t::json,
+                                      stream_header_flags_t::has_request_seq,
+                                      request_header.request_seq (), "", {});
+        if (auto correlation = request_header.correlation_id ()) {
+            error_header.with_correlation_id (std::string (*correlation));
+        }
+        auto send = detail::submit_one_way_task (
+          [this, rid, error_header = std::move (error_header), payload = stream_error_payload (error)] {
+              return send_core_frame (rid, error_header, payload);
+          });
+        detail::observe_task_completion (
+          send, [this, rid] (const result_t<void> &result) {
+              if (!result) {
+                  disconnect_core_peer (rid, "error_reply_failed");
+              }
+          });
+    }
+
     void run_core_stream ()
     {
         try {
@@ -774,17 +924,70 @@ class stream_host_service_t::listener_t
                 if (event.event == zlink::monitor_event::disconnected && event.routing_id)
                     close_core_session (*event.routing_id, "client_close");
             });
-            _core_socket->set_packet_handler (
-              [this] (const zlink::routing_id_t &rid,
-                      zlink::message_t &&header_message,
-                      zlink::message_t &&payload) {
-                  dispatch_core_packet (rid, std::move (header_message),
-                                        std::move (payload));
-              });
             _core_socket->bind (_stream.bind_endpoint);
             mark_started ();
+            zlink::poller_t poller;
+            poller.add (*_core_socket, zlink::poll_event_flag_t::pollin, 1);
+            zlink::received_t received;
             while (!_stop->load (std::memory_order_acquire)) {
-                std::this_thread::sleep_for (std::chrono::milliseconds (20));
+                if (_inbound_budget
+                    && !_inbound_budget->wait_for_application_capacity (
+                      [this] { return _stop->load (std::memory_order_acquire); })) {
+                    break;
+                }
+
+                zlink::poll_event_t event;
+                const size_t event_count =
+                  poller.wait (&event, 1, std::chrono::milliseconds{-1});
+                if (_stop->load (std::memory_order_acquire))
+                    break;
+                if (event_count == 0)
+                    continue;
+
+                const short revents = static_cast<short> (event.revents);
+                const short pollin =
+                  static_cast<short> (zlink::poll_event_flag_t::pollin);
+                const short pollerr =
+                  static_cast<short> (zlink::poll_event_flag_t::pollerr);
+                if ((revents & pollerr) != 0 && (revents & pollin) == 0)
+                    break;
+
+                // A different ingress transport can consume the remaining
+                // host budget while this poller is waiting. Recheck before
+                // receiving so a ready Core record is not admitted past HWM.
+                if (_inbound_budget
+                    && !_inbound_budget->wait_for_application_capacity (
+                      [this] { return _stop->load (std::memory_order_acquire); })) {
+                    break;
+                }
+
+                // POLLIN guarantees that a receive is worthwhile. DONTWAIT
+                // also makes a stale readiness event harmless: it yields
+                // ZLINK_RECV_NO_DATA and the loop re-arms the poller.
+                const int receive_result =
+                  _core_socket->recv (received, zlink::recv_flags_t::dontwait);
+                if (receive_result != 0) {
+                    received.close ();
+                    if (_stop->load (std::memory_order_acquire)
+                        || receive_result
+                             == static_cast<int> (zlink::recv_result_t::terminated)) {
+                        break;
+                    }
+                    if (receive_result
+                        == static_cast<int> (zlink::recv_result_t::no_data)) {
+                        continue;
+                    }
+                    throw std::runtime_error ("Framework STREAM recv failed");
+                }
+                process_core_received (received);
+                if (received.routing_id ()) {
+                    trace_stream_host (
+                      "core-recv", _stream, std::nullopt,
+                      "rid=" + received.routing_id ()->to_hex ()
+                        + " parts="
+                        + std::to_string (received.parts ().size ()));
+                }
+                received.close ();
             }
         }
         catch (const std::exception &error) {
@@ -795,11 +998,15 @@ class stream_host_service_t::listener_t
             _core_monitor->close ();
             _core_monitor.reset ();
         }
-        if (_core_socket) {
-            runtime::messaging::shutdown_submit_owner (_core_socket.get ());
-            (void) _core_socket->close ();
-            _core_socket.reset ();
+        {
+            std::lock_guard lock (_core_socket_mutex);
+            if (_core_socket) {
+                runtime::messaging::shutdown_submit_owner (_core_socket.get ());
+                (void) _core_socket->close ();
+                _core_socket.reset ();
+            }
         }
+        _core_frame_assemblers.clear ();
     }
 
     std::shared_ptr<core_session_t>
@@ -811,7 +1018,7 @@ class stream_host_service_t::listener_t
             return found->second;
         if (draining ()) {
             throw framework_exception_t (
-              framework_error_kind_t::request_rejected,
+              framework_error_kind_t::rejected,
               "STREAM node is draining and rejects a new session");
         }
 
@@ -827,13 +1034,13 @@ class stream_host_service_t::listener_t
           actors, [this, transport_connection] (const actor_ref_t &actor) {
               if (!_mesh_node) {
                   return result_t<void>::failure (
-                    framework_error_kind_t::actor_session_not_bound,
+                    framework_error_kind_t::not_configured,
                     "STREAM Actor dispatch MeshNode is not started");
               }
               const auto local_node = _mesh_node->routing_id ();
               if (!local_node) {
                   return result_t<void>::failure (
-                    framework_error_kind_t::actor_session_not_bound,
+                    framework_error_kind_t::not_configured,
                     "STREAM Actor dispatch MeshNode has no routing id");
               }
               if (local_node->to_hex ()
@@ -852,7 +1059,7 @@ class stream_host_service_t::listener_t
                 _mesh_node->native_node ().resolve_actor (native_actor);
               if (!resolved) {
                   return result_t<void>::failure (
-                    framework_error_kind_t::actor_session_not_bound,
+                    framework_error_kind_t::not_configured,
                     "Framework STREAM actor authority is unavailable");
               }
               const auto [error, binding] =
@@ -860,7 +1067,7 @@ class stream_host_service_t::listener_t
                   transport_connection, *resolved);
               if (error != runtime::stateful::stateful_error_t::none) {
                   return result_t<void>::failure (
-                    framework_error_kind_t::actor_session_not_bound,
+                    framework_error_kind_t::not_configured,
                     "Framework rejected STREAM actor binding");
               }
               (void) binding;
@@ -872,46 +1079,7 @@ class stream_host_service_t::listener_t
         _runtime.attach_transport_writer (
           stream, [this, rid] (const stream_header_t &header,
                               const zlink::message_t &payload) -> result_t<void> {
-              if (!_core_socket) {
-                  return detail::boundary_failure<void> (
-                    detail::boundary_error_t::disconnected,
-                    "Core STREAM socket is stopped");
-              }
-              auto encoded = _runtime.encode_header (header);
-              if (!encoded) {
-                  return result_t<void>::failure (
-                    encoded.error_kind (),
-                    encoded.error () ? encoded.error ()->what ()
-                                     : "STREAM header encode failed");
-              }
-              const auto payload_bytes = payload.to_bytes ();
-              const auto header_size = encoded.value ().size ();
-              std::vector<std::uint8_t> bytes;
-              bytes.reserve (6 + header_size + payload_bytes.size ());
-              bytes.push_back (static_cast<std::uint8_t> ((header_size >> 8) & 0xff));
-              bytes.push_back (static_cast<std::uint8_t> (header_size & 0xff));
-              bytes.push_back (
-                static_cast<std::uint8_t> ((payload_bytes.size () >> 24) & 0xff));
-              bytes.push_back (
-                static_cast<std::uint8_t> ((payload_bytes.size () >> 16) & 0xff));
-              bytes.push_back (
-                static_cast<std::uint8_t> ((payload_bytes.size () >> 8) & 0xff));
-              bytes.push_back (static_cast<std::uint8_t> (payload_bytes.size () & 0xff));
-              bytes.insert (bytes.end (), encoded.value ().begin (), encoded.value ().end ());
-              bytes.insert (bytes.end (), payload_bytes.begin (), payload_bytes.end ());
-              auto frame = zlink::message_t::from (bytes);
-              runtime::messaging::note_submit_attempt (
-                "stream:" + rid.to_hex (), _core_socket.get (),
-                std::chrono::seconds (1), _runtime.pending_limit ());
-              const bool sent =
-                _core_socket->send (rid)
-                  .message (frame)
-                  .flags (static_cast<int> (zlink::send_flags_t::dontwait))
-                  .submit ();
-              return sent ? result_t<void>::success ()
-                          : result_t<void>::failure (
-                              framework_error_kind_t::worker_queue_full,
-                              "Core STREAM packet send is backpressured", true);
+              return send_core_frame (rid, header, payload);
           });
         auto created = std::make_shared<core_session_t> (
           std::move (scope), session, actors, std::move (stream),
@@ -972,38 +1140,166 @@ class stream_host_service_t::listener_t
         current->scope.close ();
     }
 
-    void dispatch_core_packet (const zlink::routing_id_t &rid,
-                               zlink::message_t header_message,
-                               zlink::message_t payload)
+    void disconnect_core_peer (const zlink::routing_id_t &rid,
+                               const char *close_reason) noexcept
     {
         try {
-            auto current = get_or_create_core_session (rid);
-            std::lock_guard session_lock (current->gate);
-            auto decoded = _runtime.decode_header (header_message.to_bytes ());
-            if (!decoded) {
-                return;
+            close_core_session (rid, close_reason);
+            if (_core_socket) {
+                static_cast<zlink::socket_t &> (*_core_socket).disconnect_rid (rid);
             }
-            detail::session_actor_manager_access_t::set_codec (
-              *current->actors, decoded.value ().codec ());
-            auto header = decoded.value ();
-            if (header.kind () == stream_message_kind_t::control) {
+        }
+        catch (...) {
+        }
+    }
+
+    bool dispatch_core_frame (const zlink::routing_id_t &rid,
+                              raw_core_stream_frame_t frame)
+    {
+        auto decoded = _runtime.decode_header (frame.header);
+        if (!decoded) {
+            disconnect_core_peer (rid, "protocol_error");
+            return false;
+        }
+
+        std::shared_ptr<core_session_t> current;
+        try {
+            current = get_or_create_core_session (rid);
+        }
+        catch (...) {
+            disconnect_core_peer (rid, "protocol_error");
+            return false;
+        }
+
+        auto header = decoded.value ();
+        trace_stream_host (
+          "core-frame", _stream, header,
+          "rid=" + rid.to_hex ()
+            + " payload_bytes=" + std::to_string (frame.payload.size ()));
+        if (header.kind () == stream_message_kind_t::control) {
+            std::lock_guard session_lock (current->gate);
+            if (current->connected) {
+                detail::session_actor_manager_access_t::set_codec (
+                  *current->actors, header.codec ());
                 if (header.packet_name () == "$zlink.heartbeat.ping") {
                     _runtime.send_heartbeat_pong (current->stream);
                 }
-                return;
             }
-            auto dispatched = _runtime.dispatch_packet_async (
-              *current->session, current->stream, header, payload,
-              [this, current, header] (const result_t<void> &result) {
-                  if (!result) {
-                      report_packet_dispatch_error (header, result);
-                  }
-              });
-            if (!dispatched) {
-                report_packet_dispatch_error (header, dispatched);
+            return true;
+        }
+
+        if (_inbound_budget
+            && !_inbound_budget->wait_for_application_capacity (
+              [this] { return _stop->load (std::memory_order_acquire); })) {
+            return false;
+        }
+
+        const auto payload_bytes = static_cast<std::uint64_t> (frame.payload.size ());
+        if (_inbound_budget) {
+            _inbound_budget->received (payload_bytes);
+        }
+        bool submitted = false;
+        bool protocol_error = false;
+        try {
+            std::lock_guard session_lock (current->gate);
+            if (current->connected) {
+                trace_stream_host (
+                  "core-dispatch-submit", _stream, header,
+                  "rid=" + rid.to_hex ());
+                detail::session_actor_manager_access_t::set_codec (
+                  *current->actors, header.codec ());
+                auto dispatched = _runtime.dispatch_packet_async (
+                  *current->session, current->stream, header, frame.payload,
+                  [this, current, rid, header, inbound_budget = _inbound_budget,
+                   payload_bytes] (const result_t<void> &result) {
+                      trace_stream_host (
+                        "core-dispatch-complete", _stream, header,
+                        std::string ("result=")
+                          + (result ? "success" : "failure")
+                          + (result ? std::string ()
+                                    : " kind="
+                                        + std::to_string (
+                                            static_cast<int> (result.error_kind ()))
+                                        + " error="
+                                        + (result.error () ? result.error ()->what ()
+                                                           : "unknown")));
+                      if (inbound_budget) {
+                          inbound_budget->completed (payload_bytes, true);
+                      }
+                      if (!result) {
+                          report_packet_dispatch_error (header, result);
+                          send_core_error_frame (rid, header, result);
+                      }
+                  },
+                  [inbound_budget = _inbound_budget, payload_bytes] {
+                      if (inbound_budget) {
+                          inbound_budget->handler_started (payload_bytes);
+                      }
+                  },
+                  [this] { return _stop->load (std::memory_order_acquire); });
+                submitted = static_cast<bool> (dispatched);
+                if (!dispatched) {
+                    trace_stream_host (
+                      "core-dispatch-rejected", _stream, header,
+                      "rid=" + rid.to_hex () + " kind="
+                        + std::to_string (
+                            static_cast<int> (dispatched.error_kind ()))
+                        + " error="
+                        + (dispatched.error () ? dispatched.error ()->what ()
+                                                : "unknown"));
+                    report_packet_dispatch_error (header, dispatched);
+                    send_core_error_frame (rid, header, dispatched);
+                    if (dispatched.error_kind ()
+                          == framework_error_kind_t::protocol_error
+                        || dispatched.error_kind ()
+                             == framework_error_kind_t::protocol_error) {
+                        protocol_error = true;
+                    }
+                }
             }
         }
+        catch (...) {
+            if (_inbound_budget) {
+                _inbound_budget->completed (payload_bytes, false);
+            }
+            disconnect_core_peer (rid, "protocol_error");
+            return false;
+        }
+        if (!submitted && _inbound_budget) {
+            _inbound_budget->completed (payload_bytes, false);
+        }
+        if (protocol_error) {
+            disconnect_core_peer (rid, "protocol_error");
+            return false;
+        }
+        return true;
+    }
+
+    void process_core_received (zlink::received_t &received)
+    {
+        if (!received.routing_id ()) {
+            return;
+        }
+        const auto rid = *received.routing_id ();
+        auto &assembler = _core_frame_assemblers[core_session_key (rid)];
+        try {
+            for (const auto &part : received.parts ()) {
+                assembler.append (part.bytes ());
+                while (auto frame = assembler.next ()) {
+                    if (!dispatch_core_frame (rid, std::move (*frame))) {
+                        _core_frame_assemblers.erase (core_session_key (rid));
+                        return;
+                    }
+                }
+            }
+        }
+        catch (const malformed_core_stream_frame_t &) {
+            disconnect_core_peer (rid, "protocol_error");
+            _core_frame_assemblers.erase (core_session_key (rid));
+        }
         catch (const std::exception &) {
+            disconnect_core_peer (rid, "protocol_error");
+            _core_frame_assemblers.erase (core_session_key (rid));
         }
     }
 
@@ -1183,7 +1479,7 @@ class stream_host_service_t::listener_t
 #ifdef ZLINK_FRAMEWORK_STREAM_WITH_OPENSSL
         if (_stream.tls_certificate_file.empty () || _stream.tls_private_key_file.empty ()) {
             throw framework_exception_t (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               "STREAM TLS endpoint requires certificate and private key");
         }
         _tls_context.emplace (ssl::context::tls_server);
@@ -1197,7 +1493,7 @@ class stream_host_service_t::listener_t
             _tls_context->set_verify_mode (ssl::verify_none);
         }
 #else
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "STREAM TLS support requires OpenSSL");
 #endif
     }
@@ -1375,12 +1671,12 @@ class stream_host_service_t::listener_t
         beast::flat_buffer buffer;
         socket.read (buffer);
         if (socket.got_text ()) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "STREAM WebSocket messages must be binary");
         }
         const auto size = buffer.size ();
         if (size < 6) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "STREAM WebSocket frame prefix is incomplete");
         }
         std::vector<std::uint8_t> bytes (size);
@@ -1391,7 +1687,7 @@ class stream_host_service_t::listener_t
                                   | (static_cast<std::size_t> (bytes[4]) << 8)
                                   | static_cast<std::size_t> (bytes[5]);
         if (bytes.size () != 6 + header_size + payload_size) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "STREAM WebSocket message size does not match its prefix");
         }
         std::vector<std::uint8_t> header_bytes (bytes.begin () + 6,
@@ -1682,6 +1978,11 @@ class stream_host_service_t::listener_t
                                     [this, connection] { close_connection (*connection); });
             flush_writes (*connection, stream, flushed, *write_mutex);
             while (!_stop->load (std::memory_order_acquire)) {
+                if (_inbound_budget
+                    && !_inbound_budget->wait_for_application_capacity (
+                      [this] { return _stop->load (std::memory_order_acquire); })) {
+                    break;
+                }
                 auto frame = read_frame (*connection);
                 if (frame.header.kind () == stream_message_kind_t::control) {
                     if (frame.header.packet_name () == "$zlink.heartbeat.pong") {
@@ -1696,18 +1997,38 @@ class stream_host_service_t::listener_t
                     }
                     continue;
                 }
-                liveness->record_application_inbound ();
-                detail::session_actor_manager_access_t::set_codec (session_actors,
-                                                                   frame.header.codec ());
-                trace_stream_host ("dispatch", _stream, frame.header);
-                if (auto dispatched =
-                      _runtime.dispatch_packet (session, stream, frame.header, frame.payload);
-                    !dispatched) {
-                    report_packet_dispatch_error (frame.header, dispatched);
-                    if (frame.header.kind () == stream_message_kind_t::request) {
-                        const std::lock_guard<std::mutex> lock (*write_mutex);
-                        write_error_frame (*connection, frame.header, dispatched);
+                const auto payload_bytes = static_cast<std::uint64_t> (frame.payload.size ());
+                if (_inbound_budget) {
+                    _inbound_budget->received (payload_bytes);
+                }
+                bool handler_started = false;
+                try {
+                    detail::session_actor_manager_access_t::set_codec (
+                      session_actors, frame.header.codec ());
+                    if (_inbound_budget) {
+                        _inbound_budget->handler_started (payload_bytes);
+                        handler_started = true;
                     }
+                    liveness->record_application_inbound ();
+                    trace_stream_host ("dispatch", _stream, frame.header);
+                    if (auto dispatched =
+                          _runtime.dispatch_packet (session, stream, frame.header, frame.payload);
+                        !dispatched) {
+                        report_packet_dispatch_error (frame.header, dispatched);
+                        if (frame.header.kind () == stream_message_kind_t::request) {
+                            const std::lock_guard<std::mutex> lock (*write_mutex);
+                            write_error_frame (*connection, frame.header, dispatched);
+                        }
+                    }
+                }
+                catch (...) {
+                    if (_inbound_budget) {
+                        _inbound_budget->completed (payload_bytes, handler_started);
+                    }
+                    throw;
+                }
+                if (_inbound_budget) {
+                    _inbound_budget->completed (payload_bytes, handler_started);
                 }
                 flush_writes (*connection, stream, flushed, *write_mutex);
             }
@@ -1841,6 +2162,11 @@ class stream_host_service_t::listener_t
                                     [this, connection] { close_connection (*connection); });
             flush_writes_native (*connection, stream, flushed, *write_mutex);
             while (!_stop->load (std::memory_order_acquire)) {
+                if (_inbound_budget
+                    && !_inbound_budget->wait_for_application_capacity (
+                      [this] { return _stop->load (std::memory_order_acquire); })) {
+                    break;
+                }
                 auto frame = read_frame_native (*connection);
                 if (frame.header.kind () == stream_message_kind_t::control) {
                     if (frame.header.packet_name () == "$zlink.heartbeat.pong") {
@@ -1855,18 +2181,38 @@ class stream_host_service_t::listener_t
                     }
                     continue;
                 }
-                liveness->record_application_inbound ();
-                detail::session_actor_manager_access_t::set_codec (session_actors,
-                                                                   frame.header.codec ());
-                trace_stream_host ("dispatch", _stream, frame.header);
-                if (auto dispatched =
-                      _runtime.dispatch_packet (session, stream, frame.header, frame.payload);
-                    !dispatched) {
-                    report_packet_dispatch_error (frame.header, dispatched);
-                    if (frame.header.kind () == stream_message_kind_t::request) {
-                        const std::lock_guard<std::mutex> lock (*write_mutex);
-                        write_error_frame_native (*connection, frame.header, dispatched);
+                const auto payload_bytes = static_cast<std::uint64_t> (frame.payload.size ());
+                if (_inbound_budget) {
+                    _inbound_budget->received (payload_bytes);
+                }
+                bool handler_started = false;
+                try {
+                    detail::session_actor_manager_access_t::set_codec (
+                      session_actors, frame.header.codec ());
+                    if (_inbound_budget) {
+                        _inbound_budget->handler_started (payload_bytes);
+                        handler_started = true;
                     }
+                    liveness->record_application_inbound ();
+                    trace_stream_host ("dispatch", _stream, frame.header);
+                    if (auto dispatched = _runtime.dispatch_packet (
+                          session, stream, frame.header, frame.payload);
+                        !dispatched) {
+                        report_packet_dispatch_error (frame.header, dispatched);
+                        if (frame.header.kind () == stream_message_kind_t::request) {
+                            const std::lock_guard<std::mutex> lock (*write_mutex);
+                            write_error_frame_native (*connection, frame.header, dispatched);
+                        }
+                    }
+                }
+                catch (...) {
+                    if (_inbound_budget) {
+                        _inbound_budget->completed (payload_bytes, handler_started);
+                    }
+                    throw;
+                }
+                if (_inbound_budget) {
+                    _inbound_budget->completed (payload_bytes, handler_started);
                 }
                 flush_writes_native (*connection, stream, flushed, *write_mutex);
             }
@@ -1956,6 +2302,7 @@ class stream_host_service_t::listener_t
     std::shared_ptr<std::atomic_bool> _drain_flag;
     std::shared_ptr<framework::detail::monitoring_runtime_state_t> _monitoring;
     std::shared_ptr<detail::mesh_node_runtime_t> _mesh_node;
+    std::shared_ptr<inbound_dispatch_budget_t> _inbound_budget;
     std::mutex _active_streams_mutex;
     std::vector<active_session_t> _active_streams;
     asio::io_context _io;
@@ -1969,10 +2316,12 @@ class stream_host_service_t::listener_t
     std::mutex _sockets_mutex;
     std::unordered_set<tcp::socket *> _sockets;
     std::vector<std::weak_ptr<native_tcp_connection_t>> _native_connections;
+    std::mutex _core_socket_mutex;
     std::unique_ptr<zlink::stream_socket_t> _core_socket;
     std::unique_ptr<zlink::socket_monitor_t> _core_monitor;
     std::mutex _core_sessions_mutex;
     std::map<std::string, std::shared_ptr<core_session_t>> _core_sessions;
+    std::map<std::string, core_stream_frame_assembler_t> _core_frame_assemblers;
     std::mutex _workers_mutex;
     std::vector<std::thread> _workers;
     std::mutex _ready_mutex;
@@ -1986,11 +2335,13 @@ stream_host_service_t::stream_host_service_t (
   detail::stream_runtime_t runtime,
   std::vector<stream_snapshot_t> streams,
   std::map<std::string, detail::stream_session_factory_t> session_factories,
-  std::shared_ptr<detail::mesh_node_runtime_t> mesh_node) :
+  std::shared_ptr<detail::mesh_node_runtime_t> mesh_node,
+  std::shared_ptr<inbound_dispatch_budget_t> inbound_budget) :
     _runtime (std::move (runtime)),
     _streams (std::move (streams)),
     _session_factories (std::move (session_factories)),
-    _mesh_node (std::move (mesh_node))
+    _mesh_node (std::move (mesh_node)),
+    _inbound_budget (std::move (inbound_budget))
 {
 }
 
@@ -2007,7 +2358,8 @@ void stream_host_service_t::start (service_provider_t &services)
         }
         auto listener =
           std::make_unique<listener_t> (_runtime, stream, factory->second, services, _stop,
-                                        _drain_flag, _monitoring, _mesh_node);
+                                        _drain_flag, _monitoring, _mesh_node,
+                                        _inbound_budget);
         auto *raw = listener.get ();
         _listeners.push_back (std::move (listener));
         _threads.emplace_back ([raw] { raw->run (); });

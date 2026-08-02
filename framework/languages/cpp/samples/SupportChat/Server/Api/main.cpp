@@ -102,7 +102,7 @@ class open_conversation_api_handler_t
             .submit ();
         if (created.state == spot_create_state_t::rejected || !created.reply) {
             throw framework_exception_t (
-              framework_error_kind_t::request_rejected,
+              framework_error_kind_t::rejected,
               "SupportChat conversation creation returned no state");
         }
         const auto response = created.reply->decode<conversation_create_res_t> ();

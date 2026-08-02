@@ -8,15 +8,24 @@ namespace RuntimeMonitoring.Client.Scenarios;
 
 internal static class MonA4AvailabilityTransitionScenario
 {
-    public static async Task RunAsync(ClientOptions options)
+    public static async Task RunPlannedAsync(ClientOptions options)
     {
         using var observer = ZLinkHttpClient.Create(options.ServiceUrl)
             .Timeout(TimeSpan.FromSeconds(35))
             .Build();
 
         await VerifyPlannedRemovalAsync(options, observer);
+        Console.WriteLine("scenario MON-A4A passed");
+    }
+
+    public static async Task RunCrashAsync(ClientOptions options)
+    {
+        using var observer = ZLinkHttpClient.Create(options.ServiceUrl)
+            .Timeout(TimeSpan.FromSeconds(35))
+            .Build();
+
         await VerifyCrashRecoveryAsync(options, observer);
-        Console.WriteLine("scenario MON-A4 passed");
+        Console.WriteLine("scenario MON-A4B passed");
     }
 
     private static async Task VerifyPlannedRemovalAsync(

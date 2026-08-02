@@ -1,28 +1,46 @@
 # .NET Framework spec gap audit와 수정 ledger
 
-> 상태: Phase A (`.NET Framework` spec gap) 부분 완료. 최신 Codex 검증에서 source build,
-> `InboundDispatchOptionsTests` 16/16, 전체 solution test 1890/1890, package contract·clean
-> consumer gate가 통과했고 native Core는 11.1.0을 유지한다. 다만 reconnect lifetime contract,
-> RouteMesh mailbox Application HWM의 process E2E 미검증, 공통 E2E의 미구현·부분·process 미검증 행과
-> 독립 최종 audit이 남아 있다. Phase B (common sample
-> gap)는 Phase A 완료 gate를 통과하기 전에는 시작하지 않는다.
+> 상태: 2026-08-03 07:17 KST live snapshot 기준 Phase A (`.NET Framework` spec gap) 부분 완료다.
+> 마지막 runtime gate에서는 `InboundDispatchOptionsTests` 16/16, 전체 solution test 1890/1890,
+> package contract·clean consumer gate가 통과했고 native Core는 11.1.0을 유지했다. 그 뒤 현재
+> working tree에 Config 2·4·7·8·11·12의 E2E source·selector·runner 변경이 추가되어 관련 build와
+> 좁은 regression은 통과했지만, 이 변경을 사용한 actual process E2E log는 아직 없다. reconnect
+> lifetime contract, Config 14와 공통 E2E의 process evidence, 중앙 matrix, 독립 최종 audit도 남아 있다.
+> Phase B (common sample gap)는 Phase A 완료 gate를 통과하기 전에는 시작하지 않는다.
 >
 >
 > 작업 시작 기준: `9efee01aa39ace3db8e0f50c46ba9c12864f2cc2`와 2026-08-02 working tree.
-> 이번 scoped commit은 `095dbdb2dc8ac1b752d07d32992118b6fffb10a6`이며
-> `origin/agent/framework-contract-runtime-update`와 동일하다. 기준점과 working-tree manifest는
+> 마지막 .NET runtime scoped commit은 `095dbdb2dc8ac1b752d07d32992118b6fffb10a6`이며,
+> 현재 branch `HEAD`와 `origin/agent/framework-contract-runtime-update`는
+> `ee1dbccbb5ba72a9defc4158206b4fd23fa36c62`에서 일치한다. 기준점과 working-tree manifest는
 > [`log/20260802-092859-ledger-review.ko.md`](log/20260802-092859-ledger-review.ko.md)에 기록하고, 기존
 > Phase A 실행 결과는 [`log/20260802-120542-phase-a-verification.ko.md`](log/20260802-120542-phase-a-verification.ko.md),
 > 최신 poller/HWM 수정과 Codex 검증 결과는
 > [`log/20260802-184053-poller-receive-progress.ko.md`](log/20260802-184053-poller-receive-progress.ko.md)에 기록한다.
+> 현재 E2E working tree와 이 문서의 새 상태 판정은
+> [`log/20260803-071702-current-progress.ko.md`](log/20260803-071702-current-progress.ko.md)에 기록한다.
 >
 > 범위: `.NET` server framework. HTTP client와 client용 Stream Connector는 공통 server 계약이
 > 직접 요구하는 연결 지점만 포함한다.
 
+## 현재 진행 snapshot (2026-08-03)
+
+마지막 green runtime·package gate와 현재 E2E 작업을 분리해 판정한다. 현재 `.NET` production
+source와 package 경로에는 추가 dirty 변경이 없으므로, 마지막 runtime gate는 해당 범위에서 유효하다.
+반면 E2E source와 runner 변경은 마지막 process 결과 뒤에 들어왔으므로 새 process log가 생기기 전에는
+완료 증거로 사용하지 않는다.
+
+| 범위 | 현재 상태 | 다음 조건 |
+|---|---|---|
+| Runtime·contract·package | 마지막 기록 기준 UnitTests `1431/1431`, solution `1890/1890`, ContractTests `76/76`, package verifier exit 0. | reconnect lifetime contract와 target OS 실행 증거를 별도로 닫는다. |
+| E2E source·selector·runner | Config 2·4·7·8·11·12에 source 또는 selector 변경이 있고, 관련 project build와 좁은 regression이 통과했다. | feature-map 상태를 source 상태와 맞추고 actual process 결과를 수집한다. |
+| Config 14 | `InstanceSpot/run_e2e.sh`는 feature-map만 확인하고 exit 2로 종료한다. role server와 client는 없다. | process fixture, role server, client와 36개 scenario evidence를 추가한다. |
+| Phase A 완료 | 미완료. 현재 변경을 사용한 process E2E와 독립 final audit이 없다. | A-G6, A-G7 조건을 모두 통과하기 전에는 Phase B를 시작하지 않는다. |
+
 ## 공통 실행 규칙 — 네 ledger 동시 진행
 
 이 문서의 .NET 작업은 C++, Java/Kotlin, Node.js 작업과 동시에 진행한다. 현재 시스템 시각
-`2026-08-02 12:05 KST (+09:00)` 기준 마감은 `2026-08-03 10:00 KST (+09:00)`이다. 마감 시점에
+`2026-08-03 07:17 KST (+09:00)` 기준 마감은 `2026-08-03 10:00 KST (+09:00)`이다. 마감 시점에
 완료하지 못한 항목은 완료로 표시하지 않고, 현재 조건과 blocker를 기록한 뒤 다음 결정을 기다린다.
 
 이 절에서 고정하는 것은 작업 간 경계, 하위 layer bug 처리, CPU·마감·log 위치처럼 지켜야 하는
@@ -333,6 +351,7 @@ Phase A의 과거 evidence이며, 현재 `HEAD`의 완료 증거로 다시 사�
 | 2026-08-02 최신 `verify_packaged_contract.sh` | exit 0 | 9개 NuGet package의 assembly manifest, dependency, clean consumer와 standalone HTTP package consumer를 통과했다. `Systems.Zlink` package는 11.1.2이고 package 내 native Core는 11.1.0이다. public API snapshot hash는 `399d5e99932d10574db163537bf6858f49a221331512358f06b2140c083e549a`다. |
 | 2026-08-02 `LocationMessaging:RM-A2` process E2E | `LocationMessaging PASS`, `total PASS`, exit 0, 15초 | aggregate runner로 실행했다. log는 `framework/languages/dotnet/e2e/LocationMessaging/logs/20260802-120542-77932/`에 있다. |
 | 2026-08-02 Config 12·14 aggregate guard | 두 runner 모두 exit 2 | Config 12는 `CH-E2E-03`, `CH-E2E-08`, `CH-REG-02`, `CH-REG-05`가 없고, Config 14는 process fixture·role server·client evidence가 없어 fail-closed 된다. |
+| 2026-08-03 current E2E worktree check | 변경된 E2E project build는 warning 0/error 0, 관련 sample regression은 `3/3`, `1/1`, `1/1`, 변경 runner `bash -n`은 exit 0 | Config 2·4·7·8·11·12의 source·selector·runner 진행만 확인했다. 현재 변경을 사용한 actual process E2E는 실행하지 않았으며 상세 상태는 [`current progress log`](log/20260803-071702-current-progress.ko.md)에 둔다. |
 | 2026-08-02 `git diff --check` | 통과 | 현재 변경의 whitespace 오류가 없다. |
 
 최신 Phase A 실행 세부 사항은 [`log/20260802-120542-phase-a-verification.ko.md`](log/20260802-120542-phase-a-verification.ko.md)에,
@@ -1040,18 +1059,19 @@ handler capability를 요구한다. 현재 `framework/languages/dotnet/e2e/Insta
 
 #### DN-E2E-IMP-002 — aggregate runner의 Config 12·Config 14 실행 누락
 
-**현재 판정: aggregate entry와 fail-closed guard는 수정 완료, process implementation은 미완료.**
+**현재 판정: Config 12 aggregate source는 현재 working tree에서 확장되었고, Config 14는 fail-closed 상태다. 두 Config의 현재 process evidence는 미완료.**
 
 `framework/languages/dotnet/e2e/run_e2e_all.sh`의 `CONFIGS`에는 `ChannelEgressRouting`과
 `InstanceSpot`이 포함되어 있고 `RegressionTests.EveryCommonE2EConfigHasAnExplicitAggregateRunnerEntry`가
-Config 1~14의 feature-map·runner·aggregate entry를 검사한다. 그러나 Config 12와 Config 14의 `all`은
-각각 exit 2로 fail-closed 된다. Config 12에는 `CH-E2E-03`, `CH-E2E-08`, `CH-REG-02`, `CH-REG-05`가
-없고, Config 14에는 process fixture·role server·client evidence가 없다.
+Config 1~14의 feature-map·runner·aggregate entry를 검사한다. 현재 dirty 변경에서는 Config 12 runner가
+`CH-E2E-04A/B/C`, `CH-E2E-07A/B/C`와 기존 누락 ID를 aggregate 목록에 넣었지만 `all`을 다시 실행하지
+않았다. Config 14는 여전히 process fixture·role server·client가 없어 `run_e2e.sh all`이 exit 2로
+fail-closed 된다.
 
 **수정 목록**
 
-1. Config 12의 누락 selector와 Config 14의 role process fixture를 구현한다.
-2. 실행하지 못한 구성은 현재처럼 성공으로 세지 않고, config·scenario ID·누락 이유를 결과에 남긴다.
+1. 현재 Config 12 변경을 실제 process에서 실행해 selector별 terminal·role evidence를 수집하고 feature-map을 갱신한다. Config 14의 role process fixture도 구현한다.
+2. 실행하지 못한 구성은 성공으로 세지 않고, config·scenario ID·누락 이유를 결과에 남긴다.
 3. scenario ID와 role endpoint까지 검사하는 중앙 manifest gate를 추가한다.
 
 #### DN-E2E-IMP-003 — 공통 scenario ID와 .NET selector·feature-map 분할 불일치
@@ -1065,19 +1085,20 @@ missing, unknown ID를 검사한다. `SM-G5A`, `SM-G5B`, `PS-D7A`~`PS-E2C`, `MON
 
 | Config | 현재 남은 process gap |
 |---|---|
-| 2 SpotService | `SM-G5A`·`SM-G5B`의 독립 selector와 actual-process evidence |
+| 2 SpotService | 독립 selector source는 현재 working tree에 연결되었고 `SM-G5A`·`SM-G5B` feature-map은 여전히 미구현이다. actual-process evidence가 없다. |
 | 3 PubSub | automatic fanout, liveness와 observer matrix의 process evidence |
-| 7 RuntimeMonitoring | split selector와 role server evidence |
+| 7 RuntimeMonitoring | `MON-A4A/B`·`MON-D1A/B` split selector source는 현재 working tree에 연결되었다. role server와 actual-process evidence가 없다. |
 | 10 SpotActorTransfer | `ST-E1B`·`ST-E1C`·`ST-F3A`의 exact selector와 process evidence |
-| 11 ObservabilityOps | `OBS-C9A`·`OBS-C9B`의 topology별 process evidence |
-| 12 ChannelEgressRouting | split selector, role server와 central runner 연결 |
+| 11 ObservabilityOps | `OBS-C9A`·`OBS-C9B` split selector와 readiness runner source는 연결되었다. topology별 process evidence가 없다. |
+| 12 ChannelEgressRouting | split selector와 aggregate 목록 source는 현재 working tree에 연결되었다. 현재 변경 기준 `all` 실행과 role-server evidence가 없다. |
 
 **수정 목록**
 
 1. 공통 문서와 feature-map의 split ID inventory는 현재 regression으로 고정되어 있으므로 다시 누락으로
    표시하지 않는다.
 2. `Client/Program.cs`, scenario dispatch와 `run_e2e.sh`가 같은 ID를 선택하도록 연결하고, aggregate
-   alias를 쓰는 경우 어떤 분할 ID를 포함하는지 명시한다.
+   alias를 쓰는 경우 어떤 분할 ID를 포함하는지 명시한다. 현재 working tree에서 Config 2·4·7·8·11·12의
+   일부 연결은 확인했지만 feature-map과 process 결과는 아직 갱신하지 않았다.
 3. ID가 source-only, partial 또는 diagnostic-only이면 `구현`으로 표시하지 않고 필요한 process evidence를
    추가한다.
 
@@ -1100,12 +1121,12 @@ capability가 public contract가 되어야 한다면 다른 언어 구현만으�
 
 #### DN-E2E-IMP-005 — Config 2 SpotService scenario와 현재 public 의미 불완전
 
-**판정: 확인.**
+**현재 판정: `SM-G5A`·`SM-G5B` selector source는 현재 working tree에 추가되었지만, feature-map과 actual process evidence는 미완료.**
 
 `SpotService/feature-map.ko.md`에는 `SM-A9`, `SM-A10`, `SM-A12`, `SM-A13`, `SM-B0A`, `SM-B10`,
 `SM-B11`, `SM-G5A`, `SM-G5B`가 현재 `미구현`으로 기록되어 있고, `SM-C6`은 result-free one-way
-publish 계약에 맞춘 `부분 구현`으로 기록되어 있다. Inventory는 존재하지만 각 항목의 role server,
-selector와 actual-process evidence가 없다.
+publish 계약에 맞춘 `부분 구현`으로 기록되어 있다. 현재 `SpotService/Client/Program.cs`와 runner에는
+`sm-g5a`·`sm-g5b` 경로가 있지만, 이 변경을 사용한 role server 실행과 actual-process evidence는 없다.
 
 **수정 목록**
 
@@ -1113,7 +1134,8 @@ selector와 actual-process evidence가 없다.
    cancellation의 client result와 server terminal evidence를 함께 남긴다.
 2. SM-C6은 제거된 publish result API를 되살리지 말고, 현재 one-way publish의 backpressure와 최종
    delivery 관찰 조건으로 시나리오를 다시 연결한다.
-3. feature-map에 이미 분리된 `SM-G5A`·`SM-G5B`를 exact client selector와 runner evidence에 연결한다.
+3. feature-map에 이미 분리된 `SM-G5A`·`SM-G5B`의 상태를 source와 맞춘 뒤, 각 selector의 role server
+   evidence와 placement assertion을 실제 process에서 수집한다.
 
 #### DN-E2E-IMP-006 — Config 3 automatic fanout·liveness·observer matrix의 process 검증 누락
 
@@ -1134,17 +1156,18 @@ descriptor discovery, liveness, snapshot/event coalescing, resync과 cancellatio
 
 #### DN-E2E-IMP-007 — Config 4 RC-B6 typed DTO process roundtrip 부재
 
-**판정: 확인.**
+**현재 판정: `RC-B6` client/server source와 selector는 현재 working tree에 추가되었지만, feature-map과 actual process evidence는 미완료.**
 
 `RegistrationCodec/feature-map.ko.md`의 `RC-B6`은 별도 process에서 default JSON으로 typed DTO를 왕복하되
 message-specific codec registration을 사용하지 않는 동작을 요구한다. 현재 map은 이를 `미구현`으로
-기록한다.
+기록한다. 현재 working tree에는 `JsonGolden` typed message, role-server endpoint·handler와 client
+selector가 있으며 관련 Client·Server build는 통과했지만 actual process log는 없다.
 
 **수정 목록**
 
-1. role server와 client를 분리한 RC-B6 process scenario를 추가한다.
-2. DTO roundtrip, unknown/non-JSON rejection과 default serializer 사용을 evidence로 확인한다.
-3. 메시지별 codec 등록 함수나 호출부 우회는 추가하지 않는다.
+1. 현재 RC-B6 source를 별도 process에서 실행하고 DTO roundtrip, unknown/non-JSON rejection과 default
+   serializer 사용을 evidence로 확인한다.
+2. 메시지별 codec 등록 함수나 호출부 우회는 추가하지 않는다.
 
 #### DN-E2E-IMP-008 — Config 5 ResilienceLifecycle 후반 matrix의 runner 제외
 
@@ -1182,32 +1205,33 @@ cancellation/buffer lifetime와 atomic capacity vector 조건은 누락되어 �
 
 #### DN-E2E-IMP-010 — Config 7 monitoring split과 placement 관찰 조건 불일치
 
-**판정: 확인.**
+**현재 판정: split selector source는 현재 working tree에 연결되었지만, role server와 actual process evidence는 미완료.**
 
-공통 Config 7의 `MON-A4A/B`, `MON-D1A/B`는 feature-map에 존재하고 aggregate scenario class도 있다.
-현재 없는 것은 각 split ID의 독립 selector와 fresh role server/process evidence다. `MON-A6`의 placement
+공통 Config 7의 `MON-A4A/B`, `MON-D1A/B`는 feature-map에 존재하고 현재 client·runner에도 각 split ID가
+연결되어 있다. 다만 fresh role server/process evidence가 없다. `MON-A6`의 placement
 snapshot·reservation/commit/release·capacity reject process evidence도 없다. `MON-B1/B2`는 publish
 monitoring 부재와 local/zero target 일부만 확인하며 blocked+normal target, rollback/no-retry와 message-flow
 trace 조건을 확인하지 않는다.
 
 **수정 목록**
 
-1. 이미 존재하는 split ID를 exact selector와 role server 실행 경로에 연결한다.
+1. 현재 연결된 split ID를 실제 role server 실행 경로에서 실행하고 fresh evidence를 기록한다.
 2. placement role server가 snapshot, reservation, commit/release와 capacity reject를 실제로 관찰하게
    한다.
 3. B1/B2에 blocked·normal target, rollback/no-retry와 message-flow trace를 포함한 terminal assertion을
    추가한다.
 
-#### DN-E2E-IMP-011 — Config 8 execution-turn 후반 selector 부재
+#### DN-E2E-IMP-011 — Config 8 execution-turn 후반 selector와 process evidence
 
-**판정: 확인.**
+**현재 판정: 다섯 ID의 source·selector·runner 경로는 현재 working tree에 추가되었고 build/regression은 통과했지만, feature-map과 actual process evidence는 미완료.**
 
-`AutomaticTurnDispatch/Client/Program.cs`는 기존 TD-A1~D3, E1~E3, F1~F6, G1만 등록한다. 공통 Config 8의
-`TD-D4`, `TD-D5`, `TD-D6`, `TD-E2A`, `TD-F5A`가 selector·scenario dispatch에서 빠져 있다.
+`AutomaticTurnDispatch/Client/Program.cs`와 `run_e2e.sh`는 현재 `TD-D4`, `TD-D5`, `TD-D6`, `TD-E2A`,
+`TD-F5A`를 인식하고, client·Play·Session build와 관련 regression이 통과했다. 그러나
+`feature-map.ko.md`는 다섯 ID를 아직 `미구현`으로 기록하고 있으며, 새 변경을 사용한 process 실행 log가 없다.
 
 **수정 목록**
 
-1. 각 ID를 독립 selector로 등록하고 `all`에서 실제 실행한다.
+1. feature-map 상태를 source와 맞춘 뒤 각 ID를 독립 selector로 실제 실행하고 process evidence를 남긴다.
 2. PerActor async의 같은 actor 내부 blocking 범위, unsupported Yield의 pre-submit reject, same-gate
    self-await 검증, handler failure 뒤 deferred Join barrier 정리와 host shutdown 중 대기 종료를
    process evidence로 확인한다.
@@ -1235,36 +1259,37 @@ diagnostic-only로 분류되어 있다.
 
 #### DN-E2E-IMP-013 — Config 11 ObservabilityOps C9 split과 process evidence 부족
 
-**판정: 확인.**
+**현재 판정: `OBS-C9A/B` split selector와 readiness source는 현재 working tree에 연결되었지만, topology별 actual process evidence는 미완료.**
 
 공통 Config 11은 `OBS-C9A`(Automatic topology)와 `OBS-C9B`(Manual topology)로 분리되어 있고
-feature-map에도 두 ID가 존재한다. 다만 `Client/Program.cs`는 `OBS-C9`와 `OBS-C9-MANUAL` aggregate alias를
-사용한다. OBS-A5와 OBS-C1~C8, C10~C12도 source implemented·process unverified이며, C9는 source
-implemented·process 미검증이다.
+feature-map에도 두 ID가 존재한다. 현재 `Client/Program.cs`와 runner는 두 ID를 직접 선택하며 readiness
+대기를 추가했다. OBS-A5와 OBS-C1~C8, C10~C12도 source implemented·process unverified이며, C9는
+source implemented·process 미검증이다.
 
 **수정 목록**
 
-1. C9A/C9B와 기존 aggregate alias의 관계를 명시하고 exact ID를 selector와 runner 결과에 연결한다.
+1. 현재 C9A/C9B 연결을 실제 role process에서 실행하고 aggregate 결과와 분리된 evidence를 기록한다.
 2. readiness gate, concurrent shutdown과 각 observability output을 실제 role process에서 수집하고
    source-only 상태를 `구현`으로 올리지 않는다.
 
 #### DN-E2E-IMP-014 — Config 12 ChannelEgressRouting split selector와 partial assertion 부족
 
-**현재 판정: split selector·process assertion 미완료. Aggregate entry는 등록되었지만 `all`은 fail-closed다.**
+**현재 판정: split selector와 aggregate source는 현재 working tree에 연결되었지만, current process assertion은 미완료.**
 
 공통 Config 12는 `CH-E2E-04A/B/C`와 `CH-E2E-07A/B/C`를 요구하고 feature-map에도 split ID가 존재한다.
-하지만 client selector는 각각 aggregate `CH-E2E-04`, `CH-E2E-07`만 사용한다. Accepted drain/shutdown/new RID restart, protocol
+현재 client selector는 split ID를 직접 사용하고 runner의 aggregate 목록에도 이를 포함한다. Accepted drain/shutdown/new RID restart, protocol
 unsolicited injection, known-but-not-ready `Unavailable`, STREAM, drain, timeout/cancel/disconnect,
 generation/late reply와 topology count assertion도 부분 상태다. 중앙 runner에는 Config 12 entry가 있지만,
-누락 selector가 있어 `ChannelEgressRouting/run_e2e.sh all`은 exit 2로 닫힌다.
+현재 변경 이후 `ChannelEgressRouting/run_e2e.sh all`을 다시 실행하지 않았으므로 process 통과를 판정할 수 없다.
 
 **수정 목록**
 
-1. 이미 존재하는 split ID를 exact selector와 scenario file에 연결하고 aggregate alias가 결과에서 숨기지 않도록 한다.
+1. 현재 연결된 split ID를 실제로 실행하고 aggregate alias가 결과에서 숨기지 않도록 process evidence를
+   기록한다.
 2. 각 partial row에 role server endpoint, client-visible result, route/ACK/generation/terminal evidence를
    추가한다. protocol unsolicited injection은 raw frame 우회가 아니라 허용된 test transport 경계에서
    검증한다.
-3. 모든 selector와 evidence가 준비된 뒤 Config 12 `all`을 exit 0으로 전환한다.
+3. 모든 selector와 evidence가 준비된 뒤 Config 12 `all`의 exit 0을 실제 실행으로 확인한다.
 
 #### DN-E2E-IMP-015 — Config 13 SubmitAdmission gate matrix의 부분 구현
 
@@ -1310,7 +1335,8 @@ host를 만들고 `AddZLinkFramework`, `IZLinkRouteMeshRuntime`, `IZLinkLocation
 
 여러 feature-map이 `부분`, `미구현`, `source 구현·process 미검증` 또는 `diagnostic_only`를 기록한다.
 `SpotActorTransfer/Client/Program.cs`는 다수 selector를 `excludedFromAll` 또는 diagnostic-only로 분류하고,
-`ChannelEgressRouting`과 `InstanceSpot`은 누락 evidence가 있을 때 aggregate runner가 exit 2를 반환한다.
+현재 `ChannelEgressRouting`은 split selector와 aggregate 목록을 확장했으며 `InstanceSpot`은 여전히
+evidence가 없어 exit 2를 반환한다. 현재 변경 이후 aggregate process 결과는 아직 없다.
 추가한 regression은 Config 1~14의 feature-map·runner·aggregate entry와 inventory를 검사하지만, 각
 scenario의 selector·scenario 파일·role endpoint·bounded terminal evidence까지 일대일로 검사하지 않는다.
 
@@ -1324,9 +1350,10 @@ scenario의 selector·scenario 파일·role endpoint·bounded terminal evidence�
 
 ## 6. 현재 충족 판정
 
-최신 live source와 실행 결과를 기준으로 source·contract·package·unit evidence와 process evidence를
-분리한다. `구현`은 source와 적합한 unit/contract gate가 통과했다는 뜻이고, `process 대기`는 실제 role
-process 경계에서 확인할 조건이 남았다는 뜻이다.
+마지막 runtime gate와 2026-08-03 현재 working tree를 함께 기준으로 삼되, source·contract·package·unit
+evidence와 process evidence를 분리한다. 현재 E2E 변경은 build와 좁은 regression까지 확인했으며
+actual process evidence로 승격하지 않았다. `구현`은 source와 적합한 unit/contract gate가 통과했다는
+뜻이고, `process 대기`는 실제 role process 경계에서 확인할 조건이 남았다는 뜻이다.
 
 | 범위 | 현재 증거 |
 |---|---|
@@ -1340,6 +1367,7 @@ process 경계에서 확인할 조건이 남았다는 뜻이다.
 | Automatic classic fanout | 전용 publisher descriptor, automatic subscriber connection과 discovery runtime이 존재한다. automatic process coverage는 E2E gap으로 유지한다. |
 | Framework error surface와 non-JSON content type | `ZLinkFrameworkErrorKind` contract, internal retry policy와 decode 전 content type 거부 test가 통과한다. |
 | DN-IMP-019~023 exact-interface shape | Location status, page request, retry advice, configuration exception constructor와 `ActorRef` parameter name을 source·package·contract test로 대조했고 `충족`이다. |
+| 현재 E2E 진행 | Config 2·4·7·8·11·12의 source·selector·runner 변경, 관련 build와 좁은 regression은 확인했다. | feature-map 갱신과 current process log가 없으므로 `process 대기`다. Config 14는 fail-closed다. |
 
 ## 7. 작업 순서
 

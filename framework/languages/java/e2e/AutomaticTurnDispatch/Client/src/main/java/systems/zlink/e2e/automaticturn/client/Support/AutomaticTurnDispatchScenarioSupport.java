@@ -559,14 +559,14 @@ public final class AutomaticTurnDispatchScenarioSupport {
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A)
             .timeout(REQUEST_TIMEOUT)
             .submit(Contracts.EnsureSpotRes.class).toCompletableFuture().join();
-        ensure(ownerSpot.equals(owner.spotRid()), "ATD-D2 owner spot mismatch");
+        ensure(ownerSpot.equals(owner.spotId()), "ATD-D2 owner spot mismatch");
         ensure(Contracts.PLAY_NODE_A.equals(owner.nodeRid()), "ATD-D2 owner node mismatch");
         Contracts.EnsureSpotRes target = connector
             .request(new Contracts.EnsureSpotReq(targetSpot))
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_B)
             .timeout(REQUEST_TIMEOUT)
             .submit(Contracts.EnsureSpotRes.class).toCompletableFuture().join();
-        ensure(targetSpot.equals(target.spotRid()), "ATD-D2 target spot mismatch");
+        ensure(targetSpot.equals(target.spotId()), "ATD-D2 target spot mismatch");
         ensure(Contracts.PLAY_NODE_B.equals(target.nodeRid()), "ATD-D2 target node mismatch");
 
         Contracts.ScenarioRes reply = connector
@@ -614,7 +614,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_B)
             .timeout(REQUEST_TIMEOUT)
             .submit(Contracts.EnsureSpotRes.class).toCompletableFuture().join();
-        ensure(spotRid.equals(target.spotRid()), "ATD-D3 target spot mismatch");
+        ensure(spotRid.equals(target.spotId()), "ATD-D3 target spot mismatch");
         ensure(Contracts.PLAY_NODE_B.equals(target.nodeRid()), "ATD-D3 target node mismatch");
 
         Map<String, String> metadata = Map.of(
@@ -744,7 +744,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A)
             .timeout(REQUEST_TIMEOUT)
             .submit(Contracts.EnsureSpotRes.class).toCompletableFuture().join();
-        ensure(spotRid.equals(target.spotRid()), "ATD-E1 spot mismatch");
+        ensure(spotRid.equals(target.spotId()), "ATD-E1 spot mismatch");
         ensure(Contracts.PLAY_NODE_A.equals(target.nodeRid()), "ATD-E1 node mismatch");
 
         Map<String, String> metadata = Map.of(
@@ -789,7 +789,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A)
             .timeout(REQUEST_TIMEOUT)
             .submit(Contracts.EnsureSpotRes.class).toCompletableFuture().join();
-        ensure(spotRid.equals(target.spotRid()), "ATD-E2 spot mismatch");
+        ensure(spotRid.equals(target.spotId()), "ATD-E2 spot mismatch");
         ensure(Contracts.PLAY_NODE_A.equals(target.nodeRid()), "ATD-E2 node mismatch");
 
         Map<String, String> metadata = Map.of(
@@ -852,7 +852,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
             .submit(Contracts.AwaitShutdownRes.class).toCompletableFuture().join();
         ensure("atd.e3-shutdown-recovery".equals(result.operation()), "ATD-E3 recovery operation mismatch");
         ensure(requestId.equals(result.requestId()), "ATD-E3 recovery request mismatch");
-        ensure(spotRid.equals(result.spotRid()), "ATD-E3 recovery spot mismatch");
+        ensure(spotRid.equals(result.spotId()), "ATD-E3 recovery spot mismatch");
         assertOrder(options.playHttpEndpoint() + "/evidence", requestId, List.of(
             "probe-started",
             "probe-completed"));
@@ -865,7 +865,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A)
             .timeout(REQUEST_TIMEOUT)
             .submit(Contracts.EnsureSpotRes.class).toCompletableFuture().join();
-        ensure(Contracts.TARGET_SPOT.equals(playA.spotRid()), "readiness play-a spot mismatch");
+        ensure(Contracts.TARGET_SPOT.equals(playA.spotId()), "readiness play-a spot mismatch");
         ensure(Contracts.PLAY_NODE_A.equals(playA.nodeRid()), "readiness play-a node mismatch");
 
         String playBSpot = Contracts.TARGET_SPOT + "-readiness-b";
@@ -874,7 +874,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_B)
             .timeout(REQUEST_TIMEOUT)
             .submit(Contracts.EnsureSpotRes.class).toCompletableFuture().join();
-        ensure(playBSpot.equals(playB.spotRid()), "readiness play-b spot mismatch");
+        ensure(playBSpot.equals(playB.spotId()), "readiness play-b spot mismatch");
         ensure(Contracts.PLAY_NODE_B.equals(playB.nodeRid()), "readiness play-b node mismatch");
     }
 
@@ -915,7 +915,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A)
             .timeout(REQUEST_TIMEOUT)
             .submit(Contracts.EnsureSpotRes.class).toCompletableFuture().join();
-        ensure(spotRid.equals(ensured.spotRid()), "ensured spot mismatch: " + spotRid);
+        ensure(spotRid.equals(ensured.spotId()), "ensured spot mismatch: " + spotRid);
     }
 
     private void bindActors(

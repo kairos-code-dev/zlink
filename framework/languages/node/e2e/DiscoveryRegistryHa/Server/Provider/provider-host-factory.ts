@@ -3,17 +3,17 @@ import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import {
   ZLinkMessageFlowLogMode,
-  type ZLinkChannelRuntimeOptions,
+  type ZLinkRouteMeshRuntimeOptions,
   type ZLinkFrameworkRuntime
 } from '@zlink-systems/framework';
 import {
-  ZLINK_CHANNEL_RUNTIME_OPTIONS,
+  ZLINK_ROUTE_MESH_RUNTIME_OPTIONS,
   ZLINK_FRAMEWORK_RUNTIME,
   ZLinkModule,
   zlinkFramework
 } from '@zlink-systems/nestjs';
 import { ChannelNames, PacketNames } from '../../Shared/messages';
-import { createRedisLocationStore, storeFailureLocationOptions } from '../../Shared/location-store';
+import { configureStoreFailureLocationOptions, createRedisLocationStore } from '../../Shared/location-store';
 import type { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
 import { validateProviderOptions } from './Configuration/provider-options';
 import type { ProviderOptions } from './Configuration/provider-options';
@@ -30,7 +30,7 @@ export async function startProviderHost(): Promise<void> {
   const app = await NestFactory.createApplicationContext(provider.moduleType, { logger: false, abortOnError: false });
   const options = app.get(DISCOVERY_OPTIONS, { strict: false }) as ProviderOptions;
   const evidence = app.get(EvidenceStore, { strict: false });
-  const runtimeOptions = app.get(ZLINK_CHANNEL_RUNTIME_OPTIONS, { strict: false }) as ZLinkChannelRuntimeOptions;
+  const runtimeOptions = app.get(ZLINK_ROUTE_MESH_RUNTIME_OPTIONS, { strict: false }) as ZLinkRouteMeshRuntimeOptions;
   const frameworkRuntime = app.get(ZLINK_FRAMEWORK_RUNTIME, { strict: false }) as ZLinkFrameworkRuntime;
   const server = await startHttpServer(
     options.httpUrl,
@@ -70,11 +70,11 @@ function createProviderModule(): {
               .traceLabel(options.rid);
           locationStore = createRedisLocationStore(options);
           builder.addLocationStore(locationStore);
-          Object.assign(builder.configureLocations(), storeFailureLocationOptions());
+          configureStoreFailureLocationOptions(builder.configureLocations());
           const profile = builder.addRouteMesh(ChannelNames.profile)
             .listen(options.channelEndpoint)
             .routingId(options.rid);
-          profile.channelName(ChannelNames.profile)
+          profile.channel(ChannelNames.profile).server()
             .addRequestHandler(PacketNames.profileReq, ProfileRequestHandler);
           return builder.build();
         }

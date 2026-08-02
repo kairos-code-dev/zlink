@@ -375,7 +375,7 @@ class actor_ping_handler_t
     {
         auto actor_ref = co_await _directory.find (request.actor_id);
         if (!actor_ref) {
-            throw fw::framework_exception_t (fw::framework_error_kind_t::actor_route_not_found,
+            throw fw::framework_exception_t (fw::framework_error_kind_t::not_found,
                                              "player actor route was not found");
         }
         co_return co_await _actors.request_to_actor (*actor_ref, request)
@@ -411,7 +411,7 @@ class obs_session_t final : public fw::packet_stream_session_t
                                 const zlink::message_t &payload) override
     {
         if (dispatch.packet_name () != obs::obs_action_req_t::packet_name) {
-            throw fw::framework_exception_t (fw::framework_error_kind_t::handler_not_found,
+            throw fw::framework_exception_t (fw::framework_error_kind_t::not_found,
                                              "ObservabilityOps session has no handler for "
                                                + std::string (dispatch.packet_name ()));
         }

@@ -10,9 +10,10 @@ public final class PublisherRestartScenario {
     }
 
     public static void run(ScenarioContext context) {
+        context.processes().waitPublisherRow(false);
         var publisher = context.processes().startPublisher("publisher-baseline");
         try {
-            ScenarioAssert.sleep(500);
+            context.processes().waitPublisherRow(true);
             for (int sequence = 1; sequence <= 80; sequence++) {
                 context.publisher().publish(
                     "all",

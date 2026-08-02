@@ -215,13 +215,10 @@ class customer_gateway_session_t final : public packet_stream_session_t
         }
         auto bound = co_await actors.bind_or_get (actor.value ().ref ()).submit ();
         const auto actor_id = std::string (bound.actor_id ());
-        /* Join은 현재 Actor turn이 끝난 뒤 실행하도록 예약한다. 이어지는 relay는 같은 Actor의
-         * 순서 경계에서 join 뒤에 처리된다. */
-        bound.context ().join_entry_spot (request).defer ();
         auto current = actors.find (actor_id);
         if (!current) {
-            throw framework_exception_t (framework_error_kind_t::actor_route_not_found,
-                                         "joined customer actor route is not found");
+            throw framework_exception_t (framework_error_kind_t::not_found,
+                                         "bound customer actor route is not found");
         }
         auto reply =
           co_await current->relay_request (zlink::message_t::from_json (request)).submit ();
@@ -240,13 +237,13 @@ class customer_gateway_session_t final : public packet_stream_session_t
                                                 const std::string &packet_name)
     {
         if (_bound_actors.size () != 1) {
-            throw framework_exception_t (framework_error_kind_t::actor_route_not_found,
+            throw framework_exception_t (framework_error_kind_t::not_found,
                                          "single bound customer actor is required for "
                                            + packet_name);
         }
         auto actor = stream.actors ().find (*_bound_actors.begin ());
         if (!actor) {
-            throw framework_exception_t (framework_error_kind_t::actor_route_not_found,
+            throw framework_exception_t (framework_error_kind_t::not_found,
                                          "bound customer actor route is not found for "
                                            + packet_name);
         }
@@ -278,8 +275,11 @@ int main (int argc, char **argv)
         add_deliverydispatch_json_codecs (options.codecs ());
         add_deliverydispatch_location_store (options, topology);
         auto actor_mesh = options.add_route_mesh (sample_names_t::customer_actor_discovery);
+        actor_mesh.set_routing_id (zlink::routing_id_t::from (
+          sample_names_t::customer_gateway_route_node));
+        actor_mesh.set_object_role (object_role_t::server);
         actor_mesh.listen (topology.customer_spot_router_endpoint);
-        actor_mesh.channel_name (sample_names_t::customer_actor_discovery);
+        actor_mesh.channel_name (sample_names_t::customer_actor_discovery).server ();
         actor_mesh.add_entry_spot<customer_entry_spot_t> ([sessions_ptr] (
                                                             entry_spot_context_t context) {
               return std::make_shared<customer_entry_spot_t> (

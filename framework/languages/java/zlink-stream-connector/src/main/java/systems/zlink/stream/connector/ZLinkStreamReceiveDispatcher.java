@@ -155,33 +155,49 @@ final class ZLinkStreamReceiveDispatcher {
     private record RemoteErrorPayload(String code, String message) { }
 
     private void dispatchToHandlers(ZLinkStreamWireProtocol.Header header, byte[] payload) {
-        List<ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload>> registered =
-            List.copyOf(handlers.getOrDefault(header.name(), List.of()));
-        if (registered.isEmpty()) {
-            return;
-        }
+        ZLinkConnectorFlowContext.State flow = ZLinkConnectorFlowContext.inbound(
+            header.flowId(), header.flowOrigin());
+        ZLinkFlowOrigin flowOrigin = ZLinkFlowOrigin.fromWireValue(flow.flowOrigin());
+        ZLinkStreamMessage<ZLinkStreamEncodedPayload> message = new ZLinkStreamMessage<>(
+            header.name(),
+            new ZLinkStreamEncodedPayload(
+                header.name(),
+                Message.from(payload),
+                header.metadata(),
+                ZLinkStreamConnectorPayloadCodec.fromWireCodec(header.codec())),
+            header.metadata(),
+            flow.flowId(),
+            flowOrigin);
         java.util.function.Supplier<CompletionStage<Void>> dispatch = () -> {
+            List<ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload>> registered =
+                List.copyOf(handlers.getOrDefault(header.name(), List.of()));
+            if (registered.isEmpty()) {
+                message.payload().payload().close();
+                return CompletableFuture.completedFuture(null);
+            }
             CompletionStage<Void> completion = CompletableFuture.completedFuture(null);
-            ZLinkConnectorFlowContext.State flow = ZLinkConnectorFlowContext.inbound(
-                header.flowId(), header.flowOrigin());
             for (ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload> handler : registered) {
-                completion = completion.thenCompose(ignored -> invokeUserCallback(flow,
-                    () -> handler.handleAsync(new ZLinkStreamMessage<>(
+                ZLinkStreamMessage<ZLinkStreamEncodedPayload> handlerMessage =
+                    new ZLinkStreamMessage<>(
                         header.name(),
                         new ZLinkStreamEncodedPayload(
                             header.name(),
                             Message.from(payload),
                             header.metadata(),
                             ZLinkStreamConnectorPayloadCodec.fromWireCodec(header.codec())),
-                        header.metadata()))));
+                        header.metadata(),
+                        flow.flowId(),
+                        flowOrigin);
+                completion = completion.thenCompose(ignored -> invokeUserCallback(flow,
+                    () -> handler.handleAsync(handlerMessage)));
             }
-            return completion;
+            return completion.whenComplete((ignored, error) -> message.payload().payload().close());
         };
-        if (configuration.dispatchMode() == ZLinkStreamDispatchMode.IMMEDIATE) {
-            dispatch.get();
-        } else {
-            dispatchQueue.addAsync(header.name(), dispatch);
-        }
+        dispatchQueue.addMessage(
+            message,
+            dispatch,
+            () -> !handlers.getOrDefault(header.name(), List.of()).isEmpty(),
+            configuration.dispatchMode() == ZLinkStreamDispatchMode.IMMEDIATE);
     }
 
     private CompletionStage<Void> invokeUserCallback(

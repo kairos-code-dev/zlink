@@ -22,8 +22,17 @@ CANONICAL_SCENARIOS=(
   TD-A1 TD-A2 TD-A3 TD-A4 TD-A5
   TD-B1 TD-B2 TD-B3 TD-B4
   TD-C1 TD-C2 TD-C3 TD-C4 TD-C5
-  TD-D1 TD-D2 TD-D3
-  TD-E1 TD-E2 TD-E3
+  TD-D1 TD-D2 TD-D3 TD-D4 TD-D5 TD-D6
+  TD-E1 TD-E2 TD-E3 TD-E2A
+  TD-F1 TD-F2 TD-F3 TD-F4 TD-F5 TD-F6
+  TD-G1 TD-F5A
+)
+CLIENT_CANONICAL_SCENARIOS=(
+  TD-A1 TD-A2 TD-A3 TD-A4 TD-A5
+  TD-B1 TD-B2 TD-B3 TD-B4
+  TD-C1 TD-C2 TD-C3 TD-C4 TD-C5
+  TD-D1 TD-D2 TD-D3 TD-D4 TD-D5 TD-D6
+  TD-E1 TD-E2 TD-E3 TD-E2A
   TD-F1 TD-F2 TD-F3 TD-F4 TD-F5 TD-F6
   TD-G1
 )
@@ -71,12 +80,15 @@ for selector in "${REQUESTED_SELECTORS[@]}"; do
     shutdown|shutdown-wait|shutdown-recovery)
       RUN_SHUTDOWN=1
       ;;
-    TD-A[1-5]|TD-B[1-4]|TD-C[1-5]|TD-D[1-3]|TD-E[1-3]|TD-F[1-6]|TD-G1)
+    TD-A[1-5]|TD-B[1-4]|TD-C[1-5]|TD-D[1-6]|TD-E[1-3]|TD-E2A|TD-F[1-6]|TD-G1)
       RUN_CLIENT=1
       if [[ -z "${CLIENT_SCENARIO_SEEN[$selector]+x}" ]]; then
         CLIENT_SCENARIO_IDS+=("$selector")
         CLIENT_SCENARIO_SEEN["$selector"]=1
       fi
+      ;;
+    TD-F5A)
+      RUN_SHUTDOWN=1
       ;;
     *)
       echo "Unknown scenario selector: $selector" >&2
@@ -86,7 +98,7 @@ for selector in "${REQUESTED_SELECTORS[@]}"; do
 done
 if [[ "$RUN_CLIENT" == "1" ]]; then
   if [[ "$CLIENT_ALL" == "1" ]]; then
-    CLIENT_SCENARIO_IDS=("${CANONICAL_SCENARIOS[@]}")
+    CLIENT_SCENARIO_IDS=("${CLIENT_CANONICAL_SCENARIOS[@]}")
     CLIENT_SCENARIO="full"
   else
     CLIENT_SCENARIO="$(IFS=,; echo "${CLIENT_SCENARIO_IDS[*]}")"
@@ -226,8 +238,8 @@ static_checks() {
 
   local scenario_count
   scenario_count="$(find "$SCRIPT_DIR/Client/Scenarios" -maxdepth 1 -name 'Td*Scenario.cs' | wc -l)"
-  if [[ "$scenario_count" != "27" ]]; then
-    echo "AutomaticTurnDispatch must expose exactly 27 canonical TD scenario files; actual=$scenario_count." >&2
+  if [[ "$scenario_count" != "32" ]]; then
+    echo "AutomaticTurnDispatch must expose exactly 32 canonical TD scenario files; actual=$scenario_count." >&2
     return 1
   fi
 
@@ -593,18 +605,23 @@ PLAY_A_SPOT_ROUTER="tcp://127.0.0.1:${PLAY_A_SPOT_ROUTER_PORT}"
 PLAY_A_SPOT_PUB="tcp://127.0.0.1:${PLAY_A_SPOT_PUB_PORT}"
 PLAY_A_SPOT_ROUTE="tcp://127.0.0.1:${PLAY_A_SPOT_ROUTE_PORT}"
 PLAY_A_CONTROL="tcp://127.0.0.1:${PLAY_A_CONTROL_PORT}"
-start_server play-a "$PLAY_DLL" \
-  --rid play-a \
-  --http-url "$PLAY_A_HTTP" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --control-endpoint "$PLAY_A_CONTROL" \
-  --delay-endpoint "$DELAY_A_ENDPOINT" \
-  --external-api-base-url "$EXTERNAL_API_HTTP" \
-  --spot-router-endpoint "$PLAY_A_SPOT_ROUTER" \
-  --spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
-  --spot-route-endpoint "$PLAY_A_SPOT_ROUTE" \
+PLAY_A_ARGS=(
+  --rid play-a
+  --http-url "$PLAY_A_HTTP"
+  --redis-endpoint "$REDIS_ENDPOINT"
+  --redis-key-prefix "$REDIS_KEY_PREFIX"
+  --control-endpoint "$PLAY_A_CONTROL"
+  --delay-endpoint "$DELAY_A_ENDPOINT"
+  --external-api-base-url "$EXTERNAL_API_HTTP"
+  --spot-router-endpoint "$PLAY_A_SPOT_ROUTER"
+  --spot-pub-endpoint "$PLAY_A_SPOT_PUB"
+  --spot-route-endpoint "$PLAY_A_SPOT_ROUTE"
   --log-dir "$LOG_DIR"
+)
+if [[ "$RUN_SHUTDOWN" == "1" ]]; then
+  PLAY_A_ARGS+=(--placement-weight 100)
+fi
+start_server play-a "$PLAY_DLL" "${PLAY_A_ARGS[@]}"
 PLAY_A_PID="${PIDS[-1]}"
 wait_health play-a "$PLAY_A_HTTP"
 wait_port play-a-control "$PLAY_A_CONTROL"
@@ -617,18 +634,23 @@ PLAY_B_SPOT_ROUTER="tcp://127.0.0.1:${PLAY_B_SPOT_ROUTER_PORT}"
 PLAY_B_SPOT_PUB="tcp://127.0.0.1:${PLAY_B_SPOT_PUB_PORT}"
 PLAY_B_SPOT_ROUTE="tcp://127.0.0.1:${PLAY_B_SPOT_ROUTE_PORT}"
 PLAY_B_CONTROL="tcp://127.0.0.1:${PLAY_B_CONTROL_PORT}"
-start_server play-b "$PLAY_DLL" \
-  --rid play-b \
-  --http-url "$PLAY_B_HTTP" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --control-endpoint "$PLAY_B_CONTROL" \
-  --delay-endpoint "$DELAY_B_ENDPOINT" \
-  --external-api-base-url "$EXTERNAL_API_HTTP" \
-  --spot-router-endpoint "$PLAY_B_SPOT_ROUTER" \
-  --spot-pub-endpoint "$PLAY_B_SPOT_PUB" \
-  --spot-route-endpoint "$PLAY_B_SPOT_ROUTE" \
+PLAY_B_ARGS=(
+  --rid play-b
+  --http-url "$PLAY_B_HTTP"
+  --redis-endpoint "$REDIS_ENDPOINT"
+  --redis-key-prefix "$REDIS_KEY_PREFIX"
+  --control-endpoint "$PLAY_B_CONTROL"
+  --delay-endpoint "$DELAY_B_ENDPOINT"
+  --external-api-base-url "$EXTERNAL_API_HTTP"
+  --spot-router-endpoint "$PLAY_B_SPOT_ROUTER"
+  --spot-pub-endpoint "$PLAY_B_SPOT_PUB"
+  --spot-route-endpoint "$PLAY_B_SPOT_ROUTE"
   --log-dir "$LOG_DIR"
+)
+if [[ "$RUN_SHUTDOWN" == "1" ]]; then
+  PLAY_B_ARGS+=(--placement-weight 0)
+fi
+start_server play-b "$PLAY_DLL" "${PLAY_B_ARGS[@]}"
 wait_health play-b "$PLAY_B_HTTP"
 wait_port play-b-control "$PLAY_B_CONTROL"
 wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER"
@@ -688,6 +710,8 @@ if scenario_selected full; then
     --scenario "$CLIENT_SCENARIO" \
     --session-a-stream-endpoint "$SESSION_A_STREAM" \
     --session-b-stream-endpoint "$SESSION_B_STREAM" \
+    --play-a-url "$PLAY_A_HTTP" \
+    --play-b-url "$PLAY_B_HTTP" \
     --request-id "client-${STAMP//[^a-zA-Z0-9]/}" \
     --spot-rid "await-client-${STAMP//[^a-zA-Z0-9]/}"
   dotnet "$CLIENT_DLL" --config "$CONFIG_DIR/client-full.json" \
@@ -699,7 +723,7 @@ if scenario_selected full; then
     exit 1
   fi
   actual_client_markers="$(
-    grep -Ec '^TD-[A-G][0-9]+ result=passed$' "$LOG_DIR/client.stdout.log" || true
+    grep -Ec '^TD-[A-G][0-9]+[A-Z]? result=passed$' "$LOG_DIR/client.stdout.log" || true
   )"
   if [[ "$actual_client_markers" != "$EXPECTED_CLIENT_SCENARIO_COUNT" ]]; then
     echo "AutomaticTurnDispatch scenario marker count mismatch: expected=${EXPECTED_CLIENT_SCENARIO_COUNT} actual=${actual_client_markers}." >&2
@@ -742,23 +766,15 @@ if scenario_selected shutdown; then
   cat "$LOG_DIR/client-shutdown-wait.stdout.log"
   reap_or_kill_after_shutdown play-a "$PLAY_A_PID"
 
-  start_server play-a "$PLAY_DLL" \
-    --rid play-a \
-    --http-url "$PLAY_A_HTTP" \
-    --redis-endpoint "$REDIS_ENDPOINT" \
-    --redis-key-prefix "$REDIS_KEY_PREFIX" \
-    --control-endpoint "$PLAY_A_CONTROL" \
-    --delay-endpoint "$DELAY_A_ENDPOINT" \
-    --external-api-base-url "$EXTERNAL_API_HTTP" \
-    --spot-router-endpoint "$PLAY_A_SPOT_ROUTER" \
-    --spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
-    --spot-route-endpoint "$PLAY_A_SPOT_ROUTE" \
-    --log-dir "$LOG_DIR"
+  PLAY_A_RECOVERY_ARGS=("${PLAY_A_ARGS[@]}")
+  PLAY_A_RECOVERY_ARGS[1]=play-a-recovery
+  start_server play-a "$PLAY_DLL" "${PLAY_A_RECOVERY_ARGS[@]}"
   PLAY_A_PID="${PIDS[-1]}"
   wait_health play-a "$PLAY_A_HTTP"
   wait_port play-a-control "$PLAY_A_CONTROL"
   wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER"
   wait_port play-a-spot-route "$PLAY_A_SPOT_ROUTE"
+  LOCAL_READINESS_TIMEOUT_SECONDS=10
   wait_route_ready "$PLAY_A_HTTP" await.delay delay-a "restarted play-a to delay-a"
   for session_url in "$SESSION_A_HTTP" "$SESSION_B_HTTP"; do
     wait_route_ready "$session_url" await.control play-a "session control to restarted play-a"
@@ -774,6 +790,7 @@ if scenario_selected shutdown; then
   dotnet "$CLIENT_DLL" --config "$CONFIG_DIR/client-shutdown-recovery.json" \
     >"$LOG_DIR/client-shutdown-recovery.stdout.log" 2>"$LOG_DIR/client-shutdown-recovery.stderr.log"
   cat "$LOG_DIR/client-shutdown-recovery.stdout.log"
+  echo "TD-F5A result=passed"
 fi
 
 echo "automatic-turn-dispatch e2e result=passed"

@@ -1,4 +1,4 @@
-// RL-A3: client reconnect storm 시나리오를 검증한다.
+// RL-A3: 많은 clients가 server restart 뒤 reconnect한다 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../../../http-client';

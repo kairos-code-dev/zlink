@@ -27,8 +27,10 @@ import systems.zlink.e2e.kotlin.registrymessaging.shared.RequestFailureRes
 import systems.zlink.e2e.kotlin.registrymessaging.shared.WorkflowReq
 import systems.zlink.e2e.kotlin.registrymessaging.shared.WorkflowRes
 import systems.zlink.framework.channels.ZLinkClient
-import systems.zlink.framework.locations.ZLinkLocationStore
+import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery
+import systems.zlink.framework.locations.ZLinkLocationTopologyFilter
 import systems.zlink.framework.locations.ZLinkPageRequest
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle
 
 class ConsumerEndpoints(
     private val options: ConsumerOptions,
@@ -36,7 +38,7 @@ class ConsumerEndpoints(
 ) {
     private val mapper = jacksonObjectMapper()
     private val channels = context.getBean(ZLinkClient::class.java)
-    private val locations = context.getBean(ZLinkLocationStore::class.java)
+    private val locations = context.getBean(ZLinkFrameworkLifecycle::class.java)
 
     fun start(): HttpServer {
         val uri = URI.create(options.httpUrl)
@@ -67,16 +69,16 @@ class ConsumerEndpoints(
             exchange.writeJson(reply)
         }
         server.createContext("/locations/peers") { exchange ->
-            val peers = locations.listClientServers(
-                Contracts.PROFILE_CHANNEL,
+            val peers = locations.monitoringLocationRuntimeQuery().listTopology(
+                ZLinkLocationTopologyFilter.all(),
                 ZLinkPageRequest(1_000, null),
             ).thenApply { page -> page.items().map {
                     mapOf(
-                        "meshName" to it.channelName(),
+                        "meshName" to it.meshName(),
                         "role" to "ROUTER",
-                        "nodeRid" to it.serverRid().toString(),
+                        "nodeRid" to it.nodeRid().toString(),
                         "endpoint" to it.endpoint(),
-                        "ownerId" to it.ownerId(),
+                        "ownerId" to "",
                     )
                 } }
             exchange.writeJson(peers)

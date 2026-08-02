@@ -18,7 +18,7 @@ import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
 import systems.zlink.framework.locations.ZLinkLocationTopologyFilter;
 import systems.zlink.framework.locations.ZLinkPageRequest;
 import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle;
-import systems.zlink.framework.runtime.host.ZLinkTerminationResult;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkTerminationResult;
 
 public final class EvidenceHttpServer implements SmartLifecycle {
     private final EvidenceStore evidence;
@@ -31,7 +31,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
     private final java.util.function.Function<systems.zlink.contracts.core.RoutingId,
         CompletionStage<Boolean>> closeSpot;
     private final java.util.function.Supplier<CompletionStage<String>> routeProbe;
-    private volatile CompletionStage<ZLinkTerminationResult> drainResult;
+    private volatile CompletionStage<ZLinkFrameworkTerminationResult> drainResult;
     private HttpServer server;
     private boolean running;
 
@@ -156,10 +156,10 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                 snapshot.put("locationError", error.toString());
             }
         }
-        CompletionStage<ZLinkTerminationResult> current = drainResult;
+        CompletionStage<ZLinkFrameworkTerminationResult> current = drainResult;
         if (current != null && current.toCompletableFuture().isDone()) {
             try {
-                ZLinkTerminationResult result = current.toCompletableFuture().join();
+                ZLinkFrameworkTerminationResult result = current.toCompletableFuture().join();
                 snapshot.put("result", result.outcome()
                     == systems.zlink.framework.runtime.host.ZLinkFrameworkTerminationOutcome.STOPPED
                         ? "drained" : "force_stopped");

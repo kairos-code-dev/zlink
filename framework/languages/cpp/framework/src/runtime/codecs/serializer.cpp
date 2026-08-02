@@ -47,7 +47,7 @@ serializer_registry_t &serializer_registry_t::add_erased (std::type_index type,
       type, detail::serializer_descriptor_t{std::move (serialize), std::move (deserialize),
                                             std::move (content_type)});
     if (!inserted) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "duplicate serializer registration");
     }
     return *this;
@@ -58,7 +58,7 @@ encoded_payload_t serializer_registry_t::serialize (std::type_index type, const 
     const auto found = _state->serializers.find (type);
     if (found == _state->serializers.end ()) {
         throw framework_exception_t (
-          framework_error_kind_t::payload_decode_failed,
+          framework_error_kind_t::protocol_error,
           std::string ("erased serializer is not registered: ") + type.name ()
             + ". Normal typed JSON payloads use serializer_registry_t::get<T>(); "
               "avoid wrapping them in framework::message_t unless the erased type is registered.");
@@ -70,7 +70,7 @@ encoded_payload_t serializer_registry_t::serialize (std::type_index type, const 
         throw;
     }
     catch (...) {
-        throw framework_exception_t (framework_error_kind_t::payload_decode_failed,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "payload serialization failed");
     }
 }
@@ -82,7 +82,7 @@ void serializer_registry_t::deserialize (std::type_index type,
     const auto found = _state->serializers.find (type);
     if (found == _state->serializers.end ()) {
         throw framework_exception_t (
-          framework_error_kind_t::payload_decode_failed,
+          framework_error_kind_t::protocol_error,
           std::string ("erased serializer is not registered: ") + type.name ()
             + ". Normal typed JSON payloads use serializer_registry_t::get<T>(); "
               "avoid wrapping them in framework::message_t unless the erased type is registered.");
@@ -94,8 +94,10 @@ void serializer_registry_t::deserialize (std::type_index type,
         throw;
     }
     catch (...) {
-        throw framework_exception_t (framework_error_kind_t::payload_decode_failed,
-                                     "payload deserialization failed");
+        throw detail::make_origin_exception (
+          framework_error_kind_t::protocol_error,
+          detail::failure_origin_t::payload_decode,
+          "payload deserialization failed");
     }
 }
 

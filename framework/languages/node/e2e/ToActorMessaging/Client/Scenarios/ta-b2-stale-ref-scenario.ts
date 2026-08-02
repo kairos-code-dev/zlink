@@ -1,8 +1,8 @@
-// TA-B2: resolve 뒤 generation 교체 시나리오를 검증한다.
+// TA-B2: 같은 ActorId로 다시 만든 Actor가 새 direct message를 처리한다 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../../../http-client';
 import {
-  type ActorEvidence, assertCall, assertFailure, ensureActor, requireEvidence, requireNoEvidence
+  type ActorEvidence, assertCall, ensureActor, requireEvidence
 } from '../Support/actor-scenario-support';
 
 export async function runTaB2(options: ClientOptions): Promise<void> {
@@ -13,12 +13,17 @@ export async function runTaB2(options: ClientOptions): Promise<void> {
     throw new Error('TA-B2 actor recreation did not change object generation.');
   }
 
-  await assertCall(options, 'TA-B2-stale-send', 'ta-b2', previous.actor, 'stale-send', 'sent', true);
-  await assertFailure(options, 'TA-B2-stale-request', 'ta-b2', 'actorLocationStale', false, previous.actor);
-  await assertCall(options, 'TA-B2-live-request', 'ta-b2', replacement.actor, 'live', 'reply:live', false);
+  const staleLifecycle = await postJson<{ readonly status: string; readonly errorKind?: string }>(
+    `${options.actorUrl}/actors/ta-b2/destroy-ref`,
+    previous.actor
+  );
+  if (staleLifecycle.status !== 'failed' || staleLifecycle.errorKind !== 'InvalidOperation') {
+    throw new Error(`TA-B2 stale lifecycle expected InvalidOperation, got ${JSON.stringify(staleLifecycle)}.`);
+  }
+  await assertCall(options, 'TA-B2-id-send', 'ta-b2', previous.actor, 'id-send', 'sent', true);
+  await assertCall(options, 'TA-B2-id-request', 'ta-b2', replacement.actor, 'id-request', 'reply:id-request', false);
   const evidence = await getJson<ActorEvidence[]>(`${options.actorUrl}/evidence`);
-  requireNoEvidence(evidence, 'TA-B2-stale-send');
-  requireNoEvidence(evidence, 'TA-B2-stale-request');
-  requireEvidence(evidence, 'TA-B2-live-request', 'request');
+  requireEvidence(evidence, 'TA-B2-id-send', 'send');
+  requireEvidence(evidence, 'TA-B2-id-request', 'request');
   console.log('scenario TA-B2 passed');
 }

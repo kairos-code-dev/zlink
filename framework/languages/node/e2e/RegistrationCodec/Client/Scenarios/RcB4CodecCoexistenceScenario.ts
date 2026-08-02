@@ -1,4 +1,4 @@
-// RC-B4: 전역 registry에서 codec 공존 시나리오를 검증한다.
+// RC-B4: 한 root에서 여러 codec을 함께 사용한다 시나리오를 검증한다.
 import type { CodecScenarioRes } from '../../Shared/messages';
 import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';

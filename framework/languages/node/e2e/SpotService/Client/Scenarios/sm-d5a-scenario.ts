@@ -1,4 +1,4 @@
-// SM-D5A: application logical disconnect 시나리오를 검증한다.
+// SM-D5A: 선택한 Actor에 logical disconnect를 통지한다 시나리오를 검증한다.
 import type { LogicalDisconnectReq, LogicalDisconnectRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { ensure } from '../Support/scenario-assert';

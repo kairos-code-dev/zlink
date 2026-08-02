@@ -1,4 +1,4 @@
-// SM-A4: global Spot ID와 current owner resolve 시나리오를 검증한다.
+// SM-A4: Owner를 입력하지 않고 current Spot을 호출한다 시나리오를 검증한다.
 import type {
   CreateSpotRes,
   CreateSpotReq,

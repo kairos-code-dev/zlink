@@ -56,7 +56,8 @@ public final class CodecRequesterApplication {
                 .traceLogFile(options.logDir() + "/codec-requester-flow.log")
                 .traceLabel("java-rc-codec-requester");
             framework.addClientServerChannel(Contracts.CHANNEL)
-                .enableClient(options.serverEndpoint());
+                .client()
+                .connect(options.serverEndpoint());
         };
     }
 

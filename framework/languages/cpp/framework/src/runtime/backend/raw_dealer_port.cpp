@@ -56,11 +56,19 @@ raw_request_result_t map_request_result (
 
 raw_dealer_port_t::raw_dealer_port_t (
   zlink::dealer_socket_t &socket,
-  std::mutex *shared_socket_mutex) noexcept :
+  std::mutex *shared_socket_mutex) :
+    _poller (),
     _socket (&socket),
     _socket_mutex (shared_socket_mutex != nullptr ? shared_socket_mutex
                                                   : &_owned_socket_mutex)
 {
+    // The same poller owns both raw receive readiness and asynchronous
+    // request-reply completion callbacks for this DEALER socket.
+    _poller.add (
+      socket,
+      zlink::poll_event_flag_t::pollin
+        | zlink::poll_event_flag_t::pollcompletion,
+      1);
 }
 
 bool raw_dealer_port_t::send (const raw_message_t &parts)
@@ -124,6 +132,14 @@ std::optional<raw_message_t> raw_dealer_port_t::try_receive ()
     if (!_socket) {
         return std::nullopt;
     }
+    zlink::poll_event_t event;
+    if (_poller.wait (&event, 1, std::chrono::milliseconds::zero ()) != 1
+        || event.slot != 1
+        || (static_cast<short> (event.revents)
+            & static_cast<short> (zlink::poll_event_flag_t::pollin))
+             == 0) {
+        return std::nullopt;
+    }
     zlink::received_t received;
     const auto result =
       _socket->recv (received, zlink::recv_flags_t::dontwait);
@@ -143,6 +159,11 @@ void raw_dealer_port_t::close () noexcept
 {
     std::lock_guard lock (*_socket_mutex);
     _socket = nullptr;
+    try {
+        _poller.close ();
+    }
+    catch (...) {
+    }
 }
 
 } // namespace zlink::framework::detail::backend

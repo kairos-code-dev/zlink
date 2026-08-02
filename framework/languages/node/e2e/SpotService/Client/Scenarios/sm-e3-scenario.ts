@@ -1,4 +1,4 @@
-// SM-E3: idle timer 기반 명시적 close 시나리오를 검증한다.
+// SM-E3: Idle timer가 explicit close를 시작한다 시나리오를 검증한다.
 import type {
   CreateSpotRes,
   CreateSpotReq,

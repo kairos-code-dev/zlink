@@ -57,7 +57,7 @@ inline std::string decode_text (const zlink::framework::encoded_payload_t &paylo
     const auto expected = prefix + ":";
     if (text.rfind (expected, 0) != 0) {
         throw zlink::framework::framework_exception_t (
-          zlink::framework::framework_error_kind_t::payload_decode_failed,
+          zlink::framework::framework_error_kind_t::protocol_error,
           "custom payload prefix mismatch");
     }
     return text.substr (expected.size ());

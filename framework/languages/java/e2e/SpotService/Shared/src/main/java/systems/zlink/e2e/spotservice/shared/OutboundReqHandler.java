@@ -19,7 +19,7 @@ public final class OutboundReqHandler {
                 spot.context().outbound().publish(Contracts.ROUTE_CHANNEL, "spot.events",
                     new Contracts.MeshMsg("publish:" + request.value())).submit();
                 spot.record("SpotOutbound", request.value() + "/" + channelReply);
-                return new Contracts.OutboundRes(spot.context().spotRid().toString(),
+                return new Contracts.OutboundRes(spot.context().spotId(),
                     spot.context().nodeRid().toString(), channelReply);
             });
     }

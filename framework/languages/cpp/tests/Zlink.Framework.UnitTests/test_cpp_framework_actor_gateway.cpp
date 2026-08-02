@@ -5,11 +5,45 @@
 #include <algorithm>
 #include <atomic>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 namespace
 {
+
+int relay_dispatch_scope_restores_nested_and_exception_state ()
+{
+    using namespace zlink::framework;
+    using namespace zlink::framework::detail;
+
+    const stream_header_t outer (
+      stream_message_kind_t::send, stream_codec_t::json,
+      stream_header_flags_t::none, std::nullopt, "outer");
+    const stream_header_t inner (
+      stream_message_kind_t::request, stream_codec_t::json,
+      stream_header_flags_t::none, std::nullopt, "inner");
+    {
+        const stream_relay_dispatch_scope_t outer_scope (outer);
+        try {
+            {
+                const stream_relay_dispatch_scope_t inner_scope (inner);
+                const auto current = current_stream_relay_dispatch ();
+                if (!current || current->packet_name () != "inner") {
+                    return 1;
+                }
+                throw std::runtime_error ("relay failure");
+            }
+        }
+        catch (const std::runtime_error &) {
+        }
+        const auto restored = current_stream_relay_dispatch ();
+        if (!restored || restored->packet_name () != "outer") {
+            return 2;
+        }
+    }
+    return current_stream_relay_dispatch () ? 3 : 0;
+}
 
 class recording_actor_client_t final : public zlink::framework::actor_client_t
 {
@@ -32,7 +66,8 @@ class recording_actor_client_t final : public zlink::framework::actor_client_t
       zlink::framework::actor_ref_t,
       std::string,
       zlink::framework::message_t,
-      std::optional<std::chrono::milliseconds>) override
+      std::optional<std::chrono::milliseconds>,
+      const zlink::framework::actor_request_call_t::metadata_map_t &) override
     {
         return zlink::framework::task_t<zlink::framework::message_t> (
           zlink::framework::result_t<zlink::framework::message_t>::success (
@@ -111,7 +146,7 @@ int actor_send_is_one_shot ()
         (void) copied.submit ().result ().value ();
     }
     catch (const framework_exception_t &error) {
-        rejected = error.kind () == framework_error_kind_t::request_protocol_error;
+        rejected = error.kind () == framework_error_kind_t::protocol_error;
     }
     return rejected && client.attempts.load () == 1 ? 0 : 2;
 }
@@ -134,7 +169,7 @@ int session_disconnect_is_all_settled_and_token_fenced ()
     auto current = manager.bind (first).submit ().result ().value ();
     (void) manager.bind (second).submit ().result ().value ();
     if (stale.notify_disconnected ().result ().error_kind ()
-        != framework_error_kind_t::actor_session_not_bound) {
+        != framework_error_kind_t::not_configured) {
         return 1;
     }
 
@@ -144,7 +179,7 @@ int session_disconnect_is_all_settled_and_token_fenced ()
           disconnected.emplace_back (actor.actor_id ());
           return actor.actor_id () == "actor-a"
                    ? result_t<void>::failure (
-                       framework_error_kind_t::actor_dispatch_handler_not_found,
+                       framework_error_kind_t::not_found,
                        "actor-a callback failed")
                    : result_t<void>::success ();
       });
@@ -266,7 +301,7 @@ int route_update_preserves_object_generation ()
     const auto stale = original_binding.notify_disconnected ().result ();
     if (stale
         || stale.error_kind ()
-             != framework_error_kind_t::actor_session_not_bound
+             != framework_error_kind_t::not_configured
         || !gateway.actor_bound ("actor-route")) {
         return 4;
     }
@@ -348,6 +383,11 @@ int bound_session_route_preserves_private_fences ()
 
 int main ()
 {
+    if (const auto relay_scope =
+          relay_dispatch_scope_restores_nested_and_exception_state ();
+        relay_scope != 0) {
+        return 110 + relay_scope;
+    }
     if (const auto route_fence =
           bound_session_route_preserves_private_fences ();
         route_fence != 0) {

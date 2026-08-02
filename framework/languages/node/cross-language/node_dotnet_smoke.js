@@ -369,7 +369,7 @@ async function dotnetClientToNodeChannelServer(tempDir) {
         const builder = nestjs.zlinkFramework();
         builder.addRouteMesh('profiles')
           .listen(endpoint)
-          .channelName('profiles')
+          .channel('profiles').server()
           .addRequestHandler('TestHostProfileRequest', TestHostProfileRequestHandler);
         return builder.build();
       }
@@ -414,7 +414,7 @@ async function nodeRouteClientToDotnetRouteServer(tempDir) {
         const mesh = builder.addRouteMesh('cross.route')
           .listen('inproc://cross-route-node-client')
           .routingId('node-route-client');
-        mesh.channelName('cross.route');
+        mesh.channel('cross.route').server();
         mesh.peerConnections().connect(endpoint);
         return builder.build();
       }
@@ -460,7 +460,7 @@ async function dotnetRouteClientToNodeRouteServer(tempDir) {
           .listen(endpoint)
           .routingId('node-route')
           .addRequestHandler('TestHostRouteRequest', TestHostRouteRequestHandler)
-          .channelName('cross.route');
+          .channel('cross.route').server();
         return builder.build();
       }
     })],

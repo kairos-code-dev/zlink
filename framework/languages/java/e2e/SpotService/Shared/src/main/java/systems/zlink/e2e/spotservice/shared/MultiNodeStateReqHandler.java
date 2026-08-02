@@ -9,7 +9,7 @@ public final class MultiNodeStateReqHandler {
         Contracts.MultiNodeStateReq request) {
         int value = spot.add(request.delta());
         return java.util.concurrent.CompletableFuture.completedFuture(new Contracts.MultiNodeStateRes(
-            spot.context().spotRid().toString(),
+            spot.context().spotId(),
             spot.context().nodeRid().toString(),
             value));
     }

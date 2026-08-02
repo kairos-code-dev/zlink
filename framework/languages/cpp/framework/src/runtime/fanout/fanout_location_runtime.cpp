@@ -356,7 +356,7 @@ result_t<void> fanout_location_runtime_t::publish (
         || found->second->descriptor.state
              != framework_runtime_state_t::serving)
         return result_t<void>::failure (
-          framework_error_kind_t::route_not_connected,
+          framework_error_kind_t::unavailable,
           "fanout publisher is not serving");
     const auto submitted =
       found->second->owner->publish (
@@ -368,8 +368,8 @@ result_t<void> fanout_location_runtime_t::publish (
     return submitted
              ? result_t<void>::success ()
              : result_t<void>::failure (
-                 framework_error_kind_t::worker_queue_full,
-                 "fanout publish is backpressured", true);
+                 framework_error_kind_t::capacity_exceeded,
+                 "fanout publish is backpressured");
 }
 
 void fanout_location_runtime_t::stop () noexcept

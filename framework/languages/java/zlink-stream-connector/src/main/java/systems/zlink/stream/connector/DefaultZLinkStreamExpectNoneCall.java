@@ -38,6 +38,35 @@ final class DefaultZLinkStreamExpectNoneCall implements ZLinkStreamExpectNoneCal
         if (window == null) {
             throw new IllegalStateException("expectNone requires within(window)");
         }
+        if (connector instanceof DefaultZLinkStreamConnector concrete) {
+            CompletableFuture<Void> result = new CompletableFuture<>();
+            CompletableFuture<ZLinkStreamMessage<ZLinkStreamEncodedPayload>> waiter = concrete
+                .awaitMessage(name, ignored -> true)
+                .toCompletableFuture()
+                .orTimeout(window.toMillis(), TimeUnit.MILLISECONDS);
+            result.whenComplete((ignored, error) -> {
+                if (result.isCancelled()) {
+                    waiter.cancel(false);
+                }
+            });
+            waiter
+                .whenComplete((message, error) -> {
+                    if (message != null) {
+                        message.payload().payload().close();
+                        result.completeExceptionally(new IllegalStateException(
+                            "Expected no '" + name + "' message within " + window + "."));
+                    } else if (error instanceof java.util.concurrent.TimeoutException
+                        || (error instanceof java.util.concurrent.CompletionException
+                            && error.getCause() instanceof java.util.concurrent.TimeoutException)) {
+                        result.complete(null);
+                    } else if (error != null) {
+                        result.completeExceptionally(error);
+                    } else {
+                        result.complete(null);
+                    }
+                });
+            return result;
+        }
         CompletableFuture<Void> result = new CompletableFuture<>();
         AutoCloseable subscription = connector.on(name, message -> {
             message.payload().payload().close();

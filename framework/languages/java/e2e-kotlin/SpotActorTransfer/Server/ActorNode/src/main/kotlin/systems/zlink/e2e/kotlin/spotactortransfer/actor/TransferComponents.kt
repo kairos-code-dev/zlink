@@ -138,7 +138,7 @@ class TransferEntrySpot(
     private val evidence: EvidenceStore,
     private val domainState: DomainStateStore,
 ) : ZLinkSuspendingEntrySpot<TransferActor>() {
-    override fun context(): ZLinkEntrySpotContext = entryContext
+    override val context: ZLinkEntrySpotContext = entryContext
 
     override fun configure() {
         entryContext.handlers().addHandler<JoinTargetHandler>()
@@ -187,7 +187,7 @@ class TransferUserSpot(
     private val scenarios = ConcurrentHashMap<String, String>()
     private var mode = "accept"
 
-    override fun context(): ZLinkSpotContext = spotContext
+    override val context: ZLinkSpotContext = spotContext
 
     override fun configure() {
         spotContext.handlers().addHandler<UserJoinTargetHandler>()

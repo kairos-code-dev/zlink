@@ -243,7 +243,7 @@ class multi_node_entry_spot_t
     {
         if (request.actor_id != actor.actor_id) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_protocol_error,
+              zlink::framework::framework_error_kind_t::protocol_error,
               "spot-only join request actor does not match dispatched actor");
         }
         auto joined =

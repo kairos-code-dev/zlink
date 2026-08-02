@@ -1,4 +1,4 @@
-// SM-D14: stream TLS 시나리오를 검증한다.
+// SM-D14: TLS Stream에서 auth·relay·push를 수행한다 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

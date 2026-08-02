@@ -1,4 +1,4 @@
-// MON-B2: local target drop과 monitoring 부재 시나리오를 검증한다.
+// MON-B2: Local target handler 대기가 다른 target 전달을 막지 않는다 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';

@@ -98,7 +98,7 @@ open_connection (const http_client_options_t &options,
     return connection;
 #else
     throw zlink::framework::framework_exception_t (
-      zlink::framework::framework_error_kind_t::request_protocol_error,
+      zlink::framework::framework_error_kind_t::protocol_error,
       "HTTPS support requires OpenSSL");
 #endif
 }

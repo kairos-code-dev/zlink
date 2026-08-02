@@ -171,14 +171,11 @@ int main (int argc, char **argv)
           .trace_label (instance.instance_id);
         const auto workflow_channel = sample_names_t::order_workflow_channel;
         auto workflow_route = options.add_route_mesh (workflow_channel);
-        workflow_route.listen (instance.route_endpoint)
-          .channel_name (workflow_channel);
-        auto spot_route = options.add_route_mesh (sample_names_t::order_spot_route);
-        spot_route.listen (instance.spot_route_endpoint)
-          .channel_name (sample_names_t::order_spot_route);
-        auto order_spot = options.add_route_mesh (sample_names_t::order_spot_discovery);
-        order_spot.channel_name (sample_names_t::order_spot_route);
-        order_spot.listen (instance.spot_router_endpoint)
+        workflow_route
+          .set_routing_id (zlink::routing_id_t::from (
+            "shoppingmall-" + instance.instance_id + "-workflow"))
+          .set_object_role (object_role_t::server)
+          .listen (instance.route_endpoint)
           .add_instance_spot_factory<order_workflow_spot_t> (
             sample_names_t::order_workflow_spot,
             [topology] (instance_spot_context_t context) {

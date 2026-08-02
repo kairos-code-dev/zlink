@@ -158,8 +158,8 @@ int main ()
           error_reply, serializers, "empty reply", "reply failed", "profile request");
         if (error_result
             || error_result.error_kind ()
-                 != zlink::framework::framework_error_kind_t::route_not_connected
-            || error_result.error () == nullptr || !error_result.error ()->is_retriable ()) {
+                 != zlink::framework::framework_error_kind_t::unavailable
+            || error_result.error () == nullptr) {
             return 14;
         }
 
@@ -206,26 +206,23 @@ int main ()
         zlink::framework::runtime::messaging::request_failure_mapper_t mapper;
         const auto not_connected = mapper.completion_exception (
           zlink::framework::runtime::messaging::request_result_t::not_connected, "profile request");
-        if (not_connected.kind () != zlink::framework::framework_error_kind_t::route_not_connected
-            || !not_connected.is_retriable ()) {
+        if (not_connected.kind () != zlink::framework::framework_error_kind_t::unavailable) {
             return 16;
         }
         const auto not_found = mapper.completion_exception (
           zlink::framework::runtime::messaging::request_result_t::not_found, "profile request");
-        if (not_found.kind () != zlink::framework::framework_error_kind_t::request_target_not_found
-            || not_found.is_retriable ()) {
+        if (not_found.kind () != zlink::framework::framework_error_kind_t::not_found) {
             return 17;
         }
         const auto timed_out = mapper.completion_exception (
           zlink::framework::runtime::messaging::request_result_t::timed_out, "profile request");
         if (zlink::framework::detail::boundary_state (timed_out) != zlink::framework::detail::boundary_error_t::timed_out
-            || timed_out.is_retriable ()) {
+            || timed_out.kind () != zlink::framework::framework_error_kind_t::deadline_exceeded) {
             return 18;
         }
         const auto busy = mapper.completion_exception (
           zlink::framework::runtime::messaging::request_result_t::busy, "profile request");
-        if (busy.kind () != zlink::framework::framework_error_kind_t::request_rejected
-            || !busy.is_retriable ()) {
+        if (busy.kind () != zlink::framework::framework_error_kind_t::capacity_exceeded) {
             return 15;
         }
         const auto conflict = mapper.completion_exception (
@@ -247,16 +244,14 @@ int main ()
         const auto internal_error = mapper.completion_exception (
           zlink::framework::runtime::messaging::request_result_t::internal_error,
           "profile request");
-        if (conflict.kind () != zlink::framework::framework_error_kind_t::request_rejected
-            || !conflict.is_retriable ()
-            || rejected.kind () != zlink::framework::framework_error_kind_t::request_rejected
-            || rejected.is_retriable ()
-            || protocol.kind () != zlink::framework::framework_error_kind_t::request_protocol_error
-            || invalid_argument.kind () != zlink::framework::framework_error_kind_t::request_failed
-            || invalid_state.kind () != zlink::framework::framework_error_kind_t::request_failed
-            || not_supported.kind () != zlink::framework::framework_error_kind_t::request_failed
-            || terminated.kind () != zlink::framework::framework_error_kind_t::request_failed
-            || internal_error.kind () != zlink::framework::framework_error_kind_t::request_failed) {
+        if (conflict.kind () != zlink::framework::framework_error_kind_t::capacity_exceeded
+            || rejected.kind () != zlink::framework::framework_error_kind_t::rejected
+            || protocol.kind () != zlink::framework::framework_error_kind_t::protocol_error
+            || invalid_argument.kind () != zlink::framework::framework_error_kind_t::internal_failure
+            || invalid_state.kind () != zlink::framework::framework_error_kind_t::internal_failure
+            || not_supported.kind () != zlink::framework::framework_error_kind_t::internal_failure
+            || terminated.kind () != zlink::framework::framework_error_kind_t::internal_failure
+            || internal_error.kind () != zlink::framework::framework_error_kind_t::internal_failure) {
             return 22;
         }
         const auto timeout_header =
@@ -273,36 +268,34 @@ int main ()
           mapper.error_header_exception ("unknown", "explicit", "profile request");
         if (zlink::framework::detail::boundary_state (timeout_header) != zlink::framework::detail::boundary_error_t::timed_out
             || std::string (timeout_with_message.what ()) != "explicit timeout"
-            || route_header.kind () != zlink::framework::framework_error_kind_t::route_not_connected
-            || !route_header.is_retriable ()
+            || route_header.kind () != zlink::framework::framework_error_kind_t::unavailable
             || not_found_header.kind ()
-                 != zlink::framework::framework_error_kind_t::request_target_not_found
-            || unknown_header.kind () != zlink::framework::framework_error_kind_t::request_failed
+                 != zlink::framework::framework_error_kind_t::not_found
+            || unknown_header.kind () != zlink::framework::framework_error_kind_t::internal_failure
             || std::string (unknown_with_message.what ()) != "explicit") {
             return 23;
         }
         const auto rejected_header =
           mapper.error_header_exception ("request_rejected", "", "profile request");
-        if (rejected_header.kind () != zlink::framework::framework_error_kind_t::request_rejected
-            || rejected_header.is_retriable ()) {
+        if (rejected_header.kind () != zlink::framework::framework_error_kind_t::rejected) {
             return 19;
         }
         const auto protocol_header =
           mapper.error_header_exception ("request_protocol_error", "", "profile request");
         if (protocol_header.kind ()
-            != zlink::framework::framework_error_kind_t::request_protocol_error) {
+            != zlink::framework::framework_error_kind_t::protocol_error) {
             return 20;
         }
         const auto missing_handler_header =
           mapper.error_header_exception ("handler_not_found", "", "profile request");
         if (missing_handler_header.kind ()
-            != zlink::framework::framework_error_kind_t::handler_not_found) {
+            != zlink::framework::framework_error_kind_t::not_found) {
             return 21;
         }
         const auto decode_header =
           mapper.error_header_exception ("payload_decode_failed", "", "profile request");
         if (decode_header.kind ()
-            != zlink::framework::framework_error_kind_t::payload_decode_failed) {
+            != zlink::framework::framework_error_kind_t::protocol_error) {
             return 24;
         }
     }
@@ -418,7 +411,7 @@ int main ()
             const auto attempt = attempts.fetch_add (1) + 1;
             if (attempt < 3) {
                 return zlink::framework::result_t<void>::failure (
-                  zlink::framework::framework_error_kind_t::worker_queue_full,
+                  zlink::framework::framework_error_kind_t::capacity_exceeded,
                   "capacity is not available");
             }
             return zlink::framework::result_t<void>::success ();
@@ -460,7 +453,7 @@ int main ()
                                       std::chrono::milliseconds (10));
             ++timed_out_attempts;
             return zlink::framework::result_t<void>::failure (
-              zlink::framework::framework_error_kind_t::worker_queue_full,
+              zlink::framework::framework_error_kind_t::capacity_exceeded,
               "capacity is not available");
         });
         if (timed_out.result ().error_kind ()
@@ -478,12 +471,12 @@ int main ()
             msg::note_submit_attempt ("stream:session-1", &shutdown_owner,
                                       std::chrono::milliseconds (100));
             return zlink::framework::result_t<void>::failure (
-              zlink::framework::framework_error_kind_t::worker_queue_full,
+              zlink::framework::framework_error_kind_t::capacity_exceeded,
               "capacity is not available");
         });
         msg::shutdown_submit_owner (&shutdown_owner);
         if (shutdown.result ().error_kind ()
-            != zlink::framework::framework_error_kind_t::runtime_shutdown) {
+            != zlink::framework::framework_error_kind_t::shutting_down) {
             return 66;
         }
 
@@ -507,7 +500,7 @@ int main ()
                 epoch_changed.notify_all ();
                 epoch_changed.wait (lock, [&] { return epoch_attempt_release; });
                 return zlink::framework::result_t<void>::failure (
-                  zlink::framework::framework_error_kind_t::worker_queue_full,
+                  zlink::framework::framework_error_kind_t::capacity_exceeded,
                   "capacity is not available");
             });
             epoch_terminal_source.set_value (operation.result ().error_kind ());
@@ -533,7 +526,7 @@ int main ()
         epoch_changed.notify_all ();
         epoch_submitter.join ();
         if (epoch_terminal.get ()
-              != zlink::framework::framework_error_kind_t::runtime_shutdown
+              != zlink::framework::framework_error_kind_t::shutting_down
             || msg::pending_submit_count_for_tests () != 0) {
             return 83;
         }
@@ -553,7 +546,7 @@ int main ()
                                       std::chrono::milliseconds (500), 1);
             if (first_attempts.fetch_add (1) == 0) {
                 return zlink::framework::result_t<void>::failure (
-                  zlink::framework::framework_error_kind_t::worker_queue_full,
+                  zlink::framework::framework_error_kind_t::capacity_exceeded,
                   "capacity is not available");
             }
             std::unique_lock lock (reservation_mutex);
@@ -576,7 +569,7 @@ int main ()
                                       std::chrono::milliseconds (30), 1);
             ++second_attempts;
             return zlink::framework::result_t<void>::failure (
-              zlink::framework::framework_error_kind_t::worker_queue_full,
+              zlink::framework::framework_error_kind_t::capacity_exceeded,
               "capacity is not available");
         });
         if (!second_reserved.await_ready () || second_attempts.load () != 1
@@ -597,7 +590,7 @@ int main ()
                   std::chrono::milliseconds (500), 1);
                 ++hard_overflow_attempts;
                 return zlink::framework::result_t<void>::failure (
-                  zlink::framework::framework_error_kind_t::worker_queue_full,
+                  zlink::framework::framework_error_kind_t::capacity_exceeded,
                   "capacity is not available");
             });
             if (!overflow.await_ready ()
@@ -632,7 +625,7 @@ int main ()
                                       std::chrono::milliseconds (500), 1);
             if (credit_first_attempts.fetch_add (1) == 0) {
                 return zlink::framework::result_t<void>::failure (
-                  zlink::framework::framework_error_kind_t::worker_queue_full,
+                  zlink::framework::framework_error_kind_t::capacity_exceeded,
                   "capacity is not available");
             }
             std::unique_lock lock (credit_mutex);
@@ -668,7 +661,7 @@ int main ()
             const auto attempt = credit_second_attempts.fetch_add (1) + 1;
             if (attempt < 3) {
                 return zlink::framework::result_t<void>::failure (
-                  zlink::framework::framework_error_kind_t::worker_queue_full,
+                  zlink::framework::framework_error_kind_t::capacity_exceeded,
                   "capacity is not available");
             }
             return zlink::framework::result_t<void>::success ();
@@ -708,7 +701,7 @@ int main ()
         catch (const zlink::framework::framework_exception_t &error) {
             duplicate_rejected =
               error.kind ()
-              == zlink::framework::framework_error_kind_t::already_submitted;
+              == zlink::framework::framework_error_kind_t::invalid_operation;
         }
         if (!duplicate_rejected || duplicate_attempts.load () != 1) {
             return 78;
@@ -729,7 +722,7 @@ int main ()
         catch (const zlink::framework::framework_exception_t &error) {
             duplicate_multicast_rejected =
               error.kind ()
-              == zlink::framework::framework_error_kind_t::already_submitted;
+              == zlink::framework::framework_error_kind_t::invalid_operation;
         }
         /* The accepted publish completed at worker dequeue, so its publisher
          * body may still be pending. The call count is settled once the worker
@@ -942,7 +935,7 @@ int main ()
           zlink::message_t::from ("{\"kind\":3,\"channelName\":\"c\",\"messageName\":\"m\"}"));
         if (missing_marker
             || missing_marker.error_kind ()
-                 != zlink::framework::framework_error_kind_t::request_protocol_error) {
+                 != zlink::framework::framework_error_kind_t::protocol_error) {
             return 49;
         }
         auto lonely_flow = codec.decode_header (zlink::message_t::from (
@@ -950,7 +943,7 @@ int main ()
           + created + "\"}"));
         if (lonely_flow
             || lonely_flow.error_kind ()
-                 != zlink::framework::framework_error_kind_t::request_protocol_error) {
+                 != zlink::framework::framework_error_kind_t::protocol_error) {
             return 50;
         }
 

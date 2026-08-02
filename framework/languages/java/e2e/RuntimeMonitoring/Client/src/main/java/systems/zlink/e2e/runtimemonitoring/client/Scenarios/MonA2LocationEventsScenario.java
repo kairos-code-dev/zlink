@@ -36,18 +36,24 @@ public final class MonA2LocationEventsScenario {
                 context.serviceEndpoint(),
                 snapshot -> snapshot.peers().stream().anyMatch(peer ->
                     "READY".equals(peer.state())
-                        && peer.nodeRid().equals(first.nodeRid())),
+                        && !peer.nodeRid().equals(first.nodeRid())),
                 "MON-A2 restarted peer did not return to Ready")
             .peers().stream()
             .filter(peer ->
                 "READY".equals(peer.state())
-                    && peer.nodeRid().equals(first.nodeRid()))
+                    && !peer.nodeRid().equals(first.nodeRid()))
             .findFirst()
             .orElseThrow();
 
         MonitoringScenarioContext.ensure(
-            restarted.nodeRid().equals(first.nodeRid()),
-            "MON-A2 restarted peer RID changed");
+            !restarted.nodeRid().equals(first.nodeRid()),
+            "MON-A2 restarted peer RID did not change");
+        MonitoringScenarioContext.ensure(
+            context.runtimeSnapshot(context.serviceEndpoint()).peers().stream()
+                .noneMatch(peer ->
+                    "READY".equals(peer.state())
+                        && peer.nodeRid().equals(first.nodeRid())),
+            "MON-A2 previous peer remained ready");
         MonitoringScenarioContext.ensure(
             restarted.unavailableReason().isBlank(),
             "MON-A2 Ready peer has an unavailable reason");

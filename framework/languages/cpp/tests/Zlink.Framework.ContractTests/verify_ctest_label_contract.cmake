@@ -21,7 +21,7 @@ set(required_labels
   framework-observability
   framework-http
   framework-http-e2e
-  framework-http-perf
+  framework-perf-smoke
   framework-package
   framework-tooling
   http-client-contract
@@ -71,6 +71,9 @@ set(sample_labels
   framework-sample-workflow)
 
 file(READ "${ZLINK_FRAMEWORK_CPP_BUILD_DIR}/CMakeCache.txt" build_cache)
+if(build_cache MATCHES "ZLINK_FRAMEWORK_CPP_REQUIRE_HTTP_PERF_REPORT:BOOL=ON")
+  list(APPEND required_labels framework-http-perf)
+endif()
 if(build_cache MATCHES "ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES:BOOL=ON")
   list(APPEND required_labels ${sample_labels})
 endif()
@@ -110,6 +113,7 @@ set(known_labels
   scope
   serializer
   spot
+  spot-actor
   stream
   framework-actor
   # foundation and M6 runtime tests build headless of a service-layer framework and label

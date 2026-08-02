@@ -1,4 +1,4 @@
-// RL-D2: observer 실패 격리 시나리오를 검증한다.
+// RL-D2: Observer failure를 messaging에서 격리한다 시나리오를 검증한다.
 import type { ProfileRes, RequestFailureRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../../../http-client';

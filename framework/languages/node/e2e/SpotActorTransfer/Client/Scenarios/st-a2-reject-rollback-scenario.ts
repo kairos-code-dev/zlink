@@ -1,4 +1,4 @@
-// ST-A2: local join reject side effect 없음 시나리오를 검증한다.
+// ST-A2: Local Join reject 시나리오를 검증한다.
 import { SpotActorTransferNames, nodeA, createSpot, createActor, joinActor, probeActor, getRef, getEvidence, waitEvidence, has, unique, require } from '../Support/scenario-support';
 
 export async function runStA2(): Promise<void> {

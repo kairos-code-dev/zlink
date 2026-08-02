@@ -63,7 +63,7 @@ public final class Program {
                 .setRoutingIdPrefix("support-session");
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(session.streamEndpoint())
-                .enableActorDispatch(SampleNames.SupportActorMesh)
+                .enableActorDispatch()
                 .registerSession(SupportChatSession.class);
         };
     }

@@ -1,7 +1,11 @@
 import fs from 'node:fs';
-import { Module } from '@nestjs/common';
+import { Injectable, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import type { ZLinkRouteClient, ZLinkRouteMeshRuntime } from '@zlink-systems/framework';
+import type {
+  ZLinkRouteClient,
+  ZLinkRouteMeshRuntime,
+  ZLinkSendHandler
+} from '@zlink-systems/framework';
 import {
   ZLINK_ROUTE_CLIENT,
   ZLINK_ROUTE_MESH_RUNTIME,
@@ -18,12 +22,20 @@ import {
   type ObjectClientOptions
 } from './Configuration/object-client-options';
 import { createObjectClientEndpoints } from './Endpoints/object-client-endpoints';
+import { PacketNames, type ProfileMsg } from '../../Shared/messages';
 import {
   closeHttpServer,
   startHttpServer
 } from '../Provider/Support/http-server';
 
 const meshName = 'registry.messaging.rm-a3';
+
+@Injectable()
+class ObjectClientProfileCommandHandler implements ZLinkSendHandler<ProfileMsg> {
+  async handle(_command: ProfileMsg): Promise<void> {
+    // The zero-weight phase only verifies Server membership and readiness.
+  }
+}
 
 export async function startObjectClientHost(): Promise<void> {
   let stopping = false;
@@ -47,6 +59,7 @@ export async function startObjectClientHost(): Promise<void> {
       options.rid,
       runtime,
       route,
+      options.serverWeight,
       () => { stopping = true; }
     )
   );
@@ -73,7 +86,7 @@ function createObjectClientModule(): Function {
           fs.mkdirSync(options.logDir, { recursive: true });
           const builder = zlinkFramework();
           builder.addLocationStore(createRedisLocationStore(options));
-          Object.assign(builder.configureLocations(), locationMessagingOptions());
+          locationMessagingOptions(builder.configureLocations());
 
           const mesh = builder.addRouteMesh(meshName)
             .listen(options.routeEndpoint)
@@ -82,7 +95,9 @@ function createObjectClientModule(): Function {
           const channel = mesh.channel(meshName);
           channel.client();
           if (options.serverWeight !== undefined) {
-            channel.server().setWeight(options.serverWeight);
+            channel.server()
+              .setWeight(options.serverWeight)
+              .addSendHandler(PacketNames.profileMsg, ObjectClientProfileCommandHandler);
           }
           for (let index = 0; index < options.routePeers.length; index += 1) {
             mesh.peerConnections().connect(
@@ -93,7 +108,8 @@ function createObjectClientModule(): Function {
           return builder.build();
         }
       })
-    ]
+    ],
+    providers: [ObjectClientProfileCommandHandler]
   })(ObjectClientModule);
   return ObjectClientModule;
 }

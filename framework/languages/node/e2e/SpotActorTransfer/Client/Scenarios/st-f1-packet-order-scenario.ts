@@ -1,4 +1,4 @@
-// ST-F1: in-flight handoff order 시나리오를 검증한다.
+// ST-F1: In-flight handoff order 시나리오를 검증한다.
 import { SpotActorTransferNames, nodeA, nodeB, createSpot, createActor, joinActor, sendHandoff, getEvidence, waitEvidence, post, assertValuesInOrder, has, unique, require } from '../Support/scenario-support';
 
 export async function runStF1(): Promise<void> {

@@ -3,6 +3,7 @@
 
 #include <zlink/Contracts/Core/routing_id.hpp>
 
+#include <algorithm>
 #include <map>
 #include <optional>
 #include <string>
@@ -26,8 +27,8 @@ class message_metadata_t
 
     std::optional<std::string_view> find (std::string_view key) const
     {
-        const auto iterator = _values.find (std::string (key));
-        if (iterator == _values.end ()) {
+        const auto iterator = lower_bound (key);
+        if (iterator == _values.end () || iterator->first != key) {
             return std::nullopt;
         }
         return std::string_view (iterator->second);
@@ -35,7 +36,8 @@ class message_metadata_t
 
     bool contains (std::string_view key) const
     {
-        return _values.find (std::string (key)) != _values.end ();
+        const auto iterator = lower_bound (key);
+        return iterator != _values.end () && iterator->first == key;
     }
 
     bool empty () const noexcept { return _values.empty (); }
@@ -43,6 +45,16 @@ class message_metadata_t
     const std::map<std::string, std::string> &values () const noexcept { return _values; }
 
   private:
+    std::map<std::string, std::string>::const_iterator
+    lower_bound (std::string_view key) const
+    {
+        return std::lower_bound (
+          _values.begin (), _values.end (), key,
+          [] (const auto &entry, std::string_view value) {
+              return std::string_view (entry.first) < value;
+          });
+    }
+
     std::map<std::string, std::string> _values;
 };
 

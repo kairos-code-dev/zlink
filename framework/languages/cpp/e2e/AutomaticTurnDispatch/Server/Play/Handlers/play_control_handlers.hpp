@@ -42,7 +42,7 @@ class ensure_spot_handler_t
         }
         catch (const std::exception &error) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_failed,
+              zlink::framework::framework_error_kind_t::internal_failure,
               std::string ("ensure spot failed: ") + error.what ());
         }
     }
@@ -110,7 +110,7 @@ class bind_await_actors_handler_t
               std::get_if<zlink::framework::actor_join_accepted_t<yd::delay_res_t>> (&joined.value ());
             if (joined_accepted == nullptr) {
                 throw zlink::framework::framework_exception_t (
-                  zlink::framework::framework_error_kind_t::request_failed,
+                  zlink::framework::framework_error_kind_t::internal_failure,
                   "await actor join was rejected: " + actor_id);
             }
             auto actor_ref = joined_accepted->actor;

@@ -4,15 +4,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
 CPP_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$CPP_ROOT/samples/sample-build-common.sh"
 # Message-flow logs land in the sample's own logs/ folder (git-ignored).
 FLOW_LOG_DIR="$SCRIPT_DIR/logs"
 mkdir -p "$FLOW_LOG_DIR"
 rm -f "$FLOW_LOG_DIR"/*.log
-BUILD_DIR="$CPP_ROOT/build"
-BIN_DIR="$BUILD_DIR"
-
-cmake -S "$CPP_ROOT" -B "$BUILD_DIR" -DZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=ON >/dev/null
-cmake --build "$BUILD_DIR" --target \
+zlink_cpp_sample_prepare_build "$CPP_ROOT"
+cmake --build "$BUILD_DIR" --parallel 2 --target \
   sample_cpp_framework_bingo_api \
   sample_cpp_framework_bingo_matchmaking \
   sample_cpp_framework_bingo_play \
@@ -156,6 +154,7 @@ RUN_DIR="$(mktemp -d)"
 LOG_DIR="$RUN_DIR/logs"
 mkdir -p "$LOG_DIR"
 PIDS=()
+PID_ROLES=()
 REDIS_CONTAINER=""
 cleanup_done=false
 BINGO_REDIS_KEY_PREFIX="bingo:cpp:${RANDOM}:$$:"
@@ -194,18 +193,27 @@ cleanup() {
       cleanup_failed=1
     fi
   done
-  for pid in "${PIDS[@]}"; do
+  for i in "${!PIDS[@]}"; do
+    pid="${PIDS[$i]}"
     set +e
     wait "$pid" >/dev/null 2>&1
     status=$?
     set -e
     if [[ "$status" != "0" && "$status" != "127" && "$status" != "130" && "$status" != "143" ]]; then
-      echo "cleanup process $pid exited unexpectedly with status $status" >&2
+      echo "cleanup process ${PID_ROLES[$i]} ($pid) exited unexpectedly with status $status" >&2
       cleanup_failed=1
     fi
   done
   if [[ -n "$REDIS_CONTAINER" ]]; then
     docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+  fi
+  if [[ "$code" -ne 0 ]]; then
+    echo "Bingo sample process logs (failure evidence):" >&2
+    for log in "$LOG_DIR"/*.log; do
+      [[ -f "$log" ]] || continue
+      echo "--- $log" >&2
+      sed -n '1,240p' "$log" >&2
+    done
   fi
   rm -rf "$RUN_DIR"
   if [[ "$cleanup_failed" -ne 0 && "$code" -eq 0 ]]; then
@@ -311,31 +319,49 @@ start_server() {
   shift 2
   stdbuf -oL -eL "$binary" "$@" >"$LOG_DIR/${name}.log" 2>&1 &
   PIDS+=("$!")
+  PID_ROLES+=("$name")
 }
 
-start_server play-a "$PLAY_BIN" --config="$CONFIG_DIR/play-a.json"
-start_server play-b "$PLAY_BIN" --config="$CONFIG_DIR/play-b.json"
 start_server matchmaking "$MATCHMAKING_BIN" --config="$CONFIG_DIR/matchmaking.json"
+wait_port matchmaking "$MATCHMAKING_ROUTE_ENDPOINT"
+
 start_server api-a "$API_BIN" --config="$CONFIG_DIR/api-a.json"
 start_server api-b "$API_BIN" --config="$CONFIG_DIR/api-b.json"
-start_server session-a "$SESSION_BIN" --config="$CONFIG_DIR/session-a.json"
-start_server session-b "$SESSION_BIN" --config="$CONFIG_DIR/session-b.json"
-
-wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER_ENDPOINT"
-wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER_ENDPOINT"
-wait_port matchmaking "$MATCHMAKING_ROUTE_ENDPOINT"
 wait_port api-a "$API_A_CHANNEL_ENDPOINT"
 wait_port api-b "$API_B_CHANNEL_ENDPOINT"
 wait_port api-a-play-route "$API_A_PLAY_ROUTE_ENDPOINT"
 wait_port api-b-play-route "$API_B_PLAY_ROUTE_ENDPOINT"
 wait_port api-a-matchmaking-route "$API_A_MATCHMAKING_ROUTE_ENDPOINT"
 wait_port api-b-matchmaking-route "$API_B_MATCHMAKING_ROUTE_ENDPOINT"
-wait_port session-a-router "$SESSION_A_ROUTER_ENDPOINT"
+
+start_server play-a "$PLAY_BIN" --config="$CONFIG_DIR/play-a.json"
+start_server play-b "$PLAY_BIN" --config="$CONFIG_DIR/play-b.json"
+wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER_ENDPOINT"
+wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER_ENDPOINT"
+
+start_server session-a "$SESSION_BIN" --config="$CONFIG_DIR/session-a.json"
+start_server session-b "$SESSION_BIN" --config="$CONFIG_DIR/session-b.json"
 wait_port session-a-stream "$SESSION_A_STREAM_ENDPOINT"
 wait_port session-a-play-route "$SESSION_A_PLAY_ROUTE_ENDPOINT"
-wait_port session-b-router "$SESSION_B_ROUTER_ENDPOINT"
 wait_port session-b-stream "$SESSION_B_STREAM_ENDPOINT"
 wait_port session-b-play-route "$SESSION_B_PLAY_ROUTE_ENDPOINT"
+
+wait_log_contains "play-a API channel readiness" \
+  "bingo play api channel ready node=a" "$LOG_DIR/play-a.log"
+wait_log_contains "play-b API channel readiness" \
+  "bingo play api channel ready node=b" "$LOG_DIR/play-b.log"
+wait_log_contains "api-a matchmaking route readiness" \
+  "bingo route ready node=api-a mesh=matchmaking" "$LOG_DIR/api-a.log"
+wait_log_contains "api-a room route readiness" \
+  "bingo route ready node=api-a mesh=room" "$LOG_DIR/api-a.log"
+wait_log_contains "api-b matchmaking route readiness" \
+  "bingo route ready node=api-b mesh=matchmaking" "$LOG_DIR/api-b.log"
+wait_log_contains "api-b room route readiness" \
+  "bingo route ready node=api-b mesh=room" "$LOG_DIR/api-b.log"
+wait_log_contains "session-a room route readiness" \
+  "bingo route ready node=session-a mesh=room" "$LOG_DIR/session-a.log"
+wait_log_contains "session-b room route readiness" \
+  "bingo route ready node=session-b mesh=room" "$LOG_DIR/session-b.log"
 
 "$CLIENT_BIN" \
   --session-a-stream-endpoint "$SESSION_A_STREAM_ENDPOINT" \

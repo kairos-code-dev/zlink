@@ -20,11 +20,11 @@ inline result_t<zlink::message_t> current_exception_to_message_result (const cha
         return detail::result_access_t::failure<zlink::message_t> (error);
     }
     catch (const std::exception &error) {
-        return result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,
+        return result_t<zlink::message_t>::failure (framework_error_kind_t::internal_failure,
                                                     error.what ());
     }
     catch (...) {
-        return result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,
+        return result_t<zlink::message_t>::failure (framework_error_kind_t::internal_failure,
                                                     fallback_message);
     }
 }

@@ -74,13 +74,13 @@ export async function startPlayHost(): Promise<void> {
         .addRequestHandler('BindAwaitActorsReq', BindAwaitActorsControlHandler)
         .addRequestHandler('AwaitEvidenceReq', AwaitEvidenceControlHandler)
         .addRequestHandler('AwaitEvidenceWaitReq', AwaitEvidenceWaitControlHandler)
-        .channelName(AutomaticTurnDispatchNames.controlChannel);
+        .channel(AutomaticTurnDispatchNames.controlChannel).server();
       builder.addRouteMesh(AutomaticTurnDispatchNames.delayChannel)
         .peerConnections().connect(options.delayEndpoint);
       const spotRoute = builder.addRouteMesh(AutomaticTurnDispatchNames.spotRouteChannel)
         .listen(options.spotRouteEndpoint)
         .routingId(options.rid);
-      spotRoute.channelName(AutomaticTurnDispatchNames.spotRouteChannel);
+      spotRoute.channel(AutomaticTurnDispatchNames.spotRouteChannel).server();
       for (const endpoint of options.peerSpotRouteEndpoints) {
         spotRoute.peerConnections().connect(endpoint);
       }
@@ -99,7 +99,7 @@ export async function startPlayHost(): Promise<void> {
         AwaitProbeSpot,
         (factory) => factory.disableRelocation()
       );
-      spotMesh.channelName(AutomaticTurnDispatchNames.spotChannel);
+      spotMesh.channel(AutomaticTurnDispatchNames.spotChannel).server();
       for (const peer of options.spotRouterPeers) spotMesh.peerConnections().connect(peer.rid, peer.endpoint);
       return builder.build();
     }

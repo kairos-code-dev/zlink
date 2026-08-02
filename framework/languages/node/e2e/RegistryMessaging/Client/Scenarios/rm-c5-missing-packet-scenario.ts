@@ -1,4 +1,4 @@
-// RM-C5: 미등록 packet 처리 시나리오를 검증한다.
+// RM-C5: Handler가 없는 message를 처리한다 시나리오를 검증한다.
 import type { ProfileRes, RequestFailureRes } from '../../Shared/messages';
 import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';

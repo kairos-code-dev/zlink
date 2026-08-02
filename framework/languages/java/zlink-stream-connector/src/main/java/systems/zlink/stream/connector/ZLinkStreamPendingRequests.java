@@ -25,19 +25,29 @@ final class ZLinkStreamPendingRequests {
                     new TimeoutException("request timed out after " + timeout));
             }
         }, timeout.toMillis(), TimeUnit.MILLISECONDS);
-        pending.whenComplete((reply, ex) -> timeoutTask.cancel(false));
+        pending.whenComplete((reply, ex) -> {
+            timeoutTask.cancel(false);
+            if (pending.isCancelled()) {
+                requests.remove(requestSeq);
+            }
+        });
         return pending;
     }
 
     void complete(long requestSeq, ZLinkStreamEncodedPayload payload) {
         PendingRequest request = requests.remove(requestSeq);
         CompletableFuture<ZLinkStreamEncodedPayload> pending = request == null ? null : request.future();
-        if (pending != null) {
-            pending.complete(new ZLinkStreamEncodedPayload(
-                request.packetName(),
-                payload.payload(),
-                payload.metadata(),
-                payload.codec()));
+        if (pending == null) {
+            payload.payload().close();
+            return;
+        }
+        ZLinkStreamEncodedPayload reply = new ZLinkStreamEncodedPayload(
+            request.packetName(),
+            payload.payload(),
+            payload.metadata(),
+            payload.codec());
+        if (!pending.complete(reply)) {
+            reply.payload().close();
         }
     }
 

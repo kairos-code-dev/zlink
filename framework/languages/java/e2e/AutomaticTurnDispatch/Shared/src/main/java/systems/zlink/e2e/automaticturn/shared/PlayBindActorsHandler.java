@@ -5,7 +5,7 @@ import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ZLinkActorManager;
-import systems.zlink.framework.channels.ZLinkRouteRequestContext;
+import systems.zlink.framework.channels.ZLinkRouteMessageContext;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpotManager;
@@ -28,7 +28,7 @@ public final class PlayBindActorsHandler
     @Override
     public CompletionStage<Contracts.BindActorsRes> handle(
         Contracts.BindActorsReq request,
-        ZLinkRouteRequestContext context) {
+        ZLinkRouteMessageContext context) {
         return spots.getOrCreate(
                 AwaitProbeSpot.class,
                 RoutingId.from(request.spotRid()),
@@ -53,6 +53,6 @@ public final class PlayBindActorsHandler
         return new Contracts.ActorBinding(
             actor.actorId(),
             actor.nodeRid().toString(),
-            actor.generation());
+            actor.objectGeneration());
     }
 }

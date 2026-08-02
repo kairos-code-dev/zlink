@@ -13,7 +13,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <thread>
 #include <utility>
 
 namespace zlink
@@ -42,6 +41,11 @@ class submit_once_t
   private:
     std::atomic_bool _claimed{false};
 };
+
+/* Runs a transport call outside the caller's serial turn and owns the work
+ * through the Framework offload executor. The implementation is provided by
+ * the runtime so this public call surface does not create an unmanaged thread. */
+bool submit_blocking_call (std::function<void ()> work);
 } // namespace detail
 
 template <typename TReply> class request_call_t
@@ -87,11 +91,12 @@ template <typename TReply> class request_call_t
         if (_preflight) {
             const auto admitted = _preflight (release_turn);
             if (!admitted) {
-                return task_t<TReply> (result_t<TReply>::failure (
-                  admitted.error_kind (),
-                  admitted.error () ? admitted.error ()->what ()
-                                     : "request preflight failed",
-                  admitted.error () && admitted.error ()->is_retriable ()));
+                return task_t<TReply> (
+                  admitted.error ()
+                    ? detail::result_access_t::failure<TReply> (*admitted.error ())
+                    : result_t<TReply>::failure (
+                        framework_error_kind_t::internal_failure,
+                        "request preflight failed"));
             }
         }
         if (_immediate) {
@@ -99,7 +104,7 @@ template <typename TReply> class request_call_t
         }
         if (!_submit) {
             return task_t<TReply> (
-              result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
+              result_t<TReply>::failure (framework_error_kind_t::protocol_error,
                                          "request call is not bound to a channel client"));
         }
         auto turn_plan = detail::prepare_serial_turn_await (release_turn);
@@ -112,8 +117,9 @@ template <typename TReply> class request_call_t
           std::make_shared<detail::task_completion_source_t<TReply>> (
             std::move (turn_plan->scheduler));
         auto pending = source->task ();
-        std::thread ([source, submit = _submit, packet_name = _packet_name, timeout = _timeout,
-                      metadata = _metadata] () mutable {
+        if (!detail::submit_blocking_call (
+              [source, submit = _submit, packet_name = _packet_name,
+               timeout = _timeout, metadata = _metadata] () mutable {
             try {
                 source->complete (submit (packet_name, timeout, metadata).result ());
             }
@@ -122,9 +128,13 @@ template <typename TReply> class request_call_t
             }
             catch (...) {
                 source->complete (result_t<TReply>::failure (
-                  framework_error_kind_t::request_failed, "awaited request failed"));
+                  framework_error_kind_t::internal_failure, "awaited request failed"));
             }
-        }).detach ();
+        })) {
+            source->complete (result_t<TReply>::failure (
+              framework_error_kind_t::internal_failure,
+              "request offload executor rejected the call"));
+        }
         return pending;
     }
 
@@ -183,7 +193,7 @@ class channel_request_call_t
             co_return co_await detail::unsupported_yield_task<TReply> ();
         }
         if (!_submit) {
-            co_return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
+            co_return result_t<TReply>::failure (framework_error_kind_t::protocol_error,
                                                  "request call is not bound to a channel client");
         }
         zlink::message_t reply;
@@ -194,7 +204,7 @@ class channel_request_call_t
             auto source = std::make_shared<detail::task_completion_source_t<zlink::message_t>> (
               std::move (turn_plan->scheduler));
             auto pending = source->task ();
-            std::thread ([source, submit = blocking_submit ()] () mutable {
+            if (!detail::submit_blocking_call ([source, submit = blocking_submit ()] () mutable {
                 try {
                     source->complete (submit ());
                 }
@@ -203,9 +213,13 @@ class channel_request_call_t
                 }
                 catch (...) {
                     source->complete (result_t<zlink::message_t>::failure (
-                      framework_error_kind_t::request_failed, "awaited channel request failed"));
+                      framework_error_kind_t::internal_failure, "awaited channel request failed"));
                 }
-            }).detach ();
+            })) {
+                source->complete (result_t<zlink::message_t>::failure (
+                  framework_error_kind_t::internal_failure,
+                  "request offload executor rejected the call"));
+            }
             reply = co_await pending;
         }
         co_return decode<TReply> (reply);
@@ -214,7 +228,7 @@ class channel_request_call_t
     template <typename TReply> result_t<TReply> decode (const zlink::message_t &reply)
     {
         if (_serializers == nullptr) {
-            return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
+            return result_t<TReply>::failure (framework_error_kind_t::protocol_error,
                                               "channel request has no serializer registry");
         }
         try {
@@ -229,7 +243,7 @@ class channel_request_call_t
     {
         if (!_submit) {
             return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               "request call is not bound to a channel client"));
         }
         return _submit (_packet_name, _timeout, _metadata);
@@ -243,7 +257,7 @@ class channel_request_call_t
         if (!_submit) {
             return [] {
                 return result_t<zlink::message_t>::failure (
-                  framework_error_kind_t::request_protocol_error,
+                  framework_error_kind_t::protocol_error,
                   "request call is not bound to a channel client");
             };
         }
@@ -299,7 +313,7 @@ class send_call_t
     {
         if (!_submission->try_claim ()) {
             return task_t<void> (result_t<void>::failure (
-              framework_error_kind_t::already_submitted,
+              framework_error_kind_t::invalid_operation,
               "one-way call has already been submitted"));
         }
         if (_immediate) {
@@ -308,7 +322,7 @@ class send_call_t
         }
         if (!_submit) {
             return task_t<void> (result_t<void>::failure (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               "send call is not bound to a channel client"));
         }
         return detail::submit_one_way_task (
@@ -323,7 +337,7 @@ class send_call_t
             return *_immediate;
         }
         if (!_submit) {
-            return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+            return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                             "send call is not bound to a channel client");
         }
         return _submit (_packet_name, _metadata);
@@ -365,7 +379,7 @@ class publish_call_t
     {
         if (!_submission->try_claim ()) {
             return task_t<void> (result_t<void>::failure (
-              framework_error_kind_t::already_submitted,
+              framework_error_kind_t::invalid_operation,
               "logical multicast call has already been submitted"));
         }
         if (_immediate) {
@@ -375,7 +389,7 @@ class publish_call_t
           [submit = _submit, metadata = _metadata] () mutable {
               if (!submit) {
                   throw framework_exception_t (
-                    framework_error_kind_t::request_protocol_error,
+                    framework_error_kind_t::protocol_error,
                     "logical multicast call is not bound to a publisher");
               }
               return submit (metadata);

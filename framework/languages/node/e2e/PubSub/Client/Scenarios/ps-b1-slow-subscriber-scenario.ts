@@ -1,4 +1,4 @@
-// PS-B1: subscriber 느린 handler 시나리오를 검증한다.
+// PS-B1: 느린 subscriber가 다른 subscriber를 막지 않는다 시나리오를 검증한다.
 import { randomUUID } from 'node:crypto';
 import { PubSubNames } from '../../Shared/messages';
 import { postJson } from '../../../http-client';

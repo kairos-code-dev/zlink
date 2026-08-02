@@ -82,6 +82,7 @@ public static class RegistrationCodecServerHostFactory
             channel.AddSendHandler<ProtobufEchoCommandHandler, StringValue>();
             channel.AddRequestHandler<MessagePackEchoRequestHandler, PackedEchoReq, PackedEchoReq>("EchoMessagePack");
             channel.AddSendHandler<MessagePackEchoCommandHandler, PackedEchoMsg>("EchoMessagePackMsg");
+            channel.AddRequestHandler<JsonGoldenRequestHandler, JsonGoldenReq, JsonGoldenRes>();
             channel.AddRequestHandler<DiEchoRequestHandler, EchoDiReq, EchoRes>("EchoDi");
 
             if (options.InvalidMode == "duplicate")

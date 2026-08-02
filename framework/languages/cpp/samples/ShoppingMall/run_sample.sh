@@ -4,9 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
 CPP_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-BUILD_DIR="$CPP_ROOT/build"
-BIN_DIR="$BUILD_DIR"
-cmake -S "$CPP_ROOT" -B "$BUILD_DIR" -DZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=ON >/dev/null
+source "$CPP_ROOT/samples/sample-build-common.sh"
+zlink_cpp_sample_prepare_build "$CPP_ROOT"
 if [[ ! -x "$BIN_DIR/sample_cpp_framework_shoppingmall_client" && -x "$BIN_DIR/linux-ninja-debug/sample_cpp_framework_shoppingmall_client" ]]; then
   BIN_DIR="$BIN_DIR/linux-ninja-debug"
 fi
@@ -83,7 +82,7 @@ if [[ "$PORT_ALLOCATION_OUTPUT" == SOCKETLESS* ]]; then
 fi
 read -r SHOPPINGMALL_RESERVED_PORT SHOPPINGMALL_API_A_PORT SHOPPINGMALL_API_B_PORT SHOPPINGMALL_API_A_ROUTE SHOPPINGMALL_API_B_ROUTE SHOPPINGMALL_WORKFLOW_A_PORT SHOPPINGMALL_WORKFLOW_B_PORT SHOPPINGMALL_WORKFLOW_A_ROUTE SHOPPINGMALL_WORKFLOW_B_ROUTE SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTE SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTE SHOPPINGMALL_WORKFLOW_A_SPOT SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER SHOPPINGMALL_WORKFLOW_B_SPOT SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER SHOPPINGMALL_API_A_SPOT_ROUTER SHOPPINGMALL_API_B_SPOT_ROUTER <<<"$PORT_ALLOCATION_OUTPUT"
 
-cmake --build "$BUILD_DIR" --target \
+cmake --build "$BUILD_DIR" --parallel 2 --target \
   sample_cpp_framework_shoppingmall_commerce_api \
   sample_cpp_framework_shoppingmall_order_workflow \
   sample_cpp_framework_shoppingmall_client >/dev/null
@@ -224,18 +223,12 @@ start_role api-a "$BIN_DIR/sample_cpp_framework_shoppingmall_commerce_api" --con
 start_role api-b "$BIN_DIR/sample_cpp_framework_shoppingmall_commerce_api" --config="$CONFIG_DIR/api-b.json"
 
 wait_port workflow-a-route "$SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT"
-wait_port workflow-a-spot-route "$SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTE_ENDPOINT"
-wait_port workflow-a-spot "$SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT"
-wait_port workflow-a-spot-router "$SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT"
 wait_http workflow-a "$SHOPPINGMALL_WORKFLOW_A_HTTP_URL"
 wait_port workflow-b-route "$SHOPPINGMALL_WORKFLOW_B_ROUTE_ENDPOINT"
-wait_port workflow-b-spot-route "$SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTE_ENDPOINT"
-wait_port workflow-b-spot "$SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT"
-wait_port workflow-b-spot-router "$SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT"
 wait_http workflow-b "$SHOPPINGMALL_WORKFLOW_B_HTTP_URL"
-wait_port api-a-spot-router "$SHOPPINGMALL_API_A_SPOT_ROUTER_ENDPOINT"
+wait_port api-a-route "$SHOPPINGMALL_API_A_ROUTE"
 wait_http api-a "$SHOPPINGMALL_API_A_HTTP_URL"
-wait_port api-b-spot-router "$SHOPPINGMALL_API_B_SPOT_ROUTER_ENDPOINT"
+wait_port api-b-route "$SHOPPINGMALL_API_B_ROUTE"
 wait_http api-b "$SHOPPINGMALL_API_B_HTTP_URL"
 
 "$BIN_DIR/sample_cpp_framework_shoppingmall_client" \

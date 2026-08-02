@@ -30,9 +30,16 @@ int main (int argc, char **argv)
           .set_bind_host (host_from_tcp_endpoint (topology.tracking_route_endpoint))
           .listen (port_from_http_url (topology.tracking_route_endpoint))
           .add_handler_group ("tracking");
-        options.add_route_mesh (sample_names_t::customer_actor_discovery)
-          .listen (topology.tracking_spot_router_endpoint)
-          .channel_name (sample_names_t::customer_actor_discovery);
+        auto customer_mesh = options.add_route_mesh (sample_names_t::customer_actor_discovery);
+        customer_mesh.set_routing_id (zlink::routing_id_t::from (
+          sample_names_t::tracking_route_node));
+        customer_mesh.set_object_role (object_role_t::client);
+        customer_mesh.listen (topology.tracking_spot_router_endpoint)
+          .channel_name (sample_names_t::customer_actor_discovery)
+          .client ();
+        customer_mesh.peer_connections ().connect (
+          zlink::routing_id_t::from (sample_names_t::customer_gateway_route_node),
+          topology.customer_spot_router_endpoint);
         options.handlers ().group ("tracking").add<delivery_status_changed_handler_t> ();
     });
     return app.run (argc, argv);

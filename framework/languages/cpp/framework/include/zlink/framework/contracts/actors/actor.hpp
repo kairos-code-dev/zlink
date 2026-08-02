@@ -104,8 +104,7 @@ struct actor_join_failed_t
 {
     std::uint64_t operation_id_high = 0;
     std::uint64_t operation_id_low = 0;
-    framework_error_kind_t error_kind = framework_error_kind_t::request_failed;
-    bool retryable = false;
+    framework_error_kind_t error_kind = framework_error_kind_t::internal_failure;
 };
 
 using actor_join_completion_t =
@@ -122,8 +121,7 @@ actor_join_completion_from_erased (
   std::uint64_t operation_id_low,
   const actor_ref_t *committed,
   const std::optional<message_t> &reply,
-  framework_error_kind_t error_kind,
-  bool retryable)
+  framework_error_kind_t error_kind)
 {
     if (outcome == actor_join_completion_outcome_t::accepted
         && committed != nullptr) {
@@ -135,7 +133,7 @@ actor_join_completion_from_erased (
           operation_id_high, operation_id_low, reply};
     }
     return actor_join_failed_t{
-      operation_id_high, operation_id_low, error_kind, retryable};
+      operation_id_high, operation_id_low, error_kind};
 }
 } // namespace detail
 
@@ -231,7 +229,7 @@ class actor_factory_builder_t
     {
         if (_sealed) {
             throw framework_exception_t (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "Actor factory builder cannot be changed after the configure callback returns");
         }
     }
@@ -241,7 +239,7 @@ class actor_factory_builder_t
         if (_relocation.kind
             == detail::factory_relocation_kind_t::unspecified) {
             throw framework_exception_t (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "Actor factory must select exactly one relocation policy");
         }
     }
@@ -252,7 +250,7 @@ class actor_factory_builder_t
         if (_relocation.kind
             != detail::factory_relocation_kind_t::unspecified) {
             throw framework_exception_t (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "Actor factory must select exactly one relocation policy");
         }
         _relocation = {kind, adapter_type};
@@ -292,12 +290,15 @@ class actor_send_call_t
 class actor_request_call_t
 {
   public:
+    using metadata_map_t = std::map<std::string, std::string>;
+
     actor_request_call_t (actor_client_t &client,
                           actor_ref_t actor_ref,
                           std::string packet_name,
                           message_t request);
 
     actor_request_call_t &timeout (std::chrono::milliseconds timeout);
+    actor_request_call_t &metadata (std::string key, std::string value);
 
     template <typename TReply> task_t<TReply> submit ()
     {
@@ -323,6 +324,7 @@ class actor_request_call_t
     std::string _packet_name;
     message_t _request;
     std::optional<std::chrono::milliseconds> _timeout;
+    metadata_map_t _metadata;
 };
 
 class actor_client_t
@@ -357,7 +359,8 @@ class actor_client_t
       actor_ref_t actor_ref,
       std::string packet_name,
       message_t request,
-      std::optional<std::chrono::milliseconds> timeout) = 0;
+      std::optional<std::chrono::milliseconds> timeout,
+      const actor_request_call_t::metadata_map_t &metadata) = 0;
     virtual serializer_registry_t &actor_client_serializers () = 0;
 
   private:
@@ -413,6 +416,7 @@ class actor_create_call_t
     }
     actor_create_call_t &timeout (std::chrono::milliseconds timeout);
     task_t<actor_create_result_t> submit ();
+    task_t<actor_create_result_t> yield ();
 
   private:
     friend class actor_manager_t;
@@ -473,7 +477,7 @@ class actor_join_call_t
     {
         if (timeout.count () < 1 || timeout.count () > INT_MAX) {
             throw framework_exception_t (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "Actor join timeout must be from 1 through INT_MAX milliseconds");
         }
         _timeout = timeout;
@@ -484,13 +488,13 @@ class actor_join_call_t
     {
         if (_deferred_once) {
             throw framework_exception_t (
-              framework_error_kind_t::already_submitted,
+              framework_error_kind_t::invalid_operation,
               "Actor join call was already deferred");
         }
         _deferred_once = true;
         if (!_deferred) {
             throw framework_exception_t (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "Actor join call has no deferred operation");
         }
         const auto deadline = std::chrono::steady_clock::now () + _timeout;
@@ -681,7 +685,7 @@ class actor_context_t
         auto *serializers = serializer_registry ();
         if (serializers == nullptr) {
             throw framework_exception_t (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               "actor join spot requires a serializer registry");
         }
         return join_spot_payload (std::move (spot_id), request.to_raw (*serializers));
@@ -694,7 +698,7 @@ class actor_context_t
         auto *serializers = serializer_registry ();
         if (serializers == nullptr) {
             throw framework_exception_t (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               "actor join spot requires a serializer registry");
         }
         return join_spot_payload (
@@ -716,7 +720,7 @@ class actor_context_t
         auto *serializers = serializer_registry ();
         if (serializers == nullptr) {
             throw framework_exception_t (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               "actor join entry spot requires a serializer registry");
         }
         return join_entry_spot_payload (request.to_raw (*serializers));
@@ -730,7 +734,7 @@ class actor_context_t
         auto *serializers = serializer_registry ();
         if (serializers == nullptr) {
             throw framework_exception_t (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               "actor join entry spot requires a serializer registry");
         }
         return join_entry_spot_payload (
@@ -888,7 +892,7 @@ spot_node_builder_t::add_actor_factory (
       std::derived_from<TActorFactory, actor_factory_t<TActor>>);
     if (!factory || !configure) {
         throw framework_exception_t (
-          framework_error_kind_t::invalid_configuration,
+          framework_error_kind_t::not_configured,
           "Actor factory and configure callback must not be empty");
     }
     auto factory_builder =
@@ -917,7 +921,7 @@ spot_node_builder_t::add_actor_factory (
                       *static_cast<actor_context_t *> (
                         actor_context))) {
               throw framework_exception_t (
-                framework_error_kind_t::invalid_configuration,
+                framework_error_kind_t::not_configured,
                 "Actor factory must return an Actor that exposes the provided Context");
           }
       },
@@ -939,12 +943,12 @@ spot_node_builder_t::add_actor_factory (
           }
           if (!created.value ()) {
               throw framework_exception_t (
-                framework_error_kind_t::actor_route_not_found,
+                framework_error_kind_t::not_found,
                 "Actor factory returned null");
           }
           if (!created.value ()->context ().has_same_source_fence (expected)) {
               throw framework_exception_t (
-                framework_error_kind_t::invalid_configuration,
+                framework_error_kind_t::not_configured,
                 "Actor factory must return an Actor that exposes the provided Context");
           }
           created.value ()->configure ();
@@ -958,11 +962,11 @@ spot_node_builder_t::add_actor_factory (
           const actor_ref_t *committed,
           const std::optional<message_t> &reply,
           framework_error_kind_t error_kind,
-          bool retryable) {
+          bool) {
           const auto completion =
             detail::actor_join_completion_from_erased (
               outcome, operation_id_high, operation_id_low, committed,
-              reply, error_kind, retryable);
+              reply, error_kind);
           return static_cast<TActor *> (actor)
             ->on_join_completed (completion);
       },

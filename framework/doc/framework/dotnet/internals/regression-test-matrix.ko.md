@@ -447,6 +447,16 @@ backend gate 와 별도로 유지한다.
 | `E2E:SM-E3` | stage tick으로 쓰는 timer가 Spot 종료 뒤 추가 callback을 만들지 않는다. |
 | `E2E:SM-A5` | application stage wrapper가 Spot request, timer와 lifecycle을 public API로 실행한다. |
 
+### E2E inventory and aggregate runner
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `RegressionTests.EveryCommonE2EConfigHasAnExplicitAggregateRunnerEntry` | 공통 E2E Config 1~14가 `.NET` feature-map, process runner와 aggregate runner entry를 모두 갖는다. 구현되지 않은 구성은 runner가 성공으로 세지 않는다. |
+| `RegressionTests.CommonE2EConfigsHaveCompleteDotNetFeatureMapInventories` | Config 1~14의 공통 scenario ID와 `.NET` feature-map ID가 누락·중복·unknown 없이 대응한다. |
+| `E2E:RM-A2` | `LocationMessaging`의 실제 process selector가 client-visible 결과와 role server evidence를 남긴다. |
+| `SCRIPT:e2e/ChannelEgressRouting/run_e2e.sh` | Config 12의 미완료 `all` selector가 exit 2로 닫히며 누락 selector를 출력한다. |
+| `SCRIPT:e2e/InstanceSpot/run_e2e.sh` | Config 14의 process fixture 부재가 exit 2로 닫히며 aggregate 성공으로 집계되지 않는다. |
+
 ### Location
 
 | 테스트 케이스 | 확인 기준 |

@@ -80,14 +80,14 @@ class play_session_t final : public packet_stream_session_t
     result_t<session_actor_t> require_bound_actor (const std::string &action) const
     {
         if (!_bound_actor_id) {
-            return result_t<session_actor_t>::failure (framework_error_kind_t::request_failed,
+            return result_t<session_actor_t>::failure (framework_error_kind_t::internal_failure,
                                                        "Client must authenticate before " + action
                                                          + ".");
         }
         auto actor = _actors.find (*_bound_actor_id);
         if (!actor) {
             return result_t<session_actor_t>::failure (
-              framework_error_kind_t::actor_route_not_found,
+              framework_error_kind_t::not_found,
               "Exactly one actor must be bound before " + action + ".");
         }
         return result_t<session_actor_t>::success (std::move (*actor));

@@ -1,4 +1,4 @@
-// RC-B2: Protobuf codec 시나리오를 검증한다.
+// RC-B2: Root에 등록한 Protobuf extension을 사용한다 시나리오를 검증한다.
 import type { CodecScenarioRes } from '../../Shared/messages';
 import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';

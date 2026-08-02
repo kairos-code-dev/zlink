@@ -1,4 +1,4 @@
-// RL-D4: error reply 직렬화(same-version) 시나리오를 검증한다.
+// RL-D4: Same-version peers가 public error kind를 보존한다 시나리오를 검증한다.
 import type { RequestFailureRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../../../http-client';

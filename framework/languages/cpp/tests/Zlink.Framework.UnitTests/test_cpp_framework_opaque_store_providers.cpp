@@ -48,9 +48,8 @@ class post_commit_failure_location_store_t final :
             committed.result ().value ();
             return task_t<store_write_result_t> (
               result_t<store_write_result_t>::failure (
-                framework_error_kind_t::request_failed,
-                "reply was lost after commit",
-                true));
+                framework_error_kind_t::unavailable,
+                "reply was lost after commit"));
         }
         return committed;
     }
@@ -83,9 +82,8 @@ class post_commit_failure_relocation_store_t final :
             committed.result ().value ();
             return task_t<blob_put_result_t> (
               result_t<blob_put_result_t>::failure (
-                framework_error_kind_t::request_failed,
-                "reply was lost after commit",
-                true));
+                framework_error_kind_t::unavailable,
+                "reply was lost after commit"));
         }
         return committed;
     }

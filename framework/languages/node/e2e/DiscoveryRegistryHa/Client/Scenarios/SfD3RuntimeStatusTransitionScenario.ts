@@ -1,4 +1,4 @@
-// SF-D3: public topology status 전이 관측 시나리오를 검증한다.
+// SF-D3: Public status가 Ready·Degraded·Ready로 수렴한다 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
 import { getJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';

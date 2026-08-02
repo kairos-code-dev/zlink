@@ -1,4 +1,4 @@
-// SM-D13: stream heartbeat 시나리오를 검증한다.
+// SM-D13: Stream heartbeat loss를 disconnect로 처리한다 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

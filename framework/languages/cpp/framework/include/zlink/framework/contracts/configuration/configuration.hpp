@@ -52,7 +52,7 @@ class configuration_section_t
     {
         auto value = get (key);
         if (!value) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "required configuration value missing: " + join (key));
         }
         return *value;
@@ -119,7 +119,7 @@ class config_builder_t
     {
         auto bound = bind<T> (prefix);
         if (!bound) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "required configuration section missing: " + prefix);
         }
         return *bound;

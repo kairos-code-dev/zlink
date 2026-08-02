@@ -1,4 +1,4 @@
-// ST-F3: bound session cross-move order 시나리오를 검증한다.
+// ST-F3: Bound Session cross-move order 시나리오를 검증한다.
 import type { ProbeReq } from '../../Shared/messages.js';
 import { SpotActorTransferNames, options, nodeA, nodeB, connectAndBind, createSpot, createActor, joinActor, waitEvidence, post, assertValuesInOrder, unique, uniqueShort, delay, require } from '../Support/scenario-support';
 

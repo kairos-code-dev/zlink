@@ -50,7 +50,7 @@
 | `Client/Scenarios/RmC3MultiProviderDistributionScenario.cs` | `Client/Scenarios/rm-c3-multi-provider-distribution-scenario.ts` | scenario | done | `RM-C3` |
 | `Client/Scenarios/RmC4TimeoutIsolationScenario.cs` | `Client/Scenarios/rm-c4-timeout-isolation-scenario.ts` | scenario | done | `RM-C4` |
 | `Client/Scenarios/RmC5MissingPacketScenario.cs` | `Client/Scenarios/rm-c5-missing-packet-scenario.ts` | scenario | done | `RM-C5` |
-| `Client/Scenarios/RmC7WeightedProviderScenario.cs` | `Client/Scenarios/rm-c7-weighted-provider-scenario.ts` | scenario | done | `RM-C7`, public `addRouteMesh(...).channelName(...).setWeight(...)` 사용 |
+| `Client/Scenarios/RmC7WeightedProviderScenario.cs` | `Client/Scenarios/rm-c7-weighted-provider-scenario.ts` | scenario | done | `RM-C7`, public `addRouteMesh(...).channel(...).server().setWeight(...)` 사용 |
 | `Client/Scenarios/RmC8PayloadRoundTripScenario.cs` | `Client/Scenarios/rm-c8-payload-round-trip-scenario.ts` | scenario | done | `RM-C8` |
 | `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/Scenarios/rm-c9-backpressure-scenario.ts` | scenario | 10.0.0 전환 대상 | 현재 pressure/recovery 경로는 구현되어 있으나 10.0.0 admission 결과 검증은 남아 있다. |
 | `Client/Support/ClientOptions.cs` | `Client/Support/client-options.ts` | support | done | CLI option parsing |
@@ -81,7 +81,7 @@
 ## Public Contract 확인 사항
 
 - `RM-C7`은 `.NET`에서 `ChannelName(...).SetWeight(...)`를 사용한다. Node는 같은 의미의
-  `addRouteMesh(...).channelName(...).setWeight(...)`로 build-time provider weight를 설정한다.
+  `addRouteMesh(...).channel(...).server().setWeight(...)`로 build-time provider weight를 설정한다.
 - `RM-C9`의 10.0.0 Node exact interface는 one-way call에 bounded
   `submit()`을 제공한다. 현재 pressure/recovery 증거는 보존하되 최초 시도, bounded wait와 timeout의
   public admission 결과를 직접 검증해야 한다.

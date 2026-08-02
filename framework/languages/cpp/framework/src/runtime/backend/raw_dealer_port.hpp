@@ -3,6 +3,8 @@
 
 #include "runtime/backend/raw_route_port.hpp"
 
+#include <zlink/Contracts/Eventing/poller.hpp>
+
 namespace zlink
 {
 class dealer_socket_t;
@@ -16,7 +18,7 @@ class raw_dealer_port_t
   public:
     explicit raw_dealer_port_t (
       zlink::dealer_socket_t &socket,
-      std::mutex *shared_socket_mutex = nullptr) noexcept;
+      std::mutex *shared_socket_mutex = nullptr);
 
     bool send (const raw_message_t &parts);
     bool request (const raw_message_t &parts,
@@ -26,6 +28,7 @@ class raw_dealer_port_t
     void close () noexcept;
 
   private:
+    zlink::poller_t _poller;
     zlink::dealer_socket_t *_socket;
     std::mutex _owned_socket_mutex;
     std::mutex *_socket_mutex;

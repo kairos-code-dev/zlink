@@ -1,4 +1,4 @@
-// RL-D1: high fanout stability 시나리오를 검증한다.
+// RL-D1: High fanout에서 subscriber를 서로 격리한다 시나리오를 검증한다.
 import { randomUUID } from 'node:crypto';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../../../http-client';

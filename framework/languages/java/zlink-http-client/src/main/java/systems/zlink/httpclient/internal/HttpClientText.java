@@ -10,6 +10,7 @@ import systems.zlink.framework.errors.ZLinkFrameworkException;
 
 /** Shared text helpers mirroring the C++ {@code client.cpp} anonymous-namespace utilities. */
 public final class HttpClientText {
+    private static final long MAX_TIMEOUT_MILLIS = Integer.MAX_VALUE;
 
     private HttpClientText() {
     }
@@ -25,9 +26,32 @@ public final class HttpClientText {
     }
 
     public static void requirePositiveTimeout(Duration value) {
+        normalizeTimeout(value);
+    }
+
+    /** Returns the contract's millisecond-rounded timeout after validating its finite range. */
+    public static Duration normalizeTimeout(Duration value) {
         if (value == null || value.isZero() || value.isNegative()) {
             throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR, "HTTP client timeout must be greater than zero");
         }
+        long millis;
+        try {
+            millis = value.toMillis();
+            if (!value.minusMillis(millis).isZero()) {
+                millis = Math.addExact(millis, 1L);
+            }
+        } catch (ArithmeticException error) {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR,
+                "HTTP client timeout must fit the finite 1..2147483647 ms range",
+                error);
+        }
+        if (millis < 1L || millis > MAX_TIMEOUT_MILLIS) {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR,
+                "HTTP client timeout must fit the finite 1..2147483647 ms range");
+        }
+        return Duration.ofMillis(millis);
     }
 
     public static String percentEncode(String value) {

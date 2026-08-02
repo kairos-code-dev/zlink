@@ -6,6 +6,7 @@ object Contracts {
     const val CHANNEL = "registration.codec.kotlin.api"
     const val AUTO_GROUP = "registration-codec-kotlin-auto"
     const val ATTR_GROUP = "registration-codec-kotlin-attr"
+    const val MANUAL_GROUP = "registration-codec-kotlin-manual"
 }
 
 @ZLinkPacket("EchoAutoReq")

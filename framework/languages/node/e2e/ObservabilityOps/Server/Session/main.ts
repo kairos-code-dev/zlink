@@ -124,7 +124,7 @@ Module({
           .traceLabel(options.rid);
         builder.addRouteMesh(ObservabilityOpsNames.mesh)
           .listen(options.routerEndpoint).routingId(options.rid)
-          .channelName(ObservabilityOpsNames.mesh);
+          .channel(ObservabilityOpsNames.mesh).server();
         builder.addStreamNode(`${ObservabilityOpsNames.mesh}-${options.rid}`)
           .bind(options.streamEndpoint)
           .registerSession(GatewaySessionFactory);

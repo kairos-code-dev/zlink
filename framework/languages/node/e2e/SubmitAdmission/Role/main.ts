@@ -136,7 +136,7 @@ function zlinkOptions(options: RoleOptions) {
     .listen(requireValue(options.meshEndpoint, 'meshEndpoint'))
     .routingId(options.rid)
     .addSendHandler('AdmissionMessage', RouteAdmissionHandler);
-  mesh.channelName(channelName)
+  mesh.channel(channelName).server()
     .setWeight(options.role === 'target' ? 100 : 0)
     .addSendHandler('AdmissionMessage', ChannelAdmissionHandler);
   if (options.peerEndpoint !== undefined && options.peerRid !== undefined) {

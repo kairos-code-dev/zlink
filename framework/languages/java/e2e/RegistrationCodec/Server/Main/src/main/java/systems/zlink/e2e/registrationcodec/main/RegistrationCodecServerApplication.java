@@ -88,50 +88,47 @@ public final class RegistrationCodecServerApplication {
                 .traceLogFile(options.logDir() + "/server-flow.log")
                 .traceLabel("java-rc-server");
             framework.addHandlersFromPackageOf(AutoRequestHandler.class);
-            var channel = framework.addClientServerChannel(Contracts.CHANNEL)
-                .enableServer(options.serverEndpoint())
-                .enableClient(options.serverEndpoint())
+            var endpoint = java.net.URI.create(options.serverEndpoint());
+            var channel = framework.addClientServerChannel(Contracts.CHANNEL);
+            var server = channel.server()
+                .setBindHost(endpoint.getHost())
+                .setAdvertiseHost(endpoint.getHost())
+                .listen(endpoint.getPort())
                 .addHandlerGroup(Contracts.AUTO_GROUP)
                 .addHandlerGroup(Contracts.ATTR_GROUP);
-            channel.addRequestHandler(
+            channel.client().connect(options.serverEndpoint());
+            server.addRequestHandler(
                 ManualRequestHandler.class,
                 Contracts.EchoManualReq.class,
-                Contracts.EchoRes.class,
-                "EchoManual");
-            channel.addSendHandler(
+                Contracts.EchoRes.class);
+            server.addSendHandler(
                 ManualSendHandler.class,
-                Contracts.EchoManualMsg.class,
-                "EchoManual");
-            channel.addRequestHandler(
+                Contracts.EchoManualMsg.class);
+            server.addRequestHandler(
                 DiLifecycleReqHandler.class,
                 Contracts.DiLifecycleReq.class,
-                Contracts.DiLifecycleRes.class,
-                "DiLifecycle");
-            channel.addRequestHandler(
+                Contracts.DiLifecycleRes.class);
+            server.addRequestHandler(
                 JsonRequestHandler.class,
                 Contracts.JsonEchoReq.class,
-                Contracts.EchoRes.class,
-                "JsonEcho");
-            channel.addSendHandler(
+                Contracts.EchoRes.class);
+            server.addSendHandler(
                 JsonSendHandler.class,
-                Contracts.JsonEchoMsg.class,
-                "JsonEcho");
-            channel.addRequestHandler(
+                Contracts.JsonEchoMsg.class);
+            server.addRequestHandler(
                 ProtobufRequestHandler.class,
                 StringValue.class,
                 StringValue.class);
-            channel.addSendHandler(
+            server.addSendHandler(
                 ProtobufSendHandler.class,
                 StringValue.class);
-            channel.addRequestHandler(
+            server.addRequestHandler(
                 MsgpackRequestHandler.class,
                 Contracts.PackedEchoReq.class,
-                Contracts.PackedEchoRes.class,
-                "MsgpackEcho");
-            channel.addSendHandler(
+                Contracts.PackedEchoRes.class);
+            server.addSendHandler(
                 MsgpackSendHandler.class,
-                Contracts.PackedEchoMsg.class,
-                "MsgpackEcho");
+                Contracts.PackedEchoMsg.class);
         };
     }
 

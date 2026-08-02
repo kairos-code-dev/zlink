@@ -1,4 +1,4 @@
-// SM-B7: actor handler 실행 순서 시나리오를 검증한다.
+// SM-B7: Membership callback 뒤 Actor packet을 dispatch한다 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

@@ -4,7 +4,8 @@
 # Installs only the Framework, StreamConnector and FrameworkDependency install
 # components into an empty prefix, compares the installed target/header set
 # against the ownership manifest, fails when any HttpClient artifact leaks in,
-# and then builds and runs an out-of-tree consumer that uses only that prefix.
+# and then builds and runs an out-of-tree consumer that uses that prefix plus
+# the explicitly pinned third-party dependency prefix recorded by the build.
 set -euo pipefail
 
 BUILD_DIR="${1:?usage: verify_packaged_contract.sh <cmake-build-dir>}"
@@ -17,6 +18,11 @@ CONSUMER_BUILD="$RUN_DIR/consumer-build"
 mkdir -p "$PREFIX" "$CONSUMER_SRC" "$CONSUMER_BUILD"
 
 echo "packaged-contract run dir: $RUN_DIR"
+
+# A package consumer must not discover dependencies through the repository
+# source tree or an ambient global installation.  Reuse only the dependency
+# prefix that configured this build; it is part of the package provenance.
+dependency_prefix_path="$(sed -n 's/^CMAKE_PREFIX_PATH:[^=]*=//p' "$BUILD_DIR/CMakeCache.txt" | head -n 1)"
 
 for component in Framework StreamConnector FrameworkDependency; do
     cmake --install "$BUILD_DIR" --component "$component" --prefix "$PREFIX" \
@@ -31,11 +37,15 @@ fail() {
 # --- manifest: required targets/headers/libraries -------------------------
 required_paths=(
     include/zlink/framework.hpp
+    include/zlink/framework/contracts/actors/actor.hpp
     include/zlink/framework/contracts/errors/error.hpp
     include/zlink/framework/contracts/channels/channel.hpp
-    include/zlink/framework/contracts/locations/spot_handle.hpp
+    include/zlink/framework/contracts/channels/call.hpp
+    include/zlink/framework/contracts/spots/spot.hpp
+    include/zlink/framework/contracts/spots/spot_identity.hpp
     include/zlink/framework/contracts/locations/resolvers.hpp
     include/zlink/framework/contracts/streams/stream.hpp
+    include/zlink/framework/contracts/workers/worker.hpp
     include/zlink/framework/contracts/configuration/endpoint_connections.hpp
     include/zlink/stream_connector.hpp
     include/zlink/Contracts/Core/routing_id.hpp
@@ -67,11 +77,10 @@ grep -q "zlink::http_client" \
 
 # --- manifest: removed public surfaces must not be installed --------------
 for forbidden in \
-    include/zlink/framework/contracts/locations/spot_ref.hpp \
     include/zlink/framework/contracts/dispatch/cancellation.hpp; do
     [[ -e "$PREFIX/$forbidden" ]] && fail "removed contract header is still installed: $forbidden"
 done
-for forbidden_token in cancellation_token_t spot_ref_t "yield ()" dispatch_mode_t; do
+for forbidden_token in cancellation_token_t dispatch_mode_t spot_handle_t spot_handle_resolver_t; do
     grep -rq "$forbidden_token" "$PREFIX/include/zlink/framework" \
       && fail "installed framework headers still expose $forbidden_token"
 done
@@ -106,9 +115,7 @@ int main ()
     zlink::framework::zlink_builder_t builder;
     auto channel = builder.channel ("packaged-consumer");
     channel.enable_client ();
-    if (builder.channels ().size () != 1) {
-        return 1;
-    }
+    (void) channel.snapshot ();
     zlink::framework::serializer_registry_t serializers;
     zlink::framework::service_collection_t services;
     auto provider = services.build_provider ();
@@ -123,7 +130,7 @@ int main ()
 EOF
 
 cmake -S "$CONSUMER_SRC" -B "$CONSUMER_BUILD" \
-  -DCMAKE_PREFIX_PATH="$PREFIX" \
+  -DCMAKE_PREFIX_PATH="$PREFIX;${dependency_prefix_path}" \
   -DCMAKE_BUILD_TYPE=Release \
   > "$RUN_DIR/consumer-configure.log"
 cmake --build "$CONSUMER_BUILD" -j > "$RUN_DIR/consumer-build.log"

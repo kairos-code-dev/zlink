@@ -1,4 +1,4 @@
-// OBS-C3: User Spot aggregate Relocate handoff 시나리오를 검증한다.
+// OBS-C3: User Spot aggregate와 member Actor를 함께 이동한다 시나리오를 검증한다.
 import {
   createSpot,
   nodeA,

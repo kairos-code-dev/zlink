@@ -22,13 +22,13 @@ namespace
 framework::route_message_context_t
 make_route_message_context (const std::string &router_channel_id,
                             zlink::routing_id_t source_node_rid,
-                            const runtime::messaging::envelope_header_t &header)
+                            runtime::messaging::envelope_header_t &header)
 {
     framework::message_context_t base;
     base.mesh_name = router_channel_id;
     base.packet_name = header.message_name;
     base.content_type = header.content_type;
-    base.metadata = framework::message_metadata_t (header.metadata);
+    base.metadata = framework::message_metadata_t (std::move (header.metadata));
     if (!header.correlation_id.empty ()) {
         base.correlation_id = header.correlation_id;
     }
@@ -91,12 +91,12 @@ route_packet_dispatcher_t::dispatch (const route_received_packet_t &received) co
 
     switch (header.value ().kind) {
         case runtime::messaging::message_kind_t::command:
-            return dispatch_send (received, header.value ());
+            return dispatch_send (received, std::move (header.value ()));
         case runtime::messaging::message_kind_t::request:
-            return dispatch_request (received, header.value ());
+            return dispatch_request (received, std::move (header.value ()));
         default:
             return result_t<std::optional<route_dispatch_reply_t>>::failure (
-              framework_error_kind_t::request_protocol_error, "unsupported route message kind");
+              framework_error_kind_t::protocol_error, "unsupported route message kind");
     }
 }
 
@@ -123,7 +123,7 @@ void route_packet_dispatcher_t::trace_flow (
 
 result_t<std::optional<route_dispatch_reply_t>>
 route_packet_dispatcher_t::dispatch_send (const route_received_packet_t &received,
-                                          const runtime::messaging::envelope_header_t &header) const
+                                          runtime::messaging::envelope_header_t header) const
 {
     if (_internal_packets != nullptr && _internal_packets->can_handle_send (header.message_name)) {
         auto dispatched = _internal_packets->dispatch_send (received, *_services);
@@ -185,7 +185,7 @@ route_packet_dispatcher_t::dispatch_send (const route_received_packet_t &receive
 
 result_t<std::optional<route_dispatch_reply_t>> route_packet_dispatcher_t::dispatch_request (
   const route_received_packet_t &received,
-  const runtime::messaging::envelope_header_t &header) const
+  runtime::messaging::envelope_header_t header) const
 {
     if (_internal_packets != nullptr
         && _internal_packets->can_handle_request (header.message_name)) {
@@ -211,7 +211,7 @@ result_t<std::optional<route_dispatch_reply_t>> route_packet_dispatcher_t::dispa
         || _handlers->find (_router_channel_id, runtime::messaging::message_kind_t::request,
                             header.message_name)
              == nullptr) {
-        framework_exception_t error (framework_error_kind_t::route_handler_not_found,
+        framework_exception_t error (framework_error_kind_t::not_found,
                                      "No routed request handler is registered for '"
                                        + _router_channel_id + ":" + header.message_name + "'.");
         return reply_error (received, header, error);

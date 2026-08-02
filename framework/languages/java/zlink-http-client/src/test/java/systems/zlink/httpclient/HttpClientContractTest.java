@@ -2,6 +2,7 @@
 package systems.zlink.httpclient;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -711,6 +712,11 @@ final class HttpClientContractTest {
         assertEquals(ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR, invalid.kind());
         assertThrows(ZLinkFrameworkException.class, () -> ZLinkHttpClient.create("ftp://x").build());
         assertThrows(ZLinkFrameworkException.class, () -> ZLinkHttpClient.create("http://h").timeout(Duration.ZERO));
+        assertThrows(ZLinkFrameworkException.class,
+            () -> ZLinkHttpClient.create("http://h").timeout(Duration.ofNanos(1))
+                .timeout(Duration.ofMillis(Integer.MAX_VALUE).plusMillis(1)));
+        assertDoesNotThrow(() -> ZLinkHttpClient.create("http://h")
+            .timeout(Duration.ofNanos(1)));
         assertThrows(ZLinkFrameworkException.class, () -> ZLinkHttpClient.create("http://h").proxy("https://p").build());
         assertThrows(ZLinkFrameworkException.class, () -> ZLinkHttpClient.create("http://h").followRedirects(0));
         assertThrows(ZLinkFrameworkException.class, () -> ZLinkHttpClient.create("http://h").retry(0));

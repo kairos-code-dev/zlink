@@ -101,13 +101,53 @@ class duplicate_reply_session_t final : public zlink::framework::packet_stream_s
         catch (const zlink::framework::framework_exception_t &error) {
             loser_rejected =
               error.kind ()
-              == zlink::framework::framework_error_kind_t::request_protocol_error;
+              == zlink::framework::framework_error_kind_t::protocol_error;
         }
         co_return;
     }
 
     bool winner_completed = false;
     bool loser_rejected = false;
+};
+
+class failed_reply_session_t final : public zlink::framework::packet_stream_session_t
+{
+  public:
+    zlink::framework::task_t<void> on_connected (zlink::framework::stream_t &) override
+    {
+        co_return;
+    }
+
+    zlink::framework::task_t<void> on_disconnected (zlink::framework::stream_t &) override
+    {
+        co_return;
+    }
+
+    zlink::framework::task_t<void> on_error (
+      zlink::framework::stream_t &,
+      const zlink::framework::stream_error_t &) override
+    {
+        co_return;
+    }
+
+    zlink::framework::task_t<void> on_packet (
+      zlink::framework::stream_t &stream,
+      const zlink::framework::stream_dispatch_context_t &,
+      const zlink::message_t &payload) override
+    {
+        const auto first = stream.reply_packet (payload).submit ().result ();
+        first_failed = !first
+                       && first.error_kind ()
+                            == zlink::framework::framework_error_kind_t::internal_failure;
+        const auto second = stream.reply_packet (payload).submit ().result ();
+        second_rejected = !second
+                          && second.error_kind ()
+                               == zlink::framework::framework_error_kind_t::protocol_error;
+        co_return;
+    }
+
+    bool first_failed = false;
+    bool second_rejected = false;
 };
 
 class throwing_packet_session_t final : public zlink::framework::packet_stream_session_t
@@ -135,7 +175,7 @@ class throwing_packet_session_t final : public zlink::framework::packet_stream_s
                                               const zlink::message_t &) override
     {
         return zlink::framework::task_t<void> (zlink::framework::result_t<void>::failure (
-          zlink::framework::framework_error_kind_t::request_failed, "application packet failure"));
+          zlink::framework::framework_error_kind_t::internal_failure, "application packet failure"));
     }
 
     bool on_error_called = false;
@@ -356,7 +396,7 @@ class rejected_connected_session_t final : public zlink::framework::packet_strea
         _changed.notify_all ();
         return zlink::framework::task_t<void> (
           zlink::framework::result_t<void>::failure (
-            zlink::framework::framework_error_kind_t::request_failed,
+            zlink::framework::framework_error_kind_t::internal_failure,
             "connection callback rejected"));
     }
 
@@ -396,7 +436,7 @@ class rejected_connected_session_t final : public zlink::framework::packet_strea
             }
             catch (const zlink::framework::framework_exception_t &error) {
                 return error.kind ()
-                       == zlink::framework::framework_error_kind_t::invalid_configuration;
+                       == zlink::framework::framework_error_kind_t::not_configured;
             }
             std::this_thread::sleep_for (std::chrono::milliseconds (10));
         }
@@ -541,7 +581,7 @@ int main ()
       "bad");
     if (runtime.validate_header (invalid_send)
         || runtime.validate_header (invalid_send).error_kind ()
-             != framework_error_kind_t::request_protocol_error) {
+             != framework_error_kind_t::protocol_error) {
         return 4;
     }
 
@@ -581,7 +621,7 @@ int main ()
       "large", large_metadata);
     if (runtime.encode_header (too_large_metadata)
         || runtime.encode_header (too_large_metadata).error_kind ()
-             != framework_error_kind_t::request_protocol_error) {
+             != framework_error_kind_t::protocol_error) {
         return 21;
     }
     const std::vector<std::vector<std::uint8_t>> invalid_headers{
@@ -619,7 +659,7 @@ int main ()
     for (const auto &invalid_header : invalid_headers) {
         if (runtime.decode_header (invalid_header)
             || runtime.decode_header (invalid_header).error_kind ()
-                 != framework_error_kind_t::payload_decode_failed) {
+                 != framework_error_kind_t::protocol_error) {
             return 22;
         }
     }
@@ -632,7 +672,7 @@ int main ()
       static_cast<std::uint8_t> (stream_header_flags_t::none), 4, 'n', 'a', 'm', 'e'};
     auto no_marker = runtime.decode_header (no_marker_header);
     if (no_marker
-        || no_marker.error_kind () != framework_error_kind_t::request_protocol_error) {
+        || no_marker.error_kind () != framework_error_kind_t::protocol_error) {
         return 220;
     }
     const std::vector<std::uint8_t> truncated_flow_header{
@@ -708,6 +748,26 @@ int main ()
         || !duplicate_reply_session.loser_rejected
         || runtime.written_headers (duplicate_reply_stream).size () != 1) {
         return 236;
+    }
+
+    auto failed_reply_stream = runtime.open_session ("client-stream");
+    std::size_t failed_reply_attempts = 0;
+    runtime.attach_transport_writer (
+      failed_reply_stream,
+      [&failed_reply_attempts] (const auto &, const auto &) {
+          ++failed_reply_attempts;
+          return zlink::framework::result_t<void>::failure (
+            framework_error_kind_t::internal_failure, "stream transport rejected reply");
+      });
+    failed_reply_session_t failed_reply_session;
+    if (!runtime.dispatch_packet (
+          failed_reply_session, failed_reply_stream, request_header,
+          zlink::message_t::from (std::string ("failed-reply")))
+        || !failed_reply_session.first_failed
+        || !failed_reply_session.second_rejected
+        || failed_reply_attempts != 1
+        || !runtime.written_headers (failed_reply_stream).empty ()) {
+        return 237;
     }
 
     auto heartbeat_stream = runtime.open_session ("client-stream");
@@ -809,7 +869,7 @@ int main ()
     catch (const zlink::framework::framework_exception_t &error) {
         duplicate_send_rejected =
           error.kind ()
-          == zlink::framework::framework_error_kind_t::request_protocol_error;
+          == zlink::framework::framework_error_kind_t::protocol_error;
     }
     if (runtime.written_headers (fluent_stream).size () != 1
         || !duplicate_send_rejected
@@ -832,7 +892,7 @@ int main ()
         }
         catch (const zlink::framework::framework_exception_t &error) {
             return error.kind ()
-                   == zlink::framework::framework_error_kind_t::route_not_connected;
+                   == zlink::framework::framework_error_kind_t::unavailable;
         }
     };
     if (!write_rejected_disconnected ([&] {
@@ -861,7 +921,7 @@ int main ()
     const auto rejected =
       runtime.dispatch_packet (validation_session, validation_stream, invalid_send,
                                zlink::message_t::from (std::string ("bad")));
-    if (rejected || rejected.error_kind () != framework_error_kind_t::request_protocol_error
+    if (rejected || rejected.error_kind () != framework_error_kind_t::protocol_error
         || !validation_session.events.empty ()) {
         return 12;
     }
@@ -871,7 +931,7 @@ int main ()
     const auto handler_failure =
       runtime.dispatch_packet (throwing_session, throwing_stream, request_header,
                                zlink::message_t::from (std::string ("payload")));
-    if (handler_failure || handler_failure.error_kind () != framework_error_kind_t::request_failed
+    if (handler_failure || handler_failure.error_kind () != framework_error_kind_t::internal_failure
         || throwing_session.on_error_called) {
         return 13;
     }
@@ -1010,7 +1070,7 @@ int main ()
       disabled_session, disabled_stream, custom_inbound_header,
       custom_codec->compress (zlink::message_t::from (std::string ("disabled-inbound"))));
     if (disabled_receive
-        || disabled_receive.error_kind () != framework_error_kind_t::payload_decode_failed
+        || disabled_receive.error_kind () != framework_error_kind_t::protocol_error
         || std::string (disabled_receive.error ()->what ()).find (
              "compression codec is not configured") == std::string::npos
         || !disabled_session.events.empty ()) {
@@ -1033,7 +1093,7 @@ int main ()
       oversized_session, oversized_stream, custom_inbound_header,
       zlink::message_t::from (std::string ("compressed")));
     if (oversized_receive
-        || oversized_receive.error_kind () != framework_error_kind_t::payload_decode_failed
+        || oversized_receive.error_kind () != framework_error_kind_t::protocol_error
         || !oversized_session.events.empty ()) {
         return 28;
     }

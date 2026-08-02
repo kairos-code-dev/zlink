@@ -111,7 +111,9 @@ await (options.OperationGroup switch
     "sm-g2" => SmG2OwnerSpotRemapScenario.RunAsync(playA, playB, gateway),
     "sm-g3" => SmG3ConcurrentSessionActorLifecycleScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-g4" => SmG4ConcurrentBoundSessionPushScenario.RunAsync(options.SessionAStreamEndpoint),
-    "sm-g5" => SmG5AAndG5BPlacementScenario.RunAsync(gateway, playA, playB),
+    "sm-g5a" => SmG5AAndG5BPlacementScenario.RunWeightDistributionAsync(gateway, playA, playB),
+    "sm-g5b" => SmG5AAndG5BPlacementScenario.RunCapacityEligibilityAsync(gateway, playA, playB),
+    "sm-g5" => RunG5Async(gateway, playA, playB),
     "sm-b1-b2-b3-b5" => RunB1B2B3B5Async(playA, playB, sessionA, options.SessionAStreamEndpoint),
     "sm-d1-d6" => RunD1D2D6Async(
         playA,
@@ -142,6 +144,15 @@ static async Task RunA1A2A4F1F2Async(
     await SmF1ClientServerChannelToSpotScenario.RunAsync(playA);
     await SmF2RouteMeshChannelToSpotScenario.RunAsync(playA, playB);
     await SmA2UserSpotStateMutationScenario.RunAsync(playA);
+}
+
+static async Task RunG5Async(
+    ZLinkHttpClient gateway,
+    ZLinkHttpClient playA,
+    ZLinkHttpClient playB)
+{
+    await SmG5AAndG5BPlacementScenario.RunWeightDistributionAsync(gateway, playA, playB);
+    await SmG5AAndG5BPlacementScenario.RunCapacityEligibilityAsync(gateway, playA, playB);
 }
 
 static async Task RunA3A6B4B7Async(

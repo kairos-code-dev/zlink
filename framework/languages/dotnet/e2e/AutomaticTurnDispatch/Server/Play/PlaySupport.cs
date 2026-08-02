@@ -44,6 +44,19 @@ internal sealed class EvidenceStore
         }
     }
 
+    public string[] Snapshot(string requestId)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(requestId);
+        lock (_gate)
+        {
+            return _entries
+                .Where(entry => entry.Contains(
+                    $"request={requestId}",
+                    StringComparison.Ordinal))
+                .ToArray();
+        }
+    }
+
     public async Task<string[]> WaitUntilAsync(
         Func<string[], bool> predicate,
         TimeSpan timeout,
@@ -102,7 +115,8 @@ internal sealed record PlayOptions(
     string SpotRouterEndpoint,
     string SpotPubEndpoint,
     string SpotRouteEndpoint,
-    string LogDir)
+    string LogDir,
+    int PlacementWeight = 100)
 {
     public string EvidenceFile => Path.Combine(LogDir, $"{Rid}.evidence.log");
 

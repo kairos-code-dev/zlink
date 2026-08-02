@@ -1,4 +1,4 @@
-// OBS-A3: create-if-absent · off 노드의 flow 생략 시나리오를 검증한다.
+// OBS-A3: Tracing off 구간은 inbound flow를 전파하지 않는다 시나리오를 검증한다.
 import {
   ObservabilityOpsNames,
   assertBoundPush,

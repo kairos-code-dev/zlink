@@ -42,6 +42,26 @@ public sealed record CodecMismatchProbeRes(
     string? FailureType,
     string? Value);
 
+[ZLinkPacket("JsonGolden")]
+public sealed record JsonGoldenReq(
+    string DisplayName,
+    string Status,
+    long Balance,
+    byte[] Payload,
+    int Score,
+    double Ratio,
+    string? OptionalNote);
+
+public sealed record JsonGoldenRes(
+    string DisplayName,
+    string Status,
+    long Balance,
+    byte[] Payload,
+    int Score,
+    double Ratio,
+    string? OptionalNote,
+    string ContentType);
+
 public sealed record EvidenceWaitReq(
     string[] ContainsAll,
     int TimeoutMilliseconds = 10000);

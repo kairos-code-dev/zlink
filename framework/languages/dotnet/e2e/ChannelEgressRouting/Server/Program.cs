@@ -142,7 +142,8 @@ app.MapGet("/topology/{mesh}", (
         channels = snapshot.Channels.Select(channel => new
         {
             channel.ChannelName,
-            channel.IsReady
+            channel.IsReady,
+            channel.ReadyTargetCount
         })
     });
 });
@@ -185,6 +186,7 @@ app.MapPost("/request", async (
             .RequestToChannel(
                 request.Channel,
                 new ChannelProbeRequest(request.Id, request.Mode))
+            .Timeout(TimeSpan.FromSeconds(1))
             .Async<ChannelProbeReply>(cancellationToken);
         return Results.Ok(new RouteInvokeResult(
             true, null, reply, timer.ElapsedMilliseconds));

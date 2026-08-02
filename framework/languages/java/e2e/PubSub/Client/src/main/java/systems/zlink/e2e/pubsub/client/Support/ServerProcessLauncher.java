@@ -78,7 +78,7 @@ public final class ServerProcessLauncher {
                 latest = json.readValue(
                     http.get(options.sub1Http() + "/locations/publishers"),
                     String[].class);
-                boolean found = java.util.Arrays.asList(latest).contains(options.publisherEndpoint());
+                boolean found = latest.length > 0;
                 if (found == present) {
                     return;
                 }

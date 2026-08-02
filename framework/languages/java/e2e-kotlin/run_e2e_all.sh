@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIND_RETRY_PATTERN="ZlinkBindException|BindException|Address already in use|EADDRINUSE|errno=98"
 
 DEFAULT_SCENARIOS=(
-  DiscoveryRegistryHa
+  StoreFailure
   RegistrationCodec
   RegistryMessaging
   PubSub
@@ -16,6 +16,9 @@ DEFAULT_SCENARIOS=(
   ObservabilityOps
   ToActorMessaging
   SpotActorTransfer
+  ChannelEgressRouting
+  SubmitAdmission
+  InstanceSpot
 )
 
 selected_scenarios=()
@@ -37,6 +40,25 @@ else
     fi
   done
 fi
+
+validate_selected_suites() {
+  local index scenario suite_dir runner
+  for index in "${!selected_scenarios[@]}"; do
+    scenario="${selected_scenarios[$index]}"
+    suite_dir="$SCRIPT_DIR/$scenario"
+    runner="$suite_dir/run_e2e.sh"
+    if [[ ! -d "$suite_dir" ]]; then
+      echo "[kotlin-e2e] aggregate_incomplete reason=missing_suite suite=$scenario" >&2
+      return 1
+    fi
+    if [[ ! -x "$runner" ]]; then
+      echo "[kotlin-e2e] aggregate_incomplete reason=missing_runner suite=$scenario runner=$runner" >&2
+      return 1
+    fi
+  done
+}
+
+validate_selected_suites
 
 run_scenario_with_retry() {
   local scenario="$1"

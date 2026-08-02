@@ -67,15 +67,24 @@ Application은 root의 inbound dispatch options에서 다음 세 값만 설정�
 |---|---|
 | `ApplicationHwmBytes` | 생략하면 Auto, `0`이면 제한 없음, 양수이면 지정한 host 전체 byte 상한을 사용한다. |
 | `ApplicationHwmProfile` | Auto 계산 비율이다. 기본값은 `Balanced`다. |
-| `ProcessMemoryLimitBytes` | Auto 계산에 우선 사용하는 process memory 상한이다. 생략하면 container·cgroup·Windows Job Object의 유한한 상한을 사용하고, 그것도 없으면 시스템 물리 메모리 총량을 사용한다. |
+| `ProcessMemoryLimitBytes` | Auto 계산에 우선 사용하는 유효 memory budget이다. 생략하면 process에 적용된 유한한 OS 상한과 language runtime의 managed heap 상한을 각각 확인해 더 작은 값을 사용하고, 하나만 확인되면 그 값을 사용한다. 둘 다 확인되지 않으면 시스템 물리 메모리 총량을 사용한다. |
 
-Auto mode는 다음 순서로 처음 확인한 process memory 상한에 profile 비율을 곱하고 소수점 아래를 버린다.
+`managed heap 상한`은 language runtime이 application heap에 사용할 수 있는 최대 byte를 뜻한다. Java와
+Kotlin은 `Runtime.maxMemory()`를 사용하고, .NET은 `GC.GetGCMemoryInfo().TotalAvailableMemoryBytes`를
+사용하며, Node.js는 V8의 `heap_size_limit`을 사용한다. C++에는 language runtime managed heap이 없으므로
+OS 상한만 확인한다. 이 값은 실제 process 전체 메모리 상한이나 Framework가 미리 확보하는 메모리가 아니다.
+
+Auto mode는 다음 순서로 유효 memory budget을 정한 뒤 profile 비율을 곱하고 소수점 아래를 버린다.
 
 1. `ProcessMemoryLimitBytes`
-2. Process에 적용된 유한한 container·cgroup·Windows Job Object 상한
+2. Process에 적용된 유한한 OS 상한과 language runtime managed heap 상한 중 확인된 값
+   - 둘 다 있으면 더 작은 값
+   - 하나만 있으면 그 값
 3. 시스템 물리 메모리 총량
 
-3단계는 가용 메모리가 아니라 총량이므로 같은 host에서 Auto HWM은 실행마다 같은 값이 된다.
+OS 상한에는 container·cgroup·Windows Job Object처럼 process가 사용할 수 있는 범위를 제한하는 값이
+포함된다. 3단계는 가용 메모리가 아니라 총량이므로, 유효한 OS 또는 runtime 상한을 확인할 수 없는 환경에서도
+Auto mode는 별도 설정 없이 기동한다.
 
 | Profile | 비율 |
 |---|---:|
@@ -85,7 +94,7 @@ Auto mode는 다음 순서로 처음 확인한 process memory 상한에 profile 
 | `Throughput` | 20% |
 
 Auto mode의 계산 결과가 양수가 아니면 socket bind 전에 configuration error로 실패한다. 상한을 설정하지
-않은 것 자체는 오류가 아니며, 3단계 fallback이 있으므로 Auto mode는 별도 설정 없이도 기동한다. 선택한 profile은 Framework가 만드는 Core context의 Auto HWM profile에도 적용하지만,
+않은 것 자체는 오류가 아니다. 선택한 profile은 Framework가 만드는 Core context의 Auto HWM profile에도 적용하지만,
 Application HWM byte를 connection별 Core HWM으로 복사하거나 connection 수로 나누지 않는다.
 
 `ApplicationHwmBytes`가 양수이면 모든 application listener의 `MaxMessageSize`도 유한한 양수여야 한다.

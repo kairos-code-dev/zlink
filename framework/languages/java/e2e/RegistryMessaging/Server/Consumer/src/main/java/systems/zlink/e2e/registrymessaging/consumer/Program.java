@@ -44,13 +44,14 @@ public final class Program {
 
             String mode = consumer.consumerMode();
             var channel = options.addClientServerChannel(Contracts.API_CHANNEL);
+            var client = channel.client();
             if ("discovery".equals(mode)) {
-                channel.enableClient();
+                // Discovery uses the location provider for endpoint selection.
                 options.addClientServerChannel(Contracts.WORKFLOW_CHANNEL).client();
             } else {
                 for (String endpoint : consumer.providerEndpoints().split(",")) {
                     if (!endpoint.isBlank()) {
-                        channel.enableClient(endpoint);
+                        client.connect(endpoint);
                     }
                 }
             }

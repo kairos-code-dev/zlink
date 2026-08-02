@@ -1,21 +1,10 @@
 #!/usr/bin/env node
 'use strict';
 
-const framework = require('@zlink-systems/framework');
-const { ZLinkRedisLocationStore } = require('@zlink-systems/framework-locations-redis');
-
 const pubEndpointMetadataKey = 'pub-endpoint';
 
-const autoConnectTypes = new Map([
-  ['route-mesh', framework.ZLinkLocationAutoConnectType.RouteMesh],
-  ['fanout', framework.ZLinkLocationAutoConnectType.Fanout]
-]);
-
-const roles = new Map([
-  ['router', framework.ZLinkLocationRole.Router],
-  ['pub', framework.ZLinkLocationRole.Pub],
-  ['sub', framework.ZLinkLocationRole.Sub]
-]);
+const autoConnectTypes = new Set(['route-mesh', 'fanout']);
+const roles = new Set(['router', 'pub', 'sub']);
 
 function parseArgs(argv) {
   const options = {
@@ -39,9 +28,9 @@ function parseArgs(argv) {
         options.intervalMs = Number(requireValue(argv, i++, arg));
         break;
       case '--peer': {
-        const autoConnectType = parseMapValue(autoConnectTypes, requireValue(argv, i++, arg), 'auto-connect type');
+        const autoConnectType = parseSetValue(autoConnectTypes, requireValue(argv, i++, arg), 'auto-connect type');
         const meshName = requireValue(argv, i++, arg);
-        const role = parseMapValue(roles, requireValue(argv, i++, arg), 'location role');
+        const role = parseSetValue(roles, requireValue(argv, i++, arg), 'location role');
         const endpoints = [];
         while (i < argv.length && !argv[i].startsWith('--')) {
           endpoints.push(argv[i++]);
@@ -49,7 +38,21 @@ function parseArgs(argv) {
         if (endpoints.length === 0) {
           throw new Error('--peer requires at least one endpoint.');
         }
-        options.peers.push({ autoConnectType, meshName, role, endpoints });
+        throw new Error('--peer is no longer supported; use --peer-http with a role server URL.');
+      }
+      case '--peer-http': {
+        const autoConnectType = parseSetValue(autoConnectTypes, requireValue(argv, i++, arg), 'auto-connect type');
+        const meshName = requireValue(argv, i++, arg);
+        const role = parseSetValue(roles, requireValue(argv, i++, arg), 'location role');
+        const httpUrl = requireValue(argv, i++, arg);
+        const endpoints = [];
+        while (i < argv.length && !argv[i].startsWith('--')) {
+          endpoints.push(argv[i++]);
+        }
+        if (endpoints.length === 0) {
+          throw new Error('--peer-http requires at least one endpoint.');
+        }
+        options.peers.push({ autoConnectType, meshName, role, httpUrl, endpoints });
         break;
       }
       default:
@@ -76,33 +79,25 @@ function requireValue(argv, index, flag) {
   return value;
 }
 
-function parseMapValue(map, text, label) {
-  const value = map.get(text);
-  if (value === undefined) {
+function parseSetValue(values, text, label) {
+  if (!values.has(text)) {
     throw new Error(`Unknown ${label} '${text}'.`);
   }
-  return value;
+  return text;
 }
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const store = new ZLinkRedisLocationStore({
-    url: `redis://${options.redisEndpoint}`,
-    keyPrefix: options.keyPrefix
-  });
-  try {
-    await waitReady(store, options);
-  } finally {
-    await store.dispose();
-  }
+  await waitReady(options);
 }
 
-async function waitReady(store, options) {
+async function waitReady(options) {
   const deadline = Date.now() + options.timeoutMs;
   let lastState = { missing: [], rows: [], leases: [] };
   while (Date.now() < deadline) {
-    lastState = await readinessState(store, options.peers);
+    lastState = await readinessState(options.peers);
     if (lastState.missing.length === 0) {
+      console.log(JSON.stringify({ topologyReady: true, rows: lastState.rows }));
       return;
     }
     await delay(options.intervalMs);
@@ -113,30 +108,26 @@ async function waitReady(store, options) {
   process.exitCode = 1;
 }
 
-async function readinessState(store, expectedPeers) {
+async function readinessState(expectedPeers) {
   const missing = [];
   const rows = [];
   for (const expected of expectedPeers) {
-    const currentRows = await store.listPeers({
-      autoConnectType: expected.autoConnectType,
-      meshName: expected.meshName,
-      role: expected.role
-    });
-    rows.push(...currentRows);
-    const liveRows = [];
-    for (const row of currentRows) {
-      const lease = await store.readOwnerLease(row.ownerId);
-      if (
-        lease.kind === 'found'
-        && lease.leaseGeneration === row.ownerLeaseGeneration
-        && lease.leaseExpiresAt.getTime() > lease.storeNow.getTime()
-      ) {
-        liveRows.push(row);
-      }
+    const response = await fetch(`${expected.httpUrl}/location/topology`);
+    if (!response.ok) {
+      throw new Error(`Location topology endpoint '${expected.httpUrl}' returned HTTP ${response.status}.`);
     }
+    const document = await response.json();
+    const currentRows = Array.isArray(document?.items) ? document.items : [];
+    rows.push({
+      httpUrl: expected.httpUrl,
+      topology: currentRows,
+      route: document?.route
+    });
+    // ZLinkLocationTopologyState.Ready is the public numeric enum value 3.
+    const liveRows = currentRows.filter((row) => row?.state === 3 && row?.draining !== true);
     for (const endpoint of expected.endpoints) {
       if (!liveRows.some((row) => row.endpoint === endpoint || row.metadata?.[pubEndpointMetadataKey] === endpoint)) {
-        missing.push(`${expected.meshName}@${endpoint}`);
+        missing.push(`${expected.httpUrl}/${expected.meshName}@${endpoint}`);
       }
     }
   }

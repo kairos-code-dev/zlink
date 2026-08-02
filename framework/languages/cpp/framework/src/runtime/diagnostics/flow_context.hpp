@@ -78,12 +78,12 @@ class flow_context_t
                           flow_origin_t default_origin)
     {
         if (flow_id.has_value () != origin.has_value ()) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "flow id and origin must be present together");
         }
         if (flow_id) {
             if (!flow_id_t::is_valid (*flow_id)) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                throw framework_exception_t (framework_error_kind_t::protocol_error,
                                              "flow id must be UUIDv7");
             }
             return scope_t (flow_value_t{std::move (*flow_id), *origin});

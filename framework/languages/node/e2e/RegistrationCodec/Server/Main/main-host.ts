@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import type { ZLinkChannelClient } from '@zlink-systems/framework';
+import type { ZLinkRouteClient } from '@zlink-systems/framework';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import {
   createMessagePackSerializer,
@@ -11,7 +11,7 @@ import {
   createProtobufMessageSerializer,
   ZLINK_PROTOBUF_CONTENT_TYPE
 } from '@zlink-systems/framework-codec-protobuf/framework';
-import { ZLINK_CHANNEL_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLINK_ROUTE_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import {
   MessagePackEchoMsg,
   MessagePackEchoReq,
@@ -58,7 +58,7 @@ export async function startMainHost(hostOptions: MainHostOptions = {}): Promise<
   const app = await NestFactory.createApplicationContext(MainModule, { logger: false, abortOnError: false });
   const options = app.get(REGISTRATION_CODEC_OPTIONS, { strict: false }) as ServerOptions;
   const evidence = app.get(EvidenceStore, { strict: false });
-  const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
+  const channel = app.get(ZLINK_ROUTE_CLIENT, { strict: false }) as ZLinkRouteClient;
   const server = await startHttpServer(options.httpUrl, [
     ...createOperationalEndpoints(evidence, () => { stopping = true; }),
     ...createMainEndpoints(evidence, channel)
@@ -89,15 +89,19 @@ function createMainModule(hostOptions: MainHostOptions): Function {
             .codecs()
               .use({
                 register: (codecs) => {
+                  // The extension is registered once at the root. These predicates keep the
+                  // sample's two non-JSON DTO families disjoint without exposing a selector API.
+                  const protobufSerializer = {
+                    ...createProtobufMessageSerializer(),
+                    canSerialize: (value: unknown) => value instanceof ProtobufEchoReq || value instanceof ProtobufEchoMsg
+                  };
+                  const messagePackSerializer = {
+                    ...createMessagePackSerializer(),
+                    canSerialize: (value: unknown) => value instanceof MessagePackEchoReq || value instanceof MessagePackEchoMsg
+                  };
                   codecs
-                    .addSerializer(ZLINK_PROTOBUF_CONTENT_TYPE, {
-                      ...createProtobufMessageSerializer(),
-                      canSerialize: (value) => value instanceof ProtobufEchoReq || value instanceof ProtobufEchoMsg
-                    })
-                    .addSerializer(ZLINK_MESSAGEPACK_CONTENT_TYPE, {
-                      ...createMessagePackSerializer(),
-                      canSerialize: (value) => value instanceof MessagePackEchoReq || value instanceof MessagePackEchoMsg
-                    });
+                    .addSerializer(ZLINK_PROTOBUF_CONTENT_TYPE, protobufSerializer)
+                    .addSerializer(ZLINK_MESSAGEPACK_CONTENT_TYPE, messagePackSerializer);
                 }
               })
             .configureDispatch()
@@ -108,7 +112,7 @@ function createMainModule(hostOptions: MainHostOptions): Function {
           const mesh = builder.addRouteMesh(RegistrationCodecNames.channel)
             .listen(options.channelEndpoint);
           mesh.peerConnections().connect(options.channelEndpoint);
-          const channel = mesh.channelName(RegistrationCodecNames.channel)
+          const channel = mesh.channel(RegistrationCodecNames.channel).server()
             .addHandlerGroup('auto')
             .addHandlerGroup('attr')
             .addRequestHandler(PacketNames.echoManualReq, EchoManualRequestHandler)

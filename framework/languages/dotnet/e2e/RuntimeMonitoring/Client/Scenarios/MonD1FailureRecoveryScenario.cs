@@ -10,7 +10,7 @@ namespace RuntimeMonitoring.Client.Scenarios;
 
 internal static class MonD1FailureRecoveryScenario
 {
-    public static async Task RunAsync(ClientOptions options)
+    public static async Task RunValidationAsync(ClientOptions options)
     {
         using var observer = ZLinkHttpClient.Create(options.ServiceUrl)
             .Timeout(TimeSpan.FromSeconds(40))
@@ -23,6 +23,15 @@ internal static class MonD1FailureRecoveryScenario
             && validation.MissingObserverRejected
             && validation.RegisteredObserverProducedStatus,
             "MON-D1 public snapshot or observer validation accepted an invalid call.");
+
+        Console.WriteLine("scenario MON-D1A passed");
+    }
+
+    public static async Task RunCrashRecoveryAsync(ClientOptions options)
+    {
+        using var observer = ZLinkHttpClient.Create(options.ServiceUrl)
+            .Timeout(TimeSpan.FromSeconds(40))
+            .Build();
 
         var serviceBUri = new Uri(options.ServiceBUrl);
         var serviceBChannelUri = new Uri(options.ServiceBChannelEndpoint);
@@ -168,7 +177,7 @@ internal static class MonD1FailureRecoveryScenario
             }
         }
 
-        Console.WriteLine("scenario MON-D1 passed");
+        Console.WriteLine("scenario MON-D1B passed");
     }
 
     private static Process StartServiceB(ClientOptions options, int cycle)

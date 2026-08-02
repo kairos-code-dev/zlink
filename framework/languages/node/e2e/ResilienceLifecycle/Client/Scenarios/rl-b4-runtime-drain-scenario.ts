@@ -1,4 +1,4 @@
-// RL-B4: ChannelName weight 부하 제외 / 복원 시나리오를 검증한다.
+// RL-B4: Runtime weight 0으로 신규 selection에서 제외하고 복원한다 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../../../http-client';

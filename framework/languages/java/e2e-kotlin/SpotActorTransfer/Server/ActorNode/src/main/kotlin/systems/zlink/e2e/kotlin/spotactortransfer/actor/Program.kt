@@ -50,16 +50,24 @@ class Application {
         spots: systems.zlink.framework.spots.ZLinkSpotManager,
         actors: systems.zlink.framework.actors.ZLinkActorManager,
         actorClient: systems.zlink.framework.actors.ZLinkActorClient,
+        lifecycle: systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle,
         config: ActorNodeOptions,
-    ): ActorNodeHttpServer = ActorNodeHttpServer(
-        config.httpEndpoint,
-        json,
-        evidence,
-        gates,
-        spots,
-        actors,
-        actorClient,
-    )
+    ): ActorNodeHttpServer {
+        val requiredPeerCount = config.meshPeers.split(',')
+            .map { it.split('=', limit = 2) }
+            .count { it.size == 2 && it[0] != config.nodeRid }
+        return ActorNodeHttpServer(
+            config.httpEndpoint,
+            json,
+            evidence,
+            gates,
+            spots,
+            actors,
+            actorClient,
+            requiredPeerCount,
+            lifecycle,
+        )
+    }
 
     @Bean
     fun framework(
@@ -83,7 +91,9 @@ class Application {
         val node = options.addRouteMesh(Contracts.MESH)
         node.listen(config.meshEndpoint)
             .setRoutingId(RoutingId.from(nodeRid))
-        node.channelName(Contracts.MESH)
+        if (config.scenario == "ST-A1") {
+            node.setPlacementWeight(if (nodeRid == "actor-a") 100 else 0)
+        }
         config.meshPeers.split(',').forEach { peer ->
             val fields = peer.split('=', limit = 2)
             if (fields.size == 2 && fields[0] != nodeRid) {
@@ -105,7 +115,7 @@ class Application {
         ) { factory -> factory.disableRelocation() }
         options.addStreamNode("spot-transfer-session-$nodeRid")
             .bind(config.streamEndpoint)
-            .enableActorDispatch(Contracts.MESH)
+            .enableActorDispatch()
             .registerSession(TransferSession::class.java)
     }
 

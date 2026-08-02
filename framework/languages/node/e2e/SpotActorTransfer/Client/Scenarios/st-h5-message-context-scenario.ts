@@ -1,4 +1,4 @@
-// ST-H5: MessageContext와 Actor handler signature parity 시나리오를 검증한다.
+// ST-H5: MessageContext parity 시나리오를 검증한다.
 import type { ProbeReq, ProbeRes } from '../../Shared/messages.js';
 import {
   SpotActorTransferNames,

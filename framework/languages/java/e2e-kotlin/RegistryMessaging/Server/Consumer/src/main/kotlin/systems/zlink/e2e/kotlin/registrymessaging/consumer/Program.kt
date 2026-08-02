@@ -40,12 +40,12 @@ class ConsumerApplication {
                 .traceLabel(options.traceLabel)
 
             val profile = framework.addClientServerChannel(Contracts.PROFILE_CHANNEL)
+            val client = profile.client()
             if (options.providerEndpoints.isEmpty()) {
-                profile.enableClient()
-                framework.addClientServerChannel(Contracts.WORKFLOW_CHANNEL).enableClient()
+                framework.addClientServerChannel(Contracts.WORKFLOW_CHANNEL).client()
             } else {
                 for (endpoint in options.providerEndpoints) {
-                    profile.enableClient(endpoint)
+                    client.connect(endpoint)
                 }
             }
 

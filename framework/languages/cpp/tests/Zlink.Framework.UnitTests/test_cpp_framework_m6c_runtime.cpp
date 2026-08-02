@@ -541,15 +541,13 @@ void test_relocation_ready_completion_runs_once_on_spot_turn (
                 !closed
                 && closed.error_kind ()
                      == zlink::framework::
-                       framework_error_kind_t::
-                         invalid_configuration;
+                       framework_error_kind_t::not_configured;
           }
           catch (
             const zlink::framework::framework_exception_t &error) {
               close_rejected =
                 error.kind ()
-                == zlink::framework::framework_error_kind_t::
-                  invalid_configuration;
+                == zlink::framework::framework_error_kind_t::not_configured;
           }
           const auto found =
             manager_before_defer.find (
@@ -558,14 +556,12 @@ void test_relocation_ready_completion_runs_once_on_spot_turn (
           manager_rejected =
             !found
             && found.error_kind ()
-                 == zlink::framework::framework_error_kind_t::
-                   invalid_configuration;
+                 == zlink::framework::framework_error_kind_t::not_configured;
           const auto worker = worker_before_defer.submit ().result ();
           worker_rejected =
             !worker
             && worker.error_kind ()
-                 == zlink::framework::framework_error_kind_t::
-                   invalid_configuration;
+                 == zlink::framework::framework_error_kind_t::not_configured;
           const auto outbound =
             outbound_before_defer
               .send_to_channel (
@@ -575,8 +571,7 @@ void test_relocation_ready_completion_runs_once_on_spot_turn (
           outbound_rejected =
             !outbound
             && outbound.error_kind ()
-                 == zlink::framework::framework_error_kind_t::
-                   invalid_configuration;
+                 == zlink::framework::framework_error_kind_t::not_configured;
       });
     const auto completion_deadline =
       std::chrono::steady_clock::now ()
@@ -629,8 +624,7 @@ void test_relocation_ready_completion_runs_once_on_spot_turn (
     catch (const zlink::framework::framework_exception_t &error) {
         rejected =
           error.kind ()
-          == zlink::framework::framework_error_kind_t::
-            invalid_configuration;
+          == zlink::framework::framework_error_kind_t::not_configured;
     }
     test.require (
       rejected,

@@ -28,6 +28,7 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
     private final ZLinkSpotManager spots;
     private final ZLinkActorManager actors;
     private final ZLinkActorClient actorClient;
+    private final int requiredPeerCount;
     private final systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle
         lifecycle;
     private HttpServer server;
@@ -42,6 +43,7 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
         ZLinkSpotManager spots,
         ZLinkActorManager actors,
         ZLinkActorClient actorClient,
+        int requiredPeerCount,
         systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle lifecycle) {
         this.endpoint = endpoint;
         this.json = json;
@@ -50,6 +52,7 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
         this.spots = spots;
         this.actors = actors;
         this.actorClient = actorClient;
+        this.requiredPeerCount = requiredPeerCount;
         this.lifecycle = lifecycle;
     }
 
@@ -61,7 +64,10 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
             executor = java.util.concurrent.Executors.newCachedThreadPool();
             server.setExecutor(executor);
             server.createContext("/health", exchange -> handle(exchange, () -> {
-                if (!lifecycle.isReady()) {
+                var mesh = lifecycle.routeMeshRuntime().snapshot(Contracts.MESH);
+                if (!lifecycle.isReady()
+                    || !mesh.isReady()
+                    || mesh.readyPeerCount() < requiredPeerCount) {
                     writeText(
                         exchange,
                         503,

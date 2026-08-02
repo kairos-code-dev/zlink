@@ -177,7 +177,7 @@ int main ()
     const auto disconnected_result = disconnected.submit ().result ();
     if (disconnected_result
         || disconnected_result.error_kind ()
-             != zlink::framework::framework_error_kind_t::route_not_connected) {
+             != zlink::framework::framework_error_kind_t::unavailable) {
         return 12;
     }
 
@@ -192,7 +192,7 @@ int main ()
           publish_changed.notify_all ();
           publish_changed.wait (lock, [&] { return release_target; });
           return zlink::framework::result_t<void>::failure (
-            zlink::framework::framework_error_kind_t::request_failed,
+            zlink::framework::framework_error_kind_t::internal_failure,
             "target failed after handoff");
       });
     const auto blocked_terminal = blocked_publish.submit ().result ();
@@ -220,7 +220,7 @@ int main ()
           }
           failed_changed.notify_all ();
           return zlink::framework::result_t<void>::failure (
-            zlink::framework::framework_error_kind_t::request_failed,
+            zlink::framework::framework_error_kind_t::internal_failure,
             "post-start failure is internal");
       });
     const auto failed_terminal = failed_publish.submit ().result ();

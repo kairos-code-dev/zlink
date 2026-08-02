@@ -40,7 +40,7 @@ class CourierSessionApplication {
                 .setRoutingIdPrefix("delivery-session")
             options.addStreamNode(SampleNames.CourierStreamNode)
                 .bind(SampleTopology.CourierStreamEndpoint)
-                .enableActorDispatch(SampleNames.CourierSpotMesh)
+                .enableActorDispatch()
                 .registerSession(CourierSession::class.java)
         }
 

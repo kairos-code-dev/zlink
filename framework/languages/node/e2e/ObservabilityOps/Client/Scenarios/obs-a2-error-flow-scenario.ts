@@ -1,4 +1,4 @@
-// OBS-A2: error 라인에도 flow 시나리오를 검증한다.
+// OBS-A2: Dispatch 실패 record에도 flow를 남긴다 시나리오를 검증한다.
 import {
   ZlinkStreamDispatchMode,
   zlinkStreamConnectorFactory,

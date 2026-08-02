@@ -13,6 +13,9 @@ public final class CodecMismatchScenario {
             .post("/codec/protobuf/request")
             .submit(Contracts.CodecMismatchProbeRes.class).toCompletableFuture().join().body();
         ScenarioAssert.ensure(mismatch.rejected(), "RC-B5 Protobuf mismatch was not rejected");
+        ScenarioAssert.ensure(
+            "REQUEST_PROTOCOL_ERROR".equals(mismatch.errorType()),
+            "RC-B5 did not return REQUEST_PROTOCOL_ERROR: " + mismatch.errorType());
         Contracts.EchoRes jsonReply = context.codecRequester()
             .post("/codec/json/request")
             .submit(Contracts.EchoRes.class).toCompletableFuture().join().body();

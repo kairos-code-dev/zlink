@@ -42,7 +42,7 @@ class authenticate_session_handler_t
             sample_names_t::api_channel, authenticate_request).submit<authenticate_player_res_t> ();
         if (!authenticated.accepted || authenticated.actor_id.empty ()
             || authenticated.display_name.empty ()) {
-            co_return result_t<session_actor_t>::failure (framework_error_kind_t::request_failed,
+            co_return result_t<session_actor_t>::failure (framework_error_kind_t::internal_failure,
                                                           authenticated.reason.empty ()
                                                             ? "Player authentication failed."
                                                             : authenticated.reason);

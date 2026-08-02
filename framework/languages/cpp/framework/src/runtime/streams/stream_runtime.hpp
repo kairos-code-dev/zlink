@@ -93,6 +93,8 @@ class stream_runtime_t
                                    const stream_error_t &error) const;
     using async_dispatch_completion_t =
       std::function<void (const result_t<void> &)>;
+    using async_dispatch_started_t = std::function<void ()>;
+    using async_dispatch_cancel_t = std::function<bool ()>;
     result_t<void> dispatch_connected_async (
       packet_stream_session_t &session,
       stream_t &stream,
@@ -102,7 +104,9 @@ class stream_runtime_t
       stream_t &stream,
       const stream_header_t &header,
       const zlink::message_t &payload,
-      async_dispatch_completion_t completion = {}) const;
+      async_dispatch_completion_t completion = {},
+      async_dispatch_started_t started = {},
+      async_dispatch_cancel_t cancelled = {}) const;
     result_t<void> dispatch_disconnected_async (
       packet_stream_session_t &session,
       stream_t &stream,
@@ -125,7 +129,9 @@ class stream_runtime_t
       stream_t &stream,
       std::string operation,
       std::function<task_t<void> ()> callback,
-      async_dispatch_completion_t completion) const;
+      async_dispatch_completion_t completion,
+      async_dispatch_started_t started = {},
+      async_dispatch_cancel_t cancelled = {}) const;
 
   public:
     const dispatch_options_t &dispatch_options_ref () const noexcept { return _state->dispatch; }

@@ -5,6 +5,8 @@ plugins {
 
 dependencies {
     api("systems.zlink:zlink-framework-core:0.1.0-SNAPSHOT")
+    //  EvidenceHttpServer가 `framework.spring.internal.runtime`의 lifecycle을 쓴다.
+    api("systems.zlink:zlink-framework-spring-boot-starter:0.1.0-SNAPSHOT")
     api("systems.zlink:zlink-stream-connector:0.1.0-SNAPSHOT")
     api(zlinkLibs.zlink.bindings)
     api("com.fasterxml.jackson.core:jackson-databind:2.17.2")

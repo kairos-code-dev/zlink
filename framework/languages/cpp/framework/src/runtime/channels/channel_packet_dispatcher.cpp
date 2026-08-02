@@ -20,13 +20,13 @@ namespace
 /// see the same universal fields.
 inbound_message_context_t
 make_inbound_context (const std::string &channel_name,
-                      const runtime::messaging::envelope_header_t &header)
+                      runtime::messaging::envelope_header_t &header)
 {
     inbound_message_context_t inbound;
     inbound.message.channel_name = channel_name;
     inbound.message.packet_name = header.message_name;
     inbound.message.content_type = header.content_type;
-    inbound.message.metadata = message_metadata_t (header.metadata);
+    inbound.message.metadata = message_metadata_t (std::move (header.metadata));
     if (!header.correlation_id.empty ()) {
         inbound.message.correlation_id = header.correlation_id;
     }
@@ -122,7 +122,7 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
             dispatch_error_reporter_t (_runtime.dispatch_options ())
               .report (message_dispatch_error_event_t{
                 dispatch_error_surface_t::channel, dispatch_message_kind_t::request,
-                dispatch_reason_from_error (reply.error_kind ()),
+                dispatch_reason_from_error (reply.error ()),
                 dispatch_error_action_t::reply_error, header.value ().message_name, channel_name,
                 header.value ().topic, std::nullopt, std::nullopt, std::nullopt,
                 header.value ().correlation_id,
@@ -161,7 +161,7 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
             dispatch_error_reporter_t (_runtime.dispatch_options ())
               .report (message_dispatch_error_event_t{
                 dispatch_error_surface_t::channel, inbound_kind,
-                dispatch_reason_from_error (result.error_kind ()), dispatch_error_action_t::drop,
+                dispatch_reason_from_error (result.error ()), dispatch_error_action_t::drop,
                 header.value ().message_name, channel_name, header.value ().topic, std::nullopt,
                 std::nullopt, std::nullopt, header.value ().correlation_id,
                 result.error () ? std::make_exception_ptr (*result.error ())
@@ -191,7 +191,7 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
     }
 
     return result_t<runtime::messaging::message_parts_t>::failure (
-      framework_error_kind_t::request_protocol_error, "unsupported channel message kind");
+      framework_error_kind_t::protocol_error, "unsupported channel message kind");
 }
 
 } // namespace zlink::framework::detail

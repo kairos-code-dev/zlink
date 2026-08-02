@@ -2,7 +2,9 @@
 #pragma once
 
 #include <algorithm>
+#include <condition_variable>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 
 namespace zlink::framework::runtime
@@ -30,6 +32,21 @@ class inbound_dispatch_budget_t
         std::lock_guard lock (_mutex);
         return can_receive_locked ();
     }
+
+    // Blocks an ingress loop until the host-wide payload budget admits another
+    // complete application message or the caller requests shutdown. The
+    // condition variable is signalled by terminal completion, so callers do
+    // not need a polling delay or retry loop.
+    bool wait_for_application_capacity (const std::function<bool ()> &stop_requested = {})
+    {
+        std::unique_lock lock (_mutex);
+        _capacity_changed.wait (lock, [&] {
+            return can_receive_locked () || (stop_requested && stop_requested ());
+        });
+        return can_receive_locked () && !(stop_requested && stop_requested ());
+    }
+
+    void wake_waiters () noexcept { _capacity_changed.notify_all (); }
 
     void received (std::uint64_t payload_bytes)
     {
@@ -60,6 +77,7 @@ class inbound_dispatch_budget_t
             && _application_receive_paused
             && pending_locked () < _application_hwm_bytes)
             _application_receive_paused = false;
+        _capacity_changed.notify_all ();
     }
 
     inbound_dispatch_snapshot_t snapshot () const noexcept
@@ -84,11 +102,13 @@ class inbound_dispatch_budget_t
 
     std::uint64_t pending_locked () const noexcept
     {
-        return _cumulative_received_payload_bytes
-               - _cumulative_completed_payload_bytes;
+        return _cumulative_received_payload_bytes >= _cumulative_completed_payload_bytes
+                 ? _cumulative_received_payload_bytes - _cumulative_completed_payload_bytes
+                 : 0;
     }
 
     mutable std::mutex _mutex;
+    std::condition_variable _capacity_changed;
     std::uint64_t _application_hwm_bytes = 0;
     std::uint64_t _cumulative_received_payload_bytes = 0;
     std::uint64_t _cumulative_completed_payload_bytes = 0;

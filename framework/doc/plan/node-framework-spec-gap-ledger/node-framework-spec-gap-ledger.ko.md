@@ -355,10 +355,11 @@ contract의 일부로 취급한다.
 
 ### 2.2 Config 전체 범위와 scenario ID 대조
 
-공통 E2E 문서에서 확인한 scenario heading은 모두 374개이다. 아래 표의
-누락은 공통 문서에 있는 exact ID가 Node feature-map 또는 Node selector에
-없거나, alias로만 대체된 경우를 포함한다. 상태가 implemented로 표시되어도
-현재 process 실행이 없으면 완료로 판정하지 않는다.
+공통 E2E 문서에서 확인한 scenario heading은 374개이다. 아래 표는 2026-08-02
+초기 audit의 Config별 baseline이다. 이후 Node E2E source와 common 문서가 함께
+변경되어 이 표의 세부 누락 목록은 현재 판정의 authority가 아니다. 현재 exact
+inventory 결과는 2026-08-03 live audit log에서 다시 계산했다. 상태가 implemented로
+표시되어도 현재 process 실행이 없으면 완료로 판정하지 않는다.
 
 | Config | 공통 E2E 문서 | 공통 ID 수 | Node feature-map/runner 상태와 exact 누락 |
 |---|---|---:|---|
@@ -377,35 +378,43 @@ contract의 일부로 취급한다.
 | 13 Submit admission | framework/doc/framework/common/e2e/config-13-submit-admission.ko.md | 20 | SubmitAdmission map은 20개 exact ID를 보유하지만 구현 상태는 SA-E2E-14만 implemented, SA-E2E-01, SA-E2E-05, SA-E2E-08, SA-E2E-09, SA-E2E-20은 partial, 나머지는 unimplemented. all은 partial 항목까지 선택. |
 | 14 Instance spot | framework/doc/framework/common/e2e/config-14-instance-spot.ko.md | 36 | Node feature-map과 runner 디렉터리가 없음. IS-E2E-01부터 IS-E2E-36 전체 누락. |
 
-Node aggregate의 기본 목록은
-framework/languages/node/e2e/run_e2e_all.sh:7-20의 12개 config이다. 이
-목록에 Config 12와 Config 14가 없다. 따라서 공통 inventory 전체를 실행하는
-aggregate가 아니다.
+Node aggregate의 기본 목록은 현재
+framework/languages/node/e2e/run_e2e_all.sh:7-21의 Config 1-14 14개다. Config 12와
+Config 14 runner도 경로에는 존재하지만 각각 `BLOCKED`로 exit 2를 반환한다. 따라서
+목록에 포함된 것과 process 완료는 구분해야 하며, 현재 aggregate는 공통 inventory를
+성공적으로 완료하지 못한다.
 
 ## 3. 현재 검증 결과
 
-아래 결과는 2026-08-02 현재 working tree에서 이 audit 중 새로 실행한
-결과이다. 과거 log, feature-map의 historical pass, source type 존재는 별도
-증거로 취급했다.
+아래 결과는 2026-08-03 현재 working tree에서 새로 실행한 결과다. 2026-08-02
+log와 feature-map의 historical pass는 별도 증거로 취급했으며, source type 존재만으로
+process 완료를 판정하지 않았다. 상세 명령과 candidate 경계는
+[`2026-08-03 live status audit`](log/2026-08-03-live-status-audit.ko.md)와
+[`2026-08-03 framework runtime-spec gap audit`](log/2026-08-03-framework-runtime-spec-gap-audit.ko.md)에 기록했다.
 
 | 실행 | 현재 결과 | 해석 |
 |---|---|---|
-| framework/languages/node에서 npm run build | 통과 | production TypeScript compile은 통과하지만 exact member parity나 process E2E를 증명하지 않음. |
+| framework/languages/node에서 npm run build | 통과, exit 0 | production TypeScript와 browser build는 통과하지만 exact member parity나 process E2E를 증명하지 않음. |
 | npm run test:browser | 통과, Chromium 1/1 | browser transport의 좁은 검증은 충족. 전체 stream connector 계약의 증거는 아님. |
-| node --test --test-force-exit test/contract/contract-surface.test.js | 초기 audit 33/33 | 수정 전에는 선언과 일부 runtime export만 확인했고 snapshot·exact negative comparison이 없었다. 후속 결과는 38/38이다. |
-| node --test --test-force-exit test/contract/backend-public-api-only.test.js | 통과, 5/5 | backend public API-only 검증은 충족. 모든 E2E client의 import 경계를 증명하지 않음. |
-| npm run verify:m5-foundation | 통과, 5/5 | M5 foundation 회귀 범위는 충족. |
-| npm run verify:m6a-runtime | 통과, 26/26 | topology, endpoint-only upgrade, admission, reconnect/liveness와 HWM의 좁은 runtime 범위는 충족. |
-| npm run verify:m6b-runtime | 통과, 43/43 | SpotWide, PerActor, yield, actor order, exactly-once와 instance recovery의 좁은 범위는 충족. |
-| npm run verify:m6c-runtime | 통과, 79/79 | authority, deadline/cancellation, cleanup, relocation, restart recovery와 replay의 좁은 범위는 충족. |
+| node --test --test-force-exit test/contract/contract-surface.test.js | 통과, 38/38 | current public contract snapshot과 exact member 비교는 통과. process E2E를 증명하지 않음. |
+| node --test --test-force-exit test/contract/backend-public-api-only.test.js | 통과, 6/6 | backend와 Node E2E Client의 public package 정적 경계는 통과. 실제 process call path는 별도. |
+| node --test --test-force-exit test/contract/documentation-regression.test.js | 통과, 17/17 | current Node ledger path와 문서 링크 regression은 통과. |
+| npm run typecheck | 통과, exit 0 | 현재 TypeScript source typecheck는 통과. |
+| npm run verify:m5-foundation | 2026-08-02 log에서 통과, 5/5 | 이번 live audit에서 재실행하지 않은 좁은 foundation 범위다. |
+| npm run verify:m6a-runtime | 2026-08-02 log에서 통과, 26/26 | 이번 live audit에서 재실행하지 않은 좁은 runtime 범위다. |
+| npm run verify:m6b-runtime | 2026-08-02 log에서 통과, 43/43 | 이번 live audit에서 재실행하지 않은 좁은 runtime 범위다. |
+| npm run verify:m6c-runtime | 2026-08-02 log에서 통과, 79/79 | 이번 live audit에서 재실행하지 않은 좁은 runtime 범위다. |
 | Node E2E runner 전체 bash -n | 통과 | shell syntax만 검증. scenario dispatch와 process evidence는 검증하지 않음. |
-| npm test bounded 실행 | 미완료, deferred `e2e-scenario-header-gate.test.js`에서 중단 | common E2E inventory 374개와 Node scenario 207개의 차이를 보고했다. full package gate green으로 표시하지 않는다. |
+| npm test bounded 실행 | 이번 live audit에서 전체 재실행하지 않음 | 직접 실행한 `e2e-scenario-header-gate.test.js`는 common 374, implemented 207, missing 171, extra 4로 실패했다. full package gate green으로 표시하지 않는다. |
 | npm run verify:coverage | 후속 범위 | E2E·sample과 함께 coverage full gate를 다시 실행한다. 이번 unit gate 58/58의 대체 결과가 아니다. |
-| npm run verify:ci | 실패 | build/typecheck/lint·Chromium·비-E2E test를 통과한 뒤 E2E scenario header gate가 common scenario 171개 누락을 보고. |
-| ./scripts/verify_packaged_contract.sh | 통과 | `NODE_PACKAGED_CONTRACT_PASS packages=7 browser=esm server=commonjs`. |
+| npm run verify:ci | 후속 재실행 필요 | 직접 실행한 E2E header gate가 exit 1이므로 CI 전체 green으로 표시하지 않는다. |
+| ./scripts/verify_packaged_contract.sh | 통과, exit 0 | `NODE_PACKAGED_CONTRACT_PASS packages=7 browser=esm server=commonjs`. |
 | npm ls @zlink-systems/zlink --all | clean, exit 0 | root와 모든 workspace가 local `@zlink-systems/zlink@11.1.0`을 resolve. |
-| e2e/ToActorMessaging/run_e2e.sh TA-A1 | 실패, exit 2 | server/caller/session/client build가 현재 Node public API와 맞지 않음. |
-| e2e/SubmitAdmission/run_e2e.sh SA-E2E-14 | 실패, exit 2 | binding package 11.0.2와 native artifact가 불완전하여 process를 시작하지 못함. |
+| e2e/ToActorMessaging/run_e2e.sh TA-A1 | 실패, exit 1 | 세 role readiness 이후 browser client native session bind가 ActorRef route fence 불일치로 실패. |
+| e2e/SubmitAdmission/run_e2e.sh SA-E2E-14 | 실패, exit 2 | binding package는 11.1.0이지만 candidate native artifact가 incomplete. |
+| e2e/ChannelEgressRouting/run_e2e.sh CH-E2E-01 | 실패, exit 2 | Config 12 Node role server가 `BLOCKED`. |
+| e2e/InstanceSpot/run_e2e.sh IS-E2E-36 | 실패, exit 2 | Config 14 Node role server가 `BLOCKED`. |
+| sample static·bounded regression | 실패, 50 pass / 1 fail | Bingo replacement peer의 `ConnectionReady` 대기 timeout. sample process 완료가 아님. |
 
 현재 실패는 모두 같은 원인으로 묶지 않는다.
 
@@ -413,10 +422,13 @@ aggregate가 아니다.
 - documentation-regression path는 현재 Node gap ledger를 authoritative source로 읽고 17/17 통과한다.
 - package version blocker는 해소됐다. root, workspace, lock과 local archive가 11.1.0으로 정렬됐고
   clean packaged consumer 검증이 통과했다. process E2E는 별도 evidence로 남아 있다.
-- production/API drift: ToActorMessaging의 stale builder, actor context,
-  lifecycle signature와 HTTP client method.
+- production/process blocker: ToActorMessaging는 build 단계가 아니라 ActorRef route fence
+  불일치에서 실패한다. 이전 compile-error 기록은 historical baseline이다.
 - native artifact blocker: SubmitAdmission이 후보 native artifact를
   incomplete로 판정.
+- Config 12/14 blocker: runner는 aggregate 목록에 포함되지만 role server가 `BLOCKED`다.
+- sample process blocker: static wire 정렬과 typecheck는 통과했지만 Bingo replacement
+  `ConnectionReady` timeout이 남아 있다.
 - historical evidence: feature-map의 과거 pass와 과거 log. 현재 process
   실행 결과가 아니므로 완료 판정에 사용하지 않음.
 
@@ -424,16 +436,17 @@ aggregate가 아니다.
 
 | 항목 | 판정 | 직접 확인한 evidence와 한계 |
 |---|---|---|
-| package root export의 기본 경계 | 충족 | contract-surface.test.js가 framework, nestjs, locations, stream connector의 root export를 확인하고, packaged consumer도 11.1.0 정책으로 통과했다. |
-| 일부 backend public API-only 경계 | 충족 | backend-public-api-only.test.js 5/5. 모든 E2E Client tree와 실제 process call path까지 포함하지 않음. |
+| package root export의 기본 경계 | 충족 | current `contract-surface.test.js` 38/38와 packaged consumer 7개가 framework, nestjs, locations, stream connector의 root/export 경계를 통과했다. |
+| 일부 backend public API-only 경계 | 충족 | `backend-public-api-only.test.js` 6/6. 실제 process call path와 role-server evidence까지 포함하지 않음. |
 | 좁은 runtime lifecycle·authority·deadline·cleanup·replay 범위 | 충족 | M5/M6 153개 test와 actor handoff focused test가 통과. 공통 전체 contract와 process evidence를 대체하지 않음. |
 | browser transport smoke | 충족 | Chromium 1/1. Node server public API parity와 전체 stream connector E2E는 별도. |
-| E2E client의 reflection/raw-frame 사용 여부 | 충족(정적 scan 범위) | 조사한 Client 경로에서 reflection과 raw-frame 호출은 찾지 못함. 다만 server Framework package 직접 import가 발견되어 client-only architecture 전체는 미충족. |
+| E2E client의 public package import 경계 | 정적 범위 충족 | 현재 Client subtree에서 `@zlink-systems/framework`와 `@zlink-systems/zlink` 직접 import file은 0개이며 backend public API-only 6/6이 통과했다. process boundary 전체는 미충족. |
 | Nest exact builder contract | 비-E2E 충족, process E2E 후속 | `configureInboundDispatch` declaration·runtime·Nest contract test와 checked-in exact member snapshot이 통과했다. process evidence만 ND-IMP-001 후속 조건이다. |
 | common error model | runtime 충족, process E2E 후속 | public 13-kind enum, 내부 mapping과 ProtocolError terminal mapping이 unit/runtime test를 통과했다. client-visible process evidence는 ND-IMP-002 후속 조건이다. |
 | unknown content type 처리 | runtime 충족, process E2E 후속 | unknown non-JSON payload가 handler에 Buffer로 전달되지 않고 public ProtocolError로 종료된다. ND-IMP-003의 process evidence는 후속 범위다. |
-| package consumer parity | 비-E2E 충족 | `npm ls`가 11.1.0으로 clean하고 packaged contract가 통과했다. process E2E와 native role-server evidence는 제외 범위다. |
-| Config 1-14 aggregate E2E | 미충족 | aggregate가 12 config만 호출하고 exit 0만 집계함. ND-E2E-IMP-001, ND-E2E-IMP-002 참조. |
+| package consumer parity | 비-E2E 충족 | `npm ls`가 11.1.0으로 clean하고 packaged contract 7개가 통과했다. process E2E와 native role-server evidence는 제외 범위다. |
+| Config 1-14 aggregate E2E | 미충족 | aggregate 목록은 14개로 정렬됐지만 Config 12·14 runner가 `BLOCKED`이고 exact inventory도 171개 누락이다. ND-E2E-IMP-001, ND-E2E-IMP-002 참조. |
+| NS-IMP-001~003 sample wire 정렬 | 비-E2E 진행 | current source와 static regression에서 message name·typed payload·routing field 범위를 정렬했다. 일곱 sample process와 server evidence는 후속이다. |
 
 ### 4.1 2026-08-02 runtime·unit phase 현재 판정
 
@@ -469,7 +482,7 @@ Node production runtime, public contract, package와 unit·contract gate를 갱�
 | ND-IMP-002 common error surface | 비-E2E 충족 | public 13-kind/error mapping contract와 runtime suite 통과 |
 | ND-IMP-003 unknown content type | 비-E2E 충족 | handler 호출 전 `ProtocolError`와 empty reply 회귀 통과 |
 | ND-IMP-004 package pin·consumer surface | 비-E2E 충족 | `npm ls` clean at 11.1.0, packaged contract PASS |
-| ND-TEST-001 public snapshot·negative comparison | 비-E2E 충족 | `node-public-contract.json`, exact Nest member test와 contract-surface 38/38 통과; 전체 E2E/process surface는 후속 |
+| ND-TEST-001 public snapshot·negative comparison | 비-E2E 충족 | checked-in `node-public-contract.json`, exact Nest member test와 current contract-surface 38/38 통과; 전체 E2E/process surface는 후속 |
 | ND-TEST-002 documentation regression | 충족 | live Node ledger path 기준 17/17 PASS |
 | ND-TEST-003 CI path·non-E2E gate | 비-E2E 충족 | common guide path filter 추가, build/typecheck/lint와 59 contract files 1001/1001 PASS |
 
@@ -484,6 +497,46 @@ completion 뒤 다시 `unref()`하여 worker 결과를 기다리는 동안에는
 contract 파일 combined run은 최신 실행에서 148/148로 timeout 없이 종료했으며, 상세 근거는
 [`log/2026-08-02-runtime-unit-completion.ko.md`](log/2026-08-02-runtime-unit-completion.ko.md)의
 Worker slot reference 수명 보정 절에 기록했다.
+
+### 4.3 2026-08-03 live checkout 갱신
+
+이번 audit의 overall 판정은 `Framework spec gate: NOT CLEAN`이다. 다음 범위는 현재 tree에서
+확인했지만 서로 대체하지 않는다.
+
+| 범위 | 현재 결과 | 남은 조건 |
+|---|---|---|
+| public contract·build·typecheck | contract 38/38, build와 typecheck 통과 | process call path와 client-visible error·ownership evidence |
+| package | `npm ls` 11.1.0 clean, packaged contract 7개 통과 | native role-server artifact와 process E2E |
+| E2E inventory | common 374 / Node 207 / missing 171 / extra 4 | exact ID·alias·selector와 status를 다시 정렬 |
+| E2E process | TA-A1은 ActorRef route fence 실패, SA-E2E-14는 native artifact incomplete | owner layer 수정·fresh package·role-server evidence |
+| Config 12·14 | aggregate 목록에는 포함, 개별 runner는 `BLOCKED` | role server와 process runner 구현 또는 contract 선행 결정 |
+| sample | NS-IMP-001~003 static wire 정렬, typecheck 통과 | 일곱 process, client result, server evidence, cleanup |
+
+따라서 sample 상태는 여전히 `Spec gate 대기`다. 다만 dirty working tree에서 sample source와
+regression이 이미 변경되었으므로, 다음 candidate는 Framework gate를 다시 고정하고 sample static·process
+evidence를 모두 fresh하게 수집해야 한다. 상세 결과는
+[`2026-08-03 live status audit`](log/2026-08-03-live-status-audit.ko.md)를 기준으로 한다.
+
+### 4.4 2026-08-03 Framework runtime·spec gap 전체 재감사
+
+4.3의 초기 live checkout 기록보다 뒤에 현재 working tree의 E2E 변경을 반영해 다시 확인했다.
+Production declaration·runtime·package의 비-E2E public contract mismatch는 재현되지 않았고,
+Framework spec gate를 막는 현재 gap은 process evidence, exact E2E inventory, aggregate 상태 판정,
+native artifact와 CI 범위다.
+
+| 범위 | 현재 결과 | 현재 gap |
+|---|---|---|
+| production contract·runtime | `build`와 `typecheck` 통과, `contract-surface` 38/38, backend boundary 6/6 | ND-IMP-001~003의 실제 process error·ownership evidence |
+| package | `npm ls` 11.1.0 clean, packaged contract 7개 통과 | ND-IMP-004 native artifact와 role-server process |
+| common E2E exact set | common 374 / Node 207 / missing 171 / extra 4 | ND-E2E-IMP-001의 exact map·selector 정렬 |
+| aggregate·Config | Config 1-14 목록은 존재하지만 Config 12·14는 `BLOCKED` | ND-E2E-IMP-002의 status·evidence 기반 PASS 판정 |
+| selector·client boundary | Client 직접 Framework/binding import 정적 scan은 0개 | ND-E2E-IMP-003·004의 current process와 selector evidence |
+| process call path | TA-A1 route fence 실패, SA-E2E-14 native artifact 실패 | ND-E2E-IMP-005 owner fix와 fresh package process |
+| full verification | documentation regression은 17/17이지만 full E2E/coverage/CI는 미충족 | ND-TEST-003 |
+
+Common ID별 누락 목록과 fresh command 결과는
+[`2026-08-03 framework runtime-spec gap audit`](log/2026-08-03-framework-runtime-spec-gap-audit.ko.md)에
+모두 기록했다.
 
 ## 5. ND-IMP-* production implementation gap
 
@@ -523,17 +576,18 @@ Worker slot reference 수명 보정 절에 기록했다.
 - 선행 조건과 작업 순서: ND-IMP-002 error kind 확정 → decoder와 dispatch pipeline 수정 → ND-REG-003 → channel-client bounded test와 process E2E 순서로 진행한다.
 - 구현 완료 evidence: unknown content type을 넣은 real channel/spot request가 ProtocolError로 종료되고 handler evidence가 0이며 callback exactly-once가 확인된다. decode helper의 반환 type만 검사하는 test는 충분하지 않다.
 
-### ND-IMP-004 — package version pin과 packaged consumer surface 불일치
+### ND-IMP-004 — package version pin과 packaged consumer surface 불일치 (비-E2E 완료, process 후속)
 
 - 공통 spec 또는 E2E 문서 경로: framework/doc/framework/common/spec/00-public-contract-governance.ko.md, scripts/local-package/README.ko.md:19-27, framework/doc/framework/common/e2e/config-13-submit-admission.ko.md
 - Node source·package·test 경로: framework/languages/node/package.json:57, framework/languages/node/packages/framework/package.json:16, framework/languages/node/packages/framework-locations-redis/package.json:15, framework/languages/node/package-lock.json:26 및 1245-1246, framework/languages/node/packages/*/package.json:7-15, framework/languages/node/scripts/verify_packaged_contract.sh
-- 실제 동작: root package는 local @zlink-systems/zlink 11.1.0 archive를 가리키지만 workspace package와 lock은 11.0.2를 요구한다. node_modules는 11.0.2를 invalid로 표시한다. packaged consumer install은 @zlink-systems/zlink@11.0.2 registry lookup 404로 실패하고, SubmitAdmission은 11.0.2 native artifact incomplete로 중단된다.
+- 초기 실제 동작: root package는 local @zlink-systems/zlink 11.1.0 archive를 가리키지만 workspace package와 lock은 11.0.2를 요구했다. node_modules는 11.0.2를 invalid로 표시했고, packaged consumer install과 SubmitAdmission process가 중단됐다.
+- 현재 실제 동작: root, workspace manifest와 lockfile은 11.1.0으로 정렬됐다. `npm ls @zlink-systems/zlink --all`는 clean으로 끝났고, packaged consumer는 7개 package·browser ESM·server CommonJS 경계를 통과했다. SubmitAdmission은 11.1.0을 읽은 뒤에도 candidate native artifact incomplete로 exit 2가 된다.
 - 기대 동작: Node framework의 중앙 version pin, workspace dependency, lockfile, local package archive와 consumer verification이 같은 명시적 버전 정책을 따른다. local package 정책상 bindings source를 직접 참조하지 않고, 선택한 package version이 실제 consumer와 E2E process에 전달되어야 한다.
-- gap 판정 근거: npm ls가 invalid를 반환했고 verify_packaged_contract.sh가 실제 consumer install을 완료하지 못했다. package root export test가 통과해도 package dependency graph와 native artifact가 맞지 않으므로 배포 계약은 충족되지 않는다.
+- gap 판정 근거: package dependency graph와 clean consumer 조건은 현재 충족했다. 하지만 native role-server process가 current Core runtime을 load했다는 증거가 없고, fresh SubmitAdmission이 artifact incomplete로 종료하므로 process package gate는 닫히지 않았다.
 - 구체적인 수정 목록: (1) framework가 사용할 zlink version을 중앙 지점에서 확정한다. (2) workspace package.json과 package-lock의 dependency와 resolved archive를 동일 정책으로 갱신한다. (3) local package 생성·배포와 stale native cache를 점검한다. (4) package root export, clean consumer install, Redis/process E2E를 같은 version으로 재실행한다.
 - 필요한 회귀 test: ND-REG-004. package.json, workspace manifests, lockfile, archive metadata의 version consistency와 실제 clean consumer install, native artifact load를 검사한다.
 - 선행 조건과 작업 순서: local-package 정책 확인 → 중앙 version 확정 → package/lock 재현성 회복 → ND-REG-004 → SubmitAdmission와 aggregate E2E 순서로 진행한다.
-- 구현 완료 evidence: npm ls가 invalid 없이 종료하고, registry에 의존하지 않는 지정 local package consumer가 설치·build·실행되며, process E2E가 같은 version의 native artifact로 role server를 시작한다.
+- 구현 완료 evidence: 현재 확보한 비-E2E evidence는 `npm ls` clean과 packaged consumer PASS다. 최종 완료에는 registry에 의존하지 않는 지정 local package consumer가 설치·build·실행되고, process E2E가 같은 version의 native artifact로 role server를 시작했다는 evidence가 추가되어야 한다.
 
 #### 2026-08-02 비-E2E 갱신
 
@@ -554,10 +608,10 @@ scenario를 완료할 수 없다.
 ### ND-E2E-IMP-001 — common inventory와 Node feature-map의 exact ID coverage 불일치
 
 - 공통 spec 또는 E2E 문서 경로: framework/doc/framework/common/e2e/config-1-location-messaging.ko.md부터 config-14-instance-spot.ko.md 전체, 세부 누락은 2.2절 표에 기록
-- Node source·feature-map·runner 경로: framework/languages/node/e2e/RegistryMessaging/feature-map.ko.md, SpotService/feature-map.ko.md, PubSub/feature-map.ko.md, RegistrationCodec/feature-map.ko.md, ResilienceLifecycle/feature-map.ko.md, DiscoveryRegistryHa/feature-map.ko.md, RuntimeMonitoring/feature-map.ko.md, AutomaticTurnDispatch/feature-map.ko.md, ToActorMessaging/feature-map.ko.md, SpotActorTransfer/feature-map.ko.md, ObservabilityOps/feature-map.ko.md, SubmitAdmission/feature-map.ko.md
-- 실제 동작: 공통 374개 ID와 비교하면 Config 1-8, 11의 exact ID 누락과 alias가 있고, Config 12와 Config 14는 Node map 자체가 없다. Config 9와 Config 10은 map에 ID가 있어도 현재 실행 상태가 partial, transition, unimplemented이거나 stale build로 막혀 있다.
+- Node source·feature-map·runner 경로: framework/languages/node/e2e/ 아래의 현재 Client scenario, feature-map과 runner 전체
+- 실제 동작: current parser는 common 374개 ID 중 Node scenario exact ID 207개를 찾았다. 171개가 누락되고, Node source에만 있는 extra ID가 4개(`MON-A4`, `MON-D1`, `SM-D16`, `SM-Q9`)다. Config 12·14 runner는 경로에 있지만 `BLOCKED`를 반환한다.
 - 기대 동작: common inventory의 exact ID가 Node map에 동일한 문자열로 존재하고, 각 항목에 implemented, partial, diagnostic_only, source_only, blocked 같은 실행 상태와 evidence 요구가 명시되어야 한다. alias는 exact scenario의 대체 ID로 계산하지 않는다.
-- gap 판정 근거: live parser로 common heading 374개를 수집하고 Node map의 exact token을 대조했다. map에 없는 ID와 alias가 표에 재현되며, map의 historical log는 현재 실행 결과가 아니다.
+- gap 판정 근거: 2026-08-03 live parser로 common heading과 현재 Client scenario source를 대조했다. 결과는 374/207/171/4이며, feature-map의 historical status나 source-only marker는 현재 process 결과가 아니다.
 - 구체적인 수정 목록: (1) 14개 Config의 common inventory를 machine-readable exact ID로 고정한다. (2) Node map에 누락 ID와 상태를 추가하되, public API가 필요한 항목은 contract 선행으로 분리한다. (3) alias를 exact ID로 바꾸거나 명시적 mapping과 별도 결과를 둔다. (4) source-only와 historical log를 pass 상태에서 분리한다.
 - 필요한 회귀 test: ND-REG-005. common E2E inventory와 Node feature-map exact set, alias, 상태 enum, config ownership을 비교한다.
 - 선행 조건과 작업 순서: 공통 inventory 고정 → ND-IMP-* contract/package blocker 정리 → feature-map 정렬 → per-config selector 정렬 → aggregate gate 순서로 진행한다.
@@ -566,10 +620,10 @@ scenario를 완료할 수 없다.
 ### ND-E2E-IMP-002 — aggregate all runner의 Config 범위와 완료 판정 부족
 
 - 공통 spec 또는 E2E 문서 경로: framework/doc/framework/common/e2e/ 전체 14개 Config, 특히 config-1-location-messaging.ko.md:438-452와 config-12-channel-egress-routing.ko.md, config-14-instance-spot.ko.md
-- Node runner 경로: framework/languages/node/e2e/run_e2e_all.sh:7-20 및 56-141
-- 실제 동작: DEFAULT_CONFIGS는 DiscoveryRegistryHa, RegistrationCodec, RegistryMessaging, PubSub, SpotService, RuntimeMonitoring, ResilienceLifecycle, AutomaticTurnDispatch, ObservabilityOps, ToActorMessaging, SpotActorTransfer, SubmitAdmission 12개만 포함한다. child runner가 exit 0이면 PASS로 집계하고, common 374개 ID, feature-map 상태, client result, role server evidence, callback/owner/generation/cleanup assertion을 해석하지 않는다.
+- Node runner 경로: framework/languages/node/e2e/run_e2e_all.sh:7-21 및 56-141
+- 실제 동작: DEFAULT_CONFIGS는 현재 Config 1-14의 14개 runner를 포함한다. 다만 Config 12와 Config 14의 child runner는 각각 `BLOCKED`로 exit 2를 반환한다. aggregate의 child 성공 판정도 common 374개 ID, feature-map 상태, client result, role server evidence, callback/owner/generation/cleanup assertion을 자체적으로 해석하지 않는다.
 - 기대 동작: all은 Config 1-14를 포함하고 exact inventory 전체를 dispatch해야 한다. partial, unimplemented, diagnostic_only, source_only, N/A, timeout과 skip을 성공으로 합산하지 않고, 각 scenario의 client result와 role server evidence가 모두 있는 경우에만 PASS여야 한다.
-- gap 판정 근거: Config 12와 Config 14가 aggregate 목록과 Node directory 모두에 없고, runner 출력의 PASS 조건이 child exit code 하나뿐이다. 따라서 현재 all 성공이 common E2E 완료를 의미하지 않는다.
+- gap 판정 근거: current aggregate 목록에는 Config 12·14가 포함되지만 두 runner의 직접 실행이 `BLOCKED`로 끝났다. 또한 exact inventory gate가 171개 누락을 보고한다. 따라서 aggregate 목록 포함은 common E2E 완료를 의미하지 않는다.
 - 구체적인 수정 목록: (1) Config 12와 Config 14의 Node feature-map 및 process runner 설계를 contract 선행으로 등록한다. (2) aggregate를 common inventory 기반으로 구동한다. (3) child result를 status와 evidence schema로 수집한다. (4) partial, diagnostic-only, source-only, N/A를 실패 또는 미완료로 분리한다. (5) callback count, terminal reason, owner, generation, cleanup evidence를 결과에 포함한다.
 - 필요한 회귀 test: ND-REG-006. aggregate가 14개 Config와 374개 ID를 모두 선택하고, 의도적으로 partial/N/A/source-only child를 넣었을 때 PASS 수에 포함하지 않는지 검사한다.
 - 선행 조건과 작업 순서: ND-E2E-IMP-001 → per-config exact selector → role evidence schema → aggregate 변경 → ND-REG-006 → 실제 process 실행 순서로 진행한다.
@@ -579,21 +633,23 @@ scenario를 완료할 수 없다.
 
 - 공통 spec 또는 E2E 문서 경로: framework/doc/framework/common/e2e/config-3-pubsub.ko.md, config-8-execution-turn.ko.md, config-10-spot-actor-relocation.ko.md, config-11-observability-ops.ko.md, config-13-submit-admission.ko.md
 - Node runner·feature-map 경로: framework/languages/node/e2e/PubSub/run_e2e.sh 및 feature-map.ko.md, AutomaticTurnDispatch/run_e2e.sh:19-43 및 177-189, SpotActorTransfer/run_e2e.sh:10-15 및 322-328, ObservabilityOps/run_e2e.sh:12-29, SubmitAdmission/run_e2e.sh:22-55 및 128-169
-- 실제 동작: PubSub runner는 PS-D7A/B와 PS-E2A/B/C 대신 PS-D7와 PS-E2 alias를 사용한다. AutomaticTurnDispatch는 full에서 일부 scenario와 source-gate를 실행하며 TD-C5 source-gate result=passed를 E2E 결과처럼 출력할 수 있다. SpotActorTransfer는 ST-F3와 ST-H4 alias 및 subset을 사용하여 ST-F3A와 ST-H4A/B를 직접 선택하지 않는다. ObservabilityOps all은 C5까지만 호출한다. SubmitAdmission all은 partial인 SA-E2E-01, 05, 08, 09, 20을 implemented 결과와 함께 선택한다.
+- 초기 실제 동작: PubSub alias, AutomaticTurnDispatch source-gate, SpotActorTransfer subset, ObservabilityOps partial all과 SubmitAdmission partial selector가 확인됐다. 이 항목의 세부 observation은 2026-08-02 baseline이다.
+- 현재 상태: current tree의 Node Client scenario file는 207개이며, 이전 selector 세부 결과를 현재 판정으로 재사용하지 않는다. exact inventory gate는 여전히 171개 누락과 4개 extra를 보고하고, Config 12·14는 `BLOCKED`다. 모든 runner selector를 current common inventory와 다시 대조해야 한다.
 - 기대 동작: selector 문자열 하나가 common exact ID 하나의 process dispatch로 연결되어야 한다. source-gate, historical log, partial 구현, Kotlin-only N/A는 client-visible 및 role server evidence가 없으면 PASS가 될 수 없다.
-- gap 판정 근거: runner case와 all 배열을 source에서 직접 확인했고, feature-map 상태와 common ID를 대조했다. alias·subset·source-only 경로가 현재 aggregate의 성공 수에 섞여 있다.
+- gap 판정 근거: initial source audit에서 alias·subset·source-only 경로를 확인했다. current candidate는 해당 경로가 변경됐으므로 fresh per-config audit가 필요하며, inventory와 process gate가 닫히지 않아 이 card를 완료로 표시할 수 없다.
 - 구체적인 수정 목록: (1) 모든 split ID에 exact case를 만든다. (2) alias는 제거하거나 별도 alias로 표시하되 exact ID 결과를 생성한다. (3) source-gate를 diagnostic evidence로만 분류한다. (4) partial/transition/unimplemented/N/A 상태가 process PASS를 반환하지 않도록 result schema와 exit policy를 정한다. (5) role server evidence와 client result를 selector별로 저장한다.
 - 필요한 회귀 test: ND-REG-005와 ND-REG-006. map/selector exact 비교와 all status aggregation을 함께 검사한다.
 - 선행 조건과 작업 순서: ND-E2E-IMP-001 → 각 runner selector 정렬 → status/evidence schema → aggregate gate 순서로 진행한다.
 - 구현 완료 evidence: common exact ID를 입력한 selector가 정확히 한 process procedure를 선택하고, 실제 endpoint 호출과 양쪽 evidence가 있는 경우만 PASS로 보고된다. source-gate 출력만 있는 경우는 PASS가 아니다.
 
-### ND-E2E-IMP-004 — E2E client가 server Framework package를 직접 import함
+### ND-E2E-IMP-004 — E2E client가 server Framework package를 직접 import함 (정적 scan 완료, process 후속)
 
 - 공통 spec 또는 E2E 문서 경로: framework/doc/framework/common/e2e/config-1-location-messaging.ko.md:7-16 및 33-43, config-7-monitoring.ko.md:7-13 및 25-45, config-10-spot-actor-relocation.ko.md:30-45
-- Node E2E client 경로: framework/languages/node/e2e/ObservabilityOps/Client/Scenarios/obs-c4-forced-session-drain-scenario.ts:7, ObservabilityOps/Client/Support/observability-support.ts:6, ObservabilityOps/Client/Scenarios/obs-c5-rollout-scenario.ts:15, DiscoveryRegistryHa/Client/Scenarios/SfC2GracefulShutdownScenario.ts:6, DiscoveryRegistryHa/Client/Scenarios/SfA1BaselineScenario.ts:5, RegistryMessaging/Client/Support/dynamic-cluster-launcher.ts:7, RegistryMessaging/Client/Scenarios/rm-c8-payload-round-trip-scenario.ts:2, RegistryMessaging/Client/Scenarios/rm-b2-scale-in-scenario.ts:7, RegistryMessaging/Client/Scenarios/rm-a1-discovery-request-scenario.ts:2, RegistryMessaging/Client/Scenarios/rm-c5-missing-packet-scenario.ts:2, RuntimeMonitoring/Client/Scenarios/mon-a4-availability-transition-scenario.ts:13
-- 실제 동작: 위 Client subtree에서 @zlink-systems/framework를 직접 import하는 source가 발견되었다. ToActorMessaging/peer-fault.js:8에도 Framework require가 있으므로 scenario support와 runner support를 구분해 조사해야 한다. 조사한 Client 경로에서는 reflection과 raw-frame 호출은 찾지 못했지만, server Framework package 직접 의존만으로 client-only architecture를 증명할 수 없다.
+- Node E2E client 경로(초기 baseline): framework/languages/node/e2e/의 2026-08-02 import scan 결과. current scan은 해당 목록을 재사용하지 않고 Client subtree 전체를 다시 읽었다.
+- 초기 실제 동작: 일부 Client subtree에서 @zlink-systems/framework를 직접 import하는 source가 발견됐다. 이 기록은 2026-08-02 baseline이다.
+- 현재 실제 동작: 2026-08-03 current Client subtree 정적 scan에서 `@zlink-systems/framework`와 `@zlink-systems/zlink` 직접 import file은 각각 0개로 확인됐다. `backend-public-api-only.test.js`도 6/6 통과했다.
 - 기대 동작: E2E client는 공개 HTTP client 또는 stream connector를 사용하여 role server의 public business/evidence/control endpoint만 호출해야 한다. Framework messaging API, Location Store, private record, internal runtime state는 role server process 안에 있어야 한다.
-- gap 판정 근거: Config 1, 7, 10의 공통 E2E는 client가 Framework API나 내부 상태를 직접 다루지 않도록 명시한다. 정적 import scan에서 server package import가 확인되었다.
+- gap 판정 근거: 정적 import gap은 현재 scan에서 재현되지 않았다. 그러나 실제 process에서 Client가 role server의 public endpoint만 호출하고 client-visible result와 role-server evidence를 함께 만든다는 조건은 TA-A1과 aggregate가 실패했으므로 후속이다.
 - 구체적인 수정 목록: (1) Client에서 Framework import를 제거하고 role server application endpoint로 이동한다. (2) client가 필요한 결과는 공개 HTTP client 또는 stream connector response로 전달한다. (3) runner support는 process orchestration 코드와 client business code를 분리한다. (4) reflection, private/internal API, raw frame scan을 CI gate로 고정한다.
 - 필요한 회귀 test: ND-REG-007. Client import allowlist, server/client process boundary, client result와 role server evidence 동시 확인, terminal reason·callback count·owner·generation·cleanup assertion을 검사한다.
 - 선행 조건과 작업 순서: scenario별 role endpoint와 evidence schema 확정 → client import 정리 → ND-REG-007 정적 gate → process E2E 순서로 진행한다.
@@ -603,9 +659,10 @@ scenario를 완료할 수 없다.
 
 - 공통 spec 또는 E2E 문서 경로: framework/doc/framework/common/e2e/config-9-to-actor-messaging.ko.md, config-10-spot-actor-relocation.ko.md, config-13-submit-admission.ko.md:395-413
 - Node E2E·production 경로: framework/languages/node/e2e/ToActorMessaging/Server/Actor, Caller, Session, Client, framework/languages/node/e2e/ToActorMessaging/run_e2e.sh:170-220, framework/languages/node/e2e/SubmitAdmission/run_e2e.sh, framework/languages/node/packages/nestjs/src/contracts.ts, framework/languages/node/packages/http-client/src/
-- 실제 동작: ToActorMessaging server build에서 ZLinkActorJoinRequest, ZLinkSpotActorSendContext, ZLinkSpotActorRequestContext export가 없고 factory와 Entry Spot lifecycle signature가 현재 API와 다르다. ZLinkNestMeshNodeBuilder.channelName이 없고, 인자 수가 3개인 stale call이 남아 있으며, ZLinkActorGetOrCreateCall을 ActorRef처럼 사용하는 오류도 발생한다. Client에는 ZLinkHttpRequestBuilder.submitRaw가 없다. SubmitAdmission은 binding package 11.0.2 native artifact incomplete로 process를 시작하지 못한다.
+- 초기 실제 동작: ToActorMessaging server build와 SubmitAdmission package mode에서 public API drift 및 11.0.2 native artifact 문제가 확인됐다. 이 기록은 2026-08-02 baseline이다.
+- 현재 실제 동작: TA-A1은 세 role의 readiness와 browser client 실행까지 진행했지만, Actor `ta-a1`의 native session bind가 `expected to-actor-owner/1, resolved none, terminal=109` route fence 오류로 exit 1이 됐다. SA-E2E-14는 package version 11.1.0을 확인한 뒤 candidate native artifact incomplete로 exit 2가 됐다.
 - 기대 동작: public Node API를 사용하는 role server와 public HTTP/stream client가 실제 endpoint를 호출하고, process 종료·recovery·takeover·replay와 terminal evidence를 common scenario 계약대로 확인해야 한다.
-- gap 판정 근거: TA-A1 process runner를 실제로 실행했을 때 build 단계에서 exit 2가 발생했고, SA-E2E-14도 native artifact 검사에서 exit 2가 되었다. 따라서 feature-map의 implemented 표시는 현재 process evidence가 아니다.
+- gap 판정 근거: current TA-A1은 compile blocker를 넘어 runtime bind 단계에서 실패했지만 client-visible success와 role-server evidence를 만들지 못했다. SA-E2E-14는 native artifact 준비 단계에서 멈췄다. 따라서 feature-map의 implemented 표시는 현재 process evidence가 아니다.
 - 구체적인 수정 목록: (1) ND-IMP-001부터 ND-IMP-004를 먼저 정리한다. (2) E2E server/caller/session/client를 현재 exact public API에 맞춘다. (3) stale internal type과 private workaround를 추가하지 않고 public contract가 부족하면 contract 선행으로 분리한다. (4) local package와 native artifact를 재생성·검증한다. (5) process별 role evidence와 client assertion을 추가한다.
 - 필요한 회귀 test: ND-REG-007과 ND-REG-008. real process call path, bounded timeout, build failure, hang, skip, role evidence 누락을 PASS로 계산하지 않는지 검사한다.
 - 선행 조건과 작업 순서: production contract/package → E2E compile → client architecture → process startup/readiness → failure/recovery/cleanup assertion → aggregate 순서로 진행한다.
@@ -937,8 +994,9 @@ public contract는 공통 Framework spec과 Node exact interface가 소유한다
 #### 11.3.1 Framework spec 완료 gate 적용 기준
 
 Sample에서 Framework 구현 gap을 application code로 우회하면 안 된다. 10절 gate가 완료되기 전에는
-message declaration, logical structure, regression과 문서 변경을 포함한 sample 수정 작업을 시작하지
-않는다. 모든 `NS-*` 작업의 현재 실행 상태는 `Spec gate 대기`다.
+sample 수정 결과를 완료로 판정하지 않는다. 현재 dirty working tree에는 message declaration과
+regression 변경이 포함되어 있으므로, 각 항목의 비-E2E 진행 상태는 11.3.2에 따르고 전체 완료 상태는
+여전히 `Spec gate 대기`다.
 
 10절 gate를 통과한 뒤 regression이 새로운 Framework 실패를 재현하면 sample에서 우회하지 않는다.
 새 `ND-*` 작업으로 분리하고 Framework 단계로 돌아가 해당 gap을 닫은 뒤 sample 작업을 재개한다.
@@ -949,7 +1007,8 @@ message declaration, logical structure, regression과 문서 변경을 포함한
 [`2026-08-02 sample gap audit 기준 log`](log/2026-08-02-sample-gap-audit-baseline.ko.md)에 고정했다.
 이 log는 최초 gap을 설명하는 historical baseline이며 현재 candidate의 완료 evidence가 아니다.
 
-현재 판정은 sample contract suite 실패, 통합 sample runner 미통과와 Sample 계약 충족 미판정이다.
+현재 판정은 2026-08-03 bounded sample regression 50/51, Bingo replacement `ConnectionReady`
+timeout, 통합 sample runner 미통과와 Sample 계약 충족 미판정이다.
 10절 gate를 통과한 candidate에서는 Node Framework production source, dependency lock, package와 native
 artifact hash까지 포함한 immutable manifest를 새로 기록하고 build, contract test와 실제 process
 runner를 모두 다시 실행한다. Baseline fingerprint가 같더라도 candidate `HEAD` 또는 manifest가 다르면
@@ -996,19 +1055,42 @@ GameQuest의 `GameplayMsg` payload를 `GameplayEventPayload` object로 바꾸고
 남긴다. 상세 내용은
 [`log/2026-08-02-sample-wire-parity.ko.md`](log/2026-08-02-sample-wire-parity.ko.md)에 기록한다.
 
-#### 11.3.3 현재 계약 목록과 구현 차이
+#### 2026-08-03 sample current status re-audit
+
+현재 source와 static regression을 다시 확인한 결과 `NS-IMP-001`~`003`은 비-E2E wire 정렬 단계까지
+진행됐다.
+
+- `NS-IMP-001`: TicTacToe는 `LeaveGameMsg`, SupportChat은 `SetTypingMsg`를 packet name과 handler에
+  사용한다. response 없는 one-way send 의미는 유지된다.
+- `NS-IMP-002`: DeliveryDispatch는 공통 `BindCourierSessionReq/Res`를 사용하고, client-facing
+  `OfferDeliveryNotify`와 `CourierDecisionMsg`에 `sessionRoute`와 `attempt`를 넣지 않는다.
+  `attempt`는 offer/result 계약에 남고 상태 timestamp는 `occurredAtUnixMs: number`다.
+- `NS-IMP-003`: GameQuest는 `GameplayEventPayload` object, `JoinSessionRes.playerId`와
+  `ClosePlayerQuestMsg`를 사용한다. current source에서 이전 `number[]` payload와 호출부
+  `TextEncoder`/`TextDecoder` 경로는 확인되지 않는다.
+
+관련 static assertion과 typecheck는 통과했지만, sample process는 Framework gate와 독립적인 완료 조건을
+갖는다. 2026-08-03 bounded sample regression은 50/51에서 Bingo replacement peer의
+`ConnectionReady` 대기로 실패했으므로 위 세 항목도 process `충족`으로 올리지 않는다. `NS-IMP-004`~`009`와
+`NS-TEST-001`의 세부 표는 초기 audit 기준이며 current candidate에서는 fresh source·wire·process
+대조가 필요하다.
+
+#### 11.3.3 초기 audit의 계약 목록과 구현 차이
+
+아래 표는 2026-08-02 초기 audit의 snapshot이다. 현재 상태는 위의
+`2026-08-03 sample current status re-audit`과 live audit log를 우선한다.
 
 | ID | 현재 근거 | 초기 판정 |
 |---|---|---|
-| `NS-IMP-001` | TicTacToe와 SupportChat의 one-way handler가 각각 `LeaveGameReq`, `SetTypingReq` wire 이름을 사용한다. | Sample wire gap |
-| `NS-IMP-002` | DeliveryDispatch message에 session route·Attempt가 노출되고 timestamp field와 type이 다르다. | Framework 경계·Sample wire gap |
-| `NS-IMP-003` | GameQuest action 목록, `JoinSessionRes`, close message와 gameplay payload가 공통 계약과 다르다. | Sample wire·codec gap |
+| `NS-IMP-001` | 초기 snapshot은 TicTacToe와 SupportChat의 one-way handler가 각각 `LeaveGameReq`, `SetTypingReq` wire 이름을 사용한다고 기록했다. | 초기 Sample wire gap; current static 정렬 |
+| `NS-IMP-002` | 초기 snapshot은 DeliveryDispatch message에 session route·Attempt가 노출되고 timestamp field와 type이 다르다고 기록했다. | 초기 Framework 경계·Sample wire gap; current static 정렬 |
+| `NS-IMP-003` | 초기 snapshot은 GameQuest action 목록, `JoinSessionRes`, close message와 gameplay payload가 공통 계약과 다르다고 기록했다. | 초기 Sample wire·codec gap; current static 정렬 |
 | `NS-IMP-004` | ShoppingMall response, workflow command와 durable event 경계가 공통 계약과 다르다. | Sample 업무 계약 gap |
 | `NS-IMP-005` | SupportChat conversation create·response와 typing message가 공통 계약과 다르다. | Sample wire·lifecycle input gap |
 | `NS-IMP-006` | TicTacToe rejected join completion이 client-visible terminal failure로 전달되지 않는다. | Sample 실패 결과 gap |
 | `NS-IMP-007` | ZoneWorld game client message가 NodeId·relocation 결과를 노출하고 내부 message가 공통 typed boundary와 다르다. | Framework routing 경계·Sample wire gap |
 | `NS-IMP-008` | Bingo, TicTacToe, SupportChat과 ZoneWorld는 `Shared/Configuration` 대신 client/server별 설정을 두며 sample마다 logical tree가 다르다. | 구조 parity gap |
-| `NS-IMP-009` | `samples/README.ko.md`의 Framework version이 root의 bindings archive와 다르다. Shell·PowerShell runner는 일곱 sample을 포함하지만 Bingo와 TicTacToe의 완료 marker가 공통 문서와 다르다. | documentation·package·runner marker gap |
+| `NS-IMP-009` | 초기 snapshot은 `samples/README.ko.md`의 Framework version과 runner marker가 다르다고 기록했다. | 초기 documentation·package·runner marker gap; current process 후속 |
 | `NS-TEST-001` | 기존 sample test는 구조·특정 symbol을 넓게 검사하지만 공통 문서의 전체 message·field·transport 목록을 직접 비교하지 않는다. | test gap |
 
 ### 11.4 차이 판정 기준
@@ -1033,22 +1115,26 @@ state commit, failure, cleanup과 client-visible 결과까지 같은 실행에�
 
 | ID | 분류 | 담당 | 추가 선행 조건 | 현재 실행 상태 | 완료 evidence |
 |---|---|---|---|---|---|
-| `NS-IMP-001` | Sample wire·Framework transport | 작업 담당자 | 없음 | Spec gate 대기 | `NS-REG-002`~`004`, client process |
-| `NS-IMP-002` | Framework routing 경계·Sample wire | 작업 담당자 | 없음 | Spec gate 대기 | `NS-REG-005`, DeliveryDispatch process |
-| `NS-IMP-003` | Sample wire·codec 책임 | 작업 담당자 + 공통 sample 계약 담당자 | Contract review | Spec gate 대기 | `NS-REG-006`, GameQuest process |
+| `NS-IMP-001` | Sample wire·Framework transport | 작업 담당자 | 없음 | 비-E2E 정렬, process 후속 | `NS-REG-002`~`004`, client process |
+| `NS-IMP-002` | Framework routing 경계·Sample wire | 작업 담당자 | 없음 | 비-E2E 정렬, process 후속 | `NS-REG-005`, DeliveryDispatch process |
+| `NS-IMP-003` | Sample wire·codec 책임 | 작업 담당자 + 공통 sample 계약 담당자 | Contract review | 비-E2E 정렬, process 후속 | `NS-REG-006`, GameQuest process |
 | `NS-IMP-004` | Sample 업무 계약 | 작업 담당자 + 공통 sample 계약 담당자 | Contract review | Spec gate 대기 | `NS-REG-007`, ShoppingMall process |
 | `NS-IMP-005` | Sample 업무 계약·Actor lifecycle input | 작업 담당자 | 없음 | Spec gate 대기 | `NS-REG-004`, `008`, SupportChat process |
 | `NS-IMP-006` | Sample 실패 결과·Actor join completion | 작업 담당자 | 없음 | Spec gate 대기 | `NS-REG-003`과 client-visible failure test |
 | `NS-IMP-007` | Sample wire·Framework routing 경계 | 작업 담당자 | 없음 | Spec gate 대기 | `NS-REG-009`, ZoneWorld process |
 | `NS-IMP-008` | 언어별 logical structure | 작업 담당자 | 없음 | Spec gate 대기 | `NS-REG-011`, 구조 mapping |
-| `NS-IMP-009` | 문서·runner·package | 작업 담당자 | 없음 | Spec gate 대기 | `NS-REG-013`, `016`, runner result |
-| `NS-TEST-001` | Test와 process evidence | 작업 담당자 | 없음 | Spec gate 대기 | `NS-REG-001`~`017`, CI result |
+| `NS-IMP-009` | 문서·runner·package | 작업 담당자 | 없음 | 문서·package 정렬, process 후속 | `NS-REG-013`, `016`, runner result |
+| `NS-TEST-001` | Test와 process evidence | 작업 담당자 | 없음 | static 일부 통과, process 후속 | `NS-REG-001`~`017`, CI result |
 
-### 11.5 구현에서 확인된 차이
+### 11.5 초기 audit에서 확인된 차이
 
-#### NS-IMP-001 — one-way message 이름과 handler 의미가 공통 계약과 다름
+아래 세부 내용은 2026-08-02 초기 source audit의 기록이다. 현재 상태는 11.3.2의
+`2026-08-03 sample current status re-audit`과 live audit log를 우선하며, 아래 문장의
+`현재`는 해당 초기 candidate를 뜻한다.
 
-**현재 판정: `확인`.**
+#### NS-IMP-001 — one-way message 이름과 handler 의미가 공통 계약과 다름 (초기 audit)
+
+**초기 판정: `확인`. 현재 비-E2E 상태는 정렬, process 후속이다.**
 
 - 분류: `LeaveGameMsg`와 `SetTypingMsg` 이름은 sample wire 계약이고, response 없이 끝나는 send 의미는
   Framework public contract다.
@@ -1068,9 +1154,9 @@ shared contract, packet name, handler와 client는 각각 `LeaveGameReq`, `SetTy
 수정할 때 shared type, packet name, decorator, client submission, log와 regression을 한 번에 바꾼다.
 이름만 `Msg`로 바꾸고 request/reply를 추가하거나, 호환 wrapper를 두 이름으로 유지하지 않는다.
 
-#### NS-IMP-002 — DeliveryDispatch가 application message에 route·Attempt를 노출하고 timestamp 계약이 다름
+#### NS-IMP-002 — DeliveryDispatch가 application message에 route·Attempt를 노출하고 timestamp 계약이 다름 (초기 audit)
 
-**현재 판정: `확인`.**
+**초기 판정: `확인`. 현재 비-E2E 상태는 정렬, process 후속이다.**
 
 - 분류: session route와 owner 위치 은닉은 Framework public contract이고, Attempt와 timestamp field는
   DeliveryDispatch sample wire 계약이다.
@@ -1091,9 +1177,9 @@ Attempt는 Dispatch application state에 유지하고, 늦은 decision 판정에
 소유한 offer state에서 해결한다. Session route나 ActorRef를 새 DTO로 옮기는 방식은 허용하지 않는다.
 Timestamp는 실제 JSON wire number와 ordering assertion을 함께 고정한다.
 
-#### NS-IMP-003 — GameQuest의 action 목록과 payload codec 책임이 공통 계약과 다름
+#### NS-IMP-003 — GameQuest의 action 목록과 payload codec 책임이 공통 계약과 다름 (초기 audit)
 
-**현재 판정: `확인`과 `contract 선행`.**
+**초기 판정: `확인`과 `contract 선행`. 현재 비-E2E 상태는 정렬, process 후속이다.**
 
 - 분류: `GameplayMsg`와 action 목록은 sample wire·업무 계약이다. Message마다 codec을 처리하지 않는
   책임은 Framework public contract다. 추가 action의 유지 여부는 계약 후보라서 공통 sample review가
@@ -1244,9 +1330,9 @@ Program에 두고 A/B instance는 runner configuration으로 표현한다. Share
 한 위치에서 찾을 수 있게 한다. Directory를 기계적으로 늘리지 않으며, 한 파일에 여러 type을 두더라도
 Domain/Application/Infrastructure 책임과 의존 방향은 유지한다.
 
-#### NS-IMP-009 — Node sample README, completion marker와 package 기준이 현재 상태와 다름
+#### NS-IMP-009 — Node sample README, completion marker와 package 기준이 초기 기준과 다름
 
-**현재 판정: `documentation gap`과 `test gap`.**
+**초기 판정: `documentation gap`과 `test gap`. 현재 package 문서 정렬은 진행됐고 process 후속이다.**
 
 - 분류: version·실행 방법은 Node sample 문서 책임이고, completion marker와 cleanup은 공통 sample과
   Node runner 계약이다. Package version 확정만 `ND-IMP-004`에 의존한다.
@@ -1261,30 +1347,30 @@ Domain/Application/Infrastructure 책임과 의존 방향은 유지한다.
 - 검증: version pin, 두 runner의 실행 목록과 client marker를 source에서 확인했다. `NS-REG-013`,
   `NS-REG-016`과 실제 runner exit/result로 완료를 판정한다.
 
-Node sample README는 10.0.0 public API를 사용한다고 설명하지만 현재 root dependency는 local 11.1.0
-archive를 가리킨다. 정확한 package version은 선행 `ND-IMP-*`에서 확정한 뒤 문서를 갱신한다.
+현재 Node sample README는 11.1.0 public API를 설명하고 root dependency도 local 11.1.0 archive를
+가리킨다. package version 문서 mismatch는 비-E2E 범위에서 정렬됐다.
 
-Shell과 PowerShell 통합 runner는 일곱 sample을 모두 포함하지만 marker 정책이 일관되지 않다. Bingo는
-`bingo=completed`만 출력하고 README의 `PASS Bingo.Ts`가 없으며, TicTacToe는 `PASS TicTacToe.Ts`만
-출력하고 공통 `tictactoe=completed`가 없다. Sample별 phase marker는 실제 runner evidence로만 사용하고,
-공통 completion marker와 `PASS <Sample>`의 역할을 구분한다.
+Shell과 PowerShell 통합 runner는 일곱 sample을 포함하고, Bingo client는 `bingo=completed`와
+`PASS Bingo.Ts`를 모두 출력한다. 현재 TicTacToe와 나머지 sample의 marker·readiness·cleanup 정책은
+실제 runner 결과로 다시 확인해야 한다. 문서와 marker static 정렬만으로 sample 완료를 판정하지 않는다.
 
-#### NS-TEST-001 — 공통 sample 전체의 계약과 process 결과를 직접 확인하는 test가 없음
+#### NS-TEST-001 — 공통 sample 전체의 계약과 process 결과를 직접 확인하는 test가 초기 audit에서 부족함
 
-**현재 판정: `test gap`.**
+**초기 판정: `test gap`. 현재 bounded 실행은 50/51이며 process evidence는 미충족이다.**
 
 - 분류: 공통 sample wire와 flow를 Node 구현에 대응시키는 contract regression 및 process evidence gap이다.
 - 계약 근거: [Sample 작성 guide §8](../../../../doc/principal/documentation/sample-writing-guide.ko.md#8-spec-기능-대조와-최종-review),
   [공통 sample 완료 정책](../../framework/common/sample/README.ko.md)
 - 현재 source: [Node sample contract tests](../../../../framework/languages/node/test/contract/),
   [2026-08-02 audit log](log/2026-08-02-sample-gap-audit-baseline.ko.md)
-- 검증: 기준 audit에서 sample contract suite와 aggregate process smoke가 통과하지 않았다. 자세한
-  실행 결과와 실패 원인은 [sample gap audit 기준 log](log/2026-08-02-sample-gap-audit-baseline.ko.md)가
+- 검증: 2026-08-03 bounded sample regression은 50개 pass, 1개 fail이며 Bingo replacement peer의
+  `ConnectionReady` 대기 timeout으로 종료했다. 이 결과는 static regression 일부가 통과했다는 뜻이지
+  일곱 sample process 완료가 아니다. 명령과 범위는 [2026-08-03 live status audit](log/2026-08-03-live-status-audit.ko.md)가
   소유한다.
 
-현재 sample regression은 파일 존재, 일부 symbol, topology와 lifecycle을 넓게 검사하지만 공통 문서의
-모든 message·field·transport kind·state flow를 Node shared contract와 직접 비교하지 않는다. 일부 test는
-DeliveryDispatch의 `SampleNames.routeMesh`처럼 이전 구조를 정답으로 고정한다.
+현재 sample regression은 정적 wire와 topology·lifecycle 범위를 일부 검사한다. `NS-IMP-001`~`003`의
+source/static 정렬은 확인했지만, 공통 문서의 모든 message·field·transport kind·state flow와 실제
+serialized payload를 한 candidate에서 직접 비교하지 않는다.
 
 Machine-readable 계약 목록 또는 동일한 정보를 가진 contract fixture를 만들고, static contract와 실제
 serialized payload를 함께 검사한다. Static test는 process smoke를 대체하지 않으며, runner가 client
@@ -1406,18 +1492,18 @@ Entry Spot, domain과 ZoneWorld gate를 정확한 계약 목록 test로 대체�
 ### 11.10 완료 checklist
 
 - [ ] 10절 Framework spec 완료 gate가 통과했고 그 evidence가 현재 `HEAD`와 일치한다.
-- [ ] 공통 sample 문서와 기존 dirty change의 기준 manifest를 보존했다.
+- [x] 공통 sample 문서와 기존 dirty change의 기준 manifest를 보존했다.
 - [ ] 일곱 sample의 message·field·transport·codec 목록이 작성됐다.
 - [ ] `contract 선행`과 internal-only message 범위가 review로 확정됐다.
 - [ ] `NS-IMP-001`~`NS-IMP-009`, `NS-TEST-001`의 owner와 상태가 닫혔다.
 - [ ] TicTacToe leave와 SupportChat typing이 이름과 실행 모두 one-way send다.
-- [ ] DeliveryDispatch message에 session route, ActorRef와 owner NodeRid가 없고 timestamp wire가 일치한다.
-- [ ] GameQuest가 typed object payload를 사용하고 application·Domain에서 codec을 직접 처리하지 않는다.
+- [x] DeliveryDispatch message에 session route, ActorRef와 owner NodeRid가 없고 timestamp wire가 일치한다.
+- [x] GameQuest가 typed object payload를 사용하고 application·Domain에서 codec을 직접 처리하지 않는다.
 - [ ] ShoppingMall의 접수 response, workflow command와 durable event가 공통 계약과 일치한다.
 - [ ] SupportChat conversation create와 ZoneWorld movement·push message가 공통 경계를 사용한다.
 - [ ] Bingo는 공통 Protobuf schema를 유지하고 extra type의 범위가 명시됐다.
 - [ ] 일곱 sample의 logical role과 책임을 같은 위치에서 찾을 수 있다.
-- [ ] Node handler는 decorator·metadata scan으로 자동 등록되고 수동 목록을 반복하지 않는다.
+- [x] Node handler는 decorator·metadata scan으로 자동 등록되고 수동 목록을 반복하지 않는다.
 - [ ] Shell·PowerShell runner가 같은 실행 목록, marker, resource와 cleanup 정책을 사용한다.
 - [ ] `NS-REG-001`~`NS-REG-017`이 모두 통과했다. 제외가 필요하면 11.8절의 계약 변경·대체 검증·독립
   review 조건을 먼저 충족했다.
@@ -1430,3 +1516,9 @@ Entry Spot, domain과 ZoneWorld gate를 정확한 계약 목록 test로 대체�
 - [ ] 필요한 Codex model이나 reasoning level을 사용할 수 없을 때 낮은 model·level로 대체하지 않고
   `blocked`로 기록했다.
 - [ ] 최종 독립 audit에서 미기록 sample spec gap이 0개다.
+
+여기서 `DeliveryDispatch`, `GameQuest`, handler 자동 등록의 `[x]`는 현재 source와 static
+regression이 증명한 범위만 표시한다. 실제 process smoke, client-visible result, role-server evidence와
+cleanup이 확인되지 않았으므로 전체 sample 완료나 10절 gate 통과를 뜻하지 않는다. 현재 runtime·spec
+gap의 전체 목록은 [`2026-08-03 framework runtime-spec gap audit`](log/2026-08-03-framework-runtime-spec-gap-audit.ko.md)을
+기준으로 한다.

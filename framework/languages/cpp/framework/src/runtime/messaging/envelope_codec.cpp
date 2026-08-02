@@ -39,7 +39,7 @@ message_parts_t::message_parts_t (std::vector<zlink::message_t> parts) : _parts 
 const zlink::message_t &message_parts_t::operator[] (std::size_t index) const
 {
     if (index >= _parts.size ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "ZLink envelope part is missing");
     }
     return _parts[index];
@@ -72,22 +72,22 @@ result_t<void> validate_protocol_header (const envelope_header_t &header,
                                          int format_marker)
 {
     if (format_marker != static_cast<int> (flow_id_t::format_marker)) {
-        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+        return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                         "ZLink envelope format marker is invalid");
     }
     if (header.flow_id.has_value () != header.flow_origin.has_value ()) {
         return result_t<void>::failure (
-          framework_error_kind_t::request_protocol_error,
+          framework_error_kind_t::protocol_error,
           "ZLink envelope flow id and origin must be present together");
     }
     if (header.flow_id && !flow_id_t::is_valid (*header.flow_id)) {
-        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+        return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                         "ZLink envelope flow id must be UUIDv7");
     }
     if (header.flow_origin) {
         const auto raw = static_cast<std::uint8_t> (*header.flow_origin);
         if (raw < 1 || raw > 4) {
-            return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+            return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                             "ZLink envelope flow origin is invalid");
         }
     }
@@ -169,7 +169,7 @@ result_t<envelope_header_t> envelope_codec_t::decode_header (const zlink::messag
         return result_t<envelope_header_t>::success (std::move (header));
     }
     catch (const std::exception &ex) {
-        return result_t<envelope_header_t>::failure (framework_error_kind_t::request_protocol_error,
+        return result_t<envelope_header_t>::failure (framework_error_kind_t::protocol_error,
                                                      std::string ("invalid ZLink envelope header: ")
                                                        + ex.what ());
     }
@@ -178,7 +178,7 @@ result_t<envelope_header_t> envelope_codec_t::decode_header (const zlink::messag
 result_t<envelope_header_t> envelope_codec_t::decode_header (const message_parts_t &parts) const
 {
     if (parts.size () == 0) {
-        return result_t<envelope_header_t>::failure (framework_error_kind_t::request_protocol_error,
+        return result_t<envelope_header_t>::failure (framework_error_kind_t::protocol_error,
                                                      "ZLink envelope header part is missing");
     }
     return decode_header (parts[0]);
@@ -187,7 +187,7 @@ result_t<envelope_header_t> envelope_codec_t::decode_header (const message_parts
 result_t<zlink::message_t> envelope_codec_t::decode_body (const message_parts_t &parts) const
 {
     if (parts.size () < 2) {
-        return result_t<zlink::message_t>::failure (framework_error_kind_t::request_protocol_error,
+        return result_t<zlink::message_t>::failure (framework_error_kind_t::protocol_error,
                                                     "ZLink envelope body part is missing");
     }
     return result_t<zlink::message_t>::success (parts[1]);

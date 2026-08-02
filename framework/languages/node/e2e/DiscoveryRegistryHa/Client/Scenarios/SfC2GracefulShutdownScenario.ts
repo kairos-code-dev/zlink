@@ -1,4 +1,4 @@
-// SF-C2: Shutdown 대조 (owner 정리) 시나리오를 검증한다.
+// SF-C2: 정상 Shutdown은 lease expiry를 기다리지 않는다 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson, postJsonWithin } from '../../../http-client';

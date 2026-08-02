@@ -4,8 +4,9 @@
 
 ## 1. STREAM server session
 
-STREAM session은 lifecycle과 typed packet handler를 소유한다. Transport callback은 application callback을
-직접 실행하지 않는다.
+STREAM session은 lifecycle과 typed packet handler를 소유한다. Framework 내부 recv loop는
+Core의 raw STREAM part를 수신해 managed queue에 넣은 뒤 application callback을 실행한다.
+Transport callback으로 queue admission을 우회하지 않는다.
 
 ```csharp
 public interface IZLinkSession

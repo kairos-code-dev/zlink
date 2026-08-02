@@ -4,12 +4,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
 CPP_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+source "$CPP_ROOT/samples/sample-build-common.sh"
 FLOW_LOG_DIR="${SCRIPT_DIR}/logs"
 mkdir -p "$FLOW_LOG_DIR"
 rm -f "$FLOW_LOG_DIR"/*.log
-BUILD_DIR="$CPP_ROOT/build"
-BIN_DIR="$BUILD_DIR"
-cmake -S "$CPP_ROOT" -B "$BUILD_DIR" -DZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=ON >/dev/null
+zlink_cpp_sample_prepare_build "$CPP_ROOT"
 if [[ ! -x "$BIN_DIR/sample_cpp_framework_supportchat_client" && -x "$BIN_DIR/linux-ninja-debug/sample_cpp_framework_supportchat_client" ]]; then
   BIN_DIR="$BIN_DIR/linux-ninja-debug"
 fi
@@ -98,7 +97,7 @@ if [[ -z "$SUPPORTCHAT_RESERVED_PORT" || -z "$SUPPORTCHAT_SESSION_SPOT" ]]; then
   exit 1
 fi
 
-cmake --build "$BUILD_DIR" --target \
+cmake --build "$BUILD_DIR" --parallel 2 --target \
   sample_cpp_framework_supportchat_api \
   sample_cpp_framework_supportchat_session \
   sample_cpp_framework_supportchat_support \

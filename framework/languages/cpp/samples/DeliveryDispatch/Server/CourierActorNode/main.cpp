@@ -96,12 +96,13 @@ class courier_entry_spot_t : public entry_spot_t<courier_actor_t>
         return {request.courier_id};
     }
 
-    void offer_delivery (courier_actor_t &actor,
-                         message_context_t &,
-                         const offer_delivery_msg_t &message)
+    task_t<void> offer_delivery (courier_actor_t &actor,
+                                 message_context_t &,
+                                 const offer_delivery_msg_t &message)
     {
         actor.offered_attempts[message.delivery_id] = message.attempt;
-        actor.context ().bound_session ()
+        co_await actor.context ()
+          .bound_session ()
           .send (offer_delivery_notify_t{message.courier_id, message.delivery_id,
                                          message.pickup_address, message.dropoff_address})
           .submit ();
@@ -165,8 +166,10 @@ int main (int argc, char **argv)
         options.add_client_server_channel (sample_names_t::dispatch_route_channel)
           .client ();
         auto actor_mesh = options.add_route_mesh (sample_names_t::courier_actor_discovery);
+        actor_mesh.set_routing_id (zlink::routing_id_t::from (instance_name));
+        actor_mesh.set_object_role (object_role_t::server);
         actor_mesh.listen (spot_router_endpoint);
-        actor_mesh.channel_name (sample_names_t::courier_actor_discovery);
+        actor_mesh.channel_name (sample_names_t::courier_actor_discovery).server ();
         actor_mesh.add_entry_spot<courier_entry_spot_t> (
             [services] (entry_spot_context_t context) mutable {
                 return std::make_shared<courier_entry_spot_t> (

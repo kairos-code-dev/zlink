@@ -6,6 +6,7 @@
 #include "../Configuration/sample_timings.hpp"
 #include "../Configuration/sample_configuration.hpp"
 #include "../common_codecs.hpp"
+#include "Handlers/route_ready_handler.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -45,6 +46,29 @@ struct delivery_offer_t
 class dispatch_state_t
 {
   public:
+    void enqueue (assign_delivery_msg_t request)
+    {
+        const std::lock_guard lock (_mutex);
+        _pending_assignments.push_back (std::move (request));
+    }
+
+    void enqueue (offer_delivery_result_msg_t result)
+    {
+        const std::lock_guard lock (_mutex);
+        _pending_decisions.push_back (std::move (result));
+    }
+
+    std::pair<std::vector<assign_delivery_msg_t>,
+              std::vector<offer_delivery_result_msg_t>> take_pending ()
+    {
+        const std::lock_guard lock (_mutex);
+        std::pair<std::vector<assign_delivery_msg_t>,
+                  std::vector<offer_delivery_result_msg_t>> pending;
+        pending.first.swap (_pending_assignments);
+        pending.second.swap (_pending_decisions);
+        return pending;
+    }
+
     /* 새 제안을 기록하고 그 attempt 번호를 돌려준다. */
     int offer (const assign_delivery_msg_t &request,
                std::size_t candidate_index,
@@ -98,6 +122,8 @@ class dispatch_state_t
   private:
     std::mutex _mutex;
     std::map<std::string, delivery_offer_t> _offers;
+    std::vector<assign_delivery_msg_t> _pending_assignments;
+    std::vector<offer_delivery_result_msg_t> _pending_decisions;
 };
 
 /* 배송원 후보 순서는 worker의 선택 정책이다. */
@@ -125,7 +151,7 @@ class courier_offer_port_t
     {
         auto actor = co_await _directory.find (courier_id);
         if (!actor) {
-            throw framework_exception_t (framework_error_kind_t::actor_route_not_found,
+            throw framework_exception_t (framework_error_kind_t::not_found,
                                          "courier actor route was not found: " + courier_id);
         }
         co_await _actors
@@ -263,8 +289,10 @@ class assign_delivery_handler_t
 
     task_t<void> handle (const assign_delivery_msg_t &request)
     {
-        auto worker = make_worker (_state, _couriers, _directory, _actors, _channels);
-        co_await worker.start (request);
+        // The channel handler only admits the command. The hosted dispatch
+        // worker owns outbound request/reply I/O and deadline transitions.
+        _state.enqueue (request);
+        co_return;
     }
 
   private:
@@ -299,14 +327,8 @@ class offer_delivery_result_handler_t
 
     task_t<void> handle (const offer_delivery_result_msg_t &result)
     {
-        auto offer = _state.settle (result.delivery_id, result.attempt);
-        if (!offer) {
-            std::cerr << "deliverydispatch dispatch: stale decision delivery="
-                      << result.delivery_id << " attempt=" << result.attempt << "\n";
-            co_return;
-        }
-        auto worker = make_worker (_state, _couriers, _directory, _actors, _channels);
-        co_await worker.settle (*offer, result.accepted, result.reason);
+        _state.enqueue (result);
+        co_return;
     }
 
   private:
@@ -360,10 +382,46 @@ class offer_deadline_sweeper_t final : public hosted_service_t
     void sweep (dispatch_state_t &state, dispatch_worker_t &worker)
     {
         reap ();
+        auto pending = state.take_pending ();
+        for (auto &assignment : pending.first)
+            _work.push_back (start (worker, std::move (assignment)));
+        for (auto &decision : pending.second) {
+            auto offer = state.settle (decision.delivery_id, decision.attempt);
+            if (!offer) {
+                std::cerr << "deliverydispatch dispatch: stale decision delivery="
+                          << decision.delivery_id << " attempt=" << decision.attempt << "\n";
+                continue;
+            }
+            _work.push_back (settle (worker, *offer, std::move (decision)));
+        }
         for (const auto &offer : state.expired ()) {
             std::cerr << "deliverydispatch dispatch: offer expired delivery="
                       << offer.request.delivery_id << " attempt=" << offer.attempt << "\n";
-            _reassignments.push_back (reassign (worker, offer));
+            _work.push_back (reassign (worker, offer));
+        }
+    }
+
+    task_t<void> start (dispatch_worker_t &worker, assign_delivery_msg_t request)
+    {
+        try {
+            co_await worker.start (request);
+        }
+        catch (const std::exception &error) {
+            std::cerr << "deliverydispatch dispatch: assignment failed delivery="
+                      << request.delivery_id << ": " << error.what () << "\n";
+        }
+    }
+
+    task_t<void> settle (dispatch_worker_t &worker,
+                         delivery_offer_t offer,
+                         offer_delivery_result_msg_t decision)
+    {
+        try {
+            co_await worker.settle (offer, decision.accepted, decision.reason);
+        }
+        catch (const std::exception &error) {
+            std::cerr << "deliverydispatch dispatch: decision failed delivery="
+                      << offer.request.delivery_id << ": " << error.what () << "\n";
         }
     }
 
@@ -382,8 +440,8 @@ class offer_deadline_sweeper_t final : public hosted_service_t
     /* 끝난 재제안만 걷어낸다. 기다리지 않는다. */
     void reap ()
     {
-        std::erase_if (_reassignments, [] (const task_t<void> &reassignment) {
-            return reassignment.await_ready ();
+        std::erase_if (_work, [] (const task_t<void> &work) {
+            return work.await_ready ();
         });
     }
 
@@ -391,7 +449,7 @@ class offer_deadline_sweeper_t final : public hosted_service_t
     std::unique_ptr<dispatch_worker_t> _worker;
     std::atomic_bool _running{false};
     std::thread _thread;
-    std::vector<task_t<void>> _reassignments;
+    std::vector<task_t<void>> _work;
 };
 
 class create_delivery_http_handler_t
@@ -479,9 +537,19 @@ int main (int argc, char **argv)
           .add_handler_group ("dispatch");
         dispatch_channel.client ();
         options.add_client_server_channel (sample_names_t::tracking_route_channel).client ();
-        options.add_route_mesh (sample_names_t::courier_actor_discovery)
-          .listen (topology.dispatch_spot_router_endpoint)
-          .channel_name (sample_names_t::courier_actor_discovery);
+        auto courier_mesh = options.add_route_mesh (sample_names_t::courier_actor_discovery);
+        courier_mesh.set_routing_id (zlink::routing_id_t::from (
+          sample_names_t::dispatch_route_node));
+        courier_mesh.set_object_role (object_role_t::client);
+        courier_mesh.listen (topology.dispatch_spot_router_endpoint)
+          .channel_name (sample_names_t::courier_actor_discovery)
+          .client ();
+        courier_mesh.peer_connections ().connect (
+          zlink::routing_id_t::from (sample_names_t::courier_actor_instance_1),
+          topology.courier_actor_node_1_router_endpoint);
+        courier_mesh.peer_connections ().connect (
+          zlink::routing_id_t::from (sample_names_t::courier_actor_instance_2),
+          topology.courier_actor_node_2_router_endpoint);
         options.handlers ()
           .group ("dispatch")
           .add_send<assign_delivery_handler_t> ()
@@ -489,6 +557,7 @@ int main (int argc, char **argv)
         options.http ()
           .listen (topology.dispatch_api_http_url)
           .map_health ("/health")
+          .map_get<route_ready_handler_t> ("/ready")
           .map_post<create_delivery_http_handler_t> ("/deliveries")
           .map_post<server_assertion_http_handler_t> ("/self-check/assert");
     });

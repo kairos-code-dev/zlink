@@ -17,6 +17,8 @@ CONFIGS=(
   AutomaticTurnDispatch
   ObservabilityOps
   SubmitAdmission
+  ChannelEgressRouting
+  InstanceSpot
 )
 
 cleanup_done=0

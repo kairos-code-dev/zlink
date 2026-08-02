@@ -418,7 +418,7 @@ class failing_owner_lease_store_t final : public test_location_repository_t
           zlink::framework::owner_lease_renew_result_t> (
           zlink::framework::result_t<
             zlink::framework::owner_lease_renew_result_t>::failure (
-            zlink::framework::framework_error_kind_t::request_failed,
+            zlink::framework::framework_error_kind_t::internal_failure,
             "owner lease renewal failed"));
     }
 };
@@ -476,7 +476,7 @@ class fake_location_runtime_query_t final : public location_runtime_query_t
     {
         return zlink::framework::task_t<T> (
           zlink::framework::result_t<T>::failure (
-            zlink::framework::framework_error_kind_t::request_failed,
+            zlink::framework::framework_error_kind_t::internal_failure,
             "location query list failed"));
     }
 };
@@ -1037,8 +1037,7 @@ class rejected_auto_connect_request_client_t final
                 .result ();
             if (!reply
                 && reply.error_kind ()
-                     == zlink::framework::framework_error_kind_t::
-                       request_rejected) {
+                     == zlink::framework::framework_error_kind_t::rejected) {
                 observed_rejected = true;
                 break;
             }
@@ -1278,8 +1277,7 @@ class generated_user_spot_collision_client_t final
                 || !generated.error ()
                 || generated.error ()->kind ()
                      != zlink::framework::
-                          framework_error_kind_t::
-                            spot_id_conflict) {
+                          framework_error_kind_t::already_exists) {
                 last_error =
                   "Generated User Spot collision was not rejected immediately";
                 _app->stop ();
@@ -1310,8 +1308,7 @@ class generated_user_spot_collision_client_t final
                 || !mismatch.error ()
                 || mismatch.error ()->kind ()
                      != zlink::framework::
-                          framework_error_kind_t::
-                            spot_type_mismatch) {
+                          framework_error_kind_t::type_mismatch) {
                 last_error =
                   "GetOrCreate changed caller RID type mismatch semantics";
                 _app->stop ();
@@ -1364,8 +1361,7 @@ class source_cleanup_client_t final
           !result && result.error ()
           && result.error ()->kind ()
                == zlink::framework::
-                    framework_error_kind_t::
-                      spot_create_failed;
+                    framework_error_kind_t::internal_failure;
         if (!observed)
             last_error =
               result.error () ? result.error ()->what ()
@@ -1669,7 +1665,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
         FAIL () << "mixed fanout subscriber sources must fail configuration";
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        EXPECT_EQ (zlink::framework::framework_error_kind_t::request_protocol_error,
+        EXPECT_EQ (zlink::framework::framework_error_kind_t::protocol_error,
                    error.kind ());
         EXPECT_NE (std::string::npos,
                    std::string (error.what ()).find (
@@ -2099,7 +2095,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
     ASSERT_NE (nullptr, client);
     ASSERT_TRUE (client->observed_error.has_value ());
     EXPECT_EQ (
-      zlink::framework::framework_error_kind_t::request_target_not_found,
+      zlink::framework::framework_error_kind_t::not_found,
       *client->observed_error);
 }
 
@@ -2399,27 +2395,27 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
       map_user_spot_operation_failure (
         operation_terminal_t::timed_out, {}, true));
     EXPECT_EQ (
-      framework_error_kind_t::spot_generation_stale,
+      framework_error_kind_t::invalid_operation,
       map_user_spot_operation_failure (
         operation_terminal_t::completed, {1, 107, 33},
         true));
     EXPECT_EQ (
-      framework_error_kind_t::spot_moving,
+      framework_error_kind_t::unavailable,
       map_user_spot_operation_failure (
         operation_terminal_t::completed, {1, 107, 34},
         false));
     EXPECT_EQ (
-      framework_error_kind_t::spot_type_mismatch,
+      framework_error_kind_t::type_mismatch,
       map_user_spot_operation_failure (
         operation_terminal_t::completed, {1, 107, 7},
         true));
     EXPECT_EQ (
-      framework_error_kind_t::placement_capacity_exhausted,
+      framework_error_kind_t::capacity_exceeded,
       map_user_spot_operation_failure (
         operation_terminal_t::completed, {1, 108, 0},
         true));
     EXPECT_EQ (
-      framework_error_kind_t::request_rejected,
+      framework_error_kind_t::rejected,
       map_user_spot_operation_failure (
         operation_terminal_t::completed, {1, 106, 15},
         true));

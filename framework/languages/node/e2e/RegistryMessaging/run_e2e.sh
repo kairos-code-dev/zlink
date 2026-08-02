@@ -65,6 +65,7 @@ CONSUMER_HTTP_PORT="$(pick_port)"
 SINGLE_CONSUMER_HTTP_PORT="$(pick_port)"
 BACKPRESSURE_CONSUMER_HTTP_PORT="$(pick_port)"
 LOCATION_CONSUMER_HTTP_PORT="$(pick_port)"
+MANUAL_CONSUMER_HTTP_PORT="$(pick_port)"
 API_A_PORT="$(pick_port)"
 API_B_PORT="$(pick_port)"
 WORKFLOW_PORT="$(pick_port)"
@@ -88,6 +89,7 @@ RM_A3_HTTP_A="http://127.0.0.1:$RM_A3_HTTP_A_PORT"
 RM_A3_HTTP_B="http://127.0.0.1:$RM_A3_HTTP_B_PORT"
 RM_A3_PROXY_A="tcp://127.0.0.1:$RM_A3_PROXY_A_PORT"
 RM_A3_PROXY_B="tcp://127.0.0.1:$RM_A3_PROXY_B_PORT"
+MANUAL_CONSUMER_HTTP="http://127.0.0.1:$MANUAL_CONSUMER_HTTP_PORT"
 
 PROVIDER_MAIN="$ROOT_DIR/Server/Provider/dist/Server/Provider/main.js"
 WORKFLOW_MAIN="$ROOT_DIR/Server/Workflow/dist/Server/Workflow/main.js"
@@ -209,7 +211,7 @@ run_rm_a3_client() {
   cat "$LOG_DIR/client-rm-a3-$suffix.stdout.log"
 }
 
-wait_rm_a3_not_connected() {
+wait_rm_a3_peer_unavailable() {
   local base_url="$1"
   local peer_rid="$2"
   node - "$base_url" "$peer_rid" <<'NODE'
@@ -227,9 +229,16 @@ const [baseUrl, peerRid] = process.argv.slice(2);
       console.log(`rm-a3 peer=${peerRid} state=not_connected ready=false`);
       return;
     }
+    if (peer === undefined && last.readyPeerCount === 0
+        && last.channels.every((channel) => channel.readyTargetCount === 0)) {
+      // Automatic discovery may remove the peer row after its owner lease
+      // expires. In that terminal state the stale peer is no longer a target.
+      console.log(`rm-a3 peer=${peerRid} state=removed ready=false`);
+      return;
+    }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error(`peer ${peerRid} did not become not_connected: ${JSON.stringify(last)}`);
+  throw new Error(`peer ${peerRid} did not become unavailable: ${JSON.stringify(last)}`);
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;
@@ -241,11 +250,14 @@ verify_rm_a3_single_manual_attempt() {
   local evidence="$1"
   local count
   count="$(wc -l <"$evidence")"
-  if [[ "$count" != "1" ]]; then
-    echo "RM-A3 manual endpoint opened $count connections; expected 1: $evidence" >&2
+  # A RouteMesh request/reply peer uses one Application lane and one
+  # Completion lane. Two TCP accepts therefore represent one logical manual
+  # connection; a second logical connection would produce four accepts.
+  if [[ "$count" != "2" ]]; then
+    echo "RM-A3 manual endpoint opened $count physical lanes; expected 2 for one logical connection: $evidence" >&2
     return 1
   fi
-  echo "rm-a3 manual-connect-attempts=1 evidence=$evidence"
+  echo "rm-a3 manual-connect-attempts=1 physical-lanes=2 evidence=$evidence"
 }
 
 start_role() {
@@ -254,7 +266,7 @@ start_role() {
       start_configured_server api-a "$PROVIDER_MAIN" \
         --rid api-a --http-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" \
         --redis-endpoint "$REDIS_ENDPOINT" --redis-key-prefix "$REDIS_KEY_PREFIX" \
-        --channel-endpoint "$API_A" --manual-client-endpoint "$API_A" \
+        --channel-endpoint "$API_A" \
         --route-endpoint "$ROUTE_A" --route-peer "$ROUTE_B" \
         --max-message-size "$((2 * 1024 * 1024))" \
         --evidence-file "$LOG_DIR/api-a.evidence.log" --log-dir "$LOG_DIR"
@@ -263,7 +275,7 @@ start_role() {
       start_configured_server api-b "$PROVIDER_MAIN" \
         --rid api-b --http-url "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" \
         --redis-endpoint "$REDIS_ENDPOINT" --redis-key-prefix "$REDIS_KEY_PREFIX" \
-        --channel-endpoint "$API_B" --manual-client-endpoint "$API_B" \
+        --channel-endpoint "$API_B" \
         --route-endpoint "$ROUTE_B" --route-peer "$ROUTE_A" \
         --max-message-size "$((2 * 1024 * 1024))" \
         --evidence-file "$LOG_DIR/api-b.evidence.log" --log-dir "$LOG_DIR"
@@ -358,7 +370,7 @@ if [[ "$SCENARIO" == "RM-A3" || "$SCENARIO" == "rm-a3" ]]; then
 
   kill -9 "$RM_A3_B_PID"
   wait "$RM_A3_B_PID" >/dev/null 2>&1 || true
-  wait_rm_a3_not_connected "$RM_A3_HTTP_A" client-b
+  wait_rm_a3_peer_unavailable "$RM_A3_HTTP_A" client-b
   stop_rm_a3_process "$RM_A3_A_PID" "$RM_A3_HTTP_A"
 
   printf '%s\n' "result=passed" >"$LOG_DIR/RM-A3.result.tmp"
@@ -376,6 +388,15 @@ for role in "${SERVER_ROLES[@]}"; do
   wait_role "$role"
 done
 
+if [[ "$SCENARIO" == "all" || "$SCENARIO" == "RM-A2" || "$SCENARIO" == "rm-a2" ]]; then
+  start_configured_server manual-consumer "$CONSUMER_MAIN" \
+    --http-url "$MANUAL_CONSUMER_HTTP" \
+    --provider-endpoint "$API_A" \
+    --trace-label manual-consumer --log-dir "$LOG_DIR"
+  MANUAL_CONSUMER_PID="$LAST_STARTED_PID"
+  wait_health "$MANUAL_CONSUMER_HTTP" manual-consumer "$MANUAL_CONSUMER_PID"
+fi
+
 CLIENT_CONFIG="$CONFIG_DIR/client.config.json"
 node "$ROOT_DIR/write-config.mjs" "$CLIENT_CONFIG" \
   --provider-a-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" \
@@ -385,6 +406,7 @@ node "$ROOT_DIR/write-config.mjs" "$CLIENT_CONFIG" \
   --single-consumer-url "http://127.0.0.1:$SINGLE_CONSUMER_HTTP_PORT" \
   --backpressure-consumer-url "http://127.0.0.1:$BACKPRESSURE_CONSUMER_HTTP_PORT" \
   --location-consumer-url "http://127.0.0.1:$LOCATION_CONSUMER_HTTP_PORT" \
+  --manual-consumer-url "$MANUAL_CONSUMER_HTTP" \
   --provider-main "$PROVIDER_MAIN" \
   --consumer-main "$CONSUMER_MAIN" \
   --redis-endpoint "$REDIS_ENDPOINT" \

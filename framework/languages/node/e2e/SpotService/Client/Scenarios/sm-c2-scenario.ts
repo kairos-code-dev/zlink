@@ -1,4 +1,4 @@
-// SM-C2: spot → channel messaging 시나리오를 검증한다.
+// SM-C2: Spot handler에서 Channel request를 보낸다 시나리오를 검증한다.
 import type {
   CreateSpotRes,
   CreateSpotReq,

@@ -79,7 +79,7 @@ int main ()
     }
     catch (const zlink::framework::framework_exception_t &error) {
         pgm_rejected =
-          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+          error.kind () == zlink::framework::framework_error_kind_t::protocol_error;
     }
     if (!pgm_rejected) {
         return 8;

@@ -21,6 +21,8 @@ struct sample_names_t
     static constexpr const char *courier_actor_instance_2 = "delivery-courier-node-2";
     static constexpr const char *dispatch_route_node = "delivery-dispatch-channel";
     static constexpr const char *tracking_route_node = "delivery-tracking-server";
+    static constexpr const char *customer_gateway_route_node = "delivery-customer-gateway";
+    static constexpr const char *courier_session_route_node = "delivery-courier-session";
     static constexpr const char *courier_actor_type = "delivery-courier";
     static constexpr const char *customer_id = "customer-1";
 

@@ -1,4 +1,4 @@
-// SM-D8: stream reconnect 시나리오를 검증한다.
+// SM-D8: Stream reconnect는 새 auth·bind를 요구한다 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

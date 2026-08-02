@@ -126,6 +126,7 @@ e2e.stream-endpoint=tcp://127.0.0.1:${stream_port}
 e2e.redis-location-endpoint=${REDIS_LOCATION_ENDPOINT}
 e2e.location-key-prefix=${LOCATION_PREFIX}
 e2e.log-directory=${LOG_DIR}
+e2e.scenario=${SCENARIO}
 e2e.automatic-topology=$([[ "${SCENARIO}" == "ST-R1" ]] && echo true || echo false)
 EOF
   chmod 0600 "${config_path}"

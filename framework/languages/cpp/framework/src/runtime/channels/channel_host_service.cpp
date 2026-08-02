@@ -9,6 +9,7 @@
 #include "runtime/channels/channel_socket_options.hpp"
 #include "runtime/channels/socket_monitor_event.hpp"
 
+#include <zlink/Contracts/Eventing/poller.hpp>
 #include <zlink.hpp>
 
 #include <algorithm>
@@ -23,24 +24,6 @@
 
 namespace zlink::framework::runtime
 {
-
-namespace
-{
-
-bool channel_trace_enabled ()
-{
-    const char *value = std::getenv ("ZLINK_CPP_CHANNEL_TRACE");
-    return value != nullptr && *value != '\0';
-}
-
-void trace_channel (const std::string &message)
-{
-    if (channel_trace_enabled ()) {
-        std::cerr << "zlink channel " << message << '\n';
-    }
-}
-
-} // namespace
 
 class channel_host_service_t::server_loop_t
 {
@@ -82,6 +65,8 @@ class channel_host_service_t::server_loop_t
         for (const auto &endpoint : _endpoints) {
             _router->bind (endpoint);
         }
+        _poller.add (*_router, zlink::poll_event_flag_t::pollin, 1);
+        _poller.add (_monitor, zlink::poll_event_flag_t::pollin, 2);
     }
 
     ~server_loop_t () { stop (); }
@@ -89,28 +74,51 @@ class channel_host_service_t::server_loop_t
     void run ()
     {
         while (!_stop->load (std::memory_order_acquire)) {
-            drain_monitor_events ();
             apply_runtime_options ();
             flush_replies ();
-            if (!_inbound_budget->can_start_application_receive ()) {
-                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+            if (!_inbound_budget->wait_for_application_capacity (
+                  [this] { return _stop->load (std::memory_order_acquire); })) {
+                break;
+            }
+            zlink::poll_event_t readiness;
+            std::size_t ready_count = 0;
+            try {
+                ready_count = _poller.wait (
+                  &readiness, 1, std::chrono::milliseconds (50));
+            }
+            catch (...) {
+                break;
+            }
+            if (_stop->load (std::memory_order_acquire)) {
+                break;
+            }
+            if (ready_count != 1) {
+                continue;
+            }
+            const short revents = static_cast<short> (readiness.revents);
+            const short pollin =
+              static_cast<short> (zlink::poll_event_flag_t::pollin);
+            if (readiness.slot == 2) {
+                if ((revents & pollin) != 0) {
+                    drain_monitor_events ();
+                }
+                continue;
+            }
+            if (readiness.slot != 1 || (revents & pollin) == 0
+                || !_inbound_budget->can_start_application_receive ()) {
                 continue;
             }
             zlink::received_t received;
             const int rc = _router->recv (received, zlink::recv_flags_t::dontwait);
             if (rc == static_cast<int> (zlink::recv_result_t::no_data)) {
-                std::this_thread::sleep_for (std::chrono::milliseconds (1));
                 continue;
             }
             if (rc != static_cast<int> (zlink::recv_result_t::ok)) {
-                std::this_thread::sleep_for (std::chrono::milliseconds (1));
                 continue;
             }
             if (is_drained ()) {
                 continue;
             }
-            trace_channel ("server recv channel=" + _channel_name
-                           + " parts=" + std::to_string (received.parts ().size ()));
             dispatch_async (std::move (received));
         }
         join_workers ();
@@ -122,6 +130,11 @@ class channel_host_service_t::server_loop_t
     {
         join_workers ();
         flush_replies ();
+        try {
+            _poller.close ();
+        }
+        catch (...) {
+        }
         if (_monitor.valid ()) {
             try {
                 _monitor.close ();
@@ -204,15 +217,12 @@ class channel_host_service_t::server_loop_t
             }
             _inbound_budget->handler_started (payload_bytes);
             try {
-            trace_channel ("server dispatch channel=" + _channel_name
-                           + " parts=" + std::to_string (request_parts.size ()));
             detail::channel_packet_dispatcher_t dispatcher (_runtime);
             auto scope = detail::service_scope_t::create (
               *_services, detail::service_scope_kind_t::handler_invocation);
             auto reply = dispatcher.dispatch_server_message (
               _channel_name, request_parts, scope.provider (), *_serializers, *_handlers);
             if (!reply || reply.value ().size () == 0 || !routing_id || !request_seq) {
-                trace_channel ("server dispatch no-reply channel=" + _channel_name);
                 _inbound_budget->completed (payload_bytes, true);
                 return;
             }
@@ -273,7 +283,6 @@ class channel_host_service_t::server_loop_t
             catch (...) {
                 std::cerr << "zlink framework channel late reply ignored\n";
             }
-            trace_channel ("server replied channel=" + _channel_name);
         }
     }
 
@@ -319,6 +328,21 @@ class channel_host_service_t::server_loop_t
             return;
         }
         for (;;) {
+            zlink::poll_event_t readiness;
+            try {
+                if (_poller.wait (
+                      &readiness, 1, std::chrono::milliseconds::zero ())
+                      != 1
+                    || readiness.slot != 2
+                    || (static_cast<short> (readiness.revents)
+                        & static_cast<short> (zlink::poll_event_flag_t::pollin))
+                         == 0) {
+                    return;
+                }
+            }
+            catch (...) {
+                return;
+            }
             std::optional<zlink::monitor_event_t> event;
             try {
                 event = _monitor.recv (zlink::recv_flags_t::dontwait);
@@ -345,9 +369,6 @@ class channel_host_service_t::server_loop_t
                       event->remote_addr);
                 }
             }
-            trace_channel ("server monitor channel=" + _channel_name + " kind="
-                           + std::to_string (static_cast<std::uint32_t> (*kind))
-                           + " local=" + event->local_addr + " remote=" + event->remote_addr);
             _runtime.publish_socket_event (_channel_name, *kind, event->local_addr,
                                            event->remote_addr);
         }
@@ -366,6 +387,7 @@ class channel_host_service_t::server_loop_t
     std::unique_ptr<zlink::context_t> _context;
     std::unique_ptr<zlink::router_socket_t> _router;
     zlink::socket_monitor_t _monitor;
+    zlink::poller_t _poller;
     std::set<std::string> _pending_handshake_remotes;
     std::optional<int> _applied_peer_weight;
     std::mutex _workers_mutex;
@@ -373,6 +395,7 @@ class channel_host_service_t::server_loop_t
     std::mutex _replies_mutex;
     std::deque<completed_reply_t> _replies;
 };
+
 
 class channel_host_service_t::subscriber_loop_t
 {
@@ -401,6 +424,7 @@ class channel_host_service_t::subscriber_loop_t
         detail::apply_common_channel_socket_options (*_subscriber, _capability);
         _subscriber->set_subscription ("");
         apply_runtime_connections ();
+        _poller.add (*_subscriber, zlink::poll_event_flag_t::pollin, 1);
     }
 
     ~subscriber_loop_t () { stop (); }
@@ -409,18 +433,34 @@ class channel_host_service_t::subscriber_loop_t
     {
         while (!_stop->load (std::memory_order_acquire)) {
             apply_runtime_connections ();
-            if (!_inbound_budget->can_start_application_receive ()) {
-                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+            if (!_inbound_budget->wait_for_application_capacity (
+                  [this] { return _stop->load (std::memory_order_acquire); })) {
+                break;
+            }
+            zlink::poll_event_t readiness;
+            std::size_t ready_count = 0;
+            try {
+                ready_count = _poller.wait (
+                  &readiness, 1, std::chrono::milliseconds (50));
+            }
+            catch (...) {
+                break;
+            }
+            if (_stop->load (std::memory_order_acquire)
+                || ready_count != 1
+                || readiness.slot != 1
+                || (static_cast<short> (readiness.revents)
+                    & static_cast<short> (zlink::poll_event_flag_t::pollin))
+                     == 0
+                || !_inbound_budget->can_start_application_receive ()) {
                 continue;
             }
             zlink::topic_message_t message;
             const int rc = _subscriber->subscribe (message, zlink::recv_flags_t::dontwait);
             if (rc == static_cast<int> (zlink::recv_result_t::no_data)) {
-                std::this_thread::sleep_for (std::chrono::milliseconds (1));
                 continue;
             }
             if (rc != static_cast<int> (zlink::recv_result_t::ok)) {
-                std::this_thread::sleep_for (std::chrono::milliseconds (1));
                 continue;
             }
             dispatch_async (std::move (message));
@@ -430,6 +470,11 @@ class channel_host_service_t::subscriber_loop_t
 
     void stop () noexcept
     {
+        try {
+            _poller.close ();
+        }
+        catch (...) {
+        }
         if (_subscriber) {
             try {
                 _subscriber->close ();
@@ -554,6 +599,7 @@ class channel_host_service_t::subscriber_loop_t
     std::shared_ptr<inbound_dispatch_budget_t> _inbound_budget;
     std::unique_ptr<zlink::context_t> _context;
     std::unique_ptr<zlink::sub_socket_t> _subscriber;
+    zlink::poller_t _poller;
     std::set<std::string> _connected;
     std::mutex _workers_mutex;
     std::vector<std::thread> _workers;
@@ -622,21 +668,22 @@ void channel_host_service_t::start (service_provider_t &services)
 void channel_host_service_t::request_stop () noexcept
 {
     _stop.store (true, std::memory_order_release);
+    _inbound_budget->wake_waiters ();
 }
 
 void channel_host_service_t::stop () noexcept
 {
     request_stop ();
+    for (auto &thread : _threads) {
+        if (thread.joinable ()) {
+            thread.join ();
+        }
+    }
     for (auto &loop : _loops) {
         loop->stop ();
     }
     for (auto &loop : _subscriber_loops) {
         loop->stop ();
-    }
-    for (auto &thread : _threads) {
-        if (thread.joinable ()) {
-            thread.join ();
-        }
     }
     _threads.clear ();
     _loops.clear ();

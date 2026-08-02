@@ -65,34 +65,34 @@ public final class GatewayOperationSpot implements ZLinkSpot<ZLinkActor> {
     }
 
     Contracts.StateRes requestState(Contracts.SpotStateOperation operation) {
-        return context.outbound().requestToSpot(spot(operation.spotRid()),
+        return context.outbound().requestToSpot(spot(operation.spotId()),
                 new Contracts.StateReq(operation.value()))
             .timeout(Duration.ofMillis(operation.timeoutMilliseconds()))
             .submit(Contracts.StateRes.class).toCompletableFuture().join();
     }
 
     Contracts.StateRes requestSlow(Contracts.SpotStateOperation operation) {
-        return context.outbound().requestToSpot(spot(operation.spotRid()),
+        return context.outbound().requestToSpot(spot(operation.spotId()),
                 new Contracts.SlowReq(operation.value()))
             .timeout(Duration.ofMillis(operation.timeoutMilliseconds()))
             .submit(Contracts.StateRes.class).toCompletableFuture().join();
     }
 
     Contracts.OutboundRes requestOutbound(Contracts.SpotValueOperation operation) {
-        return context.outbound().requestToSpot(spot(operation.spotRid()),
+        return context.outbound().requestToSpot(spot(operation.spotId()),
                 new Contracts.OutboundReq(operation.value()))
             .timeout(Duration.ofSeconds(5))
             .submit(Contracts.OutboundRes.class).toCompletableFuture().join();
     }
 
     Contracts.OperationAccepted sendState(Contracts.SpotValueOperation operation) {
-        context.outbound().sendToSpot(spot(operation.spotRid()),
+        context.outbound().sendToSpot(spot(operation.spotId()),
             new Contracts.StateMsg(operation.value())).submit();
         return new Contracts.OperationAccepted(true);
     }
 
     Contracts.OperationAccepted sendOutbound(Contracts.SpotValueOperation operation) {
-        context.outbound().sendToSpot(spot(operation.spotRid()),
+        context.outbound().sendToSpot(spot(operation.spotId()),
             new Contracts.OutboundMsg(operation.value())).submit();
         return new Contracts.OperationAccepted(true);
     }

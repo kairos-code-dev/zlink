@@ -58,7 +58,6 @@ struct handler_failure_event_t
     handler_descriptor_t descriptor;
     framework_error_kind_t error_kind;
     std::string message;
-    bool retriable;
 };
 
 class payload_view_t

@@ -1,4 +1,4 @@
-// SM-D4: 한 stream에 여러 actor bind 시나리오를 검증한다.
+// SM-D4: 한 Session에 여러 Actors를 bind한다 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

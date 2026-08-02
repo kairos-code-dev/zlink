@@ -42,6 +42,8 @@ DSL과 확장은 `systems.zlink.httpclient.kotlin` 패키지의 top-level 함수
 - `suspend ZLinkHttpServerRequestBuilder.await(type)` / `await<T>()` — 현재 Spot turn을 유지한다.
 - `suspend ZLinkHttpServerRequestBuilder.await(): Unit` — one-way 전송의 비동기 완료와 실패만
   전달한다. 전송 결과나 admission status는 반환하지 않는다.
+- `suspend inline ZLinkHttpServerRequestBuilder.yield<T>()` — HTTP response를 기다리는 동안
+  현재 Spot turn을 반납한다.
 
 request 구성(`get/post/put/delete/patch/head/options`, `header`, `query`, `timeout`,
 `body`, `bodyStream`, `form`, `multipart`, `multipartFile`)과 응답 타입
@@ -50,15 +52,17 @@ request 구성(`get/post/put/delete/patch/head/options`, `header`, `query`, `tim
 ## 4. 실행 모델
 
 - 모든 확장(`awaitRaw`/`await`/`fetch`/`awaitDownload`)은 `suspend` 함수다. 내부
-  `CompletionStage`를 `kotlinx-coroutines-jdk8`의 `await()`로 잇는다. 네트워크 대기 중
+  `CompletionStage`를 non-blocking coroutine bridge로 연결하며, 호출 coroutine의
+  cancellation은 이미 제출한 HTTP operation을 취소하지 않는다. 네트워크 대기 중
   스레드는 점유되지 않는다.
 - handler·actor·[spot](../../../01-glossary.ko.md#spot) 경로는 suspend 함수 안에서 직접 호출한다. `runBlocking`은 테스트·CLI
   전용이다.
 - continuation은 호출한 coroutine의 dispatcher에서 재개된다. 재개 위치는 `withContext`로
   바꾼다.
-- 서버 전용 `await`는 Java server client의 execution turn을 유지한다. HTTP builder에는
-  `yieldAwait`를 제공하지 않는다. Shared Spot gate를 반납하려면 `runIoWorker(...)` 안에서 `await`를
-  호출하고 Worker call의 `yield()`로 기다린다.
+- 서버 전용 `await`는 Java server client의 execution turn을 유지하고, `yield<T>()`는
+  response 대기 중 현재 turn을 반납한다. HTTP request builder에는 `yield`를 제공하지
+  않는다. Shared Spot gate를 반납하려면 `runIoWorker(...)` 안에서 `await`를 호출하고
+  Worker call의 `yield()`로 기다린다.
 
 ## 5. 전송 의미론
 

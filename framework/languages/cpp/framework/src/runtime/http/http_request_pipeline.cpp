@@ -53,7 +53,7 @@ class http_route_invoker_access_t
               }
               catch (...) {
                   co_return result_t<http_response_t>::failure (
-                    framework_error_kind_t::request_failed, "HTTP route handler threw an exception");
+                    framework_error_kind_t::internal_failure, "HTTP route handler threw an exception");
               }
           });
     }
@@ -101,7 +101,7 @@ parsed_http_endpoint_t parse_http_endpoint (const std::string &uri)
         parsed.scheme = "https";
         rest = uri.substr (8);
     } else {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "HTTP endpoint must start with http:// or https://");
     }
 
@@ -110,13 +110,13 @@ parsed_http_endpoint_t parse_http_endpoint (const std::string &uri)
     if (!authority.empty () && authority.front () == '[') {
         const auto close = authority.find (']');
         if (close == std::string::npos) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "HTTP endpoint IPv6 host is missing ]");
         }
         parsed.host = authority.substr (1, close - 1);
         if (close + 1 < authority.size ()) {
             if (authority[close + 1] != ':') {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                throw framework_exception_t (framework_error_kind_t::protocol_error,
                                              "HTTP endpoint has invalid IPv6 authority");
             }
             parsed.port = authority.substr (close + 2);
@@ -134,7 +134,7 @@ parsed_http_endpoint_t parse_http_endpoint (const std::string &uri)
         }
     }
     if (parsed.host.empty () || parsed.port.empty ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "HTTP endpoint requires host and port");
     }
     return parsed;
@@ -283,7 +283,7 @@ void validate_json_content_type (const http::request<http::string_body> &request
     }
     const auto content_type = find_header (context.request_headers, "content-type");
     if (!content_type || !content_type_is_json (*content_type)) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "unsupported content type");
     }
 }
@@ -399,7 +399,7 @@ std::string bind_http_request_body (const std::string &body,
         try {
             json = nlohmann::json::parse (body);
             if (!json.is_object ()) {
-                throw framework_exception_t (framework_error_kind_t::payload_decode_failed,
+                throw framework_exception_t (framework_error_kind_t::protocol_error,
                                              "HTTP JSON body must be an object");
             }
         }
@@ -407,7 +407,7 @@ std::string bind_http_request_body (const std::string &body,
             throw;
         }
         catch (const std::exception &ex) {
-            throw framework_exception_t (framework_error_kind_t::payload_decode_failed, ex.what ());
+            throw framework_exception_t (framework_error_kind_t::protocol_error, ex.what ());
         }
     }
     for (const auto &[key, value] : query_values) {
@@ -502,36 +502,56 @@ void apply_http_response (http::response<http::string_body> &response,
 const char *error_kind_name (framework_error_kind_t kind) noexcept
 {
     switch (kind) {
-        case framework_error_kind_t::payload_decode_failed:
-            return "payload_decode_failed";
-        case framework_error_kind_t::request_target_not_found:
-            return "request_target_not_found";
-        case framework_error_kind_t::request_protocol_error:
-            return "request_protocol_error";
-        case framework_error_kind_t::worker_queue_full:
-            return "worker_queue_full";
-        case framework_error_kind_t::worker_timed_out:
-            return "worker_timed_out";
-        case framework_error_kind_t::worker_failed:
-            return "worker_failed";
-        case framework_error_kind_t::request_failed:
-            return "request_failed";
-        default:
-            return "request_failed";
+        case framework_error_kind_t::not_found:
+            return "not_found";
+        case framework_error_kind_t::already_exists:
+            return "already_exists";
+        case framework_error_kind_t::type_mismatch:
+            return "type_mismatch";
+        case framework_error_kind_t::not_configured:
+            return "not_configured";
+        case framework_error_kind_t::rejected:
+            return "rejected";
+        case framework_error_kind_t::unavailable:
+            return "unavailable";
+        case framework_error_kind_t::capacity_exceeded:
+            return "capacity_exceeded";
+        case framework_error_kind_t::deadline_exceeded:
+            return "deadline_exceeded";
+        case framework_error_kind_t::shutting_down:
+            return "shutting_down";
+        case framework_error_kind_t::protocol_error:
+            return "protocol_error";
+        case framework_error_kind_t::invalid_operation:
+            return "invalid_operation";
+        case framework_error_kind_t::data_lost:
+            return "data_lost";
+        case framework_error_kind_t::internal_failure:
+            return "internal_failure";
     }
+    return "internal_failure";
 }
 
 http::status status_for_error (framework_error_kind_t kind) noexcept
 {
     switch (kind) {
-        case framework_error_kind_t::payload_decode_failed:
-        case framework_error_kind_t::request_protocol_error:
+        case framework_error_kind_t::protocol_error:
+        case framework_error_kind_t::type_mismatch:
+        case framework_error_kind_t::invalid_operation:
             return http::status::bad_request;
-        case framework_error_kind_t::request_target_not_found:
+        case framework_error_kind_t::not_found:
             return http::status::not_found;
-        case framework_error_kind_t::worker_timed_out:
+        case framework_error_kind_t::already_exists:
+            return http::status::conflict;
+        case framework_error_kind_t::rejected:
+            return http::status::forbidden;
+        case framework_error_kind_t::not_configured:
+        case framework_error_kind_t::unavailable:
+        case framework_error_kind_t::shutting_down:
+            return http::status::service_unavailable;
+        case framework_error_kind_t::deadline_exceeded:
             return http::status::gateway_timeout;
-        case framework_error_kind_t::worker_queue_full:
+        case framework_error_kind_t::capacity_exceeded:
             return http::status::too_many_requests;
         default:
             return http::status::internal_server_error;
@@ -548,20 +568,14 @@ void apply_framework_error (http::response<http::string_body> &response,
     switch (boundary) {
         case detail::boundary_error_t::timed_out:
             status = http::status::gateway_timeout;
-            error_name = "timeout";
             break;
         case detail::boundary_error_t::shutdown:
             status = http::status::service_unavailable;
-            error_name = "shutdown";
             break;
         case detail::boundary_error_t::disconnected:
         case detail::boundary_error_t::closed:
         case detail::boundary_error_t::cancelled:
         case detail::boundary_error_t::stale_generation:
-            error_name = boundary == detail::boundary_error_t::disconnected ? "disconnected"
-                         : boundary == detail::boundary_error_t::closed     ? "closed"
-                         : boundary == detail::boundary_error_t::cancelled  ? "cancelled"
-                                                                            : "stale_generation";
             break;
         case detail::boundary_error_t::none:
             break;

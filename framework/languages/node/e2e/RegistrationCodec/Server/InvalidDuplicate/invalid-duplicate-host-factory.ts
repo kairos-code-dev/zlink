@@ -34,7 +34,7 @@ function createInvalidDuplicateModule(): Function {
               .traceLabel(options.rid);
           const mesh = builder.addRouteMesh(RegistrationCodecNames.channel)
             .listen(options.channelEndpoint);
-          const channel = mesh.channelName(RegistrationCodecNames.channel);
+          const channel = mesh.channel(RegistrationCodecNames.channel).server();
           if (options.invalidCase === 'missing-handler-group') {
             channel.addHandlerGroup('missing-handler-group');
           } else {

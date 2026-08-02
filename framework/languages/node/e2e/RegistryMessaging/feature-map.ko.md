@@ -5,8 +5,8 @@
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|
 | RM-A1 | done | Redis location store의 MeshNode descriptor와 두 provider가 실제로 처리한 request evidence를 함께 검증한다. |
-| RM-A2 | done | 수동 endpoint request를 검증한다. |
-| RM-A3 | done | Object Client pair의 Automatic·Manual `NotRequired`, Manual endpoint별 connection 1회, weight 0 RouteMesh Server의 `Ready`, 연결 종료 뒤 `NotConnected`, Node direct Send·Request의 typed `RequestTargetNotFound`를 실제 process로 검증한다. |
+| RM-A2 | done | Location Store 없이 consumer가 명시한 provider endpoint 하나로 연결해 request 결과와 provider evidence를 검증한다. |
+| RM-A3 | done | Object Client pair의 Automatic·Manual `NotRequired`, Manual endpoint마다 하나의 logical connection(두 physical request/reply lane), weight 0 RouteMesh Server의 `Ready`, peer 종료 뒤 `NotConnected` 또는 lease 만료에 따른 stale row 제거, Node direct Send·Request의 typed `RequestTargetNotFound`를 실제 process로 검증한다. |
 | RM-A4 | done | 같은 rid provider 교체를 검증한다. |
 | RM-A6 | done | profile/workflow channel 독립성을 검증한다. |
 | RM-B1 | done | provider scale-out 후 양쪽 provider 처리 evidence를 검증한다. |
@@ -17,7 +17,7 @@
 | RM-C3 | done | 수동 multi-endpoint 분산을 검증한다. |
 | RM-C4 | done | timeout 뒤 후속 request 비오염을 검증한다. |
 | RM-C5 | done | 미등록 packet request/send와 dispatch error evidence를 검증한다. |
-| RM-C7 | done | public `addRouteMesh(meshName).channelName(channelName).setWeight(...)`로 build-time provider weight 75/25를 설정하고 high-weight provider가 더 많이 처리하는지 검증한다. |
+| RM-C7 | done | public `addRouteMesh(meshName).channel(channelName).server().setWeight(...)`로 build-time provider weight 75/25를 설정하고 high-weight provider가 더 많이 처리하는지 검증한다. |
 | RM-C8 | done | payload length/hash 왕복을 검증하고, server socket `maxMessageSize`를 넘는 payload가 실패한 뒤 정상 request가 다시 성공하는지 확인한다. |
 | RM-C9 | 10.0.0 전환 대상 | 현재 runner는 다량 one-way send 제출과 backlog 해소 뒤 후속 request 회복을 검증한다. `submit()`의 최초 non-blocking 시도, bounded wait와 timeout 결과를 직접 검증해야 한다. |
 
@@ -41,10 +41,13 @@
   - 결과: `scenario RM-A3 passed`, `RM-A3.result=result=passed`
   - Automatic·Manual 단계는 각각 20초 동안 212회·213회 연속 `NotRequired`를
     관측했다. 각 peer RID의 public row가 정확히 하나인지 함께 검증했다.
-  - Manual TCP proxy가 기록한 connection 수는 endpoint별 1회다.
-  - weight 0 RouteMesh Server는 `Ready`였고, 상대 process 종료 뒤 public peer 상태가
-    `NotConnected`로 바뀌었다.
-  - 로그: `log/20260729-025247-2423445`
+  - Manual TCP proxy가 기록한 physical lane 수는 endpoint별 2회이며, 이는 Core의
+    Application lane과 Completion lane으로 구성된 하나의 logical connection이다.
+    두 번째 logical connection이 생기면 4회가 되므로 runner가 이를 거부한다.
+  - weight 0 RouteMesh Server는 `Ready`였고, 상대 process 종료 뒤 public status에
+    `NotConnected`가 나타나거나 owner lease 만료 뒤 stale peer row와 target이 제거되는지
+    확인한다. 최신 실행에서는 lease 만료 후 `state=removed`가 기록되었다.
+  - 로그: `log/20260802-135025-77596`
 
 후속 계약 판정:
 

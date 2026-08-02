@@ -1,4 +1,4 @@
-// SM-F3: ChannelName·RID direct·Spot direct namespace 분리 시나리오를 검증한다.
+// SM-F3: ChannelName·Node direct·Spot direct namespace를 분리한다 시나리오를 검증한다.
 import type {
   CreateSpotRes,
   CreateSpotReq,

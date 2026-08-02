@@ -63,7 +63,9 @@ public final class ZLinkStreamJson {
         return connector.on(name, message -> handler.handleAsync(new ZLinkStreamMessage<>(
             message.packetName(),
             decode(message.payload(), payloadType),
-            message.metadata())));
+            message.metadata(),
+            message.flowId(),
+            message.flowOrigin())));
     }
 
     public static ZLinkStreamEncodedPayload encode(String packetName, Object value) {

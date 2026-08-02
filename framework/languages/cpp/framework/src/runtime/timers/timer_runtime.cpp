@@ -56,16 +56,16 @@ timer_t spot_context_t::add_timer_erased (std::string name,
 {
     ensure_submission_open ();
     if (name.empty ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "SPOT timer name must not be empty");
     }
     if (period <= std::chrono::milliseconds::zero ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "SPOT timer period must be greater than zero");
     }
     if (options.overrun_policy == timer_overrun_policy_t::catch_up_bounded
         && options.max_catch_up_ticks == 0) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "SPOT timer max catch-up ticks must be greater than zero");
     }
 
@@ -74,7 +74,7 @@ timer_t spot_context_t::add_timer_erased (std::string name,
                                             return timer->name == name && !timer->disposed;
                                         });
     if (duplicate) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "duplicate SPOT timer registration");
     }
 
@@ -95,7 +95,7 @@ timer_t spot_context_t::add_timer_erased (std::string name,
         auto handler_instance = handler_factory (activation_services);
         if (!handler_instance) {
             throw framework_exception_t (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "SPOT timer handler factory returned null");
         }
         _state->timer_handler_instances.emplace (
@@ -235,7 +235,7 @@ timer_runtime_t::dispatch_fire_count (timer_t &timer,
                                                 "SPOT timer is disposed");
     }
     if (timer._state->running) {
-        return result_t<timer_tick_t>::failure (framework_error_kind_t::request_rejected,
+        return result_t<timer_tick_t>::failure (framework_error_kind_t::rejected,
                                                 "SPOT timer callback is already running");
     }
 
@@ -266,7 +266,7 @@ timer_runtime_t::dispatch_fire_count (timer_t &timer,
             timer._state->disposed = true;
         }
         reset_running ();
-        return result_t<timer_tick_t>::failure (framework_error_kind_t::request_failed,
+        return result_t<timer_tick_t>::failure (framework_error_kind_t::internal_failure,
                                                 error.what ());
     }
     catch (...) {
@@ -276,7 +276,7 @@ timer_runtime_t::dispatch_fire_count (timer_t &timer,
             timer._state->disposed = true;
         }
         reset_running ();
-        return result_t<timer_tick_t>::failure (framework_error_kind_t::request_failed,
+        return result_t<timer_tick_t>::failure (framework_error_kind_t::internal_failure,
                                                 "unknown timer handler failure");
     }
 }
@@ -295,18 +295,18 @@ task_t<timer_tick_t> timer_runtime_t::dispatch_fire_count_async (timer_t &timer,
         if (state->running) {
             state->pending_fire = true;
             state->pending_fire_count = fire_count;
-            co_return result_t<timer_tick_t>::failure (framework_error_kind_t::request_rejected,
+            co_return result_t<timer_tick_t>::failure (framework_error_kind_t::rejected,
                                                        "SPOT timer callback is already running");
         }
         state->running = true;
     }
     if (!state->handler_invoker) {
-        co_return result_t<timer_tick_t>::failure (framework_error_kind_t::request_protocol_error,
+        co_return result_t<timer_tick_t>::failure (framework_error_kind_t::protocol_error,
                                                    "SPOT timer handler is not configured");
     }
     if (!context || !context->spot_instance || !context->channel_runtime
         || !context->channel_runtime->serializers) {
-        co_return result_t<timer_tick_t>::failure (framework_error_kind_t::request_protocol_error,
+        co_return result_t<timer_tick_t>::failure (framework_error_kind_t::protocol_error,
                                                    "SPOT timer context is not configured");
     }
 
@@ -345,7 +345,7 @@ task_t<timer_tick_t> timer_runtime_t::dispatch_fire_count_async (timer_t &timer,
         auto handler_instance = state->handler_instance.lock ();
         if (!handler_instance) {
             throw framework_exception_t (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               "SPOT timer handler activation is no longer available");
         }
         auto handler_task = state->handler_invoker (spot_keep_alive.get (),
@@ -371,7 +371,7 @@ task_t<timer_tick_t> timer_runtime_t::dispatch_fire_count_async (timer_t &timer,
             state->disposed = true;
         }
         reset_running ();
-        co_return result_t<timer_tick_t>::failure (framework_error_kind_t::request_failed,
+        co_return result_t<timer_tick_t>::failure (framework_error_kind_t::internal_failure,
                                                    error.what ());
     }
     catch (...) {
@@ -381,7 +381,7 @@ task_t<timer_tick_t> timer_runtime_t::dispatch_fire_count_async (timer_t &timer,
             state->disposed = true;
         }
         reset_running ();
-        co_return result_t<timer_tick_t>::failure (framework_error_kind_t::request_failed,
+        co_return result_t<timer_tick_t>::failure (framework_error_kind_t::internal_failure,
                                                    "unknown timer handler failure");
     }
 }

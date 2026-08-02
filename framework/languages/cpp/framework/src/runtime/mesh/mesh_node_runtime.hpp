@@ -75,6 +75,8 @@ class mesh_node_runtime_t
         host::receive_record_t record;
         std::vector<zlink::message_t> parts;
     };
+    using actor_join_completion_t = std::function<void (
+      result_t<actor_join_reply_t>)>;
     explicit mesh_node_runtime_t (std::shared_ptr<mesh_node_builder_state_t> state);
     ~mesh_node_runtime_t ();
 
@@ -108,6 +110,9 @@ class mesh_node_runtime_t
       const mesh_node_descriptor_t &target,
       const authority_snapshot_t &authority,
       relocation_capacity_fence_t capacity_fence);
+    bool application_actor_transfer_in_progress (
+      const actor_ref_t &actor) const;
+    result_t<bool> destroy_application_actor (const actor_ref_t &actor);
     runtime::stateful::aggregate_relocation_result_t
     relocate_application_unit (
       std::vector<runtime::stateful::object_ref_t> sources,
@@ -247,6 +252,15 @@ class mesh_node_runtime_t
       const node_rid_t &target_node,
       const zlink::message_t &request,
       std::chrono::milliseconds timeout);
+    result_t<void> submit_application_actor_entry_spot_join (
+      const actor_ref_t &actor,
+      const node_rid_t &target_node,
+      const zlink::message_t &request,
+      std::chrono::milliseconds timeout,
+      actor_join_completion_t completion);
+    bool complete_application_actor_entry_spot_join (
+      const host::receive_record_t &record,
+      const std::vector<zlink::message_t> &parts);
     result_t<actor_join_reply_t> join_application_actor_to_spot (
       actor_ref_t actor,
       const node_rid_t &target_node,
@@ -317,6 +331,10 @@ class mesh_node_runtime_t
     registrations (zlink_builder_t &builder);
 
   private:
+    result_t<actor_join_reply_t> actor_join_reply_from_completion (
+      const host::receive_record_t &record,
+      const std::vector<zlink::message_t> &parts,
+      const actor_ref_t &actor);
     result_t<actor_join_reply_t> wait_for_join_completion (
       const host::operation_id_t &operation,
       const actor_ref_t &actor,
@@ -358,6 +376,14 @@ class mesh_node_runtime_t
     std::condition_variable _completion_ready;
     std::map<std::pair<std::uint64_t, std::uint64_t>, operation_completion_t>
       _completed_operations;
+    struct actor_join_continuation_t
+    {
+        actor_ref_t actor;
+        actor_join_completion_t completion;
+    };
+    std::map<std::pair<std::uint64_t, std::uint64_t>,
+             actor_join_continuation_t>
+      _actor_join_continuations;
 };
 
 } // namespace zlink::framework::detail

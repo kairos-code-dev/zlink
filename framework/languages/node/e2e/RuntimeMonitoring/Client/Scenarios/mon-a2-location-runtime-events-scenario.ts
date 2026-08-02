@@ -1,4 +1,4 @@
-// MON-A2: peer admission과 ready 전이 시나리오를 검증한다.
+// MON-A2: Peer가 추가되고 제거된 결과를 관찰한다 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../../../http-client';
 import { type ManagedProcess, startServiceB, waitForPortState } from '../Support/managed-service';

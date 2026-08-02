@@ -8,9 +8,11 @@ import {
   type ZLinkSession,
   type ZLinkSessionContext,
   type ZLinkSessionDispatchContext,
-  type ZLinkSessionFactory
+  type ZLinkSessionFactory,
+  type ZLinkLocationRuntimeQuery,
+  type ZLinkRouteMeshRuntime
 } from '@zlink-systems/framework';
-import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLINK_LOCATION_RUNTIME_QUERY, ZLINK_ROUTE_MESH_RUNTIME, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
 import {
   PacketNames,
@@ -20,6 +22,7 @@ import {
   type SessionBindingSnapshot
 } from '../../Shared/messages';
 import { closeHttpServer, startHttpServer } from '../Support/http-server';
+import { createLocationTopologyRoute } from '../Support/location-topology-route';
 import { TO_ACTOR_OPTIONS, createToActorConfigurationModule } from '../../configuration';
 import type { ServerOptions } from '../../configuration';
 
@@ -121,13 +124,15 @@ Module({
           .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
           .traceLogFile(path.join(options.logDir, 'session-flow.log'))
           .traceLabel(options.rid);
-        builder
+        const mesh = builder
           .addRouteMesh('to-actor')
-          .listen(options.routerEndpoint).routingId(options.rid)
-          .channelName('to-actor');
+          .listen(options.routerEndpoint).routingId(options.rid);
+        mesh.objects().client();
+        mesh.channel('to-actor').server();
         builder
           .addStreamNode('to-actor-session-stream')
           .bind(options.streamEndpoint)
+          .enableActorDispatch()
           .registerSession(ToActorSessionFactory);
         return builder.build();
       }
@@ -138,8 +143,11 @@ Module({
 
 async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(SessionModule, { logger: false, abortOnError: false });
+  const locations = app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }) as ZLinkLocationRuntimeQuery;
+  const routeMeshRuntime = app.get(ZLINK_ROUTE_MESH_RUNTIME, { strict: false }) as ZLinkRouteMeshRuntime;
   const server = await startHttpServer(options.httpUrl, [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ok' }) },
+    createLocationTopologyRoute(locations, routeMeshRuntime),
     {
       method: 'POST',
       path: '/bindings/snapshot',

@@ -71,27 +71,32 @@ public final class Program {
             String apiEndpoint = server.apiEndpoint();
             if (!apiEndpoint.isBlank()) {
                 var api = options.addClientServerChannel(Contracts.API_CHANNEL);
-                api.configureServerSocket().maxMessageSize(server.maxMessageSize());
-                api
-                    .enableServer(apiEndpoint)
-                    .enableClient()
-                    .setRoutingId(RoutingId.from(state.providerRid()))
+                var endpoint = java.net.URI.create(apiEndpoint);
+                api.server()
+                    .setBindHost(endpoint.getHost())
+                    .setAdvertiseHost(endpoint.getHost())
+                    .listen(endpoint.getPort())
                     .addHandlerGroup(Contracts.HANDLER_GROUP);
+                api.client();
             }
 
             String manualEndpoint = server.apiManualEndpoint();
             if (!manualEndpoint.isBlank()) {
                 options.addClientServerChannel("registry.messaging.api.manual")
-                    .enableClient(manualEndpoint);
+                    .client()
+                    .connect(manualEndpoint);
             }
 
             String workflowEndpoint = server.workflowEndpoint();
             if (!workflowEndpoint.isBlank()) {
-                options.addClientServerChannel(Contracts.WORKFLOW_CHANNEL)
-                    .enableServer(workflowEndpoint)
-                    .enableClient()
-                    .setRoutingId(RoutingId.from(state.providerRid()))
+                var workflow = options.addClientServerChannel(Contracts.WORKFLOW_CHANNEL);
+                var endpoint = java.net.URI.create(workflowEndpoint);
+                workflow.server()
+                    .setBindHost(endpoint.getHost())
+                    .setAdvertiseHost(endpoint.getHost())
+                    .listen(endpoint.getPort())
                     .addHandlerGroup(Contracts.HANDLER_GROUP);
+                workflow.client();
             }
 
             String routeEndpoint = server.routeEndpoint();
@@ -99,7 +104,7 @@ public final class Program {
                 var route = options.addRouteMesh(Contracts.ROUTE_CHANNEL)
                     .listen(routeEndpoint)
                     .setRoutingId(RoutingId.from(state.providerRid()));
-                route.channelName(Contracts.ROUTE_CHANNEL);
+                route.channelName(Contracts.ROUTE_CHANNEL).server();
                 route.addRouteRequestHandler(
                     RouteReqHandler.class,
                     Contracts.RouteReq.class,
@@ -126,6 +131,9 @@ public final class Program {
             var serverSocket = runtimeOptions
                 .clientServerChannel(Contracts.API_CHANNEL)
                 .configureServerSocket();
+            if (options.maxMessageSize() > 0) {
+                serverSocket.maxMessageSize(options.maxMessageSize());
+            }
             String weight = options.apiWeight();
             if (!weight.isBlank()) {
                 serverSocket.weight(Integer.parseInt(weight));

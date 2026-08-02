@@ -4,12 +4,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
 CPP_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+source "$CPP_ROOT/samples/sample-build-common.sh"
 FLOW_LOG_DIR="${SCRIPT_DIR}/logs"
 mkdir -p "$FLOW_LOG_DIR"
 rm -f "$FLOW_LOG_DIR"/*.log
-BUILD_DIR="$CPP_ROOT/build"
-BIN_DIR="$BUILD_DIR"
-cmake -S "$CPP_ROOT" -B "$BUILD_DIR" -DZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=ON >/dev/null
+zlink_cpp_sample_prepare_build "$CPP_ROOT"
 if [[ ! -x "$BIN_DIR/sample_cpp_framework_deliverydispatch_client" && -x "$BIN_DIR/linux-ninja-debug/sample_cpp_framework_deliverydispatch_client" ]]; then
   BIN_DIR="$BIN_DIR/linux-ninja-debug"
 fi
@@ -85,7 +84,7 @@ if [[ -z "$RESERVED_PORT" || -z "$COURIER_NODE2" ]]; then
   echo "This environment may block local socket creation." >&2
   exit 1
 fi
-cmake --build "$BUILD_DIR" --target \
+cmake --build "$BUILD_DIR" --parallel 2 --target \
   sample_cpp_framework_deliverydispatch_dispatch \
   sample_cpp_framework_deliverydispatch_courier_actor_node \
   sample_cpp_framework_deliverydispatch_customer_gateway \
@@ -244,6 +243,24 @@ wait_port courier-actor-node-1-spot "$(port_of "$COURIER_NODE1_ROUTER")"
 wait_port courier-actor-node-2-spot "$(port_of "$COURIER_NODE2_ROUTER")"
 wait_port dispatch "$(port_of "$DISPATCH_ROUTE")"
 wait_port dispatch-http "$API_HTTP_PORT"
+
+wait_route_ready() {
+  local target_rid="$1"
+  for _ in $(seq 1 120); do
+    if curl --connect-timeout 0.2 --max-time 0.5 -fsS \
+      "$API_HTTP_URL/ready?targetRid=${target_rid}" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  curl --connect-timeout 0.2 --max-time 1 -sS \
+    "$API_HTTP_URL/ready?targetRid=${target_rid}" >&2 || true
+  echo "Timed out waiting for Dispatch route peer ${target_rid}" >&2
+  return 1
+}
+
+wait_route_ready "delivery-courier-node-1"
+wait_route_ready "delivery-courier-node-2"
 
 "$BIN_DIR/sample_cpp_framework_deliverydispatch_client" \
   --api-url "$API_HTTP_URL" \

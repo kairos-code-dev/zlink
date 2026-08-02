@@ -1,4 +1,4 @@
-// ST-I2: 다량 Actor relocation과 서비스 연속성 시나리오를 검증한다.
+// ST-I2: Many Actor relocations 시나리오를 검증한다.
 import {
   SpotActorTransferNames,
   actorNode,

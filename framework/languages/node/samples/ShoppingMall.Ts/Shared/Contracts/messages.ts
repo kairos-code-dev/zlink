@@ -5,9 +5,6 @@ import type { DecimalAmountInput } from './decimal-amount';
 const PacketNames = {
   startOrderWorkflowReq: 'StartOrderWorkflowReq',
   continueOrderWorkflowReq: 'ContinueOrderWorkflowReq',
-  prepareInventoryReservedReq: 'PrepareInventoryReservedReq',
-  prepareInventoryEffectReq: 'PrepareInventoryEffectReq',
-  verifyExpectedVersionFenceReq: 'VerifyExpectedVersionFenceReq',
   rebuildOrderProjectionReq: 'RebuildOrderProjectionReq'
 } as const;
 
@@ -33,6 +30,7 @@ class StartOrderWorkflowReq {
     readonly shippingAddressId: string,
     readonly paymentMethodId: string,
     readonly idempotencyKey: string,
+    readonly sourceCommandId: string,
     readonly lines: readonly OrderLineInput[],
     amount: DecimalAmountInput,
     readonly currency: string
@@ -41,24 +39,18 @@ class StartOrderWorkflowReq {
   }
 }
 
-@ZLinkPacket(PacketNames.prepareInventoryReservedReq)
-class PrepareInventoryReservedReq extends StartOrderWorkflowReq {}
-
-@ZLinkPacket(PacketNames.prepareInventoryEffectReq)
-class PrepareInventoryEffectReq extends StartOrderWorkflowReq {}
-
-@ZLinkPacket(PacketNames.verifyExpectedVersionFenceReq)
-class VerifyExpectedVersionFenceReq { constructor(readonly orderId: string) {} }
-
 @ZLinkPacket(PacketNames.continueOrderWorkflowReq)
-class ContinueOrderWorkflowReq { constructor(readonly orderId: string) {} }
+class ContinueOrderWorkflowReq {
+  constructor(readonly orderId: string, readonly sourceCommandId: string) {}
+}
 
 @ZLinkPacket(PacketNames.rebuildOrderProjectionReq)
-class RebuildOrderProjectionReq { constructor(readonly orderId: string) {} }
+class RebuildOrderProjectionReq {
+  constructor(readonly orderId: string, readonly sourceCommandId: string) {}
+}
 
 interface StartOrderRes {
-  orderId: string;
-  status: string;
+  state: OrderState;
 }
 
 interface StartOrderWorkflowRes { state: OrderState; }
@@ -66,7 +58,7 @@ interface GetOrderStateRes { state: OrderState; }
 
 interface OrderState {
   orderId: string;
-  status: string;
+  status: OrderStatus;
   shippingAddressId?: string;
   reservationId?: string;
   paymentId?: string;
@@ -78,14 +70,6 @@ interface OrderState {
 
 interface ContinueOrderWorkflowRes { state: OrderState; }
 interface RebuildOrderProjectionRes { state: OrderState; }
-interface VerifyExpectedVersionFenceRes {
-  rejected: boolean;
-  expectedVersion: number;
-  actualVersion: number;
-  writerInstanceId?: string;
-  ownerInstanceId?: string;
-}
-
 interface ServerAssertionReq {
   successfulOrderId: string;
   pendingRecoveredOrderId: string;
@@ -110,27 +94,26 @@ const OrderStatuses = {
   Failed: 'Failed'
 } as const;
 
+type OrderStatus = typeof OrderStatuses[keyof typeof OrderStatuses];
+
 export {
   ContinueOrderWorkflowReq,
   DecimalAmount,
   OrderStatuses,
   PacketNames,
-  PrepareInventoryEffectReq,
-  PrepareInventoryReservedReq,
   RebuildOrderProjectionReq,
   StartOrderWorkflowReq,
-  VerifyExpectedVersionFenceReq
 };
 export type {
   ContinueOrderWorkflowRes,
   GetOrderStateRes,
   OrderLineInput,
+  OrderStatus,
   OrderState,
   RebuildOrderProjectionRes,
   ServerAssertionReq,
   ServerAssertionRes,
   StartOrderReq,
   StartOrderRes,
-  StartOrderWorkflowRes,
-  VerifyExpectedVersionFenceRes
+  StartOrderWorkflowRes
 };

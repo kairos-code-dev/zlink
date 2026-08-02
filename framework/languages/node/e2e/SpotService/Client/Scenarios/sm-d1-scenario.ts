@@ -1,4 +1,4 @@
-// SM-D1: actor session bind & relay — local 시나리오를 검증한다.
+// SM-D1: Local Actor를 Session에 bind하고 relay한다 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

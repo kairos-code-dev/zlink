@@ -1141,7 +1141,7 @@ class provider_location_repository_t final : public location_repository_t
         if (auto applied = reconcile_write (request))
             return store_write_result_t{std::move (*applied)};
         if (first.error () != nullptr
-            && first.error ()->is_retriable ()) {
+            && detail::is_transient_error (first.error ()->kind ())) {
             auto retried = _store->write (request).result ();
             if (retried)
                 return retried.value ();
@@ -1513,8 +1513,8 @@ class provider_location_repository_t final : public location_repository_t
             auto result = _store->scan ({row_prefix, cursor, 1000}).result ().value ();
             const auto *page = std::get_if<store_scan_page_t> (&result);
             if (!page)
-                throw framework_exception_t (framework_error_kind_t::request_failed,
-                                             "Location Store scan cursor expired", true);
+                throw framework_exception_t (framework_error_kind_t::internal_failure,
+                                             "Location Store scan cursor expired");
             for (const auto &item : page->items) {
                 const auto record = parse_json (item.value.bytes);
                 if (record_owner_id (record) != owner.owner_id
@@ -2236,8 +2236,8 @@ class provider_location_repository_t final : public location_repository_t
 
     template <typename T> static task_t<T> unavailable (std::string message)
     {
-        return task_t<T> (result_t<T>::failure (framework_error_kind_t::request_failed,
-                                                std::move (message), false));
+        return task_t<T> (result_t<T>::failure (framework_error_kind_t::internal_failure,
+                                                std::move (message)));
     }
 
     template <typename T> static task_t<T> cancelled ()

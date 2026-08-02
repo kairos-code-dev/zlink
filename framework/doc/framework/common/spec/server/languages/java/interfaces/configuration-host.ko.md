@@ -216,9 +216,10 @@ public interface FanoutChannelBuilder {
 
 `applicationHwmBytes()`가 비어 있으면 Auto mode다. Setter의 `0`은 제한 없음, 양수는 정확한 host 전체
 byte 상한이며 음수는 startup configuration error다. Profile 기본값은 `BALANCED`다.
-`processMemoryLimitBytes()`가 비어 있으면 process에 적용된 유한한 container·cgroup 상한을 사용하고,
-유한한 상한이 없으면 시스템 물리 메모리 총량을 사용한다. Auto mode는 설정 없이도 기동하며, 계산
-결과가 양수가 아닐 때만 socket bind 전에 startup이 실패한다.
+`processMemoryLimitBytes()`가 비어 있으면 process에 적용된 유한한 container·cgroup·Windows Job Object와
+같은 OS 상한과 JVM managed heap 상한(`Runtime.maxMemory()`)을 확인한다. 두 값을 모두 확인하면 더 작은
+값을 사용하고, 하나만 확인하면 그 값을 사용한다. 둘 다 확인할 수 없으면 시스템 물리 메모리 총량을 사용한다.
+Auto mode는 설정 없이도 기동하며, 계산 결과가 양수가 아닐 때만 socket bind 전에 startup이 실패한다.
 Application listener의 `maxMessageSize()` 기본값은 `16_777_216L` bytes다.
 
 `configureNetwork()`은 process의 RouteMesh, ClientServer, classic fanout과 stream listener가 사용하는

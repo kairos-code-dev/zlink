@@ -190,14 +190,20 @@ class request_builder_t
         }
         catch (const zlink::framework::framework_exception_t &error) {
             co_return zlink::framework::result_t<http_response_t<T>>::failure (
-              error.kind (), error.what (), error.is_retriable ());
+              error.kind (), error.what ());
         }
 
         if (raw.status >= 400) {
             std::ostringstream message;
             message << "HTTP request failed with status " << raw.status;
+            if (!raw.body.empty ()) {
+                constexpr std::size_t max_error_body = 512;
+                message << ": " << raw.body.substr (0, max_error_body);
+                if (raw.body.size () > max_error_body)
+                    message << "...";
+            }
             co_return zlink::framework::result_t<http_response_t<T>>::failure (
-              zlink::framework::framework_error_kind_t::request_failed, message.str ());
+              zlink::framework::framework_error_kind_t::internal_failure, message.str ());
         }
 
         try {
@@ -210,7 +216,7 @@ class request_builder_t
         }
         catch (const std::exception &ex) {
             co_return zlink::framework::result_t<http_response_t<T>>::failure (
-              zlink::framework::framework_error_kind_t::payload_decode_failed, ex.what ());
+              zlink::framework::framework_error_kind_t::protocol_error, ex.what ());
         }
     }
 

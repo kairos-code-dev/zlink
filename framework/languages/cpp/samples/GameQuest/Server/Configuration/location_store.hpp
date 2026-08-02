@@ -26,6 +26,11 @@ inline void add_gamequest_location_store (zlink::framework::zlink_framework_opti
         zlink::framework::redis::redis_location_options_t{
           .connection_string = topology.redis_endpoint,
           .key_prefix = topology.redis_key_prefix}));
+    framework.add_relocation_store (
+      std::make_shared<zlink::framework::redis::redis_relocation_store_t> (
+        zlink::framework::redis::redis_relocation_options_t{
+          .connection_string = topology.redis_endpoint,
+          .key_prefix = topology.redis_key_prefix + "relocation:"}));
 }
 
 } // namespace zlink::samples::gamequest

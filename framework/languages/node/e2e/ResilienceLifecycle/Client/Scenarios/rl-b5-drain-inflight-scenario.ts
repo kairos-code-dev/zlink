@@ -1,4 +1,4 @@
-// RL-B5: ChannelName weight 변경 중 in-flight 완료 시나리오를 검증한다.
+// RL-B5: Weight 변경 전에 accepted된 request를 완료한다 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../../../http-client';

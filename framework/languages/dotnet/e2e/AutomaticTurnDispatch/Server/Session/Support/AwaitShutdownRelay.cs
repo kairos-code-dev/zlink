@@ -59,7 +59,7 @@ internal sealed partial class AwaitSession
         ZlinkStreamAssert.Ensure(
             evidence.Evidence.Any(line =>
                 line.Contains("probe-completed", StringComparison.Ordinal)
-                && line.Contains($"rid=play-a|spot={request.SpotRid}", StringComparison.Ordinal)
+                && line.Contains($"spot={request.SpotRid}", StringComparison.Ordinal)
                 && line.Contains("marker=shutdown-recovery-probe", StringComparison.Ordinal)),
             "probe-E3 recovery probe marker missing.");
         return new AwaitShutdownRecoveryRes("await.e3-shutdown-recovery", request.SpotRid, evidence.Evidence);

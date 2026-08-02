@@ -20,7 +20,7 @@ async function main(): Promise<void> {
   const options = parseClientOptions(process.argv.slice(2));
   const scenarios: Record<string, () => Promise<void>> = {
     'RM-A1': () => runRmA1(options.locationConsumerUrl, options.providerAUrl, options.providerBUrl),
-    'RM-A2': () => runRmA2(options.providerAUrl),
+    'RM-A2': () => runRmA2(options.manualConsumerUrl ?? options.directConsumerUrl, options.providerAUrl),
     'RM-A3': () => runRmA3(options),
     'RM-A4': () => runRmA4(options),
     'RM-A6': () => runRmA6(options.providerAUrl, options.providerBUrl, options.workflowUrl),

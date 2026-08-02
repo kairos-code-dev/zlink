@@ -33,7 +33,7 @@ void require_endpoint (const std::string &endpoint)
     const auto non_blank = std::any_of (endpoint.begin (), endpoint.end (),
                                         [] (unsigned char value) { return !std::isspace (value); });
     if (endpoint.empty () || !non_blank) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "endpoint connection requires a non-blank endpoint");
     }
 }
@@ -42,7 +42,7 @@ void require_manual (const endpoint_connections_state_t &state)
 {
     if (state.frozen) {
         throw framework_exception_t (
-          framework_error_kind_t::request_protocol_error,
+          framework_error_kind_t::protocol_error,
           "endpoint connections are frozen: the role acquires peers by discovery");
     }
 }

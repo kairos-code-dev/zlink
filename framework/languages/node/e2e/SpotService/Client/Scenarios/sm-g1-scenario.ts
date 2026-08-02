@@ -1,4 +1,4 @@
-// SM-G1: play 노드 crash와 복구 시나리오를 검증한다.
+// SM-G1: Play node crash 뒤 Application이 Actor를 recreate·rebind한다 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

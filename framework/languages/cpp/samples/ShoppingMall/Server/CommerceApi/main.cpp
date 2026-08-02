@@ -70,7 +70,13 @@ class commerce_api_handlers_t
     get_order_state_res_t get_order (const get_order_state_req_t &request)
     {
         return _store.read ([&] (const nlohmann::json &state) {
-            return get_order_state_res_t{state["readModels"][request.order_id].get<order_state_t> ()};
+            if (!state["readModels"].contains (request.order_id)) {
+                throw framework_exception_t (
+                  framework_error_kind_t::not_found,
+                  "Order read model is not available: " + request.order_id);
+            }
+            return get_order_state_res_t{
+              state["readModels"][request.order_id].get<order_state_t> ()};
         });
     }
 
@@ -205,7 +211,7 @@ class commerce_api_handlers_t
             }
             std::this_thread::sleep_for (std::chrono::milliseconds (50));
         }
-        throw framework_exception_t (framework_error_kind_t::request_failed,
+        throw framework_exception_t (framework_error_kind_t::internal_failure,
                                      "Order '" + order_id + "' did not reach status " + status);
     }
 
@@ -281,17 +287,11 @@ int main (int argc, char **argv)
         /* 공통 sample spec §16: 서버 발견은 registry 프로세스 없이 공유 location store가 맡는다.
          * endpoint를 코드에 박지 않는다. */
         auto workflow = options.add_route_mesh (sample_names_t::order_workflow_channel);
-        workflow.listen (instance.route_endpoint)
-          .channel_name (sample_names_t::order_workflow_channel);
-        auto spot_route = options.add_route_mesh (sample_names_t::order_spot_route);
-        spot_route.listen ("tcp://127.0.0.1:0")
-          .channel_name (sample_names_t::order_spot_route);
-        options.configure_locations ().spot_router_channels[sample_names_t::order_spot_discovery] =
-          sample_names_t::order_spot_route;
-        options.add_route_mesh (std::string (sample_names_t::order_spot_discovery) + "."
-                                + instance.instance_id)
-          .listen (instance.spot_router_endpoint)
-          .channel_name (sample_names_t::order_spot_route);
+        workflow
+          .set_routing_id (zlink::routing_id_t::from (
+            "shoppingmall-" + instance.instance_id + "-workflow"))
+          .set_object_role (object_role_t::client)
+          .listen (instance.route_endpoint);
         options.http ()
           .listen (instance.http_url)
           .map_health ("/health")

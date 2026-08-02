@@ -1,10 +1,9 @@
 import {
   ZLinkFrameworkException,
   ZLinkFrameworkRelocationMode,
-  type ZLinkChannelClient,
-  type ZLinkChannelRuntimeOptions,
   type ZLinkFrameworkRuntime,
-  type ZLinkRouteClient
+  type ZLinkRouteClient,
+  type ZLinkRouteMeshRuntimeOptions
 } from '@zlink-systems/framework';
 import {
   ProfileMsg,
@@ -21,9 +20,9 @@ import type { HttpRoute } from '../Support/http-server';
 
 export function createProviderEndpoints(
   evidence: EvidenceStore,
-  channel: ZLinkChannelClient,
+  channel: ZLinkRouteClient,
   route: ZLinkRouteClient,
-  runtimeOptions: ZLinkChannelRuntimeOptions,
+  runtimeOptions: ZLinkRouteMeshRuntimeOptions,
   frameworkRuntime: ZLinkFrameworkRuntime,
   stop: () => void
 ): HttpRoute[] {
@@ -97,7 +96,7 @@ export function createProviderEndpoints(
     {
       method: 'POST', path: '/drain',
       handle: async () => {
-        runtimeOptions.clientServerChannel('profile').configureServerSocket().weight = 0;
+        runtimeOptions.channel('profile').weight = 0;
         const result = await frameworkRuntime.relocate({ mode: ZLinkFrameworkRelocationMode.PlannedMaintenance, deadlineMs: 30_000 });
         stop();
         return result;
@@ -108,13 +107,13 @@ export function createProviderEndpoints(
 }
 
 function publicFailureType(error: unknown): string {
-  return error instanceof ZLinkFrameworkException ? error.kind
+  return error instanceof ZLinkFrameworkException ? String(error.kind)
     : error instanceof Error ? error.name
       : 'Error';
 }
 
 async function requestProfile(
-  channel: ZLinkChannelClient,
+  channel: ZLinkRouteClient,
   channelName: string,
   request: ProfileReq
 ): Promise<ProfileRes> {
@@ -125,7 +124,7 @@ async function requestProfile(
 }
 
 async function sendProfile(
-  channel: ZLinkChannelClient,
+  channel: ZLinkRouteClient,
   channelName: string,
   command: ProfileMsg
 ): Promise<void> {

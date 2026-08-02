@@ -1,4 +1,4 @@
-// ST-D2: stale source release authority fencing 시나리오를 검증한다.
+// ST-D2: Stale source message fencing 시나리오를 검증한다.
 import { SpotActorTransferNames, nodeA, nodeB, createSpot, createActor, joinActor, probeActor, getRef, unique, delay, require } from '../Support/scenario-support';
 
 export async function runStD2(): Promise<void> {

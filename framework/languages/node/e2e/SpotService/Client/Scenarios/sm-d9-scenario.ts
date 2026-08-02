@@ -1,4 +1,4 @@
-// SM-D9: inbound observer 시나리오를 검증한다.
+// SM-D9: Public inbound observer가 Stream packet을 기록한다 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

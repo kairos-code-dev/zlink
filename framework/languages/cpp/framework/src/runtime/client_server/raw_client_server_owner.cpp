@@ -2,11 +2,15 @@
 
 #include "runtime/client_server/raw_client_server_owner.hpp"
 
+#include <zlink/Contracts/Eventing/poller.hpp>
 #include <zlink.hpp>
 
 #include <algorithm>
+#include <cstdlib>
+#include <iostream>
 #include <limits>
 #include <stdexcept>
+#include <string_view>
 #include <utility>
 
 namespace zlink::framework::runtime::client_server
@@ -108,8 +112,11 @@ void raw_client_server_server_t::start ()
     }
     ++_options.descriptor.descriptor_revision;
     _options.descriptor.state = mesh::service_node_state_t::serving;
+    auto monitor_poller = std::make_unique<zlink::poller_t> ();
+    monitor_poller->add (*monitor, zlink::poll_event_flag_t::pollin, 1);
     _port = std::make_shared<detail::backend::raw_route_port_t> (
       *router, &_socket_mutex);
+    _monitor_poller = std::move (monitor_poller);
     _monitor = std::move (monitor);
     _router = std::move (router);
     _context = std::move (context);
@@ -119,6 +126,7 @@ void raw_client_server_server_t::close () noexcept
 {
     std::shared_ptr<detail::backend::raw_route_port_t> port;
     std::unique_ptr<zlink::router_socket_t> router;
+    std::unique_ptr<zlink::poller_t> monitor_poller;
     std::unique_ptr<zlink::socket_monitor_t> monitor;
     std::unique_ptr<zlink::context_t> context;
     {
@@ -129,12 +137,21 @@ void raw_client_server_server_t::close () noexcept
         _closed = true;
         port = std::move (_port);
         router = std::move (_router);
+        monitor_poller = std::move (_monitor_poller);
         monitor = std::move (_monitor);
         context = std::move (_context);
     }
     _mailbox.close ();
+    _pending_hello.reset ();
     if (port) {
         port->close ();
+    }
+    if (monitor_poller) {
+        try {
+            monitor_poller->close ();
+        }
+        catch (...) {
+        }
     }
     if (monitor) {
         try {
@@ -222,6 +239,24 @@ std::size_t raw_client_server_server_t::drain_monitor_events (
             if (!_monitor || !_monitor->valid ()) {
                 return count;
             }
+            if (!_monitor_poller) {
+                return count;
+            }
+            zlink::poll_event_t readiness;
+            try {
+                if (_monitor_poller->wait (
+                      &readiness, 1, std::chrono::milliseconds::zero ())
+                      != 1
+                    || readiness.slot != 1
+                    || (static_cast<short> (readiness.revents)
+                        & static_cast<short> (zlink::poll_event_flag_t::pollin))
+                         == 0) {
+                    return count;
+                }
+            }
+            catch (...) {
+                return count;
+            }
             event = _monitor->recv (zlink::recv_flags_t::dontwait);
         }
         if (!event) {
@@ -273,7 +308,13 @@ client_server_pump_result_t raw_client_server_server_t::pump_one (
         _pending_received.reset ();
         return client_server_pump_result_t::application;
     }
-    const auto received = port->try_receive ();
+    std::optional<detail::backend::raw_received_t> received;
+    if (_pending_hello) {
+        received = std::move (_pending_hello);
+        _pending_hello.reset ();
+    } else {
+        received = port->try_receive ();
+    }
     if (!received) {
         return client_server_pump_result_t::no_data;
     }
@@ -304,7 +345,12 @@ client_server_pump_result_t raw_client_server_server_t::pump_one (
                 const auto found =
                   _connections.find (received->source_routing_id);
                 if (found == _connections.end ()) {
-                    return client_server_pump_result_t::protocol_error;
+                    /* The dealer can report connection_ready before the
+                     * router monitor publishes the matching connection id.
+                     * Keep the hello until the next pump instead of losing
+                     * the one-shot admission message. */
+                    _pending_hello = std::move (*received);
+                    return client_server_pump_result_t::backpressured;
                 }
                 connection = found->second;
             }
@@ -510,8 +556,11 @@ void raw_client_server_client_t::start ()
       dealer->monitor_open (zlink::monitor_event::connection_ready
                             | zlink::monitor_event::disconnected));
     dealer->connect (_options.expected_server.advertised_endpoint);
+    auto monitor_poller = std::make_unique<zlink::poller_t> ();
+    monitor_poller->add (*monitor, zlink::poll_event_flag_t::pollin, 1);
     _port = std::make_shared<detail::backend::raw_dealer_port_t> (
       *dealer, &_socket_mutex);
+    _monitor_poller = std::move (monitor_poller);
     _monitor = std::move (monitor);
     _dealer = std::move (dealer);
     _context = std::move (context);
@@ -521,6 +570,7 @@ void raw_client_server_client_t::close () noexcept
 {
     std::shared_ptr<detail::backend::raw_dealer_port_t> port;
     std::unique_ptr<zlink::dealer_socket_t> dealer;
+    std::unique_ptr<zlink::poller_t> monitor_poller;
     std::unique_ptr<zlink::socket_monitor_t> monitor;
     std::unique_ptr<zlink::context_t> context;
     {
@@ -532,12 +582,20 @@ void raw_client_server_client_t::close () noexcept
         _ready = false;
         port = std::move (_port);
         dealer = std::move (_dealer);
+        monitor_poller = std::move (_monitor_poller);
         monitor = std::move (_monitor);
         context = std::move (_context);
     }
     _operations->shutdown ();
     if (port) {
         port->close ();
+    }
+    if (monitor_poller) {
+        try {
+            monitor_poller->close ();
+        }
+        catch (...) {
+        }
     }
     if (monitor) {
         try {
@@ -574,6 +632,24 @@ std::size_t raw_client_server_client_t::drain_monitor_events (
         {
             std::lock_guard lock (_mutex);
             if (!_monitor || !_monitor->valid ()) {
+                return count;
+            }
+            if (!_monitor_poller) {
+                return count;
+            }
+            zlink::poll_event_t readiness;
+            try {
+                if (_monitor_poller->wait (
+                      &readiness, 1, std::chrono::milliseconds::zero ())
+                      != 1
+                    || readiness.slot != 1
+                    || (static_cast<short> (readiness.revents)
+                        & static_cast<short> (zlink::poll_event_flag_t::pollin))
+                         == 0) {
+                    return count;
+                }
+            }
+            catch (...) {
                 return count;
             }
             event = _monitor->recv (zlink::recv_flags_t::dontwait);
@@ -647,7 +723,8 @@ client_server_pump_result_t raw_client_server_client_t::pump_one (
                 const auto identity_is_not_pinned =
                   _options.expected_server.server_routing_id.empty ()
                   && _options.expected_server.lifecycle_generation == 0;
-                if (server.channel_name
+                const bool invalid =
+                  server.channel_name
                       != _options.expected_server.channel_name
                     || (!identity_is_not_pinned
                         && (server.server_routing_id
@@ -662,7 +739,8 @@ client_server_pump_result_t raw_client_server_client_t::pump_one (
                          < _options.expected_server.descriptor_revision
                     || server.server_routing_id.empty ()
                     || server.lifecycle_generation == 0
-                    || _connection_id.empty ()) {
+                    || _connection_id.empty ();
+                if (invalid) {
                     return client_server_pump_result_t::protocol_error;
                 }
                 _options.expected_server = server;

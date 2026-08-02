@@ -47,7 +47,8 @@ class CodecRequesterApplication {
                 .traceLogFile("${options.logDir}/codec-requester-flow.log")
                 .traceLabel("kotlin-rc-codec-requester")
             framework.addClientServerChannel(Contracts.CHANNEL)
-                .enableClient(options.serverEndpoint)
+                .client()
+                .connect(options.serverEndpoint)
         }
 
     @Bean fun codecRequesterProbe(client: systems.zlink.framework.channels.ZLinkClient): CodecRequesterProbe =

@@ -10,53 +10,37 @@ namespace zlink::framework::detail
 namespace
 {
 
-const char *boundary_error_name (detail::boundary_error_t state) noexcept
-{
-    switch (state) {
-        case detail::boundary_error_t::timed_out:
-            return "timeout";
-        case detail::boundary_error_t::shutdown:
-            return "shutdown";
-        case detail::boundary_error_t::disconnected:
-            return "disconnected";
-        case detail::boundary_error_t::closed:
-            return "closed";
-        case detail::boundary_error_t::cancelled:
-            return "cancelled";
-        case detail::boundary_error_t::stale_generation:
-            return "stale_generation";
-        case detail::boundary_error_t::none:
-            break;
-    }
-    return "request_failed";
-}
-
 std::string error_code_name (framework_error_kind_t kind)
 {
     switch (kind) {
-        case framework_error_kind_t::handler_not_found:
-            return "handler_not_found";
-        case framework_error_kind_t::route_not_connected:
-            return "route_not_connected";
-        case framework_error_kind_t::route_handler_not_found:
-            return "route_handler_not_found";
-        case framework_error_kind_t::request_target_not_found:
-            return "request_target_not_found";
-        case framework_error_kind_t::request_rejected:
-            return "request_rejected";
-        case framework_error_kind_t::request_protocol_error:
-            return "request_protocol_error";
-        case framework_error_kind_t::payload_decode_failed:
-            return "payload_decode_failed";
-        case framework_error_kind_t::worker_queue_full:
-            return "worker_queue_full";
-        case framework_error_kind_t::worker_timed_out:
-            return "worker_timed_out";
-        case framework_error_kind_t::worker_failed:
-            return "worker_failed";
-        default:
-            return "request_failed";
+        case framework_error_kind_t::not_found:
+            return "not_found";
+        case framework_error_kind_t::already_exists:
+            return "already_exists";
+        case framework_error_kind_t::type_mismatch:
+            return "type_mismatch";
+        case framework_error_kind_t::not_configured:
+            return "not_configured";
+        case framework_error_kind_t::rejected:
+            return "rejected";
+        case framework_error_kind_t::unavailable:
+            return "unavailable";
+        case framework_error_kind_t::capacity_exceeded:
+            return "capacity_exceeded";
+        case framework_error_kind_t::deadline_exceeded:
+            return "deadline_exceeded";
+        case framework_error_kind_t::shutting_down:
+            return "shutting_down";
+        case framework_error_kind_t::protocol_error:
+            return "protocol_error";
+        case framework_error_kind_t::invalid_operation:
+            return "invalid_operation";
+        case framework_error_kind_t::data_lost:
+            return "data_lost";
+        case framework_error_kind_t::internal_failure:
+            return "internal_failure";
     }
+    return "internal_failure";
 }
 
 } // namespace
@@ -82,9 +66,7 @@ channel_reply_writer_t::create_error_header (std::string channel_name,
 {
     auto header = create_reply_header (runtime::messaging::message_kind_t::error,
                                        std::move (channel_name), request);
-    header.error_code = detail::boundary_state (error) != detail::boundary_error_t::none
-                          ? boundary_error_name (detail::boundary_state (error))
-                          : error_code_name (error.kind ());
+    header.error_code = error_code_name (error.kind ());
     header.error_message = error.what ();
     return header;
 }

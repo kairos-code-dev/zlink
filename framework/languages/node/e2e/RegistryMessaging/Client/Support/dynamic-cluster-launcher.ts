@@ -122,7 +122,16 @@ export class DynamicClusterLauncher {
     for (let i = 0; i < 120; i += 1) {
       const rows = await getJson<Array<{ readonly endpoint?: string }>>(`${topology.httpUrl}/location/topology`);
       const actual = rows.flatMap((row) => row.endpoint === undefined ? [] : [row.endpoint]).sort();
-      if (actual.length === expected.length && actual.every((value, index) => value === expected[index])) return;
+      if (actual.length === expected.length && actual.every((value, index) => value === expected[index])) {
+        const status = await getJson<DynamicRouteStatus>(`${topology.httpUrl}/route/status`);
+        const profile = status.channels.find((channel) => channel.channelName === 'profile');
+        const readyPeerCount = status.peers.filter((peer) => peer.state === 1).length;
+        if (profile?.isReady === true
+            && profile.readyTargetCount === expected.length
+            && readyPeerCount >= expected.length) {
+          return;
+        }
+      }
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
     throw new Error(`${description} did not converge to '${expected.join(',')}'.`);
@@ -177,6 +186,15 @@ export class DynamicClusterLauncher {
     this.processes.push(dynamicProcess);
     return dynamicProcess;
   }
+}
+
+interface DynamicRouteStatus {
+  readonly peers: readonly { readonly state: number }[];
+  readonly channels: readonly {
+    readonly channelName: string;
+    readonly isReady: boolean;
+    readonly readyTargetCount: number;
+  }[];
 }
 
 export class DynamicProcess {

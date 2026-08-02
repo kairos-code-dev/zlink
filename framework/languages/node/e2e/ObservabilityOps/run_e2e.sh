@@ -140,16 +140,19 @@ start_session
 node "$NODE_ROOT/e2e/location-readiness.js" \
   --redis-endpoint "$REDIS_ENDPOINT" --key-prefix "$REDIS_KEY_PREFIX" \
   --timeout-ms 5000 --interval-ms 100 \
-  --peer route-mesh observability.play router \
-    "$PLAY_A_ROUTER" "$PLAY_A_PUBSUB" \
-    "$PLAY_B_ROUTER" "$PLAY_B_PUBSUB" \
-    "$SESSION_ROUTER" "$SESSION_PUBSUB"
+  --peer-http route-mesh observability.play router "$PLAY_A_URL" \
+    "$PLAY_A_ROUTER" \
+  --peer-http route-mesh observability.play router "$PLAY_B_URL" \
+    "$PLAY_B_ROUTER" \
+  --peer-http route-mesh observability.play router "$SESSION_URL" \
+    "$SESSION_ROUTER"
 node "$NODE_ROOT/e2e/location-readiness.js" \
   --redis-endpoint "$REDIS_ENDPOINT" --key-prefix "$REDIS_KEY_PREFIX" \
   --timeout-ms 5000 --interval-ms 100 \
-  --peer route-mesh observability.workflow router \
-    "$WORKFLOW_A_ROUTER" "$WORKFLOW_A_PUBSUB" \
-    "$WORKFLOW_B_ROUTER" "$WORKFLOW_B_PUBSUB"
+  --peer-http route-mesh observability.workflow router "$WORKFLOW_A_URL" \
+    "$WORKFLOW_A_ROUTER" \
+  --peer-http route-mesh observability.workflow router "$WORKFLOW_B_URL" \
+    "$WORKFLOW_B_ROUTER"
 
 if [[ "$SCENARIO" == "OBS-B3" ]]; then
   docker exec "$REDIS_CONTAINER_ID" redis-cli CLIENT PAUSE 1800 ALL >/dev/null

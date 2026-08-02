@@ -24,7 +24,7 @@
 
 | 시나리오 | 상태 | 현재 검증 범위 |
 |----------|------|----------------|
-| ST-A1 | 10.0.0 전환 대상 | target admission 뒤 source leave, location commit, target joined, 성공 응답 순서를 검증해야 한다. 현재 Java runtime은 target joined를 source leave보다 먼저 기록하므로 E2E-JV-31이 추적한다. |
+| ST-A1 | focused 구현 | Java·Kotlin focused process가 ST-A1 전용 placement fixture에서 `actor-a`를 같은 node target으로 사용하고, public actor API로 target admission, source leave, location commit, target joined와 성공 응답 marker를 확인한다. 현재 실행은 `scenario ST-A1 passed`와 aggregate passed marker까지 통과했다. 전체 transfer ordering과 후속 scenario는 별도 검증이 필요하다. |
 | ST-A2 | 구현 | local join 거절 뒤 source membership을 유지하고 leave·joined 부수 효과가 없는지 확인한다. |
 | ST-A3 | 구현 | joined callback 대기 중 packet 완료를 차단하고, callback 이후 target에서 처리되는지 확인한다. |
 | ST-B1 | 구현 | remote transfer와 state 복원, 역할별 callback 순서, transfer id로 연결된 typed flow marker와 commit ack를 확인한다. |

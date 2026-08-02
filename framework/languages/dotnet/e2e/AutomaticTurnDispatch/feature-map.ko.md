@@ -29,7 +29,7 @@
 | TD-F3 | 구현 | session relay로 도달한 actor handler에서도 `Yield`의 mailbox 의미가 같은지 확인한다. 실제 실행: `logs/20260728-050340-3689192`. |
 | TD-F4 | 구현 | request timeout 뒤 같은 Spot probe가 정상 실행되는지 확인한다. |
 | TD-F5 | 구현 | cancellation 뒤 같은 Spot probe가 정상 실행되며 별도 shutdown runner가 runtime 종료와 recovery를 확인한다. |
-| TD-F6 | 구현 | 현재 Spot으로 되돌아오는 `Async` request가 timeout으로 끝나고 다음 probe가 실행되는지 확인한다. |
+| TD-F6 | 구현 | 현재 Spot으로 되돌아오는 `Async` request가 같은 claim 검증에서 `InvalidOperation`으로 거부되고 다음 probe가 실행되는지 확인한다. |
 | TD-G1 | 구현 | 공통 terminator 표면과 `Async`/`Yield` marker 순서를 .NET 결과로 고정한다. |
 
 ## Selector 실행 증거

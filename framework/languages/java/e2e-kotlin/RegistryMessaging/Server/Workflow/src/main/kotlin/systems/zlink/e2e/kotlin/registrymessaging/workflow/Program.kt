@@ -51,17 +51,15 @@ class WorkflowApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("${options.logDir}/${options.rid}-flow.log")
                 .traceLabel(options.rid)
+            framework.addHandlersFromPackageOf(WorkflowRequestHandler::class.java)
 
-            val channel = framework.addClientServerChannel(Contracts.WORKFLOW_CHANNEL)
-                .enableServer(options.workflowEndpoint)
-                .enableClient()
-                .setRoutingId(RoutingId.from(options.rid))
-            channel.addRequestHandler(
-                WorkflowRequestHandler::class.java,
-                WorkflowReq::class.java,
-                WorkflowRes::class.java,
-                Contracts.WORKFLOW_REQUEST_PACKET,
-            )
+            val endpoint = java.net.URI.create(options.workflowEndpoint)
+            framework.addClientServerChannel(Contracts.WORKFLOW_CHANNEL)
+                .server()
+                .setBindHost(endpoint.host)
+                .setAdvertiseHost(endpoint.host)
+                .listen(endpoint.port)
+                .addHandlerGroup(Contracts.CHANNEL_HANDLER_GROUP)
         }
 
     @Bean

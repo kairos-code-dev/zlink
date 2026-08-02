@@ -1,4 +1,4 @@
-// ST-I3: 다량 Spot relocation과 서비스 연속성 시나리오를 검증한다.
+// ST-I3: Many Spot relocations 시나리오를 검증한다.
 import {
   createSpot,
   getSpotRef,

@@ -63,5 +63,45 @@
       "fqnPolicy": "preserve",
       "boundaryGate": ":zlink-framework-kotlin:contractTest"
     }
+  },
+  "clientArtifacts": {
+    "javaHttp": {
+      "artifact": "systems.zlink:zlink-http-client",
+      "module": "zlink.http.client",
+      "publicOwners": [
+        "systems.zlink.httpclient"
+      ],
+      "runtimeInternalPrefix": "systems.zlink.httpclient.internal",
+      "contractSourceOwner": "framework/doc/framework/common/spec/http-client/languages/java/java-http-client.ko.md",
+      "boundaryGate": ":zlink-http-client:test"
+    },
+    "kotlinHttp": {
+      "artifact": "systems.zlink:zlink-http-client-kotlin",
+      "publicPackage": "systems.zlink.httpclient.kotlin",
+      "contractSourceOwner": "framework/doc/framework/common/spec/http-client/languages/kotlin/kotlin-http-client.ko.md",
+      "sourceOwner": "zlink-http-client-kotlin/src/main/kotlin/systems/zlink/httpclient/kotlin/HttpClientCoroutines.kt",
+      "boundaryGate": ":zlink-http-client-kotlin:test"
+    },
+    "streamConnector": {
+      "artifact": "systems.zlink:zlink-stream-connector",
+      "module": "zlink.stream.connector",
+      "publicOwners": [
+        "systems.zlink.stream.connector"
+      ],
+      "contractSourceOwner": "framework/doc/framework/common/spec/stream-connector/languages/java/03-stream-connector.ko.md",
+      "boundaryGate": ":zlink-stream-connector:test"
+    },
+    "codecExtensions": {
+      "artifacts": [
+        "systems.zlink:zlink-framework-codec-protobuf",
+        "systems.zlink:zlink-framework-codec-msgpack"
+      ],
+      "publicOwners": [
+        "systems.zlink.framework.codecs.protobuf",
+        "systems.zlink.framework.codecs.msgpack"
+      ],
+      "contractSourceOwner": "framework/doc/framework/common/spec/06-framework-api.ko.md",
+      "boundaryGate": ":zlink-framework-codec-protobuf:test, :zlink-framework-codec-msgpack:test"
+    }
   }
 }

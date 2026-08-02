@@ -114,11 +114,11 @@ public final class AwaitProbeSpot implements ZLinkSpot<AwaitActor> {
 
     @Override
     public CompletionStage<ZLinkSpotCreateResponse> onCreate(ZLinkMessage request) {
-        java.util.List<String> events = persistentEvents.replay(context.spotRid().toString());
+        java.util.List<String> events = persistentEvents.replay(context.spotId());
         persistentEventCount = events.size();
         persistentValue = events.isEmpty() ? "" : events.get(events.size() - 1);
         replayed = !events.isEmpty();
-        evidence.record("persistent-room-replayed", context.spotRid().toString(),
+        evidence.record("persistent-room-replayed", context.spotId(),
             "events=" + persistentEventCount + ";value=" + persistentValue);
         return CompletableFuture.completedFuture(ZLinkSpotCreateResponse.accept());
     }
@@ -126,12 +126,12 @@ public final class AwaitProbeSpot implements ZLinkSpot<AwaitActor> {
     public synchronized Contracts.PersistentRoomStateRes persistentState(
         Contracts.PersistentRoomStateReq request) {
         java.util.List<String> events = request.append()
-            ? persistentEvents.appendAndReplay(context.spotRid().toString(), request.value())
-            : persistentEvents.replay(context.spotRid().toString());
+            ? persistentEvents.appendAndReplay(context.spotId(), request.value())
+            : persistentEvents.replay(context.spotId());
         persistentEventCount = events.size();
         persistentValue = events.isEmpty() ? "" : events.get(events.size() - 1);
         return new Contracts.PersistentRoomStateRes(
-            context.spotRid().toString(), persistentValue, persistentEventCount,
+            context.spotId(), persistentValue, persistentEventCount,
             replayed, evidence.nodeRid());
     }
 
@@ -148,13 +148,13 @@ public final class AwaitProbeSpot implements ZLinkSpot<AwaitActor> {
                 throw new IllegalStateException("actor join interrupted", error);
             }
         }
-        evidence.record("actor-target-join-requested", actorId, context.spotRid().toString());
+        evidence.record("actor-target-join-requested", actorId, context.spotId());
         return CompletableFuture.completedFuture(ZLinkSpotActorJoinResult.accept());
     }
 
     @Override
     public CompletionStage<Void> onJoinedActor(AwaitActor actor) {
-        evidence.record("actor-target-joined", actor.actorId(), context.spotRid().toString());
+        evidence.record("actor-target-joined", actor.actorId(), context.spotId());
         return CompletableFuture.completedFuture(null);
     }
 

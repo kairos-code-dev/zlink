@@ -1,4 +1,4 @@
-// SM-C3: spot → spot messaging 시나리오를 검증한다.
+// SM-C3: Spot에서 다른 Spot으로 request를 보낸다 시나리오를 검증한다.
 import type {
   CreateSpotRes,
   CreateSpotReq,

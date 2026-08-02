@@ -1,4 +1,4 @@
-// RC-A1: assembly·module 자동 등록 시나리오를 검증한다.
+// RC-A1: 지원 언어에서 handler를 scan한다 시나리오를 검증한다.
 import type { EchoRes } from '../../Shared/messages';
 import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';

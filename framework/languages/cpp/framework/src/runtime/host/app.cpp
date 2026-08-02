@@ -12,6 +12,7 @@
 #include "runtime/dispatch/completion_admission_owner.hpp"
 #include "runtime/dispatch/coroutine_executor.hpp"
 #include "runtime/host/framework_runtime.hpp"
+#include "runtime/host/application_hwm_resolver.hpp"
 #include "runtime/http/http_host_service.hpp"
 #include "runtime/locations/in_memory_location_store.hpp"
 #include "runtime/locations/live_location_reader.hpp"
@@ -24,6 +25,7 @@
 #include "runtime/mesh/mesh_metadata_codec.hpp"
 #include "runtime/mesh/route_mesh_runtime_service.hpp"
 #include "runtime/mesh/route_mesh_runtime_options_service.hpp"
+#include "runtime/messaging/request_failure_mapper.hpp"
 #include "runtime/locations/location_runtime.hpp"
 #include "runtime/locations/actor_authority_payload.hpp"
 #include "runtime/locations/sha256.hpp"
@@ -91,10 +93,8 @@ class store_actor_directory_t final : public actor_directory_t
         auto read = _store.read_authority (authority_key_t{"1:" + actor_id}).result ();
         if (!read) {
             return task_t<std::optional<actor_ref_t>> (
-              result_t<std::optional<actor_ref_t>>::failure (
-                read.error_kind (),
-                read.error () ? read.error ()->what () : "actor authority lookup failed",
-                read.error () && read.error ()->is_retriable ()));
+              detail::propagate_failure<std::optional<actor_ref_t>> (
+                read, "actor authority lookup failed"));
         }
         const auto *snapshot = std::get_if<authority_snapshot_t> (&read.value ());
         const auto projection = snapshot
@@ -713,12 +713,68 @@ std::optional<std::uint64_t> read_finite_memory_limit (
         return std::nullopt;
     try {
         const auto parsed = std::stoull (value);
-        return parsed == 0 ? std::nullopt
-                           : std::optional<std::uint64_t> (parsed);
+        // cgroup v1 uses a value close to INT64_MAX for an unlimited limit.
+        if (parsed == 0 || parsed >= 0x7fff'ffff'ffff'0000ULL)
+            return std::nullopt;
+        return parsed;
     }
     catch (...) {
         return std::nullopt;
     }
+}
+
+std::optional<std::uint64_t> read_cgroup_memory_limit ()
+{
+#if defined(__linux__)
+    std::vector<std::string> paths;
+    std::ifstream membership ("/proc/self/cgroup");
+    std::string line;
+    while (std::getline (membership, line)) {
+        const auto first_colon = line.find (':');
+        if (first_colon == std::string::npos)
+            continue;
+        const auto second_colon = line.find (':', first_colon + 1);
+        if (second_colon == std::string::npos)
+            continue;
+
+        const auto hierarchy = line.substr (0, first_colon);
+        const auto controllers =
+          line.substr (first_colon + 1, second_colon - first_colon - 1);
+        auto relative = line.substr (second_colon + 1);
+        while (!relative.empty () && relative.front () == '/')
+            relative.erase (relative.begin ());
+
+        if (hierarchy == "0") {
+            paths.push_back (relative.empty ()
+                               ? "/sys/fs/cgroup/memory.max"
+                               : "/sys/fs/cgroup/" + relative + "/memory.max");
+        }
+        const bool has_memory_controller =
+          controllers == "memory"
+          || controllers.starts_with ("memory,")
+          || controllers.ends_with (",memory")
+          || controllers.find (",memory,") != std::string::npos;
+        if (has_memory_controller) {
+            paths.push_back (relative.empty ()
+                               ? "/sys/fs/cgroup/memory/memory.limit_in_bytes"
+                               : "/sys/fs/cgroup/memory/" + relative
+                                   + "/memory.limit_in_bytes");
+        }
+    }
+
+    // Keep root paths as a fallback for hosts without a readable membership path.
+    paths.push_back ("/sys/fs/cgroup/memory.max");
+    paths.push_back ("/sys/fs/cgroup/memory/memory.limit_in_bytes");
+    std::optional<std::uint64_t> limit;
+    for (const auto &path : paths) {
+        if (const auto candidate = read_finite_memory_limit (path.c_str ()); candidate
+            && (!limit || *candidate < *limit)) {
+            limit = candidate;
+        }
+    }
+    return limit;
+#endif
+    return std::nullopt;
 }
 
 std::optional<std::uint64_t> read_process_address_space_limit ()
@@ -731,6 +787,38 @@ std::optional<std::uint64_t> read_process_address_space_limit ()
         return static_cast<std::uint64_t> (limit.rlim_cur);
 #endif
     return std::nullopt;
+}
+
+std::optional<std::uint64_t> read_windows_job_memory_limit ()
+{
+#if defined(_WIN32)
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION info{};
+    if (!::QueryInformationJobObject (
+          nullptr,
+          JobObjectExtendedLimitInformation,
+          &info,
+          sizeof (info),
+          nullptr)) {
+        return std::nullopt;
+    }
+
+    std::optional<std::uint64_t> limit;
+    const auto flags = info.BasicLimitInformation.LimitFlags;
+    if ((flags & JOB_OBJECT_LIMIT_PROCESS_MEMORY) != 0
+        && info.ProcessMemoryLimit > 0) {
+        limit = static_cast<std::uint64_t> (info.ProcessMemoryLimit);
+    }
+    if ((flags & JOB_OBJECT_LIMIT_JOB_MEMORY) != 0
+        && info.JobMemoryLimit > 0) {
+        const auto job_limit = static_cast<std::uint64_t> (info.JobMemoryLimit);
+        if (!limit || job_limit < *limit) {
+            limit = job_limit;
+        }
+    }
+    return limit;
+#else
+    return std::nullopt;
+#endif
 }
 
 std::optional<std::uint64_t> read_total_physical_memory ()
@@ -758,47 +846,26 @@ std::uint64_t resolve_application_hwm (
     using namespace zlink::framework;
     if (configured)
         return *configured;
-    auto limit = process_memory_limit;
-    if (!limit)
-        limit = read_finite_memory_limit (
-          "/sys/fs/cgroup/memory.max");
-    if (!limit)
-        limit = read_finite_memory_limit (
-          "/sys/fs/cgroup/memory/memory.limit_in_bytes");
-    if (!limit)
-        limit = read_process_address_space_limit ();
-    //  Spec 06: total physical memory is the last fallback, so Auto sizing
-    //  starts without configuration. Total, not free, keeps it deterministic.
-    if (!limit)
-        limit = read_total_physical_memory ();
-    if (!limit)
+    runtime::host::detail::application_hwm_memory_limits_t limits{
+      process_memory_limit, std::nullopt, std::nullopt, std::nullopt, std::nullopt};
+    if (!process_memory_limit) {
+        limits.cgroup = read_cgroup_memory_limit ();
+        limits.windows_job = read_windows_job_memory_limit ();
+        limits.address_space = read_process_address_space_limit ();
+        limits.physical_total = read_total_physical_memory ();
+    }
+    if (!runtime::host::detail::effective_application_memory_limit (limits))
         throw framework_exception_t (
-          framework_error_kind_t::invalid_configuration,
+          framework_error_kind_t::not_configured,
           "Auto Application HWM could not read the total physical memory of "
           "this host");
-    std::uint64_t percent = 0;
-    switch (profile) {
-        case application_hwm_profile_t::compact:
-            percent = 2;
-            break;
-        case application_hwm_profile_t::low_latency:
-            percent = 5;
-            break;
-        case application_hwm_profile_t::balanced:
-            percent = 10;
-            break;
-        case application_hwm_profile_t::throughput:
-            percent = 20;
-            break;
-    }
-    const auto result =
-      (*limit / 100) * percent
-      + ((*limit % 100) * percent) / 100;
-    if (result == 0)
+    const auto result = runtime::host::detail::calculate_application_hwm (
+      std::nullopt, profile, limits);
+    if (!result)
         throw framework_exception_t (
-          framework_error_kind_t::invalid_configuration,
+          framework_error_kind_t::not_configured,
           "Auto Application HWM must resolve to a positive byte value");
-    return result;
+    return *result;
 }
 
 zlink::framework::result_t<void>
@@ -810,17 +877,17 @@ one_way_native_submit_result (zlink::submit_result_t result, std::string_view op
             return result_t<void>::success ();
         case zlink::submit_result_t::backpressured:
             return result_t<void>::failure (
-              framework_error_kind_t::worker_queue_full,
-              std::string (operation) + " is backpressured", true);
+              framework_error_kind_t::capacity_exceeded,
+              std::string (operation) + " is backpressured");
         case zlink::submit_result_t::not_found:
         case zlink::submit_result_t::not_admitted:
             return result_t<void>::failure (
-              framework_error_kind_t::request_target_not_found,
+              framework_error_kind_t::not_found,
               std::string (operation) + " target was not found");
         case zlink::submit_result_t::not_connected:
             return result_t<void>::failure (
-              framework_error_kind_t::route_not_connected,
-              std::string (operation) + " route is not connected", true);
+              framework_error_kind_t::unavailable,
+              std::string (operation) + " route is not connected");
         case zlink::submit_result_t::terminated:
             return detail::boundary_failure<void> (
               detail::boundary_error_t::shutdown,
@@ -829,11 +896,11 @@ one_way_native_submit_result (zlink::submit_result_t result, std::string_view op
         case zlink::submit_result_t::invalid_handle:
         case zlink::submit_result_t::invalid_state:
             return result_t<void>::failure (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               std::string (operation) + " rejected an invalid call");
         default:
             return result_t<void>::failure (
-              framework_error_kind_t::request_failed,
+              framework_error_kind_t::internal_failure,
               std::string (operation) + " was not submitted");
     }
 }
@@ -1224,7 +1291,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         for (const auto &registration : mesh_node_registrations) {
             if (registration && registration->socket.max_message_size <= 0) {
                 throw framework_exception_t (
-                  framework_error_kind_t::invalid_configuration,
+                  framework_error_kind_t::not_configured,
                   "MeshNode MaxMessageSize must be positive when Application HWM is Auto or positive");
             }
         }
@@ -1236,7 +1303,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               if (!capability.max_message_size
                   || capability.max_message_size->bytes () <= 0) {
                   throw framework_exception_t (
-                    framework_error_kind_t::invalid_configuration,
+                    framework_error_kind_t::not_configured,
                     std::string (capability_name)
                       + " MaxMessageSize must be positive when Application HWM is Auto or positive");
               }
@@ -1299,6 +1366,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         auto route_client = provider.get_required<route_client_t> ();
         for (const auto &registration : mesh_node_registrations) {
             registration->spot_state->dispatch = options.configure_dispatch ();
+            registration->spot_state->worker_options = options.worker ();
             registration->spot_state->monitoring = monitoring_state;
             detail::spot_node_runtime_t spot_runtime (registration->spot_state);
             spot_runtime.set_message_follow_duration (
@@ -1444,15 +1512,16 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               if (sources.empty ())
                   return result_t<selected_instance_target_t>::failure (
                     intent.mesh_name
-                      ? framework_error_kind_t::mesh_not_found
-                      : framework_error_kind_t::object_client_not_configured,
+                      ? framework_error_kind_t::not_found
+                      : framework_error_kind_t::not_configured,
                     "No Instance Spot source Mesh is configured");
               if (!intent.mesh_name && sources.size () != 1)
                   return result_t<selected_instance_target_t>::failure (
-                    framework_error_kind_t::mesh_selection_required,
+                    framework_error_kind_t::invalid_operation,
                     "More than one object Mesh is configured; select one with in_mesh");
               const auto source = sources.front ();
               std::vector<mesh_node_descriptor_t> candidates;
+              std::vector<mesh_node_descriptor_t> visible_targets;
               location_page_request_t page;
               do {
                   auto listed = location_store
@@ -1465,6 +1534,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                                != object_role_t::server
                           || descriptor.placement_weight <= 0)
                           continue;
+                      visible_targets.push_back (descriptor);
                       const auto capable = std::any_of (
                         descriptor.object_capabilities.begin (),
                         descriptor.object_capabilities.end (),
@@ -1508,9 +1578,43 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                   page.continuation_token =
                     std::move (listed.continuation_token);
               } while (page.continuation_token);
+              const auto authority = location_store
+                .read_authority (
+                  authority_key_t{
+                    std::to_string (static_cast<int> (
+                      placement_object_kind_t::instance_spot))
+                    + ":" + std::string (spot_id)})
+                .result ().value ();
+              if (const auto *snapshot =
+                    std::get_if<authority_snapshot_t> (&authority);
+                  snapshot
+                  && snapshot->allocation.state
+                       == placement_allocation_state_t::active
+                  && snapshot->allocation.object_kind
+                       == placement_object_kind_t::instance_spot
+                  && snapshot->allocation.target.mesh_name
+                       == source->mesh_name ()
+                  && (!intent.stable_type
+                      || *intent.stable_type
+                           == snapshot->allocation.stable_type)) {
+                  const auto current = std::find_if (
+                    visible_targets.begin (), visible_targets.end (),
+                    [&] (const mesh_node_descriptor_t &candidate) {
+                        return candidate.rid.to_string ()
+                                 == snapshot->allocation.target.node_rid.value ()
+                               && candidate.lifecycle_generation
+                                    == snapshot->allocation.target
+                                         .node_lifecycle_generation;
+                    });
+                  if (current != visible_targets.end ()) {
+                      return result_t<selected_instance_target_t>::success (
+                        {source, *current,
+                         snapshot->allocation.stable_type});
+                  }
+              }
               if (candidates.empty ())
                   return result_t<selected_instance_target_t>::failure (
-                    framework_error_kind_t::spot_route_not_found,
+                    framework_error_kind_t::not_found,
                     "No eligible Instance Spot target is Ready");
               std::set<std::string> stable_types;
               for (const auto &candidate : candidates)
@@ -1524,7 +1628,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                           stable_types.insert (capability.stable_type);
               if (!intent.stable_type && stable_types.size () != 1)
                   return result_t<selected_instance_target_t>::failure (
-                    framework_error_kind_t::invalid_configuration,
+                    framework_error_kind_t::not_configured,
                     "Instance Spot stable type is required when the Mesh publishes multiple types");
               const auto stable_type = intent.stable_type
                 ? *intent.stable_type
@@ -1560,7 +1664,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                 candidates.end ());
               if (candidates.empty ())
                   return result_t<selected_instance_target_t>::failure (
-                    framework_error_kind_t::spot_route_not_found,
+                    framework_error_kind_t::not_found,
                     "No eligible Instance Spot target has capacity");
               const auto index = std::hash<std::string>{} (
                 std::string (spot_id)) % candidates.size ();
@@ -1578,6 +1682,13 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               const auto operation =
                 operation_sequence->fetch_add (
                   1, std::memory_order_relaxed);
+              auto operation_scope =
+                static_cast<std::uint64_t> (std::hash<std::string>{} (
+                  source_status.routing_id ().to_string ()))
+                ^ source_status.lifecycle_generation ();
+              if (operation_scope == 0)
+                  operation_scope = source_status.lifecycle_generation () != 0
+                    ? source_status.lifecycle_generation () : 1;
               return runtime::protocol::instance_spot_activation_header_t{
                 {selected.target.rid.to_bytes (),
                  selected.target.lifecycle_generation,
@@ -1592,7 +1703,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                      .count ())},
                 source_status.lifecycle_generation (),
                 source_status.routing_id ().to_bytes (),
-                std::nullopt, request, {0, operation}, 0,
+                std::nullopt, request, {operation_scope, operation}, 0,
                 has_metadata};
           };
         channel_runtime.bind_instance_spot_activator (
@@ -1606,9 +1717,29 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               encode_payload,
             const std::map<std::string, std::string> &metadata) {
               auto selected = select_instance_target (spot_id, intent);
+              const auto deadline = std::chrono::steady_clock::now ()
+                                    + std::chrono::seconds (30);
+              while (!selected
+                     && (selected.error_kind ()
+                           == framework_error_kind_t::not_found
+                         || selected.error_kind ()
+                              == framework_error_kind_t::unavailable)
+                     && std::chrono::steady_clock::now () < deadline) {
+                  std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                  selected = select_instance_target (spot_id, intent);
+              }
               if (!selected)
                   return detail::propagate_failure<void> (
                     selected, "Instance Spot target selection failed");
+              const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds> (
+                deadline - std::chrono::steady_clock::now ());
+              if (remaining <= std::chrono::milliseconds::zero ()
+                  || !selected.value ().source->wait_for_peer_ready (
+                    selected.value ().target.rid, remaining)) {
+                  return result_t<void>::failure (
+                    framework_error_kind_t::unavailable,
+                    "Instance Spot target RouteMesh peer is not ready");
+              }
               auto metadata_frame =
                 detail::mesh_metadata_codec_t::encode (metadata);
               auto header = make_activation (
@@ -1627,7 +1758,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               return submitted
                 ? result_t<void>::success ()
                 : result_t<void>::failure (
-                    framework_error_kind_t::route_not_connected,
+                    framework_error_kind_t::unavailable,
                     "Instance Spot activation was not admitted");
           },
           [select_instance_target, make_activation,
@@ -1642,11 +1773,31 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
             std::map<std::string, std::string> metadata)
             -> task_t<zlink::message_t> {
               auto selected = select_instance_target (spot_id, intent);
+              const auto deadline = std::chrono::steady_clock::now () + timeout;
+              while (!selected
+                     && (selected.error_kind ()
+                           == framework_error_kind_t::not_found
+                         || selected.error_kind ()
+                              == framework_error_kind_t::unavailable)
+                     && std::chrono::steady_clock::now () < deadline) {
+                  std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                  selected = select_instance_target (spot_id, intent);
+              }
               if (!selected)
                   return task_t<zlink::message_t> (
                     detail::propagate_failure<zlink::message_t> (
                       selected,
                       "Instance Spot target selection failed"));
+              const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds> (
+                deadline - std::chrono::steady_clock::now ());
+              if (remaining <= std::chrono::milliseconds::zero ()
+                  || !selected.value ().source->wait_for_peer_ready (
+                    selected.value ().target.rid, remaining)) {
+                  return task_t<zlink::message_t> (
+                    result_t<zlink::message_t>::failure (
+                      framework_error_kind_t::unavailable,
+                      "Instance Spot target RouteMesh peer is not ready"));
+              }
               auto metadata_frame =
                 detail::mesh_metadata_codec_t::encode (metadata);
               auto header = make_activation (
@@ -1671,13 +1822,28 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                     std::optional<runtime::protocol::application_payload_t>
                       application_reply) {
                       if (terminal
-                            != runtime::foundation::operation_terminal_t::completed
-                          || reply.terminal_result != 0
-                          || !application_reply) {
+                          != runtime::foundation::operation_terminal_t::completed) {
                           completion->complete (
                             result_t<zlink::message_t>::failure (
-                              framework_error_kind_t::request_failed,
-                              "Instance Spot activation request failed"));
+                              framework_error_kind_t::unavailable,
+                              "Instance Spot activation transport did not complete"));
+                          return;
+                      }
+                      if (reply.terminal_result != 0) {
+                          completion->complete (
+                            detail::result_access_t::failure<zlink::message_t> (
+                              runtime::messaging::request_failure_mapper_t{}
+                                .reply_header_exception (
+                                  reply.terminal_result,
+                                  reply.failure_code,
+                                  "Instance Spot activation request")));
+                          return;
+                      }
+                      if (!application_reply) {
+                          completion->complete (
+                            result_t<zlink::message_t>::failure (
+                              framework_error_kind_t::protocol_error,
+                              "Instance Spot activation reply payload is missing"));
                           return;
                       }
                       completion->complete (
@@ -1689,7 +1855,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               if (!submitted)
                   completion->complete (
                     result_t<zlink::message_t>::failure (
-                      framework_error_kind_t::route_not_connected,
+                      framework_error_kind_t::unavailable,
                       "Instance Spot activation was not admitted"));
               return output;
           });
@@ -1719,7 +1885,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                 parts.items (), operation, timeout);
               if (submitted != zlink::submit_result_t::ok) {
                   return result_t<runtime::messaging::message_parts_t>::failure (
-                    framework_error_kind_t::route_not_connected,
+                    framework_error_kind_t::unavailable,
                     "MeshNode Spot request was not submitted");
               }
               auto completion = mesh->wait_for_completion (operation, timeout);
@@ -1731,7 +1897,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               if (completion.value ().record.terminal_result
                   != static_cast<int> (zlink::request_result_t::ok)) {
                   return result_t<runtime::messaging::message_parts_t>::failure (
-                    framework_error_kind_t::request_failed,
+                    framework_error_kind_t::internal_failure,
                     "MeshNode '" + mesh->mesh_name ()
                       + "' Spot request returned terminal result "
                       + std::to_string (completion.value ().record.terminal_result));
@@ -1780,11 +1946,11 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                   if (submitted == zlink::submit_result_t::not_found
                       || submitted == zlink::submit_result_t::not_admitted) {
                       return result_t<runtime::messaging::message_parts_t>::failure (
-                        framework_error_kind_t::request_target_not_found,
+                        framework_error_kind_t::not_found,
                         "MeshNode request target was not found");
                   }
                   return result_t<runtime::messaging::message_parts_t>::failure (
-                    framework_error_kind_t::route_not_connected,
+                    framework_error_kind_t::unavailable,
                     "MeshNode request was not submitted");
               }
               auto completion = mesh->wait_for_completion (operation, timeout);
@@ -1796,7 +1962,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               if (completion.value ().record.terminal_result
                   != static_cast<int> (zlink::request_result_t::ok)) {
                   return result_t<runtime::messaging::message_parts_t>::failure (
-                    framework_error_kind_t::request_failed,
+                    framework_error_kind_t::internal_failure,
                     "MeshNode request returned a terminal error");
               }
               return result_t<runtime::messaging::message_parts_t>::success (
@@ -1819,7 +1985,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                     channel_name, parts.items (), operation, timeout);
                   if (submitted != zlink::submit_result_t::ok) {
                       return result_t<runtime::messaging::message_parts_t>::failure (
-                        framework_error_kind_t::route_not_connected,
+                        framework_error_kind_t::unavailable,
                         "RouteMesh channel request was not submitted");
                   }
                   auto completion = mesh->wait_for_completion (operation, timeout);
@@ -1831,7 +1997,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                   if (completion.value ().record.terminal_result
                       != static_cast<int> (zlink::request_result_t::ok)) {
                       return result_t<runtime::messaging::message_parts_t>::failure (
-                        framework_error_kind_t::request_failed,
+                        framework_error_kind_t::internal_failure,
                         "RouteMesh channel request returned a terminal error");
                   }
                   return result_t<runtime::messaging::message_parts_t>::success (
@@ -1849,15 +2015,36 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         const auto application_mesh =
           application_mesh_it != mesh_nodes.end () ? *application_mesh_it
                                                    : mesh_nodes.front ();
+        auto actor_manager =
+          _state->services.build_provider ().get_required<actor_manager_t> ();
+        auto *serializers = &_state->serializers;
         const auto request_timeout = std::chrono::seconds (30);
         actor_gateway_runtime.on_create (
-          [application_mesh, request_timeout] (
+          [actor_manager, serializers] (
             std::string actor_type,
             std::string actor_id,
-            const std::optional<zlink::message_t> &creation_payload) {
-              return application_mesh->create_application_actor (
-                std::move (actor_type), std::move (actor_id), creation_payload,
-                request_timeout);
+            const std::optional<zlink::message_t> &creation_payload) mutable {
+              auto call = actor_manager.get_or_create (
+                std::move (actor_id), std::move (actor_type));
+              if (creation_payload)
+                  call.creation_request (
+                    message_t::from_raw (*creation_payload, serializers));
+              const auto created = call.submit ().result ();
+              if (!created)
+                  return result_t<actor_ref_t>::failure (
+                    created.error_kind (),
+                    created.error ()
+                      ? created.error ()->what ()
+                      : "Actor creation failed");
+              if (const auto *existing = std::get_if<actor_create_existing_t> (
+                    &created.value ()))
+                  return result_t<actor_ref_t>::success (existing->actor);
+              if (const auto *new_actor = std::get_if<actor_create_created_t> (
+                    &created.value ()))
+                  return result_t<actor_ref_t>::success (new_actor->actor);
+              return result_t<actor_ref_t>::failure (
+                framework_error_kind_t::rejected,
+                "Actor creation was rejected");
           });
         actor_gateway_runtime.on_join_entry_spot (
           [application_mesh] (
@@ -1892,21 +2079,18 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                   std::this_thread::sleep_for (std::chrono::milliseconds (50));
               } while (std::chrono::steady_clock::now () < deadline);
               if (!located) {
-                  return result_t<detail::actor_join_reply_t>::failure (
-                    located.error_kind (),
-                    located.error () ? located.error ()->what ()
-                                     : "target Spot location lookup failed",
-                    located.error () && located.error ()->is_retriable ());
+                  return detail::propagate_failure<detail::actor_join_reply_t> (
+                    located, "target Spot location lookup failed");
               }
               if (!located.value ()) {
                   return result_t<detail::actor_join_reply_t>::failure (
-                    framework_error_kind_t::spot_route_not_found,
+                    framework_error_kind_t::not_found,
                     "target Spot location was not found");
               }
               const auto &target = *located.value ();
               if (target.object_generation == 0) {
                   return result_t<detail::actor_join_reply_t>::failure (
-                    framework_error_kind_t::spot_route_not_found,
+                    framework_error_kind_t::not_found,
                     "target Spot lifecycle generation was not published");
               }
               const auto bound_session =
@@ -1925,6 +2109,25 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               return application_mesh
                 ->reserve_application_actor_join_barrier (actor);
           });
+        actor_gateway_runtime.on_bound_session (
+          [application_mesh, request_timeout] (const actor_ref_t &actor) {
+              const auto local_routing_id = application_mesh->routing_id ();
+              if (detail::is_local_actor_ref (actor)
+                  || (local_routing_id
+                      && actor.node_rid ().value ()
+                           == local_routing_id->to_string ())) {
+                  return result_t<void>::success ();
+              }
+              if (!local_routing_id) {
+                  return result_t<void>::failure (
+                    framework_error_kind_t::not_configured,
+                    "Bound session node has no RouteMesh routing id");
+              }
+              return application_mesh->bind_application_actor_session (
+                actor,
+                node_rid_t::from_string (local_routing_id->to_string ()),
+                request_timeout);
+          });
         actor_gateway_runtime.on_relay (
           [application_mesh, request_timeout] (
             const actor_ref_t &actor,
@@ -1938,7 +2141,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           [mesh_nodes, request_timeout] (const actor_ref_t &actor) {
               bool notified = false;
               result_t<void> last = result_t<void>::failure (
-                framework_error_kind_t::spot_route_not_found,
+                framework_error_kind_t::not_found,
                 "Actor disconnect RouteMesh was not found");
               for (const auto &mesh : mesh_nodes) {
                   last = mesh->notify_application_actor_disconnected (
@@ -2046,7 +2249,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         auto stream_service = std::make_unique<runtime::stream_host_service_t> (
           detail::stream_runtime_t::from (_state->zlink), stream_snapshot,
           options.stream_session_factories (),
-          mesh_nodes.empty () ? nullptr : mesh_nodes.front ());
+          mesh_nodes.empty () ? nullptr : mesh_nodes.front (),
+          inbound_dispatch_budget);
         stream_service->bind_drain_flag (_state->draining);
         stream_service->bind_monitoring (
           _state->monitoring);
@@ -2072,7 +2276,7 @@ app_t &app_t::add_module (module_t &module)
 app_t &app_t::add_hosted_service (std::unique_ptr<hosted_service_t> service)
 {
     if (!service) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "hosted service must not be null");
     }
     _state->hosted_services.push_back (std::move (service));

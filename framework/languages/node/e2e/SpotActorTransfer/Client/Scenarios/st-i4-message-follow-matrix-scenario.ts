@@ -1,4 +1,4 @@
-// ST-I4: authority 경계별 Message Follow matrix 시나리오를 검증한다.
+// ST-I4: Message Follow authority boundaries 시나리오를 검증한다.
 import { runStF4 } from './st-f4-bound-session-transfer-scenario';
 
 export async function runStI4(): Promise<void> {

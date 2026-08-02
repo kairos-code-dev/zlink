@@ -81,7 +81,7 @@ export async function assertCall(
   options: ClientOptions,
   scenario: string,
   actorId: string,
-  actor: ActorRefPayload,
+  actor: ActorRefPayload | undefined,
   value: string,
   expected: string,
   send: boolean,

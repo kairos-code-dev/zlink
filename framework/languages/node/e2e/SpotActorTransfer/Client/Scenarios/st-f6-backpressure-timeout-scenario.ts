@@ -1,4 +1,4 @@
-// ST-F6: in-flight request reply correlation과 timeout 시나리오를 검증한다.
+// ST-F6: Request terminal across relocation 시나리오를 검증한다.
 import type { ProbeReq, ProbeRes } from '../../Shared/messages.js';
 import { SpotActorTransferNames, nodeA, nodeB, createSpot, createActor, joinActor, probeActor, waitEvidence, post, unique, require } from '../Support/scenario-support';
 

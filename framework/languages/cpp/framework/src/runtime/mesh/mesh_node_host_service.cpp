@@ -8,6 +8,7 @@
 
 #include "runtime/channels/route_handler_registry.hpp"
 #include "runtime/channels/channel_reply_writer.hpp"
+#include "runtime/diagnostics/dispatch_error_reporter.hpp"
 #include "runtime/mesh/mesh_record_dispatcher.hpp"
 #include "runtime/mesh/mesh_metadata_codec.hpp"
 #include "runtime/mesh/user_spot_terminal_mapping.hpp"
@@ -25,6 +26,7 @@
 #include <iostream>
 #include <limits>
 #include <string_view>
+#include <thread>
 #include <tuple>
 #include <utility>
 
@@ -35,6 +37,55 @@ namespace
 {
 
 std::atomic_uint64_t next_user_spot_operation{1};
+
+std::optional<std::vector<std::byte>> read_actor_creation_request (
+  const std::shared_ptr<location_repository_t> &store,
+  const protocol::actor_create_header_t &request)
+{
+    if (!store)
+        return std::nullopt;
+    const auto read = store
+      ->read_authority (authority_key_t{"1:" + request.actor_id})
+      .result ()
+      .value ();
+    const auto *snapshot = std::get_if<authority_snapshot_t> (&read);
+    if (!snapshot
+        || snapshot->allocation.object_kind
+             != placement_object_kind_t::actor
+        || snapshot->allocation.state
+             != placement_allocation_state_t::reserved
+        || snapshot->allocation.stable_type != request.stable_type
+        || snapshot->object_generation
+             != request.reservation.object_generation
+        || snapshot->authority_owner_generation
+             != request.reservation.authority_owner_generation
+        || snapshot->allocation.target.node_lifecycle_generation
+             != request.reservation.target_node_generation
+        || snapshot->allocation.target.owner.owner_id
+             != request.reservation.target_owner_id
+        || snapshot->allocation.target.owner.lease_generation
+             != request.reservation.target_owner_lease_generation
+        || snapshot->allocation.capacity_bundle.actor_slots
+             != request.reservation.pending_capacity_delta
+        || snapshot->allocation.capacity_bundle.spot_slots != 0
+        || !snapshot->pending_creation
+        || snapshot->pending_creation->reservation_id
+             != request.reservation.reservation_id)
+        return std::nullopt;
+    const auto target_rid = zlink::routing_id_t::from (
+      request.reservation.target_node_routing_id);
+    if (snapshot->allocation.target.node_rid.value ()
+          != target_rid.to_string ())
+        return std::nullopt;
+    const auto payload = decode_inline_creation_content (
+      snapshot->pending_creation->request_content_reference);
+    if (!payload
+        || snapshot->pending_creation->request_encoded_size
+             != payload->size ()
+        || snapshot->pending_creation->request_sha256 != sha256 (*payload))
+        return std::nullopt;
+    return payload;
+}
 
 bool capacity_available (const capacity_usage_t &usage)
 {
@@ -184,7 +235,7 @@ actor_create_result_t actor_result_from_terminal (
     if (state == creation_terminal_state_t::rejected)
         return actor_create_rejected_t{std::move (reply)};
     throw framework_exception_t (
-      framework_error_kind_t::actor_create_failed,
+      framework_error_kind_t::internal_failure,
       "Actor creation operation previously failed");
 }
 
@@ -214,7 +265,7 @@ void reject_application_request (
     auto reply = replies.reply_raw_envelope (
       replies.create_error_header (
         header.value ().channel_name, header.value (),
-        framework_exception_t (framework_error_kind_t::request_rejected,
+        framework_exception_t (framework_error_kind_t::rejected,
                                "MeshNode is draining and rejects new application work")),
       zlink::message_t::from (""));
     (void) host::reply (record.reply_token, reply.items ());
@@ -311,7 +362,7 @@ actor_manager_t mesh_node_host_service_t::actor_manager ()
           if (source_node == _nodes.end ())
               return task_t<actor_create_result_t> (
                 result_t<actor_create_result_t>::failure (
-                  framework_error_kind_t::mesh_not_found,
+                  framework_error_kind_t::not_found,
                   "The selected Actor Mesh is not registered"));
           const auto source = (*source_node)->status ();
           return create_actor (
@@ -349,8 +400,13 @@ mesh_node_host_service_t::create_actor (
         || stable_type.empty ())
         return task_t<actor_create_result_t> (
           result_t<actor_create_result_t>::failure (
-            framework_error_kind_t::invalid_configuration,
+            framework_error_kind_t::not_configured,
             "Actor creation requires Location Store, ActorId and stable type"));
+    if (_nodes.empty ())
+        return task_t<actor_create_result_t> (
+          result_t<actor_create_result_t>::failure (
+            framework_error_kind_t::not_configured,
+            "No object Client or Server Mesh is registered"));
     const auto deadline =
       std::chrono::steady_clock::now () + timeout;
     const auto operation_deadline =
@@ -370,33 +426,44 @@ mesh_node_host_service_t::create_actor (
               })));
 
     std::vector<mesh_node_descriptor_t> candidates;
-    for (const auto &descriptor : _published_mesh_descriptors) {
-        if (mesh_name && descriptor.mesh_name != *mesh_name)
-            continue;
-        const auto capability = std::find_if (
-          descriptor.object_capabilities.begin (),
-          descriptor.object_capabilities.end (),
-          [&] (const object_capability_t &value) {
-              return value.object_kind
-                       == placement_object_kind_t::actor
-                     && value.stable_type == stable_type;
-          });
-        if (descriptor.state == framework_runtime_state_t::serving
-            && descriptor.object_role == object_role_t::server
-            && descriptor.placement_weight > 0
-            && placement_capacity_available (
-                 descriptor, placement_object_kind_t::actor,
-                 stable_type)
-            && capability
-                 != descriptor.object_capabilities.end ())
-            candidates.push_back (descriptor);
-    }
+    const auto selected_mesh = mesh_name.value_or (_nodes.front ()->mesh_name ());
+    location_page_request_t page;
+    do {
+        auto listed = _location_store
+                        ->list_mesh_nodes (selected_mesh, page)
+                        .result ()
+                        .value ();
+        for (auto &descriptor : listed.items) {
+            if (mesh_name && descriptor.mesh_name != *mesh_name)
+                continue;
+            const auto capability = std::find_if (
+              descriptor.object_capabilities.begin (),
+              descriptor.object_capabilities.end (),
+              [&] (const object_capability_t &value) {
+                  return value.object_kind
+                           == placement_object_kind_t::actor
+                         && value.stable_type == stable_type;
+              });
+            if (descriptor.state == framework_runtime_state_t::serving
+                && descriptor.object_role == object_role_t::server
+                && descriptor.placement_weight > 0
+                && placement_capacity_available (
+                     descriptor, placement_object_kind_t::actor,
+                     stable_type)
+                && capability
+                     != descriptor.object_capabilities.end ())
+                candidates.push_back (std::move (descriptor));
+        }
+        page.continuation_token = std::move (listed.continuation_token);
+    } while (page.continuation_token);
     if (candidates.empty ())
+    {
         return task_t<actor_create_result_t> (
           result_t<actor_create_result_t>::failure (
-            mesh_name ? framework_error_kind_t::mesh_not_found
-                      : framework_error_kind_t::placement_capacity_exhausted,
+            mesh_name ? framework_error_kind_t::not_found
+                      : framework_error_kind_t::capacity_exceeded,
             "No eligible Actor target is ready"));
+    }
     const auto choose_target = [&] {
         const auto total_weight = std::accumulate (
           candidates.begin (), candidates.end (), std::uint64_t{0},
@@ -430,11 +497,13 @@ mesh_node_host_service_t::create_actor (
           });
     };
     auto target_runtime = find_target_runtime ();
-    if (target_runtime == _nodes.end ())
-        return task_t<actor_create_result_t> (
-          result_t<actor_create_result_t>::failure (
-            framework_error_kind_t::route_not_connected,
-            "Remote Actor creation transport is not available"));
+    const auto source_runtime = std::find_if (
+      _nodes.begin (), _nodes.end (),
+      [&] (const auto &node) {
+          const auto rid = node->routing_id ();
+          return rid
+                 && rid->to_string () == operation.source_node_rid.value ();
+      });
 
     std::vector<std::byte> request_bytes;
     if (request) {
@@ -475,7 +544,7 @@ mesh_node_host_service_t::create_actor (
             if (exclusive)
                 return task_t<actor_create_result_t> (
                   result_t<actor_create_result_t>::failure (
-                    framework_error_kind_t::actor_already_exists,
+                    framework_error_kind_t::already_exists,
                     "Actor already exists"));
             return task_t<actor_create_result_t> (
               result_t<actor_create_result_t>::success (
@@ -490,7 +559,7 @@ mesh_node_host_service_t::create_actor (
               reserved))
             return task_t<actor_create_result_t> (
               result_t<actor_create_result_t>::failure (
-                framework_error_kind_t::actor_type_mismatch,
+                framework_error_kind_t::type_mismatch,
                 "Actor stable type does not match"));
         const auto *reserve_conflict =
           std::get_if<object_reserve_conflict_t> (&reserved);
@@ -514,13 +583,10 @@ mesh_node_host_service_t::create_actor (
             if (candidates.empty ())
                 return task_t<actor_create_result_t> (
                   result_t<actor_create_result_t>::failure (
-                    framework_error_kind_t::
-                     placement_capacity_exhausted,
+                    framework_error_kind_t::capacity_exceeded,
                     "Actor placement candidates were exhausted"));
             target = choose_target ();
             target_runtime = find_target_runtime ();
-            if (target_runtime == _nodes.end ())
-                continue;
             reserve.target = {
               .mesh_name = target.mesh_name,
               .node_rid = node_rid_t::from_string (
@@ -533,6 +599,195 @@ mesh_node_host_service_t::create_actor (
         }
         if (const auto *winner =
               std::get_if<object_reserved_t> (&reserved)) {
+            const auto fail_creation = [&] {
+                const auto failed_envelope = actor_terminal_envelope (
+                  creation_terminal_state_t::failed,
+                  std::nullopt, std::nullopt, *_serializers);
+                const creation_terminal_publication_t failed_publication{
+                  operation, failed_envelope, sha256 (failed_envelope),
+                  operation_deadline};
+                return _location_store
+                  ->complete_creation (
+                    {reserve.key, winner->fence,
+                     object_creation_failed_t{failed_publication}})
+                  .result ();
+            };
+            if (target_runtime == _nodes.end ()) {
+                if (source_runtime == _nodes.end ()) {
+                    (void) fail_creation ();
+                    return task_t<actor_create_result_t> (
+                      result_t<actor_create_result_t>::failure (
+                        framework_error_kind_t::unavailable,
+                        "Actor creation source MeshNode is not available"));
+                }
+                struct remote_completion_t
+                {
+                    std::mutex mutex;
+                    std::condition_variable changed;
+                    foundation::operation_terminal_t terminal =
+                      foundation::operation_terminal_t::transport_failed;
+                    protocol::actor_create_reply_t reply;
+                    std::optional<protocol::application_payload_t>
+                      application_reply;
+                    bool completed = false;
+                };
+                const auto remote = std::make_shared<remote_completion_t> ();
+                const auto source_status = (*source_runtime)->native_node ().status ();
+                protocol::actor_create_header_t command;
+                command.operation = {
+                  operation.operation_id.high,
+                  operation.operation_id.low};
+                command.source_node_routing_id =
+                  source_status.routing_id ().to_bytes ();
+                command.source_node_generation =
+                  source_status.lifecycle_generation ();
+                command.actor_id = actor_id;
+                command.stable_type = stable_type;
+                command.reservation = {
+                  winner->fence.reservation_id,
+                  winner->fence.expected_store_version,
+                  winner->fence.object_generation,
+                  winner->fence.authority_owner_generation,
+                  target.rid.to_bytes (),
+                  target.lifecycle_generation,
+                  winner->fence.target.owner.owner_id,
+                  static_cast<std::uint64_t> (
+                    winner->fence.target.owner.lease_generation),
+                  winner->fence.capacity_bundle.actor_slots};
+                command.deadline_unix_ms = static_cast<std::uint64_t> (
+                  std::chrono::duration_cast<std::chrono::milliseconds> (
+                    operation_deadline.time_since_epoch ())
+                    .count ());
+                const auto submit = [&] {
+                    return (*source_runtime)->native_node ().create_actor_remote (
+                      target.rid, command, timeout,
+                      [remote] (foundation::operation_terminal_t terminal,
+                                protocol::actor_create_reply_t reply,
+                                std::optional<protocol::application_payload_t>
+                                  application_reply) {
+                          std::lock_guard lock (remote->mutex);
+                          remote->terminal = terminal;
+                          remote->reply = std::move (reply);
+                          remote->application_reply = std::move (application_reply);
+                          remote->completed = true;
+                          remote->changed.notify_all ();
+                      });
+                };
+                auto accepted = submit ();
+                while (!accepted && std::chrono::steady_clock::now () < deadline) {
+                    std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                    accepted = submit ();
+                }
+                if (!accepted) {
+                    (void) fail_creation ();
+                    return task_t<actor_create_result_t> (
+                      result_t<actor_create_result_t>::failure (
+                        framework_error_kind_t::rejected,
+                        "Actor creation operation was not admitted"));
+                }
+                {
+                    std::unique_lock lock (remote->mutex);
+                    if (!remote->changed.wait_until (
+                          lock, deadline,
+                          [&] { return remote->completed; })) {
+                        (void) fail_creation ();
+                        return task_t<actor_create_result_t> (
+                          result_t<actor_create_result_t>::failure (
+                            framework_error_kind_t::deadline_exceeded,
+                            "Actor creation deadline elapsed"));
+                    }
+                }
+                while ((remote->terminal
+                          != foundation::operation_terminal_t::completed
+                        || remote->reply.header.terminal_result != 0)
+                       && std::chrono::steady_clock::now () < deadline) {
+                    {
+                        std::lock_guard lock (remote->mutex);
+                        remote->completed = false;
+                        remote->terminal =
+                          foundation::operation_terminal_t::transport_failed;
+                        remote->reply = {};
+                        remote->application_reply.reset ();
+                    }
+                    std::this_thread::sleep_for (
+                      std::chrono::milliseconds (1));
+                    accepted = submit ();
+                    while (!accepted
+                           && std::chrono::steady_clock::now () < deadline) {
+                        std::this_thread::sleep_for (
+                          std::chrono::milliseconds (1));
+                        accepted = submit ();
+                    }
+                    if (!accepted)
+                        break;
+                    std::unique_lock lock (remote->mutex);
+                    if (!remote->changed.wait_until (
+                          lock, deadline,
+                          [&] { return remote->completed; }))
+                        break;
+                }
+                if (remote->terminal
+                      != foundation::operation_terminal_t::completed
+                    || remote->reply.header.terminal_result != 0
+                    || remote->reply.result
+                         != protocol::actor_create_result_t::created
+                    || remote->reply.actor_id != actor_id
+                    || remote->reply.node_routing_id != target.rid.to_bytes ()
+                    || remote->reply.object_generation
+                         != winner->fence.object_generation) {
+                    (void) fail_creation ();
+                    return task_t<actor_create_result_t> (
+                      result_t<actor_create_result_t>::failure (
+                        framework_error_kind_t::internal_failure,
+                        "Remote Actor creation failed"));
+                }
+                const auto created = actor_ref_t{
+                  node_rid_t::from_string (target.rid.to_string ()),
+                  stable_type,
+                  actor_id,
+                  remote->reply.object_generation};
+                std::optional<message_t> reply;
+                if (remote->application_reply)
+                    reply = message_t::from_raw (
+                      zlink::message_t::from (
+                        remote->application_reply->payload),
+                      _serializers);
+                const auto envelope = actor_terminal_envelope (
+                  creation_terminal_state_t::created,
+                  created,
+                  reply,
+                  *_serializers);
+                const creation_terminal_publication_t publication{
+                  operation,
+                  envelope,
+                  sha256 (envelope),
+                  operation_deadline};
+                const auto completed = _location_store
+                  ->complete_creation (
+                    {reserve.key,
+                     winner->fence,
+                     object_creation_completed_t{
+                       encode_actor_authority_payload (
+                         created,
+                         target.entry_spot_id.value_or (
+                           target.rid.to_string ()),
+                         target.lifecycle_generation),
+                       publication}})
+                  .result ();
+                if (!completed)
+                    return task_t<actor_create_result_t> (
+                      result_t<actor_create_result_t>::failure (
+                        completed.error_kind (),
+                        completed.error ()
+                          ? completed.error ()->what ()
+                          : "Actor creation completion failed"));
+                return task_t<actor_create_result_t> (
+                  result_t<actor_create_result_t>::success (
+                    actor_create_result_t{
+                      actor_create_created_t{
+                        created,
+                        std::move (reply)}}));
+            }
             std::optional<zlink::message_t> raw_request;
             if (request)
                 raw_request = detail::message_to_raw (
@@ -738,11 +993,108 @@ mesh_node_host_service_t::find_actor_spot (
 }
 
 task_t<bool> mesh_node_host_service_t::destroy_actor (
-  actor_ref_t)
+  actor_ref_t actor)
 {
-    return task_t<bool> (result_t<bool>::failure (
-      framework_error_kind_t::request_failed,
-      "Actor destroy runtime is not implemented"));
+    try {
+        if (!_location_store || actor.empty ()) {
+            return task_t<bool> (result_t<bool>::failure (
+              framework_error_kind_t::invalid_operation,
+              "Actor destroy requires a Location Store and an exact ActorRef"));
+        }
+
+        const authority_key_t key{
+          "1:" + std::string (actor.actor_id ())};
+        const auto read = _location_store->read_authority (key).result ().value ();
+        const auto *snapshot = std::get_if<authority_snapshot_t> (&read);
+        if (!snapshot) {
+            return task_t<bool> (result_t<bool>::success (false));
+        }
+        if (snapshot->allocation.object_kind != placement_object_kind_t::actor
+            || snapshot->allocation.stable_type != actor.actor_type ()
+            || snapshot->object_generation != actor.generation ()
+            || snapshot->allocation.target.node_rid.value ()
+                 != actor.node_rid ().value ()) {
+            return task_t<bool> (result_t<bool>::failure (
+              framework_error_kind_t::invalid_operation,
+              "ActorRef does not match the current actor incarnation"));
+        }
+        if (snapshot->allocation.state != placement_allocation_state_t::active) {
+            return task_t<bool> (result_t<bool>::failure (
+              framework_error_kind_t::unavailable,
+              "Actor creation or transfer is in progress"));
+        }
+
+        const auto node = std::find_if (
+          _nodes.begin (), _nodes.end (), [&actor] (const auto &candidate) {
+              const auto routing_id = candidate ? candidate->routing_id () : std::nullopt;
+              return routing_id
+                     && routing_id->to_string () == actor.node_rid ().value ();
+          });
+        if (node != _nodes.end ()) {
+            if ((*node)->application_actor_transfer_in_progress (actor)) {
+                return task_t<bool> (result_t<bool>::failure (
+                  framework_error_kind_t::unavailable,
+                  "Actor transfer is in progress"));
+            }
+        }
+
+        const auto removed = _location_store
+          ->compare_exchange_authority (
+            key, snapshot->store_version, authority_delete_t{})
+          .result ()
+          .value ();
+        if (!std::holds_alternative<authority_deleted_t> (removed)) {
+            if (const auto *conflict =
+                  std::get_if<authority_conflict_t> (&removed)) {
+                if (std::holds_alternative<authority_missing_t> (
+                      conflict->current)) {
+                    return task_t<bool> (result_t<bool>::success (false));
+                }
+                const auto &current =
+                  std::get<authority_snapshot_t> (conflict->current);
+                if (current.object_generation != actor.generation ()) {
+                    return task_t<bool> (result_t<bool>::failure (
+                      framework_error_kind_t::invalid_operation,
+                      "Actor generation changed while destroy was pending"));
+                }
+            }
+            return task_t<bool> (result_t<bool>::failure (
+              framework_error_kind_t::unavailable,
+              "Actor authority changed while destroy was pending"));
+        }
+
+        if (node != _nodes.end ()) {
+            auto local_destroyed = (*node)->destroy_application_actor (actor);
+            if (!local_destroyed) {
+                return task_t<bool> (result_t<bool>::failure (
+                  local_destroyed.error_kind (),
+                  local_destroyed.error ()
+                    ? local_destroyed.error ()->what ()
+                    : "Actor runtime cleanup failed"));
+            }
+        }
+        if (_services) {
+            if (auto gateway =
+                  _services->get<detail::actor_gateway_runtime_t> ()) {
+                auto gateway_destroyed = gateway->get ().destroy_actor (actor);
+                if (!gateway_destroyed) {
+                    return task_t<bool> (result_t<bool>::failure (
+                      gateway_destroyed.error_kind (),
+                      gateway_destroyed.error ()
+                        ? gateway_destroyed.error ()->what ()
+                        : "Actor gateway cleanup failed"));
+                }
+            }
+        }
+        return task_t<bool> (result_t<bool>::success (true));
+    }
+    catch (const framework_exception_t &error) {
+        return task_t<bool> (detail::result_access_t::failure<bool> (error));
+    }
+    catch (const std::exception &error) {
+        return task_t<bool> (result_t<bool>::failure (
+          framework_error_kind_t::internal_failure, error.what ()));
+    }
 }
 
 task_t<spot_create_result_t>
@@ -760,7 +1112,7 @@ mesh_node_host_service_t::create_user_spot (
     if (!_location_store || stable_type.empty ())
         return task_t<spot_create_result_t> (
           result_t<spot_create_result_t>::failure (
-            framework_error_kind_t::invalid_configuration,
+            framework_error_kind_t::not_configured,
             "User Spot creation requires a Location Store and stable type"));
     std::shared_ptr<detail::mesh_node_runtime_t> source;
     if (mesh_name) {
@@ -772,19 +1124,19 @@ mesh_node_host_service_t::create_user_spot (
         if (found == _nodes.end ())
             return task_t<spot_create_result_t> (
               result_t<spot_create_result_t>::failure (
-                framework_error_kind_t::mesh_not_found,
+                framework_error_kind_t::not_found,
                 "The selected Mesh is not registered in this process"));
         source = *found;
     } else {
         if (_nodes.empty ())
             return task_t<spot_create_result_t> (
               result_t<spot_create_result_t>::failure (
-                framework_error_kind_t::object_client_not_configured,
+                framework_error_kind_t::not_configured,
                 "No object Client or Server Mesh is registered"));
         if (_nodes.size () != 1)
             return task_t<spot_create_result_t> (
               result_t<spot_create_result_t>::failure (
-                framework_error_kind_t::mesh_selection_required,
+                framework_error_kind_t::invalid_operation,
                 "More than one object Mesh is registered; select one with in_mesh"));
         source = _nodes.front ();
     }
@@ -797,14 +1149,14 @@ mesh_node_host_service_t::create_user_spot (
         catch (const std::invalid_argument &error) {
             return task_t<spot_create_result_t> (
               result_t<spot_create_result_t>::failure (
-                framework_error_kind_t::invalid_configuration,
+                framework_error_kind_t::not_configured,
                 error.what ()));
         }
         if (!exclusive
             && detail::is_framework_entry_spot_id (*spot_id)) {
             return task_t<spot_create_result_t> (
               result_t<spot_create_result_t>::failure (
-                framework_error_kind_t::invalid_configuration,
+                framework_error_kind_t::not_configured,
                 "caller-provided SpotId uses the reserved Entry Spot format"));
         }
     }
@@ -841,7 +1193,7 @@ mesh_node_host_service_t::create_user_spot (
     if (candidates.empty ())
         return task_t<spot_create_result_t> (
           result_t<spot_create_result_t>::failure (
-            framework_error_kind_t::placement_capacity_exhausted,
+            framework_error_kind_t::capacity_exceeded,
             "No eligible User Spot target is ready"));
     const auto choose_target = [&] {
         const auto total_weight = std::accumulate (
@@ -872,7 +1224,7 @@ mesh_node_host_service_t::create_user_spot (
         if (bytes.size () > 1024u * 1024u)
             return task_t<spot_create_result_t> (
               result_t<spot_create_result_t>::failure (
-                framework_error_kind_t::invalid_configuration,
+                framework_error_kind_t::not_configured,
                 "User Spot creation request exceeds 1 MiB"));
         application_bytes.reserve (bytes.size ());
         for (const auto value : bytes)
@@ -943,8 +1295,7 @@ mesh_node_host_service_t::create_user_spot (
             || std::chrono::steady_clock::now () >= deadline)
             return task_t<spot_create_result_t> (
               result_t<spot_create_result_t>::failure (
-                framework_error_kind_t::
-                 placement_capacity_exhausted,
+                framework_error_kind_t::capacity_exceeded,
                 "User Spot placement candidates were exhausted"));
         target = choose_target ();
     }
@@ -953,7 +1304,7 @@ mesh_node_host_service_t::create_user_spot (
         if (exclusive)
             return task_t<spot_create_result_t> (
               result_t<spot_create_result_t>::failure (
-                framework_error_kind_t::spot_id_conflict,
+                framework_error_kind_t::already_exists,
                 "Framework-generated User SpotId already exists"));
         return task_t<spot_create_result_t> (
           result_t<spot_create_result_t>::success (
@@ -972,18 +1323,18 @@ mesh_node_host_service_t::create_user_spot (
                  == placement_allocation_state_t::active)
             return task_t<spot_create_result_t> (
               result_t<spot_create_result_t>::failure (
-                framework_error_kind_t::spot_id_conflict,
+                framework_error_kind_t::already_exists,
                 "Framework-generated User SpotId already exists"));
         return task_t<spot_create_result_t> (
           result_t<spot_create_result_t>::failure (
-            framework_error_kind_t::spot_type_mismatch,
+            framework_error_kind_t::type_mismatch,
             "User Spot stable type does not match"));
     }
     if (std::holds_alternative<
           object_placement_capacity_exhausted_t> (reserved))
         return task_t<spot_create_result_t> (
           result_t<spot_create_result_t>::failure (
-            framework_error_kind_t::placement_capacity_exhausted,
+            framework_error_kind_t::capacity_exceeded,
             "User Spot placement capacity is exhausted"));
     if (const auto *created =
           std::get_if<object_reserved_t> (&reserved)) {
@@ -994,7 +1345,7 @@ mesh_node_host_service_t::create_user_spot (
         if (exclusive)
             return task_t<spot_create_result_t> (
               result_t<spot_create_result_t>::failure (
-                framework_error_kind_t::spot_id_conflict,
+                framework_error_kind_t::already_exists,
                 "Framework-generated User SpotId already has an authority claim"));
         const auto *snapshot =
           std::get_if<authority_snapshot_t> (&conflict->current);
@@ -1002,7 +1353,7 @@ mesh_node_host_service_t::create_user_spot (
             || snapshot->allocation.stable_type != stable_type)
             return task_t<spot_create_result_t> (
               result_t<spot_create_result_t>::failure (
-                framework_error_kind_t::request_failed,
+                framework_error_kind_t::internal_failure,
                 "User Spot Creating attempt cannot be joined"));
         fence = {
           snapshot->pending_creation->reservation_id,
@@ -1024,7 +1375,7 @@ mesh_node_host_service_t::create_user_spot (
     } else {
         return task_t<spot_create_result_t> (
           result_t<spot_create_result_t>::failure (
-            framework_error_kind_t::request_failed,
+            framework_error_kind_t::internal_failure,
             "User Spot reservation failed"));
     }
     const auto source_status = source->native_node ().status ();
@@ -1057,60 +1408,66 @@ mesh_node_host_service_t::create_user_spot (
         spot_create_result_t>> ();
     auto output = completion->task ();
     bool accepted = false;
-    try {
-        accepted =
-          source->native_node ().create_user_spot_remote (
-            target.rid, std::move (command), timeout,
-            [completion, target, serializers = _serializers,
-             store = _location_store, key, fence,
-             source_created_reservation] (
-              foundation::operation_terminal_t terminal,
-              protocol::user_spot_create_reply_t reply,
-              std::optional<protocol::application_payload_t>
-                application_reply) {
+    auto on_complete =
+      [completion, target, serializers = _serializers,
+       store = _location_store, key, fence,
+       source_created_reservation] (
+        foundation::operation_terminal_t terminal,
+        protocol::user_spot_create_reply_t reply,
+        std::optional<protocol::application_payload_t>
+          application_reply) {
+        if (terminal
+              != foundation::operation_terminal_t::completed
+            || reply.header.terminal_result != 0) {
             if (terminal
-                  != foundation::operation_terminal_t::completed
-                || reply.header.terminal_result != 0) {
-                if (terminal
-                    == foundation::operation_terminal_t::completed)
-                    (void) cleanup_source_created_reservation (
-                      store, key, fence,
-                      source_created_reservation);
-                completion->complete (
-                  result_t<spot_create_result_t>::failure (
-                    user_spot_terminal::
-                      map_user_spot_operation_failure (
-                      terminal, reply.header, true),
-                    "Remote User Spot creation failed"));
-                return;
-            }
-            if (reply.result
-                == protocol::user_spot_create_result_t::rejected)
+                == foundation::operation_terminal_t::completed)
                 (void) cleanup_source_created_reservation (
                   store, key, fence,
                   source_created_reservation);
-            std::optional<message_t> decoded_reply;
-            if (application_reply)
-                decoded_reply = message_t::from_raw (
-                  zlink::message_t::from (
-                    application_reply->payload),
-                  serializers);
             completion->complete (
-              result_t<spot_create_result_t>::success (
-                {{spot_id_t (reply.spot_id),
-                  reply.object_generation,
-                  target.mesh_name,
-                  node_rid_t::from_string (
-                    target.rid.to_string ())},
-                 reply.result
-                       == protocol::user_spot_create_result_t::existing
-                   ? spot_create_state_t::existing
-                   : reply.result
-                         == protocol::user_spot_create_result_t::created
-                     ? spot_create_state_t::created
-                     : spot_create_state_t::rejected,
-                 std::move (decoded_reply)}));
-            });
+              result_t<spot_create_result_t>::failure (
+                user_spot_terminal::
+                  map_user_spot_operation_failure (
+                  terminal, reply.header, true),
+                "Remote User Spot creation failed"));
+            return;
+        }
+        if (reply.result
+            == protocol::user_spot_create_result_t::rejected)
+            (void) cleanup_source_created_reservation (
+              store, key, fence,
+              source_created_reservation);
+        std::optional<message_t> decoded_reply;
+        if (application_reply)
+            decoded_reply = message_t::from_raw (
+              zlink::message_t::from (
+                application_reply->payload),
+              serializers);
+        completion->complete (
+          result_t<spot_create_result_t>::success (
+            {{spot_id_t (reply.spot_id),
+              reply.object_generation,
+              target.mesh_name,
+              node_rid_t::from_string (
+                target.rid.to_string ())},
+             reply.result
+                   == protocol::user_spot_create_result_t::existing
+               ? spot_create_state_t::existing
+               : reply.result
+                     == protocol::user_spot_create_result_t::created
+                 ? spot_create_state_t::created
+                 : spot_create_state_t::rejected,
+             std::move (decoded_reply)}));
+      };
+    try {
+        const auto deadline = std::chrono::steady_clock::now () + timeout;
+        accepted = source->native_node ().create_user_spot_remote (
+          target.rid, command, timeout, on_complete);
+        while (!accepted && std::chrono::steady_clock::now () < deadline) {
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+            accepted = source->native_node ().create_user_spot_remote (
+              target.rid, command, timeout, on_complete);
+        }
     }
     catch (...) {
         (void) cleanup_source_created_reservation (
@@ -1118,7 +1475,7 @@ mesh_node_host_service_t::create_user_spot (
           source_created_reservation);
         completion->complete (
           result_t<spot_create_result_t>::failure (
-            framework_error_kind_t::request_failed,
+            framework_error_kind_t::internal_failure,
             "User Spot create submission failed"));
         return output;
     }
@@ -1128,7 +1485,7 @@ mesh_node_host_service_t::create_user_spot (
           source_created_reservation);
         completion->complete (
           result_t<spot_create_result_t>::failure (
-            framework_error_kind_t::request_rejected,
+            framework_error_kind_t::rejected,
             "User Spot create operation was not admitted"));
     }
     return output;
@@ -1140,7 +1497,7 @@ mesh_node_host_service_t::find_user_spot (spot_id_t spot_id)
     if (!_location_store)
         return task_t<std::optional<spot_ref_t>> (
           result_t<std::optional<spot_ref_t>>::failure (
-            framework_error_kind_t::invalid_configuration,
+            framework_error_kind_t::not_configured,
             "Spot manager requires a Location Store"));
     const auto read = _location_store
       ->read_authority (
@@ -1172,7 +1529,7 @@ task_t<bool> mesh_node_host_service_t::close_user_spot (
 {
     if (!_location_store)
         return task_t<bool> (result_t<bool>::failure (
-          framework_error_kind_t::invalid_configuration,
+          framework_error_kind_t::not_configured,
           "Spot manager requires a Location Store"));
     const auto source_node = std::find_if (
       _nodes.begin (), _nodes.end (),
@@ -1181,7 +1538,7 @@ task_t<bool> mesh_node_host_service_t::close_user_spot (
       });
     if (source_node == _nodes.end ())
         return task_t<bool> (result_t<bool>::failure (
-          framework_error_kind_t::mesh_not_found,
+          framework_error_kind_t::not_found,
           "The SpotRef Mesh is not registered in this process"));
     const auto source = *source_node;
     const auto read = _location_store
@@ -1195,7 +1552,7 @@ task_t<bool> mesh_node_host_service_t::close_user_spot (
         return task_t<bool> (result_t<bool>::success (false));
     if (snapshot->object_generation != spot.object_generation ())
         return task_t<bool> (result_t<bool>::failure (
-          framework_error_kind_t::spot_generation_stale,
+          framework_error_kind_t::invalid_operation,
           "User Spot generation is stale"));
     if (snapshot->allocation.object_kind
           != placement_object_kind_t::user_spot
@@ -1205,7 +1562,7 @@ task_t<bool> mesh_node_host_service_t::close_user_spot (
         || snapshot->allocation.target.node_rid.value ()
              != spot.node_rid ().value ())
         return task_t<bool> (result_t<bool>::failure (
-          framework_error_kind_t::spot_moving,
+          framework_error_kind_t::unavailable,
           "User Spot owner is moving"));
     const auto source_status = source->native_node ().status ();
     protocol::user_spot_close_header_t command{
@@ -1256,7 +1613,7 @@ task_t<bool> mesh_node_host_service_t::close_user_spot (
     if (!accepted)
         completion->complete (
           result_t<bool>::failure (
-            framework_error_kind_t::request_rejected,
+            framework_error_kind_t::rejected,
             "User Spot close operation was not admitted"));
     return output;
 }
@@ -1279,7 +1636,7 @@ void mesh_node_host_service_t::start (service_provider_t &services)
     _location_owner = location_runtime.current_owner_token ();
     if (!_location_owner)
         throw framework_exception_t (
-          framework_error_kind_t::invalid_configuration,
+          framework_error_kind_t::not_configured,
           "MeshNode publication requires an active Location owner lease");
     std::shared_ptr<stateful::relocation_store_port_t>
       instance_relocations;
@@ -1398,7 +1755,7 @@ void mesh_node_host_service_t::start (service_provider_t &services)
         if (!registration->spot_state->snapshot.instance_spot_names.empty ()) {
             if (!instance_relocations)
                 throw framework_exception_t (
-                  framework_error_kind_t::invalid_configuration,
+                  framework_error_kind_t::not_configured,
                   "Instance Spot factories require a Relocation Store");
             _nodes[index]->configure_instance_spot_operations (
               store, instance_relocations, *_location_owner,
@@ -1456,6 +1813,15 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                           0, 0, std::move (application_reply)};
                     }
                     catch (const framework_exception_t &error) {
+                        detail::dispatch_error_reporter_t (_dispatch_options)
+                          .report (message_dispatch_error_event_t{
+                            .surface = dispatch_error_surface_t::spot_route,
+                            .message_kind = dispatch_message_kind_t::request,
+                            .reason = detail::dispatch_reason_from_error (&error),
+                            .action = dispatch_error_action_t::reply_error,
+                            .packet_name = application.packet_name,
+                            .spot_id = request.target.spot_id,
+                            .exception = std::make_exception_ptr (error)});
                         return host::instance_spot_activation_result_t{
                           105,
                           static_cast<std::uint32_t> (
@@ -1468,6 +1834,84 @@ void mesh_node_host_service_t::start (service_provider_t &services)
     for (std::size_t index = 0; index < _nodes.size (); ++index) {
         const auto &node = _nodes[index];
         const auto registration = _registrations[index];
+        node->configure_actor_create_operations (
+          [node, store] (const protocol::actor_create_header_t &request,
+                  host::actor_create_operation_target_completion_t completion) {
+              const auto failed = [&] {
+                  host::actor_create_operation_result_t result;
+                  result.reply.header = {
+                    request.correlation,
+                    105u,
+                    static_cast<std::uint32_t> (
+                      protocol::framework_error_code::actorCreateFailed)};
+                  return result;
+              };
+              const auto status = node->status ();
+              if (request.reservation.target_node_routing_id
+                    != status.routing_id ().to_bytes ()
+                  || request.reservation.target_node_generation
+                       != status.lifecycle_generation ()) {
+                  completion (failed ());
+                  return;
+              }
+              const auto now = std::chrono::system_clock::now ();
+              const auto deadline =
+                std::chrono::system_clock::time_point (
+                  std::chrono::milliseconds (request.deadline_unix_ms));
+              if (deadline <= now) {
+                  completion (failed ());
+                  return;
+              }
+              const auto timeout = std::chrono::duration_cast<
+                std::chrono::milliseconds> (deadline - now);
+              const auto creation_bytes = read_actor_creation_request (
+                store, request);
+              if (!creation_bytes) {
+                  completion (failed ());
+                  return;
+              }
+              const auto creation_request = zlink::message_t::from (
+                *creation_bytes);
+              const auto created = node->create_application_actor (
+                request.stable_type, request.actor_id, creation_request,
+                request.reservation.object_generation,
+                request.reservation.authority_owner_generation,
+                timeout);
+              if (!created) {
+                  completion (failed ());
+                  return;
+              }
+              const auto actor = created.value ();
+              const auto joined = node->submit_application_actor_entry_spot_join (
+                actor,
+                node_rid_t::from_string (status.routing_id ().to_string ()),
+                creation_request, timeout,
+                [request, actor, completion] (
+                  result_t<detail::actor_join_reply_t> joined) mutable {
+                    host::actor_create_operation_result_t result;
+                    result.reply.header = {
+                      request.correlation,
+                      105u,
+                      static_cast<std::uint32_t> (
+                        protocol::framework_error_code::actorCreateFailed)};
+                    if (!joined || joined.value ().result_code != 0) {
+                        completion (std::move (result));
+                        return;
+                    }
+                    result.reply.header = {request.correlation, 0u, 0u};
+                    result.reply.result = protocol::actor_create_result_t::created;
+                    result.reply.node_routing_id =
+                      zlink::routing_id_t::from (
+                        std::string (actor.node_rid ().value ())).to_bytes ();
+                    result.reply.actor_id = std::string (actor.actor_id ());
+                    result.reply.object_generation = actor.generation ();
+                    completion (std::move (result));
+                });
+              if (!joined) {
+                  completion (failed ());
+                  return;
+              }
+          });
         node->start ();
         node->native_node ().objects ().configure_relocation_state (
           [registration] (
@@ -1652,7 +2096,7 @@ void mesh_node_host_service_t::start (service_provider_t &services)
             .value ();
         if (written.status != location_write_status_t::stored)
             throw framework_exception_t (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "MeshNode Location descriptor publication was fenced");
         _published_mesh_nodes.push_back (
           {descriptor.mesh_name, descriptor.rid});
@@ -1665,7 +2109,7 @@ void mesh_node_host_service_t::start (service_provider_t &services)
               if (!_location_store || !_location_owner
                   || index >= _published_mesh_descriptors.size ())
                   throw framework_exception_t (
-                    framework_error_kind_t::request_protocol_error,
+                    framework_error_kind_t::protocol_error,
                     "MeshNode Location descriptor publisher is not active");
               auto descriptor = _published_mesh_descriptors[index];
               descriptor.channel_weights = channel_weights;
@@ -1679,7 +2123,7 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                   .value ();
               if (written.status != location_write_status_t::stored)
                   throw framework_exception_t (
-                    framework_error_kind_t::request_protocol_error,
+                    framework_error_kind_t::protocol_error,
                     "MeshNode Location descriptor update was fenced");
               _published_mesh_descriptors[index] = std::move (descriptor);
           });
@@ -1693,6 +2137,12 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                   [&] (const host::ready_record_t &owner,
                        const host::receive_record_t &record,
                        std::vector<zlink::message_t> parts) {
+                      if (record.kind == host::record_kind_t::completion
+                          && record.operation_kind
+                               == host::operation_kind_t::actor_join
+                          && node->complete_application_actor_entry_spot_join (
+                            record, parts))
+                          return;
                       detail::spot_node_runtime_t spot_runtime (registration->spot_state);
                       const bool transfer_dispatch =
                         owner.owner_kind == host::owner_kind_t::actor
@@ -1710,14 +2160,11 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                                 || record.kind == host::record_kind_t::spot_multicast
                                 || record.kind == host::record_kind_t::spot_control));
                       std::uint64_t application_payload_bytes = 0;
-                      if (owner.domain
-                          == host::ready_domain_t::application
-                          && parts.size () >= 2) {
-                          application_payload_bytes =
-                            static_cast<std::uint64_t> (
-                              protocol::decode_application_payload (
-                                parts.back ().to_bytes ())
-                                .payload.size ());
+                      if (owner.domain == host::ready_domain_t::application) {
+                          for (const auto &part : parts) {
+                              application_payload_bytes +=
+                                static_cast<std::uint64_t> (part.to_bytes ().size ());
+                          }
                           _inbound_budget->received (
                             application_payload_bytes);
                       }

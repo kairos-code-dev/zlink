@@ -1,4 +1,4 @@
-// ST-H2: completion outcome과 operation ID 시나리오를 검증한다.
+// ST-H2: Completion outcome 시나리오를 검증한다.
 import {
   SpotActorTransferNames,
   actorNode,

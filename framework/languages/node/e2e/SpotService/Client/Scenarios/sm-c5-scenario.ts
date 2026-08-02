@@ -1,4 +1,4 @@
-// SM-C5: Logical Multicast의 node 간 도달 (제출 성공 ≠ 수신) 시나리오를 검증한다.
+// SM-C5: Logical Multicast remote delivery를 subscriber evidence로 판정한다 시나리오를 검증한다.
 import type {
   CreateSpotReq,
   CreateSpotRes,

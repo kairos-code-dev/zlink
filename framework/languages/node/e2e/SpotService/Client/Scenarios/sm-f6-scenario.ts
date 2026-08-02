@@ -1,4 +1,4 @@
-// SM-F6: 같은 MeshName의 다중 MeshNode에서 원격 Spot·Actor 도달 시나리오를 검증한다.
+// SM-F6: Cross-node Spot call과 Actor Join을 같은 RouteMesh에서 처리한다 시나리오를 검증한다.
 import type {
   EvidenceWaitReq,
   CreateSpotReq,

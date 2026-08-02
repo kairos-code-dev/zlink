@@ -15,6 +15,7 @@
 #include <zlink/framework/contracts/dispatch/execution.hpp>
 #include <zlink/framework/contracts/locations/resolvers.hpp>
 #include <zlink/framework/contracts/monitoring/route_mesh_runtime.hpp>
+#include <zlink/framework/contracts/workers/worker.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -200,6 +201,8 @@ class spot_node_builder_state_t
     std::vector<queued_actor_packet_t> queued_actor_packets;
     std::map<std::string, std::function<std::optional<spot_route_t> (spot_id_t)>> resolvers;
     std::shared_ptr<runtime::offload_executor_t> worker_executor;
+    worker_options_t worker_options;
+    std::stop_source worker_cancellation;
     std::uint64_t next_spot_id = 1;
 };
 
@@ -511,6 +514,7 @@ class spot_node_runtime_t
     std::optional<std::string> spot_name_for (spot_id_t spot_id) const;
     std::optional<spot_route_t> resolve_spot (spot_id_t spot_id) const;
     std::optional<spot_id_t> actor_spot (const actor_ref_t &actor_ref) const;
+    result_t<bool> destroy_actor (const actor_ref_t &actor_ref);
     void record_actor_spot (const actor_ref_t &actor_ref, spot_id_t spot_id);
     std::optional<spot_route_t> actor_route (const actor_ref_t &actor_ref) const;
     std::optional<actor_message_follow_target_t>
@@ -776,17 +780,17 @@ class spot_node_runtime_t
     {
         if (actor_ref.empty ()) {
             return result_t<actor_join_reply_t>::failure (
-              framework_error_kind_t::actor_route_not_found, "actor ref is empty");
+              framework_error_kind_t::not_found, "actor ref is empty");
         }
         auto context = find_context (spot_id);
         if (!context || !context->_state->spot_instance) {
             return result_t<actor_join_reply_t>::failure (
-              framework_error_kind_t::spot_route_not_found, "target spot is not registered");
+              framework_error_kind_t::not_found, "target spot is not registered");
         }
         auto &spot = *static_cast<TSpot *> (context->_state->spot_instance.get ());
         if constexpr (!has_actor_join_callback<TSpot>) {
             return result_t<actor_join_reply_t>::failure (
-              framework_error_kind_t::handler_not_found,
+              framework_error_kind_t::not_found,
               "spot actor join callback is not registered");
         } else {
             const auto response = invoke_actor_join_callback (
@@ -812,27 +816,27 @@ class spot_node_runtime_t
     {
         if (actor_ref.empty ()) {
             return result_t<actor_join_reply_t>::failure (
-              framework_error_kind_t::actor_route_not_found, "actor ref is empty");
+              framework_error_kind_t::not_found, "actor ref is empty");
         }
         if (spot_node_rid.empty ()
             || spot_node_rid.value () != detail::effective_spot_node_rid (_state->snapshot)) {
             return result_t<actor_join_reply_t>::failure (
-              framework_error_kind_t::spot_route_not_found,
+              framework_error_kind_t::not_found,
               "spot node rid does not match this node");
         }
         if (!_state->snapshot.entry_spot_name) {
             return result_t<actor_join_reply_t>::failure (
-              framework_error_kind_t::spot_route_not_found, "entry spot is not registered");
+              framework_error_kind_t::not_found, "entry spot is not registered");
         }
         const auto entry_id = _state->spot_ids_by_name.find (*_state->snapshot.entry_spot_name);
         if (entry_id == _state->spot_ids_by_name.end ()) {
             return result_t<actor_join_reply_t>::failure (
-              framework_error_kind_t::spot_route_not_found, "entry spot is not created");
+              framework_error_kind_t::not_found, "entry spot is not created");
         }
         auto context = find_context (entry_id->second);
         if (!context || !context->_state->spot_instance) {
             return result_t<actor_join_reply_t>::failure (
-              framework_error_kind_t::spot_route_not_found, "entry spot context is not registered");
+              framework_error_kind_t::not_found, "entry spot context is not registered");
         }
 
         auto &spot = *static_cast<TEntrySpot *> (context->_state->spot_instance.get ());
@@ -860,7 +864,7 @@ class spot_node_runtime_t
     result_t<void> leave_actor (const actor_ref_t &actor_ref, TActor &actor)
     {
         if (actor_ref.empty ()) {
-            return result_t<void>::failure (framework_error_kind_t::actor_route_not_found,
+            return result_t<void>::failure (framework_error_kind_t::not_found,
                                             "actor ref is empty");
         }
         commit_actor_left<TActor> (actor_ref, actor);
@@ -871,7 +875,7 @@ class spot_node_runtime_t
     result_t<void> notify_on_disconnect_actor (const actor_ref_t &actor_ref, TActor &actor)
     {
         if (actor_ref.empty ()) {
-            return result_t<void>::failure (framework_error_kind_t::actor_route_not_found,
+            return result_t<void>::failure (framework_error_kind_t::not_found,
                                             "actor ref is empty");
         }
         const auto key = actor_key (actor_ref);
@@ -897,10 +901,10 @@ class spot_node_runtime_t
             return detail::result_access_t::failure<void> (error);
         }
         catch (const std::exception &error) {
-            return result_t<void>::failure (framework_error_kind_t::request_failed, error.what ());
+            return result_t<void>::failure (framework_error_kind_t::internal_failure, error.what ());
         }
         catch (...) {
-            return result_t<void>::failure (framework_error_kind_t::request_failed,
+            return result_t<void>::failure (framework_error_kind_t::internal_failure,
                                             "spot actor disconnected callback failed");
         }
     }
@@ -1165,14 +1169,14 @@ class spot_node_runtime_t
         const auto found = state.on_create_actor_callbacks.find (std::type_index (typeid (TActor)));
         if (found != state.on_create_actor_callbacks.end () && state.spot_instance) {
             if (!state.channel_runtime || !state.channel_runtime->serializers) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                throw framework_exception_t (framework_error_kind_t::protocol_error,
                                              "spot create actor requires a serializer registry");
             }
             if (!state.run_serial_sync ("spot-lifecycle-create", [&] {
                     found->second (state.spot_instance.get (), &actor, request,
                                    *state.channel_runtime->serializers);
                 })) {
-                throw framework_exception_t (framework_error_kind_t::request_rejected,
+                throw framework_exception_t (framework_error_kind_t::rejected,
                                              "spot serial queue is full");
             }
         }

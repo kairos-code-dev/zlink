@@ -1,4 +1,4 @@
-// SM-B4: remote actor request 시나리오를 검증한다.
+// SM-B4: Remote Actor request를 current owner로 보낸다 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

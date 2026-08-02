@@ -23,11 +23,11 @@ using play_b_owner_http_client_t =
 inline std::string public_error_kind_name (zlink::framework::framework_error_kind_t kind)
 {
     switch (kind) {
-        case zlink::framework::framework_error_kind_t::actor_dispatch_handler_not_found:
+        case zlink::framework::framework_error_kind_t::not_found:
             return "actor_dispatch_handler_not_found";
-        case zlink::framework::framework_error_kind_t::handler_not_found:
+        case zlink::framework::framework_error_kind_t::not_found:
             return "handler_not_found";
-        case zlink::framework::framework_error_kind_t::route_handler_not_found:
+        case zlink::framework::framework_error_kind_t::not_found:
             return "route_handler_not_found";
         default:
             return "request_failed";
@@ -64,7 +64,7 @@ class join_spot_handler_t
         auto current = _actors.find (request.actor_id);
         if (!current) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              zlink::framework::framework_error_kind_t::not_found,
               "joined actor route was not found");
         }
         auto reply =
@@ -183,7 +183,7 @@ class mutate_spot_state_handler_t
         auto actor = _actors.find (request.actor_id);
         if (!actor) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              zlink::framework::framework_error_kind_t::not_found,
               "state actor route was not found");
         }
         auto reply =
@@ -250,7 +250,7 @@ class complex_actor_handler_t
         auto current = _actors.find (request.join.actor_id);
         if (!current) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              zlink::framework::framework_error_kind_t::not_found,
               "complex actor route was not found");
         }
         auto join_reply =
@@ -332,7 +332,7 @@ class missing_actor_handler_t
         auto current = _actors.find (request.join.actor_id);
         if (!current) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              zlink::framework::framework_error_kind_t::not_found,
               "missing actor route was not found");
         }
         auto join_reply =
@@ -420,7 +420,7 @@ class remote_actor_flow_handler_t
         auto current = _actors.find (request.join.actor_id);
         if (!current) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              zlink::framework::framework_error_kind_t::not_found,
               "remote actor route was not found");
         }
         auto join_reply =
@@ -462,7 +462,7 @@ class remote_actor_flow_handler_t
                            .yield_raw ();
         if (forwarded.status >= 400) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_failed,
+              zlink::framework::framework_error_kind_t::internal_failure,
               "remote actor HTTP forward status " + std::to_string (forwarded.status) + ": "
                 + forwarded.body);
         }
@@ -540,7 +540,7 @@ class remote_actor_request_handler_t
         auto current = _actors.find (request.join.actor_id);
         if (!current) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              zlink::framework::framework_error_kind_t::not_found,
               "remote actor route was not found");
         }
         auto join_reply =
@@ -583,7 +583,7 @@ class remote_actor_request_handler_t
                            .yield_raw ();
         if (forwarded.status >= 400) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_failed,
+              zlink::framework::framework_error_kind_t::internal_failure,
               "remote actor request HTTP forward status " + std::to_string (forwarded.status)
                 + ": " + forwarded.body);
         }
@@ -622,7 +622,7 @@ class worker_spot_handler_t
         auto actor = _actors.find (request.actor_id);
         if (!actor) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              zlink::framework::framework_error_kind_t::not_found,
               "worker actor route was not found");
         }
         auto reply =

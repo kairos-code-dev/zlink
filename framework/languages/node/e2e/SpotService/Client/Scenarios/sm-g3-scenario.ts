@@ -1,4 +1,4 @@
-// SM-G3: 동시 join/leave 경합 시나리오를 검증한다.
+// SM-G3: Concurrent Join·Leave requests가 membership terminal을 하나씩 만든다 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

@@ -93,7 +93,7 @@ public class Program {
                     factory -> factory.recreateOnRelocation());
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(api.streamEndpoint())
-                .enableActorDispatch(SampleNames.PlayerQuestSpotDiscovery)
+                .enableActorDispatch()
                 .registerSession(GameQuestSession.class);
         };
     }

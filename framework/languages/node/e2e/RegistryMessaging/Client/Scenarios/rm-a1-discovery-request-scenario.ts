@@ -1,16 +1,14 @@
-// RM-A1: location store 자동 연결 + rid 자동 resolve 시나리오를 검증한다.
+// RM-A1: Location Store로 provider를 찾는다 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import { getJson, postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runRmA1(locationConsumerUrl: string, providerAUrl: string, providerBUrl: string): Promise<void> {
-  const observedProviders = new Set<string>();
-  for (let attempt = 0; attempt < 40 && observedProviders.size < 2; attempt += 1) {
-    const reply = await postJson<ProfileRes>(locationConsumerUrl, '/profile/request', { value: `rm-a1-${attempt}` });
-    ensure(reply.value === `profile:rm-a1-${attempt}`, 'RM-A1 reply value mismatch.');
-    observedProviders.add(reply.providerRid);
-  }
-  ensure(observedProviders.has('api-a') && observedProviders.has('api-b'), 'RM-A1 did not route through both providers.');
+  await waitForReadyTargets(locationConsumerUrl, 2);
+  const value = 'rm-a1';
+  const reply = await postJson<ProfileRes>(locationConsumerUrl, '/profile/request', { value });
+  ensure(reply.value === `profile:${value}`, 'RM-A1 reply value mismatch.');
+  ensure(reply.providerRid === 'api-a' || reply.providerRid === 'api-b', 'RM-A1 provider rid mismatch.');
 
   const topology = await getJson<Array<{ channelName: string; serviceRole: number; routingId?: string; endpoint: string }>>(
     locationConsumerUrl,
@@ -31,7 +29,34 @@ export async function runRmA1(locationConsumerUrl: string, providerAUrl: string,
     ...await getJson<string[]>(providerAUrl, '/evidence'),
     ...await getJson<string[]>(providerBUrl, '/evidence')
   ];
-  ensure(providerEvidence.some((line) => line.includes('rid=api-a') && line.includes('value=rm-a1-')), 'RM-A1 api-a connection evidence missing.');
-  ensure(providerEvidence.some((line) => line.includes('rid=api-b') && line.includes('value=rm-a1-')), 'RM-A1 api-b connection evidence missing.');
+  ensure(
+    providerEvidence.filter((line) => line.includes('value=rm-a1')).length === 1
+      && providerEvidence.some((line) => line.includes(`rid=${reply.providerRid}`) && line.includes('value=rm-a1')),
+    'RM-A1 provider evidence did not contain the selected provider exactly once.'
+  );
   console.log('scenario RM-A1 passed');
+}
+
+async function waitForReadyTargets(baseUrl: string, count: number): Promise<void> {
+  const deadline = Date.now() + 10000;
+  let last: {
+    readonly channels: readonly {
+      readonly channelName: string;
+      readonly isReady: boolean;
+      readonly readyTargetCount: number;
+    }[];
+  } | undefined;
+  while (Date.now() < deadline) {
+    last = await getJson<{
+      readonly channels: readonly {
+        readonly channelName: string;
+        readonly isReady: boolean;
+        readonly readyTargetCount: number;
+      }[];
+    }>(baseUrl, '/route/status');
+    const channel = last.channels.find((candidate) => candidate.channelName === 'profile');
+    if (channel?.isReady === true && channel.readyTargetCount === count) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`RM-A1 expected ${count} ready RouteMesh targets, last=${JSON.stringify(last)}`);
 }

@@ -29,7 +29,7 @@ import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
@@ -77,7 +77,7 @@ public final class Program {
         http.postAsync("/ensure-ref", Contracts.ActorCallRequest.class, request ->
             actors.getOrCreate(request.actorId(), Contracts.ACTOR_TYPE, ZLinkMessage.of("create"))
                 .thenApply(actor -> new Contracts.ActorRefWire(
-                    actor.nodeRid().toHex(), actor.actorId(), actor.generation())));
+                    actor.nodeRid().toHex(), actor.actorId(), actor.objectGeneration())));
         http.postAsync("/push", Contracts.BoundPushRequest.class, request ->
             actors.find(request.actorId()).thenCompose(found -> actorClient.requestToActor(
                     found.orElseThrow(() -> new IllegalStateException(
@@ -270,7 +270,7 @@ public final class Program {
         public CompletionStage<Contracts.ActorReply> handle(
             TestEntrySpot entrySpot,
             TestActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             Contracts.ActorAsk request) {
             evidence.append(new Contracts.ActorEvidence(request.scenario(), actor.actorId(), "request", request.value()));
             return CompletableFuture.completedFuture(new Contracts.ActorReply(
@@ -293,7 +293,7 @@ public final class Program {
         public CompletionStage<Contracts.BoundPushReply> handle(
             TestEntrySpot entrySpot,
             TestActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             Contracts.BoundPushRequest request) {
             actor.context().boundSession().send(new Contracts.BoundPushNotify(
                 request.scenario(), actor.actorId(), request.value())).submit();
@@ -319,7 +319,7 @@ public final class Program {
         public CompletionStage<Contracts.DestroyActorReply> handle(
             TestEntrySpot entrySpot,
             TestActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             Contracts.DestroyActorRequest request) {
             if (!actor.actorId().equals(request.actorId())) {
                 return CompletableFuture.failedFuture(
@@ -348,7 +348,7 @@ public final class Program {
         public CompletionStage<Contracts.UnbindActorReply> handle(
             TestEntrySpot entrySpot,
             TestActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             Contracts.UnbindActorRequest request) {
             return actor.context().boundSession().disconnect().thenApply(ignored -> {
                 evidence.append(new Contracts.ActorEvidence(

@@ -107,7 +107,7 @@ public final class Program {
                     }
                     state.record(
                         "DispatchError",
-                        error.spotRid(),
+                        error.spotId(),
                         error.errorReason() + "/" + error.errorAction() + "/" + error.packetName());
                     return java.util.concurrent.CompletableFuture.completedFuture(null);
                 });
@@ -174,7 +174,7 @@ public final class Program {
                             play.tlsCertificatePath(),
                             play.tlsKeyPath());
                 }
-                stream.enableActorDispatch(Contracts.SPOT_MESH);
+                stream.enableActorDispatch();
                 stream.registerSession(ScenarioSession.class);
             }
         };

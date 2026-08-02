@@ -77,6 +77,7 @@ public interface IZLinkStreamNodeBuilder
     IZLinkStreamNodeBuilder Bind(int port = 0);
     IZLinkStreamNodeBuilder SetBindHost(string bindHost);
     IZLinkStreamNodeBuilder SetAdvertiseHost(string advertiseHost);
+    IZLinkSocketConfig ConfigureSocket();
 }
 ```
 

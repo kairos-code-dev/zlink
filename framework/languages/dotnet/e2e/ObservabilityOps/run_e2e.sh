@@ -199,7 +199,7 @@ configure_topology_for_scenario() {
     PLAY_B_WEIGHT=1
     PLAY_C_WEIGHT=1
     PLAY_D_WEIGHT=10
-  elif [[ "$scenario" == "OBS-C9-MANUAL" ]]; then
+  elif [[ "$scenario" == "OBS-C9B" ]]; then
     PLAY_A_MANUAL_PEER="$PLAY_B_ROUTER"
   fi
   if [[ "$scenario" == "OBS-C11" || "$scenario" == "OBS-C12" ]]; then
@@ -246,6 +246,10 @@ if [[ "$SCENARIO" != "all" && "$SCENARIO" != *","* ]]; then
   configure_topology_for_scenario "$SCENARIO"
 fi
 start_topology
+if [[ "$SCENARIO" == "OBS-C9A" || "$SCENARIO" == "OBS-C9B" ]]; then
+  python3 "$ROOT_DIR/wait_relocation_readiness.py" \
+    "$PLAY_A_URL" "$PLAY_B_URL" "$LOG_DIR" 10
+fi
 if [[ "$SCENARIO" == "all" ]]; then
   run_client "OBS-A1,OBS-A2,OBS-A3,OBS-A4,OBS-A5"
   terminate_roles
@@ -274,20 +278,18 @@ if [[ "$SCENARIO" == "all" ]]; then
   TOPOLOGY_PHASE=c5-simultaneous
   start_topology
   run_client OBS-C5 simultaneous
-  for scenario in OBS-C6 OBS-C7 OBS-C8 OBS-C9 OBS-C11 OBS-C12; do
+  for scenario in OBS-C6 OBS-C7 OBS-C8 OBS-C9A OBS-C9B OBS-C11 OBS-C12; do
     terminate_roles
     REDIS_KEY_PREFIX="observability-ops:$RUN_ID:$scenario:"
     TOPOLOGY_PHASE="${scenario,,}"
     configure_topology_for_scenario "$scenario"
     start_topology
+    if [[ "$scenario" == "OBS-C9A" || "$scenario" == "OBS-C9B" ]]; then
+      python3 "$ROOT_DIR/wait_relocation_readiness.py" \
+        "$PLAY_A_URL" "$PLAY_B_URL" "$LOG_DIR" 10
+    fi
     run_client "$scenario"
   done
-  terminate_roles
-  REDIS_KEY_PREFIX="observability-ops:$RUN_ID:OBS-C9-MANUAL:"
-  TOPOLOGY_PHASE=obs-c9-manual
-  configure_topology_for_scenario OBS-C9-MANUAL
-  start_topology
-  run_client OBS-C9-MANUAL
   terminate_roles
   REDIS_KEY_PREFIX="observability-ops:$RUN_ID:OBS-C10:"
   TOPOLOGY_PHASE=obs-c10

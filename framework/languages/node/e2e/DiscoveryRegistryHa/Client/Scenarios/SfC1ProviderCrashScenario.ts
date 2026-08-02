@@ -1,4 +1,4 @@
-// SF-C1: provider crash → owner lease 만료 → stale descriptor 제외 시나리오를 검증한다.
+// SF-C1: Crash한 provider를 lease 만료 뒤 제외한다 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../../../http-client';

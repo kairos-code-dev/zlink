@@ -120,7 +120,7 @@ inline result_t<void> defer_current_serial_turn (
     auto turn = capture_current_serial_turn ();
     if (!turn || turn->released ()) {
         return result_t<void>::failure (
-          framework_error_kind_t::invalid_configuration,
+          framework_error_kind_t::not_configured,
           "Actor join defer requires an open Framework handler turn");
     }
     return turn->defer (std::move (work), std::move (cancel));
@@ -322,10 +322,10 @@ template <typename T> class task_t
             }
             catch (const std::exception &error) {
                 completion.complete (
-                  result_t<T>::failure (framework_error_kind_t::request_failed, error.what ()));
+                  result_t<T>::failure (framework_error_kind_t::internal_failure, error.what ()));
             }
             catch (...) {
-                completion.complete (result_t<T>::failure (framework_error_kind_t::request_failed,
+                completion.complete (result_t<T>::failure (framework_error_kind_t::internal_failure,
                                                            "unhandled coroutine exception"));
             }
         }
@@ -395,11 +395,11 @@ template <> class task_t<void>
             }
             catch (const std::exception &error) {
                 completion.complete (
-                  result_t<void>::failure (framework_error_kind_t::request_failed, error.what ()));
+                  result_t<void>::failure (framework_error_kind_t::internal_failure, error.what ()));
             }
             catch (...) {
                 completion.complete (result_t<void>::failure (
-                  framework_error_kind_t::request_failed, "unhandled coroutine exception"));
+                  framework_error_kind_t::internal_failure, "unhandled coroutine exception"));
             }
         }
         void return_void () noexcept { completion.complete (result_t<void>::success ()); }
@@ -475,7 +475,7 @@ template <typename T> task_t<T> reschedule_task (task_t<T> task, task_scheduler_
 template <typename T> task_t<T> unsupported_yield_task ()
 {
     return task_t<T> (result_t<T>::failure (
-      framework_error_kind_t::invalid_configuration,
+      framework_error_kind_t::not_configured,
       "yield is available only in a SpotWide User Spot or Instance Spot callback"));
 }
 

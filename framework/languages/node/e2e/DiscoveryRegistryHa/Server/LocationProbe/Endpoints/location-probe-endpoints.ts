@@ -1,15 +1,13 @@
 import {
-  ZLinkLocationAutoConnectType,
-  ZLinkLocationRole,
+  type ZLinkLocationRuntimeQuery,
   ZLinkLocationTopologyState,
-  type ZLinkLocationStore
 } from '@zlink-systems/framework';
 import type { LocationProbeOptions } from '../Configuration/location-probe-options';
 import type { HttpRoute } from '../Support/http-server';
 
 export function createLocationProbeEndpoints(
   options: LocationProbeOptions,
-  store: ZLinkLocationStore,
+  locations: ZLinkLocationRuntimeQuery,
   stop: () => void
 ): readonly HttpRoute[] {
   return [
@@ -19,27 +17,24 @@ export function createLocationProbeEndpoints(
       method: 'GET',
       path: '/location/service-summary',
       handle: async () => {
-        const rows = await store.listPeers({
-          autoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
-          meshName: 'profile',
-          role: ZLinkLocationRole.Router
-        });
-        return [{ channelName: 'profile', serviceRole: ZLinkLocationRole.Router, totalCount: rows.length, readyCount: rows.length }];
+        const page = await locations.listServiceSummaries({ meshName: 'profile' });
+        return page.items.map((row) => ({
+          channelName: row.meshName,
+          serviceRole: 3,
+          totalCount: row.totalCount,
+          readyCount: row.readyCount
+        }));
       }
     },
     {
       method: 'GET',
       path: '/location/topology',
       handle: async () => {
-        const rows = await store.listPeers({
-          autoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
-          meshName: 'profile',
-          role: ZLinkLocationRole.Router
-        });
-        return rows.map((row) => ({
+        const page = await locations.listTopology({ meshName: 'profile' });
+        return page.items.map((row) => ({
           channelName: row.meshName,
-          serviceRole: ZLinkLocationRole.Router,
-          state: ZLinkLocationTopologyState.Ready,
+          serviceRole: 3,
+          state: row.state === ZLinkLocationTopologyState.Ready ? 3 : row.state,
           routingId: row.nodeRid,
           endpoint: row.endpoint
         }));
@@ -49,12 +44,8 @@ export function createLocationProbeEndpoints(
       method: 'GET',
       path: '/location/member-peers',
       handle: async () => {
-        const rows = await store.listPeers({
-          autoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
-          meshName: 'profile',
-          role: ZLinkLocationRole.Router
-        });
-        return rows.map((row) => ({ rid: row.nodeRid, endpoint: row.endpoint, state: ZLinkLocationTopologyState.Ready }));
+        const page = await locations.listTopology({ meshName: 'profile' });
+        return page.items.map((row) => ({ rid: row.nodeRid, endpoint: row.endpoint, state: row.state }));
       }
     },
     { method: 'POST', path: '/shutdown', handle: () => { stop(); return { status: 'stopping' }; } }

@@ -18,7 +18,8 @@ bool retry_policy_t::should_retry (
   int attempt,
   const zlink::framework::result_t<raw_http_response_t> &result) const
 {
-    return !result.has_value () && attempt < _max_retries && result.error ()->is_retriable ();
+    return !result.has_value () && attempt < _max_retries && result.error () != nullptr
+           && zlink::framework::detail::is_transient_error (result.error ()->kind ());
 }
 
 std::chrono::milliseconds retry_policy_t::delay (int attempt)

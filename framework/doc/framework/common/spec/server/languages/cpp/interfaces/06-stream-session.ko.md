@@ -168,7 +168,8 @@ metadata·compression·`submit()` member는 [Channel messaging](03-channel-messa
 같은 admission 계약을 유지한다.
 STREAM application callback, send·reply와 compression extension은 binding message가 아니라
 `zlink::framework::message_t`를 사용한다. Framework codec registry가 typed payload와 이 message 경계를 변환한다.
-Packet callback은 packet name과 immutable metadata를 가진 `session_message_context_t`를 받는다. Reply 가능 여부는
+Framework 내부 recv loop가 raw part를 읽고 queue admission을 완료한 뒤 packet callback을
+실행한다. Packet callback은 packet name과 immutable metadata를 가진 `session_message_context_t`를 받는다. Reply 가능 여부는
 이 Session specialization의 `can_reply`가 제공한다. Connection 종료와 operation cancellation은 `stream_t` lifecycle과
 각 call의 completion으로 처리하며 universal `message_context_t`에 cancellation 상태를 추가하지 않는다.
 `stream_t`의 optional routing ID와 local·remote address는 handshake가 확인한 session identity snapshot이며 packet

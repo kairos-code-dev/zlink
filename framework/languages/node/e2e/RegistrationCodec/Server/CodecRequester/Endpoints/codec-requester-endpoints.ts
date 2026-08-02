@@ -1,8 +1,8 @@
-import type { ZLinkChannelClient } from '@zlink-systems/framework';
+import type { ZLinkRouteClient } from '@zlink-systems/framework';
 import { EchoJsonReq, RegistrationCodecNames, type EchoRes } from '../../../Shared/messages';
 import type { HttpRoute } from '../Support/http-server';
 
-export function createCodecRequesterEndpoints(channel: ZLinkChannelClient): readonly HttpRoute[] {
+export function createCodecRequesterEndpoints(channel: ZLinkRouteClient): readonly HttpRoute[] {
   return [
     {
       method: 'POST',

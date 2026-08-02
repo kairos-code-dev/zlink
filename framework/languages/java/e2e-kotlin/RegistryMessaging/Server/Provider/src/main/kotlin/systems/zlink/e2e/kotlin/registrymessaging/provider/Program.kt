@@ -59,36 +59,23 @@ class ProviderApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("${options.logDir}/${options.rid}-flow.log")
                 .traceLabel(options.rid)
+            framework.addHandlersFromPackageOf(ProfileRequestHandler::class.java)
 
             if (!options.channelEndpoint.isNullOrBlank()) {
                 val channel = framework.addClientServerChannel(Contracts.PROFILE_CHANNEL)
-                channel.configureServerSocket().maxMessageSize(options.maxMessageSize)
-                channel
-                    .enableServer(options.channelEndpoint)
-                    .enableClient()
-                    .setRoutingId(RoutingId.from(options.rid))
-                channel.addRequestHandler(
-                    ProfileRequestHandler::class.java,
-                    ProfileReq::class.java,
-                    ProfileRes::class.java,
-                    Contracts.PROFILE_REQUEST_PACKET,
-                )
-                channel.addRequestHandler(
-                    PayloadRequestHandler::class.java,
-                    PayloadReq::class.java,
-                    PayloadRes::class.java,
-                    Contracts.PAYLOAD_REQUEST_PACKET,
-                )
-                channel.addSendHandler(
-                    ProfileCommandHandler::class.java,
-                    ProfileMsg::class.java,
-                    Contracts.PROFILE_COMMAND_PACKET,
-                )
+                val endpoint = java.net.URI.create(options.channelEndpoint)
+                channel.server()
+                    .setBindHost(endpoint.host)
+                    .setAdvertiseHost(endpoint.host)
+                    .listen(endpoint.port)
+                    .addHandlerGroup(Contracts.CHANNEL_HANDLER_GROUP)
+                channel.client()
             }
 
             if (!options.manualClientEndpoint.isNullOrBlank()) {
                 framework.addClientServerChannel(Contracts.PROFILE_MANUAL_CHANNEL)
-                    .enableClient(options.manualClientEndpoint)
+                    .client()
+                    .connect(options.manualClientEndpoint)
             }
 
             if (!options.routeEndpoint.isNullOrBlank()) {
@@ -96,14 +83,11 @@ class ProviderApplication {
                     .listen(options.routeEndpoint)
                     .setRoutingId(RoutingId.from(options.rid))
                 route.channelName(Contracts.PROFILE_ROUTE_CHANNEL)
+                    .server()
+                    .addHandlerGroup(Contracts.ROUTE_HANDLER_GROUP)
                 for (peer in options.routePeers) {
                     route.peerConnections().connect(peer)
                 }
-                route.addRouteRequestHandler(
-                    RoutePingHandler::class.java,
-                    ScenarioRoutePingReq::class.java,
-                    ScenarioRoutePingRes::class.java,
-                )
             }
         }
 

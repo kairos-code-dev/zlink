@@ -14,6 +14,7 @@ export function createObjectClientEndpoints(
   rid: string,
   runtime: ZLinkRouteMeshRuntime,
   route: ZLinkRouteClient,
+  serverWeight: number | undefined,
   stop: () => void
 ): HttpRoute[] {
   return [
@@ -28,19 +29,19 @@ export function createObjectClientEndpoints(
       handle: () => {
         const snapshot = runtime.snapshot(meshName);
         return {
-          rid: String(snapshot.rid),
+          rid,
           state: snapshot.state,
-          readyPeerCount: snapshot.peers.filter((peer) => peer.ready).length,
+          readyPeerCount: snapshot.peers.filter((peer) => peer.state === ZLinkPeerState.Ready).length,
           channels: snapshot.channels.map((channel) => ({
             channelName: channel.channelName,
-            localWeight: channel.localWeight,
-            readyMemberCount: channel.readyMemberCount
+            isReady: channel.isReady,
+            readyTargetCount: channel.readyTargetCount,
+            localWeight: serverWeight ?? 100
           })),
           peers: snapshot.peers.map((peer) => ({
-            rid: String(peer.rid),
+            rid: String(peer.nodeRid),
             state: peerStateName(peer.state),
-            ready: peer.ready,
-            lastFailure: peer.lastFailure
+            ready: peer.state === ZLinkPeerState.Ready
           }))
         };
       }
@@ -83,9 +84,10 @@ async function nodeDirectOutcome(operation: () => Promise<void>): Promise<{
     await operation();
     return { terminal: 'UnexpectedSuccess', errorKind: '' };
   } catch (error) {
-    const kind = error instanceof ZLinkFrameworkException ? error.kind : 'Error';
+    const kind = error instanceof ZLinkFrameworkException ? String(error.kind) : 'Error';
     return {
-      terminal: kind === ZLinkFrameworkErrorKind.RequestTargetNotFound
+      terminal: error instanceof ZLinkFrameworkException
+        && error.kind === ZLinkFrameworkErrorKind.NotFound
         ? 'NotFound'
         : 'Failed',
       errorKind: kind

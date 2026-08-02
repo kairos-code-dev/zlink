@@ -1,4 +1,4 @@
-// ST-H3: Context identity와 relocation fence 시나리오를 검증한다.
+// ST-H3: Context identity 시나리오를 검증한다.
 import {
   SpotActorTransferNames,
   actorNode,

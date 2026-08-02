@@ -17,7 +17,7 @@ namespace beast = boost::beast;
 [[noreturn]] void fail_decode ()
 {
     throw zlink::framework::framework_exception_t (
-      zlink::framework::framework_error_kind_t::payload_decode_failed,
+      zlink::framework::framework_error_kind_t::protocol_error,
       "HTTP response compressed body is malformed");
 }
 
@@ -42,7 +42,7 @@ std::string inflate_raw (const unsigned char *data, std::size_t size, std::size_
         decoded.append (chunk, sizeof chunk - zs.avail_out);
         if (decoded.size () > decoded_limit) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_failed,
+              zlink::framework::framework_error_kind_t::capacity_exceeded,
               "HTTP response compressed body exceeds max_response_body_size");
         }
         if (ec == beast::zlib::error::end_of_stream) {

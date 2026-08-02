@@ -55,6 +55,7 @@ public interface ZLinkStreamConnector {
     ZLinkStreamConnectionState state();
     ZLinkStreamConnectorOptions options();
     int pendingDispatchCount();
+    int receivedCount(String name);
 
     // lifecycle 표면은 셋뿐이다. 수동 재연결은 connect()의 상태 전이이고,
     // 자동 재연결은 options가 담당한다(공통 스펙 32 §6).
@@ -447,6 +448,7 @@ fun ZLinkStreamConnectorOptions.withStreamCompression(
 fun ZLinkStreamConnectorOptions.withoutStreamCompression(): ZLinkStreamConnectorOptions
 
 class ZLinkKotlinStreamConnector {
+    fun receivedCount(name: String): Int
     fun connect(): ZLinkKotlinLifecycleCall
     fun close(): ZLinkKotlinLifecycleCall
     fun dispatch(): ZLinkKotlinLifecycleCall

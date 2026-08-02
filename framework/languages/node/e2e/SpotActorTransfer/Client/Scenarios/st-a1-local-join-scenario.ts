@@ -1,4 +1,4 @@
-// ST-A1: local join accept 순서 시나리오를 검증한다.
+// ST-A1: Local Join accept 시나리오를 검증한다.
 import { SpotActorTransferNames, nodeA, createSpot, createActor, joinActor, probeActor, waitEvidence, assertOrder, unique, require } from '../Support/scenario-support';
 
 export async function runStA1(): Promise<void> {

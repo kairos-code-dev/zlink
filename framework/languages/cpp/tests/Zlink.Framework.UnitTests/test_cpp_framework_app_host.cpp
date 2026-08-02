@@ -3,6 +3,8 @@
 #include <zlink/framework.hpp>
 #include <zlink/http_client.hpp>
 
+#include "runtime/host/application_hwm_resolver.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
@@ -13,10 +15,11 @@
 #include <iostream>
 #include <memory>
 #include <optional>
-#include <vector>
 #include <string>
 #include <thread>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 #ifdef _WIN32
 #include <process.h>
@@ -254,12 +257,12 @@ struct create_game_http_handler_t
         {
             if (context.method == zlink::framework::http_method_t::post && name.empty ()) {
                 throw zlink::framework::framework_exception_t (
-                  zlink::framework::framework_error_kind_t::request_protocol_error,
+                  zlink::framework::framework_error_kind_t::protocol_error,
                   "name is required");
             }
             if (name == "invalid") {
                 throw zlink::framework::framework_exception_t (
-                  zlink::framework::framework_error_kind_t::request_protocol_error,
+                  zlink::framework::framework_error_kind_t::protocol_error,
                   "name is invalid");
             }
         }
@@ -283,12 +286,12 @@ struct create_game_http_handler_t
         }
         if (request.name == "protocol") {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_protocol_error,
+              zlink::framework::framework_error_kind_t::protocol_error,
               "handler protocol error");
         }
         if (request.name == "failed") {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_failed, "handler failure");
+              zlink::framework::framework_error_kind_t::internal_failure, "handler failure");
         }
         return {.id = request.id,
                 .name = request.name,
@@ -341,7 +344,7 @@ struct nested_app_http_handler_t
         const auto exit_code = nested.run (0, nullptr);
         if (exit_code != 0) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_failed,
+              zlink::framework::framework_error_kind_t::internal_failure,
               "nested app failed");
         }
         return {.id = request.id, .name = "nested:" + request.name};
@@ -524,7 +527,7 @@ int parse_required_int_field (const nlohmann::json &json, const char *field, con
     catch (const std::exception &) {
     }
     throw zlink::framework::framework_exception_t (
-      zlink::framework::framework_error_kind_t::payload_decode_failed, message);
+      zlink::framework::framework_error_kind_t::protocol_error, message);
 }
 
 void to_json (nlohmann::json &json, const create_game_http_handler_t::request_type &value)
@@ -709,10 +712,81 @@ bool wait_for_raw_status (const zlink::http_client::client_t &client, std::strin
     return false;
 }
 
+bool verify_application_hwm_memory_candidates ()
+{
+    using zlink::framework::application_hwm_profile_t;
+    using zlink::framework::runtime::host::detail::application_hwm_memory_limits_t;
+    using zlink::framework::runtime::host::detail::calculate_application_hwm;
+    using zlink::framework::runtime::host::detail::effective_application_memory_limit;
+
+    const application_hwm_memory_limits_t bounded_os{
+      std::nullopt, 4096, 2048, 8192, 16384};
+    if (!effective_application_memory_limit (bounded_os)
+        || *effective_application_memory_limit (bounded_os) != 2048
+        || !calculate_application_hwm (std::nullopt, application_hwm_profile_t::balanced,
+                                       bounded_os)
+        || *calculate_application_hwm (std::nullopt, application_hwm_profile_t::balanced,
+                                       bounded_os)
+             != 204) {
+        return false;
+    }
+
+    const application_hwm_memory_limits_t physical_fallback{
+      std::nullopt, std::nullopt, std::nullopt, std::nullopt, 5000};
+    if (!effective_application_memory_limit (physical_fallback)
+        || *effective_application_memory_limit (physical_fallback) != 5000
+        || !calculate_application_hwm (std::nullopt, application_hwm_profile_t::balanced,
+                                       physical_fallback)
+        || *calculate_application_hwm (std::nullopt, application_hwm_profile_t::balanced,
+                                       physical_fallback)
+             != 500) {
+        return false;
+    }
+
+    const application_hwm_memory_limits_t explicit_process{
+      1000, 64, 128, 256, 512};
+    if (!effective_application_memory_limit (explicit_process)
+        || *effective_application_memory_limit (explicit_process) != 1000) {
+        return false;
+    }
+    const std::vector<std::pair<application_hwm_profile_t, std::uint64_t>> profiles{
+      {application_hwm_profile_t::compact, 20},
+      {application_hwm_profile_t::low_latency, 50},
+      {application_hwm_profile_t::balanced, 100},
+      {application_hwm_profile_t::throughput, 200}};
+    for (const auto &[profile, expected] : profiles) {
+        const auto result = calculate_application_hwm (std::nullopt, profile, explicit_process);
+        if (!result || *result != expected) {
+            return false;
+        }
+    }
+
+    const application_hwm_memory_limits_t no_limit{};
+    if (effective_application_memory_limit (no_limit)
+        || calculate_application_hwm (std::nullopt, application_hwm_profile_t::balanced,
+                                      no_limit)) {
+        return false;
+    }
+    const application_hwm_memory_limits_t zero_limit{
+      std::nullopt, std::nullopt, std::nullopt, std::nullopt, 0};
+    if (calculate_application_hwm (std::nullopt, application_hwm_profile_t::balanced,
+                                   zero_limit)) {
+        return false;
+    }
+    const auto unlimited = calculate_application_hwm (
+      std::uint64_t{0}, application_hwm_profile_t::balanced, no_limit);
+    const auto fixed = calculate_application_hwm (
+      std::uint64_t{123}, application_hwm_profile_t::balanced, no_limit);
+    return unlimited && *unlimited == 0 && fixed && *fixed == 123;
+}
+
 } // namespace
 
 int main ()
 {
+    if (!verify_application_hwm_memory_candidates ()) {
+        return 66;
+    }
     failure_trace_t trace;
     bool duplicate_route_rejected = false;
     try {
@@ -727,7 +801,7 @@ int main ()
     }
     catch (const zlink::framework::framework_exception_t &ex) {
         duplicate_route_rejected =
-          ex.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+          ex.kind () == zlink::framework::framework_error_kind_t::protocol_error;
     }
     if (!duplicate_route_rejected) {
         return 31;
@@ -746,7 +820,7 @@ int main ()
     }
     catch (const zlink::framework::framework_exception_t &ex) {
         system_route_conflict_rejected =
-          ex.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+          ex.kind () == zlink::framework::framework_error_kind_t::protocol_error;
     }
     if (!system_route_conflict_rejected) {
         return 32;
@@ -765,7 +839,7 @@ int main ()
     }
     catch (const zlink::framework::framework_exception_t &ex) {
         duplicate_system_route_rejected =
-          ex.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+          ex.kind () == zlink::framework::framework_error_kind_t::protocol_error;
     }
     if (!duplicate_system_route_rejected) {
         return 37;
@@ -801,7 +875,7 @@ int main ()
     }
     catch (const zlink::framework::framework_exception_t &ex) {
         missing_required_json_rejected =
-          ex.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+          ex.kind () == zlink::framework::framework_error_kind_t::protocol_error;
     }
     if (!missing_required_json_rejected) {
         return 40;
@@ -1126,21 +1200,21 @@ int main ()
         return 26;
     }
     if (!invalid_json_shape_result || invalid_json_shape_result.value ().status != 400
-        || invalid_json_shape_result.value ().body.find ("payload_decode_failed")
+        || invalid_json_shape_result.value ().body.find ("protocol_error")
              == std::string::npos
         || invalid_json_shape_result.value ().body.find ("corr-invalid-json") == std::string::npos
         || invalid_json_shape_result.value ().headers.at ("x-middleware-after") != "seen") {
         return 22;
     }
     if (!route_parse_failure_result || route_parse_failure_result.value ().status != 400
-        || route_parse_failure_result.value ().body.find ("payload_decode_failed")
+        || route_parse_failure_result.value ().body.find ("protocol_error")
              == std::string::npos
         || route_parse_failure_result.value ().body.find ("invalid route id")
              == std::string::npos) {
         return 47;
     }
     if (!query_parse_failure_result || query_parse_failure_result.value ().status != 400
-        || query_parse_failure_result.value ().body.find ("payload_decode_failed")
+        || query_parse_failure_result.value ().body.find ("protocol_error")
              == std::string::npos
         || query_parse_failure_result.value ().body.find ("invalid query page")
              == std::string::npos) {
@@ -1164,22 +1238,22 @@ int main ()
         return 23;
     }
     if (!timeout_mapping_result || timeout_mapping_result.value ().status != 504
-        || timeout_mapping_result.value ().body.find ("timeout") == std::string::npos
+        || timeout_mapping_result.value ().body.find ("deadline_exceeded") == std::string::npos
         || timeout_mapping_result.value ().body.find ("corr-timeout") == std::string::npos
         || timeout_mapping_result.value ().headers.at ("x-middleware-after") != "seen") {
         return 27;
     }
     if (!shutdown_mapping_result || shutdown_mapping_result.value ().status != 503
-        || shutdown_mapping_result.value ().body.find ("shutdown") == std::string::npos) {
+        || shutdown_mapping_result.value ().body.find ("shutting_down") == std::string::npos) {
         return 28;
     }
     if (!protocol_mapping_result || protocol_mapping_result.value ().status != 400
-        || protocol_mapping_result.value ().body.find ("request_protocol_error")
+        || protocol_mapping_result.value ().body.find ("protocol_error")
              == std::string::npos) {
         return 29;
     }
     if (!failed_mapping_result || failed_mapping_result.value ().status != 500
-        || failed_mapping_result.value ().body.find ("request_failed") == std::string::npos) {
+        || failed_mapping_result.value ().body.find ("internal_failure") == std::string::npos) {
         return 30;
     }
     if (!async_post_result || async_post_result.value ().status != 200
@@ -1188,7 +1262,8 @@ int main ()
         return 33;
     }
     if (!async_timeout_mapping_result || async_timeout_mapping_result.value ().status != 504
-        || async_timeout_mapping_result.value ().body.find ("timeout") == std::string::npos) {
+        || async_timeout_mapping_result.value ().body.find ("deadline_exceeded")
+             == std::string::npos) {
         return 34;
     }
     if (!injected_post_result || injected_post_result.value ().status != 200
@@ -1255,7 +1330,7 @@ int main ()
     }
     catch (const zlink::framework::framework_exception_t &ex) {
         missing_required_value_rejected =
-          ex.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+          ex.kind () == zlink::framework::framework_error_kind_t::protocol_error;
     }
     if (!missing_required_value_rejected) {
         return 39;
@@ -1308,7 +1383,8 @@ int main ()
     const auto runtime_status =
       provider.get_required<zlink::framework::framework_runtime_t> ()
         .status ();
-    if (runtime_status.inbound_dispatch.completion_send_limit != 65'536
+    if (runtime_status.inbound_dispatch.application_hwm_bytes == 0
+        || runtime_status.inbound_dispatch.completion_send_limit != 65'536
         || runtime_status.inbound_dispatch.pending_completion_sends != 0
         || runtime_status.sequence == 0) {
         return 61;
@@ -1334,6 +1410,58 @@ int main ()
         return 62;
     }
     runtime_observation->close ();
+    {
+        const std::vector<std::pair<zlink::framework::application_hwm_profile_t,
+                                    std::uint64_t>> profiles{
+          {zlink::framework::application_hwm_profile_t::compact, 20},
+          {zlink::framework::application_hwm_profile_t::low_latency, 50},
+          {zlink::framework::application_hwm_profile_t::balanced, 100},
+          {zlink::framework::application_hwm_profile_t::throughput, 200}};
+        for (const auto &[profile, expected] : profiles) {
+            auto profile_app = zlink::framework::app_t::create ();
+            profile_app.add_zlink_framework (
+              [profile] (zlink::framework::zlink_framework_options_t &options) {
+                  options.configure_inbound_dispatch ()
+                    .set_application_hwm_profile (profile)
+                    .set_process_memory_limit_bytes (std::uint64_t{1000});
+              });
+            const auto profile_status =
+              profile_app.advanced ().services ().build_provider ()
+                .get_required<zlink::framework::framework_runtime_t> ()
+                .status ();
+            if (profile_status.inbound_dispatch.application_hwm_bytes != expected) {
+                return 65;
+            }
+        }
+    }
+    {
+        auto unlimited_app = zlink::framework::app_t::create ();
+        unlimited_app.add_zlink_framework (
+          [] (zlink::framework::zlink_framework_options_t &options) {
+              options.configure_inbound_dispatch ().set_application_hwm_bytes (0);
+          });
+        const auto status =
+          unlimited_app.advanced ().services ().build_provider ()
+            .get_required<zlink::framework::framework_runtime_t> ()
+            .status ();
+        if (status.inbound_dispatch.application_hwm_bytes != 0) {
+            return 67;
+        }
+    }
+    {
+        auto fixed_app = zlink::framework::app_t::create ();
+        fixed_app.add_zlink_framework (
+          [] (zlink::framework::zlink_framework_options_t &options) {
+              options.configure_inbound_dispatch ().set_application_hwm_bytes (123);
+          });
+        const auto status =
+          fixed_app.advanced ().services ().build_provider ()
+            .get_required<zlink::framework::framework_runtime_t> ()
+            .status ();
+        if (status.inbound_dispatch.application_hwm_bytes != 123) {
+            return 68;
+        }
+    }
     std::promise<void> allow_self_close;
     auto allow_self_close_future =
       allow_self_close.get_future ().share ();
@@ -1512,7 +1640,7 @@ int main ()
         }
         catch (const zlink::framework::framework_exception_t &error) {
             rejected =
-              error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+              error.kind () == zlink::framework::framework_error_kind_t::protocol_error;
         }
         return rejected;
     };

@@ -435,7 +435,7 @@ class user_spot_t : public zlink::framework::spot_t<scenario_actor_t>
         const auto actor_id = actor.actor_id;
         if (!request.actor_id.empty () && request.actor_id != actor_id) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_protocol_error,
+              zlink::framework::framework_error_kind_t::protocol_error,
               "Leave request actor does not match dispatched actor");
         }
         auto left = co_await _context.leave_actor (actor.actor_ref, actor);
@@ -747,7 +747,7 @@ class user_spot_t : public zlink::framework::spot_t<scenario_actor_t>
                                                            _context.spot_id (), request);
         }
         catch (const zlink::framework::framework_exception_t &error) {
-            if (error.kind () == zlink::framework::framework_error_kind_t::spot_type_mismatch) {
+            if (error.kind () == zlink::framework::framework_error_kind_t::type_mismatch) {
                 const auto spot_name =
                   _context.manager ().spot_name_for (_context.spot_id ()).value_or ("");
                 _state.record ("SpotTypeMismatch", actor.actor_id,
@@ -785,7 +785,7 @@ class user_spot_t : public zlink::framework::spot_t<scenario_actor_t>
     {
         if (!request.actor_id.empty () && request.actor_id != actor.actor_id) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_protocol_error,
+              zlink::framework::framework_error_kind_t::protocol_error,
               "Snapshot request actor does not match dispatched actor");
         }
         return {.actor_id = actor.actor_id, .seen = actor.ping_seen};
@@ -957,7 +957,7 @@ class entry_spot_t
         catch (const std::exception &error) {
             std::cerr << "entry spot join failed: message=" << error.what () << '\n';
             co_return zlink::framework::result_t<e2e::join_res_t>::failure (
-              zlink::framework::framework_error_kind_t::request_failed, error.what ());
+              zlink::framework::framework_error_kind_t::internal_failure, error.what ());
         }
     }
 
@@ -968,7 +968,7 @@ class entry_spot_t
     {
         if (request.actor_id != actor.actor_id) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_protocol_error,
+              zlink::framework::framework_error_kind_t::protocol_error,
               "admission join request actor does not match dispatched actor");
         }
         auto joined =
@@ -1056,7 +1056,7 @@ class entry_spot_t
     {
         if (!request.actor_id.empty () && request.actor_id != actor.actor_id) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_protocol_error,
+              zlink::framework::framework_error_kind_t::protocol_error,
               "Snapshot request actor does not match dispatched actor");
         }
         return {.actor_id = actor.actor_id, .seen = actor.ping_seen};

@@ -37,7 +37,7 @@ class serial_deferred_barrier_t final : public detail::deferred_barrier_t
     {
         if (!work) {
             return result_t<void>::failure (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "Deferred Actor join barrier work is empty");
         }
         serial_execution_queue_t::async_completion_t complete;
@@ -45,7 +45,7 @@ class serial_deferred_barrier_t final : public detail::deferred_barrier_t
             std::lock_guard lock (_mutex);
             if (_state != state_t::pending) {
                 return result_t<void>::failure (
-                  framework_error_kind_t::already_submitted,
+                  framework_error_kind_t::invalid_operation,
                   "Deferred Actor join barrier is already terminal");
             }
             _state = state_t::activated;
@@ -154,18 +154,18 @@ class serial_turn_handle_impl_t final : public detail::serial_turn_t,
     {
         if (!work) {
             return result_t<void>::failure (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "Deferred Actor join work is empty");
         }
         std::lock_guard lock (_mutex);
         if (_released) {
             return result_t<void>::failure (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "Actor join defer requires an open Framework handler turn");
         }
         if (_deferred.size () >= 64) {
             return result_t<void>::failure (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "A Framework handler may defer at most 64 Actor joins");
         }
         _deferred.push_back (
@@ -321,6 +321,26 @@ bool serial_execution_queue_t::try_post_async_front (std::string name, async_wor
     return true;
 }
 
+bool serial_execution_queue_t::post_async_wait (std::string name,
+                                                async_work_t work,
+                                                std::function<bool ()> stop_requested)
+{
+    if (!work) {
+        throw std::invalid_argument ("serial execution queue work is empty");
+    }
+    std::unique_lock lock (_mutex);
+    _capacity_changed.wait (lock, [&] {
+        return _closed || _queue.size () + _active < _capacity
+               || (stop_requested && stop_requested ());
+    });
+    if (_closed || (stop_requested && stop_requested ())) {
+        return false;
+    }
+    _queue.push_back (work_item_t{std::move (name), std::move (work)});
+    schedule_drain_locked ();
+    return true;
+}
+
 bool serial_execution_queue_t::try_post_deferred (
   std::string name,
   std::function<void ()> work)
@@ -347,9 +367,8 @@ serial_execution_queue_t::reserve_barrier_next (std::string name)
               barrier->reached (std::move (complete));
           })) {
         return result_t<std::shared_ptr<detail::deferred_barrier_t>>::failure (
-          framework_error_kind_t::request_rejected,
-          "Deferred Actor join target queue is full or closed",
-          true);
+          framework_error_kind_t::rejected,
+          "Deferred Actor join target queue is full or closed");
     }
     return result_t<std::shared_ptr<detail::deferred_barrier_t>>::success (
       std::move (barrier));
@@ -389,6 +408,7 @@ void serial_execution_queue_t::close ()
     if (_queue.empty () && _active == 0 && !_draining && !_drain_scheduled) {
         _empty.notify_all ();
     }
+    _capacity_changed.notify_all ();
 }
 
 void serial_execution_queue_t::cancel_pending ()
@@ -399,6 +419,7 @@ void serial_execution_queue_t::cancel_pending ()
         _closed = true;
         _queue.clear ();
         active_turns = _active_turns;
+        _capacity_changed.notify_all ();
     }
     for (auto &turn : active_turns) {
         if (turn) {
@@ -523,6 +544,7 @@ void serial_execution_queue_t::complete_one (std::string name, std::function<voi
         } else if (_queue.empty () && _active == 0) {
             _empty.notify_all ();
         }
+        _capacity_changed.notify_all ();
     }
     for (auto &[deferred_name, work] : deferred_after_active) {
         try {

@@ -39,7 +39,7 @@ class delivery_status_changed_handler_t
         auto actor_ref = co_await _actor_directory.find (request.customer_id);
         if (!actor_ref) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              zlink::framework::framework_error_kind_t::not_found,
               "customer actor route was not found");
         }
         _actors

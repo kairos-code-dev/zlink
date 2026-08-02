@@ -1,4 +1,4 @@
-// RL-C4: location store restart/outage 복구 시나리오를 검증한다.
+// RL-C4: Location Store restart 중 existing messaging을 유지한다 시나리오를 검증한다.
 import { spawn } from 'node:child_process';
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';

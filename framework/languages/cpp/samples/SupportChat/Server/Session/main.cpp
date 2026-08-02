@@ -58,7 +58,7 @@ class supportchat_session_t final : public packet_stream_session_t
                             payload.parse_json<authenticate_req_t> ().access_token})
                 .submit<authenticate_user_res_t> ();
             if (!verified.accepted) {
-                throw framework_exception_t (framework_error_kind_t::request_rejected,
+                throw framework_exception_t (framework_error_kind_t::rejected,
                                              verified.reason.value_or ("AuthenticationRejected"));
             }
             const authenticate_res_t authenticated{*verified.actor_id, *verified.display_name,
@@ -144,20 +144,20 @@ class supportchat_session_t final : public packet_stream_session_t
         if (auto conversation_id = dispatch.metadata ().find (conversation_id_metadata_key)) {
             return std::string (*conversation_id);
         }
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "conversation packet is missing ConversationId metadata");
     }
 
     session_actor_t require_actor (const std::string &actor_id, const std::string &packet_name)
     {
         if (actor_id.empty ()) {
-            throw framework_exception_t (framework_error_kind_t::actor_route_not_found,
+            throw framework_exception_t (framework_error_kind_t::not_found,
                                          "authenticated support actor is required for "
                                            + packet_name);
         }
         auto actor = _actors.find (actor_id);
         if (!actor) {
-            throw framework_exception_t (framework_error_kind_t::actor_route_not_found,
+            throw framework_exception_t (framework_error_kind_t::not_found,
                                          "bound support actor route is not found");
         }
         return *actor;

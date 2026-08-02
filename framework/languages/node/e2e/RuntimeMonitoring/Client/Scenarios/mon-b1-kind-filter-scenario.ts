@@ -1,4 +1,4 @@
-// MON-B1: remote target 실패와 monitoring 부재 시나리오를 검증한다.
+// MON-B1: Remote target 일부가 받지 못해도 topology status를 delivery 결과로 바꾸지 않는다 시나리오를 검증한다.
 import type { EvidenceWaitReq, ProfileRes, ProfileReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../../../http-client';

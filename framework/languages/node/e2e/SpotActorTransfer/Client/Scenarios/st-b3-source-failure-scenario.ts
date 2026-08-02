@@ -1,4 +1,4 @@
-// ST-B3: RecreateOnRelocation policy의 adapter 없는 relocation 시나리오를 검증한다.
+// ST-B3: RecreateOnRelocation 시나리오를 검증한다.
 import { SpotActorTransferNames, nodeA, nodeB, createSpot, createActor, joinActor, probeActor, waitEvidence, assertOrder, mergeEvidence, unique, require } from '../Support/scenario-support';
 
 export async function runStB3(): Promise<void> {

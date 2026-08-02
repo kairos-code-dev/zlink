@@ -59,6 +59,22 @@ internal static class RegistrationScenarioEndpoints
 
             return Results.Ok(new CodecScenarioRes(json, protobuf.Value, packed.Value));
         });
+        app.MapPost("/codec/json-golden", async (
+            IZLinkRouteClient channel,
+            CancellationToken cancellationToken) =>
+        {
+            var request = new JsonGoldenReq(
+                "Ada Lovelace",
+                "ready",
+                -9_223_372_036_854_775_000L,
+                [0x00, 0x7f, 0x80, 0xff],
+                2_147_000_001,
+                0.125,
+                null);
+            return Results.Ok(await channel
+                .RequestToChannel(RegistrationCodecNames.Channel, request)
+                .Async<JsonGoldenRes>(cancellationToken));
+        });
         return app;
     }
 }

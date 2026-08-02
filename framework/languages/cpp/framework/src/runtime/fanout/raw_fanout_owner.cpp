@@ -199,7 +199,6 @@ void raw_fanout_subscriber_t::reconcile_automatic (
         } else if (found->second.automatic
                    && found->second.endpoint
                         != publisher.endpoint) {
-            found->second.socket->close ();
             found->second.endpoint = publisher.endpoint;
             reopen_locked (found->second);
         }
@@ -207,7 +206,7 @@ void raw_fanout_subscriber_t::reconcile_automatic (
     for (auto entry = _connections.begin (); entry != _connections.end ();) {
         if (entry->second.automatic
             && !desired.contains (entry->first)) {
-            entry->second.socket->close ();
+            close_connection_locked (entry->second);
             entry = _connections.erase (entry);
         } else {
             ++entry;
@@ -228,7 +227,7 @@ bool raw_fanout_subscriber_t::disconnect (
     if (found == _connections.end ()) {
         return false;
     }
-    found->second.socket->close ();
+    close_connection_locked (found->second);
     _connections.erase (found);
     return true;
 }
@@ -244,13 +243,14 @@ void raw_fanout_subscriber_t::close () noexcept
         _closed = true;
         for (auto &[id, connection] : _connections) {
             static_cast<void> (id);
-            try {
-                connection.socket->close ();
-            }
-            catch (...) {
-            }
+            close_connection_locked (connection);
         }
         _connections.clear ();
+        try {
+            _poller.close ();
+        }
+        catch (...) {
+        }
         context = std::move (_context);
     }
     if (context) {
@@ -269,6 +269,24 @@ raw_fanout_subscriber_t::try_receive (
 {
     std::lock_guard lock (_mutex);
     for (auto &[intent, connection] : _connections) {
+        if (!connection.socket) {
+            continue;
+        }
+        zlink::poll_event_t readiness;
+        try {
+            if (_poller.wait (
+                  &readiness, 1, std::chrono::milliseconds::zero ())
+                  != 1
+                || readiness.slot != connection.poller_slot
+                || (static_cast<short> (readiness.revents)
+                    & static_cast<short> (zlink::poll_event_flag_t::pollin))
+                     == 0) {
+                continue;
+            }
+        }
+        catch (...) {
+            return {fanout_receive_status_t::no_data, std::nullopt};
+        }
         zlink::topic_message_t message;
         const auto result =
           connection.socket->subscribe (message, zlink::recv_flags_t::dontwait);
@@ -369,21 +387,54 @@ bool raw_fanout_subscriber_t::connect_locked (
     }
     connection_t connection;
     connection.endpoint = std::move (endpoint);
+    connection.poller_slot = _next_poller_slot++;
+    if (_next_poller_slot == 0) {
+        _next_poller_slot = 1;
+    }
     connection.automatic = automatic;
-    reopen_locked (connection);
-    _connections.emplace (std::move (intent), std::move (connection));
+    const auto [inserted, was_inserted] =
+      _connections.emplace (std::move (intent), std::move (connection));
+    if (!was_inserted) {
+        return false;
+    }
+    try {
+        reopen_locked (inserted->second);
+    }
+    catch (...) {
+        close_connection_locked (inserted->second);
+        _connections.erase (inserted);
+        return false;
+    }
     return true;
+}
+
+void raw_fanout_subscriber_t::close_connection_locked (connection_t &connection) noexcept
+{
+    if (!connection.socket) {
+        return;
+    }
+    try {
+        _poller.remove (*connection.socket);
+    }
+    catch (...) {
+    }
+    try {
+        connection.socket->close ();
+    }
+    catch (...) {
+    }
+    connection.socket.reset ();
 }
 
 void raw_fanout_subscriber_t::reopen_locked (connection_t &connection)
 {
-    if (connection.socket) {
-        connection.socket->close ();
-    }
+    close_connection_locked (connection);
     auto socket = std::make_unique<zlink::sub_socket_t> (*_context);
     socket->options ().linger (std::chrono::milliseconds (0));
     socket->set_subscription ("");
     socket->connect (connection.endpoint);
+    _poller.add (*socket, zlink::poll_event_flag_t::pollin,
+                 connection.poller_slot);
     connection.socket = std::move (socket);
     connection.ready = false;
     connection.deadline = {};

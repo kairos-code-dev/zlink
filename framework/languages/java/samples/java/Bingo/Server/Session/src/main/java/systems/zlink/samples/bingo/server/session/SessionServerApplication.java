@@ -50,7 +50,7 @@ public final class SessionServerApplication {
             node.channelName(SampleNames.RoomSpotDiscovery).client();
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(topology.selectedStreamEndpoint())
-                .enableActorDispatch(SampleNames.Mesh)
+                .enableActorDispatch()
                 .registerSession(BingoSession.class);
         };
     }

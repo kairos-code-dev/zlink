@@ -105,7 +105,7 @@ continue_filter_chain (const std::shared_ptr<filter_next_state_t> &state,
         if (state->called) {
             state->duplicate = true;
             throw framework_exception_t (
-              framework_error_kind_t::already_submitted,
+              framework_error_kind_t::invalid_operation,
               "handler filter next may be invoked at most once");
         }
         state->called = true;
@@ -153,20 +153,20 @@ invoke_filter_level (const std::shared_ptr<const filter_list_t> &filters,
     std::lock_guard lock (next_state->mutex);
     if (next_state->duplicate) {
         throw framework_exception_t (
-          framework_error_kind_t::already_submitted,
+          framework_error_kind_t::invalid_operation,
           "handler filter next may be invoked at most once");
     }
     if (!next_state->called) {
         if (is_request_dispatch (context.dispatch_kind)) {
             throw framework_exception_t (
-              framework_error_kind_t::request_rejected,
+              framework_error_kind_t::rejected,
               "handler filter rejected the request without invoking next");
         }
         co_return zlink::message_t{};
     }
     if (!next_state->downstream) {
         throw framework_exception_t (
-          framework_error_kind_t::request_failed,
+          framework_error_kind_t::internal_failure,
           "handler filter returned before its continuation completed");
     }
     if (!*next_state->downstream) {
@@ -389,7 +389,7 @@ result_t<zlink::message_t> handler_registry_t::invoke (std::string_view channel_
         entry = detail::find_by_channel_packet (_state->handlers, channel_name, packet_name);
     }
     if (entry == nullptr) {
-        return result_t<zlink::message_t>::failure (framework_error_kind_t::handler_not_found,
+        return result_t<zlink::message_t>::failure (framework_error_kind_t::not_found,
                                                     "handler is not registered");
     }
 
@@ -398,7 +398,7 @@ result_t<zlink::message_t> handler_registry_t::invoke (std::string_view channel_
                         owned_inbound = detail::resolve_inbound_context (
                           inbound, entry->descriptor, channel_name, packet_name)] () mutable {
         result_t<zlink::message_t> result =
-          result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,
+          result_t<zlink::message_t>::failure (framework_error_kind_t::internal_failure,
                                                "handler failed");
         try {
             result =
@@ -416,7 +416,7 @@ result_t<zlink::message_t> handler_registry_t::invoke (std::string_view channel_
             result = detail::result_access_t::failure<zlink::message_t> (error);
         }
         catch (...) {
-            result = result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,
+            result = result_t<zlink::message_t>::failure (framework_error_kind_t::internal_failure,
                                                           "handler threw an exception");
         }
         if (!result && result.error () != nullptr) {
@@ -439,11 +439,11 @@ result_t<zlink::message_t> handler_registry_t::invoke (std::string_view channel_
     }
     catch (const std::exception &error) {
         completion.complete (result_t<zlink::message_t>::failure (
-          framework_error_kind_t::request_failed, error.what ()));
+          framework_error_kind_t::internal_failure, error.what ()));
     }
     catch (...) {
         completion.complete (result_t<zlink::message_t>::failure (
-          framework_error_kind_t::request_failed, "handler executor rejected invocation"));
+          framework_error_kind_t::internal_failure, "handler executor rejected invocation"));
     }
     return task.result ();
 }
@@ -478,7 +478,7 @@ task_t<zlink::message_t> handler_registry_t::invoke_async (std::string_view chan
     }
     if (entry == nullptr) {
         return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-          framework_error_kind_t::handler_not_found, "handler is not registered"));
+          framework_error_kind_t::not_found, "handler is not registered"));
     }
     auto owned_message = std::make_shared<zlink::message_t> (message);
     auto owned_inbound =
@@ -489,7 +489,7 @@ task_t<zlink::message_t> handler_registry_t::invoke_async (std::string_view chan
                           owned_inbound)] () mutable -> boost::asio::awaitable<
       result_t<zlink::message_t>> {
         result_t<zlink::message_t> result = result_t<zlink::message_t>::failure (
-          framework_error_kind_t::request_failed, "handler failed");
+          framework_error_kind_t::internal_failure, "handler failed");
         try {
             result = co_await runtime::await_task_result (
               invoke_filters_async (
@@ -505,7 +505,7 @@ task_t<zlink::message_t> handler_registry_t::invoke_async (std::string_view chan
             result = detail::result_access_t::failure<zlink::message_t> (error);
         }
         catch (...) {
-            result = result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,
+            result = result_t<zlink::message_t>::failure (framework_error_kind_t::internal_failure,
                                                           "handler threw an exception");
         }
         if (!result && result.error () != nullptr) {
@@ -520,11 +520,11 @@ task_t<zlink::message_t> handler_registry_t::invoke_async (std::string_view chan
     }
     catch (const std::exception &error) {
         return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-          framework_error_kind_t::request_failed, error.what ()));
+          framework_error_kind_t::internal_failure, error.what ()));
     }
     catch (...) {
         return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-          framework_error_kind_t::request_failed, "handler executor rejected invocation"));
+          framework_error_kind_t::internal_failure, "handler executor rejected invocation"));
     }
 }
 
@@ -542,7 +542,7 @@ handler_registry_t &handler_registry_t::add_handler (handler_descriptor_t descri
                  || descriptor.topic.empty ();
       });
     if (duplicate_packet) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "duplicate handler registration");
     }
     const auto key =
@@ -550,7 +550,7 @@ handler_registry_t &handler_registry_t::add_handler (handler_descriptor_t descri
     const auto [_, inserted] = _state->handlers.emplace (
       key, detail::handler_entry_t{std::move (descriptor), std::move (invoker)});
     if (!inserted) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "duplicate handler registration");
     }
     return *this;
@@ -563,7 +563,7 @@ void handler_registry_t::emit_failure (const handler_descriptor_t &descriptor,
         return;
     }
     _state->failure_observer (
-      handler_failure_event_t{descriptor, error.kind (), error.what (), error.is_retriable ()});
+      handler_failure_event_t{descriptor, error.kind (), error.what ()});
 }
 
 } // namespace zlink::framework

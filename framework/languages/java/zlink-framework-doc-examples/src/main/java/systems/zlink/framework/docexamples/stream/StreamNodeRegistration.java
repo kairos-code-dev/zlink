@@ -12,7 +12,7 @@ public final class StreamNodeRegistration {
         // --8<-- [start:register-stream-node]
         options.addStreamNode("client-stream")
             .bind("tcp://0.0.0.0:9100")
-            .enableActorDispatch("play")          // Java는 Actor를 배치한 mesh 이름을 함께 준다.
+            .enableActorDispatch()                  // Actor authority mesh는 Framework가 선택한다.
             .registerSession(PlayStreamSession.class); // 연결마다 만들 session type을 등록한다.
         // --8<-- [end:register-stream-node]
     }

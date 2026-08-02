@@ -20,7 +20,7 @@ internal sealed class BindAwaitActorsControlHandler(
         CancellationToken cancellationToken)
     {
         _ = context;
-        await spots.GetOrCreate(request.SpotRid, AutomaticTurnDispatchNames.SpotType)
+        await spots.GetOrCreate(request.SpotRid, request.SpotType)
             .Async(cancellationToken);
         var bindings = new List<AwaitActorBinding>();
         foreach (var actorId in request.ActorIds)
@@ -56,7 +56,7 @@ internal sealed class EnsureSpotControlHandler(IZLinkSpotManager spots)
         _ = context;
         var result = await spots.GetOrCreate(
                 request.SpotRid,
-                AutomaticTurnDispatchNames.SpotType)
+                request.SpotType)
             .Async(cancellationToken);
         return new EnsureSpotRes(
             result.Spot.SpotId,
@@ -74,7 +74,7 @@ internal sealed class AwaitEvidenceControlHandler(EvidenceStore evidence)
     {
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(new AwaitEvidenceRes(request.RequestId, evidence.Snapshot()));
+        return ValueTask.FromResult(new AwaitEvidenceRes(request.RequestId, evidence.Snapshot(request.RequestId)));
     }
 }
 
@@ -94,6 +94,12 @@ internal sealed class AwaitEvidenceWaitControlHandler(EvidenceStore evidence)
                 && line.Contains(request.Marker, StringComparison.Ordinal)) >= Math.Max(1, request.MinimumCount),
             timeout,
             cancellationToken);
-        return new AwaitEvidenceRes(request.RequestId, snapshot);
+        return new AwaitEvidenceRes(
+            request.RequestId,
+            snapshot
+                .Where(entry => entry.Contains(
+                    $"request={request.RequestId}",
+                    StringComparison.Ordinal))
+                .ToArray());
     }
 }

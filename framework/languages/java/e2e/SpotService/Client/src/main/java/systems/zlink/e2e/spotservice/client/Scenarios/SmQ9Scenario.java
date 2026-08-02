@@ -65,19 +65,19 @@ public final class SmQ9Scenario extends SpotServiceScenarioContext {
                 10_000),
             Contracts.EvidenceSnapshot.class);
 
-        ensure(createdA.spotRid().equals(spotA), "multi-node A create spot mismatch");
+        ensure(createdA.spotId().equals(spotA), "multi-node A create spot mismatch");
         ensure("multi-node-a".equals(createdA.nodeRid()), "multi-node A create reply node mismatch");
         ensure(firstA.value() == 11, "multi-node A route-to-spot reply value mismatch");
-        ensure(directA.spotRid().equals(spotA), "multi-node A direct spot reply target mismatch");
+        ensure(directA.spotId().equals(spotA), "multi-node A direct spot reply target mismatch");
         ensure("multi-node-a".equals(directA.nodeRid()), "multi-node A direct spot reply node mismatch");
         ensure(directA.value() == 11, "multi-node A direct spot reply value mismatch");
         ensure(countEvidence(evidenceA, "MultiNodeStateReq", spotA, "11") >= 2,
             "multi-node A did not process both route-to-spot requests");
 
-        ensure(createdB.spotRid().equals(spotB), "multi-node B create spot mismatch");
+        ensure(createdB.spotId().equals(spotB), "multi-node B create spot mismatch");
         ensure("multi-node-b".equals(createdB.nodeRid()), "multi-node B create reply node mismatch");
         ensure(firstB.value() == 17, "multi-node B route-to-spot reply value mismatch");
-        ensure(directB.spotRid().equals(spotB), "multi-node B direct spot reply target mismatch");
+        ensure(directB.spotId().equals(spotB), "multi-node B direct spot reply target mismatch");
         ensure("multi-node-b".equals(directB.nodeRid()), "multi-node B direct spot reply node mismatch");
         ensure(directB.value() == 17, "multi-node B direct spot reply value mismatch");
         ensure(countEvidence(evidenceB, "MultiNodeStateReq", spotB, "17") >= 2,

@@ -325,7 +325,7 @@ result_t<void> route_channel_runtime_t::complete_request (std::uint64_t request_
 {
     std::lock_guard lock (_mutex);
     if (!_pending_requests.remove (request_seq)) {
-        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+        return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                         "routed reply does not match a pending request");
     }
     return result_t<void>::success ();
@@ -381,11 +381,11 @@ result_t<std::uint64_t> route_channel_runtime_t::register_request_unlocked (
 result_t<void> route_channel_runtime_t::ensure_connected () const
 {
     if (!_running) {
-        return result_t<void>::failure (framework_error_kind_t::route_not_connected,
+        return result_t<void>::failure (framework_error_kind_t::unavailable,
                                         "route channel runtime is not running");
     }
     if (!_send_backend && !_request_backend && _connections.list ().empty ()) {
-        return result_t<void>::failure (framework_error_kind_t::route_not_connected,
+        return result_t<void>::failure (framework_error_kind_t::unavailable,
                                         "route channel has no connected endpoint");
     }
     return result_t<void>::success ();
@@ -400,7 +400,7 @@ result_t<void> route_channel_runtime_t::wait_until_peer_ready (
         ? std::chrono::steady_clock::now () + timeout
         : std::chrono::steady_clock::time_point{};
     result_t<void> last = result_t<void>::failure (
-      framework_error_kind_t::route_not_connected,
+      framework_error_kind_t::unavailable,
       "route channel peer '" + target_node_rid.to_string () + "' is not ready");
     for (;;) {
         {
@@ -446,7 +446,7 @@ route_channel_runtime_t::wait_until_connected (std::chrono::milliseconds timeout
         ? std::chrono::steady_clock::now () + timeout
         : std::chrono::steady_clock::time_point{};
     result_t<void> last =
-      result_t<void>::failure (framework_error_kind_t::route_not_connected,
+      result_t<void>::failure (framework_error_kind_t::unavailable,
                                "route channel is not connected");
     for (;;) {
         {

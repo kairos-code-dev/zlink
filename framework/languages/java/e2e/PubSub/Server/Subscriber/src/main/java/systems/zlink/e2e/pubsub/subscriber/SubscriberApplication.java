@@ -17,6 +17,7 @@ import systems.zlink.e2e.pubsub.subscriber.Infrastructure.EvidenceStore;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
+import systems.zlink.framework.monitoring.ZLinkFanoutRuntime;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
@@ -52,8 +53,8 @@ public final class SubscriberApplication {
         SubscriberOptions options,
         EvidenceStore evidence,
         ObjectMapper json,
-        systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository locations) {
-        return new OperationalEndpoints(options, evidence, json, locations);
+        ZLinkFanoutRuntime fanoutRuntime) {
+        return new OperationalEndpoints(options, evidence, json, fanoutRuntime);
     }
 
     @Bean

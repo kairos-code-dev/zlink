@@ -1,4 +1,4 @@
-// SF-B1: store 장애 중 기존 연결 유지 시나리오를 검증한다.
+// SF-B1: Store 장애 중 기존 connection을 유지한다 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../../../http-client';

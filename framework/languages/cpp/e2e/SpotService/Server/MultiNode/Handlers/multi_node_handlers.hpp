@@ -381,7 +381,7 @@ class multi_node_spot_only_join_handler_t
         auto current = _actors.find (request.actor_id);
         if (!current) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              zlink::framework::framework_error_kind_t::not_found,
               "spot-only joined actor route was not found");
         }
         auto reply = current

@@ -43,7 +43,7 @@ class client_call_codec_t
                                             const std::string &operation_name) const
     {
         if (reply.size () == 0) {
-            return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
+            return result_t<TReply>::failure (framework_error_kind_t::protocol_error,
                                               empty_message);
         }
         auto header = _codec.decode_header (reply);

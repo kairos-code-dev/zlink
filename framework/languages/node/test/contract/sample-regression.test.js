@@ -761,6 +761,11 @@ test('ShoppingMall TypeScript sample uses framework channel topology', () => {
   assert.match(workflowRouter, /start\(request: StartOrderWorkflowReq\)/);
   assert.doesNotMatch(workflowRouter, /\.packetName\(/);
   assert.match(messageContracts, /@ZLinkPacket\(PacketNames\.startOrderWorkflowReq\)/);
+  assert.match(messageContracts, /class StartOrderWorkflowReq[\s\S]*?sourceCommandId: string/);
+  assert.match(messageContracts, /interface StartOrderRes \{[\s\S]*?state: OrderState/);
+  assert.match(messageContracts, /class ContinueOrderWorkflowReq[\s\S]*?sourceCommandId: string/);
+  assert.match(messageContracts, /class RebuildOrderProjectionReq[\s\S]*?sourceCommandId: string/);
+  assert.doesNotMatch(messageContracts, /PrepareInventory|VerifyExpectedVersion/);
   assert.match(
     workflowRouter,
     /requestToSpot\(orderId, payload\)[\s\S]*?\.instanceSpot\(SampleNames\.orderWorkflowSpotType\)[\s\S]*?\.inMesh\(SampleNames\.orderWorkflowSpotMesh\)/

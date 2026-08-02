@@ -249,6 +249,7 @@ public interface IZLinkStreamNodeBuilder
     IZLinkStreamNodeBuilder Bind(int port = 0);
     IZLinkStreamNodeBuilder SetBindHost(string bindHost);
     IZLinkStreamNodeBuilder SetAdvertiseHost(string advertiseHost);
+    IZLinkSocketConfig ConfigureSocket();
     IZLinkStreamNodeBuilder EnableActorDispatch();
     IZLinkStreamNodeBuilder SetTlsServer(
         string certificatePath,
@@ -617,8 +618,10 @@ ChannelName은 local RouteMesh 또는 ClientServer Server 등록을 유일하게
 `null`이며 Auto mode를 뜻한다. `0`은 제한 없음, 양수는 정확한 byte 상한이다.
 `ApplicationHwmProfile` 기본값은 `Balanced`이고 Auto mode에서만
 계산에 사용한다. `ProcessMemoryLimitBytes`는 `null` 또는 양수만 허용한다. Auto mode에서 이 값을
-생략하면 process에 적용된 유한한 container·cgroup·Windows Job Object 상한을 사용하고, 유한한 상한이
-없으면 시스템 물리 메모리 총량을 사용한다. 따라서 Auto mode는 설정 없이도 기동한다.
+생략하면 process에 적용된 유한한 container·cgroup·Windows Job Object와 같은 OS 상한과 .NET GC managed
+heap 상한(`GC.GetGCMemoryInfo().TotalAvailableMemoryBytes`)을 확인한다. 두 값을 모두 확인하면 더 작은
+값을 사용하고, 하나만 확인하면 그 값을 사용한다. 둘 다 확인할 수 없으면 시스템 물리 메모리 총량을 사용한다.
+따라서 Auto mode는 설정 없이도 기동한다.
 
 ## 6. 메시징 metadata
 

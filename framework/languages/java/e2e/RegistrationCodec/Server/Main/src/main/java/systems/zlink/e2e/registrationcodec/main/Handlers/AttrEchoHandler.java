@@ -3,7 +3,6 @@ package systems.zlink.e2e.registrationcodec.main.Handlers;
 import systems.zlink.e2e.registrationcodec.shared.Contracts;
 import systems.zlink.e2e.registrationcodec.main.Infrastructure.EvidenceStore;
 import systems.zlink.framework.ZLinkMessageContext;
-import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.handlers.ZLinkSend;
@@ -28,7 +27,7 @@ public final class AttrEchoHandler {
     @ZLinkSend(packetName = "EchoAttr")
     public java.util.concurrent.CompletionStage<Void> send(
         Contracts.EchoAttrMsg message,
-        ZLinkSendContext context) {
+        ZLinkMessageContext context) {
         state.record("Send", "EchoAttr", message.value());
         return java.util.concurrent.CompletableFuture.completedFuture(null);
     }

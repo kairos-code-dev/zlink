@@ -74,7 +74,7 @@ public final class PublisherEndpoints implements SmartLifecycle {
             Object event = Contracts.MISSING_PACKET.equals(packetName)
                 ? new Contracts.MissingEventMsg(scenario, sequence, value)
                 : new Contracts.EventMsg(scenario, sequence, value);
-            fanout.publish(Contracts.EVENT_CHANNEL, event)
+            fanout.publish(Contracts.EVENT_CHANNEL, topic, event)
                 .submit()
                 .toCompletableFuture()
                 .join();

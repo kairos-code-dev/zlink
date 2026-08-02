@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -83,6 +84,40 @@ final class KotlinConnectorWrapperTest {
 
         assertEquals(7, connectorOptions.withDefaultStreamCompression().maxReceivedMessages())
         assertEquals(7, connectorOptions.withoutStreamCompression().maxReceivedMessages())
+    }
+
+    @Test
+    fun kotlinCompressionDslPreservesInboundObserverLimits() {
+        val connectorOptions = ZLinkStreamConnectorOptions(
+            URI.create("tcp://127.0.0.1:7200"),
+            ZLinkStreamDispatchMode.MANUAL,
+            ofSeconds(1),
+            ofSeconds(2),
+            3,
+            ofSeconds(1),
+            64 * 1024,
+            64 * 1024,
+            7,
+            11,
+            13,
+            true,
+            ofSeconds(1),
+            ofSeconds(5),
+            true,
+            ofMillis(250),
+            ofSeconds(5),
+            2.0,
+            false,
+            ZLinkStreamCompression.LZ4,
+            null,
+            null,
+            null,
+        )
+
+        val disabled = connectorOptions.withoutStreamCompression()
+        assertEquals(11, disabled.maxInboundObserverNotifications())
+        assertEquals(13, disabled.maxInboundObserverPayloadPreviewBytes())
+        assertEquals(ZLinkStreamCompression.NONE, disabled.compression())
     }
 
     @Test
@@ -231,7 +266,6 @@ final class KotlinConnectorWrapperTest {
                     name = "Notice",
                     payload = "{\"value\":\"first\"}".toByteArray(StandardCharsets.UTF_8),
                 ))
-                dispatchNext(connector)
                 server.sendFrame(Frame(
                     kind = 1,
                     codec = 1,
@@ -239,7 +273,6 @@ final class KotlinConnectorWrapperTest {
                     name = "Notice",
                     payload = "{\"value\":\"second\"}".toByteArray(StandardCharsets.UTF_8),
                 ))
-                dispatchNext(connector)
 
                 assertEquals(listOf("first", "second"), sequence.await().map { it.payload()["value"] })
 
@@ -257,8 +290,83 @@ final class KotlinConnectorWrapperTest {
                     name = "Notice",
                     payload = "{\"value\":\"unexpected\"}".toByteArray(StandardCharsets.UTF_8),
                 ))
-                dispatchNext(connector)
                 assertTrue(unexpected.await() != null)
+            } finally {
+                connector.close().await()
+            }
+        }
+    }
+
+    @Test
+    fun timedOutWaiterDoesNotConsumeALaterMessage() = runBlocking {
+        TcpServer().use { server ->
+            val connector = ZLinkStreamConnectorFactory.create(options(server.endpoint())).kotlin()
+            try {
+                connector.connect().await()
+
+                val failure = runCatching {
+                    connector.waitFor<Map<String, String>>("Late")
+                        .timeout(ofMillis(25))
+                        .await()
+                }.exceptionOrNull()
+                assertTrue(failure != null)
+
+                server.sendFrame(Frame(
+                    kind = 1,
+                    codec = 1,
+                    requestSeq = null,
+                    name = "Late",
+                    payload = "{\"value\":\"after-timeout\"}"
+                        .toByteArray(StandardCharsets.UTF_8),
+                ))
+                withTimeout(1_000) {
+                    while (connector.pendingDispatchCount == 0) {
+                        yield()
+                    }
+                }
+
+                val message = connector.waitFor<Map<String, String>>("Late")
+                    .timeout(ofSeconds(1))
+                    .await()
+                assertEquals("after-timeout", message.payload()["value"])
+            } finally {
+                connector.close().await()
+            }
+        }
+    }
+
+    @Test
+    fun cancelledWaiterDoesNotConsumeALaterMessage() = runBlocking {
+        TcpServer().use { server ->
+            val connector = ZLinkStreamConnectorFactory.create(options(server.endpoint())).kotlin()
+            try {
+                connector.connect().await()
+
+                val cancelled = async(start = CoroutineStart.UNDISPATCHED) {
+                    connector.waitFor<Map<String, String>>("Cancelled")
+                        .timeout(ofSeconds(1))
+                        .await()
+                }
+                cancelled.cancelAndJoin()
+
+                server.sendFrame(Frame(
+                    kind = 1,
+                    codec = 1,
+                    requestSeq = null,
+                    name = "Cancelled",
+                    payload = "{\"value\":\"after-cancel\"}"
+                        .toByteArray(StandardCharsets.UTF_8),
+                ))
+                withTimeout(1_000) {
+                    while (connector.pendingDispatchCount == 0) {
+                        yield()
+                    }
+                }
+
+                val message = connector.waitFor<Map<String, String>>("Cancelled")
+                    .timeout(ofSeconds(1))
+                    .await()
+                assertEquals("after-cancel", message.payload()["value"])
             } finally {
                 connector.close().await()
             }

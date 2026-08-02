@@ -21,6 +21,7 @@ class mesh_node_host_service_t;
 } // namespace runtime
 
 class actor_context_t;
+class app_t;
 class bound_session_t;
 class message_t;
 class session_actor_t;
@@ -97,6 +98,7 @@ class message_t
     friend class detail::stream_runtime_t;
     friend class runtime::actor_client_impl_t;
     friend class runtime::mesh_node_host_service_t;
+    friend class app_t;
     friend zlink::message_t detail::message_to_raw (const message_t &message,
                                                     const serializer_registry_t &serializers);
     friend class actor_context_t;
@@ -156,7 +158,7 @@ class message_t
     const serializer_registry_t &require_serializers () const
     {
         if (_serializers == nullptr) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "framework message has no serializer registry");
         }
         return *_serializers;

@@ -1,4 +1,4 @@
-// SM-D3: entry spot vs user spot actor bind 시나리오를 검증한다.
+// SM-D3: Entry·User Spot Actor binding 의미가 같다 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

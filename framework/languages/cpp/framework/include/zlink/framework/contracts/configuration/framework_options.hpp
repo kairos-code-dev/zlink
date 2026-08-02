@@ -11,6 +11,7 @@
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 #include <zlink/framework/contracts/http/http.hpp>
 #include <zlink/framework/contracts/locations/stores.hpp>
+#include <zlink/framework/contracts/workers/worker.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -63,7 +64,7 @@ class inbound_dispatch_options_t
     {
         if (value && *value == 0) {
             throw framework_exception_t (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               "process memory limit must be positive when specified");
         }
         _options->process_memory_limit_bytes = value;
@@ -325,7 +326,7 @@ class metadata_policy_builder_t
     metadata_policy_builder_t &add_forwarded_metadata_key (std::string key)
     {
         if (key.empty ()) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "metadata key must not be empty");
         }
         _options->metadata_policy.add_forwarded_metadata_key (std::move (key));
@@ -448,7 +449,7 @@ class client_server_channel_builder_t
     {
         if (weight < 0 || weight > 10000)
             throw framework_exception_t (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               "client/server server weight must be between 0 and 10000");
         _server_weight = weight;
         apply_channel ();
@@ -856,7 +857,7 @@ class route_mesh_channel_builder_t
     route_mesh_channel_builder_t &set_default_request_timeout (std::chrono::milliseconds timeout)
     {
         if (timeout <= std::chrono::milliseconds::zero ()) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "route mesh request timeout must be greater than zero");
         }
         _default_request_timeout = timeout;
@@ -974,7 +975,7 @@ class stream_node_options_builder_t
     {
         detail::require_non_blank (_stream_name, "STREAM node name is required");
         if (!_options->stream_nodes.insert (_stream_name).second) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "STREAM node '" + _stream_name
                                            + "' is already registered");
         }
@@ -1009,7 +1010,7 @@ class stream_node_options_builder_t
     stream_node_options_builder_t &enable_actor_dispatch ()
     {
         if (!_options->stream_nodes_with_actor_dispatch.insert (_stream_name).second) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "STREAM node '" + _stream_name
                                            + "' already enabled actor dispatch");
         }
@@ -1044,11 +1045,11 @@ class stream_node_options_builder_t
     void set_session_name (std::string session_name)
     {
         if (_session_configured) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "stream node already has a packet session");
         }
         if (!_options->stream_session_names.insert (session_name).second) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "STREAM packet session '" + session_name
                                            + "' is already registered");
         }
@@ -1117,7 +1118,7 @@ class stream_compression_options_builder_t
     use (std::shared_ptr<const stream_compression_codec_t> codec)
     {
         if (!codec) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "STREAM compression codec must not be null");
         }
         set (std::move (codec));
@@ -1181,6 +1182,8 @@ class zlink_framework_options_t
 
     dispatch_options_t dispatch_options () const { return _options->dispatch; }
 
+    worker_options_t &worker () { return _options->worker; }
+
     inbound_dispatch_options_t &configure_inbound_dispatch ()
     {
         return *_inbound_dispatch;
@@ -1214,7 +1217,7 @@ class zlink_framework_options_t
     set_message_follow_duration (std::chrono::milliseconds duration)
     {
         if (duration < std::chrono::milliseconds::zero ()) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "Message Follow duration must not be negative");
         }
         _options->locations.message_follow_duration = duration;
@@ -1224,7 +1227,7 @@ class zlink_framework_options_t
     zlink_framework_options_t &set_default_request_timeout (std::chrono::milliseconds timeout)
     {
         if (timeout <= std::chrono::milliseconds::zero ()) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "request timeout must be greater than zero");
         }
         _options->set_zlink_action ("default_request_timeout", [timeout] (zlink_builder_t &zlink) {
@@ -1238,12 +1241,12 @@ class zlink_framework_options_t
     zlink_framework_options_t &add_location_store (std::shared_ptr<location_store_t> store)
     {
         if (!store) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "location store instance must not be null");
         }
         if (_options->has_location_store_instance) {
             throw framework_exception_t (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               "location store must be registered exactly once");
         }
         _options->has_location_store_instance = true;
@@ -1256,12 +1259,12 @@ class zlink_framework_options_t
     {
         if (!store) {
             throw framework_exception_t (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               "relocation store instance must not be null");
         }
         if (_options->has_relocation_store_instance) {
             throw framework_exception_t (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               "relocation store must be registered exactly once");
         }
         _options->has_relocation_store_instance = true;
@@ -1345,6 +1348,7 @@ class zlink_framework_options_t
         }
         _options->http.validate ();
         detail::validate_framework_options (*_options, *_handler_groups);
+        _options->worker.seal ();
         detail::apply_dispatch_options (*_zlink, _options->dispatch);
         try {
             for (const auto &[_, action] : _options->keyed_zlink_actions) {

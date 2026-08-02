@@ -68,7 +68,7 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
             auto request = payload.parse_json<yd::ensure_spot_req_t> ();
             if (request.spot_id.empty ()) {
                 throw zlink::framework::framework_exception_t (
-                  zlink::framework::framework_error_kind_t::request_protocol_error,
+                  zlink::framework::framework_error_kind_t::protocol_error,
                   "EnsureSpotReq spot_id is missing at session relay");
             }
             auto reply = co_await request_control<yd::ensure_spot_res_t> (
@@ -232,7 +232,7 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
     {
         if (_bound_actors.empty ()) {
             return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
-              zlink::framework::framework_error_kind_t::actor_session_not_bound,
+              zlink::framework::framework_error_kind_t::not_configured,
               "stream session is not bound before " + packet);
         }
         std::string actor_id;
@@ -242,18 +242,18 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
             actor_id = _bound_actors.begin ()->first;
         } else {
             return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
-              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              zlink::framework::framework_error_kind_t::not_found,
               "actor-id metadata is required when multiple actors are bound for " + packet);
         }
         if (!_bound_actors.contains (actor_id)) {
             return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
-              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              zlink::framework::framework_error_kind_t::not_found,
               "bound actor route is not found for " + actor_id + " / " + packet);
         }
         auto actor = _actors.find (actor_id);
         if (!actor) {
             return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
-              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              zlink::framework::framework_error_kind_t::not_found,
               "bound actor route is not found for " + packet);
         }
         return zlink::framework::result_t<zlink::framework::session_actor_t>::success (
@@ -333,7 +333,7 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
             .value ();
         if (!handle) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::spot_route_not_found,
+              zlink::framework::framework_error_kind_t::not_found,
               "Spot '" + spot_id + "' has no live location row.");
         }
         return *handle;
@@ -409,7 +409,7 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
             return std::string (*value);
         }
         throw zlink::framework::framework_exception_t (
-          zlink::framework::framework_error_kind_t::request_protocol_error,
+          zlink::framework::framework_error_kind_t::protocol_error,
           "spot-rid metadata is required");
     }
 

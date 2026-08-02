@@ -109,7 +109,7 @@ TEST (ZLinkFrameworkInstanceSpotActivation,
           auto, std::chrono::milliseconds, auto) {
           return zlink::framework::task_t<zlink::message_t> (
             zlink::framework::result_t<zlink::message_t>::failure (
-              zlink::framework::framework_error_kind_t::request_failed,
+              zlink::framework::framework_error_kind_t::internal_failure,
               "Ready resolve should bypass cold activation"));
       });
 
@@ -175,14 +175,14 @@ TEST (ZLinkFrameworkInstanceSpotActivation,
            const auto &) {
           ++activations;
           return zlink::framework::result_t<void>::failure (
-            zlink::framework::framework_error_kind_t::request_failed,
+            zlink::framework::framework_error_kind_t::internal_failure,
             "must not activate");
       },
       [&] (const auto &, const auto &, auto, auto, auto, auto, auto) {
           ++activations;
           return zlink::framework::task_t<zlink::message_t> (
             zlink::framework::result_t<zlink::message_t>::failure (
-              zlink::framework::framework_error_kind_t::request_failed,
+              zlink::framework::framework_error_kind_t::internal_failure,
               "must not activate"));
       });
 
@@ -190,9 +190,51 @@ TEST (ZLinkFrameworkInstanceSpotActivation,
                           .send_to_spot ("missing", event_t{1})
                           .submit ().result ();
     EXPECT_FALSE (result);
-    EXPECT_EQ (zlink::framework::framework_error_kind_t::spot_route_not_found,
+    EXPECT_EQ (zlink::framework::framework_error_kind_t::not_found,
                result.error_kind ());
     EXPECT_EQ (0, activations.load ());
+}
+
+TEST (ZLinkFrameworkInstanceSpotActivation,
+      MissingRequestUsesDefaultTimeoutForColdActivation)
+{
+    zlink::framework::serializer_registry_t serializers;
+    add_int_serializer<request_t> (serializers);
+    add_int_serializer<reply_t> (serializers);
+
+    zlink::framework::zlink_builder_t builder;
+    auto runtime = zlink::framework::detail::channel_runtime_t::from (
+      builder.message_bus ());
+    runtime.bind_serializers (serializers);
+    resolver_t resolver;
+    runtime.bind_spot_address_resolver (resolver);
+
+    std::chrono::milliseconds observed_timeout{0};
+    runtime.bind_instance_spot_activator (
+      [] (const auto &, const auto &, const auto &, auto, auto,
+          const auto &) {
+          return zlink::framework::result_t<void>::failure (
+            zlink::framework::framework_error_kind_t::internal_failure,
+            "unused one-way activation");
+      },
+      [&observed_timeout] (const auto &, const auto &, auto, auto, auto,
+                           std::chrono::milliseconds timeout, auto) {
+          observed_timeout = timeout;
+          return zlink::framework::task_t<zlink::message_t> (
+            zlink::framework::result_t<zlink::message_t>::failure (
+              zlink::framework::framework_error_kind_t::internal_failure,
+              "activation probe completed"));
+      });
+
+    const auto result = builder.route_client (serializers)
+                          .request_to_spot ("cold-cart", request_t{7})
+                          .instance_spot ("shopping-cart")
+                          .in_mesh ("commerce")
+                          .submit<reply_t> ()
+                          .result ();
+
+    EXPECT_FALSE (result);
+    EXPECT_EQ (std::chrono::seconds (30), observed_timeout);
 }
 
 TEST (ZLinkFrameworkInstanceSpotActivation,
@@ -212,13 +254,13 @@ TEST (ZLinkFrameworkInstanceSpotActivation,
            const auto &) {
           ++activations;
           return zlink::framework::result_t<void>::failure (
-            zlink::framework::framework_error_kind_t::request_failed,
+            zlink::framework::framework_error_kind_t::internal_failure,
             "simulated cold activation rejection");
       },
       [] (const auto &, const auto &, auto, auto, auto, auto, auto) {
           return zlink::framework::task_t<zlink::message_t> (
             zlink::framework::result_t<zlink::message_t>::failure (
-              zlink::framework::framework_error_kind_t::request_failed,
+              zlink::framework::framework_error_kind_t::internal_failure,
               "unused"));
       });
 

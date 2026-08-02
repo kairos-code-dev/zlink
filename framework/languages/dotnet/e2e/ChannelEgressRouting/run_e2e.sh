@@ -10,15 +10,21 @@ SCENARIO="${SCENARIO// /,}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 FANOUT_READINESS_TIMEOUT_SECONDS=20
+CONFIG12_SCENARIOS=(
+  CH-E2E-01 CH-E2E-02 CH-E2E-03
+  CH-E2E-04A CH-E2E-04B CH-E2E-04C
+  CH-E2E-05 CH-E2E-06
+  CH-E2E-07A CH-E2E-07B CH-E2E-07C
+  CH-E2E-08 CH-E2E-09 CH-E2E-10 CH-E2E-11 CH-E2E-12
+  CH-REG-01 CH-REG-02 CH-REG-03 CH-REG-04 CH-REG-05
+  CH-REG-06 CH-REG-07 CH-REG-08 CH-REG-09 CH-REG-10
+)
 if [[ "$SCENARIO" == "all" ]]; then
-  cat >&2 <<'EOF'
-ChannelEgressRouting 'all' is not executable yet.
-Missing selectors: CH-E2E-03, CH-E2E-08,
-CH-REG-02, CH-REG-05.
-Run an implemented selector explicitly; the aggregate runner does not register
-Config 12 until every required selector has real process evidence.
-EOF
-  exit 2
+  for scenario in "${CONFIG12_SCENARIOS[@]}"; do
+    "$0" "$scenario"
+  done
+  echo "channel-egress-routing e2e result=passed scenarios=${#CONFIG12_SCENARIOS[@]}"
+  exit 0
 fi
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
@@ -208,7 +214,7 @@ curl --max-time 2 -fsS "${URLS[api]}/topology/game" \
 curl --max-time 2 -fsS "${URLS[session]}/locations" \
   >"$LOG_DIR/location.topology.json"
 
-if [[ "$SCENARIO" == *"CH-REG-05"* ]]; then
+if [[ "$SCENARIO" == *"CH-REG-05"* || "$SCENARIO" == *"CH-E2E-04C"* ]]; then
   curl --max-time 2 -fsS \
     "${URLS[workflow-client]}/client-server/workflow.command" \
     >"$LOG_DIR/workflow.before-replacement.json"
@@ -225,6 +231,17 @@ if [[ "$SCENARIO" == *"CH-REG-05"* ]]; then
   curl --max-time 2 -fsS \
     "${URLS[workflow-client]}/client-server/workflow.command" \
     >"$LOG_DIR/workflow.after-replacement.json"
+fi
+
+if [[ "$SCENARIO" == *"CH-E2E-07C"* ]]; then
+  # Keep the known descriptor and its physical connection while excluding the
+  # target from new selection. Removing the descriptor would correctly
+  # produce NotFound instead of the required Unavailable result.
+  curl --max-time 2 -fsS -X POST \
+    "${URLS[api]}/client-server/game.api/weight/0" >/dev/null
+  wait_json "${URLS[session]}/topology/game" \
+    "any(channel['channelName'] == 'game.api' and channel['readyTargetCount'] == 0 for channel in value['channels'])" \
+    "game.api unavailable after weight update"
 fi
 
 python3 - "$CONFIG_DIR/client.json" "$SCENARIO" "$SERVER_PROJECT" \

@@ -13,6 +13,7 @@
 #include <zlink/framework/contracts/http/http.hpp>
 #include <zlink/framework/contracts/locations/options.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>
+#include <zlink/framework/contracts/workers/worker.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -52,7 +53,7 @@ inline bool is_blank (const std::string &value)
 inline void require_non_blank (const std::string &value, const char *message)
 {
     if (value.empty () || is_blank (value)) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error, message);
+        throw framework_exception_t (framework_error_kind_t::protocol_error, message);
     }
 }
 
@@ -273,7 +274,7 @@ struct handler_group_options_state_t
         require_non_blank (group_name, "handler group name is required");
         auto &packets = handler_packets_by_group[group_name];
         if (!packets.emplace (kind, std::move (topic), std::move (packet_name)).second) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "duplicate handler registration");
         }
     }
@@ -308,7 +309,7 @@ struct handler_group_options_state_t
         if (channel.allowed_kinds.contains (kind)) {
             return;
         }
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      channel.surface_name + " '" + channel.channel_name
                                        + "' maps handler group '" + group_name
                                        + "' with an incompatible handler kind");
@@ -355,6 +356,7 @@ struct framework_options_state_t
     http_options_builder_t http;
     message_metadata_policy_t metadata_policy;
     dispatch_options_t dispatch;
+    worker_options_t worker;
     std::optional<std::uint64_t> application_hwm_bytes;
     application_hwm_profile_t application_hwm_profile =
       application_hwm_profile_t::balanced;

@@ -104,12 +104,12 @@ int main ()
     const auto live_location_reader =
       read_file (root / "framework/src/runtime/locations/live_location_reader.hpp");
     const auto app_runtime = read_file (root / "framework/src/runtime/host/app.cpp");
+    const auto mesh_node_runtime =
+      read_file (root / "framework/src/runtime/mesh/mesh_node_runtime.cpp");
     const auto monitoring_unit =
       read_file (root / "tests/Zlink.Framework.UnitTests/test_cpp_framework_monitoring.cpp");
     const auto actor_gateway_unit =
       read_file (root / "tests/Zlink.Framework.UnitTests/test_cpp_framework_actor_gateway.cpp");
-    const auto actor_gateway_spot_bridge =
-      read_file (root / "framework/src/runtime/host/actor_gateway_spot_bridge.cpp");
     const auto execution_turn_contracts = read_file (
       e2e_root / "AutomaticTurnDispatch/Shared/automatic_turn_dispatch_contracts.hpp");
     const auto execution_turn_spot = read_file (
@@ -343,12 +343,12 @@ int main ()
                     && transfer_feature_map.find ("transfer controller") == std::string::npos,
                   "E2E-CP-56", "Config 10 feature map still promises remote actor control");
     const auto bound_session_registration =
-      actor_gateway_spot_bridge.find ("actor_gateway.on_bound_session");
-    const auto local_session_route = actor_gateway_spot_bridge.find (
-      "actor_ref.node_rid ().value () == binding.local_spot_node_rid",
+      app_runtime.find ("actor_gateway_runtime.on_bound_session");
+    const auto local_session_route = app_runtime.find (
+      "actor.node_rid ().value ()",
       bound_session_registration);
-    const auto remote_session_route = actor_gateway_spot_bridge.find (
-      "register_bound_session_route_through_mesh", bound_session_registration);
+    const auto remote_session_route = app_runtime.find (
+      "bind_application_actor_session", bound_session_registration);
     gate.require (bound_session_registration != std::string::npos
                     && local_session_route != std::string::npos
                     && remote_session_route != std::string::npos
@@ -901,8 +901,8 @@ int main ()
     /* E2E-CP-51 — remote transfer exposes the commit-ack and source-cleanup
      * boundaries, and ST-B1 requires their order instead of inferring it from
      * the completed join call. */
-    gate.require (actor_gateway_spot_bridge.find (
-                    "emit_actor_transfer_marker (\"commit_ack\"")
+    gate.require (mesh_node_runtime.find (
+                    "\"commit_ack\", actor, transfer_id")
                     != std::string::npos
                     && spot_runtime.find (
                          "emit_actor_transfer_marker (\"source_cleanup\"")
@@ -987,8 +987,8 @@ int main ()
                     && st_f3_follow_up < st_f3_join_get,
                   "E2E-CP-53",
                   "ST-F3 sends S3/S4 only after the join caller observes completion");
-    gate.require (actor_gateway_spot_bridge.find (".prepare = true") != std::string::npos
-                    && actor_gateway_spot_bridge.find (".finalize = true") != std::string::npos
+    gate.require (mesh_node_runtime.find (".prepare = true") != std::string::npos
+                    && mesh_node_runtime.find (".finalize = true") != std::string::npos
                     && spot_runtime.find ("prepare_remote_actor_to_spot") != std::string::npos
                     && spot_runtime.find ("finalize_remote_actor_to_spot") != std::string::npos
                     && st_f2.find ("assert_evidence_sequence") != std::string::npos
@@ -1031,9 +1031,9 @@ int main ()
                     && spot_runtime.find ("emit_actor_handoff_marker") == std::string::npos,
                   "E2E-CP-57",
                   "spot runtime still emits environment-gated stderr handoff markers");
-    gate.require (actor_gateway_spot_bridge.find (
+    gate.require (mesh_node_runtime.find (
                     "ZLINK_FRAMEWORK_CPP_ACTOR_HANDOFF_MARKERS") == std::string::npos
-                    && actor_gateway_spot_bridge.find ("emit_backlog_enqueued_marker")
+                    && mesh_node_runtime.find ("emit_backlog_enqueued_marker")
                          == std::string::npos,
                   "E2E-CP-57",
                   "actor bridge still emits environment-gated stderr handoff markers");
@@ -1147,15 +1147,15 @@ int main ()
                   "E2E-CP-14",
                   "SM-D2 stream auth recreates the actor through route mesh instead of binding its snapshot");
     const auto bound_session_begin =
-      actor_gateway_spot_bridge.find ("actor_gateway.on_bound_session");
+      app_runtime.find ("actor_gateway_runtime.on_bound_session");
     const auto bound_session_end =
-      actor_gateway_spot_bridge.find ("actor_gateway.on_relay", bound_session_begin);
+      app_runtime.find ("actor_gateway_runtime.on_relay", bound_session_begin);
     const auto bound_session_block =
       bound_session_begin != std::string::npos && bound_session_end != std::string::npos
-        ? actor_gateway_spot_bridge.substr (bound_session_begin,
-                                            bound_session_end - bound_session_begin)
+        ? app_runtime.substr (bound_session_begin,
+                              bound_session_end - bound_session_begin)
         : std::string{};
-    gate.require (bound_session_block.find ("register_bound_session_route_through_mesh")
+    gate.require (bound_session_block.find ("bind_application_actor_session")
                       != std::string::npos
                     && bound_session_block.find ("request_to_node") == std::string::npos,
                   "E2E-CP-14",

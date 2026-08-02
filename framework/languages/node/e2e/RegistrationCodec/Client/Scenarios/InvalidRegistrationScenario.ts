@@ -1,4 +1,4 @@
-// RC-A6: 잘못된 등록은 시작 단계에서 차단 시나리오를 검증한다.
+// RC-A6: 중복 dispatch key를 startup에서 거부한다 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
 import { expectStartupFailure } from '../Support/process-support';
 import { ensure } from '../Support/scenario-assert';
@@ -8,7 +8,7 @@ export async function runRcA6(options: ClientOptions): Promise<void> {
   const cases = [
     { name: 'duplicate', config: options.invalidDuplicateConfig, expected: ['duplicate'] },
     { name: 'missing-handler-group', config: options.invalidHandlerGroupConfig, expected: ['handler', 'server'] },
-    { name: 'mixed-channel-kinds', config: options.invalidChannelKindsConfig, expected: ['duplicate', 'channel'] }
+    { name: 'mixed-channel-kinds', config: options.invalidChannelKindsConfig, expected: ['routemesh', 'clientserver'] }
   ] as const;
   for (const invalidCase of cases) {
     const output = await expectStartupFailure(

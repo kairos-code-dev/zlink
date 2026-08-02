@@ -1,16 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import type { ZLinkHandlerFilterNext, ZLinkHandlerFilter, ZLinkMessageContext } from '@zlink-systems/framework';
+import type { ZLinkHandlerFilterNext, ZLinkHandlerFilter, ZLinkHandlerFilterContext } from '@zlink-systems/framework';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 
 @Injectable()
 export class FirstFilter implements ZLinkHandlerFilter {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async invoke(context: ZLinkMessageContext, next: ZLinkHandlerFilterNext): Promise<unknown> {
+  async invoke(context: ZLinkHandlerFilterContext, next: ZLinkHandlerFilterNext): Promise<void> {
     this.evidence.add(`filter|name=first|phase=before|packet=${context.packetName ?? '<null>'}`);
-    const result = await next();
+    await next();
     this.evidence.add(`filter|name=first|phase=after|packet=${context.packetName ?? '<null>'}`);
-    return result;
   }
 }
 
@@ -18,10 +17,9 @@ export class FirstFilter implements ZLinkHandlerFilter {
 export class SecondFilter implements ZLinkHandlerFilter {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async invoke(context: ZLinkMessageContext, next: ZLinkHandlerFilterNext): Promise<unknown> {
+  async invoke(context: ZLinkHandlerFilterContext, next: ZLinkHandlerFilterNext): Promise<void> {
     this.evidence.add(`filter|name=second|phase=before|packet=${context.packetName ?? '<null>'}`);
-    const result = await next();
+    await next();
     this.evidence.add(`filter|name=second|phase=after|packet=${context.packetName ?? '<null>'}`);
-    return result;
   }
 }

@@ -1,4 +1,4 @@
-// RC-B1: JSON codec 시나리오를 검증한다.
+// RC-B1: 별도 등록 없이 기본 JSON을 사용한다 시나리오를 검증한다.
 import type { EchoRes } from '../../Shared/messages';
 import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';

@@ -1,11 +1,11 @@
-import type { ZLinkChannelClient } from '@zlink-systems/framework';
+import type { ZLinkRouteClient } from '@zlink-systems/framework';
 import { WorkflowReq, type EvidenceWaitReq, type WorkflowRes } from '../../../Shared/messages';
 import type { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { HttpRoute } from '../Support/http-server';
 
 export function createWorkflowEndpoints(
   evidence: EvidenceStore,
-  channel: ZLinkChannelClient,
+  channel: ZLinkRouteClient,
   stop: () => void
 ): HttpRoute[] {
   return [
@@ -27,7 +27,7 @@ export function createWorkflowEndpoints(
 }
 
 async function requestWorkflow(
-  channel: ZLinkChannelClient,
+  channel: ZLinkRouteClient,
   request: WorkflowReq
 ): Promise<WorkflowRes> {
   return channel

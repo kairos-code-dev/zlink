@@ -8,6 +8,8 @@
 #include <optional>
 #include <vector>
 
+#include <zlink/Contracts/Eventing/poller.hpp>
+
 namespace zlink
 {
 class router_socket_t;
@@ -43,8 +45,11 @@ class raw_route_port_t
     using completion_control_handler_t =
       std::function<void (raw_bytes_t, raw_message_t)>;
 
-    explicit raw_route_port_t (zlink::router_socket_t &socket,
-                               std::mutex *shared_socket_mutex = nullptr) noexcept;
+    explicit raw_route_port_t (
+      zlink::router_socket_t &socket,
+      std::mutex *shared_socket_mutex = nullptr,
+      zlink::poll_event_flag_t receive_events =
+        zlink::poll_event_flag_t::pollin);
 
     bool send (const raw_bytes_t &target_routing_id, const raw_message_t &parts);
     bool send_completion_control (
@@ -56,14 +61,19 @@ class raw_route_port_t
                   const raw_message_t &parts,
                   std::chrono::milliseconds timeout,
                   request_callback_t callback);
+    zlink::poll_event_flag_t poll (std::chrono::milliseconds timeout);
+    std::optional<raw_received_t> receive_if_ready (
+      zlink::poll_event_flag_t revents);
     std::optional<raw_received_t> try_receive ();
     bool reply (const raw_received_t &request, const raw_message_t &parts);
     void close () noexcept;
 
   private:
+    zlink::poller_t _poller;
     zlink::router_socket_t *_socket;
     std::mutex _owned_socket_mutex;
     std::mutex *_socket_mutex;
+    zlink::poll_event_flag_t _receive_events;
 };
 
 } // namespace zlink::framework::detail::backend

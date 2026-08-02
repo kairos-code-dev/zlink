@@ -9,4 +9,8 @@ export ZLINK_JAVA_E2E_LOG_ROOT="${ROOT_DIR}/log"
 export ZLINK_JAVA_E2E_NODE_BIN="${ROOT_DIR}/Server/ActorNode/build/install/spot-actor-transfer-kotlin-actor-node/bin/spot-actor-transfer-kotlin-actor-node"
 export ZLINK_JAVA_E2E_CLIENT_BIN="${ROOT_DIR}/Client/build/install/spot-actor-transfer-kotlin-client/bin/spot-actor-transfer-kotlin-client"
 
-"${JAVA_SCENARIO_DIR}/run_e2e.sh" "${1:-${ZLINK_JAVA_E2E_SCENARIO:-all}}"
+scenario="${1:-${ZLINK_JAVA_E2E_SCENARIO:-all}}"
+if [[ "$#" -gt 0 ]]; then
+  shift
+fi
+"${JAVA_SCENARIO_DIR}/run_e2e.sh" "$scenario" "$@"

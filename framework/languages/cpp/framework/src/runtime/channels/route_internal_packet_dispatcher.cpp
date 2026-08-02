@@ -25,7 +25,7 @@ no_route_internal_packet_dispatcher_t::dispatch_send (const route_received_packe
 {
     (void) received;
     (void) services;
-    return result_t<void>::failure (framework_error_kind_t::route_handler_not_found,
+    return result_t<void>::failure (framework_error_kind_t::not_found,
                                     "no routed internal send dispatcher is configured");
 }
 
@@ -38,7 +38,7 @@ result_t<zlink::message_t> no_route_internal_packet_dispatcher_t::dispatch_reque
     (void) header;
     (void) services;
     return result_t<zlink::message_t>::failure (
-      framework_error_kind_t::route_handler_not_found,
+      framework_error_kind_t::not_found,
       "no routed internal request dispatcher is configured");
 }
 
@@ -79,7 +79,7 @@ result_t<void> composite_route_internal_packet_dispatcher_t::dispatch_send (
     }
     const auto *dispatcher = resolve_send (header.value ().message_name);
     if (dispatcher == nullptr) {
-        return result_t<void>::failure (framework_error_kind_t::route_handler_not_found,
+        return result_t<void>::failure (framework_error_kind_t::not_found,
                                         "routed internal send packet is not supported");
     }
     return dispatcher->dispatch_send (received, services);
@@ -93,7 +93,7 @@ result_t<zlink::message_t> composite_route_internal_packet_dispatcher_t::dispatc
     const auto *dispatcher = resolve_request (header.message_name);
     if (dispatcher == nullptr) {
         return result_t<zlink::message_t>::failure (
-          framework_error_kind_t::route_handler_not_found,
+          framework_error_kind_t::not_found,
           "routed internal request packet is not supported");
     }
     return dispatcher->dispatch_request (received, header, services);

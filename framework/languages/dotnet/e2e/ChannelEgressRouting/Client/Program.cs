@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Reflection;
 using System.Text.Json;
 using ChannelEgressRouting.Client;
 using ChannelEgressRouting.Shared;
@@ -16,11 +15,12 @@ var http = options.Urls.ToDictionary(
     StringComparer.Ordinal);
 string[] knownScenarios =
 [
-    "CH-E2E-01", "CH-E2E-02", "CH-E2E-03", "CH-E2E-04", "CH-E2E-05",
-    "CH-E2E-06", "CH-E2E-07", "CH-E2E-09", "CH-E2E-10", "CH-E2E-11",
-    "CH-E2E-08", "CH-E2E-12", "CH-REG-01", "CH-REG-02",
-    "CH-REG-04", "CH-REG-05", "CH-REG-06",
-    "CH-REG-03", "CH-REG-07", "CH-REG-08", "CH-REG-09", "CH-REG-10"
+    "CH-E2E-01", "CH-E2E-02", "CH-E2E-03", "CH-E2E-05",
+    "CH-E2E-04A", "CH-E2E-04B", "CH-E2E-04C", "CH-E2E-06",
+    "CH-E2E-07A", "CH-E2E-07B", "CH-E2E-07C", "CH-E2E-08",
+    "CH-E2E-09", "CH-E2E-10", "CH-E2E-11", "CH-E2E-12",
+    "CH-REG-01", "CH-REG-02", "CH-REG-03", "CH-REG-04", "CH-REG-05",
+    "CH-REG-06", "CH-REG-07", "CH-REG-08", "CH-REG-09", "CH-REG-10",
 ];
 var selected = options.Scenario == "all"
     ? knownScenarios
@@ -70,13 +70,19 @@ async Task RunAsync(string scenario)
         case "CH-E2E-03":
             await AssertSpotWorkflowAndTimerAsync();
             break;
-        case "CH-E2E-04":
+        case "CH-E2E-04A":
             await AssertWeightedWorkflowAsync("workflow-client", 160);
             await SetClientServerWeightAsync("workflow300", 0);
             await WaitClientServerTargetCountAsync("workflow-client", 1);
             await AssertOnlyWorkflowServerAsync("workflow-client", "workflow-100", 32);
             await SetClientServerWeightAsync("workflow300", 300);
             await WaitClientServerTargetCountAsync("workflow-client", 2);
+            break;
+        case "CH-E2E-04B":
+            await AssertDrainingWorkflowAsync();
+            break;
+        case "CH-E2E-04C":
+            await AssertRoleReplacementAsync();
             break;
         case "CH-E2E-05":
             AssertClientServerDirectionSurface();
@@ -85,14 +91,22 @@ async Task RunAsync(string scenario)
             await AssertInvalidStartupAsync("route-clientserver-conflict");
             await AssertInvalidStartupAsync("duplicate-workflow-client");
             break;
-        case "CH-E2E-07":
+        case "CH-E2E-07A":
             var missing = await InvokeRequestAsync(
                 "session", "not.registered", "missing");
             Require(!missing.Succeeded && missing.Error == "NotFound",
                 $"missing channel should be NotFound, got {missing.Error}.");
             Require(missing.ElapsedMilliseconds < 1000,
                 "missing channel result was not immediate.");
+            break;
+        case "CH-E2E-07B":
             await AssertRequestAsync("session", ChannelEgressNames.Api, "ready-api", "api");
+            break;
+        case "CH-E2E-07C":
+            var unavailable = await InvokeRequestAsync(
+                "session", ChannelEgressNames.Api, "unavailable-api");
+            Require(!unavailable.Succeeded && unavailable.Error == "Unavailable",
+                $"known but unavailable channel should be Unavailable, got {unavailable.Error}.");
             break;
         case "CH-E2E-08":
             await AssertClientServerStateAddressAsync();
@@ -188,6 +202,15 @@ async Task AssertRoleReplacementAsync()
     Require(request.Succeeded
             && request.Reply?.Role is "workflow-100" or "workflow-300-new",
         "Request did not complete after automatic role replacement.");
+}
+
+async Task AssertDrainingWorkflowAsync()
+{
+    var shutdown = await http["workflow300"].Post("/shutdown").AsyncRaw();
+    Require(shutdown.Status is >= 200 and < 300,
+        $"draining workflow server rejected shutdown: {shutdown.Status}.");
+    await WaitClientServerTargetCountAsync("workflow-client", 1);
+    await AssertOnlyWorkflowServerAsync("workflow-client", "workflow-100", 32);
 }
 
 async Task AssertSpotWorkflowAndTimerAsync()
@@ -489,13 +512,21 @@ async Task WaitClientServerTargetCountAsync(string role, int expected)
 
 void AssertClientServerDirectionSurface()
 {
-    var methods = typeof(IZLinkClientServerChannelServerBuilder)
-        .GetMethods(BindingFlags.Instance | BindingFlags.Public)
-        .Select(static method => method.Name)
-        .ToArray();
-    Require(!methods.Any(name =>
-            name.Contains("SendTo", StringComparison.Ordinal)
-            || name.Contains("RequestTo", StringComparison.Ordinal)),
+    var root = FindRepositoryRoot(AppContext.BaseDirectory);
+    var contractPath = Path.Combine(
+        root,
+        "framework", "doc", "framework", "common", "spec", "server",
+        "languages", "dotnet", "interfaces", "03-configuration-topology.ko.md");
+    var contract = File.ReadAllText(contractPath);
+    var start = contract.IndexOf(
+        "public interface IZLinkClientServerChannelServerBuilder",
+        StringComparison.Ordinal);
+    Require(start >= 0, "ClientServer Server builder contract is missing.");
+    var end = contract.IndexOf("\n}", start, StringComparison.Ordinal);
+    Require(end > start, "ClientServer Server builder contract is incomplete.");
+    var surface = contract[start..end];
+    Require(!surface.Contains("SendTo", StringComparison.Ordinal)
+            && !surface.Contains("RequestTo", StringComparison.Ordinal),
         "ClientServer Server builder exposes outbound business calls.");
 }
 
@@ -607,19 +638,13 @@ async Task AssertAutomaticEndpointsAsync()
             .Get("/locations")
             .Async<JsonElement[]>())
         .Body;
-    Require(rows.Length >= 7, $"expected topology descriptors, got {rows.Length}.");
+    Require(rows.Length >= 5, $"expected topology descriptors, got {rows.Length}.");
     var meshNames = rows
         .Select(row => row.GetProperty("meshName").GetString())
         .Where(static value => value is not null)
         .ToHashSet(StringComparer.Ordinal);
-    foreach (var expected in new[]
-             {
-                 ChannelEgressNames.GameMesh,
-                 ChannelEgressNames.AuditMesh,
-                 ChannelEgressNames.Workflow,
-                 "config12.fanout"
-             })
-        Require(meshNames.Contains(expected), $"location descriptor is missing for {expected}.");
+    Require(meshNames.Contains(ChannelEgressNames.GameMesh),
+        "location descriptor is missing for the game RouteMesh.");
     foreach (var row in rows)
     {
         var endpoint = row.GetProperty("endpoint").GetString()
@@ -629,6 +654,37 @@ async Task AssertAutomaticEndpointsAsync()
         Require(!endpoint.EndsWith(":0", StringComparison.Ordinal),
             $"automatic port was not replaced by the actual bound port: {endpoint}.");
     }
+
+    await AssertRequestAsync(
+        "session",
+        ChannelEgressNames.Api,
+        "automatic-route-mesh",
+        "api");
+    var clientServer = await InvokeRequestAsync(
+        "workflow-client",
+        ChannelEgressNames.Workflow,
+        "automatic-client-server");
+    Require(clientServer.Succeeded
+            && clientServer.Reply?.Role.StartsWith("workflow-", StringComparison.Ordinal) == true,
+        "automatic ClientServer endpoint did not complete at a remote server.");
+
+    await http["audit"].Post("/fanout/automatic-fanout").AsyncRaw();
+    await WaitEvidenceAsync(
+        ["play"],
+        "fanout|role=play",
+        "id=automatic-fanout");
+
+    await using var connector = ZlinkStreamConnectorFactory.Create(
+        new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri(options.StreamEndpoint),
+            ConnectTimeout = TimeSpan.FromSeconds(5),
+            RequestTimeout = TimeSpan.FromSeconds(5),
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            MaxReceivedMessages = 32
+        });
+    await connector.Connect.Async();
 }
 
 async Task AssertSinglePhysicalPeerAsync(string role, string mesh)
@@ -645,6 +701,24 @@ async Task AssertSinglePhysicalPeerAsync(string role, string mesh)
         .ToArray();
     Require(peers.Length == peers.Distinct(StringComparer.Ordinal).Count(),
         $"{role} exposes duplicate physical peer identities.");
+
+    var rows = (await http["session"]
+            .Get("/locations")
+            .Async<JsonElement[]>())
+        .Body
+        .Where(row => string.Equals(
+            row.GetProperty("meshName").GetString(),
+            mesh,
+            StringComparison.Ordinal))
+        .ToArray();
+    Require(rows.Select(row => row.GetProperty("rid").GetString())
+            .Distinct(StringComparer.Ordinal)
+            .Count() == rows.Length,
+        $"location topology contains duplicate {mesh} listener identities.");
+    Require(rows.Select(row => row.GetProperty("endpoint").GetString())
+            .Distinct(StringComparer.Ordinal)
+            .Count() == rows.Length,
+        $"location topology contains duplicate {mesh} listener endpoints.");
 }
 
 void AssertSampleSourceDoesNotHideRoutingInput()

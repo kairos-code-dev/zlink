@@ -1,4 +1,4 @@
-// MON-A1: 일관된 RouteMesh와 host status 시나리오를 검증한다.
+// MON-A1: Host와 RouteMesh status를 각각 읽는다 시나리오를 검증한다.
 import type { EvidenceWaitReq, ProfileRes, ProfileReq } from '../../Shared/messages';
 import { RuntimeMonitoringNames } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';

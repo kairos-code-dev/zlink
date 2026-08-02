@@ -15,6 +15,7 @@ internal static class ObsC9AutomaticConvergenceScenario
         var relocation = (await context.PlayA.Post("/relocate/direct")
             .Body(new RelocateHostReq(
                 "planned-maintenance", null, 30000))
+            .Timeout(TimeSpan.FromSeconds(35))
             .Async<RelocateHostRes>()).Body;
         ZlinkStreamAssert.Ensure(
             relocation is
@@ -40,12 +41,13 @@ internal static class ObsC9AutomaticConvergenceScenario
 
         var shutdown = (await context.PlayA.Post("/shutdown/direct")
             .Body(new ShutdownHostReq())
+            .Timeout(TimeSpan.FromSeconds(35))
             .Async<ShutdownHostRes>()).Body;
         ZlinkStreamAssert.Ensure(
             shutdown is { Outcome: "Stopped", Reason: "None" },
             $"OBS-C9 automatic shutdown returned "
             + $"{shutdown.Outcome}/{shutdown.Reason}.");
-        Console.WriteLine("scenario OBS-C9 passed");
+        Console.WriteLine("scenario OBS-C9A passed");
     }
 }
 
@@ -61,6 +63,7 @@ internal static class ObsC9ManualTopologyScenario
         var relocation = (await context.PlayA.Post("/relocate/direct")
             .Body(new RelocateHostReq(
                 "planned-maintenance", null, 30000))
+            .Timeout(TimeSpan.FromSeconds(35))
             .Async<RelocateHostRes>()).Body;
         var after = (await context.PlayA.Get("/runtime/status")
             .Async<RuntimeStatusRes>()).Body;
@@ -87,10 +90,11 @@ internal static class ObsC9ManualTopologyScenario
 
         var shutdown = (await context.PlayA.Post("/shutdown/direct")
             .Body(new ShutdownHostReq())
+            .Timeout(TimeSpan.FromSeconds(35))
             .Async<ShutdownHostRes>()).Body;
         ZlinkStreamAssert.Ensure(
             shutdown.Outcome is "Stopped" or "ForceStopped",
             "OBS-C9 manual topology incorrectly blocked Shutdown.");
-        Console.WriteLine("scenario OBS-C9-MANUAL passed");
+        Console.WriteLine("scenario OBS-C9B passed");
     }
 }

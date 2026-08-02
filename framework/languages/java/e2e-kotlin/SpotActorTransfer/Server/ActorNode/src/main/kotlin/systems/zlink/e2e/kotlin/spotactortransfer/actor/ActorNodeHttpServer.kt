@@ -27,6 +27,8 @@ class ActorNodeHttpServer(
     private val spots: ZLinkSpotManager,
     private val actors: ZLinkActorManager,
     private val actorClient: ZLinkActorClient,
+    private val requiredPeerCount: Int,
+    private val lifecycle: systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle,
 ) : SmartLifecycle {
     private var server: HttpServer? = null
     private var executor: java.util.concurrent.ExecutorService? = null
@@ -38,6 +40,13 @@ class ActorNodeHttpServer(
             executor = Executors.newCachedThreadPool()
             http.executor = executor
             http.createContext("/health") { exchange -> handle(exchange) {
+                val mesh = lifecycle.routeMeshRuntime().snapshot(Contracts.MESH)
+                if (!lifecycle.isReady()
+                    || !mesh.isReady()
+                    || mesh.readyPeerCount() < requiredPeerCount) {
+                    writeText(exchange, 503, "Framework runtime is not ready")
+                    return@handle
+                }
                 writeJson(exchange, mapOf("status" to "ready", "nodeRid" to evidence.nodeRid))
             } }
             http.createContext("/evidence") { exchange -> handle(exchange) {
@@ -91,7 +100,9 @@ class ActorNodeHttpServer(
 
     private fun createActor(exchange: HttpExchange) {
         val request = json.readValue(exchange.requestBody, Contracts.ActorCreateReq::class.java)
-        val result = actors.getOrCreate(request.actorId(), request.actorType(), request)
+        val result = actors.getOrCreate(request.actorId(), request.actorType())
+            .request(request)
+            .submit()
             .toCompletableFuture().get(12, TimeUnit.SECONDS)
         val actor = when (result) {
             is ZLinkActorCreateResult.Created -> result.actor()
@@ -193,6 +204,7 @@ class ActorNodeHttpServer(
             action()
         } catch (error: Exception) {
             error.printStackTrace(System.err)
+            System.err.println(rootMessage(error))
             writeText(exchange, 500, rootMessage(error))
         }
     }
@@ -220,6 +232,16 @@ class ActorNodeHttpServer(
 
     override fun isRunning(): Boolean = running
 
-    private fun rootMessage(error: Throwable): String =
-        generateSequence(error) { it.cause }.last().toString()
+    private fun rootMessage(error: Throwable): String {
+        val current = generateSequence(error) { it.cause }.last()
+        return when (current) {
+            is systems.zlink.contracts.errors.ZlinkRequestException ->
+                "${current.javaClass.name}: result=${current.getResult()}, " +
+                    "errno=${current.getNativeErrno()}"
+            is systems.zlink.contracts.errors.ZlinkSubmitException ->
+                "${current.javaClass.name}: result=${current.getResult()}, " +
+                    "errno=${current.getNativeErrno()}"
+            else -> current.toString()
+        }
+    }
 }

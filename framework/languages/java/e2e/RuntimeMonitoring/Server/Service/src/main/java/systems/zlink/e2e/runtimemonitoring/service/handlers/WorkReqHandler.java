@@ -12,9 +12,9 @@ public final class WorkReqHandler
     private final EvidenceState evidence;
     private final String routingId;
 
-    public WorkReqHandler(EvidenceState evidence, String routingId) {
+    public WorkReqHandler(EvidenceState evidence) {
         this.evidence = evidence;
-        this.routingId = routingId;
+        this.routingId = evidence.rid();
     }
 
     @Override

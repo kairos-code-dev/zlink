@@ -72,7 +72,7 @@ public final class Program {
                 .setRoutingId(RoutingId.from(rid));
             options.addStreamNode("to-actor-" + rid)
                 .bind(config.sessionStreamEndpoint())
-                .enableActorDispatch(Contracts.SPOT_MESH)
+                .enableActorDispatch()
                 .registerSession(ToActorSession.class);
         };
     }
@@ -177,7 +177,7 @@ public final class Program {
                     "bind", actor.actorId(), "actor-bound",
                     options.sessionRid() + ":" + context.sessionId()));
                 context.client().reply(new Contracts.BindActorReply(
-                    actor.actorId(), actor.nodeRid().toString(), actor.generation())).submit();
+                    actor.actorId(), actor.nodeRid().toString(), actor.objectGeneration())).submit();
             });
         }
     }

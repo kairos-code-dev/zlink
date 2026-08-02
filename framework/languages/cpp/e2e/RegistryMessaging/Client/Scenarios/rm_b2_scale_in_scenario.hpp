@@ -72,11 +72,11 @@ inline void run_rm_b2_scale_in_scenario (const client_options_t &options)
             ++transition_successes;
             continue;
         }
-        ensure (completed.error_kind == zlink::framework::framework_error_kind_t::request_failed
+        ensure (completed.error_kind == zlink::framework::framework_error_kind_t::internal_failure
                   || completed.error_kind
-                       == zlink::framework::framework_error_kind_t::request_target_not_found
+                       == zlink::framework::framework_error_kind_t::not_found
                   || completed.error_kind
-                       == zlink::framework::framework_error_kind_t::route_not_connected,
+                       == zlink::framework::framework_error_kind_t::unavailable,
                 "RM-B2 transition request returned an unexpected public error");
         ++transition_errors;
     }

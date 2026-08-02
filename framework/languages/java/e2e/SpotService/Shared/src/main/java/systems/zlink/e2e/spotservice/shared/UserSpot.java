@@ -49,7 +49,7 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
 
     @Override
     public CompletionStage<ZLinkSpotCreateResponse> onCreate(ZLinkMessage request) {
-        evidence.record("SpotCreated", context.spotRid().toString(), request.isEmpty() ? "" : "request");
+        evidence.record("SpotCreated", context.spotId(), request.isEmpty() ? "" : "request");
         context.addTimer("state-timer", Duration.ofSeconds(2),
             StateTimerHandler.class, null);
         return CompletableFuture.completedFuture(ZLinkSpotCreateResponse.accept());
@@ -57,13 +57,13 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
 
     @Override
     public CompletionStage<Void> onInitialize() {
-        evidence.record("SpotInitialized", context.spotRid().toString(), "");
+        evidence.record("SpotInitialized", context.spotId(), "");
         return CompletableFuture.completedFuture(null);
     }
 
     @Override
     public CompletionStage<Void> onClosing() {
-        evidence.record("SpotClosing", context.spotRid().toString(), state);
+        evidence.record("SpotClosing", context.spotId(), state);
         return CompletableFuture.completedFuture(null);
     }
 
@@ -74,22 +74,22 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
         Contracts.JoinAdmittedUserSpotActorReq admission = decodeAdmission(request);
         if (admission != null) {
             if (!admission.admit()) {
-                evidence.record("ActorUserJoinRejected", context.spotRid().toString(),
+                evidence.record("ActorUserJoinRejected", context.spotId(),
                     actorId + "/" + admission.reason());
                 return CompletableFuture.completedFuture(ZLinkSpotActorJoinResult.reject(new Contracts.ActorJoinRes(
                     actorId,
-                    context.spotRid().toString(),
+                    context.spotId(),
                     evidence.nodeRid(),
                     admission.profile().displayName(),
                     admission.profile().level(),
                     admission.tags())));
             }
             pendingProfiles.put(actorId, admission.profile());
-            evidence.record("ActorUserJoinAdmitted", context.spotRid().toString(),
+            evidence.record("ActorUserJoinAdmitted", context.spotId(),
                 actorId + "/" + admission.reason());
             return CompletableFuture.completedFuture(ZLinkSpotActorJoinResult.accept(new Contracts.ActorJoinRes(
                 actorId,
-                context.spotRid().toString(),
+                context.spotId(),
                 evidence.nodeRid(),
                 admission.profile().displayName(),
                 admission.profile().level(),
@@ -97,11 +97,11 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
         }
         Contracts.ActorJoinReq join = request.decode(Contracts.ActorJoinReq.class);
         pendingProfiles.put(actorId, join.profile());
-        evidence.record("ActorUserJoinRequested", context.spotRid().toString(),
+        evidence.record("ActorUserJoinRequested", context.spotId(),
             actorId + "/" + join.profile().displayName() + "/" + String.join(",", join.tags()));
         return CompletableFuture.completedFuture(ZLinkSpotActorJoinResult.accept(new Contracts.ActorJoinRes(
             actorId,
-            context.spotRid().toString(),
+            context.spotId(),
             evidence.nodeRid(),
             join.profile().displayName(),
             join.profile().level(),
@@ -128,28 +128,28 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
             throw new IllegalStateException("joined actor does not have a pending admission");
         }
         actor.applyProfile(profile);
-        evidence.record("ActorUserJoined", context.spotRid().toString(),
+        evidence.record("ActorUserJoined", context.spotId(),
             actor.actorId() + "#" + actor.nextSequence());
         return CompletableFuture.completedFuture(null);
     }
 
     @Override
     public CompletionStage<Void> onLeaveActor(ScenarioActor actor) {
-        evidence.record("ActorUserLeft", context.spotRid().toString(), actor.actorId());
+        evidence.record("ActorUserLeft", context.spotId(), actor.actorId());
         return CompletableFuture.completedFuture(null);
     }
 
     @Override
     public CompletionStage<Void> onDisconnectActor(ScenarioActor actor) {
-        evidence.record("ActorUserDisconnected", context.spotRid().toString(), actor.actorId());
+        evidence.record("ActorUserDisconnected", context.spotId(), actor.actorId());
         return CompletableFuture.completedFuture(null);
     }
 
     public String apply(String op) {
         state = state.isBlank() ? op : state + "," + op;
-        evidence.record("StateReq", context.spotRid().toString(), state);
+        evidence.record("StateReq", context.spotId(), state);
         if (op.equals("worker-follow-up") && !workerDone) {
-            evidence.record("WorkerFollowUpBeforeComplete", context.spotRid().toString(), state);
+            evidence.record("WorkerFollowUpBeforeComplete", context.spotId(), state);
             CountDownLatch latch = workerFollowUp;
             if (latch != null) {
                 latch.countDown();
@@ -161,7 +161,7 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
     public String startWorker(String op) {
         workerDone = false;
         workerFollowUp = new CountDownLatch(1);
-        evidence.record("WorkerStarted", context.spotRid().toString(), op);
+        evidence.record("WorkerStarted", context.spotId(), op);
         CountDownLatch latch = workerFollowUp;
         context.runCpuWorker(cancellation -> {
             latch.await(5, TimeUnit.SECONDS);
@@ -171,12 +171,12 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
                 workerDone = true;
                 workerFollowUp = null;
                 state = state.isBlank() ? value : state + "," + value;
-                evidence.record("WorkerCompleted", context.spotRid().toString(), value);
+                evidence.record("WorkerCompleted", context.spotId(), value);
             } else {
                 workerFollowUp = null;
                 evidence.record(
                     "WorkerFailed",
-                    context.spotRid().toString(),
+                    context.spotId(),
                     error.getClass().getSimpleName());
             }
         });
@@ -184,11 +184,11 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
     }
 
     public void command(String value) {
-        evidence.record("StateMsg", context.spotRid().toString(), value);
+        evidence.record("StateMsg", context.spotId(), value);
     }
 
     public void record(String marker, String value) {
-        evidence.record(marker, context.spotRid().toString(), value);
+        evidence.record(marker, context.spotId(), value);
     }
 
     public ScenarioStage stage() {
@@ -196,7 +196,7 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
     }
 
     String spotRid() {
-        return context.spotRid().toString();
+        return context.spotId();
     }
 
     String nodeRid() {
@@ -204,6 +204,6 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
     }
 
     public void timerTick(long deliveryIndex) {
-        evidence.record("SpotTimer", context.spotRid().toString(), Long.toString(deliveryIndex));
+        evidence.record("SpotTimer", context.spotId(), Long.toString(deliveryIndex));
     }
 }

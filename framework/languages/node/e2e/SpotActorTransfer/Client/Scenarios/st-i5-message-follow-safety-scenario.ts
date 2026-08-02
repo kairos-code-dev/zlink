@@ -1,4 +1,4 @@
-// ST-I5: Message Follow expiry, duplicate, deadline, loop와 bound 시나리오를 검증한다.
+// ST-I5: Message Follow error bounds 시나리오를 검증한다.
 import { runStF4 } from './st-f4-bound-session-transfer-scenario';
 
 export async function runStI5(): Promise<void> {

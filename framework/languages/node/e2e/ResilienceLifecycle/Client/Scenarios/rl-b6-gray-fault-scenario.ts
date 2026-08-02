@@ -1,4 +1,4 @@
-// RL-B6: 부분 degradation (gray failure) 시나리오를 검증한다.
+// RL-B6: 한 provider의 gray failure를 다른 replies와 격리한다 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../../../http-client';

@@ -467,7 +467,7 @@ final class SampleReleaseGateContractTest {
             () -> assertTrue(playSource.contains("node.channelName(SampleNames.PlayNode)")),
             () -> assertTrue(playSource.contains("node.peerConnections().connect(")),
             () -> assertFalse(playSource.contains("configureEntrySpot()")),
-            () -> assertTrue(playSource.contains(".enableActorDispatch(SampleNames.SpotMesh)")),
+            () -> assertTrue(playSource.contains(".enableActorDispatch()")),
             () -> assertFalse(entrySpotSource.contains("handlers().add")),
             () -> assertFalse(gameSpotSource.contains("handlers().add")),
             () -> assertTrue(authHandlerSource.contains(

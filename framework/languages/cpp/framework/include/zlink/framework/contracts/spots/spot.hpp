@@ -70,7 +70,7 @@ struct timer_handler_factory_t<THandler, dependency_list_t<TDependencies...>>
                            "dependency_types by reference");
             if (services == nullptr) {
                 throw framework_exception_t (
-                  framework_error_kind_t::invalid_configuration,
+                  framework_error_kind_t::not_configured,
                   "SPOT timer handler dependencies require an activation service scope");
             }
             return std::make_shared<THandler> (
@@ -356,8 +356,12 @@ struct spot_inbound_message_t
 {
     std::optional<std::string_view> find (std::string_view key) const
     {
-        const auto iterator = values.find (std::string (key));
-        if (iterator == values.end ()) {
+        const auto iterator = std::lower_bound (
+          values.begin (), values.end (), key,
+          [] (const auto &entry, std::string_view value) {
+              return std::string_view (entry.first) < value;
+          });
+        if (iterator == values.end () || iterator->first != key) {
             return std::nullopt;
         }
         return iterator->second;
@@ -365,7 +369,12 @@ struct spot_inbound_message_t
 
     bool contains (std::string_view key) const
     {
-        return values.find (std::string (key)) != values.end ();
+        const auto iterator = std::lower_bound (
+          values.begin (), values.end (), key,
+          [] (const auto &entry, std::string_view value) {
+              return std::string_view (entry.first) < value;
+          });
+        return iterator != values.end () && iterator->first == key;
     }
 
     bool empty () const noexcept { return values.empty (); }
@@ -408,7 +417,7 @@ class message_metadata_policy_t
     message_metadata_policy_t &add_forwarded_metadata_key (std::string key)
     {
         if (key.empty () || is_blank (key)) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "metadata key must not be empty");
         }
         _forwarded_keys.insert (std::move (key));
@@ -533,7 +542,7 @@ task_t<zlink::message_t> complete_spot_member_call (TResult &&result,
             co_return detail::result_access_t::failure<zlink::message_t> (error);
         }
         catch (const std::exception &error) {
-            co_return result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,
+            co_return result_t<zlink::message_t>::failure (framework_error_kind_t::internal_failure,
                                                            error.what ());
         }
     } else if constexpr (std::is_void_v<result_type>) {
@@ -670,7 +679,7 @@ class user_spot_factory_builder_t
         ensure_mutable ();
         if (limit < 1) {
             throw framework_exception_t (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "User Spot stable type limit must be positive");
         }
         _stable_type_limit = limit;
@@ -746,7 +755,7 @@ class user_spot_factory_builder_t
     {
         if (_sealed) {
             throw framework_exception_t (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "User Spot factory builder cannot be changed after the configure callback returns");
         }
     }
@@ -756,21 +765,21 @@ class user_spot_factory_builder_t
         if (_relocation.kind
             == detail::factory_relocation_kind_t::unspecified) {
             throw framework_exception_t (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "User Spot factory must select exactly one relocation policy");
         }
         if (_execution_mode == user_spot_execution_mode_t::per_actor
             && _relocation.kind
                  != detail::factory_relocation_kind_t::recreate) {
             throw framework_exception_t (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "Per-Actor User Spots require recreate_on_relocation");
         }
         if (_execution_mode == user_spot_execution_mode_t::per_actor
             && _relocation_readiness
                  == spot_relocation_readiness_mode_t::application_signaled) {
             throw framework_exception_t (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "Application-signaled relocation readiness requires Spot-Wide execution");
         }
     }
@@ -781,7 +790,7 @@ class user_spot_factory_builder_t
         if (_relocation.kind
             != detail::factory_relocation_kind_t::unspecified) {
             throw framework_exception_t (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "User Spot factory must select exactly one relocation policy");
         }
         _relocation = {kind, adapter_type};
@@ -805,7 +814,7 @@ class instance_spot_factory_builder_t
         ensure_mutable ();
         if (limit < 1) {
             throw framework_exception_t (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "Instance Spot stable type limit must be positive");
         }
         _stable_type_limit = limit;
@@ -865,7 +874,7 @@ class instance_spot_factory_builder_t
     {
         if (_sealed) {
             throw framework_exception_t (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "Instance Spot factory builder cannot be changed after the configure callback returns");
         }
     }
@@ -875,7 +884,7 @@ class instance_spot_factory_builder_t
         if (_relocation.kind
             == detail::factory_relocation_kind_t::unspecified) {
             throw framework_exception_t (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "Instance Spot factory must select exactly one relocation policy");
         }
     }
@@ -886,7 +895,7 @@ class instance_spot_factory_builder_t
         if (_relocation.kind
             != detail::factory_relocation_kind_t::unspecified) {
             throw framework_exception_t (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "Instance Spot factory must select exactly one relocation policy");
         }
         _relocation = {kind, adapter_type};
@@ -971,7 +980,7 @@ class spot_context_t
         auto *serializers = serializer_registry ();
         if (serializers == nullptr) {
             return send_call_t (
-              result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+              result_t<void>::failure (framework_error_kind_t::protocol_error,
                                        "spot publish requires a serializer registry"));
         }
         try {
@@ -1012,13 +1021,13 @@ class spot_context_t
 
     template <typename TWork> auto run_cpu_worker (TWork work)
     {
-        using result_type = std::invoke_result_t<TWork>;
+        using result_type = detail::worker_sync_result_t<TWork>;
         auto scheduler = _worker_scheduler;
         auto preflight = submission_preflight ();
         return worker_call_t<result_type> (
           [scheduler, preflight = std::move (preflight),
            work = std::move (work)] (
-            std::optional<std::chrono::milliseconds> timeout) mutable -> task_t<result_type> {
+            std::stop_token cancellation) mutable -> task_t<result_type> {
               if (preflight) {
                   const auto admitted = preflight ();
                   if (!admitted) {
@@ -1030,36 +1039,24 @@ class spot_context_t
                             : "Spot worker preflight failed"));
                   }
               }
-              (void) timeout;
               if (!scheduler) {
                   return task_t<result_type> (result_t<result_type>::failure (
-                    framework_error_kind_t::request_failed, "worker runtime is not configured"));
+                    framework_error_kind_t::internal_failure, "worker runtime is not configured"));
               }
 
               detail::task_completion_source_t<result_type> completion;
               auto task = completion.task ();
               auto shared_work = std::make_shared<TWork> (std::move (work));
               auto completed = std::make_shared<std::atomic_bool> (false);
-              if (timeout && *timeout > std::chrono::milliseconds::zero ()) {
-                  auto timeout_scheduler = scheduler;
-                  auto timeout_completion = completion;
-                  auto timeout_completed = completed;
-                  std::thread ([timeout_scheduler, timeout_completion, timeout_completed,
-                                timeout = *timeout] () mutable {
-                      std::this_thread::sleep_for (timeout);
-                      if (!timeout_completed->exchange (true)) {
-                          auto complete_timeout = [timeout_completion] () mutable {
-                              timeout_completion.complete (result_t<result_type>::failure (
-                                framework_error_kind_t::worker_timed_out, "worker task timed out"));
-                          };
-                          timeout_scheduler->post_owner (std::move (complete_timeout));
-                      }
-                  }).detach ();
-              }
               const auto scheduled =
                 scheduler->try_schedule ([scheduler, shared_work, completion,
-                                          completed] () mutable {
-                    auto result = detail::run_worker_body<result_type> (*shared_work);
+                                          completed, cancellation] (std::stop_token) mutable {
+                    auto result = detail::run_worker_body<result_type> (
+                      *shared_work, cancellation);
+                    if (cancellation.stop_requested ()) {
+                        completed->store (true);
+                        return;
+                    }
                     if (!completed->exchange (true)) {
                         auto complete_result = [completion,
                                                 result = std::move (result)] () mutable {
@@ -1072,23 +1069,24 @@ class spot_context_t
                   completed->store (true);
                   auto complete_full = [completion] () mutable {
                       completion.complete (result_t<result_type>::failure (
-                        framework_error_kind_t::worker_queue_full, "worker queue is full"));
+                        framework_error_kind_t::capacity_exceeded, "worker queue is full"));
                   };
                   scheduler->post_owner (std::move (complete_full));
               }
               return task;
-          });
+          }, scheduler ? scheduler->stop_token () : std::stop_token{});
     }
 
     template <typename TWork> auto run_io_worker (TWork work)
     {
-        using task_type = std::invoke_result_t<TWork>;
+        using task_type = detail::worker_async_task_t<TWork>;
         using result_type = detail::task_result_t<task_type>;
+        auto scheduler = _worker_scheduler;
         auto preflight = submission_preflight ();
         return worker_call_t<result_type> (
-          [preflight = std::move (preflight),
+          [scheduler, preflight = std::move (preflight),
            work = std::move (work)] (
-            std::optional<std::chrono::milliseconds> timeout) mutable -> task_t<result_type> {
+            std::stop_token cancellation) mutable -> task_t<result_type> {
               if (preflight) {
                   const auto admitted = preflight ();
                   if (!admitted) {
@@ -1100,48 +1098,63 @@ class spot_context_t
                             : "Spot worker preflight failed"));
                   }
               }
+              if (!scheduler) {
+                  return task_t<result_type> (result_t<result_type>::failure (
+                    framework_error_kind_t::internal_failure, "worker runtime is not configured"));
+              }
               auto completion =
                 std::make_shared<detail::task_completion_source_t<result_type>> ();
               auto result = completion->task ();
               auto completed = std::make_shared<std::atomic_bool> (false);
-              std::shared_ptr<task_type> pending;
-              try {
-                  pending = std::make_shared<task_type> (work ());
-              }
-              catch (const framework_exception_t &error) {
-                  completion->complete (detail::result_access_t::failure<result_type> (error));
-                  return result;
-              }
-              catch (const std::exception &error) {
-                  completion->complete (result_t<result_type>::failure (
-                    framework_error_kind_t::worker_failed, error.what ()));
-                  return result;
-              }
-              catch (...) {
-                  completion->complete (result_t<result_type>::failure (
-                    framework_error_kind_t::worker_failed, "I/O worker failed"));
-                  return result;
-              }
-
-              observe_task_completion (
-                *pending,
-                [pending, completion, completed] (const result_t<result_type> &value) mutable {
-                    if (!completed->exchange (true)) {
-                        completion->complete (value);
+              auto shared_work = std::make_shared<TWork> (std::move (work));
+              auto pending = std::make_shared<std::shared_ptr<task_type>> ();
+              const auto scheduled = scheduler->try_schedule (
+                [shared_work, pending, completion, completed,
+                 cancellation] (std::stop_token) mutable {
+                    try {
+                        *pending = std::make_shared<task_type> (
+                          detail::invoke_worker_async (*shared_work, cancellation));
+                        observe_task_completion (
+                          **pending,
+                          [pending, completion, completed, cancellation] (
+                            const result_t<result_type> &value) mutable {
+                              if (cancellation.stop_requested ()) {
+                                  completed->store (true);
+                                  return;
+                              }
+                              if (!completed->exchange (true)) {
+                                  completion->complete (value);
+                              }
+                          });
+                    }
+                    catch (const framework_exception_t &error) {
+                        if (!completed->exchange (true)) {
+                            completion->complete (
+                              detail::result_access_t::failure<result_type> (error));
+                        }
+                    }
+                    catch (const std::exception &error) {
+                        if (!completed->exchange (true)) {
+                            completion->complete (result_t<result_type>::failure (
+                              framework_error_kind_t::internal_failure, error.what ()));
+                        }
+                    }
+                    catch (...) {
+                        if (!completed->exchange (true)) {
+                            completion->complete (result_t<result_type>::failure (
+                              framework_error_kind_t::internal_failure, "I/O worker failed"));
+                        }
                     }
                 });
-              if (timeout && *timeout > std::chrono::milliseconds::zero ()) {
-                  std::thread ([completion, completed, timeout = *timeout] () mutable {
-                      std::this_thread::sleep_for (timeout);
-                      if (!completed->exchange (true)) {
-                          completion->complete (result_t<result_type>::failure (
-                            framework_error_kind_t::worker_timed_out,
-                            "I/O worker timed out"));
-                      }
-                  }).detach ();
+              if (!scheduled) {
+                  completed->store (true);
+                  scheduler->post_owner ([completion] {
+                      completion->complete (result_t<result_type>::failure (
+                        framework_error_kind_t::capacity_exceeded, "worker queue is full"));
+                  });
               }
               return result;
-          });
+          }, scheduler ? scheduler->stop_token () : std::stop_token{});
     }
 
     std::vector<spot_packet_descriptor_t> packet_registry () const;
@@ -1217,8 +1230,8 @@ class spot_context_t
         template <typename TReply> request_call_t<TReply> as () const
         {
             if (_error) {
-                return request_call_t<TReply> (result_t<TReply>::failure (
-                  _error->kind (), _error->what (), _error->is_retriable ()));
+                return request_call_t<TReply> (
+                  detail::result_access_t::failure<TReply> (*_error));
             }
             auto serializers = _serializers;
             auto submit = _submit;
@@ -1230,12 +1243,12 @@ class spot_context_t
                         const request_call_t<TReply>::metadata_map_t &metadata) -> task_t<TReply> {
                   if (!submit) {
                       co_return result_t<TReply>::failure (
-                        framework_error_kind_t::request_protocol_error,
+                        framework_error_kind_t::protocol_error,
                         "spot request is not bound to a route channel");
                   }
                   if (serializers == nullptr) {
                       co_return result_t<TReply>::failure (
-                        framework_error_kind_t::request_protocol_error,
+                        framework_error_kind_t::protocol_error,
                         "spot request has no serializer registry");
                   }
                   try {
@@ -1862,7 +1875,7 @@ class spot_publisher_client_t
         if (!_serializers) {
             return publish_call_t (
               result_t<void>::failure (
-                framework_error_kind_t::invalid_configuration,
+                framework_error_kind_t::not_configured,
                 "logical multicast has no serializer registry"));
         }
         try {
@@ -1928,7 +1941,7 @@ class spot_node_builder_t
       std::function<std::shared_ptr<TEntrySpot> (entry_spot_context_t)> factory)
     {
         if (!factory) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "Entry SPOT factory must not be empty");
         }
         auto &builder =
@@ -1948,7 +1961,7 @@ class spot_node_builder_t
     {
         if (!factory || !configure) {
             throw framework_exception_t (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "User Spot factory and configure callback must not be empty");
         }
         auto factory_builder =
@@ -1987,7 +2000,7 @@ class spot_node_builder_t
     {
         if (!factory || !configure) {
             throw framework_exception_t (
-              framework_error_kind_t::invalid_configuration,
+              framework_error_kind_t::not_configured,
               "Instance Spot factory and configure callback must not be empty");
         }
         auto factory_builder =
@@ -2096,7 +2109,7 @@ class spot_node_builder_t
             if (!instance->context ().has_same_source_fence (
                   spot_context_t (expected_state))) {
                 throw framework_exception_t (
-                  framework_error_kind_t::invalid_configuration,
+                  framework_error_kind_t::not_configured,
                   "Spot factory must return a Spot that exposes the provided Context");
             }
             instance->configure ();

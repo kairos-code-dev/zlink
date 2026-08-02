@@ -398,20 +398,16 @@ int main (int argc, char **argv)
           std::make_unique<sample_topology_t> (topology));
         add_gamequest_json_codecs (options.codecs ());
         add_gamequest_location_store (options, topology);
-        /* 같은 spot route mesh를 양방향으로 쓴다. API 노드의 entry spot으로 notify를 보내려면 그
-         * 노드의 spot mesh 이름에 이 route 채널을 매핑해야 한다. */
-        auto quest_spot_route = options.add_route_mesh (sample_names_t::quest_spot_route);
-        quest_spot_route.listen (topology.selected_mission_spot_route_endpoint ())
-          .channel_name (sample_names_t::quest_spot_route);
-        options.configure_locations ().spot_router_channels[api_spot_mesh_for ("api-a")] =
-          sample_names_t::quest_spot_route;
-        options.configure_locations ().spot_router_channels[api_spot_mesh_for ("api-b")] =
-          sample_names_t::quest_spot_route;
+        /* QuestMission은 PlayerQuestSpot factory를 제공하는 Object Server다. API와
+         * 같은 RouteMesh를 사용하므로 별도 spot router와 ChannelName을 만들지 않는다. */
+        auto gamequest = options.add_route_mesh ("gamequest");
+        gamequest
+          .set_routing_id (zlink::routing_id_t::from (
+            "gamequest-" + topology.mission_name + "-spot"))
+          .set_object_role (object_role_t::server)
+          .listen (topology.selected_mission_spot_route_endpoint ());
         auto spot_services = options.services ().build_provider ();
-        auto quest_spot = options.add_route_mesh (sample_names_t::quest_spot_discovery);
-        quest_spot.channel_name (sample_names_t::quest_spot_route);
-        quest_spot.listen (topology.selected_mission_spot_router_endpoint ())
-          .add_instance_spot_factory<player_quest_spot_t> (
+        gamequest.add_instance_spot_factory<player_quest_spot_t> (
             sample_names_t::player_quest_spot,
             [quest_store_ptr, spot_services] (
               instance_spot_context_t context) mutable {
@@ -421,9 +417,7 @@ int main (int argc, char **argv)
                   spot_services.get_required<actor_directory_t> (),
                   spot_services.get_required<actor_client_t> ());
             },
-            [] (auto &factory) {
-                factory.disable_relocation ();
-            });
+            [] (auto &factory) { factory.disable_relocation (); });
     });
     return app.run (argc, argv);
 }

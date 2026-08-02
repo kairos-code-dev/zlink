@@ -23,7 +23,7 @@ class service_registry_t
     {
         const auto [_, inserted] = descriptors.emplace (type, std::move (descriptor));
         if (!inserted) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "duplicate service registration");
         }
     }
@@ -32,7 +32,7 @@ class service_registry_t
     {
         const auto found = descriptors.find (type);
         if (found == descriptors.end ()) {
-            throw framework_exception_t (framework_error_kind_t::request_target_not_found,
+            throw framework_exception_t (framework_error_kind_t::not_found,
                                          std::string ("service is not registered: ")
                                            + type.name ());
         }
@@ -139,7 +139,7 @@ std::shared_ptr<void> service_provider_t::resolve (std::type_index type)
             return descriptor.singleton_instance;
         case service_lifetime_t::scoped: {
             if (!_scope->scoped_context) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                throw framework_exception_t (framework_error_kind_t::protocol_error,
                                              "scoped service requires a service scope");
             }
             const auto found = _scope->scoped_instances.find (type);
@@ -157,7 +157,7 @@ std::shared_ptr<void> service_provider_t::resolve (std::type_index type)
         }
     }
 
-    throw framework_exception_t (framework_error_kind_t::request_failed,
+    throw framework_exception_t (framework_error_kind_t::internal_failure,
                                  "unknown service lifetime");
 }
 

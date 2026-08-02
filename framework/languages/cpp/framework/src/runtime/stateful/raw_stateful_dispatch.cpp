@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/stateful/raw_stateful_dispatch.hpp"
+
 #include <runtime/locations/location_repository.hpp>
 #include "runtime/locations/sha256.hpp"
 

@@ -7,10 +7,13 @@
 #include <zlink.hpp>
 
 #include <algorithm>
+#include <cstdlib>
 #include <iomanip>
+#include <iostream>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -22,6 +25,18 @@ namespace
 constexpr std::size_t max_completion_control_parts = 64;
 constexpr std::size_t max_completion_control_bytes = 256u * 1024u;
 constexpr std::size_t max_pending_completion_controls = 1024;
+
+bool mesh_trace_enabled ()
+{
+    const char *value = std::getenv ("ZLINK_CPP_MESH_TRACE");
+    return value != nullptr && *value != '\0' && std::string_view (value) != "0";
+}
+
+void trace_mesh (const std::string &message)
+{
+    if (mesh_trace_enabled ())
+        std::cerr << "zlink mesh " << message << '\n';
+}
 
 bool completion_control_command (protocol::command kind) noexcept
 {
@@ -255,7 +270,9 @@ void raw_mesh_node_owner_t::start ()
     _options.descriptor = descriptor;
 
     _port = std::make_shared<detail::backend::raw_route_port_t> (
-      *router, &_socket_mutex);
+      *router, &_socket_mutex,
+      zlink::poll_event_flag_t::pollin
+        | zlink::poll_event_flag_t::pollcompletion);
     {
         std::lock_guard control_lock (_completion_control_mutex);
         _accept_completion_controls = true;
@@ -266,13 +283,9 @@ void raw_mesh_node_owner_t::start ()
           accept_completion_control (
             std::move (source), std::move (parts));
       });
-    auto poller = std::make_unique<zlink::poller_t> ();
-    poller->add (
-      *router,
-      zlink::poll_event_flag_t::pollin
-        | zlink::poll_event_flag_t::pollcompletion,
-      1);
-    _poller = std::move (poller);
+    auto monitor_poller = std::make_unique<zlink::poller_t> ();
+    monitor_poller->add (*monitor, zlink::poll_event_flag_t::pollin, 1);
+    _monitor_poller = std::move (monitor_poller);
     _monitor = std::move (monitor);
     _router = std::move (router);
     _context = std::move (context);
@@ -282,7 +295,7 @@ void raw_mesh_node_owner_t::close () noexcept
 {
     std::shared_ptr<detail::backend::raw_route_port_t> port;
     std::unique_ptr<zlink::router_socket_t> router;
-    std::unique_ptr<zlink::poller_t> poller;
+    std::unique_ptr<zlink::poller_t> monitor_poller;
     std::unique_ptr<zlink::socket_monitor_t> monitor;
     std::unique_ptr<zlink::context_t> context;
     {
@@ -295,7 +308,7 @@ void raw_mesh_node_owner_t::close () noexcept
         _closed = true;
         port = std::move (_port);
         monitor = std::move (_monitor);
-        poller = std::move (_poller);
+        monitor_poller = std::move (_monitor_poller);
         router = std::move (_router);
         context = std::move (_context);
     }
@@ -304,16 +317,16 @@ void raw_mesh_node_owner_t::close () noexcept
     if (port) {
         port->close ();
     }
-    if (monitor) {
+    if (monitor_poller) {
         try {
-            monitor->close ();
+            monitor_poller->close ();
         }
         catch (...) {
         }
     }
-    if (poller) {
+    if (monitor) {
         try {
-            poller->close ();
+            monitor->close ();
         }
         catch (...) {
         }
@@ -552,11 +565,19 @@ bool raw_mesh_node_owner_t::request_with_header (
       header (correlation),
       protocol::encode_application_payload (application_payload)};
     const auto operations = _operations;
+    trace_mesh (
+      "request-submit correlation=" + std::to_string (correlation)
+        + " targetBytes=" + std::to_string (target_routing_id.size ()));
     const auto submitted = port->request (
       target_routing_id, wire, timeout,
       [operations, id, correlation] (
         detail::backend::raw_request_result_t result,
         detail::backend::raw_message_t parts) {
+          trace_mesh (
+            "request-completion correlation=" + std::to_string (correlation)
+              + " result="
+              + std::to_string (static_cast<int> (result))
+              + " parts=" + std::to_string (parts.size ()));
           if (result != detail::backend::raw_request_result_t::ok) {
               const auto terminal =
                 result == detail::backend::raw_request_result_t::timed_out
@@ -1138,6 +1159,10 @@ bool raw_mesh_node_owner_t::request_instance_spot_activation (
         return accepted;
     }
     const auto operations = _operations;
+    trace_mesh (
+      "infrastructure-request-submit correlation="
+        + std::to_string (correlation)
+        + " targetBytes=" + std::to_string (target_routing_id.size ()));
     const auto submitted = port->request (
       target_routing_id, std::move (parts), timeout,
       [operations, id, correlation] (
@@ -1302,6 +1327,11 @@ bool raw_mesh_node_owner_t::request_infrastructure (
                 id, foundation::operation_terminal_t::transport_failed);
           }
       });
+    trace_mesh (
+      "infrastructure-request-result correlation="
+        + std::to_string (correlation)
+        + " accepted="
+        + (submitted ? std::string ("true") : std::string ("false")));
     if (!submitted) {
         (void) _operations->fail (
           id, foundation::operation_terminal_t::transport_failed);
@@ -1563,19 +1593,19 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
     {
         std::lock_guard lifecycle_lock (_lifecycle_mutex);
         port = _port;
-        if (_poller) {
-            try {
-                zlink::poll_event_t event;
-                (void) _poller->wait (
-                  &event, 1, std::chrono::milliseconds::zero ());
-            }
-            catch (...) {
-                return raw_mesh_pump_result_t::protocol_error;
-            }
-        }
     }
     if (!port) {
         return raw_mesh_pump_result_t::no_data;
+    }
+    zlink::poll_event_flag_t readiness = zlink::poll_event_flag_t::none;
+    try {
+        /* One poller owns both ROUTER receive readiness and request
+         * completion processing. The completion callback can enqueue a
+         * control record before application admission is considered. */
+        readiness = port->poll (std::chrono::milliseconds::zero ());
+    }
+    catch (...) {
+        return raw_mesh_pump_result_t::protocol_error;
     }
     std::optional<detail::backend::raw_received_t> received;
     std::optional<std::uint64_t> completion_peer_generation;
@@ -1601,7 +1631,7 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
         return accepted_result;
     }
     if (!received && accept_application_receive)
-        received = port->try_receive ();
+        received = port->receive_if_ready (readiness);
     if (!received) {
         return raw_mesh_pump_result_t::no_data;
     }
@@ -1610,6 +1640,14 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
     }
     try {
         const auto header = protocol::decode_header (received->parts.front ());
+        trace_mesh (
+          "receive kind="
+            + std::to_string (static_cast<int> (header.kind))
+            + " parts=" + std::to_string (received->parts.size ())
+            + " requestSeq="
+            + (received->request_sequence
+                 ? std::to_string (*received->request_sequence)
+                 : std::string ("-")));
         if (header.kind == protocol::command::hello
             || header.kind == protocol::command::admit
             || header.kind == protocol::command::update) {
@@ -2276,6 +2314,24 @@ std::size_t raw_mesh_node_owner_t::drain_monitor_events (
         {
             std::lock_guard lifecycle_lock (_lifecycle_mutex);
             if (!_monitor || !_monitor->valid ()) {
+                return count;
+            }
+            if (!_monitor_poller) {
+                return count;
+            }
+            zlink::poll_event_t readiness;
+            try {
+                if (_monitor_poller->wait (
+                      &readiness, 1, std::chrono::milliseconds::zero ())
+                      != 1
+                    || readiness.slot != 1
+                    || (static_cast<short> (readiness.revents)
+                        & static_cast<short> (zlink::poll_event_flag_t::pollin))
+                         == 0) {
+                    return count;
+                }
+            }
+            catch (...) {
                 return count;
             }
             try {

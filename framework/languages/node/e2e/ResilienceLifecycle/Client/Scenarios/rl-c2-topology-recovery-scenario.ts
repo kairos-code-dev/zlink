@@ -1,4 +1,4 @@
-// RL-C2: location store stale descriptor cleanup 시나리오를 검증한다.
+// RL-C2: Crash한 provider를 owner lease 만료 뒤 제외한다 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../../../http-client';

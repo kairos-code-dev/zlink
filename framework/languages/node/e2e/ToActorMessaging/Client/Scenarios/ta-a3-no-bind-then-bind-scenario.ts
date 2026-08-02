@@ -1,4 +1,4 @@
-// TA-A3: no-bind 전달 뒤 이후 bind 시나리오를 검증한다.
+// TA-A3: Direct message 뒤에 Session을 bind한다 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
 import { getJson } from '../../../http-client';
 import {

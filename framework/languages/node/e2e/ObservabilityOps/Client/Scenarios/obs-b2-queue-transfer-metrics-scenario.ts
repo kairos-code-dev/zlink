@@ -1,4 +1,4 @@
-// OBS-B2: Actor 이동 계기 시나리오를 검증한다.
+// OBS-B2: Actor relocation metric을 확인한다 시나리오를 검증한다.
 import {
   ObservabilityOpsNames,
   createActor,

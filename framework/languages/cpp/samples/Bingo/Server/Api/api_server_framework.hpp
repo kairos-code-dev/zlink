@@ -38,14 +38,21 @@ inline app_t &add_bingo_api_server (app_t &app, const sample_topology_t &topolog
             topology.selected_api_channel_endpoint ()))
           .add_handler_group ("api");
 
-        options.add_route_mesh (sample_names_t::matchmaking_mesh)
+        auto matchmaking_mesh =
+          options.add_route_mesh (sample_names_t::matchmaking_mesh);
+        matchmaking_mesh
           .set_object_role (object_role_t::client)
-          .listen (topology.selected_api_matchmaking_route_endpoint ())
-          .channel_name (sample_names_t::matchmaking_mesh);
-        options.add_route_mesh (sample_names_t::room_spot_mesh)
+          .set_routing_id (zlink::routing_id_t::from (
+            "bingo-api-" + topology.api_node + "-matchmaking"))
+          .listen (topology.selected_api_matchmaking_route_endpoint ());
+        matchmaking_mesh.channel_name (sample_names_t::matchmaking_mesh).client ();
+        auto room_mesh = options.add_route_mesh (sample_names_t::room_spot_mesh);
+        room_mesh
           .set_object_role (object_role_t::client)
-          .listen (topology.selected_api_play_route_endpoint ())
-          .channel_name (sample_names_t::room_spot_mesh);
+          .set_routing_id (zlink::routing_id_t::from (
+            "bingo-api-" + topology.api_node + "-room"))
+          .listen (topology.selected_api_play_route_endpoint ());
+        room_mesh.channel_name (sample_names_t::room_spot_mesh).client ();
 
         options.handlers ()
           .group ("api")

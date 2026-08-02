@@ -66,15 +66,25 @@ final class DefaultZLinkStreamWaitCall implements ZLinkStreamWaitCall {
 
     @Override
     public CompletionStage<ZLinkStreamMessage<ZLinkStreamEncodedPayload>> submit() {
+        if (connector instanceof DefaultZLinkStreamConnector concrete) {
+            return concrete.awaitMessage(name, predicate)
+                .toCompletableFuture()
+                .orTimeout(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        }
         CompletableFuture<ZLinkStreamMessage<ZLinkStreamEncodedPayload>> result =
             new CompletableFuture<>();
         AutoCloseable[] subscription = new AutoCloseable[1];
         subscription[0] = connector.on(name, message -> {
             try {
                 if (predicate.test(message)) {
-                    result.complete(message);
+                    if (!result.complete(message)) {
+                        closeMessage(message);
+                    }
+                } else {
+                    closeMessage(message);
                 }
             } catch (RuntimeException ex) {
+                closeMessage(message);
                 result.completeExceptionally(ex);
             }
             return CompletableFuture.completedFuture(null);
@@ -90,7 +100,27 @@ final class DefaultZLinkStreamWaitCall implements ZLinkStreamWaitCall {
             throw new IllegalStateException(
                 "typed stream payload API requires ZLinkStreamConnectorOptions.typedCodec");
         }
-        return submit().thenApply(message -> decodeMessage(message, payloadType));
+        CompletionStage<ZLinkStreamMessage<ZLinkStreamEncodedPayload>> source = submit();
+        CompletableFuture<ZLinkStreamMessage<TPayload>> result = new CompletableFuture<>();
+        source.whenComplete((message, error) -> {
+            if (error != null) {
+                result.completeExceptionally(error);
+                return;
+            }
+            try {
+                result.complete(decodeMessage(message, payloadType));
+            } catch (Throwable failure) {
+                result.completeExceptionally(failure);
+            } finally {
+                message.payload().payload().close();
+            }
+        });
+        result.whenComplete((ignored, error) -> {
+            if (result.isCancelled()) {
+                source.toCompletableFuture().cancel(false);
+            }
+        });
+        return result;
     }
 
     private <TPayload> ZLinkStreamMessage<TPayload> decodeMessage(
@@ -99,7 +129,9 @@ final class DefaultZLinkStreamWaitCall implements ZLinkStreamWaitCall {
         return new ZLinkStreamMessage<>(
             message.packetName(),
             codec.decode(message.payload(), payloadType),
-            message.metadata());
+            message.metadata(),
+            message.flowId(),
+            message.flowOrigin());
     }
 
     private static void closeQuietly(AutoCloseable closeable) {
@@ -109,6 +141,15 @@ final class DefaultZLinkStreamWaitCall implements ZLinkStreamWaitCall {
         try {
             closeable.close();
         } catch (Exception ignored) {
+        }
+    }
+
+    private static void closeMessage(
+        ZLinkStreamMessage<ZLinkStreamEncodedPayload> message) {
+        try {
+            message.payload().payload().close();
+        } catch (RuntimeException ignored) {
+            // The waiter no longer owns a message that it cannot deliver.
         }
     }
 }

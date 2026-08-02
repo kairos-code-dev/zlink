@@ -201,6 +201,16 @@ internal sealed partial class AwaitSession(
                 await RelaySpotCommandAsync<SelfCycleMsg>(dispatch, payload, cancellationToken);
                 return;
             }
+            case "SelfSendMsg":
+            {
+                await RelaySpotCommandAsync<SelfSendMsg>(dispatch, payload, cancellationToken);
+                return;
+            }
+            case "DeferredJoinFailureMsg":
+            {
+                await RelaySpotCommandAsync<DeferredJoinFailureMsg>(dispatch, payload, cancellationToken);
+                return;
+            }
             case "WorkerAwaitMsg":
             {
                 await RelaySpotCommandAsync<WorkerAwaitMsg>(dispatch, payload, cancellationToken);

@@ -73,8 +73,7 @@ public final class ZLinkHttpRequestBuilder {
     }
 
     public ZLinkHttpRequestBuilder timeout(Duration value) {
-        HttpClientText.requirePositiveTimeout(value);
-        this.timeout = value;
+        this.timeout = HttpClientText.normalizeTimeout(value);
         return this;
     }
 

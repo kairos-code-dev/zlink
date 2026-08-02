@@ -1,4 +1,4 @@
-// RL-A4: rolling update / blue-green 전환 시나리오를 검증한다.
+// RL-A4: Rolling과 blue-green update 중 serving target을 유지한다 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../../../http-client';

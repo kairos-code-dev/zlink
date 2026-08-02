@@ -130,7 +130,7 @@ class Program {
                 ) { factory -> factory.recreateOnRelocation() }
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(api.streamEndpoint)
-                .enableActorDispatch(SampleNames.PlayerQuestMesh)
+                .enableActorDispatch()
                 .registerSession(GameQuestSession::class.java)
         }
     }

@@ -53,7 +53,7 @@ public final class TimerScenarioSpot implements ZLinkSpot<ZLinkActor> {
 
     @Override
     public CompletionStage<ZLinkSpotCreateResponse> onCreate(ZLinkMessage request) {
-        String rid = context.spotRid().toString();
+        String rid = context.spotId();
         if (rid.startsWith("timer-overrun-")) {
             ZLinkTimerOverrunPolicy overrunPolicy = rid.endsWith("catchup")
                 ? ZLinkTimerOverrunPolicy.CATCH_UP_BOUNDED
@@ -77,22 +77,22 @@ public final class TimerScenarioSpot implements ZLinkSpot<ZLinkActor> {
     @Override
     public CompletionStage<Void> onClosing() {
         status = "closed";
-        evidence.record("IdleClosed", context.spotRid().toString(), "closed");
+        evidence.record("IdleClosed", context.spotId(), "closed");
         return CompletableFuture.completedFuture(null);
     }
 
     public void activity(String value) {
         lastActivity = Instant.now();
         status = "active:" + value;
-        evidence.record("IdleActivity", context.spotRid().toString(), value);
+        evidence.record("IdleActivity", context.spotId(), value);
     }
 
     public Contracts.TimerActivityRes status() {
-        return new Contracts.TimerActivityRes(context.spotRid().toString(), status);
+        return new Contracts.TimerActivityRes(context.spotId(), status);
     }
 
     public void idleTick() {
-        String rid = context.spotRid().toString();
+        String rid = context.spotId();
         if ("idle-close".equals(rid)
             && Duration.between(lastActivity, Instant.now()).compareTo(Duration.ofMillis(700)) > 0) {
             evidence.record("IdleCloseRequested", rid, "idle");
@@ -110,7 +110,7 @@ public final class TimerScenarioSpot implements ZLinkSpot<ZLinkActor> {
     public void overrunTick(long deliveryIndex, long skipped) {
         tickCount++;
         skippedTicks += skipped;
-        String rid = context.spotRid().toString();
+        String rid = context.spotId();
         status = "ticks=" + tickCount + ",skipped=" + skippedTicks;
         evidence.record("TimerOverrunTick", rid, deliveryIndex + "/" + skipped + "/" + tickCount);
         if (tickCount >= 3 && overrunTimer != null) {

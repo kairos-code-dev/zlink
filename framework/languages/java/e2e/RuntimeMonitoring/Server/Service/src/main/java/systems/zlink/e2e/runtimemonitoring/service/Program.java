@@ -11,7 +11,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.StandardEnvironment;
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.runtimemonitoring.service.handlers.MonitoringSpot;
 import systems.zlink.e2e.runtimemonitoring.service.handlers.TriggeredMonitoringSpot;
 import systems.zlink.e2e.runtimemonitoring.service.handlers.WorkReqHandler;
@@ -76,7 +75,7 @@ public final class Program {
         ObjectProvider<ZLinkFrameworkLifecycle> runtimeQuery,
         ObserverIsolationProbe observerIsolation,
         ObjectProvider<ZLinkSpotManager> spots,
-        ZLinkSpotPublisherClient publisher,
+        ObjectProvider<ZLinkSpotPublisherClient> publisher,
         org.springframework.context.ConfigurableApplicationContext applicationContext,
         ServiceOptions config) {
         return new EvidenceHttpServer(
@@ -128,7 +127,7 @@ public final class Program {
             if (config.enableSpot()) {
                 ZLinkMeshNodeBuilder node = options.addRouteMesh(Contracts.SPOT_MESH)
                     .listen(config.meshEndpoint())
-                    .setRoutingId(RoutingId.from(config.routingId() + "-spot"));
+                    .setRoutingIdPrefix(config.routingId());
                 node.configureRouterSocket().setReceiveHighWaterMark(1);
                 node.channelName(Contracts.SPOT_CHANNEL)
                     .server()
@@ -137,9 +136,7 @@ public final class Program {
                         Contracts.WorkReq.class,
                         Contracts.WorkRes.class);
                 if (!config.meshPeerEndpoint().isBlank()) {
-                    node.peerConnections().connect(
-                        RoutingId.from("svc-a-spot"),
-                        config.meshPeerEndpoint());
+                    node.peerConnections().connect(config.meshPeerEndpoint());
                 }
                 var objects = node.objects().server();
                 objects.addSpotFactory(
@@ -155,8 +152,8 @@ public final class Program {
     }
 
     @Bean
-    WorkReqHandler workRequestHandler(EvidenceState state, ServiceOptions config) {
-        return new WorkReqHandler(state, config.routingId());
+    WorkReqHandler workRequestHandler(EvidenceState state) {
+        return new WorkReqHandler(state);
     }
 
     @Bean

@@ -11,7 +11,7 @@ namespace zlink::samples::deliverydispatch
  * 배송원으로 재제안한다. 노드와 세션은 시한을 세지 않는다. */
 struct sample_timings_t
 {
-    static constexpr std::chrono::milliseconds courier_decision_timeout{700};
+    static constexpr std::chrono::milliseconds courier_decision_timeout{3000};
     static constexpr std::chrono::milliseconds offer_sweep_interval{100};
 };
 

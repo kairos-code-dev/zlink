@@ -1,4 +1,4 @@
-// RC-A4: DI lifecycle 시나리오를 검증한다.
+// RC-A4: Dispatch마다 dependency scope를 분리한다 시나리오를 검증한다.
 import type { EchoRes } from '../../Shared/messages';
 import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';

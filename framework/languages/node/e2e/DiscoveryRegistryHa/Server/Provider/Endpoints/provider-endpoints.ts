@@ -1,6 +1,6 @@
 import {
   ZLinkFrameworkRelocationMode,
-  type ZLinkChannelRuntimeOptions,
+  type ZLinkRouteMeshRuntimeOptions,
   type ZLinkFrameworkRuntime
 } from '@zlink-systems/framework';
 import { ChannelNames, type EvidenceWaitReq } from '../../../Shared/messages';
@@ -9,7 +9,7 @@ import type { HttpRoute } from '../Support/http-server';
 
 export function createProviderEndpoints(
   evidence: EvidenceStore,
-  runtimeOptions: ZLinkChannelRuntimeOptions,
+  runtimeOptions: ZLinkRouteMeshRuntimeOptions,
   frameworkRuntime: ZLinkFrameworkRuntime,
   stop: () => void
 ): readonly HttpRoute[] {
@@ -32,7 +32,7 @@ export function createProviderEndpoints(
       method: 'POST',
       path: '/drain',
       handle: async () => {
-        runtimeOptions.clientServerChannel(ChannelNames.profile).configureServerSocket().weight = 0;
+        runtimeOptions.channel(ChannelNames.profile).weight = 0;
         evidence.add(`drain-started|rid=${evidence.rid}|weight=0`);
         const result = await frameworkRuntime.relocate({ mode: ZLinkFrameworkRelocationMode.PlannedMaintenance, deadlineMs: 30_000 });
         evidence.add(`retire-finished|rid=${evidence.rid}|outcome=${result.outcome}|reason=${result.reason}`);

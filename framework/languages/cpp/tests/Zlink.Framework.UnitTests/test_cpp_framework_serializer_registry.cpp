@@ -102,7 +102,7 @@ int main ()
     }
     catch (const zlink::framework::framework_exception_t &error) {
         duplicate_failed =
-          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+          error.kind () == zlink::framework::framework_error_kind_t::protocol_error;
     }
     if (!duplicate_failed) {
         return 5;
@@ -115,7 +115,7 @@ int main ()
     }
     catch (const zlink::framework::framework_exception_t &error) {
         decode_failed =
-          error.kind () == zlink::framework::framework_error_kind_t::payload_decode_failed;
+          error.kind () == zlink::framework::framework_error_kind_t::protocol_error;
     }
     if (!decode_failed) {
         return 7;
@@ -128,7 +128,7 @@ int main ()
     }
     catch (const zlink::framework::framework_exception_t &error) {
         json_decode_failed =
-          error.kind () == zlink::framework::framework_error_kind_t::payload_decode_failed;
+          error.kind () == zlink::framework::framework_error_kind_t::protocol_error;
     }
     if (!json_decode_failed) {
         return 13;

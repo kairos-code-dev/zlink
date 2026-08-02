@@ -1,4 +1,4 @@
-// SM-F4: target Spot 없음과 stale generation 시나리오를 검증한다.
+// SM-F4: Missing Spot과 stale SpotRef를 구분한다 시나리오를 검증한다.
 import type {
   ChannelRouteRes,
   ChannelRouteReq,

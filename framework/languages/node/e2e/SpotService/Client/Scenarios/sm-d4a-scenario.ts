@@ -1,4 +1,4 @@
-// SM-D4A: rebind와 stale binding 격리 시나리오를 검증한다.
+// SM-D4A: Rebind 뒤 stale Session을 격리한다 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
 import { ensure } from '../Support/scenario-assert';
 import {

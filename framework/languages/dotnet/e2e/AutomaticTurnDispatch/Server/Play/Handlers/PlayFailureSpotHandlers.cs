@@ -21,13 +21,23 @@ internal sealed class SelfCycleHandler(
             $"self-cycle-started|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}");
         try
         {
-            await spot.Context.Outbound.RequestToSpot(
+            var call = spot.Context.Outbound.RequestToSpot(
                     spot.Context.SpotId,
                     new ProbeReq(request.RequestId, "self-cycle"))
-                .Timeout(TimeSpan.FromMilliseconds(request.TimeoutMs))
-                .Async<AutomaticTurnDispatchRes>(cancellationToken);
+                .Timeout(TimeSpan.FromMilliseconds(request.TimeoutMs));
+            if (string.Equals(request.Terminator, "yield", StringComparison.Ordinal))
+                await call.Yield<AutomaticTurnDispatchRes>(cancellationToken);
+            else
+                await call.Async<AutomaticTurnDispatchRes>(cancellationToken);
             evidence.Add(
                 $"self-cycle-unexpected-completed|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}");
+        }
+        catch (ZLinkFrameworkException ex)
+            when (ex.Kind == ZLinkFrameworkErrorKind.InvalidOperation)
+        {
+            evidence.Add(
+                $"self-cycle-rejected|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}"
+                + $"|terminator={request.Terminator}|error={ex.GetType().Name}");
         }
         catch (Exception ex) when (ex is TimeoutException or ZLinkFrameworkException)
         {
@@ -35,6 +45,57 @@ internal sealed class SelfCycleHandler(
                 $"self-cycle-timed-out|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}"
                 + $"|error={ex.GetType().Name}");
         }
+    }
+}
+
+[ZLinkSpotPacketHandler("SelfSendMsg")]
+internal sealed class SelfSendHandler(EvidenceStore evidence)
+    : IZLinkSpotPacketHandler<AwaitProbeSpot, SelfSendMsg>
+{
+    public async ValueTask HandleAsync(
+        AwaitProbeSpot spot,
+        SelfSendMsg request,
+        CancellationToken cancellationToken)
+    {
+        evidence.Add(
+            $"self-send-started|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}");
+        await spot.Context.Outbound.SendToSpot(
+                spot.Context.SpotId,
+                new ProbeMsg(request.RequestId, request.Marker))
+            .Async(cancellationToken);
+        evidence.Add(
+            $"self-send-completed|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}");
+    }
+}
+
+[ZLinkSpotPacketHandler("DeferredJoinFailureMsg")]
+internal sealed class DeferredJoinFailureHandler(EvidenceStore evidence)
+    : IZLinkSpotPacketHandler<AwaitProbeSpot, DeferredJoinFailureMsg>
+{
+    public ValueTask HandleAsync(
+        AwaitProbeSpot spot,
+        DeferredJoinFailureMsg request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var first = spot.FindActor(request.FirstActorId)
+            ?? throw new InvalidOperationException($"Actor '{request.FirstActorId}' is not a member.");
+        var second = spot.FindActor(request.SecondActorId)
+            ?? throw new InvalidOperationException($"Actor '{request.SecondActorId}' is not a member.");
+        first.Context.JoinSpot(
+                request.FirstTargetSpotRid,
+                new JoinDelayReq(request.RequestId, 25, "td-e2a-first"))
+            .Defer();
+        second.Context.JoinSpot(
+                request.SecondTargetSpotRid,
+                new JoinDelayReq(request.RequestId, 25, "td-e2a-second"))
+            .Defer();
+        evidence.Add(
+            $"deferred-join-failure-registered|rid={evidence.Rid}|spot={spot.Context.SpotId}"
+            + $"|request={request.RequestId}|mode={request.FailureMode}");
+        throw string.Equals(request.FailureMode, "cancel", StringComparison.Ordinal)
+            ? new OperationCanceledException("TD-E2A cancellation fixture", cancellationToken)
+            : new InvalidOperationException("TD-E2A exception fixture");
     }
 }
 

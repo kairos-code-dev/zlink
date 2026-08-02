@@ -1,4 +1,4 @@
-// ST-E1: remote relocation 뒤 bound session push 시나리오를 검증한다.
+// ST-E1: Bound Session push after relocation 시나리오를 검증한다.
 import {
   SpotActorTransferNames,
   options,

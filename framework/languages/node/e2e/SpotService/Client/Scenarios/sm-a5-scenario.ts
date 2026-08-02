@@ -1,4 +1,4 @@
-// SM-A5: Stage wrapper 시나리오를 검증한다.
+// SM-A5: Application Stage wrapper가 Spot 계약을 바꾸지 않는다 시나리오를 검증한다.
 import type {
   CloseSpotRes,
   CloseSpotReq,

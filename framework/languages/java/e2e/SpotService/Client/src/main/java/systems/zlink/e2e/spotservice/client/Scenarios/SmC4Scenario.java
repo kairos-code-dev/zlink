@@ -14,7 +14,7 @@ public final class SmC4Scenario extends SpotServiceScenarioContext {
 
     private void execute() {
         Contracts.OutboundRes reply = eventually(() -> requestOutbound("room-a", "c5-cross-node"));
-        ensure("room-a".equals(reply.spotRid()), "SM-C5 wrong publisher spot");
+        ensure("room-a".equals(reply.spotId()), "SM-C5 wrong publisher spot");
         ensure("play-a".equals(reply.nodeRid()), "SM-C5 wrong publisher node");
         waitForPlayBEvidence(List.of("SpotMeshMsg|play-b|room-b|publish:c5-cross-node"));
         System.out.println("scenario SM-C5 passed");

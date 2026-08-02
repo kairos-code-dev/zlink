@@ -1,4 +1,4 @@
-// SM-C4: local Spot이 없는 MeshNode의 Logical Multicast 시나리오를 검증한다.
+// SM-C4: Local Spot이 없는 MeshNode가 Logical Multicast를 publish한다 시나리오를 검증한다.
 import type {
   CreateSpotRes,
   CreateSpotReq,

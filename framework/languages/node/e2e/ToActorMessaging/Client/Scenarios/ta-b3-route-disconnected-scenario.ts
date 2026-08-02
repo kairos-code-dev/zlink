@@ -1,4 +1,4 @@
-// TA-B3: route 미연결 시나리오를 검증한다.
+// TA-B3: Current owner에 연결할 수 없으면 Unavailable로 끝난다 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../../../http-client';
 import type { ActorCallResponse, ActorRefPayload } from '../../Shared/messages';
@@ -11,15 +11,13 @@ export async function runTaB3(options: ClientOptions): Promise<void> {
   console.log('scenario-control TA-B3 disconnect-route');
   await waitForControl(options, 'route-disconnected');
   await waitForRouteState(options, actor.actor, 'disconnected');
-  await assertCall(options, 'TA-B3-route-not-connected-send', 'ta-b3', actor.actor, 'route-send', 'sent', true);
-  await assertFailure(options, 'TA-B3-route-not-connected-request', 'ta-b3', 'routeNotConnected', false, actor.actor);
+  await assertFailure(options, 'TA-B3-route-not-connected-request', 'ta-b3', 'Unavailable', false, actor.actor);
 
   console.log('scenario-control TA-B3 restore-route');
   await waitForControl(options, 'route-restored');
   await waitForRouteState(options, actor.actor, 'connected');
   await assertCall(options, 'TA-B3-route-restored-request', 'ta-b3', actor.actor, 'restored', 'reply:restored', false);
   const evidence = await getJson<ActorEvidence[]>(`${options.actorUrl}/evidence`);
-  requireNoEvidence(evidence, 'TA-B3-route-not-connected-send');
   requireNoEvidence(evidence, 'TA-B3-route-not-connected-request');
   requireEvidence(evidence, 'TA-B3-route-restored-request', 'request');
   console.log('scenario TA-B3 passed');
@@ -38,7 +36,7 @@ async function waitForRouteState(
       value: 'probe'
     });
     return expected === 'disconnected'
-      ? response.errorKind === 'routeNotConnected'
+      ? response.errorKind === 'Unavailable'
       : response.result === 'reply:probe' && response.errorKind === undefined;
   }, `route ${expected}`);
 }

@@ -26,7 +26,7 @@ export async function startDelayHost(): Promise<void> {
           const delay = builder.addRouteMesh(AutomaticTurnDispatchNames.delayChannel)
             .listen(options.delayEndpoint)
             .routingId(options.rid);
-          delay.channelName(AutomaticTurnDispatchNames.delayChannel)
+          delay.channel(AutomaticTurnDispatchNames.delayChannel).server()
             .addRequestHandler('DelayReq', DelayHandler);
           return builder.build();
         }

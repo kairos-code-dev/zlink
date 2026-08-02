@@ -42,15 +42,27 @@ class session_server_host_factory_t
               std::make_unique<sample_topology_t> (topology));
             use_default_bingo_codecs (options.codecs ());
             add_sample_location_store (options, topology);
-            options.add_client_server_channel (sample_names_t::api_channel).client ();
+            auto api_channel = options.add_client_server_channel (sample_names_t::api_channel);
+            auto api_client = api_channel.client ();
+            api_client.connect (topology.api_a_channel_endpoint);
+            api_client.connect (topology.api_b_channel_endpoint);
             auto room_mesh = options.add_route_mesh (sample_names_t::room_spot_mesh);
-            room_mesh.set_object_role (object_role_t::client);
-            room_mesh.channel_name (sample_names_t::room_spot_mesh);
+            room_mesh
+              .set_routing_id (zlink::routing_id_t::from (
+                "bingo-session-" + topology.session_node))
+              .set_object_role (object_role_t::client);
+            room_mesh.channel_name (sample_names_t::room_spot_mesh).client ();
             room_mesh.listen (topology.selected_session_route_endpoint ());
             options.add_stream_node (sample_names_t::stream_node)
               .bind (topology.selected_stream_endpoint ())
               .register_session<bingo_session_t> ();
         });
+        if (!auto_stop) {
+            app.add_hosted_service (std::make_unique<route_mesh_readiness_service_t> (
+              "session-" + topology.session_node,
+              sample_names_t::room_spot_mesh,
+              "room"));
+        }
         return app;
     }
 };

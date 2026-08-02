@@ -3,18 +3,16 @@ import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import {
-  ZLINK_CHANNEL_CLIENT,
-  ZLINK_CHANNEL_RUNTIME_OPTIONS,
   ZLINK_FRAMEWORK_RUNTIME,
+  ZLINK_ROUTE_MESH_RUNTIME_OPTIONS,
   ZLINK_ROUTE_CLIENT,
   ZLinkModule,
   zlinkFramework
 } from '@zlink-systems/nestjs';
 import type {
-  ZLinkChannelClient,
-  ZLinkChannelRuntimeOptions,
   ZLinkFrameworkRuntime,
-  ZLinkRouteClient
+  ZLinkRouteClient,
+  ZLinkRouteMeshRuntimeOptions
 } from '@zlink-systems/framework';
 import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
 import { PacketNames } from '../../Shared/messages';
@@ -39,13 +37,12 @@ export async function startProviderHost(): Promise<void> {
   const app = await NestFactory.createApplicationContext(ProviderModule, { logger: false, abortOnError: false });
   const options = app.get(REGISTRY_MESSAGING_OPTIONS, { strict: false }) as ServerOptions;
   const evidence = app.get(EvidenceStore, { strict: false });
-  const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
   const route = app.get(ZLINK_ROUTE_CLIENT, { strict: false }) as ZLinkRouteClient;
-  const runtimeOptions = app.get(ZLINK_CHANNEL_RUNTIME_OPTIONS, { strict: false }) as ZLinkChannelRuntimeOptions;
+  const runtimeOptions = app.get(ZLINK_ROUTE_MESH_RUNTIME_OPTIONS, { strict: false }) as ZLinkRouteMeshRuntimeOptions;
   const frameworkRuntime = app.get(ZLINK_FRAMEWORK_RUNTIME, { strict: false }) as ZLinkFrameworkRuntime;
   const server = await startHttpServer(
     options.httpUrl,
-    createProviderEndpoints(evidence, channel, route, runtimeOptions, frameworkRuntime, () => { stopping = true; })
+    createProviderEndpoints(evidence, route, route, runtimeOptions, frameworkRuntime, () => { stopping = true; })
   );
 
   while (!stopping) {
@@ -80,18 +77,18 @@ function createProviderModule(): Function {
               redisEndpoint: options.redisEndpoint,
               redisKeyPrefix: options.redisKeyPrefix
             }));
-            Object.assign(builder.configureLocations(), locationMessagingOptions());
+            locationMessagingOptions(builder.configureLocations());
           }
           if (options.channelEndpoint !== undefined) {
             const profile = builder.addRouteMesh('profile')
               .listen(options.channelEndpoint)
               .routingId(options.rid);
             profile.peerConnections();
-            profile.channelName('profile').setWeight(options.weight);
             if (options.maxMessageSize > 0) {
               profile.configureRouterSocket().maxMessageSize = options.maxMessageSize;
             }
-            profile.channelName('profile')
+            profile.channel('profile').server()
+              .setWeight(options.weight)
               .addRequestHandler(PacketNames.profileReq, ProfileRequestHandler)
               .addRequestHandler(PacketNames.payloadReq, PayloadRequestHandler)
               .addSendHandler(PacketNames.profileMsg, ProfileCommandHandler);
@@ -105,7 +102,6 @@ function createProviderModule(): Function {
               .listen(options.routeEndpoint)
               .routingId(options.rid)
               .addRequestHandler(PacketNames.scenarioRouteReq, RoutePingHandler);
-            routeMesh.channelName('profile.route');
             for (const endpoint of options.routePeers) routeMesh.peerConnections().connect(endpoint);
           }
           return builder.build();

@@ -1,4 +1,4 @@
-// ST-C2: source down after target commit 시나리오를 검증한다.
+// ST-C2: Target connection failure 시나리오를 검증한다.
 import { SpotActorTransferNames, options, nodeA, nodeB, connectAndBind, assertBoundPush, assertHttpBoundPush, createSpot, createActor, joinActor, getRef, post, unique, uniqueShort, delay, require } from '../Support/scenario-support';
 
 export async function runStC2(): Promise<void> {

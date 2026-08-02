@@ -65,14 +65,14 @@ framework_error_kind_t submit_result_error_kind (zlink::submit_result_t result)
 {
     switch (result) {
         case zlink::submit_result_t::not_connected:
-            return framework_error_kind_t::route_not_connected;
+            return framework_error_kind_t::unavailable;
         case zlink::submit_result_t::backpressured:
-            return framework_error_kind_t::request_failed;
+            return framework_error_kind_t::internal_failure;
         case zlink::submit_result_t::invalid_argument:
         case zlink::submit_result_t::invalid_handle:
-            return framework_error_kind_t::request_protocol_error;
+            return framework_error_kind_t::protocol_error;
         default:
-            return framework_error_kind_t::request_failed;
+            return framework_error_kind_t::internal_failure;
     }
 }
 
@@ -156,7 +156,7 @@ spot_route_internal_dispatcher_t::dispatch_send (const route_received_packet_t &
         return detail::result_access_t::failure<void> (error);
     }
     catch (const std::exception &error) {
-        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+        return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                         std::string ("actor route send decode failed: ")
                                           + error.what ());
     }
@@ -296,7 +296,7 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                 auto native = runtime.native_node ();
                 if (!native) {
                     return result_t<zlink::message_t>::failure (
-                      framework_error_kind_t::request_failed,
+                      framework_error_kind_t::internal_failure,
                       "target Core MeshNode is unavailable");
                 }
                 const auto &target_spot = request.target_spot_id;
@@ -312,27 +312,49 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                 runtime::host::actor_transfer_token_t transfer_token;
                 runtime::host::actor_transfer_prepare_result_t transfer_result;
                 try {
-                    (void) native->create_actor (
-                      request.actor_type,
-                      request.actor_id);
+                    if (request.actor_authority_owner_generation != 0) {
+                        const auto target_spot_object =
+                          native->resolve_spot (target_spot);
+                        if (!target_spot_object) {
+                            return result_t<zlink::message_t>::failure (
+                              framework_error_kind_t::not_found,
+                              "target Spot authority is unavailable");
+                        }
+                        (void) native->create_reserved_actor (
+                          request.actor_type,
+                          runtime::stateful::object_ref_t{
+                            runtime::stateful::object_kind_t::actor,
+                            request.actor_id,
+                            request.actor_generation,
+                            request.actor_authority_owner_generation,
+                            target_spot_object->mesh_name,
+                            native->status ().routing_id ().to_string ()});
+                    } else {
+                        (void) native->create_actor (
+                          request.actor_type,
+                          request.actor_id);
+                    }
                 }
                 catch (const std::exception &error) {
                     return result_t<zlink::message_t>::failure (
-                      framework_error_kind_t::request_failed,
+                      framework_error_kind_t::internal_failure,
                       error.what ());
                 }
-                if (!native->prepare_actor_transfer (
-                      transfer_prepare, transfer_token, transfer_result)) {
+                const auto core_prepared = native->prepare_actor_transfer (
+                  transfer_prepare, transfer_token, transfer_result);
+                if (!core_prepared) {
                     return result_t<zlink::message_t>::failure (
-                      framework_error_kind_t::request_failed,
+                      framework_error_kind_t::internal_failure,
                       "target Framework Actor relocation prepare failed");
                 }
                 const auto next_membership_epoch =
                   transfer_result.membership_epoch + 1;
-                if (!transfer_token.commit (next_membership_epoch)
-                    || !transfer_token.activate ()) {
+                const auto core_committed = transfer_token.commit (next_membership_epoch);
+                const auto core_activated =
+                  core_committed && transfer_token.activate ();
+                if (!core_activated) {
                     return result_t<zlink::message_t>::failure (
-                      framework_error_kind_t::request_failed,
+                      framework_error_kind_t::internal_failure,
                       "target Framework Actor relocation activation failed");
                 }
                 runtime.record_core_actor_transfer_activation (
@@ -529,7 +551,7 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
     }
     catch (const std::exception &error) {
         return result_t<zlink::message_t>::failure (
-          framework_error_kind_t::request_protocol_error,
+          framework_error_kind_t::protocol_error,
           std::string ("SPOT route request decode failed: ") + error.what ());
     }
 }

@@ -1,6 +1,6 @@
 package systems.zlink.e2e.spotservice.shared;
 
-import systems.zlink.framework.channels.ZLinkRouteRequestContext;
+import systems.zlink.framework.channels.ZLinkRouteMessageContext;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 
 public final class RouteReqHandler
@@ -14,7 +14,7 @@ public final class RouteReqHandler
     @Override
     public java.util.concurrent.CompletionStage<Contracts.RouteRes> handle(
         Contracts.RouteReq request,
-        ZLinkRouteRequestContext context) {
+        ZLinkRouteMessageContext context) {
         state.record("RouteReq", context.routingId().toString(), request.value());
         return java.util.concurrent.CompletableFuture.completedFuture(new Contracts.RouteRes(
             "route:" + request.value(),

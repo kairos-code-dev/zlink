@@ -42,13 +42,13 @@ function createCommerceApiServer(
       if (request.method === 'POST' && url.pathname === '/self-check/workflow/inventory-reserved') {
         const body = await readJson(request) as StartOrderReq;
         const result = await workflowRouter.prepareInventory(store.reserveOrder(body));
-        sendJson(response, 200, { orderId: result.state.orderId, status: result.state.status });
+        sendJson(response, 200, { state: result.state });
         return;
       }
       if (request.method === 'POST' && url.pathname === '/self-check/workflow/inventory-effect') {
         const body = await readJson(request) as StartOrderReq;
         const result = await workflowRouter.prepareInventoryEffect(store.reserveOrder(body));
-        sendJson(response, 200, { orderId: result.state.orderId, status: result.state.status });
+        sendJson(response, 200, { state: result.state });
         return;
       }
       const continueMatch = url.pathname.match(/^\/self-check\/workflow\/([^/]+)\/continue$/);

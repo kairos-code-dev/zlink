@@ -1,4 +1,4 @@
-// SM-D10: stream backpressure 시나리오를 검증한다.
+// SM-D10: Stream backpressure를 Session별로 격리한다 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

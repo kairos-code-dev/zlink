@@ -1,4 +1,4 @@
-// MON-C1: 느린 status observer 격리 시나리오를 검증한다.
+// MON-C1: 느리거나 실패한 observer가 다른 작업을 막지 않는다 시나리오를 검증한다.
 import type { EvidenceWaitReq, ProfileRes, ProfileReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../../../http-client';

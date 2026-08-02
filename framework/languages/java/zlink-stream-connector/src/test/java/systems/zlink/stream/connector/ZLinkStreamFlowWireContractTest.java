@@ -31,7 +31,10 @@ final class ZLinkStreamFlowWireContractTest {
             ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(
                 server.options(ZLinkStreamDispatchMode.IMMEDIATE));
             try {
+                String inboundFlow = ZLinkConnectorFlowIds.next();
                 connector.on("Inbound", message -> {
+                    assertEquals(inboundFlow, message.flowId());
+                    assertEquals(ZLinkFlowOrigin.INBOUND, message.flowOrigin());
                     message.payload().payload().close();
                     connector.send(new ZLinkStreamEncodedPayload(
                         "Outbound",
@@ -40,7 +43,6 @@ final class ZLinkStreamFlowWireContractTest {
                     return CompletableFuture.completedFuture(null);
                 });
                 ConnectorTestAwait.await(connector.connect());
-                String inboundFlow = ZLinkConnectorFlowIds.next();
                 var outbound = server.readFrameAsync();
                 server.sendAsync(new ZLinkStreamWireProtocol.Header(
                         ZLinkStreamWireProtocol.KIND_SEND,

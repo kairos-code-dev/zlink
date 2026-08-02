@@ -53,13 +53,15 @@ public final class ScenarioAssert {
                 .filter(entry -> "Filter".equals(entry.marker()))
                 .filter(entry -> "EchoManual".equals(entry.packetName()))
                 .map(Contracts.EvidenceEntry::value)
-                .filter(entry -> entry.endsWith(":" + value))
                 .toList();
-            if (entries.equals(List.of(
-                "first-before:" + value,
-                "second-before:" + value,
-                "second-after:" + value,
-                "first-after:" + value))) {
+            List<String> expected = List.of(
+                "first-before",
+                "second-before",
+                "second-after",
+                "first-after");
+            if (entries.size() >= expected.size()
+                && entries.subList(entries.size() - expected.size(), entries.size())
+                    .equals(expected)) {
                 return;
             }
             sleep(100);

@@ -140,7 +140,9 @@ class support_user_actor_t : public actor_t
                   .send (join_conversation_failed_notify_t{
                     conversation_id,
                     std::to_string (static_cast<int> (failed.error_kind)),
-                    failed.retryable})
+                    failed.error_kind == framework_error_kind_t::unavailable
+                      || failed.error_kind == framework_error_kind_t::capacity_exceeded
+                      || failed.error_kind == framework_error_kind_t::deadline_exceeded})
                   .metadata (conversation_id_metadata_key, conversation_id)
                   .submit ();
             }
@@ -450,7 +452,7 @@ class conversation_spot_t : public spot_t<support_user_actor_t>
     task_t<void> on_actor_joined (support_user_actor_t &actor) override
     {
         if (_pending_actor_joins.erase (actor.actor_id) == 0) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "accepted support actor admission is missing");
         }
         (void) co_await join_actor (actor);
@@ -594,7 +596,7 @@ class conversation_spot_t : public spot_t<support_user_actor_t>
     conversation_t &require_conversation ()
     {
         if (!_conversation) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "support conversation is not created");
         }
         return *_conversation;
@@ -603,7 +605,7 @@ class conversation_spot_t : public spot_t<support_user_actor_t>
     const conversation_t &require_conversation () const
     {
         if (!_conversation) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "support conversation is not created");
         }
         return *_conversation;
@@ -701,7 +703,7 @@ class support_entry_spot_t : public entry_spot_t<support_user_actor_t>
                                              const set_agent_available_req_t &request)
     {
         if (actor.role != role_t::agent) {
-            throw framework_exception_t (framework_error_kind_t::request_rejected,
+            throw framework_exception_t (framework_error_kind_t::rejected,
                                          "only agent actors can set availability");
         }
         return _runtime.set_agent_available (actor.actor_id, actor.display_name,
@@ -716,7 +718,7 @@ class support_entry_spot_t : public entry_spot_t<support_user_actor_t>
     {
         if (request.conversation_id.empty ()) {
             throw framework_exception_t (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               "ScheduleConversationJoin is missing ConversationId");
         }
         return actor.schedule_conversation_join (
@@ -728,7 +730,7 @@ class support_entry_spot_t : public entry_spot_t<support_user_actor_t>
                                                        const open_conversation_req_t &request)
     {
         if (actor.role != role_t::customer) {
-            throw framework_exception_t (framework_error_kind_t::request_rejected,
+            throw framework_exception_t (framework_error_kind_t::rejected,
                                          "only customer actors can open conversations");
         }
         auto allocated =
@@ -812,7 +814,7 @@ class ensure_support_user_actor_handler_t
             co_return ensure_support_user_actor_res_t{
               actor_ref_snapshot_t::from (actor->actor)};
         throw framework_exception_t (
-          framework_error_kind_t::request_rejected,
+          framework_error_kind_t::rejected,
           "support actor creation was rejected");
     }
 
@@ -866,7 +868,7 @@ class ensure_agent_conversation_handler_t
             actor = materialized->actor;
         else
             throw framework_exception_t (
-              framework_error_kind_t::request_rejected,
+              framework_error_kind_t::rejected,
               "support conversation actor creation was rejected");
         join_conversation_res_t joined;
         if (already_exists) {

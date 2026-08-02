@@ -3,14 +3,14 @@ package systems.zlink.e2e.spotservice.shared;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 
 public final class EntryActorPushHandler {
     @ZLinkSpotActorRequest(packetName = "ActorPushReq")
     public CompletionStage<Contracts.ActorPingRes> handle(
         ScenarioEntrySpot spot,
         ScenarioActor actor,
-        ZLinkSpotActorRequestContext context,
+        ZLinkMessageContext context,
         Contracts.ActorPushReq request) {
         int seq = actor.nextSequence();
         spot.record("ActorPushReq", actor.actorId() + "/" + request.value() + "#" + seq);

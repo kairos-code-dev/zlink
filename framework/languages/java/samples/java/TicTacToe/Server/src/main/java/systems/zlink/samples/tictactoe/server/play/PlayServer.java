@@ -51,7 +51,7 @@ public final class PlayServer {
                         PlayActorRelocationAdapter.class));
             options.addStreamNode(SampleNames.PlayStream)
                 .bind(settings.playEndpoint())
-                .enableActorDispatch(SampleNames.SpotMesh)
+                .enableActorDispatch()
                 .registerSession(PlaySession.class);
         };
     }

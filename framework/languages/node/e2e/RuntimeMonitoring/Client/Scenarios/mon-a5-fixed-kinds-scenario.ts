@@ -1,4 +1,4 @@
-// MON-A5: location runtime health 시나리오를 검증한다.
+// MON-A5: Store 장애와 복구 상태를 관찰한다 시나리오를 검증한다.
 import type { EvidenceWaitReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../../../http-client';

@@ -1,4 +1,4 @@
-// SM-F1: route client → local target Spot 시나리오를 검증한다.
+// SM-F1: Same-node Spot direct request와 send를 처리한다 시나리오를 검증한다.
 import type {
   CreateSpotRes,
   CreateSpotReq,

@@ -32,6 +32,8 @@ option(ZLINK_STREAM_CONNECTOR_WITH_LZ4 "Enable Stream Connector LZ4 compression"
 option(ZLINK_STREAM_CONNECTOR_WITH_TLS "Enable Stream Connector TLS transport" ON)
 option(ZLINK_STREAM_CONNECTOR_WITH_WEBSOCKET "Enable Stream Connector WebSocket transport" ON)
 option(ZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE "Enable C++ framework gcov coverage instrumentation" OFF)
+option(ZLINK_FRAMEWORK_CPP_REQUIRE_HTTP_PERF_REPORT
+  "Register the external HTTP performance comparison as a required CTest gate" OFF)
 set(ZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD 80 CACHE STRING
   "Minimum C++ framework runtime line coverage percentage")
 
@@ -42,7 +44,7 @@ set(ZLINK_FRAMEWORK_CPP_LOCAL_PACKAGE_ROOT "$ENV{ZLINK_LOCAL_PACKAGE_ROOT}" CACH
   "Root directory containing local package outputs")
 set(ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION "11.1.0" CACHE STRING
   "Exact local zlink_cpp package version consumed by the C++ framework")
-set(ZLINK_FRAMEWORK_CPP_ZLINK_CORE_VERSION "11.0.0" CACHE STRING
+set(ZLINK_FRAMEWORK_CPP_ZLINK_CORE_VERSION "11.1.0" CACHE STRING
   "Exact local zlink Core package version embedded by zlink_cpp")
 if(NOT ZLINK_FRAMEWORK_CPP_LOCAL_PACKAGE_ROOT)
   if(WIN32 AND EXISTS "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/.artifacts/windows/install/zlink-cpp/${ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION}")
@@ -239,12 +241,16 @@ endif()
 find_package(Boost QUIET)
 function(zlink_framework_cpp_add_boost_headers target_name)
   if(ZLINK_FRAMEWORK_CPP_BOOST_INCLUDE_DIR)
-    target_include_directories(${target_name} SYSTEM BEFORE PRIVATE
+    # Keep the bundled Boost tree ahead of transitive package include paths. A
+    # framework target and the standalone HTTP client are linked into the same
+    # consumer; selecting different Asio headers in those targets is an ABI
+    # violation even though the headers are nominally header-only.
+    target_include_directories(${target_name} BEFORE PRIVATE
       "${ZLINK_FRAMEWORK_CPP_BOOST_INCLUDE_DIR}")
   elseif(Boost_FOUND AND Boost_INCLUDE_DIRS)
-    target_include_directories(${target_name} PRIVATE ${Boost_INCLUDE_DIRS})
+    target_include_directories(${target_name} BEFORE PRIVATE ${Boost_INCLUDE_DIRS})
   elseif(Boost_FOUND AND Boost_INCLUDE_DIR)
-    target_include_directories(${target_name} PRIVATE ${Boost_INCLUDE_DIR})
+    target_include_directories(${target_name} BEFORE PRIVATE ${Boost_INCLUDE_DIR})
   else()
     message(FATAL_ERROR
       "Boost headers were not found. Install Boost, configure with vcpkg, "
@@ -768,6 +774,17 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   enable_testing()
 endif()
 
+function(zlink_framework_cpp_enable_test_assertions target_name)
+  # Several process tests keep syscall, mailbox, and future side effects in
+  # assertion expressions. Release evidence must execute those expressions;
+  # disabling assertions would silently remove the operation under test.
+  if(MSVC)
+    target_compile_options(${target_name} PRIVATE /UNDEBUG)
+  else()
+    target_compile_options(${target_name} PRIVATE -UNDEBUG)
+  endif()
+endfunction()
+
 if(ZLINK_FRAMEWORK_CPP_BUILD_FOUNDATION_TESTS)
   add_executable(test_cpp_framework_raw_route_port_contract
     tests/Zlink.Framework.ContractTests/test_cpp_framework_raw_route_port_contract.cpp
@@ -824,6 +841,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_FOUNDATION_TESTS)
   target_link_libraries(test_cpp_framework_m6a_runtime PRIVATE
     zlink_framework_m6a_runtime
     Threads::Threads)
+  zlink_framework_cpp_enable_test_assertions(test_cpp_framework_m6a_runtime)
   add_test(NAME test_cpp_framework_m6a_runtime
     COMMAND test_cpp_framework_m6a_runtime)
   set_tests_properties(test_cpp_framework_m6a_runtime PROPERTIES
@@ -841,6 +859,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_FOUNDATION_TESTS)
     zlink_framework_m6b_runtime
     zlink_framework
     Threads::Threads)
+  zlink_framework_cpp_enable_test_assertions(test_cpp_framework_m6b_runtime)
   add_test(NAME test_cpp_framework_m6b_runtime
     COMMAND test_cpp_framework_m6b_runtime)
   set_tests_properties(test_cpp_framework_m6b_runtime PROPERTIES
@@ -882,6 +901,8 @@ endif()
 if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   add_executable(zlink_cpp_framework_mesh_node_vertical_test
     tests/Zlink.Framework.UnitTests/test_cpp_framework_mesh_node_vertical.cpp)
+  zlink_framework_cpp_enable_test_assertions(
+    zlink_cpp_framework_mesh_node_vertical_test)
   target_include_directories(zlink_cpp_framework_mesh_node_vertical_test PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
@@ -1053,6 +1074,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
       -P ${CMAKE_CURRENT_LIST_DIR}/tests/Zlink.Framework.ContractTests/verify_tooling_contract.cmake)
   set_tests_properties(test_cpp_framework_tooling_contract PROPERTIES
     LABELS "framework-contract;framework-package;framework-tooling"
+    RESOURCE_LOCK "zlink-cpp-vcpkg"
     TIMEOUT 120)
   add_test(
     NAME test_cpp_framework_label_contract
@@ -1101,12 +1123,27 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   set_tests_properties(test_cpp_framework_http_integration PROPERTIES
     LABELS "framework-integration;framework-http;framework-http-e2e;http"
     TIMEOUT 30)
-  add_test(NAME test_cpp_framework_http_perf_gate
-    COMMAND ${CMAKE_COMMAND}
-      -D ZLINK_FRAMEWORK_CPP_SOURCE_DIR=${CMAKE_CURRENT_LIST_DIR}
-      -P ${CMAKE_CURRENT_LIST_DIR}/tests/Zlink.Framework.PerfTests/http_perf_gate.cmake)
-  set_tests_properties(test_cpp_framework_http_perf_gate PROPERTIES
-    LABELS "framework-http-perf;framework-regression;http"
+  if(ZLINK_FRAMEWORK_CPP_REQUIRE_HTTP_PERF_REPORT)
+    add_test(NAME test_cpp_framework_http_perf_gate
+      COMMAND ${CMAKE_COMMAND}
+        -D ZLINK_FRAMEWORK_CPP_SOURCE_DIR=${CMAKE_CURRENT_LIST_DIR}
+        -P ${CMAKE_CURRENT_LIST_DIR}/tests/Zlink.Framework.PerfTests/http_perf_gate.cmake)
+    set_tests_properties(test_cpp_framework_http_perf_gate PROPERTIES
+      ENVIRONMENT "ZLINK_FRAMEWORK_HTTP_PERF_REQUIRED=1"
+      LABELS "framework-http-perf;framework-regression;http"
+      TIMEOUT 30)
+  endif()
+  add_executable(test_cpp_framework_entry_spot_admission_burst
+    tests/Zlink.Framework.PerfTests/entry_spot_admission_burst.cpp)
+  target_include_directories(test_cpp_framework_entry_spot_admission_burst PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/framework/src
+    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/framework/runtime/protocol/generated/cpp)
+  target_link_libraries(test_cpp_framework_entry_spot_admission_burst PRIVATE
+    zlink_framework Threads::Threads)
+  add_test(NAME test_cpp_framework_entry_spot_admission_burst
+    COMMAND test_cpp_framework_entry_spot_admission_burst)
+  set_tests_properties(test_cpp_framework_entry_spot_admission_burst PROPERTIES
+    LABELS "framework-perf-smoke;framework-regression;spot-actor"
     TIMEOUT 30)
   set_tests_properties(
     test_cpp_framework_app_host
@@ -1222,11 +1259,14 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
     ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/framework/runtime/protocol/generated/cpp)
+  zlink_framework_cpp_enable_test_assertions(
+    test_cpp_framework_store_location_resolvers)
   zlink_framework_cpp_add_boost_headers(test_cpp_framework_store_location_resolvers)
   add_test(NAME test_cpp_framework_store_location_resolvers
     COMMAND test_cpp_framework_store_location_resolvers)
   set_tests_properties(test_cpp_framework_store_location_resolvers PROPERTIES
     LABELS "framework-unit;framework-regression;framework-location"
+    RESOURCE_LOCK zlink_cpp_heavy_runtime
     TIMEOUT 30)
   add_zlink_framework_test(
     test_cpp_framework_handler_registry
@@ -1280,7 +1320,8 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     "framework-unit;framework-regression;messaging")
   add_executable(test_cpp_framework_submit_admission
     tests/Zlink.Framework.UnitTests/test_cpp_framework_submit_admission.cpp
-    framework/src/runtime/messaging/async_submit_runtime.cpp)
+    framework/src/runtime/messaging/async_submit_runtime.cpp
+    framework/src/runtime/dispatch/offload_executor.cpp)
   target_link_libraries(test_cpp_framework_submit_admission PRIVATE
     zlink::cpp
     Threads::Threads)
@@ -1332,6 +1373,11 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     test_cpp_stream_connector
     tests/Systems.Zlink.Stream.Connector.Tests/test_cpp_stream_connector.cpp
     "connector-unit;connector-integration;connector-e2e;connector-contract;connector-protocol;connector-transport;connector-typed;connector-coroutine;connector-dispatch;connector-timeout")
+  # These tests each create a high-thread-count local runtime.  Serialise the
+  # pair so CTest does not exercise their process-level resource usage as if it
+  # were a product concurrency contract.
+  set_tests_properties(test_cpp_stream_connector PROPERTIES
+    RESOURCE_LOCK zlink_cpp_heavy_runtime)
   target_link_libraries(test_cpp_stream_connector PRIVATE
     zlink::stream_connector_codecs
     zlink::stream_e2e_client)

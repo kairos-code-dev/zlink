@@ -66,11 +66,39 @@ void verify_host_wide_application_byte_budget ()
     assert (!resumed.application_receive_paused);
     assert (budget.can_start_application_receive ());
 
+    runtime::inbound_dispatch_budget_t exact (100);
+    exact.received (99);
+    assert (exact.can_start_application_receive ());
+    exact.received (1);
+    const auto at_limit = exact.snapshot ();
+    assert (at_limit.pending_payload_bytes == 100);
+    assert (at_limit.application_receive_paused);
+    assert (!exact.can_start_application_receive ());
+    exact.completed (1, false);
+    const auto below_limit = exact.snapshot ();
+    assert (below_limit.pending_payload_bytes == 99);
+    assert (!below_limit.application_receive_paused);
+    assert (exact.can_start_application_receive ());
+    exact.completed (99, false);
+
     runtime::inbound_dispatch_budget_t unlimited (0);
     unlimited.received (1024);
     assert (unlimited.can_start_application_receive ());
     unlimited.completed (1024, false);
     assert (unlimited.snapshot ().pending_payload_bytes == 0);
+}
+
+void verify_host_wide_budget_waits_for_terminal_completion ()
+{
+    runtime::inbound_dispatch_budget_t budget (10);
+    budget.received (10);
+    auto waiting = std::async (
+      std::launch::async, [&budget] { return budget.wait_for_application_capacity (); });
+    assert (waiting.wait_for (20ms) == std::future_status::timeout);
+
+    budget.completed (10, false);
+    assert (waiting.wait_for (1s) == std::future_status::ready);
+    assert (waiting.get ());
 }
 
 void verify_host_wide_completion_send_permits ()
@@ -1448,8 +1476,10 @@ void verify_raw_owner_node_send_and_liveness ()
             == foundation::operation_terminal_t::completed);
     assert (!actor_create_result.second.empty ());
 
-    const auto liveness_base =
-      mesh::service_liveness_registry_t::clock_t::now ();
+    // The paused probe advanced the registry's logical next-probe time by
+    // one interval. Continue from that same logical clock instead of mixing
+    // the synthetic probe time with the wall clock used by the pump loop.
+    const auto liveness_base = paused_liveness_base + 5s;
     const auto first_probe = first.tick_liveness (liveness_base + 5s);
     assert (first_probe.probes.size () == 1);
     mesh::raw_mesh_pump_result_t probe_pump =
@@ -1483,6 +1513,7 @@ void verify_raw_owner_node_send_and_liveness ()
 int main ()
 {
     verify_host_wide_application_byte_budget ();
+    verify_host_wide_budget_waits_for_terminal_completion ();
     verify_host_wide_completion_send_permits ();
     verify_actor_create_command_49_roundtrip ();
     verify_topology_snapshot_and_connection_fence ();

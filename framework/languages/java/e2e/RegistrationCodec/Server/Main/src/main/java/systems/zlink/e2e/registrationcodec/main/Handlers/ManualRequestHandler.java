@@ -17,7 +17,7 @@ public final class ManualRequestHandler
     public java.util.concurrent.CompletionStage<Contracts.EchoRes> handle(
         Contracts.EchoManualReq request,
         ZLinkMessageContext context) {
-        state.record("Request", context.packetName().orElse("EchoManual"), request.value());
+        state.record("Request", context.packetName(), request.value());
         return java.util.concurrent.CompletableFuture.completedFuture(
             new Contracts.EchoRes("echo:" + request.value(), "manual"));
     }

@@ -49,10 +49,16 @@ class play_server_host_factory_t
                 std::make_unique<sample_topology_t> (topology));
             use_default_bingo_codecs (options.codecs ());
             add_sample_location_store (options, topology);
-            options.add_client_server_channel (sample_names_t::api_channel).client ();
+            auto api_channel = options.add_client_server_channel (sample_names_t::api_channel);
+            auto api_client = api_channel.client ();
+            api_client.connect (topology.api_a_channel_endpoint);
+            api_client.connect (topology.api_b_channel_endpoint);
             auto room_mesh = options.add_route_mesh (sample_names_t::room_spot_mesh);
-            room_mesh.set_object_role (object_role_t::server);
-            room_mesh.channel_name (sample_names_t::room_spot_mesh);
+            room_mesh
+              .set_routing_id (zlink::routing_id_t::from (
+                "bingo-play-" + topology.play_node))
+              .set_object_role (object_role_t::server);
+            room_mesh.channel_name (sample_names_t::room_spot_mesh).server ();
             room_mesh.listen (topology.selected_play_spot_router_endpoint ())
               .add_entry_spot<bingo_entry_spot_t> (
                 [topology] (entry_spot_context_t context) {
@@ -83,6 +89,10 @@ class play_server_host_factory_t
                         player_actor_relocation_adapter_t> ();
                 });
         });
+        if (!auto_stop) {
+            app.add_hosted_service (std::make_unique<
+              play_api_channel_readiness_service_t> (topology.play_node));
+        }
         return app;
     }
 };

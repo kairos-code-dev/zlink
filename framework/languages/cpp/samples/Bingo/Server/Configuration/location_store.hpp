@@ -26,6 +26,11 @@ inline void add_sample_location_store (framework::zlink_framework_options_t &opt
         framework::redis::redis_location_options_t{
           .connection_string = topology.redis_endpoint,
           .key_prefix = topology.redis_key_prefix + "location:"}));
+    options.add_relocation_store (
+      std::make_shared<framework::redis::redis_relocation_store_t> (
+        framework::redis::redis_relocation_options_t{
+          .connection_string = topology.redis_endpoint,
+          .key_prefix = topology.redis_key_prefix + "relocation:"}));
 }
 
 } // namespace zlink::samples::bingo

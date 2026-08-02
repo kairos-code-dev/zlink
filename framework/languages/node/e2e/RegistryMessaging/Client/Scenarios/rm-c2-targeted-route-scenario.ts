@@ -1,9 +1,9 @@
-// RM-C2: targeted request by rid 시나리오를 검증한다.
+// RM-C2: RID를 지정한 Node direct request 시나리오를 검증한다.
 import type { RouteMissingRes, ScenarioRouteRes } from '../../Shared/messages';
 import { getJson, postJson } from '../../../http-client';
 import { ensure, uniqueMarker } from '../Support/scenario-assert';
 
-const REQUEST_TARGET_NOT_FOUND = 'requestTargetNotFound';
+const REQUEST_TARGET_NOT_FOUND = '0';
 
 export async function runRmC2(providerAUrl: string, providerBUrl: string): Promise<void> {
   const marker = uniqueMarker('rm-c2');

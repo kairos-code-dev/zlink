@@ -571,46 +571,19 @@ static_assert (static_cast<int> (zlink::framework::location_role_t::router) == 3
 static_assert (static_cast<int> (zlink::framework::location_role_t::dealer) == 4);
 static_assert (static_cast<int> (zlink::framework::location_role_t::pub) == 5);
 static_assert (static_cast<int> (zlink::framework::location_role_t::sub) == 6);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::actor_route_not_found) == 0);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::actor_create_failed) == 1);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::actor_already_exists) == 2);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::actor_type_mismatch) == 3);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::spot_create_failed) == 4);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::spot_route_not_found) == 5);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::spot_type_mismatch) == 6);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::actor_session_not_bound) == 7);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::handler_not_found) == 8);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::route_handler_not_found) == 9);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::actor_dispatch_handler_not_found) == 10);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::payload_decode_failed) == 11);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::route_not_connected) == 12);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::request_target_not_found) == 13);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::request_rejected) == 14);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::request_protocol_error) == 15);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::request_failed) == 16);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::worker_queue_full) == 17);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::worker_timed_out) == 18);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::worker_failed) == 19);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::actor_location_stale) == 20);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::actor_create_rejected) == 21);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::object_client_not_configured) == 22);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::mesh_selection_required) == 23);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::mesh_not_found) == 24);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::invalid_configuration) == 25);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::already_submitted) == 26);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::actor_generation_stale) == 27);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::actor_moving) == 28);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::deadline_exceeded) == 29);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::placement_capacity_exhausted) == 30);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::routing_id_conflict) == 31);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::spot_generation_stale) == 32);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::spot_moving) == 33);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::relocation_data_lost) == 34);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::spot_id_conflict) == 35);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::runtime_shutdown) == 36);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::relocation_disabled) == 37);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::relocation_target_unavailable) == 38);
-static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::relocation_failed) == 39);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::not_found) == 0);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::already_exists) == 1);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::type_mismatch) == 2);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::not_configured) == 3);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::rejected) == 4);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::unavailable) == 5);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::capacity_exceeded) == 6);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::deadline_exceeded) == 7);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::shutting_down) == 8);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::protocol_error) == 9);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::invalid_operation) == 10);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::data_lost) == 11);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::internal_failure) == 12);
 
 static_assert (has_actor_directory_find<zlink::framework::actor_directory_t>);
 static_assert (
@@ -1102,6 +1075,31 @@ static_assert (
   std::is_same_v<
     decltype (std::declval<zlink::framework::zlink_framework_options_t &> ().configure_dispatch ()),
     zlink::framework::dispatch_options_t &>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::zlink_framework_options_t &> ().worker ()),
+    zlink::framework::worker_options_t &>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::worker_options_t &> ().min_threads ()),
+    std::size_t>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::worker_options_t &> ().min_threads (
+      std::declval<std::size_t> ())),
+    zlink::framework::worker_options_t &>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::worker_options_t &> ().max_threads ()),
+    std::size_t>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::worker_options_t &> ().idle_timeout ()),
+    std::chrono::milliseconds>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::worker_options_t &> ().max_queue_length ()),
+    std::size_t>);
 static_assert (
   std::is_same_v<
     decltype (
@@ -1749,6 +1747,11 @@ static_assert (std::is_same_v<decltype (std::declval<zlink::framework::route_cli
                                             std::declval<named_request_t> ())),
                               zlink::framework::spot_request_call_t>);
 
+template <typename T>
+concept exposes_retry_hint = requires (const T &value) { value.is_retriable (); };
+
+static_assert (!exposes_retry_hint<zlink::framework::framework_exception_t>);
+
 } // namespace
 
 int main ()
@@ -1786,7 +1789,7 @@ int main ()
     catch (const zlink::framework::framework_exception_t &error) {
         missing_relocation_rejected =
           error.kind ()
-          == zlink::framework::framework_error_kind_t::invalid_configuration;
+          == zlink::framework::framework_error_kind_t::not_configured;
     }
     if (!missing_relocation_rejected)
         return 3;
@@ -1804,7 +1807,7 @@ int main ()
     catch (const zlink::framework::framework_exception_t &error) {
         repeated_relocation_rejected =
           error.kind ()
-          == zlink::framework::framework_error_kind_t::invalid_configuration;
+          == zlink::framework::framework_error_kind_t::not_configured;
     }
     if (!repeated_relocation_rejected)
         return 4;
@@ -1827,7 +1830,7 @@ int main ()
     catch (const zlink::framework::framework_exception_t &error) {
         sealed_builder_rejected =
           error.kind ()
-          == zlink::framework::framework_error_kind_t::invalid_configuration;
+          == zlink::framework::framework_error_kind_t::not_configured;
     }
     if (!sealed_builder_rejected)
         return 6;
@@ -1841,7 +1844,7 @@ int main ()
     catch (const zlink::framework::framework_exception_t &error) {
         user_limit_rejected =
           error.kind ()
-          == zlink::framework::framework_error_kind_t::invalid_configuration;
+          == zlink::framework::framework_error_kind_t::not_configured;
     }
     bool instance_limit_rejected = false;
     try {
@@ -1852,70 +1855,30 @@ int main ()
     catch (const zlink::framework::framework_exception_t &error) {
         instance_limit_rejected =
           error.kind ()
-          == zlink::framework::framework_error_kind_t::invalid_configuration;
+          == zlink::framework::framework_error_kind_t::not_configured;
     }
     if (!user_limit_rejected || !instance_limit_rejected)
         return 7;
 
-    // Exhaustive over every declared kind, not a hand-listed subset. The retriable
-    // column is fixed by 05-framework-api.ko.md 13. A subset list silently stops
-    // covering whatever is added after it, which is how the v11 additions went
-    // unverified in every language.
-    struct error_kind_expectation_t
-    {
-        zlink::framework::framework_error_kind_t kind;
-        bool retriable;
-    };
-    const error_kind_expectation_t error_kind_expectations[] = {
-      {zlink::framework::framework_error_kind_t::actor_route_not_found, false},
-      {zlink::framework::framework_error_kind_t::actor_create_failed, false},
-      {zlink::framework::framework_error_kind_t::actor_already_exists, false},
-      {zlink::framework::framework_error_kind_t::actor_type_mismatch, false},
-      {zlink::framework::framework_error_kind_t::spot_create_failed, false},
-      {zlink::framework::framework_error_kind_t::spot_route_not_found, false},
-      {zlink::framework::framework_error_kind_t::spot_type_mismatch, false},
-      {zlink::framework::framework_error_kind_t::actor_session_not_bound, false},
-      {zlink::framework::framework_error_kind_t::handler_not_found, false},
-      {zlink::framework::framework_error_kind_t::route_handler_not_found, false},
-      {zlink::framework::framework_error_kind_t::actor_dispatch_handler_not_found, false},
-      {zlink::framework::framework_error_kind_t::payload_decode_failed, false},
-      {zlink::framework::framework_error_kind_t::route_not_connected, true},
-      {zlink::framework::framework_error_kind_t::request_target_not_found, false},
-      {zlink::framework::framework_error_kind_t::request_rejected, false},
-      {zlink::framework::framework_error_kind_t::request_protocol_error, false},
-      {zlink::framework::framework_error_kind_t::request_failed, false},
-      {zlink::framework::framework_error_kind_t::worker_queue_full, false},
-      {zlink::framework::framework_error_kind_t::worker_timed_out, false},
-      {zlink::framework::framework_error_kind_t::worker_failed, false},
-      {zlink::framework::framework_error_kind_t::actor_location_stale, true},
-      {zlink::framework::framework_error_kind_t::actor_create_rejected, false},
-      {zlink::framework::framework_error_kind_t::object_client_not_configured, false},
-      {zlink::framework::framework_error_kind_t::mesh_selection_required, false},
-      {zlink::framework::framework_error_kind_t::mesh_not_found, false},
-      {zlink::framework::framework_error_kind_t::invalid_configuration, false},
-      {zlink::framework::framework_error_kind_t::already_submitted, false},
-      {zlink::framework::framework_error_kind_t::actor_generation_stale, false},
-      {zlink::framework::framework_error_kind_t::actor_moving, true},
-      {zlink::framework::framework_error_kind_t::deadline_exceeded, true},
-      {zlink::framework::framework_error_kind_t::placement_capacity_exhausted, true},
-      {zlink::framework::framework_error_kind_t::routing_id_conflict, false},
-      {zlink::framework::framework_error_kind_t::spot_generation_stale, false},
-      {zlink::framework::framework_error_kind_t::spot_moving, true},
-      {zlink::framework::framework_error_kind_t::relocation_data_lost, false},
-      {zlink::framework::framework_error_kind_t::spot_id_conflict, false},
-      {zlink::framework::framework_error_kind_t::runtime_shutdown, false},
-      {zlink::framework::framework_error_kind_t::relocation_disabled, false},
-      {zlink::framework::framework_error_kind_t::relocation_target_unavailable, true},
-      {zlink::framework::framework_error_kind_t::relocation_failed, true}};
-    static_assert (sizeof (error_kind_expectations) / sizeof (error_kind_expectations[0]) == 40);
-    // Guards the table above: adding a kind past 39 fails here until it is listed.
-    static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::relocation_failed) == 39);
-    for (const auto expectation : error_kind_expectations) {
-        const bool actual
-          = zlink::framework::framework_exception_t (expectation.kind, "kind").is_retriable ();
-        if (actual != expectation.retriable) {
-            return expectation.retriable ? 3 : 4;
-        }
+    // The public contract defines exactly 13 kinds and does not expose a retry hint.
+    const zlink::framework::framework_error_kind_t error_kind_expectations[] = {
+      zlink::framework::framework_error_kind_t::not_found,
+      zlink::framework::framework_error_kind_t::already_exists,
+      zlink::framework::framework_error_kind_t::type_mismatch,
+      zlink::framework::framework_error_kind_t::not_configured,
+      zlink::framework::framework_error_kind_t::rejected,
+      zlink::framework::framework_error_kind_t::unavailable,
+      zlink::framework::framework_error_kind_t::capacity_exceeded,
+      zlink::framework::framework_error_kind_t::deadline_exceeded,
+      zlink::framework::framework_error_kind_t::shutting_down,
+      zlink::framework::framework_error_kind_t::protocol_error,
+      zlink::framework::framework_error_kind_t::invalid_operation,
+      zlink::framework::framework_error_kind_t::data_lost,
+      zlink::framework::framework_error_kind_t::internal_failure};
+    static_assert (sizeof (error_kind_expectations) / sizeof (error_kind_expectations[0]) == 13);
+    for (std::size_t index = 0; index < std::size (error_kind_expectations); ++index) {
+        if (static_cast<std::size_t> (error_kind_expectations[index]) != index)
+            return 3;
     }
 
     zlink::framework::handler_registry_t handlers;
@@ -1938,8 +1901,30 @@ int main ()
     zlink::framework::zlink_builder_t zlink;
     zlink::framework::zlink_framework_options_t options (services, option_handlers, serializers,
                                                          zlink);
+    auto &worker_options = options.worker ();
+    worker_options.min_threads (2)
+      .max_threads (3)
+      .idle_timeout (std::chrono::milliseconds (17))
+      .max_queue_length (9);
+    if (worker_options.min_threads () != 2
+        || worker_options.max_threads () != 3
+        || worker_options.idle_timeout () != std::chrono::milliseconds (17)
+        || worker_options.max_queue_length () != 9) {
+        return 8;
+    }
     options.use_filter<named_filter_t> ();
     options.handlers ().group ("sample").add<alias_registered_handler_t> ();
+    options.apply ();
+    bool sealed = false;
+    try {
+        worker_options.max_queue_length (10);
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        sealed = error.kind () == zlink::framework::framework_error_kind_t::protocol_error;
+    }
+    if (!sealed) {
+        return 9;
+    }
 
     zlink::framework::capability_builder_t capability;
     const auto capability_snapshot = capability.snapshot ();

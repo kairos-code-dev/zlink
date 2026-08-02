@@ -467,7 +467,7 @@ application이 값을 정하지 않은 socket에만 적용된다.
 
 값은 한 방향 queue 하나에 적용된다. balanced에서 상대가 100개면 이 socket이 수신 방향에
 보관할 수 있는 byte는 `512 KiB × 100`이다. 연결이 늘면 연결당 상한이 줄어들지만 총량은
-그대로 늘어나므로, 이 곱을 process memory 예산과 비교한다.
+그대로 늘어나므로, 이 곱을 effective memory budget과 비교한다.
 
 연결이 늘거나 줄면 계산을 다시 한다. 구간 경계에서 연결 수가 오르내려도 상한이 계속
 바뀌지 않도록 구간을 바꾸는 기준에 여유를 두며, 짧은 시간에 연결이 여러 번 바뀌어도 3초
@@ -476,7 +476,7 @@ application이 값을 정하지 않은 socket에만 적용된다.
 여기서 쓰는 profile은 [§4.3](#43-application-hwm--host-전체-상한)의
 `ApplicationHwmProfile`과 **같은 이름을 공유한다.** profile을 바꾸면 host 전체 상한과 이
 연결별 상한이 함께 움직인다. 다만 계산식은 서로 다르다 — 이쪽은 연결 수 구간에서 byte를
-고르고, 저쪽은 할당된 memory에 비율을 곱한다. profile을 지정하지 않으면 양쪽 모두
+고르고, 저쪽은 effective memory budget에 비율을 곱한다. profile을 지정하지 않으면 양쪽 모두
 balanced를 쓴다.
 
 STREAM socket은 같은 profile에서도 더 작은 값을 쓴다([09-stream](09-stream.ko.md)).
@@ -533,10 +533,11 @@ socket buffer는 여기에 들어가지 않는다 — Application HWM은 process
 | `0` | Application HWM을 적용하지 않는다(무제한) |
 | 양수 | 지정한 byte를 그대로 적용한다 |
 
-자동 계산은 이 process에 할당된 memory에 profile 비율을 곱한다.
+자동 계산은 process가 사용할 수 있는 유효 memory budget에 profile 비율을 곱한다. 이 값은 Framework가
+미리 할당하거나 예약하는 메모리가 아니라, 수신을 잠시 멈출 시점을 정하기 위한 기준이다.
 
 ```text
-Application HWM = floor(할당된 memory byte × profile 비율)
+Application HWM = floor(effective memory budget byte × profile 비율)
 ```
 
 | profile | 비율 | 언제 고르나 |
@@ -546,11 +547,24 @@ Application HWM = floor(할당된 memory byte × profile 비율)
 | **`BALANCED`**(기본) | **10%** | 별도의 우선 조건이 없다 |
 | `THROUGHPUT` | 20% | 추가 memory와 queue 지연을 감수하고 burst를 흡수한다 |
 
-할당된 memory는 application이 명시한 process memory limit을 먼저 쓰고, 없으면 container나
-cgroup, Windows Job Object가 이 process에 적용한 유한한 limit을 쓴다. 둘 다 확인할 수 없으면
-startup에서 실패시킨다. host 전체 물리 memory, 지금 남은 OS free memory, process RSS, CPU
-사용률, 처리량은 이 계산에 쓰지 않는다. 계산은 ingress를 시작하기 전에 한 번 하며, memory
-limit이나 profile을 명시적으로 바꿨을 때만 다시 한다.
+유효 memory budget은 다음 규칙으로 정한다.
+
+1. `ProcessMemoryLimitBytes`를 지정하면 그 값을 그대로 사용한다.
+2. 지정하지 않으면 process에 적용된 유한한 OS 상한과 language runtime managed heap 상한을 각각 확인한다.
+   둘 다 있으면 더 작은 값을 사용하고, 하나만 있으면 확인된 값을 사용한다.
+3. OS와 managed heap 상한을 모두 확인할 수 없으면 시스템 물리 메모리 총량을 사용한다.
+
+Java와 Kotlin은 `Runtime.maxMemory()`가 보고하는 JVM heap 상한을 사용한다. .NET은
+`GC.GetGCMemoryInfo().TotalAvailableMemoryBytes`, Node.js는 V8의 `heap_size_limit`을 사용한다.
+C++에는 managed heap이 없으므로 OS 상한과 물리 메모리만 사용한다. managed heap은 process 전체 메모리가
+아니므로 Metaspace, native memory, thread stack, direct buffer와 같은 영역을 위한 여유 공간이 남는다.
+
+예를 들어 container 상한이 `1 GiB`이고 Java `-Xmx`가 `768 MiB`이면 유효 memory budget은 `768 MiB`다.
+기본 `BALANCED` profile은 그 10%인 약 `76 MiB`를 Application HWM으로 사용한다. Application이
+`ApplicationHwmBytes`와 `ProcessMemoryLimitBytes`를 모두 지정하지 않아도 이 계산을 적용한다.
+
+host 전체 물리 memory, 지금 남은 OS free memory, process RSS, CPU 사용률, 처리량은 이 계산에 쓰지 않는다.
+계산은 ingress를 시작하기 전에 한 번 수행하며, memory limit이나 profile을 명시적으로 바꿨을 때만 다시 한다.
 
 profile을 직접 정하는 것으로 부족하면 production과 같은 workload에서 지속 처리량을 재고
 양수 값을 지정한다. 지속 처리량은 backlog가 있는 동안 handler가 처리를 끝낸 payload byte를
@@ -581,8 +595,8 @@ Framework는 다음 message의 크기를 미리 알 수 없으므로 **byte를 �
 양수 값이 `MaxMessageSize`보다 작아도 설정 오류가 아니다. Application HWM은 message 한
 건의 허용 크기를 정하지 않는다 — 그 판단은 `MaxMessageSize`가 한다.
 
-이 설정은 아직 적용되지 않았다 —
-[§6](#6-framework에-아직-적용되지-않은-부분)이 현재 상태를 밝힌다.
+언어별 runtime 구현과 packaged E2E 검증의 현재 범위는
+[§6](#6-framework-runtime-적용-범위)에서 별도로 확인한다.
 
 ## 5. 정체 발생 확인 방법
 
@@ -635,15 +649,12 @@ message flow 기록에 `backpressured`가 남았다면 보낼 자리를 기다�
 `zlink.mesh_node.messages.dropped`는 backpressure 지표가 아니다. 이 값이 오르면 부하가
 아니라 별도의 확인된 사유로 message가 버려진 것이므로 `reason` attribute를 먼저 본다.
 
-## 6. Framework에 아직 적용되지 않은 부분
+## 6. Framework runtime 적용 범위
 
-연결마다 두는 byte 상한과 Application·Completion 두 연결 구조는 Core 계층에 구현되어
-있다. binding과 Framework runtime이 그 구조를 사용하도록 바꾸는 작업은 2026-07-30 기준으로
-어느 언어에서도 시작하지 않았다. 따라서 **지금 배포된 runtime은 이 단위와 상한을 아직
-사용하지 않는다.** 다음 항목은 계약으로 확정되었을 뿐 아직 설정하거나 관측할 수 없다.
+위 절은 공통 public contract를 설명한다. 실제 package가 이 계약을 모두 제공하는지는
+언어별 exact interface, runtime test와 packaged E2E 결과를 따로 확인해야 한다. 이 절은
+공통 contract를 구현 완료로 간주하지 않고, 현재 검증에서 남은 runtime integration 항목만 기록한다.
 
-- **host 전체 Application HWM** — [§4.3](#43-application-hwm--host-전체-상한)이
-  설명한 `ApplicationHwmBytes`·`ApplicationHwmProfile`과 그 자동 계산이다.
 - **두 연결을 나눠 보는 수신 경로** — Application 연결의 수신만 멈추고 Completion 연결은
   계속 읽는 동작이다([§2.4](#24-application-연결과-completion-연결-분리)).
 - **보유 byte 귀속 관측** — 수신이 멈췄을 때 어느 실행 대상이 backlog byte를 붙잡고 있는지

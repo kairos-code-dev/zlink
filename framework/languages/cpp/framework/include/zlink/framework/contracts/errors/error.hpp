@@ -2,7 +2,6 @@
 #pragma once
 
 #include <exception>
-#include <optional>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -12,46 +11,19 @@ namespace zlink::framework
 
 enum class framework_error_kind_t
 {
-    actor_route_not_found = 0,
-    actor_create_failed = 1,
-    actor_already_exists = 2,
-    actor_type_mismatch = 3,
-    spot_create_failed = 4,
-    spot_route_not_found = 5,
-    spot_type_mismatch = 6,
-    actor_session_not_bound = 7,
-    handler_not_found = 8,
-    route_handler_not_found = 9,
-    actor_dispatch_handler_not_found = 10,
-    payload_decode_failed = 11,
-    route_not_connected = 12,
-    request_target_not_found = 13,
-    request_rejected = 14,
-    request_protocol_error = 15,
-    request_failed = 16,
-    worker_queue_full = 17,
-    worker_timed_out = 18,
-    worker_failed = 19,
-    actor_location_stale = 20,
-    actor_create_rejected = 21,
-    object_client_not_configured = 22,
-    mesh_selection_required = 23,
-    mesh_not_found = 24,
-    invalid_configuration = 25,
-    already_submitted = 26,
-    actor_generation_stale = 27,
-    actor_moving = 28,
-    deadline_exceeded = 29,
-    placement_capacity_exhausted = 30,
-    routing_id_conflict = 31,
-    spot_generation_stale = 32,
-    spot_moving = 33,
-    relocation_data_lost = 34,
-    spot_id_conflict = 35,
-    runtime_shutdown = 36,
-    relocation_disabled = 37,
-    relocation_target_unavailable = 38,
-    relocation_failed = 39
+    not_found = 0,
+    already_exists = 1,
+    type_mismatch = 2,
+    not_configured = 3,
+    rejected = 4,
+    unavailable = 5,
+    capacity_exceeded = 6,
+    deadline_exceeded = 7,
+    shutting_down = 8,
+    protocol_error = 9,
+    invalid_operation = 10,
+    data_lost = 11,
+    internal_failure = 12
 };
 
 namespace detail
@@ -70,6 +42,13 @@ enum class boundary_error_t
     closed = 4,
     cancelled = 5,
     stale_generation = 6
+};
+
+enum class failure_origin_t
+{
+    none,
+    payload_encode,
+    payload_decode
 };
 
 inline std::error_code boundary_error_code (boundary_error_t state) noexcept
@@ -98,17 +77,13 @@ class framework_exception_t : public std::exception
 {
   public:
     framework_exception_t (framework_error_kind_t kind,
-                           std::string message,
-                           std::optional<bool> retriable = std::nullopt) :
+                           std::string message) :
         _kind (kind),
-        _message (std::move (message)),
-        _retriable (retriable.value_or (is_retriable_by_default (kind)))
+        _message (std::move (message))
     {
     }
 
     framework_error_kind_t kind () const noexcept { return _kind; }
-
-    bool is_retriable () const noexcept { return _retriable; }
 
     /* Boundary conditions demoted from the public kind enum surface through
      * the standard error-code facet: an empty code means a plain framework
@@ -119,35 +94,37 @@ class framework_exception_t : public std::exception
 
   private:
     friend framework_exception_t detail_make_boundary_exception (detail::boundary_error_t state,
-                                                                 std::string message,
-                                                                 bool retriable);
+                                                                 std::string message);
     friend detail::boundary_error_t
     detail_boundary_state (const framework_exception_t &error) noexcept;
-
-    static bool is_retriable_by_default (framework_error_kind_t kind) noexcept
-    {
-        return kind == framework_error_kind_t::route_not_connected
-               || kind == framework_error_kind_t::actor_location_stale
-               || kind == framework_error_kind_t::actor_moving
-               || kind == framework_error_kind_t::deadline_exceeded
-               || kind == framework_error_kind_t::placement_capacity_exhausted
-               || kind == framework_error_kind_t::spot_moving
-               || kind == framework_error_kind_t::relocation_target_unavailable
-               || kind == framework_error_kind_t::relocation_failed;
-    }
+    friend framework_exception_t detail_make_origin_exception (
+      framework_error_kind_t kind,
+      detail::failure_origin_t origin,
+      std::string message);
+    friend detail::failure_origin_t
+    detail_failure_origin (const framework_exception_t &error) noexcept;
 
     framework_error_kind_t _kind;
     std::string _message;
-    bool _retriable;
     detail::boundary_error_t _boundary = detail::boundary_error_t::none;
+    detail::failure_origin_t _origin = detail::failure_origin_t::none;
 };
 
 inline framework_exception_t detail_make_boundary_exception (detail::boundary_error_t state,
-                                                             std::string message,
-                                                             bool retriable)
+                                                             std::string message)
 {
-    framework_exception_t error (framework_error_kind_t::request_failed, std::move (message),
-                                 retriable);
+    const auto kind = state == detail::boundary_error_t::timed_out
+                        ? framework_error_kind_t::deadline_exceeded
+                      : state == detail::boundary_error_t::shutdown
+                        ? framework_error_kind_t::shutting_down
+                      : state == detail::boundary_error_t::disconnected
+                          || state == detail::boundary_error_t::closed
+                          || state == detail::boundary_error_t::stale_generation
+                        ? framework_error_kind_t::unavailable
+                      : state == detail::boundary_error_t::cancelled
+                        ? framework_error_kind_t::invalid_operation
+                        : framework_error_kind_t::internal_failure;
+    framework_exception_t error (kind, std::move (message));
     error._boundary = state;
     return error;
 }
@@ -158,18 +135,54 @@ detail_boundary_state (const framework_exception_t &error) noexcept
     return error._boundary;
 }
 
+inline framework_exception_t detail_make_origin_exception (
+  framework_error_kind_t kind,
+  detail::failure_origin_t origin,
+  std::string message)
+{
+    framework_exception_t error (kind, std::move (message));
+    error._origin = origin;
+    return error;
+}
+
+inline detail::failure_origin_t
+detail_failure_origin (const framework_exception_t &error) noexcept
+{
+    return error._origin;
+}
+
 namespace detail
 {
 
 inline framework_exception_t
-make_boundary_exception (boundary_error_t state, std::string message, bool retriable = false)
+make_boundary_exception (boundary_error_t state, std::string message)
 {
-    return detail_make_boundary_exception (state, std::move (message), retriable);
+    return detail_make_boundary_exception (state, std::move (message));
+}
+
+inline bool is_transient_error (framework_error_kind_t kind) noexcept
+{
+    return kind == framework_error_kind_t::unavailable
+           || kind == framework_error_kind_t::deadline_exceeded
+           || kind == framework_error_kind_t::capacity_exceeded;
 }
 
 inline boundary_error_t boundary_state (const framework_exception_t &error) noexcept
 {
     return detail_boundary_state (error);
+}
+
+inline framework_exception_t
+make_origin_exception (framework_error_kind_t kind,
+                       failure_origin_t origin,
+                       std::string message)
+{
+    return detail_make_origin_exception (kind, origin, std::move (message));
+}
+
+inline failure_origin_t failure_origin (const framework_exception_t &error) noexcept
+{
+    return detail_failure_origin (error);
 }
 
 } // namespace detail

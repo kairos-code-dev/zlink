@@ -48,7 +48,7 @@ class SessionApplication {
                 .setRoutingIdPrefix("support-session")
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(session.streamEndpoint)
-                .enableActorDispatch(SampleNames.SupportSpotDiscovery)
+                .enableActorDispatch()
                 .registerSession(SupportChatSession::class.java)
         }
 

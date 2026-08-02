@@ -29,7 +29,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
     private final ObjectProvider<ZLinkFrameworkLifecycle> runtimeQuery;
     private final ObserverIsolationProbe observerIsolation;
     private final ObjectProvider<ZLinkSpotManager> spots;
-    private final ZLinkSpotPublisherClient publisher;
+    private final ObjectProvider<ZLinkSpotPublisherClient> publisher;
     private final ConfigurableApplicationContext applicationContext;
     private final String endpoint;
     private HttpServer server;
@@ -45,7 +45,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         ObjectProvider<ZLinkFrameworkLifecycle> runtimeQuery,
         ObserverIsolationProbe observerIsolation,
         ObjectProvider<ZLinkSpotManager> spots,
-        ZLinkSpotPublisherClient publisher,
+        ObjectProvider<ZLinkSpotPublisherClient> publisher,
         ConfigurableApplicationContext applicationContext,
         String endpoint) {
         this.state = state;
@@ -114,6 +114,22 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                 setWeight(100, "restore");
                 write(exchange, json.writeValueAsString(new AdminResult("restored", 100)));
             });
+            server.createContext("/admin/crash", exchange -> {
+                write(exchange, json.writeValueAsString(new AdminResult("crashing", -1)));
+                Thread crash = new Thread(
+                    () -> Runtime.getRuntime().halt(137),
+                    "runtime-monitoring-crash");
+                crash.setDaemon(false);
+                crash.start();
+            });
+            server.createContext("/runtime/unknown-mesh", exchange -> {
+                try {
+                    requireMeshRuntime().snapshot("runtime-monitoring-unknown-mesh");
+                    write(exchange, 500, "unknown mesh unexpectedly resolved");
+                } catch (RuntimeException error) {
+                    write(exchange, 400, error.getClass().getName() + ": " + error.getMessage());
+                }
+            });
             server.createContext("/admin/create-subject-spot", exchange -> {
                 try {
                     ZLinkSpotManager manager = spots.getIfAvailable();
@@ -136,7 +152,12 @@ public final class EvidenceHttpServer implements SmartLifecycle {
             server.createContext("/runtime/publish/", exchange -> {
                 String topic = exchange.getRequestURI().getPath()
                     .substring("/runtime/publish/".length());
-                publisher.publish(
+                ZLinkSpotPublisherClient publishClient = publisher.getIfAvailable();
+                if (publishClient == null) {
+                    write(exchange, 400, "spot publisher is not configured");
+                    return;
+                }
+                publishClient.publish(
                         Contracts.SPOT_MESH,
                         Contracts.SPOT_CHANNEL,
                         topic,

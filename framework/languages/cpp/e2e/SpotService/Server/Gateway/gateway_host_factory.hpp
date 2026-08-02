@@ -20,11 +20,11 @@ namespace
 std::string gateway_error_kind_name (zlink::framework::framework_error_kind_t kind)
 {
     switch (kind) {
-        case zlink::framework::framework_error_kind_t::actor_route_not_found:
+        case zlink::framework::framework_error_kind_t::not_found:
             return "actor_route_not_found";
-        case zlink::framework::framework_error_kind_t::actor_location_stale:
+        case zlink::framework::framework_error_kind_t::unavailable:
             return "actor_location_stale";
-        case zlink::framework::framework_error_kind_t::actor_dispatch_handler_not_found:
+        case zlink::framework::framework_error_kind_t::not_found:
             return "actor_dispatch_handler_not_found";
         default:
             return "request_failed";
@@ -114,7 +114,7 @@ class gateway_actor_push_handler_t
             auto actor_ref = _actor_directory.find (request.actor_id).result ();
             if (!actor_ref || !actor_ref.value ()) {
                 const auto error_kind = gateway_error_kind_name (
-                  actor_ref ? zlink::framework::framework_error_kind_t::actor_route_not_found
+                  actor_ref ? zlink::framework::framework_error_kind_t::not_found
                             : actor_ref.error_kind ());
                 _state.record ("ActorPushFailed", request.actor_id, {}, error_kind);
                 response.body =

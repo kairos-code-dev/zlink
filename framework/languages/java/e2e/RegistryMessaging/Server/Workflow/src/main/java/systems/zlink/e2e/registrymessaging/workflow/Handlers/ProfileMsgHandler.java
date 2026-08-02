@@ -2,7 +2,7 @@ package systems.zlink.e2e.registrymessaging.workflow.Handlers;
 
 import systems.zlink.e2e.registrymessaging.workflow.Infrastructure.ScenarioState;
 import systems.zlink.e2e.registrymessaging.shared.Contracts;
-import systems.zlink.framework.channels.ZLinkSendContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 
@@ -18,7 +18,7 @@ public final class ProfileMsgHandler
     @Override
     public java.util.concurrent.CompletionStage<Void> handle(
         Contracts.ProfileMsg message,
-        ZLinkSendContext context) {
+        ZLinkMessageContext context) {
         state.record("ProfileMsg", message.commandId());
         return java.util.concurrent.CompletableFuture.completedFuture(null);
     }

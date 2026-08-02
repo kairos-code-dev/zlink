@@ -67,10 +67,15 @@ public final class Program {
         EvidenceStore evidence,
         GateStore gates,
         systems.zlink.framework.spots.ZLinkSpotManager spots,
-        systems.zlink.framework.actors.ZLinkActorManager actors,
-        systems.zlink.framework.actors.ZLinkActorClient actorClient,
-        systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle lifecycle,
-        ActorNodeOptions config) {
+            systems.zlink.framework.actors.ZLinkActorManager actors,
+            systems.zlink.framework.actors.ZLinkActorClient actorClient,
+            systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle lifecycle,
+            ActorNodeOptions config) {
+        int requiredPeerCount = java.util.Arrays.stream(config.meshPeers().split(","))
+            .map(peer -> peer.split("=", 2))
+            .filter(fields -> fields.length == 2 && !config.nodeRid().equals(fields[0]))
+            .mapToInt(ignored -> 1)
+            .sum();
         return new ActorNodeHttpServer(
             config.httpEndpoint(),
             json,
@@ -79,6 +84,7 @@ public final class Program {
             spots,
             actors,
             actorClient,
+            requiredPeerCount,
             lifecycle);
     }
 
@@ -104,6 +110,9 @@ public final class Program {
             ZLinkMeshNodeBuilder node = options.addRouteMesh(Contracts.MESH);
             node.listen(config.meshEndpoint())
                 .setRoutingId(RoutingId.from(nodeRid));
+            if ("ST-A1".equals(config.scenario())) {
+                node.setPlacementWeight("actor-a".equals(nodeRid) ? 100 : 0);
+            }
             if (!config.automaticTopology()) {
                 for (String peer : config.meshPeers().split(",")) {
                     String[] fields = peer.split("=", 2);
@@ -128,7 +137,7 @@ public final class Program {
                 factory -> factory.disableRelocation());
             options.addStreamNode("spot-transfer-session-" + nodeRid)
                 .bind(config.streamEndpoint())
-                .enableActorDispatch(Contracts.MESH)
+                .enableActorDispatch()
                 .registerSession(TransferComponents.TransferSession.class);
         };
     }

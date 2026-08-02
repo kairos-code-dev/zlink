@@ -201,7 +201,7 @@ class route_channel_builder_t
               }
               catch (...) {
                   return task_t<zlink::message_t> (
-                    result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,
+                    result_t<zlink::message_t>::failure (framework_error_kind_t::internal_failure,
                                                          "routed send handler threw an exception"));
               }
           }});
@@ -232,7 +232,7 @@ class route_channel_builder_t
               }
               catch (...) {
                   return task_t<zlink::message_t> (
-                    result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,
+                    result_t<zlink::message_t>::failure (framework_error_kind_t::internal_failure,
                                                          "routed send handler threw an exception"));
               }
           }});
@@ -262,7 +262,7 @@ class route_channel_builder_t
               }
               catch (...) {
                   co_return result_t<zlink::message_t>::failure (
-                    framework_error_kind_t::request_failed,
+                    framework_error_kind_t::internal_failure,
                     "routed send handler threw an exception");
               }
           }});
@@ -294,7 +294,7 @@ class route_channel_builder_t
               }
               catch (...) {
                   return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-                    framework_error_kind_t::request_failed,
+                    framework_error_kind_t::internal_failure,
                     "routed request handler threw an exception"));
               }
           }});
@@ -325,7 +325,7 @@ class route_channel_builder_t
               }
               catch (...) {
                   return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-                    framework_error_kind_t::request_failed,
+                    framework_error_kind_t::internal_failure,
                     "routed request handler threw an exception"));
               }
           }});
@@ -357,7 +357,7 @@ class route_channel_builder_t
               }
               catch (...) {
                   co_return result_t<zlink::message_t>::failure (
-                    framework_error_kind_t::request_failed,
+                    framework_error_kind_t::internal_failure,
                     "routed request handler threw an exception");
               }
           }});
@@ -505,7 +505,7 @@ class message_bus_t
             if (_reply) {
                 if (_serializers == nullptr) {
                     return result_t<TReply>::failure (
-                      framework_error_kind_t::request_protocol_error,
+                      framework_error_kind_t::protocol_error,
                       "channel request has no serializer registry");
                 }
                 try {
@@ -712,7 +712,7 @@ class spot_send_call_t : public route_send_call_t
     spot_send_call_t &in_mesh (std::string mesh_name)
     {
         if (_intent->mesh_name) {
-            throw framework_exception_t (framework_error_kind_t::invalid_configuration,
+            throw framework_exception_t (framework_error_kind_t::not_configured,
                                          "Spot mesh can be selected only once");
         }
         _intent->mesh_name = std::move (mesh_name);
@@ -723,7 +723,7 @@ class spot_send_call_t : public route_send_call_t
     spot_send_call_t &set_instance (std::optional<std::string> stable_type)
     {
         if (_intent->instance) {
-            throw framework_exception_t (framework_error_kind_t::invalid_configuration,
+            throw framework_exception_t (framework_error_kind_t::not_configured,
                                          "Instance Spot intent can be selected only once");
         }
         _intent->instance = true;
@@ -763,7 +763,7 @@ class spot_request_call_t : public channel_request_call_t
     spot_request_call_t &in_mesh (std::string mesh_name)
     {
         if (_intent->mesh_name) {
-            throw framework_exception_t (framework_error_kind_t::invalid_configuration,
+            throw framework_exception_t (framework_error_kind_t::not_configured,
                                          "Spot mesh can be selected only once");
         }
         _intent->mesh_name = std::move (mesh_name);
@@ -774,7 +774,7 @@ class spot_request_call_t : public channel_request_call_t
     spot_request_call_t &set_instance (std::optional<std::string> stable_type)
     {
         if (_intent->instance) {
-            throw framework_exception_t (framework_error_kind_t::invalid_configuration,
+            throw framework_exception_t (framework_error_kind_t::not_configured,
                                          "Instance Spot intent can be selected only once");
         }
         _intent->instance = true;
@@ -1055,7 +1055,7 @@ task_t<TReply> route_client_t::submit_request_reply_erased (
   const std::map<std::string, std::string> &metadata)
 {
     if (serializers == nullptr) {
-        co_return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
+        co_return result_t<TReply>::failure (framework_error_kind_t::protocol_error,
                                              "route client has no serializer registry");
     }
     auto reply = co_await submit_request_reply_message_erased (

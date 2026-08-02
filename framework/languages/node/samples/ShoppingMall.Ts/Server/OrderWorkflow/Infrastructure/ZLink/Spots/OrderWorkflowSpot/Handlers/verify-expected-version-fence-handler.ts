@@ -4,7 +4,7 @@ import type { ZLinkSpotRequestHandler } from '@zlink-systems/framework';
 import type {
   VerifyExpectedVersionFenceReq,
   VerifyExpectedVersionFenceRes
-} from '../../../../../../../Shared/Contracts/messages';
+} from '../../../../../../Shared/Internal/shoppingmall-workflow-messages';
 import { OrderWorkflowService } from '../../../../../Application/OrderWorkflow/order-workflow-service';
 import { SHOPPINGMALL_ROLE } from '../../../../../order-workflow-tokens';
 import { OrderWorkflowSpot } from '../order-workflow-spot';

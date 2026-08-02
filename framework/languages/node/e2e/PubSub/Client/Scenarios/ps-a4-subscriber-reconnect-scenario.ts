@@ -1,4 +1,4 @@
-// PS-A4: subscriber 재연결·기존 subscription 재적용 시나리오를 검증한다.
+// PS-A4: Subscriber reconnect 뒤 새 event를 받는다 시나리오를 검증한다.
 import { randomUUID } from 'node:crypto';
 import { PubSubNames } from '../../Shared/messages';
 import { getJson } from '../../../http-client';

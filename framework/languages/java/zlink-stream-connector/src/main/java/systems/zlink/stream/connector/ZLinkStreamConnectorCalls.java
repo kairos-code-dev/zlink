@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.messaging.Message;
 
@@ -99,7 +100,27 @@ record ZLinkStreamConnectorRequestCall(
         if (codec == null) {
             throw new IllegalStateException("typed stream reply API requires ZLinkStreamConnectorOptions.typedCodec");
         }
-        return submit().thenApply(reply -> decodeReply(codec, replyType, reply));
+        CompletionStage<ZLinkStreamEncodedPayload> source = submit();
+        CompletableFuture<TReply> result = new CompletableFuture<>();
+        source.whenComplete((reply, error) -> {
+            if (error != null) {
+                result.completeExceptionally(error);
+                return;
+            }
+            try {
+                result.complete(decodeReply(codec, replyType, reply));
+            } catch (Throwable failure) {
+                result.completeExceptionally(failure);
+            } finally {
+                reply.payload().close();
+            }
+        });
+        result.whenComplete((ignored, error) -> {
+            if (result.isCancelled()) {
+                source.toCompletableFuture().cancel(false);
+            }
+        });
+        return result;
     }
 
     private <TReply> TReply decodeReply(

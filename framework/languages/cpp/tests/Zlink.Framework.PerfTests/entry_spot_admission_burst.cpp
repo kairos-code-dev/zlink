@@ -29,18 +29,12 @@ constexpr std::size_t packets_per_actor = 50;
 constexpr std::size_t warmup_packets = 2000;
 constexpr std::size_t rounds = 5;
 
-class test_spot_context_t : public zlink::framework::spot_context_t
+class player_actor_t final
 {
   public:
-    explicit test_spot_context_t (
-      std::shared_ptr<zlink::framework::detail::spot_context_state_t> state) :
-        zlink::framework::spot_context_t (std::move (state))
-    {
-    }
-};
+    player_actor_t () = default;
+    explicit player_actor_t (std::size_t value) : index (value) {}
 
-struct player_actor_t
-{
     std::size_t index{};
 };
 
@@ -50,8 +44,9 @@ struct admission_request_t
 };
 
 struct admission_entry_spot_t
-    : public zlink::framework::entry_spot_t<admission_actor_t>
 {
+    using actor_type = player_actor_t;
+
     void configure (zlink::framework::spot_context_t &context)
     {
         context.handlers ().add_actor_send<&admission_entry_spot_t::on_admission> (
@@ -67,6 +62,27 @@ struct admission_entry_spot_t
         pending_actor = actor.index;
         pending_packet = request.packet;
         pending_packet_name = context.packet_name;
+    }
+
+    zlink::framework::task_t<zlink::framework::spot_actor_join_result_t>
+    on_actor_join (std::string_view, const zlink::framework::message_t &)
+    {
+        co_return zlink::framework::spot_actor_join_result_t::accept ();
+    }
+
+    zlink::framework::task_t<void> on_actor_joined (player_actor_t &)
+    {
+        co_return;
+    }
+
+    zlink::framework::task_t<void> on_leave_actor (player_actor_t &)
+    {
+        co_return;
+    }
+
+    zlink::framework::task_t<void> on_disconnect_actor (player_actor_t &)
+    {
+        co_return;
     }
 
     std::atomic<std::size_t> admitted{0};
@@ -89,7 +105,7 @@ struct benchmark_result_t
 struct fixture_t
 {
     std::shared_ptr<zlink::framework::detail::spot_context_state_t> state;
-    test_spot_context_t context;
+    zlink::framework::spot_context_t context;
     admission_entry_spot_t spot;
     zlink::framework::service_provider_t services;
     zlink::framework::serializer_registry_t serializers;
@@ -97,7 +113,7 @@ struct fixture_t
 
     explicit fixture_t (bool serial) :
         state (std::make_shared<zlink::framework::detail::spot_context_state_t> ()),
-        context (state),
+        context (zlink::framework::detail::spot_context_access_t::create (state)),
         services (zlink::framework::service_collection_t ().build_provider ())
     {
         if (serial) {

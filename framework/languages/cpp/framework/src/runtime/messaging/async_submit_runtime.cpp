@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/messaging/async_submit_runtime.hpp"
+#include "runtime/dispatch/offload_executor.hpp"
 
 #include <algorithm>
 #include <condition_variable>
@@ -18,6 +19,27 @@ namespace zlink::framework::runtime::messaging
 {
 namespace
 {
+
+zlink::framework::runtime::offload_executor_t &blocking_call_executor ()
+{
+    static zlink::framework::runtime::offload_executor_t executor (
+      0,
+      std::max<std::size_t> (1, std::thread::hardware_concurrency ()),
+      1024,
+      std::chrono::milliseconds (100),
+      "zlink-call");
+    return executor;
+}
+
+bool schedule_blocking_call (std::function<void ()> work) noexcept
+{
+    try {
+        return blocking_call_executor ().try_submit (std::move (work));
+    }
+    catch (...) {
+        return false;
+    }
+}
 
 thread_local submit_attempt_context_t last_attempt_context;
 thread_local bool has_attempt_context = false;
@@ -40,7 +62,7 @@ submit_attempt_context_t take_attempt_context ()
 
 bool is_backpressured (const result_t<void> &result) noexcept
 {
-    return !result && result.error_kind () == framework_error_kind_t::worker_queue_full;
+    return !result && result.error_kind () == framework_error_kind_t::capacity_exceeded;
 }
 
 result_t<void> one_way_terminal_result (const result_t<void> &result)
@@ -51,21 +73,21 @@ result_t<void> one_way_terminal_result (const result_t<void> &result)
     const auto *error = result.error ();
     if (error == nullptr) {
         return result_t<void>::failure (
-          framework_error_kind_t::request_failed, "one-way submit failed");
+          framework_error_kind_t::internal_failure, "one-way submit failed");
     }
     switch (detail::boundary_state (*error)) {
         case detail::boundary_error_t::timed_out:
             return result_t<void>::failure (
               framework_error_kind_t::deadline_exceeded,
-              error->what (), true);
+              error->what ());
         case detail::boundary_error_t::shutdown:
             return result_t<void>::failure (
-              framework_error_kind_t::runtime_shutdown,
+              framework_error_kind_t::shutting_down,
               error->what ());
         case detail::boundary_error_t::disconnected:
             return result_t<void>::failure (
-              framework_error_kind_t::route_not_connected,
-              error->what (), true);
+              framework_error_kind_t::unavailable,
+              error->what ());
         case detail::boundary_error_t::none:
         case detail::boundary_error_t::closed:
         case detail::boundary_error_t::cancelled:
@@ -79,13 +101,13 @@ result_t<void> deadline_exceeded ()
 {
     return result_t<void>::failure (
       framework_error_kind_t::deadline_exceeded,
-      "one-way admission deadline was exceeded", true);
+      "one-way admission deadline was exceeded");
 }
 
 result_t<void> runtime_shutdown ()
 {
     return result_t<void>::failure (
-      framework_error_kind_t::runtime_shutdown,
+      framework_error_kind_t::shutting_down,
       "one-way admission runtime is stopped");
 }
 
@@ -145,13 +167,13 @@ class async_submit_runtime_t
     {
         if (!submit) {
             return task_t<void> (result_t<void>::failure (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               "one-way call is not bound to a submit operation"));
         }
 
         submit_attempt_context_t context;
         result_t<void> first = result_t<void>::failure (
-          framework_error_kind_t::request_failed, "one-way submit failed");
+          framework_error_kind_t::internal_failure, "one-way submit failed");
         try {
             first = invoke_attempt (submit, context);
         }
@@ -161,11 +183,11 @@ class async_submit_runtime_t
         }
         catch (const std::exception &error) {
             return task_t<void> (result_t<void>::failure (
-              framework_error_kind_t::request_failed, error.what ()));
+              framework_error_kind_t::internal_failure, error.what ()));
         }
         catch (...) {
             return task_t<void> (result_t<void>::failure (
-              framework_error_kind_t::request_failed, "one-way submit failed"));
+              framework_error_kind_t::internal_failure, "one-way submit failed"));
         }
 
         record_attempt (context.target);
@@ -404,7 +426,7 @@ class async_submit_runtime_t
 
         submit_attempt_context_t retry_context;
         result_t<void> result = result_t<void>::failure (
-          framework_error_kind_t::request_failed, "one-way submit failed");
+          framework_error_kind_t::internal_failure, "one-way submit failed");
         try {
             result = invoke_attempt (entry.submit, retry_context);
         }
@@ -417,16 +439,30 @@ class async_submit_runtime_t
         catch (const std::exception &error) {
             finish_retry ();
             entry.completion->complete (result_t<void>::failure (
-              framework_error_kind_t::request_failed, error.what ()));
+              framework_error_kind_t::internal_failure, error.what ()));
             return;
         }
         catch (...) {
             finish_retry ();
             entry.completion->complete (result_t<void>::failure (
-              framework_error_kind_t::request_failed, "one-way submit failed"));
+              framework_error_kind_t::internal_failure, "one-way submit failed"));
             return;
         }
         record_attempt (entry.context.target);
+        bool stopped_after_attempt = false;
+        {
+            std::lock_guard lock (_mutex);
+            stopped_after_attempt = _stopping
+                                    || (entry.context.owner != nullptr
+                                        && (_shutdown_owners.contains (entry.context.owner)
+                                            || _owner_epochs[entry.context.owner]
+                                                 != entry.owner_epoch));
+        }
+        if (stopped_after_attempt) {
+            finish_retry ();
+            entry.completion->complete (runtime_shutdown ());
+            return;
+        }
         if (!is_backpressured (result)) {
             finish_retry ();
             entry.completion->complete (one_way_terminal_result (result));
@@ -582,7 +618,7 @@ class logical_multicast_executor_t
     {
         if (!work) {
             return task_t<void> (result_t<void>::failure (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               "logical multicast call is not bound to a publisher"));
         }
         auto completion =
@@ -817,6 +853,11 @@ void wait_for_idle_multicast_executor_for_tests ()
 
 namespace zlink::framework::detail
 {
+
+bool submit_blocking_call (std::function<void ()> work)
+{
+    return runtime::messaging::schedule_blocking_call (std::move (work));
+}
 
 task_t<void>
 submit_one_way_task (std::function<result_t<void> ()> submit)

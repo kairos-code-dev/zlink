@@ -2,7 +2,7 @@ package systems.zlink.e2e.kotlin.pubsub.subscriber
 
 import systems.zlink.e2e.kotlin.pubsub.shared.Contracts
 import systems.zlink.e2e.kotlin.pubsub.shared.EventMsg
-import systems.zlink.framework.channels.ZLinkPublishContext
+import systems.zlink.framework.channels.ZLinkPublishMessageContext
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.kotlin.ZLinkSuspendingPublishHandler
 
@@ -12,7 +12,7 @@ class EventMsgHandler(
 ) : ZLinkSuspendingPublishHandler<EventMsg> {
     override suspend fun handle(
         message: EventMsg,
-        context: ZLinkPublishContext,
+        context: ZLinkPublishMessageContext,
     ) {
         if (!state.accepts(context.topic())) {
             return

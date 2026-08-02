@@ -1,4 +1,4 @@
-// SM-A2: user spot request와 state mutation 시나리오를 검증한다.
+// SM-A2: User Spot state를 serial하게 변경한다 시나리오를 검증한다.
 import type {
   CreateSpotRes,
   CreateSpotReq,

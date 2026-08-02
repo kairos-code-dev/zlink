@@ -1,9 +1,8 @@
 import {
-  ZLinkLocationAutoConnectType,
-  ZLinkLocationRole,
   ZLinkFrameworkException,
-  type ZLinkChannelClient,
-  type ZLinkLocationRuntimeQuery
+  type ZLinkRouteClient,
+  type ZLinkLocationRuntimeQuery,
+  type ZLinkRouteMeshRuntime
 } from '@zlink-systems/framework';
 import {
   MissingProfileMsg,
@@ -20,8 +19,9 @@ import {
 import type { HttpRoute } from '../Support/http-server';
 
 export function createConsumerEndpoints(
-  channel: ZLinkChannelClient,
-  locationQuery: ZLinkLocationRuntimeQuery,
+  channel: ZLinkRouteClient,
+  locationQuery: ZLinkLocationRuntimeQuery | undefined,
+  routeRuntime: ZLinkRouteMeshRuntime,
   stop: () => void
 ): HttpRoute[] {
   return [
@@ -29,19 +29,9 @@ export function createConsumerEndpoints(
     {
       method: 'GET',
       path: '/location/topology',
-      handle: async () => {
-        const rows = await locationQuery.listPeerLocations({
-          autoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
-          meshName: 'profile',
-          role: ZLinkLocationRole.Router
-        });
-        return rows.map((row) => ({
-          channelName: row.meshName,
-          serviceRole: row.role,
-          routingId: row.nodeRid === undefined ? undefined : String(row.nodeRid),
-          endpoint: row.endpoint
-        }));
-      }
+      handle: () => locationQuery === undefined
+        ? Promise.reject(new Error('Location runtime query is not configured.'))
+        : listProfileTopology(locationQuery)
     },
     { method: 'POST', path: '/profile/batch-request', handle: (body) => batchRequest(channel, (body as ProfileReq[]).map((request) => new ProfileReq(request.value))) },
     { method: 'POST', path: '/profile/request', handle: (body) => requestProfile(channel, new ProfileReq((body as ProfileReq).value), 5000) },
@@ -62,21 +52,24 @@ export function createConsumerEndpoints(
     { method: 'POST', path: '/profile/payload-over-limit', handle: (body) => requestPayloadFailure(channel, toPayloadReq(body)) },
     { method: 'POST', path: '/profile/backpressure/reset', handle: () => ({ status: 'ready' }) },
     { method: 'POST', path: '/profile/backpressure/send', handle: (body) => submitProfileUnderPressure(channel, new ProfileMsg((body as ProfileMsg).commandId)) },
+    { method: 'GET', path: '/route/status', handle: () => routeRuntime.snapshot('profile') },
     {
       method: 'POST', path: '/locations/peers/wait',
-      handle: (body) => waitForPeer(locationQuery, body as PeerLocationWaitReq)
+      handle: (body) => locationQuery === undefined
+        ? Promise.reject(new Error('Location runtime query is not configured.'))
+        : waitForPeer(locationQuery, body as PeerLocationWaitReq)
     },
     { method: 'POST', path: '/shutdown', handle: () => { stop(); return { status: 'stopping' }; } }
   ];
 }
 
-async function requestProfileOutcome(channel: ZLinkChannelClient, request: ProfileReq): Promise<RequestOutcomeRes> {
+async function requestProfileOutcome(channel: ZLinkRouteClient, request: ProfileReq): Promise<RequestOutcomeRes> {
   try {
     const reply = await requestProfile(channel, request, 5000);
     return { value: request.value, outcome: reply.providerRid };
   } catch (error) {
     const outcome = error instanceof Error && /timed out|timeout/i.test(error.message) ? 'Timeout'
-      : error instanceof ZLinkFrameworkException ? error.kind
+      : error instanceof ZLinkFrameworkException ? String(error.kind)
         : error instanceof Error ? error.name : 'Error';
     return { value: request.value, outcome };
   }
@@ -88,19 +81,35 @@ async function waitForPeer(
 ): Promise<readonly object[]> {
   const deadline = Date.now() + Math.max(1, Math.min(request.timeoutMilliseconds ?? 30_000, 60_000));
   do {
-    const rows = await locationQuery.listPeerLocations({
-      autoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
-      meshName: 'profile',
-      role: ZLinkLocationRole.Router
-    });
-    const present = rows.some((row) => String(row.nodeRid) === request.rid);
+    const rows = await listProfileTopology(locationQuery);
+    const present = rows.some((row) => row.routingId === request.rid);
     if (present === request.present) return rows;
     await new Promise((resolve) => setTimeout(resolve, 100));
   } while (Date.now() < deadline);
   throw new Error(`Peer '${request.rid}' did not become present=${request.present}.`);
 }
 
-async function batchRequest(channel: ZLinkChannelClient, requests: readonly ProfileReq[]): Promise<ProfileRes[]> {
+async function listProfileTopology(locationQuery: ZLinkLocationRuntimeQuery): Promise<readonly {
+  readonly channelName: string;
+  readonly serviceRole: number;
+  readonly routingId: string;
+  readonly endpoint: string;
+  readonly channelWeight?: number;
+}[]> {
+  const page = await locationQuery.listMeshNodeDescriptors('profile');
+  return page.items
+    .filter((row) => row.channelWeights.profile !== undefined)
+    .map((row) => ({
+      channelName: row.meshName,
+      // Preserve the legacy endpoint's serialized Router role value.
+      serviceRole: 3,
+      routingId: String(row.rid),
+      endpoint: row.endpoint,
+      channelWeight: row.channelWeights.profile
+    }));
+}
+
+async function batchRequest(channel: ZLinkRouteClient, requests: readonly ProfileReq[]): Promise<ProfileRes[]> {
   const replies: ProfileRes[] = [];
   for (const request of requests) {
     replies.push(await requestProfile(channel, request, 5000));
@@ -109,7 +118,7 @@ async function batchRequest(channel: ZLinkChannelClient, requests: readonly Prof
 }
 
 async function requestProfile(
-  channel: ZLinkChannelClient,
+  channel: ZLinkRouteClient,
   request: ProfileReq,
   timeoutMs: number
 ): Promise<ProfileRes> {
@@ -119,14 +128,14 @@ async function requestProfile(
     .submit<ProfileRes>();
 }
 
-async function requestPayload(channel: ZLinkChannelClient, request: PayloadReq): Promise<PayloadRes> {
+async function requestPayload(channel: ZLinkRouteClient, request: PayloadReq): Promise<PayloadRes> {
   return channel
     .requestToChannel('profile', request)
     .timeout(10000)
     .submit<PayloadRes>();
 }
 
-async function requestPayloadFailure(channel: ZLinkChannelClient, request: PayloadReq): Promise<RequestFailureRes> {
+async function requestPayloadFailure(channel: ZLinkRouteClient, request: PayloadReq): Promise<RequestFailureRes> {
   try {
     await channel
       .requestToChannel('profile', request)
@@ -139,7 +148,7 @@ async function requestPayloadFailure(channel: ZLinkChannelClient, request: Paylo
 }
 
 async function requestProfileFailure(
-  channel: ZLinkChannelClient,
+  channel: ZLinkRouteClient,
   request: ProfileReq,
   timeoutMs: number
 ): Promise<RequestFailureRes> {
@@ -151,7 +160,7 @@ async function requestProfileFailure(
   }
 }
 
-async function requestMissingProfile(channel: ZLinkChannelClient, request: MissingProfileReq): Promise<RequestFailureRes> {
+async function requestMissingProfile(channel: ZLinkRouteClient, request: MissingProfileReq): Promise<RequestFailureRes> {
   try {
     await channel
       .requestToChannel('profile', request)
@@ -174,7 +183,7 @@ function toPayloadReq(body: unknown): PayloadReq {
   return new PayloadReq(request.marker, request.payload);
 }
 
-function submitProfileUnderPressure(channel: ZLinkChannelClient, command: ProfileMsg): string {
+function submitProfileUnderPressure(channel: ZLinkRouteClient, command: ProfileMsg): string {
   channel
     .sendToChannel('profile', command)
     .submit();

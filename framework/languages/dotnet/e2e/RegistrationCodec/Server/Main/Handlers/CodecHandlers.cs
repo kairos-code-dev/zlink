@@ -77,3 +77,26 @@ internal sealed class MessagePackEchoCommandHandler(EvidenceStore evidence)
         return ValueTask.CompletedTask;
     }
 }
+
+internal sealed class JsonGoldenRequestHandler(EvidenceStore evidence)
+    : IZLinkRequestHandler<JsonGoldenReq, JsonGoldenRes>
+{
+    public ValueTask<JsonGoldenRes> HandleAsync(
+        JsonGoldenReq request,
+        IZLinkMessageContext context,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add(
+            $"codec-request|codec=json|value=golden|status={request.Status}|balance={request.Balance}|score={request.Score}|payload={Convert.ToBase64String(request.Payload)}");
+        return ValueTask.FromResult(new JsonGoldenRes(
+            request.DisplayName,
+            request.Status,
+            request.Balance,
+            request.Payload,
+            request.Score,
+            request.Ratio,
+            request.OptionalNote,
+            context.ContentType ?? "<null>"));
+    }
+}

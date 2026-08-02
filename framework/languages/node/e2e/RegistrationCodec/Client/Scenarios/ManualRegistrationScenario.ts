@@ -1,4 +1,4 @@
-// RC-A3: 수동 handler 등록 시나리오를 검증한다.
+// RC-A3: Handler를 명시적으로 등록한다 시나리오를 검증한다.
 import type { EchoRes } from '../../Shared/messages';
 import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';

@@ -231,9 +231,12 @@ struct actor_create_operation_result_t
     std::optional<protocol::application_payload_t> application_reply;
 };
 
+using actor_create_operation_target_completion_t = std::function<void (
+  actor_create_operation_result_t)>;
+
 using actor_create_operation_target_t = std::function<
-  actor_create_operation_result_t (
-    const protocol::actor_create_header_t &)>;
+  void (const protocol::actor_create_header_t &,
+        actor_create_operation_target_completion_t)>;
 
 using actor_create_operation_completion_t = std::function<void (
   foundation::operation_terminal_t,

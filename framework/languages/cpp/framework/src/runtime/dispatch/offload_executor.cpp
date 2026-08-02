@@ -61,18 +61,51 @@ void offload_executor_t::submit (std::function<void ()> work)
 
 bool offload_executor_t::try_submit (std::function<void ()> work)
 {
+    return try_submit_cancellable (
+      [work = std::move (work)] (std::stop_token) mutable {
+          if (work) {
+              work ();
+          }
+      });
+}
+
+bool offload_executor_t::try_submit_cancellable (
+  std::function<void (std::stop_token)> work)
+{
     {
         std::lock_guard lock (_mutex);
         if (_stopping || (_max_queue_length != 0 && _queue.size () >= _max_queue_length)) {
             return false;
         }
-        _queue.push (std::move (work));
+        _queue.push (work_item_t{std::move (work), std::stop_source{}});
         if (_idle_workers == 0 && _live_workers < _max_worker_count) {
             start_worker_locked ();
         }
     }
     _ready.notify_one ();
     return true;
+}
+
+void offload_executor_t::request_stop () noexcept
+{
+    std::vector<std::stop_source> cancellations;
+    {
+        std::lock_guard lock (_mutex);
+        cancellations.reserve (_queue.size () + _active_cancellations.size ());
+        auto queued = _queue;
+        while (!queued.empty ()) {
+            cancellations.push_back (queued.front ().cancellation);
+            queued.pop ();
+        }
+        for (auto *cancellation : _active_cancellations) {
+            if (cancellation != nullptr) {
+                cancellations.emplace_back (*cancellation);
+            }
+        }
+    }
+    for (auto &cancellation : cancellations) {
+        cancellation.request_stop ();
+    }
 }
 
 void offload_executor_t::drain ()
@@ -88,6 +121,7 @@ void offload_executor_t::drain ()
         std::unique_lock lock (_mutex);
         _stopping = true;
     }
+    request_stop ();
     _ready.notify_all ();
     {
         std::unique_lock lock (_mutex);
@@ -149,7 +183,7 @@ void offload_executor_t::worker_loop ()
         }
     };
     while (true) {
-        std::function<void ()> work;
+        work_item_t work;
         {
             std::unique_lock lock (_mutex);
             ++_idle_workers;
@@ -178,12 +212,28 @@ void offload_executor_t::worker_loop ()
             work = std::move (_queue.front ());
             _queue.pop ();
             ++_active;
+            _active_cancellations.push_back (&work.cancellation);
         }
 
-        work ();
+        try {
+            if (work.work) {
+                work.work (work.cancellation.get_token ());
+            }
+        }
+        catch (...) {
+            /* An offload job has no caller on this thread that could observe
+             * an exception. The job owner is responsible for converting its
+             * failure into a task completion before returning. */
+        }
 
         {
             std::lock_guard lock (_mutex);
+            const auto active = std::find (_active_cancellations.begin (),
+                                           _active_cancellations.end (),
+                                           &work.cancellation);
+            if (active != _active_cancellations.end ()) {
+                _active_cancellations.erase (active);
+            }
             --_active;
             if (_queue.empty () && _active == 0) {
                 _empty.notify_all ();

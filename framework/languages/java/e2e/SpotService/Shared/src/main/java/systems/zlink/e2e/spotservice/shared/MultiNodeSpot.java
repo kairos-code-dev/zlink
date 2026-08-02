@@ -36,7 +36,7 @@ public final class MultiNodeSpot implements ZLinkSpot<ScenarioActor> {
 
     @Override
     public java.util.concurrent.CompletionStage<ZLinkSpotCreateResponse> onCreate(ZLinkMessage request) {
-        evidence.record("MultiNodeSpotCreated", context.spotRid().toString(), request.isEmpty() ? "" : "request");
+        evidence.record("MultiNodeSpotCreated", context.spotId(), request.isEmpty() ? "" : "request");
         if (!request.isEmpty()) {
             Contracts.SpotOnlyMeshReq command = request.decode(Contracts.SpotOnlyMeshReq.class);
             var targetRid = systems.zlink.contracts.core.RoutingId.from(command.targetSpotRid());
@@ -50,7 +50,7 @@ public final class MultiNodeSpot implements ZLinkSpot<ScenarioActor> {
                     .thenApply(reply -> {
                         context.outbound().sendToSpot(target,
                             new Contracts.MultiNodeStateMsg("sm-f6-send-" + command.marker())).submit();
-                        evidence.record("SpotOnlyRequest", context.spotRid().toString(),
+                        evidence.record("SpotOnlyRequest", context.spotId(),
                             command.targetSpotRid() + "/" + reply.value() + "/" + command.marker());
                         return ZLinkSpotCreateResponse.accept();
                     }));
@@ -60,7 +60,7 @@ public final class MultiNodeSpot implements ZLinkSpot<ScenarioActor> {
 
     @Override
     public java.util.concurrent.CompletionStage<Void> onInitialize() {
-        evidence.record("MultiNodeSpotInitialized", context.spotRid().toString(), "");
+        evidence.record("MultiNodeSpotInitialized", context.spotId(), "");
         return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
@@ -73,7 +73,7 @@ public final class MultiNodeSpot implements ZLinkSpot<ScenarioActor> {
 
     @Override
     public java.util.concurrent.CompletionStage<Void> onJoinedActor(ScenarioActor actor) {
-        evidence.record("SpotOnlyActorJoined", context.spotRid().toString(), actor.actorId());
+        evidence.record("SpotOnlyActorJoined", context.spotId(), actor.actorId());
         return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
@@ -84,11 +84,11 @@ public final class MultiNodeSpot implements ZLinkSpot<ScenarioActor> {
 
     public int add(int delta) {
         value += delta;
-        evidence.record("MultiNodeStateReq", context.spotRid().toString(), Integer.toString(value));
+        evidence.record("MultiNodeStateReq", context.spotId(), Integer.toString(value));
         return value;
     }
 
     public void command(String marker) {
-        evidence.record("MultiNodeStateMsg", context.spotRid().toString(), marker);
+        evidence.record("MultiNodeStateMsg", context.spotId(), marker);
     }
 }

@@ -5,6 +5,7 @@ export interface ConsumerOptions {
   readonly logDir: string;
   readonly redisEndpoint: string;
   readonly redisKeyPrefix: string;
+  readonly storeResponseGate: boolean;
   readonly traceLabel: string;
 }
 
@@ -15,6 +16,7 @@ export function validateConsumerOptions(value: unknown): ConsumerOptions {
     logDir: optionalString(values, 'logDir') ?? 'logs',
     redisEndpoint: requiredString(values, 'redisEndpoint'),
     redisKeyPrefix: requiredString(values, 'redisKeyPrefix'),
+    storeResponseGate: optionalString(values, 'storeResponseGate') === 'enabled',
     traceLabel: optionalString(values, 'traceLabel') ?? 'consumer'
   };
 }

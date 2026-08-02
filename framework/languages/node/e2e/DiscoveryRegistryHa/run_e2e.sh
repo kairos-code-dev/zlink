@@ -126,6 +126,7 @@ start_configured_server() {
 
 start_topology() {
   local with_provider_b="${1:-yes}"
+  local store_response_gate="${2:-disabled}"
   local reg_http_port consumer_http_port provider_a_http_port provider_b_http_port
   local provider_a_channel_port provider_b_channel_port
   reg_http_port="$(pick_port)"
@@ -148,7 +149,7 @@ start_topology() {
     --redis-endpoint "$REDIS_ENDPOINT" \
     --redis-key-prefix "$REDIS_KEY_PREFIX" \
     --log-dir "$LOG_DIR"
-  wait_health "$LOCATION_PROBE_URL" reg-1
+  wait_health "$LOCATION_PROBE_URL" reg-1 "$LAST_STARTED_PID"
 
   start_configured_server api-a "$PROVIDER_MAIN" \
     --rid api-a \
@@ -158,7 +159,7 @@ start_topology() {
     --channel-endpoint "tcp://127.0.0.1:$provider_a_channel_port" \
     --evidence-file "$LOG_DIR/api-a.evidence.log" \
     --log-dir "$LOG_DIR"
-  wait_health "$PROVIDER_A_URL" api-a
+  wait_health "$PROVIDER_A_URL" api-a "$LAST_STARTED_PID"
 
   if [[ "$with_provider_b" == "yes" ]]; then
     start_provider_b
@@ -169,8 +170,9 @@ start_topology() {
     --redis-endpoint "$REDIS_ENDPOINT" \
     --redis-key-prefix "$REDIS_KEY_PREFIX" \
     --trace-label consumer \
+    --store-response-gate "$store_response_gate" \
     --log-dir "$LOG_DIR"
-  wait_health "$CONSUMER_URL" consumer
+  wait_health "$CONSUMER_URL" consumer "$LAST_STARTED_PID"
 }
 
 start_provider_b() {
@@ -183,7 +185,7 @@ start_provider_b() {
     --evidence-file "$LOG_DIR/api-b.evidence.log" \
     --log-dir "$LOG_DIR"
   API_B_PID="$LAST_STARTED_PID"
-  wait_health "$PROVIDER_B_URL" api-b
+  wait_health "$PROVIDER_B_URL" api-b "$LAST_STARTED_PID"
 }
 
 run_client() {
@@ -214,10 +216,10 @@ run_sf_a2() {
   run_client SF-A2 "$LOG_DIR/client.stdout.log" "$LOG_DIR/client.stderr.log" &
   client_pid="$!"
   wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control SF-A2 start-provider-b" \
-    "SF-A2 client did not request api-b startup" "$client_pid"
+    "SF-A2 client did not request api-b startup" "$client_pid" 120
   start_provider_b
   wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control SF-A2 shutdown-provider-b" \
-    "SF-A2 client did not request api-b shutdown" "$client_pid"
+    "SF-A2 client did not request api-b shutdown" "$client_pid" 120
   curl --max-time "${HTTP_PROBE_TIMEOUT_SECONDS}" -fsS -X POST "$PROVIDER_B_URL/shutdown" >/dev/null
   wait "$client_pid"
 }
@@ -309,9 +311,8 @@ run_sf_d3() {
 }
 
 run_sf_e1() {
-  start_topology
+  start_topology yes enabled
   run_warmup
-  docker exec "$REDIS_CONTAINER_ID" redis-cli CLIENT PAUSE 3000 ALL >/dev/null
   run_client SF-E1 "$LOG_DIR/client.stdout.log" "$LOG_DIR/client.stderr.log"
 }
 

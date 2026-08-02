@@ -12,7 +12,7 @@ class StartOrderUseCase {
 
   async start(request: StartOrderReq): Promise<StartOrderRes> {
     const result = await this.workflowRouter.start(this.store.reserveOrder(request));
-    return { orderId: result.state.orderId, status: result.state.status };
+    return { state: result.state };
   }
 }
 

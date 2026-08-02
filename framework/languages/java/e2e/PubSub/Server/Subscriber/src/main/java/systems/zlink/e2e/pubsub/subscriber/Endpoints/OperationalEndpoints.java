@@ -12,15 +12,14 @@ import org.springframework.context.SmartLifecycle;
 import systems.zlink.e2e.pubsub.subscriber.Configuration.SubscriberOptions;
 import systems.zlink.e2e.pubsub.subscriber.Infrastructure.EvidenceStore;
 import systems.zlink.e2e.pubsub.shared.Contracts;
-import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
-import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
-import systems.zlink.framework.locations.ZLinkPageRequest;
+import systems.zlink.framework.monitoring.ZLinkFanoutRuntime;
+import systems.zlink.framework.monitoring.ZLinkPeerState;
 
 public final class OperationalEndpoints implements SmartLifecycle {
     private final SubscriberOptions options;
     private final EvidenceStore evidence;
     private final ObjectMapper json;
-    private final ZLinkLocationRepository locations;
+    private final ZLinkFanoutRuntime fanoutRuntime;
     private HttpServer server;
     private boolean running;
 
@@ -28,11 +27,11 @@ public final class OperationalEndpoints implements SmartLifecycle {
         SubscriberOptions options,
         EvidenceStore evidence,
         ObjectMapper json,
-        ZLinkLocationRepository locations) {
+        ZLinkFanoutRuntime fanoutRuntime) {
         this.options = options;
         this.evidence = evidence;
         this.json = json;
-        this.locations = locations;
+        this.fanoutRuntime = fanoutRuntime;
     }
 
     @Override
@@ -56,16 +55,12 @@ public final class OperationalEndpoints implements SmartLifecycle {
                 exchange.getResponseBody().write(body);
                 exchange.close();
             });
-            //  Config 3 §420(publisher 정상 종료가 public status에 즉시 반영)을
-            //  client의 `waitPublisherRow`가 이 endpoint로 관측한다. 조회가 공개
-            //  계약에 없어 구현 store 타입을 그대로 쓴다 — 공개 API로 옮기는 것은
-            //  .NET이 같은 항목을 검증하는 방식을 확인한 뒤 정할 일이다.
+            // Config 3의 publisher 상태 전환을 public monitoring snapshot으로
+            // 관측한다. 내부 Location Store의 descriptor를 process 밖으로 노출하지 않는다.
             server.createContext("/locations/publishers", exchange -> {
-                var publishers = locations.listFanoutPublishers(
-                        Contracts.EVENT_CHANNEL,
-                        new ZLinkPageRequest(1_000, null))
-                    .toCompletableFuture().join().items().stream()
-                    .map(publisher -> publisher.endpoint())
+                var publishers = fanoutRuntime.snapshot(Contracts.EVENT_CHANNEL).publishers().stream()
+                    .filter(publisher -> publisher.state() == ZLinkPeerState.READY)
+                    .map(publisher -> publisher.nodeRid().toString())
                     .toList();
                 byte[] body = json.writeValueAsBytes(publishers);
                 exchange.getResponseHeaders().add("Content-Type", "application/json");

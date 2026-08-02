@@ -37,11 +37,13 @@ public final class Program {
             MonA1SocketEventsScenario.run(context);
             MonA2LocationEventsScenario.run(context);
             MonA3SpotEventsScenario.run(context);
-            MonA4AvailabilityTransitionScenario.run(context);
+            MonA4AvailabilityTransitionScenario.runReplacement(context, "MON-A4A");
+            MonA4AvailabilityTransitionScenario.runCrashReplacement(context, "MON-A4B");
             MonA5FixedKindsScenario.run(context);
             MonBPublishMonitoringAbsenceScenario.runZeroTarget(context);
             MonBPublishMonitoringAbsenceScenario.runLocalTarget(context);
-            MonD1FailureRecoveryScenario.run(context);
+            MonD1FailureRecoveryScenario.runUnknownMesh(context, "MON-D1A");
+            MonD1FailureRecoveryScenario.runRepeated(context, "MON-D1B");
             System.out.println("monitoring e2e result=passed");
         }
     }
@@ -52,10 +54,14 @@ public final class Program {
             case "MON-A2" -> MonA2LocationEventsScenario.run(context);
             case "MON-A3" -> MonA3SpotEventsScenario.run(context);
             case "MON-A4" -> MonA4AvailabilityTransitionScenario.run(context);
+            case "MON-A4A" -> MonA4AvailabilityTransitionScenario.runReplacement(context, "MON-A4A");
+            case "MON-A4B" -> MonA4AvailabilityTransitionScenario.runCrashReplacement(context, "MON-A4B");
             case "MON-A5" -> MonA5FixedKindsScenario.run(context);
             case "MON-B1" -> MonBPublishMonitoringAbsenceScenario.runZeroTarget(context);
             case "MON-B2" -> MonBPublishMonitoringAbsenceScenario.runLocalTarget(context);
             case "MON-D1" -> MonD1FailureRecoveryScenario.run(context);
+            case "MON-D1A" -> MonD1FailureRecoveryScenario.runUnknownMesh(context, "MON-D1A");
+            case "MON-D1B" -> MonD1FailureRecoveryScenario.runRepeated(context, "MON-D1B");
             default -> throw new IllegalArgumentException("Unknown RuntimeMonitoring scenario '" + scenario + "'.");
         }
     }

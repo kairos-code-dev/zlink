@@ -46,7 +46,7 @@ class CustomerGatewayApplication {
                 ) { factory -> factory.recreateOnRelocation() }
             options.addStreamNode(SampleNames.CustomerStreamNode)
                 .bind(SampleTopology.CustomerStreamEndpoint)
-                .enableActorDispatch(SampleNames.CustomerSpotMesh)
+                .enableActorDispatch()
                 .registerSession(CustomerSession::class.java)
         }
 

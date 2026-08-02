@@ -745,10 +745,11 @@ matching handler마다 scope를 따로 만들며 한 handler의 filter 중단이
 STREAM handler는 일반 request/send/event handler와 분리한다. Framework runtime은 typed packet
 방식만 지원하며 사용자 정의 header framing은 Framework public 표면에 넣지 않는다.
 
-stream callback은 framework가 packet을 수신하고 header 검증을 마친 뒤 호출한다. 별도
-실행기로 넘기는 것이 기본은 아니며, 같은 stream session의 packet/lifecycle callback은
-직렬로 처리한다. CPU-bound 또는 blocking 가능성이 있는 stream handler는 offload 실행
-정책을 명시한다.
+Framework 내부 `recv loop`는 STREAM raw part를 수신하고 header framing과 queue admission을
+완료한 뒤 stream callback을 실행한다. Core packet callback이나 raw receive callback으로
+queue admission을 우회하지 않는다. 같은 stream session의 packet/lifecycle callback은
+managed queue에서 직렬로 처리한다. CPU-bound 또는 blocking 가능성이 있는 stream handler는
+offload 실행 정책을 명시한다.
 
 request handler 반환값은 `TReply` 또는 `task_t<TReply>`를 허용한다. `task_t<TReply>`를
 반환하는 handler는 `.NET`의 `async Task<TReply>` handler와 같은 의미이며, 내부

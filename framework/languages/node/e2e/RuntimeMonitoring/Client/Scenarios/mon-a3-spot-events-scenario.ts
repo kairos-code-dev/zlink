@@ -1,4 +1,4 @@
-// MON-A3: ChannelName readiness와 선택 가능 상태 시나리오를 검증한다.
+// MON-A3: Channel readiness와 실제 request 결과를 대조한다 시나리오를 검증한다.
 import type { EvidenceWaitReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../../../http-client';

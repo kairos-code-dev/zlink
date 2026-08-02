@@ -42,7 +42,7 @@ public final class CourierSessionApplication {
                 .setRoutingIdPrefix("delivery-session");
             options.addStreamNode(SampleNames.CourierStreamNode)
                 .bind(topology.courierStreamEndpoint())
-                .enableActorDispatch(SampleNames.CourierSpotDiscovery)
+                .enableActorDispatch()
                 .registerSession(CourierSession.class);
         };
     }

@@ -154,7 +154,7 @@ class PlayApplication {
                             Env.get("ZLINK_KOTLIN_E2E_TLS_KEY_PATH")
                         )
                 }
-                stream.enableActorDispatch(Contracts.SPOT_MESH)
+                stream.enableActorDispatch()
                 stream.registerSession(ScenarioSession::class.java)
                     .addSessionPacketHandler(ActorAuthHandler::class.java)
             }

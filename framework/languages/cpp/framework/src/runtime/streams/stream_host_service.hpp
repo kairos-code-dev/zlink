@@ -5,6 +5,7 @@
 #include <zlink/framework/contracts/configuration/module.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>
 
+#include "runtime/dispatch/inbound_dispatch_budget.hpp"
 #include "runtime/streams/stream_runtime.hpp"
 
 #include <atomic>
@@ -33,7 +34,8 @@ class stream_host_service_t final : public hosted_service_t
       detail::stream_runtime_t runtime,
       std::vector<stream_snapshot_t> streams,
       std::map<std::string, detail::stream_session_factory_t> session_factories,
-      std::shared_ptr<detail::mesh_node_runtime_t> mesh_node = nullptr);
+      std::shared_ptr<detail::mesh_node_runtime_t> mesh_node = nullptr,
+      std::shared_ptr<inbound_dispatch_budget_t> inbound_budget = nullptr);
     ~stream_host_service_t () override;
 
     void start (service_provider_t &services) override;
@@ -78,6 +80,7 @@ class stream_host_service_t final : public hosted_service_t
     std::vector<stream_snapshot_t> _streams;
     std::map<std::string, detail::stream_session_factory_t> _session_factories;
     std::shared_ptr<detail::mesh_node_runtime_t> _mesh_node;
+    std::shared_ptr<inbound_dispatch_budget_t> _inbound_budget;
     service_provider_t *_services = nullptr;
     std::atomic_bool _stop{false};
     std::vector<std::unique_ptr<listener_t>> _listeners;

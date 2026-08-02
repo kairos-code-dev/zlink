@@ -96,13 +96,11 @@ std::string terminal_name (const zlink::framework::result_t<void> &result)
     switch (result.error_kind ()) {
         case error_kind_t::deadline_exceeded:
             return "DeadlineExceeded";
-        case error_kind_t::actor_route_not_found:
-        case error_kind_t::spot_route_not_found:
-        case error_kind_t::request_target_not_found:
+        case error_kind_t::not_found:
             return "TargetNotFound";
-        case error_kind_t::route_not_connected:
+        case error_kind_t::unavailable:
             return "RouteNotConnected";
-        case error_kind_t::runtime_shutdown:
+        case error_kind_t::shutting_down:
             return "RuntimeShutdown";
         default:
             return std::string ("Exceptional:")
@@ -622,7 +620,7 @@ class bound_session_submit_handler_t
         const auto actor = _actors.find (request.actor_id);
         if (!actor) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              zlink::framework::framework_error_kind_t::not_found,
               "bound session actor was not found");
         }
         auto operation = actor->bound_session ().send (request.message);
@@ -699,7 +697,7 @@ class submit_admission_stream_session_t final :
             auto actor = _actors.find (request.actor_id);
             if (!actor) {
                 throw zlink::framework::framework_exception_t (
-                  zlink::framework::framework_error_kind_t::actor_route_not_found,
+                  zlink::framework::framework_error_kind_t::not_found,
                   "session actor relay target was not bound");
             }
             co_await actor->relay (
@@ -775,7 +773,7 @@ class stream_send_handler_t
         auto stream = _state.stream ();
         if (!stream) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::route_not_connected,
+              zlink::framework::framework_error_kind_t::unavailable,
               "STREAM peer is not connected");
         }
         auto operation = stream->write_packet (zlink::message_t::from_json (message));

@@ -104,6 +104,11 @@ public interface systems.zlink.framework.configuration.ZLinkStreamNodeBuilder {
 }
 ```
 
+Kotlin은 Java runtime의 managed heap 상한(`Runtime.maxMemory()`)을 사용한다. `processMemoryLimitBytes()`가
+비어 있으면 process에 적용된 유한한 OS 상한과 JVM managed heap 상한을 함께 확인하고, 둘 다 있으면 더 작은
+값을 Auto 계산의 기준으로 사용한다. 둘 다 확인할 수 없으면 시스템 물리 메모리 총량을 사용한다. 이 규칙과
+`ApplicationHwmProfile`의 비율은 Java 공개 계약과 같다.
+
 ## Kotlin source signature
 
 ```kotlin

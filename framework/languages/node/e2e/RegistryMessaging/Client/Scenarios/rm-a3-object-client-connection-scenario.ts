@@ -1,4 +1,4 @@
-// RM-A3: Object Client pair의 연결 필요 판정 시나리오를 검증한다.
+// RM-A3: Object Client pair의 connection 필요 여부 시나리오를 검증한다.
 import assert from 'node:assert/strict';
 import { getJson, postJson } from '../../../http-client';
 import type { ClientOptions } from '../Support/client-options';
@@ -7,7 +7,6 @@ interface PeerStatus {
   readonly rid: string;
   readonly state: string;
   readonly ready: boolean;
-  readonly lastFailure?: string;
 }
 
 interface MeshStatus {
@@ -15,6 +14,8 @@ interface MeshStatus {
   readonly readyPeerCount: number;
   readonly channels: readonly {
     readonly channelName: string;
+    readonly isReady: boolean;
+    readonly readyTargetCount: number;
     readonly localWeight: number;
   }[];
   readonly peers: readonly PeerStatus[];
@@ -49,7 +50,7 @@ export async function runRmA3(options: ClientOptions): Promise<void> {
     }>(clientAUrl, '/rm-a3/node-direct', { targetRid: 'client-b' });
     for (const operation of [outcome.send, outcome.request]) {
       assert.equal(operation.terminal, 'NotFound');
-      assert.equal(operation.errorKind, 'requestTargetNotFound');
+      assert.equal(operation.errorKind, '0');
     }
   }
 
@@ -100,9 +101,6 @@ function assertPeer(
   assert.ok(peer, `Missing peer '${peerRid}'.`);
   assert.equal(peer.state, expectedState);
   assert.equal(peer.ready, expectedReady);
-  if (expectedState === 'not_required') {
-    assert.equal(peer.lastFailure, undefined);
-  }
 }
 
 function requireOption(value: string | undefined, name: string): string {

@@ -112,7 +112,7 @@ config_builder_t &config_builder_t::load_json (std::string path, optional_t opti
     std::ifstream input (path);
     if (!input) {
         if (optional == optional_t::no) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "required configuration file missing: " + path);
         }
         return *this;

@@ -18,7 +18,7 @@ namespace admission = zlink::framework::runtime::messaging;
 result_t<void> full ()
 {
     return result_t<void>::failure (
-      framework_error_kind_t::worker_queue_full, "capacity is not available");
+      framework_error_kind_t::capacity_exceeded, "capacity is not available");
 }
 
 int reservation_covers_in_flight_retry ()
@@ -186,7 +186,56 @@ int stopped_owner_epoch_cannot_reserve_after_restart ()
     }
     changed.notify_all ();
     submitter.join ();
-    return terminal.get () == framework_error_kind_t::runtime_shutdown
+    return terminal.get () == framework_error_kind_t::shutting_down
+             && admission::pending_submit_count_for_tests () == 0
+           ? 0
+           : 2;
+}
+
+int shutdown_during_retry_rejects_late_success ()
+{
+    admission::reset_async_submit_runtime_for_tests ();
+    int owner = 0;
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool retry_entered = false;
+    bool release_retry = false;
+    std::atomic_int attempts{0};
+    auto operation = detail::submit_one_way_task ([&] {
+        admission::note_submit_attempt (
+          "late-success", &owner, std::chrono::milliseconds (500), 1);
+        if (attempts.fetch_add (1) == 0) {
+            return full ();
+        }
+        std::unique_lock lock (mutex);
+        retry_entered = true;
+        changed.notify_all ();
+        changed.wait (lock, [&] { return release_retry; });
+        return result_t<void>::success ();
+    });
+    admission::notify_submit_ready ("late-success", &owner);
+    {
+        std::unique_lock lock (mutex);
+        if (!changed.wait_for (
+              lock, std::chrono::milliseconds (250), [&] { return retry_entered; })) {
+            release_retry = true;
+            lock.unlock ();
+            changed.notify_all ();
+            operation.result ();
+            return 1;
+        }
+    }
+    admission::shutdown_submit_owner (&owner);
+    {
+        std::lock_guard lock (mutex);
+        release_retry = true;
+    }
+    changed.notify_all ();
+    const auto terminal = operation.result ();
+    admission::activate_submit_owner (&owner);
+    return !terminal
+             && terminal.error_kind () == framework_error_kind_t::shutting_down
+             && attempts.load () == 2
              && admission::pending_submit_count_for_tests () == 0
            ? 0
            : 2;
@@ -211,7 +260,7 @@ int public_call_terminator_is_one_shot ()
         (void) copy.submit ().result ().value ();
     }
     catch (const framework_exception_t &error) {
-        return error.kind () == framework_error_kind_t::already_submitted
+        return error.kind () == framework_error_kind_t::invalid_operation
                  && attempts.load () == 1
                ? 0
                : 2;
@@ -232,8 +281,11 @@ int main ()
     if (const auto value = stopped_owner_epoch_cannot_reserve_after_restart (); value != 0) {
         return 30 + value;
     }
-    if (const auto value = public_call_terminator_is_one_shot (); value != 0) {
+    if (const auto value = shutdown_during_retry_rejects_late_success (); value != 0) {
         return 40 + value;
+    }
+    if (const auto value = public_call_terminator_is_one_shot (); value != 0) {
+        return 50 + value;
     }
     admission::reset_async_submit_runtime_for_tests ();
     return 0;

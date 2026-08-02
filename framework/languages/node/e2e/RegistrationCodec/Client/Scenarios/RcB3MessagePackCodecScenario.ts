@@ -1,4 +1,4 @@
-// RC-B3: MessagePack codec 시나리오를 검증한다.
+// RC-B3: Root에 등록한 MessagePack extension을 사용한다 시나리오를 검증한다.
 import type { CodecScenarioRes } from '../../Shared/messages';
 import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';

@@ -5,21 +5,25 @@ import { NestFactory } from '@nestjs/core';
 import {
   ZLinkMessageFlowLogMode,
   ZLinkMessage,
+  ZLinkFrameworkErrorKind,
+  ZLinkFrameworkException,
+  type ZLinkActorCreateResponse,
   type ActorRef,
   type ZLinkActor,
   type ZLinkActorClient,
   type ZLinkActorContext,
   type ZLinkActorFactory,
-  type ZLinkActorJoinRequest,
-  type ZLinkActorMembership,
   type ZLinkEntrySpot,
   type ZLinkEntrySpotContext,
-  type ZLinkSpotActorSendContext,
-  type ZLinkSpotActorRequestContext
+  type ZLinkMessageContext,
+  type ZLinkLocationRuntimeQuery,
+  type ZLinkRouteMeshRuntime
 } from '@zlink-systems/framework';
 import {
   ZLINK_ACTOR_MANAGER,
   ZLINK_ACTOR_CLIENT,
+  ZLINK_LOCATION_RUNTIME_QUERY,
+  ZLINK_ROUTE_MESH_RUNTIME,
   ZLinkModule,
   zlinkEntrySpotActorRequestHandler,
   zlinkEntrySpotActorSendHandler,
@@ -38,6 +42,7 @@ import {
 } from '../../Shared/messages';
 import { EvidenceStore } from './evidence-store';
 import { closeHttpServer, startHttpServer } from '../Support/http-server';
+import { createLocationTopologyRoute } from '../Support/location-topology-route';
 import { TO_ACTOR_OPTIONS, createToActorConfigurationModule } from '../../configuration';
 import type { ServerOptions } from '../../configuration';
 
@@ -53,36 +58,31 @@ class TestActor implements ZLinkActor {
 }
 
 class TestActorFactory implements ZLinkActorFactory {
-  async create(actorId: string, context: ZLinkActorContext): Promise<TestActor> {
-    return new TestActor(actorId, context);
+  async create(context: ZLinkActorContext): Promise<TestActor> {
+    return new TestActor(context.actorId, context);
   }
 }
 
 class TestEntrySpot implements ZLinkEntrySpot<TestActor> {
-  private readonly actors = new Map<string, ActorRef>();
+  readonly context!: ZLinkEntrySpotContext<TestActor>;
+  private readonly actors = new Map<string, TestActor>();
   private readonly pendingDestroys = new Map<string, Promise<void>>();
 
   constructor(
-    readonly context: ZLinkEntrySpotContext,
     @Inject(ZLINK_ACTOR_CLIENT) private readonly actorClient: ZLinkActorClient
   ) {}
 
-  async onCreateActor(actor: ZLinkActorMembership, _request: ZLinkMessage): Promise<void> {
-    this.actors.set(actor.actor.actorId, actor.actor);
-    evidence.append({ scenario: 'create', actorId: actor.actor.actorId, kind: 'create', value: 'created' });
-  }
-
-  async onActorJoin(actor: ZLinkActorJoinRequest, _request: ZLinkMessage): Promise<{ accepted: boolean }> {
-    const actorId = actor.actor.actorId;
-    evidence.append({ scenario: 'join', actorId, kind: 'join', value: 'joined' });
+  async onCreateActor(actor: TestActor, _request: ZLinkMessage): Promise<ZLinkActorCreateResponse> {
+    this.actors.set(actor.actorId, actor);
+    evidence.append({ scenario: 'create', actorId: actor.actorId, kind: 'create', value: 'created' });
     return { accepted: true };
   }
 
-  async onJoinedActor(_actor: ZLinkActorMembership): Promise<void> {}
+  async onJoinedActor(_actor: TestActor): Promise<void> {}
 
-  async onLeaveActor(_actor: ZLinkActorMembership): Promise<void> {}
+  async onLeaveActor(_actor: TestActor): Promise<void> {}
 
-  async onDisconnectActor(_actor: ZLinkActorMembership): Promise<void> {}
+  async onDisconnectActor(_actor: TestActor): Promise<void> {}
 
   async destroy(actorId: string): Promise<void> {
     const actor = this.actors.get(actorId);
@@ -90,7 +90,7 @@ class TestEntrySpot implements ZLinkEntrySpot<TestActor> {
       throw new Error(`Actor '${actorId}' is not active.`);
     }
     await this.actorClient
-      .requestToActor('to-actor', actor, new DestroySelfReq())
+      .requestToActor(actorId, new DestroySelfReq())
       .submit<{ readonly scheduled: boolean }>();
     await this.pendingDestroys.get(actorId);
     this.pendingDestroys.delete(actorId);
@@ -116,7 +116,7 @@ class DestroySelfHandler {
   async handle(
     spot: TestEntrySpot,
     actor: TestActor,
-    _context: ZLinkSpotActorRequestContext,
+    _context: ZLinkMessageContext,
     _request: DestroySelfReq
   ): Promise<{ readonly scheduled: boolean }> {
     spot.scheduleDestroy(actor);
@@ -130,7 +130,7 @@ class DestroySelfHandler {
   packetName: PacketNames.actorNotify
 })
 class NotifyHandler {
-  async handle(_spot: TestEntrySpot, actor: TestActor, _context: ZLinkSpotActorSendContext, message: ActorNotify): Promise<void> {
+  async handle(_spot: TestEntrySpot, actor: TestActor, _context: ZLinkMessageContext, message: ActorNotify): Promise<void> {
     evidence.append({ scenario: message.scenario, actorId: actor.actorId, kind: 'send', value: message.value });
   }
 }
@@ -141,7 +141,7 @@ class NotifyHandler {
   packetName: PacketNames.actorAsk
 })
 class AskHandler {
-  async handle(_spot: TestEntrySpot, actor: TestActor, _context: ZLinkSpotActorRequestContext, request: ActorAsk): Promise<ActorReply> {
+  async handle(_spot: TestEntrySpot, actor: TestActor, _context: ZLinkMessageContext, request: ActorAsk): Promise<ActorReply> {
     if (request.value === 'throw') {
       throw new Error('to-actor handler exception');
     }
@@ -156,7 +156,7 @@ class AskHandler {
   packetName: PacketNames.actorPush
 })
 class PushHandler {
-  async handle(_spot: TestEntrySpot, actor: TestActor, _context: ZLinkSpotActorRequestContext, request: ActorPushReq): Promise<ActorReply> {
+  async handle(_spot: TestEntrySpot, actor: TestActor, _context: ZLinkMessageContext, request: ActorPushReq): Promise<ActorReply> {
     await actor.context.boundSession
       .send(new ActorPushNotify(request.scenario, actor.actorId, request.value))
       .submit();
@@ -199,7 +199,7 @@ Module({
           TestActorFactory,
           (factory) => factory.disableRelocation()
         );
-        mesh.channelName('to-actor');
+        mesh.channel('to-actor').server();
         return builder.build();
       }
     })
@@ -211,14 +211,17 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(ActorModule, { logger: false, abortOnError: false });
   const actors = app.get(ZLINK_ACTOR_MANAGER, { strict: false }) as ZLinkActorManager;
   const entrySpot = app.get(TestEntrySpot, { strict: false });
+  const locations = app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }) as ZLinkLocationRuntimeQuery;
+  const routeMeshRuntime = app.get(ZLINK_ROUTE_MESH_RUNTIME, { strict: false }) as ZLinkRouteMeshRuntime;
   const server = await startHttpServer(options.httpUrl, [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ok' }) },
+    createLocationTopologyRoute(locations, routeMeshRuntime),
     { method: 'GET', path: '/evidence', handle: () => evidence.all() },
     {
       method: 'POST',
       path: '/actors/ta-a1/ensure',
       handle: async () => {
-        const actor = await actors.getOrCreate('to-actor', 'ta-a1', 'test-actor');
+        const actor = await ensureActor(actors, 'ta-a1');
         return { actorId: 'ta-a1', actor: actorSnapshot(actor) };
       }
     },
@@ -226,7 +229,7 @@ async function main(): Promise<void> {
       method: 'POST',
       path: '/actors/ta-a2/ensure',
       handle: async () => {
-        const actor = await actors.getOrCreate('to-actor', 'ta-a2', 'test-actor');
+        const actor = await ensureActor(actors, 'ta-a2');
         return { actorId: 'ta-a2', actor: actorSnapshot(actor) };
       }
     },
@@ -234,7 +237,7 @@ async function main(): Promise<void> {
       method: 'POST',
       path: '/actors/ta-a3/ensure',
       handle: async () => {
-        const actor = await actors.getOrCreate('to-actor', 'ta-a3', 'test-actor');
+        const actor = await ensureActor(actors, 'ta-a3');
         return { actorId: 'ta-a3', actor: actorSnapshot(actor) };
       }
     },
@@ -242,7 +245,7 @@ async function main(): Promise<void> {
       method: 'POST',
       path: '/actors/ta-a4/ensure',
       handle: async () => {
-        const actor = await actors.getOrCreate('to-actor', 'ta-a4', 'test-actor');
+        const actor = await ensureActor(actors, 'ta-a4');
         return { actorId: 'ta-a4', actor: actorSnapshot(actor) };
       }
     },
@@ -250,7 +253,7 @@ async function main(): Promise<void> {
       method: 'POST',
       path: '/actors/ta-b1-reference/ensure',
       handle: async () => {
-        const actor = await actors.getOrCreate('to-actor', 'ta-b1-reference', 'test-actor');
+        const actor = await ensureActor(actors, 'ta-b1-reference');
         return { actorId: 'ta-b1-reference', actor: actorSnapshot(actor) };
       }
     },
@@ -274,7 +277,7 @@ async function main(): Promise<void> {
       method: 'POST',
       path: '/actors/ta-b2/ensure',
       handle: async () => {
-        const actor = await actors.getOrCreate('to-actor', 'ta-b2', 'test-actor');
+        const actor = await ensureActor(actors, 'ta-b2');
         return { actorId: 'ta-b2', actor: actorSnapshot(actor) };
       }
     },
@@ -288,9 +291,29 @@ async function main(): Promise<void> {
     },
     {
       method: 'POST',
+      path: '/actors/ta-b2/destroy-ref',
+      handle: async (body) => {
+        try {
+          const destroyed = await actors.destroy(actorRefFromSnapshot(body as ActorRefPayload));
+          return { actorId: 'ta-b2', status: destroyed ? 'destroyed' : 'not-found' };
+        } catch (error) {
+          return {
+            actorId: 'ta-b2',
+            status: 'failed',
+            errorKind: error instanceof ZLinkFrameworkException
+              ? ZLinkFrameworkErrorKind[error.kind]
+              : error instanceof Error
+                ? error.name
+                : String(error)
+          };
+        }
+      }
+    },
+    {
+      method: 'POST',
       path: '/actors/ta-b3/ensure',
       handle: async () => {
-        const actor = await actors.getOrCreate('to-actor', 'ta-b3', 'test-actor');
+        const actor = await ensureActor(actors, 'ta-b3');
         return { actorId: 'ta-b3', actor: actorSnapshot(actor) };
       }
     },
@@ -311,6 +334,26 @@ function actorSnapshot(actor: ActorRef): ActorRefPayload {
     objectGeneration: actor.objectGeneration.toString(),
     meshName: actor.meshName
   };
+}
+
+function actorRefFromSnapshot(actor: ActorRefPayload): ActorRef {
+  return {
+    nodeRid: actor.nodeRid,
+    actorId: actor.actorId,
+    objectGeneration: BigInt(actor.objectGeneration),
+    meshName: actor.meshName
+  };
+}
+
+async function ensureActor(actors: ZLinkActorManager, actorId: string): Promise<ActorRef> {
+  const result = await actors
+    .getOrCreate(actorId, 'test-actor')
+    .inMesh('to-actor')
+    .submit();
+  if (result.status === 'rejected') {
+    throw new Error(`Actor '${actorId}' creation was rejected.`);
+  }
+  return result.actor;
 }
 
 main().catch((error: unknown) => {

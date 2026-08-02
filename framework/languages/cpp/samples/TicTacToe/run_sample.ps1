@@ -91,6 +91,22 @@ function Wait-Grep([string]$Pattern, [string]$Path) {
     }
 }
 
+function Wait-RouteReady([string]$BaseUrl, [string]$TargetRid, [int]$TimeoutSeconds = 30) {
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $uri = "$BaseUrl/ready?targetRid=$TargetRid"
+    while ([DateTime]::UtcNow -lt $deadline) {
+        try {
+            $response = Invoke-WebRequest -UseBasicParsing -Uri $uri -TimeoutSec 1
+            if ($response.StatusCode -eq 200) {
+                return
+            }
+        } catch {
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    throw "Timed out waiting for API route peer $TargetRid"
+}
+
 function Start-Server([string]$Name, [string]$Binary, [string[]]$Arguments) {
     $stdout = Join-Path $LogDir "$Name.log"
     $stderr = Join-Path $LogDir "$Name.err.log"
@@ -149,7 +165,7 @@ function Cleanup([int]$Status) {
     --output-on-failure
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$ports = Reserve-Ports 15
+$ports = Reserve-Ports 17
 $ApiAEndpoint = "tcp://127.0.0.1:$($ports[0])"
 $ApiBEndpoint = "tcp://127.0.0.1:$($ports[1])"
 $ApiAHttpEndpoint = "http://127.0.0.1:$($ports[2])"
@@ -164,7 +180,9 @@ $PlayASpotRouterEndpoint = "tcp://127.0.0.1:$($ports[10])"
 $PlayBSpotRouterEndpoint = "tcp://127.0.0.1:$($ports[11])"
 $PlayARouteEndpoint = "tcp://127.0.0.1:$($ports[12])"
 $PlayBRouteEndpoint = "tcp://127.0.0.1:$($ports[13])"
-$RedisPort = $ports[14]
+$ApiARouteEndpoint = "tcp://127.0.0.1:$($ports[14])"
+$ApiBRouteEndpoint = "tcp://127.0.0.1:$($ports[15])"
+$RedisPort = $ports[16]
 
 $LogDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
 New-Item -ItemType Directory -Path $LogDir | Out-Null
@@ -191,6 +209,8 @@ try {
         "--sample.topology.playBEndpoint=$PlayBEndpoint",
         "--sample.topology.playARouteEndpoint=$PlayARouteEndpoint",
         "--sample.topology.playBRouteEndpoint=$PlayBRouteEndpoint",
+        "--sample.topology.apiARouteEndpoint=$ApiARouteEndpoint",
+        "--sample.topology.apiBRouteEndpoint=$ApiBRouteEndpoint",
         "--sample.topology.playASpotEndpoint=$PlayASpotEndpoint",
         "--sample.topology.playBSpotEndpoint=$PlayBSpotEndpoint",
         "--sample.topology.playASpotRouterEndpoint=$PlayASpotRouterEndpoint",
@@ -201,6 +221,16 @@ try {
         "--sample.topology.redisKeyPrefix=$RedisKeyPrefix"
     )
     $serverArgs = @("--sample.host.keepRunning", "true") + $topologyArgs
+
+    Start-Server "api-a" $ApiBin ($serverArgs + @("--sample.topology.apiNode=a"))
+    Wait-Port "api-a-channel" $ApiAEndpoint
+    Wait-Port "api-a-http" $ApiAHttpEndpoint
+    Wait-Port "api-a-route" $ApiARouteEndpoint
+
+    Start-Server "api-b" $ApiBin ($serverArgs + @("--sample.topology.apiNode=b"))
+    Wait-Port "api-b-channel" $ApiBEndpoint
+    Wait-Port "api-b-http" $ApiBHttpEndpoint
+    Wait-Port "api-b-route" $ApiBRouteEndpoint
 
     Start-Server "play-a" $PlayBin ($serverArgs + @("--sample.topology.playNode=a"))
     Wait-Port "play-a-channel" $PlayAEndpoint
@@ -213,16 +243,8 @@ try {
     Wait-Port "play-b-stream" $PlayBStreamEndpoint
     Wait-Port "play-b-spot-router" $PlayBSpotRouterEndpoint
     Wait-Port "play-b-spot-pub" $PlayBSpotEndpoint
-
-    Start-Server "api-a" $ApiBin ($serverArgs + @("--sample.topology.apiNode=a"))
-    Wait-Port "api-a-channel" $ApiAEndpoint
-    Wait-Port "api-a-http" $ApiAHttpEndpoint
-
-    Start-Server "api-b" $ApiBin ($serverArgs + @("--sample.topology.apiNode=b"))
-    Wait-Port "api-b-channel" $ApiBEndpoint
-    Wait-Port "api-b-http" $ApiBHttpEndpoint
-
-    Start-Sleep -Seconds $(if ($env:TICTACTOE_CPP_STARTUP_SETTLE_SECONDS) { [int]$env:TICTACTOE_CPP_STARTUP_SETTLE_SECONDS } else { 1 })
+    Wait-RouteReady $ApiAHttpEndpoint "tictactoe-play-a"
+    Wait-RouteReady $ApiAHttpEndpoint "tictactoe-play-b"
 
     $clientLog = Join-Path $LogDir "client.log"
     & $ClientBin --api-http-endpoint $ApiAHttpEndpoint *> $clientLog

@@ -1499,28 +1499,34 @@ bool public_host_runtime_t::create_actor_remote (
         }
         if (!target)
             return false;
-        actor_create_operation_result_t result;
+        auto completed = std::make_shared<std::atomic_bool> (false);
+        auto forward = [completion = std::move (completion), completed] (
+                         actor_create_operation_result_t result) mutable {
+            if (completed->exchange (true, std::memory_order_acq_rel))
+                return;
+            completion (
+              foundation::operation_terminal_t::completed,
+              std::move (result.reply), std::move (result.application_reply));
+        };
         try {
-            result = target (request);
+            target (request, forward);
         }
         catch (const std::exception &) {
+            actor_create_operation_result_t result;
             result.reply.header = {
               request.correlation, 105u,
               static_cast<std::uint32_t> (
                 protocol::framework_error_code::actorCreateFailed)};
-            result.application_reply.reset ();
+            forward (std::move (result));
         }
         catch (...) {
+            actor_create_operation_result_t result;
             result.reply.header = {
               request.correlation, 105u,
               static_cast<std::uint32_t> (
                 protocol::framework_error_code::actorCreateFailed)};
-            result.application_reply.reset ();
+            forward (std::move (result));
         }
-        completion (
-          foundation::operation_terminal_t::completed,
-          std::move (result.reply),
-          std::move (result.application_reply));
         return true;
     }
     return _transport->request_actor_create (
@@ -2473,6 +2479,7 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                     && wire.kind != protocol::command::userSpotCreate
                     && wire.kind
                          != protocol::command::userSpotClose
+                    && wire.kind != protocol::command::actorCreate
                     && wire.kind
                          != protocol::command::instanceSpot)
                     throw protocol::service_wire_error_t (
@@ -2782,11 +2789,11 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                     const auto request =
                       protocol::decode_actor_create_header (
                         mailbox_record.parts.front ());
-                    actor_create_operation_result_t result;
-                    result.reply.header.correlation = request.correlation;
                     if (!actor_create_target
                         || request.deadline_unix_ms
                              <= unix_milliseconds_now ()) {
+                        actor_create_operation_result_t result;
+                        result.reply.header.correlation = request.correlation;
                         result.reply.header.terminal_result =
                           actor_create_target ? 101u : 105u;
                         result.reply.header.failure_code =
@@ -2795,25 +2802,42 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                             : static_cast<std::uint32_t> (
                                 protocol::framework_error_code::
                                   actorCreateFailed);
+                        (void) _transport->reply_actor_create (
+                          mailbox_record, result.reply,
+                          std::move (result.application_reply));
                     }
                     else {
+                        auto completed = std::make_shared<std::atomic_bool> (
+                          false);
+                        auto reply = [weak = weak_from_this (),
+                                      mailbox_record, completed] (
+                                         actor_create_operation_result_t result) mutable {
+                            if (completed->exchange (true, std::memory_order_acq_rel))
+                                return;
+                            const auto host = weak.lock ();
+                            if (!host)
+                                return;
+                            try {
+                                (void) host->_transport->reply_actor_create (
+                                  mailbox_record, result.reply,
+                                  std::move (result.application_reply));
+                            }
+                            catch (...) {
+                            }
+                        };
                         try {
-                            result = actor_create_target (request);
+                            actor_create_target (request, reply);
                         }
                         catch (...) {
-                            result.reply.header.correlation =
-                              request.correlation;
-                            result.reply.header.terminal_result = 105u;
-                            result.reply.header.failure_code =
+                            actor_create_operation_result_t result;
+                            result.reply.header = {
+                              request.correlation, 105u,
                               static_cast<std::uint32_t> (
                                 protocol::framework_error_code::
-                                  actorCreateFailed);
-                            result.application_reply.reset ();
+                                  actorCreateFailed)};
+                            reply (std::move (result));
                         }
                     }
-                    (void) _transport->reply_actor_create (
-                      mailbox_record, result.reply,
-                      std::move (result.application_reply));
                     continue;
                 }
 
@@ -2939,6 +2963,15 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                                     if (current_rid.to_bytes ()
                                           != local.routing_id ().to_bytes ()) {
                                         auto forwarded = request;
+                                        // The forwarding node becomes the wire
+                                        // source. Keeping the original caller's
+                                        // source fence makes raw transport reject
+                                        // an otherwise valid activation before it
+                                        // reaches the current authority owner.
+                                        forwarded.source_node_routing_id =
+                                          local.routing_id ().to_bytes ();
+                                        forwarded.source_node_generation =
+                                          local.lifecycle_generation ();
                                         forwarded.target.target_node_routing_id =
                                           current_rid.to_bytes ();
                                         forwarded.target.target_node_generation =
@@ -2983,6 +3016,22 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                                         if (!relayed)
                                             reply_terminal ({103, 0,
                                               std::nullopt});
+                                        return true;
+                                    }
+                                    bool prepared = false;
+                                    try {
+                                        prepared = instance_materializer.prepare (
+                                          request);
+                                    }
+                                    catch (...) {
+                                        prepared = false;
+                                    }
+                                    if (!prepared) {
+                                        reply_terminal ({105,
+                                          static_cast<std::uint32_t> (
+                                            protocol::framework_error_code::
+                                              spotCreateFailed),
+                                          std::nullopt});
                                         return true;
                                     }
                                     auto result =
@@ -4002,7 +4051,7 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                         protocol::framework_error_code::
                           requestProtocolError));
             }
-            catch (...) {
+            catch (const std::exception &) {
                 if (mailbox_record.request_sequence
                     && mailbox_record.correlation)
                     (void) _transport->reply_failure (
@@ -4010,6 +4059,14 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                       static_cast<std::uint32_t> (
                         protocol::framework_error_code::
                           requestFailed));
+            }
+            catch (...) {
+                if (mailbox_record.request_sequence
+                    && mailbox_record.correlation)
+                    (void) _transport->reply_failure (
+                      mailbox_record, 105,
+                      static_cast<std::uint32_t> (
+                        protocol::framework_error_code::requestFailed));
             }
         }
         (void) _transport->mailbox ().release (*claim);
@@ -4050,6 +4107,7 @@ std::size_t public_host_runtime_t::dispatch_ready (
     (void) _transport->expire_requests (
       foundation::operation_registry_t::clock_t::now ());
     count += dispatch_user_spot_operations ();
+    bool application_dispatch_started = false;
 
     std::map<std::pair<std::uint64_t, std::uint64_t>,
              std::pair<receive_record_t, std::vector<zlink::message_t>>>
@@ -4069,24 +4127,32 @@ std::size_t public_host_runtime_t::dispatch_ready (
     }
 
     if (accept_application_receive) {
-        std::vector<local_application_dispatch_t> local_dispatches;
+        std::optional<local_application_dispatch_t> pending;
         {
             std::lock_guard lock (_mutex);
-            local_dispatches.swap (_local_application_dispatches);
+            if (!_local_application_dispatches.empty ()) {
+                pending = std::move (_local_application_dispatches.front ());
+                _local_application_dispatches.erase (
+                  _local_application_dispatches.begin ());
+            }
         }
-        for (auto &pending : local_dispatches) {
-            dispatch (pending.owner, pending.record,
-                      std::move (pending.parts));
+        if (pending) {
+            dispatch (pending->owner, pending->record,
+                      std::move (pending->parts));
             ++count;
+            application_dispatch_started = true;
         }
     }
 
-    if (accept_application_receive && _stateful_dispatch) {
+    if (accept_application_receive && !application_dispatch_started
+        && _stateful_dispatch) {
         const auto local_node_id =
           zlink::routing_id_t::from (
             _transport->topology ().local_descriptor ().node_routing_id)
             .to_string ();
         for (const auto &item : _objects.inventory ()) {
+            if (application_dispatch_started)
+                break;
             if (item.state != stateful::object_state_t::ready)
                 continue;
             if (item.owner.node_id != local_node_id)
@@ -4180,6 +4246,7 @@ std::size_t public_host_runtime_t::dispatch_ready (
                   owner, record,
                   decode_application (delivery->payload));
                 ++count;
+                application_dispatch_started = true;
             }
             catch (const std::exception &) {
                 (void) _stateful_dispatch->complete (
@@ -4192,9 +4259,9 @@ std::size_t public_host_runtime_t::dispatch_ready (
         }
     }
 
-    while (accept_application_receive) {
+    while (accept_application_receive && !application_dispatch_started) {
         auto claim = _transport->mailbox ().try_claim (
-          mesh::service_mailbox_domain_t::application, 64,
+          mesh::service_mailbox_domain_t::application, 1,
           16u * 1024u * 1024u);
         if (!claim)
             break;
@@ -4274,6 +4341,7 @@ std::size_t public_host_runtime_t::dispatch_ready (
                 dispatch (
                   owner, record, decode_application (payload));
                 ++count;
+                application_dispatch_started = true;
             }
             catch (const protocol::service_wire_error_t &) {
                 if (mailbox_record.request_sequence

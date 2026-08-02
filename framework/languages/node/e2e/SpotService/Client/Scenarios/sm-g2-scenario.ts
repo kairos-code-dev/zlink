@@ -1,4 +1,4 @@
-// SM-G2: MeshNode scale-out과 신규 배치 시나리오를 검증한다.
+// SM-G2: Scale-out은 기존 owners를 유지하고 신규 objects만 배치한다 시나리오를 검증한다.
 import type {
   CreateSpotReq,
   CreateSpotRes,

@@ -1,4 +1,4 @@
-// OBS-A1: flow가 STREAM→actor→room-spot을 관통 시나리오를 검증한다.
+// OBS-A1: STREAM에서 Actor와 room Spot까지 같은 flow를 유지한다 시나리오를 검증한다.
 import {
   ObservabilityOpsNames,
   assertBoundPush,

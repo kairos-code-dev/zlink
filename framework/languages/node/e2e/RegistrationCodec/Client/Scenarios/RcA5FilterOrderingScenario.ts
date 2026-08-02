@@ -1,4 +1,4 @@
-// RC-A5: filter ordering 시나리오를 검증한다.
+// RC-A5: Filter 순서와 short-circuit 결과 시나리오를 검증한다.
 import type { EchoRes } from '../../Shared/messages';
 import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';

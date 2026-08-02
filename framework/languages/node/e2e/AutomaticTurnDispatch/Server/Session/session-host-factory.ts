@@ -65,18 +65,18 @@ export async function startSessionHost(): Promise<void> {
           const controlMesh = builder.addRouteMesh(AutomaticTurnDispatchNames.controlChannel)
             .listen(options.controlRouterEndpoint)
             .routingId(options.rid);
-          controlMesh.channelName(AutomaticTurnDispatchNames.controlChannel);
+          controlMesh.channel(AutomaticTurnDispatchNames.controlChannel).server();
           for (const endpoint of options.playControlEndpoints) controlMesh.peerConnections().connect(endpoint);
           const routeMesh = builder.addRouteMesh(AutomaticTurnDispatchNames.spotRouteChannel)
             .listen(options.spotRouteEndpoint)
             .routingId(options.rid);
-          routeMesh.channelName(AutomaticTurnDispatchNames.spotRouteChannel);
+          routeMesh.channel(AutomaticTurnDispatchNames.spotRouteChannel).server();
           for (const endpoint of options.playSpotRouteEndpoints) routeMesh.peerConnections().connect(endpoint);
           const spotMesh = builder.addRouteMesh(AutomaticTurnDispatchNames.spotChannel)
             .routingId(options.rid)
             .listen(options.spotRouterEndpoint);
           spotMesh.objects().server().addEntrySpot(AwaitSessionEntrySpot);
-          spotMesh.channelName(AutomaticTurnDispatchNames.spotChannel);
+          spotMesh.channel(AutomaticTurnDispatchNames.spotChannel).server();
           for (const peer of options.spotRouterPeers) spotMesh.peerConnections().connect(peer.rid, peer.endpoint);
           builder.addStreamNode(AutomaticTurnDispatchNames.streamNode)
             .bind(options.streamEndpoint)

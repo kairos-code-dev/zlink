@@ -87,7 +87,7 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
                 var result = getLocalSpot(request.spotRid());
                 state.record("MultiNodeCreateSpot", request.spotRid(), result.state().name());
                 writeJson(exchange, new Contracts.MultiNodeCreateSpotRes(
-                    result.spotRid().toString(),
+                    result.spotId(),
                     state.nodeRid(),
                     result.state().name(),
                     0));
@@ -99,7 +99,7 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
                 var result = getLocalSpot(request.spotRid());
                 state.record("SpotOnlyCreate", request.spotRid(), result.state().name());
                 writeJson(exchange, new Contracts.CreateSpotRes(
-                    result.spotRid().toString(),
+                    result.spotId(),
                     state.nodeRid(),
                     result.state().name()));
             }));
@@ -114,7 +114,7 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
                             + "|" + request.targetSpotRid() + "/7/" + request.marker()),
                     10_000);
                 writeJson(exchange, new Contracts.SpotOnlyMeshRes(
-                    result.spotRid().toString(),
+                    result.spotId(),
                     request.targetSpotRid(),
                     extractSpotOnlyValue(evidence, request),
                     request.marker()));
@@ -182,7 +182,7 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
         String suffix = request.targetSpotRid() + "/7/" + request.marker();
         return evidence.entries().stream()
             .filter(entry -> "SpotOnlyRequest".equals(entry.marker())
-                && request.sourceSpotRid().equals(entry.spotRid())
+                && request.sourceSpotRid().equals(entry.spotId())
                 && suffix.equals(entry.value()))
             .findFirst()
             .map(entry -> 7)

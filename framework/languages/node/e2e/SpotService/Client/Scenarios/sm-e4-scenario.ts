@@ -1,4 +1,4 @@
-// SM-E4: spot timer overrun 정책 시나리오를 검증한다.
+// SM-E4: Timer overrun policy별 observable sequence를 확인한다 시나리오를 검증한다.
 import type {
   CreateSpotRes,
   CreateSpotReq,

@@ -23,6 +23,7 @@
 #include <iostream>
 #include <map>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <type_traits>
@@ -337,12 +338,17 @@ std::string reserve_loopback_endpoint ()
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
     address.sin_port = 0;
-    assert (bind (socket_fd, reinterpret_cast<sockaddr *> (&address),
-                  sizeof (address))
-            == 0);
+    if (bind (socket_fd, reinterpret_cast<sockaddr *> (&address),
+              sizeof (address)) != 0) {
+        close (socket_fd);
+        throw std::runtime_error ("vertical test could not reserve a loopback port");
+    }
     socklen_t size = sizeof (address);
-    assert (getsockname (socket_fd, reinterpret_cast<sockaddr *> (&address), &size)
-            == 0);
+    if (getsockname (socket_fd, reinterpret_cast<sockaddr *> (&address), &size) != 0
+        || address.sin_port == 0) {
+        close (socket_fd);
+        throw std::runtime_error ("vertical test could not read the reserved loopback port");
+    }
     close (socket_fd);
     return "tcp://127.0.0.1:" + std::to_string (ntohs (address.sin_port));
 }

@@ -140,7 +140,8 @@ class recording_actor_client_t final : public zlink::framework::actor_client_t
       zlink::framework::actor_ref_t,
       std::string,
       zlink::framework::message_t,
-      std::optional<std::chrono::milliseconds>) override
+      std::optional<std::chrono::milliseconds>,
+      const zlink::framework::actor_request_call_t::metadata_map_t &) override
     {
         request_submissions.fetch_add (1);
         return zlink::framework::task_t<zlink::framework::message_t> (
@@ -395,7 +396,7 @@ void verify_self_actor_request_rejected_before_submission ()
     assert (!result);
     assert (
       result.error_kind ()
-      == framework_error_kind_t::invalid_configuration);
+      == framework_error_kind_t::not_configured);
     assert (actor_client.request_submissions.load () == 0);
 }
 
@@ -412,7 +413,7 @@ void verify_same_gate_request_rejected_before_submission ()
       },
       [] (bool) {
           return result_t<void>::failure (
-            framework_error_kind_t::invalid_configuration,
+            framework_error_kind_t::not_configured,
             "awaited request requires the current Spot execution gate");
       });
 
@@ -420,7 +421,7 @@ void verify_same_gate_request_rejected_before_submission ()
     assert (!result);
     assert (
       result.error_kind ()
-      == framework_error_kind_t::invalid_configuration);
+      == framework_error_kind_t::not_configured);
     assert (submissions.load () == 0);
 }
 
@@ -961,6 +962,92 @@ void verify_bounded_message_follow ()
     coordinator.release_message_follow ("player:actor-message-follow", 7, 1);
     for (std::size_t index = 1; index != 1024; ++index)
         coordinator.release_message_follow ("player:actor-message-follow", 7, 1);
+}
+
+void verify_public_host_dispatches_one_application_record_per_turn ()
+{
+    auto source = std::make_shared<host::public_host_runtime_t> (
+      host::host_options_t{
+        mesh::raw_mesh_node_options_t{
+          descriptor ("hwm-dispatch-source")} });
+    auto target = std::make_shared<host::public_host_runtime_t> (
+      host::host_options_t{
+        mesh::raw_mesh_node_options_t{
+          descriptor ("hwm-dispatch-target")} });
+    source->start ();
+    target->start ();
+    const auto target_status = target->status ();
+    const auto source_status = source->status ();
+    assert (target->connect_peer (
+      source_status.local_endpoint (), source_status.routing_id ()));
+
+    const auto noop_dispatch = [] (const host::ready_record_t &,
+                                   const host::receive_record_t &,
+                                   std::vector<zlink::message_t>) {};
+    const auto connect_deadline =
+      mesh::service_liveness_registry_t::clock_t::now () + 5s;
+    while ((!source->transport ().topology ().peer (
+               target_status.routing_id ().to_bytes ())
+             || !target->transport ().topology ().peer (
+               source_status.routing_id ().to_bytes ()))
+           && mesh::service_liveness_registry_t::clock_t::now ()
+                < connect_deadline) {
+        (void) source->dispatch_ready (noop_dispatch);
+        (void) target->dispatch_ready (noop_dispatch);
+        std::this_thread::sleep_for (1ms);
+    }
+    assert (source->transport ().topology ().peer (
+      target_status.routing_id ().to_bytes ()));
+    assert (target->transport ().topology ().peer (
+      source_status.routing_id ().to_bytes ()));
+
+    const std::vector<zlink::message_t> first{
+      zlink::message_t::from (std::string ("first"))};
+    const std::vector<zlink::message_t> second{
+      zlink::message_t::from (std::string ("second"))};
+    assert (source->send_to_node (target_status.routing_id (), first)
+            == zlink::submit_result_t::ok);
+    assert (source->send_to_node (target_status.routing_id (), second)
+            == zlink::submit_result_t::ok);
+
+    const auto receive_deadline =
+      mesh::service_liveness_registry_t::clock_t::now () + 5s;
+    while (target->transport ().mailbox ().pending_messages (
+             mesh::service_mailbox_domain_t::application)
+             < 2
+           && mesh::service_liveness_registry_t::clock_t::now ()
+                < receive_deadline) {
+        const auto pumped = target->transport ().pump_one (
+          mesh::service_liveness_registry_t::clock_t::now ());
+        assert (pumped != mesh::raw_mesh_pump_result_t::protocol_error);
+        if (pumped == mesh::raw_mesh_pump_result_t::no_data)
+            std::this_thread::sleep_for (1ms);
+    }
+    assert (target->transport ().mailbox ().pending_messages (
+              mesh::service_mailbox_domain_t::application)
+            == 2);
+
+    std::size_t dispatched = 0;
+    const auto dispatch = [&] (const host::ready_record_t &owner,
+                               const host::receive_record_t &record,
+                               std::vector<zlink::message_t> parts) {
+        assert (owner.domain == host::ready_domain_t::application);
+        assert (owner.owner_kind == host::owner_kind_t::node);
+        assert (record.kind == host::record_kind_t::node_send);
+        assert (parts.size () == 1);
+        ++dispatched;
+    };
+    (void) target->dispatch_ready (dispatch);
+    assert (dispatched == 1);
+    assert (target->transport ().mailbox ().pending_messages (
+              mesh::service_mailbox_domain_t::application)
+            == 1);
+
+    (void) target->dispatch_ready (dispatch);
+    assert (dispatched == 2);
+    assert (target->transport ().mailbox ().pending_messages (
+              mesh::service_mailbox_domain_t::application)
+            == 0);
 }
 
 void verify_remote_session_route_ack_and_atomic_switch ()
@@ -2947,7 +3034,14 @@ void verify_remote_user_spot_create_close_terminal_once ()
       == static_cast<std::uint32_t> (
         protocol::framework_error_code::spotTypeMismatch));
     assert (materialize_count == 0);
-    std::this_thread::sleep_for (200ms);
+    const auto replay_expiry_unix_ms =
+      mismatch_create.deadline_unix_ms + 51;
+    while (static_cast<std::uint64_t> (
+             std::chrono::duration_cast<std::chrono::milliseconds> (
+               std::chrono::system_clock::now ().time_since_epoch ())
+               .count ())
+           <= replay_expiry_unix_ms)
+        std::this_thread::sleep_for (1ms);
     create.deadline_unix_ms =
       static_cast<std::uint64_t> (
         std::chrono::duration_cast<std::chrono::milliseconds> (
@@ -3250,6 +3344,7 @@ int main ()
     verify_instance_cold_activation_only_from_intent ();
     verify_session_binding_and_terminal_once ();
     verify_bounded_message_follow ();
+    verify_public_host_dispatches_one_application_record_per_turn ();
     verify_remote_session_route_ack_and_atomic_switch ();
     verify_location_store_accepted_record_authority ();
     verify_raw_spot_and_actor_routing ();

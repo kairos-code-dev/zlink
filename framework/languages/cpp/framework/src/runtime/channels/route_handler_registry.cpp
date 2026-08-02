@@ -14,7 +14,7 @@ route_handler_registry_t::add_handler (route_handler_descriptor_t descriptor, in
     const auto [_, inserted] =
       _handlers.emplace (std::move (key), entry_t{std::move (descriptor), std::move (invoker)});
     if (!inserted) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "duplicate routed handler registration");
     }
     return *this;
@@ -60,7 +60,7 @@ route_handler_registry_t::invoke_async (std::string_view router_channel_id,
       _handlers.find (key_t{std::string (router_channel_id), kind, std::string (packet_name)});
     if (found == _handlers.end ()) {
         return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-          framework_error_kind_t::route_handler_not_found, "routed handler is not registered"));
+          framework_error_kind_t::not_found, "routed handler is not registered"));
     }
     return found->second.invoker (services, serializers, message, context);
 }

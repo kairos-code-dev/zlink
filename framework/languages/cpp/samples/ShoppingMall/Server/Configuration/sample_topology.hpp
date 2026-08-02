@@ -12,7 +12,7 @@ struct sample_names_t
 {
     static constexpr const char *order_spot_discovery = "shoppingmall.order.spot";
     static constexpr const char *order_workflow_spot = "shoppingmall.order.workflow.spot";
-    static constexpr const char *order_workflow_channel = "shoppingmall.order.workflow";
+    static constexpr const char *order_workflow_channel = "shoppingmall.workflow";
     static constexpr const char *order_workflow_spot_route_channel_prefix =
       "shoppingmall.order.workflow.spot.route.";
     static constexpr const char *order_spot_route = "shoppingmall.order.spot.route";

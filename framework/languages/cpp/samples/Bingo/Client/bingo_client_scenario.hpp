@@ -97,24 +97,15 @@ class bingo_client_scenario_t
             auto client2_match =
               co_await client2.request (match_request).async<match_bingo_res_t> ();
             ensure (client2_match.room_id == client1_match.room_id);
-            ensure (client2_match.state.status == bingo_room_status_t::running);
+            // The join is deferred until the MatchBingo handler completes. The
+            // GameStarted notification below is the public completion signal.
+            ensure (client2_match.state.status == bingo_room_status_t::waiting);
             auto client1_joined = co_await client1_joined_task;
             auto client1_started = co_await client1_started_task;
             auto client2_started = co_await client2_started_task;
             co_await client2.expect_none<player_joined_notify_t> ()
               .within (std::chrono::milliseconds (25))
               .async ();
-            ensure (
-              std::any_of (client2_match.state.players.begin (), client2_match.state.players.end (),
-                           [&client1_auth] (const bingo_player_state_t &player) {
-                               return player.actor_id == client1_auth.actor_id && player.is_host;
-                           }));
-            ensure (
-              std::any_of (client2_match.state.players.begin (), client2_match.state.players.end (),
-                           [&client2_auth] (const bingo_player_state_t &player) {
-                               return player.actor_id == client2_auth.actor_id && !player.is_host;
-                           }));
-
             const auto room_id = client1_match.room_id;
             trace ("client1 wait joined");
             ensure (client1_joined.actor_id == client2_auth.actor_id);

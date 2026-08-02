@@ -189,8 +189,7 @@ class node_direct_handler_t
         catch (const zlink::framework::framework_exception_t &error) {
             const auto not_found =
               error.kind ()
-              == zlink::framework::framework_error_kind_t::
-                   request_target_not_found;
+              == zlink::framework::framework_error_kind_t::not_found;
             co_return zlink::framework::http_response_t{
               .body =
                 nlohmann::json{

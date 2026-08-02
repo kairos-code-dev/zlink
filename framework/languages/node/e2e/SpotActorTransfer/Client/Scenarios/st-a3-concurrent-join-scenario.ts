@@ -1,4 +1,4 @@
-// ST-A3: target joined 전 packet dispatch 차단 시나리오를 검증한다.
+// ST-A3: Local Join callback boundary 시나리오를 검증한다.
 import type { GateReleaseRes } from '../../Shared/messages.js';
 import { SpotActorTransferNames, nodeA, createSpot, createActor, joinActor, probeActor, waitEvidence, post, has, unique, delay, isPending, require } from '../Support/scenario-support';
 

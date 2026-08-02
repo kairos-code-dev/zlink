@@ -1,4 +1,4 @@
-// SM-E2: spot timer 시나리오를 검증한다.
+// SM-E2: Spot one-shot timer가 state를 변경한다 시나리오를 검증한다.
 import type {
   CloseSpotRes,
   CloseSpotReq,

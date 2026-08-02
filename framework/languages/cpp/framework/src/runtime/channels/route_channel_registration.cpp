@@ -23,7 +23,7 @@ route_channel_registration_t::route_channel_registration_t (std::string router_c
     _router_channel_id (std::move (router_channel_id))
 {
     if (_router_channel_id.empty ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "route channel id is required");
     }
 }
@@ -36,7 +36,7 @@ const std::string &route_channel_registration_t::router_channel_id () const noex
 route_channel_registration_t &route_channel_registration_t::bind (std::string endpoint)
 {
     if (endpoint.empty ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "route channel bind endpoint is required");
     }
     _bind_endpoint = std::move (endpoint);
@@ -53,7 +53,7 @@ route_channel_registration_t::set_routing_id (zlink::routing_id_t routing_id)
 route_channel_registration_t &route_channel_registration_t::connect (std::string endpoint)
 {
     if (endpoint.empty ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "route channel manual connection endpoint is required");
     }
     _manual_connections.push_back (std::move (endpoint));
@@ -64,11 +64,11 @@ route_channel_registration_t &
 route_channel_registration_t::connect (zlink::routing_id_t peer_rid, std::string endpoint)
 {
     if (peer_rid.size () == 0u) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "route channel manual peer routing id is required");
     }
     if (endpoint.empty ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "route channel manual connection endpoint is required");
     }
     _manual_connection_targets.push_back (
@@ -80,7 +80,7 @@ route_channel_registration_t &
 route_channel_registration_t::default_request_timeout (std::chrono::milliseconds timeout)
 {
     if (timeout <= std::chrono::milliseconds::zero ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "route channel request timeout must be greater than zero");
     }
     _default_request_timeout = timeout;
@@ -91,7 +91,7 @@ route_channel_registration_t &
 route_channel_registration_t::add_handler_group (std::string group_name)
 {
     if (group_name.empty () || is_blank (group_name)) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "route handler group name is required");
     }
     _handler_groups.push_back (std::move (group_name));
@@ -102,7 +102,7 @@ route_channel_registration_t &
 route_channel_registration_t::add_handler (framework::route_handler_registration_t registration)
 {
     if (registration.packet_name.empty ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "route handler packet name is required");
     }
     _handlers.push_back (std::move (registration));

@@ -11,6 +11,7 @@ using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Errors;
+using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.E2E.Diagnostics;
 
 namespace AutomaticTurnDispatch.Server.Play;
@@ -78,7 +79,8 @@ internal static class PlayHostFactory
             spotRouteMesh.Channel(AutomaticTurnDispatchNames.SpotRouteChannel).Server();
             var mesh24 = framework.AddRouteMesh(AutomaticTurnDispatchNames.SpotChannel)
                 .Listen(options.SpotRouterEndpoint)
-                .SetRoutingIdPrefix(options.Rid);
+                .SetRoutingIdPrefix(options.Rid)
+                .SetPlacementWeight(options.PlacementWeight);
             mesh24.Objects().Server()
                 .AddEntrySpot<AwaitEntrySpot>()
                 .AddActorFactory<AwaitActor, AwaitActorFactory>(
@@ -86,7 +88,12 @@ internal static class PlayHostFactory
                     factory => factory.RecreateOnRelocation())
                 .AddSpotFactory<AwaitProbeSpot>(
                     AutomaticTurnDispatchNames.SpotType,
-                    factory => factory.DisableRelocation());
+                    factory => factory.DisableRelocation())
+                .AddSpotFactory<PerActorAwaitSpot>(
+                    AutomaticTurnDispatchNames.PerActorSpotType,
+                    factory => factory
+                        .ExecutionMode(ZLinkUserSpotExecutionMode.PerActor)
+                        .RecreateOnRelocation());
             mesh24.Channel(AutomaticTurnDispatchNames.SpotChannel).Server();
         });
 
@@ -133,6 +140,54 @@ internal static class PlayHostFactory
                         $"{rid}-",
                         StringComparison.Ordinal)));
             return Results.Ok(new { ready });
+        });
+        app.MapPost("/placement-weight", async (
+            PlacementWeightReq request,
+            IZLinkRouteMeshRuntimeOptions runtimeOptions,
+            IZLinkSpotManager spots,
+            NodeOptions node,
+            CancellationToken cancellationToken) =>
+        {
+            var placement = runtimeOptions.Mesh(AutomaticTurnDispatchNames.SpotChannel);
+            placement.PlacementWeight = request.Weight;
+            if (request.Weight > 0 && request.VerifyLocal)
+            {
+                var deadline = DateTimeOffset.UtcNow.AddSeconds(10);
+                var consecutiveLocal = 0;
+                while (DateTimeOffset.UtcNow < deadline)
+                {
+                    ZLinkSpotCreateResult probe;
+                    try
+                    {
+                        probe = await spots.GetOrCreate(
+                                $"placement-probe-{Guid.NewGuid():N}",
+                                AutomaticTurnDispatchNames.SpotType)
+                            .Timeout(TimeSpan.FromSeconds(2))
+                            .Async(cancellationToken);
+                    }
+                    catch (ZLinkFrameworkException error)
+                        when (error.Kind is
+                            ZLinkFrameworkErrorKind.Unavailable
+                            or ZLinkFrameworkErrorKind.CapacityExceeded
+                            or ZLinkFrameworkErrorKind.DeadlineExceeded)
+                    {
+                        await Task.Delay(25, cancellationToken);
+                        continue;
+                    }
+                    var local = probe.Spot.NodeRid.ToString().StartsWith(
+                        $"{node.Rid}-",
+                        StringComparison.Ordinal);
+                    await spots.CloseAsync(probe.Spot, cancellationToken);
+                    consecutiveLocal = local ? consecutiveLocal + 1 : 0;
+                    if (consecutiveLocal >= 4)
+                        return Results.Ok(new PlacementWeightRes(placement.PlacementWeight));
+                    await Task.Delay(25, cancellationToken);
+                }
+
+                return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+            }
+
+            return Results.Ok(new PlacementWeightRes(placement.PlacementWeight));
         });
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
         return app;

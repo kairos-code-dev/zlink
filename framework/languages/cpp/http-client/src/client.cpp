@@ -24,7 +24,7 @@ void require_non_blank (const std::string &value, const char *message)
 {
     if (is_blank (value)) {
         throw zlink::framework::framework_exception_t (
-          zlink::framework::framework_error_kind_t::request_protocol_error, message);
+          zlink::framework::framework_error_kind_t::protocol_error, message);
     }
 }
 
@@ -32,7 +32,7 @@ void require_positive_timeout (std::chrono::milliseconds value)
 {
     if (value <= std::chrono::milliseconds::zero ()) {
         throw zlink::framework::framework_exception_t (
-          zlink::framework::framework_error_kind_t::request_protocol_error,
+          zlink::framework::framework_error_kind_t::protocol_error,
           "HTTP client timeout must be greater than zero");
     }
 }
@@ -191,7 +191,7 @@ client_builder_t &client_builder_t::max_response_body_size (std::size_t bytes)
 {
     if (bytes == 0) {
         throw zlink::framework::framework_exception_t (
-          zlink::framework::framework_error_kind_t::request_protocol_error,
+          zlink::framework::framework_error_kind_t::protocol_error,
           "HTTP client max response body size must be greater than zero");
     }
     _max_response_body_size = bytes;
@@ -218,7 +218,7 @@ client_builder_t &client_builder_t::follow_redirects (int max_redirects)
 {
     if (max_redirects <= 0) {
         throw zlink::framework::framework_exception_t (
-          zlink::framework::framework_error_kind_t::request_protocol_error,
+          zlink::framework::framework_error_kind_t::protocol_error,
           "HTTP client follow_redirects must be greater than zero");
     }
     _follow_redirects = max_redirects;
@@ -229,7 +229,7 @@ client_builder_t &client_builder_t::retry (int attempts)
 {
     if (attempts <= 0) {
         throw zlink::framework::framework_exception_t (
-          zlink::framework::framework_error_kind_t::request_protocol_error,
+          zlink::framework::framework_error_kind_t::protocol_error,
           "HTTP client retry attempts must be greater than zero");
     }
     _retry_attempts = attempts;
@@ -247,7 +247,7 @@ client_builder_t &client_builder_t::proxy (std::string url)
     require_non_blank (url, "HTTP client proxy url is required");
     if (url.rfind ("http://", 0) != 0) {
         throw zlink::framework::framework_exception_t (
-          zlink::framework::framework_error_kind_t::request_protocol_error,
+          zlink::framework::framework_error_kind_t::protocol_error,
           "HTTP client proxy url must start with http://");
     }
     _proxy = std::move (url);
@@ -281,7 +281,7 @@ client_builder_t::coroutines (std::shared_ptr<coroutine_resume_scheduler_t> resu
 {
     if (!resume_scheduler) {
         throw zlink::framework::framework_exception_t (
-          zlink::framework::framework_error_kind_t::request_protocol_error,
+          zlink::framework::framework_error_kind_t::protocol_error,
           "HTTP client coroutine resume scheduler is required");
     }
     _coroutines = true;
@@ -296,7 +296,7 @@ client_builder_t::coroutines (std::shared_ptr<coroutine_execute_scheduler_t> exe
 {
     if (!execute_scheduler || !resume_scheduler) {
         throw zlink::framework::framework_exception_t (
-          zlink::framework::framework_error_kind_t::request_protocol_error,
+          zlink::framework::framework_error_kind_t::protocol_error,
           "HTTP client coroutine execute and resume schedulers are required");
     }
     _coroutines = true;
@@ -339,7 +339,7 @@ client_t client_builder_t::build () const
     }
     catch (const std::invalid_argument &error) {
         throw zlink::framework::framework_exception_t (
-          zlink::framework::framework_error_kind_t::request_protocol_error, error.what ());
+          zlink::framework::framework_error_kind_t::protocol_error, error.what ());
     }
 }
 
@@ -348,7 +348,7 @@ client_builder_t::build_server (std::shared_ptr<execution_turn_t> execution_turn
 {
     if (!execution_turn) {
         throw zlink::framework::framework_exception_t (
-          zlink::framework::framework_error_kind_t::request_protocol_error,
+          zlink::framework::framework_error_kind_t::protocol_error,
           "HTTP server client execution turn is required");
     }
     auto builder = *this;
@@ -396,7 +396,7 @@ request_builder_t::request_builder_t (client_t client, http_method_t method, std
 {
     if (_path.empty () || _path.front () != '/') {
         throw zlink::framework::framework_exception_t (
-          zlink::framework::framework_error_kind_t::request_protocol_error,
+          zlink::framework::framework_error_kind_t::protocol_error,
           "HTTP request path must start with /");
     }
 }
@@ -435,7 +435,7 @@ request_builder_t::body_stream (body_stream_provider_t provider, std::string con
 {
     if (!provider) {
         throw zlink::framework::framework_exception_t (
-          zlink::framework::framework_error_kind_t::request_protocol_error,
+          zlink::framework::framework_error_kind_t::protocol_error,
           "HTTP request body stream provider is required");
     }
     require_non_blank (content_type, "HTTP request body content type is required");
@@ -498,7 +498,7 @@ request_builder_t::resolve_body_and_headers () const
                              + (!_multipart.empty () ? 1 : 0);
     if (body_sources > 1) {
         throw zlink::framework::framework_exception_t (
-          zlink::framework::framework_error_kind_t::request_protocol_error,
+          zlink::framework::framework_error_kind_t::protocol_error,
           "HTTP request accepts a single body source: body, body_stream, form, or multipart");
     }
 
@@ -583,7 +583,7 @@ request_builder_t::download (std::function<void (std::string_view)> sink) const
 {
     if (!sink) {
         throw zlink::framework::framework_exception_t (
-          zlink::framework::framework_error_kind_t::request_protocol_error,
+          zlink::framework::framework_error_kind_t::protocol_error,
           "HTTP request download sink is required");
     }
     return dispatch_request (make_request (std::move (sink)));

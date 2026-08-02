@@ -14,7 +14,7 @@ public final class SlowReqHandler {
             throw new IllegalStateException("interrupted", error);
         }
         return java.util.concurrent.CompletableFuture.completedFuture(new Contracts.StateRes(
-            spot.context().spotRid().toString(),
+            spot.context().spotId(),
             spot.context().nodeRid().toString(),
             spot.apply("slow:" + request.value())));
     }

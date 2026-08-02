@@ -1,4 +1,4 @@
-// RL-A1: server restart 시나리오를 검증한다.
+// RL-A1: 같은 endpoint에서 server를 재시작한다 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../../../http-client';
 import { startProvider } from '../Support/managed-provider';

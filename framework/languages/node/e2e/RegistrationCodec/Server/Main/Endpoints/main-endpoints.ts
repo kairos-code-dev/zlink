@@ -1,4 +1,4 @@
-import type { ZLinkChannelClient } from '@zlink-systems/framework';
+import type { ZLinkRouteClient } from '@zlink-systems/framework';
 import {
   EchoAttrMsg,
   EchoAttrReq,
@@ -20,7 +20,7 @@ import {
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { HttpRoute } from '../Support/http-server';
 
-export function createMainEndpoints(evidence: EvidenceStore, channel: ZLinkChannelClient): readonly HttpRoute[] {
+export function createMainEndpoints(evidence: EvidenceStore, channel: ZLinkRouteClient): readonly HttpRoute[] {
   return [
     {
       method: 'POST',

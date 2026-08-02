@@ -44,7 +44,7 @@ class provider_relocation_repository_t final :
             return cancelled<relocation_stored_t> ();
         if (retention <= std::chrono::hours::zero ())
             return failed<relocation_stored_t> (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               "relocation retention must be positive");
 
         const auto retention_ms =
@@ -98,7 +98,7 @@ class provider_relocation_repository_t final :
 
                 if (result
                     || result.error () == nullptr
-                    || !result.error ()->is_retriable ()
+                    || !detail::is_transient_error (result.error ()->kind ())
                     || retry != 0) {
                     if (!result)
                         return task_t<relocation_stored_t> (
@@ -118,9 +118,8 @@ class provider_relocation_repository_t final :
             // Retry with a fresh Framework-issued reference.
         }
         return failed<relocation_stored_t> (
-          framework_error_kind_t::request_failed,
-          "could not allocate a unique relocation reference",
-          true);
+          framework_error_kind_t::capacity_exceeded,
+          "could not allocate a unique relocation reference");
     }
 
     task_t<relocation_read_result_t> get_relocation (
@@ -157,7 +156,7 @@ class provider_relocation_repository_t final :
             return cancelled<relocation_renew_result_t> ();
         if (retention <= std::chrono::hours::zero ())
             return failed<relocation_renew_result_t> (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               "relocation retention must be positive");
         auto result = _store
                         ->renew (
@@ -216,12 +215,10 @@ class provider_relocation_repository_t final :
     template <typename T>
     static task_t<T> failed (
       framework_error_kind_t kind,
-      std::string message,
-      bool retriable = false)
+      std::string message)
     {
         return task_t<T> (
-          result_t<T>::failure (
-            kind, std::move (message), retriable));
+          result_t<T>::failure (kind, std::move (message)));
     }
 
     template <typename T> static task_t<T> cancelled ()

@@ -1,4 +1,4 @@
-// PS-C1: publish 미등록 message name 시나리오를 검증한다.
+// PS-C1: 등록되지 않은 packet name을 drop한다 시나리오를 검증한다.
 import { randomUUID } from 'node:crypto';
 import { PacketNames, PubSubNames } from '../../Shared/messages';
 import { postJson } from '../../../http-client';

@@ -53,7 +53,7 @@ public final class BindActorsHandler
             chain = chain.thenCompose(ignored -> context.actors().bind(new ActorRef(
                     RoutingId.from(actor.nodeRid()),
                     actor.actorId(),
-                    actor.generation()))
+                    actor.objectGeneration()))
                 .thenApply(bound -> null));
         }
         return chain;

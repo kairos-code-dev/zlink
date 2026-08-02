@@ -100,7 +100,7 @@ int main ()
     }
     catch (const zlink::framework::framework_exception_t &error) {
         scoped_from_root_failed =
-          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+          error.kind () == zlink::framework::framework_error_kind_t::protocol_error;
     }
     if (!scoped_from_root_failed) {
         return 4;
@@ -169,7 +169,7 @@ int main ()
     }
     catch (const zlink::framework::framework_exception_t &error) {
         duplicate_failed =
-          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+          error.kind () == zlink::framework::framework_error_kind_t::protocol_error;
     }
     if (!duplicate_failed) {
         return 11;

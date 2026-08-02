@@ -4,24 +4,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
 CPP_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$CPP_ROOT/samples/sample-build-common.sh"
 FLOW_LOG_DIR="$SCRIPT_DIR/logs"
 mkdir -p "$FLOW_LOG_DIR"
 rm -f "$FLOW_LOG_DIR"/*.log
-BUILD_DIR="$CPP_ROOT/build"
-BIN_DIR="$BUILD_DIR"
-
-cmake -S "$CPP_ROOT" -B "$BUILD_DIR" -DZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=ON >/dev/null
-cmake --build "$BUILD_DIR" --target \
+zlink_cpp_sample_prepare_build "$CPP_ROOT"
+cmake --build "$BUILD_DIR" --parallel 2 --target \
   sample_cpp_framework_tictactoe_play \
   sample_cpp_framework_tictactoe_api \
   sample_cpp_framework_tictactoe_client \
   test_cpp_framework_sample_parity \
   zlink_cpp_framework_mesh_node_vertical_test \
   test_cpp_framework_actor_gateway >/dev/null
-
-if [[ ! -x "$BIN_DIR/sample_cpp_framework_tictactoe_play" && -x "$BIN_DIR/linux-ninja-debug/sample_cpp_framework_tictactoe_play" ]]; then
-  BIN_DIR="$BIN_DIR/linux-ninja-debug"
-fi
 
 PLAY_BIN="$BIN_DIR/sample_cpp_framework_tictactoe_play"
 API_BIN="$BIN_DIR/sample_cpp_framework_tictactoe_api"
@@ -125,7 +119,7 @@ wait_port() {
 wait_grep() {
   local pattern="$1"
   local file="$2"
-  for _ in $(seq 1 50); do
+  for _ in $(seq 1 300); do
     if grep -q "$pattern" "$file"; then
       return 0
     fi
@@ -265,21 +259,49 @@ start_server() {
   PIDS+=("$!")
 }
 
-start_server play-a "$PLAY_BIN" --config="$CONFIG_DIR/play-a.json"
+# Start Play first so both RouteMesh server endpoints exist before API creates
+# its two outbound RouteMesh connections. Start API as soon as those endpoints
+# listen so Play's ClientServer connections also see a server on first connect.
 start_server play-b "$PLAY_BIN" --config="$CONFIG_DIR/play-b.json"
-start_server api-a "$API_BIN" --config="$CONFIG_DIR/api-a.json"
-start_server api-b "$API_BIN" --config="$CONFIG_DIR/api-b.json"
+start_server play-a "$PLAY_BIN" --config="$CONFIG_DIR/play-a.json"
 
 wait_port play-a-object-route "$PLAY_A_ROUTE_ENDPOINT"
 wait_port play-a-stream "$PLAY_A_STREAM_ENDPOINT"
 wait_port play-b-object-route "$PLAY_B_ROUTE_ENDPOINT"
 wait_port play-b-stream "$PLAY_B_STREAM_ENDPOINT"
+
+start_server api-a "$API_BIN" --config="$CONFIG_DIR/api-a.json"
+start_server api-b "$API_BIN" --config="$CONFIG_DIR/api-b.json"
+
 wait_port api-a-channel "$API_A_ENDPOINT"
 wait_port api-a-http "$API_A_HTTP_ENDPOINT"
 wait_port api-a-object-route "$API_A_ROUTE_ENDPOINT"
 wait_port api-b-channel "$API_B_ENDPOINT"
 wait_port api-b-http "$API_B_HTTP_ENDPOINT"
 wait_port api-b-object-route "$API_B_ROUTE_ENDPOINT"
+
+wait_grep "tictactoe play route ready node=a peer=tictactoe-play-b" "$LOG_DIR/play-a.log"
+wait_grep "tictactoe play route ready node=b peer=tictactoe-play-a" "$LOG_DIR/play-b.log"
+wait_grep "tictactoe play api channel ready node=a" "$LOG_DIR/play-a.log"
+wait_grep "tictactoe play api channel ready node=b" "$LOG_DIR/play-b.log"
+
+wait_route_ready() {
+  local target_rid="$1"
+  for _ in $(seq 1 120); do
+    if curl --connect-timeout 0.2 --max-time 0.5 -fsS \
+      "$API_A_HTTP_ENDPOINT/ready?targetRid=${target_rid}" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  curl --connect-timeout 0.2 --max-time 1 -sS \
+    "$API_A_HTTP_ENDPOINT/ready?targetRid=${target_rid}" >&2 || true
+  echo "Timed out waiting for API route peer ${target_rid}" >&2
+  return 1
+}
+
+wait_route_ready "tictactoe-play-a"
+wait_route_ready "tictactoe-play-b"
 
 "$CLIENT_BIN" --api-http-endpoint "$API_A_HTTP_ENDPOINT" >"$LOG_DIR/client.log" 2>&1 || {
   cat "$LOG_DIR/client.log" >&2

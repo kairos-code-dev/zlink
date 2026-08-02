@@ -1,4 +1,4 @@
-// OBS-B1: CCU·재접속 계기 시나리오를 검증한다.
+// OBS-B1: Stream connection과 reconnect metric을 확인한다 시나리오를 검증한다.
 import {
   ZlinkStreamDispatchMode,
   zlinkStreamConnectorFactory,

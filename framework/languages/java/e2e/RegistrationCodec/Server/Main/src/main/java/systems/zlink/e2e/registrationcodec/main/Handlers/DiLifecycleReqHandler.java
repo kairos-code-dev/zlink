@@ -32,7 +32,7 @@ public final class DiLifecycleReqHandler
             scopedId = dependency.id();
             state.record(
                 "DI",
-                context.packetName().orElse("DiLifecycle"),
+                context.packetName(),
                 scopedId + ":" + singleton.id() + ":" + request.value());
         }
         return java.util.concurrent.CompletableFuture.completedFuture(new Contracts.DiLifecycleRes(

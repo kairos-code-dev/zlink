@@ -4,7 +4,7 @@ import java.time.Duration;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRouteClient;
-import systems.zlink.framework.channels.ZLinkRouteRequestContext;
+import systems.zlink.framework.channels.ZLinkRouteMessageContext;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpotManager;
@@ -56,7 +56,7 @@ public final class EnsureSpotHandler
         @Override
         public CompletionStage<Contracts.EnsureSpotRes> handle(
             Contracts.EnsureSpotReq request,
-            ZLinkRouteRequestContext context) {
+            ZLinkRouteMessageContext context) {
             return spots.getOrCreate(
                     AwaitProbeSpot.class,
                     RoutingId.from(request.spotRid()),

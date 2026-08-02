@@ -142,8 +142,10 @@ template <typename T> class serializer_t
             throw;
         }
         catch (...) {
-            throw framework_exception_t (framework_error_kind_t::payload_decode_failed,
-                                         "payload serialization failed");
+            throw detail::make_origin_exception (
+              framework_error_kind_t::protocol_error,
+              detail::failure_origin_t::payload_encode,
+              "payload serialization failed");
         }
     }
 
@@ -156,8 +158,10 @@ template <typename T> class serializer_t
             throw;
         }
         catch (...) {
-            throw framework_exception_t (framework_error_kind_t::payload_decode_failed,
-                                         "payload deserialization failed");
+            throw detail::make_origin_exception (
+              framework_error_kind_t::protocol_error,
+              detail::failure_origin_t::payload_decode,
+              "payload deserialization failed");
         }
     }
 
@@ -215,12 +219,12 @@ class serializer_registry_t
                 return serializer_t<T> (
                   [] (const T &) -> encoded_payload_t {
                       throw framework_exception_t (
-                        framework_error_kind_t::payload_decode_failed,
+                        framework_error_kind_t::protocol_error,
                         "No serializer is registered for this payload type");
                   },
                   [] (const encoded_payload_t &) -> T {
                       throw framework_exception_t (
-                        framework_error_kind_t::payload_decode_failed,
+                        framework_error_kind_t::protocol_error,
                         "No serializer is registered for this payload type");
                   });
             }

@@ -60,6 +60,8 @@ void to_json (nlohmann::json &json, const spot_actor_admission_route_request_t &
                           {"actorType", value.actor_type},
                           {"actorId", value.actor_id},
                           {"actorGeneration", value.actor_generation},
+                          {"actorAuthorityOwnerGeneration",
+                           value.actor_authority_owner_generation},
                           {"completionOperationIdHigh",
                            value.completion_operation_id_high},
                           {"completionOperationIdLow",
@@ -76,6 +78,8 @@ void from_json (const nlohmann::json &json, spot_actor_admission_route_request_t
     value.actor_type = json.at ("actorType").get<std::string> ();
     value.actor_id = json.at ("actorId").get<std::string> ();
     value.actor_generation = json.at ("actorGeneration").get<std::uint64_t> ();
+    value.actor_authority_owner_generation =
+      json.value ("actorAuthorityOwnerGeneration", std::uint64_t{0});
     value.completion_operation_id_high =
       json.value ("completionOperationIdHigh", std::uint64_t{0});
     value.completion_operation_id_low =
@@ -129,6 +133,8 @@ void to_json (nlohmann::json &json, const spot_actor_commit_route_request_t &val
                           {"actorType", value.actor_type},
                           {"actorId", value.actor_id},
                           {"actorGeneration", value.actor_generation},
+                          {"actorAuthorityOwnerGeneration",
+                           value.actor_authority_owner_generation},
                           {"completionRootReference",
                            value.completion_root_reference},
                           {"completionRootChecksum",
@@ -156,6 +162,8 @@ void from_json (const nlohmann::json &json, spot_actor_commit_route_request_t &v
     value.actor_type = json.at ("actorType").get<std::string> ();
     value.actor_id = json.at ("actorId").get<std::string> ();
     value.actor_generation = json.at ("actorGeneration").get<std::uint64_t> ();
+    value.actor_authority_owner_generation =
+      json.value ("actorAuthorityOwnerGeneration", std::uint64_t{0});
     value.completion_root_reference =
       json.value ("completionRootReference", "");
     value.completion_root_checksum =

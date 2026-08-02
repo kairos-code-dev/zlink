@@ -11,11 +11,14 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <future>
+#include <iostream>
 #include <limits>
 #include <random>
 #include <set>
 #include <stdexcept>
+#include <string_view>
 #include <utility>
 
 namespace zlink::framework::runtime::client_server
@@ -48,22 +51,17 @@ client_server_wire_failure_t
 wire_failure (const framework_exception_t &error)
 {
     switch (error.kind ()) {
-        case framework_error_kind_t::handler_not_found:
-            return {102, protocol::framework_error_code::handlerNotFound};
-        case framework_error_kind_t::payload_decode_failed:
-            return {
-              104, protocol::framework_error_code::payloadDecodeFailed};
-        case framework_error_kind_t::route_not_connected:
+        case framework_error_kind_t::unavailable:
             return {
               105, protocol::framework_error_code::routeNotConnected};
-        case framework_error_kind_t::request_target_not_found:
+        case framework_error_kind_t::not_found:
             return {
               102,
               protocol::framework_error_code::requestTargetNotFound};
-        case framework_error_kind_t::request_rejected:
+        case framework_error_kind_t::rejected:
             return {
               106, protocol::framework_error_code::requestRejected};
-        case framework_error_kind_t::request_protocol_error:
+        case framework_error_kind_t::protocol_error:
             return {
               104,
               protocol::framework_error_code::requestProtocolError};
@@ -486,10 +484,10 @@ void client_server_location_runtime_t::reconcile_channel (
                               descriptor,
                               admission.effective_max_message_bytes);
         auto raw = std::make_shared<raw_client_server_client_t> (
-          raw_client_server_client_options_t{
-            channel.routing_id,
-            admission,
-            std::move (expected)});
+            raw_client_server_client_options_t{
+              channel.routing_id,
+              admission,
+              std::move (expected)});
         raw->start ();
         std::lock_guard lock (_gate);
         channel.connections.emplace (
@@ -640,9 +638,7 @@ void client_server_location_runtime_t::dispatch_server (
                           reply.error_kind (),
                           reply.error () != nullptr
                             ? reply.error ()->what ()
-                            : "ClientServer request handler failed",
-                          reply.error () != nullptr
-                            && reply.error ()->is_retriable ());
+                            : "ClientServer request handler failed");
                         const auto failure = wire_failure (error);
                         (void) server.owner->reply (
                           record, failure.terminal_result,
@@ -669,7 +665,7 @@ void client_server_location_runtime_t::dispatch_server (
                     && record.correlation) {
                     const auto failure = wire_failure (
                       framework_exception_t (
-                        framework_error_kind_t::request_failed,
+                        framework_error_kind_t::internal_failure,
                         error.what ()));
                     (void) server.owner->reply (
                       record, failure.terminal_result,
@@ -681,7 +677,7 @@ void client_server_location_runtime_t::dispatch_server (
                     && record.correlation) {
                     const auto failure = wire_failure (
                       framework_exception_t (
-                        framework_error_kind_t::request_failed,
+                        framework_error_kind_t::internal_failure,
                         "ClientServer dispatch failed"));
                     (void) server.owner->reply (
                       record, failure.terminal_result,
@@ -724,7 +720,7 @@ result_t<void> client_server_location_runtime_t::send (
     return sent
              ? result_t<void>::success ()
              : result_t<void>::failure (
-                 framework_error_kind_t::route_not_connected,
+                 framework_error_kind_t::unavailable,
                  "ClientServer send lost its admitted server");
 }
 
@@ -768,7 +764,7 @@ client_server_location_runtime_t::request (
               != foundation::operation_terminal_t::completed) {
               promise->set_value (
                 result_t<zlink::message_t>::failure (
-                  framework_error_kind_t::request_failed,
+                  framework_error_kind_t::internal_failure,
                   "ClientServer request did not complete"));
               return;
           }
@@ -795,17 +791,17 @@ client_server_location_runtime_t::request (
           catch (const std::exception &error) {
               promise->set_value (
                 result_t<zlink::message_t>::failure (
-                  framework_error_kind_t::request_failed,
+                  framework_error_kind_t::internal_failure,
                   error.what ()));
           }
       });
     if (!submitted)
         return result_t<zlink::message_t>::failure (
-          framework_error_kind_t::route_not_connected,
+          framework_error_kind_t::unavailable,
           "ClientServer request lost its admitted server");
     if (future.wait_until (deadline) != std::future_status::ready)
         return result_t<zlink::message_t>::failure (
-          framework_error_kind_t::request_failed,
+          framework_error_kind_t::internal_failure,
           "ClientServer request timed out");
     return future.get ();
 }
@@ -833,17 +829,17 @@ client_server_location_runtime_t::select_ready (
     if (!_ready.wait_until (lock, deadline, available)) {
         if (_stop.load (std::memory_order_acquire)) {
             return result_t<std::shared_ptr<raw_client_server_client_t>>::failure (
-              framework_error_kind_t::runtime_shutdown,
+              framework_error_kind_t::shutting_down,
               "ClientServer runtime is stopping");
         }
         const auto found = _clients.find (channel_name);
         if (found == _clients.end ()) {
             return result_t<std::shared_ptr<raw_client_server_client_t>>::failure (
-              framework_error_kind_t::request_target_not_found,
+              framework_error_kind_t::not_found,
               "ClientServer channel is not registered");
         }
         return result_t<std::shared_ptr<raw_client_server_client_t>>::failure (
-          framework_error_kind_t::request_target_not_found,
+          framework_error_kind_t::not_found,
           "ClientServer has no ready target before the bounded wait expired");
     }
     auto &channel = *_clients.at (channel_name);
@@ -862,7 +858,7 @@ client_server_location_runtime_t::select_ready (
     const auto selected = channel.selector.select (candidates);
     if (!selected) {
         return result_t<std::shared_ptr<raw_client_server_client_t>>::failure (
-          framework_error_kind_t::request_target_not_found,
+          framework_error_kind_t::not_found,
           "ClientServer has no selectable target snapshot");
     }
     return result_t<std::shared_ptr<raw_client_server_client_t>>::success (

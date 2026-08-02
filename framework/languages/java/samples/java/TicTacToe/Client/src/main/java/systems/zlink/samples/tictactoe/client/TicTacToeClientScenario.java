@@ -31,7 +31,9 @@ public final class TicTacToeClientScenario {
         try (ZLinkHttpClient api = ZLinkHttpClient.create(options.apiUrl()).build()) {
             game = api.post("/games")
                 .body(new CreateGameHttpReq(options.gameName()))
-                .fetch(CreateGameHttpRes.class).toCompletableFuture().join();
+                .submit(CreateGameHttpRes.class)
+                .toCompletableFuture().join()
+                .body();
         }
         ensure(game.playEndpoints().size() >= 2);
         ZLinkStreamConnector host = playerConnector(
@@ -148,7 +150,8 @@ public final class TicTacToeClientScenario {
             ensure(options.xActorId().equals(hostMove1Notify.state().lastMoveActorId()));
             ensure(Integer.valueOf(0).equals(hostMove1Notify.state().lastMoveCell()));
 
-            guest.send(new LeaveGameReq(game.roomId())).submit();
+            guest.send(new LeaveGameReq(game.roomId()))
+                .submit().toCompletableFuture().join();
             var hostSawGuestMove1 = host
                 .waitFor(GameStateNotify.class)
                 .where(GameStateNotify.class,

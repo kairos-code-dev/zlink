@@ -1,4 +1,4 @@
-// SF-D1: 짧은 장애 복구 (grace 안) 시나리오를 검증한다.
+// SF-D1: 짧은 장애는 기존 connection을 불필요하게 바꾸지 않는다 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../../../http-client';
@@ -34,12 +34,31 @@ async function driveRequests(baseUrl: string, windowMs: number): Promise<void> {
   const deadline = Date.now() + windowMs;
   let count = 0;
   while (Date.now() < deadline) {
-    const reply = await postJson<ProfileRes>(baseUrl, '/profile/request', { value: `sf-d1-${count++}` });
+    const value = `sf-d1-${count++}`;
+    let reply: ProfileRes;
+    try {
+      reply = await postJson<ProfileRes>(baseUrl, '/profile/request', { value });
+    } catch (error) {
+      const [route, location, peers] = await Promise.all([
+        getJson<unknown>(baseUrl, '/route/status').catch(() => undefined),
+        getJson<unknown>(baseUrl, '/location/status').catch(() => undefined),
+        getJson<unknown>(baseUrl, '/location/peers').catch(() => undefined)
+      ]);
+      throw new Error(
+        `SF-D1 request '${value}' failed: ${errorMessage(error)}; `
+        + `route=${JSON.stringify(route)}; location=${JSON.stringify(location)}; `
+        + `peers=${JSON.stringify(peers)}`
+      );
+    }
     ensure(reply.value.startsWith('profile:sf-d1-'), 'SF-D1 reply value mismatch during short outage recovery.');
     ensure(reply.providerRid === 'api-a' || reply.providerRid === 'api-b', 'SF-D1 provider rid mismatch during short outage recovery.');
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
   ensure(count > 0, 'SF-D1 request window produced no traffic.');
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function waitForHealthyStatus(baseUrl: string): Promise<void> {

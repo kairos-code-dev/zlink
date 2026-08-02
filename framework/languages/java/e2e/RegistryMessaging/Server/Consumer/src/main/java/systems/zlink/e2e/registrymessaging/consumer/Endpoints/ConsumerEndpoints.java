@@ -11,21 +11,22 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import systems.zlink.e2e.registrymessaging.shared.Contracts;
 import systems.zlink.e2e.registrymessaging.shared.FailureEvidence;
-import systems.zlink.framework.locationprovider.ZLinkLocationStore;
 import systems.zlink.framework.channels.ZLinkClient;
-import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
+import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
+import systems.zlink.framework.locations.ZLinkLocationTopologyFilter;
 import systems.zlink.framework.locations.ZLinkPageRequest;
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle;
 
 @RestController
 public final class ConsumerEndpoints {
     private final ZLinkClient client;
-    private final ZLinkLocationStore locations;
+    private final java.util.function.Supplier<ZLinkLocationRuntimeQuery> locationQuery;
 
     public ConsumerEndpoints(
         ZLinkClient client,
-        ZLinkLocationStore locations) {
+        ZLinkFrameworkLifecycle lifecycle) {
         this.client = client;
-        this.locations = locations;
+        this.locationQuery = lifecycle::monitoringLocationRuntimeQuery;
     }
 
     @GetMapping("/health")
@@ -35,16 +36,16 @@ public final class ConsumerEndpoints {
 
     @GetMapping("/locations/peers")
     public CompletionStage<List<java.util.Map<String, Object>>> peers() {
-        return locations.listClientServers(
-                Contracts.API_CHANNEL,
+        return locationQuery.get().listTopology(
+                ZLinkLocationTopologyFilter.all(),
                 new ZLinkPageRequest(1_000, null))
             .thenApply(page -> page.items().stream()
             .map(server -> java.util.Map.<String, Object>of(
-                "meshName", server.channelName(),
+                "meshName", server.meshName(),
                 "role", "ROUTER",
-                "nodeRid", server.serverRid().toString(),
+                "nodeRid", server.nodeRid().toString(),
                 "endpoint", server.endpoint(),
-                "ownerId", server.ownerId()))
+                "ownerId", ""))
             .toList());
     }
 

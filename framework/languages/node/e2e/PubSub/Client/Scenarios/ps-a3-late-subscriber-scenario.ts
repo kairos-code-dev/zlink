@@ -1,4 +1,4 @@
-// PS-A3: late subscriber 시나리오를 검증한다.
+// PS-A3: Late subscriber는 ready 이후 event부터 받는다 시나리오를 검증한다.
 import { randomUUID } from 'node:crypto';
 import { PubSubNames } from '../../Shared/messages';
 import { getJson } from '../../../http-client';

@@ -1,4 +1,4 @@
-// ST-B4: remote relocation empty state 시나리오를 검증한다.
+// ST-B4: Empty relocation state 시나리오를 검증한다.
 import { SpotActorTransferNames, nodeA, nodeB, createSpot, createActor, joinActor, probeActor, waitEvidence, assertOrder, mergeEvidence, unique, require } from '../Support/scenario-support';
 
 export async function runStB4(): Promise<void> {

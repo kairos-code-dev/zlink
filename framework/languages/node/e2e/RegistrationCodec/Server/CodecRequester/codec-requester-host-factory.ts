@@ -1,10 +1,10 @@
 import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import type { ZLinkChannelClient } from '@zlink-systems/framework';
+import type { ZLinkRouteClient } from '@zlink-systems/framework';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { zlinkProtobufCodec } from '@zlink-systems/framework-codec-protobuf/framework';
-import { ZLINK_CHANNEL_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLINK_ROUTE_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { RegistrationCodecNames } from '../../Shared/messages';
 import { validateCodecRequesterOptions, type CodecRequesterOptions } from './Configuration/codec-requester-options';
 import { REGISTRATION_CODEC_OPTIONS, createRegistrationCodecConfigurationModule } from '../../configuration';
@@ -17,7 +17,7 @@ export async function startCodecRequester(): Promise<void> {
   const RequesterModule = createCodecRequesterModule();
   const app = await NestFactory.createApplicationContext(RequesterModule, { logger: false, abortOnError: false });
   const options = app.get(REGISTRATION_CODEC_OPTIONS, { strict: false }) as CodecRequesterOptions;
-  const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
+  const channel = app.get(ZLINK_ROUTE_CLIENT, { strict: false }) as ZLinkRouteClient;
   const server = await startHttpServer(options.httpUrl, [
     ...createOperationalEndpoints('codec-requester', options.rid, () => { stopping = true; }),
     ...createCodecRequesterEndpoints(channel)
@@ -49,8 +49,9 @@ function createCodecRequesterModule(): Function {
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
-          builder.addRouteMesh(RegistrationCodecNames.channel)
-            .peerConnections().connect(options.targetEndpoint);
+          const mesh = builder.addRouteMesh(RegistrationCodecNames.channel);
+          mesh.peerConnections().connect(options.targetEndpoint);
+          mesh.channel(RegistrationCodecNames.channel).client();
           return builder.build();
         }
       })

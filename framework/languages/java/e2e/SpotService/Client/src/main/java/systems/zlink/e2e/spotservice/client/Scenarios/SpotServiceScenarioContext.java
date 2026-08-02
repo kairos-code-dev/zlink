@@ -119,7 +119,7 @@ public class SpotServiceScenarioContext {
                 .submit(Contracts.JoinAdmittedUserSpotActorRes.class).toCompletableFuture().join();
             ensure(allowed.accepted(), "SM-B9 allowed join was rejected");
             ensure(actorId.equals(allowed.actorId()), "SM-B9 allowed actor mismatch");
-            ensure(spotRid.equals(allowed.spotRid()), "SM-B9 allowed spot mismatch");
+            ensure(spotRid.equals(allowed.spotId()), "SM-B9 allowed spot mismatch");
             ensure(nodeRid.equals(allowed.nodeRid()), "SM-B9 allowed node mismatch");
 
             connector
@@ -160,7 +160,7 @@ public class SpotServiceScenarioContext {
         String value) {
         return evidence.entries().stream()
             .filter(entry -> marker.equals(entry.marker())
-                && spotRid.equals(entry.spotRid())
+                && spotRid.equals(entry.spotId())
                 && value.equals(entry.value()))
             .count();
     }
@@ -169,7 +169,7 @@ public class SpotServiceScenarioContext {
         Contracts.EvidenceSnapshot evidence,
         String spotRid) {
         return evidence.entries().stream()
-            .anyMatch(entry -> spotRid.equals(entry.spotRid()));
+            .anyMatch(entry -> spotRid.equals(entry.spotId()));
     }
 
     protected static void authenticateJoinAndEcho(
@@ -190,14 +190,14 @@ public class SpotServiceScenarioContext {
                 .metadata("actor-id", actorId)
                 .timeout(Duration.ofSeconds(15))
                 .submit(Contracts.ActorJoinRes.class).toCompletableFuture().join();
-            ensure("room-a".equals(joined.spotRid()), "SM-G1 joined spot mismatch");
+            ensure("room-a".equals(joined.spotId()), "SM-G1 joined spot mismatch");
 
             Contracts.ActorEchoRes echo = connector
                 .request(new Contracts.ActorEchoReq(value, requestSeq, profile))
                 .metadata("actor-id", actorId)
                 .timeout(Duration.ofSeconds(15))
                 .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
-            ensure("room-a".equals(echo.spotRid()), "SM-G1 actor spot mismatch");
+            ensure("room-a".equals(echo.spotId()), "SM-G1 actor spot mismatch");
             ensure(("user:" + value).equals(echo.value()), "SM-G1 actor echo mismatch");
         } catch (Exception error) {
             throw new IllegalStateException("SM-G1 auth/join/echo failed", error);
@@ -236,7 +236,7 @@ public class SpotServiceScenarioContext {
         String actorId) {
         return evidence.entries().stream()
             .filter(entry -> marker.equals(entry.marker())
-                && spotRid.equals(entry.spotRid())
+                && spotRid.equals(entry.spotId())
                 && entry.value().startsWith(actorId))
             .count();
     }
@@ -248,11 +248,11 @@ public class SpotServiceScenarioContext {
         String actorId) {
         return evidence.entries().stream()
             .filter(entry -> marker.equals(entry.marker())
-                && spotRid.equals(entry.spotRid())
+                && spotRid.equals(entry.spotId())
                 && entry.value().startsWith(actorId))
             .map(entry -> entry.marker()
                 + "|" + entry.nodeRid()
-                + "|" + entry.spotRid()
+                + "|" + entry.spotId()
                 + "|" + entry.value())
             .toList();
     }

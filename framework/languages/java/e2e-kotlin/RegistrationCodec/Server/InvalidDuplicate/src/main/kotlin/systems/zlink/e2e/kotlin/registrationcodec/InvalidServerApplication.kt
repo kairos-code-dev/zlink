@@ -23,10 +23,14 @@ class InvalidServerApplication {
     @Bean
     fun invalidFramework(serverOptions: ServerOptions): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
-            val channel = options.addClientServerChannel(Contracts.CHANNEL)
-                .enableServer(serverOptions.serverEndpoint)
-            channel.addRequestHandler(ManualRequestHandler::class.java, EchoManualReq::class.java, EchoManualRes::class.java, "DuplicatePacket")
-            channel.addRequestHandler(ManualRequestHandler::class.java, EchoManualReq::class.java, EchoManualRes::class.java, "DuplicatePacket")
+            val endpoint = java.net.URI.create(serverOptions.serverEndpoint)
+            val server = options.addClientServerChannel(Contracts.CHANNEL)
+                .server()
+                .setBindHost(endpoint.host)
+                .setAdvertiseHost(endpoint.host)
+                .listen(endpoint.port)
+            server.addRequestHandler(ManualRequestHandler::class.java, EchoManualReq::class.java, EchoManualRes::class.java)
+            server.addRequestHandler(ManualRequestHandler::class.java, EchoManualReq::class.java, EchoManualRes::class.java)
         }
 
     @Bean fun manualRequestHandler(state: ScenarioState): ManualRequestHandler =

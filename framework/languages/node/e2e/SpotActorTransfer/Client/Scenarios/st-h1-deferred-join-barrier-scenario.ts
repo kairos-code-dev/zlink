@@ -1,4 +1,4 @@
-// ST-H1: Join registration, queue barrier와 immutable request 시나리오를 검증한다.
+// ST-H1: Deferred Join registration 시나리오를 검증한다.
 import {
   SpotActorTransferNames,
   actorNode,

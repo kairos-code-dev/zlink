@@ -1,4 +1,4 @@
-// SM-B2: remote actor join 시나리오를 검증한다.
+// SM-B2: 다른 node의 User Spot으로 Join한다 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

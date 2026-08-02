@@ -1,6 +1,7 @@
 using AutomaticTurnDispatch.Client.Scenarios;
 using AutomaticTurnDispatch.Client.Support;
 using AutomaticTurnDispatch.Shared;
+using Zlink.HttpClient;
 
 var options = ClientOptions.Parse(args);
 
@@ -15,6 +16,9 @@ if (options.Scenario is "shutdown-recovery")
     return;
 }
 
+using var playA = CreateOptionalHttpClient(options.PlayAUrl);
+using var playB = CreateOptionalHttpClient(options.PlayBUrl);
+
 await using var client =
     ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
     {
@@ -25,9 +29,28 @@ await using var client =
         DispatchMode = ZlinkStreamDispatchMode.Immediate,
         MaxReceivedMessages = 1024
     });
+client.ErrorReceived += (error, _) =>
+{
+    Console.Error.WriteLine(
+        $"automatic-turn-dispatch connector error code={error.Code} message={error.Message}");
+    return ValueTask.CompletedTask;
+};
+client.ConnectionStateChanged += (change, _) =>
+{
+    Console.Error.WriteLine(
+        $"automatic-turn-dispatch connector state previous={change.Previous} current={change.Current}"
+        + $" error={change.Error?.Code}:{change.Error?.Message}");
+    return ValueTask.CompletedTask;
+};
+client.Disconnected += (disconnected, _) =>
+{
+    Console.Error.WriteLine(
+        $"automatic-turn-dispatch connector disconnected reason={disconnected.CloseReason}");
+    return ValueTask.CompletedTask;
+};
 await client.Connect.Async();
 
-var context = new ExecutionTurnScenarioContext(client);
+var context = new ExecutionTurnScenarioContext(client, playA, playB);
 var scenarios = new (string Id, Func<Task> Run)[]
 {
     ("TD-A1", () => TdA1TerminatorSurfaceScenario.RunAsync(context)),
@@ -47,9 +70,13 @@ var scenarios = new (string Id, Func<Task> Run)[]
     ("TD-D1", () => TdD1CrossActorYieldInterleaveScenario.RunAsync(context)),
     ("TD-D2", () => TdD2SameActorNoReentryScenario.RunAsync(context)),
     ("TD-D3", () => TdD3TimerNoReentryScenario.RunAsync(context)),
+    ("TD-D4", () => TdD4PerActorAsyncIsolationScenario.RunAsync(context)),
+    ("TD-D5", () => TdD5UnsupportedYieldScenario.RunAsync(context)),
+    ("TD-D6", () => TdD6SameGateRejectionScenario.RunAsync(context)),
     ("TD-E1", () => TdE1EntryToUserSpotJoinScenario.RunAsync(context)),
     ("TD-E2", () => TdE2UserToUserSpotJoinScenario.RunAsync(context)),
     ("TD-E3", () => TdE3OppositeSpotJoinScenario.RunAsync(context)),
+    ("TD-E2A", () => TdE2ADeferredJoinFailureScenario.RunAsync(context)),
     ("TD-F1", () => TdF1RemoteSpotContinuationScenario.RunAsync(context)),
     ("TD-F2", () => TdF2RouteBridgeYieldScenario.RunAsync(context)),
     ("TD-F3", () => TdF3SessionRelayYieldScenario.RunAsync(context)),
@@ -83,3 +110,10 @@ foreach (var scenario in scenarios.Where(item => requestedIds.Contains(item.Id))
 
 Console.WriteLine(
     $"automatic-turn-dispatch client executed={executed} result=passed");
+
+static ZLinkHttpClient? CreateOptionalHttpClient(string url)
+{
+    return string.IsNullOrWhiteSpace(url)
+        ? null
+        : ZLinkHttpClient.Create(url).Timeout(TimeSpan.FromSeconds(15)).Build();
+}

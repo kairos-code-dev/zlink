@@ -4,9 +4,9 @@ import type {
   ContinueOrderWorkflowRes,
   RebuildOrderProjectionRes,
   StartOrderWorkflowReq,
-  StartOrderWorkflowRes,
-  VerifyExpectedVersionFenceRes
+  StartOrderWorkflowRes
 } from '../../../../Shared/Contracts/messages';
+import type { VerifyExpectedVersionFenceRes } from '../../../Shared/Internal/shoppingmall-workflow-messages';
 
 @Injectable()
 class OrderWorkflowService {

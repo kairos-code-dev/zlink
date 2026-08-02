@@ -297,7 +297,7 @@ class codec_mismatch_handler_t
                                       "payload");
         }
         if (mismatched.error_kind ()
-            != zlink::framework::framework_error_kind_t::payload_decode_failed) {
+            != zlink::framework::framework_error_kind_t::protocol_error) {
             throw std::runtime_error ("RC-B5 expected payload_decode_failed from the JSON-only "
                                       "peer");
         }

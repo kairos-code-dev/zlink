@@ -52,7 +52,8 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         this.configuration = ZLinkStreamConnectorConfiguration.from(options);
         this.options = this.configuration.publicOptions();
         this.dispatchQueue = new ZLinkStreamDispatchQueue(
-            this.configuration.limits().receivedMessages());
+            this.configuration.limits().receivedMessages(),
+            this::publishError);
         this.inboundObservers = new ZLinkStreamInboundObserverDispatcher(
             this.configuration.limits().inboundObserverNotifications(),
             this.configuration.limits().inboundObserverPayloadPreviewBytes(),
@@ -158,6 +159,15 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         Objects.requireNonNull(handler, "handler");
         handlers.computeIfAbsent(name, ignored -> new CopyOnWriteArrayList<>()).add(handler);
         return () -> handlers.getOrDefault(name, List.of()).remove(handler);
+    }
+
+    CompletionStage<ZLinkStreamMessage<ZLinkStreamEncodedPayload>> awaitMessage(
+        String name,
+        java.util.function.Predicate<ZLinkStreamMessage<ZLinkStreamEncodedPayload>> predicate) {
+        CompletableFuture<ZLinkStreamMessage<ZLinkStreamEncodedPayload>> result =
+            new CompletableFuture<>();
+        dispatchQueue.awaitMessage(name, predicate, result);
+        return result;
     }
 
     @Override

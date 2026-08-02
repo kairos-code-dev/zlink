@@ -1,4 +1,4 @@
-// SM-F2: ToSpot 다른 MeshNode owner 호출 시나리오를 검증한다.
+// SM-F2: 다른 MeshNode의 Spot을 SpotId로 호출한다 시나리오를 검증한다.
 import type {
   CreateSpotRes,
   CreateSpotReq,

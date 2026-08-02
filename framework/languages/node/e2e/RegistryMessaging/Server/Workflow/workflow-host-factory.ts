@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import { ZLINK_CHANNEL_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
-import type { ZLinkChannelClient } from '@zlink-systems/framework';
+import { ZLINK_ROUTE_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import type { ZLinkRouteClient } from '@zlink-systems/framework';
 import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
 import { PacketNames } from '../../Shared/messages';
 import { validateServerOptions } from './Configuration/server-options';
@@ -20,7 +20,7 @@ export async function startWorkflowHost(): Promise<void> {
   const app = await NestFactory.createApplicationContext(WorkflowModule, { logger: false, abortOnError: false });
   const options = app.get(REGISTRY_MESSAGING_OPTIONS, { strict: false }) as ServerOptions;
   const evidence = app.get(EvidenceStore, { strict: false });
-  const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
+  const channel = app.get(ZLINK_ROUTE_CLIENT, { strict: false }) as ZLinkRouteClient;
   const server = await startHttpServer(options.httpUrl, createWorkflowEndpoints(evidence, channel, () => { stopping = true; }));
 
   while (!stopping) {
@@ -53,13 +53,13 @@ function createWorkflowModule(): Function {
               redisEndpoint: options.redisEndpoint,
               redisKeyPrefix: options.redisKeyPrefix
             }));
-            Object.assign(builder.configureLocations(), locationMessagingOptions());
+            locationMessagingOptions(builder.configureLocations());
           }
           const workflow = builder.addRouteMesh('workflow')
             .listen(options.workflowEndpoint)
             .routingId(options.rid);
           workflow.peerConnections();
-          workflow.channelName('workflow')
+          workflow.channel('workflow').server()
             .addRequestHandler(PacketNames.workflowReq, WorkflowRequestHandler);
           return builder.build();
         }

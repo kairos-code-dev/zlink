@@ -1,4 +1,4 @@
-// RC-A2: attribute 등록 (.NET) 시나리오를 검증한다.
+// RC-A2: 언어별 annotation·attribute handler를 scan한다 시나리오를 검증한다.
 import type { EchoRes } from '../../Shared/messages';
 import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';

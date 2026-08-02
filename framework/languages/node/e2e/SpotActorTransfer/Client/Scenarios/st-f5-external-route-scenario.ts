@@ -1,4 +1,4 @@
-// ST-F5: Message Follow route 제거 시나리오를 검증한다.
+// ST-F5: Message Follow route cleanup 시나리오를 검증한다.
 // Two consecutive relocations preserve a bounded Message Follow chain.
 import {
   SpotActorTransferNames,

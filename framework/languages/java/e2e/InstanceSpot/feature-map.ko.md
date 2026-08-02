@@ -95,3 +95,8 @@
 | `IS-E2E-29` | 미구현 | Cross-mesh in-flight drain completion 순서 |
 | `IS-E2E-30` | 미구현 | Multi-mesh 동시 drain terminal 단일 완료 |
 | `IS-E2E-31` | 미구현 | Remote CAS loser exact route redirect 1회 |
+| `IS-E2E-32` | 미구현 | Ready owner의 close와 다음 generation activation |
+| `IS-E2E-33` | 미구현 | Activation 중복 요청의 단일 terminal과 cleanup |
+| `IS-E2E-34` | 미구현 | Host shutdown 중 activation deadline과 release |
+| `IS-E2E-35` | 미구현 | Cross-language activation 결과와 오류 parity |
+| `IS-E2E-36` | 미구현 | Instance activation process E2E와 role evidence |

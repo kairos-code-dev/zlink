@@ -12,11 +12,11 @@ public sealed partial class RegressionTests
         "TD-D1", "TD-D2", "TD-D3",
         "TD-E1", "TD-E2", "TD-E3",
         "TD-F1", "TD-F2", "TD-F3", "TD-F4", "TD-F5", "TD-F6",
-        "TD-G1"
+        "TD-G1", "TD-D4", "TD-D5", "TD-D6", "TD-E2A", "TD-F5A"
     ];
 
     [Fact]
-    public void ExecutionTurn_Uses_The_Canonical_TwentySeven_Scenario_Inventory()
+    public void ExecutionTurn_Uses_The_Canonical_ThirtyTwo_Scenario_Inventory()
     {
         var root = Path.Combine(ResolveE2eRoot(), "AutomaticTurnDispatch");
         var featureMap = File.ReadAllText(Path.Combine(root, "feature-map.ko.md"));

@@ -46,8 +46,8 @@ should_run_sample() {
 
 ./gradlew --no-daemon --no-parallel \
   :zlink-framework-testkit:fakeBackendTest \
-  --tests 'systems.zlink.framework.testkit.ActorRuntimeFakeBackendTest.entrySpotDestroyActorRemovesEntryOwnedActorWithoutLeftCallback'
-echo "java actor lifecycle sample gate completed"
+  --tests 'systems.zlink.framework.testkit.CurrentManagerFakeBackendTest.actorAndSpotManagersExposeCurrentFluentCallsAgainstFakeBackend'
+echo "java fake-backend public-manager gate completed"
 
 run_sample_with_retry() {
   local script="$1"

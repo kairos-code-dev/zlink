@@ -11,7 +11,7 @@ public final class StateReqHandler {
             ? spot.startWorker(request.op())
             : spot.apply(request.op());
         return java.util.concurrent.CompletableFuture.completedFuture(new Contracts.StateRes(
-            spot.context().spotRid().toString(),
+            spot.context().spotId(),
             spot.context().nodeRid().toString(),
             value));
     }

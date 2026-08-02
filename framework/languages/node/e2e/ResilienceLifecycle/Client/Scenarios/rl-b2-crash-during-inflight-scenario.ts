@@ -1,4 +1,4 @@
-// RL-B2: in-flight request 중 provider crash 시나리오를 검증한다.
+// RL-B2: In-flight handler 중 provider crash를 처리한다 시나리오를 검증한다.
 import type { ProfileRes, TimeoutRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../../../http-client';

@@ -178,7 +178,7 @@ Module({
           WorkflowSpot,
           (factory) => factory.disableRelocation()
         );
-        mesh.channelName(WORKFLOW_MESH);
+        mesh.channel(WORKFLOW_MESH).server();
         return builder.build();
       }
     })

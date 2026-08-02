@@ -83,7 +83,7 @@ bool placement_capacity_available (
 
 framework_exception_t invalid_runtime_call (std::string message)
 {
-    return framework_exception_t (framework_error_kind_t::request_protocol_error,
+    return framework_exception_t (framework_error_kind_t::protocol_error,
                                   std::move (message));
 }
 

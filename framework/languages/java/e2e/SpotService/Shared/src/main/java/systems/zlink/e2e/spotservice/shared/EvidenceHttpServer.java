@@ -114,7 +114,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                     Contracts.CreateSpotReq.class);
                 var result = getOrCreateUserSpot(request.spotRid());
                 write(exchange, 200, json.writeValueAsString(new Contracts.CreateSpotRes(
-                    result.spotRid().toString(),
+                    result.spotId(),
                     state.nodeRid(),
                     result.state().name())));
             });

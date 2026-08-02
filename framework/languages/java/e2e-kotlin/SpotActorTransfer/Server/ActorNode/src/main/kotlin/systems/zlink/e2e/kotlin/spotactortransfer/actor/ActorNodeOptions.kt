@@ -12,4 +12,5 @@ data class ActorNodeOptions(
     val redisLocationEndpoint: String,
     val locationKeyPrefix: String,
     val logDirectory: String,
+    val scenario: String,
 )

@@ -1,4 +1,4 @@
-// SM-F5: Spot lifecycle과 MeshNode lifecycle 분리 시나리오를 검증한다.
+// SM-F5: Spot close가 MeshNode Channel을 종료하지 않는다 시나리오를 검증한다.
 import type {
   ChannelRouteRes,
   ChannelRouteReq,

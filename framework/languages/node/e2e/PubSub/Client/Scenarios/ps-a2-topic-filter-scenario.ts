@@ -1,4 +1,4 @@
-// PS-A2: packet name 기반 handler dispatch 시나리오를 검증한다.
+// PS-A2: Packet name으로 typed handler를 선택한다 시나리오를 검증한다.
 import { randomUUID } from 'node:crypto';
 import { PubSubNames } from '../../Shared/messages';
 import { isEvent } from '../Support/evidence';

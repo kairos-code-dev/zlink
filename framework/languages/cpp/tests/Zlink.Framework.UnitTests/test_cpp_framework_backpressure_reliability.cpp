@@ -25,7 +25,7 @@ int main ()
     auto full_result = runtime.reserve_outbound_request ("profile");
     if (full_result
         || full_result.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_rejected) {
+             != zlink::framework::framework_error_kind_t::rejected) {
         return 3;
     }
 

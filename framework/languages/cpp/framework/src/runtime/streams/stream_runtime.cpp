@@ -97,12 +97,12 @@ class stream_write_call_state_t
     {
         if (!_submission.try_claim ()) {
             return result_t<void>::failure (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               "STREAM write call has already been submitted");
         }
         if (_reply_submission && !_reply_submission->try_claim ()) {
             return result_t<void>::failure (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               "STREAM reply token has already been consumed");
         }
         return result_t<void>::success ();
@@ -114,7 +114,7 @@ class stream_write_call_state_t
             return *_immediate;
         }
         if (!_submit || !_header || !_payload) {
-            return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+            return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                             "STREAM write call is not bound to a stream");
         }
 
@@ -126,14 +126,14 @@ class stream_write_call_state_t
         auto payload = *_payload;
         if (_compressed) {
             if (!_compression_codec) {
-                return result_t<void>::failure (framework_error_kind_t::request_failed,
+                return result_t<void>::failure (framework_error_kind_t::internal_failure,
                                                 "STREAM compression codec is not configured");
             }
             try {
                 payload = _compression_codec->compress (payload);
             }
             catch (const std::exception &error) {
-                return result_t<void>::failure (framework_error_kind_t::request_failed,
+                return result_t<void>::failure (framework_error_kind_t::internal_failure,
                                                 error.what ());
             }
             flags = flags | stream_header_flags_t::payload_compressed;
@@ -197,18 +197,18 @@ class stream_session_dispatcher_t
                 }
                 catch (...) {
                     shared_completion->complete (result_t<void>::failure (
-                      framework_error_kind_t::request_failed,
+                      framework_error_kind_t::internal_failure,
                       "stream session callback threw an exception"));
                 }
             });
         }
         catch (const std::exception &error) {
             shared_completion->complete (
-              result_t<void>::failure (framework_error_kind_t::request_failed, error.what ()));
+              result_t<void>::failure (framework_error_kind_t::internal_failure, error.what ()));
         }
         catch (...) {
             shared_completion->complete (result_t<void>::failure (
-                framework_error_kind_t::request_failed, "stream dispatch executor rejected work"));
+                framework_error_kind_t::internal_failure, "stream dispatch executor rejected work"));
         }
         return task.result ();
     }
@@ -216,7 +216,9 @@ class stream_session_dispatcher_t
     result_t<void> dispatch_async (
       std::string operation,
       dispatch_callback_t callback,
-      stream_runtime_t::async_dispatch_completion_t completion) const
+      stream_runtime_t::async_dispatch_completion_t completion,
+      stream_runtime_t::async_dispatch_started_t started,
+      stream_runtime_t::async_dispatch_cancel_t cancelled) const
     {
         auto executor = stream_dispatch_executor ();
         if (!executor) {
@@ -234,10 +236,11 @@ class stream_session_dispatcher_t
             queue = _stream.dispatch_queue;
         }
         record_operation (operation);
-        const bool posted = queue->try_post_async (
+        const bool posted = queue->post_async_wait (
           std::move (operation),
           [queue, callback = std::move (callback),
-           completion = std::move (completion)] (auto complete) mutable {
+           completion = std::move (completion),
+           started = std::move (started)] (auto complete) mutable {
               auto finish = [queue, complete = std::move (complete),
                              completion = std::move (completion)] (
                               const result_t<void> &result) mutable {
@@ -248,6 +251,9 @@ class stream_session_dispatcher_t
                   });
               };
               try {
+                  if (started) {
+                      started ();
+                  }
                   auto callback_task = callback ();
                   detail::observe_task_completion (
                     callback_task,
@@ -260,17 +266,17 @@ class stream_session_dispatcher_t
               }
               catch (const std::exception &error) {
                   finish (result_t<void>::failure (
-                    framework_error_kind_t::request_failed, error.what ()));
+                    framework_error_kind_t::internal_failure, error.what ()));
               }
               catch (...) {
                   finish (result_t<void>::failure (
-                    framework_error_kind_t::request_failed,
+                    framework_error_kind_t::internal_failure,
                     "stream session callback threw an exception"));
               }
-          });
+          }, std::move (cancelled));
         if (!posted) {
             return result_t<void>::failure (
-              framework_error_kind_t::worker_queue_full,
+              framework_error_kind_t::capacity_exceeded,
               "stream serial dispatch queue is full or closed");
         }
         return result_t<void>::success ();
@@ -305,10 +311,10 @@ task_t<void> dispatch_packet_session (
   std::shared_ptr<stream_dispatch_context_t> context,
   std::shared_ptr<zlink::message_t> payload)
 {
-    enter_stream_relay_dispatch (*header);
-    auto task = session->on_packet (stream, *context, *payload);
-    ::zlink::framework::observe_task_completion (
-      task, [] (const result_t<void> &) { exit_stream_relay_dispatch (); });
+    auto task = [&] {
+        const stream_relay_dispatch_scope_t relay_scope (*header);
+        return session->on_packet (stream, *context, *payload);
+    } ();
     co_return co_await task;
 }
 
@@ -617,7 +623,7 @@ session_actor_manager_t &stream_t::actors ()
 {
     auto *actors = _state->actors.load (std::memory_order_acquire);
     if (!actors) {
-        throw framework_exception_t (framework_error_kind_t::invalid_configuration,
+        throw framework_exception_t (framework_error_kind_t::not_configured,
                                      "STREAM session Actor manager is not attached");
     }
     return *actors;
@@ -691,12 +697,12 @@ stream_write_call_t stream_t::reply_packet (const zlink::message_t &payload)
     const auto request_header = _reply_header;
     if (!request_header) {
         return stream_write_call_t (
-          result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+          result_t<void>::failure (framework_error_kind_t::protocol_error,
                                    "STREAM reply requires current dispatch state"));
     }
     if (!request_header->request_seq ()) {
         return stream_write_call_t (
-          result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+          result_t<void>::failure (framework_error_kind_t::protocol_error,
                                    "STREAM reply requires request sequence"));
     }
     stream_header_t reply_header (stream_message_kind_t::response, request_header->codec (),
@@ -727,7 +733,7 @@ stream_builder_t &stream_builder_t::operator= (stream_builder_t &&) noexcept = d
 stream_builder_t &stream_builder_t::bind (std::string endpoint)
 {
     if (endpoint.empty ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "STREAM bind endpoint must not be empty");
     }
     _state->snapshot.bind_endpoint = std::move (endpoint);
@@ -740,7 +746,7 @@ stream_builder_t &stream_builder_t::configure_tls_server (
   bool require_client_certificate)
 {
     if (certificate_file.empty () || private_key_file.empty ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "STREAM TLS server requires certificate and private key");
     }
     _state->snapshot.tls_certificate_file = std::move (certificate_file);
@@ -752,7 +758,7 @@ stream_builder_t &stream_builder_t::configure_tls_server (
 stream_builder_t &stream_builder_t::register_session (std::string session_name)
 {
     if (session_name.empty ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "STREAM packet session name must not be empty");
     }
     _state->snapshot.packet_session_name = std::move (session_name);
@@ -845,11 +851,11 @@ bool known_codec (stream_codec_t codec)
 result_t<void> validate_name (std::string_view name, bool allow_reserved)
 {
     if (name.empty () || name.size () > 255) {
-        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+        return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                         "STREAM packet name is invalid");
     }
     if (!allow_reserved && name.rfind ("__zlink.", 0) == 0) {
-        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+        return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                         "STREAM packet name uses a reserved prefix");
     }
     return result_t<void>::success ();
@@ -889,7 +895,7 @@ std::uint64_t read_u64 (const std::vector<std::uint8_t> &bytes, std::size_t &off
 result_t<void> stream_runtime_t::validate_header (const stream_header_t &header) const
 {
     if (!known_kind (header.kind ()) || !known_codec (header.codec ())) {
-        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+        return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                         "STREAM header contains unknown kind or codec");
     }
 
@@ -901,26 +907,26 @@ result_t<void> stream_runtime_t::validate_header (const stream_header_t &header)
       | static_cast<std::uint8_t> (stream_header_flags_t::has_correlation_id)
       | static_cast<std::uint8_t> (stream_header_flags_t::has_flow_id);
     if ((raw_flags & ~known_flags) != 0) {
-        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+        return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                         "STREAM header contains unknown flags");
     }
     if (header.flow_id ().has_value () != header.flow_origin ().has_value ()) {
         return result_t<void>::failure (
-          framework_error_kind_t::request_protocol_error,
+          framework_error_kind_t::protocol_error,
           "STREAM header flow id and origin must be present together");
     }
     if (header.flow_id () && !runtime::flow_id_t::is_valid (*header.flow_id ())) {
-        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+        return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                         "STREAM header flow id must be UUIDv7");
     }
     if (header.flow_origin ()) {
         const auto raw_origin = static_cast<std::uint8_t> (*header.flow_origin ());
         if (raw_origin < 1 || raw_origin > 4) {
-            return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+            return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                             "STREAM header flow origin is invalid");
         }
         if (header.kind () == stream_message_kind_t::control) {
-            return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+            return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                             "STREAM control packet must not carry flow fields");
         }
     }
@@ -938,28 +944,28 @@ result_t<void> stream_runtime_t::validate_header (const stream_header_t &header)
     const bool has_request_seq = header.request_seq ().has_value ();
     const bool has_metadata = !header.metadata ().empty ();
     if (header.kind () == stream_message_kind_t::send && has_request_seq) {
-        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+        return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                         "STREAM send packet must not contain request sequence");
     }
     if ((header.kind () == stream_message_kind_t::request
          || header.kind () == stream_message_kind_t::response)
         && !has_request_seq) {
         return result_t<void>::failure (
-          framework_error_kind_t::request_protocol_error,
+          framework_error_kind_t::protocol_error,
           "STREAM request and response packets require request sequence");
     }
     if (has_request_seq && *header.request_seq () == 0) {
-        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+        return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                         "STREAM request sequence must not be zero");
     }
     if (header.kind () == stream_message_kind_t::error && header.codec () != stream_codec_t::json) {
-        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+        return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                         "STREAM error packet must use JSON codec");
     }
     if (header.kind () == stream_message_kind_t::control) {
         if (header.flags () != stream_header_flags_t::none || header.codec () != stream_codec_t::raw
             || has_request_seq || has_metadata) {
-            return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+            return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                             "STREAM control packet must be raw and flagless");
         }
     }
@@ -973,7 +979,7 @@ stream_runtime_t::encode_header (const stream_header_t &header) const
          || header.kind () == stream_message_kind_t::error)
         && !header.packet_name ().empty ()) {
         return result_t<std::vector<std::uint8_t>>::failure (
-          framework_error_kind_t::request_protocol_error,
+          framework_error_kind_t::protocol_error,
           "STREAM response and error packet names must be empty");
     }
     if (auto valid = validate_header (header); !valid) {
@@ -994,7 +1000,7 @@ stream_runtime_t::encode_header (const stream_header_t &header) const
     }
     if (correlation && correlation->size () > std::numeric_limits<std::uint8_t>::max ()) {
         return result_t<std::vector<std::uint8_t>>::failure (
-          framework_error_kind_t::request_protocol_error, "STREAM correlation id is too large");
+          framework_error_kind_t::protocol_error, "STREAM correlation id is too large");
     }
     const auto flow = header.flow_id ();
     if (flow) {
@@ -1014,7 +1020,7 @@ stream_runtime_t::encode_header (const stream_header_t &header) const
     if (!header.metadata ().empty ()) {
         if (header.metadata ().values ().size () > std::numeric_limits<std::uint8_t>::max ()) {
             return result_t<std::vector<std::uint8_t>>::failure (
-              framework_error_kind_t::request_protocol_error,
+              framework_error_kind_t::protocol_error,
               "STREAM metadata item count is too large");
         }
         std::vector<std::uint8_t> metadata_bytes;
@@ -1023,7 +1029,7 @@ stream_runtime_t::encode_header (const stream_header_t &header) const
             if (key.empty () || key.size () > std::numeric_limits<std::uint8_t>::max ()
                 || value.size () > std::numeric_limits<std::uint16_t>::max ()) {
                 return result_t<std::vector<std::uint8_t>>::failure (
-                  framework_error_kind_t::request_protocol_error,
+                  framework_error_kind_t::protocol_error,
                   "STREAM metadata key or value is too large");
             }
             metadata_bytes.push_back (static_cast<std::uint8_t> (key.size ()));
@@ -1033,7 +1039,7 @@ stream_runtime_t::encode_header (const stream_header_t &header) const
         }
         if (metadata_bytes.size () > std::numeric_limits<std::uint16_t>::max ()) {
             return result_t<std::vector<std::uint8_t>>::failure (
-              framework_error_kind_t::request_protocol_error, "STREAM metadata is too large");
+              framework_error_kind_t::protocol_error, "STREAM metadata is too large");
         }
         append_u16 (bytes, static_cast<std::uint16_t> (metadata_bytes.size ()));
         bytes.insert (bytes.end (), metadata_bytes.begin (), metadata_bytes.end ());
@@ -1053,12 +1059,12 @@ result_t<stream_header_t>
 stream_runtime_t::decode_header (const std::vector<std::uint8_t> &bytes) const
 {
     if (bytes.size () < 5) {
-        return result_t<stream_header_t>::failure (framework_error_kind_t::payload_decode_failed,
+        return result_t<stream_header_t>::failure (framework_error_kind_t::protocol_error,
                                                    "STREAM header is too short");
     }
     std::size_t offset = 0;
     if (bytes[offset++] != runtime::flow_id_t::format_marker) {
-        return result_t<stream_header_t>::failure (framework_error_kind_t::request_protocol_error,
+        return result_t<stream_header_t>::failure (framework_error_kind_t::protocol_error,
                                                    "STREAM format marker is invalid");
     }
     const auto kind = static_cast<stream_message_kind_t> (bytes[offset++]);
@@ -1068,18 +1074,18 @@ stream_runtime_t::decode_header (const std::vector<std::uint8_t> &bytes) const
     if (has_flag (flags, stream_header_flags_t::has_request_seq)) {
         if (bytes.size () - offset < 8) {
             return result_t<stream_header_t>::failure (
-              framework_error_kind_t::payload_decode_failed,
+              framework_error_kind_t::protocol_error,
               "STREAM request sequence is incomplete");
         }
         request_seq = read_u64 (bytes, offset);
     }
     if (offset >= bytes.size ()) {
-        return result_t<stream_header_t>::failure (framework_error_kind_t::payload_decode_failed,
+        return result_t<stream_header_t>::failure (framework_error_kind_t::protocol_error,
                                                    "STREAM packet name length is missing");
     }
     const auto name_size = bytes[offset++];
     if (bytes.size () - offset < name_size) {
-        return result_t<stream_header_t>::failure (framework_error_kind_t::payload_decode_failed,
+        return result_t<stream_header_t>::failure (framework_error_kind_t::protocol_error,
                                                    "STREAM packet name is invalid");
     }
     std::string name (bytes.begin () + static_cast<std::ptrdiff_t> (offset),
@@ -1090,29 +1096,29 @@ stream_runtime_t::decode_header (const std::vector<std::uint8_t> &bytes) const
     if (has_flag (flags, stream_header_flags_t::has_metadata)) {
         if (bytes.size () - offset < 2) {
             return result_t<stream_header_t>::failure (
-              framework_error_kind_t::payload_decode_failed, "STREAM metadata length is missing");
+              framework_error_kind_t::protocol_error, "STREAM metadata length is missing");
         }
         const auto metadata_size = read_u16 (bytes, offset);
         if (bytes.size () - offset < metadata_size) {
             return result_t<stream_header_t>::failure (
-              framework_error_kind_t::payload_decode_failed, "STREAM metadata is incomplete");
+              framework_error_kind_t::protocol_error, "STREAM metadata is incomplete");
         }
         const auto metadata_end = offset + metadata_size;
         if (offset >= metadata_end) {
             return result_t<stream_header_t>::failure (
-              framework_error_kind_t::payload_decode_failed, "STREAM metadata count is missing");
+              framework_error_kind_t::protocol_error, "STREAM metadata count is missing");
         }
         const auto count = bytes[offset++];
         for (std::uint8_t i = 0; i < count; ++i) {
             if (offset >= metadata_end) {
                 return result_t<stream_header_t>::failure (
-                  framework_error_kind_t::payload_decode_failed,
+                  framework_error_kind_t::protocol_error,
                   "STREAM metadata key length is missing");
             }
             const auto key_size = bytes[offset++];
             if (key_size == 0 || metadata_end - offset < key_size) {
                 return result_t<stream_header_t>::failure (
-                  framework_error_kind_t::payload_decode_failed,
+                  framework_error_kind_t::protocol_error,
                   "STREAM metadata key is incomplete");
             }
             std::string key (bytes.begin () + static_cast<std::ptrdiff_t> (offset),
@@ -1120,13 +1126,13 @@ stream_runtime_t::decode_header (const std::vector<std::uint8_t> &bytes) const
             offset += key_size;
             if (metadata_end - offset < 2) {
                 return result_t<stream_header_t>::failure (
-                  framework_error_kind_t::payload_decode_failed,
+                  framework_error_kind_t::protocol_error,
                   "STREAM metadata value length is missing");
             }
             const auto value_size = read_u16 (bytes, offset);
             if (metadata_end - offset < value_size) {
                 return result_t<stream_header_t>::failure (
-                  framework_error_kind_t::payload_decode_failed,
+                  framework_error_kind_t::protocol_error,
                   "STREAM metadata value is incomplete");
             }
             std::string value (bytes.begin () + static_cast<std::ptrdiff_t> (offset),
@@ -1136,20 +1142,20 @@ stream_runtime_t::decode_header (const std::vector<std::uint8_t> &bytes) const
         }
         if (offset != metadata_end) {
             return result_t<stream_header_t>::failure (
-              framework_error_kind_t::payload_decode_failed, "STREAM metadata has trailing bytes");
+              framework_error_kind_t::protocol_error, "STREAM metadata has trailing bytes");
         }
     }
     std::string correlation;
     if (has_flag (flags, stream_header_flags_t::has_correlation_id)) {
         if (offset >= bytes.size ()) {
             return result_t<stream_header_t>::failure (
-              framework_error_kind_t::payload_decode_failed,
+              framework_error_kind_t::protocol_error,
               "STREAM correlation id length is missing");
         }
         const auto correlation_size = bytes[offset++];
         if (correlation_size == 0 || bytes.size () - offset < correlation_size) {
             return result_t<stream_header_t>::failure (
-              framework_error_kind_t::payload_decode_failed, "STREAM correlation id is incomplete");
+              framework_error_kind_t::protocol_error, "STREAM correlation id is incomplete");
         }
         correlation =
           std::string (bytes.begin () + static_cast<std::ptrdiff_t> (offset),
@@ -1161,7 +1167,7 @@ stream_runtime_t::decode_header (const std::vector<std::uint8_t> &bytes) const
     if (has_flag (flags, stream_header_flags_t::has_flow_id)) {
         if (bytes.size () - offset < runtime::flow_id_t::encoded_length + 1) {
             return result_t<stream_header_t>::failure (
-              framework_error_kind_t::payload_decode_failed,
+              framework_error_kind_t::protocol_error,
               "STREAM header flow fields are incomplete");
         }
         flow_id = std::string (
@@ -1171,7 +1177,7 @@ stream_runtime_t::decode_header (const std::vector<std::uint8_t> &bytes) const
         flow_origin = static_cast<flow_origin_t> (bytes[offset++]);
     }
     if (offset != bytes.size ()) {
-        return result_t<stream_header_t>::failure (framework_error_kind_t::payload_decode_failed,
+        return result_t<stream_header_t>::failure (framework_error_kind_t::protocol_error,
                                                    "STREAM header has trailing bytes");
     }
 
@@ -1184,7 +1190,7 @@ stream_runtime_t::decode_header (const std::vector<std::uint8_t> &bytes) const
         header.with_flow (std::move (flow_id), *flow_origin);
     }
     if (auto valid = validate_header (header); !valid) {
-        return result_t<stream_header_t>::failure (framework_error_kind_t::payload_decode_failed,
+        return result_t<stream_header_t>::failure (framework_error_kind_t::protocol_error,
                                                    valid.error ()->what ());
     }
     return result_t<stream_header_t>::success (std::move (header));
@@ -1255,7 +1261,7 @@ void stream_runtime_t::send_heartbeat_pong (stream_t &stream) const noexcept
 stream_t stream_runtime_t::open_session (std::string stream_name) const
 {
     if (_state->streams.find (stream_name) == _state->streams.end ()) {
-        throw framework_exception_t (framework_error_kind_t::request_target_not_found,
+        throw framework_exception_t (framework_error_kind_t::not_found,
                                      "STREAM endpoint is not registered");
     }
     auto state = std::make_shared<stream_state_t> ();
@@ -1277,11 +1283,14 @@ result_t<void> stream_runtime_t::dispatch_serial_async (
   stream_t &stream,
   std::string operation,
   std::function<task_t<void> ()> callback,
-  async_dispatch_completion_t completion) const
+  async_dispatch_completion_t completion,
+  async_dispatch_started_t started,
+  async_dispatch_cancel_t cancelled) const
 {
     return stream_session_dispatcher_t (*stream._state)
       .dispatch_async (std::move (operation), std::move (callback),
-                       std::move (completion));
+                       std::move (completion), std::move (started),
+                       std::move (cancelled));
 }
 
 result_t<void> stream_runtime_t::dispatch_connected (packet_stream_session_t &session,
@@ -1315,7 +1324,7 @@ result_t<void> stream_runtime_t::dispatch_packet (packet_stream_session_t &sessi
     auto handler_payload = payload;
     if (has_flag (header.flags (), stream_header_flags_t::payload_compressed)) {
         if (!_state->compression_codec) {
-            return result_t<void>::failure (framework_error_kind_t::payload_decode_failed,
+            return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                             "STREAM compression codec is not configured");
         }
         try {
@@ -1323,12 +1332,12 @@ result_t<void> stream_runtime_t::dispatch_packet (packet_stream_session_t &sessi
               _state->compression_codec->decompress (payload, max_stream_decompressed_payload_size);
         }
         catch (const std::exception &error) {
-            return result_t<void>::failure (framework_error_kind_t::payload_decode_failed,
+            return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                             error.what ());
         }
         if (handler_payload.bytes ().size () > max_stream_decompressed_payload_size) {
             return result_t<void>::failure (
-              framework_error_kind_t::payload_decode_failed,
+              framework_error_kind_t::protocol_error,
               "STREAM decompressed payload exceeds configured receive limit");
         }
     }
@@ -1384,7 +1393,9 @@ result_t<void> stream_runtime_t::dispatch_packet_async (
   stream_t &stream,
   const stream_header_t &header,
   const zlink::message_t &payload,
-  async_dispatch_completion_t completion) const
+  async_dispatch_completion_t completion,
+  async_dispatch_started_t started,
+  async_dispatch_cancel_t cancelled) const
 {
     if (auto valid = validate_header (header); !valid) {
         return valid;
@@ -1393,7 +1404,7 @@ result_t<void> stream_runtime_t::dispatch_packet_async (
     if (has_flag (header.flags (), stream_header_flags_t::payload_compressed)) {
         if (!_state->compression_codec) {
             return result_t<void>::failure (
-              framework_error_kind_t::payload_decode_failed,
+              framework_error_kind_t::protocol_error,
               "STREAM compression codec is not configured");
         }
         try {
@@ -1402,11 +1413,11 @@ result_t<void> stream_runtime_t::dispatch_packet_async (
         }
         catch (const std::exception &error) {
             return result_t<void>::failure (
-              framework_error_kind_t::payload_decode_failed, error.what ());
+              framework_error_kind_t::protocol_error, error.what ());
         }
         if (handler_payload.bytes ().size () > max_stream_decompressed_payload_size) {
             return result_t<void>::failure (
-              framework_error_kind_t::payload_decode_failed,
+              framework_error_kind_t::protocol_error,
               "STREAM decompressed payload exceeds configured receive limit");
         }
     }
@@ -1457,7 +1468,7 @@ result_t<void> stream_runtime_t::dispatch_packet_async (
             session, std::move (dispatch_stream), std::move (dispatch_header),
             std::move (dispatch_context), std::move (dispatch_payload));
       },
-      std::move (completion));
+      std::move (completion), std::move (started), std::move (cancelled));
 }
 
 result_t<void> stream_runtime_t::dispatch_disconnected (packet_stream_session_t &session,

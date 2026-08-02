@@ -16,7 +16,7 @@ Kotlin lane은 Java와 shared transfer fixture를 사용하더라도 Kotlin clie
 
 | 시나리오 | 상태 | 검증 대상 |
 |---|---|---|
-| `ST-A1` | runtime blocker | 현재 public API로 compile된다. Actor가 remote owner에 배치된 뒤 global Actor ID request가 Java runtime의 local-only dispatch에서 `actor is not local`로 실패한다. |
+| `ST-A1` | focused 구현 | Kotlin focused process가 ST-A1 전용 placement fixture에서 `actor-a`를 같은 node target으로 사용하고, `getOrCreate(...).request(...).submit()` public path로 transfer와 global Actor ID request를 확인한다. `scenario ST-A1 passed` 및 aggregate passed marker를 반환하지만 후속 transfer scenario와 전체 relocation evidence는 남아 있다. |
 | `ST-A2` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: local admission reject의 무효과. |
 | `ST-A3` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: joined callback 완료 전 packet dispatch 차단. |
 | `ST-B1` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: remote transfer 성공과 state 복원. |

@@ -77,12 +77,12 @@ class courier_session_t final : public packet_stream_session_t
     session_actor_t require_bound_actor (stream_t &stream, const std::string &actor_id)
     {
         if (!_bound_actors.contains (actor_id)) {
-            throw framework_exception_t (framework_error_kind_t::actor_route_not_found,
+            throw framework_exception_t (framework_error_kind_t::not_found,
                                          "courier actor is not bound: " + actor_id);
         }
         auto actor = stream.actors ().find (actor_id);
         if (!actor) {
-            throw framework_exception_t (framework_error_kind_t::actor_route_not_found,
+            throw framework_exception_t (framework_error_kind_t::not_found,
                                          "bound courier actor route is not found: " + actor_id);
         }
         return *actor;
@@ -108,9 +108,19 @@ int main (int argc, char **argv)
           .trace_label ("deliverydispatch-courier-session");
         add_deliverydispatch_json_codecs (options.codecs ());
         add_deliverydispatch_location_store (options, topology);
-        options.add_route_mesh (sample_names_t::courier_actor_discovery)
-          .listen (topology.courier_session_spot_router_endpoint)
-          .channel_name (sample_names_t::courier_actor_discovery);
+        auto actor_mesh = options.add_route_mesh (sample_names_t::courier_actor_discovery);
+        actor_mesh.set_routing_id (zlink::routing_id_t::from (
+          sample_names_t::courier_session_route_node));
+        actor_mesh.set_object_role (object_role_t::client);
+        actor_mesh.listen (topology.courier_session_spot_router_endpoint)
+          .channel_name (sample_names_t::courier_actor_discovery)
+          .client ();
+        actor_mesh.peer_connections ().connect (
+          zlink::routing_id_t::from (sample_names_t::courier_actor_instance_1),
+          topology.courier_actor_node_1_router_endpoint);
+        actor_mesh.peer_connections ().connect (
+          zlink::routing_id_t::from (sample_names_t::courier_actor_instance_2),
+          topology.courier_actor_node_2_router_endpoint);
         options.add_stream_node (sample_names_t::courier_stream_node)
           .bind (topology.courier_stream_endpoint)
           .register_session<courier_session_t> ();

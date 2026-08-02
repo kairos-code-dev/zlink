@@ -1,4 +1,4 @@
-// SM-D5: physical session disconnect automatic fan-out 시나리오를 검증한다.
+// SM-D5: Physical disconnect를 current bindings 전체에 통지한다 시나리오를 검증한다.
 import {
   bindActor,
   createSessionClient,

@@ -90,7 +90,9 @@ public interface ZLinkStreamConnector {
         return on(name, message -> handler.handleAsync(new ZLinkStreamMessage<>(
             message.packetName(),
             codec.decode(message.payload(), payloadType),
-            message.metadata())));
+            message.metadata(),
+            message.flowId(),
+            message.flowOrigin())));
     }
 
     AutoCloseable onErrorReceived(ZLinkStreamErrorHandler handler);

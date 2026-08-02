@@ -82,13 +82,13 @@ function createServiceModule(role: ServiceRoleOptions): Function {
           const serviceMesh = builder.addRouteMesh(RuntimeMonitoringNames.channel)
             .listen(options.channelEndpoint)
             .routingId(options.rid);
-          serviceMesh.channelName(RuntimeMonitoringNames.channel)
+          serviceMesh.channel(RuntimeMonitoringNames.channel).server()
             .addRequestHandler(PacketNames.profileReq, ProfileRequestHandler);
           const spotMesh = builder.addRouteMesh(RuntimeMonitoringNames.spotChannel)
             .routingId(options.rid)
             .listen(options.spotRouterEndpoint);
           spotMesh.objects().server().addEntrySpot(MonitoringEntrySpot);
-          spotMesh.channelName(RuntimeMonitoringNames.spotChannel);
+          spotMesh.channel(RuntimeMonitoringNames.spotChannel).server();
 
           return {
             ...builder.build(),

@@ -6,7 +6,9 @@ internal sealed record ClientOptions(
     string SessionBStreamEndpoint,
     string Scenario,
     string RequestId,
-    string SpotRid)
+    string SpotRid,
+    string PlayAUrl = "",
+    string PlayBUrl = "")
 {
     public static ClientOptions Parse(string[] args)
         => E2eConfiguration.Load<ClientOptions>(args);

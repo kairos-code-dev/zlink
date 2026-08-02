@@ -61,6 +61,8 @@ private fun ZLinkStreamConnectorOptions.copyStreamCompression(
         maxSendPayloadSize(),
         maxReceivePayloadSize(),
         maxReceivedMessages(),
+        maxInboundObserverNotifications(),
+        maxInboundObserverPayloadPreviewBytes(),
         heartbeatEnabled(),
         heartbeatInterval(),
         heartbeatTimeout(),

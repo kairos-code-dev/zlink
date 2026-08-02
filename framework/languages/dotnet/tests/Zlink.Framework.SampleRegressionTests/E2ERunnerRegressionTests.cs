@@ -12,7 +12,7 @@ public sealed partial class RegressionTests
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(13, runners.Length);
+        Assert.Equal(14, runners.Length);
         foreach (var runner in runners)
         {
             var text = File.ReadAllText(runner);

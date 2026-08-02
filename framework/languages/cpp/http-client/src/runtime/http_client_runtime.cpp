@@ -84,7 +84,7 @@ http_client_runtime_t::submit (http_request_t request) const
     auto execute_scheduler = _options.execute_scheduler;
     if (!execute_scheduler) {
         completion.complete (zlink::framework::result_t<raw_http_response_t>::failure (
-          zlink::framework::framework_error_kind_t::request_protocol_error,
+          zlink::framework::framework_error_kind_t::protocol_error,
           "HTTP client coroutine execute scheduler is not configured"));
         return task;
     }
@@ -96,12 +96,11 @@ http_client_runtime_t::submit (http_request_t request) const
     }
     catch (const std::exception &ex) {
         completion.complete (zlink::framework::detail::boundary_failure<raw_http_response_t> (zlink::framework::detail::boundary_error_t::closed,
-          std::string ("HTTP client coroutine execute scheduler rejected work: ") + ex.what (),
-          true));
+          std::string ("HTTP client coroutine execute scheduler rejected work: ") + ex.what ()));
     }
     catch (...) {
         completion.complete (zlink::framework::detail::boundary_failure<raw_http_response_t> (zlink::framework::detail::boundary_error_t::closed,
-          "HTTP client coroutine execute scheduler rejected work", true));
+          "HTTP client coroutine execute scheduler rejected work"));
     }
     return task;
 }

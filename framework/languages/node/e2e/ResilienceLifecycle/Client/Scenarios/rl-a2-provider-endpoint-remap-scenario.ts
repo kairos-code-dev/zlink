@@ -1,4 +1,4 @@
-// RL-A2: Kubernetes식 pod replacement 시나리오를 검증한다.
+// RL-A2: 다른 endpoint의 replacement로 전환한다 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../../../http-client';
 import { startProvider } from '../Support/managed-provider';

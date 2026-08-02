@@ -10,6 +10,7 @@
 #include "../sample_log_dir.hpp"
 #include "Handlers/authenticate_player_handler.hpp"
 #include "Handlers/create_game_http_handler.hpp"
+#include "Handlers/route_ready_handler.hpp"
 
 #include <memory>
 
@@ -54,6 +55,7 @@ class api_server_host_factory_t
 
             options.http ()
               .listen (topology.selected_api_http_endpoint ())
+              .map_get<route_ready_handler_t> ("/ready")
               .map_post<create_game_http_handler_t> ("/games");
 
             /* API는 Object Client RouteMesh로 Play Object Server에 연결한다. 새 room의
@@ -63,9 +65,12 @@ class api_server_host_factory_t
               .set_routing_id (zlink::routing_id_t::from (
                 "tictactoe-api-" + topology.api_node))
               .listen (topology.selected_api_route_endpoint ());
-            for (const auto &endpoint : topology.all_play_route_endpoints ()) {
-                mesh.peer_connections ().connect (endpoint);
-            }
+            mesh.peer_connections ().connect (
+              zlink::routing_id_t::from ("tictactoe-play-a"),
+              topology.play_a_route_endpoint);
+            mesh.peer_connections ().connect (
+              zlink::routing_id_t::from ("tictactoe-play-b"),
+              topology.play_b_route_endpoint);
 
             options.handlers ()
               .group ("api")

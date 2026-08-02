@@ -61,7 +61,7 @@ class coroutine_executor_t
           [work = std::move (work),
            completion = std::move (completion)] () mutable -> boost::asio::awaitable<void> {
               result_t<TResult> result = result_t<TResult>::failure (
-                framework_error_kind_t::request_failed, "coroutine handler failed");
+                framework_error_kind_t::internal_failure, "coroutine handler failed");
               try {
                   result = co_await work ();
               }
@@ -69,7 +69,7 @@ class coroutine_executor_t
                   result = detail::result_access_t::failure<TResult> (error);
               }
               catch (...) {
-                  result = result_t<TResult>::failure (framework_error_kind_t::request_failed,
+                  result = result_t<TResult>::failure (framework_error_kind_t::internal_failure,
                                                        "coroutine handler threw an exception");
               }
               completion.complete (std::move (result));

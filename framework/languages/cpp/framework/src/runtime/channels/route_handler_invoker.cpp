@@ -45,7 +45,7 @@ route_handler_invoker_t::invoke_send (const route_handler_registry_t &handlers,
               co_return detail::result_access_t::failure<void> (error);
           }
           catch (...) {
-              co_return result_t<void>::failure (framework_error_kind_t::request_failed,
+              co_return result_t<void>::failure (framework_error_kind_t::internal_failure,
                                                 "routed send handler threw an exception");
           }
       });
@@ -85,7 +85,7 @@ route_handler_invoker_t::invoke_request (const route_handler_registry_t &handler
           }
           catch (...) {
               co_return result_t<zlink::message_t>::failure (
-                framework_error_kind_t::request_failed, "routed request handler threw an exception");
+                framework_error_kind_t::internal_failure, "routed request handler threw an exception");
           }
       });
 }

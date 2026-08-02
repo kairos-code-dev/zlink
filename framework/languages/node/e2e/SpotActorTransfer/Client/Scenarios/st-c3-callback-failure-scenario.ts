@@ -1,4 +1,4 @@
-// ST-C3: callback과 relocation 실패 분류 시나리오를 검증한다.
+// ST-C3: Application callback failure 시나리오를 검증한다.
 import { SpotActorTransferNames, nodeA, nodeB, assertSourceFailure, createSpot, createActor, joinActor, getEvidence, has, unique, require } from '../Support/scenario-support';
 
 export async function runStC3(): Promise<void> {

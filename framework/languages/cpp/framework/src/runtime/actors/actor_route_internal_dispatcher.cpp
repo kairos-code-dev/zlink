@@ -54,7 +54,7 @@ actor_route_internal_dispatcher_t::dispatch_send (const route_received_packet_t 
         return detail::result_access_t::failure<void> (error);
     }
     catch (const std::exception &error) {
-        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+        return result_t<void>::failure (framework_error_kind_t::protocol_error,
                                         std::string ("actor route send decode failed: ")
                                           + error.what ());
     }
@@ -98,7 +98,7 @@ result_t<zlink::message_t> actor_route_internal_dispatcher_t::dispatch_request (
     }
     catch (const std::exception &error) {
         return result_t<zlink::message_t>::failure (
-          framework_error_kind_t::request_protocol_error,
+          framework_error_kind_t::protocol_error,
           std::string ("actor route request decode failed: ") + error.what ());
     }
 }

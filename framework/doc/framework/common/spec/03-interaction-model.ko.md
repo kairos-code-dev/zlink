@@ -261,8 +261,8 @@ infrastructure 실행 영역에서 처리한다.
 
 ## 8. STREAM session
 
-STREAM session은 연결 lifecycle과 packet 순서를 소유한다. session callback은 transport callback에서
-직접 실행하지 않고 Framework가 관리하는 queue를 거친다. 같은 session의 packet과 lifecycle callback은
+STREAM session은 연결 lifecycle과 packet 순서를 소유한다. Framework 내부 recv loop는 packet을
+관리 queue에 넣은 뒤 session callback을 실행한다. 같은 session의 packet과 lifecycle callback은
 직렬로 실행하며 서로 다른 session 사이의 전역 순서는 보장하지 않는다.
 
 Session과 Actor가 bind되면 session ingress는 Actor mailbox로 complete message를 submit한다. Actor에서

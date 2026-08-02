@@ -6,18 +6,22 @@ import com.sun.net.httpserver.HttpHandler
 import com.sun.net.httpserver.HttpServer
 import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
+import java.lang.reflect.Modifier
 import java.util.ArrayDeque
 import java.util.concurrent.Executors
 import java.util.concurrent.CompletionStage
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import systems.zlink.httpclient.ZLinkHttpExecutionTurn
 import systems.zlink.httpclient.ZLinkHttpClient
+import java.util.concurrent.CompletableFuture
 
 private data class Player(val id: Int, val name: String)
 
@@ -47,6 +51,36 @@ private fun readBody(exchange: HttpExchange): String =
 class HttpClientCoroutineTest {
 
     @Test
+    fun `server coroutine facade exposes yield and not the removed yieldAwait`() {
+        val methods = Class.forName(
+            "systems.zlink.httpclient.kotlin.HttpClientCoroutinesKt",
+        ).declaredMethods.filter { Modifier.isPublic(it.modifiers) }
+
+        assertTrue(methods.any { method ->
+            method.name == "yield" &&
+                method.parameterTypes.firstOrNull()?.name ==
+                    "systems.zlink.httpclient.ZLinkHttpServerRequestBuilder"
+        })
+        assertTrue(methods.none { it.name == "yieldAwait" })
+    }
+
+    @Test
+    fun `cancelling coroutine wait does not cancel submitted stage`() = runBlocking {
+        val submitted = CompletableFuture<String>()
+        val waiter = async {
+            submitted.awaitWithoutCancellingOperation()
+        }
+        yield()
+
+        waiter.cancelAndJoin()
+
+        assertTrue(!submitted.isCancelled)
+        assertTrue(!submitted.isDone)
+        submitted.complete("completed-after-caller-cancel")
+        assertEquals("completed-after-caller-cancel", submitted.join())
+    }
+
+    @Test
     fun `server coroutine selects retained or yielded turn`() = runBlocking {
         val asyncCalls = AtomicInteger()
         val yieldCalls = AtomicInteger()
@@ -64,7 +98,7 @@ class HttpClientCoroutineTest {
         TestServer { exchange -> respond(exchange, 200, """{"id":7,"name":"Aria"}""") }.use { server ->
             ZLinkHttpClient.create(server.baseUrl).buildServer(turn).use { client ->
                 assertEquals(7, client.get("/p").await<Player>().body().id)
-                assertEquals(7, client.get("/p").yieldAwait<Player>().body().id)
+            assertEquals(7, client.get("/p").yield<Player>().body().id)
                 client.post("/p").await()
                 assertEquals(2, asyncCalls.get())
                 assertEquals(1, yieldCalls.get())

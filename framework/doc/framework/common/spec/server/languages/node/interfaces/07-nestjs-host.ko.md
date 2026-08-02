@@ -402,8 +402,10 @@ export declare class ZLinkHttpClientModule {
 
 `applicationHwmBytes(undefined)`는 Auto mode, `0n`은 제한 없음, 양수는 정확한 host 전체 byte 상한이다.
 `applicationHwmProfile` 기본값은 `Balanced`다. `processMemoryLimitBytes(undefined)`이면 process에 적용된
-유한한 container·cgroup 상한을 사용한다. Auto mode에서 유한한 memory 상한을 확인할 수 없으면 socket
-bind 전에 configuration error로 startup이 실패한다.
+유한한 container·cgroup·Windows Job Object와 같은 OS 상한과 V8 managed heap 상한(`heap_size_limit`)을
+확인한다. 두 값을 모두 확인하면 더 작은 값을 사용하고, 하나만 확인하면 그 값을 사용한다. 둘 다 확인할
+수 없으면 시스템 물리 메모리 총량을 사용한다. 계산 결과가 양수가 아니면 socket bind 전에 configuration
+error로 startup이 실패한다.
 Application listener의 `maxMessageSize` 기본값은 `16_777_216` bytes다.
 
 NestJS builder도 Entry Spot 구현 type만 등록한다. Entry Spot의 `SpotId`는 Framework가

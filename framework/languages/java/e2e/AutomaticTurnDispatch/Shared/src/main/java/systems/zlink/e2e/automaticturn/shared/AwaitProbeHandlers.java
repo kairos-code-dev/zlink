@@ -5,12 +5,12 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.actors.ZLinkActorJoinResult;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.spots.SpotHandle;
 import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
 import systems.zlink.framework.spots.ZLinkSpotTimerHandler;
@@ -49,7 +49,7 @@ public final class AwaitProbeHandlers {
         public CompletionStage<Contracts.ScenarioRes> handle(
             AwaitProbeSpot spot,
             Contracts.HoldReq request) {
-            String value = spot.context().spotRid().toString();
+            String value = spot.context().spotId();
             evidence.record("hold-started", request.requestId(), value);
             return spot.context().outbound()
                 .requestToChannel(Contracts.DELAY_CHANNEL, new Contracts.DelayReq(request.requestId(), 800))
@@ -90,7 +90,7 @@ public final class AwaitProbeHandlers {
         public CompletionStage<Contracts.ScenarioRes> handle(
             AwaitProbeSpot spot,
             Contracts.AwaitReq request) {
-            String value = "spot=" + spot.context().spotRid() + ";correlation=" + request.correlationId();
+            String value = "spot=" + spot.context().spotId() + ";correlation=" + request.correlationId();
             long delayMillis = "ATD-E3".equals(request.scenarioId()) ? 30_000
                 : request.scenarioId().startsWith("TD-") ? 2_000 : 800;
             boolean yields = "TD-B1".equals(request.scenarioId());
@@ -127,7 +127,7 @@ public final class AwaitProbeHandlers {
         public CompletionStage<Contracts.ScenarioRes> handle(
             AwaitProbeSpot spot,
             Contracts.WorkerAwaitReq request) {
-            String value = spot.context().spotRid().toString();
+            String value = spot.context().spotId();
             evidence.record("worker-await-started", request.requestId(), value);
             evidence.record("worker-await-released", request.requestId(), value);
             return spot.context().runCpuWorker(cancellation -> {
@@ -170,7 +170,7 @@ public final class AwaitProbeHandlers {
 
         @Override
         public CompletionStage<Void> handle(AwaitProbeSpot spot, Contracts.WorkerAwaitMsg request) {
-            String value = spot.context().spotRid().toString();
+            String value = spot.context().spotId();
             evidence.record("worker-await-started", request.requestId(), value);
             evidence.record("worker-await-released", request.requestId(), value);
             return spot.context().runCpuWorker(cancellation -> {
@@ -211,7 +211,7 @@ public final class AwaitProbeHandlers {
 
         @Override
         public CompletionStage<Void> handle(AwaitProbeSpot spot, Contracts.AwaitMsg request) {
-            String value = "spot=" + spot.context().spotRid()
+            String value = "spot=" + spot.context().spotId()
                 + ";correlation=" + request.correlationId() + ";handler=spot";
             boolean yields = request.correlationId().startsWith("TD-B");
             boolean turnContract = request.correlationId().startsWith("TD-");
@@ -247,7 +247,7 @@ public final class AwaitProbeHandlers {
 
         @Override
         public CompletionStage<Void> handle(AwaitProbeSpot spot, Contracts.AwaitTimeoutMsg request) {
-            String value = "spot=" + spot.context().spotRid() + ";handler=spot";
+            String value = "spot=" + spot.context().spotId() + ";handler=spot";
             evidence.record("timeout-await-started", request.requestId(), value);
             evidence.record("timeout-await-released", request.requestId(), value);
             return spot.context().outbound()
@@ -277,7 +277,7 @@ public final class AwaitProbeHandlers {
 
         @Override
         public CompletionStage<Void> handle(AwaitProbeSpot spot, Contracts.AwaitCancelMsg request) {
-            String value = "spot=" + spot.context().spotRid() + ";handler=spot";
+            String value = "spot=" + spot.context().spotId() + ";handler=spot";
             evidence.record("cancel-await-started", request.requestId(), value);
             evidence.record("cancel-await-released", request.requestId(), value);
             CompletableFuture<Contracts.DelayRes> pending = spot.context().outbound()
@@ -313,7 +313,7 @@ public final class AwaitProbeHandlers {
         public CompletionStage<Contracts.ScenarioRes> handle(
             AwaitProbeSpot spot,
             Contracts.RemoteSpotAwaitReq request) {
-            String value = "spot=" + spot.context().spotRid() + ";target=" + request.targetSpotRid();
+            String value = "spot=" + spot.context().spotId() + ";target=" + request.targetSpotRid();
             evidence.record("remote-await-started", request.requestId(), value);
             evidence.record("remote-await-released", request.requestId(), value);
             RoutingId targetRid = RoutingId.from(request.targetSpotRid());
@@ -375,7 +375,7 @@ public final class AwaitProbeHandlers {
                 return CompletableFuture.completedFuture(null);
             }
             String value = "timer=" + tick.name() + ";mailbox=timer:" + tick.name()
-                + ";tick=" + tick.deliveryIndex() + ";spot=" + spot.context().spotRid();
+                + ";tick=" + tick.deliveryIndex() + ";spot=" + spot.context().spotId();
             if (tick.deliveryIndex() == 1
                 && ("await-on-first".equals(scenario.mode()) || "await-then-next".equals(scenario.mode()))) {
                 evidence.record("timer-await-started", scenario.requestId(), value);
@@ -450,9 +450,9 @@ public final class AwaitProbeHandlers {
         public CompletionStage<Contracts.ActorAwaitRes> handle(
             AwaitEntrySpot spot,
             AwaitActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             Contracts.ActorAwaitReq request) {
-            return actorAwait(spot.context().outbound(), spot.context().spotRid(), actor, request, evidence);
+            return actorAwait(spot.context().outbound(), spot.context().spotId(), actor, request, evidence);
         }
     }
 
@@ -469,7 +469,7 @@ public final class AwaitProbeHandlers {
         public CompletionStage<Contracts.ActorJoinRes> handle(
             AwaitEntrySpot spot,
             AwaitActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             Contracts.ActorJoinReq request) {
             return actor.context().joinSpot(RoutingId.from(request.spotRid()), "join")
                 .timeout(Duration.ofSeconds(5))
@@ -496,9 +496,9 @@ public final class AwaitProbeHandlers {
         public CompletionStage<Contracts.ActorJoinAwaitRes> handle(
             AwaitEntrySpot spot,
             AwaitActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             Contracts.ActorJoinAwaitReq request) {
-            String value = actorValue(spot.context().spotRid(), actor)
+            String value = actorValue(spot.context().spotId(), actor)
                 + ";target=" + request.targetSpotRid();
             evidence.record("actor-join-await-started", request.requestId(), value);
             evidence.record("actor-join-await-released", request.requestId(), value);
@@ -530,9 +530,9 @@ public final class AwaitProbeHandlers {
         public CompletionStage<Contracts.ActorPushAwaitRes> handle(
             AwaitEntrySpot spot,
             AwaitActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             Contracts.ActorPushAwaitReq request) {
-            String value = actorValue(spot.context().spotRid(), actor) + ";handler=actor";
+            String value = actorValue(spot.context().spotId(), actor) + ";handler=actor";
             evidence.record("actor-push-await-started", request.requestId(), value);
             evidence.record("actor-push-await-released", request.requestId(), value);
             return spot.context().outbound()
@@ -566,9 +566,9 @@ public final class AwaitProbeHandlers {
         public CompletionStage<Contracts.ActorFastRes> handle(
             AwaitEntrySpot spot,
             AwaitActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             Contracts.ActorFastReq request) {
-            return fast(spot.context().spotRid(), actor, request, evidence);
+            return fast(spot.context().spotId(), actor, request, evidence);
         }
     }
 
@@ -585,9 +585,9 @@ public final class AwaitProbeHandlers {
         public CompletionStage<Contracts.ActorAwaitRes> handle(
             AwaitProbeSpot spot,
             AwaitActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             Contracts.ActorAwaitReq request) {
-            return actorAwait(spot.context().outbound(), spot.context().spotRid(), actor, request, evidence);
+            return actorAwait(spot.context().outbound(), spot.context().spotId(), actor, request, evidence);
         }
     }
 
@@ -604,9 +604,9 @@ public final class AwaitProbeHandlers {
         public CompletionStage<Contracts.ActorFastRes> handle(
             AwaitProbeSpot spot,
             AwaitActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             Contracts.ActorFastReq request) {
-            return fast(spot.context().spotRid(), actor, request, evidence);
+            return fast(spot.context().spotId(), actor, request, evidence);
         }
     }
 
@@ -623,7 +623,7 @@ public final class AwaitProbeHandlers {
         public CompletionStage<Contracts.ActorJoinRes> handle(
             AwaitProbeSpot spot,
             AwaitActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             Contracts.ActorJoinReq request) {
             return actor.context().joinSpot(RoutingId.from(request.spotRid()), "join")
                 .timeout(Duration.ofSeconds(5))
@@ -675,8 +675,8 @@ public final class AwaitProbeHandlers {
         return "actor=" + actor.actorId() + ";mailbox=actor:" + actor.actorId() + ";spot=" + spotRid;
     }
 
-    private static String joinedActorId(ZLinkActorJoinResult<?> result) {
-        if (result instanceof ZLinkActorJoinResult.Accepted<?> accepted) {
+    private static String joinedActorId(ZLinkSpotActorJoinResult<?> result) {
+        if (result instanceof ZLinkSpotActorJoinResult.Accepted<?> accepted) {
             return accepted.actor().actorId();
         }
         throw new IllegalStateException("actor join was rejected");
@@ -687,7 +687,7 @@ public final class AwaitProbeHandlers {
     }
 
     private static void recordProbe(EvidenceStore evidence, AwaitProbeSpot spot, String requestId) {
-        String value = spot.context().spotRid().toString();
+        String value = spot.context().spotId();
         evidence.record("probe-started", requestId, value);
         evidence.record("probe-completed", requestId, value);
     }

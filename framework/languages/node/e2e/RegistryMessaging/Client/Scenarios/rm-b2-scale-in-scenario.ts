@@ -1,4 +1,4 @@
-// RM-B2: scale-in / 정상 종료 시나리오를 검증한다.
+// RM-B2: Provider를 정상 종료한 뒤 target에서 제외한다 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
 import { DynamicClusterLauncher } from '../Support/dynamic-cluster-launcher';
 import { getJson, postJson } from '../../../http-client';

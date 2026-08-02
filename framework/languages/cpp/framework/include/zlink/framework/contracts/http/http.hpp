@@ -248,7 +248,7 @@ class http_options_builder_t
     http_options_builder_t &listen (std::string endpoint)
     {
         if (!starts_with (endpoint, "http://") && !starts_with (endpoint, "https://")) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "HTTP endpoint must start with http:// or https://");
         }
         _snapshot.endpoints.push_back ({.uri = std::move (endpoint)});
@@ -259,7 +259,7 @@ class http_options_builder_t
     configure_tls (std::function<void (http_tls_options_builder_t &)> configure)
     {
         if (_snapshot.endpoints.empty ()) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "HTTP TLS options require a listen endpoint");
         }
         auto &endpoint = _snapshot.endpoints.back ();
@@ -353,7 +353,7 @@ class http_options_builder_t
                 return;
             }
             if (!system_paths.insert (*path).second) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                throw framework_exception_t (framework_error_kind_t::protocol_error,
                                              "duplicate HTTP system route registration");
             }
         };
@@ -367,18 +367,18 @@ class http_options_builder_t
             if (!endpoint.tls || endpoint.tls->certificate_file.empty ()
                 || endpoint.tls->private_key_file.empty ()) {
                 throw framework_exception_t (
-                  framework_error_kind_t::request_protocol_error,
+                  framework_error_kind_t::protocol_error,
                   "HTTPS endpoint requires TLS certificate and private key");
             }
         }
         for (const auto &route : _snapshot.routes) {
             const auto key = route_key (route.method, route.path);
             if (!route_keys.insert (key).second) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                throw framework_exception_t (framework_error_kind_t::protocol_error,
                                              "duplicate HTTP route registration");
             }
             if (matches_system_path (route.path)) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                throw framework_exception_t (framework_error_kind_t::protocol_error,
                                              "HTTP route conflicts with a system health route");
             }
         }
@@ -429,7 +429,7 @@ class http_options_builder_t
     static std::string validate_system_path (std::string path)
     {
         if (path.empty () || path.front () != '/') {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+            throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "HTTP route path must start with /");
         }
         return path;
@@ -593,7 +593,7 @@ class http_options_builder_t
                                       const http_request_t &http,
                                       const std::string &body) -> task_t<http_response_t> {
             if (serializers == nullptr) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                throw framework_exception_t (framework_error_kind_t::protocol_error,
                                              "HTTP route serializer registry is not configured");
             }
             try {
@@ -618,7 +618,7 @@ class http_options_builder_t
             }
             catch (const std::exception &ex) {
                 co_return result_t<http_response_t>::failure (
-                  framework_error_kind_t::request_failed, ex.what ());
+                  framework_error_kind_t::internal_failure, ex.what ());
             }
         };
         _snapshot.routes.push_back (std::move (route));

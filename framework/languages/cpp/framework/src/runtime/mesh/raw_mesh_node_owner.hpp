@@ -319,7 +319,7 @@ class raw_mesh_node_owner_t
     std::mutex _socket_mutex;
     std::unique_ptr<zlink::context_t> _context;
     std::unique_ptr<zlink::router_socket_t> _router;
-    std::unique_ptr<zlink::poller_t> _poller;
+    std::unique_ptr<zlink::poller_t> _monitor_poller;
     std::unique_ptr<zlink::socket_monitor_t> _monitor;
     std::function<void ()> _send_ready_handler;
     std::shared_ptr<detail::backend::raw_route_port_t> _port;

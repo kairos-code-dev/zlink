@@ -94,7 +94,7 @@ channel_runtime_manager_t::get_route_channel (const std::string &router_channel_
         found != _state->route_channels.end ()) {
         return *found->second;
     }
-    throw framework_exception_t (framework_error_kind_t::route_not_connected,
+    throw framework_exception_t (framework_error_kind_t::unavailable,
                                  "route channel '" + router_channel_id + "' is not registered");
 }
 
@@ -224,7 +224,7 @@ std::string channel_runtime_manager_t::monitoring_source (const std::string &sou
         (void) get_or_create_client_bundle (channel_name);
         return source_name;
     }
-    throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+    throw framework_exception_t (framework_error_kind_t::protocol_error,
                                  "socket monitoring source '" + source_name
                                    + "' is not registered");
 }
@@ -235,7 +235,7 @@ channel_runtime_manager_t::require_channel (const std::string &channel_name,
 {
     const auto found = _state->channels.find (channel_name);
     if (found == _state->channels.end () || !enabled_for (found->second, capability)) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "channel capability '" + channel_name + "' is not registered");
     }
     return found->second;
@@ -246,7 +246,7 @@ channel_runtime_manager_t::parse_source (const std::string &source_name)
 {
     const auto separator = source_name.rfind ('.');
     if (separator == std::string::npos || separator == 0 || separator + 1 == source_name.size ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
                                      "socket monitoring source must use '<channel>.<capability>'");
     }
     return {source_name.substr (0, separator), source_name.substr (separator + 1)};

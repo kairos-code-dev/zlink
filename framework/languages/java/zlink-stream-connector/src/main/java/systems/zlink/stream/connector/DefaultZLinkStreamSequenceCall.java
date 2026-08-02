@@ -7,6 +7,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
 final class DefaultZLinkStreamSequenceCall implements ZLinkStreamSequenceCall {
@@ -74,6 +75,30 @@ final class DefaultZLinkStreamSequenceCall implements ZLinkStreamSequenceCall {
         if (predicates.isEmpty()) {
             throw new IllegalStateException("waitForSequence requires at least one expectation");
         }
+        if (connector instanceof DefaultZLinkStreamConnector concrete) {
+            CompletableFuture<List<ZLinkStreamMessage<ZLinkStreamEncodedPayload>>> result =
+                new CompletableFuture<>();
+            List<ZLinkStreamMessage<ZLinkStreamEncodedPayload>> messages = new ArrayList<>();
+            Object sequenceLock = new Object();
+            AtomicReference<CompletableFuture<ZLinkStreamMessage<ZLinkStreamEncodedPayload>>>
+                currentWaiter = new AtomicReference<>();
+            result.whenComplete((ignored, error) -> {
+                if (!result.isCancelled()) {
+                    return;
+                }
+                CompletableFuture<ZLinkStreamMessage<ZLinkStreamEncodedPayload>> waiter;
+                synchronized (sequenceLock) {
+                    waiter = currentWaiter.getAndSet(null);
+                    closeMessages(messages);
+                }
+                if (waiter != null) {
+                    waiter.cancel(false);
+                }
+            });
+            long deadline = System.nanoTime() + timeout.toNanos();
+            awaitNext(concrete, result, messages, deadline, 0, sequenceLock, currentWaiter);
+            return result;
+        }
         CompletableFuture<List<ZLinkStreamMessage<ZLinkStreamEncodedPayload>>> result =
             new CompletableFuture<>();
         List<ZLinkStreamMessage<ZLinkStreamEncodedPayload>> messages = new ArrayList<>();
@@ -112,6 +137,68 @@ final class DefaultZLinkStreamSequenceCall implements ZLinkStreamSequenceCall {
         return result.orTimeout(timeout.toMillis(), TimeUnit.MILLISECONDS);
     }
 
+    private void awaitNext(
+        DefaultZLinkStreamConnector concrete,
+        CompletableFuture<List<ZLinkStreamMessage<ZLinkStreamEncodedPayload>>> result,
+        List<ZLinkStreamMessage<ZLinkStreamEncodedPayload>> messages,
+        long deadline,
+        int index,
+        Object sequenceLock,
+        AtomicReference<CompletableFuture<ZLinkStreamMessage<ZLinkStreamEncodedPayload>>>
+            currentWaiter) {
+        long remainingNanos = deadline - System.nanoTime();
+        if (remainingNanos <= 0) {
+            synchronized (sequenceLock) {
+                if (!result.isCancelled()
+                    && result.completeExceptionally(new java.util.concurrent.TimeoutException(
+                        "Timed out waiting for '" + name + "' sequence."))) {
+                    closeMessages(messages);
+                }
+            }
+            return;
+        }
+        CompletableFuture<ZLinkStreamMessage<ZLinkStreamEncodedPayload>> waiter = concrete
+            .awaitMessage(name, predicates.get(index))
+            .toCompletableFuture()
+            .orTimeout(remainingNanos, TimeUnit.NANOSECONDS);
+        currentWaiter.set(waiter);
+        if (result.isCancelled() && currentWaiter.compareAndSet(waiter, null)) {
+            waiter.cancel(false);
+            return;
+        }
+        waiter
+            .whenComplete((message, error) -> {
+                boolean continueSequence = false;
+                synchronized (sequenceLock) {
+                    currentWaiter.compareAndSet(waiter, null);
+                    if (error != null) {
+                        if (result.completeExceptionally(error)) {
+                            closeMessages(messages);
+                        }
+                    } else if (result.isCancelled()) {
+                        closeMessage(message);
+                    } else {
+                        messages.add(message);
+                        if (messages.size() == predicates.size()) {
+                            result.complete(List.copyOf(messages));
+                        } else {
+                            continueSequence = true;
+                        }
+                    }
+                }
+                if (continueSequence) {
+                    awaitNext(
+                        concrete,
+                        result,
+                        messages,
+                        deadline,
+                        index + 1,
+                        sequenceLock,
+                        currentWaiter);
+                }
+            });
+    }
+
     @Override
     public <TPayload> CompletionStage<List<ZLinkStreamMessage<TPayload>>> submit(
         Class<TPayload> payloadType) {
@@ -120,15 +207,45 @@ final class DefaultZLinkStreamSequenceCall implements ZLinkStreamSequenceCall {
             throw new IllegalStateException(
                 "typed stream payload API requires ZLinkStreamConnectorOptions.typedCodec");
         }
-        return submit().thenApply(messages -> messages.stream()
-            .map(message -> {
-                try {
-                    return decodeMessage(message, payloadType);
-                } finally {
-                    message.payload().payload().close();
+        CompletionStage<List<ZLinkStreamMessage<ZLinkStreamEncodedPayload>>> source = submit();
+        CompletableFuture<List<ZLinkStreamMessage<TPayload>>> result = new CompletableFuture<>();
+        source.whenComplete((messages, error) -> {
+            if (error != null) {
+                result.completeExceptionally(error);
+                return;
+            }
+            List<ZLinkStreamMessage<TPayload>> decoded = new ArrayList<>();
+            try {
+                for (ZLinkStreamMessage<ZLinkStreamEncodedPayload> message : messages) {
+                    decoded.add(decodeMessage(message, payloadType));
                 }
-            })
-            .toList());
+                result.complete(List.copyOf(decoded));
+            } catch (Throwable failure) {
+                result.completeExceptionally(failure);
+            } finally {
+                messages.forEach(message -> message.payload().payload().close());
+            }
+        });
+        result.whenComplete((ignored, error) -> {
+            if (result.isCancelled()) {
+                source.toCompletableFuture().cancel(false);
+            }
+        });
+        return result;
+    }
+
+    private static void closeMessages(
+        List<ZLinkStreamMessage<ZLinkStreamEncodedPayload>> messages) {
+        messages.forEach(DefaultZLinkStreamSequenceCall::closeMessage);
+    }
+
+    private static void closeMessage(
+        ZLinkStreamMessage<ZLinkStreamEncodedPayload> message) {
+        try {
+            message.payload().payload().close();
+        } catch (RuntimeException ignored) {
+            // The cancelled sequence no longer owns a message that it cannot deliver.
+        }
     }
 
     private <TPayload> ZLinkStreamMessage<TPayload> decodeMessage(
@@ -137,7 +254,9 @@ final class DefaultZLinkStreamSequenceCall implements ZLinkStreamSequenceCall {
         return new ZLinkStreamMessage<>(
             message.packetName(),
             codec.decode(message.payload(), payloadType),
-            message.metadata());
+            message.metadata(),
+            message.flowId(),
+            message.flowOrigin());
     }
 
     private static void closeQuietly(AutoCloseable closeable) {

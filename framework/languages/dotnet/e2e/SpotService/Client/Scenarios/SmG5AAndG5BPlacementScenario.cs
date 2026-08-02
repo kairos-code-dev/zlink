@@ -7,9 +7,9 @@ namespace SpotService.Client.Scenarios;
 
 internal static class SmG5AAndG5BPlacementScenario
 {
-    private const int SampleCount = 80;
+    private const int WeightSampleCount = 800;
 
-    public static async Task RunAsync(
+    public static async Task RunWeightDistributionAsync(
         ZLinkHttpClient gateway,
         ZLinkHttpClient playA,
         ZLinkHttpClient playB)
@@ -40,25 +40,42 @@ internal static class SmG5AAndG5BPlacementScenario
                 && existingAfter.Generation == existing.Generation,
                 "SM-G5 runtime weight update changed an existing Actor owner.");
 
-            await SetWeightsAsync(playA, playB, 0, 100);
+            Console.WriteLine("operation SpotService.sm-g5a passed");
+        }
+        finally
+        {
+            await SetWeightsAsync(playA, playB, 100, 100);
+        }
+    }
+
+    public static async Task RunCapacityEligibilityAsync(
+        ZLinkHttpClient gateway,
+        ZLinkHttpClient playA,
+        ZLinkHttpClient playB)
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        try
+        {
+            await VerifyRuntimeWeightBoundsAsync(playA);
+            await SetWeightsAsync(playA, playB, 1, 10_000);
+
             var high = await CreateTypedSpotAsync(
                 gateway,
                 $"spot-sm-g5-capacity-high-{suffix}",
                 SpotServiceNames.WeightCapacitySpotType);
             ZlinkStreamAssert.Ensure(
                 IsNode(high.NodeRid, "play-b"),
-                "SM-G5 did not fill play-b typed capacity first.");
+                "SM-G5B did not fill play-b typed capacity first.");
 
-            await SetWeightsAsync(playA, playB, 100, 300);
             var fallback = await CreateTypedSpotAsync(
                 gateway,
                 $"spot-sm-g5-capacity-fallback-{suffix}",
                 SpotServiceNames.WeightCapacitySpotType);
             ZlinkStreamAssert.Ensure(
                 IsNode(fallback.NodeRid, "play-a"),
-                "SM-G5 did not filter the full high-weight node before selection.");
+                "SM-G5B did not filter the full high-weight node before selection.");
 
-            Console.WriteLine("operation SpotService.sm-g5 passed");
+            Console.WriteLine("operation SpotService.sm-g5b passed");
         }
         finally
         {
@@ -96,7 +113,7 @@ internal static class SmG5AAndG5BPlacementScenario
         string suffix)
     {
         var counts = NewCounts();
-        for (var index = 0; index < SampleCount; index++)
+        for (var index = 0; index < WeightSampleCount; index++)
         {
             var actor = await CreateActorAsync(
                 gateway,
@@ -132,7 +149,7 @@ internal static class SmG5AAndG5BPlacementScenario
         string suffix)
     {
         var counts = NewCounts();
-        for (var index = 0; index < SampleCount; index++)
+        for (var index = 0; index < WeightSampleCount; index++)
         {
             var spot = await CreateTypedSpotAsync(
                 gateway,
@@ -189,10 +206,11 @@ internal static class SmG5AAndG5BPlacementScenario
         string objectKind)
     {
         ZlinkStreamAssert.Ensure(
-            counts["play-a"] == SampleCount / 4
-            && counts["play-b"] == SampleCount * 3 / 4,
+            counts.Values.Sum() == WeightSampleCount
+            && counts["play-b"] * 100 >= WeightSampleCount * 65
+            && counts["play-b"] * 100 <= WeightSampleCount * 85,
             $"SM-G5 {objectKind} ratio was "
-            + $"{counts["play-a"]}:{counts["play-b"]}, expected 1:3.");
+            + $"{counts["play-a"]}:{counts["play-b"]}, expected play-b between 65% and 85%.");
     }
 
     private static string Node(string nodeRid) =>

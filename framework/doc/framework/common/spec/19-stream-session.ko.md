@@ -27,6 +27,12 @@ application에 그대로 넘기지 않는다.
 
 - Framework는 stream header를 decode하여 packet name과 metadata를 dispatch context에
   넣고, 아직 업무 객체로 변환하지 않은 payload와 함께 session callback에 전달한다.
+- Framework는 모든 언어에서 STREAM transport ingress를 `recv` mode로 운영한다. Framework는
+  Core의 STREAM packet callback 또는 raw receive callback을 등록해 application packet을
+  받지 않는다. 이 규칙은 언어별 binding의 표현이 달라도 동일하게 적용한다.
+- Framework 내부의 `recv loop`가 raw part를 읽고 header framing을 조립한다. 이 loop가
+  managed queue에 packet을 넘길 수 없으면 다음 receive를 수행하지 않아 Core receive pipe의
+  HWM이 backpressure 경계로 동작하게 한다.
 - Application은 [packet name](01-glossary.ko.md#packet-name)으로 처리할 packet을 구분하고 Framework의 공통 decoder
   표면을 사용한다. 이 표면은 등록된 codec registry로 payload를 업무 객체로
   변환하므로 handler가 codec별 helper를 직접 선택하지 않는다(§5).
@@ -45,10 +51,9 @@ application에 그대로 넘기지 않는다.
 
 ## 3. Dispatch 모델
 
-Transport가 packet을 받는 callback에서는 application session callback을 바로
-실행하지 않는다. Framework가 packet을 관리 queue에 넣은 뒤 session callback을
-실행한다. 이 queue 경계에서 Framework의 dispatch, DI와 logging을 일관되게
-적용한다.
+Framework 내부 `recv loop`는 application session callback을 바로 실행하지 않는다.
+Framework가 packet을 관리 queue에 넣은 뒤 session callback을 실행한다. 이 queue
+경계에서 Framework의 dispatch, DI와 logging을 일관되게 적용한다.
 
 [STREAM session dispatch](01-glossary.ko.md#stream-session)에는 Handler filter를 적용하지 않는다.
 다른 dispatch의 filter 적용 범위와 실행 규칙은
@@ -58,7 +63,7 @@ Transport가 packet을 받는 callback에서는 application session callback을 
   payload를 받는다.
 - Runtime은 request header 값을 dispatch context 안에 보존한다. Application이 header 객체를
   만들거나 relay 호출에 다시 넘기지 않는다.
-- Transport callback에서 받은 peer 식별 값인 routing ID는 session dispatch까지 정보 손실 없이
+- `recv` 결과에서 얻은 peer 식별 값인 routing ID는 session dispatch까지 정보 손실 없이
   전달된다.
 
 ### 3.1 reply 상관관계
@@ -74,17 +79,25 @@ Session이 만드는 `Response`와 `Error`는 원본 request의 request sequence
 전체 규칙은 [메시지 모델](04-message-model.ko.md)의 reply correlation 계약이
 정의한다.
 
-## 4. recv loop를 기본 표면에서 빼는 이유
+## 4. Framework 내부 recv loop와 application 표면
 
-recv 방식은 low-level binding에서는 의미가 있다. 하지만 framework 공개 표면에 그대로 노출하면
-문제가 생긴다.
+Framework는 내부에서 `recv loop`를 소유하지만 raw receive loop를 application 공개 표면으로
+노출하지 않는다. Application은 session callback만 사용하고, 수신 순서·취소·backpressure와
+header framing은 Framework가 관리한다.
 
-- framework가 dispatch·DI·logging을 일관되게 묶기 어려워진다.
-- application이 loop·취소·backpressure를 직접 떠안게 된다.
-- header 기반 packet dispatch를 일관된 모델로 설명하기 어려워진다.
+모든 Framework 언어의 transport ingress는 다음 경계를 따른다.
 
-Low-level binding에서 recv를 사용하는 것은 금지하지 않는다. Framework의 기본
-application 표면에는 recv loop를 제공하지 않는다는 의미다.
+```text
+Core receive pipe
+    -> Framework recv loop
+    -> header framing and queue admission
+    -> session callback
+```
+
+Core packet callback이나 raw receive callback을 사용해 queue admission을 우회하면
+Core receive pipe의 HWM이 application queue를 제한하지 못하므로 Framework contract를
+만족하지 못한다. Framework는 queue admission이 실패한 동안 새 packet을 읽지 않으며,
+이미 받은 packet을 버리거나 같은 packet을 callback으로 재전달하지 않는다.
 
 ## 5. Codec 계층 분리
 
@@ -131,6 +144,10 @@ Stream node는 명시적으로 등록한다. Attribute나 decorator 기반의 �
 public interface IZLinkStreamNodeBuilder
 {
     IZLinkStreamNodeBuilder Bind(string endpoint);
+    IZLinkStreamNodeBuilder Bind(int port = 0);
+    IZLinkStreamNodeBuilder SetBindHost(string bindHost);
+    IZLinkStreamNodeBuilder SetAdvertiseHost(string advertiseHost);
+    IZLinkSocketConfig ConfigureSocket();
     IZLinkStreamNodeBuilder SetTlsServer(
         string certificatePath,
         string keyPath,
@@ -143,7 +160,10 @@ public interface IZLinkStreamNodeBuilder
 ```csharp
 options
     .AddStreamNode("gateway")
-    .Bind("tcp://0.0.0.0:7400") // Stream node의 required bind endpoint다.
+    .Bind(7400)
+    .SetBindHost("0.0.0.0")
+    .SetAdvertiseHost("node-a.example.net")
+    .ConfigureSocket().MaxMessageSize = 16 * 1024 * 1024; // HWM validation에 사용하는 유한한 application message 상한이다.
     .SetTlsServer(
         "server.crt",
         "server.key",
@@ -226,8 +246,8 @@ update는 같은 ObjectGeneration에만 허용하고 application은 relocation�
 
 | 항목 | 검증 |
 |---|---|
-| dispatch 경로 | session lifecycle과 packet dispatch가 transport callback을 직접 실행하지 않고 managed queue를 거친다 |
-| peer 식별 보존 | transport callback의 [routing id](01-glossary.ko.md#routing-id)가 session dispatch까지 손실 없이 전달된다 |
+| dispatch 경로 | Framework 내부 recv loop가 packet을 읽고 managed queue를 거친 뒤 session callback을 실행한다 |
+| peer 식별 보존 | recv 결과의 [routing id](01-glossary.ko.md#routing-id)가 session dispatch까지 손실 없이 전달된다 |
 | 등록 검증 | 같은 node에 session을 둘 이상 등록하면 startup에서 실패한다 |
 | 오류 경계 | handshake·socket 오류가 session 오류 callback으로 올라오지 않는다 |
 | 인증과 dispatch | connector와 session node 사이에서 인증과 packet dispatch가 완료된다 |

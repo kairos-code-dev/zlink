@@ -39,7 +39,7 @@ class framework_resume_scheduler_t final : public coroutine_resume_scheduler_t
     {
         if (!_post) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_protocol_error,
+              zlink::framework::framework_error_kind_t::protocol_error,
               "HTTP client framework resume scheduler post function is required");
         }
     }

@@ -18,7 +18,9 @@ DEFAULT_SCENARIOS=(
   ToActorMessaging
   SpotActorTransfer
   ObservabilityOps
+  ChannelEgressRouting
   SubmitAdmission
+  InstanceSpot
 )
 START_ORDER_CONFIGS=(RegistryMessaging SpotService ToActorMessaging)
 START_ORDER_MODES=(reverse "shuffle:20260715")
@@ -71,6 +73,25 @@ else
     fi
   done
 fi
+
+validate_selected_suites() {
+  local index scenario suite_dir runner
+  for index in "${!selected_scenarios[@]}"; do
+    scenario="${selected_scenarios[$index]}"
+    suite_dir="$SCRIPT_DIR/$scenario"
+    runner="$suite_dir/run_e2e.sh"
+    if [[ ! -d "$suite_dir" ]]; then
+      echo "[java-e2e] aggregate_incomplete reason=missing_suite suite=$scenario" >&2
+      return 1
+    fi
+    if [[ ! -x "$runner" ]]; then
+      echo "[java-e2e] aggregate_incomplete reason=missing_runner suite=$scenario runner=$runner" >&2
+      return 1
+    fi
+  done
+}
+
+validate_selected_suites
 
 run_scenario_with_retry() {
   local scenario="$1"

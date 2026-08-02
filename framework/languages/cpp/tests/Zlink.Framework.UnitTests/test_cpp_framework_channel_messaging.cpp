@@ -10,7 +10,6 @@
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/channels/channel_runtime_bundle.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
-#include "runtime/channels/route_channel_host_service.hpp"
 #include "runtime/channels/route_channel_runtime.hpp"
 #include "runtime/channels/route_channel_registration.hpp"
 #include "runtime/channels/route_connection_set.hpp"
@@ -118,7 +117,7 @@ class test_channel_receive_loop_t
     {
         if (!_bundle.try_enter_receive ()) {
             return zlink::framework::result_t<test_channel_receive_result_t>::failure (
-              zlink::framework::framework_error_kind_t::request_rejected,
+              zlink::framework::framework_error_kind_t::rejected,
               "channel receive loop is already active");
         }
         struct receive_guard_t
@@ -325,7 +324,7 @@ class throwing_handler_t
     reply_t handle_request (const request_t &)
     {
         throw zlink::framework::framework_exception_t (
-          zlink::framework::framework_error_kind_t::request_failed, "DERR-007 handler exception");
+          zlink::framework::framework_error_kind_t::internal_failure, "DERR-007 handler exception");
     }
 };
 
@@ -667,7 +666,7 @@ class local_internal_dispatcher_t final
         services.get_required<local_handler_t> ().internal_dispatch_provider_seen = 2;
         if (header.message_name != "internal.request") {
             return zlink::framework::result_t<zlink::message_t>::failure (
-              zlink::framework::framework_error_kind_t::route_handler_not_found,
+              zlink::framework::framework_error_kind_t::not_found,
               "unsupported internal request");
         }
         return zlink::framework::result_t<zlink::message_t>::success (
@@ -812,7 +811,7 @@ int main ()
     }
     catch (const zlink::framework::framework_exception_t &error) {
         invalid_channel_timeout_failed =
-          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+          error.kind () == zlink::framework::framework_error_kind_t::protocol_error;
     }
     if (!invalid_channel_timeout_failed) {
         return 131;
@@ -883,7 +882,7 @@ int main ()
         .result ();
     if (default_route_send
         || default_route_send.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_protocol_error) {
+             != zlink::framework::framework_error_kind_t::protocol_error) {
         return 411;
     }
     auto default_route_request =
@@ -900,10 +899,10 @@ int main ()
         .result ();
     if (default_route_request
         || default_route_request.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_protocol_error
+             != zlink::framework::framework_error_kind_t::protocol_error
         || default_spot_route_request
         || default_spot_route_request.error_kind ()
-             != zlink::framework::framework_error_kind_t::object_client_not_configured) {
+             != zlink::framework::framework_error_kind_t::not_configured) {
         return 127;
     }
     bool invalid_builder_timeout_failed = false;
@@ -912,7 +911,7 @@ int main ()
     }
     catch (const zlink::framework::framework_exception_t &error) {
         invalid_builder_timeout_failed =
-          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+          error.kind () == zlink::framework::framework_error_kind_t::protocol_error;
     }
     bool empty_route_channel_failed = false;
     try {
@@ -920,7 +919,7 @@ int main ()
     }
     catch (const zlink::framework::framework_exception_t &error) {
         empty_route_channel_failed =
-          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+          error.kind () == zlink::framework::framework_error_kind_t::protocol_error;
     }
     auto route_builder = zlink.route_channel ("runtime.route");
     route_builder.bind ("tcp://127.0.0.1:7401")
@@ -1031,7 +1030,7 @@ int main ()
       full_queue.message_bus ().request ("profile", request_t{5}).submit<reply_t> ().result ();
     if (queue_full_result
         || queue_full_result.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_rejected) {
+             != zlink::framework::framework_error_kind_t::rejected) {
         return 6;
     }
 
@@ -1145,7 +1144,7 @@ int main ()
         const auto submitted = submit_fn ().result ();
         return !submitted
                && submitted.error_kind ()
-                    == zlink::framework::framework_error_kind_t::runtime_shutdown;
+                    == zlink::framework::framework_error_kind_t::shutting_down;
     };
     if (!completes_shutdown ([&] {
             return shutdown_outbound.message_bus ()
@@ -1173,14 +1172,14 @@ int main ()
     const auto unbound_route_send_result = unbound_route_send.submit ().result ();
     if (unbound_route_send_result
         || unbound_route_send_result.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_protocol_error) {
+             != zlink::framework::framework_error_kind_t::protocol_error) {
         return 408;
     }
     zlink::framework::channel_request_call_t unbound_route_request ("request", nullptr, {});
     const auto unbound_route_request_result = unbound_route_request.submit<reply_t> ().result ();
     if (unbound_route_request_result
         || unbound_route_request_result.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_protocol_error) {
+             != zlink::framework::framework_error_kind_t::protocol_error) {
         return 406;
     }
     zlink::framework::route_client_t unconfigured_route_client;
@@ -1192,7 +1191,7 @@ int main ()
         const auto submitted = send_fn ().result ();
         return !submitted
                && submitted.error_kind ()
-                    == zlink::framework::framework_error_kind_t::request_protocol_error;
+                    == zlink::framework::framework_error_kind_t::protocol_error;
     };
     if (!route_send_rejected ([&] {
             return unconfigured_route_client
@@ -1207,14 +1206,14 @@ int main ()
         .result ();
     if (unconfigured_route_request
         || unconfigured_route_request.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_protocol_error) {
+             != zlink::framework::framework_error_kind_t::protocol_error) {
         return 408;
     }
     const auto unconfigured_spot_send =
       unconfigured_route_client.send_to_spot (unconfigured_spot, event_t{9}).submit ().result ();
     if (unconfigured_spot_send
         || unconfigured_spot_send.error_kind ()
-             != zlink::framework::framework_error_kind_t::object_client_not_configured) {
+             != zlink::framework::framework_error_kind_t::not_configured) {
         return 410;
     }
     const auto unconfigured_spot_request =
@@ -1224,7 +1223,7 @@ int main ()
         .result ();
     if (unconfigured_spot_request
         || unconfigured_spot_request.error_kind ()
-             != zlink::framework::framework_error_kind_t::object_client_not_configured) {
+             != zlink::framework::framework_error_kind_t::not_configured) {
         return 410;
     }
 
@@ -1338,7 +1337,7 @@ int main ()
     if (!packet_error_header
         || packet_error_header.value ().kind
              != zlink::framework::runtime::messaging::message_kind_t::error
-        || packet_error_header.value ().error_code.value_or ("") != "handler_not_found") {
+        || packet_error_header.value ().error_code.value_or ("") != "not_found") {
         return 21;
     }
     auto observed_dispatch_errors =
@@ -1450,7 +1449,7 @@ int main ()
     if (!malformed_reply_header
         || malformed_reply_header.value ().kind
              != zlink::framework::runtime::messaging::message_kind_t::error
-        || malformed_reply_header.value ().error_code.value_or ("") != "payload_decode_failed"
+        || malformed_reply_header.value ().error_code.value_or ("") != "protocol_error"
         || provider.get_required<local_handler_t> ().last_request
              != last_request_before_malformed) {
         return 109;
@@ -1491,7 +1490,7 @@ int main ()
     if (!throwing_reply_header
         || throwing_reply_header.value ().kind
              != zlink::framework::runtime::messaging::message_kind_t::error
-        || throwing_reply_header.value ().error_code.value_or ("") != "request_failed"
+        || throwing_reply_header.value ().error_code.value_or ("") != "internal_failure"
         || throwing_reply_header.value ().error_message.value_or ("")
              != "DERR-007 handler exception") {
         return 106;
@@ -1648,7 +1647,7 @@ int main ()
                                       .result ();
     if (native_bus_missing_reply
         || native_bus_missing_reply.error_kind ()
-             != zlink::framework::framework_error_kind_t::handler_not_found) {
+             != zlink::framework::framework_error_kind_t::not_found) {
         return 246;
     }
     const int native_bus_server_result = native_bus_server_done.get ();
@@ -1957,11 +1956,11 @@ int main ()
 
     zlink::framework::detail::channel_reply_writer_t reply_writer;
     const zlink::framework::framework_exception_t reply_errors[] = {
-      {zlink::framework::framework_error_kind_t::route_not_connected, "mapped error"},
-      {zlink::framework::framework_error_kind_t::route_handler_not_found, "mapped error"},
-      {zlink::framework::framework_error_kind_t::request_target_not_found, "mapped error"},
-      {zlink::framework::framework_error_kind_t::request_rejected, "mapped error"},
-      {zlink::framework::framework_error_kind_t::request_protocol_error, "mapped error"},
+      {zlink::framework::framework_error_kind_t::unavailable, "mapped error"},
+      {zlink::framework::framework_error_kind_t::not_found, "mapped error"},
+      {zlink::framework::framework_error_kind_t::not_found, "mapped error"},
+      {zlink::framework::framework_error_kind_t::rejected, "mapped error"},
+      {zlink::framework::framework_error_kind_t::protocol_error, "mapped error"},
       zlink::framework::detail::make_boundary_exception (
         zlink::framework::detail::boundary_error_t::timed_out, "mapped error"),
       zlink::framework::detail::make_boundary_exception (
@@ -1970,17 +1969,17 @@ int main ()
         zlink::framework::detail::boundary_error_t::disconnected, "mapped error"),
       zlink::framework::detail::make_boundary_exception (
         zlink::framework::detail::boundary_error_t::closed, "mapped error"),
-      {zlink::framework::framework_error_kind_t::request_failed, "mapped error"}};
-    const std::string reply_error_codes[] = {"route_not_connected",
-                                             "route_handler_not_found",
-                                             "request_target_not_found",
-                                             "request_rejected",
-                                             "request_protocol_error",
-                                             "timeout",
-                                             "shutdown",
-                                             "disconnected",
-                                             "closed",
-                                             "request_failed"};
+      {zlink::framework::framework_error_kind_t::internal_failure, "mapped error"}};
+    const std::string reply_error_codes[] = {"unavailable",
+                                             "not_found",
+                                             "not_found",
+                                             "rejected",
+                                             "protocol_error",
+                                             "deadline_exceeded",
+                                             "shutting_down",
+                                             "unavailable",
+                                             "unavailable",
+                                             "internal_failure"};
     for (std::size_t index = 0; index < std::size (reply_errors); ++index) {
         const auto &reply_error = reply_errors[index];
         const auto error_header =
@@ -2004,7 +2003,7 @@ int main ()
         || missing_body_header.value ().kind
              != zlink::framework::runtime::messaging::message_kind_t::error
         || missing_body_header.value ().correlation_id != "corr-1"
-        || missing_body_header.value ().error_code.value_or ("") != "request_protocol_error") {
+        || missing_body_header.value ().error_code.value_or ("") != "protocol_error") {
         return 64;
     }
 
@@ -2020,7 +2019,7 @@ int main ()
                                       handlers, zlink::message_t::from (std::string ("1")));
     if (not_server
         || not_server.error_kind ()
-             != zlink::framework::framework_error_kind_t::route_not_connected) {
+             != zlink::framework::framework_error_kind_t::unavailable) {
         return 11;
     }
 
@@ -2031,7 +2030,7 @@ int main ()
     auto unmatched_reply = outbound_runtime.complete_outbound_reply (reservation.value () + 1000);
     if (unmatched_reply
         || unmatched_reply.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_protocol_error) {
+             != zlink::framework::framework_error_kind_t::protocol_error) {
         return 13;
     }
     auto matched_reply = outbound_runtime.complete_outbound_reply (reservation.value ());
@@ -2154,7 +2153,7 @@ int main ()
     bundle.leave_receive ();
     if (reentrant_result
         || reentrant_result.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_rejected) {
+             != zlink::framework::framework_error_kind_t::rejected) {
         return 29;
     }
 
@@ -2197,7 +2196,7 @@ int main ()
       route_runtime.submit_send (target_node, "event", event_t{77}, serializers);
     if (disconnected_send
         || disconnected_send.error_kind ()
-             != zlink::framework::framework_error_kind_t::route_not_connected) {
+             != zlink::framework::framework_error_kind_t::unavailable) {
         return 33;
     }
     route_runtime.start ();
@@ -2250,7 +2249,7 @@ int main ()
            const zlink::framework::runtime::messaging::message_parts_t &parts) {
           if (target != target_node || spot != target_spot || parts.size () == 0) {
               return zlink::framework::result_t<void>::failure (
-                zlink::framework::framework_error_kind_t::request_failed,
+                zlink::framework::framework_error_kind_t::internal_failure,
                 "unexpected spot send backend input");
           }
           ++spot_backend_sends;
@@ -2265,7 +2264,7 @@ int main ()
                   && timeout != std::chrono::milliseconds (25))) {
               return zlink::framework::
                 result_t<zlink::framework::runtime::messaging::message_parts_t>::failure (
-                  zlink::framework::framework_error_kind_t::request_failed,
+                  zlink::framework::framework_error_kind_t::internal_failure,
                   "unexpected spot request backend input");
           }
           ++spot_backend_requests;
@@ -2297,7 +2296,7 @@ int main ()
               || timeout != std::chrono::milliseconds (25)) {
               return zlink::framework::
                 result_t<zlink::framework::runtime::messaging::message_parts_t>::failure (
-                  zlink::framework::framework_error_kind_t::request_failed,
+                  zlink::framework::framework_error_kind_t::internal_failure,
                   "unexpected auto route backend input");
           }
           ++auto_backend_requests;
@@ -2310,15 +2309,6 @@ int main ()
         || auto_backend_requests != 1 || auto_backend_runtime.list_connections ().size () != 0) {
         return 383;
     }
-
-    /* The RouteChannel host-service scenarios that used to run here (failure gates 384,
-     * 385, 386 twice, 387 and 388) are retained verbatim in
-     * pending/route_channel_host_service_scenarios.pending.inc and are held out of the
-     * build graph as pending-disabled-by-contract-amendment (ledger v11.0 §2 rules 13-14).
-     * They drive runtime::route_channel_host_service_t, which 1de8f43917 removed from the
-     * zlink_framework source list and which no longer compiles against Core 11, and no
-     * document under framework/doc/framework/common/spec/ defines a RouteChannel. See
-     * BLK-032 for the evidence and the contract decision that is owed. */
 
     if (!route_runtime.complete_request (route_request.value ())
         || route_runtime.pending_request_count () != 1) {
@@ -2351,7 +2341,7 @@ int main ()
     }
     catch (const zlink::framework::framework_exception_t &error) {
         missing_monitoring_failed =
-          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+          error.kind () == zlink::framework::framework_error_kind_t::protocol_error;
     }
     if (!missing_monitoring_failed) {
         return 44;
@@ -2382,7 +2372,7 @@ int main ()
         || route_error_header.value ().kind
              != zlink::framework::runtime::messaging::message_kind_t::error
         || route_error_header.value ().channel_name != "game.route"
-        || route_error_header.value ().error_code.value_or ("") != "route_handler_not_found") {
+        || route_error_header.value ().error_code.value_or ("") != "not_found") {
         return 47;
     }
     observed_dispatch_errors = wait_dispatch_errors (dispatch_errors, dispatch_errors_mutex, 1);
@@ -2469,7 +2459,7 @@ int main ()
         || filtered_error.value ().kind
              != zlink::framework::runtime::messaging::message_kind_t::error
         || filtered_error.value ().error_code.value_or ("")
-             != "request_rejected") {
+             != "rejected") {
         return 410;
     }
 
@@ -2517,7 +2507,7 @@ int main ()
             std::vector<zlink::message_t>{zlink::message_t::from (std::string ("not-json"))})});
     if (malformed_route_dispatch
         || malformed_route_dispatch.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_protocol_error) {
+             != zlink::framework::framework_error_kind_t::protocol_error) {
         return 401;
     }
     zlink::framework::runtime::messaging::envelope_header_t unsupported_route_header;
@@ -2534,7 +2524,7 @@ int main ()
           unsupported_route_parts});
     if (unsupported_route_dispatch
         || unsupported_route_dispatch.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_protocol_error) {
+             != zlink::framework::framework_error_kind_t::protocol_error) {
         return 402;
     }
     zlink::framework::runtime::messaging::envelope_header_t route_missing_body_header;
@@ -2553,7 +2543,7 @@ int main ()
             std::vector<zlink::message_t>{missing_body_header_only})});
     if (missing_body_dispatch
         || missing_body_dispatch.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_protocol_error) {
+             != zlink::framework::framework_error_kind_t::protocol_error) {
         return 403;
     }
 
@@ -2593,7 +2583,7 @@ int main ()
       provider);
     if (no_internal_send
         || no_internal_send.error_kind ()
-             != zlink::framework::framework_error_kind_t::route_handler_not_found) {
+             != zlink::framework::framework_error_kind_t::not_found) {
         return 66;
     }
     const auto no_internal_request = no_internal.dispatch_request (
@@ -2602,7 +2592,7 @@ int main ()
       internal_header, provider);
     if (no_internal_request
         || no_internal_request.error_kind ()
-             != zlink::framework::framework_error_kind_t::route_handler_not_found) {
+             != zlink::framework::framework_error_kind_t::not_found) {
         return 67;
     }
     zlink::framework::runtime::messaging::envelope_header_t internal_send_header;
@@ -2635,7 +2625,7 @@ int main ()
       provider);
     if (unsupported_internal_send
         || unsupported_internal_send.error_kind ()
-             != zlink::framework::framework_error_kind_t::route_handler_not_found) {
+             != zlink::framework::framework_error_kind_t::not_found) {
         return 69;
     }
     unsupported_internal_header.kind =
@@ -2646,7 +2636,7 @@ int main ()
       unsupported_internal_header, provider);
     if (unsupported_internal_request
         || unsupported_internal_request.error_kind ()
-             != zlink::framework::framework_error_kind_t::route_handler_not_found) {
+             != zlink::framework::framework_error_kind_t::not_found) {
         return 70;
     }
     const auto invalid_internal_send = composite_internal.dispatch_send (
@@ -2657,7 +2647,7 @@ int main ()
       provider);
     if (invalid_internal_send
         || invalid_internal_send.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_protocol_error) {
+             != zlink::framework::framework_error_kind_t::protocol_error) {
         return 71;
     }
 
@@ -2746,7 +2736,7 @@ int main ()
               || header.value ().metadata.find ("trace-id") == header.value ().metadata.end ()
               || header.value ().metadata.at ("trace-id") != "trace-send") {
               return zlink::framework::result_t<void>::failure (
-                zlink::framework::framework_error_kind_t::request_failed,
+                zlink::framework::framework_error_kind_t::internal_failure,
                 "route send backend received unexpected packet");
           }
           ++send_backend_seen;
@@ -2786,7 +2776,7 @@ int main ()
               || timeout != std::chrono::milliseconds (25)) {
               return zlink::framework::
                 result_t<zlink::framework::runtime::messaging::message_parts_t>::failure (
-                  zlink::framework::framework_error_kind_t::request_failed,
+                  zlink::framework::framework_error_kind_t::internal_failure,
                   "route request backend received unexpected target or timeout");
           }
           auto header = envelope_codec.decode_header (parts);
@@ -2801,7 +2791,7 @@ int main ()
                    != 41) {
               return zlink::framework::
                 result_t<zlink::framework::runtime::messaging::message_parts_t>::failure (
-                  zlink::framework::framework_error_kind_t::request_failed,
+                  zlink::framework::framework_error_kind_t::internal_failure,
                   "route request backend received unexpected payload");
           }
           zlink::framework::runtime::messaging::envelope_header_t reply_header;
@@ -2846,7 +2836,7 @@ int main ()
         -> zlink::framework::result_t<zlink::framework::runtime::messaging::message_parts_t> {
           return zlink::framework::result_t<
             zlink::framework::runtime::messaging::message_parts_t>::failure (
-            zlink::framework::framework_error_kind_t::route_not_connected,
+            zlink::framework::framework_error_kind_t::unavailable,
             "route peer is not connected");
       });
     auto missing_peer_reply =
@@ -2858,7 +2848,7 @@ int main ()
         .result ();
     if (missing_peer_reply
         || missing_peer_reply.error_kind ()
-             != zlink::framework::framework_error_kind_t::route_not_connected
+             != zlink::framework::framework_error_kind_t::unavailable
         || public_route.pending_request_count () != 0) {
         return 72;
     }
@@ -2872,7 +2862,7 @@ int main ()
               || timeout != std::chrono::milliseconds (50)) {
               return zlink::framework::
                 result_t<zlink::framework::runtime::messaging::message_parts_t>::failure (
-                  zlink::framework::framework_error_kind_t::request_failed,
+                  zlink::framework::framework_error_kind_t::internal_failure,
                   "typed route backend received unexpected target or timeout");
           }
           auto header = envelope_codec.decode_header (parts);
@@ -2887,7 +2877,7 @@ int main ()
                    != 51) {
               return zlink::framework::
                 result_t<zlink::framework::runtime::messaging::message_parts_t>::failure (
-                  zlink::framework::framework_error_kind_t::request_failed,
+                  zlink::framework::framework_error_kind_t::internal_failure,
                   "typed route backend received unexpected payload");
           }
           zlink::framework::runtime::messaging::envelope_header_t reply_header;
@@ -2927,7 +2917,7 @@ int main ()
               || header.value ().metadata.find ("trace-id") == header.value ().metadata.end ()
               || header.value ().metadata.at ("trace-id") != "trace-spot-send") {
               return zlink::framework::result_t<void>::failure (
-                zlink::framework::framework_error_kind_t::request_failed,
+                zlink::framework::framework_error_kind_t::internal_failure,
                 "spot route send backend received unexpected packet");
           }
           ++spot_send_backend_seen;
@@ -2958,7 +2948,7 @@ int main ()
               || timeout != std::chrono::milliseconds (50)) {
               return zlink::framework::
                 result_t<zlink::framework::runtime::messaging::message_parts_t>::failure (
-                  zlink::framework::framework_error_kind_t::request_failed,
+                  zlink::framework::framework_error_kind_t::internal_failure,
                   "spot route backend received unexpected target or timeout");
           }
           auto header = envelope_codec.decode_header (parts);
@@ -2973,7 +2963,7 @@ int main ()
                    != 52) {
               return zlink::framework::
                 result_t<zlink::framework::runtime::messaging::message_parts_t>::failure (
-                  zlink::framework::framework_error_kind_t::request_failed,
+                  zlink::framework::framework_error_kind_t::internal_failure,
                   "spot route backend received unexpected payload");
           }
           zlink::framework::runtime::messaging::envelope_header_t reply_header;
@@ -3044,7 +3034,7 @@ int main ()
                    != 53) {
               return zlink::framework::result_t<
                 zlink::framework::runtime::messaging::message_parts_t>::failure (
-                zlink::framework::framework_error_kind_t::request_failed,
+                zlink::framework::framework_error_kind_t::internal_failure,
                 "spot-only transport received unexpected request");
           }
           spot_only_request_called = true;
@@ -3075,7 +3065,7 @@ int main ()
           std::chrono::milliseconds) {
           return zlink::framework::result_t<
             zlink::framework::runtime::messaging::message_parts_t>::failure (
-            zlink::framework::framework_error_kind_t::request_failed,
+            zlink::framework::framework_error_kind_t::internal_failure,
             "spot-only node transport received an unexpected request");
       });
     auto spot_only_client = spot_only_builder.route_client (serializers);
@@ -3113,7 +3103,7 @@ int main ()
           if (std::string (spot_id) != "cart-17" || intent.mesh_name != "commerce"
               || intent.stable_type != "shopping-cart") {
               return zlink::framework::result_t<void>::failure (
-                zlink::framework::framework_error_kind_t::invalid_configuration,
+                zlink::framework::framework_error_kind_t::not_configured,
                 "unexpected Instance Spot activation intent");
           }
           ++activation_count;
@@ -3125,7 +3115,7 @@ int main ()
       [] (const auto &, const auto &, auto, auto, auto, auto, auto) {
           return zlink::framework::task_t<zlink::message_t> (
             zlink::framework::result_t<zlink::message_t>::failure (
-              zlink::framework::framework_error_kind_t::request_failed,
+              zlink::framework::framework_error_kind_t::internal_failure,
               "Ready resolve should bypass cold activation"));
       });
     std::atomic_int activation_send_count{0};
@@ -3198,13 +3188,13 @@ int main ()
               ++retry_stale_attempts;
               return zlink::framework::result_t<
                 zlink::framework::runtime::messaging::message_parts_t>::failure (
-                zlink::framework::framework_error_kind_t::spot_route_not_found,
+                zlink::framework::framework_error_kind_t::not_found,
                 "spot moved away from the stale address");
           }
           if (target_spot_id != "fresh-spot") {
               return zlink::framework::result_t<
                 zlink::framework::runtime::messaging::message_parts_t>::failure (
-                zlink::framework::framework_error_kind_t::request_failed,
+                zlink::framework::framework_error_kind_t::internal_failure,
                 "unexpected retry target");
           }
           ++retry_fresh_attempts;
@@ -3224,7 +3214,7 @@ int main ()
                                     .result ();
     if (stale_spot_reply
         || stale_spot_reply.error_kind ()
-             != zlink::framework::framework_error_kind_t::spot_route_not_found
+             != zlink::framework::framework_error_kind_t::not_found
         || retry_resolver.resolve_count.load () != 1 || retry_resolver.invalidate_count.load () != 1
         || retry_stale_attempts.load () != 1
         || retry_fresh_attempts.load () != 0) {
@@ -3420,7 +3410,7 @@ int main ()
     catch (const zlink::framework::framework_exception_t &error) {
         copied_route_rejected =
           error.kind ()
-          == zlink::framework::framework_error_kind_t::request_protocol_error;
+          == zlink::framework::framework_error_kind_t::protocol_error;
     }
     if (!copied_route_rejected || route_submit_attempts.load () != 1) {
         return 149;

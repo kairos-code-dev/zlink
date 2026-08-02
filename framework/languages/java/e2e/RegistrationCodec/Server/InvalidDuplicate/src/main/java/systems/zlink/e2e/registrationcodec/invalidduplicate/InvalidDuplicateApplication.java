@@ -32,18 +32,20 @@ public final class InvalidDuplicateApplication {
     @Bean
     ZLinkFrameworkConfigurer invalidFramework(ServerOptions options) {
         return framework -> {
-            var channel = framework.addClientServerChannel(Contracts.CHANNEL)
-                .enableServer(options.serverEndpoint());
-            channel.addRequestHandler(
+            var endpoint = java.net.URI.create(options.serverEndpoint());
+            var channel = framework.addClientServerChannel(Contracts.CHANNEL);
+            var server = channel.server()
+                .setBindHost(endpoint.getHost())
+                .setAdvertiseHost(endpoint.getHost())
+                .listen(endpoint.getPort());
+            server.addRequestHandler(
                 ManualRequestHandler.class,
                 Contracts.EchoManualReq.class,
-                Contracts.EchoRes.class,
-                "DuplicatePacket");
-            channel.addRequestHandler(
+                Contracts.EchoRes.class);
+            server.addRequestHandler(
                 ManualRequestHandler.class,
                 Contracts.EchoManualReq.class,
-                Contracts.EchoRes.class,
-                "DuplicatePacket");
+                Contracts.EchoRes.class);
         };
     }
 

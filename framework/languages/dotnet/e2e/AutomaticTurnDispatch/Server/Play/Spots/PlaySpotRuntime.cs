@@ -1,19 +1,25 @@
 using AutomaticTurnDispatch.Shared;
+using AutomaticTurnDispatch.Server.Play.Handlers;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
 
 namespace AutomaticTurnDispatch.Server.Play.Spots;
 
-internal sealed class AwaitProbeSpot(
+internal class AwaitProbeSpot(
     IZLinkSpotContext context,
     EvidenceStore evidence) : IZLinkSpot<AwaitActor>
 {
     private readonly object _timerGate = new();
     private readonly Dictionary<string, AwaitTimerState> _timers = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, AwaitActor> _actors = new(StringComparer.Ordinal);
     private int _counter;
 
     public IZLinkSpotContext Context { get; } = context;
+
+    public virtual void Configure()
+    {
+    }
 
     public int ReadCounter() => _counter;
 
@@ -40,6 +46,7 @@ internal sealed class AwaitProbeSpot(
     public ValueTask OnJoinedActorAsync(AwaitActor actor, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        lock (_actors) _actors[actor.ActorId] = actor;
         evidence.Add($"actor-joined|rid={evidence.Rid}|spot={Context.SpotId}|actor={actor.ActorId}");
         return ValueTask.CompletedTask;
     }
@@ -47,8 +54,15 @@ internal sealed class AwaitProbeSpot(
     public ValueTask OnLeaveActorAsync(AwaitActor actor, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        lock (_actors) _actors.Remove(actor.ActorId);
         evidence.Add($"actor-left|rid={evidence.Rid}|spot={Context.SpotId}|actor={actor.ActorId}");
         return ValueTask.CompletedTask;
+    }
+
+    public AwaitActor? FindActor(string actorId)
+    {
+        lock (_actors)
+            return _actors.TryGetValue(actorId, out var actor) ? actor : null;
     }
 
     public bool TryAddTimerState(AwaitTimerState state)
@@ -84,6 +98,21 @@ internal sealed class AwaitProbeSpot(
         foreach (var state in states)
             if (state.Timer is not null)
                 await state.Timer.CancelAsync();
+    }
+}
+
+internal sealed class PerActorAwaitSpot : AwaitProbeSpot
+{
+    public PerActorAwaitSpot(
+        IZLinkSpotContext context,
+        EvidenceStore evidence) : base(context, evidence)
+    {
+    }
+
+    public override void Configure()
+    {
+        Context.Handlers.AddActorPacket<PerActorAwaitHandler, AwaitActor>("PerActorAwaitReq");
+        Context.Handlers.AddActorPacket<PerActorFastHandler, AwaitActor>("PerActorFastReq");
     }
 }
 

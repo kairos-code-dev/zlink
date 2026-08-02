@@ -94,7 +94,7 @@ class SessionApplication {
                 ) { factory -> factory.recreateOnRelocation() }
             options.addStreamNode("gateway")
                 .bind(Env.get("ZLINK_KOTLIN_E2E_STREAM_ENDPOINT"))
-                .enableActorDispatch(Contracts.SPOT_MESH)
+                .enableActorDispatch()
                 .registerSession(ScenarioSession::class.java)
                 .addSessionPacketHandler(ActorAuthHandler::class.java)
                 .addSessionPacketHandler(RemoteActorAuthHandler::class.java)

@@ -266,6 +266,21 @@ fi
   >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 
 cat "${log_dir}/client.stdout.log"
+if [[ "${run_mismatch_scenario}" == "true" ]]; then
+  python3 - "${MISMATCH_HTTP_ENDPOINT}/evidence" >"${log_dir}/mismatch-server-evidence.json" <<'PY'
+import sys
+import urllib.request
+with urllib.request.urlopen(sys.argv[1], timeout=5) as response:
+    sys.stdout.write(response.read().decode("utf-8"))
+PY
+  if [[ "${SCENARIO}" == "RC-B5" ]]; then
+    grep -q "reason=PAYLOAD_DECODE_FAILED" "${log_dir}/json-only-flow.log"
+    if grep -q "UnexpectedHandler" "${log_dir}/mismatch-server-evidence.json"; then
+      echo "RC-B5 unsupported codec reached the receiver handler" >&2
+      exit 1
+    fi
+  fi
+fi
 if [[ "${run_main_scenarios}" == "true" ]]; then
   python3 - "${HTTP_ENDPOINT}/evidence" >"${log_dir}/server-evidence.json" <<'PY'
 import sys

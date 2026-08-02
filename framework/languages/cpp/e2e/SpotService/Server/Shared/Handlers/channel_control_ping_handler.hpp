@@ -28,7 +28,7 @@ class channel_control_ping_route_handler_t
           request.mesh_name.empty () ? std::string (e2e::route_channel) : request.mesh_name;
         if (mesh_name != e2e::route_channel && mesh_name != e2e::spot_mesh) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_protocol_error,
+              zlink::framework::framework_error_kind_t::protocol_error,
               "control ping mesh is not configured");
         }
         auto reply =

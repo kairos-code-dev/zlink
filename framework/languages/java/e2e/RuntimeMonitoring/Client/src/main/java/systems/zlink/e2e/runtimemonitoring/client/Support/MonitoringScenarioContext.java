@@ -107,6 +107,17 @@ public final class MonitoringScenarioContext implements AutoCloseable {
         }
     }
 
+    public void postExpectFailure(String baseUrl, String path, String failureMessage) {
+        RawHttpResponse response = ZLinkHttpClient.create(baseUrl)
+            .timeout(Duration.ofSeconds(3))
+            .post(path)
+            .submitRaw()
+            .toCompletableFuture()
+            .join();
+        ensure(response.status() >= 400 && response.status() < 500,
+            failureMessage + ": status=" + response.status() + " body=" + response.body());
+    }
+
     public Contracts.EvidenceSnapshot evidence(String baseUrl) {
         return ZLinkHttpClient.create(baseUrl)
             .timeout(Duration.ofSeconds(3))
@@ -383,7 +394,15 @@ public final class MonitoringScenarioContext implements AutoCloseable {
     }
 
     public void shutdownServiceB(String failureMessage) {
-        post(serviceBEndpoint, "/shutdown");
+        postBestEffort(serviceBEndpoint, "/shutdown");
+        waitForPort(serviceBEndpoint, false, failureMessage);
+        if (restartedServiceB != null) {
+            waitForExit(restartedServiceB);
+        }
+    }
+
+    public void crashServiceB(String failureMessage) {
+        postBestEffort(serviceBEndpoint, "/admin/crash");
         waitForPort(serviceBEndpoint, false, failureMessage);
         if (restartedServiceB != null) {
             waitForExit(restartedServiceB);

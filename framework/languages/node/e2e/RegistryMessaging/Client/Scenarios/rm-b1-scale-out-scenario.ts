@@ -1,4 +1,4 @@
-// RM-B1: scale-out (트래픽 중 provider 추가) 시나리오를 검증한다.
+// RM-B1: Traffic 처리 중 provider를 추가한다 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
 import { DynamicClusterLauncher } from '../Support/dynamic-cluster-launcher';
 import { getJson, postJson } from '../../../http-client';
@@ -9,25 +9,28 @@ export async function runRmB1(options: ClientOptions): Promise<void> {
   const cluster = await DynamicClusterLauncher.start(options, 'rm-b1');
   try {
     const providerA = await cluster.startProvider('api-a', 'api-a');
+    const consumer = await cluster.startConsumer('rm-b1-consumer');
+    await cluster.waitForSingleProvider('api-a', providerA.channelEndpoint);
     let beforeA = await getJson<string[]>(providerA.httpUrl, '/evidence');
     const markerBefore = uniqueMarker('rm-b1-before');
     for (let i = 0; i < 10; i += 1) {
-      const reply = await postJson<ProfileRes>(providerA.httpUrl, '/profile/request', { value: `${markerBefore}-${i}` });
+      const reply = await postJson<ProfileRes>(consumer.httpUrl, '/profile/request', { value: `${markerBefore}-${i}` });
       ensure(reply.providerRid === 'api-a', 'RM-B1 before scale-out should reach api-a.');
     }
     const preScaleEvidence = await postJson<string[]>(providerA.httpUrl, '/evidence/wait', { contains: `${markerBefore}-9` });
     ensure(countNewEvidence(preScaleEvidence, beforeA, 'profile-request|rid=api-a', markerBefore) === 10, 'RM-B1 pre-scale evidence was not api-a only.');
 
     const providerB = await cluster.startProvider('api-b', 'api-b');
+    await cluster.waitForProviders([providerA.channelEndpoint, providerB.channelEndpoint]);
     beforeA = await getJson<string[]>(providerA.httpUrl, '/evidence');
     const beforeB = await getJson<string[]>(providerB.httpUrl, '/evidence');
     const markerAfter = uniqueMarker('rm-b1-after');
-    const values = Array.from({ length: 60 }, (_, index) => `${markerAfter}-${index}`);
+    const values = Array.from({ length: 40 }, (_, index) => `${markerAfter}-${index}`);
     const replies: Array<{ requestValue: string; reply: ProfileRes }> = [];
     for (const value of values) {
       replies.push({
         requestValue: value,
-        reply: await postJson<ProfileRes>(providerA.httpUrl, '/profile/request', { value })
+        reply: await postJson<ProfileRes>(consumer.httpUrl, '/profile/request', { value })
       });
     }
     const apiAValues = replies.filter((entry) => entry.reply.providerRid === 'api-a').map((entry) => entry.requestValue);

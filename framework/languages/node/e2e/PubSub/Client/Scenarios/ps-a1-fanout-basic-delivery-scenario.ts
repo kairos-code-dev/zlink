@@ -1,4 +1,4 @@
-// PS-A1: fanout basic delivery 시나리오를 검증한다.
+// PS-A1: 준비된 subscriber가 같은 event를 받는다 시나리오를 검증한다.
 import { randomUUID } from 'node:crypto';
 import { PubSubNames, type EvidenceWaitReq } from '../../Shared/messages';
 import { commonContiguousSequence } from '../Support/evidence';

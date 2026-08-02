@@ -4,6 +4,8 @@
 #include "runtime/mesh/service_topology_registry.hpp"
 #include "runtime/protocol/service_wire_codec.hpp"
 
+#include <zlink/Contracts/Eventing/poller.hpp>
+
 #include <chrono>
 #include <cstdint>
 #include <map>
@@ -120,6 +122,7 @@ class raw_fanout_subscriber_t
     {
         std::string endpoint;
         std::unique_ptr<zlink::sub_socket_t> socket;
+        std::uintptr_t poller_slot = 0;
         bool automatic = false;
         bool ready = false;
         std::chrono::steady_clock::time_point deadline{};
@@ -129,12 +132,15 @@ class raw_fanout_subscriber_t
                          std::uint64_t lifecycle_generation,
                          std::string endpoint,
                          bool automatic);
+    void close_connection_locked (connection_t &connection) noexcept;
     void reopen_locked (connection_t &connection);
 
     mutable std::mutex _mutex;
     std::unique_ptr<zlink::context_t> _context;
+    zlink::poller_t _poller;
     std::map<publisher_intent_key_t, connection_t> _connections;
     std::optional<bool> _automatic_mode;
+    std::uintptr_t _next_poller_slot = 1;
     bool _closed = false;
 };
 

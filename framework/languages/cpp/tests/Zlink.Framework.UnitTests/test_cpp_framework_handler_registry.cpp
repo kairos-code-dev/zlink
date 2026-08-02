@@ -380,7 +380,7 @@ int main ()
     zlink::framework::handler_registry_t handlers;
     int failure_events = 0;
     zlink::framework::framework_error_kind_t last_failure_kind =
-      zlink::framework::framework_error_kind_t::request_failed;
+      zlink::framework::framework_error_kind_t::internal_failure;
     handlers.observe_failures ([&failure_events, &last_failure_kind] (
                                  const zlink::framework::handler_failure_event_t &event) {
         ++failure_events;
@@ -454,7 +454,7 @@ int main ()
                                            zlink::message_t::from (std::string ("123")));
     if (blocked_result
         || blocked_result.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_rejected) {
+             != zlink::framework::framework_error_kind_t::rejected) {
         return 36;
     }
     if (provider.get_required<handler_t> ().last_request == 123
@@ -471,7 +471,7 @@ int main ()
                        zlink::message_t::from (std::string ("321")));
     if (duplicate_result
         || duplicate_result.error_kind ()
-             != zlink::framework::framework_error_kind_t::already_submitted
+             != zlink::framework::framework_error_kind_t::invalid_operation
         || provider.get_required<duplicate_next_filter_t> ().duplicate_rejections != 1
         || provider.get_required<handler_t> ().last_request != 321) {
         return 39;
@@ -637,7 +637,7 @@ int main ()
                                            zlink::message_t::from (std::string ("1")));
     if (missing_result
         || missing_result.error_kind ()
-             != zlink::framework::framework_error_kind_t::handler_not_found) {
+             != zlink::framework::framework_error_kind_t::not_found) {
         return 8;
     }
 
@@ -645,11 +645,11 @@ int main ()
                                           zlink::message_t::from (std::string ("bad")));
     if (decode_result
         || decode_result.error_kind ()
-             != zlink::framework::framework_error_kind_t::payload_decode_failed) {
+             != zlink::framework::framework_error_kind_t::protocol_error) {
         return 9;
     }
     if (failure_events != 3
-        || last_failure_kind != zlink::framework::framework_error_kind_t::payload_decode_failed) {
+        || last_failure_kind != zlink::framework::framework_error_kind_t::protocol_error) {
         return 10;
     }
 
@@ -657,11 +657,11 @@ int main ()
                                           zlink::message_t::from (std::string ("1")));
     if (thrown_result
         || thrown_result.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_failed) {
+             != zlink::framework::framework_error_kind_t::internal_failure) {
         return 11;
     }
     if (failure_events != 4
-        || last_failure_kind != zlink::framework::framework_error_kind_t::request_failed) {
+        || last_failure_kind != zlink::framework::framework_error_kind_t::internal_failure) {
         return 12;
     }
 
@@ -671,12 +671,12 @@ int main ()
                                          zlink::message_t::from (std::string ("1")));
     if (owner_result
         || owner_result.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_target_not_found) {
+             != zlink::framework::framework_error_kind_t::not_found) {
         return 13;
     }
     if (failure_events != 5
         || last_failure_kind
-             != zlink::framework::framework_error_kind_t::request_target_not_found) {
+             != zlink::framework::framework_error_kind_t::not_found) {
         return 14;
     }
 
@@ -705,7 +705,7 @@ int main ()
     }
     catch (const zlink::framework::framework_exception_t &error) {
         duplicate_failed =
-          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+          error.kind () == zlink::framework::framework_error_kind_t::protocol_error;
     }
     if (!duplicate_failed) {
         return 17;

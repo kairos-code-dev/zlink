@@ -74,7 +74,9 @@ finish_response (raw_http_response_t response,
                  std::chrono::milliseconds timeout)
 {
     if (std::chrono::steady_clock::now () - started_at > timeout) {
-        return zlink::framework::detail::boundary_failure<raw_http_response_t> (zlink::framework::detail::boundary_error_t::timed_out, "HTTP request exceeded timeout", true);
+        return zlink::framework::detail::boundary_failure<raw_http_response_t> (
+          zlink::framework::detail::boundary_error_t::timed_out,
+          "HTTP request exceeded timeout");
     }
     return zlink::framework::result_t<raw_http_response_t>::success (std::move (response));
 }
@@ -409,13 +411,22 @@ zlink::framework::result_t<raw_http_response_t> perform_once (const http_client_
         return request_performer_t (options, cookie_jar, pool, request).perform ();
     }
     catch (const zlink::framework::framework_exception_t &ex) {
-        return zlink::framework::result_t<raw_http_response_t>::failure (ex.kind (), ex.what (),
-                                                                         ex.is_retriable ());
+        return zlink::framework::detail::result_access_t::failure<raw_http_response_t> (ex);
     }
     catch (const boost::system::system_error &ex) {
         if (ex.code () == boost::beast::error::timeout
             || ex.code () == boost::asio::error::timed_out) {
-            return zlink::framework::detail::boundary_failure<raw_http_response_t> (zlink::framework::detail::boundary_error_t::timed_out, ex.what (), true);
+            return zlink::framework::detail::boundary_failure<raw_http_response_t> (
+              zlink::framework::detail::boundary_error_t::timed_out, ex.what ());
+        }
+        if (ex.code () == boost::beast::http::error::body_limit) {
+            return zlink::framework::result_t<raw_http_response_t>::failure (
+              zlink::framework::framework_error_kind_t::capacity_exceeded,
+              ex.what ());
+        }
+        const std::string_view category (ex.code ().category ().name ());
+        if (category.find ("ssl") != std::string_view::npos) {
+            return map_unexpected_exception (ex);
         }
         return map_transport_exception (ex);
     }

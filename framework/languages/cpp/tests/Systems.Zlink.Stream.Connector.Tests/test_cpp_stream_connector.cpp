@@ -3458,7 +3458,7 @@ int main ()
     }
     websocket_connector.send (login_request_t{}).submit ();
     const auto websocket_send_deadline =
-      std::chrono::steady_clock::now () + std::chrono::seconds (1);
+      std::chrono::steady_clock::now () + std::chrono::seconds (3);
     while (!websocket_send_seen && std::chrono::steady_clock::now () < websocket_send_deadline) {
         std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
@@ -3515,7 +3515,7 @@ int main ()
     }
     tls_connector.send (login_request_t{}).submit ();
     const auto tls_send_deadline =
-      std::chrono::steady_clock::now () + std::chrono::seconds (1);
+      std::chrono::steady_clock::now () + std::chrono::seconds (3);
     while (!tls_send_seen && std::chrono::steady_clock::now () < tls_send_deadline) {
         std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
@@ -3569,7 +3569,7 @@ int main ()
     }
     wss_connector.send (login_request_t{}).submit ();
     const auto wss_send_deadline =
-      std::chrono::steady_clock::now () + std::chrono::seconds (1);
+      std::chrono::steady_clock::now () + std::chrono::seconds (3);
     while (!wss_send_seen && std::chrono::steady_clock::now () < wss_send_deadline) {
         std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }

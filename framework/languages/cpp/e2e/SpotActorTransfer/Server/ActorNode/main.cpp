@@ -821,7 +821,7 @@ class transfer_session_t final : public fw::packet_stream_session_t
                                             static_cast<std::uint64_t> (*request.generation));
             } else {
                 throw fw::framework_exception_t (
-                  fw::framework_error_kind_t::actor_route_not_found,
+                  fw::framework_error_kind_t::not_found,
                   "actor '" + request.actor_id + "' was not found");
             }
             auto bound = co_await _actors.bind_or_get (resolved).submit ();
@@ -837,12 +837,12 @@ class transfer_session_t final : public fw::packet_stream_session_t
         }
 
         if (_bound_actor_id.empty ()) {
-            throw fw::framework_exception_t (fw::framework_error_kind_t::request_protocol_error,
+            throw fw::framework_exception_t (fw::framework_error_kind_t::protocol_error,
                                              "no actor is bound to this session");
         }
         auto actor = _actors.find (_bound_actor_id);
         if (!actor) {
-            throw fw::framework_exception_t (fw::framework_error_kind_t::actor_route_not_found,
+            throw fw::framework_exception_t (fw::framework_error_kind_t::not_found,
                                              "bound actor was not found");
         }
         if (dispatch.can_reply ()) {
@@ -1031,8 +1031,7 @@ class create_actor_handler_t
                               result_t,
                               fw::actor_create_rejected_t>) {
                   throw fw::framework_exception_t (
-                    fw::framework_error_kind_t::
-                      actor_create_rejected,
+                    fw::framework_error_kind_t::rejected,
                     "Actor creation was rejected");
               } else {
                   return result.actor;
@@ -1069,7 +1068,7 @@ fw::actor_ref_t require_actor_ref (fw::actor_directory_t &directory, const std::
 {
     auto found = directory.find (actor_id).result ();
     if (!found || !found.value ()) {
-        throw fw::framework_exception_t (fw::framework_error_kind_t::actor_route_not_found,
+        throw fw::framework_exception_t (fw::framework_error_kind_t::not_found,
                                          "actor '" + actor_id + "' was not found");
     }
     return *found.value ();
@@ -1101,9 +1100,9 @@ std::string error_kind_name (const fw::framework_exception_t &error)
         return "TimeoutException";
     }
     switch (error.kind ()) {
-        case fw::framework_error_kind_t::actor_location_stale:
+        case fw::framework_error_kind_t::unavailable:
             return "ActorLocationStale";
-        case fw::framework_error_kind_t::actor_route_not_found:
+        case fw::framework_error_kind_t::not_found:
             return "ActorRouteNotFound";
         default:
             return "FrameworkError:" + std::to_string (static_cast<int> (error.kind ()));

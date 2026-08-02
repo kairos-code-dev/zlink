@@ -49,7 +49,7 @@ public final class CustomerGatewayApplication {
                     factory -> factory.recreateOnRelocation());
             options.addStreamNode(SampleNames.CustomerStreamNode)
                 .bind(topology.customerStreamEndpoint())
-                .enableActorDispatch(SampleNames.CustomerSpotDiscovery)
+                .enableActorDispatch()
                 .registerSession(CustomerSession.class);
         };
     }

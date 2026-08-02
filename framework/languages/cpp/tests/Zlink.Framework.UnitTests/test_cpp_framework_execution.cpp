@@ -18,6 +18,7 @@
 #include <mutex>
 #include <queue>
 #include <stdexcept>
+#include <stop_token>
 #include <string>
 #include <thread>
 #include <vector>
@@ -28,7 +29,7 @@ namespace
 class controlled_worker_scheduler_t final : public zlink::framework::detail::worker_scheduler_t
 {
   public:
-    bool try_schedule (std::function<void ()> work) override
+    bool try_schedule (std::function<void (std::stop_token)> work) override
     {
         if (queue_full) {
             return false;
@@ -46,13 +47,13 @@ class controlled_worker_scheduler_t final : public zlink::framework::detail::wor
 
     void run_worker_job ()
     {
-        std::function<void ()> job;
+        std::function<void (std::stop_token)> job;
         {
             std::lock_guard lock (mutex);
             job = std::move (worker_jobs.front ());
             worker_jobs.pop ();
         }
-        job ();
+        job (cancellation.get_token ());
     }
 
     void run_owner_job ()
@@ -78,10 +79,21 @@ class controlled_worker_scheduler_t final : public zlink::framework::detail::wor
         return owner_jobs.size ();
     }
 
+    std::stop_token stop_token () const noexcept override
+    {
+        return cancellation.get_token ();
+    }
+
+    void request_stop () noexcept
+    {
+        cancellation.request_stop ();
+    }
+
     bool queue_full = false;
     mutable std::mutex mutex;
-    std::queue<std::function<void ()>> worker_jobs;
+    std::queue<std::function<void (std::stop_token)>> worker_jobs;
     std::queue<std::function<void ()>> owner_jobs;
+    std::stop_source cancellation;
 };
 
 struct timer_activation_dependency_t
@@ -426,6 +438,51 @@ bool verify_request_turn_mode (bool release_turn, const std::vector<int> &expect
 
 int main ()
 {
+    zlink::framework::worker_options_t worker_options;
+    if (worker_options.min_threads () > worker_options.max_threads ()
+        || worker_options.max_threads () == 0
+        || worker_options.idle_timeout () < std::chrono::milliseconds::zero ()
+        || worker_options.max_queue_length () == 0) {
+        return 42;
+    }
+    worker_options.min_threads (2)
+      .max_threads (3)
+      .idle_timeout (std::chrono::milliseconds (7))
+      .max_queue_length (11);
+    if (worker_options.min_threads () != 2
+        || worker_options.max_threads () != 3
+        || worker_options.idle_timeout () != std::chrono::milliseconds (7)
+        || worker_options.max_queue_length () != 11) {
+        return 43;
+    }
+    bool invalid_worker_options_rejected = false;
+    try {
+        worker_options.max_threads (1);
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        invalid_worker_options_rejected =
+          error.kind () == zlink::framework::framework_error_kind_t::protocol_error;
+    }
+    if (!invalid_worker_options_rejected) {
+        return 44;
+    }
+
+    std::atomic_bool abandoned_deadline_fired = false;
+    const auto deadline_owner_start = std::chrono::steady_clock::now ();
+    {
+        auto control = std::make_shared<zlink::framework::detail::worker_control_t> (
+          std::stop_token{});
+        control->arm_deadline (
+          std::chrono::hours (1),
+          [&] { abandoned_deadline_fired.store (true); });
+    }
+    const auto deadline_owner_elapsed =
+      std::chrono::steady_clock::now () - deadline_owner_start;
+    if (abandoned_deadline_fired.load ()
+        || deadline_owner_elapsed > std::chrono::milliseconds (250)) {
+        return 45;
+    }
+
     if (!verify_timer_handler_activation_lifetime ()) {
         return 40;
     }
@@ -451,7 +508,7 @@ int main ()
     const auto unsupported_yield_result = unsupported_yield.yield ().result ();
     if (unsupported_yield_result
         || unsupported_yield_result.error_kind ()
-             != zlink::framework::framework_error_kind_t::invalid_configuration
+             != zlink::framework::framework_error_kind_t::not_configured
         || unsupported_submit_count.load () != 0) {
         return 30;
     }
@@ -512,13 +569,13 @@ int main ()
     auto async_call = context.run_cpu_worker ([] { return 1; });
     auto async_result = async_call.submit ().result ();
     if (async_result
-        || async_result.error_kind () != zlink::framework::framework_error_kind_t::request_failed) {
+        || async_result.error_kind () != zlink::framework::framework_error_kind_t::internal_failure) {
         return 6;
     }
     auto duplicate_async = async_call.submit ().result ();
     if (duplicate_async
         || duplicate_async.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_protocol_error) {
+             != zlink::framework::framework_error_kind_t::protocol_error) {
         return 7;
     }
 
@@ -526,13 +583,13 @@ int main ()
     const auto unconfigured_result = callback_call.submit ().result ();
     if (unconfigured_result
         || unconfigured_result.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_failed) {
+             != zlink::framework::framework_error_kind_t::internal_failure) {
         return 8;
     }
     const auto duplicate_result = callback_call.submit ().result ();
     if (duplicate_result
         || duplicate_result.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_protocol_error) {
+             != zlink::framework::framework_error_kind_t::protocol_error) {
         return 9;
     }
 
@@ -580,44 +637,79 @@ int main ()
     const auto full_result = full_task.result ();
     if (full_result
         || full_result.error_kind ()
-             != zlink::framework::framework_error_kind_t::worker_queue_full) {
+             != zlink::framework::framework_error_kind_t::capacity_exceeded) {
         return 15;
     }
 
     auto timeout_scheduler = std::make_shared<controlled_worker_scheduler_t> ();
     auto timeout_context = context_with_scheduler (timeout_scheduler);
-    auto timeout_call = timeout_context.run_cpu_worker ([] { return 9; });
+    std::atomic_bool timeout_saw_cancellation = false;
+    auto timeout_call = timeout_context.run_cpu_worker (
+      [&] (std::stop_token cancellation) {
+          timeout_saw_cancellation.store (cancellation.stop_requested ());
+          return 9;
+      });
     auto timeout_task = timeout_call.timeout (std::chrono::milliseconds (5)).submit ();
-    for (int attempt = 0; attempt < 50 && timeout_scheduler->owner_job_count () == 0; ++attempt) {
+    for (int attempt = 0; attempt < 50 && !timeout_task.await_ready (); ++attempt) {
         std::this_thread::sleep_for (std::chrono::milliseconds (2));
     }
-    if (timeout_scheduler->worker_job_count () != 1 || timeout_scheduler->owner_job_count () != 1) {
+    if (timeout_scheduler->worker_job_count () != 1 || !timeout_task.await_ready ()) {
         return 18;
     }
-    timeout_scheduler->run_owner_job ();
     const auto timeout_result = timeout_task.result ();
     if (timeout_result
         || timeout_result.error_kind ()
-             != zlink::framework::framework_error_kind_t::worker_timed_out) {
+             != zlink::framework::framework_error_kind_t::deadline_exceeded) {
         return 19;
     }
     timeout_scheduler->run_worker_job ();
-    if (timeout_scheduler->owner_job_count () != 0) {
+    if (timeout_scheduler->owner_job_count () != 0
+        || !timeout_saw_cancellation.load ()) {
         return 20;
     }
 
+    auto shutdown_scheduler = std::make_shared<controlled_worker_scheduler_t> ();
+    auto shutdown_context = context_with_scheduler (shutdown_scheduler);
+    std::atomic_bool shutdown_saw_cancellation = false;
+    auto shutdown_call = shutdown_context.run_cpu_worker (
+      [&] (std::stop_token cancellation) {
+          shutdown_saw_cancellation.store (cancellation.stop_requested ());
+          return 11;
+      });
+    auto shutdown_task = shutdown_call.submit ();
+    shutdown_scheduler->request_stop ();
+    if (!shutdown_task.await_ready ()) {
+        return 21;
+    }
+    const auto shutdown_result = shutdown_task.result ();
+    if (shutdown_result
+        || shutdown_result.error_kind ()
+             != zlink::framework::framework_error_kind_t::shutting_down) {
+        return 22;
+    }
+    shutdown_scheduler->run_worker_job ();
+    if (!shutdown_saw_cancellation.load ()
+        || shutdown_scheduler->owner_job_count () != 0) {
+        return 23;
+    }
+
+    auto io_scheduler = std::make_shared<controlled_worker_scheduler_t> ();
+    auto io_context = context_with_scheduler (io_scheduler);
     std::vector<std::shared_ptr<zlink::framework::detail::task_completion_source_t<int>>>
       io_sources;
     std::vector<zlink::framework::task_t<int>> io_tasks;
     for (int value = 0; value < 8; ++value) {
         auto source =
           std::make_shared<zlink::framework::detail::task_completion_source_t<int>> ();
-        auto call = full_context.run_io_worker ([source] { return source->task (); });
+        auto call = io_context.run_io_worker ([source] { return source->task (); });
         io_tasks.push_back (call.submit ());
         io_sources.push_back (std::move (source));
     }
-    if (full_scheduler->worker_job_count () != 0 || full_scheduler->owner_job_count () != 0) {
+    if (io_scheduler->worker_job_count () != 8 || io_scheduler->owner_job_count () != 0) {
         return 27;
+    }
+    for (int value = 0; value < 8; ++value) {
+        io_scheduler->run_worker_job ();
     }
     for (int value = 0; value < 8; ++value) {
         io_sources[static_cast<std::size_t> (value)]->complete (
@@ -630,17 +722,48 @@ int main ()
         }
     }
 
+    auto io_thread_source =
+      std::make_shared<zlink::framework::detail::task_completion_source_t<int>> ();
+    std::thread::id io_thread;
+    auto io_thread_call = io_context.run_io_worker (
+      [io_thread_source, &io_thread] (std::stop_token) {
+          io_thread = std::this_thread::get_id ();
+          return io_thread_source->task ();
+      });
+    auto io_thread_task = io_thread_call.submit ();
+    io_scheduler->run_worker_job ();
+    if (io_thread == std::thread::id{}) {
+        return 24;
+    }
+    io_thread_source->complete (zlink::framework::result_t<int>::success (99));
+    const auto io_thread_result = io_thread_task.result ();
+    if (!io_thread_result || io_thread_result.value () != 99) {
+        return 25;
+    }
+
     auto io_timeout_source =
       std::make_shared<zlink::framework::detail::task_completion_source_t<int>> ();
-    auto io_timeout_call = full_context.run_io_worker (
+    auto io_timeout_call = io_context.run_io_worker (
       [io_timeout_source] { return io_timeout_source->task (); });
-    const auto io_timeout_result =
-      io_timeout_call.timeout (std::chrono::milliseconds (5)).submit ().result ();
+    auto io_timeout_task =
+      io_timeout_call.timeout (std::chrono::milliseconds (5)).submit ();
+    if (io_scheduler->worker_job_count () != 1) {
+        return 29;
+    }
+    io_scheduler->run_worker_job ();
+    for (int attempt = 0; attempt < 50 && !io_timeout_task.await_ready (); ++attempt) {
+        std::this_thread::sleep_for (std::chrono::milliseconds (2));
+    }
+    const auto io_timeout_result = io_timeout_task.result ();
     if (io_timeout_result
         || io_timeout_result.error_kind ()
-             != zlink::framework::framework_error_kind_t::worker_timed_out
-        || full_scheduler->worker_job_count () != 0) {
-        return 29;
+             != zlink::framework::framework_error_kind_t::deadline_exceeded
+        || !io_timeout_task.await_ready ()) {
+        std::cerr << "io timeout mismatch: success="
+                  << static_cast<bool> (io_timeout_result)
+                  << " error=" << static_cast<int> (io_timeout_result.error_kind ())
+                  << " ready=" << io_timeout_task.await_ready () << '\n';
+        return 30;
     }
 
     {
@@ -666,7 +789,7 @@ int main ()
         catch (const zlink::framework::framework_exception_t &error) {
             detached_rejected =
               error.kind ()
-              == zlink::framework::framework_error_kind_t::invalid_configuration;
+              == zlink::framework::framework_error_kind_t::not_configured;
         }
         if (!detached_rejected) {
             return 31;
@@ -689,8 +812,7 @@ int main ()
             17, 19, nullptr,
             std::make_optional (zlink::framework::message_t::from (
               std::string ("no"))),
-            zlink::framework::framework_error_kind_t::request_failed,
-            true);
+            zlink::framework::framework_error_kind_t::internal_failure);
         const auto *rejected_result =
           std::get_if<zlink::framework::actor_join_rejected_t> (
             &rejected);
@@ -706,16 +828,14 @@ int main ()
           zlink::framework::detail::actor_join_completion_from_erased (
             zlink::framework::detail::actor_join_completion_outcome_t::failed,
             23, 29, nullptr, std::nullopt,
-            zlink::framework::framework_error_kind_t::request_failed,
-            false);
+            zlink::framework::framework_error_kind_t::internal_failure);
         const auto *failed_result =
           std::get_if<zlink::framework::actor_join_failed_t> (&failed);
         if (failed_result == nullptr
             || failed_result->operation_id_high != 23
             || failed_result->operation_id_low != 29
             || failed_result->error_kind
-                 != zlink::framework::framework_error_kind_t::request_failed
-            || failed_result->retryable) {
+                 != zlink::framework::framework_error_kind_t::internal_failure) {
             return 34;
         }
 
@@ -741,7 +861,7 @@ int main ()
         int completion_callback_count = 0;
         bool fail_completion_once = false;
         auto completion_error_kind =
-          zlink::framework::framework_error_kind_t::request_failed;
+          zlink::framework::framework_error_kind_t::internal_failure;
         bool completion_retryable = true;
         std::vector<
           zlink::framework::detail::actor_join_completion_outcome_t>
@@ -761,8 +881,7 @@ int main ()
               if (actor != completion_instance.get ()) {
                   return zlink::framework::task_t<void> (
                     zlink::framework::result_t<void>::failure (
-                      zlink::framework::framework_error_kind_t::
-                        invalid_configuration,
+                      zlink::framework::framework_error_kind_t::not_configured,
                       "completion callback received another Actor"));
               }
               ++completion_callback_count;
@@ -773,8 +892,7 @@ int main ()
                   fail_completion_once = false;
                   return zlink::framework::task_t<void> (
                     zlink::framework::result_t<void>::failure (
-                      zlink::framework::framework_error_kind_t::
-                        request_failed,
+                      zlink::framework::framework_error_kind_t::internal_failure,
                       "completion callback failed"));
               }
               return zlink::framework::task_t<void> (
@@ -818,8 +936,7 @@ int main ()
         const zlink::framework::actor_join_completion_t failed_completion =
           zlink::framework::actor_join_failed_t{
             second_operation.first, second_operation.second,
-            zlink::framework::framework_error_kind_t::request_failed,
-            false};
+            zlink::framework::framework_error_kind_t::internal_failure};
         if (completion_runtime.deliver_actor_join_completion (
               completion_actor, failed_completion,
               zlink::framework::spot_id_t ("source-spot"))
@@ -831,8 +948,7 @@ int main ()
                  != zlink::framework::detail::
                       actor_join_completion_outcome_t::failed
             || completion_error_kind
-                 != zlink::framework::framework_error_kind_t::
-                      request_failed
+                 != zlink::framework::framework_error_kind_t::internal_failure
             || completion_retryable) {
             return 72;
         }

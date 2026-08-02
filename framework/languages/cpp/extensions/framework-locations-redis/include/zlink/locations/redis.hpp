@@ -133,17 +133,17 @@ class redis_location_worker_t
                   }
                   catch (const framework_exception_t &error) {
                       completion.complete (result_t<T>::failure (
-                        error.kind (), error.what (), error.is_retriable ()));
+                        error.kind (), error.what ()));
                   }
                   catch (const std::exception &error) {
                       completion.complete (
-                        result_t<T>::failure (framework_error_kind_t::request_failed,
-                                              error.what (), true));
+                        result_t<T>::failure (framework_error_kind_t::internal_failure,
+                                              error.what ()));
                   }
                   catch (...) {
                       completion.complete (
-                        result_t<T>::failure (framework_error_kind_t::request_failed,
-                                              "redis worker failure", true));
+                        result_t<T>::failure (framework_error_kind_t::internal_failure,
+                                              "redis worker failure"));
                   }
               });
         }
@@ -571,7 +571,7 @@ return result
     template <typename T> static task_t<T> unavailable ()
     {
         return task_t<T> (result_t<T>::failure (
-          framework_error_kind_t::request_failed,
+          framework_error_kind_t::internal_failure,
           "redis-plus-plus client is not available in this build",
           true));
     }
@@ -941,7 +941,7 @@ class redis_relocation_store_t final : public relocation_store_t
 #else
         (void) reference;
         return task_t<void> (result_t<void>::failure (
-          framework_error_kind_t::request_failed,
+          framework_error_kind_t::internal_failure,
           "redis-plus-plus client is not available in this build",
           true));
 #endif
@@ -970,7 +970,7 @@ return {'stored', tostring(nowMs),
     template <typename T> static task_t<T> unavailable ()
     {
         return task_t<T> (result_t<T>::failure (
-          framework_error_kind_t::request_failed,
+          framework_error_kind_t::internal_failure,
           "redis-plus-plus client is not available in this build",
           true));
     }

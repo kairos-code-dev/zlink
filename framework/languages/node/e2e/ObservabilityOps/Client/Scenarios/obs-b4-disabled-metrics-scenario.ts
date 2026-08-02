@@ -1,4 +1,4 @@
-// OBS-B4: 비활성 계측의 최소 비용 시나리오를 검증한다.
+// OBS-B4: Metric reader가 없어도 messaging을 처리한다 시나리오를 검증한다.
 import {
   ObservabilityOpsNames,
   createActor,

@@ -6,9 +6,9 @@ import type {
   OrderState,
   ServerAssertionReq,
   StartOrderReq,
-  StartOrderWorkflowRes,
-  VerifyExpectedVersionFenceRes
+  StartOrderWorkflowRes
 } from '../../../Shared/Contracts/messages';
+import type { VerifyExpectedVersionFenceRes } from '../Internal/shoppingmall-workflow-messages';
 import type { OrderEventType, StoredOrderEvent } from '../Domain/order-events';
 import { OrderAggregate } from '../../OrderWorkflow/Domain/ShoppingMall/order-domain';
 
@@ -85,7 +85,7 @@ class OrderStore {
       data.orderPaymentMethods[orderId] = request.paymentMethodId;
       return new StartOrderWorkflowReq(
         orderId, request.cartId, request.shippingAddressId, request.paymentMethodId,
-        request.idempotencyKey, cart.lines, cart.amount, cart.currency
+        request.idempotencyKey, `start-${request.idempotencyKey}`, cart.lines, cart.amount, cart.currency
       );
     });
   }
@@ -102,7 +102,7 @@ class OrderStore {
   startOrder(request: StartOrderWorkflowReq, instanceId: string): StartOrderWorkflowRes {
     for (;;) {
       const current = this.readOrder(request.orderId);
-      const duplicate = current.stream.some((event) => event.sourceCommandId === request.idempotencyKey);
+      const duplicate = current.stream.some((event) => event.sourceCommandId === request.sourceCommandId);
       if (duplicate) {
         const state = this.healProjection(request.orderId, instanceId);
         this.confirmMapping(request.idempotencyKey, request.orderId);
@@ -118,8 +118,8 @@ class OrderStore {
           lines: request.lines,
           amount: request.amount,
           currency: request.currency,
-          sourceCommandId: request.idempotencyKey
-        }), request.idempotencyKey, instanceId);
+          sourceCommandId: request.sourceCommandId
+        }), request.sourceCommandId, instanceId);
         this.confirmMapping(request.idempotencyKey, request.orderId);
         return { state };
       } catch (error) {

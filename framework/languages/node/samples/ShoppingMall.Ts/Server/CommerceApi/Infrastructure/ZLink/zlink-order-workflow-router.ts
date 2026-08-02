@@ -6,17 +6,19 @@ import { SampleNames } from '../../../../Shared/Configuration/sample-names';
 import { OrderWorkflowRouterPort } from '../../Application/order-workflow-router-port';
 import {
   ContinueOrderWorkflowReq,
-  PrepareInventoryEffectReq,
-  PrepareInventoryReservedReq,
   RebuildOrderProjectionReq,
   StartOrderWorkflowReq,
-  VerifyExpectedVersionFenceReq
 } from '../../../../Shared/Contracts/messages';
+import {
+  PrepareInventoryEffectReq,
+  PrepareInventoryReservedReq,
+  VerifyExpectedVersionFenceReq
+} from '../../../Shared/Internal/shoppingmall-workflow-messages';
+import type { VerifyExpectedVersionFenceRes } from '../../../Shared/Internal/shoppingmall-workflow-messages';
 import type {
   ContinueOrderWorkflowRes,
   RebuildOrderProjectionRes,
-  StartOrderWorkflowRes,
-  VerifyExpectedVersionFenceRes
+  StartOrderWorkflowRes
 } from '../../../../Shared/Contracts/messages';
 
 @Injectable()
@@ -34,6 +36,7 @@ class ZLinkOrderWorkflowRouter implements OrderWorkflowRouterPort {
       request.shippingAddressId,
       request.paymentMethodId,
       request.idempotencyKey,
+      request.sourceCommandId,
       request.lines,
       request.amount,
       request.currency
@@ -43,16 +46,16 @@ class ZLinkOrderWorkflowRouter implements OrderWorkflowRouterPort {
   prepareInventoryEffect(request: StartOrderWorkflowReq): Promise<StartOrderWorkflowRes> {
     return this.request(new PrepareInventoryEffectReq(
       request.orderId, request.cartId, request.shippingAddressId, request.paymentMethodId,
-      request.idempotencyKey, request.lines, request.amount, request.currency
+      request.idempotencyKey, request.sourceCommandId, request.lines, request.amount, request.currency
     ));
   }
 
   continue(orderId: string): Promise<ContinueOrderWorkflowRes> {
-    return this.request(new ContinueOrderWorkflowReq(orderId));
+    return this.request(new ContinueOrderWorkflowReq(orderId, `continue-${orderId}`));
   }
 
   rebuild(orderId: string): Promise<RebuildOrderProjectionRes> {
-    return this.request(new RebuildOrderProjectionReq(orderId));
+    return this.request(new RebuildOrderProjectionReq(orderId, `rebuild-${orderId}`));
   }
 
   async verifyExpectedVersionFence(orderId: string): Promise<VerifyExpectedVersionFenceRes> {

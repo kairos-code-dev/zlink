@@ -6,7 +6,6 @@
 #include "runtime/messaging/async_submit_runtime.hpp"
 
 #include "runtime/channels/channel_runtime.hpp"
-#include "runtime/host/actor_gateway_spot_bridge.hpp"
 #include "runtime/mesh/mesh_metadata_codec.hpp"
 #include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
@@ -131,7 +130,7 @@ namespace
 
 framework_exception_t configuration_error (std::string message)
 {
-    return framework_exception_t (framework_error_kind_t::request_protocol_error,
+    return framework_exception_t (framework_error_kind_t::protocol_error,
                                   std::move (message));
 }
 
@@ -624,6 +623,19 @@ mesh_node_runtime_t::relocate_application_actor (
       inventory_digest, wire);
 }
 
+bool mesh_node_runtime_t::application_actor_transfer_in_progress (
+  const actor_ref_t &actor) const
+{
+    return spot_node_runtime_t (_state->spot_state)
+      .actor_transfer_in_progress (actor);
+}
+
+result_t<bool> mesh_node_runtime_t::destroy_application_actor (
+  const actor_ref_t &actor)
+{
+    return spot_node_runtime_t (_state->spot_state).destroy_actor (actor);
+}
+
 runtime::stateful::aggregate_relocation_result_t
 mesh_node_runtime_t::relocate_application_unit (
   std::vector<runtime::stateful::object_ref_t> sources,
@@ -967,6 +979,11 @@ bool mesh_node_runtime_t::send_instance_spot_activation_remote (
 void mesh_node_runtime_t::stop () noexcept
 {
     runtime::messaging::shutdown_submit_owner (this);
+    {
+        std::lock_guard lock (_completion_mutex);
+        _actor_join_continuations.clear ();
+        _completed_operations.clear ();
+    }
     if (!_node) {
         return;
     }
@@ -1260,7 +1277,7 @@ result_t<actor_ref_t> mesh_node_runtime_t::create_application_actor (
         _state->spot_state->actor_types_by_id.erase (actor_id);
         _state->spot_state->mesh_runtime_owned_native_actor_ids.erase (actor_id);
         return result_t<actor_ref_t>::failure (
-          framework_error_kind_t::request_failed, error.what ());
+          framework_error_kind_t::internal_failure, error.what ());
     }
 }
 
@@ -1303,7 +1320,7 @@ result_t<actor_ref_t> mesh_node_runtime_t::create_application_actor (
         std::lock_guard<std::recursive_mutex> lock (_state->spot_state->mutex);
         _state->spot_state->actor_types_by_id.erase (actor_id);
         _state->spot_state->mesh_runtime_owned_native_actor_ids.erase (actor_id);
-        return result_t<actor_ref_t>::failure (framework_error_kind_t::request_failed,
+        return result_t<actor_ref_t>::failure (framework_error_kind_t::internal_failure,
                                                error.what ());
     }
 }
@@ -1317,7 +1334,7 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_entr
     const auto found = _actors.find (std::string (actor.actor_id ()));
     if (found == _actors.end ()) {
         return result_t<actor_join_reply_t>::failure (
-          framework_error_kind_t::actor_route_not_found, "local Actor handle was not found");
+          framework_error_kind_t::not_found, "local Actor handle was not found");
     }
     host::operation_id_t operation;
     const std::vector<zlink::message_t> parts{request};
@@ -1325,15 +1342,68 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_entr
       zlink::routing_id_t::from (std::string (target_node.value ())), parts, operation, timeout);
     if (submitted != zlink::submit_result_t::ok) {
         return result_t<actor_join_reply_t>::failure (
-          framework_error_kind_t::request_failed, "Actor entry Spot join was not submitted");
+          framework_error_kind_t::internal_failure, "Actor entry Spot join was not submitted");
     }
     auto joined = wait_for_join_completion (operation, actor, timeout);
-    if (joined && joined.value ().result_code == 0) {
-        std::lock_guard<std::recursive_mutex> lock (_state->spot_state->mutex);
-        ++_state->spot_state
-            ->core_actor_membership_epochs[std::string (actor.actor_id ())];
-    }
     return joined;
+}
+
+result_t<void> mesh_node_runtime_t::submit_application_actor_entry_spot_join (
+  const actor_ref_t &actor,
+  const node_rid_t &target_node,
+  const zlink::message_t &request,
+  std::chrono::milliseconds timeout,
+  actor_join_completion_t completion)
+{
+    if (!completion)
+        return result_t<void>::failure (
+          framework_error_kind_t::internal_failure,
+          "Actor entry Spot join completion is required");
+    const auto found = _actors.find (std::string (actor.actor_id ()));
+    if (found == _actors.end ())
+        return result_t<void>::failure (
+          framework_error_kind_t::not_found,
+          "local Actor handle was not found");
+
+    host::operation_id_t operation;
+    const std::vector<zlink::message_t> parts{request};
+    std::unique_lock lock (_completion_mutex);
+    const auto submitted = found->second.join_entry_spot (
+      zlink::routing_id_t::from (std::string (target_node.value ())),
+      parts, operation, timeout);
+    if (submitted != zlink::submit_result_t::ok)
+        return result_t<void>::failure (
+          framework_error_kind_t::internal_failure,
+          "Actor entry Spot join was not submitted");
+    const auto [_, inserted] = _actor_join_continuations.emplace (
+      operation_key (operation),
+      actor_join_continuation_t{actor, std::move (completion)});
+    if (!inserted)
+        return result_t<void>::failure (
+          framework_error_kind_t::protocol_error,
+          "Actor entry Spot join operation was duplicated");
+    return result_t<void>::success ();
+}
+
+bool mesh_node_runtime_t::complete_application_actor_entry_spot_join (
+  const host::receive_record_t &record,
+  const std::vector<zlink::message_t> &parts)
+{
+    actor_join_completion_t completion;
+    actor_ref_t actor;
+    {
+        std::lock_guard lock (_completion_mutex);
+        const auto found = _actor_join_continuations.find (
+          operation_key (record.operation_id));
+        if (found == _actor_join_continuations.end ())
+            return false;
+        actor = found->second.actor;
+        completion = std::move (found->second.completion);
+        _actor_join_continuations.erase (found);
+        _completed_operations.erase (operation_key (record.operation_id));
+    }
+    completion (actor_join_reply_from_completion (record, parts, actor));
+    return true;
 }
 
 result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot (
@@ -1359,9 +1429,7 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
                 actor,
                 actor_join_failed_t{
                   operation_high, operation_low,
-                  joined.error_kind (),
-                  joined.error () != nullptr
-                    && joined.error ()->is_retriable ()},
+                  joined.error_kind ()},
                 completion_source_spot);
           }
           const auto reply =
@@ -1393,7 +1461,7 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
         const auto found = _actors.find (std::string (actor.actor_id ()));
         if (found == _actors.end ()) {
             return result_t<actor_join_reply_t>::failure (
-              framework_error_kind_t::actor_route_not_found,
+              framework_error_kind_t::not_found,
               "local Actor handle was not found");
         }
         host::operation_id_t operation;
@@ -1404,15 +1472,10 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
           target_spot_generation, parts, operation, timeout);
         if (submitted != zlink::submit_result_t::ok) {
             return result_t<actor_join_reply_t>::failure (
-              framework_error_kind_t::request_failed,
+              framework_error_kind_t::internal_failure,
               "Actor Spot join was not submitted");
         }
         auto joined = wait_for_join_completion (operation, actor, timeout);
-        if (joined && joined.value ().result_code == 0) {
-            std::lock_guard<std::recursive_mutex> lock (_state->spot_state->mutex);
-            ++_state->spot_state
-                ->core_actor_membership_epochs[std::string (actor.actor_id ())];
-        }
         const auto delivered =
           deliver_completion (operation.high, operation.low, joined);
         if (!delivered)
@@ -1423,7 +1486,7 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
     }
     if (!_serializers) {
         return result_t<actor_join_reply_t>::failure (
-          framework_error_kind_t::request_protocol_error,
+          framework_error_kind_t::protocol_error,
           "MeshNode serializers are not configured");
     }
     runtime::messaging::client_call_codec_t codec;
@@ -1445,7 +1508,7 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
             zlink::send_flags_t::none, timeout);
           if (submitted != zlink::submit_result_t::ok) {
               return result_t<runtime::messaging::message_parts_t>::failure (
-                framework_error_kind_t::request_failed,
+                framework_error_kind_t::internal_failure,
                 "Actor transfer route request was not submitted");
           }
           auto completed = wait_for_completion (operation, timeout);
@@ -1455,7 +1518,7 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
           if (completed.value ().record.terminal_result
               != static_cast<int> (zlink::request_result_t::ok)) {
               return result_t<runtime::messaging::message_parts_t>::failure (
-                framework_error_kind_t::request_failed,
+                framework_error_kind_t::internal_failure,
                 "Actor transfer route request returned an error");
           }
           return result_t<runtime::messaging::message_parts_t>::success (
@@ -1466,7 +1529,7 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
     const auto source_spot = completion_source_spot;
     if (!source_spot) {
         return result_t<actor_join_reply_t>::failure (
-          framework_error_kind_t::actor_route_not_found,
+          framework_error_kind_t::not_found,
           "source Actor is not joined to a local Spot");
     }
     const auto transfer_id = spot_runtime.next_actor_transfer_id ();
@@ -1477,12 +1540,38 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
       static_cast<std::uint64_t> (
         std::hash<std::string>{} (_state->mesh_name))
       | 1ULL;
+    auto fail_remote_join =
+      [&] (const auto &failed, std::string message)
+        -> result_t<actor_join_reply_t> {
+          const auto failure = detail::propagate_failure<actor_join_reply_t> (
+            failed, std::move (message));
+          const auto delivered = deliver_completion (
+            completion_operation_id_high,
+            completion_operation_id_low,
+            failure);
+          if (!delivered)
+              return detail::propagate_failure<actor_join_reply_t> (
+                delivered,
+                "remote Actor Join failure completion callback failed");
+          return failure;
+      };
+    const auto source_actor = _node->resolve_actor (actor);
+    if (!source_actor || source_actor->authority_owner_generation == 0) {
+        const auto failure = result_t<actor_join_reply_t>::failure (
+          framework_error_kind_t::not_found,
+          "source Framework Actor authority is unavailable");
+        return fail_remote_join (failure, "source Framework Actor authority is unavailable");
+    }
+    const auto actor_authority_owner_generation =
+      source_actor->authority_owner_generation;
     const auto admission_request = spot_actor_admission_route_request_t{
       .transfer_id = transfer_id,
       .actor_node_rid = std::string (actor.node_rid ().value ()),
       .actor_type = std::string (actor.actor_type ()),
       .actor_id = std::string (actor.actor_id ()),
       .actor_generation = actor.generation (),
+      .actor_authority_owner_generation =
+        actor_authority_owner_generation,
       .completion_operation_id_high =
         completion_operation_id_high,
       .completion_operation_id_low =
@@ -1493,15 +1582,13 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
     auto admission_parts = request_route (
       admission_request, spot_actor_admission_route_request_t::packet_name);
     if (!admission_parts)
-        return detail::propagate_failure<actor_join_reply_t> (
-          admission_parts, "remote Actor admission failed");
+        return fail_remote_join (admission_parts, "remote Actor admission failed");
     auto admission = codec.decode_envelope_reply<spot_actor_admission_route_reply_t> (
       admission_parts.value (), *_serializers,
       "remote Actor admission reply is empty",
       "remote Actor admission reply decode failed", "ActorTransferAdmission");
     if (!admission)
-        return detail::propagate_failure<actor_join_reply_t> (
-          admission, "remote Actor admission failed");
+        return fail_remote_join (admission, "remote Actor admission failed");
     if (!admission.value ().accepted) {
         const auto rejected =
           result_t<actor_join_reply_t>::success (
@@ -1521,13 +1608,11 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
 
     auto prepared = spot_runtime.transfer_actor_out (actor, transfer_id);
     if (!prepared)
-        return detail::propagate_failure<actor_join_reply_t> (
-          prepared, "Actor transfer-out failed");
+        return fail_remote_join (prepared, "Actor transfer-out failed");
     auto left = spot_runtime.leave_actor_for_remote_transfer (actor);
     if (!left) {
         spot_runtime.fail_remote_actor_transfer (actor, false);
-        return detail::propagate_failure<actor_join_reply_t> (
-          left, "source Actor leave failed");
+        return fail_remote_join (left, "source Actor leave failed");
     }
 
     spot_runtime.emit_actor_transfer_marker (
@@ -1538,6 +1623,8 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
       .actor_type = std::string (actor.actor_type ()),
       .actor_id = std::string (actor.actor_id ()),
       .actor_generation = actor.generation (),
+      .actor_authority_owner_generation =
+        actor_authority_owner_generation,
       .completion_root_reference =
         admission.value ().completion_root_reference,
       .completion_root_checksum =
@@ -1550,8 +1637,7 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
       prepare_request, spot_actor_commit_route_request_t::packet_name);
     if (!prepare_parts) {
         spot_runtime.fail_remote_actor_transfer (actor, true);
-        return detail::propagate_failure<actor_join_reply_t> (
-          prepare_parts, "remote Actor prepare failed");
+        return fail_remote_join (prepare_parts, "remote Actor prepare failed");
     }
     auto prepared_reply = codec.decode_envelope_reply<spot_actor_join_route_reply_t> (
       prepare_parts.value (), *_serializers,
@@ -1559,8 +1645,7 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
       "remote Actor prepare reply decode failed", "ActorTransferPrepare");
     if (!prepared_reply) {
         spot_runtime.fail_remote_actor_transfer (actor, true);
-        return detail::propagate_failure<actor_join_reply_t> (
-          prepared_reply, "remote Actor prepare failed");
+        return fail_remote_join (prepared_reply, "remote Actor prepare failed");
     }
 
     const auto native_actor = actor;
@@ -1588,9 +1673,10 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
       prepare_actor_transfer (core_prepare, timeout, core_token, core_result);
     if (!core_prepared) {
         spot_runtime.fail_remote_actor_transfer (actor, true);
-        return result_t<actor_join_reply_t>::failure (
-          framework_error_kind_t::request_failed,
+        const auto failure = result_t<actor_join_reply_t>::failure (
+          framework_error_kind_t::internal_failure,
           "source Framework Actor relocation prepare failed");
+        return fail_remote_join (failure, "source Framework Actor relocation prepare failed");
     }
 
     std::vector<spot_actor_handoff_packet_t> backlog;
@@ -1606,6 +1692,8 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
       .actor_type = std::string (actor.actor_type ()),
       .actor_id = std::string (actor.actor_id ()),
       .actor_generation = actor.generation (),
+      .actor_authority_owner_generation =
+        actor_authority_owner_generation,
       .completion_root_reference =
         admission.value ().completion_root_reference,
       .completion_root_checksum =
@@ -1629,8 +1717,7 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
       finalize_request, spot_actor_commit_route_request_t::packet_name);
     if (!finalize_parts) {
         spot_runtime.fail_remote_actor_transfer (actor, true);
-        return detail::propagate_failure<actor_join_reply_t> (
-          finalize_parts, "remote Actor finalize failed");
+        return fail_remote_join (finalize_parts, "remote Actor finalize failed");
     }
     auto finalized = codec.decode_envelope_reply<spot_actor_join_route_reply_t> (
       finalize_parts.value (), *_serializers,
@@ -1638,16 +1725,16 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
       "remote Actor finalize reply decode failed", "ActorTransferFinalize");
     if (!finalized) {
         spot_runtime.fail_remote_actor_transfer (actor, true);
-        return detail::propagate_failure<actor_join_reply_t> (
-          finalized, "remote Actor finalize failed");
+        return fail_remote_join (finalized, "remote Actor finalize failed");
     }
     const auto next_membership_epoch = membership_epoch + 1;
     const auto core_committed = core_token.commit (next_membership_epoch);
     if (!core_committed) {
         spot_runtime.fail_remote_actor_transfer (actor, true);
-        return result_t<actor_join_reply_t>::failure (
-          framework_error_kind_t::request_failed,
+        const auto failure = result_t<actor_join_reply_t>::failure (
+          framework_error_kind_t::internal_failure,
           "source Framework Actor relocation commit failed");
+        return fail_remote_join (failure, "source Framework Actor relocation commit failed");
     }
     {
         std::lock_guard<std::recursive_mutex> lock (_state->spot_state->mutex);
@@ -1686,10 +1773,42 @@ mesh_node_runtime_t::reserve_application_actor_join_barrier (
     spot_node_runtime_t spot_runtime (_state->spot_state);
     if (!spot_runtime.actor_spot (actor)) {
         return result_t<std::shared_ptr<deferred_barrier_t>>::failure (
-          framework_error_kind_t::actor_route_not_found,
+          framework_error_kind_t::not_found,
           "Deferred Actor join source runtime was not found");
     }
     return spot_runtime.reserve_actor_join_barrier (actor);
+}
+
+result_t<actor_join_reply_t> mesh_node_runtime_t::actor_join_reply_from_completion (
+  const host::receive_record_t &record,
+  const std::vector<zlink::message_t> &parts,
+  const actor_ref_t &actor)
+{
+    if (!record.join_completion) {
+        return result_t<actor_join_reply_t>::failure (
+          framework_error_kind_t::protocol_error,
+          "Actor Spot completion did not carry a join result (terminal result "
+            + std::to_string (record.terminal_result) + ", errno "
+            + std::to_string (record.failure_errno) + ")");
+    }
+    const auto &joined = *record.join_completion;
+    const auto reply = parts.empty () ? zlink::message_t{} : parts.front ();
+    if (joined.join_result == host::join_admission_t::rejected) {
+        return result_t<actor_join_reply_t>::success (
+          actor_join_reply_t{1, actor, reply});
+    }
+    const auto &native = joined.current_actor;
+    {
+        std::lock_guard<std::recursive_mutex> lock (_state->spot_state->mutex);
+        ++_state->spot_state
+            ->core_actor_membership_epochs[std::string (actor.actor_id ())];
+    }
+    return result_t<actor_join_reply_t>::success (
+      actor_join_reply_t{
+        0,
+        actor_ref_t (native.node_rid (), std::string (actor.actor_type ()),
+                     std::string (native.actor_id ()), native.generation ()),
+        reply});
 }
 
 result_t<actor_join_reply_t> mesh_node_runtime_t::wait_for_join_completion (
@@ -1704,26 +1823,8 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::wait_for_join_completion (
           completed.error () ? completed.error ()->what () : "Actor Spot join failed");
     }
     auto completion = std::move (completed.value ());
-    if (!completion.record.join_completion) {
-        return result_t<actor_join_reply_t>::failure (
-          framework_error_kind_t::request_protocol_error,
-          "Actor Spot completion did not carry a join result (terminal result "
-            + std::to_string (completion.record.terminal_result) + ", errno "
-            + std::to_string (completion.record.failure_errno) + ")");
-    }
-    const auto &joined = *completion.record.join_completion;
-    const auto reply = completion.parts.empty () ? zlink::message_t{} : completion.parts.front ();
-    if (joined.join_result == host::join_admission_t::rejected) {
-        return result_t<actor_join_reply_t>::success (
-          actor_join_reply_t{1, actor, reply});
-    }
-    const auto &native = joined.current_actor;
-    return result_t<actor_join_reply_t>::success (
-      actor_join_reply_t{
-        0,
-        actor_ref_t (native.node_rid (), std::string (actor.actor_type ()),
-                     std::string (native.actor_id ()), native.generation ()),
-        reply});
+    return actor_join_reply_from_completion (
+      completion.record, completion.parts, actor);
 }
 
 result_t<std::optional<zlink::message_t>>
@@ -1764,7 +1865,7 @@ mesh_node_runtime_t::relay_application_actor (
                 actor, payload_bytes, incoming_hop_count);
             if (!follow_target) {
                 return result_t<std::optional<zlink::message_t>>::failure (
-                  framework_error_kind_t::actor_location_stale,
+                  framework_error_kind_t::unavailable,
                   "Actor Message Follow bound was exceeded");
             }
             actor_message_follow_lease_t lease (
@@ -1798,7 +1899,7 @@ mesh_node_runtime_t::relay_application_actor (
                 target_node, follow_target->route.spot_id);
             if (!target_generation) {
                 return result_t<std::optional<zlink::message_t>>::failure (
-                  framework_error_kind_t::spot_route_not_found,
+                  framework_error_kind_t::not_found,
                   "Actor message follow target Spot generation is unavailable");
             }
             auto origin = get_or_create_spot (
@@ -1810,7 +1911,7 @@ mesh_node_runtime_t::relay_application_actor (
               zlink::send_flags_t::none, timeout);
             if (submitted != zlink::submit_result_t::ok) {
                 return result_t<std::optional<zlink::message_t>>::failure (
-                  framework_error_kind_t::request_failed,
+                  framework_error_kind_t::internal_failure,
                   "Actor message follow route request was not submitted");
             }
             auto completed = wait_for_completion (operation, timeout);
@@ -1822,7 +1923,7 @@ mesh_node_runtime_t::relay_application_actor (
             if (completed.value ().record.terminal_result
                 != static_cast<int> (zlink::request_result_t::ok)) {
                 return result_t<std::optional<zlink::message_t>>::failure (
-                  framework_error_kind_t::request_failed,
+                  framework_error_kind_t::internal_failure,
                   "Actor message follow route request returned an error");
             }
             runtime::messaging::message_parts_t reply_parts (
@@ -1874,7 +1975,7 @@ mesh_node_runtime_t::relay_application_actor (
               authority_owner_generation);
             if (submitted != zlink::submit_result_t::ok) {
                 return result_t<std::optional<zlink::message_t>>::failure (
-                  framework_error_kind_t::request_failed,
+                  framework_error_kind_t::internal_failure,
                   "Actor relay send was not accepted");
             }
             return result_t<std::optional<zlink::message_t>>::success (std::nullopt);
@@ -1887,16 +1988,13 @@ mesh_node_runtime_t::relay_application_actor (
             authority_owner_generation);
         if (submitted != zlink::submit_result_t::ok) {
             return result_t<std::optional<zlink::message_t>>::failure (
-              framework_error_kind_t::request_failed,
+              framework_error_kind_t::internal_failure,
               "Actor relay request was not accepted");
         }
         auto completed = wait_for_completion (operation, timeout);
         if (!completed) {
-            return result_t<std::optional<zlink::message_t>>::failure (
-              completed.error_kind (),
-              completed.error () ? completed.error ()->what ()
-                                  : "Actor relay request completion failed",
-              completed.error () && completed.error ()->is_retriable ());
+            return detail::propagate_failure<std::optional<zlink::message_t>> (
+              completed, "Actor relay request completion failed");
         }
         runtime::messaging::message_parts_t reply (std::move (completed.value ().parts));
         auto reply_header = runtime::messaging::envelope_codec_t{}.decode_header (reply);
@@ -1914,7 +2012,7 @@ mesh_node_runtime_t::relay_application_actor (
               reply_header.value ().error_code.value_or ("request_failed"), message,
               "Actor relay request");
             return result_t<std::optional<zlink::message_t>>::failure (
-              mapped.kind (), message, mapped.is_retriable ());
+              mapped.kind (), message);
         }
         auto body = runtime::messaging::envelope_codec_t{}.decode_body (reply);
         if (!body)
@@ -1927,7 +2025,7 @@ mesh_node_runtime_t::relay_application_actor (
     }
     catch (const std::exception &error) {
         return result_t<std::optional<zlink::message_t>>::failure (
-          framework_error_kind_t::request_failed, error.what ());
+          framework_error_kind_t::internal_failure, error.what ());
     }
 }
 
@@ -1938,7 +2036,7 @@ result_t<void> mesh_node_runtime_t::bind_application_actor_session (
 {
     if (!_serializers) {
         return result_t<void>::failure (
-          framework_error_kind_t::request_protocol_error,
+          framework_error_kind_t::protocol_error,
           "MeshNode serializers are not configured");
     }
     try {
@@ -1961,7 +2059,7 @@ result_t<void> mesh_node_runtime_t::bind_application_actor_session (
           std::string (actor.node_rid ().value ()));
         if (!wait_for_peer_ready (actor_node, timeout)) {
             return result_t<void>::failure (
-              framework_error_kind_t::route_not_connected,
+              framework_error_kind_t::unavailable,
               "Remote Actor session binding target RouteMesh peer is not ready");
         }
         host::operation_id_t operation;
@@ -1969,7 +2067,7 @@ result_t<void> mesh_node_runtime_t::bind_application_actor_session (
           request_to_actor (native_actor, encoded.items (), operation, timeout);
         if (submitted != zlink::submit_result_t::ok) {
             return result_t<void>::failure (
-              framework_error_kind_t::actor_session_not_bound,
+              framework_error_kind_t::not_configured,
               "Remote Actor session binding was not accepted");
         }
         auto completed = wait_for_completion (operation, timeout);
@@ -1980,7 +2078,7 @@ result_t<void> mesh_node_runtime_t::bind_application_actor_session (
         if (completed.value ().record.terminal_result
             != static_cast<int> (zlink::request_result_t::ok)) {
             return result_t<void>::failure (
-              framework_error_kind_t::actor_session_not_bound,
+              framework_error_kind_t::not_configured,
               "Remote Actor session binding completed with result "
                 + std::to_string (
                   completed.value ().record.terminal_result)
@@ -2003,7 +2101,7 @@ result_t<void> mesh_node_runtime_t::bind_application_actor_session (
         return decoded.value ().accepted
                  ? result_t<void>::success ()
                  : result_t<void>::failure (
-                     framework_error_kind_t::actor_session_not_bound,
+                     framework_error_kind_t::not_configured,
                      "Remote Actor session binding was rejected");
     }
     catch (const framework_exception_t &error) {
@@ -2011,7 +2109,7 @@ result_t<void> mesh_node_runtime_t::bind_application_actor_session (
     }
     catch (const std::exception &error) {
         return result_t<void>::failure (
-          framework_error_kind_t::request_failed, error.what ());
+          framework_error_kind_t::internal_failure, error.what ());
     }
 }
 
@@ -2022,7 +2120,7 @@ result_t<void> mesh_node_runtime_t::notify_application_actor_disconnected (
 {
     if (!_serializers) {
         return result_t<void>::failure (
-          framework_error_kind_t::request_protocol_error,
+          framework_error_kind_t::protocol_error,
           "MeshNode serializers are not configured");
     }
     try {
@@ -2038,7 +2136,7 @@ result_t<void> mesh_node_runtime_t::notify_application_actor_disconnected (
           encoded.items (), operation, timeout);
         if (submitted != zlink::submit_result_t::ok) {
             return result_t<void>::failure (
-              framework_error_kind_t::request_failed,
+              framework_error_kind_t::internal_failure,
               "Actor disconnect notification was not submitted");
         }
         auto completed = wait_for_completion (operation, timeout);
@@ -2049,7 +2147,7 @@ result_t<void> mesh_node_runtime_t::notify_application_actor_disconnected (
         if (completed.value ().record.terminal_result
             != static_cast<int> (zlink::request_result_t::ok)) {
             return result_t<void>::failure (
-              framework_error_kind_t::request_failed,
+              framework_error_kind_t::internal_failure,
               "Actor disconnect notification returned an error");
         }
         runtime::messaging::message_parts_t reply (
@@ -2068,7 +2166,7 @@ result_t<void> mesh_node_runtime_t::notify_application_actor_disconnected (
     }
     catch (const std::exception &error) {
         return result_t<void>::failure (
-          framework_error_kind_t::request_failed, error.what ());
+          framework_error_kind_t::internal_failure, error.what ());
     }
 }
 
@@ -2099,7 +2197,7 @@ mesh_node_runtime_t::wait_for_completion (
           lock, timeout, [&] { return _completed_operations.find (key)
                                      != _completed_operations.end (); })) {
         return result_t<operation_completion_t>::failure (
-          framework_error_kind_t::request_failed, "MeshNode operation timed out");
+          framework_error_kind_t::internal_failure, "MeshNode operation timed out");
     }
     auto ready = _completed_operations.find (key);
     auto completion = std::move (ready->second);

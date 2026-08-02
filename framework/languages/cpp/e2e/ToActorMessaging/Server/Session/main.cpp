@@ -104,13 +104,13 @@ class actor_session_t final : public fw::packet_stream_session_t
                                 const zlink::message_t &payload) override
     {
         if (dispatch.packet_name () != e2e::bind_actor_session_req_t::packet_name) {
-            throw fw::framework_exception_t (fw::framework_error_kind_t::request_protocol_error,
+            throw fw::framework_exception_t (fw::framework_error_kind_t::protocol_error,
                                              "actor session expects BindActorSessionReq");
         }
         const auto request = payload.parse_json<e2e::bind_actor_session_req_t> ();
         const auto actor_ref = co_await _directory.find (request.actor_id);
         if (!actor_ref) {
-            throw fw::framework_exception_t (fw::framework_error_kind_t::actor_route_not_found,
+            throw fw::framework_exception_t (fw::framework_error_kind_t::not_found,
                                              "actor session target was not found");
         }
         auto bound = co_await _actors.bind_or_get (*actor_ref).submit ();

@@ -1,4 +1,4 @@
-// PS-B2: publisher 재시작 시나리오를 검증한다.
+// PS-B2: Publisher 재시작 뒤 기존 subscriber가 새 event를 받는다 시나리오를 검증한다.
 import { randomUUID } from 'node:crypto';
 import { PubSubNames } from '../../Shared/messages';
 import { getStatus, postJsonWithin, postStatus } from '../../../http-client';

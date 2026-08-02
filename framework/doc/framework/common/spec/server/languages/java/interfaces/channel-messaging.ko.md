@@ -246,8 +246,14 @@ public interface systems.zlink.framework.channels.ZLinkRouteClient {
   public abstract systems.zlink.framework.spots.ZLinkSpotRequestCall requestToSpot(java.lang.String, java.lang.Object);
 }
 public interface systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions {
+  public abstract systems.zlink.framework.channels.ZLinkMeshNodeRuntimeOptions meshNode(java.lang.String);
+  public abstract systems.zlink.framework.channels.ZLinkMeshChannelRuntimeOptions channel(java.lang.String, java.lang.String);
   public abstract systems.zlink.framework.channels.ZLinkMeshPlacementRuntimeOptions mesh(java.lang.String);
   public abstract systems.zlink.framework.channels.ZLinkMeshChannelRuntimeOptions channel(java.lang.String);
+}
+public interface systems.zlink.framework.channels.ZLinkMeshNodeRuntimeOptions {
+  public abstract long maxMessageSize();
+  public abstract void maxMessageSize(long);
 }
 public interface systems.zlink.framework.channels.ZLinkMeshPlacementRuntimeOptions {
   public abstract int placementWeight();

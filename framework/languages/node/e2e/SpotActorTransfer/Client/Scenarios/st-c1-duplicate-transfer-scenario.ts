@@ -1,4 +1,4 @@
-// ST-C1: source down after admission before commit 시나리오를 검증한다.
+// ST-C1: Location Store response loss 시나리오를 검증한다.
 import { SpotActorTransferNames, nodeA, nodeB, createSpot, createActor, joinActor, getEvidence, waitEvidence, post, has, unique, delay, require } from '../Support/scenario-support';
 
 export async function runStC1(): Promise<void> {

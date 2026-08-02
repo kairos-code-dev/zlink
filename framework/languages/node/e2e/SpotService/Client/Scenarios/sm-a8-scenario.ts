@@ -1,4 +1,4 @@
-// SM-A8: worker offload (`Context.RunCpuWorker`) 시나리오를 검증한다.
+// SM-A8: CPU worker 결과를 Spot state에 반영한다 시나리오를 검증한다.
 import type {
   CreateSpotRes,
   CreateSpotReq,

@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import type { ZLinkChannelClient } from '@zlink-systems/framework';
+import type { ZLinkRouteClient } from '@zlink-systems/framework';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import { ZLINK_CHANNEL_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLINK_ROUTE_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { EchoJsonReq, PacketNames, RegistrationCodecNames } from '../../Shared/messages';
 import { validateJsonOnlyOptions, type JsonOnlyOptions } from './Configuration/json-only-options';
 import { REGISTRATION_CODEC_OPTIONS, createRegistrationCodecConfigurationModule } from '../../configuration';
@@ -18,7 +18,7 @@ export async function startJsonOnlyPeer(): Promise<void> {
   const app = await NestFactory.createApplicationContext(PeerModule, { logger: false, abortOnError: false });
   const options = app.get(REGISTRATION_CODEC_OPTIONS, { strict: false }) as JsonOnlyOptions;
   const evidence = app.get(EvidenceStore, { strict: false });
-  const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
+  const channel = app.get(ZLINK_ROUTE_CLIENT, { strict: false }) as ZLinkRouteClient;
   const server = await startHttpServer(options.httpUrl, [
     ...createOperationalEndpoints(evidence, () => { stopping = true; }),
     {
@@ -60,7 +60,7 @@ function createJsonOnlyModule(): Function {
           const mesh = builder.addRouteMesh(RegistrationCodecNames.channel)
             .listen(options.channelEndpoint);
           mesh.peerConnections().connect(options.channelEndpoint);
-          mesh.channelName(RegistrationCodecNames.channel)
+          mesh.channel(RegistrationCodecNames.channel).server()
             .addRequestHandler(PacketNames.echoJsonReq, JsonOnlyEchoRequestHandler);
           return builder.build();
         }

@@ -35,11 +35,11 @@ class route_packet_dispatcher_t
   private:
     result_t<std::optional<route_dispatch_reply_t>>
     dispatch_send (const route_received_packet_t &received,
-                   const runtime::messaging::envelope_header_t &header) const;
+                   runtime::messaging::envelope_header_t header) const;
 
     result_t<std::optional<route_dispatch_reply_t>>
     dispatch_request (const route_received_packet_t &received,
-                      const runtime::messaging::envelope_header_t &header) const;
+                      runtime::messaging::envelope_header_t header) const;
 
     result_t<std::optional<route_dispatch_reply_t>>
     reply_error (const route_received_packet_t &received,

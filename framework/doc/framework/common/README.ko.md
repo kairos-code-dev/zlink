@@ -229,8 +229,8 @@ zlink framework host가 lifecycle과 dispatch loop를 직접 소유하는 방식
 - handler dispatch가 어떤 ingress를 기준으로 설명되는가
 - outbound reply 수신은 어떤 경로로 처리되는가
 - outbound-only 앱이 가능한가
-- `STREAM`을 지원하면 session callback이 transport callback에서 직접 실행되지
-  않고 비동기 실행 단위로 넘어가는지, 같은 session callback 직렬성이 보장되는지
+- `STREAM`을 지원하면 Framework 내부 recv loop가 packet을 managed queue로 넘긴 뒤
+  session callback을 실행하는지, 같은 session callback 직렬성이 보장되는지
   설명하는가
 - actor/session 모델을 지원하면 actor가 `Spot`에 attach된 뒤 actor callback이
   해당 Actor의 직렬 실행 문맥에서 실행되는지 설명하는가

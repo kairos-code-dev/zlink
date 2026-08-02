@@ -37,7 +37,7 @@ class PublisherEndpoints(
         }
         httpServer.createContext("/publish") { exchange ->
             val request = exchange.readJson<PublishReq>()
-            fanout.publish(Contracts.EVENT_CHANNEL, request.message)
+            fanout.publish(Contracts.EVENT_CHANNEL, request.topic, request.message)
                 .submit()
                 .toCompletableFuture()
                 .join()
@@ -47,6 +47,7 @@ class PublisherEndpoints(
             val request = exchange.readJson<PublishReq>()
             fanout.publish(
                 Contracts.EVENT_CHANNEL,
+                request.topic,
                 MissingEventMsg(request.message.scenario, request.message.sequence, request.message.value),
             ).submit().toCompletableFuture().join()
             exchange.writeJson(mapOf("status" to "published"))

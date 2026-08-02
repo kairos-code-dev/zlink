@@ -1,10 +1,16 @@
 // Hides deployment addressing and connector mechanics shared by execution-turn scenarios.
 using AutomaticTurnDispatch.Shared;
+using Zlink.HttpClient;
 
 namespace AutomaticTurnDispatch.Client.Scenarios;
 
-internal sealed class ExecutionTurnScenarioContext(IZlinkStreamConnector client)
+internal sealed class ExecutionTurnScenarioContext(
+    IZlinkStreamConnector client,
+    ZLinkHttpClient? playA = null,
+    ZLinkHttpClient? playB = null)
 {
+    private readonly ZLinkHttpClient? _playA = playA;
+    private readonly ZLinkHttpClient? _playB = playB;
     private string? _spotRid;
     private readonly Dictionary<string, string> _evidenceNodes =
         new(StringComparer.Ordinal);
@@ -19,19 +25,31 @@ internal sealed class ExecutionTurnScenarioContext(IZlinkStreamConnector client)
         return _spotRid;
     }
 
-    internal async Task<AwaitActorScenarioContext> ActorsAsync()
+    internal Task<AwaitActorScenarioContext> ActorsAsync() =>
+        ActorsAsync(AutomaticTurnDispatchNames.SpotType);
+
+    internal async Task<AwaitActorScenarioContext> ActorsAsync(string spotType)
     {
         var spot = await SpotAsync();
+        if (!string.Equals(spotType, AutomaticTurnDispatchNames.SpotType, StringComparison.Ordinal))
+        {
+            spot = $"execution-turn-{spotType}-{Guid.NewGuid():N}";
+            await EnsureSpotAsync(spot, "play-a", spotType);
+        }
         var actorA = $"actor-a-{Guid.NewGuid():N}";
         var actorB = $"actor-b-{Guid.NewGuid():N}";
-        var result = await client.Request(new BindAwaitActorsReq(spot, [actorA, actorB]))
+        var result = await client.Request(new BindAwaitActorsReq(spot, [actorA, actorB], spotType))
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<BindAwaitActorsRes>();
         ZlinkStreamAssert.Ensure(result.Actors.Length == 2, "Execution turn actor binding failed.");
         return new AwaitActorScenarioContext(spot, actorA, actorB);
     }
 
-    internal async Task EnsureActorInSpotAsync(string actorId, string spotRid, string scenarioId)
+    internal async Task EnsureActorInSpotAsync(
+        string actorId,
+        string spotRid,
+        string scenarioId,
+        string spotType = AutomaticTurnDispatchNames.SpotType)
     {
         var requestId = NewId(scenarioId);
         var reply = await ActorRequest(actorId,
@@ -51,12 +69,70 @@ internal sealed class ExecutionTurnScenarioContext(IZlinkStreamConnector client)
             completionMarker,
             spotRid,
             scenarioId);
-        await WaitActorDispatchReadyAsync(actorId, scenarioId);
+        await WaitActorDispatchReadyAsync(actorId, scenarioId, spotType);
     }
 
-    internal async Task EnsureSpotAsync(string spotRid, string targetNode)
+    internal Task EnsureSpotAsync(string spotRid, string targetNode) =>
+        EnsureSpotAsync(spotRid, targetNode, AutomaticTurnDispatchNames.SpotType);
+
+    internal async Task SetExclusivePlacementAsync(string nodeRid)
     {
-        var builder = client.Request(new EnsureSpotReq(spotRid));
+        if (_playA is null || _playB is null)
+            throw new InvalidOperationException(
+                "AutomaticTurnDispatch placement control requires Play HTTP endpoints.");
+
+        ZlinkStreamAssert.Ensure(
+            nodeRid is "play-a" or "play-b",
+            $"Unknown placement node '{nodeRid}'.");
+        if (nodeRid == "play-a")
+        {
+            await SetPlacementWeightAsync(_playB, 0);
+            await SetPlacementWeightAsync(_playA, 100);
+        }
+        else
+        {
+            await SetPlacementWeightAsync(_playA, 0);
+            await SetPlacementWeightAsync(_playB, 100);
+        }
+    }
+
+    internal async Task RestoreDefaultPlacementAsync()
+    {
+        if (_playA is null || _playB is null)
+            throw new InvalidOperationException(
+                "AutomaticTurnDispatch placement control requires Play HTTP endpoints.");
+
+        await SetPlacementWeightAsync(_playA, 100, verifyLocal: false);
+        await SetPlacementWeightAsync(_playB, 100, verifyLocal: false);
+    }
+
+    private static async Task SetPlacementWeightAsync(
+        ZLinkHttpClient node,
+        int weight,
+        bool verifyLocal = true)
+    {
+        var response = (await node.Post("/placement-weight")
+                .Body(new PlacementWeightReq(weight, verifyLocal))
+                .Async<PlacementWeightRes>())
+            .Body;
+        ZlinkStreamAssert.Ensure(
+            response.Weight == weight,
+            $"Placement weight expected {weight}, got {response.Weight}.");
+    }
+
+    internal async Task<string> EnsureSpotNodeAsync(
+        string spotRid,
+        string targetNode,
+        string spotType = AutomaticTurnDispatchNames.SpotType)
+    {
+        await EnsureSpotAsync(spotRid, targetNode, spotType);
+        return _spotNodes[spotRid];
+    }
+
+    internal async Task EnsureSpotAsync(string spotRid, string targetNode, string spotType)
+    {
+        var request = new EnsureSpotReq(spotRid, spotType);
+        var builder = client.Request(request);
         if (targetNode != "play-a")
             builder.Metadata(AutomaticTurnDispatchNames.TargetNodeRidMetadata, targetNode);
         var result = await builder.Timeout(TimeSpan.FromSeconds(30)).Async<EnsureSpotRes>();
@@ -90,7 +166,8 @@ internal sealed class ExecutionTurnScenarioContext(IZlinkStreamConnector client)
 
     internal async Task WaitActorDispatchReadyAsync(
         string actorId,
-        string scenarioId)
+        string scenarioId,
+        string spotType = AutomaticTurnDispatchNames.SpotType)
     {
         var deadline = DateTimeOffset.UtcNow.AddSeconds(10);
         Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamException? last = null;
@@ -99,10 +176,23 @@ internal sealed class ExecutionTurnScenarioContext(IZlinkStreamConnector client)
             try
             {
                 var requestId = NewId($"{scenarioId}-route-ready");
-                _ = await ActorRequest(
-                        actorId,
-                        new ActorFastReq(requestId, "route-ready"))
-                    .Async<ActorAwaitRes>();
+                if (string.Equals(
+                        spotType,
+                        AutomaticTurnDispatchNames.PerActorSpotType,
+                        StringComparison.Ordinal))
+                {
+                    _ = await ActorRequest(
+                            actorId,
+                            new PerActorFastReq(requestId, "route-ready"))
+                        .Async<ActorAwaitRes>();
+                }
+                else
+                {
+                    _ = await ActorRequest(
+                            actorId,
+                            new ActorFastReq(requestId, "route-ready"))
+                        .Async<ActorAwaitRes>();
+                }
                 return;
             }
             catch (Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamException error)
@@ -156,7 +246,8 @@ internal sealed class ExecutionTurnScenarioContext(IZlinkStreamConnector client)
                     .Timeout(TimeSpan.FromSeconds(3))
                     .Async<AwaitEvidenceRes>();
                 if (response.Evidence.Count(line =>
-                        line.Contains(marker, StringComparison.Ordinal))
+                        line.Contains($"request={requestId}", StringComparison.Ordinal)
+                        && line.Contains(marker, StringComparison.Ordinal))
                     >= minimumCount)
                 {
                     _evidenceNodes[requestId] = node;

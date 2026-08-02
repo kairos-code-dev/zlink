@@ -34,7 +34,7 @@ resolve_required_spot_handle (zlink::framework::spot_handle_resolver_t &handles,
     auto handle = try_resolve_spot_handle (handles, spot_id);
     if (!handle) {
         throw zlink::framework::framework_exception_t (
-          zlink::framework::framework_error_kind_t::spot_route_not_found,
+          zlink::framework::framework_error_kind_t::not_found,
           "Spot '" + spot_id + "' has no live location row.");
     }
     return *handle;
@@ -858,7 +858,7 @@ class spot_to_spot_route_handler_t
         const auto source = try_resolve_spot_handle (_handles, request.source_spot_id);
         if (!source) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::spot_route_not_found,
+              zlink::framework::framework_error_kind_t::not_found,
               "SpotToSpotDirectReq source spot was not resolved");
         }
         auto reply =

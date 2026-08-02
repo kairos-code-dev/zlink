@@ -57,13 +57,12 @@ wait_topology() {
     --key-prefix "$REDIS_KEY_PREFIX" \
     --timeout-ms "$((ROUTE_SETTLE_TIMEOUT_SECONDS * 1000))" \
     --interval-ms "$((LOCAL_READINESS_TIMEOUT_SECONDS * 1000 / LOCAL_READINESS_ATTEMPTS))" \
-    --peer route-mesh to-actor router \
+    --peer-http route-mesh to-actor router "$ACTOR_URL" \
       "tcp://127.0.0.1:$ACTOR_ROUTER_PORT" \
-      "tcp://127.0.0.1:$ACTOR_PUBSUB_PORT" \
+    --peer-http route-mesh to-actor router "$SESSION_URL" \
       "tcp://127.0.0.1:$SESSION_ROUTER_PORT" \
-      "tcp://127.0.0.1:$SESSION_PUBSUB_PORT" \
-      "tcp://127.0.0.1:$CALLER_ROUTER_PORT" \
-      "tcp://127.0.0.1:$CALLER_PUBSUB_PORT"
+    --peer-http route-mesh to-actor router "$CALLER_URL" \
+      "tcp://127.0.0.1:$CALLER_ROUTER_PORT"
 }
 
 pids=()
@@ -220,7 +219,7 @@ run_client() {
     --config "$client_config"
 }
 
-if [[ "$SCENARIO" == "TA-B3" ]]; then
+if [[ "$SCENARIO" == "TA-B3" || "$SCENARIO" == "all" ]]; then
   run_client >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log" &
   CLIENT_PID="$!"
   wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control TA-B3 disconnect-route" \
@@ -228,15 +227,16 @@ if [[ "$SCENARIO" == "TA-B3" ]]; then
 
   kill -STOP "$ACTOR_PID"
   ACTOR_PAUSED=1
-  PEER_SNAPSHOT="$LOG_DIR/actor-peer.snapshot.json"
-  node "$ROOT_DIR/peer-fault.js" remove "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" to-actor-owner "$PEER_SNAPSHOT"
+  # The actor process is paused before the established TCP route is closed.
+  # This exercises the public RouteMesh readiness/failure result without
+  # reading or mutating opaque Location Store records from the runner.
+  ss -K dst 127.0.0.1 dport = "$ACTOR_ROUTER_PORT" >/dev/null 2>&1 || true
   curl -fsS -X POST "$CALLER_URL/control/route-disconnected" >/dev/null
 
   wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control TA-B3 restore-route" \
     "TA-B3 client did not request route restoration." "$CLIENT_PID"
   kill -CONT "$ACTOR_PID"
   ACTOR_PAUSED=0
-  node "$ROOT_DIR/peer-fault.js" restore "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" to-actor-owner "$PEER_SNAPSHOT"
   wait_topology
   curl -fsS -X POST "$CALLER_URL/control/route-restored" >/dev/null
   wait "$CLIENT_PID"

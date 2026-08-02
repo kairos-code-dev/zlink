@@ -100,7 +100,7 @@ class ensure_actor_handler_t
                   joined.error () ? joined.error ()->what () : "ensure actor entry join failed");
             }
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_rejected,
+              zlink::framework::framework_error_kind_t::rejected,
               "ensure actor entry join was rejected");
         }
         _state.record ("ActorEnsured", request.actor_id, {}, request.display_name);
@@ -296,7 +296,7 @@ class type_mismatch_spot_handler_t
         auto current = _actors.find (actor_id);
         if (!current) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              zlink::framework::framework_error_kind_t::not_found,
               "SM-A7 actor route was not found");
         }
         auto join_reply =
@@ -331,7 +331,7 @@ class type_mismatch_spot_handler_t
             (void) _spots.get_or_create_spot (e2e::alternate_spot, rid, request);
         }
         catch (const zlink::framework::framework_exception_t &error) {
-            if (error.kind () == zlink::framework::framework_error_kind_t::spot_type_mismatch) {
+            if (error.kind () == zlink::framework::framework_error_kind_t::type_mismatch) {
                 const auto spot_name = _spots.spot_name_for (rid).value_or ("");
                 auto observed =
                   current
@@ -361,7 +361,7 @@ class type_mismatch_spot_handler_t
         }
 
         throw zlink::framework::framework_exception_t (
-          zlink::framework::framework_error_kind_t::request_failed,
+          zlink::framework::framework_error_kind_t::internal_failure,
           "expected spot type mismatch");
     }
 

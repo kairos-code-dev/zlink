@@ -51,7 +51,7 @@ object PlayServer {
                 }
             options.addStreamNode(SampleNames.PlayStream)
                 .bind(settings.playEndpoint)
-                .enableActorDispatch(SampleNames.SpotMesh)
+                .enableActorDispatch()
                 .registerSession(PlaySession::class.java)
         }
 }

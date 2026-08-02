@@ -162,17 +162,24 @@ class dispatch_error_reporter_t
 inline dispatch_error_reason_t dispatch_reason_from_error (framework_error_kind_t kind) noexcept
 {
     switch (kind) {
-        case framework_error_kind_t::handler_not_found:
-        case framework_error_kind_t::route_handler_not_found:
-        case framework_error_kind_t::actor_dispatch_handler_not_found:
+        case framework_error_kind_t::not_found:
             return dispatch_error_reason_t::handler_missing;
-        case framework_error_kind_t::payload_decode_failed:
-            return dispatch_error_reason_t::payload_decode_failed;
-        case framework_error_kind_t::request_protocol_error:
+        case framework_error_kind_t::protocol_error:
             return dispatch_error_reason_t::invalid_frame;
         default:
             return dispatch_error_reason_t::handler_exception;
     }
+}
+
+inline dispatch_error_reason_t
+dispatch_reason_from_error (const framework_exception_t *error) noexcept
+{
+    if (error != nullptr
+        && detail::failure_origin (*error) == detail::failure_origin_t::payload_decode) {
+        return dispatch_error_reason_t::payload_decode_failed;
+    }
+    return dispatch_reason_from_error (
+      error != nullptr ? error->kind () : framework_error_kind_t::internal_failure);
 }
 
 } // namespace zlink::framework::detail

@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException, internalFrameworkErrorKind  } from '../framework-errors-internal';
 import {
   Message,
   RequestError,
@@ -10,13 +11,13 @@ import type {
   ZLinkBackendSpot
 } from '../backend/contracts';
 import type {
-  ZLinkFrameworkErrorKind as ZLinkFrameworkErrorKindType
-} from '../../contracts';
+  ZLinkFrameworkInternalErrorKind as ZLinkFrameworkInternalErrorKindType
+} from '../framework-errors-internal';
 import {
-  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException
 } from '../../contracts';
 import {
+  requireOneWayCompletion,
   ZLinkSubmitStatus,
   type ZLinkSubmitResult
 } from '../messaging/submission-result';
@@ -522,8 +523,8 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
     }
     throwIfAborted(signal);
     if (node.isObjectClientNodeDirectTarget?.(toBindingRoutingId(targetNodeRid)) === true) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestTargetNotFound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RequestTargetNotFound,
         `MeshNode '${meshName}' target '${targetNodeRid}' is an Object Client.`
       );
     }
@@ -532,22 +533,20 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
       meshName,
       packetName,
       request,
-      timeoutMs,
+      timeoutMs ?? 30_000,
       metadata
     );
-    let operationId;
-    try {
-      operationId = node.requestToNode(
+    const operationId = await this.submitRequestOperation(
+      meshName,
+      timeoutMs,
+      signal,
+      `MeshNode '${meshName}' request to node '${targetNodeRid}'`,
+      (remainingTimeoutMs) => node.requestToNode(
         toBindingRoutingId(targetNodeRid),
         parts,
-        { flags: 1, timeoutMs }
-      );
-    } catch (error) {
-      throw mapMeshSubmissionError(
-        error,
-        `MeshNode '${meshName}' request to node '${targetNodeRid}'`
-      );
-    }
+        { flags: 1, timeoutMs: remainingTimeoutMs }
+      )
+    );
     return this.waitForMeshReply(meshName, operationId, signal);
   }
 
@@ -625,31 +624,76 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
       channelName,
       packetName,
       request,
-      timeoutMs,
+      timeoutMs ?? 30_000,
       metadata
     );
     const metric = this.metrics?.startRequest(meshName, 'channel');
-    let operationId;
     try {
-      operationId = node.requestToChannel(channelName, parts, { flags: 1, timeoutMs });
-    } catch (error) {
-      metric?.complete(requestMetricOutcome(error));
-      if (requestMetricOutcome(error) === 'target_not_found') {
-        this.metrics?.recordChannelSelectionFailure(meshName, channelName, 'no_ready_target');
-      }
-      throw mapMeshSubmissionError(
-        error,
-        `MeshNode '${meshName}' request to channel '${channelName}'`
+      const operationId = await this.submitRequestOperation(
+        meshName,
+        timeoutMs,
+        signal,
+        `MeshNode '${meshName}' request to channel '${channelName}'`,
+        (remainingTimeoutMs) => node.requestToChannel(
+          channelName,
+          parts,
+          { flags: 1, timeoutMs: remainingTimeoutMs }
+        )
       );
-    }
-    try {
       const reply = await this.waitForMeshReply<TReply>(meshName, operationId, signal);
       metric?.complete('completed');
       return reply;
     } catch (error) {
       metric?.complete(requestMetricOutcome(error));
+      if (requestMetricOutcome(error) === 'target_not_found') {
+        this.metrics?.recordChannelSelectionFailure(meshName, channelName, 'no_ready_target');
+      }
       throw error;
     }
+  }
+
+  /**
+   * Admits only the native request submission through the MeshNode SEND_READY
+   * queue. The completion wait runs after admission and therefore does not
+   * block the next request from obtaining a native operation id.
+   */
+  private async submitRequestOperation(
+    meshName: string,
+    timeoutMs: number | undefined,
+    signal: AbortSignal | undefined,
+    operation: string,
+    attempt: (
+      remainingTimeoutMs: number
+    ) => Parameters<ZLinkMeshCompletionTable['wait']>[0]
+  ): Promise<Parameters<ZLinkMeshCompletionTable['wait']>[0]> {
+    const effectiveTimeoutMs = Math.max(1, timeoutMs ?? 30_000);
+    const deadlineMs = Date.now() + effectiveTimeoutMs;
+    let operationId: Parameters<ZLinkMeshCompletionTable['wait']>[0] | undefined;
+    const result = await this.requireMeshSubmitters().submit(
+      meshName,
+      () => {
+        const remainingTimeoutMs = deadlineMs - Date.now();
+        if (remainingTimeoutMs <= 0) {
+          return { status: ZLinkSubmitStatus.TimedOut };
+        }
+        try {
+          operationId = attempt(Math.max(1, remainingTimeoutMs));
+          return { status: ZLinkSubmitStatus.Submitted };
+        } catch (error) {
+          throw mapMeshSubmissionError(error, operation);
+        }
+      },
+      signal,
+      effectiveTimeoutMs
+    );
+    requireOneWayCompletion(result, operation);
+    if (operationId === undefined) {
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RequestFailed,
+        `${operation} did not return a native operation id.`
+      );
+    }
+    return operationId;
   }
 
   async sendToSpot(
@@ -987,8 +1031,8 @@ function directSpotRouteFence(target: ZLinkSpotRouteTarget): ServiceDirectSpotRo
     || target.ownerLeaseGeneration === undefined
     || target.authorityStoreVersion === undefined
   ) {
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.SpotRouteNotFound,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.SpotRouteNotFound,
       `Spot '${String(target.spotId)}' has no complete Ready authority fence.`
     );
   }
@@ -1019,8 +1063,8 @@ function mapMeshSubmitResult(result: number): ZLinkSubmitResult {
     case SubmitResult.Terminated:
       return { status: ZLinkSubmitStatus.Shutdown };
     default:
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestFailed,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RequestFailed,
         `Mesh submission failed with result ${result}.`
       );
   }
@@ -1036,17 +1080,17 @@ function mapMeshSubmissionError(error: unknown, operation: string): Error {
       || error.result === SubmitResult.NotConnected
       || error.result === 109
       || error.result === 113;
-    return new ZLinkFrameworkException(
+    return createInternalFrameworkException(
       notFound
-        ? ZLinkFrameworkErrorKind.RequestTargetNotFound
-        : ZLinkFrameworkErrorKind.RouteNotConnected,
+        ? ZLinkFrameworkInternalErrorKind.RequestTargetNotFound
+        : ZLinkFrameworkInternalErrorKind.RouteNotConnected,
       `${operation} failed with result ${error.result}.`,
       retriable,
       error
     );
   }
-  return new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.RouteNotConnected,
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.RouteNotConnected,
     `${operation} failed before native submission completed: ${
       error instanceof Error ? error.message : String(error)
     }`,
@@ -1056,10 +1100,10 @@ function mapMeshSubmissionError(error: unknown, operation: string): Error {
 }
 
 function meshRequestFailure(meshName: string, result: number, nativeErrno: number): ZLinkFrameworkException {
-  const kind: ZLinkFrameworkErrorKindType = result === 102
-    ? ZLinkFrameworkErrorKind.RequestTargetNotFound
-    : ZLinkFrameworkErrorKind.RouteNotConnected;
-  return new ZLinkFrameworkException(
+  const kind: ZLinkFrameworkInternalErrorKindType = result === 102
+    ? ZLinkFrameworkInternalErrorKind.RequestTargetNotFound
+    : ZLinkFrameworkInternalErrorKind.RouteNotConnected;
+  return createInternalFrameworkException(
     kind,
     `MeshNode '${meshName}' request failed with result ${result} and errno ${nativeErrno}.`,
     result === 109 || result === 113
@@ -1068,9 +1112,9 @@ function meshRequestFailure(meshName: string, result: number, nativeErrno: numbe
 
 function requestMetricOutcome(error: unknown): string {
   if (error instanceof ZLinkFrameworkException) {
-    if (error.kind === ZLinkFrameworkErrorKind.RequestTargetNotFound) return 'target_not_found';
-    if (error.kind === ZLinkFrameworkErrorKind.DeadlineExceeded) return 'timed_out';
-    if (error.kind === ZLinkFrameworkErrorKind.RuntimeShutdown) return 'shutdown';
+    if (internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.RequestTargetNotFound) return 'target_not_found';
+    if (internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.DeadlineExceeded) return 'timed_out';
+    if (internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.RuntimeShutdown) return 'shutdown';
   }
   if (error instanceof Error && /timed out|deadline/i.test(error.message)) return 'timed_out';
   return 'failed';

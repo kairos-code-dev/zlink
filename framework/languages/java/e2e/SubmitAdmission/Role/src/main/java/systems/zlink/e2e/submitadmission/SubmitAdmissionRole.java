@@ -23,7 +23,7 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
-import systems.zlink.framework.channels.ZLinkPublishContext;
+import systems.zlink.framework.channels.ZLinkPublishMessageContext;
 import systems.zlink.framework.channels.ZLinkFanoutHandler;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.channels.ZLinkRouteSendContext;
@@ -134,7 +134,7 @@ public class SubmitAdmissionRole {
         }
 
         @Override
-        public CompletionStage<Void> handle(Probe message, ZLinkPublishContext context) {
+        public CompletionStage<Void> handle(Probe message, ZLinkPublishMessageContext context) {
             return state.handle("fanout", message);
         }
     }

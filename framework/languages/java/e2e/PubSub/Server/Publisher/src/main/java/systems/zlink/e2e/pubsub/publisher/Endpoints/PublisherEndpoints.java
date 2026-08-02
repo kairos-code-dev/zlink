@@ -51,10 +51,10 @@ public final class PublisherEndpoints implements SmartLifecycle {
             server.createContext("/publish/missing", exchange ->
                 publish(exchange, Contracts.MISSING_PACKET));
             server.createContext("/admin/drain", exchange -> {
-                var result = drain.retire(Duration.ofSeconds(30)).toCompletableFuture().join();
+                var result = drain.shutdown(Duration.ofSeconds(30)).toCompletableFuture().join();
                 writeText(exchange, 200,
                     result.outcome() == systems.zlink.framework.runtime.host
-                        .ZLinkTerminationOutcome.STOPPED
+                        .ZLinkFrameworkTerminationOutcome.STOPPED
                         ? "Drained\n" : "ForceStopped\n");
             });
             server.start();

@@ -570,6 +570,24 @@ room membership을 바꾸지 않는다. 이 경계는 [Session Actor dispatch §
 
 Game 종료 뒤 player Actor cleanup은 별도 순서로 실행한다.
 
+1. actor 객체 생성이 끝나면 framework는 create payload와 함께 `onCreateActor`를 한 번 호출한다.
+2. room Spot은 종료 cleanup이 한 번만 시작되도록 guard를 둔다.
+3. room Spot은 각 player actor에 "Entry Spot으로 돌아오면 destroy한다"는 표시를 남긴다.
+4. room Spot은 `leaveActor`로 actor를 room에서 내보낸다.
+5. framework는 room `onLeaveActor`를 호출한 뒤 actor를 Entry Spot으로 이동시키고 Entry
+   Spot `onJoinedActor`를 호출한다.
+6. Entry Spot `onJoinedActor` 또는 Entry Spot handler는 actor의 destroy 표시를 확인하고
+   Entry Spot context의 `destroyActor`를 호출한다.
+7. `destroyActor`는 `onLeaveActor`나 다른 lifecycle callback을 호출하지 않고 actor 객체,
+   native actor ref, framework registry, bound session binding을 정리한다.
+8. 같은 actor에 대한 중복 destroy나 destroy 중 재진입은 성공 no-op이어야 하며,
+   lifecycle callback을 다시 호출하면 안 된다.
+
+- Entry Spot destroy 과정에서 Entry Spot `onLeaveActor`나 다른 lifecycle callback이
+  추가로 실행되지 않는다.
+- disconnect cleanup만으로 actor destroy가 실행되지 않는다.
+- stream disconnect는 bound session을 정리하지만 actor를 즉시 destroy하지 않는다.
+
 ```mermaid
 sequenceDiagram
     participant Room as Play / Room

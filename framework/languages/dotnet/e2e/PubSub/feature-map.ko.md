@@ -18,15 +18,18 @@ Redis 없이 manual endpoint로만 연결하므로 아래 PS-A1~C1은 manual 회
 
 | 시나리오 | 상태 | 필요한 `.NET` 증거 |
 |---|---|---|
-| PS-D1 | 미구현 | endpoint 없는 subscriber, 전용 publisher descriptor와 actual port 자동 연결 |
+| PS-D1 | source 구현·process 미검증 | automatic subscriber runtime과 publisher descriptor가 source·unit test에 존재한다. endpoint 없는 subscriber의 actual port 자동 연결 process selector와 evidence는 아직 없다. |
 | PS-D2 | 미구현 | public `IZLinkFanoutRuntime` snapshot의 publisher identity·connection intent와 `excluded_draining` sealed event entry로 다른 ChannelName·descriptor 종류·drain 중 publisher를 제외하고, actual native SUB ready publisher만 handler에 도달 |
 | PS-D3 | 미구현 | public fanout snapshot의 `ConnectionIntentCount=2`·`ReadyConnectionCount=2`와 실제 native disconnect 후 `PublisherChanged` sealed event의 `disconnected` entry로 publisher 추가·정상 제거 수렴 |
 | PS-D4 | 미구현 | public fanout event의 기존 identity `disconnected`, 새 identity `reconnecting`·actual native `ready`, `excluded_stale` sealed entry와 최신 snapshot으로 lease 만료·재등록·낮은 generation/revision 거부 확인 |
 | PS-D5 | 미구현 | public `LocationChanged` sealed event의 `degraded`·`ready` Location snapshot, `PublisherChanged` `reconnecting`·actual native `ready`·`excluded_stale` entry와 current connection intent snapshot으로 fail-static·복구 수렴 확인 |
 | PS-D6 | 미구현 | port 0 재시작 뒤 새 advertised endpoint 연결 |
-| PS-D7 | 미구현 | capacity 1 observer의 bounded coalescing·sequence gap 후 public snapshot resync, `CancellationToken` 격리, 정상 observer·dispatch 지속과 manual endpoint mutation의 automatic snapshot·event 격리 |
+| PS-D7A | 미구현 | 느린 fanout status observer의 bounded coalescing과 snapshot resync를 검증하는 selector가 없다. |
+| PS-D7B | 미구현 | Manual endpoint 변경이 automatic status를 바꾸지 않는지 검증하는 selector가 없다. |
 | PS-E1 | 구현 | 현재 PS-A1~C1 manual endpoint runner를 store 없는 별도 회귀로 유지 |
-| PS-E2 | 미구현 | automatic subscriber store 누락, automatic/manual mode 혼합, 고정 Publisher RID와 자동 할당 둘 다 누락, fixed/allocated RID 동시 설정의 typed startup 오류와 store 없는 manual 조합 성공 |
+| PS-E2A | 미구현 | Automatic subscriber의 Store 누락을 startup에서 거부하는 selector가 없다. |
+| PS-E2B | 미구현 | Automatic과 manual mode를 한 registration에 섞을 때의 startup 오류 selector가 없다. |
+| PS-E2C | 미구현 | Automatic publisher identity 누락과 중복을 거부하는 selector가 없다. |
 | PS-F1 | 미구현 | Automatic·manual subscriber가 첫 valid application record 또는 liveness beacon 전에는 Ready가 되지 않는지 검증하는 selector가 없다. |
 | PS-F2 | 미구현 | Publisher 하나의 단방향 packet blackhole과 publisher별 timeout·reconnect 격리를 검증하는 selector가 없다. |
 | PS-F3 | 미구현 | Reserved beacon topic의 public 거부, prefix 비충돌과 malformed beacon fail-closed 처리를 검증하는 selector가 없다. |

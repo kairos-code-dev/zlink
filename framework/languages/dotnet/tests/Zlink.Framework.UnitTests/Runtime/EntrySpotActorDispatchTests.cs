@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,6 +12,7 @@ using Systems.Zlink.Stream.Connector.Runtime.Protocol;
 using Zlink.Framework.Runtime.Messaging;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Runtime;
+using Zlink.Framework.Runtime.Actors;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Backend.DotNet;
 using Zlink.Framework.Runtime.Execution;
@@ -1683,6 +1685,172 @@ public sealed partial class EntrySpotActorDispatchTests
         await restart.WaitAsync(TimeSpan.FromSeconds(5));
         node.DisposeHandler = null;
         await runtime.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Relocation_operation_zero_waiter_completes_while_admission_remains_open()
+    {
+        var (runtime, _) = await CreateStartedRuntimeAsync(
+            new CapturingSpotNode());
+        try
+        {
+            using var operation = runtime.EnterOperation();
+            var zero = runtime.WaitForAcceptedOperationsForDrainAsync();
+
+            Assert.False(zero.IsCompleted);
+            operation.Dispose();
+            await zero.WaitAsync(TimeSpan.FromSeconds(5));
+
+            using (runtime.EnterOperation())
+            {
+            }
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task Relocation_fence_rejects_stale_operation_baseline_and_reopens_by_owner()
+    {
+        var (runtime, _) = await CreateStartedRuntimeAsync(
+            new CapturingSpotNode());
+        try
+        {
+            var operationBaseline = runtime.SnapshotOperationAdmissions();
+            var actorBaseline = runtime.DrainAdmission.SnapshotActorAdmissions();
+            var handoffBaseline = new ZLinkActorHandoffDrainSnapshot(0, true);
+            using var operation = runtime.EnterOperation();
+
+            var stale = await runtime.TryBeginRelocationAdmissionFenceAsync(
+                    operationBaseline,
+                    actorBaseline,
+                    handoffBaseline,
+                    CancellationToken.None)
+                .AsTask();
+
+            Assert.Null(stale);
+            operation.Dispose();
+
+            var fence = await runtime.TryBeginRelocationAdmissionFenceAsync(
+                    runtime.SnapshotOperationAdmissions(),
+                    runtime.DrainAdmission.SnapshotActorAdmissions(),
+                    handoffBaseline,
+                    CancellationToken.None);
+
+            Assert.NotNull(fence);
+            Assert.Throws<InvalidOperationException>(() => runtime.EnterOperation());
+            var firstFence = fence.Value;
+            Assert.True(runtime.TryReopenRetireAdmissionsAfterRollback(firstFence));
+
+            var nextFence = await runtime.TryBeginRelocationAdmissionFenceAsync(
+                    runtime.SnapshotOperationAdmissions(),
+                    runtime.DrainAdmission.SnapshotActorAdmissions(),
+                    handoffBaseline,
+                    CancellationToken.None);
+
+            Assert.NotNull(nextFence);
+            Assert.False(runtime.TryReopenRetireAdmissionsAfterRollback(firstFence));
+            Assert.True(runtime.TryReopenRetireAdmissionsAfterRollback(nextFence.Value));
+            using (runtime.EnterOperation())
+            {
+            }
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Theory]
+    [InlineData(0, 1, true, 0)]
+    [InlineData(1, 0, true, 1)]
+    [InlineData(2, 2, false, 0)]
+    public async Task Spot_retire_scheduler_reconciles_uncertain_stage_boundary(
+        int publishModeValue,
+        int expectedKnowledgeValue,
+        bool expectedSourceTerminalized,
+        int expectedAbortCalls)
+    {
+        var publishMode = (SchedulerProbePublishMode)publishModeValue;
+        var expectedKnowledge =
+            (ZLinkRelocationCommitKnowledge)expectedKnowledgeValue;
+        ZLinkInMemoryLocationStore? authorityStore = null;
+        var relocationStore = new SchedulerProbeRelocationStore();
+        var target = new SchedulerProbeTarget(
+            () => authorityStore
+                ?? throw new InvalidOperationException(
+                    "The scheduler probe authority store is not initialized."),
+            relocationStore,
+            publishMode);
+        var (runtime, _) = await CreateStartedRuntimeAsync(
+            new CapturingSpotNode(),
+            includeActorFactory: false,
+            userSpotType: typeof(EmptyUserSpot),
+            defaultRequestTimeout: TimeSpan.FromMilliseconds(250),
+            locationStoreWrapper: store =>
+            {
+                authorityStore = Assert.IsType<ZLinkInMemoryLocationStore>(store);
+                return store;
+            },
+            retireTarget: target,
+            relocationStore: relocationStore);
+        try
+        {
+            await runtime.GetOrCreateAsync<EmptyUserSpot>(
+                "scheduler-probe");
+            runtime.Registration.SpotNodes["entry"].SpotRelocations[
+                typeof(EmptyUserSpot).FullName!] =
+                new ZLinkObjectRelocationRegistration(
+                    typeof(EmptyUserSpot),
+                    new ZLinkObjectPlacementOptions(),
+                    PolicyKind: 1,
+                    AdapterType: null,
+                    AdapterInvoker: null);
+            Assert.Single(runtime.GetSpotNodeRuntime("entry").Spots);
+            Assert.Equal(
+                ZLinkUserSpotExecutionMode.SpotWide,
+                runtime.GetSpotNodeRuntime("entry").Spots.Single()
+                    .ExecutionMode);
+            var descriptor = (await authorityStore!.ListMeshNodesAsync(
+                    "entry",
+                    default,
+                    CancellationToken.None))
+                .Items
+                .Single(item => item.Rid == RoutingId.From("entry-node"));
+            var selection = new ZLinkRelocationTargetSelection(
+                ZLinkFrameworkRelocationMode.PlannedMaintenance,
+                descriptor.ApplicationVersion);
+            var result = await runtime.GetSpotNodeRuntime("entry")
+                .Catalog
+                .TryRelocateForRetireAsync(
+                    selection,
+                    ZLinkSpotRelocationPhase.Aggregates,
+                    CancellationToken.None);
+
+            Assert.False(result.Completed);
+            Assert.Equal(expectedKnowledge, result.CommitKnowledge);
+            Assert.Equal(expectedSourceTerminalized, result.SourceTerminalized);
+            Assert.Equal(
+                ZLinkFrameworkRelocationReason.RelocationFailed,
+                result.TerminalReason);
+            Assert.Equal(
+                expectedKnowledge == ZLinkRelocationCommitKnowledge.Committed
+                    ? 1UL
+                    : 0UL,
+                result.CommittedUnitCount);
+            Assert.Equal(1, target.StageCalls);
+            Assert.Equal(1, target.PublishCalls);
+            Assert.Equal(expectedAbortCalls, target.AbortCalls);
+        }
+        finally
+        {
+            if (publishMode == SchedulerProbePublishMode.Unknown)
+                await runtime.ForceStopAsync(CancellationToken.None);
+            else
+                await runtime.StopAsync(CancellationToken.None);
+        }
     }
 
     [Fact]
@@ -5415,7 +5583,9 @@ public sealed partial class EntrySpotActorDispatchTests
         ZLinkUserSpotExecutionMode userSpotExecutionMode =
             ZLinkUserSpotExecutionMode.SpotWide,
         Func<IZLinkLocationRepository, IZLinkLocationRepository>?
-            locationStoreWrapper = null)
+            locationStoreWrapper = null,
+        IZLinkSpotRetireTarget? retireTarget = null,
+        IZLinkRelocationRepository? relocationStore = null)
     {
         const string locationOwnerId = "entry-spot-dispatch-owner";
         var locationTime = new ManualTimeProvider();
@@ -5449,7 +5619,7 @@ public sealed partial class EntrySpotActorDispatchTests
             RoutingId.From(includeActorFactory ? "entry-node" : "actor-node"),
             "actor-a",
             1);
-        var services = new ServiceCollection()
+        var serviceCollection = new ServiceCollection()
             .AddSingleton<FlowJoinProbe>()
             .AddSingleton<LocalEntryJoinProbe>()
             .AddSingleton<IZLinkAutoConnectTopologyQuery>(KnownRouteMeshTopology.Instance)
@@ -5466,8 +5636,10 @@ public sealed partial class EntrySpotActorDispatchTests
             .AddTransient<ProbeActorRequestHandler>()
             .AddTransient<ProbeActorFlowJoinRequestHandler>()
             .AddTransient<ProbeActorDestroyRequestHandler>()
-            .AddTransient<ProbeActorThrowingRequestHandler>()
-            .BuildServiceProvider();
+            .AddTransient<ProbeActorThrowingRequestHandler>();
+        if (retireTarget is not null)
+            serviceCollection.AddSingleton<IZLinkSpotRetireTarget>(retireTarget);
+        var services = serviceCollection.BuildServiceProvider();
         var registration = new ZLinkFrameworkRegistration
         {
             DefaultRequestTimeout =
@@ -5476,6 +5648,8 @@ public sealed partial class EntrySpotActorDispatchTests
         };
         registration.InboundDispatchOptions.ApplicationHwmBytes = 0;
         registration.Locations.SetTestRepository(runtimeLocationStore);
+        if (relocationStore is not null)
+            registration.Locations.SetTestRelocationRepository(relocationStore);
         if (messageFlowMode is { } mode)
             registration.DispatchOptions.Diagnostics.SetLevel(mode);
         else if (messageFlowObserver is not null)
@@ -6126,6 +6300,227 @@ public sealed partial class EntrySpotActorDispatchTests
     private sealed class EmptyUserSpot(IZLinkSpotContext context) : IZLinkSpot
     {
         public IZLinkSpotContext Context { get; } = context;
+    }
+
+    private enum SchedulerProbePublishMode
+    {
+        Commit,
+        DurablyAborted,
+        Unknown
+    }
+
+    private sealed class SchedulerProbeTarget(
+        Func<IZLinkLocationRepository> authorityStore,
+        IZLinkRelocationRepository relocationStore,
+        SchedulerProbePublishMode publishMode) : IZLinkSpotRetireTarget
+    {
+        private ZLinkPreparedSpotRetireStaging? _staging;
+
+        internal int StageCalls { get; private set; }
+        internal int PublishCalls { get; private set; }
+        internal int AbortCalls { get; private set; }
+
+        public ValueTask<ZLinkSpotRetireReservation?> TryReserveAsync(
+            ZLinkSpotRetireInventory inventory,
+            ZLinkRelocationTargetSelection selection,
+            CancellationToken cancellationToken)
+        {
+            _ = selection;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult<ZLinkSpotRetireReservation?>(
+                new ZLinkSpotRetireReservation(
+                    inventory,
+                    new ZLinkMeshNodeDescriptorKey(
+                        inventory.MeshName,
+                        inventory.SourceNodeRid),
+                    inventory.SourceNodeLifecycleGeneration,
+                    new ZLinkCapacityVector(
+                        0,
+                        1,
+                        new ZLinkSpotTypeCapacityDelta(
+                            ZLinkPlacementObjectKind.UserSpot,
+                            inventory.StableType,
+                            1)),
+                    inventory.SourceOwner));
+        }
+
+        public ValueTask StageAsync(
+            ZLinkSpotRetireReservation reservation,
+            ZLinkPreparedSpotRetireStaging relocation,
+            CancellationToken cancellationToken)
+        {
+            _ = reservation;
+            _staging = relocation;
+            StageCalls++;
+            // The command boundary is already published by the scheduler. The
+            // missing response must therefore enter reconciliation, even when
+            // the transport reports cancellation.
+            return ValueTask.FromException(
+                new OperationCanceledException(
+                    "The Stage acknowledgement was not observed.",
+                    cancellationToken));
+        }
+
+        public async ValueTask<ulong> PublishAsync(
+            ZLinkSpotRetireReservation reservation,
+            ZLinkAggregateRelocationPublished relocation,
+            CancellationToken cancellationToken)
+        {
+            PublishCalls++;
+            cancellationToken.ThrowIfCancellationRequested();
+            switch (publishMode)
+            {
+                case SchedulerProbePublishMode.DurablyAborted:
+                    throw new ZLinkCanonicalRelocationDurablyAbortedException(
+                        "The target durably aborted the aggregate.");
+                case SchedulerProbePublishMode.Unknown:
+                    throw new InvalidOperationException(
+                        "The target authority result is unknown.");
+                case SchedulerProbePublishMode.Commit:
+                    break;
+                default:
+                    throw new InvalidOperationException(
+                        "The scheduler probe publish mode is invalid.");
+            }
+
+            var staging = _staging
+                ?? throw new InvalidOperationException(
+                    "The scheduler probe has no staged aggregate.");
+            var request = new ZLinkAggregateRelocationRequest(
+                relocation.Envelope.AggregateId,
+                relocation.Envelope.AggregateGeneration,
+                staging.Participants,
+                reservation.TargetDescriptor,
+                reservation.TargetDescriptorLifecycleGeneration,
+                reservation.Capacity,
+                reservation.TargetOwner,
+                relocation.Envelope);
+            var coordinator = new ZLinkAggregateRelocationCoordinator(
+                authorityStore(),
+                relocationStore);
+            var prepared = await coordinator.PrepareExistingAsync(
+                    request,
+                    relocation.Relocation,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            _ = await coordinator.CommitAsync(
+                    prepared,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            var spotKey = relocation.Envelope.Participants.Single(
+                    static participant => participant.ObjectKind
+                        is ZLinkPlacementObjectKind.UserSpot
+                        or ZLinkPlacementObjectKind.InstanceSpot)
+                .AuthorityKey;
+            return prepared.TargetAuthorityOwnerGeneration(spotKey);
+        }
+
+        public ValueTask AbortAsync(
+            ZLinkSpotRetireReservation reservation,
+            ZLinkAggregateFence? fence)
+        {
+            _ = reservation;
+            _ = fence;
+            AbortCalls++;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask RelayCommittedAsync(
+            ZLinkSpotRetireReservation reservation,
+            ZLinkAggregateRelocationPublished relocation,
+            IReadOnlyList<ZLinkAcceptedWorkRecord> held,
+            CancellationToken cancellationToken)
+        {
+            _ = reservation;
+            _ = relocation;
+            _ = held;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class SchedulerProbeRelocationStore
+        : IZLinkRelocationRepository
+    {
+        private readonly Dictionary<string, byte[]> _payloads =
+            new(StringComparer.Ordinal);
+
+        public ValueTask<ZLinkRelocationStored> PutRelocationAsync(
+            ReadOnlyMemory<byte> payload,
+            TimeSpan retention,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var bytes = payload.ToArray();
+            var now = DateTimeOffset.UtcNow;
+            var reference = Convert.ToHexString(
+                    SHA256.HashData(bytes))
+                .ToLowerInvariant();
+            _payloads[reference] = bytes;
+            return ValueTask.FromResult(new ZLinkRelocationStored(
+                reference,
+                ZLinkCrc32C.Compute(bytes),
+                now + retention,
+                now));
+        }
+
+        public ValueTask<ZLinkRelocationStored> PutRelocationAtAsync(
+            string reference,
+            ReadOnlyMemory<byte> payload,
+            TimeSpan retention,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var bytes = payload.ToArray();
+            if (_payloads.TryGetValue(reference, out var current)
+                && !current.AsSpan().SequenceEqual(bytes))
+                throw new InvalidDataException(
+                    "The scheduler probe relocation reference collided.");
+            var now = DateTimeOffset.UtcNow;
+            _payloads[reference] = bytes;
+            return ValueTask.FromResult(new ZLinkRelocationStored(
+                reference,
+                ZLinkCrc32C.Compute(bytes),
+                now + retention,
+                now));
+        }
+
+        public ValueTask<ZLinkRelocationReadResult> GetRelocationAsync(
+            string reference,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult<ZLinkRelocationReadResult>(
+                _payloads.TryGetValue(reference, out var payload)
+                    ? new ZLinkRelocationReadResult.Found(payload)
+                    : new ZLinkRelocationReadResult.Missing());
+        }
+
+        public ValueTask<ZLinkRelocationRenewResult> RenewRelocationAsync(
+            string reference,
+            TimeSpan retention,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var now = DateTimeOffset.UtcNow;
+            return ValueTask.FromResult<ZLinkRelocationRenewResult>(
+                _payloads.ContainsKey(reference)
+                    ? new ZLinkRelocationRenewResult.Renewed(
+                        now + retention,
+                        now)
+                    : new ZLinkRelocationRenewResult.Missing());
+        }
+
+        public ValueTask<ZLinkRelocationDeleteResult> DeleteRelocationAsync(
+            string reference,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(
+                _payloads.Remove(reference)
+                    ? ZLinkRelocationDeleteResult.Deleted
+                    : ZLinkRelocationDeleteResult.Missing);
+        }
     }
 
     private sealed class PerActorClosingProbeSpot(

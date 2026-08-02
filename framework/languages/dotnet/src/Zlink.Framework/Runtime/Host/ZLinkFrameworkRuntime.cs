@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Zlink.Framework.Runtime.Dispatch;
+using Zlink.Framework.Runtime.Actors;
 
 namespace Zlink.Framework.Runtime.Host;
 
@@ -20,6 +21,12 @@ internal readonly record struct ZLinkDrainRemainderCounts(
     int Spots,
     int Requests,
     int Sessions);
+
+internal readonly record struct ZLinkRuntimeOperationAdmissionSnapshot(
+    long Epoch,
+    int ActiveCount);
+
+internal readonly record struct ZLinkRelocationAdmissionFence(long Generation);
 
 internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
 {
@@ -57,9 +64,14 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     private ZLinkFrameworkComponentState? _state;
     private ZLinkWorkerPool? _workerPool;
     private TaskCompletionSource? _operationsDrained;
+    private TaskCompletionSource? _operationsAtZero;
     private int _activeOperations;
+    private long _operationEpoch;
     private int _activeRequests;
     private bool _acceptingOperations;
+    private ZLinkDrainOwner _admissionOwner;
+    private long _nextRelocationFenceGeneration;
+    private long _relocationFenceGeneration;
     private long _nextInstanceActivationSelection;
     private ZLinkRelocationTargetSelection _relocationTargetSelection;
 
@@ -233,10 +245,18 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         CancellationToken cancellationToken)
     {
         var state = _state;
-        if (state is null) return new ZLinkSpotDrainResult(true, 0);
+        if (state is null)
+            return new ZLinkSpotDrainResult(
+                true,
+                0,
+                null,
+                ZLinkRelocationCommitKnowledge.NotCommitted,
+                true);
         var drained = true;
         ulong committedUnitCount = 0;
         ZLinkFrameworkRelocationReason? terminalReason = null;
+        var commitKnowledge = ZLinkRelocationCommitKnowledge.NotCommitted;
+        var sourceTerminalized = true;
         foreach (var spotNode in state.SpotNodes.Values)
         {
             var result = await spotNode.TryDrainSpotsAsync(
@@ -250,11 +270,33 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             terminalReason ??= result.TerminalReason;
             committedUnitCount = checked(
                 committedUnitCount + result.CommittedUnitCount);
+            commitKnowledge = CombineCommitKnowledge(
+                commitKnowledge,
+                result.CommitKnowledge,
+                committedUnitCount);
+            sourceTerminalized &= result.SourceTerminalized;
         }
         return new ZLinkSpotDrainResult(
             drained,
             committedUnitCount,
-            terminalReason);
+            terminalReason,
+            commitKnowledge,
+            sourceTerminalized);
+    }
+
+    private static ZLinkRelocationCommitKnowledge CombineCommitKnowledge(
+        ZLinkRelocationCommitKnowledge left,
+        ZLinkRelocationCommitKnowledge right,
+        ulong committedUnitCount)
+    {
+        if (left == ZLinkRelocationCommitKnowledge.Unknown
+            || right == ZLinkRelocationCommitKnowledge.Unknown)
+            return ZLinkRelocationCommitKnowledge.Unknown;
+        return left == ZLinkRelocationCommitKnowledge.Committed
+               || right == ZLinkRelocationCommitKnowledge.Committed
+               || committedUnitCount != 0
+            ? ZLinkRelocationCommitKnowledge.Committed
+            : ZLinkRelocationCommitKnowledge.NotCommitted;
     }
 
     internal async ValueTask<ZLinkRelocationWorkloadDrainResult>
@@ -342,20 +384,48 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
 
     internal void SealApplicationAdmissionsForDrain()
     {
+        //  Shutdown claims the admission owner before taking the runtime lock.
+        //  Relocation fence and shutdown therefore use the same drain-gate ->
+        //  operation-gate order without allowing rollback to reopen shutdown.
+        _drainAdmission.ClaimShutdown();
         lock (_operationGate)
         {
             _drainAdmission.Seal();
             _acceptingOperations = false;
+            _admissionOwner = ZLinkDrainOwner.Shutdown;
         }
     }
 
-    internal void ReopenRetireAdmissionsAfterRollback()
+    internal void ReopenRetireAdmissionsAfterRollback() =>
+        _ = TryReopenRetireAdmissionsAfterRollback();
+
+    internal bool TryReopenRetireAdmissionsAfterRollback()
     {
-        lock (_operationGate)
+        var expectedGeneration = Volatile.Read(ref _relocationFenceGeneration);
+        return expectedGeneration == 0
+            ? false
+            : TryReopenRetireAdmissionsAfterRollback(
+                new ZLinkRelocationAdmissionFence(expectedGeneration));
+    }
+
+    internal bool TryReopenRetireAdmissionsAfterRollback(
+        ZLinkRelocationAdmissionFence expectedFence)
+    {
+        return _drainAdmission.TryReopenRelocationFence(() =>
         {
-            _drainAdmission.Reset();
-            _acceptingOperations = true;
-        }
+            lock (_operationGate)
+            {
+                if (_admissionOwner != ZLinkDrainOwner.Relocation
+                    || _relocationFenceGeneration != expectedFence.Generation)
+                    return false;
+                if (!_actorHandoffAdmissions.SnapshotDrain().IsSafe)
+                    return false;
+                _admissionOwner = ZLinkDrainOwner.None;
+                _relocationFenceGeneration = 0;
+                _acceptingOperations = true;
+                return true;
+            }
+        });
     }
 
     internal Task WaitForAcceptedOperationsForDrainAsync()
@@ -363,8 +433,124 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         lock (_operationGate)
             return _activeOperations == 0
                 ? Task.CompletedTask
-                : (_operationsDrained ??= new TaskCompletionSource(
+                : (_operationsAtZero ??= new TaskCompletionSource(
                     TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+    }
+
+    internal ZLinkRuntimeOperationAdmissionSnapshot
+        SnapshotOperationAdmissions()
+    {
+        lock (_operationGate)
+            return new(_operationEpoch, _activeOperations);
+    }
+
+    internal ZLinkRelocationAdmissionFence?
+        CaptureRelocationAdmissionFence()
+    {
+        lock (_operationGate)
+            return _admissionOwner == ZLinkDrainOwner.Relocation
+                   && _relocationFenceGeneration != 0
+                ? new ZLinkRelocationAdmissionFence(_relocationFenceGeneration)
+                : null;
+    }
+
+    internal ZLinkRelocationRollbackLease?
+        TryAcquireRelocationRollbackLease(
+            ZLinkRelocationAdmissionFence expectedFence)
+    {
+        _drainAdmission.TryAcquireRelocationRollbackLease(
+            () =>
+            {
+                lock (_operationGate)
+                {
+                    var acquired = _admissionOwner == ZLinkDrainOwner.Relocation
+                                   && _relocationFenceGeneration
+                                      == expectedFence.Generation
+                                   && _activeOperations == 0
+                                   && _actorHandoffAdmissions.SnapshotDrain().IsSafe;
+                    if (acquired)
+                        _admissionOwner = ZLinkDrainOwner.RelocationRollback;
+                    return acquired;
+                }
+            },
+            out var lease);
+        return lease;
+    }
+
+    internal bool TryReopenRetireAdmissionsAfterRollback(
+        ZLinkRelocationAdmissionFence expectedFence,
+        ZLinkRelocationRollbackLease lease)
+    {
+        return _drainAdmission.TryCompleteRelocationRollbackLease(
+            lease,
+            () =>
+            {
+                lock (_operationGate)
+                {
+                    if (_admissionOwner != ZLinkDrainOwner.RelocationRollback
+                        || _relocationFenceGeneration
+                           != expectedFence.Generation
+                        || !_actorHandoffAdmissions.SnapshotDrain().IsSafe)
+                        return false;
+                    _admissionOwner = ZLinkDrainOwner.None;
+                    _relocationFenceGeneration = 0;
+                    _acceptingOperations = true;
+                    return true;
+                }
+            });
+    }
+
+    internal async ValueTask<ZLinkRelocationAdmissionFence?>
+        TryBeginRelocationAdmissionFenceAsync(
+            ZLinkRuntimeOperationAdmissionSnapshot operationBaseline,
+            ZLinkActorAdmissionSnapshot actorBaseline,
+            ZLinkActorHandoffDrainSnapshot handoffBaseline,
+            CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ZLinkRelocationAdmissionFence? fence = null;
+        var committed = _drainAdmission.TryBeginRelocationFence(actorSnapshot =>
+        {
+            lock (_operationGate)
+            {
+                var currentOperation = new ZLinkRuntimeOperationAdmissionSnapshot(
+                    _operationEpoch,
+                    _activeOperations);
+                var currentHandoff = _actorHandoffAdmissions.SnapshotDrain();
+                if (_admissionOwner != ZLinkDrainOwner.None
+                    || !_acceptingOperations
+                    || currentOperation != operationBaseline
+                    || actorSnapshot != actorBaseline
+                    || currentHandoff != handoffBaseline
+                    || !currentHandoff.IsSafe)
+                    return false;
+
+                _drainAdmission.Seal();
+                _acceptingOperations = false;
+                _admissionOwner = ZLinkDrainOwner.Relocation;
+                var generation = checked(++_nextRelocationFenceGeneration);
+                _relocationFenceGeneration = generation;
+                fence = new ZLinkRelocationAdmissionFence(generation);
+                return true;
+            }
+        });
+        if (!committed) return null;
+
+        try
+        {
+            await WaitForAcceptedOperationsForDrainAsync()
+                .WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+            await WaitForAcceptedActorHandoffsAsync(cancellationToken)
+                .ConfigureAwait(false);
+            return fence;
+        }
+        catch
+        {
+            if (fence is { } expectedFence)
+                TryReopenRetireAdmissionsAfterRollback(expectedFence);
+            throw;
+        }
     }
 
     internal async Task WaitForAcceptedActorHandoffsAsync(CancellationToken cancellationToken)
@@ -437,6 +623,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
                 throw new InvalidOperationException(
                     "ZLink framework runtime is not accepting operations.");
             _activeOperations++;
+            _operationEpoch++;
             var previous = AmbientOperation.Value;
             var ownership = new ZLinkRuntimeOperationOwnership(this, state);
             AmbientOperation.Value = ownership;
@@ -455,6 +642,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         lock (_operationGate)
         {
             _activeOperations++;
+            _operationEpoch++;
             return new ZLinkRuntimeOperationLease(
                 this,
                 countsOperation: true,
@@ -729,11 +917,17 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             {
                 lock (_operationGate) _acceptingOperations = false;
                 stateToDispose?.FenceOperations();
-                stateToDispose?.CancelActiveSpotOperations();
-                stateToDispose?.ForceStopStreamSessions();
-                var failures = await CleanupRuntimeGenerationAsync(
+            stateToDispose?.CancelActiveSpotOperations();
+            stateToDispose?.ForceStopStreamSessions();
+            // ForceStop must remain forceful even when the caller does not
+            // supply an external cancellation deadline. The linked token
+            // selects the component state's non-graceful disposal path.
+            using var forceStop =
+                CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken);
+            var failures = await CleanupRuntimeGenerationAsync(
                         stateToDispose,
-                        cancellationToken)
+                        forceStop.Token)
                     .ConfigureAwait(false);
                 if (cancellationToken.IsCancellationRequested
                     && failures.Count > 0)
@@ -900,6 +1094,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             throw new InvalidOperationException(
                 "ZLink framework runtime is not accepting operations (runtime state is not created).");
         _activeOperations++;
+        _operationEpoch++;
         if (countAsRequest) _activeRequests++;
         var previous = AmbientOperation.Value;
         var ownership = new ZLinkRuntimeOperationOwnership(this, state);
@@ -923,19 +1118,25 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     private void ExitOperation(bool countsOperation, bool countsRequest)
     {
         TaskCompletionSource? drained = null;
+        TaskCompletionSource? atZero = null;
         lock (_operationGate)
         {
             if (countsRequest && --_activeRequests < 0)
                 throw new InvalidOperationException("Runtime request lease count became negative.");
             if (countsOperation && --_activeOperations < 0)
                 throw new InvalidOperationException("Runtime operation lease count became negative.");
-            if (_activeOperations == 0 && !_acceptingOperations)
+            if (countsOperation)
+                _operationEpoch++;
+            if (_activeOperations == 0)
             {
                 drained = _operationsDrained;
                 _operationsDrained = null;
+                atZero = _operationsAtZero;
+                _operationsAtZero = null;
             }
         }
         drained?.TrySetResult();
+        atZero?.TrySetResult();
     }
 
     internal sealed class ZLinkRuntimeOperationLease : IDisposable

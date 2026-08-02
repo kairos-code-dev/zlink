@@ -228,9 +228,9 @@ message OfferDeliveryNotify {
 }
 ```
 
-CreateDeliveryReq.deliveryId는 scenario가 재시도할 때 유지하는 logical ID다. Server가
-새 ID를 발급하는 변형을 구현하더라도 response의 ID가 다음 message와 같은 기준을 갖도록
-sample runner가 하나의 계약을 선택해야 한다. BindCourierSessionRes는 session binding
+`CreateDeliveryReq`.deliveryId는 scenario가 재시도할 때 유지하는 logical ID다. Server가
+새 ID를 발급하는 변형을 구현하더라도 `CreateDeliveryRes`의 ID가 다음 message와 같은 기준을
+갖도록 sample runner가 하나의 계약을 선택해야 한다. `BindCourierSessionRes`는 session binding
 완료를 뜻하며 owner 위치나 ActorRef를 반환하지 않는다.
 
 ### 6.2 내부 dispatch와 상태 message
@@ -258,7 +258,7 @@ message CourierDecisionMsg {
   reason?: string | null
 }
 
-message OfferDeliveryResultMsg {
+message `OfferDeliveryResultMsg` {
   deliveryId: string
   courierId: string
   attempt: int32
@@ -288,8 +288,8 @@ message DeliveryStatusUpdatedMsg {
 }
 ```
 
-AssignDeliveryMsg, OfferDeliveryMsg, CourierDecisionMsg, OfferDeliveryResultMsg와
-DeliveryStatusUpdatedMsg는 reply를 기다리지 않는 send다. DeliveryStatusChangedReq/Res는
+AssignDeliveryMsg, `OfferDeliveryMsg`, CourierDecisionMsg, `OfferDeliveryResultMsg`와
+DeliveryStatusUpdatedMsg는 reply를 기다리지 않는 send다. `DeliveryStatusChangedReq`/`DeliveryStatusChangedRes`는
 Tracking이 상태 event를 접수했음을 확인하는 request/reply다.
 
 ### 6.3 Customer push와 상태 값
@@ -349,7 +349,7 @@ sequenceDiagram
     CS-->>CA: OfferDeliveryNotify
     CA->>CS: CourierDecisionMsg(accepted=true)
     CS->>ACT: CourierDecisionMsg
-    ACT->>D: OfferDeliveryResultMsg
+    ACT->>D: `OfferDeliveryResultMsg`
     D->>T: DeliveryStatusChangedReq(Assigned)
     T-->>D: DeliveryStatusChangedRes
     D->>T: DeliveryStatusChangedReq(Accepted)
@@ -369,7 +369,7 @@ DeliveryId가 subscription과 같은지 확인한다. 상태 event 기록과 pus
 
 ### 7.2 Timeout 재배정
 
-A가 OfferDeliveryMsg(attempt=1)을 받은 뒤 deadline 안에 결정을 보내지 않으면 Dispatch
+A가 `OfferDeliveryMsg`(attempt=1)을 받은 뒤 deadline 안에 결정을 보내지 않으면 Dispatch
 sweeper가 현재 기록을 Expired로 바꾸고 B를 다음 후보로 선택한다. 이전 A의 늦은 결정은
 현재 Attempt=2와 일치하지 않으므로 버린다.
 
@@ -386,7 +386,7 @@ sequenceDiagram
 
     C->>D: CreateDeliveryReq(delivery-reassign)
     D->>A: OfferDeliveryMsg(attempt=1)
-    Note over D: deadline expires; mark attempt 1 expired
+    Note over D: deadline expires and attempt 1 is marked expired
     D->>T: DeliveryStatusChangedReq(Reassigned)
     T-->>D: DeliveryStatusChangedRes
     T->>CG: DeliveryStatusUpdatedMsg
@@ -396,7 +396,7 @@ sequenceDiagram
     CS-->>CB: OfferDeliveryNotify
     CB->>CS: CourierDecisionMsg(accepted=true)
     CS->>B: CourierDecisionMsg
-    B->>D: OfferDeliveryResultMsg(attempt=2)
+    B->>D: `OfferDeliveryResultMsg`(attempt=2)
     D->>T: DeliveryStatusChangedReq(Accepted)
     T-->>D: DeliveryStatusChangedRes
     D->>T: DeliveryStatusChangedReq(Delivered)
@@ -509,12 +509,17 @@ codec 경로를 사용하며 raw frame, private runtime object와 message별 cod
 언어별로 달라질 수 있는 것은 `Program`의 host 구성, async 문법, DI 등록과 파일 확장자뿐이며,
 message declaration·state owner·handler와 adapter의 책임은 공통 문서와 같아야 한다.
 
+.NET의 attribute, Java·Kotlin의 annotation과 Node.js의 decorator는 선언형 metadata scan으로
+handler를 자동 등록한다. C++은 runtime reflection scanner가 없으므로 compile-time type과 public
+builder로 같은 handler 집합을 명시 등록한다. 이 차이는 등록 방법에만 적용하며 message와 처리
+책임을 바꾸지 않는다.
+
 ## 9. Client self-check
 
 Client self-check는 response와 push payload를 직접 assert한다.
 
-1. Courier A·B가 각각 BindCourierSessionReq/Res를 완료했는지 확인한다.
-2. Customer가 SubscribeDeliveryReq/Res를 완료했는지 확인한다.
+1. Courier A·B가 각각 `BindCourierSessionReq`/`BindCourierSessionRes`를 완료했는지 확인한다.
+2. Customer가 `SubscribeDeliveryReq`/`SubscribeDeliveryRes`를 완료했는지 확인한다.
 3. delivery-success의 response ID와 push ID가 같은지 확인한다.
 4. 성공 흐름에서 Assigned, Accepted, PickedUp, Delivered의 순서와 CourierId를 확인한다.
 5. delivery-reassign에서 Assigned, Reassigned, Accepted, Delivered의 순서를 확인하고
@@ -543,12 +548,12 @@ Client self-check는 response와 push payload를 직접 assert한다.
 고정 sleep으로 readiness를 대신하지 않는다.
 
 ```text
-topology=ready
-deliverydispatch-success=completed
-deliverydispatch-reassignment=completed
-deliverydispatch-evidence=completed
 deliverydispatch=completed
 ```
+
+언어별 runner는 위 공통 completion marker와 함께 server evidence 또는 runner evidence를
+검사한다. evidence marker의 이름은 해당 언어 runner가 실제로 출력하는 값을 사용하며, 다른
+이름을 문서의 공통 계약으로 추가하지 않는다.
 
 ## 11. 완료 기준
 

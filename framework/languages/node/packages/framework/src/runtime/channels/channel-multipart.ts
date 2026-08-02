@@ -1,10 +1,9 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import type {
   Message,
   MessageLike
 } from '@zlink-systems/zlink';
 import {
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException
 } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
 
@@ -39,8 +38,8 @@ export function submitRequestOperation(operation: {
     try {
       const accepted = operation.submit((result, parts) => {
         if (result !== 0) {
-          reject(new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.RouteNotConnected,
+          reject(createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.RouteNotConnected,
             `Channel request failed with result ${result}.`,
             true
           ));
@@ -49,15 +48,15 @@ export function submitRequestOperation(operation: {
         resolve(parts);
       });
       if (!accepted) {
-        reject(new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.RouteNotConnected,
+        reject(createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.RouteNotConnected,
           'Channel request submit was not accepted.',
           true
         ));
       }
     } catch (error) {
-      reject(new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RouteNotConnected,
+      reject(createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RouteNotConnected,
         `${label} failed before a reply was received.`,
         true,
         error

@@ -197,8 +197,7 @@ internal sealed class ZLinkDeferredActorJoin(
                 await NotifySourceAsync(
                         new ZLinkActorJoinCompletion.Failed(
                             _operationId,
-                            ZLinkFrameworkErrorKind.DeadlineExceeded,
-                            true),
+                            ZLinkFrameworkErrorKind.DeadlineExceeded),
                         cancellationToken)
                     .ConfigureAwait(false);
                 return;
@@ -249,13 +248,13 @@ internal sealed class ZLinkDeferredActorJoin(
             }
             catch (Exception exception)
             {
-                var (kind, retriable) = MapFailure(exception, deadline);
+                var kind = MapFailure(exception, deadline);
                 //  The completion carries only a kind, so without this the
                 //  originating exception is lost and every throw site that maps
                 //  to the same kind looks identical from the outside.
                 Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-                    $"deferred_join_failed kind={kind} retriable={retriable} {exception}");
-                completion = new ZLinkActorJoinCompletion.Failed(_operationId, kind, retriable);
+                    $"deferred_join_failed kind={kind} {exception}");
+                completion = new ZLinkActorJoinCompletion.Failed(_operationId, kind);
             }
 
             if (completion is not null)
@@ -295,19 +294,19 @@ internal sealed class ZLinkDeferredActorJoin(
         return actor.OnJoinCompletedAsync(completion, cancellationToken);
     }
 
-    private (ZLinkFrameworkErrorKind Kind, bool Retriable) MapFailure(
+    private ZLinkFrameworkErrorKind MapFailure(
         Exception exception,
         CancellationTokenSource deadline)
     {
         if (exception is ZLinkFrameworkException framework)
-            return (framework.Kind, framework.RetryAdvice != ZLinkRetryAdvice.DoNotRetry);
+            return framework.Kind;
         if (exception is OperationCanceledException
             && runtime.ShutdownToken.IsCancellationRequested)
-            return (ZLinkFrameworkErrorKind.ShuttingDown, false);
+            return ZLinkFrameworkErrorKind.ShuttingDown;
         if (exception is TimeoutException
             || exception is OperationCanceledException && deadline.IsCancellationRequested)
-            return (ZLinkFrameworkErrorKind.DeadlineExceeded, true);
-        return (ZLinkFrameworkErrorKind.InternalFailure, false);
+            return ZLinkFrameworkErrorKind.DeadlineExceeded;
+        return ZLinkFrameworkErrorKind.InternalFailure;
     }
 
     private static ZLinkActorJoinOperationId CreateOperationId()

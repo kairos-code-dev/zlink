@@ -505,6 +505,14 @@ module이 소유하는 판단과 의존성 방향을 설명한다. 단순한 fil
 4. 언어별 문서는 공통 sample의 operation 순서, message 선언, state 전이와 self-check 항목을 다시
    설계하지 않는다. 문법·package·host 구성만 해당 언어의 public API로 표현한다.
 
+Handler 집합은 같게 유지하되 등록 방법은 언어 runtime의 차이를 보존한다. .NET의 attribute,
+Java·Kotlin의 annotation과 Node.js의 decorator처럼 Framework가 선언형 metadata를 scan할 수 있는
+언어는 handler 목록을 구성 코드에 반복하지 않고 자동 등록한다. C++은 runtime reflection scanner가
+없으므로 compile-time type과 public builder로 같은 handler 집합을 명시 등록한다. C++에 자동 등록을
+요구하거나, C++의 방식을 다른 언어에 수동 등록 관례로 확장하면 안 된다. 정확한 C++ 표면은
+[C++ handler 공개 계약](../../../framework/doc/framework/common/spec/server/languages/cpp/interfaces/03-channel-messaging.ko.md)을
+따른다. 이 차이는 등록 방법에만 적용하며 message, handler 책임, 처리 순서와 self-check를 바꾸지 않는다.
+
 따라서 각 sample의 `구현 구조` 절에는 위 tree와 함께 logical component별 책임 표를 둔다. 이 표가
 없으면 구현자가 같은 업무 결과만 유지하고 handler, state owner와 adapter 위치를 임의로 바꿀 수
 있으므로 언어 parity가 확인된 것으로 보지 않는다.
@@ -857,6 +865,7 @@ review와 문서 원칙 검토를 다시 수행한다.
 - [ ] 언어별 sample은 public API만 사용한다.
 - [ ] Internal import, reflection, raw frame, test-only adapter와 private pass-through helper가 없다.
 - [ ] 공통으로 고정할 의미와 언어별 표현 차이를 구분했다.
+- [ ] Handler 집합은 같고, scan을 지원하는 언어의 자동 등록과 C++의 compile-time 명시 등록 차이를 유지했다.
 - [ ] 미구현 기능을 조용히 제외하지 않고 gap과 후속 조건을 기록했다.
 - [ ] Review 기록에 각 항목의 spec 근거, exact interface, 검증과 판정을 남겼다.
 - [ ] `계약 후보`와 `문서 오류` 판정이 남아 있지 않다.

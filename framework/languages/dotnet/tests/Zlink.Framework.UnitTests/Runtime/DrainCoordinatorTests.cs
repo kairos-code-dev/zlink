@@ -5,6 +5,7 @@ using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Runtime.Protocol;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Runtime.Diagnostics;
+using Zlink.Framework.Runtime.Host;
 using Zlink.Framework.Runtime.Locations;
 using Zlink.Framework.Runtime.Spots;
 
@@ -98,13 +99,21 @@ public sealed class DrainCoordinatorTests
                         true,
                         phase == ZLinkSpotRelocationPhase.PerActorShells
                             ? 1UL
-                            : 3UL));
+                            : 3UL,
+                        null,
+                        ZLinkRelocationCommitKnowledge.Committed,
+                        true));
             },
             _ =>
             {
                 events.Add("actors");
                 return ValueTask.FromResult(
-                    new ZLinkActorDrainResult(true, null, 2));
+                    new ZLinkActorDrainResult(
+                        true,
+                        null,
+                        2,
+                        ZLinkRelocationCommitKnowledge.Committed,
+                        true));
             });
 
         var result = await coordinator.DrainAsync(
@@ -115,7 +124,53 @@ public sealed class DrainCoordinatorTests
         Assert.True(result.Completed);
         Assert.Null(result.TerminalReason);
         Assert.Equal<ulong>(6, result.CommittedUnitCount);
+        Assert.Equal(
+            ZLinkRelocationCommitKnowledge.Committed,
+            result.CommitKnowledge);
+        Assert.True(result.SourceTerminalized);
         Assert.Equal(new[] { "shells", "actors", "aggregates" }, events);
+    }
+
+    [Fact]
+    public async Task Relocation_workload_coordinator_preserves_aggregate_terminal_reason()
+    {
+        var coordinator = new ZLinkRelocationWorkloadCoordinator(
+            (phase, _) => ValueTask.FromResult(
+                phase == ZLinkSpotRelocationPhase.PerActorShells
+                    ? new ZLinkSpotDrainResult(
+                        true,
+                        1,
+                        null,
+                        ZLinkRelocationCommitKnowledge.Committed,
+                        true)
+                    : new ZLinkSpotDrainResult(
+                        false,
+                        0,
+                        ZLinkFrameworkRelocationReason.RelocationFailed,
+                        ZLinkRelocationCommitKnowledge.NotCommitted,
+                        true)),
+            _ => ValueTask.FromResult(
+                new ZLinkActorDrainResult(
+                    true,
+                    null,
+                    1,
+                    ZLinkRelocationCommitKnowledge.Committed,
+                    true)));
+
+        var result = await coordinator.DrainAsync(
+            new ZLinkRelocationWorkloadDrainControl(
+                static () => false,
+                CancellationToken.None));
+
+        Assert.False(result.Completed);
+        Assert.Equal(
+            ZLinkFrameworkRelocationReason.RelocationFailed,
+            result.TerminalReason);
+        Assert.Equal<ulong>(2, result.CommittedUnitCount);
+        Assert.Equal(
+            ZLinkRelocationCommitKnowledge.Committed,
+            result.CommitKnowledge);
+        Assert.True(result.SourceTerminalized);
     }
 
     [Fact]
@@ -191,10 +246,12 @@ public sealed class DrainCoordinatorTests
         admission.BeginDrain();
         var operations = probe.Operations with
         {
-            ReopenAdmissions = () =>
+            CaptureRelocationFence = () => new ZLinkRelocationAdmissionFence(1),
+            ReopenRelocationAdmissions = (_, _) =>
             {
                 probe.Events.Add("reopen-admission");
                 admission.Reset();
+                return true;
             },
             DrainRelocationWorkloads = _ => ValueTask.FromResult(
                 new ZLinkRelocationWorkloadDrainResult(
@@ -219,19 +276,146 @@ public sealed class DrainCoordinatorTests
     }
 
     [Fact]
-    public async Task RetireFailureAfterCommitForceStopsWithDurableProgress()
+    public async Task Executor_does_not_restore_serving_for_a_stale_relocation_fence()
     {
         var probe = new DrainExecutionProbe();
         var operations = probe.Operations with
         {
+            RestoreServing = _ =>
+            {
+                probe.Events.Add("restore-serving");
+                return ValueTask.FromResult(true);
+            },
+            CaptureRelocationFence = static () =>
+                new ZLinkRelocationAdmissionFence(2),
+            AcquireRelocationRollback = static _ => null,
             DrainRelocationWorkloads = _ => ValueTask.FromResult(
                 new ZLinkRelocationWorkloadDrainResult(
                     false,
                     ZLinkFrameworkRelocationReason.RelocationFailed,
-                    1))
+                    0))
+        };
+        var executor = new ZLinkFrameworkDrainExecutor(
+            operations,
+            new ZLinkLocationOptions());
+
+        var forceReason = await executor.ExecuteAsync(
+            ZLinkFrameworkLifecycleIntent.Relocate,
+            TimeSpan.FromSeconds(1),
+            CancellationToken.None);
+
+        Assert.Equal(ZLinkDrainForceReason.TeardownFailed, forceReason);
+        Assert.DoesNotContain("restore-serving", probe.Events);
+    }
+
+    [Fact]
+    public async Task Executor_does_not_restore_serving_after_rollback_lease_is_invalidated()
+    {
+        var probe = new DrainExecutionProbe();
+        var operations = probe.Operations with
+        {
+            RestoreServing = _ =>
+            {
+                probe.Events.Add("restore-serving");
+                return ValueTask.FromResult(true);
+            },
+            CaptureRelocationFence = static () =>
+                new ZLinkRelocationAdmissionFence(3),
+            AcquireRelocationRollback = static _ =>
+            {
+                var lease = new ZLinkRelocationRollbackLease();
+                lease.Invalidate();
+                return lease;
+            },
+            DrainRelocationWorkloads = _ => ValueTask.FromResult(
+                new ZLinkRelocationWorkloadDrainResult(
+                    false,
+                    ZLinkFrameworkRelocationReason.RelocationFailed,
+                    0))
+        };
+        var executor = new ZLinkFrameworkDrainExecutor(
+            operations,
+            new ZLinkLocationOptions());
+
+        var forceReason = await executor.ExecuteAsync(
+            ZLinkFrameworkLifecycleIntent.Relocate,
+            TimeSpan.FromSeconds(1),
+            CancellationToken.None);
+
+        Assert.Equal(ZLinkDrainForceReason.TeardownFailed, forceReason);
+        Assert.DoesNotContain("restore-serving", probe.Events);
+    }
+
+    [Fact]
+    public async Task Full_rollback_shutdown_takeover_returns_shutdown_blocked()
+    {
+        var probe = new DrainExecutionProbe();
+        ZLinkFrameworkDrainExecutor? executor = null;
+        ZLinkRelocationRollbackLease? lease = null;
+        var operations = probe.Operations with
+        {
+            AcquireRelocationRollback = _ =>
+            {
+                lease = new ZLinkRelocationRollbackLease();
+                return lease;
+            },
+            RestoreServing = _ =>
+            {
+                lease!.Invalidate();
+                executor!.RequestShutdown(TimeSpan.FromSeconds(1));
+                return ValueTask.FromResult(true);
+            },
+            DrainRelocationWorkloads = _ => ValueTask.FromResult(
+                new ZLinkRelocationWorkloadDrainResult(
+                    false,
+                    ZLinkFrameworkRelocationReason.RelocationFailed,
+                    0))
+        };
+        executor = new ZLinkFrameworkDrainExecutor(
+            operations,
+            new ZLinkLocationOptions());
+
+        var result = await executor.ExecuteWithProgressAsync(
+            ZLinkFrameworkLifecycleIntent.Relocate,
+            TimeSpan.FromSeconds(1),
+            null,
+            CancellationToken.None);
+
+        Assert.Equal(
+            ZLinkDrainExecutionDisposition.Blocked,
+            result.Disposition);
+        Assert.Equal(
+            ZLinkFrameworkRelocationReason.ShutdownRequested,
+            result.BlockedReason);
+    }
+
+    [Fact]
+    public async Task Partial_commit_restores_serving_without_force_stop()
+    {
+        var probe = new DrainExecutionProbe();
+        var admission = new ZLinkDrainAdmissionGate();
+        var operations = probe.Operations with
+        {
+            RestoreServing = _ =>
+            {
+                probe.Events.Add("restore-serving");
+                return ValueTask.FromResult(true);
+            },
+            ReopenRelocationAdmissions = (_, _) =>
+            {
+                probe.Events.Add("reopen-admission");
+                admission.Reset();
+                return true;
+            },
+            DrainRelocationWorkloads = _ => ValueTask.FromResult(
+                new ZLinkRelocationWorkloadDrainResult(
+                    false,
+                    ZLinkFrameworkRelocationReason.RelocationFailed,
+                    1,
+                    true))
         };
         using var coordinator = new ZLinkDrainCoordinator(
-            new ZLinkDrainAdmissionGate(),
+            admission,
             new ZLinkFrameworkDrainExecutor(
                 operations,
                 new ZLinkLocationOptions()));
@@ -240,10 +424,94 @@ public sealed class DrainCoordinatorTests
             ZLinkFrameworkLifecycleIntent.Relocate,
             TimeSpan.FromSeconds(1));
 
-        var forced = Assert.IsType<ForceStopped>(result);
-        Assert.Equal(ZLinkDrainForceReason.RelocationFailed, forced.Reason);
-        Assert.True(forced.HasCommitted);
-        Assert.Equal<ulong>(1, forced.CommittedUnitCount);
+        var blocked = Assert.IsType<DrainBlocked>(result);
+        Assert.Equal(ZLinkFrameworkRelocationReason.RelocationFailed, blocked.Reason);
+        Assert.Contains("restore-serving", probe.Events);
+        Assert.Contains("reopen-admission", probe.Events);
+        Assert.DoesNotContain("stop-runtime", probe.Events);
+        Assert.True(coordinator.IsReady);
+    }
+
+    [Fact]
+    public async Task Partial_commit_without_source_terminalization_fails_closed()
+    {
+        var probe = new DrainExecutionProbe();
+        var operations = probe.Operations with
+        {
+            RestoreServing = _ =>
+            {
+                probe.Events.Add("restore-serving");
+                return ValueTask.FromResult(true);
+            },
+            DrainRelocationWorkloads = _ => ValueTask.FromResult(
+                new ZLinkRelocationWorkloadDrainResult(
+                    false,
+                    ZLinkFrameworkRelocationReason.RelocationFailed,
+                    1,
+                    false))
+        };
+        var executor = new ZLinkFrameworkDrainExecutor(
+            operations,
+            new ZLinkLocationOptions());
+
+        var result = await executor.ExecuteWithProgressAsync(
+            ZLinkFrameworkLifecycleIntent.Relocate,
+            TimeSpan.FromSeconds(1),
+            null,
+            CancellationToken.None);
+
+        Assert.Equal(
+            ZLinkDrainExecutionDisposition.ForceStop,
+            result.Disposition);
+        Assert.Equal(ZLinkDrainForceReason.TeardownFailed, result.ForceReason);
+        Assert.Equal<ulong>(1, result.CommittedUnitCount);
+        Assert.DoesNotContain("restore-serving", probe.Events);
+    }
+
+    [Fact]
+    public async Task Partial_commit_shutdown_takeover_returns_shutdown_blocked()
+    {
+        var probe = new DrainExecutionProbe();
+        ZLinkFrameworkDrainExecutor? executor = null;
+        ZLinkRelocationRollbackLease? lease = null;
+        var operations = probe.Operations with
+        {
+            AcquireRelocationRollback = _ =>
+            {
+                lease = new ZLinkRelocationRollbackLease();
+                return lease;
+            },
+            RestoreServing = _ =>
+            {
+                probe.Events.Add("restore-serving");
+                lease!.Invalidate();
+                executor!.RequestShutdown(TimeSpan.FromSeconds(1));
+                return ValueTask.FromResult(true);
+            },
+            DrainRelocationWorkloads = _ => ValueTask.FromResult(
+                new ZLinkRelocationWorkloadDrainResult(
+                    false,
+                    ZLinkFrameworkRelocationReason.RelocationFailed,
+                    1,
+                    true))
+        };
+        executor = new ZLinkFrameworkDrainExecutor(
+            operations,
+            new ZLinkLocationOptions());
+
+        var result = await executor.ExecuteWithProgressAsync(
+            ZLinkFrameworkLifecycleIntent.Relocate,
+            TimeSpan.FromSeconds(1),
+            null,
+            CancellationToken.None);
+
+        Assert.Equal(
+            ZLinkDrainExecutionDisposition.Blocked,
+            result.Disposition);
+        Assert.Equal(
+            ZLinkFrameworkRelocationReason.ShutdownRequested,
+            result.BlockedReason);
+        Assert.DoesNotContain("reopen-admission", probe.Events);
     }
 
     [Fact]
@@ -530,6 +798,20 @@ public sealed class DrainCoordinatorTests
 
         Assert.False(gate.TryEnterActorAdmission(out var rejectedJoin));
         rejectedJoin.Dispose();
+    }
+
+    [Fact]
+    public void Shutdown_owner_prevents_a_relocation_fence_from_reopening_admission()
+    {
+        var gate = new ZLinkDrainAdmissionGate();
+        Assert.True(gate.TryBeginRelocationFence(
+            static snapshot => snapshot.ActiveCount == 0));
+        gate.Seal();
+        Assert.True(gate.BeginDrain(ZLinkDrainOwner.Shutdown));
+
+        Assert.False(gate.TryReopenRelocationFence(static () => true));
+        Assert.True(gate.IsDraining);
+        Assert.True(gate.IsSealed);
     }
 
     [Fact]
@@ -975,7 +1257,6 @@ public sealed class DrainCoordinatorTests
             RestoreServing: _ => ValueTask.FromResult(true),
             SealApplicationAdmissions: () => Events.Add("seal-admission"),
             PublishDrainingToPeers: () => Events.Add("publish-draining"),
-            ReopenAdmissions: () => Events.Add("reopen-admission"),
             WaitForAcceptedOperations: () =>
             {
                 Events.Add("wait-accepted");
@@ -1049,6 +1330,13 @@ public sealed class DrainCoordinatorTests
             {
                 Events.Add("stop-location");
                 return ValueTask.CompletedTask;
+            },
+            CaptureRelocationFence: static () => new ZLinkRelocationAdmissionFence(1),
+            AcquireRelocationRollback: static _ => new ZLinkRelocationRollbackLease(),
+            ReopenRelocationAdmissions: (_, _) =>
+            {
+                Events.Add("reopen-admission");
+                return true;
             });
     }
 

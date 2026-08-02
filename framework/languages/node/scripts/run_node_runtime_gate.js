@@ -14,6 +14,7 @@ const skippedTestFiles = new Set(
     .map((value) => value.trim())
     .filter((value) => value.length > 0)
 );
+const skipped = [];
 
 if (expectedMajor !== 0 && actualMajor !== expectedMajor) {
   console.error(`Expected Node ${expectedMajor}, got ${process.version}.`);
@@ -37,12 +38,24 @@ run('lint', process.execPath, [
 for (const testFile of listTestFiles(path.join(nodeRoot, 'test'))) {
   const relative = relativePath(nodeRoot, testFile);
   if (skippedTestFiles.has(relative) || skippedTestFiles.has(path.basename(testFile))) {
-    console.log(`-- ${relative} # SKIP framework CI excludes e2e sample/runtime checks`);
+    console.log(`-- ${relative} # SKIP explicitly requested; skipped tests are not a pass`);
+    skipped.push(relative);
     continue;
   }
-  run(relative, process.execPath, ['--test', '--test-force-exit', testFile]);
+  //  타임아웃이 없으면 suite가 멈췄을 때 게이트가 실패가 아니라 "영원히 진행 중"이
+  //  된다. 실제로 그 상태에서 부분 로그를 통과로 오인하기 쉬웠다.
+  run(relative, process.execPath, [
+    '--test',
+    '--test-force-exit',
+    '--test-timeout=600000',
+    testFile
+  ]);
 }
 releaseGateLock();
+if (skipped.length > 0) {
+  console.error(`Framework CI skipped ${skipped.length} test file(s): ${skipped.join(', ')}`);
+  process.exit(2);
+}
 
 function relativePath(base, file) {
   return path.relative(base, file).split(path.sep).join('/');

@@ -81,8 +81,7 @@ internal sealed class SupportUserActor(
                     await Context.BoundSession
                         .Send(new JoinConversationFailedNotify(
                             pending.ConversationId,
-                            "Rejected",
-                            false))
+                            "Rejected"))
                         .Metadata(
                             SampleNames.ConversationIdMetadataKey,
                             pending.ConversationId)
@@ -98,8 +97,7 @@ internal sealed class SupportUserActor(
                     await Context.BoundSession
                         .Send(new JoinConversationFailedNotify(
                             pending.ConversationId,
-                            failed.Kind.ToString(),
-                            failed.IsRetriable))
+                            failed.Kind.ToString()))
                         .Metadata(
                             SampleNames.ConversationIdMetadataKey,
                             pending.ConversationId)

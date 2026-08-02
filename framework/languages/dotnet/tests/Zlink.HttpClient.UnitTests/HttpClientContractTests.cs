@@ -318,7 +318,6 @@ public sealed class HttpClientContractTests
             await client.Get("/players/0").Async<Player>());
 
         Assert.Equal(ZLinkFrameworkErrorKind.InternalFailure, ex.Kind);
-        Assert.Equal(ZLinkRetryAdvice.DoNotRetry, ex.RetryAdvice);
     }
 
     [Fact]
@@ -332,7 +331,6 @@ public sealed class HttpClientContractTests
             await client.Get("/players/7").Async<Player>());
 
         Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, ex.Kind);
-        Assert.Equal(ZLinkRetryAdvice.DoNotRetry, ex.RetryAdvice);
     }
 
     [Fact]
@@ -389,7 +387,6 @@ public sealed class HttpClientContractTests
             HttpRedirectPolicy.ResolveLocation(new Uri("http://127.0.0.1/start"), "http://["));
 
         Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, exception.Kind);
-        Assert.Equal(ZLinkRetryAdvice.DoNotRetry, exception.RetryAdvice);
     }
 
     [Fact]
@@ -489,7 +486,6 @@ public sealed class HttpClientContractTests
             await client.Get("/loop").AsyncRaw());
 
         Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, ex.Kind);
-        Assert.Equal(ZLinkRetryAdvice.DoNotRetry, ex.RetryAdvice);
     }
 
     [Fact]
@@ -517,9 +513,6 @@ public sealed class HttpClientContractTests
             async () => await client.Get("/unavailable").AsyncRaw());
 
         Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, failure.Kind);
-        Assert.Equal(
-            ZLinkRetryAdvice.RetryAfterBackoff,
-            failure.RetryAdvice);
         Assert.True(
             failure.InnerException is HttpRequestException
                 or System.Net.Sockets.SocketException,
@@ -541,7 +534,6 @@ public sealed class HttpClientContractTests
         var failure = await Assert.ThrowsAsync<ZLinkFrameworkException>(
             async () => await client.Get("/slow").AsyncRaw());
         Assert.Equal(ZLinkFrameworkErrorKind.DeadlineExceeded, failure.Kind);
-        Assert.Equal(ZLinkRetryAdvice.RetryAfterBackoff, failure.RetryAdvice);
         Assert.IsType<TimeoutException>(failure.InnerException);
     }
 
@@ -616,7 +608,6 @@ public sealed class HttpClientContractTests
         var failure = await Assert.ThrowsAsync<ZLinkFrameworkException>(
             async () => await client.Get("/slow").AsyncRaw());
         Assert.Equal(ZLinkFrameworkErrorKind.DeadlineExceeded, failure.Kind);
-        Assert.Equal(ZLinkRetryAdvice.RetryAfterBackoff, failure.RetryAdvice);
         Assert.IsType<TimeoutException>(failure.InnerException);
     }
 
@@ -631,7 +622,6 @@ public sealed class HttpClientContractTests
             await Assert.ThrowsAsync<ZLinkFrameworkException>(async () => await client.Get("/big").AsyncRaw());
 
         Assert.Equal(ZLinkFrameworkErrorKind.CapacityExceeded, ex.Kind);
-        Assert.Equal(ZLinkRetryAdvice.DoNotRetry, ex.RetryAdvice);
     }
 
     [Fact]
@@ -687,7 +677,6 @@ public sealed class HttpClientContractTests
         var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
             await client.Post("/r").Body("a", "text/plain").Form("b", "c").AsyncRaw());
         Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, ex.Kind);
-        Assert.Equal(ZLinkRetryAdvice.DoNotRetry, ex.RetryAdvice);
     }
 
     [Fact]
@@ -766,7 +755,6 @@ public sealed class HttpClientContractTests
             await Assert.ThrowsAsync<ZLinkFrameworkException>(async () => await client.Get("/bad").AsyncRaw());
 
         Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, ex.Kind);
-        Assert.Equal(ZLinkRetryAdvice.DoNotRetry, ex.RetryAdvice);
     }
 
     [Fact]

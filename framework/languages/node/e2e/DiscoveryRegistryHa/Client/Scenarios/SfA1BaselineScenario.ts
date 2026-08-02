@@ -1,8 +1,4 @@
 // SF-A1: store 정상 상태 baseline 시나리오를 검증한다.
-import {
-  ZLinkLocationRole,
-  ZLinkLocationTopologyState
-} from '@zlink-systems/framework';
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../../../http-client';
@@ -20,8 +16,8 @@ export async function runSfA1(options: ClientOptions): Promise<void> {
   );
   const readyProviders = topology.filter((entry) =>
     entry.channelName === 'profile'
-    && entry.serviceRole === ZLinkLocationRole.Router
-    && entry.state === ZLinkLocationTopologyState.Ready
+    && entry.serviceRole === 3
+    && entry.state === 3
   ).length;
   ensure(readyProviders >= 2, 'SF-A1 expected two ready providers in location topology.');
 

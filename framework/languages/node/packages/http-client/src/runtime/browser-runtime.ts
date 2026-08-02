@@ -84,7 +84,7 @@ export class HttpClientRuntime {
 function rejectUnsupportedTransportOptions(options: HttpClientOptions): void {
   if (options.trustCertificateFile !== undefined || options.clientCertificate !== undefined || options.proxy !== undefined) {
     throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.RequestProtocolError,
+      ZLinkFrameworkErrorKind.ProtocolError,
       'Browser HTTP clients cannot configure certificate files or a transport proxy.',
     );
   }
@@ -139,5 +139,5 @@ function applyHeaders(
 }
 
 function requestError(message: string): ZLinkFrameworkException {
-  return new ZLinkFrameworkException(ZLinkFrameworkErrorKind.RequestFailed, message);
+  return new ZLinkFrameworkException(ZLinkFrameworkErrorKind.Unavailable, message);
 }

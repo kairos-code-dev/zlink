@@ -5,7 +5,7 @@ using Zlink.HttpClient;
 
 namespace SpotService.Client.Scenarios;
 
-internal static class SmG5PlacementWeightScenario
+internal static class SmG5AAndG5BPlacementScenario
 {
     private const int SampleCount = 80;
 

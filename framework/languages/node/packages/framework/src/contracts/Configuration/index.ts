@@ -27,6 +27,8 @@ export type {
 } from './Configs';
 export * from './Connections';
 export { ZLinkApplicationHwmProfile } from './InboundDispatch';
-export type { ZLinkInboundDispatchOptions } from './InboundDispatch';
+export type {
+  ZLinkInboundDispatchOptions
+} from './InboundDispatch';
 export * from './ObjectRoles';
 export type { ZLinkWorkerOptions } from './RegistrationTypes';

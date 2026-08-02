@@ -39,14 +39,13 @@ async function decode(run: () => Promise<Buffer>): Promise<Buffer> {
     // zlib rejects with a RangeError (ERR_BUFFER_TOO_LARGE) when output exceeds maxOutputLength.
     if (cause instanceof RangeError) {
       throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestFailed,
+        ZLinkFrameworkErrorKind.Unavailable,
         'HTTP response compressed body exceeds maxResponseBodySize',
       );
     }
     throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+      ZLinkFrameworkErrorKind.ProtocolError,
       'HTTP response compressed body is malformed',
-      false,
       cause,
     );
   }

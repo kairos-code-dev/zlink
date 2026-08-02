@@ -384,9 +384,20 @@ function waitReceiveLoopIdle(): Promise<void> {
 }
 
 function messageBytes(parts: readonly Message[]): bigint {
-  return BigInt(parts.reduce((sum, part) => sum + part.size(), 0));
+  return parts.reduce((sum, part) => sum + messagePartBytes(part), 0n);
 }
 
 function channelPayloadBytes(parts: readonly Message[]): bigint {
-  return BigInt(parts[1]?.size() ?? 0);
+  return messagePartBytes(parts[1]);
+}
+
+function messagePartBytes(part: Message | undefined): bigint {
+  if (part === undefined) {
+    return 0n;
+  }
+  const size = (part as Message & { size?: () => number }).size;
+  if (typeof size === 'function') {
+    return BigInt(size.call(part));
+  }
+  return BigInt(part.data().byteLength);
 }

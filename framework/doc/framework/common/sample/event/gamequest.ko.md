@@ -383,7 +383,7 @@ sequenceDiagram
     G-->>C: GetQuestProgressRes
     C->>G: KillMonsterReq(same key)
     G->>P: GameplayMsg(same eventId)
-    P-->>G: existing result; no duplicate event
+    P-->>G: Existing result without duplicate event
     G-->>C: existing result
 ```
 
@@ -480,6 +480,11 @@ raw JSON을 application message에서 직접 해석하지 않는다.
 async 표현과 persistence client adapter이며, event 순서·idempotency·state owner는 공통 문서와 같아야
 한다.
 
+.NET의 attribute, Java·Kotlin의 annotation과 Node.js의 decorator는 선언형 metadata scan으로
+handler를 자동 등록한다. C++은 runtime reflection scanner가 없으므로 compile-time type과 public
+builder로 같은 handler 집합을 명시 등록한다. 이 차이는 등록 방법에만 적용하며 message와 처리
+책임을 바꾸지 않는다.
+
 ## 9. Client self-check
 
 1. JoinSessionRes가 PlayerId와 active quest 목록을 반환하는지 확인한다.
@@ -509,12 +514,12 @@ sleep을 성공 기준으로 사용하지 않는다.
 6. 성공·실패 모두에서 실행별 resource를 정리한다.
 
 ```text
-topology=ready
-gamequest-progress=completed
-gamequest-replay=completed
-gamequest-reconcile=completed
 gamequest=completed
 ```
+
+언어별 runner는 위 공통 completion marker와 함께 API·mission server evidence를 검사한다.
+rehydrate나 scale-out처럼 특정 runner가 별도로 출력하는 marker는 해당 언어 runner의 실제
+출력만 사용하고, 공통 message 계약으로 간주하지 않는다.
 
 ## 11. 완료 기준
 

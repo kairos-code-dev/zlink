@@ -111,7 +111,7 @@ export class ZLinkHttpClientBuilder {
   maxResponseBodySize(bytes: number): this {
     if (!(bytes > 0)) {
       throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestProtocolError,
+        ZLinkFrameworkErrorKind.ProtocolError,
         'HTTP client max response body size must be greater than zero',
       );
     }
@@ -135,7 +135,7 @@ export class ZLinkHttpClientBuilder {
   followRedirects(maxRedirects = 5): this {
     if (!(maxRedirects > 0)) {
       throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestProtocolError,
+        ZLinkFrameworkErrorKind.ProtocolError,
         'HTTP client follow_redirects must be greater than zero',
       );
     }
@@ -146,7 +146,7 @@ export class ZLinkHttpClientBuilder {
   retry(attempts: number): this {
     if (!(attempts > 0)) {
       throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestProtocolError,
+        ZLinkFrameworkErrorKind.ProtocolError,
         'HTTP client retry attempts must be greater than zero',
       );
     }
@@ -163,7 +163,7 @@ export class ZLinkHttpClientBuilder {
     requireNonBlank(url, 'HTTP client proxy url is required');
     if (!url.startsWith('http://')) {
       throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestProtocolError,
+        ZLinkFrameworkErrorKind.ProtocolError,
         'HTTP client proxy url must start with http://',
       );
     }
@@ -199,7 +199,7 @@ export class ZLinkHttpClientBuilder {
     const lower = this.baseUrlValue.toLowerCase();
     if (!lower.startsWith('http://') && !lower.startsWith('https://')) {
       throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestProtocolError,
+        ZLinkFrameworkErrorKind.ProtocolError,
         'HTTP client base_url must start with http:// or https://',
       );
     }

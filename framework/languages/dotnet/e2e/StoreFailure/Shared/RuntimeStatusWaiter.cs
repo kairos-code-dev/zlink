@@ -27,7 +27,6 @@ public static class RuntimeStatusWaiter
         return (request.StoreHealthy is null || status.StoreHealthy == request.StoreHealthy)
                && (request.OwnerLeaseHealthy is null
                    || status.OwnerLeaseHealthy == request.OwnerLeaseHealthy)
-               && (!request.RequireLastError || status.LastError is not null)
                && (!request.RequireLastRefresh || status.LastRefreshAt is not null)
                && (request.LastRefreshAfter is null
                    || status.LastRefreshAt > request.LastRefreshAfter);

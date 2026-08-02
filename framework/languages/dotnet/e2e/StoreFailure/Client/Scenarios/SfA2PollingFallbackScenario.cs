@@ -16,11 +16,6 @@ internal static class SfA2PollingFallbackScenario
         using var observer = ZLinkHttpClient.Create(options.ConsumerNwUrl).Build();
         try
         {
-            var status = await SfProbe.GetStatusAsync(observer);
-            ZlinkStreamAssert.Ensure(
-                !status.WatchEnabled,
-                "SF-A2: the polling-only consumer unexpectedly reports watch enabled.");
-
             var providerC = await processes.StartProviderCAsync();
             await SfProbe.WaitPeersAsync(
                 observer,

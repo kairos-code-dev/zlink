@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException, internalFrameworkErrorKind  } from '../framework-errors-internal';
 import type {
   ZLinkMessageContext,
   ZLinkHandlerFilter,
@@ -6,7 +7,6 @@ import type {
   ZLinkFlowOrigin
 } from '../../contracts';
 import {
-  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   ZLinkHandlerDispatchKind,
   ZLinkUnhandledDispatchAction
@@ -122,8 +122,8 @@ export class ZLinkChannelDispatchPipeline {
   async dispatchRequest<TContext extends ZLinkMessageContext>(dispatch: ZLinkRequestDispatch<TContext>): Promise<void> {
     this.trace(ZLinkMessageFlowOutcome.Received, dispatch.fields);
     if (dispatch.handler === undefined) {
-      const missing = new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.HandlerNotFound,
+      const missing = createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.HandlerNotFound,
         dispatch.missingHandlerMessage
       );
       if (this.unhandled.request === ZLinkUnhandledDispatchAction.ReplyError) {
@@ -158,8 +158,8 @@ export class ZLinkChannelDispatchPipeline {
           dispatch.signal
         ));
       if (!invocation.handlerInvoked) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.RequestRejected,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.RequestRejected,
           `A handler filter rejected '${this.options.channelName}:${dispatch.fields.packetName}'.`
         );
       }
@@ -310,7 +310,8 @@ export class ZLinkChannelDispatchPipeline {
   }
 
   private failureReason(error: unknown): ZLinkDispatchErrorReason {
-    return error instanceof ZLinkFrameworkException && error.kind === ZLinkFrameworkErrorKind.PayloadDecodeFailed
+    return error instanceof ZLinkFrameworkException
+      && internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.PayloadDecodeFailed
       ? ZLinkDispatchErrorReason.PayloadDecodeFailed
       : ZLinkDispatchErrorReason.HandlerException;
   }

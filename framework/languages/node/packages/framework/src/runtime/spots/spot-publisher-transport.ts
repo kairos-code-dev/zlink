@@ -1,6 +1,6 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import type { Message } from '../../contracts/Common/Message';
 import {
-  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException
 } from '../../contracts';
 import type { ZLinkSpotPublisherClientTransport } from '../channels';
@@ -62,8 +62,8 @@ export class ZLinkRuntimeSpotPublisherTransport implements ZLinkSpotPublisherCli
 }
 
 function publisherRuntimeShutdown(): ZLinkFrameworkException {
-  return new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.RuntimeShutdown,
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.RuntimeShutdown,
     'SPOT publisher runtime is not available because the runtime is not started or is shutting down.'
   );
 }

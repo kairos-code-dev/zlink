@@ -1,8 +1,7 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import { Message as ZLinkBindingMessage } from '@zlink-systems/zlink';
 import type { ActorRef } from '../../contracts';
 import {
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException
 } from '../../contracts';
 import {
   ZLinkSubmitStatus,
@@ -326,8 +325,8 @@ export class ZLinkBoundSessionService {
     const body = ZLinkBindingMessage.from(Buffer.alloc(0));
     try {
       if (!stream.sendBoundActor(actorRef.actorId, [header, body], 0)) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.ActorRouteNotFound,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
           `Actor '${actorRef.actorId}' remote bound session bind relay failed.`
         );
       }
@@ -392,8 +391,8 @@ export class ZLinkBoundSessionService {
       signal
     );
     if (result.status !== ZLinkSubmitStatus.Submitted) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RouteNotConnected,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RouteNotConnected,
         `Actor '${actorRef.actorId}' bound session route rejected '${result.status}'.`,
         result.status === ZLinkSubmitStatus.RouteNotConnected
       );
@@ -445,8 +444,8 @@ export class ZLinkBoundSessionService {
 
   private requireTransport(): ZLinkBoundSessionTransport {
     if (this.options.transport === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorSessionNotBound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorSessionNotBound,
         'Bound session transport is not started.',
         true
       );
@@ -458,8 +457,8 @@ export class ZLinkBoundSessionService {
 function requireBoundSessionGeneration(actorRef: ActorRef): bigint {
   const generation = (actorRef as ActorRef & { bindingGeneration?: bigint }).bindingGeneration;
   if (generation === undefined || generation <= 0n) {
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.RouteNotConnected,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.RouteNotConnected,
       `Actor '${actorRef.actorId}' has no current bound-session generation.`
     );
   }

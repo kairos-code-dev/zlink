@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import type {
   RoutingId,
   Type,
@@ -6,8 +7,6 @@ import type {
 } from '../../contracts';
 import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import {
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException,
   ZLinkMessage
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
@@ -65,8 +64,8 @@ export class ZLinkActorCreationCoordinator {
         state.markLocationOwned();
         return activation.activated;
       }
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorCreateFailed,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorCreateFailed,
         activation.existingLocation === undefined
           ? `Actor '${actorId}' location claim was rejected and no live location row was found.`
           : `Actor '${actorId}' is already active on node '${activation.existingLocation.ownerNodeRid}' (location claim conflict).`

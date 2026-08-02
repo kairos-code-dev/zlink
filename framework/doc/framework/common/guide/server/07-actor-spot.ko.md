@@ -899,9 +899,9 @@ actor packet으로 등록한 것이다.
                 ClearPendingJoin();
                 break;
 
-            // 오류로 끝났다. IsRetriable이면 같은 join을 다시 예약해도 된다.
-            case ZLinkActorJoinCompletion.Failed failed when failed.IsRetriable:
-                ScheduleApplicationRetry();
+            // 오류 종류만 받는다. 재시도 여부는 업무 상태와 idempotency를 확인해 결정한다.
+            case ZLinkActorJoinCompletion.Failed failed:
+                HandleJoinFailure(failed.Kind);
                 break;
         }
 
@@ -924,10 +924,10 @@ actor packet으로 등록한 것이다.
             clear_pending_join ();
             co_return;
         }
-        // 오류로 끝났다. is_retriable이면 같은 join을 다시 예약해도 된다.
+        // 오류 종류만 받는다. 재시도 여부는 업무 상태와 idempotency를 확인해 결정한다.
         if (const auto *failed = std::get_if<actor_join_failed_t> (&completion);
-            failed != nullptr && failed->is_retriable) {
-            schedule_application_retry ();
+            failed != nullptr) {
+            handle_join_failure (failed->error_kind);
         }
         co_return;
     }
@@ -944,10 +944,9 @@ actor packet으로 등록한 것이다.
         // target의 admission callback이 join을 거절했다. 위치는 그대로다.
         } else if (completion instanceof ZLinkActorJoinCompletion.Rejected) {
             clearPendingJoin();
-        // 오류로 끝났다. isRetriable이면 같은 join을 다시 예약해도 된다.
-        } else if (completion instanceof ZLinkActorJoinCompletion.Failed failed
-            && failed.isRetriable()) {
-            scheduleApplicationRetry();
+        // 오류 종류만 받는다. 재시도 여부는 업무 상태와 idempotency를 확인해 결정한다.
+        } else if (completion instanceof ZLinkActorJoinCompletion.Failed failed) {
+            handleJoinFailure(failed.kind());
         }
         return CompletableFuture.completedFuture(null);
     }
@@ -964,9 +963,9 @@ actor packet으로 등록한 것이다.
             // target의 admission callback이 join을 거절했다. 위치는 그대로다.
             completion is ZLinkActorJoinCompletion.Rejected ->
                 clearPendingJoin()
-            // 오류로 끝났다. isRetriable이면 같은 join을 다시 예약해도 된다.
-            completion is ZLinkActorJoinCompletion.Failed && completion.isRetriable() ->
-                scheduleApplicationRetry()
+            // 오류 종류만 받는다. 재시도 여부는 업무 상태와 idempotency를 확인해 결정한다.
+            completion is ZLinkActorJoinCompletion.Failed ->
+                handleJoinFailure(completion.kind())
         }
     }
     ```
@@ -984,9 +983,9 @@ actor packet으로 등록한 것이다.
         case 'rejected':
           this.clearPendingJoin();
           break;
-        // 오류로 끝났다. isRetriable이면 같은 join을 다시 예약해도 된다.
+        // 오류 종류만 받는다. 재시도 여부는 업무 상태와 idempotency를 확인해 결정한다.
         case 'failed':
-          if (completion.isRetriable) this.scheduleApplicationRetry();
+          this.handleJoinFailure(completion.kind);
           break;
       }
     }

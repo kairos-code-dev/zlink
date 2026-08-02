@@ -214,9 +214,10 @@ send는 응답을 기다리지 않지만, 기다려야 하는 대상이 하나 �
         when (ex.Kind == ZLinkFrameworkErrorKind.DeadlineExceeded)
     {
         // 이 시점에 확실한 것은 "제출되지 않았다" 하나다. 상대 상태는 알 수 없다.
-        // RetryAdvice는 framework가 확인한 조건만 알려 준다 — 실제 재시도 여부는 application이 정한다.
-        if (ex.RetryAdvice == ZLinkRetryAdvice.RetryAfterBackoff)
-            _pending.Enqueue(command);
+        // CanSafelyRetry는 command 중복을 허용하는지 확인하는 application 소유 predicate다.
+        if (!CanSafelyRetry(command))
+            throw;
+        _pending.Enqueue(command);
     }
     ```
 
@@ -229,9 +230,10 @@ send는 응답을 기다리지 않지만, 기다려야 하는 대상이 하나 �
         if (ex.kind () != framework_error_kind_t::deadline_exceeded)
             throw;
         // 이 시점에 확실한 것은 "제출되지 않았다" 하나다. 상대 상태는 알 수 없다.
-        // C++은 3단계 advice 대신 is_retriable() 하나로 알려 준다.
-        if (ex.is_retriable ())
-            _pending.push_back (command);
+        // can_safely_retry는 command 중복을 허용하는지 확인하는 application 소유 predicate다.
+        if (!can_safely_retry (command))
+            throw;
+        _pending.push_back (command);
     }
     ```
 
@@ -245,10 +247,11 @@ send는 응답을 기다리지 않지만, 기다려야 하는 대상이 하나 �
             throw ex;
         }
         // 이 시점에 확실한 것은 "제출되지 않았다" 하나다. 상대 상태는 알 수 없다.
-        // Java는 3단계 advice 대신 retriable() 하나로 알려 준다.
-        if (ex.retriable()) {
-            pending.add(command);
+        // canSafelyRetry는 command 중복을 허용하는지 확인하는 application 소유 predicate다.
+        if (!canSafelyRetry(command)) {
+            throw ex;
         }
+        pending.add(command);
     }
     ```
 
@@ -260,8 +263,9 @@ send는 응답을 기다리지 않지만, 기다려야 하는 대상이 하나 �
     } catch (ex: ZLinkFrameworkException) {
         if (ex.kind() != ZLinkFrameworkErrorKind.DEADLINE_EXCEEDED) throw ex
         // 이 시점에 확실한 것은 "제출되지 않았다" 하나다. 상대 상태는 알 수 없다.
-        // Kotlin은 Java 표면을 그대로 쓰므로 retriable() 하나로 알려 준다.
-        if (ex.retriable()) pending += command
+        // canSafelyRetry는 command 중복을 허용하는지 확인하는 application 소유 predicate다.
+        if (!canSafelyRetry(command)) throw ex
+        pending += command
     }
     ```
 
@@ -274,8 +278,9 @@ send는 응답을 기다리지 않지만, 기다려야 하는 대상이 하나 �
       if (!(ex instanceof ZLinkFrameworkException)) throw ex;
       if (ex.kind !== ZLinkFrameworkErrorKind.DeadlineExceeded) throw ex;
       // 이 시점에 확실한 것은 "제출되지 않았다" 하나다. 상대 상태는 알 수 없다.
-      // Node는 3단계 advice 대신 isRetriable 하나로 알려 준다.
-      if (ex.isRetriable) pending.push(command);
+      // canSafelyRetry는 command 중복을 허용하는지 확인하는 application 소유 predicate다.
+      if (!canSafelyRetry(command)) throw ex;
+      pending.push(command);
     }
     ```
 

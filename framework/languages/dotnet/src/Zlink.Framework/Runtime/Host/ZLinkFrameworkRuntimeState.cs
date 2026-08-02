@@ -146,8 +146,12 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
         CancellationToken forceStopToken)
     {
         var failures = new List<Exception>();
-        foreach (var node in resources.SpotNodes)
-            await CaptureAsync(node.CloseLifecycleAsync).ConfigureAwait(false);
+        if (!forceStopToken.CanBeCanceled)
+        {
+            foreach (var node in resources.SpotNodes)
+                await CaptureAsync(node.CloseLifecycleAsync)
+                    .ConfigureAwait(false);
+        }
 
         Capture(StopTokenSource.Cancel);
         foreach (var node in resources.SpotNodes) Capture(node.RequestStop);

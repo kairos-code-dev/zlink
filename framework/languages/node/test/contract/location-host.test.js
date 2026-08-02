@@ -13,12 +13,12 @@ test('framework and NestJS builders register separate location and relocation st
   const options = framework.createFrameworkOptions((builder) => {
     builder.addLocationStore(store);
     builder.addRelocationStore(relocationStore);
-    builder.configureLocations().heartbeatIntervalMs(123);
+    builder.configureLocations().ownerLeaseRenewIntervalMs(123);
   });
   const registration = framework.createFrameworkRegistration(options);
   assert.equal(registration.locations.storeInstance, store);
   assert.equal(registration.locations.relocationStoreInstance, relocationStore);
-  assert.equal(registration.locations.options.heartbeatIntervalMs, 123);
+  assert.equal(registration.locations.options.ownerLeaseRenewIntervalMs, 123);
 
   const nestBuilder = nestjs.zlinkFramework()
     .addLocationStore(store)
@@ -61,7 +61,7 @@ test('framework runtime host starts location runtime and injects lifecycle into 
       locations: {
         storeInstance: provider,
         options: {
-          heartbeatIntervalMs: 1000
+          ownerLeaseRenewIntervalMs: 1000
         }
       },
       spotNodes: {
@@ -166,7 +166,7 @@ test('framework runtime host starts channel auto-connect loops from location pee
       locations: {
         storeInstance: provider,
         options: {
-          heartbeatIntervalMs: 1000,
+          ownerLeaseRenewIntervalMs: 1000,
           pollingIntervalMs: 1000
         }
       },
@@ -267,7 +267,7 @@ test('manual Mesh router connection suppresses only the matching store-driven ro
       locations: {
         storeInstance: provider,
         options: {
-          heartbeatIntervalMs: 1000,
+          ownerLeaseRenewIntervalMs: 1000,
           pollingIntervalMs: 1000
         }
       },

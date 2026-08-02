@@ -133,7 +133,6 @@ internal sealed class PlayerActor(
                 await SendJoinFailureAsync(
                     pending.RoomId,
                     "Rejected",
-                    false,
                     cancellationToken);
                 if (_pendingJoins.Count > 0) _pendingJoins.Dequeue();
                 RememberJoinCompletion(operationId, "Rejected");
@@ -141,15 +140,13 @@ internal sealed class PlayerActor(
 
             case ZLinkActorJoinCompletion.Failed failed:
                 logger.LogWarning(
-                    "actor join failed. actor={ActorId}, room={RoomId}, kind={Kind}, retriable={Retriable}",
+                    "actor join failed. actor={ActorId}, room={RoomId}, kind={Kind}",
                     ActorId,
                     pending.RoomId,
-                    failed.Kind,
-                    failed.IsRetriable);
+                    failed.Kind);
                 await SendJoinFailureAsync(
                     pending.RoomId,
                     failed.Kind.ToString(),
-                    failed.IsRetriable,
                     cancellationToken);
                 if (_pendingJoins.Count > 0) _pendingJoins.Dequeue();
                 RememberJoinCompletion(operationId, failed.Kind.ToString());
@@ -189,14 +186,12 @@ internal sealed class PlayerActor(
     private ValueTask SendJoinFailureAsync(
         string roomId,
         string error,
-        bool isRetriable,
         CancellationToken cancellationToken)
     {
         return Context.BoundSession.Send(new BingoJoinFailedNotify
             {
                 RoomId = roomId,
-                Error = error,
-                IsRetriable = isRetriable
+                Error = error
             })
             .Async(cancellationToken);
     }

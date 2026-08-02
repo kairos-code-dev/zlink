@@ -65,7 +65,7 @@ test('location runtime schedules heartbeats from a monotonic fixed cadence after
       ownerLeaseStore: store
     },
     options: {
-      heartbeatIntervalMs: 100,
+      ownerLeaseRenewIntervalMs: 100,
       ownerLeaseRenewTimeoutMs: 50
     },
     now: () => new Date(wallClockMs),
@@ -113,7 +113,7 @@ test('location runtime waits for an in-flight heartbeat before removing the owne
     },
     ownerId: 'owner-a',
     options: {
-      heartbeatIntervalMs: 100,
+      ownerLeaseRenewIntervalMs: 100,
       ownerLeaseRenewTimeoutMs: 1_000
     },
     now: () => new Date(0),

@@ -12,7 +12,7 @@ import org.springframework.context.SmartLifecycle;
 import systems.zlink.e2e.pubsub.subscriber.Configuration.SubscriberOptions;
 import systems.zlink.e2e.pubsub.subscriber.Infrastructure.EvidenceStore;
 import systems.zlink.e2e.pubsub.shared.Contracts;
-import systems.zlink.framework.locationprovider.ZLinkLocationStore;
+import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
 import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
 import systems.zlink.framework.locations.ZLinkPageRequest;
 
@@ -20,7 +20,7 @@ public final class OperationalEndpoints implements SmartLifecycle {
     private final SubscriberOptions options;
     private final EvidenceStore evidence;
     private final ObjectMapper json;
-    private final ZLinkLocationStore locations;
+    private final ZLinkLocationRepository locations;
     private HttpServer server;
     private boolean running;
 
@@ -28,7 +28,7 @@ public final class OperationalEndpoints implements SmartLifecycle {
         SubscriberOptions options,
         EvidenceStore evidence,
         ObjectMapper json,
-        ZLinkLocationStore locations) {
+        ZLinkLocationRepository locations) {
         this.options = options;
         this.evidence = evidence;
         this.json = json;
@@ -56,6 +56,10 @@ public final class OperationalEndpoints implements SmartLifecycle {
                 exchange.getResponseBody().write(body);
                 exchange.close();
             });
+            //  Config 3 §420(publisher 정상 종료가 public status에 즉시 반영)을
+            //  client의 `waitPublisherRow`가 이 endpoint로 관측한다. 조회가 공개
+            //  계약에 없어 구현 store 타입을 그대로 쓴다 — 공개 API로 옮기는 것은
+            //  .NET이 같은 항목을 검증하는 방식을 확인한 뒤 정할 일이다.
             server.createContext("/locations/publishers", exchange -> {
                 var publishers = locations.listFanoutPublishers(
                         Contracts.EVENT_CHANNEL,

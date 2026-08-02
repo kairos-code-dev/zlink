@@ -1,7 +1,6 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import {
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException
 } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
 
@@ -33,22 +32,22 @@ class ActorJoinRegistrationScope {
     }
     if (this.intents.length >= MAX_DEFERRED_JOINS) {
       intent.discard();
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.InvalidConfiguration,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.InvalidConfiguration,
         `An actor handler may defer at most ${MAX_DEFERRED_JOINS} joins.`
       );
     }
     if (intent.requestBytes > MAX_DEFERRED_JOIN_REQUEST_BYTES) {
       intent.discard();
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.InvalidConfiguration,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.InvalidConfiguration,
         `A deferred actor join request may use at most ${MAX_DEFERRED_JOIN_REQUEST_BYTES} bytes.`
       );
     }
     if (this.totalBytes + intent.requestBytes > MAX_DEFERRED_JOIN_BYTES) {
       intent.discard();
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.InvalidConfiguration,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.InvalidConfiguration,
         `Deferred actor join requests may use at most ${MAX_DEFERRED_JOIN_BYTES} bytes per handler.`
       );
     }

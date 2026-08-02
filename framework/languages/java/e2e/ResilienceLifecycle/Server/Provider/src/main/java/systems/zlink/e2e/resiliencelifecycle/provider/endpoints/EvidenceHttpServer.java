@@ -72,10 +72,10 @@ public final class EvidenceHttpServer implements SmartLifecycle {
             server.createContext("/admin/fault/none", exchange -> setObserverThrows(exchange, false));
             server.createContext("/admin/shutdown", exchange -> {
                 state.record("AdminShutdown", state.providerRid());
-                var result = drain.retire(java.time.Duration.ofSeconds(30))
+                var result = drain.shutdown(java.time.Duration.ofSeconds(30))
                     .toCompletableFuture().join();
                 String terminal = result.outcome() == systems.zlink.framework.runtime.host
-                    .ZLinkTerminationOutcome.STOPPED ? "Drained" : "ForceStopped";
+                    .ZLinkFrameworkTerminationOutcome.STOPPED ? "Drained" : "ForceStopped";
                 write(exchange, 200, "{\"result\":\"" + terminal + "\"}\n");
                 Thread shutdown = new Thread(applicationContext::close, "java-rl-admin-shutdown");
                 shutdown.setDaemon(false);

@@ -6,7 +6,7 @@ entry _rels/.rels
 entry lib/net8.0/Zlink.Framework.dll
 entry lib/net8.0/Zlink.Framework.xml
 entry package/services/metadata/core-properties/{CORE_PROPERTIES}.psmdcp
-content-sha256 lib/net8.0/Zlink.Framework.xml=ac7933fcbc9b673b603b97e4828fe790517dede0a732615ffec0ecb05ffa93ba
+content-sha256 lib/net8.0/Zlink.Framework.xml=ba9c5fc13552f429a1d3e9bb7d566d113a601a15bf283685ebd78450544944ee
 metadata authors=Zlink.Framework
 metadata description=ZLink framework core abstractions and runtime for .NET.
 metadata id=Zlink.Framework
@@ -19,7 +19,7 @@ dependency-group targetFramework=net8.0
 dependency targetFramework=net8.0 exclude=Build,Analyzers id=K4os.Compression.LZ4 version=1.3.8
 dependency targetFramework=net8.0 exclude=Build,Analyzers id=Microsoft.Extensions.DependencyInjection.Abstractions version=8.0.0
 dependency targetFramework=net8.0 exclude=Build,Analyzers id=Microsoft.Extensions.Logging.Abstractions version=8.0.0
-dependency targetFramework=net8.0 exclude=Build,Analyzers id=Systems.Zlink version=11.0.0
+dependency targetFramework=net8.0 exclude=Build,Analyzers id=Systems.Zlink version=11.1.0
 dependency targetFramework=net8.0 exclude=Build,Analyzers id=Systems.Zlink.Stream.Connector version=[{VERSION}]
 dependency targetFramework=net8.0 exclude=Build,Analyzers id=Zlink.Framework.Contracts version=[{VERSION}]
 dependency targetFramework=net8.0 exclude=Build,Analyzers id=Zlink.Framework.Provider.Abstractions version=[{VERSION}]

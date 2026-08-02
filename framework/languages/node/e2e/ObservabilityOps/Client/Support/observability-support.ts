@@ -1,10 +1,10 @@
 import type { ZLinkHttpClient } from '@zlink-systems/http-client';
-import {
-  ZLinkFrameworkRelocationOutcome,
-  ZLinkFrameworkRelocationReason,
-  type ZLinkFrameworkRelocationResult
-} from '@zlink-systems/framework';
 import { delay, post, require } from './scenario-support.js';
+
+interface RelocationResult {
+  readonly outcome: number;
+  readonly reason: number;
+}
 
 export interface MetricEvidence {
   readonly name: string;
@@ -16,18 +16,17 @@ export interface MetricEvidence {
 
 export interface DrainStatus {
   readonly ready: boolean;
-  readonly result?: ZLinkFrameworkRelocationResult;
+  readonly result?: RelocationResult;
   readonly peerRows?: readonly { readonly nodeRid: string; readonly draining: boolean; readonly generation: string }[];
   readonly actors?: readonly { readonly actorId: string; readonly nodeRid: string; readonly generation: string }[];
 }
 
 export function retireCompleted(status: DrainStatus): boolean {
-  return status.result?.outcome === ZLinkFrameworkRelocationOutcome.Relocated
-    && status.result.reason === ZLinkFrameworkRelocationReason.None;
+  return status.result?.outcome === 0 && status.result.reason === 0;
 }
 
 export function retireForceStopped(status: DrainStatus): boolean {
-  return status.result?.outcome === ZLinkFrameworkRelocationOutcome.Blocked;
+  return status.result?.outcome === 1;
 }
 
 export async function metrics(client: ZLinkHttpClient): Promise<readonly MetricEvidence[]> {

@@ -1,7 +1,7 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException, internalFrameworkErrorKind  } from '../framework-errors-internal';
 import { Message as BindingMessage } from '@zlink-systems/zlink';
 import type { ActorRef } from '../../contracts';
 import {
-  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   ZLinkSpotKind
 } from '../../contracts';
@@ -95,7 +95,7 @@ export interface ZLinkActorHandoffResult {
   readonly ok: boolean;
   readonly response?: unknown;
   readonly error?: string;
-  readonly errorKind?: ZLinkFrameworkErrorKind;
+  readonly errorKind?: ZLinkFrameworkInternalErrorKind;
 }
 
 interface PendingPacket {
@@ -526,7 +526,7 @@ export class ZLinkActorHandoffCoordinator {
     route.delivered = true;
     if (result.ok) {
       route.resolve(result.response);
-    } else if (result.errorKind === ZLinkFrameworkErrorKind.DeadlineExceeded) {
+    } else if (result.errorKind === ZLinkFrameworkInternalErrorKind.DeadlineExceeded) {
       route.reject(actorDeadlineExceeded(route.actorId));
     } else {
       route.reject(new Error(result.error ?? 'Actor handoff replay failed.'));
@@ -937,7 +937,9 @@ export async function replayActorHandoffBacklog(
         index: packet.index,
         ok: false,
         error: error instanceof Error ? error.message : String(error),
-        errorKind: error instanceof ZLinkFrameworkException ? error.kind : undefined
+        errorKind: error instanceof ZLinkFrameworkException
+          ? internalFrameworkErrorKind(error)
+          : undefined
       });
     } finally {
       decoded.parts.forEach((part) => part.close());
@@ -1046,15 +1048,15 @@ function actorRefKey(nodeRid: string, generation: bigint): string {
 }
 
 function actorLocationStale(actorId: string): ZLinkFrameworkException {
-  return new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.ActorLocationStale,
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.ActorLocationStale,
     `Actor route '${actorId}' is stale after the Message Follow duration.`
   );
 }
 
 function actorDeadlineExceeded(actorId: string): ZLinkFrameworkException {
-  return new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.DeadlineExceeded,
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.DeadlineExceeded,
     `Actor request '${actorId}' exceeded its original deadline during Message Follow.`
   );
 }
@@ -1064,14 +1066,14 @@ function actorRelayError(
   errorKind: unknown,
   error: unknown
 ): ZLinkFrameworkException {
-  const kind = Object.values(ZLinkFrameworkErrorKind)
-    .includes(errorKind as ZLinkFrameworkErrorKind)
-    ? errorKind as ZLinkFrameworkErrorKind
-    : ZLinkFrameworkErrorKind.RequestFailed;
-  return new ZLinkFrameworkException(
+  const kind = Object.values(ZLinkFrameworkInternalErrorKind)
+    .includes(errorKind as ZLinkFrameworkInternalErrorKind)
+    ? errorKind as ZLinkFrameworkInternalErrorKind
+    : ZLinkFrameworkInternalErrorKind.RequestFailed;
+  return createInternalFrameworkException(
     kind,
     String(error ?? `Actor Message Follow relay failed for '${actorId}'.`),
-    kind === ZLinkFrameworkErrorKind.ActorMoving
-      || kind === ZLinkFrameworkErrorKind.RouteNotConnected
+    kind === ZLinkFrameworkInternalErrorKind.ActorMoving
+      || kind === ZLinkFrameworkInternalErrorKind.RouteNotConnected
   );
 }

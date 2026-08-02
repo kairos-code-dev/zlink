@@ -22,10 +22,9 @@ internal static class SfProbe
         TimeSpan timeout,
         bool? storeHealthy = null,
         bool? ownerLeaseHealthy = null,
-        bool requireLastError = false,
         bool requireLastRefresh = false,
         DateTimeOffset? lastRefreshAfter = null) =>
-        new(storeHealthy, ownerLeaseHealthy, requireLastError, requireLastRefresh,
+        new(storeHealthy, ownerLeaseHealthy, requireLastRefresh,
             ToMilliseconds(timeout), lastRefreshAfter);
 
     public static async Task<RuntimeStatusRes> GetStatusAsync(ZLinkHttpClient node)

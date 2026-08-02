@@ -136,9 +136,7 @@ internal partial class ZLinkInMemoryLocationStore :
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(meshName);
-        var pageSize = page.PageSize <= 0 ? 100 : page.PageSize;
-        if (pageSize > 1000)
-            throw new ArgumentOutOfRangeException(nameof(page));
+        var pageSize = ZLinkPageRequestPolicy.Normalize(page).PageSize;
         var offset = page.ContinuationToken is { } token
             && int.TryParse(token, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed)
             && parsed >= 0
@@ -249,7 +247,7 @@ internal partial class ZLinkInMemoryLocationStore :
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
-            var pageSize = page.PageSize <= 0 ? 256 : page.PageSize;
+            var pageSize = ZLinkPageRequestPolicy.Normalize(page).PageSize;
             var offset = page.ContinuationToken is { } token
                          && int.TryParse(token, out var parsed)
                 ? parsed
@@ -355,7 +353,7 @@ internal partial class ZLinkInMemoryLocationStore :
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
-            var pageSize = page.PageSize <= 0 ? 256 : page.PageSize;
+            var pageSize = ZLinkPageRequestPolicy.Normalize(page).PageSize;
             var offset = page.ContinuationToken is { } token
                          && int.TryParse(token, out var parsed)
                 ? parsed

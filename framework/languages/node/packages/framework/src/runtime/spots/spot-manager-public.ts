@@ -1,6 +1,6 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException, internalFrameworkErrorKind  } from '../framework-errors-internal';
 import { randomUUID } from 'node:crypto';
 import {
-  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   type RoutingId,
   type SpotId,
@@ -68,8 +68,8 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
     try {
       const route = await resolver.resolve(spotId, signal);
       if (route.spotKind !== ZLinkSpotKind.User) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.SpotTypeMismatch,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.SpotTypeMismatch,
           `Spot '${String(spotId)}' is not a User Spot.`
         );
       }
@@ -83,7 +83,7 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
     } catch (error) {
       if (
         error instanceof ZLinkFrameworkException
-        && error.kind === ZLinkFrameworkErrorKind.SpotRouteNotFound
+        && internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.SpotRouteNotFound
       ) {
         return undefined;
       }
@@ -107,8 +107,8 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
       return closed;
     }
     if (this.options.remoteClose === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestFailed,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RequestFailed,
         'Remote User Spot close transport is not configured.'
       );
     }
@@ -137,17 +137,17 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
       || result.tail?.kind !== 'userSpotClose'
     ) {
       const kind = result.failureCode === 33
-        ? ZLinkFrameworkErrorKind.SpotGenerationStale
+        ? ZLinkFrameworkInternalErrorKind.SpotGenerationStale
         : result.failureCode === 34
-          ? ZLinkFrameworkErrorKind.SpotMoving
+          ? ZLinkFrameworkInternalErrorKind.SpotMoving
           : result.terminalResult === 101
-            ? ZLinkFrameworkErrorKind.DeadlineExceeded
-            : ZLinkFrameworkErrorKind.RequestFailed;
-      throw new ZLinkFrameworkException(
+            ? ZLinkFrameworkInternalErrorKind.DeadlineExceeded
+            : ZLinkFrameworkInternalErrorKind.RequestFailed;
+      throw createInternalFrameworkException(
         kind,
         `Remote User Spot close failed. terminalResult=${result.terminalResult}, failureCode=${result.failureCode}.`,
-        kind === ZLinkFrameworkErrorKind.SpotMoving
-          || kind === ZLinkFrameworkErrorKind.DeadlineExceeded
+        kind === ZLinkFrameworkInternalErrorKind.SpotMoving
+          || kind === ZLinkFrameworkInternalErrorKind.DeadlineExceeded
       );
     }
     if (result.tail.closed) this.options.resolver()?.invalidate?.(spot.spotId);
@@ -202,8 +202,8 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult> {
     if (state.submitted) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.AlreadySubmitted,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.AlreadySubmitted,
         'Spot creation call has already been submitted.'
       );
     }
@@ -218,8 +218,8 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
     const deadline = Date.now() + timeoutMs;
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.DeadlineExceeded,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.DeadlineExceeded,
         'User Spot creation exhausted its end-to-end deadline.',
         true
       );
@@ -291,8 +291,8 @@ interface MutableCreateCall {
 
 function selectOnce(state: MutableCreateCall, option: string): void {
   if (state.submitted) {
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.AlreadySubmitted,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.AlreadySubmitted,
       'Spot creation call has already been submitted.'
     );
   }
@@ -335,8 +335,8 @@ function requireText(value: string, label: string): string {
 }
 
 function invalidConfiguration(message: string): ZLinkFrameworkException {
-  return new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.InvalidConfiguration,
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.InvalidConfiguration,
     message
   );
 }

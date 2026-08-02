@@ -1,6 +1,5 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import {
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException
 } from '../../contracts';
 
 export interface ZLinkActorSessionBindingActor {
@@ -60,8 +59,8 @@ export class ZLinkActorSessionBindingRegistry<
   ): void {
     const current = this.routes.get(actor.actorId);
     if (current !== previous) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorSessionNotBound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorSessionNotBound,
         `Actor '${actor.actorId}' session binding changed before route replacement.`,
         true
       );
@@ -127,8 +126,8 @@ export class ZLinkActorSessionBindingRegistry<
     if (route !== undefined) {
       return route;
     }
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.ActorSessionNotBound,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.ActorSessionNotBound,
       `No current session binding exists for actor '${actorId}'.`,
       true
     );
@@ -139,8 +138,8 @@ export class ZLinkActorSessionBindingRegistry<
     if (route.bindingToken === bindingToken) {
       return;
     }
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.ActorSessionNotBound,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.ActorSessionNotBound,
       `Actor '${actorId}' session binding is stale.`,
       true
     );
@@ -149,15 +148,15 @@ export class ZLinkActorSessionBindingRegistry<
   accept(actorId: string, bindingToken: string): bigint {
     const route = this.requireRoute(actorId);
     if (route.bindingToken !== bindingToken) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorSessionNotBound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorSessionNotBound,
         `Actor '${actorId}' session binding is stale.`,
         true
       );
     }
     if (route.sealId !== undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorLocationStale,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorLocationStale,
         `Actor '${actorId}' session ingress is sealed for relocation.`,
         true
       );
@@ -172,15 +171,15 @@ export class ZLinkActorSessionBindingRegistry<
       if (route.sealId === sealId && routeMatchesFence(route, expected)) {
         return route.acceptedHighWater;
       }
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorLocationStale,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorLocationStale,
         `Actor '${actorId}' session ingress is sealed by another relocation.`,
         true
       );
     }
     if (!routeMatchesFence(route, expected)) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorSessionNotBound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorSessionNotBound,
         `Actor '${actorId}' session route seal was fenced by its binding identity.`,
         true
       );

@@ -1,4 +1,5 @@
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Runtime.Locations;
 
 namespace Zlink.Framework.UnitTests;
 
@@ -79,6 +80,40 @@ public sealed class MaintenanceRuntimeTests
         Assert.Equal(ZLinkFrameworkRelocationReason.TargetUnavailable, result.Reason);
         Assert.Equal(ZLinkFrameworkRuntimeState.Serving, fixture.Runtime.Status.State);
         Assert.Null(fixture.Runtime.Status.RelocationResult);
+    }
+
+    [Fact]
+    public async Task Partial_retiring_publication_failure_keeps_the_host_fail_closed()
+    {
+        var executor = new MaintenanceExecutor();
+        using var drain = new ZLinkDrainCoordinator(
+            new ZLinkDrainAdmissionGate(),
+            executor);
+        using var runtime = new ZLinkFrameworkMaintenanceRuntime(
+            drain,
+            new ZLinkFrameworkHostLifecycleState(),
+            static (_, _, _) => ValueTask.FromResult<ZLinkFrameworkRelocationReason?>(null),
+            static _ => ValueTask.FromException<bool>(
+                new ZLinkRetiringPublicationRollbackException(
+                    [new InvalidOperationException("descriptor rollback failed")])),
+            sourceApplicationVersion: 7);
+        runtime.MarkServing();
+
+        var result = await runtime.RelocateAsync(
+            new ZLinkFrameworkRelocationOptions
+            {
+                Mode = ZLinkFrameworkRelocationMode.PlannedMaintenance
+            });
+
+        Assert.Equal(ZLinkFrameworkRelocationReason.RelocationFailed, result.Reason);
+        Assert.Equal(ZLinkFrameworkRuntimeState.Stopped, runtime.Status.State);
+        Assert.False(runtime.Status.AcceptingWork);
+        Assert.Equal(
+            ZLinkFrameworkTerminationOutcome.ForceStopped,
+            runtime.Status.TerminationResult?.Outcome);
+        Assert.Equal(
+            ZLinkFrameworkTerminationReason.TeardownFailed,
+            runtime.Status.TerminationResult?.Reason);
     }
 
     [Theory]

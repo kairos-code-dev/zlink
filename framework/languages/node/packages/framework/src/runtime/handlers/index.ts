@@ -1,10 +1,9 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import {
   type Type,
   type ZLinkHandlerFilterNext,
   type ZLinkHandlerFilter,
   type ZLinkHandlerFilterContext,
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException
 } from '../../contracts';
 import {
   readZLinkDecoratorMetadata,
@@ -77,8 +76,8 @@ function invokeAtMostOnce(next: ZLinkHandlerFilterNext): ZLinkHandlerFilterNext 
   let invoked = false;
   return () => {
     if (invoked) {
-      return Promise.reject(new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.InvalidOperation,
+      return Promise.reject(createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.InvalidOperation,
         'A handler filter cannot invoke next more than once.'
       ));
     }

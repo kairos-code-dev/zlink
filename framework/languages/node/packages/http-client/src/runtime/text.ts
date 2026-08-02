@@ -10,14 +10,14 @@ function isBlank(value: string): boolean {
 
 export function requireNonBlank(value: string, message: string): void {
   if (isBlank(value)) {
-    throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.RequestProtocolError, message);
+    throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.ProtocolError, message);
   }
 }
 
 export function requirePositiveTimeout(value: number): void {
   if (!(value > 0)) {
     throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.RequestProtocolError,
+      ZLinkFrameworkErrorKind.ProtocolError,
       'HTTP client timeout must be greater than zero',
     );
   }

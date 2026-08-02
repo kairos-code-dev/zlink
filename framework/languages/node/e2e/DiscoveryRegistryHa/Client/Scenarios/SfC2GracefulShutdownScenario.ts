@@ -1,9 +1,4 @@
 // SF-C2: Shutdown 대조 (owner 정리) 시나리오를 검증한다.
-import {
-  ZLinkFrameworkRelocationOutcome,
-  ZLinkFrameworkRelocationReason,
-  type ZLinkFrameworkRelocationResult
-} from '@zlink-systems/framework';
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson, postJsonWithin } from '../../../http-client';
@@ -15,10 +10,15 @@ interface PeerDto {
   readonly draining: boolean;
 }
 
+interface RelocationResult {
+  readonly outcome: number;
+  readonly reason: number;
+}
+
 export async function runSfC2(options: ClientOptions): Promise<void> {
   ensure(options.providerBUrl !== undefined, 'SF-C2 requires the api-b HTTP endpoint.');
   const drainStartedAt = Date.now();
-  const drain = postJsonWithin<ZLinkFrameworkRelocationResult>(options.providerBUrl, '/drain', {}, 35_000);
+  const drain = postJsonWithin<RelocationResult>(options.providerBUrl, '/drain', {}, 35_000);
 
   await waitForDrainingPeer(options.consumerUrl, 'api-b');
   await waitForProviderReply(options.consumerUrl, 'api-a', 'sf-c2-draining', 20);
@@ -32,7 +32,7 @@ export async function runSfC2(options: ClientOptions): Promise<void> {
 
   const result = await drain;
   ensure(
-    result.outcome === ZLinkFrameworkRelocationOutcome.Relocated && result.reason === ZLinkFrameworkRelocationReason.None,
+    result.outcome === 0 && result.reason === 0,
     `SF-C2 retire ended as '${result.outcome}/${result.reason}'.`
   );
   ensure(Date.now() - drainStartedAt < 30_000, 'SF-C2 drain exceeded the 30 second deadline.');

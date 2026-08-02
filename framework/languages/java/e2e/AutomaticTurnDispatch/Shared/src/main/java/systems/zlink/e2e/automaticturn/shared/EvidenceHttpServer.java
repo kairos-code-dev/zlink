@@ -93,7 +93,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                     return;
                 }
                 long deadlineMs = queryLong(exchange.getRequestURI().getRawQuery(), "deadlineMs", 30000L);
-                drainResult = drain.retire(Duration.ofMillis(deadlineMs));
+                drainResult = drain.shutdown(Duration.ofMillis(deadlineMs));
                 write(exchange, "{\"accepted\":true}");
             });
             server.createContext("/drain/status", exchange -> write(
@@ -161,10 +161,10 @@ public final class EvidenceHttpServer implements SmartLifecycle {
             try {
                 ZLinkTerminationResult result = current.toCompletableFuture().join();
                 snapshot.put("result", result.outcome()
-                    == systems.zlink.framework.runtime.host.ZLinkTerminationOutcome.STOPPED
+                    == systems.zlink.framework.runtime.host.ZLinkFrameworkTerminationOutcome.STOPPED
                         ? "drained" : "force_stopped");
                 if (result.outcome()
-                    == systems.zlink.framework.runtime.host.ZLinkTerminationOutcome.FORCE_STOPPED) {
+                    == systems.zlink.framework.runtime.host.ZLinkFrameworkTerminationOutcome.FORCE_STOPPED) {
                     snapshot.put("reason", result.reason().name().toLowerCase());
                 }
             } catch (RuntimeException error) {

@@ -1756,8 +1756,11 @@ test('ZLinkModule channel client uses runtime host channel transport after boots
   const client = container.get(nestjs.ZLINK_CHANNEL_CLIENT);
 
   try {
+    process.stderr.write('PROBE before serverRuntime.start\n');
     await serverRuntime.start();
+    process.stderr.write('PROBE after serverRuntime.start\n');
     await runtime.start();
+    process.stderr.write('PROBE after runtime.start\n');
 
     const reply = await client
       .requestToChannel('api', typedPacket('Ping', { value: 'ping' }))
@@ -4605,7 +4608,7 @@ async function createScaleoutClientApp(locationStore) {
   const options = scaleoutLocationOptions();
   builder.configureLocations()
     .pollingIntervalMs(options.pollingIntervalMs)
-    .heartbeatIntervalMs(options.heartbeatIntervalMs)
+    .ownerLeaseRenewIntervalMs(options.ownerLeaseRenewIntervalMs)
     .ownerLeaseTtlMs(options.ownerLeaseTtlMs);
   builder.addClientServerChannel('scaleout-api').client();
   Module({
@@ -4617,7 +4620,7 @@ async function createScaleoutClientApp(locationStore) {
 function scaleoutLocationOptions() {
   return {
     pollingIntervalMs: 20,
-    heartbeatIntervalMs: 5000,
+    ownerLeaseRenewIntervalMs: 5000,
     ownerLeaseTtlMs: 30000
   };
 }

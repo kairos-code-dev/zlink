@@ -58,7 +58,7 @@ export class ZLinkHttpRequestBuilder {
       ?? clientFactory?.captureExecutionTurn();
     if (path.length === 0 || path[0] !== '/') {
       throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestProtocolError,
+        ZLinkFrameworkErrorKind.ProtocolError,
         'HTTP request path must start with /',
       );
     }
@@ -69,7 +69,7 @@ export class ZLinkHttpRequestBuilder {
   private resolveClient(): ZLinkHttpClient {
     if (this.ownsClient && this.consumed) {
       throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestProtocolError,
+        ZLinkFrameworkErrorKind.ProtocolError,
         'A one-shot HTTP request can only be submitted once',
       );
     }
@@ -77,7 +77,7 @@ export class ZLinkHttpRequestBuilder {
     if (this.clientInstance === undefined) {
       if (this.clientFactory === undefined) {
         throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.RequestProtocolError,
+          ZLinkFrameworkErrorKind.ProtocolError,
           'HTTP request has no client',
         );
       }
@@ -118,7 +118,7 @@ export class ZLinkHttpRequestBuilder {
     if (contentType !== undefined) {
       if (typeof value !== 'string') {
         throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.RequestProtocolError,
+          ZLinkFrameworkErrorKind.ProtocolError,
           'HTTP request raw body content is required',
         );
       }
@@ -139,7 +139,7 @@ export class ZLinkHttpRequestBuilder {
   bodyStream(provider: BodyChunkProvider, contentType: string): this {
     if (typeof provider !== 'function') {
       throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestProtocolError,
+        ZLinkFrameworkErrorKind.ProtocolError,
         'HTTP request body stream provider is required',
       );
     }
@@ -187,7 +187,7 @@ export class ZLinkHttpRequestBuilder {
   async download(sink: DownloadSink): Promise<RawHttpResponse> {
     if (typeof sink !== 'function') {
       throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestProtocolError,
+        ZLinkFrameworkErrorKind.ProtocolError,
         'HTTP request download sink is required',
       );
     }
@@ -217,7 +217,7 @@ export class ZLinkHttpRequestBuilder {
     const raw = await this.submitRaw();
     if (raw.status >= 400) {
       throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestFailed,
+        ZLinkFrameworkErrorKind.Unavailable,
         `HTTP request failed with status ${raw.status}`,
       );
     }
@@ -229,9 +229,8 @@ export class ZLinkHttpRequestBuilder {
         body = JSON.parse(raw.body, safeJsonReviver) as T;
       } catch (cause) {
         throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+          ZLinkFrameworkErrorKind.ProtocolError,
           cause instanceof Error ? cause.message : 'HTTP response body decode failed',
-          false,
           cause,
         );
       }
@@ -281,7 +280,7 @@ export class ZLinkHttpRequestBuilder {
   private resolveBodyAndHeaders(): { body: string | undefined; headers: Record<string, string> } {
     if (this.countBodySources() > 1) {
       throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestProtocolError,
+        ZLinkFrameworkErrorKind.ProtocolError,
         'HTTP request accepts a single body source: body, body_stream, form, or multipart',
       );
     }
@@ -346,7 +345,7 @@ class ZLinkFrameworkHttpRequestBuilder extends ZLinkHttpRequestBuilder {
   async submit(): Promise<void> {
     if (this.executionScheduler === undefined) {
       throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestProtocolError,
+        ZLinkFrameworkErrorKind.ProtocolError,
         'HTTP submit requires a framework server client'
       );
     }
@@ -357,7 +356,7 @@ class ZLinkFrameworkHttpRequestBuilder extends ZLinkHttpRequestBuilder {
   yield<T>(): Promise<HttpResponse<T>> {
     if (this.executionTurn === undefined) {
       return Promise.reject(new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestProtocolError,
+        ZLinkFrameworkErrorKind.ProtocolError,
         'HTTP yield requires a framework Spot turn'
       ));
     }

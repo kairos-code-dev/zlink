@@ -3,48 +3,68 @@ namespace Systems.Zlink;
 /// <summary>
 /// Identifies one exact Actor incarnation and the owner route observed with it.
 /// </summary>
-public readonly record struct ActorRef
+public readonly record struct ActorRef(
+    string ActorId,
+    ulong ObjectGeneration,
+    string MeshName,
+    RoutingId NodeRid)
 {
-    public ActorRef(
-        string actorId,
-        ulong objectGeneration,
-        string meshName,
-        RoutingId nodeRid)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(actorId);
-        if (System.Text.Encoding.UTF8.GetByteCount(actorId) > 255)
-            throw new ArgumentOutOfRangeException(nameof(actorId));
-        if (objectGeneration is 0 or > long.MaxValue)
-            throw new ArgumentOutOfRangeException(nameof(objectGeneration));
-        ArgumentException.ThrowIfNullOrWhiteSpace(meshName);
-        if (nodeRid.IsEmpty)
-            throw new ArgumentException(
-                "Actor owner routing id must not be empty.",
-                nameof(nodeRid));
+    private readonly string _actorId = ValidateActorId(ActorId);
+    private readonly ulong _objectGeneration = ValidateObjectGeneration(ObjectGeneration);
+    private readonly string _meshName = ValidateMeshName(MeshName);
+    private readonly RoutingId _nodeRid = ValidateNodeRid(NodeRid);
 
-        ActorId = actorId;
-        ObjectGeneration = objectGeneration;
-        MeshName = meshName;
-        NodeRid = nodeRid;
+    public string ActorId
+    {
+        get => _actorId;
+        init => _actorId = ValidateActorId(value);
     }
 
-    public string ActorId { get; }
-
-    public ulong ObjectGeneration { get; }
-
-    public string MeshName { get; }
-
-    public RoutingId NodeRid { get; }
-
-    public void Deconstruct(
-        out string actorId,
-        out ulong objectGeneration,
-        out string meshName,
-        out RoutingId nodeRid)
+    public ulong ObjectGeneration
     {
-        actorId = ActorId;
-        objectGeneration = ObjectGeneration;
-        meshName = MeshName;
-        nodeRid = NodeRid;
+        get => _objectGeneration;
+        init => _objectGeneration = ValidateObjectGeneration(value);
+    }
+
+    public string MeshName
+    {
+        get => _meshName;
+        init => _meshName = ValidateMeshName(value);
+    }
+
+    public RoutingId NodeRid
+    {
+        get => _nodeRid;
+        init => _nodeRid = ValidateNodeRid(value);
+    }
+
+    private static string ValidateActorId(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        if (System.Text.Encoding.UTF8.GetByteCount(value) > 255)
+            throw new ArgumentOutOfRangeException(nameof(value));
+        return value;
+    }
+
+    private static ulong ValidateObjectGeneration(ulong value)
+    {
+        if (value is 0 or > long.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(value));
+        return value;
+    }
+
+    private static string ValidateMeshName(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        return value;
+    }
+
+    private static RoutingId ValidateNodeRid(RoutingId value)
+    {
+        if (value.IsEmpty)
+            throw new ArgumentException(
+                "Actor owner routing id must not be empty.",
+                nameof(value));
+        return value;
     }
 }

@@ -64,7 +64,7 @@ async function start() {
   const builder = nestjs.zlinkFramework().addLocationStore(store);
   builder.configureLocations()
     .pollingIntervalMs(20)
-    .heartbeatIntervalMs(100)
+    .ownerLeaseRenewIntervalMs(100)
     .ownerLeaseTtlMs(5_000);
   const mesh = builder.addRouteMesh(meshName)
     .listen(endpoint)

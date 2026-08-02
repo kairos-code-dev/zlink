@@ -109,7 +109,7 @@ test('actor client submit completes without exposing an admission result', async
   assert.equal(sends[0].parts.length, 2);
   await assert.rejects(() => call.submit(), (error) => {
     assert.equal(error instanceof framework.ZLinkFrameworkException, true);
-    assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.AlreadySubmitted);
+    assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.InvalidOperation);
     return true;
   });
   assert.equal(sends.length, 1);
@@ -132,7 +132,7 @@ test('actor client rejects an incomplete authority fence before transport submis
 
   await assert.rejects(
     () => client.sendToActor('actor-1', new ActorNotify('ping')).submit(),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.Unavailable
   );
   assert.equal(sends, 0);
 });
@@ -269,8 +269,8 @@ test('actor client invalidates a stale resolved route without retrying the opera
   const node = {
     sendToActor(actor) {
       sends.push(actor);
-      throw new framework.ZLinkFrameworkException(
-        framework.ZLinkFrameworkErrorKind.ActorLocationStale,
+      throw framework.createInternalFrameworkException(
+        framework.ZLinkFrameworkInternalErrorKind.ActorLocationStale,
         'stale'
       );
     }
@@ -285,7 +285,7 @@ test('actor client invalidates a stale resolved route without retrying the opera
 
   await assert.rejects(
     () => client.sendToActor('actor-1', new ActorNotify('ping')).submit(),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.Unavailable
   );
 
   assert.deepEqual(sends.map((actor) => actor.generation), [1n]);
@@ -294,9 +294,9 @@ test('actor client invalidates a stale resolved route without retrying the opera
 
 test('actor client submit maps native terminal outcomes to operation-specific errors', async () => {
   const results = [
-    [2, framework.ZLinkFrameworkErrorKind.RouteNotConnected],
-    [3, framework.ZLinkFrameworkErrorKind.ActorRouteNotFound],
-    [4, framework.ZLinkFrameworkErrorKind.RuntimeShutdown]
+    [2, framework.ZLinkFrameworkErrorKind.Unavailable],
+    [3, framework.ZLinkFrameworkErrorKind.NotFound],
+    [4, framework.ZLinkFrameworkErrorKind.ShuttingDown]
   ];
   const accepted = new framework.DefaultZLinkActorClient({
     nodeProvider: () => ({ sendToActor: () => 0 }),
@@ -459,7 +459,7 @@ test('actor client maps stale and disconnected route failures', async () => {
   });
   await assert.rejects(
     () => noNode.requestToActor('missing', new ActorAsk('ping')).submit(),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.Unavailable
   );
 
   const staleNode = {
@@ -474,7 +474,7 @@ test('actor client maps stale and disconnected route failures', async () => {
   });
   await assert.rejects(
     () => stale.requestToActor('actor-1', new ActorAsk('ping')).submit(),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.Unavailable
   );
 
   const disconnectedNode = {
@@ -489,7 +489,8 @@ test('actor client maps stale and disconnected route failures', async () => {
   });
   await assert.rejects(
     () => disconnected.requestToActor('actor-1', new ActorAsk('ping')).submit(),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected && error.isRetriable === true
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.Unavailable
+      && !('isRetriable' in error)
   );
 });
 
@@ -507,6 +508,6 @@ test('actor client preserves ActorRouteNotFound for a missing actor route', asyn
 
   await assert.rejects(
     () => client.requestToActor('missing-actor', new ActorAsk('ping')).submit(),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorRouteNotFound
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.NotFound
   );
 });

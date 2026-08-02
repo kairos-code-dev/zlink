@@ -1,3 +1,9 @@
 namespace Zlink.Framework.Contracts.Errors;
 
-public sealed class ZLinkConfigurationException(string message) : InvalidOperationException(message);
+public sealed class ZLinkConfigurationException : InvalidOperationException
+{
+    internal ZLinkConfigurationException(string message)
+        : base(message)
+    {
+    }
+}

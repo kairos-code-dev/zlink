@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import type {
   ActorRef,
   RoutingId,
@@ -6,8 +7,6 @@ import type {
   ZLinkSpot
 } from '../../contracts';
 import {
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException,
   ZLinkSpotKind
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
@@ -184,15 +183,15 @@ export class ZLinkActorRuntimeState {
 
   beginMove(): void {
     if (this.deferredJoinPendingValue) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorMoving,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorMoving,
         `Actor '${this.actorId}' has a pending membership transition.`,
         true
       );
     }
     if (this.movingValue) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
         `Actor '${this.actorId}' is already moving.`
       );
     }
@@ -228,8 +227,8 @@ export class ZLinkActorRuntimeState {
     }
     const actorRef = this.nativeActorRefValue;
     if (actorRef !== undefined && !routingIdsEqual(toFrameworkRoutingId(actorRef.nodeRid), entryNodeRid)) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
         `Actor '${this.actorId}' is not owned by this Entry Spot.`
       );
     }
@@ -263,16 +262,16 @@ export class ZLinkActorRuntimeState {
     createActor: () => Promise<ZLinkActorCreationAttemptResult>
   ): ZLinkActorCreationOperation {
     if (this.actorTypeValue !== undefined && this.actorTypeValue !== actorType) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorTypeMismatch,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorTypeMismatch,
         `Actor '${this.actorId}' already uses actor type '${this.actorTypeValue}', not '${actorType}'.`
       );
     }
 
     if (this.actorValue !== undefined) {
       if (failIfExists) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.ActorAlreadyExists,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.ActorAlreadyExists,
           `Actor '${this.actorId}' already exists.`
         );
       }
@@ -284,8 +283,8 @@ export class ZLinkActorRuntimeState {
 
     if (this.creationTask !== undefined) {
       if (failIfExists) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.ActorAlreadyExists,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.ActorAlreadyExists,
           `Actor '${this.actorId}' is already being created.`
         );
       }
@@ -312,14 +311,14 @@ export class ZLinkActorRuntimeState {
 
   bindActor(actor: ZLinkActor, context: ZLinkActorContext): void {
     if (actor.context.actorId !== this.actorId) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorCreateFailed,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorCreateFailed,
         `Actor state id '${this.actorId}' does not match actor id '${actor.context.actorId}'.`
       );
     }
     if (actor.context !== context) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorCreateFailed,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorCreateFailed,
         `Actor '${this.actorId}' must expose the context provided by its factory.`
       );
     }

@@ -84,7 +84,7 @@ internal sealed class PlayActor(
 
             case ZLinkActorJoinCompletion.Rejected:
                 await Context.BoundSession
-                    .Send(new JoinGameFailedNotify(roomId, "Rejected", false))
+                    .Send(new JoinGameFailedNotify(roomId, "Rejected"))
                     .Async(cancellationToken);
                 break;
 
@@ -92,8 +92,7 @@ internal sealed class PlayActor(
                 await Context.BoundSession
                     .Send(new JoinGameFailedNotify(
                         roomId,
-                        failed.Kind.ToString(),
-                        failed.IsRetriable))
+                        failed.Kind.ToString()))
                     .Async(cancellationToken);
                 break;
         }

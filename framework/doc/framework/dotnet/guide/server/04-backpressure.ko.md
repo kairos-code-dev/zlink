@@ -194,9 +194,10 @@ catch (ZLinkFrameworkException ex)
     when (ex.Kind == ZLinkFrameworkErrorKind.DeadlineExceeded)
 {
     // 이 시점에 확실한 것은 "제출되지 않았다" 하나다. 상대 상태는 알 수 없다.
-    // RetryAdvice는 framework가 확인한 조건만 알려 준다 — 실제 재시도 여부는 application이 정한다.
-    if (ex.RetryAdvice == ZLinkRetryAdvice.RetryAfterBackoff)
-        _pending.Enqueue(command);
+    // CanSafelyRetry는 command 중복을 허용하는지 확인하는 application 소유 predicate다.
+    if (!CanSafelyRetry(command))
+        throw;
+    _pending.Enqueue(command);
 }
 ```
 

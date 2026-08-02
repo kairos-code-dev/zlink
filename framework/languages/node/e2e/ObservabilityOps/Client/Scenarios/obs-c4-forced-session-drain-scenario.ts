@@ -4,7 +4,6 @@ import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec
 } from '@zlink-systems/stream-connector';
-import { ZLinkFrameworkRelocationReason } from '@zlink-systems/framework';
 import { options, require, session } from '../Support/scenario-support.js';
 import { metric, metrics, retireForceStopped, startDrain, waitFor, waitForDrain } from '../Support/observability-support.js';
 
@@ -23,7 +22,7 @@ export async function runObsC4(): Promise<void> {
   await startDrain(session, 100);
   const status = await waitForDrain(session, retireForceStopped,
     'OBS-C4 Session did not force stop', 5000);
-  require(status.result?.reason === ZLinkFrameworkRelocationReason.DeadlineExceeded,
+  require(status.result?.reason === 5,
     `OBS-C4 force reason was '${status.result?.reason}'.`);
   await waitFor(async () => connector.closeReason, (value) => value === 'ServerDrain',
     'OBS-C4 connector did not preserve server drain close reason');

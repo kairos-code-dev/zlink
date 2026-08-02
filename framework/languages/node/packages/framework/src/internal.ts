@@ -25,5 +25,6 @@ export * from './runtime/handlers';
 export * from './runtime/messaging';
 export * from './runtime/foundation';
 export * from './runtime/foundation/service-authority-payload-codec';
+export * from './runtime/framework-errors-internal';
 export * from './contracts/Configuration/Registration';
 export * from './contracts/Configuration/DispatchObserverRegistration';

@@ -645,14 +645,20 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     {
         var failures = new List<Exception>();
         Capture(DetachManualConnections);
-        await CaptureAsync(CloseLifecycleAsync).ConfigureAwait(false);
+        if (!forceStopToken.CanBeCanceled)
+            await CaptureAsync(CloseLifecycleAsync).ConfigureAwait(false);
         Capture(RequestStop);
         if (_entryDispatchPump is { } entryDispatchPump)
             await CaptureAsync(entryDispatchPump.DisposeAsync).ConfigureAwait(false);
         await CaptureAsync(_taskRunner.StopAsync).ConfigureAwait(false);
-        await CaptureAsync(_spots.DisposeAsync).ConfigureAwait(false);
+        await CaptureAsync(forceStopToken.CanBeCanceled
+                ? _spots.ForceStopAsync
+                : _spots.DisposeAsync)
+            .ConfigureAwait(false);
         await CaptureAsync(_bundles.DisposeAsync).ConfigureAwait(false);
-        await CaptureAsync(DisposeEntrySpotAsync).ConfigureAwait(false);
+        await CaptureAsync(
+                () => DisposeEntrySpotAsync(forceStopToken.CanBeCanceled))
+            .ConfigureAwait(false);
         await CaptureAsync(_nodeSubmitter.DisposeAsync).ConfigureAwait(false);
         if (_canonicalRelocationReservationOwner is { } reservationOwner)
             await CaptureAsync(reservationOwner.DisposeAsync).ConfigureAwait(false);
@@ -894,7 +900,10 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         return new ZLinkSpotDrainResult(
             await _spots.TryDrainAsync(hostShutdown, cancellationToken)
                 .ConfigureAwait(false),
-            0);
+            0,
+            null,
+            ZLinkRelocationCommitKnowledge.NotCommitted,
+            true);
     }
 
     public ValueTask<bool> ConnectPeerAsync(string endpoint, CancellationToken cancellationToken)
@@ -1048,14 +1057,15 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                && Registration.ActorFactories.Count > 0;
     }
 
-    private async ValueTask DisposeEntrySpotAsync()
+    private async ValueTask DisposeEntrySpotAsync(bool forceStop)
     {
         if (_entrySpot is null) return;
 
         var failures = new List<Exception>();
         if (_entrySpotActivation is { } activation)
         {
-            if (Volatile.Read(ref _entrySpotLifecycleClosed) == 0)
+            if (!forceStop
+                && Volatile.Read(ref _entrySpotLifecycleClosed) == 0)
                 await CaptureAsync(() => activation.CloseAsync(CancellationToken.None)).ConfigureAwait(false);
             await CaptureAsync(activation.DisposeAsync).ConfigureAwait(false);
         }

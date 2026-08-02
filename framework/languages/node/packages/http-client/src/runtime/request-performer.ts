@@ -202,5 +202,5 @@ async function drain(stream: Readable): Promise<void> {
 }
 
 function requestError(message: string): ZLinkFrameworkException {
-  return new ZLinkFrameworkException(ZLinkFrameworkErrorKind.RequestFailed, message);
+  return new ZLinkFrameworkException(ZLinkFrameworkErrorKind.Unavailable, message);
 }

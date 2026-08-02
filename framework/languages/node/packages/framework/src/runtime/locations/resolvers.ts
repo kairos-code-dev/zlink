@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException, internalFrameworkErrorKind  } from '../framework-errors-internal';
 import type { ActorRef, RoutingId, SpotId } from '../../contracts/Common';
 import {
   ZLinkLocationRole,
@@ -35,7 +36,7 @@ import type {
   ZLinkActorSpotHandleResolver,
   ZLinkSpotHandleResolver
 } from '../spots/spot-handle';
-import { ZLinkFrameworkErrorKind, ZLinkFrameworkException } from '../../contracts/Errors';
+import { ZLinkFrameworkException } from '../../contracts/Errors';
 import type {
   ZLinkSpotRouteResolver,
   ZLinkSpotRouteTarget
@@ -215,8 +216,8 @@ export class ZLinkStoreLocationResolvers implements
     const row = await this.resolveSpotRow({ meshName, spotId }, signal);
     if (row !== undefined) {
       if (row.spotGeneration <= 0n) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.SpotRouteNotFound,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.SpotRouteNotFound,
           `SPOT '${spotId}' location row has no valid Core lifecycle generation.`
         );
       }
@@ -331,7 +332,7 @@ export class ZLinkStoreLocationResolvers implements
       } catch (error) {
         if (
           error instanceof ZLinkFrameworkException
-          && error.kind === ZLinkFrameworkErrorKind.SpotRouteNotFound
+          && internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.SpotRouteNotFound
         ) {
           return undefined;
         }
@@ -597,8 +598,8 @@ export class ZLinkLocationSpotRouteResolver implements ZLinkSpotRouteResolver {
     const row = await this.rows.resolveSpotRowInMeshes(spotId, this.meshNames, signal);
     if (row !== undefined) {
       if (row.spotGeneration <= 0n) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.SpotRouteNotFound,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.SpotRouteNotFound,
           `SPOT '${spotId}' location row has no valid Core lifecycle generation.`
         );
       }
@@ -624,8 +625,8 @@ export class ZLinkLocationSpotRouteResolver implements ZLinkSpotRouteResolver {
         spotKind: ZLinkSpotKind.Entry
       };
     }
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.SpotRouteNotFound,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.SpotRouteNotFound,
       `SPOT '${spotId}' has no live location row in any registered spot mesh.`
     );
   }
@@ -700,16 +701,16 @@ export class ZLinkAuthoritySpotRouteResolver implements ZLinkSpotRouteResolver {
       }
     }
     if (current.kind === 'snapshot') {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.SpotRouteNotFound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.SpotRouteNotFound,
         `SPOT '${spotId}' authority has not crossed the Ready barrier.`
       );
     }
     if (this.fallback !== undefined) {
       return await this.fallback.resolve(spotId, signal);
     }
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.SpotRouteNotFound,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.SpotRouteNotFound,
       `SPOT '${spotId}' has no Ready authority.`
     );
   }

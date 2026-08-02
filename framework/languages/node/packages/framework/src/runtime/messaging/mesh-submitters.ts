@@ -1,5 +1,5 @@
+import { ZLinkFrameworkInternalErrorKind, internalFrameworkErrorKind } from '../framework-errors-internal';
 import {
-  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException
 } from '../../contracts';
 import {
@@ -35,7 +35,8 @@ export class ZLinkMeshSubmitterRegistry {
   async submit(
     meshName: string,
     attempt: () => ZLinkSubmitResult,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    timeoutMs?: number
   ): Promise<ZLinkSubmitResult> {
     if (this.disposed) {
       return { status: ZLinkSubmitStatus.Shutdown };
@@ -47,12 +48,12 @@ export class ZLinkMeshSubmitterRegistry {
         if (result.status === ZLinkSubmitStatus.Submitted) return true;
         if (result.status === ZLinkSubmitStatus.Backpressured) return false;
         throw new ZLinkMeshTerminalResult(result);
-      }, signal);
+      }, signal, undefined, timeoutMs);
       return { status: ZLinkSubmitStatus.Submitted };
     } catch (error) {
       if (error instanceof ZLinkMeshTerminalResult) return error.result;
       if (error instanceof ZLinkFrameworkException
-        && error.kind === ZLinkFrameworkErrorKind.RuntimeShutdown) {
+        && internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.RuntimeShutdown) {
         return { status: ZLinkSubmitStatus.Shutdown };
       }
       if (error instanceof Error && /timed out/i.test(error.message)) {

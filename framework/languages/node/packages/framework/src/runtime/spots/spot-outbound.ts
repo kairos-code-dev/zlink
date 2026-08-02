@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind } from '../framework-errors-internal';
 import { ZLinkSpotKind } from '../../contracts';
 import type {
   RoutingId,
@@ -20,7 +21,6 @@ import {
 } from '../messaging/submission-result';
 import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import { ZLinkConfigurationException } from '../configuration';
-import { ZLinkFrameworkErrorKind } from '../../contracts/Errors/ZLinkFrameworkException';
 import type { ZLinkBackendSpot } from '../backend/contracts';
 import { deliverOnSerial } from '../workers';
 import {
@@ -261,7 +261,7 @@ function createAddressedSpotSendCall(
       requireOneWayCompletion(
         result,
         'Spot send',
-        ZLinkFrameworkErrorKind.SpotRouteNotFound
+        ZLinkFrameworkInternalErrorKind.SpotRouteNotFound
       );
     }
   };
@@ -511,7 +511,7 @@ function wrapRoutedSpotSendCall(
       requireOneWayCompletion(
         result,
         'Spot send',
-        ZLinkFrameworkErrorKind.SpotRouteNotFound
+        ZLinkFrameworkInternalErrorKind.SpotRouteNotFound
       );
     }
   };

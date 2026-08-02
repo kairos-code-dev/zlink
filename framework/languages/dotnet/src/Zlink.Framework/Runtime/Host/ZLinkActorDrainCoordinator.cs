@@ -61,7 +61,13 @@ internal sealed class ZLinkActorDrainCoordinator(
         CancellationToken cancellationToken)
     {
         var states = ActorsForDrain(actorSessions.SnapshotStates());
-        if (states.Length == 0) return new ZLinkActorDrainResult(true, null, 0);
+        if (states.Length == 0)
+            return new ZLinkActorDrainResult(
+                true,
+                null,
+                0,
+                ZLinkRelocationCommitKnowledge.NotCommitted,
+                true);
 
         var targetsByActorType =
             new Dictionary<string, ZLinkActorDrainCandidate[]>(StringComparer.Ordinal);
@@ -82,13 +88,17 @@ internal sealed class ZLinkActorDrainCoordinator(
         var results = await Task.WhenAll(moves).ConfigureAwait(false);
         var terminal = results.FirstOrDefault(
             static result => result.TerminalReason is not null);
-        return terminal.TerminalReason is not null
-            ? terminal
-            : new ZLinkActorDrainResult(
-                results.All(static result => result.Completed),
-                null,
-                checked((ulong)results.Sum(static result =>
-                    checked((long)result.CommittedUnitCount))));
+        var committedUnitCount = checked((ulong)results.Sum(static result =>
+            checked((long)result.CommittedUnitCount)));
+        var commitKnowledge = CombineCommitKnowledge(results);
+        var sourceTerminalized = results.All(
+            static result => result.SourceTerminalized);
+        return new ZLinkActorDrainResult(
+            results.All(static result => result.Completed),
+            terminal.TerminalReason,
+            committedUnitCount,
+            commitKnowledge,
+            sourceTerminalized);
 
         async ValueTask<ZLinkActorDrainResult> MoveActorAsync(
             ZLinkActorRuntimeState actorState)
@@ -99,7 +109,12 @@ internal sealed class ZLinkActorDrainCoordinator(
                     .ConfigureAwait(false);
                 if (actorState.Actor is null)
                 {
-                    return new ZLinkActorDrainResult(true, null, 1);
+                    return new ZLinkActorDrainResult(
+                        true,
+                        null,
+                        1,
+                        ZLinkRelocationCommitKnowledge.Committed,
+                        true);
                 }
             }
 
@@ -107,7 +122,12 @@ internal sealed class ZLinkActorDrainCoordinator(
             var sourceNode = actorState.NativeActorRef?.NodeRid;
             var actorType = actorState.ActorType;
             if (actor is null || sourceNode is null || string.IsNullOrWhiteSpace(actorType))
-                return new ZLinkActorDrainResult(true, null, 0);
+                return new ZLinkActorDrainResult(
+                    true,
+                    null,
+                    0,
+                    ZLinkRelocationCommitKnowledge.NotCommitted,
+                    true);
             //  이유 없이 `Completed=false`만 돌려주면 호출자의 재시도 loop가
             //  빠져나갈 조건이 없어 deadline을 소진하고 `DeadlineExceeded`로
             //  보고된다. 실제 이유는 "옮길 대상 node가 없다"이고 그 이름이
@@ -117,7 +137,9 @@ internal sealed class ZLinkActorDrainCoordinator(
                 return new ZLinkActorDrainResult(
                     false,
                     ZLinkFrameworkRelocationReason.TargetUnavailable,
-                    0);
+                    0,
+                    ZLinkRelocationCommitKnowledge.NotCommitted,
+                    true);
             var shellPlan = actorState.LiveActivation?
                 .PerActorShellRelocationPlan;
             var eligible = shellPlan is null
@@ -136,7 +158,9 @@ internal sealed class ZLinkActorDrainCoordinator(
                 return new ZLinkActorDrainResult(
                     false,
                     ZLinkFrameworkRelocationReason.TargetUnavailable,
-                    0);
+                    0,
+                    ZLinkRelocationCommitKnowledge.NotCommitted,
+                    true);
 
             var start = shellPlan is null
                 ? (Interlocked.Increment(ref nextTarget) & int.MaxValue)
@@ -165,7 +189,12 @@ internal sealed class ZLinkActorDrainCoordinator(
                             + actorState.ActorId
                             + " target="
                             + candidate.Descriptor.Rid);
-                        return new ZLinkActorDrainResult(false, null, 0);
+                        return new ZLinkActorDrainResult(
+                            false,
+                            null,
+                            0,
+                            ZLinkRelocationCommitKnowledge.NotCommitted,
+                            true);
                     }
                     if (result == ZLinkStandaloneActorRelocationResult.TargetRejected)
                     {
@@ -173,7 +202,12 @@ internal sealed class ZLinkActorDrainCoordinator(
                             $"drain handoff rejected actor={actorState.ActorId} target={target.NodeRid} result=rejected");
                         continue;
                     }
-                    return new ZLinkActorDrainResult(true, null, 1);
+                    return new ZLinkActorDrainResult(
+                        true,
+                        null,
+                        1,
+                        ZLinkRelocationCommitKnowledge.Committed,
+                        true);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -187,7 +221,9 @@ internal sealed class ZLinkActorDrainCoordinator(
                         return new ZLinkActorDrainResult(
                             false,
                             ZLinkFrameworkRelocationReason.RelocationFailed,
-                            0);
+                            0,
+                            ZLinkRelocationCommitKnowledge.Unknown,
+                            false);
                 }
                 catch (ZlinkSubmitException error)
                 {
@@ -218,7 +254,9 @@ internal sealed class ZLinkActorDrainCoordinator(
                     return new ZLinkActorDrainResult(
                         false,
                         ZLinkFrameworkRelocationReason.RelocationFailed,
-                        0);
+                        0,
+                        ZLinkRelocationCommitKnowledge.Unknown,
+                        false);
                 }
             }
 
@@ -232,8 +270,22 @@ internal sealed class ZLinkActorDrainCoordinator(
             return new ZLinkActorDrainResult(
                 false,
                 ZLinkFrameworkRelocationReason.TargetUnavailable,
-                0);
+                0,
+                ZLinkRelocationCommitKnowledge.NotCommitted,
+                true);
         }
+    }
+
+    private static ZLinkRelocationCommitKnowledge CombineCommitKnowledge(
+        IReadOnlyList<ZLinkActorDrainResult> results)
+    {
+        if (results.Any(static result =>
+                result.CommitKnowledge
+                == ZLinkRelocationCommitKnowledge.Unknown))
+            return ZLinkRelocationCommitKnowledge.Unknown;
+        return results.Any(static result => result.CommittedUnitCount != 0)
+            ? ZLinkRelocationCommitKnowledge.Committed
+            : ZLinkRelocationCommitKnowledge.NotCommitted;
     }
 
     internal static bool IsTargetLocalRetriable(ZLinkFrameworkException error) =>
@@ -348,12 +400,27 @@ internal readonly record struct ZLinkActorDrainCandidate(
 internal readonly record struct ZLinkActorDrainResult(
     bool Completed,
     ZLinkFrameworkRelocationReason? TerminalReason,
-    ulong CommittedUnitCount)
+    ulong CommittedUnitCount,
+    ZLinkRelocationCommitKnowledge CommitKnowledge =
+        ZLinkRelocationCommitKnowledge.NotCommitted,
+    bool SourceTerminalized = false)
 {
     internal bool HasCommitted => CommittedUnitCount != 0;
+
+    internal bool HasUnknownCommit =>
+        CommitKnowledge == ZLinkRelocationCommitKnowledge.Unknown;
 }
 
 internal readonly record struct ZLinkRelocationWorkloadDrainResult(
     bool Completed,
     ZLinkFrameworkRelocationReason? TerminalReason,
-    ulong CommittedUnitCount);
+    ulong CommittedUnitCount,
+    bool SourceTerminalized = false,
+    ZLinkRelocationCommitKnowledge CommitKnowledge =
+        ZLinkRelocationCommitKnowledge.NotCommitted)
+{
+    internal bool HasCommitted => CommittedUnitCount != 0;
+
+    internal bool HasUnknownCommit =>
+        CommitKnowledge == ZLinkRelocationCommitKnowledge.Unknown;
+}

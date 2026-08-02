@@ -53,12 +53,12 @@ export function resolveLocation(current: URL, location: string): URL {
     // A malformed Location is a redirect-protocol error, not a transport failure: throw a
     // non-retriable framework exception so retry does not resend the original request.
     throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.RequestFailed,
+      ZLinkFrameworkErrorKind.Unavailable,
       `HTTP redirect location is malformed: ${location}`,
     );
   }
   throw new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.RequestFailed,
+    ZLinkFrameworkErrorKind.Unavailable,
     `HTTP redirect location is not supported: ${location}`,
   );
 }

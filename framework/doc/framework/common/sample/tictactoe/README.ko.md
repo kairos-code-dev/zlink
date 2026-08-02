@@ -227,7 +227,6 @@ message JoinGameRes {
 message JoinGameFailedNotify {
   roomId: string
   error: string
-  isRetriable: bool
 }
 
 message ObserveMilestoneReq {}
@@ -260,6 +259,26 @@ TicTacToeGameJoinReq는 Play Actor가 Room Spot에 보내는 request/reply다. L
 Entry Spot 복귀와 destroy를 시작하는 one-way send이며 response를 기다리지 않는다.
 PlayerWinMilestoneEvent는 Logical Multicast publish payload이므로 Event 접미어를 사용한다.
 ObserveMilestoneReq/Res는 observer local Entry Spot subscription 완료를 확인한다.
+
+Game 종료 뒤 player Actor cleanup은 별도 순서로 실행한다.
+
+1. actor 객체 생성이 끝나면 framework는 create payload와 함께 `onCreateActor`를 한 번 호출한다.
+2. room Spot은 종료 cleanup이 한 번만 시작되도록 guard를 둔다.
+3. room Spot은 각 player actor에 "Entry Spot으로 돌아오면 destroy한다"는 표시를 남긴다.
+4. room Spot은 `leaveActor`로 actor를 room에서 내보낸다.
+5. framework는 room `onLeaveActor`를 호출한 뒤 actor를 Entry Spot으로 이동시키고 Entry
+   Spot `onJoinedActor`를 호출한다.
+6. Entry Spot `onJoinedActor` 또는 Entry Spot handler는 actor의 destroy 표시를 확인하고
+   Entry Spot context의 `destroyActor`를 호출한다.
+7. `destroyActor`는 `onLeaveActor`나 다른 lifecycle callback을 호출하지 않고 actor 객체,
+   native actor ref, framework registry, bound session binding을 정리한다.
+8. 같은 actor에 대한 중복 destroy나 destroy 중 재진입은 성공 no-op이어야 하며,
+   lifecycle callback을 다시 호출하면 안 된다.
+
+- Entry Spot destroy 과정에서 Entry Spot `onLeaveActor`나 다른 lifecycle callback이
+  추가로 실행되지 않는다.
+- disconnect cleanup만으로 actor destroy가 실행되지 않는다.
+- stream disconnect는 bound session을 정리하지만 actor를 즉시 destroy하지 않는다.
 
 ### 6.3 Push와 state
 
@@ -399,8 +418,8 @@ win과 board state는 Room Spot이 결정하고 milestone은 이미 결정된 �
 
 STREAM disconnect는 current binding을 정리하지만 Actor와 Room membership을 즉시 destroy하지
 않는다. client가 최종 GameState를 확인한 뒤 LeaveGameMsg를 보내면 Room Spot은 actor를 Entry
-Spot으로 이동시키고 Entry Spot handler가 destroy evidence를 남긴다. destroy는 idempotent하며
-이미 다른 generation이면 typed error를 반환한다.
+Spot으로 이동시키고 Entry Spot context의 `destroyActor`를 호출한다. 이 호출로 destroy evidence를
+남긴다. `destroyActor`는 `onLeaveActor`나 다른 lifecycle callback을 호출하지 않고 native actor ref, framework registry, bound session binding을 정리한다. destroy는 idempotent하며 이미 다른 generation이면 typed error를 반환한다.
 
 ```mermaid
 sequenceDiagram
@@ -483,6 +502,11 @@ Client scenario는 HTTP response에서 받은 Play endpoint로 connector를 만�
 DI·async 구성과 connector wrapper이며, manual topology, room owner 규칙, milestone 순서와 self-check는
 공통 문서와 같아야 한다.
 
+.NET의 attribute, Java·Kotlin의 annotation과 Node.js의 decorator는 선언형 metadata scan으로
+handler를 자동 등록한다. C++은 runtime reflection scanner가 없으므로 compile-time type과 public
+builder로 같은 handler 집합을 명시 등록한다. 이 차이는 등록 방법에만 적용하며 message와 처리
+책임을 바꾸지 않는다.
+
 ## 9. Client self-check
 
 1. Api A 또는 B로 CreateGameHttpReq를 보내 RoomId, RequiredLevel과 PlayEndpoints를 확인한다.
@@ -510,12 +534,12 @@ DI·async 구성과 connector wrapper이며, manual topology, room owner 규칙,
 6. 성공·실패 모두에서 이번 실행이 만든 Redis와 process resource를 정리한다.
 
 ```text
-topology=ready
-tictactoe-room=completed
-tictactoe-multicast=completed
-tictactoe-lifecycle=completed
 tictactoe=completed
 ```
+
+runner는 completion marker와 함께 leave/destroy, observer subscription과 milestone
+검증 결과를 확인한다. 이 결과는 self-check assertion 또는 runner log evidence로 판정하며,
+언어별로 존재하지 않는 단계 marker를 공통 계약으로 추가하지 않는다.
 
 ## 11. 완료 기준
 

@@ -43,11 +43,62 @@ internal sealed record ForceStopped(
 internal sealed record DrainBlocked(
     ZLinkFrameworkRelocationReason Reason) : ZLinkDrainResult;
 
-internal readonly record struct ZLinkDrainExecutionResult(
-    ZLinkDrainForceReason? ForceReason,
-    ulong CommittedUnitCount)
+internal enum ZLinkDrainExecutionDisposition
 {
+    Completed = 0,
+    Blocked = 1,
+    ForceStop = 2
+}
+
+internal readonly record struct ZLinkDrainExecutionResult
+{
+    private ZLinkDrainExecutionResult(
+        ZLinkDrainExecutionDisposition disposition,
+        ZLinkFrameworkRelocationReason? blockedReason,
+        ZLinkDrainForceReason? forceReason,
+        ulong committedUnitCount)
+    {
+        Disposition = disposition;
+        BlockedReason = blockedReason;
+        ForceReason = forceReason;
+        CommittedUnitCount = committedUnitCount;
+    }
+
+    internal ZLinkDrainExecutionDisposition Disposition { get; }
+
+    internal ZLinkFrameworkRelocationReason? BlockedReason { get; }
+
+    internal ZLinkDrainForceReason? ForceReason { get; }
+
+    internal ulong CommittedUnitCount { get; }
+
     internal bool HasCommitted => CommittedUnitCount != 0;
+
+    internal static ZLinkDrainExecutionResult Completed(
+        ulong committedUnitCount = 0) =>
+        new(
+            ZLinkDrainExecutionDisposition.Completed,
+            null,
+            null,
+            committedUnitCount);
+
+    internal static ZLinkDrainExecutionResult Blocked(
+        ZLinkFrameworkRelocationReason reason,
+        ulong committedUnitCount = 0) =>
+        new(
+            ZLinkDrainExecutionDisposition.Blocked,
+            reason,
+            null,
+            committedUnitCount);
+
+    internal static ZLinkDrainExecutionResult ForceStop(
+        ZLinkDrainForceReason reason,
+        ulong committedUnitCount = 0) =>
+        new(
+            ZLinkDrainExecutionDisposition.ForceStop,
+            null,
+            reason,
+            committedUnitCount);
 }
 
 internal sealed class ZLinkDrainBlockedException(
@@ -89,15 +140,18 @@ internal interface IZLinkDrainExecutor
         ZLinkFrameworkLifecycleIntent intent,
         TimeSpan deadline,
         Action? relocationDetached,
-        CancellationToken deadlineToken) =>
-        new(
-            await ExecuteAsync(
-                    intent,
-                    deadline,
-                    relocationDetached,
-                    deadlineToken)
-                .ConfigureAwait(false),
-            0);
+        CancellationToken deadlineToken)
+    {
+        var forceReason = await ExecuteAsync(
+                intent,
+                deadline,
+                relocationDetached,
+                deadlineToken)
+            .ConfigureAwait(false);
+        return forceReason is { } reason
+            ? ZLinkDrainExecutionResult.ForceStop(reason)
+            : ZLinkDrainExecutionResult.Completed();
+    }
 
     ValueTask ForceStopAsync(
         ZLinkDrainForceReason reason,
@@ -145,7 +199,7 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
     {
         if (deadline <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(deadline));
-        _admission.BeginDrain();
+        _admission.BeginDrain(ZLinkDrainOwner.Shutdown);
         _executor.RequestShutdown(deadline);
     }
 
@@ -185,13 +239,13 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
                 Action? effectiveRelocationDetached = relocationDetached;
                 if (intent == ZLinkFrameworkLifecycleIntent.Shutdown)
                 {
-                    _admission.BeginDrain();
+                    _admission.BeginDrain(ZLinkDrainOwner.Shutdown);
                 }
                 else
                 {
                     effectiveRelocationDetached = () =>
                     {
-                        _admission.BeginDrain();
+                        _admission.BeginDrain(ZLinkDrainOwner.Relocation);
                         relocationDetached?.Invoke();
                     };
                 }
@@ -228,7 +282,7 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
     {
         if (deadline <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(deadline));
-        _admission.BeginDrain();
+        _admission.BeginDrain(ZLinkDrainOwner.Shutdown);
         var forced = await ForceStopAsync(
                 reason,
                 deadline,
@@ -285,14 +339,23 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
                         .ConfigureAwait(false);
             }
             var executionResult = await execution.ConfigureAwait(false);
-            result = executionResult.ForceReason is null
-                ? new Drained()
-                : await ForceStopAsync(
-                        executionResult.ForceReason.Value,
-                        deadline,
-                        executionResult.HasCommitted,
-                        executionResult.CommittedUnitCount)
-                    .ConfigureAwait(false);
+            result = executionResult.Disposition switch
+            {
+                ZLinkDrainExecutionDisposition.Completed => new Drained(),
+                ZLinkDrainExecutionDisposition.Blocked => new DrainBlocked(
+                    executionResult.BlockedReason
+                        ?? ZLinkFrameworkRelocationReason.RelocationFailed),
+                ZLinkDrainExecutionDisposition.ForceStop =>
+                    await ForceStopAsync(
+                            executionResult.ForceReason
+                                ?? ZLinkDrainForceReason.TeardownFailed,
+                            deadline,
+                            executionResult.HasCommitted,
+                            executionResult.CommittedUnitCount)
+                        .ConfigureAwait(false),
+                _ => throw new InvalidOperationException(
+                    "The drain execution returned an unknown disposition.")
+            };
         }
         catch (ZLinkDrainBlockedException blocked)
         {

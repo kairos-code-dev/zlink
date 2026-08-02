@@ -138,10 +138,13 @@ export class ZLinkChannelRuntimeLifecycle {
     this.taskRunner = taskRunner;
     this.prepareMeshDispatch(taskRunner);
     this.openOutboundSockets();
+    const channelReceivers = this.startChannelReceivers(taskRunner);
+    const subscriberReceivers = this.startSubscriberReceivers(taskRunner);
+    const routeReceivers = this.startRouteReceivers(taskRunner);
     const tasks = [
-      ...this.startChannelReceivers(taskRunner),
-      ...this.startSubscriberReceivers(taskRunner),
-      ...this.startRouteReceivers(taskRunner)
+      ...channelReceivers,
+      ...subscriberReceivers,
+      ...routeReceivers
     ];
     return tasks;
   }

@@ -235,8 +235,7 @@ internal sealed class DynamicProcess(Process process, string httpUrl, string? ch
             }
             catch (ZLinkFrameworkException error) when (
                 error.Kind is ZLinkFrameworkErrorKind.Unavailable
-                    or ZLinkFrameworkErrorKind.DeadlineExceeded
-                && error.RetryAdvice != ZLinkRetryAdvice.DoNotRetry)
+                    or ZLinkFrameworkErrorKind.DeadlineExceeded)
             {
             }
 

@@ -12,10 +12,14 @@
 | CH-E2E-01 | actual 통과 | 실제 port 0 endpoint를 Location Store에 게시한 뒤 RouteMesh peer가 Ready로 수렴한다. 양방향 Channel request와 물리 연결 identity 중복 부재를 검증한다. Client는 정식 `ZLinkHttpClient`를 사용하고 runner는 공통 typed config writer를 사용한다. 최신 증거: `logs/20260729-044618-974448` |
 | CH-E2E-02 | actual 통과 | RouteMesh handler가 `audit.record`와 `workflow.command`를 순서대로 호출하고 원래 reply에 두 downstream 결과를 보존한다. 증거: `logs/20260729-045524-1297423` |
 | CH-E2E-03 | actual 통과 | Play Entry Spot Actor handler와 timer가 ClientServer `Async` 뒤 같은 turn에서 state 변경과 resume을 완료한다. 증거: `logs/20260729-003016-3958766` |
-| CH-E2E-04 | 부분 actual | `100:300` weighted selection과 runtime weight `0` 제외·`300` 복원 수렴을 검증했다. accepted request drain·shutdown·새 RID 재시작은 미구현. `logs/20260729-051159-2058781` |
+| CH-E2E-04A | 부분 actual | `100:300` weighted selection을 검증했다. 전체 actual-process 증거는 아직 없다. |
+| CH-E2E-04B | 미구현 | Draining server를 신규 request에서 제외하는 actual-process selector가 없다. |
+| CH-E2E-04C | 미구현 | Server 재시작 뒤 신규 request를 처리하는 actual-process selector가 없다. |
 | CH-E2E-05 | 부분 구현·실행 대기 | public server builder outbound surface 부재 검증. protocol unsolicited 주입은 미구현 |
 | CH-E2E-06 | actual 통과 | RouteMesh·ClientServer가 같은 ChannelName을 등록한 경우와 ClientServer Client 역할을 중복 등록한 경우가 각각 별도 process startup configuration error로 끝난다. 증거: `logs/20260729-045555-1335584` |
-| CH-E2E-07 | 부분 구현·실행 대기 | process-local 미등록 `NotFound` 즉시 완료와 Ready Api 정상 호출 구현. known-but-not-ready `Unavailable`은 미구현 |
+| CH-E2E-07A | 부분 구현·실행 대기 | process-local 미등록 `NotFound` 즉시 완료와 Ready Api 정상 호출을 구현했다. |
+| CH-E2E-07B | 미구현 | Local Server role만 있는 상태에서 remote member를 호출하는 actual-process 증거가 없다. |
+| CH-E2E-07C | 미구현 | Known target에 연결할 수 없을 때 `Unavailable`을 검증하는 actual-process 증거가 없다. |
 | CH-E2E-08 | actual 통과 | WorkflowServer는 `game` Object Client로만 참여한다. ClientServer handler가 global SpotId와 ActorId로 Spot 다음 Actor를 요청하고 원래 reply에 순서를 보존한다. 증거: `logs/20260729-003016-3958766` |
 | CH-E2E-09 | 부분 구현·실행 대기 | RouteMesh·ClientServer·fanout의 port 0 actual endpoint와 AdvertiseHost 분리 구현. STREAM은 미구현 |
 | CH-E2E-10 | actual 통과 | Result-free ClientServer send를 제출하고 두 Server가 선택 구간에서 handler를 각각 실행하며 전체 handler 수가 제출 수와 정확히 일치한다. 증거: `logs/20260729-045617-1359918` |

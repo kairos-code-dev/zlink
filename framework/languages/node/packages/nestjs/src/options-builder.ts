@@ -5,6 +5,7 @@ import type {
   ZLinkCodecExtension,
   ZLinkCodecRegistrar,
   ZLinkDispatchOptionsBuilder,
+  ZLinkInboundDispatchOptions,
   ZLinkEntrySpot,
   ZLinkLocationStore,
   ZLinkLocationOptionValues,
@@ -129,6 +130,17 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
     return framework.createIntegrationDispatchOptionsBuilder(
       this.state.additionalOptions.dispatch as NonNullable<ZLinkFrameworkRegistrationOptions['dispatch']>
     );
+  }
+
+  configureInboundDispatch(): ZLinkInboundDispatchOptions {
+    const inboundDispatch = {
+      ...(this.state.additionalOptions.inboundDispatch ?? {})
+    };
+    this.state.additionalOptions = {
+      ...this.state.additionalOptions,
+      inboundDispatch
+    };
+    return framework.createIntegrationInboundDispatchOptionsBuilder(inboundDispatch);
   }
 
   addLocationStore(store: ZLinkLocationStore): this {

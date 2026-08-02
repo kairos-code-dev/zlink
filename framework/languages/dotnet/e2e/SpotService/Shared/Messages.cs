@@ -253,7 +253,6 @@ public sealed record StaleBindingProbeRes(
     string ActorId,
     bool RelayRejected,
     string ErrorKind,
-    string RetryAdvice,
     bool DisconnectCompleted);
 
 public sealed record LocationStoreReadProbeReq(

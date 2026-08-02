@@ -11,15 +11,10 @@ internal sealed partial class ZLinkProviderLocationRepository
     private async ValueTask<ZLinkLocationPage<T>> ListCompleteSnapshotPageAsync<T>(
         string prefix,
         ZLinkPageRequest request,
-        int defaultPageSize,
         Func<ReadOnlyMemory<byte>, T> decode,
         CancellationToken cancellationToken)
     {
-        var pageSize = request.PageSize <= 0
-            ? defaultPageSize
-            : request.PageSize;
-        if (pageSize is < 1 or > 1000)
-            throw new ArgumentOutOfRangeException(nameof(request));
+        var pageSize = ZLinkPageRequestPolicy.Normalize(request).PageSize;
 
         ZLinkStoreScanCursor? cursor =
             request.ContinuationToken is { } continuationToken

@@ -568,7 +568,14 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
           meshName: descriptor.meshName,
           nodeRid: descriptor.rid,
           endpoint: descriptor.endpoint,
-          draining: descriptor.state === ZLinkFrameworkRuntimeState.Draining,
+          //  Spec 13 §365는 relocate가 unit seal을 마치면 source가 draining으로
+          //  넘어간다고 정하고, §409는 draining node가 새 placement target이 되지
+          //  않는다고 정한다. Host lifecycle의 `Draining`만 보면 relocate로 빠지는
+          //  node가 계속 accepting으로 보인다.
+          draining:
+            descriptor.state === ZLinkFrameworkRuntimeState.Draining
+            || descriptor.state === ZLinkFrameworkRuntimeState.Relocating
+            || descriptor.state === ZLinkFrameworkRuntimeState.Relocated,
           state: live ? ZLinkLocationTopologyState.Ready : ZLinkLocationTopologyState.Lost,
           updatedAt: descriptor.updatedAt
         };

@@ -92,7 +92,9 @@ class fd_stream_t
                 continue;
             }
             const auto received =
-              ::recv (_fd, asio::buffer_cast<void *> (buffer), asio::buffer_size (buffer), 0);
+              //  `asio::buffer_cast`는 Boost 1.87에서 제거됐다. mutable_buffer의
+              //  `data()`가 같은 포인터를 돌려주므로 그것을 쓴다.
+              ::recv (_fd, buffer.data (), asio::buffer_size (buffer), 0);
             if (received > 0) {
                 return static_cast<std::size_t> (received);
             }
@@ -132,7 +134,7 @@ class fd_stream_t
 #else
             constexpr int send_flags = 0;
 #endif
-            const auto sent = ::send (_fd, asio::buffer_cast<const void *> (buffer),
+            const auto sent = ::send (_fd, buffer.data (),
                                       asio::buffer_size (buffer), send_flags);
             if (sent >= 0) {
                 return static_cast<std::size_t> (sent);

@@ -1,7 +1,6 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import type { Message } from '@zlink-systems/zlink';
 import {
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException
 } from '../../contracts';
 import {
   ZLinkSubmitStatus,
@@ -147,8 +146,8 @@ export class ZLinkChannelOutboundOperations {
     throwIfAborted(signal);
     const dealer = await this.sockets.awaitClientDealerForOutbound(channelName, signal);
     if (dealer === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestTargetNotFound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RequestTargetNotFound,
         `Channel '${channelName}' has no ready ClientServer server.`
       );
     }
@@ -180,8 +179,8 @@ export class ZLinkChannelOutboundOperations {
             (result, replyParts) => {
               try {
                 if (result !== 0) {
-                  reject(new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RouteNotConnected,
+                  reject(createInternalFrameworkException(
+                    ZLinkFrameworkInternalErrorKind.RouteNotConnected,
                     `Channel '${channelName}' request failed with result ${result}.`,
                     true
                   ));
@@ -207,8 +206,8 @@ export class ZLinkChannelOutboundOperations {
           );
           return submitted;
         } catch (error) {
-          reject(new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.RouteNotConnected,
+          reject(createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.RouteNotConnected,
             `Channel '${channelName}' request failed before a reply was received.`,
             true,
             error
@@ -392,8 +391,8 @@ export class ZLinkChannelOutboundOperations {
     throwIfAborted(signal);
     const router = this.sockets.routeRouter(routerChannelId);
     if (this.sockets.routeMemberStatus(routerChannelId, targetNodeRid) === 'missing') {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestTargetNotFound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RequestTargetNotFound,
         `Route channel '${routerChannelId}' has no member '${targetNodeRid}'.`
       );
     }
@@ -429,8 +428,8 @@ export class ZLinkChannelOutboundOperations {
             (result, replyParts) => {
               try {
                 if (result !== 0) {
-                  reject(new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RouteNotConnected,
+                  reject(createInternalFrameworkException(
+                    ZLinkFrameworkInternalErrorKind.RouteNotConnected,
                     `Route channel '${routerChannelId}' request failed with result ${result}.`,
                     true
                   ));
@@ -456,8 +455,8 @@ export class ZLinkChannelOutboundOperations {
             timeoutMs
           );
         } catch (error) {
-          reject(new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.RouteNotConnected,
+          reject(createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.RouteNotConnected,
             `Route channel '${routerChannelId}' request failed before a reply was received.`,
             true,
             error
@@ -465,8 +464,8 @@ export class ZLinkChannelOutboundOperations {
           return true;
         }
         if (!submitted) {
-          reject(new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.RouteNotConnected,
+          reject(createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.RouteNotConnected,
             `Route channel '${routerChannelId}' is not ready for request.`,
             true
           ));
@@ -483,8 +482,8 @@ export class ZLinkChannelOutboundOperations {
         && error instanceof Error
         && (/timed out/i.test(error.message) || error.name === 'ZLinkRouteDisconnectedError')
       ) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.RouteNotConnected,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.RouteNotConnected,
           `Route channel '${routerChannelId}' member '${targetNodeRid}' is not connected.`,
           true,
           error

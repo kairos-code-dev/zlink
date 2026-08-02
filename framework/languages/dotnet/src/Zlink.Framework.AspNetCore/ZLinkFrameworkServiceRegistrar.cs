@@ -399,7 +399,6 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetRequiredService<ZLinkOwnerLeaseTracker>(),
                 provider.GetRequiredService<ZLinkLocationRuntime>(),
                 provider.GetRequiredService<ZLinkObservedLocationGenerations>(),
-                provider.GetService<IZLinkLocationWatchStore>() is not null,
                 provider.GetRequiredService<ZLinkLocationStoreHealth>()));
         services.AddSingleton<IZLinkLocationRuntimeQuery>(static provider =>
             provider.GetRequiredService<ZLinkLocationRuntimeQueryService>());

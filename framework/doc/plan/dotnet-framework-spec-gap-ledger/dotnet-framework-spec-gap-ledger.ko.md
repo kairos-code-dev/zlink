@@ -1,8 +1,8 @@
 # .NET Framework spec gap audit와 수정 ledger
 
-> 상태: 2차 implementation audit 완료, 구현 수정 전
+> 상태: G0 CLEAN, formal exact-interface 문서는 수정하지 않음. Sol Medium 최종 read-only review에서 Critical·High·Medium 0건을 확인했으며, 다음은 G1 사전 검토다.
 >
-> 기준: `04b8e4ce106f0e5e3b1bdaf4a76723e6c9f6bea4`와 2026-08-02 working tree
+> 기준: `3291e338f4f700484780560cd81345a647ef0948`와 2026-08-02 G0 candidate working tree
 >
 > 범위: `.NET` server framework. HTTP client와 client용 Stream Connector는 공통 server 계약이
 > 직접 요구하는 연결 지점만 포함한다.
@@ -59,6 +59,19 @@ signature, nullable, generic constraint와 기본값을 소유한다. 구현은 
 Working tree에는 Actor relocation과 관련 E2E 수정이 이미 존재한다. 이 ledger는 해당 변경을 보존한 상태에서
 작성했다. 이후 실행 log에는 각 단계의 candidate commit과 working tree diff를 함께 기록해야 한다.
 
+### 1.1 작업 log와 후속 ledger
+
+이 ledger의 진행 상황과 검증 결과는 이 문서가 있는 폴더의 `log/` 아래에 기록한다. 각 log는
+`log/YYYYMMDD-HHMMSS-<card>.ko.md` 형식을 사용하고, 기록 시점의 card, working tree 조건,
+실행한 명령, 통과·실패 수치, Sol review 결과와 남은 조건을 적는다. 진행 상황은 본문을 매번
+늘어놓지 않고 해당 log 경로를 기준으로 확인한다. Formal public contract spec은 이 작업 log의
+대상이 아니며, 구현 전 설계나 실행 증거는 plan ledger와 그 `log/`에서만 관리한다.
+
+이 문서의 모든 card와 최종 audit가 완료되면 다음 작업은
+[`dotnet-framework-sample-spec-gap-ledger.ko.md`](./dotnet-framework-sample-spec-gap-ledger.ko.md)를
+열어 이어서 진행한다. 다음 문서의 card를 이 ledger의 완료 판정 전에 섞지 않으며, 이 문서의
+최종 log에 다음 문서로 전환한 사실과 시작 조건을 기록한다.
+
 ### 2.1 Model 배치와 card review gate
 
 이 작업은 Luna Max가 구현을 수행하고 Sol이 독립적으로 검토하는 직렬 흐름으로 진행한다. Luna를
@@ -68,8 +81,8 @@ review 범위를 생략하거나 Luna의 자체 점검으로 대체하지 않는
 | 역할 | Model과 reasoning | 책임 | Source 수정 |
 |---|---|---|---|
 | Main implementer | Luna Max | 한 번에 ledger card 하나를 조사하고 test를 먼저 고정한 뒤 구현·검증한다. | 허용 |
-| Card reviewer | Sol High | 실제 spec, candidate 전체, diff와 test 결과를 읽고 contract·POSD·DDD 관점에서 검토한다. | 금지 |
-| Final auditor | Sol High | G7 뒤 `.NET` production과 공개 계약 전체를 이전 review와 독립적으로 다시 검사한다. | 금지 |
+| Card reviewer | Sol Medium | 실제 spec, candidate 전체, diff와 test 결과를 읽고 contract·POSD·DDD 관점에서 검토한다. | 금지 |
+| Final auditor | Sol Medium | G7 뒤 `.NET` production과 공개 계약 전체를 이전 review와 독립적으로 다시 검사한다. | 금지 |
 
 지정한 model이나 reasoning level을 사용할 수 없으면 임의의 model로 바꾸지 않는다. 해당 review를
 `차단`으로 기록하고 사용할 수 있을 때 다시 실행한다. Main implementer와 reviewer는 같은 working tree를
@@ -81,14 +94,14 @@ Luna가 finding을 수정한다.
 1. Luna는 card가 따라야 하는 공통 spec, .NET exact interface, production owner와 기존 test를 먼저
    확인한다. Card 범위를 벗어난 gap은 우회해서 함께 고치지 않고 이 ledger에 별도 항목으로 등록한다.
 2. Public contract, lifecycle, ownership, state transition 또는 module 경계를 바꾸는 card는 구현 전에
-   사건, command, 상태 owner, failure 의미와 서로 다른 설계 대안 두 가지 이상을 적고 Sol High의
+   사건, command, 상태 owner, failure 의미와 서로 다른 설계 대안 두 가지 이상을 적고 Sol Medium의
    사전 review를 받는다. G1~G4에는 이 사전 review를 필수로 적용한다.
 3. Luna는 실패를 재현하는 test를 추가하거나 기존 test가 계약을 직접 검증한다는 근거를 남긴 뒤
    production source를 수정한다. Targeted test와 해당 변경이 영향을 주는 regression을 실행한다.
 4. Review 직전에 기준 commit, candidate commit 또는 working tree manifest, `git status --short`, 전체
    diff, 실행한 test 명령과 결과를 고정한다. Commit하지 않은 candidate라면 review가 끝날 때까지
    working tree를 변경하지 않는다.
-5. Sol High는 Luna의 요약만 읽지 않고 정식 spec, exact interface, production call path, 전체 candidate와
+5. Sol Medium은 Luna의 요약만 읽지 않고 정식 spec, exact interface, production call path, 전체 candidate와
    test evidence를 직접 대조한다. Reviewer는 finding만 반환하며 source·test·문서를 수정하지 않는다.
 6. `Critical`, `High`, `Medium` finding은 모두 blocking이다. Luna가 원인과 책임 경계를 고치고 관련
    test를 다시 실행한 뒤 같은 범위로 Sol review를 다시 요청한다. `Low` finding도 수용·기각·후속 분리
@@ -139,7 +152,7 @@ Framework 전용 helper·adapter·상태 복제·retry 경로를 추가해서 �
    추가한다. Framework test만 실패하는 상태는 하위 library 수정의 완료 증거가 아니다.
 3. 원인을 소유한 layer에서 수정한다. Core의 lifecycle·socket·transport 책임을 bindings나 Framework로,
    bindings의 public projection·ownership 책임을 Framework로 옮기지 않는다.
-4. 수정한 Core 또는 bindings candidate에도 2.1절의 Luna Max 구현과 Sol High read-only review gate를
+4. 수정한 Core 또는 bindings candidate에도 2.1절의 Luna Max 구현과 Sol Medium read-only review gate를
    동일하게 적용한다. Reviewer는 해당 layer의 public contract, 전체 diff, regression과 package 입력을
    직접 확인하고 POSD·DDD 책임 경계가 상위 layer로 누출되지 않았는지 판정한다.
 5. Core를 수정했으면 `core/build`를 다시 build하고 관련 Core test를 통과시킨다. 이어서
@@ -167,10 +180,13 @@ hash, Framework 참조 version, consumer test를 기록한다. 이 증거가 하
 
 | 검증 | 결과 | 현재 판단 |
 |---|---|---|
-| 현재 `dotnet test tests/Zlink.Framework.ContractTests/...` | 72/72 통과 | 현재 dirty tree에서 Source assembly와 고정 API snapshot은 일치한다. Markdown exact interface와의 일치는 아직 증명하지 않는다. |
-| 이전 audit의 `.NET` unit test 전체 | 1385 통과, 1 실패 | 이 수치는 이전 working tree의 snapshot이다. 현재 dirty tree의 fresh 전체 통과를 의미하지 않는다. |
+| 기존 `dotnet test tests/Zlink.Framework.ContractTests/...` | 74/74 통과 | Roslyn full declaration test를 추가하기 전 snapshot·contract test 결과다. Source assembly와 고정 API snapshot만 확인하므로 exact-interface 일치의 단독 증거로 사용하지 않는다. |
+| 현재 exact-interface declaration·owner test | 2/2 + 2/2 통과 | 14개 exact interface 문서의 고정 owner FQN과 source·compiled package contract를 양방향으로 대조한다. Positional record projection과 SemanticModel 기반 assembly/FQN binding을 포함한다. |
+| 현재 전체 `.NET` ContractTests | 76/76 통과 | Exact-interface declaration·owner test와 public snapshot, error·record·package contract를 포함한 전체 contract suite다. |
+| 현재 전체 `.NET` UnitTests | 1388/1388 통과 | `--logger 'console;verbosity=normal'`로 2분 51초 실행했다. Negative configuration test가 예상된 host-start error log를 남겼지만 testhost crash·timeout 없이 전체 suite가 종료되었다. |
 | 현재 targeted relocation unit test | 248/248 통과 | `DrainCoordinatorTests`, `MaintenanceRuntimeTests`, `ActorHandoffTests`, `EntrySpotActorDispatchTests`, `LocationRuntimeQueryTests`를 현재 dirty tree에서 실행했다. 이전 `DrainSpots` delegate compile blocker는 해소되었다. |
-| 현재 documentation regression 단독 | 18 통과, 1 실패 | `CommonE2EConfigsHaveCompleteDotNetFeatureMapInventories`가 Config 2의 `SM-G5A`, `SM-G5B` 누락에서 실패했다. 현재 전체 대조에서 Config 2, 3, 7, 10, 11과 12에 누락이 있다. |
+| 현재 documentation regression 단독 | 20/20 통과 | Exact interface 14개 문서의 owner matrix와 Config 1~14 feature-map inventory, 중복·unknown ID 검사가 현재 G0 candidate에서 통과한다. |
+| 현재 sample regression | 134/134 통과 | Scenario canonical ID/name 검사와 common TicTacToe의 Entry Spot destroy ownership 문장을 포함한 sample regression이다. |
 | `verify-framework-doc-contracts.sh` | 중단 | Service wire 검사는 통과했다. C++ member override의 target signature 누락에서 중단되어 `.NET` 문서 전체 CLEAN 증거로 사용할 수 없다. |
 
 `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature`는 이름과 달리 Markdown
@@ -211,7 +227,7 @@ public contract를 비교한 결과다.
 | Preflight gate | Relocate preflight가 actor handoff admission만 기다리고 `_activeOperations` 전체를 기다리지 않는다. | DN-IMP-017 |
 | Actor failure mapping | Capture·restore·store 오류와 commit 뒤 오류를 동일한 `RelocationFailed` 경로로 축약할 수 있다. | DN-IMP-018 |
 | Metrics | `CreateRelocation(...)` 호출이 Actor 경로에만 있고 Spot relocation은 object kind별 metric을 생성하지 않는다. | DN-IMP-014 |
-| Public completion shape | Source `Failed` record에 `IsRetriable`가 있으나 .NET exact interface 문서에는 없다. | DN-IMP-013 |
+| Public completion shape | 이전 source에 `IsRetriable`가 있었으나 G0 candidate는 `OperationId`와 `Kind`만 노출하도록 exact interface와 맞췄다. | DN-IMP-013 |
 
 ## 4. 확인된 implementation gap
 
@@ -519,18 +535,35 @@ fence를 사용할 수 없으면 `Unavailable`을 반환하도록 정한다.
 
 ### DN-IMP-013 — `ZLinkActorJoinCompletion.Failed`의 public shape가 exact interface와 다르다
 
-**판정: contract 선행. Source가 exact interface 문서보다 큰 public record를 제공한다.**
+**이전 판정: contract 선행. Source가 exact interface 문서보다 큰 public record를 제공했다.**
 
 .NET exact interface
 [`06-actors.ko.md`](../../framework/common/spec/server/languages/dotnet/interfaces/06-actors.ko.md)는
 `Failed(OperationId, Kind)`만 정의한다. 실제 source
 `framework/languages/dotnet/src/Zlink.Framework/Contracts/Actors/IZLinkActorContext.cs`는 여기에
-`bool IsRetriable`를 추가하고, `ZLinkDeferredActorJoin`과 sample은 이 값을 사용한다.
+`bool IsRetriable`를 추가하고, `ZLinkDeferredActorJoin`과 sample은 이 값을 사용했다. 이 문장은 이전
+audit의 source 상태를 설명한다.
 
 API snapshot test가 source assembly와 snapshot만 비교하므로 Markdown exact interface가 이 extra field를
 허용하는지 검증하지 않는다. 이 값이 필요한지 여부를 source 사용 사례와 공통 error contract로 먼저 결정한
-뒤, exact interface·guide·package·test를 한 번에 맞춰야 한다. Contract review 전에는 field를 삭제하거나
-새 public overload로 우회하지 않는다.
+뒤, exact interface·guide·package·test를 한 번에 맞춰야 한다.
+
+**G0 candidate 수정 결과 (2026-08-02):**
+
+- `Failed`는 `OperationId`와 `Kind`만 노출하도록 source, API snapshot, contract test를 맞췄다.
+- `ZLinkDeferredActorJoin`은 `RetryAdvice`를 public completion field로 복사하지 않는다. 재시도 여부는
+  오류 종류와 업무 상태, idempotency를 확인하는 caller/application policy가 결정한다.
+- Bingo, TicTacToe, SupportChat sample payload에서 `IsRetriable`를 제거했고, 기존 protobuf field 3은
+  호환성을 위해 reserved로 남겼다. Common server guide도 retry hint를 public completion 계약처럼
+  설명하지 않는다.
+- Sol Medium의 사전 review에서 제기된 `IsRetriable` High finding은 이 candidate에서 처리했다.
+- Exact-interface declaration test는 14개 문서의 public declaration을 Roslyn syntax로 source와 대조하고,
+  constructor는 source declaration과 일대일로 비교한다. Compiled package export는 API snapshot의 전체
+  public surface 비교로 별도 확인하고, type owner uniqueness도 별도 assertion으로 유지한다. 현재 DN-IMP-019~023의
+  known gap을 정확히 보고하며, 이 실패를 G0 PASS로 세지 않는다.
+- `ST-A2` process E2E는 통과했지만 `ST-C3`는 두 번째 source-leave failure subcase에서 기존
+  `join_failed` completion ordering gap으로 실패했다. 이는 DN-IMP-006의 열린 문제이며 G0에서 우회하지
+  않는다.
 
 ### DN-IMP-014 — Object relocation metrics의 종류와 terminal outcome이 구현되지 않았다
 
@@ -607,7 +640,7 @@ concrete `OnActorJoinAsync` method까지 reflection으로 발견한다.
 
 ### DN-IMP-017 — Relocate preflight가 일반 accepted operation을 기다리지 않는다
 
-**판정: 확인. Actor admission fence만 대기하고 host 전체 operation gate를 대기하지 않는다.**
+**판정: 수정 완료. Sol Medium read-only review `CLEAN`.**
 
 [Host Relocate §4](../../framework/common/spec/28-graceful-drain-handoff.ko.md#4-target을-선택하기-전에-확인하는-조건)는
 target을 고르기 전에 Create, Join, Instance placement, session binding, inbound relocation과
@@ -627,6 +660,21 @@ state·descriptor와 admission 경계를 바꾼다.
    source state를 `Serving`으로 유지한다.
 3. Preflight가 끝난 뒤 publish와 seal 사이에 새 accepted operation이 들어가지 않도록 현재 admission
    protocol과 fence를 함께 검증한다.
+
+**2026-08-02 구현 및 검증 evidence**
+
+- `PreflightRetireAsync(...)`는 일반 accepted operation의 zero transition과 actor handoff의 safe 상태를
+  함께 기다린다. operation·actor admission·handoff epoch와 count를 다시 비교한 뒤에만 relocation
+  admission fence와 owner generation을 commit한다.
+- Relocation rollback은 동일 generation의 rollback lease를 획득한 경우에만 실행한다. Shutdown이 owner를
+  넘겨받으면 lease reference를 gate lock 안에서 먼저 제거하고 cancellation은 lock 밖에서 실행하므로,
+  rollback 복원이 Shutdown admission을 다시 열지 않는다. 복원 중 owner가 바뀌거나 post-restore 검증이
+  실패하면 `TeardownFailed`로 fail-closed 처리한다.
+- 추가한 회귀 test는 zero-transition waiter, stale operation baseline, Shutdown takeover, stale fence,
+  invalidated rollback lease와 partial publication failure를 각각 검증한다. 관련 targeted unit test는
+  `6/6 PASS`다.
+- Sol Medium 최종 read-only review는 `Critical 0`, `High 0`, `Medium 0`인 `CLEAN`을 판정했다.
+  formal exact-interface 문서와 public contract diff는 없다. 다음 G1 card로 진행한다.
 
 ### DN-IMP-018 — Actor maintenance relocation의 failure mapping이 구현 단계 정보를 잃는다
 
@@ -652,70 +700,150 @@ failure와 post-commit cleanup failure를 caller가 구분할 수 없다. Actor 
 3. Target rejection과 retryable availability를 terminal failure와 구분하고, source rollback은 commit 전
    결과에만 허용한다.
 
+### DN-IMP-019 — Location runtime status의 exact interface와 source public shape가 다르다
+
+**판정: 충족. Formal exact-interface 문서는 유지하고 source·package의 public shape를 네 개의 필드로 맞췄다.**
+
+[.NET Location 설정과 운영 공개 인터페이스](../../framework/common/spec/server/languages/dotnet/interfaces/08-location-maintenance.ko.md#3-readiness와-운영-query)는
+`ZLinkLocationRuntimeStatus`에 `StoreHealthy`, `OwnerLeaseHealthy`, `LastRefreshAt`과
+`OwnerLeaseRenewedAt`만 정의한다. 현재 source의
+`framework/languages/dotnet/src/Zlink.Framework/Contracts/Locations/Diagnostics.cs`도 이 네 필드만
+public으로 export한다. Store failure E2E와 backend mapping은 readiness와 timestamp를 사용하며, 제거된
+진단 필드는 public 관찰 계약으로 남아 있지 않다.
+
+`Diagnostics.cs`에서 세 개의 public 상태를 제거하고 Store failure 관찰에는 readiness와 timestamp만 사용하도록
+E2E·backend mapping을 맞췄다. Roslyn exact declaration test, source reflection과 package snapshot이 같은
+public shape를 확인한다.
+
+변경한 정식 기준은 없으며, formal exact-interface 파일은 working tree에서 수정하지 않았다.
+
+### DN-IMP-020 — `ZLinkPageRequest`의 첫 페이지 기본값이 exact interface와 다르다
+
+**판정: 충족. Source constructor default를 `100`으로 맞추고, runtime policy는 legacy `0` 입력을 `100`으로
+정규화하며 음수와 상한 초과를 거부한다.**
+
+같은 `.NET Location` exact interface는 `ZLinkPageRequest(PageSize = 100, ContinuationToken = null)`을
+정의한다. `ZLinkPageRequestPolicy`를 runtime owner로 두어 Store와 operational query의 첫 페이지 의미를
+한 곳에서 정규화한다.
+
+Contract test와 `Page_Request_Policy_Normalizes_Default_And_Rejects_Invalid_Sizes` unit test가 default·범위
+계약을 직접 확인한다.
+
+Formal exact-interface 파일은 수정하지 않았다. `0`은 runtime compatibility input으로만 처리하고 public
+constructor의 계약 기본값은 `100`으로 고정한다.
+
+### DN-IMP-021 — Framework error의 retry advice export가 exact interface에 없다
+
+**판정: 충족. `ZLinkRetryAdvice`와 `RetryAdvice`를 internal runtime policy로 제한하고 public exception은
+`ErrorKind`만 export한다.**
+
+[.NET Framework 오류 공개 인터페이스](../../framework/common/spec/server/languages/dotnet/interfaces/10-monitoring-errors.ko.md)는
+application이 오류 종류와 업무 상태를 확인해 다음 operation을 결정하며 public exception에서 retry hint를
+받지 않는다고 명시한다. Source와 package snapshot에서 retry advice export를 제거했고, runtime 내부 호출은
+같은 assembly 또는 friend assembly에서만 사용한다.
+
+Formal exact-interface 파일을 수정하지 않고 source, package snapshot, caller test를 public error contract에
+맞췄다.
+
+### DN-IMP-022 — `ZLinkConfigurationException` public constructor가 exact interface에 없다
+
+**판정: 충족. Constructor를 internal로 제한하고 `Zlink.Framework.AspNetCore`에만 friend access를 부여했다.**
+
+현재 `Zlink.Framework.Contracts.Errors.ZLinkConfigurationException`은 Framework와 ASP.NET Core runtime이
+configuration failure를 만들 때 사용하는 public type이다. Application이 직접 생성하지 못하도록 public
+constructor를 추가하지 않았으며, bidirectional declaration gate와 package export가 이를 확인한다.
+
+### DN-IMP-023 — `ActorRef` constructor parameter name이 exact interface와 source에서 다르다
+
+**판정: 충족. Source를 positional record projection으로 맞춰 constructor와 generated `Deconstruct`의 parameter
+name을 `ActorId`, `ObjectGeneration`, `MeshName`, `NodeRid`로 고정했다.**
+
+`ActorRef`는 named argument를 사용할 수 있는 public constructor이므로 parameter name도 public signature의
+일부다. Positional property의 custom `init` accessor에 기존 validation을 유지했으며 constructor·property
+accessor·generated `Deconstruct` parameter name을 reflection과 API snapshot으로 검증한다.
+
 ## 5. 확인된 regression test와 inventory gap
 
 ### DN-TEST-001 — Markdown exact interface와 export를 직접 비교하지 않는다
 
-**판정: test gap.**
+**판정: 충족.**
 
-현재 public surface test는 reflection 결과와 별도 API snapshot을 비교한다. Exact interface 문서가 바뀌고
-snapshot을 갱신하지 않거나, snapshot과 문서가 서로 다르게 바뀌어도 한쪽 차이를 직접 검출하지 못한다.
+기존 public surface test는 reflection 결과와 별도 API snapshot만 비교했다. Exact interface 문서가 바뀌고
+snapshot을 갱신하지 않거나, snapshot과 문서가 서로 다르게 바뀌어도 한쪽 차이를 직접 검출할 수 없었다.
 
-다음 회귀 test를 추가한다.
+G0 candidate는 다음 두 검증으로 exact interface와 compiled export를 양방향으로 고정했다.
 
-- `ExactInterfaceMarkdown_matches_source_and_package_exports`
-  - `interfaces/*.ko.md`의 C# declaration을 모두 읽는다.
-  - source assembly와 실제 NuGet package export를 각각 비교한다.
-  - nullable, 기본값, generic constraint와 overload를 포함한다.
-- `ExactInterfaceInventory_covers_every_exported_contract_type`
-  - export된 public contract type마다 owner 문서가 정확히 하나인지 확인한다.
+- `DotNetExactInterfaceDeclarations_Match_Source_And_Package_Exports`는 `interfaces/*.ko.md`의 C#
+  declaration을 Roslyn syntax로 읽고 server contract source의 public declaration과 양방향으로 비교한다.
+  Type owner 비교 key는 고정된 expected assembly와 namespace-qualified FQN이며, constructor는 source
+  declaration과 일대일로 비교한다. Provider interface가 소유하는 구현 method는 실제 고정 FQN interface의
+  동일 signature일 때만 연결한다. Record projection과 member referenced-type identity도 compiler projection과
+  Roslyn SemanticModel을 통해 비교하며, 그 밖의 source extra는 실패로 남긴다. Public API snapshot 비교는
+  전체 package member surface가 compiled export와 같은지 계속 확인한다.
+- `DotNetExactInterfaceTypes_Have_A_Single_DocumentOwner`는 문서에서 시작하지 않고 server package의
+  exported public type inventory를 만든 뒤, 각 type이 exact interface 문서 하나에만 소유되는지 확인한다.
+
+현재 full declaration test와 owner test는 exact-interface 문서, source, package export를 모두 통과한다. Formal
+exact-interface 문서는 수정하지 않았고, owner identity는 고정 expected assembly·FQN으로 검증한다.
+
+### DN-TEST-007 — positional record projection을 exact declaration 분모로 확장하지 않는다
+
+**판정: 충족.**
+
+Exact interface는 `record struct Type(Parameter...)`처럼 property와 `Deconstruct`를 compiler projection으로
+표현할 수 있다. Gate는 positional record parameter에서 public constructor, `get; init;` property와 generated
+`Deconstruct(out ... ParameterName)`을 materialize하고, source reflection과 package API snapshot의 같은
+projection을 대조한다.
+
+Source extra를 무조건 제외하지 않으며, projection으로 설명할 수 없는 public member는 계속 실패한다. `ActorRef`
+source는 validation을 유지하는 custom `init` accessor를 사용하고 positional constructor parameter name은
+formal interface와 동일하게 유지한다.
+
+### DN-TEST-008 — member signature의 referenced type FQN canonicalization이 불완전하다
+
+**판정: 충족.**
+
+Exact owner type은 고정 expected assembly·namespace mapping으로 확인하고, member type은 각 source/document의
+Roslyn `SemanticModel`에서 `ITypeSymbol`을 얻어 assembly name과 fully-qualified type identity로 정규화한다.
+따라서 parameter·return·property type이 같은 이름의 다른 namespace로 이동하면 양쪽 identity가 달라져 실패한다.
+
+각 문서와 source project를 별도 compilation으로 binding하고 unresolved 또는 ambiguous type은 test failure로
+처리한다. Record projection test도 같은 semantic resolver를 사용하므로 단순 token 이름 fallback이 없다.
 
 ### DN-TEST-002 — documentation regression이 exact interface 디렉토리를 분모로 사용하지 않는다
 
-**판정: test gap.**
+**판정: 충족.**
 
-`RegressionTests.DotNetContractDocuments_AllExposeRegressionTestSection`과 regression matrix는 과거 top-level
-문서 목록을 중심으로 검사한다. 현재 계약 owner인 `server/languages/dotnet/interfaces/` 전체를 재귀적으로
-분모에 넣지 않는다. 그 결과 exact interface 문서가 추가되거나 삭제되어도 matrix 누락을 안정적으로
-검출하지 못한다.
-
-다음 변경이 필요하다.
-
-- exact interface README의 문서 표에서 inventory를 읽거나 해당 디렉토리를 재귀적으로 열거한다.
-- 각 exact interface 문서가 최소 한 개의 실행 가능한 contract test와 연결되도록 검사한다.
-- `integration-single-process` 같은 계층 이름만 적은 행은 증거로 인정하지 않는다.
+`RegressionTests.DotNetExactInterfaceDocuments_Have_An_Explicit_Regression_Owner`가
+`server/languages/dotnet/interfaces/`의 각 문서를 regression matrix의 실행 가능한 owner와 대조한다.
+`ContractSurfaceCoverage.DotNetExactInterfaceTypes_Have_A_Single_DocumentOwner`는 package exported type이
+정확히 하나의 문서 owner를 갖는지 확인한다. 현재 documentation regression `20/20`과 owner test `2/2`가
+이 분모를 통과한다.
 
 ### DN-TEST-003 — 공통 E2E scenario inventory와 feature-map이 다르다
 
-**판정: test gap이며 현재 test 실패 원인이다.**
+**판정: 충족.**
 
-현재 공통 E2E 문서와 `.NET` feature-map을 같은 정규식으로 전수 대조하면 다음 ID가 빠져 있다.
-
-| Config | Feature-map | 누락 ID |
-|---:|---|---|
-| 2 | `SpotService` | `SM-G5A`, `SM-G5B` |
-| 3 | `PubSub` | `PS-D7A`, `PS-D7B`, `PS-E2A`, `PS-E2B`, `PS-E2C` |
-| 7 | `RuntimeMonitoring` | `MON-A4A`, `MON-A4B`, `MON-D1A`, `MON-D1B` |
-| 10 | `SpotActorTransfer` | `ST-E1B`, `ST-E1C` |
-| 11 | `ObservabilityOps` | `OBS-C9A`, `OBS-C9B` |
-| 12 | `ChannelEgressRouting` | `CH-E2E-04A`, `CH-E2E-04B`, `CH-E2E-04C`, `CH-E2E-07A`, `CH-E2E-07B`, `CH-E2E-07C` |
-
-Feature-map에 상태만 추가해서 닫지 않는다. 현재 working tree의 Actor handoff 변경과 함께 실제 selector,
-runner registration, server evidence와 terminal assertion을 추가해야 한다.
+`RegressionTests.CommonE2EConfigsHaveCompleteDotNetFeatureMapInventories`가 Config 1~14의 공통 E2E
+문서 ID와 `.NET` feature-map ID를 중복·누락·unknown까지 비교한다. 현재 documentation regression에서
+이 검사가 통과하고, `SM-G5A`·`SM-G5B`와 분리된 Config 3·7·10·11·12 ID도 각 feature-map에 존재한다.
+실제 process selector와 evidence가 없는 항목은 inventory gap이 아니라 해당 Config의 E2E implementation
+gap으로 유지한다.
 
 ### DN-TEST-004 — 기존 feature-map의 일부 상태가 live source와 반대다
 
-**판정: inventory gap. 구현 gap으로 사용하지 않는다.**
+**판정: 충족. Feature-map 상태를 live source와 현재 process evidence 수준에 맞춰 보정했다.**
 
 다음 항목은 feature-map 설명과 production source가 일치하지 않는 확인 사례다.
 
-| 기존 기록 | live source |
+| 보정한 기록 | live source와 현재 상태 |
 |---|---|
-| SubmitAdmission `SA-E2E-10`은 ClientServer builder와 runtime이 없다고 기록한다. | `IZLinkClientServerChannelRoleBuilder`와 ClientServer runtime이 존재하고 contract/unit test가 통과한다. |
-| PubSub `PS-D1`은 automatic subscriber와 publisher descriptor가 없다고 기록한다. | `ZLinkAutomaticFanoutSubscriberRuntime`과 `ZLinkFanoutDiscovery`가 descriptor별 connection을 구현한다. |
+| SubmitAdmission `SA-E2E-10`은 `source 구현·process 미검증`으로 기록한다. | `IZLinkClientServerChannelRoleBuilder`와 ClientServer runtime이 존재하고 contract/unit test가 통과한다. 실제 three-process evidence는 아직 없다. |
+| PubSub `PS-D1`은 `source 구현·process 미검증`으로 기록한다. | `ZLinkAutomaticFanoutSubscriberRuntime`과 `ZLinkFanoutDiscovery`가 descriptor별 connection을 구현한다. Automatic actual-process evidence는 아직 없다. |
 
-모든 feature-map 행을 `구현`, `부분`, `미구현` 가운데 하나로 다시 판정한다. Source type의 존재만으로
-`구현`으로 바꾸지 않는다. Scenario의 모든 관찰 조건을 test가 직접 확인할 때만 `구현`으로 바꾼다.
+Source type의 존재만으로 `구현`으로 바꾸지 않고, scenario의 모든 관찰 조건을 process test가 직접 확인할
+때만 `구현`으로 판정한다. `SA-E2E-10`의 process evidence는 DN-E2E-IMP-015가, `PS-D1`의 automatic
+fanout evidence는 DN-E2E-IMP-006이 소유한다.
 
 ### DN-TEST-005 — 중앙 regression matrix의 여러 행에 실행 가능한 test가 없다
 
@@ -762,8 +890,8 @@ feature-map, aggregate runner를 대조한 결과다. 이름이나 source type�
 `framework/doc/framework/common/e2e/config-14-instance-spot.ko.md`는 `IS-E2E-01`부터
 `IS-E2E-36`까지 cold activation, concurrent first call, owner process 종료 뒤 takeover 금지,
 generation 경계, 정상 relocation, close/reactivate, store outage, capacity conflict, deadline과
-handler capability를 요구한다. 그러나 `framework/languages/dotnet/e2e/`에는 `InstanceSpot` role
-server·client·feature-map 디렉토리와 runner가 없다.
+handler capability를 요구한다. 현재 `framework/languages/dotnet/e2e/InstanceSpot/feature-map.ko.md`는
+전체 ID inventory를 갖지만 role server·client와 actual-process runner가 없다.
 
 **수정 목록**
 
@@ -780,8 +908,8 @@ server·client·feature-map 디렉토리와 runner가 없다.
 **판정: 확인.**
 
 `framework/languages/dotnet/e2e/run_e2e_all.sh`의 `CONFIGS`에는 `ChannelEgressRouting`과
-`InstanceSpot`이 없다. 따라서 개별 디렉토리나 feature-map이 추가되어도 현재 `all` 결과는 공통 E2E
-전체를 대표하지 않는다.
+`InstanceSpot`이 없다. Config 12 feature-map과 Config 14 `InstanceSpot/feature-map.ko.md`는 존재하지만
+각 role process runner가 준비되지 않았으므로 현재 `all` 결과는 공통 E2E 전체를 대표하지 않는다.
 
 **수정 목록**
 
@@ -793,23 +921,26 @@ server·client·feature-map 디렉토리와 runner가 없다.
 
 #### DN-E2E-IMP-003 — 공통 scenario ID와 .NET selector/feature-map의 분할이 맞지 않는다
 
-**판정: 확인.**
+**판정: 확인. Inventory는 충족하고 process selector/evidence가 남아 있다.**
 
-현재 documentation regression은 Config 2의 `SM-G5A`, `SM-G5B` 누락에서 중단되며, 전체 inventory를
-끝까지 대조하면 다음 ID도 실제 map 또는 selector와 일치하지 않는다.
+현재 documentation regression `20/20`은 Config 1~14의 공통 문서와 feature-map에 대해 duplicate,
+missing, unknown ID를 검사한다. `SM-G5A`, `SM-G5B`, `PS-D7A`~`PS-E2C`, `MON-A4A`~`MON-D1B`,
+`ST-E1B`·`ST-E1C`, `OBS-C9A`·`OBS-C9B`, `CH-E2E-04A`~`CH-E2E-07C`는 현재 각 feature-map에
+존재한다. 남은 문제는 ID inventory가 아니라 exact selector, role server와 actual-process evidence다.
 
-| Config | 누락 또는 aggregate로만 기록된 ID |
+| Config | 현재 남은 process gap |
 |---|---|
-| 2 SpotService | `SM-G5A`, `SM-G5B` |
-| 3 PubSub | `PS-D7A`, `PS-D7B`, `PS-E2A`, `PS-E2B`, `PS-E2C` |
-| 7 RuntimeMonitoring | `MON-A4A`, `MON-A4B`, `MON-D1A`, `MON-D1B` |
-| 10 SpotActorTransfer | `ST-E1B`, `ST-E1C`, `ST-F3A` |
-| 11 ObservabilityOps | `OBS-C9A`, `OBS-C9B` |
-| 12 ChannelEgressRouting | `CH-E2E-04A`, `CH-E2E-04B`, `CH-E2E-04C`, `CH-E2E-07A`, `CH-E2E-07B`, `CH-E2E-07C` |
+| 2 SpotService | `SM-G5A`·`SM-G5B`의 독립 selector와 actual-process evidence |
+| 3 PubSub | automatic fanout, liveness와 observer matrix의 process evidence |
+| 7 RuntimeMonitoring | split selector와 role server evidence |
+| 10 SpotActorTransfer | `ST-E1B`·`ST-E1C`·`ST-F3A`의 exact selector와 process evidence |
+| 11 ObservabilityOps | `OBS-C9A`·`OBS-C9B`의 topology별 process evidence |
+| 12 ChannelEgressRouting | split selector, role server와 central runner 연결 |
 
 **수정 목록**
 
-1. 공통 문서의 분할 ID를 feature-map에 정확히 한 번 기록한다.
+1. 공통 문서와 feature-map의 split ID inventory는 현재 regression으로 고정되어 있으므로 다시 누락으로
+   표시하지 않는다.
 2. `Client/Program.cs`, scenario dispatch와 `run_e2e.sh`가 같은 ID를 선택하도록 연결하고, aggregate
    alias를 쓰는 경우 어떤 분할 ID를 포함하는지 명시한다.
 3. ID가 source-only, partial 또는 diagnostic-only이면 `구현`으로 표시하지 않고 필요한 process evidence를
@@ -820,9 +951,10 @@ server·client·feature-map 디렉토리와 runner가 없다.
 **판정: 확인.**
 
 `LocationMessaging/feature-map.ko.md`의 `RM-A7`은 Actor와 Spot이 같은 global ID를 동시에 예약할 때
-공유 실패 terminal과 exactly-once callback을 요구하지만 role server와 selector가 없다. 같은 map의
-`RM-C10`은 stable type count, encoded bytes와 Snapshot adapter capability를 적지만 현재 공통 Config 1
-scenario에 해당 계약이 없고, 다른 언어 구현만으로 public contract를 만들 수 없다.
+공유 실패 terminal과 exactly-once callback을 요구하지만 role server와 selector가 없다. `RM-C10`은 현재
+Config 1 공통 문서와 feature-map의 active inventory에 없으므로 현재 E2E 누락 ID로 세지 않는다. 해당
+capability가 public contract가 되어야 한다면 다른 언어 구현만으로 추가하지 않고 별도 spec/draft 검토를
+거친다.
 
 **수정 목록**
 
@@ -835,18 +967,18 @@ scenario에 해당 계약이 없고, 다른 언어 구현만으로 public contra
 
 **판정: 확인.**
 
-`SpotService/feature-map.ko.md`에서 `SM-A9`, `SM-A10`, `SM-A12`, `SM-A13`, `SM-B0A`, `SM-B10`,
-`SM-B11`이 누락되어 있고, `SM-C6`은 result-free one-way publish 계약과 맞지 않는 이전
-`ZLinkPublishResult`/partial acceptance 가정을 사용한다. `SM-G5A/B`도 공통 문서의 분할 ID로 등록되지
-않았다.
+`SpotService/feature-map.ko.md`에는 `SM-A9`, `SM-A10`, `SM-A12`, `SM-A13`, `SM-B0A`, `SM-B10`,
+`SM-B11`, `SM-G5A`, `SM-G5B`가 현재 `미구현`으로 기록되어 있고, `SM-C6`은 result-free one-way
+publish 계약에 맞춘 `부분 구현`으로 기록되어 있다. Inventory는 존재하지만 각 항목의 role server,
+selector와 actual-process evidence가 없다.
 
 **수정 목록**
 
-1. 누락된 operation을 실제 role server endpoint와 독립 selector로 추가하고, success·reject·timeout·
+1. feature-map에 이미 있는 미구현 operation을 실제 role server endpoint와 독립 selector로 연결하고, success·reject·timeout·
    cancellation의 client result와 server terminal evidence를 함께 남긴다.
 2. SM-C6은 제거된 publish result API를 되살리지 말고, 현재 one-way publish의 backpressure와 최종
    delivery 관찰 조건으로 시나리오를 다시 연결한다.
-3. SM-G5를 G5A/G5B의 정확한 조건으로 분리해 feature-map, client와 runner에 반영한다.
+3. feature-map에 이미 분리된 `SM-G5A`·`SM-G5B`를 exact client selector와 runner evidence에 연결한다.
 
 #### DN-E2E-IMP-006 — Config 3의 automatic fanout, liveness와 observer matrix가 process에서 검증되지 않는다
 
@@ -917,14 +1049,15 @@ cancellation/buffer lifetime와 atomic capacity vector 조건은 누락되어 �
 
 **판정: 확인.**
 
-공통 Config 7의 `MON-A4A/B`, `MON-D1A/B`가 feature-map과 selector에 없고, `MON-A6`의 placement
+공통 Config 7의 `MON-A4A/B`, `MON-D1A/B`는 feature-map에 존재하고 aggregate scenario class도 있다.
+현재 없는 것은 각 split ID의 독립 selector와 fresh role server/process evidence다. `MON-A6`의 placement
 snapshot·reservation/commit/release·capacity reject process evidence도 없다. `MON-B1/B2`는 publish
 monitoring 부재와 local/zero target 일부만 확인하며 blocked+normal target, rollback/no-retry와 message-flow
 trace 조건을 확인하지 않는다.
 
 **수정 목록**
 
-1. split ID를 exact selector와 feature-map에 추가한다.
+1. 이미 존재하는 split ID를 exact selector와 role server 실행 경로에 연결한다.
 2. placement role server가 snapshot, reservation, commit/release와 capacity reject를 실제로 관찰하게
    한다.
 3. B1/B2에 blocked·normal target, rollback/no-retry와 message-flow trace를 포함한 terminal assertion을
@@ -969,13 +1102,14 @@ diagnostic-only로 분류되어 있다.
 
 **판정: 확인.**
 
-공통 Config 11은 `OBS-C9A`(Automatic topology)와 `OBS-C9B`(Manual topology)로 분리되어 있으나
-feature-map과 `Client/Program.cs`는 `OBS-C9`와 `OBS-C9-MANUAL` alias를 사용한다. OBS-A5와 OBS-C1~C8,
-C10~C12도 source implemented·process unverified이며, C9는 source partial·process 미검증이다.
+공통 Config 11은 `OBS-C9A`(Automatic topology)와 `OBS-C9B`(Manual topology)로 분리되어 있고
+feature-map에도 두 ID가 존재한다. 다만 `Client/Program.cs`는 `OBS-C9`와 `OBS-C9-MANUAL` aggregate alias를
+사용한다. OBS-A5와 OBS-C1~C8, C10~C12도 source implemented·process unverified이며, C9는 source
+implemented·process 미검증이다.
 
 **수정 목록**
 
-1. C9A/C9B와 기존 alias의 관계를 명시하고 exact ID를 inventory와 selector에 연결한다.
+1. C9A/C9B와 기존 aggregate alias의 관계를 명시하고 exact ID를 selector와 runner 결과에 연결한다.
 2. readiness gate, concurrent shutdown과 각 observability output을 실제 role process에서 수집하고
    source-only 상태를 `구현`으로 올리지 않는다.
 
@@ -983,14 +1117,14 @@ C10~C12도 source implemented·process unverified이며, C9는 source partial·p
 
 **판정: 확인.**
 
-공통 Config 12는 `CH-E2E-04A/B/C`와 `CH-E2E-07A/B/C`를 요구하지만 feature-map과 client는 각각
-aggregate `CH-E2E-04`, `CH-E2E-07`만 기록한다. Accepted drain/shutdown/new RID restart, protocol
+공통 Config 12는 `CH-E2E-04A/B/C`와 `CH-E2E-07A/B/C`를 요구하고 feature-map에도 split ID가 존재한다.
+하지만 client selector는 각각 aggregate `CH-E2E-04`, `CH-E2E-07`만 사용한다. Accepted drain/shutdown/new RID restart, protocol
 unsolicited injection, known-but-not-ready `Unavailable`, STREAM, drain, timeout/cancel/disconnect,
 generation/late reply와 topology count assertion도 부분 상태다. 중앙 runner에는 Config 12 자체가 없다.
 
 **수정 목록**
 
-1. split ID를 exact selector와 scenario file에 추가하고 aggregate alias가 숨기지 않도록 한다.
+1. 이미 존재하는 split ID를 exact selector와 scenario file에 연결하고 aggregate alias가 결과에서 숨기지 않도록 한다.
 2. 각 partial row에 role server endpoint, client-visible result, route/ACK/generation/terminal evidence를
    추가한다. protocol unsolicited injection은 raw frame 우회가 아니라 허용된 test transport 경계에서
    검증한다.
@@ -1001,7 +1135,8 @@ generation/late reply와 topology count assertion도 부분 상태다. 중앙 ru
 **판정: 확인.**
 
 `SubmitAdmission/feature-map.ko.md`는 `SA-E2E-01`, 02, 03, 05, 07, 08, 09, 20과 `SA-REG-04`를
-부분으로 기록하고, SA-E2E-04, 06, 10~13, 15~19는 누락으로 기록한다. 공통 계약이 요구하는 RID,
+부분으로 기록하고, `SA-E2E-04`, 06, 11~13, 15~19를 미구현으로 기록한다. `SA-E2E-10`은 source
+구현·process 미검증으로 기록한다. `SA-E2E-11~13`, `15~19`는 미구현으로 기록한다. 공통 계약이 요구하는 RID,
 ChannelName, ClientServer, Spot, Actor, multicast, Session/STREAM, reply token, generation,
 timeout/shutdown의 pending admission gate와 observer 조건을 polling·retry로 대체해서는 안 된다.
 
@@ -1059,27 +1194,82 @@ host를 만들고 `AddZLinkFramework`, `IZLinkRouteMeshRuntime`, `IZLinkLocation
 |---|---|
 | ClientServer public surface와 runtime | Builder, discovery, local·remote selection, liveness와 monitoring 구현 및 contract/unit test가 존재한다. |
 | Automatic classic fanout | 전용 publisher descriptor, automatic subscriber connection과 discovery runtime이 존재한다. Process E2E coverage는 별도 test gap으로 재검사한다. |
-| Framework error surface | 13개 `ZLinkFrameworkErrorKind`와 현재 exact interface의 `RetryAdvice`가 contract test와 일치한다. |
+| Framework error surface | 13개 `ZLinkFrameworkErrorKind`는 contract test와 일치한다. `RetryAdvice`는 internal runtime policy로 제한하고 public exception에는 export하지 않는다. `Failed` completion에도 retry hint를 넣지 않는다. |
 | 알 수 없는 non-JSON content type | `EnvelopeCodecTests`가 decode 전에 거부하는 경로를 검증한다. |
-| API snapshot | Source assembly와 고정 API snapshot 72개 contract test가 통과한다. Markdown 직접 비교는 DN-TEST-001에서 보강한다. |
+| API snapshot | Source·package assembly와 고정 API snapshot assertion이 통과한다. Markdown exact-interface는 DN-TEST-001의 양방향 gate가 별도로 확인한다. |
 
 ## 7. 작업 순서
 
 G0~G6의 각 항목은 2.1절의 card review gate를 독립적으로 통과해야 한다. 한 단계 안에 여러 gap이 있어도
 Luna가 동시에 구현하지 않고 card 하나씩 완료한다. G1~G4에서 lifecycle, ownership, public contract 또는
-module 경계를 바꾸기 전에는 Sol High 사전 review를 먼저 통과한다. G7의 마지막 audit은 이전 card를
-검토하지 않은 새 Sol High reviewer가 전체 범위를 read-only로 검사한다.
+module 경계를 바꾸기 전에는 Sol Medium 사전 review를 먼저 통과한다. G7의 마지막 audit은 이전 card를
+검토하지 않은 새 Sol Medium reviewer가 전체 범위를 read-only로 검사한다.
 
 ### G0 — audit 기준과 회귀 분모를 먼저 고친다
 
 1. 이 ledger의 candidate commit과 working tree manifest를 저장한다.
-2. DN-TEST-001과 DN-TEST-002를 구현해 exact interface 전체를 audit 분모로 고정한다.
-3. DN-TEST-004에 해당하는 feature-map 전체를 source와 test로 다시 판정한다.
+2. DN-TEST-001과 DN-TEST-002 구현을 완료해 exact interface 전체를 audit 분모로 고정한다.
+3. DN-TEST-004에 해당하는 feature-map 전체를 source와 test로 다시 판정하고 상태를 보정한다.
 4. DN-IMP-013의 `Failed` exact interface shape를 contract review에서 확정한다.
 5. 발견한 차이는 이 ledger에 추가한 뒤 다음 구현 단계로 이동한다.
 
 완료 조건은 exact interface 파일, public export와 regression evidence 사이에 소유자가 없는 항목이 0개인
 상태다.
+
+#### G0 실행 기록 — 2026-08-02
+
+- 기준은 `HEAD 3291e338f4f700484780560cd81345a647ef0948`이다. Working tree는 이미 dirty였으므로
+  사용자 작업과 다른 ledger 변경을 reset하거나 checkout하지 않았다. 이번 G0 candidate에서 직접 확인한
+  범위는 `Failed` contract, join failure sample/guide, exact-interface owner inventory, Config 1~14
+  feature-map inventory, package snapshot과 관련 regression test다.
+- [수정 전 증거] 기존 Contract test는 `dotnet test framework/languages/dotnet/tests/Zlink.Framework.ContractTests/Zlink.Framework.ContractTests.csproj --no-restore --logger 'console;verbosity=minimal'`로 `74/74 PASS`였다. Roslyn full declaration test를 추가한 직후에는 `73/75 PASS`였고, DN-IMP-019~023과 DN-TEST-007/008의 gap을 발견했다. 이 결과는 현재 상태가 아니라 수정 전 기준이다.
+- [수정 전 증거] Documentation regression은 `dotnet test framework/languages/dotnet/tests/Zlink.Framework.UnitTests/Zlink.Framework.UnitTests.csproj --no-restore --filter 'FullyQualifiedName~Documentation.RegressionTests' --logger 'console;verbosity=minimal'`로 `20/20 PASS`였다.
+- [수정 전 증거] Bingo, TicTacToe, SupportChat sample build는 각각 `0 warning, 0 error`였다.
+- [수정 전 증거] `framework/languages/dotnet/scripts/verify_packaged_contract.sh`는 9개 package, source/package public API,
+  clean consumer와 standalone HTTP consumer 검사를 모두 통과했고 당시 public API hash는
+  `2be6d1b704046b12f4190809e10a9527d9c73479ddce5c377f4bf554c6f92e59`였다.
+- `SpotActorTransfer/run_e2e.sh st-a2`는 PASS다. Log는
+  `framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260802-033146-2144048`에 있다.
+- `st-c3` 첫 실행은 Redis lease startup `TaskCanceledException`으로 readiness에 도달하지 못했다.
+  재실행은 실제 source-leave failure branch까지 도달했지만 `join_failed` marker를 기다리는 기존
+  completion ordering 문제로 실패했다. 두 번째 log는
+  `framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260802-033252-2146189`에 있다. 이 결과는
+  G0 PASS로 세지 않으며 DN-IMP-006의 후속 evidence로 남긴다.
+- C++ common guide의 `is_retriable` 예제는 C++ exact interface의 `error_kind`를 전달하고 application이
+  업무 상태와 idempotency를 확인하도록 수정했다. RuntimeMonitoring의 MON-A4A/B·MON-D1A/B와
+  ObservabilityOps의 OBS-C9A/B는 source selector가 존재하므로 `source 구현·process 미검증`으로 보정했다.
+- [수정 전 기록] `git diff --check`는 통과했다. Full declaration test가 발견한 DN-IMP-019~023·DN-TEST-007/008과
+  `ST-C3`의 열린 조건 때문에 당시 G0 card는 닫지 않고 Sol High post-review를 기다렸다.
+- 후속 수정에서 formal exact-interface 문서는 변경하지 않고 DN-IMP-019~023을 source·runtime policy·test·package
+  snapshot에 반영했다. `DotNetExactInterfaceDeclarations_Match_Source_And_Package_Exports`와
+  `DotNetExactInterfaceTypes_Have_A_Single_DocumentOwner`는 각각 `2/2 PASS`가 되었다. Record projection은
+  public `init` accessor와 PascalCase `Deconstruct` parameter name까지 reflection·snapshot으로 확인한다.
+- DN-TEST-008의 resolver는 source project와 exact-interface document를 별도 Roslyn compilation으로 binding하고,
+  `ITypeSymbol`의 assembly identity와 fully-qualified name을 비교한다. unresolved 또는 ambiguous type은 fallback
+  없이 실패한다.
+- [수정 전 기록] Sol High post-review는 `Critical 0`, `High 2`(`DN-TEST-007`, `DN-TEST-008`), Medium 4건을 판정했다. 두 High는
+  위 gate 보강으로 수정했으며, common/.NET backpressure guide의 retry hint 예제와 feature-map 표 정리는 반영했다.
+- 첫 Sol Medium read-only review는 `Critical 0`, `High 0`, `Medium 3`으로 `NOT CLEAN`을 판정했다. SubmitAdmission·PubSub
+  feature-map의 source/process 상태를 보정하고, DN-TEST-002~004의 현재 판정과 과거 evidence 표기를 갱신했다.
+  전체 UnitTests는 상세 logger로 실제 marker contract failure를 식별해 root source를 수정한 뒤 `1388/1388 PASS`가
+  되었다.
+- 새 package verifier는 9개 package, source/package public API, clean consumer와 standalone HTTP consumer를 통과했고
+  public API hash는 `230512e60b75dd29d94dda48a53c62145fb16d3b01280fd92ff01fb56a8b01a5`다.
+- 후속 sample regression은 feature-map의 `SM-G5A`·`SM-G5B` 분리에 맞춰 scenario 파일을
+  `SmG5AAndG5BPlacementScenario`로 정렬하고, TicTacToe 문서에 Entry Spot의 `destroyActor` 소유 문장을
+  복원한 뒤 `134/134 PASS`가 되었다. 이 변경은 formal exact-interface 문서를 수정하지 않았다.
+- 두 번째·세 번째 Sol Medium read-only review는 각각 ledger의 stale inventory와 selector 상태를 추가로
+  정리하도록 `NOT CLEAN`을 판정했다. Feature-map inventory와 aggregate selector를 분리하고, 마지막 한 줄의
+  `SA-E2E-10` 상태 충돌까지 수정했다.
+- 최종 Sol Medium read-only review는 `CLEAN`을 판정했다. Formal exact-interface diff 0, `git diff --check`
+  통과와 fresh Contract/Unit/Documentation/Sample/Package evidence를 확인했으며, 남은 ST-C3와 Config별
+  process selector gap은 G1 이후 열린 작업으로 유지한다.
+- 같은 candidate의 초기 90초 실행은 hosting bind·negative configuration 로그 뒤 `timeout 124`로 끝났고,
+  normal logger 재실행에서 `ActorHandoffTests.MessageFollowOperationalMarkers_DoNotExposeObjectIdentityOrGeneration`
+  failure를 식별했다. `ZLinkActorHandoffState`가 `message_follow_registered` marker에 actor identity와
+  generation을 추가한 것이 원인이었으며, object identity를 포함하지 않도록 root source를 수정했다.
+  해당 class는 `63/63 PASS`, fresh 전체 UnitTests는 `1388/1388 PASS`(2분 51초)로 종료했다. Negative test의
+  예상된 host-start error log와 test result를 구분해 기록한다.
 
 ### G1 — Host relocation과 Actor Join relocation의 계약 경계를 바로잡는다
 
@@ -1107,6 +1297,77 @@ module 경계를 바꾸기 전에는 Sol High 사전 review를 먼저 통과한�
 
 완료 조건은 정상 경로의 단계 순서, commit 전 rollback, commit 뒤 failure, deadline, concurrent shutdown과
 process 종료 경계가 spec과 일치하는 상태다.
+
+#### G1 사전 검토 — DN-IMP-017 설계 경계
+
+- 첫 Sol Medium 사전 review는 `NOT CLEAN`이었다. 기존 owner를 유지하는 설계 A는 권고됐지만,
+  initial operation wait와 최종 fence 사이의 workload 변경을 검출하지 못하고, concurrent Shutdown이
+  relocation rollback 뒤에 admission을 다시 열 수 있다는 High 2건과 shared deadline/caller cancellation을
+  구분해야 한다는 Medium 1건이 남았다.
+- 구현 전 보강안은 operation·actor admission·actor handoff의 epoch를 함께 기록하고, target preflight 성공
+  뒤 고정된 lock order로 relocation owner generation을 가진 fence를 원자적으로 설정하는 방식이다.
+  epoch가 바뀌었거나 counter가 0이 아니면 plan을 폐기하고 deadline 안에서 전체 preflight를 다시 수행한다.
+- rollback은 현재 relocation owner generation일 때만 Serving admission을 복원한다. Shutdown이 owner를
+  넘겨받은 뒤에는 admission을 다시 열지 않고 `ShutdownRequested` 경계로 수렴한다. caller cancellation은
+  shared relocation을 취소하지 않으며, fence wait에는 shared absolute deadline과 Shutdown token만 사용한다.
+- 두 번째 Sol Medium review는 `NOT CLEAN`으로, Serving admission이 열린 상태에서 기존
+  `_operationsDrained`를 기다리면 zero transition이 signal되지 않는 High 1건과 active actor lease를
+  rollback에서 허용하지 않아야 한다는 Medium 1건을 판정했다. 따라서 일반 zero-transition waiter를
+  Shutdown waiter와 분리하고, owner-aware reopen은 actor admission count 0과 handoff safe를 함께 요구한다.
+- 세 번째 Sol Medium review는 `Critical 0`, `High 0`, `Medium 0`으로 `CLEAN`을 판정했다. 구현 검증은
+  zero-transition waiter, 모든 routed admission의 동일 lock order, epoch 증가 지점, preflight cancellation
+  reason 전파와 Shutdown ownership takeover를 직접 회귀 검사해야 한다.
+
+#### G1 사전 검토 — DN-IMP-011과 DN-IMP-010 의존성
+
+- DN-IMP-011의 첫 Sol Medium 사전 review는 `NOT CLEAN`이었다. executor에서 deadline을 새로 만들면
+  MaintenanceRuntime의 preflight와 descriptor publication에서 이미 사용한 시간이 사라지는 High finding이
+  있었다. Relocate 시작 시 고정한 absolute deadline을 preflight부터 executor, Spot unit과 callback까지
+  그대로 전달해야 한다.
+- 같은 review에서 DN-IMP-010의 post-commit result 손실이 DN-IMP-011의 선행 조건으로 확인됐다. 현재
+  `ZLinkSpotNodeCatalog`가 scheduler의 post-commit 예외를 `false`로 축약하므로, deadline만 전달하면
+  target authority를 유지해야 하는 `RelocationFailed`와 committed count를 잃는다. DN-IMP-010을 먼저
+  unit result와 commit phase owner로 고정한 뒤 DN-IMP-011을 구현한다.
+- pre-commit abort와 post-commit authority-safe cleanup은 deadline token과 별도의 bounded
+  terminalization 경계를 사용해야 한다. detached Message Follow의 실제 duration과 activation disposal은
+  host relocation deadline이 아니라 runtime detached-task owner와 Shutdown token이 관리한다.
+
+#### G1 사전 검토 — DN-IMP-010과 DN-IMP-007 의존성
+
+- DN-IMP-010의 첫 Sol Medium 사전 review는 `NOT CLEAN`이었다. typed unit result 자체는 예외 wrapper보다
+  적합하지만, `StageAsync` 반환을 authority commit의 확정 지점으로 사용할 수 없다는 High finding이
+  있었다. ACK를 관찰하지 못한 실패는 `Unknown` commit knowledge로 두고 exact aggregate fence와 Location
+  authority를 재확인해야 한다.
+- committed unit이 하나라도 있으면 현재 executor와 MaintenanceRuntime이 force-stop/Error로 끝난다.
+  그러나 Host Relocate §10은 committed target owner를 유지하고 미commit workload만 복원한 뒤
+  `Blocked/RelocationFailed`와 `Serving`을 유지하도록 한다. 이 High finding 때문에 DN-IMP-007의
+  partial-commit state transition을 먼저 구현한다.
+- Catalog의 parallel `Task.WhenAll`은 한 unit 예외가 다른 unit의 committed 결과를 잃게 할 수 있다. 결과는
+  `Pending`·`Completed`·`TerminalFailure` outcome과 `NotCommitted`·`Committed`·`Unknown` commit
+  knowledge를 조합하되 factory로 유효한 상태만 만들고, 모든 unit 결과를 회수한 뒤 count와 terminal
+  reason을 합산해야 한다.
+
+#### G1 사전 검토 — DN-IMP-007 partial-commit state transition
+
+- DN-IMP-007의 첫 Sol Medium 사전 review는 `NOT CLEAN`이었다. 정상적인 concurrent Shutdown takeover를
+  `TeardownFailed`로 분류하면 §11과 다르므로, Shutdown owner가 확인되면 Serving 복원 없이
+  `Blocked/ShutdownRequested`로 종료해야 한다. Stale generation, owner 불명과 descriptor 복원 불일치만
+  `TeardownFailed`로 남긴다.
+- Admission을 다시 열기 전에 모든 미commit unit의 source dispatch·queue·session route 복원이 끝났다는
+  terminalization barrier가 필요하다. `CommittedUnitCount`와 `BlockedReason`만으로는 이 조건을 증명할 수
+  없으므로 DN-IMP-010 result가 terminalization 완료를 함께 소유해야 한다.
+- executor/runtime이 descriptor와 admission 복원을 소유하고 MaintenanceRuntime은 결과를 받아 host state와
+  public `Blocked` result만 갱신한다. `ForceReason`와 `BlockedReason`을 nullable 두 개로 병렬 표현하지
+  않고, `Completed`·`Blocked`·`ForceStop` 중 하나만 허용하는 internal result factory를 사용한다.
+
+- 구현 후 Sol Medium review는 `NOT CLEAN`으로, production `ZLinkRelocationWorkloadCoordinator`가
+  `SourceTerminalized`를 실제 Spot/Actor result에서 만들지 않아 성공 partial restore가 test fixture에서만
+  가능하다는 High finding을 판정했다. 이 wiring과 aggregate terminal reason 보존은 DN-IMP-010에서
+  처리한다.
+- 같은 review는 full rollback의 lease 획득·restore·reopen 경합에서 Shutdown takeover가
+  `TeardownFailed`로 분류될 수 있다는 High finding을 판정했다. lease ownership loss를
+  `Blocked/ShutdownRequested`로 분리하는 수정은 반영했으며, 실제 gate와 executor를 함께 사용하는
+  회귀 검사를 추가해야 한다. DN-IMP-010의 production result wiring이 끝난 뒤 DN-IMP-007을 다시 review한다.
 
 ### G2 — STREAM configuration 계약을 완성한다
 
@@ -1198,7 +1459,7 @@ repo-wide blocker를 결과에서 분리한다.
 | `DrainCoordinatorTests.RetireFailureAfterCommitForceStopsWithDurableProgress` | Force-stop 기대를 제거한다. Commit한 unit은 target owner로 유지하고 uncommitted source workload만 복원하며 coordinator가 `DrainBlocked(RelocationFailed)`와 ready 상태를 반환해야 한다. |
 | `MaintenanceRuntimeTests.Preflight_blocker_keeps_the_host_serving` | Current status에 일반 `Blocked` 결과를 저장하지 않는 assertion은 유지하되 observer가 transient terminal status를 받는 assertion을 추가한다. |
 | `DrainCoordinatorTests`의 `DrainSpots` fixture | 새 `(relocate, hostShutdown, cancellationToken)` delegate shape와 Shutdown·Relocate close-reason assertion을 유지한다. 현재 targeted 248개가 통과했으며 source delegate 변경 때 함께 재검증한다. |
-| `ZLinkActorJoinCompletion` contract/snapshot test | `Failed`의 `IsRetriable` field를 exact interface와 합의한 최종 shape로 고정한다. |
+| `ZLinkActorJoinCompletion` contract/snapshot test | `Failed`가 `OperationId`와 `Kind`만 노출하는 exact interface 합의 shape를 고정한다. |
 | Actor Join admission test | Target callback이 caller deadline 뒤에는 실행되지 않고 reservation이 durable cleanup으로 남지 않는지 검증한다. |
 | Entry Spot Join test | Entry target descriptor가 없어도 admission reject가 아니라 membership commit을 수행하는지 검증하고 concrete method reflection도 차단한다. |
 | Actor relocation failure test | Capture·Restore·Store failure를 commit phase와 함께 주입해 public `Failed.Kind`와 host reason mapping을 검증한다. |
@@ -1235,7 +1496,7 @@ repo-wide blocker를 결과에서 분리한다.
 | DN-REG-026 | unit | Spot 또는 Actor가 owner commit 뒤 실패해도 target authority는 유지되고 source의 미commit workload와 host `Serving` 상태만 복원된다. Source rollback과 runtime force-stop은 발생하지 않는다. |
 | DN-REG-027 | integration-single-process | Host의 짧은 absolute deadline이 여러 Spot phase, target reservation, lifecycle callback과 source cleanup 전체에 적용되고 만료 시 정확한 reason을 반환한다. |
 | DN-REG-028 | unit | Actor Join target reservation의 `TargetUnavailable`은 `Unavailable`로, 존재하지 않는 requested Spot은 `NotFound`로 반환된다. |
-| DN-REG-029 | contract | `ZLinkActorJoinCompletion.Failed`의 `IsRetriable` field가 exact interface·source·package·sample 사이에서 합의된 shape와 일치한다. |
+| DN-REG-029 | contract | `ZLinkActorJoinCompletion.Failed`가 `OperationId`와 `Kind`만 노출하며 exact interface·source·package·sample 사이에서 같은 shape를 사용한다. |
 | DN-REG-030 | unit | Actor maintenance, User Spot aggregate, PerActor shell과 Instance Spot relocation이 object kind별 started/completed/duration/bytes와 `completed|aborted|failed|shutdown` outcome을 한 번씩 기록한다. |
 | DN-REG-031 | process E2E | `.Timeout(...)`으로 고정한 Actor Join deadline이 target admission callback과 capacity reservation보다 먼저 만료되며 target에 stale pending reservation을 남기지 않는다. |
 | DN-REG-032 | integration-single-process | Local·cross-node Entry Spot Join은 Entry `OnActorJoin` callback 없이 Accepted가 되고, target `OnJoinedActor`와 source `OnLeaveActor`만 정해진 순서로 실행된다. |
@@ -1254,19 +1515,19 @@ repo-wide blocker를 결과에서 분리한다.
 - [ ] DN-IMP-002를 수정하고 DN-REG-009~010을 통과했다.
 - [ ] DN-IMP-003의 exact interface를 먼저 확정하고 source와 package를 맞췄다.
 - [ ] DN-IMP-004~018을 수정하고 DN-REG-014~034를 통과했다.
-- [ ] DN-TEST-001~005를 모두 닫았다.
+- [x] DN-TEST-001~004와 DN-TEST-007~008을 모두 닫았다.
 - [x] DN-TEST-006의 이전 compile blocker를 확인하고 현재 targeted test 248/248 통과를 기록했다.
 - [ ] DN-E2E-IMP-001~017을 수정하고 DN-REG-035~040을 통과했다.
 - [ ] Config 1~14의 공통 scenario와 `.NET` feature-map·selector·aggregate runner 차이가 0개다.
 - [ ] Contract, unit, provider, connector, HTTP client와 sample regression이 모두 통과했다.
 - [ ] 실제 NuGet package export가 source와 exact interface에 일치한다.
 - [ ] Process E2E 전체에서 `부분`이나 `미구현`으로 남은 항목은 이 ledger의 열린 gap과 일대일로 연결된다.
-- [ ] 모든 구현 card가 Luna Max 구현, Sol High read-only review, finding 수정과 재검토 gate를 통과했다.
+- [ ] 모든 구현 card가 Luna Max 구현, Sol Medium read-only review, finding 수정과 재검토 gate를 통과했다.
 - [ ] 모든 POSD·DDD finding에 원칙, 책임 경계, 대안, 처리 결과와 Sol 재검토 판정이 기록되었다.
-- [ ] G1~G4의 비자명한 설계 변경은 구현 전에 두 가지 이상 대안과 Sol High 사전 review를 기록했다.
+- [ ] G1~G4의 비자명한 설계 변경은 구현 전에 두 가지 이상 대안과 Sol Medium 사전 review를 기록했다.
 - [ ] Core·bindings bug를 Framework에서 우회한 코드가 없고, 모든 선행 수정에 하위 layer regression과
       Sol review 결과가 있다.
 - [ ] Core·bindings 선행 수정의 version, local package와 Framework 참조를 갱신하고 새 package를 사용한
       contract·regression·process 검증을 기록했다.
 - [ ] 마지막 독립 audit에서 기록하지 않은 `.NET` gap이 0개다.
-- [ ] 마지막 독립 audit을 새 Sol High reviewer가 수행했고 unresolved `Critical`·`High`·`Medium` finding이 0개다.
+- [ ] 마지막 독립 audit을 새 Sol Medium reviewer가 수행했고 unresolved `Critical`·`High`·`Medium` finding이 0개다.

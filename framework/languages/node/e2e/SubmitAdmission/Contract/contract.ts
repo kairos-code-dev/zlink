@@ -1,4 +1,6 @@
-import type { ZLinkSendCall } from '@zlink-systems/framework';
+interface ZLinkSendCall {
+  submit(): Promise<void>;
+}
 
 declare const call: ZLinkSendCall;
 void call.submit();

@@ -226,7 +226,6 @@ message JoinConversationRes {
 message JoinConversationFailedNotify {
   conversationId: string
   error: string
-  isRetriable: bool
 }
 
 message SendChatMessageReq {
@@ -528,6 +527,11 @@ session push로 매핑한다.
 async 표현과 stream connector wrapper이며, metadata routing, MessageSeq, timer transition과 self-check
 순서는 공통 문서와 같아야 한다.
 
+.NET의 attribute, Java·Kotlin의 annotation과 Node.js의 decorator는 선언형 metadata scan으로
+handler를 자동 등록한다. C++은 runtime reflection scanner가 없으므로 compile-time type과 public
+builder로 같은 handler 집합을 명시 등록한다. 이 차이는 등록 방법에만 적용하며 message와 처리
+책임을 바꾸지 않는다.
+
 ## 9. Client self-check
 
 1. Agent와 Customer가 AuthenticateReq/Res를 완료한다.
@@ -564,13 +568,12 @@ log line을 성공 기준으로 사용하지 않는다.
 6. 성공·실패 모두에서 실행별 resource를 정리한다.
 
 ```text
-topology=ready
-supportchat-assignment=completed
-supportchat-multi-room=completed
-supportchat-reconnect=completed
-supportchat-close=completed
 supportchat=completed
 ```
+
+언어별 runner는 위 공통 completion marker와 함께 closed-typing 및 server evidence를
+검사한다. authentication, assignment, reconnect 같은 self-check 이름을 공통 completion
+marker로 중복 선언하지 않는다.
 
 ## 11. 완료 기준
 

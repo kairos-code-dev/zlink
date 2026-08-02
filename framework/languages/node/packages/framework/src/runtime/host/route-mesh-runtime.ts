@@ -1,6 +1,6 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import type { RoutingId } from '../../contracts';
 import {
-  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   ZLinkFrameworkRuntimeState,
   ZLinkTopologyState,
@@ -687,15 +687,15 @@ class ZLinkMeshStatusQueue implements AsyncIterable<ZLinkRouteMeshStatus>, Async
 }
 
 function routeNotFound(meshName: string): ZLinkFrameworkException {
-  return new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.RouteNotConnected,
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.RouteNotConnected,
     `RouteMesh '${meshName}' is not registered or no longer available.`
   );
 }
 
 function multiMeshDrainError(): ZLinkFrameworkException {
-  return new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.RequestRejected,
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.RequestRejected,
     'RouteMesh drain is unavailable when one framework host owns multiple RouteMesh instances.'
   );
 }

@@ -229,7 +229,7 @@ internal sealed class ZLinkSpotRetireScheduler(
                 includeActors));
     }
 
-    internal async ValueTask<bool> TryRelocateAsync(
+    internal async ValueTask<ZLinkRelocationUnitResult> TryRelocateAsync(
         ZLinkSpotActivation activation,
         bool instanceSpot,
         ZLinkRelocationTargetSelection selection,
@@ -275,7 +275,7 @@ internal sealed class ZLinkSpotRetireScheduler(
         {
             ZLinkFrameworkDebugLog.SpotDiscovery(
                 $"relocation_waiting_for_reservation spot={activation.SpotId}");
-            return false;
+            return ZLinkRelocationUnitResult.Pending();
         }
         ZLinkFrameworkDebugLog.SpotDiscovery(
             $"relocation_reserved spot={activation.SpotId} target={reservation.TargetDescriptor.Rid}");
@@ -354,7 +354,7 @@ internal sealed class ZLinkSpotRetireScheduler(
         {
             await ReleaseUncommittedSealAsync(admittedSeal)
                 .ConfigureAwait(false);
-            return false;
+            return ZLinkRelocationUnitResult.Pending();
         }
         ZLinkFrameworkDebugLog.SpotDiscovery(
             $"relocation_sealed spot={activation.SpotId}");
@@ -369,6 +369,7 @@ internal sealed class ZLinkSpotRetireScheduler(
             IReadOnlyList<ZLinkAcceptedWorkRecord> heldAtCutoff = [];
             IReadOnlyList<ZLinkAcceptedWorkRecord> committedHeld = [];
             var committed = false;
+            var stageStarted = false;
             var targetPublished = false;
             ulong targetAuthorityOwnerGeneration = 0;
             var messageFollowStarted = false;
@@ -541,6 +542,11 @@ internal sealed class ZLinkSpotRetireScheduler(
 
                 ZLinkFrameworkDebugLog.SpotDiscovery(
                     $"relocation_stage_begin spot={activation.SpotId} aggregate={aggregateId:N}");
+                published = new ZLinkAggregateRelocationPublished(
+                    new ZLinkAggregateFence(aggregateId, 1),
+                    staging.Relocation,
+                    staging.Envelope);
+                stageStarted = true;
                 await target.StageAsync(
                         reservation,
                         staging,
@@ -553,10 +559,6 @@ internal sealed class ZLinkSpotRetireScheduler(
                 // authority. Target execution remains bounded and sealed
                 // until command 35 closes the source cutover.
                 interruption.Complete();
-                published = new ZLinkAggregateRelocationPublished(
-                    new ZLinkAggregateFence(aggregateId, 1),
-                    staging.Relocation,
-                    staging.Envelope);
                 // StageAsync returns only after the source sends command 34
                 // response=true. That response authorizes the target commit,
                 // so cancellation or an unobserved commit must never reopen
@@ -564,11 +566,206 @@ internal sealed class ZLinkSpotRetireScheduler(
                 committed = true;
                 await CompleteCommittedAsync(cancellationToken)
                     .ConfigureAwait(false);
-                return true;
+                return ZLinkRelocationUnitResult.Completed();
+            }
+            catch (OperationCanceledException)
+                when (cancellationToken.IsCancellationRequested
+                      && !committed
+                      && !stageStarted)
+            {
+                throw;
             }
             catch (ZLinkCanonicalRelocationDurablyAbortedException)
             {
                 committed = false;
+                try
+                {
+                    await ExecutePrecommitAbortAsync(
+                            null,
+                            async () =>
+                            {
+                                var handoffId = aggregateId.ToString("N");
+                                foreach (var (actorId, route) in sealedSessionRoutes)
+                                    await activation
+                                        .AbortActorBoundSessionRouteSealForRetireAsync(
+                                            actorId,
+                                            route,
+                                            handoffId,
+                                            CancellationToken.None)
+                                        .ConfigureAwait(false);
+                            },
+                            () => target.AbortAsync(
+                                reservation,
+                                new ZLinkAggregateFence(aggregateId, 1)),
+                            async () =>
+                            {
+                                if (seal is not null)
+                                {
+                                    await activation
+                                        .CompleteRelocationReadyBeforeAbortAsync(
+                                            seal,
+                                            CancellationToken.None)
+                                        .ConfigureAwait(false);
+                                    if (!activation.AbortRelocation(seal))
+                                        throw new ZLinkRelocationDataLostException(
+                                            $"SPOT '{activation.SpotId}' could not restore its source admission seal.");
+                                }
+                                await RestoreSourceActorsAsync()
+                                    .ConfigureAwait(false);
+                            })
+                        .ConfigureAwait(false);
+                    await DiscardStagingAsync().ConfigureAwait(false);
+                    return ZLinkRelocationUnitResult.Terminal(
+                        ZLinkFrameworkRelocationReason.RelocationFailed,
+                        ZLinkRelocationCommitKnowledge.NotCommitted,
+                        sourceTerminalized: true);
+                }
+                catch
+                {
+                    return ZLinkRelocationUnitResult.Terminal(
+                        ZLinkFrameworkRelocationReason.RelocationFailed,
+                        ZLinkRelocationCommitKnowledge.Unknown,
+                        sourceTerminalized: false);
+                }
+            }
+            catch
+            {
+                if (stageStarted && !committed)
+                {
+                    return await ReconcileUncertainCommitAsync()
+                        .ConfigureAwait(false);
+                }
+                if (committed)
+                {
+                    // Authority is the visibility boundary. Never resume the
+                    // source after it points at the target; finish idempotent
+                    // target publication and source cleanup instead.
+                    try
+                    {
+                        await CompleteCommittedAsync(CancellationToken.None)
+                            .ConfigureAwait(false);
+                        return ZLinkRelocationUnitResult.Terminal(
+                            ZLinkFrameworkRelocationReason.RelocationFailed,
+                            targetPublished
+                                ? ZLinkRelocationCommitKnowledge.Committed
+                                : ZLinkRelocationCommitKnowledge.Unknown,
+                            sourceTerminalized: sourceCompleted);
+                    }
+                    catch
+                    {
+                        return ZLinkRelocationUnitResult.Terminal(
+                            ZLinkFrameworkRelocationReason.RelocationFailed,
+                            targetPublished
+                                ? ZLinkRelocationCommitKnowledge.Committed
+                                : ZLinkRelocationCommitKnowledge.Unknown,
+                            sourceTerminalized: sourceCompleted);
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        await ExecutePrecommitAbortAsync(
+                                null,
+                                async () =>
+                                {
+                                    var handoffId = aggregateId.ToString("N");
+                                    foreach (var (actorId, route)
+                                             in sealedSessionRoutes)
+                                        await activation
+                                            .AbortActorBoundSessionRouteSealForRetireAsync(
+                                                actorId,
+                                                route,
+                                                handoffId,
+                                                CancellationToken.None)
+                                            .ConfigureAwait(false);
+                                },
+                                () => target.AbortAsync(
+                                    reservation,
+                                    new ZLinkAggregateFence(aggregateId, 1)),
+                                async () =>
+                                {
+                                    if (seal is not null)
+                                    {
+                                        await activation
+                                            .CompleteRelocationReadyBeforeAbortAsync(
+                                                seal,
+                                                CancellationToken.None)
+                                            .ConfigureAwait(false);
+                                        if (!activation.AbortRelocation(seal))
+                                            throw new ZLinkRelocationDataLostException(
+                                                $"SPOT '{activation.SpotId}' could not restore its source admission seal.");
+                                    }
+                                    await RestoreSourceActorsAsync()
+                                        .ConfigureAwait(false);
+                                })
+                            .ConfigureAwait(false);
+                        await DiscardStagingAsync().ConfigureAwait(false);
+                        return ZLinkRelocationUnitResult.Terminal(
+                            ZLinkFrameworkRelocationReason.RelocationFailed,
+                            ZLinkRelocationCommitKnowledge.NotCommitted,
+                            sourceTerminalized: true);
+                    }
+                    catch
+                    {
+                        return ZLinkRelocationUnitResult.Terminal(
+                            ZLinkFrameworkRelocationReason.RelocationFailed,
+                            ZLinkRelocationCommitKnowledge.Unknown,
+                            sourceTerminalized: false);
+                    }
+                }
+            }
+
+            async ValueTask<ZLinkRelocationUnitResult>
+                ReconcileUncertainCommitAsync()
+            {
+                try
+                {
+                    // StageAsync may have published the target before its ACK
+                    // was observed. PublishAsync performs the exact aggregate
+                    // fence and Location authority reconciliation; only its
+                    // durable-abort result permits source restoration.
+                    await CompleteCommittedAsync(CancellationToken.None)
+                        .ConfigureAwait(false);
+                    return ZLinkRelocationUnitResult.Terminal(
+                        ZLinkFrameworkRelocationReason.RelocationFailed,
+                        targetPublished
+                            ? ZLinkRelocationCommitKnowledge.Committed
+                            : ZLinkRelocationCommitKnowledge.Unknown,
+                        sourceTerminalized: sourceCompleted);
+                }
+                catch (ZLinkCanonicalRelocationDurablyAbortedException)
+                {
+                    committed = false;
+                    try
+                    {
+                        await AbortUncommittedAsync().ConfigureAwait(false);
+                        return ZLinkRelocationUnitResult.Terminal(
+                            ZLinkFrameworkRelocationReason.RelocationFailed,
+                            ZLinkRelocationCommitKnowledge.NotCommitted,
+                            sourceTerminalized: true);
+                    }
+                    catch
+                    {
+                        return ZLinkRelocationUnitResult.Terminal(
+                            ZLinkFrameworkRelocationReason.RelocationFailed,
+                            ZLinkRelocationCommitKnowledge.Unknown,
+                            sourceTerminalized: false);
+                    }
+                }
+                catch
+                {
+                    return ZLinkRelocationUnitResult.Terminal(
+                        ZLinkFrameworkRelocationReason.RelocationFailed,
+                        targetPublished
+                            ? ZLinkRelocationCommitKnowledge.Committed
+                            : ZLinkRelocationCommitKnowledge.Unknown,
+                        sourceTerminalized: sourceCompleted);
+                }
+            }
+
+            async ValueTask AbortUncommittedAsync()
+            {
                 await ExecutePrecommitAbortAsync(
                         null,
                         async () =>
@@ -604,59 +801,6 @@ internal sealed class ZLinkSpotRetireScheduler(
                         })
                     .ConfigureAwait(false);
                 await DiscardStagingAsync().ConfigureAwait(false);
-                throw;
-            }
-            catch
-            {
-                if (committed)
-                {
-                    // Authority is the visibility boundary. Never resume the
-                    // source after it points at the target; finish idempotent
-                    // target publication and source cleanup instead.
-                    await CompleteCommittedAsync(CancellationToken.None)
-                        .ConfigureAwait(false);
-                    return true;
-                }
-                else
-                {
-                    await ExecutePrecommitAbortAsync(
-                            null,
-                            async () =>
-                            {
-                                var handoffId = aggregateId.ToString("N");
-                                foreach (var (actorId, route)
-                                         in sealedSessionRoutes)
-                                    await activation
-                                        .AbortActorBoundSessionRouteSealForRetireAsync(
-                                            actorId,
-                                            route,
-                                            handoffId,
-                                            CancellationToken.None)
-                                        .ConfigureAwait(false);
-                            },
-                            () => target.AbortAsync(
-                                reservation,
-                                new ZLinkAggregateFence(aggregateId, 1)),
-                            async () =>
-                            {
-                                if (seal is not null)
-                                {
-                                    await activation
-                                        .CompleteRelocationReadyBeforeAbortAsync(
-                                            seal,
-                                            CancellationToken.None)
-                                        .ConfigureAwait(false);
-                                    if (!activation.AbortRelocation(seal))
-                                        throw new ZLinkRelocationDataLostException(
-                                            $"SPOT '{activation.SpotId}' could not restore its source admission seal.");
-                                }
-                                await RestoreSourceActorsAsync()
-                                    .ConfigureAwait(false);
-                            })
-                        .ConfigureAwait(false);
-                    await DiscardStagingAsync().ConfigureAwait(false);
-                }
-                throw;
             }
 
             async ValueTask CompleteCommittedAsync(
@@ -675,6 +819,10 @@ internal sealed class ZLinkSpotRetireScheduler(
                         .ConfigureAwait(false);
                     targetPublished = true;
                 }
+                // Reconciliation can discover a target publication after the
+                // original StageAsync acknowledgement was lost. Complete the
+                // source interruption at the same boundary before cutover.
+                interruption.Complete();
                 committed = true;
                 if (perActorShell)
                     await activation.PublishPerActorShellRelocationPlanAsync(

@@ -1,6 +1,5 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import {
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException
 } from '../../contracts';
 
 export enum ZLinkSubmitStatus {
@@ -19,32 +18,32 @@ export interface ZLinkSubmitResult {
 export function requireOneWayCompletion(
   result: ZLinkSubmitResult,
   operation: string,
-  notFoundKind: ZLinkFrameworkErrorKind = ZLinkFrameworkErrorKind.RequestTargetNotFound
+  notFoundKind: ZLinkFrameworkInternalErrorKind = ZLinkFrameworkInternalErrorKind.RequestTargetNotFound
 ): void {
   switch (result.status) {
     case ZLinkSubmitStatus.Submitted:
       return;
     case ZLinkSubmitStatus.TimedOut:
     case ZLinkSubmitStatus.Backpressured:
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.DeadlineExceeded,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.DeadlineExceeded,
         `${operation} did not obtain admission before its deadline.`,
         true
       );
     case ZLinkSubmitStatus.TargetNotFound:
-      throw new ZLinkFrameworkException(
+      throw createInternalFrameworkException(
         notFoundKind,
         `${operation} target was not found.`
       );
     case ZLinkSubmitStatus.RouteNotConnected:
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RouteNotConnected,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RouteNotConnected,
         `${operation} route is not connected.`,
         true
       );
     case ZLinkSubmitStatus.Shutdown:
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RuntimeShutdown,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RuntimeShutdown,
         `${operation} was rejected because the runtime is shutting down.`
       );
   }
@@ -58,8 +57,8 @@ export function requirePublishCompletion(
 }
 
 export function throwAlreadySubmitted(operation: string): never {
-  throw new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.AlreadySubmitted,
+  throw createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.AlreadySubmitted,
     `${operation} has already been submitted.`
   );
 }

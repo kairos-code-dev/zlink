@@ -154,7 +154,7 @@ public sealed partial class RegressionTests
         Assert.Contains("WaitAsync(GracefulShutdownTimeout)", launcher, StringComparison.Ordinal);
         Assert.Contains("error.Kind is ZLinkFrameworkErrorKind.Unavailable", launcher, StringComparison.Ordinal);
         Assert.Contains("or ZLinkFrameworkErrorKind.DeadlineExceeded", launcher, StringComparison.Ordinal);
-        Assert.Contains("error.RetryAdvice != ZLinkRetryAdvice.DoNotRetry", launcher, StringComparison.Ordinal);
+        Assert.DoesNotContain("error.RetryAdvice", launcher, StringComparison.Ordinal);
         Assert.Contains("startInfo.ArgumentList.Add(\"--no-build\")", launcher, StringComparison.Ordinal);
         Assert.Contains("Path.Combine(options.LogDir, \"dynamic\", scenarioName)", launcher,
             StringComparison.Ordinal);

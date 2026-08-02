@@ -181,7 +181,7 @@ public sealed class LocationRuntimeQueryTests
     }
 
     [Fact]
-    public async Task Status_Reports_Watch_Capability_And_Shared_Read_Failures()
+    public async Task Status_Reports_Shared_Read_Failures_Through_Health()
     {
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
@@ -196,15 +196,26 @@ public sealed class LocationRuntimeQueryTests
             tracker,
             runtime,
             new ZLinkObservedLocationGenerations(),
-            watchEnabled: true,
             storeHealth: health);
         health.ReportFailure("mesh-node-query-read", new InvalidOperationException("read unavailable"));
 
         var status = await query.GetStatusAsync();
 
-        Assert.True(status.WatchEnabled);
         Assert.False(status.StoreHealthy);
-        Assert.Contains("read unavailable", status.LastError, StringComparison.Ordinal);
+        Assert.Contains("read unavailable", health.GetSnapshot().LastError,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Page_Request_Policy_Normalizes_Default_And_Rejects_Invalid_Sizes()
+    {
+        Assert.Equal(100, ZLinkPageRequestPolicy.Normalize(default).PageSize);
+        Assert.Equal(100, ZLinkPageRequestPolicy.Normalize(new ZLinkPageRequest(0)).PageSize);
+        Assert.Equal(1000, ZLinkPageRequestPolicy.Normalize(new ZLinkPageRequest(1000)).PageSize);
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            ZLinkPageRequestPolicy.Normalize(new ZLinkPageRequest(-1)));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            ZLinkPageRequestPolicy.Normalize(new ZLinkPageRequest(1001)));
     }
 
     [Fact]

@@ -53,15 +53,12 @@ public sealed record RouteReadyRes(int ReadyMemberCount);
 public sealed record RuntimeStatusWaitReq(
     bool? StoreHealthy,
     bool? OwnerLeaseHealthy,
-    bool RequireLastError = false,
     bool RequireLastRefresh = false,
     int TimeoutMilliseconds = 30000,
     DateTimeOffset? LastRefreshAfter = null);
 
 public sealed record RuntimeStatusRes(
     bool StoreHealthy,
-    bool WatchEnabled,
-    string? LastError,
     bool OwnerLeaseHealthy,
     DateTimeOffset? OwnerLeaseRenewedAt,
     DateTimeOffset? LastRefreshAt);

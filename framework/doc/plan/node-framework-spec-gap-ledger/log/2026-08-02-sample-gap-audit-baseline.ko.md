@@ -1,0 +1,72 @@
+# Node.js sample gap audit 기준과 검증 결과
+
+이 기록은 `node-framework-sample-spec-gap-ledger.ko.md`의 최초 gap 판정에 사용한 working tree를
+식별한다. Working tree가 clean하지 않으므로 commit만으로 같은 내용을 복원할 수 없다. 아래 fingerprint가
+달라지면 이 기록을 현재 evidence로 사용하지 않고 contract 비교와 test를 다시 실행한다.
+
+## 1. 기준 fingerprint
+
+- 기준 시각: 2026-08-02 09:04 KST
+- `HEAD`: `3291e338f4f700484780560cd81345a647ef0948`
+- 전체 `git status --porcelain=v1` SHA-256:
+  `3b0fd4201c02eab2baf2f43e4c7c0b2243e3be5c1475486518898eab74a581b5`
+- 공통 sample·Framework spec·Node tracked diff SHA-256:
+  `6544349e65ebe1fbf9e7495cb12fa96b6ec295313bb9eaa0ed8e73c9d3daf7de`
+- 공통 sample과 Node sample 전체 파일 내용 SHA-256:
+  `8d77dd36ca13e6b3c40e1552ea56213283df5c0223e1bf9e49b0305935d65b9b`
+
+조사 범위에는 공통 sample 7개 문서가 모두 수정된 상태였고, Node sample source에서는
+`SupportChat.Ts/Server/Support/Infrastructure/ZLink/Actors/support-user-actor.ts`가 수정된 상태였다.
+Node Framework production source, exact interface, E2E와 test에도 별도 변경이 있었다. 따라서 아래
+결과는 위 fingerprint에만 적용한다.
+
+## 2. 실행 결과
+
+### Node build
+
+```text
+cd framework/languages/node
+npm run build
+```
+
+- exit code: `0`
+- 결과: TypeScript build와 browser bundle build 통과
+- 한계: compile 성공이며 sample message와 업무 흐름이 공통 계약과 일치한다는 증거는 아니다.
+
+### Sample contract suite
+
+```text
+cd framework/languages/node
+node --test test/contract/sample*.test.js
+```
+
+- exit code: `1`
+- 전체: `83`
+- 통과: `81`
+- 실패: `2`
+- 취소·건너뜀: `0`
+- 실행 시간: `43280.72694 ms`
+
+실패는 다음 두 항목이다.
+
+1. `DeliveryDispatch uses public Actor APIs without internal Spot handle resolvers`
+   - `sample-deliverydispatch-spot-handle-gate.test.js:34`가
+     `addRouteMesh(SampleNames.routeMesh)`를 요구한다.
+   - 현재 source는 `SampleNames.courierMeshName`을 사용하며 공통 sample도 courier와 customer
+     RouteMesh를 구분한다. Public Actor API와 private Spot handle 금지라는 본래 검사는 유지하되
+     RouteMesh 이름 assertion을 현재 계약에 맞춰야 한다.
+2. `Node sample aggregate runner passes all canonical samples`
+   - Bingo 실제 runner가 replacement peer의 `ConnectionReady` evidence를 기다리다 timeout으로
+     종료됐다.
+   - Source symbol이나 completion 문자열 검사가 아니라 실제 process smoke 실패다. 원인을 확인하고
+     같은 runner를 다시 실행하기 전에는 Bingo process evidence를 통과로 판정하지 않는다.
+
+## 3. 현재 판정
+
+- Build: 통과
+- Static·process 혼합 sample contract suite: 실패
+- 일곱 sample 통합 실행: 통과하지 않음
+- Sample 계약 충족: 미판정
+
+다음 audit에서는 먼저 fingerprint를 다시 계산한다. 값이 하나라도 달라지면 변경 manifest를 새로
+기록하고 build, exact inventory test와 실제 sample runner를 fresh package로 다시 실행한다.

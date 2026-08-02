@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException, internalFrameworkErrorKind  } from '../framework-errors-internal';
 import { Message as BindingMessage } from '@zlink-systems/zlink';
 import type {
   ActorRef,
@@ -6,7 +7,6 @@ import type {
   ZLinkSessionActor
 } from '../../contracts';
 import {
-  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   ZLinkSpotKind
 } from '../../contracts';
@@ -178,7 +178,7 @@ export class ZLinkActorPacketRelay {
   ): Promise<{
     readonly ok: boolean;
     readonly error?: unknown;
-    readonly errorKind?: ZLinkFrameworkErrorKind;
+    readonly errorKind?: ZLinkFrameworkInternalErrorKind;
     readonly response?: unknown;
     readonly deferredResponse?: boolean;
     readonly actorPacketTarget?: unknown;
@@ -203,8 +203,8 @@ export class ZLinkActorPacketRelay {
       if (messageFollowContext !== undefined) {
         if (messageFollowContext.deadlineUnixMs !== undefined
             && Date.now() >= messageFollowContext.deadlineUnixMs) {
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.DeadlineExceeded,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.DeadlineExceeded,
             `Actor request '${relay.actorId}' exceeded its Message Follow deadline.`
           );
         }
@@ -350,8 +350,8 @@ export class ZLinkActorPacketRelay {
         ok: false,
         error: error instanceof Error ? error.message : String(error),
         errorKind: error instanceof ZLinkFrameworkException
-          ? error.kind
-          : ZLinkFrameworkErrorKind.RequestFailed
+          ? internalFrameworkErrorKind(error)
+          : ZLinkFrameworkInternalErrorKind.RequestFailed
       };
     } finally {
       if (closeFrameMessages) {
@@ -603,8 +603,8 @@ export class ZLinkActorPacketRelay {
       || relay.bindingGeneration === undefined
       || current.bindingGeneration !== BigInt(relay.bindingGeneration)
     ) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorSessionNotBound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorSessionNotBound,
         `Actor '${relay.actorId}' bound session identity is stale.`,
         true
       );
@@ -775,8 +775,8 @@ function actorPacketTargetFromResolvedRoute(
 ): ZLinkRemoteActorPacketTarget {
   if (route.spotId !== undefined) {
     if (route.enclosingSpotRoute === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorLocationStale,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorLocationStale,
         `Actor '${route.actorRef.actorId}' enclosing Spot authority is not Ready.`,
         true
       );

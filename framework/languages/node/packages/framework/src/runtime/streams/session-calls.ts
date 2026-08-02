@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind } from '../framework-errors-internal';
 import type {
   ZLinkBoundSessionSendCall,
   ZLinkSessionReplyCall,
@@ -7,7 +8,6 @@ import type { ZLinkSubmitResult } from '../messaging/submission-result';
 import {
   requireOneWayCompletion
 } from '../messaging/submission-result';
-import { ZLinkFrameworkErrorKind } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import { throwIfAborted } from '../abort';
 import {
@@ -89,7 +89,7 @@ export class DefaultZLinkBoundSessionSendCall implements ZLinkBoundSessionSendCa
     requireOneWayCompletion(
       result,
       'Bound session send',
-      ZLinkFrameworkErrorKind.ActorSessionNotBound
+      ZLinkFrameworkInternalErrorKind.ActorSessionNotBound
     );
   }
 }

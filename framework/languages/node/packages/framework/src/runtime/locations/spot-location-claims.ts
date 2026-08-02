@@ -1,11 +1,10 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import type { RoutingId } from '../../contracts/Common';
 import type {
   ZLinkAuthoritySnapshot,
   ZLinkAuthorityStoreVersion
 } from '../../contracts/Locations';
 import {
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException
 } from '../../contracts';
 import {
   ZLinkLocationKind,
@@ -131,13 +130,13 @@ export class ZLinkSpotLocationClaims {
       return;
     }
     if (result.kind === 'generationExhausted') {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.InvalidOperation,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.InvalidOperation,
         `Instance Spot '${String(tracked.spotId)}' authority generation is exhausted.`
       );
     }
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.InvalidOperation,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.InvalidOperation,
       `Instance Spot '${String(tracked.spotId)}' authority is owned by another runtime.`,
       true
     );

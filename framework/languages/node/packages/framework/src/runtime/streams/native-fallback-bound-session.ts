@@ -1,5 +1,6 @@
+import { ZLinkFrameworkInternalErrorKind } from '../framework-errors-internal';
 import type { ActorRef, ZLinkBoundSession, ZLinkBoundSessionSendCall } from '../../contracts';
-import { ZLinkFrameworkErrorKind, ZLinkSpotKind } from '../../contracts';
+import { ZLinkSpotKind } from '../../contracts';
 import {
   requireOneWayCompletion,
   throwAlreadySubmitted,
@@ -128,7 +129,7 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
     requireOneWayCompletion(
       result,
       'Bound session send',
-      ZLinkFrameworkErrorKind.ActorSessionNotBound
+      ZLinkFrameworkInternalErrorKind.ActorSessionNotBound
     );
   }
 

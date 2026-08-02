@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException, internalFrameworkErrorKind  } from '../framework-errors-internal';
 import {
   Message as BindingMessage,
   RequestResult,
@@ -16,7 +17,6 @@ import type {
 } from '../../contracts';
 import { ZLinkSpotKind } from '../../contracts';
 import {
-  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException
 } from '../../contracts';
 import {
@@ -306,15 +306,15 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
   ): Promise<ZLinkResolvedActorRoute> {
     const resolver = this.options.locationResolver();
     if (resolver === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.InvalidConfiguration,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.InvalidConfiguration,
         'Actor direct messaging requires a Location Store.'
       );
     }
     const row = await resolver.resolveDirectActorRoute(actorId, signal);
     if (row === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
         `Actor route '${actorId}' was not found.`
       );
     }
@@ -425,7 +425,7 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
         (replyParts) => JSON.parse(replyParts[0]?.getString('utf8') ?? '{}')
       );
       if (reply.ok !== true) {
-        throw new ZLinkFrameworkException(
+        throw createInternalFrameworkException(
           remoteRelayErrorKind(reply.errorKind),
           typeof reply.error === 'string' ? reply.error : `Remote Actor request failed for '${actor.actorId}'.`
         );
@@ -451,8 +451,8 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
   private requireNode(meshName: string): ZLinkBackendMeshNode {
     const node = this.options.nodeProvider(meshName);
     if (node === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RouteNotConnected,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RouteNotConnected,
         `Actor client requires a running MeshNode for RouteMesh '${meshName}'.`,
         true
       );
@@ -511,18 +511,18 @@ function createActorMessageFollowContext(
   );
 }
 
-function remoteRelayErrorKind(value: unknown): ZLinkFrameworkErrorKind {
-  return Object.values(ZLinkFrameworkErrorKind).includes(value as ZLinkFrameworkErrorKind)
-    ? value as ZLinkFrameworkErrorKind
-    : ZLinkFrameworkErrorKind.RequestFailed;
+function remoteRelayErrorKind(value: unknown): ZLinkFrameworkInternalErrorKind {
+  return Object.values(ZLinkFrameworkInternalErrorKind).includes(value as ZLinkFrameworkInternalErrorKind)
+    ? value as ZLinkFrameworkInternalErrorKind
+    : ZLinkFrameworkInternalErrorKind.RequestFailed;
 }
 
 function remainingActorRequestTimeout(actorId: string, deadlineUnixMs: number | undefined): number | undefined {
   if (deadlineUnixMs === undefined) return undefined;
   const remaining = deadlineUnixMs - Date.now();
   if (remaining <= 0) {
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.DeadlineExceeded,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.DeadlineExceeded,
       `Actor request '${actorId}' exceeded its deadline before submission.`
     );
   }
@@ -547,8 +547,8 @@ async function waitHandoffReply<TReply>(
       reply as Promise<TReply>,
       new Promise<TReply>((_resolve, reject) => {
         deadline = setTimeout(
-          () => reject(new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.RequestFailed,
+          () => reject(createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.RequestFailed,
             'Actor handoff request timed out.',
             true
           )),
@@ -638,7 +638,7 @@ class DefaultZLinkActorSendCall implements ZLinkActorSendCall {
     requireOneWayCompletion(
       result,
       'Actor send',
-      ZLinkFrameworkErrorKind.ActorRouteNotFound
+      ZLinkFrameworkInternalErrorKind.ActorRouteNotFound
     );
   }
 }
@@ -720,8 +720,8 @@ function decodeActorReply<TReply>(
       const header = decodeStreamHeader(reply[0].data());
       return decodeActorReplyPayload<TReply>(header.kind, reply[1], serializers);
     }
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.RequestProtocolError,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.RequestProtocolError,
       'Actor request reply is empty.'
     );
   } finally {
@@ -744,10 +744,10 @@ function decodeActorReplyPayload<TReply>(
       readonly kind?: string;
       readonly isRetriable?: boolean;
     }>(payload, serializers);
-    const kind = Object.values(ZLinkFrameworkErrorKind).includes(error.kind as ZLinkFrameworkErrorKind)
-      ? error.kind as ZLinkFrameworkErrorKind
-      : ZLinkFrameworkErrorKind.RequestFailed;
-    throw new ZLinkFrameworkException(
+    const kind = Object.values(ZLinkFrameworkInternalErrorKind).includes(error.kind as ZLinkFrameworkInternalErrorKind)
+      ? error.kind as ZLinkFrameworkInternalErrorKind
+      : ZLinkFrameworkInternalErrorKind.RequestFailed;
+    throw createInternalFrameworkException(
       kind,
       error.message ?? 'Actor request failed.',
       error.isRetriable
@@ -765,23 +765,23 @@ function mapSubmitError(error: unknown, operationName: string): Error {
       case SubmitResult.NotConnected:
         return routeNotConnected(`${operationName} failed because the target route is not connected.`, error);
       case SubmitResult.NotFound:
-        return new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.ActorRouteNotFound,
+        return createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
           `${operationName} failed because the actor route was not found.`,
           false,
           error
         );
       default:
-        return new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.RequestFailed,
+        return createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.RequestFailed,
           `${operationName} failed with submit result ${error.result}.`,
           false,
           error
         );
     }
   }
-  return new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.RouteNotConnected,
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.RouteNotConnected,
     `${operationName} failed before a reply was received.`,
     true,
     error
@@ -802,8 +802,8 @@ function mapSubmitResult(result: number, operationName: string): ZLinkSubmitResu
     case SubmitResult.Terminated:
       return { status: ZLinkSubmitStatus.Shutdown };
     default:
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestFailed,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RequestFailed,
         `${operationName} failed with submit result ${result}.`
       );
   }
@@ -818,18 +818,18 @@ function mapRequestResult(result: number, operationName: string): Error {
     case RequestResult.NotConnected:
       return routeNotConnected(`${operationName} failed because the target route is not connected.`);
     case RequestResult.NotFound:
-      return new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+      return createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
         `${operationName} failed because the actor route was not found.`
       );
     case RequestResult.Conflict:
-      return new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorLocationStale,
+      return createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorLocationStale,
         `${operationName} failed because the actor location is stale.`
       );
     default:
-      return new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestFailed,
+      return createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RequestFailed,
         `${operationName} failed with request result ${result}.`
       );
   }
@@ -840,8 +840,8 @@ function mapRequestError(error: RequestError, operationName: string): Error {
 }
 
 function routeNotConnected(message: string, cause?: unknown): ZLinkFrameworkException {
-  return new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.RouteNotConnected,
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.RouteNotConnected,
     message,
     true,
     cause
@@ -850,12 +850,12 @@ function routeNotConnected(message: string, cause?: unknown): ZLinkFrameworkExce
 
 function isStaleActorError(error: unknown): boolean {
   return error instanceof ZLinkFrameworkException
-    && error.kind === ZLinkFrameworkErrorKind.ActorLocationStale;
+    && internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.ActorLocationStale;
 }
 
 function actorLocationStale(actorId: string, cause: unknown): ZLinkFrameworkException {
-  return new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.ActorLocationStale,
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.ActorLocationStale,
     `Actor route '${actorId}' is stale after re-resolve.`,
     true,
     cause

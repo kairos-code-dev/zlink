@@ -147,7 +147,7 @@ public sealed partial class RegressionTests
             Assert.DoesNotContain("for (var i = 0; i < 120", source, StringComparison.Ordinal);
             Assert.Contains("error.Kind is ZLinkFrameworkErrorKind.Unavailable", source, StringComparison.Ordinal);
             Assert.Contains("or ZLinkFrameworkErrorKind.DeadlineExceeded", source, StringComparison.Ordinal);
-            Assert.Contains("error.RetryAdvice != ZLinkRetryAdvice.DoNotRetry", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("error.RetryAdvice", source, StringComparison.Ordinal);
         }
 
         var monitoring = File.ReadAllText(Path.Combine(

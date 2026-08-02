@@ -1,8 +1,7 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import { Message as BindingMessage } from '@zlink-systems/zlink';
 import {
   isZLinkMessage,
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException,
   ZLinkMessage,
   type Type,
   ZLinkEncodedPayload,
@@ -86,8 +85,8 @@ function decodeFrameworkPayload<T>(
     if (!rejectInvalidJson) {
       return text as T;
     }
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.PayloadDecodeFailed,
       'PayloadDecodeFailed: framework payload is not valid JSON.',
       false,
       error

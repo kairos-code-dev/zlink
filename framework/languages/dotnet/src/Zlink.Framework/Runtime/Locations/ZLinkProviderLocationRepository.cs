@@ -349,7 +349,6 @@ internal sealed partial class ZLinkProviderLocationRepository(
         return await ListCompleteSnapshotPageAsync(
                 MeshPrefix(meshName),
                 page,
-                defaultPageSize: 100,
                 static bytes => Decode<MeshRecord>(bytes).Descriptor,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -738,7 +737,6 @@ internal sealed partial class ZLinkProviderLocationRepository(
         return await ListCompleteSnapshotPageAsync(
                 prefix,
                 page,
-                defaultPageSize: 256,
                 static bytes => Decode<DescriptorRecord<T>>(bytes).Descriptor,
                 cancellationToken)
             .ConfigureAwait(false);

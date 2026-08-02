@@ -110,8 +110,8 @@ class SupportUserActor implements ZLinkActor {
     await this.push(
       new JoinConversationFailedNotify(
         conversationId,
-        completion.kind,
-        completion.isRetriable
+        String(completion.kind),
+        false
       ),
       conversationId
     );

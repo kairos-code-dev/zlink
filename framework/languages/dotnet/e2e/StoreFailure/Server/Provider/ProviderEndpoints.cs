@@ -18,8 +18,6 @@ internal static class ProviderEndpoints
             var status = await query.GetStatusAsync(cancellationToken);
             return Results.Ok(new RuntimeStatusRes(
                 status.StoreHealthy,
-                status.WatchEnabled,
-                status.LastError,
                 status.OwnerLeaseHealthy,
                 status.OwnerLeaseRenewedAt,
                 status.LastRefreshAt));
@@ -33,7 +31,7 @@ internal static class ProviderEndpoints
             {
                 var status = await query.GetStatusAsync(token);
                 return new RuntimeStatusRes(
-                    status.StoreHealthy, status.WatchEnabled, status.LastError,
+                    status.StoreHealthy,
                     status.OwnerLeaseHealthy, status.OwnerLeaseRenewedAt, status.LastRefreshAt);
             }, request, cancellationToken);
             if (response is not null) return Results.Ok(response);

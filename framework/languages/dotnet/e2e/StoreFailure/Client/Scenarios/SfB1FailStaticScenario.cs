@@ -34,7 +34,7 @@ internal static class SfB1FailStaticScenario
             await SfProbe.WaitStatusAsync(
                 consumer,
                 SfProbe.Status(options.OwnerLeaseRenewInterval * 6,
-                    storeHealthy: false, requireLastError: true),
+                    storeHealthy: false),
                 "SF-B1: the consumer's runtime status did not record the store outage.");
             await SfProbe.WaitStatusAsync(
                 consumer,

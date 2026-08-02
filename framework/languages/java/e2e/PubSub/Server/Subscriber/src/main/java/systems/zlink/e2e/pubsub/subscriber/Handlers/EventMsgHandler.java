@@ -2,7 +2,7 @@ package systems.zlink.e2e.pubsub.subscriber.Handlers;
 
 import systems.zlink.e2e.pubsub.shared.Contracts;
 import systems.zlink.e2e.pubsub.subscriber.Infrastructure.EvidenceStore;
-import systems.zlink.framework.channels.ZLinkPublishContext;
+import systems.zlink.framework.channels.ZLinkPublishMessageContext;
 import systems.zlink.framework.channels.ZLinkFanoutHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 
@@ -18,7 +18,7 @@ public final class EventMsgHandler
     @Override
     public java.util.concurrent.CompletionStage<Void> handle(
         Contracts.EventMsg message,
-        ZLinkPublishContext context) {
+        ZLinkPublishMessageContext context) {
         if (!evidence.accepts(context.topic())) {
             return java.util.concurrent.CompletableFuture.completedFuture(null);
         }

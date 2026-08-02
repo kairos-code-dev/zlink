@@ -38,7 +38,7 @@ public sealed class LocationContractTests
     }
 
     [Fact]
-    public void PageRequest_Default_Means_Configured_Default_Page_Size()
+    public void PageRequest_Default_Is_Zero_Before_Runtime_Normalization()
     {
         ZLinkPageRequest page = default;
 

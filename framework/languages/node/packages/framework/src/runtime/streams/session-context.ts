@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind } from '../framework-errors-internal';
 import type {
   ActorRef,
   RoutingId,
@@ -16,7 +17,6 @@ import type {
   ZLinkStream
 } from '../../contracts';
 import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
-import { ZLinkFrameworkErrorKind } from '../../contracts';
 import type { ZLinkSubmitResult } from '../messaging/submission-result';
 import { requireOneWayCompletion } from '../messaging/submission-result';
 import type { Message } from '../../contracts/Common/Message';
@@ -404,7 +404,7 @@ export class DefaultZLinkSessionActor implements ZLinkSessionActor {
     requireOneWayCompletion(
       result,
       'Session Actor relay',
-      ZLinkFrameworkErrorKind.ActorSessionNotBound
+      ZLinkFrameworkInternalErrorKind.ActorSessionNotBound
     );
   }
 

@@ -17,6 +17,8 @@ DEFAULT_CONFIGS=(
   ToActorMessaging
   SpotActorTransfer
   SubmitAdmission
+  ChannelEgressRouting
+  InstanceSpot
 )
 BIND_RETRY_PATTERN="ZlinkBindException|BindException|Address already in use|EADDRINUSE|errno=98"
 
@@ -71,6 +73,13 @@ else
   done
 fi
 
+for config in "${selected_configs[@]}"; do
+  if [[ ! -x "${SCRIPT_DIR}/${config}/run_e2e.sh" ]]; then
+    echo "[node-e2e] ${config} is missing an executable run_e2e.sh; aggregate cannot report PASS." >&2
+    exit 2
+  fi
+done
+
 run_config_with_retry() {
   local config="$1"
   local scenario="$2"
@@ -100,6 +109,11 @@ run_config_with_retry() {
     ended_at="$(date +%s)"
 
     if [[ "${status}" == "0" ]]; then
+      if ! grep -Eq 'result=passed|scenario [^[:space:]]+ passed|[[:space:]]PASS([[:space:]]|$)|"status":"PASS"' "${output}"; then
+        echo "[node-e2e] ${config} exited 0 without a machine-visible PASS result." >&2
+        rm -f "${output}"
+        return 1
+      fi
       rm -f "${output}"
       echo "[node-e2e] ${config} PASS order=${start_order} ($((ended_at - started_at))s)"
       return 0

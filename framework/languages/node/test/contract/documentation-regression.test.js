@@ -34,10 +34,9 @@ const nodeGapDocument = path.join(
   '..',
   '..',
   'doc',
-  'framework',
-  'common',
-  'spec',
-  '30-implementation-gap.ko.md'
+  'plan',
+  'node-framework-spec-gap-ledger',
+  'node-framework-spec-gap-ledger.ko.md'
 );
 
 const guideFiles = [
@@ -76,10 +75,11 @@ test('node interface specification documents the current execution-turn APIs', (
   assert.doesNotMatch(specification, /public turn 반납 API가 필요하지 않다/);
 });
 
-test('central implementation gap document owns the Node RouteMesh gap', () => {
+test('Node gap ledger owns the Node RouteMesh gap', () => {
   const gapDocument = fs.readFileSync(nodeGapDocument, 'utf8');
-  assert.match(gapDocument, /### 12\.33 [^\n]*RouteMesh[^\n]*MeshNode/);
-  assert.match(gapDocument, /Node source에는 `addRouteMesh\(meshName\)`/);
+  assert.match(gapDocument, /ND-IMP-001/);
+  assert.match(gapDocument, /RouteMesh/);
+  assert.match(gapDocument, /`addRouteMesh\(meshName\)`/);
 });
 
 test('node documentation relative markdown links resolve', () => {

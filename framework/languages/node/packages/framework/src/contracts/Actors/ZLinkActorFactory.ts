@@ -25,7 +25,6 @@ export type ZLinkActorJoinCompletion =
       readonly status: 'failed';
       readonly operationId: ZLinkActorJoinOperationId;
       readonly kind: ZLinkFrameworkErrorKind;
-      readonly isRetriable: boolean;
     };
 
 export interface ZLinkActorJoinCall<TSelf> {

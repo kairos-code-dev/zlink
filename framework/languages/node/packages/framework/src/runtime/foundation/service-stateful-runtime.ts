@@ -1,3 +1,8 @@
+import {
+  ZLinkFrameworkInternalErrorKind,
+  internalFrameworkErrorCode,
+  internalFrameworkErrorKind
+} from '../framework-errors-internal';
 import { RequestResult, SubmitResult } from '@zlink-systems/zlink';
 import type {
   RawServiceIngressRecord,
@@ -66,7 +71,6 @@ import type {
 } from './service-instance-activation-recovery-codec';
 import { validateServiceMetadataFrame } from './service-metadata-codec';
 import {
-  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException
 } from '../../contracts';
 
@@ -3229,21 +3233,21 @@ function failure(error: unknown): ServiceStatefulResult {
     return { terminalResult: RequestResult.NotFound, failureCode: ACTOR_ROUTE_STALE };
   }
   if (error instanceof ZLinkFrameworkException) {
-    if (error.kind === ZLinkFrameworkErrorKind.DeadlineExceeded) {
+    if (internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.DeadlineExceeded) {
       return { terminalResult: RequestResult.TimedOut, failureCode: 0 };
     }
     if (
-      error.kind === ZLinkFrameworkErrorKind.SpotGenerationStale
-      || error.kind === ZLinkFrameworkErrorKind.SpotMoving
+      internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.SpotGenerationStale
+      || internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.SpotMoving
     ) {
       return {
         terminalResult: RequestResult.Conflict,
-        failureCode: error.code + 1
+        failureCode: internalFrameworkErrorCode(error) + 1
       };
     }
     return {
       terminalResult: RequestResult.InternalError,
-      failureCode: error.code + 1
+      failureCode: internalFrameworkErrorCode(error) + 1
     };
   }
   return { terminalResult: RequestResult.InternalError, failureCode: 17 };

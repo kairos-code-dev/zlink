@@ -22,7 +22,8 @@
 | OBS-C6 | source 구현·process 미검증 | version `N+1` target으로 Actor·User·Instance Spot과 bound session을 이전하고 generation을 유지하는지 검증한다. |
 | OBS-C7 | source 구현·process 미검증 | 동일 version target으로 planned maintenance를 완료한 뒤 명시적으로 `Shutdown`하는지 검증한다. |
 | OBS-C8 | source 구현·process 미검증 | bounded gate로 closing callback을 막고 deadline, cleanup cancellation과 forced teardown을 검증한다. |
-| OBS-C9 | 부분 source 구현·process 미검증 | automatic target 이전과 manual RouteMesh peer blocker를 검증한다. Physical readiness gate와 나머지 세 manual topology 종류는 아직 source gap이다. |
+| OBS-C9A | source 구현·process 미검증 | `ObsC9AutomaticConvergenceScenario`가 target readiness 뒤 relocation 결과, workload authority와 후속 traffic을 aggregate selector로 검사한다. fresh actual-process runner 실행 log와 physical readiness evidence를 추가해야 한다. |
+| OBS-C9B | source 구현·process 미검증 | `ObsC9ManualTopologyScenario`가 manual topology의 Relocate blocker, source readiness와 workload continuity를 aggregate selector로 검사한다. fresh actual-process runner 실행 log와 physical readiness evidence를 추가해야 한다. |
 | OBS-C10 | source 구현·process 미검증 | 같은 topology에서 exact version filter가 placement weight보다 먼저 적용되는지 검증한다. |
 | OBS-C11 | 부분 source 구현·process 미검증 | 같은 Relocate intent 합류와 다른 option 차단을 검증한다. Readiness 전용 gate는 아직 source gap이다. |
 | OBS-C12 | 부분 source 구현·process 미검증 | 합류 waiter cancellation과 concurrent Shutdown terminal replay를 검증한다. Readiness 전용 gate는 아직 source gap이다. |

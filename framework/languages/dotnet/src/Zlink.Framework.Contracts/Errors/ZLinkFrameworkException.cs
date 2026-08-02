@@ -15,7 +15,7 @@ public sealed class ZLinkFrameworkException : Exception
 
     public ZLinkFrameworkErrorKind Kind { get; }
 
-    public ZLinkRetryAdvice RetryAdvice { get; }
+    internal ZLinkRetryAdvice RetryAdvice { get; }
 
     private static ZLinkRetryAdvice DefaultRetryAdvice(
         ZLinkFrameworkErrorKind kind) =>
@@ -48,7 +48,7 @@ public enum ZLinkFrameworkErrorKind
     InternalFailure = 12
 }
 
-public enum ZLinkRetryAdvice
+internal enum ZLinkRetryAdvice
 {
     DoNotRetry = 0,
     RetryAfterBackoff = 1,

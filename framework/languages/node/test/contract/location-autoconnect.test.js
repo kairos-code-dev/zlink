@@ -384,7 +384,7 @@ test('auto-connect reconciler publishes local row diffs handover and stays fail-
     runtime,
     peerResolver: resolver,
     executor: executor(calls),
-    options: { heartbeatIntervalMs: 1000 },
+    options: { ownerLeaseRenewIntervalMs: 1000 },
     monotonicNowMs: () => 0
   });
 
@@ -450,7 +450,7 @@ test('auto-connect reconciler does not mark a target active when executor skips 
         calls.push(`disconnect:${target.endpoint}:${target.ownerId}`);
       }
     },
-    options: { heartbeatIntervalMs: 1000 },
+    options: { ownerLeaseRenewIntervalMs: 1000 },
     monotonicNowMs: () => 0
   });
 
@@ -668,7 +668,7 @@ test('auto-connect reconciler retains an existing draining peer without dialing 
       leaseTracker: new internal.ZLinkOwnerLeaseTracker({ store, options: { pollingIntervalMs: 0 }, monotonicNowMs: () => 0 })
     }),
     executor: executor(calls),
-    options: { heartbeatIntervalMs: 1000 },
+    options: { ownerLeaseRenewIntervalMs: 1000 },
     monotonicNowMs: () => 0
   });
   await reconciler.tick();

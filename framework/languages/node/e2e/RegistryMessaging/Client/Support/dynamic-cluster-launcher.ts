@@ -4,8 +4,12 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import type { ClientOptions } from './client-options';
-import type { ZLinkFrameworkRelocationResult } from '@zlink-systems/framework';
 import { getJson, getStatus, postJsonWithin, postStatus } from '../../../http-client';
+
+interface RelocationResult {
+  readonly outcome: number;
+  readonly reason: number;
+}
 
 export interface DynamicProvider {
   readonly process: DynamicProcess;
@@ -132,8 +136,8 @@ export class DynamicClusterLauncher {
     }
   }
 
-  async drain(provider: DynamicProvider): Promise<ZLinkFrameworkRelocationResult> {
-    const result = await postJsonWithin<ZLinkFrameworkRelocationResult>(
+  async drain(provider: DynamicProvider): Promise<RelocationResult> {
+    const result = await postJsonWithin<RelocationResult>(
       provider.httpUrl,
       '/drain',
       {},

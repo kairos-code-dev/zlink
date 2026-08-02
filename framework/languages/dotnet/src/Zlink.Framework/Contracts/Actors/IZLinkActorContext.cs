@@ -62,8 +62,7 @@ public abstract record ZLinkActorJoinCompletion
 
     public sealed record Failed(
         ZLinkActorJoinOperationId OperationId,
-        ZLinkFrameworkErrorKind Kind,
-        bool IsRetriable) : ZLinkActorJoinCompletion;
+        ZLinkFrameworkErrorKind Kind) : ZLinkActorJoinCompletion;
 }
 
 public interface IZLinkActorDeferredJoinCall

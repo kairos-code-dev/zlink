@@ -220,83 +220,108 @@ internal sealed partial class ZLinkFrameworkRuntime
             mode,
             targetApplicationVersion);
         _relocationTargetSelection = selection;
-        try
+        while (true)
         {
-            while (true)
+            //  Spec 28: a host with a no-workload result is not blocked for
+            //  want of a target. The zero-transition wait is separate from
+            //  shutdown's stop-and-drain waiter, so Serving admission remains
+            //  open while the current operation set settles.
+            await WaitForAcceptedOperationsForDrainAsync()
+                .WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+            await WaitForAcceptedActorHandoffsAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            var operationBaseline = SnapshotOperationAdmissions();
+            var actorBaseline = DrainAdmission.SnapshotActorAdmissions();
+            var handoffBaseline = _actorHandoffAdmissions.SnapshotDrain();
+            if (operationBaseline.ActiveCount != 0
+                || actorBaseline.ActiveCount != 0
+                || !handoffBaseline.IsSafe)
+                continue;
+
+            var plan = new ZLinkRetirePreflightPlan();
+            ZLinkFrameworkRelocationReason? targetBlocker = null;
+            foreach (var node in GetOrStartState().SpotNodes.Values)
             {
-                //  Spec 28: a host with no workload to move is not blocked for
-                //  want of a target. Asking for peer readiness first would hold
-                //  a lone host until its deadline and report TargetUnavailable,
-                //  so the preflights run first and readiness is only awaited
-                //  once something actually needs a target.
-                var plan = new ZLinkRetirePreflightPlan();
-                ZLinkFrameworkRelocationReason? targetBlocker = null;
-                foreach (var node in GetOrStartState().SpotNodes.Values)
+                var blocker = await node.Catalog.PreflightRetireAsync(
+                        plan,
+                        selection,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (blocker is not null)
                 {
-                    var blocker = await node.Catalog.PreflightRetireAsync(
-                            plan,
-                            selection,
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                    if (blocker is not null)
-                    {
-                        targetBlocker = blocker;
-                        break;
-                    }
+                    targetBlocker = blocker;
+                    break;
                 }
+            }
 
-                if (targetBlocker is null)
-                {
-                    await WaitForAcceptedActorHandoffsAsync(cancellationToken)
-                        .ConfigureAwait(false);
-                    targetBlocker = await _actorDrainCoordinator.PreflightAsync(
-                            plan,
-                            selection,
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                }
+            if (targetBlocker is null)
+            {
+                await WaitForAcceptedActorHandoffsAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                targetBlocker = await _actorDrainCoordinator.PreflightAsync(
+                        plan,
+                        selection,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
 
-                if (targetBlocker is null)
+            if (targetBlocker is null)
+            {
+                var fence = await TryBeginRelocationAdmissionFenceAsync(
+                        operationBaseline,
+                        actorBaseline,
+                        handoffBaseline,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (fence is not null)
                     return null;
-                if (targetBlocker != ZLinkFrameworkRelocationReason.TargetUnavailable)
-                    return targetBlocker;
-                if (!HasExactAutomaticRouteMeshPeerReadiness())
-                {
-                    await Task.Delay(
-                            Registration.Locations.Options.PollingInterval,
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                    continue;
-                }
-
+                continue;
+            }
+            if (targetBlocker != ZLinkFrameworkRelocationReason.TargetUnavailable)
+                return targetBlocker;
+            if (!HasExactAutomaticRouteMeshPeerReadiness())
+            {
                 await Task.Delay(
                         Registration.Locations.Options.PollingInterval,
                         cancellationToken)
                     .ConfigureAwait(false);
+                continue;
             }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            return ZLinkFrameworkRelocationReason.TargetUnavailable;
+
+            await Task.Delay(
+                    Registration.Locations.Options.PollingInterval,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 
     internal async ValueTask<bool> PublishRetiringAsync(
         CancellationToken cancellationToken)
     {
+        var fence = CaptureRelocationAdmissionFence();
         try
         {
             var published = _autoConnect is null
                             || await _autoConnect.MarkRetiringAsync(cancellationToken)
                                 .ConfigureAwait(false);
             if (published)
-                _drainAdmission.BeginDrain();
+                _drainAdmission.BeginDrain(ZLinkDrainOwner.Relocation);
+            else if (fence is { } expectedFence)
+                TryReopenRetireAdmissionsAfterRollback(expectedFence);
             return published;
         }
         catch (ZLinkRetiringPublicationRollbackException)
         {
-            _drainAdmission.BeginDrain();
+            _drainAdmission.BeginDrain(ZLinkDrainOwner.Relocation);
             _drainAdmission.Seal();
+            throw;
+        }
+        catch
+        {
+            if (fence is { } expectedFence)
+                TryReopenRetireAdmissionsAfterRollback(expectedFence);
             throw;
         }
     }
@@ -2172,31 +2197,33 @@ internal sealed partial class ZLinkFrameworkRuntime
         //  stall between arrival and the admission decision is invisible.
         ZLinkFrameworkDebugLog.SpotDiscovery(
             $"admit_entry actor={request.ActorId} spot={spotId} draining={_drainAdmission.IsDraining}");
-        if (_drainAdmission.IsDraining)
+        if (!_drainAdmission.TryEnterActorAdmission(out var admissionLease))
             return ZLinkRemoteActorJoinPackets.CreateAdmissionReply(
                 false,
                 ZLinkMessage.Empty,
                 Registration.Codecs,
                 request.DeadlineUnixTimeMilliseconds);
-        var target = ResolveActorHandoffTarget(spotId)
-                     ?? throw new InvalidOperationException(
-                         $"Actor handoff target '{spotId}' is not active.");
+        using (admissionLease)
+        {
+            var target = ResolveActorHandoffTarget(spotId)
+                         ?? throw new InvalidOperationException(
+                             $"Actor handoff target '{spotId}' is not active.");
 
-        return await _actorHandoffAdmissions.AdmitReservedAsync(
-                request,
-                spotId,
-                async ct =>
-                {
-                    var targetSpotGeneration = target.UserSpot?.ObjectGeneration
-                                               ?? target.EntrySpot?.ObjectGeneration
-                                               ?? 0;
-                    var targetNodeGeneration = GetSpotNodeRuntime(target.NodeRid)
-                        .Node
-                        .MeshStatus()
-                        .LifecycleGeneration;
-                    var authorityStore = Registration.Locations.ResolveStore()
-                                         ?? throw new ZLinkConfigurationException(
-                                             "Cross-node Actor relocation requires an Authority Store.");
+            return await _actorHandoffAdmissions.AdmitReservedAsync(
+                    request,
+                    spotId,
+                    async ct =>
+                    {
+                        var targetSpotGeneration = target.UserSpot?.ObjectGeneration
+                                                   ?? target.EntrySpot?.ObjectGeneration
+                                                   ?? 0;
+                        var targetNodeGeneration = GetSpotNodeRuntime(target.NodeRid)
+                            .Node
+                            .MeshStatus()
+                            .LifecycleGeneration;
+                        var authorityStore = Registration.Locations.ResolveStore()
+                                             ?? throw new ZLinkConfigurationException(
+                                                 "Cross-node Actor relocation requires an Authority Store.");
                     var authorityKey =
                         ZLinkActorAuthorityPayloadCodec.AuthorityKey(
                             request.ActorId);
@@ -2434,6 +2461,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                 },
                 cancellationToken)
             .ConfigureAwait(false);
+        }
     }
 
     internal ValueTask AbortRoutedActorJoinAdmissionAsync(

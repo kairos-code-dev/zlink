@@ -172,7 +172,11 @@ internal static class ConsumerHostFactory
             }
             catch (ZLinkFrameworkException error)
             {
-                return new ProfileAttemptRes(null, error.Kind.ToString(), error.RetryAdvice != ZLinkRetryAdvice.DoNotRetry);
+                var retryable = error.Kind is ZLinkFrameworkErrorKind.Unavailable
+                    or ZLinkFrameworkErrorKind.CapacityExceeded
+                    or ZLinkFrameworkErrorKind.DeadlineExceeded
+                    or ZLinkFrameworkErrorKind.ShuttingDown;
+                return new ProfileAttemptRes(null, error.Kind.ToString(), retryable);
             }
         });
         app.MapPost("/profile/request/missing", async (

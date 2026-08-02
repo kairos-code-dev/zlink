@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import { randomUUID } from 'node:crypto';
 import { RequestResult } from '@zlink-systems/zlink';
 import type {
@@ -9,8 +10,6 @@ import type {
 } from '../../contracts';
 import type { ZLinkActorJoinRuntimeResult } from './actor-runtime-contracts';
 import {
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import type {
@@ -90,8 +89,8 @@ export class ZLinkLocalNativeActorJoin {
     if (remote) {
       const actorType = state.actorType;
       if (actorType === undefined || this.options.sourceTransfer === undefined) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.ActorRouteNotFound,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
           `Actor '${actor.context.actorId}' remote transfer state is not configured.`
         );
       }
@@ -159,8 +158,8 @@ export class ZLinkLocalNativeActorJoin {
     ) {
       await prepared?.rollback();
       closeMeshCompletion(completion);
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
         `Actor join failed for '${actor.context.actorId}' with result '${completion.terminalResult}' and errno '${completion.failureErrno}'.`
       );
     }
@@ -179,8 +178,8 @@ export class ZLinkLocalNativeActorJoin {
     if (completion.terminalResult !== 0 || completion.failureErrno !== 0) {
       await prepared?.rollback();
       closeMeshCompletion(completion);
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
         `Actor join failed for '${actor.context.actorId}' with result '${completion.terminalResult}' and errno '${completion.failureErrno}'.`
       );
     }
@@ -295,8 +294,8 @@ export class ZLinkLocalNativeActorJoin {
       const leaveCompletion = await completions.wait(leaveOperationId);
       if (leaveCompletion.terminalResult !== 0 || leaveCompletion.failureErrno !== 0) {
         closeMeshCompletion(leaveCompletion);
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.ActorRouteNotFound,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
           `Actor SPOT leave failed for '${actor.context.actorId}' with result '${leaveCompletion.terminalResult}' and errno '${leaveCompletion.failureErrno}'.`
         );
       }
@@ -318,8 +317,8 @@ export class ZLinkLocalNativeActorJoin {
       control.actor === null
     ) {
       closeMeshCompletion(completion);
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
         `Actor entry SPOT join failed for '${actor.context.actorId}' with result '${completion.terminalResult}' and errno '${completion.failureErrno}'.`
       );
     }
@@ -353,8 +352,8 @@ export class ZLinkLocalNativeActorJoin {
   private requireCompletions(): ZLinkMeshCompletionTable {
     const completions = this.options.completionTableProvider();
     if (completions === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
         'Actor join runtime is not started.'
       );
     }
@@ -400,8 +399,8 @@ export class ZLinkLocalNativeActorJoin {
         && Date.now() < deadline;
       try {
         if (!retry && (completion.terminalResult !== 0 || completion.failureErrno !== 0)) {
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ActorRouteNotFound,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
             `Actor '${actorId}' source leave terminal result was not acknowledged.`
           );
         }
@@ -463,8 +462,8 @@ function requireEntrySpotId(
 ): string {
   const spotId = options.entrySpotIdProvider?.(meshName);
   if (spotId === undefined) {
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.ActorRouteNotFound,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
       'Actor source Entry Spot identity is not available.'
     );
   }
@@ -499,8 +498,8 @@ function requireUserSpotRoute(
   spotId: RoutingId
 ): ZLinkSpotRouteTarget & { readonly targetSpotGeneration: bigint } {
   if (target?.targetSpotGeneration === undefined || target.targetSpotGeneration <= 0n) {
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.ActorRouteNotFound,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
       `SPOT '${spotId}' has no valid Core lifecycle generation.`
     );
   }

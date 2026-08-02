@@ -1,6 +1,5 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from './framework-errors-internal';
 import {
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException
 } from '../contracts';
 
 export class ZLinkRuntimeAdmissionGate {
@@ -48,8 +47,8 @@ export class ZLinkRuntimeAdmissionGate {
         }
       };
     }
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.RequestRejected,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.RequestRejected,
       `${operation} was rejected because the framework is draining.`
     );
   }
@@ -88,8 +87,8 @@ export class ZLinkRuntimeAdmissionGate {
     } else if (this.accepts(meshName)) {
       return;
     }
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.RequestRejected,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.RequestRejected,
       `${operation} was rejected because the framework is draining.`
     );
   }
@@ -100,8 +99,8 @@ export class ZLinkRuntimeAdmissionGate {
     } else if (this.accepts(meshName)) {
       return;
     }
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.ActorCreateRejected,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.ActorCreateRejected,
       `Actor '${actorId}' create request was rejected because the framework is draining.`
     );
   }
@@ -109,8 +108,8 @@ export class ZLinkRuntimeAdmissionGate {
   private requireState(meshName: string): ZLinkMeshAdmissionState {
     const state = this.meshes.get(meshName);
     if (state !== undefined) return state;
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.RouteNotConnected,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.RouteNotConnected,
       `RouteMesh '${meshName}' is not registered.`
     );
   }

@@ -21,4 +21,3 @@
 | RM-C7 | 구현 | `SetWeight`·descriptor `ChannelWeights`·runtime `Weight` 기반 75/25 분포 marker가 있다. |
 | RM-C8 | 구현 | 1B, 4KiB, 256KiB, 1MiB payload 왕복 hash/length marker를 확인하고, server socket `MaxMessageSize`를 넘는 payload가 실패한 뒤 정상 request가 다시 성공하는지 검증한다. |
 | RM-C9 | 구현 | non-blocking 즉시 backpressure vs blocking bounded admission 대조와 회복 marker가 있다. |
-| RM-C10 | 미구현 | descriptor의 stable type 수, encoded byte 수와 Snapshot adapter capability 상한을 startup process에서 검증하는 selector가 없다. |

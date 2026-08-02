@@ -6,8 +6,8 @@ using Zlink.HttpClient;
 namespace StoreFailure.Client.Scenarios;
 
 // SF-D3: one outage cycle shows up in runtime status as an ordered
-// healthy -> unhealthy(+last error, lease failure) -> healthy(+fresh
-// refresh) transition.
+// healthy -> unhealthy(health and lease failure) -> healthy(+fresh refresh)
+// transition.
 internal static class SfD3StatusTransitionScenario
 {
     public static async Task RunAsync(
@@ -27,8 +27,8 @@ internal static class SfD3StatusTransitionScenario
             during = await SfProbe.WaitStatusAsync(
                 consumer,
                 SfProbe.Status(options.OwnerLeaseRenewInterval * 8,
-                    storeHealthy: false, ownerLeaseHealthy: false, requireLastError: true),
-                "SF-D3: the outage did not surface as unhealthy status with a last error.");
+                    storeHealthy: false, ownerLeaseHealthy: false),
+                "SF-D3: the outage did not surface as unhealthy status.");
         }
         finally
         {
@@ -49,10 +49,6 @@ internal static class SfD3StatusTransitionScenario
             $"SF-D3: the post-recovery refresh timestamp did not advance " +
             $"(before={before.LastRefreshAt:O}, during={during.LastRefreshAt:O}, " +
             $"after={after.LastRefreshAt:O}).");
-        ZlinkStreamAssert.Ensure(
-            !during.WatchEnabled && during.LastError is not null,
-            "SF-D3: outage status fields (watch/polling, last error) were not observable.");
-
         Console.WriteLine("scenario SF-D3 passed");
     }
 }

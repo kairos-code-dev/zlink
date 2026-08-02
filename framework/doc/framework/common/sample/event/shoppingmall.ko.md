@@ -710,6 +710,11 @@ raw JSON parse, raw frame 해석, private API reflection과 sample 전용 routin
 언어별 sample은 공통 JSON contract를 수동 DTO로 다시 정의하지 않고 해당 언어의 public typed codec
 경로를 사용한다.
 
+.NET의 attribute, Java·Kotlin의 annotation과 Node.js의 decorator는 선언형 metadata scan으로
+handler를 자동 등록한다. C++은 runtime reflection scanner가 없으므로 compile-time type과 public
+builder로 같은 handler 집합을 명시 등록한다. 이 차이는 등록 방법에만 적용하며 message와 처리
+책임을 바꾸지 않는다.
+
 ## 9. Client self-check
 
 Runner는 server readiness를 확인한 뒤 Client scenario를 한 번 실행한다. 고정 sleep이나 log 문자열을

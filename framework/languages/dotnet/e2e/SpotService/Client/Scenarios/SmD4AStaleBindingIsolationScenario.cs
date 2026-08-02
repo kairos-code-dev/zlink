@@ -42,10 +42,6 @@ internal static class SmD4AStaleBindingIsolationScenario
             && string.Equals(
                 stale.ErrorKind,
                 ZLinkFrameworkErrorKind.InvalidOperation.ToString(),
-                StringComparison.Ordinal)
-            && string.Equals(
-                stale.RetryAdvice,
-                ZLinkRetryAdvice.RetryAfterBackoff.ToString(),
                 StringComparison.Ordinal),
             $"SM-D4A expected a typed stale relay result, got '{stale.ErrorKind}'.");
 

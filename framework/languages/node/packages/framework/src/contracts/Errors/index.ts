@@ -1,1 +1,4 @@
-export * from './ZLinkFrameworkException';
+export {
+  ZLinkFrameworkErrorKind,
+  ZLinkFrameworkException
+} from './ZLinkFrameworkException';

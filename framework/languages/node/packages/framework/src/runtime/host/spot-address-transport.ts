@@ -1,9 +1,9 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException, internalFrameworkErrorKind  } from '../framework-errors-internal';
 import {
   SubmitResult,
   type MessageLike
 } from '@zlink-systems/zlink';
 import {
-  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   type RoutingId
 } from '../../contracts';
@@ -113,10 +113,10 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
         if (
           error instanceof ZLinkFrameworkException
           && (
-            error.kind === ZLinkFrameworkErrorKind.SpotRouteNotFound
-            || error.kind === ZLinkFrameworkErrorKind.SpotGenerationStale
-            || error.kind === ZLinkFrameworkErrorKind.SpotMoving
-            || error.kind === ZLinkFrameworkErrorKind.RequestTargetNotFound
+            internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.SpotRouteNotFound
+            || internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.SpotGenerationStale
+            || internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.SpotMoving
+            || internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.RequestTargetNotFound
           )
         ) {
           this.options.resolver()?.invalidate?.(spotId);
@@ -128,15 +128,15 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
       }
     }
     if (!call.instanceSpot) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestTargetNotFound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RequestTargetNotFound,
         `Spot '${String(spotId)}' has no Ready authority.`
       );
     }
     const selected = this.selectMissingTarget(spotId, call);
     if (selected === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestTargetNotFound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RequestTargetNotFound,
         `No eligible Instance Spot target serves '${String(spotId)}'.`
       );
     }
@@ -155,8 +155,8 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
     const completion = await table.wait(operation, call.signal);
     try {
       if (completion.terminalResult !== 0 || completion.failureErrno !== 0) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.RequestFailed,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.RequestFailed,
           `Instance Spot request failed with result ${completion.terminalResult} `
           + `and errno ${completion.failureErrno}.`
         );
@@ -180,7 +180,7 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
     } catch (error) {
       if (
         error instanceof ZLinkFrameworkException
-        && error.kind === ZLinkFrameworkErrorKind.SpotRouteNotFound
+        && internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.SpotRouteNotFound
       ) {
         return undefined;
       }
@@ -207,26 +207,26 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
       call.initialMeshName !== undefined
       && this.options.isMeshConfigured?.(call.initialMeshName) === false
     ) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.MeshNotFound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.MeshNotFound,
         `RouteMesh '${call.initialMeshName}' is not configured.`
       );
     }
     if (call.initialMeshName !== undefined && !configuredMeshes.includes(call.initialMeshName)) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ObjectClientNotConfigured,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ObjectClientNotConfigured,
         `RouteMesh '${call.initialMeshName}' has no object-client role.`
       );
     }
     if (call.initialMeshName === undefined && configuredMeshes.length === 0) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ObjectClientNotConfigured,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ObjectClientNotConfigured,
         'No object-client RouteMesh is configured.'
       );
     }
     if (call.initialMeshName === undefined && configuredMeshes.length > 1) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.MeshSelectionRequired,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.MeshSelectionRequired,
         'Multiple object-client RouteMeshes are configured; call inMesh(...).'
       );
     }
@@ -240,8 +240,8 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
       ?? (distinctTypes.length === 1 ? distinctTypes[0] : undefined);
     if (stableType === undefined) {
       if (distinctTypes.length === 0) return undefined;
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.InvalidConfiguration,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.InvalidConfiguration,
         'Instance Spot type is required when multiple types are registered.'
       );
     }
@@ -275,8 +275,8 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
         && target.stableType !== call.instanceSpotType
       )
     ) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.SpotTypeMismatch,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.SpotTypeMismatch,
         `Spot '${String(target.spotId)}' is not the requested Instance Spot type.`
       );
     }
@@ -317,8 +317,8 @@ function mapSubmitResult(result: number): ZLinkSubmitResult {
     case SubmitResult.Terminated:
       return { status: ZLinkSubmitStatus.Shutdown };
     default:
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestFailed,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RequestFailed,
         `Instance Spot submission failed with result ${result}.`
       );
   }

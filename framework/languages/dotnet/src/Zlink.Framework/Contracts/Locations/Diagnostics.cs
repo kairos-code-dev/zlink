@@ -2,11 +2,8 @@ namespace Zlink.Framework.Contracts.Locations;
 
 public sealed record ZLinkLocationRuntimeStatus(
     bool StoreHealthy,
-    bool WatchEnabled,
-    TimeSpan PollingInterval,
-    DateTimeOffset? LastRefreshAt,
-    string? LastError,
     bool OwnerLeaseHealthy,
+    DateTimeOffset? LastRefreshAt,
     DateTimeOffset? OwnerLeaseRenewedAt);
 
 public enum ZLinkLocationTopologyState

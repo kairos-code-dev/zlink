@@ -1,7 +1,8 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import * as os from 'node:os';
 import { Worker } from 'node:worker_threads';
 import type { ZLinkWorkerCall } from '../../contracts';
-import { ZLinkFrameworkErrorKind, ZLinkFrameworkException } from '../../contracts';
+import { ZLinkFrameworkException } from '../../contracts';
 import type { ZLinkWorkerOptions } from '../configuration';
 import { ZLinkConfigurationException } from '../configuration';
 import { createAbortError } from '../abort';
@@ -319,24 +320,24 @@ class ZLinkSerialDeliveredPromise<T> implements Promise<T> {
 }
 
 function workerQueueFull(maxQueueLength: number): ZLinkFrameworkException {
-  return new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.WorkerQueueFull,
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.WorkerQueueFull,
     `CPU worker queue is full (maxQueueLength=${maxQueueLength}).`,
     true
   );
 }
 
 function workerTimedOut(timeoutMs: number): ZLinkFrameworkException {
-  return new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.WorkerTimedOut,
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.WorkerTimedOut,
     `Worker job timed out after ${timeoutMs}ms.`,
     true
   );
 }
 
 function workerFailed(cause: unknown): ZLinkFrameworkException {
-  return new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.WorkerFailed,
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.WorkerFailed,
     'Worker job failed.',
     false,
     cause

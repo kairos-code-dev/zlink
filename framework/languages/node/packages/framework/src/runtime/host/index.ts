@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import { randomBytes, randomUUID } from 'node:crypto';
 import {
   Message as BindingMessage,
@@ -44,8 +45,6 @@ import type { Type } from '../../contracts/Common/CoreTypes';
 import type { ZLinkRuntimeEventPublisher } from '../diagnostics';
 import type { ZLinkSpotRouteResolver } from '../spots/spot-routing-internal';
 import {
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException,
   ZLinkFrameworkRelocationMode,
   ZLinkFrameworkRelocationOutcome,
   ZLinkFrameworkRelocationReason,
@@ -1727,8 +1726,8 @@ export class ZLinkFrameworkRuntimeHost implements
       remoteCreate: (meshName, targetNodeRid, request, timeoutMs) => {
         const node = this.spotNodeRuntime?.meshNode(meshName);
         if (node === undefined) {
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ObjectClientNotConfigured,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.ObjectClientNotConfigured,
             `RouteMesh '${meshName}' has no local client node.`
           );
         }
@@ -1751,21 +1750,21 @@ export class ZLinkFrameworkRuntimeHost implements
           .map(([meshName]) => meshName);
         const meshes = requestedMesh === undefined ? clientMeshes : [requestedMesh];
         if (meshes.length === 0) {
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ObjectClientNotConfigured,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.ObjectClientNotConfigured,
             'No object-client RouteMesh is configured.'
           );
         }
         if (requestedMesh === undefined && meshes.length > 1) {
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.MeshSelectionRequired,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.MeshSelectionRequired,
             'Multiple object-client RouteMeshes are configured; call inMesh(...).'
           );
         }
         const meshName = meshes[0]!;
         if (!clientMeshes.includes(meshName)) {
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ObjectClientNotConfigured,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.ObjectClientNotConfigured,
             `RouteMesh '${meshName}' has no object-client role.`
           );
         }
@@ -1805,8 +1804,8 @@ export class ZLinkFrameworkRuntimeHost implements
       remoteCreate: (meshName, targetNodeRid, request, timeoutMs) => {
         const node = this.spotNodeRuntime?.meshNode(meshName);
         if (node === undefined) {
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ObjectClientNotConfigured,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.ObjectClientNotConfigured,
             `RouteMesh '${meshName}' has no local client node.`
           );
         }
@@ -1829,27 +1828,27 @@ export class ZLinkFrameworkRuntimeHost implements
           .map(([meshName]) => meshName);
         const meshes = request.meshName === undefined ? clientMeshes : [request.meshName];
         if (meshes.length === 0) {
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ObjectClientNotConfigured,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.ObjectClientNotConfigured,
             'No object-client RouteMesh is configured.'
           );
         }
         if (request.meshName === undefined && meshes.length > 1) {
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.MeshSelectionRequired,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.MeshSelectionRequired,
             'Multiple object-client RouteMeshes are configured; call inMesh(...).'
           );
         }
         const meshName = meshes[0]!;
         if (!this.options.registration.spotNodes.has(meshName)) {
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.MeshNotFound,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.MeshNotFound,
             `RouteMesh '${meshName}' is not configured.`
           );
         }
         if (!clientMeshes.includes(meshName)) {
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ObjectClientNotConfigured,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.ObjectClientNotConfigured,
             `RouteMesh '${meshName}' has no object-client role.`
           );
         }
@@ -2037,8 +2036,8 @@ export class ZLinkFrameworkRuntimeHost implements
                 local.actorRef.objectGeneration !== authority.objectGeneration
                 || String(local.actorRef.nodeRid) !== record.reservation.targetNodeRid
               ) {
-                throw new ZLinkFrameworkException(
-                  ZLinkFrameworkErrorKind.ActorCreateFailed,
+                throw createInternalFrameworkException(
+                  ZLinkFrameworkInternalErrorKind.ActorCreateFailed,
                   `Actor '${record.actorId}' native authority does not match its placement reservation.`
                 );
               }
@@ -2073,8 +2072,8 @@ export class ZLinkFrameworkRuntimeHost implements
         },
         close: async (record, signal) => {
           if (!local.hasActiveSpot(record.target.spotId as never)) {
-            throw new ZLinkFrameworkException(
-              ZLinkFrameworkErrorKind.SpotMoving,
+            throw createInternalFrameworkException(
+              ZLinkFrameworkInternalErrorKind.SpotMoving,
               `User Spot '${record.target.spotId}' is not materialized on its authority owner.`,
               true
             );
@@ -2125,8 +2124,8 @@ export class ZLinkFrameworkRuntimeHost implements
       remoteClose: (meshName, targetNodeRid, request, timeoutMs) => {
         const node = this.spotNodeRuntime?.meshNode(meshName);
         if (node === undefined) {
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ObjectClientNotConfigured,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.ObjectClientNotConfigured,
             `RouteMesh '${meshName}' has no local client node.`
           );
         }

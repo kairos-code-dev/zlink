@@ -93,7 +93,7 @@ async function runClient(mode) {
     await retryReachable(() =>
       client.requestToNode('mesh', 'node-a', new RoutePing('ready')).timeout(1000).submit()
     );
-    client.sendToNode('mesh', 'node-a', new RouteNotice('one-way')).submit();
+    await client.sendToNode('mesh', 'node-a', new RouteNotice('one-way')).submit();
     return client.requestToNode('mesh', 'node-a', new RoutePing('ping')).timeout(1000).submit();
   }
   return retryReachable(() =>

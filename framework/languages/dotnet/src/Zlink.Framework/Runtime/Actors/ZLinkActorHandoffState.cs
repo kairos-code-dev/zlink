@@ -790,7 +790,8 @@ internal sealed class ZLinkActorHandoffState(
                 _sourceIngressAdmission.ReleaseAll();
                 _sourceHoldAdmission.ReleaseAll();
                 diagnostic?.Invoke(
-                    $"message_follow_registered source_rid={sourceActor.NodeRid} target_rid={targetActor.NodeRid} entries=1");
+                    $"message_follow_registered source_rid={sourceActor.NodeRid} "
+                    + $"target_rid={targetActor.NodeRid} entries=1");
                 return _frames
                     .Skip(Math.Min(committedFrameCount, _frames.Count))
                     .Concat(_sourceHoldFrames.Skip(_sourceCommittedHoldCount))

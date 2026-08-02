@@ -128,7 +128,7 @@ message ObserveBingoEventsRes {
 message BingoJoinFailedNotify {
   string room_id = 1;
   string error = 2;
-  bool is_retriable = 3;
+  reserved 3;
 }
 
 message StopObservingBingoEventsReq {

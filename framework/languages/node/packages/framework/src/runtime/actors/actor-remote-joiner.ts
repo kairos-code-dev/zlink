@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import type {
   ActorRef,
   RoutingId,
@@ -5,8 +6,6 @@ import type {
   ZLinkMessageSerializer
 } from '../../contracts';
 import {
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkBackendMeshNode, ZLinkMeshCompletionTable } from '../backend';
@@ -81,8 +80,8 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
             return actorRef;
           }
           if (Date.now() >= deadline) {
-            throw new ZLinkFrameworkException(
-              ZLinkFrameworkErrorKind.ActorRouteNotFound,
+            throw createInternalFrameworkException(
+              ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
               `Actor '${actorId}' target activation was not published before the join deadline.`
             );
           }

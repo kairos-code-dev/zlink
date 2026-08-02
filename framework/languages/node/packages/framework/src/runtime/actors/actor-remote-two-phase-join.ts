@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import { randomUUID } from 'node:crypto';
 import type {
   ActorRef,
@@ -8,8 +9,6 @@ import type {
 import type { ZLinkActorJoinRuntimeResult } from './actor-runtime-contracts';
 import {
   ZLinkEncodedPayload,
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException,
   ZLinkMessage
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
@@ -75,23 +74,23 @@ export class ZLinkRemoteTwoPhaseActorJoin {
   ): Promise<ZLinkActorJoinRuntimeResult<Message>> {
     const actorType = state.actorType;
     if (actorType === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
         `Actor '${actor.context.actorId}' does not have an actor type for remote SPOT join.`
       );
     }
     const transport = this.options.routedTransport;
     if (transport === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
         `Actor '${actor.context.actorId}' remote route transport is not configured.`
       );
     }
 
     const entrySpotId = this.options.entrySpotIdProvider?.(state.meshName);
     if (entrySpotId === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
         'Actor source Entry Spot identity is not available.'
       );
     }
@@ -273,8 +272,8 @@ export class ZLinkRemoteTwoPhaseActorJoin {
         'Remote actor transfer raw request transport is not available.',
         (parts) => {
           if (parts.length === 0) {
-            throw new ZLinkFrameworkException(
-              ZLinkFrameworkErrorKind.ActorRouteNotFound,
+            throw createInternalFrameworkException(
+              ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
               'Remote actor transfer reply was empty.'
             );
           }

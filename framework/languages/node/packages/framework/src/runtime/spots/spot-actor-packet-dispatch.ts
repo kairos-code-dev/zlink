@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException, internalFrameworkErrorKind  } from '../framework-errors-internal';
 import type {
   ActorRef,
   ZLinkActor,
@@ -6,7 +7,6 @@ import type {
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import {
-  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   zlinkMessageMetadata
 } from '../../contracts';
@@ -193,8 +193,8 @@ export class ZLinkSpotActorPacketDispatch {
     if (messageKind !== ZLinkDispatchMessageKind.ActorRequest) {
       return undefined;
     }
-    const missingActorError = new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.ActorDispatchHandlerNotFound,
+    const missingActorError = createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.ActorDispatchHandlerNotFound,
       `SPOT actor is not registered locally: ${actorId}`
     );
     if (header.requestSeq !== undefined && !returnResponse && this.options.actorErrorSender !== undefined) {
@@ -322,7 +322,7 @@ export class ZLinkSpotActorPacketDispatch {
         surface: ZLinkDispatchErrorSurface.SpotActor,
         messageKind,
         reason: error instanceof ZLinkFrameworkException
-          && error.kind === ZLinkFrameworkErrorKind.ActorDispatchHandlerNotFound
+          && internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.ActorDispatchHandlerNotFound
           ? ZLinkDispatchErrorReason.HandlerMissing
           : ZLinkDispatchErrorReason.HandlerException,
         action,

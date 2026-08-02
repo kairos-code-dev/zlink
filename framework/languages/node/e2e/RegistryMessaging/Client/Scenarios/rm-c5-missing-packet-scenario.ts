@@ -1,5 +1,4 @@
 // RM-C5: 미등록 packet 처리 시나리오를 검증한다.
-import { ZLinkFrameworkErrorKind } from '@zlink-systems/framework';
 import type { ProfileRes, RequestFailureRes } from '../../Shared/messages';
 import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
@@ -7,7 +6,7 @@ import { ensure } from '../Support/scenario-assert';
 export async function runRmC5(locationConsumerUrl: string, providerAUrl: string, providerBUrl: string): Promise<void> {
   const missingRequest = await postJson<RequestFailureRes>(locationConsumerUrl, '/profile/missing-request', { value: 'missing-request' });
   ensure(
-    missingRequest.failed && missingRequest.failureType === ZLinkFrameworkErrorKind.HandlerNotFound,
+    missingRequest.failed && missingRequest.failureType === 'handlerNotFound',
     'RM-C5 missing request should fail with HandlerNotFound.'
   );
   await postJson(locationConsumerUrl, '/profile/missing-command', { commandId: 'missing-send' });

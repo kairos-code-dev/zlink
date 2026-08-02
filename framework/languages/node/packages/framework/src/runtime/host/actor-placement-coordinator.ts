@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import { createHash } from 'node:crypto';
 import { RequestResult } from '@zlink-systems/zlink';
 import type {
@@ -11,8 +12,6 @@ import type {
   ZLinkObjectReserveResult
 } from '../../contracts/Locations';
 import {
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException
 } from '../../contracts';
 import type {
   ZLinkAuthorityStore,
@@ -81,8 +80,8 @@ export class ZLinkActorPlacementCoordinator {
       for (;;) {
         const target = await this.options.target(meshName, stableType, deadline.signal, excluded);
         if (target === undefined) {
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.PlacementCapacityExhausted,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.PlacementCapacityExhausted,
             `No eligible Actor placement target is ready for '${stableType}'.`,
             true
           );
@@ -114,16 +113,16 @@ export class ZLinkActorPlacementCoordinator {
         const existing = existingActor(reserved, actorId, stableType);
         if (existing !== undefined) {
           if (createOnly) {
-            throw new ZLinkFrameworkException(
-              ZLinkFrameworkErrorKind.ActorAlreadyExists,
+            throw createInternalFrameworkException(
+              ZLinkFrameworkInternalErrorKind.ActorAlreadyExists,
               `Actor '${actorId}' already exists.`
             );
           }
           return { status: 'existing', actor: existing };
         }
         if (reserved.kind === 'typeMismatch') {
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ActorTypeMismatch,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.ActorTypeMismatch,
             `Actor '${actorId}' is registered with another stable type.`
           );
         }
@@ -136,8 +135,8 @@ export class ZLinkActorPlacementCoordinator {
           continue;
         }
         if (reserved.kind !== 'reserved') {
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ActorCreateFailed,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.ActorCreateFailed,
             `Actor '${actorId}' reservation failed with '${reserved.kind}'.`,
             true
           );
@@ -158,8 +157,8 @@ export class ZLinkActorPlacementCoordinator {
           remote.terminalResult !== RequestResult.Ok
           || remote.tail?.kind !== 'actorCreate'
         ) {
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ActorCreateFailed,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.ActorCreateFailed,
             `Remote Actor '${actorId}' creation failed.`,
             remote.terminalResult !== RequestResult.InvalidState
           );
@@ -177,8 +176,8 @@ export class ZLinkActorPlacementCoordinator {
         }
         const actor = remote.tail.actor;
         if (actor === undefined) {
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ActorCreateFailed,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.ActorCreateFailed,
             'Remote Actor create terminal omitted ActorRef.'
           );
         }
@@ -225,16 +224,16 @@ export class ZLinkActorPlacementCoordinator {
     );
     requireExactReservation(current, record);
     if (current.kind !== 'snapshot') {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorCreateFailed,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorCreateFailed,
         `Actor '${record.actorId}' reservation is missing.`
       );
     }
     if (current.allocation.state === 'active') {
       const identity = decodeActorAuthorityIdentity(current.payload);
       if (identity === undefined) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.ActorCreateFailed,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.ActorCreateFailed,
           `Actor '${record.actorId}' Ready authority is invalid.`
         );
       }
@@ -290,8 +289,8 @@ export class ZLinkActorPlacementCoordinator {
         ? completion.kind !== 'created' && completion.kind !== 'alreadyCompleted'
         : completion.kind !== 'rejected' && completion.kind !== 'alreadyCompleted'
     ) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorCreateFailed,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorCreateFailed,
         `Actor '${record.actorId}' creation completion lost its reservation.`
       );
     }
@@ -412,8 +411,8 @@ function requireExactReservation(
       )
     )
   ) {
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.ActorCreateFailed,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.ActorCreateFailed,
       `Actor '${record.actorId}' reservation fence is stale.`,
       true
     );

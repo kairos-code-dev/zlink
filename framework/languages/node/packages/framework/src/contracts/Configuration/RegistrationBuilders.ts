@@ -275,7 +275,7 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   }
 }
 
-class DefaultInboundDispatchOptionsBuilder
+export class DefaultInboundDispatchOptionsBuilder
 implements ZLinkInboundDispatchOptions {
   constructor(
     private readonly values: Partial<ZLinkInboundDispatchOptionValues>

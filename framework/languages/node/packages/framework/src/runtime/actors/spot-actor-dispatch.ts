@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import type {
   Type,
   ZLinkActor,
@@ -10,7 +11,6 @@ import type {
 } from '../../contracts';
 import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import {
-  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   ZLinkMessageMetadataEmpty
 } from '../../contracts';
@@ -282,8 +282,8 @@ function packetKey(kind: ZLinkActorPacketKind, actorType: Type<ZLinkActor>, pack
 }
 
 function actorDispatchHandlerNotFound(message: string): ZLinkFrameworkException {
-  return new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.ActorDispatchHandlerNotFound,
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.ActorDispatchHandlerNotFound,
     message
   );
 }

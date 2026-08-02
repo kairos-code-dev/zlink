@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import type {
   RoutingId,
   Type,
@@ -6,8 +7,6 @@ import type {
 } from '../../contracts';
 import type { ZLinkLocalSpotCreateResult } from './spot-manager-internal-contracts';
 import {
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException,
   ZLinkSpotCreateState
 } from '../../contracts';
 import type { ZLinkSpotActivation } from './spot-activation-state';
@@ -150,8 +149,8 @@ export class ZLinkSpotActivationRegistry {
   register(activation: ZLinkSpotActivation): void {
     const key = spotActivationKey(activation.meshName, activation.spotId);
     if (this.activations.has(key)) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.SpotTypeMismatch,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.SpotTypeMismatch,
         `Spot '${activation.spotId}' was activated more than once.`
       );
     }
@@ -277,8 +276,8 @@ export class ZLinkSpotActivationRegistry {
     const existing = this.activations.get(key);
     if (existing !== undefined) {
       if (existing.spotType !== spotType) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.SpotTypeMismatch,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.SpotTypeMismatch,
           `Spot '${spotId}' already exists with a different spot type.`
         );
       }
@@ -303,8 +302,8 @@ export class ZLinkSpotActivationRegistry {
       return { owner: true, ready: tracked };
     }
     if (pending.spotType !== spotType) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.SpotTypeMismatch,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.SpotTypeMismatch,
         `Spot '${spotId}' is being created with a different spot type.`
       );
     }

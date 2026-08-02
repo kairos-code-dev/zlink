@@ -82,7 +82,7 @@ public sealed class SourceLayoutContracts
                 type.Namespace is "Zlink.Framework.Contracts.Codecs"
                     or "Zlink.Framework.Contracts.Errors",
                 $"Unexpected shared contract export: {type.FullName}"));
-        Assert.Equal(9, shared.GetExportedTypes().Length);
+        Assert.Equal(8, shared.GetExportedTypes().Length);
         Assert.Null(shared.GetType("Zlink.Framework.Contracts.Codecs.IZLinkMessageCodecResolver"));
         Assert.Null(shared.GetType("Zlink.Framework.Contracts.Codecs.IZLinkMessageCodecRegistry"));
         Assert.Null(shared.GetType("Zlink.Framework.Contracts.Internal.ZLinkJsonSerializerOptions"));

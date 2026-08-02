@@ -10,7 +10,10 @@ import {
   waitForPortState
 } from '../Support/managed-service';
 import { ensure } from '../Support/scenario-assert';
-import { ZLinkFrameworkRelocationOutcome, ZLinkFrameworkRelocationReason, type ZLinkFrameworkRelocationResult } from '@zlink-systems/framework';
+interface RelocationResult {
+  readonly outcome: number;
+  readonly reason: number;
+}
 
 interface TopologyObservation {
   readonly eventCount: number;
@@ -24,11 +27,11 @@ interface PeerObservation {
 
 export async function runMonA4(options: ClientOptions): Promise<ManagedProcess> {
   const beforeFailover = await waitForTopologyEndpoint(options.serviceUrl, undefined, options.serviceBChannelEndpoint);
-  const drain = await postJsonWithin<ZLinkFrameworkRelocationResult>(
+  const drain = await postJsonWithin<RelocationResult>(
     options.serviceBUrl, '/admin/drain', {}, 35_000
   );
   ensure(
-    drain.outcome === ZLinkFrameworkRelocationOutcome.Relocated && drain.reason === ZLinkFrameworkRelocationReason.None,
+    drain.outcome === 0 && drain.reason === 0,
     'MON-A4 replacement did not complete host retire.'
   );
   await waitForPeer(options.serviceUrl, 'svc-b', false);

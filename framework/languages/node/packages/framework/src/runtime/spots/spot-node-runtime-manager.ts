@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import { randomUUID } from 'node:crypto';
 import type { ZLinkLocationOptionOverrides } from '../../contracts/Locations/Options';
 import type {
@@ -19,7 +20,6 @@ import {
 } from '../../contracts/Locations';
 import {
   ZLinkFrameworkRuntimeState,
-  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   ZLinkObjectRole
 } from '../../contracts';
@@ -1181,8 +1181,8 @@ function advertisedMeshEndpoint(
 }
 
 function runtimeShutdownError(): ZLinkFrameworkException {
-  return new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.RuntimeShutdown,
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.RuntimeShutdown,
     'SPOT publisher runtime is shutting down.'
   );
 }

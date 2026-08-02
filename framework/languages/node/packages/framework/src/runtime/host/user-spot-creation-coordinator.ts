@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import { createHash } from 'node:crypto';
 import type {
   RoutingId,
@@ -11,7 +12,6 @@ import type {
 } from '../../contracts/Locations';
 import type { ZLinkAuthorityStore, ZLinkObjectCreationStore } from '../locations/internal-store-contracts';
 import {
-  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   ZLinkSpotCreateState
 } from '../../contracts';
@@ -111,8 +111,8 @@ export class ZLinkUserSpotCreationCoordinator {
       } catch (error) {
         deadline.close();
         if (error instanceof ZLinkFrameworkException) throw error;
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.RequestFailed,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.RequestFailed,
           'User Spot placement provider failed.',
           false,
           error
@@ -120,16 +120,16 @@ export class ZLinkUserSpotCreationCoordinator {
       }
       if (target === undefined) {
         deadline.close();
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.PlacementCapacityExhausted,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.PlacementCapacityExhausted,
           'No eligible User Spot placement target is ready.',
           true
         );
       }
       if (excludedNodeRids.has(String(target.nodeRid))) {
         deadline.close();
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.PlacementCapacityExhausted,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.PlacementCapacityExhausted,
           'No additional User Spot placement target is ready.',
           true
         );
@@ -174,8 +174,8 @@ export class ZLinkUserSpotCreationCoordinator {
       } catch (error) {
         deadline.close();
         if (error instanceof ZLinkFrameworkException) throw error;
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.RequestFailed,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.RequestFailed,
           'User Spot reservation Store operation failed.',
           false,
           error
@@ -219,8 +219,8 @@ export class ZLinkUserSpotCreationCoordinator {
         if (request.generatedIdentity === true) {
           throw spotIdConflict(request.spotId);
         }
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.RequestFailed,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.RequestFailed,
           'User Spot creation requires a remote generation-fenced create operation.'
         );
       }
@@ -283,15 +283,15 @@ export class ZLinkUserSpotCreationCoordinator {
       if (request.generatedIdentity === true) {
         throw spotIdConflict(request.spotId);
       }
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.SpotTypeMismatch,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.SpotTypeMismatch,
         `User Spot '${String(request.spotId)}' has another stable type.`
       );
     }
     if (reserved.kind !== 'reserved') {
       deadline.close();
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestFailed,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RequestFailed,
         `User Spot reservation failed: ${reserved.kind}.`
       );
     }
@@ -335,8 +335,8 @@ export class ZLinkUserSpotCreationCoordinator {
     const { spot: currentRef, snapshot: current } = resolved;
     const key = encodeAuthorityKey('user_spot', String(spot.spotId));
     if (ownerPresent?.(currentRef) === false) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.SpotMoving,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.SpotMoving,
         `User Spot '${String(spot.spotId)}' is missing from its authority owner.`,
         true
       );
@@ -362,14 +362,14 @@ export class ZLinkUserSpotCreationCoordinator {
     );
     if (deleted.kind === 'deleted') return true;
     if (deleted.kind === 'conflict') {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.SpotMoving,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.SpotMoving,
         `User Spot '${String(spot.spotId)}' authority changed while closing.`,
         true
       );
     }
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.SpotGenerationStale,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.SpotGenerationStale,
       `User Spot '${String(spot.spotId)}' generation cannot be closed.`
     );
   }
@@ -382,8 +382,8 @@ export class ZLinkUserSpotCreationCoordinator {
     const current = await this.options.store.readAuthority(key, signal);
     if (current.kind === 'missing') return undefined;
     if (current.objectGeneration !== spot.objectGeneration) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.SpotGenerationStale,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.SpotGenerationStale,
         `User Spot '${String(spot.spotId)}' generation is stale.`
       );
     }
@@ -398,8 +398,8 @@ export class ZLinkUserSpotCreationCoordinator {
       String(current.allocation.descriptor.rid) !== String(spot.nodeRid)
       || current.allocation.descriptor.meshName !== spot.meshName
     ) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.SpotGenerationStale,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.SpotGenerationStale,
         `User Spot '${String(spot.spotId)}' owner route is stale.`
       );
     }
@@ -420,8 +420,8 @@ export class ZLinkUserSpotCreationCoordinator {
     const fingerprint = remoteCreationFingerprint(record);
     let admitted = this.remoteCreations.get(key);
     if (admitted !== undefined && admitted.fingerprint !== fingerprint) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestFailed,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RequestFailed,
         'Remote User Spot reservation was reused with different immutable content.'
       );
     }
@@ -493,8 +493,8 @@ export class ZLinkUserSpotCreationCoordinator {
           && current.allocation.capacity.spotType.count
             === record.reservation.pendingCapacityDelta;
     if (!exactIdentity || current.kind !== 'snapshot') {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.SpotMoving,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.SpotMoving,
         'Remote User Spot reservation fence is stale.'
       );
     }
@@ -515,8 +515,8 @@ export class ZLinkUserSpotCreationCoordinator {
       };
     }
     if (current.storeVersion.value !== record.reservation.expectedStoreVersion) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.SpotMoving,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.SpotMoving,
         'Remote User Spot Pending StoreVersion is stale.'
       );
     }
@@ -525,8 +525,8 @@ export class ZLinkUserSpotCreationCoordinator {
       pending === undefined
       || pending.reservationId !== record.reservation.reservationId
     ) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestFailed,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RequestFailed,
         'Remote User Spot Pending creation projection is missing.'
       );
     }
@@ -538,8 +538,8 @@ export class ZLinkUserSpotCreationCoordinator {
       || !createHash('sha256').update(requestPayload).digest()
         .equals(Buffer.from(pending.requestSha256))
     ) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestFailed,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RequestFailed,
         'Remote User Spot Pending creation content failed integrity validation.'
       );
     }
@@ -599,16 +599,16 @@ export class ZLinkUserSpotCreationCoordinator {
           })
         }, signal);
       } catch (error) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.RequestFailed,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.RequestFailed,
           'User Spot Ready commit Store operation failed.',
           false,
           error
         );
       }
       if (committed.kind !== 'committed' && committed.kind !== 'alreadyCommitted') {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.RequestFailed,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.RequestFailed,
           `Remote User Spot Ready commit failed: ${committed.kind}.`
         );
       }
@@ -667,8 +667,8 @@ export class ZLinkUserSpotCreationCoordinator {
     if (
       current.objectGeneration !== record.target.objectGeneration
     ) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.SpotGenerationStale,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.SpotGenerationStale,
         `User Spot '${record.target.spotId}' generation is stale.`
       );
     }
@@ -681,8 +681,8 @@ export class ZLinkUserSpotCreationCoordinator {
       || current.allocation.objectKind !== 'user_spot'
       || current.allocation.state !== 'active'
     ) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.SpotMoving,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.SpotMoving,
         `User Spot '${record.target.spotId}' close authority is moving.`,
         true
       );
@@ -712,8 +712,8 @@ export class ZLinkUserSpotCreationCoordinator {
       signal
     );
     if (deleted.kind === 'deleted') return true;
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.SpotMoving,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.SpotMoving,
       `User Spot '${record.target.spotId}' authority changed while closing.`,
       true
     );
@@ -731,8 +731,8 @@ export class ZLinkUserSpotCreationCoordinator {
       || ready.spotId !== spotId
       || ready.stableType !== current.allocation.stableType
     ) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.SpotMoving,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.SpotMoving,
         `User Spot '${spotId}' is not in Framework-owned Ready state.`,
         true
       );
@@ -751,8 +751,8 @@ export class ZLinkUserSpotCreationCoordinator {
       const { kind: _kind, ...snapshot } = closing;
       return { kind: 'snapshot', ...snapshot };
     }
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.SpotMoving,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.SpotMoving,
       `User Spot authority changed while entering Closing.`,
       true
     );
@@ -775,8 +775,8 @@ export class ZLinkUserSpotCreationCoordinator {
       signal
     );
     if (restored.kind !== 'stored') {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.SpotMoving,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.SpotMoving,
         'User Spot Ready authority could not be restored after close was declined.',
         true
       );
@@ -808,15 +808,15 @@ export class ZLinkUserSpotCreationCoordinator {
     const remote = this.options.remoteCreate;
     const pending = snapshot.pendingCreation;
     if (remote === undefined || pending === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestFailed,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RequestFailed,
         'Remote User Spot creation transport is not configured.'
       );
     }
     const timeoutMs = deadlineUnixMs - Date.now();
     if (timeoutMs <= 0) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.DeadlineExceeded,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.DeadlineExceeded,
         'Remote User Spot creation exhausted its end-to-end deadline.',
         true
       );
@@ -883,8 +883,8 @@ export class ZLinkUserSpotCreationCoordinator {
 }
 
 function spotIdConflict(spotId: RoutingId): ZLinkFrameworkException {
-  return new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.SpotIdConflict,
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.SpotIdConflict,
     `Generated User Spot ID '${String(spotId)}' is already active.`
   );
 }
@@ -928,8 +928,8 @@ function localCreationRecord(
 ): ServiceUserSpotCreateRecord {
   const pending = snapshot.pendingCreation;
   if (pending === undefined) {
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.RequestFailed,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.RequestFailed,
       'Local User Spot Pending creation projection is missing.'
     );
   }
@@ -973,15 +973,15 @@ export function decodeLocationCreationContent(
 ): Buffer {
   const match = /^inline-v1:([0-9a-f]{8}):([A-Za-z0-9_-]+)$/.exec(reference);
   if (match === null) {
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.RequestFailed,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.RequestFailed,
       'User Spot creation content reference is invalid.'
     );
   }
   const payload = Buffer.from(match[2]!, 'base64url');
   if (crc32c(payload) !== Number.parseInt(match[1]!, 16)) {
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.RequestFailed,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.RequestFailed,
       'User Spot creation content checksum does not match.'
     );
   }
@@ -989,8 +989,8 @@ export function decodeLocationCreationContent(
     expectedEncodedSize !== undefined
     && BigInt(payload.byteLength) !== expectedEncodedSize
   ) {
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.RequestFailed,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.RequestFailed,
       'Creation content encoded size does not match its Pending reservation.'
     );
   }
@@ -998,8 +998,8 @@ export function decodeLocationCreationContent(
     expectedSha256 !== undefined
     && !createHash('sha256').update(payload).digest().equals(Buffer.from(expectedSha256))
   ) {
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.RequestFailed,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.RequestFailed,
       'Creation content SHA-256 does not match its Pending reservation.'
     );
   }
@@ -1063,27 +1063,27 @@ function remoteUserSpotFailure(
 ): ZLinkFrameworkException {
   const detail = `${message} terminalResult=${terminalResult}, failureCode=${failureCode}.`;
   if (failureCode === 33) {
-    return new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.SpotGenerationStale,
+    return createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.SpotGenerationStale,
       detail
     );
   }
   if (failureCode === 34) {
-    return new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.SpotMoving,
+    return createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.SpotMoving,
       detail,
       true
     );
   }
   if (terminalResult === 101) {
-    return new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.DeadlineExceeded,
+    return createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.DeadlineExceeded,
       detail,
       true
     );
   }
-  return new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.RequestFailed,
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.RequestFailed,
     detail
   );
 }
@@ -1094,8 +1094,8 @@ function createDeadline(timeoutMs: number, parent?: AbortSignal): {
 } {
   const controller = new AbortController();
   const timeout = setTimeout(
-    () => controller.abort(new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.DeadlineExceeded,
+    () => controller.abort(createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.DeadlineExceeded,
       'User Spot creation exceeded its end-to-end deadline.',
       true
     )),

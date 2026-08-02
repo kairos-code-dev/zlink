@@ -20,7 +20,6 @@ internal sealed class ZLinkLocationRuntimeQueryService :
     private readonly ZLinkLocationRuntime _runtime;
     private readonly ZLinkObservedLocationGenerations _observed;
     private readonly ZLinkLiveLocationRows _liveRows;
-    private readonly bool _watchEnabled;
     private readonly ZLinkLocationStoreHealth? _storeHealth;
 
     internal ZLinkLocationRuntimeQueryService(
@@ -30,7 +29,6 @@ internal sealed class ZLinkLocationRuntimeQueryService :
         ZLinkOwnerLeaseTracker leaseTracker,
         ZLinkLocationRuntime runtime,
         ZLinkObservedLocationGenerations observed,
-        bool watchEnabled = false,
         ZLinkLocationStoreHealth? storeHealth = null)
     {
         _options = options;
@@ -39,7 +37,6 @@ internal sealed class ZLinkLocationRuntimeQueryService :
         _leaseTracker = leaseTracker;
         _runtime = runtime;
         _observed = observed;
-        _watchEnabled = watchEnabled;
         _storeHealth = storeHealth;
         _liveRows = new ZLinkLiveLocationRows(leaseTracker);
     }
@@ -58,10 +55,7 @@ internal sealed class ZLinkLocationRuntimeQueryService :
 
         return ValueTask.FromResult(new ZLinkLocationRuntimeStatus(
             StoreHealthy: health.LastError is null && (store?.Healthy ?? true),
-            WatchEnabled: _watchEnabled,
-            PollingInterval: _options.PollingInterval,
             LastRefreshAt: lastRefreshAt,
-            LastError: store?.LastError ?? health.LastError,
             OwnerLeaseHealthy: health.Healthy,
             OwnerLeaseRenewedAt: health.RenewedAt));
     }
@@ -166,8 +160,8 @@ internal sealed class ZLinkLocationRuntimeQueryService :
             ? [meshName]
             : _registeredMeshNames;
 
-    private ZLinkPageRequest Normalize(ZLinkPageRequest page) =>
-        page.PageSize > 0 ? page : page with { PageSize = 1000 };
+    private static ZLinkPageRequest Normalize(ZLinkPageRequest page) =>
+        ZLinkPageRequestPolicy.Normalize(page);
 
     private async ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListAcceptedDescriptorsAsync(
         string meshName,

@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import type {
   ActorRef,
   RoutingId,
@@ -10,7 +11,6 @@ import type {
 } from '../../contracts';
 import {
   ZLinkEncodedPayload,
-  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException
 } from '../../contracts';
 import { Message as BindingMessage, RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
@@ -198,14 +198,14 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     if (state?.actor === undefined) return false;
     const current = this.actorRefForState(state);
     if (current.objectGeneration !== actor.objectGeneration) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorGenerationStale,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorGenerationStale,
         `Actor '${actor.actorId}' generation is stale.`
       );
     }
     if (state.isMoving) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorMoving,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorMoving,
         `Actor '${actor.actorId}' is relocating.`
       );
     }
@@ -220,8 +220,8 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
         const completion = await completions.wait(operationId, signal);
         try {
           if (completion.terminalResult !== 0 || completion.failureErrno !== 0) {
-            throw new ZLinkFrameworkException(
-              ZLinkFrameworkErrorKind.ActorRouteNotFound,
+            throw createInternalFrameworkException(
+              ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
               `Actor '${actor.actorId}' destroy failed with result '${completion.terminalResult}' and errno '${completion.failureErrno}'.`
             );
           }
@@ -286,8 +286,8 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     try {
       const result = await operation.task;
       if (result.status !== 'created') {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.ActorCreateRejected,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.ActorCreateRejected,
           `Transferred Actor '${actorId}' materialization was rejected.`
         );
       }
@@ -312,8 +312,8 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
   ): Promise<ZLinkActorCreateResult> {
     const meshName = options.meshName ?? this.options.actorMeshNameProvider?.(actorType);
     if (meshName === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ObjectClientNotConfigured,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ObjectClientNotConfigured,
         `Actor type '${actorType}' has no configured object-role RouteMesh.`
       );
     }
@@ -330,16 +330,16 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     }
     const localState = this.states.get(actorId);
     if (localState?.actorType !== undefined && localState.actorType !== actorType) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorTypeMismatch,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorTypeMismatch,
         `Actor '${actorId}' is registered as type '${localState.actorType}', not '${actorType}'.`
       );
     }
     const existing = await this.find(actorId, signal);
     if (existing !== undefined) {
       if (failIfExists) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.ActorAlreadyExists,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.ActorAlreadyExists,
           `Actor '${actorId}' already exists.`
         );
       }
@@ -589,8 +589,8 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
       return;
     }
     if (state.isJoined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
         `Actor '${actor.context.actorId}' must leave its current SPOT before destroy.`
       );
     }
@@ -683,8 +683,8 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
           if (error instanceof ZLinkFrameworkException) {
             throw error;
           }
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ActorCreateFailed,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.ActorCreateFailed,
             `Actor '${actorId}' creation failed: ${error instanceof Error ? error.message : String(error)}`,
             false,
             error
@@ -695,8 +695,8 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
       }
 
       if (Date.now() >= deadline) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.DeadlineExceeded,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.DeadlineExceeded,
           `Actor '${actorId}' creation did not reach a terminal state before its deadline.`,
           true
         );
@@ -807,8 +807,8 @@ class ZLinkActorCreateCallRuntime implements ZLinkActorCreateCall {
     this.requireMutable();
     if (this.timeoutConfigured) this.throwDuplicateOption('timeout');
     if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.InvalidConfiguration,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.InvalidConfiguration,
         'Actor create timeout must be a positive finite number.'
       );
     }
@@ -839,15 +839,15 @@ class ZLinkActorCreateCallRuntime implements ZLinkActorCreateCall {
 
   private requireMutable(): void {
     if (!this.submitted) return;
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.AlreadySubmitted,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.AlreadySubmitted,
       'Actor create call was already submitted.'
     );
   }
 
   private throwDuplicateOption(option: string): never {
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.InvalidConfiguration,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.InvalidConfiguration,
       `Actor create option '${option}' was already configured.`
     );
   }
@@ -871,8 +871,8 @@ export type ZLinkActorLocalCreateResult =
 
 function requireCreatedActor(result: ZLinkActorLocalCreateResult, actorId: string): ZLinkActor {
   if (result.status !== 'rejected') return result.actor;
-  throw new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.ActorCreateRejected,
+  throw createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.ActorCreateRejected,
     `Actor '${actorId}' create request was rejected.`
   );
 }

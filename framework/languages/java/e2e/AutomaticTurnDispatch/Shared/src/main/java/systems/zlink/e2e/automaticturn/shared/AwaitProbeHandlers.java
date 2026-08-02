@@ -16,7 +16,7 @@ import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
 import systems.zlink.framework.spots.ZLinkSpotTimerHandler;
 import systems.zlink.framework.spots.ZLinkTimerTick;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
-import systems.zlink.framework.channels.ZLinkPublishContext;
+import systems.zlink.framework.channels.ZLinkPublishMessageContext;
 import systems.zlink.framework.channels.ZLinkFanoutHandler;
 
 public final class AwaitProbeHandlers {
@@ -431,7 +431,7 @@ public final class AwaitProbeHandlers {
         @Override
         public CompletionStage<Void> handle(
             Contracts.ObservabilityFanoutEvent event,
-            ZLinkPublishContext context) {
+            ZLinkPublishMessageContext context) {
             evidence.record("obs-fanout-received", event.requestId(), context.topic());
             return CompletableFuture.completedFuture(null);
         }

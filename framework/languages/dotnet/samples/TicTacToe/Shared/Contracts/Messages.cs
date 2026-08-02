@@ -56,8 +56,7 @@ public sealed record JoinGameRes(GameState State);
 
 public sealed record JoinGameFailedNotify(
     string RoomId,
-    string Error,
-    bool IsRetriable);
+    string Error);
 
 public sealed record ObserveMilestoneReq;
 

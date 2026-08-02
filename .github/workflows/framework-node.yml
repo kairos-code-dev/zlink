@@ -7,6 +7,9 @@ on:
     paths:
       - ".github/workflows/framework-node.yml"
       - "framework/languages/node/**"
+      - "framework/doc/framework/common/spec/**"
+      - "framework/doc/framework/common/e2e/**"
+      - "framework/doc/plan/node-framework-spec-gap-ledger/**"
       - "bindings/node/**"
       - "framework/languages/dotnet/testapps/**"
   pull_request:
@@ -15,6 +18,9 @@ on:
     paths:
       - ".github/workflows/framework-node.yml"
       - "framework/languages/node/**"
+      - "framework/doc/framework/common/spec/**"
+      - "framework/doc/framework/common/e2e/**"
+      - "framework/doc/plan/node-framework-spec-gap-ledger/**"
       - "bindings/node/**"
       - "framework/languages/dotnet/testapps/**"
   workflow_dispatch:

@@ -139,10 +139,10 @@ export function encodeChannelReplyParts(
 
 export function encodeChannelErrorReplyParts(request: ZLinkChannelEnvelopeHeader, error: unknown): readonly MessageLike[] {
   const errorCode = error instanceof ZLinkFrameworkException
-    ? error.kind
+    ? String(error.kind)
     : error instanceof Error
-      ? error.name
-      : typeof error;
+      ? String(ZLinkFrameworkErrorKind.InternalFailure)
+      : String(ZLinkFrameworkErrorKind.InternalFailure);
   const errorMessage = error instanceof Error ? error.message : String(error);
   const header: ZLinkChannelEnvelopeHeader = {
     formatMarker: ZLINK_CHANNEL_FORMAT_MARKER,
@@ -153,7 +153,7 @@ export function encodeChannelErrorReplyParts(request: ZLinkChannelEnvelopeHeader
     correlationId: request.correlationId,
     deadline: null,
     topic: null,
-    errorCode: errorCode.length > 0 ? errorCode : 'Error',
+    errorCode,
     errorMessage,
     metadata: {},
     flowId: request.flowId,
@@ -186,30 +186,20 @@ export function decodeChannelReply<TReply>(
   return parseWireJson(parts[1].data().toString()) as TReply;
 }
 
-const FRAMEWORK_ERROR_KINDS = new Set<string>(Object.values(ZLinkFrameworkErrorKind));
-
 function decodeChannelError(header: ZLinkChannelEnvelopeHeader): Error {
   const code = header.errorCode;
   if (code === undefined || code === null || code.trim().length === 0) {
     return new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.RequestProtocolError,
+      ZLinkFrameworkErrorKind.ProtocolError,
       'Channel Error reply does not contain a non-empty errorCode.'
     );
   }
   const message = header.errorMessage ?? 'ZLink channel request failed.';
-  if (FRAMEWORK_ERROR_KINDS.has(code)) {
-    return new ZLinkFrameworkException(code as ZLinkFrameworkErrorKind, message);
+  const publicKind = Number(code);
+  if (Number.isInteger(publicKind) && publicKind >= 0 && publicKind <= 12) {
+    return new ZLinkFrameworkException(publicKind as ZLinkFrameworkErrorKind, message);
   }
-  switch (code) {
-    case 'TypeError': return new TypeError(message);
-    case 'RangeError': return new RangeError(message);
-    case 'SyntaxError': return new SyntaxError(message);
-    default: {
-      const error = new Error(message);
-      error.name = code;
-      return error;
-    }
-  }
+  return new ZLinkFrameworkException(ZLinkFrameworkErrorKind.InternalFailure, message);
 }
 
 export function decodeChannelEnvelope(parts: readonly Message[]): ZLinkChannelEnvelope {
@@ -235,12 +225,17 @@ export function decodeChannelPayload(
     if (envelope.header.contentType === JSON_CONTENT_TYPE) {
       return parseWireJson(envelope.payload.toString());
     }
-    return Buffer.from(envelope.payload);
-  } catch (error) {
     throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+      ZLinkFrameworkErrorKind.ProtocolError,
+      `ProtocolError: unsupported channel content type '${envelope.header.contentType}'.`
+    );
+  } catch (error) {
+    if (error instanceof ZLinkFrameworkException) {
+      throw error;
+    }
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.ProtocolError,
       `PayloadDecodeFailed: failed to decode channel payload for '${envelope.header.channelName}:${envelope.header.messageName}'.`,
-      false,
       error
     );
   }

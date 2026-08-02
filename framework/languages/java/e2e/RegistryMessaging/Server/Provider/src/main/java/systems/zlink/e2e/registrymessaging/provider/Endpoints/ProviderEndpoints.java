@@ -51,10 +51,10 @@ public final class ProviderEndpoints {
 
     @PostMapping("/admin/drain")
     public CompletionStage<java.util.Map<String, String>> drain() {
-        return drain.retire(Duration.ofSeconds(30))
+        return drain.shutdown(Duration.ofSeconds(30))
             .thenApply(result -> java.util.Map.of(
                 "result", result.outcome() == systems.zlink.framework.runtime.host
-                    .ZLinkTerminationOutcome.STOPPED ? "Drained" : "ForceStopped"));
+                    .ZLinkFrameworkTerminationOutcome.STOPPED ? "Drained" : "ForceStopped"));
     }
 
     @PostMapping("/evidence/wait")

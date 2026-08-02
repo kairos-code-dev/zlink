@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import { createHash } from 'node:crypto';
 import type {
   ZLinkAuthorityKey,
@@ -8,7 +9,6 @@ import type {
 } from '../../contracts/Locations';
 import type { ZLinkAuthorityStore, ZLinkObjectCreationStore } from '../locations/internal-store-contracts';
 import {
-  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException
 } from '../../contracts';
 import {
@@ -293,8 +293,8 @@ implements ServiceAsyncInstanceActivationAuthority {
       });
     } catch (error) {
       if (error instanceof ZLinkFrameworkException) throw error;
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestFailed,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RequestFailed,
         'Instance Spot Ready commit Store operation failed.',
         false,
         error

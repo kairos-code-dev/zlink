@@ -359,10 +359,7 @@ public sealed class LocationContracts
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(new ZLinkLocationRuntimeStatus(
                 StoreHealthy: true,
-                WatchEnabled: false,
-                PollingInterval: TimeSpan.FromSeconds(1),
                 LastRefreshAt: StoreNow,
-                LastError: null,
                 OwnerLeaseHealthy: true,
                 OwnerLeaseRenewedAt: StoreNow));
 

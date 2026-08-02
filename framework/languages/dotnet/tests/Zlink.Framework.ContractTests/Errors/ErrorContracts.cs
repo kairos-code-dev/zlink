@@ -50,8 +50,13 @@ public sealed class ErrorContracts
         Assert.Equal(NullabilityState.Nullable, nullability.Create(parameters[3]).ReadState);
         Assert.Equal(typeof(ZLinkFrameworkErrorKind),
             typeof(ZLinkFrameworkException).GetProperty(nameof(ZLinkFrameworkException.Kind))!.PropertyType);
+        Assert.Null(typeof(ZLinkFrameworkException).GetProperty(
+            nameof(ZLinkFrameworkException.RetryAdvice),
+            BindingFlags.Instance | BindingFlags.Public));
         Assert.Equal(typeof(ZLinkRetryAdvice),
-            typeof(ZLinkFrameworkException).GetProperty(nameof(ZLinkFrameworkException.RetryAdvice))!.PropertyType);
+            typeof(ZLinkFrameworkException).GetProperty(
+                nameof(ZLinkFrameworkException.RetryAdvice),
+                BindingFlags.Instance | BindingFlags.NonPublic)!.PropertyType);
     }
 
     [Fact]

@@ -309,6 +309,27 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
                 ZLinkFrameworkRelocationReason.DeadlineExceeded,
                 metricStarted);
         }
+        catch (ZLinkRetiringPublicationRollbackException)
+        {
+            try
+            {
+                await _lifecycle.ForceStopAsync(
+                        ZLinkDrainForceReason.TeardownFailed,
+                        TimeSpan.FromSeconds(2))
+                    .ConfigureAwait(false);
+            }
+            catch
+            {
+                //  Partial descriptor rollback already failed. The terminal
+                //  result remains TeardownFailed even if force-stop reports a
+                //  second cleanup error.
+            }
+            return CompleteForceStoppedRelocation(
+                mode,
+                targetApplicationVersion,
+                ZLinkFrameworkRelocationReason.RelocationFailed,
+                metricStarted);
+        }
         catch
         {
             return CompleteBlocked(
@@ -463,6 +484,31 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
         {
             if (_hostLifecycle.State == ZLinkFrameworkRuntimeState.Relocating)
                 TransitionUnderLock(ZLinkFrameworkRuntimeState.Relocated);
+        }
+    }
+
+    private ZLinkFrameworkRelocationResult CompleteForceStoppedRelocation(
+        ZLinkFrameworkRelocationMode mode,
+        long targetApplicationVersion,
+        ZLinkFrameworkRelocationReason reason,
+        ZLinkRuntimeMetrics.ZLinkHostMetricOperation metricStarted)
+    {
+        lock (_gate)
+        {
+            var result = Blocked(mode, targetApplicationVersion, reason);
+            _relocationResult = result;
+            _terminationResult = new ZLinkFrameworkTerminationResult(
+                ZLinkFrameworkTerminationOutcome.ForceStopped,
+                ZLinkFrameworkTerminationReason.TeardownFailed);
+            _deadline = null;
+            _activeMode = null;
+            _activeTargetVersion = null;
+            _relocationOperation = null;
+            _relocationCancellation = null;
+            _relocationOriginState = null;
+            TransitionUnderLock(ZLinkFrameworkRuntimeState.Stopped);
+            RecordRelocationCompletion(metricStarted, result);
+            return result;
         }
     }
 

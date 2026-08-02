@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import type {
   ZLinkMessageSerializer,
   ZLinkSession,
@@ -5,7 +6,6 @@ import type {
 } from '../../contracts';
 import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import {
-  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException
 } from '../../contracts';
 import { ZLinkSocketNativeEventType } from '../diagnostics/internal-event-contracts';
@@ -168,8 +168,8 @@ export class ZLinkStreamSessionRuntime {
 
   private requireProvidedContext(session: ZLinkSession): ZLinkSession {
     if (session.context !== this.context) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RouteNotConnected,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RouteNotConnected,
         'Session must expose the context provided by the stream runtime.'
       );
     }

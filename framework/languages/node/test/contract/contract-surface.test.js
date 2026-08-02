@@ -27,6 +27,10 @@ const internalLocationCodecHelpers = new Set([
   'zlinkLocationAutoConnectTypeName',
   'zlinkLocationRoleName'
 ]);
+const publicContractSnapshot = JSON.parse(fs.readFileSync(
+  path.join(__dirname, 'fixtures', 'node-public-contract.json'),
+  'utf8'
+));
 
 test('server package declarations collectively cover the exact interface catalog exports', () => {
   const spec = readTree(interfaceSpecRoot);
@@ -72,6 +76,46 @@ test('framework public root does not expose direct runtime start hosts', () => {
   const exposed = hiddenNames.filter((name) => name in framework);
 
   assert.deepEqual(exposed, []);
+});
+
+test('Nest options builder matches the exact public member set', () => {
+  const nestjs = require('../../packages/nestjs/dist');
+  const builder = nestjs.zlinkFramework();
+  const expected = [...publicContractSnapshot.nestjsFrameworkBuilder];
+  const methods = new Set();
+  let prototype = builder;
+  while (prototype && prototype !== Object.prototype) {
+    for (const name of Object.getOwnPropertyNames(prototype)) {
+      if (name !== 'constructor' && typeof builder[name] === 'function') methods.add(name);
+    }
+    prototype = Object.getPrototypeOf(prototype);
+  }
+  for (const name of expected) {
+    assert.equal(methods.has(name), true, `Nest builder runtime member missing: ${name}`);
+  }
+
+  const inbound = builder.configureInboundDispatch();
+  assert.equal(typeof inbound.applicationHwmBytes, 'function');
+  assert.equal(typeof inbound.applicationHwmProfile, 'function');
+  assert.equal(typeof inbound.processMemoryLimitBytes, 'function');
+});
+
+test('Nest inbound dispatch builder keeps fluent HWM changes in build output', () => {
+  const nestjs = require('../../packages/nestjs/dist');
+  const builder = nestjs.zlinkFramework();
+
+  builder.configureInboundDispatch()
+    .applicationHwmBytes(8192n)
+    .processMemoryLimitBytes(16384n);
+
+  const built = builder.build();
+  assert.equal(built.inboundDispatch.applicationHwmBytes, 8192n);
+  assert.equal(built.inboundDispatch.processMemoryLimitBytes, 16384n);
+});
+
+test('Node public contract snapshot pins the binding package version', () => {
+  const binding = require('../../node_modules/@zlink-systems/zlink/package.json');
+  assert.equal(binding.version, publicContractSnapshot.bindingVersion);
 });
 
 test('stream connector public root does not expose raw frame or header codecs', () => {
@@ -533,69 +577,45 @@ test('formal declarations expose role-specific ClientServer builders and exclude
   }
 });
 
-test('framework error kind values and retriable defaults match the shared table', () => {
+test('framework error kind values and exception surface match the shared table', () => {
   const framework = require('../../packages/framework/dist');
   const expected = [
-    ['ActorRouteNotFound', 'actorRouteNotFound', 0, false],
-    ['ActorCreateFailed', 'actorCreateFailed', 1, false],
-    ['ActorAlreadyExists', 'actorAlreadyExists', 2, false],
-    ['ActorTypeMismatch', 'actorTypeMismatch', 3, false],
-    ['SpotCreateFailed', 'spotCreateFailed', 4, false],
-    ['SpotRouteNotFound', 'spotRouteNotFound', 5, false],
-    ['SpotTypeMismatch', 'spotTypeMismatch', 6, false],
-    ['ActorSessionNotBound', 'actorSessionNotBound', 7, false],
-    ['HandlerNotFound', 'handlerNotFound', 8, false],
-    ['RouteHandlerNotFound', 'routeHandlerNotFound', 9, false],
-    ['ActorDispatchHandlerNotFound', 'actorDispatchHandlerNotFound', 10, false],
-    ['PayloadDecodeFailed', 'payloadDecodeFailed', 11, false],
-    ['RouteNotConnected', 'routeNotConnected', 12, true],
-    ['RequestTargetNotFound', 'requestTargetNotFound', 13, false],
-    ['RequestRejected', 'requestRejected', 14, false],
-    ['RequestProtocolError', 'requestProtocolError', 15, false],
-    ['RequestFailed', 'requestFailed', 16, false],
-    ['WorkerQueueFull', 'workerQueueFull', 17, false],
-    ['WorkerTimedOut', 'workerTimedOut', 18, false],
-    ['WorkerFailed', 'workerFailed', 19, false],
-    ['ActorLocationStale', 'actorLocationStale', 20, true],
-    ['ActorCreateRejected', 'actorCreateRejected', 21, false],
-    ['ObjectClientNotConfigured', 'objectClientNotConfigured', 22, false],
-    ['MeshSelectionRequired', 'meshSelectionRequired', 23, false],
-    ['MeshNotFound', 'meshNotFound', 24, false],
-    ['InvalidConfiguration', 'invalidConfiguration', 25, false],
-    ['AlreadySubmitted', 'alreadySubmitted', 26, false],
-    ['ActorGenerationStale', 'actorGenerationStale', 27, false],
-    ['ActorMoving', 'actorMoving', 28, true],
-    ['DeadlineExceeded', 'deadlineExceeded', 29, true],
-    ['PlacementCapacityExhausted', 'placementCapacityExhausted', 30, true],
-    ['RoutingIdConflict', 'routingIdConflict', 31, false],
-    ['SpotGenerationStale', 'spotGenerationStale', 32, false],
-    ['SpotMoving', 'spotMoving', 33, true],
-    ['RelocationDataLost', 'relocationDataLost', 34, false],
-    ['SpotIdConflict', 'spotIdConflict', 35, false],
-    ['RuntimeShutdown', 'runtimeShutdown', 36, false],
-    ['RelocationDisabled', 'relocationDisabled', 37, false],
-    ['RelocationTargetUnavailable', 'relocationTargetUnavailable', 38, true],
-    ['RelocationFailed', 'relocationFailed', 39, true],
-    ['InvalidOperation', 'invalidOperation', 40, false]
+    ['NotFound', 0],
+    ['AlreadyExists', 1],
+    ['TypeMismatch', 2],
+    ['NotConfigured', 3],
+    ['Rejected', 4],
+    ['Unavailable', 5],
+    ['CapacityExceeded', 6],
+    ['DeadlineExceeded', 7],
+    ['ShuttingDown', 8],
+    ['ProtocolError', 9],
+    ['InvalidOperation', 10],
+    ['DataLost', 11],
+    ['InternalFailure', 12]
   ];
 
-  // Pinned to the spec's own count. Comparing against expected.length only proved
-  // the table was self-consistent, so when the enum stopped at 36 the check stayed
-  // green at 37 === 37 and the three v11 kinds went unverified.
-  assert.equal(expected.length, 41);
-  assert.equal(Object.keys(framework.ZLinkFrameworkErrorKind).length, 41);
-  // Bidirectional: an enum member absent from the table must fail here rather than
-  // simply never being visited by the loop below.
+  assert.equal(expected.length, 13);
+  const enumNames = Object.keys(framework.ZLinkFrameworkErrorKind)
+    .filter((name) => Number.isNaN(Number(name)));
+  assert.equal(enumNames.length, 13);
   assert.deepEqual(
-    Object.keys(framework.ZLinkFrameworkErrorKind).sort(),
+    enumNames.sort(),
     expected.map(([name]) => name).sort()
   );
-  for (const [name, stringValue, numericValue, retriable] of expected) {
+  for (const [name, numericValue] of expected) {
     const kind = framework.ZLinkFrameworkErrorKind[name];
-    assert.equal(kind, stringValue, name);
-    assert.equal(framework.ZLINK_FRAMEWORK_ERROR_KIND_VALUES[kind], numericValue, name);
-    assert.equal(framework.isZLinkFrameworkErrorRetriableByDefault(kind), retriable, name);
+    assert.equal(kind, numericValue, name);
   }
+  const error = new framework.ZLinkFrameworkException(
+    framework.ZLinkFrameworkErrorKind.Unavailable,
+    'route is currently unavailable'
+  );
+  assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.Unavailable);
+  assert.equal('code' in error, false);
+  assert.equal('isRetriable' in error, false);
+  assert.equal(framework.ZLINK_FRAMEWORK_ERROR_KIND_VALUES, undefined);
+  assert.equal(framework.isZLinkFrameworkErrorRetriableByDefault, undefined);
 });
 
 test('handler filter public contract exposes only the five supported dispatch kinds', () => {

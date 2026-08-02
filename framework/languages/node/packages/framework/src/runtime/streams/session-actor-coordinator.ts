@@ -1,10 +1,9 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import type {
   ActorRef,
   ZLinkActor
 } from '../../contracts';
 import {
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException
 } from '../../contracts';
 import { throwIfAborted } from '../abort';
 import { routingIdsEqual } from '../routing-id';
@@ -80,14 +79,14 @@ export class ZLinkSessionActorCoordinator {
   ): Promise<DefaultZLinkSessionActor> {
     throwIfAborted(signal);
     if (actorRef.actorId.trim().length === 0) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
         'Actor id must not be empty.'
       );
     }
     if (context.routingId === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
         'Actor session binding requires a stream routing id.'
       );
     }
@@ -220,8 +219,8 @@ export class ZLinkSessionActorCoordinator {
         try {
           return await this.replaceBinding(context, normalizedActorRef, signal);
         } catch (error) {
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ActorLocationStale,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.ActorLocationStale,
             `Actor '${normalizedActorRef.actorId}' bound session ref is stale and could not be rebound.`,
             true,
             error
@@ -290,8 +289,8 @@ export class ZLinkSessionActorCoordinator {
     if (state.actorRef !== undefined) {
       return state.actorRef;
     }
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.ActorRouteNotFound,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
       `Actor '${actor.context.actorId}' does not have a concrete actor ref.`
     );
   }
@@ -429,8 +428,8 @@ function normalizeActorRef(
 ): ActorRef {
   const objectGeneration = value.objectGeneration ?? value.generation;
   if (objectGeneration === undefined) {
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.ActorRouteNotFound,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
       `Actor '${value.actorId}' does not have an object generation.`
     );
   }
@@ -472,8 +471,8 @@ function requireSameIncarnation(current: ActorRef, updated: ActorRef): void {
   ) {
     return;
   }
-  throw new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.ActorLocationStale,
+  throw createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.ActorLocationStale,
     `Actor '${updated.actorId}' route update cannot replace object generation `
       + `${String(current.objectGeneration)} with ${String(updated.objectGeneration)}.`,
     true

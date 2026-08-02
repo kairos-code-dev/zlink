@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import type {
   ActorRef,
   RoutingId,
@@ -6,8 +7,6 @@ import type {
   ZLinkStream
 } from '../../contracts';
 import {
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException
 } from '../../contracts';
 import {
   ZLinkSubmitStatus,
@@ -202,8 +201,8 @@ export class ZLinkManagedStream implements ZLinkStream {
           candidate.actor.actorId === nativeActor.actorId
           && candidate.actor.generation === nativeActor.generation);
       if (binding === undefined) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.RouteNotConnected,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.RouteNotConnected,
           `Actor '${actor.actorId}' native session bind completed without a binding snapshot.`
         );
       }
@@ -241,8 +240,8 @@ export class ZLinkManagedStream implements ZLinkStream {
         || resolved.generation !== actor.objectGeneration
         || String(resolved.nodeRid) !== String(actor.nodeRid)
       ) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.ActorRouteNotFound,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
           `Actor '${actor.actorId}' native route fence does not match its ActorRef.`
         );
       }
@@ -316,8 +315,8 @@ export class ZLinkManagedStream implements ZLinkStream {
         completion.terminalResult !== 0
         && !acceptedTerminalResults.has(completion.terminalResult)
       ) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.RouteNotConnected,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.RouteNotConnected,
           `${operationName} failed with result ${completion.terminalResult} (errno ${completion.failureErrno}).`
         );
       }
@@ -350,8 +349,8 @@ export class ZLinkManagedStream implements ZLinkStream {
         }
         if (Date.now() >= deadline) {
           const status = service.status();
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.RouteNotConnected,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.RouteNotConnected,
             `STREAM session '${this.sessionId}' was not admitted before the actor bind deadline `
             + `(active sessions ${status.sessionCount}).`
           );
@@ -394,8 +393,8 @@ export function streamSessionIdFromRoutingId(routingId: unknown): string {
   ) {
     return (routingId as { toString(): string }).toString();
   }
-  throw new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.RouteNotConnected,
+  throw createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.RouteNotConnected,
     'Stream session routing id is invalid.'
   );
 }

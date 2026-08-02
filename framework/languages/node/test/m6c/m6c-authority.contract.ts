@@ -918,7 +918,7 @@ test('User Spot create reports its first generated SpotId collision without anot
     () => manager.create('room').inMesh('mesh').submit(),
     (error: unknown) =>
       error instanceof ZLinkFrameworkException
-      && error.kind === ZLinkFrameworkErrorKind.SpotIdConflict
+      && error.kind === ZLinkFrameworkErrorKind.AlreadyExists
   );
   assert.equal(generated, 1);
   assert.deepEqual(materialized, []);
@@ -974,7 +974,7 @@ test('User Spot create rejects its first remote SpotId collision while getOrCrea
     () => manager.create('room').inMesh('mesh').submit(),
     (error: unknown) =>
       error instanceof ZLinkFrameworkException
-      && error.kind === ZLinkFrameworkErrorKind.SpotIdConflict
+      && error.kind === ZLinkFrameworkErrorKind.AlreadyExists
   );
   assert.equal(generated, 1);
   assert.deepEqual(materialized, []);

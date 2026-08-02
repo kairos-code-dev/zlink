@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import type {
   RoutingId,
   SpotId,
@@ -10,7 +11,6 @@ import type {
 } from '../../contracts';
 import {
   ZLinkEncodedPayload,
-  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   ZLinkMessage
 } from '../../contracts';
@@ -181,8 +181,8 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
 
   defer(): void {
     if (this.deferred) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.AlreadySubmitted,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.AlreadySubmitted,
         'Actor join call was already deferred.'
       );
     }
@@ -260,8 +260,8 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
 
   defer(): void {
     if (this.deferred) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.AlreadySubmitted,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.AlreadySubmitted,
         'Actor join call was already deferred.'
       );
     }
@@ -318,16 +318,16 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
 
 class UnboundZLinkSession implements ZLinkBoundSession {
   send(): never {
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.ActorSessionNotBound,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.ActorSessionNotBound,
       'Actor session is not bound.',
       true
     );
   }
 
   async disconnect(): Promise<void> {
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.ActorSessionNotBound,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.ActorSessionNotBound,
       'Actor session is not bound.',
       true
     );
@@ -355,8 +355,8 @@ function validateJoinTimeout(timeoutMs: number): number {
 
 function claimDeferredJoin(state: ZLinkActorRuntimeState): void {
   if (!state.tryBeginDeferredJoin()) {
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.ActorMoving,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.ActorMoving,
       `Actor '${state.actorId}' already has a pending membership transition.`,
       true
     );
@@ -366,8 +366,8 @@ function claimDeferredJoin(state: ZLinkActorRuntimeState): void {
 function remainingJoinTimeout(deadline: number): number {
   const remaining = deadline - performance.now();
   if (remaining <= 0) {
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.DeadlineExceeded,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.DeadlineExceeded,
       'Deferred Actor join deadline elapsed before activation.',
       true
     );
@@ -420,8 +420,8 @@ async function notifyJoinFailure(
 ): Promise<void> {
   const frameworkError = error instanceof ZLinkFrameworkException
     ? error
-    : new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestFailed,
+    : createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RequestFailed,
         'Deferred actor join failed.',
         false,
         error
@@ -429,7 +429,6 @@ async function notifyJoinFailure(
   await actor.onJoinCompleted?.({
     status: 'failed',
     operationId,
-    kind: frameworkError.kind,
-    isRetriable: frameworkError.isRetriable
+    kind: frameworkError.kind
   });
 }

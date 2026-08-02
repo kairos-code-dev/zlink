@@ -419,6 +419,36 @@ public sealed class RegressionTests
     }
 
     [Fact]
+    public void DotNetExactInterfaceDocuments_Have_An_Explicit_Regression_Owner()
+    {
+        var interfaceRoot = Path.Combine(GetDotNetContractDocRoot(), "interfaces");
+        var matrix = File.ReadAllText(ResolveDoc("regression-test-matrix.ko.md"));
+        const string owner = "ContractSurfaceCoverage.DotNetExactInterfaceDeclarations_Match_Source_And_Package_Exports";
+
+        var missing = Directory
+            .EnumerateFiles(interfaceRoot, "*.ko.md", SearchOption.TopDirectoryOnly)
+            .Where(path => !string.Equals(
+                Path.GetFileName(path),
+                "README.ko.md",
+                StringComparison.Ordinal))
+            .Where(path =>
+            {
+                var document = Path.GetFileName(path);
+                return !Regex.IsMatch(
+                    matrix,
+                    $@"(?m)^\|\s*`{Regex.Escape(document)}`\s*\|.*`{Regex.Escape(owner)}`",
+                    RegexOptions.CultureInvariant);
+            })
+            .Select(Path.GetFileName)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.True(
+            missing.Length == 0,
+            $"Exact interface documents without an explicit regression owner: {string.Join(", ", missing)}");
+    }
+
+    [Fact]
     public void DotNetRegressionMatrix_Includes_ExecutionSerialization_Guards()
     {
         var matrix = File.ReadAllText(ResolveDoc("regression-test-matrix.ko.md"));
@@ -541,7 +571,8 @@ public sealed class RegressionTests
             [10] = "SpotActorTransfer",
             [11] = "ObservabilityOps",
             [12] = "ChannelEgressRouting",
-            [13] = "SubmitAdmission"
+            [13] = "SubmitAdmission",
+            [14] = "InstanceSpot"
         };
 
         foreach (var pair in fixtureByConfig)
@@ -559,28 +590,86 @@ public sealed class RegressionTests
                 File.Exists(featureMap),
                 $"Missing .NET feature map for Config {pair.Key}: {featureMap}");
 
+            var documentText = File.ReadAllText(document);
             var documentIds = Regex.Matches(
-                    File.ReadAllText(document),
+                    documentText,
                     @"(?m)^(?:#{2,5}\s+(?<id>[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+)\b|\|\s+`?(?<tableId>CH-REG-[0-9]+)`?\s+\|)")
                 .Select(static match =>
                     match.Groups["id"].Success
                         ? match.Groups["id"].Value
                         : match.Groups["tableId"].Value)
+                .ToArray();
+            var scenarioPrefix = pair.Key switch
+            {
+                1 => "RM-",
+                2 => "SM-",
+                3 => "PS-",
+                4 => "RC-",
+                5 => "RL-",
+                6 => "SF-",
+                7 => "MON-",
+                8 => "TD-",
+                9 => "TA-",
+                10 => "ST-",
+                11 => "OBS-",
+                12 => "CH-E2E-",
+                13 => "SA-E2E-",
+                14 => "IS-E2E-",
+                _ => throw new InvalidOperationException($"Unsupported Config {pair.Key}.")
+            };
+            var referencedScenarioIds = Regex.Matches(
+                    documentText,
+                    $@"\b{Regex.Escape(scenarioPrefix)}[A-Z0-9]+(?:-[A-Z0-9]+)*\b")
+                .Select(static match => match.Value)
                 .ToHashSet(StringComparer.Ordinal);
             var featureMapIds = Regex.Matches(
                     File.ReadAllText(featureMap),
                     @"(?m)^\| (?<id>[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+) \|")
                 .Select(static match => match.Groups["id"].Value)
-                .ToHashSet(StringComparer.Ordinal);
-            var missing = documentIds
+                .ToArray();
+            var duplicateDocumentIds = documentIds
+                .GroupBy(static id => id, StringComparer.Ordinal)
+                .Where(static group => group.Count() > 1)
+                .Select(static group => group.Key)
+                .Order(StringComparer.Ordinal)
+                .ToArray();
+            var duplicateFeatureMapIds = featureMapIds
+                .GroupBy(static id => id, StringComparer.Ordinal)
+                .Where(static group => group.Count() > 1)
+                .Select(static group => group.Key)
+                .Order(StringComparer.Ordinal)
+                .ToArray();
+            var expectedIds = documentIds
+                .Concat(referencedScenarioIds)
+                .ToHashSet(StringComparer.Ordinal)
+                .ToArray();
+            var missing = expectedIds
                 .Except(featureMapIds, StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal)
+                .ToArray();
+            var unknown = featureMapIds
+                .Where(id => id.StartsWith(scenarioPrefix, StringComparison.Ordinal))
+                .ToHashSet(StringComparer.Ordinal)
+                .Except(expectedIds, StringComparer.Ordinal)
                 .Order(StringComparer.Ordinal)
                 .ToArray();
 
             Assert.True(
+                duplicateDocumentIds.Length == 0,
+                $"Config {pair.Key} common E2E document has duplicate scenario IDs: "
+                + string.Join(", ", duplicateDocumentIds));
+            Assert.True(
+                duplicateFeatureMapIds.Length == 0,
+                $"Config {pair.Key} {pair.Value} feature map has duplicate scenario IDs: "
+                + string.Join(", ", duplicateFeatureMapIds));
+            Assert.True(
                 missing.Length == 0,
                 $"Config {pair.Key} scenarios missing from {pair.Value} feature map: "
                 + string.Join(", ", missing));
+            Assert.True(
+                unknown.Length == 0,
+                $"Config {pair.Key} {pair.Value} feature map has unknown scenario IDs: "
+                + string.Join(", ", unknown));
         }
     }
 
@@ -805,7 +894,8 @@ public sealed class RegressionTests
                 RegexOptions.Multiline)
             .SelectMany(static row => Regex
                 .Matches(row.Groups["cell"].Value, @"`(?<test>[^`]+)`")
-                .Select(static match => match.Groups["test"].Value))
+                .Select(static match => match.Groups["test"].Value)
+                .Where(static value => !value.EndsWith(".ko.md", StringComparison.OrdinalIgnoreCase)))
             .ToArray();
     }
 

@@ -1,5 +1,9 @@
 namespace Zlink.Framework.Runtime.Actors;
 
+internal readonly record struct ZLinkActorHandoffDrainSnapshot(
+    long Epoch,
+    bool IsSafe);
+
 internal readonly record struct ZLinkActorHandoffAdmissionDecision(
     ZLinkRemoteActorAdmissionReply Reply,
     ZLinkRelocationPermitPool.ZLinkRelocationPermitLease Reservation,
@@ -27,6 +31,16 @@ internal sealed class ZLinkActorHandoffAdmissions(
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
     private CancellationTokenSource _generationStop = new();
     private TaskCompletionSource _drainSafe = CompletedSignal();
+    private bool _drainUnsafe;
+    private long _drainEpoch;
+
+    internal ZLinkActorHandoffDrainSnapshot SnapshotDrain()
+    {
+        lock (_gate)
+            return new(
+                _drainEpoch,
+                !_drainUnsafe && _admitting.Count == 0 && _pending.Count == 0);
+    }
 
     public Task WaitUntilDrainSafeAsync(CancellationToken cancellationToken)
     {
@@ -886,6 +900,8 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
     private void MarkDrainUnsafeLocked()
     {
+        _drainUnsafe = true;
+        _drainEpoch++;
         if (_drainSafe.Task.IsCompleted)
             _drainSafe = new TaskCompletionSource(
                 TaskCreationOptions.RunContinuationsAsynchronously);
@@ -894,8 +910,13 @@ internal sealed class ZLinkActorHandoffAdmissions(
     private void TryCompleteDrainSafeLocked()
     {
         if (_admitting.Count == 0
-            && _pending.Count == 0)
+            && _pending.Count == 0
+            && _drainUnsafe)
+        {
+            _drainUnsafe = false;
+            _drainEpoch++;
             _drainSafe.TrySetResult();
+        }
     }
 
     private void RemovePendingWithoutCapacityLocked(

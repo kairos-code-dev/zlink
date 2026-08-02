@@ -1,5 +1,4 @@
 // RM-A1: location store 자동 연결 + rid 자동 resolve 시나리오를 검증한다.
-import { ZLinkLocationRole } from '@zlink-systems/framework';
 import type { ProfileRes } from '../../Shared/messages';
 import { getJson, postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
@@ -19,7 +18,7 @@ export async function runRmA1(locationConsumerUrl: string, providerAUrl: string,
   );
   const profileProviders = topology.filter((entry) =>
     entry.channelName === 'profile'
-    && entry.serviceRole === ZLinkLocationRole.Router
+    && entry.serviceRole === 3
     && (entry.routingId === 'api-a' || entry.routingId === 'api-b')
     && entry.endpoint.length > 0
   );

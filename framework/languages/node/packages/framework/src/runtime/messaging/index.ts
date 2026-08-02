@@ -1,5 +1,5 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import {
-  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException
 } from '../../contracts';
 import { createAbortError, throwIfAborted } from '../abort';
@@ -43,14 +43,19 @@ export class ZLinkAsyncSubmitter {
     this.onCommandFailure = options.onCommandFailure;
   }
 
-  submitCommand(submit: () => boolean, signal?: AbortSignal, onDiscard?: () => void): Promise<void> {
+  submitCommand(
+    submit: () => boolean,
+    signal?: AbortSignal,
+    onDiscard?: () => void,
+    timeoutMs?: number
+  ): Promise<void> {
     const overflow = this.rejectHardOverflow<void>(signal, onDiscard);
     if (overflow !== undefined) return overflow;
     const pending = this.createPending<void>(
       () => submit(),
       true,
       signal,
-      undefined,
+      timeoutMs,
       onDiscard
     );
     this.ensureReadyHandler();
@@ -337,31 +342,31 @@ export class ZLinkAsyncSubmitter {
 }
 
 function hardOverflowError(): ZLinkFrameworkException {
-  return new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.DeadlineExceeded,
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.DeadlineExceeded,
     'ZLink async submit timed out because its bounded admission waiters are full.',
     true
   );
 }
 
 function runtimeShutdownError(): ZLinkFrameworkException {
-  return new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.RuntimeShutdown,
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.RuntimeShutdown,
     'ZLink async submitter rejected the operation because the runtime is shutting down.'
   );
 }
 
 function submitTimeoutError(): ZLinkFrameworkException {
-  return new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.DeadlineExceeded,
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.DeadlineExceeded,
     'ZLink async submit timed out.',
     true
   );
 }
 
 function requestTimeoutError(): ZLinkFrameworkException {
-  return new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.RequestFailed,
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.RequestFailed,
     'ZLink async submit timed out.'
   );
 }

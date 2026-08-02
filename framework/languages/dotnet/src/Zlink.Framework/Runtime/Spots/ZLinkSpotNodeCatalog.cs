@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Runtime.Host;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -150,14 +151,21 @@ internal sealed class ZLinkSpotNodeCatalog(
         lock (_gate)
         {
             if (_spots.Count == 0)
-                return new ZLinkSpotDrainResult(true, 0);
+                return new ZLinkSpotDrainResult(
+                    true,
+                    0,
+                    null,
+                    ZLinkRelocationCommitKnowledge.NotCommitted,
+                    true);
             //  Preflight(같은 파일의 RelocationDisabled 분기)와 같은 판정이다.
             //  Scheduler가 없으면 다시 불러도 결과가 달라지지 않는다.
             if (_retireScheduler is null)
                 return new ZLinkSpotDrainResult(
                     false,
                     0,
-                    ZLinkFrameworkRelocationReason.RelocationDisabled);
+                    ZLinkFrameworkRelocationReason.RelocationDisabled,
+                    ZLinkRelocationCommitKnowledge.NotCommitted,
+                    true);
             units = _spots.Values
                 .Select(activation => (
                     Activation: activation,
@@ -173,7 +181,12 @@ internal sealed class ZLinkSpotNodeCatalog(
                 .ToArray();
         }
         if (units.Length == 0)
-            return new ZLinkSpotDrainResult(true, 0);
+            return new ZLinkSpotDrainResult(
+                true,
+                0,
+                null,
+                ZLinkRelocationCommitKnowledge.NotCommitted,
+                true);
 
         var deadline = DateTimeOffset.UtcNow
                        + units.Select(static unit =>
@@ -182,11 +195,27 @@ internal sealed class ZLinkSpotNodeCatalog(
                            .Max();
         var moves = units.Select(unit => RelocateAsync(unit).AsTask()).ToArray();
         var results = await Task.WhenAll(moves).ConfigureAwait(false);
+        var committedUnitCount = checked((ulong)results.Sum(static result =>
+            checked((long)result.CommittedUnitCount)));
+        var terminal = results.FirstOrDefault(
+            static result => result.Outcome
+                == ZLinkRelocationUnitOutcome.TerminalFailure);
+        var commitKnowledge = results.Any(static result =>
+                result.CommitKnowledge
+                == ZLinkRelocationCommitKnowledge.Unknown)
+            ? ZLinkRelocationCommitKnowledge.Unknown
+            : committedUnitCount != 0
+                ? ZLinkRelocationCommitKnowledge.Committed
+                : ZLinkRelocationCommitKnowledge.NotCommitted;
         return new ZLinkSpotDrainResult(
-            results.All(static result => result),
-            checked((ulong)results.Count(static result => result)));
+            results.All(static result => result.Outcome
+                == ZLinkRelocationUnitOutcome.Completed),
+            committedUnitCount,
+            terminal.TerminalReason,
+            commitKnowledge,
+            results.All(static result => result.SourceTerminalized));
 
-        async ValueTask<bool> RelocateAsync(
+        async ValueTask<ZLinkRelocationUnitResult> RelocateAsync(
             (ZLinkSpotActivation Activation, bool Instance) unit)
         {
             try
@@ -214,7 +243,10 @@ internal sealed class ZLinkSpotNodeCatalog(
                 ZLinkFrameworkDebugLog.SpotDiscovery(
                     $"relocation_failed spot={unit.Activation.SpotId} "
                     + $"error={exception}");
-                return false;
+                return ZLinkRelocationUnitResult.Terminal(
+                    ZLinkFrameworkRelocationReason.RelocationFailed,
+                    ZLinkRelocationCommitKnowledge.Unknown,
+                    sourceTerminalized: false);
             }
         }
     }
@@ -395,15 +427,44 @@ internal sealed class ZLinkSpotNodeCatalog(
                         TaskCreationOptions.RunContinuationsAsynchronously)).Task;
             }
 
-            return new ValueTask(_disposeTask = DisposeCoreAsync(creationsDrained));
+            return new ValueTask(
+                _disposeTask = DisposeCoreAsync(
+                    creationsDrained,
+                    forceStop: false));
         }
     }
 
-    private async Task DisposeCoreAsync(Task creationsDrained)
+    internal ValueTask ForceStopAsync()
+    {
+        lock (_disposeGate)
+        {
+            if (_disposeTask is not null) return new ValueTask(_disposeTask);
+
+            Task creationsDrained;
+            lock (_gate)
+            {
+                _closed = true;
+                creationsDrained = _activeCreations == 0
+                    ? Task.CompletedTask
+                    : (_creationsDrained ??= new TaskCompletionSource(
+                        TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+            }
+
+            return new ValueTask(
+                _disposeTask = DisposeCoreAsync(
+                    creationsDrained,
+                    forceStop: true));
+        }
+    }
+
+    private async Task DisposeCoreAsync(
+        Task creationsDrained,
+        bool forceStop)
     {
         List<Exception>? failures = null;
         await CaptureAsync(() => new ValueTask(creationsDrained)).ConfigureAwait(false);
-        await CaptureAsync(CloseLifecycleAsync).ConfigureAwait(false);
+        if (!forceStop)
+            await CaptureAsync(CloseLifecycleAsync).ConfigureAwait(false);
 
         ZLinkSpotActivation[] activations;
         lock (_gate)
@@ -1447,9 +1508,15 @@ internal readonly record struct ZLinkSpotDrainResult(
     //  `Completed=false`만으로는 "아직 남았으니 다시 부르라"와 "구성상 영원히
     //  완료될 수 없다"를 구분할 수 없다. 후자를 이유와 함께 올려보내지 않으면
     //  호출자의 재시도 loop가 deadline까지 돈다.
-    ZLinkFrameworkRelocationReason? TerminalReason = null)
+    ZLinkFrameworkRelocationReason? TerminalReason = null,
+    ZLinkRelocationCommitKnowledge CommitKnowledge =
+        ZLinkRelocationCommitKnowledge.NotCommitted,
+    bool SourceTerminalized = false)
 {
     internal bool HasCommitted => CommittedUnitCount != 0;
+
+    internal bool HasUnknownCommit =>
+        CommitKnowledge == ZLinkRelocationCommitKnowledge.Unknown;
 }
 
 internal sealed record PreparedReservedSpot(

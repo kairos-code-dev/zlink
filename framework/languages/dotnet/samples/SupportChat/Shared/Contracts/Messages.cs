@@ -54,8 +54,7 @@ public sealed record JoinConversationRes(
 
 public sealed record JoinConversationFailedNotify(
     string ConversationId,
-    string Error,
-    bool IsRetriable);
+    string Error);
 
 public sealed record SendChatMessageReq(string Text);
 

@@ -1,5 +1,5 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import {
-  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   type ActorRef,
   type RoutingId
@@ -112,8 +112,8 @@ export class ZLinkSpotActorPacketRelayDispatch {
       }
       if (actorPacketRelay.messageFollowContext?.deadlineUnixMs !== undefined
         && Date.now() >= actorPacketRelay.messageFollowContext.deadlineUnixMs) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.DeadlineExceeded,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.DeadlineExceeded,
           `Actor request '${actorPacketRelay.actorId}' expired before target handler admission.`
         );
       }

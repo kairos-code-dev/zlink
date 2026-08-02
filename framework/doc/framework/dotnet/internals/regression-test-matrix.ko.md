@@ -264,6 +264,27 @@ backend gate 와 별도로 유지한다.
 | `RegressionTests.DotNetContractDocuments_AllExposeRegressionTestSection` | 아래 문서가 모두 `회귀 테스트` 단락을 가진다. |
 | `RegressionTests.DotNetRegressionMatrix_References_AllContractDocuments` | 이 matrix가 아래 문서 파일명을 모두 참조한다. |
 
+언어별 exact interface 문서의 선언이 source export와 package API snapshot에 남아 있는지도 하나의
+공통 contract test로 확인한다. 문서별 owner를 명시해야 문서를 추가하거나 이름을 바꿀 때 검증
+분모에서 빠지지 않는다.
+
+| exact interface 문서 | 회귀 테스트 |
+|----------------------|-------------|
+| `01-common-runtime.ko.md` | `ContractSurfaceCoverage.DotNetExactInterfaceDeclarations_Match_Source_And_Package_Exports` |
+| `02-configuration-host.ko.md` | `ContractSurfaceCoverage.DotNetExactInterfaceDeclarations_Match_Source_And_Package_Exports` |
+| `03-configuration-topology.ko.md` | `ContractSurfaceCoverage.DotNetExactInterfaceDeclarations_Match_Source_And_Package_Exports` |
+| `04-channel-messaging.ko.md` | `ContractSurfaceCoverage.DotNetExactInterfaceDeclarations_Match_Source_And_Package_Exports` |
+| `05-spots.ko.md` | `ContractSurfaceCoverage.DotNetExactInterfaceDeclarations_Match_Source_And_Package_Exports` |
+| `06-actors.ko.md` | `ContractSurfaceCoverage.DotNetExactInterfaceDeclarations_Match_Source_And_Package_Exports` |
+| `07-bound-stream-session.ko.md` | `ContractSurfaceCoverage.DotNetExactInterfaceDeclarations_Match_Source_And_Package_Exports` |
+| `07-stream-session.ko.md` | `ContractSurfaceCoverage.DotNetExactInterfaceDeclarations_Match_Source_And_Package_Exports` |
+| `08-authority-relocation.ko.md` | `ContractSurfaceCoverage.DotNetExactInterfaceDeclarations_Match_Source_And_Package_Exports` |
+| `08-location-maintenance.ko.md` | `ContractSurfaceCoverage.DotNetExactInterfaceDeclarations_Match_Source_And_Package_Exports` |
+| `08-location-provider-redis.ko.md` | `ContractSurfaceCoverage.DotNetExactInterfaceDeclarations_Match_Source_And_Package_Exports` |
+| `10-monitoring-errors.ko.md` | `ContractSurfaceCoverage.DotNetExactInterfaceDeclarations_Match_Source_And_Package_Exports` |
+| `10-topology-monitoring.ko.md` | `ContractSurfaceCoverage.DotNetExactInterfaceDeclarations_Match_Source_And_Package_Exports` |
+| `11-serialization.ko.md` | `ContractSurfaceCoverage.DotNetExactInterfaceDeclarations_Match_Source_And_Package_Exports` |
+
 대상 문서는 다음과 같다.
 
 - `README.ko.md`

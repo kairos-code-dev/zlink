@@ -75,13 +75,13 @@ export function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & 
       requireSocketOptions(socket).peerWeight = value;
     },
     get sendHighWaterMark(): number {
-      return socket.options?.sendHwm ?? 0;
+      return Number(socket.options?.sendHwm ?? 0n);
     },
     set sendHighWaterMark(value: number) {
       requireSocketOptions(socket).sendHwm = value;
     },
     get receiveHighWaterMark(): number {
-      return socket.options?.recvHwm ?? 0;
+      return Number(socket.options?.recvHwm ?? 0n);
     },
     set receiveHighWaterMark(value: number) {
       requireSocketOptions(socket).recvHwm = value;

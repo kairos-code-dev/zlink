@@ -1,10 +1,33 @@
 using Zlink.Framework.Contracts.Messaging;
+using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.ContractTests.Support;
 
 namespace Zlink.Framework.ContractTests.Actors;
 
 public sealed class ActorContracts
 {
+    [Fact]
+    public void Actor_join_completion_failed_shape_matches_exact_interface()
+    {
+        var failed = typeof(ZLinkActorJoinCompletion.Failed);
+        var constructor = Assert.Single(failed.GetConstructors());
+
+        Assert.Equal(
+            new[] { "Kind", "OperationId" },
+            failed.GetProperties()
+                .Select(static property => property.Name)
+                .Order(StringComparer.Ordinal)
+                .ToArray());
+        Assert.Equal(
+            new[] { typeof(ZLinkActorJoinOperationId), typeof(ZLinkFrameworkErrorKind) },
+            constructor.GetParameters()
+                .Select(static parameter => parameter.ParameterType)
+                .ToArray());
+        Assert.DoesNotContain(
+            failed.GetMembers(),
+            static member => member.Name == "IsRetriable");
+    }
+
     [Fact]
     public void Actor_ref_public_shape_is_exact()
     {
@@ -39,6 +62,27 @@ public sealed class ActorContracts
                 parameters,
                 static parameter => parameter.ParameterType == typeof(ActorRef));
         });
+    }
+
+    [Fact]
+    public void Actor_ref_validation_is_preserved_by_the_positional_projection()
+    {
+        Assert.Throws<ArgumentException>(() => new ActorRef(
+            string.Empty,
+            1,
+            "mesh",
+            RoutingId.From("node")));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ActorRef(
+            "actor",
+            0,
+            "mesh",
+            RoutingId.From("node")));
+
+        var actor = new ActorRef("actor", 1, "mesh", RoutingId.From("node"));
+        Assert.Throws<ArgumentException>(() => actor with { ActorId = string.Empty });
+        Assert.Throws<ArgumentOutOfRangeException>(() => actor with { ObjectGeneration = 0 });
+        Assert.Throws<ArgumentException>(() => actor with { MeshName = string.Empty });
+        Assert.Throws<ArgumentException>(() => actor with { NodeRid = default });
     }
 
     [Fact]

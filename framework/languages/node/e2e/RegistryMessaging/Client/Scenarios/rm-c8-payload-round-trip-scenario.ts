@@ -1,5 +1,4 @@
 // RM-C8: 메시지 크기 다양성 시나리오를 검증한다.
-import { ZLinkFrameworkErrorKind } from '@zlink-systems/framework';
 import type { PayloadRes, ProfileRes, RequestFailureRes } from '../../Shared/messages';
 import { sha256Hex } from '../../Shared/messages';
 import { getJson, postJson } from '../../../http-client';
@@ -27,7 +26,7 @@ export async function runRmC8(
     payload: buildPayload(3 * 1024 * 1024)
   });
   ensure(
-    oversized.failed && oversized.failureType === ZLinkFrameworkErrorKind.RequestFailed,
+    oversized.failed && oversized.failureType === 'requestFailed',
     'RM-C8 oversized payload should fail with RequestFailed.'
   );
 

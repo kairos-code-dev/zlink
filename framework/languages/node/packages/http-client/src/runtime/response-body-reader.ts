@@ -94,7 +94,7 @@ function stripEncodingHeaders(headers: Record<string, string>): Record<string, s
 
 function exceededBodySize(): ZLinkFrameworkException {
   return new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.RequestFailed,
+    ZLinkFrameworkErrorKind.Unavailable,
     'HTTP response exceeded the maximum body size',
   );
 }

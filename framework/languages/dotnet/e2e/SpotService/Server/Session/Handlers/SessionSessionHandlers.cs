@@ -205,7 +205,6 @@ internal sealed class StaleBindingProbeSessionHandler(
         var preserved = bindingProbes.Require(context.SessionId, request.ActorId);
         var relayRejected = false;
         var errorKind = string.Empty;
-        var retryAdvice = string.Empty;
         try
         {
             await preserved.RelayAsync(
@@ -216,7 +215,6 @@ internal sealed class StaleBindingProbeSessionHandler(
         {
             relayRejected = true;
             errorKind = error.Kind.ToString();
-            retryAdvice = error.RetryAdvice.ToString();
         }
 
         await preserved.NotifyDisconnectedAsync(cancellationToken);
@@ -224,7 +222,6 @@ internal sealed class StaleBindingProbeSessionHandler(
                 request.ActorId,
                 relayRejected,
                 errorKind,
-                retryAdvice,
                 DisconnectCompleted: true))
             .Async(cancellationToken);
     }

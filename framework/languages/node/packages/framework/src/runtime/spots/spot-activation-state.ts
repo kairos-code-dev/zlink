@@ -1,3 +1,4 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import type {
   RoutingId,
   Type,
@@ -5,8 +6,6 @@ import type {
   ZLinkSpot
 } from '../../contracts';
 import {
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException,
   ZLinkSpotCloseReason,
   ZLinkSpotRelocationReadinessMode,
   ZLinkSpotRelocationReadyOutcome,
@@ -133,8 +132,8 @@ export class ZLinkSpotActivation {
           );
         }
         if (!this.serial.isCurrentTurn) {
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.InvalidOperation,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.InvalidOperation,
             'relocationReady().defer() requires the current Spot handler turn.'
           );
         }
@@ -143,8 +142,8 @@ export class ZLinkSpotActivation {
           this.relocationReadyDeferredTurnId === turnId
           || this.relocationBoundaryConsumed
         ) {
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.InvalidOperation,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.InvalidOperation,
             'relocationReady().defer() was already called for this boundary.'
           );
         }
@@ -177,8 +176,8 @@ export class ZLinkSpotActivation {
     try {
       this.serial.currentTurn?.ensureFrameworkOperationAllowed();
     } catch (error) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.InvalidOperation,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.InvalidOperation,
         error instanceof Error ? error.message : String(error)
       );
     }

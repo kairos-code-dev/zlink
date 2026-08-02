@@ -171,7 +171,11 @@ export class ZLinkSpotNodeRouteTransport {
       .catch(() => undefined)
       .then(() => {
         try {
-          return operation(releasePhysical);
+          // A submitted request owns the physical route slot until its native
+          // callback arrives.  Abort/timeout only settles the caller's
+          // promise; releasing here would let the next request reuse the slot
+          // while the late reply still belongs to the previous request.
+          return Promise.resolve(operation(releasePhysical));
         } catch (error) {
           releasePhysical();
           throw error;

@@ -1,9 +1,8 @@
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import type { RoutingId } from '../../contracts';
 import { ZLinkLocationWriteStatus } from '../../contracts/Locations';
 import {
   ZLinkSpotKind,
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException
 } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
 import type { ZLinkLocationLifecycle } from '../locations';
@@ -45,8 +44,8 @@ export class ZLinkSpotLocationClaim {
       return { claimed: false, state: 'existing', meshName };
     }
     if (status !== ZLinkLocationWriteStatus.Stored) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.SpotCreateFailed,
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.SpotCreateFailed,
         `Spot '${spotId}' location claim failed with '${status}'.`
       );
     }

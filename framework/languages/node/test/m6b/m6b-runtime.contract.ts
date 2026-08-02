@@ -2288,7 +2288,7 @@ test('production Instance Ready commit Store rejection is exposed as RequestFail
       authorityOwnerGeneration: creating.authorityOwnerGeneration
     } as never),
     (error: unknown) => error instanceof ZLinkFrameworkException
-      && error.kind === ZLinkFrameworkErrorKind.RequestFailed
+      && error.kind === ZLinkFrameworkErrorKind.InternalFailure
       && error.cause === commitFault
   );
 });
@@ -2621,7 +2621,7 @@ test('public SpotId call reaches production host Missing Instance placement with
     resolver: () => ({
       async resolve() {
         throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.SpotRouteNotFound,
+          ZLinkFrameworkErrorKind.NotFound,
           'missing'
         );
       }
@@ -2722,7 +2722,7 @@ test('Missing Instance with zero types or no eligible descriptor uses exact targ
       resolver: () => ({
         async resolve() {
           throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.SpotRouteNotFound,
+          ZLinkFrameworkErrorKind.NotFound,
             'missing'
           );
         }
@@ -2760,7 +2760,7 @@ test('Missing Instance with zero types or no eligible descriptor uses exact targ
     await assert.rejects(
       () => address.requestToSpotAddress('missing-room', { hello: true }, call),
       (error: unknown) => error instanceof ZLinkFrameworkException
-        && error.kind === ZLinkFrameworkErrorKind.RequestTargetNotFound
+        && error.kind === ZLinkFrameworkErrorKind.NotFound
     );
   }
 });

@@ -47,7 +47,7 @@ function meshChannelRegistration(meshName, channelName, options = {}) {
       [meshName]: {
         router: { bind: `inproc://contract-${meshName}` },
         requestTimeoutMs: options.meshRequestTimeoutMs,
-        meshChannels: { [channelName]: {} }
+        meshChannels: { [channelName]: { client: true } }
       }
     }
   });
@@ -1756,11 +1756,8 @@ test('ZLinkModule channel client uses runtime host channel transport after boots
   const client = container.get(nestjs.ZLINK_CHANNEL_CLIENT);
 
   try {
-    process.stderr.write('PROBE before serverRuntime.start\n');
     await serverRuntime.start();
-    process.stderr.write('PROBE after serverRuntime.start\n');
     await runtime.start();
-    process.stderr.write('PROBE after runtime.start\n');
 
     const reply = await client
       .requestToChannel('api', typedPacket('Ping', { value: 'ping' }))
@@ -2815,7 +2812,6 @@ test('ZLinkModule route client uses runtime host route transport after bootstrap
     .addRouteMesh('mesh')
       .listen(localEndpoint)
       .routingId('node-a');
-  mesh.channelName('mesh');
   const module = nestjs.ZLinkModule.forRoot(builder.build());
   const container = await resolveModuleProviders(module, [
     nestjs.ZLINK_FRAMEWORK_RUNTIME,
@@ -3095,7 +3091,6 @@ test('ZLinkModule route channel dispatches inbound routed handlers after bootstr
     .addRouteMesh('mesh')
       .listen(endpoint)
       .routingId('node-a');
-  mesh.channelName('mesh');
   mesh.addSendHandler('RouteNotice', RouteNoticeHandler);
   mesh.addRequestHandler('RoutePing', RoutePingHandler);
   Module({
@@ -3152,7 +3147,8 @@ test('ZLinkModule routeMesh channel option dispatches inbound routed handlers af
     .addRouteMesh('mesh')
       .listen(endpoint)
       .routingId('node-a');
-  mesh.channelName('mesh')
+  mesh.channel('mesh')
+    .server()
     .addRequestHandler('RoutePing', RoutePingHandler);
   Module({
     imports: [nestjs.ZLinkModule.forRoot(builder.build())],
@@ -5077,6 +5073,9 @@ function fakeRuntimeBackendAdapterFactory(calls, router) {
         },
         createRouterSocket() {
           return router;
+        },
+        createReadablePoller() {
+          return readyPoller();
         }
       };
     },
@@ -5192,7 +5191,17 @@ function fakeChannelAdapter({ dealer, router }) {
         throw new Error('router not used');
       }
       return router;
+    },
+    createReadablePoller() {
+      return readyPoller();
     }
+  };
+}
+
+function readyPoller() {
+  return {
+    wait() { return true; },
+    dispose() {}
   };
 }
 

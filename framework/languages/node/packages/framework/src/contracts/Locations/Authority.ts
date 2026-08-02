@@ -82,6 +82,13 @@ export type ZLinkAuthorityMutation =
       readonly relocationCapacityFence?: ZLinkRelocationCapacityFence;
     }
   | {
+      /** Rebinds an authority retained by the same owner after lease recovery. */
+      readonly kind: 'rebindOwnerLease';
+      readonly payload: Uint8Array;
+      readonly expectedOwner: ZLinkLocationOwnerToken;
+      readonly targetOwner: ZLinkLocationOwnerToken;
+    }
+  | {
       readonly kind: 'restore';
       readonly payload: Uint8Array;
       readonly expectedOwner: ZLinkLocationOwnerToken;

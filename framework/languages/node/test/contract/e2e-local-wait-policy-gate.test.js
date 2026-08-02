@@ -24,6 +24,8 @@ test('every Node e2e runner declares the common local wait policy', () => {
     runners.map((runner) => path.basename(path.dirname(runner))).sort(),
     [
       'AutomaticTurnDispatch',
+      'ChannelEgressRouting',
+      'InstanceSpot',
       'ObservabilityOps',
       'PubSub',
       'RegistrationCodec',

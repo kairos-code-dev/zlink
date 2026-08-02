@@ -89,6 +89,34 @@ export class ZLinkClientServerLocationRuntime {
       .filter((descriptor) => descriptor.channelName === channelName);
   }
 
+  async reclaimOwnerRows(signal?: AbortSignal): Promise<void> {
+    const owner = this.requireOwnerToken();
+    for (const [channelName, current] of this.localDescriptors) {
+      if (current.ownerId === owner.ownerId
+        && current.leaseGeneration === owner.leaseGeneration) {
+        continue;
+      }
+      const candidate = {
+        ...current,
+        ownerId: owner.ownerId,
+        leaseGeneration: owner.leaseGeneration
+      };
+      const result = await this.store.updateClientServer(
+        candidate,
+        ZLinkLocationWriteIntent.Takeover,
+        signal
+      );
+      if (result.status !== ZLinkLocationWriteStatus.Stored) {
+        throw new ZLinkConfigurationException(
+          `ClientServer server '${channelName}' descriptor recovery was fenced.`
+        );
+      }
+      const published = { ...candidate, updatedAt: result.updatedAt };
+      this.localDescriptors.set(channelName, published);
+      this.sockets.setClientServerServerDescriptor(published, channelName);
+    }
+  }
+
   private async publishServers(signal?: AbortSignal): Promise<void> {
     const owner = this.requireOwnerToken();
     for (const [channelName, channel] of this.registration.channels) {

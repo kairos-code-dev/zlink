@@ -60,3 +60,71 @@ Sol Medium review는 현재 candidate를 `NOT CLEAN`으로 판정했다.
    public `Unavailable` 계약에 맞게 처리되는지 확인한다.
 4. 전체 Node contract/runtime gate, package gate, process E2E를 다시 실행한다.
 
+### R1 candidate 재검증 — 2026-08-02
+
+이번 round의 기록은 이 ledger와 같은 디렉토리의 `log/`에만 추가한다. 다른 E2E `logs/`나 과거
+snapshot은 현재 candidate의 완료 evidence로 사용하지 않는다.
+
+```text
+candidate: working-tree manifest 2026-08-02 (commit 9efee01aa39 + current changes)
+reviewer: Sol Medium
+model: gpt-5.6-sol
+reasoning: medium
+round: R1 candidate
+scope: ND-IMP-001..004, ND-E2E-IMP-001..005, ND-TEST-001..003
+```
+
+구현과 회귀 검증에서 확인한 결과는 다음과 같다.
+
+- `npm run build`: 통과.
+- Node targeted regression: 260/260 통과.
+- `test/contract/channel-client.test.js`: 93/93 통과.
+- HWM, public 13-kind error surface, channel ProtocolError mapping, RouteMesh request admission,
+  SPOT physical slot과 actor/spot join callback fixture를 current public contract에 맞췄다.
+- E2E static gate에서 common scenario 302개 중 Node selector/source에 207개가 있고, 99개가 아직
+  실제 scenario file 또는 selector dispatch를 갖지 않는다. 따라서 `npm test`는
+  `e2e-scenario-header-gate.test.js`의 missing 목록에서 중단되며 full regression CLEAN으로 기록하지
+  않는다.
+- Config 12 `ChannelEgressRouting`과 Config 14 `InstanceSpot` runner는 공통 wait/log 정책을 갖추었지만
+  role server가 아직 없어서 의도적으로 exit 2 (`BLOCKED`)를 반환한다. aggregate PASS로 세지 않는다.
+
+```text
+decision: NOT CLEAN
+finding: ND-E2E-IMP-001 / ND-E2E-IMP-002
+severity: High
+category: test/evidence
+evidence: 99 common scenario IDs are absent; Config 12 and Config 14 role runners are blocked.
+status: open
+verification: implement exact selectors and role-server process evidence, then rerun npm test and aggregate all.
+```
+
+이 결과로 ledger의 `ND-E2E-IMP-*`, `ND-TEST-003`, `ND-REG-005`~`008`은 계속 unresolved다. `log/`
+규칙 자체는 충족했지만, log를 추가했다는 사실만으로 구현 gap을 닫지 않는다.
+
+### 작업 중단 기록 — 2026-08-02
+
+사용자 지시에 따라 이 시점에서 작업을 중단하고 대기한다. 이후 재개할 때는 이 항목부터
+확인한다.
+
+- 현재 작업 log는 계속 이 문서가 있는 디렉토리의 `log/` 아래에 기록한다. 별도의 공통
+  `logs/` 디렉토리나 다른 언어의 log를 현재 Node 검증 evidence로 사용하지 않는다.
+- `entry-spot-dispatch.test.js`의 9개 회귀 검사는 current public contract에 맞춘 뒤 9/9 통과했다.
+  변경 내용은 `ActorRef`의 `objectGeneration`·`meshName`, raw actor lifecycle callback,
+  bound-session seal callback fixture와 optional `targetSpotGeneration` 반환 shape다.
+- `fanout-location-store.test.js`는 location write enum이 public barrel이 아닌 internal SPI라는
+  계약에 맞춰 3/3 통과했다.
+- 그 뒤 실행한
+  `ZLINK_NODE_RUNTIME_GATE_SKIP_TESTS=test/contract/e2e-scenario-header-gate.test.js npm test`
+  는 build·typecheck·lint 다음 `test/browser/stream-connector-chromium.test.js`가 exit 1을
+  보고했다. 사용자가 중단을 요청해 outer command는 exit 130으로 종료했으므로 full gate 통과로
+  기록하지 않는다. Chromium failure의 상세 원인과 이후 contract test는 재개 시 다시 확인한다.
+- 앞선 R1 evidence의 핵심 blocker인 common scenario 99개 누락과 Config 12/14 role-server
+  `BLOCKED` 상태는 그대로다. `npm test`의 scenario-header gate를 건너뛰어 완료로 판정하지 않는다.
+
+```text
+decision: PAUSED
+pause_reason: user requested stop and wait
+last_command: ZLINK_NODE_RUNTIME_GATE_SKIP_TESTS=test/contract/e2e-scenario-header-gate.test.js npm test
+last_observed: test/browser/stream-connector-chromium.test.js reported exit 1; outer command exit 130 after user stop
+resume_from: browser failure details, then remaining contract gate; retain 99 missing scenarios and Config 12/14 as open
+```

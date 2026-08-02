@@ -177,13 +177,23 @@ export function decodeChannelReply<TReply>(
   if (header.kind !== ZLinkChannelMessageKind.Response) {
     throw new ZLinkConfigurationException(`Channel reply kind '${header.kind}' is not a response.`);
   }
+  const serializer = codecs?.serializers.get(header.contentType);
+  if (
+    serializer === undefined
+    && header.contentType !== BINARY_CONTENT_TYPE
+    && header.contentType !== JSON_CONTENT_TYPE
+  ) {
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.PayloadDecodeFailed,
+      `ProtocolError: unsupported channel content type '${header.contentType}'.`
+    );
+  }
   if (parts.length < 2 || parts[1].data().length === 0) {
     return undefined as TReply;
   }
   if (header.contentType === BINARY_CONTENT_TYPE) {
     return Buffer.from(parts[1].data()) as TReply;
   }
-  const serializer = codecs?.serializers.get(header.contentType);
   if (serializer !== undefined) {
     return serializer.deserialize<TReply>(ZLinkEncodedPayload.from(parts[1].data()), Object as never);
   }
@@ -206,8 +216,11 @@ function decodeChannelError(header: ZLinkChannelEnvelopeHeader): Error {
   return new ZLinkFrameworkException(ZLinkFrameworkErrorKind.InternalFailure, message);
 }
 
-export function decodeChannelEnvelope(parts: readonly Message[]): ZLinkChannelEnvelope {
-  const header = decodeChannelHeader(parts);
+export function decodeChannelEnvelope(
+  parts: readonly Message[],
+  decodedHeader?: ZLinkChannelEnvelopeHeader
+): ZLinkChannelEnvelope {
+  const header = decodedHeader ?? decodeChannelHeader(parts);
   if (parts.length < 2) {
     throw new ZLinkConfigurationException('Channel envelope body part is missing.');
   }
@@ -224,7 +237,9 @@ export function decodeChannelPayload(
       return serializer.deserialize(ZLinkEncodedPayload.from(envelope.payload), Object as never);
     }
     if (envelope.header.contentType === BINARY_CONTENT_TYPE) {
-      return Buffer.from(envelope.payload);
+      // decodeChannelEnvelope owns this payload copy for the duration of
+      // dispatch, so another copy would only duplicate the same bytes.
+      return envelope.payload;
     }
     if (envelope.header.contentType === JSON_CONTENT_TYPE) {
       return parseWireJson(envelope.payload.toString());
@@ -307,7 +322,7 @@ function encodeFlowOrigin(origin: ZLinkFlowOrigin): number {
   }
 }
 
-function decodeChannelHeader(parts: readonly Message[]): ZLinkChannelEnvelopeHeader {
+export function decodeChannelHeader(parts: readonly Message[]): ZLinkChannelEnvelopeHeader {
   if (parts.length === 0) {
     throw new ZLinkConfigurationException('Channel envelope header part is missing.');
   }

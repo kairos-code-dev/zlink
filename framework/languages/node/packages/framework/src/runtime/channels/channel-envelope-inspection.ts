@@ -1,14 +1,18 @@
 import type { Message } from '@zlink-systems/zlink';
-import { decodeChannelEnvelope } from './channel-envelope';
+import {
+  decodeChannelHeader,
+  type ZLinkChannelEnvelopeHeader
+} from './channel-envelope';
 
-export function isChannelEnvelope(parts: readonly Message[]): boolean {
+export function tryDecodeChannelHeader(
+  parts: readonly Message[]
+): ZLinkChannelEnvelopeHeader | undefined {
   if (parts.length < 2 || parts[0].data().length === 0) {
-    return false;
+    return undefined;
   }
   try {
-    decodeChannelEnvelope(parts);
-    return true;
+    return decodeChannelHeader(parts);
   } catch {
-    return false;
+    return undefined;
   }
 }

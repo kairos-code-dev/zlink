@@ -126,6 +126,11 @@ export class ZLinkChannelRuntimeLifecycle {
     }
   }
 
+  async reclaimLocationOwnerRows(signal?: AbortSignal): Promise<void> {
+    await this.clientServerLocation?.reclaimOwnerRows(signal);
+    await this.fanoutLocation?.reclaimOwnerRows(signal);
+  }
+
   bindRouteMeshRouters(): void {
     for (const routeChannel of this.options.registration.routeChannelOptions.values()) {
       if (routeChannel.bind !== undefined && routeChannel.bind.trim().length > 0) {
@@ -361,7 +366,12 @@ export class ZLinkChannelRuntimeLifecycle {
         spotRouteBridge,
         (received, socket) =>
           this.options.sockets.tryHandleClientServerControl(channelName, received, socket),
-        this.options.inboundDispatchBudget
+        this.options.inboundDispatchBudget,
+        this.options.adapter.createReadablePoller(router),
+        error => taskRunner.errorSink.reportRuntimeTaskException(
+          `channel:${channelName}:dispatch`,
+          error
+        )
       );
       this.channelReceiveLoops.push(loop);
       tasks.push(taskRunner.run(`channel:${channelName}`, (signal) => loop.run(signal)));
@@ -451,10 +461,10 @@ export class ZLinkChannelRuntimeLifecycle {
       this.options.adapter,
       subscriber,
       dispatcher,
-      message => this.options.sockets.handleFanoutInbound(
-            connectionId,
-            message,
-            subscriber
+      message => this.options.sockets.handleFanoutInboundResult(
+        connectionId,
+        message,
+        subscriber
       ),
       this.options.inboundDispatchBudget
     );
@@ -494,7 +504,7 @@ export class ZLinkChannelRuntimeLifecycle {
       this.options.adapter,
       subscriber,
       dispatcher,
-      message => this.options.sockets.handleFanoutInbound(
+      message => this.options.sockets.handleFanoutInboundResult(
         connectionId,
         message,
         subscriber
@@ -554,7 +564,8 @@ export class ZLinkChannelRuntimeLifecycle {
       const loop = new ZLinkRouteReceiveLoop(
         router,
         dispatcher,
-        this.options.inboundDispatchBudget
+        this.options.inboundDispatchBudget,
+        this.options.adapter.createReadablePoller(router)
       );
       this.routeReceiveLoops.push(loop);
       tasks.push(taskRunner.run(`route:${routeChannel.routerChannelId}`, (signal) => loop.run(signal)));

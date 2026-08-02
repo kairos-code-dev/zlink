@@ -6,6 +6,7 @@ import { ZLinkConfigurationException } from '../configuration';
 import { readFileSync } from 'node:fs';
 import { totalmem } from 'node:os';
 import { join } from 'node:path';
+import { getHeapStatistics } from 'node:v8';
 
 const PROFILE_PERCENT = new Map<ZLinkApplicationHwmProfile, bigint>([
   [ZLinkApplicationHwmProfile.Compact, 2n],
@@ -15,12 +16,19 @@ const PROFILE_PERCENT = new Map<ZLinkApplicationHwmProfile, bigint>([
 ]);
 const COMPLETION_SEND_LIMIT = 65_536n;
 
+export interface ZLinkApplicationHwmMemorySources {
+  readonly osLimitBytes?: bigint;
+  readonly managedHeapLimitBytes?: bigint;
+  readonly physicalMemoryBytes?: bigint;
+}
+
 export class ZLinkInboundDispatchBudget {
   private queuedBytes = 0n;
   private activeBytes = 0n;
   private pendingCompletionSends = 0n;
   private activeCompletionSends = 0n;
   private readonly completionWaiters: Array<() => void> = [];
+  private readonly pauseListeners = new Set<() => void>();
   private readonly resumeListeners = new Set<() => void>();
 
   constructor(readonly applicationHwmBytes: bigint) {}
@@ -35,7 +43,9 @@ export class ZLinkInboundDispatchBudget {
   }
 
   enqueue(payloadBytes: bigint): void {
+    const wasPaused = this.receivePaused;
     this.queuedBytes += requirePayloadBytes(payloadBytes);
+    this.notifyPauseTransition(wasPaused);
   }
 
   start(payloadBytes: bigint): void {
@@ -55,9 +65,7 @@ export class ZLinkInboundDispatchBudget {
     }
     this.queuedBytes -= bytes;
     const stillPaused = this.receivePaused;
-    if (wasPaused && !stillPaused) {
-      for (const listener of this.resumeListeners) listener();
-    }
+    this.notifyResume(wasPaused, stillPaused);
   }
 
   complete(payloadBytes: bigint): void {
@@ -68,14 +76,30 @@ export class ZLinkInboundDispatchBudget {
     }
     this.activeBytes -= bytes;
     const stillPaused = this.receivePaused;
-    if (wasPaused && !stillPaused) {
-      for (const listener of this.resumeListeners) listener();
-    }
+    this.notifyResume(wasPaused, stillPaused);
+  }
+
+  onPause(listener: () => void): () => void {
+    this.pauseListeners.add(listener);
+    return () => this.pauseListeners.delete(listener);
   }
 
   onResume(listener: () => void): () => void {
     this.resumeListeners.add(listener);
     return () => this.resumeListeners.delete(listener);
+  }
+
+  private notifyPauseTransition(wasPaused: boolean): void {
+    const isPaused = this.receivePaused;
+    if (!wasPaused && isPaused) {
+      for (const listener of this.pauseListeners) listener();
+    }
+  }
+
+  private notifyResume(wasPaused: boolean, isPaused: boolean): void {
+    if (wasPaused && !isPaused) {
+      for (const listener of this.resumeListeners) listener();
+    }
   }
 
   async waitUntilResumed(signal?: AbortSignal): Promise<void> {
@@ -141,7 +165,8 @@ export class ZLinkInboundDispatchBudget {
 }
 
 export function resolveApplicationHwm(
-  options: ZLinkInboundDispatchOptionValues
+  options: ZLinkInboundDispatchOptionValues,
+  memorySources?: ZLinkApplicationHwmMemorySources
 ): bigint {
   const configured = options.applicationHwmBytes;
   if (configured !== undefined) {
@@ -152,14 +177,13 @@ export function resolveApplicationHwm(
     }
     return configured;
   }
-  //  Spec 06: configured limit, then the container/cgroup limit, then total
-  //  physical memory. Total, not free, so Auto stays deterministic.
+  //  Spec 06: configured limit, then the smaller of the OS and managed-heap
+  //  limits, then total physical memory. Total, not free, stays deterministic.
   const memoryLimit = options.processMemoryLimitBytes
-    ?? detectFiniteProcessMemoryLimit()
-    ?? totalPhysicalMemory();
+    ?? resolveEffectiveMemoryBudget(memorySources ?? detectMemorySources());
   if (memoryLimit <= 0n) {
     throw new ZLinkConfigurationException(
-      'Application HWM Auto sizing could not read the total physical memory of this host.'
+      'Application HWM Auto sizing requires a positive effective memory budget.'
     );
   }
   const percent = PROFILE_PERCENT.get(options.applicationHwmProfile);
@@ -177,16 +201,52 @@ export function resolveApplicationHwm(
   return resolved;
 }
 
-function detectFiniteProcessMemoryLimit(): bigint | undefined {
-  //  Node reports 0 when the process is not memory constrained, so only a
-  //  positive safe integer names a real limit.
-  const constrained = process.constrainedMemory();
-  if (Number.isSafeInteger(constrained) && constrained > 0) {
-    return BigInt(constrained);
+export function resolveEffectiveMemoryBudget(
+  sources: ZLinkApplicationHwmMemorySources
+): bigint {
+  const candidates = [sources.osLimitBytes, sources.managedHeapLimitBytes]
+    .filter((candidate): candidate is bigint => candidate !== undefined && candidate > 0n);
+  if (candidates.length > 0) {
+    return candidates.reduce((smallest, candidate) =>
+      candidate < smallest ? candidate : smallest);
   }
-  const cgroupPath = currentCgroupPath();
-  return readFiniteLimit(join('/sys/fs/cgroup', cgroupPath, 'memory.max'))
-    ?? readFiniteLimit(join('/sys/fs/cgroup/memory', cgroupPath, 'memory.limit_in_bytes'));
+  return sources.physicalMemoryBytes ?? 0n;
+}
+
+function detectMemorySources(): ZLinkApplicationHwmMemorySources {
+  const osCandidates: bigint[] = [];
+
+  // Node reports 0 when the process is not memory constrained, so only a
+  // positive safe integer names a real OS limit.
+  const constrained = typeof process.constrainedMemory === 'function'
+    ? process.constrainedMemory()
+    : 0;
+  if (Number.isSafeInteger(constrained) && constrained > 0) {
+    osCandidates.push(BigInt(constrained));
+  }
+  const cgroupPaths = currentCgroupPaths();
+  const unifiedLimit = cgroupPaths.unifiedPath === undefined
+    ? undefined
+    : readFiniteLimit(join('/sys/fs/cgroup', cgroupPaths.unifiedPath, 'memory.max'));
+  const memoryLimit = cgroupPaths.memoryPath === undefined
+    ? undefined
+    : readFiniteLimit(
+        join('/sys/fs/cgroup/memory', cgroupPaths.memoryPath, 'memory.limit_in_bytes')
+      );
+  const cgroupLimit = unifiedLimit ?? memoryLimit;
+  if (cgroupLimit !== undefined) osCandidates.push(cgroupLimit);
+
+  const managedHeapLimit = getHeapStatistics().heap_size_limit;
+  return {
+    osLimitBytes: osCandidates.length === 0
+      ? undefined
+      : osCandidates.reduce((smallest, candidate) =>
+        candidate < smallest ? candidate : smallest),
+    managedHeapLimitBytes: Number.isSafeInteger(managedHeapLimit) && managedHeapLimit > 0
+      ? BigInt(managedHeapLimit)
+      : undefined,
+    physicalMemoryBytes: totalPhysicalMemory()
+  };
 }
 
 function totalPhysicalMemory(): bigint {
@@ -194,14 +254,29 @@ function totalPhysicalMemory(): bigint {
   return Number.isSafeInteger(total) && total > 0 ? BigInt(total) : 0n;
 }
 
-function currentCgroupPath(): string {
+function currentCgroupPaths(): {
+  readonly unifiedPath?: string;
+  readonly memoryPath?: string;
+} {
   try {
-    const unified = readFileSync('/proc/self/cgroup', 'utf8')
-      .split(/\r?\n/u)
-      .find((line) => line.startsWith('0::'));
-    return unified?.slice(3).replace(/^\/+/u, '') ?? '';
+    let unifiedPath: string | undefined;
+    let memoryPath: string | undefined;
+    for (const line of readFileSync('/proc/self/cgroup', 'utf8').split(/\r?\n/u)) {
+      const separator = line.indexOf(':');
+      if (separator < 0) continue;
+      const secondSeparator = line.indexOf(':', separator + 1);
+      if (secondSeparator < 0) continue;
+      const controllers = line.slice(separator + 1, secondSeparator);
+      const path = line.slice(secondSeparator + 1).replace(/^\/+/u, '');
+      if (controllers === '') {
+        unifiedPath = path;
+      } else if (controllers.split(',').includes('memory')) {
+        memoryPath = path;
+      }
+    }
+    return { unifiedPath, memoryPath };
   } catch {
-    return '';
+    return {};
   }
 }
 

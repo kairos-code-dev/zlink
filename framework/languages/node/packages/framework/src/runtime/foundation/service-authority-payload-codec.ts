@@ -1,4 +1,5 @@
 import { crc32c } from './service-relocation-runtime';
+import type { ZLinkLocationOwnerToken } from '../../contracts/Locations';
 
 const AUTHORITY_MAGIC = Buffer.from([0x5a, 0x4c, 0x41, 0x55]);
 const AUTHORITY_FORMAT_VERSION = 1;
@@ -209,6 +210,26 @@ export function decodeServiceInstanceAuthorityPayload(
     kind: 'instance_spot',
     state: decoded.state
   };
+}
+
+export function rewriteServiceAuthorityOwner(
+  payload: Uint8Array,
+  owner: ZLinkLocationOwnerToken
+): Buffer | undefined {
+  if (decodeSpotAuthority(payload) === undefined) return undefined;
+  const bytes = Buffer.from(payload);
+  const bodyLength = bytes.readUInt32BE(7);
+  const bodyStart = 11;
+  const objectLength = bytes.readUInt16BE(bodyStart + 2);
+  const ownerLengthOffset = bodyStart + 4 + objectLength;
+  if (ownerLengthOffset >= bytes.length) return undefined;
+  const ownerLength = bytes[ownerLengthOffset];
+  const leaseOffset = ownerLengthOffset + 1 + ownerLength;
+  if (leaseOffset + 8 > bytes.length) return undefined;
+  bytes.writeBigUInt64BE(owner.leaseGeneration, leaseOffset);
+  const checksumOffset = bodyStart + bodyLength;
+  bytes.writeUInt32BE(crc32c(bytes.subarray(0, checksumOffset)), checksumOffset);
+  return bytes;
 }
 
 function decodeSpotAuthority(

@@ -311,16 +311,16 @@ test('redis-backed aggregate prepare commit and abort converge across repository
     assert.equal(
       (await source.updateMeshNode(
         aggregateDescriptor(sourceTarget, 64),
-        framework.ZLinkLocationWriteIntent.NewClaim
+        frameworkInternal.ZLinkLocationWriteIntent.NewClaim
       )).status,
-      framework.ZLinkLocationWriteStatus.Stored
+      frameworkInternal.ZLinkLocationWriteStatus.Stored
     );
     assert.equal(
       (await recovery.updateMeshNode(
         aggregateDescriptor(targetTarget, 64),
-        framework.ZLinkLocationWriteIntent.NewClaim
+        frameworkInternal.ZLinkLocationWriteIntent.NewClaim
       )).status,
-      framework.ZLinkLocationWriteStatus.Stored
+      frameworkInternal.ZLinkLocationWriteStatus.Stored
     );
 
     const snapshots = [];

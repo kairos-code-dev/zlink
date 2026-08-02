@@ -49,5 +49,5 @@ test('ST-H2 maps a two-phase target process restart to durable Join recovery ass
   assert.match(scenario, /join_completion\|accepted\|\$\{operationId\}/);
   assert.match(scenario, /entry\.kind === 'packet_handler'/);
   assert.match(scenario, /entry\.value === 'after-target-restart'/);
-  assert.match(featureMap, /\| `ST-H2` \| 실행 대기 \|/);
+  assert.match(featureMap, /\| `ST-H2` \| 구현 \|/);
 });

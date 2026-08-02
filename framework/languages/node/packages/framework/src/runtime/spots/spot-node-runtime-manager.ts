@@ -54,6 +54,7 @@ import type {
   ZLinkBackendMeshNode,
   ZLinkBackendSpotNode
 } from '../backend/contracts';
+import type { ZLinkLocationOwnerToken } from '../../contracts/Locations/Writes';
 import { ZLinkMeshDispatchPump } from '../backend/mesh-dispatch-pump';
 import { ZLinkMeshCompletionTable } from '../backend/mesh-completion-table';
 import type { ZLinkDispatchErrorReporter } from '../channels';
@@ -148,6 +149,11 @@ export class ZLinkSpotNodeRuntimeManager {
   private readonly autoConnectLoops: ZLinkAutoConnectLoop[] = [];
   private readonly publishedMeshNodeDescriptors =
     new Map<string, ZLinkMeshNodeDescriptor>();
+  // Keep the revision source separate from the cached Store row. A new owner
+  // lease may require a NewClaim against an empty Store, while peers still
+  // retain the monotonic revision from this MeshNode lifecycle.
+  private readonly descriptorRevisionByMesh = new Map<string, bigint>();
+  private publishedOwnerToken?: ZLinkLocationOwnerToken;
   private readonly runtimePlacementWeights = new Map<string, number>();
   private readonly runtimeChannelWeights = new Map<string, Map<string, number>>();
   private readonly entrySpotIds = new Map<string, string>();
@@ -313,7 +319,16 @@ export class ZLinkSpotNodeRuntimeManager {
     selectedMeshName?: string
   ): Promise<void> {
     const location = this.locationAutoConnect;
-    if (location === undefined) return;
+    const owner = location?.runtime.currentOwnerToken;
+    if (location === undefined || owner === undefined) return;
+    const ownerChanged = this.publishedOwnerToken !== undefined
+      && !sameOwnerToken(this.publishedOwnerToken, owner);
+    if (ownerChanged) {
+      // A new owner token can refer to an empty or replaced Store. The cached
+      // descriptor was written under the previous lease and must not force a
+      // Renew against a row that no longer exists.
+      this.publishedMeshNodeDescriptors.clear();
+    }
     for (const [meshName, registration] of this.options.registration.spotNodes) {
       if (selectedMeshName !== undefined && meshName !== selectedMeshName) continue;
       const node = this.meshNodes.get(meshName);
@@ -336,11 +351,12 @@ export class ZLinkSpotNodeRuntimeManager {
           : left.stableType.localeCompare(right.stableType);
       });
       const current = this.publishedMeshNodeDescriptors.get(meshName);
+      const previousRevision = this.descriptorRevisionByMesh.get(meshName) ?? 0n;
       const descriptor = {
         meshName,
         rid: status.routingId,
         lifecycleGeneration: status.lifecycleGeneration,
-        descriptorRevision: (current?.descriptorRevision ?? 0n) + 1n,
+        descriptorRevision: maxBigInt(previousRevision, current?.descriptorRevision ?? 0n) + 1n,
         // Core resolves port zero. The configured advertise host replaces only
         // the host component; peers still use Core's resolved port.
         endpoint: advertisedMeshEndpoint(
@@ -406,9 +422,11 @@ export class ZLinkSpotNodeRuntimeManager {
       };
       const result = await location.runtime.writeMeshNode(
         descriptor,
-        current === undefined
-          ? ZLinkLocationWriteIntent.NewClaim
-          : ZLinkLocationWriteIntent.Renew,
+        ownerChanged
+          ? ZLinkLocationWriteIntent.Takeover
+          : current === undefined
+            ? ZLinkLocationWriteIntent.NewClaim
+            : ZLinkLocationWriteIntent.Renew,
         signal
       );
       if (result.status !== ZLinkLocationWriteStatus.Stored) {
@@ -422,7 +440,9 @@ export class ZLinkSpotNodeRuntimeManager {
         leaseGeneration: location.runtime.currentOwnerToken!.leaseGeneration,
         updatedAt: result.updatedAt
       });
+      this.descriptorRevisionByMesh.set(meshName, descriptor.descriptorRevision);
     }
+    this.publishedOwnerToken = owner;
   }
 
   async reconcileAndPublishMeshNodeState(
@@ -444,6 +464,11 @@ export class ZLinkSpotNodeRuntimeManager {
         && descriptor.leaseGeneration === owner.leaseGeneration);
     if (current !== undefined) {
       this.publishedMeshNodeDescriptors.set(meshName, current);
+      this.descriptorRevisionByMesh.set(
+        meshName,
+        maxBigInt(this.descriptorRevisionByMesh.get(meshName) ?? 0n, current.descriptorRevision)
+      );
+      this.publishedOwnerToken = owner;
     }
     await this.publishMeshNodeState(state, signal, meshName);
   }
@@ -1316,4 +1341,16 @@ function objectCapability(
       ? 0
       : factory.options?.stableTypeLimit ?? 0
   };
+}
+
+function maxBigInt(left: bigint, right: bigint): bigint {
+  return left > right ? left : right;
+}
+
+function sameOwnerToken(
+  left: ZLinkLocationOwnerToken,
+  right: ZLinkLocationOwnerToken
+): boolean {
+  return left.ownerId === right.ownerId
+    && left.leaseGeneration === right.leaseGeneration;
 }

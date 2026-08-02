@@ -28,6 +28,7 @@ import type {
 } from '../backend/contracts';
 import type { ZLinkMeshCompletionTable } from '../backend/mesh-completion-table';
 import type { ZLinkApplicationWorkClaim } from '../admission';
+import type { ZLinkInboundDispatchBudget } from '../dispatch/inbound-dispatch-budget';
 import type { ZLinkMeshSubmitterRegistry } from '../messaging';
 import type { StreamSessionService } from '../foundation/service-runtime-contracts';
 import {
@@ -70,12 +71,14 @@ import {
   ZLinkManagedStream
 } from './managed-stream';
 import { createStreamSessionInstance } from './session-provider';
+import { DEFAULT_APPLICATION_LISTENER_MAX_MESSAGE_SIZE } from '../../contracts/Configuration/InternalDefaults';
 import {
   ZLinkStreamSessionNodeRuntime as ZLinkStreamSessionNodeRuntimeCore,
   ZLinkStreamSessionRuntime as ZLinkStreamSessionRuntimeCore,
   type ZLinkStreamSessionNodeRuntimeOptions as ZLinkStreamSessionNodeRuntimeCoreOptions,
   type ZLinkStreamSessionRuntimeOptions as ZLinkStreamSessionRuntimeCoreOptions
 } from './stream-session-runtime';
+import { ZLinkStreamDispatchCapacity } from './stream-dispatch-capacity';
 export { ZLinkPendingSessionRequest } from './session-requests';
 export { ZLinkActorSessionLifecycleCoordinator } from './actor-session-lifecycle-coordinator';
 export { ZLinkActorSessionBindingRegistry } from './actor-session-binding-registry';
@@ -156,6 +159,7 @@ export interface ZLinkStreamRuntimeManagerOptions {
   readonly acceptNewSession?: (meshName?: string) => boolean;
   readonly primaryMeshName?: string;
   readonly claimApplicationWork?: (meshName: string) => ZLinkApplicationWorkClaim;
+  readonly inboundDispatchBudget?: ZLinkInboundDispatchBudget;
   readonly nativeMeshNode?: ZLinkBackendMeshNode;
   readonly meshCompletions?: ZLinkMeshCompletionTable;
   readonly nativeMeshNodeForName?: (meshName: string) => ZLinkBackendMeshNode | undefined;
@@ -173,6 +177,7 @@ interface ZLinkStartedStreamNode {
 
 export class ZLinkStreamRuntimeManager {
   private readonly nodes = new Map<string, ZLinkStartedStreamNode>();
+  private readonly dispatchCapacity = new ZLinkStreamDispatchCapacity();
 
   constructor(private readonly options: ZLinkStreamRuntimeManagerOptions) {}
 
@@ -188,6 +193,7 @@ export class ZLinkStreamRuntimeManager {
       const nativeMeshNode = actorDispatchEnabled ? this.options.nativeMeshNode : undefined;
       const meshCompletions = actorDispatchEnabled ? this.options.meshCompletions : undefined;
       const socket = streamAdapter.createStreamSocket(this.options.context);
+      socket.maxMessageSize = DEFAULT_APPLICATION_LISTENER_MAX_MESSAGE_SIZE;
       const tlsServer = streamNode.tlsServer;
       if (tlsServer !== undefined) {
         socket.setTlsServer(
@@ -197,6 +203,7 @@ export class ZLinkStreamRuntimeManager {
         );
       }
       socket.bind(streamNode.bind!);
+      const readablePoller = streamAdapter.createReadablePoller(socket);
       const nativeSessionRoutes = new Map<string, {
         readonly service: StreamSessionService;
         readonly completions: ZLinkMeshCompletionTable;
@@ -233,6 +240,7 @@ export class ZLinkStreamRuntimeManager {
       const runtime = new ZLinkStreamSessionNodeRuntimeCore({
         nodeName,
         socket,
+        readablePoller,
         nativeSessionService,
         meshCompletions,
         nativeSessionRouteForMesh: meshName => nativeSessionRoutes.get(meshName),
@@ -243,6 +251,7 @@ export class ZLinkStreamRuntimeManager {
           || claimApplicationWork === undefined
           ? undefined
           : () => claimApplicationWork(applicationMeshName),
+        inboundDispatchBudget: this.options.inboundDispatchBudget,
         dispatchErrors: this.options.dispatchErrors,
         metrics: this.options.metrics,
         providerResolver: this.options.providerResolver,
@@ -253,7 +262,7 @@ export class ZLinkStreamRuntimeManager {
           context,
           sessionHandlerTypes
         )
-      });
+      }, this.dispatchCapacity);
       runtime.start();
       this.nodes.set(nodeName, {
         meshName: applicationMeshName,

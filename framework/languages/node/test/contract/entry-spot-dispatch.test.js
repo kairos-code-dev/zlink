@@ -34,6 +34,7 @@ function boundSessionRuntime(overrides = {}) {
     async receiveRoutedBoundSessionResponse() {},
     async receiveRoutedBoundSessionError() {},
     async receiveRemoteBoundSessionOwnership() {},
+    async receiveRemoteBoundSessionSeal() {},
     rememberRemoteBoundSessionTarget() {},
     resolveRemoteBoundSessionTarget() { return undefined; },
     actorPacketTargetForState() { return undefined; },
@@ -339,7 +340,7 @@ test('Entry Spot materializes a remotely returning actor with its original Entry
 
   class EntrySpot {
     async onJoinedActor(joinedActor) {
-      events.push(`joined:${joinedActor.actor.actorId}`);
+      events.push(`joined:${joinedActor.context.actorId}`);
     }
   }
 
@@ -648,7 +649,8 @@ test('runtime host remembers routed packet target for stream-bound actors withou
     ref: {
       nodeRid: 'play-node-1',
       actorId: 'player-2',
-      generation: 1n
+      objectGeneration: 1n,
+      meshName: 'bingo.room.route'
     }
   };
   const header = {
@@ -694,7 +696,8 @@ test('runtime host keeps routed packet target across stream actor wrappers', asy
   const actorRef = {
     nodeRid: 'play-node-b',
     actorId: 'player-2',
-    generation: 1n
+    objectGeneration: 1n,
+    meshName: 'bingo.room.route'
   };
   const header = {
     kind: protocol.ZLinkStreamMessageKind.Request,
@@ -766,7 +769,8 @@ test('runtime host raw actor relay reply updates actor packet target for the nex
     ref: {
       nodeRid: 'bingo-play-node-b',
       actorId: 'player-2',
-      generation: 1n
+      objectGeneration: 1n,
+      meshName: 'bingo.room.route'
     }
   };
   const header = {

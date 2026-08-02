@@ -162,7 +162,8 @@ test('same-process ClientServer uses local bound endpoint without a Location Sto
       registration,
       {
         createRouterSocket() { return router; },
-        createDealerSocket() { return dealer; }
+        createDealerSocket() { return dealer; },
+        createReadablePoller() { return readyPoller(); }
       },
       {},
       {
@@ -227,7 +228,8 @@ test('production ClientServer outbound socket selection uses admitted descriptor
       const dealer = fakeDealer(`dealer-${dealers.length}`);
       dealers.push(dealer);
       return dealer;
-    }
+    },
+    createReadablePoller() { return readyPoller(); }
   };
   const monitoringAdapter = {
     openSocketMonitor() {
@@ -291,6 +293,51 @@ test('production ClientServer outbound socket selection uses admitted descriptor
   await sockets.dispose();
 });
 
+test('ClientServer socket creation releases the Poller and dealer when monitor setup fails', async () => {
+  const registration = internal.createFrameworkRegistration({
+    channels: { orders: { client: { manualConnections: [] } } },
+    locations: { useInMemoryStores: true }
+  });
+  const dealer = fakeDealer('monitor-failure');
+  let dealerDisposed = false;
+  dealer.dispose = async () => {
+    dealerDisposed = true;
+  };
+  let pollerDisposed = 0;
+  const sockets = new ZLinkChannelSocketRegistry(
+    registration,
+    {
+      createDealerSocket() { return dealer; },
+      createReadablePoller() {
+        return {
+          wait() { return false; },
+          dispose() { pollerDisposed += 1; }
+        };
+      }
+    },
+    {},
+    {
+      openSocketMonitor() {
+        throw new Error('monitor setup failed');
+      }
+    }
+  );
+
+  assert.throws(
+    () => sockets.openClientServerConnection(
+      'orders',
+      'monitor-failure',
+      'tcp://10.0.0.1:9401',
+      { onTransportReady() {}, onTerminated() {} }
+    ),
+    /monitor setup failed/
+  );
+  assert.equal(pollerDisposed, 1);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(dealerDisposed, true);
+  await sockets.dispose();
+});
+
 test('automatic and manual ClientServer sources share one physical connection until the last alias closes', async () => {
   const createSockets = () => {
     const registration = internal.createFrameworkRegistration({
@@ -307,7 +354,8 @@ test('automatic and manual ClientServer sources share one physical connection un
           dealer.dispose = async () => { dealer.disposed = true; };
           dealers.push(dealer);
           return dealer;
-        }
+        },
+        createReadablePoller() { return readyPoller(); }
       },
       {},
       {
@@ -378,7 +426,8 @@ test('manual ClientServer endpoints use dedicated monitored admission and reconn
         };
         dealers.push(dealer);
         return dealer;
-      }
+      },
+      createReadablePoller() { return readyPoller(); }
     },
     {},
     {
@@ -443,7 +492,10 @@ test('manual ClientServer reconnect fences a late admission from the previous ph
   let monitorHandler;
   const sockets = new ZLinkChannelSocketRegistry(
     registration,
-    { createDealerSocket() { return dealer; } },
+    {
+      createDealerSocket() { return dealer; },
+      createReadablePoller() { return readyPoller(); }
+    },
     {},
     {
       openSocketMonitor() {
@@ -515,7 +567,10 @@ test('ClientServer liveness ACK is fenced to the current probe and application t
   };
   const sockets = new ZLinkChannelSocketRegistry(
     registration,
-    { createDealerSocket() { return dealer; } },
+    {
+      createDealerSocket() { return dealer; },
+      createReadablePoller() { return readyPoller(); }
+    },
     {},
     {
       openSocketMonitor() {
@@ -562,7 +617,10 @@ test('ClientServer pushed descriptor updates accept only current higher revision
   dealer.recv = () => inbound.shift();
   const sockets = new ZLinkChannelSocketRegistry(
     registration,
-    { createDealerSocket() { return dealer; } },
+    {
+      createDealerSocket() { return dealer; },
+      createReadablePoller() { return readyPoller(); }
+    },
     {},
     {
       openSocketMonitor() {
@@ -653,7 +711,9 @@ test('ClientServer reserved hello is consumed before application dispatch and re
     { async dispatch() { applicationDispatches++; } },
     undefined,
     (record, socket) =>
-      sockets.tryHandleClientServerControl('orders', record, socket)
+      sockets.tryHandleClientServerControl('orders', record, socket),
+    undefined,
+    readyPoller()
   );
   const controller = new AbortController();
   const running = loop.run(controller.signal);
@@ -706,7 +766,10 @@ test('ClientServer server probes each admitted client and fences ACK by routing 
   };
   const sockets = new ZLinkChannelSocketRegistry(
     registration,
-    { createRouterSocket() { return router; } },
+    {
+      createRouterSocket() { return router; },
+      createReadablePoller() { return readyPoller(); }
+    },
     {}
   );
   sockets.clientServerServerIdentity('orders');
@@ -1066,7 +1129,8 @@ function readyWaitSockets(requestTimeoutMs) {
       createDealerSocket() {
         created.push(dealer);
         return dealer;
-      }
+      },
+      createReadablePoller() { return readyPoller(); }
     },
     {},
     {
@@ -1260,6 +1324,13 @@ function fakeDealer(id) {
     request() { return true; },
     recv() { return undefined; },
     async dispose() {}
+  };
+}
+
+function readyPoller() {
+  return {
+    wait() { return true; },
+    dispose() {}
   };
 }
 

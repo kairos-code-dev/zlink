@@ -70,25 +70,20 @@ class ZLinkNodeChannelBackendAdapter implements ZLinkChannelBackendAdapter {
   }
 
   createReadablePoller(socket: ZLinkBackendSubscriberSocket): ZLinkBackendReadablePoller {
-    const poller = zlink.createPoller();
-    const events = zlink.createPollEvents(1);
-    poller.add(socket.nativeInstance as never, [zlink.PollEventFlag.PollIn], 0);
-    return {
-      wait(timeoutMs: number): boolean {
-        return poller.wait(events, timeoutMs) > 0 && events.hasEvent(0, zlink.PollEventFlag.PollIn);
-      },
-      dispose(): void {
-        poller.remove(socket.nativeInstance as never);
-        events.close();
-        poller.close();
-      }
-    };
+    return createNodeReadablePoller(socket);
   }
 }
 
 class ZLinkNodeStreamBackendAdapter implements ZLinkStreamBackendAdapter {
   createStreamSocket(context: ZLinkBackendContext): ZLinkBackendStreamSocket {
-    return wrapSocket(zlink.createStreamSocket(asNodeContext(context))) as unknown as ZLinkBackendStreamSocket;
+    return wrapSocket(
+      zlink.createStreamSocket(asNodeContext(context)),
+      { reuseReceived: true }
+    ) as unknown as ZLinkBackendStreamSocket;
+  }
+
+  createReadablePoller(socket: ZLinkBackendStreamSocket): ZLinkBackendReadablePoller {
+    return createNodeReadablePoller(socket);
   }
 }
 
@@ -133,4 +128,38 @@ class ZLinkNodeBackendContext implements ZLinkBackendContext {
 
 function asNodeContext(context: ZLinkBackendContext): Context {
   return context.nativeInstance as Context;
+}
+
+function createNodeReadablePoller(
+  socket: { readonly nativeInstance: unknown }
+): ZLinkBackendReadablePoller {
+  const poller = zlink.createPoller();
+  const events = zlink.createPollEvents(1);
+  try {
+    poller.add(socket.nativeInstance as never, [zlink.PollEventFlag.PollIn], 0);
+  } catch (error) {
+    events.close();
+    poller.close();
+    throw error;
+  }
+  let disposed = false;
+  return {
+    wait(timeoutMs: number): boolean {
+      return poller.wait(events, timeoutMs) > 0
+        && events.hasEvent(0, zlink.PollEventFlag.PollIn);
+    },
+    dispose(): void {
+      if (disposed) return;
+      disposed = true;
+      try {
+        poller.remove(socket.nativeInstance as never);
+      } finally {
+        try {
+          events.close();
+        } finally {
+          poller.close();
+        }
+      }
+    }
+  };
 }

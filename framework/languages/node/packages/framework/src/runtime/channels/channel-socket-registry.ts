@@ -13,6 +13,7 @@ import type {
   ZLinkBackendDealerSocket,
   ZLinkBackendPublisherSocket,
   ZLinkBackendRouterSocket,
+  ZLinkBackendReadablePoller,
   ZLinkBackendSocketMonitor,
   ZLinkBackendSocketMonitorEvent,
   ZLinkBackendSubscriberSocket,
@@ -41,8 +42,9 @@ import {
 import {
   FANOUT_LIVENESS_PAYLOAD,
   FANOUT_LIVENESS_TOPIC,
-  classifyFanoutInbound
+  inspectFanoutInbound
 } from './fanout-service-wire';
+import type { ZLinkChannelEnvelopeHeader } from './channel-envelope';
 
 const MAX_LIFECYCLE_GENERATION = 0x7fff_ffff_ffff_ffffn;
 const CLIENT_SERVER_PROBE_INTERVAL_MS = 5_000;
@@ -70,6 +72,7 @@ interface ClientServerPhysicalConnection {
   readonly channelName: string;
   readonly endpoint: string;
   readonly dealer: ZLinkBackendDealerSocket;
+  readonly readablePoller: ZLinkBackendReadablePoller;
   readonly monitor: ZLinkBackendSocketMonitor;
   readonly aliases: Set<string>;
   readonly callbacksByAlias: Map<string, ZLinkClientServerConnectionCallbacks>;
@@ -352,12 +355,39 @@ export class ZLinkChannelSocketRegistry {
     dealer.setRoutingId(`cs-client-${randomUUID()}`);
     applySocketConfig(dealer, client);
     this.trackSubmitter(dealer);
-    const monitor = this.monitoringAdapter.openSocketMonitor(dealer);
+    const cleanupDealer = (): void => {
+      const submitter = this.submitters.get(dealer);
+      if (submitter !== undefined) {
+        submitter.dispose();
+        this.ownedSubmitters.delete(submitter);
+        this.submitters.delete(dealer);
+      }
+      void Promise.allSettled([dealer.dispose()]);
+    };
+    let readablePoller: ZLinkBackendReadablePoller;
+    try {
+      readablePoller = this.adapter.createReadablePoller(dealer);
+    } catch (error) {
+      cleanupDealer();
+      throw error;
+    }
+    let monitor: ZLinkBackendSocketMonitor;
+    try {
+      monitor = this.monitoringAdapter.openSocketMonitor(dealer);
+    } catch (error) {
+      try {
+        readablePoller.dispose();
+      } finally {
+        cleanupDealer();
+      }
+      throw error;
+    }
     this.ownedMonitors.add(monitor);
     const connection: ClientServerPhysicalConnection = {
       channelName,
       endpoint,
       dealer,
+      readablePoller,
       monitor,
       aliases: new Set([connectionId]),
       callbacksByAlias: new Map([[connectionId, callbacks]]),
@@ -401,13 +431,12 @@ export class ZLinkChannelSocketRegistry {
     } catch (error) {
       this.clientServerConnections.delete(connectionId);
       this.ownedMonitors.delete(monitor);
-      const submitter = this.submitters.get(dealer);
-      if (submitter !== undefined) {
-        submitter.dispose();
-        this.ownedSubmitters.delete(submitter);
-        this.submitters.delete(dealer);
+      try {
+        readablePoller.dispose();
+      } finally {
+        cleanupDealer();
+        void Promise.allSettled([monitor.dispose()]);
       }
-      void Promise.allSettled([monitor.dispose(), dealer.dispose()]);
       throw error;
     }
     return dealer;
@@ -465,6 +494,7 @@ export class ZLinkChannelSocketRegistry {
       this.submitters.delete(current.dealer);
     }
     this.ownedMonitors.delete(current.monitor);
+    current.readablePoller.dispose();
     const results = await Promise.allSettled([
       current.monitor.dispose(),
       current.dealer.dispose()
@@ -922,26 +952,48 @@ export class ZLinkChannelSocketRegistry {
     source: ZLinkBackendSubscriberSocket,
     nowMs = performance.now()
   ): boolean {
+    return this.handleFanoutInboundResult(
+      connectionId,
+      topicMessage,
+      source,
+      nowMs
+    ).consumed;
+  }
+
+  handleFanoutInboundResult(
+    connectionId: string,
+    topicMessage: {
+      readonly topic: string;
+      readonly parts: readonly { data(): Uint8Array }[];
+    },
+    source: ZLinkBackendSubscriberSocket,
+    nowMs = performance.now()
+  ): {
+    readonly consumed: boolean;
+    readonly decodedHeader?: ZLinkChannelEnvelopeHeader;
+  } {
     const connection = this.fanoutConnections.get(connectionId);
     if (connection === undefined || connection.subscriber !== source) {
-      return true;
+      return { consumed: true };
     }
-    const kind = classifyFanoutInbound(
+    const classification = inspectFanoutInbound(
       topicMessage.topic,
       topicMessage.parts
     );
-    if (kind === 'protocolError') {
+    if (classification.kind === 'protocolError') {
       connection.ready = false;
       connection.deadlineAt = undefined;
       connection.callbacks.onTerminated('protocol');
-      return true;
+      return { consumed: true };
     }
     connection.deadlineAt = nowMs + CLIENT_SERVER_PEER_DEADLINE_MS;
     if (!connection.ready) {
       connection.ready = true;
       connection.callbacks.onReady();
     }
-    return kind === 'beacon';
+    return classification.kind === 'beacon'
+      ? { consumed: true }
+      : { consumed: false, decodedHeader: classification.header };
   }
 
   isFanoutConnectionReady(connectionId: string): boolean {
@@ -1089,9 +1141,11 @@ export class ZLinkChannelSocketRegistry {
       readonly channelName: string;
       readonly dealer: ZLinkBackendDealerSocket;
       readonly physicalConnectionId: symbol;
+      readonly readablePoller: ZLinkBackendReadablePoller;
     }
   ): void {
     for (;;) {
+      if (!connection.readablePoller.wait(0)) return;
       const received = connection.dealer.recv(1);
       if (received === undefined) return;
       try {

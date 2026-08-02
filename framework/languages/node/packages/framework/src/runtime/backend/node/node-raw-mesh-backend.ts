@@ -365,7 +365,16 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
           && admittedEndpoint !== undefined
           && intent.endpoint === admittedEndpoint
         ));
-    if (found === undefined) return;
+    if (found === undefined) {
+      if (admitted !== undefined) {
+        this.runtime?.disconnectPeer(
+          admitted.descriptor.advertisedEndpoint,
+          nodeRoutingId,
+          lifecycleGeneration
+        );
+      }
+      return;
+    }
     this.removePeerConnection(found[0]);
   }
 
@@ -1254,7 +1263,14 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
       const owner = readyOwner(claim.owner, this.routingId, this.stateful);
       batch.push(
         owner,
-        new MailboxClaim(runtime, claim)
+        new MailboxClaim(runtime, claim, () => {
+          // A receive batch may intentionally consume fewer records than the
+          // mailbox claim. Releasing the claim re-queues the remainder, so
+          // expose that newly ready application work to the dispatch pump.
+          if (runtime.mailbox.pendingMessages('application') > 0) {
+            this.readyHandler?.(ReadyDomain.Application);
+          }
+        })
       );
     }
   }
@@ -1652,10 +1668,12 @@ class RawReceiveBatch implements ReceiveBatch {
 class MailboxClaim implements RawClaim {
   private consumed = false;
   private released = false;
+  private remaining: ServiceMailboxRecord[] = [];
 
   constructor(
     private readonly runtime: RawServiceMeshRuntime,
-    private readonly claim: ServiceMailboxClaim
+    private readonly claim: ServiceMailboxClaim,
+    private readonly onRelease?: () => void
   ) {}
 
   recvBatch(batch: ReceiveBatch) {
@@ -1665,7 +1683,8 @@ class MailboxClaim implements RawClaim {
     const records: ReceiveRecord[] = [];
     let parts = 0;
     let bytes = 0;
-    for (const record of this.claim.records) {
+    for (let index = 0; index < this.claim.records.length; index += 1) {
+      const record = this.claim.records[index]!;
       const decoded = decodeMultipartRecord(this.runtime, record);
       const nextParts = decoded.parts.length;
       const nextBytes = decoded.parts.reduce((sum, part) => sum + part.size(), 0);
@@ -1675,6 +1694,7 @@ class MailboxClaim implements RawClaim {
         || bytes + nextBytes > capacity.byteCapacity
       ) {
         for (const part of decoded.parts) part.close();
+        this.remaining = this.claim.records.slice(index);
         break;
       }
       parts += nextParts;
@@ -1687,7 +1707,8 @@ class MailboxClaim implements RawClaim {
   release(): void {
     if (this.released) return;
     this.released = true;
-    this.runtime.mailbox.release(this.claim);
+    this.runtime.mailbox.release(this.claim, this.remaining);
+    this.onRelease?.();
   }
 }
 

@@ -28,10 +28,11 @@ import {
   encodeChannelErrorReplyParts,
   encodeChannelReplyParts,
   type ZLinkChannelEnvelopeCodecRegistry,
-  ZLinkChannelMessageKind
+  ZLinkChannelMessageKind,
+  type ZLinkChannelEnvelopeHeader
 } from './channel-envelope';
 import { ZLinkDispatchErrorReporter } from './dispatch-error-reporter';
-import { isChannelEnvelope } from './channel-envelope-inspection';
+import { tryDecodeChannelHeader } from './channel-envelope-inspection';
 import {
   appendParts,
   type ZLinkMultipartOperation,
@@ -99,7 +100,7 @@ export class ZLinkChannelRequestDispatcher {
     send?: () => ZLinkMultipartOperation<ZLinkMultipartSubmitOperation>;
   }, router: {
     reply(routingId: unknown, requestSeq: bigint): ZLinkMultipartReplyOperation;
-  }, signal?: AbortSignal): Promise<boolean | void> {
+  }, signal?: AbortSignal, decodedHeader?: ZLinkChannelEnvelopeHeader): Promise<boolean | void> {
     if (received.spotId !== null && received.spotId !== undefined) {
       if (received.send === undefined) {
         throw new ZLinkConfigurationException('Routed SPOT packet is missing a local SPOT delivery context.');
@@ -110,7 +111,7 @@ export class ZLinkChannelRequestDispatcher {
     if (received.parts.length === 0 || received.parts[0].data().length === 0) {
       return;
     }
-    const envelope = decodeChannelEnvelope(received.parts);
+    const envelope = decodeChannelEnvelope(received.parts, decodedHeader);
     const packetName = envelope.packetName;
     if (packetName === undefined) {
       throw new ZLinkConfigurationException('Channel packet is missing packetName.');
@@ -313,12 +314,13 @@ export class ZLinkChannelPublishDispatcher {
 
   async dispatch(
     topicMessage: { readonly topic: string; readonly parts: readonly Message[] },
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    decodedHeader?: ZLinkChannelEnvelopeHeader
   ): Promise<void> {
     if (topicMessage.parts.length === 0 || topicMessage.parts[0].data().length === 0) {
       return;
     }
-    const envelope = decodeChannelEnvelope(topicMessage.parts);
+    const envelope = decodeChannelEnvelope(topicMessage.parts, decodedHeader);
     if (envelope.header.kind !== ZLinkChannelMessageKind.Publish) {
       return;
     }
@@ -434,10 +436,11 @@ export class ZLinkRoutePacketDispatcher {
     send?: () => ZLinkMultipartOperation<ZLinkMultipartSubmitOperation>;
   }, router: {
     reply(routingId: unknown, requestSeq: bigint): ZLinkMultipartReplyOperation;
-  }, signal?: AbortSignal): Promise<boolean | void> {
+  }, signal?: AbortSignal, decodedHeader?: ZLinkChannelEnvelopeHeader): Promise<boolean | void> {
+    const channelHeader = decodedHeader ?? tryDecodeChannelHeader(received.parts);
     if (
       this.spotRouteBridge !== undefined &&
-      !isChannelEnvelope(received.parts)
+      channelHeader === undefined
     ) {
       const processed = this.spotRouteBridge.handleRouterReceived(
         this.routerChannelId,
@@ -462,7 +465,7 @@ export class ZLinkRoutePacketDispatcher {
     if (received.parts.length === 0 || received.parts[0].data().length === 0) {
       return;
     }
-    const envelope = decodeChannelEnvelope(received.parts);
+    const envelope = decodeChannelEnvelope(received.parts, channelHeader);
     const packetName = envelope.packetName;
     if (packetName === undefined) {
       throw new ZLinkConfigurationException('Route packet is missing packetName.');

@@ -96,6 +96,35 @@ export class ZLinkFanoutLocationRuntime {
       .filter(descriptor => descriptor.channelName === channelName);
   }
 
+  async reclaimOwnerRows(signal?: AbortSignal): Promise<void> {
+    const owner = this.requireOwnerToken();
+    for (const [channelName, current] of this.localDescriptors) {
+      if (current.ownerId === owner.ownerId
+        && current.leaseGeneration === owner.leaseGeneration) {
+        continue;
+      }
+      const candidate = {
+        ...current,
+        ownerId: owner.ownerId,
+        leaseGeneration: owner.leaseGeneration
+      };
+      const result = await this.store.updateFanoutPublisher(
+        candidate,
+        ZLinkLocationWriteIntent.Takeover,
+        signal
+      );
+      if (result.status !== ZLinkLocationWriteStatus.Stored) {
+        throw new ZLinkConfigurationException(
+          `Fanout publisher '${channelName}' descriptor recovery was fenced.`
+        );
+      }
+      this.localDescriptors.set(channelName, {
+        ...candidate,
+        updatedAt: result.updatedAt
+      });
+    }
+  }
+
   private async publishLocalPublishers(signal?: AbortSignal): Promise<void> {
     const owner = this.requireOwnerToken();
     for (const [channelName, channel] of this.registration.channels) {

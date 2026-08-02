@@ -14,10 +14,21 @@ import {
   type ZLinkBindingSendOperation
 } from './node-backend-adapter-support';
 
-export function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & ZLinkBackendObject {
+export interface ZLinkNodeSocketWrapOptions {
+  readonly reuseReceived?: boolean;
+}
+
+export function wrapSocket<T extends { close(): void }>(
+  nativeInstance: T,
+  options: ZLinkNodeSocketWrapOptions = {}
+): T & ZLinkBackendObject {
   const boundEndpoints = new Set<string>();
   const connectedEndpoints = new Set<string>();
   const peerRoutingIds = new Set<unknown>();
+  // STREAM Framework ingress closes each envelope before the next recv. Reuse
+  // the caller-provided envelope there so an idle/steady receive loop does not
+  // allocate another JavaScript Received object for every poll.
+  const reusableReceived = options.reuseReceived === true ? new zlink.Received() : undefined;
   const socket = nativeInstance as T & {
     options?: {
       peerWeight?: number;
@@ -31,12 +42,14 @@ export function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & 
   const adapter = {
     nativeInstance,
     async dispose(): Promise<void> {
+      reusableReceived?.close();
       disableSocketLinger(nativeInstance);
       closeSocketRoutes(nativeInstance, peerRoutingIds);
       closeSocketEndpoints(nativeInstance, boundEndpoints, connectedEndpoints);
       await closeWithBusyRetry(nativeInstance);
     },
     close(): void {
+      reusableReceived?.close();
       nativeInstance.close();
     },
     bind(endpoint: string): void {
@@ -152,7 +165,7 @@ export function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & 
       return args.length < 3 ? operation : submitBindingSend(operation, payload, 0);
     },
     recv(flags?: number): unknown {
-      const received = new zlink.Received();
+      const received = reusableReceived ?? new zlink.Received();
       let ok = false;
       try {
         ok = (nativeInstance as T & { recv(result: unknown, flags?: number): boolean }).recv(received, flags);
@@ -163,7 +176,11 @@ export function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & 
         }
         throw error;
       }
-      return ok ? received : undefined;
+      if (!ok) {
+        received.close();
+        return undefined;
+      }
+      return received;
     },
     publish(...args: unknown[]): unknown {
       if (args.length >= 3) {
@@ -205,9 +222,6 @@ export function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & 
     },
     disconnectPeer(routingId: unknown): void {
       (nativeInstance as T & { disconnectRid(value: unknown): void }).disconnectRid(toNativeRoutingId(routingId));
-    },
-    onFramedPacket(handler: unknown): void {
-      (nativeInstance as T & { setPacketHandler(value: unknown): void }).setPacketHandler(handler);
     },
     async bindActor(_sessionRid: unknown, _actor: unknown, _timeoutMs: number, _signal?: AbortSignal): Promise<void> {
       throw new Error(

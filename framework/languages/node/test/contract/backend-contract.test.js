@@ -48,6 +48,15 @@ async function submitEventually(submit, timeoutMs = 2000) {
   return result;
 }
 
+async function waitEventually(predicate, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs;
+  do {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  } while (Date.now() < deadline);
+  throw new Error('Condition did not become true before the timeout.');
+}
+
 async function reserveTcpEndpoint() {
   const server = net.createServer();
   await new Promise((resolve, reject) => {
@@ -177,10 +186,10 @@ test('backend mesh dispatch pump drains a local channel record through claim and
     assert.equal(record.kind, framework.ReceiveKind.ChannelSend);
     assert.equal(record.channelName, 'backend.dispatch');
     assert.equal(record.payload, 'mesh-pump');
-    assert.equal(sender.peers().find(peer =>
-      String(peer.routingId) === String(receiver.status().routingId))?.state, 3);
-    assert.equal(receiver.peers().find(peer =>
-      String(peer.routingId) === String(sender.status().routingId))?.state, 3);
+    await waitEventually(() => sender.peers().find(peer =>
+      String(peer.routingId) === String(receiver.status().routingId))?.state === 3
+      && receiver.peers().find(peer =>
+        String(peer.routingId) === String(sender.status().routingId))?.state === 3);
   } finally {
     await senderPump?.dispose();
     await pump?.dispose();
@@ -188,6 +197,62 @@ test('backend mesh dispatch pump drains a local channel record through claim and
     sender.close();
     receiver.shutdown(1000);
     receiver.close();
+    await context.dispose();
+  }
+});
+
+test('backend mesh dispatch pump requeues records beyond the receive batch capacity', async () => {
+  const factory = new backend.ZLinkNodeBackendAdapterFactory();
+  const context = factory.createChannelAdapter().createContext();
+  const meshName = `backend.dispatch.sequence.${process.pid}`;
+  const node = factory.createMeshAdapter().createMeshNode(context, {
+    meshName,
+    routingId: `backend-dispatch-sequence-${process.pid}`
+  });
+  const received = [];
+  let resolveReceived;
+  let rejectReceived;
+  const completed = new Promise((resolve, reject) => {
+    resolveReceived = resolve;
+    rejectReceived = reject;
+  });
+  let pump;
+
+  try {
+    node.setBind(`inproc://backend-dispatch-sequence-${process.pid}`);
+    node.addChannelName('backend.sequence');
+    node.start();
+    pump = new backend.ZLinkMeshDispatchPump(node, {
+      // A configured inbound budget makes the receive batch hold one record;
+      // the second record must remain available after the first claim releases.
+      inboundDispatchBudget: {
+        receivePaused: false,
+        onResume() { return () => {}; },
+        enqueue() {},
+        start() {},
+        complete() {}
+      },
+      dispatch(_owner, record) {
+        received.push(record.parts[0].data().toString());
+        if (received.length === 2) resolveReceived();
+      },
+      reportError(error) {
+        rejectReceived(error);
+      }
+    });
+    pump.start();
+
+    assert.equal(node.sendToChannel('backend.sequence', Buffer.from('first')), zlink.SubmitResult.Ok);
+    assert.equal(node.sendToChannel('backend.sequence', Buffer.from('second')), zlink.SubmitResult.Ok);
+    await Promise.race([
+      completed,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Sequential mesh records were not both dispatched.')), 2000))
+    ]);
+    assert.deepEqual(received, ['first', 'second']);
+  } finally {
+    await pump?.dispose();
+    node.shutdown(1000);
+    node.close();
     await context.dispose();
   }
 });
@@ -472,11 +537,14 @@ test('MeshNode runtime manager owns lifecycle and forwards pull-dispatch records
   const meshName = `runtime.dispatch.${process.pid}`;
   const receiverEndpoint = await reserveTcpEndpoint();
   const senderEndpoint = await reserveTcpEndpoint();
+  class RuntimeDispatchNotice {
+    handle() {}
+  }
   const registration = framework.createFrameworkRegistrationWithBuilder((builder) => {
     const mesh = builder.addRouteMesh(meshName)
       .listen(receiverEndpoint)
       .routingId(`runtime-node-${process.pid}`);
-    mesh.channelName(meshName);
+    mesh.channel(meshName).server().addSendHandler(RuntimeDispatchNotice);
   });
   let resolveRecord;
   const received = new Promise((resolve) => {
@@ -770,7 +838,7 @@ test('framework host dispatches a MeshNode channel record through registered han
     const mesh = builder.addRouteMesh(meshName)
       .listen(receiverEndpoint)
       .routingId(`host-dispatch-node-${process.pid}`);
-    mesh.channelName(meshName).addSendHandler(MeshNotice);
+    mesh.channel(meshName).server().addSendHandler(MeshNotice);
   });
   const host = new framework.ZLinkFrameworkRuntimeHost({ registration });
   const factory = new backend.ZLinkNodeBackendAdapterFactory();
@@ -841,13 +909,16 @@ test('framework host dispatches MeshNode node-direct send and request records', 
       return { echoed: message.value, source: context.sourceNodeRid };
     }
   }
+  class DirectChannelNotice {
+    handle() {}
+  }
   const registration = framework.createFrameworkRegistrationWithBuilder((builder) => {
     const mesh = builder.addRouteMesh(meshName)
       .listen(`inproc://${meshName}`)
       .routingId(`host-node-direct-${process.pid}`)
       .addRouteSendHandler(DirectNotice)
       .addRouteRequestHandler(DirectQuery);
-    mesh.channelName(`${meshName}.direct`);
+    mesh.channel(`${meshName}.direct`).server().addSendHandler(DirectChannelNotice);
   });
   const host = new framework.ZLinkFrameworkRuntimeHost({ registration });
 
@@ -917,9 +988,11 @@ test('backend adapter creates context and core socket wrappers through public bi
     const subscriber = channel.createSubscriberSocket(context);
     const topicMessage = channel.createTopicMessage();
     const subscriberPoller = channel.createReadablePoller(subscriber);
-    const stream = factory.createStreamAdapter().createStreamSocket(context);
+    const streamAdapter = factory.createStreamAdapter();
+    const stream = streamAdapter.createStreamSocket(context);
+    const streamPoller = streamAdapter.createReadablePoller(stream);
 
-    disposables.push(dealer, router, publisher, subscriber, subscriberPoller, stream);
+    disposables.push(dealer, router, publisher, subscriber, subscriberPoller, stream, streamPoller);
 
     assert.equal(Array.isArray(topicMessage.parts), true);
     assert.equal(typeof dealer.dispose, 'function');
@@ -928,6 +1001,8 @@ test('backend adapter creates context and core socket wrappers through public bi
     assert.equal(typeof subscriber.dispose, 'function');
     assert.equal(typeof subscriberPoller.wait, 'function');
     assert.equal(typeof subscriberPoller.dispose, 'function');
+    assert.equal(typeof streamPoller.wait, 'function');
+    assert.equal(typeof streamPoller.dispose, 'function');
     assert.equal(typeof stream.dispose, 'function');
   } finally {
     for (const disposable of disposables.reverse()) {

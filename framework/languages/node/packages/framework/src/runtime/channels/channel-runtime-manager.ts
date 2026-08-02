@@ -145,6 +145,10 @@ export class ZLinkChannelRuntimeManager {
     await this.lifecycle.startLocationAutoConnect(signal);
   }
 
+  async reclaimLocationOwnerRows(signal?: AbortSignal): Promise<void> {
+    await this.lifecycle.reclaimLocationOwnerRows(signal);
+  }
+
   setSpotNodes(spotNodes: ReadonlyMap<string, ZLinkBackendSpotNode>): void {
     this.spotRoutes.setSpotNodes(spotNodes);
   }

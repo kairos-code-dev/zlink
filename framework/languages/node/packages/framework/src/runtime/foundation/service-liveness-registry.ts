@@ -14,6 +14,7 @@ interface PeerState {
   deadlineMs: number;
   nextProbeMs: number;
   outstandingProbe?: bigint;
+  ready: boolean;
 }
 
 export const DEFAULT_SERVICE_PROBE_INTERVAL_MS = 5_000;
@@ -41,11 +42,26 @@ export class ServiceLivenessRegistry {
   admit(nodeRoutingId: string, connectionId: string, nowMs: number): void {
     requireIdentity(nodeRoutingId, 'nodeRoutingId');
     requireIdentity(connectionId, 'connectionId');
+    const current = this.peers.get(nodeRoutingId);
+    if (current?.connectionId === connectionId) return;
     this.peers.set(nodeRoutingId, {
       connectionId,
       deadlineMs: nowMs + this.peerTimeoutMs,
-      nextProbeMs: nowMs + this.probeIntervalMs
+      nextProbeMs: nowMs + this.probeIntervalMs,
+      ready: false
     });
+  }
+
+  requestProbe(nodeRoutingId: string, connectionId: string, nowMs: number): boolean {
+    const current = this.peers.get(nodeRoutingId);
+    if (
+      current === undefined
+      || current.connectionId !== connectionId
+      || current.ready
+      || current.outstandingProbe !== undefined
+    ) return false;
+    current.nextProbeMs = Math.min(current.nextProbeMs, nowMs);
+    return true;
   }
 
   disconnect(nodeRoutingId: string, connectionId: string): boolean {
@@ -71,6 +87,7 @@ export class ServiceLivenessRegistry {
     }
     current.outstandingProbe = undefined;
     current.deadlineMs = nowMs + this.peerTimeoutMs;
+    current.ready = true;
     return true;
   }
 
@@ -108,6 +125,11 @@ export class ServiceLivenessRegistry {
 
   get size(): number {
     return this.peers.size;
+  }
+
+  isReady(nodeRoutingId: string, connectionId: string): boolean {
+    const current = this.peers.get(nodeRoutingId);
+    return current?.connectionId === connectionId && current.ready;
   }
 
   private allocateProbeId(): bigint {

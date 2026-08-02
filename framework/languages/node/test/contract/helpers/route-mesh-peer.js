@@ -31,9 +31,9 @@ const node = {
     bind: options.bind,
     manualPeerConnections: [{ peerRid: 'node-a', endpoint: options.peer }]
   },
-  meshChannels: {
-    mesh: { weight: options.mode === 'client-channel' ? 0 : 100 }
-  }
+  meshChannels: options.mode === 'client-channel'
+    ? { mesh: { client: true, weight: 0 } }
+    : undefined
 };
 if (options.mode === 'server-direct') {
   node.routeRequestHandlers = [{ packetName: 'RoutePing', handlerType: RoutePingHandler }];

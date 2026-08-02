@@ -235,6 +235,9 @@ export interface ZLinkSpotNodeRegistrationOptions extends ZLinkSpotNodeOptions {
 export interface ZLinkSpotNodeOptions {
   readonly objectRole?: 'client' | 'server';
   readonly placementWeight?: number;
+  readonly actorLimit?: number;
+  readonly spotLimit?: number;
+  readonly activationConcurrencyLimit?: number;
   readonly routingId?: string;
   readonly routingIdPrefix?: string;
   readonly router?: ZLinkSpotRouterCapabilityOptions;

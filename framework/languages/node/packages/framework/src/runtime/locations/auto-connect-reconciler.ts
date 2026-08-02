@@ -55,6 +55,7 @@ export class ZLinkAutoConnectReconciler {
   private recoveryDeferUntilMs = 0;
   private lastDesired = new Map<string, ZLinkAutoConnectTarget>();
   private meshMemberRidHexes?: ReadonlySet<string>;
+  private lastSuccessfulCandidateScanHadCandidates = false;
 
   constructor(options: ZLinkAutoConnectReconcilerOptions) {
     this.local = options.local;
@@ -112,13 +113,30 @@ export class ZLinkAutoConnectReconciler {
     if (this.storeFailedValue) {
       this.storeFailedValue = false;
       this.storeFailureStartedAtMs = undefined;
-      this.recoveryDeferUntilMs = this.monotonicNowMs() + this.options.ownerLeaseRenewIntervalMs;
+      // After a store restart, owners may need one full lease interval to
+      // reclaim their token and republish a descriptor. Do not interpret the
+      // incomplete post-restart scan as a definitive removal.
+      this.recoveryDeferUntilMs = this.monotonicNowMs()
+        + this.options.ownerLeaseRenewIntervalMs;
     }
 
     this.meshMemberRidHexes = new Set(rows
       .map((row) => row.nodeRid)
       .filter((nodeRid): nodeRid is RoutingId => nodeRid !== undefined)
       .map((nodeRid) => encodeRoutingIdHex(nodeRid)));
+    const candidates = ZLinkAutoConnectPlanner.computeCandidates(this.local, rows);
+    const nowMs = this.monotonicNowMs();
+    if (this.lastSuccessfulCandidateScanHadCandidates && candidates.size === 0) {
+      // An empty successful scan can be the first visible result while a
+      // restarted Store is rebuilding its live descriptors. Preserve
+      // admitted transport peers for one lease-renewal interval before an
+      // empty candidate set is treated as authoritative.
+      this.recoveryDeferUntilMs = Math.max(
+        this.recoveryDeferUntilMs,
+        nowMs + this.options.ownerLeaseRenewIntervalMs
+      );
+    }
+    this.lastSuccessfulCandidateScanHadCandidates = candidates.size > 0;
     this.executor.replaceNotRequired?.(
       ZLinkAutoConnectPlanner.computeNotRequired(this.local, rows)
     );
@@ -175,10 +193,18 @@ export class ZLinkAutoConnectReconciler {
       }
     }
 
-    if (this.monotonicNowMs() < this.recoveryDeferUntilMs) {
+    if (nowMs < this.recoveryDeferUntilMs) {
       this.publishDesiredSetChange(connectedEndpoints, disconnectedEndpoints);
       return;
     }
+
+    // A store restart can expose an incomplete descriptor set while peers are
+    // reclaiming their owner leases. Preserve existing transport connections
+    // during that recovery window; stale-peer cleanup is safe after the
+    // deferred reconciliation has completed.
+    this.executor.disconnectStalePeers?.(
+      [...candidates.values()]
+    );
 
     for (const [key, target] of [...this.active]) {
       if (!desired.has(key)) {

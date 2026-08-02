@@ -77,3 +77,51 @@ test('IMP-ND-03 unknown channel content type fails before handler payload delive
       && /unsupported channel content type/.test(error.message)
   );
 });
+
+test('IMP-ND-03 unknown channel content type in a reply does not fall back to JSON', () => {
+  const replyParts = readable([
+    Buffer.from(JSON.stringify({
+      formatMarker: envelope.ZLINK_CHANNEL_FORMAT_MARKER,
+      kind: 2,
+      channelName: 'api',
+      messageName: 'Lookup',
+      contentType: 'application/x-unknown',
+      correlationId: 'unknown-reply-content-type',
+      deadline: null,
+      topic: null,
+      metadata: {}
+    })),
+    Buffer.from('{"id":"a"}')
+  ]);
+
+  assert.throws(
+    () => envelope.decodeChannelReply(replyParts),
+    (error) => error instanceof framework.ZLinkFrameworkException
+      && error.kind === framework.ZLinkFrameworkErrorKind.ProtocolError
+      && /unsupported channel content type/.test(error.message)
+  );
+});
+
+test('IMP-ND-03 unknown channel content type in an empty reply is still a ProtocolError', () => {
+  const replyParts = readable([
+    Buffer.from(JSON.stringify({
+      formatMarker: envelope.ZLINK_CHANNEL_FORMAT_MARKER,
+      kind: 2,
+      channelName: 'api',
+      messageName: 'Lookup',
+      contentType: 'application/x-unknown-empty',
+      correlationId: 'unknown-empty-reply-content-type',
+      deadline: null,
+      topic: null,
+      metadata: {}
+    })),
+    Buffer.alloc(0)
+  ]);
+
+  assert.throws(
+    () => envelope.decodeChannelReply(replyParts),
+    (error) => error instanceof framework.ZLinkFrameworkException
+      && error.kind === framework.ZLinkFrameworkErrorKind.ProtocolError
+      && /unsupported channel content type/.test(error.message)
+  );
+});

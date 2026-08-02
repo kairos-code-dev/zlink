@@ -21,7 +21,8 @@ class PlayerFactory {
 
 async function createEntryFixture(entrySpotType, packetHandlers = [], options = {}) {
   const manager = new framework.DefaultZLinkActorManager({
-    actorFactories: new Map([['player', PlayerFactory]])
+    actorFactories: new Map([['player', PlayerFactory]]),
+    actorMeshNameProvider: () => 'test.mesh'
   });
   const activation = new framework.ZLinkEntrySpotActivation({
     entrySpotType,
@@ -90,7 +91,7 @@ test('entry spot lifecycle callbacks from mixed setImmediate/queueMicrotask back
   const tracker = overlapTracker(events);
   class AdmissionEntrySpot {
     onCreateActor(actor) {
-      return tracker.run(`create:${actor.actor.actorId}`, () => delay(2));
+      return tracker.run(`create:${actor.actorId}`, () => delay(2));
     }
   }
   const fixture = await createEntryFixture(AdmissionEntrySpot);
@@ -137,9 +138,9 @@ test('entry spot does not start the next callback before the previous handler pr
   });
   class GatedEntrySpot {
     async onCreateActor(actor) {
-      events.push(`create:${actor.actor.actorId}:start`);
+      events.push(`create:${actor.actorId}:start`);
       await firstGate;
-      events.push(`create:${actor.actor.actorId}:settled`);
+      events.push(`create:${actor.actorId}:settled`);
     }
   }
   const fixture = await createEntryFixture(GatedEntrySpot);

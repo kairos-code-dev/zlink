@@ -11,7 +11,7 @@ test('TA-B2 changes the live actor generation instead of forging a snapshot', ()
   const actor = read('e2e/ToActorMessaging/Server/Actor/main.ts');
   assert.doesNotMatch(scenario, /generation:\s*\(BigInt/);
   assert.match(scenario, /actors\/ta-b2\/destroy/);
-  assert.match(scenario, /replacement\.actor\.generation/);
+  assert.match(scenario, /replacement\.actor\.objectGeneration/);
   assert.match(actor, /path: '\/actors\/ta-b2\/destroy'/);
 });
 

@@ -146,6 +146,7 @@ export class RawServiceMeshRuntime {
     readonly endpoint: string;
     readonly deadlineMs: number;
   }>();
+  private readonly endpointUpgradePreviousConnections = new Map<string, string>();
   private readonly connectionCandidates = new Map<
     string,
     Map<string, PhysicalConnectionCandidate>
@@ -263,15 +264,23 @@ export class RawServiceMeshRuntime {
     ) {
       return;
     }
-    this.requireStarted().disconnect(endpoint);
-    if (current !== undefined) this.removePeer(current);
-    this.topology.forgetNotRequired(nodeRoutingId);
-    if (
-      lifecycleGeneration === undefined
-      || expected?.lifecycleGeneration === undefined
-      || expected.lifecycleGeneration === lifecycleGeneration
-    ) {
-      this.expectedPeers.delete(nodeRoutingId);
+    try {
+      const router = this.requireStarted();
+      if (router.disconnectRid !== undefined) {
+        router.disconnectRid(nodeRoutingId);
+      } else {
+        router.disconnect(endpoint);
+      }
+    } finally {
+      if (current !== undefined) this.removePeer(current);
+      this.topology.forgetNotRequired(nodeRoutingId);
+      if (
+        lifecycleGeneration === undefined
+        || expected?.lifecycleGeneration === undefined
+        || expected.lifecycleGeneration === lifecycleGeneration
+      ) {
+        this.expectedPeers.delete(nodeRoutingId);
+      }
     }
   }
 
@@ -294,7 +303,10 @@ export class RawServiceMeshRuntime {
   }
 
   isPeerRouteReady(nodeRoutingId: string): boolean {
-    return !this.upgradingEndpointPeers.has(nodeRoutingId);
+    if (this.upgradingEndpointPeers.has(nodeRoutingId)) return false;
+    const peer = this.topology.peer(nodeRoutingId);
+    return peer !== undefined
+      && this.liveness.isReady(nodeRoutingId, peer.connectionId);
   }
 
   announceExpectedPeers(): number {
@@ -567,7 +579,17 @@ export class RawServiceMeshRuntime {
           header.command === M6aServiceWireCommand.admit
           && expected !== undefined
         ) {
-          this.upgradingEndpointPeers.delete(descriptor.nodeRoutingId);
+          const previousConnectionId = this.endpointUpgradePreviousConnections.get(
+            descriptor.nodeRoutingId
+          );
+          if (
+            !this.upgradingEndpointPeers.has(descriptor.nodeRoutingId)
+            || previousConnectionId === undefined
+            || previousConnectionId !== connection.connectionId
+          ) {
+            this.upgradingEndpointPeers.delete(descriptor.nodeRoutingId);
+            this.endpointUpgradePreviousConnections.delete(descriptor.nodeRoutingId);
+          }
         }
         this.selectBilateralConnection(descriptor);
         if (header.command === M6aServiceWireCommand.hello) {
@@ -882,6 +904,11 @@ export class RawServiceMeshRuntime {
         connection.connectionId
       );
       this.liveness.admit(descriptor.nodeRoutingId, connection.connectionId, nowMs);
+      this.liveness.requestProbe(
+        descriptor.nodeRoutingId,
+        connection.connectionId,
+        nowMs
+      );
     } else if (result === 'notRequired' && previous !== undefined) {
       this.liveness.disconnect(
         descriptor.nodeRoutingId,
@@ -913,16 +940,22 @@ export class RawServiceMeshRuntime {
     }
     if (candidate === undefined) {
       const localRid = this.topology.localDescriptor().nodeRoutingId;
+      const endpointOnly = this.endpointOnlyPeers.has(advertisedEndpoint);
       const direction: PhysicalConnectionDirection =
         this.expectedPeers.has(nodeRoutingId)
           ? 'outbound'
-          : this.endpointOnlyPeers.has(advertisedEndpoint)
+          : endpointOnly
             ? localRid.localeCompare(nodeRoutingId) <= 0
               ? 'outbound'
               : 'inbound'
             : 'inbound';
+      const initiator = endpointOnly
+        && localRid.localeCompare(nodeRoutingId) > 0
+        ? nodeRoutingId
+        : direction === 'outbound'
+          ? localRid
+          : nodeRoutingId;
       connectionId = `unmonitored:${direction}:${randomUUID()}`;
-      const initiator = direction === 'outbound' ? localRid : nodeRoutingId;
       candidate = {
         connectionId,
         direction,
@@ -948,11 +981,13 @@ export class RawServiceMeshRuntime {
     const local = this.topology.localDescriptor();
     const expected = this.expectedPeers.get(nodeRoutingId);
     const direction: PhysicalConnectionDirection =
-      expected?.endpoint === event.remoteAddress
-        ? 'outbound'
-        : event.localAddress === local.advertisedEndpoint
-          ? 'inbound'
-          : 'unknown';
+      event.localAddress === local.advertisedEndpoint
+        ? 'inbound'
+        : expected?.endpoint === event.remoteAddress
+          ? 'outbound'
+          : this.endpointOnlyPeers.has(event.remoteAddress)
+            ? 'outbound'
+            : 'unknown';
     const initiator = direction === 'outbound'
       ? local.nodeRoutingId
       : direction === 'inbound'
@@ -1083,13 +1118,40 @@ export class RawServiceMeshRuntime {
     });
     this.endpointOnlyPeers.delete(endpoint);
     this.upgradingEndpointPeers.add(descriptor.nodeRoutingId);
+    const current = this.topology.peer(descriptor.nodeRoutingId);
+    if (current !== undefined) {
+      this.endpointUpgradePreviousConnections.set(
+        descriptor.nodeRoutingId,
+        current.connectionId
+      );
+    }
     this.pendingEndpointUpgrades.set(descriptor.nodeRoutingId, {
       endpoint,
       deadlineMs: Date.now() + ENDPOINT_BILATERAL_GRACE_MS
     });
     const localRid = this.topology.localDescriptor().nodeRoutingId;
+    if (
+      localRid.localeCompare(descriptor.nodeRoutingId) > 0
+      && this.topology.peer(descriptor.nodeRoutingId)?.connectionDiscriminator
+        === `initiator:${descriptor.nodeRoutingId}`
+    ) {
+      // An endpoint-only route has no physical direction when the monitor
+      // event is unavailable. Keep the established route and use the lower
+      // RID as the deterministic logical initiator until a physical
+      // candidate is observed.
+      this.pendingEndpointUpgrades.delete(descriptor.nodeRoutingId);
+      this.passiveBilateralPeers.add(descriptor.nodeRoutingId);
+      this.upgradingEndpointPeers.delete(descriptor.nodeRoutingId);
+      this.endpointUpgradePreviousConnections.delete(descriptor.nodeRoutingId);
+      return;
+    }
     if (localRid.localeCompare(descriptor.nodeRoutingId) <= 0) {
-      this.activateEndpointUpgrade(descriptor.nodeRoutingId, endpoint);
+      // The endpoint-only pipe already carries the admission exchange. Once
+      // the peer RID is known, bind that existing pipe to the expected peer
+      // state instead of tearing it down and racing a replacement pipe.
+      this.pendingEndpointUpgrades.delete(descriptor.nodeRoutingId);
+      this.upgradingEndpointPeers.delete(descriptor.nodeRoutingId);
+      this.endpointUpgradePreviousConnections.delete(descriptor.nodeRoutingId);
     }
   }
 
@@ -1111,6 +1173,7 @@ export class RawServiceMeshRuntime {
       this.requireStarted().disconnect(pending.endpoint);
       this.passiveBilateralPeers.add(nodeRoutingId);
       this.upgradingEndpointPeers.delete(nodeRoutingId);
+      this.endpointUpgradePreviousConnections.delete(nodeRoutingId);
       return;
     }
     if (nowMs < pending.deadlineMs) return;
@@ -1121,6 +1184,12 @@ export class RawServiceMeshRuntime {
     this.pendingEndpointUpgrades.delete(nodeRoutingId);
     // Replace the endpoint-only probe rather than keeping two connections.
     // Request/reply sequencing is scoped to one physical route.
+    const current = this.topology.peer(nodeRoutingId);
+    if (current !== undefined) this.removePeer(current);
+    const currentConnectionId = this.connectionIds.get(nodeRoutingId);
+    if (currentConnectionId !== undefined) {
+      this.removeConnectionCandidate(nodeRoutingId, currentConnectionId);
+    }
     this.requireStarted().disconnect(endpoint);
     this.requireStarted().connectToRoutingId(nodeRoutingId, endpoint);
   }

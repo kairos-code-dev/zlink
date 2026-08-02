@@ -21,7 +21,7 @@ test('PubSub keeps classic fanout independent from RouteMesh location discovery'
     assert.doesNotMatch(source, /addLocationStore\(createRedisLocationStore\(/);
     assert.doesNotMatch(source, /locationMessagingOptions\(\)/);
   }
-  assert.match(subscriber, /enableSubscriber\(options\.publisherEndpoint\)/);
+  assert.match(subscriber, /\.connect\(options\.publisherEndpoint\)/);
 
   assert.doesNotMatch(runner, /start_redis_container/);
   assert.doesNotMatch(runner, /--redis-endpoint "\$REDIS_ENDPOINT"/);

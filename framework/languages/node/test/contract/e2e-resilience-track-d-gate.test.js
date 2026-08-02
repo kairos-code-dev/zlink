@@ -42,7 +42,7 @@ test('RL-D4 channel replies preserve the canonical Error and Response wire heade
     envelope.encodeChannelErrorReplyParts(request, new Error('missing handler'))[0]
   ).toString('utf8'));
   assert.equal(errorHeader.kind, 5);
-  assert.equal(errorHeader.errorCode, 'Error');
+  assert.equal(errorHeader.errorCode, '12');
   assert.equal(errorHeader.errorMessage, 'missing handler');
   assert.equal(Object.hasOwn(errorHeader, 'status'), false);
 

@@ -28,49 +28,49 @@ test('in-memory fanout descriptor store fences lifecycle, revision, and immutabl
 
   const claimed = await store.updateFanoutPublisher(
     descriptor(owner),
-    framework.ZLinkLocationWriteIntent.NewClaim
+    internal.ZLinkLocationWriteIntent.NewClaim
   );
-  assert.equal(claimed.status, framework.ZLinkLocationWriteStatus.Stored);
+  assert.equal(claimed.status, internal.ZLinkLocationWriteStatus.Stored);
 
   const mutableWithoutRevision = await store.updateFanoutPublisher(
     descriptor(owner, { state: framework.ZLinkFrameworkRuntimeState.Draining }),
-    framework.ZLinkLocationWriteIntent.Renew
+    internal.ZLinkLocationWriteIntent.Renew
   );
-  assert.equal(mutableWithoutRevision.status, framework.ZLinkLocationWriteStatus.IgnoredStale);
+  assert.equal(mutableWithoutRevision.status, internal.ZLinkLocationWriteStatus.IgnoredStale);
 
   const immutableChange = await store.updateFanoutPublisher(
     descriptor(owner, {
       descriptorRevision: 2n,
       endpoint: 'tcp://10.0.0.2:9501'
     }),
-    framework.ZLinkLocationWriteIntent.Renew
+    internal.ZLinkLocationWriteIntent.Renew
   );
-  assert.equal(immutableChange.status, framework.ZLinkLocationWriteStatus.IgnoredStale);
+  assert.equal(immutableChange.status, internal.ZLinkLocationWriteStatus.IgnoredStale);
 
   const lifecycleChange = await store.updateFanoutPublisher(
     descriptor(owner, {
       lifecycleGeneration: 8n,
       descriptorRevision: 2n
     }),
-    framework.ZLinkLocationWriteIntent.Renew
+    internal.ZLinkLocationWriteIntent.Renew
   );
-  assert.equal(lifecycleChange.status, framework.ZLinkLocationWriteStatus.IgnoredStale);
+  assert.equal(lifecycleChange.status, internal.ZLinkLocationWriteStatus.IgnoredStale);
 
   const renewed = await store.updateFanoutPublisher(
     descriptor(owner, {
       descriptorRevision: 2n,
       state: framework.ZLinkFrameworkRuntimeState.Draining
     }),
-    framework.ZLinkLocationWriteIntent.Renew
+    internal.ZLinkLocationWriteIntent.Renew
   );
-  assert.equal(renewed.status, framework.ZLinkLocationWriteStatus.Stored);
+  assert.equal(renewed.status, internal.ZLinkLocationWriteStatus.Stored);
 
   await store.updateFanoutPublisher(
     descriptor(owner, {
       channelName: 'other-events',
       publisherRid: 'publisher-b'
     }),
-    framework.ZLinkLocationWriteIntent.NewClaim
+    internal.ZLinkLocationWriteIntent.NewClaim
   );
   const page = await store.listFanoutPublishers('events', { pageSize: 1 });
   assert.equal(page.items.length, 1);
@@ -82,14 +82,14 @@ test('in-memory fanout descriptor store fences lifecycle, revision, and immutabl
       { channelName: 'events', publisherRid: 'publisher-a' },
       { ownerId: owner.token.ownerId, leaseGeneration: owner.token.leaseGeneration + 1n }
     ),
-    framework.ZLinkLocationWriteStatus.IgnoredStale
+    internal.ZLinkLocationWriteStatus.IgnoredStale
   );
   assert.equal(
     await store.removeFanoutPublisher(
       { channelName: 'events', publisherRid: 'publisher-a' },
       owner.token
     ),
-    framework.ZLinkLocationWriteStatus.Stored
+    internal.ZLinkLocationWriteStatus.Stored
   );
   assert.equal((await store.listFanoutPublishers('events')).items.length, 0);
 

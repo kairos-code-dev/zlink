@@ -1,8 +1,8 @@
 # Node.js sample gap audit 기준과 검증 결과
 
-이 기록은 `node-framework-sample-spec-gap-ledger.ko.md`의 최초 gap 판정에 사용한 working tree를
-식별한다. Working tree가 clean하지 않으므로 commit만으로 같은 내용을 복원할 수 없다. 아래 fingerprint가
-달라지면 이 기록을 현재 evidence로 사용하지 않고 contract 비교와 test를 다시 실행한다.
+이 기록은 `node-framework-spec-gap-ledger.ko.md` 11절의 최초 sample gap 판정에 사용한 working tree를
+식별한다. Working tree가 clean하지 않으므로 commit만으로 같은 내용을 복원할 수 없다. 이 결과는 최초
+gap을 설명하는 historical baseline이며 현재 candidate의 완료 evidence로 사용하지 않는다.
 
 ## 1. 기준 fingerprint
 
@@ -13,16 +13,18 @@
 
 조사 범위에는 공통 sample 7개 문서가 모두 수정된 상태였고, Node sample source에서는
 `SupportChat.Ts/Server/Support/Infrastructure/ZLink/Actors/support-user-actor.ts`가 수정된 상태였다.
-Node Framework production source, exact interface, E2E와 test에도 별도 변경이 있었다. 따라서 아래
-결과는 위 fingerprint에만 적용한다. Fingerprint에는 공통 sample, Node sample, sample 작성 guide,
-이 ledger가 인용한 Framework spec과 Node exact interface, Node package version과 sample contract test를
-포함한다. 다른 Node Framework 작업과 ledger 자체는 제외하므로 관련 없는 source나 문서 수정으로 이
-audit가 무효가 되지는 않는다.
+Node Framework production source, exact interface, E2E와 test에도 별도 변경이 있었다. Fingerprint에는
+공통 sample, Node sample, sample 작성 guide, 이 ledger가 인용한 Framework spec과 Node exact interface,
+Node package version과 sample contract test를 포함한다. Node Framework production source, 전체
+dependency lock과 실제 package·native artifact는 포함하지 않으므로, fingerprint가 같아도 현재
+candidate의 build와 process 결과를 증명하지 않는다.
 
-검증 실행 뒤 `HEAD`가 `update framework contracts and runtime` commit으로 이동했지만 audit 입력 파일의
-내용은 바뀌지 않았다. 위 값은 이동한 `HEAD` 기준에서 다시 계산했다.
+검증 실행 뒤 `HEAD`가 이동했지만 audit 입력 파일의 내용은 바뀌지 않아 같은 fingerprint가 계산됐다.
+이 사례는 fingerprint를 현재 실행 evidence로 재사용할 수 없다는 경계를 보여 준다.
 
-Fingerprint는 저장소 root에서 다음 명령으로 다시 계산한다.
+아래 명령은 최초 sample 계약 비교 입력이 같은지 확인할 때만 사용한다. 현재 candidate를 검증할 때는
+candidate SHA와 전체 변경 manifest, Node Framework production source, dependency lock, package archive와
+native artifact hash를 별도로 고정하고 build, contract test와 process runner를 다시 실행한다.
 
 ```text
 {
@@ -88,5 +90,6 @@ node --test test/contract/sample*.test.js
 - 일곱 sample 통합 실행: 통과하지 않음
 - Sample 계약 충족: 미판정
 
-다음 audit에서는 먼저 fingerprint를 다시 계산한다. 값이 하나라도 달라지면 변경 manifest를 새로
-기록하고 build, exact inventory test와 실제 sample runner를 fresh package로 다시 실행한다.
+다음 audit에서는 candidate SHA, 전체 변경 manifest와 fingerprint를 함께 기록한다. Fingerprint는 sample
+계약 비교 입력의 변경만 감지한다. Candidate SHA 또는 전체 manifest가 이전 실행과 다르면 fingerprint가
+같아도 build, exact inventory test와 실제 sample runner를 fresh package로 다시 실행한다.

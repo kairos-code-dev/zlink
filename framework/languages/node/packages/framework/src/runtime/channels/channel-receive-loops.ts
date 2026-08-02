@@ -7,13 +7,20 @@ import type {
   ZLinkBackendRouterSocket,
   ZLinkBackendSpotRouteBridge,
   ZLinkBackendSubscriberSocket,
+  ZLinkBackendReadablePoller,
   ZLinkChannelBackendAdapter
 } from '../backend/contracts';
 import {
   closeMessages
 } from './channel-envelope';
-import { isChannelEnvelope } from './channel-envelope-inspection';
+import { tryDecodeChannelHeader } from './channel-envelope-inspection';
+import type { ZLinkChannelEnvelopeHeader } from './channel-envelope';
 import type { ZLinkInboundDispatchBudget } from '../dispatch/inbound-dispatch-budget';
+import {
+  ZLINK_MAX_CONCURRENT_CHANNEL_DISPATCHES,
+  ZLinkReceiveTaskTracker,
+  type ZLinkReceiveTaskErrorReporter
+} from './channel-receive-task-tracker';
 
 //  The loop awaits between reads and the signal can abort in that gap. Reading
 //  through a function keeps the later check honest; an inline read stays
@@ -45,15 +52,22 @@ interface ZLinkChannelRequestDispatchLoop {
     router: ZLinkBackendRouterSocket & {
       reply(routingId: unknown, requestSeq: bigint): ZLinkMultipartReplyOperation;
     },
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    decodedHeader?: ZLinkChannelEnvelopeHeader
   ): Promise<boolean | void>;
 }
 
 interface ZLinkChannelPublishDispatchLoop {
   dispatch(
     topicMessage: { readonly topic: string; readonly parts: readonly Message[] },
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    decodedHeader?: ZLinkChannelEnvelopeHeader
   ): Promise<void>;
+}
+
+interface ZLinkSubscriberInfrastructureResult {
+  readonly consumed: boolean;
+  readonly decodedHeader?: ZLinkChannelEnvelopeHeader;
 }
 
 interface ZLinkRoutePacketDispatchLoop {
@@ -67,7 +81,8 @@ interface ZLinkRoutePacketDispatchLoop {
     router: {
       reply(routingId: unknown, requestSeq: bigint): ZLinkMultipartReplyOperation;
     },
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    decodedHeader?: ZLinkChannelEnvelopeHeader
   ): Promise<boolean | void>;
 }
 
@@ -92,7 +107,7 @@ export class ZLinkChannelReceiveLoop {
     return this.stoppedFlag;
   }
   private running?: Promise<void>;
-  private readonly inFlight = new Set<Promise<void>>();
+  private readonly inFlight: ZLinkReceiveTaskTracker;
 
   constructor(
     private readonly channelName: string,
@@ -100,10 +115,17 @@ export class ZLinkChannelReceiveLoop {
       reply(routingId: unknown, requestSeq: bigint): ZLinkMultipartReplyOperation;
     },
     private readonly dispatcher: ZLinkChannelRequestDispatchLoop,
-    private readonly spotRouteBridge?: ZLinkBackendSpotRouteBridge,
-    private readonly infrastructureHandler?: ZLinkChannelInfrastructureHandler,
-    private readonly inboundDispatchBudget?: ZLinkInboundDispatchBudget
-  ) {}
+    private readonly spotRouteBridge: ZLinkBackendSpotRouteBridge | undefined,
+    private readonly infrastructureHandler: ZLinkChannelInfrastructureHandler | undefined,
+    private readonly inboundDispatchBudget: ZLinkInboundDispatchBudget | undefined,
+    private readonly poller: ZLinkBackendReadablePoller,
+    reportError?: ZLinkReceiveTaskErrorReporter
+  ) {
+    this.inFlight = new ZLinkReceiveTaskTracker(
+      ZLINK_MAX_CONCURRENT_CHANNEL_DISPATCHES,
+      reportError
+    );
+  }
 
   async run(signal?: AbortSignal): Promise<void> {
     if (this.running !== undefined) {
@@ -122,23 +144,38 @@ export class ZLinkChannelReceiveLoop {
 
   private async runLoop(signal?: AbortSignal): Promise<void> {
     while (!this.isStopped() && signal?.aborted !== true) {
-      await this.inboundDispatchBudget?.waitUntilResumed(signal);
+      if (this.inboundDispatchBudget?.receivePaused === true) {
+        await this.inboundDispatchBudget.waitUntilResumed(signal);
+      }
       if (this.isStopped() || signalAborted(signal)) break;
+      const capacityWait = this.inFlight.waitForCapacity(signal, () => this.isStopped());
+      if (capacityWait !== undefined) {
+        await capacityWait;
+      }
+      if (this.isStopped() || signalAborted(signal)) break;
+      if (!this.poller.wait(0)) {
+        await waitReceiveLoopIdle();
+        continue;
+      }
       const received = this.router.recv(1);
       if (received == null) {
         await waitReceiveLoopIdle();
         continue;
       }
       const task = this.dispatchAndClose(received, signal);
-      this.inFlight.add(task);
-      void task.finally(() => this.inFlight.delete(task));
+      this.inFlight.track(task);
     }
   }
 
   async stop(): Promise<void> {
     this.stoppedFlag = true;
-    await this.running;
-    await Promise.allSettled([...this.inFlight]);
+    this.inFlight.wakeCapacityWaiter();
+    try {
+      await this.running;
+      await this.inFlight.waitForAll();
+    } finally {
+      this.poller.dispose();
+    }
   }
 
   private async dispatchAndClose(received: {
@@ -154,8 +191,9 @@ export class ZLinkChannelReceiveLoop {
       if (this.infrastructureHandler?.(received, this.router) === true) {
         return;
       }
+      const decodedHeader = tryDecodeChannelHeader(received.parts);
       if (
-        !isChannelEnvelope(received.parts) &&
+        decodedHeader === undefined &&
         this.spotRouteBridge?.handleRouterReceived(
           this.channelName,
           received.routingId as RoutingId,
@@ -176,7 +214,12 @@ export class ZLinkChannelReceiveLoop {
           : undefined;
         this.inboundDispatchBudget?.start(payloadBytes);
         started = true;
-        const consumed = await this.dispatcher.dispatch(received, this.router, signal);
+        const consumed = await this.dispatcher.dispatch(
+          received,
+          this.router,
+          signal,
+          decodedHeader
+        );
         if (consumed === true) {
           closeReceived = false;
         }
@@ -206,7 +249,7 @@ export class ZLinkSubscriberReceiveLoop {
     return this.stoppedFlag;
   }
   private running?: Promise<void>;
-  private readonly inFlight = new Set<Promise<void>>();
+  private readonly inFlight = new ZLinkReceiveTaskTracker();
 
   constructor(
     private readonly adapter: ZLinkChannelBackendAdapter,
@@ -214,7 +257,7 @@ export class ZLinkSubscriberReceiveLoop {
     private readonly dispatcher: ZLinkChannelPublishDispatchLoop,
     private readonly infrastructureHandler?: (
       topicMessage: ReturnType<ZLinkChannelBackendAdapter['createTopicMessage']>
-    ) => boolean,
+    ) => boolean | ZLinkSubscriberInfrastructureResult,
     private readonly inboundDispatchBudget?: ZLinkInboundDispatchBudget
   ) {
     this.poller = adapter.createReadablePoller(subscriber);
@@ -239,26 +282,36 @@ export class ZLinkSubscriberReceiveLoop {
 
   private async runLoop(signal?: AbortSignal): Promise<void> {
     while (!this.isStopped() && signal?.aborted !== true) {
-      await this.inboundDispatchBudget?.waitUntilResumed(signal);
+      if (this.inboundDispatchBudget?.receivePaused === true) {
+        await this.inboundDispatchBudget.waitUntilResumed(signal);
+      }
       if (this.isStopped() || signalAborted(signal)) break;
       if (!this.poller.wait(0)) {
         await waitReceiveLoopIdle();
         continue;
       }
       const topicMessage = this.adapter.createTopicMessage();
-      this.subscriber.subscribe(topicMessage);
+      if (!this.subscriber.subscribe(topicMessage)) {
+        topicMessage.close();
+        await waitReceiveLoopIdle();
+        continue;
+      }
       const task = this.dispatchAndClose(topicMessage, signal);
-      this.inFlight.add(task);
-      void task.finally(() => this.inFlight.delete(task));
-      await task;
+      this.inFlight.track(task, false);
+      try {
+        await task;
+      } finally {
+        this.inFlight.delete(task);
+      }
     }
   }
 
   async stop(): Promise<void> {
     this.stoppedFlag = true;
+    this.inFlight.wakeCapacityWaiter();
     try {
       await this.running;
-      await Promise.allSettled([...this.inFlight]);
+      await this.inFlight.waitForAll();
     } finally {
       this.poller.dispose();
     }
@@ -269,16 +322,29 @@ export class ZLinkSubscriberReceiveLoop {
     signal?: AbortSignal
   ): Promise<void> {
     try {
-      if (this.infrastructureHandler?.(topicMessage) === true) {
+      const infrastructureResult = this.infrastructureHandler?.(topicMessage);
+      const decodedHeader = typeof infrastructureResult === 'object'
+        ? infrastructureResult.decodedHeader
+        : undefined;
+      if (
+        infrastructureResult === true
+        || (typeof infrastructureResult === 'object' && infrastructureResult.consumed)
+      ) {
         return;
       }
       const payloadBytes = channelPayloadBytes(topicMessage.parts);
       this.inboundDispatchBudget?.enqueue(payloadBytes);
+      let started = false;
       try {
         this.inboundDispatchBudget?.start(payloadBytes);
-        await this.dispatcher.dispatch(topicMessage, signal);
+        started = true;
+        await this.dispatcher.dispatch(topicMessage, signal, decodedHeader);
       } finally {
-        this.inboundDispatchBudget?.complete(payloadBytes);
+        if (started) {
+          this.inboundDispatchBudget?.complete(payloadBytes);
+        } else {
+          this.inboundDispatchBudget?.cancelQueued(payloadBytes);
+        }
       }
     } finally {
       closeMessages(topicMessage.parts as readonly Message[]);
@@ -296,14 +362,15 @@ export class ZLinkRouteReceiveLoop {
     return this.stoppedFlag;
   }
   private running?: Promise<void>;
-  private readonly inFlight = new Set<Promise<void>>();
+  private readonly inFlight = new ZLinkReceiveTaskTracker();
 
   constructor(
     private readonly router: ZLinkBackendRouterSocket & {
       reply(routingId: unknown, requestSeq: bigint): ZLinkMultipartReplyOperation;
     },
     private readonly dispatcher: ZLinkRoutePacketDispatchLoop,
-    private readonly inboundDispatchBudget?: ZLinkInboundDispatchBudget
+    private readonly inboundDispatchBudget: ZLinkInboundDispatchBudget | undefined,
+    private readonly poller: ZLinkBackendReadablePoller
   ) {}
 
   async run(signal?: AbortSignal): Promise<void> {
@@ -323,24 +390,38 @@ export class ZLinkRouteReceiveLoop {
 
   private async runLoop(signal?: AbortSignal): Promise<void> {
     while (!this.isStopped() && signal?.aborted !== true) {
-      await this.inboundDispatchBudget?.waitUntilResumed(signal);
+      if (this.inboundDispatchBudget?.receivePaused === true) {
+        await this.inboundDispatchBudget.waitUntilResumed(signal);
+      }
       if (this.isStopped() || signalAborted(signal)) break;
+      if (!this.poller.wait(0)) {
+        await waitReceiveLoopIdle();
+        continue;
+      }
       const received = this.router.recv(1);
       if (received == null) {
         await waitReceiveLoopIdle();
         continue;
       }
       const task = this.dispatchAndClose(received, signal);
-      this.inFlight.add(task);
-      void task.finally(() => this.inFlight.delete(task));
-      await task;
+      this.inFlight.track(task, false);
+      try {
+        await task;
+      } finally {
+        this.inFlight.delete(task);
+      }
     }
   }
 
   async stop(): Promise<void> {
     this.stoppedFlag = true;
-    await this.running;
-    await Promise.allSettled([...this.inFlight]);
+    this.inFlight.wakeCapacityWaiter();
+    try {
+      await this.running;
+      await this.inFlight.waitForAll();
+    } finally {
+      this.poller.dispose();
+    }
   }
 
   private async dispatchAndClose(received: {
@@ -361,7 +442,12 @@ export class ZLinkRouteReceiveLoop {
         : undefined;
       this.inboundDispatchBudget?.start(payloadBytes);
       started = true;
-      const consumed = await this.dispatcher.dispatch(received, this.router, signal);
+      const consumed = await this.dispatcher.dispatch(
+        received,
+        this.router,
+        signal,
+        tryDecodeChannelHeader(received.parts)
+      );
       if (consumed === true) {
         closeReceived = false;
       }
@@ -379,9 +465,34 @@ export class ZLinkRouteReceiveLoop {
   }
 }
 
-function waitReceiveLoopIdle(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 5));
+class ZLinkSharedIdleWaiter {
+  private pending?: Promise<void>;
+  private resolvePending?: () => void;
+  private readonly wake = (): void => {
+    const resolve = this.resolvePending;
+    this.pending = undefined;
+    this.resolvePending = undefined;
+    resolve?.();
+  };
+
+  constructor(private readonly delayMs: number) {}
+
+  wait(): Promise<void> {
+    if (this.pending !== undefined) return this.pending;
+    this.pending = new Promise<void>((resolve) => {
+      this.resolvePending = resolve;
+    });
+    setTimeout(this.wake, this.delayMs);
+    return this.pending;
+  }
 }
+
+const receiveLoopIdleWaiter = new ZLinkSharedIdleWaiter(5);
+
+function waitReceiveLoopIdle(): Promise<void> {
+  return receiveLoopIdleWaiter.wait();
+}
+
 
 function messageBytes(parts: readonly Message[]): bigint {
   return parts.reduce((sum, part) => sum + messagePartBytes(part), 0n);

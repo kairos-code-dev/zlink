@@ -161,10 +161,20 @@ export class ServiceMailbox {
     }
   }
 
-  release(claim: ServiceMailboxClaim): boolean {
+  release(
+    claim: ServiceMailboxClaim,
+    remaining: readonly ServiceMailboxRecord[] = []
+  ): boolean {
     const target = this.domain(claim.domain);
     const queue = target.owners.get(claim.owner);
     if (queue === undefined || !queue.claimed || queue.claimSerial !== claim.serial) return false;
+    if (remaining.length > 0) {
+      const bytes = remaining.reduce((sum, record) => sum + retainedBytes(record), 0);
+      queue.records.unshift(...remaining);
+      queue.bytes += bytes;
+      target.messages += remaining.length;
+      target.bytes += bytes;
+    }
     queue.claimed = false;
     queue.claimSerial = 0n;
     if (queue.records.length === 0) {

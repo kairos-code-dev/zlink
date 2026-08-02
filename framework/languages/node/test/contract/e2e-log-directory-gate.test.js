@@ -18,7 +18,9 @@ test('every Node e2e runner writes execution logs under log', () => {
     configs.map((config) => config.name).sort(),
     [
       'AutomaticTurnDispatch',
+      'ChannelEgressRouting',
       'DiscoveryRegistryHa',
+      'InstanceSpot',
       'ObservabilityOps',
       'PubSub',
       'RegistrationCodec',

@@ -193,6 +193,7 @@ test('RouteMesh observer reports a complete status after placement capacity chan
       spotTypes: []
     },
     activationConcurrency: { active: 1, limit: 64 },
+    channelWeights: {},
     applicationVersion: 1n,
     objectCapabilities: []
   };
@@ -672,6 +673,7 @@ test('Retire rollback reconciles a committed descriptor when only the Store resp
     ...committed,
     descriptorRevision: 7n
   }]]);
+  manager.descriptorRevisionByMesh = new Map([['game', 7n]]);
   let republished;
   manager.publishMeshNodeState = async (state, _signal, meshName) => {
     republished = {

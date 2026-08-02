@@ -516,9 +516,11 @@ export interface ZLinkBackendReadablePoller {
 export interface ZLinkBackendStreamSocket extends ZLinkBackendSocket {
   readonly sendTimeoutMs: number;
   readonly sendHighWaterMark: number;
+  /** Framework stream ingress uses this bound while assembling raw recv parts. */
+  maxMessageSize: number;
   onSendReady(handler: () => void): void;
   setTlsServer(cert: string, key: string, requireClientCert?: boolean): void;
-  onFramedPacket(handler: (peer: string, header: Message, payload: Message) => void): void;
+  recv(flags?: ZLinkBackendRecvFlags): Received | undefined;
   send(routingId: RoutingId, payload: Message | readonly Message[], flags: ZLinkBackendSendFlags): boolean;
   disconnectPeer(routingId: RoutingId): void;
   bindActor(
@@ -706,6 +708,7 @@ export interface ZLinkMeshBackendAdapter {
 
 export interface ZLinkStreamBackendAdapter {
   createStreamSocket(context: ZLinkBackendContext): ZLinkBackendStreamSocket;
+  createReadablePoller(socket: ZLinkBackendStreamSocket): ZLinkBackendReadablePoller;
 }
 
 export interface ZLinkMonitoringBackendAdapter {

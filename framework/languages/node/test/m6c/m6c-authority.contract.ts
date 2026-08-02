@@ -25,6 +25,10 @@ import {
   ZLinkUserSpotCreationCoordinator
 } from '../../packages/framework/src/runtime/host/user-spot-creation-coordinator';
 import {
+  internalFrameworkErrorKind,
+  ZLinkFrameworkInternalErrorKind
+} from '../../packages/framework/src/runtime/framework-errors-internal';
+import {
   ZLinkPublicSpotManager
 } from '../../packages/framework/src/runtime/spots/spot-manager-public';
 import {
@@ -329,9 +333,9 @@ test('User Spot creation applies one deadline signal through factory and abort c
     }, async (_target, _authority, signal) => await new Promise((_resolve, reject) => {
       signal.addEventListener('abort', () => reject(signal.reason), { once: true });
     })),
-    (error: unknown) => error instanceof Error
-      && 'kind' in error
-      && error.kind === 'deadlineExceeded'
+    (error: unknown) => error instanceof ZLinkFrameworkException
+      && error.kind === ZLinkFrameworkErrorKind.DeadlineExceeded
+      && internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.DeadlineExceeded
   );
   assert.equal(
     (await store.readAuthority(authorityKey('deadline-room'))).kind,
@@ -394,9 +398,9 @@ test('User Spot reservation maps capacity exhaustion and Pending expiry to exact
     }, async () => {
       throw new Error('factory must not start');
     }),
-    (error: unknown) => error instanceof Error
-      && 'kind' in error
-      && error.kind === 'placementCapacityExhausted'
+    (error: unknown) => error instanceof ZLinkFrameworkException
+      && error.kind === ZLinkFrameworkErrorKind.CapacityExceeded
+      && internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.PlacementCapacityExhausted
   );
 
   const pendingStore = authority(new Set(['mesh:node-a:1:owner-a:1']));
@@ -416,9 +420,9 @@ test('User Spot reservation maps capacity exhaustion and Pending expiry to exact
     }, async () => {
       throw new Error('CAS loser must not start factory');
     }),
-    (error: unknown) => error instanceof Error
-      && 'kind' in error
-      && error.kind === 'deadlineExceeded'
+    (error: unknown) => error instanceof ZLinkFrameworkException
+      && error.kind === ZLinkFrameworkErrorKind.DeadlineExceeded
+      && internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.DeadlineExceeded
   );
 });
 
@@ -483,11 +487,9 @@ test('User Spot production placement maps no target to retriable capacity exhaus
     () => noTarget.getOrCreate(request, async () => {
       throw new Error('factory must not start');
     }),
-    (error: unknown) => error instanceof Error
-      && 'kind' in error
-      && error.kind === 'placementCapacityExhausted'
-      && 'isRetriable' in error
-      && error.isRetriable === true
+    (error: unknown) => error instanceof ZLinkFrameworkException
+      && error.kind === ZLinkFrameworkErrorKind.CapacityExceeded
+      && internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.PlacementCapacityExhausted
   );
 
   const providerFault = new Error('provider unavailable');
@@ -501,9 +503,9 @@ test('User Spot production placement maps no target to retriable capacity exhaus
     () => failedProvider.getOrCreate(request, async () => {
       throw new Error('factory must not start');
     }),
-    (error: unknown) => error instanceof Error
-      && 'kind' in error
-      && error.kind === 'requestFailed'
+    (error: unknown) => error instanceof ZLinkFrameworkException
+      && error.kind === ZLinkFrameworkErrorKind.InternalFailure
+      && internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.RequestFailed
       && error.cause === providerFault
   );
 
@@ -526,9 +528,9 @@ test('User Spot production placement maps no target to retriable capacity exhaus
     () => failedReservation.getOrCreate(request, async () => {
       throw new Error('factory must not start');
     }),
-    (error: unknown) => error instanceof Error
-      && 'kind' in error
-      && error.kind === 'requestFailed'
+    (error: unknown) => error instanceof ZLinkFrameworkException
+      && error.kind === ZLinkFrameworkErrorKind.InternalFailure
+      && internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.RequestFailed
       && error.cause === storeFault
   );
 });
@@ -680,9 +682,9 @@ test('User Spot Ready commit Store rejection is exposed as RequestFailed with th
       spotId: 'commit-failed-room',
       state: ZLinkSpotCreateState.Created
     })),
-    (error: unknown) => error instanceof Error
-      && 'kind' in error
-      && error.kind === 'requestFailed'
+    (error: unknown) => error instanceof ZLinkFrameworkException
+      && error.kind === ZLinkFrameworkErrorKind.InternalFailure
+      && internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.RequestFailed
       && error.cause === commitFault
   );
   assert.equal(

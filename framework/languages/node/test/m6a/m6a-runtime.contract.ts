@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { totalmem } from 'node:os';
 import { test } from 'node:test';
+import { getHeapStatistics } from 'node:v8';
 
 import {
   SERVICE_WIRE_MAGIC,
@@ -430,6 +431,28 @@ test('public weights preserve boundaries, descriptor revisions, ratios, and capa
   assert.equal(channelCounts.has('full'), false);
   assert.equal(placementCounts.has('full'), false);
 
+  const balanced = new ServiceTopologyRegistry({
+    ...descriptor('balanced-local'),
+    state: 'serving',
+    channels: [{ name: 'alpha', weight: 0 }]
+  });
+  assert.equal(balanced.admit({
+    ...descriptor('balanced-a'),
+    state: 'serving',
+    channels: [{ name: 'alpha', weight: 100 }]
+  }, 'balanced-a-1'), 'admitted');
+  assert.equal(balanced.admit({
+    ...descriptor('balanced-b'),
+    state: 'serving',
+    channels: [{ name: 'alpha', weight: 100 }]
+  }, 'balanced-b-1'), 'admitted');
+  const balancedCounts = new Map<string, number>();
+  for (let index = 0; index < 40; index += 1) {
+    const selected = balanced.selectChannel('alpha')!.descriptor.nodeRoutingId;
+    balancedCounts.set(selected, (balancedCounts.get(selected) ?? 0) + 1);
+  }
+  assert.deepEqual(Object.fromEntries(balancedCounts), { 'balanced-a': 20, 'balanced-b': 20 });
+
   const disabledHigh = {
     ...high,
     descriptorRevision: 2n,
@@ -549,11 +572,13 @@ test('mailbox domains remain bounded and infrastructure claims progress independ
 test('liveness uses 5s/15s defaults, reuses outstanding probes, and fences old connections', () => {
   const liveness = new ServiceLivenessRegistry();
   liveness.admit('peer', 'connection-a', 0);
+  assert.equal(liveness.isReady('peer', 'connection-a'), false);
   const first = liveness.tick(5_000);
   assert.equal(first.probes.length, 1);
   const probeId = first.probes[0]!.probeId;
   assert.equal(liveness.tick(10_000).probes[0]!.probeId, probeId);
   assert.equal(liveness.acknowledge('peer', 'connection-a', probeId, 10_001), true);
+  assert.equal(liveness.isReady('peer', 'connection-a'), true);
 
   liveness.admit('peer', 'connection-b', 10_002);
   assert.equal(liveness.disconnect('peer', 'connection-a'), false);
@@ -880,6 +905,69 @@ test('completion control preserves liveness while Application receive is paused'
   }
 });
 
+test('one-sided endpoint-only client upgrades the provisional route before Ready', async () => {
+  const endpointNonce = `${process.pid}-${Date.now()}`;
+  const providerDescriptor = descriptor(
+    'm6a-manual-provider',
+    `ipc:///tmp/zlink-m6a-manual-provider-${endpointNonce}.sock`
+  );
+  const clientDescriptor = descriptor(
+    'm6a-manual-client',
+    `ipc:///tmp/zlink-m6a-manual-client-${endpointNonce}.sock`
+  );
+  const provider = new RawServiceMeshRuntime({ descriptor: providerDescriptor });
+  const client = new RawServiceMeshRuntime({ descriptor: clientDescriptor });
+  provider.start();
+  client.start();
+  try {
+    client.connectPeerEndpoint(providerDescriptor.advertisedEndpoint);
+    await pollUntil(() => {
+      provider.drainMonitorEvents();
+      client.drainMonitorEvents();
+      provider.pumpOne();
+      client.pumpOne();
+      provider.progressCompletion();
+      client.progressCompletion();
+      provider.tickLiveness();
+      client.tickLiveness();
+      client.announceExpectedPeers();
+      return client.isPeerRouteReady(providerDescriptor.nodeRoutingId)
+        && provider.isPeerRouteReady(clientDescriptor.nodeRoutingId);
+    });
+
+    const pending = client.requestToNode(providerDescriptor.nodeRoutingId, {
+      packetName: 'ManualEndpointQuestion',
+      contentType: 'application/json',
+      payload: Buffer.from('request')
+    }, 2_000);
+    await pollUntil(() => {
+      provider.drainMonitorEvents();
+      client.drainMonitorEvents();
+      provider.pumpOne();
+      client.pumpOne();
+      provider.progressCompletion();
+      client.progressCompletion();
+      return provider.mailbox.pendingMessages('application') > 0;
+    });
+    const request = provider.mailbox.tryClaim('application', 1, 4_096)!;
+    provider.reply(request.records[0]!, {
+      packetName: 'ManualEndpointAnswer',
+      contentType: 'application/json',
+      payload: Buffer.from('reply')
+    });
+    assert.equal(provider.mailbox.release(request), true);
+    const result = await awaitWithin(
+      pending.promise,
+      2_000,
+      'Timed out waiting for one-sided manual endpoint reply.'
+    );
+    assert.equal(result.terminalResult, 0);
+  } finally {
+    client.close();
+    provider.close();
+  }
+});
+
 test('bilateral endpoint-only manual connections learn peer RIDs and converge', async () => {
   const endpointNonce = `${process.pid}-${Date.now()}`;
   const leftDescriptor = descriptor(
@@ -899,11 +987,17 @@ test('bilateral endpoint-only manual connections learn peer RIDs and converge', 
     left.start();
     left.connectPeerEndpoint(rightDescriptor.advertisedEndpoint);
     await pollUntil(() => {
+      right.announceExpectedPeers();
+      left.announceExpectedPeers();
       right.drainMonitorEvents();
       left.drainMonitorEvents();
       right.pumpOne();
       left.pumpOne();
       right.pumpOne();
+      left.tickLiveness();
+      right.tickLiveness();
+      left.progressCompletion();
+      right.progressCompletion();
       return left.topology.peer(rightDescriptor.nodeRoutingId) !== undefined
         && right.topology.peer(leftDescriptor.nodeRoutingId) !== undefined
         && left.isPeerRouteReady(rightDescriptor.nodeRoutingId)
@@ -1085,9 +1179,8 @@ test('Application HWM Auto uses the configured finite process memory limit', () 
   }), 100n);
 });
 
-test('Application HWM Auto falls back to total physical memory', () => {
-  //  Spec 06: an unconfigured host with no cgroup limit still starts, and the
-  //  fallback is total memory so repeated resolution is stable.
+test('Application HWM Auto uses the managed heap as an automatic candidate', () => {
+  //  Spec 06: an unconfigured host still starts, and repeated resolution is stable.
   const resolved = resolveApplicationHwm({
     applicationHwmProfile: ZLinkApplicationHwmProfile.Balanced
   });
@@ -1095,6 +1188,7 @@ test('Application HWM Auto falls back to total physical memory', () => {
   assert.equal(resolved, resolveApplicationHwm({
     applicationHwmProfile: ZLinkApplicationHwmProfile.Balanced
   }));
+  assert.ok(resolved <= BigInt(Math.floor(getHeapStatistics().heap_size_limit / 10)) + 1n);
   assert.ok(resolved <= BigInt(totalmem()));
 });
 

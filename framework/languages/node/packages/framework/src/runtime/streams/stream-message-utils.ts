@@ -1,6 +1,8 @@
 import type { Message } from '../../contracts/Common/Message';
 import { utf8Decode, utf8Encode } from './protocol';
 
+const EMPTY_MESSAGE_BYTES = new Uint8Array(0);
+
 export function copyMessage(message: Message): Message {
   const value = message as unknown as {
     copy?: () => Message;
@@ -28,21 +30,45 @@ export function copyMessage(message: Message): Message {
 }
 
 export function simpleMessage(bytes: Uint8Array): unknown {
-  const copy = new Uint8Array(bytes);
+  return createSimpleMessage(new Uint8Array(bytes), false);
+}
+
+/** Create the structural Message used by the internal receive assembler. */
+export function ownedMessage(bytes: Uint8Array): Message {
+  return createSimpleMessage(bytes, true) as Message;
+}
+
+function createSimpleMessage(initial: Uint8Array, releaseOnClose: boolean): unknown {
+  let current = initial;
   return {
-    bytes: copy,
+    get bytes() {
+      return current;
+    },
     toBytes() {
-      return new Uint8Array(copy);
+      return new Uint8Array(current);
     },
     data() {
-      return copy;
+      return current;
+    },
+    size() {
+      return current.byteLength;
+    },
+    isEmpty() {
+      return current.byteLength === 0;
+    },
+    copy() {
+      return createSimpleMessage(new Uint8Array(current), true);
     },
     getString() {
-      return utf8Decode(copy);
+      return utf8Decode(current);
     },
     value() {
-      return JSON.parse(utf8Decode(copy));
+      return JSON.parse(utf8Decode(current));
     },
-    close() {}
+    close() {
+      if (releaseOnClose) {
+        current = EMPTY_MESSAGE_BYTES;
+      }
+    }
   };
 }

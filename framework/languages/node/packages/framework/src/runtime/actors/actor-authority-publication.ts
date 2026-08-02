@@ -243,6 +243,43 @@ export function rewriteActorAuthorityRoute(
   return rewrite(Buffer.from(payload), 0);
 }
 
+export function rewriteActorAuthorityOwner(
+  payload: Uint8Array,
+  owner: ZLinkLocationOwnerToken
+): Buffer {
+  const rewrite = (encoded: Buffer, depth: number): Buffer => {
+    if (depth > 4) throw new Error('Actor authority payload nesting exceeds the supported bound.');
+    const value = JSON.parse(encoded.toString('utf8')) as Record<string, unknown>;
+    const nestedKey = (
+      (value.magic === 'ZLAP' || value.magic === 'ZLAR')
+      && value.version === 1
+      && typeof value.base === 'string'
+    )
+      ? 'base'
+      : typeof value.applicationPayload === 'string'
+        ? 'applicationPayload'
+        : undefined;
+    if (nestedKey !== undefined) {
+      value[nestedKey] = rewrite(
+        Buffer.from(value[nestedKey] as string, 'base64'),
+        depth + 1
+      ).toString('base64');
+      return Buffer.from(JSON.stringify(value));
+    }
+    if (
+      value.version !== ACTOR_AUTHORITY_VERSION
+      || typeof value.ownerId !== 'string'
+      || typeof value.ownerLeaseGeneration !== 'string'
+    ) {
+      throw new Error('Actor authority payload identity is invalid.');
+    }
+    value.ownerId = owner.ownerId;
+    value.ownerLeaseGeneration = owner.leaseGeneration.toString();
+    return Buffer.from(JSON.stringify(value));
+  };
+  return rewrite(Buffer.from(payload), 0);
+}
+
 function requireActorAuthority(
   snapshot: ZLinkAuthoritySnapshot,
   expected: ZLinkActorAuthorityIdentity

@@ -102,7 +102,9 @@ export class ZLinkRemoteActorPacketTargetStore {
         targetNodeRid: state.remoteActorPacketTarget.targetNodeRid,
         spotId: validateSpotId(spotId),
         spotKind: ZLinkSpotKind.User,
-        targetSpotGeneration: state.spotGeneration
+        ...(state.spotGeneration === undefined
+          ? {}
+          : { targetSpotGeneration: state.spotGeneration })
       };
     }
     const actorRef = state?.nativeActorRef as ActorRef | undefined;
@@ -128,7 +130,9 @@ export class ZLinkRemoteActorPacketTargetStore {
       targetNodeRid: normalizeRuntimeRoutingId(targetNodeRid),
       spotId: validateSpotId(spotId),
       spotKind: ZLinkSpotKind.User,
-      targetSpotGeneration: state?.spotGeneration
+      ...(state?.spotGeneration === undefined
+        ? {}
+        : { targetSpotGeneration: state.spotGeneration })
     };
   }
 

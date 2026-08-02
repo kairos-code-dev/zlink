@@ -24,6 +24,76 @@ test('location runtime renews owner lease, records store failure, and recovers',
   assert.equal(runtime.lastError, undefined);
 });
 
+test('location runtime reclaims immediately after the Store rejects a stale owner token', async () => {
+  const store = new internal.ZLinkInMemoryLocationStore();
+  let stale = true;
+  const leaseStore = {
+    claimOwnerLease: store.claimOwnerLease.bind(store),
+    readOwnerLease: store.readOwnerLease.bind(store),
+    async renewOwnerLease(token, leaseTtlMs, signal) {
+      if (stale) {
+        stale = false;
+        await store.releaseOwnerLease(token, signal);
+        return { kind: 'stale' };
+      }
+      return await store.renewOwnerLease(token, leaseTtlMs, signal);
+    },
+    releaseOwnerLease: store.releaseOwnerLease.bind(store)
+  };
+  const runtime = runtimeFor(store, { ownerLeaseStore: leaseStore });
+
+  await runtime.start(rid('node-a'));
+  const previous = runtime.currentOwnerToken;
+  assert.equal(await runtime.renewOwnerLeaseOnce(), true);
+  assert.notDeepEqual(runtime.currentOwnerToken, previous);
+  assert.equal(runtime.ownerLeaseHealthy, true);
+  assert.equal(runtime.lastError, undefined);
+});
+
+test('location lifecycle reclaims tracked Spot and Actor rows after an owner lease generation change', async () => {
+  const store = new internal.ZLinkInMemoryLocationStore();
+  const runtime = runtimeFor(store, { ownerId: 'owner-a' });
+  const lifecycle = new internal.ZLinkLocationLifecycle(runtime, store, 'play', store);
+
+  await runtime.start(rid('node-a'));
+  const actorClaim = await lifecycle.claimActor('player', 'actor-1', rid('node-a'));
+  assert.equal(actorClaim.status, internal.ZLinkActorClaimStatus.Claimed);
+  assert.equal(
+    await lifecycle.claimSpot(
+      'play',
+      'spot-1',
+      'player',
+      rid('node-a'),
+      framework.ZLinkSpotKind.Entry,
+      1n,
+      1n
+    ),
+    internal.ZLinkLocationWriteStatus.Stored
+  );
+
+  const oldOwner = runtime.currentOwnerToken;
+  await store.releaseOwnerLease(oldOwner);
+  assert.equal(await runtime.renewOwnerLeaseOnce(), true);
+  const newOwner = runtime.currentOwnerToken;
+  assert.notDeepEqual(newOwner, oldOwner);
+
+  await lifecycle.reclaimOwnerRows();
+  assert.equal(
+    (await store.resolveActor({ meshName: 'play', actorId: 'actor-1' })).leaseGeneration,
+    newOwner.leaseGeneration
+  );
+  assert.equal(
+    (await store.resolveSpot({ meshName: 'play', spotId: 'spot-1' })).leaseGeneration,
+    newOwner.leaseGeneration
+  );
+
+  await lifecycle.releaseActor('player', 'actor-1');
+  await lifecycle.releaseSpot('play', 'spot-1');
+  assert.equal(await store.resolveActor({ meshName: 'play', actorId: 'actor-1' }), undefined);
+  assert.equal(await store.resolveSpot({ meshName: 'play', spotId: 'spot-1' }), undefined);
+  await runtime.stop();
+});
+
 test('location runtime bounds fixed routing-id owner lease renewal by the configured timeout', async () => {
   const store = new internal.ZLinkInMemoryLocationStore();
   const leaseStore = {
@@ -134,11 +204,79 @@ test('location runtime waits for an in-flight heartbeat before removing the owne
   assert.equal(stopped, false);
 
   completeRenewal({
+    kind: 'renewed',
     leaseExpiresAt: new Date(30_000),
     storeNow: new Date(0)
   });
   await stopping;
   assert.deepEqual(await store.readOwnerLease('owner-a'), { kind: 'missing' });
+});
+
+test('location runtime does not install a reclaimed lease after stop races with the claim', async () => {
+  const store = new internal.ZLinkInMemoryLocationStore();
+  const timers = [];
+  let claimCount = 0;
+  let completeFreshClaim;
+  const released = [];
+  const leaseStore = {
+    async claimOwnerLease(ownerId, leaseTtlMs, signal) {
+      claimCount += 1;
+      if (claimCount === 1) {
+        return await store.claimOwnerLease(ownerId, leaseTtlMs, signal);
+      }
+      return await new Promise((resolve) => { completeFreshClaim = resolve; });
+    },
+    readOwnerLease: store.readOwnerLease.bind(store),
+    async renewOwnerLease(token, leaseTtlMs, signal) {
+      await store.releaseOwnerLease(token, signal);
+      return { kind: 'stale' };
+    },
+    async releaseOwnerLease(token, signal) {
+      released.push(token);
+      return await store.releaseOwnerLease(token, signal);
+    }
+  };
+  const runtime = new internal.ZLinkLocationRuntime({
+    stores: {
+      locationStore: store,
+      authorityStore: store,
+      peerStore: store,
+      spotStore: store,
+      actorStore: store,
+      routeStore: store,
+      ownerLeaseStore: leaseStore
+    },
+    ownerId: 'owner-a',
+    options: {
+      ownerLeaseRenewIntervalMs: 100,
+      ownerLeaseRenewTimeoutMs: 1000
+    },
+    now: () => new Date(0),
+    setTimer(callback, delayMs) {
+      timers.push({ callback, delayMs });
+      return timers.length - 1;
+    },
+    clearTimer() {}
+  });
+
+  await runtime.start(rid('node-a'));
+  timers.shift().callback();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const stopping = runtime.stop();
+  await new Promise((resolve) => setImmediate(resolve));
+  completeFreshClaim({
+    kind: 'claimed',
+    token: { ownerId: 'owner-a', leaseGeneration: 2n },
+    leaseExpiresAt: new Date(30_000),
+    storeNow: new Date(0)
+  });
+  await stopping;
+
+  assert.equal(runtime.isStarted, false);
+  assert.equal(runtime.currentOwnerToken, undefined);
+  assert.deepEqual(await store.readOwnerLease('owner-a'), { kind: 'missing' });
+  assert.deepEqual(released, [{ ownerId: 'owner-a', leaseGeneration: 2n }]);
 });
 
 test('location runtime stamps owner id, reports stale ownership, and removes rows on stop', async () => {
@@ -151,27 +289,27 @@ test('location runtime stamps owner id, reports stale ownership, and removes row
   await oldOwner.start(rid('node-a'));
   await newOwner.start(rid('node-b'));
 
-  const claimed = await oldOwner.writeActor(actor('ignored', 0n), framework.ZLinkLocationWriteIntent.NewClaim);
-  assert.equal(claimed.status, framework.ZLinkLocationWriteStatus.Stored);
+  const claimed = await oldOwner.writeActor(actor('ignored', 0n), internal.ZLinkLocationWriteIntent.NewClaim);
+  assert.equal(claimed.status, internal.ZLinkLocationWriteStatus.Stored);
   assert.equal((await store.resolveActor({ meshName: 'play', actorId: 'actor-1' })).ownerId, 'owner-a');
 
-  const takeover = await newOwner.writeActor(actor('ignored', 0n), framework.ZLinkLocationWriteIntent.Takeover);
-  assert.equal(takeover.status, framework.ZLinkLocationWriteStatus.Stored);
+  const takeover = await newOwner.writeActor(actor('ignored', 0n), internal.ZLinkLocationWriteIntent.Takeover);
+  assert.equal(takeover.status, internal.ZLinkLocationWriteStatus.Stored);
 
   const stale = await oldOwner.writeActor(
     actor('ignored', claimed.generation),
-    framework.ZLinkLocationWriteIntent.Renew
+    internal.ZLinkLocationWriteIntent.Renew
   );
-  assert.equal(stale.status, framework.ZLinkLocationWriteStatus.IgnoredStale);
+  assert.equal(stale.status, internal.ZLinkLocationWriteStatus.IgnoredStale);
   assert.equal(lost.length, 1);
   assert.equal(lost[0].kind, internal.ZLinkLocationKind.Actor);
 
-  await oldOwner.writeSpot(spot('ignored', 'spot-1'), framework.ZLinkLocationWriteIntent.NewClaim);
+  await oldOwner.writeSpot(spot('ignored', 'spot-1'), internal.ZLinkLocationWriteIntent.NewClaim);
   await oldOwner.writeMeshNode({
     ...placementDescriptor('node-a', 'Player', 100, 0, 0),
     ownerId: 'ignored',
     leaseGeneration: 0n
-  }, framework.ZLinkLocationWriteIntent.NewClaim);
+  }, internal.ZLinkLocationWriteIntent.NewClaim);
   await oldOwner.stop();
 
   assert.deepEqual(await store.readOwnerLease('owner-a'), { kind: 'missing' });
@@ -211,7 +349,7 @@ test('location runtime emits row events and resolvers emit resolve misses', asyn
   const runtime = runtimeFor(store, { ownerId: 'owner-a', events: sink });
 
   await runtime.start(rid('node-a'));
-  const claimed = await runtime.writeActor(actor('', 0n), framework.ZLinkLocationWriteIntent.NewClaim);
+  const claimed = await runtime.writeActor(actor('', 0n), internal.ZLinkLocationWriteIntent.NewClaim);
   assert.equal(events[0][0], 'actor-updated');
   assert.equal(events[0][2].ownerId, 'owner-a');
   assert.equal('generation' in events[0][2], false);
@@ -473,8 +611,8 @@ test('location lifecycle deactivates stale hosted actor and protects new owner r
   });
   assert.equal(claim.status, internal.ZLinkActorClaimStatus.Claimed);
 
-  const takeover = await nodeB.runtime.writeActor(actor('ignored', 0n), framework.ZLinkLocationWriteIntent.Takeover);
-  assert.equal(takeover.status, framework.ZLinkLocationWriteStatus.Stored);
+  const takeover = await nodeB.runtime.writeActor(actor('ignored', 0n), internal.ZLinkLocationWriteIntent.Takeover);
+  assert.equal(takeover.status, internal.ZLinkLocationWriteStatus.Stored);
 
   await assert.rejects(
     () => nodeA.lifecycle.notifyActorJoinedSpot('player', 'actor-1', 'play', 'spot-1', 7n, 11n, 3n),
@@ -508,6 +646,81 @@ test('location lifecycle retries source actor cleanup without losing the tracked
   assert.equal(await store.resolveActor({ meshName: 'play', actorId: 'actor-retry' }), undefined);
 });
 
+test('location lifecycle releases placement Actor authority for the exact native ref', async () => {
+  const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
+  const runtime = runtimeFor(store, { ownerId: 'owner-a' });
+  await runtime.start(rid('node-a'));
+  const ownerToken = runtime.currentOwnerToken;
+  assert.ok(ownerToken);
+  let current = {
+    kind: 'snapshot',
+    storeVersion: { value: 'authority-v1' },
+    payload: Buffer.alloc(0),
+    objectGeneration: 7n,
+    authorityOwnerGeneration: 11n,
+    ownerId: 'owner-a',
+    ownerLeaseGeneration: ownerToken.leaseGeneration,
+    allocation: {
+      state: 'active',
+      objectKind: 'actor',
+      stableType: 'player',
+      descriptor: { meshName: 'play', rid: rid('node-a') },
+      descriptorLifecycleGeneration: 1n,
+      capacity: { actors: 1, spots: 0 }
+    },
+    storeNow: new Date(0)
+  };
+  let deletes = 0;
+  const authorityStore = {
+    async readAuthority() {
+      return current;
+    },
+    async compareExchangeAuthority(_key, expectedVersion, mutation) {
+      assert.equal(expectedVersion.value, 'authority-v1');
+      assert.deepEqual(mutation, { kind: 'delete' });
+      deletes++;
+      current = { kind: 'missing', storeNow: new Date(0) };
+      return { kind: 'deleted', storeVersion: { value: 'authority-v2' }, storeNow: new Date(0) };
+    }
+  };
+  const lifecycle = new internal.ZLinkLocationLifecycle(runtime, store, 'play', authorityStore);
+  await lifecycle.claimActor('player', 'actor-1', rid('node-a'));
+  const actorRef = {
+    actorId: 'actor-1',
+    objectGeneration: 7n,
+    meshName: 'play',
+    nodeRid: rid('node-a')
+  };
+  await lifecycle.setActorRef('player', 'actor-1', actorRef, 1n);
+
+  await lifecycle.releaseActor('player', 'actor-1', actorRef);
+
+  assert.equal(deletes, 1);
+  assert.equal(current.kind, 'missing');
+
+  current = {
+    kind: 'snapshot',
+    storeVersion: { value: 'authority-v3' },
+    payload: Buffer.alloc(0),
+    objectGeneration: actorRef.objectGeneration,
+    authorityOwnerGeneration: 12n,
+    ownerId: ownerToken.ownerId,
+    ownerLeaseGeneration: ownerToken.leaseGeneration + 1n,
+    allocation: {
+      state: 'active',
+      objectKind: 'actor',
+      stableType: 'player',
+      descriptor: { meshName: 'play', rid: rid('node-a') },
+      descriptorLifecycleGeneration: 1n,
+      capacity: { actors: 1, spots: 0 }
+    },
+    storeNow: new Date(0)
+  };
+  await lifecycle.releaseActor('player', 'actor-1', actorRef);
+  assert.equal(deletes, 1);
+  await runtime.stop();
+});
+
 test('location lifecycle claims spots and binds actor session routes with takeover', async () => {
   const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
   const nodeA = await lifecycleNode(store, 'owner-a', 'node-a');
@@ -522,7 +735,7 @@ test('location lifecycle claims spots and binds actor session routes with takeov
     5n,
     2n
   );
-  assert.equal(spotStatus, framework.ZLinkLocationWriteStatus.Stored);
+  assert.equal(spotStatus, internal.ZLinkLocationWriteStatus.Stored);
   assert.equal((await store.resolveSpot({ meshName: 'play', spotId: 'spot-1' })).ownerId, 'owner-a');
 
   await nodeA.lifecycle.releaseSpot('play', 'spot-1');
@@ -566,7 +779,7 @@ test('store location resolvers seed reusable SpotHandle snapshots from live rows
       7n,
       3n
     ),
-    framework.ZLinkLocationWriteStatus.Stored
+    internal.ZLinkLocationWriteStatus.Stored
   );
   await node.lifecycle.claimActor('player', 'actor-1', rid('node-a'));
   let actorAddress = await resolvers.resolveActorSpotHandle('play', 'actor-1');
@@ -647,7 +860,7 @@ test('actor resolver rejects a stale membership when the same SPOT RID is recrea
     spotGeneration: 8n,
     ownerNodeRid: rid('node-b'),
     ownerNodeGeneration: 4n
-  }, framework.ZLinkLocationWriteIntent.Takeover);
+  }, internal.ZLinkLocationWriteIntent.Takeover);
   resolvers.invalidateSpotRoute(spotId, 'play');
 
   assert.equal(await resolvers.resolveActorRef(actorId), undefined);
@@ -692,7 +905,7 @@ test('store location resolver returns a live remote ActorRef', async () => {
     spotId: 'play-entry-node-b',
     spotGeneration: 1n,
     membershipEpoch: 1n
-  }, framework.ZLinkLocationWriteIntent.NewClaim);
+  }, internal.ZLinkLocationWriteIntent.NewClaim);
 
   assert.deepEqual(await resolversFor(store).resolveActorRef('alice'), actorRef);
   await runtime.stop();
@@ -722,7 +935,7 @@ test('location spot route resolver bridges internal routed transport', async () 
   resolver.invalidate('spot-1');
   await assert.rejects(
     () => resolver.resolve('spot-1'),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.SpotRouteNotFound
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.NotFound
   );
 });
 
@@ -753,7 +966,7 @@ test('location resolvers resolve Entry Spots from live MeshNode descriptors', as
   await runtime.writeMeshNode({
     ...placementDescriptor('node-a', 'Player', 100, 0, 0),
     entrySpotId
-  }, framework.ZLinkLocationWriteIntent.NewClaim);
+  }, internal.ZLinkLocationWriteIntent.NewClaim);
   const resolvers = resolversFor(store);
   const handle = await resolvers.resolveSpotHandle('play', entrySpotId);
   assert.notEqual(handle, undefined);
@@ -796,9 +1009,9 @@ test('production repository persists owner lease and MeshNode records through on
   };
   const stored = await writer.updateMeshNode(
     descriptor,
-    framework.ZLinkLocationWriteIntent.NewClaim
+    internal.ZLinkLocationWriteIntent.NewClaim
   );
-  assert.equal(stored.status, framework.ZLinkLocationWriteStatus.Stored);
+  assert.equal(stored.status, internal.ZLinkLocationWriteStatus.Stored);
 
   const observed = await reader.listMeshNodes('play');
   assert.equal(observed.items.length, 1);
@@ -813,9 +1026,126 @@ test('production repository persists owner lease and MeshNode records through on
       { meshName: 'play', rid: 'node-a' },
       claimed.token
     ),
-    framework.ZLinkLocationWriteStatus.Stored
+    internal.ZLinkLocationWriteStatus.Stored
   );
   assert.equal((await writer.listMeshNodes('play')).items.length, 0);
+});
+
+test('production repository removes provider-owned records in one fenced conditional batch', async () => {
+  const now = new Date(Date.UTC(2026, 6, 3, 0, 0, 0));
+  const inner = new internal.ZLinkInMemoryProviderLocationStore(() => now);
+  const writes = [];
+  const provider = {
+    read: inner.read.bind(inner),
+    scan: inner.scan.bind(inner),
+    async write(request, signal) {
+      writes.push(request);
+      return await inner.write(request, signal);
+    }
+  };
+  const repository = new internal.ZLinkLocationStoreRepository(provider, () => now);
+  const claimed = await repository.claimOwnerLease('owner-batch', 30_000);
+  assert.equal(claimed.kind, 'claimed');
+
+  await repository.updateMeshNode({
+    ...placementDescriptor('node-batch', 'Player', 100, 0, 0),
+    ownerId: 'owner-batch',
+    leaseGeneration: claimed.token.leaseGeneration
+  }, internal.ZLinkLocationWriteIntent.NewClaim);
+  await repository.updateClientServer({
+    channelName: 'orders',
+    serverRid: rid('server-batch'),
+    lifecycleGeneration: 1n,
+    descriptorRevision: 1n,
+    endpoint: 'tcp://127.0.0.1:43001',
+    weight: 100,
+    state: framework.ZLinkFrameworkRuntimeState.Serving,
+    securityIdentity: 'server-batch',
+    ownerId: 'owner-batch',
+    leaseGeneration: claimed.token.leaseGeneration,
+    updatedAt: now
+  }, internal.ZLinkLocationWriteIntent.NewClaim);
+  await repository.updateFanoutPublisher({
+    channelName: 'events',
+    publisherRid: rid('publisher-batch'),
+    lifecycleGeneration: 1n,
+    descriptorRevision: 1n,
+    endpoint: 'tcp://127.0.0.1:43002',
+    state: framework.ZLinkFrameworkRuntimeState.Serving,
+    securityIdentity: 'publisher-batch',
+    ownerId: 'owner-batch',
+    leaseGeneration: claimed.token.leaseGeneration,
+    updatedAt: now
+  }, internal.ZLinkLocationWriteIntent.NewClaim);
+
+  writes.length = 0;
+  assert.equal(await repository.removeAllByOwner(claimed.token), 3n);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].mutations.length, 3);
+  assert.equal(writes[0].conditions.length, 4);
+  assert.equal(writes[0].mutations.every(mutation => mutation.kind === 'delete'), true);
+});
+
+test('production repository restarts an expired owner cleanup scan from its first page', async () => {
+  const now = new Date(Date.UTC(2026, 6, 3, 0, 0, 0));
+  const inner = new internal.ZLinkInMemoryProviderLocationStore(() => now);
+  let expireNextScan = true;
+  let scanCalls = 0;
+  const provider = {
+    read: inner.read.bind(inner),
+    async scan(request, signal) {
+      scanCalls += 1;
+      if (expireNextScan && request.cursor === undefined) {
+        expireNextScan = false;
+        return { kind: 'expired' };
+      }
+      return await inner.scan(request, signal);
+    },
+    write: inner.write.bind(inner)
+  };
+  const repository = new internal.ZLinkLocationStoreRepository(provider, () => now);
+  const claimed = await repository.claimOwnerLease('owner-expired-scan', 30_000);
+  assert.equal(claimed.kind, 'claimed');
+  await repository.updateMeshNode({
+    ...placementDescriptor('node-expired-scan', 'Player', 100, 0, 0),
+    ownerId: 'owner-expired-scan',
+    leaseGeneration: claimed.token.leaseGeneration
+  }, internal.ZLinkLocationWriteIntent.NewClaim);
+
+  assert.equal(await repository.removeAllByOwner(claimed.token), 1n);
+  assert.equal(scanCalls > 6, true);
+  assert.equal((await repository.listMeshNodes('play')).items.length, 0);
+});
+
+test('production repository does not delete a row after its owner lease is replaced', async () => {
+  const now = new Date(Date.UTC(2026, 6, 3, 0, 0, 0));
+  const inner = new internal.ZLinkInMemoryProviderLocationStore(() => now);
+  let ownerToken;
+  let replaced = false;
+  const provider = {
+    read: inner.read.bind(inner),
+    scan: inner.scan.bind(inner),
+    async write(request, signal) {
+      if (!replaced && request.mutations.some(mutation => mutation.kind === 'delete')) {
+        replaced = true;
+        assert.equal(await inner.releaseOwnerLease(ownerToken), 'released');
+        assert.equal((await inner.claimOwnerLease('owner-fenced', 30_000)).kind, 'claimed');
+      }
+      return await inner.write(request, signal);
+    }
+  };
+  const repository = new internal.ZLinkLocationStoreRepository(provider, () => now);
+  const claimed = await repository.claimOwnerLease('owner-fenced', 30_000);
+  assert.equal(claimed.kind, 'claimed');
+  ownerToken = claimed.token;
+  await repository.updateMeshNode({
+    ...placementDescriptor('node-fenced', 'Player', 100, 0, 0),
+    ownerId: 'owner-fenced',
+    leaseGeneration: ownerToken.leaseGeneration
+  }, internal.ZLinkLocationWriteIntent.NewClaim);
+
+  assert.equal(await repository.removeAllByOwner(ownerToken), 0n);
+  assert.equal((await repository.listMeshNodes('play')).items.length, 1);
 });
 
 test('production repository reconciles an opaque write applied before its response is lost', async () => {
@@ -891,16 +1221,16 @@ test('production repository shares ClientServer and fanout discovery through onl
   assert.equal(
     (await writer.updateClientServer(
       server,
-      framework.ZLinkLocationWriteIntent.NewClaim
+      internal.ZLinkLocationWriteIntent.NewClaim
     )).status,
-    framework.ZLinkLocationWriteStatus.Stored
+    internal.ZLinkLocationWriteStatus.Stored
   );
   assert.equal(
     (await writer.updateFanoutPublisher(
       publisher,
-      framework.ZLinkLocationWriteIntent.NewClaim
+      internal.ZLinkLocationWriteIntent.NewClaim
     )).status,
-    framework.ZLinkLocationWriteStatus.Stored
+    internal.ZLinkLocationWriteStatus.Stored
   );
 
   const observedServers = await reader.listClientServers('orders');
@@ -912,9 +1242,9 @@ test('production repository shares ClientServer and fanout discovery through onl
 
   const renewed = await reader.updateClientServer(
     { ...server, descriptorRevision: 2n, weight: 250 },
-    framework.ZLinkLocationWriteIntent.Renew
+    internal.ZLinkLocationWriteIntent.Renew
   );
-  assert.equal(renewed.status, framework.ZLinkLocationWriteStatus.Stored);
+  assert.equal(renewed.status, internal.ZLinkLocationWriteStatus.Stored);
   assert.equal((await writer.listClientServers('orders')).items[0].weight, 250);
 
   assert.equal(await reader.removeAllByOwner(claimed.token), 2n);
@@ -996,22 +1326,22 @@ test('production repository shares Spot Actor and route ownership through only o
   assert.equal(
     (await writer.updateSpot(
       spotRow,
-      framework.ZLinkLocationWriteIntent.NewClaim
+      internal.ZLinkLocationWriteIntent.NewClaim
     )).status,
-    framework.ZLinkLocationWriteStatus.Stored
+    internal.ZLinkLocationWriteStatus.Stored
   );
   assert.equal(
     (await writer.updateActor(
       actorRow,
-      framework.ZLinkLocationWriteIntent.NewClaim
+      internal.ZLinkLocationWriteIntent.NewClaim
     )).status,
-    framework.ZLinkLocationWriteStatus.Stored
+    internal.ZLinkLocationWriteStatus.Stored
   );
   const routeStored = await writer.updateRoute(
     routeRow,
-    framework.ZLinkLocationWriteIntent.NewClaim
+    internal.ZLinkLocationWriteIntent.NewClaim
   );
-  assert.equal(routeStored.status, framework.ZLinkLocationWriteStatus.Stored);
+  assert.equal(routeStored.status, internal.ZLinkLocationWriteStatus.Stored);
 
   assert.equal((await reader.resolveSpot({ meshName: 'play', spotId: 'room-1' })).spotType, 'game');
   assert.equal((await reader.resolveActor({ meshName: 'play', actorId: 'actor-1' })).actorType, 'player');

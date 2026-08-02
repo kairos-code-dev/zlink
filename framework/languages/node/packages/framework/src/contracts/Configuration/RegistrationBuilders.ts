@@ -814,11 +814,6 @@ class DefaultMeshNodeBuilder implements ZLinkMeshNodeBuilder {
     return new DefaultMeshChannelBuilder(channel);
   }
 
-  /** Runtime compatibility for pre-contract JavaScript callers; not part of ZLinkMeshNodeBuilder. */
-  channelName(channelName: string): ZLinkMeshChannelServerBuilder {
-    return this.channel(channelName).server();
-  }
-
   listen(endpointOrPort: string | number = 0): this {
     this.node.router ??= {};
     if (typeof endpointOrPort === 'string') {
@@ -1242,11 +1237,21 @@ class DefaultMeshChannelBuilder implements ZLinkMeshChannelBuilder {
   constructor(private readonly channel: MutableMeshChannelOptions) {}
 
   client(): ZLinkMeshChannelClientBuilder {
+    if (this.channel.client === true || this.channel.server === true) {
+      throw new ZLinkConfigurationException(
+        'RouteMesh channel must register exactly one role; client() and server() cannot both be used or called twice.'
+      );
+    }
     this.channel.client = true;
     return new DefaultMeshChannelClientBuilder();
   }
 
   server(): ZLinkMeshChannelServerBuilder {
+    if (this.channel.client === true || this.channel.server === true) {
+      throw new ZLinkConfigurationException(
+        'RouteMesh channel must register exactly one role; client() and server() cannot both be used or called twice.'
+      );
+    }
     this.channel.server = true;
     return new DefaultMeshChannelServerBuilder(this.channel);
   }

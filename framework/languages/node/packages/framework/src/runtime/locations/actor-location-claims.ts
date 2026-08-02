@@ -5,9 +5,13 @@ import {
   ZLinkLocationWriteStatus,
   type ZLinkActorLocation
 } from './internal-location-contracts';
-import type { ZLinkActorLocationStore } from './internal-store-contracts';
+import type { ZLinkActorLocationStore, ZLinkAuthorityStore } from './internal-store-contracts';
+import type { ZLinkAuthoritySnapshot } from '../../contracts/Locations';
+import type { ZLinkLocationOwnerToken } from '../../contracts/Locations/Writes';
 import { ZLinkSpotKind } from '../../contracts/Spots';
 import { ZLinkLocationKeyCodec } from './key-codec';
+import { encodeAuthorityKey } from './authority-key-codec';
+import { routingIdsEqual } from '../routing-id';
 import type {
   IZLinkLocationLifecycleRuntime,
   ZLinkOwnershipLostEvent
@@ -38,7 +42,8 @@ export class ZLinkActorLocationClaims {
   constructor(
     private readonly runtime: IZLinkLocationLifecycleRuntime,
     private readonly actorStore: ZLinkActorLocationStore,
-    private readonly entryMeshName: string
+    private readonly entryMeshName: string,
+    private readonly authorityStore?: ZLinkAuthorityStore
   ) {}
 
   async executeClaimThenActivate<TActor>(
@@ -101,6 +106,7 @@ export class ZLinkActorLocationClaims {
       const claimed: ZLinkActorLocation = {
         ...row,
         ownerId: this.runtime.ownerId,
+        leaseGeneration: this.runtime.currentOwnerToken?.leaseGeneration ?? row.leaseGeneration,
         updatedAt: result.updatedAt
       };
       this.actors.set(canonical, {
@@ -182,6 +188,7 @@ export class ZLinkActorLocationClaims {
     const claimed: ZLinkActorLocation = {
       ...row,
       ownerId: this.runtime.ownerId,
+      leaseGeneration: this.runtime.currentOwnerToken?.leaseGeneration ?? row.leaseGeneration,
       updatedAt: result.updatedAt
     };
     this.actors.set(canonical, {
@@ -229,17 +236,25 @@ export class ZLinkActorLocationClaims {
     }));
   }
 
-  async release(_actorType: string, actorId: string): Promise<void> {
+  async release(_actorType: string, actorId: string, actorRef?: ActorRef): Promise<void> {
     const key = { meshName: this.entryMeshName, actorId };
     const canonical = ZLinkLocationKeyCodec.encodeActorKey(key);
     const tracked = this.actors.get(canonical);
-    if (tracked === undefined) {
+    const ownerToken = this.runtime.currentOwnerToken;
+    if (tracked !== undefined) {
+      const status = await this.runtime.removeActor(
+        key,
+        ownerToken?.leaseGeneration ?? tracked.generation
+      );
+      if (this.actors.get(canonical) === tracked) {
+        this.actors.delete(canonical);
+      }
+      if (status === ZLinkLocationWriteStatus.Stored) {
+        await this.releaseAuthority(actorId, actorRef ?? tracked.row.actorRef, ownerToken);
+      }
       return;
     }
-    await this.runtime.removeActor(key, tracked.generation);
-    if (this.actors.get(canonical) === tracked) {
-      this.actors.delete(canonical);
-    }
+    await this.releaseAuthority(actorId, actorRef, ownerToken);
   }
 
   owns(_actorType: string, actorId: string): boolean {
@@ -255,6 +270,54 @@ export class ZLinkActorLocationClaims {
       actorId
     }));
     return tracked === undefined ? undefined : { ...tracked.row };
+  }
+
+  async reclaimOwnerRows(): Promise<void> {
+    const owner = this.runtime.currentOwnerToken;
+    if (owner === undefined) {
+      throw new Error('Actor location recovery requires a claimed owner token.');
+    }
+    const failures: unknown[] = [];
+    for (const [canonical, tracked] of [...this.actors]) {
+      const key = { meshName: tracked.row.meshName, actorId: tracked.row.actorId };
+      try {
+        const current = await this.actorStore.resolveActor(key);
+        if (current === undefined
+          || current.ownerId !== owner.ownerId
+          || (current.leaseGeneration !== tracked.row.leaseGeneration
+            && current.leaseGeneration !== owner.leaseGeneration)) {
+          this.actors.delete(canonical);
+          await tracked.deactivate?.();
+          continue;
+        }
+        if (current.leaseGeneration === owner.leaseGeneration) {
+          tracked.row = { ...current };
+          continue;
+        }
+        const result = await this.runtime.writeActor(
+          current,
+          ZLinkLocationWriteIntent.Takeover
+        );
+        if (result.status !== ZLinkLocationWriteStatus.Stored) {
+          failures.push(new Error(
+            `Actor location recovery for '${tracked.row.actorId}' was rejected with status ${result.status}.`
+          ));
+          continue;
+        }
+        tracked.row = {
+          ...current,
+          ownerId: owner.ownerId,
+          leaseGeneration: owner.leaseGeneration,
+          updatedAt: result.updatedAt
+        };
+        tracked.generation = result.generation;
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length > 0) {
+      throw new AggregateError(failures, 'One or more Actor locations failed lease recovery.');
+    }
   }
 
   onOwnershipLost(event: ZLinkOwnershipLostEvent): void {
@@ -284,11 +347,49 @@ export class ZLinkActorLocationClaims {
     const candidate = mutate(tracked.row);
     const result = await this.runtime.writeActor(candidate, ZLinkLocationWriteIntent.Renew);
     if (result.status === ZLinkLocationWriteStatus.Stored) {
-      tracked.row = { ...candidate, updatedAt: result.updatedAt };
+      tracked.row = {
+        ...candidate,
+        leaseGeneration: this.runtime.currentOwnerToken?.leaseGeneration
+          ?? candidate.leaseGeneration,
+        updatedAt: result.updatedAt
+      };
       tracked.generation = result.generation;
       return;
     }
     throw new Error(`Actor location renewal for '${actorId}' was rejected with status ${result.status}.`);
+  }
+
+  private async releaseAuthority(
+    actorId: string,
+    actorRef: ActorRef | undefined,
+    ownerToken: ZLinkLocationOwnerToken | undefined
+  ): Promise<void> {
+    const store = this.authorityStore;
+    if (store === undefined || actorRef === undefined || ownerToken === undefined) return;
+
+    const key = encodeAuthorityKey('actor', actorId);
+    const current = await store.readAuthority(key);
+    if (!matchesActorAuthority(current, actorRef, ownerToken)) return;
+
+    const result = await store.compareExchangeAuthority(
+      key,
+      current.storeVersion,
+      { kind: 'delete' }
+    );
+    if (result.kind === 'deleted' || (result.kind === 'conflict' && result.current.kind === 'missing')) {
+      return;
+    }
+    if (result.kind === 'conflict' && result.current.kind === 'snapshot'
+      && matchesActorAuthority(result.current, actorRef, ownerToken)) {
+      const retry = await store.compareExchangeAuthority(
+        key,
+        result.current.storeVersion,
+        { kind: 'delete' }
+      );
+      if (retry.kind === 'deleted' || (retry.kind === 'conflict' && retry.current.kind === 'missing')) {
+        return;
+      }
+    }
   }
 }
 
@@ -296,4 +397,19 @@ interface TrackedActor {
   row: ZLinkActorLocation;
   generation: bigint;
   readonly deactivate?: () => Promise<void>;
+}
+
+function matchesActorAuthority(
+  current: { readonly kind: 'missing' } | ZLinkAuthoritySnapshot,
+  actorRef: ActorRef,
+  ownerToken: ZLinkLocationOwnerToken
+): current is ZLinkAuthoritySnapshot {
+  return current.kind === 'snapshot'
+    && current.ownerId === ownerToken.ownerId
+    && current.ownerLeaseGeneration === ownerToken.leaseGeneration
+    && current.allocation.state === 'active'
+    && current.allocation.objectKind === 'actor'
+    && current.objectGeneration === actorRef.objectGeneration
+    && current.allocation.descriptor.meshName === actorRef.meshName
+    && routingIdsEqual(current.allocation.descriptor.rid, actorRef.nodeRid);
 }

@@ -6,6 +6,7 @@ import type {
   ZLinkFrameworkRegistrationOptions,
   ZLinkRouteChannelOptions,
   ZLinkRouteMeshChannelOptions,
+  ZLinkMeshChannelOptions,
   ZLinkSpotNodeOptions,
   ZLinkSpotPubSubCapabilityOptions,
   ZLinkSpotRouterCapabilityOptions,
@@ -19,6 +20,7 @@ import {
 import { validateTimerRegistration } from './TimerRegistrationValidator';
 import { zlinkDefaultLocationOptions } from '../Locations';
 import { requireValidSendTimeoutMs } from './SendTimeoutValidation';
+import { DEFAULT_APPLICATION_LISTENER_MAX_MESSAGE_SIZE } from './InternalDefaults';
 
 export function validateFrameworkRegistration(
   registration: ZLinkFrameworkRegistration,
@@ -75,6 +77,12 @@ function validateInboundDispatchListenerBounds(
   for (const [spotNodeName, spotNode] of registration.spotNodes) {
     listeners.push([`SpotNode '${spotNodeName}' router`, spotNode.router?.maxMessageSize]);
   }
+  for (const streamNodeName of registration.streamNodes.keys()) {
+    listeners.push([
+      `STREAM node '${streamNodeName}'`,
+      DEFAULT_APPLICATION_LISTENER_MAX_MESSAGE_SIZE
+    ]);
+  }
 
   const unbounded = listeners.find(([, maxMessageSize]) => maxMessageSize === 0);
   if (unbounded !== undefined) {
@@ -85,12 +93,15 @@ function validateInboundDispatchListenerBounds(
 }
 
 function validateChannelTopologyNames(registration: ZLinkFrameworkRegistration): void {
-  const clientServerChannels = new Set(
+  const declaredChannelNames = new Set(
     [...registration.channels]
-      .filter(([, channel]) => channel.client !== undefined || channel.server !== undefined)
+      .filter(([, channel]) => channel.client !== undefined
+        || channel.server !== undefined
+        || channel.publisher !== undefined
+        || channel.subscriber !== undefined)
       .map(([channelName]) => channelName)
   );
-  if (clientServerChannels.size === 0) return;
+  if (declaredChannelNames.size === 0) return;
 
   const routeMeshChannels = new Set(registration.routeChannels);
   for (const spotNode of registration.spotNodes.values()) {
@@ -98,7 +109,7 @@ function validateChannelTopologyNames(registration: ZLinkFrameworkRegistration):
       routeMeshChannels.add(channelName);
     }
   }
-  for (const channelName of clientServerChannels) {
+  for (const channelName of declaredChannelNames) {
     if (routeMeshChannels.has(channelName)) {
       throw new ZLinkConfigurationException(
         `ChannelName '${channelName}' is registered on both RouteMesh and ClientServer physical paths.`
@@ -144,6 +155,24 @@ function validateLocationRegistration(registration: ZLinkFrameworkRegistration):
     );
   }
   const options = { ...zlinkDefaultLocationOptions, ...locations.options };
+  for (const [name, value] of Object.entries({
+    ownerLeaseRenewIntervalMs: options.ownerLeaseRenewIntervalMs,
+    ownerLeaseTtlMs: options.ownerLeaseTtlMs,
+    ownerLeaseFencingMarginMs: options.ownerLeaseFencingMarginMs,
+    ownerLeaseRenewTimeoutMs: options.ownerLeaseRenewTimeoutMs
+  })) {
+    if (!Number.isFinite(value) || value <= 0) {
+      throw new ZLinkConfigurationException(`${name} must be a finite positive number.`);
+    }
+  }
+  if (
+    options.ownerLeaseRenewIntervalMs + options.ownerLeaseRenewTimeoutMs
+    >= options.ownerLeaseTtlMs - options.ownerLeaseFencingMarginMs
+  ) {
+    throw new ZLinkConfigurationException(
+      'ownerLeaseRenewIntervalMs + ownerLeaseRenewTimeoutMs must be less than ownerLeaseTtlMs - ownerLeaseFencingMarginMs.'
+    );
+  }
   for (const [name, value] of Object.entries({
     routeCacheMaxAgeMs: options.routeCacheMaxAgeMs,
     messageFollowDurationMs: options.messageFollowDurationMs
@@ -282,6 +311,7 @@ function validateSpotNodes(registration: ZLinkFrameworkRegistration): void {
       );
     }
     validateSpotNodeCapability(`SpotNode '${spotNodeName}' router`, spotNode.router);
+    validateMeshChannels(spotNodeName, spotNode.meshChannels);
     if (spotNode.router !== undefined) {
       validateListenerNetworkIdentity(
         `SpotNode '${spotNodeName}' router`,
@@ -317,6 +347,40 @@ function validateSpotNodes(registration: ZLinkFrameworkRegistration): void {
         `SpotNode '${spotNodeName}' router and pubSub routingId must match.`
       );
     }
+  }
+}
+
+function validateMeshChannels(
+  spotNodeName: string,
+  meshChannels: Readonly<Record<string, ZLinkMeshChannelOptions>> | undefined
+): void {
+  for (const [channelName, channel] of Object.entries(meshChannels ?? {})) {
+    requireName(`RouteMesh '${spotNodeName}' channel`, channelName);
+    const handlerCount = (channel.requestHandlers?.length ?? 0)
+      + (channel.sendHandlers?.length ?? 0);
+    if (channel.client === true && channel.server === true) {
+      throw new ZLinkConfigurationException(
+        `RouteMesh '${spotNodeName}' channel '${channelName}' must register exactly one role.`
+      );
+    }
+    if (channel.server !== true && handlerCount > 0) {
+      throw new ZLinkConfigurationException(
+        `RouteMesh '${spotNodeName}' channel '${channelName}' handlers require a server role.`
+      );
+    }
+    if (channel.client !== true && channel.server !== true) {
+      throw new ZLinkConfigurationException(
+        `RouteMesh '${spotNodeName}' channel '${channelName}' must register a client or server role.`
+      );
+    }
+    validateDuplicatePacketNames(
+      `RouteMesh '${spotNodeName}' channel '${channelName}' request handler`,
+      channel.requestHandlers?.map((handler) => handler.packetName)
+    );
+    validateDuplicatePacketNames(
+      `RouteMesh '${spotNodeName}' channel '${channelName}' send handler`,
+      channel.sendHandlers?.map((handler) => handler.packetName)
+    );
   }
 }
 

@@ -150,6 +150,34 @@ export class ZLinkInMemoryAuthorityStore {
     }
 
     validatePayload(mutation.payload);
+    if (mutation.kind === 'rebindOwnerLease') {
+      const currentOwner = {
+        ownerId: row.snapshot.ownerId,
+        leaseGeneration: row.snapshot.ownerLeaseGeneration
+      };
+      if (
+        !sameOwner(mutation.expectedOwner, currentOwner)
+        || mutation.targetOwner.ownerId !== currentOwner.ownerId
+        || mutation.targetOwner.leaseGeneration === currentOwner.leaseGeneration
+        || !this.validation.isTargetLive(
+          row.snapshot.allocation.descriptor,
+          row.snapshot.allocation.descriptorLifecycleGeneration,
+          mutation.targetOwner
+        )
+      ) {
+        return { kind: 'conflict', current: this.read(keyValue) };
+      }
+      const nextVersion = this.tryNextStoreVersion();
+      if (nextVersion === undefined) return { kind: 'generationExhausted' };
+      row.snapshot = {
+        ...row.snapshot,
+        ownerLeaseGeneration: mutation.targetOwner.leaseGeneration,
+        storeVersion: version(nextVersion),
+        payload: Buffer.from(mutation.payload)
+      };
+      this.scanRevision++;
+      return this.stored(row.snapshot);
+    }
     if (mutation.kind === 'restore') {
       if (!sameOwner(mutation.expectedOwner, {
         ownerId: row.snapshot.ownerId,
@@ -886,6 +914,17 @@ export class ZLinkInMemoryAuthorityStore {
 
 function validateAuthorityMutation(mutation: ZLinkAuthorityMutation): void {
   if (mutation.kind === 'delete' || mutation.kind === 'restore') return;
+  if (mutation.kind === 'rebindOwnerLease') {
+    if (
+      mutation.expectedOwner.ownerId !== mutation.targetOwner.ownerId
+      || mutation.expectedOwner.leaseGeneration === mutation.targetOwner.leaseGeneration
+      || mutation.expectedOwner.leaseGeneration <= 0n
+      || mutation.targetOwner.leaseGeneration <= 0n
+    ) {
+      throw new TypeError('Authority lease rebind must retain the owner and change the lease generation.');
+    }
+    return;
+  }
   const hasOwner = mutation.targetOwner !== undefined;
   const hasFence = mutation.relocationCapacityFence !== undefined;
   if (mutation.generationTransition === 'preserve' ? (hasOwner || hasFence) : (!hasOwner || !hasFence)) {

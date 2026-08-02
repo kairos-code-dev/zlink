@@ -84,6 +84,7 @@ export {
   decodeActorAuthorityIdentity,
   encodeActorAuthorityIdentity,
   rewriteActorAuthorityRoute,
+  rewriteActorAuthorityOwner,
   publishInitialActorAuthority,
   type ZLinkActorAuthorityIdentity
 } from './actor-authority-publication';
@@ -231,7 +232,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
         state.markNativeActorDestroyed(nativeRef);
       }
       if (state.actorType !== undefined && state.ownsLocation) {
-        await this.options.locationLifecycle?.releaseActor(state.actorType, actor.actorId);
+        await this.options.locationLifecycle?.releaseActor(state.actorType, actor.actorId, current);
       }
       this.options.actorDestroyedCleanup?.(actor.actorId);
       await disposeLifecycleHandlers(actorInstance);
@@ -595,12 +596,19 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
       );
     }
     const destroyTask = state.getOrStartDestroy(entryNodeRid, async (actorRef) => {
+      const destroyedActorRef = actorRef === undefined
+        ? undefined
+        : toFrameworkActorRef(actorRef, state.meshName ?? '');
       if (actorRef !== undefined) {
         await node.destroyActor(actorRef, 0, destroySignal);
         state.markNativeActorDestroyed(actorRef);
       }
       if (state.actorType !== undefined && state.ownsLocation) {
-        await this.options.locationLifecycle?.releaseActor(state.actorType, actor.context.actorId);
+        await this.options.locationLifecycle?.releaseActor(
+          state.actorType,
+          actor.context.actorId,
+          destroyedActorRef
+        );
       }
       this.options.actorDestroyedCleanup?.(actor.context.actorId);
       await disposeLifecycleHandlers(actor);

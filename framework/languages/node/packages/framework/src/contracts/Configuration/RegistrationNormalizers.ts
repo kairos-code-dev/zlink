@@ -223,14 +223,14 @@ function normalizeListener<
   }
 >(listener: T, network: ZLinkNetworkOptions): T & {
   readonly bind: string;
-  readonly bindHost: string;
+  readonly bindHost?: string;
   readonly port: number;
 } {
   const usesConfiguredEndpoint = listener.bind !== undefined && listener.port === undefined;
   const port = listener.port ?? (usesConfiguredEndpoint ? endpointPort(listener.bind!) : 0);
   const bindHost = listener.bindHost
     ?? (usesConfiguredEndpoint ? endpointHost(listener.bind!) : network.bindHost);
-  const bind = usesConfiguredEndpoint ? listener.bind! : tcpEndpoint(bindHost, port);
+  const bind = usesConfiguredEndpoint ? listener.bind! : tcpEndpoint(bindHost ?? network.bindHost, port);
   return {
     ...listener,
     bind,
@@ -249,11 +249,13 @@ function tcpEndpoint(host: string, port: number): string {
   return `tcp://${endpointHost}:${port}`;
 }
 
-function endpointHost(endpoint: string): string {
+function endpointHost(endpoint: string): string | undefined {
   try {
-    return new URL(endpoint).hostname.replace(/^\[|\]$/g, '');
+    const parsed = new URL(endpoint);
+    if (parsed.protocol !== 'tcp:') return undefined;
+    return parsed.hostname.replace(/^\[|\]$/g, '');
   } catch {
-    return '';
+    return undefined;
   }
 }
 

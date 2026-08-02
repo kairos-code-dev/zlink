@@ -3,6 +3,7 @@ const test = require('node:test');
 const zlink = require('@zlink-systems/zlink');
 const framework = require('../../packages/framework/dist');
 const internal = require('../../packages/framework/dist/internal');
+const locationWrites = internal;
 
 test('in-memory location store issues generations and fences owner writes', async () => {
   let nowMs = Date.UTC(2026, 6, 3, 0, 0, 0);
@@ -16,43 +17,43 @@ test('in-memory location store issues generations and fences owner writes', asyn
   assert.equal(result.kind, 'claimed');
   assert.equal(result.storeNow.toISOString(), new Date(nowMs).toISOString());
 
-  const claim = await store.updateActor(actor('owner-a', 0n), framework.ZLinkLocationWriteIntent.NewClaim);
-  assert.equal(claim.status, framework.ZLinkLocationWriteStatus.Stored);
+  const claim = await store.updateActor(actor('owner-a', 0n), locationWrites.ZLinkLocationWriteIntent.NewClaim);
+  assert.equal(claim.status, locationWrites.ZLinkLocationWriteStatus.Stored);
   assert.equal(claim.generation, 1n);
 
-  const conflict = await store.updateActor(actor('owner-b', 0n), framework.ZLinkLocationWriteIntent.NewClaim);
-  assert.equal(conflict.status, framework.ZLinkLocationWriteStatus.RejectedConflict);
+  const conflict = await store.updateActor(actor('owner-b', 0n), locationWrites.ZLinkLocationWriteIntent.NewClaim);
+  assert.equal(conflict.status, locationWrites.ZLinkLocationWriteStatus.RejectedConflict);
 
-  const renew = await store.updateActor(actor('owner-a', claim.generation), framework.ZLinkLocationWriteIntent.Renew);
-  assert.equal(renew.status, framework.ZLinkLocationWriteStatus.Stored);
+  const renew = await store.updateActor(actor('owner-a', claim.generation), locationWrites.ZLinkLocationWriteIntent.Renew);
+  assert.equal(renew.status, locationWrites.ZLinkLocationWriteStatus.Stored);
   assert.equal(renew.generation, claim.generation);
 
-  const takeover = await store.updateActor(actor('owner-b', 0n), framework.ZLinkLocationWriteIntent.Takeover);
-  assert.equal(takeover.status, framework.ZLinkLocationWriteStatus.Stored);
+  const takeover = await store.updateActor(actor('owner-b', 0n), locationWrites.ZLinkLocationWriteIntent.Takeover);
+  assert.equal(takeover.status, locationWrites.ZLinkLocationWriteStatus.Stored);
   assert.equal(takeover.generation, 2n);
 
-  const stale = await store.updateActor(actor('owner-a', claim.generation), framework.ZLinkLocationWriteIntent.Renew);
-  assert.equal(stale.status, framework.ZLinkLocationWriteStatus.IgnoredStale);
+  const stale = await store.updateActor(actor('owner-a', claim.generation), locationWrites.ZLinkLocationWriteIntent.Renew);
+  assert.equal(stale.status, locationWrites.ZLinkLocationWriteStatus.IgnoredStale);
 
   const staleRemove = await store.removeActor(
     { meshName: 'play', actorId: 'actor-1' },
     { ownerId: 'owner-a', leaseGeneration: claim.generation }
   );
-  assert.equal(staleRemove, framework.ZLinkLocationWriteStatus.IgnoredStale);
+  assert.equal(staleRemove, locationWrites.ZLinkLocationWriteStatus.IgnoredStale);
 
   const removed = await store.removeActor(
     { meshName: 'play', actorId: 'actor-1' },
     { ownerId: 'owner-b', leaseGeneration: takeover.generation }
   );
-  assert.equal(removed, framework.ZLinkLocationWriteStatus.Stored);
+  assert.equal(removed, locationWrites.ZLinkLocationWriteStatus.Stored);
 
-  const reclaim = await store.updateActor(actor('owner-a', 0n), framework.ZLinkLocationWriteIntent.NewClaim);
-  assert.equal(reclaim.status, framework.ZLinkLocationWriteStatus.Stored);
+  const reclaim = await store.updateActor(actor('owner-a', 0n), locationWrites.ZLinkLocationWriteIntent.NewClaim);
+  assert.equal(reclaim.status, locationWrites.ZLinkLocationWriteStatus.Stored);
   assert.equal(reclaim.generation, 3n);
 
   nowMs += 31000;
-  const expiredOwnerClaim = await store.updateActor(actor('owner-b', 0n), framework.ZLinkLocationWriteIntent.NewClaim);
-  assert.equal(expiredOwnerClaim.status, framework.ZLinkLocationWriteStatus.Stored);
+  const expiredOwnerClaim = await store.updateActor(actor('owner-b', 0n), locationWrites.ZLinkLocationWriteIntent.NewClaim);
+  assert.equal(expiredOwnerClaim.status, locationWrites.ZLinkLocationWriteStatus.Stored);
   assert.equal(expiredOwnerClaim.generation, 4n);
 
   assert.equal((await store.readOwnerLease('owner-a')).kind, 'missing');
@@ -64,11 +65,11 @@ test('in-memory location store lists filters pages and bumps change stamps', asy
 
   const ownerA = await store.claimOwnerLease('owner-a', 30000);
   assert.equal(ownerA.kind, 'claimed');
-  await store.updatePeer(peer('owner-a', 'node-1'), framework.ZLinkLocationWriteIntent.NewClaim);
-  await store.updatePeer(peer('owner-a', 'node-2'), framework.ZLinkLocationWriteIntent.NewClaim);
-  await store.updateSpot(spot('owner-a', 'spot-1'), framework.ZLinkLocationWriteIntent.NewClaim);
-  await store.updateSpot(spot('owner-a', 'spot-2'), framework.ZLinkLocationWriteIntent.NewClaim);
-  await store.updateRoute(route('owner-a', 'route-1'), framework.ZLinkLocationWriteIntent.NewClaim);
+  await store.updatePeer(peer('owner-a', 'node-1'), locationWrites.ZLinkLocationWriteIntent.NewClaim);
+  await store.updatePeer(peer('owner-a', 'node-2'), locationWrites.ZLinkLocationWriteIntent.NewClaim);
+  await store.updateSpot(spot('owner-a', 'spot-1'), locationWrites.ZLinkLocationWriteIntent.NewClaim);
+  await store.updateSpot(spot('owner-a', 'spot-2'), locationWrites.ZLinkLocationWriteIntent.NewClaim);
+  await store.updateRoute(route('owner-a', 'route-1'), locationWrites.ZLinkLocationWriteIntent.NewClaim);
 
   const peers = await store.listPeers({ meshName: 'play', role: framework.ZLinkLocationRole.Router });
   assert.equal(peers.length, 2);
@@ -112,18 +113,18 @@ test('in-memory location store matches the formal operation trace for core write
   recordLease('lease-a', leaseA);
   recordLease('lease-b', leaseB);
 
-  const claim = await store.updateActor(actor('owner-a', 0n), framework.ZLinkLocationWriteIntent.NewClaim);
+  const claim = await store.updateActor(actor('owner-a', 0n), locationWrites.ZLinkLocationWriteIntent.NewClaim);
   record('actor-claim', claim);
   record('actor-claim-conflict',
-    await store.updateActor(actor('owner-b', 0n), framework.ZLinkLocationWriteIntent.NewClaim));
+    await store.updateActor(actor('owner-b', 0n), locationWrites.ZLinkLocationWriteIntent.NewClaim));
   record('actor-renew',
-    await store.updateActor(actor('owner-a', claim.generation), framework.ZLinkLocationWriteIntent.Renew));
+    await store.updateActor(actor('owner-a', claim.generation), locationWrites.ZLinkLocationWriteIntent.Renew));
   record('actor-renew-same-owner',
-    await store.updateActor(actor('owner-a', claim.generation + 9n), framework.ZLinkLocationWriteIntent.Renew));
-  const takeover = await store.updateActor(actor('owner-b', 0n), framework.ZLinkLocationWriteIntent.Takeover);
+    await store.updateActor(actor('owner-a', claim.generation + 9n), locationWrites.ZLinkLocationWriteIntent.Renew));
+  const takeover = await store.updateActor(actor('owner-b', 0n), locationWrites.ZLinkLocationWriteIntent.Takeover);
   record('actor-takeover', takeover);
   record('actor-old-owner-renew',
-    await store.updateActor(actor('owner-a', claim.generation), framework.ZLinkLocationWriteIntent.Renew));
+    await store.updateActor(actor('owner-a', claim.generation), locationWrites.ZLinkLocationWriteIntent.Renew));
   recordStatus('actor-old-owner-remove', await store.removeActor(
     { meshName: 'play', actorId: 'actor-1' },
     { ownerId: 'owner-a', leaseGeneration: claim.generation }
@@ -133,31 +134,31 @@ test('in-memory location store matches the formal operation trace for core write
     { ownerId: 'owner-b', leaseGeneration: takeover.generation }
   ));
   record('actor-reclaim',
-    await store.updateActor(actor('owner-a', 0n), framework.ZLinkLocationWriteIntent.NewClaim));
+    await store.updateActor(actor('owner-a', 0n), locationWrites.ZLinkLocationWriteIntent.NewClaim));
 
   record('spot-claim-1',
-    await store.updateSpot(spot('owner-a', 'spot-1'), framework.ZLinkLocationWriteIntent.NewClaim));
+    await store.updateSpot(spot('owner-a', 'spot-1'), locationWrites.ZLinkLocationWriteIntent.NewClaim));
   record('spot-claim-2',
-    await store.updateSpot(spot('owner-a', 'spot-2'), framework.ZLinkLocationWriteIntent.NewClaim));
+    await store.updateSpot(spot('owner-a', 'spot-2'), locationWrites.ZLinkLocationWriteIntent.NewClaim));
   recordStatus('spot-remove-wrong-owner', await store.removeSpot(
     { meshName: 'play', spotId: 'spot-1' },
     { ownerId: 'owner-b', leaseGeneration: 1n }
   ));
-  const routeClaim = await store.updateRoute(route('owner-a'), framework.ZLinkLocationWriteIntent.NewClaim);
+  const routeClaim = await store.updateRoute(route('owner-a'), locationWrites.ZLinkLocationWriteIntent.NewClaim);
   record('route-claim', routeClaim);
   record('route-remove', await store.removeRoute(
     { routeKind: internal.ZLinkRouteKind.ActorSession, routeKey: 'route-1' },
     { ownerId: 'owner-a', leaseGeneration: routeClaim.generation }
   ));
   record('route-reclaim',
-    await store.updateRoute(route('owner-b'), framework.ZLinkLocationWriteIntent.NewClaim));
+    await store.updateRoute(route('owner-b'), locationWrites.ZLinkLocationWriteIntent.NewClaim));
 
-  const peerClaim = await store.updatePeer(peer('owner-a'), framework.ZLinkLocationWriteIntent.NewClaim);
+  const peerClaim = await store.updatePeer(peer('owner-a'), locationWrites.ZLinkLocationWriteIntent.NewClaim);
   record('peer-claim', peerClaim);
   trace.push(`remove-all-by-owner=${await store.removeAllByOwner(leaseA.token)}`);
   trace.push(`lease-a-remove=${await store.releaseOwnerLease(leaseA.token)}`);
   record('peer-claim-after-lease-removed',
-    await store.updatePeer(peer('owner-b'), framework.ZLinkLocationWriteIntent.NewClaim));
+    await store.updatePeer(peer('owner-b'), locationWrites.ZLinkLocationWriteIntent.NewClaim));
 
   assert.deepEqual(trace, [
     'lease-a=expires:2026-07-03T00:00:30.000Z',
@@ -223,9 +224,9 @@ test('in-memory exact MeshNode descriptor and Actor transfer stores enforce thei
   };
   const descriptorClaim = await store.updateMeshNode(
     descriptor,
-    framework.ZLinkLocationWriteIntent.NewClaim
+    locationWrites.ZLinkLocationWriteIntent.NewClaim
   );
-  assert.equal(descriptorClaim.status, framework.ZLinkLocationWriteStatus.Stored);
+  assert.equal(descriptorClaim.status, locationWrites.ZLinkLocationWriteStatus.Stored);
   assert.deepEqual((await store.listMeshNodes('game')).items, [{
     ...descriptor,
     updatedAt: new Date(nowMs)
@@ -235,7 +236,7 @@ test('in-memory exact MeshNode descriptor and Actor transfer stores enforce thei
       { meshName: 'game', rid: rid('game-a') },
       { ownerId: 'mesh-owner-a', leaseGeneration: descriptorClaim.generation + 1n }
     ),
-    framework.ZLinkLocationWriteStatus.IgnoredStale
+    locationWrites.ZLinkLocationWriteStatus.IgnoredStale
   );
 
   const otherLease = await store.claimOwnerLease('mesh-owner-b', 30_000);
@@ -248,10 +249,10 @@ test('in-memory exact MeshNode descriptor and Actor transfer stores enforce thei
     endpoint: 'tcp://10.0.0.2:7300',
     ownerId: 'mesh-owner-b',
     leaseGeneration: otherLease.token.leaseGeneration
-  }, framework.ZLinkLocationWriteIntent.NewClaim);
+  }, locationWrites.ZLinkLocationWriteIntent.NewClaim);
   assert.equal(
     conflictingEntryIdentity.status,
-    framework.ZLinkLocationWriteStatus.RejectedConflict
+    locationWrites.ZLinkLocationWriteStatus.RejectedConflict
   );
   assert.equal((await store.listMeshNodes('game')).items.length, 1);
   assert.equal(
@@ -259,7 +260,7 @@ test('in-memory exact MeshNode descriptor and Actor transfer stores enforce thei
       { meshName: 'game', rid: rid('game-a') },
       meshLease.token
     ),
-    framework.ZLinkLocationWriteStatus.Stored
+    locationWrites.ZLinkLocationWriteStatus.Stored
   );
   assert.equal(
     (await store.updateMeshNode({
@@ -270,9 +271,23 @@ test('in-memory exact MeshNode descriptor and Actor transfer stores enforce thei
       endpoint: 'tcp://10.0.0.2:7300',
       ownerId: 'mesh-owner-b',
       leaseGeneration: otherLease.token.leaseGeneration
-    }, framework.ZLinkLocationWriteIntent.NewClaim)).status,
-    framework.ZLinkLocationWriteStatus.Stored
+    }, locationWrites.ZLinkLocationWriteIntent.NewClaim)).status,
+    locationWrites.ZLinkLocationWriteStatus.Stored
   );
+
+  await store.releaseOwnerLease(otherLease.token);
+  const reclaimedMeshLease = await store.claimOwnerLease('mesh-owner-b', 30_000);
+  assert.equal(reclaimedMeshLease.kind, 'claimed');
+  const reclaimedDescriptor = await store.updateMeshNode({
+    ...descriptor,
+    rid: rid('game-b'),
+    lifecycleGeneration: 8n,
+    descriptorRevision: 2n,
+    endpoint: 'tcp://10.0.0.2:7300',
+    ownerId: 'mesh-owner-b',
+    leaseGeneration: reclaimedMeshLease.token.leaseGeneration
+  }, locationWrites.ZLinkLocationWriteIntent.Takeover);
+  assert.equal(reclaimedDescriptor.status, locationWrites.ZLinkLocationWriteStatus.Stored);
 
   const request = actorTransferRequest();
   const prepared = await store.prepareActorTransfer(request);
@@ -396,6 +411,6 @@ function route(ownerId, routeKey = 'route-1') {
 }
 
 function statusName(status) {
-  return Object.entries(framework.ZLinkLocationWriteStatus)
+  return Object.entries(locationWrites.ZLinkLocationWriteStatus)
     .find(([, value]) => value === status)[0];
 }

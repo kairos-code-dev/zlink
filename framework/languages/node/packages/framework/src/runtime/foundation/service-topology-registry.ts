@@ -335,18 +335,35 @@ export class ServiceTopologyRegistry {
     eligible: readonly T[],
     weight: (value: T) => number
   ): T | undefined {
-    const total = eligible.reduce((sum, value) => sum + BigInt(weight(value)), 0n);
+    const weights = eligible.map(value => BigInt(weight(value)));
+    const total = weights.reduce((sum, value) => sum + value, 0n);
     if (total === 0n) return undefined;
     const cursor = this.selectionCursor.get(key) ?? 0n;
     this.selectionCursor.set(key, cursor + 1n);
-    const selected = cursor % total;
+    // Reduce the weighted cycle before selecting its slot. This preserves the
+    // long-run weight ratio while allowing equal-weight targets to participate
+    // in a bounded request window instead of consuming one full weight block.
+    const divisor = weights.reduce((current, value) => gcd(current, value), 0n);
+    const cycleLength = total / divisor;
+    const selected = cursor % cycleLength;
     let offset = 0n;
-    for (const value of eligible) {
-      offset += BigInt(weight(value));
-      if (selected < offset) return value;
+    for (let index = 0; index < eligible.length; index += 1) {
+      offset += weights[index]! / divisor;
+      if (selected < offset) return eligible[index]!;
     }
     return eligible.at(-1);
   }
+}
+
+function gcd(left: bigint, right: bigint): bigint {
+  let a = left < 0n ? -left : left;
+  let b = right < 0n ? -right : right;
+  while (b !== 0n) {
+    const remainder = a % b;
+    a = b;
+    b = remainder;
+  }
+  return a;
 }
 
 export function validateDescriptor(descriptor: ServiceNodeDescriptor): void {

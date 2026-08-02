@@ -271,18 +271,18 @@ function isFlowOrigin(origin: unknown): origin is ZLinkFlowOrigin {
 
 export function messageToBytes(message: Message): Uint8Array {
   const value = message as unknown as {
-    toBytes?: () => Uint8Array;
     data?: () => Uint8Array;
     bytes?: Uint8Array;
+    toBytes?: () => Uint8Array;
   };
-  if (value.toBytes !== undefined) {
-    return value.toBytes();
-  }
   if (value.data !== undefined) {
-    return new Uint8Array(value.data());
+    return value.data();
   }
   if (value.bytes !== undefined) {
-    return new Uint8Array(value.bytes);
+    return value.bytes;
+  }
+  if (value.toBytes !== undefined) {
+    return value.toBytes();
   }
   throw new Error('Stream payload cannot be copied for relay.');
 }

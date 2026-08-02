@@ -119,6 +119,10 @@ import {
   ZLinkMessageMetadataEmpty
 } from '../../packages/framework/src/contracts';
 import {
+  createInternalFrameworkException,
+  ZLinkFrameworkInternalErrorKind
+} from '../../packages/framework/src/runtime/framework-errors-internal';
+import {
   ZLinkSubmitStatus
 } from '../../packages/framework/src/runtime/messaging/submission-result';
 
@@ -2620,8 +2624,8 @@ test('public SpotId call reaches production host Missing Instance placement with
   const address = new ZLinkHostSpotAddressTransport({
     resolver: () => ({
       async resolve() {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.NotFound,
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.SpotRouteNotFound,
           'missing'
         );
       }
@@ -2721,8 +2725,8 @@ test('Missing Instance with zero types or no eligible descriptor uses exact targ
     const address = new ZLinkHostSpotAddressTransport({
       resolver: () => ({
         async resolve() {
-          throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.NotFound,
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.SpotRouteNotFound,
             'missing'
           );
         }

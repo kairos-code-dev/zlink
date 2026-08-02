@@ -159,13 +159,31 @@ class ZLinkSpotNodeAutoConnectExecutor implements IZLinkAutoConnectExecutor {
 
   connect(target: ZLinkAutoConnectTarget): boolean {
     if (this.manualConnections) return false;
-    this.connectPeer(target);
-    return true;
+    return this.connectPeer(target);
   }
 
   disconnect(target: ZLinkAutoConnectTarget): void {
     if (this.manualConnections) return;
     this.disconnectPeer(target);
+  }
+
+  disconnectStalePeers(targets: readonly ZLinkAutoConnectTarget[]): void {
+    if (this.manualConnections) return;
+    const current = new Map(targets
+      .filter((target) => target.nodeRid !== undefined)
+      .map((target) => [String(target.nodeRid), target]));
+    const peers = this.node.peers();
+    for (const peer of peers) {
+      if (peer.routingId === null) continue;
+      const target = current.get(String(peer.routingId));
+      if (
+        target !== undefined
+        && peer.endpoint === target.endpoint
+      ) {
+        continue;
+      }
+      this.node.disconnectPeer(peer.routingId, peer.lifecycleGeneration);
+    }
   }
 
   isDisconnected(target: ZLinkAutoConnectTarget): boolean {
@@ -194,20 +212,28 @@ class ZLinkSpotNodeAutoConnectExecutor implements IZLinkAutoConnectExecutor {
       })));
   }
 
-  private connectPeer(target: ZLinkAutoConnectTarget): void {
+  private connectPeer(target: ZLinkAutoConnectTarget): boolean {
     const key = connectionKey(target);
     if (this.connectionIntents.has(key)) {
-      return;
+      return true;
     }
-    const connectionIntentId = this.node.connectPeer({
-      endpoint: target.endpoint,
-      expectedRid: target.nodeRid === undefined
-        ? undefined
-        : toBindingRoutingId(target.nodeRid),
-      expectedSecurityIdentity: target.metadata?.securityIdentity,
-      expectedLifecycleGeneration: target.lifecycleGeneration
-    });
-    this.connectionIntents.set(key, connectionIntentId);
+    try {
+      const connectionIntentId = this.node.connectPeer({
+        endpoint: target.endpoint,
+        expectedRid: target.nodeRid === undefined
+          ? undefined
+          : toBindingRoutingId(target.nodeRid),
+        expectedSecurityIdentity: target.metadata?.securityIdentity,
+        expectedLifecycleGeneration: target.lifecycleGeneration
+      });
+      this.connectionIntents.set(key, connectionIntentId);
+      return true;
+    } catch {
+      // A discovered endpoint can become unavailable between the store read and
+      // the socket connect. Leave the target inactive so the next reconciliation
+      // can retry without terminating the host's background runtime.
+      return false;
+    }
   }
 
   private disconnectPeer(target: ZLinkAutoConnectTarget): void {

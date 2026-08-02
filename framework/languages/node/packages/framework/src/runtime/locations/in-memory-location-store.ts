@@ -252,9 +252,15 @@ export class ZLinkInMemoryLocationStore implements
       return stored(1n, updatedAt);
     }
     const currentLease = this.leases.get(current.ownerId);
-    if ((currentLease === undefined || currentLease.leaseExpiresAt.getTime() <= updatedAt.getTime())
-      && (intent === ZLinkLocationWriteIntent.NewClaim
-        || intent === ZLinkLocationWriteIntent.Takeover)) {
+    if (canTakeOver(
+      current.ownerId,
+      current.leaseGeneration,
+      currentLease,
+      descriptor.ownerId,
+      descriptor.leaseGeneration,
+      intent,
+      updatedAt
+    )) {
       if (!this.claimEntrySpotIdentity(descriptor, key)) return rejectedConflict();
       this.releaseEntrySpotIdentity(current);
       const next = (this.meshNodes.generations.get(key) ?? 0n) + 1n;
@@ -366,9 +372,15 @@ export class ZLinkInMemoryLocationStore implements
       return stored(generation, updatedAt);
     }
     const currentLease = this.leases.get(current.ownerId);
-    if ((currentLease === undefined || currentLease.leaseExpiresAt.getTime() <= updatedAt.getTime())
-      && (intent === ZLinkLocationWriteIntent.NewClaim
-        || intent === ZLinkLocationWriteIntent.Takeover)) {
+    if (canTakeOver(
+      current.ownerId,
+      current.leaseGeneration,
+      currentLease,
+      descriptor.ownerId,
+      descriptor.leaseGeneration,
+      intent,
+      updatedAt
+    )) {
       const generation = (this.clientServers.generations.get(key) ?? 0n) + 1n;
       this.clientServers.rows.set(key, { ...descriptor, updatedAt });
       this.clientServers.generations.set(key, generation);
@@ -442,9 +454,15 @@ export class ZLinkInMemoryLocationStore implements
       return stored(generation, updatedAt);
     }
     const currentLease = this.leases.get(current.ownerId);
-    if ((currentLease === undefined || currentLease.leaseExpiresAt.getTime() <= updatedAt.getTime())
-      && (intent === ZLinkLocationWriteIntent.NewClaim
-        || intent === ZLinkLocationWriteIntent.Takeover)) {
+    if (canTakeOver(
+      current.ownerId,
+      current.leaseGeneration,
+      currentLease,
+      descriptor.ownerId,
+      descriptor.leaseGeneration,
+      intent,
+      updatedAt
+    )) {
       const generation = (this.fanoutPublishers.generations.get(key) ?? 0n) + 1n;
       this.fanoutPublishers.rows.set(key, { ...descriptor, updatedAt });
       this.fanoutPublishers.generations.set(key, generation);
@@ -551,11 +569,23 @@ export class ZLinkInMemoryLocationStore implements
       return rejectedConflict();
     }
     if (intent === ZLinkLocationWriteIntent.Renew) {
-      if (current === undefined || current.ownerId !== spot.ownerId) return ignoredStale();
+      if (current === undefined
+        || current.ownerId !== spot.ownerId
+        || current.leaseGeneration !== spot.leaseGeneration) return ignoredStale();
       this.spots.rows.set(key, { ...spot, updatedAt });
       this.bump(ZLinkLocationKind.Spot, spot.meshName);
       return stored(this.spots.generations.get(key) ?? 0n, updatedAt);
     }
+    if (current !== undefined
+      && !canTakeOver(
+        current.ownerId,
+        current.leaseGeneration,
+        this.leases.get(current.ownerId),
+        spot.ownerId,
+        spot.leaseGeneration,
+        intent,
+        updatedAt
+      )) return rejectedConflict();
     const generation = (this.spots.generations.get(key) ?? 0n) + 1n;
     this.spots.generations.set(key, generation);
     this.spots.rows.set(key, { ...spot, updatedAt });
@@ -566,9 +596,10 @@ export class ZLinkInMemoryLocationStore implements
   async removeSpot(key: ZLinkSpotLocationKey, owner: ZLinkLocationOwnerToken): Promise<ZLinkLocationWriteStatus> {
     const encoded = ZLinkLocationKeyCodec.encodeSpotKey(key);
     const current = this.spots.rows.get(encoded);
+    const leaseGeneration = current?.leaseGeneration ?? this.spots.generations.get(encoded);
     if (current === undefined
       || current.ownerId !== owner.ownerId
-      || this.spots.generations.get(encoded) !== owner.leaseGeneration) {
+      || leaseGeneration !== owner.leaseGeneration) {
       return ZLinkLocationWriteStatus.IgnoredStale;
     }
     this.spots.rows.delete(encoded);
@@ -600,11 +631,23 @@ export class ZLinkInMemoryLocationStore implements
       return rejectedConflict();
     }
     if (intent === ZLinkLocationWriteIntent.Renew) {
-      if (current === undefined || current.ownerId !== actor.ownerId) return ignoredStale();
+      if (current === undefined
+        || current.ownerId !== actor.ownerId
+        || current.leaseGeneration !== actor.leaseGeneration) return ignoredStale();
       this.actors.rows.set(key, { ...actor, updatedAt });
       this.bump(ZLinkLocationKind.Actor, actor.meshName);
       return stored(this.actors.generations.get(key) ?? 0n, updatedAt);
     }
+    if (current !== undefined
+      && !canTakeOver(
+        current.ownerId,
+        current.leaseGeneration,
+        this.leases.get(current.ownerId),
+        actor.ownerId,
+        actor.leaseGeneration,
+        intent,
+        updatedAt
+      )) return rejectedConflict();
     const generation = (this.actors.generations.get(key) ?? 0n) + 1n;
     this.actors.generations.set(key, generation);
     this.actors.rows.set(key, { ...actor, updatedAt });
@@ -615,9 +658,10 @@ export class ZLinkInMemoryLocationStore implements
   async removeActor(key: ZLinkActorLocationKey, owner: ZLinkLocationOwnerToken): Promise<ZLinkLocationWriteStatus> {
     const encoded = ZLinkLocationKeyCodec.encodeActorKey(key);
     const current = this.actors.rows.get(encoded);
+    const leaseGeneration = current?.leaseGeneration ?? this.actors.generations.get(encoded);
     if (current === undefined
       || current.ownerId !== owner.ownerId
-      || this.actors.generations.get(encoded) !== owner.leaseGeneration) {
+      || leaseGeneration !== owner.leaseGeneration) {
       return ZLinkLocationWriteStatus.IgnoredStale;
     }
     this.actors.rows.delete(encoded);
@@ -872,10 +916,16 @@ export class ZLinkInMemoryLocationStore implements
   }
 
   async removeAllByOwner(owner: ZLinkLocationOwnerToken): Promise<bigint> {
+    const lease = this.leases.get(owner.ownerId);
+    if (lease === undefined
+      || lease.token.leaseGeneration !== owner.leaseGeneration
+      || lease.leaseExpiresAt.getTime() <= this.now().getTime()) {
+      return 0n;
+    }
     const ownerId = owner.ownerId;
     let removed = 0;
     for (const [key, row] of [...this.meshNodes.rows]) {
-      if (row.ownerId !== owner.ownerId || row.leaseGeneration !== owner.leaseGeneration) continue;
+      if (row.ownerId !== owner.ownerId) continue;
       this.meshNodes.rows.delete(key);
       this.releaseEntrySpotIdentity(row);
       this.bump(ZLinkLocationKind.Peer, row.meshName);
@@ -903,10 +953,18 @@ export class ZLinkInMemoryLocationStore implements
     if (descriptor.entrySpotId === undefined) return true;
     const authorityKey = encodeAuthorityKey('user_spot', descriptor.entrySpotId).value;
     const current = this.entrySpotClaims.get(authorityKey);
-    if (current !== undefined) return current.descriptorKey === descriptorKey
-      && current.ownerId === descriptor.ownerId
-      && current.leaseGeneration === descriptor.leaseGeneration
-      && current.lifecycleGeneration === descriptor.lifecycleGeneration;
+    if (current !== undefined) {
+      if (current.descriptorKey !== descriptorKey
+        || current.ownerId !== descriptor.ownerId
+        || current.lifecycleGeneration !== descriptor.lifecycleGeneration) {
+        return false;
+      }
+      this.entrySpotClaims.set(authorityKey, {
+        ...current,
+        leaseGeneration: descriptor.leaseGeneration
+      });
+      return true;
+    }
     this.entrySpotClaims.set(authorityKey, {
       descriptorKey,
       ownerId: descriptor.ownerId,
@@ -1052,7 +1110,7 @@ export class ZLinkInMemoryLocationStore implements
   private removeFanoutByOwner(owner: ZLinkLocationOwnerToken): number {
     let removed = 0;
     for (const [key, row] of this.fanoutPublishers.rows) {
-      if (row.ownerId !== owner.ownerId || row.leaseGeneration !== owner.leaseGeneration) continue;
+      if (row.ownerId !== owner.ownerId) continue;
       this.fanoutPublishers.rows.delete(key);
       removed++;
     }
@@ -1397,4 +1455,29 @@ function ignoredStale(): ZLinkLocationWriteResult {
 
 function rejectedConflict(): ZLinkLocationWriteResult {
   return { status: ZLinkLocationWriteStatus.RejectedConflict, generation: 0n, updatedAt: new Date(0) };
+}
+
+function canTakeOver(
+  currentOwnerId: string,
+  currentLeaseGeneration: bigint,
+  currentLease: InMemoryOwnerLease | undefined,
+  nextOwnerId: string,
+  nextLeaseGeneration: bigint,
+  intent: ZLinkLocationWriteIntent,
+  now: Date
+): boolean {
+  if (intent === ZLinkLocationWriteIntent.Takeover) {
+    // Takeover is an explicit handoff operation. The row generation and the
+    // next owner's lease still fence concurrent stale writes.
+    return true;
+  }
+  if (intent !== ZLinkLocationWriteIntent.NewClaim) {
+    return false;
+  }
+  const ownerGone = currentLease === undefined
+    || currentLease.leaseExpiresAt.getTime() <= now.getTime();
+  if (ownerGone) return true;
+  return currentOwnerId === nextOwnerId
+    && currentLeaseGeneration !== nextLeaseGeneration
+    && currentLease.token.leaseGeneration === nextLeaseGeneration;
 }

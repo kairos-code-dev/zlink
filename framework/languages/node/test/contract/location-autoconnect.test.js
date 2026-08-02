@@ -86,6 +86,113 @@ test('spot auto-connect carries the expected lifecycle and removes an unresolved
   assert.equal(capability.executor.isDisconnected(target), true);
 });
 
+test('spot auto-connect treats a synchronous unavailable endpoint as a retryable target', () => {
+  let attempts = 0;
+  const node = {
+    status() {
+      return {
+        routingId: zlink.RoutingId.from('node-local'),
+        localEndpoint: 'tcp://local'
+      };
+    },
+    connectPeer() {
+      attempts += 1;
+      throw new Error('connect ECONNREFUSED');
+    },
+    peers() {
+      return [];
+    }
+  };
+  const capability = spotNodeAutoConnect.spotNodeAutoConnectCapability(
+    'zoneworld.zones',
+    { router: { bind: 'tcp://local' } },
+    node
+  );
+  const target = {
+    targetKey: 'remote',
+    nodeRid: zlink.RoutingId.from('node-remote'),
+    lifecycleGeneration: 17n,
+    endpoint: 'tcp://unavailable',
+    role: internal.ZLinkLocationRole.Router
+  };
+
+  assert.equal(capability.executor.connect(target), false);
+  assert.equal(capability.executor.connect(target), false);
+  assert.equal(attempts, 2);
+});
+
+test('spot auto-connect removes an admitted passive peer after its descriptor disappears', () => {
+  const calls = [];
+  const remoteRid = zlink.RoutingId.from('node-remote');
+  const node = {
+    status() {
+      return {
+        routingId: zlink.RoutingId.from('node-local'),
+        localEndpoint: 'tcp://local'
+      };
+    },
+    peers() {
+      return [{
+        endpoint: 'tcp://remote',
+        routingId: remoteRid,
+        lifecycleGeneration: 17n,
+        state: 3
+      }];
+    },
+    disconnectPeer(peerRid, lifecycleGeneration) {
+      calls.push(`disconnect:${peerRid}:${lifecycleGeneration}`);
+    }
+  };
+  const capability = spotNodeAutoConnect.spotNodeAutoConnectCapability(
+    'zoneworld.zones',
+    { router: { bind: 'tcp://local' } },
+    node
+  );
+
+  capability.executor.disconnectStalePeers([]);
+
+  assert.deepEqual(calls, ['disconnect:node-remote:17']);
+});
+
+test('spot auto-connect preserves a peer when only its opaque lifecycle generation differs', () => {
+  const calls = [];
+  const remoteRid = zlink.RoutingId.from('node-remote');
+  const node = {
+    status() {
+      return {
+        routingId: zlink.RoutingId.from('node-local'),
+        localEndpoint: 'tcp://local'
+      };
+    },
+    peers() {
+      return [{
+        endpoint: 'tcp://remote',
+        routingId: remoteRid,
+        lifecycleGeneration: 17n,
+        state: 3
+      }];
+    },
+    disconnectPeer(peerRid, lifecycleGeneration) {
+      calls.push(`disconnect:${peerRid}:${lifecycleGeneration}`);
+    }
+  };
+  const capability = spotNodeAutoConnect.spotNodeAutoConnectCapability(
+    'zoneworld.zones',
+    { router: { bind: 'tcp://local' } },
+    node
+  );
+
+  capability.executor.disconnectStalePeers([{
+    targetKey: 'remote',
+    nodeRid: remoteRid,
+    lifecycleGeneration: 18n,
+    endpoint: 'tcp://remote',
+    role: internal.ZLinkLocationRole.Router
+  }]);
+
+  assert.deepEqual(calls, []);
+});
+
 test('spot auto-connect uses the concrete endpoint resolved by the started MeshNode', () => {
   const node = {
     status() {
@@ -249,6 +356,69 @@ test('RouteMesh auto-connect skips only Object Client pairs without server membe
       [weightZeroServerMembership]
     ).length,
     0
+  );
+});
+
+test('RouteMesh automatic discovery keeps the lower RID as the sole initiator', () => {
+  const serviceClient = {
+    ...local(
+      internal.ZLinkLocationAutoConnectType.RouteMesh,
+      internal.ZLinkLocationRole.Router,
+      'node-session',
+      'tcp://session'
+    ),
+    objectRole: 'client',
+    hasRouteMeshServerChannel: true
+  };
+  const objectServer = {
+    ...peer(
+      'owner-actor',
+      internal.ZLinkLocationAutoConnectType.RouteMesh,
+      internal.ZLinkLocationRole.Router,
+      'node-actor',
+      'tcp://actor'
+    ),
+    metadata: {
+      objectRole: 'server',
+      hasRouteMeshServerChannel: 'true',
+      descriptorRevision: '1'
+    }
+  };
+
+  assert.deepEqual(
+    [...internal.ZLinkAutoConnectPlanner.computeDesired(serviceClient, [objectServer]).values()]
+      .map((target) => target.endpoint),
+    []
+  );
+
+  const objectServerLocal = {
+    ...local(
+      internal.ZLinkLocationAutoConnectType.RouteMesh,
+      internal.ZLinkLocationRole.Router,
+      'node-actor',
+      'tcp://actor'
+    ),
+    objectRole: 'server',
+    hasRouteMeshServerChannel: true
+  };
+  const serviceClientPeer = {
+    ...peer(
+      'owner-session',
+      internal.ZLinkLocationAutoConnectType.RouteMesh,
+      internal.ZLinkLocationRole.Router,
+      'node-session',
+      'tcp://session'
+    ),
+    metadata: {
+      objectRole: 'client',
+      hasRouteMeshServerChannel: 'true',
+      descriptorRevision: '1'
+    }
+  };
+  assert.deepEqual(
+    [...internal.ZLinkAutoConnectPlanner.computeDesired(objectServerLocal, [serviceClientPeer]).values()]
+      .map((target) => target.endpoint),
+    ['tcp://session']
   );
 });
 
@@ -567,6 +737,64 @@ test('auto-connect reconciler removes a disconnected endpoint until a fresh stor
   await reconciler.tick();
   assert.deepEqual(calls, ['connect:tcp://remote', 'connect:tcp://remote']);
   assert.equal(reconciler.activeTargets.length, 1);
+});
+
+test('auto-connect reconciler defers stale-peer pruning after an empty candidate scan', async () => {
+  let nowMs = 0;
+  let rows = [peer(
+    'owner-remote',
+    internal.ZLinkLocationAutoConnectType.RouteMesh,
+    internal.ZLinkLocationRole.Router,
+    'node-remote',
+    'tcp://remote'
+  )];
+  const calls = [];
+  const reconciler = new internal.ZLinkAutoConnectReconciler({
+    local: local(
+      internal.ZLinkLocationAutoConnectType.RouteMesh,
+      internal.ZLinkLocationRole.Router,
+      'node-local',
+      'tcp://dealer'
+    ),
+    runtime: {},
+    peerResolver: {
+      async listLivePeers() {
+        return rows;
+      }
+    },
+    executor: {
+      connect(target) {
+        calls.push(`connect:${target.endpoint}`);
+        return true;
+      },
+      disconnect(target) {
+        calls.push(`disconnect:${target.endpoint}`);
+      },
+      disconnectStalePeers(targets) {
+        calls.push(`stale:${targets.length}`);
+      }
+    },
+    options: { ownerLeaseRenewIntervalMs: 1000 },
+    monotonicNowMs: () => nowMs
+  });
+
+  await reconciler.tick();
+  assert.deepEqual(calls, ['connect:tcp://remote', 'stale:1']);
+
+  rows = [];
+  await reconciler.tick();
+  assert.deepEqual(calls, ['connect:tcp://remote', 'stale:1']);
+  assert.equal(reconciler.activeTargets.length, 1);
+
+  nowMs = 1000;
+  await reconciler.tick();
+  assert.deepEqual(calls, [
+    'connect:tcp://remote',
+    'stale:1',
+    'stale:0',
+    'disconnect:tcp://remote'
+  ]);
+  assert.equal(reconciler.activeTargets.length, 0);
 });
 
 test('auto-connect reconciler retries the last desired target only within store failure grace', async () => {

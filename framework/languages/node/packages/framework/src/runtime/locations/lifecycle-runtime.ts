@@ -10,6 +10,7 @@ import {
   type ZLinkSpotLocation,
   type ZLinkSpotLocationKey
 } from './internal-location-contracts';
+import type { ZLinkLocationOwnerToken } from '../../contracts/Locations/Writes';
 
 export interface ZLinkOwnershipLostEvent {
   readonly kind: ZLinkLocationKind;
@@ -18,6 +19,8 @@ export interface ZLinkOwnershipLostEvent {
 
 export interface IZLinkLocationLifecycleRuntime {
   readonly ownerId: string;
+  readonly currentOwnerToken?: ZLinkLocationOwnerToken;
+  reclaimOwnerAuthorities?(signal?: AbortSignal): Promise<void>;
   addOwnershipLostHandler(handler: (event: ZLinkOwnershipLostEvent) => void): void;
   removeOwnershipLostHandler(handler: (event: ZLinkOwnershipLostEvent) => void): void;
   writeActor(

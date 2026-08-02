@@ -3,7 +3,10 @@ import type {
   ZLinkActorLocation,
   ZLinkLocationWriteStatus
 } from './internal-location-contracts';
-import type { ZLinkActorLocationStore } from './internal-store-contracts';
+import type {
+  ZLinkActorLocationStore,
+  ZLinkSpotLocationStore
+} from './internal-store-contracts';
 import { ZLinkSpotKind } from '../../contracts/Spots';
 import {
   ZLinkActorLocationClaims,
@@ -40,10 +43,15 @@ export class ZLinkLocationLifecycle {
     private readonly runtime: IZLinkLocationLifecycleRuntime,
     actorStore: ZLinkActorLocationStore,
     entryMeshName = '',
-    authorityStore?: ZLinkAuthorityStore
+    authorityStore?: ZLinkAuthorityStore,
+    spotStore?: ZLinkSpotLocationStore
   ) {
-    this.actorClaims = new ZLinkActorLocationClaims(runtime, actorStore, entryMeshName);
-    this.spotClaims = new ZLinkSpotLocationClaims(runtime, authorityStore);
+    this.actorClaims = new ZLinkActorLocationClaims(runtime, actorStore, entryMeshName, authorityStore);
+    this.spotClaims = new ZLinkSpotLocationClaims(
+      runtime,
+      authorityStore,
+      spotStore ?? inferSpotStore(actorStore)
+    );
     this.actorSessionRoutes = new ZLinkActorSessionRouteClaims(runtime);
     this.runtime.addOwnershipLostHandler(this.ownershipLostHandler);
   }
@@ -143,8 +151,8 @@ export class ZLinkLocationLifecycle {
     );
   }
 
-  async releaseActor(actorType: string, actorId: string): Promise<void> {
-    await this.actorClaims.release(actorType, actorId);
+  async releaseActor(actorType: string, actorId: string, actorRef?: ActorRef): Promise<void> {
+    await this.actorClaims.release(actorType, actorId, actorRef);
   }
 
   releaseActorEventually(actorType: string, actorId: string): Promise<void> {
@@ -210,6 +218,12 @@ export class ZLinkLocationLifecycle {
     this.spotClaims.trackInstanceAuthority(input);
   }
 
+  async reclaimOwnerRows(): Promise<void> {
+    await this.runtime.reclaimOwnerAuthorities?.();
+    await this.actorClaims.reclaimOwnerRows();
+    await this.spotClaims.reclaimOwnerRows();
+  }
+
   async bindActorSessionRoute(sessionRid: RoutingId, actorId: string, ownerNodeRid: RoutingId): Promise<void> {
     await this.actorSessionRoutes.bind(sessionRid, actorId, ownerNodeRid);
   }
@@ -223,6 +237,18 @@ export class ZLinkLocationLifecycle {
     this.spotClaims.onOwnershipLost(event);
     this.actorSessionRoutes.onOwnershipLost(event);
   }
+}
+
+function inferSpotStore(
+  actorStore: ZLinkActorLocationStore
+): ZLinkSpotLocationStore | undefined {
+  const candidate = actorStore as Partial<ZLinkSpotLocationStore>;
+  if (typeof candidate.updateSpot === 'function'
+    && typeof candidate.removeSpot === 'function'
+    && typeof candidate.resolveSpot === 'function') {
+    return actorStore as unknown as ZLinkSpotLocationStore;
+  }
+  return undefined;
 }
 
 function waitForRetry(delayMs: number): Promise<void> {

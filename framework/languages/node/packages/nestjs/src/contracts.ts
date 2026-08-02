@@ -6,6 +6,7 @@ import type {
   ZLinkCodecExtension,
   ZLinkDispatchOptions,
   ZLinkDispatchOptionsBuilder,
+  ZLinkInboundDispatchOptions,
   ZLinkEntrySpot,
   ZLinkHandlerFilter,
   ZLinkLocationStore,
@@ -193,6 +194,7 @@ export interface ZLinkNestFrameworkOptionsBuilder {
   options(options: ZLinkNestFrameworkAdditionalOptions): this;
   codecs(): ZLinkNestCodecRegistryBuilder;
   configureDispatch(): ZLinkDispatchOptionsBuilder;
+  configureInboundDispatch(): ZLinkInboundDispatchOptions;
   addLocationStore(store: ZLinkLocationStore): this;
   addRelocationStore(store: ZLinkRelocationStore): this;
   setApplicationVersion(version: bigint): this;
@@ -271,6 +273,9 @@ export interface ZLinkNestMeshNodeBuilder extends ZLinkNestFrameworkOptionsBuild
   routingId(routingId: string | undefined): this;
   setRoutingIdPrefix(prefix: string): this;
   setPlacementWeight(weight: number): this;
+  setActorLimit(limit: number): this;
+  setSpotLimit(limit: number): this;
+  setActivationConcurrency(limit: number): this;
   configureRouterSocket(): ZLinkMeshNodeSocketConfig;
   configureSpotPublisher(): ZLinkSpotPublisherConfig;
   peerConnections(): ZLinkMeshPeerConnections;

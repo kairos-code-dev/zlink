@@ -129,6 +129,90 @@ test('Node listener rejects wildcard bind without a connectable advertise host',
   );
 });
 
+test('RouteMesh Server membership does not require a local handler', () => {
+  const registration = framework.createFrameworkRegistration(
+    framework.createFrameworkOptions((builder) => {
+      builder.addRouteMesh('orders')
+        .listen('tcp://127.0.0.1:0')
+        .channel('orders')
+        .server()
+        .setWeight(0);
+    })
+  );
+
+  assert.equal(registration.spotNodes.get('orders').meshChannels.orders.server, true);
+  assert.equal(registration.spotNodes.get('orders').meshChannels.orders.weight, 0);
+  assert.deepEqual(registration.spotNodes.get('orders').meshChannels.orders.requestHandlers, undefined);
+  assert.deepEqual(registration.spotNodes.get('orders').meshChannels.orders.sendHandlers, undefined);
+});
+
+test('Location owner lease timing follows the TTL fencing relationship', () => {
+  assert.throws(
+    () => framework.createFrameworkRegistration({
+      locations: {
+        useInMemoryStores: true,
+        options: {
+          ownerLeaseRenewIntervalMs: 10_000,
+          ownerLeaseTtlMs: 15_000,
+          ownerLeaseFencingMarginMs: 5_000,
+          ownerLeaseRenewTimeoutMs: 3_000
+        }
+      }
+    }),
+    /ownerLeaseRenewIntervalMs.*must be less than ownerLeaseTtlMs/
+  );
+
+  const registration = framework.createFrameworkRegistration({
+    locations: {
+      useInMemoryStores: true,
+      options: {
+        ownerLeaseRenewIntervalMs: 5_000,
+        ownerLeaseTtlMs: 15_000,
+        ownerLeaseFencingMarginMs: 5_000,
+        ownerLeaseRenewTimeoutMs: 3_000
+      }
+    }
+  });
+  assert.equal(registration.locations.options.ownerLeaseRenewIntervalMs, 5_000);
+});
+
+test('RouteMesh channel registration rejects duplicate or mixed roles', () => {
+  for (const build of [
+    () => framework.createFrameworkOptions((builder) => {
+      const channel = builder.addRouteMesh('orders').channel('orders');
+      channel.client();
+      channel.server();
+    }),
+    () => framework.createFrameworkOptions((builder) => {
+      const channel = builder.addRouteMesh('orders').channel('orders');
+      channel.server();
+      channel.server();
+    }),
+    () => {
+      const channel = nestjs.zlinkFramework().addRouteMesh('orders').channel('orders');
+      channel.client();
+      channel.server();
+    }
+  ]) {
+    assert.throws(
+      build,
+      /RouteMesh channel must register exactly one role/
+    );
+  }
+
+  assert.throws(
+    () => framework.createFrameworkRegistration({
+      spotNodes: {
+        orders: {
+          router: { bind: 'tcp://127.0.0.1:0' },
+          meshChannels: { orders: { client: true, server: true } }
+        }
+      }
+    }),
+    /must register exactly one role/
+  );
+});
+
 test('ClientServer listener applies the same wildcard advertise-host validation', () => {
   class NoticeHandler {}
 
@@ -414,7 +498,7 @@ test('ClientServer registration rejects duplicate topology names and repeated ro
       builder.addRouteMesh('mesh')
         .listen('tcp://127.0.0.1:0')
         .routingId('mesh-node')
-        .channelName('orders');
+        .channel('orders').server();
     })
   ), /registered on both RouteMesh and ClientServer physical paths/);
 });

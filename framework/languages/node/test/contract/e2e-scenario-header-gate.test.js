@@ -4,7 +4,11 @@ import path from 'node:path';
 import test from 'node:test';
 
 const root = path.resolve(import.meta.dirname, '../..');
-const scenarioIdPattern = /\b[A-Z]{2,3}-[A-Z][0-9]+[A-Z]?\b/g;
+// Common E2E uses both short IDs such as RM-A1 and Config 12--14 IDs such
+// as CH-E2E-07A, SA-E2E-14 and IS-E2E-36. Keep the parser aligned with the
+// complete common inventory so an unimplemented configuration cannot be
+// omitted from the gate by its naming shape.
+const scenarioIdPattern = /\b[A-Z]{2,3}-(?:[A-Z][0-9]+[A-Z]?|E2E-[0-9]+[A-Z]?)\b/g;
 
 test('every Node e2e scenario starts with its verification intent', () => {
   const files = scenarioFiles(path.join(root, 'e2e'));
@@ -17,7 +21,11 @@ test('every Node e2e scenario starts with its verification intent', () => {
     assert.equal(ids.length, 1, `${file} must contain exactly one scenario id`);
 
     const firstLine = source.split(/\r?\n/, 1)[0];
-    assert.match(firstLine, /^\/\/ [A-Z]{2,3}-[A-Z][0-9]+[A-Z]?: .+\.$/, `${file} header`);
+    assert.match(
+      firstLine,
+      /^\/\/ [A-Z]{2,3}-(?:[A-Z][0-9]+[A-Z]?|E2E-[0-9]+[A-Z]?): .+\.$/,
+      `${file} header`
+    );
     assert.ok(firstLine.startsWith(`// ${ids[0]}: `), `${file} header must name ${ids[0]}`);
     assert.equal(implementedIds.has(ids[0]), false, `${ids[0]} must have exactly one Node scenario file`);
     implementedIds.add(ids[0]);
@@ -51,7 +59,9 @@ function scenarioTitles(commonE2eRoot) {
   for (const entry of fs.readdirSync(commonE2eRoot, { withFileTypes: true })) {
     if (!entry.isFile() || !/^config-.*\.ko\.md$/.test(entry.name)) continue;
     const source = fs.readFileSync(path.join(commonE2eRoot, entry.name), 'utf8');
-    for (const match of source.matchAll(/^####\s+([A-Z]{2,3}-[A-Z][0-9]+[A-Z]?)\s+(.+)$/gm)) {
+    for (const match of source.matchAll(
+      /^####\s+([A-Z]{2,3}-(?:[A-Z][0-9]+[A-Z]?|E2E-[0-9]+[A-Z]?))\s+(.+)$/gm
+    )) {
       if (!titles.has(match[1])) titles.set(match[1], match[2].trim());
     }
   }

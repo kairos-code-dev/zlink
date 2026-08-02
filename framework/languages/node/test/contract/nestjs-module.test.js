@@ -291,8 +291,8 @@ test('ZLinkModule.forRoot public DI clients expose callable framework contracts'
   const mesh = builder.addRouteMesh('actors')
     .listen('tcp://127.0.0.1:0')
     .routingId('actor-node');
-  mesh.channelName('mesh');
-  mesh.channelName('actors');
+  mesh.channel('mesh').client();
+  mesh.channel('actors').client();
   const module = nestjs.ZLinkModule.forRoot(builder.build());
   const container = await resolveModuleProviders(module, [
     nestjs.ZLINK_FRAMEWORK_RUNTIME,
@@ -349,45 +349,60 @@ test('zlinkFramework builder maps channel and route mesh options', () => {
   builder.addRouteMesh('api')
       .listen('tcp://127.0.0.1:7101')
       .routingId('api-a')
-      .channelName('api')
-      .addHandlerGroup('api');
+      .channel('api')
+        .server()
+        .addRequestHandler('NoopRequest', NoopRequestHandler)
+        .addHandlerGroup('api');
   builder.addRouteMesh('play').peerConnections().connect('tcp://127.0.0.1:7102');
   const mesh = builder.addRouteMesh('route')
     .listen('tcp://127.0.0.1:7201')
     .routingId('node-a');
-  mesh.channelName('route').addHandlerGroup('route-api');
+  mesh.channel('route')
+    .server()
+    .addRequestHandler('NoopRequest', NoopRequestHandler)
+    .addHandlerGroup('route-api');
   mesh.peerConnections().connect('tcp://127.0.0.1:7202');
   const clientOnly = builder.addRouteMesh('client-only').channel('outbound');
   clientOnly.client();
-  const bothRoles = builder.addRouteMesh('both-roles').channel('shared');
-  bothRoles.client();
-  bothRoles.server().setWeight(0);
+  const zeroWeightServer = builder.addRouteMesh('zero-weight').channel('shared');
+  zeroWeightServer.server().setWeight(0);
   const options = builder.build();
 
   assert.deepEqual(options.spotNodes.api, {
-    router: { bind: 'tcp://127.0.0.1:7101', routingId: 'api-a' },
+    router: { bind: 'tcp://127.0.0.1:7101', port: undefined, routingId: 'api-a' },
     routingId: 'api-a',
-    meshChannels: { api: { server: true, handlerGroups: ['api'] } }
+    meshChannels: {
+      api: {
+        server: true,
+        requestHandlers: [{ packetName: 'NoopRequest', handlerType: NoopRequestHandler }],
+        handlerGroups: ['api']
+      }
+    }
   });
   assert.deepEqual(options.spotNodes.play, {
-    router: { manualConnections: ['tcp://127.0.0.1:7102'] }
+    router: { port: 0, manualConnections: ['tcp://127.0.0.1:7102'] }
   });
   assert.deepEqual(options.spotNodes.route, {
     router: {
       bind: 'tcp://127.0.0.1:7201',
+      port: undefined,
       routingId: 'node-a',
       manualConnections: ['tcp://127.0.0.1:7202']
     },
     routingId: 'node-a',
     meshChannels: {
-      route: { server: true, handlerGroups: ['route-api'] }
+      route: {
+        server: true,
+        requestHandlers: [{ packetName: 'NoopRequest', handlerType: NoopRequestHandler }],
+        handlerGroups: ['route-api']
+      }
     }
   });
   assert.deepEqual(options.spotNodes['client-only'].meshChannels, {
     outbound: { client: true }
   });
-  assert.deepEqual(options.spotNodes['both-roles'].meshChannels, {
-    shared: { client: true, server: true, weight: 0 }
+  assert.deepEqual(options.spotNodes['zero-weight'].meshChannels, {
+    shared: { server: true, weight: 0 }
   });
   assert.equal(framework.getDispatchObserverType(options.dispatch), DispatchObserver);
 });
@@ -434,7 +449,7 @@ test('ZLinkModule.forRoot maps zlinkRequestHandler providers from NestJS DI', as
       .addRouteMesh('api')
         .listen(apiEndpoint)
         .routingId('api-node')
-        .channelName('api')
+        .channel('api').server()
         .addHandlerGroup('api')
       .build())],
     providers: [ProfileHandler]
@@ -614,7 +629,7 @@ test('ZLinkModule.forRoot maps decorated custom NestJS provider objects', async 
       .addRouteMesh('api')
         .listen(apiEndpoint)
         .routingId('api-node')
-        .channelName('api')
+        .channel('api').server()
         .addHandlerGroup('api')
       .build())],
     providers: [{ provide: PROFILE_HANDLER, useClass: ProfileHandler }]
@@ -642,8 +657,8 @@ test('ZLinkModule.forRoot ignores undecorated providers for an outbound-capable 
       .addRouteMesh('api')
         .listen(apiEndpoint)
         .routingId('api-node')
-        .channelName('api')
-        .addHandlerGroup('api')
+        .channel('api')
+          .client()
       .build())],
     providers: [{
       provide: PROFILE_HANDLER,
@@ -678,7 +693,7 @@ test('ZLinkModule.forRootFactory maps zlinkRequestHandler providers from NestJS 
         .addRouteMesh('api')
           .listen(apiEndpoint)
           .routingId('api-node')
-          .channelName('api')
+          .channel('api').server()
           .addHandlerGroup('api')
         .build()
     })],
@@ -732,7 +747,7 @@ module.exports = { ProfileHandler };
           .addRouteMesh('api')
             .listen(apiEndpoint)
             .routingId('api-node')
-            .channelName('api')
+            .channel('api').server()
             .addHandlerGroup('api')
           .build()
       })
@@ -783,7 +798,7 @@ module.exports = { ProfileHandler };
           .addRouteMesh('api')
             .listen(apiEndpoint)
             .routingId('api-node')
-            .channelName('api')
+            .channel('api').server()
             .addHandlerGroup('api')
           .build()
       })
@@ -877,7 +892,7 @@ test('ZLinkModule.forRoot deduplicates grouped useExisting handler aliases', asy
       .addRouteMesh('api')
         .listen(apiEndpoint)
         .routingId('api-node')
-        .channelName('api')
+        .channel('api').server()
         .addHandlerGroup('api')
       .build())],
     providers: [
@@ -915,7 +930,7 @@ test('ZLinkModule.forRoot rejects duplicate grouped packet handlers for one chan
       .addRouteMesh('api')
         .listen(apiEndpoint)
         .routingId('api-node')
-        .channelName('api')
+        .channel('api').server()
         .addHandlerGroup('api')
       .build())],
     providers: [FirstProfileHandler, SecondProfileHandler]
@@ -931,13 +946,14 @@ test('ZLinkModule.forRoot maps explicit RouteMesh send handlers from NestJS DI',
   const routeEndpoint = await reserveTcpEndpoint();
   class NoticeHandler {
     constructor() {
-      this.notices = [];
+      this.notices = NoticeHandler.events;
     }
 
     async handle(message, context) {
       this.notices.push({ message, sourceNodeRid: context.sourceNodeRid });
     }
   }
+  NoticeHandler.events = [];
   class HandlerModule {}
   Module({
     imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
@@ -945,7 +961,6 @@ test('ZLinkModule.forRoot maps explicit RouteMesh send handlers from NestJS DI',
         .listen(routeEndpoint)
         .routingId('node-a')
         .addSendHandler('RouteNotice', NoticeHandler)
-        .channelName('route')
       .build())],
     providers: [NoticeHandler]
   })(HandlerModule);
@@ -966,13 +981,14 @@ test('ZLinkModule.forRoot maps manual client-server send handlers from NestJS DI
   const endpoint = 'tcp://127.0.0.1:9409';
   class NoticeHandler {
     constructor() {
-      this.notices = [];
+      this.notices = NoticeHandler.events;
     }
 
     async handle(message, context) {
       this.notices.push({ message, packetName: context.packetName });
     }
   }
+  NoticeHandler.events = [];
 
   class HandlerModule {}
   Module({
@@ -981,7 +997,7 @@ test('ZLinkModule.forRoot maps manual client-server send handlers from NestJS DI
         .addRouteMesh('api')
           .listen(endpoint)
           .routingId('api-node')
-          .channelName('api')
+          .channel('api').server()
           .addSendHandler('Notice', NoticeHandler)
         .build()
     })],
@@ -994,7 +1010,7 @@ test('ZLinkModule.forRoot maps manual client-server send handlers from NestJS DI
 
   assert.equal(channel.sendHandlers.length, 1);
   assert.equal(channel.sendHandlers[0].packetName, 'Notice');
-  await app.get(channel.sendHandlers[0].handlerType, { strict: false }).handle(
+  await channel.sendHandlers[0].handler.handle(
     { text: 'hello' },
     { channelName: 'api', packetName: 'Notice' }
   );
@@ -1008,13 +1024,14 @@ test('ZLinkModule.forRoot maps grouped fanout publish handlers from NestJS DI', 
   const PROFILE_EVENTS = Symbol('profile-events');
   class ProfileEventHandler {
     constructor() {
-      this.events = [];
+      this.events = ProfileEventHandler.events;
     }
 
     async handle(message, context) {
       this.events.push({ message, topic: context.topic, packetName: context.packetName });
     }
   }
+  ProfileEventHandler.events = [];
   nestjs.zlinkPublishHandler('events', 'ProfileChanged')(ProfileEventHandler);
 
   class HandlerModule {}
@@ -1103,11 +1120,11 @@ test('ZLinkModule.forRoot with grouped handlers exposes capability providers thr
   gameMesh.objects().server()
     .addSpotFactory(StageSpot.name, StageSpot, (factory) => factory.disableRelocation())
     .addActorFactory('player', ActorFactory, (factory) => factory.disableRelocation());
-  gameMesh.channelName('game');
+  gameMesh.channel('game').client();
   options.addRouteMesh('api')
     .listen(apiEndpoint)
     .routingId('api-node')
-    .channelName('api')
+    .channel('api').server()
     .addHandlerGroup('api');
 
   class HandlerModule {}
@@ -1142,7 +1159,7 @@ test('ZLinkModule.forRoot with grouped handlers omits only capabilities not impl
       .addRouteMesh('api')
         .listen(apiEndpoint)
         .routingId('api-node')
-        .channelName('api')
+        .channel('api').server()
         .addHandlerGroup('api')
       .build())],
     providers: [ProfileHandler]
@@ -1212,7 +1229,7 @@ test('ZLinkModule.forRoot preserves Spot factories in the formal MeshNode regist
     StageSpot,
     (factory) => factory.disableRelocation()
   );
-  mesh.channelName('game');
+  mesh.channel('game').client();
   const frameworkModule = nestjs.ZLinkModule.forRoot(options.build());
   class HandlerModule {}
   Module({
@@ -1247,7 +1264,7 @@ test('ZLinkModule.forRoot preserves Entry Spot type in the formal MeshNode regis
     .listen(spotEndpoint)
     .routingId('game-node');
   mesh.objects().server().addEntrySpot(StageEntrySpot);
-  mesh.channelName('game');
+  mesh.channel('game').client();
   const frameworkModule = nestjs.ZLinkModule.forRoot(options.build());
   class HandlerModule {}
   Module({
@@ -1286,7 +1303,7 @@ test('ZLinkModule.forRoot preserves Actor factories in the formal MeshNode regis
     PlayerActorFactory,
     (factory) => factory.disableRelocation()
   );
-  mesh.channelName('game');
+  mesh.channel('game').client();
   const frameworkModule = nestjs.ZLinkModule.forRoot(options.build());
   class HandlerModule {}
   Module({
@@ -1365,7 +1382,7 @@ test('ZLinkModule.forRoot discovers SPOT actor request handler decorators from N
   mesh.objects().server()
     .addEntrySpot(EntrySpot)
     .addSpotFactory(RoomSpot.name, RoomSpot, (factory) => factory.disableRelocation());
-  mesh.channelName('game');
+  mesh.channel('game').client();
   Module({
     imports: [nestjs.ZLinkModule.forRoot(options.build())],
     providers: [
@@ -1653,7 +1670,7 @@ test('ZLinkModule.forRoot maps route mesh channel options into runtime registrat
   const mesh = builder.addRouteMesh('route')
     .listen('tcp://127.0.0.1:7012')
     .routingId('node-a');
-  mesh.channelName('route');
+  mesh.channel('route').client();
   mesh.peerConnections().connect('tcp://127.0.0.1:7013');
   const module = nestjs.ZLinkModule.forRoot(builder.build());
   const registration = await resolveFrameworkRegistration(module);
@@ -1678,7 +1695,7 @@ test('zlinkFramework preserves actor relocation adapters in the factory registra
     PlayerActorFactory,
     (factory) => factory.preserveStateWith(PlayerActorRelocationAdapter)
   );
-  mesh.channelName('game');
+  mesh.channel('game').client();
   const registration = await resolveFrameworkRegistration(
     nestjs.ZLinkModule.forRoot(builder.build())
   );
@@ -1778,7 +1795,7 @@ test('framework options builder maps the formal RouteMesh registration flow into
     const route = builder.addRouteMesh('route');
     route.listen('tcp://127.0.0.1:9403');
     route.routingId('route-node');
-    route.channelName('route');
+    route.channel('route').client();
     route.peerConnections().connect('tcp://127.0.0.1:9403');
     builder.addStreamNode('gateway')
       .bind('tcp://127.0.0.1:9404')
@@ -1796,7 +1813,7 @@ test('framework options builder maps the formal RouteMesh registration flow into
     );
     spot.listen('tcp://127.0.0.1:9405');
     spot.routingId('stage-node');
-    spot.channelName('game.stage');
+    spot.channel('game.stage').client();
   });
   options.channels.events.publishHandlers = [{
     packetName: 'NoopEvent',
@@ -1948,14 +1965,14 @@ test('zlinkFramework builder maps stream node registration without raw server co
   options.addRouteMesh('api')
         .listen('tcp://127.0.0.1:9113')
         .routingId('api-node')
-        .channelName('api')
+        .channel('api').server()
         .addRequestHandler('NoopRequest', NoopRequestHandler);
   options.addFanoutChannel('game.events')
         .enablePublisher('tcp://127.0.0.1:9114');
   options.addRouteMesh('route')
         .listen('tcp://127.0.0.1:9115')
         .routingId('route-node')
-        .channelName('route');
+        .channel('route').client();
   options.addStreamNode('client.stream')
         .bind('tcp://127.0.0.1:9100')
         .registerSession(ClientHeaderSession);
@@ -1969,7 +1986,7 @@ test('zlinkFramework builder maps stream node registration without raw server co
       PlayerActorFactory,
       (factory) => factory.disableRelocation()
     );
-  spotMesh.channelName('game.spot');
+  spotMesh.channel('game.spot').client();
   const module = nestjs.ZLinkModule.forRoot(options.build());
   const registration = await resolveFrameworkRegistration(module);
   const streamNode = registration.streamNodes.get('client.stream');
@@ -1992,17 +2009,17 @@ test('ZLinkModule.forRoot validates and maps formal MeshNode router and peer opt
   const game = builder.addRouteMesh('game')
     .listen('tcp://127.0.0.1:9201')
     .routingId('node-a');
-  game.channelName('game');
+  game.channel('game').client();
   game.peerConnections().connect('tcp://127.0.0.1:9202');
   builder.addRouteMesh('api')
       .listen('tcp://127.0.0.1:9208')
       .routingId('api-node')
-      .channelName('api')
+      .channel('api').server()
       .addRequestHandler('NoopRequest', NoopRequestHandler);
   builder.addRouteMesh('route')
       .listen('tcp://127.0.0.1:9209')
       .routingId('route-node')
-      .channelName('route');
+      .channel('route').client();
   const module = nestjs.ZLinkModule.forRoot(builder.build());
   const registration = await resolveFrameworkRegistration(module);
   const spotNode = registration.spotNodes.get('game');
@@ -2015,7 +2032,7 @@ test('ZLinkModule.forRoot validates and maps formal MeshNode router and peer opt
   const ordered = orderedBuilder.addRouteMesh('ordered')
     .listen('tcp://127.0.0.1:9214')
     .routingId('node-a');
-  ordered.channelName('ordered');
+  ordered.channel('ordered').client();
   ordered.peerConnections().connect('tcp://127.0.0.1:9211');
   ordered.peerConnections().connect('node-b', 'tcp://127.0.0.1:9212');
   const orderedModule = nestjs.ZLinkModule.forRoot(orderedBuilder.build());
@@ -2043,7 +2060,7 @@ test('ZLinkModule.forRoot validates and maps formal MeshNode router and peer opt
       const mesh = builder.addRouteMesh('game')
         .listen('tcp://127.0.0.1:9220')
         .routingId('game-node');
-      mesh.channelName('game');
+      mesh.channel('game').client();
       mesh.peerConnections().connect('node-a', 'tcp://127.0.0.1:9216');
       mesh.peerConnections().connect('node-a', 'tcp://127.0.0.1:9217');
       return resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(builder.build()));
@@ -2058,7 +2075,7 @@ test('ZLinkModule.forRoot registers explicit MeshNode publisher clients', async 
     .addRouteMesh('game')
       .listen('tcp://127.0.0.1:9210')
       .routingId('game-node')
-      .channelName('game')
+      .channel('game').client()
     .build()));
 
   assert.equal(registration.spotPublisherClients.has('game'), true);
@@ -2085,7 +2102,7 @@ test('ZLinkModule.forRoot exposes only the public Spot manager capability', asyn
     ManagedSpot,
     (factory) => factory.disableRelocation()
   );
-  mesh.channelName('game');
+  mesh.channel('game').client();
   const module = nestjs.ZLinkModule.forRoot(options.build());
   const tokens = providerTokens(module);
 
@@ -2118,7 +2135,7 @@ test('ZLinkModule.forRootFactory exposes capability providers through the real N
       mesh.objects().server()
         .addSpotFactory(AsyncSpot.name, AsyncSpot, (factory) => factory.disableRelocation())
         .addActorFactory('player', ActorFactory, (factory) => factory.disableRelocation());
-      mesh.channelName('game');
+      mesh.channel('game').client();
       return options.build();
     }
   });
@@ -2156,7 +2173,7 @@ test('ZLinkModule.forRootFactory resolves factory dependencies from imported Nes
         .addRouteMesh(config.channelName)
           .listen(config.bind)
           .routingId('config-node')
-          .channelName(config.channelName)
+        .channel(config.channelName).server()
           .addRequestHandler('ConfigReq', ConfigHandler)
         .build();
     }
@@ -2178,7 +2195,7 @@ test('ZLinkModule.forRootFactory preserves route mesh transport options after dy
       const mesh = builder.addRouteMesh('quest.route')
         .listen('tcp://127.0.0.1:7111')
         .routingId('gamequest-api-a');
-      mesh.channelName('quest.route');
+      mesh.channel('quest.route').client();
       mesh.peerConnections().connect('tcp://127.0.0.1:7112');
       return builder.build();
     }
@@ -2290,10 +2307,7 @@ test('framework runtime host starts registered stream nodes and disposes their r
                 calls.push(`stream:bind:${endpoint}`);
               },
               setChannelName() {},
-              onFramedPacket(handler) {
-                assert.equal(typeof handler, 'function');
-                calls.push('stream:onFramedPacket');
-              },
+              recv() { return undefined; },
               send() { return true; },
               disconnectPeer() {},
               async bindActor() {},
@@ -2303,6 +2317,9 @@ test('framework runtime host starts registered stream nodes and disposes their r
                 calls.push('stream:dispose');
               }
             };
+          },
+          createReadablePoller() {
+            return { wait() { return false; }, dispose() {} };
           }
         };
       },
@@ -2332,7 +2349,6 @@ test('framework runtime host starts registered stream nodes and disposes their r
     'stream:create',
     'stream:bind:tcp://127.0.0.1:9100',
     'monitor:open',
-    'stream:onFramedPacket',
     'monitor:dispose',
     'stream:dispose',
     'context:dispose'
@@ -2401,7 +2417,12 @@ test('framework runtime host attaches stream SessionRelay to registered SpotNode
       spotNodes: {
         'game.spot': {
           router: { bind: 'tcp://127.0.0.1:9110', routingId: 'game-node' },
-          meshChannels: { 'game.spot': {} }
+          meshChannels: {
+            'game.spot': {
+              server: true,
+              requestHandlers: [{ packetName: 'NoopRequest', handlerType: NoopRequestHandler }]
+            }
+          }
         }
       },
       streamNodes: {
@@ -2477,7 +2498,7 @@ test('framework runtime host attaches stream SessionRelay to registered SpotNode
                 calls.push(`stream:bind:${endpoint}`);
               },
               setChannelName() {},
-              onFramedPacket() {},
+              recv() { return undefined; },
               send() { return true; },
               disconnectPeer() {},
               attachSessionRelay(node) {
@@ -2490,6 +2511,9 @@ test('framework runtime host attaches stream SessionRelay to registered SpotNode
                 calls.push('stream:dispose');
               }
             };
+          },
+          createReadablePoller() {
+            return { wait() { return false; }, dispose() {} };
           }
         };
       },
@@ -2603,7 +2627,12 @@ test('framework runtime host applies formal MeshNode router and peer options', a
             manualConnections: ['tcp://127.0.0.1:9302'],
             manualPeerConnections: [{ peerRid: 'node-b', endpoint: 'tcp://127.0.0.1:9309' }]
           },
-          meshChannels: { game: {} },
+          meshChannels: {
+            game: {
+              server: true,
+              requestHandlers: [{ packetName: 'NoopRequest', handlerType: NoopRequestHandler }]
+            }
+          },
         }
       }
     })
@@ -2749,7 +2778,9 @@ test('framework runtime host lets the formal MeshNode own its accepted route cha
       const mesh = builder.addRouteMesh('room')
         .listen('tcp://127.0.0.1:9411')
         .routingId('room-node');
-      mesh.channelName('room.route');
+      mesh.channel('room.route')
+        .server()
+        .addRequestHandler('NoopRequest', NoopRequestHandler);
       mesh.peerConnections().connect('tcp://127.0.0.1:9410');
       return builder.build();
     })()))
@@ -2895,7 +2926,9 @@ test('framework runtime host drains accepted Spot route channel without route ro
       .addRouteMesh('session')
         .listen('tcp://127.0.0.1:9412')
         .routingId('session-node')
-        .channelName('room.route')
+        .channel('room.route')
+          .server()
+          .addRequestHandler('NoopRequest', NoopRequestHandler)
       .build()))
   }, {
     backendAdapterFactory: {
@@ -3054,7 +3087,9 @@ test('framework route transport sends Spot request through accepted Spot route c
       .addRouteMesh('session')
         .listen('tcp://127.0.0.1:9413')
         .routingId('session-node')
-        .channelName('room.route')
+        .channel('room.route')
+          .server()
+          .addRequestHandler('NoopRequest', NoopRequestHandler)
       .build()))
   }, {
     backendAdapterFactory: {
@@ -3206,7 +3241,9 @@ test('framework route transport sends Spot request through accepted Spot route c
       .addRouteMesh('session')
         .listen('tcp://127.0.0.1:9415')
         .routingId('session-node')
-        .channelName('room.route')
+        .channel('room.route')
+          .server()
+          .addRequestHandler('NoopRequest', NoopRequestHandler)
       .build()))
   }, {
     backendAdapterFactory: {
@@ -3340,7 +3377,12 @@ test('framework runtime host starts router-only SessionRelay SpotNode without Di
             bind: 'tcp://127.0.0.1:9391',
             routingId: 'session-node'
           },
-          meshChannels: { session: {} }
+          meshChannels: {
+            session: {
+              server: true,
+              requestHandlers: [{ packetName: 'NoopRequest', handlerType: NoopRequestHandler }]
+            }
+          }
         }
       }
     })
@@ -3456,7 +3498,12 @@ test('framework runtime host starts a formal MeshNode without Discovery after bi
             bind: 'tcp://127.0.0.1:9396',
             routingId: 'room-node'
           },
-          meshChannels: { room: {} }
+          meshChannels: {
+            room: {
+              server: true,
+              requestHandlers: [{ packetName: 'NoopRequest', handlerType: NoopRequestHandler }]
+            }
+          }
         }
       }
     })
@@ -3606,7 +3653,12 @@ test('framework runtime host defers Entry Spot lifecycle until Core materializes
       spotNodes: {
         entry: {
           router: { bind: 'tcp://127.0.0.1:9501', routingId: 'entry-node' },
-          meshChannels: { entry: {} },
+          meshChannels: {
+            entry: {
+              server: true,
+              requestHandlers: [{ packetName: 'NoopRequest', handlerType: NoopRequestHandler }]
+            }
+          },
           entrySpotType: EntrySpot,
           entrySpotActorRequestHandlers: [{
             actorType: PlayerActor,

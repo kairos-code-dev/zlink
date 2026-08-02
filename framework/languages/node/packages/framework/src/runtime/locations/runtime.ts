@@ -19,6 +19,8 @@ import {
   type ZLinkActorLocationKey,
   type ZLinkLocationKey,
   type ZLinkLocationPage,
+  type ZLinkAuthorityEntry,
+  type ZLinkAuthorityScanCursor,
   type ZLinkLocationRuntimeStatus,
   type ZLinkLocationServiceSummary,
   type ZLinkLocationServiceSummaryFilter,
@@ -89,6 +91,10 @@ export interface ZLinkLocationRuntimeOptions {
     readonly kind: 'mesh' | 'channel';
     readonly name: string;
   }[];
+  readonly rewriteAuthorityPayloadForOwner?: (
+    payload: Uint8Array,
+    owner: ZLinkLocationOwnerToken
+  ) => Uint8Array;
 }
 
 export interface ZLinkLocationEventSink {
@@ -138,8 +144,10 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
   private readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
   private readonly meshNames: readonly string[];
   private readonly leaseScopes: readonly { readonly kind: 'mesh' | 'channel'; readonly name: string }[];
+  private readonly rewriteAuthorityPayloadForOwner?: ZLinkLocationRuntimeOptions['rewriteAuthorityPayloadForOwner'];
   private nextLeaseRenewAtMs?: number;
   private ownerToken?: ZLinkLocationOwnerToken;
+  private lastOwnerToken?: ZLinkLocationOwnerToken;
 
   ownerLeaseHealthy = false;
   ownerLeaseRenewedAt?: Date;
@@ -153,6 +161,7 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     this.metrics = runtimeOptions.metrics;
     this.meshNames = [...new Set(runtimeOptions.meshNames ?? [])];
     this.leaseScopes = runtimeOptions.leaseScopes ?? this.meshNames.map(name => ({ kind: 'mesh', name }));
+    this.rewriteAuthorityPayloadForOwner = runtimeOptions.rewriteAuthorityPayloadForOwner;
     this.monotonicNowMs = runtimeOptions.monotonicNowMs ?? (() => performance.now());
     this.setTimer = runtimeOptions.setTimer ?? ((callback, delayMs) => setTimeout(callback, delayMs));
     this.clearTimer = runtimeOptions.clearTimer ?? ((handle) => clearTimeout(handle as NodeJS.Timeout));
@@ -173,6 +182,77 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
 
   get currentOwnerToken(): ZLinkLocationOwnerToken | undefined {
     return this.ownerToken;
+  }
+
+  async reclaimOwnerAuthorities(signal?: AbortSignal): Promise<void> {
+    const owner = this.ownerToken;
+    if (owner === undefined) {
+      throw new Error('Authority recovery requires a claimed owner token.');
+    }
+    const entries = await this.readAllAuthorityEntries(signal);
+    const failures: unknown[] = [];
+    for (const entry of entries) {
+      const snapshot = entry.snapshot;
+      if (snapshot.ownerId !== owner.ownerId
+        || snapshot.ownerLeaseGeneration === owner.leaseGeneration) {
+        continue;
+      }
+      try {
+        const result = await this.stores.authorityStore.compareExchangeAuthority(
+          entry.key,
+          snapshot.storeVersion,
+          {
+            kind: 'rebindOwnerLease',
+            expectedOwner: {
+              ownerId: snapshot.ownerId,
+              leaseGeneration: snapshot.ownerLeaseGeneration
+            },
+            targetOwner: owner,
+            payload: Buffer.from(
+              this.rewriteAuthorityPayloadForOwner?.(snapshot.payload, owner)
+                ?? snapshot.payload
+            )
+          },
+          signal
+        );
+        if (result.kind === 'stored') continue;
+        if (result.kind === 'conflict') {
+          const current = result.current;
+          if (current.kind === 'snapshot'
+            && current.ownerId === owner.ownerId
+            && current.ownerLeaseGeneration === owner.leaseGeneration) {
+            continue;
+          }
+          continue;
+        }
+        failures.push(new Error(
+          `Authority '${entry.key.value}' recovery returned '${result.kind}'.`
+        ));
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length > 0) {
+      throw new AggregateError(failures, 'One or more authority records failed lease recovery.');
+    }
+  }
+
+  private async readAllAuthorityEntries(signal?: AbortSignal): Promise<ZLinkAuthorityEntry[]> {
+    for (;;) {
+      const entries: ZLinkAuthorityEntry[] = [];
+      let cursor: ZLinkAuthorityScanCursor | undefined;
+      let expired = false;
+      do {
+        const page = await this.stores.authorityStore.listAuthorities('', cursor, 1000, signal);
+        if (page.kind === 'scanExpired') {
+          expired = true;
+          break;
+        }
+        entries.push(...page.items);
+        cursor = page.nextCursor;
+      } while (cursor !== undefined);
+      if (!expired) return entries;
+    }
   }
 
   addOwnershipLostHandler(handler: (event: ZLinkOwnershipLostEvent) => void): void {
@@ -207,15 +287,27 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     this.started = true;
     this.ownerCleanupComplete = false;
     this.nodeRidValue = nodeRid;
-    const claim = await withTimeout(
-      (claimSignal) => this.stores.ownerLeaseStore.claimOwnerLease(
-        this.ownerId,
-        this.options.ownerLeaseTtlMs,
-        claimSignal
-      ),
-      this.options.ownerLeaseRenewTimeoutMs,
-      signal
-    );
+    let claim: Awaited<ReturnType<ZLinkOwnerLeaseStore['claimOwnerLease']>>;
+    try {
+      claim = await withTimeout(
+        (claimSignal) => this.stores.ownerLeaseStore.claimOwnerLease(
+          this.ownerId,
+          this.options.ownerLeaseTtlMs,
+          claimSignal
+        ),
+        this.options.ownerLeaseRenewTimeoutMs,
+        signal
+      );
+    } catch (error) {
+      this.started = false;
+      this.ownerCleanupComplete = true;
+      this.nodeRidValue = undefined;
+      this.ownerLeaseHealthy = false;
+      this.nextLeaseRenewAtMs = undefined;
+      if (signal?.aborted === true) throw error;
+      this.recordFailure(errorMessage(error), 'owner_lease_claim');
+      throw error;
+    }
     if (claim.kind !== 'claimed') {
       this.started = false;
       this.ownerCleanupComplete = true;
@@ -249,12 +341,17 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
       return;
     }
     try {
-      const owner = this.ownerToken;
-      if (owner !== undefined) {
-        await this.stores.locationStore.removeAllByOwner(owner, signal);
-        await this.stores.ownerLeaseStore.releaseOwnerLease(owner, signal);
-        this.ownerToken = undefined;
+      const owner = this.ownerToken ?? this.lastOwnerToken ?? {
+        ownerId: this.ownerId,
+        leaseGeneration: 0n
+      };
+      await this.stores.locationStore.removeAllByOwner(owner, signal);
+      const currentLease = await this.stores.ownerLeaseStore.readOwnerLease(this.ownerId, signal);
+      if (currentLease.kind === 'found') {
+        await this.stores.ownerLeaseStore.releaseOwnerLease(currentLease.token, signal);
       }
+      this.ownerToken = undefined;
+      this.lastOwnerToken = undefined;
       this.ownerCleanupComplete = true;
     } catch (error) {
       this.recordFailure(errorMessage(error));
@@ -263,9 +360,11 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
   }
 
   async renewOwnerLeaseOnce(signal?: AbortSignal): Promise<boolean> {
-    if (this.ownerToken === undefined) {
-      this.recordFailure('Owner lease renew requires a claimed owner token.');
+    if (!this.started) {
       return false;
+    }
+    if (this.ownerToken === undefined) {
+      return await this.claimFreshOwnerLease(signal);
     }
 
     try {
@@ -279,10 +378,18 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
         signal
       );
       if (result.kind !== 'renewed') {
+        // The provider may have been restarted with an empty store. The
+        // previous token can no longer be renewed, so the next heartbeat must
+        // perform a fresh claim rather than retrying the stale token forever.
+        this.lastOwnerToken = this.ownerToken;
+        this.ownerToken = undefined;
         this.ownerLeaseHealthy = false;
         this.recordFailure('Owner lease token is stale.');
         for (const handler of this.ownerLeaseRenewalFailedHandlers) handler();
-        return false;
+        // The store has already told us that this owner token cannot be
+        // renewed. Claim immediately so descriptor recovery does not wait for
+        // another heartbeat interval.
+        return await this.claimFreshOwnerLease(signal);
       }
       this.ownerLeaseHealthy = true;
       this.ownerLeaseRenewedAt = result.storeNow;
@@ -294,6 +401,49 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
       this.recordOwnerLeaseRenewFailure();
       this.recordFailure(errorMessage(error), 'lease_renew');
       for (const handler of this.ownerLeaseRenewalFailedHandlers) handler();
+      return false;
+    }
+  }
+
+  private async claimFreshOwnerLease(signal?: AbortSignal): Promise<boolean> {
+    try {
+      const claim = await withTimeout(
+        (claimSignal) => this.stores.ownerLeaseStore.claimOwnerLease(
+          this.ownerId,
+          this.options.ownerLeaseTtlMs,
+          claimSignal
+        ),
+        this.options.ownerLeaseRenewTimeoutMs,
+        signal
+      );
+      if (claim.kind !== 'claimed') {
+        this.recordFailure(`Owner lease claim failed with '${claim.kind}'.`, 'owner_lease_claim');
+        return false;
+      }
+      if (!this.started) {
+        // stop() may have completed while the Store claim was in flight. Do
+        // not install a token into a stopped runtime or leave an orphan lease.
+        await this.stores.ownerLeaseStore.releaseOwnerLease(claim.token).catch(() => undefined);
+        return false;
+      }
+      this.lastOwnerToken = this.ownerToken;
+      this.ownerToken = claim.token;
+      this.ownerLeaseHealthy = true;
+      this.ownerLeaseRenewedAt = claim.storeNow;
+      this.lastError = undefined;
+      this.nextLeaseRenewAtMs = this.monotonicNowMs() + this.options.ownerLeaseRenewIntervalMs;
+      for (const handler of this.ownerLeaseRenewedHandlers) {
+        handler({
+          kind: 'renewed',
+          leaseExpiresAt: claim.leaseExpiresAt,
+          storeNow: claim.storeNow
+        });
+      }
+      return true;
+    } catch (error) {
+      if (signal?.aborted === true) throw error;
+      this.recordOwnerLeaseRenewFailure();
+      this.recordFailure(errorMessage(error), 'owner_lease_claim');
       return false;
     }
   }

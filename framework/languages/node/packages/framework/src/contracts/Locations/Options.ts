@@ -22,7 +22,7 @@ export type ZLinkLocationOptionOverrides =
 export const zlinkRuntimeDefaultLocationOptions: Readonly<
   ZLinkLocationOptionValues & { readonly listPageSize: number }
 > = {
-  ownerLeaseRenewIntervalMs: 10000,
+  ownerLeaseRenewIntervalMs: 5000,
   ownerLeaseTtlMs: 15000,
   pollingIntervalMs: 1000,
   listPageSize: 1000,

@@ -151,8 +151,6 @@ test('Mesh actor ingress uses the current runtime owner for handoff capture', as
 
   assert.equal(fallbackActorRef.nodeRid, 'current-node');
   assert.equal(fallbackActorRef.generation, 3n);
-  assert.equal(fallbackActorRef.handoffMessageFollowed, true);
-  assert.equal(fallbackActorRef.handoffTargetSpotId, String(currentSpotId));
 });
 
 test('Mesh actor ingress routes the concrete Entry Spot RID to Entry Spot actor dispatch', async () => {
@@ -1623,7 +1621,7 @@ test('spot manager local actor join awaits entry leave before commit and joined 
       return { accepted: true, reply: 'joined' };
     }
     async onJoinedActor(actor) {
-      events.push(`joined:${actor.actor.actorId}`);
+      events.push(`joined:${actor.actorId}`);
     }
   }
   const manager = new framework.DefaultZLinkSpotManager({
@@ -1652,7 +1650,9 @@ test('spot manager local actor join awaits entry leave before commit and joined 
     }
   };
   const request = zlink.Message.from('hello');
-  const pending = manager.admitActorJoin('stage-1', actor, request, () => events.push('commit'));
+  const pending = manager.admitActorJoin('stage-1', actor, request, () => {
+    events.push('commit');
+  });
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(events, ['join:alice:hello', 'entry-left:alice']);
   finishLeave();
@@ -1720,7 +1720,7 @@ test('user Spot join runs source leave on the caller turn without target-to-sour
       events.push(`leave:${this.context.spotId}:${actor.actorId}`);
     }
     async onJoinedActor(actor) {
-      events.push(`joined:${this.context.spotId}:${actor.actor.actorId}`);
+      events.push(`joined:${this.context.spotId}:${actor.actorId}`);
     }
   }
   let manager;

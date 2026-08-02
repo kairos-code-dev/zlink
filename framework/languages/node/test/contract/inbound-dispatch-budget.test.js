@@ -119,6 +119,95 @@ test('Mesh request permit rejection releases queued bytes and message parts', as
   }
 });
 
+test('Channel receive loop consumes detached dispatch rejections without unhandledRejection', async () => {
+  const unhandled = [];
+  const onUnhandled = (reason) => unhandled.push(reason);
+  process.on('unhandledRejection', onUnhandled);
+  let reported;
+  const reportedError = new Promise((resolve) => { reported = resolve; });
+  let receiveCount = 0;
+  const failure = new Error('dispatch failed');
+  const loop = new framework.ZLinkChannelReceiveLoop(
+    'api',
+    {
+      recv() {
+        if (receiveCount++ > 0) return undefined;
+        return {
+          parts: [],
+          routingId: 'peer',
+          requestSeq: null,
+          close() {}
+        };
+      }
+    },
+    { async dispatch() { throw failure; } },
+    undefined,
+    undefined,
+    undefined,
+    { wait() { return true; }, dispose() {} },
+    error => reported(error)
+  );
+
+  try {
+    const running = loop.run();
+    assert.equal(await reportedError, failure);
+    await new Promise((resolve) => setImmediate(resolve));
+    await loop.stop();
+    await running;
+    assert.deepEqual(unhandled, []);
+  } finally {
+    process.off('unhandledRejection', onUnhandled);
+  }
+});
+
+test('Channel receive loop bounds detached dispatch concurrency for zero-byte messages', async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  let active = 0;
+  let maximumActive = 0;
+  let receivedCount = 0;
+  let completedCount = 0;
+  const loop = new framework.ZLinkChannelReceiveLoop(
+    'api',
+    {
+      recv() {
+        if (receivedCount >= 1_025) return undefined;
+        receivedCount += 1;
+        return {
+          parts: [],
+          routingId: 'peer',
+          requestSeq: null,
+          close() {}
+        };
+      }
+    },
+    {
+      async dispatch() {
+        active += 1;
+        maximumActive = Math.max(maximumActive, active);
+        await gate;
+        active -= 1;
+        completedCount += 1;
+      }
+    },
+    undefined,
+    undefined,
+    undefined,
+    { wait() { return true; }, dispose() {} }
+  );
+
+  const running = loop.run();
+  await waitFor(() => receivedCount === 1_024);
+  assert.equal(maximumActive, 1_024);
+  assert.equal(receivedCount, 1_024);
+
+  release();
+  await waitFor(() => completedCount === 1_025);
+  await loop.stop();
+  await running;
+  assert.equal(maximumActive, 1_024);
+});
+
 function message(size, onClose = () => {}) {
   return {
     data() { return Buffer.alloc(size); },
@@ -161,4 +250,12 @@ function rejectingBudget(error, observeQueued) {
       return () => {};
     }
   };
+}
+
+async function waitFor(predicate) {
+  const deadline = Date.now() + 1_000;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error('condition timed out');
+    await new Promise((resolve) => setImmediate(resolve));
+  }
 }

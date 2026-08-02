@@ -93,6 +93,7 @@ test('Nest options builder matches the exact public member set', () => {
   for (const name of expected) {
     assert.equal(methods.has(name), true, `Nest builder runtime member missing: ${name}`);
   }
+  assert.equal('channelName' in builder, false);
 
   const inbound = builder.configureInboundDispatch();
   assert.equal(typeof inbound.applicationHwmBytes, 'function');
@@ -111,6 +112,21 @@ test('Nest inbound dispatch builder keeps fluent HWM changes in build output', (
   const built = builder.build();
   assert.equal(built.inboundDispatch.applicationHwmBytes, 8192n);
   assert.equal(built.inboundDispatch.processMemoryLimitBytes, 16384n);
+});
+
+test('Nest RouteMesh builder keeps the formal scheduler limits in build output', () => {
+  const nestjs = require('../../packages/nestjs/dist');
+  const builder = nestjs.zlinkFramework();
+
+  builder.addRouteMesh('api')
+    .setActorLimit(11)
+    .setSpotLimit(22)
+    .setActivationConcurrency(33);
+
+  const built = builder.build();
+  assert.equal(built.spotNodes.api.actorLimit, 11);
+  assert.equal(built.spotNodes.api.spotLimit, 22);
+  assert.equal(built.spotNodes.api.activationConcurrencyLimit, 33);
 });
 
 test('Node public contract snapshot pins the binding package version', () => {
@@ -575,6 +591,12 @@ test('formal declarations expose role-specific ClientServer builders and exclude
   ]) {
     assert.equal(nestDeclarations.includes(name), true, `Nest declaration missing ${name}`);
   }
+});
+
+test('Nest declarations expose the common inbound dispatch builder contract', () => {
+  const declarations = readTree(path.join(workspaceRoot, 'packages', 'nestjs', 'dist'));
+  const builder = declarationBody(declarations, 'ZLinkNestFrameworkOptionsBuilder');
+  assert.match(builder, /configureInboundDispatch\(\): ZLinkInboundDispatchOptions/);
 });
 
 test('framework error kind values and exception surface match the shared table', () => {

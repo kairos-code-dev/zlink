@@ -334,8 +334,12 @@ export class ZLinkHostServiceRelocationRuntime {
     targetApplicationVersion?: bigint,
     signal?: AbortSignal
   ): Promise<void> {
-    const spotManager = this.requireSpotManager();
-    const actorManager = this.requireActorManager();
+    const spotManager = this.options.spotManager();
+    const actorManager = this.options.actorManager();
+    // A stateless host has no relocation work. The corresponding managers are
+    // not created for that registration, and the no-op path must still allow
+    // the host relocation lifecycle to complete.
+    if (spotManager === undefined || actorManager === undefined) return;
     const groupedActorIds = new Set<string>();
     const work: Array<{
       readonly id: string;

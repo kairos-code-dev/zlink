@@ -15,7 +15,7 @@ test('resilience topology evidence belongs to the consumer application runtime',
   const runner = fs.readFileSync(path.join(resilience, 'run_e2e.sh'), 'utf8');
 
   assert.match(host, /ZLINK_LOCATION_RUNTIME_QUERY/);
-  assert.match(endpoints, /listPeerLocations/);
+  assert.match(endpoints, /listMeshNodeDescriptors/);
   assert.match(endpoints, /path: '\/location\/peers'/);
   assert.doesNotMatch(endpoints, /state:\s*ZLinkLocationTopologyState\.Ready/);
   assert.match(runner, /--peer-location-url "http:\/\/127\.0\.0\.1:\$CONSUMER_HTTP_PORT"/);

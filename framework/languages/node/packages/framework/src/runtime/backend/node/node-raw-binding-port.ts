@@ -54,6 +54,8 @@ export interface ZLinkRawMonitorPort {
 }
 
 export interface ZLinkRawRouterPort extends ZLinkRawSocketPort {
+  /** Disconnects the route identified by the peer RoutingId, including an inbound route. */
+  disconnectRid?(routingId: string): void;
   localEndpoint(): string;
   setRoutingId(routingId: string): void;
   connectToRoutingId(routingId: string, endpoint: string): void;
@@ -171,9 +173,13 @@ class NodeRawHostPort implements ZLinkRawHostPort {
 abstract class NodeRawSocketPort<TSocket extends Socket> implements ZLinkRawSocketPort {
   private readonly endpoints = new Set<string>();
   private readonly monitors = new Set<NodeRawMonitorPort>();
+  private readonly readablePoller = createPoller();
+  private readonly readableEvents = createPollEvents(1);
   private closed = false;
 
-  protected constructor(protected readonly socket: TSocket) {}
+  protected constructor(protected readonly socket: TSocket) {
+    this.readablePoller.add(socket as never, [PollEventFlag.PollIn], 0);
+  }
 
   bind(endpoint: string): void {
     this.requireOpen();
@@ -231,6 +237,21 @@ abstract class NodeRawSocketPort<TSocket extends Socket> implements ZLinkRawSock
     }
     this.endpoints.clear();
     try {
+      this.readablePoller.remove(this.socket as never);
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      this.readableEvents.close();
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      this.readablePoller.close();
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
       this.socket.close();
     } catch (error) {
       failures.push(error);
@@ -244,6 +265,17 @@ abstract class NodeRawSocketPort<TSocket extends Socket> implements ZLinkRawSock
   protected requireOpen(): void {
     if (this.closed) throw new Error('Raw socket is closed.');
   }
+
+  protected receiveRecord(dontWait: boolean): ZLinkRawReceivedRecord | undefined {
+    const timeoutMs = dontWait ? 0 : -1;
+    if (
+      this.readablePoller.wait(this.readableEvents, timeoutMs) <= 0
+      || !this.readableEvents.hasEvent(0, PollEventFlag.PollIn)
+    ) {
+      return undefined;
+    }
+    return receiveRecord(this.socket as never, true);
+  }
 }
 
 class NodeRawRouterPort extends NodeRawSocketPort<RouterSocket> implements ZLinkRawRouterPort {
@@ -251,6 +283,13 @@ class NodeRawRouterPort extends NodeRawSocketPort<RouterSocket> implements ZLink
   private readonly completionEvents = createPollEvents(1);
   private completionTimer?: ReturnType<typeof setTimeout>;
   private completionClosed = false;
+
+  disconnectRid(routingId: string): void {
+    this.requireOpen();
+    (this.socket as RouterSocket & {
+      disconnectRid(value: BindingRoutingId): void;
+    }).disconnectRid(bindingRoutingId(routingId));
+  }
 
   constructor(socket: RouterSocket) {
     super(socket);
@@ -297,7 +336,7 @@ class NodeRawRouterPort extends NodeRawSocketPort<RouterSocket> implements ZLink
 
   receive(dontWait = false): ZLinkRawReceivedRecord | undefined {
     this.requireOpen();
-    return receiveRecord(this.socket, dontWait);
+    return this.receiveRecord(dontWait);
   }
 
   reply(targetRid: string | Uint8Array, requestSeq: bigint, parts: readonly Uint8Array[]): void {
@@ -395,7 +434,7 @@ class NodeRawDealerPort extends NodeRawSocketPort<DealerSocket> implements ZLink
 
   receive(dontWait = false): ZLinkRawReceivedRecord | undefined {
     this.requireOpen();
-    return receiveRecord(this.socket, dontWait);
+    return this.receiveRecord(dontWait);
   }
 }
 

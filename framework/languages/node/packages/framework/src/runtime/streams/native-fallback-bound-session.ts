@@ -136,6 +136,7 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
   private async execute(packetName: string, signal?: AbortSignal): Promise<ZLinkSubmitResult> {
     const localActor = this.options.localActorProvider?.() === true;
     const remoteTarget = this.options.remoteBoundSessionTargetProvider();
+    let nativeAttempted = false;
     if (localActor) {
       const result = await this.options.runtime.submitLocalBoundSession(
         this.options.actorId,
@@ -147,6 +148,38 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
       if (result.status !== ZLinkSubmitStatus.TargetNotFound) {
         this.traceSubmitted(result, packetName);
         return result;
+      }
+
+      // A local Actor with a concrete native owner has a direct binding path.
+      // Use that path before a routed transfer target. The transfer target is
+      // retained for actors whose current owner is remote or whose native
+      // binding is no longer available.
+      const actorRef = this.options.actorRefProvider();
+      const node = this.options.nativeActorNodeProvider();
+      const bindingGeneration = (actorRef as (ActorRef & { readonly bindingGeneration?: bigint }) | undefined)
+        ?.bindingGeneration;
+      if (
+        actorRef !== undefined
+        && node !== undefined
+        && bindingGeneration !== undefined
+        && bindingGeneration > 0n
+      ) {
+        nativeAttempted = true;
+        const result = await this.options.runtime.sendNativeBoundSession(
+          node,
+          actorRef,
+          this.message,
+          packetName,
+          this.selectedMetadata,
+          signal
+        );
+        if (result.status !== ZLinkSubmitStatus.TargetNotFound) {
+          this.traceSubmitted(result, packetName);
+          return result;
+        }
+        if (remoteTarget === undefined) {
+          return result;
+        }
       }
     }
     if (remoteTarget !== undefined) {
@@ -205,7 +238,7 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
     }
     const actorRef = this.options.actorRefProvider();
     const node = this.options.nativeActorNodeProvider();
-    if (actorRef !== undefined && node !== undefined) {
+    if (!nativeAttempted && actorRef !== undefined && node !== undefined) {
       const result = await this.options.runtime.sendNativeBoundSession(
         node,
         actorRef,

@@ -23,7 +23,11 @@ test('framework and NestJS builders register separate location and relocation st
   const nestBuilder = nestjs.zlinkFramework()
     .addLocationStore(store)
     .addRelocationStore(relocationStore);
-  nestBuilder.configureLocations().ownerLeaseTtlMs(456);
+  nestBuilder.configureLocations()
+    .ownerLeaseRenewIntervalMs(100)
+    .ownerLeaseRenewTimeoutMs(30)
+    .ownerLeaseFencingMarginMs(50)
+    .ownerLeaseTtlMs(456);
   const nestModule = nestjs.ZLinkModule.forRoot(nestBuilder.build());
   const nestRegistration = await resolveFrameworkRegistration(nestModule);
   assert.equal(nestRegistration.locations.storeInstance, store);
@@ -48,6 +52,40 @@ test('framework runtime host uses the explicit location store for Actor lifecycl
   assert.equal(typeof actorOptions.locationLifecycle, 'object');
   assert.equal(spotOptions.locationLifecycle, undefined);
   assert.equal(typeof spotOptions.spotRouteResolver?.resolve, 'function');
+});
+
+test('framework host republishes the current lifecycle state after owner lease recovery', async () => {
+  const host = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration()
+  });
+  const firstToken = { ownerId: 'owner-a', leaseGeneration: 1n };
+  const secondToken = { ownerId: 'owner-a', leaseGeneration: 2n };
+  let currentToken = firstToken;
+  let recoveryHandler;
+  const runtime = {
+    get currentOwnerToken() {
+      return currentToken;
+    },
+    addOwnerLeaseRenewedHandler(handler) {
+      recoveryHandler = handler;
+    },
+    removeOwnerLeaseRenewedHandler() {}
+  };
+  const publishedStates = [];
+  const spotNodeRuntime = {
+    async publishMeshNodeState(state) {
+      publishedStates.push(state);
+    }
+  };
+
+  host.runtimeState = framework.ZLinkFrameworkRuntimeState.Draining;
+  host.installOwnerLeaseRecoveryPublication(runtime, spotNodeRuntime);
+  currentToken = secondToken;
+  recoveryHandler();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(publishedStates, [framework.ZLinkFrameworkRuntimeState.Draining]);
+  host.removeOwnerLeaseRecoveryPublication();
 });
 
 test('framework runtime host starts location runtime and injects lifecycle into managers', async () => {

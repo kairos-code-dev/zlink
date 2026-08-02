@@ -39,7 +39,6 @@ import type {
   ZLinkCreationTerminalReadResult,
   ZLinkCreationTerminalRecord,
   ZLinkLocationOwnerToken,
-  ZLinkLocationWriteIntent,
   ZLinkLocationWriteResult,
   ZLinkLocationWriteStatus,
   ZLinkObjectCommitRequest,
@@ -58,6 +57,7 @@ import type {
   ZLinkRelocationCapacityReservationRequest,
   ZLinkRelocationCapacityReserveResult
 } from '../../contracts/Locations';
+import { ZLinkLocationWriteIntent } from '../../contracts/Locations';
 import type {
   ZLinkActorLocation,
   ZLinkActorLocationFilter,
@@ -157,6 +157,17 @@ interface DescriptorRecord<T> {
   readonly generation: string;
   readonly descriptor: T;
 }
+
+interface OwnerCleanupCandidate {
+  readonly key: ZLinkStoreKey;
+  readonly scanVersion: ZLinkStoreVersion;
+}
+
+interface OwnerCleanupRecord {
+  readonly descriptor: OwnedStoreRecord;
+}
+
+const MAX_OWNER_CLEANUP_BATCH_ROWS = 2_047;
 
 /**
  * Maps framework domain records to the minimal provider SPI.
@@ -265,6 +276,62 @@ export class ZLinkLocationStoreRepository extends ZLinkInMemoryLocationStore {
           !== expectedStoreVersion.value
       ) {
         return { kind: 'conflict', current: snapshot };
+      }
+      if (mutation.kind === 'rebindOwnerLease') {
+        if (
+          mutation.expectedOwner.ownerId !== record.snapshot.ownerId
+          || mutation.expectedOwner.leaseGeneration !== record.snapshot.ownerLeaseGeneration
+          || mutation.targetOwner.ownerId !== record.snapshot.ownerId
+          || mutation.targetOwner.leaseGeneration === record.snapshot.ownerLeaseGeneration
+        ) {
+          return { kind: 'conflict', current: snapshot };
+        }
+        const descriptorKey = meshKey(
+          record.snapshot.allocation.descriptor.meshName,
+          String(record.snapshot.allocation.descriptor.rid)
+        );
+        const [descriptorRead, targetLeaseRead] = await Promise.all([
+          this.provider.read(descriptorKey, signal),
+          this.provider.read(ownerKey(mutation.targetOwner.ownerId), signal)
+        ]);
+        if (liveTargetDescriptor(
+          descriptorRead,
+          targetLeaseRead,
+          {
+            meshName: record.snapshot.allocation.descriptor.meshName,
+            nodeRid: record.snapshot.allocation.descriptor.rid,
+            nodeLifecycleGeneration: record.snapshot.allocation.descriptorLifecycleGeneration,
+            owner: mutation.targetOwner
+          }
+        ) === undefined) {
+          return { kind: 'conflict', current: snapshot };
+        }
+        const nextRecord: AuthorityRecord = {
+          ...record,
+          visibleStoreVersion: undefined,
+          snapshot: {
+            ...record.snapshot,
+            ownerLeaseGeneration: mutation.targetOwner.leaseGeneration,
+            payload: Buffer.from(mutation.payload)
+          }
+        };
+        const result = await this.provider.write({
+          conditions: [
+            { kind: 'version', key: rowKey, expected: current.value.version },
+            versionCondition(descriptorKey, descriptorRead),
+            versionCondition(ownerKey(mutation.targetOwner.ownerId), targetLeaseRead)
+          ],
+          mutations: [{ kind: 'put', key: rowKey, bytes: encodeJson(nextRecord) }]
+        }, signal);
+        if (result.kind === 'conflict') continue;
+        const storeVersion = result.putVersions.find(entry =>
+          entry.key.value === rowKey.value)?.version;
+        if (storeVersion === undefined) {
+          throw new Error('Authority lease rebind did not return a row version.');
+        }
+        const stored = authoritySnapshot(nextRecord.snapshot, storeVersion, result.storeNow);
+        const { kind: _kind, ...withoutKind } = stored;
+        return { kind: 'stored', ...withoutKind };
       }
       if (mutation.kind === 'put' && mutation.generationTransition === 'newOwner') {
         return await this.commitRelocationAuthority(
@@ -1760,10 +1827,9 @@ export class ZLinkLocationStoreRepository extends ZLinkInMemoryLocationStore {
       this.provider.read(leaseKey, signal),
       this.provider.read(rowKey, signal)
     ]);
-    if (lease.kind === 'missing'
-      || BigInt(decodeJson<OwnerRecord>(lease.value.bytes).leaseGeneration)
-        !== descriptor.leaseGeneration) {
-      return rejected(lease.kind === 'missing' ? new Date() : lease.value.storeNow);
+    if (lease.kind === 'missing') return rejected(lease.storeNow);
+    if (liveOwnerLeaseGeneration(lease) !== descriptor.leaseGeneration) {
+      return rejected(lease.value.storeNow);
     }
 
     let generation = 1n;
@@ -1776,7 +1842,15 @@ export class ZLinkLocationStoreRepository extends ZLinkInMemoryLocationStore {
         return { status: WriteStatus.Stored, generation, updatedAt: current.value.storeNow };
       }
       const currentLease = await this.provider.read(ownerKey(stored.ownerId), signal);
-      const takeover = (intent === 1 || intent === 3) && currentLease.kind === 'missing';
+      const currentLeaseGeneration = liveOwnerLeaseGeneration(currentLease);
+      const takeover = canTakeOverStoredLocation(
+        intent,
+        stored.ownerId,
+        stored.leaseGeneration,
+        descriptor.ownerId,
+        descriptor.leaseGeneration,
+        currentLeaseGeneration
+      );
       const renew = intent === 2
         && stored.ownerId === descriptor.ownerId
         && stored.leaseGeneration === descriptor.leaseGeneration
@@ -2154,8 +2228,11 @@ export class ZLinkLocationStoreRepository extends ZLinkInMemoryLocationStore {
     owner: ZLinkLocationOwnerToken,
     signal?: AbortSignal
   ): Promise<bigint> {
+    const leaseKey = ownerKey(owner.ownerId);
+    const lease = await this.provider.read(leaseKey, signal);
+    if (liveOwnerLeaseGeneration(lease) !== owner.leaseGeneration) return 0n;
     let removed = 0n;
-    let cursor: ZLinkStoreScanCursor | undefined;
+    const candidates: OwnerCleanupCandidate[] = [];
     for (const prefix of [
       `${PREFIX}mesh:`,
       `${PREFIX}client-server:`,
@@ -2164,31 +2241,113 @@ export class ZLinkLocationStoreRepository extends ZLinkInMemoryLocationStore {
       `${PREFIX}actor:`,
       `${PREFIX}route:`
     ]) {
-      cursor = undefined;
-      do {
-        const result = await this.provider.scan({ prefix, cursor, limit: 1_000 }, signal);
-        if (result.kind === 'expired') {
-          cursor = undefined;
+      for (;;) {
+        const prefixCandidates: OwnerCleanupCandidate[] = [];
+        let cursor: ZLinkStoreScanCursor | undefined;
+        let expired = false;
+        do {
+          const result = await this.provider.scan({ prefix, cursor, limit: 1_000 }, signal);
+          if (result.kind === 'expired') {
+            expired = true;
+            break;
+          }
+          for (const item of result.value.items) {
+            prefixCandidates.push({ key: item.key, scanVersion: item.value.version });
+          }
+          cursor = result.value.nextCursor;
+        } while (cursor !== undefined);
+        if (expired) {
+          // Snapshot scan expiry invalidates every page from this prefix.
+          // Restart from its first page instead of silently leaving rows
+          // behind after a partial scan.
           continue;
         }
-        for (const item of result.value.items) {
-          const record = decodeJson<DescriptorRecord<OwnedStoreRecord>>(item.value.bytes);
-          const descriptor = record.descriptor;
-          const leaseGeneration = 'leaseGeneration' in descriptor
-            ? descriptor.leaseGeneration
-            : descriptor.generation;
-          if (descriptor.ownerId !== owner.ownerId
-            || BigInt(leaseGeneration) !== owner.leaseGeneration) continue;
-          const deleted = await this.provider.write({
-            conditions: [{ kind: 'version', key: item.key, expected: item.value.version }],
-            mutations: [{ kind: 'delete', key: item.key }]
-          }, signal);
-          if (deleted.kind === 'applied') removed += 1n;
-        }
-        cursor = result.value.nextCursor;
-      } while (cursor !== undefined);
+        candidates.push(...prefixCandidates);
+        break;
+      }
+    }
+    for (let offset = 0; offset < candidates.length; offset += MAX_OWNER_CLEANUP_BATCH_ROWS) {
+      removed += await this.removeOwnerCleanupBatch(
+        owner,
+        leaseKey,
+        candidates.slice(offset, offset + MAX_OWNER_CLEANUP_BATCH_ROWS),
+        signal
+      );
     }
     return removed + await super.removeAllByOwner(owner);
+  }
+
+  private async removeOwnerCleanupBatch(
+    owner: ZLinkLocationOwnerToken,
+    leaseKey: ZLinkStoreKey,
+    candidates: readonly OwnerCleanupCandidate[],
+    signal?: AbortSignal
+  ): Promise<bigint> {
+    if (candidates.length === 0) return 0n;
+
+    const currentRows = await Promise.all(candidates.map(candidate =>
+      this.provider.read(candidate.key, signal)));
+    const unchangedOwnedRows: OwnerCleanupCandidate[] = [];
+    for (let index = 0; index < candidates.length; index += 1) {
+      const candidate = candidates[index]!;
+      const current = currentRows[index]!;
+      if (current.kind === 'missing'
+        || current.value.version.value !== candidate.scanVersion.value) {
+        continue;
+      }
+      const record = decodeJson<OwnerCleanupRecord>(current.value.bytes);
+      const descriptor = record.descriptor;
+      if (descriptor.ownerId !== owner.ownerId
+        || descriptorOwnerLeaseGeneration(descriptor) !== owner.leaseGeneration) {
+        continue;
+      }
+      unchangedOwnedRows.push({
+        key: candidate.key,
+        scanVersion: current.value.version
+      });
+    }
+    if (unchangedOwnedRows.length === 0) return 0n;
+
+    const currentLease = await this.provider.read(leaseKey, signal);
+    if (currentLease.kind === 'missing'
+      || liveOwnerLeaseGeneration(currentLease) !== owner.leaseGeneration) {
+      return 0n;
+    }
+    const result = await this.provider.write({
+      conditions: [
+        { kind: 'version', key: leaseKey, expected: currentLease.value.version },
+        ...unchangedOwnedRows.map(row => ({
+          kind: 'version' as const,
+          key: row.key,
+          expected: row.scanVersion
+        }))
+      ],
+      mutations: unchangedOwnedRows.map(row => ({
+        kind: 'delete' as const,
+        key: row.key
+      }))
+    }, signal);
+    if (result.kind === 'applied') return BigInt(unchangedOwnedRows.length);
+
+    // A row may have changed while the page was being prepared. Split the
+    // bounded batch so unaffected rows can still be removed atomically, while
+    // the changed row is discarded by the next version re-read. A changed
+    // owner lease causes every recursive branch to stop at the fence above.
+    if (unchangedOwnedRows.length === 1) return 0n;
+    const midpoint = Math.ceil(unchangedOwnedRows.length / 2);
+    const left = await this.removeOwnerCleanupBatch(
+      owner,
+      leaseKey,
+      unchangedOwnedRows.slice(0, midpoint),
+      signal
+    );
+    const right = await this.removeOwnerCleanupBatch(
+      owner,
+      leaseKey,
+      unchangedOwnedRows.slice(midpoint),
+      signal
+    );
+    return left + right;
   }
 
   private async updateDescriptor<T extends OwnedDescriptor>(
@@ -2205,10 +2364,9 @@ export class ZLinkLocationStoreRepository extends ZLinkInMemoryLocationStore {
       this.provider.read(leaseKey, signal),
       this.provider.read(rowKey, signal)
     ]);
-    if (lease.kind === 'missing'
-      || BigInt(decodeJson<OwnerRecord>(lease.value.bytes).leaseGeneration)
-        !== descriptor.leaseGeneration) {
-      return rejected(lease.kind === 'missing' ? new Date() : lease.value.storeNow);
+    if (lease.kind === 'missing') return rejected(lease.storeNow);
+    if (liveOwnerLeaseGeneration(lease) !== descriptor.leaseGeneration) {
+      return rejected(lease.value.storeNow);
     }
 
     let generation = 1n;
@@ -2221,7 +2379,15 @@ export class ZLinkLocationStoreRepository extends ZLinkInMemoryLocationStore {
         return { status: WriteStatus.Stored, generation, updatedAt: current.value.storeNow };
       }
       const currentLease = await this.provider.read(ownerKey(stored.ownerId), signal);
-      const takeover = (intent === 1 || intent === 3) && currentLease.kind === 'missing';
+      const currentLeaseGeneration = liveOwnerLeaseGeneration(currentLease);
+      const takeover = canTakeOverStoredLocation(
+        intent,
+        stored.ownerId,
+        stored.leaseGeneration,
+        descriptor.ownerId,
+        descriptor.leaseGeneration,
+        currentLeaseGeneration
+      );
       const renew = intent === 2 && canRenew(stored, descriptor);
       if (!takeover && !renew) {
         return {
@@ -2309,10 +2475,9 @@ export class ZLinkLocationStoreRepository extends ZLinkInMemoryLocationStore {
       this.provider.read(leaseKey, signal),
       this.provider.read(rowKey, signal)
     ]);
-    if (lease.kind === 'missing'
-      || BigInt(decodeJson<OwnerRecord>(lease.value.bytes).leaseGeneration)
-        !== locationOwnerGeneration(location)) {
-      return rejected(lease.kind === 'missing' ? new Date() : lease.value.storeNow);
+    if (lease.kind === 'missing') return rejected(lease.storeNow);
+    if (liveOwnerLeaseGeneration(lease) !== locationOwnerGeneration(location)) {
+      return rejected(lease.value.storeNow);
     }
 
     let generation = 1n;
@@ -2332,7 +2497,16 @@ export class ZLinkLocationStoreRepository extends ZLinkInMemoryLocationStore {
         }
       } else {
         const currentLease = await this.provider.read(ownerKey(stored.ownerId), signal);
-        if (currentLease.kind === 'found') {
+        const currentLeaseGeneration = liveOwnerLeaseGeneration(currentLease);
+        const takeover = canTakeOverStoredLocation(
+          intent,
+          stored.ownerId,
+          locationOwnerGeneration(stored),
+          location.ownerId,
+          locationOwnerGeneration(location),
+          currentLeaseGeneration
+        );
+        if (!takeover) {
           return {
             status: WriteStatus.RejectedConflict,
             generation,
@@ -2373,8 +2547,13 @@ export class ZLinkLocationStoreRepository extends ZLinkInMemoryLocationStore {
     const current = await this.provider.read(rowKey, signal);
     if (current.kind === 'missing') return WriteStatus.IgnoredStale;
     const record = decodeJson<DescriptorRecord<LeaseOwnedLocation>>(current.value.bytes);
-    if (record.descriptor.ownerId !== owner.ownerId
-      || locationOwnerGeneration(record.descriptor) !== owner.leaseGeneration) {
+    const descriptor = record.descriptor as unknown as {
+      readonly ownerId: string;
+      readonly leaseGeneration?: bigint;
+    };
+    const leaseGeneration = descriptor.leaseGeneration ?? BigInt(record.generation);
+    if (descriptor.ownerId !== owner.ownerId
+      || leaseGeneration !== owner.leaseGeneration) {
       return WriteStatus.IgnoredStale;
     }
     const result = await this.provider.write({
@@ -3462,10 +3641,42 @@ function sameLiveOwner(
   lease: ZLinkStoreReadResult,
   snapshot: StoredAuthoritySnapshot
 ): boolean {
-  if (lease.kind !== 'found') return false;
-  const owner = decodeJson<OwnerRecord>(lease.value.bytes);
-  return owner.ownerId === snapshot.ownerId
-    && BigInt(owner.leaseGeneration) === snapshot.ownerLeaseGeneration;
+  if (liveOwnerLeaseGeneration(lease) !== snapshot.ownerLeaseGeneration) return false;
+  const owner = decodeJson<OwnerRecord>((lease as Extract<ZLinkStoreReadResult, { kind: 'found' }>).value.bytes);
+  return owner.ownerId === snapshot.ownerId;
+}
+
+function liveOwnerLeaseGeneration(
+  lease: ZLinkStoreReadResult
+): bigint | undefined {
+  if (lease.kind === 'missing'
+    || lease.value.expiresAt === undefined
+    || lease.value.expiresAt.getTime() <= lease.value.storeNow.getTime()) {
+    return undefined;
+  }
+  return BigInt(decodeJson<OwnerRecord>(lease.value.bytes).leaseGeneration);
+}
+
+function canTakeOverStoredLocation(
+  intent: ZLinkLocationWriteIntent,
+  currentOwnerId: string,
+  currentLeaseGeneration: bigint,
+  nextOwnerId: string,
+  nextLeaseGeneration: bigint,
+  liveLeaseGeneration: bigint | undefined
+): boolean {
+  if (intent === ZLinkLocationWriteIntent.Takeover) {
+    // Takeover is an explicit handoff operation. The provider CAS still
+    // fences concurrent stale writes while the next owner lease is checked.
+    return true;
+  }
+  if (intent !== ZLinkLocationWriteIntent.NewClaim) {
+    return false;
+  }
+  if (liveLeaseGeneration === undefined) return true;
+  return currentOwnerId === nextOwnerId
+    && currentLeaseGeneration !== nextLeaseGeneration
+    && liveLeaseGeneration === nextLeaseGeneration;
 }
 
 function persistMeshDescriptor(descriptor: ZLinkMeshNodeDescriptor): ZLinkMeshNodeDescriptor {
@@ -3560,6 +3771,20 @@ function matchesRoute(value: ZLinkRouteLocation, filter: ZLinkRouteLocationFilte
 
 function locationOwnerGeneration(value: LeaseOwnedLocation): bigint {
   return value.leaseGeneration;
+}
+
+function descriptorOwnerLeaseGeneration(value: OwnedStoreRecord): bigint | undefined {
+  if ('leaseGeneration' in value) {
+    return typeof value.leaseGeneration === 'bigint'
+      ? value.leaseGeneration
+      : BigInt(value.leaseGeneration);
+  }
+  if ('generation' in value) {
+    return typeof value.generation === 'bigint'
+      ? value.generation
+      : BigInt(value.generation);
+  }
+  return undefined;
 }
 
 function sameMeshDescriptor(

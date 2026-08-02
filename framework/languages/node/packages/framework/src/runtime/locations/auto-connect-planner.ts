@@ -37,29 +37,29 @@ export const ZLinkAutoConnectPlanner = Object.freeze({
   ): ReadonlyMap<string, ZLinkAutoConnectTarget> {
     const desired = new Map<string, ZLinkAutoConnectTarget>();
     for (const peer of peers) {
-      if (peer.autoConnectType !== local.autoConnectType
-        || peer.meshName !== local.meshName
-        || (peer.draining && !includeDraining)
-        || !this.isRoleAllowed(peer.autoConnectType, peer.role)
-        || peer.endpoint.length === 0
-        || isAutoConnectSelf(local, peer)) {
+      if (!isCandidate(local, peer, includeDraining)) {
         continue;
       }
 
       if (!shouldDialAutoConnectPeer(local, peer)) continue;
 
-      const target: ZLinkAutoConnectTarget = {
-        targetKey: autoConnectTargetKeyOf(peer),
-        nodeRid: peer.nodeRid,
-        lifecycleGeneration: peer.generation,
-        role: peer.role,
-        endpoint: peer.endpoint,
-        metadata: peer.metadata,
-        ownerId: peer.ownerId
-      };
+      const target = targetOf(peer);
       desired.set(target.targetKey, target);
     }
     return desired;
+  },
+
+  computeCandidates(
+    local: ZLinkAutoConnectLocal,
+    peers: readonly ZLinkPeerLocation[]
+  ): ReadonlyMap<string, ZLinkAutoConnectTarget> {
+    const candidates = new Map<string, ZLinkAutoConnectTarget>();
+    for (const peer of peers) {
+      if (!isCandidate(local, peer, true)) continue;
+      const target = targetOf(peer);
+      candidates.set(target.targetKey, target);
+    }
+    return candidates;
   },
 
   targetKeyOf(peer: ZLinkPeerLocation): string {
@@ -132,6 +132,31 @@ export function formatAutoConnectRid(rid: RoutingId | undefined): string {
 function autoConnectTargetKeyOf(peer: ZLinkPeerLocation): string {
   const identity = peer.nodeRid === undefined ? peer.endpoint : encodeRoutingIdHex(peer.nodeRid);
   return `${zlinkLocationRoleName(peer.role)}|${identity}|${peer.generation}`;
+}
+
+function isCandidate(
+  local: ZLinkAutoConnectLocal,
+  peer: ZLinkPeerLocation,
+  includeDraining: boolean
+): boolean {
+  return peer.autoConnectType === local.autoConnectType
+    && peer.meshName === local.meshName
+    && (includeDraining || !peer.draining)
+    && ZLinkAutoConnectPlanner.isRoleAllowed(peer.autoConnectType, peer.role)
+    && peer.endpoint.length > 0
+    && !isAutoConnectSelf(local, peer);
+}
+
+function targetOf(peer: ZLinkPeerLocation): ZLinkAutoConnectTarget {
+  return {
+    targetKey: autoConnectTargetKeyOf(peer),
+    nodeRid: peer.nodeRid,
+    lifecycleGeneration: peer.generation,
+    role: peer.role,
+    endpoint: peer.endpoint,
+    metadata: peer.metadata,
+    ownerId: peer.ownerId
+  };
 }
 
 function isAutoConnectSelf(local: ZLinkAutoConnectLocal, peer: ZLinkPeerLocation): boolean {

@@ -89,7 +89,7 @@ test('managed stream binds Session Actors through the Framework service without 
     onSendReady() {},
     send() { return true; },
     disconnectPeer() {},
-    onFramedPacket() {}
+    recv() { return undefined; }
   };
   const stream = new framework.ZLinkManagedStream(
     rawStreamSocket,
@@ -394,7 +394,7 @@ test('managed stream remote bind confirmation failure rolls back the accepted na
   const socket = {
     send() { return true; },
     disconnectPeer() {},
-    onFramedPacket() {},
+    recv() { return undefined; },
     async bindActor(_sessionRid, actor) {
       operations.push(`bind:${actor.actorId}`);
       nativeActor = actor;
@@ -696,6 +696,55 @@ test('runtime host bound session uses routed Session target before native Sessio
   assert.equal(String(routeCalls[0].targetNodeRid), 'session-node');
   assert.equal(routeCalls[0].packetName, '__zlink.actor.bound_session.send');
   assert.equal(routeCalls[0].message.boundPacketName, 'Notify');
+});
+
+test('runtime host local actor uses its native binding before a transfer target', async () => {
+  const actorRef = { nodeRid: 'node-local', actorId: 'actor-native-bound', generation: 7n };
+  const nativeSends = [];
+  const routeCalls = [];
+  const host = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration()
+  });
+  host.routeTransport.submit = async (...args) => {
+    routeCalls.push(args);
+    return { status: framework.ZLinkSubmitStatus.Submitted };
+  };
+  host.spotNodeRuntime = {
+    primaryMeshNode: {
+      status: () => ({ routingId: zlink.RoutingId.from('node-local') }),
+      sendActorBoundSession(actor, bindingGeneration, parts, flags) {
+        nativeSends.push({ actor, bindingGeneration, parts, flags });
+        return zlink.SubmitResult.Ok;
+      },
+      async closeActorBoundSession() {}
+    }
+  };
+  host.setActorManager({
+    getState(actorId) {
+      return actorId === actorRef.actorId
+        ? {
+            actor: { actorId },
+            nativeActorRef: actorRef,
+            boundSessionBindingGeneration: 11n,
+            remoteBoundSessionTarget: {
+              routerChannelId: 'room.route',
+              targetNodeRid: 'session-node',
+              spotId: 'session-entry'
+            }
+          }
+        : undefined;
+    }
+  });
+
+  await host.createActorManagerOptions()
+    .boundSessionFactory(actorRef.actorId)
+    .send({ ok: true })
+    .packetName('Notify')
+    .submit();
+
+  assert.equal(nativeSends.length, 1);
+  assert.equal(nativeSends[0].bindingGeneration, 11n);
+  assert.equal(routeCalls.length, 0);
 });
 
 test('runtime host bound session disconnect uses routed Session target before native SessionRelay', async () => {
@@ -3025,7 +3074,7 @@ test('stream session actor changed-ref bind failure restores the previous native
   const socket = {
     send() { return true; },
     disconnectPeer() {},
-    onFramedPacket() {},
+    recv() { return undefined; },
     async bindActor(_sessionRid, actor) {
       operations.push(`bind:${actor.nodeRid}:${actor.generation}`);
       if (actor.generation === 2n) throw new Error('replacement bind failed');
@@ -3070,7 +3119,7 @@ test('stream session cross-context bind failure restores the previous session tr
   const socket = {
     send() { return true; },
     disconnectPeer() {},
-    onFramedPacket() {},
+    recv() { return undefined; },
     async bindActor(sessionRid) {
       operations.push(`bind:${sessionRid}`);
       if (sessionRid === 'session-new') throw new Error('new session bind failed');
@@ -3108,7 +3157,7 @@ test('stream session actor reconnect unbinds the previous native session before 
   const socket = {
     send() { return true; },
     disconnectPeer() {},
-    onFramedPacket() {},
+    recv() { return undefined; },
     async bindActor(sessionRid) {
       operations.push(`bind:${sessionRid}`);
       if (boundSessionRid !== undefined) throw new Error('Binding request failed with result 108.');
@@ -3642,7 +3691,7 @@ test('stream node runtime does not reuse a disconnected session for the same rou
   const contexts = [];
   const dispatched = [];
   const disconnected = [];
-  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+  const runtime = createStreamRuntime({
     socket,
     sessionFactory(context) {
       contexts.push(context);
@@ -3672,13 +3721,14 @@ test('stream node runtime does not reuse a disconnected session for the same rou
   assert.equal(dispatched[1].context, contexts[1]);
   assert.notEqual(contexts[0], contexts[1]);
   await waitForCondition(() => disconnected.length === 1, 'old stream disconnect');
+  await runtime.dispose();
 });
 
 test('stream session runtime does not invent correlation ids from request sequences', async () => {
   const socket = new FakeStreamSocket();
   const flowEvents = [];
   const dispatchErrors = [];
-  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+  const runtime = createStreamRuntime({
     socket,
     dispatchErrors: {
       flow: {
@@ -3741,6 +3791,20 @@ function fakeStream(sessionId, routingId) {
       };
     },
     async close() {}
+  };
+}
+
+function createStreamRuntime(options) {
+  return new framework.ZLinkStreamSessionNodeRuntime({
+    readablePoller: readyPoller(),
+    ...options
+  });
+}
+
+function readyPoller() {
+  return {
+    wait() { return true; },
+    dispose() {}
   };
 }
 
@@ -3915,8 +3979,10 @@ class FakeStreamSocket {
     this.boundActors = [];
     this.boundActorSends = [];
     this.bindError = undefined;
+    this.received = [];
     this.sendTimeoutMs = -1;
     this.sendHighWaterMark = 4096;
+    this.maxMessageSize = 16 * 1024 * 1024;
   }
 
   send() {
@@ -3943,12 +4009,20 @@ class FakeStreamSocket {
     return true;
   }
 
-  onFramedPacket(handler) {
-    this.frameHandler = handler;
+  recv() {
+    return this.received.shift();
   }
 
   emitFrame(routingId, header, payload) {
-    this.frameHandler(routingId, header, payload);
+    const frame = protocolCodecs.ZlinkStreamFrameCodec.encode(
+      bytesOf(header),
+      bytesOf(payload)
+    );
+    this.received.push({
+      routingId,
+      parts: [zlink.Message.from(frame)],
+      close() {}
+    });
   }
 
   async dispose() {}

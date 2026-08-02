@@ -652,11 +652,6 @@ class DefaultZLinkNestMeshNodeBuilder extends ZLinkNestOptionsBuilder implements
     return new DefaultZLinkNestMeshChannelBuilder(this.state, channels[name]);
   }
 
-  /** Runtime compatibility for pre-contract JavaScript callers; not part of ZLinkNestMeshNodeBuilder. */
-  channelName(name: string): ZLinkNestMeshChannelServerBuilder {
-    return this.channel(name).server();
-  }
-
   listen(endpointOrPort?: string | number): this {
     this.spotOptions.router = typeof endpointOrPort === 'string'
       ? { ...(this.spotOptions.router ?? {}), bind: endpointOrPort, port: undefined }
@@ -705,6 +700,24 @@ class DefaultZLinkNestMeshNodeBuilder extends ZLinkNestOptionsBuilder implements
       );
     }
     this.spotOptions.placementWeight = weight;
+    return this;
+  }
+
+  setActorLimit(limit: number): this {
+    this.spotOptions.actorLimit = requirePositiveCapacity(limit, 'Actor limit');
+    return this;
+  }
+
+  setSpotLimit(limit: number): this {
+    this.spotOptions.spotLimit = requirePositiveCapacity(limit, 'Spot limit');
+    return this;
+  }
+
+  setActivationConcurrency(limit: number): this {
+    this.spotOptions.activationConcurrencyLimit = requirePositiveCapacity(
+      limit,
+      'Activation concurrency limit'
+    );
     return this;
   }
 
@@ -1145,6 +1158,15 @@ function validateStableTypeLimit(value: number | undefined): void {
   }
 }
 
+function requirePositiveCapacity(value: number, label: string): number {
+  if (!Number.isSafeInteger(value) || value <= 0 || value > 0x7fff_ffff) {
+    throw new framework.ZLinkConfigurationException(
+      `${label} must be an integer in 1..2147483647.`
+    );
+  }
+  return value;
+}
+
 function rejectDuplicateObjectType(
   registrations: Readonly<Record<string, unknown>>,
   stableType: string,
@@ -1166,11 +1188,21 @@ class DefaultZLinkNestMeshChannelBuilder extends ZLinkNestOptionsBuilder impleme
   }
 
   client(): ZLinkNestMeshChannelClientBuilder {
+    if (this.channel.client === true || this.channel.server === true) {
+      throw new framework.ZLinkConfigurationException(
+        'RouteMesh channel must register exactly one role; client() and server() cannot both be used or called twice.'
+      );
+    }
     this.channel.client = true;
     return new DefaultZLinkNestMeshChannelClientBuilder(this.state);
   }
 
   server(): ZLinkNestMeshChannelServerBuilder {
+    if (this.channel.client === true || this.channel.server === true) {
+      throw new framework.ZLinkConfigurationException(
+        'RouteMesh channel must register exactly one role; client() and server() cannot both be used or called twice.'
+      );
+    }
     this.channel.server = true;
     return new DefaultZLinkNestMeshChannelServerBuilder(this.state, this.channel);
   }

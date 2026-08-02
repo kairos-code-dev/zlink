@@ -165,3 +165,17 @@ remaining: E2E scenario inventory gate reports 171 missing IDs; process/sample e
 
 이 판정은 E2E·sample gap을 닫았다는 의미가 아니다. 해당 범위의 unresolved 항목과
 `npm run verify:ci`의 header gate 실패는 별도 E2E 후속 조건으로 유지한다.
+
+### Worker reference 수명 재검토
+
+worker listener를 등록하기 전에 `unref()`하는 구현은 첫 결과 message 뒤 MessagePort가 다시
+참조되어 idle pool이 host process 종료를 지연시키는 위험 신호를 보였다. 생성 직후부터 계속
+`unref()`하는 대안은 반대로 active job의 Promise가 event loop 종료로 끝나지 않을 수 있었다.
+따라서 `ZLinkCpuWorkerPool`이 slot aggregate의 active/idle invariant를 직접 소유하도록,
+listener 등록 후 baseline slot을 `unref()`, assignment 시 `ref()`, terminal completion 뒤
+`unref()`하는 방식을 선택했다. 이 방식은 caller에게 worker lifecycle을 노출하지 않으면서
+활성 작업의 completion과 유휴 process 종료를 모두 보장한다.
+
+최신 검증은 `entry-spot-serial-dispatch.test.js` 24/24, 관련 6개 contract 파일 combined
+152/152, build·typecheck·lint PASS와 direct test exit 0으로 확인했다. E2E/process/sample
+evidence는 사용자 범위 밖이므로 이 review 판정에 포함하지 않았다.

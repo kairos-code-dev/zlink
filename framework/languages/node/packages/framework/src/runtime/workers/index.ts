@@ -167,12 +167,13 @@ class ZLinkCpuWorkerPool {
 
   private createSlot(): ZLinkCpuWorkerSlot {
     const worker = new Worker(CPU_WORKER_SOURCE, { eval: true });
-    worker.unref();
     const slot: ZLinkCpuWorkerSlot = { worker, terminating: false };
     this.slots.add(slot);
     worker.on('message', (message: CpuWorkerMessage) => this.onWorkerMessage(slot, message));
     worker.on('error', (error) => this.onWorkerError(slot, error));
     worker.on('exit', (code) => this.onWorkerExit(slot, code));
+    // Keep baseline slots from retaining an otherwise idle host process.
+    worker.unref();
     return slot;
   }
 
@@ -180,6 +181,8 @@ class ZLinkCpuWorkerPool {
     slot.job = job;
     job.slot = slot;
     job.running = true;
+    // An active job must keep the event loop open until its result arrives.
+    slot.worker.ref();
     job.abortState = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
     this.inFlight += 1;
     if (slot.idleTimer !== undefined) {
@@ -286,7 +289,10 @@ class ZLinkCpuWorkerPool {
     slot.job = undefined;
     this.inFlight -= 1;
     complete();
-    if (keepSlot && !slot.terminating) this.scheduleIdleTermination(slot);
+    if (keepSlot && !slot.terminating) {
+      this.scheduleIdleTermination(slot);
+      slot.worker.unref();
+    }
     this.pump();
   }
 

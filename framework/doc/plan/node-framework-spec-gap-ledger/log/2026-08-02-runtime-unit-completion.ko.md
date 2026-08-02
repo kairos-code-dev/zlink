@@ -297,3 +297,27 @@ Node Framework production runtime, public contract, package와 unit·contract te
 `test/contract/e2e-scenario-header-gate.test.js`에서 common scenario 171개 누락을 보고하며
 exit 1로 끝났다. 이 결과는 이번 비-E2E 변경의 실패가 아니라 사용자가 제외한 E2E inventory
 gate가 아직 열려 있음을 뜻한다. E2E source·runner·sample을 수정해 이 gate를 우회하지 않았다.
+
+## Worker slot reference 수명 보정 — 2026-08-02 후속
+
+`entry-spot-serial-dispatch.test.js`의 24개 assertion은 통과했지만, CPU Worker의
+`unref()`를 listener 등록 전에 호출하면 첫 `message` 뒤 `MessagePort`가 다시 참조되어
+idle worker가 test process를 유지하는 문제가 확인됐다. 반대로 생성 직후 무조건 `unref()`하면
+활성 작업의 Promise가 event loop 종료로 취소될 수 있다.
+
+따라서 slot 생성 시 listener를 먼저 등록하고 baseline slot은 `unref()`하며, 작업을 할당할 때
+`ref()`하고 결과·오류·정상 cancellation 뒤 idle 상태로 전환할 때 다시 `unref()`하도록 수명
+경계를 조정했다. 작업 중에는 process 종료를 막고, 작업이 없을 때는 worker와 idle timer가
+불필요한 process retention을 만들지 않는다. Worker를 작업마다 생성·종료하지 않는 bounded
+pool 구조와도 일치한다.
+
+| Gate | 결과 |
+|---|---:|
+| `npm run build` | PASS |
+| `npm run typecheck` | PASS |
+| `npm run lint` | PASS |
+| `timeout 10s node --test test/contract/entry-spot-serial-dispatch.test.js` | 24/24 PASS, exit 0 |
+| 6개 비-E2E contract 파일 combined run | 152/152 PASS, exit 0 |
+
+이 수정은 E2E·sample·process runner를 변경하지 않는다. 전체 CI의 E2E scenario inventory gate는
+기존과 같이 사용자 제외 범위의 후속 조건으로 남긴다.

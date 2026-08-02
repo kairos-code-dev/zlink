@@ -86,7 +86,7 @@ final class ZLinkChannelRuntimeConfigurator {
             systems.zlink.contracts.core.RoutingId publisherRoutingId =
                 channel.routingId() == null
                     ? systems.zlink.contracts.core.RoutingId.from(
-                        java.util.UUID.randomUUID())
+                        channel.routingIdPrefix() + "-" + java.util.UUID.randomUUID())
                     : channel.routingId();
             publisher.setRoutingId(publisherRoutingId);
             for (String endpoint : channel.publisherBinds()) {

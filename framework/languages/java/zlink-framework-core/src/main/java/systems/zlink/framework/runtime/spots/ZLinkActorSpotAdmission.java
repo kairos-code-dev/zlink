@@ -286,12 +286,15 @@ final class ZLinkActorSpotAdmission {
                 "local actor Spot admission is missing: " + actor.context().actorId()));
         }
         ZLinkActorRuntime runtime = requireActors();
-        return runtime.leaveSourceForLocalMove(actor)
-            .thenRun(() -> runtime.markJoined(
+        ZLinkActorRuntime.LocalMoveSource source = runtime.beginLocalMove(actor);
+        return runtime.commitJoinedLocation(actor, pending.actorRef(), pending.spotId())
+            .thenCompose(ignored -> runtime.markJoined(
                 actor, pending.actorRef(), pending.spotId(), pending.spot()))
             .thenCompose(ignored -> pending.joinedCallback().apply(actor))
-            .thenCompose(ignored -> runtime.commitJoinedLocation(actor, pending.spotId()))
-            .thenRun(() -> runtime.completeRemoteMove(actor))
+            .thenRun(() -> {
+                runtime.notifySourceForLocalMove(actor, source);
+                runtime.completeRemoteMove(actor);
+            })
             .whenComplete((ignored, error) -> {
                 if (error != null) {
                     runtime.failRemoteMove(actor, error);

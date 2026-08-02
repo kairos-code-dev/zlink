@@ -163,9 +163,21 @@ final class ZLinkChannelHandlerInvoker {
         ChannelSendHandlerRegistration registration,
         Message payload,
         Map<String, String> metadata) {
+        return invokeSendHandler(
+            channelName, registration, payload, metadata, null);
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    CompletionStage<Void> invokeSendHandler(
+        String channelName,
+        ChannelSendHandlerRegistration registration,
+        Message payload,
+        Map<String, String> metadata,
+        String wireContentType) {
         Object message;
         try {
-            message = ZLinkMessagePayloads.deserialize(serializer, payload, registration.messageType());
+            message = deserializePayload(
+                payload, registration.messageType(), wireContentType);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(payloadDecodeFailure(
                 channelName,
@@ -177,7 +189,7 @@ final class ZLinkChannelHandlerInvoker {
                 meshName,
                 channelName,
                 registration.packetName(),
-                contentTypeFor(registration.messageType()),
+                contentTypeFor(registration.messageType(), wireContentType),
                 metadata);
             return withDispatchHandlers(handlers ->
                 invokeWithFilters(
@@ -233,9 +245,21 @@ final class ZLinkChannelHandlerInvoker {
         ChannelRequestHandlerRegistration registration,
         Message payload,
         Map<String, String> metadata) {
+        return invokeRequestHandler(
+            channelName, registration, payload, metadata, null);
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    CompletionStage<Message> invokeRequestHandler(
+        String channelName,
+        ChannelRequestHandlerRegistration registration,
+        Message payload,
+        Map<String, String> metadata,
+        String wireContentType) {
         Object request;
         try {
-            request = ZLinkMessagePayloads.deserialize(serializer, payload, registration.requestType());
+            request = deserializePayload(
+                payload, registration.requestType(), wireContentType);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(payloadDecodeFailure(
                 channelName,
@@ -247,7 +271,7 @@ final class ZLinkChannelHandlerInvoker {
                 meshName,
                 channelName,
                 registration.packetName(),
-                contentTypeFor(registration.requestType()),
+                contentTypeFor(registration.requestType(), wireContentType),
                 metadata);
             return withDispatchHandlers(handlers ->
                 invokeRequestWithFilters(
@@ -294,9 +318,21 @@ final class ZLinkChannelHandlerInvoker {
         ChannelPublishHandlerRegistration registration,
         String topic,
         Message payload) {
+        return invokePublishHandler(
+            channelName, registration, topic, payload, null);
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    CompletionStage<Void> invokePublishHandler(
+        String channelName,
+        ChannelPublishHandlerRegistration registration,
+        String topic,
+        Message payload,
+        String wireContentType) {
         Object message;
         try {
-            message = ZLinkMessagePayloads.deserialize(serializer, payload, registration.messageType());
+            message = deserializePayload(
+                payload, registration.messageType(), wireContentType);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(payloadDecodeFailure(
                 channelName,
@@ -308,7 +344,7 @@ final class ZLinkChannelHandlerInvoker {
                 channelName,
                 registration.packetName(),
                 topic,
-                contentTypeFor(registration.messageType()));
+                contentTypeFor(registration.messageType(), wireContentType));
             return withDispatchHandlers(handlers ->
                 invokeWithFilters(
                     ZLinkHandlerDispatchKind.CLASSIC_FANOUT,
@@ -421,9 +457,22 @@ final class ZLinkChannelHandlerInvoker {
         RoutingId sourceRoutingId,
         Message payload,
         Map<String, String> metadata) {
+        return invokeRouteSendHandler(
+            channelName, registration, sourceRoutingId, payload, metadata, null);
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    CompletionStage<Void> invokeRouteSendHandler(
+        String channelName,
+        ChannelRouteSendHandlerRegistration registration,
+        RoutingId sourceRoutingId,
+        Message payload,
+        Map<String, String> metadata,
+        String wireContentType) {
         Object message;
         try {
-            message = ZLinkMessagePayloads.deserialize(serializer, payload, registration.messageType());
+            message = deserializePayload(
+                payload, registration.messageType(), wireContentType);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(payloadDecodeFailure(
                 channelName,
@@ -437,7 +486,7 @@ final class ZLinkChannelHandlerInvoker {
                     null,
                     registration.packetName(),
                     sourceRoutingId,
-                    contentTypeFor(registration.messageType()),
+                    contentTypeFor(registration.messageType(), wireContentType),
                     metadata);
             return withDispatchHandlers(handlers ->
                 invokeWithFilters(
@@ -472,9 +521,22 @@ final class ZLinkChannelHandlerInvoker {
         RoutingId sourceRoutingId,
         Message payload,
         Map<String, String> metadata) {
+        return invokeRouteRequestHandler(
+            channelName, registration, sourceRoutingId, payload, metadata, null);
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    CompletionStage<Message> invokeRouteRequestHandler(
+        String channelName,
+        ChannelRouteRequestHandlerRegistration registration,
+        RoutingId sourceRoutingId,
+        Message payload,
+        Map<String, String> metadata,
+        String wireContentType) {
         Object request;
         try {
-            request = ZLinkMessagePayloads.deserialize(serializer, payload, registration.requestType());
+            request = deserializePayload(
+                payload, registration.requestType(), wireContentType);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(payloadDecodeFailure(
                 channelName,
@@ -488,7 +550,7 @@ final class ZLinkChannelHandlerInvoker {
                     null,
                     registration.packetName(),
                     sourceRoutingId,
-                    contentTypeFor(registration.requestType()),
+                    contentTypeFor(registration.requestType(), wireContentType),
                     metadata);
             return withDispatchHandlers(handlers ->
                 invokeRequestWithFilters(
@@ -518,6 +580,23 @@ final class ZLinkChannelHandlerInvoker {
 
     private String contentTypeFor(Class<?> payloadType) {
         return codecs.contentTypeFor(payloadType);
+    }
+
+    private String contentTypeFor(Class<?> payloadType, String wireContentType) {
+        return wireContentType == null
+            ? contentTypeFor(payloadType)
+            : wireContentType;
+    }
+
+    private <T> T deserializePayload(
+        Message payload,
+        Class<T> payloadType,
+        String wireContentType) {
+        ZLinkMessageSerializer selected = wireContentType == null
+            ? serializer
+            : codecs.serializerForReceivedContentType(
+                wireContentType, serializer);
+        return ZLinkMessagePayloads.deserialize(selected, payload, payloadType);
     }
 
     private String routeMeshName(String legacyChannelName) {

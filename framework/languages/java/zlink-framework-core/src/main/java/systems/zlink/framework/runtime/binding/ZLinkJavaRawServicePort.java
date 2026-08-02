@@ -1,7 +1,9 @@
 package systems.zlink.framework.runtime.binding;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -19,9 +21,6 @@ import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.eventing.MonitorEventType;
-import systems.zlink.contracts.eventing.PollEventFlags;
-import systems.zlink.contracts.eventing.PollEvents;
-import systems.zlink.contracts.eventing.Poller;
 import systems.zlink.contracts.eventing.SocketMonitor;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceWireCodec;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceWireFrame;
@@ -38,8 +37,9 @@ final class ZLinkJavaRawServicePort implements AutoCloseable {
     private final boolean ownsContext;
     private final Predicate<List<byte[]>> completionControlSelector;
     private final List<RouterSocket> routers = new ArrayList<>();
+    private final Map<RouterSocket, ZLinkJavaSocketReceivePoller> receivePollers =
+        new IdentityHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
-    private Poller completionPoller;
 
     ZLinkJavaRawServicePort() {
         this(Zlink.createContext(), true, ignored -> false);
@@ -72,44 +72,20 @@ final class ZLinkJavaRawServicePort implements AutoCloseable {
         try {
             router.setRoutingId(Objects.requireNonNull(routingId, "routingId"));
             routers.add(router);
+            receivePollers.put(router, new ZLinkJavaSocketReceivePoller(router, true));
             accepted = true;
             return router;
         } finally {
             if (!accepted) {
+                receivePollers.remove(router);
                 router.close();
             }
         }
     }
 
-    synchronized void startCompletionControl(RouterSocket router) {
+    synchronized void ensureReceivePollerRegistered(RouterSocket router) {
         ensureOwned(router);
-        if (completionPoller != null) {
-            throw new IllegalStateException(
-                "completion control pump is already started");
-        }
-        Poller poller = Zlink.createPoller();
-        boolean accepted = false;
-        try {
-            poller.add(router, 1L, PollEventFlags.POLLCOMPLETION);
-            completionPoller = poller;
-            accepted = true;
-        } finally {
-            if (!accepted) {
-                poller.close();
-                completionPoller = null;
-            }
-        }
-    }
-
-    void pollCompletionControl() {
-        Poller poller;
-        synchronized (this) {
-            ensureOpen();
-            poller = completionPoller;
-        }
-        if (poller != null) {
-            poller.wait(new PollEvents(1), Duration.ZERO);
-        }
+        receivePollers.get(router).ensureRegistered();
     }
 
     boolean send(RouterSocket router, RoutingId target, List<byte[]> frames) {
@@ -246,8 +222,13 @@ final class ZLinkJavaRawServicePort implements AutoCloseable {
         return router.monitorOpen(eventTypes);
     }
 
-    Optional<Inbound> receive(RouterSocket router) {
+    synchronized Optional<Inbound> receive(RouterSocket router) {
         ensureOwned(router);
+        ZLinkJavaSocketReceivePoller receivePoller = receivePoller(router);
+        if (receivePoller == null
+            || !receivePoller.waitForReadable(Duration.ZERO)) {
+            return Optional.empty();
+        }
         try (Received received = new Received()) {
             if (!router.recv(received, RecvFlags.DONT_WAIT)) {
                 return Optional.empty();
@@ -267,14 +248,15 @@ final class ZLinkJavaRawServicePort implements AutoCloseable {
         if (!closed.compareAndSet(false, true)) {
             return;
         }
-        Poller currentCompletionPoller = completionPoller;
-        if (currentCompletionPoller != null) {
-            currentCompletionPoller.close();
-        }
-        completionPoller = null;
         for (int index = routers.size() - 1; index >= 0; index--) {
-            routers.get(index).close();
+            RouterSocket router = routers.get(index);
+            ZLinkJavaSocketReceivePoller receivePoller = receivePollers.remove(router);
+            if (receivePoller != null) {
+                receivePoller.close();
+            }
+            router.close();
         }
+        receivePollers.clear();
         routers.clear();
         if (ownsContext) {
             context.close();
@@ -286,6 +268,12 @@ final class ZLinkJavaRawServicePort implements AutoCloseable {
         if (!routers.contains(Objects.requireNonNull(router, "router"))) {
             throw new IllegalArgumentException("router is not owned by this service port");
         }
+    }
+
+    private synchronized ZLinkJavaSocketReceivePoller receivePoller(
+        RouterSocket router) {
+        ensureOwned(router);
+        return receivePollers.get(router);
     }
 
     private void ensureOpen() {

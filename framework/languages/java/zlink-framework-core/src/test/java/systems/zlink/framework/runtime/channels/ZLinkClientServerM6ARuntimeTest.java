@@ -740,6 +740,10 @@ final class ZLinkClientServerM6ARuntimeTest {
             return inbound.pollFirst();
         }
 
+        @Override public boolean waitForReadable(Duration timeout) {
+            return !inbound.isEmpty();
+        }
+
         void reply(int index, byte[] frame) {
             callbacks.get(index).handle(received(frame));
         }
@@ -789,6 +793,9 @@ final class ZLinkClientServerM6ARuntimeTest {
         @Override public ZLinkBackendReceived recv(
             ZLinkBackendRecvMode mode) {
             return null;
+        }
+        @Override public boolean waitForReadable(Duration timeout) {
+            return false;
         }
         @Override public boolean send(
             RoutingId routingId,

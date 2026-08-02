@@ -20,7 +20,10 @@ import org.junit.jupiter.api.Test;
 
 final class JavaDocumentationRegressionTest {
     private static final Pattern SNAPSHOT = Pattern.compile("^([0-9a-f]{64}) (\\S+\\.ko\\.md)$");
-    private static final Pattern SCENARIO = Pattern.compile("\\b[A-Z]{2,3}-[A-Z][0-9]+\\b");
+    private static final Pattern SCENARIO_HEADING = Pattern.compile(
+        "^#{1,6}\\s+([A-Z]{2,4}-(?:E2E-)?[A-Z0-9]+(?:-[A-Z0-9]+)*)\\b");
+    private static final Pattern SCENARIO_ID = Pattern.compile(
+        "\\b([A-Z]{2,4}-(?:E2E-)?[A-Z0-9]+(?:-[A-Z0-9]+)*)\\b");
 
     @Test
     void canonicalCommonSpecOwnsLiveJavaContracts() {
@@ -37,65 +40,129 @@ final class JavaDocumentationRegressionTest {
     }
 
     @Test
-    void everyCommonScenarioIdHasAnActiveJavaFixtureAndAllRunnerSuite() throws Exception {
+    void everyCommonScenarioIdHasJavaSourceAndRunnerInventory() throws Exception {
         Path root = repositoryRoot();
         Path commonE2e = root.resolve("framework/doc/framework/common/e2e");
         Path javaE2e = root.resolve("framework/languages/java/e2e");
 
-        // Config 8은 세 terminator(submit/async/yield) 계약으로 다시 쓴 목표 문서다. 현재 Java
-        // 구현은 자동 turn dispatch에 머물러 있어 TD-* fixture가 없다. 그 차이는 공통 spec의 구현
-        // 차이 문서가 소유한다 — 여기서는 갭이 기록돼 있는지를 검증하고 TD-*는 분모에서 뺀다.
-        Set<String> expected = new HashSet<>();
-        try (Stream<Path> files = Files.list(commonE2e)) {
-            for (Path file : files.filter(path -> path.getFileName().toString().matches("config-[0-9]+-.+\\.ko\\.md"))
-                .toList()) {
-                Matcher matcher = SCENARIO.matcher(Files.readString(file));
-                while (matcher.find()) expected.add(matcher.group());
-            }
-        }
-        Set<String> executionTurn = expected.stream()
-            .filter(id -> id.startsWith("TD-"))
-            .collect(Collectors.toCollection(java.util.TreeSet::new));
-        Set<String> instanceSpot = expected.stream()
-            .filter(id -> id.startsWith("IS-"))
-            .collect(Collectors.toCollection(java.util.TreeSet::new));
-        assertFalse(executionTurn.isEmpty(), "config-8 execution turn scenarios missing");
-        assertFalse(instanceSpot.isEmpty(), "config-14 instance spot scenarios missing");
-        expected.removeAll(executionTurn);
-        expected.removeAll(instanceSpot);
-
-        String executionTurnFeatureMap = Files.readString(
-            javaE2e.resolve("AutomaticTurnDispatch/feature-map.ko.md"));
-        for (String scenario : executionTurn) {
-            assertTrue(executionTurnFeatureMap.contains(scenario),
-                "missing deferred Java execution-turn scenario: " + scenario);
-        }
-        String instanceSpotFeatureMap = Files.readString(
-            javaE2e.resolve("InstanceSpot/feature-map.ko.md"));
-        for (String scenario : instanceSpot) {
-            assertTrue(instanceSpotFeatureMap.contains(scenario),
-                "missing deferred Java instance-spot scenario: " + scenario);
-        }
-
-        String active;
+        Set<String> expected = commonScenarioIds(commonE2e);
+        Set<String> sourceIds = new HashSet<>();
         try (Stream<Path> files = Files.walk(javaE2e)) {
-            active = files.filter(Files::isRegularFile)
+            files.filter(Files::isRegularFile)
                 .filter(path -> {
                     String name = path.getFileName().toString();
-                    return name.endsWith(".java") || name.endsWith(".sh") || name.endsWith(".ko.md");
+                    return name.endsWith(".java") || name.endsWith(".sh");
                 })
-                .map(JavaDocumentationRegressionTest::readUnchecked)
-                .collect(Collectors.joining("\n"));
+                .forEach(path -> collectScenarioIds(path, sourceIds));
         }
         Set<String> missing = expected.stream()
-            .filter(id -> !active.contains(id))
+            .filter(id -> !sourceIds.contains(id))
             .collect(Collectors.toCollection(java.util.TreeSet::new));
-        assertTrue(missing.isEmpty(), "missing Java E2E scenario IDs: " + missing);
+
+        Map<Integer, String> suites = canonicalSuites();
+        Set<String> missingSuites = suites.entrySet().stream()
+            .filter(entry -> !Files.isDirectory(javaE2e.resolve(entry.getValue()))
+                || !Files.isRegularFile(javaE2e.resolve(entry.getValue()).resolve("run_e2e.sh")))
+            .map(entry -> "Config " + entry.getKey() + "=" + entry.getValue())
+            .collect(Collectors.toCollection(java.util.TreeSet::new));
 
         String allRunner = Files.readString(javaE2e.resolve("run_e2e_all.sh"));
-        assertTrue(allRunner.contains("AutomaticTurnDispatch"));
-        assertTrue(allRunner.contains("StoreFailure"));
-        assertTrue(allRunner.contains("ObservabilityOps"));
+        assertTrue(allRunner.contains("validate_selected_suites"));
+        assertTrue(allRunner.contains("aggregate_incomplete"));
+        Set<String> runnerMissing = suites.values().stream()
+            .filter(suite -> !allRunner.contains(suite))
+            .collect(Collectors.toCollection(java.util.TreeSet::new));
+        assertTrue(missing.isEmpty() && missingSuites.isEmpty() && runnerMissing.isEmpty(),
+            "Java E2E inventory mismatch: expected=" + expected.size()
+                + ", sourceIds=" + sourceIds.size()
+                + ", missingIds=" + missing
+                + ", missingSuites=" + missingSuites
+                + ", aggregateRunnerMissing=" + runnerMissing);
+    }
+
+    @Test
+    void everyCommonScenarioIdHasKotlinSourceAndRunnerInventory() throws Exception {
+        Path root = repositoryRoot();
+        Path commonE2e = root.resolve("framework/doc/framework/common/e2e");
+        Path kotlinE2e = root.resolve("framework/languages/java/e2e-kotlin");
+
+        Set<String> expected = commonScenarioIds(commonE2e);
+        Set<String> sourceIds = new HashSet<>();
+        try (Stream<Path> files = Files.walk(kotlinE2e)) {
+            files.filter(Files::isRegularFile)
+                .filter(path -> {
+                    String name = path.getFileName().toString();
+                    return name.endsWith(".kt") || name.endsWith(".java") || name.endsWith(".sh");
+                })
+                .forEach(path -> collectScenarioIds(path, sourceIds));
+        }
+        Set<String> missing = expected.stream()
+            .filter(id -> !sourceIds.contains(id))
+            .collect(Collectors.toCollection(java.util.TreeSet::new));
+
+        Map<Integer, String> suites = canonicalSuites();
+        Set<String> missingSuites = suites.entrySet().stream()
+            .filter(entry -> !Files.isDirectory(kotlinE2e.resolve(entry.getValue()))
+                || !Files.isRegularFile(kotlinE2e.resolve(entry.getValue()).resolve("run_e2e.sh")))
+            .map(entry -> "Config " + entry.getKey() + "=" + entry.getValue())
+            .collect(Collectors.toCollection(java.util.TreeSet::new));
+
+        String allRunner = Files.readString(kotlinE2e.resolve("run_e2e_all.sh"));
+        assertTrue(allRunner.contains("validate_selected_suites"));
+        assertTrue(allRunner.contains("aggregate_incomplete"));
+        Set<String> runnerMissing = suites.values().stream()
+            .filter(suite -> !allRunner.contains(suite))
+            .collect(Collectors.toCollection(java.util.TreeSet::new));
+        assertTrue(missing.isEmpty() && missingSuites.isEmpty() && runnerMissing.isEmpty(),
+            "Kotlin E2E inventory mismatch: expected=" + expected.size()
+                + ", sourceIds=" + sourceIds.size()
+                + ", missingIds=" + missing
+                + ", missingSuites=" + missingSuites
+                + ", aggregateRunnerMissing=" + runnerMissing);
+    }
+
+    private static Set<String> commonScenarioIds(Path commonE2e) throws IOException {
+        Set<String> expected = new HashSet<>();
+        try (Stream<Path> files = Files.list(commonE2e)) {
+            for (Path file : files
+                .filter(path -> path.getFileName().toString().matches("config-[0-9]+-.+\\.ko\\.md"))
+                .toList()) {
+                for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                    Matcher matcher = SCENARIO_HEADING.matcher(line);
+                    if (matcher.find()) expected.add(matcher.group(1));
+                }
+            }
+        }
+        return expected;
+    }
+
+    private static Map<Integer, String> canonicalSuites() {
+        return Map.ofEntries(
+            Map.entry(1, "RegistryMessaging"),
+            Map.entry(2, "SpotService"),
+            Map.entry(3, "PubSub"),
+            Map.entry(4, "RegistrationCodec"),
+            Map.entry(5, "ResilienceLifecycle"),
+            Map.entry(6, "StoreFailure"),
+            Map.entry(7, "RuntimeMonitoring"),
+            Map.entry(8, "AutomaticTurnDispatch"),
+            Map.entry(9, "ToActorMessaging"),
+            Map.entry(10, "SpotActorTransfer"),
+            Map.entry(11, "ObservabilityOps"),
+            Map.entry(12, "ChannelEgressRouting"),
+            Map.entry(13, "SubmitAdmission"),
+            Map.entry(14, "InstanceSpot"));
+    }
+
+    private static void collectScenarioIds(Path path, Set<String> target) {
+        try {
+            for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
+                Matcher matcher = SCENARIO_ID.matcher(line);
+                while (matcher.find()) target.add(matcher.group(1));
+            }
+        } catch (IOException error) {
+            throw new java.io.UncheckedIOException(error);
+        }
     }
 
     private static Map<String, String> parseSnapshot(String ledger) {

@@ -127,7 +127,7 @@ final class StreamSessionTest {
         { var node = options.addRouteMesh("game"); node.listen("inproc://stream-play-" + System.nanoTime()).setRoutingId(RoutingId.from("play-node"));
                 node.objects().server().addEntrySpot(GameEntrySpot.class); node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.disableRelocation()); }
         { var stream = options.addStreamNode("gateway"); stream.bind("tcp://127.0.0.1:" + port);
-            stream.enableActorDispatch("game");
+            stream.enableActorDispatch();
             stream.registerSession(ActorRelaySession.class); };
 
         try (ZLinkFrameworkRuntime ignored =

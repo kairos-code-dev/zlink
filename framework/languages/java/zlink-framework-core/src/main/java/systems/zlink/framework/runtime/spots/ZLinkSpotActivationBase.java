@@ -16,6 +16,7 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
 import systems.zlink.framework.runtime.internal.backend.*;
+import systems.zlink.framework.runtime.internal.dispatch.ZLinkInboundDispatchBudget;
 import systems.zlink.framework.runtime.messaging.ZLinkApplicationMetadata;
 
 abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoCloseable {
@@ -199,18 +200,32 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                 return java.util.concurrent.CompletableFuture.completedFuture(null);
             }
             Message payloadCopy = Message.from(packet.payload());
+            ZLinkInboundDispatchBudget.Lease lease =
+                received.inboundDispatchLease() != null
+                    ? received.inboundDispatchLease()
+                    : host.inboundDispatchBudget().track(payloadCopy.size());
             return appendSpotHandler(
                 java.util.concurrent.CompletableFuture.completedFuture(null),
-                () ->
-                systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.propagate(
-                    host.runWithOutbound(context.dispatchOutbound(), () ->
-                        handlerInvoker.invokeRequest(
-                            handler,
-                            spotSurface,
-                            payloadCopy,
-                            metadata,
-                            context.handlerInstances()::instance))
-                        .thenAccept(reply -> received.reply(List.of(reply))))
+                () -> host.inboundDispatchBudget().acquireCompletionPermit()
+                    .thenCompose(permit -> {
+                        try {
+                            lease.handlerStarted();
+                            return systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.propagate(
+                                host.runWithOutbound(context.dispatchOutbound(), () ->
+                                    handlerInvoker.invokeRequest(
+                                        handler,
+                                        spotSurface,
+                                        payloadCopy,
+                                        received.contentType(),
+                                        metadata,
+                                        context.handlerInstances()::instance))
+                                    .thenAccept(reply -> received.reply(List.of(reply))))
+                                .whenComplete((ignored, error) -> permit.close());
+                        } catch (RuntimeException failure) {
+                            permit.close();
+                            return CompletableFuture.failedFuture(failure);
+                        }
+                    })
                     .whenComplete((ignored, error) -> {
                         if (error != null && !host.isClosing()) {
                             host.replySpotRouteDispatchError(
@@ -221,6 +236,7 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                                 error);
                         }
                         payloadCopy.close();
+                        lease.close();
                         closeRouteReceived(received);
                         if (error == null) {
                             host.traceMessageFlow(
@@ -243,20 +259,28 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
             return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
         Message payloadCopy = Message.from(packet.payload());
+        ZLinkInboundDispatchBudget.Lease lease =
+            received.inboundDispatchLease() != null
+                ? received.inboundDispatchLease()
+                : host.inboundDispatchBudget().track(payloadCopy.size());
         String packetName = packet.packetName();
-        closeRouteReceived(received);
+        releaseRouteParts(received);
         return appendSpotHandler(
             java.util.concurrent.CompletableFuture.completedFuture(null),
             () ->
-            host.runWithOutbound(context.dispatchOutbound(), () ->
-                handlerInvoker.invokePacket(
-                    handler,
-                    spotSurface,
-                    payloadCopy,
-                    metadata,
-                    context.handlerInstances()::instance))
+            startSpotHandler(lease, () ->
+                host.runWithOutbound(context.dispatchOutbound(), () ->
+                    handlerInvoker.invokePacket(
+                        handler,
+                        spotSurface,
+                        payloadCopy,
+                        received.contentType(),
+                        metadata,
+                        context.handlerInstances()::instance)))
                 .whenComplete((ignored, error) -> {
                     payloadCopy.close();
+                    lease.close();
+                    received.closeAdmission();
                     if (error == null) {
                         host.traceMessageFlow(
                             ZLinkMessageFlowOutcome.DISPATCHED,
@@ -352,6 +376,7 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
 
     final CompletionStage<Void> dispatchSpotSubscription(
         ZLinkBackendTopicMessage received) {
+        boolean dispatched = false;
         try {
             if (host.isDraining()) {
                 return CompletableFuture.completedFuture(null);
@@ -390,7 +415,8 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                 null);
             CompletionStage<Void> tail =
                 java.util.concurrent.CompletableFuture.completedFuture(null);
-            boolean dispatched = false;
+            ZLinkInboundDispatchBudget.Lease sharedLease =
+                received.inboundDispatchLease();
             for (SpotSubscriptionHandlerRegistration handler :
                 context.handlerCatalog().subscriptionHandlers(received.topic())) {
                 if (!handler.packetName().equals(packet.packetName())) {
@@ -398,21 +424,34 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                 }
                 dispatched = true;
                 Message payloadCopy = Message.from(packet.payload());
+                ZLinkInboundDispatchBudget.Lease lease =
+                    received.inboundDispatchLease() != null
+                        ? received.inboundDispatchLease()
+                        : host.inboundDispatchBudget().track(payloadCopy.size());
                 tail = appendSpotHandler(
                     tail,
-                    () -> host.runWithOutbound(context.dispatchOutbound(), () ->
-                        handlerInvoker.invokeSubscription(
-                            handler,
-                            spotSurface,
-                            received.channelName(),
-                            received.topic(),
-                            received.routingId().map(Object::toString),
-                            payloadCopy,
-                            metadata,
-                            context.handlerInstances()::instance))
+                    () -> startSpotHandler(lease, () ->
+                        host.runWithOutbound(context.dispatchOutbound(), () ->
+                            handlerInvoker.invokeSubscription(
+                                handler,
+                                spotSurface,
+                                received.channelName(),
+                                received.topic(),
+                                received.routingId().map(Object::toString),
+                                payloadCopy,
+                                received.contentType(),
+                                metadata,
+                                context.handlerInstances()::instance)))
                         .whenComplete((ignored, error) -> payloadCopy.close()));
+                if (sharedLease == null) {
+                    tail = tail.whenComplete((ignored, error) -> lease.close());
+                }
             }
             if (dispatched) {
+                if (sharedLease != null) {
+                    tail = tail.whenComplete(
+                        (ignored, error) -> sharedLease.close());
+                }
                 host.traceMessageFlow(
                     ZLinkMessageFlowOutcome.DISPATCHED,
                     ZLinkDispatchErrorSurface.SPOT_SUBSCRIPTION,
@@ -434,6 +473,9 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
             return tail;
         } finally {
             received.parts().forEach(Message::close);
+            if (!dispatched || received.inboundDispatchLease() == null) {
+                received.closeAdmission();
+            }
         }
     }
 
@@ -449,10 +491,23 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
         }
     }
 
+    final void releaseRouteParts(ZLinkBackendReceived received) {
+        if (activeRouteReceives.remove(received)) {
+            received.closeParts();
+        }
+    }
+
     final void closePendingActorMessage() {
         if (pendingActorHeader != null) {
             pendingActorHeader.close();
             pendingActorHeader = null;
         }
+    }
+
+    private CompletionStage<Void> startSpotHandler(
+        ZLinkInboundDispatchBudget.Lease lease,
+        Supplier<CompletionStage<Void>> operation) {
+        lease.handlerStarted();
+        return operation.get();
     }
 }

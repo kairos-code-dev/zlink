@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime.mesh;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
@@ -16,6 +17,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkBackendContext;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
+import systems.zlink.framework.runtime.internal.dispatch.ZLinkInboundDispatchBudget;
 
 class ZLinkMeshNodeRuntimeTest {
     @Test
@@ -82,6 +84,25 @@ class ZLinkMeshNodeRuntimeTest {
         }
     }
 
+    @Test
+    void startInstallsApplicationDispatchBudgetBeforeBackendStart() {
+        MeshNodeRegistration registration = new MeshNodeRegistration("game");
+        registration.listen("inproc://game-budget");
+        RecordingMeshNode node = new RecordingMeshNode();
+        ZLinkInboundDispatchBudget budget =
+            new ZLinkInboundDispatchBudget(1024);
+
+        try (ZLinkMeshNodeRuntime ignored = ZLinkMeshNodeRuntime.start(
+            registration,
+            (context, meshName) -> node,
+            new RecordingContext(),
+            budget)) {
+            assertSame(budget, node.applicationDispatchBudget);
+            assertTrue(node.calls.indexOf("application-budget")
+                < node.calls.indexOf("start"));
+        }
+    }
+
     private static final class RecordingContext implements ZLinkBackendContext {
         @Override public String name() { return "context"; }
         @Override public void shutdown() { }
@@ -93,6 +114,7 @@ class ZLinkMeshNodeRuntimeTest {
         private long routerHighWaterMark;
         private int pendingAdmissionCapacity;
         private Duration routerSendTimeout;
+        private ZLinkInboundDispatchBudget applicationDispatchBudget;
 
         @Override public String name() { return "mesh-node"; }
         @Override public void setBind(String endpoint) { calls.add("bind:" + endpoint); }
@@ -113,6 +135,11 @@ class ZLinkMeshNodeRuntimeTest {
         }
         @Override public void setRouterSendTimeout(Duration value) {
             routerSendTimeout = value;
+        }
+        @Override public void setApplicationDispatchBudget(
+            ZLinkInboundDispatchBudget value) {
+            applicationDispatchBudget = value;
+            calls.add("application-budget");
         }
         @Override public void setRoutingId(RoutingId routingId) {
             calls.add("routing-id:" + routingId);

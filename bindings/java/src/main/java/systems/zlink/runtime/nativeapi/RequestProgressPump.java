@@ -25,6 +25,9 @@ public final class RequestProgressPump {
     private static final int POLL_RECHECK_TIMEOUT_MS = 10;
     private static final ConcurrentMap<Long, Pump> PUMPS =
         new ConcurrentHashMap<>();
+    private static final ConcurrentMap<Long, AtomicInteger> EXTERNAL_PROGRESS =
+        new ConcurrentHashMap<>();
+    private static final Object PROGRESS_OWNER_LOCK = new Object();
 
     private RequestProgressPump() {
     }
@@ -39,6 +42,41 @@ public final class RequestProgressPump {
         stopProgress(socketHandle);
     }
 
+    /** Records that a caller-owned zlink Poller drains completion for a socket. */
+    public static void acquireExternalProgress(MemorySegment socketHandle) {
+        if (socketHandle == null || socketHandle.address() == 0) {
+            return;
+        }
+        synchronized (PROGRESS_OWNER_LOCK) {
+            long key = socketHandle.address();
+            Pump pump = PUMPS.remove(key);
+            if (pump != null) {
+                // The caller registers the public completion poller only after
+                // this method returns. Stop the fallback owner first so the
+                // socket never has two completion consumers at once.
+                pump.stopAndWait();
+            }
+            EXTERNAL_PROGRESS.compute(key, (ignored, current) -> {
+                if (current == null) {
+                    return new AtomicInteger(1);
+                }
+                current.incrementAndGet();
+                return current;
+            });
+        }
+    }
+
+    /** Releases one caller-owned completion progress registration. */
+    public static void releaseExternalProgress(MemorySegment socketHandle) {
+        if (socketHandle == null || socketHandle.address() == 0) {
+            return;
+        }
+        synchronized (PROGRESS_OWNER_LOCK) {
+            EXTERNAL_PROGRESS.computeIfPresent(socketHandle.address(),
+                (ignored, current) -> current.decrementAndGet() <= 0 ? null : current);
+        }
+    }
+
     private static void track(CompletableFuture<?> future,
                               MemorySegment handle,
                               String threadName) {
@@ -48,9 +86,14 @@ public final class RequestProgressPump {
             return;
         }
         long key = handle.address();
-        Pump pump = PUMPS.computeIfAbsent(key,
-            ignored -> new Pump(key, handle, threadName));
-        pump.track(future);
+        synchronized (PROGRESS_OWNER_LOCK) {
+            if (EXTERNAL_PROGRESS.containsKey(key)) {
+                return;
+            }
+            Pump pump = PUMPS.computeIfAbsent(key,
+                ignored -> new Pump(key, handle, threadName));
+            pump.track(future);
+        }
     }
 
     private static void stopProgress(MemorySegment socketHandle) {
@@ -58,9 +101,11 @@ public final class RequestProgressPump {
         if (socketHandle.address() == 0)
             return;
         long key = socketHandle.address();
-        Pump pump = PUMPS.remove(key);
-        if (pump != null) {
-            pump.stopAndWait();
+        synchronized (PROGRESS_OWNER_LOCK) {
+            Pump pump = PUMPS.remove(key);
+            if (pump != null) {
+                pump.stopAndWait();
+            }
         }
     }
 
@@ -89,7 +134,14 @@ public final class RequestProgressPump {
         }
 
         private void ensureRunning() {
+            if (stopping.get()) {
+                return;
+            }
             if (!running.compareAndSet(false, true)) {
+                return;
+            }
+            if (stopping.get()) {
+                running.set(false);
                 return;
             }
             Thread thread = new Thread(this::runLoop, threadName);
@@ -104,9 +156,28 @@ public final class RequestProgressPump {
             if (current == null || current == Thread.currentThread()) {
                 return;
             }
-            try {
-                current.join(100);
-            } catch (InterruptedException ex) {
+            boolean interrupted = false;
+            while (true) {
+                current = thread;
+                if (current == null || current == Thread.currentThread()) {
+                    break;
+                }
+                try {
+                    // The pump still owns a poller registration for the
+                    // socket handle. Do not let socket close race that
+                    // registration: pollerRemove must finish before the
+                    // caller closes the handle. The poller wait uses a
+                    // bounded timeout, so this join waits for the next
+                    // pump wake-up.
+                    current.join();
+                } catch (InterruptedException ex) {
+                    interrupted = true;
+                }
+                if (!current.isAlive() && thread == current) {
+                    break;
+                }
+            }
+            if (interrupted) {
                 Thread.currentThread().interrupt();
             }
         }

@@ -2,9 +2,11 @@ package systems.zlink.framework.runtime.actors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkBoundSession;
@@ -61,6 +63,27 @@ final class ZLinkActorContextStateRelocationTest {
         assertEquals(binding, sealed.bindingGeneration());
         assertEquals(1, sealed.sessionSequence());
         assertEquals(1, state.boundSessionSourceSnapshot().sessionSequence());
+    }
+
+    @Test
+    void failedMoveClearsMovingStateAndCompletesTheMoveStageExceptionally() {
+        var state = new ZLinkActorContextState(
+            new ZLinkBackendActorRef(RoutingId.from("source"), "actor-a", 7),
+            "mesh",
+            "entry-a");
+        IllegalStateException failure =
+            new IllegalStateException("join callback failed");
+
+        state.beginMove();
+        assertTrue(state.moving());
+
+        state.failMove(failure);
+
+        assertFalse(state.moving());
+        CompletionException terminal = assertThrows(
+            CompletionException.class,
+            () -> state.moveCompletion().toCompletableFuture().join());
+        assertEquals(failure, terminal.getCause());
     }
 
     private static final class TestBoundSession implements ZLinkBoundSession {

@@ -29,7 +29,9 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotRouteBri
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshApplicationReceiver;
+import systems.zlink.framework.runtime.internal.dispatch.ZLinkInboundDispatchBudget;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
+import systems.zlink.framework.runtime.channels.ZLinkChannelContentTypeFrame;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 
 /**
@@ -962,6 +964,44 @@ final class ZLinkJavaRawSpotNode
         byte[] acceptedJournalRecord,
         List<Message> parts,
         Consumer<List<Message>> reply) {
+        return enqueueRemoteSpot(
+            source,
+            header,
+            metadata,
+            acceptedJournalRecord,
+            parts,
+            null,
+            reply);
+    }
+
+    boolean enqueueRemoteSpot(
+        ZLinkInternalMeshNode.PeerAuthorityFence source,
+        ZLinkServiceM6BWireCodec.SpotMessage header,
+        byte[] metadata,
+        byte[] acceptedJournalRecord,
+        List<Message> parts,
+        ZLinkInboundDispatchBudget.Lease inboundDispatchLease,
+        Consumer<List<Message>> reply) {
+        return enqueueRemoteSpot(
+            source,
+            header,
+            metadata,
+            acceptedJournalRecord,
+            parts,
+            null,
+            inboundDispatchLease,
+            reply);
+    }
+
+    boolean enqueueRemoteSpot(
+        ZLinkInternalMeshNode.PeerAuthorityFence source,
+        ZLinkServiceM6BWireCodec.SpotMessage header,
+        byte[] metadata,
+        byte[] acceptedJournalRecord,
+        List<Message> parts,
+        String contentType,
+        ZLinkInboundDispatchBudget.Lease inboundDispatchLease,
+        Consumer<List<Message>> reply) {
         ZLinkJavaRawSpot target = localSpot(
             routingId(),
             header.target().spotId(),
@@ -972,6 +1012,9 @@ final class ZLinkJavaRawSpotNode
                 header.target().spotId(),
                 header.target().spotGeneration())
                 != header.target().authorityOwnerGeneration()) {
+            if (inboundDispatchLease != null) {
+                inboundDispatchLease.close();
+            }
             return false;
         }
         target.enqueueRoute(new systems.zlink.framework.runtime.internal.backend
@@ -985,7 +1028,9 @@ final class ZLinkJavaRawSpotNode
                 acceptedJournalRecord,
                 parts,
                 header.request() ? reply : null,
-                () -> { }));
+                () -> { },
+                contentType,
+                inboundDispatchLease));
         return true;
     }
 
@@ -1054,10 +1099,51 @@ final class ZLinkJavaRawSpotNode
         byte[] acceptedJournalRecord,
         List<Message> parts,
         Consumer<List<Message>> reply) {
+        return enqueueRemoteActor(
+            sourceNodeRid,
+            sourceNodeGeneration,
+            header,
+            acceptedJournalRecord,
+            parts,
+            null,
+            reply);
+    }
+
+    boolean enqueueRemoteActor(
+        RoutingId sourceNodeRid,
+        long sourceNodeGeneration,
+        ZLinkServiceM6BWireCodec.ActorMessage header,
+        byte[] acceptedJournalRecord,
+        List<Message> parts,
+        ZLinkInboundDispatchBudget.Lease inboundDispatchLease,
+        Consumer<List<Message>> reply) {
+        return enqueueRemoteActor(
+            sourceNodeRid,
+            sourceNodeGeneration,
+            header,
+            acceptedJournalRecord,
+            parts,
+            null,
+            inboundDispatchLease,
+            reply);
+    }
+
+    boolean enqueueRemoteActor(
+        RoutingId sourceNodeRid,
+        long sourceNodeGeneration,
+        ZLinkServiceM6BWireCodec.ActorMessage header,
+        byte[] acceptedJournalRecord,
+        List<Message> parts,
+        String contentType,
+        ZLinkInboundDispatchBudget.Lease inboundDispatchLease,
+        Consumer<List<Message>> reply) {
         ZLinkBackendActorRef actor = header.target().actor();
         if (!isCurrentActor(actor)
             || actorAuthorityOwnerGeneration(actor)
                 != header.target().authorityOwnerGeneration()) {
+            if (inboundDispatchLease != null) {
+                inboundDispatchLease.close();
+            }
             return false;
         }
         if (header.boundSession() != null) {
@@ -1075,12 +1161,18 @@ final class ZLinkJavaRawSpotNode
                 || !acceptRemoteStreamSequence(
                     actor.actorId(),
                     header.boundSession().sourceSessionSequence())) {
+                if (inboundDispatchLease != null) {
+                    inboundDispatchLease.close();
+                }
                 return false;
             }
         }
         String targetSpotId = actorSpots.get(actor.actorId());
         ZLinkJavaRawSpot target = spots.get(targetSpotId);
         if (target == null) {
+            if (inboundDispatchLease != null) {
+                inboundDispatchLease.close();
+            }
             return false;
         }
         long requestId = header.request()
@@ -1109,7 +1201,11 @@ final class ZLinkJavaRawSpotNode
                 index + 1 < parts.size(),
                 index == 0
                     ? acceptedJournalRecord
-                    : new byte[0]));
+                    : new byte[0],
+                contentType,
+                index == (parts.size() > 1 ? 1 : 0)
+                    ? inboundDispatchLease
+                    : null));
         }
         target.enqueueActor(messages);
         return true;
@@ -1425,6 +1521,40 @@ final class ZLinkJavaRawSpotNode
         byte[] metadata,
         List<Message> parts,
         Consumer<List<Message>> reply) {
+        return enqueueRemoteInstanceSpot(
+            sourceNodeRid,
+            header,
+            metadata,
+            parts,
+            null,
+            reply);
+    }
+
+    boolean enqueueRemoteInstanceSpot(
+        RoutingId sourceNodeRid,
+        ZLinkServiceM6BWireCodec.InstanceSpotMessage header,
+        byte[] metadata,
+        List<Message> parts,
+        ZLinkInboundDispatchBudget.Lease inboundDispatchLease,
+        Consumer<List<Message>> reply) {
+        return enqueueRemoteInstanceSpot(
+            sourceNodeRid,
+            header,
+            metadata,
+            parts,
+            null,
+            inboundDispatchLease,
+            reply);
+    }
+
+    boolean enqueueRemoteInstanceSpot(
+        RoutingId sourceNodeRid,
+        ZLinkServiceM6BWireCodec.InstanceSpotMessage header,
+        byte[] metadata,
+        List<Message> parts,
+        String contentType,
+        ZLinkInboundDispatchBudget.Lease inboundDispatchLease,
+        Consumer<List<Message>> reply) {
         InstanceAuthority authority =
             instanceAuthorities.get(header.route().targetSpotId());
         if (authority == null) {
@@ -1437,6 +1567,9 @@ final class ZLinkJavaRawSpotNode
             || !authority.stableType().equals(header.stableType())
             || !sameInstanceAuthorityFence(
                 authority.route(), header.route())) {
+            if (inboundDispatchLease != null) {
+                inboundDispatchLease.close();
+            }
             return false;
         }
         ZLinkJavaInstanceSpotRegistry.Activation activation;
@@ -1446,11 +1579,17 @@ final class ZLinkJavaRawSpotNode
                 authority.stableType(),
                 header.route().objectGeneration()).toCompletableFuture().join();
         } catch (RuntimeException failure) {
+            if (inboundDispatchLease != null) {
+                inboundDispatchLease.close();
+            }
             return false;
         }
         if (!(activation.spot() instanceof ZLinkJavaRawSpot target)
             || target.lifecycleGeneration()
                 != header.route().objectGeneration()) {
+            if (inboundDispatchLease != null) {
+                inboundDispatchLease.close();
+            }
             return false;
         }
         target.enqueueRoute(new systems.zlink.framework.runtime.internal.backend
@@ -1461,9 +1600,12 @@ final class ZLinkJavaRawSpotNode
                 Optional.ofNullable(header.sourceSpotId()),
                 Optional.ofNullable(header.replyRouteId()),
                 metadata,
+                new byte[0],
                 parts,
                 header.request() ? reply : null,
-                () -> { }));
+                () -> { },
+                contentType,
+                inboundDispatchLease));
         return true;
     }
 
@@ -1626,10 +1768,35 @@ final class ZLinkJavaRawSpotNode
         RoutingId sourceNodeRid,
         byte[] metadata,
         List<Message> parts) {
+        enqueueLogicalMulticast(
+            channelName,
+            topic,
+            sourceSpotId,
+            sourceNodeRid,
+            metadata,
+            null,
+            parts);
+    }
+
+    void enqueueLogicalMulticast(
+        String channelName,
+        String topic,
+        String sourceSpotId,
+        RoutingId sourceNodeRid,
+        byte[] metadata,
+        String contentType,
+        List<Message> parts) {
         for (ZLinkJavaRawSpot target : spots.values()) {
             if (!target.accepts(topic)) {
                 continue;
             }
+            ZLinkInboundDispatchBudget budget =
+                owner.applicationDispatchBudget();
+            ZLinkInboundDispatchBudget.Lease lease = budget == null
+                ? null
+                : budget.track(parts.size() > 1
+                    ? parts.get(1).size()
+                    : parts.getFirst().size());
             target.enqueueTopic(
                 new systems.zlink.framework.runtime.internal.backend
                 .ZLinkBackendTopicMessage(
@@ -1637,7 +1804,9 @@ final class ZLinkJavaRawSpotNode
                     channelName,
                     topic,
                     metadata == null ? new byte[0] : metadata.clone(),
-                    ZLinkJavaRawSpot.copy(parts)));
+                    ZLinkJavaRawSpot.copy(parts),
+                    contentType,
+                    lease));
         }
     }
 
@@ -1680,7 +1849,9 @@ final class ZLinkJavaRawSpotNode
                 acceptedRecord,
                 ZLinkJavaRawSpot.copy(parts),
                 null,
-                () -> { }));
+                () -> { },
+                ZLinkChannelContentTypeFrame.decode(parts),
+                null));
         return true;
     }
 
@@ -1742,7 +1913,9 @@ final class ZLinkJavaRawSpotNode
                             Optional.of(sequence),
                             ZLinkJavaRawSpot.copy(reply)));
                 },
-                () -> { }));
+                () -> { },
+                ZLinkChannelContentTypeFrame.decode(parts),
+                null));
         enqueued.whenComplete((ignored, failure) -> {
             if (failure != null && terminal.compareAndSet(false, true)) {
                 callback.handle(new systems.zlink.framework.runtime.internal.backend

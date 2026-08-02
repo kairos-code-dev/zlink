@@ -6,6 +6,8 @@ module systems.zlink.framework {
     requires static org.jspecify;
     requires org.lz4.java;
     requires org.slf4j;
+    requires java.management;
+    requires jdk.management;
     requires java.logging;
 
     exports systems.zlink.framework;

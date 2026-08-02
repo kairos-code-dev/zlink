@@ -93,6 +93,16 @@ final class JavaTargetContractGapTest {
     }
 
     @Test
+    void streamActorDispatchUsesTheGlobalAuthorityContract() throws Exception {
+        Class<?> builder = Class.forName(
+            "systems.zlink.framework.configuration.ZLinkStreamNodeBuilder");
+        assertNotNull(builder.getMethod("enableActorDispatch"));
+        assertFalse(Arrays.stream(builder.getMethods()).anyMatch(method ->
+            method.getName().equals("enableActorDispatch")
+                && method.getParameterCount() != 0));
+    }
+
+    @Test
     void spotAddressIsHiddenBehindOpaqueHandle() throws Exception {
         assertNotNull(Class.forName("systems.zlink.framework.spots.SpotHandle"));
         assertNotNull(Class.forName("systems.zlink.framework.spots.SpotHandleResolver"));
@@ -158,6 +168,11 @@ final class JavaTargetContractGapTest {
         assertNoPublicMethodNamed(clientServer, "enableClient");
         assertNotNull(Class.forName("systems.zlink.framework.configuration.FanoutChannelBuilder")
             .getMethod("subscriberConnections"));
+        assertEquals(
+            Class.forName("systems.zlink.framework.configuration.FanoutChannelBuilder"),
+            Class.forName("systems.zlink.framework.configuration.FanoutChannelBuilder")
+                .getMethod("setRoutingIdPrefix", String.class)
+                .getReturnType());
         assertClassAbsent(
             "systems.zlink.framework.configuration.RouteMeshChannelBuilder");
         assertClassAbsent(

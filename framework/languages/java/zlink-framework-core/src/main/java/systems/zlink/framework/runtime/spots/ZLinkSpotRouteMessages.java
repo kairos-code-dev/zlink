@@ -10,6 +10,7 @@ import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 import systems.zlink.framework.runtime.messaging.ZLinkFrameworkErrorReply;
+import systems.zlink.framework.runtime.channels.ZLinkChannelContentTypeFrame;
 
 final class ZLinkSpotRouteMessages {
     private final ZLinkMessageSerializer serializer;
@@ -24,6 +25,22 @@ final class ZLinkSpotRouteMessages {
         return flow == null
             ? List.of(Message.from(packetName.orElseThrow().getBytes(StandardCharsets.UTF_8)), payload)
             : List.of(Message.from(packetName.orElseThrow().getBytes(StandardCharsets.UTF_8)), payload, flow);
+    }
+
+    List<Message> encode(
+        Optional<String> packetName,
+        Message payload,
+        String contentType) {
+        if (contentType == null || packetName.isEmpty()) {
+            return encode(packetName, payload);
+        }
+        Message packet = Message.from(
+            packetName.orElseThrow().getBytes(StandardCharsets.UTF_8));
+        Message contentTypeFrame = ZLinkChannelContentTypeFrame.encode(contentType);
+        Message flow = ZLinkSpotFlowFrame.current();
+        return flow == null
+            ? List.of(packet, payload, contentTypeFrame)
+            : List.of(packet, payload, contentTypeFrame, flow);
     }
 
     <TReply> TReply decodeReply(List<Message> replyParts, Class<TReply> replyType) {

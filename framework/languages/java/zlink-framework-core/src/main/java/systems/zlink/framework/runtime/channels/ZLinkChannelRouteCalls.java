@@ -89,6 +89,7 @@ final class RouteSendCall implements ZLinkSendCall {
     private final RoutingId target;
     private final Message payload;
     private final Optional<String> packetName;
+    private final String contentType;
 
     RouteSendCall(
         ZLinkChannelCallRuntime runtime,
@@ -96,11 +97,23 @@ final class RouteSendCall implements ZLinkSendCall {
         RoutingId target,
         Message payload,
         Optional<String> packetName) {
+        this(runtime, router, target, payload, packetName,
+            ZLinkChannelContentTypeFrame.DEFAULT_CONTENT_TYPE);
+    }
+
+    RouteSendCall(
+        ZLinkChannelCallRuntime runtime,
+        ZLinkBackendRouterSocket router,
+        RoutingId target,
+        Message payload,
+        Optional<String> packetName,
+        String contentType) {
         this.runtime = runtime;
         this.router = router;
         this.target = target;
         this.payload = payload;
         this.packetName = packetName;
+        this.contentType = contentType;
     }
 
     RouteSendCall(
@@ -112,7 +125,8 @@ final class RouteSendCall implements ZLinkSendCall {
     }
 
     public ZLinkSendCall packetName(String packetName) {
-        return new RouteSendCall(runtime, router, target, payload, Optional.of(packetName));
+        return new RouteSendCall(
+            runtime, router, target, payload, Optional.of(packetName), contentType);
     }
 
     @Override
@@ -129,7 +143,8 @@ final class RouteSendCall implements ZLinkSendCall {
                 ZLinkDispatchMessageKind.SEND,
                 packetName.orElse(null), null, null, null, target.toString(), null, null, null));
         }
-        List<Message> sendParts = ZLinkChannelCallRuntime.parts(packetName, payload);
+        List<Message> sendParts = ZLinkChannelCallRuntime.parts(
+            packetName, payload, contentType);
         return runtime.oneWayCalls().submitOneWay(
             router,
             ZLinkBackendAdmissionKey.socket(),
@@ -146,6 +161,7 @@ final class RouteRequestCall implements ZLinkRequestCall {
     private final Message payload;
     private final Optional<String> packetName;
     private final Duration timeout;
+    private final String contentType;
 
     RouteRequestCall(
         ZLinkChannelCallRuntime runtime,
@@ -155,6 +171,19 @@ final class RouteRequestCall implements ZLinkRequestCall {
         Message payload,
         Optional<String> packetName,
         Duration timeout) {
+        this(runtime, channelName, router, target, payload, packetName, timeout,
+            ZLinkChannelContentTypeFrame.DEFAULT_CONTENT_TYPE);
+    }
+
+    RouteRequestCall(
+        ZLinkChannelCallRuntime runtime,
+        String channelName,
+        ZLinkBackendRouterSocket router,
+        RoutingId target,
+        Message payload,
+        Optional<String> packetName,
+        Duration timeout,
+        String contentType) {
         this.runtime = runtime;
         this.channelName = channelName;
         this.router = router;
@@ -162,6 +191,7 @@ final class RouteRequestCall implements ZLinkRequestCall {
         this.payload = payload;
         this.packetName = packetName;
         this.timeout = timeout;
+        this.contentType = contentType;
     }
 
     public ZLinkRequestCall packetName(String packetName) {
@@ -172,19 +202,22 @@ final class RouteRequestCall implements ZLinkRequestCall {
             target,
             payload,
             Optional.of(packetName),
-            timeout);
+            timeout,
+            contentType);
     }
 
     @Override
     public ZLinkRequestCall timeout(Duration timeout) {
-        return new RouteRequestCall(runtime, channelName, router, target, payload, packetName, timeout);
+        return new RouteRequestCall(
+            runtime, channelName, router, target, payload, packetName, timeout, contentType);
     }
 
     @Override
     public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
         CompletableFuture<TReply> result = new CompletableFuture<>();
         runtime.track(result, timeout);
-        List<Message> requestParts = ZLinkChannelCallRuntime.parts(packetName, payload);
+        List<Message> requestParts = ZLinkChannelCallRuntime.parts(
+            packetName, payload, contentType);
         if (runtime.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
             runtime.flow().trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.SENT,
@@ -239,6 +272,7 @@ final class MeshNodeRouteSendCall implements ZLinkSendCall {
     private final RoutingId target;
     private final Message payload;
     private final Optional<String> packetName;
+    private final String contentType;
     private final ZLinkApplicationMetadata metadata;
 
     MeshNodeRouteSendCall(
@@ -247,39 +281,45 @@ final class MeshNodeRouteSendCall implements ZLinkSendCall {
         RoutingId target,
         Message payload,
         Optional<String> packetName) {
-        this(runtime, node, target, payload, packetName, ZLinkApplicationMetadata.empty());
+        this(runtime, node, target, payload, packetName,
+            ZLinkChannelContentTypeFrame.DEFAULT_CONTENT_TYPE,
+            ZLinkApplicationMetadata.empty());
     }
 
-    private MeshNodeRouteSendCall(
+    MeshNodeRouteSendCall(
         ZLinkChannelCallRuntime runtime,
         ZLinkInternalSpotNode node,
         RoutingId target,
         Message payload,
         Optional<String> packetName,
+        String contentType,
         ZLinkApplicationMetadata metadata) {
         this.runtime = runtime;
         this.node = node;
         this.target = target;
         this.payload = payload;
         this.packetName = packetName;
+        this.contentType = contentType;
         this.metadata = metadata;
     }
 
     public ZLinkSendCall packetName(String name) {
         return new MeshNodeRouteSendCall(
-            runtime, node, target, payload, Optional.of(name), metadata);
+            runtime, node, target, payload, Optional.of(name), contentType, metadata);
     }
 
     @Override
     public ZLinkSendCall metadata(String key, String value) {
         return new MeshNodeRouteSendCall(
-            runtime, node, target, payload, packetName, metadata.with(key, value));
+            runtime, node, target, payload, packetName, contentType,
+            metadata.with(key, value));
     }
 
     @Override
     public ZLinkSendCall metadata(Map<String, String> values) {
         return new MeshNodeRouteSendCall(
-            runtime, node, target, payload, packetName, metadata.withAll(values));
+            runtime, node, target, payload, packetName, contentType,
+            metadata.withAll(values));
     }
 
     @Override
@@ -296,7 +336,8 @@ final class MeshNodeRouteSendCall implements ZLinkSendCall {
                 ZLinkDispatchMessageKind.SEND,
                 packetName.orElse(null), null, null, null, target.toString(), null, null, null));
         }
-        List<Message> sendParts = ZLinkChannelCallRuntime.parts(packetName, payload);
+        List<Message> sendParts = ZLinkChannelCallRuntime.parts(
+            packetName, payload, contentType);
         if (node.routingId().equals(target)) {
             return runtime.oneWayCalls().submitOneWay(
                 node,
@@ -351,6 +392,7 @@ final class MeshChannelRouteSendCall implements ZLinkSendCall {
     private final ZLinkInternalSpotNode node;
     private final Message payload;
     private final Optional<String> packetName;
+    private final String contentType;
     private final ZLinkApplicationMetadata metadata;
 
     MeshChannelRouteSendCall(
@@ -365,39 +407,44 @@ final class MeshChannelRouteSendCall implements ZLinkSendCall {
             node,
             payload,
             packetName,
+            ZLinkChannelContentTypeFrame.DEFAULT_CONTENT_TYPE,
             ZLinkApplicationMetadata.empty());
     }
 
-    private MeshChannelRouteSendCall(
+    MeshChannelRouteSendCall(
         ZLinkChannelCallRuntime runtime,
         String channelName,
         ZLinkInternalSpotNode node,
         Message payload,
         Optional<String> packetName,
+        String contentType,
         ZLinkApplicationMetadata metadata) {
         this.runtime = runtime;
         this.channelName = channelName;
         this.node = node;
         this.payload = payload;
         this.packetName = packetName;
+        this.contentType = contentType;
         this.metadata = metadata;
     }
 
     public ZLinkSendCall packetName(String name) {
         return new MeshChannelRouteSendCall(
-            runtime, channelName, node, payload, Optional.of(name), metadata);
+            runtime, channelName, node, payload, Optional.of(name), contentType, metadata);
     }
 
     @Override
     public ZLinkSendCall metadata(String key, String value) {
         return new MeshChannelRouteSendCall(
-            runtime, channelName, node, payload, packetName, metadata.with(key, value));
+            runtime, channelName, node, payload, packetName, contentType,
+            metadata.with(key, value));
     }
 
     @Override
     public ZLinkSendCall metadata(Map<String, String> values) {
         return new MeshChannelRouteSendCall(
-            runtime, channelName, node, payload, packetName, metadata.withAll(values));
+            runtime, channelName, node, payload, packetName, contentType,
+            metadata.withAll(values));
     }
 
     @Override
@@ -407,7 +454,8 @@ final class MeshChannelRouteSendCall implements ZLinkSendCall {
         if (duplicate != null) {
             return duplicate;
         }
-        List<Message> parts = ZLinkChannelCallRuntime.parts(packetName, payload);
+        List<Message> parts = ZLinkChannelCallRuntime.parts(
+            packetName, payload, contentType);
         return runtime.oneWayCalls().submitOneWay(
             node,
             ZLinkBackendAdmissionKey.channel(channelName),
@@ -424,6 +472,7 @@ final class MeshChannelRouteRequestCall implements ZLinkRequestCall {
     private final Message payload;
     private final Optional<String> packetName;
     private final Duration timeout;
+    private final String contentType;
     private final ZLinkApplicationMetadata metadata;
 
     MeshChannelRouteRequestCall(
@@ -440,16 +489,18 @@ final class MeshChannelRouteRequestCall implements ZLinkRequestCall {
             payload,
             packetName,
             timeout,
+            ZLinkChannelContentTypeFrame.DEFAULT_CONTENT_TYPE,
             ZLinkApplicationMetadata.empty());
     }
 
-    private MeshChannelRouteRequestCall(
+    MeshChannelRouteRequestCall(
         ZLinkChannelCallRuntime runtime,
         String channelName,
         ZLinkInternalSpotNode node,
         Message payload,
         Optional<String> packetName,
         Duration timeout,
+        String contentType,
         ZLinkApplicationMetadata metadata) {
         this.runtime = runtime;
         this.channelName = channelName;
@@ -457,32 +508,34 @@ final class MeshChannelRouteRequestCall implements ZLinkRequestCall {
         this.payload = payload;
         this.packetName = packetName;
         this.timeout = timeout;
+        this.contentType = contentType;
         this.metadata = metadata;
     }
 
     public ZLinkRequestCall packetName(String name) {
         return new MeshChannelRouteRequestCall(
-            runtime, channelName, node, payload, Optional.of(name), timeout, metadata);
+            runtime, channelName, node, payload, Optional.of(name), timeout,
+            contentType, metadata);
     }
 
     @Override
     public ZLinkRequestCall metadata(String key, String value) {
         return new MeshChannelRouteRequestCall(
             runtime, channelName, node, payload, packetName, timeout,
-            metadata.with(key, value));
+            contentType, metadata.with(key, value));
     }
 
     @Override
     public ZLinkRequestCall metadata(Map<String, String> values) {
         return new MeshChannelRouteRequestCall(
             runtime, channelName, node, payload, packetName, timeout,
-            metadata.withAll(values));
+            contentType, metadata.withAll(values));
     }
 
     @Override
     public ZLinkRequestCall timeout(Duration value) {
         return new MeshChannelRouteRequestCall(
-            runtime, channelName, node, payload, packetName, value, metadata);
+            runtime, channelName, node, payload, packetName, value, contentType, metadata);
     }
 
     @Override
@@ -518,7 +571,8 @@ final class MeshChannelRouteRequestCall implements ZLinkRequestCall {
         }
         List<Message> parts = ZLinkChannelCallRuntime.parts(
             packetName,
-            Message.from(payloadBytes));
+            Message.from(payloadBytes),
+            contentType);
         try {
             boolean submitted = node.requestToChannel(
                 channelName,
@@ -567,6 +621,7 @@ final class MeshNodeRouteRequestCall implements ZLinkRequestCall {
     private final Message payload;
     private final Optional<String> packetName;
     private final Duration timeout;
+    private final String contentType;
     private final ZLinkApplicationMetadata metadata;
 
     MeshNodeRouteRequestCall(
@@ -585,10 +640,11 @@ final class MeshNodeRouteRequestCall implements ZLinkRequestCall {
             payload,
             packetName,
             timeout,
+            ZLinkChannelContentTypeFrame.DEFAULT_CONTENT_TYPE,
             ZLinkApplicationMetadata.empty());
     }
 
-    private MeshNodeRouteRequestCall(
+    MeshNodeRouteRequestCall(
         ZLinkChannelCallRuntime runtime,
         String channelName,
         ZLinkInternalSpotNode node,
@@ -596,6 +652,7 @@ final class MeshNodeRouteRequestCall implements ZLinkRequestCall {
         Message payload,
         Optional<String> packetName,
         Duration timeout,
+        String contentType,
         ZLinkApplicationMetadata metadata) {
         this.runtime = runtime;
         this.channelName = channelName;
@@ -604,39 +661,43 @@ final class MeshNodeRouteRequestCall implements ZLinkRequestCall {
         this.payload = payload;
         this.packetName = packetName;
         this.timeout = timeout;
+        this.contentType = contentType;
         this.metadata = metadata;
     }
 
     public ZLinkRequestCall packetName(String name) {
         return new MeshNodeRouteRequestCall(
-            runtime, channelName, node, target, payload, Optional.of(name), timeout, metadata);
+            runtime, channelName, node, target, payload, Optional.of(name), timeout,
+            contentType, metadata);
     }
 
     @Override
     public ZLinkRequestCall metadata(String key, String value) {
         return new MeshNodeRouteRequestCall(
             runtime, channelName, node, target, payload, packetName, timeout,
-            metadata.with(key, value));
+            contentType, metadata.with(key, value));
     }
 
     @Override
     public ZLinkRequestCall metadata(Map<String, String> values) {
         return new MeshNodeRouteRequestCall(
             runtime, channelName, node, target, payload, packetName, timeout,
-            metadata.withAll(values));
+            contentType, metadata.withAll(values));
     }
 
     @Override
     public ZLinkRequestCall timeout(Duration value) {
         return new MeshNodeRouteRequestCall(
-            runtime, channelName, node, target, payload, packetName, value, metadata);
+            runtime, channelName, node, target, payload, packetName, value,
+            contentType, metadata);
     }
 
     @Override
     public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
         CompletableFuture<TReply> result = new CompletableFuture<>();
         runtime.track(result, timeout);
-        List<Message> requestParts = ZLinkChannelCallRuntime.parts(packetName, payload);
+        List<Message> requestParts = ZLinkChannelCallRuntime.parts(
+            packetName, payload, contentType);
         if (runtime.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
             runtime.flow().trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.SENT,

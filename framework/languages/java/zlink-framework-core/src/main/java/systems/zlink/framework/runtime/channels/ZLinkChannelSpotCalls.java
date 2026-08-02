@@ -95,6 +95,7 @@ final class RouteSpotSendCall
     private final String target;
     private final Message payload;
     private final Optional<String> packetName;
+    private final String contentType;
     private final boolean instanceIntent;
     private final String stableType;
     private final String selectedMesh;
@@ -109,10 +110,11 @@ final class RouteSpotSendCall
         Message payload,
         Optional<String> packetName) {
         this(runtime, channelName, resolver, instanceSpots, target, payload,
-            packetName, false, null, null, ZLinkApplicationMetadata.empty());
+            packetName, ZLinkChannelContentTypeFrame.DEFAULT_CONTENT_TYPE,
+            false, null, null, ZLinkApplicationMetadata.empty());
     }
 
-    private RouteSpotSendCall(
+    RouteSpotSendCall(
         ZLinkChannelCallRuntime runtime,
         String channelName,
         SpotTransportAddressResolver resolver,
@@ -120,6 +122,7 @@ final class RouteSpotSendCall
         String target,
         Message payload,
         Optional<String> packetName,
+        String contentType,
         boolean instanceIntent,
         String stableType,
         String selectedMesh,
@@ -131,6 +134,7 @@ final class RouteSpotSendCall
         this.target = target;
         this.payload = payload;
         this.packetName = packetName;
+        this.contentType = contentType;
         this.instanceIntent = instanceIntent;
         this.stableType = stableType;
         this.selectedMesh = selectedMesh;
@@ -146,6 +150,7 @@ final class RouteSpotSendCall
             target,
             payload,
             Optional.of(packetName),
+            contentType,
             instanceIntent, stableType, selectedMesh, metadata);
     }
 
@@ -158,22 +163,22 @@ final class RouteSpotSendCall
     private RouteSpotSendCall withInstanceType(String value) {
         if (instanceIntent) throw new IllegalStateException("instanceSpot was already set");
         return new RouteSpotSendCall(runtime, channelName, resolver, instanceSpots,
-            target, payload, packetName, true, value, selectedMesh, metadata);
+            target, payload, packetName, contentType, true, value, selectedMesh, metadata);
     }
     @Override public systems.zlink.framework.spots.ZLinkSpotSendCall inMesh(String value) {
         if (selectedMesh != null) throw new IllegalStateException("inMesh was already set");
         return new RouteSpotSendCall(runtime, channelName, resolver, instanceSpots,
-            target, payload, packetName, instanceIntent, stableType,
+            target, payload, packetName, contentType, instanceIntent, stableType,
             SpotCallAddresses.requireText(value), metadata);
     }
     @Override public systems.zlink.framework.spots.ZLinkSpotSendCall metadata(String key, String value) {
         return new RouteSpotSendCall(runtime, channelName, resolver, instanceSpots,
-            target, payload, packetName, instanceIntent, stableType, selectedMesh,
+            target, payload, packetName, contentType, instanceIntent, stableType, selectedMesh,
             metadata.with(key, value));
     }
     @Override public systems.zlink.framework.spots.ZLinkSpotSendCall metadata(Map<String, String> values) {
         return new RouteSpotSendCall(runtime, channelName, resolver, instanceSpots,
-            target, payload, packetName, instanceIntent, stableType, selectedMesh,
+            target, payload, packetName, contentType, instanceIntent, stableType, selectedMesh,
             metadata.withAll(values));
     }
 
@@ -195,12 +200,13 @@ final class RouteSpotSendCall
                     SpotCallAddresses.unwrap(failure));
             }
             return activation.send(target, stableType, selectedMesh, payload,
-                packetName, metadata.values());
+                packetName, contentType, metadata.values());
         }).thenCompose(java.util.function.Function.identity());
     }
 
     private CompletionStage<Void> submitExisting(SpotTransportAddress address) {
-            List<Message> sendParts = ZLinkChannelCallRuntime.parts(packetName, payload);
+            List<Message> sendParts = ZLinkChannelCallRuntime.parts(
+                packetName, payload, contentType);
             try {
                 return runtime.sendToSpot(
                     address.routerChannelId(),
@@ -225,6 +231,7 @@ final class RouteSpotRequestCall
     private final Message payload;
     private final Optional<String> packetName;
     private final Duration timeout;
+    private final String contentType;
     private final boolean instanceIntent;
     private final String stableType;
     private final String selectedMesh;
@@ -240,11 +247,12 @@ final class RouteSpotRequestCall
         Optional<String> packetName,
         Duration timeout) {
         this(runtime, channelName, resolver, instanceSpots, target, payload,
-            packetName, timeout, false, null, null,
+            packetName, timeout, ZLinkChannelContentTypeFrame.DEFAULT_CONTENT_TYPE,
+            false, null, null,
             ZLinkApplicationMetadata.empty());
     }
 
-    private RouteSpotRequestCall(
+    RouteSpotRequestCall(
         ZLinkChannelCallRuntime runtime,
         String channelName,
         SpotTransportAddressResolver resolver,
@@ -253,6 +261,7 @@ final class RouteSpotRequestCall
         Message payload,
         Optional<String> packetName,
         Duration timeout,
+        String contentType,
         boolean instanceIntent,
         String stableType,
         String selectedMesh,
@@ -265,6 +274,7 @@ final class RouteSpotRequestCall
         this.payload = payload;
         this.packetName = packetName;
         this.timeout = timeout;
+        this.contentType = contentType;
         this.instanceIntent = instanceIntent;
         this.stableType = stableType;
         this.selectedMesh = selectedMesh;
@@ -281,6 +291,7 @@ final class RouteSpotRequestCall
             payload,
             Optional.of(packetName),
             timeout,
+            contentType,
             instanceIntent, stableType, selectedMesh, metadata);
     }
 
@@ -293,22 +304,22 @@ final class RouteSpotRequestCall
     private RouteSpotRequestCall withInstanceType(String value) {
         if (instanceIntent) throw new IllegalStateException("instanceSpot was already set");
         return new RouteSpotRequestCall(runtime, channelName, resolver, instanceSpots,
-            target, payload, packetName, timeout, true, value, selectedMesh, metadata);
+            target, payload, packetName, timeout, contentType, true, value, selectedMesh, metadata);
     }
     @Override public systems.zlink.framework.spots.ZLinkSpotRequestCall inMesh(String value) {
         if (selectedMesh != null) throw new IllegalStateException("inMesh was already set");
         return new RouteSpotRequestCall(runtime, channelName, resolver, instanceSpots,
-            target, payload, packetName, timeout, instanceIntent, stableType,
+            target, payload, packetName, timeout, contentType, instanceIntent, stableType,
             SpotCallAddresses.requireText(value), metadata);
     }
     @Override public systems.zlink.framework.spots.ZLinkSpotRequestCall metadata(String key, String value) {
         return new RouteSpotRequestCall(runtime, channelName, resolver, instanceSpots,
-            target, payload, packetName, timeout, instanceIntent, stableType,
+            target, payload, packetName, timeout, contentType, instanceIntent, stableType,
             selectedMesh, metadata.with(key, value));
     }
     @Override public systems.zlink.framework.spots.ZLinkSpotRequestCall metadata(Map<String, String> values) {
         return new RouteSpotRequestCall(runtime, channelName, resolver, instanceSpots,
-            target, payload, packetName, timeout, instanceIntent, stableType,
+            target, payload, packetName, timeout, contentType, instanceIntent, stableType,
             selectedMesh, metadata.withAll(values));
     }
 
@@ -324,6 +335,7 @@ final class RouteSpotRequestCall
             payload,
             packetName,
             timeout,
+            contentType,
             instanceIntent, stableType, selectedMesh, metadata);
     }
 
@@ -342,7 +354,7 @@ final class RouteSpotRequestCall
                     SpotCallAddresses.unwrap(failure));
             }
             return activation.request(target, stableType, selectedMesh, payload,
-                    packetName, metadata.values(), timeout)
+                    packetName, contentType, metadata.values(), timeout)
                 .thenApply(parts -> runtime.decodeSpotReply(parts, replyType));
         }).thenCompose(java.util.function.Function.identity());
         return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(stage);
@@ -351,7 +363,8 @@ final class RouteSpotRequestCall
     private <TReply> CompletionStage<TReply> submitExisting(
         SpotTransportAddress address,
         Class<TReply> replyType) {
-            List<Message> requestParts = ZLinkChannelCallRuntime.parts(packetName, payload);
+            List<Message> requestParts = ZLinkChannelCallRuntime.parts(
+                packetName, payload, contentType);
             return runtime.requestToSpot(
                 address.routerChannelId(),
                 address.targetNodeRid(),

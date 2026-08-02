@@ -15,6 +15,7 @@ public interface ZLinkInstanceSpotCallRuntime {
         String meshName,
         Message payload,
         Optional<String> packetName,
+        String contentType,
         Map<String, String> metadata);
 
     CompletionStage<List<Message>> request(
@@ -23,6 +24,7 @@ public interface ZLinkInstanceSpotCallRuntime {
         String meshName,
         Message payload,
         Optional<String> packetName,
+        String contentType,
         Map<String, String> metadata,
         Duration timeout);
 }

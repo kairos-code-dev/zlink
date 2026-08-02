@@ -20,6 +20,7 @@ import systems.zlink.framework.runtime.internal.spots.ZLinkInstanceSpotCallRunti
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
+import java.util.function.Function;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
@@ -30,6 +31,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
     private final String meshName;
     private final String publisherChannelName;
     private final ZLinkMessageSerializer serializer;
+    private final Function<Class<?>, String> contentTypeResolver;
     private final ZLinkSpotRouteMessages routeMessages;
     private final ZLinkSpotRoutedOutbound routed;
     private final ZLinkSpotDirectOutbound direct;
@@ -45,6 +47,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
         String meshName,
         String publisherChannelName,
         ZLinkMessageSerializer serializer,
+        Function<Class<?>, String> contentTypeResolver,
         ZLinkSpotRoutedOutbound routed,
         ZLinkSpotDirectOutbound direct,
         ZLinkSpotPublisherRuntime publishers,
@@ -57,6 +60,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
         this.meshName = meshName;
         this.publisherChannelName = publisherChannelName;
         this.serializer = serializer;
+        this.contentTypeResolver = contentTypeResolver;
         this.routeMessages = new ZLinkSpotRouteMessages(serializer);
         this.routed = routed;
         this.direct = direct;
@@ -74,8 +78,15 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
         Object message) {
         rejectAfterRelocationReady("sendToSpot");
         ZLinkPayloadEncoding.EncodedPayload encoded =
-            ZLinkPayloadEncoding.encode(serializer, message);
-        return new DeferredSpotSendCall(spotId, encoded.payload(), Optional.of(encoded.packetName()));
+            ZLinkPayloadEncoding.encode(
+                serializer,
+                message,
+                contentTypeResolver.apply(message == null ? null : message.getClass()));
+        return new DeferredSpotSendCall(
+            spotId,
+            encoded.payload(),
+            Optional.of(encoded.packetName()),
+            encoded.contentType());
     }
 
     @Override
@@ -84,9 +95,16 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
         Object request) {
         rejectAfterRelocationReady("requestToSpot");
         ZLinkPayloadEncoding.EncodedPayload encoded =
-            ZLinkPayloadEncoding.encode(serializer, request);
+            ZLinkPayloadEncoding.encode(
+                serializer,
+                request,
+                contentTypeResolver.apply(request == null ? null : request.getClass()));
         return new DeferredSpotRequestCall(
-            spotId, encoded.payload(), Optional.of(encoded.packetName()), defaultRequestTimeout);
+            spotId,
+            encoded.payload(),
+            Optional.of(encoded.packetName()),
+            defaultRequestTimeout,
+            encoded.contentType());
     }
 
     @Override
@@ -96,21 +114,26 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
         Object message) {
         rejectAfterRelocationReady("publish");
         ZLinkPayloadEncoding.EncodedPayload encoded =
-            ZLinkPayloadEncoding.encode(serializer, message);
+            ZLinkPayloadEncoding.encode(
+                serializer,
+                message,
+                contentTypeResolver.apply(message == null ? null : message.getClass()));
         if (publisherChannelName != null && publishers.contains(publisherChannelName)) {
             return publishers.call(
                 publisherChannelName,
                 channelName,
                 topic,
                 encoded.payload(),
-                Optional.of(encoded.packetName()));
+                Optional.of(encoded.packetName()),
+                encoded.contentType());
         }
         return direct.publish(
             backendSpot,
             channelName,
             topic,
             encoded.payload(),
-            Optional.of(encoded.packetName()));
+            Optional.of(encoded.packetName()),
+            encoded.contentType());
     }
 
     @Override
@@ -166,6 +189,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
         private final String target;
         private final systems.zlink.contracts.messaging.Message payload;
         private final Optional<String> packetName;
+        private final String contentType;
         private final ZLinkApplicationMetadata metadata;
         private final boolean instanceIntent;
         private final String stableType;
@@ -173,13 +197,38 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
 
         private DeferredSpotSendCall(String target, systems.zlink.contracts.messaging.Message payload,
             Optional<String> packetName) {
-            this(target, payload, packetName, ZLinkApplicationMetadata.empty(), false, null, null);
+            this(
+                target,
+                payload,
+                packetName,
+                null,
+                ZLinkApplicationMetadata.empty(),
+                false,
+                null,
+                null);
         }
 
         private DeferredSpotSendCall(
             String target,
             systems.zlink.contracts.messaging.Message payload,
             Optional<String> packetName,
+            String contentType) {
+            this(
+                target,
+                payload,
+                packetName,
+                contentType,
+                ZLinkApplicationMetadata.empty(),
+                false,
+                null,
+                null);
+        }
+
+        private DeferredSpotSendCall(
+            String target,
+            systems.zlink.contracts.messaging.Message payload,
+            Optional<String> packetName,
+            String contentType,
             ZLinkApplicationMetadata metadata,
             boolean instanceIntent,
             String stableType,
@@ -187,6 +236,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
             this.target = java.util.Objects.requireNonNull(target, "target");
             this.payload = payload;
             this.packetName = packetName;
+            this.contentType = contentType;
             this.metadata = metadata;
             this.instanceIntent = instanceIntent;
             this.stableType = stableType;
@@ -209,7 +259,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
                 throw new IllegalStateException("instanceSpot was already set");
             }
             return new DeferredSpotSendCall(
-                target, payload, packetName, metadata, true, value, selectedMesh);
+                target, payload, packetName, contentType, metadata, true, value, selectedMesh);
         }
 
         @Override
@@ -219,7 +269,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
                 throw new IllegalStateException("inMesh was already set");
             }
             return new DeferredSpotSendCall(
-                target, payload, packetName, metadata, instanceIntent,
+                target, payload, packetName, contentType, metadata, instanceIntent,
                 stableType, requireStableType(value));
         }
 
@@ -228,7 +278,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
             String key,
             String value) {
             return new DeferredSpotSendCall(
-                target, payload, packetName, metadata.with(key, value),
+                target, payload, packetName, contentType, metadata.with(key, value),
                 instanceIntent, stableType, selectedMesh);
         }
 
@@ -236,7 +286,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
         public systems.zlink.framework.spots.ZLinkSpotSendCall metadata(
             Map<String, String> values) {
             return new DeferredSpotSendCall(
-                target, payload, packetName, metadata.withAll(values),
+                target, payload, packetName, contentType, metadata.withAll(values),
                 instanceIntent, stableType, selectedMesh);
         }
 
@@ -256,7 +306,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
                 }
                 return instanceSpots.send(
                     target, stableType, selectedMesh, payload, packetName,
-                    metadata.values());
+                    contentType, metadata.values());
             }).thenCompose(java.util.function.Function.identity());
         }
 
@@ -268,9 +318,9 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
                     address.authorityOwnerGeneration());
                 ZLinkSendCall call = routeMeshEnabled
                     ? routed.send(address.routerChannelId(), address.targetNodeRid(), address.spotId(),
-                        address.spotGeneration(), payload, packetName)
+                        address.spotGeneration(), payload, packetName, contentType)
                     : direct.send(backendSpot, address.targetNodeRid(), address.spotId(),
-                        address.spotGeneration(), payload, packetName);
+                        address.spotGeneration(), payload, packetName, contentType);
                 call = call.metadata(metadata.values());
                 return call.submit();
         }
@@ -281,6 +331,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
         private final String target;
         private final systems.zlink.contracts.messaging.Message payload;
         private final Optional<String> packetName;
+        private final String contentType;
         private final Duration timeout;
         private final ZLinkApplicationMetadata metadata;
         private final boolean instanceIntent;
@@ -294,6 +345,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
                 payload,
                 packetName,
                 timeout,
+                null,
                 ZLinkApplicationMetadata.empty(), false, null, null);
         }
 
@@ -302,6 +354,25 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
             systems.zlink.contracts.messaging.Message payload,
             Optional<String> packetName,
             Duration timeout,
+            String contentType) {
+            this(
+                target,
+                payload,
+                packetName,
+                timeout,
+                contentType,
+                ZLinkApplicationMetadata.empty(),
+                false,
+                null,
+                null);
+        }
+
+        private DeferredSpotRequestCall(
+            String target,
+            systems.zlink.contracts.messaging.Message payload,
+            Optional<String> packetName,
+            Duration timeout,
+            String contentType,
             ZLinkApplicationMetadata metadata,
             boolean instanceIntent,
             String stableType,
@@ -309,6 +380,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
             this.target = java.util.Objects.requireNonNull(target, "target");
             this.payload = payload;
             this.packetName = packetName;
+            this.contentType = contentType;
             this.timeout = timeout;
             this.metadata = metadata;
             this.instanceIntent = instanceIntent;
@@ -332,7 +404,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
                 throw new IllegalStateException("instanceSpot was already set");
             }
             return new DeferredSpotRequestCall(
-                target, payload, packetName, timeout, metadata, true, value,
+                target, payload, packetName, timeout, contentType, metadata, true, value,
                 selectedMesh);
         }
 
@@ -343,7 +415,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
                 throw new IllegalStateException("inMesh was already set");
             }
             return new DeferredSpotRequestCall(
-                target, payload, packetName, timeout, metadata, instanceIntent,
+                target, payload, packetName, timeout, contentType, metadata, instanceIntent,
                 stableType, requireStableType(value));
         }
 
@@ -352,7 +424,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
             String key,
             String value) {
             return new DeferredSpotRequestCall(
-                target, payload, packetName, timeout, metadata.with(key, value),
+                target, payload, packetName, timeout, contentType, metadata.with(key, value),
                 instanceIntent, stableType, selectedMesh);
         }
 
@@ -360,7 +432,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
         public systems.zlink.framework.spots.ZLinkSpotRequestCall metadata(
             Map<String, String> values) {
             return new DeferredSpotRequestCall(
-                target, payload, packetName, timeout, metadata.withAll(values),
+                target, payload, packetName, timeout, contentType, metadata.withAll(values),
                 instanceIntent, stableType, selectedMesh);
         }
 
@@ -368,7 +440,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
         public systems.zlink.framework.spots.ZLinkSpotRequestCall timeout(
             Duration value) {
             return new DeferredSpotRequestCall(
-                target, payload, packetName, value, metadata, instanceIntent,
+                target, payload, packetName, value, contentType, metadata, instanceIntent,
                 stableType, selectedMesh);
         }
         @Override public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
@@ -384,7 +456,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
                 }
                 return instanceSpots.request(
                         target, stableType, selectedMesh, payload, packetName,
-                        metadata.values(), timeout)
+                        contentType, metadata.values(), timeout)
                     .thenApply(parts -> routeMessages.decodeReply(parts, replyType));
             }).thenCompose(java.util.function.Function.identity());
             return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(stage);
@@ -400,9 +472,9 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
                     address.authorityOwnerGeneration());
                 ZLinkRequestCall call = routeMeshEnabled
                     ? routed.request(address.routerChannelId(), address.targetNodeRid(), address.spotId(),
-                        address.spotGeneration(), payload, packetName, timeout)
+                        address.spotGeneration(), payload, packetName, contentType, timeout)
                     : direct.request(backendSpot, address.targetNodeRid(), address.spotId(),
-                        address.spotGeneration(), payload, packetName, timeout);
+                        address.spotGeneration(), payload, packetName, contentType, timeout);
                 return call.metadata(metadata.values()).submit(replyType);
         }
 

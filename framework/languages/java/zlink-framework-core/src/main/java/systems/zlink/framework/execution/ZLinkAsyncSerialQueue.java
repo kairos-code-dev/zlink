@@ -135,7 +135,8 @@ public final class ZLinkAsyncSerialQueue {
     }
 
     public synchronized boolean tryEnqueue(Supplier<CompletionStage<Void>> operation) {
-        if (outstanding > pendingCapacity) {
+        if (relocated || relocation != null && relocation.frozen
+            || outstanding > pendingCapacity) {
             return false;
         }
         enqueueAccepted(null, operation);

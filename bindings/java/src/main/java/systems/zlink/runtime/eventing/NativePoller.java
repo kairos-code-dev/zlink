@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Objects;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.RequestProgressPump;
 import systems.zlink.internal.DurationConversions;
 
 public final class NativePoller implements Poller {
@@ -75,10 +76,31 @@ public final class NativePoller implements Poller {
         if (index < 0)
             throw new IllegalArgumentException("socket is not registered");
         int mask = combine(events);
-        int rc = Native.pollerModify(handle, InternalAccess.socketHandle(socket), mask);
-        if (rc != 0)
+        PollItem item = items.get(index);
+        boolean hadExternalProgress = hasExternalProgress(item);
+        boolean needsExternalProgress = hasCompletion(mask);
+        if (needsExternalProgress && !hadExternalProgress) {
+            RequestProgressPump.acquireExternalProgress(item.handle);
+        }
+        int rc;
+        try {
+            rc = Native.pollerModify(handle, InternalAccess.socketHandle(socket), mask);
+        } catch (RuntimeException | Error failure) {
+            if (needsExternalProgress && !hadExternalProgress) {
+                RequestProgressPump.releaseExternalProgress(item.handle);
+            }
+            throw failure;
+        }
+        if (rc != 0) {
+            if (needsExternalProgress && !hadExternalProgress) {
+                RequestProgressPump.releaseExternalProgress(item.handle);
+            }
             throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
-        items.get(index).events = mask;
+        }
+        if (hadExternalProgress && !needsExternalProgress) {
+            RequestProgressPump.releaseExternalProgress(item.handle);
+        }
+        item.events = mask;
     }
 
     public void modifyFd(int fd, PollEventFlags... events) {
@@ -103,6 +125,7 @@ public final class NativePoller implements Poller {
         if (rc != 0)
             throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         PollItem removed = items.remove(index);
+        unregisterExternalProgress(removed);
         socketIndexes.remove(removed.handle.address());
         refreshIndexesFrom(index);
         return true;
@@ -138,6 +161,7 @@ public final class NativePoller implements Poller {
         int rc = Native.pollerDestroy(handle);
         if (rc != 0)
             throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
+        unregisterAllExternalProgress();
         handle = Native.pollerNew();
         if (handle == null || handle.address() == 0)
             throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
@@ -182,6 +206,7 @@ public final class NativePoller implements Poller {
             return;
         Native.pollerDestroy(handle);
         handle = MemorySegment.NULL;
+        unregisterAllExternalProgress();
         items.clear();
         closeWaitArena();
     }
@@ -219,10 +244,29 @@ public final class NativePoller implements Poller {
         Objects.requireNonNull(socket, "socket");
         validateSlot(slot);
         PollItem item = PollItem.socket(InternalAccess.socketHandle(socket), events, slot);
-        int rc = Native.pollerAdd(handle, InternalAccess.socketHandle(socket), item.userData(),
-            events);
-        if (rc != 0)
+        boolean externalProgress = hasExternalProgress(item);
+        if (externalProgress) {
+            // Reserve the completion owner before native registration. The
+            // binding fallback pump is stopped by this call, so the public
+            // poller becomes the only completion consumer for this socket.
+            RequestProgressPump.acquireExternalProgress(item.handle);
+        }
+        int rc;
+        try {
+            rc = Native.pollerAdd(handle, InternalAccess.socketHandle(socket), item.userData(),
+                events);
+        } catch (RuntimeException | Error failure) {
+            if (externalProgress) {
+                RequestProgressPump.releaseExternalProgress(item.handle);
+            }
+            throw failure;
+        }
+        if (rc != 0) {
+            if (externalProgress) {
+                RequestProgressPump.releaseExternalProgress(item.handle);
+            }
             throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
+        }
         socketIndexes.putIfAbsent(InternalAccess.socketHandle(socket).address(), items.size());
         items.add(item);
     }
@@ -230,6 +274,26 @@ public final class NativePoller implements Poller {
     private void ensureOpen() {
         if (handle == null || handle.address() == 0)
             throw new IllegalStateException("poller is closed");
+    }
+
+    private static void unregisterExternalProgress(PollItem item) {
+        if (hasExternalProgress(item)) {
+            RequestProgressPump.releaseExternalProgress(item.handle);
+        }
+    }
+
+    private static boolean hasExternalProgress(PollItem item) {
+        return item.kind == PollSourceKind.SOCKET && hasCompletion(item.events);
+    }
+
+    private static boolean hasCompletion(int events) {
+        return (events & PollEventFlags.POLLCOMPLETION.mask()) != 0;
+    }
+
+    private void unregisterAllExternalProgress() {
+        for (PollItem item : items) {
+            unregisterExternalProgress(item);
+        }
     }
 
     private static void validateSlot(long slot) {

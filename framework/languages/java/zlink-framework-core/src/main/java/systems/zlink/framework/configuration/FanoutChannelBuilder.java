@@ -15,6 +15,8 @@ public interface FanoutChannelBuilder {
 
     FanoutChannelBuilder setRoutingId(RoutingId routingId);
 
+    FanoutChannelBuilder setRoutingIdPrefix(String prefix);
+
     FanoutChannelBuilder enableSubscriber();
 
     FanoutChannelBuilder connect(String endpoint);

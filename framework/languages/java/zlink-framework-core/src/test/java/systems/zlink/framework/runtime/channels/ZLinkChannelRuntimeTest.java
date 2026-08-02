@@ -1075,7 +1075,7 @@ final class ZLinkChannelRuntimeTest {
             new ZLinkJsonMessageSerializer(), handlers())) {
             var socket = runtime.clientServerChannel("api").configureServerSocket();
 
-            assertEquals(0, socket.maxMessageSize());
+            assertEquals(16_777_216L, socket.maxMessageSize());
             socket.maxMessageSize(2 * 1024 * 1024L);
             assertEquals(2 * 1024 * 1024L, socket.maxMessageSize());
         }
@@ -1332,6 +1332,11 @@ final class ZLinkChannelRuntimeTest {
             return inbound.pollFirst();
         }
 
+        @Override
+        public boolean waitForReadable(Duration timeout) {
+            return !inbound.isEmpty();
+        }
+
         private ZLinkClientServerServerDescriptor descriptorWith(
             long revision,
             int weight,
@@ -1437,6 +1442,7 @@ final class ZLinkChannelRuntimeTest {
             return true;
         }
         @Override public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) { return null; }
+        @Override public boolean waitForReadable(Duration timeout) { return false; }
         @Override public String name() { return "fake-dealer"; }
         @Override public void close() { }
     }
@@ -1478,6 +1484,7 @@ final class ZLinkChannelRuntimeTest {
         @Override public void connect(String endpoint) { }
         @Override public void disconnect(String endpoint) { }
         @Override public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) { return inbound.poll(); }
+        @Override public boolean waitForReadable(Duration timeout) { return !inbound.isEmpty(); }
         @Override public boolean send(RoutingId routingId, List<Message> parts, SendFlags flags) { return true; }
         @Override public boolean request(RoutingId routingId, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
             requestAttempts++;

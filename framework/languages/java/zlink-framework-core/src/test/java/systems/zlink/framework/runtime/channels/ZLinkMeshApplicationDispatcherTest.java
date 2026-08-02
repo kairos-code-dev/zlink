@@ -22,15 +22,19 @@ import systems.zlink.framework.channels.ZLinkRouteMessageContext;
 import systems.zlink.framework.channels.ZLinkRouteSendHandler;
 import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
+import systems.zlink.framework.channels.ZLinkRequestHandler;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.internal.drain.ZLinkMeshDrainCoordinator;
+import systems.zlink.framework.runtime.internal.dispatch.ZLinkInboundDispatchBudget;
 import systems.zlink.framework.runtime.mesh.MeshNodeRegistration;
 import systems.zlink.framework.runtime.messaging.ZLinkStringMessageSerializer;
 import systems.zlink.framework.runtime.messaging.ZLinkApplicationMetadata;
+import systems.zlink.framework.runtime.messaging.ZLinkFrameworkErrorReply;
 
 final class ZLinkMeshApplicationDispatcherTest {
     @BeforeEach
@@ -38,12 +42,14 @@ final class ZLinkMeshApplicationDispatcherTest {
         NodeHandler.received = new CompletableFuture<>();
         ChannelHandler.received = new CompletableFuture<>();
         NodeHandler.metadata = new CompletableFuture<>();
+        NodeHandler.contentType = new CompletableFuture<>();
         ChannelHandler.metadata = new CompletableFuture<>();
         ScannedChannelHandler.received = new CompletableFuture<>();
         GatedNodeHandler.started = new CompletableFuture<>();
         GatedNodeHandler.release = new CompletableFuture<>();
         GatedNodeHandler.completedCount = new java.util.concurrent.atomic.AtomicInteger();
         GatedNodeHandler.completed = new CompletableFuture<>();
+        ProtocolRequestHandler.received = new CompletableFuture<>();
     }
 
     @Test
@@ -67,6 +73,21 @@ final class ZLinkMeshApplicationDispatcherTest {
     }
 
     @Test
+    void dispatchesWireContentTypeFrameWhenRecordOmitsDecodedContentType()
+        throws Exception {
+        MeshNodeRegistration mesh = new MeshNodeRegistration("game");
+        mesh.listen("inproc://mesh-dispatch-wire-content-type");
+        mesh.addRouteSendHandler(NodeHandler.class, String.class);
+        ZLinkMeshApplicationDispatcher dispatcher = dispatcher(mesh);
+
+        dispatcher.accept(recordWithWireContentType("wire-value", "application/json"));
+
+        assertEquals(
+            "application/json",
+            NodeHandler.contentType.get(2, TimeUnit.SECONDS));
+    }
+
+    @Test
     void dispatchesChannelSendThroughTypedChannelHandler() throws Exception {
         MeshNodeRegistration mesh = new MeshNodeRegistration("game");
         mesh.listen("inproc://mesh-dispatch-channel");
@@ -85,6 +106,28 @@ final class ZLinkMeshApplicationDispatcherTest {
         assertEquals(
             Map.of("tenant", "blue"),
             ChannelHandler.metadata.get(2, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void rejectsUnknownIncomingContentTypeBeforeRequestHandler() throws Exception {
+        MeshNodeRegistration mesh = new MeshNodeRegistration("game");
+        mesh.listen("inproc://mesh-dispatch-unknown-content-type");
+        mesh.addRouteRequestHandler(ProtocolRequestHandler.class, String.class, String.class);
+        CompletableFuture<ZLinkFrameworkErrorKind> replyKind = new CompletableFuture<>();
+        ZLinkMeshApplicationDispatcher dispatcher = dispatcher(mesh);
+
+        dispatcher.accept(record(
+            RecordKind.NODE_REQUEST,
+            null,
+            "valid-json-body",
+            Map.of(),
+            "application/x-unregistered",
+            parts -> replyKind.complete(ZLinkFrameworkErrorReply.kind(parts))));
+
+        assertEquals(
+            ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR,
+            replyKind.get(2, TimeUnit.SECONDS));
+        assertFalse(ProtocolRequestHandler.received.isDone());
     }
 
     @Test
@@ -235,6 +278,50 @@ final class ZLinkMeshApplicationDispatcherTest {
         assertTrue(drains.awaitZero("game").toCompletableFuture().isDone());
     }
 
+    @Test
+    void attachedRawMailboxLeaseIsNotCountedAgainByTheApplicationDispatcher()
+        throws Exception {
+        MeshNodeRegistration mesh = new MeshNodeRegistration("game");
+        mesh.listen("inproc://mesh-dispatch-attached-lease");
+        mesh.addRouteSendHandler(GatedNodeHandler.class, String.class);
+        ZLinkInboundDispatchBudget budget =
+            new ZLinkInboundDispatchBudget(10);
+        ZLinkMeshApplicationDispatcher dispatcher =
+            new ZLinkMeshApplicationDispatcher(
+                mesh,
+                new ZLinkStringMessageSerializer(),
+                new ZLinkFrameworkRegistration(),
+                ZLinkHandlerActivator.reflection(),
+                (token, parts) -> parts.forEach(Message::close),
+                null,
+                budget);
+        ZLinkInboundDispatchBudget.Lease mailboxLease = budget.track(7);
+
+        dispatcher.accept(record(
+            RecordKind.NODE_SEND,
+            null,
+            "mailbox-value",
+            Map.of(),
+            null,
+            null,
+            mailboxLease));
+
+        assertEquals(
+            7,
+            budget.snapshot().pendingPayloadBytes());
+        GatedNodeHandler.started.get(2, TimeUnit.SECONDS);
+        assertEquals(7, budget.snapshot().activePayloadBytes());
+
+        GatedNodeHandler.release.complete(null);
+        long deadline = System.nanoTime()
+            + TimeUnit.SECONDS.toNanos(2);
+        while (budget.snapshot().pendingPayloadBytes() != 0
+            && System.nanoTime() < deadline) {
+            Thread.sleep(1);
+        }
+        assertEquals(0, budget.snapshot().pendingPayloadBytes());
+    }
+
     private static Integer submitLocal(
         ZLinkMeshApplicationDispatcher dispatcher,
         String packetName,
@@ -273,6 +360,27 @@ final class ZLinkMeshApplicationDispatcherTest {
         String channelName,
         String value,
         Map<String, String> metadata) {
+        return record(kind, channelName, value, metadata, null, null);
+    }
+
+    private static ZLinkMeshDispatchRecord record(
+        RecordKind kind,
+        String channelName,
+        String value,
+        Map<String, String> metadata,
+        String contentType,
+        java.util.function.Consumer<List<Message>> reply) {
+        return record(kind, channelName, value, metadata, contentType, reply, null);
+    }
+
+    private static ZLinkMeshDispatchRecord record(
+        RecordKind kind,
+        String channelName,
+        String value,
+        Map<String, String> metadata,
+        String contentType,
+        java.util.function.Consumer<List<Message>> reply,
+        ZLinkInboundDispatchBudget.Lease inboundDispatchLease) {
         RoutingId source = RoutingId.from("source-node");
         ReadyRecord owner = new ReadyRecord(OwnerKind.NODE, 1, null, null);
         ReceiveRecord receive = new ReceiveRecord(
@@ -286,6 +394,7 @@ final class ZLinkMeshApplicationDispatcherTest {
             null,
             channelName,
             null,
+            contentType,
             ZLinkApplicationMetadata.copyOf(metadata).encode(),
             0,
             0,
@@ -296,12 +405,48 @@ final class ZLinkMeshApplicationDispatcherTest {
             receive,
             List.of(
                 Message.from("String".getBytes(StandardCharsets.UTF_8)),
-                Message.from(value.getBytes(StandardCharsets.UTF_8))));
+                Message.from(value.getBytes(StandardCharsets.UTF_8))),
+            reply,
+            inboundDispatchLease);
+    }
+
+    private static ZLinkMeshDispatchRecord recordWithWireContentType(
+        String value,
+        String contentType) {
+        RoutingId source = RoutingId.from("source-node");
+        ReadyRecord owner = new ReadyRecord(OwnerKind.NODE, 1, null, null);
+        ReceiveRecord receive = new ReceiveRecord(
+            RecordKind.NODE_SEND,
+            1,
+            source,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            ZLinkApplicationMetadata.copyOf(Map.of()).encode(),
+            0,
+            0,
+            0,
+            2);
+        return new ZLinkMeshDispatchRecord(
+            owner,
+            receive,
+            List.of(
+                Message.from("String".getBytes(StandardCharsets.UTF_8)),
+                Message.from(value.getBytes(StandardCharsets.UTF_8)),
+                ZLinkChannelContentTypeFrame.encode(contentType)),
+            null,
+            null);
     }
 
     public static final class NodeHandler implements ZLinkRouteSendHandler<String> {
         private static CompletableFuture<String> received;
         private static CompletableFuture<Map<String, String>> metadata;
+        private static CompletableFuture<String> contentType;
 
         public NodeHandler() {
         }
@@ -312,7 +457,21 @@ final class ZLinkMeshApplicationDispatcherTest {
             ZLinkRouteMessageContext context) {
             received.complete(message + "@" + context.sourceNodeRid());
             metadata.complete(context.metadata());
+            contentType.complete(context.contentType().orElse(null));
             return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    public static final class ProtocolRequestHandler
+        implements systems.zlink.framework.channels.ZLinkRouteRequestHandler<String, String> {
+        private static CompletableFuture<String> received = new CompletableFuture<>();
+
+        @Override
+        public CompletionStage<String> handle(
+            String message,
+            ZLinkRouteMessageContext context) {
+            received.complete(message);
+            return CompletableFuture.completedFuture("reply");
         }
     }
 

@@ -104,8 +104,8 @@ public final class StreamBuilders {
         }
 
         @Override
-        public ZLinkStreamNodeBuilder enableActorDispatch(String meshName) {
-            registration.enableActorDispatch(meshName);
+        public ZLinkStreamNodeBuilder enableActorDispatch() {
+            registration.enableActorDispatch();
             return this;
         }
 

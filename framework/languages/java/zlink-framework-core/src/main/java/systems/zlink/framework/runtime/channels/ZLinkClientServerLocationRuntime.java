@@ -408,6 +408,14 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
             if (!submitted) {
                 removeConnection(connection.connectionId());
             }
+        } catch (RuntimeException failure) {
+            // A connection can terminate between the monitor readiness event
+            // and the admission request. The monitor callback must not leak
+            // that binding exception; removing the stale connection lets the
+            // next location refresh establish a fresh admission attempt.
+            synchronized (this) {
+                removeConnection(connection.connectionId());
+            }
         }
     }
 

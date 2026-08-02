@@ -2,6 +2,7 @@ package systems.zlink.framework.runtime.binding;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -10,9 +11,11 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
@@ -23,10 +26,12 @@ import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendReceived;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendTopicMessage;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6AWireCodec;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
 import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole;
 import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerState;
+import systems.zlink.framework.runtime.internal.dispatch.ZLinkInboundDispatchBudget;
 
 final class ZLinkJavaRawMeshNodeM6ATest {
     @Test
@@ -496,6 +501,121 @@ final class ZLinkJavaRawMeshNodeM6ATest {
                     new byte[] {1, 2, 3},
                     record.parts().get(1).toByteArray());
             }
+        }
+    }
+
+    @Test
+    void applicationHwmPausesRawReceiveUntilDispatchRecordCloses()
+        throws Exception {
+        String endpoint = "inproc://jvm-m6a-hwm-" + System.nanoTime();
+        RoutingId targetRid = RoutingId.from("jvm-m6a-hwm-target");
+        RoutingId sourceRid = RoutingId.from("jvm-m6a-hwm-source");
+        ZLinkInboundDispatchBudget budget =
+            new ZLinkInboundDispatchBudget(1);
+        CompletableFuture<ZLinkMeshDispatchRecord> first =
+            new CompletableFuture<>();
+        CompletableFuture<ZLinkMeshDispatchRecord> second =
+            new CompletableFuture<>();
+        try (var context = Zlink.createContext();
+             var target = new ZLinkJavaRawMeshNode(context, "mesh");
+             var source = new ZLinkJavaRawMeshNode(context, "mesh")) {
+            target.setRoutingId(targetRid);
+            target.setBind(endpoint);
+            target.setApplicationDispatchBudget(budget);
+            target.startDispatch(record -> {
+                if (!first.complete(record)) {
+                    second.complete(record);
+                }
+            });
+            source.setRoutingId(sourceRid);
+            source.setBind(
+                "inproc://jvm-m6a-hwm-source-" + System.nanoTime());
+            target.start();
+            source.start();
+            source.connectPeer(endpoint, targetRid);
+            awaitAdmitted(source);
+
+            sendNodePayload(source, targetRid, new byte[] {1});
+            ZLinkMeshDispatchRecord firstRecord =
+                first.get(2, TimeUnit.SECONDS);
+            assertEquals(
+                new ZLinkInboundDispatchBudget.Snapshot(1, 1, 1, 0, true),
+                budget.snapshot());
+
+            sendNodePayload(source, targetRid, new byte[] {2});
+            assertThrows(
+                TimeoutException.class,
+                () -> second.get(100, TimeUnit.MILLISECONDS));
+            assertEquals(1, budget.snapshot().pendingPayloadBytes());
+
+            firstRecord.close();
+            try (ZLinkMeshDispatchRecord secondRecord =
+                second.get(2, TimeUnit.SECONDS)) {
+                assertEquals(RecordKind.NODE_SEND, secondRecord.receive().kind());
+                assertEquals(1, budget.snapshot().pendingPayloadBytes());
+            }
+            assertEquals(0, budget.snapshot().pendingPayloadBytes());
+        } finally {
+            closeCompletedRecord(first);
+            closeCompletedRecord(second);
+        }
+    }
+
+    @Test
+    void closingRawSpotReleasesQueuedSubscriptionAdmissionLease() {
+        ZLinkInboundDispatchBudget budget =
+            new ZLinkInboundDispatchBudget(8);
+        try (var context = Zlink.createContext();
+             var node = new ZLinkJavaRawMeshNode(context, "mesh")) {
+            ZLinkJavaRawSpotNode spotNode = new ZLinkJavaRawSpotNode(node);
+            ZLinkJavaRawSpot spot = new ZLinkJavaRawSpot(spotNode, "spot", 1);
+            List<Message> parts = List.of(Message.from("payload"));
+            ZLinkInboundDispatchBudget.Lease lease = budget.track(7);
+
+            assertTrue(spot.enqueueTopic(new ZLinkBackendTopicMessage(
+                Optional.empty(),
+                "channel",
+                "topic",
+                new byte[0],
+                parts,
+                "application/json",
+                lease)));
+
+            spot.close();
+
+            assertEquals(0, budget.snapshot().pendingPayloadBytes());
+        }
+    }
+
+    private static void closeCompletedRecord(
+        CompletableFuture<ZLinkMeshDispatchRecord> future) {
+        if (!future.isDone() || future.isCompletedExceptionally()) {
+            return;
+        }
+        ZLinkMeshDispatchRecord record = future.getNow(null);
+        if (record != null) {
+            record.close();
+        }
+    }
+
+    private static void sendNodePayload(
+        ZLinkJavaRawMeshNode source,
+        RoutingId targetRid,
+        byte[] payloadBytes) throws InterruptedException {
+        try (Message packet = Message.from("hwm.packet");
+             Message payload = Message.from(payloadBytes)) {
+            long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+            boolean submitted = false;
+            while (!submitted && System.nanoTime() < deadline) {
+                submitted = source.spotNode().sendToNode(
+                    targetRid,
+                    List.of(packet, payload),
+                    SendFlags.DONT_WAIT);
+                if (!submitted) {
+                    Thread.sleep(1);
+                }
+            }
+            assertTrue(submitted);
         }
     }
 

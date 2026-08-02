@@ -5,6 +5,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkBackendContext;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshBackendAdapter;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
+import systems.zlink.framework.runtime.internal.dispatch.ZLinkInboundDispatchBudget;
 
 public final class ZLinkMeshNodeRuntime implements AutoCloseable {
     private final ZLinkInternalMeshNode node;
@@ -17,6 +18,14 @@ public final class ZLinkMeshNodeRuntime implements AutoCloseable {
         MeshNodeRegistration registration,
         ZLinkMeshBackendAdapter adapter,
         ZLinkBackendContext context) {
+        return start(registration, adapter, context, null);
+    }
+
+    static ZLinkMeshNodeRuntime start(
+        MeshNodeRegistration registration,
+        ZLinkMeshBackendAdapter adapter,
+        ZLinkBackendContext context,
+        ZLinkInboundDispatchBudget applicationDispatchBudget) {
         ZLinkInternalMeshNode node =
             adapter.createMeshNode(context, registration.meshName());
         boolean started = false;
@@ -47,6 +56,9 @@ public final class ZLinkMeshNodeRuntime implements AutoCloseable {
                     .orElse(Duration.ofSeconds(1)));
             node.setMailboxMessageBudget(
                 registration.configureRouterSocket().receiveHighWaterMark());
+            if (applicationDispatchBudget != null) {
+                node.setApplicationDispatchBudget(applicationDispatchBudget);
+            }
             registration.channelWeights().forEach((channelName, weight) -> {
                 node.addChannel(channelName);
                 node.setChannelWeight(channelName, weight);

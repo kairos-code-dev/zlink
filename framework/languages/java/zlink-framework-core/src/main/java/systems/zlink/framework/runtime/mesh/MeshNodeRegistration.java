@@ -473,6 +473,22 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
                 "Actor"));
     }
 
+    /**
+     * Validates the listener limit required by a host-wide application HWM.
+     * This method is called during registration validation; it is not a
+     * runtime socket mutation API.
+     */
+    public void validateApplicationHwm(long applicationHwmBytes) {
+        if (applicationHwmBytes == 0) {
+            return;
+        }
+        if (routerSocket.maxMessageSize() <= 0) {
+            throw new ZLinkConfigurationException(
+                "Application HWM requires a finite positive MaxMessageSize on MeshNode: "
+                    + meshName);
+        }
+    }
+
     private static void validateRelocationPolicy(
         Class<?> objectType,
         RelocationPolicy policy,
@@ -933,7 +949,7 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
     }
 
     private static final class RouterSocketConfig implements ZLinkMeshNodeSocketConfig {
-        private long maxMessageSize;
+        private long maxMessageSize = 16_777_216L;
         //  HWM is an accounted byte count, so it has to be 64-bit. The mailbox
         //  budgets default to 0, which leaves the runtime default in place.
         private long sendHighWaterMark = 1000;
@@ -944,7 +960,14 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         private Duration sendTimeout;
 
         @Override public long maxMessageSize() { return maxMessageSize; }
-        @Override public void setMaxMessageSize(long value) { maxMessageSize = value; }
+        @Override
+        public void setMaxMessageSize(long value) {
+            if (value < 0) {
+                throw new ZLinkConfigurationException(
+                    "MaxMessageSize must be zero or a positive byte count.");
+            }
+            maxMessageSize = value;
+        }
         @Override public long sendHighWaterMark() { return sendHighWaterMark; }
         @Override public void setSendHighWaterMark(long value) { sendHighWaterMark = value; }
         @Override public long receiveHighWaterMark() { return receiveHighWaterMark; }

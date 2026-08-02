@@ -232,7 +232,8 @@ public final class ZLinkFrameworkRuntime
                     serializer,
                     this.registration,
                     handlerFactory,
-                    this.meshDrains));
+                    this.meshDrains,
+                    this.registration.inboundDispatchBudget()));
         }
         this.meshNodes.nodesByName().forEach((meshName, node) ->
             this.channels.registerSpotRouterNode(meshName, node.spotNode()));
@@ -746,7 +747,8 @@ public final class ZLinkFrameworkRuntime
                     status.acceptingWork(),
                     status.deadline(),
                     status.relocationResult(),
-                    status.terminationResult()),
+                    status.terminationResult(),
+                    status.inboundDispatch()),
                 java.util.concurrent.Flow.defaultBufferSize(),
                 status -> status.state() == ZLinkFrameworkRuntimeState.STOPPED
                     || status.state() == ZLinkFrameworkRuntimeState.ERROR,
@@ -1451,6 +1453,18 @@ public final class ZLinkFrameworkRuntime
     private systems.zlink.framework.monitoring
         .ZLinkFrameworkRuntimeStatus runtimeStatus(long sequence) {
         ZLinkFrameworkRuntimeState state = runtimeState.get();
+        systems.zlink.framework.runtime.internal.dispatch
+            .ZLinkInboundDispatchBudget.Snapshot inbound =
+            registration.inboundDispatchBudget().snapshot();
+        systems.zlink.framework.monitoring.ZLinkInboundDispatchStatus inboundStatus =
+            new systems.zlink.framework.monitoring.ZLinkInboundDispatchStatus(
+                inbound.applicationHwmBytes(),
+                inbound.pendingPayloadBytes(),
+                inbound.queuedPayloadBytes(),
+                inbound.activePayloadBytes(),
+                inbound.applicationReceivePaused(),
+                registration.inboundDispatchBudget().pendingCompletionSends(),
+                registration.inboundDispatchBudget().completionSendLimit());
         return new systems.zlink.framework.monitoring
             .ZLinkFrameworkRuntimeStatus(
                 state,
@@ -1461,6 +1475,7 @@ public final class ZLinkFrameworkRuntime
                 java.util.Optional.ofNullable(terminationDeadline.get()),
                 java.util.Optional.ofNullable(lastRelocationResult.get()),
                 java.util.Optional.ofNullable(lastTerminationResult.get()),
+                inboundStatus,
                 sequence,
                 java.time.Instant.now());
     }
@@ -1563,6 +1578,10 @@ public final class ZLinkFrameworkRuntime
         }
         channels.beginClose();
         ZLinkFrameworkShutdown shutdown = new ZLinkFrameworkShutdown();
+        // Close completion admission after accepted runtime components have
+        // finished their teardown, so graceful drain can still publish the
+        // replies it already accepted.
+        shutdown.defer(registration.inboundDispatchBudget()::close);
         shutdown.defer(this::closeHandlerExecutor);
         shutdown.defer(backendContext::close);
         if (authorityRouteRuntime != null) {

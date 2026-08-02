@@ -13,6 +13,7 @@ import systems.zlink.framework.runtime.internal.binding.spot.PeerChannels;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceRelocationWireCodec;
+import systems.zlink.framework.runtime.internal.dispatch.ZLinkInboundDispatchBudget;
 
 public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
     void setBind(String endpoint);
@@ -129,6 +130,11 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
 
     default void setApplicationReceiver(ZLinkMeshApplicationReceiver receiver) {
         // Alternate backends may not support process-local Node direct dispatch.
+    }
+
+    default void setApplicationDispatchBudget(
+        ZLinkInboundDispatchBudget budget) {
+        // Alternate backends may not retain Framework application admission.
     }
 
     default ZLinkInternalSpotNode spotNode() {
@@ -323,6 +329,17 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
         return java.util.concurrent.CompletableFuture.failedFuture(
             new UnsupportedOperationException(
                 "Remote Instance Spot send is unavailable"));
+    }
+
+    default CompletionStage<Void> submitInstanceSpotSend(
+        ZLinkServiceM6BWireCodec.InstanceRouteFence route,
+        String stableType,
+        String sourceSpotId,
+        byte[] metadata,
+        List<systems.zlink.contracts.messaging.Message> parts,
+        Duration timeout) {
+        return submitInstanceSpotSend(
+            route, stableType, sourceSpotId, metadata, parts);
     }
 
     default CompletionStage<List<systems.zlink.contracts.messaging.Message>>

@@ -376,6 +376,9 @@ final class ZLinkFanoutLocationRuntime implements AutoCloseable {
             for (int count = 0;
                 count < MAX_RECEIVES_PER_TICK;
                 count++) {
+                if (!connection.subscriber.waitForReadable(Duration.ZERO)) {
+                    break;
+                }
                 ZLinkBackendTopicMessage received =
                     connection.subscriber.subscribe(
                         ZLinkBackendRecvMode.DONT_WAIT);

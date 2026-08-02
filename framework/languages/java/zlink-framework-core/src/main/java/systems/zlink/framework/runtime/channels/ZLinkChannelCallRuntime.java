@@ -234,13 +234,30 @@ final class ZLinkChannelCallRuntime {
     }
 
     static List<Message> parts(Optional<String> packetName, Message payload) {
+        return parts(
+            packetName,
+            payload,
+            ZLinkChannelContentTypeFrame.DEFAULT_CONTENT_TYPE);
+    }
+
+    static List<Message> parts(
+        Optional<String> packetName,
+        Message payload,
+        String contentType) {
         if (packetName.isEmpty()) {
             return List.of(payload);
         }
         Message flow = ZLinkChannelFlowFrame.current();
+        Message packet = Message.from(packetName.get().getBytes(StandardCharsets.UTF_8));
+        if (ZLinkChannelContentTypeFrame.DEFAULT_CONTENT_TYPE.equalsIgnoreCase(contentType)) {
+            return flow == null
+                ? List.of(packet, payload)
+                : List.of(packet, payload, flow);
+        }
+        Message contentTypeFrame = ZLinkChannelContentTypeFrame.encode(contentType);
         return flow == null
-            ? List.of(Message.from(packetName.get().getBytes(StandardCharsets.UTF_8)), payload)
-            : List.of(Message.from(packetName.get().getBytes(StandardCharsets.UTF_8)), payload, flow);
+            ? List.of(packet, payload, contentTypeFrame)
+            : List.of(packet, payload, contentTypeFrame, flow);
     }
 
 }

@@ -137,6 +137,7 @@ final class ZLinkActorContextState {
     }
 
     void failMove(Throwable error) {
+        moving = false;
         moveCompletion.completeExceptionally(error);
     }
 

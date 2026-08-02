@@ -10,10 +10,14 @@ import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.configuration.ZLinkCodecRegistryBuilder;
 import systems.zlink.framework.configuration.ZLinkCodecRegistrar;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.errors.ZLinkFrameworkException;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 
 public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder, ZLinkCodecRegistrar {
     private static final String DEFAULT_JSON_CONTENT_TYPE = "application/json";
+    private static final String LEGACY_JSON_CONTENT_TYPE =
+        "application/zlink-framework-json-v1";
     private final Map<String, RegisteredSerializer> serializers = new LinkedHashMap<>();
     private final Map<String, ZLinkStreamCodec> streamCodecsByContentType = new LinkedHashMap<>();
     private final Map<ZLinkStreamCodec, String> contentTypesByStreamCodec = new LinkedHashMap<>();
@@ -133,6 +137,36 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder, 
         return singleSerializerFor(serializers, type)
             .map(Map.Entry::getKey)
             .orElse(DEFAULT_JSON_CONTENT_TYPE);
+    }
+
+    /**
+     * Resolves the serializer selected by an incoming wire content type.
+     * Incoming non-JSON content types are strict: the JSON fallback is not
+     * allowed to reinterpret a payload whose envelope selected another type.
+     */
+    public ZLinkMessageSerializer serializerForReceivedContentType(
+        String contentType,
+        ZLinkMessageSerializer jsonFallback) {
+        Objects.requireNonNull(contentType, "contentType");
+        Objects.requireNonNull(jsonFallback, "jsonFallback");
+        String normalized = contentType.trim();
+        if (normalized.isEmpty()) {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR,
+                "received payload content type must not be blank");
+        }
+        if (DEFAULT_JSON_CONTENT_TYPE.equalsIgnoreCase(normalized)
+            || LEGACY_JSON_CONTENT_TYPE.equalsIgnoreCase(normalized)) {
+            return jsonFallback;
+        }
+        RegisteredSerializer registered = serializers.get(normalized);
+        if (registered == null) {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR,
+                "No payload serializer is registered for received content type '"
+                    + normalized + "'");
+        }
+        return registered.serializer();
     }
 
     private static Optional<Map.Entry<String, RegisteredSerializer>> singleSerializerFor(

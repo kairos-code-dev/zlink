@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.configuration;
 import systems.zlink.framework.runtime.internal.configuration.ZLinkCodecRegistration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.nio.charset.StandardCharsets;
@@ -11,6 +12,8 @@ import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.configuration.ZLinkCodecRegistrar;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
+import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 
 final class ZLinkCodecRegistrationTest {
@@ -60,6 +63,38 @@ final class ZLinkCodecRegistrationTest {
         registration.addSerializer("application/thrift", new MarkerSerializer());
 
         assertThrows(ZLinkConfigurationException.class, registration::customSerializer);
+    }
+
+    @Test
+    void incomingJsonUsesFallbackAndRegisteredTypeUsesItsSerializer() {
+        ZLinkCodecRegistration registration = new ZLinkCodecRegistration();
+        ZLinkMessageSerializer json = new MarkerSerializer();
+        ZLinkMessageSerializer avro = new MarkerSerializer();
+        registration.addSerializer("application/avro", avro);
+
+        assertSame(
+            json,
+            registration.serializerForReceivedContentType("application/json", json));
+        assertSame(
+            avro,
+            registration.serializerForReceivedContentType("application/avro", json));
+        assertSame(
+            json,
+            registration.serializerForReceivedContentType(
+                "application/zlink-framework-json-v1", json));
+    }
+
+    @Test
+    void unknownIncomingNonJsonTypeIsProtocolError() {
+        ZLinkCodecRegistration registration = new ZLinkCodecRegistration();
+        ZLinkMessageSerializer json = new MarkerSerializer();
+
+        ZLinkFrameworkException error = assertThrows(
+            ZLinkFrameworkException.class,
+            () -> registration.serializerForReceivedContentType(
+                "application/x-unregistered", json));
+
+        assertEquals(ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR, error.kind());
     }
 
     record Probe(String text) {

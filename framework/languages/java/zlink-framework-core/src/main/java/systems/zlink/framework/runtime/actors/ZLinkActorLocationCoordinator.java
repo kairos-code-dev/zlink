@@ -147,7 +147,13 @@ final class ZLinkActorLocationCoordinator {
         if (meshName == null || meshName.isBlank()) {
             return CompletableFuture.completedFuture(null);
         }
-        return lifecycle.notifyActorJoinedSpot(actorType, actor.context().actorId(), meshName, spotId);
+        CompletionStage<Void> joined = lifecycle.notifyActorJoinedSpot(
+            actorType, actor.context().actorId(), meshName, spotId);
+        return joined.thenRun(() -> {
+            if (resolvers != null) {
+                resolvers.invalidateActorRoute(actor.context().actorId());
+            }
+        });
     }
 
     CompletionStage<Void> actorLeftSpot(ZLinkActor actor) {

@@ -6,7 +6,8 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 
-public interface ZLinkBackendRouterSocket extends ZLinkBackendConnectableSocket {
+public interface ZLinkBackendRouterSocket
+    extends ZLinkBackendConnectableSocket, ZLinkBackendReceiveSocket {
     void setChannelName(String channelName);
 
     void setRoutingId(RoutingId routingId);

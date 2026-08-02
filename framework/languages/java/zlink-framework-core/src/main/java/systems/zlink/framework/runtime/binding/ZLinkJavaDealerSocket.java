@@ -12,24 +12,35 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkBackendReceived;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRecvMode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestCallback;
 
-record ZLinkJavaDealerSocket(DealerSocket socket)
+final class ZLinkJavaDealerSocket
     implements ZLinkBackendDealerSocket, ZLinkJavaSocketBacked {
+    private final DealerSocket socket;
+    private final ZLinkJavaSocketReceivePoller receivePoller;
+
+    ZLinkJavaDealerSocket(DealerSocket socket) {
+        this.socket = socket;
+        this.receivePoller = new ZLinkJavaSocketReceivePoller(socket, true);
+    }
+
     @Override public Socket nativeSocket() { return socket; }
     @Override public String name() { return "dealer"; }
-    @Override public void bind(String endpoint) { socket.bind(endpoint); }
-    @Override public void connect(String endpoint) { socket.connect(endpoint); }
-    @Override public void disconnect(String endpoint) { socket.disconnect(endpoint); }
-    @Override public void setChannelName(String channelName) { ZLinkJavaSocketSupport.validateChannelName(channelName); }
+    @Override public synchronized void bind(String endpoint) { socket.bind(endpoint); }
+    @Override public synchronized void connect(String endpoint) { socket.connect(endpoint); }
+    @Override public synchronized void disconnect(String endpoint) { socket.disconnect(endpoint); }
+    @Override public synchronized void setChannelName(String channelName) { ZLinkJavaSocketSupport.validateChannelName(channelName); }
+    @Override public boolean waitForReadable(Duration timeout) {
+        return receivePoller.waitForReadable(timeout);
+    }
 
     @Override
-    public boolean send(List<Message> parts, SendFlags flags) {
+    public synchronized boolean send(List<Message> parts, SendFlags flags) {
         synchronized (socket) {
             return ZLinkJavaSocketSupport.submit(socket.send(), parts, flags);
         }
     }
 
     @Override
-    public boolean request(
+    public synchronized boolean request(
         List<Message> parts,
         ZLinkBackendRequestCallback callback,
         SendFlags flags,
@@ -40,7 +51,7 @@ record ZLinkJavaDealerSocket(DealerSocket socket)
     }
 
     @Override
-    public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) {
+    public synchronized ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) {
         synchronized (socket) {
             try (Received result = new Received()) {
                 return ZLinkJavaSocketSupport.recvOrNoData(
@@ -52,9 +63,10 @@ record ZLinkJavaDealerSocket(DealerSocket socket)
     }
 
     @Override
-    public void close() {
+    public synchronized void close() {
         synchronized (socket) {
             notifyAdmissionShutdown();
+            receivePoller.close();
             socket.close();
         }
     }

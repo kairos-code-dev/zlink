@@ -290,6 +290,7 @@ final class ZLinkAsyncSubmitterTest {
             return true;
         }
         @Override public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) { return null; }
+        @Override public boolean waitForReadable(Duration timeout) { return false; }
         @Override public void close() { }
     }
 

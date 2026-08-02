@@ -14,6 +14,7 @@ import java.util.function.IntConsumer;
 import java.util.function.IntUnaryOperator;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
+import systems.zlink.framework.runtime.internal.binding.spot.ReadyDomain;
 
 /**
  * Converts native ready callbacks into serialized pull-dispatch work.
@@ -38,6 +39,7 @@ final class ZLinkJavaMeshDispatchPump implements AutoCloseable {
 
     private final Source source;
     private final Function<ZLinkMeshDispatchRecord, CompletionStage<Void>> receiver;
+    private final java.util.function.BooleanSupplier canReceiveApplication;
     private final ExecutorService executor;
     private final AtomicInteger pendingDomains = new AtomicInteger();
     private final AtomicBoolean scheduled = new AtomicBoolean();
@@ -49,6 +51,7 @@ final class ZLinkJavaMeshDispatchPump implements AutoCloseable {
         this(
             source,
             receiver,
+            () -> true,
             Executors.newSingleThreadExecutor(Thread.ofVirtual()
                 .name("zlink-mesh-dispatch-", 0)
                 .factory()));
@@ -58,8 +61,18 @@ final class ZLinkJavaMeshDispatchPump implements AutoCloseable {
         Source source,
         Function<ZLinkMeshDispatchRecord, CompletionStage<Void>> receiver,
         ExecutorService executor) {
+        this(source, receiver, () -> true, executor);
+    }
+
+    ZLinkJavaMeshDispatchPump(
+        Source source,
+        Function<ZLinkMeshDispatchRecord, CompletionStage<Void>> receiver,
+        java.util.function.BooleanSupplier canReceiveApplication,
+        ExecutorService executor) {
         this.source = Objects.requireNonNull(source, "source");
         this.receiver = Objects.requireNonNull(receiver, "receiver");
+        this.canReceiveApplication = Objects.requireNonNull(
+            canReceiveApplication, "canReceiveApplication");
         this.executor = Objects.requireNonNull(executor, "executor");
         source.setReadyHandler(this::onReady);
     }
@@ -93,8 +106,28 @@ final class ZLinkJavaMeshDispatchPump implements AutoCloseable {
                 if (domains == 0) {
                     break;
                 }
+                if (!canReceiveApplication.getAsBoolean()) {
+                    int application = domains & ReadyDomain.APPLICATION.value();
+                    if (application != 0) {
+                        pendingDomains.getAndUpdate(current -> current | application);
+                        domains &= ~application;
+                    }
+                }
+                if (domains == 0) {
+                    break;
+                }
                 boolean residue;
                 do {
+                    if (!canReceiveApplication.getAsBoolean()) {
+                        int application = domains & ReadyDomain.APPLICATION.value();
+                        if (application != 0) {
+                            pendingDomains.getAndUpdate(current -> current | application);
+                            domains &= ~application;
+                        }
+                        if (domains == 0) {
+                            break;
+                        }
+                    }
                     residue = source.drain(domains, receiver, this::requestDrain);
                 } while (residue && !closed.get());
             }

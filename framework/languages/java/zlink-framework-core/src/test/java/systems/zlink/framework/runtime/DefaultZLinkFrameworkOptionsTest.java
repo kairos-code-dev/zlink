@@ -745,6 +745,17 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
+    void fanoutChannelPreservesRoutingIdPrefixThroughPublicBuilder() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.addFanoutChannel("events")
+            .setRoutingIdPrefix("events-publisher")
+            .enablePublisher("inproc://events");
+
+        assertDoesNotThrow(options::validate);
+    }
+
+    @Test
     void fanoutChannelSubscriberWithoutPeerAcquisitionPathIsRejected() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
@@ -1030,14 +1041,14 @@ final class DefaultZLinkFrameworkOptionsTest {
 
         options.addRouteMesh("game").listen("inproc://play-mesh");
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
-            stream.enableActorDispatch("game");
+            stream.enableActorDispatch();
             stream.registerSession(GameSession.class); }
 
         options.validate();
 
         DefaultZLinkFrameworkOptions missing = new DefaultZLinkFrameworkOptions();
         { var stream = missing.addStreamNode("gateway"); stream.bind("inproc://gateway");
-            stream.enableActorDispatch("missing");
+            stream.enableActorDispatch();
             stream.registerSession(GameSession.class); }
         assertThrows(ZLinkConfigurationException.class, missing::validate);
     }

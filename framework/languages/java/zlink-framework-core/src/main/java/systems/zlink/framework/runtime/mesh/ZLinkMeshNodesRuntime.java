@@ -11,6 +11,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkMeshBackendAdapter;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshApplicationReceiver;
+import systems.zlink.framework.runtime.internal.dispatch.ZLinkInboundDispatchBudget;
 
 public final class ZLinkMeshNodesRuntime implements AutoCloseable {
     private final List<ZLinkMeshNodeRuntime> nodes;
@@ -38,13 +39,18 @@ public final class ZLinkMeshNodesRuntime implements AutoCloseable {
         List<ZLinkMeshNodeRuntime> started = new ArrayList<>();
         try {
             for (MeshNodeRegistration registration : registrations) {
+                Consumer<ZLinkMeshDispatchRecord> receiver =
+                    receiverFactory.apply(registration);
+                ZLinkInboundDispatchBudget applicationDispatchBudget =
+                    receiver instanceof ZLinkMeshApplicationReceiver applicationReceiver
+                        ? applicationReceiver.applicationDispatchBudget()
+                        : null;
                 ZLinkMeshNodeRuntime runtime = ZLinkMeshNodeRuntime.start(
                     registration,
                     adapter,
-                    context);
+                    context,
+                    applicationDispatchBudget);
                 started.add(runtime);
-                Consumer<ZLinkMeshDispatchRecord> receiver =
-                    receiverFactory.apply(registration);
                 if (receiver != null) {
                     if (receiver instanceof ZLinkMeshApplicationReceiver applicationReceiver) {
                         runtime.node().setApplicationReceiver(applicationReceiver);

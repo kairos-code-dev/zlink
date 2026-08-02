@@ -68,8 +68,33 @@ final class ZLinkSpotDirectOutbound {
         long spotGeneration,
         Message payload,
         Optional<String> packetName) {
+        return send(
+            spot,
+            targetNodeRid,
+            spotId,
+            spotGeneration,
+            payload,
+            packetName,
+            null);
+    }
+
+    ZLinkSendCall send(
+        ZLinkBackendSpot spot,
+        RoutingId targetNodeRid,
+        String spotId,
+        long spotGeneration,
+        Message payload,
+        Optional<String> packetName,
+        String contentType) {
         return new ZLinkSpotDirectSendCall(
-            this, spot, targetNodeRid, spotId, spotGeneration, payload, packetName);
+            this,
+            spot,
+            targetNodeRid,
+            spotId,
+            spotGeneration,
+            payload,
+            packetName,
+            contentType);
     }
 
     ZLinkRequestCall request(
@@ -80,6 +105,26 @@ final class ZLinkSpotDirectOutbound {
         Message payload,
         Optional<String> packetName,
         Duration timeout) {
+        return request(
+            spot,
+            targetNodeRid,
+            spotId,
+            spotGeneration,
+            payload,
+            packetName,
+            null,
+            timeout);
+    }
+
+    ZLinkRequestCall request(
+        ZLinkBackendSpot spot,
+        RoutingId targetNodeRid,
+        String spotId,
+        long spotGeneration,
+        Message payload,
+        Optional<String> packetName,
+        String contentType,
+        Duration timeout) {
         return new ZLinkSpotDirectRequestCall(
             this,
             spot,
@@ -88,6 +133,7 @@ final class ZLinkSpotDirectOutbound {
             spotGeneration,
             payload,
             packetName,
+            contentType,
             timeout);
     }
 
@@ -97,8 +143,18 @@ final class ZLinkSpotDirectOutbound {
         String topic,
         Message payload,
         Optional<String> packetName) {
+        return publish(spot, channelName, topic, payload, packetName, null);
+    }
+
+    ZLinkPublishCall publish(
+        ZLinkBackendSpot spot,
+        String channelName,
+        String topic,
+        Message payload,
+        Optional<String> packetName,
+        String contentType) {
         return new ZLinkSpotDirectPublishCall(
-            this, spot, channelName, topic, payload, packetName);
+            this, spot, channelName, topic, payload, packetName, contentType);
     }
 
     CompletionStage<Void> submitSend(
@@ -108,6 +164,7 @@ final class ZLinkSpotDirectOutbound {
         long spotGeneration,
         Message payload,
         Optional<String> packetName,
+        String contentType,
         ZLinkApplicationMetadata metadata) {
         trace(
             ZLinkMessageFlowOutcome.SENT,
@@ -116,7 +173,7 @@ final class ZLinkSpotDirectOutbound {
             null,
             targetNodeRid,
             spotId);
-        List<Message> parts = messages.encode(packetName, payload);
+        List<Message> parts = messages.encode(packetName, payload, contentType);
         return oneWayCalls.submitOneWay(
             spot,
             ZLinkBackendAdmissionKey.spot(targetNodeRid, spotId),
@@ -137,11 +194,12 @@ final class ZLinkSpotDirectOutbound {
         long spotGeneration,
         Message payload,
         Optional<String> packetName,
+        String contentType,
         ZLinkApplicationMetadata metadata,
         Duration timeout,
         Class<TReply> replyType) {
         CompletableFuture<TReply> result = new CompletableFuture<>();
-        List<Message> requestParts = messages.encode(packetName, payload);
+        List<Message> requestParts = messages.encode(packetName, payload, contentType);
         trace(
             ZLinkMessageFlowOutcome.SENT,
             ZLinkDispatchMessageKind.REQUEST,
@@ -184,6 +242,7 @@ final class ZLinkSpotDirectOutbound {
         String topic,
         Message payload,
         Optional<String> packetName,
+        String contentType,
         ZLinkApplicationMetadata metadata) {
         trace(
             ZLinkMessageFlowOutcome.SENT,
@@ -192,7 +251,7 @@ final class ZLinkSpotDirectOutbound {
             topic,
             null,
             null);
-        List<Message> parts = messages.encode(packetName, payload);
+        List<Message> parts = messages.encode(packetName, payload, contentType);
         return oneWayCalls.submitOneWay(
                 spot,
                 ZLinkBackendAdmissionKey.channel(channelName),
@@ -247,6 +306,7 @@ final class ZLinkSpotDirectSendCall implements ZLinkSendCall {
     private final long spotGeneration;
     private final Message payload;
     private final Optional<String> packetName;
+    private final String contentType;
     private final ZLinkApplicationMetadata metadata;
 
     ZLinkSpotDirectSendCall(
@@ -265,6 +325,28 @@ final class ZLinkSpotDirectSendCall implements ZLinkSendCall {
             spotGeneration,
             payload,
             packetName,
+            null,
+            ZLinkApplicationMetadata.empty());
+    }
+
+    ZLinkSpotDirectSendCall(
+        ZLinkSpotDirectOutbound outbound,
+        ZLinkBackendSpot spot,
+        RoutingId targetNodeRid,
+        String spotId,
+        long spotGeneration,
+        Message payload,
+        Optional<String> packetName,
+        String contentType) {
+        this(
+            outbound,
+            spot,
+            targetNodeRid,
+            spotId,
+            spotGeneration,
+            payload,
+            packetName,
+            contentType,
             ZLinkApplicationMetadata.empty());
     }
 
@@ -276,6 +358,7 @@ final class ZLinkSpotDirectSendCall implements ZLinkSendCall {
         long spotGeneration,
         Message payload,
         Optional<String> packetName,
+        String contentType,
         ZLinkApplicationMetadata metadata) {
         this.outbound = outbound;
         this.spot = spot;
@@ -284,6 +367,7 @@ final class ZLinkSpotDirectSendCall implements ZLinkSendCall {
         this.spotGeneration = spotGeneration;
         this.payload = payload;
         this.packetName = packetName;
+        this.contentType = contentType;
         this.metadata = metadata;
     }
 
@@ -296,6 +380,7 @@ final class ZLinkSpotDirectSendCall implements ZLinkSendCall {
             spotGeneration,
             payload,
             Optional.of(packetName),
+            contentType,
             metadata);
     }
 
@@ -309,6 +394,7 @@ final class ZLinkSpotDirectSendCall implements ZLinkSendCall {
             spotGeneration,
             payload,
             packetName,
+            contentType,
             metadata.with(key, value));
     }
 
@@ -322,6 +408,7 @@ final class ZLinkSpotDirectSendCall implements ZLinkSendCall {
             spotGeneration,
             payload,
             packetName,
+            contentType,
             metadata.withAll(values));
     }
 
@@ -339,6 +426,7 @@ final class ZLinkSpotDirectSendCall implements ZLinkSendCall {
             spotGeneration,
             payload,
             packetName,
+            contentType,
             metadata);
     }
 }
@@ -351,6 +439,7 @@ final class ZLinkSpotDirectRequestCall implements ZLinkRequestCall {
     private final long spotGeneration;
     private final Message payload;
     private final Optional<String> packetName;
+    private final String contentType;
     private final Duration timeout;
     private final ZLinkApplicationMetadata metadata;
 
@@ -371,6 +460,30 @@ final class ZLinkSpotDirectRequestCall implements ZLinkRequestCall {
             spotGeneration,
             payload,
             packetName,
+            null,
+            timeout,
+            ZLinkApplicationMetadata.empty());
+    }
+
+    ZLinkSpotDirectRequestCall(
+        ZLinkSpotDirectOutbound outbound,
+        ZLinkBackendSpot spot,
+        RoutingId targetNodeRid,
+        String spotId,
+        long spotGeneration,
+        Message payload,
+        Optional<String> packetName,
+        String contentType,
+        Duration timeout) {
+        this(
+            outbound,
+            spot,
+            targetNodeRid,
+            spotId,
+            spotGeneration,
+            payload,
+            packetName,
+            contentType,
             timeout,
             ZLinkApplicationMetadata.empty());
     }
@@ -383,6 +496,7 @@ final class ZLinkSpotDirectRequestCall implements ZLinkRequestCall {
         long spotGeneration,
         Message payload,
         Optional<String> packetName,
+        String contentType,
         Duration timeout,
         ZLinkApplicationMetadata metadata) {
         this.outbound = outbound;
@@ -392,6 +506,7 @@ final class ZLinkSpotDirectRequestCall implements ZLinkRequestCall {
         this.spotGeneration = spotGeneration;
         this.payload = payload;
         this.packetName = packetName;
+        this.contentType = contentType;
         this.timeout = timeout;
         this.metadata = metadata;
     }
@@ -405,6 +520,7 @@ final class ZLinkSpotDirectRequestCall implements ZLinkRequestCall {
             spotGeneration,
             payload,
             Optional.of(packetName),
+            contentType,
             timeout,
             metadata);
     }
@@ -419,6 +535,7 @@ final class ZLinkSpotDirectRequestCall implements ZLinkRequestCall {
             spotGeneration,
             payload,
             packetName,
+            contentType,
             timeout,
             metadata.with(key, value));
     }
@@ -433,6 +550,7 @@ final class ZLinkSpotDirectRequestCall implements ZLinkRequestCall {
             spotGeneration,
             payload,
             packetName,
+            contentType,
             timeout,
             metadata.withAll(values));
     }
@@ -447,6 +565,7 @@ final class ZLinkSpotDirectRequestCall implements ZLinkRequestCall {
             spotGeneration,
             payload,
             packetName,
+            contentType,
             timeout,
             metadata);
     }
@@ -463,6 +582,7 @@ final class ZLinkSpotDirectRequestCall implements ZLinkRequestCall {
             spotGeneration,
             payload,
             packetName,
+            contentType,
             metadata,
             timeout,
             replyType));
@@ -487,6 +607,7 @@ final class ZLinkSpotDirectPublishCall implements ZLinkPublishCall {
     private final String topic;
     private final Message payload;
     private final Optional<String> packetName;
+    private final String contentType;
     private final ZLinkApplicationMetadata metadata;
 
     ZLinkSpotDirectPublishCall(
@@ -503,6 +624,26 @@ final class ZLinkSpotDirectPublishCall implements ZLinkPublishCall {
             topic,
             payload,
             packetName,
+            null,
+            ZLinkApplicationMetadata.empty());
+    }
+
+    ZLinkSpotDirectPublishCall(
+        ZLinkSpotDirectOutbound outbound,
+        ZLinkBackendSpot spot,
+        String channelName,
+        String topic,
+        Message payload,
+        Optional<String> packetName,
+        String contentType) {
+        this(
+            outbound,
+            spot,
+            channelName,
+            topic,
+            payload,
+            packetName,
+            contentType,
             ZLinkApplicationMetadata.empty());
     }
 
@@ -513,6 +654,7 @@ final class ZLinkSpotDirectPublishCall implements ZLinkPublishCall {
         String topic,
         Message payload,
         Optional<String> packetName,
+        String contentType,
         ZLinkApplicationMetadata metadata) {
         this.outbound = outbound;
         this.spot = spot;
@@ -520,24 +662,25 @@ final class ZLinkSpotDirectPublishCall implements ZLinkPublishCall {
         this.topic = topic;
         this.payload = payload;
         this.packetName = packetName;
+        this.contentType = contentType;
         this.metadata = metadata;
     }
 
     public ZLinkPublishCall packetName(String packetName) {
         return new ZLinkSpotDirectPublishCall(
-            outbound, spot, channelName, topic, payload, Optional.of(packetName), metadata);
+            outbound, spot, channelName, topic, payload, Optional.of(packetName), contentType, metadata);
     }
 
     @Override
     public ZLinkPublishCall metadata(String key, String value) {
         return new ZLinkSpotDirectPublishCall(
-            outbound, spot, channelName, topic, payload, packetName, metadata.with(key, value));
+            outbound, spot, channelName, topic, payload, packetName, contentType, metadata.with(key, value));
     }
 
     @Override
     public ZLinkPublishCall metadata(Map<String, String> values) {
         return new ZLinkSpotDirectPublishCall(
-            outbound, spot, channelName, topic, payload, packetName, metadata.withAll(values));
+            outbound, spot, channelName, topic, payload, packetName, contentType, metadata.withAll(values));
     }
 
     @Override
@@ -548,6 +691,6 @@ final class ZLinkSpotDirectPublishCall implements ZLinkPublishCall {
             return duplicate;
         }
         return outbound.submitPublish(
-            spot, channelName, topic, payload, packetName, metadata);
+            spot, channelName, topic, payload, packetName, contentType, metadata);
     }
 }

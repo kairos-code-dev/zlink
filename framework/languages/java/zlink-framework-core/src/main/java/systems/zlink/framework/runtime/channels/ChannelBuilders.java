@@ -241,6 +241,12 @@ public final class ChannelBuilders {
         }
 
         @Override
+        public FanoutChannelBuilder setRoutingIdPrefix(String prefix) {
+            registration.setRoutingIdPrefix(prefix);
+            return this;
+        }
+
+        @Override
         public FanoutChannelBuilder enableSubscriber() {
             registration.enableAutomaticSubscriber();
             return this;

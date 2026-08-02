@@ -27,6 +27,7 @@ public final class ChannelRegistration {
     private final RuntimeEndpointConnections routeConnections;
     private final Set<String> handlerGroups = new LinkedHashSet<>();
     private RoutingId routingId;
+    private String routingIdPrefix;
     private RoutingId routeRoutingId;
     private Duration defaultRequestTimeout;
 
@@ -148,6 +149,10 @@ public final class ChannelRegistration {
         return routingId;
     }
 
+    String routingIdPrefix() {
+        return routingIdPrefix == null ? name : routingIdPrefix;
+    }
+
     public Duration defaultRequestTimeout() {
         return defaultRequestTimeout;
     }
@@ -267,6 +272,14 @@ public final class ChannelRegistration {
         this.routingId = routingId;
     }
 
+    void setRoutingIdPrefix(String prefix) {
+        if (prefix == null || prefix.isBlank()) {
+            throw new ZLinkConfigurationException("routing ID prefix is required: " + name);
+        }
+        routingIdPrefix = prefix;
+        routingId = null;
+    }
+
     void addClientManualEndpoint(String endpoint) {
         clientConnections.connect(endpoint);
     }
@@ -368,6 +381,22 @@ public final class ChannelRegistration {
             validateFanout(locationAutoConnectEnabled, handlerCatalog);
         } else if (kind == ChannelKind.ROUTE_MESH) {
             validateRouteMesh(locationAutoConnectEnabled, handlerCatalog);
+        }
+    }
+
+    /**
+     * Validates the listener limit required by a host-wide application HWM.
+     * This method is called during registration validation; it is not a
+     * runtime socket mutation API.
+     */
+    public void validateApplicationHwm(long applicationHwmBytes) {
+        if (applicationHwmBytes == 0 || !clientServer.serverEnabled) {
+            return;
+        }
+        if (serverSocketOptions.maxMessageSize() <= 0) {
+            throw new ZLinkConfigurationException(
+                "Application HWM requires a finite positive MaxMessageSize on channel: "
+                    + name);
         }
     }
 

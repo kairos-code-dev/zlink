@@ -161,7 +161,7 @@ final class SessionActorsRuntimeIntegrationTest {
                 node.objects().server().addSpotFactory("GameSpot", GameSpot.class, factory -> factory.disableRelocation());
                 node.objects().server().addEntrySpot(GameEntrySpot.class); node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.disableRelocation()); }
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway-bind-" + System.nanoTime());
-            stream.enableActorDispatch("game");
+            stream.enableActorDispatch();
             stream.registerSession(GameSession.class); };
 
         return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
@@ -175,7 +175,7 @@ final class SessionActorsRuntimeIntegrationTest {
                 node.objects().server().addEntrySpot(GameEntrySpot.class);
                 node.objects().server().addSpotFactory("GameSpot", GameSpot.class, factory -> factory.disableRelocation()); node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.disableRelocation()); }
         { var stream = options.addStreamNode("local"); stream.bind("inproc://local-managed-bind-" + System.nanoTime());
-            stream.enableActorDispatch("game");
+            stream.enableActorDispatch();
             stream.registerSession(GameSession.class); };
 
         return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());

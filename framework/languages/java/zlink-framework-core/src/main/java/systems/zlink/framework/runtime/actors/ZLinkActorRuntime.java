@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -67,6 +68,20 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     @FunctionalInterface
     public interface SourceActorLeaver {
         CompletionStage<Void> leave(ZLinkActor actor);
+
+        /**
+         * Cleans the source membership captured before a local join changes
+         * the actor context. Existing leavers may keep the legacy behavior.
+         */
+        default CompletionStage<Void> leave(
+            ZLinkActor actor,
+            LocalMoveSource source) {
+            return leave(actor);
+        }
+    }
+
+    /** Source membership captured before a same-process join is committed. */
+    public record LocalMoveSource(Object spotSurface, String spotId) {
     }
 
     public interface LocalJoinCompleter {
@@ -604,7 +619,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         this.meshName = meshName;
     }
 
-    String meshName() {
+    public String meshName() {
         return meshName;
     }
 
@@ -1417,13 +1432,50 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     }
 
     public CompletionStage<Void> leaveSourceForLocalMove(ZLinkActor actor) {
+        LocalMoveSource source = beginLocalMove(actor);
+        return cleanupSourceForLocalMove(actor, source)
+            .thenRun(() -> requireContext(actor).markLeft());
+    }
+
+    public LocalMoveSource beginLocalMove(ZLinkActor actor) {
         DefaultActorContext context = requireContext(actor);
         context.beginMove();
-        if (context.joinedSpotId() == null) {
+        return new LocalMoveSource(context.currentSpot(), context.joinedSpotId());
+    }
+
+    public CompletionStage<Void> leaveSourceForLocalMove(
+        ZLinkActor actor,
+        LocalMoveSource source) {
+        CompletionStage<Void> cleanup = cleanupSourceForLocalMove(actor, source);
+        return cleanup.thenRun(() -> requireContext(actor).markLeft());
+    }
+
+    public CompletionStage<Void> cleanupSourceForLocalMove(
+        ZLinkActor actor,
+        LocalMoveSource source) {
+        requireContext(actor);
+        if (source == null || source.spotId() == null) {
             return CompletableFuture.completedFuture(null);
         }
-        return sourceActorLeaver.leave(actor)
-            .thenRun(context::markLeft);
+        return sourceActorLeaver.leave(actor, source);
+    }
+
+    /**
+     * Sends the source lifecycle notification for a local Join without making
+     * the target Join completion wait for the notification to finish.
+     */
+    public void notifySourceForLocalMove(
+        ZLinkActor actor,
+        LocalMoveSource source) {
+        try {
+            CompletionStage<Void> cleanup = cleanupSourceForLocalMove(actor, source);
+            if (cleanup != null) {
+                cleanup.exceptionally(ignored -> null);
+            }
+        } catch (Throwable ignored) {
+            // Source OnLeaveActor is a one-way notification. Its failure must
+            // not turn an already committed target Join into a failed Join.
+        }
     }
 
     CompletionStage<Void> leaveSourceForRemoteMove(ZLinkActor actor) {
@@ -1565,8 +1617,20 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     public CompletionStage<Void> commitJoinedLocation(
         ZLinkActor actor,
         String spotId) {
+        return commitJoinedLocation(actor, requireContext(actor).actorRef(), spotId);
+    }
+
+    public CompletionStage<Void> commitJoinedLocation(
+        ZLinkActor actor,
+        ZLinkBackendActorRef targetActorRef,
+        String spotId) {
+        Objects.requireNonNull(targetActorRef, "targetActorRef");
         if (!actorRegistry.clearPendingTransfer(actor.context().actorId())) {
-            return renewActorJoinedLocation(actor, spotId);
+            return locations.setActorRef(
+                    actorRegistry.actorType(actor.context().actorId()),
+                    actor.context().actorId(),
+                    toPublicActorRef(targetActorRef, meshName))
+                .thenCompose(ignored -> renewActorJoinedLocation(actor, spotId));
         }
         String actorType = actorRegistry.actorType(actor.context().actorId());
         return locations.claimActor(
@@ -1578,7 +1642,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             .thenCompose(ignored -> locations.setActorRef(
                 actorType,
                 actor.context().actorId(),
-                publicRefFor(actor)))
+                toPublicActorRef(targetActorRef, meshName)))
             .thenCompose(ignored -> renewActorJoinedLocation(actor, spotId));
     }
 

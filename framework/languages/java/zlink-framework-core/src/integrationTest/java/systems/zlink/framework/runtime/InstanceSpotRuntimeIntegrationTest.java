@@ -20,6 +20,7 @@ import systems.zlink.framework.spots.ZLinkInstanceSpotContext;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
+import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
 import systems.zlink.framework.actors.ZLinkActor;
 
 final class InstanceSpotRuntimeIntegrationTest {
@@ -28,6 +29,7 @@ final class InstanceSpotRuntimeIntegrationTest {
         throws Exception {
         Zlink.version();
         EchoInstanceSpot.initializations.set(0);
+        EchoInstanceSpot.sends.set(0);
         SourceEntrySpot.reset();
         String suffix = Long.toUnsignedString(System.nanoTime(), 36);
         String sourceEndpoint = tcpEndpoint();
@@ -66,11 +68,13 @@ final class InstanceSpotRuntimeIntegrationTest {
 
             assertEquals("echo:hello|echo:again", reply);
             assertEquals(1, EchoInstanceSpot.initializations.get());
+            assertEquals(1, EchoInstanceSpot.sends.get());
         }
     }
 
-    private record Request(String spotId) {
-    }
+    private record Request(String spotId) {}
+
+    private record Warmup(String value) {}
 
     public static final class SourceEntrySpot
         implements ZLinkEntrySpot<ZLinkActor> {
@@ -101,18 +105,23 @@ final class InstanceSpotRuntimeIntegrationTest {
         public CompletionStage<Void> onInitialize() {
             return start.thenCompose(ignored -> {
                 CompletableFuture<String> completion = context.outbound()
-                    .requestToSpot(request.get().spotId(), "hello")
+                    .sendToSpot(request.get().spotId(), new Warmup("warmup"))
                     .instanceSpot("EchoInstance")
                     .inMesh("game")
-                    .timeout(Duration.ofSeconds(5))
-                    .submit(String.class)
-                    .thenCompose(first -> context.outbound()
-                        .requestToSpot(request.get().spotId(), "again")
-                        .instanceSpot()
+                    .submit()
+                    .thenCompose(sendCompleted -> context.outbound()
+                        .requestToSpot(request.get().spotId(), "hello")
+                        .instanceSpot("EchoInstance")
                         .inMesh("game")
                         .timeout(Duration.ofSeconds(5))
                         .submit(String.class)
-                        .thenApply(second -> first + "|" + second))
+                        .thenCompose(first -> context.outbound()
+                            .requestToSpot(request.get().spotId(), "again")
+                            .instanceSpot()
+                            .inMesh("game")
+                            .timeout(Duration.ofSeconds(5))
+                            .submit(String.class)
+                            .thenApply(second -> first + "|" + second)))
                     .toCompletableFuture();
                 completion.whenComplete((value, failure) -> {
                     if (failure == null) {
@@ -134,6 +143,7 @@ final class InstanceSpotRuntimeIntegrationTest {
 
     public static final class EchoInstanceSpot implements ZLinkInstanceSpot {
         static final AtomicInteger initializations = new AtomicInteger();
+        static final AtomicInteger sends = new AtomicInteger();
         private final ZLinkInstanceSpotContext context;
 
         public EchoInstanceSpot(ZLinkInstanceSpotContext context) {
@@ -145,6 +155,7 @@ final class InstanceSpotRuntimeIntegrationTest {
         @Override
         public void configure() {
             context.handlers().addPacket(EchoHandler.class);
+            context.handlers().addPacket(EchoPacketHandler.class);
         }
 
         @Override
@@ -161,6 +172,17 @@ final class InstanceSpotRuntimeIntegrationTest {
             EchoInstanceSpot spot,
             String request) {
             return CompletableFuture.completedFuture("echo:" + request);
+        }
+    }
+
+    public static final class EchoPacketHandler
+        implements ZLinkSpotPacketHandler<EchoInstanceSpot, Warmup> {
+        @Override
+        public CompletionStage<Void> handle(
+            EchoInstanceSpot spot,
+            Warmup request) {
+            EchoInstanceSpot.sends.incrementAndGet();
+            return CompletableFuture.completedFuture(null);
         }
     }
 }

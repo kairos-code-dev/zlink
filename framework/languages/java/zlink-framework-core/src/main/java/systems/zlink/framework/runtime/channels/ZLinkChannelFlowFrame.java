@@ -18,11 +18,15 @@ final class ZLinkChannelFlowFrame {
     }
 
     static ZLinkFlowContext.State decode(List<Message> parts) {
-        if (parts.size() < 3) return null;
-        String value = parts.get(2).toUtf8String();
-        if (!value.startsWith(PREFIX)) return null;
-        String[] fields = value.split("\n", -1);
-        if (fields.length != 3 || fields[1].isBlank()) return null;
-        return new ZLinkFlowContext.State(fields[1], ZLinkFlowOrigin.valueOf(fields[2]));
+        for (int index = 2; index < parts.size(); index++) {
+            String value = parts.get(index).toUtf8String();
+            if (!value.startsWith(PREFIX)) {
+                continue;
+            }
+            String[] fields = value.split("\n", -1);
+            if (fields.length != 3 || fields[1].isBlank()) return null;
+            return new ZLinkFlowContext.State(fields[1], ZLinkFlowOrigin.valueOf(fields[2]));
+        }
+        return null;
     }
 }

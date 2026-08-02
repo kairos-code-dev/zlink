@@ -12,7 +12,7 @@ public final class StreamNodeRegistration {
     private String advertiseHost;
     private TlsServerRegistration tlsServer;
     private Class<? extends ZLinkSession> sessionType;
-    private String actorDispatchMeshName;
+    private boolean actorDispatchEnabled;
     private final List<Class<?>> sessionPacketHandlers =
         new ArrayList<>();
 
@@ -44,8 +44,8 @@ public final class StreamNodeRegistration {
         return List.copyOf(sessionPacketHandlers);
     }
 
-    public String actorDispatchMeshName() {
-        return actorDispatchMeshName;
+    public boolean actorDispatchEnabled() {
+        return actorDispatchEnabled;
     }
 
     public List<Class<?>> applicationTypes() {
@@ -117,11 +117,8 @@ public final class StreamNodeRegistration {
         sessionType = type;
     }
 
-    void enableActorDispatch(String meshName) {
-        if (meshName == null || meshName.isBlank()) {
-            throw new ZLinkConfigurationException("actor dispatch MeshName is required: " + name);
-        }
-        actorDispatchMeshName = meshName;
+    void enableActorDispatch() {
+        actorDispatchEnabled = true;
     }
 
     public void addSessionPacketHandler(Class<?> handlerType) {
@@ -142,12 +139,9 @@ public final class StreamNodeRegistration {
         if (sessionType == null) {
             throw new ZLinkConfigurationException("stream node session type is required: " + name);
         }
-        if (actorDispatchMeshName != null
-            && meshNodes.stream().noneMatch(
-                mesh -> mesh.meshName().equals(actorDispatchMeshName))) {
+        if (actorDispatchEnabled && meshNodes.isEmpty()) {
             throw new ZLinkConfigurationException(
-                "stream actor dispatch RouteMesh is not configured: "
-                    + actorDispatchMeshName);
+                "stream actor dispatch requires a configured RouteMesh: " + name);
         }
     }
 

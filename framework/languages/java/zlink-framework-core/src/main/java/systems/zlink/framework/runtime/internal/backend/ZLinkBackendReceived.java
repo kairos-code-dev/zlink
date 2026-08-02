@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.function.Consumer;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.runtime.internal.dispatch.ZLinkInboundDispatchBudget;
 
 public record ZLinkBackendReceived(
     ZLinkBackendRequestResult result,
@@ -15,7 +16,9 @@ public record ZLinkBackendReceived(
     byte[] acceptedJournalRecord,
     List<Message> parts,
     Consumer<List<Message>> reply,
-    Runnable closeAction) implements AutoCloseable {
+    Runnable closeAction,
+    String contentType,
+    ZLinkInboundDispatchBudget.Lease inboundDispatchLease) implements AutoCloseable {
     public ZLinkBackendReceived {
         result = result == null ? ZLinkBackendRequestResult.OK : result;
         applicationMetadata =
@@ -23,6 +26,32 @@ public record ZLinkBackendReceived(
         acceptedJournalRecord = acceptedJournalRecord == null
             ? new byte[0]
             : acceptedJournalRecord.clone();
+    }
+
+    /** Backward-compatible constructor without an inbound content type. */
+    public ZLinkBackendReceived(
+        ZLinkBackendRequestResult result,
+        Optional<RoutingId> routingId,
+        Optional<String> spotId,
+        Optional<Long> requestSeq,
+        byte[] applicationMetadata,
+        byte[] acceptedJournalRecord,
+        List<Message> parts,
+        Consumer<List<Message>> reply,
+        Runnable closeAction,
+        ZLinkInboundDispatchBudget.Lease inboundDispatchLease) {
+        this(
+            result,
+            routingId,
+            spotId,
+            requestSeq,
+            applicationMetadata,
+            acceptedJournalRecord,
+            parts,
+            reply,
+            closeAction,
+            null,
+            inboundDispatchLease);
     }
 
     public ZLinkBackendReceived(
@@ -43,7 +72,33 @@ public record ZLinkBackendReceived(
             new byte[0],
             parts,
             reply,
-            closeAction);
+            closeAction,
+            null,
+            null);
+    }
+
+    public ZLinkBackendReceived(
+        ZLinkBackendRequestResult result,
+        Optional<RoutingId> routingId,
+        Optional<String> spotId,
+        Optional<Long> requestSeq,
+        byte[] applicationMetadata,
+        byte[] acceptedJournalRecord,
+        List<Message> parts,
+        Consumer<List<Message>> reply,
+        Runnable closeAction) {
+        this(
+            result,
+            routingId,
+            spotId,
+            requestSeq,
+            applicationMetadata,
+            acceptedJournalRecord,
+            parts,
+            reply,
+            closeAction,
+            null,
+            null);
     }
 
     public ZLinkBackendReceived(
@@ -63,7 +118,9 @@ public record ZLinkBackendReceived(
             new byte[0],
             parts,
             reply,
-            closeAction);
+            closeAction,
+            null,
+            null);
     }
 
     public ZLinkBackendReceived(
@@ -80,7 +137,9 @@ public record ZLinkBackendReceived(
             new byte[0],
             parts,
             null,
-            () -> { });
+            () -> { },
+            null,
+            null);
     }
 
     public ZLinkBackendReceived(
@@ -98,7 +157,9 @@ public record ZLinkBackendReceived(
             new byte[0],
             parts,
             reply,
-            () -> { });
+            () -> { },
+            null,
+            null);
     }
 
     public ZLinkBackendReceived(
@@ -117,7 +178,9 @@ public record ZLinkBackendReceived(
             new byte[0],
             parts,
             reply,
-            closeAction);
+            closeAction,
+            null,
+            null);
     }
 
     public ZLinkBackendReceived(
@@ -135,7 +198,9 @@ public record ZLinkBackendReceived(
             new byte[0],
             parts,
             null,
-            () -> { });
+            () -> { },
+            null,
+            null);
     }
 
     @Override
@@ -155,9 +220,28 @@ public record ZLinkBackendReceived(
         reply.accept(replyParts);
     }
 
+    /** Releases the retained transport parts without releasing the dispatch lease. */
+    public void closeParts() {
+        parts.forEach(Message::close);
+    }
+
+    /** Releases the application admission lease retained by this receive. */
+    public void closeAdmission() {
+        if (inboundDispatchLease != null) {
+            inboundDispatchLease.close();
+        }
+    }
+
     @Override
     public void close() {
-        parts.forEach(Message::close);
-        closeAction.run();
+        try {
+            closeParts();
+        } finally {
+            try {
+                closeAction.run();
+            } finally {
+                closeAdmission();
+            }
+        }
     }
 }

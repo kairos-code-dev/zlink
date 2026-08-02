@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.runtime.internal.binding.spot.MeshNode;
 import systems.zlink.framework.runtime.internal.binding.spot.ActorControlRecord;
@@ -15,6 +16,7 @@ import systems.zlink.framework.runtime.internal.binding.spot.PeerChannels;
 import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeMonitor;
 import systems.zlink.framework.runtime.internal.binding.spot.OperationId;
 import systems.zlink.framework.runtime.internal.binding.spot.RecordKind;
+import systems.zlink.framework.runtime.internal.binding.spot.ReadyDomain;
 import systems.zlink.framework.runtime.internal.binding.spot.ReplyToken;
 import systems.zlink.framework.runtime.internal.binding.spot.Dispatch;
 import systems.zlink.contracts.messaging.Message;
@@ -229,15 +231,37 @@ final class ZLinkJavaMeshNode implements ZLinkInternalMeshNode {
                     return CompletableFuture.completedFuture(null);
                 }
                 return serviceDispatchReceiver.apply(record);
-            });
+            },
+            () -> {
+                ZLinkMeshApplicationReceiver current = localApplicationReceiver;
+                return current == null || current.canReceiveApplication();
+            },
+            Executors.newSingleThreadExecutor(Thread.ofVirtual()
+                .name("zlink-mesh-dispatch-", 0)
+                .factory()));
+        installApplicationReceiveWakeHandler();
     }
 
     @Override
     public synchronized void setApplicationReceiver(ZLinkMeshApplicationReceiver receiver) {
         localApplicationReceiver = java.util.Objects.requireNonNull(receiver, "receiver");
+        installApplicationReceiveWakeHandler();
         if (spotNode != null) {
             spotNode.setApplicationReceiver(receiver);
         }
+    }
+
+    private synchronized void installApplicationReceiveWakeHandler() {
+        ZLinkMeshApplicationReceiver receiver = localApplicationReceiver;
+        if (receiver == null) {
+            return;
+        }
+        receiver.setApplicationReceiveReadyHandler(() -> {
+            ZLinkJavaMeshDispatchPump current = dispatchPump;
+            if (current != null) {
+                current.requestDrain(ReadyDomain.APPLICATION.value());
+            }
+        });
     }
 
     @Override

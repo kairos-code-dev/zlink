@@ -10,6 +10,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
+import systems.zlink.framework.runtime.channels.ZLinkChannelContentTypeFrame;
 import systems.zlink.framework.runtime.messaging.ZLinkStringMessageSerializer;
 
 final class ZLinkSpotRouteMessagesTest {
@@ -42,6 +43,22 @@ final class ZLinkSpotRouteMessagesTest {
                     message("ZLinkFrameworkError"),
                     message("failed")),
                 String.class));
+    }
+
+    @Test
+    void encodesExplicitContentTypeForRouteTransport() {
+        try (Message payload = message("payload")) {
+            List<Message> parts = messages.encode(
+                Optional.of("packet"), payload, "application/example");
+            try {
+                assertEquals(
+                    "application/example",
+                    ZLinkChannelContentTypeFrame.decode(parts));
+            } finally {
+                parts.get(0).close();
+                parts.get(2).close();
+            }
+        }
     }
 
     private static Message message(String value) {

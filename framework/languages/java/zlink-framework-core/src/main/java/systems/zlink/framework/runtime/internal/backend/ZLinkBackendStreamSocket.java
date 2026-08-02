@@ -6,10 +6,15 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 
-public interface ZLinkBackendStreamSocket extends ZLinkBackendSocket {
+public interface ZLinkBackendStreamSocket
+    extends ZLinkBackendSocket, ZLinkBackendReceiveSocket {
     void setTlsServer(String certificatePath, String keyPath, boolean requireClientCertificate);
 
-    void onPacket(ZLinkBackendStreamPacketHandler handler);
+    /** Enables Core STREAM connect/disconnect notifications before bind. */
+    void enableNotifications();
+
+    /** Receives one raw STREAM record, or {@code null} when no record is ready. */
+    ZLinkBackendStreamReceived recv();
 
     void onTransportError(ZLinkBackendStreamErrorHandler handler);
 

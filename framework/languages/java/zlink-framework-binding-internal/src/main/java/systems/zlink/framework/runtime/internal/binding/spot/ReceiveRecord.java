@@ -18,6 +18,7 @@ import systems.zlink.contracts.core.RoutingId;
  * @param replyToken a reply token for request records, if any
  * @param channelName the channel name, if applicable
  * @param topic the topic, if applicable
+ * @param contentType the wire content type for an application payload, if present
  * @param applicationMetadata opaque application metadata, if any
  * @param kindData the typed record-specific payload, if any
  * @param terminalResult the terminal result code for completions
@@ -30,6 +31,7 @@ public record ReceiveRecord(RecordKind kind, int domain, RoutingId sourceNodeRid
                             ActorRef sourceActor,
                             OperationId operationId, OperationKind operationKind,
                             ReplyToken replyToken, String channelName, String topic,
+                            String contentType,
                             byte[] applicationMetadata, MeshRecordPayload kindData,
                             int terminalResult,
                             int failureErrno, int partOffset, int partCount) {
@@ -62,6 +64,46 @@ public record ReceiveRecord(RecordKind kind, int domain, RoutingId sourceNodeRid
             replyToken,
             channelName,
             topic,
+            null,
+            applicationMetadata,
+            null,
+            terminalResult,
+            failureErrno,
+            partOffset,
+            partCount);
+    }
+
+    /** Creates an application record while retaining its wire content type. */
+    public ReceiveRecord(
+        RecordKind kind,
+        int domain,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSpotId,
+        ActorRef sourceActor,
+        OperationId operationId,
+        OperationKind operationKind,
+        ReplyToken replyToken,
+        String channelName,
+        String topic,
+        String contentType,
+        byte[] applicationMetadata,
+        int terminalResult,
+        int failureErrno,
+        int partOffset,
+        int partCount) {
+        this(
+            kind,
+            domain,
+            sourceNodeRid,
+            sourceSpotId,
+            0L,
+            sourceActor,
+            operationId,
+            operationKind,
+            replyToken,
+            channelName,
+            topic,
+            contentType,
             applicationMetadata,
             null,
             terminalResult,

@@ -13,6 +13,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRouterSocket
 import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
 import systems.zlink.framework.runtime.messaging.ZLinkFrameworkErrorReply;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 
 final class ZLinkChannelDispatchReporter {
     private final ZLinkDispatchErrorReporter reporter;
@@ -33,10 +34,7 @@ final class ZLinkChannelDispatchReporter {
         Throwable error) {
         Throwable cause = unwrap(error);
         List<Message> reply = ZLinkFrameworkErrorReply.create(
-            cause instanceof ZLinkFrameworkException frameworkError
-                ? frameworkError.kind()
-                : systems.zlink.framework.errors.ZLinkFrameworkErrorKind
-                    .REQUEST_FAILED,
+            frameworkErrorKind(error),
             errorText(reason, packetName, cause));
         replyRawAndClose(router, routingId, requestSeq, reply);
         report(
@@ -93,6 +91,18 @@ final class ZLinkChannelDispatchReporter {
         return unwrap(error) instanceof PayloadDecodeDispatchException
             ? ZLinkDispatchErrorReason.PAYLOAD_DECODE_FAILED
             : ZLinkDispatchErrorReason.HANDLER_EXCEPTION;
+    }
+
+    static ZLinkFrameworkErrorKind frameworkErrorKind(Throwable error) {
+        Throwable cause = unwrap(error);
+        if (cause instanceof ZLinkFrameworkException frameworkError) {
+            return frameworkError.kind();
+        }
+        if (cause instanceof PayloadDecodeDispatchException decode
+            && decode.getCause() instanceof ZLinkFrameworkException frameworkError) {
+            return frameworkError.kind();
+        }
+        return ZLinkFrameworkErrorKind.REQUEST_FAILED;
     }
 
     static void replyAndClose(

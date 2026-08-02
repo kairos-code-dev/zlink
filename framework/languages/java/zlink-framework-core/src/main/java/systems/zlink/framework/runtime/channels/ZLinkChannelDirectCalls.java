@@ -90,6 +90,7 @@ final class PublishCall implements ZLinkFanoutPublishCall {
     private final String topic;
     private final Message payload;
     private final Optional<String> packetName;
+    private final String contentType;
 
     PublishCall(
         ZLinkChannelCallRuntime runtime,
@@ -97,11 +98,23 @@ final class PublishCall implements ZLinkFanoutPublishCall {
         String topic,
         Message payload,
         Optional<String> packetName) {
+        this(runtime, publisher, topic, payload, packetName,
+            ZLinkChannelContentTypeFrame.DEFAULT_CONTENT_TYPE);
+    }
+
+    PublishCall(
+        ZLinkChannelCallRuntime runtime,
+        ZLinkBackendPublisherSocket publisher,
+        String topic,
+        Message payload,
+        Optional<String> packetName,
+        String contentType) {
         this.runtime = runtime;
         this.publisher = publisher;
         this.topic = topic;
         this.payload = payload;
         this.packetName = packetName;
+        this.contentType = contentType;
     }
 
     PublishCall(
@@ -113,7 +126,8 @@ final class PublishCall implements ZLinkFanoutPublishCall {
     }
 
     public ZLinkFanoutPublishCall packetName(String packetName) {
-        return new PublishCall(runtime, publisher, topic, payload, Optional.of(packetName));
+        return new PublishCall(
+            runtime, publisher, topic, payload, Optional.of(packetName), contentType);
     }
 
     @Override
@@ -123,7 +137,8 @@ final class PublishCall implements ZLinkFanoutPublishCall {
         if (duplicate != null) {
             return duplicate;
         }
-        List<Message> publishParts = ZLinkChannelCallRuntime.parts(packetName, payload);
+        List<Message> publishParts = ZLinkChannelCallRuntime.parts(
+            packetName, payload, contentType);
         return runtime.oneWayCalls().submitOneWay(
             publisher,
             ZLinkBackendAdmissionKey.socket(),
@@ -139,16 +154,28 @@ final class SendCall implements ZLinkSendCall {
     private final ZLinkBackendDealerSocket client;
     private final Message payload;
     private final Optional<String> packetName;
+    private final String contentType;
 
     SendCall(
         ZLinkChannelCallRuntime runtime,
         ZLinkBackendDealerSocket client,
         Message payload,
         Optional<String> packetName) {
+        this(runtime, client, payload, packetName,
+            ZLinkChannelContentTypeFrame.DEFAULT_CONTENT_TYPE);
+    }
+
+    SendCall(
+        ZLinkChannelCallRuntime runtime,
+        ZLinkBackendDealerSocket client,
+        Message payload,
+        Optional<String> packetName,
+        String contentType) {
         this.runtime = runtime;
         this.client = client;
         this.payload = payload;
         this.packetName = packetName;
+        this.contentType = contentType;
     }
 
     SendCall(ZLinkChannelCallRuntime runtime, ZLinkBackendDealerSocket client, Message payload) {
@@ -156,7 +183,7 @@ final class SendCall implements ZLinkSendCall {
     }
 
     public ZLinkSendCall packetName(String packetName) {
-        return new SendCall(runtime, client, payload, Optional.of(packetName));
+        return new SendCall(runtime, client, payload, Optional.of(packetName), contentType);
     }
 
     @Override
@@ -173,7 +200,8 @@ final class SendCall implements ZLinkSendCall {
                 ZLinkDispatchMessageKind.SEND,
                 packetName.orElse(null), null, null, null, null, null, null, null));
         }
-        List<Message> parts = ZLinkChannelCallRuntime.parts(packetName, payload);
+        List<Message> parts = ZLinkChannelCallRuntime.parts(
+            packetName, payload, contentType);
         return runtime.oneWayCalls().submitOneWay(
             client,
             ZLinkBackendAdmissionKey.socket(),
@@ -188,6 +216,7 @@ final class RequestCall implements ZLinkRequestCall {
     private final Message payload;
     private final Optional<String> packetName;
     private final Duration timeout;
+    private final String contentType;
     //  spec 25 requires mesh_name and surface on every mesh_node request
     //  instrument, and outcome on the duration histogram. The label sets are
     //  fixed per mesh and surface, so they are built once and shared instead of
@@ -201,23 +230,36 @@ final class RequestCall implements ZLinkRequestCall {
         Optional<String> packetName,
         Duration timeout,
         ZLinkRequestMetricTags metricTags) {
+        this(runtime, client, payload, packetName, timeout, metricTags,
+            ZLinkChannelContentTypeFrame.DEFAULT_CONTENT_TYPE);
+    }
+
+    RequestCall(
+        ZLinkChannelCallRuntime runtime,
+        ZLinkBackendDealerSocket client,
+        Message payload,
+        Optional<String> packetName,
+        Duration timeout,
+        ZLinkRequestMetricTags metricTags,
+        String contentType) {
         this.metricTags = metricTags;
         this.runtime = runtime;
         this.client = client;
         this.payload = payload;
         this.packetName = packetName;
         this.timeout = timeout;
+        this.contentType = contentType;
     }
 
     public ZLinkRequestCall packetName(String packetName) {
         return new RequestCall(
-            runtime, client, payload, Optional.of(packetName), timeout, metricTags);
+            runtime, client, payload, Optional.of(packetName), timeout, metricTags, contentType);
     }
 
     @Override
     public ZLinkRequestCall timeout(Duration timeout) {
         return new RequestCall(
-            runtime, client, payload, packetName, timeout, metricTags);
+            runtime, client, payload, packetName, timeout, metricTags, contentType);
     }
 
     @Override
@@ -244,7 +286,8 @@ final class RequestCall implements ZLinkRequestCall {
             });
         }
         runtime.track(result, timeout);
-        List<Message> requestParts = ZLinkChannelCallRuntime.parts(packetName, payload);
+        List<Message> requestParts = ZLinkChannelCallRuntime.parts(
+            packetName, payload, contentType);
         result.whenComplete((ignored, error) -> requestParts.forEach(Message::close));
         String reqPacket = packetName.orElse(null);
             if (runtime.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {

@@ -64,7 +64,7 @@ final class JsonSessionActorsRuntimeIntegrationTest {
                     SessionActorsRuntimeIntegrationTest.PlayerActorFactory.class,
                     factory -> factory.disableRelocation()); }
         { var stream = options.addStreamNode("local-json"); stream.bind("inproc://local-json-bind-" + System.nanoTime());
-            stream.enableActorDispatch("game");
+            stream.enableActorDispatch();
             stream.registerSession(SessionActorsRuntimeIntegrationTest.GameSession.class); };
 
         return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());

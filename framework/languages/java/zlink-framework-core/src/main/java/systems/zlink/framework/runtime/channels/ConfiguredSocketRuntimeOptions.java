@@ -4,7 +4,7 @@ import systems.zlink.framework.channels.ZLinkSocketRuntimeOptions;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 
 final class ConfiguredSocketRuntimeOptions implements ZLinkSocketRuntimeOptions {
-    private long maxMessageSize;
+    private long maxMessageSize = 16_777_216L;
     private int weight = 100;
 
     @Override

@@ -629,6 +629,9 @@ final class ZLinkChannelSocketRegistry {
     private void drainClientServerControls(
         ClientServerConnection connection) {
         while (true) {
+            if (!connection.dealer.waitForReadable(Duration.ZERO)) {
+                return;
+            }
             ZLinkBackendReceived received =
                 connection.dealer.recv(ZLinkBackendRecvMode.DONT_WAIT);
             if (received == null) {

@@ -30,7 +30,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorBindOpe
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorUnbindOperation;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendStreamErrorHandler;
-import systems.zlink.framework.runtime.internal.backend.ZLinkBackendStreamPacketHandler;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendStreamReceived;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendStreamSocket;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.streams.ZLinkSessionActor;
@@ -268,7 +268,9 @@ final class ZLinkSessionActorBindingContractTest {
         @Override public void bind(String endpoint) { }
         @Override public void setTlsServer(String certificatePath, String keyPath,
                                            boolean requireClientCertificate) { }
-        @Override public void onPacket(ZLinkBackendStreamPacketHandler handler) { }
+        @Override public void enableNotifications() { }
+        @Override public boolean waitForReadable(Duration timeout) { return false; }
+        @Override public ZLinkBackendStreamReceived recv() { return null; }
         @Override public void onTransportError(ZLinkBackendStreamErrorHandler handler) { }
         @Override public void startSessionService() { }
         @Override public boolean send(

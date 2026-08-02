@@ -32,6 +32,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotDispatch
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendTopicMessage;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalAsyncSpotDispatchHandler;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
+import systems.zlink.framework.runtime.channels.ZLinkChannelContentTypeFrame;
 
 final class ZLinkJavaMeshSpot
     implements ZLinkBackendSpot, ZLinkJavaAdmissionBacked {
@@ -252,6 +253,9 @@ final class ZLinkJavaMeshSpot
 
     CompletionStage<Void> accept(ZLinkMeshDispatchRecord record) {
         RecordKind kind = record.receive().kind();
+        String contentType = record.receive().contentType() != null
+            ? record.receive().contentType()
+            : ZLinkChannelContentTypeFrame.decode(record.parts());
         if (kind == RecordKind.SPOT_SEND || kind == RecordKind.SPOT_REQUEST) {
             routes.add(new ZLinkBackendReceived(
                 ZLinkBackendRequestResult.OK,
@@ -260,6 +264,7 @@ final class ZLinkJavaMeshSpot
                     .map(RoutingId::toString),
                 requestSequence(kind, record.receive().operationId()),
                 record.receive().applicationMetadata(),
+                new byte[0],
                 record.parts(),
                 record.receive().replyToken() == null
                     ? null
@@ -267,7 +272,9 @@ final class ZLinkJavaMeshSpot
                         record.receive().replyToken(),
                         parts,
                         SendFlags.NONE),
-                () -> { }));
+                () -> { },
+                contentType,
+                record.inboundDispatchLease()));
             return raise(ZLinkBackendSpotDispatchEvent.ROUTED_READABLE);
         }
         if (kind == RecordKind.SPOT_MULTICAST) {
@@ -276,7 +283,9 @@ final class ZLinkJavaMeshSpot
                 record.receive().channelName(),
                 record.receive().topic() == null ? "" : record.receive().topic(),
                 record.receive().applicationMetadata(),
-                record.parts()));
+                record.parts(),
+                contentType,
+                record.inboundDispatchLease()));
             return raise(ZLinkBackendSpotDispatchEvent.SUBSCRIBE_READABLE);
         }
         if (kind == RecordKind.ACTOR_SEND || kind == RecordKind.ACTOR_REQUEST) {
@@ -297,9 +306,18 @@ final class ZLinkJavaMeshSpot
                     requestId,
                     kind == RecordKind.ACTOR_REQUEST ? 1 : 0,
                     Message.from(record.parts().get(index)),
-                    index + 1 < record.parts().size()));
+                    index + 1 < record.parts().size(),
+                    new byte[0],
+                    contentType,
+                    index == (record.parts().size() > 1 ? 1 : 0)
+                        ? record.inboundDispatchLease()
+                        : null));
             }
-            record.close();
+            if (actorMessages.isEmpty()) {
+                record.close();
+            } else {
+                record.closeParts();
+            }
             return raise(ZLinkBackendSpotDispatchEvent.ACTOR_READABLE, actorMessages);
         }
         if (kind == RecordKind.SPOT_CONTROL

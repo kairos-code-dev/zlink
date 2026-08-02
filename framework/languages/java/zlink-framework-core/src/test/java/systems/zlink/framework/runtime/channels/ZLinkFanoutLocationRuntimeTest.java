@@ -65,6 +65,23 @@ final class ZLinkFanoutLocationRuntimeTest {
         fixture.runtime.close();
     }
 
+    @Test
+    void subscriberReceiveRequiresSocketReadiness() throws Exception {
+        Fixture fixture = new Fixture();
+        fixture.runtime.start(List.of()).toCompletableFuture().join();
+        reconcile(fixture.runtime, descriptor());
+
+        Method receiveAvailable = ZLinkFanoutLocationRuntime.class
+            .getDeclaredMethod("receiveAvailable", long.class);
+        receiveAvailable.setAccessible(true);
+        receiveAvailable.invoke(fixture.runtime, System.nanoTime());
+
+        ControlledSubscriber subscriber = fixture.subscribers.getFirst();
+        assertTrue(subscriber.readinessWaits > 0);
+        assertEquals(0, subscriber.subscribeCalls);
+        fixture.runtime.close();
+    }
+
     private static void reconcile(
         ZLinkFanoutLocationRuntime runtime,
         ZLinkFanoutPublisherDescriptor descriptor) throws Exception {
@@ -181,6 +198,8 @@ final class ZLinkFanoutLocationRuntimeTest {
         implements ZLinkBackendSubscriberSocket {
         private final Monitor monitor = new Monitor();
         private boolean closed;
+        private int readinessWaits;
+        private int subscribeCalls;
 
         @Override
         public void setChannelName(String channelName) {
@@ -193,7 +212,14 @@ final class ZLinkFanoutLocationRuntimeTest {
         @Override
         public ZLinkBackendTopicMessage subscribe(
             ZLinkBackendRecvMode mode) {
-            return null;
+            subscribeCalls++;
+            throw new AssertionError("subscriber recv was called without readiness");
+        }
+
+        @Override
+        public boolean waitForReadable(Duration timeout) {
+            readinessWaits++;
+            return false;
         }
 
         @Override

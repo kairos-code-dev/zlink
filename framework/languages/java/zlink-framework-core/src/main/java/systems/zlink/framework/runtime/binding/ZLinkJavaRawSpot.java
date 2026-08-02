@@ -243,6 +243,7 @@ final class ZLinkJavaRawSpot
     boolean enqueueTopic(ZLinkBackendTopicMessage message) {
         if (closed.get()) {
             message.parts().forEach(Message::close);
+            message.closeAdmission();
             return false;
         }
         subscriptions.add(message);
@@ -312,6 +313,7 @@ final class ZLinkJavaRawSpot
         ZLinkBackendTopicMessage topic;
         while ((topic = subscriptions.poll()) != null) {
             topic.parts().forEach(Message::close);
+            topic.closeAdmission();
         }
         ZLinkBackendActorJoinRequest join;
         while ((join = actorJoins.poll()) != null) {

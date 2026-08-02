@@ -1,6 +1,7 @@
 package systems.zlink.framework.testkit;
 
 import java.time.Duration;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -10,9 +11,13 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.errors.ZlinkConfigException;
@@ -66,7 +71,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotRoute;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotRouteBridge;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendStreamErrorHandler;
-import systems.zlink.framework.runtime.internal.backend.ZLinkBackendStreamPacketHandler;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendStreamReceived;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendStreamSocket;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSubscriberSocket;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendTopicMessage;
@@ -730,6 +735,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         }
 
         @Override public void setChannelName(String channelName) { record("setChannelName." + channelName); }
+        @Override public boolean waitForReadable(Duration timeout) { return false; }
         @Override public boolean send(List<Message> parts, SendFlags flags) { record("send." + firstPart(parts)); return true; }
         @Override public boolean request(List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
             record("request." + firstPart(parts));
@@ -750,6 +756,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
 
     private static final class FakeRouterSocket extends FakeConnectableSocket implements ZLinkBackendRouterSocket {
         private final Deque<ZLinkBackendReceived> received = new ArrayDeque<>();
+        private final Semaphore readable = new Semaphore(0);
         private long maxMessageSize;
         private int peerWeight = 100;
 
@@ -769,6 +776,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                 replyParts -> record("reply." + sourceRid + "." + (replyParts.isEmpty()
                     ? ""
                     : firstPart(replyParts)))));
+            readable.release();
         }
 
         @Override public void setChannelName(String channelName) { record("setChannelName." + channelName); }
@@ -779,6 +787,14 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void setMaxMessageSize(long value) { maxMessageSize = value; record("setMaxMessageSize." + value); }
         @Override public int peerWeight() { return peerWeight; }
         @Override public void setPeerWeight(int weight) { peerWeight = weight; record("setPeerWeight." + weight); }
+        @Override public boolean waitForReadable(Duration timeout) {
+            try {
+                return readable.tryAcquire(timeout.toNanos(), TimeUnit.NANOSECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
         @Override public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) { return received.pollFirst(); }
         @Override public boolean send(RoutingId routingId, List<Message> parts, SendFlags flags) { record("send." + routingId + "." + firstPart(parts)); return true; }
         @Override public boolean request(RoutingId routingId, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
@@ -852,12 +868,22 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     }
 
     private static final class FakeSubscriberSocket extends FakeConnectableSocket implements ZLinkBackendSubscriberSocket {
+        private final Semaphore readable = new Semaphore(0);
+
         FakeSubscriberSocket(List<String> calls, String name) {
             super(calls, name);
         }
 
         @Override public void setChannelName(String channelName) { record("setChannelName." + channelName); }
         @Override public void setSubscription(String topic) { record("setSubscription." + topic); }
+        @Override public boolean waitForReadable(Duration timeout) {
+            try {
+                return readable.tryAcquire(timeout.toNanos(), TimeUnit.NANOSECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
         @Override public ZLinkBackendTopicMessage subscribe(ZLinkBackendRecvMode mode) { return null; }
     }
 
@@ -1498,7 +1524,9 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     }
 
     private static final class FakeStreamSocket extends FakeSocket implements ZLinkBackendStreamSocket {
-        private ZLinkBackendStreamPacketHandler packetHandler;
+        private final Queue<ZLinkBackendStreamReceived> received =
+            new ConcurrentLinkedQueue<>();
+        private final Semaphore readable = new Semaphore(0);
         private ZLinkBackendStreamErrorHandler errorHandler;
 
         FakeStreamSocket(List<String> calls) {
@@ -1512,7 +1540,19 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             record("setTlsServer." + certificatePath + "." + keyPath + "."
                 + requireClientCertificate);
         }
-        @Override public void onPacket(ZLinkBackendStreamPacketHandler handler) { packetHandler = handler; record("onPacket"); }
+        @Override public void enableNotifications() { record("enableNotifications"); }
+        @Override public boolean waitForReadable(Duration timeout) {
+            try {
+                return readable.tryAcquire(timeout.toNanos(), TimeUnit.NANOSECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        @Override public ZLinkBackendStreamReceived recv() {
+            record("recv");
+            return received.poll();
+        }
         @Override public void onTransportError(ZLinkBackendStreamErrorHandler handler) { errorHandler = handler; record("onTransportError"); }
         @Override public void startSessionService() { record("startSessionService"); }
         @Override public boolean send(RoutingId routingId, List<Message> parts, SendFlags flags) {
@@ -1541,10 +1581,29 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public boolean relayBoundActor(RoutingId sessionRid, String actorId, ZLinkStreamHeader header, List<Message> parts, SendFlags flags) { record("relayBoundActor." + actorId + "." + header.codec() + "." + header.packetName()); return true; }
 
         void dispatchPacket(RoutingId routingId, Message header, Message payload) {
-            if (packetHandler == null) {
-                throw new IllegalStateException("stream packet handler is not registered");
+            byte[] headerBytes = header.toByteArray();
+            byte[] payloadBytes = payload.toByteArray();
+            byte[] frame = ByteBuffer.allocate(6 + headerBytes.length + payloadBytes.length)
+                .putShort((short) headerBytes.length)
+                .putInt(payloadBytes.length)
+                .put(headerBytes)
+                .put(payloadBytes)
+                .array();
+            Message raw = Message.from(frame);
+            received.add(new ZLinkBackendStreamReceived(
+                Optional.of(routingId),
+                List.of(raw),
+                raw::close));
+            readable.release();
+        }
+
+        @Override public void close() {
+            readable.release();
+            ZLinkBackendStreamReceived next;
+            while ((next = received.poll()) != null) {
+                next.close();
             }
-            packetHandler.handle(routingId, header, payload);
+            super.close();
         }
 
         void dispatchTransportError(RoutingId routingId, int nativeCode, String message) {

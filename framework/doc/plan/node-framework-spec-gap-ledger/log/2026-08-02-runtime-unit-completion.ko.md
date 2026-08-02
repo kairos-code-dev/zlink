@@ -321,3 +321,7 @@ pool 구조와도 일치한다.
 
 이 수정은 E2E·sample·process runner를 변경하지 않는다. 전체 CI의 E2E scenario inventory gate는
 기존과 같이 사용자 제외 범위의 후속 조건으로 남긴다.
+
+변경 source와 이 수명 검증 log는 `4f67c0eb47` 커밋으로, ledger의 현재 판정 보강은
+`b2c5cfaeae` 커밋으로 각각 path-limited commit하고 `origin/agent/framework-contract-runtime-update`에
+push했다. 두 commit 모두 다른 언어 workstream의 변경을 포함하지 않는다.

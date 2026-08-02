@@ -158,7 +158,7 @@ resume_from: browser failure details, then remaining contract gate; retain 99 mi
 candidate: working tree 2026-08-02 after non-E2E runtime refactor
 scope: Node production runtime, contract/unit tests, package and CI path filter; E2E/sample excluded
 decision: CLEAN for the non-E2E implementation scope
-evidence: build PASS; typecheck PASS; lint PASS; 59 contract files 994/994 PASS;
+evidence: build PASS; typecheck PASS; lint PASS; 59 contract files 1001/1001 PASS;
           package graph 11.1.0 clean; packaged contract PASS
 remaining: E2E scenario inventory gate reports 171 missing IDs; process/sample evidence excluded
 ```

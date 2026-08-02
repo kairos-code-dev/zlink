@@ -287,7 +287,7 @@ Node Framework production runtime, public contract, package와 unit·contract te
 | `npm run build` | PASS |
 | `npm run typecheck` | PASS |
 | `npm run lint` | PASS |
-| E2E·sample·native integration을 제외한 contract inventory 59 files | 994/994 PASS |
+| E2E·sample·native integration을 제외한 contract inventory 59 files | 1001/1001 PASS |
 | `contract-surface`, `nestjs-module`, `documentation-regression`, `stream-connector-codecs` | 121/121 PASS |
 | `npm ls @zlink-systems/zlink --all` | 11.1.0 전 workspace clean |
 | `bash scripts/verify_packaged_contract.sh` | `NODE_PACKAGED_CONTRACT_PASS packages=7 browser=esm server=commonjs` |

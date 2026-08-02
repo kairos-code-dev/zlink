@@ -470,7 +470,7 @@ Node production runtime, public contract, package와 unit·contract gate를 갱�
 | ND-IMP-004 package pin·consumer surface | 비-E2E 충족 | `npm ls` clean at 11.1.0, packaged contract PASS |
 | ND-TEST-001 public snapshot·negative comparison | 비-E2E 부분 충족 | `node-public-contract.json`, exact Nest member test와 contract-surface 검증 통과; 전체 E2E/process surface는 후속 |
 | ND-TEST-002 documentation regression | 충족 | live Node ledger path 기준 17/17 PASS |
-| ND-TEST-003 CI path·non-E2E gate | 비-E2E 충족 | common guide path filter 추가, build/typecheck/lint와 59 contract files 994/994 PASS |
+| ND-TEST-003 CI path·non-E2E gate | 비-E2E 충족 | common guide path filter 추가, build/typecheck/lint와 59 contract files 1001/1001 PASS |
 
 runtime queue와 worker pool의 POSD·DDD 검토, 선택한 대안과 재검증 결과는
 [`log/2026-08-02-posd-ddd-review.ko.md`](log/2026-08-02-posd-ddd-review.ko.md)에 기록했다. E2E inventory
@@ -724,7 +724,7 @@ documentation-regression fixture는 현재 Node gap ledger 경로를 읽도록 �
 #### 2026-08-02 비-E2E 갱신
 
 Node workflow push·pull request filter에 common guide path를 추가했고, build·typecheck·lint와
-E2E·sample·native integration을 제외한 contract inventory 59개 파일(994/994)을 통과했다.
+E2E·sample·native integration을 제외한 contract inventory 59개 파일(1001/1001)을 통과했다.
 전체 `verify:ci`는 사용자 요청으로 제외한 E2E scenario inventory 171개 누락에서 exit 1이므로
 ND-TEST-003의 E2E/aggregate 부분은 unresolved로 유지한다.
 

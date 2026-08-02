@@ -31,7 +31,7 @@ test('DeliveryDispatch uses public Actor APIs without internal Spot handle resol
     'samples/DeliveryDispatch.Ts/Server/CourierSession/courier-session-module.ts'
   ]) {
     const content = read(source);
-    assert.match(content, /addRouteMesh\(SampleNames\.routeMesh\)/);
+    assert.match(content, /addRouteMesh\(SampleNames\.courierMeshName\)/);
     assert.match(content, /\.listen\(/);
   }
 });

@@ -177,5 +177,5 @@ listener 등록 후 baseline slot을 `unref()`, assignment 시 `ref()`, terminal
 활성 작업의 completion과 유휴 process 종료를 모두 보장한다.
 
 최신 검증은 `entry-spot-serial-dispatch.test.js` 24/24, 관련 6개 contract 파일 combined
-152/152, build·typecheck·lint PASS와 direct test exit 0으로 확인했다. E2E/process/sample
+148/148, build·typecheck·lint PASS와 direct test exit 0으로 확인했다. E2E/process/sample
 evidence는 사용자 범위 밖이므로 이 review 판정에 포함하지 않았다.

@@ -322,6 +322,25 @@ pool 구조와도 일치한다.
 이 수정은 E2E·sample·process runner를 변경하지 않는다. 전체 CI의 E2E scenario inventory gate는
 기존과 같이 사용자 제외 범위의 후속 조건으로 남긴다.
 
+## 최종 비-E2E 재검증 — 2026-08-02
+
+마지막 sample 정적 문서 변경 뒤 Node 대상 범위를 다시 확인했다.
+
+| 명령 | 결과 |
+|---|---:|
+| `npm run build` | PASS |
+| `npm run typecheck` | PASS |
+| `npm run lint` | PASS |
+| 6개 핵심 contract 파일 combined run | 148/148 PASS, exit 0 |
+| `sample*.test.js` 중 `sample-regression.test.js` 제외 | 35/35 PASS, exit 0 |
+| `npm ls @zlink-systems/zlink --all` | 11.1.0 clean |
+| `bash scripts/verify_packaged_contract.sh` | `NODE_PACKAGED_CONTRACT_PASS packages=7 browser=esm server=commonjs` |
+| Node 대상 `git diff --check` | PASS |
+
+sample static 변경은 `9fb68d71e7a`, 해당 변경의 push 기록은 `c2d6c264666`으로 각각
+path-limited commit하고 push했다. 이 최종 재검증 log도 Node 대상 경로만 다음 commit으로
+추가한다. E2E scenario inventory, browser sample process와 native process는 실행·수정하지 않았다.
+
 변경 source와 이 수명 검증 log는 `4f67c0eb47` 커밋으로, ledger의 현재 판정 보강은
 `b2c5cfaeae` 커밋으로 각각 path-limited commit하고 `origin/agent/framework-contract-runtime-update`에
 push했다. 두 commit 모두 다른 언어 workstream의 변경을 포함하지 않는다.

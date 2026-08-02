@@ -480,8 +480,8 @@ runtime queue와 worker pool의 POSD·DDD 검토, 선택한 대안과 재검증 
 후속 수명 재검토에서 CPU worker slot의 `ref()`/`unref()` 경계를 active job과 idle slot으로
 분리했다. listener 등록 뒤 baseline slot을 `unref()`하고, 작업 할당 시 `ref()`, terminal
 completion 뒤 다시 `unref()`하여 worker 결과를 기다리는 동안에는 process가 조기 종료되지 않고
-유휴 pool은 process를 붙잡지 않도록 했다. `entry-spot-serial-dispatch.test.js`는 24/24,
-관련 6개 contract 파일 combined run은 152/152로 timeout 없이 종료했으며, 상세 근거는
+유휴 pool은 process를 붙잡지 않도록 했다. `entry-spot-serial-dispatch.test.js`와 관련 6개
+contract 파일 combined run은 최신 실행에서 148/148로 timeout 없이 종료했으며, 상세 근거는
 [`log/2026-08-02-runtime-unit-completion.ko.md`](log/2026-08-02-runtime-unit-completion.ko.md)의
 Worker slot reference 수명 보정 절에 기록했다.
 

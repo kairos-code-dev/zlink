@@ -33,3 +33,10 @@ sample*.test.js (sample-regression.test.js 제외)
 전체 sample contract suite는 `sample-regression.test.js`의 실제
 `run_samples.sh` 실행에서 TicTacToe browser stream message timeout으로 실패했다. 이는 static
 assertion 수정으로 숨기지 않았으며, E2E/process 범위의 후속 조건으로 유지한다.
+
+## Commit·push
+
+정적 test assertion, sample README version과 Bingo marker 변경은
+`9fb68d71e7a` (`docs(node-samples): align version and completion markers`)로
+path-limited commit했다. branch `agent/framework-contract-runtime-update`와
+`origin/agent/framework-contract-runtime-update`가 같은 SHA를 가리킨다.

@@ -2,8 +2,6 @@ import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } fr
 import { Message as ZLinkBindingMessage } from '@zlink-systems/zlink';
 import type { ActorRef } from '../../contracts';
 import {
-} from '../../contracts';
-import {
   ZLinkSubmitStatus,
   type ZLinkSubmitResult
 } from '../messaging/submission-result';

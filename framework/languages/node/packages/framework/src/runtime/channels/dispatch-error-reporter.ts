@@ -16,14 +16,13 @@ import {
   DEFAULT_ZLINK_DIAGNOSTICS,
   type ZLinkDiagnosticsContext
 } from '../diagnostics';
+import type { ZLinkDispatchErrorSink } from '../diagnostics/dispatch-error-port';
+
+export type { ZLinkDispatchErrorSink } from '../diagnostics/dispatch-error-port';
 
 type ZLinkRuntimeDispatchFailure = ZLinkDispatchFailure & {
   readonly error?: unknown;
 };
-
-export interface ZLinkDispatchErrorSink {
-  reportRuntimeTaskException(taskName: string, error: unknown): void;
-}
 
 export class ZLinkDispatchErrorReporter {
   private reportedEvents = 0;

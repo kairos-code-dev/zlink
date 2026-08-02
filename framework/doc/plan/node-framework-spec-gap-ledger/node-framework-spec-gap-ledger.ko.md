@@ -401,19 +401,18 @@ aggregate가 아니다.
 | Node E2E runner 전체 bash -n | 통과 | shell syntax만 검증. scenario dispatch와 process evidence는 검증하지 않음. |
 | npm test bounded 실행 | 미완료, deferred `e2e-scenario-header-gate.test.js`에서 중단 | common E2E inventory 374개와 Node scenario 207개의 차이를 보고했다. full package gate green으로 표시하지 않는다. |
 | npm run verify:coverage | 후속 범위 | E2E·sample과 함께 coverage full gate를 다시 실행한다. 이번 unit gate 58/58의 대체 결과가 아니다. |
-| npm run verify:ci | 실패 | build/typecheck/lint와 다수 test 이후 documentation-regression.test.js가 framework/doc/framework/common/spec/30-implementation-gap.ko.md ENOENT로 실패. |
-| ./scripts/verify_packaged_contract.sh | 실패 | server consumer install이 @zlink-systems/zlink@11.0.2를 registry에서 찾지 못해 404. |
-| npm ls @zlink-systems/zlink --all | invalid, exit 1 | root는 local 11.1.0 archive를 가리키지만 workspace와 lock은 11.0.2를 요구. |
+| npm run verify:ci | 실패 | build/typecheck/lint·Chromium·비-E2E test를 통과한 뒤 E2E scenario header gate가 common scenario 171개 누락을 보고. |
+| ./scripts/verify_packaged_contract.sh | 통과 | `NODE_PACKAGED_CONTRACT_PASS packages=7 browser=esm server=commonjs`. |
+| npm ls @zlink-systems/zlink --all | clean, exit 0 | root와 모든 workspace가 local `@zlink-systems/zlink@11.1.0`을 resolve. |
 | e2e/ToActorMessaging/run_e2e.sh TA-A1 | 실패, exit 2 | server/caller/session/client build가 현재 Node public API와 맞지 않음. |
 | e2e/SubmitAdmission/run_e2e.sh SA-E2E-14 | 실패, exit 2 | binding package 11.0.2와 native artifact가 불완전하여 process를 시작하지 못함. |
 
 현재 실패는 모두 같은 원인으로 묶지 않는다.
 
 - full package gate blocker: deferred static E2E header inventory gate.
-- tree/environment blocker: documentation-regression이 요구하는 공통
-  30-implementation-gap 문서가 현재 tree에 없음.
-- package blocker: root, workspace, lock의 zlink version이 일치하지 않고
-  11.0.2 consumer install이 registry에 의존함.
+- documentation-regression path는 현재 Node gap ledger를 authoritative source로 읽고 17/17 통과한다.
+- package version blocker는 해소됐다. root, workspace, lock과 local archive가 11.1.0으로 정렬됐고
+  clean packaged consumer 검증이 통과했다. process E2E는 별도 evidence로 남아 있다.
 - production/API drift: ToActorMessaging의 stale builder, actor context,
   lifecycle signature와 HTTP client method.
 - native artifact blocker: SubmitAdmission이 후보 native artifact를
@@ -425,7 +424,7 @@ aggregate가 아니다.
 
 | 항목 | 판정 | 직접 확인한 evidence와 한계 |
 |---|---|---|
-| package root export의 기본 경계 | 충족 | contract-surface.test.js가 framework, nestjs, locations, stream connector의 root export를 확인. package consumer install은 version mismatch로 별도 실패. |
+| package root export의 기본 경계 | 충족 | contract-surface.test.js가 framework, nestjs, locations, stream connector의 root export를 확인하고, packaged consumer도 11.1.0 정책으로 통과했다. |
 | 일부 backend public API-only 경계 | 충족 | backend-public-api-only.test.js 5/5. 모든 E2E Client tree와 실제 process call path까지 포함하지 않음. |
 | 좁은 runtime lifecycle·authority·deadline·cleanup·replay 범위 | 충족 | M5/M6 153개 test와 actor handoff focused test가 통과. 공통 전체 contract와 process evidence를 대체하지 않음. |
 | browser transport smoke | 충족 | Chromium 1/1. Node server public API parity와 전체 stream connector E2E는 별도. |
@@ -433,7 +432,7 @@ aggregate가 아니다.
 | Nest exact builder contract | runtime 충족, package·E2E 후속 | `configureInboundDispatch` declaration·runtime·Nest contract test가 통과했다. exact extra member governance와 process evidence는 ND-IMP-001 후속 조건이다. |
 | common error model | runtime 충족, process E2E 후속 | public 13-kind enum, 내부 mapping과 ProtocolError terminal mapping이 unit/runtime test를 통과했다. client-visible process evidence는 ND-IMP-002 후속 조건이다. |
 | unknown content type 처리 | runtime 충족, process E2E 후속 | unknown non-JSON payload가 handler에 Buffer로 전달되지 않고 public ProtocolError로 종료된다. ND-IMP-003의 process evidence는 후속 범위다. |
-| package consumer parity | 미충족 | 11.1.0과 11.0.2가 혼재하고 packaged install이 실패. ND-IMP-004 참조. |
+| package consumer parity | 비-E2E 충족 | `npm ls`가 11.1.0으로 clean하고 packaged contract가 통과했다. process E2E와 native role-server evidence는 제외 범위다. |
 | Config 1-14 aggregate E2E | 미충족 | aggregate가 12 config만 호출하고 exit 0만 집계함. ND-E2E-IMP-001, ND-E2E-IMP-002 참조. |
 
 ### 4.1 2026-08-02 runtime·unit phase 현재 판정
@@ -441,8 +440,8 @@ aggregate가 아니다.
 이번 phase의 범위는 production runtime gap과 Node production unit·contract test이다. E2E process와
 sample 구현·실행은 후속 범위로 유지한다. ND-IMP-001의 Nest `configureInboundDispatch`, ND-IMP-002의
 공통 public error mapping, ND-IMP-003의 unknown content type 처리는 현재 source와 회귀 test에서
-runtime 기준을 충족했다. package consumer parity인 ND-IMP-004와 E2E·sample gap은 아직 완료로 표시하지
-않는다.
+runtime 기준을 충족했다. 후속 fresh run에서 ND-IMP-004의 비-E2E package parity도 충족했지만,
+process E2E·sample gap은 아직 완료로 표시하지 않는다.
 
 M5/M6 runtime 회귀는 153/153, production unit·contract 범위는 58/58이다. 전체 Node test inventory는
 123개이며, browser·integration, E2E 또는 sample 소스를 읽는 test, native child process test를 후속
@@ -456,6 +455,26 @@ DEALER, Fanout SUB와 Framework 내부 raw RouteMesh ROUTER·DEALER의 수신 �
 중복 monitor 등록과 stale buffered state를 추가로 수정하고 targeted regression을 다시 통과했다.
 다만 full `npm test`는 현재 dirty worktree의 actor-manager location takeover failure에서 중단되고,
 E2E process와 sample은 후속 범위이므로 repository-wide phase 완료로 표시하지 않는다.
+
+### 4.2 2026-08-02 비-E2E 반영 후 현재 판정
+
+사용자 요청에 따라 E2E scenario source·runner, sample과 process evidence를 이번 반영에서 제외하고
+Node production runtime, public contract, package와 unit·contract gate를 갱신했다. 다음 항목은
+비-E2E 범위에서 현재 evidence를 확보했다.
+
+| 항목 | 현재 판정 | fresh evidence |
+|---|---|---|
+| ND-IMP-001 Nest builder public member | 비-E2E 충족 | runtime member exact-set test와 Nest module suite 통과 |
+| ND-IMP-002 common error surface | 비-E2E 충족 | public 13-kind/error mapping contract와 runtime suite 통과 |
+| ND-IMP-003 unknown content type | 비-E2E 충족 | handler 호출 전 `ProtocolError`와 empty reply 회귀 통과 |
+| ND-IMP-004 package pin·consumer surface | 비-E2E 충족 | `npm ls` clean at 11.1.0, packaged contract PASS |
+| ND-TEST-001 public snapshot·negative comparison | 비-E2E 부분 충족 | `node-public-contract.json`, exact Nest member test와 contract-surface 검증 통과; 전체 E2E/process surface는 후속 |
+| ND-TEST-002 documentation regression | 충족 | live Node ledger path 기준 17/17 PASS |
+| ND-TEST-003 CI path·non-E2E gate | 비-E2E 충족 | common guide path filter 추가, build/typecheck/lint와 59 contract files 994/994 PASS |
+
+runtime queue와 worker pool의 POSD·DDD 검토, 선택한 대안과 재검증 결과는
+[`log/2026-08-02-posd-ddd-review.ko.md`](log/2026-08-02-posd-ddd-review.ko.md)에 기록했다. E2E inventory
+171개 누락과 Config 12/14 process blocker는 이번 범위에서 그대로 unresolved로 남긴다.
 
 ## 5. ND-IMP-* production implementation gap
 
@@ -506,6 +525,13 @@ E2E process와 sample은 후속 범위이므로 repository-wide phase 완료로 
 - 필요한 회귀 test: ND-REG-004. package.json, workspace manifests, lockfile, archive metadata의 version consistency와 실제 clean consumer install, native artifact load를 검사한다.
 - 선행 조건과 작업 순서: local-package 정책 확인 → 중앙 version 확정 → package/lock 재현성 회복 → ND-REG-004 → SubmitAdmission와 aggregate E2E 순서로 진행한다.
 - 구현 완료 evidence: npm ls가 invalid 없이 종료하고, registry에 의존하지 않는 지정 local package consumer가 설치·build·실행되며, process E2E가 같은 version의 native artifact로 role server를 시작한다.
+
+#### 2026-08-02 비-E2E 갱신
+
+위의 11.0.2 mismatch는 이전 audit snapshot이다. 현재 `framework/languages/node/package.json`,
+workspace manifests와 lockfile은 11.1.0으로 정렬되었고, `npm ls @zlink-systems/zlink --all`가
+clean으로 끝난다. `scripts/verify_packaged_contract.sh`도 7개 package, browser ESM과 server
+CommonJS consumer를 통과했다. process E2E의 native role-server evidence는 이 범위에 포함하지 않았다.
 
 ## 6. ND-E2E-IMP-* Node E2E implementation gap
 
@@ -658,6 +684,13 @@ gap은 다음 순서로 처리한다. 앞 단계가 확정되지 않으면 뒤 �
 - 선행 조건과 작업 순서: contract 선행 → snapshot format 결정 → snapshot 생성 → test gate 연결 → package consumer 검증 순서로 진행한다.
 - 구현 완료 evidence: clean checkout에서 snapshot test가 exact interface, source declaration, runtime export, package export를 모두 비교하고 drift를 재현 가능하게 보고한다.
 
+#### 2026-08-02 비-E2E 갱신
+
+초기 snapshot 부재 기록 이후 `test/contract/contract-surface.test.js`에 checked-in
+`node-public-contract.json` fixture와 Nest builder exact runtime member 비교를 추가했다. 현재
+contract surface와 Nest module suite는 121/121 통과한다. 전체 common E2E/process 결과까지 하나의
+snapshot으로 묶는 작업은 E2E 제외 조건에 따라 후속으로 남긴다.
+
 #### ND-TEST-002 — documentation-regression이 요구하는 공통 문서가 현재 tree에 없음
 
 - 공통 spec 또는 E2E 문서 경로: framework/doc/framework/common/spec/ 및 framework/doc/framework/common/spec/30-implementation-gap.ko.md로 해석되는 documentation regression fixture
@@ -670,6 +703,12 @@ gap은 다음 순서로 처리한다. 앞 단계가 확정되지 않으면 뒤 �
 - 선행 조건과 작업 순서: common spec owner의 path 결정 → fixture/CI 정렬 → verify:ci 재실행 순서로 진행한다.
 - 구현 완료 evidence: current tree에서 documentation-regression이 ENOENT 없이 통과하고, 문서 path 변경 이력이 authoritative source와 연결된다.
 
+#### 2026-08-02 비-E2E 갱신
+
+documentation-regression fixture는 현재 Node gap ledger 경로를 읽도록 정렬되었고 17/17 통과한다.
+따라서 이 항목의 ENOENT blocker는 해소되었다. `verify:ci` 전체는 이후 E2E scenario header gate에서
+실패하므로 CI 전체 green으로 확대 해석하지 않는다.
+
 #### ND-TEST-003 — full regression과 CI gate가 전체 계약·E2E 범위를 실행하지 않음
 
 - 공통 spec 또는 E2E 문서 경로: framework/doc/framework/common/e2e/ 전체 14개 Config, framework/doc/framework/common/spec/의 Node contract
@@ -681,6 +720,13 @@ gap은 다음 순서로 처리한다. 앞 단계가 확정되지 않으면 뒤 �
 - 필요한 회귀 test: ND-REG-008. full test, coverage, skip report, documentation fixture, aggregate E2E의 timeout·hang·skip을 성공으로 숨기지 않는지 검사한다.
 - 선행 조건과 작업 순서: ND-IMP-*와 ND-E2E-IMP-* 해결 → skip policy 확정 → channel-client regression → CI workflow 연결 → full gate 순서로 진행한다.
 - 구현 완료 evidence: npm test, verify:coverage, verify:ci, packaged contract, aggregate process E2E가 현재 tree에서 제한 시간 만료·skip·historical output 없이 종료하고, CI report가 전체 범위와 미실행 항목을 명시한다.
+
+#### 2026-08-02 비-E2E 갱신
+
+Node workflow push·pull request filter에 common guide path를 추가했고, build·typecheck·lint와
+E2E·sample·native integration을 제외한 contract inventory 59개 파일(994/994)을 통과했다.
+전체 `verify:ci`는 사용자 요청으로 제외한 E2E scenario inventory 171개 누락에서 exit 1이므로
+ND-TEST-003의 E2E/aggregate 부분은 unresolved로 유지한다.
 
 ### 8.3 추가 또는 변경할 ND-REG-* regression ID
 
@@ -777,10 +823,11 @@ gap은 다음 순서로 처리한다. 앞 단계가 확정되지 않으면 뒤 �
 - [ ] 완료 보고에서 current run, historical log, timeout/hang/skip,
   environment blocker를 서로 구분한다.
 
-현재는 위 checklist를 완료로 표시하지 않는다. POSD·DDD review round도 아직 실행하지
-않았으며, ND-IMP-001부터
-ND-E2E-IMP-005와 ND-TEST-001부터 ND-TEST-003은 unresolved 상태이며,
-ND-REG-001부터 ND-REG-008은 후속 회귀 test 작업 입력이다.
+전체 checklist는 E2E·sample·process evidence가 남아 있어 완료로 표시하지 않는다. 다만
+비-E2E 반영 후 ND-IMP-001~004와 ND-TEST-002, ND-TEST-003의 비-E2E 조건은 fresh evidence로
+확인했고, ND-TEST-001은 checked-in snapshot과 exact member 비교를 확보했다. ND-E2E-IMP-001~005,
+ND-TEST-003의 E2E/aggregate 조건과 ND-REG-005~008은 사용자가 제외한 후속 범위로 유지한다.
+ND-REG-001~004는 현재 contract, error, content-type과 package gate의 회귀 입력으로 반영했다.
 
 ## 10. Framework spec 완료 gate와 sample 착수 조건
 

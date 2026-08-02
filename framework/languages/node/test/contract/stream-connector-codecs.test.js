@@ -165,7 +165,7 @@ test('generated Bingo browser codec is deterministic and round-trips without fil
     const output = path.join(temporary, 'entry.mjs');
     fs.writeFileSync(entry, [
       `export { bingoProtobuf } from ${JSON.stringify(path.join(sample, 'Shared/Contracts/protobuf-browser-codec.ts'))};`,
-      `export { AuthenticateReq, ActorRefWire } from ${JSON.stringify(generated)};`
+      `export { AuthenticateReq, AuthenticatePlayerRes } from ${JSON.stringify(generated)};`
     ].join('\n'));
     childProcess.execFileSync(path.join(root, 'node_modules/.bin/esbuild'), [
       entry,
@@ -181,12 +181,18 @@ test('generated Bingo browser codec is deterministic and round-trips without fil
     assert.equal(decoded.constructor, browser.AuthenticateReq);
     assert.equal(decoded.accessToken, 'player-1');
 
-    const generation = '18446744073709551615';
-    const actor = new browser.ActorRefWire({ nodeRid: 'node-a', actorId: 'actor-a', generation });
-    const actorEncoded = browser.bingoProtobuf.encode(actor, browser.ActorRefWire);
-    const actorDecoded = browser.bingoProtobuf.decode(actorEncoded);
-    assert.equal(actorDecoded.generation, generation);
-    assert.equal(typeof actorDecoded.generation, 'string');
+    const player = new browser.AuthenticatePlayerRes({
+      accepted: true,
+      actorId: 'player-1',
+      displayName: 'Player One',
+      reason: null
+    });
+    const playerEncoded = browser.bingoProtobuf.encode(player, browser.AuthenticatePlayerRes);
+    const playerDecoded = browser.bingoProtobuf.decode(playerEncoded);
+    assert.equal(playerDecoded.constructor, browser.AuthenticatePlayerRes);
+    assert.equal(playerDecoded.actorId, 'player-1');
+    assert.equal(playerDecoded.displayName, 'Player One');
+    assert.equal(playerDecoded.reason, null);
 
     const bundle = fs.readFileSync(output, 'utf8');
     assert.doesNotMatch(bundle, /protoPath|loadSync|node:fs|__dirname/);

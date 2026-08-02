@@ -35,7 +35,7 @@ export interface ServiceMailboxRelocationSeal {
 }
 
 interface OwnerQueue {
-  readonly records: ServiceMailboxRecord[];
+  readonly records: MailboxQueue<ServiceMailboxRecord>;
   bytes: number;
   claimed: boolean;
   claimSerial: bigint;
@@ -43,7 +43,7 @@ interface OwnerQueue {
 
 interface DomainState {
   readonly owners: Map<string, OwnerQueue>;
-  readonly ready: string[];
+  readonly ready: MailboxQueue<string>;
   readonly indexed: Set<string>;
   messages: number;
   bytes: number;
@@ -111,7 +111,7 @@ export class ServiceMailbox {
     }
     let queue = target.owners.get(record.owner);
     if (queue === undefined) {
-      queue = { records: [], bytes: 0, claimed: false, claimSerial: 0n };
+      queue = { records: new MailboxQueue(), bytes: 0, claimed: false, claimSerial: 0n };
       target.owners.set(record.owner, queue);
     }
     const retained = retainRecord(record);
@@ -147,7 +147,7 @@ export class ServiceMailbox {
       const records: ServiceMailboxRecord[] = [];
       let bytes = 0;
       while (queue.records.length > 0 && records.length < messageBudget) {
-        const next = queue.records[0]!;
+        const next = queue.records.peek()!;
         const nextBytes = retainedBytes(next);
         if (records.length > 0 && nextBytes > byteBudget - bytes) break;
         queue.records.shift();
@@ -170,7 +170,7 @@ export class ServiceMailbox {
     if (queue === undefined || !queue.claimed || queue.claimSerial !== claim.serial) return false;
     if (remaining.length > 0) {
       const bytes = remaining.reduce((sum, record) => sum + retainedBytes(record), 0);
-      queue.records.unshift(...remaining);
+      queue.records.prepend(remaining);
       queue.bytes += bytes;
       target.messages += remaining.length;
       target.bytes += bytes;
@@ -191,7 +191,7 @@ export class ServiceMailbox {
     if (this.relocationSeals.has(owner)) return undefined;
     const queue = this.application.owners.get(owner);
     if (queue?.claimed === true) return undefined;
-    const captured = queue?.records.splice(0) ?? [];
+    const captured = queue?.records.drain() ?? [];
     if (queue !== undefined) {
       queue.bytes = 0;
       this.application.owners.delete(owner);
@@ -210,7 +210,7 @@ export class ServiceMailbox {
     if (records.length === 0) return true;
     const bytes = records.reduce((sum, record) => sum + retainedBytes(record), 0);
     this.application.owners.set(seal.owner, {
-      records,
+      records: new MailboxQueue(records),
       bytes,
       claimed: false,
       claimSerial: 0n
@@ -260,7 +260,7 @@ function createDomain(messageBudget: number, byteBudget: number): DomainState {
   requirePositive(byteBudget, 'byteBudget');
   return {
     owners: new Map(),
-    ready: [],
+    ready: new MailboxQueue(),
     indexed: new Set(),
     messages: 0,
     bytes: 0,
@@ -271,10 +271,72 @@ function createDomain(messageBudget: number, byteBudget: number): DomainState {
 
 function clearDomain(domain: DomainState): void {
   domain.owners.clear();
-  domain.ready.length = 0;
+  domain.ready.clear();
   domain.indexed.clear();
   domain.messages = 0;
   domain.bytes = 0;
+}
+
+/**
+ * Internal FIFO used by the mailbox hot path. Two stacks keep dequeue and
+ * prepend operations amortized O(1), avoiding array reindexing from shift and
+ * unshift while retaining the queue's existing ordering semantics.
+ */
+class MailboxQueue<T> {
+  private readonly front: T[] = [];
+  private readonly back: T[] = [];
+
+  constructor(initial?: readonly T[]) {
+    if (initial !== undefined) {
+      for (const value of initial) this.back.push(value);
+    }
+  }
+
+  get length(): number {
+    return this.front.length + this.back.length;
+  }
+
+  push(value: T): void {
+    this.back.push(value);
+  }
+
+  peek(): T | undefined {
+    this.moveBackToFront();
+    return this.front.at(-1);
+  }
+
+  shift(): T | undefined {
+    this.moveBackToFront();
+    return this.front.pop();
+  }
+
+  prepend(values: readonly T[]): void {
+    for (let index = values.length - 1; index >= 0; index -= 1) {
+      this.front.push(values[index]!);
+    }
+  }
+
+  drain(): T[] {
+    this.moveBackToFront();
+    const drained: T[] = [];
+    while (this.front.length > 0) {
+      drained.push(this.front.pop()!);
+    }
+    return drained;
+  }
+
+  clear(): void {
+    this.front.length = 0;
+    this.back.length = 0;
+  }
+
+  private moveBackToFront(): void {
+    if (this.front.length > 0 || this.back.length === 0) return;
+    for (let index = this.back.length - 1; index >= 0; index -= 1) {
+      this.front.push(this.back[index]!);
+    }
+    this.back.length = 0;
+  }
 }
 
 function retainRecord(record: ServiceMailboxRecord): ServiceMailboxRecord {

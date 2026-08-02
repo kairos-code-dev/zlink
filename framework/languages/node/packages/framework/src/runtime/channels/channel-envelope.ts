@@ -74,13 +74,14 @@ export function encodeChannelEnvelopeParts(
 ): readonly MessageLike[] {
   const encoded = encodePayload(payload, codecs);
   const flow = currentOrCreateFlow('Application', createFlow);
+  const envelopeCorrelationId = correlationIdForOutboundKind(kind, correlationId);
   const header: ZLinkChannelEnvelopeHeader = {
     formatMarker: ZLINK_CHANNEL_FORMAT_MARKER,
     kind,
     channelName,
     messageName: resolveFrameworkPacketName(payload, packetName, 'Channel'),
     contentType: encoded.contentType,
-    correlationId: correlationId ?? newChannelCorrelationId(),
+    correlationId: envelopeCorrelationId,
     deadline: timeoutMs === undefined ? null : new Date(Date.now() + timeoutMs).toISOString(),
     topic: topic ?? null,
     errorCode: null,
@@ -108,7 +109,7 @@ export function encodeChannelPublishEnvelopeParts(
     channelName,
     messageName: resolveFrameworkPacketName(payload, packetName, 'Channel'),
     contentType: encoded.contentType,
-    correlationId: randomUUID().replaceAll('-', ''),
+    correlationId: null,
     deadline: null,
     topic,
     errorCode: null,
@@ -371,13 +372,15 @@ function validateChannelHeader(value: unknown): ZLinkChannelEnvelopeHeader {
   if ((flowId === undefined) !== (flowOrigin === undefined)) {
     throw new ZLinkConfigurationException('Channel envelope flowId and flowOrigin must both be present or absent.');
   }
+  const correlationId = requireNullableString(header.correlationId, 'correlationId');
+  validateCorrelationForKind(kind, correlationId);
   return {
     formatMarker: ZLINK_CHANNEL_FORMAT_MARKER,
     kind,
     channelName: requireString(header.channelName, 'channelName'),
     messageName: requireString(header.messageName, 'messageName'),
     contentType,
-    correlationId: requireNullableString(header.correlationId, 'correlationId'),
+    correlationId,
     deadline: requireNullableString(header.deadline, 'deadline'),
     topic: requireNullableString(header.topic, 'topic'),
     errorCode: header.errorCode === undefined ? null : requireNullableString(header.errorCode, 'errorCode'),
@@ -387,6 +390,69 @@ function validateChannelHeader(value: unknown): ZLinkChannelEnvelopeHeader {
     flowId,
     flowOrigin
   };
+}
+
+function correlationIdForOutboundKind(
+  kind: ZLinkChannelMessageKind,
+  correlationId: string | null | undefined
+): string | null {
+  if (kind === ZLinkChannelMessageKind.Request) {
+    const selected = correlationId ?? newChannelCorrelationId();
+    validateCorrelationValue(selected);
+    return selected;
+  }
+  if (kind === ZLinkChannelMessageKind.Command || kind === ZLinkChannelMessageKind.Publish) {
+    if (correlationId !== undefined && correlationId !== null) {
+      throw new ZLinkConfigurationException(
+        `Channel ${kind === ZLinkChannelMessageKind.Publish ? 'publish' : 'send'} must not contain correlationId.`
+      );
+    }
+    return null;
+  }
+  const selected = correlationId ?? null;
+  validateCorrelationForKind(kind, selected);
+  return selected;
+}
+
+function validateCorrelationForKind(
+  kind: ZLinkChannelMessageKind,
+  correlationId: string | null
+): void {
+  if (kind === ZLinkChannelMessageKind.Request
+    || kind === ZLinkChannelMessageKind.Response
+    || kind === ZLinkChannelMessageKind.Error) {
+    if (correlationId === null) {
+      throw new ZLinkConfigurationException(
+        `Channel ${channelKindName(kind)} requires correlationId.`
+      );
+    }
+    validateCorrelationValue(correlationId);
+    return;
+  }
+  if (correlationId !== null) {
+    throw new ZLinkConfigurationException(
+      `Channel ${channelKindName(kind)} must not contain correlationId.`
+    );
+  }
+}
+
+function validateCorrelationValue(correlationId: string): void {
+  const byteLength = Buffer.byteLength(correlationId, 'utf8');
+  if (byteLength < 1 || byteLength > 64 || !/^[\x00-\x7f]*$/.test(correlationId)) {
+    throw new ZLinkConfigurationException(
+      'Channel envelope correlationId must be a non-empty ASCII value of at most 64 bytes.'
+    );
+  }
+}
+
+function channelKindName(kind: ZLinkChannelMessageKind): string {
+  switch (kind) {
+    case ZLinkChannelMessageKind.Request: return 'request';
+    case ZLinkChannelMessageKind.Response: return 'response';
+    case ZLinkChannelMessageKind.Command: return 'send';
+    case ZLinkChannelMessageKind.Publish: return 'publish';
+    case ZLinkChannelMessageKind.Error: return 'error';
+  }
 }
 
 function applicationMetadataRecord(metadata: ReadonlyMap<string, string>): Readonly<Record<string, string>> {

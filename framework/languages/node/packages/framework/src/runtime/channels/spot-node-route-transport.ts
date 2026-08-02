@@ -11,7 +11,7 @@ import {
 import { ZLinkSpotRouteTargetResolver } from './spot-route-target-resolver';
 
 export class ZLinkSpotNodeRouteTransport {
-  private readonly routerQueues = new Map<string, Promise<void>>();
+  private readonly routerQueues = new Map<string, RouterOperationQueue>();
 
   constructor(
     private readonly registration: ZLinkFrameworkRegistration,
@@ -140,54 +140,27 @@ export class ZLinkSpotNodeRouteTransport {
   }
 
   private enqueue<T>(routerChannelId: string, operation: () => Promise<T> | T): Promise<T> {
-    const previous = this.routerQueues.get(routerChannelId) ?? Promise.resolve();
-    let releaseCurrent: () => void = () => {};
-    const current = new Promise<void>((resolve) => {
-      releaseCurrent = resolve;
-    });
-    const queued = previous.catch(() => undefined).then(() => current);
-    this.routerQueues.set(routerChannelId, queued);
-    return previous
-      .catch(() => undefined)
-      .then(operation)
-      .finally(() => {
-        releaseCurrent();
-        if (this.routerQueues.get(routerChannelId) === queued) {
-          this.routerQueues.delete(routerChannelId);
-        }
-      });
+    return this.queueFor(routerChannelId).enqueue(operation);
   }
 
   private enqueuePhysicalRequest<T>(
     routerChannelId: string,
     operation: (releasePhysical: () => void) => Promise<T>
   ): Promise<T> {
-    const previous = this.routerQueues.get(routerChannelId) ?? Promise.resolve();
-    let releasePhysical: () => void = () => {};
-    const physical = new Promise<void>((resolve) => { releasePhysical = resolve; });
-    const queued = previous.catch(() => undefined).then(() => physical);
-    this.routerQueues.set(routerChannelId, queued);
-    return previous
-      .catch(() => undefined)
-      .then(() => {
-        try {
-          // A submitted request owns the physical route slot until its native
-          // callback arrives.  Abort/timeout only settles the caller's
-          // promise; releasing here would let the next request reuse the slot
-          // while the late reply still belongs to the previous request.
-          return Promise.resolve(operation(releasePhysical));
-        } catch (error) {
-          releasePhysical();
-          throw error;
-        }
-      })
-      .finally(() => {
-        void queued.finally(() => {
-          if (this.routerQueues.get(routerChannelId) === queued) {
-            this.routerQueues.delete(routerChannelId);
-          }
-        });
-      });
+    return this.queueFor(routerChannelId).enqueuePhysical(operation);
+  }
+
+  private queueFor(routerChannelId: string): RouterOperationQueue {
+    const existing = this.routerQueues.get(routerChannelId);
+    if (existing !== undefined) return existing;
+    let queue!: RouterOperationQueue;
+    queue = new RouterOperationQueue(() => {
+      if (this.routerQueues.get(routerChannelId) === queue) {
+        this.routerQueues.delete(routerChannelId);
+      }
+    });
+    this.routerQueues.set(routerChannelId, queue);
+    return queue;
   }
 
   private submitRequest<T>(
@@ -255,5 +228,94 @@ export class ZLinkSpotNodeRouteTransport {
     return new ZLinkConfigurationException(
       `SpotNode router '${routerChannelId}' is not ready for SPOT ${operation}.`
     );
+  }
+}
+
+interface RouterOperation<T> {
+  readonly physical: boolean;
+  readonly run: (releasePhysical: () => void) => Promise<T> | T;
+  readonly resolve: (value: T | PromiseLike<T>) => void;
+  readonly reject: (error: unknown) => void;
+}
+
+/** Serializes one native request slot without linking a tail Promise chain per queued operation. */
+class RouterOperationQueue {
+  private readonly operations: RouterOperation<unknown>[] = [];
+  private head = 0;
+  private running = false;
+
+  constructor(private readonly onIdle: () => void) {}
+
+  enqueue<T>(run: () => Promise<T> | T): Promise<T> {
+    return this.add({
+      physical: false,
+      run: () => run()
+    });
+  }
+
+  enqueuePhysical<T>(run: (releasePhysical: () => void) => Promise<T>): Promise<T> {
+    return this.add({
+      physical: true,
+      run
+    });
+  }
+
+  private add<T>(operation: {
+    readonly physical: boolean;
+    readonly run: (releasePhysical: () => void) => Promise<T> | T;
+  }): Promise<T> {
+    if (this.head > 64 && this.head * 2 >= this.operations.length) {
+      this.operations.splice(0, this.head);
+      this.head = 0;
+    }
+    const result = new Promise<T>((resolve, reject) => {
+      this.operations.push({
+        physical: operation.physical,
+        run: operation.run,
+        resolve: value => resolve(value as T),
+        reject
+      });
+    });
+    this.pump();
+    return result;
+  }
+
+  private pump(): void {
+    if (this.running) return;
+    if (this.head >= this.operations.length) {
+      this.operations.length = 0;
+      this.head = 0;
+      this.onIdle();
+      return;
+    }
+    const operation = this.operations[this.head++];
+    this.running = true;
+    let released = false;
+    const releasePhysical = () => {
+      if (!operation.physical || released) return;
+      released = true;
+      // Native callbacks may be delivered synchronously by a test double. Defer
+      // the next route operation so the current callback can finish first.
+      queueMicrotask(() => this.finish());
+    };
+    let value: Promise<unknown> | unknown;
+    try {
+      value = operation.run(releasePhysical);
+    } catch (error) {
+      operation.reject(error);
+      this.finish();
+      return;
+    }
+    Promise.resolve(value).then(operation.resolve, operation.reject).finally(() => {
+      // A physical request remains the queue owner after caller abort/timeout;
+      // its native callback invokes releasePhysical when the late reply arrives.
+      if (!operation.physical) this.finish();
+    });
+  }
+
+  private finish(): void {
+    if (!this.running) return;
+    this.running = false;
+    this.pump();
   }
 }

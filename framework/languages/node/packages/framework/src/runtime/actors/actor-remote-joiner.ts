@@ -5,8 +5,6 @@ import type {
   ZLinkActor,
   ZLinkMessageSerializer
 } from '../../contracts';
-import {
-} from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkBackendMeshNode, ZLinkMeshCompletionTable } from '../backend';
 import type { ZLinkLocationLifecycle } from '../locations';

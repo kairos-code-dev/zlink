@@ -133,6 +133,12 @@ interface ZLinkPublishSlotWaiter {
   settled: boolean;
 }
 
+interface ZLinkPublishSlotQueue {
+  readonly waiters: Array<ZLinkPublishSlotWaiter | undefined>;
+  head: number;
+  count: number;
+}
+
 export class ZLinkSpotNodeRuntimeManager {
   private readonly meshNodes = new Map<string, ZLinkBackendMeshNode>();
   private readonly meshPumps = new Map<string, ZLinkMeshDispatchPump>();
@@ -144,7 +150,7 @@ export class ZLinkSpotNodeRuntimeManager {
     ReturnType<ZLinkBackendMeshNode['createPublisher']>
   >();
   private readonly activePublishes = new Set<string>();
-  private readonly publishSlotWaiters = new Map<string, ZLinkPublishSlotWaiter[]>();
+  private readonly publishSlotWaiters = new Map<string, ZLinkPublishSlotQueue>();
   private disposed = false;
   private readonly autoConnectLoops: ZLinkAutoConnectLoop[] = [];
   private readonly publishedMeshNodeDescriptors =
@@ -1078,8 +1084,12 @@ export class ZLinkSpotNodeRuntimeManager {
       this.options.registration.spotNodes
         .get(meshName)?.publisherConfig?.sendHighWaterMark ?? 1
     );
-    const waiters = this.publishSlotWaiters.get(meshName) ?? [];
-    if (waiters.length >= waiterCapacity) {
+    const queue = this.publishSlotWaiters.get(meshName) ?? {
+      waiters: [],
+      head: 0,
+      count: 0
+    };
+    if (queue.count >= waiterCapacity) {
       // This call has no bounded executor-admission token. Fail without
       // retaining its payload in a pending work queue.
       return false;
@@ -1094,8 +1104,9 @@ export class ZLinkSpotNodeRuntimeManager {
       if (timeoutMs !== -1) {
         waiter.deadlineMs = Date.now() + Math.max(0, timeoutMs);
       }
-      waiters.push(waiter);
-      this.publishSlotWaiters.set(meshName, waiters);
+      queue.waiters.push(waiter);
+      queue.count += 1;
+      this.publishSlotWaiters.set(meshName, queue);
       if (timeoutMs !== -1) {
         waiter.timeout = setTimeout(() => this.settlePublishSlotWaiter(
           meshName,
@@ -1119,9 +1130,10 @@ export class ZLinkSpotNodeRuntimeManager {
   }
 
   private releasePublishSlot(meshName: string): void {
-    const waiters = this.publishSlotWaiters.get(meshName);
-    while (waiters !== undefined && waiters.length > 0) {
-      const waiter = waiters.shift()!;
+    const queue = this.publishSlotWaiters.get(meshName);
+    while (queue !== undefined && queue.count > 0) {
+      const waiter = this.takePublishSlotWaiter(queue);
+      if (waiter === undefined) continue;
       if (waiter.settled) continue;
       if (waiter.deadlineMs !== undefined && Date.now() >= waiter.deadlineMs) {
         this.cleanupPublishSlotWaiter(waiter);
@@ -1132,7 +1144,7 @@ export class ZLinkSpotNodeRuntimeManager {
       this.cleanupPublishSlotWaiter(waiter);
       waiter.settled = true;
       waiter.resolve(true);
-      if (waiters.length === 0) this.publishSlotWaiters.delete(meshName);
+      if (queue.count === 0) this.publishSlotWaiters.delete(meshName);
       return;
     }
     this.publishSlotWaiters.delete(meshName);
@@ -1164,11 +1176,15 @@ export class ZLinkSpotNodeRuntimeManager {
   }
 
   private removePublishSlotWaiter(meshName: string, waiter: ZLinkPublishSlotWaiter): void {
-    const waiters = this.publishSlotWaiters.get(meshName);
-    if (waiters === undefined) return;
-    const index = waiters.indexOf(waiter);
-    if (index >= 0) waiters.splice(index, 1);
-    if (waiters.length === 0) this.publishSlotWaiters.delete(meshName);
+    const queue = this.publishSlotWaiters.get(meshName);
+    if (queue === undefined) return;
+    const index = queue.waiters.indexOf(waiter, queue.head);
+    if (index >= 0) {
+      queue.waiters[index] = undefined;
+      queue.count -= 1;
+      this.compactPublishSlotWaiters(queue);
+    }
+    if (queue.count === 0) this.publishSlotWaiters.delete(meshName);
   }
 
   private cleanupPublishSlotWaiter(waiter: ZLinkPublishSlotWaiter): void {
@@ -1179,12 +1195,37 @@ export class ZLinkSpotNodeRuntimeManager {
   }
 
   private rejectPublishSlotWaiters(error: unknown): void {
-    for (const [meshName, waiters] of this.publishSlotWaiters) {
-      for (const waiter of [...waiters]) {
+    for (const [meshName, queue] of this.publishSlotWaiters) {
+      let waiter: ZLinkPublishSlotWaiter | undefined;
+      while ((waiter = this.takePublishSlotWaiter(queue)) !== undefined) {
         this.rejectPublishSlotWaiter(meshName, waiter, error);
       }
+      this.publishSlotWaiters.delete(meshName);
     }
     this.activePublishes.clear();
+  }
+
+  private takePublishSlotWaiter(queue: ZLinkPublishSlotQueue): ZLinkPublishSlotWaiter | undefined {
+    while (queue.head < queue.waiters.length && queue.waiters[queue.head] === undefined) {
+      queue.head += 1;
+    }
+    const waiter = queue.waiters[queue.head];
+    if (waiter === undefined) return undefined;
+    queue.waiters[queue.head] = undefined;
+    queue.head += 1;
+    queue.count -= 1;
+    this.compactPublishSlotWaiters(queue);
+    return waiter;
+  }
+
+  private compactPublishSlotWaiters(queue: ZLinkPublishSlotQueue): void {
+    if (queue.count === 0) {
+      queue.waiters.length = 0;
+      queue.head = 0;
+    } else if (queue.head >= 1024 && queue.head * 2 >= queue.waiters.length) {
+      queue.waiters.splice(0, queue.head);
+      queue.head = 0;
+    }
   }
 }
 

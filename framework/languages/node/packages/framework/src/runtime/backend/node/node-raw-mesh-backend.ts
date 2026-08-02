@@ -93,7 +93,9 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     readonly nodeRoutingId?: string;
     readonly lifecycleGeneration?: bigint;
   }>();
-  private readonly completions: PendingCompletion[] = [];
+  private readonly completions: Array<PendingCompletion | undefined> = [];
+  private completionHead = 0;
+  private completionCount = 0;
   private readonly routingId: string;
   private bindEndpoint?: string;
   private runtime?: RawServiceMeshRuntime;
@@ -266,7 +268,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     this.stateful = undefined;
     this.runtime?.close();
     this.runtime = undefined;
-    this.completions.length = 0;
+    this.clearCompletions();
   }
 
   addChannelName(name: string): void {
@@ -465,7 +467,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
       drainingPeerCount: peers.filter(peer => peer.descriptor.state === 'draining').length,
       pendingApplicationMessages: BigInt(this.runtime?.mailbox.pendingMessages('application') ?? 0),
       pendingInfrastructureMessages: BigInt(
-        (this.runtime?.mailbox.pendingMessages('infrastructure') ?? 0) + this.completions.length
+        (this.runtime?.mailbox.pendingMessages('infrastructure') ?? 0) + this.completionCount
       ),
       pendingBytes: BigInt(
         (this.runtime?.mailbox.pendingBytes('application') ?? 0)
@@ -618,7 +620,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     return {
       ok: true,
       hasResidue:
-        this.completions.length > 0
+        this.completionCount > 0
         || (runtime?.mailbox.pendingMessages('infrastructure') ?? 0) > 0
         || (runtime?.mailbox.pendingMessages('application') ?? 0) > 0,
       records: target.records
@@ -1179,7 +1181,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
   private notifyReady(): void {
     const runtime = this.runtime;
     let domains = ReadyDomain.None;
-    if (this.completions.length > 0 || (runtime?.mailbox.pendingMessages('infrastructure') ?? 0) > 0) {
+    if (this.completionCount > 0 || (runtime?.mailbox.pendingMessages('infrastructure') ?? 0) > 0) {
       domains |= ReadyDomain.Infrastructure;
     }
     if ((runtime?.mailbox.pendingMessages('application') ?? 0) > 0) {
@@ -1231,13 +1233,16 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     operationKind: number,
     result: RawServiceRequestResult | ServiceStatefulResult
   ): void {
+    if (this.closed) return;
     this.completions.push({ operationId, operationKind, result });
+    this.completionCount += 1;
     this.readyHandler?.(ReadyDomain.Infrastructure);
   }
 
   private drainCompletions(batch: RawReadyBatch): void {
-    while (!batch.full && this.completions.length > 0) {
-      const completion = this.completions.shift()!;
+    while (!batch.full && this.completionCount > 0) {
+      const completion = this.takeCompletion();
+      if (completion === undefined) continue;
       batch.push(
         {
           ownerKind: ReadyOwnerKind.Node,
@@ -1248,6 +1253,28 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
         new CompletionClaim(completion)
       );
     }
+  }
+
+  private takeCompletion(): PendingCompletion | undefined {
+    const completion = this.completions[this.completionHead];
+    if (completion === undefined) return undefined;
+    this.completions[this.completionHead] = undefined;
+    this.completionHead += 1;
+    this.completionCount -= 1;
+    if (this.completionCount === 0) {
+      this.clearCompletions();
+    } else if (this.completionHead >= 1024
+      && this.completionHead * 2 >= this.completions.length) {
+      this.completions.splice(0, this.completionHead);
+      this.completionHead = 0;
+    }
+    return completion;
+  }
+
+  private clearCompletions(): void {
+    this.completions.length = 0;
+    this.completionHead = 0;
+    this.completionCount = 0;
   }
 
   private drainApplication(batch: RawReadyBatch): void {

@@ -1,10 +1,15 @@
-import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
-import * as os from 'node:os';
+import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException } from '../framework-errors-internal';
 import { Worker } from 'node:worker_threads';
 import type { ZLinkWorkerCall } from '../../contracts';
 import { ZLinkFrameworkException } from '../../contracts';
 import type { ZLinkWorkerOptions } from '../configuration';
 import { ZLinkConfigurationException } from '../configuration';
+import {
+  defaultWorkerMaxThreads,
+  DEFAULT_WORKER_IDLE_TIMEOUT_MS,
+  DEFAULT_WORKER_MIN_THREADS,
+  DEFAULT_WORKER_QUEUE_LENGTH
+} from '../../contracts/Configuration/InternalDefaults';
 import { createAbortError } from '../abort';
 import {
   captureZLinkSpotSerialTurn,
@@ -16,15 +21,27 @@ export type ZLinkCpuWorkerWork<T> = (signal: AbortSignal) => T;
 export type ZLinkIoWorkerWork<T> = (signal: AbortSignal) => Promise<T>;
 
 export interface ZLinkWorkerRuntimeOptions {
+  readonly minThreads: number;
   readonly maxThreads: number;
+  readonly idleTimeoutMs: number;
   readonly maxQueueLength: number;
 }
 
 export function resolveWorkerRuntimeOptions(options?: ZLinkWorkerOptions): ZLinkWorkerRuntimeOptions {
-  return {
-    maxThreads: options?.maxThreads ?? Math.max(2, os.availableParallelism()),
-    maxQueueLength: options?.maxQueueLength ?? 1024
+  const resolved = {
+    minThreads: options?.minThreads ?? DEFAULT_WORKER_MIN_THREADS,
+    maxThreads: options?.maxThreads ?? defaultWorkerMaxThreads(),
+    idleTimeoutMs: options?.idleTimeoutMs ?? DEFAULT_WORKER_IDLE_TIMEOUT_MS,
+    maxQueueLength: options?.maxQueueLength ?? DEFAULT_WORKER_QUEUE_LENGTH
   };
+  requireNonNegativeInteger('Worker minThreads', resolved.minThreads);
+  requirePositiveInteger('Worker maxThreads', resolved.maxThreads);
+  requireNonNegativeInteger('Worker idleTimeoutMs', resolved.idleTimeoutMs);
+  requirePositiveInteger('Worker maxQueueLength', resolved.maxQueueLength);
+  if (resolved.maxThreads < resolved.minThreads) {
+    throw new ZLinkConfigurationException('Worker maxThreads must be greater than or equal to minThreads.');
+  }
+  return resolved;
 }
 
 interface ZLinkCpuJob<T> {
@@ -34,17 +51,38 @@ interface ZLinkCpuJob<T> {
   readonly resolve: (value: T) => void;
   readonly reject: (error: unknown) => void;
   settled: boolean;
+  running: boolean;
+  abortListener?: () => void;
+  activeAbortListener?: () => void;
+  timeout?: ReturnType<typeof setTimeout>;
+  slot?: ZLinkCpuWorkerSlot;
+  abortState?: Int32Array;
 }
 
-/** Runs synchronous CPU functions in a bounded set of worker threads. */
-class ZLinkCpuWorkerPool {
-  private readonly queue: ZLinkCpuJob<unknown>[] = [];
-  private inFlight = 0;
+interface ZLinkCpuWorkerSlot {
+  readonly worker: Worker;
+  job?: ZLinkCpuJob<unknown>;
+  idleTimer?: ReturnType<typeof setTimeout>;
+  terminating: boolean;
+}
 
-  constructor(private readonly options: ZLinkWorkerRuntimeOptions) {}
+/** Runs synchronous CPU functions in an elastic, bounded set of worker threads. */
+class ZLinkCpuWorkerPool {
+  private readonly queue: Array<ZLinkCpuJob<unknown> | undefined> = [];
+  private readonly slots = new Set<ZLinkCpuWorkerSlot>();
+  private queueHead = 0;
+  private queueCount = 0;
+  private inFlight = 0;
+  private pumping = false;
+
+  constructor(private readonly options: ZLinkWorkerRuntimeOptions) {
+    for (let index = 0; index < options.minThreads; index += 1) {
+      this.createSlot();
+    }
+  }
 
   get pendingCount(): number {
-    return this.queue.length;
+    return this.queueCount;
   }
 
   get inFlightCount(): number {
@@ -60,81 +98,251 @@ class ZLinkCpuWorkerPool {
     if (signal?.aborted === true) {
       return Promise.reject(createAbortError());
     }
-    if (this.queue.length >= this.options.maxQueueLength) {
+    if (this.queueCount >= this.options.maxQueueLength) {
       return Promise.reject(workerQueueFull(this.options.maxQueueLength));
     }
     return new Promise<T>((resolve, reject) => {
-      this.queue.push({
+      const job = {
         source: work.toString(),
         timeoutMs,
         signal,
         resolve,
         reject,
-        settled: false
-      } as ZLinkCpuJob<unknown>);
+        settled: false,
+        running: false
+      } as ZLinkCpuJob<unknown>;
+      if (signal !== undefined) {
+        job.abortListener = () => {
+          if (job.settled || job.running) return;
+          job.settled = true;
+          this.removeQueuedJob(job);
+          signal.removeEventListener('abort', job.abortListener!);
+          reject(createAbortError());
+          this.pump();
+        };
+        signal.addEventListener('abort', job.abortListener, { once: true });
+        if (signal.aborted) {
+          job.abortListener();
+          return;
+        }
+      }
+      this.queue.push(job);
+      this.queueCount += 1;
       this.pump();
     });
   }
 
   private pump(): void {
-    while (this.inFlight < this.options.maxThreads && this.queue.length > 0) {
-      const job = this.queue.shift() as ZLinkCpuJob<unknown>;
-      if (job.settled) continue;
-      this.inFlight += 1;
-      this.run(job).finally(() => {
-        this.inFlight -= 1;
-        this.pump();
-      });
+    if (this.pumping) return;
+    this.pumping = true;
+    try {
+      this.ensureMinimumSlots();
+      while (this.queueCount > 0) {
+        const slot = this.findIdleSlot() ?? (
+          this.slots.size < this.options.maxThreads ? this.createSlot() : undefined
+        );
+        if (slot === undefined) return;
+        const job = this.takeQueuedJob();
+        if (job === undefined) return;
+        if (job.settled) continue;
+        this.assign(slot, job);
+      }
+    } finally {
+      this.pumping = false;
     }
   }
 
-  private async run(job: ZLinkCpuJob<unknown>): Promise<void> {
-    const abortState = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
-    const worker = new Worker(CPU_WORKER_SOURCE, {
-      eval: true,
-      workerData: { source: job.source, abortState: abortState.buffer }
-    });
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    let abortListener: (() => void) | undefined;
-    const settle = (complete: () => void): void => {
-      if (job.settled) return;
-      job.settled = true;
-      if (timeout !== undefined) clearTimeout(timeout);
-      if (job.signal !== undefined && abortListener !== undefined) {
-        job.signal.removeEventListener('abort', abortListener);
-      }
-      complete();
-    };
+  private ensureMinimumSlots(): void {
+    while (this.slots.size < this.options.minThreads) {
+      this.createSlot();
+    }
+  }
+
+  private findIdleSlot(): ZLinkCpuWorkerSlot | undefined {
+    for (const slot of this.slots) {
+      if (!slot.terminating && slot.job === undefined) return slot;
+    }
+    return undefined;
+  }
+
+  private createSlot(): ZLinkCpuWorkerSlot {
+    const worker = new Worker(CPU_WORKER_SOURCE, { eval: true });
+    worker.unref();
+    const slot: ZLinkCpuWorkerSlot = { worker, terminating: false };
+    this.slots.add(slot);
+    worker.on('message', (message: CpuWorkerMessage) => this.onWorkerMessage(slot, message));
+    worker.on('error', (error) => this.onWorkerError(slot, error));
+    worker.on('exit', (code) => this.onWorkerExit(slot, code));
+    return slot;
+  }
+
+  private assign(slot: ZLinkCpuWorkerSlot, job: ZLinkCpuJob<unknown>): void {
+    slot.job = job;
+    job.slot = slot;
+    job.running = true;
+    job.abortState = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+    this.inFlight += 1;
+    if (slot.idleTimer !== undefined) {
+      clearTimeout(slot.idleTimer);
+      slot.idleTimer = undefined;
+    }
     if (job.timeoutMs !== undefined) {
-      timeout = setTimeout(() => {
-        Atomics.store(abortState, 0, 1);
-        settle(() => job.reject(workerTimedOut(job.timeoutMs as number)));
+      job.timeout = setTimeout(() => {
+        this.cancelRunningJob(slot, job, workerTimedOut(job.timeoutMs as number));
       }, job.timeoutMs);
     }
     if (job.signal !== undefined) {
-      abortListener = () => {
-        Atomics.store(abortState, 0, 1);
-        settle(() => job.reject(createAbortError()));
+      job.activeAbortListener = () => {
+        this.cancelRunningJob(slot, job, createAbortError());
       };
-      job.signal.addEventListener('abort', abortListener, { once: true });
+      job.signal.addEventListener('abort', job.activeAbortListener, { once: true });
+      if (job.signal.aborted) {
+        job.activeAbortListener();
+        return;
+      }
     }
-    worker.once('message', (message: CpuWorkerMessage) => {
-      if (message.ok) {
-        settle(() => job.resolve(message.value));
-      } else {
-        settle(() => job.reject(workerFailed(deserializeWorkerError(message.error))));
-      }
-    });
-    worker.once('error', (error) => settle(() => job.reject(workerFailed(error))));
-    worker.once('exit', (code) => {
-      if (code !== 0) {
-        settle(() => job.reject(workerFailed(new Error(`CPU worker exited with code ${code}.`))));
-      }
-    });
-    await new Promise<void>((resolve) => worker.once('exit', resolve));
+    try {
+      slot.worker.postMessage({
+        source: job.source,
+        abortState: job.abortState.buffer
+      });
+    } catch (error) {
+      this.terminateSlot(slot);
+      this.finishJob(slot, job, () => job.reject(workerFailed(error)), false);
+    }
   }
-}
 
+  private onWorkerMessage(slot: ZLinkCpuWorkerSlot, message: CpuWorkerMessage): void {
+    const job = slot.job;
+    if (job === undefined || job.settled) return;
+    if (message.ok) {
+      this.finishJob(slot, job, () => job.resolve(message.value), true);
+    } else {
+      this.finishJob(
+        slot,
+        job,
+        () => job.reject(workerFailed(deserializeWorkerError(message.error))),
+        true
+      );
+    }
+  }
+
+  private onWorkerError(slot: ZLinkCpuWorkerSlot, error: Error): void {
+    slot.terminating = true;
+    const job = slot.job;
+    if (job !== undefined && !job.settled) {
+      this.finishJob(slot, job, () => job.reject(workerFailed(error)), false);
+    }
+  }
+
+  private onWorkerExit(slot: ZLinkCpuWorkerSlot, code: number): void {
+    if (slot.idleTimer !== undefined) clearTimeout(slot.idleTimer);
+    slot.idleTimer = undefined;
+    this.slots.delete(slot);
+    const job = slot.job;
+    if (job !== undefined && !job.settled) {
+      this.finishJob(
+        slot,
+        job,
+        () => job.reject(workerFailed(new Error(`CPU worker exited with code ${code}.`))),
+        false
+      );
+    }
+    this.pump();
+  }
+
+  private cancelRunningJob(slot: ZLinkCpuWorkerSlot, job: ZLinkCpuJob<unknown>, error: unknown): void {
+    if (job.settled || slot.job !== job) return;
+    if (job.abortState !== undefined) Atomics.store(job.abortState, 0, 1);
+    this.terminateSlot(slot);
+    this.finishJob(slot, job, () => job.reject(error), false);
+  }
+
+  private terminateSlot(slot: ZLinkCpuWorkerSlot): void {
+    if (slot.terminating) return;
+    slot.terminating = true;
+    void slot.worker.terminate().catch(() => undefined);
+  }
+
+  private finishJob(
+    slot: ZLinkCpuWorkerSlot,
+    job: ZLinkCpuJob<unknown>,
+    complete: () => void,
+    keepSlot: boolean
+  ): void {
+    if (job.settled) return;
+    job.settled = true;
+    job.running = false;
+    if (job.timeout !== undefined) clearTimeout(job.timeout);
+    if (job.signal !== undefined) {
+      if (job.abortListener !== undefined) job.signal.removeEventListener('abort', job.abortListener);
+      if (job.activeAbortListener !== undefined) {
+        job.signal.removeEventListener('abort', job.activeAbortListener);
+      }
+    }
+    job.timeout = undefined;
+    job.abortState = undefined;
+    job.slot = undefined;
+    slot.job = undefined;
+    this.inFlight -= 1;
+    complete();
+    if (keepSlot && !slot.terminating) this.scheduleIdleTermination(slot);
+    this.pump();
+  }
+
+  private scheduleIdleTermination(slot: ZLinkCpuWorkerSlot): void {
+    if (slot.terminating || slot.job !== undefined || this.slots.size <= this.options.minThreads) return;
+    if (slot.idleTimer !== undefined) clearTimeout(slot.idleTimer);
+    slot.idleTimer = setTimeout(() => {
+      slot.idleTimer = undefined;
+      if (slot.job === undefined && !slot.terminating && this.slots.size > this.options.minThreads) {
+        this.terminateSlot(slot);
+      }
+    }, this.options.idleTimeoutMs);
+    slot.idleTimer.unref();
+  }
+
+  private takeQueuedJob(): ZLinkCpuJob<unknown> | undefined {
+    while (this.queueHead < this.queue.length && this.queue[this.queueHead] === undefined) {
+      this.queueHead += 1;
+    }
+    const job = this.queue[this.queueHead];
+    if (job === undefined) return undefined;
+    this.queue[this.queueHead] = undefined;
+    this.queueHead += 1;
+    this.queueCount -= 1;
+    if (this.queueCount === 0) {
+      this.queue.length = 0;
+      this.queueHead = 0;
+    } else if (this.queueHead >= 1024 && this.queueHead * 2 >= this.queue.length) {
+      this.queue.splice(0, this.queueHead);
+      this.queueHead = 0;
+    }
+    return job;
+  }
+
+  private removeQueuedJob(job: ZLinkCpuJob<unknown>): void {
+    for (let index = this.queueHead; index < this.queue.length; index += 1) {
+      if (this.queue[index] !== job) continue;
+      this.queue[index] = undefined;
+      this.queueCount -= 1;
+      if (this.queueCount === 0) {
+        this.queue.length = 0;
+        this.queueHead = 0;
+      } else {
+        while (this.queueHead < this.queue.length && this.queue[this.queueHead] === undefined) {
+          this.queueHead += 1;
+        }
+        if (this.queueHead >= 1024 && this.queueHead * 2 >= this.queue.length) {
+          this.queue.splice(0, this.queueHead);
+          this.queueHead = 0;
+        }
+      }
+      return;
+    }
+  }
+
+}
 interface CpuWorkerMessage {
   readonly ok: boolean;
   readonly value?: unknown;
@@ -142,34 +350,36 @@ interface CpuWorkerMessage {
 }
 
 const CPU_WORKER_SOURCE = String.raw`
-const { parentPort, workerData } = require('node:worker_threads');
-const state = new Int32Array(workerData.abortState);
-const signal = {
-  get aborted() { return Atomics.load(state, 0) !== 0; },
-  get reason() { return this.aborted ? new DOMException('The operation was aborted.', 'AbortError') : undefined; },
-  throwIfAborted() { if (this.aborted) throw this.reason; },
-  addEventListener() {},
-  removeEventListener() {},
-  dispatchEvent() { return false; },
-  onabort: null
-};
-try {
-  const work = (0, eval)('(' + workerData.source + ')');
-  const value = work(signal);
-  if (value !== null && (typeof value === 'object' || typeof value === 'function') && typeof value.then === 'function') {
-    throw new TypeError('runCpuWorker function returned a Promise; use runIoWorker for async work.');
-  }
-  parentPort.postMessage({ ok: true, value });
-} catch (error) {
-  parentPort.postMessage({
-    ok: false,
-    error: {
-      name: error && error.name,
-      message: error && error.message ? error.message : String(error),
-      stack: error && error.stack
+const { parentPort } = require('node:worker_threads');
+parentPort.on('message', ({ source, abortState }) => {
+  const state = new Int32Array(abortState);
+  const signal = {
+    get aborted() { return Atomics.load(state, 0) !== 0; },
+    get reason() { return this.aborted ? new DOMException('The operation was aborted.', 'AbortError') : undefined; },
+    throwIfAborted() { if (this.aborted) throw this.reason; },
+    addEventListener() {},
+    removeEventListener() {},
+    dispatchEvent() { return false; },
+    onabort: null
+  };
+  try {
+    const work = (0, eval)('(' + source + ')');
+    const value = work(signal);
+    if (value !== null && (typeof value === 'object' || typeof value === 'function') && typeof value.then === 'function') {
+      throw new TypeError('runCpuWorker function returned a Promise; use runIoWorker for async work.');
     }
-  });
-}
+    parentPort.postMessage({ ok: true, value });
+  } catch (error) {
+    parentPort.postMessage({
+      ok: false,
+      error: {
+        name: error && error.name,
+        message: error && error.message ? error.message : String(error),
+        stack: error && error.stack
+      }
+    });
+  }
+});
 `;
 
 /** Runs asynchronous I/O functions without consuming a CPU worker thread. */
@@ -342,6 +552,18 @@ function workerFailed(cause: unknown): ZLinkFrameworkException {
     false,
     cause
   );
+}
+
+function requireNonNegativeInteger(label: string, value: number): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new ZLinkConfigurationException(`${label} must be a non-negative safe integer.`);
+  }
+}
+
+function requirePositiveInteger(label: string, value: number): void {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new ZLinkConfigurationException(`${label} must be a positive safe integer.`);
+  }
 }
 
 function deserializeWorkerError(error: CpuWorkerMessage['error']): Error {

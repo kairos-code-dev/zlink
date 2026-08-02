@@ -500,6 +500,28 @@ test('runCpuWorker executes synchronous work on a worker thread', async () => {
   assert.notEqual(workerThreadId, mainThreadId);
 });
 
+test('runCpuWorker reuses an idle worker until the configured idle timeout', async () => {
+  const worker = new framework.ZLinkWorkerRuntime({
+    minThreads: 1,
+    maxThreads: 1,
+    idleTimeoutMs: 100,
+    maxQueueLength: 4
+  });
+  const serial = new framework.ZLinkSpotSerialExecutor();
+  const firstThreadId = await cpuWorkerCall(
+    worker,
+    serial,
+    () => require('node:worker_threads').threadId
+  ).submit();
+  const secondThreadId = await cpuWorkerCall(
+    worker,
+    serial,
+    () => require('node:worker_threads').threadId
+  ).submit();
+
+  assert.equal(secondThreadId, firstThreadId);
+});
+
 test('runCpuWorker rejects async work and enforces its timeout', async () => {
   class WorkerEntrySpot {}
   const fixture = await createEntryFixture(WorkerEntrySpot);
@@ -612,6 +634,29 @@ test('runCpuWorker queue full fails fast with WorkerQueueFull and does not block
   assert.equal(await queuedJob, 'queued');
 });
 
+test('runCpuWorker cancellation removes a queued job before it consumes a worker slot', async () => {
+  const worker = new framework.ZLinkWorkerRuntime({ maxThreads: 1, maxQueueLength: 2 });
+  const serial = new framework.ZLinkSpotSerialExecutor();
+  const longJob = cpuWorkerCall(worker, serial, () => {
+    const deadline = Date.now() + 80;
+    while (Date.now() < deadline) { /* occupy the CPU worker */ }
+    return 'long';
+  }).submit();
+  await waitFor(() => worker.inFlightCount === 1);
+
+  const controller = new AbortController();
+  const cancelledJob = cpuWorkerCall(worker, serial, () => 'cancelled').submit(controller.signal);
+  controller.abort();
+  await assert.rejects(
+    () => cancelledJob,
+    (error) => error?.name === 'AbortError'
+  );
+
+  const nextJob = cpuWorkerCall(worker, serial, () => 'next').submit();
+  assert.equal(await longJob, 'long');
+  assert.equal(await nextJob, 'next');
+});
+
 test('runIoWorker timeout fails the caller and drops the late completion without user callbacks', async () => {
   const worker = new framework.ZLinkWorkerRuntime({ maxThreads: 2, maxQueueLength: 16 });
   const serial = new framework.ZLinkSpotSerialExecutor();
@@ -714,19 +759,26 @@ test('runIoWorker call accepts only one terminator', async () => {
 test('worker options are accepted on the framework options builder and validated', () => {
   const options = framework.createFrameworkOptions((builder) => {
     builder.configureWorker({
+      minThreads: 0,
       maxThreads: 8,
+      idleTimeoutMs: 30_000,
       maxQueueLength: 1024
     });
   });
   assert.deepEqual(options.worker, {
+    minThreads: 0,
     maxThreads: 8,
+    idleTimeoutMs: 30_000,
     maxQueueLength: 1024
   });
   const registration = framework.createFrameworkRegistration(options);
   assert.deepEqual(registration.worker, options.worker);
 
   for (const invalid of [
+    { minThreads: -1, maxThreads: 1, idleTimeoutMs: 0, maxQueueLength: 1 },
     { maxThreads: 0 },
+    { minThreads: 2, maxThreads: 1, idleTimeoutMs: 0, maxQueueLength: 1 },
+    { idleTimeoutMs: -1 },
     { maxQueueLength: 0 }
   ]) {
     assert.throws(

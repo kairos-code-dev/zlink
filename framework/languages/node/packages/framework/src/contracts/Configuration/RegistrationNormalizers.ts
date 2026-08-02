@@ -16,9 +16,29 @@ import type {
   ZLinkLocationRegistration,
   ZLinkRouteChannelOptions,
   ZLinkSpotNodeOptions,
-  ZLinkStreamNodeOptions
+  ZLinkStreamNodeOptions,
+  ZLinkWorkerOptions
 } from './RegistrationTypes';
 import type { ZLinkNetworkOptions } from './Builders';
+import {
+  defaultWorkerMaxThreads,
+  DEFAULT_WORKER_IDLE_TIMEOUT_MS,
+  DEFAULT_WORKER_MIN_THREADS,
+  DEFAULT_WORKER_QUEUE_LENGTH
+} from './InternalDefaults';
+
+export function normalizeWorkerOptions(
+  value: ZLinkFrameworkRegistrationOptions['worker']
+): ZLinkWorkerOptions | undefined {
+  if (value === undefined) return undefined;
+  const partial = value as Partial<ZLinkWorkerOptions>;
+  return {
+    minThreads: partial.minThreads ?? DEFAULT_WORKER_MIN_THREADS,
+    maxThreads: partial.maxThreads ?? defaultWorkerMaxThreads(),
+    idleTimeoutMs: partial.idleTimeoutMs ?? DEFAULT_WORKER_IDLE_TIMEOUT_MS,
+    maxQueueLength: partial.maxQueueLength ?? DEFAULT_WORKER_QUEUE_LENGTH
+  };
+}
 
 export function normalizeNetworkOptions(
   value: ZLinkFrameworkRegistrationOptions['network']

@@ -413,7 +413,8 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
       clearTimeout(timer);
     }
     state.result = result;
-    for (const resolve of state.waiters.splice(0)) resolve(result);
+    for (const resolve of state.waiters) resolve(result);
+    state.waiters.length = 0;
     return result;
   }
 
@@ -465,7 +466,8 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
     }
     for (const [, state] of entries) {
       state.result = result;
-      for (const resolve of state.waiters.splice(0)) resolve(result);
+      for (const resolve of state.waiters) resolve(result);
+      state.waiters.length = 0;
     }
     return result;
   }
@@ -632,8 +634,12 @@ export class ZLinkRetiringRollbackError extends Error {
 }
 
 class ZLinkMeshStatusQueue implements AsyncIterable<ZLinkRouteMeshStatus>, AsyncIterator<ZLinkRouteMeshStatus> {
-  private readonly values: ZLinkRouteMeshStatus[] = [];
-  private readonly waiters: Array<(result: IteratorResult<ZLinkRouteMeshStatus>) => void> = [];
+  private readonly values: Array<ZLinkRouteMeshStatus | undefined> = [];
+  private valuesHead = 0;
+  private valuesCount = 0;
+  private readonly waiters: Array<((result: IteratorResult<ZLinkRouteMeshStatus>) => void) | undefined> = [];
+  private waitersHead = 0;
+  private waitersCount = 0;
   private closed = false;
 
   constructor(
@@ -647,10 +653,13 @@ class ZLinkMeshStatusQueue implements AsyncIterable<ZLinkRouteMeshStatus>, Async
   [Symbol.asyncIterator](): AsyncIterator<ZLinkRouteMeshStatus> { return this; }
 
   next(): Promise<IteratorResult<ZLinkRouteMeshStatus>> {
-    const value = this.values.shift();
+    const value = this.takeValue();
     if (value !== undefined) return Promise.resolve({ done: false, value });
     if (this.closed) return Promise.resolve({ done: true, value: undefined });
-    return new Promise((resolve) => this.waiters.push(resolve));
+    return new Promise((resolve) => {
+      this.waiters.push(resolve);
+      this.waitersCount += 1;
+    });
   }
 
   return(): Promise<IteratorResult<ZLinkRouteMeshStatus>> {
@@ -660,29 +669,73 @@ class ZLinkMeshStatusQueue implements AsyncIterable<ZLinkRouteMeshStatus>, Async
 
   push(value: ZLinkRouteMeshStatus): void {
     if (this.closed) return;
-    const waiter = this.waiters.shift();
+    const waiter = this.takeWaiter();
     if (waiter !== undefined) {
       waiter({ done: false, value });
       return;
     }
-    if (this.values.length === this.capacity) this.values.shift();
+    if (this.valuesCount === this.capacity) this.takeValue();
     this.values.push(value);
+    this.valuesCount += 1;
   }
 
   close(): void {
     if (this.closed) return;
     this.closed = true;
     this.remove();
-    for (const resolve of this.waiters.splice(0)) resolve({ done: true, value: undefined });
+    let waiter: ((result: IteratorResult<ZLinkRouteMeshStatus>) => void) | undefined;
+    while ((waiter = this.takeWaiter()) !== undefined) {
+      waiter({ done: true, value: undefined });
+    }
   }
 
   seal(value: ZLinkRouteMeshStatus): void {
     if (this.closed) return;
-    this.values.length = 0;
-    const waiter = this.waiters.shift();
+    this.clearValues();
+    const waiter = this.takeWaiter();
     if (waiter !== undefined) waiter({ done: false, value });
-    else this.values.push(value);
+    else {
+      this.values.push(value);
+      this.valuesCount = 1;
+    }
     this.close();
+  }
+
+  private takeValue(): ZLinkRouteMeshStatus | undefined {
+    if (this.valuesCount === 0) return undefined;
+    const value = this.values[this.valuesHead];
+    this.values[this.valuesHead] = undefined;
+    this.valuesHead += 1;
+    this.valuesCount -= 1;
+    if (this.valuesCount === 0) {
+      this.clearValues();
+    } else if (this.valuesHead >= 1024 && this.valuesHead * 2 >= this.values.length) {
+      this.values.splice(0, this.valuesHead);
+      this.valuesHead = 0;
+    }
+    return value;
+  }
+
+  private takeWaiter(): ((result: IteratorResult<ZLinkRouteMeshStatus>) => void) | undefined {
+    if (this.waitersCount === 0) return undefined;
+    const waiter = this.waiters[this.waitersHead];
+    this.waiters[this.waitersHead] = undefined;
+    this.waitersHead += 1;
+    this.waitersCount -= 1;
+    if (this.waitersCount === 0) {
+      this.waiters.length = 0;
+      this.waitersHead = 0;
+    } else if (this.waitersHead >= 1024 && this.waitersHead * 2 >= this.waiters.length) {
+      this.waiters.splice(0, this.waitersHead);
+      this.waitersHead = 0;
+    }
+    return waiter;
+  }
+
+  private clearValues(): void {
+    this.values.length = 0;
+    this.valuesHead = 0;
+    this.valuesCount = 0;
   }
 }
 

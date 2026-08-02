@@ -16,8 +16,15 @@ interface ZLinkPendingSubmitOptions {
 }
 
 export class ZLinkAsyncSubmitter {
-  private readonly queue: ZLinkPendingSubmit<unknown>[] = [];
-  private readonly capacityWaiters: ZLinkPendingSubmit<unknown>[] = [];
+  // These queues are mutated on the Node event loop, but completions can arrive
+  // out of order. Keep tombstones instead of shifting the backing array on every
+  // completion; a bounded compaction happens only after the head has advanced.
+  private readonly queue: Array<ZLinkPendingSubmit<unknown> | undefined> = [];
+  private queueHead = 0;
+  private queueSize = 0;
+  private readonly capacityWaiters: Array<ZLinkPendingSubmit<unknown> | undefined> = [];
+  private capacityWaiterHead = 0;
+  private capacityWaiterSize = 0;
   private readonly active = new Set<ZLinkPendingSubmit<unknown>>();
   private requestActive = false;
   private readonly timeoutMs: number | undefined;
@@ -105,11 +112,11 @@ export class ZLinkAsyncSubmitter {
       this.rejectOneWaySubmission(pending, runtimeShutdownError());
     }
     if (this.pendingQueueLength() >= this.capacity) {
-      this.capacityWaiters.push(pending as ZLinkPendingSubmit<unknown>);
+      this.enqueueCapacityWaiter(pending as ZLinkPendingSubmit<unknown>);
       this.finishOneWaySubmission(pending);
       return;
     }
-    this.queue.push(pending as ZLinkPendingSubmit<unknown>);
+    this.enqueuePending(pending as ZLinkPendingSubmit<unknown>);
     this.consumeReadyCredit();
     this.finishOneWaySubmission(pending);
   }
@@ -139,7 +146,11 @@ export class ZLinkAsyncSubmitter {
     this.readyCredit = false;
     const error = runtimeShutdownError();
     this.queue.length = 0;
+    this.queueHead = 0;
+    this.queueSize = 0;
     this.capacityWaiters.length = 0;
+    this.capacityWaiterHead = 0;
+    this.capacityWaiterSize = 0;
     for (const pending of this.active) {
       pending.reject(error);
     }
@@ -188,16 +199,16 @@ export class ZLinkAsyncSubmitter {
       pending.reject(runtimeShutdownError());
       return pending.promise;
     }
-    if (this.queue.length >= this.capacity) {
-      if (this.capacityWaiters.length >= this.waiterCapacity) {
+    if (this.pendingQueueLength() >= this.capacity) {
+      if (this.capacityWaiterSize >= this.waiterCapacity) {
         pending.reject(hardOverflowError());
         return pending.promise;
       }
-      this.capacityWaiters.push(pending as ZLinkPendingSubmit<unknown>);
+      this.enqueueCapacityWaiter(pending as ZLinkPendingSubmit<unknown>);
       return pending.promise;
     }
 
-    this.queue.push(pending as ZLinkPendingSubmit<unknown>);
+    this.enqueuePending(pending as ZLinkPendingSubmit<unknown>);
     this.consumeReadyCredit();
     return pending.promise;
   }
@@ -229,7 +240,8 @@ export class ZLinkAsyncSubmitter {
     if (this.disposed) {
       return;
     }
-    if (this.queue.length === 0 || (this.queue[0].isRequest && this.requestActive)) {
+    const pending = this.peekPending();
+    if (pending === undefined || (pending.isRequest && this.requestActive)) {
       this.readyCredit = true;
       return;
     }
@@ -237,10 +249,11 @@ export class ZLinkAsyncSubmitter {
   }
 
   private consumeReadyCredit(): void {
-    if (!this.readyCredit || this.queue.length === 0) {
+    const pending = this.peekPending();
+    if (!this.readyCredit || pending === undefined) {
       return;
     }
-    if (this.queue[0].isRequest && this.requestActive) {
+    if (pending.isRequest && this.requestActive) {
       return;
     }
     this.readyCredit = false;
@@ -248,10 +261,11 @@ export class ZLinkAsyncSubmitter {
   }
 
   private retryOne(): void {
-    if (this.disposed || this.queue.length === 0) {
+    if (this.disposed) {
       return;
     }
-    const pending = this.queue[0];
+    const pending = this.peekPending();
+    if (pending === undefined) return;
     if (!this.trySubmitPending(pending)) {
       return;
     }
@@ -286,7 +300,7 @@ export class ZLinkAsyncSubmitter {
   }
 
   private pendingQueueLength(): number {
-    return this.queue.length;
+    return this.queueSize;
   }
 
   private rejectHardOverflow<TReply>(
@@ -294,8 +308,8 @@ export class ZLinkAsyncSubmitter {
     onDiscard: (() => void) | undefined,
     overflowError: () => Error = hardOverflowError
   ): Promise<TReply> | undefined {
-    if (this.queue.length < this.capacity
-      || this.capacityWaiters.length < this.waiterCapacity) {
+    if (this.queueSize < this.capacity
+      || this.capacityWaiterSize < this.waiterCapacity) {
       return undefined;
     }
     try {
@@ -322,22 +336,103 @@ export class ZLinkAsyncSubmitter {
   }
 
   private removeQueued(pending: ZLinkPendingSubmit<unknown>): void {
-    const index = this.queue.indexOf(pending);
-    if (index >= 0) this.queue.splice(index, 1);
+    for (let index = this.queueHead; index < this.queue.length; index += 1) {
+      if (this.queue[index] !== pending) continue;
+      this.queue[index] = undefined;
+      this.queueSize -= 1;
+      this.advancePendingHead();
+      this.compactPendingQueue();
+      return;
+    }
   }
 
   private removeCapacityWaiter(pending: ZLinkPendingSubmit<unknown>): void {
-    const index = this.capacityWaiters.indexOf(pending);
-    if (index >= 0) this.capacityWaiters.splice(index, 1);
+    for (let index = this.capacityWaiterHead; index < this.capacityWaiters.length; index += 1) {
+      if (this.capacityWaiters[index] !== pending) continue;
+      this.capacityWaiters[index] = undefined;
+      this.capacityWaiterSize -= 1;
+      this.advanceCapacityWaiterHead();
+      this.compactCapacityWaiters();
+      return;
+    }
   }
 
   private admitCapacityWaiters(): void {
-    while (!this.disposed && this.queue.length < this.capacity && this.capacityWaiters.length > 0) {
-      const pending = this.capacityWaiters.shift()!;
+    while (!this.disposed && this.pendingQueueLength() < this.capacity && this.capacityWaiterSize > 0) {
+      const pending = this.takeCapacityWaiter();
+      if (pending === undefined) continue;
       if (!this.active.has(pending)) continue;
-      this.queue.push(pending);
+      this.enqueuePending(pending);
     }
     this.consumeReadyCredit();
+  }
+
+  private enqueuePending(pending: ZLinkPendingSubmit<unknown>): void {
+    this.queue.push(pending);
+    this.queueSize += 1;
+  }
+
+  private enqueueCapacityWaiter(pending: ZLinkPendingSubmit<unknown>): void {
+    this.capacityWaiters.push(pending);
+    this.capacityWaiterSize += 1;
+  }
+
+  private peekPending(): ZLinkPendingSubmit<unknown> | undefined {
+    this.advancePendingHead();
+    return this.queue[this.queueHead];
+  }
+
+  private takeCapacityWaiter(): ZLinkPendingSubmit<unknown> | undefined {
+    this.advanceCapacityWaiterHead();
+    const pending = this.capacityWaiters[this.capacityWaiterHead];
+    if (pending === undefined) return undefined;
+    this.capacityWaiters[this.capacityWaiterHead] = undefined;
+    this.capacityWaiterHead += 1;
+    this.capacityWaiterSize -= 1;
+    this.compactCapacityWaiters();
+    return pending;
+  }
+
+  private advancePendingHead(): void {
+    while (this.queueHead < this.queue.length && this.queue[this.queueHead] === undefined) {
+      this.queueHead += 1;
+    }
+  }
+
+  private advanceCapacityWaiterHead(): void {
+    while (
+      this.capacityWaiterHead < this.capacityWaiters.length
+      && this.capacityWaiters[this.capacityWaiterHead] === undefined
+    ) {
+      this.capacityWaiterHead += 1;
+    }
+  }
+
+  private compactPendingQueue(): void {
+    if (this.queueSize === 0) {
+      this.queue.length = 0;
+      this.queueHead = 0;
+      return;
+    }
+    if (this.queueHead >= 1024 && this.queueHead * 2 >= this.queue.length) {
+      this.queue.splice(0, this.queueHead);
+      this.queueHead = 0;
+    }
+  }
+
+  private compactCapacityWaiters(): void {
+    if (this.capacityWaiterSize === 0) {
+      this.capacityWaiters.length = 0;
+      this.capacityWaiterHead = 0;
+      return;
+    }
+    if (
+      this.capacityWaiterHead >= 1024
+      && this.capacityWaiterHead * 2 >= this.capacityWaiters.length
+    ) {
+      this.capacityWaiters.splice(0, this.capacityWaiterHead);
+      this.capacityWaiterHead = 0;
+    }
   }
 }
 

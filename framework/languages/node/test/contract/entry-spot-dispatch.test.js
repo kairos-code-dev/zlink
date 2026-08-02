@@ -502,7 +502,7 @@ test('Entry Spot routed bound session command decodes registered channel seriali
     channelName: 'bingo.room.route',
     messageName: '__zlink.actor.bound_session.send',
     contentType,
-    correlationId: 'corr',
+    correlationId: null,
     deadline: null,
     topic: null,
     errorCode: null,

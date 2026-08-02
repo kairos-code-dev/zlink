@@ -11,8 +11,6 @@ import type {
   ZLinkLocationOwnerToken,
   ZLinkObjectReserveResult
 } from '../../contracts/Locations';
-import {
-} from '../../contracts';
 import type {
   ZLinkAuthorityStore,
   ZLinkObjectCreationStore

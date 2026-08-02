@@ -8,8 +8,14 @@ export interface ZLinkPostCommitActorLocationOptions {
   readonly signal?: AbortSignal;
 }
 
+interface ActorOperationQueue {
+  readonly operations: Array<(() => Promise<void>) | undefined>;
+  head: number;
+  count: number;
+}
+
 export class ZLinkPostCommitActorLocation {
-  private readonly queues = new Map<string, Array<() => Promise<void>>>();
+  private readonly queues = new Map<string, ActorOperationQueue>();
   private readonly tasks = new Map<string, Promise<void>>();
 
   constructor(private readonly options: ZLinkPostCommitActorLocationOptions) {}
@@ -53,8 +59,9 @@ export class ZLinkPostCommitActorLocation {
   }
 
   private enqueue(actorId: string, operation: () => Promise<void>): void {
-    const queue = this.queues.get(actorId) ?? [];
-    queue.push(operation);
+    const queue = this.queues.get(actorId) ?? { operations: [], head: 0, count: 0 };
+    queue.operations.push(operation);
+    queue.count += 1;
     this.queues.set(actorId, queue);
     if (this.tasks.has(actorId)) {
       return;
@@ -66,14 +73,15 @@ export class ZLinkPostCommitActorLocation {
   private async run(actorId: string): Promise<void> {
     const retryDelay = new ZLinkActorRetryDelay();
     while (this.options.signal?.aborted !== true) {
-      const operation = this.queues.get(actorId)?.[0];
-      if (operation === undefined) {
+      const queue = this.queues.get(actorId);
+      const operation = queue?.operations[queue.head];
+      if (queue === undefined || operation === undefined) {
         this.queues.delete(actorId);
         return;
       }
       try {
         await operation();
-        this.queues.get(actorId)?.shift();
+        this.complete(queue);
         retryDelay.reset();
       } catch (error) {
         this.options.reportError?.(error);
@@ -81,6 +89,19 @@ export class ZLinkPostCommitActorLocation {
           return;
         }
       }
+    }
+  }
+
+  private complete(queue: ActorOperationQueue): void {
+    queue.operations[queue.head] = undefined;
+    queue.head += 1;
+    queue.count -= 1;
+    if (queue.count === 0) {
+      queue.operations.length = 0;
+      queue.head = 0;
+    } else if (queue.head >= 1024 && queue.head * 2 >= queue.operations.length) {
+      queue.operations.splice(0, queue.head);
+      queue.head = 0;
     }
   }
 }

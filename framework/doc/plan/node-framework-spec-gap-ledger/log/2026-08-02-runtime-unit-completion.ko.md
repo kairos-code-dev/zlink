@@ -252,3 +252,48 @@ E2E와 sample은 사용자가 지정한 후속 범위이므로 이번 수정과 
 `npm test`의 남은 실패는 runtime unit failure가 아니라 scenario header inventory gate이며,
 현재 working tree의 171개 scenario와 gate가 기대하는 빈 inventory가 일치하지 않는 문제다.
 문서 계약과 E2E/sample을 수정해 이 gate를 닫는 작업은 별도 범위로 남긴다.
+
+## 비-E2E runtime·contract 재검증 — 2026-08-02 후속
+
+이번 후속 범위는 사용자가 지정한 대로 E2E scenario source, sample과 process runner를 제외하고
+Node Framework production runtime, public contract, package와 unit·contract test에 한정했다.
+
+### 반영한 runtime·설계 변경
+
+- 반복적인 `shift()`, `unshift()`와 `splice(0, ...)`로 큐를 앞에서 재배열하던 경로를 head/count와
+  tombstone 방식으로 바꿨다. 대상은 async submit, dispatch budget, admission, stream session,
+  inbound observer, received message, browser websocket, topology projection, mesh status,
+  stateful mailbox follow, event-loop resource, raw mesh completion, stream capacity, actor
+  post-commit queue와 SpotNode publish waiter다. compaction은 누적 head가 충분히 커진 경우에만
+  실행한다.
+- `runCpuWorker`는 작업마다 Worker를 만들고 버리는 방식에서 bounded elastic pool로 바꿨다.
+  `minThreads`를 warm baseline으로 유지하고 `maxThreads`까지 필요할 때 확장하며,
+  `idleTimeoutMs` 후 baseline을 초과한 유휴 Worker를 종료한다. queued cancellation은 slot을
+  소비하지 않고, 실행 중 timeout/cancellation은 해당 Worker를 종료해 비협조적인 CPU 작업이
+  자원을 점유하지 않도록 했다.
+- worker 등록·runtime 양쪽에서 `minThreads`, `maxThreads`, `idleTimeoutMs`, `maxQueueLength`를
+  같은 기본값과 검증 규칙으로 정규화했다. 기본값은 `0`, `max(2, availableParallelism())`,
+  `30000`, `1024`이며 `maxThreads >= minThreads`를 검증한다.
+- Nest options builder에서 runtime 내부 codec/duplicate-name helper를 prototype 표면에서
+  제거하고 module-local helper로 숨겼다. contract test는 허용 member의 exact set을 검사한다.
+- generated `ActorRefWire`에 의존하던 stream connector codec test를 현재 generated contract인
+  `AuthenticateReq`/`AuthenticatePlayerRes` round-trip으로 정렬했다.
+- Node workflow의 common guide 변경 경로를 push와 pull request filter에 포함했다.
+
+### fresh evidence
+
+| Gate | 결과 |
+|---|---:|
+| `npm run build` | PASS |
+| `npm run typecheck` | PASS |
+| `npm run lint` | PASS |
+| E2E·sample·native integration을 제외한 contract inventory 59 files | 994/994 PASS |
+| `contract-surface`, `nestjs-module`, `documentation-regression`, `stream-connector-codecs` | 121/121 PASS |
+| `npm ls @zlink-systems/zlink --all` | 11.1.0 전 workspace clean |
+| `bash scripts/verify_packaged_contract.sh` | `NODE_PACKAGED_CONTRACT_PASS packages=7 browser=esm server=commonjs` |
+| Node·progress 범위 `git diff --check` | PASS |
+
+`npm run verify:ci`는 build·typecheck·lint·Chromium과 비-E2E test를 통과한 뒤
+`test/contract/e2e-scenario-header-gate.test.js`에서 common scenario 171개 누락을 보고하며
+exit 1로 끝났다. 이 결과는 이번 비-E2E 변경의 실패가 아니라 사용자가 제외한 E2E inventory
+gate가 아직 열려 있음을 뜻한다. E2E source·runner·sample을 수정해 이 gate를 우회하지 않았다.

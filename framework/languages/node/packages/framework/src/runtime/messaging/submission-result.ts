@@ -1,7 +1,4 @@
 import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
-import {
-} from '../../contracts';
-
 export enum ZLinkSubmitStatus {
   Submitted = 'submitted',
   Backpressured = 'backpressured',

@@ -27,7 +27,9 @@ export class ZLinkInboundDispatchBudget {
   private activeBytes = 0n;
   private pendingCompletionSends = 0n;
   private activeCompletionSends = 0n;
-  private readonly completionWaiters: Array<() => void> = [];
+  private readonly completionWaiters: Array<(() => void) | undefined> = [];
+  private completionWaiterHead = 0;
+  private completionWaiterCount = 0;
   private readonly pauseListeners = new Set<() => void>();
   private readonly resumeListeners = new Set<() => void>();
 
@@ -127,11 +129,17 @@ export class ZLinkInboundDispatchBudget {
             resolve();
           };
           const abort = () => {
-            const index = this.completionWaiters.indexOf(wake);
-            if (index >= 0) this.completionWaiters.splice(index, 1);
+            const index = this.completionWaiters.indexOf(wake, this.completionWaiterHead);
+            if (index >= 0) {
+              this.completionWaiters[index] = undefined;
+              this.completionWaiterCount -= 1;
+              this.advanceCompletionWaiterHead();
+              this.compactCompletionWaiters();
+            }
             reject(signal?.reason ?? new Error('Completion send admission was cancelled.'));
           };
           this.completionWaiters.push(wake);
+          this.completionWaiterCount += 1;
           signal?.addEventListener('abort', abort, { once: true });
           if (signal?.aborted === true) abort();
         });
@@ -144,7 +152,7 @@ export class ZLinkInboundDispatchBudget {
         released = true;
         this.activeCompletionSends -= 1n;
         this.pendingCompletionSends -= 1n;
-        this.completionWaiters.shift()?.();
+        this.takeCompletionWaiter()?.();
       };
     } finally {
       if (!admitted) this.pendingCompletionSends -= 1n;
@@ -161,6 +169,41 @@ export class ZLinkInboundDispatchBudget {
       pendingCompletionSends: this.pendingCompletionSends,
       completionSendLimit: COMPLETION_SEND_LIMIT
     };
+  }
+
+  private takeCompletionWaiter(): (() => void) | undefined {
+    this.advanceCompletionWaiterHead();
+    const waiter = this.completionWaiters[this.completionWaiterHead];
+    if (waiter === undefined) return undefined;
+    this.completionWaiters[this.completionWaiterHead] = undefined;
+    this.completionWaiterHead += 1;
+    this.completionWaiterCount -= 1;
+    this.compactCompletionWaiters();
+    return waiter;
+  }
+
+  private advanceCompletionWaiterHead(): void {
+    while (
+      this.completionWaiterHead < this.completionWaiters.length
+      && this.completionWaiters[this.completionWaiterHead] === undefined
+    ) {
+      this.completionWaiterHead += 1;
+    }
+  }
+
+  private compactCompletionWaiters(): void {
+    if (this.completionWaiterCount === 0) {
+      this.completionWaiters.length = 0;
+      this.completionWaiterHead = 0;
+      return;
+    }
+    if (
+      this.completionWaiterHead >= 1024
+      && this.completionWaiterHead * 2 >= this.completionWaiters.length
+    ) {
+      this.completionWaiters.splice(0, this.completionWaiterHead);
+      this.completionWaiterHead = 0;
+    }
   }
 }
 

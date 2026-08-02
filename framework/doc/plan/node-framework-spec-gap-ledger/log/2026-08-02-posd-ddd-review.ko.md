@@ -128,3 +128,40 @@ last_command: ZLINK_NODE_RUNTIME_GATE_SKIP_TESTS=test/contract/e2e-scenario-head
 last_observed: test/browser/stream-connector-chromium.test.js reported exit 1; outer command exit 130 after user stop
 resume_from: browser failure details, then remaining contract gate; retain 99 missing scenarios and Config 12/14 as open
 ```
+
+## 비-E2E runtime 재검토 — 2026-08-02 후속
+
+### 위험 신호와 선택한 리팩토링
+
+| 위험 신호 | POSD·DDD 근거 | 검토한 대안 | 선택 |
+|---|---|---|---|
+| hot queue에서 `shift()`/`splice(0, ...)`가 반복됨 | 자료구조 선택이 호출 경로에 노출되고, 큐 비용이 요청량에 따라 O(n)으로 커진다. Queue aggregate의 FIFO invariant를 여러 cleanup 경로가 나눠 가진다. | A. 기존 배열을 유지하고 주기적으로 앞부분을 잘라낸다. B. head/count와 tombstone을 가진 내부 bounded queue로 감싼다. | B. FIFO와 cancellation hole을 내부에서 소유하고, 충분히 누적된 경우에만 compaction해 할당과 이동을 제한했다. |
+| CPU worker 옵션 중 `minThreads`/`idleTimeoutMs`가 선언만 되고 runtime에서 무시됨 | 정보 은닉이 아니라 계약 누락이며, 설정을 제공해도 의미가 없는 얕은 모듈이다. | A. 필드를 계속 보존하되 무시한다. B. elastic pool의 baseline·idle reclaim으로 실제 semantics를 구현한다. | B. Worker slot이 pool aggregate의 상태와 lifecycle을 소유하고, timeout/cancellation은 slot 종료로 수렴시켰다. |
+| Nest builder prototype에 codec/duplicate-name 내부 helper가 노출됨 | public surface가 runtime composition 결정을 누출하고, shallow pass-through method가 생긴다. | A. helper를 public으로 유지하고 문서에서 private라고 설명한다. B. module-local helper로 이동하고 public member exact test를 둔다. | B. 호출자는 계약에 필요한 builder만 보고 내부 정책은 module 경계 아래에 둔다. |
+| generated codec test가 존재하지 않는 wire type을 import함 | 테스트가 현재 계약이 아닌 과거 representation에 결합되어 dead surface를 보존한다. | A. 없는 generated type을 compatibility shim으로 되살린다. B. 현재 generated request/response contract로 fixture를 바꾼다. | B. codec 책임을 framework 기본 serializer path에 두고 test만 현재 type graph에 맞췄다. |
+
+### DDD 책임·invariant 확인
+
+- `ZLinkCpuWorkerPool`은 CPU offload bounded context의 aggregate root다. `queueCount`, `inFlight`,
+  slot 상태와 idle reclaim을 한 곳에서 변경하며, caller는 queue representation이나 Worker
+  lifecycle을 알 필요가 없다.
+- stream/session·admission·dispatch queue는 각각 자기 owner가 cancellation, terminal cleanup,
+  FIFO와 capacity를 함께 보유한다. tombstone compaction은 외부 observable state가 아니라 내부
+  storage policy다.
+- worker `minThreads`와 `maxThreads`는 pool capacity invariant를, `idleTimeoutMs`는 slot
+  lifecycle policy를 표현한다. registration normalizer와 runtime resolver는 shared internal
+  defaults를 사용해 동일한 contract를 만든다.
+
+### 재검증 결과
+
+```text
+candidate: working tree 2026-08-02 after non-E2E runtime refactor
+scope: Node production runtime, contract/unit tests, package and CI path filter; E2E/sample excluded
+decision: CLEAN for the non-E2E implementation scope
+evidence: build PASS; typecheck PASS; lint PASS; 59 contract files 994/994 PASS;
+          package graph 11.1.0 clean; packaged contract PASS
+remaining: E2E scenario inventory gate reports 171 missing IDs; process/sample evidence excluded
+```
+
+이 판정은 E2E·sample gap을 닫았다는 의미가 아니다. 해당 범위의 unresolved 항목과
+`npm run verify:ci`의 header gate 실패는 별도 E2E 후속 조건으로 유지한다.

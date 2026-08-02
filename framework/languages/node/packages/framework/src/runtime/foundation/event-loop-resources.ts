@@ -39,8 +39,12 @@ export type EventLoopTask = () => void | Promise<void>;
 
 /** Keeps infrastructure progress independent from awaiting application handlers. */
 export class EventLoopWorkQueues {
-  private readonly infrastructure: EventLoopTask[] = [];
-  private readonly application: EventLoopTask[] = [];
+  private readonly infrastructure: Array<EventLoopTask | undefined> = [];
+  private infrastructureHead = 0;
+  private infrastructureCount = 0;
+  private readonly application: Array<EventLoopTask | undefined> = [];
+  private applicationHead = 0;
+  private applicationCount = 0;
   private infrastructureScheduled = false;
   private applicationScheduled = false;
   private accepting = true;
@@ -55,15 +59,17 @@ export class EventLoopWorkQueues {
   }
 
   submitInfrastructure(task: EventLoopTask): boolean {
-    if (!this.accepting || this.infrastructure.length >= this.infrastructureLimit) return false;
+    if (!this.accepting || this.infrastructureCount >= this.infrastructureLimit) return false;
     this.infrastructure.push(task);
+    this.infrastructureCount += 1;
     this.scheduleInfrastructure();
     return true;
   }
 
   submitApplication(task: EventLoopTask): boolean {
-    if (!this.accepting || this.application.length >= this.applicationLimit) return false;
+    if (!this.accepting || this.applicationCount >= this.applicationLimit) return false;
     this.application.push(task);
+    this.applicationCount += 1;
     this.scheduleApplication();
     return true;
   }
@@ -80,13 +86,13 @@ export class EventLoopWorkQueues {
 
   private drainInfrastructure(): void {
     this.infrastructureScheduled = false;
-    const task = this.infrastructure.shift();
+    const task = this.takeInfrastructure();
     if (task === undefined) return;
     try {
       const result = task();
       if (result instanceof Promise) void result.catch(() => undefined);
     } finally {
-      if (this.infrastructure.length > 0) this.scheduleInfrastructure();
+      if (this.infrastructureCount > 0) this.scheduleInfrastructure();
     }
   }
 
@@ -98,13 +104,55 @@ export class EventLoopWorkQueues {
 
   private async drainApplication(): Promise<void> {
     try {
-      const task = this.application.shift();
+      const task = this.takeApplication();
       if (task !== undefined) await task();
     } catch {
       // Handler failure is reported by the dispatch owner; it does not stop this queue.
     } finally {
       this.applicationScheduled = false;
-      if (this.application.length > 0) this.scheduleApplication();
+      if (this.applicationCount > 0) this.scheduleApplication();
+    }
+  }
+
+  private takeInfrastructure(): EventLoopTask | undefined {
+    const task = this.infrastructure[this.infrastructureHead];
+    if (task === undefined) return undefined;
+    this.infrastructure[this.infrastructureHead] = undefined;
+    this.infrastructureHead += 1;
+    this.infrastructureCount -= 1;
+    this.compactInfrastructure();
+    return task;
+  }
+
+  private takeApplication(): EventLoopTask | undefined {
+    const task = this.application[this.applicationHead];
+    if (task === undefined) return undefined;
+    this.application[this.applicationHead] = undefined;
+    this.applicationHead += 1;
+    this.applicationCount -= 1;
+    this.compactApplication();
+    return task;
+  }
+
+  private compactInfrastructure(): void {
+    if (this.infrastructureCount === 0) {
+      this.infrastructure.length = 0;
+      this.infrastructureHead = 0;
+    } else if (this.infrastructureHead >= 1024
+      && this.infrastructureHead * 2 >= this.infrastructure.length) {
+      this.infrastructure.splice(0, this.infrastructureHead);
+      this.infrastructureHead = 0;
+    }
+  }
+
+  private compactApplication(): void {
+    if (this.applicationCount === 0) {
+      this.application.length = 0;
+      this.applicationHead = 0;
+    } else if (this.applicationHead >= 1024
+      && this.applicationHead * 2 >= this.application.length) {
+      this.application.splice(0, this.applicationHead);
+      this.applicationHead = 0;
     }
   }
 }

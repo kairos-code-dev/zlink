@@ -115,7 +115,9 @@ import {
   M6bServiceWireCommand,
   type ServiceMaintenanceReplyRelay,
   type ServiceMaintenanceReplyRelayAck,
+  type ServiceMaintenanceRelocationComplete,
   type ServiceMaintenanceRelocationControl,
+  type ServiceMaintenanceRelocationReady,
   type ServiceMaintenanceRelocationControlData,
   type ServiceMaintenanceRelocationPrepare,
   type ServiceWireRequestSourceFence,
@@ -206,7 +208,6 @@ interface LocalStage {
   >;
   readonly candidate: ServiceWireRelocationCandidate;
   phase: 'prepared' | 'published' | 'replayed' | 'sealed' | 'routed' | 'normalized' | 'open';
-  published: boolean;
   terminalRelayed: boolean;
 }
 
@@ -497,7 +498,6 @@ export class ZLinkHostServiceRelocationRuntime {
       coordinator: undefined as never,
       candidate: undefined as never,
       phase: 'prepared',
-      published: false,
       terminalRelayed: false
     } satisfies LocalStage;
     const coordinator = new ServiceRelocationCoordinator(
@@ -1488,172 +1488,15 @@ export class ZLinkHostServiceRelocationRuntime {
     this.pruneTargetTombstones();
     const stagingId = relocationStagingId(request);
     if (request.kind === 'prepare') {
-      if (sourceNodeRid === null || String(sourceNodeRid) !== request.sourceNodeRid) {
-        throw new Error('Relocation prepare source node fence does not match the authenticated peer.');
-      }
-      const targetStatus = this.requireMeshNode(meshName).status();
-      const targetOwner = this.options.currentOwner();
-      const targetDescriptor = this.options.localDescriptor?.(meshName);
-      if (targetOwner === undefined
-        || String(targetStatus.routingId) !== request.candidate.nodeRid
-        || targetStatus.lifecycleGeneration !== request.candidate.nodeGeneration
-        || targetOwner.ownerId !== request.candidate.ownerId
-        || targetOwner.leaseGeneration !== request.candidate.ownerLeaseGeneration
-        || targetDescriptor !== undefined
-          && targetDescriptor.applicationVersion !== request.applicationVersion) {
-        throw new Error('Relocation prepare candidate fence does not match the target owner.');
-      }
-      if (request.root === undefined) throw new Error('Relocation prepare has no shared durable root.');
-      const existing = this.targetStages.get(stagingId)?.offer
-        ?? this.targetOffers.get(stagingId);
-      if (existing !== undefined) {
-        if (existing.authenticatedSourceNodeRid !== String(sourceNodeRid)) {
-          throw new Error('Relocation prepare retry source node changed.');
-        }
-        if (request.round === 'preparedReplacement'
-          && existing.prepare.round === 'initial') {
-          const envelope = await this.readSharedEnvelope(request.root, signal);
-          validateControlEnvelope(request, envelope);
-          validateManifestReplacement(existing.envelope, envelope);
-          const requiredMessages = request.participants.reduce(
-            (sum, participant) => sum + participant.allowanceMessages, 0n);
-          const requiredBytes = request.participants.reduce(
-            (sum, participant) => sum + participant.allowanceBytes, 0n);
-          if (requiredMessages > existing.offeredMessages
-            || requiredBytes > existing.offeredBytes) {
-            throw new Error('Captured relocation exceeds its preflight reservation.');
-          }
-          this.resizeTargetPermit(existing, requiredMessages, requiredBytes);
-          if (existing.expiryTimer !== undefined) clearTimeout(existing.expiryTimer);
-          const replacement: TargetRelocationOffer = {
-            ...existing,
-            prepare: request,
-            prepareFingerprint: stringifyWire(request),
-            envelope
-          };
-          this.targetOffers.set(stagingId, replacement);
-          this.armTargetExpiry(stagingId, replacement);
-          return relocationCapacityOffer(
-            request,
-            envelope,
-            replacement.offeredMessages,
-            replacement.offeredBytes
-          );
-        }
-        validatePrepareOfferRetry(existing, request);
-        return relocationCapacityOffer(
-          request,
-          existing.envelope,
-          existing.offeredMessages,
-          existing.offeredBytes
-        );
-      }
-      const envelope = await this.readSharedEnvelope(request.root, signal);
-      validateControlEnvelope(request, envelope);
-      const raced = this.targetStages.get(stagingId)?.offer
-        ?? this.targetOffers.get(stagingId);
-      if (raced !== undefined) {
-        if (raced.authenticatedSourceNodeRid !== String(sourceNodeRid)) {
-          throw new Error('Relocation prepare retry source node changed.');
-        }
-        validatePrepareOfferRetry(raced, request);
-        return relocationCapacityOffer(
-          request,
-          raced.envelope,
-          raced.offeredMessages,
-          raced.offeredBytes
-        );
-      }
-      if (this.targetOffers.size + this.targetStages.size >= RELOCATION_TARGET_LIVE_LIMIT) {
-        throw new Error('Relocation target live offer limit is exhausted.');
-      }
-      const offer = this.availableRelocationCapacity(envelope, request.requiredBytes);
-      const targetOffer: TargetRelocationOffer = {
-        prepare: request,
-        prepareFingerprint: stringifyWire(request),
-        authenticatedSourceNodeRid: String(sourceNodeRid),
-        envelope,
-        offeredMessages: offer.messages,
-        offeredBytes: offer.bytes
-      };
-      this.armTargetExpiry(stagingId, targetOffer);
-      this.targetOffers.set(stagingId, targetOffer);
-      return relocationCapacityOffer(request, envelope, offer.messages, offer.bytes);
+      return this.handlePrepareControl(meshName, stagingId, request, sourceNodeRid, signal);
     }
     if (request.kind === 'ready') {
-      let stage = this.targetStages.get(stagingId);
-      const offer = stage?.offer ?? this.targetOffers.get(stagingId);
-      if (offer === undefined) {
-        throw new Error(`Relocation offer '${stagingId}' is missing.`);
-      }
-      if (sourceNodeRid === null || String(sourceNodeRid) !== offer.authenticatedSourceNodeRid) {
-        throw new Error('Relocation acceptance source does not match its prepare source.');
-      }
-      validateReadyAcceptance(offer, request);
-      this.assertCurrentCandidate(meshName, offer.prepare.candidate);
-      this.acquireTargetPermit(offer);
-      try {
-        if (offer.prepare.round === 'initial') {
-          await this.ensureInitialTargetCapacityReservation(meshName, offer, signal);
-        } else {
-          await this.ensureTargetReservation(meshName, offer, signal);
-        }
-      } catch (error) {
-        this.releaseTargetPermit(offer);
-        throw error;
-      }
-      this.armTargetExpiry(stagingId, offer);
-      return { kind: 'reserved', relocation: request.relocation,
-        targetAttemptGeneration: request.targetAttemptGeneration, round: request.round,
-        coordinator: request.coordinator, candidate: request.candidate,
-        reservationGeneration: request.reservationGeneration, participants: request.participants };
+      return this.handleReadyControl(meshName, stagingId, request, sourceNodeRid, signal);
     }
     if (request.kind === 'data' && request.frozenRecord === undefined
       && (request.phase === 'prepared' || request.phase === 'committed'
         || request.phase === 'aborted')) {
-      if (request.senderRole !== 'source') {
-        throw new Error('Relocation staging control source does not match the coordinator fence.');
-      }
-      const offer = this.targetStages.get(stagingId)?.offer ?? this.targetOffers.get(stagingId);
-      if (offer === undefined) {
-        const aborted = this.targetAborts.get(stagingId);
-        if (request.phase === 'aborted'
-          && aborted?.fingerprint === stringifyWire(request)
-          && sourceNodeRid !== null
-          && aborted.authenticatedSourceNodeRid === String(sourceNodeRid)) {
-          return relocationControlAck(request);
-        }
-        throw new Error(`Relocation offer '${stagingId}' is missing.`);
-      }
-      if (sourceNodeRid === null || String(sourceNodeRid) !== offer.authenticatedSourceNodeRid) {
-        throw new Error('Relocation staging control source does not match its prepare source.');
-      }
-      validateStagingControl(offer, request);
-      if (request.phase === 'aborted') {
-        await this.abortTargetOffer(stagingId, offer, signal);
-        this.targetAborts.set(stagingId, {
-          fingerprint: stringifyWire(request),
-          authenticatedSourceNodeRid: offer.authenticatedSourceNodeRid,
-          expiresAtMs: Date.now() + RELOCATION_TARGET_TOMBSTONE_TTL_MS
-        });
-        this.trimTargetTombstones(this.targetAborts);
-        return relocationControlAck(request);
-      }
-      const reservation = await this.ensureTargetReservation(meshName, offer, signal);
-      let materialized: LocalStage;
-      try {
-        offer.materialization ??= this.materializeTargetOffer(meshName, stagingId, offer, signal);
-        materialized = await offer.materialization;
-      } catch (error) {
-        await this.abortTargetOffer(stagingId, offer, signal).catch(() => undefined);
-        throw error;
-      }
-      if (request.phase === 'committed') {
-        await this.commitTargetReservation(materialized, reservation, signal);
-        offer.reservationCommitted = true;
-        if (offer.expiryTimer !== undefined) clearTimeout(offer.expiryTimer);
-      }
-      return relocationControlAck(request);
+      return this.handleStagingControl(meshName, stagingId, request, sourceNodeRid, signal);
     }
     const stage = this.targetStages.get(stagingId);
     if (stage === undefined) {
@@ -1672,8 +1515,18 @@ export class ZLinkHostServiceRelocationRuntime {
     if (sourceNodeRid === null || String(sourceNodeRid) !== stage.offer.authenticatedSourceNodeRid) {
       throw new Error('Relocation control source does not match its prepare source.');
     }
+    return this.handleMaterializedStageControl(meshName, stagingId, stage, request, signal);
+  }
+
+  private async handleMaterializedStageControl(
+    meshName: string,
+    stagingId: string,
+    stage: LocalStage,
+    request: ZLinkServiceRelocationControlRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkServiceRelocationControlResponse> {
     if (request.kind === 'complete' && request.sourceCleanupState === 'pending') {
-      if (stage.published) {
+      if (relocationPhaseRank(stage.phase) >= relocationPhaseRank('published')) {
         return { ...request, senderRole: 'target' };
       }
       requireRelocationPhase(stage, 'sealed');
@@ -1684,7 +1537,6 @@ export class ZLinkHostServiceRelocationRuntime {
       );
       await stage.owner.publish(stage.staging, authority, signal);
       stage.phase = 'published';
-      stage.published = true;
       return { ...request, senderRole: 'target' };
     }
     if (request.kind === 'data') {
@@ -1733,87 +1585,287 @@ export class ZLinkHostServiceRelocationRuntime {
       return { ...request, senderRole: 'target' };
     }
     if (request.kind === 'complete' && request.sourceCleanupState === 'completed') {
-      if (stage.phase !== 'open') {
-        requireRelocationPhase(stage, 'sealed');
-        await this.publishSessionRoutes(stage.staging);
-        stage.phase = 'routed';
-        let authority = await requireAuthority(
-          this.requireLocationStore(),
-          { value: primaryKey(stage.staging.envelope) } as ZLinkAuthorityKey,
-          signal
-        );
-        const durable = new ServiceDurableRelocationRuntime(
-          this.requireLocationStore(), relocationStorePort(this.requireRelocationStore()), this.codec);
-        const pendingProgress = localSuccessorProgress(stage);
-        if ([...pendingProgress.values()].some(value => value.terminalReplies.byteLength !== 0)) {
-          const previous = this.codec.read(authority.payload);
-          authority = await durable.advanceCompletedProgress(
-            { value: primaryKey(stage.staging.envelope) } as ZLinkAuthorityKey,
-            authority,
-            pendingProgress,
-            signal,
-            { retainPreviousRoot: stage.staging.envelope.participants.length > 1 }
-          );
-          await this.completeParticipantAuthorities(
-            stage.staging.envelope,
-            primaryKey(stage.staging.envelope),
-            authority,
-            signal
-          );
-          if (stage.staging.envelope.participants.length > 1 && previous !== undefined) {
-            await durable.deleteRetainedRoot(previous.reference, signal);
-          }
-        }
-        if (!stage.terminalRelayed) {
-          const completions = await this.readDurableTerminalCompletions(stage, authority, signal);
-          await this.relayTerminalReplies(
-            meshName,
-            stage,
-            this.targetReplyRelayCoordinator(meshName, stage, authority),
-            completions,
-            signal
-          );
-          stage.terminalRelayed = true;
-        }
-        const progress = localSuccessorProgress(stage);
-        if ([...progress.values()].some(value => value.terminalReplies.byteLength !== 0)) {
-          const previous = this.codec.read(authority.payload);
-          authority = await durable.advanceCompletedProgress(
-            { value: primaryKey(stage.staging.envelope) } as ZLinkAuthorityKey,
-            authority,
-            progress,
-            signal,
-            { retainPreviousRoot: stage.staging.envelope.participants.length > 1 }
-          );
-          await this.completeParticipantAuthorities(
-            stage.staging.envelope,
-            primaryKey(stage.staging.envelope),
-            authority,
-            signal
-          );
-          if (stage.staging.envelope.participants.length > 1 && previous !== undefined) {
-            await durable.deleteRetainedRoot(previous.reference, signal);
-          }
-        }
-        await stage.owner.normalize(stage.staging, authority, signal);
-        stage.phase = 'normalized';
-        await stage.owner.openAdmission(stage.staging, signal);
-        stage.phase = 'open';
-      }
-      const response = { ...request, senderRole: 'target' as const };
-      this.completedTargets.set(stagingId, {
-        fingerprint: stringifyWire(request),
-        authenticatedSourceNodeRid: stage.offer.authenticatedSourceNodeRid,
-        response,
-        expiresAtMs: Date.now() + RELOCATION_TARGET_TOMBSTONE_TTL_MS
-      });
-      this.trimTargetTombstones(this.completedTargets);
-      if (stage.offer.expiryTimer !== undefined) clearTimeout(stage.offer.expiryTimer);
-      this.releaseTargetPermit(stage.offer);
-      this.targetStages.delete(stagingId);
-      return response;
+      return this.completeTargetStage(meshName, stagingId, stage, request, signal);
     }
     throw new Error(`Relocation command '${request.kind}' is invalid for target phase '${stage.phase}'.`);
+  }
+
+  /** Handles the authenticated, idempotent target preflight transition. */
+  private async handlePrepareControl(
+    meshName: string,
+    stagingId: string,
+    request: ServiceMaintenanceRelocationPrepare,
+    sourceNodeRid: RoutingId | null,
+    signal?: AbortSignal
+  ): Promise<ZLinkServiceRelocationControlResponse> {
+    if (sourceNodeRid === null || String(sourceNodeRid) !== request.sourceNodeRid) {
+      throw new Error('Relocation prepare source node fence does not match the authenticated peer.');
+    }
+    const targetStatus = this.requireMeshNode(meshName).status();
+    const targetOwner = this.options.currentOwner();
+    const targetDescriptor = this.options.localDescriptor?.(meshName);
+    if (targetOwner === undefined
+      || String(targetStatus.routingId) !== request.candidate.nodeRid
+      || targetStatus.lifecycleGeneration !== request.candidate.nodeGeneration
+      || targetOwner.ownerId !== request.candidate.ownerId
+      || targetOwner.leaseGeneration !== request.candidate.ownerLeaseGeneration
+      || targetDescriptor !== undefined
+        && targetDescriptor.applicationVersion !== request.applicationVersion) {
+      throw new Error('Relocation prepare candidate fence does not match the target owner.');
+    }
+    if (request.root === undefined) throw new Error('Relocation prepare has no shared durable root.');
+    const existing = this.targetStages.get(stagingId)?.offer
+      ?? this.targetOffers.get(stagingId);
+    if (existing !== undefined) {
+      if (existing.authenticatedSourceNodeRid !== String(sourceNodeRid)) {
+        throw new Error('Relocation prepare retry source node changed.');
+      }
+      if (request.round === 'preparedReplacement'
+        && existing.prepare.round === 'initial') {
+        const envelope = await this.readSharedEnvelope(request.root, signal);
+        validateControlEnvelope(request, envelope);
+        validateManifestReplacement(existing.envelope, envelope);
+        const requiredMessages = request.participants.reduce(
+          (sum, participant) => sum + participant.allowanceMessages, 0n);
+        const requiredBytes = request.participants.reduce(
+          (sum, participant) => sum + participant.allowanceBytes, 0n);
+        if (requiredMessages > existing.offeredMessages
+          || requiredBytes > existing.offeredBytes) {
+          throw new Error('Captured relocation exceeds its preflight reservation.');
+        }
+        this.resizeTargetPermit(existing, requiredMessages, requiredBytes);
+        if (existing.expiryTimer !== undefined) clearTimeout(existing.expiryTimer);
+        const replacement: TargetRelocationOffer = {
+          ...existing,
+          prepare: request,
+          prepareFingerprint: stringifyWire(request),
+          envelope
+        };
+        this.targetOffers.set(stagingId, replacement);
+        this.armTargetExpiry(stagingId, replacement);
+        return relocationCapacityOffer(
+          request,
+          envelope,
+          replacement.offeredMessages,
+          replacement.offeredBytes
+        );
+      }
+      validatePrepareOfferRetry(existing, request);
+      return relocationCapacityOffer(
+        request,
+        existing.envelope,
+        existing.offeredMessages,
+        existing.offeredBytes
+      );
+    }
+    const envelope = await this.readSharedEnvelope(request.root, signal);
+    validateControlEnvelope(request, envelope);
+    const raced = this.targetStages.get(stagingId)?.offer
+      ?? this.targetOffers.get(stagingId);
+    if (raced !== undefined) {
+      if (raced.authenticatedSourceNodeRid !== String(sourceNodeRid)) {
+        throw new Error('Relocation prepare retry source node changed.');
+      }
+      validatePrepareOfferRetry(raced, request);
+      return relocationCapacityOffer(
+        request,
+        raced.envelope,
+        raced.offeredMessages,
+        raced.offeredBytes
+      );
+    }
+    if (this.targetOffers.size + this.targetStages.size >= RELOCATION_TARGET_LIVE_LIMIT) {
+      throw new Error('Relocation target live offer limit is exhausted.');
+    }
+    const offer = this.availableRelocationCapacity(envelope, request.requiredBytes);
+    const targetOffer: TargetRelocationOffer = {
+      prepare: request,
+      prepareFingerprint: stringifyWire(request),
+      authenticatedSourceNodeRid: String(sourceNodeRid),
+      envelope,
+      offeredMessages: offer.messages,
+      offeredBytes: offer.bytes
+    };
+    this.armTargetExpiry(stagingId, targetOffer);
+    this.targetOffers.set(stagingId, targetOffer);
+    return relocationCapacityOffer(request, envelope, offer.messages, offer.bytes);
+  }
+
+  /** Reserves target capacity after the source accepts the preflight offer. */
+  private async handleReadyControl(
+    meshName: string,
+    stagingId: string,
+    request: ServiceMaintenanceRelocationReady,
+    sourceNodeRid: RoutingId | null,
+    signal?: AbortSignal
+  ): Promise<ZLinkServiceRelocationControlResponse> {
+    const stage = this.targetStages.get(stagingId);
+    const offer = stage?.offer ?? this.targetOffers.get(stagingId);
+    if (offer === undefined) {
+      throw new Error(`Relocation offer '${stagingId}' is missing.`);
+    }
+    if (sourceNodeRid === null || String(sourceNodeRid) !== offer.authenticatedSourceNodeRid) {
+      throw new Error('Relocation acceptance source does not match its prepare source.');
+    }
+    validateReadyAcceptance(offer, request);
+    this.assertCurrentCandidate(meshName, offer.prepare.candidate);
+    this.acquireTargetPermit(offer);
+    try {
+      if (offer.prepare.round === 'initial') {
+        await this.ensureInitialTargetCapacityReservation(meshName, offer, signal);
+      } else {
+        await this.ensureTargetReservation(meshName, offer, signal);
+      }
+    } catch (error) {
+      this.releaseTargetPermit(offer);
+      throw error;
+    }
+    this.armTargetExpiry(stagingId, offer);
+    return { kind: 'reserved', relocation: request.relocation,
+      targetAttemptGeneration: request.targetAttemptGeneration, round: request.round,
+      coordinator: request.coordinator, candidate: request.candidate,
+      reservationGeneration: request.reservationGeneration, participants: request.participants };
+  }
+
+  /** Materializes a target offer and commits or aborts its staging barrier. */
+  private async handleStagingControl(
+    meshName: string,
+    stagingId: string,
+    request: ServiceMaintenanceRelocationControlData,
+    sourceNodeRid: RoutingId | null,
+    signal?: AbortSignal
+  ): Promise<ZLinkServiceRelocationControlResponse> {
+    if (request.senderRole !== 'source') {
+      throw new Error('Relocation staging control source does not match the coordinator fence.');
+    }
+    const offer = this.targetStages.get(stagingId)?.offer ?? this.targetOffers.get(stagingId);
+    if (offer === undefined) {
+      const aborted = this.targetAborts.get(stagingId);
+      if (request.phase === 'aborted'
+        && aborted?.fingerprint === stringifyWire(request)
+        && sourceNodeRid !== null
+        && aborted.authenticatedSourceNodeRid === String(sourceNodeRid)) {
+        return relocationControlAck(request);
+      }
+      throw new Error(`Relocation offer '${stagingId}' is missing.`);
+    }
+    if (sourceNodeRid === null || String(sourceNodeRid) !== offer.authenticatedSourceNodeRid) {
+      throw new Error('Relocation staging control source does not match its prepare source.');
+    }
+    validateStagingControl(offer, request);
+    if (request.phase === 'aborted') {
+      await this.abortTargetOffer(stagingId, offer, signal);
+      this.targetAborts.set(stagingId, {
+        fingerprint: stringifyWire(request),
+        authenticatedSourceNodeRid: offer.authenticatedSourceNodeRid,
+        expiresAtMs: Date.now() + RELOCATION_TARGET_TOMBSTONE_TTL_MS
+      });
+      this.trimTargetTombstones(this.targetAborts);
+      return relocationControlAck(request);
+    }
+    const reservation = await this.ensureTargetReservation(meshName, offer, signal);
+    let materialized: LocalStage;
+    try {
+      offer.materialization ??= this.materializeTargetOffer(meshName, stagingId, offer, signal);
+      materialized = await offer.materialization;
+    } catch (error) {
+      await this.abortTargetOffer(stagingId, offer, signal).catch(() => undefined);
+      throw error;
+    }
+    if (request.phase === 'committed') {
+      await this.commitTargetReservation(materialized, reservation, signal);
+      offer.reservationCommitted = true;
+      if (offer.expiryTimer !== undefined) clearTimeout(offer.expiryTimer);
+    }
+    return relocationControlAck(request);
+  }
+
+  private async completeTargetStage(
+    meshName: string,
+    stagingId: string,
+    stage: LocalStage,
+    request: ServiceMaintenanceRelocationComplete,
+    signal?: AbortSignal
+  ): Promise<ZLinkServiceRelocationControlResponse> {
+    if (stage.phase !== 'open') {
+      requireRelocationPhase(stage, 'sealed');
+      await this.publishSessionRoutes(stage.staging);
+      stage.phase = 'routed';
+      let authority = await requireAuthority(
+        this.requireLocationStore(),
+        { value: primaryKey(stage.staging.envelope) } as ZLinkAuthorityKey,
+        signal
+      );
+      const durable = new ServiceDurableRelocationRuntime(
+        this.requireLocationStore(), relocationStorePort(this.requireRelocationStore()), this.codec);
+      const pendingProgress = localSuccessorProgress(stage);
+      if ([...pendingProgress.values()].some(value => value.terminalReplies.byteLength !== 0)) {
+        const previous = this.codec.read(authority.payload);
+        authority = await durable.advanceCompletedProgress(
+          { value: primaryKey(stage.staging.envelope) } as ZLinkAuthorityKey,
+          authority,
+          pendingProgress,
+          signal,
+          { retainPreviousRoot: stage.staging.envelope.participants.length > 1 }
+        );
+        await this.completeParticipantAuthorities(
+          stage.staging.envelope,
+          primaryKey(stage.staging.envelope),
+          authority,
+          signal
+        );
+        if (stage.staging.envelope.participants.length > 1 && previous !== undefined) {
+          await durable.deleteRetainedRoot(previous.reference, signal);
+        }
+      }
+      if (!stage.terminalRelayed) {
+        const completions = await this.readDurableTerminalCompletions(stage, authority, signal);
+        await this.relayTerminalReplies(
+          meshName,
+          stage,
+          this.targetReplyRelayCoordinator(meshName, stage, authority),
+          completions,
+          signal
+        );
+        stage.terminalRelayed = true;
+      }
+      const progress = localSuccessorProgress(stage);
+      if ([...progress.values()].some(value => value.terminalReplies.byteLength !== 0)) {
+        const previous = this.codec.read(authority.payload);
+        authority = await durable.advanceCompletedProgress(
+          { value: primaryKey(stage.staging.envelope) } as ZLinkAuthorityKey,
+          authority,
+          progress,
+          signal,
+          { retainPreviousRoot: stage.staging.envelope.participants.length > 1 }
+        );
+        await this.completeParticipantAuthorities(
+          stage.staging.envelope,
+          primaryKey(stage.staging.envelope),
+          authority,
+          signal
+        );
+        if (stage.staging.envelope.participants.length > 1 && previous !== undefined) {
+          await durable.deleteRetainedRoot(previous.reference, signal);
+        }
+      }
+      await stage.owner.normalize(stage.staging, authority, signal);
+      stage.phase = 'normalized';
+      await stage.owner.openAdmission(stage.staging, signal);
+      stage.phase = 'open';
+    }
+    const response = { ...request, senderRole: 'target' as const };
+    this.completedTargets.set(stagingId, {
+      fingerprint: stringifyWire(request),
+      authenticatedSourceNodeRid: stage.offer.authenticatedSourceNodeRid,
+      response,
+      expiresAtMs: Date.now() + RELOCATION_TARGET_TOMBSTONE_TTL_MS
+    });
+    this.trimTargetTombstones(this.completedTargets);
+    if (stage.offer.expiryTimer !== undefined) clearTimeout(stage.offer.expiryTimer);
+    this.releaseTargetPermit(stage.offer);
+    this.targetStages.delete(stagingId);
+    return response;
   }
 
   private async readSharedEnvelope(
@@ -2713,7 +2765,6 @@ export class ZLinkHostServiceRelocationRuntime {
       coordinator: offer.prepare.coordinator,
       candidate: offer.prepare.candidate,
       phase: 'prepared',
-      published: false,
       terminalRelayed: false
     };
     this.targetStages.set(stagingId, stage);

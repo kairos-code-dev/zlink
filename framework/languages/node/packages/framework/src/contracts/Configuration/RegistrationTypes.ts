@@ -82,7 +82,11 @@ export interface ZLinkLocationRegistration {
 
 /**
  * CPU worker-thread pool settings. I/O workers do not consume this pool.
- * `maxThreads` bounds active CPU jobs and `maxQueueLength` bounds queued jobs.
+ * `minThreads` keeps a warm baseline, `maxThreads` bounds active CPU jobs,
+ * `idleTimeoutMs` reclaims workers above the baseline, and `maxQueueLength`
+ * bounds queued jobs. The registration normalizer supplies defaults when a
+ * JavaScript caller omits a field: `0`, `max(2, availableParallelism())`,
+ * `30000`, and `1024`, respectively.
  */
 export interface ZLinkWorkerOptions {
   readonly minThreads: number;

@@ -5,8 +5,6 @@ import type {
   ZLinkAuthorityStoreVersion
 } from '../../contracts/Locations';
 import {
-} from '../../contracts';
-import {
   ZLinkLocationKind,
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteStatus,

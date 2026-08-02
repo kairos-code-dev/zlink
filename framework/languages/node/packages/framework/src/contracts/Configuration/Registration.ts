@@ -10,6 +10,7 @@ import {
   normalizeNetworkOptions,
   normalizeOptionalPositiveInteger,
   normalizeStreamCompression,
+  normalizeWorkerOptions,
   toChannelMap,
   toRouteChannelOptions,
   toSpotFactorySet,
@@ -69,7 +70,7 @@ export function createFrameworkRegistration(
     spotNodes,
     spotPublisherClients: toSpotPublisherClientSet(options.spotPublisherClients, spotNodes),
     filterTypes: [...(options.filters ?? [])],
-    worker: options.worker === undefined ? undefined : { ...options.worker },
+    worker: normalizeWorkerOptions(options.worker),
     inboundDispatch: {
       applicationHwmBytes: options.inboundDispatch?.applicationHwmBytes,
       applicationHwmProfile:

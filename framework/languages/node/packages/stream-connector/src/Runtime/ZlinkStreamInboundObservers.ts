@@ -13,7 +13,9 @@ type InboundObserver = (observation: ZlinkStreamInboundObservation, signal?: Abo
 
 export class ZlinkStreamInboundObservers {
   private readonly observers = new Set<InboundObserver>();
-  private readonly queue: ZlinkStreamInboundObservation[] = [];
+  private readonly queue: Array<ZlinkStreamInboundObservation | undefined> = [];
+  private queueHead = 0;
+  private queuedCount = 0;
   private draining = false;
   private dropReportPending = false;
 
@@ -33,11 +35,12 @@ export class ZlinkStreamInboundObservers {
       return;
     }
 
-    if (this.queue.length >= this.maxNotifications) {
+    if (this.queuedCount >= this.maxNotifications) {
       this.reportDropped(signal);
       return;
     }
     this.queue.push(this.createObservation(header, payload));
+    this.queuedCount += 1;
     this.scheduleDrain(signal);
   }
 
@@ -70,8 +73,9 @@ export class ZlinkStreamInboundObservers {
 
   private async drain(signal?: AbortSignal): Promise<void> {
     try {
-      while (this.queue.length > 0) {
-        const observation = this.queue.shift()!;
+      while (this.queuedCount > 0) {
+        const observation = this.takeObservation();
+        if (observation === undefined) continue;
         const observers = [...this.observers];
         for (const observer of observers) {
           if (!this.observers.has(observer)) {
@@ -86,7 +90,7 @@ export class ZlinkStreamInboundObservers {
       }
     } finally {
       this.draining = false;
-      if (this.queue.length > 0) {
+      if (this.queuedCount > 0) {
         this.scheduleDrain(signal);
       }
     }
@@ -116,5 +120,24 @@ export class ZlinkStreamInboundObservers {
       }, signal);
     } catch {
     }
+  }
+
+  private takeObservation(): ZlinkStreamInboundObservation | undefined {
+    while (this.queueHead < this.queue.length && this.queue[this.queueHead] === undefined) {
+      this.queueHead += 1;
+    }
+    const observation = this.queue[this.queueHead];
+    if (observation === undefined) return undefined;
+    this.queue[this.queueHead] = undefined;
+    this.queueHead += 1;
+    this.queuedCount -= 1;
+    if (this.queuedCount === 0) {
+      this.queue.length = 0;
+      this.queueHead = 0;
+    } else if (this.queueHead >= 1024 && this.queueHead * 2 >= this.queue.length) {
+      this.queue.splice(0, this.queueHead);
+      this.queueHead = 0;
+    }
+    return observation;
   }
 }

@@ -93,6 +93,11 @@ test('Nest options builder matches the exact public member set', () => {
   for (const name of expected) {
     assert.equal(methods.has(name), true, `Nest builder runtime member missing: ${name}`);
   }
+  assert.deepEqual(
+    [...methods].sort(),
+    expected.sort(),
+    'Nest builder runtime member set must not expose internal helpers'
+  );
   assert.equal('channelName' in builder, false);
 
   const inbound = builder.configureInboundDispatch();

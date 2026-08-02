@@ -54,7 +54,8 @@ export class BrowserStreamTransportFactory implements ZlinkStreamTransportFactor
 }
 
 export class BrowserWebSocketConnection implements ZlinkStreamConnection {
-  private readonly messages: Uint8Array[] = [];
+  private readonly messages: Array<Uint8Array | undefined> = [];
+  private messageHead = 0;
   private closed = false;
   private error: Error | undefined;
   private readWaiter: (() => void) | undefined;
@@ -80,7 +81,7 @@ export class BrowserWebSocketConnection implements ZlinkStreamConnection {
   async read(signal?: AbortSignal): Promise<Uint8Array | undefined> {
     throwIfAborted(signal);
     for (;;) {
-      const message = this.messages.shift();
+      const message = this.takeMessage();
       if (message !== undefined) {
         return message;
       }
@@ -151,7 +152,7 @@ export class BrowserWebSocketConnection implements ZlinkStreamConnection {
         this.readWaiter = undefined;
         resolve();
       };
-      if (this.messages.length > 0 || this.closed) {
+      if (this.hasQueuedMessage() || this.closed) {
         this.wakeReader();
       }
     });
@@ -165,6 +166,22 @@ export class BrowserWebSocketConnection implements ZlinkStreamConnection {
     this.socket.removeEventListener('message', this.onMessage);
     this.socket.removeEventListener('close', this.onClose);
     this.socket.removeEventListener('error', this.onError);
+  }
+
+  private hasQueuedMessage(): boolean {
+    return this.messageHead < this.messages.length;
+  }
+
+  private takeMessage(): Uint8Array | undefined {
+    if (!this.hasQueuedMessage()) return undefined;
+    const message = this.messages[this.messageHead];
+    this.messages[this.messageHead] = undefined;
+    this.messageHead += 1;
+    if (this.messageHead >= 1024 && this.messageHead * 2 >= this.messages.length) {
+      this.messages.splice(0, this.messageHead);
+      this.messageHead = 0;
+    }
+    return message;
   }
 }
 

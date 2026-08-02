@@ -3,8 +3,6 @@ import type {
   ActorRef,
   ZLinkActor
 } from '../../contracts';
-import {
-} from '../../contracts';
 import { throwIfAborted } from '../abort';
 import { routingIdsEqual } from '../routing-id';
 import type { ZLinkRuntimeMetrics } from '../diagnostics';

@@ -283,8 +283,12 @@ function topologyStateForHost(state: ZLinkFrameworkRuntimeState): ZLinkTopologyS
 }
 
 export class RuntimeEventQueue<T> implements AsyncIterable<T>, AsyncIterator<T> {
-  private readonly values: T[] = [];
-  private readonly waiters: Array<(result: IteratorResult<T>) => void> = [];
+  private readonly values: Array<T | undefined> = [];
+  private valuesHead = 0;
+  private valuesCount = 0;
+  private readonly waiters: Array<((result: IteratorResult<T>) => void) | undefined> = [];
+  private waitersHead = 0;
+  private waitersCount = 0;
   private cleanup?: () => void;
   private closed = false;
 
@@ -296,10 +300,13 @@ export class RuntimeEventQueue<T> implements AsyncIterable<T>, AsyncIterator<T> 
   [Symbol.asyncIterator](): AsyncIterator<T> { return this; }
 
   next(): Promise<IteratorResult<T>> {
-    const value = this.values.shift();
+    const value = this.takeValue();
     if (value !== undefined) return Promise.resolve({ done: false, value });
     if (this.closed) return Promise.resolve({ done: true, value: undefined });
-    return new Promise(resolve => this.waiters.push(resolve));
+    return new Promise(resolve => {
+      this.waiters.push(resolve);
+      this.waitersCount += 1;
+    });
   }
 
   return(): Promise<IteratorResult<T>> {
@@ -314,20 +321,24 @@ export class RuntimeEventQueue<T> implements AsyncIterable<T>, AsyncIterator<T> 
 
   push(value: T): void {
     if (this.closed) return;
-    const waiter = this.waiters.shift();
+    const waiter = this.takeWaiter();
     if (waiter !== undefined) waiter({ done: false, value });
     else {
-      if (this.values.length === this.capacity) this.values.shift();
+      if (this.valuesCount === this.capacity) this.takeValue();
       this.values.push(value);
+      this.valuesCount += 1;
     }
   }
 
   seal(value: T): void {
     if (this.closed) return;
-    this.values.length = 0;
-    const waiter = this.waiters.shift();
+    this.clearValues();
+    const waiter = this.takeWaiter();
     if (waiter !== undefined) waiter({ done: false, value });
-    else this.values.push(value);
+    else {
+      this.values.push(value);
+      this.valuesCount = 1;
+    }
     this.close();
   }
 
@@ -336,6 +347,46 @@ export class RuntimeEventQueue<T> implements AsyncIterable<T>, AsyncIterator<T> 
     this.closed = true;
     this.cleanup?.();
     this.cleanup = undefined;
-    for (const waiter of this.waiters.splice(0)) waiter({ done: true, value: undefined });
+    let waiter: ((result: IteratorResult<T>) => void) | undefined;
+    while ((waiter = this.takeWaiter()) !== undefined) {
+      waiter({ done: true, value: undefined });
+    }
+  }
+
+  private takeValue(): T | undefined {
+    if (this.valuesCount === 0) return undefined;
+    const value = this.values[this.valuesHead];
+    this.values[this.valuesHead] = undefined;
+    this.valuesHead += 1;
+    this.valuesCount -= 1;
+    if (this.valuesCount === 0) {
+      this.clearValues();
+    } else if (this.valuesHead >= 1024 && this.valuesHead * 2 >= this.values.length) {
+      this.values.splice(0, this.valuesHead);
+      this.valuesHead = 0;
+    }
+    return value;
+  }
+
+  private takeWaiter(): ((result: IteratorResult<T>) => void) | undefined {
+    if (this.waitersCount === 0) return undefined;
+    const waiter = this.waiters[this.waitersHead];
+    this.waiters[this.waitersHead] = undefined;
+    this.waitersHead += 1;
+    this.waitersCount -= 1;
+    if (this.waitersCount === 0) {
+      this.waiters.length = 0;
+      this.waitersHead = 0;
+    } else if (this.waitersHead >= 1024 && this.waitersHead * 2 >= this.waiters.length) {
+      this.waiters.splice(0, this.waitersHead);
+      this.waitersHead = 0;
+    }
+    return waiter;
+  }
+
+  private clearValues(): void {
+    this.values.length = 0;
+    this.valuesHead = 0;
+    this.valuesCount = 0;
   }
 }

@@ -12,6 +12,70 @@ function readable(parts) {
     : { data: () => Buffer.from(part) });
 }
 
+test('channel correlation follows the request versus one-way contract', () => {
+  const sendParts = envelope.encodeChannelEnvelopeParts(3, 'api', 'Notice', { value: 'one-way' });
+  const requestParts = envelope.encodeChannelEnvelopeParts(1, 'api', 'Lookup', { id: 'a' });
+  const publishParts = envelope.encodeChannelPublishEnvelopeParts(
+    'events',
+    'updates',
+    'Changed',
+    { value: 'published' }
+  );
+  try {
+    assert.equal(envelope.decodeChannelHeader(readable(sendParts)).correlationId, null);
+    const requestCorrelation = envelope.decodeChannelHeader(readable(requestParts)).correlationId;
+    assert.match(requestCorrelation, /^[\x00-\x7f]{1,64}$/);
+    assert.equal(envelope.decodeChannelHeader(readable(publishParts)).correlationId, null);
+    assert.throws(
+      () => envelope.encodeChannelEnvelopeParts(3, 'api', 'Notice', { value: 'bad' }, undefined, undefined, undefined, 'corr'),
+      /must not contain correlationId/
+    );
+  } finally {
+    envelope.closeMessages(sendParts);
+    envelope.closeMessages(requestParts);
+    envelope.closeMessages(publishParts);
+  }
+});
+
+test('channel header rejects correlation values that do not match the message kind', () => {
+  const commandWithCorrelation = readable([
+    Buffer.from(JSON.stringify({
+      formatMarker: envelope.ZLINK_CHANNEL_FORMAT_MARKER,
+      kind: 3,
+      channelName: 'api',
+      messageName: 'Notice',
+      contentType: 'application/json',
+      correlationId: 'unexpected',
+      deadline: null,
+      topic: null,
+      metadata: {}
+    })),
+    Buffer.from('{}')
+  ]);
+  const requestWithoutCorrelation = readable([
+    Buffer.from(JSON.stringify({
+      formatMarker: envelope.ZLINK_CHANNEL_FORMAT_MARKER,
+      kind: 1,
+      channelName: 'api',
+      messageName: 'Lookup',
+      contentType: 'application/json',
+      correlationId: null,
+      deadline: null,
+      topic: null,
+      metadata: {}
+    })),
+    Buffer.from('{}')
+  ]);
+  assert.throws(
+    () => envelope.decodeChannelHeader(commandWithCorrelation),
+    /must not contain correlationId/
+  );
+  assert.throws(
+    () => envelope.decodeChannelHeader(requestWithoutCorrelation),
+    /requires correlationId/
+  );
+});
+
 test('IMP-ND-03 channel Error preserves the public framework kind without retry hints', () => {
   const requestParts = envelope.encodeChannelEnvelopeParts(1, 'api', 'Lookup', { id: 'a' });
   const request = envelope.decodeChannelEnvelope(readable(requestParts));

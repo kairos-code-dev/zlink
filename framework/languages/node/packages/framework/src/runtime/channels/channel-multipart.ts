@@ -3,8 +3,6 @@ import type {
   Message,
   MessageLike
 } from '@zlink-systems/zlink';
-import {
-} from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
 
 export interface ZLinkMultipartOperation<TNext> {

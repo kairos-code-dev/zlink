@@ -20,7 +20,7 @@ import {
   type ZLinkDispatchFailure,
   type ZLinkRuntimeMessageFlowEvent
 } from '../../contracts/Dispatch/ZLinkDispatchOptions';
-import type { ZLinkDispatchErrorSink } from '../channels';
+import type { ZLinkDispatchErrorSink } from './dispatch-error-port';
 import { currentOrCreateFlow } from './flow-context';
 import {
   getDispatchObserverType,
@@ -115,6 +115,7 @@ export class ZLinkMessageFlowTracer {
   private observerFailures = 0;
   private observerRunning = false;
   private readonly observerQueue: ZLinkMessageFlowEvent[] = [];
+  private observerQueueHead = 0;
 
   constructor(
     private readonly ctx: ZLinkDiagnosticsContext,
@@ -178,7 +179,10 @@ export class ZLinkMessageFlowTracer {
 
   private enqueueObserver(flow: ZLinkRuntimeMessageFlowEvent): void {
     if (this.ctx.messageFlowObserverType === undefined) return;
-    if (this.observerRunning && this.observerQueue.length >= this.observerQueueCapacity) {
+    if (
+      this.observerRunning
+      && this.observerQueue.length - this.observerQueueHead >= this.observerQueueCapacity
+    ) {
       this.metrics?.count('zlink.observability.events.overflow', 1, { source: flow.outcome });
       return;
     }
@@ -192,11 +196,12 @@ export class ZLinkMessageFlowTracer {
     const observerType = this.ctx.messageFlowObserverType;
     if (observerType === undefined) {
       this.observerQueue.length = 0;
+      this.observerQueueHead = 0;
       this.observerRunning = false;
       return;
     }
-    while (this.observerQueue.length > 0) {
-      const flow = this.observerQueue.shift()!;
+    while (this.observerQueueHead < this.observerQueue.length) {
+      const flow = this.observerQueue[this.observerQueueHead++]!;
       try {
         const observer = await this.resolveObserver(observerType);
         await observer.onMessageFlow(flow);
@@ -204,7 +209,13 @@ export class ZLinkMessageFlowTracer {
         this.observerFailures += 1;
         await this.reportObserverFailure(error);
       }
+      if (this.observerQueueHead >= 1024 && this.observerQueueHead * 2 >= this.observerQueue.length) {
+        this.observerQueue.splice(0, this.observerQueueHead);
+        this.observerQueueHead = 0;
+      }
     }
+    this.observerQueue.length = 0;
+    this.observerQueueHead = 0;
     this.observerRunning = false;
   }
 

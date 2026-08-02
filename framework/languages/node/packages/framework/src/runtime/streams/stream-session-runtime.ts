@@ -704,8 +704,12 @@ export class ZLinkStreamSessionNodeRuntime {
   private readonly pendingConnectionMetadata: Array<{
     readonly localAddr?: string;
     readonly remoteAddr?: string;
-  }> = [];
-  private readonly unaddressedMonitorSessions: string[] = [];
+  } | undefined> = [];
+  private pendingConnectionMetadataHead = 0;
+  private pendingConnectionMetadataCount = 0;
+  private readonly unaddressedMonitorSessions: Array<string | undefined> = [];
+  private unaddressedMonitorSessionHead = 0;
+  private unaddressedMonitorSessionCount = 0;
   private readonly disconnectedEndpoints = new Set<string>();
   private pendingEndpointlessDisconnect:
     | {
@@ -788,6 +792,11 @@ export class ZLinkStreamSessionNodeRuntime {
       this.receiveStates.clear();
       this.readyReceiveStates.clear();
       this.unaddressedMonitorSessions.length = 0;
+      this.unaddressedMonitorSessionHead = 0;
+      this.unaddressedMonitorSessionCount = 0;
+      this.pendingConnectionMetadata.length = 0;
+      this.pendingConnectionMetadataHead = 0;
+      this.pendingConnectionMetadataCount = 0;
       for (const session of sessions) {
         await session.dispose();
       }
@@ -1105,18 +1114,17 @@ export class ZLinkStreamSessionNodeRuntime {
           if (unaddressed !== undefined) {
             this.disconnectedEndpoints.delete(endpointKey);
             unaddressed.enqueueConnected(event.localAddr, event.remoteAddr);
-            this.unaddressedMonitorSessions.push(unaddressed.stream.sessionId);
+            this.enqueueUnaddressedMonitorSession(unaddressed.stream.sessionId);
             return;
           }
-          if (this.pendingConnectionMetadata.some((metadata) =>
-            streamMonitorEndpointKey(metadata.localAddr, metadata.remoteAddr) === endpointKey
-          )) {
+          if (this.hasPendingConnectionMetadata(endpointKey)) {
             return;
           }
           this.pendingConnectionMetadata.push({
             localAddr: event.localAddr,
             remoteAddr: event.remoteAddr
           });
+          this.pendingConnectionMetadataCount += 1;
           return;
         }
         this.getOrCreateSession(event.routingId)?.enqueueConnected(event.localAddr, event.remoteAddr);
@@ -1150,14 +1158,84 @@ export class ZLinkStreamSessionNodeRuntime {
     if (
       session.stream.localAddr !== undefined
       || session.stream.remoteAddr !== undefined
-      || this.pendingConnectionMetadata.length === 0
+      || this.pendingConnectionMetadataCount === 0
     ) {
       return;
     }
-    const metadata = this.pendingConnectionMetadata.shift()!;
+    const metadata = this.takePendingConnectionMetadata();
+    if (metadata === undefined) return;
     this.removePendingConnectionMetadata(streamMonitorEndpointKey(metadata.localAddr, metadata.remoteAddr));
     session.enqueueConnected(metadata.localAddr, metadata.remoteAddr);
-    this.unaddressedMonitorSessions.push(session.stream.sessionId);
+    this.enqueueUnaddressedMonitorSession(session.stream.sessionId);
+  }
+
+  private hasPendingConnectionMetadata(endpointKey: string): boolean {
+    for (let index = this.pendingConnectionMetadataHead; index < this.pendingConnectionMetadata.length; index += 1) {
+      const metadata = this.pendingConnectionMetadata[index];
+      if (metadata !== undefined
+        && streamMonitorEndpointKey(metadata.localAddr, metadata.remoteAddr) === endpointKey) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private takePendingConnectionMetadata(): {
+    readonly localAddr?: string;
+    readonly remoteAddr?: string;
+  } | undefined {
+    while (
+      this.pendingConnectionMetadataHead < this.pendingConnectionMetadata.length
+      && this.pendingConnectionMetadata[this.pendingConnectionMetadataHead] === undefined
+    ) {
+      this.pendingConnectionMetadataHead += 1;
+    }
+    const metadata = this.pendingConnectionMetadata[this.pendingConnectionMetadataHead];
+    if (metadata === undefined) return undefined;
+    this.pendingConnectionMetadata[this.pendingConnectionMetadataHead] = undefined;
+    this.pendingConnectionMetadataHead += 1;
+    this.pendingConnectionMetadataCount -= 1;
+    this.compactPendingConnectionMetadata();
+    return metadata;
+  }
+
+  private compactPendingConnectionMetadata(): void {
+    if (this.pendingConnectionMetadataCount === 0) {
+      this.pendingConnectionMetadata.length = 0;
+      this.pendingConnectionMetadataHead = 0;
+    } else if (this.pendingConnectionMetadataHead >= 1024
+      && this.pendingConnectionMetadataHead * 2 >= this.pendingConnectionMetadata.length) {
+      this.pendingConnectionMetadata.splice(0, this.pendingConnectionMetadataHead);
+      this.pendingConnectionMetadataHead = 0;
+    }
+  }
+
+  private enqueueUnaddressedMonitorSession(sessionId: string): void {
+    this.unaddressedMonitorSessions.push(sessionId);
+    this.unaddressedMonitorSessionCount += 1;
+  }
+
+  private takeUnaddressedMonitorSession(): string | undefined {
+    while (
+      this.unaddressedMonitorSessionHead < this.unaddressedMonitorSessions.length
+      && this.unaddressedMonitorSessions[this.unaddressedMonitorSessionHead] === undefined
+    ) {
+      this.unaddressedMonitorSessionHead += 1;
+    }
+    const sessionId = this.unaddressedMonitorSessions[this.unaddressedMonitorSessionHead];
+    if (sessionId === undefined) return undefined;
+    this.unaddressedMonitorSessions[this.unaddressedMonitorSessionHead] = undefined;
+    this.unaddressedMonitorSessionHead += 1;
+    this.unaddressedMonitorSessionCount -= 1;
+    if (this.unaddressedMonitorSessionCount === 0) {
+      this.unaddressedMonitorSessions.length = 0;
+      this.unaddressedMonitorSessionHead = 0;
+    } else if (this.unaddressedMonitorSessionHead >= 1024
+      && this.unaddressedMonitorSessionHead * 2 >= this.unaddressedMonitorSessions.length) {
+      this.unaddressedMonitorSessions.splice(0, this.unaddressedMonitorSessionHead);
+      this.unaddressedMonitorSessionHead = 0;
+    }
+    return sessionId;
   }
 
   private firstUnaddressedSession(): ZLinkStreamSessionRuntime | undefined {
@@ -1180,12 +1258,15 @@ export class ZLinkStreamSessionNodeRuntime {
   }
 
   private removePendingConnectionMetadata(endpointKey: string): void {
-    for (let index = this.pendingConnectionMetadata.length - 1; index >= 0; index--) {
+    for (let index = this.pendingConnectionMetadataHead; index < this.pendingConnectionMetadata.length; index += 1) {
       const metadata = this.pendingConnectionMetadata[index];
+      if (metadata === undefined) continue;
       if (streamMonitorEndpointKey(metadata.localAddr, metadata.remoteAddr) === endpointKey) {
-        this.pendingConnectionMetadata.splice(index, 1);
+        this.pendingConnectionMetadata[index] = undefined;
+        this.pendingConnectionMetadataCount -= 1;
       }
     }
+    this.compactPendingConnectionMetadata();
   }
 
   private resolveMonitorSession(event: ZLinkBackendSocketMonitorEvent): ZLinkStreamSessionRuntime | undefined {
@@ -1214,7 +1295,7 @@ export class ZLinkStreamSessionNodeRuntime {
   }
 
   private enqueueEndpointlessDisconnect(error: Error): void {
-    const sessionId = this.unaddressedMonitorSessions.shift();
+    const sessionId = this.takeUnaddressedMonitorSession();
     if (sessionId !== undefined) {
       this.getActiveSession(sessionId)?.enqueueDisconnected(error);
       return;

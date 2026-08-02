@@ -153,7 +153,7 @@ export class RawServiceMeshRuntime {
   >();
   private readonly unresolvedConnectionCandidates: PhysicalConnectionCandidate[] = [];
   private readonly connectionIds = new Map<string, string>();
-  private readonly monitorEvents: ZLinkRawMonitorRecord[] = [];
+  private monitorEvents: ZLinkRawMonitorRecord[] = [];
   private readonly bindingPort: { createHost(): ZLinkRawHostPort };
   private readonly onPeerNotRequired?: RawServiceMeshRuntimeOptions['onPeerNotRequired'];
   private readonly onInboundMessageDropped?: RawServiceMeshRuntimeOptions['onInboundMessageDropped'];
@@ -734,7 +734,11 @@ export class RawServiceMeshRuntime {
 
   drainMonitorEvents(nowMs = performance.now()): number {
     let handled = 0;
-    for (const event of this.monitorEvents.splice(0)) {
+    // Detach the current batch so monitor callbacks that run while an event is
+    // being handled append to the next batch without copying or reindexing it.
+    const events = this.monitorEvents;
+    this.monitorEvents = [];
+    for (const event of events) {
       handled++;
       const nodeRoutingId = event.routingId
         ?? this.expectedPeerRoutingId(event.remoteAddress);

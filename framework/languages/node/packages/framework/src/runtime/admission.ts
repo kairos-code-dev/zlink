@@ -1,17 +1,23 @@
 import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from './framework-errors-internal';
-import {
-} from '../contracts';
-
 export class ZLinkRuntimeAdmissionGate {
   private readonly meshes = new Map<string, ZLinkMeshAdmissionState>();
 
   get acceptsNewWork(): boolean {
-    return [...this.meshes.values()].every((state) => !state.sealed);
+    for (const state of this.meshes.values()) {
+      if (state.sealed) return false;
+    }
+    return true;
   }
 
   register(meshName: string): void {
     if (!this.meshes.has(meshName)) {
-      this.meshes.set(meshName, { sealed: false, active: 0, waiters: [] });
+      this.meshes.set(meshName, {
+        sealed: false,
+        active: 0,
+        waiters: [],
+        waiterHead: 0,
+        waiterCount: 0
+      });
     }
   }
 
@@ -42,7 +48,8 @@ export class ZLinkRuntimeAdmissionGate {
           closed = true;
           state.active -= 1;
           if (state.active === 0) {
-            for (const resolve of state.waiters.splice(0)) resolve();
+            let resolve: (() => void) | undefined;
+            while ((resolve = takeWaiter(state)) !== undefined) resolve();
           }
         }
       };
@@ -72,11 +79,17 @@ export class ZLinkRuntimeAdmissionGate {
         resolve();
       };
       const abort = () => {
-        const index = state.waiters.indexOf(complete);
-        if (index >= 0) state.waiters.splice(index, 1);
+        const index = state.waiters.indexOf(complete, state.waiterHead);
+        if (index >= 0) {
+          state.waiters[index] = undefined;
+          state.waiterCount -= 1;
+          advanceWaiterHead(state);
+          compactWaiters(state);
+        }
         reject(signal?.reason);
       };
-      state.waiters.push(complete);
+        state.waiters.push(complete);
+        state.waiterCount += 1;
       signal?.addEventListener('abort', abort, { once: true });
     });
   }
@@ -122,5 +135,34 @@ export interface ZLinkApplicationWorkClaim {
 interface ZLinkMeshAdmissionState {
   sealed: boolean;
   active: number;
-  readonly waiters: Array<() => void>;
+  readonly waiters: Array<(() => void) | undefined>;
+  waiterHead: number;
+  waiterCount: number;
+}
+
+function takeWaiter(state: ZLinkMeshAdmissionState): (() => void) | undefined {
+  advanceWaiterHead(state);
+  const waiter = state.waiters[state.waiterHead];
+  if (waiter === undefined) return undefined;
+  state.waiters[state.waiterHead] = undefined;
+  state.waiterHead += 1;
+  state.waiterCount -= 1;
+  compactWaiters(state);
+  return waiter;
+}
+
+function advanceWaiterHead(state: ZLinkMeshAdmissionState): void {
+  while (state.waiterHead < state.waiters.length && state.waiters[state.waiterHead] === undefined) {
+    state.waiterHead += 1;
+  }
+}
+
+function compactWaiters(state: ZLinkMeshAdmissionState): void {
+  if (state.waiterCount === 0) {
+    state.waiters.length = 0;
+    state.waiterHead = 0;
+  } else if (state.waiterHead >= 1024 && state.waiterHead * 2 >= state.waiters.length) {
+    state.waiters.splice(0, state.waiterHead);
+    state.waiterHead = 0;
+  }
 }

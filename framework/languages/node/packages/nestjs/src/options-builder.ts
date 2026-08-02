@@ -99,6 +99,39 @@ function createBuilderState(): ZLinkNestBuilderState {
   };
 }
 
+function registerSerializer(
+  state: ZLinkNestBuilderState,
+  contentType: string,
+  serializer: ZLinkMessageSerializer
+): void {
+  state.codecRegistry.addSerializer(contentType, serializer);
+}
+
+function registerStreamCodec(state: ZLinkNestBuilderState, contentType: string, codec: unknown): void {
+  state.codecRegistry.addStreamCodec(contentType, codec);
+}
+
+function ensureChannelAvailable(state: ZLinkNestBuilderState, name: string): void {
+  if (name.trim().length === 0 || name.trim() !== name) {
+    throw new framework.ZLinkConfigurationException('Channel name must not be empty or padded.');
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(state.fanoutChannels, name)
+    || Object.prototype.hasOwnProperty.call(state.clientServerChannels, name)
+  ) {
+    throw new framework.ZLinkConfigurationException(`Duplicate channel '${name}'.`);
+  }
+}
+
+function ensureClientServerChannelAvailable(state: ZLinkNestBuilderState, name: string): void {
+  if (name.trim().length === 0 || name.trim() !== name) {
+    throw new framework.ZLinkConfigurationException('Channel name must not be empty or padded.');
+  }
+  if (Object.prototype.hasOwnProperty.call(state.fanoutChannels, name)) {
+    throw new framework.ZLinkConfigurationException(`Duplicate channel '${name}'.`);
+  }
+}
+
 abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuilder {
   protected constructor(protected readonly state: ZLinkNestBuilderState) {}
 
@@ -227,22 +260,14 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
     return network;
   }
 
-  protected addSerializer(contentType: string, serializer: ZLinkMessageSerializer): void {
-    this.state.codecRegistry.addSerializer(contentType, serializer);
-  }
-
-  protected addStreamCodec(contentType: string, codec: unknown): void {
-    this.state.codecRegistry.addStreamCodec(contentType, codec);
-  }
-
   addFanoutChannel(name: string): ZLinkNestFanoutChannelBuilder {
-    this.ensureChannelAvailable(name);
+    ensureChannelAvailable(this.state, name);
     this.state.fanoutChannels[name] = {};
     return new DefaultZLinkNestFanoutChannelBuilder(this.state, name, this.state.fanoutChannels[name]);
   }
 
   addClientServerChannel(name: string): ZLinkNestClientServerChannelRoleBuilder {
-    this.ensureClientServerChannelAvailable(name);
+    ensureClientServerChannelAvailable(this.state, name);
     this.state.clientServerChannels[name] ??= {};
     return new DefaultZLinkNestClientServerChannelRoleBuilder(
       this.state,
@@ -265,27 +290,6 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
   addStreamNode(name: string): ZLinkNestStreamNodeBuilder {
     this.state.streams[name] ??= {};
     return new DefaultZLinkNestStreamNodeBuilder(this.state, this.state.streams[name]);
-  }
-
-  private ensureChannelAvailable(name: string): void {
-    if (name.trim().length === 0 || name.trim() !== name) {
-      throw new framework.ZLinkConfigurationException('Channel name must not be empty or padded.');
-    }
-    if (
-      Object.prototype.hasOwnProperty.call(this.state.fanoutChannels, name)
-      || Object.prototype.hasOwnProperty.call(this.state.clientServerChannels, name)
-    ) {
-      throw new framework.ZLinkConfigurationException(`Duplicate channel '${name}'.`);
-    }
-  }
-
-  private ensureClientServerChannelAvailable(name: string): void {
-    if (name.trim().length === 0 || name.trim() !== name) {
-      throw new framework.ZLinkConfigurationException('Channel name must not be empty or padded.');
-    }
-    if (Object.prototype.hasOwnProperty.call(this.state.fanoutChannels, name)) {
-      throw new framework.ZLinkConfigurationException(`Duplicate channel '${name}'.`);
-    }
   }
 
   build(): ZLinkModuleOptions {
@@ -320,7 +324,7 @@ class DefaultZLinkNestCodecRegistryBuilder extends ZLinkNestOptionsBuilder imple
   }
 
   addSerializer(contentType: string, serializer: ZLinkMessageSerializer): this {
-    super.addSerializer(contentType, serializer);
+    registerSerializer(this.state, contentType, serializer);
     return this;
   }
 
@@ -328,7 +332,7 @@ class DefaultZLinkNestCodecRegistryBuilder extends ZLinkNestOptionsBuilder imple
     if (contentType.trim().length === 0) {
       throw new Error('Codec content type must not be empty.');
     }
-    super.addStreamCodec(contentType, codec);
+    registerStreamCodec(this.state, contentType, codec);
     return this;
   }
 

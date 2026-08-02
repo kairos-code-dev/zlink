@@ -99,7 +99,9 @@ interface ServiceSpotMessageFollowRecord {
 interface ServiceSpotMessageFollowState {
   readonly seal: ServiceSpotMessageFollowSeal;
   readonly source: ServiceDirectSpotRouteFence;
-  readonly queued: ServiceSpotMessageFollowRecord[];
+  readonly queued: Array<ServiceSpotMessageFollowRecord | undefined>;
+  queuedHead: number;
+  queuedCount: number;
   queuedBytes: number;
   target?: ServiceDirectSpotRouteFence;
   expiresAtMs?: number;
@@ -785,6 +787,8 @@ export class ServiceStatefulRuntime {
       seal,
       source: freezeDirectSpotRoute(source),
       queued: [],
+      queuedHead: 0,
+      queuedCount: 0,
       queuedBytes: 0,
       draining: false
     });
@@ -795,7 +799,9 @@ export class ServiceStatefulRuntime {
     const state = this.exactSpotMessageFollow(seal);
     if (state === undefined || state.target !== undefined) return false;
     this.removeSpotMessageFollow(state);
-    for (const record of state.queued) {
+    for (let index = state.queuedHead; index < state.queued.length; index += 1) {
+      const record = state.queued[index];
+      if (record === undefined) continue;
       const result = this.ingress(record.ingress);
       if (result !== 'application') {
         throw new Error('Aborted Spot ingress could not be restored to its source queue.');
@@ -2940,7 +2946,7 @@ export class ServiceStatefulRuntime {
     }
     const bytes = ingress.parts.reduce((sum, part) => sum + part.byteLength, 0);
     if (
-      state.queued.length >= MESSAGE_FOLLOW_MESSAGE_LIMIT
+      state.queuedCount >= MESSAGE_FOLLOW_MESSAGE_LIMIT
       || bytes > MESSAGE_FOLLOW_BYTE_LIMIT - state.queuedBytes
     ) {
       if (wire.kind === 'spotRequest') {
@@ -2954,6 +2960,7 @@ export class ServiceStatefulRuntime {
       wire,
       bytes
     });
+    state.queuedCount += 1;
     state.queuedBytes += bytes;
     if (state.target !== undefined) void this.drainSpotMessageFollow(state);
     return 'application';
@@ -2963,12 +2970,12 @@ export class ServiceStatefulRuntime {
     if (state.draining || state.target === undefined) return;
     state.draining = true;
     try {
-      while (state.queued.length > 0 && this.spotMessageFollow.get(state.seal.key) === state) {
+      while (state.queuedCount > 0 && this.spotMessageFollow.get(state.seal.key) === state) {
         if (state.expiresAtMs === undefined || state.expiresAtMs <= Date.now()) {
           this.failExpiredSpotMessageFollow(state);
           return;
         }
-        const current = state.queued[0]!;
+        const current = this.peekSpotMessageFollow(state)!;
         const parts = [
           encodeSpotHeader(
             current.wire.kind,
@@ -3005,7 +3012,7 @@ export class ServiceStatefulRuntime {
             );
           }
         }
-        state.queued.shift();
+        this.takeSpotMessageFollow(state);
         state.queuedBytes -= current.bytes;
       }
     } finally {
@@ -3023,7 +3030,9 @@ export class ServiceStatefulRuntime {
 
   private failExpiredSpotMessageFollow(state: ServiceSpotMessageFollowState): void {
     this.removeSpotMessageFollow(state);
-    for (const current of state.queued) {
+    for (let index = state.queuedHead; index < state.queued.length; index += 1) {
+      const current = state.queued[index];
+      if (current === undefined) continue;
       if (current.wire.kind !== 'spotRequest') continue;
       const result = failure(
         new ServiceStaleGenerationError('spot', current.wire.target.spot.spotId)
@@ -3050,6 +3059,30 @@ export class ServiceStatefulRuntime {
     }
     if (state.retryTimer !== undefined) clearTimeout(state.retryTimer);
     state.retryTimer = undefined;
+  }
+
+  private peekSpotMessageFollow(
+    state: ServiceSpotMessageFollowState
+  ): ServiceSpotMessageFollowRecord | undefined {
+    while (state.queuedHead < state.queued.length && state.queued[state.queuedHead] === undefined) {
+      state.queuedHead += 1;
+    }
+    return state.queued[state.queuedHead];
+  }
+
+  private takeSpotMessageFollow(state: ServiceSpotMessageFollowState): void {
+    const current = this.peekSpotMessageFollow(state);
+    if (current === undefined) return;
+    state.queued[state.queuedHead] = undefined;
+    state.queuedHead += 1;
+    state.queuedCount -= 1;
+    if (state.queuedCount === 0) {
+      state.queued.length = 0;
+      state.queuedHead = 0;
+    } else if (state.queuedHead >= 1024 && state.queuedHead * 2 >= state.queued.length) {
+      state.queued.splice(0, state.queuedHead);
+      state.queuedHead = 0;
+    }
   }
 
   private actorFence(actor: ServiceActorRef): ServiceActorRouteFence {

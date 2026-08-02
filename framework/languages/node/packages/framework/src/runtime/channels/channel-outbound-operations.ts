@@ -1,8 +1,6 @@
 import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import type { Message } from '@zlink-systems/zlink';
 import {
-} from '../../contracts';
-import {
   ZLinkSubmitStatus,
   type ZLinkSubmitResult
 } from '../messaging/submission-result';
@@ -56,7 +54,6 @@ export class ZLinkChannelOutboundOperations {
     if (dealer === undefined) {
       return { status: ZLinkSubmitStatus.TargetNotFound };
     }
-    const correlationId = newChannelCorrelationId();
     const parts = encodeChannelEnvelopeParts(
       ZLinkChannelMessageKind.Command,
       channelName,
@@ -65,7 +62,7 @@ export class ZLinkChannelOutboundOperations {
       undefined,
       undefined,
       this.codecs,
-      correlationId,
+      undefined,
       this.dispatchServices.flowCreationEnabled(),
       metadata
     ) as readonly Message[];
@@ -76,7 +73,7 @@ export class ZLinkChannelOutboundOperations {
     if (!accepted) {
       return { status: ZLinkSubmitStatus.Backpressured };
     }
-    this.traceSend(channelName, packetName, correlationId);
+    this.traceSend(channelName, packetName);
     return { status: ZLinkSubmitStatus.Submitted };
   }
 
@@ -92,7 +89,6 @@ export class ZLinkChannelOutboundOperations {
     if (dealer === undefined) {
       return { status: ZLinkSubmitStatus.TargetNotFound };
     }
-    const correlationId = newChannelCorrelationId();
     const parts = encodeChannelEnvelopeParts(
       ZLinkChannelMessageKind.Command,
       channelName,
@@ -101,7 +97,7 @@ export class ZLinkChannelOutboundOperations {
       undefined,
       undefined,
       this.codecs,
-      correlationId,
+      undefined,
       this.dispatchServices.flowCreationEnabled(),
       metadata
     ) as readonly Message[];
@@ -117,21 +113,20 @@ export class ZLinkChannelOutboundOperations {
       }
       throw error;
     }
-    this.traceSend(channelName, packetName, correlationId);
+    this.traceSend(channelName, packetName);
     return { status: ZLinkSubmitStatus.Submitted };
   }
 
   private traceSend(
     channelName: string,
-    packetName: string | undefined,
-    correlationId: string
+    packetName: string | undefined
   ): void {
     this.dispatchServices.traceOutbound(ZLinkMessageFlowOutcome.Sent, () => ({
       surface: ZLinkDispatchErrorSurface.Channel,
       messageKind: ZLinkDispatchMessageKind.Send,
       channelName,
       packetName,
-      correlationId
+      correlationId: undefined,
     }));
   }
 
@@ -230,7 +225,6 @@ export class ZLinkChannelOutboundOperations {
   ): ZLinkSubmitResult {
     requirePublicFanoutTopic(topic);
     const publisher = this.sockets['publisher'](channelName);
-    const correlationId = newChannelCorrelationId();
     const parts = encodeChannelEnvelopeParts(
       ZLinkChannelMessageKind.Publish,
       channelName,
@@ -239,7 +233,7 @@ export class ZLinkChannelOutboundOperations {
       undefined,
       topic,
       this.codecs,
-      correlationId,
+      undefined,
       this.dispatchServices.flowCreationEnabled(),
       metadata
     ) as readonly Message[];
@@ -264,7 +258,6 @@ export class ZLinkChannelOutboundOperations {
     throwIfAborted(signal);
     requirePublicFanoutTopic(topic);
     const publisher = this.sockets['publisher'](channelName);
-    const correlationId = newChannelCorrelationId();
     const parts = encodeChannelEnvelopeParts(
       ZLinkChannelMessageKind.Publish,
       channelName,
@@ -273,7 +266,7 @@ export class ZLinkChannelOutboundOperations {
       undefined,
       topic,
       this.codecs,
-      correlationId,
+      undefined,
       this.dispatchServices.flowCreationEnabled(),
       metadata
     ) as readonly Message[];
@@ -300,7 +293,6 @@ export class ZLinkChannelOutboundOperations {
     metadata: ReadonlyMap<string, string> = new Map()
   ): ZLinkSubmitResult {
     const router = this.sockets.routeRouter(routerChannelId);
-    const correlationId = newChannelCorrelationId();
     const parts = encodeChannelEnvelopeParts(
       ZLinkChannelMessageKind.Command,
       routerChannelId,
@@ -309,7 +301,7 @@ export class ZLinkChannelOutboundOperations {
       undefined,
       undefined,
       codecsForFrameworkPacket(packetName, this.codecs),
-      correlationId,
+      undefined,
       this.dispatchServices.flowCreationEnabled(),
       metadata
     ) as readonly Message[];
@@ -320,7 +312,7 @@ export class ZLinkChannelOutboundOperations {
     if (!accepted) {
       return { status: ZLinkSubmitStatus.Backpressured };
     }
-    this.traceRouteSend(routerChannelId, targetNodeRid, packetName, correlationId);
+    this.traceRouteSend(routerChannelId, targetNodeRid, packetName);
     return { status: ZLinkSubmitStatus.Submitted };
   }
 
@@ -334,7 +326,6 @@ export class ZLinkChannelOutboundOperations {
   ): Promise<ZLinkSubmitResult> {
     throwIfAborted(signal);
     const router = this.sockets.routeRouter(routerChannelId);
-    const correlationId = newChannelCorrelationId();
     const parts = encodeChannelEnvelopeParts(
       ZLinkChannelMessageKind.Command,
       routerChannelId,
@@ -343,7 +334,7 @@ export class ZLinkChannelOutboundOperations {
       undefined,
       undefined,
       codecsForFrameworkPacket(packetName, this.codecs),
-      correlationId,
+      undefined,
       this.dispatchServices.flowCreationEnabled(),
       metadata
     ) as readonly Message[];
@@ -359,22 +350,21 @@ export class ZLinkChannelOutboundOperations {
       }
       throw error;
     }
-    this.traceRouteSend(routerChannelId, targetNodeRid, packetName, correlationId);
+    this.traceRouteSend(routerChannelId, targetNodeRid, packetName);
     return { status: ZLinkSubmitStatus.Submitted };
   }
 
   private traceRouteSend(
     routerChannelId: string,
     targetNodeRid: string,
-    packetName: string | undefined,
-    correlationId: string
+    packetName: string | undefined
   ): void {
     this.dispatchServices.traceOutbound(ZLinkMessageFlowOutcome.Sent, () => ({
       surface: ZLinkDispatchErrorSurface.RouteMeshChannel,
       messageKind: ZLinkDispatchMessageKind.Send,
       channelName: routerChannelId,
       packetName,
-      correlationId,
+      correlationId: undefined,
       sourceRid: targetNodeRid
     }));
   }

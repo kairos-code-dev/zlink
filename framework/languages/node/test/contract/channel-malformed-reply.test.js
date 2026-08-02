@@ -34,7 +34,7 @@ test('ZLinkChannelClient rejects an unsafe reply body', async () => {
         channelName: 'api',
         messageName: 'Ping',
         contentType: 'application/json',
-        correlationId: null,
+        correlationId: 'malformed-reply',
         deadline: null,
         topic: null,
         errorCode: null,

@@ -10,6 +10,8 @@ import {
 import type { ZLinkBackendMeshNode } from './contracts';
 import type { ZLinkInboundDispatchBudget } from '../dispatch/inbound-dispatch-budget';
 
+const MESH_DISPATCH_TIMER_YIELD_BATCHES = 16;
+
 //  The pump awaits between the two reads and the budget can pause in that gap.
 //  Reading through a function keeps the later check honest; an inline read
 //  stays narrowed by the first one.
@@ -118,6 +120,7 @@ export class ZLinkMeshDispatchPump {
       this.options.partCapacity ?? 256,
       this.options.byteCapacity ?? (1 << 20)
     );
+    let receiveBatchesSinceTimerYield = 0;
     try {
       for (;;) {
         readyBatch.reset();
@@ -136,9 +139,11 @@ export class ZLinkMeshDispatchPump {
                 break;
               }
               for (const record of received.records) {
-                const payloadBytes = BigInt(
-                  record.parts.reduce((sum, part) => sum + part.size(), 0)
-                );
+                let payloadByteCount = 0;
+                for (const part of record.parts) {
+                  payloadByteCount += part.size();
+                }
+                const payloadBytes = BigInt(payloadByteCount);
                 applicationBudget?.enqueue(payloadBytes);
                 let started = false;
                 let releaseCompletion: (() => void) | undefined;
@@ -170,8 +175,13 @@ export class ZLinkMeshDispatchPump {
                 }
               }
               // A continuously readable owner must not keep the timers phase
-              // from running while the pump consumes successive batches.
-              await yieldToTimers();
+              // from running, but a timer turn for every single record adds a
+              // Promise, closure, and timer allocation to the hot path.
+              receiveBatchesSinceTimerYield += 1;
+              if (receiveBatchesSinceTimerYield >= MESH_DISPATCH_TIMER_YIELD_BATCHES) {
+                receiveBatchesSinceTimerYield = 0;
+                await yieldToTimers();
+              }
               receiveBatch.reset();
             }
           } finally {
@@ -179,6 +189,7 @@ export class ZLinkMeshDispatchPump {
           }
         }
         await yieldToTimers();
+        receiveBatchesSinceTimerYield = 0;
         if (!drained.hasResidue) {
           return;
         }

@@ -7,8 +7,6 @@ import type {
   ZLinkStream
 } from '../../contracts';
 import {
-} from '../../contracts';
-import {
   ZLinkSubmitStatus,
   type ZLinkSubmitResult
 } from '../messaging/submission-result';

@@ -238,8 +238,8 @@ export class ZLinkExecutionBarrier {
   abort(seal: ZLinkExecutionBarrierSeal): boolean {
     if (!this.isCurrent(seal)) return false;
     this.currentSeal = undefined;
-    const waiters = this.admissionWaiters.splice(0);
-    for (const waiter of waiters) waiter.resolve(this.createClaim());
+    for (const waiter of this.admissionWaiters) waiter.resolve(this.createClaim());
+    this.admissionWaiters.length = 0;
     return true;
   }
 
@@ -248,7 +248,8 @@ export class ZLinkExecutionBarrier {
     this.currentSeal = undefined;
     this.committed = true;
     const error = new Error('ZLink execution barrier is committed.');
-    for (const waiter of this.admissionWaiters.splice(0)) waiter.reject(error);
+    for (const waiter of this.admissionWaiters) waiter.reject(error);
+    this.admissionWaiters.length = 0;
     return true;
   }
 

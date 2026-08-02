@@ -52,11 +52,11 @@ class GameplayStateStore {
 
   recordGameplayEvent(candidate: GameplayEventEnvelope): { event: GameplayEventEnvelope; recorded: boolean } {
     return this.partitions.update(candidate.playerId, (state) => {
-      const existing = state.eventsByKey[candidate.idempotencyKey];
+      const existing = state.eventsByKey[candidate.payload.idempotencyKey];
       if (existing !== undefined) return { event: existing, recorded: false };
-      state.eventsByKey[candidate.idempotencyKey] = candidate;
+      state.eventsByKey[candidate.payload.idempotencyKey] = candidate;
       applyFacts(state.facts, candidate);
-      addEvidence(state.evidence, `gameplay:${candidate.eventId}:${candidate.eventType}`);
+      addEvidence(state.evidence, `gameplay:${candidate.eventId}:${candidate.type}`);
       return { event: candidate, recorded: true };
     });
   }
@@ -100,7 +100,7 @@ class QuestEventStore {
       for (const event of proposed) {
         const stored: StoredQuestEvent = {
           ...event,
-          payload: encodePayload(event.payload),
+          payload: event.payload as Record<string, unknown>,
           version: nextVersion(state.events, playerId, event.questId),
           createdAtUnixMs: event.createdAtUnixMs
         };
@@ -130,7 +130,7 @@ class QuestEventStore {
   }
 
   readQuestEventNames(): string[] {
-    return this.partitions.keys().flatMap((playerId) => this.read(playerId).map((event) => event.eventType));
+    return this.partitions.keys().flatMap((playerId) => this.read(playerId).map((event) => event.type));
   }
 
   evidence(playerId: string): { evidence: string[]; ownerLifecycle: string[] } {
@@ -192,13 +192,13 @@ class GameQuestSelfCheckStore {
       ...aliceEventEvidence.evidence, ...this.events.evidence('player-bob').evidence,
       ...this.readModel.evidence('player-alice'), ...this.readModel.evidence('player-bob')
     ];
-    const rewardCount = aliceEvents.filter((event) => event.questId === QuestIds.FirstHunt && event.eventType === 'QuestRewardGranted').length;
+    const rewardCount = aliceEvents.filter((event) => event.questId === QuestIds.FirstHunt && event.type === 'QuestRewardGranted').length;
     const sourceCount = aliceEvents.filter((event) => event.sourceEventId === 'player-alice-kill-3').length;
     const bobReconcile = bobEvents.filter((event) => event.questId === QuestIds.FirstHunt &&
-      ['QuestReconciled', 'QuestCompleted', 'QuestRewardGranted'].includes(event.eventType));
+      ['QuestReconciled', 'QuestCompleted', 'QuestRewardGranted'].includes(event.type));
     const passed = rewardCount === 1 && sourceCount === 3 &&
       aliceEventEvidence.ownerLifecycle.filter((entry) => entry.includes(':rehydrate:')).length >= 2 &&
-      bobReconcile.map((event) => event.eventType).join(',') === 'QuestReconciled,QuestCompleted,QuestRewardGranted' &&
+      bobReconcile.map((event) => event.type).join(',') === 'QuestReconciled,QuestCompleted,QuestRewardGranted' &&
       evidence.some((entry) => /^owner:mission-[ab]:player-alice$/.test(entry)) &&
       evidence.some((entry) => /^owner:mission-[ab]:player-bob$/.test(entry)) &&
       evidence.some((entry) => /^owner-close:mission-[ab]:player-alice$/.test(entry)) &&
@@ -244,11 +244,11 @@ class JsonPartitionStore<TState> {
 }
 
 function applyFacts(facts: PlayerFacts, event: GameplayEventEnvelope): void {
-  if (event.eventType === 'MonsterKilled') facts.kills[event.value] = (facts.kills[event.value] ?? 0) + event.count;
-  else if (event.eventType === 'ItemCollected') facts.items[event.value] = (facts.items[event.value] ?? 0) + event.count;
-  else if (event.eventType === 'MissionCompleted') addUnique(facts.completedMissionIds, event.value);
-  else if (event.eventType === 'AreaEntered') addUnique(facts.enteredAreaIds, event.value);
-  else if (event.eventType === 'FeatureUnlocked') addUnique(facts.unlockedFeatureIds, event.value);
+  if (event.type === 'MonsterKilled') facts.kills[event.payload.value] = (facts.kills[event.payload.value] ?? 0) + event.payload.count;
+  else if (event.type === 'ItemCollected') facts.items[event.payload.value] = (facts.items[event.payload.value] ?? 0) + event.payload.count;
+  else if (event.type === 'MissionCompleted') addUnique(facts.completedMissionIds, event.payload.value);
+  else if (event.type === 'AreaEntered') addUnique(facts.enteredAreaIds, event.payload.value);
+  else if (event.type === 'FeatureUnlocked') addUnique(facts.unlockedFeatureIds, event.payload.value);
   facts.snapshotVersion += 1;
 }
 
@@ -267,7 +267,6 @@ function nextVersion(events: StoredQuestEvent[], playerId: string, questId: stri
 }
 function addEvidence(values: string[], value: string): void { if (!values.includes(value)) values.push(value); }
 function addUnique(values: string[], value: string): void { if (!values.includes(value)) values.push(value); }
-function encodePayload(payload: unknown): number[] { return [...new TextEncoder().encode(JSON.stringify(payload))]; }
-function cloneEvent(event: StoredQuestEvent): StoredQuestEvent { return { ...event, payload: [...event.payload] }; }
+function cloneEvent(event: StoredQuestEvent): StoredQuestEvent { return { ...event, payload: { ...event.payload } }; }
 
 export { GameQuestSelfCheckStore, GameplayStateStore, QuestEventStore, QuestReadModelStore };

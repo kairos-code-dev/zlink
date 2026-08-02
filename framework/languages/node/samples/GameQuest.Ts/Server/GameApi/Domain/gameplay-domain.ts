@@ -24,7 +24,7 @@ const GameplayDomain = {
 function createEvent(
   playerId: string,
   idempotencyKey: string,
-  eventType: string,
+  type: string,
   value: string,
   count: number,
   sourceApi: string
@@ -32,12 +32,9 @@ function createEvent(
   return {
     eventId: `${playerId}-${idempotencyKey}`,
     playerId,
-    idempotencyKey,
-    eventType,
-    value,
-    count,
-    sourceApi,
-    createdAtUnixMs: Date.now()
+    type,
+    payload: { idempotencyKey, value, count, sourceApi },
+    occurredAtUnixMs: Date.now()
   };
 }
 

@@ -1,9 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { zlinkSpotPacketHandler } from '@zlink-systems/nestjs';
-import {
-  decodeGameplayPayload,
-  DeactivatePlayerQuestSpotReq
-} from '../../../../../../Shared/Contracts/messages';
+import { ClosePlayerQuestMsg } from '../../../../../../Shared/Contracts/messages';
 import { QuestEventStore, QuestReadModelStore } from '../../../../../Shared/Store/quest-progress-store';
 import { QuestEventProcessor } from '../../../../Application/quest-event-processor';
 import { PlayerQuestNotifier } from '../../player-quest-notifier';
@@ -13,7 +10,6 @@ import type {
   GameplayMsg,
   DeleteQuestProjectionReq,
   DeleteQuestProjectionRes,
-  DeactivatePlayerQuestSpotRes,
   GetQuestProgressReq,
   GetQuestProgressRes,
   QuestProgress,
@@ -34,7 +30,13 @@ class ApplyGameplayEventSpotHandler
   async handle(spot: PlayerQuestSpot, message: GameplayMsg): Promise<void> {
     requirePlayer(spot, message.playerId);
     const aggregate = spot.ensureAggregate(() => this.processor.rehydrate(message.playerId));
-    const result = this.processor.process(decodeGameplayPayload(message.payload), aggregate);
+    const result = this.processor.process({
+      eventId: message.eventId,
+      playerId: message.playerId,
+      type: message.type,
+      payload: message.payload,
+      occurredAtUnixMs: message.occurredAtUnixMs
+    }, aggregate);
     spot.replaceAggregate(result.aggregate);
     await this.notifier.notify(message.playerId, result.changedProgress, result.completedQuestIds);
   }
@@ -103,12 +105,10 @@ class RebuildQuestProjectionSpotHandler
 }
 
 @Injectable()
-@zlinkSpotPacketHandler({ spot: () => PlayerQuestSpot, packetName: 'DeactivatePlayerQuestSpotReq' })
-class DeactivatePlayerQuestSpotHandler
-  implements ZLinkSpotRequestHandler<PlayerQuestSpot, DeactivatePlayerQuestSpotReq, DeactivatePlayerQuestSpotRes> {
-  async handle(spot: PlayerQuestSpot, request: DeactivatePlayerQuestSpotReq): Promise<DeactivatePlayerQuestSpotRes> {
-    requirePlayer(spot, request.playerId);
-    return { closed: await spot.context.close() };
+@zlinkSpotPacketHandler({ spot: () => PlayerQuestSpot, packetName: 'ClosePlayerQuestMsg' })
+class ClosePlayerQuestSpotHandler implements ZLinkSpotPacketHandler<PlayerQuestSpot, ClosePlayerQuestMsg> {
+  async handle(spot: PlayerQuestSpot, _message: ClosePlayerQuestMsg): Promise<void> {
+    await spot.context.close();
   }
 }
 
@@ -118,7 +118,7 @@ function requirePlayer(spot: PlayerQuestSpot, playerId: string): void {
 
 export {
   ApplyGameplayEventSpotHandler,
-  DeactivatePlayerQuestSpotHandler,
+  ClosePlayerQuestSpotHandler,
   DeleteQuestProjectionSpotHandler,
   GetQuestProgressSpotHandler,
   RebuildQuestProjectionSpotHandler,

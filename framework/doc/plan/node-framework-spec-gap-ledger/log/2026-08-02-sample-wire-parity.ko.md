@@ -63,3 +63,34 @@ npm run typecheck
 
 실제 DeliveryDispatch process와 browser runner는 실행하지 않았다. 해당 evidence는 E2E 제외
 범위의 후속 조건이다.
+
+## NS-IMP-003
+
+GameQuest의 `GameplayMsg`는 공통 계약의 typed JSON object payload를 사용하도록 정렬했다.
+이전 Node sample은 event 전체를 `TextEncoder`로 `number[]`로 만들고 Spot handler와 Domain에서
+`TextDecoder`로 다시 해석했으며, durable event도 `eventType`과 배열 payload를 사용했다.
+
+다음 경계를 공통 계약으로 맞췄다.
+
+- `GameplayMsg.payload`는 `GameplayEventPayload` object이며 event envelope는 `type`과
+  `occurredAtUnixMs`를 사용
+- `StoredQuestEvent`는 `type`과 object payload를 저장하고 projection fold도 object를 직접 사용
+- GameApi, PlayerQuestSpot, Domain과 Store 사이에 사용자 정의 encode/decode 경로를 제거
+- `JoinSessionRes`에 `playerId`를 포함
+- explicit close는 request/reply 우회가 아닌 `ClosePlayerQuestMsg` one-way Spot message로 전달
+
+기존 action handler의 application 의미는 유지했고, message codec 책임을 호출부로 확장하지
+않았다.
+
+## NS-IMP-003 검증
+
+```text
+node --test --test-force-exit --test-name-pattern='GameQuest TypeScript sample uses framework channel topology' \
+  test/contract/sample-regression.test.js
+  1/1 PASS
+npm run typecheck
+  PASS
+```
+
+실제 GameQuest process와 browser runner는 실행하지 않았다. 해당 evidence는 E2E 제외 범위의
+후속 조건이다.

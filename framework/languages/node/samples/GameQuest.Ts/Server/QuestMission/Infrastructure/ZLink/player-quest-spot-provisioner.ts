@@ -3,7 +3,7 @@ import {
   ZLINK_SPOT_OUTBOUND
 } from '@zlink-systems/nestjs';
 import { questMissionSpotId, SampleNames } from '../../../../Shared/Configuration/sample-names';
-import { DeactivatePlayerQuestSpotReq } from '../../../../Shared/Contracts/messages';
+import { ClosePlayerQuestMsg } from '../../../../Shared/Contracts/messages';
 import type {
   ZLinkSpotOutbound
 } from '@zlink-systems/framework';
@@ -30,11 +30,8 @@ class PlayerQuestSpotProvisioner {
   }
 
   async deactivate(playerId: string): Promise<boolean> {
-    const result = await this.request<{ closed: boolean }>(
-      playerId,
-      new DeactivatePlayerQuestSpotReq(playerId)
-    );
-    return result.closed;
+    await this.send(playerId, new ClosePlayerQuestMsg());
+    return true;
   }
 }
 

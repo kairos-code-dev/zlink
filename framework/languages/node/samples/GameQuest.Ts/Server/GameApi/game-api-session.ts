@@ -67,7 +67,7 @@ class JoinSessionHandler {
     }
     await context.actors.bindOrGet(actorRef);
     const current = await this.getProjection(request.playerId);
-    context.client.reply(new JoinSessionRes(current.activeQuests)).submit();
+    context.client.reply(new JoinSessionRes(request.playerId, current.activeQuests)).submit();
   }
 
   private async getProjection(playerId: string): Promise<GetQuestProgressRes> {

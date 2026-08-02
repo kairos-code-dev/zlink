@@ -986,6 +986,16 @@ timestamp는 `occurredAtUnixMs: number`로 통일했다. Courier session은 boun
 E2E 제외 범위로 남긴다. 상세 내용은
 [`log/2026-08-02-sample-wire-parity.ko.md`](log/2026-08-02-sample-wire-parity.ko.md)에 기록한다.
 
+#### 2026-08-02 NS-IMP-003 비-E2E 갱신
+
+GameQuest의 `GameplayMsg` payload를 `GameplayEventPayload` object로 바꾸고 event envelope의
+`type`·`occurredAtUnixMs`를 공통 계약과 맞췄다. `StoredQuestEvent`도 `type`과 object payload를
+사용하도록 변경해 `TextEncoder`/`TextDecoder`와 호출부 codec 우회를 제거했다. `JoinSessionRes`의
+`playerId`를 보강하고 explicit close를 `ClosePlayerQuestMsg` one-way Spot message로 정렬했다.
+정적 regression 1/1과 typecheck가 통과했다. 실제 sample process evidence는 E2E 제외 범위로
+남긴다. 상세 내용은
+[`log/2026-08-02-sample-wire-parity.ko.md`](log/2026-08-02-sample-wire-parity.ko.md)에 기록한다.
+
 #### 11.3.3 현재 계약 목록과 구현 차이
 
 | ID | 현재 근거 | 초기 판정 |

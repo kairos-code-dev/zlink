@@ -59,9 +59,9 @@ class PlayerQuestAggregate {
 
   private fold(event: StoredQuestEvent): void {
     if (event.sourceEventId !== undefined) this.sourceEventIds.add(event.sourceEventId);
-    const payload = decodePayload<Record<string, unknown>>(event.payload);
+    const payload = event.payload;
     const current = this.quests.get(event.questId);
-    if (event.eventType === 'QuestProgressed' &&
+    if (event.type === 'QuestProgressed' &&
         typeof payload.currentCount === 'number' && typeof payload.requiredCount === 'number') {
       const conditions = new Set(current?.matchedConditions ?? []);
       if (typeof payload.conditionKey === 'string') conditions.add(payload.conditionKey);
@@ -76,7 +76,7 @@ class PlayerQuestAggregate {
       });
       return;
     }
-    if (event.eventType === 'QuestReconciled' && typeof payload.currentCount === 'number') {
+    if (event.type === 'QuestReconciled' && typeof payload.currentCount === 'number') {
       this.quests.set(event.questId, {
         currentCount: payload.currentCount,
         requiredCount: current?.requiredCount ?? requiredCountFor(event.questId),
@@ -90,9 +90,9 @@ class PlayerQuestAggregate {
       return;
     }
     if (current === undefined) return;
-    if (event.eventType === 'QuestCompleted') {
+    if (event.type === 'QuestCompleted') {
       this.quests.set(event.questId, { ...current, status: QuestStatuses.Completed, version: event.version, updatedAtUnixMs: event.createdAtUnixMs });
-    } else if (event.eventType === 'QuestRewardGranted') {
+    } else if (event.type === 'QuestRewardGranted') {
       this.quests.set(event.questId, { ...current, status: QuestStatuses.RewardGranted, version: event.version, updatedAtUnixMs: event.createdAtUnixMs });
     }
   }
@@ -102,21 +102,21 @@ const QuestDomain = {
   decide(event: GameplayEventEnvelope, aggregate: PlayerQuestAggregate): QuestDecision {
     if (aggregate.hasSourceEvent(event.eventId)) return emptyDecision();
     const decisions: QuestDecision[] = [];
-    if (event.eventType === 'MonsterKilled' && event.value === 'wolf:forest') {
-      decisions.push(counterDecision(event, aggregate, QuestIds.FirstHunt, event.count, 3));
+    if (event.type === 'MonsterKilled' && event.payload.value === 'wolf:forest') {
+      decisions.push(counterDecision(event, aggregate, QuestIds.FirstHunt, event.payload.count, 3));
     }
-    if (event.eventType === 'ItemCollected' && event.value === 'healing-herb') {
-      decisions.push(counterDecision(event, aggregate, QuestIds.HerbGathering, event.count, 5));
+    if (event.type === 'ItemCollected' && event.payload.value === 'healing-herb') {
+      decisions.push(counterDecision(event, aggregate, QuestIds.HerbGathering, event.payload.count, 5));
     }
-    if (event.eventType === 'FeatureUnlocked' && event.value === 'auction') {
+    if (event.type === 'FeatureUnlocked' && event.payload.value === 'auction') {
       decisions.push(conditionDecision(event, aggregate, QuestIds.OpenAuction, 'auction', 1));
       decisions.push(conditionDecision(event, aggregate, QuestIds.TutorialPath, 'auction', 2));
     }
-    if (event.eventType === 'MissionCompleted' && event.value === 'tutorial') {
+    if (event.type === 'MissionCompleted' && event.payload.value === 'tutorial') {
       decisions.push(conditionDecision(event, aggregate, QuestIds.TutorialPath, 'tutorial', 2));
       decisions.push(orderedDecision(event, aggregate, QuestIds.RuinsExplorer, 0, 2));
     }
-    if (event.eventType === 'AreaEntered' && event.value === 'ruins') {
+    if (event.type === 'AreaEntered' && event.payload.value === 'ruins') {
       decisions.push(orderedDecision(event, aggregate, QuestIds.RuinsExplorer, 1, 2));
     }
     return mergeDecisions(decisions);
@@ -135,7 +135,7 @@ const QuestDomain = {
       eventId: sourceEventId,
       playerId,
       questId: QuestIds.FirstHunt,
-      eventType: 'QuestReconciled',
+      type: 'QuestReconciled',
       sourceEventId: undefined,
       payload: { playerId, questId: QuestIds.FirstHunt, currentCount: factCount, reason: 'sync', reconciledAtUnixMs: now },
       createdAtUnixMs: now
@@ -203,8 +203,8 @@ function progressDecision(
     sourceEventId: event.eventId,
     playerId: event.playerId,
     questId,
-    eventType: 'QuestProgressed',
-    payload: { playerId: event.playerId, questId, delta: event.count, currentCount, requiredCount, sourceEventId: event.eventId, conditionKey },
+    type: 'QuestProgressed',
+    payload: { playerId: event.playerId, questId, delta: event.payload.count, currentCount, requiredCount, sourceEventId: event.eventId, conditionKey },
     createdAtUnixMs: now
   }];
   const completed = currentCount >= requiredCount;
@@ -215,11 +215,11 @@ function progressDecision(
 function completionEvents(playerId: string, questId: string, sourceEventId: string, now: number): ProposedQuestEvent[] {
   return [{
     eventId: `${questId}-${sourceEventId}-completed`, sourceEventId, playerId, questId,
-    eventType: 'QuestCompleted',
+    type: 'QuestCompleted',
     payload: { playerId, questId, sourceEventId, completedAtUnixMs: now }, createdAtUnixMs: now
   }, {
     eventId: `${questId}-${sourceEventId}-reward`, sourceEventId, playerId, questId,
-    eventType: 'QuestRewardGranted',
+    type: 'QuestRewardGranted',
     payload: { playerId, questId, rewardId: `reward-${questId}`, grantedAtUnixMs: now }, createdAtUnixMs: now
   }];
 }
@@ -234,10 +234,6 @@ function mergeDecisions(decisions: QuestDecision[]): QuestDecision {
 
 function emptyDecision(): QuestDecision {
   return { events: [], changedQuestIds: [], completedQuestIds: [] };
-}
-
-function decodePayload<T>(payload: number[]): T {
-  return JSON.parse(new TextDecoder().decode(Uint8Array.from(payload))) as T;
 }
 
 function requiredCountFor(questId: string): number {

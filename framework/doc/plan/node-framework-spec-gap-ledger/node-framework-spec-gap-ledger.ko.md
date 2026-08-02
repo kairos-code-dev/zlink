@@ -955,6 +955,14 @@ artifact hash까지 포함한 immutable manifest를 새로 기록하고 build, c
 runner를 모두 다시 실행한다. Baseline fingerprint가 같더라도 candidate `HEAD` 또는 manifest가 다르면
 과거 결과를 재사용하지 않는다.
 
+#### 2026-08-02 static regression follow-up
+
+DeliveryDispatch static gate의 stale `SampleNames.routeMesh` assertion을 현재 shared contract인
+`SampleNames.courierMeshName`으로 정렬했다. 해당 gate는 1/1, `sample-regression.test.js`의 실제
+aggregate 실행을 제외한 sample contract는 35/35 통과했다. aggregate는 TicTacToe browser
+stream message timeout으로 실패했으므로 sample process 완료나 10절 gate 통과로 확대 해석하지
+않는다. 자세한 명령과 commit은 [`log/2026-08-02-sample-static-regression.ko.md`](log/2026-08-02-sample-static-regression.ko.md)에 기록한다.
+
 #### 11.3.3 현재 계약 목록과 구현 차이
 
 | ID | 현재 근거 | 초기 판정 |

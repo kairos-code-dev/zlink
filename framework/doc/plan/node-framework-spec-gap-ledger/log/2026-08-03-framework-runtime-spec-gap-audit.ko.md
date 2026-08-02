@@ -133,3 +133,15 @@ Config 13의 `SA-E2E-14`는 feature-map에 `구현`으로 표시되어 있지만
    package로 client result와 role-server evidence를 함께 확인한다.
 4. `ND-TEST-003`에 따라 full regression, coverage, CI와 aggregate process를 같은 candidate에서
    실행한다.
+
+## 11.10 checklist에 반영한 static evidence
+
+다음 항목은 실제 sample process 완료가 아니라 current source·static regression 범위만 확인했다.
+
+- DeliveryDispatch public Actor/topology gate: 2/2 통과
+- GameQuest typed topology gate: 1/1 통과
+- Node sample automatic handler registration: 1/1 통과
+- ZoneWorld logical handler·role gate: 9/9 통과
+
+따라서 checklist의 DeliveryDispatch, GameQuest와 automatic handler registration만 `[x]`로 표시했고,
+일곱 sample process smoke와 client·role-server evidence 항목은 미완료로 유지했다.

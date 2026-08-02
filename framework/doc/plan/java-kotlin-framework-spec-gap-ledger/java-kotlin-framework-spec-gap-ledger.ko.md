@@ -4,7 +4,7 @@
 기록하고, common contract와 실제 process evidence가 없는 항목은 완료로 표시하지
 않는다.
 
-마지막 갱신일: 2026-08-02
+마지막 갱신일: 2026-08-02 23:26 KST
 
 이 ledger는 Java framework와 Kotlin framework를 하나의 작업 단위로 관리한다. Java와
 Kotlin의 exact interface, feature-map, runner, 현재 실패 원인은 각 항목에서
@@ -15,7 +15,7 @@ Kotlin의 exact interface, feature-map, runner, 현재 실패 원인은 각 항�
 ## 공통 실행 규칙 — 네 ledger 동시 진행
 
 이 문서의 Java/Kotlin 작업은 C++, .NET, Node.js 작업과 동시에 진행한다. 현재 시스템 시각
-`2026-08-02 23:16 KST (+09:00)` 기준 마감은 `2026-08-03 10:00 KST (+09:00)`이다. 마감 시점에
+`2026-08-02 23:26 KST (+09:00)` 기준 마감은 `2026-08-03 10:00 KST (+09:00)`이다. 마감 시점에
 완료하지 못한 항목은 완료로 표시하지 않고, 현재 조건과 blocker를 기록한 뒤 다음 결정을 기다린다.
 
 이 절에서 고정하는 것은 작업 간 경계, 하위 layer bug 처리, CPU·마감·log 위치처럼 지켜야 하는
@@ -301,9 +301,9 @@ source/test는 조사 대상 경로이며, 정식 source owner inventory에 등�
 
 ## 3. 현재 검증 결과
 
-이 절은 `cwd=framework/languages/java`에서 2026-08-02 23:16 현재 working tree를 기준으로
-실행한 결과다. `HEAD`는 `9efee01aa39ace3db8e0f50c46ba9c12864f2cc2`이고, 전체 dirty
-status manifest는 확인 시점 기준 1000개 항목이다. 다른 workstream의 변경은 되돌리거나
+이 절은 `cwd=framework/languages/java`에서 2026-08-02 23:26 현재 working tree를 기준으로
+실행한 결과다. `HEAD`는 `0740adfdac3622f87ad1d33965337b7c9552818f`이고, 전체 dirty
+status manifest는 확인 시점 기준 828개 항목이다. 다른 workstream의 변경은 되돌리거나
 정리하지 않았다.
 
 | 검증 | 결과 | 현재 의미 |
@@ -315,7 +315,7 @@ status manifest는 확인 시점 기준 1000개 항목이다. 다른 workstream�
 | Java/Kotlin stream focused tests | PASS | HWM drop-newest, drop error, handler-less wait, timeout·cancellation 뒤 late message 보존, pending request correlation cleanup, typed wait/sequence/request payload cleanup, observer option copy, inbound flow metadata와 Kotlin wrapper를 확인한다. 최신 `ZLinkStreamRuntimeIngressTest`는 `recv` 전에 readiness wait가 실행되고, HWM pause/resume, heartbeat send failure, session construction failure, ignored notification, empty-part malformed peer isolation을 유지하는 것도 확인한다. process stream E2E는 별도다. |
 | `bindings/java` `SocketPollingContractTest.pollerTracksStreamSocketReadableRawRecord`, `pollerTracksRouterSocketReadableRecord` | PASS, fresh Core 11.1.0 prefix | public `Poller`가 `StreamSocket`과 `RouterSocket`의 `POLLIN`을 관찰한 뒤 public `recv`가 raw record를 수신하는지 확인한다. |
 | Java/Kotlin Framework socket receive poller regression | PASS, 최신 module test 41 actionable tasks·Java integration 8·Kotlin integration 22 | `ZLinkJavaSocketReceivePoller`를 통해 `StreamSocket`, `RouterSocket`, `DealerSocket`, `SubscriberSocket`과 raw service `RouterSocket`의 receive path를 readiness 확인 뒤에 실행한다. .NET의 `ZLinkBackendSocketPoller`·`ZLinkChannelReceiveLoop`와 같은 `poller wait → capacity 확인 → DONT_WAIT recv/subscribe` 순서를 사용하며, readiness는 `POLLIN|POLLERR|POLLPRI`를 받는다. Dealer와 raw service는 request completion이 필요할 때 `POLLIN|POLLCOMPLETION`을 하나의 public poller에 등록한다. Poller registration은 Framework가 bind/connect와 socket option 설정을 끝낸 뒤 첫 readiness 호출에서 수행하고, raw mesh service는 bind 직후 명시적으로 registration한다. Framework production path에는 STREAM packet callback 등록이 없다. poller close와 blocking receive-loop 종료 순서는 관련 module/integration test에서 확인하고, socket receive와 close의 동시 실행은 binding wrapper에서 직렬화한다. |
-| fresh Java binding package와 clean consumer | PASS | 승인된 Core 11.1.0 prefix와 `core-package-20260801.json`으로 binding package `11.1.1`을 다시 만들고, isolated Gradle consumer가 public API를 compile했으며 package가 native Core 11.1.0을 포함하는지 확인했다. evidence는 `.artifacts/v11/evidence/V11-M4-BIND-JVM/java-binding-consumer-20260802-r3.json`이다. |
+| fresh Java binding package와 clean consumer | PASS | 승인된 Core 11.1.0 prefix와 `core-package-20260801.json`으로 binding package `11.1.1`을 다시 만들고, isolated Gradle consumer가 public API를 compile했으며 package가 native Core 11.1.0을 포함하는지 확인했다. 최신 evidence는 `.artifacts/v11/evidence/V11-M4-BIND-JVM/java-binding-consumer-20260803-r4.json`이다. |
 | `e2e/RegistrationCodec/run_e2e.sh all`, `e2e-kotlin/RegistrationCodec/run_e2e.sh all` | PASS, Java·Kotlin 모두 RC-A1~RC-A6·RC-B1~RC-B5 | Java·Kotlin Spring role process에서 registration, DI lifecycle, filter order, JSON/Protobuf/MessagePack coexistence와 unknown codec rejection/recovery를 모두 확인한다. Config 4 전체 및 다른 common Config의 aggregate 완료를 의미하지 않는다. |
 | `e2e/PubSub/run_e2e.sh all`, `e2e-kotlin/PubSub/run_e2e.sh all` (2026-08-02 최신 실행) | PARTIAL. Kotlin은 PS-A1~A4·PS-B1~B2·PS-C1 PASS. Java는 PS-A1~A4·PS-B1·PS-C1 PASS 후 PS-B2 timeout으로 FAIL했고, `run_e2e.sh PS-B2` 단독 재실행도 같은 `publisher row` timeout으로 FAIL | Java PS-B2는 `PublisherRestartScenario`의 `waitPublisherRow`에서 publisher topology row를 확인하지 못했다. evidence는 `framework/languages/java/e2e/PubSub/logs/20260802-204336-3230`이다. Kotlin 전체 selector는 통과했다. Java·Kotlin fanout publish topic, typed subscriber dispatch, late subscriber, missing packet recovery와 일부 restart 경로를 확인하지만 Java publisher restart process evidence는 미완료다. Config 3 전체와 PS-D/PS-E 전환 대상은 포함하지 않는다. |
 | `e2e/SpotActorTransfer/run_e2e.sh ST-A1 --start-order {forward,reverse}`, `e2e-kotlin/SpotActorTransfer/run_e2e.sh ST-A1 --start-order {forward,reverse}` | PASS, 네 실행 모두 `scenario ST-A1 passed` | Java·Kotlin의 기본·reverse start-order가 ST-A1 전용 placement fixture에서 모두 통과했다. fixture는 `actor-a`를 유일한 User Spot·Actor placement target으로 두어 common contract의 “같은 node의 Join” 전제를 고정하고, public actor request 뒤 target handler evidence를 확인한다. role `/health`는 Framework와 expected peer readiness를 함께 확인한다. raw Actor/User Spot create retry와 ST-A2 이후 전체 relocation은 별도 증거다. |

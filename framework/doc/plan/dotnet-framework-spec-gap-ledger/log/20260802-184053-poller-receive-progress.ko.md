@@ -713,3 +713,13 @@ package gate를 green으로 만들었다. 다음 항목은 완료로 표시하�
 
 따라서 이번 round의 runtime·unit·package gate는 완료했지만, reconnect contract, process E2E,
 target OS evidence와 성능 계측까지 포함한 Phase A 전체 완료는 아니다.
+
+### Commit / push
+
+- commit: `095dbdb2dc8ac1b752d07d32992118b6fffb10a6`
+- message: `dotnet: align poller recv ingress and application HWM`
+- push: `origin/agent/framework-contract-runtime-update`
+- local `HEAD`와 remote branch SHA가 일치한다.
+- staged 범위에는 .NET Framework/binding source·test, package 검증 파일, 이 ledger와 현재
+  progress log만 포함했다. 공통 formal spec, .NET E2E/sample, Core와 다른 언어 변경은
+  worktree에 남겨 두고 commit에서 제외했다.

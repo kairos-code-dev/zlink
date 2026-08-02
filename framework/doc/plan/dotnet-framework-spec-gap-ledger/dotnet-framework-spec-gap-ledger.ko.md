@@ -8,8 +8,9 @@
 > gap)는 Phase A 완료 gate를 통과하기 전에는 시작하지 않는다.
 >
 >
-> 기준: `9efee01aa39ace3db8e0f50c46ba9c12864f2cc2` (`origin/agent/framework-contract-runtime-update`와 동일)와
-> 2026-08-02 working tree. 기준점과 working-tree manifest는
+> 작업 시작 기준: `9efee01aa39ace3db8e0f50c46ba9c12864f2cc2`와 2026-08-02 working tree.
+> 이번 scoped commit은 `095dbdb2dc8ac1b752d07d32992118b6fffb10a6`이며
+> `origin/agent/framework-contract-runtime-update`와 동일하다. 기준점과 working-tree manifest는
 > [`log/20260802-092859-ledger-review.ko.md`](log/20260802-092859-ledger-review.ko.md)에 기록하고, 기존
 > Phase A 실행 결과는 [`log/20260802-120542-phase-a-verification.ko.md`](log/20260802-120542-phase-a-verification.ko.md),
 > 최신 poller/HWM 수정과 Codex 검증 결과는

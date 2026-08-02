@@ -428,7 +428,7 @@ test('status >= 400 throws requestFailed', async () => {
   try {
     await assert.rejects(
       () => client.get('/players/0').async(),
-      (e) => e instanceof ZLinkFrameworkException && e.kind === ZLinkFrameworkErrorKind.RequestFailed,
+      (e) => e instanceof ZLinkFrameworkException && e.kind === ZLinkFrameworkErrorKind.Unavailable,
     );
   } finally {
     await client.close();
@@ -444,7 +444,7 @@ test('malformed JSON throws payloadDecodeFailed', async () => {
   try {
     await assert.rejects(
       () => client.get('/x').async(),
-      (e) => e instanceof ZLinkFrameworkException && e.kind === ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+      (e) => e instanceof ZLinkFrameworkException && e.kind === ZLinkFrameworkErrorKind.ProtocolError,
     );
   } finally {
     await client.close();
@@ -529,7 +529,7 @@ test('redirect limit exceeded throws', async () => {
   try {
     await assert.rejects(
       () => client.get('/loop').submitRaw(),
-      (e) => e instanceof ZLinkFrameworkException && e.kind === ZLinkFrameworkErrorKind.RequestFailed,
+      (e) => e instanceof ZLinkFrameworkException && e.kind === ZLinkFrameworkErrorKind.Unavailable,
     );
   } finally {
     await client.close();
@@ -670,7 +670,7 @@ test('compressed malformed body throws payloadDecodeFailed', async () => {
   try {
     await assert.rejects(
       () => client.get('/bad').submitRaw(),
-      (e) => e instanceof ZLinkFrameworkException && e.kind === ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+      (e) => e instanceof ZLinkFrameworkException && e.kind === ZLinkFrameworkErrorKind.ProtocolError,
     );
   } finally {
     await client.close();
@@ -687,7 +687,9 @@ test('timeout throws a retriable failure', async () => {
   try {
     await assert.rejects(
       () => client.get('/slow').submitRaw(),
-      (e) => e instanceof ZLinkFrameworkException && e.isRetriable === true,
+      (e) => e instanceof ZLinkFrameworkException
+        && e.kind === ZLinkFrameworkErrorKind.DeadlineExceeded
+        && !('isRetriable' in e),
     );
   } finally {
     await client.close();
@@ -746,15 +748,15 @@ test('validation rejects bad request configuration', async () => {
   assert.throws(() => client.get('no-slash'));
   assert.throws(
     () => client.post('/r').bodyStream(undefined, 'application/octet-stream'),
-    (e) => e instanceof ZLinkFrameworkException && e.kind === ZLinkFrameworkErrorKind.RequestProtocolError,
+      (e) => e instanceof ZLinkFrameworkException && e.kind === ZLinkFrameworkErrorKind.ProtocolError,
   );
   await assert.rejects(
     () => client.get('/r').download(undefined),
-    (e) => e instanceof ZLinkFrameworkException && e.kind === ZLinkFrameworkErrorKind.RequestProtocolError,
+    (e) => e instanceof ZLinkFrameworkException && e.kind === ZLinkFrameworkErrorKind.ProtocolError,
   );
   await assert.rejects(
     () => client.post('/r').body('a', 'text/plain').form('b', 'c').submitRaw(),
-    (e) => e instanceof ZLinkFrameworkException && e.kind === ZLinkFrameworkErrorKind.RequestProtocolError,
+    (e) => e instanceof ZLinkFrameworkException && e.kind === ZLinkFrameworkErrorKind.ProtocolError,
   );
   await client.close();
 });

@@ -59,7 +59,7 @@ test('fixed drain seals admission, publishes draining, waits accepted work, then
   assert.equal(runtime.isReady('game'), false);
   assert.throws(
     () => gate.claim('game', 'late request'),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.RequestRejected
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.Rejected
   );
 
   release.resolve();
@@ -135,11 +135,11 @@ test('stale or unknown mesh handles fail with a typed route error and do not cre
   const runtime = createRuntime(gate);
   assert.throws(
     () => runtime.snapshot('missing'),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.Unavailable
   );
   assert.throws(
     () => runtime.isReady('missing'),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.Unavailable
   );
 });
 
@@ -495,11 +495,11 @@ test('multi-mesh drain fails before global owner cleanup can mutate another mesh
 
   await assert.rejects(
     () => runtime.drain('game-a'),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.RequestRejected
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.Rejected
   );
   await assert.rejects(
     () => runtime.awaitDrained('game-b'),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.RequestRejected
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.Rejected
   );
   assert.equal(published, 0);
   assert.equal(cleaned, 0);

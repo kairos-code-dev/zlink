@@ -26,11 +26,11 @@
 - `Client`, `Shared`, `Server`와 `Domain`, `Application`, `Infrastructure` 책임 배치
 - Node의 decorator와 module scan을 사용하는 handler 자동 등록
 - runner의 build, 실행별 resource, readiness, client self-check, server evidence와 cleanup
-- shell·PowerShell inventory, Chromium 경계, contract regression과 CI 강제 범위
+- shell·PowerShell 실행 목록, Chromium 경계, contract regression과 CI 강제 범위
 
 다음 조건을 모두 만족해야 이 ledger를 완료로 표시할 수 있다.
 
-1. 공통 sample 7종의 message·field·transport inventory와 Node shared contract가 한 행씩 대응한다.
+1. 공통 sample 7종의 message·field·transport 목록과 Node shared contract가 한 행씩 대응한다.
 2. 공통 문서에 없는 Node message는 `internal-only`, `test/evidence-only`, `계약 후보` 가운데 하나로
    분류한다. 다른 언어 구현만을 근거로 공통 계약에 추가하지 않는다.
 3. wire와 runtime gap은 책임을 소유한 shared contract, handler, application 또는 Framework에서
@@ -46,7 +46,7 @@
 8. 마지막 독립 review에서 기록되지 않은 Node sample spec gap이 0개다.
 
 이 문서 작성 단계에서는 Node sample, Framework production source와 test를 수정하지 않는다. 구현할
-때는 각 card에 표시한 `ND-*` dependency와 `contract 선행` 항목만 먼저 닫는다.
+때는 각 작업 항목에 표시한 `ND-*` 의존 조건과 `contract 선행` 항목만 먼저 닫는다.
 
 ## 2. 기준 문서와 조사 범위
 
@@ -76,24 +76,24 @@ public contract는 공통 Framework spec과 Node exact interface가 소유한다
 | SupportChat | agent availability, conversation 생성·join, chat·typing, idle close와 reconnect | metadata routing, one-way typing, state sequence와 binding 교체 |
 | DeliveryDispatch | 배송 생성, offer·decision, status, deadline과 reassignment | transport field 금지, timestamp wire shape, late decision과 evidence |
 | ShoppingMall | order workflow, durable event, projection, idempotency와 compensation | 접수 응답, command/event 경계, replay와 failure sequence |
-| GameQuest | session, gameplay event, projection, replay·reconcile와 dedupe | action inventory, typed payload, domain event와 Store adapter 경계 |
+| GameQuest | session, gameplay event, projection, replay·reconcile와 dedupe | action 목록, typed payload, domain event와 Store adapter 경계 |
 | ZoneWorld | movement, zone state, bot, border, relocation, fanout과 Ops | 공통 message boundary, application NodeId와 runtime RID 분리, browser evidence |
 
 ## 3. 선행 조건과 현재 검증 상태
 
-### 3.1 Node Framework dependency 적용 기준
+### 3.1 Node Framework 의존 조건 적용 기준
 
 Sample이 Framework 구현 gap을 application code로 우회하면 안 된다. 다만 모든 Framework gap을 일괄
-선행 조건으로 두지 않는다. 각 sample card가 호출하는 public API나 runtime 의미에 직접 영향을 주는
-항목만 dependency로 연결한다.
+선행 조건으로 두지 않는다. 각 sample 작업 항목이 호출하는 public API나 runtime 의미에 직접 영향을
+주는 항목만 의존 조건으로 연결한다.
 
-| Dependency 범위 | 영향을 받는 작업 | 적용 기준 |
-|---|---|
-| Typed codec와 dispatch | `NS-IMP-003`, `NS-IMP-007`의 실제 wire 검증 | 관련 `ND-IMP-*`가 typed payload를 production path에서 처리하지 못할 때만 blocked로 둔다. |
-| Actor·Spot와 session binding | `NS-IMP-002`, `NS-IMP-005`, `NS-IMP-006`, `NS-IMP-007`의 process 검증 | 현재 exact interface로 sample 계약을 표현할 수 없을 때 해당 card만 blocked로 둔다. |
+| 확인 범위 | 영향을 받는 작업 | 적용 기준 |
+|---|---|---|
+| Typed codec와 dispatch | `NS-IMP-003`, `NS-IMP-007`의 실제 wire 검증 | 현재 확인된 `ND-*` blocker는 없다. Regression이 Framework 실패를 재현할 때만 새 `ND-*` 작업을 만들고 해당 항목만 blocked로 둔다. |
+| Actor·Spot와 session binding | `NS-IMP-002`, `NS-IMP-005`, `NS-IMP-006`, `NS-IMP-007`의 process 검증 | 현재 exact interface로 표현할 수 있다. Process test가 Framework 실패를 재현할 때만 해당 항목에 새 `ND-*` 작업을 연결한다. |
 | Package 정렬 | `NS-IMP-009`의 version 설명과 G6 process 실행 | `ND-IMP-004`가 닫혀 fresh package를 만들기 전에는 package·process 완료만 보류한다. |
 | Framework process E2E | Sample이 사용하는 public call path의 runtime 증명 | 관련 scenario가 실패할 때 해당 sample process evidence만 보류한다. |
-| 독립적인 sample 작업 | message declaration, logical structure, inventory와 문서 regression | 관련 Framework gap과 무관하면 즉시 진행한다. |
+| 독립적인 sample 작업 | message declaration, logical structure, 계약 목록과 문서 regression | 관련 Framework gap과 무관하면 즉시 진행한다. |
 
 현재 연계 ledger와 production source가 동시에 수정되고 있다. 예를 들어 ledger에는
 `configureInboundDispatch()`와 unknown content type 처리가 미충족으로 기록되어 있지만 현재 working
@@ -125,22 +125,29 @@ Bingo 실패는 static gate가 아니라 실제 process runner 실패다. Readin
 확인하고 같은 fingerprint 또는 새로 기록한 candidate에서 다시 통과하기 전에는 Bingo를 완료로 표시하지
 않는다.
 
-### 3.3 현재 inventory와 문서 차이
+### 3.3 현재 계약 목록과 구현 차이
 
 | ID | 현재 근거 | 초기 판정 |
 |---|---|---|
+| `NS-IMP-001` | TicTacToe와 SupportChat의 one-way handler가 각각 `LeaveGameReq`, `SetTypingReq` wire 이름을 사용한다. | Sample wire gap |
+| `NS-IMP-002` | DeliveryDispatch message에 session route·Attempt가 노출되고 timestamp field와 type이 다르다. | Framework 경계·Sample wire gap |
+| `NS-IMP-003` | GameQuest action 목록, `JoinSessionRes`, close message와 gameplay payload가 공통 계약과 다르다. | Sample wire·codec gap |
+| `NS-IMP-004` | ShoppingMall response, workflow command와 durable event 경계가 공통 계약과 다르다. | Sample 업무 계약 gap |
+| `NS-IMP-005` | SupportChat conversation create·response와 typing message가 공통 계약과 다르다. | Sample wire·lifecycle input gap |
+| `NS-IMP-006` | TicTacToe rejected join completion이 client-visible terminal failure로 전달되지 않는다. | Sample 실패 결과 gap |
+| `NS-IMP-007` | ZoneWorld game client message가 NodeId·relocation 결과를 노출하고 내부 message가 공통 typed boundary와 다르다. | Framework routing 경계·Sample wire gap |
 | `NS-IMP-008` | Bingo, TicTacToe, SupportChat과 ZoneWorld는 `Shared/Configuration` 대신 client/server별 설정을 두며 sample마다 logical tree가 다르다. | 구조 parity gap |
 | `NS-IMP-009` | `samples/README.ko.md`는 Framework 10.0.0을 설명하지만 root가 참조하는 bindings archive는 11.1.0이다. | documentation/package gap |
 | `NS-IMP-009` | shell과 PowerShell 통합 runner는 일곱 sample을 모두 포함한다. Bingo client는 README가 요구하는 `PASS Bingo.Ts`를 출력하지 않고, TicTacToe는 공통 `tictactoe=completed` marker를 출력하지 않는다. | runner marker gap |
-| `NS-TEST-001` | 기존 sample test는 구조·특정 symbol을 넓게 검사하지만 공통 문서의 전체 message·field·transport inventory를 직접 비교하지 않는다. | test gap |
+| `NS-TEST-001` | 기존 sample test는 구조·특정 symbol을 넓게 검사하지만 공통 문서의 전체 message·field·transport 목록을 직접 비교하지 않는다. | test gap |
 
-## 4. gap 판정 규칙
+## 4. 차이 판정 기준
 
 | 상태 | 의미 | 다음 행동 |
 |---|---|---|
 | `확인` | 공통 계약과 Node source 또는 process path의 차이가 재현됐다. | 실패 regression을 먼저 고정하고 책임 owner에서 수정한다. |
 | `contract 선행` | 공통 문서의 public/internal 범위나 transport 의미가 모호하다. | 구현을 바꾸지 않고 공통 문서와 관련 spec을 먼저 review한다. |
-| `test gap` | 구현이 맞을 수 있지만 현재 test가 해당 계약을 직접 판정하지 않는다. | exact inventory, serialized wire 또는 process evidence를 추가한다. |
+| `test gap` | 구현이 맞을 수 있지만 현재 test가 해당 계약을 직접 판정하지 않는다. | 정확한 계약 목록, serialized wire 또는 process evidence를 추가한다. |
 | `documentation gap` | source와 runner의 기준을 문서가 현재 값으로 설명하지 않는다. | source owner와 version 기준을 확인한 뒤 문서를 갱신한다. |
 | `blocked` | 선행 Framework public contract, package 또는 runtime 의미가 완료되지 않았다. | sample에서 우회하지 않고 선행 ledger가 닫힐 때까지 유지한다. |
 | `충족` | source, wire, process evidence와 regression이 같은 계약을 증명한다. | 근거 명령과 artifact를 기록한다. |
@@ -148,29 +155,41 @@ Bingo 실패는 static gate가 아니라 실제 process runner 실패다. Readin
 Build 성공, source type 존재와 정적 문자열 test만으로 `충족`을 부여하지 않는다. Handler invocation,
 state commit, failure, cleanup과 client-visible 결과까지 같은 실행에서 확인한다.
 
-### 4.1 Card 책임과 현재 상태
+### 4.1 작업 항목의 책임과 현재 상태
 
-`Gap owner`는 현재 sample 정렬 작업자다. `Common sample owner`가 필요한 항목은 공통 계약 review를
-마칠 때까지 구현하지 않는다. `ND-*` dependency는 해당 runtime 기능을 실제로 검증할 때만 적용한다.
+`작업 담당자`는 현재 sample 정렬 작업자다. `공통 sample 계약 담당자`가 필요한 항목은 공통 계약
+review를 마칠 때까지 구현하지 않는다. `ND-*` 의존 조건은 해당 runtime 기능을 실제로 검증할 때만
+적용한다.
 
-| ID | 분류 | Owner | Dependency | 현재 상태 | 완료 evidence |
+| ID | 분류 | 담당 | 의존 조건 | 현재 상태 | 완료 evidence |
 |---|---|---|---|---|---|
-| `NS-IMP-001` | Sample wire·Framework transport | Gap owner | 없음 | 확인 | `NS-REG-002`~`004`, client process |
-| `NS-IMP-002` | Framework routing 경계·Sample wire | Gap owner | Actor/session runtime 관련 `ND-*` | 확인 | `NS-REG-005`, DeliveryDispatch process |
-| `NS-IMP-003` | Sample wire·codec 책임 | Gap owner + Common sample owner | Typed codec 관련 `ND-*` | Contract review 필요 | `NS-REG-006`, GameQuest process |
-| `NS-IMP-004` | Sample 업무 계약 | Gap owner + Common sample owner | 없음 | Contract review 필요 | `NS-REG-007`, ShoppingMall process |
-| `NS-IMP-005` | Sample 업무 계약·Actor lifecycle input | Gap owner | Actor lifecycle 관련 `ND-*` | 확인 | `NS-REG-004`, `008`, SupportChat process |
-| `NS-IMP-006` | Sample 실패 결과·Actor join completion | Gap owner | Actor join 관련 `ND-*` | 확인 | `NS-REG-003`과 client-visible failure test |
-| `NS-IMP-007` | Sample wire·Framework routing 경계 | Gap owner | Spot/Actor·typed codec 관련 `ND-*` | 확인 | `NS-REG-009`, ZoneWorld process |
-| `NS-IMP-008` | 언어별 logical structure | Gap owner | 없음 | 확인 | `NS-REG-011`, 구조 mapping |
-| `NS-IMP-009` | 문서·runner·package | Gap owner | G6에는 `ND-IMP-004` 필요 | 확인 | `NS-REG-013`, `016`, runner result |
-| `NS-TEST-001` | Test와 process evidence | Gap owner | 없음 | 확인 | `NS-REG-001`~`017`, CI result |
+| `NS-IMP-001` | Sample wire·Framework transport | 작업 담당자 | 없음 | 확인 | `NS-REG-002`~`004`, client process |
+| `NS-IMP-002` | Framework routing 경계·Sample wire | 작업 담당자 | 없음 | 확인 | `NS-REG-005`, DeliveryDispatch process |
+| `NS-IMP-003` | Sample wire·codec 책임 | 작업 담당자 + 공통 sample 계약 담당자 | 없음. Framework 실패가 재현되면 새 `ND-*` 연결 | Contract review 필요 | `NS-REG-006`, GameQuest process |
+| `NS-IMP-004` | Sample 업무 계약 | 작업 담당자 + 공통 sample 계약 담당자 | 없음 | Contract review 필요 | `NS-REG-007`, ShoppingMall process |
+| `NS-IMP-005` | Sample 업무 계약·Actor lifecycle input | 작업 담당자 | 없음 | 확인 | `NS-REG-004`, `008`, SupportChat process |
+| `NS-IMP-006` | Sample 실패 결과·Actor join completion | 작업 담당자 | 없음 | 확인 | `NS-REG-003`과 client-visible failure test |
+| `NS-IMP-007` | Sample wire·Framework routing 경계 | 작업 담당자 | 없음. Framework 실패가 재현되면 새 `ND-*` 연결 | 확인 | `NS-REG-009`, ZoneWorld process |
+| `NS-IMP-008` | 언어별 logical structure | 작업 담당자 | 없음 | 확인 | `NS-REG-011`, 구조 mapping |
+| `NS-IMP-009` | 문서·runner·package | 작업 담당자 | G6에는 `ND-IMP-004` 필요 | 확인 | `NS-REG-013`, `016`, runner result |
+| `NS-TEST-001` | Test와 process evidence | 작업 담당자 | 없음 | 확인 | `NS-REG-001`~`017`, CI result |
 
-## 5. 구현 수준에서 확인된 gap
+## 5. 구현에서 확인된 차이
 
 ### NS-IMP-001 — one-way message 이름과 handler 의미가 공통 계약과 다름
 
 **현재 판정: `확인`.**
+
+- 분류: `LeaveGameMsg`와 `SetTypingMsg` 이름은 sample wire 계약이고, response 없이 끝나는 send 의미는
+  Framework public contract다.
+- 계약 근거: [TicTacToe §6.2](../../framework/common/sample/tictactoe/README.ko.md#62-room-request와-publish-event),
+  [SupportChat §6.2](../../framework/common/sample/supportchat/README.ko.md#62-conversation-request와-one-way-send),
+  [상호작용 모델 §2](../../framework/common/spec/03-interaction-model.ko.md#2-공통-모델),
+  [Node Spot interface](../../framework/common/spec/server/languages/node/interfaces/04-spots.ko.md)
+- 현재 source: [TicTacToe messages.ts](../../../../framework/languages/node/samples/TicTacToe.Ts/Shared/Contracts/messages.ts):137,
+  [SupportChat messages.ts](../../../../framework/languages/node/samples/SupportChat.Ts/Shared/Contracts/messages.ts):54
+- 검증: type, packet name과 send handler를 source에서 대조했다. 실제 wire name과 response 부재는
+  `NS-REG-002`~`004`와 process 실행으로 다시 확인한다.
 
 공통 TicTacToe는 `LeaveGameMsg`, SupportChat은 `SetTypingMsg`를 one-way send로 선언한다. 현재 Node
 shared contract, packet name, handler와 client는 각각 `LeaveGameReq`, `SetTypingReq`를 사용한다.
@@ -183,6 +202,16 @@ shared contract, packet name, handler와 client는 각각 `LeaveGameReq`, `SetTy
 
 **현재 판정: `확인`.**
 
+- 분류: session route와 owner 위치 은닉은 Framework public contract이고, Attempt와 timestamp field는
+  DeliveryDispatch sample wire 계약이다.
+- 계약 근거: [DeliveryDispatch §6](../../framework/common/sample/deliverydispatch/README.ko.md#6-message-계약),
+  [상호작용 모델 §8](../../framework/common/spec/03-interaction-model.ko.md#8-stream-session),
+  [Session–Actor dispatch](../../framework/common/spec/20-session-actor-dispatch.ko.md),
+  [Node Actor와 session binding interface](../../framework/common/spec/server/languages/node/interfaces/05-actors.ko.md)
+- 현재 source: [DeliveryDispatch messages.ts](../../../../framework/languages/node/samples/DeliveryDispatch.Ts/Shared/Contracts/messages.ts):18
+- 검증: `sessionRoute`, `attempt`, `occurredAt: string`을 source에서 확인했다. Runtime binding과 JSON
+  number wire는 `NS-REG-005`와 DeliveryDispatch process 실행으로 확인한다.
+
 Node `BindCourierReq/Res`와 `BindCourierSessionReq/Res`는 `sessionRoute`를 노출한다. 공통 계약은 session
 binding을 Framework가 관리하며 application response에는 courierId만 남기도록 요구한다.
 `OfferDeliveryNotify`와 `CourierDecisionMsg`에도 공통 client-facing 계약에 없는 `attempt`가 있고,
@@ -192,9 +221,21 @@ Attempt는 Dispatch application state에 유지하고, 늦은 decision 판정에
 소유한 offer state에서 해결한다. Session route나 ActorRef를 새 DTO로 옮기는 방식은 허용하지 않는다.
 Timestamp는 실제 JSON wire number와 ordering assertion을 함께 고정한다.
 
-### NS-IMP-003 — GameQuest의 action inventory와 payload codec 책임이 공통 계약과 다름
+### NS-IMP-003 — GameQuest의 action 목록과 payload codec 책임이 공통 계약과 다름
 
 **현재 판정: `확인`과 `contract 선행`.**
+
+- 분류: `GameplayMsg`와 action 목록은 sample wire·업무 계약이다. Message마다 codec을 처리하지 않는
+  책임은 Framework public contract다. 추가 action의 유지 여부는 계약 후보라서 공통 sample review가
+  필요하다.
+- 계약 근거: [GameQuest §6](../../framework/common/sample/event/gamequest.ko.md#6-message-계약),
+  [Node codec 책임](../../framework/common/spec/server/languages/node/interfaces/03-location-observability.ko.md),
+  [Node Spot interface](../../framework/common/spec/server/languages/node/interfaces/04-spots.ko.md)
+- 현재 source: [GameQuest messages.ts](../../../../framework/languages/node/samples/GameQuest.Ts/Shared/Contracts/messages.ts):74,
+  [quest-domain.ts](../../../../framework/languages/node/samples/GameQuest.Ts/Server/QuestMission/Domain/quest-domain.ts):240,
+  [quest-progress-store.ts](../../../../framework/languages/node/samples/GameQuest.Ts/Server/Shared/Store/quest-progress-store.ts):270
+- 검증: `payload: number[]`, `TextEncoder`, `TextDecoder`와 수동 JSON 변환을 source에서 확인했다.
+  `NS-REG-006`과 GameQuest process 실행 전에는 wire 수정 완료로 판정하지 않는다.
 
 Node에는 공통 문서에 없는 `CompleteMissionReq/Res`, `UnlockFeatureReq/Res`, projection 삭제·재생성과
 deactivate message가 있다. `JoinSessionRes`에는 공통 `playerId`가 없고, 공통 문서가 선언한
@@ -205,11 +246,21 @@ contract와 Domain에서 `TextEncoder`, `TextDecoder`, `JSON.stringify`, `JSON.p
 유지하려면 공통 sample 계약 변경 review가 선행되어야 하며, 다른 언어에 있다는 사실만으로 승인하지
 않는다. Gameplay payload는 Framework typed JSON codec이 object를 처리하게 하고, application handler와
 Domain에서 encode/decode helper를 제거한다. Domain event의 `*Event` 이름과 transport message를 별도
-inventory로 관리한다.
+목록으로 관리한다.
 
 ### NS-IMP-004 — ShoppingMall 접수 응답과 workflow command가 공통 message 계약과 다름
 
 **현재 판정: `확인`과 `contract 선행`.**
+
+- 분류: response, workflow command와 durable event는 ShoppingMall sample 업무 계약이다. 이 card는 새
+  Framework public API를 요구하지 않는다. Extra command를 shared contract로 유지하려면 공통 sample
+  review가 필요하다.
+- 계약 근거: [ShoppingMall §6](../../framework/common/sample/event/shoppingmall.ko.md#6-message-계약),
+  [Node Spot interface](../../framework/common/spec/server/languages/node/interfaces/04-spots.ko.md)
+- 현재 source: [ShoppingMall messages.ts](../../../../framework/languages/node/samples/ShoppingMall.Ts/Shared/Contracts/messages.ts):27,
+  [order-store.ts](../../../../framework/languages/node/samples/ShoppingMall.Ts/Server/Shared/Store/order-store.ts):105
+- 검증: `StartOrderRes`, workflow request와 prepare/fence message 목록을 source에서 대조했다.
+  `NS-REG-007`과 ShoppingMall process 실행으로 idempotency·compensation 결과를 확인한다.
 
 공통 `StartOrderRes`는 `orderId`와 `state: OrderState`를 반환하지만 Node는 `orderId`와 `status: string`을
 반환한다. 공통 workflow request의 `sourceCommandId`가 Node request에 없으며 Node는
@@ -226,10 +277,20 @@ message인지 Domain 내부 command인지 먼저 분류하고, public/shared mes
 
 **현재 판정: `확인`.**
 
+- 분류: conversation response와 typing message는 SupportChat sample wire 계약이다. Actor·Spot creation
+  payload 전달 방식은 Framework lifecycle contract이고 payload 자체는 sample application data다.
+- 계약 근거: [SupportChat §6](../../framework/common/sample/supportchat/README.ko.md#6-message-계약),
+  [Actor model §6.4](../../framework/common/spec/14-actor-model.ko.md#64-creation-request와-factory-실행),
+  [Node Actor interface](../../framework/common/spec/server/languages/node/interfaces/05-actors.ko.md)
+- 현재 source: [SupportChat messages.ts](../../../../framework/languages/node/samples/SupportChat.Ts/Shared/Contracts/messages.ts):27,
+  [conversation-create-request.ts](../../../../framework/languages/node/samples/SupportChat.Ts/Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/conversation-create-request.ts):1
+- 검증: response field, local creation type와 `isRetriable`을 source에서 확인했다. `NS-REG-004`,
+  `NS-REG-008`과 SupportChat process 실행으로 최종 wire를 확인한다.
+
 공통 계약은 `ConversationCreateReq/Res`에 생성 시각과 전체 `ConversationState`를 고정한다. Node는
 Spot create payload를 `ConversationCreateRequest`라는 Infrastructure local type으로 선언하고,
 `OpenConversationApiRes`에서는 `conversationId`와 status만 반환한다. `SupportUserActorCreateReq`도 공통
-message inventory 밖에 있다. `JoinConversationFailedNotify`에는 공통 문서에 없는 `isRetriable` field가
+message 목록 밖에 있다. `JoinConversationFailedNotify`에는 공통 문서에 없는 `isRetriable` field가
 추가되어 있다.
 
 Spot create payload가 application contract이면 `Shared/Contracts`의 공통 message로 이동하고 전체 state
@@ -238,22 +299,44 @@ Spot create payload가 application contract이면 `Shared/Contracts`의 공통 m
 review하고, source에 있다는 이유로 client contract에 남기지 않는다. `SetTypingReq` 수정은
 `NS-IMP-001`이 소유한다.
 
-### NS-IMP-006 — TicTacToe leave 이름과 실패 notify inventory가 다름
+### NS-IMP-006 — TicTacToe leave 이름과 client-visible join 실패 결과가 다름
 
 **현재 판정: `확인`과 `test gap`.**
 
-Node의 create, join, state와 `PlayerWinMilestoneEvent`는 공통 흐름과 대체로 대응한다. 그러나 one-way
-leave는 `LeaveGameReq`를 사용하며 공통 `JoinGameFailedNotify`가 shared contract에 없다. Actor join
-rejection이 어떤 terminal error 또는 notify로 client에 전달되는지 process assertion이 필요하다.
+- 분류: leave 이름과 join terminal result는 TicTacToe sample 계약이다. Deferred join completion의 상태와
+  optional reply는 Framework public contract다.
+- 계약 근거: [TicTacToe §6.2와 §7.1](../../framework/common/sample/tictactoe/README.ko.md#62-room-request와-publish-event),
+  [Node Actor interface](../../framework/common/spec/server/languages/node/interfaces/05-actors.ko.md)
+- 현재 source: [tic-tac-toe-game-spot.ts](../../../../framework/languages/node/samples/TicTacToe.Ts/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/tictactoe-game-spot.ts):74,
+  [play-actor.ts](../../../../framework/languages/node/samples/TicTacToe.Ts/Server/Play/Infrastructure/ZLink/Actors/play-actor.ts):66
+- 검증: Spot은 rejected reply를 만들지만 `PlayActor.onJoinCompleted()`가 rejected completion을 client에
+  전달하지 않는 것을 확인했다. 공통 계약은 notify와 typed error response를 모두 허용하므로 특정
+  notify type의 부재만으로 수정 방향을 정하지 않는다.
 
-Leave 수정은 `NS-IMP-001`에서 수행한다. Join 실패는 공통 `JoinGameFailedNotify`를 실제 push로 구현할지,
-Framework request error로 끝낼지 공통 문서의 현재 계약을 기준으로 고정하고 client self-check를 추가한다.
+Node의 create, join, state와 `PlayerWinMilestoneEvent`는 공통 흐름과 대체로 대응한다. 그러나 one-way
+leave는 `LeaveGameReq`를 사용한다. Actor join rejection reply는 만들어지지만 현재 Actor completion
+callback이 rejected 결과를 반환하므로 client는 terminal error나 notify를 받지 못한다.
+
+Leave 수정은 `NS-IMP-001`에서 수행한다. Join 실패는 `JoinGameFailedNotify` push 또는 typed error response
+가운데 현재 public API로 정확히 전달할 수 있는 방식을 선택하고 client self-check를 추가한다.
 Entry Spot의 destroy 순서와 duplicate destroy no-op은 기존 lifecycle test를 유지하면서 실제 runner
 evidence로 확인한다.
 
 ### NS-IMP-007 — ZoneWorld가 공통 movement·push message boundary와 wire shape를 사용하지 않음
 
 **현재 판정: `확인`.**
+
+- 분류: game·내부 routing message의 이름과 field는 ZoneWorld sample 계약이다. NodeId와 RID 분리,
+  global ID routing과 typed Spot·Actor call은 Framework public contract다.
+- 계약 근거: [ZoneWorld §6](../../framework/common/sample/zoneworld/README.ko.md#6-message-계약),
+  [상호작용 모델 §2](../../framework/common/spec/03-interaction-model.ko.md#2-공통-모델),
+  [Node Channel interface](../../framework/common/spec/server/languages/node/interfaces/02-channel-messaging.ko.md),
+  [Node Spot interface](../../framework/common/spec/server/languages/node/interfaces/04-spots.ko.md)
+- 현재 source: [ZoneWorld contracts.ts](../../../../framework/languages/node/samples/ZoneWorld/Shared/contracts.ts):14,
+  [player-actor.ts](../../../../framework/languages/node/samples/ZoneWorld/Server/ZoneNode/Infrastructure/ZLink/Actors/player-actor.ts):31,
+  [zone-runtime-handlers.ts](../../../../framework/languages/node/samples/ZoneWorld/Server/ZoneNode/Infrastructure/ZLink/Handlers/zone-runtime-handlers.ts):61
+- 검증: client field, `BotTickReq/Res`, `UpdateZonePositionMsg`, `unknown` wrapper와 constructor-name switch를
+  source에서 확인했다. `NS-REG-009`와 ZoneWorld process 실행으로 wire와 relocation 결과를 확인한다.
 
 Node `JoinWorldRes`, `EnterWorldRes`, `EnterZoneRes`는 공통 client/application 계약에 없는 `nodeId`를
 포함하고 `ZoneChangedNotify`는 `nodeId`와 `transferred`를 노출한다. NodeId는 Ops application identity로
@@ -267,9 +350,17 @@ Shared contract에 공통 message를 선언하고 typed handler가 해당 messag
 `unknown` payload와 constructor 이름 switch를 제거하고, application NodeId와 Framework RID를 분리한다.
 Relocation 성공 여부는 runner evidence에서 확인하며 browser wire field로 보내지 않는다.
 
-### NS-IMP-008 — sample별 logical implementation structure가 공통 구조와 다름
+### NS-IMP-008 — sample별 logical module 구조가 공통 구조와 다름
 
 **현재 판정: `확인`.**
+
+- 분류: 언어별 구현이 유지할 logical module 배치는 sample 작성 guide의 parity contract다. Framework
+  public API나 runtime 내부 구조를 새로 정의하지 않는다.
+- 계약 근거: [Sample 작성 guide §5.9](../../../../doc/principal/documentation/sample-writing-guide.ko.md#59-구현-구조),
+  [언어별 표현 기준](../../framework/common/sample/languages/README.ko.md)
+- 현재 source: [Node samples](../../../../framework/languages/node/samples/)
+- 검증: 일곱 sample의 directory와 logical role을 비교했다. G1에서 공통 역할별 mapping을 고정하고
+  `NS-REG-011`로 누락과 불필요한 업무 layer를 확인한다.
 
 일곱 sample 모두 최상위 `Client`, `Shared`, `Server`는 있지만 내부 구조가 공통 문서와 일관되지 않다.
 Bingo, TicTacToe와 SupportChat은 configuration을 Client와 Server에 나눠 두고, ZoneWorld는
@@ -287,6 +378,19 @@ Domain/Application/Infrastructure 책임과 의존 방향은 유지한다.
 
 **현재 판정: `documentation gap`과 `test gap`.**
 
+- 분류: version·실행 방법은 Node sample 문서 책임이고, completion marker와 cleanup은 공통 sample과
+  Node runner 계약이다. Package version 확정만 `ND-IMP-004`에 의존한다.
+- 계약 근거: [Node sample README](../../../../framework/languages/node/samples/README.ko.md),
+  [공통 sample runner 정책](../../framework/common/sample/README.ko.md),
+  [Bingo 완료 기준](../../framework/common/sample/bingo/README.ko.md#11-완료-기준),
+  [TicTacToe runner](../../framework/common/sample/tictactoe/README.ko.md#10-runner와-smoke-실행)
+- 현재 source: [Node package.json](../../../../framework/languages/node/package.json):57,
+  [Node sample README](../../../../framework/languages/node/samples/README.ko.md):3,
+  [run_samples.sh](../../../../framework/languages/node/samples/run_samples.sh),
+  [run_samples.ps1](../../../../framework/languages/node/samples/run_samples.ps1)
+- 검증: version pin, 두 runner의 실행 목록과 client marker를 source에서 확인했다. `NS-REG-013`,
+  `NS-REG-016`과 실제 runner exit/result로 완료를 판정한다.
+
 Node sample README는 10.0.0 public API를 사용한다고 설명하지만 현재 root dependency는 local 11.1.0
 archive를 가리킨다. 정확한 package version은 선행 `ND-IMP-*`에서 확정한 뒤 문서를 갱신한다.
 
@@ -295,19 +399,27 @@ Shell과 PowerShell 통합 runner는 일곱 sample을 모두 포함하지만 mar
 출력하고 공통 `tictactoe=completed`가 없다. Sample별 phase marker는 실제 runner evidence로만 사용하고,
 공통 completion marker와 `PASS <Sample>`의 역할을 구분한다.
 
-### NS-TEST-001 — 공통 sample 전체를 덮는 exact inventory와 process evidence gate가 없음
+### NS-TEST-001 — 공통 sample 전체의 계약과 process 결과를 직접 확인하는 test가 없음
 
 **현재 판정: `test gap`.**
+
+- 분류: 공통 sample wire와 flow를 Node 구현에 대응시키는 contract regression 및 process evidence gap이다.
+- 계약 근거: [Sample 작성 guide §8](../../../../doc/principal/documentation/sample-writing-guide.ko.md#8-spec-기능-대조와-최종-review),
+  [공통 sample 완료 정책](../../framework/common/sample/README.ko.md)
+- 현재 source: [Node sample contract tests](../../../../framework/languages/node/test/contract/),
+  [2026-08-02 audit log](log/2026-08-02-sample-gap-audit-baseline.ko.md)
+- 검증: fresh 실행에서 83개 중 81개가 통과하고 2개가 실패했다. 정확한 message 목록 test가 없으며,
+  aggregate 내부 Bingo process smoke도 실패했다.
 
 현재 sample regression은 파일 존재, 일부 symbol, topology와 lifecycle을 넓게 검사하지만 공통 문서의
 모든 message·field·transport kind·state flow를 Node shared contract와 직접 비교하지 않는다. 일부 test는
 DeliveryDispatch의 `SampleNames.routeMesh`처럼 이전 구조를 정답으로 고정한다.
 
-Machine-readable inventory 또는 동일한 정보를 가진 contract fixture를 만들고, static contract와 실제
+Machine-readable 계약 목록 또는 동일한 정보를 가진 contract fixture를 만들고, static contract와 실제
 serialized payload를 함께 검사한다. Static test는 process smoke를 대체하지 않으며, runner가 client
 self-check와 server evidence를 모두 확인하는지도 별도 gate로 검증한다.
 
-## 6. Sample별 구현 path 검토 matrix
+## 6. Sample별 구현 위치와 검토 항목
 
 | Sample | 우선 읽을 Node path | 구현 단계에서 확인할 계약 | 완료 evidence |
 |---|---|---|---|
@@ -319,9 +431,9 @@ self-check와 server evidence를 모두 확인하는지도 별도 gate로 검증
 | GameQuest | `Shared/Contracts/messages.ts`, `Server/GameApi`, `QuestMission`, `Shared/Store`, `Client` | action set, object payload, dedupe, replay·reconcile, domain/store separation | EventId·progress notify·projection 결과와 duplicate append 0 evidence |
 | ZoneWorld | `Shared/contracts.ts`, `Server/Gateway`, `ZoneNode`, `Ops`, `Client`, shared browser | typed movement/push, NodeId/RID, relocation, border, fanout와 Message Follow | headless·Chromium result, same-zone/border state, Ops와 cleanup evidence |
 
-## 7. 수정 순서와 card gate
+## 7. 수정 순서와 단계별 통과 조건
 
-### G0 — 기준 snapshot과 선행 Framework ledger 재검증
+### G0 — 기준 상태와 연계 Framework ledger 재검증
 
 현재 dirty working tree의 Node Framework, sample 문서와 CI 변경을 manifest로 고정한다. 선행 ledger의
 status를 현재 source, exact interface, package와 test로 다시 계산한다. 이 단계에서는 sample을 수정하지
@@ -333,10 +445,10 @@ status를 현재 source, exact interface, package와 test로 다시 계산한다
 `Framework lifecycle input`, `persistence record`, `test/evidence-only`로 분류한다. `contract 선행` 항목은
 공통 문서 review가 끝나기 전까지 구현 card로 이동하지 않는다.
 
-### G2 — exact sample inventory와 실패 regression 고정
+### G2 — 정확한 sample 계약 목록과 실패 regression 고정
 
 Sample, message, direction, transport kind, response, field, optionality, codec, owner와 evidence를 가진
-inventory를 만든다. Node shared contract, packet name과 decorator를 비교해 `NS-REG-*`이 먼저 실패하게
+계약 목록을 만든다. Node shared contract, packet name과 decorator를 비교해 `NS-REG-*`이 먼저 실패하게
 한다. 기존 test가 현재 공통 계약과 충돌하면 본래 보장을 약화하지 않고 기준만 갱신한다.
 
 ### G3 — wire contract와 codec 책임 정렬
@@ -353,7 +465,7 @@ Domain/Application/Infrastructure 책임에 대응시킨다. A/B process 이름,
 
 ### G5 — runner, README와 package 설명 정렬
 
-`NS-IMP-009`를 선행 package version 결정에 맞춰 수정한다. Shell·PowerShell inventory, completion
+`NS-IMP-009`를 선행 package version 결정에 맞춰 수정한다. Shell·PowerShell 실행 목록, completion
 marker, Chromium 실행, readiness, 실행별 Redis와 cleanup을 같은 정책으로 맞춘다.
 
 ### G6 — 실제 process evidence와 CI 연결
@@ -370,13 +482,13 @@ sample 변경이 workflow를 실행하도록 path filter를 확인한다.
 ## 8. 유지할 test와 추가할 regression
 
 기존 test는 범위를 줄이지 않는다. Lifecycle, generated routing ID, browser bundle, decimal, scale-out,
-Entry Spot, domain과 ZoneWorld gate를 exact inventory test로 대체하지 않고 함께 유지한다.
+Entry Spot, domain과 ZoneWorld gate를 정확한 계약 목록 test로 대체하지 않고 함께 유지한다.
 
 | ID | 추가·변경할 regression | 직접 판정할 내용 |
 |---|---|---|
 | `NS-REG-001` | `CommonSampleContractInventoryMatchesNodeSharedContracts` | 일곱 sample의 message, field, optionality, enum과 codec 일치 |
 | `NS-REG-002` | `CommonSampleTransportKindsMatchNodeHandlers` | Req/Res, Msg, Notify와 Event가 request/send/push/publish handler와 일치 |
-| `NS-REG-003` | `TicTacToeLeaveUsesOneWayMessage` | `LeaveGameMsg`와 Entry Spot destroy, duplicate no-op |
+| `NS-REG-003` | `TicTacToeLeaveAndJoinFailureMatchContract` | `LeaveGameMsg`, Entry Spot destroy, duplicate no-op와 client-visible join terminal failure |
 | `NS-REG-004` | `SupportChatTypingUsesOneWayMessage` | `SetTypingMsg`, metadata, handler response 없음과 peer push |
 | `NS-REG-005` | `DeliveryDispatchMessagesHideFrameworkRouting` | sessionRoute·ActorRef·NodeRid 금지, Attempt owner와 timestamp number |
 | `NS-REG-006` | `GameQuestUsesTypedGameplayPayload` | object payload, 호출부 encode/decode 금지, dedupe와 replay·reconcile |
@@ -392,12 +504,12 @@ Entry Spot, domain과 ZoneWorld gate를 exact inventory test로 대체하지 않
 | `NS-REG-016` | `NodeSampleDocumentationMatchesPackageAndRunner` | README version, 실행 명령, Chromium 경계와 current package 일치 |
 | `NS-REG-017` | `NodeSamplesDoNotOwnFrameworkCodecOrRoutes` | raw frame, message별 codec, private API, route identity와 manual JSON 변환 금지 |
 
-## 9. 실행과 evidence 수집 계획
+## 9. 실행 및 evidence 수집 계획
 
 1. 기준 commit, dirty manifest, Node/npm version, package archive와 native artifact hash를 기록한다.
-2. 공통 inventory와 Node shared contract 비교에서 의도한 실패만 남는지 확인한다.
+2. 공통 계약 목록과 Node shared contract 비교에서 의도한 실패만 남는지 확인한다.
 3. Node Framework와 일곱 sample을 build하고, 영향받은 contract/domain test를 실행한다.
-4. `run_samples.sh`와 `run_samples.ps1`의 inventory를 같은 fixture와 비교한다.
+4. `run_samples.sh`와 `run_samples.ps1`의 실행 목록을 같은 fixture와 비교한다.
 5. 각 sample runner를 실행별 Redis·config·log 디렉터리로 실행한다.
 6. Client가 response, push, 순서와 금지 결과를 직접 assertion했는지 확인한다.
 7. Server evidence에서 state owner, idempotency, relocation, deadline, cleanup 결과를 확인한다.
@@ -411,9 +523,9 @@ Entry Spot, domain과 ZoneWorld gate를 exact inventory test로 대체하지 않
 
 ## 10. 완료 checklist
 
-- [ ] 선행 Node Framework ledger의 production, package, E2E와 regression card가 현재 source 기준으로 닫혔다.
+- [ ] 각 sample card에 연결한 `ND-*` dependency가 현재 source 기준으로 닫혔다. 관련 없는 Framework gap은 sample 완료 조건으로 계산하지 않는다.
 - [ ] 공통 sample 문서와 기존 dirty change의 기준 manifest를 보존했다.
-- [ ] 일곱 sample의 message·field·transport·codec inventory가 작성됐다.
+- [ ] 일곱 sample의 message·field·transport·codec 목록이 작성됐다.
 - [ ] `contract 선행`과 internal-only message 범위가 review로 확정됐다.
 - [ ] `NS-IMP-001`~`NS-IMP-009`, `NS-TEST-001`의 owner와 상태가 닫혔다.
 - [ ] TicTacToe leave와 SupportChat typing이 이름과 실행 모두 one-way send다.
@@ -424,7 +536,7 @@ Entry Spot, domain과 ZoneWorld gate를 exact inventory test로 대체하지 않
 - [ ] Bingo는 공통 Protobuf schema를 유지하고 extra type의 범위가 명시됐다.
 - [ ] 일곱 sample의 logical role과 책임을 같은 위치에서 찾을 수 있다.
 - [ ] Node handler는 decorator·metadata scan으로 자동 등록되고 수동 목록을 반복하지 않는다.
-- [ ] Shell·PowerShell runner가 같은 inventory, marker, resource와 cleanup 정책을 사용한다.
+- [ ] Shell·PowerShell runner가 같은 실행 목록, marker, resource와 cleanup 정책을 사용한다.
 - [ ] `NS-REG-001`~`NS-REG-017` 중 적용 대상이 통과하고 제외 항목에는 근거가 있다.
 - [ ] 일곱 실제 process smoke에서 client self-check와 server evidence가 모두 확인됐다.
 - [ ] Full Node regression, package consumer와 CI sample gate가 fresh package로 통과했다.

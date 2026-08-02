@@ -8,6 +8,10 @@ import {
   type ZLinkFlowOrigin
 } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
+import {
+  ZLinkFrameworkInternalErrorKind,
+  createInternalFrameworkException
+} from '../framework-errors-internal';
 import { resolveFrameworkPacketName } from '../messaging/packet-name';
 import { selectSerializer } from '../messaging/payload-codec';
 import { currentOrCreateFlow } from '../diagnostics/flow-context';
@@ -225,16 +229,16 @@ export function decodeChannelPayload(
     if (envelope.header.contentType === JSON_CONTENT_TYPE) {
       return parseWireJson(envelope.payload.toString());
     }
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.ProtocolError,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.PayloadDecodeFailed,
       `ProtocolError: unsupported channel content type '${envelope.header.contentType}'.`
     );
   } catch (error) {
     if (error instanceof ZLinkFrameworkException) {
       throw error;
     }
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.ProtocolError,
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.PayloadDecodeFailed,
       `PayloadDecodeFailed: failed to decode channel payload for '${envelope.header.channelName}:${envelope.header.messageName}'.`,
       error
     );

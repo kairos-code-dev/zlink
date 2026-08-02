@@ -25,7 +25,7 @@ implementation, regression test, plan ledger와 이 log다.
 3. 같은 candidate를 바꾸지 않은 상태에서 Sol Medium read-only review를 재요청한다.
 4. Sol `CLEAN`과 필수 test 통과 뒤 G1을 완료하고, 이 ledger의 최종 audit를 끝낸다.
 5. 이 문서가 완료되면 같은 폴더의
-   `dotnet-framework-sample-spec-gap-ledger.ko.md`를 다음 작업 문서로 연다.
+   통합 ledger의 `## 10. Phase B — common sample gap`을 다음 작업 구간으로 연다.
 
 ## 작업 조건
 

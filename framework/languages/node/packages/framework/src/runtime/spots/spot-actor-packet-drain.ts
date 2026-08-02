@@ -3,6 +3,10 @@ import type {
   RoutingId,
   ZLinkMessageSerializer
 } from '../../contracts';
+import {
+  ZLinkFrameworkException,
+  ZLinkFrameworkErrorKind
+} from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import { Message as BindingMessage, RequestResult } from '@zlink-systems/zlink';
 import type {
@@ -299,17 +303,13 @@ function closeMessages(messages: readonly Message[]): void {
 }
 
 function frameworkErrorPayload(error: unknown): {
-  readonly code: string;
   readonly message: string;
-  readonly kind?: string;
-  readonly isRetriable?: boolean;
+  readonly kind: ZLinkFrameworkErrorKind;
 } {
-  return error instanceof Error
-    ? {
-        code: error.constructor.name,
-        message: error.message,
-        kind: 'kind' in error ? String(error.kind) : undefined,
-        isRetriable: 'isRetriable' in error && error.isRetriable === true
-      }
-    : { code: typeof error, message: String(error) };
+  return {
+    message: error instanceof Error ? error.message : String(error),
+    kind: error instanceof ZLinkFrameworkException
+      ? error.kind
+      : ZLinkFrameworkErrorKind.InternalFailure
+  };
 }

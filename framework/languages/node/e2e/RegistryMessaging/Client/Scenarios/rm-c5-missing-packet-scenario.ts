@@ -6,8 +6,8 @@ import { ensure } from '../Support/scenario-assert';
 export async function runRmC5(locationConsumerUrl: string, providerAUrl: string, providerBUrl: string): Promise<void> {
   const missingRequest = await postJson<RequestFailureRes>(locationConsumerUrl, '/profile/missing-request', { value: 'missing-request' });
   ensure(
-    missingRequest.failed && missingRequest.failureType === 'handlerNotFound',
-    'RM-C5 missing request should fail with HandlerNotFound.'
+    missingRequest.failed && missingRequest.failureType === '0',
+    'RM-C5 missing request should fail with public NotFound (0).'
   );
   await postJson(locationConsumerUrl, '/profile/missing-command', { commandId: 'missing-send' });
   const evidence = [

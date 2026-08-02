@@ -101,8 +101,7 @@ async function submitDeferredActorJoin(actor, call, decodeReply = (reply) => rep
         }
         reject(new framework.ZLinkFrameworkException(
           completion.kind,
-          'Deferred Actor Join failed.',
-          completion.isRetriable
+          'Deferred Actor Join failed.'
         ));
       } catch (error) {
         reject(error);
@@ -904,11 +903,13 @@ test('unbound actor context boundSession fails retriably until a session is boun
 
   assert.throws(
     () => actor.context.boundSession.send({ ready: true }),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorSessionNotBound && error.isRetriable === true
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.InvalidOperation
+      && !('isRetriable' in error)
   );
   await assert.rejects(
     () => actor.context.boundSession.disconnect(),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorSessionNotBound && error.isRetriable === true
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.InvalidOperation
+      && !('isRetriable' in error)
   );
 });
 
@@ -938,13 +939,13 @@ test('ZLinkActorManager rejects duplicate create and actor type mismatch', async
     () => manager.create('alice', 'player').inMesh('play').submit(),
     (error) =>
       error instanceof framework.ZLinkFrameworkException
-      && error.kind === framework.ZLinkFrameworkErrorKind.ActorAlreadyExists
+      && error.kind === framework.ZLinkFrameworkErrorKind.AlreadyExists
   );
   await assert.rejects(
     () => manager.getOrCreate('alice', 'spectator').inMesh('play').submit(),
     (error) =>
       error instanceof framework.ZLinkFrameworkException
-      && error.kind === framework.ZLinkFrameworkErrorKind.ActorTypeMismatch
+      && error.kind === framework.ZLinkFrameworkErrorKind.TypeMismatch
   );
 });
 
@@ -1127,7 +1128,7 @@ test('ZLinkActorManager validates factory returned actor id and context', async 
       () => manager.create(actorId, actorType).inMesh('play').submit(),
       (error) =>
         error instanceof framework.ZLinkFrameworkException
-        && error.kind === framework.ZLinkFrameworkErrorKind.ActorCreateFailed
+        && error.kind === framework.ZLinkFrameworkErrorKind.InternalFailure
     );
   }
 });
@@ -1379,7 +1380,7 @@ test('actor manager prevents the same global Actor ID from changing type or Mesh
     () => manager.getOrCreate('shared', 'player-b').inMesh('mesh-b').submit(),
     (error) =>
       error instanceof framework.ZLinkFrameworkException
-      && error.kind === framework.ZLinkFrameworkErrorKind.ActorTypeMismatch
+      && error.kind === framework.ZLinkFrameworkErrorKind.TypeMismatch
   );
 });
 
@@ -1405,7 +1406,7 @@ test('actor manager fluent create reports factory failures', async () => {
 
   await assert.rejects(
     () => manager.create('alice', 'player').inMesh('play-mesh').submit(),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorCreateFailed
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.InternalFailure
   );
 });
 
@@ -1929,7 +1930,7 @@ test('remote transfer failures before commit preserve source ownership and never
       })
     });
     const actor = await manager.getOrCreateActor('alice', 'player');
-    // Deferred Join의 failed completion 계약은 kind와 isRetriable만 전달한다.
+    // Deferred Join의 failed completion 계약은 public kind만 전달한다.
     // 실패 지점 구분은 아래 events 단정이 소유한다.
     await assert.rejects(
       () => submitDeferredActorJoin(actor, actor.context.joinSpot('room-target', encodedMessage('join'))),
@@ -2763,7 +2764,7 @@ test('DefaultZLinkActorManager destroys only entry-owned actors and ignores stal
 
   await assert.rejects(
     () => manager.destroyActor(node, zlink.RoutingId.from('node-a'), actor),
-    { kind: framework.ZLinkFrameworkErrorKind.ActorRouteNotFound }
+    { kind: framework.ZLinkFrameworkErrorKind.NotFound }
   );
   assert.equal(await manager.findActor('alice'), actor);
 
@@ -3464,7 +3465,7 @@ test('ZLinkActorNativeJoinCoordinator maps native join failures to framework err
     () => submitDeferredActorJoin(actor, actor.context.joinSpot('stage-1', 'hello')),
     (error) =>
       error instanceof framework.ZLinkFrameworkException
-      && error.kind === framework.ZLinkFrameworkErrorKind.ActorRouteNotFound
+      && error.kind === framework.ZLinkFrameworkErrorKind.NotFound
   );
 });
 
@@ -3537,7 +3538,7 @@ test('ZLinkSpotActorDispatcher invokes send request and lifecycle handlers witho
     () => dispatcher.dispatchRequest(actor, 'missing', 'payload'),
     (error) =>
       error instanceof framework.ZLinkFrameworkException
-      && error.kind === framework.ZLinkFrameworkErrorKind.ActorDispatchHandlerNotFound
+      && error.kind === framework.ZLinkFrameworkErrorKind.NotFound
   );
 });
 
@@ -3637,7 +3638,7 @@ test('spot actor dispatch rejects malformed JSON as PayloadDecodeFailed before i
   await assert.rejects(
     () => dispatch.dispatch('alice', [header, zlink.Message.from(Buffer.from('{'))]),
     (error) => error instanceof framework.ZLinkFrameworkException
-      && error.kind === framework.ZLinkFrameworkErrorKind.PayloadDecodeFailed
+      && error.kind === framework.ZLinkFrameworkErrorKind.ProtocolError
   );
   assert.equal(handlerInvocations, 0);
   assert.equal(errors.length, 1);
@@ -3779,7 +3780,7 @@ test('ZLinkSpotActorDispatcher does not fallback actor requests to send handlers
     () => dispatcher.dispatchRequest(actor, 'move', 'right'),
     (error) =>
       error instanceof framework.ZLinkFrameworkException
-      && error.kind === framework.ZLinkFrameworkErrorKind.ActorDispatchHandlerNotFound
+      && error.kind === framework.ZLinkFrameworkErrorKind.NotFound
   );
   assert.deepEqual(events, []);
 });

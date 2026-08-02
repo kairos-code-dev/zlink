@@ -1028,7 +1028,7 @@ test('local actor push preserves native target-not-found after its remote sessio
       .send({ stale: true })
       .packetName('Notify')
       .submit(),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorSessionNotBound
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.InvalidOperation
   );
   assert.equal(nativeAttempts, 1);
 });
@@ -2630,7 +2630,7 @@ test('session A to B rebind fences stale relay and late disconnect without touch
       () => stale.relay(framework.ZLinkMessage.fromEncoded(
         framework.ZLinkEncodedPayload.from(new TextEncoder().encode('{"stale":true}'))
       )),
-      { kind: framework.ZLinkFrameworkErrorKind.ActorSessionNotBound }
+      { kind: framework.ZLinkFrameworkErrorKind.InvalidOperation }
     );
   } finally {
     sessionA.exitDispatch();
@@ -2638,7 +2638,7 @@ test('session A to B rebind fences stale relay and late disconnect without touch
 
   await assert.rejects(
     () => stale.notifyDisconnected(),
-    { kind: framework.ZLinkFrameworkErrorKind.ActorSessionNotBound }
+    { kind: framework.ZLinkFrameworkErrorKind.InvalidOperation }
   );
 
   assert.deepEqual(relayCalls, []);
@@ -2690,7 +2690,7 @@ test('stored actor route relays once without actor ref lookup or hidden retry', 
       () => actor.relay(framework.ZLinkMessage.fromEncoded(
         framework.ZLinkEncodedPayload.from(new TextEncoder().encode('{"route":"stale"}'))
       )),
-      { kind: framework.ZLinkFrameworkErrorKind.ActorSessionNotBound }
+      { kind: framework.ZLinkFrameworkErrorKind.InvalidOperation }
     );
   } finally {
     context.exitDispatch();
@@ -2811,7 +2811,7 @@ test('stream binding runtime can remove actor binding during actor destroy clean
   assert.equal(context.actors.find('actor-destroy'), undefined);
   await assert.rejects(
     () => runtime.sendBoundSession('actor-destroy', { after: 'destroy' }, 'AfterDestroy', new Map()),
-    { kind: framework.ZLinkFrameworkErrorKind.ActorSessionNotBound }
+    { kind: framework.ZLinkFrameworkErrorKind.InvalidOperation }
   );
 });
 
@@ -3431,7 +3431,7 @@ test('stream send validation and duplicate state win over pre-aborted signals', 
   assert.equal(await call.submit(), undefined);
   await assert.rejects(() => call.submit(controller.signal), (error) => {
     assert.equal(error instanceof framework.ZLinkFrameworkException, true);
-    assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.AlreadySubmitted);
+    assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.InvalidOperation);
     return true;
   });
   assert.equal(attempts, 1);

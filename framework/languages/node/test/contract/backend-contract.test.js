@@ -627,7 +627,7 @@ test('Logical Multicast shutdown after handoff does not change the caller termin
     runtime.publish('play', 'events', 'score', 'ProfileChanged', { sequence: 2 }),
     (error) => {
       assert.equal(error instanceof framework.ZLinkFrameworkException, true);
-      assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.RuntimeShutdown);
+      assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.ShuttingDown);
       return true;
     }
   );

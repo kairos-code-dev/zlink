@@ -230,7 +230,7 @@ test('deferred Actor Join rejects a request over 1 MiB without retaining partial
         }
       });
     }),
-    (error) => error.kind === 'invalidConfiguration'
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.NotConfigured
   );
 
   assert.deepEqual(events, [
@@ -247,14 +247,18 @@ test('Actor Join defer rejects detached use, duplicate terminal, and a second pe
   await runActorHandlerWithDeferredJoins(async () => {
     const call = context.joinSpot('room-a');
     call.defer();
-    assert.throws(() => call.defer(), (error) => error.kind === 'alreadySubmitted');
+    assert.throws(
+      () => call.defer(),
+      (error) => error.kind === framework.ZLinkFrameworkErrorKind.InvalidOperation
+    );
     assert.throws(
       () => context.joinSpot('room-b').defer(),
-      (error) => error.kind === 'actorMoving'
+      (error) => error.kind === framework.ZLinkFrameworkErrorKind.Unavailable
     );
     assert.throws(
       () => state.beginMove(),
-      (error) => error.kind === 'actorMoving' && error.isRetriable === true
+      (error) => error.kind === framework.ZLinkFrameworkErrorKind.Unavailable
+        && !('isRetriable' in error)
     );
   });
   await waitForEvents(events, 2);
@@ -265,7 +269,7 @@ test('Actor Join defer rejects detached use, duplicate terminal, and a second pe
   assert.equal(completion, 'completion:accepted:7');
 });
 
-test('deferred Actor Join reports an application failure as non-retriable RequestFailed', async () => {
+test('deferred Actor Join reports an application failure with the public InternalFailure kind', async () => {
   const events = [];
   const failure = new Error('application admission failed');
   const coordinator = {
@@ -300,8 +304,8 @@ test('deferred Actor Join reports an application failure as non-retriable Reques
   await waitForEvents(events, 1);
 
   assert.equal(events[0].status, 'failed');
-  assert.equal(events[0].kind, 'requestFailed');
-  assert.equal(events[0].isRetriable, false);
+  assert.equal(events[0].kind, framework.ZLinkFrameworkErrorKind.InternalFailure);
+  assert.equal('isRetriable' in events[0], false);
   assert.equal(typeof events[0].operationId.high, 'bigint');
   assert.equal(typeof events[0].operationId.low, 'bigint');
 });

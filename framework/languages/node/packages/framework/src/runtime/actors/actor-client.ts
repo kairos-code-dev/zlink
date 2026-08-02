@@ -17,7 +17,8 @@ import type {
 } from '../../contracts';
 import { ZLinkSpotKind } from '../../contracts';
 import {
-  ZLinkFrameworkException
+  ZLinkFrameworkException,
+  ZLinkFrameworkErrorKind
 } from '../../contracts';
 import {
   requireOneWayCompletion,
@@ -741,17 +742,16 @@ function decodeActorReplyPayload<TReply>(
   if (kind === ZLinkStreamMessageKind.Error) {
     const error = decodeFrameworkPayloadMessage<{
       readonly message?: string;
-      readonly kind?: string;
-      readonly isRetriable?: boolean;
+      readonly kind?: number;
     }>(payload, serializers);
-    const kind = Object.values(ZLinkFrameworkInternalErrorKind).includes(error.kind as ZLinkFrameworkInternalErrorKind)
-      ? error.kind as ZLinkFrameworkInternalErrorKind
-      : ZLinkFrameworkInternalErrorKind.RequestFailed;
-    throw createInternalFrameworkException(
-      kind,
-      error.message ?? 'Actor request failed.',
-      error.isRetriable
-    );
+    const wireKind = error.kind;
+    const publicKind = typeof wireKind === 'number'
+      && Number.isInteger(wireKind)
+      && wireKind >= ZLinkFrameworkErrorKind.NotFound
+      && wireKind <= ZLinkFrameworkErrorKind.InternalFailure
+      ? wireKind as ZLinkFrameworkErrorKind
+      : ZLinkFrameworkErrorKind.InternalFailure;
+    throw new ZLinkFrameworkException(publicKind, error.message ?? 'Actor request failed.');
   }
   return decodeFrameworkPayloadMessage<TReply>(payload, serializers);
 }

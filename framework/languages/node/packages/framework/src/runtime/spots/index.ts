@@ -29,6 +29,8 @@ import type { Message } from '../../contracts/Common/Message';
 import { awaitWithAbort, throwIfAborted } from '../abort';
 import {
   ZLinkMessage,
+  ZLinkFrameworkException,
+  ZLinkFrameworkErrorKind,
   ZLinkSpotCloseReason,
   ZLinkSpotKind
 } from '../../contracts';
@@ -1028,8 +1030,9 @@ export class DefaultZLinkSpotManager {
         ZLinkStreamMessageKind.Error,
         {
           message: error instanceof Error ? error.message : String(error),
-          kind: 'RequestFailed',
-          isRetriable: false
+          kind: error instanceof ZLinkFrameworkException
+            ? error.kind
+            : ZLinkFrameworkErrorKind.InternalFailure
         }
       )));
     }

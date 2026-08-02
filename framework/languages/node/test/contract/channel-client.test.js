@@ -118,8 +118,8 @@ test('Node-direct operations classify Object Client targets as NotFound', async 
       1000
     ),
     (error) =>
-      error.kind === framework.ZLinkFrameworkErrorKind.RequestTargetNotFound
-      && error.isRetriable === false
+      error.kind === framework.ZLinkFrameworkErrorKind.NotFound
+      && !('isRetriable' in error)
   );
 });
 
@@ -282,7 +282,7 @@ test('ZLinkRouteClient uses one SpotHandle snapshot and does not retry a stale r
       async requestToSpot(target, request, options) {
         requests.push({ target, request, options });
         throw new framework.ZLinkFrameworkException(
-          framework.ZLinkFrameworkErrorKind.SpotRouteNotFound,
+          framework.ZLinkFrameworkErrorKind.NotFound,
           'stale spot route'
         );
       }
@@ -296,7 +296,7 @@ test('ZLinkRouteClient uses one SpotHandle snapshot and does not retry a stale r
       .requestToSpot(handle, typedPacket('Lookup', { id: 2 }))
       .timeout(250)
       .submit(),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.SpotRouteNotFound
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.NotFound
   );
 
   assert.equal(sends.length, 1);
@@ -364,7 +364,7 @@ test('ZLinkRouteClient does not refresh or retry an uncertain Spot request failu
       async requestToSpot() {
         requestCount += 1;
         throw new framework.ZLinkFrameworkException(
-          framework.ZLinkFrameworkErrorKind.RouteNotConnected,
+          framework.ZLinkFrameworkErrorKind.Unavailable,
           'delivery outcome is uncertain'
         );
       }
@@ -373,7 +373,7 @@ test('ZLinkRouteClient does not refresh or retry an uncertain Spot request failu
 
   await assert.rejects(
     () => client.requestToSpot(handle, typedPacket('Lookup', { id: 3 })).submit(),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.Unavailable
   );
   assert.equal(requestCount, 1);
   assert.equal(refreshCount, 0);
@@ -678,7 +678,7 @@ test('Logical Multicast call object permits only one submit invocation', async (
   assert.equal(await call.submit(), undefined);
   await assert.rejects(() => call.submit(), (error) => {
     assert.equal(error instanceof framework.ZLinkFrameworkException, true);
-    assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.AlreadySubmitted);
+    assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.InvalidOperation);
     return true;
   });
   assert.equal(attempts, 1);
@@ -732,7 +732,7 @@ test('Logical Multicast call built before runtime disposal reports RuntimeShutdo
 
   await assert.rejects(call.submit(), (error) => {
     assert.equal(error instanceof framework.ZLinkFrameworkException, true);
-    assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.RuntimeShutdown);
+    assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.ShuttingDown);
     return true;
   });
 });
@@ -781,8 +781,8 @@ test('ZLinkDealerChannelClientTransport maps native request connectivity failure
   await assert.rejects(
     () => transport.request('api', 'Ping', 'ping', 100),
     (error) => error instanceof framework.ZLinkFrameworkException &&
-      error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected &&
-      error.isRetriable === true &&
+      error.kind === framework.ZLinkFrameworkErrorKind.Unavailable &&
+      !('isRetriable' in error) &&
       error.cause === nativeError
   );
 });
@@ -1295,7 +1295,7 @@ test('route channel request uses call timeout after native router accepts submit
   await assert.rejects(
     () => manager.routeRequest('room.route', 'play-node', 'EnsurePlayerActorReq', { actorId: 'player-1' }, 30),
     (error) => error instanceof framework.ZLinkFrameworkException
-      && error.kind === framework.ZLinkFrameworkErrorKind.RequestFailed
+      && error.kind === framework.ZLinkFrameworkErrorKind.InternalFailure
       && /ZLink async submit timed out/.test(error.message)
   );
   assert.equal(router.requestAttempts, 1);
@@ -2225,7 +2225,7 @@ test('REG-003 ZLinkFrameworkRuntimeHost dispatches manual channel handlers and r
         .timeout(1000)
         .submit(),
       (error) => error instanceof framework.ZLinkFrameworkException
-        && error.kind === framework.ZLinkFrameworkErrorKind.HandlerNotFound
+        && error.kind === framework.ZLinkFrameworkErrorKind.NotFound
         && /No channel request handler is registered for 'manual-reg:ManualMissingReq'/.test(error.message)
     );
 
@@ -3467,7 +3467,7 @@ test('ZLinkChannelRequestDispatcher rejects filter short circuit without seriali
   assert.equal(replyEnvelope.header.kind, 5);
   assert.equal(
     replyEnvelope.header.errorCode,
-    framework.ZLinkFrameworkErrorKind.RequestRejected
+    String(framework.ZLinkFrameworkErrorKind.Rejected)
   );
   assert.notEqual(replyEnvelope.body, 'filter-reply');
 });
@@ -4091,14 +4091,14 @@ test('ZLinkAsyncSubmitter shutdown preserves RuntimeShutdown and releases pendin
 
   await assert.rejects(pending, (error) => {
     assert.equal(error instanceof framework.ZLinkFrameworkException, true);
-    assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.RuntimeShutdown);
+    assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.ShuttingDown);
     return true;
   });
   assert.equal(discarded, 1);
   assert.throws(
     () => submitter.submitCommand(() => true),
     (error) => error instanceof framework.ZLinkFrameworkException
-      && error.kind === framework.ZLinkFrameworkErrorKind.RuntimeShutdown
+      && error.kind === framework.ZLinkFrameworkErrorKind.ShuttingDown
   );
 });
 
@@ -4741,7 +4741,8 @@ async function waitForScaleoutPeers(store, predicate, routingId) {
 
 function isHostUnreachable(error) {
   if (error instanceof framework.ZLinkFrameworkException) {
-    return error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected && error.isRetriable === true;
+    return error.kind === framework.ZLinkFrameworkErrorKind.Unavailable
+      && !('isRetriable' in error);
   }
   return error instanceof Error &&
     (((error.code === 2 || error.code === 12) && /Host unreachable/.test(error.message)) ||

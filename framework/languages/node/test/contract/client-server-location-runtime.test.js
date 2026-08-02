@@ -1165,10 +1165,10 @@ test('ClientServer outbound reports no selectable target as RequestTargetNotFoun
   await assert.rejects(
     () => manager.request('orders', 'Lookup', { id: 1 }, 60),
     (error) => error instanceof framework.ZLinkFrameworkException
-      && error.kind === framework.ZLinkFrameworkErrorKind.RequestTargetNotFound
+      && error.kind === framework.ZLinkFrameworkErrorKind.NotFound
       // The kind carries retry policy; RequestTargetNotFound is not retriable by default in any
       // lane, and the reference throws omit the flag exactly as this one does.
-      && error.isRetriable === false
+      && !('isRetriable' in error)
   );
   await manager.dispose();
 });

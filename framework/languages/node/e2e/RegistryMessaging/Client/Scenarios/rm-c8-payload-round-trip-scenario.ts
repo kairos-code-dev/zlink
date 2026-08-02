@@ -26,8 +26,8 @@ export async function runRmC8(
     payload: buildPayload(3 * 1024 * 1024)
   });
   ensure(
-    oversized.failed && oversized.failureType === 'requestFailed',
-    'RM-C8 oversized payload should fail with RequestFailed.'
+    oversized.failed && oversized.failureType === '7',
+    'RM-C8 oversized payload should fail with DeadlineExceeded (7).'
   );
 
   const followUp = await postJson<ProfileRes>(directConsumerUrl, '/profile/request', { value: 'rm-c8-after' });

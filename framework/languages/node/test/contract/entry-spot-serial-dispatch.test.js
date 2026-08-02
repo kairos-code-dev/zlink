@@ -516,7 +516,7 @@ test('runCpuWorker rejects async work and enforces its timeout', async () => {
     }).timeoutMs(5).submit(),
     (error) =>
       error instanceof framework.ZLinkFrameworkException
-      && error.kind === framework.ZLinkFrameworkErrorKind.WorkerTimedOut
+      && error.kind === framework.ZLinkFrameworkErrorKind.DeadlineExceeded
   );
 });
 
@@ -590,7 +590,7 @@ test('runCpuWorker queue full fails fast with WorkerQueueFull and does not block
     () => overflowCall.submit(),
     (error) =>
       error instanceof framework.ZLinkFrameworkException
-      && error.kind === framework.ZLinkFrameworkErrorKind.WorkerQueueFull
+      && error.kind === framework.ZLinkFrameworkErrorKind.CapacityExceeded
   );
   assert.equal(Date.now() - startedAt < 100, true);
 
@@ -605,7 +605,7 @@ test('runCpuWorker queue full fails fast with WorkerQueueFull and does not block
     (error) => serial.execute(() => errors.push(`error:${error.kind}:executing=${serial.isExecuting}`))
   );
   await delay(10);
-  assert.deepEqual(errors, ['error:workerQueueFull:executing=true']);
+  assert.deepEqual(errors, [`error:${framework.ZLinkFrameworkErrorKind.CapacityExceeded}:executing=true`]);
 
   assert.equal(await longJob, 'long');
   assert.equal(await queuedJob, 'queued');
@@ -626,7 +626,7 @@ test('runIoWorker timeout fails the caller and drops the late completion without
     () => submitCall.submit(),
     (error) =>
       error instanceof framework.ZLinkFrameworkException
-      && error.kind === framework.ZLinkFrameworkErrorKind.WorkerTimedOut
+      && error.kind === framework.ZLinkFrameworkErrorKind.DeadlineExceeded
   );
   assert.equal(observedSignal.aborted, true);
 
@@ -640,7 +640,7 @@ test('runIoWorker timeout fails the caller and drops the late completion without
   );
   await delay(80);
   // The timeout error reached onError; the late completion fired no callback.
-  assert.deepEqual(events, ['error:workerTimedOut']);
+  assert.deepEqual(events, [`error:${framework.ZLinkFrameworkErrorKind.DeadlineExceeded}`]);
 });
 
 test('runIoWorker work failure surfaces as WorkerFailed wrapping the cause', async () => {
@@ -654,7 +654,7 @@ test('runIoWorker work failure surfaces as WorkerFailed wrapping the cause', asy
     () => call.submit(),
     (error) =>
       error instanceof framework.ZLinkFrameworkException
-      && error.kind === framework.ZLinkFrameworkErrorKind.WorkerFailed
+      && error.kind === framework.ZLinkFrameworkErrorKind.InternalFailure
       && error.cause === cause
   );
 });

@@ -94,7 +94,9 @@ async function runClient(mode) {
       client.requestToNode('mesh', 'node-a', new RoutePing('ready')).timeout(1000).submit()
     );
     await client.sendToNode('mesh', 'node-a', new RouteNotice('one-way')).submit();
-    return client.requestToNode('mesh', 'node-a', new RoutePing('ping')).timeout(1000).submit();
+    return retryReachable(() =>
+      client.requestToNode('mesh', 'node-a', new RoutePing('ping')).timeout(1000).submit()
+    );
   }
   return retryReachable(() =>
     client.requestToChannel('mesh', new RoutePing('ping')).timeout(1000).submit()
@@ -109,7 +111,7 @@ async function retryReachable(submit) {
       return await submit();
     } catch (error) {
       lastError = error;
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise(resolve => setImmediate(resolve));
     }
   }
   throw lastError;

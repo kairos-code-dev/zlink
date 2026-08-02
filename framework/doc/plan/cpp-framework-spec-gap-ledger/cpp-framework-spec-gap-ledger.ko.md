@@ -4,7 +4,7 @@
 
 - 기준 시점: 2026-08-02. 재검증 실행 구간은 08:46~08:48 KST다.
 - 판정: 미완료. 현재 C++ Framework는 common Framework spec과 common E2E spec을 전체 충족한다고 판정할 수 없다.
-- 변경 범위: 이번 갱신에서는 이 ledger만 수정한다. 구현 source, public header, test, E2E runner, 정식 spec과 기존 사용자 변경은 수정하지 않는다. `log/`는 실제 작업 진행 중에 step별 기록을 남길 위치로 예약하며, 현재는 비워 둔다.
+- 변경 범위: 이번 갱신에서는 이 spec ledger와 후속 [`cpp-framework-sample-spec-gap-ledger.ko.md`](cpp-framework-sample-spec-gap-ledger.ko.md), 그리고 실제 작업 진행 log만 수정한다. 구현 source, public header, test, E2E runner, 정식 spec과 기존 사용자 변경은 수정하지 않는다.
 - 이 문서는 public contract가 아니다. 아래의 `contract 선행` 항목은 구현 전에 exact interface 또는 package ownership을 먼저 확정해야 한다.
 
 ## 1. 목적과 완료 조건
@@ -20,8 +20,9 @@
 - C++ Framework package가 지정한 `zlink_cpp`와 Core package에서 clean consumer를 compile하고 실행한다. install tree, target export, symbol visibility, C++ standard와 Debug/Release ABI를 확인한다.
 - Core 전용 C ABI 또는 Framework 내부 ABI를 application/E2E 경로에 새로 노출하지 않는다.
 - 현재 build, test, process E2E, package와 CI가 모두 재현 가능한 완료 evidence를 남긴다.
+- 이 spec ledger의 선행 gate를 닫은 뒤 [`cpp-framework-sample-spec-gap-ledger.ko.md`](cpp-framework-sample-spec-gap-ledger.ko.md)의 sample contract, runner와 6개 process evidence도 완료한다. 두 ledger 중 하나라도 미완료이면 전체 C++ audit을 완료로 표시하지 않는다.
 
-현재 production target build는 working tree의 HTTP buffer access 변경 후 성공했지만, public contract mismatch, bounded CTest failure, aggregate 범위 누락, package verifier failure와 process evidence 부재가 남아 있으므로 완료 조건을 충족하지 않는다.
+현재 source는 HTTP buffer access에 `mutable_buffer::data()`와 `const_buffer::data()`를 사용하지만, public contract mismatch, bounded CTest failure, aggregate 범위 누락, package verifier failure와 Framework/sample process evidence 부재가 남아 있으므로 완료 조건을 충족하지 않는다.
 
 ## 2. 조사 범위와 authoritative source
 
@@ -44,8 +45,9 @@
 - C++ production: `framework/languages/cpp/framework/include/`, `framework/languages/cpp/framework/src/`, `framework/languages/cpp/http-client/`, `framework/languages/cpp/connector/`.
 - C++ E2E: `framework/languages/cpp/e2e/`의 feature-map, client dispatch, role server, `run_e2e.sh`, `run_e2e_all.sh`.
 - build/package: `framework/languages/cpp/CMakeLists.txt`, `framework/languages/cpp/cmake/`, `framework/languages/cpp/scripts/verify_packaged_contract.sh`, `scripts/local-package/README.ko.md`, `scripts/v11/run-framework-runtime-regression.mjs`와 `.github/workflows/`.
+- C++ sample 후속 범위: `framework/doc/plan/cpp-framework-spec-gap-ledger/cpp-framework-sample-spec-gap-ledger.ko.md`, `framework/languages/cpp/samples/`, C++ sample parity/layout/target test와 sample runner.
 - historical reference: `framework/doc/plan/log/framework-public-contract-gap-implementation/cpp-g0-contract-ledger.ko.md`와 같은 디렉토리의 C++ 문서. historical log와 snapshot은 현재 완료 evidence로 사용하지 않았다.
-- 진행 기록 정책: 실제 ledger 작업을 다시 수행할 때 각 조사·검증·판정 단계가 끝난 직후 `framework/doc/plan/cpp-framework-spec-gap-ledger/log/`에 기록한다. 사후에 command 결과를 모아 만든 log는 완료 evidence로 사용하지 않는다.
+- 진행 기록 정책: 실제 ledger 작업 중 각 조사·검증·판정 단계가 끝난 직후 `framework/doc/plan/cpp-framework-spec-gap-ledger/log/2026-08-02-progress.log`에 기록했다. 사후에 command 결과를 모아 만든 log는 완료 evidence로 사용하지 않는다.
 
 ### 2.3 판정 용어
 
@@ -54,17 +56,35 @@
 - `contract 선행`: 구현 전에 public contract, exact C++ 표현 또는 package ownership을 먼저 확정해야 한다.
 - `과거 evidence`: feature-map이나 log가 기록한 예전 실행 결과다. 현재 working tree의 증거로 승격하지 않는다.
 
+### 2.4 Sample 후속 gate
+
+이 문서는 Framework production·public contract·common E2E의 S0 gate를 소유한다. S0의 checklist가
+완료된 뒤에만 sample ledger의 G2부터 시작한다. sample ledger는 공통 sample message와 실제 role
+server call path를 검증하지만 public Framework API를 새로 정의하지 않는다.
+
+S0 완료 후 S1에서 다음을 수행한다.
+
+1. 6개 C++ sample의 exact message·field·transport inventory를 비교한다.
+2. sample runner와 CMake/package provenance를 고정한다.
+3. client-visible result, role-server evidence, owner/generation, callback, terminal reason과 cleanup을
+   process에서 확인한다.
+4. S1의 `CPP-SAMPLE-TEST-*`와 `CPP-SAMPLE-REG-*`가 통과한 뒤에만 S2 전체 C++ audit closure를
+   기록한다.
+
+S0의 Framework gap을 S1 sample code, private adapter 또는 raw route로 우회할 수 없다. S1의
+`N/A` 범위인 ZoneWorld도 다른 언어 구현이나 common E2E 문서만으로 C++ public API를 추가하지 않는다.
+
 ## 3. 현재 검증 결과
 
 ### 3.1 Working tree와 범위
 
-최종 확인한 `git status --short`에는 이 문서와 별도의 사용자 변경이 함께 있다. C++ 범위에는 다음 사용자 변경이 남아 있으며, 이 audit에서는 수정하지 않았다.
+조사 시작 시점의 `git status --short`에는 이 문서와 별도의 사용자 변경이 함께 있었다. 당시 C++ 범위에는 다음 변경이 있었으며, 이 audit에서는 수정하지 않았다.
 
 ```text
  M framework/languages/cpp/framework/src/runtime/http/http_listener.cpp
 ```
 
-현재 변경은 `asio::buffer_cast` 호출을 `mutable_buffer::data()`와 `const_buffer::data()`로 바꾼 내용이다(`http_listener.cpp:94-97,137-138`). 이 변경은 이번 audit의 구현 수정이 아니다. 이 audit은 구현·test·E2E runner·정식 spec을 read-only로 유지했고, ledger만 갱신했다. 기존 historical C++ ledger가 있지만 requested full audit ledger와 같은 파일은 없으므로 이 경로의 ledger를 유지했다.
+초기 변경은 `asio::buffer_cast` 호출을 `mutable_buffer::data()`와 `const_buffer::data()`로 바꾼 내용이었다(`http_listener.cpp:94-97,137-138`). 이 변경은 이번 audit의 구현 수정이 아니다. 최종 status 재확인에서는 해당 C++ source가 더 이상 working-tree diff로 표시되지 않았고, 현재 source와 `HEAD`의 해당 경로가 일치했다. audit은 구현·test·E2E runner·정식 spec을 수정하지 않았으며, 상태 변화가 있었던 source를 되돌리거나 복원하지 않았다. 기존 historical C++ ledger가 있지만 requested full audit ledger와 같은 파일은 없으므로 이 경로의 ledger를 유지했다.
 
 ### 3.2 새로 실행한 검증
 
@@ -72,13 +92,13 @@
 |---|---|---|
 | CMake configure, `build-v11-tests`, Release, E2E OFF, `zlink_cpp=11.1.0`, Core `11.0.0`, vcpkg dependency prefix 사용 | 08:46:51 성공 | pinned dependency가 지정되면 configure는 완료된다. 실제 작업 재개 시 command와 결과를 step별 log로 남긴다. |
 | dependency prefix 없이 별도 clean configure | 실패 | `protobufConfig.cmake`를 찾지 못했다. dependency 설치 누락이며 C++ source gap과 분리한다. |
-| `cmake --build ... --target zlink_framework zlink_http_client zlink_stream_connector -j2` | 08:46:54 성공 | 현재 HTTP buffer access 변경 후 세 production target이 build된다. 이전 `buffer_cast` failure는 현재 tree의 실행 결과가 아니다. |
+| `cmake --build ... --target zlink_framework zlink_http_client zlink_stream_connector -j2` | 08:46:54 성공 | current source의 supported buffer access로 세 production target이 build된다. 이전 `buffer_cast` failure는 현재 tree의 실행 결과가 아니다. |
 | `ctest --test-dir framework/languages/cpp/build-v11-tests -N` | 성공, 49 tests 수집 | inventory만 확인한다. test body 결과는 다음 bounded 실행과 구분한다. |
 | `timeout 180s ctest --test-dir ... --output-on-failure --timeout 30` | 41 passed, 8 failed, exit 8 | `m6a` timeout, `m6b` abort, mesh-node vertical failure, app-host/http integration/store-resolver timeout, stream framework segfault, stream connector abort가 발생했다. target/layout/raw-route/install-consumer와 `test_cpp_http_client`는 통과했지만 전체 runtime gate는 실패했다. |
 | `framework/languages/cpp/scripts/verify_packaged_contract.sh framework/languages/cpp/build-v11-tests` | 실패 | temporary install 뒤 `include/zlink/framework/contracts/locations/spot_handle.hpp`가 없어서 중단했다. exact spec와 verifier manifest 기준이 다르다. |
 | `framework/languages/cpp/e2e/run_e2e_all.sh --max-attempts=1 --scenario-timeout-seconds=20` | exit 124 | 12-config aggregate가 시작됐지만 `RegistrationCodec` E2E target build가 19초 뒤 bounded timeout으로 종료됐다. 전체 process E2E PASS로 해석하지 않는다. |
 
-현재 실행 결과와 실패 ID는 ledger 본문에만 반영했다. 사후에 만든 실행 log는 제거했으며 `log/`는 비어 있다. 실제 작업을 다시 수행할 때는 command 직후 결과를 해당 디렉토리에 기록한다. CTest failure의 root cause는 이 audit에서 추가 진단하지 않았으며, 관찰된 timeout/abort/segfault 자체를 current evidence로 보존한다.
+현재 실행 결과와 실패 ID는 ledger 본문과 실제 작업 중 갱신한 [`log/2026-08-02-progress.log`](log/2026-08-02-progress.log)에 반영했다. CTest failure의 root cause는 이 audit에서 추가 진단하지 않았으며, 관찰된 timeout/abort/segfault와 sample process의 `invalid application payload version` abort 자체를 current evidence로 보존한다.
 
 ### 3.3 package와 cache 관찰
 
@@ -328,7 +348,8 @@ common E2E 문서에서 추출한 ID는 14개 config, 총 374개다. C++ aggrega
 5. `CPP-E2E-IMP-001~009` 순서로 common ID inventory, selector, client dispatch, role server evidence와 aggregate policy를 연결한다. partial/N/A/source-only/historical status는 full PASS에서 제외한다.
 6. `CPP-IMP-006`의 package ownership과 verifier를 exact contract에 맞추고 clean consumer, install tree, target export, symbol/ABI matrix를 실행한다.
 7. C++ Framework CI가 build, contract, unit, package, aggregate process E2E와 common-spec/path change를 실제로 실행하도록 gate를 연결한다.
-8. 마지막으로 이 ledger의 모든 gap에 current source line, current test output, current process log와 package hash를 연결하고, 문서 원칙에 따라 결과·조건·다음 작업을 다시 검토한다.
+8. S0 Framework gate가 닫힌 뒤 `cpp-framework-sample-spec-gap-ledger.ko.md`의 G2~G8을 실행한다. sample contract, runner, CMake/package provenance와 6개 process evidence를 이 ledger의 선행 결과와 연결한다.
+9. 두 ledger의 모든 gap에 current source line, current test output, current process log와 package hash를 연결하고, 문서 원칙에 따라 결과·조건·다음 작업을 다시 검토한다. sample ledger가 닫히기 전에는 이 문서의 최종 완료를 표시하지 않는다.
 
 ## 9. 기존 회귀 test의 유지·변경·추가 목록
 
@@ -387,6 +408,9 @@ common E2E 문서에서 추출한 ID는 14개 config, 총 374개다. C++ aggrega
 - [ ] `CPP-E2E-IMP-001~009`: common 14 config와 374 scenario ID의 selector, dispatch, role process, evidence와 aggregate policy가 일치한다.
 - [ ] `CPP-TEST-001~002`: verifier와 textual gate가 exact contract와 actual runtime/E2E gate를 서로 모순 없이 검사하고, 현재 CTest의 8개 failure가 해소되었다.
 - [ ] `CPP-REG-001~009`: 회귀 test가 구현되고 current working tree에서 통과했다.
+- [ ] S0 완료 뒤 [`cpp-framework-sample-spec-gap-ledger.ko.md`](cpp-framework-sample-spec-gap-ledger.ko.md)의 `CPP-SAMPLE-IMP-*`, `CPP-SAMPLE-E2E-IMP-*`, `CPP-SAMPLE-TEST-*`, `CPP-SAMPLE-REG-*`가 current sample source와 process evidence로 완료됐다.
+- [ ] sample ledger의 6개 C++ sample aggregate가 완료되었고, `ZoneWorld`는 C++ 계약 대상이 아니라는 범위 근거가 유지된다.
+- [ ] sample ledger 완료 전에는 이 spec ledger와 전체 C++ audit을 `완료`로 표시하지 않는다.
 - [ ] C++ E2E client는 public HTTP client/stream connector만 사용하고 Framework call은 role server에 있다.
 - [ ] role server evidence와 client-visible result가 scenario별로 모두 확인된다. historical log, source type 존재, unit test만으로 PASS를 만들지 않는다.
 - [ ] Core 전용 C ABI, Framework internal ABI, private header, raw frame, test-only adapter와 reflection 우회가 없다.
@@ -402,4 +426,5 @@ common E2E 문서에서 추출한 ID는 14개 config, 총 374개다. C++ aggrega
 - E2E: Config 12/14 부재, Config 1~11/13 scenario 누락 또는 partial aggregate, Config 10 migration host, role evidence와 private include boundary. Current 12-config aggregate probe도 RegistrationCodec target build timeout으로 종료됐다.
 - Package: `zlink_cpp`/Core provenance drift, HTTP client ownership 문서와 CMake export 불일치, stale packaged verifier manifest.
 - CI: C++ Framework 전용 GitHub workflow와 common 14-config process gate 부재.
+- Sample 후속: `cpp-framework-sample-spec-gap-ledger.ko.md`는 작성되었지만 아직 S1 process gate가 완료되지 않았다. C++ sample aggregate는 현재 `TicTacToe`의 `invalid application payload version` abort에서 중단되었고, PowerShell aggregate는 2개 sample만 호출한다. 6개 sample의 exact contract, package provenance와 role-server evidence가 남아 있다.
 - 다른 언어 구현은 위 gap을 해결하는 public API 근거로 사용하지 않았다.

@@ -1254,8 +1254,7 @@ test('ZLinkSpotManager replies formal Mesh actor handler exceptions as HandlerEx
     );
     assert.deepEqual(JSON.parse(replies[0][1].toString()), {
       message: 'handler boom',
-      kind: 'RequestFailed',
-      isRetriable: false
+      kind: framework.ZLinkFrameworkErrorKind.InternalFailure
     });
     const errorEvents = dispatchEvents.filter((event) => event.outcome === 'failed');
     assert.equal(errorEvents.length, 1);
@@ -1305,7 +1304,7 @@ test('ZLinkSpotManager getOrCreate is keyed by spot type and spotId', async () =
     () => manager.getOrCreate('test.mesh', OtherSpot, 'stage-1'),
     (error) =>
       error instanceof framework.ZLinkFrameworkException &&
-      error.kind === framework.ZLinkFrameworkErrorKind.SpotTypeMismatch
+      error.kind === framework.ZLinkFrameworkErrorKind.TypeMismatch
   );
 });
 
@@ -2249,7 +2248,7 @@ test('SpotId outbound keeps Missing Instance placement intent behind the public 
   await reused.submit();
   await assert.rejects(() => reused.submit(), (error) => {
     assert.equal(error instanceof framework.ZLinkFrameworkException, true);
-    assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.AlreadySubmitted);
+    assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.InvalidOperation);
     return true;
   });
 });

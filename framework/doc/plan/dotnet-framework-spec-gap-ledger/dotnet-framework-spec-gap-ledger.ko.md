@@ -1,6 +1,7 @@
 # .NET Framework spec gap audit와 수정 ledger
 
-> 상태: G0 CLEAN, formal exact-interface 문서는 수정하지 않음. Sol Medium 최종 read-only review에서 Critical·High·Medium 0건을 확인했으며, 다음은 G1 사전 검토다.
+> 상태: Phase A (`.NET Framework` spec gap) 진행 중. 현재는 G1 사전 검토 단계이며, Phase B (common
+> sample gap)는 Phase A 완료 gate를 통과하기 전에는 시작하지 않는다.
 >
 > 기준: `3291e338f4f700484780560cd81345a647ef0948`와 2026-08-02 G0 candidate working tree
 >
@@ -28,6 +29,10 @@
 7. Core, bindings 또는 공통 contract 변경이 필요한 항목은 선행 card로 분리한다. 원인을 소유한
    layer에서 regression test와 수정을 끝내고 package를 다시 배포해 Framework가 그 package를 사용하는
    것까지 확인하기 전에는 `.NET` 완료로 처리하지 않는다.
+8. Phase A의 모든 implementation·E2E·regression·package gap을 닫고, G7 독립 audit에서 unresolved
+   `Critical`·`High`·`Medium` finding이 0건이어야 Phase B를 시작한다.
+9. Phase B의 common sample gap은 이 문서의 sample phase에서만 진행한다. Phase A 완료 전에는 sample
+   source 수정, sample card 완료 판정과 sample process evidence 수집을 시작하지 않는다.
 
 ## 2. 판정 기준과 조사 범위
 
@@ -59,7 +64,7 @@ signature, nullable, generic constraint와 기본값을 소유한다. 구현은 
 Working tree에는 Actor relocation과 관련 E2E 수정이 이미 존재한다. 이 ledger는 해당 변경을 보존한 상태에서
 작성했다. 이후 실행 log에는 각 단계의 candidate commit과 working tree diff를 함께 기록해야 한다.
 
-### 1.1 작업 log와 후속 ledger
+### 1.1 작업 log와 phase 전환
 
 이 ledger의 진행 상황과 검증 결과는 이 문서가 있는 폴더의 `log/` 아래에 기록한다. 각 log는
 `log/YYYYMMDD-HHMMSS-<card>.ko.md` 형식을 사용하고, 기록 시점의 card, working tree 조건,
@@ -67,10 +72,9 @@ Working tree에는 Actor relocation과 관련 E2E 수정이 이미 존재한다.
 늘어놓지 않고 해당 log 경로를 기준으로 확인한다. Formal public contract spec은 이 작업 log의
 대상이 아니며, 구현 전 설계나 실행 증거는 plan ledger와 그 `log/`에서만 관리한다.
 
-이 문서의 모든 card와 최종 audit가 완료되면 다음 작업은
-[`dotnet-framework-sample-spec-gap-ledger.ko.md`](./dotnet-framework-sample-spec-gap-ledger.ko.md)를
-열어 이어서 진행한다. 다음 문서의 card를 이 ledger의 완료 판정 전에 섞지 않으며, 이 문서의
-최종 log에 다음 문서로 전환한 사실과 시작 조건을 기록한다.
+이 문서의 Phase A card와 G7 최종 audit가 모두 완료되면 같은 문서의 `## 10. Phase B — common sample
+gap`에서 sample 작업을 이어서 진행한다. Phase B card를 Phase A 완료 판정 전에 섞지 않으며, 전환 시점과
+시작 조건은 `log/`에 기록한다. 별도의 sample ledger 문서는 두지 않는다.
 
 ### 2.1 Model 배치와 card review gate
 
@@ -186,7 +190,7 @@ hash, Framework 참조 version, consumer test를 기록한다. 이 증거가 하
 | 현재 전체 `.NET` UnitTests | 1388/1388 통과 | `--logger 'console;verbosity=normal'`로 2분 51초 실행했다. Negative configuration test가 예상된 host-start error log를 남겼지만 testhost crash·timeout 없이 전체 suite가 종료되었다. |
 | 현재 targeted relocation unit test | 248/248 통과 | `DrainCoordinatorTests`, `MaintenanceRuntimeTests`, `ActorHandoffTests`, `EntrySpotActorDispatchTests`, `LocationRuntimeQueryTests`를 현재 dirty tree에서 실행했다. 이전 `DrainSpots` delegate compile blocker는 해소되었다. |
 | 현재 documentation regression 단독 | 20/20 통과 | Exact interface 14개 문서의 owner matrix와 Config 1~14 feature-map inventory, 중복·unknown ID 검사가 현재 G0 candidate에서 통과한다. |
-| 현재 sample regression | 134/134 통과 | Scenario canonical ID/name 검사와 common TicTacToe의 Entry Spot destroy ownership 문장을 포함한 sample regression이다. |
+| 현재 sample regression | 134/134 통과 | Phase B baseline evidence다. Scenario canonical ID/name 검사와 common TicTacToe의 Entry Spot destroy ownership 문장을 포함하지만 Phase A 완료나 Phase B 전체 완료를 증명하지 않는다. |
 | `verify-framework-doc-contracts.sh` | 중단 | Service wire 검사는 통과했다. C++ member override의 target signature 누락에서 중단되어 `.NET` 문서 전체 CLEAN 증거로 사용할 수 없다. |
 
 `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature`는 이름과 달리 Markdown
@@ -1419,11 +1423,10 @@ process 종료 경계가 spec과 일치하는 상태다.
 2. Framework unit test
 3. Redis provider test
 4. Stream Connector와 HTTP client test
-5. Sample regression
-6. `framework/languages/dotnet/scripts/verify_packaged_contract.sh`
-7. Config 1~14 process E2E
-8. `verify-framework-doc-contracts.sh`
-9. 독립 read-only 전체 audit
+5. `framework/languages/dotnet/scripts/verify_packaged_contract.sh`
+6. Config 1~14 process E2E
+7. `verify-framework-doc-contracts.sh`
+8. 독립 read-only 전체 audit
 
 Repo-wide 문서 검사가 다른 언어 오류에서 중단되면 `.NET` 완료로 숨기지 않는다. `.NET` 범위 통과와
 repo-wide blocker를 결과에서 분리한다.
@@ -1509,7 +1512,7 @@ repo-wide blocker를 결과에서 분리한다.
 | DN-REG-039 | E2E architecture | Client에는 `AddZLinkFramework`, `Host.CreateDefaultBuilder`, framework runtime/client 호출, reflection/private/internal API가 없고 framework 호출은 role server endpoint에서 수행된다. |
 | DN-REG-040 | process E2E | ST-B2는 process 종료 뒤 no takeover/no replay/unavailable을, ST-B3/B4는 `RecreateOnRelocation`과 empty-state restore를 공통 spec과 같은 terminal 의미로 검증한다. |
 
-## 9. 완료 판정 checklist
+## 9. Phase A Spec 완료 판정 checklist
 
 - [ ] DN-IMP-001을 수정하고 DN-REG-003~008, 013을 통과했다.
 - [ ] DN-IMP-002를 수정하고 DN-REG-009~010을 통과했다.
@@ -1519,7 +1522,8 @@ repo-wide blocker를 결과에서 분리한다.
 - [x] DN-TEST-006의 이전 compile blocker를 확인하고 현재 targeted test 248/248 통과를 기록했다.
 - [ ] DN-E2E-IMP-001~017을 수정하고 DN-REG-035~040을 통과했다.
 - [ ] Config 1~14의 공통 scenario와 `.NET` feature-map·selector·aggregate runner 차이가 0개다.
-- [ ] Contract, unit, provider, connector, HTTP client와 sample regression이 모두 통과했다.
+- [ ] Contract, unit, provider, connector와 HTTP client regression이 모두 통과했다.
+- [ ] Sample regression은 Phase B에서 별도로 실행하며 Phase A 완료를 대신하지 않는다.
 - [ ] 실제 NuGet package export가 source와 exact interface에 일치한다.
 - [ ] Process E2E 전체에서 `부분`이나 `미구현`으로 남은 항목은 이 ledger의 열린 gap과 일대일로 연결된다.
 - [ ] 모든 구현 card가 Luna Max 구현, Sol Medium read-only review, finding 수정과 재검토 gate를 통과했다.
@@ -1531,3 +1535,632 @@ repo-wide blocker를 결과에서 분리한다.
       contract·regression·process 검증을 기록했다.
 - [ ] 마지막 독립 audit에서 기록하지 않은 `.NET` gap이 0개다.
 - [ ] 마지막 독립 audit을 새 Sol Medium reviewer가 수행했고 unresolved `Critical`·`High`·`Medium` finding이 0개다.
+
+## 10. Phase B — common sample gap (Phase A 완료 후 시작)
+
+Phase B는 Phase A의 `## 9. Phase A Spec 완료 판정 checklist`와 G7 독립 audit의 모든 항목이 통과된 뒤에만 시작한다.
+Phase A 완료 전에는 아래 sample card를 구현 완료로 표시하거나 sample process evidence를 수집하지 않는다.
+
+### 10.1 목적과 완료 조건
+
+이 Phase B section은
+[`framework/doc/framework/common/sample/`](../../framework/common/sample/README.ko.md)의 공통 sample
+계약과 `framework/languages/dotnet/samples/`의 `.NET` 구현을 비교하여 gap을 확인하고, 확인된 차이를
+수정하는 순서를 정한다. 비교 대상은 sample 이름이나 public API의 존재 여부에 한정하지 않는다. 다음
+항목을 같은 기준으로 대조한다.
+
+- message 이름, field 이름과 타입, nullable·optional 의미, enum 또는 named string 값
+- request/reply, one-way send, notify, publish의 transport 의미와 handler 등록 방식
+- payload가 wire에서 표현되는 방식과 typed JSON 또는 Protobuf codec의 선택
+- topology, route, actor·spot ownership, session binding과 relocation의 실행 순서
+- state commit, idempotency, retry·deadline, failure와 cleanup의 책임 경계
+- Domain/Application/Infrastructure 분리와 application message에 내부 식별자를 노출하지 않는 규칙
+- runner의 build, Redis 격리, readiness, client self-check, evidence와 cleanup 순서
+- shell·PowerShell runner, 실제 process E2E, browser client와 회귀 test의 범위
+
+다음 조건을 모두 만족해야 이 ledger의 sample 작업이 완료된다.
+
+1. 공통 sample 7종의 정식 문서와 `.NET` shared contract를 한 행씩 대조한 inventory가 있고, 각 행의
+   판정이 `충족` 또는 `수정 완료`로 닫힌다. `contract 선행`은 계약을 확정하기 전까지 열린 차단
+   상태이며 완료 판정에 포함하지 않는다.
+2. 공통 문서에 없는 `.NET` public 또는 client-facing message를 다른 언어 구현만으로 정당화하지
+   않는다. 필요한 계약 변경은 먼저 공통 sample 문서와 관련 spec/guide의 review 대상으로 분리한다.
+3. 확인된 wire shape와 runtime path gap을 소유한 계층에서 수정한다. sample 호출부에 raw frame, private
+   API, reflection, message별 codec registry 또는 임시 adapter를 추가하지 않는다.
+4. 모든 공통 sample의 직접적인 client assertion과 server evidence가 실제 process 실행에서 남는다.
+   로그 문자열만으로 성공을 판정하지 않는다.
+5. 지원하는 실행 환경의 shell·PowerShell runner가 같은 sample inventory와 완료 조건을 사용한다.
+6. Source working tree를 사용하는 sample process E2E와 package artifact를 검증하는 clean consumer
+   lane을 구분하고 둘 다 통과한다. `Systems.Zlink` bindings package와 Framework NuGet package는 서로
+   다른 artifact로 기록하며 한쪽 결과로 다른 쪽을 통과 처리하지 않는다.
+7. 마지막 독립 재검토에서 기록되지 않은 `.NET` sample spec·구현 gap이 0개다.
+
+이 Phase B 계획 단계에서는 구현과 test source를 바꾸지 않는다. 구현 phase는 이 ledger의 선행 조건을
+충족하고 모든 `contract 선행` 항목의 계약을 확정한 뒤 시작한다.
+
+### 10.2 기준 문서와 조사 범위
+
+공통 sample 문서는 실행 가능한 workflow, topology, message 계약, self-check와 완료 evidence를
+소유한다. Framework public API의 계약 자체는 공통 Framework spec과 언어별 exact interface가 소유한다.
+공통 sample 문서나 다른 언어 구현만으로 새 public API를 추가하지 않는다.
+
+| 구분 | 기준 위치 | 이번 비교에서 확인할 내용 |
+|---|---|---|
+| 공통 sample index | `framework/doc/framework/common/sample/README.ko.md` | sample 목록, 공통 금지사항, 실행·완료 규칙 |
+| 공통 sample 계약 | `bingo/README.ko.md`, `tictactoe/README.ko.md`, `supportchat/README.ko.md`, `deliverydispatch/README.ko.md`, `event/shoppingmall.ko.md`, `event/gamequest.ko.md`, `zoneworld/README.ko.md` | topology, message schema, flow, self-check, evidence |
+| 공통 fixture | `framework/doc/framework/common/sample/fixtures/channel-topology.json` | 채널·mesh 이름과 역할의 공통 source |
+| 공통 runner template | `framework/doc/framework/common/sample/runner-templates/` | readiness, Redis 격리, cleanup, 종료 marker |
+| `.NET` sample source | `framework/languages/dotnet/samples/{Bingo,TicTacToe,SupportChat,DeliveryDispatch,ShoppingMall,GameQuest,ZoneWorld}/` | shared contract, server path, client assertion, runner |
+| `.NET` sample runner | `framework/languages/dotnet/samples/run_samples.sh`, `run_samples.ps1`, 각 sample의 `run_sample.*` | 통합 inventory와 OS별 실행 순서 |
+| `.NET` sample regression | `framework/languages/dotnet/tests/Zlink.Framework.SampleRegressionTests/` | 정적 구조 검증, runner 정책, sample별 regression |
+| 공통 documentation regression | `framework/languages/dotnet/tests/Zlink.Framework.UnitTests/Documentation/Regression.cs` | 공통 문서와 `.NET` guide의 최소 동기화 조건 |
+| 선행 framework ledger | `framework/doc/plan/dotnet-framework-spec-gap-ledger/dotnet-framework-spec-gap-ledger.ko.md` | Framework runtime·contract·E2E가 sample 작업의 선행 조건을 충족했는지 |
+| package 정책 | `scripts/local-package/README.ko.md`, `framework/languages/dotnet/Directory.Packages.props` | sample이 실제로 사용하는 bindings/Core package와 version |
+| sample audit baseline log | [`log/20260802-090836-sample-regression-baseline.ko.md`](log/20260802-090836-sample-regression-baseline.ko.md) | 기준 commit, working tree, 실행 명령과 baseline 결과 |
+
+대상 sample은 다음 일곱 가지다.
+
+| Sample | 공통 핵심 흐름 | `.NET` 실행 경로에서 확인할 결과 |
+|---|---|---|
+| Bingo | authentication, actor binding, match·room join, card·draw, reward와 relocation | Protobuf payload, room ownership, session·actor binding, room cleanup |
+| TicTacToe | HTTP game 생성, authenticate·join, turn·milestone, leave와 actor destroy | JSON request/reply, `LeaveGame` one-way semantics, Entry Spot cleanup |
+| SupportChat | agent availability, conversation join, greeting·typing, idle close와 reconnect | metadata, one-way typing, close·reconnect state와 session route |
+| DeliveryDispatch | delivery 생성, courier offer·decision, status push, timeout·reassign | status 순서, timestamp wire shape, retry·deadline과 client assertion |
+| ShoppingMall | order start, inventory·payment workflow, event·projection, idempotency·failure | 접수 응답, durable event, workflow compensation과 재시도 |
+| GameQuest | session join, gameplay action, event·projection, replay·reconcile | action response inventory, typed payload, domain event와 stream/Redis path |
+| ZoneWorld | browser/stream session, zone 이동, bot·ops, border relocation과 message follow | actor·spot ownership, 이동 message boundary, Chromium/browser evidence |
+
+#### 10.2.1 Model 배치와 card review gate
+
+이 sample 작업의 model과 review gate는 선행 Framework ledger의 과거 실행 표기와 별도로 이 절을
+따른다. Luna Max가 구현하고 Sol Medium이 candidate를 수정하지 않는 독립 review를 수행한다.
+
+| 역할 | Model과 reasoning | 책임 | Source 수정 |
+|---|---|---|---|
+| Main implementer | Luna Max | Ledger card를 한 번에 하나씩 조사하고 regression을 먼저 고정한 뒤 구현·검증한다. | 허용 |
+| Card reviewer | Sol Medium | 공통 sample 문서, Framework spec, 실제 diff와 test·process evidence를 contract·POSD·DDD 관점에서 검토한다. | 금지 |
+| Final auditor | Sol Medium | G7에서 이전 card review와 독립적으로 sample 7종과 artifact evidence 전체를 다시 검사한다. | 금지 |
+
+지정한 model이나 reasoning level을 사용할 수 없으면 다른 model로 바꾸지 않고 해당 card를 `차단`으로
+기록한다. Main implementer와 reviewer는 같은 candidate를 동시에 수정하지 않는다. Review 직전에 기준
+commit 또는 working tree manifest, `git status --short`, 전체 diff, 실행 명령과 결과를 고정한다.
+
+각 card는 다음 gate를 통과해야 한다.
+
+1. Luna는 공통 sample 문서, 관련 Framework spec·exact interface, production owner와 기존 test를 먼저
+   확인한다. Card 밖에서 발견한 gap은 별도 card나 선행 조건으로 기록한다.
+2. Public message, lifecycle, ownership, state transition, package boundary 또는 지원 host 범위를 바꾸는
+   결정은 서로 다른 대안 두 가지 이상을 비교하고 Sol Medium의 사전 review를 받는다.
+3. Luna는 실패 regression이나 현재 계약을 직접 검증하는 기존 test 근거를 먼저 고정한 뒤 source를
+   수정하고 targeted regression과 필요한 process E2E를 실행한다.
+4. Sol Medium은 Luna의 요약만 사용하지 않고 정식 문서, public contract, 전체 candidate와 evidence를
+   직접 대조한다. `Critical`, `High`, `Medium` finding은 모두 blocking이다.
+5. Luna가 blocking finding의 원인과 책임 경계를 수정하고 test를 다시 실행한 뒤 Sol Medium의 재검토를
+   받는다. `Low`도 수용·기각·후속 분리 가운데 하나와 근거를 기록한다.
+6. Sol Medium이 `CLEAN`으로 판정하고 필수 test와 process gate가 모두 통과한 뒤에만 다음 card로 이동한다.
+
+##### POSD·DDD review 기준
+
+Sol Medium은
+[`software-design-principles.ko.md`](../../../../doc/principal/software-design-principles.ko.md)를 기준으로
+다음 내용을 함께 검토한다.
+
+- 새 helper, wrapper, mapper 또는 adapter가 요청을 전달만 하는 shallow module인지 확인한다.
+- Message·topology·version 지식이 문서, fixture와 test에 독립적으로 복사되어 information leakage와
+  변경 증폭을 만드는지 확인한다.
+- Framework transport·codec·routing detail이 Domain이나 Application으로 올라오지 않는지 확인한다.
+- Lifecycle, state transition, idempotency, deadline, retry와 cleanup의 owner가 한 경계에 모여 있는지
+  확인한다.
+- In-process port DTO와 실제 ZLink wire message, durable domain event와 transport event를 구분한다.
+- 비자명한 finding은 두 가지 이상 대안을 단순성, 일반성, 성능, 호출자 부담과 책임 경계로 비교한다.
+
+Finding에는 ID, severity, category(`contract`, `POSD`, `DDD`, `test/evidence`, `leftover`), file·line,
+근거, 영향, 대안, 권장안과 재검토 결과를 기록한다.
+
+#### 10.2.2 Artifact와 Core·bindings 선행 수정 gate
+
+현재 `.NET` sample project는 Framework project를 `ProjectReference`로 사용하고 `Systems.Zlink` 같은
+하위 library는 package로 참조한다. 따라서 다음 검증 lane을 섞지 않는다.
+
+| Lane | 실제 검증 대상 | 완료 evidence |
+|---|---|---|
+| Source sample lane | 현재 working tree의 Framework source와 sample source | sample build, regression, 실제 process E2E와 cleanup |
+| Core·bindings package lane | version이 고정된 `Systems.Zlink` package와 package 안의 native runtime | package version·hash, native version·hash, cache 경로와 consumer 결과 |
+| Framework package lane | pack한 Framework NuGet의 public export와 dependency | `framework/languages/dotnet/scripts/verify_packaged_contract.sh`와 clean consumer 결과 |
+
+Source sample E2E는 Framework NuGet을 사용했다는 증거가 아니다. Framework NuGet으로 sample process
+동작까지 보장하려면 G6에서 별도 package-only clean consumer runner를 추가한다. 이 runner를 추가하지
+않으면 완료 조건을 Framework package의 export·dependency 검증과 source sample process 검증으로
+분리하여 기록하며, packaged Framework process E2E를 통과했다고 표현하지 않는다.
+
+Sample 작업에서 Core 또는 bindings bug가 확인되면 sample이나 Framework에서 우회하지 않는다. Core
+bug는 Core regression에, bindings bug는 해당 bindings regression에 실패를 먼저 재현하고 원인을 소유한
+layer에서 수정한다. Raw frame 해석, reflection, private API, 상태 복제, retry helper 또는 sample 전용
+adapter로 하위 layer 실패를 숨기는 변경은 완료로 인정하지 않는다.
+
+하위 layer를 수정한 card는 다음 조건을 모두 충족한다.
+
+1. 원인 layer, 최소 재현, public contract 근거와 regression 경로를 기록한다.
+2. Luna Max 구현과 Sol Medium의 read-only POSD·DDD review를 같은 candidate에 적용한다.
+3. Core를 수정했으면 `core/build`와 관련 Core test를 다시 실행하고
+   [`scripts/local-package/README.ko.md`](../../../../scripts/local-package/README.ko.md)의 version 정책을
+   적용한다.
+4. `scripts/local-package/native/sync-local-core-libs.sh`로 새 runtime을 bindings workspace에 동기화하고
+   필요한 package를 다시 만든다. .NET bindings만 수정했으면 version을 올린 뒤
+   `scripts/local-package/build-wsl.sh dotnet`을 실행한다.
+5. `framework/languages/dotnet/Directory.Packages.props`의 `ZLinkBindingsPackageVersion`을 새 package로
+   갱신하고 이전 NuGet extraction cache를 새 artifact evidence로 재사용하지 않는다.
+6. 새 package의 version·hash, native runtime version·hash와 consumer regression·process 결과를
+   기록한 뒤 원래 sample card의 선행 조건을 닫는다.
+
+### 10.3 선행 조건과 gap 상태
+
+#### 10.3.1 선행 framework ledger gate
+
+sample 실행이 의존하는 Framework runtime 의미를 sample source에서 우회해서는 안 된다. 따라서 다음
+조건을 충족하기 전에는 이 ledger의 구현 card를 시작하지 않는다.
+
+| 선행 조건 | 완료 판정 |
+|---|---|
+| Framework implementation audit | 기존 ledger의 `DN-IMP-001`~`DN-IMP-018`이 source, targeted test와 reviewer evidence로 닫힘 |
+| Framework process E2E | 기존 ledger의 `DN-E2E-IMP-001`~`DN-E2E-IMP-017`에 실제 process 결과와 failure semantics가 기록됨 |
+| Framework regression | 기존 ledger의 contract·unit·package·E2E regression card, 특히 `DN-REG-035`~`DN-REG-040`이 통과함 |
+| Core·bindings package | 수정한 하위 layer가 있으면 package version, native runtime hash, consumer test와 `.NET` package cache가 일치함 |
+| 독립 review | 선행 ledger의 final auditor가 sample이 사용할 public contract와 runtime 경계를 `CLEAN`으로 판정함 |
+
+선행 card가 `선행 조건 미충족`, `contract 선행`, `test gap` 또는 unresolved finding이면 sample
+구현에서는 raw frame, reflection, private member, 내부 상태 복제 또는 retry로 이를 숨기지 않는다. 원인을
+소유한 ledger로 돌려보내고 이 문서에는 의존성만 기록한다.
+
+#### 10.3.2 baseline log와 gap 판정
+
+sample regression의 기준 commit, working-tree 조건, 실행 명령과 결과는
+[`log/20260802-090836-sample-regression-baseline.ko.md`](log/20260802-090836-sample-regression-baseline.ko.md)에
+기록한다. 본문은 실행 output을 반복하지 않고, baseline이 닫지 못한 gap을 `DS-IMP-*`와 `DS-REG-*`로
+관리한다. 기존 정적 regression이 통과해도 공통 sample의 모든 message·flow·process evidence가 일치한
+것으로 판정하지 않는다.
+
+#### 10.3.3 이미 확인된 inventory·version 차이
+
+다음은 별도의 실행을 통해 확인한 차이다.
+
+| ID | 현재 근거 | 초기 판정 |
+|---|---|---|
+| `DS-IMP-008` | `run_samples.sh`의 `SAMPLES`에는 `ZoneWorld`가 있지만 `run_samples.ps1`의 `$knownSamples`에는 없다. | 확인된 runner parity gap |
+| `DS-IMP-007` | `framework/languages/dotnet/samples/README.md`는 Framework `10.0.0` contract를 설명하지만 정식 Framework public contract governance는 `11.0.0`을 기준으로 한다. `Directory.Packages.props`의 `11.1.0`은 별도 `Systems.Zlink` bindings dependency version이다. | Framework 문서 version gap 확인, bindings version과의 직접 비교는 제외 |
+| `DS-IMP-007` | `.NET` guide의 integrated runner 설명은 여섯 sample과 ZoneWorld 별도 실행을 말하지만 현재 shell runner는 일곱 sample을 포함한다. | 확인된 guide·runner inventory gap |
+| `DS-IMP-009` | sample regression은 여러 구조 규칙을 검증하지만, 공통 sample의 모든 message·field·flow·evidence와 `.NET` client/server path를 한 번에 대조하는 inventory test가 없다. | 확인된 test/evidence gap |
+
+### 10.4 gap 판정 규칙
+
+각 finding은 다음 상태 가운데 하나로 관리한다.
+
+| 상태 | 의미 | 다음 행동 |
+|---|---|---|
+| `확인` | 공통 문서와 `.NET` source 또는 process path의 차이를 재현 가능한 근거로 확인했다. | 원인 owner를 정하고 regression을 먼저 고정한 뒤 수정한다. |
+| `contract 선행` | 공통 문서 자체에 응답 유무, field shape 또는 public 범위가 모호하거나 서로 충돌하는 열린 차단 상태다. | 구현을 바꾸지 말고 공통 문서·spec·guide review에서 계약을 먼저 확정한다. 확정 전에는 card를 닫지 않는다. |
+| `test gap` | 구현이 맞을 가능성이 있어도 현재 test가 해당 계약을 직접 판정하지 않는다. | exact inventory, wire assertion 또는 process evidence를 추가한다. |
+| `documentation gap` | source와 실행 path는 같지만 문서·runner 목록·version 설명이 현재 상태와 다르다. | 정식 문서 owner에서 근거를 갱신하고 regression을 추가한다. |
+| `충족` | source, wire 결과, 실행 evidence와 test가 같은 계약을 직접 증명한다. | 근거 경로와 명령을 기록하고 다시 열지 않는다. |
+| `수정 완료` | 확인된 gap을 원인 owner에서 수정하고 regression·process·review gate를 통과했다. | Candidate와 evidence를 기록하고 최종 audit에서 다시 확인한다. |
+| `차단` | 필요한 model, contract 결정, package 또는 실행 환경이 없어 안전하게 진행할 수 없다. | 조건을 충족할 때까지 완료 판정에서 제외한다. |
+
+기능 이름이 같거나 build가 성공했다는 사실만으로 `충족`으로 분류하지 않는다. handler의 transport
+종류, response의 field, state commit 시점, failure 후 cleanup까지 실제 path를 따라간다.
+
+### 10.5 구현 수준에서 확인된 gap
+
+#### DS-IMP-001 — one-way message의 이름과 의미가 공통 문서와 다름
+
+**현재 판정: `확인`; 공통 문서 변경 diff를 먼저 동결한 뒤 최종 수정 방향을 정한다.**
+
+공통 TicTacToe 문서는 `LeaveGameMsg`를 선언하고, actor가 보내는 one-way message이며 response를
+기다리지 않는다고 설명한다. 현재 `.NET` shared contract, handler, client와 runner는
+`LeaveGameReq`를 사용한다. 공통 SupportChat 문서는 같은 규칙으로 `SetTypingMsg`를 선언하지만 `.NET`
+은 `SetTypingReq`를 사용한다.
+
+근거:
+
+- 공통 문서: `framework/doc/framework/common/sample/tictactoe/README.ko.md`의 message 선언과 leave flow,
+  `framework/doc/framework/common/sample/supportchat/README.ko.md`의 typing contract
+- `.NET`: `TicTacToe/Shared/Contracts/Messages.cs`, `TicTacToe/.../PlayActorLeaveGameHandler.cs`,
+  `TicTacToe/Client/TicTacToeClientScenario.cs`, `SupportChat/Shared/Contracts/Messages.cs`,
+  `SupportChat/.../SetTypingHandler.cs`
+
+수정 전에 확인할 내용은 다음과 같다.
+
+1. 공통 sample의 `Req/Res`, `Msg`, `Notify`, `Event` 명명 규칙이 public wire contract인지, 문서상의
+   역할 설명인지 확인한다.
+2. one-way send가 실제로 response subscription이나 implicit completion을 사용하지 않는지 확인한다.
+3. 계약이 확정되면 모든 `.NET` shared contract, handler attribute, client scenario, runner evidence와
+   회귀 test를 같은 이름·transport 의미로 맞춘다. 이름만 바꾸고 request/reply path를 남기지 않는다.
+
+#### DS-IMP-002 — GameQuest action inventory와 `GameplayMsg.payload`가 공통 계약과 다름
+
+**현재 판정: `contract 선행`과 `확인`이 함께 있다. action 범위는 계약 review 후 수정하고, payload wire
+shape는 실제 serializer 결과까지 확인한다.**
+
+공통 GameQuest 문서는 `KillMonsterReq/Res`, `CollectItemReq`, `EnterAreaReq`,
+`GetQuestProgressReq/Res`, `SyncQuestProgressReq/Res`를 선언하며 `GameplayMsg.payload`를 `object`로
+설명한다. 현재 `.NET`은 `CollectItemRes`, `CompleteMissionReq/Res`, `EnterAreaRes`,
+`UnlockFeatureReq/Res`를 추가하고, client가 이 응답을 요청한다. `GameplayMsg.Payload`는 `byte[]`이며
+`GameplayEventOwnerDispatcher`와 `QuestContractMapper`가 UTF-8 byte payload를 직접 직렬화·역직렬화한다.
+또한 공통 문서의 durable domain record 이름과 `.NET`의 `QuestProgressedEvent` 등 이름에 `Event` 접미어
+차이가 있다.
+
+공통 문서의 action 설명 일부는 각 action response가 EventId를 만든다고 서술하므로 declaration과
+본문이 완전히 일치하지 않는다. 따라서 `.NET`의 추가 action을 바로 제거하거나 공통 문서에 바로 추가하지
+않는다.
+
+수정 순서:
+
+1. action별 request/reply 유무, EventId 반환, public client surface 여부를 공통 sample contract에서
+   하나의 표로 확정한다.
+2. `GameplayMsg.payload`가 typed JSON object인지, envelope 안의 bytes인지, domain record의 저장
+   payload와 transport payload를 어떻게 구분하는지 결정한다.
+3. 계약 확정 뒤 `.NET` shared message, handler, client scenario와 mapper를 한 경계에서 수정한다.
+   호출부에 `encode`, `decode`, `serialize`, `parse`를 추가하는 우회는 허용하지 않는다.
+4. durable domain record 명칭은 transport message와 분리해 문서·source·store mapper의 용어를 같은
+   의미로 맞춘다.
+
+#### DS-IMP-003 — ShoppingMall 접수 응답의 field shape가 공통 계약과 다름
+
+**현재 판정: `확인`; `StartOrderRes` wire shape만 gap이며 in-process port DTO 이름은 `충족`이다.**
+
+공통 ShoppingMall 문서는 `StartOrderRes { orderId: string; state: OrderState }`를 선언한다. 현재 `.NET`
+`ShoppingMall/Shared/Contracts/Messages.cs`의 `StartOrderRes`는 `OrderId`와 `Status` 문자열을 가진다.
+
+`.NET`의 `ReserveInventoryCommand/Result`, `ReleaseInventoryCommand/Result`와
+`AuthorizePaymentCommand/Result`는 `Server/Shared/Ports/Outbound`를 통해 같은 process의 application
+port를 호출하는 DTO다. ZLink로 dispatch되는 wire message가 아니므로 공통 sample index의 in-process
+port 예외에 따라 `Command/Result` 이름을 유지한다. 이 이름을 `Req/Res`로 바꾸거나 새 application
+message로 노출하지 않는다.
+
+확인할 항목:
+
+- `StartOrderRes`가 실제 client wire payload에서 `state` enum 또는 named string을 보내는지
+- `Status`가 public contract의 `OrderState`와 같은 값 집합·nullable 의미를 갖는지
+- idempotency 재호출, workflow failure와 compensation에서 접수 응답과 event 순서가 공통 flow와 같은지
+
+수정은 `StartOrderRes` public wire shape와 client assertion에 한정한다. Regression은 application port
+DTO가 ZLink handler나 shared wire contract로 이동하지 않는 조건도 함께 유지한다.
+
+#### DS-IMP-004 — DeliveryDispatch timestamp의 wire type이 다름
+
+**현재 판정: `확인`; JSON 또는 Protobuf의 실제 wire 값을 직접 캡처해 최종 판정한다.**
+
+공통 DeliveryDispatch 문서는 `DeliveryStatusChangedReq`, `DeliveryStatusNotify`,
+`DeliveryStatusUpdatedMsg`의 `occurredAtUnixMs: int64`를 요구한다. 현재 `.NET`
+`DeliveryDispatch/Shared/Contracts/Messages.cs`는 해당 값에 `DateTimeOffset OccurredAt`을 사용한다.
+server evidence에서 `ToUnixTimeMilliseconds()`를 호출하는 부분이 있어 저장·로그 표현과 transport
+payload가 다를 가능성이 있다.
+
+수정 순서:
+
+1. client가 수신한 raw application payload를 업무 코드에서 해석하지 않는 별도 test harness로 확인한다.
+2. 공통 계약의 `int64`와 `.NET` serializer가 실제로 같은 JSON number를 만드는지 확인한다.
+3. 다르면 shared contract와 모든 handler·client assertion을 Unix milliseconds로 맞추고, 같다면
+   `DateTimeOffset` 표현을 내부 type으로 명시하여 public wire contract와 혼동되지 않도록 문서화한다.
+4. status ordering, late decision과 reassign test에 timestamp 비교를 포함한다.
+
+#### DS-IMP-005 — Bingo client-facing message와 optional field가 공통 목록과 다름
+
+**현재 판정: `확인`; extra message의 public 범위는 contract review가 필요하다.**
+
+공통 Bingo message 목록에는 `BingoJoinFailedNotify`와 `BingoActorEntrySpotNotify`가 명시되어 있지
+않지만 `.NET` Protobuf schema에는 두 message가 있고 `PlayerActor`와 Entry Spot이 session으로
+전송한다. 공통 `AuthenticatePlayerRes`는 `actor_id`, `display_name`, `reason`을 optional로
+설명하지만 `.NET` proto는 plain `string` field로 선언한다.
+
+확인할 항목:
+
+- 두 notify가 client가 관찰해야 하는 public push인지, sample 내부 evidence인지
+- optional field가 미설정·빈 문자열·null을 구분해야 하는지
+- 모든 언어가 같은 field presence와 default 값을 제공해야 하는지
+- notify를 공통 계약에 추가할지, client-facing surface가 아니면 `.NET` shared contract에서 분리할지
+
+계약이 확정되기 전에는 다른 언어 구현을 근거로 새 public message를 추가하지 않는다. 확정 후 Protobuf
+schema, client assertion, handler와 공통 문서의 message·flow·completion 조건을 함께 변경한다.
+
+#### DS-IMP-006 — ZoneWorld 이동이 공통 message 경계를 우회함
+
+**현재 판정: `확인`; 기능 존재가 아니라 Actor → Zone Spot 전달 방식의 차이다.**
+
+공통 ZoneWorld 문서는 `UpdatePositionMsg`를 선언하고, 같은 zone의 이동은 Actor가 이 message를 Zone
+Spot에 보내 state를 변경한다고 설명한다. 현재 `.NET` `ZoneWorld/Shared/Contracts/ZoneWorldMessages.cs`
+에는 `UpdatePositionMsg`가 없으며, `PlayerMoveHandlers.cs`가 `actor.MoveTo(...)` 뒤 `ZoneSpot.UpdatePosition(...)`
+을 직접 호출한다. `ZoneSpot.UpdatePosition`은 internal method다.
+
+이 차이는 단순한 이름 차이가 아니다. message route, queue·handler 순서, owner commit과 state
+publication이 Framework runtime의 public path를 거치지 않게 된다.
+
+수정 순서:
+
+1. `UpdatePositionMsg`의 sender, target, one-way semantics와 same-zone·border relocation의 commit
+   경계를 공통 문서에서 고정한다.
+2. Framework public message handler를 통해 Zone Spot state를 갱신하도록 production path를 바꾼다.
+3. application code가 internal `ZoneSpot.UpdatePosition`이나 actor reference를 직접 호출하지 않는지
+   정적 test로 고정한다.
+4. same-zone move, border crossing, actor relocation과 message follow를 실제 process E2E에서 확인한다.
+
+#### DS-IMP-007 — `.NET` sample 문서·guide·version 설명이 현재 실행 경로와 다름
+
+**현재 판정: `documentation gap`; source 수정과 섞지 않고 문서 owner에서 별도로 닫는다.**
+
+현재 `.NET` sample README는 Framework `10.0.0` contract를 설명하지만
+`framework/doc/framework/common/spec/00-public-contract-governance.ko.md`는 Framework `11.0.0` 공개
+계약을 기준으로 한다. `Directory.Packages.props`의 `ZLinkBindingsPackageVersion=11.1.0`은 sample이
+참조하는 `Systems.Zlink` bindings package version이며 Framework contract version과 같은 값일 필요가
+없다. `.NET` server guide는 integrated runner가 여섯 sample을 처리하고 ZoneWorld를 별도로 실행한다고
+설명하지만 shell integrated runner는 ZoneWorld를 포함한 일곱 sample을 선택한다.
+
+수정 전에 다음을 확인한다.
+
+- README가 historical contract 예제인지 현재 package contract 안내인지
+- guide가 generated output인지 source owner가 어디인지
+- Framework contract version을 문서에 고정할지 정식 governance를 링크할지
+- `Systems.Zlink` bindings version은 dependency evidence로 별도 표시할지
+- ZoneWorld browser runner를 integrated sample 완료 조건에 포함할지
+
+확정 후 README의 Framework contract 기준, guide·runner 목록과 bindings dependency evidence를 각각
+해당 owner에서 맞춘다. Framework contract와 bindings package version의 숫자 일치를 강제하지 않는다.
+Generated guide라면 생성 source를 고친다.
+
+#### DS-IMP-008 — PowerShell 통합 runner가 ZoneWorld를 제외함
+
+**현재 판정: `확인`; 지원 OS 범위를 먼저 결정한다.**
+
+`run_samples.sh`의 기본 sample 목록은 `TicTacToe Bingo SupportChat ShoppingMall DeliveryDispatch
+GameQuest ZoneWorld`다. `run_samples.ps1`의 `$knownSamples`에는 `ZoneWorld`가 없다. 따라서 shell과
+PowerShell의 기본 실행 범위가 다르고, 공통 sample 7종을 모두 실행했다는 판정을 Windows runner가
+증명하지 못한다.
+
+지원 범위가 동일하다는 결정을 내리면 다음을 수정한다.
+
+1. PowerShell integrated runner에 ZoneWorld를 추가한다.
+2. ZoneWorld의 PowerShell per-sample runner와 browser/static configuration 전달 경로가 없으면
+   공통 runner 규칙에 맞춰 추가한다.
+3. Windows에서 dedicated Redis, readiness, browser self-check, cleanup을 실제로 실행한다.
+
+Windows에서 ZoneWorld를 지원하지 않기로 결정하면 공통 sample 문서와 `.NET` guide에 그 제한과 대체
+검증 명령을 명시하고, runner regression이 제한을 누락으로 오인하지 않도록 계약을 갱신한다.
+
+#### DS-IMP-009 — 공통 sample 전체를 덮는 exact inventory와 process evidence가 없음
+
+**현재 판정: `test gap`.**
+
+현재 sample regression은 topology, codec 사용, runner 문자열, 일부 sample flow와 금지 API를 검사한다.
+하지만 다음 관계를 한 번에 검사하는 기준이 없다.
+
+- 공통 문서의 모든 message·field·transport kind와 `.NET` shared contract·handler의 대응
+- 공통 flow의 각 단계와 `.NET` client scenario의 response·push·ordering assertion
+- state commit, actor/spot ownership, relocation과 cleanup의 server evidence
+- shell·PowerShell runner의 sample inventory와 실제 completion marker
+- 공통 fixture의 topology와 `.NET` source가 사용하는 mesh·channel 값
+
+이 gap은 source를 형식적으로 스캔하는 test 하나로 끝내지 않는다. static inventory와 최소 한 번의 실제
+process smoke를 모두 추가한다.
+
+baseline regression의 통과 여부와 무관하게 `DS-REG-004`의 Entry Spot destroy 문서·실행 의미 대조와
+`DS-REG-001`의 전체 message inventory가 필요하다. 해당 실행 명령과 결과는 baseline log에서 확인한다.
+
+### 10.6 Sample별 구현 path 검토 matrix
+
+다음 matrix는 각 sample에서 이름 일치 외에 확인할 method-level 검토 범위를 고정한다. `검증 path`는
+구현 phase에서 실제 line과 실행 log를 추가한다.
+
+| Sample | 계약·동작 검토 범위 | `.NET`에서 먼저 읽을 path | 완료 evidence |
+|---|---|---|---|
+| Bingo | Protobuf field presence, authentication·actor binding, match reservation, room join·yield, reward publish, room relocation·cleanup | `Shared/Contracts/bingo_messages.proto`, `Server/Play`, `Server/Session`, `Client`, `run_sample.*` | 두 client의 card·draw·result assertion, room owner·actor relocation log, Redis cleanup |
+| TicTacToe | HTTP create response, manual topology, join admission, turn order, milestone publish, `LeaveGameMsg` one-way과 Entry Spot destroy | `Shared/Contracts/Messages.cs`, `Server/Play/.../Handlers`, `Client/TicTacToeClientScenario.cs`, `run_sample.*` | response·GameState·milestone payload assertion, leave completion, destroy evidence |
+| SupportChat | agent availability, conversation join, `SetTypingMsg` one-way, metadata propagation, idle close, reconnect와 session route | `Shared/Contracts/Messages.cs`, `Server/Support`, `Client/SupportChatClientScenario.cs`, `run_sample.*` | greeting·typing·close·reconnect ordering과 conversation owner evidence |
+| DeliveryDispatch | offer/decision transport kind, status order, `occurredAtUnixMs` wire number, retry·deadline·reassign, late decision | `Shared/Contracts/Messages.cs`, `Server/Tracking`, `Server/CustomerGateway`, `Client`, `run_sample.*` | Assigned→Accepted→PickedUp→Delivered 또는 Reassigned sequence와 timestamp assertion |
+| ShoppingMall | `StartOrderRes` state shape, in-process port DTO와 wire message 분리, durable event name, projection rebuild, idempotency, compensation | `Shared/Contracts/Messages.cs`, `Server/Shared/Ports`, `Server/CommerceApi`, `Server/OrderWorkflow`, `Client`, `run_sample.*` | 접수 응답 field, port DTO 비노출, event/projection 상태, 재호출·failure 결과와 store cleanup |
+| GameQuest | action inventory, EventId response 의미, typed `GameplayMsg` payload, replay/reconcile, domain event와 store mapper 분리 | `Shared/Messages.cs`, `Server/GameApi`, `Server/QuestMission`, `Client/GameQuestClientScenario.cs`, `run_sample.*` | 각 action response, progress notify, replay/reconcile 결과와 no-transport-domain dependency |
+| ZoneWorld | `UpdatePositionMsg` route, same-zone state update, border relocation·message follow, bot backpressure, ops replay, browser ws/wss/reconnect | `Shared/Contracts/ZoneWorldMessages.cs`, `Server/ZoneNode`, `Server/Gateway`, `Server/Ops`, browser client, `run_sample.sh` | browser self-check, same-zone/border state, owner·route evidence, process cleanup |
+
+이 matrix에서 공통 문서와 `.NET` source의 용어가 다르면 먼저 `contract 선행`으로 이동한다. `.NET`
+source를 기준으로 공통 문서를 축소하지 않는다.
+
+### 10.7 수정 순서와 card gate
+
+G0~G7의 각 card는 2.1절의 Luna Max 구현과 Sol Medium review gate를 독립적으로 통과한다. Core 또는
+bindings 문제가 확인되면 2.2절의 하위 layer regression·수정·package gate를 먼저 닫는다.
+
+#### G0 — 선행 Framework ledger 완료 확인
+
+기존 `.NET Framework` ledger의 implementation·E2E·regression·package gate를 다시 실행한다. Framework
+NuGet은 `verify_packaged_contract.sh`의 clean consumer로 public export와 dependency를 확인하고,
+`Systems.Zlink`는 bindings package version·native hash·consumer 결과를 별도로 확인한다. 현재 sample
+runner가 Framework `ProjectReference`를 사용한다는 사실도 manifest에 기록한다. 이 단계에서는 sample
+source를 수정하지 않는다.
+
+#### G1 — 공통 sample 계약 동결과 모호성 분리
+
+현재 working tree의 common sample 문서 diff를 별도 manifest로 보존한다. `DS-IMP-001`, `DS-IMP-002`,
+`DS-IMP-005`, `DS-IMP-008`처럼 public message 범위나 지원 OS를 바꾸는 항목은 공통 문서·guide·다른
+언어 구현을 함께 읽고 다음을 기록한다.
+
+- 확정된 public message와 internal-only type
+- transport kind와 response completion의 의미
+- field type, optionality, enum/named string 값
+- 지원 runner와 browser path
+- 계약 변경이 필요한 경우 관련 spec/guide owner와 review 결과
+
+계약이 확정되지 않은 항목은 구현 card로 이동하지 않는다.
+
+#### G2 — exact contract inventory와 실패 regression 고정
+
+공통 sample 7종의 정식 문서를 inventory의 단일 계약 owner로 유지한다. 우선 문서의 structured message
+declaration과 table을 직접 읽어 `.NET` shared contract와 비교하고, 추출 결과는 기준 문서 path·hash를
+가진 generated evidence로만 저장한다. Generated evidence를 사람이 독립적으로 수정하는 두 번째 계약
+fixture로 사용하지 않는다.
+
+Markdown 구조를 안정적으로 읽을 수 없다면 별도 test fixture를 바로 복사해 만들지 않는다. 대안은
+공통 sample 아래에 machine-readable contract fixture를 새 단일 기준으로 두고 문서와 언어별 test가
+함께 사용하도록 공통 sample 정책을 먼저 변경하는 것이다. 기본 선택은 정식 문서를 직접 읽는 방식이며,
+fixture 승격은 공통 정책 변경 review를 통과한 경우에만 사용한다. Inventory의 한 행은 sample, message,
+direction, transport kind, response, field shape, nullable, owner, 기준 위치와 evidence를 포함한다. 이
+단계의 test가 먼저 실패해야 G3 이후 source 수정의 범위를 알 수 있다.
+
+#### G3 — wire contract와 public sample path 정렬
+
+`DS-IMP-001`~`DS-IMP-005`를 계약 결정에 따라 수정한다. shared message와 client/server handler를 함께
+변경하고, serializer가 만드는 실제 payload를 assertion한다. `DS-IMP-003`의 in-process
+`Command/Result`는 변경 대상에서 제외하고 public `StartOrderRes`만 정렬한다. 내부 workflow 이름이나
+domain event 이름은 public wire contract와 분리한다. 새 public API, raw frame, reflection 또는 호출부
+codec은 추가하지 않는다.
+
+#### G4 — runtime method path와 ownership 정렬
+
+`DS-IMP-006`을 우선 수정하고 각 sample의 relocation, state commit, cleanup, retry·deadline 경계를
+실제 call path로 다시 검사한다. ZoneWorld처럼 internal method 직접 호출이 공통 message boundary를
+우회하는 경우 Framework public handler와 sample application 책임을 분리한다. G3의 wire 수정이
+runtime semantics에 영향을 주면 같은 card에서 process E2E를 다시 실행한다.
+
+#### G5 — runner·guide·package 설명 정렬
+
+`DS-IMP-007`과 `DS-IMP-008`을 지원 OS 결정 뒤 수정한다. Shell·PowerShell 목록, per-sample runner,
+ZoneWorld browser configuration, dedicated Redis와 cleanup을 같은 template 규칙으로 맞춘다. Framework
+contract version은 정식 governance, `Systems.Zlink` version은 `Directory.Packages.props`, Framework
+NuGet artifact는 package verification evidence를 각각 기준으로 사용한다. Generated 문서는 생성 source를
+수정한다.
+
+#### G6 — 회귀 test와 실제 process evidence 추가
+
+G2에서 정식 문서로부터 읽은 inventory를 regression으로 고정하고, sample별 source runner를 실제로
+실행한다. 각 실행은 build → dedicated Redis/resource → server start → readiness → client self-check →
+evidence 수집 → cleanup 순서를 지켜야 한다. 한 sample의 로그가 남아 있다는 사실만으로 다른 sample의
+완료를 추론하지 않는다.
+
+이어 `Systems.Zlink` package version·native hash가 source runner의 실제 restore 결과와 일치하는지
+확인하고 Framework NuGet은 `framework/languages/dotnet/scripts/verify_packaged_contract.sh`로 clean
+consumer를 검증한다. Framework NuGet을 사용하는 package-only sample runner를 추가한 경우에만 packaged
+Framework process E2E를 별도 결과로 기록한다.
+
+#### G7 — 최종 독립 audit
+
+이전 card를 검토하지 않은 새 Sol Medium reviewer가 선행 Framework ledger와 이 ledger를 다시 읽는다.
+Source, common sample 문서, `.NET` guide, runner, test, Framework contract, Core·bindings package와
+Framework NuGet evidence를 교차 대조한다. `확인`·`test gap`·`contract 선행`·`차단` 항목이나 unresolved
+`Critical`·`High`·`Medium` finding이 남아 있으면 완료로 표시하지 않는다.
+
+각 card에는 기준 commit 또는 working tree manifest, 변경 파일, 실행 명령, 결과, reviewer finding과
+재검토 결과를 기록한다. 구현 중 unrelated dirty change를 되돌리거나 덮어쓰지 않는다.
+
+### 10.8 기존 회귀 test의 유지와 변경 목록
+
+#### 10.8.1 계속 유지할 test
+
+기존 test는 범위를 줄이지 않고 유지한다. 다음 test들이 이미 보장하는 topology·runner 정책·codec
+금지·sample별 flow를 새 inventory test로 대체하지 않는다.
+
+| Test 영역 | 현재 보장하는 내용 | sample ledger에서의 역할 |
+|---|---|---|
+| `Regression.cs` | public connector assertion surface, sample discovery, payload codec 정책, actor destroy 문서 조건 | 공통 문서의 최소 규칙을 유지하고 exact message inventory와 연결 |
+| `BingoRegressionTests` | topology, relocation adapter, room join·dedupe, client card/draw와 Redis 격리 | Bingo 실행 방식의 기존 regression 유지 |
+| `TicTacToeRegressionTests` | handler registration, manual topology, relocation, runner/evidence, lifecycle와 payload lifetime | `LeaveGame` semantics와 destroy evidence를 확장 |
+| `SupportChatRegressionTests` | one mesh, handler scan, rejection, relocation과 Redis 격리 | typing·metadata·reconnect assertion을 확장 |
+| `DeliveryDispatchRegressionTests` | topology, status order, location store, binder/response, readiness/no retry | timestamp wire type와 late decision을 확장 |
+| `ShoppingMallRegressionTests` | owner topology, isolated stores, Domain boundary | `StartOrderRes`와 workflow event shape를 확장 |
+| `GameQuestRegressionTests` | isolated Redis/stream, Domain dependency boundary | action·payload inventory와 replay/reconcile를 확장 |
+| `ZoneWorldTopologyRegressionTests`, `ZoneWorldOpsConsoleRegistryTests` | physical mesh, global route, relocation gate, ops registry | `UpdatePositionMsg` boundary와 browser process evidence를 확장 |
+| `SampleConfigurationPolicyRegressionTests` | config provider 금지, readiness, shell sample 목록, browser static config, backpressure | shell·PowerShell inventory parity와 실제 completion gate를 추가 |
+| `ExecutionTurnRegressionTests` | scenario inventory, typed packet names, bounded evidence, canonical ID | 공통 flow 단계별 assertion과 연결 |
+
+#### 10.8.2 수정 또는 추가할 regression
+
+아래 ID는 구현 phase에서 추가할 regression 목록이다. 현재 문서 작성 단계에서는 test source를 수정하지
+않는다.
+
+| ID | 대상 test | 추가·변경할 판정 |
+|---|---|---|
+| `DS-REG-001` | `CommonSampleContractInventoryMatchesDotNetSharedTypes` | 공통 7종의 message·field·direction·transport kind가 `.NET` shared contract와 일치하는지 확인 |
+| `DS-REG-002` | `CommonSampleMessageSemanticsMatchDotNetHandlers` | `Msg`, `Req/Res`, `Notify`, `Event`가 실제 send/request/publish handler와 같은 의미인지 확인 |
+| `DS-REG-003` | `CommonSampleOptionalAndEnumValuesMatchWireContract` | optional/null/default와 enum 또는 named string 값을 실제 serialized payload로 확인 |
+| `DS-REG-004` | `TicTacToeLeaveUsesOneWayMessage` | `LeaveGameMsg`의 response subscription과 request/reply 우회를 금지하고 Entry Spot destroy evidence를 확인 |
+| `DS-REG-005` | `SupportChatTypingUsesOneWayMessage` | typing send가 one-way이며 metadata·conversation route를 유지하는지 확인 |
+| `DS-REG-006` | `GameQuestActionInventoryMatchesCommonContract` | extra action과 response를 계약 review 결과에 따라 허용하거나 실패시키고, 임의 public API를 금지 |
+| `DS-REG-007` | `GameQuestGameplayPayloadMatchesTypedContract` | `GameplayMsg.payload`의 object/JSON wire shape와 store mapper의 domain conversion을 분리해 확인 |
+| `DS-REG-008` | `ShoppingMallStartOrderResponseMatchesCommonShape` | `orderId`와 `state`의 타입·값 집합·idempotent 재호출 결과를 확인 |
+| `DS-REG-009` | `DeliveryDispatchTimestampsUseCommonWireEncoding` | status request/notify/update의 `occurredAtUnixMs`가 같은 wire number와 ordering을 사용하는지 확인 |
+| `DS-REG-010` | `BingoClientFacingMessagesMatchCommonInventory` | extra notify의 public 여부와 Protobuf optional presence를 공통 목록과 대조 |
+| `DS-REG-011` | `ZoneWorldMoveUsesUpdatePositionMessageBoundary` | Actor 이동이 public message handler를 통해 Zone Spot state를 변경하고 internal method를 직접 호출하지 않는지 확인 |
+| `DS-REG-012` | `IntegratedSampleRunnerIncludesEveryCommonSampleOnAllSupportedHosts` | shell·PowerShell sample 목록이 공통 7종과 같고, 지원하지 않는 host 제한은 문서화되었는지 확인 |
+| `DS-REG-013` | `CommonSampleRunnerUsesIsolatedRedisAndCleanup` | sample별 dedicated Redis, readiness 실패 처리, process 종료와 cleanup을 양 OS에서 확인 |
+| `DS-REG-014` | `CommonSampleCompletionRequiresClientAndServerEvidence` | payload·ordering self-check와 server ownership/cleanup evidence가 모두 있어야 성공으로 판정 |
+| `DS-REG-015` | `CommonSampleTopologyUsesSharedFixture` | mesh·channel role이 공통 fixture와 일치하고 sample마다 임의 상수를 복사하지 않는지 확인 |
+| `DS-REG-016` | `DotNetSampleDocsMatchRunnerAndVersionOwners` | sample README의 Framework contract, generated guide·runner 목록, `Systems.Zlink` dependency version이 각각 정식 owner와 일치하며 서로 같은 version을 강제하지 않는지 확인 |
+| `DS-REG-017` | `AllCommonSamplesRespectApplicationBoundaryRules` | Domain의 Framework/storage 의존, application message의 NodeRid·ActorRef·raw frame·reflection·message별 codec을 전 sample에서 금지 |
+| `DS-REG-018` | `ZoneWorldBrowserAndProcessEvidenceIsComplete` | Chromium/browser ws/wss/reconnect, static config 전달, same-zone·border relocation 결과를 실제 실행으로 확인 |
+
+현재 `DotNet_Docs_Keep_Actor_Destroy_Entry_Owned`는 통과한다. `DS-REG-004`를 추가할 때 기존 문자열
+assertion을 삭제하거나 약화하지 않고 `LeaveGameMsg`의 실제 one-way handler, Entry Spot destroy와
+process evidence를 추가로 검증한다. 공통 문서가 의도적으로 바뀌면 정식 표현을 먼저 확정하고 test와
+문서를 함께 갱신한다.
+
+### 10.9 실행·증거 수집 계획
+
+구현 phase의 최소 검증 순서는 다음과 같다.
+
+1. 공통 문서에서 직접 읽은 inventory와 `.NET` source를 static 비교하고, 실패하는 `DS-REG`을 확인한다.
+2. shared contract와 server/client project를 build한다. build 성공은 sample 완료 증거가 아니다.
+3. `dotnet test tests/Zlink.Framework.SampleRegressionTests/Zlink.Framework.SampleRegressionTests.csproj`
+   와 영향받은 Framework contract/unit regression을 실행한다.
+4. 지원 host마다 `run_samples.sh` 또는 `run_samples.ps1`로 공통 sample 목록을 실행한다. 각 sample은
+   dedicated Redis와 고유 resource prefix를 사용한다.
+5. ZoneWorld는 `.NET` process와 공통 TypeScript browser client를 함께 실행하고 Chromium 결과,
+   static configuration, ws/wss/reconnect와 border relocation evidence를 보관한다.
+6. client가 response·push payload와 ordering을 직접 assertion했는지 확인한다. runner log는 assertion과
+   server evidence를 찾는 보조 자료로만 사용한다.
+7. 종료 뒤 server, client, Redis와 temporary resource가 정리되었는지 확인한다. 이전 실행 log나 stale
+   completion marker를 새 실행 결과로 사용하지 않는다.
+8. Source sample process가 restore한 `Systems.Zlink` package version, package hash와 native runtime hash를
+   기록하고 이전 NuGet extraction cache를 사용하지 않았는지 확인한다.
+9. Framework NuGet은 `framework/languages/dotnet/scripts/verify_packaged_contract.sh`로 clean consumer를
+   검증한다. Package-only sample runner를 실행하지 않았다면 packaged Framework process E2E 결과로
+   기록하지 않는다.
+10. 마지막으로 `git diff --check`, 변경 manifest, test 결과와 process evidence 경로를 card에 기록한다.
+
+실행 결과에는 명령, host/runtime version, Framework contract version, `Systems.Zlink` package
+version·hash, native runtime version·hash, Framework NuGet clean consumer 결과, 시작 시각, sample별 exit
+code, assertion 수, evidence 파일과 cleanup 결과를 포함한다. 실패한 sample을 제외한 나머지 성공만으로
+전체 완료를 표시하지 않는다.
+
+### 10.10 완료 checklist
+
+- [ ] 선행 `.NET Framework` ledger의 implementation·E2E·regression·package gate가 닫혔다.
+- [ ] 모든 card가 Luna Max 구현과 Sol Medium read-only review·재검토 gate를 통과했다.
+- [ ] 모든 POSD·DDD finding에 원칙, 책임 경계, 두 가지 이상 대안과 처리 결과가 기록되었다.
+- [ ] 현재 common sample 문서 diff와 기존 dirty source를 manifest로 보존했다.
+- [ ] 공통 7종의 message·field·transport·flow inventory가 정식 문서를 단일 기준으로 읽어 작성되었고,
+      독립적으로 수정하는 중복 contract fixture가 없다.
+- [ ] 모든 `contract 선행`·`차단` 항목이 해결되어 열린 상태가 0개다.
+- [ ] `DS-IMP-001`~`DS-IMP-009`의 상태와 owner가 정해졌다.
+- [ ] TicTacToe와 SupportChat one-way message semantics가 이름과 실행 path 모두 일치한다.
+- [ ] GameQuest action·payload·domain event 계약이 공통 문서와 source에서 같은 의미를 갖는다.
+- [ ] ShoppingMall 접수 응답과 DeliveryDispatch timestamp wire shape가 직접 검증되고, ShoppingMall의
+      in-process `Command/Result` port DTO는 wire message로 노출되지 않는다.
+- [ ] Bingo extra notify와 optional field의 public 범위가 review로 확정됐다.
+- [ ] ZoneWorld가 공통 `UpdatePositionMsg` 경계, relocation/message follow와 browser flow를 충족한다.
+- [ ] shell·PowerShell runner의 sample inventory와 ZoneWorld 지원 범위가 일치한다.
+- [ ] `DS-REG-001`~`DS-REG-018` 중 적용 대상이 통과하고, 제외한 항목에는 근거가 있다.
+- [ ] sample 7종의 실제 process 실행에서 client self-check, server evidence와 cleanup이 모두 확인됐다.
+- [ ] Core·bindings bug는 원인 layer regression으로 재현·수정하고 version·package·native artifact와
+      Framework 참조를 갱신했으며 sample이나 Framework에 우회가 없다.
+- [ ] Source sample regression·process E2E, fresh `Systems.Zlink` package evidence와 Framework NuGet clean
+      consumer 결과가 각각 통과했다.
+- [ ] Package-only sample runner를 실행하지 않았다면 packaged Framework process E2E를 완료로 기록하지 않았다.
+- [ ] 새 Sol Medium reviewer의 독립 final audit에서 기록되지 않은 sample spec·구현 gap과 unresolved
+      `Critical`·`High`·`Medium` finding이 0개다.
+
+## 11. 통합 ledger 완료 판정
+
+이 문서 전체는 Phase A Spec gap과 Phase B common sample gap을 순서대로 닫아야 완료된다.
+
+- [ ] Phase A의 implementation·E2E·regression·package gap이 모두 닫혔다.
+- [ ] Phase A의 G7 독립 audit이 `CLEAN`이고 unresolved `Critical`·`High`·`Medium` finding이 0건이다.
+- [ ] Phase B의 sample 7종 inventory, wire/runtime gap, runner와 process evidence가 모두 닫혔다.
+- [ ] Phase B의 실제 process E2E와 clean package consumer 결과가 sample card별로 기록되었다.
+- [ ] 두 phase에서 기록되지 않은 `.NET` Framework·common sample gap이 0개다.
+- [ ] 마지막 독립 audit이 Phase A와 Phase B를 함께 확인했고, 통합 ledger가 `CLEAN`이다.

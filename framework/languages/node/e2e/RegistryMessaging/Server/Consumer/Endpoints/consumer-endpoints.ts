@@ -164,7 +164,7 @@ async function requestMissingProfile(channel: ZLinkChannelClient, request: Missi
 }
 
 function publicFailureType(error: unknown): string {
-  return error instanceof ZLinkFrameworkException ? error.kind
+  return error instanceof ZLinkFrameworkException ? String(error.kind)
     : error instanceof Error ? error.name
       : 'Error';
 }

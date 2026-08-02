@@ -204,7 +204,7 @@ test('Message Follow preserves operation identity and rejects an exhausted hop w
   });
   await assert.rejects(
     coordinator.capture('actor-1', loop, false, undefined, exhausted),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.Unavailable
   );
   loop.forEach((part) => part.close());
   assert.equal(
@@ -229,7 +229,7 @@ test('Message Follow rejects repeated stale packets that do not carry the origin
     const parts = frame('missing-context');
     await assert.rejects(
       coordinator.capture('actor-1', parts, false, undefined, actorRef(1n)),
-      (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
+      (error) => error.kind === framework.ZLinkFrameworkErrorKind.Unavailable
     );
     parts.forEach((part) => part.close());
   }
@@ -414,7 +414,7 @@ test('Message Follow route rejects a queue above 1024 messages and emits its rej
       undefined,
       contextRef(overflow, { operationId: 'ffffffffffffffffffffffffffffffff' })
     ),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.Unavailable
   );
   overflow.forEach((part) => part.close());
   assert.equal(
@@ -502,7 +502,7 @@ test('Message Follow relays before duration expiry and rejects after route remov
   const outside = frame('G2');
   await assert.rejects(
     coordinator.capture('actor-1', outside, false, undefined, contextRef(outside)),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.Unavailable
   );
   outside.forEach((part) => part.close());
   assert.equal(markers.some((entry) => entry.marker === 'message_follow_route_removed'), true);
@@ -690,7 +690,7 @@ test('Message Follow rejects a visited target owner before transport admission',
   });
   await assert.rejects(
     coordinator.capture('actor-1', parts, false, undefined, ref),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.Unavailable
   );
   parts.forEach((part) => part.close());
   assert.deepEqual(followed, []);
@@ -796,7 +796,7 @@ test('positive Message Follow request returns one correlated reply and preserves
   response = {
     ok: false,
     error: 'moving',
-    errorKind: framework.ZLinkFrameworkErrorKind.ActorMoving
+      errorKind: framework.ZLinkFrameworkInternalErrorKind.ActorMoving
   };
   const failed = frame('typed-error');
   const failedRef = contextRef(failed, {
@@ -806,7 +806,7 @@ test('positive Message Follow request returns one correlated reply and preserves
   });
   await assert.rejects(
     coordinator.capture('actor-1', failed, true, undefined, failedRef),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorMoving
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.Unavailable
   );
   failed.forEach((part) => part.close());
 });

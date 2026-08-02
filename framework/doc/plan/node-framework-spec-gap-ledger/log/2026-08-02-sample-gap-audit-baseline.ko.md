@@ -6,19 +6,39 @@
 
 ## 1. 기준 fingerprint
 
-- 기준 시각: 2026-08-02 09:04 KST
-- `HEAD`: `3291e338f4f700484780560cd81345a647ef0948`
-- 전체 `git status --porcelain=v1` SHA-256:
-  `3b0fd4201c02eab2baf2f43e4c7c0b2243e3be5c1475486518898eab74a581b5`
-- 공통 sample·Framework spec·Node tracked diff SHA-256:
-  `6544349e65ebe1fbf9e7495cb12fa96b6ec295313bb9eaa0ed8e73c9d3daf7de`
-- 공통 sample과 Node sample 전체 파일 내용 SHA-256:
-  `8d77dd36ca13e6b3c40e1552ea56213283df5c0223e1bf9e49b0305935d65b9b`
+- 기준 시각: 2026-08-02 09:08 KST
+- `HEAD`: `ac5335acb2843ab73e23b34d8afd33203b388d60`
+- Audit 입력 파일 내용 SHA-256:
+  `5706e8199f3918f0acb58054e08f55fb24e375aa5b429dc095db8140c057d49f`
 
 조사 범위에는 공통 sample 7개 문서가 모두 수정된 상태였고, Node sample source에서는
 `SupportChat.Ts/Server/Support/Infrastructure/ZLink/Actors/support-user-actor.ts`가 수정된 상태였다.
 Node Framework production source, exact interface, E2E와 test에도 별도 변경이 있었다. 따라서 아래
-결과는 위 fingerprint에만 적용한다.
+결과는 위 fingerprint에만 적용한다. Fingerprint에는 공통 sample, Node sample, sample 작성 guide,
+이 ledger가 인용한 Framework spec과 Node exact interface, Node package version과 sample contract test를
+포함한다. 다른 Node Framework 작업과 ledger 자체는 제외하므로 관련 없는 source나 문서 수정으로 이
+audit가 무효가 되지는 않는다.
+
+검증 실행 뒤 `HEAD`가 `update framework contracts and runtime` commit으로 이동했지만 audit 입력 파일의
+내용은 바뀌지 않았다. 위 값은 이동한 `HEAD` 기준에서 다시 계산했다.
+
+Fingerprint는 저장소 root에서 다음 명령으로 다시 계산한다.
+
+```text
+{
+  find framework/languages/node/samples framework/doc/framework/common/sample -type f -print0
+  printf '%s\0' doc/principal/documentation/sample-writing-guide.ko.md \
+    framework/doc/framework/common/spec/03-interaction-model.ko.md \
+    framework/doc/framework/common/spec/14-actor-model.ko.md \
+    framework/doc/framework/common/spec/20-session-actor-dispatch.ko.md \
+    framework/doc/framework/common/spec/server/languages/node/interfaces/02-channel-messaging.ko.md \
+    framework/doc/framework/common/spec/server/languages/node/interfaces/03-location-observability.ko.md \
+    framework/doc/framework/common/spec/server/languages/node/interfaces/04-spots.ko.md \
+    framework/doc/framework/common/spec/server/languages/node/interfaces/05-actors.ko.md \
+    framework/languages/node/package.json
+  find framework/languages/node/test/contract -maxdepth 1 -type f -name 'sample*.test.js' -print0
+} | sort -z | xargs -0 sha256sum | sha256sum
+```
 
 ## 2. 실행 결과
 

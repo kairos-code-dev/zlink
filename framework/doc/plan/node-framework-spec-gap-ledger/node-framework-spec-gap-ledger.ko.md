@@ -963,6 +963,11 @@ aggregate 실행을 제외한 sample contract는 35/35 통과했다. aggregate�
 stream message timeout으로 실패했으므로 sample process 완료나 10절 gate 통과로 확대 해석하지
 않는다. 자세한 명령과 commit은 [`log/2026-08-02-sample-static-regression.ko.md`](log/2026-08-02-sample-static-regression.ko.md)에 기록한다.
 
+같은 static follow-up에서 Node sample README의 version을 package policy `11.1.0`으로 맞추고,
+Bingo client가 `bingo=completed`와 `PASS Bingo.Ts`를 함께 출력하도록 정렬했다. 이는 성공한
+sample process가 자신의 결과를 표시하는 계약만 보강한 것이며, TicTacToe browser timeout을
+통과로 바꾸거나 aggregate 결과를 대체하지 않는다.
+
 #### 11.3.3 현재 계약 목록과 구현 차이
 
 | ID | 현재 근거 | 초기 판정 |

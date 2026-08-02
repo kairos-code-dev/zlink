@@ -15,6 +15,11 @@
 test가 `addRouteMesh(SampleNames.courierMeshName)`을 검사하도록 정렬했다. sample source에
 호환 alias나 새 public API는 추가하지 않았다.
 
+Node sample README의 Framework version을 현재 package policy인 `11.1.0`으로 갱신하고, Bingo
+client가 공통 `bingo=completed` evidence와 함께 `PASS Bingo.Ts` self-check marker를 출력하도록
+보강했다. aggregate runner가 성공하지 않았는데 marker를 상위 runner에서 임의로 출력하는 우회는
+사용하지 않았다.
+
 ## 검증
 
 ```text

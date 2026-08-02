@@ -26,6 +26,7 @@ async function main(): Promise<void> {
   }
 
   console.log('bingo=completed');
+  console.log('PASS Bingo.Ts');
 }
 
 function createClient(

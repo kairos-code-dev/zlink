@@ -6,6 +6,10 @@ const test = require('node:test');
 const root = path.resolve(__dirname, '../..');
 
 test('SupportChat distinguishes conversation message and join semantics', () => {
+  const contracts = fs.readFileSync(path.join(
+    root,
+    'samples/SupportChat.Ts/Shared/Contracts/messages.ts'
+  ), 'utf8');
   const client = fs.readFileSync(path.join(
     root,
     'samples/SupportChat.Ts/Client/supportchat-client-scenario.ts'
@@ -21,4 +25,8 @@ test('SupportChat distinguishes conversation message and join semantics', () => 
   assert.match(client, /greeting2\.message\.conversationId === cid2/);
   assert.match(client, /greeting2Push\.payload\.conversationId === cid2/);
   assert.match(client, /greeting2Push\.payload\.message\.text === 'Let me check your account\.'/);
+  assert.match(contracts, /class SetTypingMsg \{[\s\S]*?isTyping: boolean/);
+  assert.match(contracts, /setTypingMsg: 'SetTypingMsg'/);
+  assert.doesNotMatch(contracts, /SetTypingReq|setTypingReq/);
+  assert.match(client, /PacketNames\.setTypingMsg/);
 });

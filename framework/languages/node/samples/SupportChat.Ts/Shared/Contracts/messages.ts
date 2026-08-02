@@ -51,7 +51,7 @@ class JoinConversationFailedNotify {
 }
 class SendChatMessageReq { constructor(readonly text: string) {} }
 type SendChatMessageRes = { message: ChatMessage; state: ConversationState };
-class SetTypingReq { constructor(readonly isTyping: boolean) {} }
+class SetTypingMsg { constructor(readonly isTyping: boolean) {} }
 class CloseConversationReq { constructor(readonly reason?: string) {} }
 type CloseConversationRes = { state: ConversationState };
 class ParticipantJoinedNotify { constructor(readonly conversationId: string, readonly actorId: string, readonly role: SupportRole, readonly state: ConversationState) {} }
@@ -95,7 +95,7 @@ const PacketNames = {
   joinConversationReq: 'JoinConversationReq',
   joinConversationFailedNotify: 'JoinConversationFailedNotify',
   sendChatMessageReq: 'SendChatMessageReq',
-  setTypingReq: 'SetTypingReq',
+  setTypingMsg: 'SetTypingMsg',
   closeConversationReq: 'CloseConversationReq',
   participantJoinedNotify: 'ParticipantJoinedNotify',
   conversationAssignedNotify: 'ConversationAssignedNotify',
@@ -114,7 +114,7 @@ const setAgentAvailable = (isAvailable: boolean) => new SetAgentAvailableReq(isA
 const joinConversation = (participantId = '', role: SupportRole = SupportChatRoles.Customer, displayName = '') =>
   new JoinConversationReq(participantId, role, displayName);
 const sendChatMessage = (text: string) => new SendChatMessageReq(text);
-const setTyping = (isTyping: boolean) => new SetTypingReq(isTyping);
+const setTyping = (isTyping: boolean) => new SetTypingMsg(isTyping);
 const closeConversation = (reason?: string) => new CloseConversationReq(reason);
 
 export {
@@ -130,7 +130,7 @@ export {
   JoinConversationRes,
   JoinConversationFailedNotify,
   SendChatMessageReq,
-  SetTypingReq,
+  SetTypingMsg,
   CloseConversationReq,
   ParticipantJoinedNotify,
   ConversationAssignedNotify,

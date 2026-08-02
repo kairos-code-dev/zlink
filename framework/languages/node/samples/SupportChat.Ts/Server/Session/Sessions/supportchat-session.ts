@@ -86,7 +86,7 @@ class SupportChatSessionRouter {
     const identity = this.requireIdentity(context);
     const conversationId = dispatch.metadata.get(SampleNames.conversationIdMetadataKey);
     if (conversationId === undefined || conversationId.length === 0) {
-      if (dispatch.packetName === PacketNames.setTypingReq) return;
+      if (dispatch.packetName === PacketNames.setTypingMsg) return;
       throw new Error(`Conversation metadata is required for '${dispatch.packetName}'.`);
     }
     if (identity.role === SupportChatRoles.Agent
@@ -135,7 +135,7 @@ class SupportChatSessionRouter {
     if (identity.role === SupportChatRoles.Customer) return this.requireIdentityActor(context);
     let actorId = identity.conversationActors.get(conversationId);
     if (actorId === undefined) {
-      if (packetName === PacketNames.setTypingReq) return undefined;
+      if (packetName === PacketNames.setTypingMsg) return undefined;
       throw new Error(`JoinConversationReq is required before '${packetName}'.`);
     }
     return context.actors.find(actorId);
@@ -190,7 +190,7 @@ const OpenConversationSessionHandler = identityHandler(PacketNames.openConversat
 const SetAgentAvailableSessionHandler = identityHandler(PacketNames.setAgentAvailableReq);
 const JoinConversationSessionHandler = conversationHandler(PacketNames.joinConversationReq);
 const SendChatMessageSessionHandler = conversationHandler(PacketNames.sendChatMessageReq);
-const SetTypingSessionHandler = conversationHandler(PacketNames.setTypingReq);
+const SetTypingSessionHandler = conversationHandler(PacketNames.setTypingMsg);
 const CloseConversationSessionHandler = conversationHandler(PacketNames.closeConversationReq);
 class SupportChatSession implements ZLinkSession {
   constructor(readonly context: ZLinkSessionContext) {}

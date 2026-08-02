@@ -1,7 +1,7 @@
 import {
   GameMarks,
   GameStatus,
-  LeaveGameReq,
+  LeaveGameMsg,
   ObserveMilestoneReq,
   PacketNames,
   authenticateReq,
@@ -190,8 +190,8 @@ class TicTacToeClientScenario {
       );
 
       await Promise.all([
-        client1.send(new LeaveGameReq(game.roomId)).packetName(PacketNames.leaveGameReq).submit(),
-        client2.send(new LeaveGameReq(game.roomId)).packetName(PacketNames.leaveGameReq).submit()
+        client1.send(new LeaveGameMsg(game.roomId)).packetName(PacketNames.leaveGameMsg).submit(),
+        client2.send(new LeaveGameMsg(game.roomId)).packetName(PacketNames.leaveGameMsg).submit()
       ]);
       assertInboundObserved(observedClients, 'host');
       assertInboundObserved(observedClients, 'guest');

@@ -17,6 +17,9 @@ test('TicTacToe uses a distinct internal room join response contract', () => {
   ), 'utf8');
 
   assert.match(messages, /interface TicTacToeGameJoinRes \{[\s\S]*?state: GameState;/);
+  assert.match(messages, /class LeaveGameMsg \{[\s\S]*?roomId: string/);
+  assert.doesNotMatch(messages, /LeaveGameReq|leaveGameReq/);
+  assert.match(joinHandler, /\.joinSpot\(request\.roomId, joinRequest\)[\s\S]*?\.defer\(\)/);
   assert.match(room, /private admit\([^)]*\): TicTacToeGameJoinRes/);
   assert.match(joinHandler, /\.joinSpot\(request\.roomId, joinRequest\)[\s\S]*?\.defer\(\)/);
   assert.match(joinHandler, /return joinGameRes\(\{[\s\S]*?status: GameStatus\.WaitingForPlayers/);

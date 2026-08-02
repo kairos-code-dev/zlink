@@ -22,7 +22,7 @@ import type {
   JoinConversationRes,
   SendChatMessageReq,
   SendChatMessageRes,
-  SetTypingReq
+  SetTypingMsg
 } from '../../../../../../../Shared/Contracts/messages';
 import type {
   ZLinkMessageContext,
@@ -94,10 +94,10 @@ class SendChatMessageHandler extends ConversationActorRoute
 @zlinkSpotActorSendHandler({
   actor: () => SupportUserActor,
   spot: () => ConversationSpot,
-  packetName: PacketNames.setTypingReq
+  packetName: PacketNames.setTypingMsg
 })
 class SetTypingHandler extends ConversationActorRoute
-  implements ZLinkSpotActorSendHandler<ConversationSpot, SupportUserActor, SetTypingReq> {
+  implements ZLinkSpotActorSendHandler<ConversationSpot, SupportUserActor, SetTypingMsg> {
   constructor(@Inject(ZLINK_SPOT_OUTBOUND) outbound: ZLinkSpotOutbound) {
     super(outbound);
   }
@@ -106,7 +106,7 @@ class SetTypingHandler extends ConversationActorRoute
     _spot: ConversationSpot,
     actor: SupportUserActor,
     context: ZLinkMessageContext,
-    request: SetTypingReq
+    request: SetTypingMsg
   ): Promise<void> {
     await this.spotOutbound
       .sendToSpot(

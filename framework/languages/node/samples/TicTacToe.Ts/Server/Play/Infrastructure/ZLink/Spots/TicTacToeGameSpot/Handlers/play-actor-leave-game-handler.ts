@@ -4,24 +4,24 @@ import type {
   ZLinkSpotActorSendHandler
 } from '@zlink-systems/framework';
 import { PlayActor } from '../../../Actors/play-actor';
-import type { LeaveGameReq } from '../../../../../../../Shared/Contracts/messages';
+import type { LeaveGameMsg } from '../../../../../../../Shared/Contracts/messages';
 import { PendingActorDestroyRegistry } from '../../EntrySpot/entry-spot-registries';
 import { TicTacToeGameSpot } from '../tictactoe-game-spot';
 
 @zlinkSpotActorSendHandler({
   actor: () => PlayActor,
-  packetName: 'LeaveGameReq',
+  packetName: 'LeaveGameMsg',
   spot: () => TicTacToeGameSpot
 })
 class PlayActorLeaveGameHandler
-  implements ZLinkSpotActorSendHandler<TicTacToeGameSpot, PlayActor, LeaveGameReq> {
+  implements ZLinkSpotActorSendHandler<TicTacToeGameSpot, PlayActor, LeaveGameMsg> {
   constructor(private readonly pendingDestroys: PendingActorDestroyRegistry) {}
 
   async handle(
     spot: TicTacToeGameSpot,
     actor: PlayActor,
     _context: ZLinkMessageContext,
-    request: LeaveGameReq
+    request: LeaveGameMsg
   ): Promise<void> {
     if (actor.context.spotId !== request.roomId) {
       throw new Error(`Actor requested leave for a different room. roomId=${request.roomId}`);
@@ -30,7 +30,7 @@ class PlayActorLeaveGameHandler
     this.pendingDestroys.mark(actor.actorId);
     await spot.context.leaveActor(actor);
     actor.roomId = undefined;
-    console.log(`actor: LeaveGameReq completed. actor=${actor.actorId}`);
+    console.log(`actor: LeaveGameMsg completed. actor=${actor.actorId}`);
   }
 }
 

@@ -968,6 +968,14 @@ Bingo client가 `bingo=completed`와 `PASS Bingo.Ts`를 함께 출력하도록 �
 sample process가 자신의 결과를 표시하는 계약만 보강한 것이며, TicTacToe browser timeout을
 통과로 바꾸거나 aggregate 결과를 대체하지 않는다.
 
+#### 2026-08-02 NS-IMP-001 비-E2E 갱신
+
+TicTacToe의 `LeaveGameMsg`와 SupportChat의 `SetTypingMsg`를 공통 sample wire 이름과
+`PacketNames`에 맞추고 client·session·actor handler의 send 경로를 함께 정렬했다. 두 message의
+response 없는 send 의미는 유지했다. 정적 regression 2/2와 typecheck가 통과했으며, 실제 sample
+process evidence는 E2E 제외 범위로 남긴다. 상세 내용은
+[`log/2026-08-02-sample-wire-parity.ko.md`](log/2026-08-02-sample-wire-parity.ko.md)에 기록한다.
+
 #### 11.3.3 현재 계약 목록과 구현 차이
 
 | ID | 현재 근거 | 초기 판정 |

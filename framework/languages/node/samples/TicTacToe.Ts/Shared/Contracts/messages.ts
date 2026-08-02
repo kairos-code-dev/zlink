@@ -11,7 +11,7 @@ const PacketNames = Object.freeze({
   observeMilestoneRes: 'ObserveMilestoneRes',
   placeMarkReq: 'PlaceMarkReq',
   placeMarkRes: 'PlaceMarkRes',
-  leaveGameReq: 'LeaveGameReq',
+  leaveGameMsg: 'LeaveGameMsg',
   playerJoinedNotify: 'PlayerJoinedNotify',
   gameStateNotify: 'GameStateNotify',
   winMilestoneNotify: 'WinMilestoneNotify',
@@ -134,7 +134,7 @@ export interface PlaceMarkRes {
   state: GameState;
 }
 
-export class LeaveGameReq {
+export class LeaveGameMsg {
   constructor(readonly roomId: string) {}
 }
 

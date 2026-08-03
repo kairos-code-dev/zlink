@@ -11730,7 +11730,7 @@
     {
       "heading": "5. Automatic fanout 상태",
       "ordinal": 3,
-      "startLine": 204,
+      "startLine": 203,
       "tag": "java",
       "categoryIds": [
         "observability-diagnostics"
@@ -11874,7 +11874,7 @@
     {
       "heading": "4. ClientServer 상태",
       "ordinal": 2,
-      "startLine": 157,
+      "startLine": 156,
       "tag": "java",
       "categoryIds": [
         "observability-diagnostics"
@@ -12682,7 +12682,7 @@
     {
       "heading": "7. Message wrapper",
       "ordinal": 5,
-      "startLine": 431,
+      "startLine": 432,
       "tag": "ts",
       "categoryIds": [
         "topology-discovery",
@@ -112075,7 +112075,7 @@
       "identity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkClientServerRole.CLIENT_AND_SERVER#c75ec068916ebbea",
       "kind": "enum-value",
       "language": "java",
-      "line": 167,
+      "line": 166,
       "memberName": "CLIENT_AND_SERVER",
       "ownerIdentity": "systems.zlink:zlink-framework-core::ZLinkClientServerRole",
       "packages": [
@@ -112109,7 +112109,7 @@
       "identity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkClientServerRole.CLIENT#50d7026e31bc614f",
       "kind": "enum-value",
       "language": "java",
-      "line": 165,
+      "line": 164,
       "memberName": "CLIENT",
       "ownerIdentity": "systems.zlink:zlink-framework-core::ZLinkClientServerRole",
       "packages": [
@@ -112143,7 +112143,7 @@
       "identity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkClientServerRole.SERVER#830ef117e1386dfc",
       "kind": "enum-value",
       "language": "java",
-      "line": 166,
+      "line": 165,
       "memberName": "SERVER",
       "ownerIdentity": "systems.zlink:zlink-framework-core::ZLinkClientServerRole",
       "packages": [
@@ -112175,7 +112175,7 @@
       "identity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkClientServerRuntime.isReady#97a72feca79256e5",
       "kind": "method",
       "language": "java",
-      "line": 192,
+      "line": 191,
       "memberName": "isReady",
       "ownerIdentity": "systems.zlink:zlink-framework-core::ZLinkClientServerRuntime",
       "packages": [
@@ -112207,7 +112207,7 @@
       "identity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkClientServerRuntime.observe#bd36cf4311953962",
       "kind": "method",
       "language": "java",
-      "line": 188,
+      "line": 187,
       "memberName": "observe",
       "ownerIdentity": "systems.zlink:zlink-framework-core::ZLinkClientServerRuntime",
       "packages": [
@@ -112239,7 +112239,7 @@
       "identity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkClientServerRuntime.snapshot#9bd8068ca5dc6429",
       "kind": "method",
       "language": "java",
-      "line": 187,
+      "line": 186,
       "memberName": "snapshot",
       "ownerIdentity": "systems.zlink:zlink-framework-core::ZLinkClientServerRuntime",
       "packages": [
@@ -112273,7 +112273,7 @@
       "identity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkClientServerStatus.ZLinkClientServerStatus#042e1b2a0a2f0434",
       "kind": "constructor",
       "language": "java",
-      "line": 177,
+      "line": 176,
       "memberName": "ZLinkClientServerStatus",
       "ownerIdentity": "systems.zlink:zlink-framework-core::ZLinkClientServerStatus",
       "packages": [
@@ -112307,7 +112307,7 @@
       "identity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkClientServerTargetStatus.ZLinkClientServerTargetStatus#fdab247cf21ee375",
       "kind": "constructor",
       "language": "java",
-      "line": 171,
+      "line": 170,
       "memberName": "ZLinkClientServerTargetStatus",
       "ownerIdentity": "systems.zlink:zlink-framework-core::ZLinkClientServerTargetStatus",
       "packages": [
@@ -112468,7 +112468,7 @@
       "identity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkFanoutRuntime.observe#334bc1661ec9d3dd",
       "kind": "method",
       "language": "java",
-      "line": 220,
+      "line": 219,
       "memberName": "observe",
       "ownerIdentity": "systems.zlink:zlink-framework-core::ZLinkFanoutRuntime",
       "packages": [
@@ -112500,7 +112500,7 @@
       "identity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkFanoutRuntime.snapshot#815822cccf66924c",
       "kind": "method",
       "language": "java",
-      "line": 219,
+      "line": 218,
       "memberName": "snapshot",
       "ownerIdentity": "systems.zlink:zlink-framework-core::ZLinkFanoutRuntime",
       "packages": [
@@ -112534,7 +112534,7 @@
       "identity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkFanoutStatus.ZLinkFanoutStatus#cc1ff1588cb353c2",
       "kind": "constructor",
       "language": "java",
-      "line": 210,
+      "line": 209,
       "memberName": "ZLinkFanoutStatus",
       "ownerIdentity": "systems.zlink:zlink-framework-core::ZLinkFanoutStatus",
       "packages": [
@@ -171997,7 +171997,7 @@
       "identity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMessage.constructor#d09152d4b88119d8",
       "kind": "method",
       "language": "node",
-      "line": 431,
+      "line": 432,
       "memberName": "constructor",
       "ownerIdentity": "@zlink-systems/framework::ZLinkMessage",
       "packages": [
@@ -172033,7 +172033,7 @@
       "identity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMessage.decode#b69bda7e7a19b9b2",
       "kind": "method",
       "language": "node",
-      "line": 434,
+      "line": 435,
       "memberName": "decode",
       "ownerIdentity": "@zlink-systems/framework::ZLinkMessage",
       "packages": [
@@ -172069,7 +172069,7 @@
       "identity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMessage.from#2a00059aeffec079",
       "kind": "method",
       "language": "node",
-      "line": 432,
+      "line": 433,
       "memberName": "from",
       "ownerIdentity": "@zlink-systems/framework::ZLinkMessage",
       "packages": [
@@ -172105,7 +172105,7 @@
       "identity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMessage.fromEncoded#37a4dfd1a49c25ac",
       "kind": "method",
       "language": "node",
-      "line": 433,
+      "line": 434,
       "memberName": "fromEncoded",
       "ownerIdentity": "@zlink-systems/framework::ZLinkMessage",
       "packages": [
@@ -172143,7 +172143,7 @@
       "identity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMessage.isEncoded#232f7e83ee7dd6f9",
       "kind": "method",
       "language": "node",
-      "line": 436,
+      "line": 437,
       "memberName": "isEncoded",
       "ownerIdentity": "@zlink-systems/framework::ZLinkMessage",
       "packages": [
@@ -172179,7 +172179,7 @@
       "identity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMessage.toEncodedPayload#d8f4e0133d404f06",
       "kind": "method",
       "language": "node",
-      "line": 435,
+      "line": 436,
       "memberName": "toEncodedPayload",
       "ownerIdentity": "@zlink-systems/framework::ZLinkMessage",
       "packages": [

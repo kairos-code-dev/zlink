@@ -412,7 +412,7 @@ process 완료를 판정하지 않았다. 상세 명령과 candidate 경계는
 | npm ls @zlink-systems/zlink --all | clean, exit 0 | root와 모든 workspace가 local `@zlink-systems/zlink@11.1.0`을 resolve. |
 | e2e/ToActorMessaging/run_e2e.sh TA-A1 | 실패, exit 1 | 세 role readiness 이후 browser client native session bind가 ActorRef route fence 불일치로 실패. |
 | e2e/SubmitAdmission/run_e2e.sh SA-E2E-14 | 실패, exit 2 | binding package는 11.1.0이지만 candidate native artifact가 incomplete. |
-| e2e/ChannelEgressRouting/run_e2e.sh CH-E2E-01 | 실패, exit 2 | Config 12 Node role server가 `BLOCKED`. |
+| e2e/ChannelEgressRouting/run_e2e.sh CH01~CH12 | targeted PASS | Config 12의 16개 selector가 role endpoint/evidence와 함께 통과. |
 | e2e/InstanceSpot/run_e2e.sh IS-E2E-36 | 실패, exit 2 | Config 14 Node role server가 `BLOCKED`. |
 | sample static·bounded regression | 실패, 50 pass / 1 fail | Bingo replacement peer의 `ConnectionReady` 대기 timeout. sample process 완료가 아님. |
 
@@ -426,7 +426,7 @@ process 완료를 판정하지 않았다. 상세 명령과 candidate 경계는
   불일치에서 실패한다. 이전 compile-error 기록은 historical baseline이다.
 - native artifact blocker: SubmitAdmission이 후보 native artifact를
   incomplete로 판정.
-- Config 12/14 blocker: runner는 aggregate 목록에 포함되지만 role server가 `BLOCKED`다.
+- Config 14 blocker: runner는 aggregate 목록에 포함되지만 role server가 `BLOCKED`다. Config 12의 16개 targeted selector는 통과했지만 aggregate exact inventory와는 별도다.
 - sample process blocker: static wire 정렬과 typecheck는 통과했지만 Bingo replacement
   `ConnectionReady` timeout이 남아 있다.
 - historical evidence: feature-map의 과거 pass와 과거 log. 현재 process
@@ -445,7 +445,7 @@ process 완료를 판정하지 않았다. 상세 명령과 candidate 경계는
 | common error model | runtime 충족, process E2E 후속 | public 13-kind enum, 내부 mapping과 ProtocolError terminal mapping이 unit/runtime test를 통과했다. client-visible process evidence는 ND-IMP-002 후속 조건이다. |
 | unknown content type 처리 | runtime 충족, process E2E 후속 | unknown non-JSON payload가 handler에 Buffer로 전달되지 않고 public ProtocolError로 종료된다. ND-IMP-003의 process evidence는 후속 범위다. |
 | package consumer parity | 비-E2E 충족 | `npm ls`가 11.1.0으로 clean하고 packaged contract 7개가 통과했다. process E2E와 native role-server evidence는 제외 범위다. |
-| Config 1-14 aggregate E2E | 미충족 | aggregate 목록은 14개로 정렬됐지만 Config 12·14 runner가 `BLOCKED`이고 exact inventory도 171개 누락이다. ND-E2E-IMP-001, ND-E2E-IMP-002 참조. |
+| Config 1-14 aggregate E2E | 미충족 | Config 12의 16개 targeted process는 통과했지만 Config 14 runner가 `BLOCKED`이고 exact inventory도 171개 누락이다. ND-E2E-IMP-001, ND-E2E-IMP-002 참조. |
 | NS-IMP-001~003 sample wire 정렬 | 비-E2E 진행 | current source와 static regression에서 message name·typed payload·routing field 범위를 정렬했다. 일곱 sample process와 server evidence는 후속이다. |
 
 ### 4.1 2026-08-02 runtime·unit phase 현재 판정
@@ -513,7 +513,7 @@ Worker slot reference 수명 보정 절에 기록했다.
 | package | `npm ls` 11.1.0 clean, packaged contract 7개 통과 | native role-server artifact와 process E2E |
 | E2E inventory | common 374 / Node 207 / missing 171 / extra 4 | exact ID·alias·selector와 status를 다시 정렬 |
 | E2E process | TA-A1은 ActorRef route fence 실패, SA-E2E-14는 native artifact incomplete | owner layer 수정·fresh package·role-server evidence |
-| Config 12·14 | aggregate 목록에는 포함, 개별 runner는 `BLOCKED` | role server와 process runner 구현 또는 contract 선행 결정 |
+| Config 12·14 | Config 12 targeted 16개 PASS, Config 14 `BLOCKED` | common aggregate·Config 14 role server와 process evidence |
 | sample | NS-IMP-001~003 static wire 정렬, typecheck 통과 | 일곱 process, client result, server evidence, cleanup |
 
 따라서 sample 상태는 여전히 `Spec gate 대기`다. 다만 dirty working tree에서 sample source와
@@ -658,7 +658,7 @@ scenario를 완료할 수 없다.
 
 - 공통 spec 또는 E2E 문서 경로: framework/doc/framework/common/e2e/config-1-location-messaging.ko.md부터 config-14-instance-spot.ko.md 전체, 세부 누락은 2.2절 표에 기록
 - Node source·feature-map·runner 경로: framework/languages/node/e2e/ 아래의 현재 Client scenario, feature-map과 runner 전체
-- 실제 동작: current parser는 common 374개 ID 중 Node scenario exact ID 207개를 찾았다. 171개가 누락되고, Node source에만 있는 extra ID가 4개(`MON-A4`, `MON-D1`, `SM-D16`, `SM-Q9`)다. Config 12·14 runner는 경로에 있지만 `BLOCKED`를 반환한다.
+- 실제 동작: current parser는 common 374개 ID 중 Node scenario exact ID 207개를 찾았다. 171개가 누락되고, Node source에만 있는 extra ID가 4개(`MON-A4`, `MON-D1`, `SM-D16`, `SM-Q9`)다. Config 12의 16개 selector는 targeted process에서 PASS했지만 Config 14 runner는 `BLOCKED`를 반환한다.
 - 기대 동작: common inventory의 exact ID가 Node map에 동일한 문자열로 존재하고, 각 항목에 implemented, partial, diagnostic_only, source_only, blocked 같은 실행 상태와 evidence 요구가 명시되어야 한다. alias는 exact scenario의 대체 ID로 계산하지 않는다.
 - gap 판정 근거: 2026-08-03 live parser로 common heading과 현재 Client scenario source를 대조했다. 결과는 374/207/171/4이며, feature-map의 historical status나 source-only marker는 현재 process 결과가 아니다.
 - 구체적인 수정 목록: (1) 14개 Config의 common inventory를 machine-readable exact ID로 고정한다. (2) Node map에 누락 ID와 상태를 추가하되, public API가 필요한 항목은 contract 선행으로 분리한다. (3) alias를 exact ID로 바꾸거나 명시적 mapping과 별도 결과를 둔다. (4) source-only와 historical log를 pass 상태에서 분리한다.
@@ -670,9 +670,9 @@ scenario를 완료할 수 없다.
 
 - 공통 spec 또는 E2E 문서 경로: framework/doc/framework/common/e2e/ 전체 14개 Config, 특히 config-1-location-messaging.ko.md:438-452와 config-12-channel-egress-routing.ko.md, config-14-instance-spot.ko.md
 - Node runner 경로: framework/languages/node/e2e/run_e2e_all.sh:7-21 및 56-141
-- 실제 동작: DEFAULT_CONFIGS는 현재 Config 1-14의 14개 runner를 포함한다. 다만 Config 12와 Config 14의 child runner는 각각 `BLOCKED`로 exit 2를 반환한다. aggregate의 child 성공 판정도 common 374개 ID, feature-map 상태, client result, role server evidence, callback/owner/generation/cleanup assertion을 자체적으로 해석하지 않는다.
+- 실제 동작: DEFAULT_CONFIGS는 현재 Config 1-14의 14개 runner를 포함한다. Config 12의 16개 targeted selector는 PASS했지만 Config 14 child runner는 `BLOCKED`로 exit 2를 반환한다. aggregate의 child 성공 판정도 common 374개 ID, feature-map 상태, client result, role server evidence, callback/owner/generation/cleanup assertion을 자체적으로 해석하지 않는다.
 - 기대 동작: all은 Config 1-14를 포함하고 exact inventory 전체를 dispatch해야 한다. partial, unimplemented, diagnostic_only, source_only, N/A, timeout과 skip을 성공으로 합산하지 않고, 각 scenario의 client result와 role server evidence가 모두 있는 경우에만 PASS여야 한다.
-- gap 판정 근거: current aggregate 목록에는 Config 12·14가 포함되지만 두 runner의 직접 실행이 `BLOCKED`로 끝났다. 또한 exact inventory gate가 171개 누락을 보고한다. 따라서 aggregate 목록 포함은 common E2E 완료를 의미하지 않는다.
+- gap 판정 근거: current aggregate 목록에는 Config 12·14가 포함되고 Config 12의 targeted process는 통과했지만 Config 14의 직접 실행은 `BLOCKED`로 끝났다. 또한 exact inventory gate가 171개 누락을 보고한다. 따라서 targeted PASS나 aggregate 목록 포함은 common E2E 완료를 의미하지 않는다.
 - 구체적인 수정 목록: (1) Config 12와 Config 14의 Node feature-map 및 process runner 설계를 contract 선행으로 등록한다. (2) aggregate를 common inventory 기반으로 구동한다. (3) child result를 status와 evidence schema로 수집한다. (4) partial, diagnostic-only, source-only, N/A를 실패 또는 미완료로 분리한다. (5) callback count, terminal reason, owner, generation, cleanup evidence를 결과에 포함한다.
 - 필요한 회귀 test: ND-REG-006. aggregate가 14개 Config와 374개 ID를 모두 선택하고, 의도적으로 partial/N/A/source-only child를 넣었을 때 PASS 수에 포함하지 않는지 검사한다.
 - 선행 조건과 작업 순서: ND-E2E-IMP-001 → per-config exact selector → role evidence schema → aggregate 변경 → ND-REG-006 → 실제 process 실행 순서로 진행한다.
@@ -683,7 +683,7 @@ scenario를 완료할 수 없다.
 - 공통 spec 또는 E2E 문서 경로: framework/doc/framework/common/e2e/config-3-pubsub.ko.md, config-8-execution-turn.ko.md, config-10-spot-actor-relocation.ko.md, config-11-observability-ops.ko.md, config-13-submit-admission.ko.md
 - Node runner·feature-map 경로: framework/languages/node/e2e/PubSub/run_e2e.sh 및 feature-map.ko.md, AutomaticTurnDispatch/run_e2e.sh:19-43 및 177-189, SpotActorTransfer/run_e2e.sh:10-15 및 322-328, ObservabilityOps/run_e2e.sh:12-29, SubmitAdmission/run_e2e.sh:22-55 및 128-169
 - 초기 실제 동작: PubSub alias, AutomaticTurnDispatch source-gate, SpotActorTransfer subset, ObservabilityOps partial all과 SubmitAdmission partial selector가 확인됐다. 이 항목의 세부 observation은 2026-08-02 baseline이다.
-- 현재 상태: current tree의 Node Client scenario file는 207개이며, 이전 selector 세부 결과를 현재 판정으로 재사용하지 않는다. exact inventory gate는 여전히 171개 누락과 4개 extra를 보고하고, Config 12·14는 `BLOCKED`다. 모든 runner selector를 current common inventory와 다시 대조해야 한다.
+- 현재 상태: current tree의 Node Client scenario file는 207개이며, Config 12의 16개 selector는 targeted process에서 PASS했다. exact inventory gate는 여전히 171개 누락과 4개 extra를 보고하고 Config 14는 `BLOCKED`다. 모든 runner selector를 current common inventory와 다시 대조해야 한다.
 - 기대 동작: selector 문자열 하나가 common exact ID 하나의 process dispatch로 연결되어야 한다. source-gate, historical log, partial 구현, Kotlin-only N/A는 client-visible 및 role server evidence가 없으면 PASS가 될 수 없다.
 - gap 판정 근거: initial source audit에서 alias·subset·source-only 경로를 확인했다. current candidate는 해당 경로가 변경됐으므로 fresh per-config audit가 필요하며, inventory와 process gate가 닫히지 않아 이 card를 완료로 표시할 수 없다.
 - 구체적인 수정 목록: (1) 모든 split ID에 exact case를 만든다. (2) alias는 제거하거나 별도 alias로 표시하되 exact ID 결과를 생성한다. (3) source-gate를 diagnostic evidence로만 분류한다. (4) partial/transition/unimplemented/N/A 상태가 process PASS를 반환하지 않도록 result schema와 exit policy를 정한다. (5) role server evidence와 client result를 selector별로 저장한다.

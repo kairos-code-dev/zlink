@@ -1143,11 +1143,14 @@ public sealed class SessionActorCoordinatorTests
                 identity.SessionOwnerNodeGeneration,
                 handoffId),
             CancellationToken.None)).Acknowledged);
-        Assert.False(runtime.TryAcceptSessionActorFrame(
+        Assert.True(runtime.TryAcceptSessionActorFrame(
             source.ActorId,
             identity.BindingToken,
             out var sealedHighWater));
-        Assert.Equal(identity.AcceptedHighWater, sealedHighWater);
+        Assert.Equal(identity.AcceptedHighWater + 1, sealedHighWater);
+        runtime.CompleteAcceptedSessionActorFrame(
+            source.ActorId,
+            identity.BindingToken);
 
         var stale = runtime.CommitSessionActorRoute(
             new ZLinkSessionRouteCommit(
@@ -1185,7 +1188,7 @@ public sealed class SessionActorCoordinatorTests
             identity.OwnerLeaseGeneration,
             identity.OwnerLeaseGeneration + 1,
             identity.SessionOwnerNodeGeneration,
-            identity.AcceptedHighWater,
+            sealedHighWater,
             handoffId,
             target);
         var committed = runtime.CommitSessionActorRoute(command);
@@ -1195,16 +1198,23 @@ public sealed class SessionActorCoordinatorTests
         Assert.True(retried.Acknowledged);
         Assert.Equal(target, bound.Ref);
         Assert.Equal(source.ObjectGeneration, bound.Ref.ObjectGeneration);
-        Assert.False(runtime.TryAcceptSessionActorFrame(
+        Assert.True(runtime.TryAcceptSessionActorFrame(
             source.ActorId,
             identity.BindingToken,
-            out _));
+            out var committedHighWater));
+        Assert.Equal(sealedHighWater + 1, committedHighWater);
+        runtime.CompleteAcceptedSessionActorFrame(
+            source.ActorId,
+            identity.BindingToken);
         Assert.True(runtime.UnsealCommittedSessionActorRoute(command));
         Assert.True(runtime.TryAcceptSessionActorFrame(
             source.ActorId,
             identity.BindingToken,
             out var nextHighWater));
-        Assert.Equal(identity.AcceptedHighWater + 1, nextHighWater);
+        Assert.Equal(committedHighWater + 1, nextHighWater);
+        runtime.CompleteAcceptedSessionActorFrame(
+            source.ActorId,
+            identity.BindingToken);
     }
 
     [Fact]
@@ -1250,10 +1260,14 @@ public sealed class SessionActorCoordinatorTests
 
         Assert.True(result.Acknowledged);
         Assert.Equal(acceptedHighWater, result.AcceptedHighWater);
-        Assert.False(runtime.TryAcceptSessionActorFrame(
+        Assert.True(runtime.TryAcceptSessionActorFrame(
             actor.ActorId,
             identity.BindingToken,
-            out _));
+            out var postSealHighWater));
+        Assert.Equal(acceptedHighWater + 1, postSealHighWater);
+        runtime.CompleteAcceptedSessionActorFrame(
+            actor.ActorId,
+            identity.BindingToken);
     }
 
     [Fact]

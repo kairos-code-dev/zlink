@@ -325,17 +325,6 @@ internal sealed class ZLinkSessionActorBindingTable
                 acceptedHighWater = 0;
                 return false;
             }
-            if (entry.RelocationHandoffId is not null)
-            {
-                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-                    $"session_frame_refused reason=relocation_sealed actor={actorId} "
-                    + $"handoff={entry.RelocationHandoffId} "
-                    + $"completed={entry.CompletedRelocationHandoffId ?? "none"} "
-                    + $"high_water={entry.AcceptedHighWater}");
-                acceptedHighWater = entry.AcceptedHighWater;
-                return false;
-            }
-
             acceptedHighWater = checked(entry.AcceptedHighWater + 1);
             _entries[key] = entry with
             {
@@ -495,7 +484,7 @@ internal sealed class ZLinkSessionActorBindingTable
                 || entry.Route != targetRoute
                 || entry.SessionOwnerNodeGeneration
                 != request.SessionOwnerNodeGeneration
-                || entry.AcceptedHighWater != request.AcceptedHighWater
+                || entry.AcceptedHighWater < request.AcceptedHighWater
                 || !string.Equals(
                     entry.RelocationHandoffId,
                     request.HandoffId,

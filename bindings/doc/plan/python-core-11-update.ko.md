@@ -31,9 +31,9 @@ evidence를 구분하기 위한 것이다.
 | Core runtime | `core/build/lib/libzlink.so.11.2.0` |
 | Core SONAME | `libzlink.so.11` |
 | Python package | `zlink==11.2.0` |
-| Python source manifest | `.artifacts/wsl/bindings-candidate/python-source-manifest-11.2.0.json` |
-| package evidence | `.artifacts/wsl/bindings-candidate/python/candidate-input.env` |
-| wheel | `.artifacts/wsl/bindings-candidate/python/wheels/` 아래 산출물 |
+| Python source manifest | `.artifacts/wsl/bindings-candidate/python39/`·`python312/` 아래 manifest |
+| package evidence | 각 output root의 `python/candidate-input.env` |
+| wheel | 각 output root의 `python/wheels/` 아래 산출물 |
 
 Core candidate의 header, spec, source, runtime, exported symbol inventory와 layout은
 [`create-manifest.sh`](../../../scripts/local-package/bindings-candidate/create-manifest.sh)가 봉인한다.
@@ -159,7 +159,11 @@ scripts/local-package/bindings-candidate/create-manifest.sh \
 scripts/local-package/bindings-candidate/build-wsl.sh \
   --language python \
   --manifest .artifacts/wsl/bindings-candidate/core-11.2.0.env \
-  --package-version 11.2.0
+  --package-version 11.2.0 \
+  --python-executable python3.12 \
+  --output "$PWD/.artifacts/wsl/bindings-candidate/python312"
+
+# CPython 3.9 Docker에서는 --python-executable python과 python39 output root를 사용한다.
 
 # Source tests
 ZLINK_LIBRARY_PATH="$PWD/core/build/lib/libzlink.so.11.2.0" \

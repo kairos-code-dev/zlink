@@ -214,7 +214,7 @@ Linux aarch64, macOS와 Windows는 현재 release target이 아니므로 별도 
 
 ## 2026-08-04 Codex self-review refresh
 
-현재 checkout의 HEAD는 `5e58064b7d4d88045e37adbcf36098030b05c5fe`이며, Core 11.2.0 runtime SHA는
+현재 checkout의 HEAD는 `de948ac89ec753cfda5b1b1f9869c78336f647da`이며, Core 11.2.0 runtime SHA는
 `ce28d7908bf62a1b39b481aad2a76c6e76955e3a93ea73e1cbdaa913c4883138`이다. Core 변경 19개를
 정식 spec·계획 문서와 대조하고 `lb_t`의 smooth weighted round-robin, routing ID tie-break, candidate
 변경, write failure recovery와 `0..10000` validation을 확인했다. 현재 `test_router_multiple_dealers`는
@@ -228,17 +228,17 @@ byte 수 또는 capacity 부족 시 `None`을 요구했지만 구현은 `True/Fa
 새 local package identity는 다음과 같다.
 
 ```text
-coreManifest: .artifacts/wsl/bindings-candidate/core-11.2.0-python-self-20260804-v2.env
-coreManifestSha256: 3265330d5b552fbafc6fab0662d7858fcb7a7f8130da7d2041d1e52159641d3f
-coreRevision: 5e58064b7d4d88045e37adbcf36098030b05c5fe
-candidateInputSha256: 3265330d5b552fbafc6fab0662d7858fcb7a7f8130da7d2041d1e52159641d3f
+coreManifest: .artifacts/wsl/bindings-candidate/core-11.2.0-python-self-20260804-v3.env
+coreManifestSha256: 53aef79e4ae5ebe0e525d0ada57e5aaac16316f25ad89f1af6f1c8ebdb6f9d9a
+coreRevision: de948ac89ec753cfda5b1b1f9869c78336f647da
+candidateInputSha256: 53aef79e4ae5ebe0e525d0ada57e5aaac16316f25ad89f1af6f1c8ebdb6f9d9a
 pythonCandidate: .artifacts/v11/evidence/V11-M3-CORE-VERIFY/candidate-python-self-20260804.json
 pythonCandidateSha256: 5364792d464c56e04c33477dac096f09daa6e5f9ddc7499b5bbd4acb1b5bb156
 pythonCandidateAggregateSha256: 7f32732d7831728b62b9f3a1bb1d420b6f7c9f65952348e1eb4e76c7c27a855d
-pythonSourceManifestSha256: fb44583edc415f10ab5b1d03b3c8b27800f1f9fa78c722b5219698d339ac28eb
+pythonSourceManifestSha256: 8e6d73b48ab6a26da195e3863240fc1720bca9c5134300d0ea341a0e1e6b2441
 pythonSourceAggregateSha256: 4d1e014e03e56d85e732fa165aaab6e4823a79721cd72c4bd26f78f87eb54cfa
-cp39WheelSha256: d5501aa113e7f7cdbb16b5c9ab7fb1bd5498ab75d8c0b81b4f58e0e732803c0a
-cp312WheelSha256: 74c6959e0f9563f91dfa540d01800ca36e9a470d0fc03fef0c1b2efa341affc0
+cp39WheelSha256: b5d2b84962d18bdd90e4922bbf64104166fd9fb4940e8c9e144279133b6ed8d3
+cp312WheelSha256: 74cc57d59c45292eeb763e135c94baa2a543b99b4a2cc5c55507d1a95010b033
 ```
 
 CPython 3.9은 Ubuntu 24.04 + deadsnakes CPython 3.9.25 환경에서, CPython 3.12는 host 3.12.3에서

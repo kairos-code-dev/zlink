@@ -1,5 +1,6 @@
 use std::ffi::c_void;
 use std::os::fd::RawFd;
+use std::sync::{Arc, Weak};
 
 use crate::error::{ConfigError, HandlerError, RecvError};
 use crate::ffi;
@@ -9,8 +10,6 @@ use crate::poller_contracts::{
     POLLCOMPLETION, PollEvent, PollItem, PollSourceKind, Pollable, Poller, Timer,
 };
 use crate::request_progress::{acquire_external_progress, release_external_progress};
-
-type TimerFireHandler = Box<dyn Fn(&Timer, u64) + Send>;
 
 pub(crate) fn poller_new() -> Result<Poller, ConfigError> {
     let handle = unsafe { ffi::zlink_poller_new() };
@@ -37,18 +36,22 @@ impl PollerStorage {
         slot: usize,
     ) -> Result<(), ConfigError> {
         let handle = pollable_handle(socket)?;
+        let completion_owned = events & POLLCOMPLETION != 0;
+        if completion_owned {
+            acquire_external_progress(handle);
+        }
         check_config_rc(unsafe {
             ffi::zlink_poller_add(self.handle, handle, slot as *mut c_void, events)
+        })
+        .inspect_err(|_| {
+            if completion_owned {
+                release_external_progress(handle);
+            }
         })?;
         self.sockets
             .lock()
             .expect("poller sockets")
             .insert(handle as usize, events);
-        // Keep the local map update and the external registry update separate.
-        // Other paths use local -> external order when changing a registration.
-        if events & POLLCOMPLETION != 0 {
-            acquire_external_progress(handle);
-        }
         Ok(())
     }
 
@@ -59,15 +62,32 @@ impl PollerStorage {
         events: i16,
     ) -> Result<(), ConfigError> {
         let handle = pollable_handle(socket)?;
-        let mut sockets = self.sockets.lock().expect("poller sockets");
-        let previous = sockets.get(&(handle as usize)).copied().unwrap_or(0);
-        check_config_rc(unsafe { ffi::zlink_poller_modify(self.handle, handle, events) })?;
-        sockets.insert(handle as usize, events);
-        drop(sockets);
-
-        if previous & POLLCOMPLETION == 0 && events & POLLCOMPLETION != 0 {
+        let previous = self
+            .sockets
+            .lock()
+            .expect("poller sockets")
+            .get(&(handle as usize))
+            .copied()
+            .unwrap_or(0);
+        let completion_owned = previous & POLLCOMPLETION != 0;
+        let completion_requested = events & POLLCOMPLETION != 0;
+        if !completion_owned && completion_requested {
             acquire_external_progress(handle);
-        } else if previous & POLLCOMPLETION != 0 && events & POLLCOMPLETION == 0 {
+        }
+        if let Err(error) =
+            check_config_rc(unsafe { ffi::zlink_poller_modify(self.handle, handle, events) })
+        {
+            if !completion_owned && completion_requested {
+                release_external_progress(handle);
+            }
+            return Err(error);
+        }
+        self.sockets
+            .lock()
+            .expect("poller sockets")
+            .insert(handle as usize, events);
+
+        if completion_owned && !completion_requested {
             release_external_progress(handle);
         }
         Ok(())
@@ -216,13 +236,15 @@ impl Drop for PollerStorage {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        for handle in completion_handles {
-            // Do not hold the local map lock while touching the global map.
-            release_external_progress(handle);
-        }
+        // Keep the external ownership claim until Core has removed the native
+        // registration.  This prevents an internal completion worker from
+        // starting in the small destroy window.
         unsafe {
             let mut h = self.handle;
             ffi::zlink_poller_destroy(&mut h);
+        }
+        for handle in completion_handles {
+            release_external_progress(handle);
         }
     }
 }
@@ -284,9 +306,9 @@ pub(crate) fn timer_new() -> Result<Timer, ConfigError> {
         ));
     }
     Ok(Timer {
-        inner: Box::new(TimerStorage {
+        inner: Arc::new(TimerStorage {
             handle,
-            callback: None,
+            callback: std::sync::Mutex::new(None),
         }),
     })
 }
@@ -314,35 +336,81 @@ impl TimerStorage {
         Ok(Some(count))
     }
 
-    pub(crate) fn on_fire(
-        &mut self,
-        timer_ptr: usize,
-        handler: TimerFireHandler,
-    ) -> Result<(), HandlerError> {
-        let wrapped: Box<dyn Fn(u64) + Send> = Box::new(move |count: u64| {
-            let timer = unsafe { &*(timer_ptr as *const Timer) };
-            handler(timer, count);
-        });
-        let (cb, userdata) = CallbackBox::new(wrapped);
-        unsafe extern "C" fn trampoline(_timer: *mut c_void, count: u64, userdata: *mut c_void) {
-            let handler = unsafe { &*(userdata as *const Box<dyn Fn(u64) + Send>) };
-            handler(count);
+    pub(crate) fn on_fire<F>(
+        &self,
+        timer: Weak<TimerStorage>,
+        handler: F,
+    ) -> Result<(), HandlerError>
+    where
+        F: Fn(&Timer, u64) + Send + 'static,
+    {
+        let (cb, userdata) = CallbackBox::new(TimerCallback { timer, handler });
+        let mut callback = self.callback.lock().expect("timer callback");
+        if let Some(previous) = callback.as_ref() {
+            previous.set_closing(true);
         }
-        let rc = unsafe { ffi::zlink_timer_handler(self.handle, trampoline, userdata) };
+        let rc = unsafe { ffi::zlink_timer_handler(self.handle, timer_trampoline::<F>, userdata) };
         if rc != 0 {
+            if let Some(previous) = callback.as_ref() {
+                previous.set_closing(false);
+            }
             drop(cb);
             return Err(check_handler_rc(rc).unwrap_err());
         }
-        self.callback = Some(cb);
+        let previous = callback.replace(cb);
+        drop(callback);
+        if let Some(previous) = previous {
+            crate::internal::release_callbacks(vec![previous]);
+        }
         Ok(())
     }
 }
 
+struct TimerCallback<F> {
+    timer: Weak<TimerStorage>,
+    handler: F,
+}
+
+impl<F: Fn(&Timer, u64)> TimerCallback<F> {
+    fn invoke(&self, count: u64) {
+        let Some(inner) = self.timer.upgrade() else {
+            return;
+        };
+        let timer = Timer { inner };
+        (self.handler)(&timer, count);
+    }
+}
+
+unsafe extern "C" fn timer_trampoline<F: Fn(&Timer, u64) + Send + 'static>(
+    _timer: *mut c_void,
+    count: u64,
+    userdata: *mut c_void,
+) {
+    let _ = unsafe {
+        CallbackBox::invoke::<TimerCallback<F>, _>(userdata, |callback| {
+            callback.invoke(count);
+        })
+    };
+}
+
 impl Drop for TimerStorage {
     fn drop(&mut self) {
-        unsafe {
-            let mut handle = self.handle;
-            let _ = ffi::zlink_timer_destroy(&mut handle);
+        let mut callback_slot = self.callback.lock().expect("timer callback");
+        if let Some(callback) = callback_slot.as_ref() {
+            callback.set_closing(true);
+        }
+        let callback = callback_slot.take().into_iter().collect();
+        drop(callback_slot);
+        let mut handle = self.handle;
+        let rc = unsafe { ffi::zlink_timer_destroy(&mut handle) };
+        if rc == 0 {
+            crate::internal::release_callbacks(callback);
+        } else {
+            crate::internal::defer_native_close(
+                crate::internal::DeferredCloseKind::Timer,
+                self.handle,
+                callback,
+            );
         }
     }
 }

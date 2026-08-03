@@ -492,12 +492,6 @@ unsafe extern "C" {
         optval: *mut c_void,
         optvallen: *mut usize,
     ) -> c_int;
-    pub fn zlink_set_sub_option(
-        handle: *mut c_void,
-        option: zlink_sub_option_t,
-        optval: *const c_void,
-        optvallen: usize,
-    ) -> c_int;
     pub fn zlink_get_sub_option(
         handle: *mut c_void,
         option: zlink_sub_option_t,

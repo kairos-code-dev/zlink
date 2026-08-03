@@ -249,7 +249,7 @@ impl SocketMonitor {
     where
         F: Fn(&MonitorEvent) + Send + 'static,
     {
-        self.inner.on_event(Box::new(handler))
+        self.inner.on_event(handler)
     }
 
     /// Returns a no-op event handler that ignores every event.

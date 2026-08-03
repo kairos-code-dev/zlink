@@ -209,14 +209,23 @@ impl crate::internal::SocketStorage {
         F: Fn() + Send + 'static,
     {
         let (cb, userdata) = CallbackBox::new(handler);
+        if let Some(previous) = self.send_ready_cb.as_ref() {
+            previous.set_closing(true);
+        }
         let rc = unsafe {
             ffi::zlink_send_ready_handler(self.handle, send_ready_trampoline::<F>, userdata)
         };
         if rc != 0 {
+            if let Some(previous) = self.send_ready_cb.as_ref() {
+                previous.set_closing(false);
+            }
             drop(cb);
             return check_handler_rc(rc);
         }
-        self.send_ready_cb = Some(cb);
+        let previous = self.send_ready_cb.replace(cb);
+        if let Some(previous) = previous {
+            crate::internal::release_callbacks(vec![previous]);
+        }
         Ok(())
     }
 
@@ -540,10 +549,21 @@ impl crate::internal::SocketStorage {
         if self.handle.is_null() {
             return Ok(());
         }
-        check_close_rc(unsafe { ffi::zlink_close(self.handle) })?;
+        for callback in self.send_ready_cb.iter().chain(self.packet_cb.iter()) {
+            callback.set_closing(true);
+        }
+        if let Err(error) = check_close_rc(unsafe { ffi::zlink_close(self.handle) }) {
+            for callback in self.send_ready_cb.iter().chain(self.packet_cb.iter()) {
+                callback.set_closing(false);
+            }
+            return Err(error);
+        }
         self.handle = ptr::null_mut();
-        self.send_ready_cb = None;
-        self.packet_cb = None;
+        let callbacks = [self.send_ready_cb.take(), self.packet_cb.take()]
+            .into_iter()
+            .flatten()
+            .collect();
+        crate::internal::release_callbacks(callbacks);
         Ok(())
     }
 
@@ -850,12 +870,25 @@ impl crate::internal::SocketStorage {
 
 impl Drop for crate::internal::SocketStorage {
     fn drop(&mut self) {
-        // Close the socket first (blocks until in-flight callbacks complete),
-        // then drop callback boxes.
-        if !self.handle.is_null() {
-            unsafe {
-                ffi::zlink_close(self.handle);
-            }
+        if self.handle.is_null() {
+            return;
+        }
+        for callback in self.send_ready_cb.iter().chain(self.packet_cb.iter()) {
+            callback.set_closing(true);
+        }
+        let callbacks = [self.send_ready_cb.take(), self.packet_cb.take()]
+            .into_iter()
+            .flatten()
+            .collect();
+        let rc = unsafe { ffi::zlink_close(self.handle) };
+        if rc == 0 {
+            crate::internal::release_callbacks(callbacks);
+        } else {
+            crate::internal::defer_native_close(
+                crate::internal::DeferredCloseKind::Socket,
+                self.handle,
+                callbacks,
+            );
         }
     }
 }
@@ -864,6 +897,5 @@ pub(crate) unsafe extern "C" fn send_ready_trampoline<F: Fn() + Send + 'static>(
     _subject: *mut c_void,
     userdata: *mut c_void,
 ) {
-    let handler = unsafe { &*(userdata as *const F) };
-    handler();
+    let _ = unsafe { CallbackBox::invoke::<F, _>(userdata, |handler| handler()) };
 }

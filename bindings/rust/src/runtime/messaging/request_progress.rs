@@ -27,7 +27,14 @@ type ProgressKey = (ProgressKind, usize);
 type ProgressWorkerMap = HashMap<ProgressKey, Weak<ProgressWorker>>;
 
 static WORKERS: OnceLock<RwLock<ProgressWorkerMap>> = OnceLock::new();
-static EXTERNAL_PROGRESS: OnceLock<RwLock<HashMap<usize, usize>>> = OnceLock::new();
+static EXTERNAL_PROGRESS: OnceLock<RwLock<HashMap<usize, ProgressOwnership>>> = OnceLock::new();
+static PROGRESS_CHANGE: OnceLock<(Mutex<()>, Condvar)> = OnceLock::new();
+
+#[derive(Default)]
+struct ProgressOwnership {
+    external_refs: usize,
+    internal_active: bool,
+}
 
 pub(crate) struct RequestProgressGuard {
     worker: Option<Arc<ProgressWorker>>,
@@ -65,8 +72,32 @@ pub(crate) fn acquire_external_progress(handle: *mut c_void) {
         return;
     }
     let refs = EXTERNAL_PROGRESS.get_or_init(|| RwLock::new(HashMap::new()));
-    let mut refs = refs.write().expect("external progress map");
-    *refs.entry(handle as usize).or_insert(0) += 1;
+    {
+        let mut refs = refs.write().expect("external progress map");
+        refs.entry(handle as usize).or_default().external_refs += 1;
+    }
+    notify_worker(handle as usize);
+
+    // The internal worker may currently be blocked in the native poller.  Do
+    // not let the caller finish registering the external poller until the
+    // worker has released its native completion registration.  This keeps the
+    // two completion owners from observing the same socket concurrently.
+    loop {
+        let internal_active = refs
+            .read()
+            .expect("external progress map")
+            .get(&(handle as usize))
+            .is_some_and(|state| state.internal_active);
+        if !internal_active {
+            return;
+        }
+        let change = PROGRESS_CHANGE.get_or_init(|| (Mutex::new(()), Condvar::new()));
+        let guard = change.0.lock().expect("external progress change");
+        let _ = change
+            .1
+            .wait_timeout(guard, Duration::from_millis(100))
+            .expect("external progress change wait");
+    }
 }
 
 pub(crate) fn release_external_progress(handle: *mut c_void) {
@@ -78,24 +109,74 @@ pub(crate) fn release_external_progress(handle: *mut c_void) {
     };
     let mut refs = refs.write().expect("external progress map");
     let key = handle as usize;
-    if let Some(count) = refs.get_mut(&key) {
-        *count = count.saturating_sub(1);
-        if *count == 0 {
+    if let Some(state) = refs.get_mut(&key) {
+        state.external_refs = state.external_refs.saturating_sub(1);
+        if state.external_refs == 0 && !state.internal_active {
             refs.remove(&key);
         }
     }
+    drop(refs);
+    notify_worker(key);
+    notify_progress_change();
 }
 
-fn external_progress_active(handle: *mut c_void) -> bool {
+pub(crate) fn external_progress_active(handle: *mut c_void) -> bool {
     let Some(refs) = EXTERNAL_PROGRESS.get() else {
         return false;
     };
     refs.read()
         .expect("external progress map")
         .get(&(handle as usize))
-        .copied()
-        .unwrap_or(0)
-        > 0
+        .is_some_and(|state| state.external_refs > 0)
+}
+
+fn notify_worker(handle: usize) {
+    let Some(workers) = WORKERS.get() else {
+        return;
+    };
+    let Some(worker) = workers
+        .read()
+        .expect("request progress worker map")
+        .get(&(ProgressKind::Socket, handle))
+        .and_then(Weak::upgrade)
+    else {
+        return;
+    };
+    worker.wake.notify_one();
+}
+
+fn notify_progress_change() {
+    if let Some(change) = PROGRESS_CHANGE.get() {
+        change.1.notify_all();
+    }
+}
+
+fn claim_internal_progress(handle: *mut c_void) -> bool {
+    let refs = EXTERNAL_PROGRESS.get_or_init(|| RwLock::new(HashMap::new()));
+    let mut refs = refs.write().expect("external progress map");
+    let state = refs.entry(handle as usize).or_default();
+    if state.external_refs != 0 || state.internal_active {
+        return false;
+    }
+    state.internal_active = true;
+    true
+}
+
+fn release_internal_progress(handle: *mut c_void) {
+    let Some(refs) = EXTERNAL_PROGRESS.get() else {
+        return;
+    };
+    let mut refs = refs.write().expect("external progress map");
+    let key = handle as usize;
+    if let Some(state) = refs.get_mut(&key) {
+        state.internal_active = false;
+        if state.external_refs == 0 {
+            refs.remove(&key);
+        }
+    }
+    drop(refs);
+    notify_worker(key);
+    notify_progress_change();
 }
 
 fn acquire_worker(kind: ProgressKind, handle: usize) -> Arc<ProgressWorker> {
@@ -138,8 +219,12 @@ struct ProgressPoller {
 
 impl ProgressPoller {
     fn new(socket: *mut c_void) -> Option<Self> {
+        if !claim_internal_progress(socket) {
+            return None;
+        }
         let handle = unsafe { ffi::zlink_poller_new() };
         if handle.is_null() {
+            release_internal_progress(socket);
             return None;
         }
         let added =
@@ -150,6 +235,7 @@ impl ProgressPoller {
                 let mut handle = handle;
                 let _ = ffi::zlink_poller_destroy(&mut handle);
             }
+            release_internal_progress(socket);
             return None;
         }
         Some(Self { handle, socket })
@@ -178,13 +264,12 @@ impl Drop for ProgressPoller {
             let mut handle = self.handle;
             let _ = ffi::zlink_poller_destroy(&mut handle);
         }
+        release_internal_progress(self.socket);
     }
 }
 
 fn run_worker(key: ProgressKey, worker: Weak<ProgressWorker>) {
-    let mut poller = worker
-        .upgrade()
-        .and_then(|worker_ref| ProgressPoller::new(worker_ref.handle as *mut c_void));
+    let mut poller = None;
 
     'worker: loop {
         let Some(worker_ref) = worker.upgrade() else {
@@ -213,10 +298,29 @@ fn run_worker(key: ProgressKey, worker: Weak<ProgressWorker>) {
             if active_worker.pending.load(Ordering::Acquire) == 0 {
                 break;
             }
+            if external_progress_active(active_worker.handle as *mut c_void) {
+                // External Poller registration owns completion dispatch while
+                // it is present.  Release the internal native poller before
+                // waiting for the external owner to be removed.
+                poller.take();
+                let gate = active_worker.gate.lock().expect("request progress gate");
+                let _ = active_worker
+                    .wake
+                    .wait_timeout(gate, Duration::from_millis(100))
+                    .expect("request progress external owner wait");
+                continue;
+            }
             if poller.is_none() {
                 poller = ProgressPoller::new(active_worker.handle as *mut c_void);
                 if poller.is_none() {
-                    thread::yield_now();
+                    if external_progress_active(active_worker.handle as *mut c_void) {
+                        continue;
+                    }
+                    let gate = active_worker.gate.lock().expect("request progress gate");
+                    let _ = active_worker
+                        .wake
+                        .wait_timeout(gate, Duration::from_millis(100))
+                        .expect("request progress retry wait");
                     continue;
                 }
             }
@@ -239,5 +343,30 @@ fn remove_worker(key: ProgressKey, worker: &Weak<ProgressWorker>) {
         .is_some_and(|current| Weak::ptr_eq(current, worker))
     {
         workers.remove(&key);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    #[test]
+    fn external_completion_waits_for_internal_owner_release() {
+        let handle = 0x7f00_0000usize;
+        assert!(claim_internal_progress(handle as *mut c_void));
+
+        let (tx, rx) = mpsc::channel();
+        let join = thread::spawn(move || {
+            acquire_external_progress(handle as *mut c_void);
+            tx.send(()).unwrap();
+        });
+
+        assert!(rx.recv_timeout(Duration::from_millis(20)).is_err());
+        release_internal_progress(handle as *mut c_void);
+        assert!(rx.recv_timeout(Duration::from_secs(1)).is_ok());
+        join.join().unwrap();
+        release_external_progress(handle as *mut c_void);
     }
 }

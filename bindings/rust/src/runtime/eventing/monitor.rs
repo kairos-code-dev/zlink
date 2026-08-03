@@ -158,27 +158,29 @@ impl MonitorStorage {
     }
 
     /// Install a callback handler for monitor events.
-    pub(crate) fn on_event(
-        &mut self,
-        handler: Box<dyn Fn(&MonitorEvent) + Send>,
-    ) -> Result<(), HandlerError> {
+    pub(crate) fn on_event<F>(&mut self, handler: F) -> Result<(), HandlerError>
+    where
+        F: Fn(&MonitorEvent) + Send + 'static,
+    {
         let (cb, userdata) = CallbackBox::new(handler);
-
-        unsafe extern "C" fn trampoline(
-            event: *const ffi::zlink_monitor_event_t,
-            userdata: *mut c_void,
-        ) {
-            let handler = unsafe { &*(userdata as *const Box<dyn Fn(&MonitorEvent) + Send>) };
-            let ev = MonitorEvent::from_raw(unsafe { &*event });
-            handler(&ev);
+        if let Some(previous) = self.callback.as_ref() {
+            previous.set_closing(true);
         }
 
-        let rc = unsafe { ffi::zlink_socket_monitor_handler(self.handle, trampoline, userdata) };
+        let rc = unsafe {
+            ffi::zlink_socket_monitor_handler(self.handle, monitor_trampoline::<F>, userdata)
+        };
         if rc != 0 {
+            if let Some(previous) = self.callback.as_ref() {
+                previous.set_closing(false);
+            }
             drop(cb);
             return Err(check_handler_rc(rc).unwrap_err());
         }
-        self.callback = Some(cb);
+        let previous = self.callback.replace(cb);
+        if let Some(previous) = previous {
+            crate::internal::release_callbacks(vec![previous]);
+        }
         Ok(())
     }
 
@@ -186,21 +188,58 @@ impl MonitorStorage {
         if self.handle.is_null() {
             return Ok(());
         }
+        if let Some(callback) = self.callback.as_ref() {
+            callback.set_closing(true);
+        }
         let mut h = self.handle;
-        check_close_rc(unsafe { ffi::zlink_monitor_close(&mut h) })?;
+        if let Err(error) = check_close_rc(unsafe { ffi::zlink_monitor_close(&mut h) }) {
+            if let Some(callback) = self.callback.as_ref() {
+                callback.set_closing(false);
+            }
+            return Err(error);
+        }
         self.handle = std::ptr::null_mut();
-        self.callback = None;
+        if let Some(callback) = self.callback.take() {
+            crate::internal::release_callbacks(vec![callback]);
+        }
         Ok(())
     }
 }
 
+unsafe extern "C" fn monitor_trampoline<F: Fn(&MonitorEvent) + Send + 'static>(
+    event: *const ffi::zlink_monitor_event_t,
+    userdata: *mut c_void,
+) {
+    if event.is_null() {
+        return;
+    }
+    let _ = unsafe {
+        CallbackBox::invoke::<F, _>(userdata, |handler| {
+            let ev = MonitorEvent::from_raw(&*event);
+            handler(&ev);
+        })
+    };
+}
+
 impl Drop for MonitorStorage {
     fn drop(&mut self) {
-        if !self.handle.is_null() {
-            unsafe {
-                let mut h = self.handle;
-                ffi::zlink_monitor_close(&mut h);
-            }
+        if self.handle.is_null() {
+            return;
+        }
+        if let Some(callback) = self.callback.as_ref() {
+            callback.set_closing(true);
+        }
+        let callback = self.callback.take().into_iter().collect();
+        let mut handle = self.handle;
+        let rc = unsafe { ffi::zlink_monitor_close(&mut handle) };
+        if rc == 0 {
+            crate::internal::release_callbacks(callback);
+        } else {
+            crate::internal::defer_native_close(
+                crate::internal::DeferredCloseKind::Monitor,
+                self.handle,
+                callback,
+            );
         }
     }
 }

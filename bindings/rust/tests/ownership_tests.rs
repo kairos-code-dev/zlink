@@ -4,7 +4,7 @@
 use std::thread;
 use std::time::Duration;
 
-use zlink::{Context, Message, Received, RecvFlags, RoutingId};
+use zlink::{Context, Message, Poller, Received, RecvFlags, RoutingId, Timer};
 
 #[test]
 fn send_consumes_message_ownership() {
@@ -180,4 +180,20 @@ fn callback_receives_owned_parts() {
     let mut received = Received::empty();
     server.recv(&mut received, RecvFlags::NONE).unwrap();
     assert_eq!(received.parts()[0].as_bytes(), b"cb-payload");
+}
+
+#[test]
+fn dropping_registered_timer_defers_native_destroy() {
+    // Core rejects timer destruction while a poller registration remains. The
+    // binding must retain the native handle and retry destruction after the
+    // poller releases its registration.
+    let poller = Poller::new().unwrap();
+    let timer = Timer::new().unwrap();
+    timer.start(1_000_000, 0).unwrap();
+    poller.add_timer(&timer, 1).unwrap();
+
+    drop(timer);
+    thread::sleep(Duration::from_millis(20));
+    drop(poller);
+    thread::sleep(Duration::from_millis(40));
 }

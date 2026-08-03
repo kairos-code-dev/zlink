@@ -1,5 +1,6 @@
 use std::any::Any;
 use std::os::fd::RawFd;
+use std::sync::Arc;
 
 use crate::error::{ConfigError, HandlerError, RecvError};
 use crate::internal::{PollerStorage, TimerStorage};
@@ -159,7 +160,7 @@ impl Poller {
 
 /// A timer that fires on an interval and can be polled or awaited.
 pub struct Timer {
-    pub(crate) inner: Box<TimerStorage>,
+    pub(crate) inner: Arc<TimerStorage>,
 }
 
 impl Timer {
@@ -190,7 +191,7 @@ impl Timer {
     where
         F: Fn(&Timer, u64) + Send + 'static,
     {
-        let timer_ptr = self as *const Timer as usize;
-        self.inner.on_fire(timer_ptr, Box::new(handler))
+        let timer = Arc::downgrade(&self.inner);
+        self.inner.on_fire(timer, handler)
     }
 }

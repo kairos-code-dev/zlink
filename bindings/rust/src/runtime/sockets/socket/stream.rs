@@ -34,6 +34,9 @@ where
     F: Fn(RoutingId, Message, Message) + Send + 'static,
 {
     let (cb, userdata) = super::CallbackBox::new(handler);
+    if let Some(previous) = stream_inner(socket).packet_cb.as_ref() {
+        previous.set_closing(true);
+    }
     let rc = unsafe {
         ffi::zlink_stream_packet_handler(
             stream_inner(socket).handle,
@@ -42,10 +45,16 @@ where
         )
     };
     if rc != 0 {
+        if let Some(previous) = stream_inner(socket).packet_cb.as_ref() {
+            previous.set_closing(false);
+        }
         drop(cb);
         return check_handler_rc(rc);
     }
-    stream_inner_mut(socket).packet_cb = Some(cb);
+    let previous = stream_inner_mut(socket).packet_cb.replace(cb);
+    if let Some(previous) = previous {
+        crate::internal::release_callbacks(vec![previous]);
+    }
     Ok(())
 }
 
@@ -67,12 +76,24 @@ unsafe extern "C" fn stream_packet_trampoline<
     body: *mut ffi::zlink_msg_t,
     userdata: *mut c_void,
 ) {
-    let handler = unsafe { &*(userdata as *const F) };
-    let header = take_message(header);
-    let body = take_message(body);
-    if source_rid.is_null() {
-        return;
-    }
-    let routing_id = unsafe { RoutingId::from_raw(*source_rid) };
-    handler(routing_id, header, body);
+    unsafe {
+        super::CallbackBox::invoke_or::<F, _>(
+            userdata,
+            |handler| {
+                let header = take_message(header);
+                let body = take_message(body);
+                if source_rid.is_null() {
+                    return;
+                }
+                let routing_id = RoutingId::from_raw(*source_rid);
+                handler(routing_id, header, body);
+            },
+            || {
+                // Core transfers both message parts to this callback.  A
+                // callback suppressed during close must still consume them.
+                take_message(header);
+                take_message(body);
+            },
+        )
+    };
 }

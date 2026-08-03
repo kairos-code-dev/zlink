@@ -1558,7 +1558,7 @@ void test_dealer_disconnect_fails_only_requests_on_that_pipe ()
         test_context_socket_close_zero_linger (router_a);
 }
 
-void test_router_completion_correlation_requires_peer_and_pair_identity ()
+void test_router_completion_correlation_accepts_settled_peer_and_fences_pair ()
 {
     using namespace zlink::socket_reqrep_internal;
     socket_request_reply_state_t state (NULL, ZLINK_CORE_SOCKET_ROUTER);
@@ -1577,8 +1577,15 @@ void test_router_completion_correlation_requires_peer_and_pair_identity ()
     pending_request_t taken;
     pending_key_t wrong_peer_key = expected_key;
     wrong_peer_key.peer_rid = "peer-b";
-    TEST_ASSERT_FALSE (take_pending_reply_from_transport_locked (
+    //  The peer may settle on a routing ID different from the requested
+    //  intent. The per-socket sequence identifies the pending request while
+    //  the transport pair still fences stale connections.
+    TEST_ASSERT_TRUE (take_pending_reply_from_transport_locked (
       &state, wrong_peer_key, 101, 9, &taken));
+    TEST_ASSERT_EQUAL_STRING ("peer-a", taken.key.peer_rid.c_str ());
+    TEST_ASSERT_TRUE (state.pending_requests.empty ());
+
+    add_socket_pending_request_locked (&state, expected_key, expected);
     TEST_ASSERT_FALSE (take_pending_reply_from_transport_locked (
       &state, expected_key, 202, 9, &taken));
     TEST_ASSERT_FALSE (take_pending_reply_from_transport_locked (
@@ -2766,7 +2773,7 @@ int main ()
     RUN_SELECTED (test_application_only_poller_does_not_take_completion_ownership);
     RUN_SELECTED (test_disconnect_of_paired_endpoint_stops_reconnecting);
     RUN_SELECTED (test_dealer_disconnect_fails_only_requests_on_that_pipe);
-    RUN_SELECTED (test_router_completion_correlation_requires_peer_and_pair_identity);
+    RUN_SELECTED (test_router_completion_correlation_accepts_settled_peer_and_fences_pair);
     RUN_SELECTED (test_router_to_router_request_reply_basic);
     RUN_SELECTED (test_router_nested_deferred_reply_uses_paired_application_identity);
     RUN_SELECTED (test_router_completion_control_bypasses_application_receive);

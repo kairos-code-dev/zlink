@@ -13,7 +13,8 @@
 그 이전 source/package/API 재검증은
 [`log/20260803-0829-java-kotlin-runtime-spec-progress.ko.md`](log/20260803-0829-java-kotlin-runtime-spec-progress.ko.md),
 이전 baseline은 [`log/20260803-0724-current-audit.ko.md`](log/20260803-0724-current-audit.ko.md)에서 확인할 수 있다.
-현재 branch에 push된 최종 revision은 `323fdcc3548bc90345b5b9f08044000e9eb667a7`이다.
+이번 runtime·package·workstream 변경을 담은 implementation commit은
+`d9be6bacfd3a8c5b8c179d8482ee91e6e0b5ba42`이다.
 
 이 ledger는 Java framework와 Kotlin framework를 하나의 작업 단위로 관리한다. Java와
 Kotlin의 exact interface, feature-map, runner, 현재 실패 원인은 각 항목에서

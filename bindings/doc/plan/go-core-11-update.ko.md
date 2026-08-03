@@ -194,6 +194,7 @@ Package zip에는 Python report helper가 포함되지 않으므로 `--smoke` �
 | Perf runtime boundary | `c6b37ac0ee` | Root `VERSION` 대신 Go package header에서 native SONAME version을 해석 |
 | Lifecycle owner boundary | `e9be2c8c46` | `socketCore`가 request progress와 callback handle lifecycle을 소유하고 callback close race를 제거 |
 | Package smoke boundary | `6d698c7e68` | Go package perf `--smoke`가 package 외부 Python report helper 없이 동작하도록 고정 |
+| Platform builder boundary | `3740c59ad9` | non-x86_64 package builder 거부 결과와 same-candidate platform gate를 기록 |
 
 그러나 구현자가 아닌 frontier reviewer의 read-only 전체 diff review evidence가 없다. V11-R2 Core review도
 `independent: false`이므로 이 결과를 Go 독립 review로 대체하지 않는다. `contract`, `POSD`, `DDD`,

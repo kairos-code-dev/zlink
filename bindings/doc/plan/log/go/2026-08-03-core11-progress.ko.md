@@ -92,11 +92,11 @@ scripts/local-package/go/build-wsl.sh \
 
 ```text
 evidence: .artifacts/wsl/go/go-package-v11.1.0.json
-evidence sha256: c3167a6963c7bfcd4fb14638438bc802b7b5f4a55640b407d452e676a17ae4d0
-sourceRevision: b96f0635752309d64427185af0f47f7f57abf211
-sourceManifestSha256: 1bf9ac48df086790ec064cf43aa0556d147718b92f0e6e67df1d450649c91210
+evidence sha256: 3b13349d2201d7bf441385c09058052ce98d203df3b3d5d9dc2d31074897895c
+sourceRevision: d02edf6b4f609e5e4a7db1d0338e54e2d66de890
+sourceManifestSha256: 7b4cb11a8c40937eb6c09a900378d1bab865528f4ab2fdf15991400861e161f1
 packageScriptSha256: 3784ad3675b1f26d89b8f54fb6f3d1ee6e5cb6f7b97db4e281f5c7bc646a6825
-moduleZipSha256: 67f0e316b8bb7233d2a08f2addd66541cc2fd39f41715930ee0f3cf9371dcb55
+moduleZipSha256: c1f0fa1ca09a9f845ee22a1daf29673c23c83ca4d8bd0e57d125fdcce4cfa394
 headerSha256: 159c8024f8ed090e0c3acfe51e665339d3a43e93b37dc9e21490b703df717f1d
 sourceSha256: 884cdfabd5c2cfebde9641447d98cbecdc61bfb3c40dee5f9b7f6025a7819e99
 runtimeSha256: a790c7fbfd2a6d7b61c03209b9356e7ac1693afa9456768f867f4e93790b4991
@@ -119,8 +119,8 @@ unzip -Z1 /home/hep7/project/kairos/zlink/.artifacts/wsl/go/proxy/zlink.systems/
 
 ## 남은 작업
 
-1. 현재 Go package가 사용하는 Core 11.1.0 runtime을 V11-M3-CORE-PKG 승인 identity와 연결하고, platform별
-   package evidence를 새로 만든다.
+1. 현재 Go package evidence를 V11-M3-CORE-PKG 승인 identity와 연결하고, platform별 package evidence를
+   새로 만든다.
 2. Linux arm64의 major 9 payload와 Darwin payload를 같은 Core 11 candidate runtime으로 교체한 뒤 native
    consumer와 loader evidence를 실행한다.
 3. Go–Rust parity inventory와 submit 반환 draft를 승인하고, 현재 signature를 유지할지 error-only로 바꿀지

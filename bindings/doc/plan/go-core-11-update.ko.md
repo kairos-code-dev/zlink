@@ -223,14 +223,14 @@ header version drift를 거부한다. 선택한 native payload는 snapshot에 �
 
 | 항목 | 값 |
 |------|-----|
-| Source revision | `b96f0635752309d64427185af0f47f7f57abf211` |
-| Source manifest SHA-256 | `1bf9ac48df086790ec064cf43aa0556d147718b92f0e6e67df1d450649c91210` |
+| Source revision | `d02edf6b4f609e5e4a7db1d0338e54e2d66de890` |
+| Source manifest SHA-256 | `7b4cb11a8c40937eb6c09a900378d1bab865528f4ab2fdf15991400861e161f1` |
 | Package script SHA-256 | `3784ad3675b1f26d89b8f54fb6f3d1ee6e5cb6f7b97db4e281f5c7bc646a6825` |
-| Module zip SHA-256 | `67f0e316b8bb7233d2a08f2addd66541cc2fd39f41715930ee0f3cf9371dcb55` |
+| Module zip SHA-256 | `c1f0fa1ca09a9f845ee22a1daf29673c23c83ca4d8bd0e57d125fdcce4cfa394` |
 | Header aggregate SHA-256 | `159c8024f8ed090e0c3acfe51e665339d3a43e93b37dc9e21490b703df717f1d` |
 | Source aggregate SHA-256 | `884cdfabd5c2cfebde9641447d98cbecdc61bfb3c40dee5f9b7f6025a7819e99` |
 | Package evidence | `.artifacts/wsl/go/go-package-v11.1.0.json` |
-| Package evidence SHA-256 | `c3167a6963c7bfcd4fb14638438bc802b7b5f4a55640b407d452e676a17ae4d0` |
+| Package evidence SHA-256 | `3b13349d2201d7bf441385c09058052ce98d203df3b3d5d9dc2d31074897895c` |
 | Clean consumer | `pass`, `replace` 없음, module-cache runtime ldd 확인 |
 
 이 evidence는 Linux x86_64 package gate의 결과이며 Core candidate 승인이나 다른 platform의 package evidence를

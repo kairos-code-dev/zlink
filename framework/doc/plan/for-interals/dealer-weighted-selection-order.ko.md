@@ -247,7 +247,7 @@ Spec이 정본이므로 **구현보다 먼저 개정한다.** 순서는 spec →
 
 | 항목 | 내용 |
 |---|---|
-| **버전·배포** | `core/CMakeLists.txt`가 아직 `11.1.0`. §6의 배포 절차가 남아 있다. **framework 작업 전에 끝내야 한다** |
+| **버전·배포** | current candidate의 `VERSION`과 `core/CMakeLists.txt`가 `11.2.0`을 가리킨다. §6의 bindings package·consumer provenance 절차가 남아 있으며 **framework 작업 전에 끝내야 한다** |
 | EMSGSIZE 경로 test | 크기 초과 message를 다른 후보로 재시도하지 않는 동작에 다중 pipe test가 없다. 기존 round-robin 경로와 같은 동작이라 회귀는 아니다 |
 | wire 종단 test | 설정 → encode → decode → `apply_peer_weight` → `lb_t::set_weight`를 `100` 초과 값으로 관통하는 test가 없다. 네 지점이 공용 상수를 쓰므로 위험은 낮다 |
 | perf 측정 | `lb_t::sendpipe` 변경에 대한 처리량 측정을 하지 않았다. `_active == 1` 빠른 경로는 그대로이고 다중 pipe 경로는 미리 정렬한 vector를 순회한다 |
@@ -297,7 +297,7 @@ Core 동작이 바뀌므로 **bindings를 다시 배포해야 framework가 그 �
 
 ### 6.1 버전
 
-현재 Core는 `11.1.0`이다(`core/CMakeLists.txt:11`).
+현재 candidate source의 Core는 `11.2.0`이다(`VERSION:1-4`, `core/CMakeLists.txt:11`).
 
 | 변경 | 성격 | 버전 |
 |---|---|---|

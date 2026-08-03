@@ -866,14 +866,22 @@ gap은 다음 순서로 처리한다. 앞 단계가 확정되지 않으면 뒤 �
 contract surface와 Nest module suite는 121/121 통과한다. 전체 common E2E/process 결과까지 하나의
 snapshot으로 묶는 작업은 E2E 제외 조건에 따라 후속으로 남긴다.
 
-#### ND-TEST-002 — documentation-regression이 요구하는 공통 문서 경로 불일치 (완료)
+#### ND-TEST-002 — documentation-regression이 요구한 공통 문서 경로 불일치 (완료)
 
-- 공통 spec 또는 E2E 문서 경로: framework/doc/framework/common/spec/ 및 framework/doc/framework/common/spec/30-implementation-gap.ko.md로 해석되는 documentation regression fixture
+- 현재 authoritative 문서 경로: 이 ledger([Node Framework 구현 gap ledger](node-framework-spec-gap-ledger.ko.md))와
+  `framework/doc/framework/common/spec/`의 정식 spec
 - Node test/CI 경로: framework/languages/node/test/contract/documentation-regression.test.js, framework/languages/node/scripts/run_node_runtime_gate.js, framework/languages/node/scripts/run_node_framework_ci_gate.js
-- 실제 동작: verify:ci 실행 중 documentation-regression.test.js가 framework/doc/framework/common/spec/30-implementation-gap.ko.md를 ENOENT로 열지 못해 실패했다. 현재 작업 범위에는 공통 spec을 새로 만들거나 수정할 권한이 없으므로 이 문서는 생성하지 않았다.
-- 기대 동작: test가 요구하는 authoritative 문서 경로와 실제 spec tree가 일치해야 한다. fixture가 historical path를 요구한다면 test/CI의 소유자가 현재 경로로 정리해야 하며, 이를 Node 구현 gap의 완료로 숨기지 않아야 한다.
-- gap 판정 근거: current working tree의 verify:ci failure가 missing file을 직접 보고했다. 이는 Node production source의 동작 gap과 별도의 tree/CI blocker이다.
-- 구체적인 수정 목록: (1) spec owner가 30-implementation-gap 문서의 존재와 위치를 확정한다. (2) 필요하면 documentation-regression fixture를 authoritative path로 갱신한다. (3) Node audit에서는 이 blocker가 해결되기 전 verify:ci를 green으로 기록하지 않는다.
+- 과거 동작: 이전 revision의 documentation-regression fixture가 삭제된
+  `framework/doc/framework/common/spec/30-implementation-gap.ko.md`를 열어 ENOENT로 종료했다.
+  이 경로는 당시의 historical failure를 설명하기 위한 것이며 현재 문서 경로가 아니다.
+- 기대 동작: test가 요구하는 authoritative 문서 경로와 실제 spec tree가 일치해야 한다. fixture가
+  historical path를 요구하면 test/CI 소유자가 현재 경로로 정리해야 하며, 이를 Node 구현 gap의 완료로
+  숨기지 않아야 한다.
+- gap 판정 근거: 당시 failure는 Node production source의 동작 gap과 별도의 tree/CI blocker였다.
+  현재 fixture는 이 ledger를 읽고 17/17을 통과하므로 해당 blocker는 닫혔다.
+- 구체적인 수정 목록: (1) authoritative 문서 경로를 current Node ledger로 고정한다. (2) documentation-regression
+  fixture가 삭제된 경로를 다시 요구하지 않는지 검사한다. (3) Node audit에서는 남아 있는 E2E header gate를
+  이 문서 경로 수정의 완료로 숨기지 않는다.
 - 필요한 회귀 test: ND-REG-008. documentation regression fixture가 missing path 없이 실행되고, missing document를 skip 또는 pass로 숨기지 않는지 검사한다.
 - 선행 조건과 작업 순서: common spec owner의 path 결정 → fixture/CI 정렬 → verify:ci 재실행 순서로 진행한다.
 - 구현 완료 evidence: current tree에서 documentation-regression이 ENOENT 없이 통과하고, 문서 path 변경 이력이 authoritative source와 연결된다.

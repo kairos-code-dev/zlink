@@ -9,12 +9,9 @@ fn main() {
 
     let (os_dir, arch_dir) = match (target_os.as_str(), target_arch.as_str()) {
         ("linux", "x86_64") => ("linux", "x86_64"),
-        ("linux", "aarch64") => ("linux", "aarch64"),
-        ("macos", "x86_64") => ("darwin", "x86_64"),
-        ("macos", "aarch64") => ("darwin", "aarch64"),
-        ("windows", "x86_64") => ("windows", "x86_64"),
-        ("windows", "aarch64") => ("windows", "aarch64"),
-        (os, arch) => panic!("unsupported platform: {os}-{arch}"),
+        (os, arch) => panic!(
+            "unsupported Rust package target {os}-{arch}; the current approved crate payload is linux-x86_64"
+        ),
     };
 
     println!("cargo:rerun-if-env-changed=ZLINK_RUST_NATIVE_DIR");
@@ -35,16 +32,18 @@ fn main() {
     // that would let a clean consumer silently execute a different Core
     // candidate than the one packaged with this crate.
     let package_version = env::var("CARGO_PKG_VERSION").expect("Cargo package version is required");
+    let versioned_runtime = native_dir.join(format!("libzlink.so.{package_version}"));
+    if !native_dir.join("libzlink.so").is_file() || !versioned_runtime.is_file() {
+        panic!(
+            "Rust native payload must contain libzlink.so and libzlink.so.{package_version}: {}",
+            native_dir.display()
+        );
+    }
     println!(
         "cargo:rerun-if-changed={}",
         native_dir.join("libzlink.so").display()
     );
-    println!(
-        "cargo:rerun-if-changed={}",
-        native_dir
-            .join(format!("libzlink.so.{package_version}"))
-            .display()
-    );
+    println!("cargo:rerun-if-changed={}", versioned_runtime.display());
     println!("cargo:rustc-link-search=native={}", native_dir.display());
     println!("cargo:rustc-link-lib=dylib=zlink");
 

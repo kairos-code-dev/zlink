@@ -27,10 +27,25 @@
 | 5 | Source test, vet, hot-path guard, perf smoke와 raw sample이 통과함 | `PASS` | `go test`, `go vet`, guard, single·multi smoke와 samples `7/7`을 fresh5에서 통과했다 |
 | 6 | POSD·DDD·비용·dead code 검토와 독립 `CLEAN` review가 끝남 | `PARTIAL` | 자체 review와 `go test -race`는 통과했지만 현재 candidate의 독립 frontier review가 없다 |
 | 7 | replace 없는 clean consumer가 package runtime으로 message 송수신함 | `PASS` | fresh5 builder의 `cleanConsumer: pass`와 module-cache ldd/roundtrip 증거가 있다 |
-| 8 | 지원 Linux·macOS platform의 동일 candidate runtime load가 검증됨 | `PARTIAL` | Linux x86_64만 통과했다. Linux arm64는 `libzlink.so.9`, macOS 두 target은 native consumer 미검증이다 |
+| 8 | 지원 Linux·macOS platform의 동일 candidate runtime load가 검증됨 | `PARTIAL` | Linux x86_64만 통과했다. Linux arm64는 `libzlink.so.9`, macOS 두 target은 native consumer 미검증이며 현재 Go package builder도 `linux-x86_64` 외 target을 거부한다 |
 | 9 | Go spec, GoDoc와 guide가 구현·공통 contract와 일치함 | `PARTIAL` | Go 문서는 현재 구현과 맞지만 공통 submit draft와 parity 반영이 승인 전이다 |
 | 10 | 성능 수치 개선을 완료 근거로 사용하지 않음 | `PASS` | smoke는 실행 의미만 확인하고 공식 성능 개선 판정은 하지 않았다 |
 | 11 | 미해결 Critical/High/Medium finding과 미실행 필수 gate가 없음 | `PARTIAL` | 독립 review, submit approval과 non-x86_64 consumer gate가 남아 있다 |
+
+## Platform package builder 재확인
+
+`scripts/local-package/go/build-wsl.sh`의 `platform_source_dir`는 현재 `linux-x86_64`만 source payload로
+허용한다. 같은 candidate manifest와 Core package evidence를 넣어 다른 target을 요청한 결과는 다음과 같다.
+
+| 요청 target | 종료 코드 | 결과 |
+|------------|----------|------|
+| `linux-aarch64` | `2` | `Go package platform is not present in the supplied Core candidate` |
+| `darwin-x86_64` | `2` | `Go package platform is not present in the supplied Core candidate` |
+| `darwin-aarch64` | `2` | `Go package platform is not present in the supplied Core candidate` |
+
+따라서 현재 non-x86_64 gate는 Linux host에서 실행할 수 없다는 범위만의 문제가 아니다. 동일 Core candidate
+runtime을 해당 target의 package에 넣을 builder 입력과 native consumer 실행 환경이 모두 필요하다. 기존
+major 9 payload나 다른 workstream의 11.2.0 artifact를 이 candidate의 증거로 대체하지 않는다.
 
 ## 최종 상태
 

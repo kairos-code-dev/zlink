@@ -23,6 +23,9 @@ CLEAN**이다. 전체 완료를 막는 조건은 다음과 같다.
 - Go package는 현재 Core candidate의 `V11-M3-CORE-PKG` pass evidence와 연결되지만, V11-R2 review가
   `independent: false`이므로 독립 review gate는 닫히지 않았다.
 - Linux arm64와 macOS payload의 Core 11 runtime 및 native consumer가 검증되지 않았다.
+- 현재 `scripts/local-package/go/build-wsl.sh`도 `linux-x86_64`만 candidate payload source로 허용한다. `linux-aarch64`,
+  `darwin-x86_64`, `darwin-aarch64` 요청은 모두 exit 2로 거부되므로 non-x86_64 gate에는 target payload와
+  builder 확장, native consumer 실행 환경이 함께 필요하다.
 - Go–Rust parity inventory의 대응 행은 채워졌지만 공통 submit 반환 초안과 parity 판정은 아직 승인 전이다. 현재
   Go send/request terminal method는 `(bool, error)`를 유지하므로 “성공 값 없는 submit은 `error`만 반환한다”는
   목표를 완료로 표시하지 않는다.
@@ -223,7 +226,10 @@ target만 나타낸다.
 | Windows | 범위 밖 | 별도 cgo linker·loader 구현 전에는 release 범위 밖 |
 
 Linux와 macOS 각 artifact는 같은 Core candidate identity를 사용해야 하며 runtime hash와 loader evidence를
-platform별로 기록한다. 현재 Linux x86_64 PASS만 local package gate에 포함한다.
+platform별로 기록한다. 현재 Linux x86_64 PASS만 local package gate에 포함한다. `scripts/local-package/go/build-wsl.sh`의
+현재 구현은 `linux-x86_64` 외 platform을 `Go package platform is not present in the supplied Core candidate`로
+거부한다. 이 확인 결과와 각 target의 종료 코드는
+[`log/go/2026-08-04-final-requirement-audit.ko.md`](log/go/2026-08-04-final-requirement-audit.ko.md)에 기록했다.
 
 ## 6. Go module package와 clean consumer
 
@@ -289,7 +295,7 @@ scripts/local-package/go/build-wsl.sh \
 | Raw sample process runner | `PASS` | `samples: pass=7 fail=0` |
 | File proxy package contents | `PASS` | candidate-bound zip에 Linux runtime 포함, service/build/results forbidden-entry 없음 |
 | Replace 없는 clean module consumer | `PASS` | 빈 `GOMODCACHE`/`GOCACHE`, go build와 Pair roundtrip, module-cache ldd |
-| Linux·macOS native consumer | `PARTIAL` | Linux x86_64 PASS, Linux arm64 BLOCKED, macOS UNVERIFIED |
+| Linux·macOS native consumer | `PARTIAL` | Linux x86_64 PASS. Linux arm64와 macOS 요청은 현재 builder가 exit 2로 거부하고, same-candidate native consumer evidence도 없음 |
 | 한국어·영문 spec, GoDoc와 guide | `PARTIAL` | Go spec/GoDoc/sample entrypoint 갱신; 공통 draft·parity 통합 미완료 |
 | Package·통합 최종 review | `PENDING` | Linux x86_64 candidate 연결은 통과했지만 다른 platform evidence와 독립 review 필요 |
 

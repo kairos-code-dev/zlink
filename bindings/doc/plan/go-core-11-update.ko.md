@@ -208,6 +208,7 @@ Package zip에는 Python report helper가 포함되지 않으므로 `--smoke` �
 | Package source boundary | `427fbce0f5c` | 이 source revision으로 candidate identity를 연결한 package와 clean consumer, race·sample·perf smoke를 재검증 |
 | Platform builder boundary | `3740c59ad9` | non-x86_64 package builder 거부 결과와 같은 candidate를 요구하는 platform gate를 기록 |
 | Submit draft boundary | `7f27ed6bc5` | Go·Rust submit 반환 초안을 구현 전 문서로 branch에 고정하고 public signature는 바꾸지 않음 |
+| Runtime close boundary | `935b0407fc` | multipart ownership, completion errno, Poller completion state와 request progress close ordering을 수정하고 race·package consumer를 재검증 |
 
 사용자의 명시 요청에 따라 위 범위를 구현자 자체 검토로 다시 읽고 승인했다. 재검증 결과는
 [`log/go/2026-08-04-self-review-approval.ko.md`](log/go/2026-08-04-self-review-approval.ko.md)에 있다.
@@ -274,14 +275,14 @@ scripts/local-package/go/build-wsl.sh \
 
 | 항목 | 값 |
 |------|-----|
-| Source revision | `427fbce0f5c0a3b6000506380b3d40521ed86413` |
-| Source manifest SHA-256 | `3240b10c68ad6dfb1ebe08a8ec27a6ea526a3b02ff48f59ed5c20b0573a59cff` |
+| Source revision | `935b0407fcac58332bf6b4f02e468d7b93564adc` |
+| Source manifest SHA-256 | `7af1abe3d43a7a55592d60fa79ea01861fe1c650d823610b4f78d01d5fedfb1c` |
 | Package script SHA-256 | `9404def1079805c0cf200244f670deaae55daba17031095594aa099dc09b3fee` |
-| Module zip SHA-256 | `76f1d83f76c6203765f67938392c199f6d6441fc714f18c1c1e7f7611e57b274` |
+| Module zip SHA-256 | `e12cdaf3b83d15b3135daf9b8f741bca50c24269dec7cd2fcc21398fed3ed67d` |
 | Header aggregate SHA-256 | `159c8024f8ed090e0c3acfe51e665339d3a43e93b37dc9e21490b703df717f1d` |
-| Source aggregate SHA-256 | `982a24119f27f032b7cac9cf7e8a691631797be7b89a931a3d6c87334114fc91` |
-| Package evidence | `.artifacts/wsl/go-candidate-final6/go-package-v11.1.0.json` |
-| Package evidence SHA-256 | `4ae453178ceb1a7bcaebe8994a39479eac14a86a9f8146642c503df7006888a2` |
+| Source aggregate SHA-256 | `937fb0f27b88aff801c33dbdfe251a6650973cd98693abdbc502555ec9a43aed` |
+| Package evidence | `.artifacts/wsl/go-candidate-final7/go-package-v11.1.0.json` |
+| Package evidence SHA-256 | `e0ac97b387322843a28b0f328ebf51ab395d81e6b4af588954b8559f1b1b6991` |
 | Core candidate manifest | `.artifacts/v11/evidence/V11-M3-CORE-VERIFY/candidate-reply-match-completion-hwm-20260801.json` |
 | Core package evidence | `.artifacts/v11/evidence/V11-M3-CORE-VERIFY/core-package-20260801.json` |
 | Core provenance SHA-256 | `46f7bd17c0be3987fed14ca3cb594139e3edb778d3996248d23b6d2d6b53f693` |

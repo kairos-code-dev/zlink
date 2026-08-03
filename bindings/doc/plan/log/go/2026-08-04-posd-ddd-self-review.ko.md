@@ -37,6 +37,10 @@ registry까지 제거할 수는 없지만, 내부 pump의 수명은 외부 객�
 socket close의 순서는 한 owner가 직렬화해야 했다. 이 경계는 `go test -race ./...`에서 `OnPacket`과
 `Close`를 동시에 관찰했을 때 실제 data race로 재현됐다.
 
+넷째, request completion이 끝난 뒤에도 progress worker가 native poller에서 socket handle을 관찰하는
+짧은 구간이 있었다. socket을 먼저 닫으면 poller wait가 이미 해제된 native mutex를 참조할 수 있고, 실제로
+multipart test와 async request test를 함께 race 반복할 때 native abort로 재현됐다.
+
 ## 대안 비교와 선택
 
 request progress에는 다음 두 대안을 비교했다.
@@ -55,6 +59,16 @@ worker lifecycle은 `activeCount`, `workerOn`과 attach/stop 판단을 `progress
 worker가 native poller를 해제하는 시점에 active request가 다시 생기면 worker slot을 유지하고 새 worker를
 시작한다. request마다 poller를 만들지 않는 기존 handle 단위 비용은 유지한다.
 
+socket close 순서에는 다음 두 대안을 비교했다.
+
+| 대안 | 장점 | 문제 |
+|------|------|------|
+| socket을 먼저 닫고 worker가 뒤에서 종료 | close 구현의 변경이 작다 | worker가 이미 파괴된 native handle을 계속 poll할 수 있다 |
+| worker를 중지하고 종료를 기다린 뒤 socket을 닫음 | native poller와 socket handle의 owner 수명이 순서대로 끝난다 | close가 worker의 최대 poll interval까지 기다릴 수 있다 |
+
+두 번째 대안을 선택했다. `Close` 실패가 socket을 계속 사용할 수 있는 상태를 남기는 경우에는 pump를 다시
+실행하도록 `resume`해 실패 경로에서도 request progress를 잃지 않게 했다.
+
 callback registration에는 field별 lock을 반복하지 않고 `socketCore.replaceCallback`을 두었다. 이 helper는
 등록 native call과 handle slot 교체를 owner mutex 아래에서 수행하고, 이전 dispatcher를 닫는 작업은 mutex
 밖에서 실행한다. `Close`도 native socket close와 callback slot 분리를 직렬화한 뒤 dispatcher를 해제한다.
@@ -65,6 +79,8 @@ callback registration에는 field별 lock을 반복하지 않고 `socketCore.rep
 
 - `socketProgressPumps` 전역 map을 제거했다.
 - request progress pump를 `socketCore`가 만들고 보관하며 `Close`에서 참조를 해제하도록 바꿨다.
+- socket `Close`가 progress worker의 native poller 종료를 기다린 뒤 native socket을 닫도록 바꿨다. native
+  close가 실패하면 기존 pump를 복구한다.
 - pump worker의 attach/detach/재시작 판단을 mutex로 보호했다.
 - receive, send-ready와 STREAM packet callback의 handle 등록·교체·해제를 같은 owner 경계로 모았다.
 - `routedSocket.Recv`의 callback busy 확인은 `socketCore`가 관리하는 atomic 상태를 읽어 receive hot path에
@@ -77,9 +93,11 @@ callback registration에는 field별 lock을 반복하지 않고 `socketCore.rep
 
 ```text
 go test ./...                                  PASS
-go test -race ./...                            PASS
+go test -race ./... -count=3                   PASS
 go vet ./...                                   PASS
 go test ./internal/native -run 'Test(OptimizationGuard|RawCore11Allowlist|HotPathCostInventory)' -count=1  PASS
+./tests/run_tests.sh                            PASS (samples: 7/7)
+scripts/local-package/go/build-wsl.sh ...      PASS (clean consumer)
 ```
 
 이 결과는 구현자 자체 검토와 Linux x86_64 source runtime의 증거다. 독립 frontier reviewer의 fresh

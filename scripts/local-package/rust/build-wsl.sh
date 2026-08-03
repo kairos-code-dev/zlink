@@ -407,7 +407,7 @@ done
 curl --fail --silent "http://127.0.0.1:${REGISTRY_PORT}/zl/in/zlink" >/dev/null
 
 CONSUMER_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/zlink-rust-consumer.XXXXXX")"
-mkdir -p "${CONSUMER_ROOT}/.cargo" "${CONSUMER_ROOT}/cargo-home"
+mkdir -p "${CONSUMER_ROOT}/.cargo" "${CONSUMER_ROOT}/cargo-home" "${CONSUMER_ROOT}/src"
 REGISTRY_PORT="${REGISTRY_PORT}" CONSUMER_ROOT="${CONSUMER_ROOT}" PACKAGE_VERSION="${PACKAGE_VERSION}" VENDOR_ROOT="${VENDOR_ROOT}" node <<'NODE'
 const fs = require('fs');
 const path = require('path');
@@ -430,7 +430,7 @@ replace-with = "vendored-sources"
 [source.vendored-sources]
 directory = "${process.env.VENDOR_ROOT}"
 `);
-fs.writeFileSync(path.join(root, 'main.rs'), `use zlink::{Context, Message, Received, RecvFlags};
+fs.writeFileSync(path.join(root, 'src/main.rs'), `use zlink::{Context, Message, Received, RecvFlags};
 
 fn main() {
     assert_eq!(zlink::version(), (11, 1, 0));

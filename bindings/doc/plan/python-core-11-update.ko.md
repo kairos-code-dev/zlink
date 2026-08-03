@@ -237,7 +237,7 @@ POSD·DDD 경계를 직접 다시 검토했다. 이 과정에서 `Message.try_co
 `0 errors, 0 warnings, 0 informations`, Core weighted-selection integration은 `17/17`, typed option
 unit은 `2/2`로 통과했다.
 
-현재 local package는 HEAD `5e58064b7d4d88045e37adbcf36098030b05c5fe`와 runtime SHA
+현재 local package는 HEAD `36c2d7e2036` 이후 생성하는 최신 commit과 runtime SHA
 `ce28d7908bf62a1b39b481aad2a76c6e76955e3a93ea73e1cbdaa913c4883138`에 고정했다. CPython 3.9.25와
 3.12.3 package/clean consumer를 각각 통과했고, 두 installed sample은 `7/7`이다. single·multi perf
 smoke도 현재 runtime에서 완료됐다. 자세한 manifest·wheel hash는

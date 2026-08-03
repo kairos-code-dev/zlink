@@ -8,19 +8,19 @@
 
 ## 현재 판정
 
-Linux x86_64 local implementation gate는 통과했다. 전체 상태는 `PARTIAL / NOT CLEAN`이다. Python 3.9
-interpreter와 Linux x86_64 이외의 platform consumer는 실행하지 않았고, 독립 frontier reviewer의 최종
-`CLEAN` 판정도 없다.
+Linux x86_64 local implementation gate는 통과했다. CPython 3.9 Docker와 host CPython 3.12에서 같은
+candidate 절차를 각각 통과했다. 전체 상태는 `PARTIAL / NOT CLEAN`이며, 현재 Core candidate와 공통
+V11 승인 evidence의 identity 확인 및 독립 frontier reviewer의 최종 `CLEAN` 판정이 남아 있다.
 
 ## Candidate identity
 
 ```text
-sourceRevision: candidate-input.env의 CORE_REVISION
+sourceRevision: e5a63cbb6491b8a3f2c923e17efa5985134fb2ec
 coreManifest: .artifacts/wsl/bindings-candidate/core-11.2.0.env
-coreManifestSha256: candidate-input.env의 CANDIDATE_MANIFEST_SHA256
+coreManifestSha256: 6032c861b2a42df56d9c9d830aba3bdd1a5b8aba6a7a7ecd5fdb82483e49567c
 coreVersion: 11.2.0
 coreRuntime: core/build/lib/libzlink.so.11.2.0
-coreRuntimeSha256: 1c34ae4e2e631e7e04cdf50c1ce6c231d10c501a0fe41007d0eec8530bda24d8
+coreRuntimeSha256: aff90818cc40df2ebeeb375489e147f7e23791bda28b0dac85bdc9462f59236e
 coreSoname: libzlink.so.11
 coreSymbolSha256: ac7b04ce8f3a8338b82328ca03d6e93892f56ae57bb78569f9901ba5f65d5823
 coreSourceSha256: 9888dd12f90930fb88a9b57b632f06bf44b3c05c6229246ad4cd62d8c21de1ce
@@ -31,13 +31,16 @@ coreSpecSha256: f89f006c105048acaf5bdfcb2ce252995bc72ded9b0a8e7354813a150dfc43b1
 ## Python source and wheel evidence
 
 ```text
-sourceManifest: .artifacts/wsl/bindings-candidate/python-source-manifest-11.2.0.json
-sourceManifestSha256: candidate-input.env의 PYTHON_SOURCE_MANIFEST_SHA256
-sourceAggregateSha256: eefb3752e00405a2bc2b296547a1a746e8e1fe002a9a3ae39db2e30787af300c
-candidateInput: .artifacts/wsl/bindings-candidate/python/candidate-input.env
-wheel: .artifacts/wsl/bindings-candidate/python/wheels/zlink-11.2.0-cp312-cp312-linux_x86_64.whl
-wheelSha256: `python/SHA256SUMS`의 wheel entry
-packagedNativePayloadSha256: 1c34ae4e2e631e7e04cdf50c1ce6c231d10c501a0fe41007d0eec8530bda24d8
+sourceManifest: `.artifacts/wsl/bindings-candidate/python39/python-source-manifest-11.2.0.json`
+sourceManifestSha256: 8195b52fb3b2f66af20ababf3c052d9f09966bb265d536ef131893db2ad942ff
+sourceAggregateSha256: d6ed6c3c48a7ed1e5b50deeccad1560948646f354222c878b680801119d92bc1
+candidateInput: `.artifacts/wsl/bindings-candidate/python39/python/candidate-input.env` and the corresponding
+`python312/python/candidate-input.env`
+wheel: `python39/python/wheels/zlink-11.2.0-cp39-cp39-linux_x86_64.whl` and
+`python312/python/wheels/zlink-11.2.0-cp312-cp312-linux_x86_64.whl`
+wheelSha256: `19306465e53543820228dde78df3483ac251bc5570cd2e0fc415440cb2e65171` (CPython 3.9),
+`c6f19d9005917c25221135253bf8f4b7b718471cf9d1a7e9aebdebf4bbe99838` (CPython 3.12)
+packagedNativePayloadSha256: aff90818cc40df2ebeeb375489e147f7e23791bda28b0dac85bdc9462f59236e
 ```
 
 `candidate-input.env`의 Core manifest SHA, runtime SHA, source manifest SHA와 aggregate SHA는 위 값과
@@ -54,7 +57,7 @@ ZLINK_LIBRARY_PATH="$PWD/core/build/lib/libzlink.so.11.2.0" \
   pytest -q bindings/python/tests
 ```
 
-결과: `51 passed`.
+결과: source extension을 선택한 interpreter로 먼저 build한 뒤 `52 passed`.
 
 ```bash
 PYTHONPATH=bindings/python/src python3 -m py_compile \
@@ -63,9 +66,8 @@ PYTHONPATH=bindings/python/src python3 -m py_compile \
 
 결과: 종료 코드 `0`.
 
-`pyright 1.1.411 --project bindings/python/pyrightconfig.json` 결과는 `0 errors, 0 warnings, 0 informations`이다.
-설정 target은 Python `3.9`이고 대상은 public `src/zlink/contracts` tree다. 실제 Python 3.9 interpreter는
-이 환경에 없어 runtime import는 CPython 3.12에서만 실행했다.
+`npx --yes pyright@1.1.411 --project bindings/python/pyrightconfig.json` 결과는 `0 errors, 0 warnings,
+0 informations`이다. 설정 target은 Python `3.9`이고 대상은 public `src/zlink/contracts` tree다.
 
 ### Candidate package와 clean consumer
 
@@ -75,13 +77,16 @@ scripts/local-package/bindings-candidate/create-manifest.sh \
 scripts/local-package/bindings-candidate/build-wsl.sh \
   --language python \
   --manifest .artifacts/wsl/bindings-candidate/core-11.2.0.env \
-  --package-version 11.2.0
+  --package-version 11.2.0 \
+  --python-executable python3.12
+
+# CPython 3.9 Docker에서도 같은 command에 --python-executable python을 지정한다.
 ```
 
-결과: 종료 코드 `0`. Builder는 candidate prefix를 사용해 wheel을 만들고, 새 venv에서 source checkout과
-`core/build` fallback 없이 `zlink.version()`과 Pair message roundtrip을 실행했다. `/proc/self/maps`는
-venv 안의 wheel payload를 가리켰다. 같은 venv에서 `run_samples.py --installed`를 실행한 결과도 `7/7`
-이다.
+결과: CPython 3.9와 3.12 모두 종료 코드 `0`. Builder는 같은 Core prefix와 source manifest를 사용해
+각 interpreter용 wheel을 만들고, 새 venv에서 source checkout과 `core/build` fallback 없이
+`zlink.version()`과 Pair message roundtrip을 실행했다. `/proc/self/maps`는 각 venv의 wheel payload를
+가리켰다. 같은 venv에서 `run_samples.py --installed`를 실행한 결과도 각각 `7/7`이다.
 
 Source runner 결과는 다음 7개 process가 모두 통과했다.
 
@@ -107,7 +112,8 @@ ZLINK_LIBRARY_PATH="$PWD/core/build/lib/libzlink.so.11.2.0" \
   --duration 1 --msg-sizes 64 --transports inproc --runs 1
 ```
 
-결과: `status=complete`, `actual_result_lines=5`, runtime SHA는 candidate와 동일하다.
+결과: `status=complete`, `actual_result_lines=5`, runtime SHA는
+`aff90818cc40df2ebeeb375489e147f7e23791bda28b0dac85bdc9462f59236e`이다.
 
 Multi runner:
 
@@ -120,7 +126,8 @@ ZLINK_LIBRARY_PATH="$PWD/core/build/lib/libzlink.so.11.2.0" \
   --runs 1 --clients 1
 ```
 
-결과: `status=complete`, `success=1`, `fail=0`, `actual_result_lines=5`, runtime SHA는 candidate와 동일하다.
+결과: `status=complete`, `success=1`, `fail=0`, `actual_result_lines=5`, runtime SHA는
+`aff90818cc40df2ebeeb375489e147f7e23791bda28b0dac85bdc9462f59236e`이다.
 두 smoke 실행은 공식 성능 report를 만들지 않았다.
 
 ## POSD·DDD와 남은 조건
@@ -133,7 +140,7 @@ GIL과 no-cost를 모두 분류했고 `unclassified=0`이다. 확인 가능한 C
 이는 Codex self-review이므로 다음 조건이 남는다.
 
 1. 공통 담당자가 현재 `11.2.0` candidate와 독립 V11-R2·V11-M3-CORE-PKG evidence의 identity를 확인한다.
-2. Python 3.9 clean consumer와 CI 최고 version evidence를 추가한다.
-3. Linux aarch64, macOS와 Windows를 release target으로 둘지 결정하고, 지원할 target마다 같은 candidate로
-   package와 native consumer를 실행한다.
-4. 독립 frontier reviewer가 같은 source manifest와 fresh evidence를 읽고 최종 `CLEAN`을 판정한다.
+2. 독립 frontier reviewer가 같은 source manifest와 fresh evidence를 읽고 최종 `CLEAN`을 판정한다.
+
+Linux aarch64, macOS와 Windows는 현재 release target이 아니므로 별도 candidate와 native consumer
+검증을 완료하기 전에는 지원 범위에 넣지 않는다.

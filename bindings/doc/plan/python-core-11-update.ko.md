@@ -198,7 +198,7 @@ ZLINK_LIBRARY_PATH="$PWD/core/build/lib/libzlink.so.11.2.0" \
 | 승인 prefix native build | `PASS` | candidate build가 `ZLINK_CORE_PREFIX`로 wheel build |
 | Raw FFI·symbol·layout | `PASS` | source tests, candidate manifest symbol/layout hash |
 | Public API와 Framework surface 부재 | `PASS` | export/guard test와 source scan |
-| Contract·unit test | `PASS` | `pytest`: 65 passed; close retry, callback ownership, invalid payload, `try_copy_to`와 surface guard 포함 |
+| Contract·unit test | `PASS` | `pytest`: 66 passed; poller close retry, callback ownership, invalid payload, `try_copy_to`와 surface guard 포함 |
 | `single_part` naming draft | `PASS` | 현재 public contract인 `single_part_or_throw()`를 유지; 별도 draft는 승인 전 설계 후보로 분리 |
 | Python 3.9 runtime와 최고 version | `PASS` | CPython 3.9 Docker와 host CPython 3.12 clean consumer |
 | `pyright`·`py.typed` | `PASS` | public contracts 대상 pyright 0 errors, wheel file check |
@@ -235,6 +235,10 @@ POSD·DDD 경계를 직접 다시 검토했다. 이 과정에서 `Message.try_co
 찾아 owner layer와 contract test를 수정했다. 이후 Python source test는 `65 passed`, `pyright`는
 `0 errors, 0 warnings, 0 informations`, Core weighted-selection integration은 `17/17`, typed option
 unit은 `2/2`로 통과했다.
+
+추가 재검토에서 `NativePoller.close()`가 native destroy 실패 전에 `_handle`을 지우는 lifecycle 오류를
+확인했다. 다른 native owner와 같은 성공 후 상태 전환으로 수정하고 실패 뒤 재시도 contract test를
+추가했다. 이 수정 뒤 Python source test는 `66 passed`로 갱신됐다.
 
 현재 local package의 Core runtime SHA는
 `ce28d7908bf62a1b39b481aad2a76c6e76955e3a93ea73e1cbdaa913c4883138`이다. CPython 3.9.25와

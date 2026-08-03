@@ -375,9 +375,9 @@ const record = {
   name: 'zlink',
   vers: process.env.PACKAGE_VERSION,
   deps: [
-    {name: 'bytes', req: '^1', features: [], optional: false, default_features: true, target: null, kind: 'normal'},
-    {name: 'libc', req: '^0.2', features: [], optional: false, default_features: true, target: null, kind: 'normal'},
-    {name: 'smol_str', req: '^0.3', features: [], optional: false, default_features: true, target: null, kind: 'normal'},
+    {name: 'bytes', req: '^1', features: [], optional: false, default_features: true, target: null, kind: 'normal', registry: 'https://github.com/rust-lang/crates.io-index'},
+    {name: 'libc', req: '^0.2', features: [], optional: false, default_features: true, target: null, kind: 'normal', registry: 'https://github.com/rust-lang/crates.io-index'},
+    {name: 'smol_str', req: '^0.3', features: [], optional: false, default_features: true, target: null, kind: 'normal', registry: 'https://github.com/rust-lang/crates.io-index'},
   ],
   cksum: process.env.CRATE_SHA256,
   features: {},

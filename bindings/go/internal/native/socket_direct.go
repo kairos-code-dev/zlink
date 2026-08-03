@@ -77,14 +77,13 @@ func (s *directSocket) onReceive(handler func(*Received)) error {
 	}
 	state := newRecvCallbackState(recvCallback(handler))
 	handle := cgo.NewHandle(state)
-	if err := handlerErrorFromResult(C.zlink_recv_handler_go_local(s.raw(), C.uintptr_t(handle))); err != nil {
+	err := s.connectionSocket.replaceCallback(handle, &s.recvHandle, &s.recvActive, func() error {
+		return handlerErrorFromResult(C.zlink_recv_handler_go_local(s.raw(), C.uintptr_t(handle)))
+	})
+	if err != nil {
 		state.close()
 		handle.Delete()
 		return err
 	}
-	if s.recvHandle != 0 {
-		releaseCallbackHandle(s.recvHandle)
-	}
-	s.recvHandle = handle
 	return nil
 }

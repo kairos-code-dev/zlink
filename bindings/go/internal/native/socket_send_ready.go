@@ -23,14 +23,13 @@ func (s *connectionSocket) setSendReady(handler func()) error {
 	}
 	state := newSendReadyCallbackState(sendReadyCallback(handler))
 	handle := cgo.NewHandle(state)
-	if err := handlerErrorFromResult(C.zlink_send_ready_handler_go_local(s.raw(), C.uintptr_t(handle))); err != nil {
+	err := s.socketCore.replaceCallback(handle, &s.sendReadyHandle, nil, func() error {
+		return handlerErrorFromResult(C.zlink_send_ready_handler_go_local(s.raw(), C.uintptr_t(handle)))
+	})
+	if err != nil {
 		state.close()
 		handle.Delete()
 		return err
 	}
-	if s.sendReadyHandle != 0 {
-		releaseCallbackHandle(s.sendReadyHandle)
-	}
-	s.sendReadyHandle = handle
 	return nil
 }

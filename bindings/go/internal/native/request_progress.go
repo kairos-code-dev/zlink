@@ -26,20 +26,17 @@ const (
 
 type progressPump struct {
 	handle      unsafe.Pointer
-	activeCount int64
-	workerOn    int32
+	mu          sync.Mutex
+	activeCount int
+	workerOn    bool
 }
 
 var (
-	socketProgressPumps  sync.Map // unsafe.Pointer -> *progressPump
 	externalProgressRefs sync.Map // unsafe.Pointer -> *int64
 )
 
-func startSocketRequestProgress(handle unsafe.Pointer, state *replyCallbackState) {
-	if externalRequestProgressActive(handle) {
-		return
-	}
-	getOrCreateProgressPump(&socketProgressPumps, handle).attachDone(state.done)
+func newProgressPump(handle unsafe.Pointer) *progressPump {
+	return &progressPump{handle: handle}
 }
 
 func acquireExternalRequestProgress(handle unsafe.Pointer) {
@@ -68,28 +65,53 @@ func externalRequestProgressActive(handle unsafe.Pointer) bool {
 	return ok && atomic.LoadInt64(counter.(*int64)) > 0
 }
 
-func getOrCreateProgressPump(m *sync.Map, handle unsafe.Pointer) *progressPump {
-	if v, ok := m.Load(handle); ok {
-		return v.(*progressPump)
-	}
-	p := &progressPump{handle: handle}
-	actual, _ := m.LoadOrStore(handle, p)
-	return actual.(*progressPump)
-}
-
 func (p *progressPump) attachDone(done <-chan struct{}) {
-	atomic.AddInt64(&p.activeCount, 1)
+	p.mu.Lock()
+	p.activeCount++
+	startWorker := !p.workerOn
+	if startWorker {
+		p.workerOn = true
+	}
+	p.mu.Unlock()
+
 	go func() {
 		<-done
-		atomic.AddInt64(&p.activeCount, -1)
+		p.detach()
 	}()
-	if atomic.CompareAndSwapInt32(&p.workerOn, 0, 1) {
+	if startWorker {
 		go p.run()
 	}
 }
 
+func (p *progressPump) detach() {
+	p.mu.Lock()
+	if p.activeCount > 0 {
+		p.activeCount--
+	}
+	p.mu.Unlock()
+}
+
+func (p *progressPump) active() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.activeCount > 0
+}
+
+func (p *progressPump) workerStopped() {
+	p.mu.Lock()
+	if p.activeCount > 0 {
+		// A request arrived while the worker was leaving. Keep ownership of
+		// the worker slot and restart it after the native poller is released.
+		p.mu.Unlock()
+		go p.run()
+		return
+	}
+	p.workerOn = false
+	p.mu.Unlock()
+}
+
 func (p *progressPump) run() {
-	defer atomic.StoreInt32(&p.workerOn, 0)
+	defer p.workerStopped()
 	poller := C.zlink_poller_new()
 	if poller == nil {
 		return
@@ -101,7 +123,7 @@ func (p *progressPump) run() {
 	defer C.zlink_poller_remove(poller, p.handle)
 	var event C.zlink_poller_event_t
 	var pollError C.zlink_config_result_t
-	for atomic.LoadInt64(&p.activeCount) > 0 {
+	for p.active() {
 		if C.zlink_poller_wait(poller, &event, 1, progressPollTimeoutMs, &pollError) < 0 {
 			break
 		}

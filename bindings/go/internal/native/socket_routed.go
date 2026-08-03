@@ -87,7 +87,7 @@ func (s *routedSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 	if out == nil {
 		return false, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EINVAL)}
 	}
-	if s.recvHandle != 0 {
+	if s.connectionSocket.hasReceiveHandler() {
 		return false, &RecvError{Result: RecvBusy, nativeErrno: int(C.EBUSY)}
 	}
 	if err := s.recvInto(out, flags); err != nil {

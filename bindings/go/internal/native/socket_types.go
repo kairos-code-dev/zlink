@@ -469,15 +469,14 @@ func (s *StreamSocket) OnPacket(handler func(RoutingID, *Message, *Message)) err
 	}
 	state := newStreamPacketCallbackState(handler)
 	handle := cgo.NewHandle(state)
-	if err := handlerErrorFromResult(C.zlink_stream_packet_handler_go_local(s.raw(), C.uintptr_t(handle))); err != nil {
+	err := s.core.connectionSocket.replaceCallback(handle, &s.core.streamPacketHandle, nil, func() error {
+		return handlerErrorFromResult(C.zlink_stream_packet_handler_go_local(s.raw(), C.uintptr_t(handle)))
+	})
+	if err != nil {
 		state.close()
 		handle.Delete()
 		return err
 	}
-	if s.core.streamPacketHandle != 0 {
-		releaseCallbackHandle(s.core.streamPacketHandle)
-	}
-	s.core.streamPacketHandle = handle
 	return nil
 }
 

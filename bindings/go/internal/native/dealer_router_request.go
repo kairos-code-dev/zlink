@@ -104,7 +104,7 @@ func startDealerRequest(socket *DealerSocket, flags SendFlags, timeout time.Dura
 		return nil, err
 	}
 	prepared.commit()
-	startSocketRequestProgress(socket.raw(), state)
+	socket.socketCore.startRequestProgress(state)
 	return state, nil
 }
 
@@ -186,6 +186,6 @@ func startRouterRequest(socket *RouterSocket, routingID RoutingID, flags SendFla
 		return nil, err
 	}
 	prepared.commit()
-	startSocketRequestProgress(socket.raw(), state)
+	socket.socketCore.startRequestProgress(state)
 	return state, nil
 }

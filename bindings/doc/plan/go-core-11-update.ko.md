@@ -127,9 +127,9 @@ Hot path 비용은 `bindings/go/tests/hot-path-cost-inventory.json`에 owner, �
 - Message native allocation, snapshot copy, submit 보존 copy와 received adoption은 ownership contract에
   필요한 비용으로 분류했다.
 - `getPubBytesOption`에서 Go-owned scratch buffer를 다시 복사하던 경로를 제거했다.
-- Request마다 progress polling worker와 timer를 만들지 않고 handle 단위 progress pump를 사용한다. Request마다
-  completion을 기다리는 lightweight waiter goroutine은 active handle 수명과 결과 전달을 위해 남아 있으며
-  inventory에 required 비용으로 기록했다.
+- Request마다 progress polling worker와 timer를 만들지 않고 `socketCore`가 보관하는 handle 단위 progress
+  pump를 사용한다. Request마다 completion을 기다리는 lightweight waiter goroutine은 active handle 수명과
+  결과 전달을 위해 남아 있으며 inventory에 required 비용으로 기록했다.
 - Callback worker, native option scratch buffer와 package runtime rpath는 현재 실행 의미를 바꾸지 않는 필수
   비용으로 분류했다.
 - 독립 socket의 hot path에 package 전역 lock을 추가하지 않았고, raw callback·buffer ownership은 내부 owner가
@@ -171,8 +171,13 @@ Smoke는 ready, active, 필수 `RESULT` metric과 exit code만 확인하며 공�
   function-group error mapping과 별도 경계로 유지한다.
 - POSD 관점에서 service alias와 forwarding projection을 제거하고, 호출자가 native pointer·callback userdata·
   codec·transport detail을 조립하지 않도록 내부에서 감쌌다.
-- `getPubBytesOption`의 불필요한 복사를 제거하고, request progress polling의 lifetime owner를 handle로
-  올렸다. 이 선택은 caller surface를 늘리지 않으면서 ownership과 비용을 한 owner에 모으는 방향이다.
+- `getPubBytesOption`의 불필요한 복사를 제거하고, request progress polling의 lifetime owner를
+  `socketCore`로 올렸다. native handle key 전역 map 대신 socket lifecycle에 pump 참조를 두고, 외부
+  `Poller`와 공유해야 하는 handle registry만 전역으로 유지했다. 이 선택은 caller surface를 늘리지
+  않으면서 ownership과 비용을 한 owner에 모으는 방향이다.
+- callback handle registration, replacement와 close 해제를 `socketCore` mutex 아래에서 직렬화하고,
+  dispatcher close는 mutex 밖에서 수행했다. `go test -race ./...`에서 확인된 `OnPacket`–`Close` data
+  race를 이 owner 경계에서 제거했다.
 - 구현 단위별 검증과 path-limited commit/push를 다음 checkpoint로 남겼다.
 
 | Checkpoint | Commit | 내용 |
@@ -187,6 +192,9 @@ Smoke는 ready, active, 필수 `RESULT` metric과 exit code만 확인하며 공�
 `independent: false`이므로 이 결과를 Go 독립 review로 대체하지 않는다. `contract`, `POSD`, `DDD`,
 `performance-cost`, `dead-code`, `test/evidence` finding이 기록된 fresh manifest review와 `CLEAN` 판정이
 남아 있다.
+
+이번 자체 검토의 위험 신호, 대안 비교, 변경 경계와 source gate 결과는
+[`log/go/2026-08-04-posd-ddd-self-review.ko.md`](log/go/2026-08-04-posd-ddd-self-review.ko.md)에 기록했다.
 
 ### GO-08 — 정식 문서 — PARTIAL
 
@@ -268,6 +276,7 @@ scripts/local-package/go/build-wsl.sh \
 | Public API snapshot과 service 부재 | `PASS` | root/contracts projection, raw surface test, package zip forbidden-entry 검사 |
 | `go test ./...` | `PASS` | `bindings/go/tests/run_tests.sh`에서 통과 |
 | `go vet ./...` | `PASS` | `bindings/go/tests/run_tests.sh`에서 통과 |
+| `go test -race ./...` | `PASS` | callback handle lifecycle와 request progress owner 변경 후 Linux x86_64에서 통과 |
 | Hot path cost inventory와 optimization guard | `PASS` | `hot-path-cost-inventory.json`, `TestHotPathCostInventory`, `TestOptimizationGuard` |
 | Perf runner smoke | `PASS` | single PAIR inproc와 multi DEALER/ROUTER TCP smoke, exit 0 |
 | 구현 후 POSD·DDD·성능 비용·dead code Codex review | `NOT CLEAN` | 현재 독립 frontier review와 fresh finding report 없음 |

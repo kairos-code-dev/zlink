@@ -52,7 +52,7 @@ spec이 이미 정한 내용은 다시 적지 않고 링크만 둔다.
 ## 이 문서들이 만드는 작업
 
 각 문서의 결정을 네 언어 구현과 대조한 결과와 언어별 수정 목록은
-[구현 갭 목록](../../../plan/for-interals/framework-internals-implementation-gaps.ko.md)에 있다.
+[구현 갭 목록](https://github.com/kairos-code-dev/zlink/blob/main/framework/doc/plan/for-interals/framework-internals-implementation-gaps.ko.md)에 있다.
 아직 정해지지 않아 구현을 시작할 수 없는 선행 과제도 그쪽에 모아 두었다.
 
 Wire protocol 문서는 `framework/runtime/protocol/service-wire-v1.schema.json`과 짝이며,
@@ -95,7 +95,7 @@ schema가 정한 field 관계와 검증 순서를 설명한다. 성격이 달라
 |---|---|
 | Application이 호출하는 API의 이름과 signature | [언어별 공개 계약](../spec/server/languages/README.ko.md) |
 | 공개 동작의 의미와 완료 조건 | [정식 spec](../spec/README.ko.md) |
-| Core가 제공하는 raw socket·transport 내부 | [Core raw runtime 내부 경계](../../../../../core/doc/internals/runtime-boundary.ko.md) |
+| Core가 제공하는 raw socket·transport 내부 | [Core raw runtime 내부 경계](https://kairos-code-dev.github.io/zlink/internals/runtime-boundary/) |
 
 네 runtime은 이 문서의 의미를 구현하지만 source나 공통 native binary를 공유하지 않는다.
 

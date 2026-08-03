@@ -85,7 +85,7 @@ internals가 확정하면 네 언어가 서로 다른 wire를 만들게 된다.
 - 중복 억제 표식은 별도 집합이 아니라 기존 캐시 항목에 넣고, 캐시 항목이 사라질 때 함께
   없앤다. 별도 집합을 두면 이동한 객체 수만큼 상태가 계속 늘어난다.
 
-이 후보들은 [구현 갭 목록 A2·D5](../../../plan/for-interals/framework-internals-implementation-gaps.ko.md)에
+이 후보들은 [구현 갭 목록 A2·D5](https://github.com/kairos-code-dev/zlink/blob/main/framework/doc/plan/for-interals/framework-internals-implementation-gaps.ko.md)에
 선행 과제와 함께 정리되어 있다.
 
 이것이 spec이 캐시 수명을 Message Follow 기간으로 묶어 둔 이유다 — 알림이 유실되어도
@@ -170,7 +170,7 @@ framework가 고른 RID로 대상을 지정하는 송신 경로 중 하나가 �
 
 Core가 고르는 경로에서 framework가 계약을 만족시키려면 **Core가 그 순서를 내야 한다.**
 framework 안에서는 닫을 수 없다. Core 쪽 결함과 수정 계획은
-[Core DEALER 가중 선택 순서 수정](../../../plan/for-interals/dealer-weighted-selection-order.ko.md)에
+[Core DEALER 가중 선택 순서 수정](https://github.com/kairos-code-dev/zlink/blob/main/framework/doc/plan/for-interals/dealer-weighted-selection-order.ko.md)에
 있다.
 
 ## 5. 선택 알고리즘을 지정한다

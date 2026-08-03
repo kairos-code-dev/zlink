@@ -49,9 +49,6 @@ spec이 이미 정한 내용은 다시 적지 않고 링크만 둔다.
 | 대상 선택 절차와 tiebreak | [Channel 메시징 「선택 순서」](../spec/08-channel-messaging.ko.md) |
 | 관찰자 합치기와 유실 | [Runtime 상태와 운영 진단](../spec/24-runtime-monitoring.ko.md) |
 
-Wire protocol 문서는 `framework/runtime/protocol/service-wire-v1.schema.json`과 짝이며,
-schema가 정한 field 관계와 검증 순서를 설명한다. 성격이 달라 아래 구분을 적용하지 않는다.
-
 ## 읽는 방법
 
 각 문서는 결정마다 다음을 밝힌다.
@@ -61,6 +58,10 @@ schema가 정한 field 관계와 검증 순서를 설명한다. 성격이 달라
 | **결정** | 네 runtime이 같아야 하는 구조. 어기면 application이 보는 결과가 언어마다 달라진다 |
 | **언어별 재량** | 관찰 결과가 같으면 구현이 달라도 되는 것. 무리하게 맞추면 그 언어에서 부자연스러워진다 |
 | **확인할 결과** | 구현이 만족해야 하는 조건. 확인 방법은 항목마다 다르다 |
+
+Wire protocol 문서만 이 구분을 적용하지 않는다.
+`framework/runtime/protocol/service-wire-v1.schema.json`과 짝이며, schema가 정한 field
+관계와 검증 순서를 설명한다.
 
 "확인할 결과"는 전부 contract test로 판정할 수 있는 것이 아니다. 항목마다 확인 방법이
 다르며, 목록을 작업으로 옮길 때는 어느 방법으로 확인할지부터 정한다.

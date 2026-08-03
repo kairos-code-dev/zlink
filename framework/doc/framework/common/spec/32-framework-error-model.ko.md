@@ -70,6 +70,23 @@ message를 다른 target에 자동으로 제출하지 않는다.
 - Route, connection 또는 current owner를 사용할 수 없으면 `Unavailable`이다.
 - Reply를 deadline 안에 받지 못하면 `DeadlineExceeded`다.
 - Wire, payload 또는 reply type을 처리할 수 없으면 `ProtocolError`다.
+- Source runtime이 이 operation에 필요한 local bounded resource를 확보하지 못하면
+  `CapacityExceeded`다. Reply를 보관할 자리, operation table entry처럼 source가 소유한
+  자원이 대상이다. **같은 runtime 안의 Spot·Actor 대기열도 여기 해당한다** — 제출하는
+  쪽과 대기열이 같은 process에 있으므로 source가 소유한 자원이다.
+- 반면 **다른 node의 대기열이 가득 차서 실패한 것은 `Unavailable`이다.** Target의 대기열
+  상태를 `CapacityExceeded`로 표현하지 않는다. 두 kind를 나누는 기준은 "실패한 자원을
+  이 runtime이 소유하는가"이며, 호출자는 이 구분으로 재시도 대상을 판단한다.
+- 이 구분은 **대기열에만** 적용한다. Target node의 배치 수용량이 부족한 경우는 대기열이
+  아니라 admission 판정이므로 `CapacityExceeded`가 맞다
+  ([Spot Actor](15-spot-actor.ko.md), [Spot 주소 메시징](16-spot-address-messaging.ko.md)).
+- **Message Follow relay queue는 예외로 `CapacityExceeded`다.** 이 queue는 물리적으로 이전
+  owner node에 있지만, relay 책임을 맡은 runtime이 자기 자원으로 소유하고 bound도 계약이
+  정한 고정값(1024 messages, 16 MiB)이다. 호출자에게는 "상대 node가 못 받는 상태"가 아니라
+  "이동 경로의 정해진 용량을 넘겼다"는 뜻이므로 재시도 판단이 다르다
+  ([Spot Actor](15-spot-actor.ko.md), [위치 runtime](21-location-runtime.ko.md)).
+  이 kind는 **`Request`에만 적용한다** — 이미 완료된 one-way의 결과는 어떤 relay 실패로도
+  바뀌지 않으며(§4), relay bound 초과는 metric·log·trace로만 남는다.
 - Runtime이 종료 중이면 `ShuttingDown`이다.
 - 위 종류로 표현할 수 없는 Framework 실행 실패는 `InternalFailure`다.
 

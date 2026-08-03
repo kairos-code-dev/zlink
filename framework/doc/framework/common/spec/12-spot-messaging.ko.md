@@ -5,7 +5,7 @@
 
 ## 1. 범위
 
-이 문서는 ZLink Framework 11.0.0에서 Spot에 메시지를 전달하는 공통 공개 계약을
+이 문서는 ZLink Framework에서 Spot에 메시지를 전달하는 공통 공개 계약을
 정의한다. 대상 독자는 Framework의 [Spot](01-glossary.ko.md#spot) 메시징을 구현하고 검증하는 개발자다.
 
 Spot은 room, stage, zone처럼 주소와 상태를 가진 논리 instance다. Application은
@@ -833,13 +833,52 @@ Control 작업의 범위와 Actor control claim과의 실행 순서는
 
 | Queue | 들어가는 작업 | 들어가지 않는 작업 |
 |---|---|---|
-| Spot application queue | Spot direct payload, 일치한 Logical Multicast payload, timer callback, Actor join·leave와 lifecycle control callback | Actor 업무 payload |
+| Spot application queue | Spot direct payload, 일치한 Logical Multicast payload, timer callback | Actor 업무 payload, Actor join·leave와 lifecycle control callback |
 | Instance [Spot application queue](01-glossary.ko.md#spot-application-queue) | Spot direct payload와 timer callback | Actor control과 Logical Multicast subscription |
 | Actor queue | Actor 업무 payload | Spot callback을 거쳐 전달하는 Actor payload |
 
-Actor join·leave와 lifecycle control callback은 Spot control claim으로 처리한다.
+Actor join·leave와 lifecycle control callback은 Spot application queue가 아니라 **Spot control
+claim**으로 처리한다. 두 자리는 한도도 실행 순서도 다르므로 섞지 않는다.
 Instance Spot의 Actor control이나 Logical Multicast subscription은 등록할 때 또는
 Spot을 준비할 때 거부한다.
+
+Spot application queue와 Actor queue는 한도가 있다. 한도를 넘겼을 때의 동작은 **제출
+계열과 대기열 위치에 따라 다르다.** 세 축 — 계열, 대기열 위치, 호출자가 실패를 관찰하는
+시점 — 을 함께 봐야 한다.
+
+| 계열 | 포화한 대기열 | 호출자가 받는 결과 |
+|---|---|---|
+| Send·one-way | **같은 runtime**의 outbound 또는 Spot·Actor 대기열 | [Async 실행 정책 §1](05-async-execution-policy.ko.md)을 따른다 — send timeout까지 자리를 기다리고, 내부 waiter까지 모두 찼으면 `DeadlineExceeded` |
+| Send·one-way | **다른 node**의 Spot·Actor 대기열 | **결과가 없다.** Send는 source outbound queue가 수락한 시점에 이미 완료했다([Framework 오류 모델 §4](32-framework-error-model.ko.md)). 이후의 target admission 실패는 완료된 결과를 바꾸지 않으며 metric·log·trace로만 남는다 |
+| Publish (시작 전) | worker 자리 또는 source-local outbound | send timeout까지 기다린다. 확보하지 못하면 `DeadlineExceeded` |
+| Publish (시작 후) | local Spot 대기열 | **기다리지 않고 건너뛴다.** publish는 이미 정상 완료했고, 이 실패는 publish 전용 결과나 관측 값으로 집계하지 않는다(§4.3) |
+| Request | 같은 runtime의 Spot·Actor 대기열 | 기다리지 않고 `CapacityExceeded` |
+| Request | 다른 node의 Spot·Actor 대기열 | 기다리지 않고 `Unavailable` |
+| Control claim | 같은 runtime의 control 한도 | `CapacityExceeded` |
+| Control claim | 다른 node의 control 한도 | `Unavailable` |
+
+Publish의 두 줄이 다른 이유는 **완료 시점이 그 사이에 있기** 때문이다. 시작 전에는 아직
+돌려줄 결과가 있으므로 기다리고, 시작 뒤에는 이미 완료했으므로 되돌릴 것이 없다.
+
+Send 계열이 기다리는 것은 반환할 결과가 없어 호출자가 재시도 판단을 할 수 없기 때문이고,
+request 계열이 기다리지 않는 것은 호출자가 오류를 받아 판단할 수 있기 때문이다. Request를
+대기로 처리하면 송신 쪽 실행 자원이 수신 쪽 처리 속도에 묶여 두 노드가 서로를 막는 구간이
+생긴다.
+
+Local과 remote를 나누는 기준은 "실패한 대기열을 이 runtime이 소유하는가"다
+([Framework 오류 모델](32-framework-error-model.ko.md)). 호출자는 이 구분으로 재시도
+대상을 판단한다.
+
+Spot control claim으로 처리하는 작업은 application queue 한도를 **공유하지 않는다.**
+Join·leave와 lifecycle control이 업무 payload 적체 때문에 실패하면 적체를 해소할 방법
+자체가 사라지기 때문이다.
+
+다만 control claim도 **자기 몫의 한도를 갖는다.** application queue와 별개로 잡되 무한이
+아니다. 무한으로 두면 control이 계속 도착하는 동안 memory가 한도 없이 늘고, 아래 우선순위
+규칙과 맞물려 application payload가 실행 기회를 얻지 못한다.
+
+한도를 넘겼을 때의 오류 kind는 위 표를 따른다 — **같은 runtime이 소유한 control lane
+한도를 넘기면 `CapacityExceeded`, 다른 node의 owner가 알린 포화는 `Unavailable`**이다.
 
 ### 5.4 Spot turn과 callback 순서
 

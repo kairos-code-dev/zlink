@@ -5,7 +5,7 @@
 
 ## 1. 이 문서가 정의하는 범위
 
-이 문서는 ZLink Framework 11.0.0에서 Actor의 identity, 위치, message queue,
+이 문서는 ZLink Framework에서 Actor의 identity, 위치, message queue,
 lifecycle과 session binding을 정의한다.
 
 Actor가 Entry Spot, User Spot 또는 remote MeshNode 중 어디에 있더라도 application
@@ -197,6 +197,59 @@ Framework는 이 lifecycle 작업을 target Spot의 전용 queue에 넣는다. �
 Actor가 소유한 상태를 바꾸는 lifecycle 작업도 Actor의 전용 queue에서 하나씩
 실행한다. Actor와 Spot 양쪽 상태를 함께 바꾸는 순서와 오래된 owner의 변경을
 거부하는 규칙은 [Spot Actor](15-spot-actor.ko.md)가 정의한다.
+
+Lifecycle queue와 application payload queue가 함께 실행 가능하면 **lifecycle queue를
+먼저 실행한다.** Join이 끝나기 전에 그 Actor 앞으로 온 payload를 실행하거나, leave가
+확정된 뒤에 payload를 실행하는 것을 막기 위해서다. 이 우선순위는 두 queue 사이에만
+적용하며 각 queue 안의 수락 순서는 바꾸지 않는다.
+
+이 우선순위는 **절대 우선순위가 아니다.** 여기에는 서로 다른 두 상한이 관여하며 섞으면
+안 된다.
+
+| 상한 | 무엇 사이의 공정성인가 | 어디서 정의하는가 |
+|---|---|---|
+| owner 점유 상한 | **서로 다른 owner** 사이 | [Framework API](06-framework-api.ko.md) |
+| lifecycle 연속 실행 상한 | **같은 owner 안의 두 lane** 사이 | 이 절 |
+
+owner 점유 상한에 도달하면 그 owner 전체가 turn을 놓고 다른 ready owner가 실행한다.
+이것만으로는 lane 사이의 굶주림을 막지 못한다 — 이 owner에 turn이 돌아왔을 때 두 lane이
+여전히 ready이면 같은 우선순위 규칙이 lifecycle을 다시 고르기 때문이다.
+
+그래서 lifecycle lane에 **연속 실행 상한**과 **양보 부채**를 따로 둔다.
+
+연속 실행 상한은 **lifecycle lane을 연속으로 고른 turn 수**로 센다. 시간이 아니라 turn
+수인 이유는, 실행 시간 상한은 이미 owner 점유 상한이 담당하고 있고 lane 사이의 문제는
+"몇 번 연속으로 고르는가"이기 때문이다.
+
+1. Lifecycle lane을 고를 때마다 연속 횟수를 하나 올린다.
+2. 연속 횟수가 상한에 도달하면 그 owner에 **양보 부채**를 표시하고 횟수를 0으로 되돌린다.
+3. 양보 부채가 있는 owner는 application lane이 ready인 한, 이 owner가 turn을 얻을 때
+   **application lane을 먼저 실행한다.**
+4. Application turn을 한 번 실행하면 부채를 지운다.
+
+경계 조건은 다음과 같다.
+
+| 상황 | 처리 |
+|---|---|
+| Lifecycle lane이 비어 application lane을 골랐다 | 연속 횟수를 0으로 되돌린다 |
+| 부채가 있는데 application lane이 ready가 아니다 | 부채를 유지한 채 lifecycle lane을 계속 실행한다. application 작업이 없으면 굶주림도 없다 |
+| 다른 owner에게 양보했다가 돌아왔다 | 부채와 연속 횟수를 그대로 유지한다. owner 점유 상한과는 별개다 |
+| Owner가 종료하거나 이동한다 | 부채와 연속 횟수를 함께 버린다 |
+
+**부채가 어디에 붙는지는 execution mode에 따라 다르다**
+([Spot 메시징 §5.4](12-spot-messaging.ko.md)).
+
+| Mode | 부채가 붙는 자리 | 무엇이 부채를 해소하는가 |
+|---|---|---|
+| `SpotWide` User Spot, Entry Spot, Instance Spot | 공유 execution gate 하나 | 그 gate에서 실행하는 application 작업 아무거나 |
+| `PerActor` User Spot | gate마다 따로 — Actor gate, Spot lane gate, timer gate | 그 gate의 application 작업. Actor lifecycle 부채는 **그 Actor의** application 작업만, Spot lifecycle 부채는 **Spot lane의** application 작업만 해소한다 |
+
+`PerActor`에서 부채를 gate 단위로 두지 않으면 한 Actor의 lifecycle 폭주가 다른 Actor의
+turn으로 해소된 것처럼 계산되어 그 Actor의 application 작업이 계속 밀린다.
+
+이 보장은 아직 **정성적이다** — owner 점유 상한에 값과 허용 범위가 정해져 있지 않으므로,
+"몇 ms 안에 실행된다"를 이 조항으로 판정할 수 없다. 값이 정해지기 전까지 검증할 수 있는
+것은 "lifecycle 작업이 계속 도착해도 application turn이 실행되기는 한다"까지다.
 
 ## 5. Actor 메시징
 

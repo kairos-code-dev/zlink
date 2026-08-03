@@ -121,7 +121,10 @@ public interface ZLinkRouteMeshRuntime {
 ```
 
 `observe(...)`는 일부 field만 담은 event가 아니라 변경 뒤의 완전한 snapshot을 전달한다. 느린
-subscriber 때문에 중간 상태를 합칠 수 있지만 최신 상태와 terminal 상태를 생략하지 않는다.
+subscriber 때문에 중간 상태를 합칠 수 있으며, 이때 보관 중인 source의 최신 상태는 생략하지
+않는다. Terminal 상태는 중간 상태로 덮어쓰지 않지만, 보관 상한을 넘기면 오래된 terminal부터
+버리고 그 수를 관찰자에게 알린다
+([Runtime 상태와 운영 진단](../../../../24-runtime-monitoring.ko.md)).
 
 Placement의 `isAvailable`은 host가 `SERVING`이고 Object Server이며, node-wide placement
 weight가 양수이고, Actor 또는 Spot capacity와 activation concurrency에 모두 여유가 있을 때만

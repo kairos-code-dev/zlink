@@ -8,7 +8,7 @@
 
 [스펙 목차](../../../../../README.ko.md)
 
-> 이 문서는 ZLink Framework 11.0.0의 C++ 정식 public interface 계약이다.
+> 이 문서는 ZLink Framework의 C++ 정식 public interface 계약이다.
 > 이 문서는 `framework/doc/framework/common/spec` 아래 공통 Framework 정책을 상위 기준으로 따르고,
 > C++ binding의 public 라이브러리 표면을 기반으로 framework 계층을 설계한다.
 
@@ -97,7 +97,9 @@ serializer 선택은 framework가 처리한다.
 | `not_connected`, `route_not_connected` | `unavailable` |
 | `not_found`, `request_target_not_found`, `handler_not_found` | `not_found` |
 | typed 결과가 없는 admission 또는 filter 거부 | `rejected` |
-| `busy`, queue capacity 부족 | `capacity_exceeded` |
+| local queue capacity 부족, Message Follow relay queue bound 초과 | `capacity_exceeded` |
+| remote error envelope가 알린 target queue capacity 부족 | `unavailable` |
+| `busy` | 소유 위치에 따라 위 두 줄 중 하나. 하위 오류만으로 위치를 알 수 없으면 `unavailable` |
 | `protocol_error`, `request_protocol_error` | `protocol_error` |
 
 이 표는 request completion과 error envelope reply에 같은 의미로 적용한다.
@@ -244,7 +246,11 @@ SPOT과 STREAM의 backpressure는 public **call object, timeout, result error ki
 
 - **application handler가 framework queue를 직접 제어하는 API를 두지 않는다.**
 - **기본 정책은 무한 queue가 아니다.** queue 상한·submit timeout·overflow 정책은 framework runtime
-  설정으로 닫고, **한도 초과는 실패 result로 반환한다**(`capacity_exceeded`).
+  설정으로 닫고, **한도 초과는 실패 result로 반환한다.**
+- 한도 초과의 error kind는 operation family와 queue 위치에 따라 다르다. 위 §오류 매핑 표와
+  [Spot 메시징 §5.3](../../../../12-spot-messaging.ko.md)을 따른다 — 일괄 `capacity_exceeded`가
+  아니다. one-way·send의 source-local 포화는 `deadline_exceeded`, request의 local queue
+  포화는 `capacity_exceeded`, remote queue 포화는 `unavailable`이다.
 
 ### 6.2 Handler filter
 

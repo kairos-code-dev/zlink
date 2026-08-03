@@ -1,9 +1,6 @@
 # Service wire protocol
 
-이 문서는 RouteMesh 11.0 목표 구조를 설명한다. 현재 구현과의 차이와 완료 상태는
-`framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md`가 소유한다.
-
-[내부 구조 목차](README.ko.md) · [Runtime architecture](service-runtime-architecture.ko.md) ·
+[내부 구조 목차](README.ko.md) · [계층 경계와 식별자](01-layering.ko.md) ·
 [Location runtime](../spec/21-location-runtime.ko.md) ·
 [Redis Relocation Store](../spec/23-relocation-store-redis.ko.md) ·
 [Transport liveness](../spec/29-transport-liveness.ko.md)
@@ -356,3 +353,7 @@ non-retriable `RelocationDataLost`이며 commit된 owner·membership을 source�
 - Typed application message의 `framework-json-v1` golden fixture가 네 runtime에서 같은 value와 failure를 만든다.
 - Relocation adapter bytes를 JSON이나 typed state contract로 해석하지 않는다.
 - `replyRelayAck` 없이 physical disconnect만으로 pending relay를 완료하지 않는다.
+
+---
+
+[내부 구조 목차](README.ko.md) · [이전: 11. Payload 소유권과 복사](11-message-ownership.ko.md)

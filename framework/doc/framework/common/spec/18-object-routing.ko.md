@@ -95,8 +95,14 @@ Source runtime은 Location Store에서 확인한 Ready owner route를 잠시 보
 | 사용할 수 있는 기간 | Current owner lease의 local admission deadline과 `RouteCacheMaxAge` 가운데 먼저 끝나는 시점까지만 사용한다. |
 | 기본 설정 | `RouteCacheMaxAge` 기본값은 15초다. 0이면 route cache를 사용하지 않는다. |
 | 저장하지 않는 결과 | `Missing`, `Creating`과 Store failure는 cache하지 않는다. 이전 실패만으로 다음 call을 끝내지 않는다. |
-| 즉시 무효화하는 조건 | 더 큰 `StoreVersion`, stale route 결과, Store recovery event 또는 owner lease invalidation을 확인하면 entry를 제거한다. |
+| 즉시 무효화하는 조건 | 더 큰 `StoreVersion`, stale route 결과, Store recovery event, owner lease invalidation 또는 **relay 통지**를 확인하면 entry를 제거한다. |
+| Relay 통지 | Message Follow relay가 message를 새 owner로 넘기면 원 송신 runtime에 통지한다. 통지를 받은 runtime은 해당 entry를 제거하고 다음 call에서 owner를 다시 조회한다. |
 | 실행 중 설정 변경 | 변경한 `RouteCacheMaxAge`는 새 cache entry부터 적용한다. 기존 entry의 수명을 새 값으로 연장하지 않는다. |
+
+Relay 통지는 Framework가 소유하는 infrastructure record이며 application handler를
+호출하지 않는다. 통지가 유실되어도 정확성은 바뀌지 않는다 — cache 수명이 끝나면 같은
+결과에 도달한다. 통지는 [Message Follow duration](01-glossary.ko.md#message-follow-duration)
+동안 우회 경로로 흐르는 구간을 줄이기 위한 것이다.
 
 Resolve한 뒤 같은 owner에서 object가 close·destroy되고 같은 ID로 새 incarnation이
 만들어졌다면 target queue가 수락하는 시점의 current Ready object가 message를 처리한다.

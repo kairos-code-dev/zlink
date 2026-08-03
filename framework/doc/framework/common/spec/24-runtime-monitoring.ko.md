@@ -210,15 +210,66 @@ Process가 다시 시작되면 `Sequence`는 0부터 시작할 수 있다.
 field를 조합하는 범용 event DTO는 제공하지 않는다. 관찰자가 `Sequence` gap을 발견하면
 현재 status를 다시 조회하여 모든 field를 복원한다.
 
+### Source의 정의
+
+합치기의 단위인 **source**는 **`Sequence`를 소유한 것**과 같다. 각 status 항목이
+`Sequence` 하나를 갖고 오므로, 그 `Sequence`를 발행하는 주체가 source다.
+
+| Stream 종류 | Source | Source 키 |
+|---|---|---|
+| Host 상태 | 이 runtime instance 하나 | runtime instance ID. process 수명 동안 하나다 |
+| Topology 상태 | topology runtime 하나 | RouteMesh는 `MeshName`, ClientServer·fanout은 `ChannelName` |
+
+**peer와 객체 이동은 별도 source가 아니다.** 이들은 topology status 안에 목록으로 실려
+오며 자기 `Sequence`를 갖지 않는다. peer 하나가 바뀌면 그 topology의 status 전체가 새
+`Sequence`로 발행된다. peer별·이동별 slot을 따로 두려면 **먼저 별도 stream과 언어별
+계약을 정의해야** 하며, 그때까지 이 합치기 규칙의 단위가 아니다.
+
+Source 키는 그 대상이 처음 관측 대상이 될 때 만들고, **terminal status가 전달되거나
+폐기된 뒤** 없앤다. 키가 살아 있는 동안 `Sequence`는 그 키 안에서 단조 증가한다.
+
+### 합치기
+
 Framework는 느린 관찰자 때문에 message dispatch, location claim과 host lifecycle이
-지연되지 않도록 중간 status를 합칠 수 있다. 이 경우에도 다음 결과를 보장한다.
+지연되지 않도록 중간 status를 합칠 수 있다. 합치기는 **source별 최신 status 한 자리**를
+유지하는 방식이다. 같은 source의 이전 중간 status는 최신 status가 대신한다. 이 경우에도
+다음 결과를 보장한다.
 
-- 가장 최근 status의 `Sequence`를 전달한다.
-- Relocation과 shutdown의 terminal status를 생략하지 않는다.
+- **보관 중인 source**에 대해 가장 최근 status의 `Sequence`를 전달한다.
+- Relocation과 shutdown의 terminal status는 중간 status로 덮어쓰지 않는다.
 - 한 관찰자의 지연, 취소 또는 실패가 다른 관찰자와 runtime 결과를 바꾸지 않는다.
+- 누계 field는 합친 뒤에도 최신 값을 반영한다. Backpressure와 drop counter의 증가분을
+  합치기로 잃지 않는다.
 
-관찰 취소는 해당 stream만 종료한다. 이미 수락한 runtime 작업이나 다른 관찰자는
-취소하지 않는다.
+Source별 한 자리 구조에서도 관찰자가 계속 읽지 않으면 종료된 source의 terminal status가
+쌓인다. 이 보관량에는 상한이 있으며, 상한을 넘기면 framework는 **가장 오래된 terminal
+status부터 버린다.** Terminal status를 무한히 보관하는 구조는 느린 관찰자 하나가 runtime
+memory를 소진시키므로 허용하지 않는다.
+
+버릴 때 관찰자가 유실을 알 수 있어야 한다. 유실 수는 관찰자마다 다르므로 **status
+안에 넣지 않는다** — status는 관찰자 사이에 공유하는 값이고, 여기에 관찰자별 값을 넣으면
+공유할 수 없게 된다.
+
+대신 stream이 전달하는 단위를 **status와 전달 정보의 쌍**으로 정의한다.
+
+| 구성 | 내용 |
+|---|---|
+| status | 지금까지와 같은 완전한 status. 관찰자 사이에 공유한다 |
+| 유실 누계 | 이 관찰자가 구독을 시작한 뒤 잃은 항목 수 |
+
+유실 누계는 **중간 status 합치기로 사라진 것과 terminal 폐기로 사라진 것을 각각** 센다.
+둘을 하나로 합치면 관찰자가 "따라잡기로 건너뛴 것"과 "영영 못 보는 것"을 구분하지 못한다.
+구독을 새로 시작하면 0에서 다시 시작한다. 표현 범위를 넘으면 최댓값으로 고정한다.
+
+runtime 전체 metric은 이 값을 대신할 수 없다 — 어느 관찰자가 무엇을 잃었는지 판정하지
+못하기 때문이다. 관찰자는 이 값의 증가와 `Sequence` gap으로 유실을 안다.
+
+Source의 최신 slot은 그 source lifecycle이 끝나고 terminal status가 전달되거나 폐기된 뒤에
+제거한다. 제거된 source는 위 "보관 중인 source"에서 빠진다.
+
+Framework는 관찰자 queue가 가득 찼다는 이유로 stream을 종료하지 않는다. 위의 합치기와
+보관 상한으로만 따라잡으며, 관찰자가 계속 느려도 stream은 열려 있다. 관찰 취소는 해당
+stream만 종료한다. 이미 수락한 runtime 작업이나 다른 관찰자는 취소하지 않는다.
 
 ## 4. Object의 현재 위치 조회
 

@@ -5,7 +5,7 @@
 
 ## 1. 목적
 
-이 문서는 ZLink Framework 11.0.0의 언어 중립 public API family와 등록 규칙을 정의한다. 실제 타입,
+이 문서는 ZLink Framework의 언어 중립 public API family와 등록 규칙을 정의한다. 실제 타입,
 generic 제약, overload와 비동기 반환 타입은 각 package의 언어별 스펙이 소유한다. .NET RouteMesh와
 MeshNode의 정확한 인터페이스는
 [.NET RouteMesh·MeshNode 인터페이스](server/languages/dotnet/interfaces/03-configuration-topology.ko.md)를 따른다.
@@ -410,8 +410,31 @@ handler가 실행 중인데 dependency를 먼저 정리하거나, 종료가 시�
 다시 만들면 안 된다. Handler 자신이 종료 operation을 시작하는 경우에도 현재 dispatch를
 기다리는 순환 대기가 생기지 않아야 한다.
 
-Framework scheduler는 ready owner의 bounded mailbox를 drain하고 Node, Spot과 Actor handler를 해당
-application 실행 문맥에서 호출한다. Transport readiness는 application callback 인자가 아니다. Request
+Framework scheduler는 ready owner의 bounded mailbox를 부분 drain하고 Node, Spot과 Actor handler를 해당
+application 실행 문맥에서 호출한다.
+
+Mailbox 한도는 **건수와 대기 중 byte 합계 두 축을 모두 강제한다.** 먼저 걸리는 쪽을 적용한다.
+한 축만 두면 다른 축으로 우회할 수 있다 — 건수만 두면 같은 건수가 payload 크기에 따라 수천 배의
+memory를 점유하고, byte만 두면 빈 payload를 무한히 쌓아도 한도에 걸리지 않는다.
+
+Byte 회계는 payload 크기만 세지 않는다. 대기 중인 작업 하나가 점유하는 envelope, metadata, queue
+node를 **더한다** — `payload 크기 + metadata 크기 + 작업당 고정 비용`이다. 큰 payload에서도 고정
+비용은 그대로 더한다. Payload가 비어 있어도 작업 하나는 0 byte가 아니다. 합이 표현 범위를 넘으면
+최댓값으로 고정하고 그 제출을 거절한다.
+
+**두 축은 하나의 작업으로 예약한다.** 건수와 byte를 각각 확인하면 한쪽만 통과한 상태가 생긴다.
+어느 한 축이라도 한도를 넘기면 두 축 모두 바뀌지 않은 채로 실패해야 한다. 반환도 같다 — 반환
+시점은 **작업을 대기열에서 꺼낼 때가 아니라 handler가 끝난 뒤**다. 실행 중인 작업이 점유한
+memory는 아직 해제되지 않았기 때문이다. 따라서 한도는 대기 중 작업과 실행 중 작업을 함께 센다.
+
+한 owner가 scheduler를 연속으로 점유하는 시간에는 상한이 있다. 상한에 도달하면 남은 작업을 ready
+상태로 되돌리고 다른 ready owner에게 실행을 넘긴다. 이 상한은 같은 node의 다른 owner가 겪는 최대
+대기 시간을 정한다. 실행 중인 handler 하나가 상한을 넘겨 실행되는 경우는 이 계약이 다루지 않는다 —
+handler 경계에서만 확인한다.
+
+Scheduler는 작업 도착을 기다릴 때 도착 기반으로 깨어난다. 언어 runtime이 blocking 대기나 callback
+wakeup을 제공하지 못해 주기적 확인을 사용하는 경우에는 그 주기를 언어별 문서에 공표한다. 그 주기가
+message 하나의 최선 지연 하한이 되기 때문이다. Transport readiness는 application callback 인자가 아니다. Request
 completion과 liveness·admission·relocation·reply recovery service control은 기존 Completion connection에서
 받는다. Send-ready는 Core callback으로 전달한다. 이 infrastructure 작업은 application handler가 점유할 수
 없는 실행 영역에서 진행한다. Actor·Spot lifecycle처럼 application callback을 호출하는 job은 application
@@ -424,7 +447,17 @@ JSON은 typed message의 기본 codec이다. JSON만 사용하는 application은
 
 송신할 업무 타입과 일치하는 extension이 없으면 JSON codec을 선택한다. 반면 수신 envelope가 명시한
 non-JSON content-type과 일치하는 codec이 registry에 없으면 payload를 JSON으로 다시 해석하지 않고
-`ProtocolError`로 완료한다. 송신 타입 선택의 기본값과 수신 wire content-type 검증은 서로 다른
+`ProtocolError`로 완료한다.
+
+송신 codec 선택의 입력은 **호출 지점에 선언된 message type**이다. 실제 전달한 instance의
+concrete type이 아니다. Base type이나 interface로 선언한 자리에 subtype instance를 넘겨도
+선언 type으로 고른다. 그래야 같은 호출 코드가 실행 시 넘어온 값에 따라 다른 codec과 다른
+content-type을 쓰지 않는다.
+
+여러 조건이 동시에 맞으면 **등록 순서가 늦은 것을 우선한다.** 어느 것도 맞지 않으면 JSON
+codec을 쓴다.
+
+송신 타입 선택의 기본값과 수신 wire content-type 검증은 서로 다른
 경계이므로 같은 fallback 규칙을 적용하지 않는다.
 
 Codec은 업무 객체와 payload bytes 사이의 변환만 담당한다. Packet name, routing, correlation과 handler

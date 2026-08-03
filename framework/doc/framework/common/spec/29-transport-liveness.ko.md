@@ -147,6 +147,26 @@ Beacon은 application record와 같은 PUB socket을 사용하므로 Classic fan
 not-ready가 된다. 이 판정은 오탐이 아니다. 그 시간 동안 subscriber는 application
 record를 처리하지 못하는 상태다.
 
+반면 한 peer가 수신 단계를 독점해서 다른 peer의 확인 신호가 밀리는 것은 오탐이다.
+Framework는 한 connection에서 연속으로 수신하는 양에 상한을 두어, 한 peer의 전송량이
+다른 peer의 ready 판정을 바꾸지 않게 한다. 상한에 도달하면 남은 수신을 다음 기회로
+넘기고 다른 connection과 확인 신호 처리를 진행한다.
+
+**이 상한은 Classic fanout에만 적용하는 것이 아니다.** 여러 connection을 한 수신 단계에서
+처리하는 모든 경로 — RouteMesh, ClientServer, service connection, STREAM — 에 같은
+규칙이 적용된다. 확인 신호는 어느 topology의 connection으로도 오며, 어느 경로에서든 한
+connection이 수신 단계를 독점하면 같은 오탐이 생긴다.
+
+상한은 **건수, byte, 경과 시간 셋을 함께 두고 먼저 닿는 것을 적용한다.** 한 축만 두면
+다른 축으로 독점할 수 있다. 그리고 다음 회전은 **이번에 멈춘 connection의 다음부터**
+시작한다. 항상 처음부터 순회하면 상한을 두어도 뒤쪽 connection이 계속 밀린다.
+
+하나의 socket이 여러 peer를 대표하는 경우에는 socket이 아니라 **peer 단위로** 회계한다.
+socket 단위로 세면 그 socket 뒤의 한 peer가 다른 peer의 몫까지 쓴다.
+
+세 상한의 값은 아직 정해지지 않았다. 값이 정해지기 전까지 이 조항으로 판정할 수 있는
+것은 "무한정 읽지 않는다"와 "회전 시작점이 이동한다"까지다.
+
 Beacon은 application event가 아니다. Subscriber는 다음 동작을 하지 않는다.
 
 - Publisher에 응답을 보내지 않는다.

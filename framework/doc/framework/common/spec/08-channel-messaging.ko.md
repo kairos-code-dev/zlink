@@ -5,7 +5,7 @@
 
 ## 1. 범위
 
-이 문서는 ZLink Framework 11.0.0에서 특정 MeshNode에 보내는 Node direct와
+이 문서는 ZLink Framework에서 특정 MeshNode에 보내는 Node direct와
 ChannelName으로 Server 하나를 선택하는 Channel 메시징의 공통 계약을 설명한다.
 
 두 방식은 application이 지정하는 target과 Framework가 선택하는 범위가 다르다.
@@ -120,7 +120,31 @@ Framework는 eligibility와 drain 조건을 적용한 뒤 남은 positive weight
 64-bit 정수로 계산한다. 이 합계가 overflow하지 않도록 계산한 상대 비율로 target을
 선택한다.
 예를 들어 다른 조건이 같은 두 후보의 weight가 `100`과 `300`이면 장기 선택 비율은
-약 `1:3`이다. 개별 호출마다 이 순서를 보장한다는 뜻은 아니다.
+약 `1:3`이다.
+
+### 선택 순서
+
+Framework는 후보마다 누적값 하나를 유지하며 다음 절차로 target을 고른다. 누적값의
+초기값은 `0`이다.
+
+1. 모든 후보의 누적값에 자기 weight를 더한다.
+2. 누적값이 가장 큰 후보를 고른다. 같으면 **후보 식별자 오름차순**으로 앞선 후보를 고른다.
+   식별자는 topology마다 다르다 — RouteMesh 경로는 [NodeRid](01-glossary.ko.md#meshnode),
+   ClientServer 경로는 Server RID다. 비교는 식별자의 byte 열을 부호 없는 값으로 앞에서부터
+   비교하며, 짧은 쪽이 접두사이면 짧은 쪽이 앞선다. 연결 경로나 등록 출처처럼 같은 target을
+   가리키는 다른 값을 식별자로 쓰면 구현마다 순서가 갈린다.
+3. 고른 후보의 누적값에서 후보 전체의 weight 합을 뺀다.
+
+누적값은 해당 ChannelName의 송신 경로가 유지한다. 후보 목록이 바뀌면 새 목록에 있는
+후보의 누적값만 유지하고 나머지는 버린다.
+
+이 절차는 장기 비율을 지키면서 **연속 선택이 한 후보에 몰리지 않게** 한다. weight가
+`100`과 `300`인 두 후보 A·B에 네 번 연속 호출하면 `B, A, B, B`가 되고(식별자는 A가
+앞선다고 가정), `A, B, B, B`처럼 몰리지 않는다. weight가 같은 후보들은 번갈아 선택되므로
+[ClientServer Channel](09-client-server-channel.ko.md)의 순환 요구를 함께 만족한다.
+
+같은 후보 목록과 같은 누적값 상태에서는 항상 같은 순서가 나온다. Application은 이
+재현성에 의존할 수 있다.
 
 ClientServer의 local Server도 remote Server와 같은 후보다. Local Server는 listener
 bind와 ClientServer service admission을 마쳐 ready이고, weight가 0보다 크며,

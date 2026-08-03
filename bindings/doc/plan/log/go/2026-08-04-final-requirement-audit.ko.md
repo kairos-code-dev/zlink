@@ -7,12 +7,13 @@
 
 | 항목 | 값 |
 |------|-----|
-| Go source revision | `6d698c7e68e0c263ee48dd3948e7b8cc6e865c7d` |
+| Go source revision | `427fbce0f5c0a3b6000506380b3d40521ed86413` |
 | Candidate manifest SHA-256 | `d318525a4cf8496b6bef5d900c9a88330ea6d7e10ed4120ac0fd9f19d23f6765` |
 | Candidate aggregate SHA-256 | `327587596195a162374498b630f51a043977dd392eb556061af615bf05186703` |
-| Go package evidence | `.artifacts/wsl/go-candidate-final5/go-package-v11.1.0.json` |
-| Go package evidence SHA-256 | `a8cd3736712a7af87d5a45c7de35c1a80481c87604fdee0bb813ccb3589b767a` |
-| Module zip SHA-256 | `9dfddf031f8481ea50e33ad0387cf5d778e5e4b3559770b62872c0fcadb71548` |
+| Go source manifest SHA-256 | `3240b10c68ad6dfb1ebe08a8ec27a6ea526a3b02ff48f59ed5c20b0573a59cff` |
+| Go package evidence | `.artifacts/wsl/go-candidate-final6/go-package-v11.1.0.json` |
+| Go package evidence SHA-256 | `4ae453178ceb1a7bcaebe8994a39479eac14a86a9f8146642c503df7006888a2` |
+| Module zip SHA-256 | `76f1d83f76c6203765f67938392c199f6d6441fc714f18c1c1e7f7611e57b274` |
 | Core runtime SHA-256 | `b6fadc481c649b50637a9c0eb01d15a016e6ba4cd5bab967bdb6da4497a3c0c4` |
 | Current V11-R2 review | `passed`, `independent: false`, `coordinator_self_review` |
 
@@ -20,13 +21,13 @@
 
 | # | 완료 조건 | 판정 | 현재 증거와 남은 조건 |
 |---|-----------|------|----------------------|
-| 1 | `/v11@v11.1.0`, 승인 candidate와 source manifest가 같은 package evidence에 기록됨 | `PASS` | fresh5 package evidence와 clean consumer가 module, source revision, candidate identity를 연결한다 |
+| 1 | `/v11@v11.1.0`, 승인 candidate와 source manifest가 같은 package evidence에 기록됨 | `PASS` | fresh6 package evidence와 clean consumer가 module, current source revision, candidate identity를 연결한다 |
 | 2 | Raw cgo·public API가 Core 11 allowlist에 맞고 service API가 없음 | `PASS` | raw allowlist, public surface test와 package forbidden-entry 검사가 통과했다 |
 | 3 | Error·no-data·ownership이 Go–Rust parity 열과 일치함 | `PARTIAL` | 현재 Go evidence는 있으나 submit 반환과 callback completion 의미의 공통 승인이 없다 |
 | 4 | Submit·Context 규칙이 승인 draft와 contract test에 일치함 | `PARTIAL` | Context cancellation/deadline test는 통과했지만 submit draft 승인과 error-only 결정이 없다 |
-| 5 | Source test, vet, hot-path guard, perf smoke와 raw sample이 통과함 | `PASS` | `go test`, `go vet`, guard, single·multi smoke와 samples `7/7`을 fresh5에서 통과했다 |
+| 5 | Source test, vet, hot-path guard, perf smoke와 raw sample이 통과함 | `PASS` | current-HEAD fresh6 package에서 `go test`, race, `go vet`, guard, single·multi smoke와 samples `7/7`을 통과했다 |
 | 6 | POSD·DDD·비용·dead code 검토와 독립 `CLEAN` review가 끝남 | `PARTIAL` | 자체 review와 `go test -race`는 통과했지만 현재 candidate의 독립 frontier review가 없다 |
-| 7 | replace 없는 clean consumer가 package runtime으로 message 송수신함 | `PASS` | fresh5 builder의 `cleanConsumer: pass`와 module-cache ldd/roundtrip 증거가 있다 |
+| 7 | replace 없는 clean consumer가 package runtime으로 message 송수신함 | `PASS` | fresh6 builder의 `cleanConsumer: pass`와 module-cache ldd/roundtrip 증거가 있다 |
 | 8 | 지원 Linux·macOS platform의 동일 candidate runtime load가 검증됨 | `PARTIAL` | Linux x86_64만 통과했다. Linux arm64는 `libzlink.so.9`, macOS 두 target은 native consumer 미검증이며 현재 Go package builder도 `linux-x86_64` 외 target을 거부한다 |
 | 9 | Go spec, GoDoc와 guide가 구현·공통 contract와 일치함 | `PARTIAL` | Go 문서는 현재 구현과 맞지만 공통 submit draft와 parity 반영이 승인 전이다 |
 | 10 | 성능 수치 개선을 완료 근거로 사용하지 않음 | `PASS` | smoke는 실행 의미만 확인하고 공식 성능 개선 판정은 하지 않았다 |
@@ -49,7 +50,7 @@ major 9 payload나 다른 workstream의 11.2.0 artifact를 이 candidate의 증�
 
 ## 최종 상태
 
-Go plan의 문서·source·Linux x86_64 package 범위는 현재 evidence로 재현 가능하다. 그러나 조건 3, 4, 6, 8,
+Go plan의 문서·source·Linux x86_64 package 범위는 current-HEAD fresh6 evidence로 재현 가능하다. 그러나 조건 3, 4, 6, 8,
 9, 11이 남아 있으므로 최종 상태는 `PARTIAL / NOT CLEAN`이다.
 
 다음 closure에는 우회 구현이 아니라 아래 외부 입력이 필요하다.

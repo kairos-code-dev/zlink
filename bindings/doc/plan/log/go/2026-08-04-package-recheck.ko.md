@@ -1,6 +1,6 @@
 # Go binding Core 11 package 재검증 기록
 
-이 기록은 2026-08-04에 확인한 Go binding의 candidate-bound fresh5 package evidence를 정리한다. Linux
+이 기록은 2026-08-04에 현재 HEAD 기준으로 확인한 Go binding의 candidate-bound fresh6 package evidence를 정리한다. Linux
 x86_64 package·clean consumer·sample·perf smoke 범위는 통과했지만, Go 작업 전체는 공통 submit 계약 승인,
 독립 frontier review와 다른 platform native consumer가 남아 `PARTIAL / NOT CLEAN`이다.
 
@@ -13,28 +13,39 @@ x86_64 package·clean consumer·sample·perf smoke 범위는 통과했지만, Go
 | Candidate aggregate SHA-256 | `327587596195a162374498b630f51a043977dd392eb556061af615bf05186703` |
 | Core package provenance SHA-256 | `46f7bd17c0be3987fed14ca3cb594139e3edb778d3996248d23b6d2d6b53f693` |
 | Core runtime SHA-256 | `b6fadc481c649b50637a9c0eb01d15a016e6ba4cd5bab967bdb6da4497a3c0c4` |
-| Binding source revision | `6d698c7e68e0c263ee48dd3948e7b8cc6e865c7d` |
-| Binding source manifest SHA-256 | `33c50708f5ec9b052026321f1a650db9d3800b2d17d4ea46a8f5c6112c2abd7c` |
+| Binding source revision | `427fbce0f5c0a3b6000506380b3d40521ed86413` |
+| Binding source manifest SHA-256 | `3240b10c68ad6dfb1ebe08a8ec27a6ea526a3b02ff48f59ed5c20b0573a59cff` |
 | Binding source aggregate SHA-256 | `982a24119f27f032b7cac9cf7e8a691631797be7b89a931a3d6c87334114fc91` |
-| Module zip SHA-256 | `9dfddf031f8481ea50e33ad0387cf5d778e5e4b3559770b62872c0fcadb71548` |
-| Package evidence SHA-256 | `a8cd3736712a7af87d5a45c7de35c1a80481c87604fdee0bb813ccb3589b767a` |
+| Module zip SHA-256 | `76f1d83f76c6203765f67938392c199f6d6441fc714f18c1c1e7f7611e57b274` |
+| Package evidence SHA-256 | `4ae453178ceb1a7bcaebe8994a39479eac14a86a9f8146642c503df7006888a2` |
 | Package platforms | `linux-x86_64` |
 
 Package evidence는 `zlink.systems/zlink/v11@v11.1.0` module, package-local Core 11 header와 candidate runtime을
 사용한다. `cleanConsumer`는 `replace` 없이 실제 message roundtrip과 module-cache runtime load를 통과했다.
 Package에는 service·Spot·Actor·build·results forbidden entry가 없다.
+Source manifest는 현재 HEAD를 기록하며, 이전 package를 만든 `6d698c7e68` 이후 `bindings/go`에는 변경이 없다.
+
+```bash
+git diff --name-status 6d698c7e68e0c263ee48dd3948e7b8cc6e865c7d..427fbce0f5c0a3b6000506380b3d40521ed86413 -- bindings/go
+```
+
+위 명령은 출력을 만들지 않았다. 따라서 fresh6은 binding source가 바뀌지 않은 상태에서 source provenance만
+현재 HEAD로 다시 고정한 package evidence다.
 
 ## 실행 결과
 
-- extracted fresh5 package: `go test ./...`, `go vet ./...`, raw/hot-path guard와 samples `pass=7 fail=0`
-- fresh package `go test ./...`: exit code `0`
-- `go vet ./...`: exit code `0`
+- extracted fresh6 package: `go test ./...`, `go test -race ./...`, `go vet ./...`, raw/hot-path guard와 samples
+  `pass=7 fail=0`
+- fresh6 package `go test ./...`, `go test -race ./...`, `go vet ./...`와 guard: exit code `0`
 - Single smoke: `PAIR`, `inproc`, message size `64`, duration `1`, run `1`, exit code `0`
 - Multi smoke: `MULTI_DEALER_ROUTER`, `tcp`, clients `1`, message size `64`, duration `1`, run `1`, exit code `0`
 
 Perf smoke는 extracted package의 `native/linux-x86_64/libzlink.so.11.1.0`을 출력하고 runtime SHA-256
-`b6fadc481c649b50637a9c0eb01d15a016e6ba4cd5bab967bdb6da4497a3c0c4`를 확인했다. package에 없는 Python
-report helper를 호출하지 않는 `--smoke` 경로로 실행했으며, 공식 report나 성능 수치 개선을 증명하지 않는다.
+`b6fadc481c649b50637a9c0eb01d15a016e6ba4cd5bab967bdb6da4497a3c0c4`를 확인했다. Single smoke의 결과 행은
+throughput `1259306.000`, latency `0.034`, p95 `0.120`, p99 `0.195`이고 multi smoke는 throughput
+`9045.000`, latency `0.055`, p95 `0.068`, p99 `0.110`이다. 이 값은 실행 의미를 확인하기 위한 출력이며
+공식 report나 성능 수치 개선을 증명하지 않는다. package에 없는 Python report helper를 호출하지 않는
+`--smoke` 경로로 실행했다.
 
 ## 설계 검토와 남은 조건
 

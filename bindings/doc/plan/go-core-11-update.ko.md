@@ -165,7 +165,7 @@ perf/run_benchmarks_multi.sh --smoke --pattern MULTI_DEALER_ROUTER --duration 1 
 
 Smoke는 ready, active, 필수 `RESULT` metric과 exit code만 확인하며 공식 성능 report를 만들지 않는다.
 Package zip에는 Python report helper가 포함되지 않으므로 `--smoke` 경로는 해당 helper를 호출하지 않는다.
-이 경계는 `6d698c7e68`에서 고정했고, fresh5 extracted package smoke에서 다시 확인했다.
+이 경계는 `6d698c7e68`에서 고정했고, current-HEAD fresh6 extracted package smoke에서 다시 확인했다.
 
 ### GO-07 — 구현 후 POSD·DDD 리팩터링과 Codex review — PARTIAL / NOT CLEAN
 
@@ -194,6 +194,7 @@ Package zip에는 Python report helper가 포함되지 않으므로 `--smoke` �
 | Perf runtime boundary | `c6b37ac0ee` | Root `VERSION` 대신 Go package header에서 native SONAME version을 해석 |
 | Lifecycle owner boundary | `e9be2c8c46` | `socketCore`가 request progress와 callback handle lifecycle을 소유하고 callback close race를 제거 |
 | Package smoke boundary | `6d698c7e68` | Go package perf `--smoke`가 package 외부 Python report helper 없이 동작하도록 고정 |
+| Current-HEAD package boundary | `427fbce0f5c` | 현재 HEAD source revision으로 candidate-bound package와 clean consumer, race·sample·perf smoke를 재검증 |
 | Platform builder boundary | `3740c59ad9` | non-x86_64 package builder 거부 결과와 same-candidate platform gate를 기록 |
 
 그러나 구현자가 아닌 frontier reviewer의 read-only 전체 diff review evidence가 없다. V11-R2 Core review도
@@ -259,14 +260,14 @@ scripts/local-package/go/build-wsl.sh \
 
 | 항목 | 값 |
 |------|-----|
-| Source revision | `6d698c7e68e0c263ee48dd3948e7b8cc6e865c7d` |
-| Source manifest SHA-256 | `33c50708f5ec9b052026321f1a650db9d3800b2d17d4ea46a8f5c6112c2abd7c` |
+| Source revision | `427fbce0f5c0a3b6000506380b3d40521ed86413` |
+| Source manifest SHA-256 | `3240b10c68ad6dfb1ebe08a8ec27a6ea526a3b02ff48f59ed5c20b0573a59cff` |
 | Package script SHA-256 | `9404def1079805c0cf200244f670deaae55daba17031095594aa099dc09b3fee` |
-| Module zip SHA-256 | `9dfddf031f8481ea50e33ad0387cf5d778e5e4b3559770b62872c0fcadb71548` |
+| Module zip SHA-256 | `76f1d83f76c6203765f67938392c199f6d6441fc714f18c1c1e7f7611e57b274` |
 | Header aggregate SHA-256 | `159c8024f8ed090e0c3acfe51e665339d3a43e93b37dc9e21490b703df717f1d` |
 | Source aggregate SHA-256 | `982a24119f27f032b7cac9cf7e8a691631797be7b89a931a3d6c87334114fc91` |
-| Package evidence | `.artifacts/wsl/go-candidate-final5/go-package-v11.1.0.json` |
-| Package evidence SHA-256 | `a8cd3736712a7af87d5a45c7de35c1a80481c87604fdee0bb813ccb3589b767a` |
+| Package evidence | `.artifacts/wsl/go-candidate-final6/go-package-v11.1.0.json` |
+| Package evidence SHA-256 | `4ae453178ceb1a7bcaebe8994a39479eac14a86a9f8146642c503df7006888a2` |
 | Core candidate manifest | `.artifacts/v11/evidence/V11-M3-CORE-VERIFY/candidate-reply-match-completion-hwm-20260801.json` |
 | Core package evidence | `.artifacts/v11/evidence/V11-M3-CORE-VERIFY/core-package-20260801.json` |
 | Core provenance SHA-256 | `46f7bd17c0be3987fed14ca3cb594139e3edb778d3996248d23b6d2d6b53f693` |
@@ -289,7 +290,7 @@ scripts/local-package/go/build-wsl.sh \
 | `go vet ./...` | `PASS` | fresh5 extracted package와 `bindings/go/tests/run_tests.sh`에서 통과 |
 | `go test -race ./...` | `PASS` | callback handle lifecycle와 request progress owner 변경 후 Linux x86_64에서 통과 |
 | Hot path cost inventory와 optimization guard | `PASS` | `hot-path-cost-inventory.json`, `TestHotPathCostInventory`, `TestOptimizationGuard` |
-| Perf runner smoke | `PASS` | fresh5 extracted package에서 single PAIR inproc와 multi DEALER/ROUTER TCP smoke, exit 0 |
+| Perf runner smoke | `PASS` | current-HEAD fresh6 extracted package에서 single PAIR inproc와 multi DEALER/ROUTER TCP smoke, exit 0 |
 | 구현 후 POSD·DDD·성능 비용·dead code Codex review | `NOT CLEAN` | 현재 독립 frontier review와 fresh finding report 없음 |
 | Go·Rust parity inventory | `PARTIAL` | 대응 surface·error·ownership 행은 기록했지만 submit 승인, contract test와 parity `CLEAN` 판정이 남음 |
 | Submit·`context.Context` draft 승인과 contract | `PARTIAL` | cancellation/error tests 통과; submit 반환 draft 승인과 error-only signature는 미완료 |

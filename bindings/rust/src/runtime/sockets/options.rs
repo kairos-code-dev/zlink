@@ -18,16 +18,16 @@ impl CommonSocketOptionRuntime for SocketInner {
     fn linger(&self) -> Result<Duration, ConfigError> {
         self.linger()
     }
-    fn set_send_high_water_mark(&self, value: i32) -> Result<(), ConfigError> {
+    fn set_send_high_water_mark(&self, value: u64) -> Result<(), ConfigError> {
         self.set_send_high_water_mark(value)
     }
-    fn send_high_water_mark(&self) -> Result<i32, ConfigError> {
+    fn send_high_water_mark(&self) -> Result<u64, ConfigError> {
         self.send_high_water_mark()
     }
-    fn set_receive_high_water_mark(&self, value: i32) -> Result<(), ConfigError> {
+    fn set_receive_high_water_mark(&self, value: u64) -> Result<(), ConfigError> {
         self.set_receive_high_water_mark(value)
     }
-    fn receive_high_water_mark(&self) -> Result<i32, ConfigError> {
+    fn receive_high_water_mark(&self) -> Result<u64, ConfigError> {
         self.receive_high_water_mark()
     }
     fn set_send_timeout(&self, d: Duration) -> Result<(), ConfigError> {
@@ -82,24 +82,6 @@ impl CommonSocketOptionRuntime for SocketInner {
     }
     fn tcp_keepalive(&self) -> Result<bool, ConfigError> {
         self.tcp_keepalive()
-    }
-    fn set_heartbeat_interval(&self, d: Duration) -> Result<(), ConfigError> {
-        self.set_heartbeat_interval(d)
-    }
-    fn heartbeat_interval(&self) -> Result<Duration, ConfigError> {
-        self.heartbeat_interval()
-    }
-    fn set_heartbeat_ttl(&self, d: Duration) -> Result<(), ConfigError> {
-        self.set_heartbeat_ttl(d)
-    }
-    fn heartbeat_ttl(&self) -> Result<Duration, ConfigError> {
-        self.heartbeat_ttl()
-    }
-    fn set_heartbeat_timeout(&self, d: Duration) -> Result<(), ConfigError> {
-        self.set_heartbeat_timeout(d)
-    }
-    fn heartbeat_timeout(&self) -> Result<Duration, ConfigError> {
-        self.heartbeat_timeout()
     }
     fn set_max_message_size(&self, bytes: i64) -> Result<(), ConfigError> {
         self.set_max_message_size(bytes)

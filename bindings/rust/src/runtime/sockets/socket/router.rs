@@ -55,29 +55,16 @@ pub(crate) fn router_inner_mut(socket: &mut RouterSocket) -> &mut SocketInner {
 
 fn router_received_from_raw(
     handle: *mut c_void,
-    source_node_rid: *const ffi::zlink_routing_id_t,
-    source_spot_rid: *const ffi::zlink_routing_id_t,
+    source_rid: *const ffi::zlink_routing_id_t,
     request_seq: u64,
     parts: Vec<Message>,
 ) -> Received {
-    let rid = if source_node_rid.is_null() {
+    let rid = if source_rid.is_null() {
         RoutingId::from_raw(ffi::zlink_routing_id_t::empty())
     } else {
-        unsafe { RoutingId::from_raw(*source_node_rid) }
+        unsafe { RoutingId::from_raw(*source_rid) }
     };
-    let spot_rid = if source_spot_rid.is_null() {
-        None
-    } else {
-        let rid = unsafe { RoutingId::from_raw(*source_spot_rid) };
-        if rid.is_empty() { None } else { Some(rid) }
-    };
-    if let Some(spot_rid) = spot_rid {
-        if request_seq == 0 {
-            Received::with_router_spot_send_context(handle, rid, spot_rid, parts)
-        } else {
-            Received::with_spot_reply_context(handle, rid, spot_rid, request_seq, parts)
-        }
-    } else if request_seq == 0 {
+    if request_seq == 0 {
         Received::with_router_send_context(handle, rid, parts)
     } else {
         Received::with_router_reply_context(handle, rid, request_seq, parts)
@@ -88,8 +75,7 @@ pub(crate) fn recv_router_once(
     handle: *mut c_void,
     flags: u32,
 ) -> Result<Option<Received>, RecvError> {
-    let mut source_node_rid = ptr::null();
-    let mut source_spot_rid = ptr::null();
+    let mut source_rid = ptr::null();
     let mut request_seq = 0u64;
     let mut parts = Vec::new();
     let mut recv_flags = flags;
@@ -99,15 +85,13 @@ pub(crate) fn recv_router_once(
         unsafe {
             ffi::zlink_msg_init(part.as_mut_ptr());
         }
-        let mut has_more = 0;
-        let mut current_source_node_rid = ptr::null();
-        let mut current_source_spot_rid = ptr::null();
+        let mut has_more = ffi::zlink_part_flag_t::ZLINK_PART_FINAL;
+        let mut current_source_rid = ptr::null();
         let mut current_request_seq = 0u64;
         let rc = unsafe {
             ffi::zlink_router_recv_part(
                 handle,
-                &mut current_source_node_rid,
-                &mut current_source_spot_rid,
+                &mut current_source_rid,
                 &mut current_request_seq,
                 part.as_mut_ptr(),
                 &mut has_more,
@@ -127,8 +111,7 @@ pub(crate) fn recv_router_once(
                 }
                 return Err(check_recv_rc(rc).unwrap_err());
             }
-            source_node_rid = current_source_node_rid;
-            source_spot_rid = current_source_spot_rid;
+            source_rid = current_source_rid;
             request_seq = current_request_seq;
         } else if rc != 0 {
             close_unreceived_part(&mut part);
@@ -136,11 +119,10 @@ pub(crate) fn recv_router_once(
         }
 
         parts.push(unsafe { crate::message::Message::from_raw(part.assume_init()) });
-        if has_more == 0 {
+        if has_more == ffi::zlink_part_flag_t::ZLINK_PART_FINAL {
             return Ok(Some(router_received_from_raw(
                 handle,
-                source_node_rid,
-                source_spot_rid,
+                source_rid,
                 request_seq,
                 parts,
             )));

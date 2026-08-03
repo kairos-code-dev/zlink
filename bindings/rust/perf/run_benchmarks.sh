@@ -126,35 +126,20 @@ case "$(uname -s)" in
 esac
 
 default_transports_for_pattern() {
-    local pattern="$1"
-    case "${pattern}" in
-        SPOT)
-            printf '%s' "tcp,tls,ws,wss"
-            ;;
-        *)
-            if [[ "${PLATFORM}" == "windows" ]]; then
-                printf '%s' "tcp,tls,ws,wss,inproc"
-            else
-                printf '%s' "tcp,tls,ws,wss,inproc,ipc"
-            fi
-            ;;
-    esac
+    if [[ "${PLATFORM}" == "windows" ]]; then
+        printf '%s' "tcp,tls,ws,wss,inproc"
+    else
+        printf '%s' "tcp,tls,ws,wss,inproc,ipc"
+    fi
 }
 
 is_supported_transport_for_pattern() {
-    local pattern="$1"
     local transport="$2"
-    case "${pattern}:${transport}" in
-        SPOT:tcp|SPOT:tls|SPOT:ws|SPOT:wss)
+    case "${transport}" in
+        tcp|tls|ws|wss|inproc)
             return 0
             ;;
-        SPOT:*)
-            return 1
-            ;;
-        *:tcp|*:tls|*:ws|*:wss|*:inproc)
-            return 0
-            ;;
-        *:ipc)
+        ipc)
             [[ "${PLATFORM}" != "windows" ]]
             return
             ;;
@@ -270,7 +255,7 @@ fi
 IFS=',' read -ra SIZE_LIST <<< "${MSG_SIZES}"
 
 if [[ "${PATTERN}" == "ALL" ]]; then
-    PATTERNS=("PAIR" "PUBSUB" "DEALER_DEALER" "DEALER_ROUTER" "ROUTER_ROUTER" "SPOT")
+    PATTERNS=("PAIR" "PUBSUB" "DEALER_DEALER" "DEALER_ROUTER" "ROUTER_ROUTER")
 else
     IFS=',' read -ra PATTERNS <<< "${PATTERN}"
 fi
@@ -302,7 +287,6 @@ for pat in "${PATTERNS[@]}"; do
         DEALER_DEALER)   BIN="${SINGLE_DIR}/perf_dealer_dealer" ;;
         DEALER_ROUTER)   BIN="${SINGLE_DIR}/perf_dealer_router" ;;
         ROUTER_ROUTER)   BIN="${SINGLE_DIR}/perf_router_router" ;;
-        SPOT)            BIN="${SINGLE_DIR}/perf_spot" ;;
         *)               continue ;;
     esac
     current_transports="${TRANSPORTS:-$(default_transports_for_pattern "${pat}")}"

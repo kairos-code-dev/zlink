@@ -7,8 +7,8 @@
 
 use zlink::{
     AtomicCounter, Context, Message, MonitorEvent, Received, RecvError, RecvFlags,
-    RidDuplicatePolicy, RoutingId, SendFlags, SendResult, SocketMonitor, SpotNode, Stopwatch,
-    StreamSocket, SubmitRetryMode, SubscriptionEvent, Thread, TopicMessage, XPubSocket,
+    RidDuplicatePolicy, RoutingId, SendFlags, SendResult, SocketMonitor, Stopwatch, StreamSocket,
+    SubmitRetryMode, SubscriptionEvent, Thread, TopicMessage, XPubSocket,
 };
 
 // ---------------------------------------------------------------------------
@@ -225,13 +225,10 @@ fn rid_disconnect_surface_exists() {
     let ctx = Context::new().unwrap();
     let pair = ctx.pair_socket().unwrap();
     let router = ctx.router_socket().unwrap();
-    let node = SpotNode::new(&ctx).unwrap();
     let rid = RoutingId::from(b"peer-rid");
 
     let _ = pair.disconnect_rid(&rid);
     let _ = router.disconnect_rid(&rid);
-    let _ = node.set_router_bind("inproc://surface-router");
-    let _ = node.disconnect_peer_rid(&rid);
 }
 
 // ---------------------------------------------------------------------------
@@ -250,13 +247,6 @@ fn socket_monitor_has_recv() {
     let _recv: fn(&SocketMonitor) -> Result<MonitorEvent, RecvError> = SocketMonitor::recv;
     let _ignore: fn() -> fn(&MonitorEvent) = SocketMonitor::ignore_handler;
     let _ = mon;
-}
-
-#[test]
-fn message_diagnostic_surface_exists() {
-    let msg = Message::try_from(b"surface").unwrap();
-    let _ = msg.ref_count();
-    let _ = msg.get_property("missing");
 }
 
 // ---------------------------------------------------------------------------

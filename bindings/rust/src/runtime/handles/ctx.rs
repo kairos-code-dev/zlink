@@ -135,6 +135,14 @@ impl NativeContext {
         })
     }
 
+    fn set_u64_data_option(&self, option: i32, value: u64) -> Result<(), ConfigError> {
+        self.set_data_option(
+            option,
+            (&value as *const u64).cast(),
+            std::mem::size_of::<u64>(),
+        )
+    }
+
     fn get_int_option(&self, option: i32) -> Result<i32, ConfigError> {
         let mut result = ffi::zlink_config_result_t::ZLINK_CONFIG_OK;
         let value = unsafe { ffi::zlink_ctx_get(self.handle, raw_option(option), &mut result) };
@@ -152,6 +160,23 @@ impl NativeContext {
         } else {
             Ok(value)
         }
+    }
+
+    fn get_u64_data_option(&self, option: i32) -> Result<u64, ConfigError> {
+        let mut value = 0_u64;
+        let mut len = std::mem::size_of::<u64>();
+        check_config_rc(unsafe {
+            ffi::zlink_ctx_get_data(
+                self.handle,
+                raw_option(option),
+                (&mut value as *mut u64).cast(),
+                &mut len,
+            )
+        })?;
+        if len != std::mem::size_of::<u64>() {
+            return Err(config_validation_error());
+        }
+        Ok(value)
     }
 }
 
@@ -303,15 +328,14 @@ impl ContextOptionRuntime for NativeContext {
         )
     }
 
-    fn auto_hwm_msg_unit_bytes(&self) -> Result<i32, ConfigError> {
-        self.get_int_option(ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES as i32)
+    fn auto_hwm_msg_unit_bytes(&self) -> Result<u64, ConfigError> {
+        self.get_u64_data_option(
+            ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES as i32,
+        )
     }
 
-    fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ConfigError> {
-        if bytes < 0 {
-            return Err(config_validation_error());
-        }
-        self.set_int_option(
+    fn set_auto_hwm_msg_unit_bytes(&self, bytes: u64) -> Result<(), ConfigError> {
+        self.set_u64_data_option(
             ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES as i32,
             bytes,
         )

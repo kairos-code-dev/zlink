@@ -401,7 +401,7 @@ normalize_patterns() {
     local raw="${1:-ALL}"
     raw="${raw^^}"
     if [[ "${raw}" == "ALL" ]]; then
-        printf '%s\n' "MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_SPOT_REQREP,MULTI_SPOT_SENDSEND,MULTI_STREAM"
+        printf '%s\n' "MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_STREAM"
         return
     fi
 
@@ -416,7 +416,7 @@ normalize_patterns() {
             value="STREAM"
         fi
         case "${value}" in
-            DEALER_DEALER|DEALER_ROUTER|ROUTER_ROUTER|PUBSUB|SPOT|SPOT_REQREP|SPOT_SENDSEND|STREAM)
+            DEALER_DEALER|DEALER_ROUTER|ROUTER_ROUTER|PUBSUB|STREAM)
                 items+=("MULTI_${value}")
                 ;;
             *)
@@ -675,8 +675,7 @@ resolve_client_timeout_seconds() {
         return
     fi
 
-    if [[ "${pattern}" == "MULTI_SPOT" || "${pattern}" == "MULTI_SPOT_REQREP" || "${pattern}" == "MULTI_SPOT_SENDSEND" ]] \
-        || { [[ "${pattern}" == "MULTI_PUBSUB" ]] && (( size >= 65536 )); } \
+    if { [[ "${pattern}" == "MULTI_PUBSUB" ]] && (( size >= 65536 )); } \
         || { [[ "${transport}" == "tls" || "${transport}" == "wss" ]] && (( size >= 131072 )); }; then
         timeout_seconds=$(( duration * 6 + 30 ))
         if (( timeout_seconds < 90 )); then
@@ -729,15 +728,6 @@ for run in $(seq 1 "${RUNS}"); do
             MULTI_ROUTER_ROUTER)
                 SERVER_BIN="${BIN_DIR}/perf_multi_router_router_server"
                 CLIENT_BIN="${BIN_DIR}/perf_multi_router_router_client" ;;
-            MULTI_SPOT)
-                SERVER_BIN="${BIN_DIR}/perf_multi_spot_server"
-                CLIENT_BIN="${BIN_DIR}/perf_multi_spot_client" ;;
-            MULTI_SPOT_REQREP)
-                SERVER_BIN="${BIN_DIR}/perf_multi_spot_reqrep_server"
-                CLIENT_BIN="${BIN_DIR}/perf_multi_spot_reqrep_client" ;;
-            MULTI_SPOT_SENDSEND)
-                SERVER_BIN="${BIN_DIR}/perf_multi_spot_sendsend_server"
-                CLIENT_BIN="${BIN_DIR}/perf_multi_spot_sendsend_client" ;;
             MULTI_STREAM)
                 SERVER_BIN="${BIN_DIR}/perf_multi_stream_server"
                 CLIENT_BIN="" ;;
@@ -839,25 +829,6 @@ for run in $(seq 1 "${RUNS}"); do
                 fi
 
                 CONTROL_ENDPOINT=""
-                if [[ "${pat}" == "MULTI_SPOT" || "${pat}" == "MULTI_SPOT_REQREP" || "${pat}" == "MULTI_SPOT_SENDSEND" ]]; then
-                    CONTROL_LINE="$(wait_for_file_prefix "${SRV_OUT}" "CONTROL_READY," "${SERVER_READY_TIMEOUT_SECONDS}" || true)"
-                    if [[ "${CONTROL_LINE}" == CONTROL_READY,* ]]; then
-                        CONTROL_ENDPOINT="${CONTROL_LINE#CONTROL_READY,}"
-                        CONTROL_ENDPOINT="${CONTROL_ENDPOINT//0.0.0.0/127.0.0.1}"
-                    fi
-                    if [[ -z "${CONTROL_ENDPOINT}" ]]; then
-                        case_status="fail"
-                        case_reason="control_ready_timeout"
-                        shutdown_server "${SERVER_PID}" "${SERVER_CONTROL_FD}"
-                        rm -f "${SRV_OUT}"
-                        printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "${case_status}" "${case_reason}" >> "${TMP_CASES}"
-                        if [[ "${PERF_FAIL_FAST:-0}" == "1" ]]; then
-                            stop_early=1
-                            break
-                        fi
-                        continue
-                    fi
-                fi
 
                 if [[ "${pat}" == "MULTI_DEALER_DEALER" || "${pat}" == "MULTI_PUBSUB" ]]; then
                     CLIENT_OUT="$(mktemp)"
@@ -898,70 +869,6 @@ for run in $(seq 1 "${RUNS}"); do
 
                     exec {CLIENT_CONTROL_FD}>&- || true
                     OUTPUT=""
-                    if [[ -f "${CLIENT_OUT}" ]]; then
-                        CLIENT_OUTPUT="$(cat "${CLIENT_OUT}")"
-                    fi
-                    if [[ -s "${CLIENT_ERR}" ]]; then
-                        if [[ -n "${CLIENT_OUTPUT}" ]]; then
-                            CLIENT_OUTPUT+=$'\n'
-                        fi
-                        CLIENT_OUTPUT+="$(cat "${CLIENT_ERR}")"
-                    fi
-                    rm -f "${CLIENT_OUT}" "${CLIENT_ERR}"
-                elif [[ "${pat}" == "MULTI_SPOT" || "${pat}" == "MULTI_SPOT_REQREP" || "${pat}" == "MULTI_SPOT_SENDSEND" ]]; then
-                    CLIENT_OUT="$(mktemp)"
-                    CLIENT_ERR="$(mktemp)"
-                    CLIENT_FIFO="$(mktemp -u)"
-                    mkfifo "${CLIENT_FIFO}"
-                    CLIENT_ENDPOINT="${ENDPOINT},${CONTROL_ENDPOINT}"
-                    "${RUN_PREFIX[@]}" "${CLIENT_BIN}" "${transport}" "${size}" "${CLIENT_ENDPOINT}" < "${CLIENT_FIFO}" > "${CLIENT_OUT}" 2> "${CLIENT_ERR}" &
-                    CLIENT_PID=$!
-                    exec {CLIENT_CONTROL_FD}> "${CLIENT_FIFO}"
-                    rm -f "${CLIENT_FIFO}"
-
-                    CLIENT_CONTROL_LINE="$(wait_for_file_prefix "${CLIENT_OUT}" "CLIENT_CONTROL_ENDPOINT," "${ONE_WAY_CLIENT_READY_TIMEOUT}" || true)"
-                    if [[ "${CLIENT_CONTROL_LINE}" != CLIENT_CONTROL_ENDPOINT,* ]]; then
-                        case_status="fail"
-                        case_reason="client_control_endpoint_timeout"
-                    else
-                        CLIENT_CONTROL_ENDPOINT="${CLIENT_CONTROL_LINE#CLIENT_CONTROL_ENDPOINT,}"
-                        printf 'CONNECT_CONTROL,%s\n' "${CLIENT_CONTROL_ENDPOINT}" >&"${SERVER_CONTROL_FD}" || true
-                        CLIENT_CONTROL_CONNECTED="$(wait_for_file_prefix "${SRV_OUT}" "CONTROL_CONNECTED," "${ONE_WAY_CLIENT_READY_TIMEOUT}" || true)"
-                        if [[ "${CLIENT_CONTROL_CONNECTED}" != "CONTROL_CONNECTED,${CLIENT_CONTROL_ENDPOINT}" ]]; then
-                            case_status="fail"
-                            case_reason="control_connect_timeout"
-                        else
-                            printf '%s\n' "${CLIENT_CONTROL_CONNECTED}" >&"${CLIENT_CONTROL_FD}" || true
-                        fi
-                    fi
-
-                    if [[ "${case_status}" == "success" ]]; then
-                        CLIENT_READY_LINE="$(wait_for_file_prefix "${CLIENT_OUT}" "CLIENT_READY," "${ONE_WAY_CLIENT_READY_TIMEOUT}" || true)"
-                        if [[ "${CLIENT_READY_LINE}" != "CLIENT_READY,${size}" ]]; then
-                            case_status="fail"
-                            case_reason="client_ready_timeout_or_invalid"
-                        else
-                            printf 'START,%s\n' "${size}" >&"${SERVER_CONTROL_FD}" || true
-                            printf 'START,%s\n' "${size}" >&"${CLIENT_CONTROL_FD}" || true
-                        fi
-                    fi
-
-                    if [[ "${case_status}" == "success" ]]; then
-                        if ! wait_for_pid "${CLIENT_PID}" "${CLIENT_TIMEOUT_SECONDS}"; then
-                            case_status="fail"
-                            case_reason="binary_exit_or_timeout"
-                            kill "${CLIENT_PID}" 2>/dev/null || true
-                            wait "${CLIENT_PID}" 2>/dev/null || true
-                        elif ! wait "${CLIENT_PID}"; then
-                            case_status="fail"
-                            case_reason="binary_exit_or_timeout"
-                        fi
-                    else
-                        kill "${CLIENT_PID}" 2>/dev/null || true
-                        wait "${CLIENT_PID}" 2>/dev/null || true
-                    fi
-
-                    exec {CLIENT_CONTROL_FD}>&- || true
                     if [[ -f "${CLIENT_OUT}" ]]; then
                         CLIENT_OUTPUT="$(cat "${CLIENT_OUT}")"
                     fi

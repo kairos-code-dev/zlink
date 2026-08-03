@@ -79,22 +79,22 @@ impl<'a> CommonSocketOptions<'a> {
     pub fn linger(&self) -> Result<Duration, ConfigError> {
         self.inner.linger()
     }
-    /// Sets the maximum number of outbound messages queued before the socket
-    /// applies back-pressure; 0 means no limit.
-    pub fn set_send_high_water_mark(&self, value: i32) -> Result<(), ConfigError> {
+    /// Sets the maximum outbound bytes queued before the socket applies
+    /// back-pressure; 0 means no limit.
+    pub fn set_send_high_water_mark(&self, value: u64) -> Result<(), ConfigError> {
         self.inner.set_send_high_water_mark(value)
     }
     /// Returns the configured send high-water mark.
-    pub fn send_high_water_mark(&self) -> Result<i32, ConfigError> {
+    pub fn send_high_water_mark(&self) -> Result<u64, ConfigError> {
         self.inner.send_high_water_mark()
     }
-    /// Sets the maximum number of inbound messages queued before the socket
-    /// applies back-pressure; 0 means no limit.
-    pub fn set_receive_high_water_mark(&self, value: i32) -> Result<(), ConfigError> {
+    /// Sets the maximum inbound bytes queued before the socket applies
+    /// back-pressure; 0 means no limit.
+    pub fn set_receive_high_water_mark(&self, value: u64) -> Result<(), ConfigError> {
         self.inner.set_receive_high_water_mark(value)
     }
     /// Returns the configured receive high-water mark.
-    pub fn receive_high_water_mark(&self) -> Result<i32, ConfigError> {
+    pub fn receive_high_water_mark(&self) -> Result<u64, ConfigError> {
         self.inner.receive_high_water_mark()
     }
     /// Sets how long a blocking send waits to enqueue a message before failing.
@@ -163,32 +163,6 @@ impl<'a> CommonSocketOptions<'a> {
     /// Returns whether TCP keep-alive is enabled.
     pub fn tcp_keepalive(&self) -> Result<bool, ConfigError> {
         self.inner.tcp_keepalive()
-    }
-    /// Sets the interval between heartbeat pings on an idle connection.
-    pub fn set_heartbeat_interval(&self, d: Duration) -> Result<(), ConfigError> {
-        self.inner.set_heartbeat_interval(d)
-    }
-    /// Returns the configured heartbeat interval.
-    pub fn heartbeat_interval(&self) -> Result<Duration, ConfigError> {
-        self.inner.heartbeat_interval()
-    }
-    /// Sets how long the remote peer should consider this connection alive
-    /// without a heartbeat.
-    pub fn set_heartbeat_ttl(&self, d: Duration) -> Result<(), ConfigError> {
-        self.inner.set_heartbeat_ttl(d)
-    }
-    /// Returns the configured heartbeat TTL.
-    pub fn heartbeat_ttl(&self) -> Result<Duration, ConfigError> {
-        self.inner.heartbeat_ttl()
-    }
-    /// Sets how long to wait for a heartbeat reply before treating the
-    /// connection as dead.
-    pub fn set_heartbeat_timeout(&self, d: Duration) -> Result<(), ConfigError> {
-        self.inner.set_heartbeat_timeout(d)
-    }
-    /// Returns the configured heartbeat timeout.
-    pub fn heartbeat_timeout(&self) -> Result<Duration, ConfigError> {
-        self.inner.heartbeat_timeout()
     }
     /// Sets the maximum inbound message size in bytes; -1 means no limit.
     pub fn set_max_message_size(&self, bytes: i64) -> Result<(), ConfigError> {

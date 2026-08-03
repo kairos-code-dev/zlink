@@ -7,7 +7,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use zlink::{
     Context, DealerSocket, Message, PairSocket, PollEvent, Poller, PubSocket, RouterSocket,
-    SocketMonitor, Spot, SpotNode, StreamSocket, SubSocket, ZlinkError, POLLIN, POLLOUT,
+    SocketMonitor, StreamSocket, SubSocket, ZlinkError,
 };
 
 pub const STOP_TOKEN: &[u8] = b"__zlink_perf_stop__";
@@ -366,9 +366,7 @@ fn bandwidth_multiplier(pattern: &str) -> f64 {
     match pattern {
         "MULTI_DEALER_ROUTER"
         | "MULTI_ROUTER_ROUTER"
-        | "MULTI_STREAM"
-        | "MULTI_SPOT_REQREP"
-        | "MULTI_SPOT_SENDSEND" => 2.0,
+        | "MULTI_STREAM" => 2.0,
         _ => 1.0,
     }
 }
@@ -464,26 +462,6 @@ pub fn wait_control_readable_until(poller: &Poller, events: &mut [PollEvent], de
     wait_poller_until(poller, events, deadline, Duration::from_millis(50));
 }
 
-pub fn wait_spot_writable_until(poller: &Poller, events: &mut [PollEvent], deadline: Instant) {
-    wait_poller_until(poller, events, deadline, Duration::from_millis(10));
-}
-
-pub fn control_read_poller(spot: &Spot) -> Poller {
-    let poller = Poller::new().expect("control poller");
-    poller
-        .add_socket(spot, POLLIN, 0)
-        .expect("control poller add");
-    poller
-}
-
-pub fn spot_write_poller(spot: &Spot) -> Poller {
-    let poller = Poller::new().expect("spot write poller");
-    poller
-        .add_socket(spot, POLLOUT, 0)
-        .expect("spot write poller add");
-    poller
-}
-
 fn wait_poller_until(
     poller: &Poller,
     events: &mut [PollEvent],
@@ -574,8 +552,8 @@ fn try_reserve_tcp_port() -> io::Result<std::net::TcpListener> {
 pub struct MultiSettings {
     pub clients: usize,
     pub duration_seconds: u64,
-    pub send_high_water_mark: i32,
-    pub receive_high_water_mark: i32,
+    pub send_high_water_mark: u64,
+    pub receive_high_water_mark: u64,
     pub send_timeout_ms: u64,
     pub receive_timeout_ms: u64,
 }
@@ -585,10 +563,10 @@ impl MultiSettings {
         Self {
             clients: env_or("PERF_MULTI_CLIENTS", 100),
             duration_seconds: env_or("PERF_MULTI_DURATION_SECONDS", 5) as u64,
-            send_high_water_mark: env_or_i32("PERF_MULTI_SNDHWM", env_or_i32("PERF_MULTI_HWM", 0)),
-            receive_high_water_mark: env_or_i32(
+            send_high_water_mark: env_or_u64("PERF_MULTI_SNDHWM", env_or_u64("PERF_MULTI_HWM", 0)),
+            receive_high_water_mark: env_or_u64(
                 "PERF_MULTI_RCVHWM",
-                env_or_i32("PERF_MULTI_HWM", 0),
+                env_or_u64("PERF_MULTI_HWM", 0),
             ),
             send_timeout_ms: env_or("PERF_MULTI_SNDTIMEO_MS", 200) as u64,
             receive_timeout_ms: env_or("PERF_MULTI_RCVTIMEO_MS", 200) as u64,
@@ -608,18 +586,18 @@ fn manual_socket_overrides_allowed() -> bool {
 }
 
 pub trait MultiSocketHwmOptions {
-    fn set_send_high_water_mark(&self, hwm: i32) -> Result<(), ZlinkError>;
-    fn set_receive_high_water_mark(&self, hwm: i32) -> Result<(), ZlinkError>;
+    fn set_send_high_water_mark(&self, hwm: u64) -> Result<(), ZlinkError>;
+    fn set_receive_high_water_mark(&self, hwm: u64) -> Result<(), ZlinkError>;
 }
 
 macro_rules! impl_multi_socket_hwm_options {
     ($($ty:ty),+ $(,)?) => {
         $(
             impl MultiSocketHwmOptions for $ty {
-                fn set_send_high_water_mark(&self, hwm: i32) -> Result<(), ZlinkError> {
+                fn set_send_high_water_mark(&self, hwm: u64) -> Result<(), ZlinkError> {
                     Ok(self.common_options().set_send_high_water_mark(hwm)?)
                 }
-                fn set_receive_high_water_mark(&self, hwm: i32) -> Result<(), ZlinkError> {
+                fn set_receive_high_water_mark(&self, hwm: u64) -> Result<(), ZlinkError> {
                     Ok(self.common_options().set_receive_high_water_mark(hwm)?)
                 }
             }
@@ -656,30 +634,11 @@ pub fn apply_multi_auto_hwm_msg_unit(ctx: &Context, msg_size: usize) {
     if msg_size == 0 {
         return;
     }
-    let unit = msg_size.min(i32::MAX as usize) as i32;
+    let unit = msg_size as u64;
     ctx.options()
         .set_auto_hwm_msg_unit_bytes(unit)
         .expect("auto hwm msg unit");
     ctx.recalculate_auto_hwm().expect("auto hwm recalculate");
-}
-
-// SPOT only applies node admission HWM under the manual-override gate; the
-// context message unit is applied once on the benchmark context.
-pub fn apply_multi_spot_node_admission(node: &zlink::SpotNode, settings: &MultiSettings) {
-    if !manual_socket_overrides_allowed() {
-        return;
-    }
-    let admission = if settings.send_high_water_mark > 0 {
-        settings.send_high_water_mark
-    } else {
-        settings.receive_high_water_mark
-    };
-    if admission > 0 {
-        node.set_pubsub_high_water_mark(admission)
-            .expect("spot node pubsub hwm");
-        node.set_router_high_water_mark(admission)
-            .expect("spot node router hwm");
-    }
 }
 
 pub fn resolve_multi_connect_ready_timeout() -> Duration {
@@ -688,26 +647,6 @@ pub fn resolve_multi_connect_ready_timeout() -> Duration {
         "PERF_CONNECT_READY_TIMEOUT_MS",
         1_000,
     ) as u64)
-}
-
-pub fn resolve_multi_spot_server_ready_timeout() -> Duration {
-    let ready_timeout = resolve_multi_connect_ready_timeout();
-    std::cmp::max(ready_timeout * 6, Duration::from_secs(1))
-}
-
-pub fn wait_spot_peer_connected(node: &SpotNode, timeout: Duration) -> bool {
-    let deadline = Instant::now() + timeout;
-    while Instant::now() < deadline {
-        if node
-            .status()
-            .map(|status| status.connected_peer_count > 0)
-            .unwrap_or(false)
-        {
-            return true;
-        }
-        poll_idle_until(deadline, Duration::from_millis(1));
-    }
-    false
 }
 
 fn env_or_multi(primary: &str, fallback_name: &str, default: usize) -> usize {
@@ -725,7 +664,7 @@ fn env_or(name: &str, default: usize) -> usize {
         .unwrap_or(default)
 }
 
-fn env_or_i32(name: &str, default: i32) -> i32 {
+fn env_or_u64(name: &str, default: u64) -> u64 {
     std::env::var(name)
         .ok()
         .and_then(|v| v.parse().ok())

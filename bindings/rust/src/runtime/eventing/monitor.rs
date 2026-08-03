@@ -37,13 +37,9 @@ impl MonitorStatus {
                 ffi::zlink_monitor_source_kind_t::ZLINK_MONITOR_SOURCE_SOCKET => {
                     MonitorSourceKind::Socket
                 }
-                ffi::zlink_monitor_source_kind_t::ZLINK_MONITOR_SOURCE_SPOT_PUB => {
-                    MonitorSourceKind::SpotPub
-                }
-                ffi::zlink_monitor_source_kind_t::ZLINK_MONITOR_SOURCE_SPOT_SUB => {
-                    MonitorSourceKind::SpotSub
-                }
             },
+            abi_version: raw.abi_version,
+            struct_size: raw.struct_size,
             state_flags: raw.state_flags,
             detail_flags: raw.detail_flags,
             snd_pending_msgs: raw.snd_pending_msgs,
@@ -63,8 +59,10 @@ impl MonitorStatus {
                 .auto_hwm_connection_bucket_hysteresis_retained
                 != 0,
             auto_hwm_effective_message_bytes: raw.auto_hwm_effective_message_bytes,
-            auto_hwm_applied_sndhwm: raw.auto_hwm_applied_sndhwm,
-            auto_hwm_applied_rcvhwm: raw.auto_hwm_applied_rcvhwm,
+            auto_hwm_planned_sndhwm_bytes: raw.auto_hwm_planned_sndhwm_bytes,
+            auto_hwm_planned_rcvhwm_bytes: raw.auto_hwm_planned_rcvhwm_bytes,
+            auto_hwm_applied_sndhwm_bytes: raw.auto_hwm_applied_sndhwm_bytes,
+            auto_hwm_applied_rcvhwm_bytes: raw.auto_hwm_applied_rcvhwm_bytes,
             auto_hwm_effective_sndbuf: raw.auto_hwm_effective_sndbuf,
             auto_hwm_effective_rcvbuf: raw.auto_hwm_effective_rcvbuf,
             auto_hwm_last_recalc_ms: raw.auto_hwm_last_recalc_ms,
@@ -72,8 +70,15 @@ impl MonitorStatus {
                 raw.auto_hwm_last_recalc_reason,
             ),
             auto_hwm_send_blocked_ratio_ppm: raw.auto_hwm_send_blocked_ratio_ppm,
-            auto_hwm_deferred_sndhwm: raw.auto_hwm_deferred_sndhwm,
-            auto_hwm_deferred_rcvhwm: raw.auto_hwm_deferred_rcvhwm,
+            auto_hwm_deferred_sndhwm_bytes: raw.auto_hwm_deferred_sndhwm_bytes,
+            auto_hwm_deferred_rcvhwm_bytes: raw.auto_hwm_deferred_rcvhwm_bytes,
+            auto_hwm_deferred_sndhwm_valid: raw.auto_hwm_deferred_sndhwm_valid != 0,
+            auto_hwm_deferred_rcvhwm_valid: raw.auto_hwm_deferred_rcvhwm_valid != 0,
+            snd_bytes_in_flight: raw.snd_bytes_in_flight,
+            rcv_bytes_in_flight: raw.rcv_bytes_in_flight,
+            minimum_core_message_charge_bytes: raw.minimum_core_message_charge_bytes,
+            oversize_message_admission_count: raw.oversize_message_admission_count,
+            oversize_message_admission_max_bytes: raw.oversize_message_admission_max_bytes,
         }
     }
 }

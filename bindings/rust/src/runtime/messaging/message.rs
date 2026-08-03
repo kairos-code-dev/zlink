@@ -1,12 +1,11 @@
 use std::any::Any;
-use std::ffi::{CStr, CString};
 use std::mem::MaybeUninit;
 use std::slice;
 
 use crate::error::ConfigError;
 use crate::ffi;
 use crate::message::Message;
-use crate::native_errors::{check_config_rc, config_validation_error};
+use crate::native_errors::check_config_rc;
 use crate::runtime_bridge::MessageRuntime;
 
 struct NativeMessage {
@@ -90,21 +89,6 @@ impl MessageRuntime for NativeMessage {
                 }
             }
         }
-    }
-
-    fn get_property(&self, name: &str) -> Result<Option<String>, ConfigError> {
-        if name.is_empty() {
-            return Err(config_validation_error());
-        }
-        let c_name = CString::new(name).map_err(|_| config_validation_error())?;
-        let ptr = unsafe { ffi::zlink_msg_gets(&self.inner, c_name.as_ptr()) };
-        if ptr.is_null() {
-            return Ok(None);
-        }
-        let value = unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned();
-        Ok(Some(value))
     }
 
     fn ref_count(&self) -> i32 {

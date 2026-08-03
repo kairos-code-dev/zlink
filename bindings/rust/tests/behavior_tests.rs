@@ -5,8 +5,8 @@ use std::thread;
 use std::time::Duration;
 
 use zlink::{
-    Context, Message, Received, RecvFlags, RoutingId, SendFlags, SocketMonitor, SpotNode,
-    SubscriptionEvent, TopicMessage,
+    Context, Message, Received, RecvFlags, RoutingId, SendFlags, SocketMonitor, SubscriptionEvent,
+    TopicMessage,
 };
 
 #[test]
@@ -98,145 +98,6 @@ fn dealer_router_roundtrip() {
     let mut response = Received::empty();
     dealer.recv(&mut response, RecvFlags::NONE).unwrap();
     assert_eq!(response.parts()[0].as_bytes(), b"response-payload");
-}
-
-#[test]
-fn spot_route_bridge_router_send_reaches_router() {
-    let ctx = Context::new().unwrap();
-    let node = SpotNode::new(&ctx).unwrap();
-    let mut bridge = node.create_route_bridge().unwrap();
-    let router = ctx.router_socket().unwrap();
-    let bridge_router = ctx.router_socket().unwrap();
-    let target_node = RoutingId::from(b"rust-bridge-server");
-    bridge_router
-        .set_routing_id(&RoutingId::from(b"rust-bridge-client"))
-        .unwrap();
-    router.set_routing_id(&target_node).unwrap();
-    router.bind("inproc://rust-spot-route-bridge").unwrap();
-    bridge_router
-        .connect("inproc://rust-spot-route-bridge")
-        .unwrap();
-    thread::sleep(Duration::from_millis(50));
-    bridge.attach_router_channel("api", &bridge_router).unwrap();
-
-    let target = RoutingId::from(b"target-spot");
-    let mut parts = vec![Message::try_from(b"hello-bridge").unwrap()];
-    assert!(
-        bridge
-            .send("api", &target_node, &target, &mut parts, SendFlags::NONE)
-            .unwrap()
-    );
-
-    let mut received = Received::empty();
-    let deadline = std::time::Instant::now() + Duration::from_secs(3);
-    while std::time::Instant::now() < deadline {
-        if router.recv(&mut received, RecvFlags::DONT_WAIT).unwrap() {
-            break;
-        }
-        thread::sleep(Duration::from_millis(10));
-    }
-    assert_eq!(received.parts().len(), 3);
-    assert_eq!(
-        received.parts()[0].as_bytes(),
-        b"__zlink.routed_spot.egress.send"
-    );
-    assert_eq!(received.parts()[1].as_bytes(), target.as_bytes());
-    assert_eq!(received.parts()[2].as_bytes(), b"hello-bridge");
-}
-
-#[test]
-fn spot_route_bridge_router_request_receives_router_reply() {
-    let ctx = Context::new().unwrap();
-    let node = SpotNode::new(&ctx).unwrap();
-    let spot = node.create_spot().unwrap();
-    let mut bridge = node.create_route_bridge().unwrap();
-    let router = ctx.router_socket().unwrap();
-    let bridge_router = ctx.router_socket().unwrap();
-    let target_node = RoutingId::from(b"rust-bridge-request-server");
-    bridge_router
-        .set_routing_id(&RoutingId::from(b"rust-bridge-request-client"))
-        .unwrap();
-    router.set_routing_id(&target_node).unwrap();
-    router
-        .bind("inproc://rust-spot-route-bridge-request")
-        .unwrap();
-    bridge_router
-        .connect("inproc://rust-spot-route-bridge-request")
-        .unwrap();
-    thread::sleep(Duration::from_millis(50));
-    bridge.attach_router_channel("api", &bridge_router).unwrap();
-
-    let (reply_tx, reply_rx) = std::sync::mpsc::channel();
-    let mut parts = vec![Message::try_from(b"request-payload").unwrap()];
-    bridge
-        .request(
-            "api",
-            &target_node,
-            &spot.routing_id().unwrap(),
-            &mut parts,
-            SendFlags::NONE,
-            Duration::from_secs(3),
-            move |result| {
-                let _ = reply_tx.send(result);
-            },
-        )
-        .unwrap();
-
-    let mut received = Received::empty();
-    let deadline = std::time::Instant::now() + Duration::from_secs(3);
-    while std::time::Instant::now() < deadline {
-        if router.recv(&mut received, RecvFlags::DONT_WAIT).unwrap() {
-            break;
-        }
-        thread::sleep(Duration::from_millis(10));
-    }
-    assert_eq!(
-        received.parts()[0].as_bytes(),
-        b"__zlink.routed_spot.egress.request"
-    );
-    assert_eq!(
-        received.parts().last().unwrap().as_bytes(),
-        b"request-payload"
-    );
-    received
-        .reply()
-        .message(Message::try_from(b"reply-payload").unwrap())
-        .submit()
-        .unwrap();
-
-    let reply = reply_rx
-        .recv_timeout(Duration::from_secs(3))
-        .expect("bridge request callback timed out")
-        .expect("bridge request failed");
-    assert_eq!(reply.len(), 1);
-    assert_eq!(reply[0].as_bytes(), b"reply-payload");
-}
-
-#[test]
-fn spot_node_publisher_publishes_to_local_topic_plane() {
-    let ctx = Context::new().unwrap();
-    let node = SpotNode::new(&ctx).unwrap();
-    let spot = node.entry_spot().unwrap();
-    let publisher = node.create_publisher().unwrap();
-    spot.set_subscription("bridge-topic").unwrap();
-
-    let mut parts = vec![Message::try_from(b"topic-payload").unwrap()];
-    assert!(
-        publisher
-            .publish("bridge-topic", &mut parts, SendFlags::NONE)
-            .unwrap()
-    );
-
-    let mut received = TopicMessage::empty();
-    let deadline = std::time::Instant::now() + Duration::from_secs(3);
-    while std::time::Instant::now() < deadline {
-        if spot.subscribe(&mut received, RecvFlags::DONT_WAIT).unwrap() {
-            break;
-        }
-        thread::sleep(Duration::from_millis(10));
-    }
-    assert_eq!(received.topic(), "bridge-topic");
-    assert_eq!(received.parts()[0].as_bytes(), b"topic-payload");
 }
 
 #[test]

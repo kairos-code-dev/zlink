@@ -27,7 +27,7 @@ impl PairSocket {
     /// Begins a multipart send: add parts on the returned builder, then submit.
     /// A part is consumed on a successful submit (see [`SendOp`]).
     pub fn send(&self) -> SendOp<Empty> {
-        crate::service::socket_send_op(crate::socket::pair_handle(self))
+        crate::operations::socket_send_op(crate::socket::pair_handle(self))
     }
 
     /// Receives a message into caller-provided `out` storage, reusable across
@@ -155,7 +155,7 @@ impl DealerSocket {
     /// Begins a multipart send: add parts on the returned builder, then submit.
     /// A part is consumed on a successful submit (see [`SendOp`]).
     pub fn send(&self) -> SendOp<Empty> {
-        crate::service::socket_send_op(crate::socket::dealer_inner(self).handle)
+        crate::operations::socket_send_op(crate::socket::dealer_inner(self).handle)
     }
 
     /// Receives a message into caller-provided `out` storage.
@@ -170,7 +170,7 @@ impl DealerSocket {
     /// await a reply. Parts are consumed on a successful submit (see
     /// [`SendOp`]).
     pub fn request(&self) -> RequestOp<Empty> {
-        crate::service::dealer_request_op(crate::socket::dealer_inner(self).handle)
+        crate::operations::dealer_request_op(crate::socket::dealer_inner(self).handle)
     }
 
     /// Registers a callback invoked when the socket can accept more sends after
@@ -180,17 +180,6 @@ impl DealerSocket {
         F: Fn() + Send + 'static,
     {
         crate::socket::dealer_inner_mut(self).on_send_ready(handler)
-    }
-
-    /// Sets the logical channel name used to identify this socket in routing and
-    /// service discovery.
-    pub fn set_channel_name(&self, channel_name: &str) -> Result<(), ConfigError> {
-        crate::socket::dealer_inner(self).set_channel_name(channel_name)
-    }
-
-    /// Returns the logical channel name set for this socket.
-    pub fn channel_name(&self) -> Result<String, ConfigError> {
-        crate::socket::dealer_inner(self).channel_name()
     }
 
     /// Returns the typed options facade common to all socket types.

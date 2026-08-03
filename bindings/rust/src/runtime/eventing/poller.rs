@@ -263,22 +263,6 @@ pub(crate) fn timer_new() -> Result<Timer, ConfigError> {
     })
 }
 
-pub(crate) fn timer_from_spot(spot: &crate::Spot) -> Result<Timer, ConfigError> {
-    let handle = unsafe { ffi::zlink_spot_timer_new(crate::service::spot_handle(spot)) };
-    if handle.is_null() {
-        return Err(crate::error::ConfigError::new(
-            crate::error::ConfigResult::InvalidArgument,
-            last_errno(),
-        ));
-    }
-    Ok(Timer {
-        inner: Box::new(NativeTimer {
-            handle,
-            callback: None,
-        }),
-    })
-}
-
 impl TimerRuntime for NativeTimer {
     fn as_any(&self) -> &dyn std::any::Any {
         self
@@ -363,9 +347,6 @@ pub(crate) fn pollable_handle(source: &dyn Pollable) -> Result<*mut c_void, Conf
     downcast_socket!(XPubSocket, crate::socket::xpub_inner);
     downcast_socket!(XSubSocket, crate::socket::xsub_inner);
     downcast_socket!(StreamSocket, crate::socket::stream_inner);
-    if let Some(spot) = any.downcast_ref::<crate::Spot>() {
-        return Ok(crate::service::spot_handle(spot));
-    }
     Err(ConfigError::new(
         crate::error::ConfigResult::InvalidArgument,
         libc::EINVAL,
@@ -391,12 +372,6 @@ impl_pollable!(XSubSocket);
 impl_pollable!(StreamSocket);
 
 impl Pollable for crate::PairSocket {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
-
-impl Pollable for crate::Spot {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }

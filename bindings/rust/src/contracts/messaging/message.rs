@@ -81,13 +81,6 @@ impl Message {
         Ok(bytes.len())
     }
 
-    /// Read a string property from the native message metadata.
-    ///
-    /// Returns `Ok(None)` when the property is absent.
-    pub fn get_property(&self, name: &str) -> Result<Option<String>, ConfigError> {
-        self.inner.get_property(name)
-    }
-
     /// Return the native storage reference count for the message.
     ///
     /// This is a diagnostic helper only. It does not affect ownership or

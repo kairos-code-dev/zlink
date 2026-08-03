@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use crate::runtime_bridge::SocketStorage;
-use crate::spot_operations::{ActorBindOp, ActorUnbindOp};
 use crate::{
-    ActorRef, BindError, CommonSocketOptions, ConfigError, ConnectError, Empty, HandlerError,
-    Message, Received, RecvError, RecvFlags, RoutingId, SendOp, StreamSocketOptions,
+    BindError, CommonSocketOptions, ConfigError, ConnectError, Empty, HandlerError, Message,
+    Received, RecvError, RecvFlags, RoutingId, SendOp, StreamSocketOptions,
 };
 
 /// STREAM socket: exchanges framed packets with raw TCP peers addressed by
@@ -21,7 +20,7 @@ impl StreamSocket {
     /// builder, then submit. A part is consumed on a successful submit (see
     /// [`SendOp`]).
     pub fn send(&self, target: &RoutingId) -> SendOp<Empty> {
-        crate::service::socket_send_to_op(crate::socket::stream_inner(self).handle, *target)
+        crate::operations::socket_send_to_op(crate::socket::stream_inner(self).handle, *target)
     }
 
     /// Receives a message into caller-provided `out` storage.
@@ -61,29 +60,6 @@ impl StreamSocket {
         F: Fn() + Send + 'static,
     {
         crate::socket::stream_inner_mut(self).on_send_ready(handler)
-    }
-
-    /// Binds `actor` to the session `session_rid`; submit the returned operation
-    /// to apply the binding.
-    pub fn bind_actor(&self, session_rid: &RoutingId, actor: &ActorRef) -> ActorBindOp<Empty> {
-        crate::socket::stream_bind_actor(self, session_rid, actor)
-    }
-
-    /// Removes the binding of `actor_id` from the session `session_rid`; submit
-    /// the returned operation to apply it.
-    pub fn unbind_actor(&self, session_rid: &RoutingId, actor_id: &str) -> ActorUnbindOp<Empty> {
-        crate::socket::stream_unbind_actor(self, session_rid, actor_id)
-    }
-
-    /// Begins a send addressed to the bound actor `actor_id` on session
-    /// `session_rid`. A part is consumed on a successful submit (see [`SendOp`]).
-    pub fn send_bound_actor(&self, session_rid: &RoutingId, actor_id: &str) -> SendOp<Empty> {
-        crate::socket::stream_send_bound_actor(self, session_rid, actor_id)
-    }
-
-    /// Lists the actors currently bound to the session `session_rid`.
-    pub fn bound_actors(&self, session_rid: &RoutingId) -> Result<Vec<ActorRef>, ConfigError> {
-        crate::socket::stream_bound_actors(self, session_rid)
     }
 
     /// Returns the typed options facade common to all socket types.

@@ -21,7 +21,7 @@ impl RouterSocket {
     /// builder, then submit. A part is consumed on a successful submit (see
     /// [`SendOp`]).
     pub fn send(&self, target: &RoutingId) -> SendOp<Empty> {
-        crate::service::socket_send_to_op(crate::socket::router_inner(self).handle, *target)
+        crate::operations::socket_send_to_op(crate::socket::router_inner(self).handle, *target)
     }
 
     /// Receives a routed message into caller-provided `out` storage.
@@ -44,55 +44,15 @@ impl RouterSocket {
     /// Begins a request addressed to peer `peer_rid`: add parts, then submit and
     /// await a reply. Parts are consumed on a successful submit (see [`SendOp`]).
     pub fn request(&self, peer_rid: &RoutingId) -> RequestOp<Empty> {
-        crate::service::router_request_op(crate::socket::router_inner(self).handle, *peer_rid)
+        crate::operations::router_request_op(crate::socket::router_inner(self).handle, *peer_rid)
     }
 
     /// Begins a reply to the request `request_seq` from peer `rid`: add parts,
     /// then submit. Parts are consumed on a successful submit (see [`SendOp`]).
     pub fn reply(&self, rid: &RoutingId, request_seq: u64) -> ReplyOp<Empty> {
-        crate::service::router_reply_op(crate::socket::router_inner(self).handle, *rid, request_seq)
-    }
-
-    /// Begins a send addressed to a spot on another node; parts are consumed on
-    /// a successful submit (see [`SendOp`]).
-    pub fn send_to_spot(
-        &self,
-        dest_node_rid: &RoutingId,
-        dest_spot_rid: &RoutingId,
-    ) -> SendOp<Empty> {
-        crate::service::router_send_to_spot_op(
+        crate::operations::router_reply_op(
             crate::socket::router_inner(self).handle,
-            *dest_node_rid,
-            *dest_spot_rid,
-        )
-    }
-
-    /// Begins a request to a spot on another node; parts are consumed on a
-    /// successful submit and a reply is awaited.
-    pub fn request_to_spot(
-        &self,
-        dest_node_rid: &RoutingId,
-        dest_spot_rid: &RoutingId,
-    ) -> RequestOp<Empty> {
-        crate::service::router_request_to_spot_op(
-            crate::socket::router_inner(self).handle,
-            *dest_node_rid,
-            *dest_spot_rid,
-        )
-    }
-
-    /// Begins a reply to the spot request `request_seq`; parts are consumed on a
-    /// successful submit.
-    pub fn reply_to_spot(
-        &self,
-        dest_node_rid: RoutingId,
-        dest_spot_rid: RoutingId,
-        request_seq: u64,
-    ) -> ReplyOp<Empty> {
-        crate::service::router_reply_to_spot_op(
-            crate::socket::router_inner(self).handle,
-            dest_node_rid,
-            dest_spot_rid,
+            *rid,
             request_seq,
         )
     }

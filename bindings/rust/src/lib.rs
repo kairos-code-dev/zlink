@@ -5,13 +5,12 @@
 //! This crate wraps the zlink C API (`zlink.h`) with an idiomatic, safe Rust
 //! surface following the bindings API policy:
 //!
-//! - **Builder-based** public send, publish, request, reply, and actor operations.
+//! - **Builder-based** public send, publish, request, and reply operations.
 //! - **Multipart-only** public send/receive surface.
 //! - **Typed options** per socket type – no raw option bags.
 //! - **Ownership** via RAII: [`Message`] drop calls `zlink_msg_close`;
 //!   `send` consumes messages and suppresses drop.
-//! - **Message diagnostics** via [`Message::get_property`] and
-//!   [`Message::ref_count`].
+//! - **Message diagnostics** via [`Message::ref_count`].
 //! - **Domain objects**: [`Received`], [`TopicMessage`], [`SubscriptionEvent`],
 //!   [`SendResult`], [`RoutingId`].
 //! - **Socket capability isolation**: each socket type exposes only its own
@@ -22,12 +21,6 @@ mod ffi;
 #[path = "runtime/messaging/request_progress.rs"]
 mod request_progress;
 
-#[path = "contracts/service/spot/actor_models.rs"]
-mod actor_models;
-#[path = "contracts/service/spot/actor_received.rs"]
-mod actor_received;
-#[path = "contracts/service/spot/actor.rs"]
-mod actor_resource;
 #[path = "contracts/core/context.rs"]
 mod core_context;
 #[path = "contracts/core/utilities.rs"]
@@ -48,6 +41,8 @@ mod message_factory;
 mod message_socket_contracts;
 #[path = "contracts/messaging/operation_contracts.rs"]
 mod messaging_operation_contracts;
+#[path = "contracts/messaging/operations.rs"]
+mod messaging_operations;
 #[path = "contracts/messaging/subscription_event.rs"]
 mod messaging_subscription_event;
 #[path = "runtime/eventing/monitor.rs"]
@@ -58,6 +53,8 @@ mod monitor_contracts;
 mod native_errors;
 #[path = "runtime/native/routing_id.rs"]
 mod native_routing_id;
+#[path = "runtime/messaging/operations/mod.rs"]
+mod operations;
 #[path = "runtime/sockets/options.rs"]
 mod options;
 #[path = "runtime/eventing/poller.rs"]
@@ -78,22 +75,10 @@ mod routing_id;
 mod runtime;
 #[path = "runtime/contract_bridge.rs"]
 mod runtime_bridge;
-#[path = "runtime/service/service.rs"]
-mod service;
 #[path = "runtime/sockets/socket/mod.rs"]
 mod socket;
 #[path = "contracts/sockets/socket.rs"]
 mod socket_contracts;
-#[path = "contracts/service/spot/spot_models.rs"]
-mod spot_models;
-#[path = "contracts/service/spot/spot_node.rs"]
-mod spot_node_resource;
-#[path = "contracts/service/spot/spot_operations.rs"]
-mod spot_operations;
-#[path = "contracts/service/spot/spot.rs"]
-mod spot_resource;
-#[path = "contracts/service/spot/spot_route_bridge.rs"]
-mod spot_route_bridge_resource;
 #[path = "contracts/sockets/stream_socket.rs"]
 mod stream_socket_contract;
 #[path = "contracts/messaging/topic_message.rs"]
@@ -101,13 +86,6 @@ mod topic_message_contract;
 
 // -- Public re-exports -------------------------------------------------------
 
-pub use actor_models::{
-    ActorJoinEntrySpotResult, ActorJoinInfo, ActorJoinRequest, ActorJoinResult, ActorLookupResult,
-    ActorRecvInfo, ActorRef, ActorRoute, SpotActorLifecycleEvent, SpotActorLifecycleEventKind,
-    SpotActorLifecycleInfo, SpotNodeActorEntry,
-};
-pub use actor_received::ActorReceived;
-pub use actor_resource::Actor;
 pub use core_context::{AutoHwmProfile, AutoHwmRecalcReason, Context, ContextOptions};
 pub use core_utilities::{AtomicCounter, Stopwatch, Thread};
 pub use domain::Received;
@@ -122,6 +100,7 @@ pub use flags::{
 pub use message::Message;
 pub use message_socket_contracts::{DealerSocket, PairSocket};
 pub use messaging_operation_contracts::SendResult;
+pub use messaging_operations::{CallbackReady, Empty, Ready, ReplyOp, RequestOp, SendOp};
 pub use messaging_subscription_event::SubscriptionEvent;
 pub use monitor_contracts::{
     MONITOR_EVENT_ALL, MONITOR_EVENT_CONNECTION_READY, MonitorEvent, MonitorEventType,
@@ -137,19 +116,6 @@ pub use results::{
 };
 pub use routed_socket_contracts::RouterSocket;
 pub use routing_id::RoutingId;
-pub use spot_models::{
-    SocketType, SpotDispatchEvent, SpotDispatchInfo, SpotKind, SpotNodeMode, SpotNodeOptions,
-    SpotNodePeerEntry, SpotNodePeerFilter, SpotNodeSocketEntry, SpotNodeSocketFilter,
-    SpotNodeSocketOwner, SpotNodeSpotEntry, SpotNodeState, SpotNodeStatus, SpotNodeSubjectEntry,
-    SpotNodeSubjectFilter, SpotPeerKind, SpotPeerSource, SpotPeerState, SpotRole, SubjectKind,
-};
-pub use spot_node_resource::SpotNode;
-pub use spot_operations::{
-    ActorBindOp, ActorDestroyOp, ActorJoinEntrySpotOp, ActorJoinOp, ActorJoinReplyOp, ActorLeaveOp,
-    ActorLookupOp, ActorUnbindOp, CallbackReady, Empty, Ready, ReplyOp, RequestOp, SendOp,
-};
-pub use spot_resource::Spot;
-pub use spot_route_bridge_resource::{SpotNodePublisher, SpotRouteBridge};
 pub use stream_socket_contract::StreamSocket;
 pub use topic_message_contract::TopicMessage;
 

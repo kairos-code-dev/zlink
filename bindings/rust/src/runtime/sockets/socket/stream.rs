@@ -1,18 +1,13 @@
 use std::ffi::c_void;
 use std::mem::MaybeUninit;
-use std::ptr;
 
-use crate::actor_models::ActorRef;
 use crate::core_context::Context;
 use crate::error::{ConfigError, HandlerError};
 use crate::ffi;
 use crate::message::{Message, RoutingId};
-use crate::native_errors::{check_config_rc, check_handler_rc};
+use crate::native_errors::check_handler_rc;
 use crate::runtime_bridge::SocketRuntime;
 use crate::socket_contracts::StreamSocket;
-use crate::spot_operations::Empty;
-use crate::spot_operations::SendOp;
-use crate::spot_operations::{ActorBindOp, ActorUnbindOp};
 
 use super::SocketInner;
 
@@ -76,72 +71,6 @@ where
     }
     stream_inner_mut(socket).packet_cb = Some(cb);
     Ok(())
-}
-
-pub(crate) fn stream_bind_actor(
-    socket: &StreamSocket,
-    session_rid: &RoutingId,
-    actor: &ActorRef,
-) -> ActorBindOp<Empty> {
-    let raw_actor = actor.to_raw().unwrap_or(ffi::zlink_actor_ref_t {
-        node_rid: ffi::zlink_routing_id_t::empty(),
-        actor_id: [0; ffi::ZLINK_ACTOR_ID_MAX],
-        generation: 0,
-    });
-    crate::service::actor_bind_op_new(stream_inner(socket).handle, *session_rid, raw_actor)
-}
-
-pub(crate) fn stream_unbind_actor(
-    socket: &StreamSocket,
-    session_rid: &RoutingId,
-    actor_id: &str,
-) -> ActorUnbindOp<Empty> {
-    let c_actor_id = crate::service::fixed_cstring_or_panic(actor_id, "actor_id");
-    crate::service::actor_unbind_op_new(stream_inner(socket).handle, *session_rid, c_actor_id)
-}
-
-pub(crate) fn stream_send_bound_actor(
-    socket: &StreamSocket,
-    session_rid: &RoutingId,
-    actor_id: &str,
-) -> SendOp<Empty> {
-    let c_actor_id = crate::service::fixed_cstring_or_panic(actor_id, "actor_id");
-    crate::service::stream_bound_actor_send_op(
-        stream_inner(socket).handle,
-        *session_rid,
-        c_actor_id,
-    )
-}
-
-pub(crate) fn stream_bound_actors(
-    socket: &StreamSocket,
-    session_rid: &RoutingId,
-) -> Result<Vec<ActorRef>, ConfigError> {
-    let mut count: usize = 0;
-    check_config_rc(unsafe {
-        ffi::zlink_stream_bound_actors(
-            stream_inner(socket).handle,
-            session_rid.as_raw(),
-            ptr::null_mut(),
-            &mut count,
-        )
-    })?;
-    if count == 0 {
-        return Ok(Vec::new());
-    }
-
-    let mut entries = vec![unsafe { std::mem::zeroed::<ffi::zlink_actor_ref_t>() }; count];
-    let mut actual = count;
-    check_config_rc(unsafe {
-        ffi::zlink_stream_bound_actors(
-            stream_inner(socket).handle,
-            session_rid.as_raw(),
-            entries.as_mut_ptr(),
-            &mut actual,
-        )
-    })?;
-    entries.truncate(std::cmp::min(entries.len(), actual));
-    Ok(entries.iter().map(ActorRef::from_raw).collect())
 }
 
 fn take_message(raw: *mut ffi::zlink_msg_t) -> Message {

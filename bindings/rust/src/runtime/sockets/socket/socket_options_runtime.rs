@@ -15,6 +15,21 @@ pub(super) fn set_int_opt(
     })
 }
 
+pub(super) fn set_u64_opt(
+    handle: *mut c_void,
+    opt: ffi::zlink_option_t,
+    value: u64,
+) -> Result<(), ConfigError> {
+    check_config_rc(unsafe {
+        ffi::zlink_set_option(
+            handle,
+            opt,
+            &value as *const u64 as *const c_void,
+            std::mem::size_of::<u64>(),
+        )
+    })
+}
+
 pub(super) fn set_bool_opt(
     handle: *mut c_void,
     opt: ffi::zlink_option_t,
@@ -64,6 +79,21 @@ pub(super) fn get_int_opt(
     check_config_rc(unsafe {
         ffi::zlink_get_option(handle, opt, &mut value as *mut i32 as *mut c_void, &mut len)
     })?;
+    Ok(value)
+}
+
+pub(super) fn get_u64_opt(
+    handle: *mut c_void,
+    opt: ffi::zlink_option_t,
+) -> Result<u64, ConfigError> {
+    let mut value: u64 = 0;
+    let mut len = std::mem::size_of::<u64>();
+    check_config_rc(unsafe {
+        ffi::zlink_get_option(handle, opt, &mut value as *mut u64 as *mut c_void, &mut len)
+    })?;
+    if len != std::mem::size_of::<u64>() {
+        return Err(config_validation_error());
+    }
     Ok(value)
 }
 

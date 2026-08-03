@@ -25,7 +25,6 @@ fn context_option_auto_hwm_msg_unit_bytes() {
     assert_eq!(ctx.options().auto_hwm_msg_unit_bytes().unwrap(), 64);
     ctx.options().set_auto_hwm_msg_unit_bytes(0).unwrap();
     assert_eq!(ctx.options().auto_hwm_msg_unit_bytes().unwrap(), 0);
-    assert!(ctx.options().set_auto_hwm_msg_unit_bytes(-1).is_err());
 }
 
 #[test]

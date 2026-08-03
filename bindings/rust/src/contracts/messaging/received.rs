@@ -1,7 +1,7 @@
 use crate::error::{CloseError, RecvError, RecvResult};
 use crate::message::{Message, RoutingId};
+use crate::messaging_operations::{Empty, ReplyOp, SendOp};
 use crate::runtime_bridge::{ReceivedReplyContext, ReceivedSendContext};
-use crate::spot_operations::{Empty, ReplyOp, SendOp};
 
 /// A received message envelope: its routing metadata and message parts.
 ///
@@ -11,8 +11,6 @@ use crate::spot_operations::{Empty, ReplyOp, SendOp};
 pub struct Received {
     /// The source routing id, when the receive path provides one.
     pub routing_id: Option<RoutingId>,
-    /// The source spot routing id, when the envelope came from a spot route.
-    pub spot_rid: Option<RoutingId>,
     /// The request sequence, present when this envelope can be replied to.
     pub request_seq: Option<u64>,
     /// The message parts, owned by this envelope.
@@ -36,7 +34,6 @@ impl Received {
     pub fn empty() -> Self {
         Self {
             routing_id: None,
-            spot_rid: None,
             request_seq: None,
             parts: Vec::new(),
             reply_context: None,
@@ -48,7 +45,6 @@ impl Received {
     /// currently held first. After this call `source` is left empty.
     pub(crate) fn adopt_from(&mut self, source: Received) {
         self.routing_id = source.routing_id;
-        self.spot_rid = source.spot_rid;
         self.request_seq = source.request_seq;
         self.parts = source.parts;
         self.reply_context = source.reply_context;
@@ -58,7 +54,6 @@ impl Received {
     pub(crate) fn new(routing_id: Option<RoutingId>, parts: Vec<Message>) -> Self {
         Self {
             routing_id,
-            spot_rid: None,
             request_seq: None,
             parts,
             reply_context: None,

@@ -112,16 +112,16 @@ pub struct MonitorEventType(pub u64);
 pub enum MonitorSourceKind {
     /// A plain socket.
     Socket,
-    /// The publish side of a spot.
-    SpotPub,
-    /// The subscribe side of a spot.
-    SpotSub,
 }
 
 /// A point-in-time snapshot of a monitored entity's state and auto-high-water-
 /// mark telemetry.
 #[derive(Debug, Clone)]
 pub struct MonitorStatus {
+    /// ABI version of the native snapshot record.
+    pub abi_version: u32,
+    /// Native snapshot record size in bytes.
+    pub struct_size: u32,
     /// What kind of source this snapshot describes.
     pub source_kind: MonitorSourceKind,
     /// Bit flags describing the source's current state.
@@ -158,10 +158,14 @@ pub struct MonitorStatus {
     pub auto_hwm_connection_bucket_hysteresis_retained: bool,
     /// The effective per-message size, in bytes, used when sizing.
     pub auto_hwm_effective_message_bytes: u64,
-    /// The send high-water mark currently applied.
-    pub auto_hwm_applied_sndhwm: i32,
-    /// The receive high-water mark currently applied.
-    pub auto_hwm_applied_rcvhwm: i32,
+    /// The send high-water mark planned by the current policy, in bytes.
+    pub auto_hwm_planned_sndhwm_bytes: u64,
+    /// The receive high-water mark planned by the current policy, in bytes.
+    pub auto_hwm_planned_rcvhwm_bytes: u64,
+    /// The send high-water mark currently applied, in bytes.
+    pub auto_hwm_applied_sndhwm_bytes: u64,
+    /// The receive high-water mark currently applied, in bytes.
+    pub auto_hwm_applied_rcvhwm_bytes: u64,
     /// The effective OS send buffer size, in bytes.
     pub auto_hwm_effective_sndbuf: i32,
     /// The effective OS receive buffer size, in bytes.
@@ -172,10 +176,24 @@ pub struct MonitorStatus {
     pub auto_hwm_last_recalc_reason: AutoHwmRecalcReason,
     /// The fraction of sends blocked by back-pressure, in parts per million.
     pub auto_hwm_send_blocked_ratio_ppm: u32,
-    /// A send high-water mark whose shrink was deferred.
-    pub auto_hwm_deferred_sndhwm: i32,
-    /// A receive high-water mark whose shrink was deferred.
-    pub auto_hwm_deferred_rcvhwm: i32,
+    /// A deferred send high-water mark target, in bytes.
+    pub auto_hwm_deferred_sndhwm_bytes: u64,
+    /// A deferred receive high-water mark target, in bytes.
+    pub auto_hwm_deferred_rcvhwm_bytes: u64,
+    /// Whether the deferred send target is valid.
+    pub auto_hwm_deferred_sndhwm_valid: bool,
+    /// Whether the deferred receive target is valid.
+    pub auto_hwm_deferred_rcvhwm_valid: bool,
+    /// Bytes retained by outbound pipe directions.
+    pub snd_bytes_in_flight: u64,
+    /// Bytes retained by inbound pipe directions.
+    pub rcv_bytes_in_flight: u64,
+    /// Minimum accounted charge for one Core frame.
+    pub minimum_core_message_charge_bytes: u64,
+    /// Number of messages admitted by the empty-pipe oversize rule.
+    pub oversize_message_admission_count: u64,
+    /// Largest accounted message admitted by the empty-pipe oversize rule.
+    pub oversize_message_admission_max_bytes: u64,
 }
 
 fn ignore_monitor_event(_: &MonitorEvent) {}

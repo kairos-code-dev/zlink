@@ -98,20 +98,6 @@ impl SocketInner {
         check_connect_rc(unsafe { ffi::zlink_disconnect_rid(self.handle, peer_rid.as_raw()) })
     }
 
-    pub(crate) fn set_channel_name(&self, channel_name: &str) -> Result<(), ConfigError> {
-        let c = CString::new(channel_name).map_err(|_| config_validation_error())?;
-        check_config_rc(unsafe { ffi::zlink_socket_set_channel_name(self.handle, c.as_ptr()) })
-    }
-
-    pub(crate) fn channel_name(&self) -> Result<String, ConfigError> {
-        let mut buf = [0i8; 256];
-        let mut len = 0usize;
-        check_config_rc(unsafe {
-            ffi::zlink_socket_get_channel_name(self.handle, buf.as_mut_ptr(), buf.len(), &mut len)
-        })?;
-        Ok(cstr_buf_to_string(&buf, len))
-    }
-
     // -- Recv (direct) -----------------------------------------------------
 
     /// Receives a message into the [`Received`] object supplied by the caller.
@@ -276,20 +262,20 @@ impl SocketInner {
 
     // -- Common typed options (per Option Policy) --------------------------
 
-    pub(crate) fn set_send_high_water_mark(&self, value: i32) -> Result<(), ConfigError> {
-        set_int_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_SNDHWM, value)
+    pub(crate) fn set_send_high_water_mark(&self, value: u64) -> Result<(), ConfigError> {
+        set_u64_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_SNDHWM, value)
     }
 
-    pub(crate) fn send_high_water_mark(&self) -> Result<i32, ConfigError> {
-        get_int_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_SNDHWM)
+    pub(crate) fn send_high_water_mark(&self) -> Result<u64, ConfigError> {
+        get_u64_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_SNDHWM)
     }
 
-    pub(crate) fn set_receive_high_water_mark(&self, value: i32) -> Result<(), ConfigError> {
-        set_int_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_RCVHWM, value)
+    pub(crate) fn set_receive_high_water_mark(&self, value: u64) -> Result<(), ConfigError> {
+        set_u64_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_RCVHWM, value)
     }
 
-    pub(crate) fn receive_high_water_mark(&self) -> Result<i32, ConfigError> {
-        get_int_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_RCVHWM)
+    pub(crate) fn receive_high_water_mark(&self) -> Result<u64, ConfigError> {
+        get_u64_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_RCVHWM)
     }
 
     pub(crate) fn set_linger(&self, d: Duration) -> Result<(), ConfigError> {
@@ -476,37 +462,6 @@ impl SocketInner {
         get_int_opt(
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_RID_DUPLICATE_POLICY,
-        )
-    }
-
-    pub(crate) fn set_heartbeat_interval(&self, d: Duration) -> Result<(), ConfigError> {
-        set_duration_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_HEARTBEAT_IVL, d)
-    }
-
-    pub(crate) fn heartbeat_interval(&self) -> Result<Duration, ConfigError> {
-        get_duration_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_HEARTBEAT_IVL)
-    }
-
-    pub(crate) fn set_heartbeat_ttl(&self, d: Duration) -> Result<(), ConfigError> {
-        set_duration_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_HEARTBEAT_TTL, d)
-    }
-
-    pub(crate) fn heartbeat_ttl(&self) -> Result<Duration, ConfigError> {
-        get_duration_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_HEARTBEAT_TTL)
-    }
-
-    pub(crate) fn set_heartbeat_timeout(&self, d: Duration) -> Result<(), ConfigError> {
-        set_duration_opt(
-            self.handle,
-            ffi::zlink_option_t::ZLINK_OPT_HEARTBEAT_TIMEOUT,
-            d,
-        )
-    }
-
-    pub(crate) fn heartbeat_timeout(&self) -> Result<Duration, ConfigError> {
-        get_duration_opt(
-            self.handle,
-            ffi::zlink_option_t::ZLINK_OPT_HEARTBEAT_TIMEOUT,
         )
     }
 

@@ -38,7 +38,8 @@ pub enum AutoHwmRecalcReason {
     DeferredShrink,
 }
 
-/// The zlink context, the foundation for creating sockets and services.
+/// The zlink context, the foundation for creating sockets and managing native
+/// runtime resources.
 ///
 /// The public type owns context lifetime. Native context handles and option
 /// marshalling stay inside the private runtime implementation.
@@ -220,12 +221,12 @@ impl<'a> ContextOptions<'a> {
     }
     /// Returns the assumed message size, in bytes, used when auto-sizing
     /// high-water marks.
-    pub fn auto_hwm_msg_unit_bytes(&self) -> Result<i32, ConfigError> {
+    pub fn auto_hwm_msg_unit_bytes(&self) -> Result<u64, ConfigError> {
         self.context.auto_hwm_msg_unit_bytes()
     }
     /// Sets the assumed message size, in bytes, used when auto-sizing high-water
     /// marks.
-    pub fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ConfigError> {
+    pub fn set_auto_hwm_msg_unit_bytes(&self, bytes: u64) -> Result<(), ConfigError> {
         self.context.set_auto_hwm_msg_unit_bytes(bytes)
     }
     /// Pins the context's I/O threads to also run on CPU core `cpu`.

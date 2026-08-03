@@ -159,11 +159,6 @@ impl Timer {
         crate::poller::timer_new()
     }
 
-    /// Create a timer that belongs to (and is dispatched by) the given `Spot`.
-    pub fn from_spot(spot: &crate::Spot) -> Result<Self, ConfigError> {
-        crate::poller::timer_from_spot(spot)
-    }
-
     /// Starts the timer firing once per `interval_ns` nanoseconds;
     /// `repeat_count` sets how many times it fires.
     pub fn start(&self, interval_ns: u64, repeat_count: u64) -> Result<(), ConfigError> {

@@ -24,22 +24,6 @@ libc = "0.2"
 smol_str = "0.3"
 
 [[example]]
-name = "actor_queue_example"
-path = "samples/actor_queue_example.rs"
-
-[[example]]
-name = "actor_room_example"
-path = "samples/actor_room_example.rs"
-
-[[example]]
-name = "actor_sequential_example"
-path = "samples/actor_sequential_example.rs"
-
-[[example]]
-name = "spot_pubsub_example"
-path = "samples/spot_pubsub_example.rs"
-
-[[example]]
 name = "request_reply_callback_sample"
 path = "samples/request_reply_callback_sample.rs"
 
@@ -64,33 +48,5 @@ name = "stream_packet_callback_sample"
 path = "samples/stream_packet_callback_sample.rs"
 
 [[example]]
-name = "spot_request_callback_sample"
-path = "samples/spot_request_callback_sample.rs"
-
-[[example]]
 name = "monitor_recv_sample"
 path = "samples/monitor_recv_sample.rs"
-
-[[example]]
-name = "actor_room_server_sample"
-path = "samples/actor_room_server_sample.rs"
-
-[[example]]
-name = "actor_gateway_relay_sample"
-path = "samples/actor_gateway_relay_sample.rs"
-
-[[example]]
-name = "actor_single_player_queue_sample"
-path = "samples/actor_single_player_queue_sample.rs"
-
-[[example]]
-name = "spot_rpc_example"
-path = "samples/spot_rpc_example.rs"
-
-[[example]]
-name = "spot_channel_example"
-path = "samples/spot_channel_example.rs"
-
-[[example]]
-name = "spot_timer_example"
-path = "samples/spot_timer_example.rs"

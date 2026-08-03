@@ -5,8 +5,8 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 use zlink::{
-    ConfigResult, Context, DealerSocket, Message, Received, RecvFlags, RouterSocket, RoutingId,
-    SendFlags, SpotNode, SubmitResult, has, version,
+    Context, DealerSocket, Message, Received, RecvFlags, RouterSocket, RoutingId, SendFlags,
+    SubmitResult, has, version,
 };
 
 // ---------------------------------------------------------------------------
@@ -155,30 +155,6 @@ fn message_copy_helpers_copy_payload() {
 }
 
 #[test]
-fn message_diagnostic_properties() {
-    let msg = Message::try_from(b"diagnostic").unwrap();
-    assert!(msg.ref_count() >= 1);
-    assert_eq!(msg.get_property("missing").unwrap(), None);
-}
-
-#[test]
-fn message_get_property_validates_input() {
-    let msg = Message::try_from(b"diagnostic").unwrap();
-
-    let empty = msg.get_property("");
-    assert!(empty.is_err());
-    let empty_err = empty.unwrap_err();
-    assert_eq!(empty_err.code(), ConfigResult::InvalidArgument);
-    assert_eq!(empty_err.native_errno(), libc::EINVAL);
-
-    let nul = msg.get_property("bad\0name");
-    assert!(nul.is_err());
-    let nul_err = nul.unwrap_err();
-    assert_eq!(nul_err.code(), ConfigResult::InvalidArgument);
-    assert_eq!(nul_err.native_errno(), libc::EINVAL);
-}
-
-#[test]
 fn message_drop_calls_close() {
     // Create and drop many messages to verify no native leak
     for _ in 0..1000 {
@@ -287,43 +263,4 @@ fn router_reply_with_non_empty_flags_fails_explicitly() {
         .submit()
         .unwrap_err();
     assert_eq!(err.code(), SubmitResult::NotSupported);
-}
-
-#[test]
-fn spot_reply_with_non_empty_flags_fails_explicitly() {
-    let ctx = Context::new().unwrap();
-    let node = SpotNode::new(&ctx).unwrap();
-    let spot = node.create_spot().unwrap();
-    let rid = RoutingId::from(b"peer-42");
-
-    let router_err = spot
-        .reply_to_router(rid, 1)
-        .message(Message::try_from(b"pong").unwrap())
-        .flags(SendFlags::DONT_WAIT)
-        .submit()
-        .unwrap_err();
-    assert_eq!(router_err.code(), SubmitResult::NotSupported);
-
-    let spot_err = spot
-        .reply_to_spot(rid, rid, 1)
-        .message(Message::try_from(b"pong").unwrap())
-        .flags(SendFlags::DONT_WAIT)
-        .submit()
-        .unwrap_err();
-    assert_eq!(spot_err.code(), SubmitResult::NotSupported);
-}
-
-#[test]
-fn spot_node_get_or_create_spot_reuses_logical_spot() {
-    let ctx = Context::new().unwrap();
-    let node = SpotNode::new(&ctx).unwrap();
-    let rid = RoutingId::from(b"rust-room");
-
-    let (first, first_created) = node.get_or_create_spot(&rid).unwrap();
-    let (second, second_created) = node.get_or_create_spot(&rid).unwrap();
-
-    assert!(first_created);
-    assert!(!second_created);
-    assert_eq!(first.routing_id().unwrap(), rid);
-    assert_eq!(second.routing_id().unwrap(), rid);
 }

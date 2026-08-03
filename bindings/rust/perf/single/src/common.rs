@@ -604,13 +604,6 @@ impl PerfConfig {
     }
 }
 
-fn env_or_i32(name: &str, default: i32) -> i32 {
-    std::env::var(name)
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(default)
-}
-
 fn env_or_u64(name: &str, default: u64) -> u64 {
     std::env::var(name)
         .ok()
@@ -641,12 +634,12 @@ fn manual_socket_overrides_allowed() -> bool {
         .unwrap_or(false)
 }
 
-pub fn resolve_single_send_high_water_mark() -> i32 {
-    env_or_i32("PERF_SINGLE_SNDHWM", env_or_i32("PERF_SINGLE_HWM", 0))
+pub fn resolve_single_send_high_water_mark() -> u64 {
+    env_or_u64("PERF_SINGLE_SNDHWM", env_or_u64("PERF_SINGLE_HWM", 0))
 }
 
-pub fn resolve_single_receive_high_water_mark() -> i32 {
-    env_or_i32("PERF_SINGLE_RCVHWM", env_or_i32("PERF_SINGLE_HWM", 0))
+pub fn resolve_single_receive_high_water_mark() -> u64 {
+    env_or_u64("PERF_SINGLE_RCVHWM", env_or_u64("PERF_SINGLE_HWM", 0))
 }
 
 // C bench_common_runtime.hpp apply_single_hwm(): gated behind the manual
@@ -666,18 +659,18 @@ pub fn apply_single_hwm<O: SingleSocketHwmOptions>(opts: &O) {
 }
 
 pub trait SingleSocketHwmOptions {
-    fn set_send_high_water_mark(&self, hwm: i32) -> Result<(), ZlinkError>;
-    fn set_receive_high_water_mark(&self, hwm: i32) -> Result<(), ZlinkError>;
+    fn set_send_high_water_mark(&self, hwm: u64) -> Result<(), ZlinkError>;
+    fn set_receive_high_water_mark(&self, hwm: u64) -> Result<(), ZlinkError>;
 }
 
 macro_rules! impl_single_socket_hwm_options {
     ($($ty:ty),+ $(,)?) => {
         $(
             impl SingleSocketHwmOptions for $ty {
-                fn set_send_high_water_mark(&self, hwm: i32) -> Result<(), ZlinkError> {
+                fn set_send_high_water_mark(&self, hwm: u64) -> Result<(), ZlinkError> {
                     Ok(self.common_options().set_send_high_water_mark(hwm)?)
                 }
-                fn set_receive_high_water_mark(&self, hwm: i32) -> Result<(), ZlinkError> {
+                fn set_receive_high_water_mark(&self, hwm: u64) -> Result<(), ZlinkError> {
                     Ok(self.common_options().set_receive_high_water_mark(hwm)?)
                 }
             }
@@ -691,30 +684,13 @@ pub fn apply_single_auto_hwm_msg_unit(ctx: &Context, msg_size: usize) {
     if msg_size == 0 {
         return;
     }
-    let unit = msg_size.min(i32::MAX as usize) as i32;
+    let unit = msg_size as u64;
     ctx.options()
         .set_auto_hwm_msg_unit_bytes(unit)
         .expect("auto hwm msg unit");
     ctx.recalculate_auto_hwm().expect("auto hwm recalculate");
 }
 
-// SPOT only applies node admission HWM under the manual-override gate; the
-// context message unit is applied once on the benchmark context.
-pub fn apply_single_spot_node_admission(node: &zlink::SpotNode) {
-    if !manual_socket_overrides_allowed() {
-        return;
-    }
-    let sndhwm = resolve_single_send_high_water_mark();
-    let rcvhwm = resolve_single_receive_high_water_mark();
-    if sndhwm > 0 {
-        node.set_pubsub_high_water_mark(sndhwm)
-            .expect("spot node pubsub hwm");
-    }
-    if rcvhwm > 0 {
-        node.set_router_high_water_mark(rcvhwm)
-            .expect("spot node router hwm");
-    }
-}
 
 pub fn resolve_single_idle_drain_ms() -> u64 {
     env_or_u64("PERF_SINGLE_RCVTIMEO_MS", 200)
@@ -744,10 +720,6 @@ pub fn resolve_single_pubsub_idle_drain_ms() -> u64 {
 
 pub fn resolve_single_pubsub_ready_settle() -> Duration {
     Duration::from_millis(env_or_u64("PERF_SINGLE_PUBSUB_READY_SETTLE_MS", 1000))
-}
-
-pub fn resolve_single_spot_ready_settle() -> Duration {
-    Duration::from_millis(env_or_u64("PERF_SINGLE_SPOT_READY_SETTLE_MS", 1000))
 }
 
 pub fn resolve_single_stop_wait() -> Duration {

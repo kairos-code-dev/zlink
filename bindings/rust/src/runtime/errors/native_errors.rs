@@ -1,19 +1,12 @@
 use crate::error::{
     BindError, BindResult, CloseError, CloseResult, ConfigError, ConfigResult, ConnectError,
     ConnectResult, HandlerError, HandlerResult, RecvError, RecvResult, RequestError, RequestResult,
-    SubmitError, SubmitResult, ZlinkError,
+    SubmitError, SubmitResult,
 };
 use crate::ffi;
 
 pub(crate) fn last_errno() -> i32 {
     unsafe { ffi::zlink_errno() }
-}
-
-fn zlink_error_last() -> ZlinkError {
-    ZlinkError::Config(ConfigError::new(
-        config_result_from_errno(last_errno()),
-        last_errno(),
-    ))
 }
 
 fn submit_result_from_errno(err: i32) -> SubmitResult {
@@ -116,10 +109,6 @@ pub(crate) fn submit_not_supported_error() -> SubmitError {
     SubmitError::new(SubmitResult::NotSupported, libc::ENOTSUP)
 }
 
-pub(crate) fn request_error_from_submit(err: SubmitError) -> RequestError {
-    RequestError::new(RequestResult::ProtocolError, err.native_errno())
-}
-
 pub(crate) fn request_error_from_result(code: RequestResult) -> RequestError {
     let native_errno = match code {
         RequestResult::Ok => 0,
@@ -141,14 +130,6 @@ pub(crate) fn request_error_from_result(code: RequestResult) -> RequestError {
 
 pub(crate) fn config_validation_error() -> ConfigError {
     ConfigError::new(ConfigResult::InvalidArgument, libc::EINVAL)
-}
-
-pub(crate) fn check_rc(rc: i32) -> Result<(), ZlinkError> {
-    if rc == 0 {
-        Ok(())
-    } else {
-        Err(zlink_error_last())
-    }
 }
 
 pub(crate) fn check_submit_rc(rc: i32) -> Result<(), SubmitError> {

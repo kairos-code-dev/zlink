@@ -13,7 +13,6 @@ const POLL_COMPLETION: i16 = 32;
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 enum ProgressKind {
     Socket,
-    Spot,
 }
 
 struct ProgressWorker {
@@ -36,10 +35,6 @@ pub(crate) struct RequestProgressGuard {
 impl RequestProgressGuard {
     pub(crate) fn attach_socket(handle: *mut c_void) -> Self {
         Self::attach(ProgressKind::Socket, handle)
-    }
-
-    pub(crate) fn attach_spot(handle: *mut c_void) -> Self {
-        Self::attach(ProgressKind::Spot, handle)
     }
 
     fn attach(kind: ProgressKind, handle: *mut c_void) -> Self {

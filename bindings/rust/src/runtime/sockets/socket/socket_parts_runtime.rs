@@ -92,17 +92,8 @@ pub(crate) fn take_parts(parts_ptr: *mut ffi::zlink_msg_t, part_count: usize) ->
     out
 }
 
-pub(crate) fn cstr_buf_to_string(buf: &[i8], len: usize) -> String {
-    let bytes: &[u8] =
-        unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, len.min(buf.len())) };
-    match std::str::from_utf8(bytes) {
-        Ok(s) => s.to_owned(),
-        Err(_) => String::from_utf8_lossy(bytes).into_owned(),
-    }
-}
-
-// Same shape as cstr_buf_to_string but produces a SmolStr: short subscribe
-// topics now bypass heap allocation entirely (<=22 bytes live inline).
+// Short subscribe topics bypass heap allocation entirely (<=22 bytes live
+// inline).
 pub(crate) fn cstr_buf_to_smolstr(buf: &[i8], len: usize) -> smol_str::SmolStr {
     let bytes: &[u8] =
         unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, len.min(buf.len())) };
@@ -138,7 +129,7 @@ pub(crate) fn recv_basic_parts(
         unsafe {
             ffi::zlink_msg_init(part.as_mut_ptr());
         }
-        let mut has_more = 0;
+        let mut has_more = ffi::zlink_part_flag_t::ZLINK_PART_FINAL;
         let rc = unsafe {
             ffi::zlink_recv_part(
                 handle,
@@ -169,7 +160,7 @@ pub(crate) fn recv_basic_parts(
         }
 
         parts.push(unsafe { Message::from_raw(part.assume_init()) });
-        if has_more == 0 {
+        if has_more == ffi::zlink_part_flag_t::ZLINK_PART_FINAL {
             return Ok(Some((routing_id, parts)));
         }
         recv_flags = ffi::ZLINK_DONTWAIT;
@@ -193,7 +184,7 @@ pub(crate) fn recv_subscribed_parts(
         unsafe {
             ffi::zlink_msg_init(part.as_mut_ptr());
         }
-        let mut has_more = 0;
+        let mut has_more = ffi::zlink_part_flag_t::ZLINK_PART_FINAL;
         let rc = unsafe {
             ffi::zlink_subscribe_part(
                 handle,
@@ -228,7 +219,7 @@ pub(crate) fn recv_subscribed_parts(
         }
 
         parts.push(unsafe { Message::from_raw(part.assume_init()) });
-        if has_more == 0 {
+        if has_more == ffi::zlink_part_flag_t::ZLINK_PART_FINAL {
             return Ok(Some((routing_id, topic, parts)));
         }
         recv_flags = ffi::ZLINK_DONTWAIT;

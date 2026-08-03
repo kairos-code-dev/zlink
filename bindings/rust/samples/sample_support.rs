@@ -3,7 +3,6 @@
 use std::time::{Duration, Instant};
 
 use zlink::SocketMonitor;
-use zlink::SpotNode;
 
 pub fn tcp_endpoint() -> String {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -55,16 +54,4 @@ where
         std::thread::yield_now();
     }
     panic!("timed out waiting for {description}");
-}
-
-pub fn wait_spot_peer_connected(node: &SpotNode, timeout: Duration) {
-    wait_until(
-        || {
-            node.status()
-                .map(|status| status.connected_peer_count > 0)
-                .unwrap_or(false)
-        },
-        timeout,
-        "spot peer connection",
-    );
 }

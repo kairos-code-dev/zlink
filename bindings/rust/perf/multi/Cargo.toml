@@ -44,29 +44,5 @@ name = "perf_multi_router_router_client"
 path = "src/perf_multi_router_router_client.rs"
 
 [[bin]]
-name = "perf_multi_spot_server"
-path = "src/perf_multi_spot_server.rs"
-
-[[bin]]
-name = "perf_multi_spot_client"
-path = "src/perf_multi_spot_client.rs"
-
-[[bin]]
 name = "perf_multi_stream_server"
 path = "src/perf_multi_stream_server.rs"
-
-[[bin]]
-name = "perf_multi_spot_reqrep_server"
-path = "src/perf_multi_spot_reqrep_server.rs"
-
-[[bin]]
-name = "perf_multi_spot_reqrep_client"
-path = "src/perf_multi_spot_reqrep_client.rs"
-
-[[bin]]
-name = "perf_multi_spot_sendsend_server"
-path = "src/perf_multi_spot_sendsend_server.rs"
-
-[[bin]]
-name = "perf_multi_spot_sendsend_client"
-path = "src/perf_multi_spot_sendsend_client.rs"

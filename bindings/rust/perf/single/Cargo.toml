@@ -30,7 +30,3 @@ path = "src/perf_dealer_dealer.rs"
 [[bin]]
 name = "perf_router_router"
 path = "src/perf_router_router.rs"
-
-[[bin]]
-name = "perf_spot"
-path = "src/perf_spot.rs"

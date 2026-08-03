@@ -1,35 +1,20 @@
 // SPDX-License-Identifier: MPL-2.0
 
+//! Private trait bridges between the public Rust contracts and raw Core 11
+//! implementations. Specialized domain objects are intentionally absent: the
+//! raw header and socket contracts own the complete runtime boundary.
+
 use std::any::Any;
 use std::os::fd::RawFd;
 use std::time::Duration;
 
-use crate::actor_models::{
-    ActorJoinEntrySpotResult, ActorJoinRequest, ActorJoinResult, ActorLookupResult, ActorRecvInfo,
-    ActorRef, SpotActorLifecycleEvent,
-};
-use crate::actor_received::ActorReceived;
 use crate::core_context::AutoHwmProfile;
-use crate::error::{
-    CloseError, ConfigError, ConnectError, HandlerError, RecvError, RequestError, RequestResult,
-    SubmitError,
-};
+use crate::error::{CloseError, ConfigError, HandlerError, RecvError, RequestError, SubmitError};
 use crate::flags::{RecvFlags, RidDuplicatePolicy, SendFlags, SubmitRetryMode};
 use crate::message::{Message, RoutingId};
-use crate::messaging_subscription_event::SubscriptionEvent;
+use crate::messaging_operations::{CallbackReady, Empty, Ready, ReplyOp, RequestOp, SendOp};
 use crate::monitor_contracts::{MonitorEvent, MonitorStatus};
 use crate::poller_contracts::{PollEvent, Pollable, Timer};
-use crate::spot_models::{
-    SpotDispatchInfo, SpotNodeOptions, SpotNodePeerEntry, SpotNodePeerFilter, SpotNodeSocketEntry,
-    SpotNodeSocketFilter, SpotNodeSpotEntry, SpotNodeStatus, SpotNodeSubjectEntry,
-    SpotNodeSubjectFilter,
-};
-use crate::spot_operations::{
-    ActorDestroyOp, ActorJoinEntrySpotOp, ActorJoinOp, ActorJoinReplyOp, ActorLeaveOp,
-    ActorLookupOp, CallbackReady, Empty, Ready, ReplyOp, RequestOp, SendOp,
-};
-use crate::topic_message_contract::TopicMessage;
-use crate::{Actor, Received, Spot, SpotNodeActorEntry};
 
 pub(crate) trait MessageRuntime: Any + Send {
     fn as_any_mut(&mut self) -> &mut dyn Any;
@@ -37,7 +22,6 @@ pub(crate) trait MessageRuntime: Any + Send {
     fn data_mut(&mut self) -> &mut [u8];
     fn size(&self) -> usize;
     fn try_clone_box(&self) -> Result<Box<dyn MessageRuntime>, ConfigError>;
-    fn get_property(&self, name: &str) -> Result<Option<String>, ConfigError>;
     fn ref_count(&self) -> i32;
 }
 
@@ -72,8 +56,8 @@ pub(crate) trait ContextOptionRuntime {
     fn set_auto_hwm_recalc_debounce(&self, value: Duration) -> Result<(), ConfigError>;
     fn auto_hwm_profile(&self) -> Result<AutoHwmProfile, ConfigError>;
     fn set_auto_hwm_profile(&self, profile: AutoHwmProfile) -> Result<(), ConfigError>;
-    fn auto_hwm_msg_unit_bytes(&self) -> Result<i32, ConfigError>;
-    fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ConfigError>;
+    fn auto_hwm_msg_unit_bytes(&self) -> Result<u64, ConfigError>;
+    fn set_auto_hwm_msg_unit_bytes(&self, bytes: u64) -> Result<(), ConfigError>;
     fn add_thread_affinity(&self, cpu: i32) -> Result<(), ConfigError>;
     fn remove_thread_affinity(&self, cpu: i32) -> Result<(), ConfigError>;
 }
@@ -133,10 +117,10 @@ pub(crate) trait SocketMonitorRuntime: Send {
 pub(crate) trait CommonSocketOptionRuntime {
     fn set_linger(&self, d: Duration) -> Result<(), ConfigError>;
     fn linger(&self) -> Result<Duration, ConfigError>;
-    fn set_send_high_water_mark(&self, value: i32) -> Result<(), ConfigError>;
-    fn send_high_water_mark(&self) -> Result<i32, ConfigError>;
-    fn set_receive_high_water_mark(&self, value: i32) -> Result<(), ConfigError>;
-    fn receive_high_water_mark(&self) -> Result<i32, ConfigError>;
+    fn set_send_high_water_mark(&self, value: u64) -> Result<(), ConfigError>;
+    fn send_high_water_mark(&self) -> Result<u64, ConfigError>;
+    fn set_receive_high_water_mark(&self, value: u64) -> Result<(), ConfigError>;
+    fn receive_high_water_mark(&self) -> Result<u64, ConfigError>;
     fn set_send_timeout(&self, d: Duration) -> Result<(), ConfigError>;
     fn send_timeout(&self) -> Result<Duration, ConfigError>;
     fn set_receive_timeout(&self, d: Duration) -> Result<(), ConfigError>;
@@ -153,12 +137,6 @@ pub(crate) trait CommonSocketOptionRuntime {
     fn tcp_no_delay(&self) -> Result<bool, ConfigError>;
     fn set_tcp_keepalive(&self, enabled: bool) -> Result<(), ConfigError>;
     fn tcp_keepalive(&self) -> Result<bool, ConfigError>;
-    fn set_heartbeat_interval(&self, d: Duration) -> Result<(), ConfigError>;
-    fn heartbeat_interval(&self) -> Result<Duration, ConfigError>;
-    fn set_heartbeat_ttl(&self, d: Duration) -> Result<(), ConfigError>;
-    fn heartbeat_ttl(&self) -> Result<Duration, ConfigError>;
-    fn set_heartbeat_timeout(&self, d: Duration) -> Result<(), ConfigError>;
-    fn heartbeat_timeout(&self) -> Result<Duration, ConfigError>;
     fn set_max_message_size(&self, bytes: i64) -> Result<(), ConfigError>;
     fn max_message_size(&self) -> Result<i64, ConfigError>;
     fn set_backlog(&self, value: i32) -> Result<(), ConfigError>;
@@ -215,32 +193,6 @@ pub(crate) trait SubSocketOptionRuntime {
     fn topics_count(&self) -> Result<i32, ConfigError>;
 }
 
-pub(crate) trait ActorRuntime: Any + Send {
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-}
-
-pub(crate) trait ActorPublicRuntime {
-    fn actor_ref(&self) -> Result<ActorRef, ConfigError>;
-    fn close_with_timeout(&mut self, timeout: Duration) -> Result<(), RequestError>;
-    fn close(&mut self) -> Result<(), RequestError>;
-    fn join(&self, spot: &Spot) -> ActorJoinOp<Empty>;
-    fn leave(&self, spot: &Spot) -> ActorLeaveOp<Empty>;
-    fn recv(&self, out: &mut ActorReceived, flags: RecvFlags) -> Result<bool, RecvError>;
-    fn send_bound_session_msg(&self) -> SendOp<Empty>;
-    fn close_bound_session(&self, timeout: Duration) -> Result<(), RequestError>;
-}
-
-pub(crate) trait SpotRuntime: Any + Send {
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-}
-
-pub(crate) trait SpotNodeRuntime: Any + Send {
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-}
-
 pub(crate) trait SendOpRuntime: Any + Send {
     fn as_any_mut(&mut self) -> &mut dyn Any;
     fn into_any(self: Box<Self>) -> Box<dyn Any>;
@@ -253,28 +205,6 @@ pub(crate) trait RequestOpRuntime: Any + Send {
 
 pub(crate) trait ReplyOpRuntime: Any + Send {
     fn as_any_mut(&mut self) -> &mut dyn Any;
-    fn into_any(self: Box<Self>) -> Box<dyn Any>;
-}
-
-pub(crate) trait ActorJoinOpInnerRuntime: Any + Send {
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-    fn into_any(self: Box<Self>) -> Box<dyn Any>;
-}
-
-pub(crate) trait ActorJoinEntrySpotOpInnerRuntime: Any + Send {
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-    fn into_any(self: Box<Self>) -> Box<dyn Any>;
-}
-
-pub(crate) trait ActorJoinReplyOpInnerRuntime: Any + Send {
-    fn into_any(self: Box<Self>) -> Box<dyn Any>;
-}
-
-pub(crate) trait ActorReplyOpInnerRuntime: Any + Send {
-    fn into_any(self: Box<Self>) -> Box<dyn Any>;
-}
-
-pub(crate) trait ActorLookupOpInnerRuntime: Any + Send {
     fn into_any(self: Box<Self>) -> Box<dyn Any>;
 }
 
@@ -320,64 +250,6 @@ pub(crate) trait ReplyOpReadyRuntime {
     fn submit(self) -> Result<(), SubmitError>;
 }
 
-pub(crate) trait ActorJoinEntrySpotOpRuntime {
-    fn message(self, message: Message) -> Self;
-    fn timeout(self, timeout: Duration) -> Self;
-    fn flags(self, flags: SendFlags) -> Self;
-    fn submit<F>(self, callback: F) -> Result<(), SubmitError>
-    where
-        F: FnOnce(ActorJoinEntrySpotResult, Vec<Message>) + Send + 'static;
-}
-
-pub(crate) trait ActorJoinOpEmptyRuntime {
-    fn message(self, message: Message) -> ActorJoinOp<Ready>;
-}
-
-pub(crate) trait ActorJoinOpReadyRuntime {
-    fn message(self, message: Message) -> Self;
-    fn timeout(self, timeout: Duration) -> Self;
-    fn flags(self, flags: SendFlags) -> Self;
-    fn submit<F>(self, callback: F) -> Result<(), SubmitError>
-    where
-        F: FnOnce(ActorJoinResult, Vec<Message>) + Send + 'static;
-}
-
-pub(crate) trait ActorJoinReplyOpRuntime {
-    fn message(self, message: Message) -> ActorJoinReplyOp<Empty>;
-    fn submit(self) -> Result<(), SubmitError>;
-}
-
-pub(crate) trait ActorReplyOpRuntime {
-    fn submit<F>(self, callback: F) -> Result<(), SubmitError>
-    where
-        F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
-}
-
-pub(crate) trait ActorReplyOpTimeoutRuntime: ActorReplyOpRuntime {
-    fn timeout(self, timeout: Duration) -> Self;
-}
-
-pub(crate) trait ActorLookupOpRuntime {
-    fn timeout(self, timeout: Duration) -> Self;
-    fn submit<F>(self, callback: F) -> Result<(), SubmitError>
-    where
-        F: FnOnce(ActorLookupResult) + Send + 'static;
-}
-
-pub(crate) use ActorJoinEntrySpotOpInnerRuntime as ActorJoinEntrySpotOpStorage;
-pub(crate) use ActorJoinEntrySpotOpRuntime as ActorJoinEntrySpotOpContract;
-pub(crate) use ActorJoinOpEmptyRuntime as ActorJoinOpEmptyContract;
-pub(crate) use ActorJoinOpInnerRuntime as ActorJoinOpStorage;
-pub(crate) use ActorJoinOpReadyRuntime as ActorJoinOpReadyContract;
-pub(crate) use ActorJoinReplyOpInnerRuntime as ActorJoinReplyOpStorage;
-pub(crate) use ActorJoinReplyOpRuntime as ActorJoinReplyOpContract;
-pub(crate) use ActorLookupOpInnerRuntime as ActorLookupOpStorage;
-pub(crate) use ActorLookupOpRuntime as ActorLookupOpContract;
-pub(crate) use ActorPublicRuntime as ActorContract;
-pub(crate) use ActorReplyOpInnerRuntime as ActorReplyOpStorage;
-pub(crate) use ActorReplyOpRuntime as ActorReplyOpContract;
-pub(crate) use ActorReplyOpTimeoutRuntime as ActorReplyOpTimeoutContract;
-pub(crate) use ActorRuntime as ActorStorage;
 pub(crate) use CommonSocketOptionRuntime as CommonSocketOptionEndpoint;
 pub(crate) use ContextRuntime as ContextStorage;
 pub(crate) use DealerSocketOptionRuntime as DealerSocketOptionEndpoint;
@@ -400,163 +272,6 @@ pub(crate) use SendOpReadyRuntime as SendOpReadyContract;
 pub(crate) use SendOpRuntime as SendOpStorage;
 pub(crate) use SocketMonitorRuntime as SocketMonitorStorage;
 pub(crate) use SocketRuntime as SocketStorage;
-pub(crate) use SpotNodePublicRuntime as SpotNodeContract;
-pub(crate) use SpotNodeRuntime as SpotNodeStorage;
-pub(crate) use SpotPublicRuntime as SpotContract;
-pub(crate) use SpotRuntime as SpotStorage;
 pub(crate) use StreamSocketOptionRuntime as StreamSocketOptionEndpoint;
 pub(crate) use SubSocketOptionRuntime as SubSocketOptionEndpoint;
 pub(crate) use TimerRuntime as TimerStorage;
-
-pub(crate) trait SpotPublicRuntime {
-    fn publish(&self, topic: &str) -> SendOp<Empty>;
-    fn send_to_channel(&self, channel_name: &str) -> SendOp<Empty>;
-    fn send_to_spot(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId) -> SendOp<Empty>;
-    fn request_to_channel(&self, channel_name: &str) -> RequestOp<Empty>;
-    fn request_to_spot(
-        &self,
-        dest_node_rid: RoutingId,
-        dest_spot_rid: RoutingId,
-    ) -> RequestOp<Empty>;
-    fn request_to_router(&self, peer_rid: RoutingId) -> RequestOp<Empty>;
-    fn reply_to_spot(
-        &self,
-        dest_node_rid: RoutingId,
-        dest_spot_rid: RoutingId,
-        request_seq: u64,
-    ) -> ReplyOp<Empty>;
-    fn reply_to_router(&self, peer_rid: RoutingId, request_seq: u64) -> ReplyOp<Empty>;
-    fn set_routing_id(&self, rid: &RoutingId) -> Result<(), ConfigError>;
-    fn routing_id(&self) -> Result<RoutingId, ConfigError>;
-    fn set_subscription(&self, filter: &str) -> Result<(), ConfigError>;
-    fn unset_subscription(&self, filter: &str) -> Result<(), ConfigError>;
-    fn subscribe(&self, out: &mut TopicMessage, flags: RecvFlags) -> Result<bool, RecvError>;
-    fn receive_subscription_event(
-        &self,
-        out: &mut SubscriptionEvent,
-        flags: RecvFlags,
-    ) -> Result<bool, RecvError>;
-    fn recv_actor_join_with_flags(
-        &self,
-        flags: RecvFlags,
-    ) -> Result<Option<ActorJoinRequest>, RecvError>;
-    fn recv_actor_join(&self) -> Result<ActorJoinRequest, RecvError>;
-    fn reply_actor_join(
-        &self,
-        request: &ActorJoinRequest,
-        join_result_code: i32,
-    ) -> ActorJoinReplyOp<Empty>;
-    fn actors(&self) -> Result<Vec<ActorRef>, ConfigError>;
-    fn on_dispatch_event<F>(&mut self, handler: F) -> Result<(), HandlerError>
-    where
-        F: for<'a> Fn(SpotDispatchInfo<'a>) + Send + 'static;
-    fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
-    where
-        F: Fn() + Send + 'static;
-    fn recv_actor_lifecycle_with_flags(
-        &self,
-        flags: RecvFlags,
-    ) -> Result<Option<SpotActorLifecycleEvent>, RecvError>;
-    fn recv_actor_lifecycle(&self) -> Result<SpotActorLifecycleEvent, RecvError>;
-    fn recv_routed(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError>;
-    fn close(&mut self) -> Result<(), CloseError>;
-}
-
-pub(crate) trait SpotNodePublicRuntime {
-    fn new(ctx: &crate::core_context::Context) -> Result<Self, ConfigError>
-    where
-        Self: Sized;
-    fn new_with_options(
-        ctx: &crate::core_context::Context,
-        options: SpotNodeOptions,
-    ) -> Result<Self, ConfigError>
-    where
-        Self: Sized;
-    fn set_pub_bind(&self, endpoint: &str) -> Result<(), ConfigError>;
-    fn set_router_bind(&self, endpoint: &str) -> Result<(), ConfigError>;
-    fn last_endpoint(&self) -> Result<String, ConfigError>;
-    fn connect_peer(&self, peer_endpoint: &str) -> Result<(), ConnectError>;
-    fn disconnect_peer(&self, peer_endpoint: &str) -> Result<(), ConnectError>;
-    fn disconnect_peer_rid(&self, target_node_rid: &RoutingId) -> Result<(), ConnectError>;
-    fn router_high_water_mark(&self) -> Result<i32, ConfigError>;
-    fn set_router_high_water_mark(&self, value: i32) -> Result<(), ConfigError>;
-    fn pubsub_high_water_mark(&self) -> Result<i32, ConfigError>;
-    fn set_pubsub_high_water_mark(&self, value: i32) -> Result<(), ConfigError>;
-    fn router_hwm_profile(&self) -> Result<AutoHwmProfile, ConfigError>;
-    fn set_router_hwm_profile(&self, profile: AutoHwmProfile) -> Result<(), ConfigError>;
-    fn pubsub_hwm_profile(&self) -> Result<AutoHwmProfile, ConfigError>;
-    fn set_pubsub_hwm_profile(&self, profile: AutoHwmProfile) -> Result<(), ConfigError>;
-    fn dispatch_workers_min(&self) -> Result<i32, ConfigError>;
-    fn set_dispatch_workers_min(&self, value: i32) -> Result<(), ConfigError>;
-    fn dispatch_workers_max(&self) -> Result<i32, ConfigError>;
-    fn set_dispatch_workers_max(&self, value: i32) -> Result<(), ConfigError>;
-    fn set_tls_server(
-        &self,
-        cert_pem: &str,
-        key_pem: &str,
-        require_client_cert: bool,
-    ) -> Result<(), ConfigError>;
-    fn set_tls_client(
-        &self,
-        ca_cert_pem: &str,
-        hostname: &str,
-        trust_system: bool,
-    ) -> Result<(), ConfigError>;
-    fn create_actor(&self, actor_id: &str) -> Result<Actor, ConfigError>;
-    fn actor_lookup(&self, actor_id: &str) -> Result<ActorRef, ConfigError>;
-    fn remote_actor_ref(
-        target_node_rid: &RoutingId,
-        actor_id: &str,
-    ) -> Result<ActorRef, ConfigError>;
-    fn remote_actor_get_ref(
-        &self,
-        target_node_rid: &RoutingId,
-        actor_id: &str,
-    ) -> ActorLookupOp<Empty>;
-    fn destroy_actor(&self, actor: &ActorRef) -> ActorDestroyOp<Empty>;
-    fn join_actor(
-        &self,
-        actor: &ActorRef,
-        dest_node_rid: &RoutingId,
-        dest_spot_rid: &RoutingId,
-    ) -> ActorJoinOp<Empty>;
-    fn join_actor_entry_spot(
-        &self,
-        actor: &ActorRef,
-        dest_node_rid: &RoutingId,
-        request: Message,
-    ) -> ActorJoinEntrySpotOp<Ready>;
-    fn leave_actor(&self, actor: &ActorRef, current_spot_rid: &RoutingId) -> ActorLeaveOp<Empty>;
-    fn send_bound_session_msg(&self, actor: &ActorRef) -> SendOp<Empty>;
-    fn send_to_actor(&self, actor: &ActorRef) -> SendOp<Empty>;
-    fn request_to_actor(&self, actor: &ActorRef) -> RequestOp<Empty>;
-    fn reply_actor_no_bind(
-        &self,
-        info: &ActorRecvInfo,
-        parts: Vec<Message>,
-        result: RequestResult,
-    ) -> Result<(), SubmitError>;
-    fn status(&self) -> Result<SpotNodeStatus, ConfigError>;
-    fn set_routing_id(&self, rid: &RoutingId) -> Result<(), ConfigError>;
-    fn routing_id(&self) -> Result<RoutingId, ConfigError>;
-    fn entry_spot(&self) -> Result<Spot, ConfigError>;
-    fn create_spot(&self) -> Result<Spot, ConfigError>;
-    fn spot_lookup(&self, spot_rid: &RoutingId) -> Result<Option<Spot>, ConfigError>;
-    fn get_or_create_spot(&self, spot_rid: &RoutingId) -> Result<(Spot, bool), ConfigError>;
-    fn peers(&self) -> Result<Vec<SpotNodePeerEntry>, ConfigError>;
-    fn peers_query(
-        &self,
-        filter: &SpotNodePeerFilter,
-    ) -> Result<Vec<SpotNodePeerEntry>, ConfigError>;
-    fn subjects(
-        &self,
-        filter: Option<&SpotNodeSubjectFilter>,
-    ) -> Result<Vec<SpotNodeSubjectEntry>, ConfigError>;
-    fn internal_sockets(
-        &self,
-        filter: Option<&SpotNodeSocketFilter>,
-    ) -> Result<Vec<SpotNodeSocketEntry>, ConfigError>;
-    fn spots(&self) -> Result<Vec<SpotNodeSpotEntry>, ConfigError>;
-    fn actors(&self) -> Result<Vec<SpotNodeActorEntry>, ConfigError>;
-    fn close(&mut self) -> Result<(), CloseError>;
-}

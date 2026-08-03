@@ -5,7 +5,7 @@ use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::Duration;
 
-use zlink::{Context, Message, RoutingId, SpotNode};
+use zlink::{Context, Message, RoutingId};
 
 fn assert_send_sync<T: Send + Sync>() {}
 
@@ -146,13 +146,4 @@ fn message_try_from_str() {
     let msg = Message::try_from(b"world");
     assert!(msg.is_ok());
     assert_eq!(msg.unwrap().as_str().unwrap(), "world");
-}
-
-#[test]
-fn spot_node_endpoint_over_255_rejected() {
-    let ctx = Context::new().unwrap();
-    let node = SpotNode::new(&ctx).unwrap();
-    let endpoint = format!("tcp://{}", "1".repeat(250));
-    let result = node.set_pub_bind(&endpoint);
-    assert!(result.is_err(), "endpoint over 255 bytes must be rejected");
 }

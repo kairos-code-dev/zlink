@@ -2,26 +2,13 @@ use std::ffi::c_void;
 
 use crate::domain::Received;
 use crate::message::{Message, RoutingId};
+use crate::messaging_operations::{Empty, ReplyOp, SendOp};
 use crate::runtime_bridge::{ReceivedReplyRuntime, ReceivedSendRuntime};
-use crate::spot_operations::Empty;
-use crate::spot_operations::{ReplyOp, SendOp};
 
-#[allow(clippy::large_enum_variant)]
 enum ReplyContext {
     Router {
         handle: *mut c_void,
         routing_id: RoutingId,
-        request_seq: u64,
-    },
-    Spot {
-        handle: *mut c_void,
-        node_rid: RoutingId,
-        spot_rid: RoutingId,
-        request_seq: u64,
-    },
-    SpotRouter {
-        handle: *mut c_void,
-        peer_rid: RoutingId,
         request_seq: u64,
     },
 }
@@ -35,37 +22,15 @@ impl ReceivedReplyRuntime for ReplyContext {
                 handle,
                 routing_id,
                 request_seq,
-            } => crate::service::router_reply_op(*handle, *routing_id, *request_seq),
-            ReplyContext::Spot {
-                handle,
-                node_rid,
-                spot_rid,
-                request_seq,
-            } => crate::service::spot_reply_to_spot_op(*handle, *node_rid, *spot_rid, *request_seq),
-            ReplyContext::SpotRouter {
-                handle,
-                peer_rid,
-                request_seq,
-            } => crate::service::spot_reply_to_router_op(*handle, *peer_rid, *request_seq),
+            } => crate::operations::router_reply_op(*handle, *routing_id, *request_seq),
         }
     }
 }
 
-#[allow(clippy::large_enum_variant)]
 enum SendContext {
     Router {
         handle: *mut c_void,
         routing_id: RoutingId,
-    },
-    RouterSpot {
-        handle: *mut c_void,
-        node_rid: RoutingId,
-        spot_rid: RoutingId,
-    },
-    Spot {
-        handle: *mut c_void,
-        node_rid: RoutingId,
-        spot_rid: RoutingId,
     },
 }
 
@@ -75,18 +40,8 @@ impl ReceivedSendRuntime for SendContext {
     fn send_op(&self) -> SendOp<Empty> {
         match self {
             SendContext::Router { handle, routing_id } => {
-                crate::service::socket_send_to_op(*handle, *routing_id)
+                crate::operations::socket_send_to_op(*handle, *routing_id)
             }
-            SendContext::RouterSpot {
-                handle,
-                node_rid,
-                spot_rid,
-            } => crate::service::router_send_to_spot_op(*handle, *node_rid, *spot_rid),
-            SendContext::Spot {
-                handle,
-                node_rid,
-                spot_rid,
-            } => crate::service::spot_send_to_spot_op(*handle, *node_rid, *spot_rid),
         }
     }
 }
@@ -99,7 +54,6 @@ impl Received {
     ) -> Self {
         Self {
             routing_id: Some(routing_id),
-            spot_rid: None,
             request_seq: None,
             parts,
             reply_context: None,
@@ -111,26 +65,6 @@ impl Received {
         self.send_context = Some(Box::new(SendContext::Router { handle, routing_id }));
     }
 
-    pub(crate) fn with_router_spot_send_context(
-        handle: *mut c_void,
-        node_rid: RoutingId,
-        spot_rid: RoutingId,
-        parts: Vec<Message>,
-    ) -> Self {
-        Self {
-            routing_id: Some(node_rid),
-            spot_rid: Some(spot_rid),
-            request_seq: None,
-            parts,
-            reply_context: None,
-            send_context: Some(Box::new(SendContext::RouterSpot {
-                handle,
-                node_rid,
-                spot_rid,
-            })),
-        }
-    }
-
     pub(crate) fn with_router_reply_context(
         handle: *mut c_void,
         routing_id: RoutingId,
@@ -139,7 +73,6 @@ impl Received {
     ) -> Self {
         Self {
             routing_id: Some(routing_id),
-            spot_rid: None,
             request_seq: Some(request_seq),
             parts,
             reply_context: Some(Box::new(ReplyContext::Router {
@@ -148,98 +81,6 @@ impl Received {
                 request_seq,
             })),
             send_context: Some(Box::new(SendContext::Router { handle, routing_id })),
-        }
-    }
-
-    pub(crate) fn with_spot_reply_context(
-        handle: *mut c_void,
-        node_rid: RoutingId,
-        spot_rid: RoutingId,
-        request_seq: u64,
-        parts: Vec<Message>,
-    ) -> Self {
-        Self {
-            routing_id: Some(node_rid),
-            spot_rid: Some(spot_rid),
-            request_seq: Some(request_seq),
-            parts,
-            reply_context: Some(Box::new(ReplyContext::Spot {
-                handle,
-                node_rid,
-                spot_rid,
-                request_seq,
-            })),
-            send_context: Some(Box::new(SendContext::RouterSpot {
-                handle,
-                node_rid,
-                spot_rid,
-            })),
-        }
-    }
-
-    pub(crate) fn with_spot_router_reply_context(
-        handle: *mut c_void,
-        peer_rid: RoutingId,
-        request_seq: u64,
-        parts: Vec<Message>,
-    ) -> Self {
-        Self {
-            routing_id: Some(peer_rid),
-            spot_rid: None,
-            request_seq: Some(request_seq),
-            parts,
-            reply_context: Some(Box::new(ReplyContext::SpotRouter {
-                handle,
-                peer_rid,
-                request_seq,
-            })),
-            send_context: None,
-        }
-    }
-
-    pub(crate) fn with_spot_send_context(
-        handle: *mut c_void,
-        node_rid: RoutingId,
-        spot_rid: RoutingId,
-        parts: Vec<Message>,
-    ) -> Self {
-        Self {
-            routing_id: Some(node_rid),
-            spot_rid: Some(spot_rid),
-            request_seq: None,
-            parts,
-            reply_context: None,
-            send_context: Some(Box::new(SendContext::Spot {
-                handle,
-                node_rid,
-                spot_rid,
-            })),
-        }
-    }
-
-    pub(crate) fn with_spot_reply_and_send_context(
-        handle: *mut c_void,
-        node_rid: RoutingId,
-        spot_rid: RoutingId,
-        request_seq: u64,
-        parts: Vec<Message>,
-    ) -> Self {
-        Self {
-            routing_id: Some(node_rid),
-            spot_rid: Some(spot_rid),
-            request_seq: Some(request_seq),
-            parts,
-            reply_context: Some(Box::new(ReplyContext::Spot {
-                handle,
-                node_rid,
-                spot_rid,
-                request_seq,
-            })),
-            send_context: Some(Box::new(SendContext::Spot {
-                handle,
-                node_rid,
-                spot_rid,
-            })),
         }
     }
 }

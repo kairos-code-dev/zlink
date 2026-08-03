@@ -390,3 +390,20 @@ clean wheel consumer와 installed sample은 각각 `7/7`을 통과했다. v8 per
 v8도 local package와 Codex self-review 증거이며 formal independent approval이 아니다. 별도 reviewer가
 동일 candidate identity를 승인하고 V11-M3-CORE-PKG와 frontier `CLEAN` 판정을 생성하기 전까지
 공통 ledger 상태는 `PARTIAL`로 유지한다.
+
+## 2026-08-04 independent Codex agent review
+
+별도 Codex reviewer agent `019fc8e9-ba7e-7bc1-8b73-b297621863aa`에 현재 Python 변경 범위의
+read-only review를 요청했다. reviewer는 `PASS`를 반환했고 actionable correctness, contract, ownership,
+provenance finding은 보고하지 않았다.
+
+reviewer가 확인한 핵심 근거는 `poller.py:143-150`의 destroy 성공 후 `_handle` 해제 순서,
+`test_lifecycle_contract.py:181-194`의 destroy 실패 후 재시도 ownership, Core
+`poller_api.cpp:40-54`의 `void **` destroy semantics 일치다. reviewer 실행 결과는 Python `66 passed`,
+manifest aggregate와 322개 파일 hash, wheel hash, `unzip -t`, `git diff --check` PASS였다. Pyright는
+reviewer 환경에 실행 파일이 없어 재실행하지 못했지만, v8 package verification에서 `0 errors, 0 warnings,
+0 informations`를 별도로 확인했다.
+
+이 결과는 구현 agent와 독립적인 Codex peer-agent review PASS다. formal V11-R2/ V11-M3-CORE-PKG
+evidence와 frontier `CLEAN` ledger gate를 대체하지 않으므로, 해당 공통 gate는 별도 승인 전까지
+`PARTIAL`로 유지한다.

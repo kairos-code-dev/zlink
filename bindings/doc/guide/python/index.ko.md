@@ -1,7 +1,9 @@
 # Python 바인딩 사용 안내
 
 이 문서는 `zlink` Python package로 Core raw messaging을 사용하는 방법을 설명한다. Python 3.9
-이상을 지원하며, native runtime은 wheel에 포함된다.
+이상을 지원하며, 현재 Core 11 wheel의 native runtime target은 Linux x86_64이다. 다른 운영체제나
+CPU architecture는 별도 Core 11 candidate와 clean consumer 검증이 끝날 때까지 지원 target으로
+간주하지 않는다.
 
 ## 설치와 첫 송수신
 

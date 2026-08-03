@@ -2,7 +2,8 @@
 
 이 문서는 `zlink` Python package가 제공하는 Core 11 raw messaging 계약을 정의한다. 현재 구현과
 공개 header에 없는 기능은 이 문서의 계약이 아니다. Python 3.9 이상을 지원하며, 현재 candidate
-package version은 `11.2.0`이다.
+package version은 `11.2.0`이다. 현재 native package target은 Linux x86_64이며, 다른 target은 별도
+candidate payload와 clean consumer 검증 전까지 이 계약의 지원 범위가 아니다.
 
 ## 범위
 

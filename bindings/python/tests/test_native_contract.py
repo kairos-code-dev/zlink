@@ -94,6 +94,19 @@ def test_native_source_contains_no_service_ffi_or_repository_fallback():
     )
 
 
+def test_package_platform_policy_is_explicit_linux_x86_64_only():
+    setup_text = (ROOT / "setup.py").read_text(encoding="utf-8")
+    loader_text = (SRC / "_native" / "_native_loader.py").read_text(encoding="utf-8")
+    assert 'SUPPORTED_PLATFORM = "linux-x86_64"' in setup_text
+    assert 'SUPPORTED_PLATFORM = "linux-x86_64"' in loader_text
+    assert "windows-x86_64" not in setup_text
+    assert "darwin-x86_64" not in setup_text
+    assert "linux-aarch64" not in setup_text
+    assert "_prepare_windows_runtime" not in loader_text
+    assert "libzlink.dylib" not in loader_text
+    assert 'f"native/{platform_dir}/*"' not in setup_text
+
+
 def test_raw_core_symbol_binding_is_present_and_removed_symbols_are_absent():
     native = lib()
     for name in (

@@ -89,17 +89,12 @@ the topic and subscription state returned by the Core socket.
 ## Native Library Loading
 
 The Python binding loads the native zlink runtime through `ctypes`. A wheel
-loads the native payload bundled in that wheel. Source builds require an
-explicit `ZLINK_LIBRARY_PATH` or `ZLINK_CORE_PREFIX`; the loader does not
-search the repository build directory or an arbitrary system library.
-On Windows, OpenSSL dependency lookup may also consult the zlink library
-directory, `ZLINK_OPENSSL_BIN`, `OPENSSL_BIN`, and `PATH`.
-
-These paths assume a trusted process environment. Do not allow untrusted users
-to control DLL search environment variables, `PATH`, or the working directory
-for a privileged service process. Security-sensitive Windows deployments should
-place the required OpenSSL DLLs in the same trusted directory as the zlink
-native library and control ownership and write permissions for that directory.
+loads the native payload bundled in that wheel. The current Core 11 package
+target is Linux x86_64 only. Source builds use the same target policy and
+require an explicit `ZLINK_LIBRARY_PATH` or `ZLINK_CORE_PREFIX`; the loader does
+not search the repository build directory or an arbitrary system library.
+Other operating systems and CPU architectures fail fast until a separate Core
+11 candidate supplies their native payload and clean-consumer evidence.
 
 ## Receive Buffer Lifetime
 

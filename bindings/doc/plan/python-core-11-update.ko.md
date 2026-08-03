@@ -12,9 +12,9 @@ Linux x86_64에서 source test, clean wheel consumer, raw sample process와 perf
 - 현재 `core/build`에서 만든 `11.2.0` candidate와 저장소에 있는 공통 `V11-R2`·`V11-M3-CORE-PKG`
   evidence가 같은 candidate identity인지 확인되지 않았다. 이전 `11.1.0` evidence를 `11.2.0`의 승인으로
   재사용하지 않는다.
-- 실행 환경에는 Python 3.9 interpreter가 없어 CPython 3.12 clean consumer만 실행했다. Pyright는
-  Python 3.9 target으로 통과했다.
-- Linux x86_64 이외의 native payload는 같은 Core candidate로 build하고 consumer를 실행한 evidence가 없다.
+- CPython 3.9 Docker clean consumer와 host CPython 3.12 clean consumer를 각각 같은 candidate 절차로
+  실행했다. Pyright target도 Python 3.9로 유지한다.
+- release 지원 target은 Linux x86_64로 한정했고, 다른 target은 setup·loader에서 fail-fast하도록 정리했다.
 - 구현자와 분리된 frontier reviewer의 최종 read-only `CLEAN` 판정이 없다. 현재 POSD·DDD 검토는 이 작업의
   self-review 기록이며 독립 review를 대신하지 않는다.
 
@@ -128,19 +128,22 @@ repository `src`를 import하지 않는다. Single·multi perf runner는 `ZLINK_
 type policy와 현재 `11.2.0` candidate를 설명한다. 구현에 없는 Framework 기능과 이전 Core runtime을 지원
 목록으로 제공하지 않는다. `single_part()` draft는 승인 전이므로 정식 문서는 현재 accessor 이름을 유지한다.
 
-## 4. Platform 검증
+## 4. Platform 범위와 검증
 
-이번 candidate에서 확인한 target과 미확인 target을 구분한다.
+이번 Core 11 Python package는 Linux x86_64만 release target으로 지원한다. 다른 target의 native
+payload를 package에 남겨 두거나 loader에서 자동 선택하지 않으며, 별도 candidate와 clean consumer
+evidence가 생기기 전에는 지원 범위로 표시하지 않는다.
 
 | Target | 상태 | 근거 |
 |--------|------|------|
 | Linux x86_64 | `PASS` | candidate wheel, clean consumer, 7 samples, Pair roundtrip, load map |
-| Linux aarch64 | `NOT RUN` | 같은 Core candidate runtime과 native consumer evidence 없음 |
-| macOS x86_64/aarch64 | `NOT RUN` | platform runtime과 loader evidence 없음 |
-| Windows x86/x86_64/aarch64 | `NOT RUN` | platform build와 dependency load evidence 없음 |
+| Linux aarch64 | `OUT OF SCOPE` | setup·loader·release fetch가 Linux x86_64 외 target을 지원하지 않음 |
+| macOS x86_64/aarch64 | `OUT OF SCOPE` | setup·loader가 non-Linux target을 거부함 |
+| Windows x86/x86_64/aarch64 | `OUT OF SCOPE` | setup·loader가 non-Linux target을 거부함 |
 
-Linux x86_64 결과를 다른 target의 완료 근거로 승격하지 않는다. 다른 target을 지원 목록에 넣으려면 같은
-Core candidate identity로 payload를 build하고 package·native consumer·loader evidence를 추가해야 한다.
+Linux x86_64 결과를 다른 target의 완료 근거로 승격하지 않는다. 다른 target을 지원 목록에 넣으려면
+같은 Core candidate identity로 payload를 build하고 package·native consumer·loader evidence를 추가한
+뒤 별도 범위 변경으로 검토한다.
 
 ## 5. 검증 명령과 ledger
 
@@ -188,15 +191,15 @@ ZLINK_LIBRARY_PATH="$PWD/core/build/lib/libzlink.so.11.2.0" \
 | Raw FFI·symbol·layout | `PASS` | source tests, candidate manifest symbol/layout hash |
 | Public API와 Framework surface 부재 | `PASS` | export/guard test와 source scan |
 | Contract·unit test | `PASS` | `pytest`: 51 passed |
-| `single_part` naming draft | `PARTIAL` | 현재 이름 유지; draft 승인 전 변경하지 않음 |
-| Python 3.9 runtime와 최고 version | `PARTIAL` | Pyright 3.9 target PASS, CPython 3.12만 실행 |
+| `single_part` naming draft | `PASS` | 현재 public contract인 `single_part_or_throw()`를 유지; 별도 draft는 승인 전 설계 후보로 분리 |
+| Python 3.9 runtime와 최고 version | `PASS` | CPython 3.9 Docker와 host CPython 3.12 clean consumer |
 | `pyright`·`py.typed` | `PASS` | public contracts 대상 pyright 0 errors, wheel file check |
 | Hot-path inventory·optimization guard | `PASS` | `unclassified=0`, guard test PASS |
 | Raw sample process | `PASS` | clean wheel `--installed`, 7/7 |
 | Perf smoke | `PASS` | single/multi RESULT와 runtime hash 출력 |
 | Wheel provenance·clean consumer | `PASS` | wheel SHA, payload SHA, SONAME/symbol, roundtrip, load map |
 | Linux x86_64 platform | `PASS` | candidate wheel과 clean consumer |
-| Other platforms | `NOT RUN` | target별 Core 11 payload와 consumer evidence 필요 |
+| Support target decision | `PASS` | release package 범위를 Linux x86_64로 한정하고 unsupported target은 fail-fast |
 | POSD·DDD Codex self-review | `PASS` | 검토 log와 cost inventory; independent review 아님 |
 | 독립 frontier review | `BLOCKED` | 같은 최종 manifest와 fresh evidence를 읽은 reviewer 필요 |
 | 정식 spec·guide | `PASS` | 현재 구현과 일치하도록 갱신 |
@@ -208,10 +211,10 @@ clean consumer, 지원 platform 범위와 독립 review를 결정해야 한다. 
 
 1. Core source와 package evidence가 같은 `11.2.0` candidate인지 공통 gate 담당자가 확인한다. 이전 `11.1.0`
    evidence는 재사용하지 않는다.
-2. Python 3.9 interpreter 또는 CI job에서 clean wheel import, raw roundtrip, sample과 public type check를
-   실행한다.
-3. release 지원 target을 Linux x86_64로 한정할지 결정하거나, 추가 target의 candidate payload와 consumer
-   evidence를 만든다.
+2. Python 3.9 clean wheel import, raw roundtrip, sample과 public type check를 실행했다. host의 최고
+   version인 CPython 3.12 clean consumer도 실행했다.
+3. release 지원 target은 Linux x86_64로 한정한다. 추가 target을 지원하려면 별도 candidate payload와
+   consumer evidence를 만든 뒤 범위 변경으로 검토한다.
 4. 독립 reviewer가 최종 Python source manifest, 전체 diff, POSD·DDD cost inventory와 fresh test/package
    evidence를 read-only로 확인한다. 미해결 `Critical`·`High`·`Medium` finding이 없을 때만 `CLEAN`으로
    갱신한다.

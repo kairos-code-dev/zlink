@@ -7,6 +7,7 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" ]]; then
     exit 2
 fi
 export PYTHONPATH="${ROOT_DIR}/src:${ROOT_DIR}/samples${PYTHONPATH:+:${PYTHONPATH}}"
+PYTHON_EXECUTABLE="${PYTHON_EXECUTABLE:-python3}"
 
 cd "${ROOT_DIR}"
-python3 samples/run_samples.py "$@"
+"${PYTHON_EXECUTABLE}" samples/run_samples.py "$@"

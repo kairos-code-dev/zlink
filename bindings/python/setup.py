@@ -2,14 +2,28 @@
 
 from __future__ import annotations
 
-import platform
-import sys
 import os
+import platform
+import re
+import sys
 from pathlib import Path
 from setuptools import Extension, setup
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
+SUPPORTED_PLATFORM = "linux-x86_64"
+
+
+def _supported_platform() -> str:
+    machine = platform.machine().lower()
+    if not sys.platform.startswith("linux") or machine not in {"x86_64", "amd64"}:
+        raise RuntimeError(
+            "zlink Python Core 11 wheels currently support Linux x86_64 only"
+        )
+    return SUPPORTED_PLATFORM
+
+
+TARGET_PLATFORM = _supported_platform()
 
 
 def _core_prefix() -> Path:
@@ -41,22 +55,11 @@ def _runtime_library_dirs() -> list[str]:
     # The extension is installed under zlink/_native and packaged libzlink
     # lives under zlink/native/<platform>. Keep runtime lookup package-relative
     # so built wheels do not embed source-tree paths.
-    machine = platform.machine().lower()
-    if sys.platform == "darwin":
-        arch = "aarch64" if machine in {"arm64", "aarch64"} else "x86_64"
-        return [f"@loader_path/../native/darwin-{arch}"]
-    if sys.platform.startswith("linux"):
-        arch = "aarch64" if machine in {"arm64", "aarch64"} else "x86_64"
-        aliases = [f"$ORIGIN/../native/linux-{arch}"]
-        if arch == "x86_64":
-            aliases.append("$ORIGIN/../native/linux-x64")
-        return aliases
-    return []
+    _supported_platform()
+    return [f"$ORIGIN/../native/{SUPPORTED_PLATFORM}"]
 
 
 def _compile_args() -> list[str]:
-    if sys.platform == "win32":
-        return []
     return ["-O3", "-pthread"]
 
 
@@ -69,34 +72,56 @@ def _native_extension(name: str, source: str) -> Extension:
         libraries=["zlink"],
         runtime_library_dirs=_runtime_library_dirs(),
         extra_compile_args=_compile_args(),
-        extra_link_args=["-pthread"] if not sys.platform == "win32" else [],
+        extra_link_args=["-pthread"],
     )
 
 
+def _core_version() -> tuple[int, int, int]:
+    header = (CORE_INCLUDE / "zlink.h").read_text(encoding="utf-8")
+    values = []
+    for name in ("MAJOR", "MINOR", "PATCH"):
+        match = re.search(rf"^#define ZLINK_VERSION_{name} (\d+)$", header, re.MULTILINE)
+        if match is None:
+            raise RuntimeError(f"Core header is missing ZLINK_VERSION_{name}")
+        values.append(int(match.group(1)))
+    return tuple(values)
+
+
 def _native_package_data() -> dict[str, list[str]]:
-    machine = platform.machine().lower()
-    if sys.platform == "win32":
-        platform_dir = (
-            "windows-x86_64"
-            if "64" in os.environ.get("PROCESSOR_ARCHITECTURE", "")
-            else "windows-x86"
+    platform_dir = TARGET_PLATFORM
+    payload_dir = PACKAGE_ROOT / "src" / "zlink" / "native" / platform_dir
+    major, minor, patch = _core_version()
+    version = f"{major}.{minor}.{patch}"
+    expected_names = {
+        "libzlink.so",
+        f"libzlink.so.{major}",
+        f"libzlink.so.{version}",
+    }
+    if not (payload_dir / f"libzlink.so.{version}").is_file():
+        raise RuntimeError(f"Core runtime payload is missing from {payload_dir}")
+    payload_names = {
+        path.name
+        for path in payload_dir.iterdir()
+        if path.is_file() or path.is_symlink()
+    }
+    unexpected = sorted(
+        name for name in payload_names if name.startswith("libzlink") and name not in expected_names
+    )
+    if unexpected:
+        raise RuntimeError(
+            "Unsupported or stale Core payload remains in "
+            f"{payload_dir}: {', '.join(unexpected)}"
         )
-    elif sys.platform == "darwin":
-        platform_dir = (
-            "darwin-aarch64" if machine in {"arm64", "aarch64"} else "darwin-x86_64"
-        )
-    elif sys.platform.startswith("linux"):
-        platform_dir = (
-            "linux-aarch64" if machine in {"arm64", "aarch64"} else "linux-x86_64"
-        )
-        payload_dir = PACKAGE_ROOT / "src" / "zlink" / "native" / platform_dir
-        if not (payload_dir / "libzlink.so").exists():
-            raise RuntimeError(f"Core runtime payload is missing from {payload_dir}")
-        if any(payload_dir.glob("libzlink_c*")):
-            raise RuntimeError(f"Obsolete libzlink_c payload remains in {payload_dir}")
-    else:
-        raise RuntimeError(f"Unsupported platform: {sys.platform}")
-    return {"zlink": ["py.typed", f"native/{platform_dir}/*"]}
+    if not (payload_dir / "libzlink.so").is_symlink():
+        raise RuntimeError(f"Core runtime loader link is missing from {payload_dir}")
+    return {
+        "zlink": [
+            "py.typed",
+            f"native/{platform_dir}/libzlink.so",
+            f"native/{platform_dir}/libzlink.so.{major}",
+            f"native/{platform_dir}/libzlink.so.{version}",
+        ]
+    }
 
 
 setup(

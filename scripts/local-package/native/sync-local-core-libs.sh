@@ -145,10 +145,11 @@ if [[ -n "${selected[node]:-}" ]]; then
   )
 fi
 if [[ -n "${selected[python]:-}" ]]; then
-  dirs+=(
-    "${ROOT_DIR}/bindings/python/src/zlink/native/linux-${arch_short}"
-    "${ROOT_DIR}/bindings/python/src/zlink/native/linux-${arch_dash}"
-  )
+  if [[ "${arch_dash}" != "x86_64" ]]; then
+    echo "Python binding candidate supports Linux x86_64 only" >&2
+    exit 2
+  fi
+  dirs+=("${ROOT_DIR}/bindings/python/src/zlink/native/linux-x86_64")
 fi
 if [[ -n "${selected[rust]:-}" ]]; then
   dirs+=(

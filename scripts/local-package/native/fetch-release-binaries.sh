@@ -186,17 +186,8 @@ copy_windows_c_dll libzlink_c-windows-x64 "$repo_root/bindings/java/src/main/res
 # Python
 copy libzlink-linux-x64/libzlink.so "$repo_root/bindings/python/src/zlink/native/linux-x86_64/libzlink.so"
 copy_linux_soname libzlink-linux-x64 "$repo_root/bindings/python/src/zlink/native/linux-x86_64"
-copy libzlink-linux-arm64/libzlink.so "$repo_root/bindings/python/src/zlink/native/linux-aarch64/libzlink.so"
-copy_linux_soname libzlink-linux-arm64 "$repo_root/bindings/python/src/zlink/native/linux-aarch64"
-copy libzlink-macos-x64/libzlink.dylib "$repo_root/bindings/python/src/zlink/native/darwin-x86_64/libzlink.dylib"
-copy libzlink-macos-arm64/libzlink.dylib "$repo_root/bindings/python/src/zlink/native/darwin-aarch64/libzlink.dylib"
-copy_windows_dll libzlink-windows-x64 "$repo_root/bindings/python/src/zlink/native/windows-x86_64/zlink.dll"
-copy_windows_dll libzlink-windows-arm64 "$repo_root/bindings/python/src/zlink/native/windows-aarch64/zlink.dll"
-copy_windows_bin_dlls libzlink-windows-x64 "$repo_root/bindings/python/src/zlink/native/windows-x86_64"
-copy_windows_bin_dlls libzlink-windows-arm64 "$repo_root/bindings/python/src/zlink/native/windows-aarch64"
-copy libzlink_c-linux-x64/libzlink_c.so "$repo_root/bindings/python/src/zlink/native/linux-x86_64/libzlink_c.so"
-copy libzlink_c-macos-x64/libzlink_c.dylib "$repo_root/bindings/python/src/zlink/native/darwin-x86_64/libzlink_c.dylib"
-copy_windows_c_dll libzlink_c-windows-x64 "$repo_root/bindings/python/src/zlink/native/windows-x86_64/zlink_c.dll"
+# The Python Core 11 package currently publishes Linux x86_64 only. Other
+# binding release jobs keep their own platform payload policy below.
 
 # .NET
 copy libzlink-linux-x64/libzlink.so "$repo_root/bindings/dotnet/native/linux-x64/libzlink.so"

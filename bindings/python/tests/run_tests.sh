@@ -8,6 +8,7 @@ if [[ -n "${PYTHONPATH:-}" ]]; then
 fi
 export PYTHONPATH="$(IFS=:; printf '%s' "${PYTHONPATH_ENTRIES[*]}")"
 export PYTHONDONTWRITEBYTECODE="${PYTHONDONTWRITEBYTECODE:-1}"
+PYTHON_EXECUTABLE="${PYTHON_EXECUTABLE:-python3}"
 
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -z "${ZLINK_CORE_PREFIX:-}" ]]; then
   echo "Set ZLINK_LIBRARY_PATH or ZLINK_CORE_PREFIX before running Python binding tests" >&2
@@ -15,5 +16,5 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -z "${ZLINK_CORE_PREFIX:-}" ]]; then
 fi
 
 cd "${ROOT_DIR}"
-pytest -q "$@"
+"${PYTHON_EXECUTABLE}" -m pytest -q "$@"
 "${ROOT_DIR}/samples/run_samples.sh"

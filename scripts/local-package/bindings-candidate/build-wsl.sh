@@ -7,10 +7,12 @@ LANGUAGE=""
 MANIFEST=""
 OUTPUT_ROOT="${ZLINK_LOCAL_PACKAGE_ROOT:-$REPO_DIR/.artifacts/wsl}/bindings-candidate"
 PACKAGE_VERSION=""
+PYTHON_EXECUTABLE="${PYTHON_EXECUTABLE:-python3}"
 
 usage() {
   cat <<'EOF'
 Usage: build-wsl.sh --language python|go|rust --manifest FILE --package-version X.Y.Z [--output DIR]
+       [--python-executable PATH]
 
 Builds one non-release binding package and verifies it from a clean consumer.
 Run languages separately in Python, Go, Rust order.
@@ -23,6 +25,7 @@ while [[ $# -gt 0 ]]; do
     --manifest) MANIFEST="${2:-}"; shift 2 ;;
     --package-version) PACKAGE_VERSION="${2:-}"; shift 2 ;;
     --output) OUTPUT_ROOT="${2:-}"; shift 2 ;;
+    --python-executable) PYTHON_EXECUTABLE="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -31,6 +34,24 @@ done
 case "$LANGUAGE" in python|go|rust) ;; *) echo "--language must be python, go, or rust" >&2; exit 2 ;; esac
 [[ -f "$MANIFEST" ]] || { echo "Manifest not found: $MANIFEST" >&2; exit 1; }
 [[ "$PACKAGE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "--package-version must be X.Y.Z" >&2; exit 2; }
+
+python_version="not_applicable"
+python_executable_record="not_applicable"
+if [[ "$LANGUAGE" == "python" ]]; then
+  [[ -n "$PYTHON_EXECUTABLE" ]] || { echo "--python-executable must not be empty" >&2; exit 2; }
+  command -v "$PYTHON_EXECUTABLE" >/dev/null 2>&1 || {
+    echo "Python executable not found: $PYTHON_EXECUTABLE" >&2
+    exit 1
+  }
+  python_version="$("$PYTHON_EXECUTABLE" -c 'import platform; print(platform.python_version())')"
+  python_executable_record="$PYTHON_EXECUTABLE"
+  "$PYTHON_EXECUTABLE" - <<'PY'
+import sys
+
+if sys.version_info < (3, 9):
+    raise SystemExit("Python 3.9 or newer is required")
+PY
+fi
 
 manifest_value() {
   local key="$1"
@@ -234,16 +255,19 @@ PYTHON_CORE_PREFIX=${core_prefix:-not_applicable}
 PYTHON_SOURCE_MANIFEST=${source_manifest:-not_applicable}
 PYTHON_SOURCE_MANIFEST_SHA256=${source_manifest_sha:-not_applicable}
 PYTHON_SOURCE_AGGREGATE_SHA256=${source_aggregate_sha:-not_applicable}
+PYTHON_EXECUTABLE=$python_executable_record
+PYTHON_VERSION=$python_version
 EOF
 
 case "$LANGUAGE" in
   python)
     package_version="$(sed -n 's/^version = "\(.*\)"/\1/p' "$REPO_DIR/bindings/python/pyproject.toml" | head -n1)"
     [[ "$package_version" == "$PACKAGE_VERSION" ]] || { echo "Python package version mismatch: $package_version != $PACKAGE_VERSION" >&2; exit 1; }
-    (cd "$REPO_DIR/bindings/python" && ZLINK_CORE_PREFIX="$core_prefix" ZLINK_LIBRARY_PATH="$payload" ./tests/run_tests.sh)
+    (cd "$REPO_DIR/bindings/python" && PYTHON_EXECUTABLE="$PYTHON_EXECUTABLE" ZLINK_CORE_PREFIX="$core_prefix" ZLINK_LIBRARY_PATH="$payload" "$PYTHON_EXECUTABLE" setup.py build_ext --inplace)
+    (cd "$REPO_DIR/bindings/python" && PYTHON_EXECUTABLE="$PYTHON_EXECUTABLE" ZLINK_CORE_PREFIX="$core_prefix" ZLINK_LIBRARY_PATH="$payload" ./tests/run_tests.sh)
     rm -rf "$OUTPUT_ROOT/$LANGUAGE/wheels"
     mkdir -p "$OUTPUT_ROOT/$LANGUAGE/wheels"
-    (cd "$REPO_DIR/bindings/python" && ZLINK_CORE_PREFIX="$core_prefix" ZLINK_LIBRARY_PATH="$payload" python3 -m pip wheel --no-deps --no-build-isolation --wheel-dir "$OUTPUT_ROOT/$LANGUAGE/wheels" .)
+    (cd "$REPO_DIR/bindings/python" && PYTHON_EXECUTABLE="$PYTHON_EXECUTABLE" ZLINK_CORE_PREFIX="$core_prefix" ZLINK_LIBRARY_PATH="$payload" "$PYTHON_EXECUTABLE" -m pip wheel --no-deps --no-build-isolation --wheel-dir "$OUTPUT_ROOT/$LANGUAGE/wheels" .)
     wheel=("$OUTPUT_ROOT"/$LANGUAGE/wheels/*.whl)
     [[ ${#wheel[@]} -eq 1 && -f "${wheel[0]}" ]] || { echo "Expected exactly one Python wheel" >&2; exit 1; }
     mkdir -p "$consumer/wheel"
@@ -293,7 +317,7 @@ PY
       exit 1
     }
     printf 'PACKAGED_HEADER_SHA256=not_applicable\n' >>"$OUTPUT_ROOT/$LANGUAGE/candidate-input.env"
-    python3 -m venv "$consumer/venv"
+    "$PYTHON_EXECUTABLE" -m venv "$consumer/venv"
     "$consumer/venv/bin/pip" install --no-deps "${wheel[0]}"
     (cd "$consumer" && env -u LD_LIBRARY_PATH -u ZLINK_LIBRARY_PATH PYTHONPATH= "$consumer/venv/bin/python" "$REPO_DIR/bindings/python/samples/run_samples.py" --installed)
     (cd "$consumer" && env -u LD_LIBRARY_PATH -u ZLINK_LIBRARY_PATH PYTHONPATH= "$consumer/venv/bin/python" - "$core_version" "$native_arch" <<'PY'

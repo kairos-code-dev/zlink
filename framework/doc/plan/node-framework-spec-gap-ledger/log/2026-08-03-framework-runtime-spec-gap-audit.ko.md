@@ -23,7 +23,7 @@ completion 전이와 runtime weight validation을 실제 production call path까
 | `ND-IMP-004` | package graph·clean consumer 충족 | current native artifact를 포함한 role server와 SubmitAdmission process 실행 |
 | `ND-IMP-005` | 비-E2E runtime·unit 수정 완료 | terminal/recovery completion의 StoreVersion route replacement process evidence |
 | `ND-IMP-006` | 비-E2E runtime·unit 수정 완료 | remote weight publication과 selector process evidence |
-| `ND-E2E-IMP-001` | 미충족 | common 374개 exact ID와 Node 207개 scenario file의 coverage 불일치 해소 |
+| `ND-E2E-IMP-001` | 미충족 | common 374개 exact ID와 Node exact 223개 scenario file의 coverage 불일치 해소; common coverage는 219개 |
 | `ND-E2E-IMP-002` | 미충족 | Config 1-14 aggregate가 child 상태·client result·role-server evidence를 해석하도록 수정 |
 | `ND-E2E-IMP-003` | 미충족 | 모든 selector와 feature-map 상태를 current common ID에 다시 대응하고 partial/source-only를 PASS에서 제외 |
 | `ND-E2E-IMP-004` | 정적 scan 충족, process 후속 | client가 role-server public endpoint만 사용하고 양쪽 evidence를 같은 실행에서 생성하는지 확인 |
@@ -67,7 +67,7 @@ working tree manifest가 다시 바뀐다.
 | `backend-public-api-only.test.js` | 6/6, exit 0 | Framework·binding public boundary와 E2E client 정적 import boundary 통과 |
 | `npm ls @zlink-systems/zlink --all` | exit 0 | 전체 workspace가 11.1.0으로 clean resolve |
 | `verify_packaged_contract.sh` | exit 0 | `NODE_PACKAGED_CONTRACT_PASS packages=7 browser=esm server=commonjs` |
-| `e2e-scenario-header-gate.test.js` | exit 1 | common 374, Node 207, missing 171, extra 4 |
+| `e2e-scenario-header-gate.test.js` | exit 1 | common 374, Node exact 223, common coverage 219, missing 155; source-only extra 4 |
 | `TA-A1` | exit 1 | native session bind의 ActorRef route fence 불일치 |
 | `SA-E2E-14` | exit 2 | candidate native artifact incomplete |
 | `CH-E2E-01`~`CH-E2E-12` | targeted process PASS | Config 12의 16개 selector를 개별 실행했고 role endpoint/evidence를 확인 |
@@ -80,13 +80,14 @@ working tree manifest가 다시 바뀐다.
 
 ## Common ID 전체 대조
 
-현재 Node Client scenario file가 제공하는 exact ID는 207개다. common E2E 문서의 374개 ID와 비교한
-결과는 다음과 같다.
+현재 Node Client scenario file가 제공하는 exact ID는 223개다. 이 중 219개가 common E2E 문서의
+374개 ID와 일치하고 4개는 Node source에만 존재한다. 비교 결과는 다음과 같다.
 
 ```text
-common IDs:     374
-Node exact IDs: 207
-missing:        171
+common IDs:             374
+Node exact IDs:         223
+common coverage:        219
+missing common IDs:     155
 extra:          MON-A4, MON-D1, SM-D16, SM-Q9
 ```
 
@@ -112,9 +113,6 @@ Config 10 (12): ST-E1A, ST-E1B, ST-E1C, ST-F3A, ST-G1, ST-G2, ST-G3,
                 ST-G4, ST-G5, ST-G6, ST-H4A, ST-H4B
 Config 11 (9):  OBS-A5, OBS-C6, OBS-C7, OBS-C8, OBS-C9A, OBS-C9B, OBS-C10,
                 OBS-C11, OBS-C12
-Config 12 (16): CH-E2E-01, CH-E2E-02, CH-E2E-03, CH-E2E-04A, CH-E2E-04B,
-                CH-E2E-04C, CH-E2E-05, CH-E2E-06, CH-E2E-07A, CH-E2E-07B,
-                CH-E2E-07C, CH-E2E-08, CH-E2E-09, CH-E2E-10, CH-E2E-11, CH-E2E-12
 Config 13 (20): SA-E2E-01, SA-E2E-02, SA-E2E-03, SA-E2E-04, SA-E2E-05,
                 SA-E2E-06, SA-E2E-07, SA-E2E-08, SA-E2E-09, SA-E2E-10,
                 SA-E2E-11, SA-E2E-12, SA-E2E-13, SA-E2E-14, SA-E2E-15,
@@ -129,8 +127,8 @@ Config 14 (36): IS-E2E-01, IS-E2E-02, IS-E2E-03, IS-E2E-04, IS-E2E-05,
                 IS-E2E-36
 ```
 
-Config 12의 16개 ID는 targeted process에서 PASS했고 Config 14의 36개 ID는 현재 runner가 존재해도
-`BLOCKED`를 반환한다.
+Config 12의 16개 ID는 exact scenario file과 targeted process가 모두 PASS했다. Config 14의 36개 ID는
+현재 runner가 존재해도 `BLOCKED`를 반환한다.
 Config 13의 `SA-E2E-14`는 feature-map에 `구현`으로 표시되어 있지만 exact Client scenario file이
 없고, current process도 native artifact 단계에서 실패한다. 따라서 feature-map 상태만으로 완료할 수
 없다.
@@ -185,7 +183,7 @@ DDD 경계는 `ChannelEgress` fixture(역할과 packet 계약), role host(Framew
 
 ## 다음 조치
 
-1. `ND-E2E-IMP-001`을 기준으로 171개 누락 ID, 4개 extra와 feature-map alias를 정리한다.
+1. `ND-E2E-IMP-001`을 기준으로 155개 누락 ID, 4개 extra와 feature-map alias를 정리한다.
 2. Config 12·14는 공통 contract가 요구하는 role server를 구현하거나 `contract 선행`으로 분리하고,
    aggregate가 `BLOCKED`·partial·source-only를 PASS로 계산하지 않도록 한다.
 3. `ND-E2E-IMP-005`의 TA-A1 route fence와 SA native artifact를 owner layer에서 수정한 뒤 fresh

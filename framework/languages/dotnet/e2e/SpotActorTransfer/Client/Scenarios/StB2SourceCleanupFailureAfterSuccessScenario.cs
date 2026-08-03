@@ -46,29 +46,22 @@ internal static class StB2SourceCleanupFailureAfterSuccessScenario
             $"transfer|{actorId}|transfer_in|22",
             $"transfer|{actorId}|joined|{spotId}:22"
         ]);
-        var sourceBeforeLoss = await context.GetEvidenceAsync(source);
-        var targetBeforeLoss = await context.GetEvidenceAsync(target);
-        foreach (var evidence in new[]
-                 {
-                     sourceBeforeLoss,
-                     targetBeforeLoss
-                 })
-        {
-            ZlinkStreamAssert.Ensure(
-                !evidence.Any(item =>
-                    item.Scenario == scenario
-                    && item.ActorId == actorId
-                    && item.Kind is "success_reply"
-                        or "packet_handler"),
-                $"{scenario} admitted application work before source "
-                + "cleanup became durable.");
-        }
+        // Source OnLeaveActorAsync is a one-way notification. Target Join
+        // completion and application dispatch must not wait for the source
+        // cleanup callback to release its application gate.
+        var targetBeforeLoss = await context.WaitEvidenceAsync(target, [
+            $"{scenario}|{actorId}|success_reply|{spotId}"
+        ]);
+        ZlinkStreamAssert.Ensure(
+            targetBeforeLoss.Count(item =>
+                item.Scenario == scenario
+                && item.ActorId == actorId
+                && item.Kind == "success_reply") == 1,
+            $"{scenario} Join completion was not delivered exactly once "
+            + "before source cleanup loss.");
 
         await context.CrashNodeAAndWaitUnavailableAsync();
 
-        await context.WaitEvidenceAsync(target, [
-            $"{scenario}|{actorId}|success_reply|{spotId}"
-        ], timeoutMilliseconds: 20_000);
         var owner = await context.WaitActorOwnerAsync(
             target,
             actorId,
@@ -96,6 +89,13 @@ internal static class StB2SourceCleanupFailureAfterSuccessScenario
             afterLoss.SpotId == spotId,
             $"{scenario} Actor was restored in unexpected Spot "
             + $"'{afterLoss.SpotId}'.");
+        var targetAfterCrash = await context.GetEvidenceAsync(target);
+        ZlinkStreamAssert.Ensure(
+            targetAfterCrash.Count(item =>
+                item.Scenario == scenario
+                && item.ActorId == actorId
+                && item.Kind == "success_reply") == 1,
+            $"{scenario} Join completion was replayed after source process loss.");
         var targetAfterLoss = await context.WaitEvidenceAsync(target, [
             $"{scenario}|{actorId}|packet_handler|after-source-cleanup-loss"
         ]);

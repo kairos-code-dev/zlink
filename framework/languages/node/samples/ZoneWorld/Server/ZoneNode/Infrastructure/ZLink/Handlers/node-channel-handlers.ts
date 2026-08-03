@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { zlinkPublishHandler, zlinkRequestHandler } from '@zlink-systems/nestjs';
 import {
   ZLINK_SPOT_MANAGER,
@@ -73,14 +73,14 @@ class GetNodeDiagnosticsHandler implements
 class WorldAnnounceSubscriber implements ZLinkFanoutHandler<WorldAnnounceEvent> {
   constructor(
     @Inject(ZONEWORLD_CONFIG) private readonly config: ZoneWorldConfiguration,
-    @Inject(ZLINK_SPOT_MANAGER) private readonly handles: ZLinkSpotManager,
-    @Inject(ZLINK_SPOT_OUTBOUND) private readonly outbound: ZLinkSpotOutbound
+    @Optional() @Inject(ZLINK_SPOT_MANAGER) private readonly handles: ZLinkSpotManager | undefined,
+    @Optional() @Inject(ZLINK_SPOT_OUTBOUND) private readonly outbound: ZLinkSpotOutbound | undefined
   ) {}
 
   async handle(message: WorldAnnounceEvent, context: ZLinkPublishMessageContext): Promise<void> {
     console.log(`fanout subscriber received announcement id=${message.announcementId} topic=${context.topic}`);
     const nodeId = this.config.zoneNode?.nodeId;
-    if (nodeId === undefined) return;
+    if (nodeId === undefined || this.handles === undefined || this.outbound === undefined) return;
     for (const zoneId of zonesOf(nodeId)) {
       const handle = await this.handles.find(zoneId);
       if (handle !== undefined) {

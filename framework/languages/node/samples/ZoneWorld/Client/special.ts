@@ -212,7 +212,16 @@ async function runMaintenanceArm(opsEndpoint: string): Promise<void> {
   const ops = connector(opsEndpoint);
   try {
     await ops.connect();
-    await watch(ops);
+    const nodes = await watch(ops);
+    const east = nodes.nodes.find((node) => node.nodeId === NodeIds.east);
+    if (east?.registered !== true || east.connected !== true) {
+      await ops.waitFor<NodeStatusNotify>(PacketNames.nodeStatusNotify)
+        .where((message) => message.payload.nodeId === NodeIds.east
+          && message.payload.registered
+          && message.payload.connected)
+        .timeout(20_000)
+        .submit();
+    }
     const applied = await setMaintenance(ops, NodeIds.east, true);
     zlinkStreamAssert.ensure(applied.error === null, 'ZW-E5 could not arm maintenance.');
     console.log('scenario ZW-E5 armed');

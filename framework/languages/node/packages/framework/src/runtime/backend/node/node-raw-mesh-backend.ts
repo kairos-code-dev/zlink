@@ -1634,12 +1634,22 @@ class RawStreamSessionService implements StreamSessionService {
   private deliver(sessionRid: string, payload: Uint8Array): boolean {
     const target = this.sessionTargets.get(sessionRid);
     if (target === undefined) return false;
-    const operation = this.stream.send(target as unknown as BindingRoutingId);
-    const parts = decodeMultipartBuffers(payload);
-    if (parts.length === 0) return false;
-    let submit = operation.message(parts[0]!);
-    for (const part of parts.slice(1)) submit = submit.message(part);
-    return submit.submit();
+    try {
+      const operation = this.stream.send(target as unknown as BindingRoutingId);
+      const parts = decodeMultipartBuffers(payload);
+      if (parts.length === 0) return false;
+      let submit = operation.message(parts[0]!);
+      for (const part of parts.slice(1)) submit = submit.message(part);
+      const delivered = submit.submit();
+      if (!delivered) this.sessionTargets.delete(sessionRid);
+      return delivered;
+    } catch {
+      // A client may close its STREAM between the binding lookup and this
+      // one-way delivery. Treat that transport transition as a closed
+      // session; it must not escape the runtime poll and terminate the host.
+      this.sessionTargets.delete(sessionRid);
+      return false;
+    }
   }
 
   private allBindings() {

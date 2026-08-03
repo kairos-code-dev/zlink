@@ -2820,7 +2820,8 @@ test('raw backend dispatches Spot requests and Actor sends through M6B owners', 
     closeParts(instanceCompletion);
 
     const delivered: Buffer[] = [];
-    const sessionService = backend.createStreamSessionService(createFakeStream(delivered));
+    const streamState = { disconnected: false };
+    const sessionService = backend.createStreamSessionService(createFakeStream(delivered, streamState));
     sessionService.start();
     const bindOperation = sessionService.bindActor('session-a', actor, 2_000);
     const bindCompletion = await drainOne(backend, ReadyDomain.Infrastructure);
@@ -2832,6 +2833,13 @@ test('raw backend dispatches Spot requests and Actor sends through M6B owners', 
       SubmitResult.Ok
     );
     assert.deepEqual(delivered.map(value => value.toString()), ['session-message']);
+    streamState.disconnected = true;
+    assert.doesNotThrow(() => {
+      assert.equal(
+        backend.sendActorBoundSession(actor, binding.bindingGeneration, Buffer.from('late-session-message')),
+        SubmitResult.InvalidState
+      );
+    });
     const unbindOperation = sessionService.unbindActor(
       'session-a',
       actor,
@@ -3207,7 +3215,10 @@ function closeParts(record: ReceiveRecord): void {
   for (const part of record.parts) part.close();
 }
 
-function createFakeStream(delivered: Buffer[]): unknown {
+function createFakeStream(
+  delivered: Buffer[],
+  state: { disconnected: boolean }
+): unknown {
   return {
     send() {
       const submit = {
@@ -3216,6 +3227,7 @@ function createFakeStream(delivered: Buffer[]): unknown {
           return submit;
         },
         submit() {
+          if (state.disconnected) throw new Error('stream route is disconnected');
           return true;
         }
       };

@@ -27,6 +27,10 @@ class NodeRuntimeState {
     return this.maintenance.get(this.nodeId) ?? false;
   }
 
+  isUnderMaintenance(nodeId: string): boolean {
+    return this.maintenance.get(nodeId) ?? false;
+  }
+
   rejectsArrival(zoneId: string, sourceNodeId: string | null): boolean {
     return nodeOf(zoneId as never) === this.nodeId
       && sourceNodeId !== this.nodeId

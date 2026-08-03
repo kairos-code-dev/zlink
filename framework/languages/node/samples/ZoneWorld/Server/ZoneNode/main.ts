@@ -63,6 +63,12 @@ async function bootstrap(): Promise<void> {
         throw new Error(`Zone spot '${zoneId}' creation was rejected.`);
       }
     }
+    if (node.disableBots !== true) {
+      await spawnBots(app, zones);
+    }
+    // Create local startup actors before withdrawing this node from future
+    // placement. The weight change must not remove the only eligible target
+    // for those actors.
     if (node.placementWeightAfterZoneCreation !== undefined) {
       await updatePlacementWeight(
         app,
@@ -71,11 +77,13 @@ async function bootstrap(): Promise<void> {
       );
     }
     if (node.disableBots !== true) {
-      await spawnBots(app, zones);
       console.log(`bot-start=ready node=${node.nodeId}`);
-      await waitForBotStart(node.botStartSignalPath);
+      // Keep topology and Ops reporting available while bot ticks remain
+      // paused. The runner releases the tick gate after normal checks.
+      void waitForBotStart(node.botStartSignalPath).then(() => state.enableBotTicks());
+    } else {
+      state.enableBotTicks();
     }
-    state.enableBotTicks();
     const channels = app.get<ZLinkRouteClient>(ZLINK_ROUTE_CLIENT, { strict: false });
     const report = async () => {
       try {

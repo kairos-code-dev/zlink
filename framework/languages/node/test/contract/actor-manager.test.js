@@ -1236,7 +1236,7 @@ test('ZLinkActorContext delegates join calls to coordinator with timeout', async
   replyMessage.close();
 });
 
-test('actor join defer starts after the current Spot turn', async () => {
+test('SpotWide actor join defer yields the current Spot turn while waiting', async () => {
   const events = [];
   let releaseJoin;
   const joinGate = () => new Promise((resolve) => { releaseJoin = resolve; });
@@ -1270,7 +1270,7 @@ test('actor join defer starts after the current Spot turn', async () => {
   });
   const afterHeld = serial.execute(() => events.push('defer:next'));
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(events, ['defer:start', 'defer:end']);
+  assert.deepEqual(events, ['defer:start', 'defer:end', 'defer:next']);
   releaseJoin();
   await Promise.all([held, afterHeld]);
   assert.deepEqual(events, ['defer:start', 'defer:end', 'defer:next']);

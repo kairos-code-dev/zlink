@@ -12,9 +12,12 @@ export async function runSample(ctx) {
     redisKeyPrefix,
     logDirectory: ctx.logDir
   };
-  const east = await zoneNodeConfig(ctx, shared, 'zone-node-2', 'east', { disableBots: true });
+  const botStartSignalPath = path.join(ctx.logDir, 'bots.start');
+  const east = await zoneNodeConfig(ctx, shared, 'zone-node-2', 'east', {
+    botStartSignalPath
+  });
   const west = await zoneNodeConfig(ctx, shared, 'zone-node-1', 'west', {
-    disableBots: true,
+    botStartSignalPath,
     faultTickZone: 'zone-nw',
     placementWeightAfterZoneCreation: 0
   });
@@ -50,6 +53,8 @@ export async function runSample(ctx) {
   await ctx.waitLog('zone-node-1', 'zone spot create zone=zone-sw state=created');
   await ctx.waitLog('zone-node-2', 'zone spot create zone=zone-ne state=created');
   await ctx.waitLog('zone-node-2', 'zone spot create zone=zone-se state=created');
+  await ctx.waitLog('zone-node-1', 'bot-start=ready');
+  await ctx.waitLog('zone-node-2', 'bot-start=ready');
   console.log('ZW-G1 generated-routing-id=ready node=zone-node-2');
 
   await timerFailure.waitFor('scenario ZW-C4 passed');
@@ -75,6 +80,57 @@ export async function runSample(ctx) {
     await ctx.waitLog('zone-node-1', `zone spot announcement delivered zone=${zoneId}`);
   }
 
+  const extra = await zoneNodeConfig(ctx, shared, 'zone-node-3', 'extra', { disableBots: true });
+  await ctx.start('zone-node-3', 'dist/Server/ZoneNode/main.js', ['--config', extra.path]);
+  await ctx.waitLog('zone-node-3', 'topology=ready node=zone-node-3 zones=');
+  ctx.runNode(path.join(ctx.sampleRoot, 'dist/Client/special.js'), [
+    '--config', specialClientConfig(ctx, shared, gateway, ops, 'D2')
+  ]);
+  await ctx.waitLog('zone-node-3', 'fanout subscriber received announcement');
+  console.log('scenario ZW-D2 passed');
+
+  // The common internals do not recreate an existing User Spot after a process
+  // restart. Run application operations while their original owners are ready.
+  ctx.runNode(path.join(ctx.sampleRoot, 'dist/Client/special.js'), [
+    '--config', specialClientConfig(ctx, shared, gateway, ops, 'E')
+  ]);
+
+  // Bots are created during startup but remain paused until this signal. This
+  // keeps the normal maintenance checks deterministic while using the same
+  // owner processes for the bot scenario.
+  fs.writeFileSync(botStartSignalPath, 'start\n', { mode: 0o600 });
+  await ctx.waitLog('zone-node-1', 'topology=ready');
+  await ctx.waitLog('zone-node-2', 'topology=ready');
+  await ctx.waitLog('zone-node-1', 'mesh status node=zone-node-1 state=1');
+  await ctx.waitLog('zone-node-2', 'mesh status node=zone-node-2 state=1');
+  for (const name of ['zone-node-1', 'zone-node-2']) {
+    await ctx.waitLog(name, 'bot spawned');
+  }
+  await ctx.waitLog(
+    'zone-node-1',
+    'zone player entered zone=zone-nw player=bot-ne-x from=zone-node-2'
+  );
+  await ctx.waitLog(
+    'zone-node-2',
+    'zone change scheduled player=bot-ne-x from=zone-ne to=zone-nw'
+  );
+  const botLogs = ['zone-node-1', 'zone-node-2']
+    .map((name) => fs.readFileSync(path.join(ctx.logDir, `${name}.log`), 'utf8'))
+    .join('\n');
+  const spawned = new Set([...botLogs.matchAll(/bot spawned bot=([^ ]+)/g)].map((match) => match[1]));
+  if (spawned.size !== 8) throw new Error(`ZW-F1 expected 8 spawned bots, observed ${spawned.size}.`);
+  if (/No current session binding exists for actor 'bot-/.test(botLogs)) {
+    throw new Error('ZW-F3 attempted to push to an unbound bot actor.');
+  }
+  console.log('scenario ZW-F2 passed');
+  const bots = startScenarioClient(
+    ctx,
+    specialClientConfig(ctx, shared, gateway, ops, 'F'),
+    'bots'
+  );
+  await bots.waitFor('scenario ZW-F4 passed');
+  await bots.complete();
+
   const transition = startScenarioClient(
     ctx,
     specialClientConfig(ctx, shared, gateway, ops, 'B4-C2-C3'),
@@ -90,19 +146,6 @@ export async function runSample(ctx) {
   await ctx.start('zone-node-2-after-failure', 'dist/Server/ZoneNode/main.js', ['--config', eastAfterFailure.path]);
   await ctx.waitLog('zone-node-2-after-failure', 'topology=ready');
   await ctx.waitLog('zone-node-2-after-failure', 'mesh status node=zone-node-2 state=1');
-
-  const extra = await zoneNodeConfig(ctx, shared, 'zone-node-3', 'extra', { disableBots: true });
-  await ctx.start('zone-node-3', 'dist/Server/ZoneNode/main.js', ['--config', extra.path]);
-  await ctx.waitLog('zone-node-3', 'topology=ready node=zone-node-3 zones=');
-  ctx.runNode(path.join(ctx.sampleRoot, 'dist/Client/special.js'), [
-    '--config', specialClientConfig(ctx, shared, gateway, ops, 'D2')
-  ]);
-  await ctx.waitLog('zone-node-3', 'fanout subscriber received announcement');
-  console.log('scenario ZW-D2 passed');
-
-  ctx.runNode(path.join(ctx.sampleRoot, 'dist/Client/special.js'), [
-    '--config', specialClientConfig(ctx, shared, gateway, ops, 'E')
-  ]);
   ctx.runNode(path.join(ctx.sampleRoot, 'dist/Client/special.js'), [
     '--config', specialClientConfig(ctx, shared, gateway, ops, 'E5-arm')
   ]);
@@ -127,48 +170,6 @@ export async function runSample(ctx) {
     eastAfterMaintenance.value.zoneNode,
     shared
   );
-  await stopAndWaitForLocationLease(ctx, 'zone-node-1', west.value.zoneNode, shared);
-  const botStartSignalPath = path.join(ctx.logDir, 'bots.start');
-  const eastBots = await zoneNodeConfig(ctx, shared, 'zone-node-2', 'east-bots', { botStartSignalPath });
-  const westBots = await zoneNodeConfig(ctx, shared, 'zone-node-1', 'west-bots', {
-    botStartSignalPath,
-    placementWeightAfterZoneCreation: 0
-  });
-  await ctx.start('zone-node-1-bots', 'dist/Server/ZoneNode/main.js', ['--config', westBots.path]);
-  await ctx.waitLog('zone-node-1-bots', 'placement weight updated node=zone-node-1 weight=0');
-  await ctx.start('zone-node-2-bots', 'dist/Server/ZoneNode/main.js', ['--config', eastBots.path]);
-  await ctx.waitLog('zone-node-1-bots', 'bot-start=ready');
-  await ctx.waitLog('zone-node-2-bots', 'bot-start=ready');
-  fs.writeFileSync(botStartSignalPath, 'start\n', { mode: 0o600 });
-  await ctx.waitLog('zone-node-1-bots', 'topology=ready');
-  await ctx.waitLog('zone-node-1-bots', 'mesh status node=zone-node-1 state=1');
-  await ctx.waitLog('zone-node-2-bots', 'topology=ready');
-  await ctx.waitLog('zone-node-2-bots', 'mesh status node=zone-node-2 state=1');
-  await ctx.waitLog('gateway', 'gateway mesh status mesh=zoneworld.zones state=1');
-
-  for (const name of ['zone-node-1-bots', 'zone-node-2-bots']) {
-    await ctx.waitLog(name, 'bot spawned');
-  }
-  await ctx.waitLog(
-    'zone-node-1-bots',
-    'zone player entered zone=zone-nw player=bot-ne-x from=zone-node-2'
-  );
-  await ctx.waitLog(
-    'zone-node-2-bots',
-    'zone change scheduled player=bot-ne-x from=zone-ne to=zone-nw'
-  );
-  const botLogs = ['zone-node-1-bots', 'zone-node-2-bots']
-    .map((name) => fs.readFileSync(path.join(ctx.logDir, `${name}.log`), 'utf8'))
-    .join('\n');
-  const spawned = new Set([...botLogs.matchAll(/bot spawned bot=([^ ]+)/g)].map((match) => match[1]));
-  if (spawned.size !== 8) throw new Error(`ZW-F1 expected 8 spawned bots, observed ${spawned.size}.`);
-  if (/No current session binding exists for actor 'bot-/.test(botLogs)) {
-    throw new Error('ZW-F3 attempted to push to an unbound bot actor.');
-  }
-  console.log('scenario ZW-F2 passed');
-  ctx.runNode(path.join(ctx.sampleRoot, 'dist/Client/special.js'), [
-    '--config', specialClientConfig(ctx, shared, gateway, ops, 'F')
-  ]);
   await stopNormalTopology(ctx);
   await runRoutingProbes(ctx, shared);
   console.log('ZW-G5 caller-fixed-routing-id=absent');
@@ -196,8 +197,10 @@ async function zoneNodeConfig(ctx, shared, nodeId, name, overrides = {}) {
 
 async function stopNormalTopology(ctx) {
   for (const name of [
-    'zone-node-1-bots',
-    'zone-node-2-bots',
+    'zone-node-1',
+    'zone-node-2',
+    'zone-node-2-after-failure',
+    'zone-node-2-after-maintenance',
     'zone-node-3',
     'gateway',
     'ops'

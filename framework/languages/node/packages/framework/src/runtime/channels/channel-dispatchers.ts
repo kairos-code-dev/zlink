@@ -280,7 +280,7 @@ export class ZLinkChannelRequestDispatcher {
       metadata: zlinkMessageMetadata(envelope.header.metadata),
       correlationId: envelope.header.correlationId ?? undefined
     };
-    if (!this.options.routeMesh) {
+    if (this.options.routeMesh !== true) {
       return base;
     }
     return {

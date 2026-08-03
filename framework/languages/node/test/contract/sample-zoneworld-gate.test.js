@@ -88,9 +88,9 @@ test('ZoneWorld runner proves the canonical scenario with generated routing iden
   assert.match(zoneNodeMain, /await spawnBots\(app, zones\);[\s\S]*?state\.enableBotTicks\(\);/);
   assert.match(
     zoneNodeMain,
-    /await spawnBots\(app, zones\);[\s\S]*?bot-start=ready[\s\S]*?await waitForBotStart\(node\.botStartSignalPath\)/
+    /await spawnBots\(app, zones\);[\s\S]*?bot-start=ready[\s\S]*?waitForBotStart\(node\.botStartSignalPath\)[\s\S]*?state\.enableBotTicks\(\)/
   );
-  assert.match(runner, /waitLog\('zone-node-1-bots', 'bot-start=ready'\)[\s\S]*?writeFileSync\(botStartSignalPath/);
+  assert.match(runner, /waitLog\('zone-node-1', 'bot-start=ready'\)[\s\S]*?writeFileSync\(botStartSignalPath/);
 });
 
 test('ZoneWorld applies the Node sample configuration policy without environment settings', () => {

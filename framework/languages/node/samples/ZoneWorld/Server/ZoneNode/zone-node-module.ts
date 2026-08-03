@@ -18,6 +18,10 @@ import { ZoneSpot } from './Infrastructure/ZLink/Spots/zone-spot';
 import {
   PlayerMovement
 } from './Infrastructure/ZLink/Handlers/player-handlers';
+import {
+  MaintenanceChangedSubscriber,
+  WorldAnnounceSubscriber
+} from './Infrastructure/ZLink/Handlers/node-channel-handlers';
 import { MaintenanceStore } from '../Configuration/maintenance-store';
 import { NodeRuntimeState } from './Domain/node-runtime-state';
 import { SpotRuntimeStatusObserver } from './Infrastructure/ZLink/Handlers/spot-runtime-event-handler';
@@ -28,7 +32,9 @@ function createZoneNodeModule(includeZoneRuntime = true) {
   class ZoneNodeModule {}
   const configuration = createZoneWorldConfigurationModule('zoneNode');
   zlinkModule({
-    providerDiscovery: includeZoneRuntime ? [__dirname] : [],
+    providerDiscovery: includeZoneRuntime
+      ? [{ rootDir: __dirname, options: { recursive: true } }]
+      : [],
     imports: [
       configuration,
       ZLinkModule.forRootFactory({
@@ -99,7 +105,10 @@ function createZoneNodeModule(includeZoneRuntime = true) {
         PlayerMovement,
         SpotRuntimeStatusObserver,
         OpsReportAdapter
-      ] : [])
+      ] : [
+        WorldAnnounceSubscriber,
+        MaintenanceChangedSubscriber
+      ])
     ]
   })(ZoneNodeModule);
   return ZoneNodeModule;

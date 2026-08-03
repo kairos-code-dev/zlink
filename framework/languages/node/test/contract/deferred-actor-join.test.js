@@ -20,6 +20,9 @@ const {
 const {
   ZLinkActorDispatchMailbox
 } = require('../../packages/framework/dist/runtime/actors/actor-mailbox');
+const {
+  ZLinkSpotSerialExecutor
+} = require('../../packages/framework/dist/runtime/spots/spot-serial-executor');
 
 function actorHarness(events, completionResult = { accepted: true }) {
   const state = new ZLinkActorRuntimeState('alice');
@@ -121,6 +124,74 @@ test('deferred Actor Join barrier keeps the next Actor mailbox turn behind compl
     'join:start',
     'join:completed',
     'handler:second'
+  ]);
+});
+
+test('SpotWide deferred Actor Join yields the shared Spot gate while waiting for the target', async () => {
+  const events = [];
+  let signalJoinStarted;
+  const joinStarted = new Promise((resolve) => { signalJoinStarted = resolve; });
+  const releaseJoin = {};
+  const joinGate = new Promise((resolve) => { releaseJoin.resolve = resolve; });
+  const state = new ZLinkActorRuntimeState('alice');
+  const actorRef = { nodeRid: 'node-a', actorId: 'alice', generation: 7n };
+  const coordinator = {
+    async joinSpot(actor, runtimeState, spotId, request) {
+      events.push(`join:start:${actor.actorId}:${runtimeState.actorId}:${spotId}:${request.data()}`);
+      signalJoinStarted();
+      await joinGate;
+      events.push('join:target-complete');
+      return { accepted: true, actor: actorRef, reply: Message.from('joined') };
+    },
+    async joinEntrySpot() {
+      throw new Error('unexpected Entry Spot join');
+    }
+  };
+  const context = new DefaultZLinkActorContext(
+    state,
+    coordinator,
+    undefined,
+    undefined,
+    () => 'game',
+    undefined
+  );
+  const actor = {
+    actorId: 'alice',
+    context,
+    async onJoinCompleted() {
+      events.push('join:completed');
+    }
+  };
+  state.bindActor(actor, context);
+  const serial = new ZLinkSpotSerialExecutor(true);
+
+  const first = serial.execute(() => runActorHandlerWithDeferredJoins(() => {
+    events.push('handler:first');
+    context.joinSpot('room-a', 'hello').timeout(100).defer();
+    events.push('handler:first-end');
+  }));
+  const second = serial.execute(() => {
+    events.push('handler:second');
+  });
+
+  await joinStarted;
+  await second;
+  assert.deepEqual(events, [
+    'handler:first',
+    'handler:first-end',
+    'join:start:alice:alice:room-a:"hello"',
+    'handler:second'
+  ]);
+
+  releaseJoin.resolve();
+  await first;
+  assert.deepEqual(events, [
+    'handler:first',
+    'handler:first-end',
+    'join:start:alice:alice:room-a:"hello"',
+    'handler:second',
+    'join:target-complete',
+    'join:completed'
   ]);
 });
 

@@ -27,6 +27,23 @@ class PlayerActor implements ZLinkActor {
     public dirY = 0
   ) {}
 
+  private pendingJoin = false;
+
+  get hasPendingJoin(): boolean {
+    return this.pendingJoin;
+  }
+
+  beginPendingJoin(): void {
+    if (this.pendingJoin) {
+      throw new Error(`Actor '${this.actorId}' already has a pending zone join.`);
+    }
+    this.pendingJoin = true;
+  }
+
+  completePendingJoin(): void {
+    this.pendingJoin = false;
+  }
+
   push(payload: unknown): void {
     if (this.isBot) return;
     const packetName = typeof payload === 'object' && payload !== null
@@ -42,10 +59,11 @@ class PlayerActor implements ZLinkActor {
   }
 
   async onJoinCompleted(completion: ZLinkActorJoinCompletion): Promise<void> {
+    this.completePendingJoin();
     const kind = 'kind' in completion ? completion.kind : 'none';
     console.log(
       `actor join completed actor=${this.actorId} status=${completion.status}`
-        + ` kind=${kind ?? 'none'}`
+        + ` kind=${kind}`
     );
   }
 }

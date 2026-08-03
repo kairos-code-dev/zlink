@@ -106,6 +106,11 @@ class ZoneSpot implements ZLinkSpot<PlayerActor> {
       zoneId: this.requireState().zoneId,
       isBot: enter.isBot
     };
+    actor.x = participant.x;
+    actor.y = participant.y;
+    actor.zoneId = participant.zoneId;
+    actor.isBot = participant.isBot;
+    actor.completePendingJoin();
     this.actors.set(actorId, participant);
     this.nodeState.joined(actorId, participant.zoneId);
     this.requireState().enter(actorId, participant.x, participant.y, participant.isBot);

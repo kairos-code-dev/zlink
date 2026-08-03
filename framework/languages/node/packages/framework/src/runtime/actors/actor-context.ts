@@ -37,6 +37,7 @@ import {
 import { randomBytes } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { deferActorJoin } from './actor-join-deferred-scope';
+import { captureZLinkSpotSerialTurn } from '../execution';
 
 export const ZLINK_ACTOR_JOIN_ENTRY_SPOT_RUNTIME = Symbol('zlink.actor.join-entry-spot-runtime');
 
@@ -163,6 +164,7 @@ export class DefaultZLinkActorContext implements ZLinkActorContext {
 class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
   private timeoutMs = 5_000;
   private deferred = false;
+  private readonly turn = captureZLinkSpotSerialTurn();
 
   constructor(
     private readonly state: ZLinkActorRuntimeState,
@@ -210,7 +212,7 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
         this.state.endDeferredJoin();
         let result: import('./actor-runtime-contracts').ZLinkActorJoinRuntimeResult<Message>;
         try {
-          result = await this.coordinator.joinSpot(
+          const pending = this.coordinator.joinSpot(
             this.actor,
             this.state,
             this.spotId,
@@ -219,6 +221,9 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
             undefined,
             operationId
           );
+          result = this.turn?.yieldAllowed === true
+            ? await this.turn.yieldPromise(pending)
+            : await pending;
         } catch (error) {
           await notifyJoinFailure(this.actor, operationId, error);
           return;
@@ -243,6 +248,7 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
 class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall {
   private timeoutMs = 5_000;
   private deferred = false;
+  private readonly turn = captureZLinkSpotSerialTurn();
 
   constructor(
     private readonly state: ZLinkActorRuntimeState,
@@ -286,7 +292,7 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
         this.state.endDeferredJoin();
         let result: import('./actor-runtime-contracts').ZLinkActorJoinRuntimeResult<Message>;
         try {
-          result = await this.coordinator.joinEntrySpot(
+          const pending = this.coordinator.joinEntrySpot(
             this.actor,
             this.state,
             undefined,
@@ -295,6 +301,9 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
             undefined,
             operationId
           );
+          result = this.turn?.yieldAllowed === true
+            ? await this.turn.yieldPromise(pending)
+            : await pending;
         } catch (error) {
           await notifyJoinFailure(this.actor, operationId, error);
           return;

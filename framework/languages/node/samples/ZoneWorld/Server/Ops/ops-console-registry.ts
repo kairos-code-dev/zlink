@@ -27,7 +27,7 @@ class OpsConsoleRegistry {
       node.zones,
       node.playerCount
     );
-    for (const context of this.consoles.values()) context.client.send(notify).submit();
+    for (const context of this.consoles.values()) this.send(context, notify);
   }
 
   publishAlert(alert: NodeAlertNotify): void {
@@ -40,11 +40,14 @@ class OpsConsoleRegistry {
     for (const alert of this.alerts) this.send(context, alert);
   }
 
-  private send(context: ZLinkSessionContext, message: NodeAlertNotify): void {
+  private send(context: ZLinkSessionContext, message: NodeAlertNotify | NodeStatusNotify): void {
     try {
-      context.client.send(message).submit();
+      void context.client.send(message).submit().catch(() => {
+        this.remove(context);
+      });
     } catch {
       // Session disconnect cleanup owns removal; a concurrent close does not invalidate the alert.
+      this.remove(context);
     }
   }
 }

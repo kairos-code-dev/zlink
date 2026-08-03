@@ -44,10 +44,16 @@ class EntryEnterWorldHandler {
     actor.dirX = request.dirX;
     actor.dirY = request.dirY;
     const targetZone = zoneOf(request.x, request.y);
-    actor.context.joinSpot(
-      targetZone,
-      new EnterZoneMsg(actor.actorId, request.x, request.y, request.isBot, null)
-    ).timeout(10_000).defer();
+    actor.beginPendingJoin();
+    try {
+      actor.context.joinSpot(
+        targetZone,
+        new EnterZoneMsg(actor.actorId, request.x, request.y, request.isBot, null)
+      ).timeout(10_000).defer();
+    } catch (error) {
+      actor.completePendingJoin();
+      throw error;
+    }
     actor.x = request.x;
     actor.y = request.y;
     actor.zoneId = targetZone;
@@ -69,6 +75,8 @@ class EntryEnterWorldHandler {
   packetName: PacketNames.joinWorldReq
 })
 class EntryJoinWorldHandler {
+  constructor(private readonly nodeState: NodeRuntimeState) {}
+
   async handle(
     _spot: ZoneEntrySpot,
     actor: PlayerActor,
@@ -80,11 +88,30 @@ class EntryJoinWorldHandler {
       return new JoinWorldRes(actor.actorId, actor.zoneId, nodeOf(actor.zoneId), actor.x, actor.y);
     }
     const targetZone = zoneOf(actor.x, actor.y);
+    // The entry request must return a deterministic public result. The later
+    // User Spot admission remains authoritative, but a deferred join cannot
+    // carry that result back into this already-returning request.
+    if (this.nodeState.isUnderMaintenance(nodeOf(targetZone))) {
+      return new JoinWorldRes(
+        actor.actorId,
+        targetZone,
+        nodeOf(targetZone),
+        actor.x,
+        actor.y,
+        MoveRejectReasons.zoneMaintenance
+      );
+    }
     console.log(`join world handler actor=${actor.actorId} current=${String(actor.context.spotId)} target=${targetZone}`);
-    actor.context.joinSpot(
-      targetZone,
-      new EnterZoneMsg(actor.actorId, actor.x, actor.y, false, null)
-    ).timeout(10_000).defer();
+    actor.beginPendingJoin();
+    try {
+      actor.context.joinSpot(
+        targetZone,
+        new EnterZoneMsg(actor.actorId, actor.x, actor.y, false, null)
+      ).timeout(10_000).defer();
+    } catch (error) {
+      actor.completePendingJoin();
+      throw error;
+    }
     console.log(`join world deferred actor=${actor.actorId} target=${targetZone}`);
     actor.zoneId = targetZone;
     return new JoinWorldRes(actor.actorId, targetZone, nodeOf(targetZone), actor.x, actor.y);
@@ -116,10 +143,16 @@ class PlayerMovement {
         .submit();
       return;
     }
-    actor.context.joinSpot(
-      targetZone,
-      new EnterZoneMsg(actor.actorId, x, y, actor.isBot, nodeOf(previousZone))
-    ).timeout(10_000).defer();
+    actor.beginPendingJoin();
+    try {
+      actor.context.joinSpot(
+        targetZone,
+        new EnterZoneMsg(actor.actorId, x, y, actor.isBot, nodeOf(previousZone))
+      ).timeout(10_000).defer();
+    } catch (error) {
+      actor.completePendingJoin();
+      throw error;
+    }
     console.log(`zone change scheduled player=${actor.actorId} from=${previousZone} to=${targetZone}`);
     actor.x = x;
     actor.y = y;
@@ -177,7 +210,7 @@ class PlayerBotTickHandler {
     _context: ZLinkMessageContext,
     _message: BotTickReq
   ): Promise<BotTickRes> {
-    if (!actor.isBot) return new BotTickRes();
+    if (!actor.isBot || actor.hasPendingJoin) return new BotTickRes();
     const next = nextBotStep(actor.x, actor.y, actor.dirX, actor.dirY);
     await this.movement.move(actor, next.x, next.y);
     return new BotTickRes();

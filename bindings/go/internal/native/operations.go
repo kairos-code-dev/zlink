@@ -4,6 +4,7 @@ package native
 
 import (
 	"context"
+	"syscall"
 	"time"
 )
 
@@ -206,7 +207,7 @@ func (s *requestBuilderState) doSubmitAsync() (<-chan RequestReplyCompletion, er
 		return nil, err
 	}
 	if !ok {
-		return nil, &SubmitError{Result: SubmitBackpressured}
+		return nil, &SubmitError{Result: SubmitBackpressured, nativeErrno: int(syscall.EAGAIN)}
 	}
 	return result, nil
 }

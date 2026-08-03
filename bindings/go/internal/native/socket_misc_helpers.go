@@ -50,7 +50,7 @@ func subscriptionAt(handle unsafe.Pointer, index int) (string, bool, error) {
 		return "", isPattern != 0, nil
 	}
 	zerr, ok := err.(*ConfigError)
-	if !ok || zerr.Result != ConfigInvalidArgument || size == 0 {
+	if !ok || (zerr.Result != ConfigInvalidArgument && zerr.Result != ConfigBufferTooSmall) || size == 0 {
 		return "", false, err
 	}
 	buf := make([]byte, int(size))

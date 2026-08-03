@@ -17,18 +17,54 @@ import "C"
 
 import (
 	"runtime/cgo"
+	"sync"
+	"sync/atomic"
 	"unsafe"
 )
 
 const (
-	MonitorEventAll               MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_ALL)
-	MonitorEventConnectionReady   MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY)
-	MonitorEventPeerWeightChanged MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_PEER_WEIGHT_CHANGED)
+	MonitorEventConnected               MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_CONNECTED)
+	MonitorEventConnectDelayed          MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_CONNECT_DELAYED)
+	MonitorEventConnectRetried          MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_CONNECT_RETRIED)
+	MonitorEventListening               MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_LISTENING)
+	MonitorEventBindFailed              MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_BIND_FAILED)
+	MonitorEventAccepted                MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_ACCEPTED)
+	MonitorEventAcceptFailed            MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_ACCEPT_FAILED)
+	MonitorEventClosed                  MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_CLOSED)
+	MonitorEventCloseFailed             MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_CLOSE_FAILED)
+	MonitorEventDisconnected            MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_DISCONNECTED)
+	MonitorEventMonitorStopped          MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_MONITOR_STOPPED)
+	MonitorEventHandshakeFailedNoDetail MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_NO_DETAIL)
+	MonitorEventConnectionReady         MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY)
+	MonitorEventHandshakeFailedProtocol MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_PROTOCOL)
+	MonitorEventHandshakeFailedAuth     MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_AUTH)
+	MonitorEventPeerWeightChanged       MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_PEER_WEIGHT_CHANGED)
+	MonitorEventAll                     MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_ALL)
 )
 
 type MonitorEventMask uint32
 type MonitorSourceKind uint32
 type MonitorEventType uint64
+
+const (
+	MonitorEventTypeConnected               MonitorEventType = MonitorEventType(MonitorEventConnected)
+	MonitorEventTypeConnectDelayed          MonitorEventType = MonitorEventType(MonitorEventConnectDelayed)
+	MonitorEventTypeConnectRetried          MonitorEventType = MonitorEventType(MonitorEventConnectRetried)
+	MonitorEventTypeListening               MonitorEventType = MonitorEventType(MonitorEventListening)
+	MonitorEventTypeBindFailed              MonitorEventType = MonitorEventType(MonitorEventBindFailed)
+	MonitorEventTypeAccepted                MonitorEventType = MonitorEventType(MonitorEventAccepted)
+	MonitorEventTypeAcceptFailed            MonitorEventType = MonitorEventType(MonitorEventAcceptFailed)
+	MonitorEventTypeClosed                  MonitorEventType = MonitorEventType(MonitorEventClosed)
+	MonitorEventTypeCloseFailed             MonitorEventType = MonitorEventType(MonitorEventCloseFailed)
+	MonitorEventTypeDisconnected            MonitorEventType = MonitorEventType(MonitorEventDisconnected)
+	MonitorEventTypeMonitorStopped          MonitorEventType = MonitorEventType(MonitorEventMonitorStopped)
+	MonitorEventTypeHandshakeFailedNoDetail MonitorEventType = MonitorEventType(MonitorEventHandshakeFailedNoDetail)
+	MonitorEventTypeConnectionReady         MonitorEventType = MonitorEventType(MonitorEventConnectionReady)
+	MonitorEventTypeHandshakeFailedProtocol MonitorEventType = MonitorEventType(MonitorEventHandshakeFailedProtocol)
+	MonitorEventTypeHandshakeFailedAuth     MonitorEventType = MonitorEventType(MonitorEventHandshakeFailedAuth)
+	MonitorEventTypePeerWeightChanged       MonitorEventType = MonitorEventType(MonitorEventPeerWeightChanged)
+	MonitorEventTypeAll                     MonitorEventType = MonitorEventType(MonitorEventAll)
+)
 
 const (
 	MonitorSourceSocket MonitorSourceKind = MonitorSourceKind(C.ZLINK_MONITOR_SOURCE_SOCKET)
@@ -47,23 +83,23 @@ func (e *MonitorEvent) HasRoutingID() bool {
 }
 
 func (e *MonitorEvent) IsConnected() bool {
-	return e != nil && e.Event&MonitorEventType(C.ZLINK_SOCKET_MONITOR_EVENT_CONNECTED) != 0
+	return e != nil && e.Event&MonitorEventTypeConnected != 0
 }
 
 func (e *MonitorEvent) IsDisconnected() bool {
-	return e != nil && e.Event&MonitorEventType(C.ZLINK_SOCKET_MONITOR_EVENT_DISCONNECTED) != 0
+	return e != nil && e.Event&MonitorEventTypeDisconnected != 0
 }
 
 func (e *MonitorEvent) IsListening() bool {
-	return e != nil && e.Event&MonitorEventType(C.ZLINK_SOCKET_MONITOR_EVENT_LISTENING) != 0
+	return e != nil && e.Event&MonitorEventTypeListening != 0
 }
 
 func (e *MonitorEvent) IsAccepted() bool {
-	return e != nil && e.Event&MonitorEventType(C.ZLINK_SOCKET_MONITOR_EVENT_ACCEPTED) != 0
+	return e != nil && e.Event&MonitorEventTypeAccepted != 0
 }
 
 func (e *MonitorEvent) IsConnectionReady() bool {
-	return e != nil && e.Event&MonitorEventType(C.ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY) != 0
+	return e != nil && e.Event&MonitorEventTypeConnectionReady != 0
 }
 
 type MonitorStatus struct {
@@ -155,8 +191,9 @@ func monitorStatusFromC(raw C.zlink_monitor_status_t) MonitorStatus {
 }
 
 type SocketMonitor struct {
-	handle   unsafe.Pointer
-	callback cgo.Handle
+	handle     atomic.Pointer[byte]
+	callbackMu sync.Mutex
+	callback   cgo.Handle
 }
 
 func resolveMonitorEvents(events []MonitorEventMask) MonitorEventMask {
@@ -181,23 +218,40 @@ func OpenSocketMonitor(socket SocketTarget, events ...MonitorEventMask) (*Socket
 	if handle == nil {
 		return nil, configErrorFromErrno(currentErrno())
 	}
-	return &SocketMonitor{handle: handle}, nil
+	monitor := &SocketMonitor{}
+	monitor.handle.Store((*byte)(handle))
+	return monitor, nil
+}
+
+func (m *SocketMonitor) raw() unsafe.Pointer {
+	if m == nil {
+		return nil
+	}
+	return unsafe.Pointer(m.handle.Load())
 }
 
 // Recv returns the next monitor event. Returns (nil, *RecvError{Result:RecvNoData})
 // when DONTWAIT finds nothing. Value-return form is allowed for monitor/timer
 // control-plane APIs by doc/spec/bindings/go/README.md §Receive And Subscribe Shape.
 func (m *SocketMonitor) Recv(flags RecvFlags) (*MonitorEvent, error) {
+	handle := m.raw()
+	if handle == nil {
+		return nil, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EFAULT)}
+	}
 	var raw C.zlink_socket_monitor_event_t
-	if err := recvErrorFromResult(C.zlink_socket_monitor_recv(m.handle, &raw, C.zlink_recv_flags_t(flags))); err != nil {
+	if err := recvErrorFromResult(C.zlink_socket_monitor_recv(handle, &raw, C.zlink_recv_flags_t(flags))); err != nil {
 		return nil, err
 	}
 	return monitorEventFromC(raw), nil
 }
 
 func (m *SocketMonitor) Status() (*MonitorStatus, error) {
+	handle := m.raw()
+	if handle == nil {
+		return nil, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
+	}
 	var raw C.zlink_monitor_status_t
-	if err := configErrorFromResult(C.zlink_monitor_status(m.handle, &raw)); err != nil {
+	if err := configErrorFromResult(C.zlink_monitor_status(handle, &raw)); err != nil {
 		return nil, err
 	}
 	snapshot := monitorStatusFromC(raw)
@@ -208,9 +262,18 @@ func (m *SocketMonitor) OnEvent(handler func(*MonitorEvent)) error {
 	if handler == nil {
 		return &HandlerError{Result: HandlerInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
+	if m == nil {
+		return &HandlerError{Result: HandlerInvalidHandle, nativeErrno: int(C.EFAULT)}
+	}
+	m.callbackMu.Lock()
+	defer m.callbackMu.Unlock()
+	handlePtr := m.raw()
+	if handlePtr == nil {
+		return &HandlerError{Result: HandlerInvalidHandle, nativeErrno: int(C.EFAULT)}
+	}
 	state := newMonitorCallbackState(handler)
 	handle := cgo.NewHandle(state)
-	if err := handlerErrorFromResult(C.zlink_socket_monitor_handler_go_local(m.handle, C.uintptr_t(handle))); err != nil {
+	if err := handlerErrorFromResult(C.zlink_socket_monitor_handler_go_local(handlePtr, C.uintptr_t(handle))); err != nil {
 		state.close()
 		handle.Delete()
 		return err
@@ -223,18 +286,27 @@ func (m *SocketMonitor) OnEvent(handler func(*MonitorEvent)) error {
 }
 
 func (m *SocketMonitor) Close() error {
-	if m == nil || m.handle == nil {
+	if m == nil {
 		return nil
 	}
-	handle := m.handle
+	m.callbackMu.Lock()
+	handlePtr := m.raw()
+	if handlePtr == nil {
+		m.callbackMu.Unlock()
+		return nil
+	}
+	handle := handlePtr
 	if err := closeErrorFromResult(C.zlink_monitor_close(&handle)); err != nil {
+		m.callbackMu.Unlock()
 		return err
 	}
-	if m.callback != 0 {
-		releaseCallbackHandle(m.callback)
-		m.callback = 0
+	m.handle.Store(nil)
+	callback := m.callback
+	m.callback = 0
+	m.callbackMu.Unlock()
+	if callback != 0 {
+		releaseCallbackHandle(callback)
 	}
-	m.handle = nil
 	return nil
 }
 

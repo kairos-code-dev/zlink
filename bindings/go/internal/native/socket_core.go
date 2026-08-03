@@ -20,8 +20,8 @@ import (
 )
 
 type socketCore struct {
-	handle                  unsafe.Pointer
-	closed                  bool
+	handle                  atomic.Pointer[byte]
+	closed                  atomic.Bool
 	callbackMu              sync.Mutex
 	recvHandle              cgo.Handle
 	recvActive              atomic.Uintptr
@@ -35,18 +35,27 @@ type socketCore struct {
 }
 
 func newSocketCore(ctx *Context, socketType C.zlink_socket_type_t) (*socketCore, error) {
-	if ctx == nil || ctx.closed {
+	if ctx == nil || ctx.closed.Load() {
 		return nil, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	handle := C.zlink_socket(ctx.raw(), socketType)
 	if handle == nil {
 		return nil, configErrorFromErrno(currentErrno())
 	}
-	return &socketCore{handle: handle}, nil
+	core := &socketCore{}
+	core.handle.Store((*byte)(handle))
+	return core, nil
 }
 
 func (s *socketCore) raw() unsafe.Pointer {
-	return s.handle
+	if s == nil {
+		return nil
+	}
+	return unsafe.Pointer(s.handle.Load())
+}
+
+func (s *socketCore) isClosed() bool {
+	return s == nil || s.closed.Load() || s.raw() == nil
 }
 
 func (s *socketCore) startRequestProgress(state *replyCallbackState) {
@@ -55,10 +64,10 @@ func (s *socketCore) startRequestProgress(state *replyCallbackState) {
 	}
 	s.callbackMu.Lock()
 	defer s.callbackMu.Unlock()
-	if s.closed || s.handle == nil || externalRequestProgressActive(s.handle) {
+	handle := s.raw()
+	if s.isClosed() || handle == nil || externalRequestProgressActive(handle) {
 		return
 	}
-	handle := s.handle
 	s.requestProgressMu.Lock()
 	if s.requestProgress == nil {
 		s.requestProgress = newProgressPump(handle)
@@ -70,25 +79,25 @@ func (s *socketCore) startRequestProgress(state *replyCallbackState) {
 
 func (s *socketCore) Bind(endpoint string) error {
 	return s.withCString(endpoint, func(cstr *C.char) error {
-		return bindErrorFromResult(C.zlink_bind(s.handle, cstr))
+		return bindErrorFromResult(C.zlink_bind(s.raw(), cstr))
 	})
 }
 
 func (s *socketCore) Connect(endpoint string) error {
 	return s.withCString(endpoint, func(cstr *C.char) error {
-		return connectErrorFromResult(C.zlink_connect(s.handle, cstr))
+		return connectErrorFromResult(C.zlink_connect(s.raw(), cstr))
 	})
 }
 
 func (s *socketCore) Unbind(endpoint string) error {
 	return s.withCString(endpoint, func(cstr *C.char) error {
-		return connectErrorFromResult(C.zlink_unbind(s.handle, cstr))
+		return connectErrorFromResult(C.zlink_unbind(s.raw(), cstr))
 	})
 }
 
 func (s *socketCore) Disconnect(endpoint string) error {
 	return s.withCString(endpoint, func(cstr *C.char) error {
-		return connectErrorFromResult(C.zlink_disconnect(s.handle, cstr))
+		return connectErrorFromResult(C.zlink_disconnect(s.raw(), cstr))
 	})
 }
 
@@ -96,7 +105,7 @@ func (s *socketCore) DisconnectRID(peerRID RoutingID) error {
 	rid := peerRID.toC()
 	return connectErrorFromResult(
 		C.zlink_disconnect_rid(
-			s.handle,
+			s.raw(),
 			(*C.zlink_routing_id_t)(unsafe.Pointer(&rid)),
 		))
 }
@@ -106,7 +115,7 @@ func (s *socketCore) Close() error {
 		return nil
 	}
 	s.callbackMu.Lock()
-	if s.closed {
+	if s.closed.Load() {
 		s.callbackMu.Unlock()
 		return nil
 	}
@@ -116,15 +125,16 @@ func (s *socketCore) Close() error {
 	if pump != nil {
 		pump.stopAndWait()
 	}
-	if err := closeErrorFromResult(C.zlink_close(s.handle)); err != nil {
-		if pump != nil && !externalRequestProgressActive(s.handle) {
+	handle := s.raw()
+	if err := closeErrorFromResult(C.zlink_close(handle)); err != nil {
+		if pump != nil && !externalRequestProgressActive(handle) {
 			pump.resume()
 		}
 		s.callbackMu.Unlock()
 		return err
 	}
-	s.closed = true
-	s.handle = nil
+	s.closed.Store(true)
+	s.handle.Store(nil)
 	s.requestProgressMu.Lock()
 	if s.requestProgress == pump {
 		s.requestProgress = nil
@@ -175,7 +185,8 @@ func (s *socketCore) resumeInternalRequestProgress() {
 	}
 	s.callbackMu.Lock()
 	defer s.callbackMu.Unlock()
-	if s.closed || s.handle == nil || externalRequestProgressActive(s.handle) {
+	handle := s.raw()
+	if s.isClosed() || handle == nil || externalRequestProgressActive(handle) {
 		return
 	}
 	s.requestProgressMu.Lock()
@@ -196,7 +207,7 @@ func (s *socketCore) requestCallbackDispatcher() *callbackDispatcher {
 	}
 	s.callbackMu.Lock()
 	defer s.callbackMu.Unlock()
-	if s.closed || s.handle == nil {
+	if s.isClosed() {
 		return nil
 	}
 	if s.requestDispatcher == nil {
@@ -207,7 +218,7 @@ func (s *socketCore) requestCallbackDispatcher() *callbackDispatcher {
 
 func (s *socketCore) replaceCallback(handle cgo.Handle, slot *cgo.Handle, active *atomic.Uintptr, register func() error) error {
 	s.callbackMu.Lock()
-	if s.closed || s.handle == nil {
+	if s.isClosed() {
 		s.callbackMu.Unlock()
 		return &HandlerError{Result: HandlerInvalidArgument, nativeErrno: int(C.EFAULT)}
 	}
@@ -239,14 +250,14 @@ func (s *socketCore) setUint64Option(option C.zlink_option_t, value uint64) erro
 func (s *socketCore) getIntOption(option C.zlink_option_t) (int32, error) {
 	var value C.int
 	size := C.size_t(C.sizeof_int)
-	err := configErrorFromResult(C.zlink_get_option(s.handle, option, unsafe.Pointer(&value), &size))
+	err := configErrorFromResult(C.zlink_get_option(s.raw(), option, unsafe.Pointer(&value), &size))
 	return int32(value), err
 }
 
 func (s *socketCore) getUint64Option(option C.zlink_option_t) (uint64, error) {
 	var value C.uint64_t
 	size := C.size_t(unsafe.Sizeof(value))
-	err := configErrorFromResult(C.zlink_get_option(s.handle, option, unsafe.Pointer(&value), &size))
+	err := configErrorFromResult(C.zlink_get_option(s.raw(), option, unsafe.Pointer(&value), &size))
 	return uint64(value), err
 }
 
@@ -276,7 +287,7 @@ func (s *socketCore) setInt64Option(option C.zlink_option_t, value int64) error 
 func (s *socketCore) getInt64Option(option C.zlink_option_t) (int64, error) {
 	var value C.int64_t
 	size := C.size_t(unsafe.Sizeof(value))
-	err := configErrorFromResult(C.zlink_get_option(s.handle, option, unsafe.Pointer(&value), &size))
+	err := configErrorFromResult(C.zlink_get_option(s.raw(), option, unsafe.Pointer(&value), &size))
 	return int64(value), err
 }
 
@@ -308,7 +319,7 @@ func (s *socketCore) getStringOption(option C.zlink_option_t, capHint int) (stri
 	}
 	buf := make([]byte, capHint)
 	size := C.size_t(len(buf))
-	err := configErrorFromResult(C.zlink_get_option(s.handle, option, unsafe.Pointer(&buf[0]), &size))
+	err := configErrorFromResult(C.zlink_get_option(s.raw(), option, unsafe.Pointer(&buf[0]), &size))
 	if err != nil {
 		return "", err
 	}
@@ -319,11 +330,11 @@ func (s *socketCore) setOption(option C.zlink_option_t, ptr unsafe.Pointer, size
 	if s == nil {
 		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
-	return setNativeOption(s.handle, s.closed, "socket is closed", option, ptr, size)
+	return setNativeOption(s.raw(), s.isClosed(), option, ptr, size)
 }
 
 func (s *socketCore) setDurationOption(option C.zlink_option_t, value time.Duration) error {
-	return setNativeDurationOption(s.handle, s.closed, "socket is closed", option, value)
+	return setNativeDurationOption(s.raw(), s.isClosed(), option, value)
 }
 
 func (s *socketCore) getDurationOption(option C.zlink_option_t) (time.Duration, error) {
@@ -332,7 +343,7 @@ func (s *socketCore) getDurationOption(option C.zlink_option_t) (time.Duration, 
 }
 
 func (s *socketCore) withCString(value string, fn func(*C.char) error) error {
-	if s == nil || s.closed {
+	if s.isClosed() {
 		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	if err := validateEndpointString(value); err != nil {

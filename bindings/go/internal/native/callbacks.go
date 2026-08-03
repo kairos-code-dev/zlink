@@ -75,6 +75,9 @@ func (d *callbackDispatcher) close() {
 	d.mu.Lock()
 	if d.closed {
 		d.mu.Unlock()
+		if d.workerID.Load() == currentGoroutineID() {
+			return
+		}
 		<-d.done
 		return
 	}
@@ -174,25 +177,6 @@ func newRecvCallbackState(handler recvCallback) *recvCallbackState {
 }
 
 func (s *recvCallbackState) close() {
-	if s == nil {
-		return
-	}
-	s.dispatcher.close()
-}
-
-type subscribeCallbackState struct {
-	dispatcher *callbackDispatcher
-	handler    subscribeCallback
-}
-
-func newSubscribeCallbackState(handler subscribeCallback) *subscribeCallbackState {
-	return &subscribeCallbackState{
-		dispatcher: newCallbackDispatcher(),
-		handler:    handler,
-	}
-}
-
-func (s *subscribeCallbackState) close() {
 	if s == nil {
 		return
 	}
@@ -323,36 +307,6 @@ func goZlinkRecvTrampoline(sourceRID *C.zlink_routing_id_t, parts *C.zlink_msg_t
 		return
 	}
 	_ = received.Close()
-}
-
-//export goZlinkSubscribeTrampoline
-func goZlinkSubscribeTrampoline(sourceRID *C.zlink_routing_id_t, topic *C.char, topicLen C.size_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
-	state, ok := safeHandleAs[*subscribeCallbackState](userdata)
-	if !ok {
-		discardParts(parts, partCount)
-		return
-	}
-	ownedParts, err := takeParts(parts, partCount)
-	if err != nil {
-		return
-	}
-	message := &TopicMessage{
-		routingID: routingIDFromCPtr(sourceRID),
-		topic:     C.GoStringN(topic, C.int(topicLen)),
-		parts:     ownedParts,
-	}
-	if state.dispatcher.enqueue(&callbackTask{
-		label: "subscribe",
-		invoke: func() {
-			state.handler(message)
-		},
-		cleanup: func() {
-			_ = message.Close()
-		},
-	}) {
-		return
-	}
-	_ = message.Close()
 }
 
 //export goZlinkSendReadyTrampoline

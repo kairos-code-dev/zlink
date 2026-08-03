@@ -20,12 +20,3 @@ func receivedReplyToDealer(
 		return reply(requestSeq, flags, parts...)
 	}
 }
-
-func receivedSendToRouter(
-	send func(RoutingID, SendFlags, ...*Message) (bool, error),
-	routingID RoutingID,
-) func(SendFlags, []*Message) (bool, error) {
-	return func(flags SendFlags, parts []*Message) (bool, error) {
-		return send(routingID, flags, parts...)
-	}
-}

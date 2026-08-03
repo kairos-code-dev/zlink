@@ -211,16 +211,22 @@ func NewThread(target func()) (*Thread, error) {
 }
 
 func (t *Thread) Join() error {
-	if t == nil || t.handle == nil {
+	if t == nil {
 		return nil
 	}
 	t.once.Do(func() {
 		handle := t.handle
+		if handle == nil {
+			return
+		}
 		t.handle = nil
 		C.zlink_thread_join(handle)
-		state := t.state.Value().(*threadState)
-		t.err = state.getErr()
-		t.state.Delete()
+		if t.state != 0 {
+			state := t.state.Value().(*threadState)
+			t.err = state.getErr()
+			t.state.Delete()
+			t.state = 0
+		}
 	})
 	return t.err
 }

@@ -20,7 +20,9 @@ func closeNativeMultipart(parts []C.zlink_msg_t, count int) {
 
 func closeMessageSlice(parts []*Message) {
 	for _, part := range parts {
-		_ = part.Close()
+		if part != nil {
+			_ = part.Close()
+		}
 	}
 }
 
@@ -79,7 +81,9 @@ func (p *preparedMultipart) commit() {
 		return
 	}
 	for _, part := range p.parts {
-		part.moved()
+		if part != nil {
+			part.moved()
+		}
 	}
 }
 
@@ -88,6 +92,9 @@ func (p *preparedMultipart) restore() error {
 		return nil
 	}
 	for i, part := range p.parts {
+		if part == nil {
+			continue
+		}
 		if err := configErrorFromResult(C.zlink_msg_move(&part.msg, &p.native[i])); err != nil {
 			closeNativeMultipart(p.native, len(p.native))
 			return err
@@ -229,40 +236,6 @@ func submitSinglePartFromBytes(data []byte, submit multipartSubmitFunc) error {
 	return err
 }
 
-func builderMessages(parts []sendBuilderPart) []*Message {
-	messages := make([]*Message, len(parts))
-	for i, part := range parts {
-		messages[i] = part.message
-	}
-	return messages
-}
-
-func closeMovedSendBuilderParts(parts []sendBuilderPart) {
-	for _, part := range parts {
-		if part.move && part.message != nil {
-			_ = part.message.Close()
-		}
-	}
-}
-
-func sendBuilderPartsNeedBuilder(parts []sendBuilderPart) bool {
-	for _, part := range parts {
-		if part.move || part.bytes {
-			return true
-		}
-	}
-	return false
-}
-
-func sendBuilderPartsUseOnlyRetainedMessages(parts []sendBuilderPart) bool {
-	for _, part := range parts {
-		if part.move || part.bytes {
-			return false
-		}
-	}
-	return true
-}
-
 func submitMultipartFromBuilderParts(parts []sendBuilderPart, submit multipartSubmitFunc) error {
 	if len(parts) == 0 {
 		return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
@@ -276,45 +249,50 @@ func submitMultipartFromBuilderParts(parts []sendBuilderPart, submit multipartSu
 		}
 		return submitSinglePartFromCopy(parts[0].message, submit)
 	}
-	if sendBuilderPartsUseOnlyRetainedMessages(parts) {
-		return submitMultipartFromClones(builderMessages(parts), true, submit)
-	}
-
 	native := make([]C.zlink_msg_t, len(parts))
+	movedParts := make([]*Message, len(parts))
+	initialized := 0
+	restorePreparation := func(err error) error {
+		prepared := &preparedMultipart{
+			native: native[:initialized],
+			parts:  movedParts[:initialized],
+		}
+		if restoreErr := prepared.restore(); restoreErr != nil {
+			return restoreErr
+		}
+		return err
+	}
 	for i, part := range parts {
 		if part.bytes {
 			if err := initNativeMessageFromBytes(&native[i], part.data); err != nil {
-				closeNativeMultipart(native, i)
-				return err
+				return restorePreparation(err)
 			}
+			initialized = i + 1
 			continue
 		}
 		if part.message == nil {
-			closeNativeMultipart(native, i)
-			return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
+			return restorePreparation(&ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)})
 		}
 		if part.message.closed {
-			closeNativeMultipart(native, i)
-			return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
+			return restorePreparation(&ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)})
 		}
 		if err := configErrorFromResult(C.zlink_msg_init(&native[i])); err != nil {
-			closeNativeMultipart(native, i)
-			return err
+			return restorePreparation(err)
 		}
+		initialized = i + 1
 		if part.move {
 			if err := configErrorFromResult(C.zlink_msg_move(&native[i], &part.message.msg)); err != nil {
-				closeNativeMultipart(native, i+1)
-				return err
+				return restorePreparation(err)
 			}
+			movedParts[i] = part.message
 		} else {
 			if err := configErrorFromResult(C.zlink_msg_copy(&native[i], &part.message.msg)); err != nil {
-				closeNativeMultipart(native, i+1)
-				return err
+				return restorePreparation(err)
 			}
 		}
 	}
 
-	prepared := &preparedMultipart{native: native}
+	prepared := &preparedMultipart{native: native, parts: movedParts}
 	err := submitPreparedMultipart(prepared, submit)
 	for _, part := range parts {
 		// Bytes parts are represented only by the temporary native message. The

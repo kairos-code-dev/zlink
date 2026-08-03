@@ -70,6 +70,9 @@ func (t *TopicMessage) Close() error {
 	}
 	var first error
 	for _, part := range t.parts {
+		if part == nil {
+			continue
+		}
 		if err := part.Close(); err != nil && first == nil {
 			first = err
 		}

@@ -252,6 +252,8 @@ func fallbackSubmitErrno(result SubmitResult) int {
 
 func fallbackRequestErrno(result RequestResult) int {
 	switch result {
+	case RequestBackpressured:
+		return int(C.EAGAIN)
 	case RequestTimedOut:
 		return int(C.ETIMEDOUT)
 	case RequestNotFound:
@@ -289,6 +291,10 @@ func fallbackRecvErrno(result RecvResult) int {
 		return int(C.ENOTSUP)
 	case RecvInternalError:
 		return int(C.EINTR)
+	case RecvBufferTooSmall:
+		return int(C.ENOBUFS)
+	case RecvInvalidState:
+		return int(C.EINVAL)
 	default:
 		return int(C.EIO)
 	}
@@ -394,70 +400,6 @@ func configErrorFromErrno(errno int) error {
 		return &ConfigError{Result: ConfigNotSupported, nativeErrno: errno}
 	default:
 		return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: errno}
-	}
-}
-
-func closeErrorFromErrno(errno int) error {
-	switch errno {
-	case 0:
-		return nil
-	case int(C.EBUSY):
-		return &CloseError{Result: CloseBusy, nativeErrno: errno}
-	case int(C.ESHUTDOWN):
-		return &CloseError{Result: CloseShutdown, nativeErrno: errno}
-	case int(C.EFAULT):
-		return &CloseError{Result: CloseInvalidHandle, nativeErrno: errno}
-	default:
-		return &CloseError{Result: CloseInvalidHandle, nativeErrno: errno}
-	}
-}
-
-func bindErrorFromErrno(errno int) error {
-	switch errno {
-	case 0:
-		return nil
-	case int(C.EINVAL):
-		return &BindError{Result: BindInvalidArgument, nativeErrno: errno}
-	case int(C.EADDRINUSE):
-		return &BindError{Result: BindAddrInUse, nativeErrno: errno}
-	case int(C.ENOTSUP):
-		return &BindError{Result: BindNotSupported, nativeErrno: errno}
-	default:
-		return &BindError{Result: BindInvalidHandle, nativeErrno: errno}
-	}
-}
-
-func connectErrorFromErrno(errno int) error {
-	switch errno {
-	case 0:
-		return nil
-	case int(C.EINVAL):
-		return &ConnectError{Result: ConnectInvalidArgument, nativeErrno: errno}
-	case int(C.ENOTSUP):
-		return &ConnectError{Result: ConnectNotSupported, nativeErrno: errno}
-	default:
-		return &ConnectError{Result: ConnectInvalidHandle, nativeErrno: errno}
-	}
-}
-
-func recvErrorFromErrno(errno int) error {
-	switch errno {
-	case 0:
-		return nil
-	case int(C.EAGAIN):
-		return &RecvError{Result: RecvNoData, nativeErrno: errno}
-	case int(C.EBUSY):
-		return &RecvError{Result: RecvBusy, nativeErrno: errno}
-	case int(C.ETERM):
-		return &RecvError{Result: RecvTerminated, nativeErrno: errno}
-	case int(C.EFAULT):
-		return &RecvError{Result: RecvInvalidHandle, nativeErrno: errno}
-	case int(C.ENOTSUP):
-		return &RecvError{Result: RecvNotSupported, nativeErrno: errno}
-	case int(C.EINTR):
-		return &RecvError{Result: RecvInternalError, nativeErrno: errno}
-	default:
-		return &RecvError{Result: RecvTerminated, nativeErrno: errno}
 	}
 }
 

@@ -51,7 +51,6 @@ const (
 )
 
 type recvCallback func(*Received)
-type subscribeCallback func(*TopicMessage)
 type sendReadyCallback func()
 
 const recvTopicBufferCap = 64 * 1024
@@ -136,14 +135,6 @@ func newDealerSocket(ctx *Context) (*DealerSocket, error) {
 	return &DealerSocket{
 		directSocket: &directSocket{connectionSocket: &connectionSocket{socketCore: core}},
 	}, nil
-}
-
-func borrowedTimer(handle unsafe.Pointer) *Timer {
-	return &Timer{handle: handle}
-}
-
-func borrowedDealerSocket(handle unsafe.Pointer) *DealerSocket {
-	return &DealerSocket{directSocket: &directSocket{connectionSocket: &connectionSocket{socketCore: &socketCore{handle: handle}}}}
 }
 
 func (s *DealerSocket) SetRoutingID(id RoutingID) error {
@@ -449,7 +440,10 @@ func (s *StreamSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 		return ok, err
 	}
 	if out.routingID.Size() > 0 {
-		out.send = receivedSendToRouter(s.core.submitTo, out.routingID)
+		routingID := out.routingID
+		out.send = func(sendFlags SendFlags, builderParts []sendBuilderPart) (bool, error) {
+			return s.core.submitToBuilder(routingID, sendFlags, builderParts)
+		}
 	}
 	return true, nil
 }
@@ -458,7 +452,7 @@ func (s *StreamSocket) OnPacket(handler func(RoutingID, *Message, *Message)) err
 	if handler == nil {
 		return &HandlerError{Result: HandlerInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
-	if s == nil || s.core == nil || s.core.closed {
+	if s == nil || s.core == nil || s.core.isClosed() {
 		return &HandlerError{Result: HandlerInvalidArgument, nativeErrno: int(C.EFAULT)}
 	}
 	state := newStreamPacketCallbackState(handler)

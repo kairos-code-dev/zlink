@@ -55,6 +55,10 @@ units are passed using the `uint64` storage required by the Core contract. The
 public Go method accepts `int`, but rejects negative values and values outside
 the platform `uint64` range before configuration.
 
+Poller registrations borrow socket and timer handles. Remove each source from
+the poller before closing that source, and serialize add, modify, remove, and
+wait calls made on one poller.
+
 ## Message and ownership
 
 `NewMessage` and `NewMessageWithSize` create native message storage owned by
@@ -142,7 +146,10 @@ more results were filled into the output. Actual failures are represented by
 `*RecvError`.
 
 A socket monitor is opened with a typed event mask and reports
-`MonitorEvent` and `MonitorStatus`. A Poller reports readiness for sockets,
+`MonitorEvent` and `MonitorStatus`. Every Core 11 monitor mask and delivered
+event value has a corresponding typed constant. Use `MonitorEventMask` when
+opening a monitor and `MonitorEventType` when inspecting `MonitorEvent.Event`.
+A Poller reports readiness for sockets,
 file descriptors, and timer sources through `PollEvent`. A Timer can provide
 interval events through a Poller or direct receive. Monitor, poller, and timer
 callbacks or event results do not expose the native callback thread as the

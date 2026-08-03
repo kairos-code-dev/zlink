@@ -72,21 +72,19 @@ func (s *routedSocket) recvInto(out *Received, flags RecvFlags) error {
 	if hasSeq {
 		reply = receivedReplyToRouter(s.reply, routingID, seq)
 	}
-	var send func(SendFlags, []*Message) (bool, error)
-	var sendBuilder func(SendFlags, []sendBuilderPart) (bool, error)
+	var send func(SendFlags, []sendBuilderPart) (bool, error)
 	if routingID.Size() > 0 {
-		send = receivedSendToRouter(s.submitTo, routingID)
-		sendBuilder = func(sendFlags SendFlags, builderParts []sendBuilderPart) (bool, error) {
+		send = func(sendFlags SendFlags, builderParts []sendBuilderPart) (bool, error) {
 			return s.submitToBuilder(routingID, sendFlags, builderParts)
 		}
 	}
-	out.replace(routingID, parts, seq, hasSeq, reply, send, sendBuilder)
+	out.replace(routingID, parts, seq, hasSeq, reply, send)
 	return nil
 }
 
 func (s *routedSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 	if out == nil {
-		return false, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EINVAL)}
+		return false, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	if s.connectionSocket.hasReceiveHandler() {
 		return false, &RecvError{Result: RecvBusy, nativeErrno: int(C.EBUSY)}

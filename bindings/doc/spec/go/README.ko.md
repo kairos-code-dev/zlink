@@ -51,6 +51,10 @@ Core contract가 요구하는 `uint64` storage로 전달된다. Go 호출자는 
 method를 사용하지만 음수와 platform `uint64` 범위를 벗어난 값은 설정 전에
 거부된다.
 
+Poller가 등록한 socket과 timer는 해당 resource의 handle을 빌려 사용한다. 따라서
+source를 `Close`하기 전에 poller에서 제거해야 하며, 하나의 poller에 대한 add,
+modify, remove와 wait 호출은 호출자가 직렬화한다.
+
 ## Message와 ownership
 
 `NewMessage`와 `NewMessageWithSize`는 Core가 소유하는 native message storage를
@@ -132,6 +136,9 @@ Caller-provided receive method는 `(bool, error)`를 반환한다. `bool`이 `fa
 `true`이면 output에 하나 이상의 결과가 채워졌다. 실제 실패는 `*RecvError`다.
 
 Socket monitor는 typed event mask로 열고 `MonitorEvent`, `MonitorStatus`를 제공한다.
+Core 11의 각 monitor event mask와 delivered event value는 대응하는 typed constant로
+제공한다. `MonitorEventMask`는 monitor를 열 때 사용하고 `MonitorEventType`은
+수신한 `MonitorEvent.Event`를 검사할 때 사용한다.
 Poller는 socket, file descriptor와 timer source의 readiness를 `PollEvent`로 보고한다.
 Timer는 interval event를 poller 또는 직접 receive하는 데 사용한다. Monitor, poller와
 timer의 callback 또는 event result는 native callback thread를 public consumer callback

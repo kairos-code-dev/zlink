@@ -33,16 +33,9 @@ func (s *directSocket) submit(flags SendFlags, parts ...*Message) (bool, error) 
 	return submitBackpressureResult(err)
 }
 
-func (s *directSocket) submitBuilder(flags SendFlags, parts []sendBuilderPart) (bool, error) {
-	err := submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
-		return submitErrorFromResult(C.zlink_send_part(s.raw(), part, C.zlink_send_flags_t(flags), partFlag))
-	})
-	return submitBackpressureResult(err)
-}
-
 func (s *directSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 	if out == nil {
-		return false, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EINVAL)}
+		return false, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	reuse := out.beginReceive()
 	var sourceRID *C.zlink_routing_id_t
@@ -55,7 +48,7 @@ func (s *directSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 		}
 		return false, err
 	}
-	out.replace(routingIDFromCPtr(sourceRID), clonedParts, 0, false, nil, nil, nil)
+	out.replace(routingIDFromCPtr(sourceRID), clonedParts, 0, false, nil, nil)
 	return true, nil
 }
 

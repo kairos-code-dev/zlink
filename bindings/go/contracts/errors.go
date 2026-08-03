@@ -70,6 +70,7 @@ const (
 	RequestInvalidArgument = impl.RequestInvalidArgument
 	RequestInvalidState    = impl.RequestInvalidState
 	RequestNotSupported    = impl.RequestNotSupported
+	RequestBackpressured   = impl.RequestBackpressured
 	RecvOK                 = impl.RecvOK
 	RecvNoData             = impl.RecvNoData
 	RecvBusy               = impl.RecvBusy
@@ -77,6 +78,8 @@ const (
 	RecvInvalidHandle      = impl.RecvInvalidHandle
 	RecvNotSupported       = impl.RecvNotSupported
 	RecvInternalError      = impl.RecvInternalError
+	RecvBufferTooSmall     = impl.RecvBufferTooSmall
+	RecvInvalidState       = impl.RecvInvalidState
 	HandlerOK              = impl.HandlerOK
 	HandlerInvalidArgument = impl.HandlerInvalidArgument
 	HandlerBusy            = impl.HandlerBusy
@@ -103,6 +106,7 @@ const (
 	ConnectNotFound        = impl.ConnectNotFound
 	ConnectConflict        = impl.ConnectConflict
 	ConnectBusy            = impl.ConnectBusy
+	ConnectAuthFailed      = impl.ConnectAuthFailed
 	ConfigOK               = impl.ConfigOK
 	ConfigInvalidHandle    = impl.ConfigInvalidHandle
 	ConfigInvalidArgument  = impl.ConfigInvalidArgument
@@ -110,4 +114,7 @@ const (
 	ConfigInternalError    = impl.ConfigInternalError
 	ConfigInvalidState     = impl.ConfigInvalidState
 	ConfigNotFound         = impl.ConfigNotFound
+	ConfigConflict         = impl.ConfigConflict
+	ConfigBufferTooSmall   = impl.ConfigBufferTooSmall
+	ConfigBusy             = impl.ConfigBusy
 )

@@ -1,6 +1,7 @@
 package zlink_test
 
 import (
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -87,6 +89,14 @@ func TestNilInputValidation(t *testing.T) {
 	socket, _ := ctx.PairSocket()
 	defer socket.Close()
 
+	if _, err := socket.Recv(nil, zlink.RecvFlagsNone); err == nil {
+		t.Fatal("Recv(nil) should fail")
+	} else {
+		var recvErr *zlink.RecvError
+		if !errors.As(err, &recvErr) || recvErr.InternalErrno() != int(syscall.EFAULT) {
+			t.Fatalf("Recv(nil) error = %v, want *RecvError/EFAULT", err)
+		}
+	}
 	if _, err := socket.Send().Message(nil).Submit(nil); err == nil {
 		t.Fatalf("Send(nil) should fail")
 	}

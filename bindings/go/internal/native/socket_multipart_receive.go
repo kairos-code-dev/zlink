@@ -34,6 +34,10 @@ func recvMultipart(reuse []*Message, flags RecvFlags, recv multipartRecvFunc) ([
 		var msg *Message
 		if len(parts) < len(reuse) {
 			msg = reuse[len(parts)]
+			if msg == nil || msg.closed {
+				msg = &Message{}
+				reuse[len(parts)] = msg
+			}
 		} else {
 			msg = &Message{}
 		}

@@ -20,6 +20,27 @@ func TestRuntimeVersionIsAvailable(t *testing.T) {
 	}
 }
 
+func TestCoreResultAndEventConstantsArePublic(t *testing.T) {
+	if zlink.RequestBackpressured != zlink.RequestResult(113) {
+		t.Fatalf("RequestBackpressured = %d, want 113", zlink.RequestBackpressured)
+	}
+	if zlink.RecvBufferTooSmall != zlink.RecvResult(207) || zlink.RecvInvalidState != zlink.RecvResult(208) {
+		t.Fatalf("receive result constants = (%d, %d), want (207, 208)", zlink.RecvBufferTooSmall, zlink.RecvInvalidState)
+	}
+	if zlink.ConnectAuthFailed != zlink.ConnectResult(608) {
+		t.Fatalf("ConnectAuthFailed = %d, want 608", zlink.ConnectAuthFailed)
+	}
+	if zlink.ConfigConflict != zlink.ConfigResult(707) || zlink.ConfigBufferTooSmall != zlink.ConfigResult(708) || zlink.ConfigBusy != zlink.ConfigResult(709) {
+		t.Fatalf("config result constants = (%d, %d, %d), want (707, 708, 709)", zlink.ConfigConflict, zlink.ConfigBufferTooSmall, zlink.ConfigBusy)
+	}
+	if zlink.MonitorEventHandshakeFailedAuth != zlink.MonitorEventMask(1<<14) || zlink.MonitorEventTypeHandshakeFailedAuth != zlink.MonitorEventType(1<<14) {
+		t.Fatalf("authentication monitor constants = (%#x, %#x), want (%#x, %#x)", zlink.MonitorEventHandshakeFailedAuth, zlink.MonitorEventTypeHandshakeFailedAuth, 1<<14, 1<<14)
+	}
+	if zlink.PollErr != zlink.PollEventFlag(4) || zlink.PollPri != zlink.PollEventFlag(8) {
+		t.Fatalf("poll error flags = (%d, %d), want (4, 8)", zlink.PollErr, zlink.PollPri)
+	}
+}
+
 func TestDirectCommonHeaderVersionMatchesPackage(t *testing.T) {
 	cmd := exec.Command("cc", "-E", "-Iinclude", "-x", "c", "-")
 	cmd.Stdin = strings.NewReader("#include <zlink/common.h>\nZLINK_VERSION_PATCH\n")

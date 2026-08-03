@@ -39,6 +39,10 @@ The exported Go package reflects the Core 11 raw-socket contract.
 - raw option bags and raw flags are not exposed publicly
 - socket-specific capabilities are exposed only on concrete socket types
 - monitor open APIs take typed masks and default to `ALL` when omitted
+- all Core 11 monitor mask and delivered event values have typed constants;
+  use `MonitorEventMask` for opening and `MonitorEventType` for event values
+- poller registrations borrow socket and timer handles; remove a source before
+  closing it and serialize one poller's add/modify/remove/wait operations
 - callback delivery hops off native callback threads onto Go-managed
   dispatcher goroutines before user handlers run
 - ROUTER completion-control records use `OnCompletionControl` and

@@ -92,10 +92,42 @@ const (
 	SocketTypeXSub   = impl.SocketTypeXSub
 	SocketTypeStream = impl.SocketTypeStream
 
-	MonitorEventAll               = impl.MonitorEventAll
-	MonitorEventConnectionReady   = impl.MonitorEventConnectionReady
-	MonitorEventPeerWeightChanged = impl.MonitorEventPeerWeightChanged
-	MonitorSourceSocket           = impl.MonitorSourceSocket
+	MonitorEventConnected               = impl.MonitorEventConnected
+	MonitorEventConnectDelayed          = impl.MonitorEventConnectDelayed
+	MonitorEventConnectRetried          = impl.MonitorEventConnectRetried
+	MonitorEventListening               = impl.MonitorEventListening
+	MonitorEventBindFailed              = impl.MonitorEventBindFailed
+	MonitorEventAccepted                = impl.MonitorEventAccepted
+	MonitorEventAcceptFailed            = impl.MonitorEventAcceptFailed
+	MonitorEventClosed                  = impl.MonitorEventClosed
+	MonitorEventCloseFailed             = impl.MonitorEventCloseFailed
+	MonitorEventDisconnected            = impl.MonitorEventDisconnected
+	MonitorEventMonitorStopped          = impl.MonitorEventMonitorStopped
+	MonitorEventHandshakeFailedNoDetail = impl.MonitorEventHandshakeFailedNoDetail
+	MonitorEventConnectionReady         = impl.MonitorEventConnectionReady
+	MonitorEventHandshakeFailedProtocol = impl.MonitorEventHandshakeFailedProtocol
+	MonitorEventHandshakeFailedAuth     = impl.MonitorEventHandshakeFailedAuth
+	MonitorEventPeerWeightChanged       = impl.MonitorEventPeerWeightChanged
+	MonitorEventAll                     = impl.MonitorEventAll
+
+	MonitorEventTypeConnected               = impl.MonitorEventTypeConnected
+	MonitorEventTypeConnectDelayed          = impl.MonitorEventTypeConnectDelayed
+	MonitorEventTypeConnectRetried          = impl.MonitorEventTypeConnectRetried
+	MonitorEventTypeListening               = impl.MonitorEventTypeListening
+	MonitorEventTypeBindFailed              = impl.MonitorEventTypeBindFailed
+	MonitorEventTypeAccepted                = impl.MonitorEventTypeAccepted
+	MonitorEventTypeAcceptFailed            = impl.MonitorEventTypeAcceptFailed
+	MonitorEventTypeClosed                  = impl.MonitorEventTypeClosed
+	MonitorEventTypeCloseFailed             = impl.MonitorEventTypeCloseFailed
+	MonitorEventTypeDisconnected            = impl.MonitorEventTypeDisconnected
+	MonitorEventTypeMonitorStopped          = impl.MonitorEventTypeMonitorStopped
+	MonitorEventTypeHandshakeFailedNoDetail = impl.MonitorEventTypeHandshakeFailedNoDetail
+	MonitorEventTypeConnectionReady         = impl.MonitorEventTypeConnectionReady
+	MonitorEventTypeHandshakeFailedProtocol = impl.MonitorEventTypeHandshakeFailedProtocol
+	MonitorEventTypeHandshakeFailedAuth     = impl.MonitorEventTypeHandshakeFailedAuth
+	MonitorEventTypePeerWeightChanged       = impl.MonitorEventTypePeerWeightChanged
+	MonitorEventTypeAll                     = impl.MonitorEventTypeAll
+	MonitorSourceSocket                     = impl.MonitorSourceSocket
 
 	AutoHwmProfileCompact             = impl.AutoHwmProfileCompact
 	AutoHwmProfileLowLatency          = impl.AutoHwmProfileLowLatency
@@ -118,6 +150,8 @@ const (
 	RecvFlagsDontWait       = impl.RecvFlagsDontWait
 	PollIn                  = impl.PollIn
 	PollOut                 = impl.PollOut
+	PollErr                 = impl.PollErr
+	PollPri                 = impl.PollPri
 	PollCompletion          = impl.PollCompletion
 	PollSourceSocket        = impl.PollSourceSocket
 	PollSourceFD            = impl.PollSourceFD
@@ -151,14 +185,17 @@ const (
 	RequestInvalidArgument = impl.RequestInvalidArgument
 	RequestInvalidState    = impl.RequestInvalidState
 	RequestNotSupported    = impl.RequestNotSupported
+	RequestBackpressured   = impl.RequestBackpressured
 
-	RecvOK            = impl.RecvOK
-	RecvNoData        = impl.RecvNoData
-	RecvBusy          = impl.RecvBusy
-	RecvTerminated    = impl.RecvTerminated
-	RecvInvalidHandle = impl.RecvInvalidHandle
-	RecvNotSupported  = impl.RecvNotSupported
-	RecvInternalError = impl.RecvInternalError
+	RecvOK             = impl.RecvOK
+	RecvNoData         = impl.RecvNoData
+	RecvBusy           = impl.RecvBusy
+	RecvTerminated     = impl.RecvTerminated
+	RecvInvalidHandle  = impl.RecvInvalidHandle
+	RecvNotSupported   = impl.RecvNotSupported
+	RecvInternalError  = impl.RecvInternalError
+	RecvBufferTooSmall = impl.RecvBufferTooSmall
+	RecvInvalidState   = impl.RecvInvalidState
 
 	HandlerOK              = impl.HandlerOK
 	HandlerInvalidArgument = impl.HandlerInvalidArgument
@@ -189,6 +226,7 @@ const (
 	ConnectNotFound        = impl.ConnectNotFound
 	ConnectConflict        = impl.ConnectConflict
 	ConnectBusy            = impl.ConnectBusy
+	ConnectAuthFailed      = impl.ConnectAuthFailed
 
 	ConfigOK              = impl.ConfigOK
 	ConfigInvalidHandle   = impl.ConfigInvalidHandle
@@ -197,6 +235,9 @@ const (
 	ConfigInternalError   = impl.ConfigInternalError
 	ConfigInvalidState    = impl.ConfigInvalidState
 	ConfigNotFound        = impl.ConfigNotFound
+	ConfigConflict        = impl.ConfigConflict
+	ConfigBufferTooSmall  = impl.ConfigBufferTooSmall
+	ConfigBusy            = impl.ConfigBusy
 )
 
 var (

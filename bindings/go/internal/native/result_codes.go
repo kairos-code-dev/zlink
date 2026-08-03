@@ -51,18 +51,21 @@ const (
 	RequestInvalidArgument RequestResult = 110
 	RequestInvalidState    RequestResult = 111
 	RequestNotSupported    RequestResult = 112
+	RequestBackpressured   RequestResult = 113
 )
 
 type RecvResult int
 
 const (
-	RecvOK            RecvResult = 0
-	RecvNoData        RecvResult = 201
-	RecvBusy          RecvResult = 202
-	RecvTerminated    RecvResult = 203
-	RecvInvalidHandle RecvResult = 204
-	RecvNotSupported  RecvResult = 205
-	RecvInternalError RecvResult = 206
+	RecvOK             RecvResult = 0
+	RecvNoData         RecvResult = 201
+	RecvBusy           RecvResult = 202
+	RecvTerminated     RecvResult = 203
+	RecvInvalidHandle  RecvResult = 204
+	RecvNotSupported   RecvResult = 205
+	RecvInternalError  RecvResult = 206
+	RecvBufferTooSmall RecvResult = 207
+	RecvInvalidState   RecvResult = 208
 )
 
 type HandlerResult int
@@ -109,6 +112,7 @@ const (
 	ConnectNotFound        ConnectResult = 605
 	ConnectConflict        ConnectResult = 606
 	ConnectBusy            ConnectResult = 607
+	ConnectAuthFailed      ConnectResult = 608
 )
 
 type ConfigResult int
@@ -121,4 +125,7 @@ const (
 	ConfigInternalError   ConfigResult = 704
 	ConfigInvalidState    ConfigResult = 705
 	ConfigNotFound        ConfigResult = 706
+	ConfigConflict        ConfigResult = 707
+	ConfigBufferTooSmall  ConfigResult = 708
+	ConfigBusy            ConfigResult = 709
 )

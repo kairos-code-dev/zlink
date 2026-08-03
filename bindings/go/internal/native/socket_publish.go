@@ -83,12 +83,3 @@ func (s *publishSocket) RejectSubscribe(routingID RoutingID) error {
 func (s *publishSocket) PubOptions() *PubSocketOptions {
 	return &PubSocketOptions{socket: s.connectionSocket}
 }
-
-func (s *publishSocket) submitPublish(topic string, flags SendFlags, parts ...*Message) (bool, error) {
-	err := s.withCString(topic, func(cstr *C.char) error {
-		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
-			return submitErrorFromResult(C.zlink_publish_part(s.raw(), cstr, part, C.zlink_send_flags_t(flags), partFlag))
-		})
-	})
-	return submitBackpressureResult(err)
-}

@@ -14,7 +14,7 @@ import "C"
 // common Received envelope.
 func (s *DealerSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 	if out == nil {
-		return false, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EINVAL)}
+		return false, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	if s.connectionSocket.hasReceiveHandler() {
 		return false, &RecvError{Result: RecvBusy, nativeErrno: int(C.EBUSY)}
@@ -45,7 +45,7 @@ func (s *DealerSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 	if messageType == C.ZLINK_DEALER_MESSAGE_REQUEST && seq != 0 {
 		reply = receivedReplyToDealer(s.reply, seq)
 	}
-	out.replace(RoutingID{}, parts, seq, seq != 0, reply, nil, nil)
+	out.replace(RoutingID{}, parts, seq, seq != 0, reply, nil)
 	return true, nil
 }
 

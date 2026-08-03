@@ -14,8 +14,7 @@ type Received struct {
 	requestSeq    uint64
 	hasRequestSeq bool
 	reply         func(SendFlags, []*Message) error
-	send          func(SendFlags, []*Message) (bool, error)
-	sendBuilder   func(SendFlags, []sendBuilderPart) (bool, error)
+	send          func(SendFlags, []sendBuilderPart) (bool, error)
 }
 
 func (r *Received) RoutingID() RoutingID {
@@ -52,7 +51,6 @@ func (r *Received) beginReceive() []*Message {
 	r.hasRequestSeq = false
 	r.reply = nil
 	r.send = nil
-	r.sendBuilder = nil
 	return previous
 }
 
@@ -62,8 +60,7 @@ func (r *Received) replace(
 	requestSeq uint64,
 	hasRequestSeq bool,
 	reply func(SendFlags, []*Message) error,
-	send func(SendFlags, []*Message) (bool, error),
-	sendBuilder func(SendFlags, []sendBuilderPart) (bool, error),
+	send func(SendFlags, []sendBuilderPart) (bool, error),
 ) {
 	r.routingID = routingID
 	r.parts = parts
@@ -71,7 +68,6 @@ func (r *Received) replace(
 	r.hasRequestSeq = hasRequestSeq
 	r.reply = reply
 	r.send = send
-	r.sendBuilder = sendBuilder
 }
 
 func (r *Received) RequestSeq() uint64 {
@@ -137,24 +133,12 @@ func (r *Received) Send() SendOp {
 		if r.send == nil {
 			return &SubmitError{Result: SubmitInvalidArgument, nativeErrno: int(C.EINVAL)}
 		}
-		if r.sendBuilder != nil && sendBuilderPartsNeedBuilder(parts) {
-			sent, err := r.sendBuilder(flags, parts)
-			if err != nil {
-				return err
-			}
-			if !sent {
-				return &SubmitError{Result: SubmitBackpressured}
-			}
-			return nil
-		}
-		sent, err := r.send(flags, builderMessages(parts))
+		sent, err := r.send(flags, parts)
 		if err != nil {
-			closeMovedSendBuilderParts(parts)
 			return err
 		}
 		if !sent {
-			closeMovedSendBuilderParts(parts)
-			return &SubmitError{Result: SubmitBackpressured}
+			return &SubmitError{Result: SubmitBackpressured, nativeErrno: int(C.EAGAIN)}
 		}
 		return nil
 	})
@@ -173,6 +157,9 @@ func (r *Received) Close() error {
 	}
 	var first error
 	for _, part := range r.parts {
+		if part == nil {
+			continue
+		}
 		if err := part.Close(); err != nil && first == nil {
 			first = err
 		}
@@ -183,6 +170,5 @@ func (r *Received) Close() error {
 	r.hasRequestSeq = false
 	r.reply = nil
 	r.send = nil
-	r.sendBuilder = nil
 	return first
 }

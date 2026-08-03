@@ -25,7 +25,7 @@ func (s *RouterSocket) OnCompletionControl(handler func(*Received)) error {
 	if handler == nil {
 		return &HandlerError{Result: HandlerInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
-	if s == nil || s.socketCore == nil || s.closed || s.handle == nil {
+	if s == nil || s.socketCore == nil || s.socketCore.isClosed() {
 		return &HandlerError{Result: HandlerInvalidArgument, nativeErrno: int(C.EFAULT)}
 	}
 	state := newCompletionControlCallbackState(handler)

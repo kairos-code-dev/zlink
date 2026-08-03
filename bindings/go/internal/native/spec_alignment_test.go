@@ -112,6 +112,7 @@ func TestRequestCompletionErrorUsesStableErrno(t *testing.T) {
 	}{
 		{name: "timeout", result: RequestTimedOut, errno: syscall.ETIMEDOUT},
 		{name: "not-connected", result: RequestNotConnected, errno: syscall.ENOTCONN},
+		{name: "backpressured", result: RequestBackpressured, errno: syscall.EAGAIN},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -127,6 +128,63 @@ func TestRequestCompletionErrorUsesStableErrno(t *testing.T) {
 				t.Fatalf("errors.Is(%v) = false", tc.errno)
 			}
 		})
+	}
+}
+
+func TestCoreResultCodeValuesRemainComplete(t *testing.T) {
+	cases := map[string]struct {
+		got  int
+		want int
+	}{
+		"request backpressured":   {got: int(RequestBackpressured), want: 113},
+		"recv buffer too small":   {got: int(RecvBufferTooSmall), want: 207},
+		"recv invalid state":      {got: int(RecvInvalidState), want: 208},
+		"connect auth failed":     {got: int(ConnectAuthFailed), want: 608},
+		"config conflict":         {got: int(ConfigConflict), want: 707},
+		"config buffer too small": {got: int(ConfigBufferTooSmall), want: 708},
+		"config busy":             {got: int(ConfigBusy), want: 709},
+	}
+	for name, tc := range cases {
+		if tc.got != tc.want {
+			t.Errorf("%s = %d, want %d", name, tc.got, tc.want)
+		}
+	}
+}
+
+func TestCoreEventFlagValuesRemainComplete(t *testing.T) {
+	monitorMasks := []struct {
+		name string
+		got  MonitorEventMask
+		want MonitorEventMask
+	}{
+		{"connected", MonitorEventConnected, 1 << 0},
+		{"connect delayed", MonitorEventConnectDelayed, 1 << 1},
+		{"connect retried", MonitorEventConnectRetried, 1 << 2},
+		{"listening", MonitorEventListening, 1 << 3},
+		{"bind failed", MonitorEventBindFailed, 1 << 4},
+		{"accepted", MonitorEventAccepted, 1 << 5},
+		{"accept failed", MonitorEventAcceptFailed, 1 << 6},
+		{"closed", MonitorEventClosed, 1 << 7},
+		{"close failed", MonitorEventCloseFailed, 1 << 8},
+		{"disconnected", MonitorEventDisconnected, 1 << 9},
+		{"monitor stopped", MonitorEventMonitorStopped, 1 << 10},
+		{"handshake failed no detail", MonitorEventHandshakeFailedNoDetail, 1 << 11},
+		{"connection ready", MonitorEventConnectionReady, 1 << 12},
+		{"handshake failed protocol", MonitorEventHandshakeFailedProtocol, 1 << 13},
+		{"handshake failed auth", MonitorEventHandshakeFailedAuth, 1 << 14},
+		{"peer weight changed", MonitorEventPeerWeightChanged, 1 << 15},
+		{"all", MonitorEventAll, 0xFFFF},
+	}
+	for _, tc := range monitorMasks {
+		if tc.got != tc.want {
+			t.Errorf("MonitorEvent%s = %#x, want %#x", tc.name, tc.got, tc.want)
+		}
+	}
+	if MonitorEventTypeConnectionReady != MonitorEventType(MonitorEventConnectionReady) {
+		t.Fatalf("MonitorEventTypeConnectionReady = %#x, want %#x", MonitorEventTypeConnectionReady, MonitorEventConnectionReady)
+	}
+	if PollIn != 1 || PollOut != 2 || PollErr != 4 || PollPri != 8 || PollCompletion != 32 {
+		t.Fatalf("poll flags = (%d, %d, %d, %d, %d), want (1, 2, 4, 8, 32)", PollIn, PollOut, PollErr, PollPri, PollCompletion)
 	}
 }
 

@@ -109,11 +109,11 @@ func (s *connectionSocket) LastEndpoint() (string, error) {
 }
 
 func (s *connectionSocket) setPubBoolOption(option C.zlink_pub_option_t, value bool) error {
-	return setNativePubBoolOption(s.raw(), s.socketCore.closed, "socket is closed", option, value)
+	return setNativePubBoolOption(s.raw(), s.socketCore.isClosed(), option, value)
 }
 
 func (s *connectionSocket) getPubBoolOption(option C.zlink_pub_option_t) (bool, error) {
-	return getNativePubBoolOption(s.raw(), s.socketCore.closed, "socket is closed", option)
+	return getNativePubBoolOption(s.raw(), s.socketCore.isClosed(), option)
 }
 
 func (s *connectionSocket) getPubIntOption(option C.zlink_pub_option_t) (int, error) {
@@ -160,14 +160,14 @@ func (s *connectionSocket) getSubIntOption(option C.zlink_sub_option_t) (int, er
 }
 
 func (s *connectionSocket) SetTLSServer(certPath string, keyPath string, requireClientCert bool) error {
-	if s == nil || s.closed {
+	if s == nil || s.socketCore.isClosed() {
 		return stateError("socket is closed")
 	}
 	return setTLSServer(s.raw(), certPath, keyPath, requireClientCert)
 }
 
 func (s *connectionSocket) SetTLSClient(caCertPath string, hostname string, trustSystem bool) error {
-	if s == nil || s.closed {
+	if s == nil || s.socketCore.isClosed() {
 		return stateError("socket is closed")
 	}
 	return setTLSClient(s.raw(), caCertPath, hostname, trustSystem)

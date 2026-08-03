@@ -35,6 +35,8 @@ type PollEventFlag int16
 const (
 	PollIn         PollEventFlag = 1
 	PollOut        PollEventFlag = 2
+	PollErr        PollEventFlag = 4
+	PollPri        PollEventFlag = 8
 	PollCompletion PollEventFlag = 32
 )
 
@@ -399,7 +401,10 @@ func (p *Poller) RemoveTimer(timer *Timer) error {
 	if p.closed || p.handle == nil {
 		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
-	if timer == nil || timer.handle == nil {
+	if timer == nil {
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
+	}
+	if timer.handle == nil {
 		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	if err := configErrorFromResult(C.zlink_poller_remove_timer(p.handle, timer.handle)); err != nil {

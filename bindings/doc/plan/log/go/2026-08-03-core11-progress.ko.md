@@ -98,6 +98,9 @@ perf/run_benchmarks_multi.sh --smoke --pattern MULTI_DEALER_ROUTER --duration 1 
 inproc, multi runner는 TCP `MULTI_DEALER_ROUTER`에서 READY/active와 필수 `RESULT` metric을 출력했다.
 Smoke 실행은 공식 report를 만들지 않았다.
 
+최종 source revision `c6b37ac0ee2278305bbcb848a17bfc1034af86d3`에서 별도 임시 `GOCACHE`와 `GOTMPDIR`을
+사용해 `go test -count=1 ./...`와 `go vet ./...`를 다시 실행했다. 두 명령 모두 종료 코드 `0`이다.
+
 ```bash
 scripts/local-package/go/build-wsl.sh \
   --platforms linux-x86_64 \
@@ -137,6 +140,20 @@ unzip -Z1 /home/hep7/project/kairos/zlink/.artifacts/wsl/go-candidate-final2/pro
 
 결과: 금지된 zip entry가 출력되지 않았다. Package script는 기존 zip을 임시 파일로 만든 뒤 교체하므로
 이전 실행의 삭제된 service entry가 산출물에 남지 않는다.
+
+현재 다른 platform payload는 다음 이유로 package 입력에서 제외했다.
+
+```text
+linux-aarch64/libzlink.so.9:
+  sha256: 9c3cf64ca56e15b9f2200e33d377d5ce8f19d4fcc180a941f6a5c51442170391
+  result: Core 9 SONAME; candidate-bound Core 11 package evidence 없음
+darwin-x86_64/libzlink.dylib:
+  sha256: 16b52674acbdac834c98727b8cd58228a65d993c738b35176dea939e0940b2a1
+  result: candidate provenance와 Linux host loader evidence 없음
+darwin-aarch64/libzlink.dylib:
+  sha256: 6e6dc25c0360b7cb3a1d79f67ec5161924458653948b7a2cc78ddffaf86a3d8d
+  result: candidate provenance와 Linux host loader evidence 없음
+```
 
 ## 계약 문서
 

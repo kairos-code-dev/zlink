@@ -204,9 +204,9 @@ target만 나타낸다.
 | Platform | 상태 | 근거와 남은 조건 |
 |----------|------|------------------|
 | Linux amd64 (`linux-x86_64`) | `PASS` | V11-M3-CORE-PKG 승인 runtime SHA-256 `b6fadc481c649b50637a9c0eb01d15a016e6ba4cd5bab967bdb6da4497a3c0c4`, package clean consumer와 ldd path 검증 |
-| Linux arm64 (`linux-aarch64`) | `BLOCKED` | 추적 payload가 major 9이며 Core 11 runtime과 consumer가 없음 |
-| macOS amd64 (`darwin-x86_64`) | `UNVERIFIED` | payload가 현재 Core 11 candidate와 연결되지 않았고 이 Linux host에서 native consumer를 실행하지 않음 |
-| macOS arm64 (`darwin-aarch64`) | `UNVERIFIED` | payload가 현재 Core 11 candidate와 연결되지 않았고 이 Linux host에서 native consumer를 실행하지 않음 |
+| Linux arm64 (`linux-aarch64`) | `BLOCKED` | `libzlink.so.9`, SHA-256 `9c3cf64ca56e15b9f2200e33d377d5ce8f19d4fcc180a941f6a5c51442170391`; Core 11 candidate runtime과 consumer가 없음 |
+| macOS amd64 (`darwin-x86_64`) | `UNVERIFIED` | payload SHA-256 `16b52674acbdac834c98727b8cd58228a65d993c738b35176dea939e0940b2a1`가 현재 Core 11 candidate와 연결되지 않았고 이 Linux host에서 native consumer를 실행하지 않음 |
+| macOS arm64 (`darwin-aarch64`) | `UNVERIFIED` | payload SHA-256 `6e6dc25c0360b7cb3a1d79f67ec5161924458653948b7a2cc78ddffaf86a3d8d`가 현재 Core 11 candidate와 연결되지 않았고 이 Linux host에서 native consumer를 실행하지 않음 |
 | Windows | 범위 밖 | 별도 cgo linker·loader 구현 전에는 release 범위 밖 |
 
 Linux와 macOS 각 artifact는 같은 Core candidate identity를 사용해야 하며 runtime hash와 loader evidence를

@@ -228,3 +228,22 @@ clean consumer, 지원 platform 범위와 독립 review를 결정해야 한다. 
    evidence를 read-only로 재확인한다. 미해결 `Critical`·`High`·`Medium` finding이 없을 때만 `CLEAN`으로
    갱신한다.
 5. 위 조건을 충족한 뒤에만 final ledger와 release-facing 문서의 완료 상태를 갱신한다.
+
+## 7. 2026-08-04 self-review refresh
+
+Codex가 현재 Core 11.2.0 candidate의 Core diff, Python public contract, owner-layer lifecycle과
+POSD·DDD 경계를 직접 다시 검토했다. 이 과정에서 `Message.try_copy_to()`의 contract 반환값 불일치를
+찾아 owner layer와 contract test를 수정했다. 이후 Python source test는 `65 passed`, `pyright`는
+`0 errors, 0 warnings, 0 informations`, Core weighted-selection integration은 `17/17`, typed option
+unit은 `2/2`로 통과했다.
+
+현재 local package는 HEAD `5e58064b7d4d88045e37adbcf36098030b05c5fe`와 runtime SHA
+`ce28d7908bf62a1b39b481aad2a76c6e76955e3a93ea73e1cbdaa913c4883138`에 고정했다. CPython 3.9.25와
+3.12.3 package/clean consumer를 각각 통과했고, 두 installed sample은 `7/7`이다. single·multi perf
+smoke도 현재 runtime에서 완료됐다. 자세한 manifest·wheel hash는
+[`python progress log`](log/python/2026-08-03-core11-progress.ko.md)의
+`2026-08-04 Codex self-review refresh` 절에 있다.
+
+단, 이것은 구현자에 의한 self-review다. 기존 V11-R2 evidence는 현재 candidate를 승인하지 않으므로
+공통 담당자의 fresh V11-R2·V11-M3-CORE-PKG evidence와 독립 frontier review가 완료되기 전에는 전체
+상태를 `CLEAN` 또는 완료로 바꾸지 않는다.

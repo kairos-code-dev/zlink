@@ -211,3 +211,43 @@ allocation, copy, lock, GIL과 no-cost를 모두 분류했고 `unclassified=0`�
 
 Linux aarch64, macOS와 Windows는 현재 release target이 아니므로 별도 candidate와 native consumer
 검증을 완료하기 전에는 지원 범위에 넣지 않는다.
+
+## 2026-08-04 Codex self-review refresh
+
+현재 checkout의 HEAD는 `5e58064b7d4d88045e37adbcf36098030b05c5fe`이며, Core 11.2.0 runtime SHA는
+`ce28d7908bf62a1b39b481aad2a76c6e76955e3a93ea73e1cbdaa913c4883138`이다. Core 변경 19개를
+정식 spec·계획 문서와 대조하고 `lb_t`의 smooth weighted round-robin, routing ID tie-break, candidate
+변경, write failure recovery와 `0..10000` validation을 확인했다. 현재 `test_router_multiple_dealers`는
+`17 Tests 0 Failures`, `unittest_typed_option`은 `2 Tests 0 Failures`다.
+
+Self-review에서 `Message.try_copy_to()`의 contract와 구현이 어긋난 사실도 확인했다. contract는 복사한
+byte 수 또는 capacity 부족 시 `None`을 요구했지만 구현은 `True/False`를 반환했다. owner layer 구현을
+수정하고 writable destination, capacity 부족, invalid readonly destination을 contract test로 고정했다.
+수정 결과 Python source test는 `65 passed`, `pyright`는 `0 errors, 0 warnings, 0 informations`다.
+
+새 local package identity는 다음과 같다.
+
+```text
+coreManifest: .artifacts/wsl/bindings-candidate/core-11.2.0-python-self-20260804-v2.env
+coreManifestSha256: 3265330d5b552fbafc6fab0662d7858fcb7a7f8130da7d2041d1e52159641d3f
+coreRevision: 5e58064b7d4d88045e37adbcf36098030b05c5fe
+candidateInputSha256: 3265330d5b552fbafc6fab0662d7858fcb7a7f8130da7d2041d1e52159641d3f
+pythonCandidate: .artifacts/v11/evidence/V11-M3-CORE-VERIFY/candidate-python-self-20260804.json
+pythonCandidateSha256: 5364792d464c56e04c33477dac096f09daa6e5f9ddc7499b5bbd4acb1b5bb156
+pythonCandidateAggregateSha256: 7f32732d7831728b62b9f3a1bb1d420b6f7c9f65952348e1eb4e76c7c27a855d
+pythonSourceManifestSha256: fb44583edc415f10ab5b1d03b3c8b27800f1f9fa78c722b5219698d339ac28eb
+pythonSourceAggregateSha256: 4d1e014e03e56d85e732fa165aaab6e4823a79721cd72c4bd26f78f87eb54cfa
+cp39WheelSha256: d5501aa113e7f7cdbb16b5c9ab7fb1bd5498ab75d8c0b81b4f58e0e732803c0a
+cp312WheelSha256: 74c6959e0f9563f91dfa540d01800ca36e9a470d0fc03fef0c1b2efa341affc0
+```
+
+CPython 3.9은 Ubuntu 24.04 + deadsnakes CPython 3.9.25 환경에서, CPython 3.12는 host 3.12.3에서
+같은 Core candidate를 사용했다. 두 package의 source test는 각각 `65 passed`, clean consumer와
+installed sample은 각각 `7/7`이다. 현재 runtime으로 다시 실행한 single perf smoke는
+`status=complete`, `actual_result_lines=5`, multi perf smoke는 `status=complete`, `success=1`,
+`fail=0`, `actual_result_lines=5`다.
+
+이 refresh는 Codex self-review와 local package evidence를 갱신한 것이다. 기존 V11-R2 evidence는 이전
+candidate만 승인하므로 현재 candidate에 입력하면 `review evidence does not approve the supplied
+candidate manifest SHA-256`로 실패한다. 따라서 독립 V11-R2·V11-M3-CORE-PKG evidence와 frontier reviewer의
+최종 `CLEAN` 판정은 여전히 남아 있다.

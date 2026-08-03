@@ -163,7 +163,7 @@ cat >"$fixture/zlink.c" <<'EOF'
 void zlink_version(int *major, int *minor, int *patch)
 {
     *major = 11;
-    *minor = 0;
+    *minor = 1;
     *patch = 0;
 }
 EOF

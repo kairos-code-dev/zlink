@@ -11,6 +11,7 @@
 기록했다. 직전 source/package/API 재검증은
 [`log/20260803-0829-java-kotlin-runtime-spec-progress.ko.md`](log/20260803-0829-java-kotlin-runtime-spec-progress.ko.md),
 이전 baseline은 [`log/20260803-0724-current-audit.ko.md`](log/20260803-0724-current-audit.ko.md)에서 확인할 수 있다.
+현재 branch에 push된 최종 revision은 `323fdcc3548bc90345b5b9f08044000e9eb667a7`이다.
 
 이 ledger는 Java framework와 Kotlin framework를 하나의 작업 단위로 관리한다. Java와
 Kotlin의 exact interface, feature-map, runner, 현재 실패 원인은 각 항목에서
@@ -308,7 +309,8 @@ source/test는 조사 대상 경로이며, 정식 source owner inventory에 등�
 ## 3. 현재 검증 결과
 
 이 절은 `cwd=framework/languages/java`에서 2026-08-03 08:50 현재 working tree를 기준으로
-실행한 결과다. 실행 시작 시 `HEAD`는 `b718b4d5cd7ed28f3e399339220b83431bdae902`였다. 다른 workstream의
+실행한 결과다. 실행 시작 시 `HEAD`는 `b718b4d5cd7ed28f3e399339220b83431bdae902`였고, 결과는
+`323fdcc3548bc90345b5b9f08044000e9eb667a7`로 push했다. 다른 workstream의
 변경은 되돌리거나 정리하지 않았다.
 
 | 검증 | 결과 | 현재 의미 |

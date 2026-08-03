@@ -79,7 +79,8 @@ source·runner inventory 누락이다. 따라서 runtime unit gate와 process/E2
 runtime ledger와 현재 worktree 변경은 `ab79dc36e45` (`framework: complete runtime gap
 unit gates`)로 먼저 commit하고 origin branch에 push했다. push 직후 다른 workstream이
 수정한 C++ contract assertion 3개는 사용자 요청의 전체 변경 범위에 맞춰 후속 commit에
-포함한다.
+`323fdcc3548` (`framework: publish post-push contract updates`)로 포함해 push했다.
+최종 local/remote branch SHA는 `323fdcc3548bc90345b5b9f08044000e9eb667a7`로 일치한다.
 
 ## 현재 판정
 

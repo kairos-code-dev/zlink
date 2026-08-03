@@ -351,7 +351,11 @@ NODE
     # caller snapshot as disconnected; removing its descriptor would test
     # NotFound instead of the required Unavailable result.
     kill -STOP "${ROLE_PID[workflow-a]}"
+    echo "workflow transport before disconnect:" >&2
+    ss -tnp | grep ":${ROLE_WORKFLOW_PORT[workflow-a]}" >&2 || true
     ss -K dst 127.0.0.1 dport = "${ROLE_WORKFLOW_PORT[workflow-a]}" >/dev/null 2>&1 || true
+    echo "workflow transport after disconnect:" >&2
+    ss -tnp | grep ":${ROLE_WORKFLOW_PORT[workflow-a]}" >&2 || true
     wait_disconnected_target "$(role_url caller)" "${ROLE_RID[workflow-a]}"
   fi
 

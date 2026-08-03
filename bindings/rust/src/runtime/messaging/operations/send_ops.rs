@@ -53,9 +53,9 @@ fn send_op_mut<State>(op: &mut SendOp<State>) -> &mut NativeSendOp {
 }
 
 pub(crate) enum SendOpKind {
-    SocketSend,
-    SocketSendTo { target: RoutingId },
-    SocketPublish { topic: CString },
+    Plain,
+    Routed { target: Box<RoutingId> },
+    Published { topic: CString },
 }
 
 impl SendOpEmptyRuntime for SendOp<Empty> {
@@ -87,18 +87,16 @@ impl SendOpReadyRuntime for SendOp<Ready> {
         let mut native = prepare_send_parts(&mut op.parts)?;
         let flags = op.flags.bits();
         let rc = match &op.kind {
-            SendOpKind::SocketSend => {
-                submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
-                    ffi::zlink_send_part(op.handle, part, flags, part_flag)
-                })?
-            }
-            SendOpKind::SocketSendTo { target } => {
+            SendOpKind::Plain => submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
+                ffi::zlink_send_part(op.handle, part, flags, part_flag)
+            })?,
+            SendOpKind::Routed { target } => {
                 let target = target.as_raw() as *const ffi::zlink_routing_id_t;
                 submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
                     ffi::zlink_send_part_rid(op.handle, target, part, flags, part_flag)
                 })?
             }
-            SendOpKind::SocketPublish { topic } => {
+            SendOpKind::Published { topic } => {
                 submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
                     ffi::zlink_publish_part(op.handle, topic.as_ptr(), part, flags, part_flag)
                 })?
@@ -117,7 +115,7 @@ impl SendOpReadyRuntime for SendOp<Ready> {
 pub(crate) fn socket_send_op(handle: *mut c_void) -> SendOp<Empty> {
     wrap_send_op(NativeSendOp {
         handle,
-        kind: SendOpKind::SocketSend,
+        kind: SendOpKind::Plain,
         parts: Vec::new(),
         flags: SendFlags::NONE,
     })
@@ -126,7 +124,9 @@ pub(crate) fn socket_send_op(handle: *mut c_void) -> SendOp<Empty> {
 pub(crate) fn socket_send_to_op(handle: *mut c_void, target: RoutingId) -> SendOp<Empty> {
     wrap_send_op(NativeSendOp {
         handle,
-        kind: SendOpKind::SocketSendTo { target },
+        kind: SendOpKind::Routed {
+            target: Box::new(target),
+        },
         parts: Vec::new(),
         flags: SendFlags::NONE,
     })
@@ -135,7 +135,7 @@ pub(crate) fn socket_send_to_op(handle: *mut c_void, target: RoutingId) -> SendO
 pub(crate) fn socket_publish_op(handle: *mut c_void, topic: CString) -> SendOp<Empty> {
     wrap_send_op(NativeSendOp {
         handle,
-        kind: SendOpKind::SocketPublish { topic },
+        kind: SendOpKind::Published { topic },
         parts: Vec::new(),
         flags: SendFlags::NONE,
     })

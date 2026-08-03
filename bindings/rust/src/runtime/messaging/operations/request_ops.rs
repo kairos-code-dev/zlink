@@ -59,7 +59,7 @@ fn request_op_mut<State>(op: &mut RequestOp<State>) -> &mut NativeRequestOp {
 
 pub(crate) enum RequestOpKind {
     DealerRequest,
-    RouterRequest { peer_rid: RoutingId },
+    RouterRequest { peer_rid: Box<RoutingId> },
 }
 
 pub(crate) fn dealer_request_op(handle: *mut c_void) -> RequestOp<Empty> {
@@ -75,7 +75,9 @@ pub(crate) fn dealer_request_op(handle: *mut c_void) -> RequestOp<Empty> {
 pub(crate) fn router_request_op(handle: *mut c_void, peer_rid: RoutingId) -> RequestOp<Empty> {
     wrap_request_op(NativeRequestOp {
         handle,
-        kind: RequestOpKind::RouterRequest { peer_rid },
+        kind: RequestOpKind::RouterRequest {
+            peer_rid: Box::new(peer_rid),
+        },
         parts: Vec::new(),
         flags: None,
         timeout: Duration::ZERO,

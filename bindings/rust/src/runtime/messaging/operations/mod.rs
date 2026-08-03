@@ -21,13 +21,15 @@ pub(crate) use reply_ops::router_reply_op;
 pub(crate) use request_ops::{dealer_request_op, router_request_op};
 pub(crate) use send_ops::{socket_publish_op, socket_send_op, socket_send_to_op};
 
+pub(crate) type RequestCallback = dyn FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
+
 pub(crate) fn fixed_cstring_or_panic(value: &str, label: &str) -> CString {
     assert!(value.len() <= 255, "invalid {label}");
     CString::new(value).unwrap_or_else(|_| panic!("invalid {label}"))
 }
 
 pub(crate) struct ReplyCallbackState {
-    pub(crate) callback: Option<Box<dyn FnOnce(Result<Vec<Message>, RequestError>) + Send>>,
+    pub(crate) callback: Option<Box<RequestCallback>>,
     pub(crate) progress: Option<RequestProgressGuard>,
 }
 

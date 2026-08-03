@@ -150,7 +150,7 @@ Core candidate identity로 payload를 build하고 package·native consumer·load
 ```bash
 # Core candidate manifest
 scripts/local-package/bindings-candidate/create-manifest.sh \
-  --output .artifacts/wsl/bindings-candidate/core-11.2.0.env
+  .artifacts/wsl/bindings-candidate/core-11.2.0.env
 
 # Candidate wheel, clean consumer와 clean-wheel sample process
 scripts/local-package/bindings-candidate/build-wsl.sh \

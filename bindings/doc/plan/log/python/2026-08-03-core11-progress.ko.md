@@ -48,6 +48,12 @@ evidence를 입력한 `scripts/local-package/core/verify-candidate.mjs` 결과�
 그 evidence를 참조하는 공통 `V11-M3-CORE-PKG` 결과는 아직 없다. 이 조건이 충족되기 전에는 전체 상태를
 `CLEAN` 또는 완료로 올리지 않는다.
 
+기존 승인 candidate를 현재 worktree에 재사용할 수 있는지도 read-only로 확인했다. 기존
+`.artifacts/v11/evidence/V11-M3-CORE-VERIFY/candidate-reply-match-completion-hwm-20260801.json`과 그에
+대응하는 V11-R2 evidence를 `verify-candidate.mjs`에 입력한 결과는
+`candidate content drift: core/CMakeLists.txt`로 종료 코드 `1`이었다. 따라서 이전 candidate는 현재 Core
+파일과도 일치하지 않으며, 현재 Python candidate의 승인으로 승격할 수 없다.
+
 ## Candidate identity
 
 ```text

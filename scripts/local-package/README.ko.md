@@ -56,6 +56,7 @@ scripts/local-package/
     fetch-release-binaries.sh
   cpp/
   dotnet/
+  go/
   java/
   node/
 ```
@@ -197,6 +198,7 @@ PowerShell에서 실행한다.
 | 언어 | 스크립트 | 산출물 |
 |------|----------|--------|
 | .NET | `dotnet/build-wsl.sh`, `dotnet/build-windows.ps1` | NuGet package |
+| Go | `go/build-wsl.sh` | Go file proxy module |
 | Java/Kotlin | `java/build-wsl.sh`, `java/build-windows.ps1` | Maven repository layout |
 | Node.js | `node/build-wsl.sh`, `node/build-windows.ps1` | npm tarball |
 | C++ | `cpp/build-wsl.sh`, `cpp/build-windows.ps1` | 버전별 CMake install prefix |

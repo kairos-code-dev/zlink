@@ -50,6 +50,11 @@ done
   echo "Go package version ${PACKAGE_VERSION} must match Core ${CORE_VERSION}" >&2
   exit 1
 }
+if ! git -C "${REPO_ROOT}" diff --quiet -- bindings/go ':(exclude)bindings/go/native/**' || \
+   ! git -C "${REPO_ROOT}" diff --cached --quiet -- bindings/go ':(exclude)bindings/go/native/**'; then
+  echo "Go package source must be committed before package materialization" >&2
+  exit 1
+fi
 
 dir_hash() {
   local root="$1"
@@ -120,8 +125,22 @@ cleanup() {
 trap cleanup EXIT
 
 STAGE_MODULE="${STAGE_ROOT}/${MODULE_PATH}@${PACKAGE_VERSION}"
+SOURCE_SNAPSHOT="${STAGE_ROOT}/source"
+mkdir -p "${SOURCE_SNAPSHOT}"
+git -C "${REPO_ROOT}" archive --format=tar HEAD -- bindings/go | tar -x -C "${SOURCE_SNAPSHOT}"
+SNAPSHOT_BINDING_ROOT="${SOURCE_SNAPSHOT}/bindings/go"
+SNAPSHOT_MODULE_PATH="$(sed -n 's/^module //p' "${SNAPSHOT_BINDING_ROOT}/go.mod" | head -n1)"
+SNAPSHOT_CORE_VERSION="$(sed -n 's/^#define ZLINK_VERSION_MAJOR //p' "${SNAPSHOT_BINDING_ROOT}/include/zlink.h" | head -n1).$(sed -n 's/^#define ZLINK_VERSION_MINOR //p' "${SNAPSHOT_BINDING_ROOT}/include/zlink.h" | head -n1).$(sed -n 's/^#define ZLINK_VERSION_PATCH //p' "${SNAPSHOT_BINDING_ROOT}/include/zlink.h" | head -n1)"
+[[ "${SNAPSHOT_MODULE_PATH}" == "${MODULE_PATH}" ]] || {
+  echo "Go module path changed between worktree and source snapshot" >&2
+  exit 1
+}
+[[ "${SNAPSHOT_CORE_VERSION}" == "${CORE_VERSION}" ]] || {
+  echo "Go header version changed between worktree and source snapshot" >&2
+  exit 1
+}
 mkdir -p "${STAGE_MODULE}"
-cp -a "${BINDING_ROOT}/." "${STAGE_MODULE}/"
+cp -a "${SNAPSHOT_BINDING_ROOT}/." "${STAGE_MODULE}/"
 rm -rf -- "${STAGE_MODULE:?}/native"
 mkdir -p "${STAGE_MODULE}/native"
 
@@ -143,11 +162,13 @@ fi
 PROXY_ROOT="${OUTPUT_ROOT}/proxy"
 VERSION_ROOT="${PROXY_ROOT}/${MODULE_PATH}/@v"
 MODULE_ZIP="${VERSION_ROOT}/${PACKAGE_VERSION}.zip"
+MODULE_ZIP_TMP="${STAGE_ROOT}/module.zip"
 mkdir -p "${VERSION_ROOT}"
 (
   cd "${STAGE_ROOT}"
-  zip -q -r -X "${MODULE_ZIP}" "${MODULE_PATH}@${PACKAGE_VERSION}"
+  zip -q -r -X "${MODULE_ZIP_TMP}" "${MODULE_PATH}@${PACKAGE_VERSION}"
 )
+mv -- "${MODULE_ZIP_TMP}" "${MODULE_ZIP}"
 cp "${STAGE_MODULE}/go.mod" "${VERSION_ROOT}/${PACKAGE_VERSION}.mod"
 printf '{"Version":"%s","Time":"%s"}\n' \
   "${PACKAGE_VERSION}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -252,12 +273,49 @@ ZIP_SHA256="$(sha256sum "${MODULE_ZIP}" | awk '{print $1}')"
 HEADER_SHA256="$(dir_hash "${STAGE_MODULE}/include")"
 SOURCE_SHA256="$(dir_hash "${STAGE_MODULE}")"
 EVIDENCE="${OUTPUT_ROOT}/go-package-${PACKAGE_VERSION}.json"
-MODULE_ZIP="${MODULE_ZIP}" MODULE_ZIP_SHA256="${ZIP_SHA256}" MODULE_PATH="${MODULE_PATH}" PACKAGE_VERSION="${PACKAGE_VERSION}" PLATFORMS="${PLATFORMS}" HEADER_SHA256="${HEADER_SHA256}" SOURCE_SHA256="${SOURCE_SHA256}" EVIDENCE="${EVIDENCE}" node <<'NODE'
+SOURCE_REVISION="$(git -C "${REPO_ROOT}" rev-parse HEAD)"
+SOURCE_MANIFEST="${OUTPUT_ROOT}/go-source-manifest-${PACKAGE_VERSION}.json"
+PACKAGE_SCRIPT_SHA256="$(sha256sum "${SCRIPT_DIR}/build-wsl.sh" | awk '{print $1}')"
+MODULE_PATH="${MODULE_PATH}" PACKAGE_VERSION="${PACKAGE_VERSION}" SOURCE_REVISION="${SOURCE_REVISION}" STAGE_MODULE="${STAGE_MODULE}" SOURCE_MANIFEST="${SOURCE_MANIFEST}" node <<'NODE'
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+
+function filesUnder(root, relative = '') {
+  const current = path.join(root, relative);
+  return fs.readdirSync(current, {withFileTypes: true}).sort((a, b) => a.name.localeCompare(b.name)).flatMap(entry => {
+    const entryRelative = path.join(relative, entry.name);
+    if (entry.isDirectory()) return filesUnder(root, entryRelative);
+    const content = fs.readFileSync(path.join(root, entryRelative));
+    return [{
+      path: entryRelative.split(path.sep).join('/'),
+      sha256: crypto.createHash('sha256').update(content).digest('hex'),
+      mode: fs.statSync(path.join(root, entryRelative)).mode & 0o777,
+    }];
+  });
+}
+
+const manifest = {
+  schema: 1,
+  module: process.env.MODULE_PATH,
+  version: process.env.PACKAGE_VERSION,
+  sourceRevision: process.env.SOURCE_REVISION,
+  files: filesUnder(process.env.STAGE_MODULE),
+};
+fs.writeFileSync(process.env.SOURCE_MANIFEST, JSON.stringify(manifest, null, 2) + '\n');
+NODE
+SOURCE_MANIFEST_SHA256="$(sha256sum "${SOURCE_MANIFEST}" | awk '{print $1}')"
+MODULE_ZIP="${MODULE_ZIP}" MODULE_ZIP_SHA256="${ZIP_SHA256}" MODULE_PATH="${MODULE_PATH}" PACKAGE_VERSION="${PACKAGE_VERSION}" PLATFORMS="${PLATFORMS}" HEADER_SHA256="${HEADER_SHA256}" SOURCE_SHA256="${SOURCE_SHA256}" SOURCE_REVISION="${SOURCE_REVISION}" SOURCE_MANIFEST="${SOURCE_MANIFEST}" SOURCE_MANIFEST_SHA256="${SOURCE_MANIFEST_SHA256}" PACKAGE_SCRIPT="${SCRIPT_DIR}/build-wsl.sh" PACKAGE_SCRIPT_SHA256="${PACKAGE_SCRIPT_SHA256}" EVIDENCE="${EVIDENCE}" node <<'NODE'
 const fs = require('fs');
 const record = {
   format: 1,
   module: process.env.MODULE_PATH,
   version: process.env.PACKAGE_VERSION,
+  sourceRevision: process.env.SOURCE_REVISION,
+  sourceManifest: process.env.SOURCE_MANIFEST,
+  sourceManifestSha256: process.env.SOURCE_MANIFEST_SHA256,
+  packageScript: process.env.PACKAGE_SCRIPT,
+  packageScriptSha256: process.env.PACKAGE_SCRIPT_SHA256,
   moduleZip: process.env.MODULE_ZIP,
   moduleZipSha256: process.env.MODULE_ZIP_SHA256,
   platforms: process.env.PLATFORMS.split(','),

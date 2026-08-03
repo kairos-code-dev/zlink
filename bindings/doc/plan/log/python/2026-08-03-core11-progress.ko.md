@@ -14,8 +14,8 @@ V11 승인 evidence의 identity 확인 및 독립 frontier reviewer의 최종 `C
 
 ## 2026-08-04 current recheck
 
-현재 branch의 `HEAD`는 `427fbce0f5c0a3b6000506380b3d40521ed86413`이다. 현재 worktree를 기준으로
-다시 만든 Core ledger candidate는 다음 identity를 갖는다.
+package recheck 당시 branch의 `HEAD`는 `427fbce0f5c0a3b6000506380b3d40521ed86413`이었다. 당시
+worktree를 기준으로 다시 만든 Core ledger candidate는 다음 identity를 갖는다.
 
 ```text
 candidate: `.artifacts/v11/evidence/V11-M3-CORE-VERIFY/candidate-python-final-20260804.json`

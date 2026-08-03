@@ -37,12 +37,14 @@ internal sealed partial class ZLinkActorSessionManager
         ZLinkActorRuntimeState state,
         ZLinkBackendActorRef sourceActor)
     {
-        // Only the actor-side bound-session state is cleared: the local STREAM
-        // session stays bound to the (now remote) actor and must keep routing
-        // its dispatches and receiving relayed pushes (spec 31 §6 — only a
-        // rebind or disconnect invalidates the session binding).
+        // The source stops owning disconnect cleanup, but its exact
+        // bound-session fence remains available while Message Follow can
+        // forward delayed frames to the target actor. Only a rebind or
+        // disconnect invalidates that binding (spec 31 §6).
         if (state.TryGetBoundSession(out var boundSession))
-            runtime.UnbindActorSession(state.ActorId, boundSession.BindingToken);
+            runtime.RetireMigratedActorSession(
+                state.ActorId,
+                boundSession.BindingToken);
 
         var terminal = state.BeginHandlerActivationCompletion(
                 () =>

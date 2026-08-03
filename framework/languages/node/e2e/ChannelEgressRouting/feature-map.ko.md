@@ -1,27 +1,29 @@
 # Config 12 Node E2E feature map
 
-공통 Config 12의 exact scenario를 selector에 등록했지만, Node role server와
-process evidence가 아직 없다. `run_e2e.sh`는 이 상태를 `BLOCKED`로 반환하며
-성공으로 집계하지 않는다.
+공통 Config 12의 16개 exact scenario를 selector와 독립 role process에 연결했다.
+현재 working tree에서 각 scenario를 개별 실행한 결과와 role endpoint evidence가 확인됐다.
+이 표의 `process PASS`는 Config 12 targeted evidence이며, common 374개 exact inventory와
+Config 1-14 aggregate Framework gate의 완료를 뜻하지 않는다.
 
 | ID | 상태 | 후속 조건 |
 |---|---|---|
-| CH-E2E-01 | blocked | RouteMesh 양방향 request role과 evidence 구현 |
-| CH-E2E-02 | blocked | 다른 topology nested request role 구현 |
-| CH-E2E-03 | blocked | Spot callback·timer downstream request role 구현 |
-| CH-E2E-04A | blocked | ClientServer weight process evidence 구현 |
-| CH-E2E-04B | blocked | draining server admission evidence 구현 |
-| CH-E2E-04C | blocked | server restart readiness evidence 구현 |
-| CH-E2E-05 | blocked | one-way send process evidence 구현 |
-| CH-E2E-06 | blocked | duplicate egress startup failure 구현 |
-| CH-E2E-07A | blocked | missing channel NotFound process evidence 구현 |
-| CH-E2E-07B | blocked | local Server role remote selection 구현 |
-| CH-E2E-07C | blocked | known target Unavailable process evidence 구현 |
-| CH-E2E-08 | blocked | port 0 advertised endpoint evidence 구현 |
-| CH-E2E-09 | blocked | client/server role split evidence 구현 |
-| CH-E2E-10 | blocked | clientserver recovery evidence 구현 |
-| CH-E2E-11 | blocked | ChannelName-only route selection 구현 |
-| CH-E2E-12 | blocked | handler-originated one-way evidence 구현 |
+| CH-E2E-01 | process PASS | `run_e2e.sh CH01`; 양방향 RouteMesh request와 role evidence |
+| CH-E2E-02 | process PASS | `run_e2e.sh CH02`; nested request와 downstream evidence |
+| CH-E2E-03 | process PASS | `run_e2e.sh CH03`; Spot callback·timer downstream request evidence |
+| CH-E2E-04A | process PASS | `run_e2e.sh CH04A`; ClientServer weight selector evidence |
+| CH-E2E-04B | process PASS | `run_e2e.sh CH04B`; draining server admission evidence |
+| CH-E2E-04C | process PASS | `run_e2e.sh CH04C`; new lifecycle restart evidence |
+| CH-E2E-05 | process PASS | `run_e2e.sh CH05`; one-way send evidence |
+| CH-E2E-06 | process PASS | `run_e2e.sh CH06`; duplicate egress startup failure |
+| CH-E2E-07A | process PASS | `run_e2e.sh CH07A`; missing channel `NotFound` evidence |
+| CH-E2E-07B | process PASS | `run_e2e.sh CH07B`; local Server role remote selection |
+| CH-E2E-07C | process PASS | `run_e2e.sh CH07C`; known target retained as `NotConnected`, request `Unavailable` |
+| CH-E2E-08 | process PASS | `run_e2e.sh CH08`; handler object egress evidence |
+| CH-E2E-09 | process PASS | `run_e2e.sh CH09`; port 0 advertised endpoint와 split role status |
+| CH-E2E-10 | process PASS | `run_e2e.sh CH10`; ClientServer recovery evidence |
+| CH-E2E-11 | process PASS | `run_e2e.sh CH11`; ChannelName-only route selection |
+| CH-E2E-12 | process PASS | `run_e2e.sh CH12`; handler-originated one-way evidence |
 
-`blocked`는 구현 완료나 PASS가 아니다. ND-E2E-IMP-001과 ND-E2E-IMP-002의
-후속 작업 입력으로 유지한다.
+`process PASS`는 각 selector의 fresh process 결과다. common exact inventory의 누락, 다른
+Config의 blocker, aggregate·coverage·CI 결과를 승격하지 않으며, 해당 조건은 ND-E2E-IMP-001과
+ND-E2E-IMP-002에서 별도로 판정한다.

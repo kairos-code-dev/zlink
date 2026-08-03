@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -14,6 +15,7 @@
 #include <future>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
@@ -62,6 +64,51 @@ struct failure_trace_t
             std::cerr << "app host test failed during phase: " << phase << '\n';
         }
     }
+};
+
+class blocking_stop_service_t final : public zlink::framework::hosted_service_t
+{
+  public:
+    void start (zlink::framework::service_provider_t &) override
+    {
+        std::lock_guard lock (_mutex);
+        _started = true;
+        _changed.notify_all ();
+    }
+
+    void stop () noexcept override
+    {
+        std::unique_lock lock (_mutex);
+        _stop_entered = true;
+        _changed.notify_all ();
+        _changed.wait (lock, [&] { return _release_stop; });
+    }
+
+    bool wait_started (std::chrono::milliseconds timeout)
+    {
+        std::unique_lock lock (_mutex);
+        return _changed.wait_for (lock, timeout, [&] { return _started; });
+    }
+
+    bool wait_stop_entered (std::chrono::milliseconds timeout)
+    {
+        std::unique_lock lock (_mutex);
+        return _changed.wait_for (lock, timeout, [&] { return _stop_entered; });
+    }
+
+    void release_stop ()
+    {
+        std::lock_guard lock (_mutex);
+        _release_stop = true;
+        _changed.notify_all ();
+    }
+
+  private:
+    std::mutex _mutex;
+    std::condition_variable _changed;
+    bool _started = false;
+    bool _stop_entered = false;
+    bool _release_stop = false;
 };
 
 std::uint32_t current_process_id () noexcept
@@ -1741,6 +1788,42 @@ int main ()
         return 16;
     }
 #endif
+
+    auto bounded_shutdown_app = zlink::framework::app_t::create ();
+    bounded_shutdown_app.add_zlink_framework (
+      [] (zlink::framework::zlink_framework_options_t &) {});
+    auto blocking_service = std::make_unique<blocking_stop_service_t> ();
+    auto *blocking_service_ptr = blocking_service.get ();
+    bounded_shutdown_app.add_hosted_service (std::move (blocking_service));
+    int bounded_shutdown_exit_code = -1;
+    std::thread bounded_shutdown_thread ([&] {
+        bounded_shutdown_exit_code = bounded_shutdown_app.run (1, argv);
+    });
+    if (!blocking_service_ptr->wait_started (std::chrono::seconds (1))) {
+        blocking_service_ptr->release_stop ();
+        bounded_shutdown_app.stop ();
+        bounded_shutdown_thread.join ();
+        return 70;
+    }
+    const auto bounded_shutdown_started = std::chrono::steady_clock::now ();
+    auto bounded_shutdown_task = bounded_shutdown_app.shutdown (
+      std::chrono::milliseconds (100));
+    const auto &bounded_shutdown_result = bounded_shutdown_task.result ();
+    const auto bounded_shutdown_elapsed =
+      std::chrono::steady_clock::now () - bounded_shutdown_started;
+    const bool bounded_shutdown_terminal =
+      bounded_shutdown_result
+      && bounded_shutdown_result.value ().outcome
+           == zlink::framework::termination_outcome_t::force_stopped
+      && bounded_shutdown_result.value ().reason
+           == zlink::framework::termination_reason_t::deadline_exceeded
+      && bounded_shutdown_elapsed < std::chrono::seconds (1)
+      && blocking_service_ptr->wait_stop_entered (std::chrono::seconds (1));
+    blocking_service_ptr->release_stop ();
+    bounded_shutdown_thread.join ();
+    if (!bounded_shutdown_terminal || bounded_shutdown_exit_code != 0) {
+        return 71;
+    }
 
     trace.success = true;
     return 0;

@@ -21,7 +21,7 @@ export function locationOptions(options: ZLinkLocationOptions): void {
     .ownerLeaseRenewIntervalMs(500)
     .ownerLeaseRenewTimeoutMs(250)
     .ownerLeaseFencingMarginMs(500)
-    .ownerLeaseTtlMs(3000)
+    .ownerLeaseTtlMs(30_000)
     .routeCacheMaxAgeMs(500)
     .messageFollowDurationMs(6000);
 }

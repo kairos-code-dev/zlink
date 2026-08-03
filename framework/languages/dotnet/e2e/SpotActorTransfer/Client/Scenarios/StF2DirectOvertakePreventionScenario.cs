@@ -20,7 +20,10 @@ internal static class StF2DirectOvertakePreventionScenario
                 context.NodeA,
                 actorId,
                 new HandoffPacket("ST-F2", marker));
-        await context.WaitRuntimeEvidenceAsync(context.NodeA,
+        // The authority is committed before this call, so the global Actor
+        // ID send arrives at target ingress and must wait behind the imported
+        // backlog. The source only performs Message Follow relay.
+        await context.WaitRuntimeEvidenceAsync(context.NodeB,
             $"handoff_backlog actor={actorId} arrival=1");
         await context.ReleaseJoinedGateAsync(context.NodeB, spotId);
         ZlinkStreamAssert.Ensure((await joinTask).Accepted, "ST-F2 transfer was rejected.");

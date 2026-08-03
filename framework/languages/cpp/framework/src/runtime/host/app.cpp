@@ -3579,15 +3579,15 @@ void app_t::run_shared_shutdown (
                     : termination_outcome_t::stopped,
       terminal_reason};
     state.stop_requested.store (true, std::memory_order_release);
+    bool teardown_completed = true;
     {
         std::unique_lock lock (state.termination_teardown_mutex);
         if (state.run_active) {
-            state.termination_teardown_changed.wait (
-              lock, [&] { return state.teardown_complete; });
+            teardown_completed = state.termination_teardown_changed.wait_until (
+              lock, deadline_at, [&] { return state.teardown_complete; });
         }
     }
-    if (terminal.outcome == termination_outcome_t::stopped
-        && std::chrono::steady_clock::now () >= deadline_at) {
+    if (!teardown_completed && terminal.outcome == termination_outcome_t::stopped) {
         terminal.outcome = termination_outcome_t::force_stopped;
         terminal.reason = termination_reason_t::deadline_exceeded;
     }

@@ -13,6 +13,13 @@ TEMP_DIR="$(mktemp -d)"
 EVIDENCE_FILE="$LOG_DIR/evidence.jsonl"
 mkdir -p "$LOG_DIR"
 
+BINDING_VERSION="$(awk -F'"' '$1 ~ /^zlinkBindings[[:space:]]*=/ { print $2; exit }' \
+  "$JAVA_ROOT/gradle/libs.versions.toml")"
+CORE_PACKAGE_PREFIX=""
+CORE_PACKAGE_EVIDENCE=""
+CANDIDATE_CORE_VERSION=""
+CANDIDATE_RUNTIME_SHA256=""
+
 implemented_process=(SA-E2E-01 SA-E2E-05 SA-E2E-08 SA-E2E-09 SA-E2E-14 SA-E2E-20)
 implemented_regression=(SA-REG-01 SA-REG-02 SA-REG-03)
 implemented=("${implemented_process[@]}" "${implemented_regression[@]}")
@@ -40,34 +47,73 @@ resolve_candidate() {
     echo "ZLINK_LOCAL_PACKAGE_ROOT must identify the isolated JVM binding candidate" >&2
     return 1
   fi
+  if [[ -z "${ZLINK_CORE_PACKAGE_PREFIX:-}" || -z "${ZLINK_CORE_PACKAGE_EVIDENCE:-}" ]]; then
+    echo "ZLINK_CORE_PACKAGE_PREFIX and ZLINK_CORE_PACKAGE_EVIDENCE must identify the approved Core package" >&2
+    return 1
+  fi
+  [[ -d "$ZLINK_CORE_PACKAGE_PREFIX" ]] || {
+    echo "approved Core package prefix does not exist: $ZLINK_CORE_PACKAGE_PREFIX" >&2
+    return 1
+  }
+  [[ -f "$ZLINK_CORE_PACKAGE_EVIDENCE" ]] || {
+    echo "approved Core package evidence does not exist: $ZLINK_CORE_PACKAGE_EVIDENCE" >&2
+    return 1
+  }
+  CORE_PACKAGE_PREFIX="$(realpath "$ZLINK_CORE_PACKAGE_PREFIX")"
+  CORE_PACKAGE_EVIDENCE="$(realpath "$ZLINK_CORE_PACKAGE_EVIDENCE")"
+  node "$REPO_ROOT/scripts/local-package/java/verify-core-input.mjs" \
+    --prefix "$CORE_PACKAGE_PREFIX" \
+    --core-package-evidence "$CORE_PACKAGE_EVIDENCE" \
+    >"$TEMP_DIR/core-package-summary.json"
+
   CANDIDATE_JAR="$(find "$ZLINK_LOCAL_PACKAGE_ROOT/maven/systems/zlink/zlink" \
-    -path '*/10.6.3/zlink-10.6.3.jar' -type f -print -quit)"
+    -path "*/$BINDING_VERSION/zlink-$BINDING_VERSION.jar" -type f -print -quit)"
   if [[ -z "$CANDIDATE_JAR" ]]; then
-    echo "zlink Java binding candidate 10.6.3 was not found" >&2
+    echo "zlink Java binding candidate $BINDING_VERSION was not found" >&2
     return 1
   fi
   CANDIDATE_JAR="$(realpath "$CANDIDATE_JAR")"
   CANDIDATE_SHA256="$(sha256sum "$CANDIDATE_JAR" | awk '{print $1}')"
+
+  local provenance="$TEMP_DIR/candidate-core-package-provenance.json"
+  unzip -p "$CANDIDATE_JAR" META-INF/zlink/core-package-provenance.json >"$provenance"
+  read -r CANDIDATE_CORE_VERSION CANDIDATE_RUNTIME_SHA256 < <(
+    node - "$provenance" <<'NODE'
+const fs = require('node:fs');
+const provenance = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const runtime = provenance.files?.find(record =>
+  record.path === `lib/libzlink.so.${provenance.version}`);
+if (!runtime) throw new Error('candidate Core provenance has no versioned runtime record');
+process.stdout.write(`${provenance.version} ${runtime.sha256}\n`);
+NODE
+  )
 }
 
 print_candidate() {
   echo "binding_candidate=$CANDIDATE_JAR"
   echo "$CANDIDATE_SHA256  $CANDIDATE_JAR"
-  local core_runtime="$REPO_ROOT/core/build/lib/libzlink.so"
-  local native_entry="native/linux-x86_64/libzlink.so.10.6.0"
-  local core_sha packaged_sha native_copy
+  local core_runtime="$CORE_PACKAGE_PREFIX/lib/libzlink.so"
+  local native_entry="native/linux-x86_64/libzlink.so"
+  local core_sha packaged_sha native_copy core_package_version
+  core_package_version="$(node -e \
+    'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1])).version)' \
+    "$TEMP_DIR/core-package-summary.json")"
+  [[ "$CANDIDATE_CORE_VERSION" == "$core_package_version" ]] || {
+    echo "candidate Core version does not match approved Core package" >&2
+    echo "candidate=$CANDIDATE_CORE_VERSION approved=$core_package_version" >&2
+    return 1
+  }
   core_sha="$(sha256sum "$core_runtime" | awk '{print $1}')"
   packaged_sha="$(unzip -p "$CANDIDATE_JAR" "$native_entry" | sha256sum | awk '{print $1}')"
-  if [[ "$packaged_sha" != "$core_sha" ]]; then
-    echo "candidate native runtime does not match core/build" >&2
+  if [[ "$packaged_sha" != "$core_sha" || "$packaged_sha" != "$CANDIDATE_RUNTIME_SHA256" ]]; then
+    echo "candidate native runtime does not match approved Core package" >&2
     echo "core_sha=$core_sha packaged_sha=$packaged_sha" >&2
     return 1
   fi
-  native_copy="$(mktemp)"
+  native_copy="$TEMP_DIR/candidate-libzlink.so"
   unzip -p "$CANDIDATE_JAR" "$native_entry" >"$native_copy"
   echo "core_runtime_sha256=$core_sha"
   readelf -n "$native_copy" | rg 'Build ID'
-  rm -f "$native_copy"
 }
 
 run_gradle_with_candidate() {
@@ -79,6 +125,7 @@ run_gradle_with_candidate() {
       ZLINK_LOCAL_PACKAGE_ROOT="$ZLINK_LOCAL_PACKAGE_ROOT" \
       ZLINK_EXPECTED_BINDING_JAR="$CANDIDATE_JAR" \
       ZLINK_EXPECTED_BINDING_SHA256="$CANDIDATE_SHA256" \
+      ZLINK_EXPECTED_BINDING_VERSION="$BINDING_VERSION" \
       ./gradlew \
         -Pzlink.localPackageRoot="$ZLINK_LOCAL_PACKAGE_ROOT" \
         --refresh-dependencies \
@@ -95,6 +142,7 @@ build_role() {
       ZLINK_LOCAL_PACKAGE_ROOT="$ZLINK_LOCAL_PACKAGE_ROOT" \
       ZLINK_EXPECTED_BINDING_JAR="$CANDIDATE_JAR" \
       ZLINK_EXPECTED_BINDING_SHA256="$CANDIDATE_SHA256" \
+      ZLINK_EXPECTED_BINDING_VERSION="$BINDING_VERSION" \
       ../../../gradlew \
         -Pzlink.localPackageRoot="$ZLINK_LOCAL_PACKAGE_ROOT" \
         --refresh-dependencies \

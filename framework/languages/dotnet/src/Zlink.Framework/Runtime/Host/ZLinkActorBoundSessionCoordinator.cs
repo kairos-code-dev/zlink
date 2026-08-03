@@ -562,6 +562,14 @@ internal sealed class ZLinkActorBoundSessionCoordinator
         _boundSessions.Unregister(actorId, bindingToken);
     }
 
+    public void RetireMigratedActorSession(string actorId, string bindingToken)
+    {
+        // The source actor no longer owns disconnect cleanup after a move, but
+        // it must retain the exact binding fence while Message Follow can
+        // forward delayed frames to the target actor.
+        _boundSessions.Unregister(actorId, bindingToken);
+    }
+
     public void TombstoneActorSession(
         string actorId,
         ZLinkActorBoundSession expected)

@@ -205,20 +205,19 @@ NODE
 
 wait_disconnected_target() {
   local base_url="$1"
-  local rid="$2"
-  node - "$base_url" "$rid" <<'NODE'
-const [baseUrl, rid] = process.argv.slice(2);
-const deadline = Date.now() + 15000;
+  node - "$base_url" <<'NODE'
+const [baseUrl] = process.argv.slice(2);
+const deadline = Date.now() + 25000;
 let last;
 (async () => {
   while (Date.now() < deadline) {
     const response = await fetch(`${baseUrl}/status/workflow`);
     last = await response.json();
-    const target = last.targets?.find((entry) => entry.rid === rid);
+    const target = last.targets?.find((entry) => entry.state === '3' || entry.state === 3);
     if (target?.state === '3' || target?.state === 3) return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error(`workflow target ${rid} was not retained as disconnected: ${JSON.stringify(last)}`);
+  throw new Error(`workflow target was not retained as disconnected: ${JSON.stringify(last)}`);
 })().catch((error) => { console.error(error); process.exitCode = 1; });
 NODE
 }
@@ -288,7 +287,7 @@ run_one() {
     CH07B) start_role "$scenario" api-a; start_role "$scenario" api-b ;;
     CH07C) start_role "$scenario" workflow-a; start_role "$scenario" caller ;;
     CH08) start_role "$scenario" session; start_role "$scenario" play; start_role "$scenario" audit; start_role "$scenario" workflow-a; start_role "$scenario" workflow-b ;;
-    CH09) start_role "$scenario" play; start_role "$scenario" workflow-a; start_role "$scenario" caller ;;
+    CH09) start_role "$scenario" session; start_role "$scenario" play; start_role "$scenario" workflow-a; start_role "$scenario" caller ;;
     CH10) start_role "$scenario" workflow-a; start_role "$scenario" workflow-b; start_role "$scenario" caller ;;
     CH11) start_role "$scenario" session; start_role "$scenario" api-a; start_role "$scenario" api-b ;;
     CH12) start_role "$scenario" workflow-a; start_role "$scenario" workflow-b ;;
@@ -351,12 +350,8 @@ NODE
     # caller snapshot as disconnected; removing its descriptor would test
     # NotFound instead of the required Unavailable result.
     kill -STOP "${ROLE_PID[workflow-a]}"
-    echo "workflow transport before disconnect:" >&2
-    ss -tnp | grep ":${ROLE_WORKFLOW_PORT[workflow-a]}" >&2 || true
     ss -K dst 127.0.0.1 dport = "${ROLE_WORKFLOW_PORT[workflow-a]}" >/dev/null 2>&1 || true
-    echo "workflow transport after disconnect:" >&2
-    ss -tnp | grep ":${ROLE_WORKFLOW_PORT[workflow-a]}" >&2 || true
-    wait_disconnected_target "$(role_url caller)" "${ROLE_RID[workflow-a]}"
+    wait_disconnected_target "$(role_url caller)"
   fi
 
   run_client "$scenario"

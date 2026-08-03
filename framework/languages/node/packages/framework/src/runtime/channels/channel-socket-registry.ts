@@ -483,17 +483,20 @@ export class ZLinkChannelSocketRegistry {
     current.callbacksByAlias.delete(connectionId);
     this.clientServerReadyIdentities.delete(connectionId);
     if (current.aliases.size > 0) return;
-    await this.disposeClientServerPhysical(connectionId, current);
+    await this.disposeClientServerPhysical(connectionId, current, false);
   }
 
   private async disposeClientServerPhysical(
     connectionId: string,
-    current: ClientServerPhysicalConnection
+    current: ClientServerPhysicalConnection,
+    disconnectTransport = true
   ): Promise<void> {
-    try {
-      current.dealer.disconnect(current.endpoint);
-    } catch {
-      // Disposal below is the terminal cleanup if the transport already closed.
+    if (disconnectTransport) {
+      try {
+        current.dealer.disconnect(current.endpoint);
+      } catch {
+        // Disposal below is the terminal cleanup if the transport already closed.
+      }
     }
     const submitter = this.submitters.get(current.dealer);
     submitter?.rejectActive(new ZLinkRouteDisconnectedError(

@@ -20,7 +20,10 @@ internal static class StF1InFlightHandoffOrderScenario
                 context.NodeA,
                 actorId,
                 new HandoffPacket("ST-F1", marker));
-        await context.WaitRuntimeEvidenceAsync(context.NodeA,
+        // After authority commit, the public Actor ID route follows the
+        // target. The target ingress owns the backlog while OnJoinedActorAsync
+        // is waiting; the source only records the Message Follow relay.
+        await context.WaitRuntimeEvidenceAsync(context.NodeB,
             $"handoff_backlog actor={actorId} arrival=2");
         var sourceEvidence = await context.GetEvidenceAsync(context.NodeA);
         ZlinkStreamAssert.Ensure(

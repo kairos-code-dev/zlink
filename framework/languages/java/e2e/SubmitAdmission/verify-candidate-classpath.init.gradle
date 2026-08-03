@@ -3,9 +3,11 @@ import java.security.MessageDigest
 gradle.projectsEvaluated {
     def expectedJar = System.getenv("ZLINK_EXPECTED_BINDING_JAR")
     def expectedSha256 = System.getenv("ZLINK_EXPECTED_BINDING_SHA256")
-    if (!expectedJar || !expectedSha256) {
+    def expectedVersion = System.getenv("ZLINK_EXPECTED_BINDING_VERSION")
+    if (!expectedJar || !expectedSha256 || !expectedVersion) {
         throw new GradleException(
-            "ZLINK_EXPECTED_BINDING_JAR and ZLINK_EXPECTED_BINDING_SHA256 are required")
+            "ZLINK_EXPECTED_BINDING_JAR, ZLINK_EXPECTED_BINDING_SHA256 and " +
+                "ZLINK_EXPECTED_BINDING_VERSION are required")
     }
 
     gradle.rootProject.allprojects { project ->
@@ -63,9 +65,9 @@ gradle.projectsEvaluated {
                 }
                 def resolvedSha256 = digest.digest().encodeHex().toString()
 
-                if (component.version != "10.6.3") {
+                if (component.version != expectedVersion) {
                     throw new GradleException(
-                        "Expected systems.zlink:zlink:10.6.3, resolved ${component.displayName}")
+                        "Expected systems.zlink:zlink:${expectedVersion}, resolved ${component.displayName}")
                 }
                 if (!resolvedSha256.equalsIgnoreCase(expectedSha256)) {
                     throw new GradleException(

@@ -1161,6 +1161,46 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
+    public void MigratedActorSession_RetainsFenceAfterSourceCleanupRegistryRetires()
+    {
+        var localNode = new CapturingSpotNode();
+        var states = new Dictionary<string, ZLinkActorRuntimeState>(StringComparer.Ordinal);
+        var coordinator = new ZLinkActorBoundSessionCoordinator(
+            actorId => states.TryGetValue(actorId, out var state)
+                ? state
+                : states[actorId] = new ZLinkActorRuntimeState(actorId),
+            () => localNode,
+            _ => localNode,
+            new ZLinkFrameworkRegistration(),
+            () => CancellationToken.None);
+        var actorId = "actor-migrated-session-fence";
+        var sessionRid = RoutingId.From("session-migrated");
+        var bindingToken = ZLinkActorBoundSessionBindingToken.Native(sessionRid);
+
+        coordinator.BindActorSession(
+            actorId,
+            RoutingId.From("session-node"),
+            sessionRid,
+            bindingToken,
+            bindingGeneration: 4,
+            objectGeneration: 7,
+            authorityOwnerGeneration: 11,
+            meshName: "mesh-a",
+            targetNodeGeneration: 13,
+            ownerLeaseGeneration: 17,
+            sessionOwnerNodeGeneration: 19);
+
+        coordinator.RetireMigratedActorSession(actorId, bindingToken);
+        coordinator.CleanupActorSessionsForSession(sessionRid);
+
+        Assert.True(coordinator.TryGetActorBoundSession(actorId, out var retained));
+        Assert.Equal(bindingToken, retained.BindingToken);
+        Assert.Equal(7UL, retained.ObjectGeneration);
+        Assert.Equal(11UL, retained.AuthorityOwnerGeneration);
+        Assert.Equal(17UL, retained.OwnerLeaseGeneration);
+    }
+
+    [Fact]
     public void ActorMessageFollowerToRelay_RejectsHopLimitWithoutOverflow()
     {
         var lease = new ZLinkActorMessageFollowLease(TimeProvider.System);

@@ -4,11 +4,13 @@
 기록하고, common contract와 실제 process evidence가 없는 항목은 완료로 표시하지
 않는다.
 
-마지막 갱신일: 2026-08-03 08:50 KST
+마지막 갱신일: 2026-08-03 09:10 KST
 
-이번 runtime unit 재검증의 명령·exit code·실행 경로는
-[`log/20260803-0850-java-kotlin-runtime-unit-progress.ko.md`](log/20260803-0850-java-kotlin-runtime-unit-progress.ko.md)에
-기록했다. 직전 source/package/API 재검증은
+이번 runtime·package·SubmitAdmission runner 재검증의 명령·exit code·실행 경로는
+[`log/20260803-0910-java-kotlin-runtime-package-runner-progress.ko.md`](log/20260803-0910-java-kotlin-runtime-package-runner-progress.ko.md)에
+기록했다. 직전 runtime unit 재검증은
+[`log/20260803-0850-java-kotlin-runtime-unit-progress.ko.md`](log/20260803-0850-java-kotlin-runtime-unit-progress.ko.md),
+그 이전 source/package/API 재검증은
 [`log/20260803-0829-java-kotlin-runtime-spec-progress.ko.md`](log/20260803-0829-java-kotlin-runtime-spec-progress.ko.md),
 이전 baseline은 [`log/20260803-0724-current-audit.ko.md`](log/20260803-0724-current-audit.ko.md)에서 확인할 수 있다.
 현재 branch에 push된 최종 revision은 `323fdcc3548bc90345b5b9f08044000e9eb667a7`이다.
@@ -22,7 +24,7 @@ Kotlin의 exact interface, feature-map, runner, 현재 실패 원인은 각 항�
 ## 공통 실행 규칙 — 네 ledger 동시 진행
 
 이 문서의 Java/Kotlin 작업은 C++, .NET, Node.js 작업과 동시에 진행한다. 현재 시스템 시각
-`2026-08-03 08:50 KST (+09:00)` 기준 마감은 `2026-08-03 10:00 KST (+09:00)`이다. 마감 시점에
+`2026-08-03 09:10 KST (+09:00)` 기준 마감은 `2026-08-03 10:00 KST (+09:00)`이다. 마감 시점에
 완료하지 못한 항목은 완료로 표시하지 않고, 현재 조건과 blocker를 기록한 뒤 다음 결정을 기다린다.
 
 이 절에서 고정하는 것은 작업 간 경계, 하위 layer bug 처리, CPU·마감·log 위치처럼 지켜야 하는
@@ -308,13 +310,17 @@ source/test는 조사 대상 경로이며, 정식 source owner inventory에 등�
 
 ## 3. 현재 검증 결과
 
-이 절은 `cwd=framework/languages/java`에서 2026-08-03 08:50 현재 working tree를 기준으로
-실행한 결과다. 실행 시작 시 `HEAD`는 `b718b4d5cd7ed28f3e399339220b83431bdae902`였고, 결과는
-`323fdcc3548bc90345b5b9f08044000e9eb667a7`로 push했다. 다른 workstream의
+이 절은 `cwd=framework/languages/java`에서 2026-08-03 08:50 baseline과 09:10
+재검증을 함께 기록한다. 09:10 재검증의 상세 결과는 위 log에 있으며, 다른 workstream의
 변경은 되돌리거나 정리하지 않았다.
 
 | 검증 | 결과 | 현재 의미 |
 |---|---|---|
+| `./gradlew --no-daemon --no-parallel --max-workers=5 --rerun-tasks :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-kotlin:contractTest :zlink-stream-connector:test :zlink-http-client:test :zlink-http-client-kotlin:test` (2026-08-03 09:10) | PASS, `37 actionable tasks: 37 executed`, Java core `726 tests` | 현재 source의 runtime unit·contract regression을 실제 재실행했다. E2E role process와 common inventory는 포함하지 않는다. |
+| 승인 Core 11.1.0 package preflight와 SubmitAdmission `SA-REG-02,SA-REG-03` (2026-08-03 09:10) | PASS, exit `0` | Java binding `11.1.1`이 승인 Core provenance/runtime hash와 일치하고, Java/Kotlin testRuntimeClasspath가 같은 candidate jar를 resolve하는지 확인했다. |
+| SubmitAdmission process `SA-E2E-01,05,08,09,14,20` (2026-08-03 09:10) | FAIL, role compile exit `1` | `ZLinkRouteSendContext`, `ZLinkSendContext`, `setWeight`, peer snapshot accessor가 현재 public API와 달라 process evidence를 만들지 못했다. E2E/sample blocker이며 runtime unit failure가 아니다. |
+| `SA-REG-01` common submit contract verifier (2026-08-03 09:10) | FAIL, exit `1` | `RuntimeShutdown`과 Config 13 literal semantic/coverage fragment를 찾지 못한 contract gate다. runtime test 실패로 해석하지 않는다. |
+| Java/Kotlin API snapshot 및 packaged consumer (2026-08-03 09:10) | PASS, exit `0` | Java hash `dd5f7c3e...d6d994`, Kotlin hash `0bf535f3...b4f287`; clean package consumer가 양쪽 모두 통과했다. |
 | `:zlink-framework-core:test`, `:zlink-framework-kotlin:test`, `:zlink-framework-kotlin:contractTest`, `:zlink-stream-connector:test`, `:zlink-http-client:test`, `:zlink-http-client-kotlin:test` | PASS, 37 actionable tasks. Java core는 726 tests를 실행했다. | HWM queue-only semantics, shutdown lease cleanup, stream drop/handler-less ownership, codec, actor/runtime, Kotlin facade/cancellation과 HTTP body-read deadline의 unit/contract 범위를 확인했다. common E2E aggregate, sample, CI path는 포함하지 않는다. |
 | Java/Kotlin runtime `integrationTest` | fresh PASS, 25 actionable tasks | 일반 Router request와 RouteMesh raw Mesh request를 포함한 현재 Java integration과 Kotlin integration이 통과했다. 이 결과는 common E2E aggregate·role evidence·API snapshot을 포함하지 않는다. |
 | `:zlink-framework-core:compileJava`와 Fanout contract test | PASS | `FanoutChannelBuilder.setRoutingIdPrefix`의 public builder와 fake backend 경로를 확인한다. |
@@ -1979,6 +1985,13 @@ common E2E inventory에 맞지 않는 assertion은 아래 변경 ID로 재검토
   `726 tests`가 PASS했다. 이 결과는 runtime unit/contract gate를 닫지만, common E2E
   documentation inventory를 포함한 full contract invocation은 아래 scenario 누락
   blocker 때문에 전체 CLEAN으로 올리지 않는다.
+- SubmitAdmission의 승인 package preflight와 `SA-REG-02`, `SA-REG-03`은 현재
+  `systems.zlink:zlink:11.1.1` candidate로 PASS했다. process selector는 role source의
+  `ZLinkRouteSendContext`, `ZLinkSendContext`, `setWeight`, peer snapshot accessor가
+  현재 public surface와 달라 compile 단계에서 중단했으므로 process evidence가 없다.
+- `SA-REG-01`은 runtime test가 아니라 공통 submit-contract verifier의 literal
+  `RuntimeShutdown`과 Config 13 semantic/coverage fragment 검사에서 FAIL했다. 이를
+  runtime gap 완료나 process 완료로 계산하지 않는다.
 - Java/Kotlin ST-A1 focused E2E는 통과했지만 ST-A2 이후 transfer, Config 10 전체,
   Config 14 process fixture는 아직 없다.
 - Java/Kotlin packaged consumer는 provider, HTTP, Stream artifact를 resolve하고 public

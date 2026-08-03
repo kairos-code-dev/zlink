@@ -401,7 +401,7 @@ process 완료를 판정하지 않았다. 상세 명령과 candidate 경계는
 | node --test --test-force-exit test/contract/documentation-regression.test.js | 통과, 17/17 | current Node ledger path와 문서 링크 regression은 통과. |
 | npm run typecheck | 통과, exit 0 | 현재 TypeScript source typecheck는 통과. |
 | npm run verify:m5-foundation | 2026-08-02 log에서 통과, 5/5 | 이번 live audit에서 재실행하지 않은 좁은 foundation 범위다. |
-| npm run verify:m6a-runtime | 2026-08-02 log에서 통과, 26/26 | 이번 live audit에서 재실행하지 않은 좁은 runtime 범위다. |
+| npm run verify:m6a-runtime | current run 27/27 | disconnected known-target regression을 포함한 좁은 runtime 범위다. |
 | npm run verify:m6b-runtime | 2026-08-02 log에서 통과, 43/43 | 이번 live audit에서 재실행하지 않은 좁은 runtime 범위다. |
 | npm run verify:m6c-runtime | 2026-08-02 log에서 통과, 79/79 | 이번 live audit에서 재실행하지 않은 좁은 runtime 범위다. |
 | Node E2E runner 전체 bash -n | 통과 | shell syntax만 검증. scenario dispatch와 process evidence는 검증하지 않음. |
@@ -438,7 +438,7 @@ process 완료를 판정하지 않았다. 상세 명령과 candidate 경계는
 |---|---|---|
 | package root export의 기본 경계 | 충족 | current `contract-surface.test.js` 38/38와 packaged consumer 7개가 framework, nestjs, locations, stream connector의 root/export 경계를 통과했다. |
 | 일부 backend public API-only 경계 | 충족 | `backend-public-api-only.test.js` 6/6. 실제 process call path와 role-server evidence까지 포함하지 않음. |
-| 좁은 runtime lifecycle·authority·deadline·cleanup·replay 범위 | 충족 | M5/M6 153개 test와 actor handoff focused test가 통과. 공통 전체 contract와 process evidence를 대체하지 않음. |
+| 좁은 runtime lifecycle·authority·deadline·cleanup·replay 범위 | 충족 | M5/M6 154개 test와 actor handoff focused test가 통과. 공통 전체 contract와 process evidence를 대체하지 않음. |
 | browser transport smoke | 충족 | Chromium 1/1. Node server public API parity와 전체 stream connector E2E는 별도. |
 | E2E client의 public package import 경계 | 정적 범위 충족 | 현재 Client subtree에서 `@zlink-systems/framework`와 `@zlink-systems/zlink` 직접 import file은 0개이며 backend public API-only 6/6이 통과했다. process boundary 전체는 미충족. |
 | Nest exact builder contract | 비-E2E 충족, process E2E 후속 | `configureInboundDispatch` declaration·runtime·Nest contract test와 checked-in exact member snapshot이 통과했다. process evidence만 ND-IMP-001 후속 조건이다. |
@@ -457,7 +457,7 @@ route replacement와 ND-IMP-006의 weight validation은 현재 source와 회귀 
 충족했다. 후속 fresh run에서 ND-IMP-004의 비-E2E package parity도 충족했지만, process E2E·sample
 gap은 아직 완료로 표시하지 않는다.
 
-M5/M6 runtime 회귀는 153/153이다. 현재 production unit·contract 범위는 59개 파일 1003/1003이다.
+M5/M6 runtime 회귀는 154/154이다. 현재 production unit·contract 범위는 59개 파일 1003/1003이다.
 이전 59개 파일 1001/1001 결과는 이번 후속 test 추가 전의 historical count이며 현재 수치로 대체한다.
 전체 Node test inventory는
 123개이며, browser·integration, E2E 또는 sample 소스를 읽는 test, native child process test를 후속
@@ -530,17 +530,19 @@ native artifact와 CI 범위다.
 
 | 범위 | 현재 결과 | 현재 gap |
 |---|---|---|
-| production contract·runtime | `build`와 `typecheck` 통과, `contract-surface` 38/38, backend boundary 6/6 | ND-IMP-001~006의 실제 process error·ownership·recovery evidence |
+| production contract·runtime | `build`와 `typecheck` 통과, `contract-surface` 38/38, backend boundary 6/6, M6A 27/27 | ND-IMP-001~006의 실제 process error·ownership·recovery evidence; ND-IMP-007·008은 targeted process까지 통과 |
 | package | `npm ls` 11.1.0 clean, packaged contract 7개 통과 | ND-IMP-004 native artifact와 role-server process |
 | common E2E exact set | common 374 / Node 207 / missing 171 / extra 4 | ND-E2E-IMP-001의 exact map·selector 정렬 |
-| aggregate·Config | Config 1-14 목록은 존재하지만 Config 12·14는 `BLOCKED` | ND-E2E-IMP-002의 status·evidence 기반 PASS 판정 |
+| aggregate·Config | Config 12의 16개 targeted process가 PASS, Config 14는 `BLOCKED` | common exact inventory와 Config 14, ND-E2E-IMP-002의 status·evidence 기반 aggregate 판정 |
 | selector·client boundary | Client 직접 Framework/binding import 정적 scan은 0개 | ND-E2E-IMP-003·004의 current process와 selector evidence |
 | process call path | TA-A1 route fence 실패, SA-E2E-14 native artifact 실패 | ND-E2E-IMP-005 owner fix와 fresh package process |
 | full verification | documentation regression은 17/17이지만 full E2E/coverage/CI는 미충족 | ND-TEST-003 |
 
-2026-08-03 후속 runtime audit에서 Instance terminal StoreVersion route 교체와 RouteMesh runtime
-weight validation 차이를 추가로 확인해 owner layer에서 수정했다. 현재 production source와 unit 범위의
-runtime gap은 수정됐고, process·native artifact·E2E evidence만 후속 조건으로 남아 있다. 상세 결과는
+2026-08-03 후속 runtime audit에서 Instance terminal StoreVersion route 교체, RouteMesh runtime
+weight validation, missing ClientServer error mapping과 known disconnected target mapping 차이를
+추가로 확인해 owner layer에서 수정했다. `ND-IMP-005`~`008`은 production source·unit과 관련 targeted
+process evidence까지 확보했고, `ND-IMP-001`~`004`의 broader process·native artifact·E2E evidence와
+aggregate 판정은 후속 조건으로 남아 있다. 상세 결과는
 [`2026-08-03 runtime gap 후속 구현`](log/2026-08-03-framework-runtime-spec-gap-audit.ko.md)을 따른다.
 
 Common ID별 누락 목록과 fresh command 결과는
@@ -624,6 +626,24 @@ CommonJS consumer를 통과했다. process E2E의 native role-server evidence는
 - 구현 내용: Nest builder가 `0..10000`을 즉시 검증한다. `ZLinkSpotNodeRuntimeManager`는 backend 호출 전에 같은 범위를 검증하고 `ZLinkConfigurationException`을 반환한다. valid value만 descriptor publication과 runtime map에 기록한다.
 - 회귀 test와 evidence: Nest module suite는 RouteMesh builder의 `0`, `10000`, `-1`, `10001`, fractional value를 검사하고 62/62로 통과했다. backend contract는 placement/channel runtime setter의 invalid input이 public configuration exception이고 backend 호출이 0회인지 검사하며 37/37로 통과했다.
 - 남은 조건: process에서 runtime weight descriptor가 remote selector에 반영되는 evidence는 E2E/aggregate 후속 범위다. local production validation과 unit regression은 완료로 판정한다.
+
+### ND-IMP-007 — 등록되지 않은 ClientServer channel의 public error mapping 불일치 (runtime·unit·CH05 process 완료)
+
+- 공통 spec 경로: `framework/doc/framework/common/spec/32-framework-error-model.ko.md`, `framework/doc/framework/common/e2e/config-12-channel-egress-routing.ko.md`의 CH-E2E-05
+- Node source·test 경로: `framework/languages/node/packages/framework/src/runtime/channels/channel-clients.ts`, `framework/languages/node/test/contract/channel-client.test.js`
+- 기존 실제 동작: 등록되지 않은 channel request가 public configuration error로 노출되어 공통 계약의 `NotFound`와 달랐다.
+- 기대 동작: channel registry에 대상이 없으면 내부 `RequestTargetNotFound`를 public `NotFound`로 변환하고, 실제 configuration conflict와 구분한다.
+- 구현 내용과 evidence: missing-channel 경로를 내부 target-not-found mapping으로 정렬했다. `channel-client.test.js` 93/93과 Config 12 CH05 process가 통과했다.
+- 남은 조건: 이 card 자체는 완료한다. 전체 common inventory와 aggregate process gate는 ND-E2E-IMP-001·002에서 별도로 판정한다.
+
+### ND-IMP-008 — 알려진 ClientServer target의 transport 단절을 NotFound로 소실하는 문제 (runtime·unit·CH07C process 완료)
+
+- 공통 spec 경로: `framework/doc/framework/common/spec/09-client-server-channel.ko.md:4.3`, `framework/doc/framework/common/spec/server/languages/node/interfaces/03-location-observability.ko.md`의 `NotConnected`, `framework/doc/framework/common/e2e/config-12-channel-egress-routing.ko.md`의 CH-E2E-07C
+- Node source·test 경로: `framework/languages/node/packages/framework/src/runtime/foundation/service-discovery-registry.ts`, `framework/languages/node/packages/framework/src/runtime/channels/channel-socket-registry.ts`, `framework/languages/node/packages/framework/src/runtime/channels/client-server-location-runtime.ts`, `framework/languages/node/packages/framework/src/runtime/channels/channel-outbound-operations.ts`, `framework/languages/node/test/m6a/m6a-runtime.contract.ts`
+- 기존 실제 동작: ready ClientServer transport가 끊기면 discovery descriptor를 삭제해 snapshot이 target 없는 `NotFound` 상태가 됐고, 이미 종료된 transport를 cleanup에서 다시 disconnect할 수 있었다.
+- 기대 동작: known target은 descriptor를 `NotConnected`로 관찰할 수 있어야 하며, ready selector가 없을 때 request는 public `Unavailable`로 종료해야 한다. reconnect admission은 같은 immutable descriptor revision에서 허용한다.
+- 구현 내용과 evidence: discovery에 내부 `disconnected` 상태와 reconnect admission을 추가하고, unexpected termination은 descriptor를 보존한 채 physical cleanup을 수행하도록 분리했다. `m6a-runtime.contract.ts` 27/27, 59-file unit inventory 1003/1003, Config 12 CH07C process가 통과했다. 초기 cleanup segfault 재현 뒤 explicit transport disconnect를 제거한 재실행도 통과했다.
+- 남은 조건: 이 card 자체는 완료한다. native artifact·aggregate·전체 common E2E gate는 별도 조건이다.
 
 ## 6. ND-E2E-IMP-* Node E2E implementation gap
 
@@ -759,7 +779,7 @@ gap은 다음 순서로 처리한다. 앞 단계가 확정되지 않으면 뒤 �
 | test/contract/contract-surface.test.js | 38/38 | checked-in snapshot, exact member negative comparison과 package/runtime export 경계를 유지한다. |
 | test/contract/backend-public-api-only.test.js | 5/5 | backend public API 사용 경계 유지. E2E Client 전체 import scan을 대체하지 않음. |
 | verify:m5-foundation | 5/5 | foundation admission과 topology 회귀 유지. |
-| verify:m6a-runtime | 26/26 | HWM, endpoint-only upgrade, reconnect/liveness와 admission 회귀 유지. |
+| verify:m6a-runtime | 27/27 | HWM, endpoint-only upgrade, reconnect/liveness, known disconnected target과 admission 회귀 유지. |
 | verify:m6b-runtime | 43/43 | routing, yield, actor order와 exactly-once 회귀 유지. |
 | verify:m6c-runtime | 79/79 | authority, deadline/cancellation, relocation, recovery, replay 회귀 유지. |
 | test:browser | Chromium 1/1 | browser transport smoke 유지. |
@@ -840,6 +860,7 @@ ND-TEST-003의 E2E/aggregate 부분은 unresolved로 유지한다.
 | ND-REG-008 | documentation fixture, bounded full test, coverage, skip/timeout/hang, aggregate child exit policy를 검사 | ND-TEST-002, ND-TEST-003, ND-E2E-IMP-005 | ENOENT·timeout·skip·partial을 성공으로 숨기지 않고 CI가 종료 |
 | ND-REG-009 | Instance terminal·recovery completion의 StoreVersion route replacement와 stale-generation fence를 검사 | ND-IMP-005 | M6B 43/43, completion·recovery route StoreVersion assertion 통과; process evidence는 후속 |
 | ND-REG-010 | Nest RouteMesh builder와 runtime placement/channel weight의 `0..10000` 및 public configuration error를 검사 | ND-IMP-006 | Nest 62/62, backend 37/37, invalid input에서 backend 호출 0회 |
+| ND-REG-011 | ClientServer missing-channel error와 known disconnected target의 descriptor 보존·public `Unavailable` mapping을 검사 | ND-IMP-007, ND-IMP-008 | channel-client 93/93, M6A 27/27, CH05·CH07C process PASS |
 
 ## 9. 완료 판정 checklist
 
@@ -921,11 +942,11 @@ ND-TEST-003의 E2E/aggregate 부분은 unresolved로 유지한다.
   environment blocker를 서로 구분한다.
 
 전체 checklist는 E2E·sample·process evidence가 남아 있어 완료로 표시하지 않는다. 다만
-비-E2E 반영 후 ND-IMP-001~006과 ND-TEST-002, ND-TEST-003의 비-E2E 조건은 fresh evidence로
+비-E2E 반영 후 ND-IMP-001~008과 ND-TEST-002, ND-TEST-003의 비-E2E 조건은 fresh evidence로
 확인했고, ND-TEST-001은 checked-in snapshot과 exact member 비교를 확보했다. ND-E2E-IMP-001~005,
 ND-TEST-003의 E2E/aggregate 조건과 ND-REG-005~008은 사용자가 제외한 후속 범위로 유지한다.
-ND-REG-001~004와 ND-REG-009~010은 현재 contract, error, content-type, package, StoreVersion route와
-weight validation 회귀 입력으로 반영했다.
+ND-REG-001~004와 ND-REG-009~011은 현재 contract, error, content-type, package, StoreVersion route,
+weight validation과 ClientServer disconnect/error mapping 회귀 입력으로 반영했다.
 
 ## 10. Framework spec 완료 gate와 sample 착수 조건
 
@@ -934,9 +955,9 @@ Framework spec 작업과 sample 작업은 한 문서에서 관리하지만 동�
 candidate에서만 sample 단계를 시작한다.
 
 - 9절 Contract, Runtime, E2E, POSD·DDD review와 Verification checklist가 모두 완료됐다.
-- `ND-IMP-001`~`006`, `ND-E2E-IMP-001`~`005`, `ND-TEST-001`~`003`이 완료 evidence와
+- `ND-IMP-001`~`008`, `ND-E2E-IMP-001`~`005`, `ND-TEST-001`~`003`이 완료 evidence와
   함께 닫혔다.
-- `ND-REG-001`~`010`이 통과하고 full test, coverage, CI, package consumer와 aggregate process E2E가
+- `ND-REG-001`~`011`이 통과하고 full test, coverage, CI, package consumer와 aggregate process E2E가
   같은 candidate에서 성공했다.
 - R3 final review의 미해결 Critical·High·Medium finding이 0개이고 최종 decision이 `CLEAN`이다.
 - 기준 commit 또는 immutable candidate SHA, 전체 변경 manifest와 실행 artifact가 기록됐다.

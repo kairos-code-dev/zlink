@@ -38,6 +38,8 @@ Runner는 Caller, Mesh target과 classic fanout publisher를 서로 다른 proce
 
 ```bash
 ZLINK_LOCAL_PACKAGE_ROOT=/path/to/candidate \
+ZLINK_CORE_PACKAGE_PREFIX=/path/to/approved/zlink-core/11.1.0 \
+ZLINK_CORE_PACKAGE_EVIDENCE=/path/to/core-package-20260801.json \
   ./framework/languages/java/e2e/SubmitAdmission/run_e2e.sh all
 
 ./framework/languages/java/e2e/SubmitAdmission/run_e2e.sh SA-E2E-02
@@ -45,9 +47,11 @@ ZLINK_LOCAL_PACKAGE_ROOT=/path/to/candidate \
 ```
 
 runner는 `SA-REG-02`와 `SA-REG-03`을 실행하기 전에 isolated Maven root를 Gradle에 직접 지정한다.
-각 module의 `testRuntimeClasspath`에서 `systems.zlink:zlink:10.6.3`이 정확히 한 번 resolve되고,
-resolved artifact의 SHA-256이 입력한 candidate와 같은지도 확인한다. shared package나 이전 artifact가
-선택되면 test를 시작하지 않는다.
+현재 `gradle/libs.versions.toml`의 `zlinkBindings` 버전이 각 module의 `testRuntimeClasspath`에서
+정확히 한 번 resolve되고, resolved artifact의 SHA-256이 입력한 candidate와 같은지도 확인한다.
+또한 `ZLINK_CORE_PACKAGE_PREFIX`와 `ZLINK_CORE_PACKAGE_EVIDENCE`가 가리키는 승인된 Core package의
+version·runtime hash·provenance와 binding jar의 embedded runtime을 비교한다. shared package,
+이전 artifact 또는 `core/build`의 다른 runtime이 선택되면 test를 시작하지 않는다.
 
 `all`은 process selector `SA-E2E-01·05·08·09·14·20`과 `SA-REG-01~03`을 실행한다. Process 완료 gate는
 `SA-E2E-01~20`과 `SA-REG-01~04`가 모두 구현되고 독립 evidence를 남긴 뒤에만 충족한다.

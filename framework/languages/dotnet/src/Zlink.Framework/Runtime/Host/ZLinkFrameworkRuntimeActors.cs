@@ -4041,6 +4041,15 @@ internal sealed partial class ZLinkFrameworkRuntime
         _actorBoundSessionCoordinator.UnbindActorSession(actorId, bindingToken);
     }
 
+    internal void RetireMigratedActorSession(
+        string actorId,
+        string bindingToken)
+    {
+        _actorBoundSessionCoordinator.RetireMigratedActorSession(
+            actorId,
+            bindingToken);
+    }
+
     internal void RemoveActorSessionBinding(
         string actorId,
         string bindingToken)

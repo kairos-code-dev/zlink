@@ -423,7 +423,11 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F1"* ]]; then
   require_runtime_marker backlog_enqueued
 fi
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F2"* ]]; then
-  require_marker_order actor-inflight-overtake- backlog_enqueued location_committed
+  # ST-F2 sends B1/B2 after the target authority is committed. They are
+  # target-ingress backlog records, so the runtime records handoff_backlog
+  # before replay publishes backlog_enqueued. The public scenario separately
+  # asserts B1,B2,D1 handler order.
+  require_marker_order actor-inflight-overtake- handoff_backlog backlog_enqueued
 fi
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F6"* ]]; then
   grep -h -E -q 'handoff_backlog actor=actor-inflight-req-.* kind=Request request_id=[1-9][0-9]* flags=[1-9][0-9]*' "$LOG_DIR"/actor-a.*.log

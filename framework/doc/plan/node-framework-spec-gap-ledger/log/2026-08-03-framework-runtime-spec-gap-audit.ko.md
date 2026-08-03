@@ -10,7 +10,8 @@ feature-map의 `implemented` 표시는 현재 process evidence로 재사용하�
 completion 전이와 runtime weight validation을 실제 production call path까지 다시 대조하면서
 `ND-IMP-005`와 `ND-IMP-006`을 추가로 확인했다. 두 항목은 owner layer 수정과 unit regression까지
 완료했다. `ND-IMP-001`~`006`의 process·native artifact evidence와 Framework spec gate의 전체 판정은
-아직 `NOT CLEAN`이다.
+아직 `NOT CLEAN`이다. `ND-IMP-007`·`008`은 targeted process까지 닫혔지만 common aggregate gate를
+대체하지 않는다.
 
 현재 열려 있는 Framework runtime·spec gap은 다음과 같다.
 
@@ -35,6 +36,11 @@ completion 전이와 runtime weight validation을 실제 production call path까
 - `ND-TEST-002`: current ledger path 기준 documentation regression이 17/17로 통과했다.
 - `ND-REG-001`~`004`, `ND-REG-009`~`010`: contract, error, unknown content type, package graph,
   StoreVersion route replacement와 weight validation의 비-E2E 회귀가 통과했다.
+- `ND-IMP-007`: 등록되지 않은 ClientServer channel의 request가 public `NotFound`로 매핑되는
+  production runtime과 CH05 process가 통과했다.
+- `ND-IMP-008`: 알려진 ClientServer target의 transport가 끊겨도 descriptor를 `NotConnected`로
+  유지하고 ready selector가 `Unavailable`을 반환하는 production runtime, unit과 CH07C process가
+  통과했다.
 
 `NS-IMP-*`, `NS-TEST-*`, `NS-REG-*`는 위 Framework gate가 닫힌 뒤 진행하는 sample layer다. 현재
 sample의 static wire 정렬은 별도 진행됐지만, 이 log의 Framework runtime gap 수에는 합산하지 않았다.
@@ -64,7 +70,7 @@ working tree manifest가 다시 바뀐다.
 | `e2e-scenario-header-gate.test.js` | exit 1 | common 374, Node 207, missing 171, extra 4 |
 | `TA-A1` | exit 1 | native session bind의 ActorRef route fence 불일치 |
 | `SA-E2E-14` | exit 2 | candidate native artifact incomplete |
-| `CH-E2E-01` | exit 2 | Config 12 role server `BLOCKED` |
+| `CH-E2E-01`~`CH-E2E-12` | targeted process PASS | Config 12의 16개 selector를 개별 실행했고 role endpoint/evidence를 확인 |
 | `IS-E2E-36` | exit 2 | Config 14 role server `BLOCKED` |
 
 실행 log는 다음 위치에 남아 있다.
@@ -123,7 +129,8 @@ Config 14 (36): IS-E2E-01, IS-E2E-02, IS-E2E-03, IS-E2E-04, IS-E2E-05,
                 IS-E2E-36
 ```
 
-Config 12의 16개 ID와 Config 14의 36개 ID는 현재 runner가 존재해도 각각 `BLOCKED`를 반환한다.
+Config 12의 16개 ID는 targeted process에서 PASS했고 Config 14의 36개 ID는 현재 runner가 존재해도
+`BLOCKED`를 반환한다.
 Config 13의 `SA-E2E-14`는 feature-map에 `구현`으로 표시되어 있지만 exact Client scenario file이
 없고, current process도 native artifact 단계에서 실패한다. 따라서 feature-map 상태만으로 완료할 수
 없다.
@@ -144,7 +151,7 @@ Config 9:  TA-A1 current process failure (ActorRef route fence)
 Config 10: ST-B1, ST-B3, ST-E1A, ST-F3A, ST-G1..ST-G6,
            ST-H1, ST-H3, ST-H4, ST-H4A, ST-H4B, ST-H5, ST-I1, ST-I2, ST-I3
 Config 11: OBS-C1..OBS-C11
-Config 12: CH-E2E-01..CH-E2E-12 전체 BLOCKED
+Config 12: CH-E2E-01..CH-E2E-12 targeted process PASS
 Config 13: SA-E2E-01..SA-E2E-20 전체 exact scenario 미충족;
            SA-E2E-14는 native artifact incomplete
 Config 14: IS-E2E-01..IS-E2E-36 전체 BLOCKED
@@ -217,7 +224,7 @@ StoreVersion 전이는 수정 전 fresh CH03 process에서 `ServiceStaleGenerati
 | `npm run typecheck` | PASS |
 | `npm run lint` | PASS |
 | `npm run verify:m5-foundation` | 5/5 PASS |
-| `npm run verify:m6a-runtime` | 26/26 PASS |
+| `npm run verify:m6a-runtime` | 27/27 PASS |
 | `npm run verify:m6b-runtime` | 43/43 PASS |
 | `npm run verify:m6c-runtime` | 79/79 PASS |
 | E2E·sample·browser·integration·native child process를 제외한 unit inventory | 59 files, 1003/1003 PASS |
@@ -227,3 +234,30 @@ StoreVersion 전이는 수정 전 fresh CH03 process에서 `ServiceStaleGenerati
 이 결과는 production source와 unit/contract evidence를 닫은 것이다. 공통 374개 scenario inventory,
 Config 12·14 process, native artifact, full coverage·CI와 11.10 sample checklist는 이 실행에 포함하지
 않았으므로 완료로 승격하지 않는다.
+
+## 2026-08-03 ClientServer error·disconnect runtime 후속
+
+runtime·unit phase 뒤 Config 12의 실제 request 경계를 다시 실행하면서 두 가지 production call-path
+차이를 확인하고 owner layer에서 수정했다.
+
+| 항목 | 수정 내용 | fresh evidence |
+|---|---|---|
+| `ND-IMP-007` missing ClientServer channel mapping | 등록되지 않은 channel을 내부 `RequestTargetNotFound`에서 public `NotFound`로 매핑하고 실제 configuration conflict와 구분했다. | `channel-client.test.js` 93/93, Config 12 `CH05` process PASS |
+| `ND-IMP-008` known target without ready transport | unexpected disconnect에서 discovery descriptor를 삭제하지 않고 내부 `disconnected` 상태로 보존한다. reconnect admission은 같은 descriptor revision에서 허용하고, known target에 ready selector가 없으면 `RouteNotConnected`/public `Unavailable`을 반환한다. 이미 끊긴 transport의 unexpected cleanup에서는 explicit `disconnect()`를 다시 호출하지 않고 disposal만 수행한다. | `m6a-runtime.contract.ts` 27/27, 59-file unit inventory 1003/1003, Config 12 `CH07C` process PASS |
+
+CH07C runner는 server process를 `SIGSTOP`한 뒤 established ClientServer TCP connection을 닫고,
+owner lease가 stale target을 먼저 제거하지 않도록 fixture TTL을 30초로 설정한다. ClientServer
+liveness deadline에서 target state `NotConnected`가 관찰된 뒤 caller request가 public
+`Unavailable`으로 종료되는지 확인했다. 초기 candidate에서 같은 상황의 native cleanup segfault가
+두 차례 재현됐지만, unexpected disconnect 경로에서 explicit transport disconnect를 제거한 뒤
+재실행은 PASS했다.
+
+Config 12의 targeted process 결과는 다음과 같다.
+
+```text
+CH01 CH02 CH03 CH04A CH04B CH04C CH05 CH06 CH07A CH07B CH07C CH08 CH09 CH10 CH11 CH12: PASS
+```
+
+CH09는 runner가 session role을 시작하지 않아 port 1 fallback URL을 조회하던 fixture 오류도 함께
+수정했다. Config 12의 16개 scenario는 현재 개별 runner에서 통과하지만, common 374개 exact inventory,
+Config 14, aggregate·coverage·CI와 전체 Framework gate의 완료 판정은 별도로 유지한다.

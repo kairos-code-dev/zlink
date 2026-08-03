@@ -435,6 +435,7 @@ function sameDescriptor(
     && left.leaseGeneration === right.leaseGeneration;
 }
 
+
 function toDiscoveryDescriptor(
   descriptor: ZLinkClientServerServerDescriptor,
   effectiveMaxMessageBytes = 0x7fff_ffff

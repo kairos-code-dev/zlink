@@ -16,19 +16,9 @@ type TopicMessage struct {
 
 type RecvPartResult struct {
 	RoutingID     RoutingID
-	SpotRID       RoutingID
 	RequestSeq    uint64
 	HasRequestSeq bool
 	More          bool
-}
-
-type SpotForwardResult struct {
-	SourceNodeRID RoutingID
-	SourceSpotRID RoutingID
-	RequestSeq    uint64
-	HasRequestSeq bool
-	PartCount     int
-	PayloadBytes  int
 }
 
 type SubscribePartResult struct {

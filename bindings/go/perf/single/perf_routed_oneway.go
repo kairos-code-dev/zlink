@@ -5,8 +5,8 @@ import (
 	"os"
 	"time"
 
-	zlink "zlink.systems/zlink"
-	"zlink.systems/zlink/perf/internal/perfcommon"
+	zlink "zlink.systems/zlink/v11"
+	"zlink.systems/zlink/v11/perf/internal/perfcommon"
 )
 
 type routedRecvSocket interface {
@@ -106,7 +106,6 @@ func recvSingleRoutedOneWayOnce(
 		return false, nil
 	}
 	if result.RoutingID.Size() == 0 ||
-		result.SpotRID.Size() != 0 ||
 		result.HasRequestSeq ||
 		result.More {
 		return false, fmt.Errorf("unexpected routed receive metadata")

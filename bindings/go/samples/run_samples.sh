@@ -11,19 +11,7 @@ SAMPLES=(
   "samples/dealer_router_recv_sample"
   "samples/stream_recv_sample"
   "samples/stream_packet_callback_sample"
-  "samples/spot_recv_sample"
-  "samples/spot_request_async_sample"
   "samples/monitor_recv_sample"
-  "samples/actor_room_server_sample"
-  "samples/actor_gateway_relay_sample"
-  "samples/actor_single_player_queue_sample"
-  "samples/actor_queue_example"
-  "samples/actor_room_example"
-  "samples/actor_sequential_example"
-  "samples/spot_channel_example"
-  "samples/spot_pubsub_example"
-  "samples/spot_rpc_example"
-  "samples/spot_timer_example"
 )
 
 pass=0

@@ -6,8 +6,8 @@ import (
 	"os"
 	"syscall"
 	"time"
-	zlink "zlink.systems/zlink"
-	"zlink.systems/zlink/perf/internal/perfcommon"
+	zlink "zlink.systems/zlink/v11"
+	"zlink.systems/zlink/v11/perf/internal/perfcommon"
 )
 
 func runRouterRouter(cfg benchmarkConfig) perfcommon.Result {

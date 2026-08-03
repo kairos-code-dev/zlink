@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	zlink "zlink.systems/zlink"
+	zlink "zlink.systems/zlink/v11"
 )
 
 var endpointCounter uint64
@@ -134,42 +134,10 @@ func PrintSingleAutoHWMDetail(
 	printAutoHWMDetail(pattern, transport, component, msgSize, "socket", 0, component, socketType, snapshot)
 }
 
-func PrintSingleSpotNodeAutoHWMDetail(
-	node *zlink.SpotNode,
-	pattern string,
-	transport string,
-	component string,
-	msgSize int,
-) {
-	if node == nil || pattern == "" || component == "" {
-		return
-	}
-	entries, err := node.InternalSockets(nil)
-	if err != nil {
-		return
-	}
-	for _, entry := range entries {
-		if !entry.AutoHwmVisible || !autoHWMStatusVisible(&entry.MonitorStatus) {
-			continue
-		}
-		printAutoHWMDetail(
-			pattern,
-			transport,
-			component,
-			msgSize,
-			spotNodeSocketOwnerName(entry.Owner),
-			entry.OwnerID,
-			entry.SocketName,
-			entry.SocketType,
-			&entry.MonitorStatus,
-		)
-	}
-}
-
 func autoHWMStatusVisible(snapshot *zlink.MonitorStatus) bool {
 	return snapshot != nil &&
-		(snapshot.AutoHwmAppliedSndHwm > 0 ||
-			snapshot.AutoHwmAppliedRcvHwm > 0 ||
+		(snapshot.AutoHwmAppliedSndHwmBytes > 0 ||
+			snapshot.AutoHwmAppliedRcvHwmBytes > 0 ||
 			snapshot.AutoHwmEffectiveMessageBytes > 0 ||
 			snapshot.AutoHwmSocketMessageSlots > 0)
 }
@@ -199,8 +167,8 @@ func printAutoHWMDetail(
 		socketName,
 		socketTypeName(socketType),
 		autoHWMRoleName(snapshot.AutoHwmRole),
-		snapshot.AutoHwmAppliedSndHwm,
-		snapshot.AutoHwmAppliedRcvHwm,
+		snapshot.AutoHwmAppliedSndHwmBytes,
+		snapshot.AutoHwmAppliedRcvHwmBytes,
 		snapshot.AutoHwmEffectiveMessageBytes,
 		snapshot.AutoHwmEffectiveSndBuf,
 		snapshot.AutoHwmEffectiveRcvBuf,
@@ -249,17 +217,6 @@ func socketTypeName(socketType zlink.SocketType) string {
 		return "STREAM"
 	default:
 		return "UNKNOWN"
-	}
-}
-
-func spotNodeSocketOwnerName(owner zlink.SpotNodeSocketOwner) string {
-	switch owner {
-	case zlink.SpotNodeSocketOwnerNode:
-		return "spotnode"
-	case zlink.SpotNodeSocketOwnerSpot:
-		return "spot"
-	default:
-		return "unknown"
 	}
 }
 
@@ -351,11 +308,6 @@ type hwmSocket interface {
 	SetReceiveHighWaterMark(int) error
 }
 
-type spotNodeAdmission interface {
-	SetPubSubHighWaterMark(int) error
-	SetRouterHighWaterMark(int) error
-}
-
 type benchmarkSocket interface {
 	SetLinger(time.Duration) error
 	SetSendTimeout(time.Duration) error
@@ -390,25 +342,6 @@ func ApplySingleAutoHWMMsgUnit(ctx *zlink.Context, msgSize int) {
 	Must(ctx.RecalculateAutoHwm())
 }
 
-func ApplySingleSpotNodeAdmission(node spotNodeAdmission) {
-	if node == nil {
-		return
-	}
-	if !manualSocketOverridesAllowed("PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES") {
-		return
-	}
-	send := resolveManualSocketHWM("PERF_SINGLE_HWM", "PERF_SINGLE_SNDHWM", "PERF_SINGLE_RCVHWM", true)
-	recv := resolveManualSocketHWM("PERF_SINGLE_HWM", "PERF_SINGLE_SNDHWM", "PERF_SINGLE_RCVHWM", false)
-	admission := send
-	if admission <= 0 {
-		admission = recv
-	}
-	if admission > 0 {
-		Must(node.SetPubSubHighWaterMark(admission))
-		Must(node.SetRouterHighWaterMark(admission))
-	}
-}
-
 // ApplyMultiHWM mirrors perf_multi_runtime.hpp apply_benchmark_hwm:
 // numeric HWM only with manual override; otherwise auto-HWM stays.
 func ApplyMultiHWM(socket hwmSocket, pattern string) {
@@ -434,25 +367,6 @@ func ApplyMultiAutoHWMMsgUnit(ctx *zlink.Context, msgSize int) {
 	}
 	Must(ctx.Options().SetAutoHwmMsgUnitBytes(msgSize))
 	Must(ctx.RecalculateAutoHwm())
-}
-
-func ApplyMultiSpotNodeAdmission(node spotNodeAdmission, pattern string) {
-	if node == nil {
-		return
-	}
-	if !manualSocketOverridesAllowed("PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES") {
-		return
-	}
-	send := resolveManualSocketHWM("PERF_MULTI_HWM", "PERF_MULTI_SNDHWM", "PERF_MULTI_RCVHWM", true)
-	recv := resolveManualSocketHWM("PERF_MULTI_HWM", "PERF_MULTI_SNDHWM", "PERF_MULTI_RCVHWM", false)
-	admission := send
-	if admission <= 0 {
-		admission = recv
-	}
-	if admission > 0 {
-		Must(node.SetPubSubHighWaterMark(admission))
-		Must(node.SetRouterHighWaterMark(admission))
-	}
 }
 
 func ApplySingleBenchmarkSocketOptions(socket benchmarkSocket, _ string) {

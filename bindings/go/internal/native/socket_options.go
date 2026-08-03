@@ -95,21 +95,19 @@ func (o *CommonSocketOptions) Linger() (time.Duration, error) {
 }
 
 func (o *CommonSocketOptions) SetSendHighWaterMark(value int) error {
-	return o.socket.setIntOption(C.ZLINK_OPT_SNDHWM, int32(value))
+	return o.socket.setHwmOption(C.ZLINK_OPT_SNDHWM, value)
 }
 
 func (o *CommonSocketOptions) SendHighWaterMark() (int, error) {
-	value, err := o.socket.getIntOption(C.ZLINK_OPT_SNDHWM)
-	return int(value), err
+	return o.socket.getHwmOption(C.ZLINK_OPT_SNDHWM)
 }
 
 func (o *CommonSocketOptions) SetReceiveHighWaterMark(value int) error {
-	return o.socket.setIntOption(C.ZLINK_OPT_RCVHWM, int32(value))
+	return o.socket.setHwmOption(C.ZLINK_OPT_RCVHWM, value)
 }
 
 func (o *CommonSocketOptions) ReceiveHighWaterMark() (int, error) {
-	value, err := o.socket.getIntOption(C.ZLINK_OPT_RCVHWM)
-	return int(value), err
+	return o.socket.getHwmOption(C.ZLINK_OPT_RCVHWM)
 }
 
 func (o *CommonSocketOptions) SetSendTimeout(value time.Duration) error {
@@ -175,30 +173,6 @@ func (o *CommonSocketOptions) SetTCPKeepalive(value bool) error {
 
 func (o *CommonSocketOptions) TCPKeepalive() (bool, error) {
 	return o.socket.getBoolOption(C.ZLINK_OPT_TCP_KEEPALIVE)
-}
-
-func (o *CommonSocketOptions) SetHeartbeatInterval(value time.Duration) error {
-	return o.socket.setDurationOption(C.ZLINK_OPT_HEARTBEAT_IVL, value)
-}
-
-func (o *CommonSocketOptions) HeartbeatInterval() (time.Duration, error) {
-	return o.socket.getDurationOption(C.ZLINK_OPT_HEARTBEAT_IVL)
-}
-
-func (o *CommonSocketOptions) SetHeartbeatTTL(value time.Duration) error {
-	return o.socket.setDurationOption(C.ZLINK_OPT_HEARTBEAT_TTL, value)
-}
-
-func (o *CommonSocketOptions) HeartbeatTTL() (time.Duration, error) {
-	return o.socket.getDurationOption(C.ZLINK_OPT_HEARTBEAT_TTL)
-}
-
-func (o *CommonSocketOptions) SetHeartbeatTimeout(value time.Duration) error {
-	return o.socket.setDurationOption(C.ZLINK_OPT_HEARTBEAT_TIMEOUT, value)
-}
-
-func (o *CommonSocketOptions) HeartbeatTimeout() (time.Duration, error) {
-	return o.socket.getDurationOption(C.ZLINK_OPT_HEARTBEAT_TIMEOUT)
 }
 
 func (o *CommonSocketOptions) SetMaxMessageSize(value int64) error {

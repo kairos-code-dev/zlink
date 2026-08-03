@@ -3,7 +3,7 @@
 package native
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/../../../../core/include -I${SRCDIR}/../../include
+#cgo CFLAGS: -I${SRCDIR}/../../include
 #cgo linux,amd64 LDFLAGS: -L${SRCDIR}/../../native/linux-x86_64 -lzlink -Wl,-rpath,${SRCDIR}/../../native/linux-x86_64
 #cgo linux,arm64 LDFLAGS: -L${SRCDIR}/../../native/linux-aarch64 -lzlink -Wl,-rpath,${SRCDIR}/../../native/linux-aarch64
 #cgo darwin,amd64 LDFLAGS: -L${SRCDIR}/../../native/darwin-x86_64 -lzlink -Wl,-rpath,${SRCDIR}/../../native/darwin-x86_64

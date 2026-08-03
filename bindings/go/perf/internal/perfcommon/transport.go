@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	zlink "zlink.systems/zlink"
+	zlink "zlink.systems/zlink/v11"
 )
 
 type StreamConn interface {

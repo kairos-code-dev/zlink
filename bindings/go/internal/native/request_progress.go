@@ -31,7 +31,6 @@ type progressPump struct {
 
 var (
 	socketProgressPumps  sync.Map // unsafe.Pointer -> *progressPump
-	spotProgressPumps    sync.Map
 	externalProgressRefs sync.Map // unsafe.Pointer -> *int64
 )
 
@@ -40,23 +39,6 @@ func startSocketRequestProgress(handle unsafe.Pointer, state *replyCallbackState
 		return
 	}
 	getOrCreateProgressPump(&socketProgressPumps, handle).attachDone(state.done)
-}
-
-func startSpotRequestProgress(handle unsafe.Pointer, state *replyCallbackState) {
-	if externalRequestProgressActive(handle) {
-		return
-	}
-	getOrCreateProgressPump(&spotProgressPumps, handle).attachDone(state.done)
-}
-
-// attachSpotProgressDone wires arbitrary operation-completion channels (e.g.
-// actor lookup) onto the shared per-handle progress pump for a spot. The
-// caller owns `done` and must close it when the operation completes.
-func attachSpotProgressDone(handle unsafe.Pointer, done <-chan struct{}) {
-	if externalRequestProgressActive(handle) {
-		return
-	}
-	getOrCreateProgressPump(&spotProgressPumps, handle).attachDone(done)
 }
 
 func acquireExternalRequestProgress(handle unsafe.Pointer) {

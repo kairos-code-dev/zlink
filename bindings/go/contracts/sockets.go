@@ -2,7 +2,7 @@
 
 package contracts
 
-import impl "zlink.systems/zlink/internal/native"
+import impl "zlink.systems/zlink/v11/internal/native"
 
 type (
 	// SocketType identifies a socket's messaging pattern.
@@ -49,12 +49,6 @@ type (
 	SendFlags = impl.SendFlags
 	// RecvFlags modify receive behavior; DontWait returns instead of blocking when no message is available.
 	RecvFlags = impl.RecvFlags
-	// SpotDispatchEvent is the kind of readable event surfaced by a spot dispatch.
-	SpotDispatchEvent = impl.SpotDispatchEvent
-	// SpotDispatchSubjectKind is what kind of subject a spot dispatch event concerns.
-	SpotDispatchSubjectKind = impl.SpotDispatchSubjectKind
-	// SpotDispatchInfo is the event and context passed to a spot dispatch callback.
-	SpotDispatchInfo = impl.SpotDispatchInfo
 )
 
 const (
@@ -84,26 +78,4 @@ const (
 	RecvFlagsNone = impl.RecvFlagsNone
 	// RecvFlagsDontWait does not block; returns immediately when no message is available.
 	RecvFlagsDontWait = impl.RecvFlagsDontWait
-	// SpotDispatchEventSubscribeReadable fires when a subscription has a message ready to read.
-	SpotDispatchEventSubscribeReadable = impl.SpotDispatchEventSubscribeReadable
-	// SpotDispatchEventRoutedReadable fires when a routed message is ready to read.
-	SpotDispatchEventRoutedReadable = impl.SpotDispatchEventRoutedReadable
-	// SpotDispatchEventTimerReadable fires when a timer has expired.
-	SpotDispatchEventTimerReadable = impl.SpotDispatchEventTimerReadable
-	// SpotDispatchEventChannelReplyReadable fires when a channel reply is ready to read.
-	SpotDispatchEventChannelReplyReadable = impl.SpotDispatchEventChannelReplyReadable
-	// SpotDispatchEventActorReadable fires when an actor message is ready to read.
-	SpotDispatchEventActorReadable = impl.SpotDispatchEventActorReadable
-	// SpotDispatchEventActorJoinReadable fires when an actor join request is ready to read.
-	SpotDispatchEventActorJoinReadable = impl.SpotDispatchEventActorJoinReadable
-	// SpotDispatchEventActorLifecycleReadable fires when an actor lifecycle event is ready to read.
-	SpotDispatchEventActorLifecycleReadable = impl.SpotDispatchEventActorLifecycleReadable
-	// SpotDispatchSubjectSpot identifies the spot itself as the dispatch subject.
-	SpotDispatchSubjectSpot = impl.SpotDispatchSubjectSpot
-	// SpotDispatchSubjectTimer identifies a timer as the dispatch subject.
-	SpotDispatchSubjectTimer = impl.SpotDispatchSubjectTimer
-	// SpotDispatchSubjectChannelDealer identifies a channel dealer socket as the dispatch subject.
-	SpotDispatchSubjectChannelDealer = impl.SpotDispatchSubjectChannelDealer
-	// SpotDispatchSubjectActor identifies an actor as the dispatch subject.
-	SpotDispatchSubjectActor = impl.SpotDispatchSubjectActor
 )

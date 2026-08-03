@@ -2,17 +2,15 @@ package samplecommon
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"net"
 	"runtime"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"time"
 
-	zlink "zlink.systems/zlink"
+	zlink "zlink.systems/zlink/v11"
 )
 
 var counter uint64
@@ -134,22 +132,4 @@ func WaitUntil(timeout time.Duration, description string, predicate func() bool)
 		runtime.Gosched()
 	}
 	Must(fmt.Errorf("timed out waiting for %s", description))
-}
-
-func WaitSpotPeerConnected(node *zlink.SpotNode, timeout time.Duration) {
-	WaitUntil(timeout, "spot peer connection", func() bool {
-		status, err := node.Status()
-		return err == nil && status != nil && status.ConnectedPeerCount > 0
-	})
-}
-
-func isTemporaryEmpty(err error) bool {
-	if err == nil {
-		return false
-	}
-	var zerr zlink.ZlinkError
-	if !errors.As(err, &zerr) {
-		return false
-	}
-	return zerr.NativeErrno() == int(syscall.EAGAIN)
 }

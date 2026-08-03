@@ -2,7 +2,7 @@
 
 package contracts
 
-import impl "zlink.systems/zlink/internal/native"
+import impl "zlink.systems/zlink/v11/internal/native"
 
 type (
 	// MonitorEventMask is a bitmask selecting which socket monitor events to subscribe to.
@@ -40,10 +40,6 @@ const (
 	MonitorEventPeerWeightChanged = impl.MonitorEventPeerWeightChanged
 	// MonitorSourceSocket identifies a plain socket as the monitored source.
 	MonitorSourceSocket = impl.MonitorSourceSocket
-	// MonitorSourceSpotPub identifies the publish side of a spot as the monitored source.
-	MonitorSourceSpotPub = impl.MonitorSourceSpotPub
-	// MonitorSourceSpotSub identifies the subscribe side of a spot as the monitored source.
-	MonitorSourceSpotSub = impl.MonitorSourceSpotSub
 	// PollIn reports that a receive will not block.
 	PollIn = impl.PollIn
 	// PollOut reports that a send will not block.
@@ -65,8 +61,6 @@ var (
 	OpenSocketMonitor = impl.OpenSocketMonitor
 	// NewTimer creates a standalone timer; the caller owns it.
 	NewTimer = impl.NewTimer
-	// NewTimerFromSpot creates a timer dispatched by the given spot's event loop.
-	NewTimerFromSpot = impl.NewTimerFromSpot
 	// NewPoller creates an empty poller; the caller owns it.
 	NewPoller = impl.NewPoller
 	// Poll waits for events across several sockets or monitors at once.

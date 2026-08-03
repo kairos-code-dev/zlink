@@ -3,7 +3,7 @@ package zlink_test
 import (
 	"testing"
 
-	zlink "zlink.systems/zlink/contracts"
+	zlink "zlink.systems/zlink/v11"
 )
 
 func TestMessageDiagnosticAPI(t *testing.T) {
@@ -14,16 +14,6 @@ func TestMessageDiagnosticAPI(t *testing.T) {
 		t.Fatalf("RefCount() = %d, want >= 1", got)
 	}
 
-	value, ok, err := msg.GetProperty("missing")
-	if err != nil {
-		t.Fatalf("GetProperty() error = %v", err)
-	}
-	if ok {
-		t.Fatalf("GetProperty() ok = true, want false for missing property")
-	}
-	if value != "" {
-		t.Fatalf("GetProperty() value = %q, want empty string for missing property", value)
-	}
 }
 
 func TestNewMessageWithSizeExposesWritablePayload(t *testing.T) {

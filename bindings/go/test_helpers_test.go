@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	zlink "zlink.systems/zlink/contracts"
+	zlink "zlink.systems/zlink/v11"
 )
 
 var endpointCounter uint64

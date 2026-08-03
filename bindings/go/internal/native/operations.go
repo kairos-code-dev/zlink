@@ -7,8 +7,6 @@ import (
 	"time"
 )
 
-// Builder interfaces for spot send/request/reply operations.
-
 type SendOp interface {
 	Message(message *Message) SendSubmitOp
 	MoveMessage(message *Message) SendSubmitOp
@@ -55,10 +53,7 @@ type ReplySubmitOp interface {
 	Submit(ctx context.Context) error
 }
 
-// --- sendBuilder ---
-
 type sendBuilder struct {
-	spot  *Spot
 	parts []sendBuilderPart
 	flags SendFlags
 	submitOnce
@@ -72,8 +67,8 @@ type sendBuilderPart struct {
 	bytes   bool
 }
 
-func newSendBuilder(spot *Spot, submit func(parts []sendBuilderPart, flags SendFlags) error) SendOp {
-	return &sendBuilder{spot: spot, submit: submit}
+func newSendBuilder(submit func(parts []sendBuilderPart, flags SendFlags) error) SendOp {
+	return &sendBuilder{submit: submit}
 }
 
 func (b *sendBuilder) Message(message *Message) SendSubmitOp {
@@ -81,16 +76,11 @@ func (b *sendBuilder) Message(message *Message) SendSubmitOp {
 	return b
 }
 
-// MoveMessage adds a payload part whose ownership is transferred to the
-// operation at submit time. Unlike Message, the caller must not reuse the
-// message after Submit returns, even when Submit reports a send error.
 func (b *sendBuilder) MoveMessage(message *Message) SendSubmitOp {
 	b.parts = append(b.parts, sendBuilderPart{message: message, move: true})
 	return b
 }
 
-// Bytes adds a payload part from caller-owned bytes. The slice is read during
-// Submit and is not retained after Submit returns.
 func (b *sendBuilder) Bytes(data []byte) SendSubmitOp {
 	b.parts = append(b.parts, sendBuilderPart{data: data, bytes: true})
 	return b
@@ -101,7 +91,10 @@ func (b *sendBuilder) Flags(flags SendFlags) SendSubmitOp {
 	return b
 }
 
-func (b *sendBuilder) Submit(_ context.Context) (bool, error) {
+func (b *sendBuilder) Submit(ctx context.Context) (bool, error) {
+	if err := contextError(ctx); err != nil {
+		return false, err
+	}
 	if len(b.parts) == 0 {
 		return false, configInvalidArgumentError()
 	}
@@ -113,8 +106,6 @@ func (b *sendBuilder) Submit(_ context.Context) (bool, error) {
 	}
 	return true, nil
 }
-
-// --- requestBuilder ---
 
 type requestBuilderState struct {
 	parts   []requestBuilderPart
@@ -138,7 +129,7 @@ type requestBuilderPart struct {
 	bytes   bool
 }
 
-func newRequestBuilder(spot *Spot, submit func(parts []requestBuilderPart, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error) RequestOp {
+func newRequestBuilder(submit func(parts []requestBuilderPart, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error) RequestOp {
 	return &requestBuilder{state: &requestBuilderState{submit: submit}}
 }
 
@@ -162,11 +153,17 @@ func (b *requestBuilder) Flags(flags SendFlags) RequestCallbackSubmitOp {
 	return &requestCallbackBuilder{state: b.state}
 }
 
-func (b *requestBuilder) SubmitAsync(_ context.Context) (<-chan RequestReplyCompletion, error) {
+func (b *requestBuilder) SubmitAsync(ctx context.Context) (<-chan RequestReplyCompletion, error) {
+	if err := contextError(ctx); err != nil {
+		return nil, err
+	}
 	return b.state.doSubmitAsync()
 }
 
-func (b *requestBuilder) Submit(_ context.Context, callback RequestReplyCallback) (bool, error) {
+func (b *requestBuilder) Submit(ctx context.Context, callback RequestReplyCallback) (bool, error) {
+	if err := contextError(ctx); err != nil {
+		return false, err
+	}
 	return b.state.doSubmitCallback(callback)
 }
 
@@ -190,7 +187,10 @@ func (b *requestCallbackBuilder) Flags(flags SendFlags) RequestCallbackSubmitOp 
 	return b
 }
 
-func (b *requestCallbackBuilder) Submit(_ context.Context, callback RequestReplyCallback) (bool, error) {
+func (b *requestCallbackBuilder) Submit(ctx context.Context, callback RequestReplyCallback) (bool, error) {
+	if err := contextError(ctx); err != nil {
+		return false, err
+	}
 	return b.state.doSubmitCallback(callback)
 }
 
@@ -226,18 +226,15 @@ func (s *requestBuilderState) doSubmitCallback(callback RequestReplyCallback) (b
 	return true, nil
 }
 
-// --- replyBuilder ---
-
 type replyBuilder struct {
-	spot  *Spot
 	parts []*Message
 	flags SendFlags
 	submitOnce
 	submit func(parts []*Message, flags SendFlags) error
 }
 
-func newReplyBuilder(spot *Spot, submit func(parts []*Message, flags SendFlags) error) ReplyOp {
-	return &replyBuilder{spot: spot, submit: submit}
+func newReplyBuilder(submit func(parts []*Message, flags SendFlags) error) ReplyOp {
+	return &replyBuilder{submit: submit}
 }
 
 func (b *replyBuilder) Message(message *Message) ReplySubmitOp {
@@ -250,7 +247,10 @@ func (b *replyBuilder) Flags(flags SendFlags) ReplySubmitOp {
 	return b
 }
 
-func (b *replyBuilder) Submit(_ context.Context) error {
+func (b *replyBuilder) Submit(ctx context.Context) error {
+	if err := contextError(ctx); err != nil {
+		return err
+	}
 	if len(b.parts) == 0 {
 		return configInvalidArgumentError()
 	}
@@ -258,4 +258,16 @@ func (b *replyBuilder) Submit(_ context.Context) error {
 		return err
 	}
 	return b.submit(b.parts, b.flags)
+}
+
+func contextError(ctx context.Context) error {
+	if ctx == nil {
+		return nil
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		return nil
+	}
 }

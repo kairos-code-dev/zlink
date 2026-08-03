@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	zlink "zlink.systems/zlink/contracts"
+	zlink "zlink.systems/zlink/v11"
 )
 
 func TestCommonTypedOptions(t *testing.T) {

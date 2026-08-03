@@ -1,14 +1,13 @@
 package zlink_test
 
 import (
-	"errors"
 	"net"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	zlink "zlink.systems/zlink/contracts"
+	zlink "zlink.systems/zlink/v11"
 )
 
 func TestSendDontWaitDoesNotTreatTemporaryBackpressureAsError(t *testing.T) {
@@ -37,58 +36,6 @@ func TestPublishDontWaitReturnsErrorWhenUnroutable(t *testing.T) {
 	if _, err := socket.Publish("topic").Message(newMessage(t, "data")).Flags(zlink.SendFlagsDontWait).Submit(nil); err != nil {
 		t.Fatalf("Publish() with DontWait on idle socket should succeed: %v", err)
 	}
-}
-
-func TestReplyAPIsRejectUnsupportedFlags(t *testing.T) {
-	ctx := newContext(t)
-	defer ctx.Close()
-
-	router, err := ctx.RouterSocket()
-	if err != nil {
-		t.Fatalf("RouterSocket() error = %v", err)
-	}
-	defer router.Close()
-
-	node, err := ctx.SpotNode()
-	if err != nil {
-		t.Fatalf("SpotNode() error = %v", err)
-	}
-	defer node.Close()
-
-	spot, err := node.Spot()
-	if err != nil {
-		t.Fatalf("Spot() error = %v", err)
-	}
-	defer spot.Close()
-
-	nodeRID := zlink.NewRoutingID([]byte("node"))
-	spotRID := zlink.NewRoutingID([]byte("spot"))
-	peerRID := zlink.NewRoutingID([]byte("peer"))
-
-	assertUnsupported := func(name string, call func() error) {
-		t.Helper()
-		err := call()
-		if err == nil {
-			t.Fatalf("%s should fail for unsupported flags", name)
-		}
-		var submitErr *zlink.SubmitError
-		if !errors.As(err, &submitErr) {
-			t.Fatalf("%s error type = %T, want *SubmitError", name, err)
-		}
-		if submitErr.Result != zlink.SubmitNotSupported {
-			t.Fatalf("%s result = %v, want %v", name, submitErr.Result, zlink.SubmitNotSupported)
-		}
-	}
-
-	assertUnsupported("Spot.ReplyToSpot", func() error {
-		return spot.ReplyToSpot(nodeRID, spotRID, 1).Message(newMessage(t, "reply")).Flags(zlink.SendFlags(2)).Submit(nil)
-	})
-	assertUnsupported("Spot.ReplyToRouter", func() error {
-		return spot.ReplyToRouter(peerRID, 1).Message(newMessage(t, "reply")).Flags(zlink.SendFlags(2)).Submit(nil)
-	})
-	assertUnsupported("RouterSocket.ReplyToSpot", func() error {
-		return router.ReplyToSpot(nodeRID, spotRID, 1).Message(newMessage(t, "reply")).Flags(zlink.SendFlags(2)).Submit(nil)
-	})
 }
 
 func TestBlockingSendFailureSurfacesError(t *testing.T) {

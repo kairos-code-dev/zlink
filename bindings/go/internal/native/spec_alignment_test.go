@@ -115,7 +115,6 @@ func TestReceivedReplyHelpersCarryCanonicalMetadata(t *testing.T) {
 	var gotReplyCount int
 	received := &Received{
 		routingID:     NewRoutingID([]byte("peer")),
-		spotRID:       NewRoutingID([]byte("spot")),
 		requestSeq:    42,
 		hasRequestSeq: true,
 		parts:         []*Message{replyPart},
@@ -127,14 +126,11 @@ func TestReceivedReplyHelpersCarryCanonicalMetadata(t *testing.T) {
 		return nil
 	}
 
-	if !received.HasRoutingID() || !received.HasSpotRID() || !received.HasRequestSeq() {
+	if !received.HasRoutingID() || !received.HasRequestSeq() {
 		t.Fatalf("received helper predicates should reflect stored metadata")
 	}
 	if !received.IsSinglePart() {
 		t.Fatalf("IsSinglePart() = false, want true")
-	}
-	if got := received.SpotRID(); !got.Equal(NewRoutingID([]byte("spot"))) {
-		t.Fatalf("SpotRID() = %v, want %v", got, NewRoutingID([]byte("spot")))
 	}
 	if err := received.Reply().Message(replyPart).Submit(nil); err != nil {
 		t.Fatalf("Reply() error = %v", err)
@@ -234,7 +230,21 @@ func TestExportedSpecShapeForMonitorDiscoveryAndErrors(t *testing.T) {
 	assertField("AutoHwmConnectionBucketHysteresisRetained", reflect.TypeOf(MonitorStatus{}), reflect.Bool)
 	assertField("AutoHwmLastRecalcReason", reflect.TypeOf(MonitorStatus{}), reflect.Uint32)
 	assertField("AutoHwmSendBlockedRatioPPM", reflect.TypeOf(MonitorStatus{}), reflect.Uint32)
-	assertField("AutoHwmDeferredSndHwm", reflect.TypeOf(MonitorStatus{}), reflect.Int32)
+	assertField("ABIVersion", reflect.TypeOf(MonitorStatus{}), reflect.Uint32)
+	assertField("StructSize", reflect.TypeOf(MonitorStatus{}), reflect.Uint32)
+	assertField("AutoHwmPlannedSndHwmBytes", reflect.TypeOf(MonitorStatus{}), reflect.Uint64)
+	assertField("AutoHwmPlannedRcvHwmBytes", reflect.TypeOf(MonitorStatus{}), reflect.Uint64)
+	assertField("AutoHwmAppliedSndHwmBytes", reflect.TypeOf(MonitorStatus{}), reflect.Uint64)
+	assertField("AutoHwmAppliedRcvHwmBytes", reflect.TypeOf(MonitorStatus{}), reflect.Uint64)
+	assertField("AutoHwmDeferredSndHwmBytes", reflect.TypeOf(MonitorStatus{}), reflect.Uint64)
+	assertField("AutoHwmDeferredRcvHwmBytes", reflect.TypeOf(MonitorStatus{}), reflect.Uint64)
+	assertField("AutoHwmDeferredSndHwmValid", reflect.TypeOf(MonitorStatus{}), reflect.Bool)
+	assertField("AutoHwmDeferredRcvHwmValid", reflect.TypeOf(MonitorStatus{}), reflect.Bool)
+	assertField("SndBytesInFlight", reflect.TypeOf(MonitorStatus{}), reflect.Uint64)
+	assertField("RcvBytesInFlight", reflect.TypeOf(MonitorStatus{}), reflect.Uint64)
+	assertField("MinimumCoreMessageChargeBytes", reflect.TypeOf(MonitorStatus{}), reflect.Uint64)
+	assertField("OversizeMessageAdmissionCount", reflect.TypeOf(MonitorStatus{}), reflect.Uint64)
+	assertField("OversizeMessageAdmissionMaxBytes", reflect.TypeOf(MonitorStatus{}), reflect.Uint64)
 	assertNoField("AutoHwmObservedCount", reflect.TypeOf(MonitorStatus{}))
 	assertNoField("AutoHwmEffectivePublishFanout", reflect.TypeOf(MonitorStatus{}))
 	assertNoField("AutoHwmScope", reflect.TypeOf(MonitorStatus{}))
@@ -243,22 +253,11 @@ func TestExportedSpecShapeForMonitorDiscoveryAndErrors(t *testing.T) {
 	assertNoField("SendPendingMsg", reflect.TypeOf(MonitorStatus{}))
 	assertNoField("RecvPendingMsg", reflect.TypeOf(MonitorStatus{}))
 
-	assertField("LastChangedMs", reflect.TypeOf(SpotNodeStatus{}), reflect.Uint64)
-	assertField("DisconnectedSubTargetCount", reflect.TypeOf(SpotNodeStatus{}), reflect.Uint32)
-	assertField("DisconnectedRoutedTargetCount", reflect.TypeOf(SpotNodeStatus{}), reflect.Uint32)
-	assertField("ConnectedSinceMs", reflect.TypeOf(SpotNodePeerEntry{}), reflect.Uint64)
-	assertNoField("LastChangedMS", reflect.TypeOf(SpotNodeStatus{}))
-	assertNoField("ConnectedSinceMS", reflect.TypeOf(SpotNodePeerEntry{}))
-
-	assertField("PeerEndpoint", reflect.TypeOf(SpotNodePeerFilter{}), reflect.Pointer)
-	assertField("Role", reflect.TypeOf(SpotNodeSubjectFilter{}), reflect.Pointer)
-
 	methodNames := []struct {
 		typ  reflect.Type
 		name string
 	}{
 		{reflect.TypeOf(&MonitorEvent{}), "HasRoutingID"},
-		{reflect.TypeOf(&SpotNodeStatus{}), "HasNodeRoutingID"},
 	}
 	for _, method := range methodNames {
 		if _, ok := method.typ.MethodByName(method.name); !ok {
@@ -298,18 +297,4 @@ func TestSubscriptionEventHasRoutingID(t *testing.T) {
 	if !event.Subscribed() {
 		t.Fatalf("Subscribed() = false, want true")
 	}
-}
-
-func TestExportedSpecShapeForSpotServiceBindingTypes(t *testing.T) {
-	assertField := func(name string, typ reflect.Type, kind reflect.Kind) {
-		field, ok := typ.FieldByName(name)
-		if !ok {
-			t.Fatalf("%s should expose field %s", typ.Name(), name)
-		}
-		if kind != reflect.Invalid && field.Type.Kind() != kind {
-			t.Fatalf("%s.%s kind = %v, want %v", typ.Name(), name, field.Type.Kind(), kind)
-		}
-	}
-
-	assertField("Weight", reflect.TypeOf(SpotNodePeerEntry{}), reflect.Uint32)
 }

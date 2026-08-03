@@ -31,9 +31,7 @@ type MonitorSourceKind uint32
 type MonitorEventType uint64
 
 const (
-	MonitorSourceSocket  MonitorSourceKind = MonitorSourceKind(C.ZLINK_MONITOR_SOURCE_SOCKET)
-	MonitorSourceSpotPub MonitorSourceKind = MonitorSourceKind(C.ZLINK_MONITOR_SOURCE_SPOT_PUB)
-	MonitorSourceSpotSub MonitorSourceKind = MonitorSourceKind(C.ZLINK_MONITOR_SOURCE_SPOT_SUB)
+	MonitorSourceSocket MonitorSourceKind = MonitorSourceKind(C.ZLINK_MONITOR_SOURCE_SOCKET)
 )
 
 type MonitorEvent struct {
@@ -69,6 +67,8 @@ func (e *MonitorEvent) IsConnectionReady() bool {
 }
 
 type MonitorStatus struct {
+	ABIVersion                                uint32
+	StructSize                                uint32
 	SourceKind                                MonitorSourceKind
 	StateFlags                                uint32
 	DetailFlags                               uint32
@@ -87,15 +87,24 @@ type MonitorStatus struct {
 	AutoHwmConnectionBucketHwm4K              uint32
 	AutoHwmConnectionBucketHysteresisRetained bool
 	AutoHwmEffectiveMessageBytes              uint64
-	AutoHwmAppliedSndHwm                      int32
-	AutoHwmAppliedRcvHwm                      int32
+	AutoHwmPlannedSndHwmBytes                 uint64
+	AutoHwmPlannedRcvHwmBytes                 uint64
+	AutoHwmAppliedSndHwmBytes                 uint64
+	AutoHwmAppliedRcvHwmBytes                 uint64
 	AutoHwmEffectiveSndBuf                    int32
 	AutoHwmEffectiveRcvBuf                    int32
 	AutoHwmLastRecalcMs                       uint64
 	AutoHwmLastRecalcReason                   AutoHwmRecalcReason
 	AutoHwmSendBlockedRatioPPM                uint32
-	AutoHwmDeferredSndHwm                     int32
-	AutoHwmDeferredRcvHwm                     int32
+	AutoHwmDeferredSndHwmBytes                uint64
+	AutoHwmDeferredRcvHwmBytes                uint64
+	AutoHwmDeferredSndHwmValid                bool
+	AutoHwmDeferredRcvHwmValid                bool
+	SndBytesInFlight                          uint64
+	RcvBytesInFlight                          uint64
+	MinimumCoreMessageChargeBytes             uint64
+	OversizeMessageAdmissionCount             uint64
+	OversizeMessageAdmissionMaxBytes          uint64
 }
 
 func (s *MonitorStatus) IsReady() bool {
@@ -104,33 +113,44 @@ func (s *MonitorStatus) IsReady() bool {
 
 func monitorStatusFromC(raw C.zlink_monitor_status_t) MonitorStatus {
 	return MonitorStatus{
-		SourceKind:                                MonitorSourceKind(raw.source_kind),
-		StateFlags:                                uint32(raw.state_flags),
-		DetailFlags:                               uint32(raw.detail_flags),
-		SndPendingMsgs:                            uint64(raw.snd_pending_msgs),
-		RcvPendingMsgs:                            uint64(raw.rcv_pending_msgs),
-		AutoHwmEnabled:                            uint32(raw.auto_hwm_enabled) != 0,
-		AutoHwmProfile:                            uint32(raw.auto_hwm_profile),
-		AutoHwmRole:                               uint32(raw.auto_hwm_role),
-		AutoHwmPolicyClass:                        uint32(raw.auto_hwm_policy_class),
-		AutoHwmUnitBudgetBytes:                    uint64(raw.auto_hwm_unit_budget_bytes),
-		AutoHwmSizeCap:                            uint32(raw.auto_hwm_size_cap),
-		AutoHwmSocketMessageSlots:                 uint64(raw.auto_hwm_socket_message_slots),
-		AutoHwmConnectionBucketEnabled:            uint32(raw.auto_hwm_connection_bucket_enabled) != 0,
-		AutoHwmConnectionBucketCount:              uint32(raw.auto_hwm_connection_bucket_count),
-		AutoHwmConnectionBucketIndex:              uint32(raw.auto_hwm_connection_bucket_index),
-		AutoHwmConnectionBucketHwm4K:              uint32(raw.auto_hwm_connection_bucket_hwm_4k),
+		ABIVersion:                     uint32(raw.abi_version),
+		StructSize:                     uint32(raw.struct_size),
+		SourceKind:                     MonitorSourceKind(raw.source_kind),
+		StateFlags:                     uint32(raw.state_flags),
+		DetailFlags:                    uint32(raw.detail_flags),
+		SndPendingMsgs:                 uint64(raw.snd_pending_msgs),
+		RcvPendingMsgs:                 uint64(raw.rcv_pending_msgs),
+		AutoHwmEnabled:                 uint32(raw.auto_hwm_enabled) != 0,
+		AutoHwmProfile:                 uint32(raw.auto_hwm_profile),
+		AutoHwmRole:                    uint32(raw.auto_hwm_role),
+		AutoHwmPolicyClass:             uint32(raw.auto_hwm_policy_class),
+		AutoHwmUnitBudgetBytes:         uint64(raw.auto_hwm_unit_budget_bytes),
+		AutoHwmSizeCap:                 uint32(raw.auto_hwm_size_cap),
+		AutoHwmSocketMessageSlots:      uint64(raw.auto_hwm_socket_message_slots),
+		AutoHwmConnectionBucketEnabled: uint32(raw.auto_hwm_connection_bucket_enabled) != 0,
+		AutoHwmConnectionBucketCount:   uint32(raw.auto_hwm_connection_bucket_count),
+		AutoHwmConnectionBucketIndex:   uint32(raw.auto_hwm_connection_bucket_index),
+		AutoHwmConnectionBucketHwm4K:   uint32(raw.auto_hwm_connection_bucket_hwm_4k),
 		AutoHwmConnectionBucketHysteresisRetained: uint32(raw.auto_hwm_connection_bucket_hysteresis_retained) != 0,
 		AutoHwmEffectiveMessageBytes:              uint64(raw.auto_hwm_effective_message_bytes),
-		AutoHwmAppliedSndHwm:                      int32(raw.auto_hwm_applied_sndhwm),
-		AutoHwmAppliedRcvHwm:                      int32(raw.auto_hwm_applied_rcvhwm),
+		AutoHwmPlannedSndHwmBytes:                 uint64(raw.auto_hwm_planned_sndhwm_bytes),
+		AutoHwmPlannedRcvHwmBytes:                 uint64(raw.auto_hwm_planned_rcvhwm_bytes),
+		AutoHwmAppliedSndHwmBytes:                 uint64(raw.auto_hwm_applied_sndhwm_bytes),
+		AutoHwmAppliedRcvHwmBytes:                 uint64(raw.auto_hwm_applied_rcvhwm_bytes),
 		AutoHwmEffectiveSndBuf:                    int32(raw.auto_hwm_effective_sndbuf),
 		AutoHwmEffectiveRcvBuf:                    int32(raw.auto_hwm_effective_rcvbuf),
 		AutoHwmLastRecalcMs:                       uint64(raw.auto_hwm_last_recalc_ms),
 		AutoHwmLastRecalcReason:                   AutoHwmRecalcReason(raw.auto_hwm_last_recalc_reason),
 		AutoHwmSendBlockedRatioPPM:                uint32(raw.auto_hwm_send_blocked_ratio_ppm),
-		AutoHwmDeferredSndHwm:                     int32(raw.auto_hwm_deferred_sndhwm),
-		AutoHwmDeferredRcvHwm:                     int32(raw.auto_hwm_deferred_rcvhwm),
+		AutoHwmDeferredSndHwmBytes:                uint64(raw.auto_hwm_deferred_sndhwm_bytes),
+		AutoHwmDeferredRcvHwmBytes:                uint64(raw.auto_hwm_deferred_rcvhwm_bytes),
+		AutoHwmDeferredSndHwmValid:                uint32(raw.auto_hwm_deferred_sndhwm_valid) != 0,
+		AutoHwmDeferredRcvHwmValid:                uint32(raw.auto_hwm_deferred_rcvhwm_valid) != 0,
+		SndBytesInFlight:                          uint64(raw.snd_bytes_in_flight),
+		RcvBytesInFlight:                          uint64(raw.rcv_bytes_in_flight),
+		MinimumCoreMessageChargeBytes:             uint64(raw.minimum_core_message_charge_bytes),
+		OversizeMessageAdmissionCount:             uint64(raw.oversize_message_admission_count),
+		OversizeMessageAdmissionMaxBytes:          uint64(raw.oversize_message_admission_max_bytes),
 	}
 }
 

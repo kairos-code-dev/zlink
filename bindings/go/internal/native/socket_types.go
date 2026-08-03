@@ -17,9 +17,23 @@ import "C"
 
 import (
 	"runtime/cgo"
-	"sync"
 	"time"
 	"unsafe"
+)
+
+// SocketType identifies a raw Core socket pattern.
+type SocketType uint32
+
+const (
+	SocketTypeAny    SocketType = 0
+	SocketTypePair   SocketType = 0x1001
+	SocketTypePub    SocketType = 0x1002
+	SocketTypeSub    SocketType = 0x1003
+	SocketTypeDealer SocketType = 0x1004
+	SocketTypeRouter SocketType = 0x1005
+	SocketTypeXPub   SocketType = 0x1006
+	SocketTypeXSub   SocketType = 0x1007
+	SocketTypeStream SocketType = 0x1008
 )
 
 type RidDuplicatePolicy int
@@ -57,7 +71,7 @@ func newPairSocket(ctx *Context) (*PairSocket, error) {
 }
 
 func (s *PairSocket) Send() SendOp {
-	return newSendBuilder(nil, func(parts []sendBuilderPart, flags SendFlags) error {
+	return newSendBuilder(func(parts []sendBuilderPart, flags SendFlags) error {
 		return submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			return submitErrorFromResult(C.zlink_send_part(s.raw(), part, C.zlink_send_flags_t(flags), partFlag))
 		})
@@ -79,7 +93,7 @@ func newPubSocket(ctx *Context, socketType C.zlink_socket_type_t) (*PubSocket, e
 }
 
 func (s *PubSocket) Publish(topic string) SendOp {
-	return newSendBuilder(nil, func(parts []sendBuilderPart, flags SendFlags) error {
+	return newSendBuilder(func(parts []sendBuilderPart, flags SendFlags) error {
 		return s.withCString(topic, func(cstr *C.char) error {
 			return submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 				return submitErrorFromResult(C.zlink_publish_part(s.raw(), cstr, part, C.zlink_send_flags_t(flags), partFlag))
@@ -173,7 +187,7 @@ func (s *DealerSocket) SetRequestTimeout(value time.Duration) error {
 }
 
 func (s *DealerSocket) Send() SendOp {
-	return newSendBuilder(nil, func(parts []sendBuilderPart, flags SendFlags) error {
+	return newSendBuilder(func(parts []sendBuilderPart, flags SendFlags) error {
 		return submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			return submitErrorFromResult(C.zlink_send_part(s.raw(), part, C.zlink_send_flags_t(flags), partFlag))
 		})
@@ -181,7 +195,7 @@ func (s *DealerSocket) Send() SendOp {
 }
 
 func (s *DealerSocket) Request() RequestOp {
-	return newRequestBuilder(nil, func(parts []requestBuilderPart, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
+	return newRequestBuilder(func(parts []requestBuilderPart, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
 		if callback == nil {
 			return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 		}
@@ -296,7 +310,7 @@ func newXPubSocket(ctx *Context) (*XPubSocket, error) {
 }
 
 func (s *XPubSocket) Publish(topic string) SendOp {
-	return newSendBuilder(nil, func(parts []sendBuilderPart, flags SendFlags) error {
+	return newSendBuilder(func(parts []sendBuilderPart, flags SendFlags) error {
 		return s.withCString(topic, func(cstr *C.char) error {
 			return submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 				return submitErrorFromResult(C.zlink_publish_part(s.raw(), cstr, part, C.zlink_send_flags_t(flags), partFlag))
@@ -328,8 +342,7 @@ func (s *XSubSocket) TopicsCount() (int, error) {
 }
 
 type StreamSocket struct {
-	core          *routedSocket
-	boundSessions sync.Map // RoutingID.Hex() -> actorID string
+	core *routedSocket
 }
 
 func newStreamSocket(ctx *Context) (*StreamSocket, error) {
@@ -426,7 +439,7 @@ func (s *StreamSocket) RoutingID() (RoutingID, error) {
 }
 
 func (s *StreamSocket) SendTo(target RoutingID) SendOp {
-	return newSendBuilder(nil, func(parts []sendBuilderPart, flags SendFlags) error {
+	return newSendBuilder(func(parts []sendBuilderPart, flags SendFlags) error {
 		rid := target.toC()
 		return submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			return submitErrorFromResult(C.zlink_send_part_rid(s.raw(), &rid, part, C.zlink_send_flags_t(flags), partFlag))

@@ -18,16 +18,6 @@ var aggregateHotPathSymbols = []string{
 	"zlink_dealer_request",
 	"zlink_router_request",
 	"zlink_router_reply",
-	"zlink_spot_send_channel",
-	"zlink_spot_request_channel",
-	"zlink_spot_request_spot",
-	"zlink_spot_request_router",
-	"zlink_spot_publish",
-	"zlink_spot_subscribe",
-	"zlink_spot_send_spot",
-	"zlink_spot_reply_spot",
-	"zlink_spot_reply_router",
-	"zlink_spot_recv",
 }
 
 var requiredPartSymbols = []string{
@@ -39,11 +29,6 @@ var requiredPartSymbols = []string{
 	"zlink_dealer_request_part",
 	"zlink_router_request_part",
 	"zlink_router_reply_part",
-	"zlink_spot_publish_part",
-	"zlink_spot_subscribe_part",
-	"zlink_spot_request_channel_part",
-	"zlink_spot_request_spot_part",
-	"zlink_spot_reply_router_part",
 }
 
 func bindingRoot(t *testing.T) string {
@@ -179,8 +164,8 @@ func TestSamplesAndPerfUseRootPublicContract(t *testing.T) {
 		}
 		body := string(bodyBytes)
 		for _, token := range []string{
-			`"zlink.systems/zlink/contracts"`,
-			`"zlink.systems/zlink/internal/native"`,
+			`"zlink.systems/zlink/v11/internal/native"`,
+			`"zlink.systems/zlink/v11/contracts"`,
 		} {
 			if strings.Contains(body, token) {
 				violations = append(violations, filepath.Base(path)+":"+token)

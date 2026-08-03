@@ -10,7 +10,6 @@ import "C"
 
 type Received struct {
 	routingID     RoutingID
-	spotRID       RoutingID
 	parts         []*Message
 	requestSeq    uint64
 	hasRequestSeq bool
@@ -30,17 +29,6 @@ func (r *Received) HasRoutingID() bool {
 	return r != nil && r.routingID.Size() > 0
 }
 
-func (r *Received) SpotRID() RoutingID {
-	if r == nil {
-		return RoutingID{}
-	}
-	return r.spotRID
-}
-
-func (r *Received) HasSpotRID() bool {
-	return r != nil && r.spotRID.Size() > 0
-}
-
 func (r *Received) Parts() []*Message {
 	if r == nil {
 		return nil
@@ -57,10 +45,9 @@ func (r *Received) AdoptFrom(source *Received) {
 	if r == nil || source == nil || r == source {
 		return
 	}
-	r.replace(source.routingID, source.spotRID, source.parts, source.requestSeq, source.hasRequestSeq, source.reply, source.send, source.sendBuilder)
+	r.replace(source.routingID, source.parts, source.requestSeq, source.hasRequestSeq, source.reply, source.send, source.sendBuilder)
 	// Detach source so its lifecycle no-ops.
 	source.routingID = RoutingID{}
-	source.spotRID = RoutingID{}
 	source.parts = nil
 	source.requestSeq = 0
 	source.hasRequestSeq = false
@@ -71,7 +58,6 @@ func (r *Received) AdoptFrom(source *Received) {
 
 func (r *Received) replace(
 	routingID RoutingID,
-	spotRID RoutingID,
 	parts []*Message,
 	requestSeq uint64,
 	hasRequestSeq bool,
@@ -85,7 +71,6 @@ func (r *Received) replace(
 		}
 	}
 	r.routingID = routingID
-	r.spotRID = spotRID
 	r.parts = parts
 	r.requestSeq = requestSeq
 	r.hasRequestSeq = hasRequestSeq
@@ -131,9 +116,9 @@ func (r *Received) SinglePartOrError() (*Message, error) {
 
 // Reply returns an operation builder for replying to this received request.
 // Only valid when HasRequestSeq() is true; otherwise Submit returns
-// *SubmitError. RoutingID/SpotRID/RequestSeq are encapsulated.
+// *SubmitError. RoutingID and RequestSeq are encapsulated.
 func (r *Received) Reply() ReplyOp {
-	return newReplyBuilder(nil, func(parts []*Message, flags SendFlags) error {
+	return newReplyBuilder(func(parts []*Message, flags SendFlags) error {
 		if r == nil {
 			return &SubmitError{Result: SubmitInvalidHandle, nativeErrno: int(C.EFAULT)}
 		}
@@ -148,9 +133,9 @@ func (r *Received) Reply() ReplyOp {
 }
 
 // Send returns an operation builder for a regular routed message back to
-// the sender of this Received. Source rid / spot rid are encapsulated.
+// the sender of this Received. The source routing ID is encapsulated.
 func (r *Received) Send() SendOp {
-	return newSendBuilder(nil, func(parts []sendBuilderPart, flags SendFlags) error {
+	return newSendBuilder(func(parts []sendBuilderPart, flags SendFlags) error {
 		if r == nil {
 			return &SubmitError{Result: SubmitInvalidHandle, nativeErrno: int(C.EFAULT)}
 		}

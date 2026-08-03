@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	zlink "zlink.systems/zlink/contracts"
+	zlink "zlink.systems/zlink/v11"
 )
 
 func TestRuntimeVersionIsAvailable(t *testing.T) {
@@ -27,8 +27,8 @@ func TestDirectCommonHeaderVersionMatchesPackage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("preprocess zlink/common.h: %v\n%s", err, output)
 	}
-	if got := lastNonEmptyLine(string(output)); got != "2" {
-		t.Fatalf("ZLINK_VERSION_PATCH from direct zlink/common.h include = %q, want 2", got)
+	if got := lastNonEmptyLine(string(output)); got != "0" {
+		t.Fatalf("ZLINK_VERSION_PATCH from direct zlink/common.h include = %q, want 0", got)
 	}
 }
 
@@ -52,101 +52,6 @@ func TestContextLifecycle(t *testing.T) {
 	}
 	if err := ctx.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
-	}
-}
-
-func TestSpotNodeEntrySpotAndLookup(t *testing.T) {
-	ctx := newContext(t)
-	defer ctx.Close()
-
-	node, err := ctx.SpotNode()
-	if err != nil {
-		t.Fatalf("SpotNode() error = %v", err)
-	}
-	defer node.Close()
-
-	entryA, err := node.EntrySpot()
-	if err != nil {
-		t.Fatalf("EntrySpot() error = %v", err)
-	}
-	defer entryA.Close()
-	entryB, err := node.EntrySpot()
-	if err != nil {
-		t.Fatalf("EntrySpot() second error = %v", err)
-	}
-	defer entryB.Close()
-
-	entryRID, err := entryA.RoutingID()
-	if err != nil {
-		t.Fatalf("entry RoutingID() error = %v", err)
-	}
-	secondEntryRID, err := entryB.RoutingID()
-	if err != nil {
-		t.Fatalf("second entry RoutingID() error = %v", err)
-	}
-	if !entryRID.Equal(secondEntryRID) {
-		t.Fatalf("EntrySpot() facades have different routing ids")
-	}
-
-	lookupEntry, err := node.SpotLookup(entryRID)
-	if err != nil {
-		t.Fatalf("SpotLookup(entry) error = %v", err)
-	}
-	defer lookupEntry.Close()
-	lookupEntryRID, err := lookupEntry.RoutingID()
-	if err != nil {
-		t.Fatalf("lookup entry RoutingID() error = %v", err)
-	}
-	if !lookupEntryRID.Equal(entryRID) {
-		t.Fatalf("SpotLookup(entry) returned routing id %s, want %s", lookupEntryRID.Hex(), entryRID.Hex())
-	}
-
-	spot, err := node.Spot()
-	if err != nil {
-		t.Fatalf("Spot() error = %v", err)
-	}
-	defer spot.Close()
-	spotRID, err := spot.RoutingID()
-	if err != nil {
-		t.Fatalf("spot RoutingID() error = %v", err)
-	}
-	lookupSpot, err := node.SpotLookup(spotRID)
-	if err != nil {
-		t.Fatalf("SpotLookup(user spot) error = %v", err)
-	}
-	defer lookupSpot.Close()
-	lookupSpotRID, err := lookupSpot.RoutingID()
-	if err != nil {
-		t.Fatalf("lookup spot RoutingID() error = %v", err)
-	}
-	if !lookupSpotRID.Equal(spotRID) {
-		t.Fatalf("SpotLookup(user spot) returned routing id %s, want %s", lookupSpotRID.Hex(), spotRID.Hex())
-	}
-
-	roomRID := zlink.NewRoutingID([]byte("go-room"))
-	roomA, createdA, err := node.GetOrCreateSpot(roomRID)
-	if err != nil {
-		t.Fatalf("GetOrCreateSpot(first) error = %v", err)
-	}
-	defer roomA.Close()
-	roomB, createdB, err := node.GetOrCreateSpot(roomRID)
-	if err != nil {
-		t.Fatalf("GetOrCreateSpot(second) error = %v", err)
-	}
-	defer roomB.Close()
-	if !createdA || createdB {
-		t.Fatalf("GetOrCreateSpot created flags = %v, %v; want true, false", createdA, createdB)
-	}
-	roomARID, err := roomA.RoutingID()
-	if err != nil {
-		t.Fatalf("roomA RoutingID() error = %v", err)
-	}
-	roomBRID, err := roomB.RoutingID()
-	if err != nil {
-		t.Fatalf("roomB RoutingID() error = %v", err)
-	}
-	if !roomARID.Equal(roomRID) || !roomBRID.Equal(roomRID) {
-		t.Fatalf("GetOrCreateSpot returned unexpected routing ids")
 	}
 }
 

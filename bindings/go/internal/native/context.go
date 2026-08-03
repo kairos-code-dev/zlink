@@ -244,11 +244,18 @@ func (o *ContextOptions) SetAutoHwmMsgUnitBytes(value int) error {
 	if value < 0 {
 		return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
-	return o.ctx.setIntOption(C.ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, value)
+	return o.ctx.setUint64DataOption(C.ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, uint64(value))
 }
 
 func (o *ContextOptions) AutoHwmMsgUnitBytes() (int, error) {
-	return o.ctx.getIntOption(C.ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES)
+	value, err := o.ctx.getUint64DataOption(C.ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES)
+	if err != nil {
+		return 0, err
+	}
+	if value > uint64(math.MaxInt) {
+		return 0, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EOVERFLOW)}
+	}
+	return int(value), nil
 }
 
 func (c *Context) setIntOption(option C.zlink_ctx_option_t, value int) error {
@@ -271,6 +278,34 @@ func (c *Context) getIntOption(option C.zlink_ctx_option_t) (int, error) {
 		return 0, configErrorFromResult(result)
 	}
 	return int(value), nil
+}
+
+func (c *Context) setUint64DataOption(option C.zlink_ctx_option_t, value uint64) error {
+	if c == nil || c.closed {
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
+	}
+	raw := C.uint64_t(value)
+	return configErrorFromResult(C.zlink_ctx_set_data(
+		c.handle,
+		option,
+		unsafe.Pointer(&raw),
+		C.size_t(unsafe.Sizeof(raw)),
+	))
+}
+
+func (c *Context) getUint64DataOption(option C.zlink_ctx_option_t) (uint64, error) {
+	if c == nil || c.closed {
+		return 0, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
+	}
+	var raw C.uint64_t
+	size := C.size_t(unsafe.Sizeof(raw))
+	err := configErrorFromResult(C.zlink_ctx_get_data(
+		c.handle,
+		option,
+		unsafe.Pointer(&raw),
+		&size,
+	))
+	return uint64(raw), err
 }
 
 func durationToMillis(value time.Duration) (int32, error) {
@@ -314,12 +349,4 @@ func (c *Context) XSubSocket() (*XSubSocket, error) {
 
 func (c *Context) StreamSocket() (*StreamSocket, error) {
 	return newStreamSocket(c)
-}
-
-func (c *Context) SpotNode() (*SpotNode, error) {
-	return newSpotNode(c)
-}
-
-func (c *Context) SpotNodeWithOptions(options SpotNodeOptions) (*SpotNode, error) {
-	return newSpotNodeWithOptions(c, &options)
 }

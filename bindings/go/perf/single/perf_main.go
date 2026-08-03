@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"zlink.systems/zlink/perf/internal/perfcommon"
+	"zlink.systems/zlink/v11/perf/internal/perfcommon"
 )
 
 type benchmarkConfig struct {
@@ -50,8 +50,6 @@ func main() {
 		result = runDealerRouter(cfg)
 	case "ROUTER_ROUTER":
 		result = runRouterRouter(cfg)
-	case "SPOT":
-		result = runSpot(cfg)
 	default:
 		perfcommon.Must(
 			&unsupportedPatternError{pattern: cfg.pattern},

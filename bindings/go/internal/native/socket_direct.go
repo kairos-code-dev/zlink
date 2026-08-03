@@ -54,7 +54,7 @@ func (s *directSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 		}
 		return false, err
 	}
-	out.replace(routingIDFromCPtr(sourceRID), RoutingID{}, clonedParts, 0, false, nil, nil, nil)
+	out.replace(routingIDFromCPtr(sourceRID), clonedParts, 0, false, nil, nil, nil)
 	return true, nil
 }
 
@@ -75,7 +75,7 @@ func (s *directSocket) onReceive(handler func(*Received)) error {
 	if handler == nil {
 		return &HandlerError{Result: HandlerInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
-	state := newRecvCallbackState(recvCallback(handler), nil)
+	state := newRecvCallbackState(recvCallback(handler))
 	handle := cgo.NewHandle(state)
 	if err := handlerErrorFromResult(C.zlink_recv_handler_go_local(s.raw(), C.uintptr_t(handle))); err != nil {
 		state.close()

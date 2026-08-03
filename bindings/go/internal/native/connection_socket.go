@@ -10,7 +10,6 @@ package native
 import "C"
 
 import (
-	"strings"
 	"time"
 	"unsafe"
 )
@@ -20,21 +19,19 @@ type connectionSocket struct {
 }
 
 func (s *connectionSocket) SetSendHighWaterMark(value int) error {
-	return s.setIntOption(C.ZLINK_OPT_SNDHWM, int32(value))
+	return s.setHwmOption(C.ZLINK_OPT_SNDHWM, value)
 }
 
 func (s *connectionSocket) SendHighWaterMark() (int, error) {
-	value, err := s.getIntOption(C.ZLINK_OPT_SNDHWM)
-	return int(value), err
+	return s.getHwmOption(C.ZLINK_OPT_SNDHWM)
 }
 
 func (s *connectionSocket) SetReceiveHighWaterMark(value int) error {
-	return s.setIntOption(C.ZLINK_OPT_RCVHWM, int32(value))
+	return s.setHwmOption(C.ZLINK_OPT_RCVHWM, value)
 }
 
 func (s *connectionSocket) ReceiveHighWaterMark() (int, error) {
-	value, err := s.getIntOption(C.ZLINK_OPT_RCVHWM)
-	return int(value), err
+	return s.getHwmOption(C.ZLINK_OPT_RCVHWM)
 }
 
 func (s *connectionSocket) SetLinger(value time.Duration) error {
@@ -102,35 +99,6 @@ func (s *connectionSocket) CommonOptions() *CommonSocketOptions {
 
 func (s *connectionSocket) LastEndpoint() (string, error) {
 	return s.getStringOption(C.ZLINK_OPT_LAST_ENDPOINT, 256)
-}
-
-func (s *connectionSocket) SetChannelName(value string) error {
-	if s == nil || s.closed {
-		return stateError("socket is closed")
-	}
-	if strings.IndexByte(value, 0) >= 0 || value == "" {
-		return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
-	}
-	cstr := C.CString(value)
-	defer C.free(unsafe.Pointer(cstr))
-	return configErrorFromResult(C.zlink_socket_set_channel_name(s.raw(), cstr))
-}
-
-func (s *connectionSocket) ChannelName() (string, error) {
-	if s == nil || s.closed {
-		return "", stateError("socket is closed")
-	}
-	buf := make([]byte, 256)
-	size := C.size_t(0)
-	if err := configErrorFromResult(C.zlink_socket_get_channel_name(
-		s.raw(),
-		(*C.char)(unsafe.Pointer(&buf[0])),
-		C.size_t(len(buf)),
-		&size,
-	)); err != nil {
-		return "", err
-	}
-	return string(buf[:int(size)]), nil
 }
 
 func (s *connectionSocket) setPubBoolOption(option C.zlink_pub_option_t, value bool) error {

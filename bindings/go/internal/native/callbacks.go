@@ -145,14 +145,12 @@ func (t *callbackTask) run() {
 type recvCallbackState struct {
 	dispatcher *callbackDispatcher
 	handler    recvCallback
-	reply      func(RoutingID, RoutingID, uint64) func(SendFlags, []*Message) error
 }
 
-func newRecvCallbackState(handler recvCallback, reply func(RoutingID, RoutingID, uint64) func(SendFlags, []*Message) error) *recvCallbackState {
+func newRecvCallbackState(handler recvCallback) *recvCallbackState {
 	return &recvCallbackState{
 		dispatcher: newCallbackDispatcher(),
 		handler:    handler,
-		reply:      reply,
 	}
 }
 
@@ -195,27 +193,6 @@ func newSendReadyCallbackState(handler sendReadyCallback) *sendReadyCallbackStat
 }
 
 func (s *sendReadyCallbackState) close() {
-	if s == nil {
-		return
-	}
-	s.dispatcher.close()
-}
-
-type spotDispatchCallbackState struct {
-	dispatcher *callbackDispatcher
-	spot       *Spot
-	handler    func(*Spot, SpotDispatchInfo)
-}
-
-func newSpotDispatchCallbackState(spot *Spot, handler func(*Spot, SpotDispatchInfo)) *spotDispatchCallbackState {
-	return &spotDispatchCallbackState{
-		dispatcher: newCallbackDispatcher(),
-		spot:       spot,
-		handler:    handler,
-	}
-}
-
-func (s *spotDispatchCallbackState) close() {
 	if s == nil {
 		return
 	}
@@ -324,36 +301,6 @@ func goZlinkRecvTrampoline(sourceRID *C.zlink_routing_id_t, parts *C.zlink_msg_t
 	_ = received.Close()
 }
 
-//export goZlinkRouterRecvTrampoline
-func goZlinkRouterRecvTrampoline(sourceNodeRID *C.zlink_routing_id_t, sourceSpotRID *C.zlink_routing_id_t, requestSeq C.uint64_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
-	state, ok := safeHandleAs[*recvCallbackState](userdata)
-	if !ok {
-		return
-	}
-	received := &Received{
-		routingID:     routingIDFromCPtr(sourceNodeRID),
-		spotRID:       routingIDFromCPtr(sourceSpotRID),
-		parts:         mustTakeParts(parts, partCount),
-		requestSeq:    uint64(requestSeq),
-		hasRequestSeq: requestSeq != 0,
-	}
-	if state.reply != nil && requestSeq != 0 {
-		received.reply = state.reply(received.routingID, received.spotRID, received.requestSeq)
-	}
-	if state.dispatcher.enqueue(&callbackTask{
-		label: "router receive",
-		invoke: func() {
-			state.handler(received)
-		},
-		cleanup: func() {
-			_ = received.Close()
-		},
-	}) {
-		return
-	}
-	_ = received.Close()
-}
-
 //export goZlinkSubscribeTrampoline
 func goZlinkSubscribeTrampoline(sourceRID *C.zlink_routing_id_t, topic *C.char, topicLen C.size_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
 	state, ok := safeHandleAs[*subscribeCallbackState](userdata)
@@ -429,58 +376,6 @@ func goZlinkStreamPacketTrampoline(_ unsafe.Pointer, sourceRID *C.zlink_routing_
 	}
 	MultipartClose(headerParts)
 	MultipartClose(bodyParts)
-}
-
-//export goZlinkSpotDispatchEventTrampoline
-func goZlinkSpotDispatchEventTrampoline(_ unsafe.Pointer, info *C.zlink_spot_dispatch_info_t, userdata C.uintptr_t) {
-	if info == nil {
-		return
-	}
-	state, ok := safeHandleAs[*spotDispatchCallbackState](userdata)
-	if !ok || state == nil {
-		return
-	}
-	nodeHandle := state.spot.core.owner.handle
-	subjectKind := SpotDispatchSubjectKind(info.subject_kind)
-	dispatchInfo := SpotDispatchInfo{
-		Event:       SpotDispatchEvent(info.event),
-		SubjectKind: subjectKind,
-		nodeHandle:  nodeHandle,
-	}
-	switch subjectKind {
-	case SpotDispatchSubjectTimer:
-		if info.subject != nil {
-			dispatchInfo.Timer = borrowedTimer(info.subject)
-		}
-	case SpotDispatchSubjectChannelDealer:
-		if info.subject != nil {
-			if d := state.spot.core.owner.lookupDealer(info.subject); d != nil {
-				dispatchInfo.ChannelDealer = d
-			} else {
-				dispatchInfo.ChannelDealer = borrowedDealerSocket(info.subject)
-			}
-		}
-	case SpotDispatchSubjectActor:
-		if info.subject != nil {
-			ref := actorRefFromC(*(*C.zlink_actor_ref_t)(info.subject))
-			dispatchInfo.Actor = &ref
-		}
-	}
-	// Spot dispatch callbacks must run in the native dispatch callback context.
-	// Core only permits spot recv/subscribe drains while the dispatch callback
-	// is active, so bouncing through an async Go worker breaks the contract and
-	// surfaces EBUSY from Spot.Subscribe/RecvRouted inside the callback.
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			log.Printf(
-				"zlink: recovered panic in %s callback: %v\n%s",
-				"spot-dispatch",
-				recovered,
-				debug.Stack(),
-			)
-		}
-	}()
-	state.handler(state.spot, dispatchInfo)
 }
 
 //export goZlinkTimerTrampoline

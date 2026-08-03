@@ -305,25 +305,6 @@ func (m *Message) RefCount() int {
 	return int(count)
 }
 
-func (m *Message) GetProperty(name string) (string, bool, error) {
-	if m == nil || m.closed {
-		return "", false, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
-	}
-	if name == "" {
-		return "", false, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
-	}
-	if strings.IndexByte(name, 0) >= 0 {
-		return "", false, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
-	}
-	cname := C.CString(name)
-	defer C.free(unsafe.Pointer(cname))
-	value := C.zlink_msg_gets(&m.msg, cname)
-	if value == nil {
-		return "", false, nil
-	}
-	return C.GoString(value), true, nil
-}
-
 func (m *Message) moved() {
 	m.closed = true
 }

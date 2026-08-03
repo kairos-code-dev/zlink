@@ -2,7 +2,7 @@
 
 package contracts
 
-import impl "zlink.systems/zlink/internal/native"
+import impl "zlink.systems/zlink/v11/internal/native"
 
 type (
 	// RoutingID is an opaque identifier for a messaging peer or route, 1 to 255 bytes.
@@ -17,8 +17,6 @@ type (
 	Received = impl.Received
 	// RecvPartResult is the outcome of receiving a single message part.
 	RecvPartResult = impl.RecvPartResult
-	// SpotForwardResult is the outcome of forwarding a message through a spot.
-	SpotForwardResult = impl.SpotForwardResult
 	// TopicMessage is a received publish: its topic and message parts.
 	TopicMessage = impl.TopicMessage
 	// SubscriptionEvent is a subscriber's subscribe or unsubscribe as observed by an XPUB socket.

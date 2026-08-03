@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"time"
 
-	"zlink.systems/zlink/perf/internal/perfcommon"
+	"zlink.systems/zlink/v11/perf/internal/perfcommon"
 )
 
 type multiConfig struct {
@@ -100,12 +100,6 @@ func runMultiServerRole(cfg multiConfig) {
 		runMultiRouterRouterServer(cfg)
 	case "MULTI_STREAM":
 		runMultiStreamServer(cfg)
-	case "MULTI_SPOT":
-		runMultiSpotServer(cfg)
-	case "MULTI_SPOT_REQREP":
-		runMultiSpotReqRepServer(cfg)
-	case "MULTI_SPOT_SENDSEND":
-		runMultiSpotSendSendServer(cfg)
 	default:
 		perfcommon.Must(&unsupportedMultiPatternError{pattern: cfg.pattern})
 	}
@@ -127,15 +121,6 @@ func runMultiClientRole(cfg multiConfig, endpoint string) {
 	// MULTI_STREAM has no Go client role: the shared C
 	// perf_stream_client binary is the reference client (spawned by
 	// run_benchmarks_multi.sh).
-	case "MULTI_SPOT":
-		result := runMultiSpotClient(cfg, endpoint)
-		printMultiResult(cfg, result)
-	case "MULTI_SPOT_REQREP":
-		result := runMultiSpotReqRepClientRole(cfg, endpoint)
-		printMultiResult(cfg, result)
-	case "MULTI_SPOT_SENDSEND":
-		result := runMultiSpotSendSendClientRole(cfg, endpoint)
-		printMultiResult(cfg, result)
 	default:
 		perfcommon.Must(&unsupportedMultiPatternError{pattern: cfg.pattern})
 	}

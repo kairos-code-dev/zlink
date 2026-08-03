@@ -127,17 +127,6 @@ func NewTimer() (*Timer, error) {
 	return &Timer{handle: handle}, nil
 }
 
-func NewTimerFromSpot(spot *Spot) (*Timer, error) {
-	if spot == nil || spot.core == nil || spot.core.closed {
-		return nil, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
-	}
-	handle := C.zlink_spot_timer_new(spot.raw())
-	if handle == nil {
-		return nil, configErrorFromErrno(currentErrno())
-	}
-	return &Timer{handle: handle}, nil
-}
-
 func (t *Timer) raw() unsafe.Pointer {
 	if t == nil {
 		return nil

@@ -122,20 +122,19 @@ func recvDirectPartInto(
 func recvRoutedPartInto(
 	out *Message,
 	flags RecvFlags,
-	call func(**C.zlink_routing_id_t, **C.zlink_routing_id_t, *C.uint64_t, *C.zlink_msg_t, *C.zlink_part_flag_t, C.zlink_recv_flags_t) error,
+	call func(**C.zlink_routing_id_t, *C.uint64_t, *C.zlink_msg_t, *C.zlink_part_flag_t, C.zlink_recv_flags_t) error,
 ) (RecvPartResult, error) {
 	if out == nil {
 		return RecvPartResult{}, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EINVAL)}
 	}
 	var sourceNodeRID *C.zlink_routing_id_t
-	var sourceSpotRID *C.zlink_routing_id_t
 	var requestSeq C.uint64_t
 	var part C.zlink_msg_t
 	if err := configErrorFromResult(C.zlink_msg_init(&part)); err != nil {
 		return RecvPartResult{}, err
 	}
 	var hasMore C.zlink_part_flag_t
-	if err := call(&sourceNodeRID, &sourceSpotRID, &requestSeq, &part, &hasMore, C.zlink_recv_flags_t(flags)); err != nil {
+	if err := call(&sourceNodeRID, &requestSeq, &part, &hasMore, C.zlink_recv_flags_t(flags)); err != nil {
 		_ = configErrorFromResult(C.zlink_msg_close(&part))
 		return RecvPartResult{}, err
 	}
@@ -145,60 +144,13 @@ func recvRoutedPartInto(
 	seq := uint64(requestSeq)
 	return RecvPartResult{
 		RoutingID:     routingIDFromCPtr(sourceNodeRID),
-		SpotRID:       routingIDFromCPtr(sourceSpotRID),
 		RequestSeq:    seq,
 		HasRequestSeq: seq != 0,
 		More:          hasMore != C.ZLINK_PART_FINAL,
 	}, nil
 }
 
-func recvSpotTopicMessageInto(
-	out *TopicMessage,
-	call func(**C.zlink_routing_id_t, *C.char, *C.size_t, *C.zlink_msg_t, *C.zlink_part_flag_t, C.zlink_recv_flags_t) error,
-	flags RecvFlags,
-) error {
-	var sourceRID *C.zlink_routing_id_t
-	var topicBuf [recvTopicBufferCap]byte
-	topicLen := C.size_t(len(topicBuf))
-	clonedParts, err := recvMultipart(flags, func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
-		return call(
-			&sourceRID,
-			(*C.char)(unsafe.Pointer(&topicBuf[0])),
-			&topicLen,
-			part,
-			hasMore,
-			recvFlags,
-		)
-	})
-	if err != nil {
-		return err
-	}
-	_ = out.Close()
-	out.routingID = routingIDFromCPtr(sourceRID)
-	out.topic = string(topicBuf[:int(topicLen)])
-	out.parts = clonedParts
-	return nil
-}
-
 func recvSubscriptionEvent(
-	call func(*C.zlink_routing_id_t, *C.int, *C.char, *C.size_t, C.zlink_recv_flags_t) error,
-	flags RecvFlags,
-) (*SubscriptionEvent, error) {
-	var rid C.zlink_routing_id_t
-	var subscribed C.int
-	var topicBuf [recvTopicBufferCap]byte
-	topicLen := C.size_t(len(topicBuf))
-	if err := call(&rid, &subscribed, (*C.char)(unsafe.Pointer(&topicBuf[0])), &topicLen, C.zlink_recv_flags_t(flags)); err != nil {
-		return nil, err
-	}
-	return &SubscriptionEvent{
-		routingID:  routingIDFromC(rid),
-		subscribed: subscribed != 0,
-		topic:      string(topicBuf[:int(topicLen)]),
-	}, nil
-}
-
-func recvSpotSubscriptionEvent(
 	call func(*C.zlink_routing_id_t, *C.int, *C.char, *C.size_t, C.zlink_recv_flags_t) error,
 	flags RecvFlags,
 ) (*SubscriptionEvent, error) {

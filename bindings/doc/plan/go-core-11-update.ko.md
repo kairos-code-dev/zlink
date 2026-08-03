@@ -128,10 +128,10 @@ RequestSubmitOp.Submit(context.Context, RequestReplyCallback) (bool, error)
 ReplySubmitOp.Submit(context.Context) error
 ```
 
-따라서 `Send`와 request callback submit의 `false, nil` backpressure semantics는 현재 계약이며, 성공 값 없는
-submit을 `error` 하나로 바꾸는 권고안은 [Go·Rust submit 반환 초안](../spec/draft/go-rust-submit-return.ko.md)의
-공통 승인 전까지 적용하지 않는다. Go–Rust parity inventory와 PGR-COMMON-03 승인 후에만 이 signature와
-정식 contract를 다시 결정한다.
+따라서 `Send`와 request callback submit의 `false, nil` backpressure semantics는 현재 계약이다. 이전에
+작성된 error-only 반환 설계 후보는 공통 승인을 받지 못해 삭제했으며, 그 후보를 근거로 signature를 바꾸지
+않는다. Go–Rust parity inventory에서 차이를 계속 기록하고, public signature를 바꾸려면 별도 공통 승인과
+정식 contract 갱신이 필요하다.
 
 ### GO-05 — Hot path 설계 검토 — PASS (독립 review 제외)
 
@@ -207,7 +207,7 @@ Package zip에는 Python report helper가 포함되지 않으므로 `--smoke` �
 | Package smoke boundary | `6d698c7e68` | Go package perf `--smoke`가 package 외부 Python report helper 없이 동작하도록 고정 |
 | Package source boundary | `427fbce0f5c` | 이 source revision으로 candidate identity를 연결한 package와 clean consumer, race·sample·perf smoke를 재검증 |
 | Platform builder boundary | `3740c59ad9` | non-x86_64 package builder 거부 결과와 같은 candidate를 요구하는 platform gate를 기록 |
-| Submit draft boundary | `7f27ed6bc5` | Go·Rust submit 반환 초안을 구현 전 문서로 branch에 고정하고 public signature는 바꾸지 않음 |
+| Submit design boundary | `7f27ed6bc5` | 미승인 Go·Rust submit 반환 설계 후보를 기록했으나 채택하지 않았고 public signature는 바꾸지 않음 |
 | Runtime close boundary | `935b0407fc` | multipart ownership, completion errno, Poller completion state와 request progress close ordering을 수정하고 race·package consumer를 재검증 |
 
 사용자의 명시 요청에 따라 위 범위를 구현자 자체 검토로 다시 읽고 승인했다. 재검증 결과는
@@ -225,9 +225,9 @@ Go 정식 spec의 한국어·영문 문서는 `/v11` module, Core 11 raw public 
 surface와 package boundary에 맞춰 갱신했다. `bindings/go/README.godoc.md`, `tests/run_tests.sh`와 sample
 entrypoint도 현재 구현과 맞는다.
 
-공통 bindings spec의 submit 반환 초안 파일은 구현 전 문서로 branch에 고정했지만, 초안 승인, 채워진 Go–Rust parity
-inventory의 최종 판정과 공통 문구 통합은 아직 남아 있다. 따라서 언어별 Go spec 갱신만으로 전체 public contract
-parity 완료를 주장하지 않는다.
+공통 bindings spec의 submit 반환 설계 후보는 공통 승인을 받지 못해 삭제했다. 현재 Go spec과 구현의 반환
+signature는 유지되며, Go–Rust parity inventory의 최종 판정과 공통 문구 통합은 아직 남아 있다. 따라서 언어별
+Go spec 갱신만으로 전체 public contract parity 완료를 주장하지 않는다.
 
 ## 5. Platform 검증
 
@@ -307,13 +307,13 @@ scripts/local-package/go/build-wsl.sh \
 | Hot path cost inventory와 optimization guard | `PASS` | `hot-path-cost-inventory.json`, `TestHotPathCostInventory`, `TestOptimizationGuard` |
 | Perf runner smoke | `PASS` | `427fbce0f5c` source의 fresh6 extracted package에서 single PAIR inproc와 multi DEALER/ROUTER TCP smoke, exit 0 |
 | 구현 후 POSD·DDD·성능 비용·dead code Codex review | `NOT CLEAN` | 현재 독립 frontier review와 fresh finding report 없음 |
-| Go·Rust parity inventory | `PARTIAL` | 대응 surface·error·ownership 행은 기록했지만 submit 승인, contract test와 parity `CLEAN` 판정이 남음 |
-| Submit·`context.Context` draft 승인과 contract | `PARTIAL` | cancellation/error tests 통과; submit 반환 draft 승인과 error-only signature는 미완료 |
+| Go·Rust parity inventory | `PARTIAL` | 대응 surface·error·ownership 행은 기록했지만 현재 submit 반환 차이, contract test와 parity `CLEAN` 판정이 남음 |
+| Submit·`context.Context` contract | `PARTIAL` | cancellation/error tests와 현재 `false, nil` semantics는 확인했지만 통합 반환 shape 결정은 미완료 |
 | Raw sample process runner | `PASS` | `samples: pass=7 fail=0` |
 | File proxy package contents | `PASS` | candidate identity를 기록한 zip에 Linux runtime 포함, service/build/results forbidden-entry 없음 |
 | Replace 없는 clean module consumer | `PASS` | 빈 `GOMODCACHE`/`GOCACHE`, go build와 Pair roundtrip, module-cache ldd |
 | Linux·macOS native consumer | `PARTIAL` | Linux x86_64 PASS. Linux arm64와 macOS 요청은 현재 builder가 exit 2로 거부하고, 같은 candidate runtime을 사용한 native consumer evidence도 없음 |
-| 한국어·영문 spec, GoDoc와 guide | `PARTIAL` | Go spec/GoDoc/sample entrypoint 갱신; 공통 draft·parity 통합 미완료 |
+| 한국어·영문 spec, GoDoc와 guide | `PARTIAL` | Go spec/GoDoc/sample entrypoint 갱신; 공통 parity 통합 미완료 |
 | Package·통합 최종 review | `PENDING` | Linux x86_64 candidate 연결은 통과했지만 다른 platform evidence와 독립 review 필요 |
 
 명령, 종료 코드, test 수, module zip SHA-256과 실패 원인은

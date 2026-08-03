@@ -8,7 +8,6 @@
 |------|------|------|
 | 사용자 가이드 | [guide/](guide/README.ko.md) | 언어별 binding 사용 가이드(cpp · dotnet · go · java · node · python · rust) |
 | 스펙 | [spec/](spec/README.ko.md) | 언어별 binding 공개 계약(c · cpp · dotnet · go · java · node · python · rust) |
-| 구현 전 초안 | [spec/draft/](spec/draft/README.ko.md) | 아직 공개 계약이 아닌 bindings 설계 후보 |
 | 계획 | [공통 계획](plan/python-go-rust-core-11-update.ko.md) | Python · Go · Rust binding이 함께 사용할 Core 입력과 완료 기준 |
 
 언어별 최신화는 [Python](plan/python-core-11-update.ko.md), [Go](plan/go-core-11-update.ko.md),

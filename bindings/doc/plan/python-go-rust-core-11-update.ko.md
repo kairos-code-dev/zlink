@@ -152,16 +152,15 @@ backpressure는 공통 오류 처리 정책에서 함수군별 error로 정의�
 `Ok(false)`를 반환하고 비동기 완료 정책도 boolean 반환을 허용한다. 따라서 exact submit signature는 아직
 정식 계약 사이에서 일치하지 않는다.
 
-[Go·Rust submit 반환 초안](../spec/draft/go-rust-submit-return.ko.md)은 Go `error`와 Rust
-`Result<(), SubmitError>`를 권고안으로 비교한다. PGR-COMMON-03에서 이 초안을 승인하고 공통 오류 처리 정책과
-비동기 완료 정책의 현재 차이를 implementation gap에 기록한 뒤에만 구현 목표로 고정한다. 승인 전에는 parity
-inventory의 signature를 구현 지시로 사용하지 않는다. 정식 spec은 구현과 contract test가 통과한 뒤 승인된
-초안에 맞춰 갱신한다.
+이전에 작성된 Go·Rust submit 반환 설계 후보는 Go `error`와 Rust `Result<(), SubmitError>`를 비교했지만
+공통 승인을 받지 못해 삭제했다. 현재 구현과 정식 spec의 반환 차이는 parity inventory에 기록하며, 이 문서의
+내용을 구현 지시로 사용하지 않는다. 정식 spec과 public signature를 바꾸려면 별도 공통 승인, 구현과
+contract test, implementation gap 기록이 모두 필요하다.
 
-Parity inventory는 함수군 error, 입력 검증, no-data, `code`, `internal_errno`와 ownership뿐 아니라 승인된
-submit signature와 언어별 public naming도 판정한다. Python·Rust part 접근 이름은
-[part 접근 이름 초안](../spec/draft/python-rust-single-part-naming.ko.md)에서 먼저 검토한다. 구현과 contract
-test가 통과한 뒤 승인된 내용을 정식 spec에 반영한다.
+Parity inventory는 함수군 error, 입력 검증, no-data, `code`, `internal_errno`와 ownership뿐 아니라 submit
+signature와 언어별 public naming도 판정한다. Python·Rust part 접근 이름의 현재 차이는 inventory에 기록하며,
+승인되지 않은 설계 후보를 구현 기준으로 사용하지 않는다. 구현과 contract test가 통과하고 별도 승인을 받은
+뒤에만 정식 spec을 반영한다.
 
 ## 7. 공통 준비 작업
 
@@ -268,8 +267,8 @@ snapshot의 test·package·clean consumer 실행은 구현 후 각 언어 문서
 ### PGR-COMMON-03 — Go·Rust parity 통합
 
 - 공통 시작 gate에서는 Go·Rust 대응 메서드를 기록할 inventory의 열과 판정 규칙만 고정한다.
-- [Go·Rust submit 반환 초안](../spec/draft/go-rust-submit-return.ko.md)에서 boolean 정상 결과와 함수군별 error
-  대안을 검토하고 하나를 승인한다. 승인 전에는 submit public signature 구현을 시작하지 않는다.
+- 현재 Go·Rust submit 반환 차이와 boolean 정상 결과·함수군별 error 대안을 inventory에 기록한다. public
+  signature를 바꾸는 경우에는 별도 공통 설계 review와 승인을 먼저 완료한다.
 - 승인 결과와 현재 공통 오류 처리 정책, 비동기 완료 정책 및 Go·Rust 언어별 spec의 차이를 implementation
   gap으로 기록한다. Caller-provided receive의 no-data 규칙은 submit backpressure와 분리한다.
 - Go와 Rust 작업은 성공 값, no-data, 함수군 error, `code`, `internal_errno`와 ownership을
@@ -280,8 +279,8 @@ snapshot의 test·package·clean consumer 실행은 구현 후 각 언어 문서
 - 두 언어의 구현 후 품질 gate가 각각 `CLEAN`이 된 뒤 Codex parity review를 수행한다. 이 review가
   `CLEAN`이 되기 전에는 PGR-COMMON-03을 통과로 판정하지 않는다.
 
-이 작업은 Go와 Rust 구현 중에 진행하며 언어별 전체 작업의 시작 조건은 아니다. 다만 submit 반환 초안 승인
-substep은 GO-04와 RS-03의 signature 변경보다 먼저 끝내야 한다. 두 언어가 모두 완료된 뒤
+이 작업은 Go와 Rust 구현 중에 진행하며 언어별 전체 작업의 시작 조건은 아니다. 다만 submit 반환의 공통
+설계 승인 substep은 GO-04와 RS-03의 signature 변경보다 먼저 끝내야 한다. 두 언어가 모두 완료된 뒤
 PGR-COMMON-03 전체를 통과로 판정한다.
 
 ### PGR-COMMON-04 — 독립 실행 승인
@@ -301,13 +300,12 @@ PGR-COMMON-04는 언어별 platform artifact가 이미 생성됐음을 요구하
 만들 수 없는 상태가 명시됐으면 PGR-COMMON-04를 통과로 표시한다. 이 기록이 있으면 Python, Go, Rust 담당자는
 다른 언어의 진행 상태를 확인하지 않고 자기 실행 문서를 시작할 수 있다.
 
-### PGR-COMMON-05 — 이전 bindings draft 정리
+### PGR-COMMON-05 — 이전 bindings 설계 문서 정리
 
-`bindings/doc/spec/draft/route-mesh-python-go-rust.ko.md`는 Core service header를 계약 근거로 사용하므로 Core 11
-raw-only 책임 경계의 구현 입력으로 사용할 수 없다. 아직 필요한 사용자 동작이 있으면 Framework 공통 정식
-spec과 언어별 exact interface에서 계약 근거를 확인한다. 근거가 없는 내용은 Framework 설계 후보로 분리해
-review하고, bindings 구현과 문서가 raw-only 상태가 되면 이 draft를 삭제한다. 삭제 이력은 실행 log가
-소유한다.
+이전에 작성된 RouteMesh Python·Go·Rust 설계 문서는 Core service header를 계약 근거로 사용하므로 Core 11
+raw-only 책임 경계의 구현 입력으로 사용할 수 없어 삭제했다. 아직 필요한 사용자 동작이 있으면 Framework
+공통 정식 spec과 언어별 exact interface에서 계약 근거를 확인한다. 근거가 없는 내용은 Framework 설계 후보로
+분리해 review한다. 삭제 이력은 [공통 정리 log](log/common/2026-08-04-draft-cleanup.ko.md)가 소유한다.
 
 ## 8. 통합 검증 표
 
@@ -344,12 +342,12 @@ review하고, bindings 구현과 문서가 raw-only 상태가 되면 이 draft�
 1. 공통 candidate와 raw symbol allowlist gate가 통과한다.
 2. Python, Go, Rust 실행 문서가 각각 완료 상태다.
 3. Go·Rust parity inventory의 필수 행과 contract test가 통과한다.
-4. Submit 반환과 언어별 naming draft의 승인 내용이 구현·contract test 뒤 정식 spec에 반영됐고, 역할을 다한
-   draft는 삭제됐다.
+4. Submit 반환과 언어별 naming의 parity 결정이 별도 승인된 뒤 구현·contract test와 정식 spec에 반영된다.
+   승인되지 않은 설계 후보는 public contract로 취급하지 않는다.
 5. 세 package가 같은 Core candidate identity와 platform별 runtime provenance를 기록하고, 각 언어의 test,
    package, clean consumer와 review가 같은 binding source manifest를 가리킨다.
 6. 이전 service header, FFI, 공개 API, compatibility alias와 sample이 package에 없다.
-7. Core service를 bindings 계약으로 정의한 이전 draft가 삭제되고 필요한 Framework 요구의 소유 위치가
+7. Core service를 bindings 계약으로 정의한 이전 설계 문서가 삭제되고 필요한 Framework 요구의 소유 위치가
    확인된다.
 8. 지원한다고 명시한 모든 platform에서 package 내부 runtime load가 검증된다.
 9. 세 언어의 hot path review와 perf runner smoke가 통과한다. 성능 수치 개선은 이 완료 판정에 포함하지 않는다.

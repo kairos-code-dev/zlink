@@ -127,7 +127,6 @@ exclude_docs: |
   guide/STYLE.ko.md
   # 확정 전 초안.
   spec/draft/
-  bindings/spec/draft/
 
 nav:
   - Framework:

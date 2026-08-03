@@ -69,9 +69,8 @@ platform runtime을 넣고 `build.rs`가 현재 target의 directory만 선택하
 ### RS-03 — Error와 ownership
 
 [Go·Rust parity inventory](go-rust-return-parity.ko.md)의 Rust 열을 채우고 public API contract test를 연결한다.
-[Go·Rust submit 반환 초안](../spec/draft/go-rust-submit-return.ko.md)을 PGR-COMMON-03에서 승인한 뒤 이 항목의
-공개 시그니처와 test를 확정한다. 관련 정식 spec은 구현과 contract test 통과 후 갱신한다. 아래 submit
-signature는 승인 후 적용할 권고안이며 승인 전에는 구현 근거가 아니다.
+이전에 작성된 Go·Rust submit 반환 설계 후보는 공통 승인을 받지 못해 삭제했다. 현재 Rust public signature와
+test는 유지하며, 반환 shape를 바꾸려면 PGR-COMMON-03의 별도 공통 승인과 관련 정식 spec 갱신이 먼저 필요하다.
 
 - 단일 함수군 메서드는 `Result<T, BindError>`처럼 함수군별 구체 error type을 반환한다.
 - 여러 함수군을 실제로 조합하는 메서드만 `Result<T, ZlinkError>`로 넓힌다.
@@ -87,9 +86,9 @@ signature는 승인 후 적용할 권고안이며 승인 전에는 구현 근거
 - Message send, receive, copy·move와 close의 ownership을 contract test로 검증한다.
 - Background completion callback은 한 번만 호출되므로 `FnOnce`를 사용한다. 다른 thread에서 실행할 수 있는
   callback은 `Send + 'static` bound를 유지하며 compile-time contract test로 확인한다.
-- `single_part()`처럼 `Result`가 실패 가능성을 이미 나타내는 메서드에는 `or_error` 이름을 덧붙이지 않는다.
-  현재 공통 spec의 `single_part_or_throw()`와 Rust 구현의 `single_part_or_error()`를 `single_part()`로
-  통일하는 안은 [part 접근 이름 초안](../spec/draft/python-rust-single-part-naming.ko.md)에서 먼저 리뷰한다.
+- `single_part()`처럼 `Result`가 실패 가능성을 이미 나타내는 메서드에는 `or_error` 이름을 덧붙이지 않는
+  방향을 검토할 수 있다. 현재 공통 spec의 `single_part_or_throw()`와 Rust 구현의
+  `single_part_or_error()` 사이 차이는 별도 승인 전까지 유지하며, 이전 naming 설계 후보는 삭제했다.
 - Borrowed view는 `as_`, owned copy는 `to_`, 소유권을 넘기는 변환은 `into_` 이름을 사용한다. 가능한 변환은
   `From`·`AsRef`, 실패 가능한 변환은 `TryFrom`을 우선하고 같은 의미의 inherent alias를 늘리지 않는다.
 

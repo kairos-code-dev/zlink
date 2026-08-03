@@ -15,9 +15,9 @@ V11 승인 evidence의 identity 확인 및 독립 frontier reviewer의 최종 `C
 ## Candidate identity
 
 ```text
-sourceRevision: `candidate-input.env`의 `CORE_REVISION`
+sourceRevision: `candidate-input.env`의 `CORE_REVISION` (`b2e98609925b32c254b89937a2af750335d74d7f`)
 coreManifest: .artifacts/wsl/bindings-candidate/core-11.2.0.env
-coreManifestSha256: `candidate-input.env`의 `CANDIDATE_MANIFEST_SHA256`
+coreManifestSha256: `463e935280b57639aee2843abe15023b67dc49f2728aa257ac0238b9c7dc6d5e`
 coreVersion: 11.2.0
 coreRuntime: core/build/lib/libzlink.so.11.2.0
 coreRuntimeSha256: aff90818cc40df2ebeeb375489e147f7e23791bda28b0dac85bdc9462f59236e
@@ -50,14 +50,15 @@ the supplied candidate manifest SHA-256`로 실패했다. 따라서 현재 candi
 ## Python source and wheel evidence
 
 ```text
-sourceManifest: `.artifacts/wsl/bindings-candidate/python39/python-source-manifest-11.2.0.json`
-sourceManifestSha256: 각 `candidate-input.env`의 `PYTHON_SOURCE_MANIFEST_SHA256`
-sourceAggregateSha256: d6ed6c3c48a7ed1e5b50deeccad1560948646f354222c878b680801119d92bc1
+sourceManifest: `.artifacts/wsl/bindings-candidate/python-source-manifest-11.2.0.json` 및 각 output root의 동일 manifest
+sourceManifestSha256: 154a76a3fd1014124f35f6cf82977e013a82e85ec07fce1a537f330048785351
+sourceAggregateSha256: 3e4f1069e425c861d70d4b257a61ad82bfe90c26a1f3cfd20e5e03376ff6915c
 candidateInput: `.artifacts/wsl/bindings-candidate/python39/python/candidate-input.env` and the corresponding
 `python312/python/candidate-input.env`
 wheel: `python39/python/wheels/zlink-11.2.0-cp39-cp39-linux_x86_64.whl` and
 `python312/python/wheels/zlink-11.2.0-cp312-cp312-linux_x86_64.whl`
-wheelSha256: 각 output root의 `python/SHA256SUMS` wheel entry
+wheelSha256: cp39 `44f7ff98f3c0d3be821f9979308bf762eed25603340792bb99f6a678507f006c`, cp312
+`d60eb64c824645b3ac66bf209ef4c6869abc56ac354cadbfec150a8a37f9ff79`
 packagedNativePayloadSha256: aff90818cc40df2ebeeb375489e147f7e23791bda28b0dac85bdc9462f59236e
 ```
 
@@ -75,7 +76,7 @@ ZLINK_LIBRARY_PATH="$PWD/core/build/lib/libzlink.so.11.2.0" \
   pytest -q bindings/python/tests
 ```
 
-결과: source extension을 선택한 interpreter로 먼저 build한 뒤 `52 passed`.
+결과: source extension을 선택한 interpreter로 먼저 build한 뒤 `63 passed`.
 
 ```bash
 PYTHONPATH=bindings/python/src python3 -m py_compile \
@@ -101,7 +102,9 @@ scripts/local-package/bindings-candidate/build-wsl.sh \
 # CPython 3.9 Docker에서도 같은 command에 --python-executable python을 지정한다.
 ```
 
-결과: candidate-input의 `CORE_REVISION` candidate를 기준으로 CPython 3.9와 3.12 모두 종료 코드 `0`.
+결과: candidate-input의 `CORE_REVISION=b2e98609925b32c254b89937a2af750335d74d7f` candidate를 기준으로
+CPython 3.9 Docker와 host CPython 3.12 모두 종료 코드 `0`. 각 source test는 `63 passed`, clean wheel
+consumer는 Pair roundtrip과 wheel payload load-map 확인을 통과했다.
 Builder는 같은 Core prefix와 source manifest를 사용해
 각 interpreter용 wheel을 만들고, 새 venv에서 source checkout과 `core/build` fallback 없이
 `zlink.version()`과 Pair message roundtrip을 실행했다. `/proc/self/maps`는 각 venv의 wheel payload를
@@ -152,9 +155,10 @@ ZLINK_LIBRARY_PATH="$PWD/core/build/lib/libzlink.so.11.2.0" \
 ## POSD·DDD와 남은 조건
 
 `2026-08-03-posd-ddd-review.ko.md`에서 Context, Message/Received, Socket, callback dispatcher와
-package adapter를 lifecycle·ownership owner로 분리했다. 기존 raw module을 유지하고 Framework branch,
-export, FFI, fixture와 dead sample만 제거하는 대안을 선택했다. Cost inventory는 allocation, copy, lock,
-GIL과 no-cost를 모두 분류했고 `unclassified=0`이다. 확인 가능한 Critical·High·Medium finding은 없다.
+package adapter를 lifecycle·ownership owner로 분리했다. 초기 독립 review가 확인한 ChannelName,
+close retry, input error, enum mapping과 dead example 문제를 owning layer에서 수정했다. Cost inventory는
+allocation, copy, lock, GIL과 no-cost를 모두 분류했고 `unclassified=0`이다. 수정 후 source test는
+`63 passed`이며, 같은 최종 manifest를 읽은 독립 re-review는 아직 필요하다.
 
 이는 Codex self-review이므로 다음 조건이 남는다.
 

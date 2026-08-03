@@ -145,9 +145,9 @@ class NativePoller:
             return
         handle = ctypes.c_void_p(self._handle)
         rc = lib().zlink_poller_destroy(ctypes.byref(handle))
-        self._handle = None
         if rc != 0:
             _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
+        self._handle = None
 
     def __enter__(self):
         return self

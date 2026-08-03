@@ -9,6 +9,7 @@ import pytest
 import zlink
 from zlink._runtime.core import context as context_runtime
 from zlink._runtime.eventing import monitor as monitor_runtime
+from zlink._runtime.eventing import poller as poller_runtime
 from zlink._runtime.eventing import timer as timer_runtime
 from zlink._runtime.sockets import socket_base, socket_base_impl
 
@@ -175,6 +176,22 @@ def test_context_preserves_handle_after_failed_termination():
         owner.close()
 
     assert owner._handle is None
+
+
+def test_poller_preserves_handle_after_failed_destroy():
+    native = _NativeCloseStub("zlink_poller_destroy", [zlink.CloseResult.BUSY, 0])
+    owner = object.__new__(poller_runtime.NativePoller)
+    owner._handle = 123
+
+    with patch.object(poller_runtime, "lib", return_value=native):
+        with pytest.raises(zlink.CloseError):
+            owner.close()
+        assert owner._handle == 123
+
+        owner.close()
+
+    assert owner._handle is None
+    assert len(native.calls) == 2
 
 
 @pytest.mark.parametrize("error_type", (TypeError, BufferError))

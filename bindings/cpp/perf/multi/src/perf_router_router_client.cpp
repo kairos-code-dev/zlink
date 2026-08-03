@@ -311,8 +311,7 @@ class router_router_client_bench_t
             return -1;
         }
         if (!received.routing_id ().has_value () || received.routing_id ()->size () == 0
-            || received.spot_rid ().has_value () || received.request_seq ().has_value ()
-            || !received.is_single_part ()) {
+            || received.request_seq ().has_value () || !received.is_single_part ()) {
             errno = EPROTO;
             return -1;
         }

@@ -204,8 +204,7 @@ bool perf_router_router_server (const std::string &lib_name,
                 break;
             }
             if (!received.routing_id ().has_value () || received.routing_id ()->size () == 0
-                || received.spot_rid ().has_value () || received.request_seq ().has_value ()
-                || !received.is_single_part ()) {
+                || received.request_seq ().has_value () || !received.is_single_part ()) {
                 debug_log ("recv envelope mismatch");
                 failed = true;
                 break;

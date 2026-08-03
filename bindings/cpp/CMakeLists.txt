@@ -12,6 +12,9 @@ set(ZLINK_CPP_CORE_BUILD_DIR "${ZLINK_REPO_ROOT_DIR}/core/build" CACHE PATH
     "Path to an existing zlink core build directory")
 set(ZLINK_CPP_CORE_PACKAGE_PREFIX "" CACHE PATH
     "Path to an installed Zlink 11 Core package")
+option(ZLINK_CPP_USE_CORE_BUILD_RUNTIME
+  "Require the targeted core/build runtime instead of an installed Core package"
+  OFF)
 set(ZLINK_CPP_STANDALONE FALSE)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   set(ZLINK_CPP_STANDALONE TRUE)
@@ -57,6 +60,25 @@ function(zlink_cpp_ensure_core_target out_target_var out_runtime_dir_var)
     set(${out_target_var} libzlink PARENT_SCOPE)
     set(${out_runtime_dir_var} "$<TARGET_FILE_DIR:libzlink>" PARENT_SCOPE)
     return()
+  endif()
+
+  if(ZLINK_CPP_USE_CORE_BUILD_RUNTIME)
+    zlink_cpp_resolve_core_build_layout(_core_build_dir _core_build_lib)
+    if(_core_build_lib)
+      if(NOT TARGET zlink-core-build-runtime)
+        add_library(zlink-core-build-runtime SHARED IMPORTED GLOBAL)
+        set_target_properties(zlink-core-build-runtime PROPERTIES
+          IMPORTED_LOCATION "${_core_build_lib}"
+          INTERFACE_INCLUDE_DIRECTORIES "${ZLINK_CORE_DIR}/include"
+        )
+      endif()
+      set(${out_target_var} zlink-core-build-runtime PARENT_SCOPE)
+      set(${out_runtime_dir_var} "${_core_build_dir}" PARENT_SCOPE)
+      return()
+    endif()
+    message(FATAL_ERROR
+      "ZLINK_CPP_USE_CORE_BUILD_RUNTIME=ON requires libzlink under "
+      "${ZLINK_CPP_CORE_BUILD_DIR}/lib or ${ZLINK_CPP_CORE_BUILD_DIR}/bin")
   endif()
 
   if(ZLINK_CPP_CORE_PACKAGE_PREFIX)

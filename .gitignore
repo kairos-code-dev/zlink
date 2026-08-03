@@ -288,3 +288,14 @@ framework/languages/cpp/.cache/
 
 # 루트에 생성되는 CMake 산출물
 /CMakeFiles/
+
+# 로컬 sync가 채우는 native 산출물 (릴리스 입력이 아닌 언어)
+# dotnet/go/python/rust의 native/는 릴리스 입력이라 추적을 유지한다.
+bindings/cpp/native/
+bindings/java/native/
+bindings/java/src/main/resources/native/
+bindings/node/native/
+
+# Python 빌드 산출물
+bindings/python/src/*.egg-info/
+bindings/python/src/zlink/_native/_zlink_perf_native.cpython-*.so

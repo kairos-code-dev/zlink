@@ -13,7 +13,7 @@ Linux x86_64에서 source test, clean wheel consumer, raw sample process와 perf
   evidence가 같은 candidate identity인지 확인되지 않았다. 이전 `11.1.0` evidence를 `11.2.0`의 승인으로
   재사용하지 않는다.
 - CPython 3.9.25와 host CPython 3.12.3 clean consumer를 같은 candidate 절차로 다시 실행했다. Pyright
-  target은 Python 3.9로 유지한다. 최신 package snapshot은 progress log의 `v5` evidence에 고정한다.
+  target은 Python 3.9로 유지한다. 최신 package snapshot과 hash는 progress log의 self-review evidence에 기록한다.
 - release 지원 target은 Linux x86_64로 한정했고, 다른 target은 setup·loader에서 fail-fast하도록 정리했다.
 - 독립 frontier reviewer는 초기 candidate를 `NOT CLEAN`으로 판정했다. Python source의 High·Medium
   finding은 수정했다. 최종 재검토에서 공통 spec에 Core 11에 없는 raw socket channel metadata 선언과
@@ -33,7 +33,7 @@ evidence를 구분하기 위한 것이다.
 | Core runtime | `core/build/lib/libzlink.so.11.2.0` |
 | Core SONAME | `libzlink.so.11` |
 | Python package | `zlink==11.2.0` |
-| Python source manifest | `.artifacts/wsl/bindings-candidate/python39-self-20260804-v5/`·`python312-self-20260804-v5/` 아래 manifest |
+| Python source manifest | progress log self-review evidence에 기록한 각 interpreter의 manifest |
 | package evidence | 각 self-review output root의 `python/candidate-input.env` |
 | wheel | 각 self-review output root의 `python/wheels/` 아래 산출물 |
 
@@ -192,7 +192,7 @@ ZLINK_LIBRARY_PATH="$PWD/core/build/lib/libzlink.so.11.2.0" \
 
 | Gate | 현재 상태 | evidence 또는 남은 조건 |
 |------|----------|------------------------|
-| Local Core candidate 입력 | `PASS` | `core-11.2.0-python-self-20260804-v5.env`와 candidate-input의 동일 revision/hash |
+| Local Core candidate 입력 | `PASS` | progress log self-review evidence의 Core manifest와 각 candidate-input의 동일 revision/hash |
 | 공통 승인 candidate와의 identity | `BLOCKED` | 현재 11.2.0에 대응하는 독립 V11-R2·V11-M3 evidence 확인 필요 |
 | Python source manifest | `PASS` | `python-source-manifest-11.2.0.json`, aggregate와 direct input hash |
 | 승인 prefix native build | `PASS` | candidate build가 `ZLINK_CORE_PREFIX`로 wheel build |
@@ -236,12 +236,12 @@ POSD·DDD 경계를 직접 다시 검토했다. 이 과정에서 `Message.try_co
 `0 errors, 0 warnings, 0 informations`, Core weighted-selection integration은 `17/17`, typed option
 unit은 `2/2`로 통과했다.
 
-현재 local package는 v5 snapshot HEAD `0e2b9a8f82dd5e365a52a7381189d1b48b3b2ccd`와 runtime SHA
-`ce28d7908bf62a1b39b481aad2a76c6e76955e3a93ea73e1cbdaa913c4883138`에 고정했다. CPython 3.9.25와
+현재 local package의 Core runtime SHA는
+`ce28d7908bf62a1b39b481aad2a76c6e76955e3a93ea73e1cbdaa913c4883138`이다. CPython 3.9.25와
 3.12.3 package/clean consumer를 각각 통과했고, 두 installed sample은 `7/7`이다. single·multi perf
-smoke도 현재 runtime에서 완료됐다. 자세한 manifest·wheel hash는
-[`python progress log`](log/python/2026-08-03-core11-progress.ko.md)의
-`2026-08-04 Codex self-review package refresh (v5)` 절에 있다.
+smoke도 현재 runtime에서 완료됐다. package snapshot, manifest와 wheel hash는
+[`python progress log`](log/python/2026-08-03-core11-progress.ko.md)의 최신 self-review package
+refresh 절에 있다.
 
 단, 이것은 구현자에 의한 self-review다. 기존 V11-R2 evidence는 현재 candidate를 승인하지 않으므로
 공통 담당자의 fresh V11-R2·V11-M3-CORE-PKG evidence와 독립 frontier review가 완료되기 전에는 전체

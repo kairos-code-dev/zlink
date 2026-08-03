@@ -192,6 +192,26 @@ if [[ -n "$header_dir" ]]; then
   core_direct_header_sha="$(dir_hash "$REPO_DIR/core/include")"
   [[ "$binding_header_sha" == "$core_direct_header_sha" ]] || { echo "Bundled header does not match Core" >&2; exit 1; }
 fi
+
+source_manifest=""
+source_manifest_sha=""
+source_aggregate_sha=""
+if [[ "$LANGUAGE" == "python" ]]; then
+  source_manifest="$OUTPUT_ROOT/python-source-manifest-$PACKAGE_VERSION.json"
+  "$SCRIPT_DIR/create-python-source-manifest.sh" \
+    --core-manifest "$MANIFEST" \
+    --package-version "$PACKAGE_VERSION" \
+    --output "$source_manifest"
+  source_manifest_sha="$(sha256sum "$source_manifest" | awk '{print $1}')"
+  source_aggregate_sha="$(python3 - "$source_manifest" <<'PY'
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as stream:
+    print(json.load(stream)["aggregateSha256"])
+PY
+)"
+fi
+
 cat >"$OUTPUT_ROOT/$LANGUAGE/candidate-input.env" <<EOF
 LANGUAGE=$LANGUAGE
 PACKAGE_VERSION=$PACKAGE_VERSION
@@ -211,6 +231,9 @@ BINDING_HEADER_SHA256=${binding_header_sha:-not_applicable}
 NATIVE_PAYLOAD=${payload#"$REPO_DIR/"}
 NATIVE_PAYLOAD_SHA256=$(sha256sum "$payload" | awk '{print $1}')
 PYTHON_CORE_PREFIX=${core_prefix:-not_applicable}
+PYTHON_SOURCE_MANIFEST=${source_manifest:-not_applicable}
+PYTHON_SOURCE_MANIFEST_SHA256=${source_manifest_sha:-not_applicable}
+PYTHON_SOURCE_AGGREGATE_SHA256=${source_aggregate_sha:-not_applicable}
 EOF
 
 case "$LANGUAGE" in
@@ -218,9 +241,10 @@ case "$LANGUAGE" in
     package_version="$(sed -n 's/^version = "\(.*\)"/\1/p' "$REPO_DIR/bindings/python/pyproject.toml" | head -n1)"
     [[ "$package_version" == "$PACKAGE_VERSION" ]] || { echo "Python package version mismatch: $package_version != $PACKAGE_VERSION" >&2; exit 1; }
     (cd "$REPO_DIR/bindings/python" && ZLINK_CORE_PREFIX="$core_prefix" ZLINK_LIBRARY_PATH="$payload" ./tests/run_tests.sh)
-    rm -rf "$OUTPUT_ROOT/python"
-    (cd "$REPO_DIR/bindings/python" && ZLINK_CORE_PREFIX="$core_prefix" ZLINK_LIBRARY_PATH="$payload" python3 -m pip wheel --no-deps --no-build-isolation --wheel-dir "$OUTPUT_ROOT/python" .)
-    wheel=("$OUTPUT_ROOT"/python/*.whl)
+    rm -rf "$OUTPUT_ROOT/$LANGUAGE/wheels"
+    mkdir -p "$OUTPUT_ROOT/$LANGUAGE/wheels"
+    (cd "$REPO_DIR/bindings/python" && ZLINK_CORE_PREFIX="$core_prefix" ZLINK_LIBRARY_PATH="$payload" python3 -m pip wheel --no-deps --no-build-isolation --wheel-dir "$OUTPUT_ROOT/$LANGUAGE/wheels" .)
+    wheel=("$OUTPUT_ROOT"/$LANGUAGE/wheels/*.whl)
     [[ ${#wheel[@]} -eq 1 && -f "${wheel[0]}" ]] || { echo "Expected exactly one Python wheel" >&2; exit 1; }
     mkdir -p "$consumer/wheel"
     python3 - "${wheel[0]}" "$consumer/wheel" <<'PY'
@@ -294,6 +318,16 @@ maps = pathlib.Path("/proc/self/maps").read_text()
 assert "/venv/" in maps and f"linux-{sys.argv[2]}" in maps and "libzlink" in maps
 PY
     )
+    source_recheck="$(mktemp)"
+    "$SCRIPT_DIR/create-python-source-manifest.sh" \
+      --core-manifest "$MANIFEST" \
+      --package-version "$PACKAGE_VERSION" \
+      --output "$source_recheck" >/dev/null
+    cmp -s "$source_manifest" "$source_recheck" || {
+      echo "Python source changed after source manifest creation" >&2
+      exit 1
+    }
+    rm -f "$source_recheck"
     ;;
   go)
     archive="$OUTPUT_ROOT/go/zlink-go-$PACKAGE_VERSION.tar.gz"
@@ -348,5 +382,5 @@ EOF
     ;;
 esac
 
-find "$OUTPUT_ROOT/$LANGUAGE" -maxdepth 1 -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum >"$OUTPUT_ROOT/$LANGUAGE/SHA256SUMS"
+find "$OUTPUT_ROOT/$LANGUAGE" -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum >"$OUTPUT_ROOT/$LANGUAGE/SHA256SUMS"
 echo "Candidate package and clean consumer passed: $LANGUAGE"

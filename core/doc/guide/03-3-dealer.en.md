@@ -365,7 +365,7 @@ When multiple peers are connected, messages are distributed in a round-robin fas
 
 ### Weight-Aware Outbound Selection
 
-Remote peers advertise a weight (`0..100`). DEALER automatically drops
+Remote peers advertise a weight (`0..10000`). DEALER automatically drops
 weight-`0` peers from its candidate set. Positive peers remain eligible,
 and unequal positive weights change the send ratio. The underlying
 connections stay alive, so a peer that flips back to a positive weight

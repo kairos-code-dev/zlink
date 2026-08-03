@@ -459,11 +459,12 @@ class Message:
         return length
 
     def try_copy_to(self, destination):
-        try:
-            self.copy_to(destination)
-            return True
-        except ValueError:
-            return False
+        # Keep the capacity miss distinct from invalid destination input. The
+        # public contract returns the copied byte count, or None only when the
+        # destination cannot hold this payload.
+        if memoryview(destination).nbytes < self.size():
+            return None
+        return self.copy_to(destination)
 
     def to_string(self, encoding="utf-8"):
         return self.to_bytes().decode(encoding)

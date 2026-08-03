@@ -21,14 +21,14 @@ const inventoryPath = process.env.ZLINK_V11_MIGRATION_INVENTORY_PATH
 // sections participate in the digest, so later reviewed classifications for
 // bindings and Framework files do not rewrite Core 10.x history.
 const reviewedCoreBaselineSha256 =
-  'e7737432d96d6b3aaba64fdd3ef6ad0914bab9e31b7f48893b96821163c050d6';
+  '96fe0a924d106106ed9f323bc13f1300668a160052b863494fc8eba7749eb1ec';
 const reviewedCoreRemovalFilesRevision =
   '1de8f43917d7c8d3d0f26dadf97c9f83ede79228';
 const reviewedCoreRemovalFilesSha256 =
   'f8a9d9c576d9d93596db31cb3251875f0429e2cf6829a749f399143ef3baf3f0';
 
 const ledgerPath =
-  'framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md';
+  'framework/doc/plan/for-interals/framework-internals-implementation-gaps.ko.md';
 const formalSpecRoot = 'framework/doc/framework/common/spec';
 const formalServerSpecRoot = formalSpecRoot;
 const commonInternalsRoot = 'framework/doc/framework/common/internals';
@@ -286,13 +286,22 @@ const coreServiceDocumentationReviewGroups = [
 ];
 
 const coreServiceDocumentationReviews = new Map();
+function canonicalCoreDocumentationReviewPath(file) {
+  if (fs.existsSync(path.join(repositoryRoot, file))) return file;
+  if (file.endsWith('.md') && !file.endsWith('.ko.md')) {
+    const english = `${file.slice(0, -3)}.en.md`;
+    if (fs.existsSync(path.join(repositoryRoot, english))) return english;
+  }
+  return file;
+}
 for (const group of coreServiceDocumentationReviewGroups) {
   for (const file of group.files) {
-    if (coreServiceDocumentationReviews.has(file)) {
-      throw new Error(`duplicate Core service documentation review: ${file}`);
+    const canonicalFile = canonicalCoreDocumentationReviewPath(file);
+    if (coreServiceDocumentationReviews.has(canonicalFile)) {
+      throw new Error(`duplicate Core service documentation review: ${canonicalFile}`);
     }
     const {files, ...review} = group;
-    coreServiceDocumentationReviews.set(file, {file, ...review});
+    coreServiceDocumentationReviews.set(canonicalFile, {file: canonicalFile, ...review});
   }
 }
 
@@ -793,49 +802,49 @@ function symbolTargetOwners(symbol) {
       'core/doc/spec/core/09-runtime-boundary.ko.md',
       'core/doc/internals/runtime-boundary.ko.md',
       `${formalServerSpecRoot}/55-transport-liveness.ko.md`,
-      `${commonInternalsRoot}/transport-liveness-runtime.ko.md`,
+      `${commonInternalsRoot}/10-liveness-and-state.ko.md`,
     ];
   }
   if (value.includes('instance_spot')) {
     return [
       `${formalServerSpecRoot}/24-spot-address-messaging.ko.md`,
-      `${commonInternalsRoot}/stateful-maintenance-runtime.ko.md`,
+      `${commonInternalsRoot}/05-relocation-continuity.ko.md`,
     ];
   }
   if (value.includes('stream_session') || value.includes('bound_session')) {
     return [
       `${formalServerSpecRoot}/30-stream-session.ko.md`,
-      `${commonInternalsRoot}/stream-session-runtime.ko.md`,
+      `${commonInternalsRoot}/09-session-binding.ko.md`,
     ];
   }
   if (value.includes('actor')) {
     return [
       `${formalServerSpecRoot}/22-actor-model.ko.md`,
       `${formalServerSpecRoot}/23-spot-actor.ko.md`,
-      `${commonInternalsRoot}/stateful-maintenance-runtime.ko.md`,
+      `${commonInternalsRoot}/05-relocation-continuity.ko.md`,
     ];
   }
   if (value.includes('spot')) {
     return [
       `${formalServerSpecRoot}/20-spot-messaging.ko.md`,
-      `${commonInternalsRoot}/stateful-maintenance-runtime.ko.md`,
+      `${commonInternalsRoot}/05-relocation-continuity.ko.md`,
     ];
   }
   if (value.includes('monitor')) {
     return [
       `${formalServerSpecRoot}/50-runtime-monitoring.ko.md`,
-      `${commonInternalsRoot}/service-monitoring-runtime.ko.md`,
+      `${commonInternalsRoot}/10-liveness-and-state.ko.md`,
     ];
   }
   if (/ready|receive|claim|reply|record|operation|destination|owner/u.test(value)) {
     return [
       `${formalSpecRoot}/04-async-execution-policy.ko.md`,
-      `${commonInternalsRoot}/mailbox-dispatch-runtime.ko.md`,
+      `${commonInternalsRoot}/07-dispatch-loop.ko.md`,
     ];
   }
   return [
     `${formalServerSpecRoot}/21-mesh-node.ko.md`,
-    `${commonInternalsRoot}/service-runtime-architecture.ko.md`,
+    `${commonInternalsRoot}/README.ko.md`,
     `${commonInternalsRoot}/service-wire-protocol.ko.md`,
   ];
 }
@@ -940,6 +949,23 @@ function verifyReviewedCoreRemovalFiles(records, source) {
 
 function relocateConsolidatedDocumentOwners(records) {
   const relocated = new Map([
+    ['framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md', ledgerPath],
+    [`${commonInternalsRoot}/service-runtime-architecture.ko.md`,
+      `${commonInternalsRoot}/README.ko.md`],
+    [`${commonInternalsRoot}/mailbox-dispatch-runtime.ko.md`,
+      `${commonInternalsRoot}/07-dispatch-loop.ko.md`],
+    [`${commonInternalsRoot}/stateful-maintenance-runtime.ko.md`,
+      `${commonInternalsRoot}/05-relocation-continuity.ko.md`],
+    [`${commonInternalsRoot}/stream-session-runtime.ko.md`,
+      `${commonInternalsRoot}/09-session-binding.ko.md`],
+    [`${commonInternalsRoot}/transport-liveness-runtime.ko.md`,
+      `${commonInternalsRoot}/10-liveness-and-state.ko.md`],
+    [`${commonInternalsRoot}/service-monitoring-runtime.ko.md`,
+      `${commonInternalsRoot}/10-liveness-and-state.ko.md`],
+    [`${commonInternalsRoot}/concurrency-resource-runtime.ko.md`,
+      `${commonInternalsRoot}/02-serialization.ko.md`],
+    [`${commonInternalsRoot}/routing-identity-runtime.ko.md`,
+      `${commonInternalsRoot}/06-routing-and-cache.ko.md`],
     [`${retiredPlanSpecRoot}/README.ko.md`, formalSpecIndex],
     [`${retiredPlanSpecRoot}/01-mesh-node.ko.md`,
       `${formalServerSpecRoot}/21-mesh-node.ko.md`],
@@ -961,21 +987,21 @@ function relocateConsolidatedDocumentOwners(records) {
       'core/doc/spec/core/09-runtime-boundary.ko.md'],
     [`${retiredPlanInternalsRoot}/README.ko.md`, commonInternalsIndex],
     [`${retiredPlanInternalsRoot}/01-runtime-architecture.ko.md`,
-      `${commonInternalsRoot}/service-runtime-architecture.ko.md`],
+      `${commonInternalsRoot}/README.ko.md`],
     [`${retiredPlanInternalsRoot}/02-wire-protocol.ko.md`,
       `${commonInternalsRoot}/service-wire-protocol.ko.md`],
     [`${retiredPlanInternalsRoot}/03-mailbox-dispatch.ko.md`,
-      `${commonInternalsRoot}/mailbox-dispatch-runtime.ko.md`],
+      `${commonInternalsRoot}/07-dispatch-loop.ko.md`],
     [`${retiredPlanInternalsRoot}/04-stateful-object-runtime.ko.md`,
-      `${commonInternalsRoot}/stateful-maintenance-runtime.ko.md`],
+      `${commonInternalsRoot}/05-relocation-continuity.ko.md`],
     [`${retiredPlanInternalsRoot}/05-maintenance-recovery.ko.md`,
-      `${commonInternalsRoot}/stateful-maintenance-runtime.ko.md`],
+      `${commonInternalsRoot}/05-relocation-continuity.ko.md`],
     [`${retiredPlanInternalsRoot}/06-stream-session-runtime.ko.md`,
-      `${commonInternalsRoot}/stream-session-runtime.ko.md`],
+      `${commonInternalsRoot}/09-session-binding.ko.md`],
     [`${retiredPlanInternalsRoot}/07-liveness-monitoring.ko.md`,
-      `${commonInternalsRoot}/service-monitoring-runtime.ko.md`],
+      `${commonInternalsRoot}/10-liveness-and-state.ko.md`],
     [`${retiredPlanInternalsRoot}/08-concurrency-resources.ko.md`,
-      `${commonInternalsRoot}/concurrency-resource-runtime.ko.md`],
+      `${commonInternalsRoot}/02-serialization.ko.md`],
     [`${retiredPlanInternalsRoot}/09-core-raw-runtime-boundary.ko.md`,
       'core/doc/internals/runtime-boundary.ko.md'],
   ]);
@@ -1228,17 +1254,17 @@ function validateCoreServiceDocumentationReviews(repositoryFiles) {
 const completedCoreRawSpecRewriteRules = new Map([
   ['core/doc/spec/core/02-message.ko.md',
     /service[ -]routing|MeshNode|Spot service|service\/03-spot/iu],
-  ['core/doc/spec/core/02-message.md',
+  ['core/doc/spec/core/02-message.en.md',
     /service[ -]routing|service specifications?|MeshNode|Spot service|service\/03-spot/iu],
   ['core/doc/spec/core/03-errors.ko.md',
     /service lifecycle|revoked claim|actor join|actor.*이미 존재|mailbox|capacity reservation.*transfer/iu],
-  ['core/doc/spec/core/03-errors.md',
+  ['core/doc/spec/core/03-errors.en.md',
     /service lifecycle|opaque-token|revoked claim|actor join|actor already exists|mailbox|capacity reservation.*transfer/iu],
   ['core/doc/spec/core/socket/README.ko.md',
     /MeshNode|\bspot\b|actor join|actor.*이미 존재|mailbox|service[ -]owner|ZLINK_OPT_HEARTBEAT_(?:IVL|TTL|TIMEOUT)/iu],
-  ['core/doc/spec/core/socket/README.md',
+  ['core/doc/spec/core/socket/README.en.md',
     /MeshNode|\bspot\b|actor join|actor already exists|mailbox|service[ -]owner|ZLINK_OPT_HEARTBEAT_(?:IVL|TTL|TIMEOUT)/iu],
-  ['core/doc/spec/sample/SAMPLE_POLICY.md',
+  ['core/doc/spec/sample/SAMPLE_POLICY.en.md',
     /MeshNode|ChannelName|\bspot\b|\bactor\b|service[ -]layer|registry query|discovery registry/iu],
 ]);
 
@@ -1258,10 +1284,10 @@ function validateCompletedCoreRawSpecRewrites() {
   }
 
   const mutated = findIncompleteCoreRawSpecRewrites(
-    file => file === 'core/doc/spec/core/socket/README.md'
+    file => file === 'core/doc/spec/core/socket/README.en.md'
       ? 'ZLINK_OPT_HEARTBEAT_TIMEOUT remains public.'
       : readText(file));
-  if (!mutated.includes('core/doc/spec/core/socket/README.md')) {
+  if (!mutated.includes('core/doc/spec/core/socket/README.en.md')) {
     throw new Error('Core raw formal-spec negative mutation did not detect a restored ZMP heartbeat option');
   }
 }
@@ -1390,7 +1416,7 @@ function coreFileRecord(file) {
       action: 'retain-or-rename-generic-scheduler-and-remove-service-specific-state',
       targetOwners: [
         'core/doc/internals/runtime-boundary.ko.md',
-        `${commonInternalsRoot}/service-monitoring-runtime.ko.md`,
+        `${commonInternalsRoot}/10-liveness-and-state.ko.md`,
       ],
       removalGate: 'V11-M3-CORE-CLEAN',
     };
@@ -1406,7 +1432,7 @@ function coreFileRecord(file) {
       targetOwners: [
         'core/doc/spec/core/09-runtime-boundary.ko.md',
         'core/doc/internals/runtime-boundary.ko.md',
-        `${commonInternalsRoot}/service-monitoring-runtime.ko.md`,
+        `${commonInternalsRoot}/10-liveness-and-state.ko.md`,
       ],
       removalGate: 'V11-M3-CORE-REMOVE',
     };
@@ -1536,7 +1562,7 @@ function bindingFileRecord(language, file) {
       targetOwners: [
         'core/doc/spec/core/09-runtime-boundary.ko.md',
         `${formalServerSpecRoot}/50-runtime-monitoring.ko.md`,
-        `${commonInternalsRoot}/service-monitoring-runtime.ko.md`,
+        `${commonInternalsRoot}/10-liveness-and-state.ko.md`,
       ],
     };
   }
@@ -1958,7 +1984,7 @@ function fileRecords(repositoryFiles, reviewedCoreRemovalFiles) {
       action: 'remove-framework-binding-service-projection-reference',
       targetOwners: [
         ...bindingTargetOwners(language),
-        `${commonInternalsRoot}/service-runtime-architecture.ko.md`,
+        `${commonInternalsRoot}/README.ko.md`,
       ],
       removalGate: language === 'java' ? 'V11-M5-SCAFFOLD-JVM'
         : language === 'dotnet' ? 'V11-M5-SCAFFOLD-DN'

@@ -10,7 +10,10 @@ core_prefix=""
 core_package_evidence=""
 maven_repository=""
 workspace=""
-binding_version="11.1.1"
+#  Both versions are derived, never hardcoded: the binding version from its
+#  own Gradle metadata and the Core version from the repository VERSION file.
+binding_version=""
+core_version=""
 
 cleanup() {
   [[ -z "$workspace" ]] || rm -rf "$workspace"
@@ -52,6 +55,11 @@ done
 [[ "$evidence" = /* ]] || { echo "--evidence must be an absolute path" >&2; exit 2; }
 
 project="$repo_root/bindings/java/build.gradle"
+binding_version="$(sed -n "s/^version *= *'\\(.*\\)'.*/\\1/p" "$repo_root/bindings/java/build.gradle" | head -1)"
+core_version="$(sed -n 's/^LIBZLINK_VERSION=//p' "$repo_root/VERSION")"
+[[ -n "$binding_version" && -n "$core_version" ]] || {
+  echo "could not derive binding or Core version" >&2; exit 1; }
+IFS=. read -r core_major core_minor core_patch <<<"$core_version"
 build_script="$script_dir/build-wsl.sh"
 validator="$script_dir/verify-core-input.mjs"
 fixture_dir="$script_dir/fixtures/public-consumer"
@@ -70,13 +78,13 @@ has_no_match() { ! grep -Eq -- "$1" "$2"; }
 static_checks() {
   check package-coordinate has_literal "group = 'systems.zlink'" "$project"
   check package-version has_literal "version = '$binding_version'" "$project"
-  check exact-core-version has_literal "metadata.version != '11.1.0'" "$project"
+  check exact-core-version has_literal "metadata.version != '$core_version'" "$project"
   check exact-provenance has_literal 'zlink.core.provenance-sha256' "$project"
   check exact-candidate has_literal 'zlink.core.candidate-manifest-sha256' "$project"
   check exact-soname has_literal "approved.runtime.soname != 'libzlink.so.11'" "$project"
   check no-core-source-include has_no_match 'core/(src|include|external/boost)|ZLINK_CORE_BUILD_DIR' "$project"
   check approved-core-evidence has_literal '--core-package-evidence' "$build_script"
-  check package-dependency has_literal "implementation 'systems.zlink:zlink:$binding_version'" "$fixture_project"
+  check package-dependency has_literal "implementation 'systems.zlink:zlink:@BINDING_VERSION@'" "$fixture_project"
   check local-maven-resolver has_literal 'ZLINK_LOCAL_MAVEN_REPOSITORY' "$fixture_project"
   check no-project-reference has_no_match 'project\(|bindings/java|sourceSets' "$fixture_project"
   check public-only-source has_no_match 'systems\.zlink\.(runtime|internal)|java\.lang\.foreign|Native[A-Z]|System\.load' "$fixture_source"
@@ -138,17 +146,18 @@ void zlink_version(int *major, int *minor, int *patch) {
 }
 EOF
   cc -fPIC -shared "$workspace/zlink.c" -Wl,-soname,libzlink.so.11 \
-    -o "$prefix/lib/libzlink.so.11.1.0"
-  ln -s libzlink.so.11.1.0 "$prefix/lib/libzlink.so.11"
+    -o "$prefix/lib/libzlink.so.$core_version"
+  ln -s "libzlink.so.$core_version" "$prefix/lib/libzlink.so.11"
   ln -s libzlink.so.11 "$prefix/lib/libzlink.so"
   fixture_evidence="$workspace/core-package.json"
-  PREFIX="$prefix" EVIDENCE="$fixture_evidence" node <<'NODE'
+  PREFIX="$prefix" EVIDENCE="$fixture_evidence" CORE_VERSION="$core_version" node <<'NODE'
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const prefix = fs.realpathSync(process.env.PREFIX);
 const runtime = fs.realpathSync(path.join(prefix, 'lib/libzlink.so'));
 const digest = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const CORE_VERSION = process.env.CORE_VERSION;
 const candidate = {
   ledgerId: 'V11-M3-CORE-VERIFY', baseRevision: '1'.repeat(40),
   manifestSha256: '2'.repeat(64), aggregateSha256: '3'.repeat(64),
@@ -158,18 +167,18 @@ const approval = {
   candidateManifestSha256: candidate.manifestSha256,
 };
 const provenance = {
-  schema: 1, package: 'zlink-core', version: '11.1.0',
+  schema: 1, package: 'zlink-core', version: CORE_VERSION,
   candidate: {...candidate, approvalEvidenceSha256: approval.evidenceSha256},
   createdAt: new Date().toISOString(),
-  files: [{path: 'lib/libzlink.so.11.1.0', sha256: digest(runtime)}],
+  files: [{path: `lib/libzlink.so.${CORE_VERSION}`, sha256: digest(runtime)}],
 };
 const provenancePath = path.join(prefix, 'share/zlink/core-package-provenance.json');
 fs.writeFileSync(provenancePath, `${JSON.stringify(provenance, null, 2)}\n`);
 const provenanceSha = digest(provenancePath);
-const runtimeInfo = {path: runtime, sha256: digest(runtime), version: '11.1.0', soname: 'libzlink.so.11'};
+const runtimeInfo = {path: runtime, sha256: digest(runtime), version: CORE_VERSION, soname: 'libzlink.so.11'};
 const evidence = {
   schema: 1, ledgerId: 'V11-M3-CORE-PKG', command: 'CORE-PKG', status: 'pass',
-  version: '11.1.0', candidate, approval,
+  version: CORE_VERSION, candidate, approval,
   output: {prefix, provenanceManifest: provenancePath, provenanceSha256: provenanceSha},
   consumer: {candidate, approval, provenance: {path: provenancePath, sha256: provenanceSha}, runtime: runtimeInfo},
 };
@@ -177,7 +186,7 @@ fs.writeFileSync(process.env.EVIDENCE, `${JSON.stringify(evidence, null, 2)}\n`)
 NODE
   node "$validator" --prefix "$prefix" --core-package-evidence "$fixture_evidence" >/dev/null
   cp "$fixture_evidence" "$workspace/core-package.saved"
-  node - "$fixture_evidence" <<'NODE'
+  CORE_VERSION="$core_version" node - "$fixture_evidence" <<'NODE'
 const fs = require('node:fs');
 const file = process.argv[2];
 const value = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -189,7 +198,7 @@ NODE
   fi
   mv "$workspace/core-package.saved" "$fixture_evidence"
   cp "$fixture_evidence" "$workspace/core-package.saved"
-  node - "$fixture_evidence" <<'NODE'
+  CORE_VERSION="$core_version" node - "$fixture_evidence" <<'NODE'
 const fs = require('node:fs');
 const file = process.argv[2];
 const value = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -201,11 +210,14 @@ NODE
   fi
   mv "$workspace/core-package.saved" "$fixture_evidence"
   cp "$fixture_evidence" "$workspace/core-package.saved"
-  node - "$fixture_evidence" <<'NODE'
+  CORE_VERSION="$core_version" node - "$fixture_evidence" <<'NODE'
 const fs = require('node:fs');
 const file = process.argv[2];
 const value = JSON.parse(fs.readFileSync(file, 'utf8'));
-value.version = '11.1.0';
+//  Deliberately wrong: the validator must reject a Core version that does not
+//  match the repository VERSION. Bump the minor so this stays wrong at any version.
+const [major, minor, patch] = process.env.CORE_VERSION.split('.');
+value.version = `${major}.${Number(minor) + 1}.${patch}`;
 fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 NODE
   if node "$validator" --prefix "$prefix" --core-package-evidence "$fixture_evidence" >/dev/null 2>&1; then
@@ -213,7 +225,7 @@ NODE
   fi
   mv "$workspace/core-package.saved" "$fixture_evidence"
   cp "$fixture_evidence" "$workspace/core-package.saved"
-  node - "$fixture_evidence" <<'NODE'
+  CORE_VERSION="$core_version" node - "$fixture_evidence" <<'NODE'
 const fs = require('node:fs');
 const file = process.argv[2];
 const value = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -251,6 +263,12 @@ workspace="$(mktemp -d)"
 consumer="$workspace/consumer"
 gradle_home="$workspace/gradle-home"
 cp -R "$fixture_dir" "$consumer"
+find "$consumer" -type f \( -name '*.java' -o -name '*.gradle' \) -print0 | xargs -0 sed -i \
+  -e "s/@BINDING_VERSION@/$binding_version/g" \
+  -e "s/@CORE_VERSION@/$core_version/g" \
+  -e "s/@CORE_MAJOR@/$core_major/g" \
+  -e "s/@CORE_MINOR@/$core_minor/g" \
+  -e "s/@CORE_PATCH@/$core_patch/g"
 core_summary="$workspace/core-summary.json"
 node "$validator" --prefix "$core_prefix" \
   --core-package-evidence "$core_package_evidence" >"$core_summary"
@@ -278,7 +296,7 @@ unzip -p "$jar" native/linux-x86_64/libzlink.so >"$packaged_runtime"
 [[ "$(sha256sum "$packaged_runtime" | awk '{print $1}')" == "$expected_runtime_sha" ]] || {
   echo "Published jar contains a different Core runtime" >&2; exit 1;
 }
-grep -Fq '<zlink.core.version>11.1.0</zlink.core.version>' "$pom"
+grep -Fq "<zlink.core.version>$core_version</zlink.core.version>" "$pom"
 grep -Fq "<zlink.core.provenance-sha256>$expected_provenance_sha</zlink.core.provenance-sha256>" "$pom"
 grep -Fq "zlink-$binding_version.jar" "$module"
 grep -Fq "\"systems.zlink.core.provenance-sha256\": \"$expected_provenance_sha\"" "$module"
@@ -290,7 +308,7 @@ env -u ZLINK_LIBRARY_PATH -u LD_LIBRARY_PATH -u CLASSPATH \
   GRADLE_USER_HOME="$gradle_home" \
   "$repo_root/bindings/java/gradlew" --no-daemon --refresh-dependencies \
   -p "$consumer" clean run >"$run_output"
-grep -Fq 'ZLINK_CORE_VERSION=11.1.0' "$run_output"
+grep -Fq "ZLINK_CORE_VERSION=$core_version" "$run_output"
 
 checks+=(
   "actualMavenArtifact=pass"
@@ -322,7 +340,7 @@ process.stdout.write(`${JSON.stringify({
   consumer: {
     isolatedGradleUserHome: true,
     projectReferenceCount: 0,
-    runtimeVersion: '11.1.0',
+    runtimeVersion: process.env.CORE_VERSION,
     bindingVersion: process.env.BINDING_VERSION,
   },
 }, null, 2)}\n`);

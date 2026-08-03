@@ -64,7 +64,7 @@ ZLINK_EXPORT zlink_config_result_t zlink_get_router_option(
 | `ZLINK_ROUTER_OPT_PROBE` | `int`, `0` 또는 `1` | 연결을 설정할 때 빈 raw message를 보내 peer가 연결과 routing ID를 관찰할 수 있게 한다. 기본값은 `0`이다 |
 | `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | 가변 길이 byte string, set 전용 | 다음 `zlink_connect()`로 만든 pipe를 식별할 local alias를 설정한다. 각 connect 전에 설정한다 |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | 0 이상인 `int`, millisecond | request API에서 `timeout_ms_ == 0`일 때 사용할 기본 timeout을 정한다. 기본값은 `5000`이다 |
-| `ZLINK_ROUTER_OPT_WEIGHT` | `int`, `0..100` | 연결된 peer에 알리는 이 ROUTER의 가중치다. 기본값은 `100`이다 |
+| `ZLINK_ROUTER_OPT_WEIGHT` | `int`, `0..10000` | 연결된 peer에 알리는 이 ROUTER의 가중치다. 기본값은 `100`이다 |
 
 `zlink_get_router_option()`을 호출할 때 `*optvallen_`은 `optval_`의 입력 용량이다. 성공하면 실제로
 쓴 byte 수로 갱신된다. ROUTER 전용이 아닌 HWM, reconnect와 timeout option은

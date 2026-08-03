@@ -143,7 +143,7 @@ int zlink::options_setsockopt_core_socket (
             break;
 
         case ZLINK_INTERNAL_OPT_PEER_WEIGHT:
-            if (is_int_ && value_ >= 0 && value_ <= 100) {
+            if (is_int_ && value_ >= 0 && value_ <= static_cast<int> (max_peer_weight)) {
                 self_->peer_weight = value_;
                 return 0;
             }

@@ -467,7 +467,7 @@ bool zlink::socket_base_t::decode_peer_weight_command (const zlink::msg_t &msg_,
     const uint32_t weight =
       (static_cast<uint32_t> (payload[0]) << 24) | (static_cast<uint32_t> (payload[1]) << 16)
       | (static_cast<uint32_t> (payload[2]) << 8) | static_cast<uint32_t> (payload[3]);
-    if (weight > 100)
+    if (weight > max_peer_weight)
         return false;
 
     if (weight_out_)

@@ -88,6 +88,16 @@ class OwnershipContractTests(unittest.TestCase):
         message.close()
         self.assertEqual(message.to_bytes(), b"")
 
+    def test_message_try_copy_to_reports_count_or_capacity_miss(self):
+        with zlink.Message.from_(b"payload") as message:
+            destination = bytearray(7)
+            self.assertEqual(7, message.try_copy_to(destination))
+            self.assertEqual(destination, b"payload")
+            self.assertIsNone(message.try_copy_to(bytearray(6)))
+
+            with self.assertRaises(TypeError):
+                message.try_copy_to(bytes(7))
+
     def test_caller_provided_received_storage_close_is_idempotent_when_empty(self):
         received = zlink.create_received()
 

@@ -247,6 +247,40 @@ void test_typed_raw_socket_options ()
       zlink_get_dealer_option (dealer, ZLINK_DEALER_OPT_WEIGHT, &value, &size));
     TEST_ASSERT_EQUAL_INT (25, value);
 
+    //  The weight range is 0..10000 on both socket types and out-of-range
+    //  input is rejected instead of clamped.
+    value = 10000;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_dealer_option (dealer, ZLINK_DEALER_OPT_WEIGHT, &value, sizeof (value)));
+    value = 0;
+    size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_dealer_option (dealer, ZLINK_DEALER_OPT_WEIGHT, &value, &size));
+    TEST_ASSERT_EQUAL_INT (10000, value);
+
+    value = 10001;
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK,
+      zlink_set_dealer_option (dealer, ZLINK_DEALER_OPT_WEIGHT, &value, sizeof (value)));
+    value = 0;
+    size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_dealer_option (dealer, ZLINK_DEALER_OPT_WEIGHT, &value, &size));
+    TEST_ASSERT_EQUAL_INT (10000, value);
+
+    value = 10000;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_router_option (router, ZLINK_ROUTER_OPT_WEIGHT, &value, sizeof (value)));
+    value = 10001;
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK,
+      zlink_set_router_option (router, ZLINK_ROUTER_OPT_WEIGHT, &value, sizeof (value)));
+    value = 0;
+    size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_router_option (router, ZLINK_ROUTER_OPT_WEIGHT, &value, &size));
+    TEST_ASSERT_EQUAL_INT (10000, value);
+
     value = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_stream_option (stream, ZLINK_STREAM_OPT_NOTIFY, &value, sizeof (value)));

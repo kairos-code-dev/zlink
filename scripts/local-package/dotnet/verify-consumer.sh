@@ -109,6 +109,13 @@ cp "$package" "$work/feed/"
 cp "$fixture_project" "$fixture_source" "$work/consumer/"
 sed -i "s/Version=\"[0-9][0-9.]*\"/Version=\"$package_version\"/" \
   "$work/consumer/PublicConsumer.csproj"
+#  The fixture pins the Core version it expects. Substitute the version this
+#  package actually carries so a Core bump does not require editing the fixture.
+core_tuple="$(printf '%s' "$version" | tr '.' ' ')"
+sed -i \
+  -e "s/(@CORE_VERSION_TUPLE@)/(${core_tuple// /, })/" \
+  -e "s/@CORE_VERSION@/$version/g" \
+  "$work/consumer/Program.cs"
 
 package_entries="$work/package-entries.txt"
 unzip -Z1 "$package" >"$package_entries"

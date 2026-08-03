@@ -301,7 +301,7 @@ make_client_endpoint_provider (std::shared_ptr<channel_runtime_state_t> state,
         std::lock_guard lock (state->mutex);
         detail::channel_runtime_manager_t manager (state);
         auto &bundle = manager.get_or_create_client_bundle (channel_name);
-        return channel_endpoint_snapshot_t{.endpoints = bundle.connections_from_next (),
+        return channel_endpoint_snapshot_t{.endpoints = bundle.list_manual_connections (),
                                            .version = bundle.connection_version ()};
     };
 }

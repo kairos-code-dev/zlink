@@ -7,7 +7,7 @@
 
 int zlink::socket_base_t::set_peer_weight (uint32_t weight_)
 {
-    if (weight_ > 100) {
+    if (weight_ > max_peer_weight) {
         errno = EINVAL;
         return -1;
     }

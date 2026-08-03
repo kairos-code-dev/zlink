@@ -8,7 +8,10 @@
 #include "sockets/internal/lb.hpp"
 
 #include <unity.h>
+#include <cstddef>
 #include <cstring>
+#include <string>
+#include <vector>
 
 void setUp ()
 {
@@ -721,6 +724,238 @@ void test_completion_pipe_hwm_is_capped_by_internal_lane_policy ()
     close_sync_socket (owner_handle);
 }
 
+namespace
+{
+const uint64_t weighted_selection_hwm = 64u * 1024u * 1024u;
+
+//  Owns the pipe pairs a weighted-selection scenario attaches to lb_t and
+//  performs the peer handshake teardown the runtime would normally drive.
+class weighted_selection_harness_t
+{
+  public:
+    weighted_selection_harness_t () : _owner_handle (create_sync_socket (ZLINK_SOCKET_PAIR)) {}
+
+    zlink::pipe_t *add_peer (zlink::lb_t &lb_,
+                             const char *routing_id_,
+                             uint32_t weight_,
+                             uint64_t hwm_ = weighted_selection_hwm)
+    {
+        zlink::object_t *owner = static_cast<zlink::object_t *> (_owner_handle);
+        zlink::object_t *parents[] = {owner, owner};
+        const uint64_t hwms[] = {hwm_, hwm_};
+        const bool conflate[] = {false, false};
+        zlink::pipe_t *pair[2];
+        TEST_ASSERT_SUCCESS_ERRNO (zlink::pipepair (parents, pair, hwms, conflate));
+        pair[0]->set_event_sink (&_sink);
+        pair[1]->set_event_sink (&_sink);
+        _endpoints.push_back (pair[0]);
+        _endpoints.push_back (pair[1]);
+
+        if (routing_id_) {
+            pair[0]->set_peer_routing_id (reinterpret_cast<const unsigned char *> (routing_id_),
+                                          strlen (routing_id_));
+        }
+
+        lb_.attach (pair[0]);
+        lb_.set_weight (pair[0], weight_);
+        _attached.push_back (pair[0]);
+        return pair[0];
+    }
+
+    //  Detaches a peer from the candidate set without terminating it, the way
+    //  a disconnect reaches lb_t.
+    void detach_peer (zlink::lb_t &lb_, zlink::pipe_t *pipe_)
+    {
+        lb_.pipe_terminated (pipe_);
+        for (size_t i = 0; i < _attached.size (); ++i) {
+            if (_attached[i] == pipe_) {
+                _attached.erase (_attached.begin () + static_cast<ptrdiff_t> (i));
+                break;
+            }
+        }
+    }
+
+    void teardown (zlink::lb_t &lb_)
+    {
+        for (size_t i = 0; i < _attached.size (); ++i)
+            lb_.pipe_terminated (_attached[i]);
+        _attached.clear ();
+
+        for (size_t i = 0; i < _endpoints.size (); ++i)
+            _endpoints[i]->terminate (false);
+
+        int events = 0;
+        size_t events_size = sizeof (events);
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_get_option (_owner_handle, ZLINK_OPT_EVENTS, &events, &events_size));
+        TEST_ASSERT_EQUAL_INT (static_cast<int> (_endpoints.size ()), _sink.terminated_count);
+        _endpoints.clear ();
+        close_sync_socket (_owner_handle);
+        _owner_handle = NULL;
+    }
+
+  private:
+    void *_owner_handle;
+    pipe_cleanup_sink_t _sink;
+    std::vector<zlink::pipe_t *> _endpoints;
+    std::vector<zlink::pipe_t *> _attached;
+};
+
+//  Submits one single-part message and reports the pipe the selection
+//  procedure picked, or NULL when the submit was refused.
+zlink::pipe_t *submit_one (zlink::lb_t &lb_)
+{
+    zlink::msg_t message;
+    TEST_ASSERT_SUCCESS_ERRNO (message.init_size (1));
+    zlink::pipe_t *selected = NULL;
+    const int rc = lb_.sendpipe (&message, &selected);
+    TEST_ASSERT_SUCCESS_ERRNO (message.close ());
+    return rc == 0 ? selected : NULL;
+}
+
+//  Renders a selection run as a string so a whole sequence can be compared in
+//  one assertion. Unknown pipes render as '?'.
+std::string selection_sequence (zlink::lb_t &lb_,
+                                size_t count_,
+                                zlink::pipe_t *const *pipes_,
+                                const char *labels_,
+                                size_t pipe_count_)
+{
+    std::string sequence;
+    for (size_t i = 0; i < count_; ++i) {
+        zlink::pipe_t *selected = submit_one (lb_);
+        char label = '-';
+        for (size_t p = 0; p < pipe_count_; ++p) {
+            if (pipes_[p] == selected) {
+                label = labels_[p];
+                break;
+            }
+        }
+        if (label == '-' && selected != NULL)
+            label = '?';
+        sequence.push_back (label);
+    }
+    return sequence;
+}
+}
+
+void test_weighted_selection_spreads_consecutive_picks ()
+{
+    zlink::lb_t lb;
+    weighted_selection_harness_t harness;
+    zlink::pipe_t *pipes[2];
+    pipes[0] = harness.add_peer (lb, "A", 100);
+    pipes[1] = harness.add_peer (lb, "B", 300);
+
+    //  A 1:3 ratio must not hand three consecutive messages to the same peer.
+    TEST_ASSERT_EQUAL_STRING ("BABB", selection_sequence (lb, 4, pipes, "AB", 2).c_str ());
+
+    harness.teardown (lb);
+}
+
+void test_equal_weights_alternate_through_the_same_procedure ()
+{
+    zlink::lb_t lb;
+    weighted_selection_harness_t harness;
+    zlink::pipe_t *pipes[2];
+    pipes[0] = harness.add_peer (lb, "A", 100);
+    pipes[1] = harness.add_peer (lb, "B", 100);
+
+    //  Equal weights are not a separate code path. The procedure alternates on
+    //  its own and starts with the lower identifier.
+    TEST_ASSERT_EQUAL_STRING ("ABABAB", selection_sequence (lb, 6, pipes, "AB", 2).c_str ());
+
+    harness.teardown (lb);
+}
+
+void test_weighted_selection_ignores_attach_order ()
+{
+    zlink::lb_t lb;
+    weighted_selection_harness_t harness;
+    //  Same peers, reversed attach order. The identifier decides the order,
+    //  not the connect sequence.
+    zlink::pipe_t *b = harness.add_peer (lb, "B", 300);
+    zlink::pipe_t *a = harness.add_peer (lb, "A", 100);
+    zlink::pipe_t *pipes[2] = {a, b};
+
+    TEST_ASSERT_EQUAL_STRING ("BABB", selection_sequence (lb, 4, pipes, "AB", 2).c_str ());
+
+    harness.teardown (lb);
+}
+
+void test_weighted_selection_keeps_ratio_across_pipe_changes ()
+{
+    zlink::lb_t lb;
+    weighted_selection_harness_t harness;
+    zlink::pipe_t *pipes[2];
+    pipes[0] = harness.add_peer (lb, "A", 100);
+    pipes[1] = harness.add_peer (lb, "B", 300);
+
+    TEST_ASSERT_EQUAL_STRING ("BA", selection_sequence (lb, 2, pipes, "AB", 2).c_str ());
+
+    //  A third peer joins and leaves again without being used. The running
+    //  values of the peers that stay must survive the candidate-set change.
+    zlink::pipe_t *transient = harness.add_peer (lb, "C", 100);
+    harness.detach_peer (lb, transient);
+
+    TEST_ASSERT_EQUAL_STRING ("BB", selection_sequence (lb, 2, pipes, "AB", 2).c_str ());
+
+    //  The full period repeats, so the ratio is unchanged.
+    TEST_ASSERT_EQUAL_STRING ("BABB", selection_sequence (lb, 4, pipes, "AB", 2).c_str ());
+
+    harness.teardown (lb);
+}
+
+void test_weighted_selection_converges_to_wide_range_ratio ()
+{
+    zlink::lb_t lb;
+    weighted_selection_harness_t harness;
+    zlink::pipe_t *pipes[2];
+    pipes[0] = harness.add_peer (lb, "A", 5000);
+    pipes[1] = harness.add_peer (lb, "B", 10000);
+
+    const std::string sequence = selection_sequence (lb, 300, pipes, "AB", 2);
+    size_t first_count = 0;
+    size_t second_count = 0;
+    for (size_t i = 0; i < sequence.size (); ++i) {
+        if (sequence[i] == 'A')
+            ++first_count;
+        else if (sequence[i] == 'B')
+            ++second_count;
+    }
+
+    TEST_ASSERT_EQUAL_UINT (100, first_count);
+    TEST_ASSERT_EQUAL_UINT (200, second_count);
+
+    harness.teardown (lb);
+}
+
+void test_write_failure_restores_candidate_after_recovery ()
+{
+    zlink::lb_t lb;
+    weighted_selection_harness_t harness;
+    zlink::pipe_t *pipes[2];
+    //  The second peer accepts a single frame before it runs out of credit.
+    const uint64_t single_frame_hwm = sizeof (zlink::msg_t) + 1;
+    pipes[0] = harness.add_peer (lb, "A", 100);
+    pipes[1] = harness.add_peer (lb, "B", 100, single_frame_hwm);
+
+    TEST_ASSERT_EQUAL_STRING ("AB", selection_sequence (lb, 2, pipes, "AB", 2).c_str ());
+
+    //  B has no credit left. The failed write must not consume the message
+    //  and must not take A out of the candidate set.
+    TEST_ASSERT_EQUAL_STRING ("AA", selection_sequence (lb, 2, pipes, "AB", 2).c_str ());
+
+    //  Fresh write credit returns B to the candidate set.
+    pipes[1]->refresh_write_credit (1, pipes[1]->get_bytes_written ());
+    lb.activated (pipes[1]);
+    const std::string after_recovery = selection_sequence (lb, 2, pipes, "AB", 2);
+    TEST_ASSERT_TRUE_MESSAGE (after_recovery.find ('B') != std::string::npos,
+                              "recovered pipe did not return to the candidate set");
+
+    harness.teardown (lb);
+}
+
 int main ()
 {
     setup_test_environment ();
@@ -737,5 +972,11 @@ int main ()
     RUN_TEST (test_empty_pipe_incomplete_multipart_stops_at_max_message_size);
     RUN_TEST (test_empty_pipe_oversize_exception_applies_only_to_complete_message);
     RUN_TEST (test_completion_pipe_hwm_is_capped_by_internal_lane_policy);
+    RUN_TEST (test_weighted_selection_spreads_consecutive_picks);
+    RUN_TEST (test_equal_weights_alternate_through_the_same_procedure);
+    RUN_TEST (test_weighted_selection_ignores_attach_order);
+    RUN_TEST (test_weighted_selection_keeps_ratio_across_pipe_changes);
+    RUN_TEST (test_weighted_selection_converges_to_wide_range_ratio);
+    RUN_TEST (test_write_failure_restores_candidate_after_recovery);
     return UNITY_END ();
 }

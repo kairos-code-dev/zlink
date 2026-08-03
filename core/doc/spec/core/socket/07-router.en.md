@@ -65,7 +65,7 @@ ZLINK_EXPORT zlink_config_result_t zlink_get_router_option(
 | `ZLINK_ROUTER_OPT_PROBE` | `int`, `0` or `1` | Sends an empty raw message when a connection is established so the peer can observe the connection and routing ID; the default is `0` |
 | `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | Variable-length byte string, set only | Sets the local alias that identifies the pipe created by the next `zlink_connect()`; set it before each connect |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | Nonnegative `int`, milliseconds | Selects the default timeout used by a request API when `timeout_ms_ == 0`; the default is `5000` |
-| `ZLINK_ROUTER_OPT_WEIGHT` | `int`, `0..100` | Advertises this ROUTER's weight to connected peers; the default is `100` |
+| `ZLINK_ROUTER_OPT_WEIGHT` | `int`, `0..10000` | Advertises this ROUTER's weight to connected peers; the default is `100` |
 
 For `zlink_get_router_option()`, `*optvallen_` is the input capacity of
 `optval_`. On success it is updated to the number of bytes written. HWM,

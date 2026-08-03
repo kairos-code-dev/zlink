@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: zlink
+Version: 11.2.0
+Summary: zlink Python bindings — high-performance async messaging library
+Author: Zlink Systems
+License: MPL-2.0
+Project-URL: Homepage, https://zlink.systems/
+Project-URL: Repository, https://github.com/ulala-x/zlink
+Requires-Python: >=3.9

@@ -29,6 +29,11 @@
 
 namespace zlink
 {
+//  Inclusive upper bound of the peer selection weight. The public DEALER and
+//  ROUTER weight options, the peer-weight command decoder and the outbound
+//  load balancer all share this single range.
+const uint32_t max_peer_weight = 10000;
+
 enum transport_lane_t
 {
     transport_lane_application = 0,

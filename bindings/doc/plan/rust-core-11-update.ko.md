@@ -24,7 +24,7 @@ consumer를 Core 11 package 증거로 사용하지 않는다.
 `Cargo.toml`의 crate version을 `11.1.0`으로 올린다. Core만 갱신한 최초 Rust package는 patch 0에서 시작하고,
 이후 Rust binding만 수정하면 binding patch를 올린다.
 
-구현을 마치면 Rust source, test, sample, perf, crate metadata와 이 작업이 사용하는 package script를 공통
+구현과 public contract 문서 갱신을 마치면 Rust source, test, sample, perf, crate metadata와 이 작업이 사용하는 package script를 공통
 형식의 binding source manifest에 봉인한다. 이후 test와 `.crate`는 이 manifest로 materialize한 격리
 snapshot에서 만든다. `.crate`, clean consumer와 독립 review evidence는 같은 manifest file SHA-256과
 aggregate SHA-256을 기록한다.
@@ -69,8 +69,9 @@ platform runtime을 넣고 `build.rs`가 현재 target의 directory만 선택하
 ### RS-03 — Error와 ownership
 
 [Go·Rust parity inventory](go-rust-return-parity.ko.md)의 Rust 열을 채우고 public API contract test를 연결한다.
-No-data를 서로 다르게 설명하는 공통 spec의 한국어·영문 절을 PGR-COMMON-03에서 먼저 바로잡은 뒤 이 항목의
-공개 시그니처와 test를 확정한다.
+[Go·Rust submit 반환 초안](../spec/draft/go-rust-submit-return.ko.md)을 PGR-COMMON-03에서 승인한 뒤 이 항목의
+공개 시그니처와 test를 확정한다. 관련 정식 spec은 구현과 contract test 통과 후 갱신한다. 아래 submit
+signature는 승인 후 적용할 권고안이며 승인 전에는 구현 근거가 아니다.
 
 - 단일 함수군 메서드는 `Result<T, BindError>`처럼 함수군별 구체 error type을 반환한다.
 - 여러 함수군을 실제로 조합하는 메서드만 `Result<T, ZlinkError>`로 넓힌다.
@@ -78,9 +79,19 @@ No-data를 서로 다르게 설명하는 공통 spec의 한국어·영문 절을
 - 기존 `native_errno()`는 제거하고 호환 alias를 남기지 않는다.
 - Core 작업의 인자 검증은 해당 함수군의 `INVALID_ARGUMENT`로 변환한다.
 - Core 작업과 독립된 값 객체를 만들기 전의 형식 검사만 별도 validation error를 사용할 수 있다.
-- No-data는 `Ok(false)` 또는 `Ok(None)`으로 표현하고 실제 receive 실패는 `Err(RecvError)`로 반환한다.
-- Non-blocking submit backpressure는 `Err(SubmitError)`로 반환한다.
+- Caller-provided receive의 no-data는 `Ok(false)`, 값을 직접 반환하는 control-plane API의 no-data는
+  `Ok(None)`으로 표현한다. 실제 receive 실패는 `Err(RecvError)`로 반환하며 같은 API에서 두 no-data 표현을
+  섞지 않는다.
+- Send, publish와 request submit의 성공 값은 없으므로 terminal method는 `Result<(), SubmitError>`를 반환한다.
+  Non-blocking submit backpressure를 `Ok(false)`로 숨기지 않고 `Err(SubmitError)`로 반환한다.
 - Message send, receive, copy·move와 close의 ownership을 contract test로 검증한다.
+- Background completion callback은 한 번만 호출되므로 `FnOnce`를 사용한다. 다른 thread에서 실행할 수 있는
+  callback은 `Send + 'static` bound를 유지하며 compile-time contract test로 확인한다.
+- `single_part()`처럼 `Result`가 실패 가능성을 이미 나타내는 메서드에는 `or_error` 이름을 덧붙이지 않는다.
+  현재 공통 spec의 `single_part_or_throw()`와 Rust 구현의 `single_part_or_error()`를 `single_part()`로
+  통일하는 안은 [part 접근 이름 초안](../spec/draft/python-rust-single-part-naming.ko.md)에서 먼저 리뷰한다.
+- Borrowed view는 `as_`, owned copy는 `to_`, 소유권을 넘기는 변환은 `into_` 이름을 사용한다. 가능한 변환은
+  `From`·`AsRef`, 실패 가능한 변환은 `TryFrom`을 우선하고 같은 의미의 inherent alias를 늘리지 않는다.
 
 ### RS-04 — Hot path 설계 검토
 
@@ -120,7 +131,34 @@ perf/run_benchmarks_multi.sh --smoke --pattern MULTI_DEALER_ROUTER --duration 1 
 - 두 명령은 공통 계획의 smoke 판정에 따라 ready, active, 필수 `RESULT` metric과 exit code만 확인한다. 결과
   수치는 공식 report나 성능 비교에 사용하지 않으며 실행 뒤 report 파일이 남지 않아야 한다.
 
-### RS-06 — 정식 문서
+### RS-06 — 구현 후 POSD·DDD 리팩터링과 Codex review
+
+RS-01~05의 구현과 test가 통과하면 정식 문서와 crate package 작업을 시작하기 전에 다음 품질 gate를
+수행한다.
+
+- DDD 관점에서 owned value, borrow, native handle, message buffer와 callback의 lifecycle·ownership·state
+  transition owner를 정리한다. Rust type이 표현하는 수명과 binding·Core runtime의 실제 책임이 어긋나지
+  않게 한다.
+- POSD 관점에서 얕은 wrapper, 전달만 하는 method, 실행 순서대로 나눈 module, 중복 trait·conversion과 private
+  FFI 결정을 노출하는 public API를 찾는다. 비자명한 수정은 두 가지 이상 대안을 비교한 뒤 caller의 복잡성과
+  변경 범위가 작은 안을 선택한다.
+- Public Rust API부터 FFI와 Core 호출까지 production hot path를 다시 추적한다. 계약에 필요하지 않은 `Vec`
+  clone·`collect`, payload 재할당·copy, 반복 `CString`, call별 `Box`·closure·thread·channel과 전역 `Mutex`
+  경합이 없어야 한다. 필요한 비용은 이유와 owner를 cost inventory에 남긴다.
+- 제거한 service 계약에서 남은 re-export, wrapper, alias, branch, helper, trait, fixture, sample·perf scenario,
+  feature, dependency, import와 주석을 찾아 삭제한다. 실행되지 않는 호환 경로나 test만 참조하는 production
+  코드를 남기지 않는다.
+- 리팩터링 뒤 workspace test, clippy, optimization guard, raw sample process와 perf smoke를 다시 실행하고
+  Rust binding source manifest를 새로 만든다.
+
+구현자가 아닌 frontier Codex coding/review agent가 새 manifest와 전체 diff를 read-only로 검토한다. Contract와
+architecture를 판단할 수 있는 model을 `high` 이상의 reasoning level로 사용하며, `contract`, `POSD`, `DDD`,
+`performance-cost`, `dead-code`, `test/evidence` finding을 기록한다. 미해결 `Critical`, `High`, `Medium`
+finding이 0건이고 `Low` finding이 모두 처리됐으며 같은 manifest의 필수 재검증이 통과해야 `CLEAN`으로
+판정한다. `NOT CLEAN`이면 수정 후 새 manifest와 fresh test로 다시 review한다. `CLEAN` 전에는 RS-07 이후
+작업으로 넘어가지 않는다.
+
+### RS-07 — 정식 문서
 
 구현과 contract test가 통과한 뒤 Rust 정식 spec의 한국어·영문 문서와 guide를 실제 raw 공개 API에 맞춘다.
 구현 전 목표를 정식 spec에 먼저 기록하지 않는다.
@@ -176,13 +214,15 @@ Clean consumer는 `.crate`를 source directory로 풀어 path dependency로 연�
 | `cargo clippy --workspace --all-targets -- -D warnings` | `PENDING` | — |
 | Hot path cost inventory와 optimization guard | `PENDING` | — |
 | Perf runner smoke | `PENDING` | — |
+| 구현 후 POSD·DDD·성능 비용·dead code Codex review | `PENDING` | 새 manifest, finding 처리 결과와 최종 `CLEAN` 판정 |
 | Go·Rust parity inventory | `PENDING` | — |
+| Submit·naming draft, callback bound contract | `PENDING` | — |
 | Raw sample process runner | `PENDING` | — |
 | Verification을 통과한 `.crate` contents | `PENDING` | — |
 | Path dependency 없는 clean consumer | `PENDING` | — |
 | 지원 platform native consumer | `PENDING` | — |
 | 한국어·영문 spec, rustdoc과 guide | `PENDING` | — |
-| 독립 review | `PENDING` | — |
+| Package·통합 최종 review | `PENDING` | — |
 
 명령, 종료 코드, test 수, `.crate` SHA-256과 실패 원인은 `bindings/doc/plan/log/rust/` 아래 날짜별 log에
 기록한다.
@@ -194,9 +234,13 @@ Clean consumer는 `.crate`를 source directory로 풀어 path dependency로 연�
 1. Crate version은 `11.1.0`이고 승인된 Core candidate identity와 Rust binding source manifest를 기록한다.
 2. Raw FFI와 공개 API가 Core 11 allowlist에 맞고 service API가 없다.
 3. 함수군별 error, no-data와 ownership이 parity inventory의 Rust 열과 일치한다.
-4. Source test, clippy, hot path design review, perf smoke와 raw sample process가 통과한다.
-5. Path dependency 없는 clean consumer가 local registry package의 runtime으로 실제 message를 송수신한다.
-6. 지원한다고 명시한 모든 platform에서 package contents와 runtime load가 검증된다.
-7. 정식 spec, rustdoc과 guide가 구현과 일치한다.
-8. 성능 수치 개선은 후속 Rust 계획으로 분리되어 있으며 이번 완료 근거로 사용하지 않는다.
-9. Critical, high, medium finding과 실행하지 않은 필수 gate가 남아 있지 않다.
+4. 성공 값 없는 submit은 `Result<(), SubmitError>`를 반환하고 callback의 `FnOnce + Send + 'static` 조건이
+   compile-time contract test로 검증된다.
+5. Source test, clippy, hot path design review, perf smoke와 raw sample process가 통과한다.
+6. 구현 후 POSD·DDD 리팩터링, 불필요한 allocation·copy·contention과 dead code 검토가 끝났고 Codex review가
+   `CLEAN`이다.
+7. Path dependency 없는 clean consumer가 local registry package의 runtime으로 실제 message를 송수신한다.
+8. 지원한다고 명시한 모든 platform에서 package contents와 runtime load가 검증된다.
+9. 정식 spec, rustdoc과 guide가 구현과 일치한다.
+10. 성능 수치 개선은 후속 Rust 계획으로 분리되어 있으며 이번 완료 근거로 사용하지 않는다.
+11. 미해결 `Critical`, `High`, `Medium` finding과 실행하지 않은 필수 gate가 남아 있지 않다.

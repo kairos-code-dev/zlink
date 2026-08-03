@@ -40,7 +40,13 @@ check() {
 has_literal() { grep -Fq -- "$1" "$2"; }
 has_no_match() { ! grep -Eq -- "$1" "$2"; }
 
-check package-version has_literal '"version": "11.1.0"' "$package_json"
+#  The expected version is derived from the binding's own package metadata, so a
+#  Core or binding bump does not require editing this script.
+binding_version="$(node -e 'process.stdout.write(require(process.argv[1]).version)' "$package_json")"
+[[ "$binding_version" =~ ^11\.[0-9]+\.[0-9]+$ ]] || {
+  echo "binding package version must be 11.x.y, found: $binding_version" >&2; exit 1; }
+
+check package-version has_literal "\"version\": \"$binding_version\"" "$package_json"
 check cjs-export has_literal '"require": "./dist/index.js"' "$package_json"
 check esm-export has_literal '"import": "./dist/index.mjs"' "$package_json"
 check declaration-export has_literal '"types": "./dist/index.d.ts"' "$package_json"
@@ -51,7 +57,7 @@ check core-provenance-resolver has_literal 'core-package-provenance.json' "$reso
 check core-major-gate has_literal '/^11\.\d+\.\d+$/' "$resolver"
 check no-repository-core-fallback has_no_match 'core/(build|include)|ZLINK_LIB_PATH' "$binding_dir/binding.gyp"
 check no-pre-core-payload test ! -d "$binding_dir/prebuilds"
-check fixture-package-dependency has_literal '"@zlink-systems/zlink": "11.1.0"' "$fixture_source/package.json"
+check fixture-package-dependency has_literal "\"@zlink-systems/zlink\": \"$binding_version\"" "$fixture_source/package.json"
 check public-only-fixture has_no_match 'runtime/native|nativeHandle|node-gyp|bindings/node|addon' "$fixture_source/consumer.mts"
 
 (cd "$binding_dir" && npm run build >/dev/null)

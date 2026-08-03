@@ -214,7 +214,7 @@ handler mode와 recv mode는 상호 배타이며 두 번째 mode는 `EBUSY`다. 
 recv에서는 caller-owned output 구조체 안의 값이다. callback의 event pointer와 그 안의 값은 callback이
 반환될 때까지만 유효한 borrowed view다. `DISCONNECTED`의 `value`는 `zlink_disconnect_reason_t`,
 `HANDSHAKE_FAILED_PROTOCOL`의 `value`는 `zlink_protocol_error_t`, `PEER_WEIGHT_CHANGED`의 `value`는
-새 `0..100` weight다. 다른 실패 event의 `value`는 해당 실패의 errno다.
+새 `0..10000` weight다. 다른 실패 event의 `value`는 해당 실패의 errno다.
 
 `zlink_monitor_ignore_handler()`는 전달된 event와 `userdata`를 보관하거나 해제하지 않는 no-op 함수다.
 `event`는 호출 동안만 유효한 borrowed view다. 이 함수를 handler API에 등록하면 일반 callback

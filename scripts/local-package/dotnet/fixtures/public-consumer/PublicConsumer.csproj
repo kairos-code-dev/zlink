@@ -6,6 +6,6 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Systems.Zlink" Version="11.1.0" />
+    <PackageReference Include="Systems.Zlink" Version="11.2.0" />
   </ItemGroup>
 </Project>

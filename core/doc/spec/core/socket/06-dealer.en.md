@@ -62,17 +62,72 @@ ZLINK_EXPORT zlink_config_result_t zlink_get_dealer_option(
 |---|---|---|
 | `ZLINK_DEALER_OPT_PROBE` | `int`, `0` or `1` | Sends an empty raw message when a connection is established so the peer can observe the connection and routing ID; the default is `0` |
 | `ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS` | Nonnegative `int`, milliseconds | Selects the default timeout used by a request API when `timeout_ms_ == 0`; the default is `5000` |
-| `ZLINK_DEALER_OPT_WEIGHT` | `int`, `0..100` | Advertises this DEALER's weight to connected peers; the default is `100` |
+| `ZLINK_DEALER_OPT_WEIGHT` | `int`, `0..10000` | Advertises this DEALER's weight to connected peers; the default is `100` |
 
 For `zlink_get_dealer_option()`, `*optvallen_` is the input capacity of
 `optval_`. On success it is updated to the number of bytes written. HWM,
 reconnect and timeout options that are not DEALER-specific use
 `zlink_set_option()` and `zlink_get_option()`.
 
-Outbound peers with equal positive weights are selected in round-robin order.
-Unequal positive weights affect the selection ratio, while a peer with weight
-`0` is excluded. If every known peer has weight `0`, a submit may fail with
-`ZLINK_SUBMIT_NOT_ADMITTED`.
+A weight outside `0..10000` is rejected; it is never clamped. Values in
+`0..100` keep the meaning they had before the range was widened.
+
+### 2.1 Outbound peer selection
+
+A candidate is a connected outbound peer whose advertised weight is positive.
+A peer with weight `0` is excluded from the candidate set. If every known peer
+has weight `0`, a submit may fail with `ZLINK_SUBMIT_NOT_ADMITTED`.
+
+Each candidate carries a running value that starts at `0`. Sending one message
+performs one selection step:
+
+1. Add each candidate's weight to that candidate's running value.
+2. Select the candidate holding the largest running value. When several
+   candidates hold the same value, select the one with the smallest identifier.
+3. Subtract the total weight of the candidate set from the selected
+   candidate's running value.
+
+Equal weights are not a separate rule. Candidates with equal weights run the
+same three steps and are therefore selected in turn. A single candidate is
+covered by the same steps as well, because adding and subtracting the same
+weight leaves its running value unchanged.
+
+The procedure spreads consecutive selections instead of grouping each
+candidate's share into one run. With weights `100` and `300` the repeating
+order is `second, first, second, second`, not three messages to the heavier
+peer followed by one to the lighter peer. Over many messages the selection
+frequencies match the configured ratio.
+
+A selection step applies only to a message that a peer accepted. If the
+selected candidate cannot accept the write because it is out of capacity, it
+leaves the candidate set for that message and the step is applied to the peer
+that accepts the message instead. Such a failure does not change the
+configured weight, and the peer returns to the candidate set once it reports
+write capacity again. A message rejected for exceeding a size limit is not
+retried against another candidate, because every candidate would reject it for
+the same reason.
+
+The identifier used in step 2 is the peer routing ID compared as a byte string.
+An absent routing ID is the empty byte string, so it sorts before every
+non-empty one. Peers that share an identifier, including peers that all lack a
+routing ID, are ordered by the endpoint the connection was established through,
+and peers that also share that endpoint are ordered by the local order in which
+they were attached. A reconnect creates a new connection whose running value
+starts at `0`; its identifier is unchanged, so it takes the same position in
+the order as before.
+
+Two processes configured with the same peers and the same weights produce the
+same selection order, and an application may depend on that order as long as
+the candidate identifiers are distinct. Where the order falls through to the
+local attach order, it stays deterministic within a process but is not
+reproducible across processes.
+
+When the candidate set changes, the remaining candidates keep their running
+values, so the configured ratio is preserved. A new connection starts at `0`
+and a disconnected peer discards its running value together with the
+connection. A peer that is only temporarily excluded — by backpressure or by a
+weight of `0` — keeps its running value and resumes from it when it becomes a
+candidate again.
 
 ## 3. Message record classification
 

@@ -4,6 +4,9 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(git -C "$script_dir" rev-parse --show-toplevel)"
 self_test=false
+#  The self-test fixture mirrors the real package version. Derive it from the
+#  C++ binding's own CMake project so a version bump needs no edit here.
+fixture_version="$(sed -n 's/^project(zlink_cpp VERSION \([0-9.]*\).*/\1/p' "$(git -C "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" rev-parse --show-toplevel)/bindings/cpp/CMakeLists.txt" | head -1)"
 dry_run=false
 prefix=""
 core_prefix=""
@@ -96,15 +99,15 @@ get_filename_component(_zlink_core_prefix "${CMAKE_CURRENT_LIST_DIR}/../../.." A
 add_library(libzlink INTERFACE IMPORTED)
 set_target_properties(libzlink PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${_zlink_core_prefix}/include")
 EOF
-  cat >"$fixture_prefix/lib/cmake/zlink/zlinkConfigVersion.cmake" <<'EOF'
-set(PACKAGE_VERSION "11.1.0")
+  cat >"$fixture_prefix/lib/cmake/zlink/zlinkConfigVersion.cmake" <<EOF
+set(PACKAGE_VERSION "$fixture_version")
 set(PACKAGE_VERSION_COMPATIBLE TRUE)
 set(PACKAGE_VERSION_EXACT TRUE)
 EOF
   sed 's/@PACKAGE_INIT@//' "$repo_root/bindings/cpp/cmake/zlink_cppConfig.cmake.in" \
     >"$fixture_prefix/lib/cmake/zlink_cpp/zlink_cppConfig.cmake"
-  cat >"$fixture_prefix/lib/cmake/zlink_cpp/zlink_cppConfigVersion.cmake" <<'EOF'
-set(PACKAGE_VERSION "11.1.0")
+  cat >"$fixture_prefix/lib/cmake/zlink_cpp/zlink_cppConfigVersion.cmake" <<EOF
+set(PACKAGE_VERSION "$fixture_version")
 set(PACKAGE_VERSION_COMPATIBLE TRUE)
 set(PACKAGE_VERSION_EXACT TRUE)
 EOF
@@ -115,10 +118,10 @@ set_target_properties(zlink::cpp PROPERTIES
   INTERFACE_INCLUDE_DIRECTORIES "${_zlink_cpp_prefix}/include"
   INTERFACE_LINK_LIBRARIES libzlink)
 EOF
-  cat >"$fixture/CMakeLists.txt" <<'EOF'
+  cat >"$fixture/CMakeLists.txt" <<EOF
 cmake_minimum_required(VERSION 3.20)
 project(zlink_cpp_clean_consumer LANGUAGES CXX)
-find_package(zlink_cpp 11.1.0 EXACT CONFIG REQUIRED)
+find_package(zlink_cpp $fixture_version EXACT CONFIG REQUIRED)
 add_executable(consumer consumer.cpp)
 target_link_libraries(consumer PRIVATE zlink::cpp)
 target_compile_features(consumer PRIVATE cxx_std_20)

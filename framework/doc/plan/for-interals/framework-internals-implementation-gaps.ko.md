@@ -368,19 +368,12 @@ node/runtime/foundation/service-mailbox.ts:89-93
 | Java | **사실상 무한.** Spot context가 기본 생성자를 쓰고 기본 capacity가 `Integer.MAX_VALUE`다 | 생성 `java/runtime/spots/ZLinkDefaultSpotContext.java:43`, `java/runtime/spots/ZLinkDefaultInstanceSpotContext.java:33`; 기본값 `java/execution/ZLinkAsyncSerialQueue.java:35-42` |
 | Node | **한도 없음.** promise chain tail에 무한히 붙는다 | `node/runtime/spots/spot-serial-executor.ts:109-113`, `node/runtime/actors/actor-mailbox.ts:1-12` |
 
-**선행 과제 — 언어별 exact interface가 아직 "payload byte"라고 적혀 있다.** `06`은
-`payload + metadata + 작업당 고정 비용`을 합산하고 실행 중 작업까지 세도록 바꿨는데, 세
-언어 계약 문서가 payload만 센다고 남아 있다.
+**exact interface 반영은 끝났다.** 네 계약 문서 모두
+`payload 크기 + metadata 크기 + 작업당 고정 비용`으로 바꿨다
+(`spec/server/languages/{cpp/03-channel-messaging,java/configuration-host,node/01-foundation-configuration,dotnet/03-configuration-topology}.ko.md`).
 
-| 문서 | 현재 표현 |
-|---|---|
-| `spec/server/languages/cpp/interfaces/03-channel-messaging.ko.md:321` | payload byte |
-| `spec/server/languages/java/interfaces/configuration-host.ko.md:338` | payload byte |
-| `spec/server/languages/node/interfaces/01-foundation-configuration.ko.md:370` | payload byte |
-| `spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md:601` | "byte 수"로만 적어 계산식 미확정 |
-
-네 문서의 표현을 회계 대상 byte로 바꾸고, 기본 건수·byte 한도와 허용 범위도 함께 넣어야
-한다. 그 전에는 같은 입력·같은 한도에서 언어마다 포화 지점이 달라진다.
+**남은 것은 기본값이다.** 작업당 고정 비용의 실제 값과 기본 건수·byte 한도가 정해지지
+않아, 같은 입력·같은 한도에서 언어마다 포화 지점이 달라질 수 있다(D6).
 
 **수정 방향.** 실행 queue를 `service_mailbox` 계열과 같은 두 축 구조로 맞추고, 건수와
 byte를 **원자적으로** 예약·반납한다. Java와 Node는 한도 도입 자체가 선행 과제다.
@@ -564,11 +557,19 @@ application보다 먼저 선택되고, 시간 상한이 지나면 application tu
 polling 기반 snapshot 생성을 없애고 상태 변경 시 publish하는 구조로 바꾼다. 관찰자별
 thread 대신 공유 dispatcher와 수요 기반 queue를 쓴다.
 
-**선행 과제 — drop counter를 담을 public field가 없다.** .NET·C++·Node의 status 계약
-어디에도 유실 수를 담는 field가 없다(`spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md`,
-`.../cpp/interfaces/08-monitoring.ko.md`, `.../node/interfaces/03-location-observability.ko.md`).
-관찰자별 누적 유실 수를 status에 넣거나 별도 loss status를 exact interface에 정의해야 한다.
-runtime 전체 metric은 대체가 되지 않는다 — 어느 관찰자가 무엇을 잃었는지 판정하지 못한다.
+**계약은 정해졌다.** 네 언어 exact interface에 전달 envelope와 두 누계가 들어갔다(A1c 참조).
+유실 수는 status가 아니라 **전달 쌍**에 담는다 — status는 관찰자 사이에 공유하는 값이라
+관찰자별 값을 넣을 수 없기 때문이다.
+
+**남은 것은 구현이다.** 네 언어 public 반환형·callback 인자가 아직 raw status이고, 유실을
+세는 코드가 없다.
+
+| 언어 | public 표면 | 유실 회계 |
+|---|---|---|
+| C++ | raw callback (`cpp-inc/contracts/monitoring/framework_runtime.hpp:63`, `route_mesh_runtime.hpp:97`) | 없음 |
+| .NET | `IAsyncEnumerable<TStatus>` (`dotnet/Contracts/Configuration/ZLinkDrainContracts.cs:117`) | overflow를 runtime metric에만 기록 |
+| Java | `Flow.Publisher<ZLinkMeshNodeSnapshot>` (`java/monitoring/ZLinkRouteMeshRuntime.java:8`) | 없음 |
+| Node | raw status (`node/contracts/RouteMesh/RuntimeTopology.ts:92`) | 없음 |
 
 ---
 
@@ -664,7 +665,7 @@ application이 알아챌 수 없으므로 spec 위반은 아니다. 우선순위
 
 **.NET**
 - relocation 드라이버 3종을 단일 상태기계로
-- `dotnet/Runtime/Service/ZLinkManagedMeshNode.cs`(현재 8,271줄) 분해. 줄 수가 아니라
+- `dotnet/Runtime/Service/ZLinkManagedMeshNode.cs`(현재 8,292줄) 분해. 줄 수가 아니라
   책임별 분해 후보를 기록한다
 - `Runtime/Backend/Contracts`의 interface 26개 중 **구현이 하나뿐인 것**을 이름으로 나열해
   정리한다
@@ -833,7 +834,7 @@ payload 크기 분포별 benchmark로 비교한 뒤 고른다.
 정하지 않는다. 1µs 구현과 100ms 구현이 모두 문구를 만족하지만 하나는 시계 읽기와 재예약
 비용이 지배하고 다른 하나는 tail latency를 해친다.
 
-**값이 없는 조항은 이것만이 아니다.** 다음 다섯 개가 모두 값·단위·범위·기본값 없이
+**값이 없는 조항은 이것만이 아니다.** 다음 일곱 개가 모두 값·단위·범위·기본값 없이
 "상한이 있다"만 정하고 있다.
 
 | 조항 | 정해야 할 것 |
@@ -855,11 +856,12 @@ payload 크기 분포별 benchmark로 비교한 뒤 고른다.
 
 ## 감사 필요 (구현 갭과 분리)
 
-**남은 감사 항목이 없다.** 1·2차의 감사 항목 다섯 건은 모두 답이 나와 각 절에 반영했다.
+1·2차의 감사 항목 다섯 건은 모두 답이 나와 각 절에 반영했다. **현재 남은 감사 항목은
+하나다.**
 
-새로 열린 항목은 A9의 범위 확대다 — `29`의 수신 공정성이 Classic fanout 한정이 아니라
-모든 multi-connection 수신 경로에 적용되므로, `언어 × RouteMesh × ClientServer × service ×
-STREAM × fanout` 행렬로 다시 감사해야 한다.
+- **A9 범위 확대.** `29`의 수신 공정성이 Classic fanout 한정이 아니라 모든
+  multi-connection 수신 경로에 적용되므로, `언어 × RouteMesh × ClientServer × service ×
+  STREAM × fanout` 행렬로 다시 감사해야 한다. 지금 표는 fanout·channel 경로만 본 것이다.
 
 ---
 

@@ -61,15 +61,56 @@ ZLINK_EXPORT zlink_config_result_t zlink_get_dealer_option(
 |---|---|---|
 | `ZLINK_DEALER_OPT_PROBE` | `int`, `0` 또는 `1` | 연결을 설정할 때 빈 raw message를 보내 peer가 연결과 routing ID를 관찰할 수 있게 한다. 기본값은 `0`이다 |
 | `ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS` | 0 이상인 `int`, millisecond | request API에서 `timeout_ms_ == 0`일 때 사용할 기본 timeout을 정한다. 기본값은 `5000`이다 |
-| `ZLINK_DEALER_OPT_WEIGHT` | `int`, `0..100` | 연결된 peer에 알리는 이 DEALER의 가중치다. 기본값은 `100`이다 |
+| `ZLINK_DEALER_OPT_WEIGHT` | `int`, `0..10000` | 연결된 peer에 알리는 이 DEALER의 가중치다. 기본값은 `100`이다 |
 
 `zlink_get_dealer_option()`을 호출할 때 `*optvallen_`은 `optval_`의 입력 용량이다. 성공하면 실제로
 쓴 byte 수로 갱신된다. DEALER 전용이 아닌 HWM, reconnect와 timeout option은
 `zlink_set_option()`과 `zlink_get_option()`을 사용한다.
 
-양수 가중치가 같은 outbound peer는 순환 방식으로 선택한다. 양수 가중치가 다르면 그 비율을
-선택 빈도에 반영하고, 가중치가 `0`인 peer는 후보에서 제외한다. 알려진 peer의 가중치가 모두
-`0`이면 submit은 `ZLINK_SUBMIT_NOT_ADMITTED`로 실패할 수 있다.
+`0..10000` 밖의 가중치는 거부하며 clamp하지 않는다. `0..100` 값의 의미는 범위를 넓히기 전과
+같다.
+
+### 2.1 Outbound peer 선택
+
+후보는 양수 가중치를 알린 연결된 outbound peer다. 가중치가 `0`인 peer는 후보에서 제외한다.
+알려진 peer의 가중치가 모두 `0`이면 submit은 `ZLINK_SUBMIT_NOT_ADMITTED`로 실패할 수 있다.
+
+각 후보는 `0`에서 시작하는 누적값을 갖는다. message 하나를 보낼 때 다음 선택 절차를 한 번
+수행한다.
+
+1. 모든 후보의 누적값에 자기 가중치를 더한다.
+2. 누적값이 가장 큰 후보를 고른다. 누적값이 같은 후보가 여럿이면 식별자가 가장 작은 후보를
+   고른다.
+3. 고른 후보의 누적값에서 후보 전체의 가중치 합을 뺀다.
+
+가중치가 같은 경우도 별도 규칙이 아니다. 같은 가중치를 가진 후보도 같은 세 단계를 따르므로
+번갈아 선택된다. 후보가 하나뿐인 경우도 같은 절차가 적용된다. 같은 값을 더하고 빼므로
+누적값이 그대로이기 때문이다.
+
+이 절차는 한 후보의 몫을 한 구간에 몰아주지 않고 연속 선택을 흩뿌린다. 가중치가 `100`과
+`300`이면 반복되는 순서는 `두 번째, 첫 번째, 두 번째, 두 번째`이며, 무거운 peer에 세 번
+연속 보낸 뒤 가벼운 peer에 한 번 보내는 순서가 아니다. message가 충분히 쌓이면 선택 빈도가
+설정한 비율과 일치한다.
+
+선택 절차는 peer가 실제로 받은 message에만 적용한다. 고른 후보가 쓰기 여유가 없어 받지
+못하면 그 message에 한해 후보에서 빠지고, 절차는 대신 받아들인 peer에 적용한다. 이 실패는
+설정한 가중치를 바꾸지 않으며, 그 peer는 쓰기 여유를 다시 알리면 후보로 돌아온다. 크기 제한을
+넘어 거부된 message는 다른 후보로 다시 시도하지 않는다. 어느 후보든 같은 이유로 거부하기
+때문이다.
+
+2단계의 식별자는 peer routing ID이며 byte 열로 비교한다. routing ID가 없으면 빈 byte 열이므로
+비어 있지 않은 모든 식별자보다 앞선다. 식별자가 같은 peer는, routing ID가 모두 없는 경우를
+포함해, 연결이 성립한 endpoint 순으로 정렬하고, endpoint까지 같으면 로컬에서 연결이 붙은
+순서로 정렬한다. 재연결은 누적값이 `0`에서 시작하는 새 연결을 만든다. 식별자는 그대로이므로
+정렬 위치는 이전과 같다.
+
+같은 peer와 같은 가중치로 설정한 두 process는 같은 선택 순서를 낸다. 후보 식별자가 서로 다른
+한 application은 이 순서에 의존할 수 있다. 정렬이 로컬 연결 순서까지 내려가는 경우에는 한
+process 안에서는 결정적이지만 process 사이에서는 재현되지 않는다.
+
+후보 목록이 바뀌면 남은 후보는 누적값을 그대로 유지하므로 설정한 비율이 보존된다. 새 연결은
+`0`에서 시작하고, 연결이 끊긴 peer는 연결과 함께 누적값을 버린다. backpressure나 가중치 `0`
+때문에 일시적으로만 빠진 peer는 누적값을 유지하며, 다시 후보가 되면 그 값에서 이어간다.
 
 ## 3. Message record 구분
 

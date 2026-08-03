@@ -101,6 +101,9 @@ SHA-256, SONAME 또는 DLL identity, `zlink_version()`과 exported `zlink_*` sym
 - 공통 package tooling처럼 candidate 밖에서 읽는 direct input의 path와 SHA-256
 
 Source test와 package build는 live worktree가 아니라 이 manifest로 materialize한 격리 snapshot에서 실행한다.
+구현 중에는 승인 draft의 path와 SHA-256을 작업 log에 기록한다. 구현과 contract test 뒤 정식 문서를 갱신한
+다음 만드는 최종 manifest의 direct input에는 공통 bindings spec과 해당 언어 spec의 path와 SHA-256을
+포함한다. 정식 문서가 바뀌면 code가 같더라도 manifest를 다시 만들고 필수 gate를 재실행한다.
 Package artifact, clean consumer evidence와 독립 review는 모두 같은 binding source manifest의 file SHA-256과
 aggregate SHA-256을 기록한다. Core evidence, platform artifact, binding source 또는 build script가 바뀌면
 manifest 재사용을 거부하고 다시 review한다.
@@ -144,10 +147,21 @@ WSL package gate는 Linux host 결과만 증명한다. 각 언어 실행 문서�
 [Go·Rust parity inventory](go-rust-return-parity.ko.md)는 이번 작업에서 두 언어를 비교하기 위한 검증 요약이며
 새 계약을 정의하지 않는다.
 
-현재 공통 spec은 caller-provided receive의 no-data를 정상 결과로 설명하면서 flags 절에서는 Go·Rust가
-error를 반환한다고 적어 두 절이 상충한다. PGR-COMMON-03은 이 충돌을 먼저 해소한 뒤, 함수군 error, 입력
-검증, no-data, `code`, `internal_errno`와 ownership이 두 언어에서 같은 의미인지 parity inventory로 판정한다.
-Go와 Rust의 문법별 목표 표현과 변경할 이름은 parity inventory가 관리한다.
+Caller-provided receive의 no-data는 Go에서 `(false, nil)`, Rust에서 `Ok(false)`인 정상 결과다. Submit
+backpressure는 공통 오류 처리 정책에서 함수군별 error로 정의하지만, 현재 구현은 Go `false, nil`과 Rust
+`Ok(false)`를 반환하고 비동기 완료 정책도 boolean 반환을 허용한다. 따라서 exact submit signature는 아직
+정식 계약 사이에서 일치하지 않는다.
+
+[Go·Rust submit 반환 초안](../spec/draft/go-rust-submit-return.ko.md)은 Go `error`와 Rust
+`Result<(), SubmitError>`를 권고안으로 비교한다. PGR-COMMON-03에서 이 초안을 승인하고 공통 오류 처리 정책과
+비동기 완료 정책의 현재 차이를 implementation gap에 기록한 뒤에만 구현 목표로 고정한다. 승인 전에는 parity
+inventory의 signature를 구현 지시로 사용하지 않는다. 정식 spec은 구현과 contract test가 통과한 뒤 승인된
+초안에 맞춰 갱신한다.
+
+Parity inventory는 함수군 error, 입력 검증, no-data, `code`, `internal_errno`와 ownership뿐 아니라 승인된
+submit signature와 언어별 public naming도 판정한다. Python·Rust part 접근 이름은
+[part 접근 이름 초안](../spec/draft/python-rust-single-part-naming.ko.md)에서 먼저 검토한다. 구현과 contract
+test가 통과한 뒤 승인된 내용을 정식 spec에 반영한다.
 
 ## 7. 공통 준비 작업
 
@@ -196,6 +210,42 @@ pattern·transport matrix, 반복 통계, baseline 비교와 성능 threshold �
 실행 명령, runtime hash, lifecycle 판정, 표준 출력의 `RESULT` 행과 exit code는
 `bindings/doc/plan/log/<language>/<date>-perf-smoke.ko.md`에 기록한다.
 
+### 구현 후 품질 gate
+
+각 언어는 구현 항목과 구현 중 test가 모두 통과한 뒤 정식 문서와 package 작업으로 넘어가기 전에 별도의
+리팩터링과 review를 수행한다. 이 gate는 성능 수치를 개선하는 작업이 아니라, 이번 구현이 불필요한 비용과
+구조적 복잡성을 새로 남기지 않았는지 확인하는 절차다.
+
+1. DDD 관점에서 message, buffer, native handle, socket, callback의 lifecycle과 ownership을 누가 소유하는지,
+   state transition과 error mapping의 invariant가 어느 경계에 있는지 정리한다. Binding, raw FFI와 Core의
+   책임을 섞거나 DDD 이름만 붙인 전달 계층을 만들지 않는다.
+2. [`software-design-principles.md`](../../../doc/principal/software-design-principles.md)의 POSD 기준으로
+   shallow module, pass-through method, information leakage, temporal decomposition, 중복 abstraction과 호출자에게
+   전가된 복잡성을 찾는다. 비자명한 변경은 두 가지 이상 대안을 비교한 뒤 책임 경계와 caller 부담이 더 작은
+   안을 선택한다.
+3. Public API에서 Core 호출까지의 production hot path를 다시 추적한다. 불필요한 allocation, payload·message
+   copy, collection materialization, lock·GIL·mutex·channel·atomic contention과 작업마다 생성되는 thread,
+   goroutine, task 또는 closure가 없어야 한다. 필요한 비용은 계약, C ABI 또는 memory safety 때문에 필요한
+   이유와 owner를 cost inventory에 기록한다.
+4. 제거한 Core service 계약에서 남은 export, wrapper, alias, branch, helper, test fixture, sample, perf scenario,
+   build 설정, dependency, import와 주석을 찾는다. 실행되지 않거나 더 이상 계약을 지키지 않는 코드는 회귀
+   test의 근거 없이 남기지 않고 삭제한다.
+5. 리팩터링 뒤 영향받는 contract·unit test, optimization guard, sample process와 perf smoke를 다시 실행하고
+   binding source manifest를 새로 만든다. 리팩터링 전 manifest나 test 결과는 최종 evidence로 재사용하지 않는다.
+
+리팩터링이 끝나면 구현자가 아닌 frontier Codex coding/review agent가 고정된 source manifest와 전체 diff를 read-only로
+검토한다. Contract와 architecture를 판단할 수 있는 model을 `high` 이상의 reasoning level로 사용하고, 선택한
+model ID와 reasoning level을 언어별 review log에 기록한다. Finding은 `Critical`, `High`, `Medium`, `Low`로
+분류하고 `contract`, `POSD`, `DDD`, `performance-cost`, `dead-code`, `test/evidence` category, `file:line`, 근거,
+수정안과 재검증 방법을 기록한다.
+
+`CLEAN`은 미해결 `Critical`, `High`, `Medium` finding이 0건이고, `Low` finding은 수정·기각 근거·후속 작업 중
+하나로 처리했으며, 모든 필수 재검증이 같은 manifest에서 통과했다는 뜻이다. Review를 실행하지 않았거나
+finding을 후속 성능 개선 작업으로 넘긴 상태는 `CLEAN`이 아니다. `NOT CLEAN`이면 finding을 수정하고 새
+manifest와 fresh test 결과로 같은 review를 다시 수행한다. 언어별 문서는 이 gate가 `CLEAN`이 된 뒤에만 정식
+문서, package와 clean consumer 단계로 진행한다. 실제 throughput·latency 개선은 최신화 완료 뒤 언어별 성능
+개선 계획에서 별도로 진행한다.
+
 ### PGR-COMMON-01 — Candidate package 입력 전환
 
 - Binding candidate tooling이 `V11-M3-CORE-PKG` evidence와 install prefix만 입력받게 한다.
@@ -218,16 +268,21 @@ snapshot의 test·package·clean consumer 실행은 구현 후 각 언어 문서
 ### PGR-COMMON-03 — Go·Rust parity 통합
 
 - 공통 시작 gate에서는 Go·Rust 대응 메서드를 기록할 inventory의 열과 판정 규칙만 고정한다.
-- 공통 bindings spec의 no-data 절과 flags 절이 Go·Rust 실패 표현을 서로 다르게 설명하는 문제를 먼저
-  해소한다. Caller-provided receive에서 데이터가 없을 때는 정상 no-data를 반환하고 실제 Core 실패만 error로
-  전달한다는 한 가지 규칙으로 정식 문서의 한국어·영문 내용을 맞춘다.
+- [Go·Rust submit 반환 초안](../spec/draft/go-rust-submit-return.ko.md)에서 boolean 정상 결과와 함수군별 error
+  대안을 검토하고 하나를 승인한다. 승인 전에는 submit public signature 구현을 시작하지 않는다.
+- 승인 결과와 현재 공통 오류 처리 정책, 비동기 완료 정책 및 Go·Rust 언어별 spec의 차이를 implementation
+  gap으로 기록한다. Caller-provided receive의 no-data 규칙은 submit backpressure와 분리한다.
 - Go와 Rust 작업은 성공 값, no-data, 함수군 error, `code`, `internal_errno`와 ownership을
   `bindings/doc/plan/go-rust-return-parity.ko.md`의 자기 언어 열에 각각 기록한다.
 - Contract test는 public API로 실제 성공·실패 조건을 만들며 result code를 private hook으로 주입하지 않는다.
-- 공통 spec, Go spec, Rust spec과 두 언어 contract test의 동기화 검사를 추가한다.
+- 구현과 contract test가 통과한 뒤 공통 spec, 비동기 완료 정책, Go spec과 Rust spec의 한국어·영문 문서를
+  승인된 초안에 맞추고 동기화 검사를 추가한다.
+- 두 언어의 구현 후 품질 gate가 각각 `CLEAN`이 된 뒤 Codex parity review를 수행한다. 이 review가
+  `CLEAN`이 되기 전에는 PGR-COMMON-03을 통과로 판정하지 않는다.
 
-이 작업은 Go와 Rust 구현 중에 진행하며 언어별 작업의 시작 조건이 아니다. 두 언어가 모두 완료된 뒤
-PGR-COMMON-03을 통과로 판정한다.
+이 작업은 Go와 Rust 구현 중에 진행하며 언어별 전체 작업의 시작 조건은 아니다. 다만 submit 반환 초안 승인
+substep은 GO-04와 RS-03의 signature 변경보다 먼저 끝내야 한다. 두 언어가 모두 완료된 뒤
+PGR-COMMON-03 전체를 통과로 판정한다.
 
 ### PGR-COMMON-04 — 독립 실행 승인
 
@@ -238,11 +293,13 @@ PGR-COMMON-01과 PGR-COMMON-02가 끝나면 다음 값을 공통 log에 기록�
 - V11-M3-CORE-PKG evidence absolute path와 SHA-256
 - Core install prefix와 provenance SHA-256
 - Raw header hash와 exported-symbol allowlist hash
-- 지원 platform별 build evidence absolute path와 SHA-256
+- 현재 host에서 승인된 Core package build evidence의 absolute path와 SHA-256
+- 언어별 목표 platform, artifact 생성 command의 존재 여부와 현재 준비 상태
 
-각 항목의 hash와 경로가 확인되고 지원 platform 준비 상태가 언어별 실행 문서의 범위와 맞으면
-PGR-COMMON-04를 통과로 표시한다. 이 기록이 있으면 Python, Go, Rust 담당자는 다른 언어의 진행 상태를
-확인하지 않고 자기 실행 문서를 시작할 수 있다.
+PGR-COMMON-04는 언어별 platform artifact가 이미 생성됐음을 요구하지 않는다. 그 evidence는 시작 gate 이후
+각 언어 실행 문서가 만든다. 승인된 host candidate의 hash와 경로가 확인되고, 목표 platform에서 artifact를
+만들 수 없는 상태가 명시됐으면 PGR-COMMON-04를 통과로 표시한다. 이 기록이 있으면 Python, Go, Rust 담당자는
+다른 언어의 진행 상태를 확인하지 않고 자기 실행 문서를 시작할 수 있다.
 
 ### PGR-COMMON-05 — 이전 bindings draft 정리
 
@@ -262,11 +319,13 @@ review하고, bindings 구현과 문서가 raw-only 상태가 되면 이 draft�
 | Source unit·contract test | 해당 없음 | `PENDING` | `PENDING` | `PENDING` |
 | Hot path allocation·copy·contention review | 기준 고정 | `PENDING` | `PENDING` | `PENDING` |
 | Perf runner smoke | 해당 없음 | `PENDING` | `PENDING` | `PENDING` |
+| 구현 후 POSD·DDD 리팩터링과 Codex `CLEAN` review | 기준 고정 | `PENDING` | `PENDING` | `PENDING` |
 | Go·Rust return-based parity | `PENDING` | 해당 없음 | `PENDING` | `PENDING` |
+| Public contract draft 승인 | `PENDING` | naming | submit·context | submit·naming |
 | Package contents와 provenance | 기반 준비 | `PENDING` | `PENDING` | `PENDING` |
 | Source 밖 clean consumer | Core C | `PENDING` | `PENDING` | `PENDING` |
 | Raw sample process runner | 해당 없음 | `PENDING` | `PENDING` | `PENDING` |
-| 지원 platform native consumer | `PENDING` | `PENDING` | `PENDING` | `PENDING` |
+| 지원 platform native consumer | 기준 고정 | `PENDING` | `PENDING` | `PENDING` |
 | 독립 review | `PENDING` | `PENDING` | `PENDING` | `PENDING` |
 
 한 칸의 통과 결과로 다른 칸을 대신하지 않는다. 각 언어 문서는 자기 열의 상태와 evidence를 갱신하며,
@@ -285,11 +344,14 @@ review하고, bindings 구현과 문서가 raw-only 상태가 되면 이 draft�
 1. 공통 candidate와 raw symbol allowlist gate가 통과한다.
 2. Python, Go, Rust 실행 문서가 각각 완료 상태다.
 3. Go·Rust parity inventory의 필수 행과 contract test가 통과한다.
-4. 세 package가 같은 Core candidate identity와 platform별 runtime provenance를 기록하고, 각 언어의 test,
+4. Submit 반환과 언어별 naming draft의 승인 내용이 구현·contract test 뒤 정식 spec에 반영됐고, 역할을 다한
+   draft는 삭제됐다.
+5. 세 package가 같은 Core candidate identity와 platform별 runtime provenance를 기록하고, 각 언어의 test,
    package, clean consumer와 review가 같은 binding source manifest를 가리킨다.
-5. 이전 service header, FFI, 공개 API, compatibility alias와 sample이 package에 없다.
-6. Core service를 bindings 계약으로 정의한 이전 draft가 삭제되고 필요한 Framework 요구의 소유 위치가
+6. 이전 service header, FFI, 공개 API, compatibility alias와 sample이 package에 없다.
+7. Core service를 bindings 계약으로 정의한 이전 draft가 삭제되고 필요한 Framework 요구의 소유 위치가
    확인된다.
-7. 지원한다고 명시한 모든 platform에서 package 내부 runtime load가 검증된다.
-8. 세 언어의 hot path review와 perf runner smoke가 통과한다. 성능 수치 개선은 이 완료 판정에 포함하지 않는다.
-9. Critical, high, medium finding과 실행하지 않은 필수 gate가 남아 있지 않다.
+8. 지원한다고 명시한 모든 platform에서 package 내부 runtime load가 검증된다.
+9. 세 언어의 hot path review와 perf runner smoke가 통과한다. 성능 수치 개선은 이 완료 판정에 포함하지 않는다.
+10. 각 언어의 구현 후 POSD·DDD 리팩터링, 성능 비용과 dead code 검토가 끝났고 Codex review가 `CLEAN`이다.
+11. 미해결 `Critical`, `High`, `Medium` finding과 실행하지 않은 필수 gate가 남아 있지 않다.

@@ -10,6 +10,13 @@ internal static class PerfMultiDealerDealerServer
 {
     private const int ServerSocketTag = 0;
 
+    private enum ReceiveStatus
+    {
+        NoData,
+        Message,
+        StopToken,
+    }
+
     internal static int Run(PerfOptions options)
     {
         int size = Math.Max(1, options.Size);
@@ -131,17 +138,26 @@ internal static class PerfMultiDealerDealerServer
                     || (events[i].Revents & PollEventFlags.PollIn) == 0)
                     continue;
 
-                if (!ReceiveOneAvailable(server, received, msgSize,
-                        expectedRunId, expectedPhase, latSamples,
-                        ref messageCount, collectMetrics: true))
+                ReceiveStatus receiveStatus = ReceiveOneAvailable(server,
+                    received, msgSize, expectedRunId, expectedPhase,
+                    latSamples, ref messageCount, collectMetrics: true);
+                if (receiveStatus == ReceiveStatus.NoData)
                     continue;
+
+                // The sender's stop token is the wire-level phase boundary.
+                // Treating it as an ordinary payload can leave a signal-driven
+                // poll blocked forever when the token arrives just before the
+                // local deadline.
+                if (receiveStatus == ReceiveStatus.StopToken)
+                    return true;
 
                 if (Stopwatch.GetTimestamp() >= activeDeadlineTicks)
                     return true;
 
-                DrainAvailable(server, received, msgSize, expectedRunId,
-                    expectedPhase, latSamples, ref messageCount,
-                    collectMetrics: true);
+                if (DrainAvailable(server, received, msgSize, expectedRunId,
+                        expectedPhase, latSamples, ref messageCount,
+                        collectMetrics: true))
+                    return true;
 
                 if (Stopwatch.GetTimestamp() >= activeDeadlineTicks)
                     return true;
@@ -149,57 +165,57 @@ internal static class PerfMultiDealerDealerServer
         }
     }
 
-    private static bool ReceiveOneAvailable(IDealerSocket server,
+    private static ReceiveStatus ReceiveOneAvailable(IDealerSocket server,
         Received received, int msgSize, uint expectedRunId,
         PerfPhase expectedPhase, LatencySampleBuffer latSamples,
         ref long messageCount, bool collectMetrics)
     {
         if (!server.Recv(received, RecvFlags.DontWait))
-            return false;
+            return ReceiveStatus.NoData;
 
-        ProcessReceived(server, received, msgSize,
+        bool stopToken = ProcessReceived(server, received, msgSize,
             expectedRunId, expectedPhase, latSamples, ref messageCount,
             collectMetrics);
-        return true;
+        return stopToken ? ReceiveStatus.StopToken : ReceiveStatus.Message;
     }
 
-    private static int DrainAvailable(IDealerSocket server, Received received,
+    private static bool DrainAvailable(IDealerSocket server, Received received,
         int msgSize, uint expectedRunId, PerfPhase expectedPhase,
         LatencySampleBuffer latSamples, ref long messageCount,
         bool collectMetrics)
     {
-        int drained = 0;
         while (true)
         {
-            if (!server.Recv(received, RecvFlags.DontWait))
-                return drained;
-
-            drained++;
-            ProcessReceived(server, received, msgSize,
-                expectedRunId, expectedPhase, latSamples, ref messageCount,
+            ReceiveStatus receiveStatus = ReceiveOneAvailable(server,
+                received, msgSize, expectedRunId, expectedPhase,
+                latSamples, ref messageCount,
                 collectMetrics);
+            if (receiveStatus == ReceiveStatus.NoData)
+                return false;
+            if (receiveStatus == ReceiveStatus.StopToken)
+                return true;
         }
     }
 
-    private static void ProcessReceived(IDealerSocket server,
+    private static bool ProcessReceived(IDealerSocket server,
         Received received, int msgSize, uint expectedRunId,
         PerfPhase expectedPhase, LatencySampleBuffer latSamples,
         ref long messageCount, bool collectMetrics)
     {
         if (!received.IsSinglePart)
-            return;
+            return false;
 
         ReadOnlySpan<byte> body = received.FirstPart().AsReadOnlySpan();
 
         if (IsStopTokenPayload(body))
-            return;
+            return true;
 
         if (!TryDecodeActiveHeader(body, msgSize, expectedRunId,
                 expectedPhase, out ulong sentTsNs))
-            return;
+            return false;
 
         if (!collectMetrics)
-            return;
+            return false;
 
         messageCount++;
         if (sentTsNs > 0)
@@ -208,6 +224,8 @@ internal static class PerfMultiDealerDealerServer
             if (nowNs >= sentTsNs)
                 latSamples.Add(nowNs - sentTsNs);
         }
+
+        return false;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

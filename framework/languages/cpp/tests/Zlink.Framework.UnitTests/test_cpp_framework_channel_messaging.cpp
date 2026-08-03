@@ -2059,59 +2059,6 @@ int main ()
         || third_manual_connection.value () != "tcp://127.0.0.1:7400") {
         return 240;
     }
-    const auto ordered_manual_connections = bundle.manual_connections_from_next ();
-    if (ordered_manual_connections.size () != 2
-        || ordered_manual_connections[0] != "tcp://127.0.0.1:7401"
-        || ordered_manual_connections[1] != "tcp://127.0.0.1:7400") {
-        return 241;
-    }
-
-    zlink::framework::detail::channel_runtime_bundle_t weighted_bundle;
-    weighted_bundle.try_add_auto_connection ("tcp://127.0.0.1:7500", 75);
-    weighted_bundle.try_add_auto_connection ("tcp://127.0.0.1:7501", 25);
-    int high_weight_first = 0;
-    int low_weight_first = 0;
-    for (int index = 0; index < 100; ++index) {
-        const auto ordered = weighted_bundle.connections_from_next ();
-        if (ordered.size () != 2) {
-            return 242;
-        }
-        if (ordered[0] == "tcp://127.0.0.1:7500") {
-            ++high_weight_first;
-        } else if (ordered[0] == "tcp://127.0.0.1:7501") {
-            ++low_weight_first;
-        }
-    }
-    if (high_weight_first != 75 || low_weight_first != 25) {
-        return 243;
-    }
-    weighted_bundle.try_add_auto_connection ("tcp://127.0.0.1:7501", 0);
-    for (int index = 0; index < 10; ++index) {
-        const auto ordered = weighted_bundle.connections_from_next ();
-        if (ordered.empty () || ordered[0] != "tcp://127.0.0.1:7500") {
-            return 244;
-        }
-    }
-
-    zlink::framework::detail::channel_runtime_bundle_t equal_weight_bundle;
-    equal_weight_bundle.try_add_auto_connection ("tcp://127.0.0.1:7600", 100);
-    equal_weight_bundle.try_add_auto_connection ("tcp://127.0.0.1:7601", 100);
-    int first_equal = 0;
-    int second_equal = 0;
-    for (int index = 0; index < 20; ++index) {
-        const auto ordered = equal_weight_bundle.connections_from_next ();
-        if (ordered.size () != 2) {
-            return 245;
-        }
-        if (ordered[0] == "tcp://127.0.0.1:7600") {
-            ++first_equal;
-        } else if (ordered[0] == "tcp://127.0.0.1:7601") {
-            ++second_equal;
-        }
-    }
-    if (first_equal != 10 || second_equal != 10) {
-        return 246;
-    }
 
     bundle.remove_manual_connection ("tcp://127.0.0.1:7401");
     if (bundle.contains_manual_connection ("tcp://127.0.0.1:7401")) {

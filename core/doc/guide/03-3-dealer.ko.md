@@ -293,7 +293,7 @@ if (rc == ZLINK_SUBMIT_NOT_ADMITTED) {
 
 ### 가중치 기반 송신 대상 선택
 
-원격 ROUTER는 자신의 peer 가중치(`0..100`)를 함께 광고한다. DEALER는
+원격 ROUTER는 자신의 peer 가중치(`0..10000`)를 함께 광고한다. DEALER는
 가중치가 `0`인 ROUTER를 round-robin 후보 집합에서 자동으로 제외하고,
 양수 가중치를 가진 ROUTER들 사이에서만 outbound 대상을 고른다.
 

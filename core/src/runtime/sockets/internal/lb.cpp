@@ -2,21 +2,35 @@
 
 #include "utils/precompiled.hpp"
 #include "sockets/internal/lb.hpp"
+#include "core/options.hpp"
 #include "core/pipe.hpp"
 #include "utils/err.hpp"
 #include "core/msg.hpp"
 
-namespace
+#include <algorithm>
+
+bool zlink::lb_t::candidate_order_t::operator() (const candidate_t &lhs_,
+                                                 const candidate_t &rhs_) const
 {
-uint32_t gcd_u32 (uint32_t lhs_, uint32_t rhs_)
-{
-    while (rhs_ != 0) {
-        const uint32_t rem = lhs_ % rhs_;
-        lhs_ = rhs_;
-        rhs_ = rem;
-    }
-    return lhs_;
-}
+    //  Peer routing ID is the identifier the spec exposes. An empty routing ID
+    //  is the empty byte string and therefore sorts before every non-empty one.
+    const blob_t &lhs_routing_id = lhs_.pipe->get_routing_id ();
+    const blob_t &rhs_routing_id = rhs_.pipe->get_routing_id ();
+    if (lhs_routing_id < rhs_routing_id)
+        return true;
+    if (rhs_routing_id < lhs_routing_id)
+        return false;
+
+    //  Peers that share a routing ID (including peers without one) are ordered
+    //  by the endpoint they were established through.
+    const std::string &lhs_endpoint = lhs_.pipe->get_endpoint_pair ().identifier ();
+    const std::string &rhs_endpoint = rhs_.pipe->get_endpoint_pair ().identifier ();
+    if (lhs_endpoint != rhs_endpoint)
+        return lhs_endpoint < rhs_endpoint;
+
+    //  Last resort so the order stays total. Candidates that reach this point
+    //  are indistinguishable to the application.
+    return lhs_.entry->attach_seq < rhs_.entry->attach_seq;
 }
 
 zlink::lb_t::lb_t () :
@@ -24,9 +38,8 @@ zlink::lb_t::lb_t () :
     _current (0),
     _more (false),
     _dropping (false),
-    _weighted_dirty (true),
-    _weighted_enabled (false),
-    _weighted_current (0),
+    _attach_seq (0),
+    _order_dirty (true),
     _weighted_multipart_pipe (NULL)
 {
 }
@@ -39,8 +52,12 @@ zlink::lb_t::~lb_t ()
 void zlink::lb_t::attach (pipe_t *pipe_)
 {
     _pipes.push_back (pipe_);
-    _weights[pipe_] = 100;
-    mark_weighted_dirty ();
+    pipe_entry_t entry;
+    entry.weight = 100;
+    entry.running_value = 0;
+    entry.attach_seq = _attach_seq++;
+    _entries[pipe_] = entry;
+    mark_selection_dirty ();
     activated (pipe_);
 }
 
@@ -62,17 +79,20 @@ void zlink::lb_t::pipe_terminated (pipe_t *pipe_)
         _pipes.swap (index, _active);
         if (_current == _active)
             _current = 0;
-        mark_weighted_dirty ();
+        mark_selection_dirty ();
     }
     _pipes.erase (pipe_);
-    _weights.erase (pipe_);
-    mark_weighted_dirty ();
+    //  A disconnect drops the running value together with the connection. A
+    //  pipe that is only deactivated keeps its value and resumes from it. The
+    //  pipes that remain keep theirs so the configured ratio survives.
+    _entries.erase (pipe_);
+    mark_selection_dirty ();
 }
 
 void zlink::lb_t::activated (pipe_t *pipe_)
 {
-    const std::map<pipe_t *, uint32_t>::const_iterator weight_it = _weights.find (pipe_);
-    if (weight_it != _weights.end () && weight_it->second == 0)
+    const entries_t::const_iterator entry_it = _entries.find (pipe_);
+    if (entry_it != _entries.end () && entry_it->second.weight == 0)
         return;
 
     const pipes_t::size_type index = _pipes.index (pipe_);
@@ -82,7 +102,7 @@ void zlink::lb_t::activated (pipe_t *pipe_)
     //  Move the pipe to the list of active pipes.
     _pipes.swap (index, _active);
     _active++;
-    mark_weighted_dirty ();
+    mark_selection_dirty ();
 }
 
 void zlink::lb_t::set_weight (pipe_t *pipe_, uint32_t weight_)
@@ -90,17 +110,19 @@ void zlink::lb_t::set_weight (pipe_t *pipe_, uint32_t weight_)
     if (!pipe_)
         return;
 
-    if (weight_ > 100)
-        weight_ = 100;
+    //  Internal defence only. The public setters reject out-of-range input
+    //  before it reaches this point.
+    if (weight_ > max_peer_weight)
+        weight_ = max_peer_weight;
 
-    std::map<pipe_t *, uint32_t>::iterator it = _weights.find (pipe_);
-    if (it == _weights.end ())
+    entries_t::iterator it = _entries.find (pipe_);
+    if (it == _entries.end ())
         return;
-    if (it->second == weight_)
+    if (it->second.weight == weight_)
         return;
 
-    it->second = weight_;
-    mark_weighted_dirty ();
+    it->second.weight = weight_;
+    mark_selection_dirty ();
 
     const pipes_t::size_type index = _pipes.index (pipe_);
     if (weight_ == 0) {
@@ -116,7 +138,7 @@ void zlink::lb_t::set_weight (pipe_t *pipe_, uint32_t weight_)
                 _current = 0;
             else if (_current > index && _current <= _active)
                 --_current;
-            mark_weighted_dirty ();
+            mark_selection_dirty ();
         }
         return;
     }
@@ -124,21 +146,20 @@ void zlink::lb_t::set_weight (pipe_t *pipe_, uint32_t weight_)
     if (index >= _active && pipe_->check_write ()) {
         _pipes.swap (index, _active);
         _active++;
-        mark_weighted_dirty ();
+        mark_selection_dirty ();
     }
 }
 
 uint32_t zlink::lb_t::weight (pipe_t *pipe_) const
 {
-    std::map<pipe_t *, uint32_t>::const_iterator it = _weights.find (pipe_);
-    return it != _weights.end () ? it->second : 0;
+    const entries_t::const_iterator it = _entries.find (pipe_);
+    return it != _entries.end () ? it->second.weight : 0;
 }
 
 bool zlink::lb_t::has_positive_weight_pipe () const
 {
-    for (std::map<pipe_t *, uint32_t>::const_iterator it = _weights.begin (); it != _weights.end ();
-         ++it) {
-        if (it->second > 0)
+    for (entries_t::const_iterator it = _entries.begin (); it != _entries.end (); ++it) {
+        if (it->second.weight > 0)
             return true;
     }
     return false;
@@ -168,53 +189,70 @@ void zlink::lb_t::deactivate (pipe_t *pipe_)
         _current = 0;
     else if (_current > index && _current <= _active)
         --_current;
-    mark_weighted_dirty ();
+    mark_selection_dirty ();
 }
 
-void zlink::lb_t::mark_weighted_dirty ()
+void zlink::lb_t::mark_selection_dirty ()
 {
-    _weighted_dirty = true;
+    _order_dirty = true;
 }
 
-void zlink::lb_t::rebuild_weighted_schedule ()
+void zlink::lb_t::rebuild_selection_order ()
 {
-    if (!_weighted_dirty)
+    //  The size guard keeps a missed dirty mark from selecting a pipe that is
+    //  no longer active.
+    if (!_order_dirty && _ordered.size () == _active)
         return;
 
-    _weighted_schedule.clear ();
-    _weighted_enabled = false;
-
-    uint32_t first_weight = 0;
-    uint32_t weight_gcd = 0;
-    bool have_first = false;
-    bool all_equal = true;
+    _ordered.clear ();
+    _ordered.reserve (_active);
     for (pipes_t::size_type i = 0; i < _active; ++i) {
-        const uint32_t pipe_weight = weight (_pipes[i]);
-        if (pipe_weight > 0)
-            weight_gcd = weight_gcd == 0 ? pipe_weight : gcd_u32 (weight_gcd, pipe_weight);
-        if (!have_first) {
-            first_weight = pipe_weight;
-            have_first = true;
-        } else if (pipe_weight != first_weight) {
-            all_equal = false;
+        const entries_t::iterator entry_it = _entries.find (_pipes[i]);
+        if (entry_it == _entries.end ())
+            continue;
+        _ordered.push_back (candidate_t (_pipes[i], &entry_it->second));
+    }
+    std::sort (_ordered.begin (), _ordered.end (), candidate_order_t ());
+    _order_dirty = false;
+}
+
+const zlink::lb_t::candidate_t *zlink::lb_t::select_weighted_pipe (uint32_t *total_weight_out_)
+{
+    uint32_t total_weight = 0;
+    const candidate_t *selected = NULL;
+    int64_t selected_value = 0;
+
+    //  _ordered is sorted ascending by identifier and the comparison below is
+    //  strict, so the first candidate holding the largest value wins the tie.
+    for (std::vector<candidate_t>::const_iterator it = _ordered.begin (); it != _ordered.end ();
+         ++it) {
+        if (it->entry->weight == 0)
+            continue;
+
+        total_weight += it->entry->weight;
+        const int64_t value = it->entry->running_value + static_cast<int64_t> (it->entry->weight);
+        if (!selected || value > selected_value) {
+            selected = &(*it);
+            selected_value = value;
         }
     }
 
-    if (_active > 1 && !all_equal) {
-        for (pipes_t::size_type i = 0; i < _active; ++i) {
-            const uint32_t pipe_weight = weight (_pipes[i]);
-            const uint32_t slots = weight_gcd > 0 ? pipe_weight / weight_gcd : pipe_weight;
-            for (uint32_t n = 0; n < slots; ++n)
-                _weighted_schedule.push_back (_pipes[i]);
-        }
-        _weighted_enabled = !_weighted_schedule.empty ();
-        if (_weighted_current >= _weighted_schedule.size ())
-            _weighted_current = 0;
-    } else {
-        _weighted_current = 0;
+    if (total_weight_out_)
+        *total_weight_out_ = total_weight;
+    return selected;
+}
+
+void zlink::lb_t::commit_weighted_selection (pipe_entry_t *selected_, uint32_t total_weight_)
+{
+    for (std::vector<candidate_t>::const_iterator it = _ordered.begin (); it != _ordered.end ();
+         ++it) {
+        if (it->entry->weight == 0)
+            continue;
+        it->entry->running_value += static_cast<int64_t> (it->entry->weight);
     }
 
-    _weighted_dirty = false;
+    if (selected_)
+        selected_->running_value -= static_cast<int64_t> (total_weight_);
 }
 
 int zlink::lb_t::send (msg_t *msg_)
@@ -278,6 +316,7 @@ int zlink::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
             }
             if (errno != EMSGSIZE) {
                 _active = 0;
+                mark_selection_dirty ();
                 errno = EAGAIN;
             }
             return -1;
@@ -293,30 +332,44 @@ int zlink::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
         return 0;
     }
 
-    rebuild_weighted_schedule ();
+    rebuild_selection_order ();
 
-    if (!_more && _weighted_enabled) {
-        while (_active > 0 && !_weighted_schedule.empty ()) {
-            pipe_t *pipe = _weighted_schedule[_weighted_current];
+    //  Every first frame runs the same selection procedure. Equal weights are
+    //  not a special case: the procedure alternates on its own.
+    if (!_more) {
+        while (_active > 0) {
+            uint32_t total_weight = 0;
+            const candidate_t *candidate = select_weighted_pipe (&total_weight);
+            if (!candidate)
+                break;
+            pipe_t *pipe = candidate->pipe;
+            pipe_entry_t *entry = candidate->entry;
+
             const bool more = (msg_->flags () & msg_t::more) != 0;
             const bool ok = more ? pipe->write (msg_) : pipe->write_and_flush (msg_);
             if (ok) {
+                //  Running values move only for a write that happened, so a
+                //  retried selection never applies the same step twice.
+                commit_weighted_selection (entry, total_weight);
                 if (pipe_)
                     *pipe_ = pipe;
                 _more = more;
                 _weighted_multipart_pipe = more ? pipe : NULL;
-                if (++_weighted_current >= _weighted_schedule.size ())
-                    _weighted_current = 0;
                 const int rc = msg_->init ();
                 errno_assert (rc == 0);
                 return 0;
             }
 
+            //  An oversized message is rejected by every candidate, so trying
+            //  the next one would only drop healthy pipes.
+            if (errno == EMSGSIZE)
+                return -1;
+
             // A failed write changes current writability, not the peer's
             // advertised routing policy. Preserve the configured weight so
             // write activation can restore this pipe.
             deactivate (pipe);
-            rebuild_weighted_schedule ();
+            rebuild_selection_order ();
         }
 
         errno = has_positive_weight_pipe () ? EAGAIN : ECONNREFUSED;
@@ -358,6 +411,7 @@ int zlink::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
             _pipes.swap (_current, _active);
         else
             _current = 0;
+        mark_selection_dirty ();
     }
 
     //  If there are no pipes we cannot send the message.
@@ -405,7 +459,7 @@ bool zlink::lb_t::has_out ()
             return true;
 
         _active = 0;
-        mark_weighted_dirty ();
+        mark_selection_dirty ();
         return false;
     }
 
@@ -417,7 +471,7 @@ bool zlink::lb_t::has_out ()
         //  Deactivate the pipe.
         _active--;
         _pipes.swap (_current, _active);
-        mark_weighted_dirty ();
+        mark_selection_dirty ();
         if (_current == _active)
             _current = 0;
     }

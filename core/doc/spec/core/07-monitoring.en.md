@@ -223,7 +223,7 @@ routing IDs are values inside the caller-owned output structure. A callback's
 event pointer and contained values are borrowed views valid only until the
 callback returns. `DISCONNECTED.value` is a `zlink_disconnect_reason_t`,
 `HANDSHAKE_FAILED_PROTOCOL.value` is a `zlink_protocol_error_t`, and
-`PEER_WEIGHT_CHANGED.value` is the new weight in `0..100`. Other failure-event
+`PEER_WEIGHT_CHANGED.value` is the new weight in `0..10000`. Other failure-event
 values contain the errno for that failure.
 
 `zlink_monitor_ignore_handler()` is a no-op that neither retains nor releases

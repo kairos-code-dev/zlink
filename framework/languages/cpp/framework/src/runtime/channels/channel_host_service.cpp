@@ -568,7 +568,7 @@ class channel_host_service_t::subscriber_loop_t
             return;
         }
         std::set<std::string> desired;
-        for (const auto &endpoint : _bundle->connections_from_next ()) {
+        for (const auto &endpoint : _bundle->list_manual_connections ()) {
             desired.insert (endpoint);
             if (_connected.insert (endpoint).second) {
                 _subscriber->connect (endpoint);

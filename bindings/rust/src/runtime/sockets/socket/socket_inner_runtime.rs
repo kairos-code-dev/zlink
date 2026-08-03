@@ -1,52 +1,5 @@
 use super::*;
-
-// ---------------------------------------------------------------------------
-// CallbackBox – type-erased, owned callback pointer
-// ---------------------------------------------------------------------------
-
-pub(crate) struct CallbackBox {
-    data: *mut c_void,
-    drop_fn: unsafe fn(*mut c_void),
-}
-
-unsafe impl Send for CallbackBox {}
-
-impl CallbackBox {
-    pub(crate) fn new<F: 'static>(f: F) -> (Self, *mut c_void) {
-        let ptr = Box::into_raw(Box::new(f));
-        let cb = Self {
-            data: ptr as *mut c_void,
-            drop_fn: drop_erased::<F>,
-        };
-        (cb, ptr as *mut c_void)
-    }
-}
-
-impl Drop for CallbackBox {
-    fn drop(&mut self) {
-        unsafe { (self.drop_fn)(self.data) }
-    }
-}
-
-unsafe fn drop_erased<F>(ptr: *mut c_void) {
-    unsafe {
-        drop(Box::from_raw(ptr as *mut F));
-    }
-}
-
-// ---------------------------------------------------------------------------
-// SocketInner – shared handle + callback storage
-// ---------------------------------------------------------------------------
-
-pub(crate) struct SocketInner {
-    pub(crate) handle: *mut c_void,
-    pub(crate) send_ready_cb: Option<CallbackBox>,
-    pub(crate) packet_cb: Option<CallbackBox>,
-}
-
-unsafe impl Send for SocketInner {}
-
-impl SocketInner {
+impl crate::internal::SocketStorage {
     pub(crate) fn create(
         ctx: &crate::core_context::Context,
         typ: ffi::zlink_socket_type_t,
@@ -108,9 +61,10 @@ impl SocketInner {
     /// finds no data, and `Err(_)` on hard error. See
     /// `doc/spec/bindings/README.md` for the caller-provided receive shape.
     pub(crate) fn recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError> {
-        match recv_basic_parts(self.handle, flags.bits())? {
-            Some((routing_id, parts)) => {
-                out.adopt_from(Received::new(routing_id, parts));
+        let routing_id = recv_basic_parts(self.handle, flags.bits(), out.receive_scratch())?;
+        match routing_id {
+            Some(routing_id) => {
+                out.replace_received_parts(routing_id);
                 Ok(true)
             }
             None => Ok(false),
@@ -125,9 +79,15 @@ impl SocketInner {
         flags: RecvFlags,
     ) -> Result<bool, RecvError> {
         let mut topic_buf = [0i8; 256];
-        match recv_subscribed_parts(self.handle, &mut topic_buf, flags.bits())? {
-            Some((routing_id, topic, parts)) => {
-                out.adopt_from(TopicMessage::new(routing_id, topic, parts));
+        let received = recv_subscribed_parts(
+            self.handle,
+            &mut topic_buf,
+            flags.bits(),
+            out.receive_scratch(),
+        )?;
+        match received {
+            Some((routing_id, topic)) => {
+                out.replace_received_parts(routing_id, topic);
                 Ok(true)
             }
             None => Ok(false),
@@ -234,7 +194,7 @@ impl SocketInner {
         }
 
         let topic = cstr_buf_to_smolstr(&topic_buf, topic_len);
-        out.adopt_from(SubscriptionEvent::new(
+        out.replace_from(SubscriptionEvent::new(
             routing_id_from_ptr(source_rid_ptr),
             subscribed != 0,
             topic,
@@ -888,7 +848,7 @@ impl SocketInner {
     }
 }
 
-impl Drop for SocketInner {
+impl Drop for crate::internal::SocketStorage {
     fn drop(&mut self) {
         // Close the socket first (blocks until in-flight callbacks complete),
         // then drop callback boxes.

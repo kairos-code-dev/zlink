@@ -28,8 +28,9 @@ if [[ -n "$RUST_PACKAGE_EVIDENCE" ]]; then
 else
     RUST_NATIVE_DIR="${ZLINK_RUST_NATIVE_DIR:-$CORE_LIB_DIR}"
 fi
+RUST_PACKAGE_VERSION="$(sed -n 's/^version = "\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)"/\1/p' "$PROJECT_DIR/Cargo.toml" | head -n1)"
 RUST_RUNTIME="$RUST_NATIVE_DIR/libzlink.so"
-[[ -f "$RUST_RUNTIME" ]] || RUST_RUNTIME="$RUST_NATIVE_DIR/libzlink.so.11.1.0"
+[[ -f "$RUST_RUNTIME" ]] || RUST_RUNTIME="$RUST_NATIVE_DIR/libzlink.so.$RUST_PACKAGE_VERSION"
 [[ -f "$RUST_RUNTIME" ]] || {
     echo "Rust test runtime not found: $RUST_NATIVE_DIR" >&2
     echo "Build core/build or set ZLINK_RUST_NATIVE_DIR / ZLINK_RUST_PACKAGE_EVIDENCE." >&2

@@ -1,5 +1,5 @@
 use crate::error::{ConfigError, ConfigResult};
-use crate::runtime_bridge::MessageStorage;
+use std::ffi::c_void;
 
 pub use crate::routing_id::RoutingId;
 
@@ -8,8 +8,13 @@ pub use crate::routing_id::RoutingId;
 /// `Message` is a safe public contract type. Native storage and FFI ownership
 /// rules are handled by the private runtime implementation.
 pub struct Message {
-    pub(crate) inner: Box<dyn MessageStorage>,
+    pub(crate) inner: *mut c_void,
 }
+
+// A Message owns the pointed-to native frame. Moving that ownership between
+// threads is safe; sharing one mutable frame concurrently is intentionally not
+// exposed by the API.
+unsafe impl Send for Message {}
 
 impl Message {
     /// Create an empty (zero-length) message.
@@ -35,7 +40,7 @@ impl Message {
 
     /// View the message payload as a byte slice.
     pub fn as_bytes(&self) -> &[u8] {
-        self.inner.as_bytes()
+        crate::message_factory::message_as_bytes(self)
     }
 
     pub(crate) fn data(&self) -> &[u8] {
@@ -44,12 +49,12 @@ impl Message {
 
     /// View the message payload as a mutable byte slice.
     pub fn data_mut(&mut self) -> &mut [u8] {
-        self.inner.data_mut()
+        crate::message_factory::message_data_mut(self)
     }
 
     /// Message size in bytes.
     pub fn size(&self) -> usize {
-        self.inner.size()
+        crate::message_factory::message_size(self)
     }
 
     /// Returns `true` if the message has zero-length payload.
@@ -86,14 +91,18 @@ impl Message {
     /// This is a diagnostic helper only. It does not affect ownership or
     /// message lifetime.
     pub fn ref_count(&self) -> i32 {
-        self.inner.ref_count()
+        crate::message_factory::message_ref_count(self)
     }
 
     /// Returns an independent copy of this message that owns its own payload.
     pub fn try_clone(&self) -> Result<Self, ConfigError> {
-        Ok(Self {
-            inner: self.inner.try_clone_box()?,
-        })
+        crate::message_factory::message_try_clone(self)
+    }
+}
+
+impl Drop for Message {
+    fn drop(&mut self) {
+        crate::message_factory::message_drop(self);
     }
 }
 

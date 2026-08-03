@@ -8,6 +8,10 @@ resolve_rust_package_runtime() {
     local evidence_path="$1"
     local platform="$2"
     local source_revision="$3"
+    local repo_root
+    repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+    local package_version
+    package_version="$(sed -n 's/^version = "\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)"/\1/p' "${repo_root}/bindings/rust/Cargo.toml" | head -n1)"
 
     [[ "${evidence_path}" = /* ]] || {
         echo "Rust package evidence path must be absolute" >&2
@@ -19,7 +23,7 @@ resolve_rust_package_runtime() {
     }
 
     local fields
-    if ! fields="$(EXPECTED_PLATFORM="${platform}" EXPECTED_SOURCE_REVISION="${source_revision}" node - "${evidence_path}" <<'NODE'
+    if ! fields="$(EXPECTED_PLATFORM="${platform}" EXPECTED_SOURCE_REVISION="${source_revision}" EXPECTED_PACKAGE_VERSION="${package_version}" node - "${evidence_path}" <<'NODE'
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -27,6 +31,7 @@ const path = require('path');
 const evidencePath = path.resolve(process.argv[2]);
 const expectedPlatform = process.env.EXPECTED_PLATFORM;
 const expectedSourceRevision = process.env.EXPECTED_SOURCE_REVISION;
+const expectedPackageVersion = process.env.EXPECTED_PACKAGE_VERSION;
 
 function fail(message) {
     throw new Error(message);
@@ -50,10 +55,10 @@ function requireFile(file, label) {
 
 requireFile(evidencePath, 'Rust package evidence');
 const evidence = readJson(evidencePath);
-if (evidence.format !== 1 || evidence.version !== '11.1.0') {
-    fail('Rust package evidence is not a zlink 11.1.0 record');
+if (evidence.format !== 1 || evidence.version !== expectedPackageVersion) {
+    fail(`Rust package evidence is not a zlink ${expectedPackageVersion} record`);
 }
-if (path.basename(evidence.crate ?? '') !== 'zlink-11.1.0.crate') {
+if (path.basename(evidence.crate ?? '') !== `zlink-${expectedPackageVersion}.crate`) {
     fail(`unexpected Rust crate path: ${evidence.crate}`);
 }
 requireFile(path.resolve(evidence.crate), 'Rust crate');
@@ -77,7 +82,7 @@ if (sha256(candidateManifest) !== candidate.candidateManifestSha256) {
 const runtime = path.resolve(candidate.runtime ?? '');
 requireFile(runtime, 'Core candidate runtime');
 if (sha256(runtime) !== candidate.runtimeSha256) fail('Core candidate runtime SHA-256 mismatch');
-if (path.basename(runtime) !== 'libzlink.so.11.1.0') fail(`unexpected Linux Rust runtime: ${runtime}`);
+if (path.basename(runtime) !== `libzlink.so.${expectedPackageVersion}`) fail(`unexpected Linux Rust runtime: ${runtime}`);
 const cleanConsumer = evidence.verification?.cleanConsumer;
 if (cleanConsumer?.status !== 'pass' || cleanConsumer?.runtimeEnv !== 'LD_LIBRARY_PATH=unset') {
     fail('Rust package clean-consumer evidence is incomplete');

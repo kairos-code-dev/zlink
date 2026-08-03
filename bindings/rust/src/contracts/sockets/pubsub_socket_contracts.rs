@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use crate::runtime_bridge::SocketStorage;
+use crate::internal::SocketStorage;
 use crate::{
     BindError, CommonSocketOptions, ConfigError, ConnectError, HandlerError, PubSocketOptions,
     RecvError, RecvFlags, SubSocketOptions, SubscriptionEvent, TopicMessage,
@@ -11,7 +11,7 @@ macro_rules! define_pubsub_socket {
     ($name:ident, $doc:literal) => {
         #[doc = $doc]
         pub struct $name {
-            pub(crate) inner: Box<dyn SocketStorage>,
+            pub(crate) inner: Box<SocketStorage>,
         }
 
         impl std::panic::UnwindSafe for $name {}
@@ -144,7 +144,7 @@ impl PubSocket {
     /// Begins publishing under `topic`: add parts on the returned builder, then
     /// submit. A part is consumed on a successful submit (see [`SendOp`]).
     pub fn publish(&self, topic: &str) -> SendOp<Empty> {
-        let topic = crate::operations::fixed_cstring_or_panic(topic, "topic");
+        let topic = crate::operations::fixed_topic_or_panic(topic, "topic");
         crate::operations::socket_publish_op(crate::socket::pub_inner(self).handle, topic)
     }
 
@@ -222,7 +222,7 @@ impl XPubSocket {
     /// Begins publishing under `topic`: add parts on the returned builder, then
     /// submit. A part is consumed on a successful submit (see [`SendOp`]).
     pub fn publish(&self, topic: &str) -> SendOp<Empty> {
-        let topic = crate::operations::fixed_cstring_or_panic(topic, "topic");
+        let topic = crate::operations::fixed_topic_or_panic(topic, "topic");
         crate::operations::socket_publish_op(crate::socket::xpub_inner(self).handle, topic)
     }
 

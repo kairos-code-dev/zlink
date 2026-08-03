@@ -2,7 +2,11 @@ use std::any::Any;
 use std::os::fd::RawFd;
 
 use crate::error::{ConfigError, HandlerError, RecvError};
-use crate::runtime_bridge::{PollerStorage, TimerStorage};
+use crate::internal::{PollerStorage, TimerStorage};
+
+pub(crate) mod private {
+    pub(crate) trait Sealed {}
+}
 
 /// Poll event flag: the source is readable (a receive will not block).
 pub const POLLIN: i16 = 1;
@@ -11,9 +15,14 @@ pub const POLLOUT: i16 = 2;
 /// Poll event flag: an asynchronous operation completed.
 pub const POLLCOMPLETION: i16 = 32;
 
-/// A source that can be registered with a [`Poller`].
-pub trait Pollable: Any {
-    /// Returns this source as `&dyn Any` for downcasting.
+/// A built-in socket source that can be registered with a [`Poller`].
+///
+/// The trait is sealed because the binding must map a source to its native
+/// socket handle; custom implementations cannot provide that mapping safely.
+#[allow(private_bounds)]
+pub trait Pollable: Any + private::Sealed {
+    /// Internal type identity used to map the built-in socket source to Core.
+    #[doc(hidden)]
     fn as_any(&self) -> &dyn Any;
 }
 
@@ -78,7 +87,7 @@ pub struct PollItem {
 
 /// Poller for monitoring socket readiness, file descriptors, and timers.
 pub struct Poller {
-    pub(crate) inner: Box<dyn PollerStorage>,
+    pub(crate) inner: Box<PollerStorage>,
 }
 
 impl Poller {
@@ -150,7 +159,7 @@ impl Poller {
 
 /// A timer that fires on an interval and can be polled or awaited.
 pub struct Timer {
-    pub(crate) inner: Box<dyn TimerStorage>,
+    pub(crate) inner: Box<TimerStorage>,
 }
 
 impl Timer {

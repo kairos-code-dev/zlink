@@ -4,12 +4,21 @@ use std::ops::{BitOr, BitOrAssign};
 use crate::core_context::AutoHwmRecalcReason;
 use crate::error::{CloseError, ConfigError, HandlerError, RecvError};
 use crate::flags::RecvFlags;
+use crate::internal::MonitorStorage;
 use crate::routing_id::RoutingId;
-use crate::runtime_bridge::SocketMonitorStorage;
 
-/// A socket that a [`SocketMonitor`] can observe.
-pub trait Monitorable: Any {
-    /// Returns this source as `&dyn Any` for downcasting.
+pub(crate) mod private {
+    pub(crate) trait Sealed {}
+}
+
+/// A built-in socket that a [`SocketMonitor`] can observe.
+///
+/// The trait is sealed because the binding must map a source to its native
+/// socket handle; custom implementations cannot provide that mapping safely.
+#[allow(private_bounds)]
+pub trait Monitorable: Any + private::Sealed {
+    /// Internal type identity used to map the built-in socket source to Core.
+    #[doc(hidden)]
     fn as_any(&self) -> &dyn Any;
 }
 
@@ -203,7 +212,7 @@ fn ignore_monitor_event(_: &MonitorEvent) {}
 /// The monitor is an independent observation plane that does not interfere
 /// with the data plane.
 pub struct SocketMonitor {
-    pub(crate) inner: Box<dyn SocketMonitorStorage>,
+    pub(crate) inner: Box<MonitorStorage>,
 }
 
 impl SocketMonitor {

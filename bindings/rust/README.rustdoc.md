@@ -18,9 +18,7 @@ bindings/rust/target/doc/zlink/index.html
 ## Scope
 
 - Public API of the `zlink` crate
-- Socket types in `zlink::socket`
-- Monitor types in `zlink::monitor`
-- Service types in `zlink::service`
+- Public socket and monitor types re-exported at the crate root
 - Domain objects (`Message`, error types, enums)
 - FFI internals (`zlink::ffi`) are private and excluded
 

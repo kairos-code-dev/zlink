@@ -208,7 +208,7 @@ PowerShell에서 실행한다.
 ### Rust candidate package
 
 Rust crate는 승인된 Core candidate와 설치된 Core provenance를 입력으로 받아야 한다. 다음 명령은 Linux
-x86_64 payload만 포함한 `zlink-11.1.0` crate를 만들고, package contents, workspace test, clippy, samples와
+x86_64 payload만 포함한 현재 package version의 crate를 만들고, package contents, workspace test, clippy, samples와
 path dependency 없는 clean consumer를 같은 candidate 기준으로 검증한다.
 
 ```bash

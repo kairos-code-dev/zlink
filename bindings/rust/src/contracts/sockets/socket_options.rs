@@ -1,3 +1,10 @@
+use std::time::Duration;
+
+use crate::error::ConfigError;
+use crate::internal::SocketStorage;
+use crate::message::{Message, RoutingId};
+use crate::socket_contracts::DealerSocket;
+
 /// Flags that modify send behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SendFlags(u32);
@@ -63,11 +70,11 @@ pub enum SubmitRetryMode {
 
 /// Typed facade over the socket options shared by every socket type.
 pub struct CommonSocketOptions<'a> {
-    inner: &'a dyn CommonSocketOptionEndpoint,
+    inner: &'a SocketStorage,
 }
 
 impl<'a> CommonSocketOptions<'a> {
-    pub(crate) fn new(inner: &'a dyn CommonSocketOptionEndpoint) -> Self {
+    pub(crate) fn new(inner: &'a SocketStorage) -> Self {
         Self { inner }
     }
 
@@ -125,11 +132,16 @@ impl<'a> CommonSocketOptions<'a> {
     /// Sets how the socket reacts when a connecting peer presents a routing id
     /// already in use; see [`RidDuplicatePolicy`].
     pub fn set_rid_duplicate_policy(&self, value: RidDuplicatePolicy) -> Result<(), ConfigError> {
-        self.inner.set_rid_duplicate_policy(value)
+        self.inner.set_rid_duplicate_policy(value as i32)
     }
     /// Returns the configured routing-id duplicate policy.
     pub fn rid_duplicate_policy(&self) -> Result<RidDuplicatePolicy, ConfigError> {
-        self.inner.rid_duplicate_policy()
+        let raw = self.inner.rid_duplicate_policy()?;
+        Ok(if raw == RidDuplicatePolicy::Handover as i32 {
+            RidDuplicatePolicy::Handover
+        } else {
+            RidDuplicatePolicy::Reject
+        })
     }
     /// Sets the time limit for a single connection attempt.
     pub fn set_connect_timeout(&self, d: Duration) -> Result<(), ConfigError> {
@@ -201,11 +213,14 @@ impl<'a> CommonSocketOptions<'a> {
     /// Sets whether a submit that fails locally (such as under back-pressure) is
     /// retried; see [`SubmitRetryMode`].
     pub fn set_submit_retry_mode(&self, value: SubmitRetryMode) -> Result<(), ConfigError> {
-        self.inner.set_submit_retry_mode(value)
+        self.inner.set_submit_retry_mode(value as i32)
     }
     /// Returns the configured submit retry mode.
     pub fn submit_retry_mode(&self) -> Result<SubmitRetryMode, ConfigError> {
-        self.inner.submit_retry_mode()
+        Ok(match self.inner.submit_retry_mode()? {
+            1 => SubmitRetryMode::LocalFailure,
+            _ => SubmitRetryMode::Off,
+        })
     }
     /// Sets the total time budget for submit retries when retrying is enabled.
     pub fn set_submit_retry_timeout(&self, d: Duration) -> Result<(), ConfigError> {
@@ -228,11 +243,11 @@ impl<'a> CommonSocketOptions<'a> {
 
 /// Typed facade over ROUTER-specific socket options.
 pub struct RouterSocketOptions<'a> {
-    inner: &'a dyn RouterSocketOptionEndpoint,
+    inner: &'a SocketStorage,
 }
 
 impl<'a> RouterSocketOptions<'a> {
-    pub(crate) fn new(inner: &'a dyn RouterSocketOptionEndpoint) -> Self {
+    pub(crate) fn new(inner: &'a SocketStorage) -> Self {
         Self { inner }
     }
     /// Sets whether sending to an unknown route raises an error instead of
@@ -272,11 +287,11 @@ impl<'a> RouterSocketOptions<'a> {
 
 /// Typed facade over DEALER-specific socket options.
 pub struct DealerSocketOptions<'a> {
-    inner: &'a dyn DealerSocketOptionEndpoint,
+    inner: &'a DealerSocket,
 }
 
 impl<'a> DealerSocketOptions<'a> {
-    pub(crate) fn new(inner: &'a dyn DealerSocketOptionEndpoint) -> Self {
+    pub(crate) fn new(inner: &'a DealerSocket) -> Self {
         Self { inner }
     }
     /// Sets whether to send an empty probe message on connect so the peer
@@ -302,11 +317,11 @@ impl<'a> DealerSocketOptions<'a> {
 
 /// Typed facade over STREAM-specific socket options.
 pub struct StreamSocketOptions<'a> {
-    inner: &'a dyn StreamSocketOptionEndpoint,
+    inner: &'a SocketStorage,
 }
 
 impl<'a> StreamSocketOptions<'a> {
-    pub(crate) fn new(inner: &'a dyn StreamSocketOptionEndpoint) -> Self {
+    pub(crate) fn new(inner: &'a SocketStorage) -> Self {
         Self { inner }
     }
     /// Sets whether peer connect and disconnect events are delivered to the
@@ -322,11 +337,11 @@ impl<'a> StreamSocketOptions<'a> {
 
 /// Typed facade over PUB/XPUB-specific socket options.
 pub struct PubSocketOptions<'a> {
-    inner: &'a dyn PubSocketOptionEndpoint,
+    inner: &'a SocketStorage,
 }
 
 impl<'a> PubSocketOptions<'a> {
-    pub(crate) fn new(inner: &'a dyn PubSocketOptionEndpoint) -> Self {
+    pub(crate) fn new(inner: &'a SocketStorage) -> Self {
         Self { inner }
     }
 
@@ -382,31 +397,22 @@ impl<'a> PubSocketOptions<'a> {
     /// Returns the number of distinct topics currently subscribed across
     /// connected subscribers.
     pub fn topics_count(&self) -> Result<i32, ConfigError> {
-        self.inner.topics_count()
+        self.inner.pub_topics_count()
     }
 }
 
 /// Typed facade over SUB-specific socket options.
 pub struct SubSocketOptions<'a> {
-    inner: &'a dyn SubSocketOptionEndpoint,
+    inner: &'a SocketStorage,
 }
 
 impl<'a> SubSocketOptions<'a> {
-    pub(crate) fn new(inner: &'a dyn SubSocketOptionEndpoint) -> Self {
+    pub(crate) fn new(inner: &'a SocketStorage) -> Self {
         Self { inner }
     }
 
     /// Returns the number of active subscriptions on this socket.
     pub fn topics_count(&self) -> Result<i32, ConfigError> {
-        self.inner.topics_count()
+        self.inner.sub_topics_count()
     }
 }
-use std::time::Duration;
-
-use crate::error::ConfigError;
-use crate::message::{Message, RoutingId};
-
-use crate::runtime_bridge::{
-    CommonSocketOptionEndpoint, DealerSocketOptionEndpoint, PubSocketOptionEndpoint,
-    RouterSocketOptionEndpoint, StreamSocketOptionEndpoint, SubSocketOptionEndpoint,
-};

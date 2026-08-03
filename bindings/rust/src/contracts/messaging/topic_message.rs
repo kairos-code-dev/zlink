@@ -10,11 +10,12 @@ use crate::message::{Message, RoutingId};
 /// Owns its parts until the envelope is dropped or [`close`](TopicMessage::close)d.
 pub struct TopicMessage {
     /// The source routing id, when the receive path provides one.
-    pub routing_id: Option<RoutingId>,
+    routing_id: Option<RoutingId>,
     /// The topic the message was published under.
-    pub topic: smol_str::SmolStr,
+    topic: smol_str::SmolStr,
     /// The message parts, owned by this envelope.
-    pub parts: Vec<Message>,
+    parts: Vec<Message>,
+    receive_scratch: Vec<Message>,
 }
 
 impl TopicMessage {
@@ -24,28 +25,22 @@ impl TopicMessage {
             routing_id: None,
             topic: smol_str::SmolStr::default(),
             parts: Vec::new(),
+            receive_scratch: Vec::new(),
         }
     }
 
-    pub(crate) fn new(
+    pub(crate) fn receive_scratch(&mut self) -> &mut Vec<Message> {
+        &mut self.receive_scratch
+    }
+
+    pub(crate) fn replace_received_parts(
+        &mut self,
         routing_id: Option<RoutingId>,
         topic: smol_str::SmolStr,
-        parts: Vec<Message>,
-    ) -> Self {
-        Self {
-            routing_id,
-            topic,
-            parts,
-        }
-    }
-
-    pub(crate) fn adopt_from(&mut self, mut source: TopicMessage) {
-        for part in &mut self.parts {
-            part.close_now();
-        }
-        self.routing_id = source.routing_id.take();
-        self.topic = std::mem::take(&mut source.topic);
-        self.parts = std::mem::take(&mut source.parts);
+    ) {
+        self.routing_id = routing_id;
+        self.topic = topic;
+        std::mem::swap(&mut self.parts, &mut self.receive_scratch);
     }
 
     /// Returns `true` when this publish carries exactly one part.
@@ -56,6 +51,11 @@ impl TopicMessage {
     /// Returns the topic this message was published under.
     pub fn topic(&self) -> &str {
         self.topic.as_str()
+    }
+
+    /// Returns the source routing id, when present.
+    pub fn routing_id(&self) -> Option<&RoutingId> {
+        self.routing_id.as_ref()
     }
 
     /// Returns the message parts, owned by this envelope.

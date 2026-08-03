@@ -23,7 +23,6 @@ const REQUIRED_PART_SYMBOLS: &[&str] = &[
     "zlink_router_reply_part",
     "zlink_send_part_rid",
     "zlink_xpub_recv_part",
-    "zlink_router_completion_control_part",
 ];
 
 fn source_files(root: &Path) -> Vec<PathBuf> {

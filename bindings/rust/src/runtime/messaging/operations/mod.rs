@@ -6,7 +6,7 @@
 //! module. Socket contracts only select a raw operation kind; they do not
 //! carry routing details into the submit path.
 
-use std::ffi::{CString, c_void};
+use std::ffi::c_void;
 
 use crate::error::{RequestError, RequestResult};
 use crate::ffi;
@@ -17,15 +17,16 @@ mod reply_ops;
 mod request_ops;
 mod send_ops;
 
-pub(crate) use reply_ops::router_reply_op;
-pub(crate) use request_ops::{dealer_request_op, router_request_op};
-pub(crate) use send_ops::{socket_publish_op, socket_send_op, socket_send_to_op};
+pub(crate) use reply_ops::{router_reply_op, submit_reply};
+pub(crate) use request_ops::{dealer_request_op, router_request_op, submit_request};
+pub(crate) use send_ops::{socket_publish_op, socket_send_op, socket_send_to_op, submit_send};
 
 pub(crate) type RequestCallback = dyn FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
 
-pub(crate) fn fixed_cstring_or_panic(value: &str, label: &str) -> CString {
+pub(crate) fn fixed_topic_or_panic(value: &str, label: &str) -> smol_str::SmolStr {
     assert!(value.len() <= 255, "invalid {label}");
-    CString::new(value).unwrap_or_else(|_| panic!("invalid {label}"))
+    assert!(!value.as_bytes().contains(&0), "invalid {label}");
+    smol_str::SmolStr::new(value)
 }
 
 pub(crate) struct ReplyCallbackState {

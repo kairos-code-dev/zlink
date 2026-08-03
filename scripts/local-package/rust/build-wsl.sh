@@ -375,7 +375,6 @@ const record = {
   name: 'zlink',
   vers: process.env.PACKAGE_VERSION,
   deps: [
-    {name: 'bytes', req: '^1', features: [], optional: false, default_features: true, target: null, kind: 'normal', registry: 'https://github.com/rust-lang/crates.io-index'},
     {name: 'libc', req: '^0.2', features: [], optional: false, default_features: true, target: null, kind: 'normal', registry: 'https://github.com/rust-lang/crates.io-index'},
     {name: 'smol_str', req: '^0.3', features: [], optional: false, default_features: true, target: null, kind: 'normal', registry: 'https://github.com/rust-lang/crates.io-index'},
   ],
@@ -433,7 +432,13 @@ directory = "${process.env.VENDOR_ROOT}"
 fs.writeFileSync(path.join(root, 'src/main.rs'), `use zlink::{Context, Message, Received, RecvFlags};
 
 fn main() {
-    assert_eq!(zlink::version(), (11, 1, 0));
+    let expected_version = "${process.env.PACKAGE_VERSION}";
+    let expected = expected_version
+        .split('.')
+        .map(|part| part.parse::<i32>().expect("numeric package version"))
+        .collect::<Vec<_>>();
+    assert_eq!(expected.len(), 3);
+    assert_eq!(zlink::version(), (expected[0], expected[1], expected[2]));
     let context = Context::new().expect("context creation failed");
     let receiver = context.pair_socket().expect("receiver creation failed");
     let sender = context.pair_socket().expect("sender creation failed");
@@ -445,7 +450,7 @@ fn main() {
     let mut received = Received::empty();
     receiver.recv(&mut received, RecvFlags::NONE).expect("recv failed");
     assert_eq!(received.parts()[0].as_str().expect("utf8 error"), "rust-clean-consumer");
-    println!("11.1.0 rust-clean-consumer-ok");
+    println!("{} rust-clean-consumer-ok", expected_version);
 }
 `);
 NODE

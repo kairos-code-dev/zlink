@@ -7,6 +7,7 @@ mod sub;
 mod xpub;
 mod xsub;
 
+pub(crate) use crate::internal::{CallbackBox, SocketStorage as SocketInner};
 pub(crate) use dealer::{dealer_inner, dealer_inner_mut};
 pub(crate) use pair::{pair_handle, pair_inner, pair_inner_mut};
 pub(crate) use pub_socket::{pub_inner, pub_inner_mut};
@@ -38,7 +39,6 @@ use crate::native_errors::{
 use crate::topic_message_contract::TopicMessage;
 
 mod socket_inner_runtime;
-pub(crate) use socket_inner_runtime::*;
 mod socket_parts_runtime;
 pub(crate) use socket_parts_runtime::*;
 mod socket_options_runtime;

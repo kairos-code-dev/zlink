@@ -4,6 +4,7 @@ use std::mem::MaybeUninit;
 use crate::core_context::AutoHwmRecalcReason;
 use crate::error::{CloseError, ConfigError, HandlerError, RecvError};
 use crate::ffi;
+use crate::internal::{CallbackBox, MonitorStorage};
 use crate::message::RoutingId;
 use crate::monitor_contracts::{
     MonitorEvent, MonitorEventType, MonitorSourceKind, MonitorStatus, Monitorable, SocketMonitor,
@@ -12,7 +13,6 @@ use crate::monitor_contracts::{
 use crate::native_errors::{
     check_close_rc, check_config_rc, check_handler_rc, check_recv_rc, last_errno,
 };
-use crate::runtime_bridge::SocketMonitorRuntime;
 
 // ---------------------------------------------------------------------------
 // MonitorEvent – typed socket monitor event
@@ -95,13 +95,6 @@ pub(crate) fn monitor_status_is_closed(status: &MonitorStatus) -> bool {
 // SocketMonitor
 // ---------------------------------------------------------------------------
 
-struct NativeSocketMonitor {
-    handle: *mut c_void,
-    _cb: Option<super::socket::CallbackBox>,
-}
-
-unsafe impl Send for NativeSocketMonitor {}
-
 pub(crate) fn socket_monitor_open(socket: &dyn Monitorable) -> Result<SocketMonitor, ConfigError> {
     socket_monitor_open_with_events(socket, SocketMonitorEventMask::ALL)
 }
@@ -123,13 +116,16 @@ pub(crate) fn socket_monitor_open_with_events(
         ));
     }
     Ok(SocketMonitor {
-        inner: Box::new(NativeSocketMonitor { handle, _cb: None }),
+        inner: Box::new(MonitorStorage {
+            handle,
+            callback: None,
+        }),
     })
 }
 
-impl SocketMonitorRuntime for NativeSocketMonitor {
+impl MonitorStorage {
     /// Blocking receive of a monitor event.
-    fn recv(&self) -> Result<MonitorEvent, RecvError> {
+    pub(crate) fn recv(&self) -> Result<MonitorEvent, RecvError> {
         self.recv_with_flags(crate::flags::RecvFlags::NONE)
             .and_then(|opt| {
                 opt.ok_or_else(|| RecvError::new(crate::error::RecvResult::NoData, libc::EAGAIN))
@@ -137,7 +133,7 @@ impl SocketMonitorRuntime for NativeSocketMonitor {
     }
 
     /// Non-blocking receive of a monitor event. Returns `Ok(None)` when no event is available.
-    fn recv_with_flags(
+    pub(crate) fn recv_with_flags(
         &self,
         flags: crate::flags::RecvFlags,
     ) -> Result<Option<MonitorEvent>, RecvError> {
@@ -154,7 +150,7 @@ impl SocketMonitorRuntime for NativeSocketMonitor {
     }
 
     /// Read the current monitor status.
-    fn status(&self) -> Result<MonitorStatus, ConfigError> {
+    pub(crate) fn status(&self) -> Result<MonitorStatus, ConfigError> {
         let mut raw = MaybeUninit::<ffi::zlink_monitor_status_t>::uninit();
         check_config_rc(unsafe { ffi::zlink_monitor_status(self.handle, raw.as_mut_ptr()) })?;
         let val = unsafe { raw.assume_init() };
@@ -162,8 +158,11 @@ impl SocketMonitorRuntime for NativeSocketMonitor {
     }
 
     /// Install a callback handler for monitor events.
-    fn on_event(&mut self, handler: Box<dyn Fn(&MonitorEvent) + Send>) -> Result<(), HandlerError> {
-        let (cb, userdata) = super::socket::CallbackBox::new(handler);
+    pub(crate) fn on_event(
+        &mut self,
+        handler: Box<dyn Fn(&MonitorEvent) + Send>,
+    ) -> Result<(), HandlerError> {
+        let (cb, userdata) = CallbackBox::new(handler);
 
         unsafe extern "C" fn trampoline(
             event: *const ffi::zlink_monitor_event_t,
@@ -179,23 +178,23 @@ impl SocketMonitorRuntime for NativeSocketMonitor {
             drop(cb);
             return Err(check_handler_rc(rc).unwrap_err());
         }
-        self._cb = Some(cb);
+        self.callback = Some(cb);
         Ok(())
     }
 
-    fn close(&mut self) -> Result<(), CloseError> {
+    pub(crate) fn close(&mut self) -> Result<(), CloseError> {
         if self.handle.is_null() {
             return Ok(());
         }
         let mut h = self.handle;
         check_close_rc(unsafe { ffi::zlink_monitor_close(&mut h) })?;
         self.handle = std::ptr::null_mut();
-        self._cb = None;
+        self.callback = None;
         Ok(())
     }
 }
 
-impl Drop for NativeSocketMonitor {
+impl Drop for MonitorStorage {
     fn drop(&mut self) {
         if !self.handle.is_null() {
             unsafe {
@@ -233,6 +232,8 @@ fn monitorable_handle(source: &dyn Monitorable) -> Result<*mut c_void, ConfigErr
 
 macro_rules! impl_monitorable {
     ($ty:ident) => {
+        impl crate::monitor_contracts::private::Sealed for crate::$ty {}
+
         impl Monitorable for crate::$ty {
             fn as_any(&self) -> &dyn std::any::Any {
                 self
@@ -248,6 +249,8 @@ impl_monitorable!(RouterSocket);
 impl_monitorable!(XPubSocket);
 impl_monitorable!(XSubSocket);
 impl_monitorable!(StreamSocket);
+
+impl crate::monitor_contracts::private::Sealed for crate::PairSocket {}
 
 impl Monitorable for crate::PairSocket {
     fn as_any(&self) -> &dyn std::any::Any {

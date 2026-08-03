@@ -6,51 +6,27 @@ use crate::error::{ConfigError, HandlerError};
 use crate::ffi;
 use crate::message::{Message, RoutingId};
 use crate::native_errors::check_handler_rc;
-use crate::runtime_bridge::SocketRuntime;
 use crate::socket_contracts::StreamSocket;
 
 use super::SocketInner;
 
-struct NativeStreamSocket {
-    inner: SocketInner,
-}
-
-impl SocketRuntime for NativeStreamSocket {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-}
-
 impl StreamSocket {
     pub(crate) fn new(ctx: &Context) -> Result<Self, ConfigError> {
         Ok(Self {
-            inner: Box::new(NativeStreamSocket {
-                inner: SocketInner::create(ctx, ffi::zlink_socket_type_t::ZLINK_SOCKET_STREAM)?,
-            }),
+            inner: Box::new(SocketInner::create(
+                ctx,
+                ffi::zlink_socket_type_t::ZLINK_SOCKET_STREAM,
+            )?),
         })
     }
 }
 
 pub(crate) fn stream_inner(socket: &StreamSocket) -> &SocketInner {
-    &socket
-        .inner
-        .as_any()
-        .downcast_ref::<NativeStreamSocket>()
-        .expect("zlink native stream socket")
-        .inner
+    &socket.inner
 }
 
 pub(crate) fn stream_inner_mut(socket: &mut StreamSocket) -> &mut SocketInner {
-    &mut socket
-        .inner
-        .as_any_mut()
-        .downcast_mut::<NativeStreamSocket>()
-        .expect("zlink native stream socket")
-        .inner
+    &mut socket.inner
 }
 
 pub(crate) fn stream_on_packet<F>(socket: &mut StreamSocket, handler: F) -> Result<(), HandlerError>

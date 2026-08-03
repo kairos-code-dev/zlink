@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use crate::runtime_bridge::SocketStorage;
+use crate::internal::SocketStorage;
 use crate::{
     BindError, CommonSocketOptions, ConfigError, ConnectError, Empty, HandlerError, Message,
     Received, RecvError, RecvFlags, RoutingId, SendOp, StreamSocketOptions,
@@ -9,7 +9,7 @@ use crate::{
 /// STREAM socket: exchanges framed packets with raw TCP peers addressed by
 /// routing id.
 pub struct StreamSocket {
-    pub(crate) inner: Box<dyn SocketStorage>,
+    pub(crate) inner: Box<SocketStorage>,
 }
 
 impl std::panic::UnwindSafe for StreamSocket {}
@@ -30,7 +30,7 @@ impl StreamSocket {
     pub fn recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError> {
         let received = crate::socket::stream_inner(self).recv(out, flags)?;
         if received {
-            if let Some(routing_id) = out.routing_id {
+            if let Some(routing_id) = out.routing_id().copied() {
                 out.set_router_send_context(crate::socket::stream_inner(self).handle, routing_id);
             }
         }

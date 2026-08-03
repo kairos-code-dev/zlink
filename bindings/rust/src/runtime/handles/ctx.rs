@@ -1,12 +1,11 @@
-use std::ffi::{CString, c_void};
-use std::sync::Mutex;
+use std::ffi::{CStr, CString, c_void};
 use std::time::Duration;
 
 use crate::core_context::{AutoHwmProfile, AutoHwmRecalcReason, Context};
 use crate::error::{CloseError, ConfigError, ConfigResult};
 use crate::ffi;
+use crate::internal::ContextStorage;
 use crate::native_errors::{check_close_rc, check_config_rc, config_validation_error, last_errno};
-use crate::runtime_bridge::{ContextOptionRuntime, ContextRuntime};
 use crate::socket_contracts::{
     DealerSocket, PairSocket, PubSocket, RouterSocket, StreamSocket, SubSocket, XPubSocket,
     XSubSocket,
@@ -62,15 +61,6 @@ impl AutoHwmRecalcReason {
     }
 }
 
-struct NativeContext {
-    handle: *mut c_void,
-    /// Cached thread name prefix (write-only in the C API; readable from cache).
-    thread_name_prefix: Mutex<String>,
-}
-
-unsafe impl Send for NativeContext {}
-unsafe impl Sync for NativeContext {}
-
 pub(crate) fn context_new() -> Result<Context, ConfigError> {
     let handle = unsafe { ffi::zlink_ctx_new() };
     if handle.is_null() {
@@ -80,9 +70,9 @@ pub(crate) fn context_new() -> Result<Context, ConfigError> {
         ));
     }
     Ok(Context {
-        inner: Box::new(NativeContext {
+        inner: Box::new(ContextStorage {
             handle,
-            thread_name_prefix: Mutex::new(String::new()),
+            thread_name_prefix: std::sync::Mutex::new(String::new()),
         }),
     })
 }
@@ -119,7 +109,7 @@ pub(crate) fn context_stream_socket(context: &Context) -> Result<StreamSocket, C
     StreamSocket::new(context)
 }
 
-impl NativeContext {
+impl ContextStorage {
     fn set_int_option(&self, option: i32, value: i32) -> Result<(), ConfigError> {
         check_config_rc(unsafe { ffi::zlink_ctx_set(self.handle, raw_option(option), value) })
     }
@@ -180,77 +170,73 @@ impl NativeContext {
     }
 }
 
-impl ContextRuntime for NativeContext {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn shutdown(&self) -> Result<(), CloseError> {
+impl ContextStorage {
+    pub(crate) fn shutdown(&self) -> Result<(), CloseError> {
         check_close_rc(unsafe { ffi::zlink_ctx_shutdown(self.handle) })
     }
 
-    fn recalculate_auto_hwm(&self) -> Result<(), ConfigError> {
+    pub(crate) fn recalculate_auto_hwm(&self) -> Result<(), ConfigError> {
         check_config_rc(unsafe { ffi::zlink_ctx_auto_hwm_recalculate(self.handle) })
     }
 }
 
-impl ContextOptionRuntime for NativeContext {
-    fn io_threads(&self) -> Result<i32, ConfigError> {
+impl ContextStorage {
+    pub(crate) fn io_threads(&self) -> Result<i32, ConfigError> {
         self.get_int_option(ffi::zlink_ctx_option_t::ZLINK_IO_THREADS as i32)
     }
 
-    fn set_io_threads(&self, threads: i32) -> Result<(), ConfigError> {
+    pub(crate) fn set_io_threads(&self, threads: i32) -> Result<(), ConfigError> {
         self.set_int_option(ffi::zlink_ctx_option_t::ZLINK_IO_THREADS as i32, threads)
     }
 
-    fn max_sockets(&self) -> Result<i32, ConfigError> {
+    pub(crate) fn max_sockets(&self) -> Result<i32, ConfigError> {
         self.get_int_option(ffi::zlink_ctx_option_t::ZLINK_MAX_SOCKETS as i32)
     }
 
-    fn set_max_sockets(&self, max: i32) -> Result<(), ConfigError> {
+    pub(crate) fn set_max_sockets(&self, max: i32) -> Result<(), ConfigError> {
         self.set_int_option(ffi::zlink_ctx_option_t::ZLINK_MAX_SOCKETS as i32, max)
     }
 
-    fn socket_limit(&self) -> Result<i32, ConfigError> {
+    pub(crate) fn socket_limit(&self) -> Result<i32, ConfigError> {
         self.get_int_option(ffi::zlink_ctx_option_t::ZLINK_SOCKET_LIMIT as i32)
     }
 
-    fn thread_priority(&self) -> Result<i32, ConfigError> {
+    pub(crate) fn thread_priority(&self) -> Result<i32, ConfigError> {
         self.get_int_option(3)
     }
 
-    fn set_thread_priority(&self, priority: i32) -> Result<(), ConfigError> {
+    pub(crate) fn set_thread_priority(&self, priority: i32) -> Result<(), ConfigError> {
         self.set_int_option(3, priority)
     }
 
-    fn thread_scheduling_policy(&self) -> Result<i32, ConfigError> {
+    pub(crate) fn thread_scheduling_policy(&self) -> Result<i32, ConfigError> {
         self.get_int_option(ffi::zlink_ctx_option_t::ZLINK_THREAD_SCHED_POLICY as i32)
     }
 
-    fn set_thread_scheduling_policy(&self, policy: i32) -> Result<(), ConfigError> {
+    pub(crate) fn set_thread_scheduling_policy(&self, policy: i32) -> Result<(), ConfigError> {
         self.set_int_option(
             ffi::zlink_ctx_option_t::ZLINK_THREAD_SCHED_POLICY as i32,
             policy,
         )
     }
 
-    fn max_message_size(&self) -> Result<i32, ConfigError> {
+    pub(crate) fn max_message_size(&self) -> Result<i32, ConfigError> {
         self.get_int_option(ffi::zlink_ctx_option_t::ZLINK_MAX_MSGSZ as i32)
     }
 
-    fn set_max_message_size(&self, size: i32) -> Result<(), ConfigError> {
+    pub(crate) fn set_max_message_size(&self, size: i32) -> Result<(), ConfigError> {
         self.set_int_option(ffi::zlink_ctx_option_t::ZLINK_MAX_MSGSZ as i32, size)
     }
 
-    fn msg_t_size(&self) -> Result<i32, ConfigError> {
+    pub(crate) fn msg_t_size(&self) -> Result<i32, ConfigError> {
         self.get_int_option(ffi::zlink_ctx_option_t::ZLINK_MSG_T_SIZE as i32)
     }
 
-    fn blocky(&self) -> Result<bool, ConfigError> {
+    pub(crate) fn blocky(&self) -> Result<bool, ConfigError> {
         Ok(self.get_int_option(ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_BLOCKY as i32)? != 0)
     }
 
-    fn set_blocky(&self, blocky: bool) -> Result<(), ConfigError> {
+    pub(crate) fn set_blocky(&self, blocky: bool) -> Result<(), ConfigError> {
         self.set_int_option(
             ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_BLOCKY as i32,
             if blocky { 1 } else { 0 },
@@ -258,7 +244,7 @@ impl ContextOptionRuntime for NativeContext {
     }
 
     /// Get the thread name prefix (returned from the cached value set via `set_thread_name_prefix`).
-    fn thread_name_prefix(&self) -> Result<String, ConfigError> {
+    pub(crate) fn thread_name_prefix(&self) -> Result<String, ConfigError> {
         Ok(self
             .thread_name_prefix
             .lock()
@@ -267,7 +253,7 @@ impl ContextOptionRuntime for NativeContext {
     }
 
     /// Set the thread name prefix (applied to I/O threads created by this context).
-    fn set_thread_name_prefix(&self, prefix: &str) -> Result<(), ConfigError> {
+    pub(crate) fn set_thread_name_prefix(&self, prefix: &str) -> Result<(), ConfigError> {
         let c = CString::new(prefix).map_err(|_| config_validation_error())?;
         let bytes = c.as_bytes(); // excludes NUL
         self.set_data_option(
@@ -283,7 +269,7 @@ impl ContextOptionRuntime for NativeContext {
     }
 
     /// Get whether auto HWM is enabled.
-    fn auto_hwm_enabled(&self) -> Result<bool, ConfigError> {
+    pub(crate) fn auto_hwm_enabled(&self) -> Result<bool, ConfigError> {
         Ok(
             self.get_int_option(ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_AUTO_HWM_ENABLE as i32)?
                 != 0,
@@ -291,7 +277,7 @@ impl ContextOptionRuntime for NativeContext {
     }
 
     /// Enable or disable auto HWM.
-    fn set_auto_hwm_enabled(&self, enabled: bool) -> Result<(), ConfigError> {
+    pub(crate) fn set_auto_hwm_enabled(&self, enabled: bool) -> Result<(), ConfigError> {
         self.set_int_option(
             ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_AUTO_HWM_ENABLE as i32,
             if enabled { 1 } else { 0 },
@@ -299,7 +285,7 @@ impl ContextOptionRuntime for NativeContext {
     }
 
     /// Get the auto HWM recalculation debounce interval.
-    fn auto_hwm_recalc_debounce(&self) -> Result<Duration, ConfigError> {
+    pub(crate) fn auto_hwm_recalc_debounce(&self) -> Result<Duration, ConfigError> {
         let ms = self.get_int_option(
             ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS as i32,
         )?;
@@ -307,7 +293,7 @@ impl ContextOptionRuntime for NativeContext {
     }
 
     /// Set the auto HWM recalculation debounce interval.
-    fn set_auto_hwm_recalc_debounce(&self, value: Duration) -> Result<(), ConfigError> {
+    pub(crate) fn set_auto_hwm_recalc_debounce(&self, value: Duration) -> Result<(), ConfigError> {
         let ms = crate::ctx::duration_to_millis(value)?;
         self.set_int_option(
             ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS as i32,
@@ -315,40 +301,40 @@ impl ContextOptionRuntime for NativeContext {
         )
     }
 
-    fn auto_hwm_profile(&self) -> Result<AutoHwmProfile, ConfigError> {
+    pub(crate) fn auto_hwm_profile(&self) -> Result<AutoHwmProfile, ConfigError> {
         AutoHwmProfile::from_raw(
             self.get_int_option(ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_AUTO_HWM_PROFILE as i32)?,
         )
     }
 
-    fn set_auto_hwm_profile(&self, profile: AutoHwmProfile) -> Result<(), ConfigError> {
+    pub(crate) fn set_auto_hwm_profile(&self, profile: AutoHwmProfile) -> Result<(), ConfigError> {
         self.set_int_option(
             ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_AUTO_HWM_PROFILE as i32,
             profile.to_raw(),
         )
     }
 
-    fn auto_hwm_msg_unit_bytes(&self) -> Result<u64, ConfigError> {
+    pub(crate) fn auto_hwm_msg_unit_bytes(&self) -> Result<u64, ConfigError> {
         self.get_u64_data_option(
             ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES as i32,
         )
     }
 
-    fn set_auto_hwm_msg_unit_bytes(&self, bytes: u64) -> Result<(), ConfigError> {
+    pub(crate) fn set_auto_hwm_msg_unit_bytes(&self, bytes: u64) -> Result<(), ConfigError> {
         self.set_u64_data_option(
             ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES as i32,
             bytes,
         )
     }
 
-    fn add_thread_affinity(&self, cpu: i32) -> Result<(), ConfigError> {
+    pub(crate) fn add_thread_affinity(&self, cpu: i32) -> Result<(), ConfigError> {
         self.set_int_option(
             ffi::zlink_ctx_option_t::ZLINK_THREAD_AFFINITY_CPU_ADD as i32,
             cpu,
         )
     }
 
-    fn remove_thread_affinity(&self, cpu: i32) -> Result<(), ConfigError> {
+    pub(crate) fn remove_thread_affinity(&self, cpu: i32) -> Result<(), ConfigError> {
         self.set_int_option(
             ffi::zlink_ctx_option_t::ZLINK_THREAD_AFFINITY_CPU_REMOVE as i32,
             cpu,
@@ -360,7 +346,7 @@ fn raw_option(value: i32) -> ffi::zlink_ctx_option_t {
     unsafe { std::mem::transmute(value) }
 }
 
-impl Drop for NativeContext {
+impl Drop for ContextStorage {
     fn drop(&mut self) {
         unsafe {
             ffi::zlink_ctx_term(self.handle);
@@ -387,6 +373,16 @@ pub fn has(capability: &str) -> bool {
     unsafe { ffi::zlink_has(c.as_ptr()) != 0 }
 }
 
+/// Returns the native error text for an errno value.
+pub fn strerror(errnum: i32) -> &'static str {
+    let ptr = unsafe { ffi::zlink_strerror(errnum) };
+    if ptr.is_null() {
+        ""
+    } else {
+        unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or("")
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Duration → millis helper (with overflow check per Boundary Cost Policy)
 // ---------------------------------------------------------------------------
@@ -400,9 +396,5 @@ pub(crate) fn duration_to_millis(d: Duration) -> Result<i32, ConfigError> {
 }
 
 pub(crate) fn context_handle(ctx: &Context) -> *mut c_void {
-    ctx.inner
-        .as_any()
-        .downcast_ref::<NativeContext>()
-        .expect("zlink native context")
-        .handle
+    ctx.inner.handle
 }

@@ -34,8 +34,6 @@ impl zlink_routing_id_t {
     }
 }
 
-pub type zlink_free_fn = unsafe extern "C" fn(data: *mut c_void, hint: *mut c_void);
-
 pub const ZLINK_MSG_METADATA_KEY_USER_MIN: u16 = 0x0100;
 pub const ZLINK_MSG_METADATA_VALUE_MAX: usize = 65535;
 
@@ -349,13 +347,6 @@ pub const ZLINK_POLLCOMPLETION: i16 = 32;
 // Callback types
 // ---------------------------------------------------------------------------
 
-pub type zlink_socket_msg_handler_fn = unsafe extern "C" fn(
-    source_rid: *const zlink_routing_id_t,
-    parts: *mut zlink_msg_t,
-    part_count: usize,
-    userdata: *mut c_void,
-);
-
 pub type zlink_stream_packet_handler_fn = unsafe extern "C" fn(
     stream: *mut c_void,
     source_rid: *const zlink_routing_id_t,
@@ -415,17 +406,9 @@ unsafe extern "C" {
 
     pub fn zlink_msg_init(msg: *mut zlink_msg_t) -> c_int;
     pub fn zlink_msg_init_size(msg: *mut zlink_msg_t, size: usize) -> c_int;
-    pub fn zlink_msg_init_data(
-        msg: *mut zlink_msg_t,
-        data: *mut c_void,
-        size: usize,
-        ffn: Option<zlink_free_fn>,
-        hint: *mut c_void,
-    ) -> c_int;
     pub fn zlink_msg_close(msg: *mut zlink_msg_t) -> c_int;
     pub fn zlink_msg_move(dest: *mut zlink_msg_t, src: *mut zlink_msg_t) -> c_int;
     pub fn zlink_msg_copy(dest: *mut zlink_msg_t, src: *mut zlink_msg_t) -> c_int;
-    pub fn zlink_msg_adopt(dest: *mut zlink_msg_t, src: *mut zlink_msg_t) -> c_int;
     pub fn zlink_msg_data(msg: *mut zlink_msg_t) -> *mut c_void;
     pub fn zlink_msg_size(msg: *const zlink_msg_t) -> usize;
     pub fn zlink_msg_refcnt(
@@ -435,11 +418,6 @@ unsafe extern "C" {
     pub fn zlink_multipart_close(parts: *mut zlink_msg_t, part_count: usize);
 
     pub fn zlink_socket(ctx: *mut c_void, typ: zlink_socket_type_t) -> *mut c_void;
-    pub fn zlink_recv_handler(
-        socket: *mut c_void,
-        handler: zlink_socket_msg_handler_fn,
-        userdata: *mut c_void,
-    ) -> c_int;
     pub fn zlink_stream_packet_handler(
         stream: *mut c_void,
         handler: zlink_stream_packet_handler_fn,
@@ -584,12 +562,6 @@ unsafe extern "C" {
         part: *mut zlink_msg_t,
         part_flag: zlink_part_flag_t,
     ) -> c_int;
-    pub fn zlink_router_completion_control_part(
-        router: *mut c_void,
-        peer_rid: *const zlink_routing_id_t,
-        part: *mut zlink_msg_t,
-        part_flag: zlink_part_flag_t,
-    ) -> c_int;
     pub fn zlink_router_recv_part(
         router: *mut c_void,
         source_rid_out: *mut *const zlink_routing_id_t,
@@ -658,7 +630,6 @@ unsafe extern "C" {
     ) -> c_int;
     pub fn zlink_monitor_status(monitor: *mut c_void, out: *mut zlink_monitor_status_t) -> c_int;
     pub fn zlink_monitor_close(monitor_p: *mut *mut c_void) -> c_int;
-    pub fn zlink_monitor_ignore_handler(event: *const zlink_monitor_event_t, userdata: *mut c_void);
 
     pub fn zlink_poll(
         items: *mut zlink_pollitem_t,

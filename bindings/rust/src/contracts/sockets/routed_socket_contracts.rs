@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use crate::runtime_bridge::SocketStorage;
+use crate::internal::SocketStorage;
 use crate::{
     BindError, CommonSocketOptions, ConfigError, ConnectError, HandlerError, Received, RecvError,
     RecvFlags, RouterSocketOptions,
@@ -10,7 +10,7 @@ use crate::{Empty, ReplyOp, RequestOp, RoutingId, SendOp};
 /// ROUTER socket: routes messages to peers addressed by routing id, the
 /// server side of asynchronous request/reply.
 pub struct RouterSocket {
-    pub(crate) inner: Box<dyn SocketStorage>,
+    pub(crate) inner: Box<SocketStorage>,
 }
 
 impl std::panic::UnwindSafe for RouterSocket {}
@@ -29,16 +29,7 @@ impl RouterSocket {
     /// Returns `Ok(true)` on success and `Ok(false)` when
     /// [`RecvFlags::DONT_WAIT`] is set and no message is available.
     pub fn recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError> {
-        match crate::socket::recv_router_once(
-            crate::socket::router_inner(self).handle,
-            flags.bits(),
-        )? {
-            Some(received) => {
-                out.adopt_from(received);
-                Ok(true)
-            }
-            None => Ok(false),
-        }
+        crate::socket::recv_router_once(crate::socket::router_inner(self).handle, flags.bits(), out)
     }
 
     /// Begins a request addressed to peer `peer_rid`: add parts, then submit and

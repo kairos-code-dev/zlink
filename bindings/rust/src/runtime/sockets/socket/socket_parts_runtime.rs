@@ -6,59 +6,35 @@ pub(crate) const MAX_NATIVE_PARTS: usize = 1024;
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Prepare a contiguous native `zlink_msg_t` array for sending.
+/// Submit message parts directly from their owned `Message` storage.
 ///
-/// Uses `zlink_msg_move` to properly transfer each Message's content into a
-/// freshly-initialized contiguous buffer. This avoids memcpy-based relocation
-/// of initialized `zlink_msg_t` structs, which can invalidate internal state.
-/// After this call, the source Messages are empty (moved-from) and the returned
-/// Vec owns the content ready for `zlink_send`.
-pub(crate) fn prepare_send_parts(
-    parts: &mut [Message],
-) -> Result<Vec<ffi::zlink_msg_t>, SubmitError> {
-    let mut native: Vec<ffi::zlink_msg_t> = Vec::with_capacity(parts.len());
-    unsafe {
-        for part in parts.iter_mut() {
-            let mut dest = MaybeUninit::<ffi::zlink_msg_t>::uninit();
-            ffi::zlink_msg_init(dest.as_mut_ptr());
-            ffi::zlink_msg_move(dest.as_mut_ptr(), part.raw_mut());
-            native.push(dest.assume_init());
-        }
-    }
-    Ok(native)
-}
-
+/// Core consumes each `zlink_msg_t` according to the socket contract. Keeping
+/// the initialized FFI record inside `Message` avoids a second native array
+/// allocation and lets `Message::Drop` close a STREAM part that remains owned
+/// by the caller after `EAGAIN`.
 pub(crate) fn submit_part_sequence(
-    native: &mut [ffi::zlink_msg_t],
+    parts: &mut crate::messaging_operations::MessageParts,
     mut submit: impl FnMut(*mut ffi::zlink_msg_t, ffi::zlink_part_flag_t, bool) -> i32,
 ) -> Result<i32, SubmitError> {
-    if native.is_empty() {
+    if parts.is_empty() {
         return Err(submit_validation_error());
     }
 
-    for index in 0..native.len() {
-        let is_final = index + 1 == native.len();
+    let part_count = parts.len();
+    for (index, part) in parts.iter_mut().enumerate() {
+        let is_final = index + 1 == part_count;
         let part_flag = if is_final {
             ffi::zlink_part_flag_t::ZLINK_PART_FINAL
         } else {
             ffi::zlink_part_flag_t::ZLINK_PART_MORE
         };
-        let rc = submit(native.as_mut_ptr().wrapping_add(index), part_flag, is_final);
+        let rc = submit(part.raw_mut(), part_flag, is_final);
         if rc != 0 {
-            close_native_parts_from(native, index + 1);
             return Ok(rc);
         }
     }
 
     Ok(0)
-}
-
-fn close_native_parts_from(parts: &mut [ffi::zlink_msg_t], start_index: usize) {
-    for part in &mut parts[start_index..] {
-        unsafe {
-            ffi::zlink_msg_close(part);
-        }
-    }
 }
 
 pub(crate) fn close_unreceived_part(part: &mut MaybeUninit<ffi::zlink_msg_t>) {
@@ -69,11 +45,25 @@ pub(crate) fn close_unreceived_part(part: &mut MaybeUninit<ffi::zlink_msg_t>) {
 
 /// Take ownership of `part_count` messages from a native-owned array.
 pub(crate) fn take_parts(parts_ptr: *mut ffi::zlink_msg_t, part_count: usize) -> Vec<Message> {
+    let mut out = Vec::with_capacity(part_count.min(MAX_NATIVE_PARTS));
+    take_parts_into(parts_ptr, part_count, &mut out);
+    out
+}
+
+/// Move native-owned parts into reusable caller-owned storage.
+pub(crate) fn take_parts_into(
+    parts_ptr: *mut ffi::zlink_msg_t,
+    part_count: usize,
+    out: &mut Vec<Message>,
+) {
+    out.clear();
     if parts_ptr.is_null() || part_count == 0 {
-        return Vec::new();
+        return;
     }
     let count = part_count.min(MAX_NATIVE_PARTS);
-    let mut out = Vec::with_capacity(count);
+    if out.capacity() < count {
+        out.reserve(count - out.capacity());
+    }
     for i in 0..count {
         unsafe {
             // Move content from the library-owned array into our own zlink_msg_t.
@@ -89,7 +79,6 @@ pub(crate) fn take_parts(parts_ptr: *mut ffi::zlink_msg_t, part_count: usize) ->
     unsafe {
         ffi::zlink_multipart_close(parts_ptr, part_count);
     }
-    out
 }
 
 // Short subscribe topics bypass heap allocation entirely (<=22 bytes live
@@ -111,17 +100,17 @@ pub(crate) fn routing_id_from_ptr(raw: *const ffi::zlink_routing_id_t) -> Option
     }
 }
 
-type RecvBasicParts = Result<Option<(Option<RoutingId>, Vec<Message>)>, RecvError>;
-type RecvSubscribedParts =
-    Result<Option<(Option<RoutingId>, smol_str::SmolStr, Vec<Message>)>, RecvError>;
+type RecvBasicParts = Result<Option<Option<RoutingId>>, RecvError>;
+type RecvSubscribedParts = Result<Option<(Option<RoutingId>, smol_str::SmolStr)>, RecvError>;
 
 pub(crate) fn recv_basic_parts(
     handle: *mut c_void,
     flags: ffi::zlink_recv_flags_t,
+    parts: &mut Vec<Message>,
 ) -> RecvBasicParts {
     let mut routing_id = None;
-    let mut parts = Vec::new();
     let mut recv_flags = flags;
+    let mut received_any = false;
 
     loop {
         let mut source_rid_ptr = ptr::null();
@@ -140,7 +129,7 @@ pub(crate) fn recv_basic_parts(
             )
         };
 
-        if parts.is_empty() {
+        if !received_any {
             if rc == RecvResult::NoData as i32 {
                 close_unreceived_part(&mut part);
                 return Ok(None);
@@ -154,6 +143,8 @@ pub(crate) fn recv_basic_parts(
                 return Err(check_recv_rc(rc).unwrap_err());
             }
             routing_id = routing_id_from_ptr(source_rid_ptr);
+            parts.clear();
+            received_any = true;
         } else if rc != 0 {
             close_unreceived_part(&mut part);
             return Err(check_recv_rc(rc).unwrap_err());
@@ -161,7 +152,7 @@ pub(crate) fn recv_basic_parts(
 
         parts.push(unsafe { Message::from_raw(part.assume_init()) });
         if has_more == ffi::zlink_part_flag_t::ZLINK_PART_FINAL {
-            return Ok(Some((routing_id, parts)));
+            return Ok(Some(routing_id));
         }
         recv_flags = ffi::ZLINK_DONTWAIT;
     }
@@ -171,11 +162,12 @@ pub(crate) fn recv_subscribed_parts(
     handle: *mut c_void,
     topic_buf: &mut [i8; 256],
     flags: ffi::zlink_recv_flags_t,
+    parts: &mut Vec<Message>,
 ) -> RecvSubscribedParts {
     let mut routing_id = None;
     let mut topic = smol_str::SmolStr::default();
-    let mut parts = Vec::new();
     let mut recv_flags = flags;
+    let mut received_any = false;
 
     loop {
         let mut source_rid_ptr = ptr::null();
@@ -198,7 +190,7 @@ pub(crate) fn recv_subscribed_parts(
             )
         };
 
-        if parts.is_empty() {
+        if !received_any {
             if rc == RecvResult::NoData as i32 {
                 close_unreceived_part(&mut part);
                 return Ok(None);
@@ -213,6 +205,8 @@ pub(crate) fn recv_subscribed_parts(
             }
             routing_id = routing_id_from_ptr(source_rid_ptr);
             topic = cstr_buf_to_smolstr(topic_buf, topic_len);
+            parts.clear();
+            received_any = true;
         } else if rc != 0 {
             close_unreceived_part(&mut part);
             return Err(check_recv_rc(rc).unwrap_err());
@@ -220,7 +214,7 @@ pub(crate) fn recv_subscribed_parts(
 
         parts.push(unsafe { Message::from_raw(part.assume_init()) });
         if has_more == ffi::zlink_part_flag_t::ZLINK_PART_FINAL {
-            return Ok(Some((routing_id, topic, parts)));
+            return Ok(Some((routing_id, topic)));
         }
         recv_flags = ffi::ZLINK_DONTWAIT;
     }

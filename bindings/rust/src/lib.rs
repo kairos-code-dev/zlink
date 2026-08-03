@@ -18,6 +18,7 @@
 
 #[path = "runtime/native/ffi.rs"]
 mod ffi;
+mod internal;
 #[path = "runtime/messaging/request_progress.rs"]
 mod request_progress;
 
@@ -73,8 +74,6 @@ mod routed_socket_contracts;
 mod routing_id;
 #[path = "runtime/core/runtime.rs"]
 mod runtime;
-#[path = "runtime/contract_bridge.rs"]
-mod runtime_bridge;
 #[path = "runtime/sockets/socket/mod.rs"]
 mod socket;
 #[path = "contracts/sockets/socket.rs"]
@@ -125,6 +124,10 @@ pub fn version() -> (i32, i32, i32) {
 
 pub fn has(capability: &str) -> bool {
     ctx::has(capability)
+}
+
+pub fn strerror(errnum: i32) -> &'static str {
+    ctx::strerror(errnum)
 }
 
 pub fn proxy(

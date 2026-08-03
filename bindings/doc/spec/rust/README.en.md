@@ -45,6 +45,10 @@ to turn every native-backed resource into a trait.
 - Native bridge: private modules under `bindings/rust/src/runtime/native/`,
   raw handles, callback trampolines, request progress helpers, and part-loop
   helpers.
+- Concrete crate-private resource storage is kept in
+  `bindings/rust/src/internal.rs`. Contract files may refer to these storage
+  types, but they must not import runtime resource types. FFI declarations and
+  native calls remain under `runtime/`.
 - Documentation role: this README defines shape and semantic coverage.
   Public crate exports own the exact member list. Each public item must still
   map to one of the shared contract categories.
@@ -59,6 +63,7 @@ Use these paths consistently when changing the Rust binding.
 - Public contract: `bindings/rust/src/contracts/`.
 - Crate projection: `bindings/rust/src/lib.rs`.
 - Runtime implementation: private modules under `bindings/rust/src/runtime/`.
+- Crate-private concrete storage: `bindings/rust/src/internal.rs`.
 - Native bridge/artifacts: private modules under
   `bindings/rust/src/runtime/native/`, `bindings/rust/native/`, and
   `bindings/rust/include/`.
@@ -75,10 +80,11 @@ module. Do not expose `zlink::runtime` or raw native bridge modules.
 
 The following tree is the aligned implementation structure. Public structs,
 enums, traits, errors, free functions, and builder contracts belong in
-`contracts/` and are re-exported intentionally from `lib.rs`. FFI bindings, raw
-pointers, native struct mirrors, handle owners, callback trampolines, request
-progress helpers, marshalling, and unsafe part loops stay private under
-`runtime/`.
+`contracts/` and are re-exported intentionally from `lib.rs`. FFI bindings,
+native struct mirrors, callback trampolines, request progress helpers,
+marshalling, and unsafe part loops stay private under `runtime/`. The
+crate-private storage module contains only the concrete ownership state needed
+by public wrappers; it does not declare or call the FFI surface.
 
 File granularity follows the common policy in `../README.md`: keep one file
 per independent public concept or tight operation/model group. Very small
@@ -90,6 +96,7 @@ public shape easier to read.
 bindings/rust/
 +-- src/
 |   +-- lib.rs
+|   +-- internal.rs
 |   +-- contracts/
 |   |   +-- core/
 |   |   |   +-- context.rs

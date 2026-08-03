@@ -315,7 +315,9 @@ prepare_core_runtime() {
     # rebuild (the Go runner already compares the versioned file directly).
     local native_dir="${ZLINK_RUST_NATIVE_DIR:-${CORE_LIB_DIR}}"
     local runtime="${native_dir}/libzlink.so"
-    [[ -f "${runtime}" ]] || runtime="${native_dir}/libzlink.so.11.1.0"
+    local package_version
+    package_version="$(sed -n 's/^version = "\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)"/\1/p' "${PROJECT_DIR}/Cargo.toml" | head -n1)"
+    [[ -f "${runtime}" ]] || runtime="${native_dir}/libzlink.so.${package_version}"
     if [[ ! -f "${runtime}" ]]; then
         echo "Rust perf runtime not found: ${native_dir}" >&2
         echo "Build core/build or pass --rust-package-evidence." >&2

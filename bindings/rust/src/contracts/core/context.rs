@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::error::{CloseError, ConfigError};
-use crate::runtime_bridge::ContextStorage;
+use crate::internal::ContextStorage;
 use crate::socket_contracts::{
     DealerSocket, PairSocket, PubSocket, RouterSocket, StreamSocket, SubSocket, XPubSocket,
     XSubSocket,
@@ -50,7 +50,7 @@ pub enum AutoHwmRecalcReason {
 /// dropped, so callers must keep an owner alive while another thread is creating
 /// or using sockets.
 pub struct Context {
-    pub(crate) inner: Box<dyn ContextStorage>,
+    pub(crate) inner: Box<ContextStorage>,
 }
 
 impl Context {
@@ -117,11 +117,11 @@ impl Context {
 
 /// Typed facade over context options.
 pub struct ContextOptions<'a> {
-    context: &'a dyn ContextStorage,
+    context: &'a ContextStorage,
 }
 
 impl<'a> ContextOptions<'a> {
-    pub(crate) fn new(context: &'a dyn ContextStorage) -> Self {
+    pub(crate) fn new(context: &'a ContextStorage) -> Self {
         Self { context }
     }
 

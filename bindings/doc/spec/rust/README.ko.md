@@ -33,6 +33,9 @@ private `runtime` 모듈이 소스 소유권을 조직화하고, `lib.rs`가 어
 - 런타임 구현: `bindings/rust/src/runtime/` 아래 private 모듈.
 - 네이티브 브릿지: `bindings/rust/src/runtime/native/` 아래 private 모듈, raw 핸들,
   콜백 trampoline, request progress 헬퍼, part-loop 헬퍼.
+- 구체적인 crate-private 리소스 저장소는 `bindings/rust/src/internal.rs`에 둔다.
+  계약 파일은 이 저장소 타입을 참조할 수 있지만 runtime 리소스 타입을 직접 import하지
+  않는다. FFI 선언과 native 호출은 계속 `runtime/` 아래에 둔다.
 - 문서의 역할: 이 README는 형태와 의미 커버리지를 정의한다. 공개 crate export가
   정확한 멤버 목록을 소유한다. 각 공개 아이템은 여전히 공통 계약 카테고리 중
   하나에 매핑되어야 한다.
@@ -46,6 +49,7 @@ Rust 바인딩을 변경할 때 이 경로를 일관되게 사용한다.
 - 공개 계약: `bindings/rust/src/contracts/`.
 - Crate projection: `bindings/rust/src/lib.rs`.
 - 런타임 구현: `bindings/rust/src/runtime/` 아래 private 모듈.
+- crate-private 구체 저장소: `bindings/rust/src/internal.rs`.
 - 네이티브 브릿지/아티팩트: `bindings/rust/src/runtime/native/`,
   `bindings/rust/native/`, `bindings/rust/include/` 아래 private 모듈.
 - 코덱 crate: 제공하지 않는다. Rust 바인딩은 raw `Message`와 byte payload API만
@@ -61,9 +65,10 @@ Rust 바인딩을 변경할 때 이 경로를 일관되게 사용한다.
 
 다음 트리는 정렬된 구현 구조이다. 공개 struct, enum, trait, error, free function,
 builder 계약은 `contracts/`에 속하며 `lib.rs`에서 의도적으로 re-export된다. FFI
-바인딩, raw 포인터, 네이티브 struct mirror, 핸들 소유자, 콜백 trampoline, request
-progress 헬퍼, marshalling, unsafe part loop는 `runtime/` 아래 private으로
-유지한다.
+바인딩, 네이티브 struct mirror, 콜백 trampoline, request progress 헬퍼,
+marshalling, unsafe part loop는 `runtime/` 아래 private으로 유지한다. crate-private
+저장소 모듈에는 public wrapper가 소유해야 하는 구체 상태만 두며 FFI 표면을 선언하거나
+호출하지 않는다.
 
 파일 단위는 `../README.md`의 공통 정책을 따른다. 독립적인 공개 개념 하나 또는
 긴밀한 operation/model 그룹당 파일 하나를 유지한다. 매우 작은 marker trait,
@@ -74,6 +79,7 @@ progress 헬퍼, marshalling, unsafe part loop는 `runtime/` 아래 private으�
 bindings/rust/
 +-- src/
 |   +-- lib.rs
+|   +-- internal.rs
 |   +-- contracts/
 |   |   +-- core/
 |   |   |   +-- context.rs

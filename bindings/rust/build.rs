@@ -34,6 +34,17 @@ fn main() {
     // do not discover or prefer a repository `core/build` directory here:
     // that would let a clean consumer silently execute a different Core
     // candidate than the one packaged with this crate.
+    let package_version = env::var("CARGO_PKG_VERSION").expect("Cargo package version is required");
+    println!(
+        "cargo:rerun-if-changed={}",
+        native_dir.join("libzlink.so").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        native_dir
+            .join(format!("libzlink.so.{package_version}"))
+            .display()
+    );
     println!("cargo:rustc-link-search=native={}", native_dir.display());
     println!("cargo:rustc-link-lib=dylib=zlink");
 

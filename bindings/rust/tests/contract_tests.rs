@@ -204,6 +204,12 @@ fn has_capability_check() {
     let _ = has("tcp");
 }
 
+#[test]
+fn strerror_returns_native_error_text() {
+    let message = zlink::strerror(libc::EINVAL);
+    assert!(!message.is_empty());
+}
+
 // ---------------------------------------------------------------------------
 // Error path: native handle creation failure
 // ---------------------------------------------------------------------------
@@ -250,7 +256,7 @@ fn request_router_exposes_request_sequence() {
 
     let mut received = Received::empty();
     router_socket.recv(&mut received, RecvFlags::NONE).unwrap();
-    let request_seq = received.request_seq;
+    let request_seq = received.request_seq();
     assert_eq!(received.single_part().unwrap().as_bytes(), b"plain-data");
     assert_eq!(request_seq, None);
 }

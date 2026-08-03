@@ -1,6 +1,6 @@
 [package]
 name = "zlink"
-version = "11.1.0"
+version = "11.2.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Rust bindings for the zlink messaging library"
@@ -16,7 +16,6 @@ resolver = "3"
 members = []
 
 [dependencies]
-bytes = "1"
 libc = "0.2"
 # Inline-storage string for short topics; values <=22 bytes live in the
 # stack-allocated payload and skip the heap, matching the typical pubsub

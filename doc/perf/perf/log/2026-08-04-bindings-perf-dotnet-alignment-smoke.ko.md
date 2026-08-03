@@ -84,8 +84,8 @@ C++ perf runner는 `ZLINK_CPP_USE_CORE_BUILD_RUNTIME`을 CMake에 전달했지�
 아직 “모든 binding이 .NET과 동일하다”라고 판정할 조건은 남아 있다.
 
 - Java는 승인된 11.2.0 package provenance가 없어 실행되지 않았다.
-- Go의 공식 native package와 binding header는 11.1.0이며 현재 Core 11.2.0과
-  package provenance가 맞지 않는다.
+- C, Go, Rust의 vendored `zlink.h`는 11.1.0이며 현재 Core 11.2.0과 header/runtime
+  version provenance가 맞지 않는다. Go의 공식 native package도 11.1.0이다.
 - Python은 auto-HWM 세부값을 `unavailable`로 출력하고, Node.js는 socket buffer
   세부값을 `?`로 출력한다. 결과 complete와 별개로 C 대비 정식 성능 비교에 필요한
   HWM detail 증거는 보강해야 한다.

@@ -157,7 +157,9 @@ fn pub_sub_roundtrip() {
 fn sub_try_subscribe_empty() {
     let ctx = Context::new().unwrap();
     let sub_sock = ctx.sub_socket().unwrap();
-    sub_sock.connect("inproc://beh-sub-try").unwrap();
+    // Bind without a peer so this test covers empty non-blocking input
+    // without introducing an unrelated unresolved inproc connection.
+    sub_sock.bind("inproc://beh-sub-try").unwrap();
     sub_sock.set_subscription("").unwrap();
 
     let mut topic_msg = TopicMessage::empty();

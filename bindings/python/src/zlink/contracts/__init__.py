@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: MPL-2.0
 
-"""Public contract surface of the zlink Python bindings.
+"""Public Core contract surface of the zlink Python bindings.
 
-Runtime factories live on the top-level :mod:`zlink` package. Service concepts
-belong to the Framework bounded context and are not part of this Core binding.
+Runtime factories live on the top-level :mod:`zlink` package. Framework-specific
+concepts are outside this Core binding.
 """
 
 from .core import (

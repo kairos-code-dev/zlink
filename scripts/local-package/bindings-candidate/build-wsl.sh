@@ -295,6 +295,7 @@ PY
     printf 'PACKAGED_HEADER_SHA256=not_applicable\n' >>"$OUTPUT_ROOT/$LANGUAGE/candidate-input.env"
     python3 -m venv "$consumer/venv"
     "$consumer/venv/bin/pip" install --no-deps "${wheel[0]}"
+    (cd "$consumer" && env -u LD_LIBRARY_PATH -u ZLINK_LIBRARY_PATH PYTHONPATH= "$consumer/venv/bin/python" "$REPO_DIR/bindings/python/samples/run_samples.py" --installed)
     (cd "$consumer" && env -u LD_LIBRARY_PATH -u ZLINK_LIBRARY_PATH PYTHONPATH= "$consumer/venv/bin/python" - "$core_version" "$native_arch" <<'PY'
 import pathlib
 import sys

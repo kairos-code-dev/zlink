@@ -1,14 +1,14 @@
 # Python Core 11 POSD·DDD 설계 검토
 
-> 이 기록은 Python Core 11 raw-only 작업 중간의 설계 검토다. 최종 `CLEAN` 판정이 아니며,
-> 구현·test·package evidence가 갱신된 뒤 같은 기준으로 다시 검토한다.
+> 이 기록은 Python Core 11 raw-only 작업의 POSD·DDD self-review다. 구현자와 분리된
+> frontier reviewer의 최종 `CLEAN` 판정은 포함하지 않는다.
 
 ## 현재 판단
 
-Python binding은 Core 11 raw contract만 연결해야 한다. 현재 source는 raw socket과 message를
-제공하는 binding 안에 `Spot`, `Actor`, bound STREAM session과 service FFI를 함께 넣고 있어 두
-bounded context가 섞여 있다. 이번 작업은 기존 raw public surface를 유지하면서 service 책임과
-Core 11에 없는 native 선언을 제거하는 범위로 정한다. 새 public API나 호출부 우회는 추가하지 않는다.
+Python binding은 Core 11 raw contract만 연결해야 한다. 구현 전 source에는 raw socket과 message를
+제공하는 binding 안에 Framework 기능과 Core 11에 없는 native 선언이 함께 있었다. 이번 작업은 기존
+raw public surface를 유지하면서 Framework 책임, 이전 FFI와 호출부 우회를 제거하는 범위로 정했다.
+새 public API나 샘플 전용 adapter는 추가하지 않았다.
 
 ## DDD event storming 결과
 
@@ -80,9 +80,19 @@ Python binding에서 호출자가 관찰하거나 책임지는 사건을 먼저 
 - package build는 명시한 Core candidate prefix만 사용하고, clean consumer는 repository source 또는
   `core/build` fallback을 읽지 않는다.
 
-## 다음 검토 조건
+## 구현 후 self-review 결과
 
-service source와 dynamic fallback을 삭제한 뒤 source test, contract test, type check, native
-extension build, raw sample process와 package consumer를 실행한다. 그 결과의 새 manifest와 전체
-diff를 기준으로 allocation·copy·GIL·lock contention·dead code를 다시 확인하고, 미해결
-`Critical`·`High`·`Medium` finding이 없을 때만 최종 `CLEAN`으로 갱신한다.
+- Framework 기능을 raw package root, FFI, socket branch, fixture, sample과 perf에서 제거했다. source scan과
+  optimization guard에 이전 export, dynamic fallback 또는 raw path 우회가 남아 있지 않다.
+- `Message`와 `Received`의 native parts ownership, callback reference lifetime, close gate와 no-data 반환
+  형태를 production path와 contract test에서 다시 확인했다.
+- `tests/hot-path-cost-inventory.json`의 5개 비용 항목은 allocation, copy, lock, GIL과 no-cost로 분류되어
+  있고 `unclassified`는 0건이다. `Py_BEGIN_ALLOW_THREADS`, part failure cleanup과 native bridge guard가
+  유지된다.
+- Package provenance를 setup script와 candidate builder에 모았다. build는 명시적인 `ZLINK_CORE_PREFIX`를
+  받고 clean consumer는 repository `src`와 `core/build`를 fallback으로 사용하지 않는다.
+- POSD red flag를 다시 읽은 결과, 이 변경에는 새 public pass-through facade, 중복 codec/provider, caller에
+  native 결정 노출이 없다. 확인 가능한 Critical·High·Medium finding은 없었다.
+
+이 결과는 같은 checkout에서 수행한 Codex self-review다. 독립 reviewer가 동일한 source manifest와 fresh
+evidence를 승인하기 전에는 전체 작업을 `CLEAN`으로 표시하지 않는다.

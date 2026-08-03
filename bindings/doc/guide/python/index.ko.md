@@ -1,209 +1,109 @@
-[바인딩 가이드](../README.ko.md) · [코어 가이드](https://kairos-code-dev.github.io/zlink/guide/01-overview/)
+# Python 바인딩 사용 안내
 
-# Python 바인딩 가이드 (`zlink`)
+이 문서는 `zlink` Python package로 Core raw messaging을 사용하는 방법을 설명한다. Python 3.9
+이상을 지원하며, native runtime은 wheel에 포함된다.
 
-Python에서 zlink를 사용하는 방법을 실제 샘플 코드 중심으로 설명합니다.
-메시징 개념은 [코어 가이드](https://kairos-code-dev.github.io/zlink/guide/01-overview/)를 참고하세요.
-
----
-
-## 설치
-
-```bash
-pip install zlink
-```
-
-- **Python 3.9** 이상.
-- 네이티브 코어가 플랫폼별 wheel에 번들됩니다.
-
-```python
-import zlink
-```
-
----
-
-## 5분 예제 — PING/ACK
-
-모든 리소스는 `with` 문으로 관리합니다.
+## 설치와 첫 송수신
 
 ```python
 import zlink
 
-# 서버
 with zlink.create_context() as ctx:
-    with zlink.create_pair_socket(ctx) as server:
-        server.bind("tcp://127.0.0.1:5555")
-        received = zlink.create_received()
-        server.recv_into(received)
-        with received:
-            payload = received.to_bytes_list()[0]
-            print(payload)  # b"PING"
-        server.send().message(b"ACK").submit()
+    with zlink.create_pair_socket(ctx) as sender:
+        with zlink.create_pair_socket(ctx) as receiver:
+            sender.bind("inproc://python-guide-pair")
+            receiver.connect("inproc://python-guide-pair")
 
-# 클라이언트
-with zlink.create_context() as ctx:
-    with zlink.create_pair_socket(ctx) as client:
-        client.connect("tcp://127.0.0.1:5555")
-        client.send().message(b"PING").submit()
-
-        received = zlink.create_received()
-        client.recv_into(received)
-        with received:
-            print(received.to_bytes_list()[0])  # b"ACK"
+            sender.send().message(b"hello").submit()  # 한 part를 전송한다.
+            received = zlink.create_received()  # 호출자가 수신 저장 공간을 소유한다.
+            assert receiver.recv_into(received)
+            with received:
+                assert received.to_bytes_list() == [b"hello"]
 ```
 
----
+`with` 블록은 context와 socket의 native resource를 해제한다. 독립 process 사이의 TCP 예제는
+`bindings/python/samples/pair_recv_sample.py`에서 확인한다.
 
-## 핵심 타입
+## Message와 Received
 
-### 컨텍스트
-
-```python
-with zlink.create_context() as ctx:
-    # ctx.close()는 with 블록 종료 시 자동 호출
-    pass
-```
-
-### 메시지
-
-Python 바인딩은 `bytes` 객체를 메시지로 직접 사용합니다. `send().message()` 호출 시
-자동으로 복사본을 만듭니다.
+송신 builder에는 여러 part를 추가할 수 있다. `Message.from_(value)`는 caller 값에서 독립된 message를
+만든다. 수신 결과는 `Received`가 보유하며, owner가 열린 동안에만 `parts`의 native view를 사용한다.
+다른 task나 오래 유지할 값으로 넘기려면 아래처럼 명시적으로 복사한다.
 
 ```python
-# 바이트 리터럴로 전송
-socket.send().message(b"hello").submit()
+message = zlink.Message.from_(bytearray(b"payload"))  # caller buffer와 분리된 message를 만든다.
+with message:
+    socket.send().message(message).submit()  # submit 성공 뒤 native 소유권이 이동한다.
 
-# 문자열을 UTF-8로 인코딩
-socket.send().message("hello".encode()).submit()
-
-# 수신 후 페이로드 접근
 received = zlink.create_received()
-socket.recv_into(received)
+socket.recv_into(received)  # no-data를 허용하는 non-blocking 호출이면 False를 반환한다.
 with received:
-    parts = received.to_bytes_list()     # [b"part1", b"part2", ...]
-    text = parts[0].decode("utf-8")
+    parts = received.to_bytes_list()  # owner 밖으로 전달할 snapshot을 만든다.
 ```
 
-### Received — 수신 봉투
+`RecvFlags.DONT_WAIT`를 지정한 receive는 message가 없으면 `False`를 반환한다. timer나 monitor처럼
+pending value를 직접 반환하는 control API는 값이 없을 때 `None`을 반환한다.
+
+## DEALER와 ROUTER
+
+DEALER와 ROUTER는 raw `RoutingId`와 request sequence를 유지한다. ROUTER가 받은 `Received`에서
+`routing_id`를 읽고, 같은 metadata를 reply builder가 사용한다.
 
 ```python
-received = zlink.create_received()
-ok = socket.recv_into(received)   # True = 수신 성공
-with received:
-    parts = received.to_bytes_list()
-    rid = received.routing_id     # RoutingId 또는 None
-    seq = received.request_seq    # int 또는 None (요청 수신 시)
+with zlink.create_context() as ctx:
+    with zlink.create_dealer_socket(ctx) as dealer:
+        with zlink.create_router_socket(ctx) as router:
+            router.bind("inproc://python-guide-request")
+            dealer.connect("inproc://python-guide-request")
+
+            dealer.request().message(b"ping").submit(on_reply)  # reply callback을 등록한다.
+            received = zlink.create_received()
+            assert router.recv_into(received)
+            with received:
+                received.reply().message(b"pong").submit()  # 수신 routing metadata로 회신한다.
 ```
 
-### 라우팅 ID
+실제 callback lifetime과 timeout 처리는 `request_reply_callback_sample.py`를 참고한다.
+
+## Routing ID와 오류
+
+고정 길이 routing id는 `RoutingId.from_(bytes)`로 만든다. 빈 값과 Core 최대 길이를 넘는 값은 입력
+검사에서 거부된다.
 
 ```python
-rid = zlink.RoutingId(b"server-01")
-socket.set_routing_id(b"client-01")   # 바이트 직접 전달도 가능
-```
-
----
-
-## 소유권과 수명
-
-| 상황 | 규칙 |
-|------|------|
-| `submit()` 성공 | 전달된 bytes는 내부적으로 복사되므로 원본 재사용 가능 |
-| `recv_into()` 성공 | `with received:` 블록으로 수명 관리. `close()` 시 파트 해제 |
-| 요청 회신 파트 | `submit(callback)` 콜백으로 받은 각 파트를 `part.close()` 필요 |
-
----
-
-## 에러 처리
-
-```python
+rid = zlink.RoutingId.from_(b"server-01")
 try:
     socket.send().message(b"data").submit()
-except zlink.SubmitError as e:
-    if e.result == zlink.SubmitResult.BACKPRESSURED:
-        pass  # 재시도
+except zlink.SubmitError as exc:
+    if exc.result == zlink.SubmitResult.BACKPRESSURED:
+        # back-pressure는 결과를 확인한 뒤 application policy로 처리한다.
+        pass
     else:
         raise
 ```
 
-예외 타입: `SubmitError`, `RequestError`, `RecvError`,
-`BindError`, `ConnectError`, `ConfigError`, `CloseError`, `HandlerError`.
-모두 `ZlinkError`를 상속합니다.
+`SubmitError`, `RequestError`, `RecvError`, `BindError`, `ConnectError`, `ConfigError`와 `CloseError`는
+`ZlinkError` 계열이며 `result`, `code`, `native_errno`를 제공한다.
 
----
+## Sample와 perf
 
-## C API 대응표
+raw sample runner에는 다음 process가 포함된다.
 
-| C API | Python API |
-|-------|-----------|
-| `zlink_ctx_new()` | `zlink.create_context()` |
-| `zlink_ctx_term()` | `ctx.close()` |
-| `zlink_socket(ctx, type)` | `zlink.create_pair_socket(ctx)` 등 |
-| `zlink_bind(s, ep)` | `socket.bind(ep)` |
-| `zlink_connect(s, ep)` | `socket.connect(ep)` |
-| `zlink_send_part(...)` | `socket.send().message(b).submit()` |
-| `zlink_recv_part(...)` | `socket.recv_into(received)` |
-| `zlink_msg_data(msg)` | `part.to_bytes()` |
-| `zlink_routing_id_t` | `zlink.RoutingId(b"id")` |
-| `zlink_spot_node_new(ctx, opts)` | `zlink.create_spot_node(ctx)` |
+- `pair_recv_sample.py`
+- `dealer_router_recv_sample.py`
+- `request_reply_callback_sample.py`
+- `pubsub_recv_sample.py`
+- `stream_recv_sample.py`
+- `stream_packet_callback_sample.py`
+- `monitor_recv_sample.py`
 
----
-
-## 네이티브 라이브러리 / 배포
-
-```python
-major, minor, patch = zlink.version()   # (major, minor, patch) 튜플
-print(f"zlink {major}.{minor}.{patch}")
-```
-
-네이티브 코어는 플랫폼별 wheel에 들어 있어 따로 설치하지 않아도 됩니다.
-
-**스레딩:** `Context`는 스레드 간 공유 가능하지만 소켓은 **하나의 스레드에서만**
-사용합니다. 블로킹 수신은 `asyncio.to_thread(socket.recv_into, received)`로
-오프로드합니다.
-
----
-
-## 샘플
-
-`bindings/python/samples/` 디렉터리의 검증된 샘플입니다.
-
-| 파일 | 설명 |
-|------|------|
-| `pair_recv_sample.py` | PAIR 송수신 |
-| `dealer_router_recv_sample.py` | DEALER/ROUTER 송수신 |
-| `request_reply_callback_sample.py` | 콜백 요청/응답 |
-| `pubsub_recv_sample.py` | XPUB/SUB 발행·구독 |
-| `stream_recv_sample.py` | STREAM 원시 TCP |
-| `stream_packet_callback_sample.py` | STREAM 패킷 콜백 |
-| `monitor_recv_sample.py` | 모니터 이벤트 수신 |
-| `spot_recv_sample.py` | SpotNode/Spot PUB/SUB |
-| `spot_request_callback_sample.py` | SpotNode 콜백 요청 |
-| `actor_single_player_queue_sample.py` | 액터 조인·이동·메시지 큐 |
-| `actor_room_server_sample.py` | 방 서버 패턴 |
-| `actor_gateway_relay_sample.py` | 게이트웨이 릴레이 |
+Perf runner는 사용할 Core 또는 wheel runtime을 명시해야 한다. runner가 출력하는 path와 SHA-256을
+candidate evidence와 비교한다.
 
 ```bash
-cd bindings/python/samples
-python pair_recv_sample.py
-python run_samples.py   # 전체 실행
+ZLINK_LIBRARY_PATH=/absolute/path/to/libzlink.so \
+  bindings/python/perf/run_benchmarks.sh --smoke --pattern PAIR \
+  --duration 1 --msg-sizes 64 --transports inproc --runs 1
 ```
 
----
-
-## 더 보기
-
-**소켓 패턴**
-- [소켓 패턴 개요](https://kairos-code-dev.github.io/zlink/guide/03-0-socket-patterns/)
-  — [PAIR](https://kairos-code-dev.github.io/zlink/guide/03-1-pair/) · [PUB/SUB](https://kairos-code-dev.github.io/zlink/guide/03-2-pubsub/) · [DEALER](https://kairos-code-dev.github.io/zlink/guide/03-3-dealer/) · [ROUTER](https://kairos-code-dev.github.io/zlink/guide/03-4-router/) · [STREAM](https://kairos-code-dev.github.io/zlink/guide/03-5-stream/) · [프록시](https://kairos-code-dev.github.io/zlink/guide/03-6-proxy/)
-
-**서비스**
-- [Framework 서비스 개요](../../../../framework/doc/framework/common/guide/server/03-concepts.ko.md)
-
-**운영**
-- [소켓 옵션](https://kairos-code-dev.github.io/zlink/guide/12-socket-options/)
-- [TLS 보안](https://kairos-code-dev.github.io/zlink/guide/05-tls-security/)
-- [모니터링](https://kairos-code-dev.github.io/zlink/guide/06-monitoring/)
-- [스레드 안전성](https://kairos-code-dev.github.io/zlink/guide/11-thread-safety/)
-- [메시지 API](https://kairos-code-dev.github.io/zlink/guide/09-message-api/)
-- [라우팅 ID](https://kairos-code-dev.github.io/zlink/guide/08-routing-id/)
+Smoke mode는 process lifecycle과 필수 `RESULT` row를 확인하며 공식 report를 만들지 않는다.

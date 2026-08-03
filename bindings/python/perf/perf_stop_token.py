@@ -29,7 +29,7 @@ def is_stop_token_in_parts(parts) -> bool:
 
     Most patterns send the token as a single-frame message, so checking
     the first frame is enough; we still scan all frames defensively for
-    multi-frame transports (router/dealer-router, spot mesh).
+    multi-frame transports such as router/dealer-router.
     """
 
     if not parts:

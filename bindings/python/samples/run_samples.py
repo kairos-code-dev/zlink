@@ -49,22 +49,33 @@ def _run_python_script(script_path, *, timeout, cwd, env):
 
 
 def main():
+    arguments = sys.argv[1:]
+    if arguments not in ([], ["--installed"]):
+        raise SystemExit("usage: run_samples.py [--installed]")
+    installed = arguments == ["--installed"]
     _verify_canonical_samples()
     env = dict(os.environ)
-    env["PYTHONPATH"] = os.pathsep.join(
-        [
-            str(ROOT / "src"),
-            str(SAMPLES_DIR),
-            env.get("PYTHONPATH", ""),
-        ]
-    ).rstrip(os.pathsep)
+    if installed:
+        # The clean-consumer mode must resolve zlink from the installed wheel,
+        # while still making sample_support importable from the sample tree.
+        env["PYTHONPATH"] = str(SAMPLES_DIR)
+        run_cwd = Path.cwd()
+    else:
+        env["PYTHONPATH"] = os.pathsep.join(
+            [
+                str(ROOT / "src"),
+                str(SAMPLES_DIR),
+                env.get("PYTHONPATH", ""),
+            ]
+        ).rstrip(os.pathsep)
+        run_cwd = ROOT
 
     passed = 0
     for name in CANONICAL_SAMPLES:
         sample_path = SAMPLES_DIR / name
         result = _run_python_script(
             sample_path,
-            cwd=ROOT,
+            cwd=run_cwd,
             env=env,
             timeout=120,
         )

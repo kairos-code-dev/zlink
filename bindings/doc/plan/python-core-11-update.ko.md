@@ -12,9 +12,8 @@ Linux x86_64에서 source test, clean wheel consumer, raw sample process와 perf
 - 현재 `core/build`에서 만든 `11.2.0` candidate와 저장소에 있는 공통 `V11-R2`·`V11-M3-CORE-PKG`
   evidence가 같은 candidate identity인지 확인되지 않았다. 이전 `11.1.0` evidence를 `11.2.0`의 승인으로
   재사용하지 않는다.
-- CPython 3.9 Docker clean consumer와 host CPython 3.12 clean consumer를 각각 같은 candidate 절차로
-  실행했다. Pyright target도 Python 3.9로 유지한다. 이번 source 수정 뒤에는 두 consumer와 package를
-  다시 생성해야 한다.
+- CPython 3.9.25와 host CPython 3.12.3 clean consumer를 같은 candidate 절차로 다시 실행했다. Pyright
+  target은 Python 3.9로 유지한다. 최신 package snapshot은 progress log의 `v4` evidence에 고정한다.
 - release 지원 target은 Linux x86_64로 한정했고, 다른 target은 setup·loader에서 fail-fast하도록 정리했다.
 - 독립 frontier reviewer는 초기 candidate를 `NOT CLEAN`으로 판정했다. Python source의 High·Medium
   finding은 수정했다. 최종 재검토에서 공통 spec에 Core 11에 없는 raw socket channel metadata 선언과
@@ -34,9 +33,9 @@ evidence를 구분하기 위한 것이다.
 | Core runtime | `core/build/lib/libzlink.so.11.2.0` |
 | Core SONAME | `libzlink.so.11` |
 | Python package | `zlink==11.2.0` |
-| Python source manifest | `.artifacts/wsl/bindings-candidate/python39/`·`python312/` 아래 manifest |
-| package evidence | 각 output root의 `python/candidate-input.env` |
-| wheel | 각 output root의 `python/wheels/` 아래 산출물 |
+| Python source manifest | `.artifacts/wsl/bindings-candidate/python39-self-20260804-v4/`·`python312-self-20260804-v4/` 아래 manifest |
+| package evidence | 각 self-review output root의 `python/candidate-input.env` |
+| wheel | 각 self-review output root의 `python/wheels/` 아래 산출물 |
 
 Core candidate의 header, spec, source, runtime, exported symbol inventory와 layout은
 [`create-manifest.sh`](../../../scripts/local-package/bindings-candidate/create-manifest.sh)가 봉인한다.
@@ -193,13 +192,13 @@ ZLINK_LIBRARY_PATH="$PWD/core/build/lib/libzlink.so.11.2.0" \
 
 | Gate | 현재 상태 | evidence 또는 남은 조건 |
 |------|----------|------------------------|
-| Local Core candidate 입력 | `PASS` | `core-11.2.0.env`와 candidate-input의 동일 revision/hash |
+| Local Core candidate 입력 | `PASS` | `core-11.2.0-python-self-20260804-v4.env`와 candidate-input의 동일 revision/hash |
 | 공통 승인 candidate와의 identity | `BLOCKED` | 현재 11.2.0에 대응하는 독립 V11-R2·V11-M3 evidence 확인 필요 |
 | Python source manifest | `PASS` | `python-source-manifest-11.2.0.json`, aggregate와 direct input hash |
 | 승인 prefix native build | `PASS` | candidate build가 `ZLINK_CORE_PREFIX`로 wheel build |
 | Raw FFI·symbol·layout | `PASS` | source tests, candidate manifest symbol/layout hash |
 | Public API와 Framework surface 부재 | `PASS` | export/guard test와 source scan |
-| Contract·unit test | `PASS` | `pytest`: 64 passed; close retry, callback ownership, invalid payload, surface guard 포함 |
+| Contract·unit test | `PASS` | `pytest`: 65 passed; close retry, callback ownership, invalid payload, `try_copy_to`와 surface guard 포함 |
 | `single_part` naming draft | `PASS` | 현재 public contract인 `single_part_or_throw()`를 유지; 별도 draft는 승인 전 설계 후보로 분리 |
 | Python 3.9 runtime와 최고 version | `PASS` | CPython 3.9 Docker와 host CPython 3.12 clean consumer |
 | `pyright`·`py.typed` | `PASS` | public contracts 대상 pyright 0 errors, wheel file check |
@@ -237,7 +236,7 @@ POSD·DDD 경계를 직접 다시 검토했다. 이 과정에서 `Message.try_co
 `0 errors, 0 warnings, 0 informations`, Core weighted-selection integration은 `17/17`, typed option
 unit은 `2/2`로 통과했다.
 
-현재 local package는 HEAD `36c2d7e2036` 이후 생성하는 최신 commit과 runtime SHA
+현재 local package는 snapshot HEAD `de948ac89ec753cfda5b1b1f9869c78336f647da`와 runtime SHA
 `ce28d7908bf62a1b39b481aad2a76c6e76955e3a93ea73e1cbdaa913c4883138`에 고정했다. CPython 3.9.25와
 3.12.3 package/clean consumer를 각각 통과했고, 두 installed sample은 `7/7`이다. single·multi perf
 smoke도 현재 runtime에서 완료됐다. 자세한 manifest·wheel hash는

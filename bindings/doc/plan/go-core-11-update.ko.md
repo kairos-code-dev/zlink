@@ -16,7 +16,7 @@ Linux x86_64 runtime은 Core 11.1.0 raw contract를 사용한다. Linux aarch64�
 Darwin payload는 현재 Core 11 runtime으로 검증되지 않았다. Root의 `VERSION`과 `core/include/zlink.h`에 있는
 11.2.0 변경은 다른 workstream의 dirty change이므로 이 작업의 package 입력으로 사용하지 않는다.
 
-현재 Go source, 승인 Core 11.1.0 runtime, raw sample과 candidate-bound local file-proxy consumer의 범위는
+현재 Go source, 승인 Core 11.1.0 runtime, raw sample과 candidate identity를 연결한 local file-proxy consumer의 범위는
 통과했다. Service API, Spot, Actor와 MeshNode projection은 제거했다. 따라서 현재 판정은 **PARTIAL / NOT
 CLEAN**이다. 전체 완료를 막는 조건은 다음과 같다.
 
@@ -200,8 +200,8 @@ Package zip에는 Python report helper가 포함되지 않으므로 `--smoke` �
 | Perf runtime boundary | `c6b37ac0ee` | Root `VERSION` 대신 Go package header에서 native SONAME version을 해석 |
 | Lifecycle owner boundary | `e9be2c8c46` | `socketCore`가 request progress와 callback handle lifecycle을 소유하고 callback close race를 제거 |
 | Package smoke boundary | `6d698c7e68` | Go package perf `--smoke`가 package 외부 Python report helper 없이 동작하도록 고정 |
-| Current-HEAD package boundary | `427fbce0f5c` | 현재 HEAD source revision으로 candidate-bound package와 clean consumer, race·sample·perf smoke를 재검증 |
-| Platform builder boundary | `3740c59ad9` | non-x86_64 package builder 거부 결과와 same-candidate platform gate를 기록 |
+| Package source boundary | `427fbce0f5c` | 이 source revision으로 candidate identity를 연결한 package와 clean consumer, race·sample·perf smoke를 재검증 |
+| Platform builder boundary | `3740c59ad9` | non-x86_64 package builder 거부 결과와 같은 candidate를 요구하는 platform gate를 기록 |
 
 그러나 구현자가 아닌 frontier reviewer의 read-only 전체 diff review evidence가 없다. V11-R2 Core review도
 `independent: false`이므로 이 결과를 Go 독립 review로 대체하지 않는다. `contract`, `POSD`, `DDD`,
@@ -301,9 +301,9 @@ scripts/local-package/go/build-wsl.sh \
 | Go·Rust parity inventory | `PARTIAL` | 대응 surface·error·ownership 행은 기록했지만 submit 승인, contract test와 parity `CLEAN` 판정이 남음 |
 | Submit·`context.Context` draft 승인과 contract | `PARTIAL` | cancellation/error tests 통과; submit 반환 draft 승인과 error-only signature는 미완료 |
 | Raw sample process runner | `PASS` | `samples: pass=7 fail=0` |
-| File proxy package contents | `PASS` | candidate-bound zip에 Linux runtime 포함, service/build/results forbidden-entry 없음 |
+| File proxy package contents | `PASS` | candidate identity를 기록한 zip에 Linux runtime 포함, service/build/results forbidden-entry 없음 |
 | Replace 없는 clean module consumer | `PASS` | 빈 `GOMODCACHE`/`GOCACHE`, go build와 Pair roundtrip, module-cache ldd |
-| Linux·macOS native consumer | `PARTIAL` | Linux x86_64 PASS. Linux arm64와 macOS 요청은 현재 builder가 exit 2로 거부하고, same-candidate native consumer evidence도 없음 |
+| Linux·macOS native consumer | `PARTIAL` | Linux x86_64 PASS. Linux arm64와 macOS 요청은 현재 builder가 exit 2로 거부하고, 같은 candidate runtime을 사용한 native consumer evidence도 없음 |
 | 한국어·영문 spec, GoDoc와 guide | `PARTIAL` | Go spec/GoDoc/sample entrypoint 갱신; 공통 draft·parity 통합 미완료 |
 | Package·통합 최종 review | `PENDING` | Linux x86_64 candidate 연결은 통과했지만 다른 platform evidence와 독립 review 필요 |
 

@@ -1,6 +1,7 @@
 # Go binding Core 11 package 재검증 기록
 
-이 기록은 2026-08-04에 `427fbce0f5c` 시점의 Go binding source로 생성한 candidate-bound fresh6 package evidence를 정리한다. Linux
+이 기록은 2026-08-04에 `427fbce0f5c` 시점의 Go binding source로 생성하고 candidate identity를 연결한 fresh6 package
+evidence를 정리한다. Linux
 x86_64 package·clean consumer·sample·perf smoke 범위는 통과했지만, Go 작업 전체는 공통 submit 계약 승인,
 독립 frontier review와 다른 platform native consumer가 남아 `PARTIAL / NOT CLEAN`이다.
 

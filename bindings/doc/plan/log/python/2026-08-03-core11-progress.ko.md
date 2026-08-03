@@ -280,3 +280,29 @@ single은 `status=complete`, `actual_result_lines=5`, multi는 `status=complete`
 `fail=0`, `actual_result_lines=5`를 반환했다. Candidate JSON은 현재 Core owned path와 aggregate를
 검증했지만, 기존 V11-R2 evidence는 이 candidate manifest를 승인하지 않아 독립 review와 최종
 `CLEAN` 판정이 필요한 상태다.
+
+## 2026-08-04 Codex self-review package refresh (v6 final)
+
+계획서에서 snapshot 번호와 output directory를 직접 참조하지 않도록 정리한 commit까지 포함해
+최종 package snapshot을 다시 생성했다. 이 변경 뒤에는 계획서를 수정하지 않으며, 아래 snapshot은
+이 progress log만 추가하기 전의 checkout을 가리킨다.
+
+```text
+coreManifest: .artifacts/wsl/bindings-candidate/core-11.2.0-python-self-20260804-v6.env
+coreManifestSha256: 7994cf0f933cbf276e0fa0662ed5c0d6b6362985e538ae5ae7c47905fbac3310
+coreRevision: fcbf9e2a2b04e731a547a6ceb39aed3f7e35bb89
+coreRuntimeSha256: ce28d7908bf62a1b39b481aad2a76c6e76955e3a93ea73e1cbdaa913c4883138
+cp312CandidateInputSha256: 4a248e11ecc410271b43641495d9231a94801467c3f3fed3efc745bbf91665bc
+cp39CandidateInputSha256: f3aaebbb5abf680ead367800e85ea55cee57a6c3499620c05aa1c28454924445
+pythonSourceManifestSha256: 38d300410aba10c22ea16040465f9d8a2297f3e1efe7270ccc23200fd8ae42c5
+pythonSourceAggregateSha256: 4d1e014e03e56d85e732fa165aaab6e4823a79721cd72c4bd26f78f87eb54cfa
+cp312WheelSha256: 9b6660f1c2b82c96baf8207d4eba16a4e4a6496a0058a2747154df02b3a367b6
+cp39WheelSha256: a8df7d5d463455dee5cf4ef0b08dbf5a64614f9b3d987ce86e0e33da4e136f98
+```
+
+v6 package는 CPython 3.12.3과 Ubuntu 24.04 + deadsnakes CPython 3.9.25에서 각각 source test
+`65 passed`, clean consumer, installed sample `7/7`을 통과했다. Core runtime SHA는 v5와 같으며,
+single·multi perf smoke도 같은 runtime에서 완료됐다. 기존 V11-R2 evidence는 여전히 이전 candidate만
+승인하므로 현재 candidate에 입력하면 `review evidence does not approve the supplied candidate
+manifest SHA-256`로 실패한다. 따라서 독립 V11-R2·V11-M3-CORE-PKG evidence와 frontier reviewer의
+최종 `CLEAN` 판정은 이 자체 검토 범위 밖의 남은 gate다.

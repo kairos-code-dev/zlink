@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import ctypes
-import ctypes.util
 import os
 import pathlib
 
@@ -14,8 +13,7 @@ def load_native_library(bind=None):
     else:
         for candidate in (
             _find_bundled_library(),
-            _find_dev_library(),
-            ctypes.util.find_library("zlink"),
+            _find_prefix_library(),
         ):
             if candidate and candidate not in candidates:
                 candidates.append(candidate)
@@ -68,33 +66,21 @@ def _find_bundled_library():
     return None
 
 
-def _find_dev_library():
-    base = pathlib.Path(__file__).resolve()
-    repo = base.parents[5]
+def _find_prefix_library():
+    prefix_value = os.environ.get("ZLINK_CORE_PREFIX")
+    if not prefix_value:
+        return None
+
+    prefix = pathlib.Path(prefix_value).expanduser()
     candidates = []
     if os.name == "nt":
-        candidates.extend(
-            [
-                repo / "core" / "build" / "lib" / "zlink.dll",
-                repo / "core" / "build" / "windows-x64" / "lib" / "zlink.dll",
-            ]
-        )
+        candidates.append(prefix / "bin" / "zlink.dll")
     else:
         uname = os.uname().sysname.lower()
         if "darwin" in uname or "mac" in uname:
-            candidates.extend(
-                [
-                    repo / "core" / "build" / "lib" / "libzlink.dylib",
-                    repo / "core" / "build" / "darwin-x64" / "lib" / "libzlink.dylib",
-                ]
-            )
+            candidates.append(prefix / "lib" / "libzlink.dylib")
         else:
-            candidates.extend(
-                [
-                    repo / "core" / "build" / "lib" / "libzlink.so",
-                    repo / "core" / "build" / "linux-x64" / "lib" / "libzlink.so",
-                ]
-            )
+            candidates.append(prefix / "lib" / "libzlink.so")
     for candidate in candidates:
         if candidate.exists():
             return str(candidate)

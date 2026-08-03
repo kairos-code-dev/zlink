@@ -24,10 +24,6 @@ def _tcp_endpoint():
     return port, f"tcp://127.0.0.1:{port}"
 
 
-CHANNEL_NAME = "spot-svc"
-TOPIC = b"spot:callback"
-
-
 class CallbackSendTests(unittest.TestCase):
     def setUp(self):
         self.ctx = zlink.create_context()
@@ -67,36 +63,6 @@ class CallbackSendTests(unittest.TestCase):
         self.assertEqual(callback_error[0].native_errno, errno.EDEADLK)
 
         stream.close()
-
-    def test_spot_send_inside_on_dispatch_event_raises_explicit_error(self):
-        node = zlink.create_spot_node(self.ctx)
-        spot = node.create_spot()
-        done = threading.Event()
-        callback_error = []
-        try:
-            def on_message(_spot, _event):
-                try:
-                    spot.send_to_channel(CHANNEL_NAME).message(b"reply").submit()
-                except Exception as exc:
-                    callback_error.append(exc)
-                finally:
-                    done.set()
-
-            spot.on_dispatch_event(on_message)
-            spot.set_subscription(TOPIC)
-            deadline = time.monotonic() + 3.0
-            while not done.is_set():
-                if time.monotonic() >= deadline:
-                    self.fail("callback timed out")
-                spot.publish(TOPIC).message(b"ping").submit()
-                done.wait(0.05)
-            self.assertEqual(len(callback_error), 1, f"callback raised: {callback_error}")
-            self.assertIsInstance(callback_error[0], zlink.ZlinkError)
-            self.assertEqual(callback_error[0].native_errno, errno.EDEADLK)
-        finally:
-            spot.close()
-            node.close()
-
 
 if __name__ == "__main__":
     unittest.main()

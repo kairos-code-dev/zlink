@@ -53,7 +53,6 @@ from ..handles.native_support import (
     ZlinkRoutingId,
     _SOCKET_RECV_HANDLER,
     _SOCKET_SEND_READY_HANDLER,
-    _SOCKET_SUBSCRIBE_HANDLER,
     _BytesReceivedPartsOwner,
     _ReceivedPartsOwner,
     _LEGACY_SOCKET_TYPE_MAP,
@@ -230,8 +229,6 @@ class _BaseSocket:
         self._socket_type = socket_type
         self._recv_handler = None
         self._recv_handler_cb = None
-        self._subscribe_handler = None
-        self._subscribe_handler_cb = None
         self._send_ready_handler = None
         self._send_ready_handler_cb = None
         self._packet_handler = None
@@ -542,14 +539,12 @@ class _BaseSocket:
 
     def close(self):
         self._recv_handler = None
-        self._subscribe_handler = None
         self._send_ready_handler = None
         self._packet_handler = None
         dispatcher = self._dispatcher
         if dispatcher is not None:
             dispatcher.close()
         self._recv_handler_cb = None
-        self._subscribe_handler_cb = None
         self._send_ready_handler_cb = None
         self._packet_handler_cb = None
         self._socket_handle.close()
@@ -1068,52 +1063,6 @@ class _SubscriberSocket(_Socket):
                 return None
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         return (buffer.raw[:size.value].decode("utf-8"), bool(is_pattern.value))
-
-    def _attach_subscribe_handler(self, handler):
-        if handler is None:
-            raise ValueError("handler must not be None")
-        if self._subscribe_handler is not None:
-            raise RuntimeError("handler is already attached")
-
-        self._subscribe_handler = handler
-        dispatcher = self._dispatcher
-
-        def _invoke(received):
-            try:
-                handler(received)
-            except Exception:
-                try:
-                    received.close()
-                finally:
-                    _report_unhandled_callback_exception(handler)
-            else:
-                received.close()
-
-        def _callback(routing_id_ptr, topic_ptr, topic_len, parts_ptr, part_count, _):
-            try:
-                routing_id = None
-                if routing_id_ptr:
-                    routing_id = _routing_id_bytes(routing_id_ptr.contents)
-                topic = ""
-                if topic_ptr and topic_len:
-                    topic = _decode_topic_text(ctypes.string_at(topic_ptr, topic_len))
-                received = TopicMessage(
-                    topic,
-                    _clone_received_owner(parts_ptr, int(part_count)),
-                    routing_id,
-                )
-            except Exception:
-                _report_unhandled_callback_exception(handler)
-                return
-            dispatcher.submit(lambda received=received: _invoke(received))
-
-        callback = _SOCKET_SUBSCRIBE_HANDLER(_callback)
-        rc = lib().zlink_subscribe_handler(self._handle, callback, None)
-        if rc != 0:
-            self._subscribe_handler = None
-            _raise_result_error(HandlerError, HandlerResult, rc, lib().zlink_errno())
-        self._subscribe_handler_cb = callback
-
 
 _BaseSocket._OPTION_SET_ROUTES = (
     ((5,), "routing IDs", _RoutingIdSocket,

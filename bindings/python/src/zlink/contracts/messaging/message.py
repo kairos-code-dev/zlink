@@ -61,11 +61,6 @@ class Message(Protocol):
         """Decode the payload as text using ``encoding``."""
         ...
 
-    def get_property(self, name):
-        """Return the native message property ``name``, or ``None`` when it is
-        absent."""
-        ...
-
     def ref_count(self):
         """Return the native payload reference count (a diagnostic only; it does
         not affect ownership)."""

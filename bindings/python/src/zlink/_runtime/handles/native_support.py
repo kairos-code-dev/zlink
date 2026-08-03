@@ -200,15 +200,6 @@ _SOCKET_RECV_HANDLER = ctypes.CFUNCTYPE(
     ctypes.c_size_t,
     ctypes.c_void_p,
 )
-_SOCKET_SUBSCRIBE_HANDLER = ctypes.CFUNCTYPE(
-    None,
-    ctypes.POINTER(ZlinkRoutingId),
-    ctypes.c_char_p,
-    ctypes.c_size_t,
-    ctypes.POINTER(ZlinkMsg),
-    ctypes.c_size_t,
-    ctypes.c_void_p,
-)
 _SOCKET_SEND_READY_HANDLER = ctypes.CFUNCTYPE(
     None,
     ctypes.c_void_p,
@@ -217,15 +208,6 @@ _SOCKET_SEND_READY_HANDLER = ctypes.CFUNCTYPE(
 _REPLY_HANDLER = ctypes.CFUNCTYPE(
     None,
     ctypes.c_int,
-    ctypes.POINTER(ZlinkMsg),
-    ctypes.c_size_t,
-    ctypes.c_void_p,
-)
-_ROUTER_HANDLER = ctypes.CFUNCTYPE(
-    None,
-    ctypes.POINTER(ZlinkRoutingId),
-    ctypes.POINTER(ZlinkRoutingId),
-    ctypes.c_uint64,
     ctypes.POINTER(ZlinkMsg),
     ctypes.c_size_t,
     ctypes.c_void_p,
@@ -273,18 +255,16 @@ def _msg_size(msg):
 
 
 def _msg_refcnt(msg):
-    return int(lib().zlink_msg_refcnt(ctypes.byref(msg)))
-
-
-def _msg_gets(msg, property_name):
-    if not property_name:
-        return None
-    if isinstance(property_name, str):
-        property_name = property_name.encode("utf-8")
-    value = lib().zlink_msg_gets(ctypes.byref(msg), property_name)
-    if not value:
-        return None
-    return value.decode("utf-8", errors="replace")
+    error_out = ctypes.c_int()
+    value = int(lib().zlink_msg_refcnt(ctypes.byref(msg), ctypes.byref(error_out)))
+    if value < 0:
+        _raise_result_error(
+            ConfigError,
+            ConfigResult,
+            error_out.value,
+            lib().zlink_errno(),
+        )
+    return value
 
 
 def _msg_to_bytes(msg):

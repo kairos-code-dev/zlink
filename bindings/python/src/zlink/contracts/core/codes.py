@@ -29,20 +29,6 @@ from ..eventing.codes import (
     PollEventFlag,
     PollSourceKind,
 )
-from ..service.codes import (
-    SpotNodeMode,
-    SpotNodeSocketOwner,
-    SpotNodeState,
-    SpotPeerSource,
-    SpotPeerKind,
-    SpotPeerState,
-    SpotKind,
-    SpotDispatchEvent,
-    SpotDispatchSubjectKind,
-    SubjectKind,
-    SpotRole,
-)
-
 __all__ = [
     "ContextOption",
     "AutoHwmProfile",
@@ -65,15 +51,4 @@ __all__ = [
     "MonitorEventMask",
     "PollEventFlag",
     "PollSourceKind",
-    "SpotNodeMode",
-    "SpotNodeSocketOwner",
-    "SpotNodeState",
-    "SpotPeerSource",
-    "SpotPeerKind",
-    "SpotPeerState",
-    "SpotKind",
-    "SpotDispatchEvent",
-    "SpotDispatchSubjectKind",
-    "SubjectKind",
-    "SpotRole",
 ]

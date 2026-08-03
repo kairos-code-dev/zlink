@@ -52,17 +52,10 @@ DEFAULT_PATTERNS = (
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
     "PUBSUB",
-    "SPOT",
-    "SPOT_REQREP",
-    "SPOT_SENDSEND",
     "STREAM",
 )
 DEFAULT_MSG_SIZES = ("64", "256", "1024", "4096", "65536", "131072")
 DEFAULT_STREAM_MSG_SIZES = ("64", "256", "1024", "65536")
-SPOT_CONTROL_PATTERNS = {"SPOT", "SPOT_REQREP", "SPOT_SENDSEND"}
-SPOT_CONTROL_NON_TCP_TRANSPORTS = {"tls", "ws", "wss"}
-SPOT_CONTROL_CONNECT_READY_TIMEOUT_MS = "30000"
-SPOT_CONTROL_SERVER_READY_TIMEOUT_MS = "30000"
 DEALER_DEALER_SERVER_SHUTDOWN_TIMEOUT_MS = "30000"
 RAW_TRANSPORTS = ("tcp", "tls", "ws", "wss")
 POLICY_TRANSPORTS = {
@@ -70,9 +63,6 @@ POLICY_TRANSPORTS = {
     "DEALER_ROUTER": RAW_TRANSPORTS,
     "ROUTER_ROUTER": RAW_TRANSPORTS,
     "PUBSUB": RAW_TRANSPORTS,
-    "SPOT": ("tcp", "tls", "ws", "wss"),
-    "SPOT_REQREP": ("tcp", "tls", "ws", "wss"),
-    "SPOT_SENDSEND": ("tcp", "tls", "ws", "wss"),
     "STREAM": ("tcp", "tls", "ws", "wss"),
 }
 RUNNABLE_TRANSPORTS = POLICY_TRANSPORTS
@@ -110,6 +100,7 @@ def parse_args(argv):
     parser.add_argument("--results-dir", default="")
     parser.add_argument("--results-tag", default="")
     parser.add_argument("--output", default="")
+    parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--pin-cpu", action="store_true")
     parser.add_argument("--io-threads", default="")
     parser.add_argument("--server-io-threads", default="")
@@ -264,31 +255,6 @@ def _grouped_option_text(patterns, value_for_pattern, *, prefix="MULTI_"):
             f"{','.join(f'{prefix}{pattern}' for pattern in grouped_patterns)}={','.join(values)}"
         )
     return "; ".join(rendered)
-
-
-def _needs_spot_control_timeout_defaults(configs):
-    return any(
-        pattern in SPOT_CONTROL_PATTERNS
-        and transport in SPOT_CONTROL_NON_TCP_TRANSPORTS
-        for pattern, transport, _msg_size in configs
-    )
-
-
-def _apply_spot_control_timeout_defaults(args, env, configs):
-    if not _needs_spot_control_timeout_defaults(configs):
-        return
-    if (
-        not args.connect_ready_timeout_ms
-        and "PERF_MULTI_CONNECT_READY_TIMEOUT_MS" not in env
-        and "PERF_CONNECT_READY_TIMEOUT_MS" not in env
-    ):
-        env["PERF_MULTI_CONNECT_READY_TIMEOUT_MS"] = SPOT_CONTROL_CONNECT_READY_TIMEOUT_MS
-    if (
-        not args.server_ready_timeout_ms
-        and "PERF_MULTI_SERVER_READY_TIMEOUT_MS" not in env
-        and "PERF_SERVER_READY_TIMEOUT_MS" not in env
-    ):
-        env["PERF_MULTI_SERVER_READY_TIMEOUT_MS"] = SPOT_CONTROL_SERVER_READY_TIMEOUT_MS
 
 
 def _needs_dealer_dealer_shutdown_timeout_default(configs):
@@ -566,8 +532,6 @@ def pattern_direction(pattern):
     return "echo" if pattern in {
         "MULTI_DEALER_ROUTER",
         "MULTI_ROUTER_ROUTER",
-        "MULTI_SPOT_REQREP",
-        "MULTI_SPOT_SENDSEND",
         "MULTI_STREAM",
     } else "one-way"
 
@@ -798,90 +762,6 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
                 return f"UNSUPPORTED,current,MULTI_{pattern},{transport}"
             raise SystemExit(f"server did not become ready: {combined}")
         endpoint = ready.split(",", 1)[1]
-        control_endpoint = ""
-
-        if pattern in {"SPOT", "SPOT_REQREP", "SPOT_SENDSEND"}:
-            control_ready = _wait_for_control_line(
-                server,
-                ("CONTROL_READY,",),
-                timeout_s=ready_timeout_s,
-                stdout_chunks=stdout_chunks,
-            )
-            control_endpoint = control_ready.split(",", 1)[1]
-            client_cmd = [
-                sys.executable,
-                str(client_path),
-                "--endpoint",
-                endpoint,
-                "--control-endpoint",
-                control_endpoint,
-                "--duration",
-                args.duration,
-                "--msg-size",
-                msg_size,
-                "--clients",
-                clients,
-                "--transport",
-                transport,
-            ]
-            client = subprocess.Popen(
-                client_cmd,
-                cwd=str(ROOT.parent.parent),
-                env=env,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                **_server_popen_kwargs(),
-            )
-            client_control = _wait_for_control_line(
-                client,
-                ("CLIENT_CONTROL_ENDPOINT,",),
-                timeout_s=ready_timeout_s,
-                stdout_chunks=stdout_chunks,
-            )
-            client_control_endpoint = client_control.split(",", 1)[1]
-            server.stdin.write(f"CONNECT_CONTROL,{client_control_endpoint}\n")
-            server.stdin.flush()
-            control_connected = _wait_for_control_line(
-                server,
-                ("CONTROL_CONNECTED,",),
-                timeout_s=ready_timeout_s,
-                stdout_chunks=stdout_chunks,
-            )
-            client.stdin.write(f"{control_connected}\n")
-            client.stdin.flush()
-            client_ready = _wait_for_control_line(
-                client,
-                ("CLIENT_READY,", "UNSUPPORTED,", "SKIP,"),
-                timeout_s=client_timeout_s,
-                stdout_chunks=stdout_chunks,
-            )
-            if client_ready.startswith(("UNSUPPORTED,", "SKIP,")):
-                return "\n".join(chunk for chunk in stdout_chunks if chunk)
-            if client_ready != f"CLIENT_READY,{msg_size}":
-                raise SystemExit(f"client did not become ready: {client_ready}")
-            server.stdin.write(f"START,{msg_size}\n")
-            server.stdin.flush()
-            client.stdin.write(f"START,{msg_size}\n")
-            client.stdin.flush()
-            try:
-                client.wait(timeout=client_timeout_s)
-            except subprocess.TimeoutExpired as exc:
-                _drain_stdout_queue(client, stdout_chunks)
-                raise exc
-            _drain_stdout_queue(client, stdout_chunks)
-            client_stderr = client.stderr.read() if client.stderr else ""
-            if client_stderr:
-                stderr_chunks.append(client_stderr.strip())
-            if client.returncode != 0:
-                raise subprocess.CalledProcessError(
-                    client.returncode,
-                    client.args,
-                    output="\n".join(stdout_chunks),
-                    stderr=client_stderr,
-                )
-            return "\n".join(chunk for chunk in stdout_chunks if chunk)
         if pattern == "STREAM":
             # Spawn the shared C perf_stream_client (mirrors the Go/dotnet
             # runner: --pattern MULTI_STREAM so RESULT lines match the
@@ -1093,13 +973,13 @@ def _build_options(args, patterns, transports, requested_msg_sizes, clients, env
             patterns,
             lambda pattern: _msg_sizes_for_pattern(pattern, requested_msg_sizes),
         ),
+        "smoke": "1" if args.smoke else "0",
         "duration_seconds": args.duration,
         "clients": clients,
         "default_clients": os.environ.get("PERF_MULTI_DEFAULT_CLIENTS")
         or os.environ.get("PERF_DEFAULT_CLIENTS", "100"),
         "default_stream_clients": os.environ.get("PERF_MULTI_DEFAULT_STREAM_CLIENTS")
         or os.environ.get("PERF_STREAM_DEFAULT_CLIENTS", "10000"),
-        "service_clients": "auto",
         "server_io_threads": _effective_role_io_threads(args, "server"),
         "client_io_threads": _effective_role_io_threads(args, "client"),
         "hwm": hwm,
@@ -1231,7 +1111,6 @@ def main(argv=None):
         env["PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS"] = args.server_shutdown_timeout_ms
     if args.server_bind_port:
         env["PERF_MULTI_SERVER_BIND_PORT"] = args.server_bind_port
-    _apply_spot_control_timeout_defaults(args, env, configs)
     _apply_dealer_dealer_shutdown_timeout_default(args, env, configs)
     _configure_core_runtime(env)
 
@@ -1512,6 +1391,18 @@ def main(argv=None):
         _append_line(sections, "## Failures")
         for line in failures:
             _append_line(sections, line)
+    if args.smoke:
+        _append_line(sections)
+        _append_line(sections, f"Smoke completion: status={status}")
+        elapsed = max(0, int(time.perf_counter() - start_time))
+        print(
+            f"Total benchmark time: {elapsed}s ({elapsed}s, exit={0 if status == 'complete' else 1})",
+            flush=True,
+        )
+        if status != "complete":
+            raise SystemExit(1)
+        return
+
     report_path = build_report_path(
         lang="python",
         suite="multi",

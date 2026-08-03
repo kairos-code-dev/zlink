@@ -48,14 +48,6 @@ class EnumValueTests(unittest.TestCase):
         self.assertEqual(int(zlink.ErrorCode.EFSM), 156384763)
         self.assertEqual(int(zlink.ErrorCode.EMTHREAD), 156384766)
 
-    def test_spot_role_values(self):
-        self.assertEqual(int(zlink.SpotDispatchEvent.CHANNEL_REPLY_READABLE), 4)
-        self.assertEqual(int(zlink.SpotDispatchEvent.ACTOR_READABLE), 5)
-        self.assertEqual(int(zlink.SpotDispatchEvent.ACTOR_JOIN_READABLE), 6)
-        self.assertEqual(int(zlink.SpotDispatchSubjectKind.CHANNEL_DEALER), 3)
-        self.assertEqual(int(zlink.SpotDispatchSubjectKind.ACTOR), 4)
-
-
 class EnumTypeTests(unittest.TestCase):
     def test_int_enum_is_int(self):
         self.assertIsInstance(zlink.SocketType.PAIR, int)

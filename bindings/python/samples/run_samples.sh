@@ -2,8 +2,10 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REPO_DIR="$(cd "${ROOT_DIR}/../.." && pwd)"
-export ZLINK_LIBRARY_PATH="${ZLINK_LIBRARY_PATH:-${REPO_DIR}/core/build/lib/libzlink.so}"
+if [[ -z "${ZLINK_LIBRARY_PATH:-}" ]]; then
+    echo "Set ZLINK_LIBRARY_PATH to an approved Core candidate runtime." >&2
+    exit 2
+fi
 export PYTHONPATH="${ROOT_DIR}/src:${ROOT_DIR}/samples${PYTHONPATH:+:${PYTHONPATH}}"
 
 cd "${ROOT_DIR}"

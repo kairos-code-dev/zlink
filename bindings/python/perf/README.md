@@ -54,7 +54,6 @@ Patterns:
 - `DEALER_DEALER`
 - `DEALER_ROUTER`
 - `ROUTER_ROUTER`
-- `SPOT`
 
 Policy transport matrix:
 
@@ -63,18 +62,11 @@ Policy transport matrix:
 - `DEALER_DEALER`: `tcp`, `tls`, `ws`, `wss`, `inproc`, `ipc`
 - `DEALER_ROUTER`: `tcp`, `tls`, `ws`, `wss`, `inproc`, `ipc`
 - `ROUTER_ROUTER`: `tcp`, `tls`, `ws`, `wss`, `inproc`, `ipc`
-- `SPOT`: `tcp`, `tls`, `ws`, `wss`
 
 When a selected combination is outside the policy transport matrix, or the
 runtime reports `protocol not supported`, the runner emits
 `UNSUPPORTED,current,...` for that case. Other execution failures remain `fail`
 so regressions are not hidden as unsupported cases.
-
-SPOT measurements use the service-aware public surface:
-`publish(topic, ...)` on the sender and `subscribe()` on the
-receiver. The Python perf helpers no longer attach an external pub/sub pair to
-`SpotNode`; they drive the benchmark through the `Spot` facade directly so the
-perf path follows the current public contract.
 
 ## Multi Suite
 
@@ -93,9 +85,6 @@ Patterns:
 - `MULTI_DEALER_ROUTER`
 - `MULTI_ROUTER_ROUTER`
 - `MULTI_PUBSUB`
-- `MULTI_SPOT`
-- `MULTI_SPOT_REQREP`
-- `MULTI_SPOT_SENDSEND`
 - `MULTI_STREAM`
 
 Shared component contract:

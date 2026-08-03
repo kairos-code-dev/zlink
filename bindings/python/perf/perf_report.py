@@ -23,8 +23,6 @@ ECHO_MULTI_PATTERNS = {
     "MULTI_DEALER_ROUTER",
     "MULTI_ROUTER_ROUTER",
     "MULTI_STREAM",
-    "MULTI_SPOT_REQREP",
-    "MULTI_SPOT_SENDSEND",
 }
 
 SINGLE_TABLE_HEADER_LINES = (
@@ -146,23 +144,6 @@ def single_auto_hwm_detail_lines(patterns, msg_sizes, rows=None):
 
 
 def multi_auto_hwm_lines(pattern, msg_sizes):
-    spot_patterns = {
-        "SPOT",
-        "SPOT_REQREP",
-        "SPOT_SENDSEND",
-        "MULTI_SPOT",
-        "MULTI_SPOT_REQREP",
-        "MULTI_SPOT_SENDSEND",
-    }
-    if pattern in spot_patterns:
-        yield "    Auto-HWM spotnode:"
-        for msg_size in msg_sizes:
-            msg_unit = int(msg_size)
-            yield f"      - Size(B)={msg_size}, MsgUnit(B)={msg_unit}"
-            yield "      | Socket      | Type | Role | SNDHWM | RCVHWM | SNDBUF | RCVBUF |"
-            yield "      |-------------|------|------|--------|--------|--------|--------|"
-            yield "      | unavailable | n/a  | n/a  | n/a    | n/a    | n/a    | n/a    |"
-        return
     yield "    Auto-HWM detail:"
     yield (
         "      | Size(B) | Component   | Type | UnitBudget(KB) | MsgUnit(B) | "
@@ -494,7 +475,6 @@ def _multi_effective_options(args, section):
         f"- clients: {args.clients}",
         f"- default_clients: {default_clients}",
         f"- default_stream_clients: {default_stream_clients}",
-        "- service_clients: auto",
         f"- server_io_threads: {args.server_io_threads or args.common_io_threads or default_io_threads}",
         f"- client_io_threads: {args.client_io_threads or args.common_io_threads or default_io_threads}",
         f"- hwm: {args.hwm or 'auto-hwm'}",

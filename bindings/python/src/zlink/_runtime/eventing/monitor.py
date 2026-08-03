@@ -30,6 +30,8 @@ def _decode_fixed(buf):
 
 def _monitor_status_from_native(snapshot):
     return MonitorStatus(
+        abi_version=int(snapshot.abi_version),
+        struct_size=int(snapshot.struct_size),
         source_kind=int(snapshot.source_kind),
         state_flags=int(snapshot.state_flags),
         detail_flags=int(snapshot.detail_flags),
@@ -58,8 +60,10 @@ def _monitor_status_from_native(snapshot):
             snapshot.auto_hwm_connection_bucket_hysteresis_retained
         ),
         auto_hwm_effective_message_bytes=int(snapshot.auto_hwm_effective_message_bytes),
-        auto_hwm_applied_sndhwm=int(snapshot.auto_hwm_applied_sndhwm),
-        auto_hwm_applied_rcvhwm=int(snapshot.auto_hwm_applied_rcvhwm),
+        auto_hwm_planned_sndhwm_bytes=int(snapshot.auto_hwm_planned_sndhwm_bytes),
+        auto_hwm_planned_rcvhwm_bytes=int(snapshot.auto_hwm_planned_rcvhwm_bytes),
+        auto_hwm_applied_sndhwm_bytes=int(snapshot.auto_hwm_applied_sndhwm_bytes),
+        auto_hwm_applied_rcvhwm_bytes=int(snapshot.auto_hwm_applied_rcvhwm_bytes),
         auto_hwm_effective_sndbuf=int(snapshot.auto_hwm_effective_sndbuf),
         auto_hwm_effective_rcvbuf=int(snapshot.auto_hwm_effective_rcvbuf),
         auto_hwm_last_recalc_ms=int(snapshot.auto_hwm_last_recalc_ms),
@@ -67,8 +71,17 @@ def _monitor_status_from_native(snapshot):
             int(snapshot.auto_hwm_last_recalc_reason)
         ),
         auto_hwm_send_blocked_ratio_ppm=int(snapshot.auto_hwm_send_blocked_ratio_ppm),
-        auto_hwm_deferred_sndhwm=int(snapshot.auto_hwm_deferred_sndhwm),
-        auto_hwm_deferred_rcvhwm=int(snapshot.auto_hwm_deferred_rcvhwm),
+        auto_hwm_deferred_sndhwm_bytes=int(snapshot.auto_hwm_deferred_sndhwm_bytes),
+        auto_hwm_deferred_rcvhwm_bytes=int(snapshot.auto_hwm_deferred_rcvhwm_bytes),
+        auto_hwm_deferred_sndhwm_valid=bool(snapshot.auto_hwm_deferred_sndhwm_valid),
+        auto_hwm_deferred_rcvhwm_valid=bool(snapshot.auto_hwm_deferred_rcvhwm_valid),
+        snd_bytes_in_flight=int(snapshot.snd_bytes_in_flight),
+        rcv_bytes_in_flight=int(snapshot.rcv_bytes_in_flight),
+        minimum_core_message_charge_bytes=int(snapshot.minimum_core_message_charge_bytes),
+        oversize_message_admission_count=int(snapshot.oversize_message_admission_count),
+        oversize_message_admission_max_bytes=int(
+            snapshot.oversize_message_admission_max_bytes
+        ),
     )
 
 

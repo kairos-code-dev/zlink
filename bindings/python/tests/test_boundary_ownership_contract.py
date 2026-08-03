@@ -14,13 +14,6 @@ class BoundaryValidationContractTests(unittest.TestCase):
     def test_endpoint_and_channel_name_reject_fixed_buffer_overflow(self):
         with zlink.create_context() as ctx:
             with zlink.create_router_socket(ctx) as socket:
-                socket.set_channel_name(b"c" * 255)
-                self.assertEqual(socket.get_channel_name(), "c" * 255)
-
-                with self.assertRaises(ValueError):
-                    socket.set_channel_name(b"c" * 256)
-                with self.assertRaises(ValueError):
-                    socket.set_channel_name(b"bad\0channel")
                 with self.assertRaises(ValueError):
                     socket.bind("inproc://" + ("x" * 248))
                 with self.assertRaises(ValueError):

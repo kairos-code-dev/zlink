@@ -20,6 +20,8 @@ class MonitorStatus:
     def __init__(
         self,
         *,
+        abi_version=None,
+        struct_size=None,
         source_kind,
         state_flags,
         detail_flags,
@@ -38,6 +40,10 @@ class MonitorStatus:
         auto_hwm_connection_bucket_hwm_4k=None,
         auto_hwm_connection_bucket_hysteresis_retained=None,
         auto_hwm_effective_message_bytes=None,
+        auto_hwm_planned_sndhwm_bytes=None,
+        auto_hwm_planned_rcvhwm_bytes=None,
+        auto_hwm_applied_sndhwm_bytes=None,
+        auto_hwm_applied_rcvhwm_bytes=None,
         auto_hwm_applied_sndhwm=None,
         auto_hwm_applied_rcvhwm=None,
         auto_hwm_effective_sndbuf=None,
@@ -45,9 +51,20 @@ class MonitorStatus:
         auto_hwm_last_recalc_ms=None,
         auto_hwm_last_recalc_reason=None,
         auto_hwm_send_blocked_ratio_ppm=None,
+        auto_hwm_deferred_sndhwm_bytes=None,
+        auto_hwm_deferred_rcvhwm_bytes=None,
+        auto_hwm_deferred_sndhwm_valid=None,
+        auto_hwm_deferred_rcvhwm_valid=None,
         auto_hwm_deferred_sndhwm=None,
         auto_hwm_deferred_rcvhwm=None,
+        snd_bytes_in_flight=None,
+        rcv_bytes_in_flight=None,
+        minimum_core_message_charge_bytes=None,
+        oversize_message_admission_count=None,
+        oversize_message_admission_max_bytes=None,
     ):
+        self.abi_version = abi_version
+        self.struct_size = struct_size
         self.source_kind = source_kind
         self.state_flags = state_flags
         self.detail_flags = detail_flags
@@ -68,15 +85,44 @@ class MonitorStatus:
             auto_hwm_connection_bucket_hysteresis_retained
         )
         self.auto_hwm_effective_message_bytes = auto_hwm_effective_message_bytes
-        self.auto_hwm_applied_sndhwm = auto_hwm_applied_sndhwm
-        self.auto_hwm_applied_rcvhwm = auto_hwm_applied_rcvhwm
+        self.auto_hwm_planned_sndhwm_bytes = auto_hwm_planned_sndhwm_bytes
+        self.auto_hwm_planned_rcvhwm_bytes = auto_hwm_planned_rcvhwm_bytes
+        self.auto_hwm_applied_sndhwm_bytes = auto_hwm_applied_sndhwm_bytes
+        self.auto_hwm_applied_rcvhwm_bytes = auto_hwm_applied_rcvhwm_bytes
+        self.auto_hwm_applied_sndhwm = (
+            auto_hwm_applied_sndhwm
+            if auto_hwm_applied_sndhwm is not None
+            else auto_hwm_applied_sndhwm_bytes
+        )
+        self.auto_hwm_applied_rcvhwm = (
+            auto_hwm_applied_rcvhwm
+            if auto_hwm_applied_rcvhwm is not None
+            else auto_hwm_applied_rcvhwm_bytes
+        )
         self.auto_hwm_effective_sndbuf = auto_hwm_effective_sndbuf
         self.auto_hwm_effective_rcvbuf = auto_hwm_effective_rcvbuf
         self.auto_hwm_last_recalc_ms = auto_hwm_last_recalc_ms
         self.auto_hwm_last_recalc_reason = auto_hwm_last_recalc_reason
         self.auto_hwm_send_blocked_ratio_ppm = auto_hwm_send_blocked_ratio_ppm
-        self.auto_hwm_deferred_sndhwm = auto_hwm_deferred_sndhwm
-        self.auto_hwm_deferred_rcvhwm = auto_hwm_deferred_rcvhwm
+        self.auto_hwm_deferred_sndhwm_bytes = auto_hwm_deferred_sndhwm_bytes
+        self.auto_hwm_deferred_rcvhwm_bytes = auto_hwm_deferred_rcvhwm_bytes
+        self.auto_hwm_deferred_sndhwm_valid = auto_hwm_deferred_sndhwm_valid
+        self.auto_hwm_deferred_rcvhwm_valid = auto_hwm_deferred_rcvhwm_valid
+        self.auto_hwm_deferred_sndhwm = (
+            auto_hwm_deferred_sndhwm
+            if auto_hwm_deferred_sndhwm is not None
+            else auto_hwm_deferred_sndhwm_bytes
+        )
+        self.auto_hwm_deferred_rcvhwm = (
+            auto_hwm_deferred_rcvhwm
+            if auto_hwm_deferred_rcvhwm is not None
+            else auto_hwm_deferred_rcvhwm_bytes
+        )
+        self.snd_bytes_in_flight = snd_bytes_in_flight
+        self.rcv_bytes_in_flight = rcv_bytes_in_flight
+        self.minimum_core_message_charge_bytes = minimum_core_message_charge_bytes
+        self.oversize_message_admission_count = oversize_message_admission_count
+        self.oversize_message_admission_max_bytes = oversize_message_admission_max_bytes
 
     def is_ready(self):
         """Return whether the monitored socket is in the ready state."""

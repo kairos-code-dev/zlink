@@ -34,30 +34,6 @@ from .contracts import (
     RequestOp,
     RequestCallbackOp,
     ReplyOp,
-    SpotNode,
-    SpotNodePublisher,
-    Spot,
-    Actor,
-    ActorRef,
-    ActorJoinRequest,
-    ActorRoute,
-    ActorRecvInfo,
-    ActorJoinInfo,
-    remote_actor_ref,
-    SpotDispatchInfo,
-    SpotNodeActorEntry,
-    SpotNodeSpotEntry,
-    SpotNodeStatus,
-    SpotNodePeerEntry,
-    SpotNodePeerFilter,
-    SpotNodeSubjectEntry,
-    SpotNodeSubjectFilter,
-    SpotNodeSocketEntry,
-    SpotNodeSocketFilter,
-    SpotRouteBridge,
-    SpotRouteBridgeEndpointCapabilities,
-    SpotRouteBridgeEndpointOptions,
-    SpotRouteBridgeOptions,
     ZlinkError,
     SubmitError,
     RequestError,
@@ -88,18 +64,6 @@ from .contracts import (
     MonitorEventMask,
     DisconnectReason,
     PollEventFlag,
-    SpotNodeMode,
-    SpotNodeSocketOwner,
-    SpotNodeState,
-    SpotPeerSource,
-    SpotPeerKind,
-    SpotPeerState,
-    SpotKind,
-    SpotActorLifecycleEventKind,
-    SpotDispatchEvent,
-    SpotDispatchSubjectKind,
-    SubjectKind,
-    SpotRole,
     PollSourceKind,
     PollEvent,
     PollEvents,
@@ -107,12 +71,11 @@ from .contracts import (
 from ._runtime.core.context import create_context
 from ._runtime.core import zlink as _core_runtime
 from ._runtime.eventing.poller import create_poll_events, create_poller
-from ._runtime.eventing.timer import create_timer, create_timer_from_spot
+from ._runtime.eventing.timer import create_timer
 from ._runtime.eventing.monitor import open_socket_monitor as _runtime_open_socket_monitor
 from ._runtime.messaging import message_materializer as _messaging_runtime
 from ._runtime.options import option_mapping as _socket_options_runtime
 from ._runtime.sockets import socket_base_impl as _socket_runtime
-from ._runtime.service.spot import spot as _spot_runtime
 from . import contracts as _contracts_projection
 from .contracts import messaging as _messaging_contracts_projection
 from .contracts.messaging import message as _message_contract_module
@@ -151,9 +114,6 @@ create_stream_socket_options = _socket_options_runtime.create_stream_socket_opti
 create_sub_socket_options = _socket_options_runtime.create_sub_socket_options
 create_pub_socket_options = _socket_options_runtime.create_pub_socket_options
 create_router_socket_options = _socket_options_runtime.create_router_socket_options
-
-create_spot_node = _spot_runtime.create_spot_node
-create_spot = _spot_runtime.create_spot
 
 __all__ = [
     "version",
@@ -211,7 +171,6 @@ __all__ = [
     "create_thread",
     "Timer",
     "create_timer",
-    "create_timer_from_spot",
     "Poller",
     "create_poller",
     "MonitorStatus",
@@ -221,33 +180,6 @@ __all__ = [
     "RequestOp",
     "RequestCallbackOp",
     "ReplyOp",
-    "SpotNode",
-    "SpotNodePublisher",
-    "create_spot_node",
-    "Spot",
-    "create_spot",
-    "Actor",
-    "ActorRef",
-    "ActorJoinRequest",
-    "ActorRoute",
-    "SpotRoute",
-    "ActorRecvInfo",
-    "ActorJoinInfo",
-    "remote_actor_ref",
-    "SpotDispatchInfo",
-    "SpotNodeActorEntry",
-    "SpotNodeSpotEntry",
-    "SpotNodeStatus",
-    "SpotNodePeerEntry",
-    "SpotNodePeerFilter",
-    "SpotNodeSubjectEntry",
-    "SpotNodeSubjectFilter",
-    "SpotNodeSocketEntry",
-    "SpotNodeSocketFilter",
-    "SpotRouteBridge",
-    "SpotRouteBridgeEndpointCapabilities",
-    "SpotRouteBridgeEndpointOptions",
-    "SpotRouteBridgeOptions",
     "ZlinkError",
     "SubmitError",
     "RequestError",
@@ -278,18 +210,6 @@ __all__ = [
     "MonitorEventMask",
     "DisconnectReason",
     "PollEventFlag",
-    "SpotNodeMode",
-    "SpotNodeSocketOwner",
-    "SpotNodeState",
-    "SpotPeerSource",
-    "SpotPeerKind",
-    "SpotPeerState",
-    "SpotKind",
-    "SpotActorLifecycleEventKind",
-    "SpotDispatchEvent",
-    "SpotDispatchSubjectKind",
-    "SubjectKind",
-    "SpotRole",
     "PollSourceKind",
     "PollEvent",
     "PollEvents",

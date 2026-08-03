@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import ctypes
+from typing import Optional
 
 from ...contracts.errors.codes import CloseResult, ConfigResult
 from ...contracts.errors.errors import CloseError, ConfigError, HandlerError, RecvError
 from ...contracts.sockets.codes import HandlerResult, RecvResult
 from ..._native.ffi import lib
-from ..core.zlink import _as_handle, _report_unhandled_exception
+from ..core.zlink import _report_unhandled_exception
 from ..handles.native_support import _raise_result_error
 
 
@@ -28,19 +29,6 @@ class NativeTimer:
         self._handler = None
         self._handler_cb = None
 
-    @classmethod
-    def from_spot(cls, spot):
-        obj = cls.__new__(cls)
-        obj._handle = lib().zlink_spot_timer_new(_as_handle(spot))
-        if not obj._handle:
-            _raise_result_error(ConfigError, ConfigResult, 701, lib().zlink_errno())
-        obj._handler = None
-        obj._handler_cb = None
-        obj._spot = spot
-        if hasattr(spot, "_register_timer"):
-            spot._register_timer(obj)
-        return obj
-
     def start(self, interval_ns: int, repeat_count: int) -> None:
         if not self._handle:
             raise ConfigError(ConfigResult.INVALID_HANDLE, lib().zlink_errno())
@@ -55,7 +43,7 @@ class NativeTimer:
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
-    def recv(self) -> int | None:
+    def recv(self) -> Optional[int]:
         if not self._handle:
             raise RecvError(RecvResult.INVALID_HANDLE, lib().zlink_errno())
         fire_count = ctypes.c_uint64()
@@ -89,13 +77,9 @@ class NativeTimer:
         if not self._handle:
             return
         handle = ctypes.c_void_p(self._handle)
-        spot = getattr(self, "_spot", None)
-        if spot is not None and hasattr(spot, "_unregister_timer"):
-            spot._unregister_timer(self)
         self._handle = None
         self._handler = None
         self._handler_cb = None
-        self._spot = None
         rc = lib().zlink_timer_destroy(ctypes.byref(handle))
         if rc != 0:
             _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
@@ -120,7 +104,3 @@ NativeTimer.__qualname__ = "Timer"
 
 def create_timer():
     return NativeTimer()
-
-
-def create_timer_from_spot(spot):
-    return NativeTimer.from_spot(spot)

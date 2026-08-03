@@ -170,6 +170,22 @@ case "$LANGUAGE" in
 esac
 payload="$payload_dir/libzlink.so.$core_version"
 [[ -f "$payload" && "$(sha256sum "$payload" | awk '{print $1}')" == "$runtime_sha" ]] || { echo "Binding native payload does not match candidate" >&2; exit 1; }
+
+core_prefix=""
+if [[ "$LANGUAGE" == "python" ]]; then
+  core_prefix="$OUTPUT_ROOT/core-prefix/$core_version"
+  rm -rf "$core_prefix"
+  mkdir -p "$core_prefix/include" "$core_prefix/lib"
+  cp -a "$REPO_DIR/core/include/." "$core_prefix/include/"
+  cp "$runtime" "$core_prefix/lib/libzlink.so.$core_version"
+  ln -s "libzlink.so.$core_version" "$core_prefix/lib/libzlink.so.11"
+  ln -s "libzlink.so.11" "$core_prefix/lib/libzlink.so"
+  [[ "$(sha256sum "$core_prefix/lib/libzlink.so.$core_version" | awk '{print $1}')" == "$runtime_sha" ]] || {
+    echo "Python Core build prefix does not match candidate" >&2
+    exit 1
+  }
+fi
+
 if [[ -n "$header_dir" ]]; then
   binding_header_sha="$(dir_hash "$header_dir")"
   core_direct_header_sha="$(dir_hash "$REPO_DIR/core/include")"
@@ -193,14 +209,15 @@ CANDIDATE_MANIFEST_SHA256=$(sha256sum "$MANIFEST" | awk '{print $1}')
 BINDING_HEADER_SHA256=${binding_header_sha:-not_applicable}
 NATIVE_PAYLOAD=${payload#"$REPO_DIR/"}
 NATIVE_PAYLOAD_SHA256=$(sha256sum "$payload" | awk '{print $1}')
+PYTHON_CORE_PREFIX=${core_prefix:-not_applicable}
 EOF
 
 case "$LANGUAGE" in
   python)
     package_version="$(sed -n 's/^version = "\(.*\)"/\1/p' "$REPO_DIR/bindings/python/pyproject.toml" | head -n1)"
     [[ "$package_version" == "$PACKAGE_VERSION" ]] || { echo "Python package version mismatch: $package_version != $PACKAGE_VERSION" >&2; exit 1; }
-    (cd "$REPO_DIR/bindings/python" && ./tests/run_tests.sh)
-    (cd "$REPO_DIR/bindings/python" && python3 -m build --outdir "$OUTPUT_ROOT/python")
+    (cd "$REPO_DIR/bindings/python" && ZLINK_CORE_PREFIX="$core_prefix" ZLINK_LIBRARY_PATH="$payload" ./tests/run_tests.sh)
+    (cd "$REPO_DIR/bindings/python" && ZLINK_CORE_PREFIX="$core_prefix" ZLINK_LIBRARY_PATH="$payload" python3 -m build --outdir "$OUTPUT_ROOT/python")
     wheel=("$OUTPUT_ROOT"/python/*.whl)
     [[ ${#wheel[@]} -eq 1 && -f "${wheel[0]}" ]] || { echo "Expected exactly one Python wheel" >&2; exit 1; }
     mkdir -p "$consumer/wheel"

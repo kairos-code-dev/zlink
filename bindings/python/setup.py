@@ -4,13 +4,37 @@ from __future__ import annotations
 
 import platform
 import sys
+import os
 from pathlib import Path
 from setuptools import Extension, setup
 
 
 ROOT = Path(__file__).resolve().parents[2]
-CORE = ROOT / "core"
-CORE_BUILD_LIB = CORE / "build" / "lib"
+
+
+def _core_prefix() -> Path:
+    value = os.environ.get("ZLINK_CORE_PREFIX")
+    if not value:
+        raise RuntimeError(
+            "ZLINK_CORE_PREFIX is required; build against an explicit Core "
+            "installation prefix rather than the repository build directory"
+        )
+    prefix = Path(value).expanduser().resolve()
+    include_dir = prefix / "include"
+    library_dir = prefix / ("bin" if sys.platform == "win32" else "lib")
+    if not (include_dir / "zlink.h").is_file():
+        raise RuntimeError(f"Core headers are missing from {include_dir}")
+    if not any(
+        candidate.name.startswith(("libzlink", "zlink"))
+        for candidate in library_dir.glob("*")
+    ):
+        raise RuntimeError(f"Core library is missing from {library_dir}")
+    return prefix
+
+
+CORE_PREFIX = _core_prefix()
+CORE_INCLUDE = CORE_PREFIX / "include"
+CORE_LIBRARY = CORE_PREFIX / ("bin" if sys.platform == "win32" else "lib")
 
 
 def _runtime_library_dirs() -> list[str]:
@@ -40,8 +64,8 @@ def _native_extension(name: str, source: str) -> Extension:
     return Extension(
         name,
         [source],
-        include_dirs=[str(CORE / "include")],
-        library_dirs=[str(CORE_BUILD_LIB)],
+        include_dirs=[str(CORE_INCLUDE)],
+        library_dirs=[str(CORE_LIBRARY)],
         libraries=["zlink"],
         runtime_library_dirs=_runtime_library_dirs(),
         extra_compile_args=_compile_args(),

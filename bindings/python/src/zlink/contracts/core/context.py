@@ -5,7 +5,7 @@ from typing import Protocol, runtime_checkable
 
 @runtime_checkable
 class Context(Protocol):
-    """A messaging context: the factory and owner of sockets and services.
+    """A messaging context: the factory and owner of sockets.
 
     Supports the context-manager protocol; closing it terminates anything still
     open under it.

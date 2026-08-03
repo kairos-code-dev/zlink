@@ -146,9 +146,6 @@ def resolve_single_pubsub_ready_settle_s():
     return _env_int("PERF_SINGLE_PUBSUB_READY_SETTLE_MS", 1000) / 1000.0
 
 
-def resolve_single_spot_ready_settle_s():
-    return _env_int("PERF_SINGLE_SPOT_READY_SETTLE_MS", 1000) / 1000.0
-
 
 def resolve_single_endpoint(transport, prefix):
     return transport_endpoint(transport, prefix)
@@ -202,19 +199,6 @@ def apply_single_auto_hwm_msg_unit(ctx, msg_size):
         return
     ctx.options.auto_hwm_msg_unit_bytes = msg_size
 
-
-def apply_single_spot_node_admission(*nodes):
-    # C perf_spot.cpp gates admission HWM behind apply_single_hwm; default path
-    # leaves SPOT node admission on context auto-HWM.
-    if not bench_single_manual_socket_overrides_allowed():
-        return
-    send_hwm = resolve_single_send_hwm()
-    recv_hwm = resolve_single_recv_hwm()
-    for node in nodes:
-        if send_hwm > 0:
-            node.set_pubsub_high_water_mark(send_hwm)
-        if recv_hwm > 0:
-            node.set_router_high_water_mark(recv_hwm)
 
 
 def _recv_storage(method):

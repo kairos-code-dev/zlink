@@ -18,7 +18,6 @@ from ..handles.native_support import (
     SubmitResult,
     ZlinkMsg,
     _REPLY_HANDLER,
-    _ROUTER_HANDLER,
     _clone_native_msg,
     _copy_routing_id,
     _report_unhandled_callback_exception,

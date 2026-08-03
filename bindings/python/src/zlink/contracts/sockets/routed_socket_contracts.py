@@ -43,20 +43,4 @@ class RouterSocket(_socket_contract._SocketContract, Protocol):
         ``DONT_WAIT`` is set and none is available."""
         ...
 
-    def send_to_spot(self, node_rid, spot_rid):
-        """Begin a send addressed to a spot on another node; parts are consumed
-        on a successful submit."""
-        ...
-
-    def request_to_spot(self, node_rid, spot_rid):
-        """Begin a request to a spot on another node; parts are consumed on
-        submit and a reply is awaited."""
-        ...
-
-    def reply_to_spot(self, node_rid, spot_rid, request_seq):
-        """Begin a reply to a spot request ``request_seq``; parts are consumed
-        on a successful submit."""
-        ...
-
-
 __all__ = ["RouterSocket"]

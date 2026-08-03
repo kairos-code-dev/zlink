@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import ctypes
+from typing import Optional
 
 from ...contracts.errors.codes import CloseResult, ConfigResult
 from ...contracts.sockets.codes import RecvResult, SubmitResult
@@ -9,7 +10,6 @@ from ..._native.ffi import ZlinkMsg, lib
 from ..._runtime.handles.native_support import (
     _init_msg_from_buffer,
     _msg_data_ptr,
-    _msg_gets,
     _msg_refcnt,
     _msg_size,
     _msg_to_bytes,
@@ -198,9 +198,6 @@ class ReceivedMultipart(_BaseReceived):
         routing_id=None,
         request_seq=None,
         *,
-        spot_rid=None,
-        reply_sender=None,
-        send_sender=None,
         router_socket=None,
     ):
         # HOT PATH: ReceivedMultipart() and Received() create empty storage
@@ -210,10 +207,7 @@ class ReceivedMultipart(_BaseReceived):
             self._owner = None
             self.parts = ()
             self.routing_id = None
-            self.spot_rid = None
             self.request_seq = None
-            self._reply_sender = None
-            self._send_sender = None
             self._router_socket = None
             return
         self._owner = owner
@@ -222,10 +216,7 @@ class ReceivedMultipart(_BaseReceived):
         else:
             self.parts = self._build_parts(owner)
         self.routing_id = routing_id
-        self.spot_rid = spot_rid
         self.request_seq = request_seq
-        self._reply_sender = reply_sender
-        self._send_sender = send_sender
         self._router_socket = router_socket
 
     def _adopt_from(self, source):
@@ -238,17 +229,11 @@ class ReceivedMultipart(_BaseReceived):
         self._owner = source._owner
         self.parts = source.parts
         self.routing_id = source.routing_id
-        self.spot_rid = source.spot_rid
         self.request_seq = source.request_seq
-        self._reply_sender = source._reply_sender
-        self._send_sender = source._send_sender
         self._router_socket = source._router_socket
         source._clear_owner()
         source.routing_id = None
-        source.spot_rid = None
         source.request_seq = None
-        source._reply_sender = None
-        source._send_sender = None
         source._router_socket = None
 
     def _replace(
@@ -257,9 +242,6 @@ class ReceivedMultipart(_BaseReceived):
         routing_id=None,
         request_seq=None,
         *,
-        spot_rid=None,
-        reply_sender=None,
-        send_sender=None,
         router_socket=None,
     ):
         current_owner = self._owner
@@ -274,10 +256,7 @@ class ReceivedMultipart(_BaseReceived):
         else:
             self.parts = self._build_parts(owner)
         self.routing_id = routing_id
-        self.spot_rid = spot_rid
         self.request_seq = request_seq
-        self._reply_sender = reply_sender
-        self._send_sender = send_sender
         self._router_socket = router_socket
 
 
@@ -354,45 +333,21 @@ class Received(ReceivedMultipart):
     def send(self):
         """Return a SendOp routed back to the source of this Received.
 
-        Source rid / spot rid are encapsulated; accumulate payload via
+        Source routing is encapsulated; accumulate payload via
         ``.message(...)`` before calling ``.submit()``.
         """
-        if self._send_sender is not None:
-            return self._send_sender()
-        if self._router_socket is not None:
-            from ..service.spot import SendOp
-
-            socket = self._router_socket
-            return SendOp(
-                socket,
-                lambda parts, flags: socket._send_op_submit(
-                    self.routing_id, self.spot_rid, parts, flags
-                ),
-            )
-        else:
+        if self._router_socket is None or self.routing_id is None:
             raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        return self._router_socket.send(self.routing_id)
 
     def reply(self):
         """Return a ReplyOp for this received request. Valid only when
         ``request_seq`` is present."""
         if self.request_seq is None:
             raise SubmitError(SubmitResult.INVALID_STATE, 0)
-        if self._reply_sender is not None:
-            return self._reply_sender()
-        if self._router_socket is not None:
-            from ..service.spot import ReplyOp
-
-            socket = self._router_socket
-            return ReplyOp(
-                lambda parts, flags: socket._reply_from_receive_context(
-                    self.routing_id,
-                    self.spot_rid,
-                    self.request_seq,
-                    parts,
-                    flags=flags,
-                )
-            )
-        raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        if self._router_socket is None or self.routing_id is None:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        return self._router_socket.reply(self.routing_id, self.request_seq)
 
 
 class SubscriptionEvent:
@@ -413,7 +368,7 @@ class SubscriptionEvent:
 
 
 class Message:
-    def __init__(self, size: int | None = None):
+    def __init__(self, size: Optional[int] = None):
         self._msg = ZlinkMsg()
         self._valid = False
         self._keepalive = None
@@ -512,9 +467,6 @@ class Message:
 
     def to_string(self, encoding="utf-8"):
         return self.to_bytes().decode(encoding)
-
-    def get_property(self, name):
-        return _msg_gets(self._msg, name) if self._valid else None
 
     def ref_count(self):
         return _msg_refcnt(self._msg) if self._valid else -1

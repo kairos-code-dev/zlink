@@ -15,18 +15,6 @@ CANONICAL_SAMPLES = [
     "stream_recv_sample.py",
     "stream_packet_callback_sample.py",
     "monitor_recv_sample.py",
-    "spot_recv_sample.py",
-    "spot_request_callback_sample.py",
-    "actor_room_server_sample.py",
-    "actor_gateway_relay_sample.py",
-    "actor_single_player_queue_sample.py",
-    "actor_queue_example.py",
-    "actor_room_example.py",
-    "actor_sequential_example.py",
-    "spot_channel_example.py",
-    "spot_pubsub_example.py",
-    "spot_rpc_example.py",
-    "spot_timer_example.py",
 ]
 
 

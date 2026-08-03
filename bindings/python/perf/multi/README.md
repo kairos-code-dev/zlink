@@ -26,9 +26,6 @@ Canonical multi patterns are:
 - `DEALER_ROUTER`
 - `ROUTER_ROUTER`
 - `PUBSUB`
-- `SPOT`
-- `SPOT_REQREP`
-- `SPOT_SENDSEND`
 - `STREAM`
 
 Result line names emitted by the suite are:
@@ -37,9 +34,6 @@ Result line names emitted by the suite are:
 - `MULTI_DEALER_ROUTER`
 - `MULTI_ROUTER_ROUTER`
 - `MULTI_PUBSUB`
-- `MULTI_SPOT`
-- `MULTI_SPOT_REQREP`
-- `MULTI_SPOT_SENDSEND`
 - `MULTI_STREAM`
 
 Each pattern keeps its own server entrypoint. Client entrypoints stay explicit
@@ -62,11 +56,6 @@ stream completion wait to that client so the slower public Python stream server
 can finish in-flight replies after the active window. Override the default
 `10000` ms with `PERF_MULTI_STREAM_COMPLETION_WAIT_MS` or
 `PERF_STREAM_COMPLETION_WAIT_MS`.
-
-SPOT follows the same service-aware contract as the single-suite benchmark:
-the sender publishes with the explicit `channel_name`, and the receiver drains
-with `subscribe()`. The benchmark no longer attaches an external pub/sub pair
-to `SpotNode`.
 
 ## Verification
 

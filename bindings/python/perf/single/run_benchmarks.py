@@ -30,7 +30,6 @@ DEFAULT_PATTERNS = (
     "DEALER_DEALER",
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
-    "SPOT",
 )
 DEFAULT_MSG_SIZES = ("64", "256", "1024", "65536", "131072", "262144")
 RAW_TRANSPORTS = (
@@ -38,14 +37,12 @@ RAW_TRANSPORTS = (
     if sys.platform.startswith("win")
     else ("tcp", "tls", "ws", "wss", "inproc", "ipc")
 )
-SPOT_TRANSPORTS = ("tcp", "tls", "ws", "wss")
 POLICY_TRANSPORTS = {
     "PAIR": RAW_TRANSPORTS,
     "PUBSUB": RAW_TRANSPORTS,
     "DEALER_DEALER": RAW_TRANSPORTS,
     "DEALER_ROUTER": RAW_TRANSPORTS,
     "ROUTER_ROUTER": RAW_TRANSPORTS,
-    "SPOT": SPOT_TRANSPORTS,
 }
 RUNNABLE_TRANSPORTS = POLICY_TRANSPORTS
 
@@ -78,6 +75,7 @@ def parse_args(argv):
     parser.add_argument("--results-dir", default="")
     parser.add_argument("--results-tag", default="")
     parser.add_argument("--output", default="")
+    parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--build-dir", default="")
     parser.add_argument("--reuse-build", action="store_true")
     parser.add_argument("--clean-build", action="store_true")
@@ -297,8 +295,6 @@ def _run_pattern(args, env, pattern, transport, msg_size):
         msg_size,
     ]
     timeout_s = resolve_single_timeout_seconds(float(args.duration))
-    if pattern.startswith("SPOT") and not os.environ.get("PERF_SINGLE_TIMEOUT_SECONDS"):
-        timeout_s = max(timeout_s, 180)
     result = subprocess.run(
         cmd,
         cwd=str(ROOT.parent.parent),
@@ -344,6 +340,7 @@ def _build_options(args, patterns, transports, msg_sizes):
         "patterns": ",".join(patterns),
         "transports": _grouped_option_text(patterns, lambda pattern: _transports_for_pattern(pattern, transports)),
         "msg_sizes": ",".join(msg_sizes),
+        "smoke": "1" if args.smoke else "0",
     }
 
 
@@ -567,6 +564,18 @@ def main(argv=None):
     _append_line(sections, f"- status: {status}")
     _append_line(sections, f"- expected_result_lines: {expected_result_lines}")
     _append_line(sections, f"- actual_result_lines: {len(rows)}")
+    if args.smoke:
+        _append_line(sections)
+        _append_line(sections, f"Smoke completion: status={status}")
+        elapsed = max(0, int(time.perf_counter() - start_time))
+        print(
+            f"Total benchmark time: {elapsed}s ({elapsed}s, exit={0 if status == 'complete' else 1})",
+            flush=True,
+        )
+        if status != "complete":
+            raise SystemExit(1)
+        return
+
     report_path = build_report_path(
         lang="python",
         suite="single",

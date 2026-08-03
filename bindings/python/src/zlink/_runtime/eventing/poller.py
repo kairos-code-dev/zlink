@@ -73,16 +73,12 @@ class NativePoller:
         self._handle = lib().zlink_poller_new()
         if not self._handle:
             _raise_last_error()
-        self._completion_handles = set()
 
     def add_socket(self, socket, events, slot):
         user_data = ctypes.c_void_p(_validate_slot(slot))
         rc = lib().zlink_poller_add(self._handle, socket._handle, user_data, int(events))
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        if int(events) & int(PollEventFlag.POLLCOMPLETION):
-            _acquire_external_progress(socket._handle)
-            self._completion_handles.add(socket._handle)
 
     def add_fd(self, fd, events, slot):
         user_data = ctypes.c_void_p(_validate_slot(slot))
@@ -100,14 +96,6 @@ class NativePoller:
         rc = lib().zlink_poller_modify(self._handle, socket._handle, int(events))
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        wants_completion = int(events) & int(PollEventFlag.POLLCOMPLETION)
-        has_completion = socket._handle in self._completion_handles
-        if wants_completion and not has_completion:
-            _acquire_external_progress(socket._handle)
-            self._completion_handles.add(socket._handle)
-        elif not wants_completion and has_completion:
-            _release_external_progress(socket._handle)
-            self._completion_handles.discard(socket._handle)
 
     def modify_fd(self, fd, events):
         rc = lib().zlink_poller_modify_fd(self._handle, int(fd), int(events))
@@ -118,9 +106,6 @@ class NativePoller:
         rc = lib().zlink_poller_remove(self._handle, socket._handle)
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        if socket._handle in self._completion_handles:
-            _release_external_progress(socket._handle)
-            self._completion_handles.discard(socket._handle)
 
     def remove_fd(self, fd):
         rc = lib().zlink_poller_remove_fd(self._handle, int(fd))
@@ -158,9 +143,6 @@ class NativePoller:
     def close(self):
         if not self._handle:
             return
-        for handle in list(self._completion_handles):
-            _release_external_progress(handle)
-        self._completion_handles.clear()
         handle = ctypes.c_void_p(self._handle)
         rc = lib().zlink_poller_destroy(ctypes.byref(handle))
         self._handle = None
@@ -186,18 +168,6 @@ def _validate_slot(slot):
     if slot > ctypes.c_size_t(-1).value:
         raise ValueError("slot is too large for uintptr_t")
     return slot
-
-
-def _acquire_external_progress(handle):
-    from ..service.spot import _acquire_external_request_progress
-
-    _acquire_external_request_progress(handle)
-
-
-def _release_external_progress(handle):
-    from ..service.spot import _release_external_request_progress
-
-    _release_external_request_progress(handle)
 
 
 NativePoller.__module__ = "zlink.contracts.eventing.poller"

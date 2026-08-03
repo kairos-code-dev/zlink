@@ -32,11 +32,45 @@ class NativeContext:
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
+    def _set_uint64_option(self, option, value):
+        raw_value = ctypes.c_uint64(value)
+        rc = lib().zlink_ctx_set_data(
+            self._handle,
+            int(option),
+            ctypes.byref(raw_value),
+            ctypes.sizeof(raw_value),
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+
     def _get_option(self, option):
-        rc = lib().zlink_ctx_get(self._handle, int(option))
-        if rc == -1 and lib().zlink_errno() != 0:
-            _raise_zlink_error(ConfigError, _config_result_from_errno(lib().zlink_errno()))
-        return rc
+        error_out = ctypes.c_int()
+        value = lib().zlink_ctx_get(
+            self._handle,
+            int(option),
+            ctypes.byref(error_out),
+        )
+        if value < 0:
+            _raise_result_error(
+                ConfigError,
+                ConfigResult,
+                error_out.value,
+                lib().zlink_errno(),
+            )
+        return value
+
+    def _get_uint64_option(self, option):
+        raw_value = ctypes.c_uint64()
+        value_size = ctypes.c_size_t(ctypes.sizeof(raw_value))
+        rc = lib().zlink_ctx_get_data(
+            self._handle,
+            int(option),
+            ctypes.byref(raw_value),
+            ctypes.byref(value_size),
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        return raw_value.value
 
     def recalculate_auto_hwm(self):
         rc = lib().zlink_ctx_auto_hwm_recalculate(self._handle)
@@ -169,13 +203,13 @@ class NativeContextOptions:
 
     @property
     def auto_hwm_msg_unit_bytes(self):
-        return self._context._get_option(ContextOption.AUTO_HWM_MSG_UNIT_BYTES)
+        return self._context._get_uint64_option(ContextOption.AUTO_HWM_MSG_UNIT_BYTES)
 
     @auto_hwm_msg_unit_bytes.setter
     def auto_hwm_msg_unit_bytes(self, value):
         if value < 0:
             raise ValueError("auto_hwm_msg_unit_bytes must be non-negative")
-        self._context._set_option(ContextOption.AUTO_HWM_MSG_UNIT_BYTES, value)
+        self._context._set_uint64_option(ContextOption.AUTO_HWM_MSG_UNIT_BYTES, value)
 
     @property
     def socket_limit(self):

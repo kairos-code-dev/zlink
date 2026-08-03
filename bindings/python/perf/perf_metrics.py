@@ -424,8 +424,6 @@ def pattern_direction_label(pattern):
         "MULTI_DEALER_ROUTER",
         "MULTI_ROUTER_ROUTER",
         "MULTI_STREAM",
-        "MULTI_SPOT_REQREP",
-        "MULTI_SPOT_SENDSEND",
     }:
         return "echo"
     return "one-way"

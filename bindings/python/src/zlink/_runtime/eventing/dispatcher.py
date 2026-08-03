@@ -2,7 +2,7 @@
 """Shared callback dispatcher.
 
 Replaces per-handler ``threading.Thread`` instances with a single worker
-thread that multiplexes every callback for one socket/spot/monitor. The
+thread that multiplexes every callback for one socket or monitor. The
 native side enqueues a 0-arg task and the dispatcher thread invokes it
 under the ``_enter_callback``/``_leave_callback`` guard so reentry checks
 behave identically to the dedicated-thread form.

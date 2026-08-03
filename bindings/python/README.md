@@ -10,8 +10,8 @@ This package must stay aligned with:
 - `doc/perf/PERF_SINGLE_TEST_POLICY.md`
 - `doc/perf/PERF_MULTI_TEST_POLICY.md`
 
-The Python surface follows the binding policy instead of mirroring the raw C
-API directly. The public contract is:
+The Python surface is the Core 11 raw messaging contract with typed Python
+ownership and error handling. The public contract is:
 
 - multipart-only send and subscribe/receive
 - the capability matrix from `bindings/README.md` is enforced by concrete
@@ -19,12 +19,10 @@ API directly. The public contract is:
 - blocking APIs use direct names like `send`, `recv`, `publish`, `subscribe`
 - non-blocking behavior is expressed through `SendFlags` and `RecvFlags`
 - `Context` exposes typed `ContextOptions` instead of raw `set/get`
-- `Message` exposes zero-copy `data` plus diagnostic `get_property` and
-  `ref_count`
+- `Message` exposes `data`, `to_bytes()`, and `ref_count()`
 - receive and subscribe return domain objects such as `Received`,
   `TopicMessage`, `RoutingId`, and `SubscriptionEvent`
-- request/reply surfaces use `request`, `reply`, `request_to_spot`,
-  `recv_routed`, and `reply_to_router`
+- request/reply surfaces use `request`, `reply`, and raw routing ids
 - raw public option bags like `setsockopt` and `getsockopt` are not exposed
 - typed option families are exposed through properties and capability objects
 - monitor sockets use canonical `monitor_open()`, `recv()`, and `snapshot()`
@@ -34,11 +32,8 @@ API directly. The public contract is:
 - `*_READY_CHANGED` monitor events do not expose aggregate ready counts
 - monitor snapshots are state/queue inspection surfaces, not ready-count gates
 - callback registration uses canonical names `on_packet`, `on_send_ready`,
-  and `on_dispatch_event`; topic subscription uses
-  `subscribe_into()` / `receive_subscription_event_into()` instead of a direct
-  `on_subscribe` callback. SPOT routed receive and Actor lifecycle are drained
-  explicitly with `recv_routed_into()` / `recv_actor_lifecycle()` after a
-  dispatch readable event.
+  and monitor `on_event`; topic subscription uses `subscribe_into()` and
+  `receive_subscription_event_into()`.
 - callback removal by passing `None` is not part of the public contract;
   callback lifecycle ends with socket close
 
@@ -55,7 +50,6 @@ methods:
 - `SubSocket`
 - `XPubSocket`
 - `XSubSocket`
-- `SpotNode` / `Spot`
 
 Examples of policy-enforced capability boundaries:
 
@@ -66,15 +60,6 @@ Examples of policy-enforced capability boundaries:
   `receive_subscription_event`
 - `StreamSocket` keeps routed send/receive but does not expose generic
   `connect` / `disconnect`
-- `SpotNode` owns SPOT topology. It exposes `create_route_bridge()` for
-  caller-owned channel sockets and `create_publisher()` for publishing into
-  the local topic plane without attaching a raw `PUB` socket.
-- `Spot` is a service-aware pub/sub and routed facade on top of `SpotNode`;
-  it exposes `publish(channel_name, topic, ...)`, `send_to_channel`,
-  `request_to_channel`, `subscribe_into`, `receive_subscription_event_into`,
-  `set_subscription`, `unset_subscription`, `on_send_ready`,
-  `reply_to_spot`, `reply_to_router`, `recv_routed_into`,
-  `recv_actor_lifecycle`, and `on_dispatch_event`, but not direct `recv` / `send`
 Common hot-path helpers are value-typed:
 
 - `Message`
@@ -98,16 +83,17 @@ Common hot-path helpers are value-typed:
 - `Thread`
 - `AtomicCounter`
 
-`TopicMessage` and `SubscriptionEvent` carry `channel_name` for service-aware
-SPOT flows. Raw `SUB` / `XSUB` results leave that field empty.
+`TopicMessage` carries the raw subscription topic. `SubscriptionEvent` carries
+the topic and subscription state returned by the Core socket.
 
 ## Native Library Loading
 
-The Python binding loads the native zlink runtime through `ctypes`. Packaged
-native libraries are preferred when present, and source checkout builds are
-used by the development path. On Windows, OpenSSL dependency lookup may also
-consult the zlink library directory, `ZLINK_OPENSSL_BIN`, `OPENSSL_BIN`, and
-`PATH`.
+The Python binding loads the native zlink runtime through `ctypes`. A wheel
+loads the native payload bundled in that wheel. Source builds require an
+explicit `ZLINK_LIBRARY_PATH` or `ZLINK_CORE_PREFIX`; the loader does not
+search the repository build directory or an arbitrary system library.
+On Windows, OpenSSL dependency lookup may also consult the zlink library
+directory, `ZLINK_OPENSSL_BIN`, `OPENSSL_BIN`, and `PATH`.
 
 These paths assume a trusted process environment. Do not allow untrusted users
 to control DLL search environment variables, `PATH`, or the working directory
@@ -129,7 +115,7 @@ The Python binding fail-fast validates values before the native call when the
 policy requires it:
 
 - endpoint, topic, and subscription strings/bytes reject embedded NUL
-- fixed-size `channel_name` and endpoint inputs fail fast above 255 bytes
+- fixed-size endpoint inputs fail fast above the Core limit
 - `RoutingId` enforces the native 255-byte maximum
 - typed integer options fail on signed/unsigned overflow instead of truncating
 - send/receive convenience does not change the multipart-only contract
@@ -163,7 +149,7 @@ The suite covers:
 - canonical public surface and legacy API removal
 - blocking/non-blocking behavioral contract
 - ownership and multipart receive semantics
-- monitor and discovery/service flows
+- raw monitor, poller, timer, and callback flows
 - perf runner smoke execution
 
 ## Samples
@@ -189,4 +175,3 @@ layers behind the benchmark wrapper.
 Readiness gates in Python perf and samples must use low-cost event counting
 rather than monitor payload counts or monitor snapshot ready counts.
 - raw sockets: `CONNECTION_READY` event counting
-- SPOT: explicit benchmark barrier protocol; no separate service-event gate

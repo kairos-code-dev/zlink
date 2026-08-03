@@ -2,8 +2,8 @@
 
 """Public contract surface of the zlink Python bindings.
 
-Re-exports typed ``Protocol`` contracts, result codes, error types, and service
-models. Runtime factories live on the top-level :mod:`zlink` package.
+Runtime factories live on the top-level :mod:`zlink` package. Service concepts
+belong to the Framework bounded context and are not part of this Core binding.
 """
 
 from .core import (
@@ -44,20 +44,6 @@ from .eventing.codes import (
     PollEventFlag,
     PollSourceKind,
 )
-from .service.codes import (
-    SpotNodeMode,
-    SpotNodeSocketOwner,
-    SpotNodeState,
-    SpotPeerSource,
-    SpotPeerKind,
-    SpotPeerState,
-    SpotKind,
-    SpotActorLifecycleEventKind,
-    SpotDispatchEvent,
-    SpotDispatchSubjectKind,
-    SubjectKind,
-    SpotRole,
-)
 from .errors import (
     ZlinkError,
     SubmitError,
@@ -84,38 +70,7 @@ from .eventing import (
     PollEvents,
     Timer,
 )
-from .service import (
-    SpotNode,
-    SpotNodePublisher,
-    Spot,
-    SpotRouteBridge,
-    SpotRouteBridgeEndpointCapabilities,
-    SpotRouteBridgeEndpointOptions,
-    SpotRouteBridgeOptions,
-    Actor,
-    ActorRef,
-    ActorJoinRequest,
-    ActorJoinResult,
-    ActorJoinEntrySpotResult,
-    ActorRoute,
-    ActorRecvInfo,
-    ActorJoinInfo,
-    remote_actor_ref,
-    SpotDispatchInfo,
-    SpotNodeActorEntry,
-    SpotNodeSpotEntry,
-    SpotNodeStatus,
-    SpotNodePeerEntry,
-    SpotNodePeerFilter,
-    SpotNodeSubjectEntry,
-    SpotNodeSubjectFilter,
-    SpotNodeSocketEntry,
-    SpotNodeSocketFilter,
-    SendOp,
-    RequestOp,
-    RequestCallbackOp,
-    ReplyOp,
-)
+from .sockets.operations import ReplyOp, RequestCallbackOp, RequestOp, SendOp
 from .sockets import (
     CommonSocketOptions,
     DealerSocketOptions,
@@ -161,18 +116,6 @@ __all__ = [
     "MonitorEventMask",
     "DisconnectReason",
     "PollEventFlag",
-    "SpotNodeMode",
-    "SpotNodeSocketOwner",
-    "SpotNodeState",
-    "SpotPeerSource",
-    "SpotPeerKind",
-    "SpotPeerState",
-    "SpotKind",
-    "SpotActorLifecycleEventKind",
-    "SpotDispatchEvent",
-    "SpotDispatchSubjectKind",
-    "SubjectKind",
-    "SpotRole",
     "PollSourceKind",
     "ZlinkError",
     "SubmitError",
@@ -198,32 +141,6 @@ __all__ = [
     "PollEvent",
     "PollEvents",
     "Timer",
-    "SpotNode",
-    "SpotNodePublisher",
-    "Spot",
-    "SpotRouteBridge",
-    "SpotRouteBridgeEndpointCapabilities",
-    "SpotRouteBridgeEndpointOptions",
-    "SpotRouteBridgeOptions",
-    "Actor",
-    "ActorRef",
-    "ActorJoinRequest",
-    "ActorJoinResult",
-    "ActorJoinEntrySpotResult",
-    "ActorRoute",
-    "ActorRecvInfo",
-    "ActorJoinInfo",
-    "remote_actor_ref",
-    "SpotDispatchInfo",
-    "SpotNodeActorEntry",
-    "SpotNodeSpotEntry",
-    "SpotNodeStatus",
-    "SpotNodePeerEntry",
-    "SpotNodePeerFilter",
-    "SpotNodeSubjectEntry",
-    "SpotNodeSubjectFilter",
-    "SpotNodeSocketEntry",
-    "SpotNodeSocketFilter",
     "CommonSocketOptions",
     "DealerSocketOptions",
     "StreamSocketOptions",

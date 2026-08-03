@@ -453,14 +453,14 @@ NODE
 CONSUMER_TARGET="${CONSUMER_ROOT}/target"
 (
   cd "${CONSUMER_ROOT}"
-  env -u LD_LIBRARY_PATH CARGO_HOME="${CONSUMER_ROOT}/cargo-home" \
-    CARGO_TARGET_DIR="${CONSUMER_TARGET}" CARGO_NET_OFFLINE=true \
+  env -u LD_LIBRARY_PATH -u CARGO_NET_OFFLINE CARGO_HOME="${CONSUMER_ROOT}/cargo-home" \
+    CARGO_TARGET_DIR="${CONSUMER_TARGET}" \
     cargo generate-lockfile
-  env -u LD_LIBRARY_PATH CARGO_HOME="${CONSUMER_ROOT}/cargo-home" \
-    CARGO_TARGET_DIR="${CONSUMER_TARGET}" CARGO_NET_OFFLINE=true \
+  env -u LD_LIBRARY_PATH -u CARGO_NET_OFFLINE CARGO_HOME="${CONSUMER_ROOT}/cargo-home" \
+    CARGO_TARGET_DIR="${CONSUMER_TARGET}" \
     cargo fetch --locked
-  env -u LD_LIBRARY_PATH CARGO_HOME="${CONSUMER_ROOT}/cargo-home" \
-    CARGO_TARGET_DIR="${CONSUMER_TARGET}" CARGO_NET_OFFLINE=true \
+  env -u LD_LIBRARY_PATH -u CARGO_NET_OFFLINE CARGO_HOME="${CONSUMER_ROOT}/cargo-home" \
+    CARGO_TARGET_DIR="${CONSUMER_TARGET}" \
     cargo build --locked --release
 ) >"${OUTPUT_ROOT}/rust-clean-consumer-${PACKAGE_VERSION}.log" 2>&1 || {
   tail -n 220 "${OUTPUT_ROOT}/rust-clean-consumer-${PACKAGE_VERSION}.log" >&2

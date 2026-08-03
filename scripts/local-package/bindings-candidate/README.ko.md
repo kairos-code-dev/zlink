@@ -20,8 +20,8 @@ scripts/local-package/bindings-candidate/build-wsl.sh \
   --package-version 10.7.0
 ```
 
-스크립트는 manifest의 Core revision, version, spec·header·source hash, export 목록, SONAME, service ABI,
-공개 struct layout, runtime hash와 freshness를 다시 계산해 비교한다. 동기화된 작업 tree뿐 아니라 실제
+스크립트는 manifest의 Core revision, version, spec·header·source hash, raw export 목록, SONAME, raw public
+struct layout, runtime hash와 freshness를 다시 계산해 비교한다. 동기화된 작업 tree뿐 아니라 실제
 wheel·module archive·crate 안의 native payload와 header도 같은 후보인지 검사한다. 산출물 디렉터리의
 `candidate-input.env`에는 이 provenance와 원본 manifest hash를 기록한다.
 

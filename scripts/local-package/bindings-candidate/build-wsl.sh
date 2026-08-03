@@ -56,22 +56,6 @@ repo_hash() {
   ) | sha256sum | awk '{print $1}'
 }
 
-macro_value() {
-  local name="$1"
-  rg -N "^#define ${name} " "$REPO_DIR/core/include" |
-    awk '{print $3}' | sed 's/[uUlL]*$//' | sort -u | paste -sd, -
-}
-
-service_abi_value() {
-  printf 'mesh_node:%s,dispatch:%s,spot:%s,actor:%s,stream_session:%s,monitor:%s\n' \
-    "$(macro_value ZLINK_MESH_NODE_ABI_VERSION)" \
-    "$(macro_value ZLINK_MESH_DISPATCH_ABI_VERSION)" \
-    "$(macro_value ZLINK_SPOT_ABI_VERSION)" \
-    "$(macro_value ZLINK_ACTOR_ABI_VERSION)" \
-    "$(macro_value ZLINK_STREAM_SESSION_ABI_VERSION)" \
-    "$(macro_value ZLINK_MESH_MONITOR_ABI_VERSION)"
-}
-
 layout_value() {
   local source binary values
   source="$(mktemp --suffix=.c)"
@@ -83,14 +67,10 @@ layout_value() {
 #include <zlink.h>
 #define SHOW(T) printf(#T "=%zu/%zu\n", sizeof(T), alignof(T))
 int main(void) {
-  SHOW(zlink_mesh_node_options_t); SHOW(zlink_mesh_peer_connection_options_t);
-  SHOW(zlink_mesh_node_status_t); SHOW(zlink_mesh_peer_entry_t);
-  SHOW(zlink_mesh_ready_record_t); SHOW(zlink_mesh_claim_t);
-  SHOW(zlink_mesh_receive_record_t); SHOW(zlink_mesh_reply_token_t);
-  SHOW(zlink_spot_status_t); SHOW(zlink_actor_ref_t); SHOW(zlink_actor_location_t);
-  SHOW(zlink_actor_transfer_prepare_t); SHOW(zlink_actor_transfer_prepare_result_t);
-  SHOW(zlink_actor_transfer_token_t); SHOW(zlink_stream_session_binding_t);
-  SHOW(zlink_stream_session_status_t); return 0;
+  SHOW(zlink_msg_t); SHOW(zlink_routing_id_t);
+  SHOW(zlink_monitor_event_t); SHOW(zlink_socket_monitor_open_options_t);
+  SHOW(zlink_monitor_status_t); SHOW(zlink_pollitem_t);
+  SHOW(zlink_poller_event_t); return 0;
 }
 EOF
   cc -std=c11 -I"$REPO_DIR/core/include" "$source" -o "$binary"
@@ -133,7 +113,6 @@ source_sha="$(manifest_value CORE_SOURCE_SHA256)"
 symbol_sha="$(manifest_value CORE_SYMBOL_SHA256)"
 soname="$(manifest_value CORE_SONAME)"
 runtime_version="$(manifest_value CORE_RUNTIME_VERSION)"
-service_abi="$(manifest_value CORE_SERVICE_ABI)"
 layouts="$(manifest_value CORE_LAYOUTS)"
 [[ "$(manifest_value FORMAT)" == 1 && -n "$core_version" && -n "$runtime_rel" ]] || {
   echo "Invalid candidate manifest: $MANIFEST" >&2
@@ -165,7 +144,6 @@ current_source_sha="$(repo_hash core/src core/include core/doc/spec/core)"
 [[ "$current_source_sha" == "$source_sha" ]] || { echo "Core source snapshot drift" >&2; exit 1; }
 [[ "$(nm -D --defined-only "$runtime" | awk '{print $3}' | sed -n '/^zlink_/p' | sort -u | sha256sum | awk '{print $1}')" == "$symbol_sha" ]] || { echo "Core symbol drift" >&2; exit 1; }
 [[ "$(readelf -d "$runtime" | sed -n 's/.*Library soname: \[\(.*\)\].*/\1/p')" == "$soname" ]] || { echo "Core SONAME drift" >&2; exit 1; }
-[[ "$(service_abi_value)" == "$service_abi" ]] || { echo "Core service ABI drift" >&2; exit 1; }
 [[ "$(layout_value)" == "$layouts" ]] || { echo "Core public struct layout drift" >&2; exit 1; }
 [[ "$runtime_version" == "$core_version" ]] || { echo "Manifest runtime version mismatch" >&2; exit 1; }
 if find "$REPO_DIR/core/include" "$REPO_DIR/core/src" -type f -newer "$runtime" -print -quit | grep -q .; then
@@ -210,7 +188,6 @@ CORE_RUNTIME_SHA256=$runtime_sha
 CORE_RUNTIME_VERSION=$runtime_version
 CORE_SYMBOL_SHA256=$symbol_sha
 CORE_SONAME=$soname
-CORE_SERVICE_ABI=$service_abi
 CORE_LAYOUTS=$layouts
 CANDIDATE_MANIFEST_SHA256=$(sha256sum "$MANIFEST" | awk '{print $1}')
 BINDING_HEADER_SHA256=${binding_header_sha:-not_applicable}

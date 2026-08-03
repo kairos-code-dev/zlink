@@ -33,11 +33,6 @@ repo_hash() {
   ) | sha256sum | awk '{print $1}'
 }
 
-macro_value() {
-  local name="$1"
-  rg -N "^#define ${name} " "$REPO_DIR/core/include" | awk '{print $3}' | sed 's/[uUlL]*$//' | sort -u | paste -sd, -
-}
-
 version="$(version_value)"
 runtime="$(readlink -f "$REPO_DIR/core/build/lib/libzlink.so" 2>/dev/null || true)"
 if [[ -z "$version" || -z "$runtime" || ! -f "$runtime" ]]; then
@@ -80,14 +75,10 @@ cat >"$layout_source" <<'EOF'
 #include <zlink.h>
 #define SHOW(T) printf(#T "=%zu/%zu\n", sizeof(T), alignof(T))
 int main(void) {
-  SHOW(zlink_mesh_node_options_t); SHOW(zlink_mesh_peer_connection_options_t);
-  SHOW(zlink_mesh_node_status_t); SHOW(zlink_mesh_peer_entry_t);
-  SHOW(zlink_mesh_ready_record_t); SHOW(zlink_mesh_claim_t);
-  SHOW(zlink_mesh_receive_record_t); SHOW(zlink_mesh_reply_token_t);
-  SHOW(zlink_spot_status_t); SHOW(zlink_actor_ref_t); SHOW(zlink_actor_location_t);
-  SHOW(zlink_actor_transfer_prepare_t); SHOW(zlink_actor_transfer_prepare_result_t);
-  SHOW(zlink_actor_transfer_token_t); SHOW(zlink_stream_session_binding_t);
-  SHOW(zlink_stream_session_status_t); return 0;
+  SHOW(zlink_msg_t); SHOW(zlink_routing_id_t);
+  SHOW(zlink_monitor_event_t); SHOW(zlink_socket_monitor_open_options_t);
+  SHOW(zlink_monitor_status_t); SHOW(zlink_pollitem_t);
+  SHOW(zlink_poller_event_t); return 0;
 }
 EOF
 cc -std=c11 -I"$REPO_DIR/core/include" "$layout_source" -o "$layout_bin"
@@ -105,7 +96,6 @@ CORE_RUNTIME_SHA256=$(sha256sum "$runtime" | awk '{print $1}')
 CORE_RUNTIME_VERSION=$runtime_version
 CORE_SYMBOL_SHA256=$(nm -D --defined-only "$runtime" | awk '{print $3}' | sed -n '/^zlink_/p' | sort -u | sha256sum | awk '{print $1}')
 CORE_SONAME=$(readelf -d "$runtime" | sed -n 's/.*Library soname: \[\(.*\)\].*/\1/p')
-CORE_SERVICE_ABI=mesh_node:$(macro_value ZLINK_MESH_NODE_ABI_VERSION),dispatch:$(macro_value ZLINK_MESH_DISPATCH_ABI_VERSION),spot:$(macro_value ZLINK_SPOT_ABI_VERSION),actor:$(macro_value ZLINK_ACTOR_ABI_VERSION),stream_session:$(macro_value ZLINK_STREAM_SESSION_ABI_VERSION),monitor:$(macro_value ZLINK_MESH_MONITOR_ABI_VERSION)
 CORE_LAYOUTS=$layout_values
 EOF
 install -m 0644 "$tmp" "$OUTPUT"

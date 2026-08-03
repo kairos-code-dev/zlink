@@ -45,6 +45,31 @@ final class ZLinkActorRelocationStagingTest {
     }
 
     @Test
+    void preparedTransferredActorKeepsMoveCompletionPendingUntilAdmissionOpens() {
+        ZLinkActorRuntime runtime = runtime(new AtomicInteger());
+        var prepared = runtime.prepareRelocatedActor(
+                "actor-admission-barrier",
+                "probe",
+                new byte[0],
+                false,
+                null,
+                () -> false,
+                null)
+            .toCompletableFuture().join();
+
+        runtime.publishPreparedTransferredActor(prepared);
+        CompletionStage<Void> completion = runtime.awaitMoveCompletion(prepared.actor());
+
+        assertFalse(completion.toCompletableFuture().isDone());
+        assertTrue(runtime.isMoving(prepared.actor()));
+
+        runtime.completePreparedTransferredActor(prepared);
+
+        completion.toCompletableFuture().join();
+        assertFalse(runtime.isMoving(prepared.actor()));
+    }
+
+    @Test
     void discardedActorNeverEntersRegistryAndReleasesBackendResource() {
         AtomicInteger destroys = new AtomicInteger();
         ZLinkActorRuntime runtime = runtime(destroys);

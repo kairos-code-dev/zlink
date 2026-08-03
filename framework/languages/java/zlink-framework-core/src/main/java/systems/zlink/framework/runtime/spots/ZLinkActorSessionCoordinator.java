@@ -220,6 +220,10 @@ final class ZLinkActorSessionCoordinator {
         return requireActors().isMoving(actor);
     }
 
+    CompletionStage<Void> awaitMoveCompletion(ZLinkActor actor) {
+        return requireActors().awaitMoveCompletion(actor);
+    }
+
     CompletionStage<Optional<Message>> dispatchLocalSession(
         ZLinkBackendActorRef actorRef,
         ZLinkStreamHeader header,

@@ -31,6 +31,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
 import systems.zlink.contracts.core.RoutingId;
@@ -3639,6 +3640,15 @@ public final class ZLinkSpotRuntime
                 : headerPart.inboundDispatchLease() != null
                     ? headerPart.inboundDispatchLease()
                     : inboundDispatchBudget().track(payloadCopy.size());
+        AtomicBoolean released = new AtomicBoolean();
+        Runnable release = () -> {
+            if (!released.compareAndSet(false, true)) {
+                return;
+            }
+            payloadCopy.close();
+            headerCopy.close();
+            lease.close();
+        };
         CompletionStage<Optional<Message>> captured = null;
         if (actorSessions.isMoving(actor)) {
             ZLinkActorReplyRoute replyRoute =
@@ -3653,20 +3663,53 @@ public final class ZLinkSpotRuntime
                         ? packetHeader.requestSeq().orElseThrow()
                         : headerCopy.requestId(),
                     headerCopy.flags())
-                : null;
-            captured = actorSessions.captureMoving(
-                actor, packetHeader.toStreamHeader(), payloadCopy, replyRoute);
+                    : null;
+            try {
+                captured = actorSessions.captureMoving(
+                    actor, packetHeader.toStreamHeader(), payloadCopy, replyRoute);
+            } catch (RuntimeException failure) {
+                release.run();
+                throw failure;
+            }
         }
         if (captured != null) {
             captured.thenCompose(reply -> replyCapturedActorPacket(
                     actor, packetHeader, headerCopy, reply))
-                .whenComplete((ignored, error) -> {
-                    payloadCopy.close();
-                    headerCopy.close();
-                    lease.close();
-                });
+                .whenComplete((ignored, error) -> release.run());
             return;
         }
+        CompletionStage<Void> queued = actorSessions.isMoving(actor)
+            ? actorSessions.awaitMoveCompletion(actor)
+                .thenCompose(ignored -> enqueueLocalActorPacket(
+                    dispatchLine,
+                    spotSurface,
+                    actor,
+                    packetHeader,
+                    handler,
+                    headerCopy,
+                    payloadCopy,
+                    lease))
+            : enqueueLocalActorPacket(
+                dispatchLine,
+                spotSurface,
+                actor,
+                packetHeader,
+                handler,
+                headerCopy,
+                payloadCopy,
+                lease);
+        queued.whenComplete((ignored, error) -> release.run());
+    }
+
+    private CompletionStage<Void> enqueueLocalActorPacket(
+        SpotDispatchLine dispatchLine,
+        Object spotSurface,
+        ZLinkActor actor,
+        ActorPacketFrames.Header packetHeader,
+        SpotActorPacketHandlerRegistration handler,
+        ZLinkBackendActorReceived headerCopy,
+        Message payloadCopy,
+        ZLinkInboundDispatchBudget.Lease lease) {
         CompletionStage<Void> queued;
         try {
             queued = dispatchLine.enqueueActorDispatch(actor.context().actorId(), () -> {
@@ -3686,16 +3729,9 @@ public final class ZLinkSpotRuntime
                     }
                 });
         } catch (RuntimeException failure) {
-            payloadCopy.close();
-            headerCopy.close();
-            lease.close();
-            throw failure;
+            return CompletableFuture.failedFuture(failure);
         }
-        queued.whenComplete((ignored, error) -> {
-            payloadCopy.close();
-            headerCopy.close();
-            lease.close();
-        });
+        return queued;
     }
 
     private CompletionStage<Void> replyCapturedActorPacket(

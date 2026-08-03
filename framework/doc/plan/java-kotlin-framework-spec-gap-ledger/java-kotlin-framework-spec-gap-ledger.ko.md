@@ -4,7 +4,14 @@
 기록하고, common contract와 실제 process evidence가 없는 항목은 완료로 표시하지
 않는다.
 
-마지막 갱신일: 2026-08-03 09:25 KST
+마지막 갱신일: 2026-08-03 09:57 KST
+
+이번 actor admission runtime 수정과 Java/Kotlin unit·package·focused process 재검증의
+명령, exit code, evidence는
+[`log/20260803-0957-java-kotlin-runtime-actor-admission-follow-up.ko.md`](log/20260803-0957-java-kotlin-runtime-actor-admission-follow-up.ko.md)에
+기록했다. moving 중 일반 Actor request가 callback 완료 전에 실행되는 경로를
+`moveCompletion` 대기로 고정했고, ST-F1/F2/F6에서 target replay와 source 중복 부재를
+확인했다.
 
 이번 runtime·package·SubmitAdmission runner 재검증의 명령·exit code·실행 경로는
 [`log/20260803-0910-java-kotlin-runtime-package-runner-progress.ko.md`](log/20260803-0910-java-kotlin-runtime-package-runner-progress.ko.md)에
@@ -608,9 +615,11 @@ exact inventory 결과는
 
 - 상태: runtime local-join 구현·unit regression 완료. local join의 source capture → target Actor authority CAS와 location
   renewal → joined marker/callback → source `OnLeaveActor` one-way notification → move
-  completion 순서를 production path에 반영했고, durable `StoreVersion` CAS unit test,
-  source notification 지연·실패 회귀와 Java/Kotlin ST-A1 focused process가 통과했다. CAS
-  loser, stale generation, cleanup failure, retry/restart/takeover, routed transfer와
+  completion 순서를 production path에 반영했고, moving 중 일반 local Spot Actor
+  request가 callback 전에 실행되지 않도록 `moveCompletion` admission barrier를
+  추가했다. durable `StoreVersion` CAS unit test, source notification 지연·실패 회귀,
+  Java/Kotlin ST-A1 focused process와 Java ST-F1/F2/F6 focused process가 통과했다.
+  CAS loser, stale generation, cleanup failure, retry/restart/takeover, routed transfer와
   role-level authority evidence는 아직 남아 있다.
 - 계약 경로:
   framework/doc/framework/common/spec/server/languages/java/interfaces/actors.ko.md:63-84,105-126,
@@ -620,7 +629,11 @@ exact inventory 결과는
   framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/runtime/spots/ZLinkActorSpotAdmission.java:282-300,392-472
   (completeLocalJoinFromCaller, commitRoutedActor, commitDeferredJoinRelocation),
   framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/runtime/actors/ZLinkActorRuntime.java:1453-1480
-  (local source notification ownership).
+  (local source notification ownership),
+  framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/runtime/spots/ZLinkSpotRuntime.java
+  (moving local Actor packet admission),
+  framework/languages/java/zlink-framework-core/src/test/java/systems/zlink/framework/runtime/actors/ZLinkActorRelocationStagingTest.java
+  (target move completion barrier).
 - 확인한 동작과 기대 동작:
   completeLocalJoinFromCaller는 source를 capture한 뒤 target Actor authority를
   durable `StoreVersion` CAS로 갱신하고 target location을 renew한다. 그 다음 joined
@@ -639,9 +652,11 @@ exact inventory 결과는
   `ZLinkActorRelocationStagingTest.localJoinSourceNotificationDoesNotBlockTargetCompletion`은
   지연되거나 exceptional로 끝난 source notification이 target completion을 막지 않는지
   확인한다. Java와 Kotlin
-  ST-A1 process는 client-visible transfer terminal을 확인하지만 callback failure,
-  cleanup failure, retry/restart/takeover의 owner/generation/queue evidence는
-  확인하지 않는다.
+  ST-A1 process는 client-visible transfer terminal을 확인한다. 추가 Java ST-F1/F2/F6
+  process는 target callback gate 전 request 대기, moving backlog 순서, direct request
+  추월 방지, correlated reply, 원래 timeout과 late handler 단일 처리를 확인한다.
+  callback failure, cleanup failure, retry/restart/takeover의 owner/generation/queue
+  evidence와 routed transfer는 확인하지 않는다.
 - 수정 목록:
   현재 local CAS와 callback 순서를 유지한다. admission preflight, target reservation,
   owner/generation CAS, callback, one-way source notification, durable commit, replay 책임을

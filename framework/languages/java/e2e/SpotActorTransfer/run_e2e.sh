@@ -236,15 +236,32 @@ fi
 
 grep -q "spot-actor-transfer e2e result=passed" "${LOG_DIR}/client.stdout.log"
 if [[ "${SCENARIO}" == "ST-F6" ]]; then
-  grep -q "outcome=RECEIVED.*kind=ACTOR_REQUEST.*packet=ProbeReq" \
-    "${LOG_DIR}/actor-b-flow.log"
-  grep -q "outcome=REPLIED.*kind=ACTOR_REQUEST.*packet=ProbeReq" \
-    "${LOG_DIR}/actor-b-flow.log"
-  if grep -q "outcome=RECEIVED.*kind=ACTOR_REQUEST.*packet=ProbeReq" \
-      "${LOG_DIR}/actor-a-flow.log"; then
-    echo "ST-F6 transferred request was dispatched again on the source" >&2
+  target_flow_found=0
+  for flow_log in "${LOG_DIR}"/actor-*-flow.log; do
+    if rg -q "outcome=RECEIVED.*kind=ACTOR_REQUEST.*packet=ProbeReq" \
+        "${flow_log}"; then
+      target_flow_found=1
+      rg -q "outcome=REPLIED.*kind=ACTOR_REQUEST.*packet=ProbeReq" \
+        "${flow_log}"
+    fi
+  done
+  if [[ "${target_flow_found}" != "1" ]]; then
+    echo "ST-F6 target did not receive a ProbeReq" >&2
     exit 1
   fi
-  grep -q "|request_timeout|" "${LOG_DIR}/actor-a.evidence.log"
+  for evidence_log in "${LOG_DIR}"/actor-*.evidence.log; do
+    flow_log="${evidence_log%.evidence.log}-flow.log"
+    while IFS= read -r actor_id; do
+      if rg -q "outcome=RECEIVED.*kind=ACTOR_REQUEST.*packet=ProbeReq.*actor=${actor_id}" \
+          "${flow_log}"; then
+        echo "ST-F6 transferred request was dispatched again on the source" >&2
+        exit 1
+      fi
+    done < <(awk -F'|' '$3 == "transfer_out" { print $2 }' "${evidence_log}")
+  done
+  if ! rg -q "\\|request_timeout\\|" "${LOG_DIR}"/actor-*.evidence.log; then
+    echo "ST-F6 request timeout evidence is missing" >&2
+    exit 1
+  fi
 fi
 cat "${LOG_DIR}/client.stdout.log"

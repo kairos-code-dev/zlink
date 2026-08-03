@@ -274,22 +274,22 @@ public final class Program implements AutoCloseable {
     }
 
     private void remoteStateful() throws Exception {
-        String actorId = id("actor-remote-ok");
-        String spotRid = id("spot-remote-ok");
-        createSpot(nodeB, spotRid, "accept");
-        createActor(nodeA, actorId, Contracts.STATEFUL, 21);
-        require(join(nodeA, actorId, "ST-B1", spotRid, "accept").accepted(),
+        RemoteActorFixture fixture = createRemoteActor(
+            "remote-ok", Contracts.STATEFUL, 21, "accept", null);
+        require(join(fixture.sourceHttp(), fixture.actorId(), "ST-B1", fixture.spotRid(), "accept").accepted(),
             "ST-B1 remote join failed");
-        Contracts.ProbeRes probe = probe(nodeB, actorId, "ST-B1", "after-transfer");
-        require("actor-b".equals(probe.nodeRid()), "ST-B1 target owner is not actor-b");
+        Contracts.ProbeRes probe = probe(
+            fixture.targetHttp(), fixture.actorId(), "ST-B1", "after-transfer");
+        require(fixture.targetNodeRid().equals(probe.nodeRid()),
+            "ST-B1 target owner changed during transfer");
         require(probe.stateVersion() == 21, "ST-B1 state was not restored");
-        waitFor(actorId, "location_committed", Duration.ofSeconds(3));
-        waitFor(actorId, "message_follow_registered", Duration.ofSeconds(3));
-        assertNodeOrder(actorId, "actor-a", List.of(
-            "transfer_out", "leave", "commit_ack", "location_visible", "success_reply"));
-        assertNodeOrder(actorId, "actor-b", List.of(
-            "admission", "transfer_in", "joined"));
-        assertCorrelatedTransferMarkers(actorId, List.of(
+        waitFor(fixture.actorId(), "location_committed", Duration.ofSeconds(3));
+        waitFor(fixture.actorId(), "message_follow_registered", Duration.ofSeconds(3));
+        assertNodeOrder(fixture.actorId(), fixture.sourceNodeRid(), List.of(
+            "transfer_out", "leave", "commit_request", "location_visible", "success_reply"));
+        assertNodeOrder(fixture.actorId(), fixture.targetNodeRid(), List.of(
+            "admission", "transfer_in", "joined", "commit_ack"));
+        assertCorrelatedTransferMarkers(fixture.actorId(), List.of(
             "commit_request", "location_committed", "message_follow_registered", "commit_ack"));
     }
 
@@ -297,53 +297,60 @@ public final class Program implements AutoCloseable {
         HandoffFixture fixture = startHandoff("ST-F1");
         List<CompletableFuture<Contracts.ProbeRes>> backlog = new ArrayList<>();
         for (String marker : List.of("P1", "P2", "P3")) {
-            backlog.add(probeAsync(nodeA, fixture.actorId(), "ST-F1", marker));
+            backlog.add(probeAsync(fixture.targetHttp(), fixture.actorId(), "ST-F1", marker));
             Thread.sleep(75);
         }
         Thread.sleep(200);
         require(backlog.stream().noneMatch(CompletableFuture::isDone),
             "ST-F1 packet completed while actor was moving");
-        release(nodeB, fixture.spotRid());
+        release(fixture.targetHttp(), fixture.spotRid());
         require(fixture.join().get(8, TimeUnit.SECONDS).accepted(), "ST-F1 transfer failed");
         for (CompletableFuture<Contracts.ProbeRes> response : backlog) {
-            require("actor-b".equals(response.get(8, TimeUnit.SECONDS).nodeRid()),
+            require(fixture.targetNodeRid().equals(response.get(8, TimeUnit.SECONDS).nodeRid()),
                 "ST-F1 backlog did not replay on target");
         }
         assertMarkerOrder(fixture.actorId(), "packet_handler", List.of("P1", "P2", "P3"));
         assertNodeOrder(
-            fixture.actorId(), "actor-b", List.of("target_backlog_replayed", "packet_handler"));
+            fixture.actorId(), fixture.targetNodeRid(),
+            List.of("target_backlog_replayed", "packet_handler"));
     }
 
     private void directDoesNotOvertake() throws Exception {
         HandoffFixture fixture = startHandoff("ST-F2");
-        CompletableFuture<Contracts.ProbeRes> b1 = probeAsync(nodeA, fixture.actorId(), "ST-F2", "B1");
+        CompletableFuture<Contracts.ProbeRes> b1 = probeAsync(
+            fixture.targetHttp(), fixture.actorId(), "ST-F2", "B1");
         Thread.sleep(75);
-        CompletableFuture<Contracts.ProbeRes> b2 = probeAsync(nodeA, fixture.actorId(), "ST-F2", "B2");
+        CompletableFuture<Contracts.ProbeRes> b2 = probeAsync(
+            fixture.targetHttp(), fixture.actorId(), "ST-F2", "B2");
         Thread.sleep(150);
-        release(nodeB, fixture.spotRid());
+        release(fixture.targetHttp(), fixture.spotRid());
         require(fixture.join().get(8, TimeUnit.SECONDS).accepted(), "ST-F2 transfer failed");
         CompletableFuture<Contracts.ProbeRes> direct = probeAsync(
-            nodeB, fixture.actorId(), "ST-F2", "D1");
+            fixture.targetHttp(), fixture.actorId(), "ST-F2", "D1");
         b1.get(8, TimeUnit.SECONDS);
         b2.get(8, TimeUnit.SECONDS);
         direct.get(8, TimeUnit.SECONDS);
         assertMarkerOrder(fixture.actorId(), "packet_handler", List.of("B1", "B2", "D1"));
         assertNodeOrder(
-            fixture.actorId(), "actor-b", List.of("target_backlog_replayed", "packet_handler"));
+            fixture.actorId(), fixture.targetNodeRid(),
+            List.of("target_backlog_replayed", "packet_handler"));
     }
 
     private void boundSessionCrossMoveOrder() throws Exception {
         String actorId = id("actor-f3");
         String spotRid = id("spot-f3");
-        createSpot(nodeB, spotRid, "delay-joined");
-        createActor(nodeA, actorId, Contracts.STATEFUL, 93);
-        ZLinkStreamConnector connector = connector(options.streamAEndpoint());
+        Contracts.ActorCreateRes created =
+            createActor(nodeA, actorId, Contracts.STATEFUL, 93);
+        Contracts.CreateSpotRes target = createSpot(nodeB, spotRid, "delay-joined");
+        String sourceHttp = httpEndpoint(created.nodeRid());
+        String targetHttp = httpEndpoint(target.nodeRid());
+        ZLinkStreamConnector connector = connector(streamEndpoint(created.nodeRid()));
         try {
             connector.connect().submit().toCompletableFuture().join();
             connector.request(new Contracts.BindSessionReq("ST-F3", actorId))
                 .submit(Contracts.BindSessionRes.class).toCompletableFuture().join();
             CompletableFuture<Contracts.JoinTargetRes> join = joinAsync(
-                nodeA, actorId, "ST-F3", spotRid, "accept");
+                sourceHttp, actorId, "ST-F3", spotRid, "accept");
             waitFor(actorId, "joined_wait", Duration.ofSeconds(8));
             List<CompletableFuture<Contracts.BoundPushRes>> packets = new ArrayList<>();
             for (String marker : List.of("S1", "S2", "S3", "S4")) {
@@ -360,10 +367,10 @@ public final class Program implements AutoCloseable {
                 Thread.sleep(75);
             }
             Thread.sleep(200);
-            release(nodeB, spotRid);
+            release(targetHttp, spotRid);
             require(join.get(8, TimeUnit.SECONDS).accepted(), "ST-F3 transfer failed");
             for (CompletableFuture<Contracts.BoundPushRes> packet : packets) {
-                require("actor-b".equals(packet.get(8, TimeUnit.SECONDS).nodeRid()),
+                require(target.nodeRid().equals(packet.get(8, TimeUnit.SECONDS).nodeRid()),
                     "ST-F3 packet did not replay on target");
             }
             assertMarkerOrder(actorId, "bound_push", List.of("S1", "S2", "S3", "S4"));
@@ -375,14 +382,15 @@ public final class Program implements AutoCloseable {
     private void messageFollowDuration() throws Exception {
         HandoffFixture fixture = completeSimpleTransfer("ST-F4");
         sendAtRef(
-            nodeA,
+            fixture.sourceHttp(),
             fixture.actorId(),
             fixture.sourceRef(),
             "ST-F4",
             "within-message-follow-duration");
         waitFor(fixture.actorId(), "message_follow_send", Duration.ofSeconds(5));
         Thread.sleep(2_500);
-        require(probeAtRefFails(nodeA, fixture.actorId(), fixture.sourceRef(), "ST-F4"),
+        require(probeAtRefFails(
+                fixture.sourceHttp(), fixture.actorId(), fixture.sourceRef(), "ST-F4"),
             "ST-F4 stale ref did not fail after the Message Follow duration");
         List<Contracts.Evidence> observed = evidence();
         require(hasKind(observed, fixture.actorId(), "message_follow_relay"),
@@ -430,20 +438,20 @@ public final class Program implements AutoCloseable {
     private void inFlightRequestReplyCorrelationAndTimeout() throws Exception {
         HandoffFixture success = startHandoff("ST-F6");
         CompletableFuture<Contracts.ProbeRes> correlated = probeAsync(
-            nodeA, success.actorId(), "ST-F6", "correlated-reply");
+            success.targetHttp(), success.actorId(), "ST-F6", "correlated-reply");
         Thread.sleep(200);
         require(!correlated.isDone(), "ST-F6 request completed before target replay");
-        release(nodeB, success.spotRid());
+        release(success.targetHttp(), success.spotRid());
         require(success.join().get(8, TimeUnit.SECONDS).accepted(),
             "ST-F6 correlation transfer failed");
         Contracts.ProbeRes reply = correlated.get(8, TimeUnit.SECONDS);
-        require("actor-b".equals(reply.nodeRid())
+        require(success.targetNodeRid().equals(reply.nodeRid())
                 && "correlated-reply".equals(reply.marker()),
             "ST-F6 reply was not correlated from the target");
 
         HandoffFixture timeout = startHandoff("ST-F6");
         CompletableFuture<Contracts.ProbeRes> expiring = postAsync(
-            nodeA + "/actors/" + timeout.actorId() + "/probe-timeout",
+            timeout.targetHttp() + "/actors/" + timeout.actorId() + "/probe-timeout",
             new Contracts.ProbeWithTimeoutReq("ST-F6", "late-reply", 250),
             Contracts.ProbeRes.class);
         try {
@@ -452,7 +460,7 @@ public final class Program implements AutoCloseable {
         } catch (java.util.concurrent.ExecutionException expected) {
         }
         waitFor(timeout.actorId(), "request_timeout", Duration.ofSeconds(3));
-        release(nodeB, timeout.spotRid());
+        release(timeout.targetHttp(), timeout.spotRid());
         require(timeout.join().get(8, TimeUnit.SECONDS).accepted(),
             "ST-F6 timeout transfer failed");
         waitFor(timeout.actorId(), "packet_handler", Duration.ofSeconds(5));
@@ -466,55 +474,64 @@ public final class Program implements AutoCloseable {
     }
 
     private HandoffFixture startHandoff(String scenario) throws Exception {
-        String actorId = id("actor-" + scenario.toLowerCase());
-        String spotRid = id("spot-" + scenario.toLowerCase());
-        createSpot(nodeB, spotRid, "delay-joined");
-        createActor(nodeA, actorId, Contracts.STATEFUL, 90);
-        JsonNode sourceRef = get(nodeA + "/actors/" + actorId + "/ref", JsonNode.class);
+        RemoteActorFixture remote = createRemoteActor(
+            "handoff-" + scenario.toLowerCase(),
+            Contracts.STATEFUL,
+            90,
+            "delay-joined",
+            null);
+        JsonNode sourceRef = get(
+            remote.sourceHttp() + "/actors/" + remote.actorId() + "/ref", JsonNode.class);
         CompletableFuture<Contracts.JoinTargetRes> join = joinAsync(
-            nodeA, actorId, scenario, spotRid, "accept");
-        waitFor(actorId, "joined_wait", Duration.ofSeconds(8));
-        return new HandoffFixture(actorId, spotRid, sourceRef, join);
+            remote.sourceHttp(), remote.actorId(), scenario, remote.spotRid(), "accept");
+        waitFor(remote.actorId(), "joined_wait", Duration.ofSeconds(8));
+        return new HandoffFixture(
+            remote.actorId(),
+            remote.spotRid(),
+            remote.sourceNodeRid(),
+            remote.targetNodeRid(),
+            remote.sourceHttp(),
+            remote.targetHttp(),
+            sourceRef,
+            join);
     }
 
     private HandoffFixture completeSimpleTransfer(String scenario) throws Exception {
         HandoffFixture fixture = startHandoff(scenario);
-        release(nodeB, fixture.spotRid());
+        release(fixture.targetHttp(), fixture.spotRid());
         require(fixture.join().get(8, TimeUnit.SECONDS).accepted(), scenario + " transfer failed");
         return fixture;
     }
 
     private void remoteNoAdapter() throws Exception {
-        String actorId = id("actor-no-adapter");
-        String spotRid = id("spot-no-adapter");
-        createSpot(nodeB, spotRid, "accept");
-        createActor(nodeA, actorId, Contracts.NO_ADAPTER, 0);
-        require(join(nodeA, actorId, "ST-B3", spotRid, "accept").accepted(),
+        RemoteActorFixture fixture = createRemoteActor(
+            "no-adapter", Contracts.NO_ADAPTER, 0, "accept", null);
+        require(join(fixture.sourceHttp(), fixture.actorId(), "ST-B3", fixture.spotRid(), "accept").accepted(),
             "ST-B3 default empty transfer failed");
-        Contracts.ProbeRes probe = probe(nodeB, actorId, "ST-B3", "after-default-empty");
+        Contracts.ProbeRes probe = probe(
+            fixture.targetHttp(), fixture.actorId(), "ST-B3", "after-default-empty");
         require(probe.stateVersion() == 0, "ST-B3 factory target state is not empty");
-        require(hasKind(evidence(), actorId, "transfer_out_empty_default"),
+        require(hasKind(evidence(), fixture.actorId(), "transfer_out_empty_default"),
             "ST-B3 source default-empty evidence is missing");
-        require(hasKind(evidence(), actorId, "transfer_in_empty_default"),
+        require(hasKind(evidence(), fixture.actorId(), "transfer_in_empty_default"),
             "ST-B3 target factory evidence is missing");
     }
 
     private void remoteEmptyState() throws Exception {
-        String actorId = id("actor-empty-state");
-        String spotRid = id("spot-empty-state");
-        createSpot(nodeB, spotRid, "accept");
-        createActor(nodeA, actorId, Contracts.EMPTY_STATE, 41);
-        require(join(nodeA, actorId, "ST-B4", spotRid, "accept").accepted(),
+        RemoteActorFixture fixture = createRemoteActor(
+            "empty-state", Contracts.EMPTY_STATE, 41, "accept", null);
+        require(join(fixture.sourceHttp(), fixture.actorId(), "ST-B4", fixture.spotRid(), "accept").accepted(),
             "ST-B4 custom empty transfer failed");
-        Contracts.ProbeRes probe = probe(nodeB, actorId, "ST-B4", "after-empty-state");
+        Contracts.ProbeRes probe = probe(
+            fixture.targetHttp(), fixture.actorId(), "ST-B4", "after-empty-state");
         require(probe.stateVersion() == 41, "ST-B4 domain state was not loaded");
-        waitFor(actorId, "location_committed", Duration.ofSeconds(3));
-        waitFor(actorId, "message_follow_registered", Duration.ofSeconds(3));
-        assertNodeOrder(actorId, "actor-a", List.of(
-            "transfer_out_empty", "leave", "commit_ack", "success_reply"));
-        assertNodeOrder(actorId, "actor-b", List.of(
-            "admission", "transfer_in_empty", "joined", "domain_state_loaded"));
-        assertCorrelatedTransferMarkers(actorId, List.of(
+        waitFor(fixture.actorId(), "location_committed", Duration.ofSeconds(3));
+        waitFor(fixture.actorId(), "message_follow_registered", Duration.ofSeconds(3));
+        assertNodeOrder(fixture.actorId(), fixture.sourceNodeRid(), List.of(
+            "transfer_out_empty", "leave", "commit_request", "location_visible", "success_reply"));
+        assertNodeOrder(fixture.actorId(), fixture.targetNodeRid(), List.of(
+            "admission", "transfer_in_empty", "joined", "domain_state_loaded", "commit_ack"));
+        assertCorrelatedTransferMarkers(fixture.actorId(), List.of(
             "commit_request", "location_committed", "message_follow_registered", "commit_ack"));
     }
 
@@ -940,11 +957,84 @@ public final class Program implements AutoCloseable {
         }
     }
 
+    private record RemoteActorFixture(
+        String actorId,
+        String spotRid,
+        String sourceNodeRid,
+        String targetNodeRid,
+        String sourceHttp,
+        String targetHttp) {
+    }
+
     private record HandoffFixture(
         String actorId,
         String spotRid,
+        String sourceNodeRid,
+        String targetNodeRid,
+        String sourceHttp,
+        String targetHttp,
         JsonNode sourceRef,
         CompletableFuture<Contracts.JoinTargetRes> join) {
+    }
+
+    private RemoteActorFixture createRemoteActor(
+        String prefix,
+        String actorType,
+        int stateVersion,
+        String spotMode,
+        String requiredSourceNodeRid) throws Exception {
+        Contracts.ActorCreateRes actor = null;
+        String actorId = null;
+        Throwable lastFailure = null;
+        for (int attempt = 0; attempt < 40; attempt++) {
+            actorId = id(prefix + "-actor");
+            try {
+                Contracts.ActorCreateRes candidate =
+                    createActor(nodeA, actorId, actorType, stateVersion);
+                if (requiredSourceNodeRid == null
+                    || requiredSourceNodeRid.equals(candidate.nodeRid())) {
+                    actor = candidate;
+                    break;
+                }
+            } catch (Exception failure) {
+                lastFailure = failure;
+            }
+            Thread.sleep(100);
+        }
+        if (actor == null) {
+            throw new AssertionError(
+                prefix + " could not allocate the requested source Actor owner",
+                lastFailure);
+        }
+
+        Contracts.CreateSpotRes target = null;
+        String spotRid = null;
+        for (int attempt = 0; attempt < 12; attempt++) {
+            spotRid = id(prefix + "-spot");
+            try {
+                Contracts.CreateSpotRes candidate =
+                    createSpot(nodeB, spotRid, spotMode);
+                if (!candidate.nodeRid().equals(actor.nodeRid())) {
+                    target = candidate;
+                    break;
+                }
+            } catch (Exception failure) {
+                lastFailure = failure;
+            }
+            Thread.sleep(100);
+        }
+        if (target == null) {
+            throw new AssertionError(
+                prefix + " could not allocate a remote target Spot",
+                lastFailure);
+        }
+        return new RemoteActorFixture(
+            actorId,
+            spotRid,
+            actor.nodeRid(),
+            target.nodeRid(),
+            httpEndpoint(actor.nodeRid()),
+            httpEndpoint(target.nodeRid()));
     }
 
     private void signal(String name) throws Exception {

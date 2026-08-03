@@ -113,6 +113,11 @@ function markdownAnchors(absolute, cache) {
     if (inFence) continue;
     const heading = /^#{1,6}\s+(.+?)\s*#*\s*$/.exec(line)?.[1];
     if (!heading) continue;
+    const explicit = /\{#([^}\s]+)[^}]*\}\s*$/u.exec(heading);
+    if (explicit) {
+      anchors.add(explicit[1].toLocaleLowerCase('en-US'));
+      continue;
+    }
     const base = heading
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
       .replace(/<[^>]+>/g, '')

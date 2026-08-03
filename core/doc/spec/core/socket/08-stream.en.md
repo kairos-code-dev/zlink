@@ -5,7 +5,7 @@
 # Socket — STREAM
 
 This document defines the generic raw STREAM public contract for ZLink Core
-11.0.0. It is for C API and bindings developers that exchange byte records or
+raw STREAM. It is for C API and bindings developers that exchange byte records or
 fixed-framing packets over routed TCP or WebSocket connections.
 
 ## 1. Scope

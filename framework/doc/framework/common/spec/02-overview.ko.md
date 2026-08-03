@@ -5,7 +5,7 @@
 
 ## 1. 한 줄 정의
 
-ZLink Framework 11.0.0은 typed message handler, RouteMesh, ClientServer Channel, Spot, Actor, STREAM
+ZLink Framework는 typed message handler, RouteMesh, ClientServer Channel, Spot, Actor, STREAM
 session, classic fanout과 location runtime을 application host의 lifecycle과 DI에 연결하는 상위 계층이다.
 
 C++·.NET·JVM·Node.js Framework는 service runtime을 각 언어에서 구현한다. 이 runtime은 설치된 해당 언어

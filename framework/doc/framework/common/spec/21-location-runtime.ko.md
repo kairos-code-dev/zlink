@@ -44,7 +44,7 @@ Framework는 다음 결과를 보장한다.
 - 이전 owner가 뒤늦게 위치를 변경하지 못하게 한다.
 - Host 교체 중 application state와 아직 실행하지 않은 작업을 다른 node에서 복원한다.
 
-11.1.0의 relocation은 source와 선택한 target process가 실행되는 동안에만 진행한다.
+relocation은 source와 선택한 target process가 실행되는 동안에만 진행한다.
 Process가 종료된 뒤 다른 runtime이 relocation을 이어받거나 다른 target으로 자동
 failover하지 않는다. Location Store 응답이 유실됐을 때 실제 owner를 다시 확인하는
 동작은 자동 failover가 아니라 owner를 둘로 만들지 않기 위한 필수 확인이다.
@@ -751,7 +751,7 @@ Framework는 이동 대상 하나마다 다음 순서를 지킨다.
 | 값 | 용도 |
 |---|---|
 | `RelocationId` | 이동 하나를 식별하는 0이 아닌 128-bit 난수다. Runtime만 사용한다. |
-| `TargetAttemptGeneration` | 같은 target에 보낸 중복 또는 이전 Restore 요청을 구분하는 0이 아닌 값이다. 11.1.0에서는 다른 target 선택에 사용하지 않는다. |
+| `TargetAttemptGeneration` | 같은 target에 보낸 중복 또는 이전 Restore 요청을 구분하는 0이 아닌 값이다. 다른 target 선택에 사용하지 않는다. |
 | [Reservation ID](01-glossary.ko.md#reservation-id) | Target 수용 공간을 확보한 요청을 식별하는 0이 아닌 128-bit 값이다. 생성용 ID와 별개다. |
 
 Location Store의 object별 위치 record는 최대 1 MiB다. 큰 목록과 실제 복원 데이터는
@@ -822,7 +822,7 @@ User Spot relocation을 `Completed`로 기록한다.
 
 User Spot membership을 바꾸지 않는 Actor 이동은 `NewOwner` CAS 한 번으로 owner를
 바꾼다. 같은 target process에서 준비를 다시 하면 target 시도 번호와 준비 정보만
-교체한다. 11.1.0은 다른 target으로 교체하지 않는다. 이전 시도는 owner를 바꿀 수 없다.
+교체한다. 다른 target으로 교체하지 않는다. 이전 시도는 owner를 바꿀 수 없다.
 
 | 이동 종류 | Location Store에서 함께 바꾸는 값 |
 |---|---|

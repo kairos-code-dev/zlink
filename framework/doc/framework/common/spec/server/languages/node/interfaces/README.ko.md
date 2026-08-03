@@ -2,7 +2,7 @@
 
 [Node.js 계약 목차](../README.ko.md) · [공통 스펙](../../../../README.ko.md)
 
-이 디렉터리는 ZLink Framework 11.0.0의 `@zlink-systems/framework`,
+이 디렉터리는 ZLink Framework의 `@zlink-systems/framework`,
 `@zlink-systems/nestjs`, `@zlink-systems/framework-locations-redis` package root가 내보내는 정확한
 public TypeScript declaration을 범주별로 고정한다. 같은 declaration을 여러 문서에 반복하지 않는다.
 기능 의미와 상태 전이는 공통 스펙이 소유하고, 이 디렉터리는 package export와 signature parity를

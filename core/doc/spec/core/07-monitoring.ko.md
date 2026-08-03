@@ -4,7 +4,7 @@
 
 # Monitoring
 
-이 문서는 ZLink Core 11.0 raw socket monitor 공개 계약을 정의한다. 대상 독자는 connection, transport,
+이 문서는 ZLink Core raw socket monitor 공개 계약을 정의한다. 대상 독자는 connection, transport,
 protocol과 socket lifecycle을 관측하는 C API와 bindings 개발자다. Monitor는 상태를 관측할 뿐 routing과
 queue 상태를 변경하지 않는다.
 

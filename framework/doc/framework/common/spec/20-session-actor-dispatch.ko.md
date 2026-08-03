@@ -5,7 +5,7 @@
 
 ## 1. 이 문서가 정의하는 범위
 
-이 문서는 ZLink Framework 11.0.0에서 STREAM session(연결 하나의 packet 처리와
+이 문서는 ZLink Framework에서 STREAM session(연결 하나의 packet 처리와
 request correlation을 유지하는 실행 단위)과 Actor runtime을 연결하는
 typed dispatch, binding, owner handoff와 실행 순서를 정의한다.
 

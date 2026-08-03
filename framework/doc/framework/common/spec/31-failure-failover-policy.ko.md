@@ -191,8 +191,8 @@ graceful handoff만 지원한다.
 Commit 전에 source를 유지하는 것은 failover가 아니라 아직 owner를 바꾸지 않은 operation의 취소다.
 Commit 뒤 같은 target에서 계속하는 것도 새로운 target 선택이 아니다. Process 종료 뒤 object
 failover는 현재 계약에 포함되지 않는다. 자세한 단계와 결과는
-[Host Relocate와 Shutdown §1.1](28-graceful-drain-handoff.ko.md#11-1110의-장애-처리-범위)과
-[Spot과 Actor membership §7](15-spot-actor.ko.md#7-실패-처리와-1110-범위)이 정의한다.
+[Host Relocate와 Shutdown §1.1](28-graceful-drain-handoff.ko.md#11-장애-처리-범위)과
+[Spot과 Actor membership §7](15-spot-actor.ko.md#7-실패-처리-범위)이 정의한다.
 
 ## 6. Session과 binding
 

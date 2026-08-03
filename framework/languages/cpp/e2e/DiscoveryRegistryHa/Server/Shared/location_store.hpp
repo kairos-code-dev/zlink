@@ -30,6 +30,8 @@ inline void add_redis_location_store (zlink::framework::zlink_framework_options_
     locations.owner_lease_renew_interval =
       std::chrono::milliseconds (options.heartbeat_ms);
     locations.owner_lease_ttl = std::chrono::milliseconds (options.lease_ttl_ms);
+    locations.owner_lease_fencing_margin = std::chrono::milliseconds (1000);
+    locations.owner_lease_renew_timeout = std::chrono::milliseconds (500);
     locations.polling_interval = std::chrono::milliseconds (options.polling_ms);
     locations.store_failure_grace = std::chrono::milliseconds (options.grace_ms);
 }

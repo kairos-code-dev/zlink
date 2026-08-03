@@ -4,7 +4,7 @@
 
 # 유틸리티
 
-이 문서는 ZLink Core 11.0.0의 atomic counter, timer, 고해상도 clock과 thread helper 공개 계약을
+이 문서는 ZLink Core의 atomic counter, timer, 고해상도 clock과 thread helper 공개 계약을
 정의한다. 대상 독자는 이러한 utility의 lifecycle, thread-safety와 callback ownership을 C API와
 bindings에 투영하는 개발자다. 이 문서는 “공통 runtime 기능을 사용할 때 각 handle과 callback의 수명,
 동시 호출 범위와 반환값을 어떻게 해석하는가?”에 답한다.

@@ -5,18 +5,18 @@
 # Core public-contract governance
 
 This document defines the sources, documentation responsibilities, and change
-procedure for the ZLink Core 11.0 public contract. Its audience is developers
+procedure for the ZLink Core public contract. Its audience is developers
 who design, implement, and review the public Core C ABI.
 
 ## 1. Contract sources
 
 The formal specifications under `core/doc/spec/core/` define the target public
-behavior that Core 11.0 must provide. `core/include/zlink.h` and the domain
+behavior that Core must provide. `core/include/zlink.h` and the domain
 headers it includes are the C ABI expression of the same contract. The
 implementation, contract tests, bindings, and installed packages must agree
 with both expressions.
 
-The Core 11.0 public C ABI provides only context, message, socket, transport,
+The Core public C ABI provides only context, message, socket, transport,
 eventing, and utility capabilities used directly by applications and raw
 bindings. It provides no separate public SPI, private C ABI, or compatibility
 facade for Framework service runtimes. [Core Runtime Boundary](09-runtime-boundary.en.md)
@@ -33,25 +33,24 @@ and errno, ownership, timeout, thread safety, callbacks, and close semantics.
 Guides own purpose and application examples. Internals describe socket wiring,
 queues, locks, threads, and protocol codecs after implementation is confirmed.
 
-Formal specifications, guides, and internals describe only the Core 11.0 target
-state. The v11 plan and execution ledger own the previous service C ABI,
-removal history, implementation progress, and alternatives. Formal documents
-do not cite plans as contract authority.
+Formal specifications, guides, and internals describe only the Core target
+state. Plans and execution ledgers own implementation progress and
+alternatives. Formal documents do not cite plans as contract authority.
 
-## 3. Core 11.0 target-first exception
+## 3. Core target-first exception
 
-The Core 11.0 service-runtime migration changes the responsibility boundary of
+The Core service-runtime migration changes the responsibility boundary of
 a major version. For this work, formal specifications establish the target
 contract before public headers and the current implementation. An unimplemented
 target is written in the formal specification, not a draft, and the v11
 execution ledger alone records implementation differences.
 
-This exception applies only to the Core 11.0 migration scope. Other Core changes
+This exception applies only to the Core migration scope. Other Core changes
 follow the repository's general draft procedure.
 
 ## 4. Change procedure
 
-A Core 11.0 public-contract change follows this order:
+A Core public-contract change follows this order:
 
 1. Record the target contract with the same meaning in Korean and English formal specifications.
 2. Review functions, types, enums, constants, results, ownership, and thread-safety tables.
@@ -65,4 +64,4 @@ A Core 11.0 public-contract change follows this order:
 The Korean and English documents have the same heading order, C signatures,
 enum and struct fields and numeric values, defaults, results, ownership,
 thread-safety rules, and link targets. A public contract present in only one
-language is not a valid Core 11.0 contract.
+language is not a valid Core contract.

@@ -4,10 +4,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
-BUILD_DIR="$CPP_DIR/build-redis-vcpkg"
+BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_DIR/build-redis-vcpkg}"
 SCENARIO="${1:-all}"
 HEARTBEAT_MS=1000
-LEASE_TTL_MS=3000
+LEASE_TTL_MS=5000
 POLLING_MS=500
 GRACE_MS=6000
 LOCAL_READINESS_TIMEOUT_SECONDS=3

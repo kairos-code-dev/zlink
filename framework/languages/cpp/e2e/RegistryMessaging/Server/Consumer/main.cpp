@@ -6,6 +6,7 @@
 #include "../../Shared/location_store_registration.hpp"
 #include "../../Shared/registry_messaging_contracts.hpp"
 #include "../Shared/peer_locations_handler.hpp"
+#include "../Shared/client_server_status_handler.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -48,8 +49,11 @@ int main (int argc, char **argv)
               })
               .map_health ("/health")
               .map_get<rm::peer_locations_handler_t> ("/locations/peers")
+              .map_get<rm::client_server_status_handler_t> ("/client-server/status")
               .map_post<rm_consumer::batch_request_handler_t> ("/profile/batch-request")
               .map_post<rm_consumer::profile_request_handler_t> ("/profile/request")
+              .map_post<rm_consumer::scale_in_transition_handler_t> (
+                "/profile/scale-in-transition")
               .map_post<rm_consumer::workflow_request_handler_t> (
                 "/workflow/request")
               .map_post<rm_consumer::slow_request_handler_t> ("/profile/slow-request")

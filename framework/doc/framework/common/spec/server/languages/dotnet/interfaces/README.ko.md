@@ -2,7 +2,7 @@
 
 [.NET 계약 목차](../README.ko.md)
 
-이 디렉토리는 ZLink Framework 11.0.0 server의 exact C# public contract만 기능별로 소유한다. 공통
+이 디렉토리는 ZLink Framework server의 exact C# public contract만 기능별로 소유한다. 공통
 Framework spec이 동작을 정하고 다음 문서가 type, member, generic constraint, nullable annotation과 기본값을
 고정한다. Application이 호출하는 API와 외부 provider가 구현하는 SPI는 포함하지만 Framework 내부에서만
 사용하는 type, phase API, wire command와 구현 절차는 포함하지 않는다. Provider SPI는 문서 제목과 본문에서

@@ -4,13 +4,13 @@
 
 # Core Runtime Boundary
 
-This document defines the public C ABI boundary of ZLink Core 11.0. Core is a
+This document defines the public C ABI boundary of ZLink Core. Core is a
 raw-socket runtime that encapsulates message transport and operating-system I/O.
 Framework owns application service topology and stateful-object runtimes.
 
 ## 1. Core capabilities
 
-Core 11.0 provides the following capabilities through its public C ABI:
+Core provides the following capabilities through its public C ABI:
 
 - Context and I/O-thread lifecycle
 - Message allocation, ownership, multipart frames, and routing IDs
@@ -24,7 +24,7 @@ Core 11.0 provides the following capabilities through its public C ABI:
 
 ## 2. Framework-owned capabilities
 
-Core 11.0 does not provide the following service concepts through its public C
+Core does not provide the following service concepts through its public C
 ABI, installed headers, exported symbols, or compatibility facades:
 
 - MeshName, ChannelName membership, and service discovery
@@ -57,7 +57,7 @@ Framework implements service-connection liveness messages, Location-owner
 leases, and STREAM-session ping/pong. Core neither interprets those service
 messages nor decides whether an application handler can process work.
 
-The Core 11 public-option set does not include `ZLINK_OPT_HEARTBEAT_IVL`,
+The Core public-option set does not include `ZLINK_OPT_HEARTBEAT_IVL`,
 `ZLINK_OPT_HEARTBEAT_TTL`, or `ZLINK_OPT_HEARTBEAT_TIMEOUT`. The raw ZMP command
 set does not include `zmp_control_heartbeat` or `zmp_control_heartbeat_ack`.
 Aliases, deprecated options, and compatibility commands do not expose the same
@@ -81,7 +81,7 @@ runtime separates raw-I/O progress from application-dispatch progress.
 
 ## 5. Public-surface verification
 
-Core 11.0 public-surface verification must establish all of the following:
+Core public-surface verification must establish all of the following:
 
 - The install tree and exported symbols contain no service headers, types, or functions.
 - `zlink_socket_set_channel_name`, `zlink_socket_get_channel_name`, MeshNode poll

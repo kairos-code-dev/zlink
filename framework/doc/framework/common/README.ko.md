@@ -18,7 +18,7 @@
 `ZLink Framework` 방향을 정리한다.
 제품 개요와 핵심 가치는 [01-overview.ko.md](spec/02-overview.ko.md)를 참고한다.
 
-## 1.1 버전 기준
+## 2. 버전 기준
 
 지원 언어와 런타임 버전은 binding 문서가 먼저 명시해야 한다. 특히 `.NET`
 문서에서는 아래 기준을 공통으로 적용한다.
@@ -32,7 +32,7 @@
 바인딩 구현과 샘플이 더 높은 런타임에서 함께 개발되더라도, 공개 framework
 계약은 먼저 "어디까지를 최소 지원으로 볼 것인가"를 분명히 적어야 한다.
 
-## 2. 문서 구성
+## 3. 문서 구성
 
 아래 문서들은 각각 한 가지 주제만 다루며, 서로 범위가 겹치지 않게 구성했다.
 번호 순서대로 읽으면 전체 그림을 자연스럽게 따라갈 수 있다.
@@ -73,7 +73,7 @@
 2. 해당 언어 `README.ko.md`로 진입한다.
 3. 그 언어의 인터페이스 기준 문서, 주제 문서, 샘플 문서를 순서대로 읽는다.
 
-## 3. 각 문서의 범위 원칙
+## 4. 각 문서의 범위 원칙
 
 각 문서가 다루는 내용이 겹치지 않도록, 아래 원칙을 따른다.
 
@@ -88,7 +88,7 @@
 | Spot actor join/relocation 완료 조건과 callback 순서 | spot-actor | 필요하면 spot-actor를 링크 |
 | session actor dispatch | session-actor-dispatch | 필요하면 session-actor-dispatch를 링크 |
 
-## 4. 문서 작성 원칙
+## 5. 문서 작성 원칙
 
 - 새 공통 동작이 필요하면 먼저 공통 spec에 계약 근거가 있는지 확인한다.
 - framework의 목표 public contract는 구현보다 먼저 정식 spec과 언어별 exact
@@ -99,14 +99,14 @@
 이 문서 묶음은 "API를 먼저 적고 나중에 용도를 붙이는" 방식이 아니라,
 "용도를 먼저 적고 API를 그 용도에 맞춰 좁히는" 방식을 따른다.
 
-## 5. 언어별 상세 문서 작성 규칙
+## 6. 언어별 상세 문서 작성 규칙
 
 이 공통 묶음은 `.NET` 하나만 위한 문서가 아니다. `Java`, `Kotlin`, `Node.js`,
 `C++` 상세 문서도 이 묶음을 기준으로 같은 수준으로 작성할 수 있어야 한다.
 
 그래서 언어별 디렉토리는 아래 규칙을 따른다.
 
-### 5.1 공통 문서를 다시 정의하지 않는다
+### 6.1 공통 문서를 다시 정의하지 않는다
 
 언어별 문서는 아래 의미를 새로 정의하면 안 된다.
 
@@ -117,7 +117,7 @@
 
 이 의미를 바꾸고 싶으면 먼저 공통 문서를 수정해야 한다.
 
-### 5.2 언어별 문서는 공통 개념을 구체화한다
+### 6.2 언어별 문서는 공통 개념을 구체화한다
 
 언어별 문서는 아래 내용을 해당 언어 관용구로 내려 적어야 한다.
 
@@ -130,7 +130,7 @@
 공통 문서가 "무슨 의미를 가져야 하는가"를 정하면, 언어 문서는
 "그 의미가 이 언어에서 어떤 시그니처와 샘플로 보이는가"를 적는다.
 
-### 5.2.1 네이밍 규칙
+### 6.2.1 네이밍 규칙
 
 framework 문서의 public 이름 규칙은
 [bindings/doc/spec/README.ko.md](../../../../bindings/doc/spec/README.ko.md)의
@@ -173,7 +173,7 @@ action 이름을 유지해야 한다. 예를 들면 아래처럼 맞춘다.
 - 언어 문서는 그 이름을 각 언어 케이싱 규칙에 맞게만 변환한다.
 - 샘플 코드와 본문 설명도 같은 규칙을 따라야 한다.
 
-### 5.3 언어별 디렉토리의 최소 문서 세트
+### 6.3 언어별 디렉토리의 최소 문서 세트
 
 `.NET` 수준의 상세 문서을 새 언어로 만들려면 최소한 아래 문서 세트가 필요하다.
 
@@ -195,7 +195,7 @@ action 이름을 유지해야 한다. 예를 들면 아래처럼 맞춘다.
 언어 특성상 어떤 축이 아직 미구현이어도 목표 계약을 정식 spec에서 빼지 않는다.
 현재 구현과의 차이와 후속 계획은 `90-implementation-gap.ko.md`에서만 추적한다.
 
-### 5.3.1 대표 프레임워크 기준
+### 6.3.1 대표 프레임워크 기준
 
 언어별 상세 문서은 아래 대표 프레임워크 또는 host를 기준으로 먼저 작성한다.
 
@@ -215,7 +215,7 @@ zlink framework host가 lifecycle과 dispatch loop를 직접 소유하는 방식
 사용자 guide와 package/module entrypoint에서는 직접 runtime을 만들거나 시작하는 경로를
 노출하지 않는다.
 
-### 5.4 언어별 문서의 최소 체크리스트
+### 6.4 언어별 문서의 최소 체크리스트
 
 언어별 상세 문서은 아래 항목을 명확히 적어야 한다.
 
@@ -257,7 +257,7 @@ zlink framework host가 lifecycle과 dispatch loop를 직접 소유하는 방식
 이 체크리스트를 만족하지 않으면, 공통 개념이 언어 표면으로 충분히 내려오지
 않은 것으로 본다.
 
-### 5.5 언어별 목표 계약과 구현 차이 처리 규칙
+### 6.5 언어별 목표 계약과 구현 차이 처리 규칙
 
 framework의 목표 public contract는 아직 구현되지 않았더라도 공통 spec과 언어별
 exact interface에 먼저 고정한다. 구현이 없다는 이유로 현재 언어들의 최소 공통분모로
@@ -268,6 +268,30 @@ exact interface에 먼저 고정한다. 구현이 없다는 이유로 현재 언
 않고 별도 draft에서 검토한다. 계약으로 승인하면 정식 spec과 모든 언어 exact
 interface를 먼저 갱신한 뒤 구현과 contract test를 맞춘다. core 공개 계약까지 바뀌는
 설계는 루트 `doc/spec/draft/`의 작성 규칙을 따른다.
+
+## 7. 언어별 공개 계약
+
+Framework server package의 공통 동작이 각 언어의 public API에서 어떤 정확한
+형태로 제공되는지는 아래 언어별 문서가 정의한다. 여기 기록한 signature는 해당
+언어 구현과 contract test가 따라야 하는 정식 계약이다.
+
+| 언어 | 공개 계약 |
+|------|-----------|
+| `.NET` | [dotnet](spec/server/languages/dotnet/README.ko.md) |
+| Java | [java](spec/server/languages/java/README.ko.md) |
+| Kotlin | [kotlin](spec/server/languages/kotlin/README.ko.md) |
+| Node.js framework | [node](spec/server/languages/node/README.ko.md) |
+| C++ | [cpp](spec/server/languages/cpp/README.ko.md) |
+
+Client package의 public interface는 여기서 정의하지 않는다. Stream connector는
+[언어별 Stream connector 계약](spec/stream-connector/README.ko.md), HTTP
+client는 [언어별 HTTP client 계약](spec/http-client/README.ko.md)이 각각
+소유한다.
+
+언어별 스펙은 서로의 시그니처를 복사하는 문서가 아니다. 같은 공통 동작을 해당
+언어 사용자가 자연스럽게 사용할 수 있는 public contract로 고정한다. 계약을
+변경하는 절차는 [공개 계약 관리](spec/00-public-contract-governance.ko.md)를
+따른다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

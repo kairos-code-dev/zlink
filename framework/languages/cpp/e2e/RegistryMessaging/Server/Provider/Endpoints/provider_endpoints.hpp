@@ -23,8 +23,12 @@ inline profile_res_t request_profile (zlink::framework::channel_client_t &channe
                    .submit<profile_res_t> ()
                    .result ();
     if (!reply) {
+        if (reply.error ()) {
+            throw *reply.error ();
+        }
         throw zlink::framework::framework_exception_t (
-          reply.error_kind (), reply.error () ? reply.error ()->what () : "profile request failed");
+          zlink::framework::framework_error_kind_t::internal_failure,
+          "profile request failed");
     }
     return reply.value ();
 }
@@ -38,8 +42,12 @@ inline scenario_route_res_t request_route (zlink::framework::route_client_t &rou
                    .submit<scenario_route_res_t> ()
                    .result ();
     if (!reply) {
+        if (reply.error ()) {
+            throw *reply.error ();
+        }
         throw zlink::framework::framework_exception_t (
-          reply.error_kind (), reply.error () ? reply.error ()->what () : "route request failed");
+          zlink::framework::framework_error_kind_t::internal_failure,
+          "route request failed");
     }
     return reply.value ();
 }

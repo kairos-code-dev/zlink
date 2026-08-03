@@ -5,7 +5,7 @@
 
 ## 1. 이 문서가 정의하는 범위
 
-이 문서는 ZLink Framework 11.0.0의 public Spot 계약 위에 room·stage·zone 같은 상위 실행 모델을 만드는
+이 문서는 ZLink Framework의 public Spot 계약 위에 room·stage·zone 같은 상위 실행 모델을 만드는
 공통 계약을 정의한다. Stage wrapper는 [Spot](01-glossary.ko.md#spot)이 소유한 상태를 안전하게
 유지하면서, 선택한 User Spot 실행 모드에 맞는 Spot·Actor·timer 실행 경계를 보존해야 한다.
 

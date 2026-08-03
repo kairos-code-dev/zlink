@@ -10,6 +10,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -149,7 +150,16 @@ inline TReply post_json (const std::string &base_url,
                     .base_url (base_url)
                     .timeout (timeout)
                     .build ();
-    return client.post (path).body (request).template submit<TReply> ().result ().value ().body;
+    try {
+        return client.post (path).body (request).template submit<TReply> ().result ().value ().body;
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        std::cerr << "registry-messaging http failure path=" << path
+                  << " kind=" << static_cast<int> (error.kind ())
+                  << " code=" << error.code ().value ()
+                  << " message=" << error.what () << '\n';
+        throw;
+    }
 }
 
 inline void post_raw (const std::string &base_url,

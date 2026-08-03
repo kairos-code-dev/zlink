@@ -2,7 +2,7 @@
 
 [C++ 계약 목차](../README.ko.md)
 
-이 디렉토리는 ZLink Framework 11.0.0 server의 exact C++ public interface를 기능별로 소유한다. 공통
+이 디렉토리는 ZLink Framework server의 exact C++ public interface를 기능별로 소유한다. 공통
 Framework spec이 동작을 정하고 다음 문서가 namespace, type, member, template constraint와 기본값을
 고정한다.
 

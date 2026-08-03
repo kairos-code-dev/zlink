@@ -12,6 +12,9 @@ docs_dir: docs
 theme:
   name: material
   language: ko
+  # header/nav.html 두 partial만 포크한다 — 사이트 이름 텍스트("ZLink")도 로고
+  # 아이콘처럼 홈으로 링크되게 하려고. 그 외 나머지는 Material 원본 그대로다.
+  custom_dir: overrides
   # Material 기본 Roboto에는 한글 글리프가 없다. 한글이 글자마다 OS 대체 폰트로
   # 떨어지면서 자간과 굵기가 흔들리므로 시스템 한글 폰트를 쓴다.
   font: false
@@ -41,11 +44,6 @@ theme:
     # 본문 맨 아래에 앞·뒤 장 링크. 순서는 이 파일의 nav가 정한다.
     - navigation.footer
     - search.highlight
-    # 오른쪽 목차 칸(12.1rem)을 없애고 목차를 왼쪽 nav 안으로 넣는다.
-    # `.md-grid`의 폭 제한은 사이드바를 포함한 레이아웃 전체에 걸리므로, 이
-    # 칸이 사라진 만큼(약 194px) 본문·코드·다이어그램이 넓어진다. 목차 자체는
-    # 없어지지 않으므로 긴 장에서 절을 건너뛰는 길은 남는다.
-    - toc.integrate
 
 extra_css:
   - assets/korean.css
@@ -88,7 +86,6 @@ plugins:
             Events: 이벤트
             Polling: 폴링
             Errors: 에러
-            Bindings: 바인딩
             Getting Started: 시작하기
             Messaging: 메시징
             Operations: 운영
@@ -119,6 +116,9 @@ plugins:
 exclude_docs: |
   perf/
   */internals/
+  # framework 내부 구조는 nav에 올린다 — 위 */internals/는 각 언어의
+  # bindings/framework internals(공개용이 아닌 것)를 빼는 규칙이라, 여기서만 되살린다.
+  !common/internals/
   common/e2e/
   # 공통 가이드는 언어 탭을 담은 소스다. 읽는 자리는 언어별 생성판이다.
   common/guide/
@@ -130,194 +130,247 @@ exclude_docs: |
   bindings/spec/draft/
 
 nav:
-  - 홈: index.ko.md
-  - 가이드:
-      - .NET:
-          - "가이드 홈": dotnet/guide/server/README.ko.md
-          - "1. 개요": dotnet/guide/server/01-overview.ko.md
-          - "2. 시작하기": dotnet/guide/server/02-getting-started.ko.md
-          - "3. 핵심 개념": dotnet/guide/server/03-concepts.ko.md
-          - "4. Backpressure": dotnet/guide/server/04-backpressure.ko.md
-          - "5. Channel Messaging": dotnet/guide/server/05-channel-messaging.ko.md
-          - "6. Spot": dotnet/guide/server/06-spot.ko.md
-          - "7. Actor와 Spot": dotnet/guide/server/07-actor-spot.ko.md
-          - "8. Session과 Actor binding": dotnet/guide/server/08-actor-session.ko.md
-          - "9. STREAM": dotnet/guide/server/09-stream.ko.md
-          - "10. Location": dotnet/guide/server/10-location.ko.md
-          - "11. Monitoring": dotnet/guide/server/11-monitoring.ko.md
-          - "12. 운영": dotnet/guide/server/12-operations.ko.md
-          - "13. 주요 타입 사용 색인": dotnet/guide/server/13-interface-catalog.ko.md
-          - "14. 샘플 고르기": dotnet/guide/server/14-samples.ko.md
-          - "15. E2E 테스트": dotnet/guide/server/15-e2e-testing.ko.md
-          - "16. Options": dotnet/guide/server/16-options.ko.md
-          - "17. ZLink를 어디에 쓰나": dotnet/guide/server/17-alternative.ko.md
-      - C++:
-          - "가이드 홈": cpp/guide/server/README.ko.md
-          - "1. 개요": cpp/guide/server/01-overview.ko.md
-          - "2. 시작하기": cpp/guide/server/02-getting-started.ko.md
-          - "3. 핵심 개념": cpp/guide/server/03-concepts.ko.md
-          - "4. Backpressure": cpp/guide/server/04-backpressure.ko.md
-          - "5. Channel Messaging": cpp/guide/server/05-channel-messaging.ko.md
-          - "6. Spot": cpp/guide/server/06-spot.ko.md
-          - "7. Actor와 Spot": cpp/guide/server/07-actor-spot.ko.md
-          - "8. Session과 Actor binding": cpp/guide/server/08-actor-session.ko.md
-          - "9. STREAM": cpp/guide/server/09-stream.ko.md
-          - "10. Location": cpp/guide/server/10-location.ko.md
-          - "11. Monitoring": cpp/guide/server/11-monitoring.ko.md
-          - "12. 운영": cpp/guide/server/12-operations.ko.md
-          - "13. 주요 타입 사용 색인": cpp/guide/server/13-interface-catalog.ko.md
-          - "14. 샘플 고르기": cpp/guide/server/14-samples.ko.md
-          - "15. E2E 테스트": cpp/guide/server/15-e2e-testing.ko.md
-          - "16. Options": cpp/guide/server/16-options.ko.md
-          - "17. ZLink를 어디에 쓰나": cpp/guide/server/17-alternative.ko.md
-          - "18. DI 컨테이너": cpp/guide/server/18-di-container.ko.md
-          - "19. Configuration": cpp/guide/server/19-configuration.ko.md
-          - "20. HTTP Hosting": cpp/guide/server/20-http-hosting.ko.md
-          - "21. 실행·구성 모델": cpp/guide/server/21-execution-model.ko.md
-      - Java:
-          - "가이드 홈": java/guide/server/README.ko.md
-          - "1. 개요": java/guide/server/01-overview.ko.md
-          - "2. 시작하기": java/guide/server/02-getting-started.ko.md
-          - "3. 핵심 개념": java/guide/server/03-concepts.ko.md
-          - "4. Backpressure": java/guide/server/04-backpressure.ko.md
-          - "5. Channel Messaging": java/guide/server/05-channel-messaging.ko.md
-          - "6. Spot": java/guide/server/06-spot.ko.md
-          - "7. Actor와 Spot": java/guide/server/07-actor-spot.ko.md
-          - "8. Session과 Actor binding": java/guide/server/08-actor-session.ko.md
-          - "9. STREAM": java/guide/server/09-stream.ko.md
-          - "10. Location": java/guide/server/10-location.ko.md
-          - "11. Monitoring": java/guide/server/11-monitoring.ko.md
-          - "12. 운영": java/guide/server/12-operations.ko.md
-          - "13. 주요 타입 사용 색인": java/guide/server/13-interface-catalog.ko.md
-          - "14. 샘플 고르기": java/guide/server/14-samples.ko.md
-          - "15. E2E 테스트": java/guide/server/15-e2e-testing.ko.md
-          - "16. Options": java/guide/server/16-options.ko.md
-          - "17. ZLink를 어디에 쓰나": java/guide/server/17-alternative.ko.md
-      - Kotlin:
-          - "가이드 홈": kotlin/guide/server/README.ko.md
-          - "1. 개요": kotlin/guide/server/01-overview.ko.md
-          - "2. 시작하기": kotlin/guide/server/02-getting-started.ko.md
-          - "3. 핵심 개념": kotlin/guide/server/03-concepts.ko.md
-          - "4. Backpressure": kotlin/guide/server/04-backpressure.ko.md
-          - "5. Channel Messaging": kotlin/guide/server/05-channel-messaging.ko.md
-          - "6. Spot": kotlin/guide/server/06-spot.ko.md
-          - "7. Actor와 Spot": kotlin/guide/server/07-actor-spot.ko.md
-          - "8. Session과 Actor binding": kotlin/guide/server/08-actor-session.ko.md
-          - "9. STREAM": kotlin/guide/server/09-stream.ko.md
-          - "10. Location": kotlin/guide/server/10-location.ko.md
-          - "11. Monitoring": kotlin/guide/server/11-monitoring.ko.md
-          - "12. 운영": kotlin/guide/server/12-operations.ko.md
-          - "13. 주요 타입 사용 색인": kotlin/guide/server/13-interface-catalog.ko.md
-          - "14. 샘플 고르기": kotlin/guide/server/14-samples.ko.md
-          - "15. E2E 테스트": kotlin/guide/server/15-e2e-testing.ko.md
-          - "17. ZLink를 어디에 쓰나": kotlin/guide/server/17-alternative.ko.md
-      - Node.js:
-          - "가이드 홈": node/guide/server/README.ko.md
-          - "1. 개요": node/guide/server/01-overview.ko.md
-          - "2. 시작하기": node/guide/server/02-getting-started.ko.md
-          - "3. 핵심 개념": node/guide/server/03-concepts.ko.md
-          - "4. Backpressure": node/guide/server/04-backpressure.ko.md
-          - "5. Channel Messaging": node/guide/server/05-channel-messaging.ko.md
-          - "6. Spot": node/guide/server/06-spot.ko.md
-          - "7. Actor와 Spot": node/guide/server/07-actor-spot.ko.md
-          - "8. Session과 Actor binding": node/guide/server/08-actor-session.ko.md
-          - "9. STREAM": node/guide/server/09-stream.ko.md
-          - "10. Location": node/guide/server/10-location.ko.md
-          - "11. Monitoring": node/guide/server/11-monitoring.ko.md
-          - "12. 운영": node/guide/server/12-operations.ko.md
-          - "13. 주요 타입 사용 색인": node/guide/server/13-interface-catalog.ko.md
-          - "14. 샘플 고르기": node/guide/server/14-samples.ko.md
-          - "15. E2E 테스트": node/guide/server/15-e2e-testing.ko.md
-          - "16. Options": node/guide/server/16-options.ko.md
-          - "17. ZLink를 어디에 쓰나": node/guide/server/17-alternative.ko.md
-  - 스펙:
-      - common/README.ko.md
-      - common/spec/server/languages/README.ko.md
-  - 샘플: common/sample/README.ko.md
-  - Core 가이드:
-    - Overview: guide/01-overview.md
-    - Concepts:
-      - Socket Pattern Selection: guide/03-0-socket-patterns.md
-      - Reliability & Delivery: guide/reliability.ko.md
-      - Design Rationale: guide/design-rationale.ko.md
-      - Message API & Ownership: guide/09-message-api.md
-      - Thread Safety: guide/11-thread-safety.md
-    - Messaging Patterns:
-      - Routing ID: guide/08-routing-id.md
-      - PAIR: guide/03-1-pair.md
-      - PUB/SUB: guide/03-2-pubsub.md
-      - DEALER: guide/03-3-dealer.md
-      - ROUTER: guide/03-4-router.md
-      - STREAM: guide/03-5-stream.md
-      - Proxy: guide/03-6-proxy.md
-    - Transports: guide/04-transports.md
-    - TLS Security: guide/05-tls-security.md
-    - Operations:
-      - Monitoring: guide/06-monitoring.md
-      - Performance: guide/10-performance.md
-    - Reference:
-      - Core C API: guide/02-core-api.md
-      - Socket Options: guide/12-socket-options.md
-      - ZMP Protocol: guide/zmp-protocol.ko.md
-      - Glossary: guide/glossary.ko.md
-      - Shared Scenarios: guide/scenarios.ko.md
-  - Bindings 가이드:
-    - Overview: bindings/guide/README.ko.md
-    - .NET: bindings/guide/dotnet/index.ko.md
-    - C++: bindings/guide/cpp/index.ko.md
-    - Java: bindings/guide/java/index.ko.md
-    - Node.js: bindings/guide/node/index.ko.md
-    - Python: bindings/guide/python/index.ko.md
-    - Go: bindings/guide/go/index.ko.md
-    - Rust: bindings/guide/rust/index.ko.md
-  - Bindings 스펙:
-    - Overview: bindings/spec/README.md
-    - Async & Coroutine Policy: bindings/spec/async-coroutine-policy.ko.md
-    - C: bindings/spec/c/README.md
-    - .NET: bindings/spec/dotnet/README.md
-    - C++: bindings/spec/cpp/README.md
-    - Java: bindings/spec/java/README.md
-    - Node.js: bindings/spec/node/README.md
-    - Python: bindings/spec/python/README.md
-    - Go: bindings/spec/go/README.md
-    - Rust: bindings/spec/rust/README.md
-  - Core 스펙:
-    - Overview: spec/core/README.md
-    - Public Contract Governance: spec/core/00-public-contract-governance.md
-    - Context: spec/core/01-context.md
-    - Message: spec/core/02-message.md
-    - Errors: spec/core/03-errors.md
-    - Result Enums: spec/core/04-errno-map.md
-    - Events: spec/core/05-events.md
-    - Polling: spec/core/06-polling.md
-    - Monitoring: spec/core/07-monitoring.md
-    - Utilities: spec/core/08-utilities.md
-    - Runtime Boundary: spec/core/09-runtime-boundary.md
-    - Sockets:
-      - Overview: spec/core/socket/README.md
-      - PAIR: spec/core/socket/01-pair.md
-      - PUB: spec/core/socket/02-pub.md
-      - SUB: spec/core/socket/03-sub.md
-      - XPUB: spec/core/socket/04-xpub.md
-      - XSUB: spec/core/socket/05-xsub.md
-      - DEALER: spec/core/socket/06-dealer.md
-      - ROUTER: spec/core/socket/07-router.md
-      - STREAM: spec/core/socket/08-stream.md
-  - Core 내부 구조:
-    - Architecture: internals/architecture.md
-    - Threading Model: internals/threading-model.md
-    - Thread Safety: internals/thread-safety.md
-    - I/O Thread: internals/io-thread.md
-    - Design Decisions: internals/design-decisions.md
-    - POSD Module Structure: internals/posd-module-structure.md
-    - Source Layout: internals/core-source-layout.ko.md
-    - Stream Socket: internals/stream-socket.md
-    - Socket Options: internals/socket-option-defaults.md
-    - Connection Memory: internals/connection-memory.md
-    - Multipart Atomicity: internals/multipart-atomicity.ko.md
-    - Runtime Boundary: internals/runtime-boundary.md
-    - Protocol ZMP: internals/protocol-zmp.md
-    - Protocol Raw: internals/protocol-raw.md
+  - Framework:
+      - 가이드:
+          - .NET:
+              - "가이드 홈": dotnet/guide/server/README.ko.md
+              - "1. 개요": dotnet/guide/server/01-overview.ko.md
+              - "2. 시작하기": dotnet/guide/server/02-getting-started.ko.md
+              - "3. 핵심 개념": dotnet/guide/server/03-concepts.ko.md
+              - "4. Backpressure": dotnet/guide/server/04-backpressure.ko.md
+              - "5. Channel Messaging": dotnet/guide/server/05-channel-messaging.ko.md
+              - "6. Spot": dotnet/guide/server/06-spot.ko.md
+              - "7. Actor와 Spot": dotnet/guide/server/07-actor-spot.ko.md
+              - "8. Session과 Actor binding": dotnet/guide/server/08-actor-session.ko.md
+              - "9. STREAM": dotnet/guide/server/09-stream.ko.md
+              - "10. Location": dotnet/guide/server/10-location.ko.md
+              - "11. Monitoring": dotnet/guide/server/11-monitoring.ko.md
+              - "12. 운영": dotnet/guide/server/12-operations.ko.md
+              - "13. 주요 타입 사용 색인": dotnet/guide/server/13-interface-catalog.ko.md
+              - "14. 샘플 고르기": dotnet/guide/server/14-samples.ko.md
+              - "15. E2E 테스트": dotnet/guide/server/15-e2e-testing.ko.md
+              - "16. Options": dotnet/guide/server/16-options.ko.md
+              - "17. ZLink를 어디에 쓰나": dotnet/guide/server/17-alternative.ko.md
+          - C++:
+              - "가이드 홈": cpp/guide/server/README.ko.md
+              - "1. 개요": cpp/guide/server/01-overview.ko.md
+              - "2. 시작하기": cpp/guide/server/02-getting-started.ko.md
+              - "3. 핵심 개념": cpp/guide/server/03-concepts.ko.md
+              - "4. Backpressure": cpp/guide/server/04-backpressure.ko.md
+              - "5. Channel Messaging": cpp/guide/server/05-channel-messaging.ko.md
+              - "6. Spot": cpp/guide/server/06-spot.ko.md
+              - "7. Actor와 Spot": cpp/guide/server/07-actor-spot.ko.md
+              - "8. Session과 Actor binding": cpp/guide/server/08-actor-session.ko.md
+              - "9. STREAM": cpp/guide/server/09-stream.ko.md
+              - "10. Location": cpp/guide/server/10-location.ko.md
+              - "11. Monitoring": cpp/guide/server/11-monitoring.ko.md
+              - "12. 운영": cpp/guide/server/12-operations.ko.md
+              - "13. 주요 타입 사용 색인": cpp/guide/server/13-interface-catalog.ko.md
+              - "14. 샘플 고르기": cpp/guide/server/14-samples.ko.md
+              - "15. E2E 테스트": cpp/guide/server/15-e2e-testing.ko.md
+              - "16. Options": cpp/guide/server/16-options.ko.md
+              - "17. ZLink를 어디에 쓰나": cpp/guide/server/17-alternative.ko.md
+              - "18. DI 컨테이너": cpp/guide/server/18-di-container.ko.md
+              - "19. Configuration": cpp/guide/server/19-configuration.ko.md
+              - "20. HTTP Hosting": cpp/guide/server/20-http-hosting.ko.md
+              - "21. 실행·구성 모델": cpp/guide/server/21-execution-model.ko.md
+          - Java:
+              - "가이드 홈": java/guide/server/README.ko.md
+              - "1. 개요": java/guide/server/01-overview.ko.md
+              - "2. 시작하기": java/guide/server/02-getting-started.ko.md
+              - "3. 핵심 개념": java/guide/server/03-concepts.ko.md
+              - "4. Backpressure": java/guide/server/04-backpressure.ko.md
+              - "5. Channel Messaging": java/guide/server/05-channel-messaging.ko.md
+              - "6. Spot": java/guide/server/06-spot.ko.md
+              - "7. Actor와 Spot": java/guide/server/07-actor-spot.ko.md
+              - "8. Session과 Actor binding": java/guide/server/08-actor-session.ko.md
+              - "9. STREAM": java/guide/server/09-stream.ko.md
+              - "10. Location": java/guide/server/10-location.ko.md
+              - "11. Monitoring": java/guide/server/11-monitoring.ko.md
+              - "12. 운영": java/guide/server/12-operations.ko.md
+              - "13. 주요 타입 사용 색인": java/guide/server/13-interface-catalog.ko.md
+              - "14. 샘플 고르기": java/guide/server/14-samples.ko.md
+              - "15. E2E 테스트": java/guide/server/15-e2e-testing.ko.md
+              - "16. Options": java/guide/server/16-options.ko.md
+              - "17. ZLink를 어디에 쓰나": java/guide/server/17-alternative.ko.md
+          - Kotlin:
+              - "가이드 홈": kotlin/guide/server/README.ko.md
+              - "1. 개요": kotlin/guide/server/01-overview.ko.md
+              - "2. 시작하기": kotlin/guide/server/02-getting-started.ko.md
+              - "3. 핵심 개념": kotlin/guide/server/03-concepts.ko.md
+              - "4. Backpressure": kotlin/guide/server/04-backpressure.ko.md
+              - "5. Channel Messaging": kotlin/guide/server/05-channel-messaging.ko.md
+              - "6. Spot": kotlin/guide/server/06-spot.ko.md
+              - "7. Actor와 Spot": kotlin/guide/server/07-actor-spot.ko.md
+              - "8. Session과 Actor binding": kotlin/guide/server/08-actor-session.ko.md
+              - "9. STREAM": kotlin/guide/server/09-stream.ko.md
+              - "10. Location": kotlin/guide/server/10-location.ko.md
+              - "11. Monitoring": kotlin/guide/server/11-monitoring.ko.md
+              - "12. 운영": kotlin/guide/server/12-operations.ko.md
+              - "13. 주요 타입 사용 색인": kotlin/guide/server/13-interface-catalog.ko.md
+              - "14. 샘플 고르기": kotlin/guide/server/14-samples.ko.md
+              - "15. E2E 테스트": kotlin/guide/server/15-e2e-testing.ko.md
+              - "17. ZLink를 어디에 쓰나": kotlin/guide/server/17-alternative.ko.md
+          - Node.js:
+              - "가이드 홈": node/guide/server/README.ko.md
+              - "1. 개요": node/guide/server/01-overview.ko.md
+              - "2. 시작하기": node/guide/server/02-getting-started.ko.md
+              - "3. 핵심 개념": node/guide/server/03-concepts.ko.md
+              - "4. Backpressure": node/guide/server/04-backpressure.ko.md
+              - "5. Channel Messaging": node/guide/server/05-channel-messaging.ko.md
+              - "6. Spot": node/guide/server/06-spot.ko.md
+              - "7. Actor와 Spot": node/guide/server/07-actor-spot.ko.md
+              - "8. Session과 Actor binding": node/guide/server/08-actor-session.ko.md
+              - "9. STREAM": node/guide/server/09-stream.ko.md
+              - "10. Location": node/guide/server/10-location.ko.md
+              - "11. Monitoring": node/guide/server/11-monitoring.ko.md
+              - "12. 운영": node/guide/server/12-operations.ko.md
+              - "13. 주요 타입 사용 색인": node/guide/server/13-interface-catalog.ko.md
+              - "14. 샘플 고르기": node/guide/server/14-samples.ko.md
+              - "15. E2E 테스트": node/guide/server/15-e2e-testing.ko.md
+              - "16. Options": node/guide/server/16-options.ko.md
+              - "17. ZLink를 어디에 쓰나": node/guide/server/17-alternative.ko.md
+      - 스펙:
+          - "공통 스펙": common/README.ko.md
+          - 작성 기준과 공통 용어:
+              - "공개 계약 관리": common/spec/00-public-contract-governance.ko.md
+              - "메시징 용어집": common/spec/01-glossary.ko.md
+          - 기반 계약:
+              - "Framework 개요": common/spec/02-overview.ko.md
+              - "상호작용 모델": common/spec/03-interaction-model.ko.md
+              - "메시지 모델": common/spec/04-message-model.ko.md
+              - "비동기 실행 정책": common/spec/05-async-execution-policy.ko.md
+              - "Framework API": common/spec/06-framework-api.ko.md
+          - Channel과 network:
+              - "RouteMesh topology": common/spec/07-channel-topology.ko.md
+              - "Channel 메시징": common/spec/08-channel-messaging.ko.md
+              - "ClientServer Channel": common/spec/09-client-server-channel.ko.md
+              - "Network listener identity": common/spec/10-network-listener-identity.ko.md
+          - Object 메시징:
+              - "Spot 모델": common/spec/11-spot-model.ko.md
+              - "Spot 메시징": common/spec/12-spot-messaging.ko.md
+              - "MeshNode": common/spec/13-mesh-node.ko.md
+              - "Actor 모델": common/spec/14-actor-model.ko.md
+              - "Spot과 Actor membership": common/spec/15-spot-actor.ko.md
+              - "Spot 주소 메시징": common/spec/16-spot-address-messaging.ko.md
+              - "Stage wrapper on Spot": common/spec/17-stage-wrapper-on-spot.ko.md
+              - "Spot·Actor routing": common/spec/18-object-routing.ko.md
+          - STREAM과 session:
+              - "STREAM 서버 session": common/spec/19-stream-session.ko.md
+              - "Session Actor dispatch": common/spec/20-session-actor-dispatch.ko.md
+          - Location Store와 relocation:
+              - "Location runtime": common/spec/21-location-runtime.ko.md
+              - "Location Store (Redis)": common/spec/22-location-store-redis.ko.md
+              - "Relocation Store (Redis)": common/spec/23-relocation-store-redis.ko.md
+          - 관측과 종료:
+              - "Runtime 상태와 운영 진단": common/spec/24-runtime-monitoring.ko.md
+              - "Runtime metric": common/spec/25-runtime-metrics.ko.md
+              - "Message flow tracing": common/spec/26-message-flow-tracing.ko.md
+              - "Request correlation": common/spec/27-flow-correlation.ko.md
+              - "Host Relocate와 Shutdown": common/spec/28-graceful-drain-handoff.ko.md
+              - "Transport liveness": common/spec/29-transport-liveness.ko.md
+              - "장애 대응과 failover": common/spec/31-failure-failover-policy.ko.md
+              - "Framework 오류 모델": common/spec/32-framework-error-model.ko.md
+      - 내부 구조:
+          - "내부 구조 개요": common/internals/README.ko.md
+          - "1. 계층 경계와 식별자": common/internals/01-layering.ko.md
+          - "2. 직렬 실행": common/internals/02-serialization.ko.md
+          - "3. 진행 보장": common/internals/03-progress-isolation.ko.md
+          - "4. 완료": common/internals/04-completion.ko.md
+          - "5. 이동 중 message 연속성": common/internals/05-relocation-continuity.ko.md
+          - "6. 대상 선택과 위치 캐시": common/internals/06-routing-and-cache.ko.md
+          - "7. 수신과 dispatch 루프": common/internals/07-dispatch-loop.ko.md
+          - "8. 객체 종류와 활성화": common/internals/08-object-lifecycle.ko.md
+          - "9. Session과 Actor 연결": common/internals/09-session-binding.ko.md
+          - "10. Liveness와 상태 공개": common/internals/10-liveness-and-state.ko.md
+          - "11. Payload 소유권과 복사": common/internals/11-message-ownership.ko.md
+          - "Service wire protocol": common/internals/service-wire-protocol.ko.md
+  - Bindings:
+      - 가이드:
+        - Overview: bindings/guide/README.ko.md
+        - .NET: bindings/guide/dotnet/index.ko.md
+        - C++: bindings/guide/cpp/index.ko.md
+        - Java: bindings/guide/java/index.ko.md
+        - Node.js: bindings/guide/node/index.ko.md
+        - Python: bindings/guide/python/index.ko.md
+        - Go: bindings/guide/go/index.ko.md
+        - Rust: bindings/guide/rust/index.ko.md
+      - 스펙:
+        - Overview: bindings/spec/README.md
+        - Async & Coroutine Policy: bindings/spec/async-coroutine-policy.ko.md
+        - C: bindings/spec/c/README.md
+        - .NET: bindings/spec/dotnet/README.md
+        - C++: bindings/spec/cpp/README.md
+        - Java: bindings/spec/java/README.md
+        - Node.js: bindings/spec/node/README.md
+        - Python: bindings/spec/python/README.md
+        - Go: bindings/spec/go/README.md
+        - Rust: bindings/spec/rust/README.md
+  - Core:
+      - 가이드:
+        - Overview: guide/01-overview.md
+        - Concepts:
+          - Socket Pattern Selection: guide/03-0-socket-patterns.md
+          - Reliability & Delivery: guide/reliability.ko.md
+          - Design Rationale: guide/design-rationale.ko.md
+          - Message API & Ownership: guide/09-message-api.md
+          - Thread Safety: guide/11-thread-safety.md
+        - Messaging Patterns:
+          - Routing ID: guide/08-routing-id.md
+          - PAIR: guide/03-1-pair.md
+          - PUB/SUB: guide/03-2-pubsub.md
+          - DEALER: guide/03-3-dealer.md
+          - ROUTER: guide/03-4-router.md
+          - STREAM: guide/03-5-stream.md
+          - Proxy: guide/03-6-proxy.md
+        - Transports: guide/04-transports.md
+        - TLS Security: guide/05-tls-security.md
+        - Operations:
+          - Monitoring: guide/06-monitoring.md
+          - Performance: guide/10-performance.md
+        - Reference:
+          - Core C API: guide/02-core-api.md
+          - Socket Options: guide/12-socket-options.md
+          - ZMP Protocol: guide/zmp-protocol.ko.md
+          - Glossary: guide/glossary.ko.md
+          - Shared Scenarios: guide/scenarios.ko.md
+      - 스펙:
+        - Overview: spec/core/README.md
+        - Public Contract Governance: spec/core/00-public-contract-governance.md
+        - Context: spec/core/01-context.md
+        - Message: spec/core/02-message.md
+        - Errors: spec/core/03-errors.md
+        - Result Enums: spec/core/04-errno-map.md
+        - Events: spec/core/05-events.md
+        - Polling: spec/core/06-polling.md
+        - Monitoring: spec/core/07-monitoring.md
+        - Utilities: spec/core/08-utilities.md
+        - Runtime Boundary: spec/core/09-runtime-boundary.md
+        - Sockets:
+          - Overview: spec/core/socket/README.md
+          - PAIR: spec/core/socket/01-pair.md
+          - PUB: spec/core/socket/02-pub.md
+          - SUB: spec/core/socket/03-sub.md
+          - XPUB: spec/core/socket/04-xpub.md
+          - XSUB: spec/core/socket/05-xsub.md
+          - DEALER: spec/core/socket/06-dealer.md
+          - ROUTER: spec/core/socket/07-router.md
+          - STREAM: spec/core/socket/08-stream.md
+      - 내부 구조:
+        - Architecture: internals/architecture.md
+        - Threading Model: internals/threading-model.md
+        - Thread Safety: internals/thread-safety.md
+        - I/O Thread: internals/io-thread.md
+        - Design Decisions: internals/design-decisions.md
+        - POSD Module Structure: internals/posd-module-structure.md
+        - Source Layout: internals/core-source-layout.ko.md
+        - Stream Socket: internals/stream-socket.md
+        - Socket Options: internals/socket-option-defaults.md
+        - Connection Memory: internals/connection-memory.md
+        - Multipart Atomicity: internals/multipart-atomicity.ko.md
+        - Runtime Boundary: internals/runtime-boundary.md
+        - Protocol ZMP: internals/protocol-zmp.md
+        - Protocol Raw: internals/protocol-raw.md
 
 markdown_extensions:
   - admonition

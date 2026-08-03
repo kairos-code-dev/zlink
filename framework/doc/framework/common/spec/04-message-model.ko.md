@@ -3,7 +3,7 @@
 [스펙 목차](README.ko.md) · [이전: ZLink Framework 상호작용 모델](03-interaction-model.ko.md) · [다음: 비동기 실행과 handler turn](05-async-execution-policy.ko.md)
 
 
-이 문서는 ZLink Framework 11.0.0의 typed 메시지, application metadata, 응답과 오류 계약을 정의한다.
+이 문서는 ZLink Framework의 typed 메시지, application metadata, 응답과 오류 계약을 정의한다.
 대상 독자는 framework 공개 계약과 언어별 service runtime을 구현하는 개발자다. Framework envelope와 내부
 multipart encoding은 모든 언어가 같은 wire schema와 golden fixture를 사용하고, 각 언어 service runtime이
 raw transport 위에서 처리한다. Application에는 이 형식을 노출하지 않는다.

@@ -24,7 +24,7 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 `@ConfigurationPropertie
 
 ## 2. 공개 계약 spec
 
-정식 spec은 Framework 11.0 목표 public contract를 먼저 고정한다. 현재 Java/Kotlin 구현과의 차이는
+정식 spec은 Framework 목표 public contract를 먼저 고정한다. 현재 Java/Kotlin 구현과의 차이는
 `90-implementation-gap.ko.md`만 기록한다. 모든 framework 언어의 공개 계약은
 `spec/<package>/languages/` 아래에서 함께 관리한다.
 
@@ -44,7 +44,7 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 `@ConfigurationPropertie
 | 문서 | 범위 |
 |------|------|
 | [backend-dependency-policy](internals/backend-dependency-policy.ko.md) | Java binding 의존 격리 |
-| [runtime-lifecycle](internals/runtime-lifecycle.ko.md) | Spring lifecycle과 내부 runtime 소유권 |
+| [공통 내부 구조](../common/internals/README.ko.md) | 네 언어가 공유하는 runtime 아키텍처 결정 |
 | [regression-test-matrix](internals/regression-test-matrix.ko.md) | JVM contract, E2E와 performance smoke 기준 |
 
 ## 4. 샘플

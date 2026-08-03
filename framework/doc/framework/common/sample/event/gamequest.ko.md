@@ -357,10 +357,11 @@ sequenceDiagram
     G-->>C: QuestCompletedNotify
 ```
 
-각 action response는 GameApi가 action을 접수해 EventId를 만든 결과다. progress와 completion
-notify는 PlayerQuestSpot이 event stream과 projection을 갱신한 뒤 보낸다. one-way send
-완료는 target handler의 domain append 완료를 뜻하지 않으므로 self-check는 notify와 evidence를
-따로 확인한다.
+`KillMonsterReq/Res`의 response는 GameApi가 action을 접수해 만든 EventId를 반환한다.
+`CollectItemReq`와 `EnterAreaReq`는 response가 없는 one-way action이며, 접수 이후의 progress와
+completion notify를 별도로 확인한다. 모든 progress와 completion notify는 PlayerQuestSpot이 event
+stream과 projection을 갱신한 뒤 보낸다. one-way send 완료는 target handler의 domain append 완료를
+뜻하지 않으므로 self-check는 notify와 evidence를 따로 확인한다.
 
 ### 7.2 중복과 reconnect
 

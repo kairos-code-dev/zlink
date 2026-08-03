@@ -20,9 +20,12 @@ inline workflow_res_t request_workflow (zlink::framework::channel_client_t &chan
                    .submit<workflow_res_t> ()
                    .result ();
     if (!reply) {
+        if (reply.error ()) {
+            throw *reply.error ();
+        }
         throw zlink::framework::framework_exception_t (
-          reply.error_kind (),
-          reply.error () ? reply.error ()->what () : "workflow request failed");
+          zlink::framework::framework_error_kind_t::internal_failure,
+          "workflow request failed");
     }
     return reply.value ();
 }

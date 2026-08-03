@@ -5,7 +5,7 @@
 
 ## 1. 범위
 
-이 문서는 ZLink Framework 11.0.0의 .NET RouteMesh·MeshNode 공개 인터페이스를 고정한다. 대상 독자는
+이 문서는 ZLink Framework의 .NET RouteMesh·MeshNode 공개 인터페이스를 고정한다. 대상 독자는
 .NET application 개발자와 public provider 구현자다. 물리 mesh 등록, 논리 channel membership, manual peer, handler,
 Spot·Actor 등록과 실행 중 weight 변경의 정확한 C# signature를 이 문서가 소유한다.
 
@@ -452,8 +452,8 @@ public interface IZLinkHandlerFilter
 context는 MeshName을 제공하고 ClientServer와 `ClassicFanout`은 `null`을 제공한다. Filter는 `next`를
 최대 한 번 호출한다. 두 번째 호출은 `ZLinkFrameworkErrorKind.InvalidOperation`으로 실패하며 handler를
 다시 실행하지 않는다. Request에서 `next`를 호출하지 않으면
-`ZLinkFrameworkErrorKind.Rejected` reply를 보낸다. 이전 `IZLinkMessageContext` signature와 filter의
-업무 reply 대체 동작은 v11.0에서 호환 overload나 adapter로 유지하지 않는다.
+`ZLinkFrameworkErrorKind.Rejected` reply를 보낸다. Filter가 업무 reply를 대체하는 동작은 호환
+overload나 adapter로 제공하지 않는다.
 
 `AddInstanceSpotFactory`의 type 이름은 비어 있을 수 없고 UTF-8로 255 byte 이하여야 한다. Type별 active와
 pending limit은 생략할 수 있지만 명시한 값은 1..`int.MaxValue`다.

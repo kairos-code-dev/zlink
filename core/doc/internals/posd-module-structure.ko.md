@@ -1,6 +1,6 @@
 [English](posd-module-structure.en.md) | 한국어
 
-# Core 11 POSD module 구조
+# Core POSD module 구조
 
 ## 1. 목표
 

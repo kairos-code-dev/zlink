@@ -53,33 +53,40 @@ inline void to_json (nlohmann::json &json, const topology_entry_result_t &value)
                           {"weight", value.weight}};
 }
 
+inline const char *client_server_state_name (
+  zlink::framework::client_server_server_state_t state)
+{
+    switch (state) {
+        case zlink::framework::client_server_server_state_t::ready:
+            return "Ready";
+        case zlink::framework::client_server_server_state_t::draining:
+            return "Draining";
+        default:
+            return "NotReady";
+    }
+}
+
 inline std::vector<topology_entry_result_t> peer_topology (
-  zlink::framework::location_runtime_query_t &locations,
+  zlink::framework::client_server_runtime_t &runtime,
   const std::optional<zlink::routing_id_t> &routing_id = std::nullopt,
   zlink::framework::location_role_t role = zlink::framework::location_role_t::router)
 {
-    zlink::framework::location_topology_filter_t filter;
-    filter.mesh_name = api_channel;
-    filter.node_rid = routing_id;
-    auto result = locations.list_topology (std::move (filter)).result ();
-    if (!result) {
-        throw std::runtime_error (result.error () ? result.error ()->what ()
-                                                 : "location peer query failed");
-    }
+    const auto snapshot = runtime.snapshot (api_channel);
     std::vector<topology_entry_result_t> entries;
-    for (const auto &peer : result.value ().items) {
-        entries.push_back (topology_entry_result_t{.name = peer.mesh_name,
+    entries.reserve (snapshot.servers.size ());
+    for (const auto &server : snapshot.servers) {
+        if (routing_id && server.server_rid != *routing_id)
+            continue;
+        entries.push_back (topology_entry_result_t{.name = snapshot.channel_name,
                                                    .kind = "channel",
                                                    .role = role == zlink::framework::location_role_t::dealer
                                                              ? "dealer"
                                                              : "router",
-                                                   .routing_id = peer.node_rid.to_string (),
-                                                   .endpoint = peer.endpoint,
-                                                   .state = peer.state
-                                                              == zlink::framework::location_topology_state_t::ready
-                                                            ? "Ready"
-                                                            : "NotReady",
-                                                   .weight = 100});
+                                                   .routing_id = server.server_rid.to_string (),
+                                                   .endpoint = {},
+                                                   .state = client_server_state_name (server.state),
+                                                   .weight = static_cast<std::uint32_t> (
+                                                     std::max (0, server.weight))});
     }
     return entries;
 }
@@ -99,10 +106,10 @@ class topology_handler_t
 {
   public:
     using dependency_types =
-      zlink::framework::dependency_list_t<zlink::framework::location_runtime_query_t>;
+      zlink::framework::dependency_list_t<zlink::framework::client_server_runtime_t>;
 
-    explicit topology_handler_t (zlink::framework::location_runtime_query_t &locations) :
-        _locations (locations)
+    explicit topology_handler_t (zlink::framework::client_server_runtime_t &runtime) :
+        _runtime (runtime)
     {
     }
 
@@ -111,22 +118,22 @@ class topology_handler_t
         const auto body = nlohmann::json::parse (request.body.empty () ? "{}" : request.body);
         const auto role = parse_topology_role (body.value ("role", std::string{"router"}));
         zlink::framework::http_response_t response;
-        response.body = nlohmann::json (peer_topology (_locations, std::nullopt, role)).dump ();
+        response.body = nlohmann::json (peer_topology (_runtime, std::nullopt, role)).dump ();
         return response;
     }
 
   private:
-    zlink::framework::location_runtime_query_t &_locations;
+    zlink::framework::client_server_runtime_t &_runtime;
 };
 
 class topology_wait_handler_t
 {
   public:
     using dependency_types =
-      zlink::framework::dependency_list_t<zlink::framework::location_runtime_query_t>;
+      zlink::framework::dependency_list_t<zlink::framework::client_server_runtime_t>;
 
-    explicit topology_wait_handler_t (zlink::framework::location_runtime_query_t &locations) :
-        _locations (locations)
+    explicit topology_wait_handler_t (zlink::framework::client_server_runtime_t &runtime) :
+        _runtime (runtime)
     {
     }
 
@@ -153,7 +160,7 @@ class topology_wait_handler_t
         const auto deadline =
           std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms);
         while (std::chrono::steady_clock::now () < deadline) {
-            auto entries = peer_topology (_locations, rid, role);
+            auto entries = peer_topology (_runtime, rid, role);
             const auto count =
               std::count_if (entries.begin (), entries.end (), [&] (const auto &entry) {
                   return (routing_id.empty () || entry.routing_id == routing_id)
@@ -180,7 +187,7 @@ class topology_wait_handler_t
     }
 
   private:
-    zlink::framework::location_runtime_query_t &_locations;
+    zlink::framework::client_server_runtime_t &_runtime;
 };
 
 inline profile_res_t request_profile_once (zlink::framework::channel_client_t &channels,

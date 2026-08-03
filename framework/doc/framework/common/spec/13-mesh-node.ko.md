@@ -5,7 +5,7 @@
 
 ## 1. 이 문서가 정의하는 범위
 
-이 문서는 ZLink Framework 11.0.0에서 RouteMesh에 참여하는 MeshNode의 identity,
+이 문서는 ZLink Framework에서 RouteMesh에 참여하는 MeshNode의 identity,
 object role, object를 배치할 수 있는 조건과 startup 순서를 정의한다.
 
 [MeshNode](01-glossary.ko.md#meshnode)는 다른 node와 물리적으로 연결되고 Channel membership을 제공한다. Actor와

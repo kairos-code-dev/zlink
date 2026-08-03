@@ -4,7 +4,7 @@
 
 # 소켓 — STREAM
 
-이 문서는 ZLink Core 11.0.0의 범용 raw STREAM 공개 계약을 정의합니다.
+이 문서는 ZLink Core의 범용 raw STREAM 공개 계약을 정의합니다.
 TCP/WS 연결의 byte record 또는 고정 framing packet을 routing ID로 송수신하는
 C API와 bindings 개발자를 대상으로 합니다.
 

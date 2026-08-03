@@ -1,4 +1,4 @@
-# Core 11 source layout
+# Core source layout
 
 이 문서는 Core 11에 남는 raw runtime source의 책임과 include 방향을 설명한다.
 

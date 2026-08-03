@@ -1,6 +1,6 @@
 [English](threading-model.en.md) | 한국어
 
-# Core 11 threading model
+# Core threading model
 
 ## 1. Thread 종류
 

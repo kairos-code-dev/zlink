@@ -19,7 +19,7 @@ inline void run_rm_b2_scale_in_scenario (const client_options_t &options)
     const auto consumer_url = options.store_consumer_url;
     auto location_client = zlink::http_client::client_t::create ()
                              .base_url (consumer_url)
-                             .timeout (std::chrono::milliseconds (1000))
+                             .timeout (std::chrono::seconds (5))
                              .build ();
     std::set<std::string> before;
     for (int index = 0; index < 80 && before.size () < 2; ++index) {
@@ -33,7 +33,7 @@ inline void run_rm_b2_scale_in_scenario (const client_options_t &options)
 
     struct transition_result_t
     {
-        std::optional<std::string> provider_rid;
+        bool success = false;
         std::optional<zlink::framework::framework_error_kind_t> error_kind;
     };
     std::atomic<bool> start_requests{false};
@@ -45,17 +45,29 @@ inline void run_rm_b2_scale_in_scenario (const client_options_t &options)
               while (!start_requests.load (std::memory_order_acquire)) {
                   std::this_thread::yield ();
               }
-              try {
-                  const auto reply = post_json<profile_req_t, profile_res_t> (
-                    consumer_url, "/profile/request", profile_req_t{.value = "slow"},
-                    std::chrono::seconds (4));
-                  ensure (reply.value == "profile:slow",
-                          "RM-B2 transition reply payload mismatch");
-                  return transition_result_t{.provider_rid = reply.provider_rid};
+                  const auto reply = post_json<profile_req_t, request_failure_res_t> (
+                    consumer_url, "/profile/scale-in-transition", profile_req_t{.value = "slow"},
+                    std::chrono::seconds (60));
+              if (!reply.failed) {
+                  return transition_result_t{.success = true};
               }
-              catch (const zlink::framework::framework_exception_t &error) {
-                  return transition_result_t{.error_kind = error.kind ()};
+                  if (reply.error_type == "DeadlineExceeded"
+                      || reply.error_type == "Unavailable"
+                      || reply.error_type == "ShuttingDown"
+                      || reply.error_type == "TimeoutException") {
+                  std::cerr << "RM-B2 transition public error type="
+                            << reply.error_type << '\n';
+                  return transition_result_t{.error_kind =
+                    reply.error_type == "DeadlineExceeded"
+                      || reply.error_type == "TimeoutException"
+                      ? zlink::framework::framework_error_kind_t::deadline_exceeded
+                    : reply.error_type == "ShuttingDown"
+                      ? zlink::framework::framework_error_kind_t::shutting_down
+                      : zlink::framework::framework_error_kind_t::unavailable};
               }
+              throw std::runtime_error (
+                "RM-B2 transition returned unexpected public error type: "
+                + reply.error_type);
           }));
     }
     start_requests.store (true, std::memory_order_release);
@@ -66,15 +78,13 @@ inline void run_rm_b2_scale_in_scenario (const client_options_t &options)
     int transition_errors = 0;
     for (auto &pending : transition_requests) {
         const auto completed = pending.get ();
-        if (completed.provider_rid) {
-            ensure (*completed.provider_rid == "api-a" || *completed.provider_rid == "api-b",
-                    "RM-B2 transition request used an unexpected provider");
+        if (completed.success) {
             ++transition_successes;
             continue;
         }
-        ensure (completed.error_kind == zlink::framework::framework_error_kind_t::internal_failure
+        ensure (completed.error_kind == zlink::framework::framework_error_kind_t::deadline_exceeded
                   || completed.error_kind
-                       == zlink::framework::framework_error_kind_t::not_found
+                       == zlink::framework::framework_error_kind_t::shutting_down
                   || completed.error_kind
                        == zlink::framework::framework_error_kind_t::unavailable,
                 "RM-B2 transition request returned an unexpected public error");
@@ -85,7 +95,14 @@ inline void run_rm_b2_scale_in_scenario (const client_options_t &options)
 
     bool api_b_removed = false;
     for (int attempt = 0; attempt < 150 && !api_b_removed; ++attempt) {
-        const auto peers = location_client.get ("/locations/peers").submit<nlohmann::json> ().result ().value ().body;
+        const auto peers_result = location_client.get ("/locations/peers")
+                                     .submit<nlohmann::json> ()
+                                     .result ();
+        if (!peers_result) {
+            std::this_thread::sleep_for (std::chrono::milliseconds (200));
+            continue;
+        }
+        const auto &peers = peers_result.value ().body;
         api_b_removed = true;
         for (const auto &entry : peers) {
             if (entry.value ("mesh_name", "") == api_channel

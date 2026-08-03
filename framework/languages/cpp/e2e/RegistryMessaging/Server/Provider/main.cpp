@@ -9,6 +9,7 @@
 #include "../../Shared/registry_messaging_contracts.hpp"
 #include "../../Shared/tcp_endpoint.hpp"
 #include "../Shared/peer_locations_handler.hpp"
+#include "../Shared/client_server_status_handler.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -134,6 +135,7 @@ int main (int argc, char **argv)
               .map_post<rm_provider::http_route_request_handler_t> ("/profile/route/request")
               .map_post<rm_provider::http_route_missing_handler_t> ("/profile/route/missing")
               .map_get<e2e::peer_locations_handler_t> ("/locations/peers")
+              .map_get<e2e::client_server_status_handler_t> ("/client-server/status")
               .map_post<rm_provider::server_weight_handler_t> ("/admin/server-weight");
         }
         framework.handlers ()

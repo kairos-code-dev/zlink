@@ -285,3 +285,6 @@ framework/doc/site/site/
 
 # clangd index cache (machine-generated, must not be tracked)
 framework/languages/cpp/.cache/
+
+# 루트에 생성되는 CMake 산출물
+/CMakeFiles/

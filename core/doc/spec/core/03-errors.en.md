@@ -4,7 +4,7 @@
 
 # Errors, result enums, and version
 
-This document defines the error ABI and version contract for ZLink Core 11.0.0. Its audience is developers of the C API and bindings. It answers: “How do typed public results map to thread-local errno, and how is version 11.0.0 identified?”
+This document defines the error ABI contract for ZLink Core. Its audience is developers of the C API and bindings. It answers: “How do typed public results map to thread-local errno, and how is the build version identified?”
 
 ## 1. General rules
 
@@ -196,4 +196,4 @@ ZLINK_EXPORT const char *zlink_strerror(int errnum);
 ZLINK_EXPORT void zlink_version(int *major, int *minor, int *patch);
 ```
 
-Core 11.0.0 uses SOVERSION 11. The pointer returned by `zlink_strerror()` refers to library-owned static storage and must not be freed or modified. All three functions are thread-safe, and `zlink_errno()` returns only the calling thread’s value.
+Core uses SOVERSION 11. The pointer returned by `zlink_strerror()` refers to library-owned static storage and must not be freed or modified. All three functions are thread-safe, and `zlink_errno()` returns only the calling thread’s value.

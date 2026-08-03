@@ -41,7 +41,7 @@ Public generation, revision, epoch와 sequence ordinal은 Java 계약의 양수 
 유효 범위는 `1..Long.MAX_VALUE`이며 최대값에서는 wrap이나 값 재사용 없이 terminal exhaustion으로 처리한다.
 `0`은 값이 확정되지 않은 상태를 표현하도록 해당 계약이 명시한 경우에만 사용한다.
 
-## RouteMesh 11 object runtime 기준
+## RouteMesh object runtime 기준
 
 Kotlin exact interface는 Java와 같은 global ActorId·SpotId, immutable `ActorRef`·`SpotRef`, ID-only 일반
 messaging과 exact-ref mutation·session bind를 사용한다. Actor와 User Spot의 create/get-or-create는 single-user

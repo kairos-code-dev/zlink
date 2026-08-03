@@ -4,7 +4,7 @@
 
 # Event와 readiness 카탈로그
 
-이 문서는 ZLink Core 11.0 raw event family와 readiness 의미의 경계를 정의한다.
+이 문서는 ZLink Core raw event family와 readiness 의미의 경계를 정의한다.
 
 ## 1. Event family
 

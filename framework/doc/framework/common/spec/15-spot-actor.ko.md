@@ -3,9 +3,9 @@
 [스펙 목차](README.ko.md) · [이전: Actor 모델](14-actor-model.ko.md) · [다음: Spot 주소 메시징](16-spot-address-messaging.ko.md)
 
 
-이 문서는 ZLink Framework 11.1.0에서 Actor 생성, Spot membership, relocation과
+이 문서는 ZLink Framework에서 Actor 생성, Spot membership, relocation과
 여러 object를 함께 이동하는 aggregate relocation을 정의한다. Process 종료 뒤 다른
-runtime이 relocation을 이어받는 자동 failover는 11.1.0 계약에 포함하지 않는다.
+runtime이 relocation을 이어받는 자동 failover는 계약에 포함하지 않는다.
 
 Core는 raw socket과 transport만 제공한다. Object의 [membership](01-glossary.ko.md#membership), relocation 상태와
 lifecycle은 각 언어의 Framework runtime이 관리한다.
@@ -719,7 +719,7 @@ Framework는 이동 여부를 확정한 current owner에서 Spot의 기본 no-op
 변경 callback이 아니며 member Actor에 전달하지 않는다. Callback을 override한
 application은 다음 round나 match를 여기서 시작할 수 있다.
 
-## 7. 실패 처리와 11.1.0 범위
+## 7. 실패 처리 범위
 
 Commit 전 failure는 `Aborted` CAS, route와 source location snapshot 취소 확인, relocation
 root·reservation 정리와 source 상태 복원을 끝낸 뒤 source admission을 다시 연다. Location

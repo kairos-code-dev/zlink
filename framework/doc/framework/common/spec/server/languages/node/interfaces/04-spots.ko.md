@@ -11,7 +11,7 @@ owner와 membership을 commit한 뒤 message 처리를 시작한다. Target runt
 [인터페이스 목차](README.ko.md) · [Spot address와 messaging](../../../../16-spot-address-messaging.ko.md) ·
 [Spot·Actor membership](../../../../15-spot-actor.ko.md)
 
-이 문서는 ZLink Framework 11.0.0에서 `@zlink-systems/framework`와
+이 문서는 ZLink Framework에서 `@zlink-systems/framework`와
 `@zlink-systems/nestjs`가 내보내는 Spot 관련 정확한 TypeScript declaration을 고정한다.
 
 Location Store가 [Spot](../../../../01-glossary.ko.md#spot)의 current owner와 lifecycle state를 확정해 보관하는 정보를 authority라 한다.

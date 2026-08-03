@@ -5,7 +5,7 @@
 
 ## 1. 목적
 
-이 문서는 ZLink Framework 11.0.0 공개 계약의 소유권과 검증 규칙을 정의한다. 공개 계약은
+이 문서는 ZLink Framework 공개 계약의 소유권과 검증 규칙을 정의한다. 공개 계약은
 사용자가 호출할 수 있는 타입과 operation뿐 아니라 timeout, 취소, 오류, callback 순서, ownership과
 완료 조건을 포함한다.
 
@@ -156,7 +156,7 @@ internals를 다시 검토해 함께 수정한다.
 언어별 audit·실행 ledger가 소유한다. Internals는 목표 runtime의
 책임 경계, 데이터 흐름과 불변 조건을 설명하며 migration 이력이나 진행표를 포함하지 않는다.
 
-Core 11.0은 raw transport를 소유하고, C++·.NET·JVM·Node.js Framework는 각 언어의 service runtime을
+Core는 raw transport를 소유하고, C++·.NET·JVM·Node.js Framework는 각 언어의 service runtime을
 독립적으로 소유한다. 공통 native Framework runtime, private C SPI와 service C ABI를 만들지 않는다. 다섯
 언어 public contract는 공통 Framework spec을 투영하고, 네 runtime은 공통 protocol schema와 fixture로
 관찰 가능한 결과를 맞춘다. Java와 Kotlin은 public contract는 각각 제공하지만 Java binding과 JVM runtime

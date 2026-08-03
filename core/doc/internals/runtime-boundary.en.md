@@ -1,8 +1,8 @@
 [한국어](runtime-boundary.ko.md) | English
 
-# Core 11 Raw-Runtime Internal Boundary
+# Core Raw-Runtime Internal Boundary
 
-Core 11 implements only raw sockets and transports. The public API facade
+Core implements only raw sockets and transports. The public API facade
 validates arguments, handles, and ownership. Socket semantics implement routing
 for PAIR, PUB/SUB, DEALER/ROUTER, and STREAM. Runtime core manages connections,
 sessions, pipes, and I/O threads, while engines implement TCP, WebSocket, and
@@ -78,7 +78,7 @@ Framework service-protocol liveness messages travel as raw application payload.
 Core does not interpret their body or deadline. Each language Framework runtime
 handles them through its infrastructure queue and scheduler.
 
-The Core 11 source boundary contains no `ZLINK_OPT_HEARTBEAT_IVL`,
+The Core source boundary contains no `ZLINK_OPT_HEARTBEAT_IVL`,
 `ZLINK_OPT_HEARTBEAT_TTL`, `ZLINK_OPT_HEARTBEAT_TIMEOUT`,
 `zmp_control_heartbeat`, `zmp_control_heartbeat_ack`, or codec, parser, and engine
 state that handles those values. It also contains no `heartbeat_ivl_timer_id`,

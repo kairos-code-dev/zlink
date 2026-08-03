@@ -3,7 +3,7 @@
 [스펙 목차](README.ko.md) · [이전: Spot·Actor routing](18-object-routing.ko.md) · [다음: Session Actor dispatch](20-session-actor-dispatch.ko.md)
 
 
-이 문서는 ZLink Framework 11.0.0의 서버 쪽 STREAM session(연결 하나를 수락한 때부터
+이 문서는 ZLink Framework의 서버 쪽 STREAM session(연결 하나를 수락한 때부터
 닫을 때까지 packet 처리와 request correlation을 유지하는 실행 단위) 공개 계약을 정의한다. 대상 독자는 서버 session
 표면, dispatch, 등록, codec과 오류 경계를 구현하는 Framework 개발자다. Client 쪽
 계약은 [Stream Connector 공통 스펙](stream-connector/32-stream-connector.ko.md)이

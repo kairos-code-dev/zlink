@@ -5,7 +5,7 @@
 
 ## 1. 범위
 
-이 문서는 ZLink Framework 11.0.0에서 RouteMesh의 물리 연결과 ChannelName의 논리
+이 문서는 ZLink Framework에서 RouteMesh의 물리 연결과 ChannelName의 논리
 membership을 구성하는 방법을 설명한다. 대상 독자는 topology 등록과 startup 검사를
 구현하거나 검토하는 개발자다.
 

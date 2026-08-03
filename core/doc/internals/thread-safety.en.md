@@ -1,6 +1,6 @@
 [한국어](thread-safety.ko.md) | English
 
-# Core 11 Thread-Safety Implementation
+# Core Thread-Safety Implementation
 
 ## 1. Three tiers
 

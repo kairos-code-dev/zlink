@@ -4,7 +4,7 @@
 
 # Monitoring
 
-This document defines the ZLink Core 11.0 raw-socket monitor contract. Its
+This document defines the ZLink Core raw-socket monitor contract. Its
 audience is C API and binding developers who observe connection, transport,
 protocol, and socket lifecycle. A monitor observes state and never changes
 routing or queue state.

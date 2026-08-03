@@ -11,7 +11,7 @@ location snapshot을 갱신한다. 응답이 없어도 Actor 처리를 멈추지
 [인터페이스 목차](README.ko.md) · [Actor model](../../../../14-actor-model.ko.md) ·
 [Spot·Actor membership](../../../../15-spot-actor.ko.md)
 
-이 문서는 ZLink Framework 11.0.0에서 `@zlink-systems/framework`와
+이 문서는 ZLink Framework에서 `@zlink-systems/framework`와
 `@zlink-systems/nestjs`가 내보내는 Actor 관련 정확한 TypeScript declaration을 고정한다.
 
 ## 1. Actor identity, factory와 context

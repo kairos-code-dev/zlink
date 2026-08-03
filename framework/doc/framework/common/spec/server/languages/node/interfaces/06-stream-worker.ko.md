@@ -2,7 +2,7 @@
 
 [인터페이스 목차](README.ko.md) · [Node.js 계약 목차](../README.ko.md)
 
-이 문서는 ZLink Framework 11.0.0에서 `@zlink-systems/framework`와
+이 문서는 ZLink Framework에서 `@zlink-systems/framework`와
 `@zlink-systems/nestjs`가 내보내는 STREAM, timer와 worker 관련 정확한 TypeScript declaration을 고정한다.
 동작 의미는 [공통 스펙](../../../../README.ko.md)이 소유하며, 이 문서는 이름, generic, overload,
 상속, member, parameter와 반환형만 정의한다.

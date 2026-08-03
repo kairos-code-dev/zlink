@@ -5,7 +5,7 @@
 
 ## 1. 이 문서가 정의하는 범위
 
-이 문서는 ZLink Framework 11.0.0에서 global SpotId를 생성하고 조회하며, 해당
+이 문서는 ZLink Framework에서 global SpotId를 생성하고 조회하며, 해당
 SpotId로 Spot을 직접 호출하는 공개 계약을 정의한다.
 
 User Spot과 Instance Spot은 같은 logical address와 placement lifecycle을 사용한다.
@@ -451,7 +451,7 @@ Store authority가 target으로 바뀌기 전까지 resolver와 application hand
 Source seal, durable capture, target reservation·factory·restore, authority commit과 admission 순서는
 [23 Spot과 Actor membership](15-spot-actor.ko.md)이 정한다. Commit 전 failure는 source를 유지하고 commit 뒤에는
 selection이 끝난 같은 target process에서만 절차를 계속한다. Target process가 종료되면
-11.1.0은 다른 target을 선택하거나 relocation을 자동으로 재개하지 않는다. Seal 시점의 실행하지 않은 message, accepted journal과 timer logical
+다른 target을 선택하거나 relocation을 자동으로 재개하지 않는다. Seal 시점의 실행하지 않은 message, accepted journal과 timer logical
 registration·pending tick은 relocation payload에 포함하며 target Framework가 timer를 자동 복원한다. Application은
 `Restore`에서 Framework timer를 다시 등록하지 않는다. 이 queue·timer 규칙은
 `SpotWide`와 Instance Spot에 적용한다. `PerActor`에서는 Actor queue와 Actor timer만

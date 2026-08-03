@@ -2,9 +2,9 @@
 
 [Specification index](../README.en.md)
 
-# ZLink Core 11.0 specification
+# ZLink Core specification
 
-This index links the Core 11.0 public C ABI contract exposed by `zlink.h`. Formal API documents describe only public contracts; they do not describe source directories, socket wiring, or queue structure.
+This index links the Core public C ABI contract exposed by `zlink.h`. Formal API documents describe only public contracts; they do not describe source directories, socket wiring, or queue structure.
 
 ## 1. Common contracts
 

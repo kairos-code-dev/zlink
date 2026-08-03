@@ -4,7 +4,7 @@
 
 # 메시지 API 레퍼런스
 
-이 문서는 ZLink Core 11.0.0의 message 생성, payload 접근, ownership과 multipart 공개 계약을 정의한다.
+이 문서는 ZLink Core의 message 생성, payload 접근, ownership과 multipart 공개 계약을 정의한다.
 대상 독자는 message lifecycle과 zero-copy buffer ownership을 C API와 bindings에 투영하는 개발자다. 이
 문서는 “socket이 송수신하는 message를 어떻게 만들고 공유하며 정확히 한 번 해제하는가?”에 답한다.
 

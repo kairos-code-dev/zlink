@@ -5,7 +5,7 @@
 # Result and errno mapping
 
 This document defines result-enum and thread-local errno mappings for the ZLink
-Core 11.0 raw public API. Results drive control flow; errno describes the same
+Core raw public API. Results drive control flow; errno describes the same
 failure in more detail.
 
 ## 1. Common precedence

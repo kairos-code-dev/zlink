@@ -1,4 +1,4 @@
-# ZLink Framework 11.0.0 .NET 공개 계약
+# ZLink Framework .NET 공개 계약
 
 이 디렉토리는 server framework의 정확한 .NET public interface를 소유한다. 기능의 언어 중립 의미는
 [공통 스펙](../../../README.ko.md)이 정의하고, 이 디렉토리는 C# 타입, 메서드, generic 제약, nullable과

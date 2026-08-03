@@ -4,7 +4,7 @@
 
 [가이드 홈](../index.ko.md) | [공통 스펙](../common/README.ko.md)
 
-[공통 스펙](../common/README.ko.md) | [비동기 실행](../common/spec/05-async-execution-policy.ko.md) | [Exact interface](../common/spec/server/languages/dotnet/interfaces/README.ko.md) | [Stream Connector](../common/spec/stream-connector/languages/dotnet/03-stream-connector.ko.md) | [Unity 가이드](guide/stream-connector/02-unity.ko.md) | [Runtime Lifecycle](internals/runtime-lifecycle.ko.md) | [Runtime Execution](internals/runtime-execution.ko.md) | [Regression Matrix](internals/regression-test-matrix.ko.md) | [Backend Policy](internals/backend-dependency-policy.ko.md)
+[공통 스펙](../common/README.ko.md) | [비동기 실행](../common/spec/05-async-execution-policy.ko.md) | [Exact interface](../common/spec/server/languages/dotnet/interfaces/README.ko.md) | [Stream Connector](../common/spec/stream-connector/languages/dotnet/03-stream-connector.ko.md) | [Unity 가이드](guide/stream-connector/02-unity.ko.md) | [공통 내부 구조](../common/internals/README.ko.md) | [Regression Matrix](internals/regression-test-matrix.ko.md) | [Backend Policy](internals/backend-dependency-policy.ko.md)
 
 # ZLink Framework for .NET
 
@@ -86,7 +86,7 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 Options binding 기준�
 특히 다음 항목은 이 디렉토리 전체에 공통으로 적용된다.
 
 - 네이밍 규칙은
-  [공통 스펙 README §5.2.1](../common/README.ko.md#521-네이밍-규칙)
+  [공통 스펙 README §6.2.1](../common/README.ko.md#621-네이밍-규칙)
   의 `Naming Policy`를 그대로 따른다. `.NET`에서는 public API 전체를
   `PascalCase`로 적고, 단어 구성 자체를 임의로 바꾸지 않는다.
 - `Zlink` 와 `ZLink` 의 casing 의도는 다음과 같이 본다.
@@ -177,8 +177,7 @@ interface 목차의 대응 category를 참조한다.
 
 | 문서 | 다루는 범위 |
 |------|------------|
-| [runtime-lifecycle.ko.md](internals/runtime-lifecycle.ko.md) | host와 내부 runtime의 시작·종료 배선과 소유권 |
-| [runtime-execution.ko.md](internals/runtime-execution.ko.md) | session, actor와 Spot handler의 내부 실행 queue와 오류 관측 |
+| [공통 내부 구조](../common/internals/README.ko.md) | 네 언어가 공유하는 runtime 아키텍처 결정 |
 | [regression-test-matrix.ko.md](internals/regression-test-matrix.ko.md) | 항상 유지해야 할 회귀 테스트 항목, CI 계층, release gate |
 | [backend-dependency-policy.ko.md](internals/backend-dependency-policy.ko.md) | backend 의존 관계와 저수준 라이브러리 교체 경계 |
 | [public-symbol-delta-v11.ko.md](internals/public-symbol-delta-v11.ko.md) | 내부 이관 0건과 maintenance 최소 public delta 분류 |

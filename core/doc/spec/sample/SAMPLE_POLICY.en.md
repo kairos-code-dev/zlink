@@ -6,7 +6,7 @@
 샘플의 공통 계약을 정의한다. 샘플은 사용자가 그대로 따라 할 수 있는 예제이자 반복
 실행할 수 있는 smoke 검증이어야 한다.
 
-이 문서의 범위는 Core 11.0이 제공하는 context, message, raw socket, monitor, poller와
+이 문서의 범위는 Core가 제공하는 context, message, raw socket, monitor, poller와
 generic timer로 한정한다. Application framework 샘플은 해당 framework 문서가 따로 정의한다.
 
 ## 1. 적용 범위

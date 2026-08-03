@@ -24,6 +24,10 @@ template <typename T> std::string public_error_type (const result_t<T> &result)
             return "Rejected";
         case framework_error_kind_t::internal_failure:
             return "InternalFailure";
+        case framework_error_kind_t::deadline_exceeded:
+            return "DeadlineExceeded";
+        case framework_error_kind_t::shutting_down:
+            return "ShuttingDown";
         default:
             return "UnexpectedFrameworkError";
     }

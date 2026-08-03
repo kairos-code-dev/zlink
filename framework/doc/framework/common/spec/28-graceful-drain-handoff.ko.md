@@ -25,9 +25,9 @@ infrastructure connection은 유지된다. Application 또는 deployment orchest
 Stateful workload의 연속성을 보장하지 않고 host를 종료하려면 `Relocate` 없이
 `Shutdown`만 호출한다.
 
-### 1.1 11.1.0의 장애 처리 범위
+### 1.1 장애 처리 범위
 
-11.1.0의 `Relocate`는 source runtime, 선택한 target runtime, Location Store와
+`Relocate`는 source runtime, 선택한 target runtime, Location Store와
 Relocation Store가 operation을 끝낼 때까지 실행되는 graceful handoff만 지원한다.
 같은 process 안에서 일시적인 Store 또는 transport 오류를 deadline 안에 다시 시도할
 수는 있다. 그러나 source나 target process가 종료된 뒤 다른 runtime이 relocation을
@@ -786,7 +786,7 @@ Location Store가 target을 현재 처리 node로 기록한 뒤에는 source로 
 runtime이 계속 실행 중이면 deadline 안에서 실패한 단계를 다시 시도할 수 있다. Source나
 target process가 종료되면 다른 runtime이 이 relocation을 이어받지 않는다. Commit 뒤 target이
 종료되면 source로 rollback하지 않고 해당 object를 unavailable 상태로 둔다. 이후 자동 복구는
-11.1.0 계약에 포함하지 않는다. Session 위치 갱신 응답이 없어도 Actor 이동은 취소하지 않고,
+계약에 포함하지 않는다. Session 위치 갱신 응답이 없어도 Actor 이동은 취소하지 않고,
 실행 중인 target runtime만 `sessionActorLocationUpdateReqMsg`를 다시 보낸다. Application이
 관찰하는 정확한 실패 결과는 [§10 Relocate 완료와 실패](#10-relocate-완료와-실패)가 정의한다.
 
@@ -903,7 +903,7 @@ deadline을 나타내는 정리용 cancellation signal을 전달한다. 이미 �
 token은 재사용하지 않는다.
 Callback exception은 `ForceStopped/TeardownFailed`, deadline 만료는
 `ForceStopped/DeadlineExceeded`다. Hardware failure와 `SIGKILL`에서는 callback을
-보장하지 않는다. 11.1.0은 종료 중이던 relocation이나 cleanup을 다른 runtime이 자동으로
+보장하지 않는다. 종료 중이던 relocation이나 cleanup을 다른 runtime이 자동으로
 이어받는 동작을 보장하지 않는다.
 
 ## 12. State별 admission

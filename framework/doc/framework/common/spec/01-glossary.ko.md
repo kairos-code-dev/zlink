@@ -456,7 +456,7 @@ Location Store에서 생성 또는 relocation을 위해 확보한 수용 공간�
 다른 요청을 보내면 `Conflict`다.
 
 Creation에서는 process 재시작 뒤 같은 작업을 계속하거나 정확히 그 작업만 취소할 때
-사용할 수 있다. 11.1.0 relocation에서는 실행 중인 source와 target process 안에서
+사용할 수 있다. relocation에서는 실행 중인 source와 target process 안에서
 중복 요청을 구분하는 데만 사용하며 process 종료 뒤 작업을 이어받지 않는다. 서로
 다른 operation을 같은 application 결과에 합류시키는 식별자가 아니다.
 

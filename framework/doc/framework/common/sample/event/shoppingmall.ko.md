@@ -262,12 +262,12 @@ message GetOrderStateRes {
 message OrderState {
   orderId: string
   status: "Created" | "InventoryReserved" | "PaymentAuthorized" | "Confirmed" | "Failed"
-  shippingAddressId?: string
-  reservationId?: string
-  paymentId?: string
-  amount?: number
-  currency?: string
-  reason?: string
+  shippingAddressId?: string | null
+  reservationId?: string | null
+  paymentId?: string | null
+  amount?: number | null
+  currency?: string | null
+  reason?: string | null
   updatedAtUnixMs: int64
 }
 ```

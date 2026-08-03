@@ -1,6 +1,6 @@
 [English](runtime-boundary.en.md) | 한국어
 
-# Core 11 raw runtime 내부 경계
+# Core raw runtime 내부 경계
 
 Core 11은 raw socket과 transport만 구현한다. Public API facade는 argument·handle·ownership을 검증하고,
 socket semantic 계층은 PAIR·PUB/SUB·DEALER/ROUTER·STREAM의 routing을 결정한다. Runtime core는
@@ -67,7 +67,7 @@ TCP와 WebSocket engine은 orderly disconnect, read·write failure와 protocol f
 Framework service protocol의 liveness message는 raw application payload로 운반된다. Core는 그 body와 deadline을
 해석하지 않으며 각 언어 Framework runtime이 infrastructure queue와 scheduler에서 처리한다.
 
-Core 11 source boundary에는 `ZLINK_OPT_HEARTBEAT_IVL`, `ZLINK_OPT_HEARTBEAT_TTL`,
+Core source boundary에는 `ZLINK_OPT_HEARTBEAT_IVL`, `ZLINK_OPT_HEARTBEAT_TTL`,
 `ZLINK_OPT_HEARTBEAT_TIMEOUT`, `zmp_control_heartbeat`, `zmp_control_heartbeat_ack`와 이 값을 처리하는
 codec·parser·engine state가 없다. `heartbeat_ivl_timer_id`, `heartbeat_ttl_timer_id`,
 `heartbeat_timeout_timer_id`와 해당 callback 분기도 포함하지 않는다. Generic engine timer와 reconnect

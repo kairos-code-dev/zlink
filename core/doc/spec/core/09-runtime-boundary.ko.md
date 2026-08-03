@@ -4,13 +4,13 @@
 
 # Core runtime 경계
 
-이 문서는 ZLink Core 11.0 공개 C ABI가 제공하는 runtime 경계를 정의한다. Core는 message transport와
+이 문서는 ZLink Core 공개 C ABI가 제공하는 runtime 경계를 정의한다. Core는 message transport와
 운영체제 I/O를 캡슐화한 raw socket runtime이다. Application service topology와 stateful object runtime은
 Framework가 소유한다.
 
 ## 1. Core가 제공하는 기능
 
-Core 11.0은 다음 기능을 공개 C ABI로 제공한다.
+Core는 다음 기능을 공개 C ABI로 제공한다.
 
 - Context와 I/O thread lifecycle
 - message allocation, ownership, multipart frame과 routing ID
@@ -24,7 +24,7 @@ Core 11.0은 다음 기능을 공개 C ABI로 제공한다.
 
 ## 2. Framework가 소유하는 기능
 
-Core 11.0은 다음 service 개념을 공개 C ABI, 설치 header, exported symbol 또는 compatibility facade로
+Core는 다음 service 개념을 공개 C ABI, 설치 header, exported symbol 또는 compatibility facade로
 제공하지 않는다.
 
 - MeshName, ChannelName membership와 service discovery
@@ -51,7 +51,7 @@ TCP 재전송 상한을 설정하거나 자신의 application protocol로 상태
 Framework service connection의 liveness message, Location owner lease와 STREAM session ping·pong은 Framework가
 처리한다. Core는 이 service message를 해석하거나 application handler의 처리 가능 상태를 판정하지 않는다.
 
-Core 11 공개 option 집합에는 `ZLINK_OPT_HEARTBEAT_IVL`, `ZLINK_OPT_HEARTBEAT_TTL`과
+Core 공개 option 집합에는 `ZLINK_OPT_HEARTBEAT_IVL`, `ZLINK_OPT_HEARTBEAT_TTL`과
 `ZLINK_OPT_HEARTBEAT_TIMEOUT`이 포함되지 않는다. Raw ZMP command 집합에도 `zmp_control_heartbeat`와
 `zmp_control_heartbeat_ack`가 없다. 같은 값을 alias, deprecated option 또는 compatibility command로
 제공하지 않는다.
@@ -72,7 +72,7 @@ Core는 accepted service work, handler completion, Actor transfer, checkpoint와
 
 ## 5. 공개 표면 검증
 
-Core 11.0 public surface 검증은 다음 조건을 만족해야 한다.
+Core public surface 검증은 다음 조건을 만족해야 한다.
 
 - install tree와 exported symbol에 service header·type·function이 없다.
 - `zlink_socket_set_channel_name`, `zlink_socket_get_channel_name`, MeshNode poll·monitor와

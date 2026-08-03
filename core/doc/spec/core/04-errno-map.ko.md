@@ -4,7 +4,7 @@
 
 # Result와 errno 대응
 
-이 문서는 ZLink Core 11.0 raw public API의 result enum과 thread-local errno 대응을 정의한다. Result는
+이 문서는 ZLink Core raw public API의 result enum과 thread-local errno 대응을 정의한다. Result는
 제어 흐름의 기준이고 errno는 같은 실패를 더 세밀하게 설명한다.
 
 ## 1. 공통 우선순위

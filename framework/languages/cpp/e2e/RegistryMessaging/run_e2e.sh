@@ -481,6 +481,40 @@ raise SystemExit(f"timed out waiting for Location ready: {last!r}")
 PY
 }
 
+wait_client_server_ready_targets() {
+  local base_url="$1"
+  local channel="$2"
+  local expected_count="$3"
+  local timeout_seconds="${4:-30}"
+  python3 - "$base_url" "$channel" "$expected_count" "$timeout_seconds" <<'PY'
+import json
+import sys
+import time
+import urllib.parse
+import urllib.request
+
+base_url, channel, expected_text, timeout_text = sys.argv[1:]
+expected = int(expected_text)
+deadline = time.monotonic() + float(timeout_text)
+last = None
+url = base_url.rstrip("/") + "/client-server/status?channel=" + urllib.parse.quote(channel)
+while time.monotonic() < deadline:
+    try:
+        with urllib.request.urlopen(url, timeout=1) as response:
+            last = json.load(response)
+        if (last.get("selectable") is True
+                and int(last.get("readyServerCount", 0)) >= expected):
+            print(json.dumps(last, sort_keys=True))
+            raise SystemExit(0)
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    time.sleep(0.1)
+raise SystemExit(
+    f"timed out waiting for ClientServer ready targets channel={channel} "
+    f"count={expected}; last={last!r}")
+PY
+}
+
 verify_rm_a3_not_required_stays_terminal() {
   local base_url="$1"
   local peer_rid="$2"
@@ -563,12 +597,15 @@ launch_rm_a3_proxy() {
 verify_rm_a3_single_manual_attempt() {
   local evidence="$1"
   local count
+  # One public ROUTER connect owns one Application/Completion transport pair.
+  # The proxy observes both physical lanes, while the public intent remains one.
+  local expected_transport_lanes=2
   count="$(wc -l <"$evidence")"
-  if [[ "$count" != "1" ]]; then
-    echo "RM-A3 manual intent opened $count connections; expected 1: $evidence" >&2
+  if [[ "$count" != "$expected_transport_lanes" ]]; then
+    echo "RM-A3 manual intent opened an unexpected number of physical transport lanes: $count; expected $expected_transport_lanes for one logical connect intent: $evidence" >&2
     return 1
   fi
-  echo "rm-a3 manual-connect-attempts=1 evidence=$evidence"
+  echo "rm-a3 manual-connect-intents=1 transport-lanes=$expected_transport_lanes evidence=$evidence"
 }
 
 stop_pid() {
@@ -839,6 +876,7 @@ if [[ "$SCENARIO" == "RM-B1" || "$SCENARIO" == "rm-b1" ]]; then
   wait_marker "$READY"
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
   API_B_PID="$LAST_PID"
+  wait_client_server_ready_targets "$HTTP_A" registry.messaging.api 2 30
   touch "$CONTINUE"
   wait "$B1_CLIENT_PID"
   cat "$LOG_DIR/client-rm-b1.stdout.log"

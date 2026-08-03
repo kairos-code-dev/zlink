@@ -1,6 +1,6 @@
 [English](thread-safety.en.md) | 한국어
 
-# Core 11 thread safety 구현
+# Core thread safety 구현
 
 ## 1. 세 등급
 

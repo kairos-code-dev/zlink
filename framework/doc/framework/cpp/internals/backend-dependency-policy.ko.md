@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Runtime Architecture](runtime-architecture.ko.md) | [다음: Regression Test Matrix](regression-test-matrix.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Runtime Architecture](../../common/internals/README.ko.md) | [다음: Regression Test Matrix](regression-test-matrix.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [C++ 묶음](../README.ko.md) | [공개 인터페이스](../../common/spec/server/languages/cpp/interfaces/README.ko.md)
@@ -41,5 +41,5 @@ adapter로 우회하지 않는다. 필요한 binding public API가 없으면 먼
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: Runtime Architecture](runtime-architecture.ko.md) | [다음: Regression Test Matrix](regression-test-matrix.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Runtime Architecture](../../common/internals/README.ko.md) | [다음: Regression Test Matrix](regression-test-matrix.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

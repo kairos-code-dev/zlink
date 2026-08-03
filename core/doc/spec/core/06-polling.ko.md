@@ -4,7 +4,7 @@
 
 # Poll과 poller
 
-이 문서는 ZLink Core 11.0의 readiness 공개 계약을 정의한다. 대상 독자는 raw socket, file descriptor와 generic timer를
+이 문서는 ZLink Core의 readiness 공개 계약을 정의한다. 대상 독자는 raw socket, file descriptor와 generic timer를
 하나의 event loop에서 기다리는 C API와 bindings 개발자다. 이 문서는 “각 source의 `POLLIN`과 `POLLOUT`,
 single-consumer receive mode와 lifetime은 무엇인가?”에 답한다.
 

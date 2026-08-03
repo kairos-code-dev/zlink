@@ -1,6 +1,6 @@
 [한국어](threading-model.ko.md) | English
 
-# Core 11 Threading Model
+# Core Threading Model
 
 ## 1. Thread kinds
 
@@ -11,7 +11,7 @@
 | Reaper thread | Cleanup of terminated sockets and owned objects | One per Context |
 | Timer scheduler | Generic timer deadlines and fire counts | Runtime-owned |
 
-Core 11 has no service mailbox or MeshNode-specific ingress thread.
+Core has no service mailbox or MeshNode-specific ingress thread.
 
 ## 2. Cross-thread communication
 

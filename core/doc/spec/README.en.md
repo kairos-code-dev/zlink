@@ -1,8 +1,8 @@
 [한국어](README.ko.md) | English
 
-# ZLink 10.0.0 public specification
+# ZLink public specification
 
-This directory defines the ZLink 10.0.0 public API contract. Its audience is Core and bindings implementers and public-contract reviewers. Formal documents linked from this index are authoritative for function signatures, returns, errors, ownership, and thread safety.
+This directory defines the ZLink public API contract. Its audience is Core and bindings implementers and public-contract reviewers. Formal documents linked from this index are authoritative for function signatures, returns, errors, ownership, and thread safety.
 
 ## 1. Document structure
 
@@ -11,7 +11,7 @@ This directory defines the ZLink 10.0.0 public API contract. Its audience is Cor
 | Core C ABI | [Core specification](core/README.en.md) | C functions, types, enums, and runtime behavior |
 | Bindings | [Bindings specification](../../../bindings/doc/spec/README.en.md) | Language-specific public projections of the Core contract |
 
-Formal specifications describe only the current 10.0.0 contract. Guides own purpose and examples, while internals own actual internal structure after implementation is complete. Contract reviewers navigate from this index and the public header.
+Formal specifications describe only the current contract. Guides own purpose and examples, while internals own actual internal structure after implementation is complete. Contract reviewers navigate from this index and the public header.
 
 ## 2. Main Core documents
 
@@ -25,7 +25,7 @@ Formal specifications describe only the current 10.0.0 contract. Guides own purp
 | [Monitoring](core/07-monitoring.en.md) | Raw-socket monitors and snapshots |
 | [Runtime boundary](core/09-runtime-boundary.en.md) | Core raw C ABI and Framework service responsibility boundary |
 | [Events](core/05-events.en.md) | Public events and state-transition meaning |
-| [Errors](core/03-errors.en.md) | Result enums, errno, and the 10.0.0 version ABI |
+| [Errors](core/03-errors.en.md) | Result enums, errno, and the version ABI |
 | [Errno map](core/04-errno-map.en.md) | Per-function result and errno mappings |
 | [Utilities](core/08-utilities.en.md) | Timers, threads, stopwatch, and atomic utilities |
 

@@ -9,7 +9,7 @@
 > Request-reply and routing are defined by the formal socket specifications.
 > The public message API exposes neither request-reply nor socket-routing state.
 
-This document defines the ZLink Core 11.0.0 contract for creating, accessing,
+This document defines the ZLink Core contract for creating, accessing,
 owning, and managing multipart messages. Messages are the fundamental unit of
 data exchange between sockets and can carry arbitrary binary payloads, support
 zero-copy semantics, and form multipart sequences.

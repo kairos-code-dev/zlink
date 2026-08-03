@@ -5,7 +5,7 @@
 
 ## 1. 목적
 
-이 문서는 ZLink Framework 11.0.0 operation의 대상, 완료 의미와 실행 owner를 정의한다. 정확한 언어별 메서드
+이 문서는 ZLink Framework operation의 대상, 완료 의미와 실행 owner를 정의한다. 정확한 언어별 메서드
 시그니처는 각 package의 `languages/<lang>/` 문서가 소유한다.
 
 같은 Channel에 참여한 여러 remote node와 local Spot에 message 하나를 게시하는

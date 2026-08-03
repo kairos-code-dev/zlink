@@ -4,7 +4,7 @@
 
 ## 1. 범위
 
-이 문서는 ZLink Framework 11.0.0을 ASP.NET Core host와 DI에 등록하는 계약을 정의한다. RouteMesh builder,
+이 문서는 ZLink Framework를 ASP.NET Core host와 DI에 등록하는 계약을 정의한다. RouteMesh builder,
 ChannelName membership, manual peer와 runtime option의 정확한 시그니처는
 [Topology configuration](03-configuration-topology.ko.md)이 소유한다. Handler, context와 messaging client의
 시그니처는 [exact interface 목차](README.ko.md)의 기능별 문서가 소유한다.

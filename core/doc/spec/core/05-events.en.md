@@ -4,7 +4,7 @@
 
 # Events and readiness catalog
 
-This document defines the boundaries among ZLink Core 11.0 raw event families
+This document defines the boundaries among ZLink Core raw event families
 and readiness meanings.
 
 ## 1. Event families

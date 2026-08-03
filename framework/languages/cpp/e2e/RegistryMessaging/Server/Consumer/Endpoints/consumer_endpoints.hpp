@@ -24,8 +24,12 @@ inline profile_res_t request_profile (zlink::framework::channel_client_t &channe
     if (reply) {
         return reply.value ();
     }
-    throw std::runtime_error (reply.error () ? reply.error ()->what ()
-                                             : "profile request failed");
+    if (reply.error ()) {
+        throw *reply.error ();
+    }
+    throw zlink::framework::framework_exception_t (
+      zlink::framework::framework_error_kind_t::internal_failure,
+      "profile request failed");
 }
 
 inline payload_res_t request_payload (zlink::framework::channel_client_t &channels,
@@ -38,8 +42,12 @@ inline payload_res_t request_payload (zlink::framework::channel_client_t &channe
     if (reply) {
         return reply.value ();
     }
-    throw std::runtime_error (reply.error () ? reply.error ()->what ()
-                                             : "payload request failed");
+    if (reply.error ()) {
+        throw *reply.error ();
+    }
+    throw zlink::framework::framework_exception_t (
+      zlink::framework::framework_error_kind_t::internal_failure,
+      "payload request failed");
 }
 
 inline workflow_res_t request_workflow (
@@ -52,9 +60,12 @@ inline workflow_res_t request_workflow (
     const auto &reply = call.result ();
     if (reply)
         return reply.value ();
-    throw std::runtime_error (
-      reply.error () ? reply.error ()->what ()
-                     : "workflow request failed");
+    if (reply.error ()) {
+        throw *reply.error ();
+    }
+    throw zlink::framework::framework_exception_t (
+      zlink::framework::framework_error_kind_t::internal_failure,
+      "workflow request failed");
 }
 
 class batch_request_handler_t
@@ -99,6 +110,38 @@ class profile_request_handler_t
     profile_res_t handle (const profile_req_t &request)
     {
         return request_profile (_channels, request, std::chrono::milliseconds (3000));
+    }
+
+  private:
+    zlink::framework::channel_client_t &_channels;
+};
+
+/* The scale-in barrier keeps the public framework error kind inside a typed
+ * E2E response.  The HTTP client intentionally treats a non-2xx status as a
+ * transport-level failure, so this test-only endpoint lets the scenario
+ * inspect the framework result without decoding an HTTP error body. */
+class scale_in_transition_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<zlink::framework::channel_client_t>;
+    using request_type = profile_req_t;
+    using reply_type = request_failure_res_t;
+
+    explicit scale_in_transition_handler_t (zlink::framework::channel_client_t &channels) :
+        _channels (channels)
+    {
+    }
+
+    request_failure_res_t handle (const profile_req_t &request)
+    {
+        auto call = _channels.request (api_channel, request)
+                      .timeout (std::chrono::seconds (4))
+                      .submit<profile_res_t> ();
+        const auto &reply = call.result ();
+        if (reply) {
+            return {.failed = false, .error_type = ""};
+        }
+        return {.failed = true, .error_type = public_error_type (reply)};
     }
 
   private:

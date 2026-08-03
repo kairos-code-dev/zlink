@@ -199,7 +199,7 @@ ZLINK_LIBRARY_PATH="$PWD/core/build/lib/libzlink.so.11.2.0" \
 | 승인 prefix native build | `PASS` | candidate build가 `ZLINK_CORE_PREFIX`로 wheel build |
 | Raw FFI·symbol·layout | `PASS` | source tests, candidate manifest symbol/layout hash |
 | Public API와 Framework surface 부재 | `PASS` | export/guard test와 source scan |
-| Contract·unit test | `PASS` | `pytest`: 63 passed; close retry, callback ownership, invalid payload, surface guard 포함 |
+| Contract·unit test | `PASS` | `pytest`: 64 passed; close retry, callback ownership, invalid payload, surface guard 포함 |
 | `single_part` naming draft | `PASS` | 현재 public contract인 `single_part_or_throw()`를 유지; 별도 draft는 승인 전 설계 후보로 분리 |
 | Python 3.9 runtime와 최고 version | `PASS` | CPython 3.9 Docker와 host CPython 3.12 clean consumer |
 | `pyright`·`py.typed` | `PASS` | public contracts 대상 pyright 0 errors, wheel file check |

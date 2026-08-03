@@ -116,7 +116,7 @@ Python review에서 확인된 finding과 현재 owning-layer 조치는 다음과
 | Medium | `examples/spot_*.py`가 제거된 service API를 호출 | 두 obsolete example 삭제와 source guard 추가 |
 
 이번 수정 뒤 `ZLINK_LIBRARY_PATH=core/build/lib/libzlink.so.11.2.0 PYTHONPATH=bindings/python/src`
-환경에서 `python3 -m pytest -q bindings/python/tests`는 `63 passed`를 반환했다. 이는 source regression
+환경에서 `python3 -m pytest -q bindings/python/tests`는 `64 passed`를 반환했다. 이는 source regression
 증거이며, 최종 판단에는 새 source manifest, CPython 3.9/3.12 package·clean consumer·sample·perf와
 candidate-bound independent re-review가 계속 필요하다.
 

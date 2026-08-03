@@ -15,12 +15,12 @@ V11 승인 evidence의 identity 확인 및 독립 frontier reviewer의 최종 `C
 ## Candidate identity
 
 ```text
-sourceRevision: 각 `candidate-input.env`의 `CORE_REVISION`
+sourceRevision: `6d698c7e68e0c263ee48dd3948e7b8cc6e865c7d`
 coreManifest: .artifacts/wsl/bindings-candidate/core-11.2.0.env
-coreManifestSha256: 각 `candidate-input.env`의 `CANDIDATE_MANIFEST_SHA256`
+coreManifestSha256: `5bc62a9f90cf86bc9cacca33cbd61bf16d5bca3efc76041a7d8790ce4a4e63b6`
 coreVersion: 11.2.0
 coreRuntime: core/build/lib/libzlink.so.11.2.0
-coreRuntimeSha256: 각 `candidate-input.env`의 `CORE_RUNTIME_SHA256`
+coreRuntimeSha256: `aff90818cc40df2ebeeb375489e147f7e23791bda28b0dac85bdc9462f59236e`
 coreSoname: libzlink.so.11
 coreSymbolSha256: ac7b04ce8f3a8338b82328ca03d6e93892f56ae57bb78569f9901ba5f65d5823
 coreSourceSha256: 9888dd12f90930fb88a9b57b632f06bf44b3c05c6229246ad4cd62d8c21de1ce
@@ -32,11 +32,11 @@ coreSpecSha256: f89f006c105048acaf5bdfcb2ce252995bc72ded9b0a8e7354813a150dfc43b1
 아니며, 현재 변경 경로를 고정해 reviewer가 동일한 입력을 확인하기 위한 draft다.
 
 ```text
-coreLedgerCandidate: .artifacts/v11/evidence/V11-M3-CORE-VERIFY/candidate-current-20260803.json
-coreLedgerCandidateBaseRevision: candidate JSON의 `baseRevision`
-coreLedgerCandidateManifestSha256: candidate JSON 파일의 SHA-256
-coreLedgerCandidateAggregateSha256: candidate JSON의 `aggregateSha256`
-coreLedgerCandidatePathCount: candidate JSON의 `pathCount`
+coreLedgerCandidate: `.artifacts/v11/evidence/V11-M3-CORE-VERIFY/candidate-python-final-20260804.json`
+coreLedgerCandidateBaseRevision: `6d698c7e68e0c263ee48dd3948e7b8cc6e865c7d`
+coreLedgerCandidateManifestSha256: `7f56c4df9490286bade0d53e2b38cd13549cfce8d0437fb6287aa3c72f841a28`
+coreLedgerCandidateAggregateSha256: `7f32732d7831728b62b9f3a1bb1d420b6f7c9f65952348e1eb4e76c7c27a855d`
+coreLedgerCandidatePathCount: `19`
 ```
 
 기존 `V11-R2` review evidence
@@ -62,8 +62,12 @@ packagedNativePayloadSha256: 각 `candidate-input.env`의 `PACKAGED_NATIVE_PAYLO
 ```
 
 `candidate-input.env`의 Core manifest SHA, runtime SHA, source manifest SHA와 aggregate SHA는 위 값과
-일치한다. Wheel에는 `py.typed`와 `linux-x86_64/libzlink.so.11.2.0`만 포함되며 `libzlink_c`, 이전 SONAME,
-cross-platform payload와 source path는 포함되지 않는다.
+일치한다. Source manifest SHA는 `d5a1fd7af7ef13ceda55785180c820ec31760877d76f23bca4d3bdd74680148b`,
+source aggregate SHA는 `399db451234ec87804f659e9535c211e59c97b18606a3c028c21bb96f7fa5c8c`다. CPython 3.9
+wheel SHA는 `647a8d4d94eecdbc62b1f7e0c397fa61fc946954a3420e413c55aa75c620f321`, CPython 3.12 wheel SHA는
+`ef4c9e1a53184f6f19d26c722b5abb42542499f8aa5942eecd244458a3291aa6`다. Wheel에는 `py.typed`와
+`linux-x86_64/libzlink.so.11.2.0`만 포함되며 `libzlink_c`, 이전 SONAME, cross-platform payload와 source
+path는 포함되지 않는다.
 
 ## 실행 결과
 
@@ -75,7 +79,7 @@ ZLINK_LIBRARY_PATH="$PWD/core/build/lib/libzlink.so.11.2.0" \
   pytest -q bindings/python/tests
 ```
 
-결과: source extension을 선택한 interpreter로 먼저 build한 뒤 `63 passed`.
+결과: source extension을 선택한 interpreter로 먼저 build한 뒤 `64 passed`.
 
 ```bash
 PYTHONPATH=bindings/python/src python3 -m py_compile \
@@ -102,7 +106,7 @@ scripts/local-package/bindings-candidate/build-wsl.sh \
 ```
 
 결과: 각 output root의 `candidate-input.env`가 가리키는 동일 Core candidate를 기준으로 CPython 3.9
-Docker와 host CPython 3.12 모두 종료 코드 `0`. 각 source test는 `63 passed`, clean wheel
+Docker와 host CPython 3.12 모두 종료 코드 `0`. 각 source test는 `64 passed`, clean wheel
 consumer는 Pair roundtrip과 wheel payload load-map 확인을 통과했다.
 Builder는 같은 Core prefix와 source manifest를 사용해
 각 interpreter용 wheel을 만들고, 새 venv에서 source checkout과 `core/build` fallback 없이
@@ -157,7 +161,7 @@ ZLINK_LIBRARY_PATH="$PWD/core/build/lib/libzlink.so.11.2.0" \
 package adapter를 lifecycle·ownership owner로 분리했다. 초기 독립 review가 확인한 ChannelName,
 close retry, input error, enum mapping과 dead example 문제를 owning layer에서 수정했다. Cost inventory는
 allocation, copy, lock, GIL과 no-cost를 모두 분류했고 `unclassified=0`이다. 수정 후 source test는
-`63 passed`이며, 같은 최종 manifest를 읽은 독립 re-review는 아직 필요하다.
+`64 passed`이며, 같은 최종 manifest를 읽은 독립 re-review는 아직 필요하다.
 
 이는 Codex self-review이므로 다음 조건이 남는다.
 

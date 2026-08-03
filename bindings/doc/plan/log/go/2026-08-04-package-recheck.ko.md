@@ -13,11 +13,11 @@ frontier review와 다른 platform native consumer가 남아 `PARTIAL / NOT CLEA
 | Candidate aggregate SHA-256 | `327587596195a162374498b630f51a043977dd392eb556061af615bf05186703` |
 | Core package provenance SHA-256 | `46f7bd17c0be3987fed14ca3cb594139e3edb778d3996248d23b6d2d6b53f693` |
 | Core runtime SHA-256 | `b6fadc481c649b50637a9c0eb01d15a016e6ba4cd5bab967bdb6da4497a3c0c4` |
-| Binding source revision | `f83290b28cb63afdc88e06110fb4c50a8d8b7053` |
-| Binding source manifest SHA-256 | `d6bd4bebf649f74dcc9d966d438f1e35da5435cc546140755c75cd135b1a5004` |
+| Binding source revision | `27f683412db79dd3161ae4581d570e49b3d3ad50` |
+| Binding source manifest SHA-256 | `8342ed14b129200a3ad59880595191b76816f3f26d373e4f4e8e5a0dfa0e3213` |
 | Binding source aggregate SHA-256 | `8ca3316878060954edae601ea70351464a192df06d718de0d10988679eadcad7` |
-| Module zip SHA-256 | `12898bb155df9eb5c29dda9b1e5d872df465f4ea2d770468e3d86e04e3fbc1ef` |
-| Package evidence SHA-256 | `7badf3d397c56139c74410173d391b0d1368ab28a6dd9949487bac6aa48b883d` |
+| Module zip SHA-256 | `da4e9590223ecfe99cf06dd4b30099a22097406dcb019f1fca5f1d44c6b311a8` |
+| Package evidence SHA-256 | `01853e7f5bcd682a2891ce04610beb0c4d04052da67ba927bc3571e66f0c8c9c` |
 | Package platforms | `linux-x86_64` |
 
 Package evidence는 `zlink.systems/zlink/v11@v11.1.0` module, package-local Core 11 header와 candidate runtime을
@@ -26,7 +26,7 @@ Package에는 service·Spot·Actor·build·results forbidden entry가 없다.
 
 ## 실행 결과
 
-- `bindings/go/tests/run_tests.sh`: raw allowlist, source test, sample process를 포함해 `pass=7 fail=0`
+- `bindings/go/tests/run_tests.sh` with extracted package runtime: `go test`, `go vet`, raw/hot-path guard와 samples `pass=7 fail=0`
 - fresh `go test -count=1 ./...`: exit code `0`
 - `go vet ./...`: exit code `0`
 - Single smoke: `PAIR`, `inproc`, message size `64`, duration `1`, run `1`, exit code `0`

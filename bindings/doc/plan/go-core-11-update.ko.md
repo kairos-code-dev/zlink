@@ -240,14 +240,14 @@ scripts/local-package/go/build-wsl.sh \
 
 | 항목 | 값 |
 |------|-----|
-| Source revision | `f83290b28cb63afdc88e06110fb4c50a8d8b7053` |
-| Source manifest SHA-256 | `d6bd4bebf649f74dcc9d966d438f1e35da5435cc546140755c75cd135b1a5004` |
+| Source revision | `27f683412db79dd3161ae4581d570e49b3d3ad50` |
+| Source manifest SHA-256 | `8342ed14b129200a3ad59880595191b76816f3f26d373e4f4e8e5a0dfa0e3213` |
 | Package script SHA-256 | `9404def1079805c0cf200244f670deaae55daba17031095594aa099dc09b3fee` |
-| Module zip SHA-256 | `12898bb155df9eb5c29dda9b1e5d872df465f4ea2d770468e3d86e04e3fbc1ef` |
+| Module zip SHA-256 | `da4e9590223ecfe99cf06dd4b30099a22097406dcb019f1fca5f1d44c6b311a8` |
 | Header aggregate SHA-256 | `159c8024f8ed090e0c3acfe51e665339d3a43e93b37dc9e21490b703df717f1d` |
 | Source aggregate SHA-256 | `8ca3316878060954edae601ea70351464a192df06d718de0d10988679eadcad7` |
-| Package evidence | `.artifacts/wsl/go-candidate-final/go-package-v11.1.0.json` |
-| Package evidence SHA-256 | `7badf3d397c56139c74410173d391b0d1368ab28a6dd9949487bac6aa48b883d` |
+| Package evidence | `.artifacts/wsl/go-candidate-final3/go-package-v11.1.0.json` |
+| Package evidence SHA-256 | `01853e7f5bcd682a2891ce04610beb0c4d04052da67ba927bc3571e66f0c8c9c` |
 | Core candidate manifest | `.artifacts/v11/evidence/V11-M3-CORE-VERIFY/candidate-reply-match-completion-hwm-20260801.json` |
 | Core package evidence | `.artifacts/v11/evidence/V11-M3-CORE-VERIFY/core-package-20260801.json` |
 | Core provenance SHA-256 | `46f7bd17c0be3987fed14ca3cb594139e3edb778d3996248d23b6d2d6b53f693` |
@@ -262,7 +262,7 @@ scripts/local-package/go/build-wsl.sh \
 | Gate | 상태 | Evidence |
 |------|------|----------|
 | 공통 candidate 입력 확인 | `PASS` (독립 review 제외) | Candidate verify와 matching V11-M3-CORE-PKG pass evidence가 같은 manifest `d318...`/aggregate `327...`을 사용하며 runtime provenance 검증 통과 |
-| Go binding source manifest | `PASS` | `.artifacts/wsl/go-candidate-final/go-source-manifest-v11.1.0.json`, manifest SHA-256 기록 |
+| Go binding source manifest | `PASS` | `.artifacts/wsl/go-candidate-final3/go-source-manifest-v11.1.0.json`, manifest SHA-256 기록 |
 | `/v11` module path와 version | `PASS` | `bindings/go/go.mod`, package evidence `v11.1.0` |
 | Raw cgo·header·symbol allowlist | `PASS` | `bindings/go/tests/raw-core11-allowlist.json`, `TestRawCore11Allowlist` |
 | Public API snapshot과 service 부재 | `PASS` | root/contracts projection, raw surface test, package zip forbidden-entry 검사 |

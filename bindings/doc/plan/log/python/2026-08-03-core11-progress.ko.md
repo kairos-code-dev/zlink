@@ -15,12 +15,12 @@ V11 승인 evidence의 identity 확인 및 독립 frontier reviewer의 최종 `C
 ## Candidate identity
 
 ```text
-sourceRevision: `d70424c5670b8ab85285afb0659bd2867f75a4c6`
+sourceRevision: each `candidate-input.env` `CORE_REVISION`
 coreManifest: .artifacts/wsl/bindings-candidate/core-11.2.0.env
-coreManifestSha256: `3d410f75650aff0785068ec1760ada75aa68481ff6a3426b3c37a06e5e66a8f3`
+coreManifestSha256: each `candidate-input.env` `CANDIDATE_MANIFEST_SHA256`
 coreVersion: 11.2.0
 coreRuntime: core/build/lib/libzlink.so.11.2.0
-coreRuntimeSha256: `aff90818cc40df2ebeeb375489e147f7e23791bda28b0dac85bdc9462f59236e`
+coreRuntimeSha256: each `candidate-input.env` `CORE_RUNTIME_SHA256`
 coreSoname: libzlink.so.11
 coreSymbolSha256: ac7b04ce8f3a8338b82328ca03d6e93892f56ae57bb78569f9901ba5f65d5823
 coreSourceSha256: 9888dd12f90930fb88a9b57b632f06bf44b3c05c6229246ad4cd62d8c21de1ce
@@ -33,10 +33,10 @@ coreSpecSha256: f89f006c105048acaf5bdfcb2ce252995bc72ded9b0a8e7354813a150dfc43b1
 
 ```text
 coreLedgerCandidate: `.artifacts/v11/evidence/V11-M3-CORE-VERIFY/candidate-python-final-20260804.json`
-coreLedgerCandidateBaseRevision: `d70424c5670b8ab85285afb0659bd2867f75a4c6`
-coreLedgerCandidateManifestSha256: `f12c1fdc579d35908fe8f8534af811300299651ef3c630f022f6fa7d0ed9c8bc`
-coreLedgerCandidateAggregateSha256: `7f32732d7831728b62b9f3a1bb1d420b6f7c9f65952348e1eb4e76c7c27a855d`
-coreLedgerCandidatePathCount: `19`
+coreLedgerCandidateBaseRevision: candidate JSON `baseRevision`
+coreLedgerCandidateManifestSha256: SHA-256 of the candidate JSON
+coreLedgerCandidateAggregateSha256: candidate JSON `aggregateSha256`
+coreLedgerCandidatePathCount: candidate JSON `pathCount`
 ```
 
 기존 `V11-R2` review evidence
@@ -62,10 +62,9 @@ packagedNativePayloadSha256: 각 `candidate-input.env`의 `PACKAGED_NATIVE_PAYLO
 ```
 
 `candidate-input.env`의 Core manifest SHA, runtime SHA, source manifest SHA와 aggregate SHA는 위 값과
-일치한다. Source manifest SHA는 `7d1ccfdf11a5a296c31a724929f237c0f24a4db2c4fac32ce91e87a46d498e12`,
-source aggregate SHA는 `399db451234ec87804f659e9535c211e59c97b18606a3c028c21bb96f7fa5c8c`다. CPython 3.9
-wheel SHA는 `ede1ac1fe00626fe1c30561cfaa9ae6ab4649c169945c296a8076f5c8827cadf`, CPython 3.12 wheel SHA는
-`728ea3b298b29fe417aae869fd155622ae5a1a585e9e795c951c9c098d1321a4`다. Wheel에는 `py.typed`와
+일치한다. Source manifest SHA와 aggregate SHA는 각 `candidate-input.env`의
+`PYTHON_SOURCE_MANIFEST_SHA256`·`PYTHON_SOURCE_AGGREGATE_SHA256`를 사용한다. Wheel SHA는 각 output
+root의 `python/SHA256SUMS` wheel entry를 사용한다. Wheel에는 `py.typed`와
 `linux-x86_64/libzlink.so.11.2.0`만 포함되며 `libzlink_c`, 이전 SONAME, cross-platform payload와 source
 path는 포함되지 않는다.
 
